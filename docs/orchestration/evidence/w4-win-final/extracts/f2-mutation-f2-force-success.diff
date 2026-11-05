@@ -1,0 +1,13 @@
+diff --git a/src/app/src/viewer.cpp b/src/app/src/viewer.cpp
+index 9ff70b8..f04afc4 100644
+--- a/src/app/src/viewer.cpp
++++ b/src/app/src/viewer.cpp
+@@ -1878,7 +1878,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
+         auto fresh = [this](const render::ChunkKey& k) {
+             return frames_.chunk(k) != nullptr && frames_.stale_generation(k) == 0;
+         };
+-        play_->visibility().frame_done(delivered, fresh, fresh);
++        play_->visibility().frame_done(true, fresh, fresh); // MUTANT: forced success
+         refresh_visibility_title();
+     }
+     // SDL's present waits for vsync.

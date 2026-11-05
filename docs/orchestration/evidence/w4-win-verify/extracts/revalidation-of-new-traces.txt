@@ -1,0 +1,7 @@
+native viewer_wiring_cpu_delivery_failures: PASS (script identity equal, ordered full-argument trace complete to quit, no FAIL line)
+native viewer_wiring_cpu_delivery_failures: PASS (script identity equal, ordered full-argument trace complete to quit, no FAIL line)
+native viewer_wiring_r1_held_publication: PASS (script identity equal, ordered full-argument trace complete to quit, no FAIL line)
+native viewer_wiring_r1_held_publication: PASS (script identity equal, ordered full-argument trace complete to quit, no FAIL line)
+native viewer_wiring_r4_occupancy: PASS (script identity equal, ordered full-argument trace complete to quit, no FAIL line)
+native viewer_wiring_r4_occupancy: PASS (script identity equal, ordered full-argument trace complete to quit, no FAIL line)
+rtx canary boundary_exit_in_hold: PASS (script identity equal, ordered full-argument trace complete to quit, no FAIL line)

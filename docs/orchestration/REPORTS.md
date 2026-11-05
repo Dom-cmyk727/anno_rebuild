@@ -7705,6 +7705,205 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
   3. A tool once checked out `task/T33-1-walk-tables` in this worktree and it was restored before edits. Noted; no effect on the branch.
 - **Merge:** `d1a8c11`. The merge base is `917efea`, so the merge brings all of T61 (F1 reviewed in rounds df/dh, F2 here). The REPORTS append conflict was resolved as main's file plus the branch's appended sections (line counts checked: 7252 + 6956 − 6519 = 7689). The four tool and ADR files in the merge are byte-identical to the branch.
 
+## W4.3 + W4.4 — Live buildings and developer input — progress, part A (stopped after A2) — 2026-10-30 09:39 +0100 — status: IN PROGRESS
+
+- **Branch and head:** `task/W4-3-live-buildings` in `E:\anno1503-worktrees\anno1503-W4-3`, from the round-dq board commit `c0aec17`. Commit `dc197ee` (docs(app): the W4.3 spec). Nothing merged, pushed or edited outside the branch. No old worktree (`C:\Users\altin\anno1503-T33-*`) was used.
+- **Session note:** this session started in `E:\anno1503`, not in a removed worktree.
+- **Preflight:** `lane3-preflight.ps1`: 4 of 4 PASS (main HEAD c0aec17; status AGENTS.md only; lane bindings unchanged; the new worktree path was free).
+
+### Step A1: facts of §3, re-checked at c0aec17
+
+| # | Fact (packet §3 / W4.3 facts) | Result | Evidence |
+|---|---|---|---|
+| 1 | `PlayRunner::one_turn` sends a turn with no commands through `sim::run_turn(world_, nullptr, turn, steps_)`; `PlaySnapshot` has tick, game time, turn costs, `behind_ms`, `paused` | holds | `src/app/src/play.cpp:336-356`; `play.hpp:53-64` |
+| 2 | scene buildings from `play_buildings(play->world)` at load; re-encoded as PROD2 | holds | `main.cpp` play path; `game-shell.md` "Why the scene re-encodes PROD2" |
+| 3 | `FrameRenderer`: `std::map<ChunkKey, ChunkPtr> cache_`, `update_chunks`, `ChunkWorkers`, `release()`, `chunk_rebuilds`/`rebuilds_` | holds | `frame.hpp:216-394` (`cache_` at 394, `rebuilds_` at 395); replace path `frame.cpp:768-775` |
+| 4 | `BuildCmd` (city + placements in stream order), `PlacementWire` (type, x, y, rotation, byte7/byte8), `DemolishCmd` (city + tiles); wire limits 4 095 / 8 190 | holds, one addition | `command.hpp:31-52`; `has_wire_form` documents the limits (`command.hpp` near 143). **Addition:** `run_turn` with `rec == nullptr` also skips a command without a wire form (`replay.hpp:125-132`), so an over-long line must be refused before the turn, not sent. |
+| 5 | rejected command: no hashed change, one `CommandRejected` UI event; Build charges `cost_gold` and goods | holds | `apply.hpp:27-28`; `world.hpp:240-241`; `apply.cpp` affordability block (`Reject::CannotAfford`), cost waiver OQ-126 |
+| 6 | default placement rule reads only whether a footprint tile carries an object; not the coast/mountain/road flags | holds | `placement.hpp:25-42`; OQ-052 |
+| 7 | left-button drag pans (`viewer.cpp` mouse block ~740-756); keys WASD/arrows, Space, E, R, +/- | holds | `viewer.cpp:740-756`; key cases in the `SDL_EVENT_KEY_DOWN` block |
+| 8 | developer start gives player 1 the whole start island (OQ-490) | holds | `docs/open-questions.md` OQ-490 (MAP.1 writes one owner run over the start island) |
+
+No fact failed. Fact 4 gained one addition (the direct path also drops a command with no wire form). Nothing in §3 changes the design.
+
+Two more facts, found while writing the spec:
+- `Turn::commands` (`replay.hpp:117-123`) already exists and `run_turn` applies it first. The scripted-command path (A5) therefore needs no sim change; the runner only has to fill the field.
+- `TileCleanup` events go to `seams_.tile_cleanup` (`events.cpp:29-32`); play mode installs no handler, so a tile change by an event cannot reach the picture today. Recorded as a gap in the spec.
+
+### Step A2: spec first (done, commit `dc197ee`)
+
+`docs/app/game-shell.md`, new section "Building changes after tick 0 (W4.3)": the publishing choice, the stale-key rule, the copy-on-change object list, target K = 3 frames, the in-flight rule, and the `--commands` format. Choices and their reasons are in the next section. Numbers marked "target" are open until the measurements (A3, A6, A7) are in.
+
+### Not started: A3–A7 and part B (B1–B6)
+
+These need code, a configured MSVC build in this worktree (`build/msvc` does not exist here yet), the coordinator-gated test runs, GPU checks on the RTX 4090, and stills. This session has not started them, and I am not claiming any of them. The next session begins at A3 with the measurement of the diff cost on `06_1024_heavy_256.sze` (before publishing), then A4 (which needs `gpu.cpp`'s replacement path read first).
+
+## Decisions and reasoning (part A, so far)
+
+1. **Publish building changes as an app-side diff, not a sim log or version counter.** Alternatives: (a) a per-island version counter in `World`; (b) a log of applied commands; (c) a diff of the sim's buildings per turn. Chose (c). (a) changes `World` state, which the hash may see, and the brief forbids state or hash changes. (b) misses what a turn changes on its own. (c) is complete and needs no sim change. Cost target: at most 0.2 ms p95 per turn on `06_1024_heavy_256.sze`, measured in A3; a per-island hash is the fallback if it misses.
+2. **Invalidation keeps the old chunk in `cache_` and replaces it on arrival.** Alternative: erase the key and show a hole or wait. Rejected by the brief (no hole, no wait). The precedent is the river rebuild (`frame.cpp:768-775`).
+3. **Copy-on-change object lists per island.** Alternative: mutate the scene in place. Rejected: chunk workers read the scene concurrently without locks (CLAUDE.md, the W4.1 contract). A chunk job holds the list it started from.
+4. **Latency target K = 3 frames.** Alternative: a larger bound with no measurement behind it. Chose a small target that A7 must confirm or change.
+5. **Command file: `build` and `demolish` lines, with extra triples or tiles on the same line for one command.** Alternative: one line per placement, which would send several commands. Chose one line per command, so a drag or a multi-tile demolish is one command as in `BuildCmd`/`DemolishCmd`. The `CityRef` is resolved by the runner, not in the file, so a file names no city.
+6. **A line over the wire limit is refused at load, not split.** Splitting is the window's drag rule (B3). The file is explicit and the user sees the refusal.
+
+## Owner questions (so far)
+
+None blocking. The first owner question comes with part B: the default bindings and whether the preview may show refusals the stand-in placement rule would accept (OQ-052), per the brief.
+
+## W4.3 + W4.4 — progress, part A3 — 2026-10-30 10:06 +0100 — status: IN PROGRESS
+
+- **Commits:** `b7e879b` docs (spec: mailbox instead of snapshot), `f0d051d` feat(app) (diff and batch). Head at this report: this commit.
+- **What changed:** `src/app/include/anno/app/building_delta.hpp`, `src/app/src/building_delta.cpp` (`building_before`, `sort_buildings`, `diff_sorted_buildings`, a sorted multiset difference); `PlayRunner` keeps the last sorted list on the sim thread, diffs it after each turn (`one_turn`, timed separately from the turn cost), and pushes a non-empty `BuildingBatch` to a mailbox; `take_building_batches()` swaps the mailbox out under the existing publication mutex. `SceneBuilding` gained a defaulted `operator==`.
+- **Design change from the spec (recorded in game-shell.md):** the batch is not carried in the snapshot. The window reads only the latest snapshot, so a batch in it would be lost when two turns pass between frames. The mailbox keeps every batch until the window takes them.
+- **Evidence:** `anno_app_tests` built clean (MSVC, Release, `build/msvc`); 33 of 33 cases pass without game files and 33 of 33 with `ANNO1503_GAME_DIR=E:\anno1503\game\app` (30 425 and 39 623 assertions). New cases: `building delta: equal lists give no change`, `add, remove, and a rotation change as a pair`, `a building listed twice on one side is counted`, `the order is total on the record`, `play: a turn with no commands publishes no building changes` (Single_01, 50 turns: 0 batches), `play: the building diff on the heavy endless scenario`, `cost at 1000 and 5000 buildings`.
+- **Measurements** (MSVC Release, this PC):
+  - sort + diff at 1 000 buildings, one changed per turn: p50 0.014 ms, p95 0.015 ms, max 0.018 ms (200 runs).
+  - sort + diff at 5 000 buildings: p50 0.092 ms, p95 0.100 ms, max 0.178 ms (200 runs). Target was at most 0.2 ms p95: met.
+  - `06_1024_heavy_256.sze` as loaded: **0 buildings** (the endless scenario has no city at load), so the diff there is only the floor (p95 0.0002 ms). This is not the 'hundreds of buildings' case; the realistic figure is the synthetic one. Turn cost with and without publishing on the heavy scenario is therefore not separable yet: it needs buildings placed by commands (A5).
+- **Gates not yet run for A3:** clang-format 23.1.3 clean on all six changed files (`--dry-run --Werror`, after `-i` on my files); GCC 13.3 / Clang 18 `-Werror` in WSL (`tools/check_unix_warnings.sh`) not run yet; the full `ctest` (both with and without game files) not run yet (only `anno_app_tests`).
+- **Decisions and reasoning (A3):**
+  1. *Mailbox, not snapshot.* Alternative: carry the batch in the latest snapshot. Rejected: a skipped snapshot would lose a turn's changes silently. Cost: an unbounded list if the window never takes it; bounded in practice by the number of changes.
+  2. *Diff on the sim thread, timed apart from the turn cost.* Alternative: a sim change log. Rejected (state and hash). The turn cost stays the sim's cost; the diff is reported separately.
+  3. *Multiset difference on sorted lists.* Alternative: hash sets. Rejected: ordered containers, no pointer or hash order (CLAUDE.md determinism rules); the record is a total order.
+  4. *Removed then added, each in building order.* Chosen so that a demolish-and-rebuild of one tile is applied in a fixed order.
+- **Still open for A3/A4:** the GCC/Clang gate; the full ctest; and the choice of the picture-side object list (A4), which needs `gpu.cpp`'s replacement path read.
+- **Next:** A4 (apply the deltas to the picture and invalidate the affected chunks, CPU and GPU).
+
+## W4.3 + W4.4 — progress, corrections and A5 — 2026-10-30 10:30 +0100 — status: IN PROGRESS (not an owner-check)
+
+- **Commits since the A3 report (`a688b37`):** `c20dfb7` fix(app) mailbox bound and one publication lock; `15fba61` feat(app) `--commands` (A5).
+- **Head:** `15fba61` plus this report commit. Branch `task/W4-3-live-buildings`, worktree `E:\anno1503-worktrees\anno1503-W4-3`.
+
+### Orchestrator correction 1: bounded mailbox with resync (done)
+- `BuildingMailbox` (`building_delta.hpp`): bound = one second of turns, `1000 / Timing::mp_turn_real_ms` = 10 batches (`PlayRunner` constructor). Past the bound, the waiting batches collapse into one **resync** batch carrying the full sorted list after the newest turn. `apply_batches` replaces the picture's list by it and reports the diff against the previous list as the invalidation set.
+- Tests (`building_mailbox_test.cpp`, 10 cases in the app binary): batches kept in order up to the bound; past the bound one resync with `full == current`; a picture that takes once after a collapse equals the world's list after 20 turns; a normal apply and a resync reach the same list and deltas; a delta for a missing building is reported as inconsistent.
+- The window must invalidate what the resync changes. That is A4, not done yet.
+
+### Orchestrator correction 2: one publication (done)
+- `publish()` pushes the batch into the mailbox and swaps the snapshot under **one** lock, batch first. The snapshot now carries its `turn`.
+- Test: in `commands_file_test.cpp`, after each turn of the scripted run, `snapshot()->turn == index`, and the turn's batch is pending exactly when a direct diff of the same world changed a building. This is the synchronous form of the schedule check; a real two-thread race is not tested.
+
+### A5: `--play <file> --commands <path>` (done)
+- `commands_file.hpp/.cpp`: parser for `turn <n> build <type> <x> <y> <rot> [<x> <y> <rot>]...` and `turn <n> demolish <x> <y> [<x> <y>]...`. Errors name the line. Turns must not decrease. Rotation 0..3. A line with no wire form (over 4 095 placements or 8 190 tiles) is refused at load (`has_wire_form`).
+- City: `developer_player()` = player slot 1; the build or demolish names that player's city on the island of its first tile. No such city is an error (no city is invented).
+- The runner applies each turn's commands in file order before its steps (`set_script`, `Turn::commands`). `--commands` without `--play` is a usage error.
+- **Spec:** game-shell.md says a line with no city of player 1 is "sent anyway, so the sim refuses it". The code refuses it at load instead. Changed in the code; the spec text is not yet updated (to do with A7).
+
+### Evidence
+- `anno_app_tests`: 40 of 40 cases pass **without** game files and 40 of 40 **with** `ANNO1503_GAME_DIR=E:\anno1503\game\app` (MSVC, Release). clang-format 23.1.3 `--dry-run --Werror` clean on all changed files.
+- **A6(d) determinism (done):** the same 12-turn script through the runner and through `run_turn` directly gives the same `World::state_hash()` at every turn (`play: scripted commands match run_turn turn by turn (A6 d)`).
+- The determinism run's batch check: 3 of 12 turns changed a building (with the cheapest building type, no rejections), and on every turn the pending batch matched the direct diff.
+- **Finding:** the first choice of building type (the first in the layout) was refused as `CannotAfford` on the developer start; the cheapest type with no goods cost was accepted. The developer start's money is therefore a real limit on what the owner can build. An owner question, see below.
+- **Finding (crash, resolved in the test):** doctest's `REQUIRE_MESSAGE(parsed, parsed.error())` on a `Result` aborted the test with `Terminate handler called`; stating the check as a bool and a string fixed it. No app code involved. Recorded because it cost time.
+
+### Not done (A4 onward, and part B)
+- **A4 (apply and invalidate):** the window applies `take_building_batches()` to its list (`apply_batches`), maps the deltas to stale chunks per zoom group, and invalidates them. Design recorded in game-shell.md. Still open:
+  - the scene is rebuilt per change (`render::Scene` keeps islands by value and prepares them lazily, `scene.hpp:430`), so the chunk workers must keep the old scene alive until they finish, or it is a use-after-free;
+  - the GPU check: `gpu.cpp` already re-uploads a key whose CPU chunk serial changed (`gpu.cpp:1971-1975`, `replace_chunk` at ~2045), so the GPU needs no change if the CPU side produces a new serial. Confirmed by reading; not yet run.
+- **A6(a), (b), (c), (e):** need A4 (the pixel comparisons, the GPU run on the RTX 4090, the slow-rebuild hook, the rejected-command pixel test).
+- **A7:** this report section is the progress record; the final section comes with part B.
+- **Part B (B1–B6):** not started. Picking (inverse projection with heights), the command queue with its measured push time, the picker and rotation, click and drag, demolish, the preview and its choice (option 1 or 2), CommandRejected feedback, money and goods on screen, and the tests and mutations.
+- **Gates still to run:** full `ctest` with and without game files (the test binary is run, not ctest); `tools/check_unix_warnings.sh` in WSL (GCC 13.3, Clang 18, with and without `ANNO_VIEWER_GPU`); the stills and the frame measurements.
+
+### Decisions and reasoning (this continuation)
+1. *Collapse to resync, not drop.* Alternatives: drop the oldest batches (silent loss), or grow without bound. A resync keeps the picture exact and bounded in memory. The collapse copies the sorted list (O(buildings)) under the lock; the window only swaps the mailbox out, so its wait is the copy's length when the mailbox is full.
+2. *Bound = one second of turns.* Reason: the window takes once per frame, so under normal running the mailbox holds about one frame's batches; one second covers a long stall without a resync. Configurable with `set_batch_bound`.
+3. *Command file resolves the city, the file does not name it.* Alternative: a city number in the file. Rejected: a city number is a sim detail the owner should not have to know.
+4. *A line with no city is refused at load.* Alternative: send it so the sim refuses it, which needs a made-up city number. Rejected (no invented ids). Spec text to be updated in A7.
+
+### Owner questions (new)
+1. **Developer start money.** On `lan5.txt` the developer player can't afford the first building type in the layout (refused `CannotAfford`); the cheapest no-goods type is accepted. Should the developer start have more gold, or should the developer picker list only affordable types? (The sim's rule is unchanged; this is the start's money, MAP.1.)
+2. **Preview on refusals (OQ-052).** Carried over from the brief; decided with part B.
+
+## W4.3 + W4.4 — Live buildings and developer input — 2026-10-30 — status: QUESTION (A4); part B partly done; review stop, not an OWNER-CHECK
+
+- **Branch and head:** `task/W4-3-live-buildings`, worktree `E:\anno1503-worktrees\anno1503-W4-3`, head `6c469cd`. Commits since the last report (`ad35885`): `7763e37` spec (the command file refuses a line with no developer city), `d5db909` sim_load developer resources, `b9daa4b` --play fixed map, `c93551a` --play routing by extension, `e7defdd` picking (B1), `bc3d161` command queue (B2), `0311004` picker (B3 logic and B6 tests), `72f13f2` refusals and money/goods (B5), `6c469cd` test name and a comment.
+- Nothing merged, pushed or PR'd. No TASKS, PLAN or AGENTS edits. No net, no W5 widgets, no figure drawing.
+
+### Step table
+
+| Step | State | What | Evidence |
+|---|---|---|---|
+| A1 facts | done | all 8 facts hold; one addition: `run_turn` also drops a command with no wire form | report `a688b37` |
+| A2 spec | done | game-shell.md section "Building changes after tick 0" and the command file | `dc197ee`, `b7e879b`, `7763e37` |
+| A3 publish | done | app-side diff per turn; bounded mailbox with resync; one publication lock | `f0d051d`, `c20dfb7`; `building_delta_test`, `building_mailbox_test` |
+| A4 apply and invalidate (CPU, GPU) | QUESTION, not built | see QUESTION 1 | none |
+| A5 `--commands` | done | parser, runner feed, CLI; a line with no developer city is refused at load | `15fba61`; `commands_file_test` |
+| A6 (d) determinism | done | 12 turns: runner hash equals direct run_turn hash at every turn | `commands_file_test` |
+| A6 (a), (b), (c), (e) | not done | need A4: picture comparison, RTX 4090 run, slow-rebuild hook, refused-command pixels | none |
+| A7 progress | done for what exists | this section and the earlier ones | REPORTS |
+| B1 picking | done as math; viewer wiring not done | `render/picking.hpp`; round trip at 3 groups, continuous scale 0.45 to 2.0, sloped ground, sea | `e7defdd`; `picking_test`, 5/5 |
+| B2 queue | done as structure; not wired into the viewer | `command_queue.hpp`; runner `post_command`, `applied_commands`; text form | `bc3d161` |
+| B3 picker | done as logic; no SDL mapping | `dev_input.hpp/.cpp`: cycle, rotate, click, road drag, demolish, cancel | `0311004`; picker test |
+| B4 preview | not done | footprint is available (`DevInput::footprint_at`); no drawing; option 2 chosen | none |
+| B5 feedback | done for the title line | refusals (last 256, mailbox) with reason; money and the city's goods in the snapshot; title shows them | `72f13f2`; feedback test |
+| B6 tests | done for the parts built | queue order; push time; picker sequence; replay to the same hash | `input_test`, 6 cases |
+
+### Evidence
+
+- **Unit tests:** `anno_app_tests` 49/49 without game files and 49/49 with them, measured before the last two test changes. The picking and queue cases were re-run after the mutation restore (5/5 and 2/2). The feedback and replay cases pass.
+- **Full ctest on the head before `6c469cd`:**
+  - Without game files: 1147/1147 pass (35 s).
+  - With game files: 1141 pass. Six failed with the coordinator's `wait deadline` refusal: available memory 5.6 GB against a 4 GiB headroom, with estimates of 0.3 to 6.8 GB. At that moment the host showed 11.5 GB free. Rerun alone with game files, all six pass.
+  - The first full run also had `test_names_are_selectable` fail on a `;` in a test name. Fixed in `6c469cd`.
+  - One `anno_test_support_tests.F4` case failed once under `-j 8` and passed on rerun (8/8).
+  - The final ctest on `6c469cd` was not rerun in full.
+- **WSL check (`tools/check_unix_warnings.sh`, head `72f13f2`):**
+  - GCC 13.3, viewer and GPU on, 190 files: clean.
+  - Clang 18.1.3, viewer and GPU on, 190 files: clean.
+  - Clang 18.1.3, viewer without GPU, 19 files: clean.
+  - The script has no GCC step without GPU.
+- **Mutations** (each run, then restored; the restored tree rebuilt and the cases re-run):
+  - Picking off by one tile (`floor(u) + 1`): fails `picking_test.cpp:56` (`picked->first == x`).
+  - Queue applied in reverse: fails `input_test.cpp:75` (`in_order`).
+  - Not run: no invalidation, invalidate-everything, and window-waits-for-a-turn (these need A4 and the window side).
+- **Measurements:**
+  - Sort and diff of buildings, one changed per turn: 1000 buildings p95 0.015 ms; 5000 buildings p95 0.10 ms (target 0.2 ms).
+  - `06_1024_heavy_256.sze` has no buildings at load, so the turn cost with and without publishing cannot be separated there. Not measured.
+  - Queue push, 20 000 pushes against a take every 2 ms: p50 0 µs, p99 0.3 µs, max 205 µs (a turn is 100 ms).
+  - Frame time and frame latency from snapshot to drawn change: not measured (A4 missing).
+- **Stills** (`lan5.txt`, tick 0, group 0, 1920×1080, `C:\Users\altin\Pictures\anno-review\W4-3\`):
+  - `lan5_tick0_g0_1920x1080.png`: centre of the start island (NORD template). Forest, a river, a rocky coast and sea. No building in the frame.
+  - `lan5_tick0_kontor_g0_1920x1080.png`: centred on the developer Kontor at (1284, 540). A wooden building on stilts at the coast, drawn from the sim's record, with gravel beach, shallow water and forest behind. No holes, seams or pixelation at this view.
+  - Not run: the RTX 4090 and Radeon iGPU comparison, and the 1280×800 and 2560×1440 views.
+
+### Decisions and reasoning (this part)
+
+1. **`--play` routes by extension, not by content.** Alternative: try the fixed-map parser on any file. Rejected: the owner can predict a rule by extension. `.txt` is a fixed map; anything else is a scenario file.
+2. **Developer test resources: 10 000 000 gold and 190 t of every goods in each start city.** Sources: `docs/formats/endless-presets.md`, the endless01 table (human money 10 000 000) and the endless02 table (largest city stock, computer player, 190 t). Applied to every seat of the developer start, because the option is for testing. Off by default in `FixedMapOptions`; `--play` of a fixed map turns it on. No sim rule changed.
+3. **Picking is header-only and exact.** `iso::tile_top` truncates in integer arithmetic; the odd tile height of group 1 (21) gives half a pixel. The picker uses the exact values, so its round trip is exact. The truncation is in the picture; not changed here.
+4. **The queue is a mutex around one push or one swap.** Alternative: a lock-free queue. Chosen for simplicity; the measured p99 is 0.3 µs, so the lock is not the cost. Revisit if measurement says otherwise.
+5. **The refusal list keeps the last 256.** A refusal is a turn and a short name. The title shows a refusal for 30 turns.
+6. **The picker has no key bindings yet.** The viewer's SDL mapping is not in this change. The owner (round dr) keeps B3 a test tool, and the bindings belong with the viewer work that is not done.
+
+### QUESTION 1: A4 needs a render ownership change (brief §9)
+
+The brief's rule: invalidation that needs a render change outside the chunk cache and the compositor is a QUESTION.
+
+- `Viewer` holds `const render::Scene& scene_` (`viewer.cpp:345`). `ChunkWorkers` is built with `const Scene&` (`viewer.cpp:575`). A changed building means a new `Scene`: the island's PROD2 records change, and `Scene` keeps islands by value and prepares them lazily (`scene.hpp:430`). The workers must not see a scene replaced under them.
+- The GPU compositor already re-uploads a key whose CPU chunk serial changed (`gpu.cpp:1971-1975`; `replace_chunk` at about 2045). So the GPU needs no change if the CPU side produces a new serial. Confirmed by reading, not run.
+- Options:
+  - (a) The viewer and the play path hold `shared_ptr<const Scene>`. A change builds a new scene. The workers take the scene per job. The old scene is kept until the workers are idle. Cost: a scene build per change batch, to be measured.
+  - (b) Keep one `Scene`, and make each island's object data a `shared_ptr` swapped atomically; workers load it at job start. Cost: edits to `scene.cpp` throughout.
+- **My recommendation: (a),** with the scene-build cost measured first; (b) if that cost is too high for a burst of 50 builds. Both change `viewer.cpp` and `frame.cpp`. An owner or orchestrator decision is needed.
+
+### QUESTION 2: preview (B4)
+
+Option 2 (footprint plus the sim's verdict) is what I would build. Drawing the footprint is a viewer change, and it can only be checked interactively. Confirm option 2, or ask for option 1 (the window runs the sim's checks on published data).
+
+### Owner questions carried over
+
+- Developer start money: answered in round dr (generous test resources, configurable, off for original scenarios).
+- OQ-052 (refusals the stand-in placement rule would accept): relevant to B4, unresolved.
+
+### Not done, in order
+
+1. A4, after QUESTION 1 is answered; then A6 (a), (b), (c), (e) with the RTX 4090 run.
+2. B1 and B2 wiring into the viewer: the camera-to-scene mapping, `pick_tile` with `Scene::ground_height`, SDL events to `DevEvent`, `post_command` on the viewer thread.
+3. B4 preview drawing (option 2 unless the owner says otherwise).
+4. A full ctest on the final head.
+5. The interactive check of the picker in `--play`. I have stills, not an interaction.
 ---
 
 ## Round ds — Review of UI.1 — 2026-10-30 — status: CHANGES REQUIRED (UI.1.F1)
@@ -8065,6 +8264,1689 @@ Inline; Wine passes 3 and 4; no subagents. Lanes 1, 3, 4 not touched. No merge, 
   5. The other resolutions need the owner's desktop harness: an owner checklist, not a runner task.
 - **Merge:** `df6dcc7`. The REPORTS conflict was resolved as main's file plus the branch's appended sections (7722 + 8025 − 7707 = 8040 lines). `docs/re/ui.md`, `tools/ui_layout.py` and `data/ui/construction.txt` are byte-identical to the branch; `check-files` passes on main.
 
+## Mac executor — host readiness, then the W4.3 continuation — 2026-10-30 — status: REVIEW (A4 QUESTION: the seam)
+
+**Scope:** `cache/orch-handover-2026-10-30/EXECUTOR_HANDOVER.txt` steps 1–7, 8, 11 (not started), 12 (not started), 13 (partly). Main is unchanged at `632229e`.
+
+### Heads (exact)
+
+| branch | worktree | head | note |
+|---|---|---|---|
+| `main` | `anno1503` | `632229e` | not touched |
+| `task/MAC-1-host-support` (new, from `632229e`) | `anno1503-worktrees/anno1503-MAC-1` | `abc1f8c` | host support, 4 commits: `870a527`, `4cc0a3a`, `837fb5f`, `abc1f8c` |
+| `task/W4-3-live-buildings` | `anno1503-worktrees/anno1503-W4-3` | `a8a8e7a` | merged `main` and the host branch (`f978e43`, `6eabad0`); then `4986050` (A8), `1df238e` (probe), `41f2ead` (spec), `a8a8e7a` (format) |
+
+Preflight (handover step 2): 6 of 6 PASS on `8972b3d` before the merge. The W4 checkout had a Windows `.git` pointer; repaired by `git worktree repair` (metadata backed up under `cache/mac-recovery-2026-10-30/`). Not pruned.
+
+### Step 1–2: the workspace
+
+- 13 copied checkouts repaired with `git worktree repair` (the two `C:/Users/altin/.codex` entries have no directory here and stay prunable).
+- The 506 main changes and the 5 other checkouts' changes were CRLF-only. Each file was proven equal to its committed blob after CRLF folding (`eolcheck.py`, scratch), then restored to the committed bytes; the CRLF copies are archived in `cache/mac-recovery-2026-10-30/eol-crlf-*.tar`. No normalization commit.
+- The UI F2 checkout's `docs/testing/checklist.md` (F2.3, real content) is kept; its patch is saved.
+
+### Step 3: toolchain (this Mac)
+
+- Apple M5 Max, 18 CPU cores, macOS 27.0.1, arm64; Apple clang 21.0.0; Python 3.14.6.
+- cmake 3.31.10, ninja 1.13.2, clang-format 23.1.3, installed into `cache/mac-tools/venv` (system Python not changed). CTest from the cmake wheel.
+- Fresh build directories `build/dev` (Ninja, Debug) in the host, W4 and base worktrees; `build/asan` in the host worktree.
+- The dev preset configures in about 150 s (dependency fetch), builds all 457 steps in 27 s at 6 jobs (cold).
+- Two `ld` warnings in every link: `ignoring duplicate libraries: src/sim/libanno_sim.a` (Apple ld). Not fixed here (a CMake link-list issue; Linux/Windows not affected by this message).
+
+### Step 4: host readiness (the host branch)
+
+Defects measured on the unmodified main (`632229e`, detached worktree): `test_support` 33 of 64 pass. Causes and fixes:
+
+| defect | evidence | fix (commit) |
+|---|---|---|
+| memory readings nullopt on Apple | `memory.cpp` had no Apple branch | `870a527`: `hw.memsize`; `host_statistics64` free − speculative + inactive; `task_info` `phys_footprint` |
+| `module_directory` and the test child's `sibling()` read `/proc/self/exe` (empty on Darwin) | every spawn-based case: `REQUIRE(exists(exe))` failed | `4cc0a3a`: `proc_pidpath(getpid())` |
+| `process_started` and the owner check read `/proc` | owner treated as gone on Darwin | `4cc0a3a`: `proc_pidinfo(PROC_PIDTBSDINFO)`; ESRCH gone, changed start time = stopped owner, other errors unknown |
+| coordinator could not spawn: `posix_spawn` with close actions on unopened fds returns EBADF (probed: rc 9 with 4093 actions) | "could not start the test budget coordinator" | `4cc0a3a`: close only the fds listed by `PROC_PIDLISTFDS`; refuse the spawn if the list is unreadable |
+| the detached coordinator kept the starter's stdout: ctest waited for EOF (hung 15 min after the heavy case; killed by hand) | `ps`: orphan `anno_budget_coord`, parent 1 | `abc1f8c`: stdio to `/dev/null` (POSIX branch; Linux runs the same branch, not measured here) |
+| WSL-only cases ran on Darwin (`wsl_available()` returned true on every non-Windows host) | D2 waited for a meter child that does not exist; N3/N4 read `/proc` | `837fb5f`: false on Darwin with the skip message; Linux/Windows unchanged |
+| race: silent probe quit by `send` only; the coordinator bound while the listener still held the port (BIND-FAILED, under ASan) | ASan run, 1 of 3 | `837fb5f`: `quit_and_wait` |
+| Zombie reads Gone on macOS 27 (ESRCH), not a distinct state | host test | `837fb5f`: the test asserts "not Running", the measured property |
+
+Host contract (handover 4c): `host_test.cpp` (suite `host`, 7 cases: memory present and consistent; a touched 64 MiB allocation moves private bytes; the coordinator binary is found; this process's start stamp matches proc_pidinfo; a live child is Running then Gone once killed and reaped; an unreaped zombie is not Running; a pid with no process is Gone). The admission and coordinator cases (`budget_test`, `budget_f1..f4`) run unchanged and pass; they are the evidence for "small reservation admitted and released", "second client waits", and "unknown reading never forces admission".
+
+Results:
+- `anno_test_support` focused set, `dev`: 70 of 70 (after `abc1f8c`); 71 of 71 before `abc1f8c` (the 71st is `test_names`).
+- ASan + UBSan (`asan` preset, `-fsanitize=address,undefined,float-cast-overflow`): 71 of 71, zero sanitizer reports.
+- clang-format 23.1.3 `--dry-run --Werror`: clean on every changed file.
+- Not run: the Windows `msvc` build and the WSL GCC/Clang `-Werror` gate (`tools/check_unix_warnings.sh`). They are target-host gates (outstanding).
+
+### Step 5: calibration (this Mac; single measurements unless stated)
+
+| measure | result | choice |
+|---|---|---|
+| cold compile, same tree (`ninja -t clean` then build) | j6 27.0 s, j12 17.0 s, j16 14.0 s; no-op 0.1 s | 16 jobs (fastest; two cores left) |
+| non-heavy suite, no game files, 1113 cases, `ANNO_TEST_THREADS=1` | j8 45.2 s, j12 43.7 s, j16 42.6 s | 8 jobs: the critical path is one case, `anno_sim_tests` "rejected command leaves the hash unchanged" (40.9 s), so more jobs do not shorten the run |
+| one heavy case at one worker: `anno_render_tests` "scene renders match the recorded digests" (game files) | wall 863 s; peak RSS 4.93 GB | 1 worker. Not known whether it passed: CTest was blocked by the orphan coordinator (fixed in `abc1f8c`). Rerun with the full game-file gate |
+| memory pressure during runs | 36–37% free, 16 GB total in the pressure tool's report | not used as a budget; the admission reading (free + inactive) is in `host_test` |
+
+The T10c reservation model assumes 256 MiB per render item. The measured peak RSS of one heavy case is 4.93 GB. The reservation therefore under-counts heavy renders by about 20×. This is a finding for the owner and the orchestrator (the heavy-admission budget), not changed here.
+
+### Step 6–7: W4 state, and the scene-ownership decision (QUESTION)
+
+- The branch's audited state (`8972b3d`, plus `6c469cd`) is unchanged in code. The viewer does not consume the building batches; `apply_batches` runs only in tests.
+- **Probe** (`scene_probe_test.cpp`, `ANNO_PROBE=1`, game files; `docs/perf/README.md` "W4.3 A7b"), fixed map `lan5` (21 islands, 2 buildings at tick 0):
+
+| measure | time |
+|---|---|
+| one change: whole scene built from files as `--play` does (5 runs) | 6.73–6.85 s |
+| `Scene` constructor from the parts a scene holds (copies, no file read) | 0.47 s |
+| first sea pattern of a fresh scene | 0.25 s |
+| 50-build burst, one coalesced rebuild | 6.77 s (one rebuild, as designed) |
+
+- **Decision (7c):** whole-scene generations miss the K = 3 frame target by about an order of magnitude on this map (at least 0.7 s after the sim turn). Proposed instead: the per-island object list (`docs/app/game-shell.md`, "Ownership: the measured cost, and the seam proposed"). Checked for it: buildings do not reach the island water or the sea pattern (`sea.cpp` `IslandWater::build`, `SeaPattern::build`), so the seam holds the objects lists only.
+- **Not implemented** (9a–9d, 7d, 10): they depend on this decision. The seam needs your approval before it is written.
+
+### Step 8: publication (done)
+
+`publish()` copied the full list inside the publication lock when the mailbox collapsed. The copy is now made before the lock when `BuildingMailbox::full()` says the push will collapse (`4986050`). Equivalence test: `mailbox: a prepared push collapses to the same resync as push`. The mailbox cases pass (27 assertions). Stalled-consumer and skipped-snapshot interleavings beyond the existing tests are not added.
+
+### Steps 9–12: not done
+
+- 9 (selective invalidation): blocked on the decision in step 7.
+- 10 (GPU replacement, Metal runs, slow-build injection, latency, 1080p/4K): not run. The GPU timing tests fail on Metal on **both** `main` and this branch: `anno_render_gpu_tests` "river flow on the GPU …" and "every pass of a frame is timed …", both with `REQUIRE(pass.has_value())` in `gpu.cpp` `read_timestamps` (a pass with equal begin and end ticks is "no reading", by design). Pre-existing, not introduced here; open.
+- 11 (input wiring): not started. The developer picker, the command queue and the picking math exist and are tested; no SDL mapping, no viewer pick.
+- 12 (preview, refusals, resources): refusals and money/goods reach the title line (W4.4 B5). No footprint preview is drawn.
+
+### Step 13: gates on `a8a8e7a`
+
+- Formatting: clang-format 23.1.3 clean on all 31 changed C++ files of the branch against `632229e` (three fixed in `a8a8e7a`).
+- Non-heavy suite without game files (`ctest -LE heavy -j 8`): 1142 of 1144 pass. The two failures are the Metal timing cases above (also failing on main).
+- Non-heavy suite with game files: see the line below.
+- Heavy suite (10 cases, `anno_render_tests`, game files): not run to completion. One case took 863 s at one worker (calibration above).
+- `anno_app_tests` probe with game files: passes; it measures, it is not a gate.
+- ASan/UBSan of the W4 branch: not run for this head (outstanding; the host set passed).
+- Windows MSVC full gate, WSL GCC/Clang `-Werror`, RTX 4090 and Radeon runs, and the owner's desktop captures: outstanding (target hosts).
+
+- Non-heavy suite **with** game files (`ANNO1503_GAME_DIR`, `ctest -LE heavy -j 8`, 1144 cases, 1251 s): 1142 of 1144 pass; the same two Metal timing cases fail.
+
+### Decisions and reasoning (this session)
+
+1. **Host branch separate, merged into W4 by merge** (not cherry-pick). Reason: the host fixes stay reviewable as one unit and W4's tests can run on the Mac.
+2. **Darwin free memory = free − speculative + inactive.** Alternatives: free only (very conservative: admission would wait on most of the machine's reclaimable memory); all of free + inactive + purgeable (purgeable needs work to hand out). Chosen: the analogue of Linux MemAvailable. Evidence: `vm_stat` semantics (free_count includes speculative pages).
+3. **Darwin process memory = `phys_footprint`.** Alternatives: RSS (counts shared clean pages); resident-private (not exposed). Chosen: the figure Activity Monitor reports as Memory, closest to Windows PrivateUsage.
+4. **Spawn descriptors on Darwin: list open descriptors, do not add a close per index.** Probed: a close on an unopened fd fails the spawn.
+5. **Zombie = Gone on Darwin.** Measured (ESRCH). The owner check treats both as stopped.
+6. **WSL-only cases skip on Darwin with their own message.** They read `/proc` or need the PowerShell meter, neither exists there.
+7. **Detached coordinator stdio to `/dev/null`.** Alternative: a log file (useful for diagnosis; not needed by any reader today). Chosen: no hang, no new file.
+8. **Scene ownership: whole-scene generation rejected on measurement; per-island list proposed.** Evidence: the probe above; the seam is the one the spec already describes.
+9. **The mailbox copy is made before the lock.** Alternative: a second lock (more complex, no gain). The copy only happens when full; full cannot go back to empty between the check and the push because only the window takes.
+
+### Owner / orchestrator decisions needed
+
+1. Approve the per-island object-list seam (game-shell.md, "Ownership") before step 9 starts.
+2. The heavy-admission model: measured 4.93 GB per heavy render at one worker, against the 256 MiB per item in the T10c model. The budget needs the measured figure or a per-case measurement.
+3. Developer bindings (step 11) are not decided by the board. Proposed for the developer tool only (not the original UI): `B` toggles the tool; while on, left click places or demolishes (drag builds a road line); `N`/`P` next/previous type; `.` rotates; `X` toggles demolish; right click cancels; WASD/arrows still pan; left-drag pans only while the tool is off. Existing keys (Esc/Q quit, E, R, zoom, Space, Home, 0) are unchanged.
+
+### Remaining blockers and target-host checks
+
+- The seam decision (above).
+- Windows MSVC and WSL GCC/Clang gates for `task/MAC-1-host-support` and the W4 branch; RTX 4090 and Radeon GPU runs.
+- Heavy suite on the Mac with the fixed harness (about 14 min per heavy case at one worker, 4.9 GB each): owner decision on running it in the background.
+
+### Next single reviewable task
+
+Review and approve the per-island object-list seam (`docs/app/game-shell.md`, "Ownership: the measured cost, and the seam proposed"). Then the next executor unit is steps 9a–9d with the stale-completion test (7d), on that seam.
+
+## W4.3 round du — CPU unit: immutable per-island object lists, selective invalidation, stale completions — 2026-10-30 — status: REVIEW (CPU unit only; GPU and input not started)
+
+**Preflight:** `tools/orch/preflight.py` on `2f81f02` (board) and `e7934ee` (branch): 6 of 6 PASS. Branch from `e7934ee`, host support already merged (`6eabad0`), no merge into main, no push.
+
+**Heads.** Code: `task/W4-3-live-buildings` at `549ffc4` (tests), with the commits of this unit in order: `e594108` (spec), `e9f107a` (render: lists and generations), `d988e4d` (render: stamped chunks, stale rule, invalidation), `3c2f2f0` (app: per-island writer; publication comment), `346f4db` (app: ScenePicture), `549ffc4` (tests), `b64d283` (perf notes), and the spec status commit after it. Host support: `task/MAC-1-host-support` at `abc1f8c` (unchanged in this unit).
+
+### Steps (round du, 1–7)
+
+| step | state | evidence |
+|---|---|---|
+| 1 spec, static/dynamic, painter order, classification boundary | done | `docs/app/game-shell.md` "Immutable per-island object lists"; test "no building type of the registry is a river, fall or surf piece" (286 types checked, 0 river/fall/surf) |
+| 2 off-thread build, commit rule | done | `ScenePicture` workers; test "a second change during a rebuild supersedes the first" (1 commit for 2 requests) |
+| 3 retained-generation bound and stress | done as design + test | spec §7: alive generations <= 1 + threads; test "repeated updates keep the live generations bounded" (50 updates, bound 1 + threads + 2 asserted) |
+| 4 sprite boxes, all zoom levels and derived parents | done | `Scene::object_bounds` (frame headers, reach with overrun slack, shadows); `chunk_keys_touching`; test "every changed pixel lies in an invalidated key, at every zoom level" (derived levels included) |
+| 5 controlled tests and mutants | done (listed below) | 9 picture tests pass; 3 mutants caught |
+| 6 mailbox explanation | done | `play.cpp` `publish` comment corrected; spec §12; test "a prepared copy made when full is unused if the consumer empties the mailbox first" |
+| 7 measurements, Release and Debug | done | `docs/perf/README.md` "W4.3 round du"; K = 3 misses in Debug (80 ms), meets it in Release (13 ms), object-list stage only |
+
+### Tests and counts (this Mac, `dev` unless stated)
+
+- `scene_picture` suite, game files: **9 of 9 pass**, 468 s (`cache/orch-du-calib/picture-suite-final.log`). Cases: after a move (fresh-scene pixels equal; only marked keys rebuilt; a far key is neither marked nor rebuilt); a stale completion (discarded; key rebuilt from the newer generation); a second change during a rebuild; a resync after a delayed consumer; every changed pixel in a marked key, at every zoom level (derived levels included); an object crossing a chunk boundary; no batch; the live generations bound; the registry boundary.
+- `mailbox` suite: **7 of 7 pass** (new: the prepared copy unused when the window empties the mailbox first).
+- Render suite without game files (`ctest -R anno_render -LE heavy`): **363 of 365 pass** across render, app and test_support non-heavy sets (the combined run); the two failures are `anno_render_gpu_tests` "river flow on the GPU …" and "every pass of a frame is timed …": the same two Metal timestamp failures as before, unchanged assertions, not waived.
+- Not run in this unit: the full non-heavy suite with game files on this head (the earlier run, before this unit's render changes, passed 1142 of 1144 with the same two failures). The render digests with game files (`scene renders match the recorded digests`, heavy) are not rerun: the heavy calibration could not be admitted (below).
+
+### Mutants (each applied, the named cases run, the file restored, restoration checked)
+
+| mutant | caught by | distinct failing check |
+|---|---|---|
+| M1: no invalidation (`frames.invalidate` removed) | all three marked-key cases | `CHECK_FALSE(marked.empty())`, `REQUIRE_FALSE(marked.empty())`, `stale_generation(key) == 1` (every changed pixel) |
+| M2: invalidate everything (every key of every level's bounds) | "after a move" | `far` key: `chunk_rebuilds(far) == 0` and `chunk->generation == 0` fail; "every changed pixel" correctly still passes (over-marking is allowed) |
+| M3: stale completion accepted (generation check off) | "a stale completion …" | `stale_discarded() >= 1` and the pixel comparison with a fresh scene both fail |
+
+### Calibration and the heavy budget (corrected)
+
+- The earlier comparison "peak RSS 4 933 392 KiB = 4.70 GiB, a 20x under-estimate" was invalid and is withdrawn. The reservation is 256 MiB + 36 bytes/pixel + 1 GiB catalog (not loaded) per item; the RSS is the whole process. No constant was changed.
+- Item measurement (`ANNO_TEST_MEASURE_ITEMS=1`, one worker, 8192 MiB headroom): 16 items ran. The largest, 155 523 200 pixels, reserved 5.46 GiB and grew 4.70 GiB (0.86). Every measured item grew less than its reservation (table in `docs/perf/README.md`).
+- The run did **not** complete: the 17th item (estimate 6.84 GB) waited 1800 s and was refused (`wait deadline`), because free memory stayed below estimate + 8 GiB headroom while the compressor held about 24 GiB. CTest finished (the stdio fix works), so this is an admission result, not a hang. Staged calibration continues when capacity allows (1 worker first, then 2 and 4). No owner decision is needed for it.
+- Compile and light-test profile unchanged: 16 compile jobs (cold 14.0 s); 8 CTest jobs with one internal worker.
+
+### Sanitizers
+
+- Host support (`task/MAC-1-host-support` at `abc1f8c`, the exact code of the stdio fix): `asan` preset, focused `anno_test_support` + `test_names`: **71 of 71 pass, 0 sanitizer reports** (`cache/orch-du-calib/asan-host-tests.log`). This replaces the earlier log that ended before the stdio commit.
+- W4 picture suite under ASan/UBSan (`asan` preset, `anno_app_tests -ts=scene_picture`): **9 of 9 pass, 0 sanitizer reports** (1429 s; `cache/orch-du-calib/picture-suite-asan.log`, the build `build/asan` of the W4 branch at `e767ccb`'s code, which equals `549ffc4` plus docs). The rest of the W4 app and render sets are not run under ASan in this unit.
+
+### Decisions and reasoning
+
+1. **Generations are whole `Scene` objects that share the static parts.** Alternatives: one scene with copy-on-write island objects (every chunk job would have to pass a snapshot into every Scene method) and a whole-scene rebuild per change (rejected by measurement). Chosen: the derived scene shares caches and assets, so no method changes its signature and a job reads one immutable object. Evidence: the derivation test (pixels equal a fresh scene) and the compile-time check that every access went through the lists pointer.
+2. **Water and flow are shared only while the river inputs are equal.** Evidence: `IslandWater::build` reads rivers, heights and gfx ids; `river_mask` reads rivers, falls and river sprites (`river.cpp`). Buildings do not change any of them unless their id is a river, fall or surf piece, which is checked for every registry type.
+3. **The flow builders hold their scene only for a solve.** Alternative: join the builder threads in the destructor. Rejected: the last generation can be released by a builder, which would join itself. Chosen: the builders hold a weak request and a strong reference during the solve; the destructor detaches.
+4. **Invalidation boxes come from the frame headers, not from decoded sprites.** Evidence: `SpriteDraw::reach()` (frame width/height, anchor, overrun slack); the window thread never decodes.
+5. **Invalidation marks keys whether or not they are cached.** Evidence: a chunk in flight for an old generation must be rejected; the stale test needs the mark on an uncached key.
+6. **Chunks are stamped with the generation of their scene and a completed stale chunk is discarded, not replaced.** Alternative: replace and rebuild. Rejected: a stale chunk could reach the cache after a newer one (the packet's rule).
+7. **The object lists are rebuilt from the island's full record set, not merged.** Evidence: the pixel-equality tests; the painter order is the one `prepare_objects` sorts by.
+8. **Each commit owns its island's bytes.** The worker copies the island's head and records into its own storage, so a committed island needs no older generation's buffers. Cost: one island's payload copied per change (bounded by the island's size).
+9. **The Debug timing is reported as a miss.** Evidence: 80 ms against K = 3 (50 ms). Release meets the object-list stage (13 ms). The chunk rebuild and upload stage is not measured here.
+10. **The invalidation rules were tested with enhanced rivers off** (the legacy river look), because a river flow that finishes later rebuilds chunks for its own reason. Enhanced rivers stay on in the probe and in the app; the rule is unchanged for them.
+
+### Remaining before the GPU and input unit (for review)
+
+- **Step 10 (GPU compositor replacement, Metal adapter, slow-build injection, latency at 1080p and 4K, 50-build burst on the frame loop):** not started. The GPU path (`gpu.cpp`) still takes `const Scene&` in its frame call; the viewer must pass the owning generation before the GPU path can be trusted with generations. Not done here.
+- **Viewer wiring:** the viewer still holds the loaded scene by reference; `ScenePicture` is not yet in `viewer.cpp`. Not started (input and viewer work belongs to the next unit).
+- **Heavy calibration** to completion (1, then 2 and 4 workers): not done (admission).
+- **Full non-heavy suite with game files on the final head:** not run in this unit.
+- **Target hosts:** Windows MSVC, WSL GCC 13 and Clang 18 `-Werror` (`tools/check_unix_warnings.sh`), RTX 4090 and Radeon runs: outstanding.
+- **Metal timestamp failures:** open; assertions unchanged.
+- **Darwin host support:** descriptor enumeration (`PROC_PIDLISTFDS`) and memory accounting semantics still need independent review.
+- **Linux behaviour of the stdio change** (`/dev/null` for the detached coordinator, POSIX branch): not measured on Linux.
+
+### Next single reviewable task
+
+Review this CPU unit (the commits above). After approval: the viewer wiring (the window applies `ScenePicture::apply` and `commit` per frame, takes the owning generation into `FrameRenderer::render` and the GPU frame) with the GPU replacement tests (step 10), then the developer input (step 11).
+
+## Round dv — executor report — W4.3 CPU corrections (R1–R5 done, R6 partly done) — STOP FOR CPU REVIEW
+
+Branch `task/W4-3-live-buildings`, worktree `anno1503-W4-3`. Reviewed head `036a192` (production `549ffc4`). Commits of this round, in order: `231bb77` (R1), `d4eda49` (R2), `37b2b02` (R3), `ba8f300` (R4, R5 bridge and bench), `eeac36c` and `a8468a5` (docs). No merge, no push, no rebase, no pruning, `AGENTS.md` untouched. The display-awake assertion is active: `caffeinate -d -s` (PID 58061) holds `PreventUserIdleDisplaySleep` and `PreventSystemSleep` (checked with `pmset -g assertions`). Viewer/GPU integration, developer input and preview were not started.
+
+Host: Mac (Apple Silicon), Debug (`build/dev`) and ASan (`build/asan`) trees. Game files read from the main worktree's `game/app`; `game/` not written. Logs: `cache/orch-dv-work/`.
+
+### What changed, by finding
+
+- **R1 (river ownership and shutdown), `231bb77`.** A request records a weak owner (shared generations) or a raw pointer (non-shared scenes). The builder picks a live solver under the builder mutex; a surviving waiter of the same slot solves a retired requester's flow. A generation registers as a shared waiter on every island slot; `~Scene` removes its own non-shared requests and waiters, resets orphaned Queued slots, and waits until no solve is running inside it. The solving builder releases its keep-alive before it decrements the in-flight count, so the last owner is destroyed on the builder thread.
+- **R2 (derived freshness), `d4eda49`.** `plan_jobs` reuses a cached child only if it is not marked dirty. The synchronous `fill_cache` inserts a chunk only if it is not older than its mark or the cached copy. The asynchronous `request_chunks` discards a finished chunk older than the cached one.
+- **R3 (backing storage), `37b2b02`.** `render::Scene::Backing` holds the byte buffers the islands and Anlagen.dat view. The constructor stores them with the shared assets, so every derived generation keeps them alive. The loader moves its staged buffers into the scene, which makes the outer buffer vector's inner storage stable. The bridge no longer takes an owner (`ba8f300`).
+- **R4 (retained work and reclamation), `ba8f300`.** Limits (namespace scope, defaults with reasons): `max_outstanding = 8` (islands with a request not yet committed) and `max_reclaim_backlog = 4`. Beyond the outstanding limit a request is deferred and started by a later commit, in order. A commit is skipped (returns 0, never blocks) while the reaper backlog is over its bound, and an island that is already open is deferred rather than replaced while the reaper is behind. Every window-thread drop goes to the reaper (superseded generations, coalesced jobs and results, rebased bases, replaced lists, and the destructor's queue, results and generation). Queued jobs are rebased to the commit's generation, so they pin no old generation. A failing build is caught at the worker seam and counted; the island keeps its committed lists until it is requested again. Stats: deferred, started_deferred, coalesced, rebased, commit_skipped, build_failures, recomputed_changes, outstanding_peak, reclaim_backlog_peak, reclaimed.
+- **R5 (window-side scaling), `ba8f300` and the bench.** The change set (objects removed and added, chunk keys) is computed on the worker against the lists the build started from. The commit uses it only when the island's lists are still the same object (`Scene::island_lists_handle`), and recomputes otherwise (`recomputed_changes`, expected 0). Apply groups the building list in one pass per touched set. `src/tools/bench_picture` reports stage percentiles and counters (method and numbers in `docs/perf/README.md`).
+- **R6 (evidence).** The docs were updated (`docs/app/game-shell.md` "Retained work and reclamation"; `docs/perf/README.md` bench section). The heavy-run correction from the review was checked against `cache/orch-du-calib/heavy-1w-run1.log`: the first refusal is at 1800 s (`wait deadline`, estimate 6,843,933,440 bytes, line 78), and CTest test #291 (`anno_render_tests.scene renders match the recorded digests`, heavy) ends with `Timeout 3600.05 sec`. The other counts from the review (16 completed items, reservation and growth figures) were not re-derived in this turn.
+
+### Tests and counts (this round)
+
+| Gate | Host / build | Result | Log |
+|---|---|---|---|
+| river lifecycle (5) + fallback case, game files | dev | pass | `lifecycle-after3.log`, `render-r3-asan.log` |
+| river lifecycle + derived freshness, game files | ASan | 9/9 pass, 0 sanitizer reports | `render-r3-asan.log` |
+| derived freshness (4 incl. game-file chain) | dev / ASan | 4/4 pass / 4/4 pass, 0 reports | `derived-asan1.log` |
+| scene backing (2), game files | dev / ASan | 2/2 / 2/2, 0 reports | `app-backing-asan-r3.log` |
+| picture bounds (5), game files | dev / ASan | 5/5 (177 assertions) / 5/5, 0 reports | `app-bounds-r4c.log`, `r4-small-asan.log` |
+| scene picture, full (14 = original 9 + bounds 5), game files | dev | 14/14, 9205 assertions | `gate-picture-dev.log` |
+| scene picture, full (14), game files | ASan | 14/14, 9205 assertions, 0 reports | `gate-picture-asan.log` |
+| clang-format 23.1.3 (13 changed C++ files) | Mac | 0 violations | `format-check.log` |
+| full dev build, warnings as errors | Mac | builds clean | `build-dev-r3.log` |
+
+Not run this round: the `scene_probe` (probe) suite (a measurement suite, long; the combined run was stopped), the heavy cases, and the full non-heavy CTest run (see below). Windows MSVC, Linux GCC/Clang `-Werror`, RTX and Radeon checks cannot be run from this Mac and are not claimed.
+
+### Measurements (Debug, Mac, `bench_picture`)
+
+Five-player map (2 buildings, 30 cycles, 4 changes): apply p50 0.022 ms, build wait p50 82.9 ms, commit p50 0.088 ms, chunk update p50 453.7 ms (synchronous, warmed). Stress tier (400 buildings, 10 cycles, 8 changes): build wait p50 81.8 ms, commit p50 0.096 ms, chunk update p50 479 ms for 144 invalidated keys. These are Debug, one host, and the chunk stage is the synchronous path. They are not a dense late-game measurement, not Release, and say nothing about presented frames.
+
+### Decisions and reasoning
+
+- The bridge owns no bytes: the scene does. A separate owner argument was the defect itself (R3).
+- Limits are defaults with reasons, not hidden constants. `max_outstanding` bounds retained islands; `max_reclaim_backlog` bounds generations waiting for the reaper. Both are constructor arguments; the play-option path is not wired yet.
+- A stalled reaper makes commits wait, not the window thread. Under overload the window replaces nothing that it would have to drop, so its own work stays bounded.
+- The change set moved to the worker, with a version check, rather than to a background commit thread: the commit still needs the new generation, and the check makes a stale change set visible (`recomputed_changes`) instead of silent.
+
+### Remaining gates and open items (not done, not waived)
+
+1. Full non-heavy CTest with game files on the final head: running in background, `cache/orch-dv-work/ctest-dev-nonheavy.log`; result to be recorded here when it finishes.
+2. No-game run (`ANNO1503_GAME_DIR` unset) to show the skip paths separately: not run yet.
+3. Probe suite (`scene_probe`): not run.
+4. Heavy one-worker calibration (R6): not run. The footprint sampler column that holds process text (review finding) is not fixed. No constants were changed.
+5. R5 measurements still missing: Release (`build/release`) percentiles, dense five-player and stress fixtures as committed fixtures (the five-player map exists; the stress tier is synthetic), simulation-load with and without `--busy`, reclamation time, peak live bytes.
+6. Windows MSVC, Linux GCC/Clang `-Werror`, `tools/check_unix_warnings.sh` (WSL), RTX/Radeon: not run from this host.
+7. The `Stats` counters bound items, not bytes; peak bytes need a measurement.
+
+### Next review task
+
+CPU review of `ba8f300` against R3–R5 with the remaining gates above, and a decision on whether R5's Release and dense measurements are required before viewer/GPU integration.
+
+## Round dw — executor report — W4.3 CPU completion (DW1–DW7) — STOP FOR CPU REVIEW
+
+**Heads.** Start `3db3df3` (preflight at `67a48ec`: all six rows PASS, worktree clean). Final `0628f08`, twelve
+code/test/tool/doc commits (listed below) plus docs. Binaries: `build/dev` and `build/asan` at `847fe9b` and later
+sources of tests unchanged (the last commits change the runner, the sampler and docs only); `build/release` bench at
+`847fe9b`, frozen as `fc2873295d48ac21` for the matrix. Not merged, pushed, rebased or pruned. `AGENTS.md`
+untouched. The display-awake assertion (`caffeinate -d -s`, PID 58061) was checked with `pmset -g assertions`
+before and after the heavy run and is still active. No owned background job remains (checked; the sampler was
+stopped by PID after its wrapper finished).
+
+**Commits (oldest first).** `d51ef5c` test: two workers, one scene, gated solve (DW2a). `0baa0ba` fix: the flow
+builders track every active solve atomically with dequeue (DW2b). `0aa214c` test: the runner with explicit
+verdicts (DW1). `f17e9b8` test: one, two and four workers (DW2d). `bb6ad81` fix: final scene destruction on a
+process reclaimer (DW3a). `955b622` fix: desired and committed versions, retries, terminal error (DW3c, DW3d,
+DW4c, DW4e). `14572c3` docs: one retained-work contract (DW4f). `924126e` tools: bench_picture async mode, legal
+workloads, loader oracle (DW5a–d). `847fe9b` feat: worker queue and build samples (DW5f). `fa7ceed` docs: the
+picture benchmark (DW5). `d54a043` docs: the owning-generation handoff (DW7). `f9bc958` docs: the flow lifecycle
+protocol (DW2c). `bde0bb4` test: the runner fails a gate with skipped game-file cases (DW1, found in the final
+gates). `0628f08` test: a numeric memory sampler (DW6c).
+
+### Acceptance matrix (DW item → evidence → result → limitation)
+
+| DW item | Evidence (log, cache/ unless stated) | Result | Limitation |
+|---|---|---|---|
+| 1 runner, failed build stops, zero selection fails, timeouts, provenance | tiny CTest project: pass 0, fail 8, zero-match 8, timeout 8, crash 8, failed build 2, concurrent run 3 (`cache/dw-runner-check`); wrapper runs `cache/dw-runs/*.log` | FIXED | per-case START/END come from CTest `-V` |
+| 1 skipped game-file cases do not pass a gate | `asan-app-gamedir.log` (after the fix); earlier `asan-app.log` showed 16 skips as PASS | FIXED (found in the final gates) | none |
+| 1 inventory of the owned non-heavy run | `dw-ledger.tsv`; `orch-dv-work/ctest-dev-nonheavy.stdout`: exit 8, 1169 passed, 2 failed (#357, #360: Metal timestamp, known) | CLOSED: verdict recorded, not replaced | the run was at `ba8f300` binaries; superseded by the final gates |
+| 2 two-solve destruction, gated (ASan UAF in the review probe) | pre-fix: `prefix-final-test-asan.log` (CHECK `0 == 1`, heap-use-after-free, FAIL); trace `prefix-dw2-marker-trace.log`; post-fix: `fixed-dw2-asan-lifecycle.log` 6/6, `asan-dw2d-workers.log` 3/3, `dev-dw2-lifecycle.log` 9/9 | FIXED | "shared expiry" has no dedicated case (covered by the queued-survivor and second-sharer cases) |
+| 2 one, two and four workers, a throwing solve beside a gated one | `dev-dw2-lifecycle.log`, `asan-dw2d-workers.log` | PASS | not the full matrix of concurrent solves across islands of several scenes |
+| 2 fallback regression and failed flow | `dev-fallback.log` 2/2 | PASS | game files |
+| 3a reclamation off the window thread, last owner anywhere | `dev-dw3a-reclaim2.log` 3/3, `asan-dw3-reclaim.log` 3/3; `outlived bridge` case in `dev-dw3d-recovery3.log` | FIXED | the pre-fix release was synchronous; its counterpart is the review probe `reaper.log` (no pre-fix binary built for it) |
+| 3b queued, in flight and completed counted separately | `scene reclaim` case 3 (queued, waiting, in flight, completed) | FIXED | bridge counts `reclaim_queued` and `reclaim_completed` only |
+| 3c, 3d one failure with no new batch; persistent; newer edit during retry; shutdown during retry | `dev-dw3d-recovery3.log` 8/8 (+1 outlived), `dev-dw3-bounds2.log` 13/13 | FIXED | backoff counts commit calls; the viewer's frame rate sets the wall-time retry |
+| 4a inventory of retention | `docs/app/game-shell.md` "Retained work and reclamation"; `SUMMARY.md` (outstanding bytes peak 2.16 MB at 12 islands) | PARTIAL | generation and chunk-cache bytes are not measured |
+| 4b byte budget with a single over-budget island | recovery case `over-budget island`: one build at a time | FIXED | the 64 MiB default is provisional until a measured five-player record size |
+| 4c newer version after an old result; overloaded convergence | `picture recovery: a result of an older version...` (20/20 after the barrier; mutant fails) | FIXED | the causal investigation is recorded below |
+| 4d no idle full-world scan | `dispatch` returns before the building list is read; no candidates, no scan | FIXED | the apply path still updates the sorted list per delta |
+| 4e no window change set on version mismatch | requeue on mismatch; `version_requeues` (0 in every matrix run) | FIXED | the path is not exercised by any test (the counter is zero) |
+| 4f many islands, stalled commit and reaper, changing workers, failure, teardown; reconcile `1 + threads` | `picture recovery` 9 cases, `scene picture bounds` 5 cases (ASan 13/13); spec step 7 superseded | FIXED | not real-data many-island stalls beyond the 12-island synthetic |
+| 5a bench validation, drain diagnostic | `val-*` runs; invalid options exit 2 before loading assets | FIXED | |
+| 5b async bounded-viewport mode | matrix (33 runs) | DONE | not a presented frame |
+| 5c deterministic workloads, manifest, validated placements | manifests `cache/dw-measure/*.manifest`; island-local, one building per tile | DONE | "five" tier is the fixed map's two inhabited islands with 40 generated buildings each; no roads |
+| 5d validation against a CPU reference | `verify:` lines (6/6 non-empty, 0 mismatched, all 33 runs); loader oracle equal | DONE | group-2 chunks only |
+| 5e Release, quiet host | `fc2873295d48ac21`; host not quiet (other apps, swap 39.6 GB used) | DONE with caveat | simulation contention is the arithmetic proxy only |
+| 5f raw samples saved | percentiles, counts, manifests, logs saved | PARTIAL | the bench does not save raw per-frame samples; this is open |
+| 5g failing K/PLAN targets | not an existing failing target here; PLAN 0.3 frame targets are presented-frame targets | OPEN (not measurable by this unit) | the viewer task |
+| 6a focused tests, sanitizers, picture and mailbox | `asan-app-gamedir.log` 32/32; `asan-render-gamedir.log` 16/16; dev picture 14/14 earlier | PASS | `scene_probe` is opt-in (`ANNO_PROBE=1`), not run |
+| 6b formatting, dev/Release builds, non-heavy with and without game files | `format` 11 files, 0 violations; `dev-nonheavy-game.stdout` 1186/1188; `dev-nonheavy-nogame.stdout` 1186/1188 (121 GAME_DIR skips, not executed); Release build 383 steps | PASS except 2 known | Metal timestamp cases #364 and #367 (open, not waived) |
+| 6c numeric footprint sampling; heavy log reconciled | `tools/test/sample_memory.sh`; `cache/dw-heavy/heavy-samples.csv` (577 numeric rows); `cache/dw-plan/parse_heavy_log.py` on the saved log | FIXED | the saved round-dv log has no footprint column values |
+| 6d capacity check and one-worker heavy calibration with 8 GiB headroom | `cache/dw-heavy/heavy-ctest.log`: 10/10 passed, rc 0, 2919 s; 124 admits; 0 refusals; 84 items, all growth below reservation | PASS | 2 and 4 workers not run (no measured need) |
+| 6e Windows MSVC, Linux/WSL GCC/Clang, RTX/Radeon, host support | not run from this host | OPEN | commands and artifacts are in the handoff plan |
+| 7a–7d acceptance matrix, reports, handoff plan, no running job | this section; `docs/app/gpu-handoff.md`; process check above | DONE | |
+
+### Reconciliation of the heavy log (round dv R6, now parsed in full)
+
+`cache/orch-du-calib/heavy-1w-run1.log`, parsed record by record (`cache/dw-plan/parse_heavy_log.py`): one deadline
+at 1800 s on the 6,843,933,440-byte estimate with 1,138,180,096 bytes available (a wait refusal, not an exit); the
+first admission 591 s later; 16 completed items, all with growth below their reservation; the largest reservation
+Single_10 case 0 (6,001,242,496 B, 5.59 GiB, growth 4.04 GiB) and the largest growth Single_01 case 1 (growth
+5,045,358,144 B, 4.70 GiB, reservation 5,867,270,656 B, 5.46 GiB) are different items; one admitted 6.84 GB estimate has an end
+record but no item record (unexplained, open); CTest test #291 ended with `Timeout 3600.05 sec` and exit 8. Round
+dw's heavy run on the same test (#312 here) passed in 865 s with 8 GiB headroom and one worker.
+
+### Performance (Release, final matrix, 33 runs, every run verified)
+
+Full tables, counters and the manifest of each run: `docs/perf/README.md` and `cache/dw-measure/SUMMARY.md`.
+Headline numbers (p50 / p99, worst maxima in the perf README):
+
+- A single edit: one island rebuild in a worker, about 14 ms, for 40 or 400 buildings alike (a fixed per-island
+  cost). The window side: apply 0.005–0.015 ms, commit under 0.001 ms.
+- Simultaneous edits on 12 islands, 2 workers: the job queue delay p50 14.7 ms, p95 31.9 ms; with 4 workers the
+  queue delay p50 0.09 ms, p95 19 ms (sustained stream).
+- Sustained 4 edits per frame with 2 workers: queue delay p50 6.5 ms, p95 42 ms; the commit p99 0.010 ms.
+- Dense 21 islands × 800 buildings (16,800): commit p50 0.036 ms, apply p50 0.078 ms.
+- Arithmetic busy threads (4) add no measurable window-side cost in these runs (apply p99 0.030 ms vs 0.025 ms).
+
+What these do not establish: presented frames (PLAN 0.3 targets), chunk rebuild time on the workers, reclamation
+time, peak live bytes of generations, real simulation contention, or Release/Debug comparisons of the same
+workload. Round dv's Debug table and the first round-dw matrix are superseded (see the perf README).
+
+### Investigations (open causes resolved; the open ones are listed)
+
+1. **Stale-result test failed 7 of 10 runs on one binary** (after the desired-version change). Hypothesis: the drain
+   counted commit calls while the reaper's release takes wall time, and commits are skipped while the reaper is behind.
+   Discriminator: at the failure the picture showed `commit_skipped=21` (one per call) and the reaper had completed 0
+   or 2 items. Fix: a barrier on the reaper's own counters before the drain. Result: 20 of 20 pass; a mutant that
+   removes the version check fails the case. The cause is established; the barrier is part of the test, not a
+   retry.
+2. **Sustained-edit loader oracle mismatch** (one object per tile). Hypothesis: the bench generated duplicate tiles.
+   Discriminator: the item diagnostic showed one loader-only and one picture-only item per duplicate pair, and the
+   final list held 2 duplicate tiles. Fix: occupancy-checked moves; the run now fails on any duplicate. With legal
+   moves the oracle agrees exactly (`fixed-E1.log`, `fixed-E4.log`). The loader and the picture treat an illegal
+   duplicate differently (one item versus two); this is outside legal input and is not claimed either way.
+3. **Generation 0 mismatch** (40 objects per untouched island). Cause: the bench loaded the scene with the map's two
+   buildings and started the picture with the workload. Fix: reload with the workload; the play loader does this.
+4. **Stress tier placed buildings outside their islands** (validator refused). Removed; the dense tier covers
+   density within legal tiles.
+
+Open: the mismatch semantics for illegal duplicates; the fixed per-island build cost of about 14 ms (a candidate for incremental lists, not started); the chunk rebuild on the workers is untimed.
+
+### Decisions and reasoning
+
+- **CTest is the runner; the wrapper adds provenance and verdict rules.** Alternative: a new runner. Evidence: a tiny
+  project showed CTest's statuses are right; the gaps were verdicts and logs. The wrapper now fails on sanitizer
+  reports and on skipped game-file cases.
+- **One process reclaimer, never destroyed.** Alternative: per-picture reclaimers. Reason: loader-built and
+  derived generations, chunk workers and frames outlive any one picture; a leaked singleton has no shutdown order to
+  get wrong. Its thread is left to the process.
+- **Desired and committed versions; retries by commit calls.** Alternative: a timer. Reason: the window's frames are
+  the clock the picture already follows; a timer would add a second clock. Attempts are capped at 4 (1, 2, 4 calls
+  of waiting), after which the island is failed for good and reported; a new change resets it.
+- **Limits and their defaults.** `max_outstanding` 8 and `max_reclaim_backlog` 4 (round dv). The byte budget 64 MiB
+  is provisional: the record size of the representative island is measured here (about 270–400 KB per island),
+  but the default is a stated choice until DW6's workloads set it.
+- **Coalescing is not claimed.** Its counter never fired in the matrix. The discarded results are the observed
+  superseded work.
+- **Workloads are island-local, one building per tile, and checked before a run.** Alternative: the world's
+  coordinates. Reason: `play_buildings` returns island-local coordinates; the loader's own build is the oracle.
+- **Heavy calibration with one worker and 8 GiB headroom; no escalation.** Reason: it passed 10 of 10 at one
+  worker, and the heavy cases did not need more throughput; 2 and 4 workers were not measured for heavy work.
+- **The two Metal timing failures are not waived or changed.** They fail the same assertion on this host
+  (`gpu_test.cpp:2219`, `c.gpu_timestamps == ctx->timestamps`).
+- **The stress tier was removed rather than its validation weakened.**
+
+### Mistakes made and corrected in this round (for the review)
+
+- The first ASan selectors were run without `ANNO1503_GAME_DIR`; the wrapper counted 16 skips as passes. Rerun with
+  the game directory and the fixed verdict: 32/32, 0 skips. The render selectors had the same gap; rerun 16/16.
+- The bench's first matrix used the invalid stress tier and an edit cadence above its own range (both rejected).
+- The picture bench's first workloads were world coordinates and illegal duplicates (see investigations 2 and 3).
+- A verification step compared six chunks of which none was non-empty; the check now fails on an empty comparison.
+- A drain bound in a test counted commit calls rather than reaper progress (investigation 1).
+
+### Remaining gates and open items
+
+1. Windows MSVC, Linux/WSL GCC and Clang with `-Werror` (`tools/check_unix_warnings.sh`), RTX 4090 and Radeon iGPU,
+   and host-support review: not run from this Mac.
+2. Metal timestamp cases #364 and #367 (both binaries and both runs): open, not waived.
+3. The Release build reports one linker warning ("ignoring duplicate libraries: src/sim/libanno_sim.a"); not from
+   this round's sources; to be checked on the Windows and Linux hosts.
+4. `scene_probe` (opt-in), 2- and 4-worker heavy calibration, raw per-frame sample dumps, chunk-rebuild timing,
+   reclamation time, peak live bytes of generations, real simulation-contention runs.
+5. The picture's illegal-duplicate semantics (investigation 2) and the per-island build cost of about 14 ms.
+6. The unexplained admitted item without an item record in the saved round-dv heavy log.
+
+### Next review task
+
+CPU review of `0628f08` (and its gates above). GPU integration, developer input and preview stay unreleased; the
+handoff plan (`docs/app/gpu-handoff.md`) is the input for the next assignment.
+
+### Resource settings (this round)
+
+Mac M5 Max, 18 cores, 48 GiB unified memory, swap at 39.6 of 40 GiB during the heavy run (host state). Compile 16
+jobs; non-heavy CTest 8 jobs with `ANNO_TEST_THREADS=1`; heavy `-j 1`, `ANNO_HEAVY_TEST_PROCESSORS=1`,
+`ANNO_TEST_HEADROOM_MB=8192`, `ANNO_TEST_MEASURE_ITEMS=1`. Benchmark runs were sequential; no other owned job ran
+during a timed run.
+
+## Round dx: review matrix (W4.3 CPU candidate, head `92fd87a`)
+
+Code under test: `92fd87a` (clean tree). Test binaries: dev `anno_app_tests` `d61cce53…`, dev
+`anno_render_tests` `a7439763…`, Release `anno_app_tests` `34e1a1a6…`, Release `anno_render_tests` `ddffbc06…`
+(sha256, first 16 hex in the log). Raw logs: `cache/dx-runs/`. Commits this round: `1e9ec0d`, `b353ec9`
+(verifier), `8c33942` (DX3), `2828fb1`, `fe74d35` (DX2d), `fc4862e` (DX2a–c), `b59ac6e` (DX2e), `92fd87a` (docs).
+
+| Acceptance | Source | Command | Result | Raw artifact | Limitation |
+|---|---|---|---|---|---|
+| DX1a–d verifier detects wrong buildings; controls fail | `src/app/src/picture_check.cpp`, `src/app/tests/picture_check_test.cpp` (C0–C5) | picture_check suite (earlier round) | DONE: 3 cases, 41 assertions pass; erased objects, shifted, moved, rotated, swapped, omitted and stale chunks fail | `cache/dx-runs/` (round dx DX1 logs) | Synthetic controls plus one real-data edited view; the old "33 verified" claim is withdrawn, not restated |
+| DX2a ownership and accounting table | `docs/app/game-shell.md`, "Credits and byte accounting" | doc | DONE | `92fd87a` | Vector capacities and the record estimate only; the table names what each object holds |
+| DX2b credit held while a superseded build runs; 1/2/4 workers at barriers | `scene_picture.cpp` (`Credit`, `Ledger`, worker tail) | `anno_app_tests.picture credits: …`, `…picture recovery: the same convergence with one, two and four workers` | DONE for the transitions tested; PASS (dev 34/34, ASan 17/17, Release 16/16) | `dx2e-app-1.log`, `dx2f-asan-app.log`, `dx5-release-bridge.log` | Multi-generation barrier per island with 4 workers is covered by the convergence case, not by a dedicated barrier case |
+| DX2c stalled actual reclaimer: bounded, converges, bytes return to baseline | `scene_picture.cpp` `reclaim_overloaded()`, commit and dispatch | `anno_app_tests.picture reclaim: a stalled process reclaimer …` | DONE: 40 replacements bounded to `max_reclaim_backlog + 1` waiting; converged; `bytes_waiting` back to baseline | `dx2e-app-1.log` | Process-wide reclaimer; one case per process |
+| DX2d last-owner deleter does not allocate or throw | `render/src/scene.cpp` (`reclaim`, intrusive list), `scene.hpp` | `anno_render_tests.scene reclaim: …` (3 cases) | DONE; ASan 7/7 with the derived cases | `dx2f-asan-render.log`, `dx5-release-bridge.log` | Allocation-failure injection not tested; the path has no allocation by construction |
+| DX2d release from frame/worker/after teardown | `picture recovery: a generation that outlives the bridge…` | recovery suite | PARTIAL: worker and bridge-teardown cases exist; a frame-held release is not tested | `dx2e-app-1.log` | Frame-held case needs the viewer wiring (out of scope) |
+| DX2e cheap admission before list copy; indexed selection | `scene_picture.cpp` `reindex`, `dispatch`; `Stats::copied_buildings` | `anno_app_tests.picture starts: …` | DONE for correctness and the copy count (1 and 51) | `dx2e-app-1.log`, `dx2f-asan-app2.log` | Cost against increasing unrelated-city size NOT measured: OPEN |
+| DX2f barrier regressions and sanitizer runs | recovery/credit/reclaim tests | dev 34/34; ASan app 17/17 + 1/1; ASan render 7/7; Release 16/16 | PARTIAL: every transition named in DX2b–d has a case; late external owner and allocation failure are not covered | `cache/dx-runs/dx2*`, `dx5-release-bridge.log` | ASan on changed paths only; not a full ASan corpus |
+| DX3a–d per island failures, obsolete failures, explicit retry, two failed islands, shutdown | `scene_picture.cpp`, `picture recovery`/`picture failures` tests | `anno_app_tests.picture failures: …` (4 cases) and recovery | DONE; PASS | `dx2e-app-1.log` | Retry admission is the normal dispatch (bounded by slots and backoff), not a separate budget |
+| DX4a legal five-city workload from sim commands, validated | none in this round | none | OPEN: the bench's "five" tier is 40 buildings on five islands of `lan5`, validated for island bounds and tile overlap only; it is not a registry-footprint city workload | — | Needs real-registry placement through sim commands; not started |
+| DX4b cadence, per-island version timestamps, edit-to-ready latency | none new | none | OPEN | — | — |
+| DX4c raw per-frame/per-build events, RSS and paging deltas | none new | none | OPEN | — | — |
+| DX4d discriminating small set | none | none | OPEN | — | — |
+| DX4e Release on a quiet host and beside a real headless sim | none | none | OPEN | — | — |
+| DX4f matrix runner propagates failures | `tools/test/run_selected.sh` already fails on child failure | selection runs above | PARTIAL: the runner propagates failures; no matrix runner | — | — |
+| DX5a focused per-case CTest with positive counts; format; Release | scope above | selections above; `clang-format 23.1.3 --dry-run -Werror` on changed files (clean); Release build (no warnings) | DONE | `dx5-release-build.log`, `dx2e-app-1.log` | — |
+| DX5b non-heavy gate with and without game files | — | `ctest --preset dev -LE heavy -j 8` with and without `ANNO1503_GAME_DIR` | game: 1197/1199 pass, 2 known Metal failures (#364 `gpu_test.cpp:2219`; #367 `:2219` and `:2515`, the same per-pass timestamp family as round dw); no-game: 1197/1199, same 2 | `cache/dx-runs/dx5-nonheavy-game.log`, `dx5-nonheavy-nogame.log` | Metal failures left open and unwaived; the heavy rerun is OPEN (not run; lifecycle and accounting changed) |
+| DX5c Windows MSVC, GCC/Clang -Werror, RTX/Radeon | — | — | PENDING (external) | — | — |
+| DX5d docs: game-shell, gpu-handoff, perf README; island-count correction | `docs/app/game-shell.md`, `docs/app/gpu-handoff.md` (`92fd87a`) | doc | game-shell and gpu-handoff DONE; perf README PARTIAL (not updated); the "two inhabited islands" claim in REPORTS round dw (line 8565) is UNVERIFIED and not repeated here: the "five" tier is five islands by construction | `92fd87a` | Perf numbers from before DX2 are not re-measured |
+| DX5e commits, hashes, decisions, no owned job left | — | `git status`, `ps` | DONE for this report; no owned job running at the time of writing | — | — |
+
+**Peak retained bytes (round dx):** not measured. `Stats::outstanding_bytes_peak` and the reclaimer's
+`peak_bytes_waiting` exist; no workload ran, so no number is reported. OPEN with DX4.
+
+**Decisions and reasoning**
+- A build's admission credit is an RAII object that travels with its job or result and is released when that
+  object is destroyed. Alternative: releasing at hand-over to the reaper (the previous code). Rejected: the
+  memory lives until the reaper destroys it, so the budget under-counted. Evidence: the superseded-running test
+  fails on the old code (a replacement is admitted beside a running build).
+- A superseded running build keeps its slot and bytes until its worker finishes; a replacement beyond the
+  budget is deferred. Alternative: admit it. Rejected: two copies would be live beyond the budget.
+- The worker counts itself done only after it destroys its discarded objects, so `wait_idle` covers the
+  release. Alternative: decrement first. Rejected: a test could observe bytes still held after `wait_idle`.
+- Commits and replacements back off on the process reclaimer's waiting count, not only the reaper's backlog.
+  Evidence: the reaper releases quickly, so a stalled reclaimer never raised the reaper backlog.
+- The byte budget keeps the one-build exception only when nothing is held. Alternative: admit any oversize
+  build. Rejected: that would allow hidden concurrent copies.
+- Per-island buildings are indexed in one pass per changed batch and copied only after admission. Alternative:
+  a global sort. Rejected: it reorders buildings, which the loader's per-island order depends on.
+- Known Metal failures are left open, not waived, and their assertion lines are recorded as they occur.
+
+**Not done in round dx (OPEN/PARTIAL):** DX4 entirely; the heavy rerun; the DX2e cost curve; peak retained
+bytes; the perf README; the frame-held release case; Windows, Linux and RTX/Radeon gates.
+
+## Round dy: W4.3 CPU completion after round dx (review candidate)
+
+Branch `task/W4-3-live-buildings`, from reviewed head `9dffca2` (clean). Code under test: `9ca5cb0` (the last
+source change); later commits change documentation only. Evidence directory (ignored):
+`cache/dy-runs/` inside the W4.3 worktree. Raw bench files: `cache/dy-runs/d1-r2/`, `cache/dy-runs/d3d4-r2/`;
+gates: `cache/dy-runs/gates/`. Host: Apple M5 Max, 18 cores, 48 GiB, macOS (Darwin 27.0.0); shared, not quiet
+(load 3 to 4; another agent's renderer and Syncthing busy). `data/maps/lan5.txt` unchanged (1476 bytes,
+sha256 `1a471d9f…7019357`).
+
+Commits: `be6dfa8` render accounting; `c73067c` credits outlive payload, incoming reservations; `c6c578a`
+allocation proof; `1fa52fa` ownership table; `f3ee549` legal five-city workload; `6ae6398` trace seam and
+aggregator; `e57537c` apply stage timings; `b746ac8` drawn types only, capacity by rule; `69ed8b6` bench rewrite;
+`cd49068` matrix runner; `2218a1f` queue and build times, host load; `64e87a1` contention turn cost; `8dfd51a`
+opt-in `publish_progress`; `9ca5cb0` bench clock fix; `7fb4bef` docs; and this report.
+
+### Correction of a round-dw claim
+
+The round-dw matrix (row "5c", line 8565 above) states: "five" tier is the fixed map's two inhabited islands with
+40 generated buildings each. That is wrong. The saved manifest `main/cache/dw-measure/single-5x40-r1.manifest`
+records `tier=five islands=5 per_island=40 buildings=200 scene_islands=21`, and the generator at `9dffca2`
+(`src/tools/bench_picture/main.cpp`, lines 270-307) placed 40 random anchors on each of the first five islands
+of the scene order, anywhere in an island's box (water included), with the types of the map's buildings at
+load. The play load seats two players (`load_fixed_play`, `src/app/src/play.cpp`), so those types were the two
+Kontors' and two of the five islands had a city. Correct statement: the "five" tier was 200 synthetic
+Kontor-type anchors on five islands, two of them inhabited; not a city and not a legal placement. The withdrawn
+"33 verified" claim stays withdrawn; nothing below restores it.
+
+### Acceptance matrix
+
+| Requirement | Source | Test or command | Exit / executed | Identity | Raw evidence | Result and limitation |
+|---|---|---|---|---|---|---|
+| A1 the credit is held inside payload destruction; competing admission deferred | `src/app/include/anno/app/credit.hpp`; `scene_picture.cpp` (`DestroyProbe`, `payload_destroy_hook`) | `anno_app_tests.ownership: a dropped result's credit…`, `…a dropped queued job's credit…` | dev 0 / 33 of 33; ASan 0 / 36 of 36 | dev `anno_app_tests` built at `9ca5cb0`; ASan `6775c6c7…` | `cache/dy-runs/a-app-3.log`, `gates/asan-app.log` | DONE. A reverse-order mutant fails 7 cases (both bridge cases in bounded 10 s, no hang): `a-mutant-order.log` |
+| A2 order through destruction, move, assignment, replacement, superseded completion, unwinding, transfer | `credit.hpp` (`Accounted`), worker tail, `std::swap` replacement | `anno_app_tests.credit: …` (7 cases) | 0 / 7 of 7 (in the selections above) | as above | `a-app-3.log`, `a-mutant-assign.log` | DONE. A defaulted move assignment fails 2 cases |
+| A3 ownership and accounting table | `docs/app/game-shell.md`, "Four quantities" and the table | doc | — | `1fa52fa` | — | DONE: owners, dominant allocations, counting budget, release; chunk pixels and caches are named as uncounted (RSS only) |
+| A4 ownership-aware bytes, shared once, in-flight kept, no walk at hand-off | `src/render/src/scene.cpp` (`PayloadToken`, `payload_counts`, `own_bytes`, `bytes_in_flight`) | `anno_render_tests.accounting: …` (3) | dev 0 / 6 of 6; ASan 0 / 10 of 10 | ASan `2abf9e49…` | `a-render-1.log`, `gates/asan-render.log` | DONE. Allocator overhead and control blocks not counted (stated) |
+| A5 hand-counted cases (shared buffer, known replacement, large incoming, stalled destruction, oversize alone, 1/2/4 workers) | `scene_accounting_test.cpp`, `scene_picture_ownership_test.cpp` | `accounting: …` (render 3, app 3) | 0 / all | as above | as above | DONE |
+| A6 frame-held release on the reclaimer, exact generation, back to baseline | `scene_picture_ownership_test.cpp` | `ownership: a frame-held generation outlives the bridge…` | 0 / 1 | as above | as above | DONE |
+| A6 no allocation at the last-owner hand-off | `src/app/tests/alloc_test.cpp` | `anno_app_alloc_tests.*` (3; refusal on) | dev 0 / 3; ASan 0 / 3 | ASan `1c41a8ff…` | `a-alloc-1.log`, `gates/asan-alloc.log` | DONE (1- and 64-island generations, credit, accounted payload) |
+| B1 synthetic generator labelled or removed | `src/tools/bench_picture/main.cpp` | — | — | `69ed8b6` | — | DONE: removed; the round-dw section is labelled synthetic and superseded |
+| B2/B3 five real cities, real types, sim-validated placement | `src/app/src/legal_workload.cpp` | `anno_app_tests.legal workload: five cities…` | 0 / 1 (game files, executed) | dev at `9ca5cb0` | `b-legal-6.log` | DONE with stated limits: roads refused by the sim (`Unsupported`, O-4); no running economy (settle turns change no stock); D17 stand-in, so the land rule and the coast/mountain exclusion are the fixture's |
+| B4 validated states, manifest, capacity | manifest in every case; `check_invariants` after every edit | as above; every bench case | 0 / all | — | `d1-r2/*/manifest.txt` | DONE. Density bound: about 240 buildings per city before `capacity_reached` (98% of land candidates refused for a tile object) |
+| B5 one verified build and one verified demolish | `legal_workload_test.cpp` | `legal workload: one accepted build and one accepted demolish…` | dev 0 / 1; ASan 0 / 1 | as above | `b-legal-6.log`, `gates/asan-app.log` | DONE: every island's items and every key of the view equal a fresh scene; object pixels changed; keys invalidated |
+| C1 paced and saturation modes; productive, no-op, coalesced, deferred, drain | `bench_picture` | `picture_d1.cases`, `picture_d3d4.cases` | 0 / 9 of 9 and 13 of 13 | binary `fcf2064a22649d4b…` (`9ca5cb0`) | `d1-r2/`, `d3d4-r2/` | DONE |
+| C2 versions through the pipeline; superseded versions represented | `picture_trace.hpp`, trace seam | `picture trace: …` (3), `trace: …` (1) | 0 / 4 | dev | `c-app-3.log` | DONE. Per-chunk build durations are not instrumented (only per-key ready times): PARTIAL for per-chunk durations |
+| C3 memory and pressure, tied to identities | `bench_picture` memory sampling | every case | 0 | as above | `*/memory.tsv`, `summary.txt` | DONE on macOS (RSS, footprint, faults, host paging, pressure); other hosts report -1 (unavailable) |
+| C4 method validated on a hand stream; tables from raw data | `picture_trace_test.cpp`; `tools/bench/picture_table.py` | `picture trace: a hand-specified stream…` | 0 | — | `d1-r2-table.md`, `d3d4-r2-table.md` | DONE |
+| D1 small set a-h with the oracle | `tools/bench/picture_d1.cases` | `picture_matrix.sh` | 0 / 9 of 9, all `VERIFY OK` | binary as above | `d1-r2/results.tsv` | DONE. Case f is a TARGET MISS (starvation under a fast stream, see below) |
+| D2 stages measured separately; unrelated-size scaling | `Stats::last_apply_*`, frames.tsv | b and c | 0 | as above | `d1-r2/b-one`, `d1-r2/c-one-unrelated` | DONE: apply list, reindex and dispatch in microseconds at 205 and 1005 buildings; no optimization taken (decision below) |
+| D3 one, two and four workers | `picture_d3d4.cases` | `w1/w2/w4-*` | 0 / 6 | as above | `d3d4-r2/` | DONE (single runs per configuration) |
+| D4 real headless simulation contention | `--sim-contention 1` (second world, production `run_turn`) | `sim-below`, `sim-unpaced-below`, `sim-above`; proxy `proxy-busy16-below` | 0 / 4 | as above | `d3d4-r2/sim-*/sim.tsv`, `summary.txt` | DONE on a shared host; quiet-host baseline OPEN (not available). Turn p50 0.617 ms, p95 1.47 ms at the play cadence |
+| D5 runner keeps failures | `tools/bench/picture_matrix.sh` | a case file with an unknown scenario | runner exits 2, stops | — | `cache/dy-runs/runner-check/` | DONE |
+| E1 focused per-case tests, ASan/UBSan, format, Release | gates script `cache/dy-runs/gates.sh` | ASan/UBSan app 36 (the real-data edit case included), render 10, alloc 3; `clang-format 23.1.3 --dry-run -Werror` on the 19 changed C++ files; full Release and dev builds | 0 / 36, 10, 3; format 0; builds 0 | ASan `6775c6c7…`, `2abf9e49…`, `1c41a8ff…` | `gates/asan-*.log`, `gates/release-build.log` | DONE: no sanitizer line, no asset skip; no compiler warning |
+| E2 heavy evidence after the lifecycle changes | the whole heavy label (every case builds and renders scene generations, so the reclaimer and accounting changes reach all of them) | `ctest --preset dev -L heavy -j 1`, `ANNO_TEST_THREADS=1`, `ANNO_HEAVY_TEST_PROCESSORS=1`, `ANNO_TEST_HEADROOM_MB=8192` | 0 / 10 of 10, 2969 s | dev at `9ca5cb0` | `gates/heavy.stdout`, `gates/heavy-LastTest.log` | DONE. Durations match round dw case by case (868 against 865 s, 1363 against 1365 s, ...) |
+| E3 non-heavy with and without game files | `ctest --preset dev -LE heavy -j 8 --timeout 900` | game files: exit 8, 1217 of 1225; without: exit 8, 1223 of 1225; the six game-file timeouts each alone: exit 0, 6 of 6 | as listed | dev `anno_app_tests` `a246b55d…`, `anno_render_tests` `b8137132…` at `9ca5cb0` | `gates/nonheavy-game.stdout`, `gates/nonheavy-nogame.stdout`, `gates/timeouts-solo.stdout`, `gates/nonheavy-nogame2-LastTest.log` | PASS but for the two known Metal cases. The game-file run also timed out six long cases (two `play:`, `scene picture: after a move…`, two sim `scenario corpus` cases, one GPU derived-chunk case) under oversubscription (load average 8 over 15 minutes; the sim cases do not use any code this round changed and went from 156 to over 1165 s); each passed alone. Without game files the asset-dependent cases returned early: 120 skip messages in the saved log of a second no-game run (1223 of 1225), so those bodies did not execute |
+| E3 Windows MSVC, Linux GCC/Clang -Werror, RTX/Radeon | — | — | — | — | — | PENDING (hosts unavailable here) |
+| E4 docs and historical claims | `docs/perf/README.md`, `docs/app/game-shell.md`, `docs/app/gpu-handoff.md`, this section | — | — | `7fb4bef` | — | DONE |
+
+**Peak retained bytes** (legal baseline, Release, `d1-r2`): reservation 36.1 MB with eight builds admitted
+(largest measured result 0.86 MB; estimate never short); accounted incremental payload 4.05 MB (11.3 MB with the
+reclaimer stalled 2 s); retired payload 1.98 MB (9.27 MB stalled); reclamation queue 0 (1.11 MB stalled); RSS
+0.72 to 1.16 GB; no major fault, no host page-out or swap-out.
+
+**Target misses and limits.** A stream faster than one build plus one commit per island starves that island's
+picture under the accepted contract (`f-stream-above`: object-ready p50 544 ms, max 1040 ms; workers do not help).
+The opt-in `publish_progress` brings it to p50 42 ms, max 144 ms. Visible CPU chunk readiness is not
+presented-frame latency; PLAN section 0.3 is not measured. The workload has no roads and no running economy, and
+its density is bounded by the D17 placement stand-in.
+
+### Decisions and reasoning
+
+- **Credit as the first base of the payload (`Accounted<Payload>`).** Alternatives: the credit as the first
+  member (default move assignment would release the old credit before the old payload), a custom destructor per
+  type. Evidence: the review's probe (credit 0 at the storage deleter's entry), and the mutants (reverse order
+  fails 7 cases, defaulted assignment 2). Why: the language destroys bases after members, and one template keeps
+  move assignment's boundary for every payload.
+- **Payload counted by allocation, not by generation.** Alternative: the per-generation `approximate_bytes`
+  (counts spans and owners, and shared buffers once per generation). Evidence: the review's 64/64/128/128
+  example; the hand-counted cases. Why: a token in the holder is released only after the allocation is freed, is
+  counted once however many generations share it, and costs nothing at the last owner's hand-off.
+- **Reservation = estimated incoming size, then the measured result.** Alternative: the old record bytes
+  (round dx). Evidence: the 500-building case reserves at least 500 items, block headers and building copies (more than
+  100 times the island's 64 old bytes); no shortfall in any run; the
+  estimate is about five times the measured result. Why: admission must cover the build before it runs; the
+  measurement replaces it once known. The over-estimate is safe and stated as provisional.
+- **Legal workload as a test fixture on the developer start.** Alternatives: MAP.2 candidate maps, ship founding,
+  editing `lan5.txt` (all out of scope). Evidence: `load_fixed_map` seats up to the layout's start regions; five
+  seats give five cities on islands 0 to 4. Why: it uses the production command path without a gameplay change;
+  `--play` keeps two seats.
+- **The fixture's land rule and type exclusions.** Alternatives: accept what the stand-in accepts (buildings on
+  water, mines inland). Evidence: 58% of every island's owned tiles are water; the stand-in reads only tile
+  objects (placement.hpp). Why: placements the original would refuse would misrepresent a city; the rule is the
+  original's land classifier, labelled as the fixture's, not the sim's.
+- **No incremental per-island index.** Alternative: maintain the index and the sorted list incrementally.
+  Evidence: apply list 0.002-0.003 ms, reindex 0.001-0.002 ms at 205 and 1005 buildings (`b-one`,
+  `c-one-unrelated`); the review's synthetic 0.084 ms at 100 000. Why: nothing measured approaches the frame
+  budget at the sizes the sim admits; a change would be speculative.
+- **`publish_progress` opt-in, off.** Alternatives: leave the starvation as is; change the default. Evidence:
+  `f-stream-above` against `progress-above`; the regression under both policies. Why: changing the default
+  reverses the accepted round-dw contract ("only the desired version is published"); that is the reviewer's call.
+- **Requeued results restart through the deferred list.** Alternative: rely on a later change. Evidence: with
+  `publish_progress` a requeue became common and an island could wait for ever. Why: a requeued island must be
+  built again by the next dispatch.
+- **Bench clock starts at the measured loop.** Evidence: the first D3/D4 run (`cache/dy-runs/d3d4/`) showed the
+  contention cases faster than the quiet ones because their setup made the schedule overdue; after the fix
+  `sim-above` equals `w2-above`. Why: the schedule must not include the setup. The first D1 run
+  (`cache/dy-runs/d1/`) is superseded by `d1-r2` for the same reason.
+- **The slow `play: islands are the ones the sim placed` is not a regression.** It took 2670 s alone (845 s in
+  round dx's parallel gate). A 20 s `sample` profile of it (`cache/dy-runs/play-profile.sample.txt`) has none of
+  this round's functions; the time is in `load_original_registry` reading the game files byte by byte through
+  `std::istreambuf_iterator` in the Debug build (50 scenarios, the registry reloaded for each), code this round
+  did not change; the heavy cases, which build the same scene generations, kept their round-dw durations. A
+  lightly loaded host running one process slower than a loaded one matches the frequency and core-placement
+  effect the bench recorded.
+- **Shared host labelled, not stopped.** The packet forbids stopping other executors or the owner's
+  applications; the load and busiest processes are recorded per run.
+
+**Not done or open:** a quiet-host baseline; per-chunk build durations; Windows, Linux and RTX/Radeon gates; the
+reviewer's decision on `publish_progress`; Metal #367 and #370 (the former #364 and #367, renumbered by the new tests) stay open and unwaived, with the same assertions as before: `gpu_test.cpp:2219` `CHECK( c.gpu_timestamps == ctx->timestamps )` (four times) and `:2515` `REQUIRE( pass.has_value() )`.
+
+**Final identities.** Code under test `9ca5cb0` (clean tree for every gate but the documentation draft);
+report commit on top. Release bench `cache/dy-runs/bench_picture.release-9ca5cb0` sha256 `fcf2064a22649d4b…`;
+dev `anno_app_tests` `a246b55d94636e27…`, `anno_render_tests` `b81371320cdb5e80…`, `anno_app_alloc_tests`
+`bf3b59f298fa1160…`; Release `anno_app_tests` `3e6002f8e279091d…` (sha256, first 16 hex). No owned job is
+running. The autonomous loop is off. GPU integration, developer input, preview, merge and push are not done.
+
+## Round dz: W4.3 CPU review findings closed; forward-progress publication (review candidate)
+
+Worktree `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `06dd6cc` (verified at the start, clean). Code
+under test: `b516528` (the last source change); the commits after it change documentation only. Evidence
+directory (ignored): `cache/dz-runs/` inside the worktree. Host: Apple M5 Max, 18 cores, 48 GiB, macOS (Darwin
+27.0.0); shared, not quiet (load 2.6 to 5.7; another executor's simulation tests at 100 to 400% CPU during the
+measurements, recorded in each `provenance.txt`; no other executor or application was stopped). The display was
+kept awake by one owned `caffeinate -d -i -t 21600` (pid 5855); the other `caffeinate` processes on the host are
+not this executor's. `data/maps/lan5.txt` unchanged (1476 bytes, sha256 `1a471d9f…7019357`), at the start and at
+the end.
+
+Commits: `0c149f9` strict trace reading and run completeness; `6a361ff` guarded host sampling, checked evidence;
+`67ac139` allocation probe pairing; `4fde0ad` matrix runner and its contract test; `4bee64c` per-island commit
+keys; `735f48f` all-keys-fresh readiness per island, convergence; `e807808` bench readiness per committed island,
+drain stages; `45d7cc7` publication contract (written before the default changed); `96cf6e9` Monotonic default,
+credit release before the commit's dispatch, the `scene_picture_publish` suite; `d40bf2e` real-data intermediate
+publications; `b12d7d6` sampled and exact peaks, version progress; `19cb823` the round-dz cases; `3d2fb9d` test
+names with a semicolon; `b516528` the bounds drain; and the documentation and this report.
+
+### Correction of a round-dy statement
+
+The round-dy commit list above calls `7fb4bef` "docs". Correct statement: `7fb4bef` also added
+`tools/bench/picture_d3d4.cases`, although it did not change the compiled C++ source. Its saved case-file hash
+matches the committed file (sha256 `99c94bb0aa3f9278…` in `cache/dy-runs/d3d4-r2/provenance.txt` and for the
+file at `7fb4bef`).
+
+### Findings and dispositions
+
+| Item | Change | Evidence | Status |
+|---|---|---|---|
+| 1a host sampling only where available; unavailable is explicit | `6a361ff`: `getrusage`/`sysctl` behind `__APPLE__`/`__linux__`, Linux RSS from `/proc/self/statm`, every counter `-1` printed as `unavailable`, never 0 | macOS build and runs; the Linux branch is compiled only on Linux | DONE on macOS; Linux compile NOT RUN (no GCC 13 / Clang 18 here) |
+| 1b allocation probe correct under MSVC | `67ac139`: every `new` form (plain, aligned, sized, nothrow, aligned nothrow) pairs with its own release (`_aligned_malloc`/`_aligned_free` on MSVC); refusal meaning kept, nothrow refusal returns null | `anno_app_alloc_tests` 3 of 3 dev and ASan | DONE on macOS; MSVC NOT RUN |
+| 1c strict trace ingestion | `0c149f9`: header, exactly four fields, whole numbers, finite non-negative times, 32/64-bit ranges, unknown kinds, events after `run_end`, unreadable files; `run_end` carries the exit status; an idle complete run is a success, a cut or failed one never | `picture trace:` cases (9) and `picture_matrix_contract` | DONE |
+| 1d every artifact's write checked | `6a361ff`: `save_text` checks open, write, flush and close and names the path; any unsaved file exits 5 | contract test; `p4-one` artifact check | DONE |
+| 1e runner | `4fde0ad`: last line without newline runs, zero selected cases refused, a failing case keeps its status and artifacts and stops the run, an out dir with files is refused | `tools/bench/picture_matrix_test.sh` (14 checks; the round-dy runner fails the first) | DONE |
+| 1f cheap contract tests | the above, as CTest `picture_matrix_contract` | 0.79 s | DONE |
+| 2a-2d readiness boundaries, all keys fresh at once, per island | `4bee64c`, `735f48f`, `e807808` (`ReadinessTracker`, `last_commit()`, `chunks.tsv` per key and version) | A/B reinvalidation regression (a "seen fresh once" mutant fails at poll 4); mixed-island known answers | DONE |
+| 2e raw per-key events, extended known answers | `chunks.tsv` `t_ms island generation level x y state`; coalescing, mixed islands, supersession, unfinished, convergence, intermediate commits | `picture trace:` cases | DONE |
+| 2f drain stages separately labelled | stage rows per phase (loop, drain, pan, zoom) | `p4-matrix-table.md` | DONE |
+| 3a contract before the default | `45d7cc7` (docs/app/game-shell.md, "Publication policy"); LatestOnly kept as the diagnostic policy | — | DONE |
+| 3b deterministic coverage | `96cf6e9`: stream progress against LatestOnly (exact versions 1, 3, 5, 7), late older result after a newer commit, older result finishing first, 1/2/4 workers at a barrier, competing islands under one credit and under a byte budget (1/2/4 workers), reaper stall and recovery, transient and permanent failures, a queued job rebased by an intermediate commit, a frame-held intermediate generation with shutdown. The five strict tests select `LatestOnly` explicitly with their checks unchanged | `scene_picture_publish` 8 of 8; 25 repeats, 0 failures | DONE |
+| 3c intermediate publications on real data | `d40bf2e`: build, build, demolish, build through a held worker; versions 1 and 3 published as intermediates, each equal to a freshly loaded scene of the desired list at its version (PROD2 items; chunk layers alone and through the bridge's invalidated cache) | dev and ASan pass; a previous-state mutant fails 10 assertions | DONE |
+| 3d default | Monotonic is the default | after 3b and 3c passed | DONE |
+| NEW: a waiting island starved under one admission | the commit released the committed results' credits only after its own dispatch, so a deferred island was admitted only by the next `apply`, where the edited islands come first. Fixed in `96cf6e9` (credits released before the dispatch) | before the fix the competing-islands case: island 1 committed 0 of 12 rounds, island 0 12 (`p3-publish-prefix.log`); after: 6 and 6 | FIXED |
+| NEW: requeue cost of Monotonic | a build that runs while its island's previous version is committed is requeued (its change set is against lists that are gone): with one worker every second build commits; the matrix requeued 7, 23 and 60 results with 1, 2 and 4 workers | game-shell.md; `p4-matrix` | DOCUMENTED, not changed (alternative below) |
+| NEW: four test names never ran | a `;` in a doctest name splits its CTest registration; each part runs zero cases and passes. Three were this round's, one (`picture recovery: one over-budget island still makes progress…`) has not run under CTest since round dw (`955b622`): the name guard missed it because the name starts on the line after `TEST_CASE(`. Renamed; the guard checks whole names; `run_selected.sh` fails a child that ran no case (`vacuous_cases`, exit 7) | `3d2fb9d`; the round's earlier synthetic gate `p3-synthetic-3.log` had 4 such children among its 51 "passes" | FIXED; that earlier gate counts as 47 executed passes |
+| NEW: the bounds drain gave up while the reclaimer was behind | under Monotonic `scene picture bounds: sustained edits…` commits 42 generations (LatestOnly 2), a reclaimer that is behind skips commits by design, and the drain's 200 rounds ran out in microseconds | failed once in gate G1 (pending 2); reproduced with the reclaimer slowed to 200 ms a scene (same failure, commit_skipped 231); passes with the drain waiting (bounded) for the reclamation: `b516528` | FIXED in the test; product behaviour unchanged (the window retries every frame) |
+| 4d labels | `b12d7d6`: sampled and exact peaks named apart; `retired_payload` is now `unreferenced_payload` (includes results not committed and builds in flight); version progress (`intermediate_commits`, `version_requeues`, `rebased`) | `p4-one`, `p4-matrix` | DONE |
+
+### Publication policy decision and invariants
+
+Monotonic is the default; LatestOnly stays as an explicit diagnostic policy (`--publish latest` in the bench). The
+seven invariants are in docs/app/game-shell.md, "Publication policy": committed versions only increase; a
+published version never exceeds the desired one; an intermediate publication leaves newer work pending; the picture
+converges once the edits stop; admission credits, byte reservations and reclamation limits keep gating as before;
+stale chunk completions stay rejected; the simulation, commands, costs, placement, economy and lockstep are not
+involved. Alternative not taken: composing a requeued result's change set with the intermediate commit's (the
+union of both key sets is a correct superset) to save the requeued builds; it changes what a commit invalidates
+and was not needed for progress.
+
+### Measurements (Release, `tools/bench/picture_dz.cases`, docs/perf/README.md "Publication policy")
+
+Frozen binary `cache/dz-runs/bench_picture.release-b12d7d6` (sha256 `bb3839daf4bd1204…`), source `b12d7d6`,
+clean tree; 12 cases sequential, all exit 0 with `VERIFY OK`; the one-edit artifact check (`p4-one`: every file
+saved, parsed with matching column counts, `--aggregate` exit 0, the table built). At 400 edits per second,
+object-ready p50 / max with 1, 2, 4 workers: Monotonic 72.8 / 292.6, 49.0 / 208.2, 48.7 / 123.3 ms; LatestOnly
+549.7 / 1058.4, 518.3 / 1024.1, 531.3 / 1042.2 ms. Below the build rate, delayed reclamation and the offscreen
+return the policies agree within the host's spread (five below-rate pairs in three orders: worker build p50 13.5
+to 15.3 ms or 18.9 to 20.5 ms under either policy, so no single-case difference is read as the policy's). Cost:
+exact peak incremental payload 6.5 / 8.9 / 10.5 MB against 4.05 MB; requeues 7 / 23 / 60; reservations within the
+same admission (exact peak 32.4 to 36.0 MB). Window stages stay under 0.13 ms (commit) and 0.16 ms (chunk update).
+Limitations: a shared host; five cities of about 40 buildings, not a late-game economy; no roads; scenery caps the
+density; the original's placement rules are partly resolved; CPU stages only, no presented frame.
+
+### Gates (each run once unless stated; initial failures kept)
+
+| Gate | Command | Revision / identity | Result |
+|---|---|---|---|
+| G1 dev, every bridge user and the real-data cases | `tools/test/run_selected.sh build/dev - '^(anno_app_tests\.(credit\|ownership\|accounting\|progress\|trace\|picture\|publish\|scene picture\|probe\|backing\|legal workload)\|anno_app_alloc_tests\.\|picture_matrix_contract\|test_names_are_selectable)' 1800 … 6` | `3d2fb9d` | FAIL: 77 of 78, `scene picture bounds: sustained edits…` pending 2 (`p5-dev-gate.log`). Fixed in the test at `b516528` (above); this run is not passed by the later one |
+| G2 dev, the same selection | as G1 | `b516528`, `anno_app_tests` `9ef0b51468c621e1` | PASS 78 of 78, vacuous 0, asset skips 0; 2 probe cases skip by design (`ANNO_PROBE` unset) (`p5-dev-gate-2.log`) |
+| G3 ASan/UBSan, the same selection | as G1 on `build/asan` | `b516528`, `anno_app_tests` `1359c93acdd2c03c`, alloc `b28e84c0aab985bb` | PASS 78 of 78, no sanitizer line, vacuous 0; the three real-data legal-workload cases executed (300 s for the intermediate one) (`p5-asan-gate.log`) |
+| G4 dev alloc, contract, names after the full build | `run_selected.sh build/dev - '^(anno_app_alloc_tests\.\|picture_matrix_contract\|test_names_are_selectable)'` | alloc `51126ad211abb2bf` (identical after the relink) | PASS 5 of 5 |
+| G5 dev, the rest of `anno_app_tests` but `play:` | `run_selected.sh build/dev - '^anno_app_tests\.(CRC\|PNG\|game directory\|command\|building delta\|commands file\|derived zoom\|developer\|feedback\|mailbox\|picker\|play loader\|replay\|scene loading\|zoom\|--zoom)'` | `b516528` | PASS 36 of 36 |
+| G6 builds and format | Release `anno_app_tests anno_app_alloc_tests bench_picture`; full dev build; `clang-format 23.1.3 --dry-run --Werror` on the 12 changed C++ files | `b516528` | PASS: 0 warnings, 0 errors; format clean |
+| G7 repeats | `scene_picture_publish` 25 times; the bounds case 12 times, 4 at once | pre-rename binary; `b516528` | 0 failures in each |
+| REUSED heavy label and the render, sim, formats and assets suites | round dy E2/E3 | `9ca5cb0`; `git diff 9ca5cb0 HEAD -- src/render src/sim src/formats src/assets` is empty, and no heavy case constructs a `ScenePicture` | not repeated (unchanged code) |
+| NOT RE-RUN the 16 `play:` cases | — | `play.cpp` includes neither changed file | not repeated (2670 s alone in round dy) |
+| NOT RUN Windows MSVC | `cmake --preset msvc`, `cmake --build --preset msvc`, `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -R "anno_app_(alloc_)?tests\." -j 8` | — | NOT RUN (no Windows host here); the alloc probe's MSVC pairing (1b) is the case to watch |
+| NOT RUN Linux GCC 13 / Clang 18 `-Werror` | `bash tools/check_unix_warnings.sh` (on Windows: `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`) | — | NOT RUN (neither compiler here); the `/proc/self/statm` branch (1a) is compiled only there |
+| NOT RUN GPU (RTX 4090, Radeon, Metal) | — | — | outside this assignment; Metal #367 and #370 stay open and unwaived as in round dy |
+
+### Next single GPU integration unit
+
+Row 1 of docs/app/gpu-handoff.md, section 3: the viewer takes one owning generation handle per frame from
+`ScenePicture::scene()` and passes it to `update_chunks`, the CPU `render` and `GpuFrame::render`/`group_ready`
+(the shared-handle signature change), with one test: after one commit the GPU and the CPU path show the same
+chunk pixels, run on the RTX 4090, the Radeon iGPU and Metal. Nothing of it is implemented.
+
+**Final identities.** Code under test `b516528` (clean tree for every gate). Release bench
+`cache/dz-runs/bench_picture.release-b12d7d6` sha256 `bb3839daf4bd1204…`; dev `anno_app_tests`
+`9ef0b51468c621e1…`, `anno_app_alloc_tests` `51126ad211abb2bf…`; ASan `anno_app_tests` `1359c93acdd2c03c…`,
+`anno_app_alloc_tests` `b28e84c0aab985bb…` (sha256, first 16 hex). No merge, push, rebase, prune or map change.
+GPU integration, viewer wiring, developer input and preview are not done. No autonomous loop.
+
+## Round ea: W4.3 round-dz review findings closed; first owning-generation viewer/GPU integration (review candidate)
+
+Worktree `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `4e66667` (verified at the start, clean).
+- **Code under test:** `d62a1f3`. Later commits change documentation only.
+- **Evidence:** `cache/ea-runs/` inside the worktree (ignored).
+- **Host:** Apple M5 Max, 18 cores, 48 GiB, macOS 27.0.1, Apple clang 21, SDK 26.5; the GPU backend is
+  wgpu-native on Metal ("Apple M5 Max (Metal)").
+- **Load:** shared, not quiet. The load average was 1.6 to 11; another executor's simulation tests (the
+  MAP-2 worktree) ran at about 400% CPU during the gates. Nothing of theirs was stopped.
+- **Display:** kept awake by one owned `caffeinate -d -i -t 36000` (pid 32943), stopped at the end.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged at the start and at the end.
+
+**Commits:**
+- `7748366` evidence finalization;
+- `c869fb7` the table's exit status;
+- `b849cf3` chunk workers without a borrowed scene, no generation kept between frames, and the gate seam;
+- `ad4b2b0` the GPU frame owns the generation its outliving work reads (the fluid finding);
+- `86bc628` the play window follows the picture;
+- `8c425e7` GPU integration tests;
+- `8f75c9b` the handoff contract;
+- `efc7d6b` format;
+- `d62a1f3` the contract test's map path;
+- this report and the perf note.
+
+### Findings and dispositions
+
+| Item | Change | Regression evidence | Status |
+|---|---|---|---|
+| 3c bench finalization recorded success before the evidence was saved | `7748366`: `app::finalize_evidence`. The other files go first, then `summary.txt`, then the trace, each written whole (`.partial` renamed into place). `run_end` carries the verdict only if every earlier file was saved, else 5. If the trace cannot be saved, neither trace nor summary remains | Reproduced with the round-dz binary (directory named `frames.tsv`: bench exit 5, `run_end … 0`, `--aggregate` exit 0; `p3-repro-dz*`). Fixed bench: `run_end … 5`, `--aggregate` exit 6 (`p3-repro-fixed*`). Fault injection on the finalization path (`picture evidence:` cases: frames, summary, the trace itself, a partial file) | FIXED |
+| 3a/3b table exit status and aggregate failures | `c869fb7`: exit 1 for missing, malformed or incomplete evidence or any other aggregate failure; 6 for a complete but failed run; 2 without `results.tsv`. Every case keeps a diagnostic row | `picture_matrix_test.sh`: missing, malformed and cut traces; no summary; no frames; failed run; crashing and silent aggregate stubs; the bench reproduction. The new checks fail against the old table (`p3-old-table-mutant.log`) | FIXED |
+| 3f round-dz matrix re-aggregated | — | `p4-matrix`, `p4-one`, `p4-below-pairs`, `p4-below-reversed`: exit 0, no diagnostic, byte-identical to the round-dz tables (`p3-reagg-*`). Originals untouched | DONE, no measurement changed, matrix not rerun |
+| NEW: the wave simulation's background preparation read a borrowed scene | `ad4b2b0`: its depth function captured the scene by reference and runs past `render()` (`GpuLimits::background_fluid`, the viewer's limits). It now holds the frame's owning handle | "picture GPU: the wave simulation's background preparation holds …" passes; the old capture fails it (`p6-fluid-mutant.log`) | FIXED |
+| NEW: the GPU frame kept its frame-table pointer between frames | `ad4b2b0`: cleared on every way out of `render()`, with the handle | audit; the lifetime cases | FIXED |
+| 4 contract | `8f75c9b`: gpu-handoff.md states the six boundaries separately; the claim that one handle prevents mixed-version cached pixels is removed; game-shell.md's "never a mixture" now refers to object lists | — | DONE |
+| 5 ownership through the viewer and GPU | `86bc628`, `b849cf3`, `ad4b2b0` (gpu-handoff.md section 2) | the 6 GPU cases; the windowed smoke | DONE |
+| NEW, open: GPU vs CPU parity on per-frame water sprites | none (outside this unit) | a view of the workload with 109 water sprites differs by 2 at 4 pixels before any edit and from identical inputs. The established bound of 1 was measured on views without such sprites. The new case reports it (`WARN`) and bounds its comparisons by the unchanged picture | OPEN, not caused by this round |
+| Initial gate failure G1 | the contract test's bench check used the bench's relative default map, which does not resolve in CTest's build directory | G1 FAIL, exit 4 instead of 5. Fixed in `d62a1f3`; G2 is a full rerun | FIXED (G1 stays failed) |
+| Initial gate failure G3 | `river lifecycle: 2 workers, one solve throws and one is gated: destruction waits`. The test's own gate releases itself after 30 s (`kWait`); under ASan on the contended host the solves before the check took longer, so the gated solve ended and the destruction returned early ("the solve was never released") | 5 of 5 alone under ASan pass (`g3-river-repeat.log`). The river and scene code is unchanged since `4e66667` | OPEN test timing bound (round dw, `f17e9b8`); G3 stays failed; not changed here |
+
+### Transitional cache behaviour and readiness (the GPU cases, Metal)
+
+- **Transition:** after a commit, the affected keys keep their old cached chunks, marked stale. The
+  frame (holding the new generation) is byte-equal to the GPU output before the edit, and equal to the CPU
+  composition of the same inputs within the unchanged picture's parity.
+- **Partial readiness:** keys become fresh one at a time. A three-key set with one fresh key is not ready;
+  the fresh key shows its change and the stale keys their old chunks.
+- **Ready:** when all keys are fresh at one poll, the GPU output is byte-equal to a separate compositor
+  drawing the freshly loaded scene of the desired state.
+- **Late completion:** a generation-1 build that finishes after the generation-2 invalidation is
+  discarded. It replaces nothing and clears no mark, and the stale building is never shown.
+- **Offscreen return:** at group 2 and at derived level 3, exact against a fresh compositor. Against the
+  CPU path, level 3 differs by at most 2 per channel (bound 3, 0 pixels above 2).
+- **Lifetimes:**
+  - a held chunk job keeps generation 0 alive across the commit after the bridge and the test let go; it
+    is destroyed on the reclaimer when the job ends;
+  - the replaced CPU chunks are freed while frames are submitted and never waited for;
+  - teardown with builds, chunk jobs and GPU work outstanding destroys every generation on the reclaimer,
+    and the payload returns to its baseline.
+- **Smoke:** `anno1503 --play data/maps/lan5.txt --commands cache/ea-runs/p7-smoke.commands` on the GPU and
+  with `--renderer cpu`. The scripted commands are four accepted builds and a demolish, generated against
+  the sim. The window ran 14 s per renderer (`ANNO_VIEW_ZOOM_SCRIPT=100000,14`), committed generations 1 to
+  5, and ended with 0 pending and exit 0 (`p7-smoke-*.stderr`). No input binding was added.
+
+### Gates (each run once unless stated; initial failures kept)
+
+| Gate | Command | Revision / identity | Result |
+|---|---|---|---|
+| G1 dev, bridge and evidence selection | `tools/test/run_selected.sh build/dev - '^(anno_app_tests\.(credit\|ownership\|accounting\|progress\|trace\|picture\|publish\|scene picture\|probe\|backing\|legal workload)\|anno_app_alloc_tests\.\|picture_matrix_contract\|test_names_are_selectable)' 1800 … 6` | `8c425e7` | FAIL 79 of 80 (`picture_matrix_contract`, above); `g1-dev-cpu.log` |
+| G2 dev, the same selection | as G1 | `d62a1f3`, `anno_app_tests` `654b4c8fa7cbcc65` | PASS 80 of 80, vacuous 0; 2 probe skips by design (`g2-dev-cpu.log`) |
+| G3 ASan/UBSan, the same selection plus `anno_render_tests` derived freshness, scene reclaim, river lifecycle, accounting | `run_selected.sh build/asan … 3600 … 4` | `d62a1f3`, `anno_app_tests` `8c54d9092603efd0`, `anno_render_tests` `5b1f254750b972cc` | FAIL 98 of 99, no sanitizer line (the river lifecycle timing case, above); `g3-asan-cpu.log` |
+| G4 dev, all of `anno_render_tests` (10 heavy included) | `run_selected.sh build/dev - '^anno_render_tests\.' 3600 … 4` | `d62a1f3`, `1a95eb84a83a1dcf` | PASS 173 of 173 (`g4-dev-render.log`) |
+| G5 ASan/UBSan, the 6 GPU picture cases on Metal | `run_selected.sh build/asan - '^anno_render_gpu_tests\.picture GPU' 3600 … 1` | `d62a1f3`, `0187337fcaacdba2` | PASS 6 of 6, no sanitizer line; the parity `WARN` (`g5-asan-gpu-picture.log`) |
+| G6 dev, all of `anno_render_gpu_tests` on Metal | `run_selected.sh build/dev - '^anno_render_gpu_tests\.' 3600 … 1` | `d62a1f3`, `c4ffaba53242a228` | 94 of 96. The 2 failures are the known Metal timestamp cases #367 (`gpu_test.cpp:2219`) and #370 (`:2515`), the same lines as round dz, open and unwaived; no other GPU failure. 1 skip: `play_gpu_test` needs an RTX 4090 (`g6-dev-gpu.log`) |
+| G7 dev, the rest of `anno_app_tests` but `play:`, plus `anno1503_usage` | `run_selected.sh build/dev - '^(anno_app_tests\.(CRC\|PNG\|…\|--zoom)\|anno1503_usage)' 1800 … 6` | `d62a1f3` | PASS 37 of 37 |
+| Builds and format | full dev build; Release `anno1503 anno_app_tests anno_render_tests anno_render_gpu_tests bench_picture`; `clang-format 23.1.3 --dry-run --Werror` on the 13 changed C++ files | `d62a1f3` | 0 warnings, 0 errors; format clean |
+| Contract and table | `picture_matrix_contract` (in G2 and G3); manual run with `ANNO1503_GAME_DIR` | `d62a1f3` | PASS |
+| NOT RE-RUN the 16 `play:` cases | — | `play.cpp` and `play.hpp` unchanged | not repeated |
+| NOT RUN RTX 4090, Radeon iGPU | `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -L gpu -R "picture GPU\|play: GPU" -j 1` on the Windows PC | — | NOT RUN (no such adapter here) |
+| NOT RUN Windows MSVC | `cmake --preset msvc`, `cmake --build --preset msvc`, `ctest --preset msvc -R "anno_app_(alloc_)?tests\.\|anno_render(_gpu)?_tests\." -j 8` | — | NOT RUN |
+| NOT RUN Linux GCC 13 / Clang 18 `-Werror` | `bash tools/check_unix_warnings.sh` (on Windows: `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`) | — | NOT RUN |
+
+### What is not claimed, and the next unit
+
+- **Not claimed:**
+  - no PLAN §0.3 frame target;
+  - no presented-frame latency;
+  - no late-game scalability;
+  - no GPU acceptance.
+  The smoke's frame rates come from a shared host and are not measurements.
+- **No measured regression:** none was measured; the performance matrix was not rerun (3f).
+- **Remaining defect:** none known in this unit. Open are the water-sprite parity (above), the river
+  lifecycle test's 30 s bound, and the Metal timestamp cases.
+- **Next unit:**
+  - the presentation-latency probe (batch to presented pixel at 1080p and 4K, with and without the
+    simulation), with an upload-completion boundary in the trace;
+  - the GPU cases on the RTX 4090 and the Radeon iGPU.
+
+**Final identities.** Code under test `d62a1f3`. Every gate ran on a clean code tree; the only dirty file was
+the perf documentation. Binaries (sha256, first 16 hex):
+- dev: `anno_app_tests` `654b4c8fa7cbcc65`, `anno_app_alloc_tests` `ede53daadaf77f5f`, `anno_render_tests`
+  `1a95eb84a83a1dcf`, `anno_render_gpu_tests` `c4ffaba53242a228`, `anno1503` `9d633ab55033055b`,
+  `bench_picture` `6587712af18c8efd`;
+- ASan: `anno_app_tests` `8c54d9092603efd0`, `anno_render_tests` `5b1f254750b972cc`, `anno_render_gpu_tests`
+  `0187337fcaacdba2`.
+No merge, push, rebase, prune or map change; no developer input, movement, founding or preview; no
+autonomous loop.
+
+## Round eb: W4.3 paused progress, failure-safe teardown, reliable lifecycle tests, the constrained upload path, edit to GPU-usable (review candidate)
+
+- **Worktree:** `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `e75231f` (verified at the start,
+  clean; code head `d62a1f3`).
+- **Code under test:** `3f41396`, with a clean tree for every gate. The commit after it is this report.
+- **Evidence:** `cache/eb-runs/` (ignored); the acceptance matrix written before implementation is
+  `cache/eb-runs/acceptance.md`.
+- **Host:**
+  - Apple M5 Max, 18 cores, 48 GiB, 80% memory free, 1.6 TiB disk free, macOS 27.0.1, Apple clang 21,
+    SDK 26.5;
+  - GPU: wgpu-native on Metal ("Apple M5 Max (Metal)");
+  - shared, not quiet: load 1.6 to 3.0; Syncthing and other users' processes were busy; nothing of theirs
+    was stopped.
+- **Jobs:** 16 compile, 8 light-test; memory admission on. The MAP executor's coordinator protocol was not
+  touched.
+- **Display:** one owned `caffeinate -d -i -t 36000` (pid 61991), stopped at the end.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged at the start and at the end.
+
+**Commits:**
+- `1e7e066` the GPU readiness of a chunk and the compositor's pending work (3A);
+- `1358741` paused mailbox progress (1A);
+- `816a524` failure-safe teardown (1B);
+- `51e233b` river lifecycle gates (2);
+- `6cc73e8` the constrained upload path (3B to 3E);
+- `8b9fda2` the water reproducer and OQ-525 (4);
+- `06dfa13` edit to GPU-usable in the bench, trace and table (5A to 5C);
+- `00dab8d` the GPU oracle fix;
+- `3f41396` the matrix notes and the handoff;
+- this report.
+
+### Acceptance matrix
+
+| # | Requirement | Regression or measurement | Evidence | Origin | Status |
+|---|---|---|---|---|---|
+| 1A | A batch a turn in flight publishes after the paused window went idle is consumed and shown while paused; the sim stays paused; the window idles again; a hidden window keeps the bounded mailbox and converges when shown | `play_follow_test.cpp`: the real `PlayRunner` thread (turn 2 held by `set_turn_gate`), `ScenePicture`, chunk workers and the production `PlayFollower`/`FrameDemand` the viewer calls; a fresh-scene chunk comparison | `p1a-*`; with the round-ea predicate (picture pending only) both cases fail (`p1a-mutant.log`) | defect introduced in ea (viewer wiring) | FIXED |
+| 1B | The teardown case releases both gates (chunk workers, blocked builder) on every exit, before the joins; early failure does not hang | `ScopedRelease` declared after each owner; the order logged and asserted; an early-failure case under a watchdog; the reclamation and accounted-byte checks kept | `p1b-1.log`; a mutant without releases hangs and the watchdog ends it, exit 124 in 37 s (`p1b-mutant.log`) | test defect introduced in ea | FIXED |
+| 2 | River lifecycle: the observation bound separate from the release; no self-release by timeout | the gate waits until released; `ReleaseOnExit` in all five gated cases, declared after the scene; the gate shared with the scene's fault function; `anno::test::Watchdog`; a controlled 3 s delayed-cleanup case | the round-ea failure is kept (`ea-runs/g3-asan-cpu.log`). The round-ea gate, bound shortened to 2 s, fails the delayed case with the same message and observation (`p2-mutant.log`). New code: dev 10 of 10 (`p2-dev-1.log`), ASan in G2 | pre-existing test design (round dw) | FIXED |
+| 3A | CPU-ready, GPU-pending and GPU-usable named and queryable | `GpuFrame::chunk_state`, `work_pending` | used by 3B to 3E and the bench | new | DONE |
+| 3B | One upload per frame: a multi-chunk edit finishes; the paused window draws until every key is GPU-usable | GPU case on the constrained limits, chunks built in the frame | 153 frames, 31 with a CPU-ready GPU-pending key; exact against a fresh compositor. Without the GPU term the paused window idles with chunks built but not uploaded (`p3b-mutant-2.log`) | the GPU half of the idle gap predates ea (upload limits); fixed in `1358741` | FIXED |
+| 3C | Second edit while uploads are outstanding: final output, stale handling, ownership, bounded retained work | GPU case | 63 chunk regions each one whole state; ends on the newest state; the replaced generation and its CPU chunks freed | new coverage | PASS |
+| 3D | Stand-ins and dissolves: a chunk is consistent internally; mixed chunks across keys allowed | GPU case on a manual fade clock | fading chunks not GPU-usable; rebuilt chunks swap whole; old and new chunks side by side in 2 frames | new coverage | PASS |
+| 3E | Leaving and re-entering the view; closing with uploads outstanding | GPU case | uploads dropped on leaving, redone on return; the CPU chunk of an upload in progress is freed with the compositor | new coverage | PASS |
+| 4 | Water difference: reproducer, pixel/sprite/layer record, cause | reproducer case (suite `picture_gpu_water`) and experiments | four pixels, Anlagen 2708 frame 54 below the waterline under the sea. Rounding to nearest in either CPU step gives max 1; in both, exact (`p4-experiment-*`) | pre-existing | CAUSE ESTABLISHED; reference decision OPEN (OQ-525); parity NOT ACCEPTED; no tolerance raised |
+| 5A-5C | Edit to GPU-usable correlated per island and generation, at one observation, labelled boundaries, malformed or incomplete evidence rejected | `bench_picture --gpu 1`; trace `gpu_mode`/`gpu_ready`; aggregate; table; known-answer case; contract checks | `picture trace:` 12 of 12; `picture_matrix_contract` | new | DONE; GPU completion UNOBSERVED; presentation UNMEASURED |
+| 5D | Release matrix: idle, one edit, 50-edit burst, sustained five-city stream; 2 and 4 workers; 1080p and 2160p; above the build rate | `tools/bench/picture_eb.cases` | `p5-matrix/` 18 of 18, oracles incl. the exact GPU view; the canary `p5-canary/` first; the first matrix (`p5-matrix-failed-oracle/`) failed on an oracle defect, fixed in `00dab8d` | new | DONE (docs/perf/README.md "Edit to GPU-usable on the compositor") |
+| ext | Windows MSVC, Linux GCC 13 / Clang 18, RTX 4090, Radeon | commands below | — | external | NOT_RUN |
+| ext | Metal timestamp cases | the full GPU suite | `gpu_test.cpp:2219`, `:2515` | pre-existing | OPEN, unwaived |
+
+**Failed attempts kept:**
+- **Vacuous case (G0):** the first focused ASan run (`p2-asan-focused.log`) failed with exit 7, a vacuous
+  case. A new case name with a `;` split its CTest registration; three new names in all. The runner's guard
+  and `test_names_are_selectable` caught them; renamed in `6cc73e8`.
+- **3B mutant passed:** the first version of 3B did not isolate the GPU term, because chunk-worker work
+  masked it. The case was changed to build chunks in the frame.
+- **Matrix oracle:** the first matrix stopped at `idle-uhd-w2` on the GPU oracle (reference compositor
+  limited to 6 uploads per frame).
+
+### Measurements (Release `cache/eb-runs/bench_picture.release-00dab8d`, sha256 `8fb1892cf5b9ee88…`)
+
+The full table and the method are in docs/perf/README.md, "Edit to GPU-usable on the compositor (round eb)".
+Raw files are in `cache/eb-runs/p5-matrix/`. To reproduce:
+
+```
+tools/bench/picture_matrix.sh <bench_picture> <game_dir> <new out_dir> tools/bench/picture_eb.cases
+tools/bench/picture_table.py <bench_picture> <out_dir>
+```
+
+Each case's `manifest.txt` records:
+- the revision, the binary hash, the seed and the map;
+- the adapter, the upload limits and the viewport;
+- the workers;
+- `target=offscreen presentation=unmeasured gpu_completion=unobserved`.
+
+**Results** (shared host, integrated GPU):
+- **Sustained stream (10 edits/s), 1080p and 2160p, 2 and 4 workers:**
+  - object-ready p50 24.7 to 24.8 ms, p99 42.7 to 45.8 (n = 100);
+  - visible CPU-ready p50 50.0 to 50.4 (n = 15 or 20; no p99);
+  - visible GPU-usable p50 50.3 to 50.5, max 72.4 to 89.3, 0 unfinished.
+- **50-edit burst:**
+  - GPU-usable p50 140.9 to 215.1 ms (n = 10);
+  - the upload limit adds 20 to 70 ms over CPU-ready.
+- **Above the build rate (400/s):**
+  - GPU-usable p50 99.2 / 91.9 ms, p95 207.0 / 163.3 (n = 74) with 2 / 4 workers;
+  - build queue delay p99 24.4 / 15.6 ms (n = 151 / 223).
+- **Window thread to submission:** p99 at most 2.72 ms (idle 2160p), max at most 3.0 ms. That is CPU
+  submission only, not GPU execution or presentation.
+- **Retained work:** reservations at most 36.1 MB; at most 8 builds outstanding; exact peak incremental
+  payload 4.9 to 11.3 MB; RSS 0.94 to 1.52 GB; no paging.
+
+**Not claimed:**
+- the PLAN §0.3 presented-frame targets;
+- a 4-core x86 host;
+- RTX or Radeon adapters;
+- late-game scale: the fixture is five cities of about 40 buildings, without roads and with density capped
+  by scenery;
+- multiplayer load.
+
+### Gates (each run once; initial failures kept)
+
+| Gate | Command | Revision / identity | Result |
+|---|---|---|---|
+| G0 focused ASan after packages 1-2 | `run_selected.sh build/asan - '^(anno_render_tests\.river lifecycle\|anno_app_tests\.play follow\|anno_render_gpu_tests\.picture GPU: (teardown\|a failure after))' 3600 … 4` | `51e233b` | FAIL (exit 7): 14 of 14 executed passed, no sanitizer line, 1 vacuous child (the `;` name, above) |
+| G1 dev, bridge, evidence and play-follow selection | `run_selected.sh build/dev - '^(anno_app_tests\.(credit\|ownership\|accounting\|progress\|trace\|picture\|publish\|scene picture\|probe\|backing\|legal workload\|play follow)\|anno_app_alloc_tests\.\|picture_matrix_contract\|test_names_are_selectable)' 1800 … 8` | `3f41396`, `anno_app_tests` `f145990f871e97f0`, alloc `d443f9844eb1919a` | PASS 83 of 83, vacuous 0; 2 probe skips by design |
+| G2 ASan/UBSan, play follow, picture trace and evidence, river lifecycle, every picture GPU case | `run_selected.sh build/asan - '^(anno_app_tests\.(play follow\|picture trace\|picture evidence)\|anno_render_tests\.river lifecycle\|anno_render_gpu_tests\.picture GPU)' 7200 … 4` | `3f41396`, `anno_app_tests` `951b45be8340ea4a`, `anno_render_tests` `753858651b7f9fe4`, `anno_render_gpu_tests` `74f838b64fe51d8e` | PASS 35 of 35, no sanitizer line, vacuous 0 (1668 s) |
+| G3 dev, all of `anno_render_gpu_tests` on Metal (the affected integration gate) | `run_selected.sh build/dev - '^anno_render_gpu_tests\.' 3600 … 1` | `3f41396`, `8c52dffe8a514987` | 100 of 102. The 2 failures are the known Metal timestamp cases (`gpu_test.cpp:2219`, `:2515`; now #368 and #371), open and unwaived. 1 skip: `play_gpu_test` needs an RTX 4090 |
+| Builds and format | full dev build; Release `anno1503 anno_app_tests anno_render_tests anno_render_gpu_tests bench_picture`; `clang-format 23.1.3 --dry-run --Werror` on the 17 changed C++ files | `3f41396` | 0 warnings, 0 errors; format clean |
+| Contract and table | `picture_matrix_contract` (in G1) and manual with `ANNO1503_GAME_DIR` | `3f41396` | PASS |
+| NOT RE-RUN all of `anno_render_tests` and the heavy label | — | `frame.cpp`, `scene.cpp` and the CPU render code are unchanged since round ea's G4 (173 of 173) | not repeated |
+| NOT RUN RTX 4090, Radeon iGPU | `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -L gpu -R "picture GPU\|play: GPU" -j 1` | — | NOT_RUN |
+| NOT RUN Windows MSVC | `cmake --preset msvc`, `cmake --build --preset msvc`, `ctest --preset msvc -R "anno_app_(alloc_)?tests\.\|anno_render(_gpu)?_tests\." -j 8` | — | NOT_RUN |
+| NOT RUN Linux GCC 13 / Clang 18 `-Werror` | `bash tools/check_unix_warnings.sh` (on Windows: `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`) | — | NOT_RUN |
+
+### Remaining limitations and the next smallest unit
+
+- **Open:**
+  - **OQ-525:** which rounding is the reference. Visual parity of water objects below the waterline is not
+    accepted.
+  - **Metal timestamp cases:** unwaived.
+  - **External gates:** NOT_RUN.
+  - **Boundaries:** GPU completion and presentation are not measured.
+- **Not claimed:**
+  - full GPU acceptance;
+  - original-game visual parity;
+  - the presented-frame targets;
+  - late-game performance.
+- **No measured regression:** this is the first GPU-path measurement of this workload; the CPU-only matrix
+  was not rerun.
+- **Next smallest unit:** the presentation boundary in the viewer. Record each frame's surface acquire and
+  `wgpuSurfacePresent` return, with its status, as trace events. Then run the same `gpu_ready` correlation
+  in a scripted `--play --commands` window session (no input bindings), at 1080p and 2160p. Label the
+  present return as CPU-side presentation feedback, not display time. Run the GPU cases on the RTX 4090 and
+  the Radeon iGPU.
+
+**Final identities.**
+- **Code under test:** `3f41396`.
+- **Release bench:** `bench_picture.release-00dab8d` (sha256 `8fb1892c…`).
+- **Dev binaries** (sha256, first 16 hex): `anno_app_tests` `f145990f871e97f0`, `anno_app_alloc_tests`
+  `d443f9844eb1919a`, `anno_render_tests` `02fd9949a451ce02`, `anno_render_gpu_tests` `8c52dffe8a514987`,
+  `anno1503` `a1eb7b9b19daa03e`.
+- **ASan binaries:** as in G2.
+
+No merge, push, rebase, prune or map change; no developer input, preview, ship movement or founding; no
+autonomous loop.
+
+## Round ec: W4.3 review findings of eb closed; the play window traced from command to present-call return (review candidate)
+
+- **Worktree:** `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `e8af4b6` (round eb's report).
+- **Code under test:** `src/` is identical at `690578f`, `37065d3`, `7292a2a`, `3f70a01` and `9233b1b`. After
+  `690578f` only tools and docs changed. The commit after `9233b1b` is this report.
+- **Evidence:** `cache/ec-runs/` (ignored).
+- **Host:**
+  - Apple M5 Max (Mac17,6), 18 cores, 48 GiB, macOS 27.0.1, Apple clang 21, SDK 26.5;
+  - GPU: wgpu-native on Metal ("Apple M5 Max (Metal)");
+  - display: built-in 3456 × 2234 Retina, 120 Hz.
+- **Load:** the host was shared. Another executor's sim tests ran at up to about 1,200 % CPU; nothing of
+  theirs was stopped. This round's own gates also ran beside each other and beside part of the matrix, as
+  stated at each row below.
+- **Admission:** memory admission on, unchanged. No selection of this round printed an `[anno-test memory]`
+  line: none admits a corpus or scene render. The coordinator protocol was not touched.
+- **Display:** one owned `caffeinate -d -i -t 43200` (pid 79354), stopped before this report was committed.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged at the start and at the end.
+
+**Commits** (`e8af4b6..9233b1b`):
+- **A:**
+  - `3571f74` causal readiness validation;
+  - `5f859dd` strict frame rows, cadence and phases;
+  - `b0081fc` mandatory preflights and the per-test verdict;
+  - `8a96db2` the held build;
+  - `274deaa` doc corrections.
+- **A, after review:**
+  - `a77a501` generations and run_end;
+  - `7bff930` phases and strict rows;
+  - `9448a3a` cut logs, CTest skips, preflight targets;
+  - `7540b0f`, `87ecc18` docs.
+- **B, C, D:**
+  - `6c68e15` the window trace, with its tests;
+  - `124fa38` the window runner and table;
+  - `be40d56` docs.
+- **B, C, D, after review:**
+  - `4f0e9e7` frame and epoch rules, exit status, the tracer bound, the resize hook, tests;
+  - `c025fc2` the strict, cross-checked table;
+  - `382c1d2` views and the resize record;
+  - `690578f` the re-measured docs;
+  - `37065d3` the table's last P3 checks.
+- **E, after the integration review:**
+  - `7292a2a` the launcher hashes every test binary;
+  - `3f70a01` workloads and the matrix driver in git, the runner on Linux;
+  - `9233b1b` docs.
+
+### Package outcomes
+
+Every reviewer was an independent, read-only subagent with no edit, stage, commit or process rights, briefed
+with the code (not the conclusion) and told to be adversarial. Each re-reviewed after the fixes.
+
+| Package | Reviewer and scope | Reviewed revision | Reviewer verdict | Findings | Resolution evidence | Remaining limits |
+|---|---|---|---|---|---|---|
+| A: eb findings (causal validation, the held build, measurement descriptions, gate accounting) | reviewer 1: `e8af4b6..274deaa` from git objects, its own fixtures, the eb matrix re-aggregated, hand derivations | `274deaa`, then `7540b0f`, then `87ecc18` | CHANGES REQUIRED; then APPROVED; the P3 fix APPROVED | 9 (4 P2, 5 P3), then 1 P3 | each finding has a regression (below); `a-review-focused-dev.log` 23 of 23; all 105 saved traces re-read | the round-dy traces are refused by the A1 rule (historical, not cited); bench frames.tsv t_ms has 6 significant digits; the A2 mutant logs carry no mutation provenance |
+| B: the real viewer path traced | reviewer 2: `87ecc18..be40d56`, then `be40d56..690578f`, from git objects; its own builds of the trace sources; the adversarial fixtures; the matrix raw files | `be40d56`, then `690578f` | CHANGES REQUIRED; then APPROVED | P2-1, P2-2 and P3 | `window_trace_test.cpp` (12 cases); the reviewer's fixtures refused (`$TMPDIR/rv-b/ev`); mutants | no acquire or present failure happened in a real run; the resize is the one real reconfigure |
+| C: tests of the production helpers | reviewer 2, the same scope plus its own mutants | `be40d56`, then `690578f` | CHANGES REQUIRED; then APPROVED | P2-5: 4 mutants survived | 16 of 16 mutants caught (`c-mutants-1.log`, `-2-desired.log`); the reviewer's 6 of 6 caught | — |
+| D: scripted window measurements | reviewer 2, the same scope plus every matrix number | `be40d56`, then `690578f`, then the P3 fix `37065d3` | CHANGES REQUIRED; then APPROVED (P3 only) | P2-3, P2-4, then 3 P3 table items (fixed in `37065d3`) | 21 table fault cases (`e-window-table-contract.log`); re-measured on clean `c025fc2` with frozen binaries | one loaded host; no 2160p drawable; no target host |
+| E: gates, integration and handoff | reviewer 3, the integration reviewer: `e8af4b6..37065d3` and this report's draft, every cited log re-read with `ctest_verdict.py`, binaries checked with `shasum` and `strings`; the re-review covered `9233b1b` and the rewritten draft | `37065d3` with the draft, then `9233b1b` with the rewritten draft | CHANGES REQUIRED: 1 P1, 7 P2, P3; then APPROVED FOR CLOSURE with 5 P3, which this commit fixes | below | — | two open intermittent failures; external gates NOT_RUN |
+
+### The review findings and their corrections
+
+**Review of A** (`274deaa`):
+1. The upload reading was wrong above the build rate. Corrected, with the w2/w4 qualifier.
+2. `picture_phases.py` tabulated unvalidated traces. It now goes through the aggregate and a strict reader,
+   with exit 1/6/2.
+3. The verdict reader passed a cut log. It now uses CTest's `k/M` and summary: exit 9.
+4. Two game-file skip phrasings were "other". Now required-asset, and every skip phrasing in the sources has
+   a known class.
+5. CTest's own `***Skipped` read as no result. Now classed by its reason.
+6. The table read numbers loosely and did not check row order. Now whole tokens, ids increasing, time never
+   going back.
+7. The phase table lacked dispatch. Added.
+8. Reused or decreasing generations, commits without a generation, and events after run_end were accepted.
+   Now contradictions; a run whose own trace contradicts itself ends with status 7.
+9. The preflight tested an unbuilt `bench_picture`. The launcher now builds and hashes the preflight
+   targets.
+
+**Review of B, C and D** (`be40d56`):
+- **P2-1:** impossible frame and epoch traces were accepted. Now refused:
+  - one epoch per frame, never lower for a later frame;
+  - a frame fails once, never before its submission;
+  - a window edit needs a batch taken in its frame boundary.
+- **P2-2:** a contradictory trace exited 0. `anno1503` now exits 7, and 5 for drops.
+- **P2-3:** the table accepted impossible rows and did not cross-check per frame. It now reads every column,
+  refuses overlaps, impossible outcomes and statuses, and cross-checks every row against its events.
+- **P2-4:** the measured binary's source identity was unproven. The matrix was re-measured on clean `c025fc2`
+  with frozen binaries, and the runner now counts untracked files. The first matrix is superseded: in three
+  of its runs, external input moved the camera.
+- **P2-5:** coherence and the epoch at the acquire were not covered. New FrameTracer tests; 16 of 16
+  mutants caught.
+
+**Integration review** (`37065d3` with the draft):
+- **P1:** affected run 2 used an `anno_app_tests` built from a test variant my publish-race experiment left
+  behind. The experiment restored the source but did not rebuild. The draft's identity named that binary.
+  - Corrected: the binary was rebuilt from the clean tree (`a54279dd…`, `e-rebuild-app-tests-37065d3.log`),
+    and the app part re-ran as run 3.
+  - Run 2's app results are relabelled invalid, below.
+  - The launcher now logs every test binary's hash, also with target `-` (`7292a2a`).
+- **P2-1:** caffeinate was still running when the draft said it was stopped. It is stopped before this commit.
+- **P2-2:** the round's own concurrent gates were not disclosed. Now stated at each gate row and in the perf
+  README.
+- **P2-3:** the handoff latency started at `desired`, not at the command. Now the full path (below).
+- **P2-4:** the sustained ranges left out the overhead runs. Now all five runs are in the README table.
+- **P2-5:** reviewer identity and scope, owners and acceptance conditions, and the stopped run were missing.
+  Now added.
+- **P2-6:** gpu-handoff still said section 4 passes. Corrected, and the two intermittent cases are listed as
+  open.
+- **P2-7:** the window commands could not run from git or on Linux. The workloads and their generator are now
+  in git with `window_matrix.sh`, and the runner works on Linux (`3f70a01`).
+- **P3:**
+  - counts and names corrected;
+  - the Metal cases are named by stable names;
+  - the window-trace exit statuses are complete;
+  - the no-GPU compile and the dev build now have logs with exit status and revision;
+  - `c-mutants.py` was edited after `c-mutants-1.log`, to add the argument selection and the semantic mutant.
+    Run 1's mutant list is in its log; run 2's arguments were `c-mutants-2-desired.log
+    no-desired-needs-take`.
+
+**Integration re-review** (`9233b1b` with the rewritten draft): APPROVED FOR CLOSURE. The P1 and all seven
+P2 are fixed, each checked against the raw artifacts. Its five P3 are fixed in this commit:
+- the publish → take range is the raw per-batch range;
+- the README names the workloads in git;
+- the table contract has a GNU-time case and a log at this commit;
+- the be40d56 ASan row names the stopped run beside it;
+- this record.
+
+### Corrected round-eb accounting and cadence (A3)
+
+**Gates, read per test** (`ctest_verdict.py`):
+
+| Gate | Selected | Executed | Failed | Skipped |
+|---|---|---|---|---|
+| G1 dev CPU | 83 | 81 | 0 | 2 opt-in skips |
+| G2 ASan | 35 | 35 | 0 | 0 |
+| G3 dev GPU | 102 | 99 | 2 (the Metal timestamp cases) | 1 platform skip |
+
+**Cadence:** round eb requested 16.667 ms frames. The observed cadence was:
+- idle p50 23.1 to 23.5 ms;
+- sustained p50 24.6 to 24.7 ms;
+- above the build rate p50 23.8 to 23.9 ms.
+
+Round eb's latencies were therefore measured at about 40 Hz.
+
+**Phases (sustained):**
+- worker build about 20 ms;
+- 4.5 ms until a commit takes it;
+- about 25 ms of chunk rebuild.
+
+The full table is in docs/perf/README.md, "Round ec corrections".
+
+### The play window (D)
+
+docs/perf/README.md, "The play window, traced", has the method, tables and limits. The raw files are in
+`cache/ec-runs/d-matrix-c025fc2-c025fc2/` and the table is `cache/ec-runs/d-matrix-c025fc2-table.md`. The
+workloads and the driver are in git (`tools/bench/window_workloads/`, `tools/bench/window_matrix.sh`).
+
+**Runs:**
+- 13 runs (11 traced, 2 with the trace off): idle, one edit, a 20-build burst and a 60-build stream at
+  1920 × 1080 and 3456 × 1944; a resize run; two trace off/on pairs.
+- All built from clean `c025fc2`.
+- In the 11 traced runs every attempted frame presented: 1,432 to 3,836 per run, 0 failures, 0 drops.
+- 342 commands applied, 0 rejected.
+
+**Results:**
+- **Cadence:** requested vsync on 120 Hz (8.33 ms); observed p50 8.31 to 8.33 ms.
+- **One edit, desired → present-call return:** 33.8 ms (1080p) and 34.0 ms (3456 × 1944).
+- **60-build stream, five traced runs:** p50 42.1 to 57.8 ms, p95 42.6 to 66.3 ms, max 50.6 to 67.2 ms
+  (n = 60 each).
+- **Window thread busy per frame:** p50 0.23 to 0.60 ms.
+- **Peak RSS:** 1.38 to 1.73 GiB.
+- **Trace overhead:** below the 0.1 ms resolution of the window's own lines, in both pairs.
+
+**Concurrency:** this round's ASan gate at `be40d56` ran beside the matrix's first eight runs (to 23:49:18).
+The resize run and the overhead runs had no other job of this round beside them.
+
+**Boundaries:**
+- The present call's return is the last boundary measured. GPU completion, scanout and display are not
+  observed.
+- No genuine 3840 × 2160 drawable is possible on this display: asked for one, the window got 3840 × 1976.
+  2160p is NOT RUN; 3456 × 1944 (81 %) is the largest 16:9 drawable that fits.
+
+**Screenshot:** not supported here. The window was found (id 1253, 960 × 572 points), but `screencapture -l`
+reported "could not create image from window": the terminal has no Screen Recording permission
+(`cache/ec-runs/d1-shot.txt`). The owner can grant it and run `screencapture -o -l <id> out.png` during a
+run.
+
+### Gates (initial failures kept; concurrency stated)
+
+| Gate | Command | Revision / identity | Concurrent with | Result |
+|---|---|---|---|---|
+| Source names (before every build) | `cmake -DSOURCE_DIR=. -P cmake/CheckTestNames.cmake` (inside `run_selected.sh`) | each gate | — | PASS. It caught one of this round's names with a `;` before a build (`bc-focused-dev-namecheck-fail.log`) |
+| Format | `clang-format 23.1.3 --dry-run --Werror` on the 19 C++ files changed in the round | `690578f` (src unchanged since) | — | PASS 19 of 19 (`e-format.log`) |
+| Builds | full dev build; Release `anno1503 bench_picture`; the viewer compiled without `ANNO_VIEWER_GPU` | `7292a2a` (dev), `c025fc2` (Release) | — | 0 warnings, 0 errors (`e-dev-build-all-final.log` rc 0, `d-release-build-c025fc2.log`, `e-viewer-nogpu-compile.log` rc 0, Apple Clang) |
+| Focused A | `run_selected.sh build/dev anno_app_tests '<picture trace…, contracts, picture GPU constrained>' 600 … 4` | dirty tree = `7540b0f` | — | PASS 23 of 23 (`a-review-focused-dev.log`) |
+| Focused B/C | `run_selected.sh build/dev anno_app_tests '^anno_app_tests\.(window trace\|picture trace\|picture evidence\|picture readiness\|play follow\|play: )\|^anno_app_alloc_tests\.\|<4 contracts>' 900 … 6` | dirty tree with the content of `be40d56` | — | PASS 51 of 51 (`bc-focused-dev.log`) |
+| Affected at `be40d56` (stopped) | as run 1 below | `be40d56`, clean | ASan at `be40d56` | stopped by me when the B/C/D review required changes: 165 selected, 157 executed, 6 without a result, VERDICT FAIL as a cut log (`e-affected-dev-stopped-be40d56.log`). Superseded |
+| Affected, run 1 | `run_selected.sh build/dev - '^anno_app_tests\.\|^anno_app_alloc_tests\.\|^anno_render_gpu_tests\.(picture GPU\|play)\|<contracts>\|anno1503_usage' 1800 … 6` | `690578f`, clean. Binaries from the 23:56 dev build of `690578f`; `anno_app_tests`' hash was not recorded and the binary is since replaced | ASan run 1 | FAIL: 168 selected, 164 executed, 1 failed, 3 skipped (2 opt-in probes, 1 platform: no RTX 4090). Failed: `anno_render_gpu_tests.picture GPU, constrained: with stand-ins and dissolves a rebuilt chunk is swapped whole, a chunk that replaces its stand-in dissolves in, and both end on the fresh scene`, at its paused loop's 120 s deadline (`picture_gpu_test.cpp:1237`, 156 s; usually 49 s) |
+| Affected, run 2 | the same | `690578f` sources, but `anno_app_tests` was built from my publish-race experiment's variant of `scene_picture_publish_test.cpp` (sha `863e7981…`). Its app results are INVALID as evidence of `690578f`; the GPU binary (`c5fd143d…`) was the `690578f` build | ASan run 2 | FAIL, the same GPU case again at its deadline (154.6 s). The app results are not counted (`e-affected-dev-run2.log`) |
+| Affected, run 3: the app part | `run_selected.sh build/dev - '^anno_app_tests\.\|^anno_app_alloc_tests\.\|<contracts>\|anno1503_usage' 1800 … 6` | `7292a2a` (src = `690578f`); `anno_app_tests` `a54279dd…` rebuilt from the clean tree, every binary hashed in the log | nothing of this round | PASS: 155 selected, 153 executed, 2 opt-in skips (`e-affected-dev-run3-app.log`) |
+| GPU subset alone, `-j 1` (as round eb's G3) | `run_selected.sh build/dev - '^anno_render_gpu_tests\.(picture GPU\|play)' 1800 … 1` | `690578f` code, `anno_render_gpu_tests` `c5fd143d…`; only this report's draft was dirty | nothing of this round | PASS: 12 of 13 executed, 1 platform skip; the stand-ins case passed in 51.5 s (`e-gpu-j1.log`) |
+| ASan/UBSan at `be40d56` | `run_selected.sh build/asan anno_app_tests '^anno_app_tests\.(window trace\|picture trace\|picture evidence\|picture readiness\|play follow\|scene picture\|credit\|ownership\|publish)\|<4 contracts>' 1800 … 4` | `be40d56` | the stopped affected run at `be40d56`, and the first matrix runs | PASS 64 of 64 (`e-asan-be40d56.log`) |
+| ASan/UBSan, run 1 | the same | `690578f`, clean, `anno_app_tests` `f8b9707d…` | affected run 1 | FAIL: 67 selected, 66 executed, 1 failed, no sanitizer line. Failed: `anno_app_tests.publish: one, two and four workers each hold a version ahead at a barrier, and the newest is published`, at workers = 2 (`scene_picture_publish_test.cpp:452`, a held generation seen destroyed) (`e-asan.log`) |
+| ASan/UBSan, run 2 | the same, with the same binary | `690578f`, clean, `f8b9707d…` | affected run 2 | PASS 67 of 67, no sanitizer line (`e-asan-run2.log`) |
+| Isolated reruns of the two failed cases | the stand-ins case alone, three times; the publish case under ASan, 30 times; a forced-slow reclaimer (`e-publish-race.py`) | as above | nothing of this round | stand-ins 3 of 3 in 49 to 51 s (`e-repro-gpu-standins.log`); publish 0 of 30 failed (`e-repro-asan-publish.log`); the forced experiment did not reproduce it (`e-publish-race.log`) |
+| Contracts after the last tool changes | `window_table_test.sh`; `run_selected_test.sh` | this report's commit (tools as in `3f70a01`, plus the GNU-time case) | — | PASS: 21 fault cases, GNU time's RSS line and the missing results.tsv (`e-window-table-contract.log`); the launcher contract passes. The matrix table regenerates unchanged |
+| Mutation (C) | `python3 -I cache/ec-runs/c-mutants.py` | `c025fc2` code | — | 16 of 16 caught. The clean build passes 28 of 28 before and after, and the tree is unchanged (`c-mutants-1.log`, `-2-desired.log`) |
+| NOT RUN: RTX 4090, Radeon iGPU | `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -L gpu -R "picture GPU\|play: GPU" -j 1` (in WSL or Git Bash, `tools/test/run_selected.sh` with the same selection gives the per-test verdict) | — | — | NOT_RUN: no such host here |
+| NOT RUN: Windows MSVC | `cmake --preset msvc`, `cmake --build --preset msvc`, `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -R "anno_app_(alloc_)?tests\.\|anno_render(_gpu)?_tests\." -j 8` | — | — | NOT_RUN |
+| NOT RUN: Linux GCC 13 / Clang 18 `-Werror` | `bash tools/check_unix_warnings.sh` (on Windows: `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`) | — | — | NOT_RUN: no `g++-13` or `clang++-18` on this host |
+| NOT RUN: a traced window on Linux, and at a genuine 2160p | `ANNO1503_GAME_DIR=<game> tools/bench/window_matrix.sh <anno1503> <bench_picture> <new dir> 3840x2160`, then `tools/bench/window_table.py <dir>` | — | — | NOT_RUN. The runner is bash, so on Windows only the trace itself (`ANNO_VIEW_TRACE`) and `bench_picture --aggregate` apply |
+| NOT RE-RUN: all of `anno_render_tests`, the heavy label, the full GPU suite | — | the CPU render code is unchanged since round eb; this round changed GPU-test skip phrasings and one constrained case | — | not repeated |
+
+**Open intermittent failures in tests this round did not change** (stable names; neither is waived):
+- `anno_render_gpu_tests.picture GPU, constrained: with stand-ins and dissolves a rebuilt chunk is swapped whole, a chunk that replaces its stand-in dissolves in, and both end on the fresh scene`:
+  - fails 2 of 2 at its 120 s paused-loop deadline in the full affected gate at `-j 6`, beside CPU-heavy cases
+    and this round's concurrent ASan gate;
+  - passes alone (3 of 3) and in the GPU gate at `-j 1` (1 of 1), in 49 to 52 s.
+
+  Whether the loop is slow or stalls under contention is not established.
+  - Owner: the next GPU unit.
+  - Acceptance: a deadline in frames, or the GPU gate at `-j 1`, passing in a full gate.
+- `anno_app_tests.publish: one, two and four workers each hold a version ahead at a barrier, and the newest is published`:
+  - failed once under ASan;
+  - passed 30 of 30 isolated runs, the next full ASan run, and a forced-slow reclaimer.
+
+  The cause is not established.
+  - Owner: the bridge's next unit.
+  - Acceptance: the destroyed generation identified by scene identity, and the case passing repeatedly in a
+    full ASan gate.
+- **Round eb's Metal timestamp cases**, still open and not re-run in this round:
+  - `anno_render_gpu_tests.river flow on the GPU: the cost is measured per tier, GPU timestamps when the device has them, and the automatic tier follows the adapter`;
+  - `anno_render_gpu_tests.every pass of a frame is timed, and the timed frame is the untimed picture`.
+
+  Owner: the GPU timing unit. Acceptance: passing on Metal, or a recorded owner decision.
+- **OQ-525** is unchanged: which rounding is the reference is an owner decision. Parity of water objects
+  below the waterline is not accepted, and no tolerance or rounding was changed (`git diff e8af4b6 -- src/render`
+  touches tests only).
+
+### Closure
+
+| Requirement | Revision | Positive proof | Negative control | Executed outcome | Reviewer disposition | Remaining limitation |
+|---|---|---|---|---|---|---|
+| A1 GPU readiness causal validation | `3571f74`, `a77a501` | eb matrix 18 of 18 and 125 of 125 consistent | both review traces exit 2; reused or decreasing generations, a commit without a generation, after run_end | trace tests PASS; aggregate of 105 saved traces | APPROVED | round-dy traces refused (historical) |
+| A2 explicit worker gate | `8a96db2` | the constrained case passes from a fresh object | without the hold the old assertion fails; an early failure ends in 26 s | PASS | APPROVED | no mutation provenance in its logs |
+| A3 measurement descriptions | `274deaa`, `7540b0f`, `87ecc18` | cadence, phases and gate accounting from artifacts | the reviewer's hand derivations match | — | APPROVED | t_ms precision of bench frames.tsv |
+| Mandatory preflights and verdict (addendum 2) | `b0081fc`, `9448a3a`, `7292a2a` | `run_selected_contract`, `test_verdict_contract` | failing, missing or unbuilt preflight → 5; `;` name → 5 before a build; cut log → 9; CTest skip classed | PASS in every gate | APPROVED | a plain-output skip without SKIP_REGULAR_EXPRESSION would count as executed (none exists) |
+| 3b strict frame rows | `5f859dd`, `7bff930` | the eb tables reproduce | the copied-idle malformed row; backwards, repeated and loose numbers | `picture_matrix_contract` PASS | APPROVED | — |
+| B1 event contract | `6c68e15`, `4f0e9e7` | `docs/app/window-trace.md` | — | — | APPROVED | the island version names no turn (tied by the frame boundary) |
+| B2–B4 the viewer instrumented, bounded, opt-in | `6c68e15`, `4f0e9e7` | 11 traced runs, complete; a resize gives epoch 2 | drops → no run_end, exit 5; contradictory → 7; the tracer bound counts drops | PASS | APPROVED | acquire and present failures have no field evidence |
+| C helper tests | `6c68e15`, `4f0e9e7` | 12 window-trace cases, the follower case on the game files | 16 mutants caught; the reviewer's 6 caught | PASS (run 3, ASan run 2) | APPROVED | — |
+| D window measurements | `124fa38`, `c025fc2`, `382c1d2`, `690578f`, `37065d3`, `3f70a01` | `d-matrix-c025fc2-table.md` | 21 table fault cases; the superseded matrix's moved views are visible | 13 of 13 runs exit 0, 11 aggregates 0 | APPROVED | one loaded host; no 2160p; no target host |
+| E gates and handoff | `690578f` to `9233b1b` | run 3 app PASS; GPU `-j 1` PASS; ASan run 2 PASS; contracts PASS | — | the full affected gate FAILED 2 of 2 on the stand-ins case; ASan FAILED 1 of 2 on the publish case; both kept | integration review, re-review at the end | two open intermittent failures; external gates NOT_RUN |
+
+**Statuses, kept apart:**
+- **Unit readiness:** the window trace and its tools are ready for use by the next unit.
+- **Full rendering acceptance:** not claimed. OQ-525, the Metal timestamp cases and the two intermittent
+  cases are open, and the external gates were NOT_RUN.
+- **Original fidelity:** not claimed.
+- **Target hosts:** NOT_RUN.
+- **Late-game performance:** not claimed. The workload is the start city with up to 60 cheap buildings.
+
+### Gameplay handoff
+
+**Reviewed interfaces gameplay can depend on:**
+- `PlayRunner::post_command` (and `set_script`): commands enter at the next turn.
+- Acceptance: a turn's outcome is known only from the sim's `CommandRejected` events (`take_rejections`, or
+  the trace's `sim.tsv`), never from the submission.
+- Batches: a turn's building changes reach the window as batches (`take_building_batches` at each frame
+  boundary, `PlayFollower::follow`).
+- The picture commits per island version; a committed generation never moves an island back.
+- The window shows a change once its visible chunks are CPU-ready, then GPU-usable. The trace's `presented`
+  is the first successful present call of a frame that draws it.
+
+**What stays asynchronous**, so gameplay must not wait on it in the sim or in input handling:
+- object builds;
+- chunk rebuilds;
+- GPU uploads;
+- the reclaimer.
+
+**The measured path of a command:**
+1. It waits for the next turn (100 ms turns at the default speed).
+2. The turn runs.
+3. Its batch is published and taken at a frame boundary: 0.03 to 15.6 ms per batch in this matrix (p50 per
+   run 0.8 to 5.6 ms).
+4. Then `desired` → present-call return: 33.8 to 67.2 ms, which is 4 to 8 frames at 120 Hz.
+
+**Open rendering work:**
+- the two intermittent cases above;
+- OQ-525;
+- the Metal timestamp cases;
+- the target hosts;
+- display and GPU completion, which are not observed.
+
+### Next smallest unit
+
+1. Run `tools/bench/window_matrix.sh` on the RTX 4090 and Radeon hosts (Linux, or the trace alone on
+   Windows) and on a genuine 3840 × 2160 display.
+2. Give the stand-ins case a deadline in frames, or run the GPU gate at `-j 1`.
+3. Instrument the publish case's held generations, by scene identity, to find its intermittent failure.
+
+**Final identities:**
+- **Code:** `src/` as in `690578f`; report revision `9233b1b` plus this commit.
+- **Release, frozen:**
+  - `cache/ec-runs/anno1503.release-c025fc2`, sha256 `e2860d9b54b2bb13…`;
+  - `cache/ec-runs/bench_picture.release-c025fc2`, sha256 `7e3800ff9fa67fc4…`.
+- **Dev binaries** (sha256, first 16 hex, as run 3's log lists them; the `-j 1` gate ran the same
+  `anno_render_gpu_tests` file, mtime 23:56:19, before the launcher logged every binary):
+  - `anno_app_tests` `a54279dd49bd3f91`;
+  - `anno_app_alloc_tests` `d443f9844eb1919a`;
+  - `anno_render_gpu_tests` `c5fd143dc2c76d08`;
+  - `anno1503` `ce702181c3c4fa0e`;
+  - `bench_picture` `68e0110c098b2316`.
+- **ASan:** `anno_app_tests` `f8b9707d7830e476`.
+
+No merge, push, rebase, prune or reset. The map is unchanged. No gameplay input, preview or map-integration
+work was done, and the CPU reference's rounding was not changed. The coordinator protocol, journals and
+admission policy were not touched. The owned `caffeinate` (pid 79354) was stopped before this commit, and no
+job of this round is left running.
+
+## Round ed: W4.3 trace attribution, evidence validation and the two intermittent tests closed; gameplay handoff (review candidate)
+
+- **Worktree:** `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `a1fd6ea` (round ec's report).
+- **Code head:** `c2bdf91` (`src/` and tools final). The commit after it is this report and its doc
+  updates; nothing under `src/` or `tools/` changes after `c2bdf91`.
+- **Evidence:** `cache/ed-runs/` and `cache/gates/ed-*` (ignored).
+- **Host:** Apple M5 Max (Mac17,6), 18 cores, 48 GiB, macOS 27.0.1; "Apple M5 Max (Metal)"; built-in
+  3456 × 2234 display at 120 Hz. Load 2 to 6 during the round; no other executor's heavy job was seen.
+  Only this round's own jobs ran, one expensive phase at a time.
+- **Admission:** memory admission on and unchanged. The coordinator protocol was not touched.
+- **Display:** the owner's existing keep-awake process was left alone; no keep-awake process of this round.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged.
+- **Gate runner:** the canonical `run_selected.py` of the main checkout, with `--source-root` and
+  `--build-dir` of this worktree. It requires only `picture_matrix_contract` on its own, so every gate
+  passes `--require-test window_table_contract` (and the launcher's contract where named).
+
+**Commits** (`a1fd6ea..c2bdf91`):
+- **1:** `8603177` presentation attributed to a frame that draws the change; `84f42c7` review fixes.
+- **2:** `452f369` the table aggregates every raw trace and checks its inventory; `e530335` review fixes.
+- **3:** `cbf5838` destructions told by scene identity; `6eb7e9b` review fix (one owner, after the reaper).
+- **4:** `a09a6ea` the stand-ins case's deadline explained and fixed; `bd4c479`, `c2bdf91` review fixes.
+
+### Package acceptance tables
+
+Every reviewer was an independent, read-only general-purpose subagent of this session
+(`session_016dGiaa1oCgM5Nv7Xn3R1o6`), one per package and a fresh one for the integration review, with no
+edit, stage, commit, process control or delegation rights. Each was briefed with the code, the raw
+evidence and the original counterexample, not the conclusion, and each re-reviewed its fixes.
+Reviewers 1 to 4 below are those package reviewers. Reviewer 5 is the integration reviewer (below).
+
+**Package 1 — presentation attribution** (reviewer 1; reviewed `8603177`, re-reviewed `84f42c7`: CHANGES
+REQUIRED, then APPROVED)
+
+| Requirement | Valid control | Single counterexample | Expected specific result | Evidence | Reviewer |
+|---|---|---|---|---|---|
+| A failed present then an unrelated successful frame presents nothing | frame 2 keeps frame 1's view: presented once, at frame 2 | frame 2's view elsewhere (the orchestrator's probe) | no `presented` at frame 2; `present_unfinished` 1; presented once at frame 3 when the view returns | window trace test "a failed present followed by a successful frame elsewhere…"; mutant "historical readiness" caught (`p1-mutants-1.log`) | APPROVED |
+| A stale or not-uploaded key blocks presentation | nothing changes between frames: presented at 2 | one key stale, or off the GPU, at frame 2 | nothing at 2; presented at 3 when current; one `chunks_ready`/`gpu_ready` at 1 | "…stale or off the GPU…" | APPROVED |
+| A later commit over the same keys | — | commit (0,2) after frame 1's failed present | both presented at frame 3; `present_after_recommit` 1 | same case | APPROVED |
+| Ordinary first-attempt success unchanged | — | — | ready, drawn and presented in its own frame, at its submit/present times | "…ordinary first-attempt success…" | APPROVED |
+| Islands, pan, resize, zoom | — | pan to one island; resize that loses the key; zoom where the new group's key is not usable | per island; nothing until the frame draws it | "…each island…pan, resize, zoom…" | APPROVED |
+| The reader accepts a deferred completion and refuses an unrelated frame and a lost one | drawn@2 failed, frame 3 elsewhere, drawn+presented@4: consistent | presented at frame 3 without its drawn; frame 4 drew and presented without `presented` | "…which has no drawn of it"; "…drew … and presented, but no presented of it at that frame" | presentation-rules case; reader mutants "no drawn", "first later", "lost completion" caught | APPROVED |
+
+**Package 2 — evidence validation** (reviewer 2; reviewed `452f369`, re-reviewed `e530335`: CHANGES
+REQUIRED, then APPROVED)
+
+| Requirement | Valid control | Single counterexample | Expected specific result | Evidence | Reviewer |
+|---|---|---|---|---|---|
+| 2A/2C a cut or contradictory trace fails though its saved summary says success | the synthetic case: exit 0, known numbers | only `run_end` removed, `aggregate.txt` and `run.txt` kept; `presented` moved before its `gpu_ready` | "trace incomplete: run=INCOMPLETE (no run_end"; "trace unreadable: … before its gpu_ready" | `window_table_contract`; mutant "trusts saved" caught (`p12-mutants-2.log`) | APPROVED |
+| 2B the raw trace is aggregated at table time by a named, hashed bench_picture | — | a decoy file of that name in the working directory | the file on PATH is run and hashed; another captured binary is named | contract: bare name, other bench | APPROVED |
+| 2D/2E the inventory | full matrix 1 of 1; a requested subset labelled | empty plan; header-only results with a selected case; a stopped campaign; duplicate, lost, unplanned, reordered cases | exit 2 "selects no case"; exit 1 "INCOMPLETE campaign … (begun, not finished: b)", "listed twice", "not listed", "does not select", "another order" | contract; mutants (empty, missing, lost, subset as full) caught | APPROVED |
+| A run.txt cannot switch a traced case to the control path | a trace-off control without a trace dir: exit 0 | `trace=off` in run.txt of a traced, cut case | "run.txt trace=off, plan.tsv trace=on" | contract | APPROVED |
+| 2F idle is valid | 0 commands, no edit: exit 0 | — | edits row 0/0/0/0/0 | contract | APPROVED |
+| 2G the contract is required | `run_selected.sh` preflights; `--require-test window_table_contract` on every canonical gate | — | registered, executed, passed in each gate log | gate logs below | APPROVED |
+| 2H saved round-ec evidence | the 2 idle traces consistent | the 9 traces with edits | refused: no `drawn`; derivation supports 304 of 304 presentation times | `h-revalidate-ec.*`, `h-ec-table.*` (frozen bench) | APPROVED |
+
+**Package 3 — the publish test's identity** (reviewer 3; reviewed `cbf5838`, re-reviewed `6eb7e9b`: CHANGES
+REQUIRED, then APPROVED)
+
+| Requirement | Valid control | Single counterexample | Expected specific result | Evidence | Reviewer |
+|---|---|---|---|---|---|
+| An unrelated lineage's generation 0 is not the held one | the held scene's own premature release is seen | the earlier lineage's generation 0 destroyed after the next observer, forced with the reclaimer gate | generation-only check: "destroyed"; identity check: not; one owner kept | "publish: a held generation's destruction is told by its lineage…"; mutant "generation only" caught (`p3-mutants-2.log`) | APPROVED |
+| The ownership assertion stays effective | barrier cases pass | a build that gives up its generation before it runs | `use_count() == 1` and `!destroyed.of` fail in both barrier cases | `p3-mutants-3.log` | APPROVED |
+| A reaper still holding the scene cannot mask a lost owner | free reaper: use count 1 | reaper stalled from the last commit (reviewer's probe) | the settle wait fails after 10 s; use count 2 | reviewer 3's probe | APPROVED |
+| Cleanup is safe | — | a callback copied by the reclaimer runs after clearing | the record and the gate are shared by value | code; ASan runs below | APPROVED |
+
+**Package 4 — the GPU deadline** (reviewer 4; reviewed `a09a6ea`, re-reviewed `bd4c479`: CHANGES REQUIRED,
+then APPROVED. `c2bdf91`, the reviewer's own range correction 90,000 → 97,000 in gpu-handoff.md, was
+read by reviewer 5)
+
+| Requirement | Valid control | Single counterexample | Expected specific result | Evidence | Reviewer |
+|---|---|---|---|---|---|
+| 4A/4B diagnostics and the serial control | the case alone with the diagnostics | — | first loop at its 4000-frame cap (5.7 s), all 24 visible keys fading; dissolve loop 4524 frames; edit 6 | `p4-control-serial-1.log` | APPROVED |
+| 4C/4D the adverse ordering, controlled | the same case with the clock moving | one visible key's chunk job held past the single clock step | held clock: STALLED, fading 1, no CPU work, GPU work pending; moving: idle in 10 frames, fresh pixels | the new case; `p4-repro-and-fixed-1.log` | APPROVED |
+| A uniform slowdown is not the trigger | — | background QoS, round-ec and corrected | both pass (153 s and 173 s), normal counts | `p4-background-qos-1.log` | APPROVED |
+| 4E/4F the fix keeps every assertion | all 5 constrained cases serially | — | pass; pixel, whole-swap, dissolve and idle assertions unchanged; no tolerance moved | `p4-constrained-serial.log` | APPROVED |
+| 4G acceptance wording | — | — | demonstrated defect, deduced attribution, the alternative named, contention run NOT RUN | `docs/app/gpu-handoff.md` §5 | APPROVED |
+
+### Findings and their corrections
+
+- **Package 1, review:** P2: the reader accepted a frame that drew and presented a change without its
+  `presented` (a lost completion read as unfinished work): now a contradiction. P3: the recommit count was
+  renamed `present_after_recommit` (the trace does not name chunks); the tracer bound's reason restated;
+  the test clocks strictly increase; the first-attempt visibility limit after a resize documented.
+- **Package 2, review:** P2: a traced case whose run.txt said `trace=off` skipped validation (a cut,
+  contradictory trace tabulated as success): the plan now records each case's trace mode. P3: the
+  aggregator is resolved once and the file run is the file hashed; an unfinished campaign is reported
+  before lost directories; the plan's selection is checked first; results order; tab-separated cases
+  (paths with spaces); an invalid selector refused; `env -u ANNO_VIEW_TRACE` for trace-off runs.
+- **Package 3, review:** P2: the picture's reaper could still own a held generation at the check, so a
+  build that let go early could pass: both barrier cases now wait for the reaper and the reclaimer and
+  require one owner. P3: the wording now says the defect can produce the failure, and the item stays open
+  until the full ASan gate (below).
+- **Package 4, review:** P2: the doc presented a deduction as an explanation; it now separates the
+  demonstrated defect from the attribution and names the alternative it does not exclude. P3: the first
+  loop's report is filled in, its watchdog message carries it, the watchdog is 400 s per loop (within
+  CTest's 1800 s).
+- **My own errors, kept:**
+  - A package-3 mutant (`p3-identity-by-generation`, first form) locked the record's mutex twice and hung.
+    I sampled it, stopped only that process (mine), and recorded it INVALID; `p3-mutants-1.log` line 36's
+    "CAUGHT (exit -15)" is that killed run, corrected at line 41. The corrected mutant is `p3-mutants-2.log`.
+  - The contract's `swapped` fault first failed for an earlier reason (the aggregate caught it before the
+    cross-check); it was changed to keep the trace consistent so it reaches the cross-check.
+  - The ASan focused log's `build rc=` is empty: the shell was zsh, which has no `PIPESTATUS`. The rebuild
+    is shown by ninja's lines, the objects' times and the new case names in the binary.
+  - The first 2H table and derivation used a bench_picture built before the last reviewed source; they are
+    kept as `*.superseded-76cc92d5.*` and regenerated with the frozen release binary (same result).
+
+### Gates (canonical `run_selected.py`, final source `c2bdf91`; first failures kept)
+
+**Binaries (5B, 5C).** Mutants ran only in an isolated copy with its own build (`cache/ed-mut/`); this
+tree's sources were never mutated. After the freeze, every source the round changed was touched (mtime
+only) and rebuilt, and each object was recompiled (`cache/ed-runs/rebuild-forced-c2bdf91.log`: 12 in dev,
+8 in ASan, 6 in release; 0 warnings), each named by ninja's explain lines as older than its touched
+input. Every binary's hash below equals the one each gate log records as tested (its `binaries`). (A
+`ninja -n` dry run proves nothing here: it stops after CMake's regeneration step.) The ASan
+`bench_picture` (from 31 Oct) was rebuilt too
+(`rebuild-asan-bench_picture.log`). sha256, first 16 hex:
+- dev: `anno_app_tests` `d4054bbcd7dd1c87`, `anno_app_alloc_tests` `d443f9844eb1919a`,
+  `anno_render_gpu_tests` `4afc0c09c7682a1f`, `anno1503` `3de54d299f34a73e`, `bench_picture`
+  `325d81b23af4fb45`;
+- ASan: `anno_app_tests` `365ef28a6aaa53d3`, `anno_app_alloc_tests` `55adf21c0a85648f`, `bench_picture`
+  `690b9755ebaae883`;
+- release, frozen: `anno1503` `c0eede236a01a02f`, `bench_picture` `b817833d34d3b73d`.
+
+Every gate also ran its preflights (test names, the verdict reader's 24 contracts) and the required
+contracts `picture_matrix_contract` and `window_table_contract`, each registered, executed and passed.
+The gates ran one at a time.
+
+| Gate | Command (all: `python3 -I <main>/tools/test/run_selected.py --source-root <W4> --require-test window_table_contract --timeout 1800`) | Result |
+|---|---|---|
+| Preflight | `--preflight-only` | PASS |
+| G0 focused (dev) | `--build-dir build/dev --require-test run_selected_contract --select '^anno_app_tests\.(window trace\|picture trace\|publish\|accounting)\|^anno_render_gpu_tests\.picture GPU, constrained' --jobs 4` | PASS: selected 44, executed 44, failed 0, empty 0, skipped 0, incomplete 0 (`cache/gates/ed-g0-focused-dev.log`) |
+| G1 app (dev) | `--build-dir build/dev --require-test run_selected_contract --select '^anno_app_tests\.\|^anno_app_alloc_tests\.\|^anno1503_usage' --jobs 8` | PASS: selected 155, executed 153, failed 0, empty 0, skipped 2 (opt-in: the two probe cases), incomplete 0 (`ed-g1-app-dev.log`) |
+| G2 GPU (dev), run 1 | `--build-dir build/dev --select '^anno_render_gpu_tests\.(picture GPU\|play)' --jobs 1` | FAIL (exit 6), kept: selected 14, executed 13, failed 0, skipped 1 GPU (`play: GPU matches the CPU path on one scene`: "no RTX 4090 among: Apple M5 Max"), outside the declared policy (`ed-g2-gpu-dev.log`). A re-read cannot change a recorded status |
+| G2 GPU (dev), run 2 | the same, with `--allow-skip gpu` (the RTX 4090 case is a target-host gate, NOT RUN here) | PASS: selected 14, executed 13, failed 0, empty 0, skipped 1 GPU, incomplete 0 (`ed-g2-gpu-dev-run2.log`). Both changed GPU cases passed |
+| G3 ASan, run 1 and run 2 | `--build-dir build/asan --select '^anno_app_tests\.(window trace\|picture trace\|picture evidence\|picture readiness\|play follow\|scene picture\|credit\|ownership\|publish\|accounting)' --jobs 4` | PASS twice: selected 70, executed 70, failed 0, empty 0, skipped 0, incomplete 0, no sanitizer line (`ed-g3-asan-run1.log`, `-run2.log`). Both barrier cases passed in each run |
+| Not run under ASan | `anno_app_alloc_tests` (rebuilt and hashed, not selected) | G3 is the round-ec ASan selection plus `accounting`, not every ASan test |
+| Focused ASan of package 3 | the two suites, 5 times, by hand | 17 of 17 each time (`cache/ed-runs/p3-asan-focused.log`) |
+| Format | `clang-format 23.1.3 --dry-run --Werror` on the changed C++ files | PASS (applied before each commit) |
+| Contracts | `window_table_test.sh`, `run_selected_test.sh` (in G0–G3 as required contracts and the launcher's contract) | PASS |
+| NOT RE-RUN, with reason | `anno_render_tests`, the heavy label, the Metal timestamp cases | the round changed no source under `src/render/src` or `src/render/include`, and no CPU render test: only `src/render/tests/picture_gpu_test.cpp`, which is in G2 |
+| NOT RUN | Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` (`tools/check_unix_warnings.sh`); RTX 4090 and Radeon iGPU; a genuine 3840 × 2160 window | no such host or display here; commands as in round ec |
+
+### Integration review
+
+Reviewer 5 reviewed `a1fd6ea..2671d15` (the code at `c2bdf91` and this report). It re-read every gate log
+with `ctest_verdict.py --inventory`, matched the binaries' hashes and the source identities, and
+re-aggregated the canary traces with the frozen bench_picture: the tables came out byte-identical. It
+checked the G2 disposition against docs/testing/README.md and the hard rules. Verdict: CHANGES REQUIRED,
+one P2: the gameplay handoff said a turn without a refusal note accepted its commands, which ignores the
+256-note bound and the missing command index. Fixed in this commit, together with its P3s:
+- the dry-run claim replaced by the explain lines and the hash match;
+- the host-condition sentence made a deduction;
+- "full" no longer used for the G2 and G3 selections;
+- `c2bdf91`'s review coverage stated;
+- the reviewers' identity;
+- the contract note below.
+
+`window_table_test.sh` checks the aggregator's basename (`bench_picture`), so it runs on the build trees'
+binaries, not on the renamed frozen copy. A copy of the frozen binary under that name passes all its
+checks (reviewer 5).
+
+### The real window (5F)
+
+The canary at the frozen release binaries, and a trace off/on pair, are in docs/perf/README.md, "Round ed:
+the canary at the final source":
+- every trace is complete and consistent with `drawn`; every frame presented; 121 commands applied, 0
+  rejected; 121 edits presented, none unfinished;
+- the table labels it "a requested subset, 2 of 13 planned cases; not the full matrix";
+- the trace's overhead is again below the window's 0.1 ms resolution;
+- the window's busy time is higher than in round ec. Round ec's own binary shows the same today, and the
+  trace-off viewer path is unchanged. That is consistent with a host condition and not with this round's
+  change (one run of each; a deduction).
+
+### Historical measurements
+
+- **Round ec's window matrix:** its traces are refused by the corrected aggregate, which needs `drawn`.
+  Its presentation times are supported by a derivation from the raw files: 304 of 304, each presented by
+  its own `gpu_ready` frame, which presented, with one view from the commit on. Its latencies, cadence,
+  RSS and overhead rows stand for their own conditions. They are not comparable with today's host.
+- **Round eb's corrected accounting and round ec's gate tables:** unchanged by this round.
+- **Round ec's two intermittent failures:** kept as recorded. They are now explained by demonstrated test
+  defects, and each attribution is a deduction (gpu-handoff.md §5).
+
+### Preserved failures and their dispositions
+
+| Failure | Disposition |
+|---|---|
+| Round ec: `picture GPU, constrained: with stand-ins and dissolves …`, 2 of 2 at its 120 s deadline (`cache/ec-runs/e-affected-dev*.log`) | Test clock defect demonstrated; attribution by deduction; fixed; passes serially and in G2. NOT RUN: the corrected case under `-j 6`-like contention |
+| Round ec: `publish: one, two and four workers each hold a version ahead at a barrier …`, once under ASan (`e-asan.log`) | Test identity defect demonstrated; attribution by deduction; fixed; passes in G1, both G3 runs and 5 focused ASan runs. Its acceptance, passing repeatedly in an ASan gate, is met by G3 run 1 and run 2 (the same selection as round ec's failing ASan gate, plus `accounting`) |
+| Round ed: G2 run 1, exit 6, the RTX 4090 case's GPU skip outside policy | Kept; superseded by run 2 with `--allow-skip gpu` declared, since that case is a target-host gate |
+| Round ed: my invalid mutant (self-deadlock) | Kept in `p3-mutants-1.log`, marked INVALID; corrected in `p3-mutants-2.log` |
+| Round eb: the two Metal timestamp cases (`river flow on the GPU: …`, `every pass of a frame is timed …`) | Still open, not re-run (no change to that code). Owner: the GPU timing unit. Acceptance: passing on Metal, or a recorded owner decision |
+
+### Local acceptance scope
+
+- **Ready for review on this Mac, at `c2bdf91`:** the presentation attribution, the evidence readers,
+  the two test corrections and the gates above.
+- **Not claimed:** target-platform acceptance, original visual parity (OQ-525 unchanged, no tolerance or
+  rounding touched), late-game or multiplayer performance, display or GPU-completion latency.
+
+### External follow-ups
+
+| Follow-up | Owner | Acceptance condition |
+|---|---|---|
+| Windows MSVC build and the app/render gates | the target-host run | `cmake --preset msvc`; `run_selected.py --config Release --require-test window_table_contract` on `anno_app(_alloc)?_tests` and `anno_render(_gpu)?_tests`, PASS with only declared skips |
+| Linux GCC 13 / Clang 18 `-Werror` | the target-host run | `tools/check_unix_warnings.sh` exits 0, with the viewer and GPU code on and the app without `ANNO_VIEWER_GPU` |
+| RTX 4090 and Radeon iGPU | the target-host run | the G2 selection with no GPU skip; `play: GPU matches the CPU path on one scene` executed and passed |
+| A genuine 3840 × 2160 window and the target hosts' window matrix | the target-host run | `window_matrix.sh … 3840x2160` and `window_table.py <bench> <dir>` report "the full matrix, 13 of 13", exit 0, with the actual drawable 3840 × 2160 |
+| The corrected stand-ins case under contention | the next GPU unit | it passes in a full gate at `-j 6` beside CPU-heavy cases; a failure reports STALLED or WATCHDOG with its demand |
+| By-reference observers matched by pointer: "ownership: a frame-held generation outlives the bridge …", "publish: a frame-held intermediate generation and shutdown with work in flight …", "picture GPU: a frame's generation stays alive across a commit …", "picture GPU: the wave simulation's background preparation holds the frame's generation …" (reviewer 3's residual; a failure-path use after scope and address reuse are possible, not observed) | the bridge's next unit | their records shared by value and matched by lineage and generation (`reclaim_identity.hpp`), as the barrier cases now are |
+| The two Metal timestamp cases; OQ-525 | GPU timing unit; the owner | as above |
+| The refusal interface: a loss counter (or no silent drop) and the refused command's index in `RejectionNote` | gameplay input (W4.4) | a caller that falls behind is told; each refusal names its command; tests for both |
+| Representative large-city, complex-economy and multiplayer performance | the performance unit | PLAN §0.3 targets measured on target hardware with a late-game workload |
+
+### Gameplay handoff
+
+Gameplay can use these reviewed interfaces:
+- `PlayRunner::post_command` (and `set_script`): commands enter at the next turn, in queue order.
+- Acceptance: only the sim's `CommandRejected` events (`take_rejections`) say whether a command was
+  refused. Never infer acceptance from submission, or from a picture update. Two limits of the current
+  interface (`play.hpp`), which gameplay must respect:
+  - the runner keeps only the newest 256 refusal notes (`kRejectionKeep`) and drops older ones without a
+    counter, so "no refusal for this turn" means "accepted" only for a caller that takes the notes at
+    least every 256 refusals;
+  - a note names its turn and reason, not the command, so in a turn of several commands it does not say
+    which one was refused (the trace records such a turn as `ambiguous`).
+  Both are listed below as a follow-up for the interface's owner.
+- The building mailbox: `take_building_batches` at a frame boundary, with a collapsed resync when it
+  overflows.
+- Monotonic publication: a committed island version never goes back, and a later commit supersedes an
+  earlier one.
+
+Gameplay must not wait for any of this, in the sim or in input handling: object builds, chunk rebuilds,
+GPU uploads, dissolves, reclamation, or a presentation. The picture follows asynchronously. The trace's
+`presented` is a measurement of the window, not a signal to act on.
+
+### Next smallest unit
+
+The external follow-ups above, starting with the target hosts' gates and window matrix. No rendering
+optimization, gameplay input or map work is attached to this round.
+
+No merge, push, rebase, prune or reset. The map is unchanged and `game/` was not touched. The coordinator
+protocol, journals, admission policy, simulation rules, state versions, goldens and OQ-525 tolerances were
+not touched. The owner's keep-awake process was left alone. No job of this round is left running.
+
+## Round ee: W4.4 the developer building tool in the play window, through the sim's command path (review candidate)
+
+- **Worktree:** `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `3483d66` (round ed's report).
+- **Code head:** `093559c` (`src/` final: the integration review's fixes). The commits after it are
+  this report's; nothing under `src/` or `tools/` changes after `093559c`.
+- **Evidence:** `cache/ee-runs/` (ignored): acceptance tables `acceptance-{A..E}.md`, review records
+  `reviews/{A..E}.md`, mutant logs `*-mutants-*.log`, the live sessions `e3/`, the gates `g*-*.log`.
+- **Host:** Apple M5 Max, 18 cores, 48 GiB, macOS 27.0.1; "Apple M5 Max (Metal)". The MAP-2 executor ran
+  `anno_sim_tests` and its own admission coordinator (port 47631) throughout; load 4 to 7. It was left alone.
+- **Admission:** on, unchanged. The gates ran with the coordinator up; only cases that reserve memory
+  log it (G4's render cases: `coordinator build=0919b5444a8c50cd compat=3`); the app and input
+  cases make no reservation (as before this round).
+- **Keep-awake:** one `caffeinate` of this round (pid 48030), stopped at the end; the owner's (pid 39677)
+  was left alone.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged. `game/` untouched.
+- **Gate runner:** the canonical `run_selected.py` of the main checkout, `--source-root` and
+  `--build-dir` of this worktree, `--require-test window_table_contract --require-test
+  picture_matrix_contract`.
+
+**Commits** (`3483d66..e4c726b`):
+- **A (outcomes):** `c03754f` receipts and authoritative outcomes, bounded with explicit loss; `b7af0a8` review notes.
+- **B (pointer and picking):** `db11bb9` the pick and the tool in the window; `b16dd5f` independent expected pixels; `db152df` review fixes (placement rounding, whole-pixel pointers).
+- **C (preview and feedback):** `5d2093e`; review fixes in `4a2cc5e` and `e4c726b`.
+- **D (robustness, mod data):** `4a2cc5e`; review fixes in `e4c726b`.
+- **E:** E1 `7d5cf21` (+ `e4c726b`); E3/E4 `4a2cc5e` (+ `e4c726b`); `5b77dc0` test names CTest can select;
+  `269f795` an ASan finding in package A's test (assign from its own element); `093559c` the
+  integration review's fixes (a held Esc, another player's city).
+  `4a2cc5e` holds four parts in one commit because they edit the same files; its message lists them.
+
+### What the window does now (developer tool, not UI.2)
+
+- **B** toggles the tool; **N/P** cycle the buildable types (registry data: every list-backed and road
+  type, any id width); **T** rotates; **X** demolish mode; **Esc** cancels; the left button places,
+  a left drag places a road line (one command, never split; over the wire limit it is refused before
+  the path is made); the right button pans; the wheel zooms. Motion never submits.
+- The pick: drawable pixel → the frame that was drawn (its screen map, zoom level, scene generation) →
+  the frontmost ground tile with heights → the city's island only. Island placement rounding, high-DPI,
+  continuous zoom and derived levels are covered.
+- Every command goes through `PlayRunner::post_command` (a receipt); the sim decides; the title shows the
+  receipt's own outcome (Queued / Applied, n of m records / Refused with the sim's reason / Lost), never
+  an earlier command's; the runner's last refusal names its command.
+- The preview is the type's own sprite through the renderer's `place_prepared` (GPU overlay and CPU blend
+  agree). What the window knows comes from published data only (the picture's buildings, the snapshot's
+  money, goods and waiver); a refusal is shown only with that basis, the rest is named unchecked. The
+  sim's placement rule is still the stand-in of OQ-052 (no terrain check): a building on open water inside
+  the island's rectangle is applied and drawn there, and the line says so.
+- When the picture lags, the line says "not drawn yet: …" (E4) until the change is committed.
+
+### Package acceptance and reviews
+
+| Package | Acceptance (written before code) | Review | Mutants (isolated copy) |
+|---|---|---|---|
+| A outcomes | `acceptance-A.md` | APPROVED (`reviews/A.md`) | 4 caught (`a-mutants-1.log`) |
+| B pointer and picking | `acceptance-B.md` | CHANGES REQUIRED (2 P2: odd-origin half pixel, no elevation test through the adapter; P3 fractional pointer) → fixed → APPROVED | 8 distinct, all caught in the end (`b-mutants-1..4.log`, `cd-mutants-1.log`): the resample offset survived twice until the expected pixels were derived without the frame map (`b16dd5f`); the density mutant was invalid once, then caught |
+| C preview and feedback | `acceptance-C.md` | CHANGES REQUIRED (2 P2: earlier refusal in the title, GPU overlay never ran; 5 P3) → fixed → re-review CHANGES REQUIRED (P2: the receipt fix's evidence was false; P3 read order) → fixed (session-5) | 3 (the waiver survived once, until the test used a priced type) + 5 for the review fixes, all caught |
+| D robustness and mod data | `acceptance-D.md` | CHANGES REQUIRED (P2: "every original type" row untested; 5 P3) → fixed or recorded (`reviews/D.md`) | 5 caught |
+| E1 observers | — | APPROVED (2 P3 fixed) | — |
+| E3 session and replay | `acceptance-E.md` | CHANGES REQUIRED (2 P2: the replay compared no outcomes; no tests for the script, the filter, the replay) → fixed (`reviews/E.md`) | 3 caught |
+| E4 picture barrier | `acceptance-E.md` | APPROVED (P3s fixed or recorded) | 2 caught (one invalid at first: an unused parameter under `-Werror`; rewritten, caught) |
+
+### Measurements (debug build, Apple M5 Max; `dev_tool_mod_test.cpp`)
+
+Per pointer move (pick, `DevTool::handle`, `make_preview`, `preview_note`, `check`, `feedback_line`):
+flat in published buildings, 4 to 100 004. The pick's change, one build before and after
+(`d6-pick-before-after.log`, which also keeps an invalid run: not rebuilt): 15.2 to 17.3 µs at one
+island, 212 to 18.8 µs at 64 islands. In G2 (dev, under load): 20.0 µs at one island, 21.6 µs at 64,
+index rebuild 0.28 ms at 100 004 buildings (once per published change; 100 000 moves rebuild it
+once). The window's follow step with every picture build held: slowest 0.25 ms in G2, 0.36 ms in E2
+run 2, 0.56 and 1.22 ms under ASan. Recording session hashes costs a full `state_hash` (about 0.17 s
+on lan5, debug) on the turns it records. Not measured: large-city, complex-economy, multiplayer.
+
+### The live window (E3, E4)
+
+- Script `cache/ee-runs/e3/session-land.script`; cited run `session-5` (binary sha256 in
+  `session-5.rev`): place 1×1, a click that sends nothing (title: the tool's reason, no receipt), rotate
+  and place 4×3 as 3×4, Occupied, a road drag of 9 tiles (one command, 9 records, Unsupported: roads are
+  tile objects the sim does not build yet), demolish, pan, wheel in and out, place again at another zoom
+  level. Replay `replay-5.log`: 14 checkpoints and 6 outcomes agree.
+- Controls: a command moved by one tile fails at its turn (`replay-2-control.log`; the reviewer
+  repeated it on session-4); `dev_script_test.cpp` covers a moved command (hash) and a refused command
+  of another type (outcome).
+- Earlier runs kept: session-1 failed (the desktop's real pointer reached the window: the script now
+  takes only its own device's input); session-2 placed on open sea (OQ-052); sessions 3/4 on land.
+- Screenshots (`session-4/crops/`, inspected): the turned 4×3 is drawn on the coast; the 1×1 cannot be
+  told from the trees at group 2 (not cited); `placed.png` shows one chunk not yet arrived at the left
+  edge (asynchronous chunks). The capture is the client area only: the title (the refusal, the
+  outcome) is not in it, and the preview is not visible at group 2. The refusal and outcome evidence
+  is the title in `script.log` and the outcomes; the preview's is the GPU/CPU test.
+- The canaries log 0.17 to 0.31 s window-thread stalls at each screenshot: the script's capture runs
+  `screencapture` on the window thread (a test-harness cost, not the play path).
+- E4 (`dev_barrier_test.cpp`): every picture build held at a gate; turns, outcomes and input go on;
+  the line says "not drawn yet: 1 island of the picture is not committed"; the open gate commits it.
+
+### Gates (canonical `run_selected.py`; first failures kept)
+
+All: `python3 -I <main>/tools/test/run_selected.py --source-root <W4> --require-test window_table_contract
+--require-test picture_matrix_contract`, `ANNO_TEST_THREADS=4`, admission on (the MAP-2 executor's
+coordinator and sim tests ran throughout). sha256 (first 16 hex) as each gate log records the binaries.
+
+| Gate | Selection, jobs | Source | Result |
+|---|---|---|---|
+| G1 contracts | the five contracts, `-j 2` | `e4c726b` | PASS 5/5 (`g1-contracts.log`) |
+| G2 affected, dev | `anno_app_tests`, `_alloc_`, `_input_`, `anno_render_gpu_tests.(picture GPU\|play\|dev preview)`, contracts; `-j 6`, `--allow-skip gpu` | `e4c726b`; app `431a3bc3…`, alloc `a42914c9…`, input `b7d4150b…`, GPU `71fabc8b…`, `anno1503` `e5ef1d57…` | PASS: selected 205, executed 202, failed 0, skipped 3 (2 opt-in probes, 1 GPU: no RTX 4090), incomplete 0 (`g2-affected-dev.log`). E2: the stand-ins case passed in 58.4 s here, beside the CPU-heavy cases and MAP-2's sim tests |
+| G3 ASan, run 1 | app, alloc, input, contracts; `-j 4` | `e4c726b`; app `ef857614…` | FAIL, kept (`g3-asan.log`): an ASan heap-use-after-free in package A's test `command outcomes: a command with no wire form …` (`assign(4096, placements.front())`, the test's own bug) and `play: islands are the ones the sim placed` timing out at 2 400 s (a corpus over every scenario: 800 to 960 s in dev builds since round ec; not changed this round) |
+| G3 ASan, run 2 | as run 1, the corpus case excluded (declared); `-j 4` | `269f795`; app `eb16946b…`, alloc `9251b57c…`, input `0f0c965b…` | PASS: selected 188, executed 186, failed 0, skipped 2 (opt-in), sanitizer lines 0 (`g3-asan-run2.log`) |
+| G3b ASan, the corpus case alone | that case and the two contracts; `-j 1`, timeout 7 200 s, beside G4 | `269f795` | PASS: the case passed in 2 612 s (slow under ASan, not stalled), the contracts too; sanitizer lines 0 (`g3b-asan-corpus.log`) |
+| G4 render and sim, dev | `anno_render_tests`, `anno_sim_tests`, contracts; heavy label excluded; `-j 4`, beside G3b | `269f795`; render `8b4b9b50…`, sim `43ba6f18…` | PASS: selected 839, executed 838, failed 0, skipped 1 (opt-in) (`g4-render-sim-dev.log`) |
+| Live canary | `session-land.script` in the real window, then `--replay-hashes` | `269f795`, clean tree; `anno1503` `e5ef1d57…` | PASS: every step; 14 checkpoints and 6 outcomes agree (`e3/session-6-canary`, `replay-6-canary.log`) |
+| G5 input, dev and ASan (after the integration fixes) | `anno_app_input_tests`, contracts; `-j 6` | `093559c` | PASS both: 31/31 executed, 0 failed, 0 sanitizer lines (`g5-input-dev.log`, `g5-input-asan.log`) |
+| Live canary (final) | as above | `093559c`, clean tree; `anno1503` `30762ed3…` | PASS: every step; 13 checkpoints and 6 outcomes agree (`e3/session-7-canary`, `replay-7-canary.log`) |
+
+Not run here: the heavy label of `anno_render_tests`/`anno_sim_tests`, `anno_formats_tests` (no format
+changed), the GPU suite beyond G2's selection, the release build. The dev `anno_app_tests` with the
+`269f795` test fix ran only under ASan (G3 run 2); G2's dev binary predates it.
+
+### Preserved failures
+
+- E2 gate run 1: preflight FAIL (four test names with semicolons) → `5b77dc0`.
+- E2 gate run 2 (`e2-affected-dev-run2.log`, binaries of `5b77dc0`): 197 executed, 0 failed; verdict
+  FAIL for two workflow errors of mine: the RTX 4090 skip was not declared (`--allow-skip gpu`), and I
+  edited sources while it ran. The stand-ins case passed there in 58.6 s at `-j 6` beside the
+  CPU-heavy cases and MAP-2's sim tests.
+- An app-test subset I started with a broad `play: *` filter ran past its 25-minute alarm without a
+  summary: incomplete, not a result.
+- G3 ASan run 1, as in the table: package A's test read an element `assign` had freed (fixed in
+  `269f795`); the scenario corpus timed out at 2 400 s under ASan and passed alone in 2 612 s.
+- Live sessions 1 to 4 as above.
+
+### Open and distinct
+
+- Windows MSVC and Linux GCC 13 / Clang 18 `-Werror`: NOT_RUN (no such host or compilers here).
+- RTX 4090 and Radeon: NOT_RUN (the play-GPU case is a declared skip here).
+- A genuine 3840 × 2160 window: NOT_RUN.
+- The two Metal timestamp failures; OQ-525: unchanged.
+- The continuous-zoom (resampled) preview overlay: GPU path not compared with a CPU reference.
+- OQ-052 (the placement rule's terrain check), OQ-550 (a command-built building's height): open.
+- Large-city, complex-economy and multiplayer performance: open.
+
+### Integration review (independent, read-only), of `3483d66..40bbee2`: CHANGES REQUIRED → fixed → re-review of `093559c`/`a2c77f1` APPROVED
+
+| Finding | Severity | Disposition |
+|---|---|---|
+| A held Esc closed the window: repeats fell through to the window's quit | P2 | FIXED `093559c`: repeats of the tool's keys are the tool's; test; mutant `i-held-esc-to-window-2` caught |
+| TASKS.md D's "non-default player/city" had no row or test | P2 | FIXED `093559c`: a test with issuer 3 and city (7, 2) on another island; row added to `acceptance-D.md` |
+| Measured figures not in retained evidence | P3 | FIXED: figures from `d6-pick-before-after.log` and the gate logs |
+| Screenshot stalls unexplained | P3 | FIXED: attributed (above) |
+| A session with an Unencodable window command does not replay as equal | P3 | DOCUMENTED (game-shell.md): a false difference, never a false agreement |
+| Screenshots do not show the title or the preview | P3 | FIXED: the wording above |
+| The admission claim | P3 | FIXED: the wording above |
+
+The re-review verified each disposition, re-ran the final canary's replay itself (13 checkpoints and 6
+outcomes agree) and found nothing new. Confirmed by the reviewer: every gate count, source head and binary hash; three replays it ran
+itself (unchanged: agree; an edited outcome and a moved refusal: differ); the mutant logs;
+clang-format on 52 files; no sim rule change; the title's read order; the follow step's ordering.
+
+### Review records
+
+`cache/ee-runs/reviews/A.md` … `E.md` hold every finding with its disposition; the acceptance tables
+are `cache/ee-runs/acceptance-A.md` … `-E.md`. Reviewers were independent, read-only subagents of this
+session, briefed with the code and the requirement, not the conclusion. The final integration review
+follows this report (below).
+
+`docs/PLAN.md` is not changed: the plan's status is the orchestrator's (this is a developer gameplay
+milestone; the final original-style UI remains UI.2).
+
+### Next smallest unit
+
+UI.2 builds the original-style interface on these interfaces (`post_command` receipts, `outcome`,
+`PlacementKnowledge`, `make_preview`, `drawn_note`). The placement rule's terrain check (OQ-052) belongs to
+the sim's placement unit. No merge, push, rebase, prune or reset.
+
+
 ## Round du — Mac readiness and W4 continuation decision — 2026-10-30 — status: CONTINUATION APPROVED; host/W4 not accepted
 
 - **Inspected:** W4 report `e7934ee`, code `a8a8e7a`; host `abc1f8c`; source diffs, game-shell proposal, renderer reservation formula, viewer bindings, and selected logs under main's `cache/mac-recovery-2026-10-30/logs/`. No test suite rerun by this review, no branch merge or push. Main before this documentation change: `632229e`.
@@ -8110,6 +9992,1233 @@ The owner requires responsive, memory-bounded rendering in large multiplayer lat
 
 Round dv on TASKS releases R1–R6 CPU corrections only. The detailed executor packet in `cache/orch-dv/executor-packet.txt` contains reading order, smaller subtasks, regressions, dense-scene workload requirements and the Mac test profile. Stop for CPU review before viewer/GPU integration. Real presented-frame and simulation-contention acceptance follows through the viewer at PLAN §0.3 targets. No merge or push.
 
+## MAP.2 progress — measurements — 2026-10-31
+
+Remeasured the nine endless scenarios and the NORD/DSCHUNGEL 256² templates.
+Evidence is `docs/sim/map2-measured.json` and `docs/sim/fixed-map.md` §8.
+00 is 20 islands at 39.4% rectangle share, not 16 islands at 19%. The Nord
+folder has 13 numbered `.scp` files; 14 is the `*.scp` count including the
+dummy. No candidate-pool quintuple is within ±5% of its mean land. The only
+nord quintuple within ±10% is worst 79 permille. The closest dschungel
+quintuple is worst 52 permille. Ten 256² islands conflict with keeping both
+the 03 rectangle share and the proportional filler counts. Candidates are not
+in this commit.
+
+## MAP.2 progress — profile — 2026-10-31
+
+`tools/map2_profile.py` checks the five-player profile without changing
+`fixed_map.py` dump, check, or fairness. Profile id `map2-proposed-v1`.
+Limits 100 and 50 permille are proposals (OQ-515..OQ-520). `map2_selftest.py`
+passes, including the lan5 digest `c6af83f95104cd4f` and 1476 bytes.
+Negative controls are recorded in the final MAP.2 report.
+
+## MAP.2 progress — candidates — 2026-10-31
+
+`tools/map2_layout.py` wrote `data/maps/candidates/lan5-{a,b,c}.txt`.
+`data/maps/lan5.txt` is still sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476 bytes.
+A second run into a scratch directory matched the committed bytes.
+None of the three is a full pass of `map2-proposed-v1`. Structural rules
+pass. Home land fails at 79 permille and paired southern land at 52.
+Pair and centre distance pass ±5%. Rival distance and per-climate reach do
+not. Table in `docs/sim/fixed-map.md` §10.
+
+## MAP.2 progress — previews — 2026-10-31
+
+`tools/map2_preview.py` writes labelled top-down and isometric PNGs. They
+stay in the ignored cache. The six pictures were inspected; notes are in
+§10 and in the final report.
+
+## MAP.2 — candidate review — 2026-10-31 — status: QUESTION
+
+Three original-like five-player layouts are ready for selection. None is a
+full pass of profile `map2-proposed-v1`. The failed gates are reported below
+and were not widened. `data/maps/lan5.txt` is unchanged. This lane did not
+merge, push, or start an engine or GPU build.
+
+### Files
+
+| Path | Role |
+|---|---|
+| `tools/map2_shape.py` | Land masks, half-plane, integer tolerances |
+| `tools/map2_measure.py` | Remeasure of the nine endless maps and the 256² pools |
+| `docs/sim/map2-measured.json` | Counts and hashes from that run, no masks |
+| `tools/map2_profile.py` | Profile `map2-proposed-v1` only; generic check is untouched |
+| `tools/map2_selftest.py` | Synthetic checks, plus the lan5 dump |
+| `tools/map2_layout.py` | Offline generator; does not write `lan5.txt` |
+| `tools/map2_preview.py` | Labelled top-down and isometric PNGs |
+| `data/maps/candidates/lan5-a.txt` | 2442 bytes, sha256 `0ac467ca4f2f2beaec91362ed61482120c99fd8de952d8f0d28b540766abc846` |
+| `data/maps/candidates/lan5-b.txt` | 2442 bytes, sha256 `e391dbda37de3993040b8bdea3303dfaa71fb6f33e20cf49d655d57cfe084772` |
+| `data/maps/candidates/lan5-c.txt` | 3160 bytes, sha256 `bc9f70791cad62da2350e490841ee7bc807265d59d00e7e6c0dca15460086e02` |
+| `docs/sim/fixed-map.md` §8–§10 | Measurements, profile, comparison |
+| `docs/open-questions.md` OQ-515..OQ-520 | Open. OQ-521..OQ-524 unused |
+
+`data/maps/lan5.txt` remains sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476
+bytes. Dump digest `c6af83f95104cd4f`, 21 islands.
+
+### Commands and logs
+
+Worktree `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2`,
+branch `task/MAP-2-original-like`. Game files read from
+`/Users/dom/Dev/anno1503-worktrees/anno1503/game/app`. Logs under
+`cache/map2-parallel-2026-10-31/` (gitignored).
+
+- `python3 -I tools/map2_measure.py --game-dir <game/app> --out docs/sim/map2-measured.json`
+- `python3 -I tools/map2_layout.py --game-dir <game/app> --out-dir data/maps/candidates`
+- The same generator into `cache/map2-parallel-2026-10-31/scratch-maps` matched all three files byte for byte (`layout-repro-final.txt`). Tried lattice cells: A 364, B 483, C 2032. Large-island problems 0. Missed filler 0.
+- `python3 -I tools/map2_profile.py validate data/maps/candidates/lan5-{a,b,c}.txt --game-dir <game/app>` exits 1. Reports also in `preview-lan5-*.txt`.
+- `python3 -I tools/map2_selftest.py`: 47 checks, 0 failed (`selftest-final.txt`).
+- `python3 -I tools/map2_preview.py <candidate> --game-dir <game/app> --out-dir cache/map2-parallel-2026-10-31/previews`
+
+Host: Apple M5 Max, 18 logical CPUs, 48 GiB. Tools ran at `nice` 10, one
+Python process, stdlib only. No C++ build, ctest, renderer, sanitizer, or
+Wine was started by this lane. The runs took a few seconds and are not an
+isolated timing.
+
+### What was measured
+
+§8 is the authority. Short form: 00 is 20 islands at 39.4% rectangle share,
+not the board's 16 islands / 19%. Nord has 13 numbered `.scp` files; "14"
+includes the dummy. The candidate pool is 9 nord shapes and 10 dschungel
+shapes after dropping people markers and true copies. No quintuple is within
+±5% of its mean `HEIGHT >= 16` land. Best nord worst-permille is 79. Best
+dschungel is 52. Ten 256² islands cannot keep both the 03 rectangle share
+and the proportional filler counts (OQ-516).
+
+### The three layouts
+
+All three use the same two template sets, rotated per seat. Homes lie on a
+northern arc. Each southern island lies on the opposite ray, past the map
+centre. Filler follows 03's non-256 climate×size weights. A and B request 30
+filler islands (40 islands, 45.5% rectangle share). C requests 45 (55
+islands, 52.2%).
+
+| Gate (50 permille unless noted) | lan5-a | lan5-b | lan5-c |
+|---|---|---|---|
+| Large land ±10% (100) | pass 79 / 52 | pass 79 / 52 | pass 79 / 52 |
+| Home land | fail 79 | fail 79 | fail 79 |
+| Paired southern land | fail 52 | fail 52 | fail 52 |
+| Pair distance | pass 11 | pass 29 | pass 21 |
+| Centre distance | pass 9 | pass 41 | pass 43 |
+| Rival distance | fail 177 | fail 210 | fail 215 |
+| Reach, each climate | absent for a seat | absent for a seat | absent for a seat |
+
+Pair lengths are about 887–906, 804–851 and 861–893 tiles. The spread passes.
+The routes cross the map; they are not short hops. Both assignment modes
+agreed. On lan5-c they agree on a swap of south slots 12 and 13, which is
+not the authored opposite ray for seats 2 and 3. Structural rules pass on
+all three, including the half-plane, distinct shapes, coasts, bands, and no
+overlap.
+
+### Previews inspected
+
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-a-top.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-a-iso.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-b-top.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-b-iso.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-c-top.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-c-iso.png`
+
+Each top-down picture shows irregular land masks, not rectangles. Five large
+green northern islands sit in an arc above a dashed middle line. Five large
+dark-green southern islands sit below it. Seat marks are on the inner coasts.
+Coloured lines run from those marks through the centre cross to the paired
+southern island. The legend names polar, tundra, nord, praerie, dschungel
+and steppe, and all six colours appear as filler. North is the small-y side,
+labelled N. The isometric pictures keep north at the top, with +x down-right
+and +y down-left, and show the same coasts. lan5-b is a slightly tighter arc
+than lan5-a, with the same filler count and different coastlines because the
+template rotation differs. lan5-c is the crowded one: more small islands,
+especially around the centre, and seat 2's line is the swapped partner
+rather than a perfect opposite ray. Nothing in the pictures shows a shipping
+channel, fertility, or ores.
+
+### Tests and negative controls
+
+Final `map2_selftest.py`: 47 checks, 0 failed. The lan5 dump still exits 0
+with digest `c6af83f95104cd4f`.
+
+Each control was a one-line edit, a run, then an immediate restore. The
+clean run after the last restore is the 47/0 result.
+
+| Edit | Distinct failure |
+|---|---|
+| `CLIMATE_BAND_CHECK = False` | `FAIL polar y=0 on a 1024 edge is outside the band` |
+| `SHAPE_BY_MASK = False` | `FAIL two names with one land mask are refused` |
+| `ASSIGNMENT_MODE = 'seat-order'` | `FAIL chosen assignment must be the short cycle` |
+| `FAIRNESS_PERMILLE = 200` | `FAIL unfair home land must fail` |
+
+Logs: `mutation-band.txt`, `mutation-shape.txt`, `mutation-assign.txt`,
+`mutation-fair.txt`.
+
+### Decisions and reasoning
+
+- The five-player rules live in `map2_profile.py`, not in `fixed_map.py check`. A generic check that required ten large islands would reject lan5 and every ordinary map. The profile is opt-in and named.
+- Land is `HEIGHT >= 16` because that is the fixed-map count and the waterline. `HEIGHT > 0` and the average-19 classifier are different questions (OQ-519). The published permille figures use `>= 16` only.
+- Shape identity is the dihedral land mask. Filename suffixes and people-marked copies are not extra shapes. `N_0011` and `N_0019` share a mask and not a height hash; 0011 stays out because it is Mongolen.
+- The nord set is the only pool quintuple within ±10%. The south set is the closest, at 52 permille. Natives were not added. No search over placements can change those land totals.
+- Tolerances stayed at 100 and 50 permille. 52 is a failure of the ±5% proposal. Turning it into a pass would be a different proposal, which is OQ-515.
+- Assignment is `min-spread-sum-lex`, and every report also prints `min-spread-lex`. The constructed case in the selftest shows the baseline keeping a sum of 500 where the chosen rule takes 150. On these three files the two rules matched, so the printed pairing is not an artefact of the tie-break. The absolute lengths are still ~800–900 tiles (OQ-517, OQ-518).
+- Homes are on an arc and partners are on the opposite ray so that a Kontor facing the map centre also faces its partner. That is why pair distance and centre distance both pass ±5%. A vertical partner made the centre distances unequal once the Kontor sat on the inner coast, and a centre-facing Kontor made vertical pair distances unequal. The crossing length is the cost of holding both.
+- Rival distance still fails. Island centres on the arc are nearly evenly spaced; the coastal 4×4 chosen on each irregular shore is not. The gate stays failed.
+- Reach by nearest Kontor cannot give every seat every climate. Polar and tundra sit in the north, so a wing seat's Kontor is not the nearest to those islands. An absent bucket is not recorded as zero. The gate stays failed. Moving polar next to every seat would break the climate bands.
+- Filler density is a labelled choice, not a silent one. A and B aim at the coverage-matched ~45.5%. C aims at the denser ~52% reading. The split is largest-remainder of 03's weights, so the 64/80 counts are 6/14 rather than the pure size budget 7/13. The rectangle share is still 45.5% and 52.2%. The edge is still 1431.
+- Kontor rotation is 0. The door is unread (OQ-520). The footprint is a coastal 4×4. The tool's "toward the map centre" pick is not `World::create`.
+- The radial screen includes the wrap-around angle, so a northern arc is not reported as a regular ring. A full pentagon would be.
+- Board counts that disagreed with the files (00's island count, Nord's "14 usable") follow the files.
+
+### Not run
+
+These are not passes. No `src/` file changed, so the C++ gates were out of scope.
+
+- Loading a candidate through the fixed-map loader.
+- A 2–5 seat simulation and a five-minute hash.
+- Windows versus Linux hash.
+- A five-city tick.
+- MSVC, GCC, clang-format, and ctest.
+- `tools/agree.py` against `anno-dump`. The Python dump of lan5 is unchanged; no `anno-dump` binary was built.
+
+### Owner decision
+
+Pick a layout (`lan5-a`, `lan5-b`, or `lan5-c`) and the tolerances (OQ-515,
+OQ-516). Usable partials if none is accepted as-is: the three files already
+meet the half-plane, the distinct shapes, the ±10% large-land band, and the
+±5% pair and centre bands. They do not meet ±5% home land (79), ±5% southern
+land (52), ±5% rival distance, or per-climate reach. Start money and input
+bindings are not decided here. Natives and pirates stay out of the pool.
+
+## MAP.2 progress — ship-start specification — 2026-10-31
+
+Owner decisions of 2026-10-31 supersede assigned Kontors, southern pairing,
+nearest-Kontor ownership, and ±5%/±10% equality as acceptance. Geography
+stays. The boundary example in §8 was wrong: on edge 1431, `2 × 704 = 1408`,
+which fails `2 × y >= 1431`. The first 8-grid southern top is 720. Northern
+`y = 584` passes and `y = 592` fails. Active profile name:
+`map2-ship-start-v1` (`fixed-map.md` §11). OQ-515 and OQ-518 superseded.
+OQ-520 narrowed to founding orientation. Evidence copied to
+`docs/research/endless-start-conditions.md` (sha256
+`2d80f5581ce2e2b85a8c558c285594deee48e2af7f1def1ea6bc82707c0f60a5`, same as
+main's working file). Main was not modified.
+
+## MAP.2 progress — ship-start manifest — 2026-10-31
+
+`tools/map2_manifest.py` is a JSON proposal the fixed-map loader does not
+read. `map2_manifest_selftest.py`: 0 failed, including a hash round-trip,
+rejection of cities, reservations, a sixth spawn, a duplicate seat, a
+fractional coordinate, 51 t in one hold, unknown cargo, NaN, and a wrong
+hash. lan5 dump digest `c6af83f95104cd4f`, 1476 bytes. Schema notes:
+`fixed-map.md` §11.4.
+
+## MAP.2 progress — ship-start geometry checks — 2026-10-31
+
+Superseded as acceptance by the repair section at the end of this file. The
+PASS_TOOL_CHECKS line below is the version-1 rectangle model.
+
+`tools/map2_ship.py` is the offline checker for profile `map2-ship-start-v1`.
+It does not load a manifest into the engine. Route cost is grid steps times
+the cell size, an upper bound on a rectangle-blocked sea, not a sailing time.
+A founding site is a 4×4 of `HEIGHT >= 16` clear of obstacle origins.
+Obstacle graphics beyond that origin are not invented.
+
+Command, from the worktree, after the checker existed:
+
+```
+python3 -I tools/map2_ship_selftest.py
+python3 -I tools/map2_manifest_selftest.py
+```
+
+Both exited 0. The ship suite printed 34 `pass` lines and `0 failed`. The
+manifest suite printed 19 `pass` lines and `0 failed`. Combined wall time on
+the second run was under a second. Expected route lengths in the ship suite
+were counted on the grid before the assertions: seat 0 costs 1, seat 4 costs
+5, a 16-step route is a detour under a bound of 10, and a diagonal across
+blocked corners is not a step.
+
+The three mutants, flipped in process and restored, hide the check that is
+supposed to catch them:
+
+- `COUNT_OBSTACLES = False` hides `island 0 has no founding site`. Restoring
+  the flag prints it again.
+- `REQUIRE_DISTINCT = False` hides `distinct-island witness covers 1 of 5`
+  for five beaches on one island.
+- `REPORT_ABSENT_CLIMATES = False` hides `climate polar absent everywhere`.
+
+A closed ring is reported as `distinct-island witness covers 0 of 5`. Sharing
+on a second large island is `optional share island 5` and is not a second
+witness seat. Status of this suite: PASS_TOOL_CHECKS. Engine founding,
+navigation, and the loader: NOT_RUN_ENGINE. No candidate search in this step.
+lan5.txt remains sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476 bytes,
+dump digest `c6af83f95104cd4f`.
+
+## MAP.2 progress — three ship-start proposals — 2026-10-31
+
+`tools/map2_ship_layout.py` writes three JSON manifests. Large-island
+origins are authored. Filler is the seeded first fit on the 8-tile lattice,
+kept out of the reserved lanes and the spawn boxes. Sharing is reported for
+an island side of at least 128. A 64-tile island is not called shared city
+space.
+
+Fresh regeneration into `/tmp/map2-ship-cmp` matched the files under
+`data/maps/candidates/ship-start-v1/` byte for byte (`cmp`). `map2_ship.py
+check` on those written files exited 0 for all three. Each report is
+PASS_TOOL_CHECKS, cities 0, NOT_RUN_ENGINE. Content hashes:
+
+- lan5-ship-a `2b291a2e0615688ad767f015250863d98f99047cdfa6ec140c04d3f6e217b010` (28 islands, seed 26031)
+- lan5-ship-b `ea471f5c723043dd44df8662f701c7174c1b360d4b4312fed341af75acc61f85` (38 islands, seed 26032)
+- lan5-ship-c `6156c56bf33c0e139a61732d1df313c49a368af6bb2da5fb4fcb833ea2e39096` (50 islands, seed 26033)
+
+The objects have no `cities` field. The words "player cities" and "island
+reservations" appear only in the `excluded` list. The historical
+`lan5-a.txt`, `lan5-b.txt`, and `lan5-c.txt` files are unchanged. lan5.txt
+is unchanged. The loader does not read the JSON.
+
+## MAP.2 — ship-start candidates for review — 2026-10-31 — status: READY FOR REVIEW
+
+Superseded as acceptance by the repair section at the end of this file. The
+PASS_TOOL_CHECKS line below is withdrawn. The placements and the version-1
+hashes stay as history.
+
+Tool status: PASS_TOOL_CHECKS on profile `map2-ship-start-v1` for all three
+written manifests. Engine load, sailing, founding, visibility, fertility, and
+save checksums: NOT_RUN_ENGINE. Those items stay QUESTION. Nothing is
+installed over `data/maps/lan5.txt`. Nothing is merged or pushed.
+
+Recommendation, not a selection: review `lan5-ship-b` first. Every seat has
+three to seven large islands inside the 400-tile opening bound, including one
+within 160 tiles, and seats 0–3 can all reach island 4 while each still has a
+closer island of its own. `lan5-ship-a` is the more open sea. `lan5-ship-c`
+is the denser archipelago. The owner chooses.
+
+### What was committed
+
+- `f64215e` specification, decision table, boundary correction, copied research note
+- `8f019f7` tool-only manifest parser
+- `dea2885` geometry checker and hand-counted tests
+- `e402190` three manifests and the layout tool
+- the preview tool is committed with this report
+
+`data/maps/lan5.txt` sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`,
+1476 bytes, dump digest `c6af83f95104cd4f`. The old `lan5-a.txt`,
+`lan5-b.txt`, and `lan5-c.txt` files stay as the retired Kontor-start
+measurements. Their ±5% failures were not turned into passes.
+
+### Commands
+
+From the worktree, single process:
+
+```
+python3 -I tools/map2_ship_selftest.py          # 34 pass, 0 failed, exit 0
+python3 -I tools/map2_manifest_selftest.py      # 19 pass, 0 failed, exit 0
+python3 -I tools/map2_ship_layout.py --game-dir <game/app> --out-dir data/maps/candidates/ship-start-v1
+python3 -I tools/map2_ship_layout.py --game-dir <game/app> --out-dir /tmp/map2-ship-cmp
+cmp of the three JSON files                       # identical, exit 0
+python3 -I tools/map2_ship.py check <each json> --game-dir <game/app>   # exit 0
+python3 -I tools/map2_ship_preview.py <each json> --game-dir <game/app> --out-dir cache/map2-ship-starts-2026-10-31/previews
+```
+
+The ship self-test and the manifest self-test together finished in under a
+second. Layout of all three finished in about 2 seconds. Checking the three
+written files finished in about 5 seconds. Each preview set finished in about
+2 seconds. Logs: `cache/map2-ship-starts-2026-10-31/logs/`. Previews are
+gitignored.
+
+Negative controls, flipped in process and restored: `COUNT_OBSTACLES` is the
+check that emits `island 0 has no founding site`; `REQUIRE_DISTINCT` emits
+`distinct-island witness covers 1 of 5` for five beaches on one island;
+`REPORT_ABSENT_CLIMATES` emits `climate polar absent everywhere`. With the
+flag off, that line disappears. A closed ring is `covers 0 of 5`.
+
+### Comparison
+
+World area is 1431² = 2,047,761. Rectangle share is the sum of template
+rectangles, not HEIGHT land. The useful-opening bound is 400 tiles on the
+coarse grid. A route past that bound is a detour and is not in the witness.
+Wueste is absent on every candidate and the report says so. The proposed
+loadout is the same 03 human baseline on all three and is not an economy
+approval. Spawn facings point toward the map centre. They are not warehouse
+doors.
+
+| | lan5-ship-a | lan5-ship-b | lan5-ship-c |
+|---|---|---|---|
+| Theme | open channels, dispersed large islands | linked channels, one island reached by four seats | denser fill, several corridors |
+| Seed / filler placements | 26031 / 18, tried 141, missed 0 | 26032 / 28, tried 13013, missed 0 | 26033 / 40, tried 1447, missed 0 |
+| Islands | 28 | 38 | 50 |
+| Climates present | polar 3, tundra 3, nord 7, praerie 3, dschungel 8, steppe 4 | polar 4, tundra 4, nord 9, praerie 5, dschungel 10, steppe 6 | polar 6, tundra 5, nord 10, praerie 7, dschungel 13, steppe 9 |
+| Wueste | absent everywhere | absent everywhere | absent everywhere |
+| Rectangle tiles (share) | 821,248 (40.1%) | 922,880 (45.1%) | 1,030,400 (50.3%) |
+| HEIGHT>=16 land | 394,249 | 441,671 | 491,331 |
+| Large-island land, nord then jungle | 26,213–49,399 and 22,527–39,912 | 26,304–49,399 and 23,124–29,033 | 26,304–39,526 and 22,527–39,912 |
+| Largest free component on those ten | 1,445–12,121 | 1,445–11,920 | 1,608–12,121 |
+| Large islands inside 400 tiles, by seat | 5, 7, 5, 3, 3 | 3, 4, 7, 7, 3 | 3, 5, 3, 4, 3 |
+| Witness costs | 72, 32, 72, 32, 16 | 32, 32, 64, 32, 32 | 24, 24, 16, 32, 56 |
+| Witness islands | 5, 101, 8, 3, 9 | 0, 1, 4, 117, 127 | 0, 123, 2, 106, 5 |
+| Optional share | all ten 256s, plus six 128s | all ten 256s, plus ten 128s | all ten 256s, plus fourteen 128s |
+| Content hash | `2b291a2e0615688ad767f015250863d98f99047cdfa6ec140c04d3f6e217b010` | `ea471f5c723043dd44df8662f701c7174c1b360d4b4312fed341af75acc61f85` | `6156c56bf33c0e139a61732d1df313c49a368af6bb2da5fb4fcb833ea2e39096` |
+| File sha256 | `4cd2f26864fb27b00aad304b7d33981bf752cf0d84a1adb1dfd7d2906654b89d` | `074505e86d534eeb7458682bfb8d24b4fc57de7b63544b84069e465f89ea4ddf` | `aeff629944d99d5af429060ffeab8f0e2d7dea7d08394067d0d63ca461a623b1` |
+
+Evaluated cells and founding sites: A 99,316, B 91,902, C 85,076. Profile
+`map2-ship-start-v1`. Checker defaults: grid step 8, clearance 8, bound 400,
+city estimate 256, share gap 32, share side 128.
+
+The witness is one possible matching. It is not a destination. On A, seat 1's
+witness is the small island 101 at cost 32, and that seat also has seven large
+islands inside the bound, the nearest at 64. On B, seats 3 and 4 witness a
+small island at cost 32 and still have seven and three large islands. On C,
+seats 1 and 3 do the same. Sharing is not required for the matching: each
+witness uses five different islands.
+
+Climate reach inside the bound is uneven, which is the accepted asymmetry.
+On A, polar is only seat 3, nord misses seat 4, and jungle misses seat 3.
+On B, nord and praerie reach every seat; jungle and steppe reach seats 2–4;
+polar reaches 0, 1, and 4. On C, jungle reaches seats 1, 3, and 4; seats 0
+and 2 stay with northern large islands unless they take a detour.
+
+### Why the numbers are not equal on purpose
+
+Template `NORD/N_256X256_0015_5B.SCP` has 49,399 tiles of HEIGHT>=16 and a
+largest obstacle-cleared component of 1,445. The same mask is island 4 on A
+and on B. The preview shows a full green silhouette because the picture is
+HEIGHT land. The city figure subtracts recorded obstacle origins only.
+Graphic extents beyond that origin are not in the 6-byte record and were not
+invented, so the 1,445 can still be high. Filename suffixes were not read as
+fertility. `raw` and `ore` are not applied.
+
+Island 0 on A (`N_256X256_0018`) shows a separate land patch inside one
+rectangle. The city figure is the largest component, 4,396, not the sum of
+the patches.
+
+### Previews inspected
+
+Opened and looked at:
+
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-a-top.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-a-iso.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-b-top.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-b-iso.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-c-top.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-c-iso.png`
+
+Also the three `*-top-choices.png` overlays. The base pictures show sea,
+HEIGHT land inside a pale rectangle, island ids 0–9, ship seats, a climate
+legend, and a 100-tile bar. They do not draw a Kontor, a partner line, or an
+owner tint. The overlay adds one straight segment per seat to that seat's
+witness island, and an `S` on each large island that can hold two footholds.
+The legend says LINE CHOICE, S SHARE, and NO CLAIM. Those segments are not
+sailing routes.
+
+A is the open map: wide sea between a northern scatter and a southern scatter.
+B packs the large islands into linked gaps, with island 4 in the middle of
+several of those gaps. C fills more of the diamond and still leaves channels;
+the ships sit in those channels. Polar blobs are in the north and jungle
+masses are in the south. Ship 2 is drawn near-white, which matches its legend
+swatch and stays visible on the sea. No layout change followed the inspection.
+
+### Proven, provisional, and still open
+
+Proven here: the manifests parse, hash, and regenerate; the geometric checks
+accept the three files; five distinct islands are reachable inside the bound
+for a matching; a missing climate stays visible; lan5.txt and the fixed-map
+dump are unchanged.
+
+Provisional model: step-8 rectangle-blocked sea, no corner cutting, cost =
+steps × 8, founding = a 4×4 of HEIGHT>=16 clear of obstacle origins with one
+side on water. This is not the original movement rule and not a service area.
+
+Owner choices already settled: ship start, natural differences, optional
+sharing, the 1431 envelope, five plain nord 256s and five plain jungle 256s.
+Still open: OQ-521 clustered versus dispersed spawns (these files use
+separated authored positions), founding orientation (OQ-520), buildability
+versus HEIGHT>=16 (OQ-519), and what a tool route is worth (OQ-517).
+
+### Later engine work, not done here
+
+- A loader seam that spawns ships and does not create the whole-island
+  developer grant. Turning `developer_start` off does not create ships, and
+  `src/sim_load` still reads only `anno1503-fixed-map 1`.
+- A save checksum for this start. The manifest content hash is the proposal
+  hash, not that checksum.
+- The original movement rule, the founding predicate, the warehouse door, and
+  visibility. Until those exist, a tool route is not a certification.
+- A deterministic rule for two players founding on the same coast in one tick.
+- Engine tests and the target-host tests. They were not run.
+
+## MAP.2 — ship-start validation repair — 2026-10-31 — status: READY FOR REVIEW
+
+Exterior sea and full-file template hashes are corrected in the next section.
+The witnesses in this section did not change. In
+`cache/map2-ship-repair-2026-10-31/`, `template_sha256` is the land-shape
+digest, not the SCP file.
+
+The version-1 `PASS_TOOL_CHECKS` at `570bb97` is withdrawn. That checker
+joined a reachable island rectangle to any 4×4, blocked only obstacle
+origins, and credited the largest free component anywhere on the island.
+An independent review reproduced those false passes, and a false failure
+when one extra island had no site. This section is the corrected tool
+result. No map is selected or installed. The engine was not run.
+
+Checker `06c440b1b12a70d1bfa8b48a93f5008ea46195e7`. Version-2 manifests
+`e1bc8b2ba215d676cb707220730b12499436da4a`. Profile `map2-ship-start-v2`.
+Anlagen.dat sha256
+`b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`.
+Suites re-run at `e1bc8b2`, which contains that checker unchanged.
+
+### What the corrected model checks
+
+Movement is 4-connected on water tiles. Each step costs 1 tile
+(`manhattan-4`). A diagonal is not a step. Clearance is the Chebyshev gap
+at the spawn only. A founding site is a 4×4 of `HEIGHT >= 16` clear of the
+ANLAGEN `HEAD` footprint, axes swapped for an odd rotation. The route ends
+on a water cell beside that site, and the city figure is that site's own
+component. `min_city` stays 256. The useful-opening bound stays 400 tiles;
+the unit is now a tile step rather than a coarse step times 8. Sharing is
+reported and is not a matching edge. An island with no eligible site is a
+diagnostic. Blocking a whole `HEAD` footprint is conservative: removability
+and the original founding rule stay unresolved (OQ-517, OQ-519, OQ-520).
+
+Placements were not moved. The layout tool, run into `/tmp`, emitted the
+same three version-2 files byte for byte. `parse` then `emit` into
+`/tmp/map2-ship-v2-cmp` matched as well. Version-1 files in
+`data/maps/candidates/ship-start-v1/` are unchanged and `parse` rejects them.
+
+### Candidate results
+
+All three are `PASS_TOOL_CHECKS`, cities 0, `NOT_RUN_ENGINE`. Wueste is
+absent everywhere. The witness is one feasible matching, not a destination
+and not ownership.
+
+| | lan5-ship-a | lan5-ship-b | lan5-ship-c |
+|---|---|---|---|
+| Islands / filler | 28 / 18 | 38 / 28 | 50 / 40 |
+| Founding sites | 1,968 | 2,267 | 3,199 |
+| Islands inside 400, by seat | 4, 5, 4, 7, 3 | 6, 3, 9, 8, 11 | 6, 11, 9, 10, 8 |
+| Large islands inside 400, by seat | 2, 3, 3, 2, 3 | 2, 2, 4, 3, 2 | 2, 3, 3, 2, 3 |
+| Witness islands | 110, 101, 8, 106, 9 | 0, 111, 125, 103, 127 | 0, 123, 114, 3, 5 |
+| Witness costs | 267, 103, 125, 153, 49 | 86, 121, 143, 99, 44 | 61, 52, 130, 72, 101 |
+| Witness city, attached | 602, 1977, 1160, 1575, 1167 | 1991, 1045, 650, 707, 691 | 599, 575, 1575, 432, 1017 |
+| No eligible site | 108, 111, 112 | 113, 119, 120, 121, 126 | 118, 124, 126, 127, 128, 134, 136, 137 |
+| Content hash | `e001442a55b8ee0890ec5cd3d23e5a53f05d66fe3a29fdb1c1b47d19a3363d92` | `af5df648addf5152099db49300425830a39d3ad458d4b6090d5b9c6c3549f544` | `cfda244eed26321de5c10da864a82b11935dd044fd6700234c926e30a900b078` |
+| File sha256 | `20d948c97b1801946d71dfa86762e9b0fea5e6cd093314d83cb5b43658b2fd20` | `fbbf91ead70dde39bd6fbe1279f0c88d8a067f0efd9dde50f03d6c1bec56ce3c` | `79c66b46088715a2593b7821ff48dc00640005bb3b1e2af1655829ffb6e20882` |
+
+Seat 2 on A is the check that the city figure is local. Its site component
+is 1,160 and another component on island 8 is 1,885. The witness uses 1,160.
+The route to water `(1118, 791)` costs 125, four above the Manhattan length,
+so the path goes around land. On A and B, `NORD/N_256X256_0015_5B.SCP` is
+island 4. Its largest site component is 509 tiles, not the origin-only 1,445
+quoted in the withdrawn report. The HEIGHT silhouette is unchanged. Island 1
+on B reaches 287 on its best site, so it can host one foothold under the 256
+policy and is not reported as shared. Those differences stay.
+
+Climate reach inside the bound, unchanged in kind and recomputed on the new
+edges: A polar and tundra only from seat 3, nord misses seat 4, praerie is
+seats 0–1, jungle misses seat 3, steppe is seat 2. B nord reaches every seat,
+jungle only seats 2–3, and seat 1 has three islands inside the bound. C nord
+reaches every seat and jungle misses seats 0 and 2. The earlier suggestion
+to review B first used large-island counts from the rectangle model. Those
+counts do not survive. All three still match. The owner chooses. Nothing is
+installed over `data/maps/lan5.txt`.
+
+### Acceptance
+
+Red log, before the fix, at `570bb97`:
+`cache/map2-ship-repair-2026-10-31/contract-before-corrected.txt` (18 failed,
+including the footprint overlap). The earlier
+`contract-before.txt` let an inland site pass for the wrong reason and is
+kept, not used as the red result. Green log:
+`cache/map2-ship-repair-2026-10-31/final-tests.txt`.
+
+| Requirement | Test | Command | Exit | Evidence | Limitation |
+|---|---|---|---|---|---|
+| Enclosed lake is not ocean | `test_enclosed_lake` | `python3 -I tools/map2_ship_contract.py` | 0 | `final-tests.txt` | Tool water is `HEIGHT < 16`, not the original sea rule |
+| Route ends at the site, past the bound | `test_far_beach`, cost 17 | same | 0 | same | 17 is the east-gutter Manhattan path, counted on the grid |
+| 4×4 without 256 attached tiles fails | `test_tiny_city` | same | 0 | same | 256 is provisional policy |
+| Distant component is not credited | `test_distant_component` | same | 0 | same | |
+| HEAD footprint, odd rotation swaps | `test_footprint` | same | 0 | same | Removable objects are not distinguished |
+| Extra uncolonizable island is diagnostic | `test_extra_island` | same | 0 | same | |
+| Hall matching can still fail | `test_hall` | same | 0 | same | |
+| Sharing is not a second witness seat | `test_sharing` | same | 0 | same | |
+| Diagonal costs 2 | `test_diagonal_metric` | same | 0 | same | |
+| Strict JSON | `test_manifest_strict` | same | 0 | same | |
+| Each broken stub fails, then the restored code passes | `test_negative_controls` | same | 0 | same | Stubs are in-process, not public flags |
+| Legacy dump | manifest selftest and `fixed_map.py dump` | `python3 -I tools/map2_manifest_selftest.py` | 0 | same, digest `c6af83f95104cd4f` | Runtime v1 is unchanged |
+| Historical ship suite | `map2_ship_selftest.py` | that command | 0 | 30 pass | |
+| Version-1 upgrade keeps placements | `test_upgrade` | manifest selftest | 0 | 25 pass | |
+| A, then B and C, one each | `map2_ship.py check` | see below | 0 | `lan5-ship-a-inspect.json`, `lan5-ship-b.json`, `lan5-ship-c.json` | Not an engine sail |
+| Round-trip | `parse`/`emit` and layout rebuild | both matched the saved files | 0 | `/tmp/map2-ship-v2-cmp` | |
+| Previews | six top/iso plus three choice overlays | `map2_ship_preview.py` | 0 | `cache/map2-ship-repair-2026-10-31/previews/` | Straight line to the water cell, labelled `LINE TO SEA`, not a sailed polyline |
+
+`data/maps/lan5.txt` remains sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`,
+1476 bytes. The Kontor-start `lan5-a/b/c.txt` files were not retouched.
+
+### Previews
+
+Opened the six plain views and the three choice overlays under
+`cache/map2-ship-repair-2026-10-31/previews/`. Land is the filled climate
+colour, the pale box is the template rectangle, and the seats sit on sea.
+The choice overlay draws a straight segment from the spawn to the validated
+water cell and a marker on the 4×4. The legend reads `LINE TO SEA`, `SITE`,
+`S SHARE`, `NO CLAIM`. The segment is not a line to the island centre and
+is not the sailed path. A is the open pair of scatters, with island 0 split
+into two land masses. B packs the large islands closer. C fills more of the
+diamond and leaves the same small filler islands that cannot host a city.
+No placement changed after the inspection.
+
+### Still open
+
+OQ-516 filler density, OQ-517 what a tool route is worth, OQ-519 which height
+is land, OQ-520 the warehouse door, OQ-521 clustered versus dispersed spawns.
+Original movement, founding legality, removability, visibility, simultaneous
+founding, fertility, the save checksum, and the loader seam are
+`NOT_RUN_ENGINE`. The manifest remains tool-only.
+
+## MAP.2 — exterior sea and source hashes — 2026-10-31 — status: READY FOR REVIEW
+
+Two checker corrections on top of `6a043d4`. Placements, spawns, loadouts,
+and thresholds are unchanged. No candidate is selected or installed. Cities
+0. `NOT_RUN_ENGINE`. The five-island matching remains an existence proof that
+five seats can take five different islands at the start. It does not assign
+those islands and it does not promise the result after someone else settles.
+
+Checker `63ed9fbfaf2c39ca0a95e9b09fa4e277d7a19d8d`, dirty sources false.
+Candidate content hashes are the hashes from `e1bc8b2`. Manifest `parse`/`emit`
+matched the saved files. `data/maps/lan5.txt` is still 1476 bytes, sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, dump
+digest `c6af83f95104cd4f`.
+
+### Exterior sea
+
+At `6a043d4`, five ships sitting in five enclosed lakes still produced a
+witness of cost 7 and city proxy 768, with no problems. Reproducer
+`cache/orch-map-v2-review-2026-10-31/lake_spawn_probe.py`, saved again at
+`cache/map2-ship-sea-2026-10-31/lake-spawn-before.json`. The probe process
+exited 0 because it only prints; the result was a false pass. Production
+clearance 8, `min_city` 256, and route bound 400 were left in place. The
+layout envelope was off.
+
+Version 2 now treats sea as water that is 4-connected to the world boundary.
+A landlocked spawn is rejected and has no eligible route. A lake that touches
+the sea only at a corner stays landlocked. Opening one orthogonal channel
+makes that same lake reachable. Five bays with a real channel still match.
+The earlier ocean-spawn / enclosed-lake-site case still fails. The rule is
+fixed for this version. Putting `sea` in the manifest policy is rejected, so
+the content hashes did not change. Reports state `sea: exterior-4`.
+
+The same witnesses came back. A: islands 110, 101, 8, 106, 9 at costs
+267, 103, 125, 153, 49. B: 0, 111, 125, 103, 127 at 86, 121, 143, 99, 44.
+C: 0, 123, 114, 3, 5 at 61, 52, 130, 72, 101. Each set is five distinct
+islands. An independent audit, which does not call the checker's route or
+component code, reproduced every cost, clear 4×4, and attached component:
+`cache/map2-ship-sea-2026-10-31/witness-audit.json`. All three candidates
+are `PASS_TOOL_CHECKS`.
+
+`min_city` 256 remains a geometric proxy for attached free land. It is not a
+viable city and not proof of founding, warehouse service, fertility, or
+progression. Wueste is still absent everywhere. Sharing stays descriptive.
+
+### Source provenance
+
+`template_sha256` in the previous repair JSON is the thresholded land-shape
+digest. Current reports use `template_sha256` for the raw SCP file and
+`shape_sha256` for that mask. A missing file hash stays null. The contract
+fixture writes two SCP files with the same height mask and a different
+obstacle record: one shape digest, two file digests, and the serialized
+report keeps them apart. Direct SHA-256 of
+`NORD/N_256X256_0018_2B.SCP` is
+`69803774cf7072979735bca140bc3ad80aec039043e9bb569db30df5a43857e9`, matching
+A’s report. B’s `NORD/N_256X256_0019_2B.SCP` is
+`d0e8e847dda969907777bc640198842bb9b80ae20c456bda6f3b787490bec8a1`. C’s
+`NORD/N_256X256_0006_2B.SCP` is
+`cb0f99bcd2e23c7b9e131f5e5ba3c11e3842911003e4c10d83735b06ea024201`.
+Anlagen.dat remains
+`b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`.
+The checker block records commit `63ed9fb`, `dirty_sources` false, and the
+SHA-256 of the four checker modules. That block is not the manifest hash.
+
+### Acceptance
+
+Suites at `63ed9fb`, log `cache/map2-ship-sea-2026-10-31/final-tests.txt`:
+manifest 25 pass exit 0, ship 30 pass exit 0, contract 53 pass exit 0.
+Candidate checks exited 0. The independent audit exited 0. Previews were not
+redrawn: the witnesses and the manifest bytes are the same pictures as the
+previous round.
+
+| Claim | Where it is checked | Exit |
+|---|---|---|
+| Landlocked spawns are rejected and have no witness | `test_landlocked_spawns`; before-log had 5 witnesses, after-log has 0 | 0 |
+| Diagonal contact stays closed; an orthogonal channel opens | `test_diagonal_contact` | 0 |
+| A connected bay matches five seats | `test_connected_bay` | 0 |
+| Ocean spawn still cannot use an enclosed lake site | `test_enclosed_lake` | 0 |
+| A contradictory `sea` policy is refused | `test_sea_policy_rejected` | 0 |
+| Same land mask, different obstacle, different file hash | `test_source_file_hash` | 0 |
+| A’s reported file hash matches the raw SCP | revalidation note above | 0 |
+| Fifteen witnesses, five distinct islands each | `audit_witnesses.py` in the sea cache | 0 |
+| Manifest bytes and content hashes unchanged | `parse`/`emit` into `/tmp/map2-ship-sea-cmp` | 0 |
+| Active map unchanged | manifest selftest | 0 |
+
+Still unresolved: original movement, founding, removability, the warehouse
+door, fertility, visibility, simultaneous founding, the save checksum, and
+the loader. OQ-516 through OQ-521 stay open where they were open. Natural
+differences stay. No ±5% balance rule is in force.
+
+## MAP.2 — original-rule readiness for ship starts — 2026-10-31 — status: READY FOR REVIEW
+
+Preparation for W6.1. No ship was moved, no city was founded, and no
+candidate was installed. `data/maps/lan5.txt` and the version-2 manifests
+are unchanged. The exterior-sea investigation was not repeated.
+
+Code head: `03767a6669955f69479c80594c46bc4837b16dca` (opening audit).
+Documentation after that code: `6ff3388ed5f4127c94f105217e5334b33be4069b`
+(loader contract) and the commit that adds this section. Mechanics notes:
+`c1f4fdd3058b75bf5ef5394dfebb98a8207a092c`,
+`c8fedeb1ba402819d194cd623aefc608bd9b8548`. Started from reviewed
+documentation `220608fcf96dcda9cbaea124b6b62e1362a2ebf6` and reviewed checker
+`63ed9fbfaf2c39ca0a95e9b09fa4e277d7a19d8d`.
+
+Host: Apple M5 Max, 18 cores, 48 GiB RAM, about 89% free at the start of
+this pass, 1.6 TiB free. Python 3.14.6. `pefile` 2024.8.26 and `capstone`
+5.0.9 were imported for the disassembly. A two-hour `caffeinate -dimsu`
+covered this pass only. Persistent power settings were not changed.
+
+### Acceptance ledger
+
+| Claim | Evidence | Independent check | Status | Next |
+|---|---|---|---|---|
+| Kontor 1302 is 4×4, 350 gold, 12 t wood, 5 t tools, coast bit `0x2000` | `Anlagen.dat` HEAD | Byte read in `docs/re/ship-founding.md` §2 | FILE | Use as type data, not the whole rule |
+| Ship menu selects building 1302 | `View.dll` `0x10063ba0` | Scout callback pushes 1301 instead | STATIC_RE | Open the UI object's `+0x60` only if menu-enable is required |
+| Click test is `AnnoFrame.dll` `0x10046300` | Disassembly in §3.2 | A zero return skips the commit call | STATIC_RE | Name island `+0xec` and `+0x114` |
+| Affordability failure still calls `+0x78` with `0xA0000000` | `0x10046913` | Not an observed world mutation | STATIC_RE | Open `+0x78` or capture |
+| Exterior-4 is not original passage | `docs/re/ship-navigation.md` | Replan `0x1003de40` starts with float math `0x10030100` | STATIC_RE | Planner methods stay unread |
+| Version-2 facing 0..3 is cardinal, not `dir16` | Manifest parser and fire-and-ships §3.3 | Conversion table is not written into the files | FILE | Loader unit applies the table |
+| Five distinct islands remain at geometric, help-first, and record-presence levels on A, B and C | `tools/map2_opening.py` | Contract tests do not copy those counts | TOOL | Founding click stays unknown |
+| Original click outcomes | Capture steps in ship-founding §7 | No AnnoHarness on this Mac | NOT_RUN_ORIGINAL | One Windows harness session |
+| Engine load of a manifest | Contract only | No sim change in this packet | NOT_RUN_ENGINE | Implementation unit 1 |
+
+### Original behaviour established
+
+- Help: sail close, then place the warehouse on the coast near the ship.
+  Temperate or jungle is recommended for a first settlement. Polar help says
+  settlements are not possible there. Prairie, steppe and tundra help say
+  to settle there after another settlement exists. No desert page is in
+  this help set. Two players may share an island. Takeover gives a warehouse
+  service area, not the island.
+- Type 1302: 4×4, gold 350, wood 12, tools 5, bricks 0, marble 0, flags
+  `0x2087` including coast `0x2000`, action radius 24 (market search, not a
+  proven city radius), two entrance points at `(2.5, 13/6)` and `(11/6, 0.5)`.
+- `View.dll` `0x10063ba0` selects id `0x516`. `AnnoFrame.dll` `0x10046300`
+  rejects a click with no island, a non-uniform tile class, an all-`0x0f`
+  footprint, or no category-matching object in the 16×16 window of a 4×4
+  (origin six tiles before the footprint). Rotation 0..3 swaps axes.
+- When the goods check `0x10043d80` returns 0, the commit is still called,
+  with flag `0xA0000000`. Atomic rollback is not shown. The rebuild requires
+  it separately.
+
+### Unresolved predicates
+
+Blocking calls, not a request for a wider trace:
+
+- Island slot `+0xec`: what `0x0f` is on water, land and a real warehouse tile.
+- Island slot `+0x114`: the class of the 6-byte records in the window.
+- Build-tool field read at `AnnoFrame.dll` `0x100468ff`: who pays.
+- Commit slot `+0x78`: whether flag `0xA0000000` mutates the world.
+- Planner methods after `AnnoWelt.dll` `0x10030100`: diagonal passage and
+  hull clearance.
+- OQ-490 city radius, OQ-063 scenery under the footprint, OQ-520 the click's
+  rotation writer.
+
+### Opening comparison
+
+The audit does not change the v2 verdict. Geometric witnesses are the same
+islands as the sea revalidation. Help-first means that geometric island's
+`INFO` climate is nord or dschungel. Record-presence means help-first and
+the file contains `FRUCHTBAR`, `BERGWERK2`, `OCCUR` and `ANBAU`. Those
+records are counted, not decoded. Fertility bytes stay uninterpreted.
+`GELAENDE` removal stays unknown. Founding-click legality is unknown on
+every island and is not matched.
+
+| Level | A | B | C |
+|---|---|---|---|
+| Geometric v2 | 5 | 5 | 5 |
+| Help-first | 5 | 5 | 5 |
+| Records present | 5 | 5 | 5 |
+| Founding click | unknown | unknown | unknown |
+
+Wueste is absent on all three. No first-settlement help page depends on it.
+Desert goods are a later economy question. No desert island was added.
+
+The geometric witness is not five recommended large islands. A uses a small
+nord, a prairie, two jungle 256² and a polar. B uses a nord 256², a polar,
+a 64² jungle, a prairie and a steppe. C uses two nord 256², a small nord,
+a polar and a jungle 256². The help-first and record-presence matchings
+move seats onto other reachable islands; they are existence proofs, not
+assignments. A's and C's record-presence matching uses 256² islands. B's
+includes `NORD/N_080X080_0002_1B.SCP`, which meets the 256-tile geometric
+proxy on a small island. Several 64² and 80² templates have no `BERGWERK2`
+record, so they drop out of the record-presence matching without being
+called illegal. Sharing stays the optional description already in the v2
+reports. No candidate is selected.
+
+### Original runtime
+
+`NOT_RUN_ORIGINAL`. Capture steps are `docs/re/ship-founding.md` §7, using
+the existing `AnnoHarness` WSL runner. No emulator was installed.
+
+### Tests
+
+Log `cache/map2-opening-2026-10-31/final-tests.txt`. A first log,
+`final-tests-wrong-manifest-entry.txt`, called `map2_manifest.py selftest`
+and exited 2 because that entry point only checks a file. The corrected
+entry is `tools/map2_manifest_selftest.py`.
+
+| Suite | Cases | Failed | Exit |
+|---|---|---|---|
+| `map2_manifest_selftest.py` | 25 | 0 | 0 |
+| `map2_ship_selftest.py` | 30 | 0 | 0 |
+| `map2_ship_contract.py` | 53 | 0 | 0 |
+| `map2_opening_contract.py` | 7 | 0 | 0 |
+
+Candidate audits A, B and C exited 0
+(`cache/map2-opening-2026-10-31/lan5-ship-{a,b,c}.json`). C++ render,
+GPU and sanitizer gates were not run: this packet changes Python and
+documentation only. This is not project-wide acceptance.
+
+### Files
+
+- `docs/re/ship-founding.md`
+- `docs/re/ship-navigation.md`
+- `docs/sim/ship-start-integration.md`
+- `docs/sim/fixed-map.md` §11.5
+- `docs/open-questions.md` updates on OQ-490, OQ-517, OQ-520
+- `tools/map2_opening.py`, `tools/map2_opening_contract.py`
+
+Reproduce:
+
+```
+python3 -I -u tools/map2_manifest_selftest.py
+python3 -I -u tools/map2_ship_selftest.py
+python3 -I -u tools/map2_ship_contract.py
+python3 -I -u tools/map2_opening_contract.py
+python3 -I -u tools/map2_opening.py audit data/maps/candidates/ship-start-v2/lan5-ship-a.json --game-dir /Users/dom/Dev/anno1503-worktrees/anno1503/game/app
+```
+
+### Next implementation unit
+
+Load one version-2 manifest into a new headless world: five ships, nested
+scout and donkey, four holds, the proposed gold, zero cities, zero owner
+runs. No movement and no founding. Specified as unit 1 in
+`docs/sim/ship-start-integration.md` §7. Prerequisite: this review. No
+candidate has to be installed. Do not start it until then.
+
+### Owner decisions
+
+No decision is required to review this packet. Still open, and not taken
+here: which of A, B and C to install; filler density (OQ-516); clustered or
+dispersed spawns (OQ-521); whether the 03 comparison loadout is the
+approved economy. Recommendation: keep all three, and do not add desert
+islands to fill the missing climate. The 16-step facing field can wait for
+a later manifest version; the first loader uses the cardinal table without
+rewriting version 2.
+
+## MAP.2 — readiness repair — 2026-10-31 — status: READY FOR REVIEW
+
+Reviewed head `330dc7f0dce1a1181c8bff53c4401c26e59bb940`. The historical
+ledger above still says the warehouse click is `AnnoFrame.dll` `0x10046300`.
+That row is withdrawn by this section. The menu facts, the Kontor 1302 file
+facts, the help pages, and the exterior-4 distinction stay.
+
+No candidate was selected. `data/maps/lan5.txt` and the version-2 manifest
+bytes are unchanged. No ship was loaded into the simulation.
+
+Host: Python 3.14.6. `pefile` 2024.8.26 and `capstone` 5.0.7 were the
+modules imported for the disassembly. A task-scoped `caffeinate -dimsu`
+covered this pass. Persistent power settings were not changed. Original
+game files were read only.
+
+### Audit CLI
+
+`python3 -I` does not put the script directory on `sys.path`. Before the
+fix, the documented audit died at `import map2_ship` with
+`ModuleNotFoundError` and exit 1. The contract suite still passed because
+the test inserts that directory itself. `tools/map2_opening.py` now inserts
+the script directory before the sibling imports, the same way
+`tools/map2_ship.py` does. A subprocess test runs the script with `-I` and
+does not insert the path in the parent. It must reach the usage line and
+exit 2.
+
+After that fix, the four suites and the three audits:
+
+| Suite or audit | Result | Exit |
+|---|---|---|
+| `map2_manifest_selftest.py` | 25 pass | 0 |
+| `map2_ship_selftest.py` | 30 pass | 0 |
+| `map2_ship_contract.py` | 53 pass | 0 |
+| `map2_opening_contract.py` | 8 pass, including the isolated-interpreter test | 0 |
+| Audit A, B, C | geometric, help-first and record-presence each 5; founding click unknown | 0 |
+
+The new JSON is byte-identical to
+`cache/map2-opening-2026-10-31/lan5-ship-{a,b,c}.json`. The import fix did
+not change a count. Logs are in `cache/map2-opening-repair-2026-10-31/`.
+C++ render, GPU and sanitizer gates were not run.
+
+### Warehouse chain
+
+| Hop | Evidence | Class |
+|---|---|---|
+| Ship menu setup `View.dll` `0x1006330b` | `push 0x13; call [vtable+0x74]`; result stored at view `+0x648`. Null fails with `0x80004005` | The object at view `+0x62c` is **unknown** |
+| `tFrameGame` slot `+0x74` and `tFrameGameFull` slot `+0x74` | Both are `AnnoFrame.dll` `0x10007e50` | Those two classes only. Not yet tied to view `+0x62c` |
+| `0x10007e50` | Kind argument; cache at `this+kind*4+0x1834`; miss calls `0x10066330` | The frame object |
+| Factory kind `0x13` | `call 0x10049400` at `0x10066666` | Constructs `tCursorAnlageKontor` |
+| Published pointer | `lea eax, [edx+esi+4]` at `0x100666f5`, where the constructor writes vtable `0x100884bc` | Kontor subobject, locator offset `0x20c`, type descriptor `0x10096928` |
+| Button `View.dll` `0x10063ba0` | `+0x60(0, 0x516)` on view `+0x648` | 1302, when that pointer's vtable is `0x100884bc` |
+| Slot `+0x60` | `0x100495a0` jumps to `0x10049140`; property 0 stores the u16 at complete-object `+0x44` | Same subobject. Constructor first writes `0x515` |
+| Slot `+0x70` | `0x100495e0` jumps to handler `0x10048e60`, which calls `0x10049340` | Kontor handler. Does not call `0x10046300` |
+
+Unresolved: the class of view `+0x62c`, and the body of `0x10049340`.
+Kind `0x0e` constructs `tCursorAnlageBergwerk` (type descriptor
+`0x100968b0`, locator `0x1008fa58`, vtable `0x10088164`, slot `+0x70`
+`0x10046dc0` jumps to `0x10046830`, which calls `0x10046300`). That path
+is the mine cursor. Its corrected transcription is
+`docs/re/ship-founding.md` §3.3. It is not founding evidence.
+
+### Loader contract
+
+Ships, scouts and donkeys are figures in `World::figures()`. Ids come from
+`next_figure`, which starts at 1: ship, scout, donkey for each seat, so
+ids 1..15 and `next_figure` 16. Seat 0 is not a figure id.
+Manifest milli-tiles convert by `q = m * 32 / 125` only when that division
+is exact; otherwise the load fails. Facing 0..3 becomes `dir16` 12, 8, 4, 0
+in that same load. Holds stay an ordered list, including two tools entries.
+The first loader accepts only the proposed baseline, matching
+`baseline_ok`. Details: `docs/sim/ship-start-integration.md`.
+
+### Reproduce
+
+```
+python3 -I -u tools/map2_manifest_selftest.py
+python3 -I -u tools/map2_ship_selftest.py
+python3 -I -u tools/map2_ship_contract.py
+python3 -I -u tools/map2_opening_contract.py
+python3 -I -u tools/map2_opening.py audit \
+  data/maps/candidates/ship-start-v2/lan5-ship-a.json \
+  --game-dir /Users/dom/Dev/anno1503-worktrees/anno1503/game/app
+```
+
+Repeat the audit for `lan5-ship-b.json` and `lan5-ship-c.json`. Diff the
+JSON against `cache/map2-opening-2026-10-31/`.
+
+### Next unit
+
+Load the proposed baseline into a new headless world, as specified in
+`docs/sim/ship-start-integration.md` §5 and §7. Facing and the Q24.8
+conversion are part of that load. No movement, no founding, no renderer.
+`0x10049340` and the ship planner stay outside its claims. Do not start it
+until this repair is reviewed.
+
+## MAP.2 — ship-start load implementation — 2026-10-31 — status: READY FOR REVIEW (load only)
+
+Branch `task/MAP-2-original-like`, from `0ae9a51`. Implementation is on top of the corrected
+hierarchy; no further documentation-only approval was needed. Contract and status table:
+`docs/sim/ship-start-integration.md` §9.
+
+### Implementation versus specification
+
+Implemented: the typed manifest reader and canonical hash (`src/formats`), the figure state
+(`dir16`, `parent`, `crew_slot`, ordered whole-ton `holds`) with its validation and stream 116
+(`src/sim`), and the loader (`src/sim_load/ship_start.*`) that builds a new headless `World`.
+Not built, by design: sailing, founding, combat, rendering, GPU, developer input, a new economy.
+`developer_start` is off; no city, Kontor, island reservation or tile owner is created; nothing is
+drawn from the PRNG. The three candidates are loaded, not selected or installed; `data/maps/lan5.txt`
+is byte-identical (SHA-256 `1a471d9f…9357`) and `game/` is untouched.
+
+### Corrected hierarchy, as built
+
+Ship 1502 (no parent, no crew slot) → scout 717 (parent the ship, crew slot 0) → donkey 718
+(parent the scout). One owner per triple, `home` invalid, `cargo_goods`/`cargo_88` zero. Seat 0 has
+ids 1, 2, 3; seat 4 has 13, 14, 15; `next_figure` 16. A donkey parented to the ship passes the generic
+graph rules and fails `expedition_baseline_problem` (test "the baseline expectation fails a donkey
+parented to the ship").
+
+### Parser compatibility and rejection
+
+84 cross-check cases are written by `tools/map2_manifest_xcheck.py generate` from the Python
+reference and read by both `xcheck.py verify` (reference side) and the C++ test (engine side):
+escaped Unicode and surrogate pairs, reordered keys, duplicate keys at top level, nested, in a hold
+and in a spawn, booleans as integers, floats/exponents/leading zeros/plus/NaN/Infinity, unknown
+and missing fields, version and profile, seat count/order/duplicates, facing, bounds, exclusions,
+policy ranges, hold limits, stale/uppercase/non-string hash, BOM, non-ASCII, truncated input. The
+three unchanged candidates hash exactly as stated (`e001442a…`, `af5df648…`, `cfda244e…`) in both
+languages. Deliberately stricter in C++ (marked `ref=ok engine=reject`): integers beyond int64,
+island id -1, a lone surrogate escape, nesting beyond 64. `content_hash` absent/null is accepted as
+in the reference. Schema validity and loader support are separate: a valid gold-25000 manifest
+parses and is rejected by the loader.
+
+### State version and goldens
+
+`kStateHashVersion` 115 → 116; `Figure` 14 → 18 serialized fields. Re-baselined only after the
+semantic checks: the three event digests are identical to 115; `tools/sim_stream.py` (bumped to
+116, independent transcription) agrees with the C++ on g0, g1, s5, s6 (`--check`: goldens agree);
+`scenario_corpus.txt` differs only in `create_hash`, in all 50 files (every count unchanged);
+`g4.log` +36 bytes (2 figures × 18), the other logs keep their size. The empty-world hash in
+`sim_test.cpp` was taken from the Python oracle, not regenerated from C++.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| formats suite incl. json, sha256, manifest cross-check (macOS, Debug) | all pass |
+| sim suite, replay tests, scenario corpus (3 cases) with the original files | all pass; 843 of 870 registered, the other 27 are below |
+| new: 12 figure/expedition cases, 8 loader cases | pass (hand-derived ids, parents, positions, facing, holds, gold, rejections, unchanged existing world, save/load/save identity, derived `by_id`, stream version and corrupt-reference refusal, hostile hold count, 200 000-deep chain, idle 1000-step advance) |
+| three candidates loaded with the original registry and files | pass; hashes `a e471f6e1ff1164ec`, `b 0ffe696a2a07cc14`, `c 7ec33fd43149094b` identical in two fresh processes and on 1, 2 and 7 executor threads |
+| `tools/lint_sim.py` + self-test | ok, 70 cases |
+| `map2_manifest_selftest`, `xcheck verify` | pass, 0 problems |
+| ASan + UBSan (`build/mac-asan`, focused: formats json/sha256/manifest 12 cases; sim ship, figure, golden, G0-G7, state_hash, world-core, fixed-map 49 cases) | 0 findings; candidate hashes identical to the Debug build |
+| `clang-format` 23.1.3 on every changed C++ file | clean |
+
+### Failed, skipped and external gates
+
+- **NOT RUN:** Windows MSVC build and tests, Linux GCC/Clang `-Werror` (`tools/check_unix_warnings.sh`
+  needs WSL), Wine/original-binary differential, GPU and rendering suites (excluded by the task).
+- **27 `anno_test_support_tests` coordinator self-tests fail on macOS** (not run elsewhere here):
+  their harness (`tests/child_process.hpp` `sibling()`) reads `/proc/self/exe`. This is the test
+  harness of the coordinator itself, not the production path; porting it is outside this unit.
+- Platform prerequisites added so that memory-admitted tests can run on a Mac (commit `8002ae8`,
+  separate from the feature, admission control unchanged and ON): executable path
+  (`_NSGetExecutablePath`), Darwin `posix_spawn` rejects closing unopened descriptors, and a macOS
+  memory meter (free+speculative+inactive pages, `hw.memsize`, `phys_footprint`). Without the meter
+  the coordinator saw "unknown" memory and never admitted, so the corpus test waited until stopped.
+- Native configuration, not a product build: `build/mac-headless` (Debug, Ninja, Apple Clang 21,
+  `-DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF`) and `build/mac-asan` (same plus
+  `-DANNO_SANITIZE=ON`). `build/msvc` was not touched.
+
+### Remaining limitations
+
+Founding (`AnnoFrame.dll 0x10049340`, OQ-490, OQ-520) and the open-water planner are unread, so a
+ship does not move and cannot found. A later unit that removes a parent figure must first release its
+children (validation reports the orphan, it does not repair it). The loader repeats ~60 lines of the
+island placement of `fixed_map.cpp`; unifying them would touch the fixed-map path. Player names and
+colours are not part of the manifest and stay unset.
+
+### Reproduce
+
+```
+export PATH=$PWD/../../anno1503/cache/mac-tools/venv/bin:$PATH   # cmake, ninja, clang-format
+cmake -S . -B build/mac-headless -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF
+ninja -C build/mac-headless anno_formats_tests anno_sim_tests sim_replay anno_budget_coord
+ANNO1503_GAME_DIR=<game/app> ctest --test-dir build/mac-headless -R "anno_sim|anno_formats" -j 8
+python3 -I tools/map2_manifest_xcheck.py verify
+python3 -I tools/sim_stream.py --check
+```
+
+### Next unit
+
+Review. Then, separately: founding from the ship (needs `0x10049340`) and the navigator.
+
+## MAP.2 — review repair of the load-only unit — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. Reviewed head `5804da0`. **Code head `a08b0d7`**; every
+result below was produced at that code head. Commits after it change documentation only. Evidence
+(commands, logs, exit status, versions): `cache/map2-repair-evidence/` (git-ignored; the numbered
+files are named in the table).
+
+### Correction of the earlier report
+
+The earlier entry said the macOS coordinator problem was a test-harness matter ("27 coordinator
+self-tests ... harness reads /proc/self/exe ... not the production path"). That was wrong. Reproduced
+in review and again here: on macOS the **production** coordinator labelled processes as Linux and
+judged liveness from `/proc`, so a live owner counted as stopped and its reservation was released
+after a restart; and the coordinator a client starts kept the client's stdout pipe open. The
+harness executable lookup was a third, separate, genuinely harness-only problem. Those 27 cases
+were also not "outside this unit": they are the cases that detected the first defect.
+
+### Findings, fixes, regressions, results
+
+| # | Finding | Fix (commit) | Regression | Before | After (code head `a08b0d7`) |
+|---|---|---|---|---|---|
+| 1 | Live Mac owner treated as stopped after a coordinator restart (capacity 100, A holds 50, B's 80 admitted with `pending=0`) | Darwin namespace 3, `proc_pidinfo` identity, fail closed on unknown (`7be9a0b`) | existing C3, F3 crash handover, F4 E1 (x2) plus new O1-O5 in `budget_f5_test.cpp` | 4 recovery cases failed (`01-before-coordinator-suite.log`, C3: `fresh 80 beside the old holder: claim=1 pending=0 reason=admitted`); with the old behaviour restored O1, O4, O5 fail (`02-mutant-old-behaviour.txt`) | 79/79 coordinator cases pass; O1-O5 pass (`02-after-ownership-new.txt`, `05-after-coordinator-suite.log`) |
+| 2 | Detached coordinator keeps the client's stdin/stdout/stderr, so a captured client does not reach EOF until the coordinator idles out | `/dev/null` for 0-2, every spawn action checked (`c5923fc`) | S1 (EOF while the coordinator lives), S2 (foreground output kept), S3 (captured pipeline) | S1 and S3 fail: the client's pipe carried the coordinator's `LISTENING` line; hand pipeline 32.0 s for a 2 s client (`03-before-streams.txt`) | S1-S3 pass; same pipeline 2.0 s; a piped `ctest` of a 19.1 s test took 19.2 s (`03-after-streams.txt`, `04-pipeline-timing-after.txt`) |
+| 3 | A parsed `base` of `Scenes/base.sze\u0000does-not-exist`, absolute, `..` and symlink-escaping paths load | `resolve_content_path`, enforced in sim_load before opening (`a08b0d7`) | 3 cases, 22 refused rows through the real parser (NUL, leading NUL, control, absolute, rooted, `..` x3, `.`, `//`, trailing `/`, backslash, `C:/`, `C:\`, `C:rel`, UNC x2, stream `:`, directory, missing, file symlink out, directory symlink out), a valid relative path, a link that stays inside, a linked content root; `install_ship_start` leaves bytes and hash unchanged for every refusal | 9 of the 22 bases were accepted and built a world (`06-before-paths.txt`) | all 22 refused with `base:`; the three candidates load with unchanged hashes (`06-after-paths.txt`) |
+
+One more defect surfaced and is fixed separately (`6f6bc43`, test readiness only): the case
+`two file clients cannot reserve the same free bytes` failed when run cold because `try_reserve`
+makes a single attempt and the case relied on a coordinator left warm by an earlier run
+(`05-file-clients-cold.txt`, `05-file-clients-cold-after.txt`). It now starts the coordinator
+explicitly; its assertions are unchanged.
+
+### Functional correctness versus test-infrastructure readiness
+
+- **Functional (the unit's behaviour):** finding 3 and the candidate loads. No simulation, state
+  stream (116) or golden changed; `git diff 5804da0 -- fixtures src/sim` touches only
+  `ship_start_load_test.cpp`. Candidate state hashes: A `e471f6e1ff1164ec`, B `0ffe696a2a07cc14`,
+  C `7ec33fd43149094b`, identical in Debug, under ASan/UBSan and across executors.
+- **Test infrastructure (what lets the memory-admitted tests run on a Mac):** findings 1 and 2,
+  the harness lookup, the cold-start precondition. `8002ae8` is superseded by the reviewed MAC-1
+  sources (`4cc0a3a`, `870a527`, `837fb5f`) plus the Darwin namespace; that overlap will merge with
+  the W4.3 line (which carries MAC-1 with Darwin under namespace 2) as a small conflict in
+  `coord_wire.hpp` and `coord_server.cpp`, resolved by keeping namespace 3 and the legacy-stamp rule.
+
+### Decisions the reviewer should look at
+
+- Darwin is namespace 3, not 2. Old records: namespace 2 with a zero stamp (`8002ae8`) are kept
+  forever (unknown); namespace 2 with a microsecond Darwin stamp (MAC-1 coordinators) are judged by
+  Darwin because the journal under `~/.cache/anno1503` is shared by every executor on the host.
+  `kCompatVersion` stays 3 and why: `docs/perf/README.md` "MAP-2 repair".
+- The path contract rejects `.`/`..`, empty segments, backslash and `:` instead of normalising them.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused new regressions, each shown failing on the defect first | O1-O5, S1-S3, 3 path cases |
+| Coordinator suite, native macOS (`-j 1`) | 79/79 |
+| Full gate: sim, replay, formats, coordinator (`ctest -j 8`, admission on, game dir set; 899 tests registered, 889 matched) | **889 executed, 889 passed, 0 failed** (`08-gate-summary.txt`); the asset-dependent cases ran: lan5, scenario corpus x3, the three candidates |
+| ASan + UBSan, affected tests (formats 12, sim 36 with the game dir, coordinator 34) | 0 findings (`09-asan-results.txt`) |
+| `clang-format` 23.1.3 on the 14 C++ files changed since `5804da0` | clean |
+| `map2_manifest_xcheck verify` (84), `sim_stream --check`, `lint_sim`, the three candidates in Python | pass |
+| `data/maps/lan5.txt` SHA-256 | `1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357` (unchanged) |
+| Candidates, `data/`, `game/` | identical to the reviewed head |
+
+### Not run, skipped, remaining
+
+- **NOT_RUN:** Windows MSVC build and tests; Linux GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`); the Wine/original-binary comparison. A macOS pass does not substitute for them. In particular the Linux and Windows branches of the files edited in `src/test_support` were not compiled here.
+- **Capability-skipped, counted as not executed although ctest shows them passed:** `F3 (D2)` (real PowerShell meter), `F4 (N3)` and `F4 (N4)` (`/proc` descriptor listings). They need WSL.
+- The stream regressions S1 and S3 use a POSIX shell/pipe; S3 is skipped on Windows. The Windows detach path (`DETACHED_PROCESS`) is unchanged and unmeasured here.
+- Left running by design, not killed: coordinators this session started on ports 47850-47859 and 47632 idle out by themselves after 30 s; none was stopped by name. The caffeinate of this round (pid 21892) was stopped; the caffeinate of the previous round expires by its own timeout.
+- Remaining limits of the load-only unit are unchanged: no sailing, founding or navigation; the island-placement block is still duplicated from `fixed_map.cpp`.
+
+## MAP.2 — third repair: trustworthy gate, isolated path fixtures, coordinator transition — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. **Code head `a71b07f`** (reviewed code was `a08b0d7`, reviewed documentation head `685c2aa`). The documentation commit that carries this entry follows the code head and changes no code. Evidence (git-ignored): `cache/map2-repair2-evidence/` (frozen binaries and hashes in `bin/SHA256.txt`). Windows MSVC, Linux GCC/Clang `-Werror` and the Wine comparison: **NOT_RUN**; nothing here is substituted by a macOS result. The Mac tools profile (`cache/mac-tools/venv/bin`) was on PATH; the game directory was set explicitly; admission control was on; an owned `caffeinate -t 5400` (pid 40661) kept the screen awake and was stopped by pid afterwards. Free memory (≈6 GiB free pages, large inactive) and 1.6 TiB disk were checked before the expensive runs; the gate ran with 8 jobs and `ANNO_TEST_THREADS=4` (the recorded Mac calibration), no other job used the build directory or test ports.
+
+### Findings, reproducers, fixes
+
+| # | Finding | Reproducer (evidence) | Fix (commit) | Result |
+|---|---|---|---|---|
+| 1 | O1's name contains `;`: CTest registered two tests that each ran zero cases and passed; `test_names_are_selectable` detected it but the gate selector excluded it | `01-o1-names.txt`, `01-o1-zero-case.txt` (0 cases both), `01-o1-real-body.txt` (whole name: 1 case, 25 assertions), `01-checknames-before.txt` | `e85814d`: O1 renamed; `CheckTestNames.cmake` is the W4 version (`3d2fb9d`); `tools/test/run_selected.sh` + `ctest_verdict.py` (preflight, empty/skip/sanitizer/zero-selection accounting) | 79 coordinator cases select as 78 + preflight, 0 empty |
+| 1d | the wrapper itself | `03-negative-checks.txt`: unknown target → 2; zero selected → 8 (first version passed it, because the preflight counted as a selection; fixed); `;` in a name → 5; game dir unset → 6; synthetic empty child and sanitizer line → fail | `e85814d`; classifier fix `a71b07f` (an opt-in skip that also names the game directory was read as a missing asset and failed the real gate once) | gate verdict PASS only when all conditions hold |
+| 2 | content-path fixtures share one fixed directory and delete it on entry | three cases concurrently (`ctest -j3`) failed 15 of 15 repeats: `create_symlink: File exists`, `copy_file: No such file` (`04-path-before.txt`, `04-path-collision-msgs.txt`) | `c337931`: atomic unique `OwnedDir`, removes only its own, safe on partial construction; new case for distinctness/cleanup; symlink-less platforms say so | 4 cases concurrently ×5 Debug and ×3 ASan/UBSan: all pass, no leftover directories (`05-*`) |
+| 3 | an older coordinator keeps a dead namespace-3 owner's reservation | real W4 binary (`c869fb7`, `92c30840…`): accepts the compat-3 MAP client, successor keeps the record, 24 tries `claim=0 pending=50` (`06-mixed-old-successor.txt`); control with the pre-change MAP-2 successor admits (`06-mixed-map2-successor-control.txt`) | `7930598`: compat 4, versioned default journal, one-time read-only adoption; policy and rollout limits in `docs/perf/README.md` | real-binary old→new recovers (`09-mixed-old-to-new.txt`); busy older coordinator refuses a v4 client with a bounded diagnostic and keeps its holder; older coordinator started later leaves the v4 journal byte-identical (`10-mixed-rejected.txt`); T5 real binary steps aside (`10-t5-real-binary.txt`) |
+
+Transition coverage: **modeled** (this build with `--compat-version 3`): T1 idle/busy, T2 names, T3 live holder / exit / no second adoption / legacy file byte-identical, T4 CPU token, reused pid, unattributable record (memory and CPU, live, exited, reused, unknown). **Mixed-binary** (real older binary): the scripted runs above and T5. Mutation checks (`08-mutations.txt`): each of the three mechanisms reverted fails the matching cases (T2–T4; T3–T4; T1–T4 and the F3 pin).
+
+### Correction of the earlier count
+
+The saved gate of the previous round (`cache/map2-repair-evidence/08-gate-LastTest.log`) reports 889 results, and I wrote "889 executed/889 passed". It contained **two empty entries** (the two halves of O1: `test cases: 0`) and **four explicit skips** (F3 (D2), F4 (N3), F4 (N4) — WSL-only — and the opt-in transport-statistics case). At most 883 of those 889 executed a case. The "899 registered" figure of that report cannot be reconciled: the registered list was not saved. The previous gate also excluded `test_names_are_selectable`, which would have caught O1. The historical evidence is unchanged.
+
+### The final gate (code head `a71b07f` minus the classifier fix, which only changes the reader; the saved log was re-read with it)
+
+`tools/test/run_selected.sh build/mac-headless - 'anno_sim|anno_formats|anno_test_support' 900 12-gate.log 8` with `ANNO1503_GAME_DIR`, `ANNO_TEST_OLD_COORD` (frozen older binary) set, `ANNO_SIM_TRANSPORT_STATS` unset; preflight `test_names_are_selectable` passed first.
+
+| registered (selector) | selected | executed | passed (CTest) | failed | empty | skipped |
+|---|---|---|---|---|---|---|
+| 894 | 894 | 890 | 894 | 0 | 0 | 4: 3 platform (F3 (D2), F4 (N3), F4 (N4): WSL), 1 opt-in (`transport search statistics`) |
+
+Required-asset skips 0, sanitizer lines 0, verdict PASS (`12-gate.log`, `12-gate-verdict-after-classifier-fix.txt`; the first verdict line in `12-gate-stdout.txt` is FAIL for the classifier reason above, exit 6, and is kept). Registered tests of the whole build: 1071. ASan/UBSan (`build/mac-asan`, game dir set): 78 selected (ship start, manifest, JSON, SHA-256, figure state, coordinator O/S/T/F3-pin cases), 77 executed, 1 opt-in skip (T5, no older binary in that run), 0 failed, 0 empty, 0 sanitizer lines (`13-asan-verdict.txt`). Focused runs before the gate: coordinator suite 78/78 with 3 platform skips (`07-coord-suite-after-bump.log`).
+
+### Invariants (`14-final-checks.txt`)
+`clang-format` 23.1.3 clean on the 5 changed C++ files; active map sha256 `1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357` unchanged; `git diff a08b0d7 HEAD` is empty for `data`, `game`, `fixtures`, `src/sim/src`, `src/sim/include`, `src/sim_load`, `src/formats` (candidates, simulation semantics, state version 116 and goldens unchanged); `map2_manifest_xcheck verify`: 84 cases, 0 problems; `sim_stream --check`: goldens agree; `lint_sim`: ok; `git status game`: empty. The candidate loading case ran in the gate (Debug) and under ASan.
+
+### Remaining external gates
+Windows MSVC build and test run; Linux GCC 13 / Clang 18 `-Werror` and ASan/UBSan (the Linux and Windows branches of `coord_server.cpp`, `budget_f5_test.cpp` T-cases and `ship_start_load_test.cpp` were not compiled here; T-cases and `Home` are `#if !defined(_WIN32)`); WSL-only cases F3 (D2), F4 (N3), F4 (N4); Wine comparison; a merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` will conflict: keep namespace 3, the legacy-stamp rule, compat 4 and the versioned journal name); a decision by the orchestrator on rolling compat 4 out while W4's compat-3 clients still use port 47631.
+
+I stopped here for review and began no movement, navigation, founding, candidate selection or installation.
+
+## MAP.2 — fourth repair: coordinator handoff safety and truthful gate verdicts — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. **Code head `b0c84ca`** (reviewed code `a71b07f`, reviewed documentation `aa36bb3`); the documentation commit that carries this entry follows it and changes no code. Evidence (git-ignored): `cache/map2-repair3-evidence/`. **The shared-host compat-4 rollout stays on hold**: nothing was merged, pushed or installed, no other executor's coordinator was stopped and no journal of another executor was altered. Windows MSVC, Linux GCC/Clang `-Werror` and the Wine comparison: **NOT_RUN**.
+
+### Finding 1 — compat-4 handoff lost a live reservation
+| | |
+|---|---|
+| Reproducer | v4 starts idle and exits; v3 starts and admits a live holder of 50; v3 exits, holder lives; v4 restarts; 80 against capacity 100 is **admitted**. Also the CPU token, repeated handoffs, and a v4 holder under a v3 start. Failing output saved **before** the change: `01-handoff-before-fix.txt` (H1, H2, H4, H5 fail; real W4 binary H7 fails; first-start control H3 and the unattributable-owner case H6 pass). |
+| Cause | two journals: v4 read only `coord-<port>-v4.journal` (adopting the unsuffixed one only if the v4 file did not exist), v3 read only the unsuffixed one. |
+| Fix (`d013af3`) | one `coord-<port>.journal` for every version, record format unchanged. Duplicate replay, hold-id collisions, releases naming the wrong record, CPU double counting and resurrection of released records cannot occur because nothing is copied (`02-transition-matrix.md` says what repairing the two-journal design would have required). |
+| After | H1–H6, H8, H9 pass modeled; **H7 passes with the real W4 binary** (`c869fb7`, sha256 `92c30840ae35eed799326fe2415f94c088fd8ef92a947fbe9b19c3d6f56262f4`): upgrade handoff for memory and CPU token, and the downgrade, `03-handoff-after-fix.txt`. T1/T2/T5 (handshake, single name, real binary steps aside) pass. |
+| Cost, stated | after a downgrade an older coordinator keeps a **dead** namespace-3 owner reserved while it runs (never a live one lost): real binaries, 24 tries `claim=0 pending=50`, `04-downgrade-real-binary.txt`; v4 releases it when it returns. A v4 coordinator does not control an unmodified older executable. |
+| Rollout | safety needs no lockstep; the procedure (journal report pre-flight, wait for idle, never stop a coordinator, how a rollback behaves) is prepared in `docs/perf/README.md`, not applied. `tools/test/journal_report.py` is a read-only helper. The `-v4` journals of the previous revision in `~/.cache/anno1503` hold no open promise (`14-stale-v4-journals.txt`) and were left in place. |
+
+### Finding 2 — the verdict reader missed "skipped"
+| | |
+|---|---|
+| Reproducer | the real Bigbrother corpus cases with `ANNO1503_GAME_DIR` absent print `ANNO1503_GAME_DIR not set: skipped`; through `run_selected.sh` the verdict was `executed=2`, exit 0 (`05-bigbrother-before.txt`). |
+| Fix (`87ead0e`) | a skip is a MESSAGE that names a missing prerequisite and says it skipped, in every phrasing in use (audit `08-skip-audit.txt`, 92 lines); item outcomes (`overlay-skip …`, `…: skipped as the original does`) and zero-assertion tests are not skips; doctest's `N skipped` is never read. |
+| After | end to end through the wrapper (`07-verdict-e2e-after.txt`): absent → **exit 6, executed=0, required-asset=2**; present → exit 0, executed=2, skipped=0. `test_verdict_contract` (14 cases, second mandatory preflight): real execution, each missing-asset form, platform/opt-in skips incl. the transport-statistics message, zero-case children, zero selection after a good preflight, sanitizer output; a mutation that ignores `skipped` fails 2 of them (`06-verifier-mutation.txt`). The previous round's gate log re-read gives the same 894/890/4. |
+
+### Counts (separately)
+| run | registered/selected | executed | failed | empty | skipped |
+|---|---|---|---|---|---|
+| final gate, Debug, `anno_sim\|anno_formats\|anno_test_support` (`13-gate.log`), game dir set, `ANNO_TEST_OLD_COORD` set, 8 jobs, `ANNO_TEST_THREADS=4`, preflights `test_names_are_selectable` and `test_verdict_contract` passed first | 901 / 901 | 897 | 0 | 0 | 4: 3 platform (F3 (D2), F4 (N3), F4 (N4), WSL), 1 opt-in (transport search statistics); required-asset 0; sanitizer lines 0; verdict PASS |
+| focused coordinator + verdict (`10-focused-verdict.txt`) | 91 / 91 | 88 | 0 | 0 | 3 platform |
+| ASan/UBSan selection, first run (`11-asan-first-run-3-failures.log`) | 109 / 109 | 106 | **3** (F3 (D1, handover / crash handover / silent): `BIND-FAILED` 47813/47814 — the Debug run's test-started coordinators still held the ports, they idle out after 30 s) | 0 | 0 |
+| ASan/UBSan selection, rerun after the ports were quiet (`11-asan-verdict.txt`) | 109 / 109 | 109 | 0 | 0 | 0; sanitizer lines 0 |
+
+The three failures passed alone (`11-asan-f3-isolated.txt`) and in the rerun; the log of the failing run is kept. No earlier count is corrected this round: the previous gate's 890 executed ran with the game directory set, so its Bigbrother cases executed.
+
+### Provenance
+Code head `b0c84ca`. Current binaries: `anno_budget_coord` sha256 `1fffb80baca59e2710a91021c31aeb29cd15a49fa27c2e872ba355686e371366`, `anno_budget_probe` `9942d6d774a523fa1f8035262439e6dc686a843d4a22c92fa3b5a06ce547c222` (identical to the downgrade run's, `12-final-binaries.txt`). Older W4 binary as above; the previous revision's (`a71b07f`) coordinator `d91571b0605626c7bc32dc21ee46a87682dfb868bfbff295c0a38a39e10891a9` is kept in `bin/` for the "before" runs. Free memory (≈4.5 GiB free pages plus inactive) and 1.6 TiB disk were checked first; an owned `caffeinate -t 5400` (pid 48929) kept the screen awake and ended with the gate. Invariants (`15-final-checks.txt`): clang-format clean, lan5 sha256 `1a471d9f…9357`, `git diff a71b07f b0c84ca` empty for `data game fixtures src/sim src/sim_load src/formats`, xcheck 84 cases / 0 problems, goldens agree, `lint_sim` ok.
+
+### Caveats and decisions for review
+- Running any gate with admission on starts a compat-4 coordinator on the shared port 47631 for the run's duration (it idles out after 30 s) and compacts the shared journal as any coordinator does; this happened here as in every earlier gate. The hold concerns rolling that out as the standing state; say if gates must instead use a private port and journal until the hold is lifted (the budget would then not be shared).
+- Reverting to one journal re-opens the leak the third round closed for the downgrade direction; I chose it because the alternative (two journals) cannot be made loss-free without the five mechanisms listed in the matrix. If a leak-free downgrade is required, Darwin owners would have to be journaled in the namespace-2 microsecond format a compat-3 coordinator judges correctly; that is a wire/journal semantics decision I did not make.
+- Remaining external gates: Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` + ASan/UBSan (the POSIX-only H cases and the edited `coord_server.cpp` were not compiled there); WSL-only F3 (D2), F4 (N3), F4 (N4); Wine; the merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` conflicts: keep namespace 3, the legacy-stamp rule, compat 4 and the single journal name); lifting the rollout hold.
+
+I stopped here for review and began no movement, founding or candidate work.
+
+## MAP.2 — fifth repair: the previously published compat-4 build's versioned journal — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. **Code head `bb7f6b3`** (reviewed code `b0c84ca`, reviewed documentation `2ae2bf8`); the documentation commit that carries this entry follows it and changes no code. Evidence (git-ignored): `cache/map2-repair4-evidence/`. **The shared-host compat-4 rollout stays on hold.** Nothing was merged, pushed or installed; no shared coordinator or journal was touched (the three `-v4` journals of the host were only read, and copies of them were used in a private home); movement, founding, GPU and candidate work were not started. Windows MSVC, Linux GCC/Clang `-Werror` and the Wine comparison: **NOT_RUN**.
+
+### The defect
+The compat-4 build published at `a71b07f` kept its promises in `coord-<port>-v4.journal`; the repaired build never reads that file. Both advertise compat 4. With the real published binaries (coordinator `d91571b0…91a`, probe `1c2746c7…79e7`): the predecessor admitted a live holder of 50 (and, separately, a CPU token), its coordinator was stopped with the holder alive, the current coordinator started on the same home and port, printed `orphans=0`, and then admitted 80 (the second token). Failing output was saved with the production change stashed (`01-red-before-fix.txt`: V1, V2, V3, V3b fail; the control V4 passes); green after: `02-green-after-fix.txt`.
+
+### The repair (`bb7f6b3`)
+One canonical journal and namespace 3 are retained. Startup refuses, read-only, after the bind and before anything is announced, admitted or rewritten, when `coord-<port>-v4.journal` beside the journal in use holds outstanding promises or cannot be proved safe. No merge, migration or automatic release of dead owners.
+
+| Predecessor journal | Startup |
+|---|---|
+| absent / empty / all records released | normal (`LISTENING`, `orphans=0`) |
+| live memory holder, live CPU token | refused (V1, V2 with the real binaries; V3 modeled) |
+| known-dead owner, unknown or unattributable owner | refused |
+| unreadable (directory, mode 000) | refused |
+| malformed line, truncated record, last line without newline | refused |
+| canonical journal also present | canonical untouched when refused; honoured as before when allowed (V3b: `orphans=1`) |
+| repeated starts | same answer, no byte changes (three starts per refusal) |
+| another port's predecessor file | no block (V4) |
+
+A refusal prints `JOURNAL-REFUSED … Recovery: …`, exits 5, closes the socket, leaves every journal byte unchanged (the canonical journal is not created or compacted) and writes `<journal>.refused`. The client that started the process shows it: `ADMITTED 0 … infrastructure blocker: … did not start: startup refused: …`, after 0.06 s observed; bounded by the configured wait in every case (`03-refusal-sample.txt`, V1). `--journal` and the test override check the directory of the journal in use; there is no bypass variable. Clean predecessors do not block: the three real `-v4` journals of this host read as clean and copies of them start the coordinator (`07-…`, `08-…`).
+
+### Supported and unsupported transitions
+| | |
+|---|---|
+| legacy 3 → current | supported |
+| previous compat 4, clean file → current | supported |
+| previous compat 4, open/unreadable/malformed file → current | **refused**, recovery documented (operator confirms owners, moves the file aside; never delete) |
+| current → legacy 3 | live promises kept; **a dead namespace-3 owner stays reserved and the v3 coordinator does not idle out** |
+| current → previous compat 4 | **unsupported** (it ignores the canonical journal) |
+
+### Correction of the previous report
+"v4 releases it when it returns" and "wait for its 30 s idle exit" were incomplete: a coordinator with an outstanding orphan never takes the idle exit. The downgrade recovery needs an operator who owns that coordinator: identify the pid by port, check the namespace-3 owners with `journal_report.py` and `ps`, wait for live holders, stop that one pid, start the current build (it releases the dead owners and keeps the live ones). Prepared in `docs/perf/README.md`, **not applied**.
+
+### Counts (separately)
+| run | selected | executed | failed | empty | skipped |
+|---|---|---|---|---|---|
+| focused coordinator suite, Debug, real predecessor + older binaries set (`09-final-focused.log`) | 95 | 92 | 0 | 0 | 3 platform (F3 (D2), F4 (N3), F4 (N4): WSL); opt-in 0, required-asset 0 |
+| same, ASan/UBSan (`10-final-asan.log`) | 95 | 92 | 0 | 0 | 3 platform; sanitizer lines 0 |
+| earlier runs of the same selection before a comment-only edit (`04-`, `05-`) | 95 | 92 | 0 | 0 | 3 platform |
+
+Admission used a private port and journal (simulated budgets only). No broad gate was run and nothing was started on the shared port 47631. Ports were checked clear before each run (`lsof`, bounded 90 s; they were).
+**Pending, needs the hold lifted** (not run): `ANNO1503_GAME_DIR=$PWD/game/app ANNO_TEST_OLD_COORD=<frozen W4 binary> ANNO_TEST_V4_COORD=<published v4 coordinator> ANNO_TEST_V4_PROBE=<published v4 probe> ANNO_TEST_THREADS=4 tools/test/run_selected.sh build/mac-headless - 'anno_sim|anno_formats|anno_test_support' 900 <log> 8`, then the ASan selection.
+
+### Provenance
+Current `anno_budget_coord` sha256 `40d6b1eac26c592b12e938768cfdd58066e5d57df869299084d71cbc0d8fad21`, `anno_budget_probe` `e2ab7f419e1ce3cd792f79654156e7080aacfaca52380ec77453078c4482893e` (`06-binaries.txt`); predecessor and legacy hashes as above and `92c30840…6262f4` (legacy W4, `c869fb7`). Invariants (`11-invariants.txt`): clang-format clean, `git diff b0c84ca bb7f6b3` empty for `data game fixtures src/sim src/sim_load src/formats`, `git status game` empty, active map sha256 `1a471d9f…9357`; candidates, simulation behaviour, goldens and state version 116 unchanged.
+
+### Remaining
+Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` and ASan/UBSan (new POSIX-only V cases and the edited `coord_server.cpp` were not compiled there); WSL-only F3 (D2), F4 (N3), F4 (N4); Wine; the broad gate above after the hold is lifted; the merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` conflicts); the orchestrator's decisions on the hold and on the downgrade cost.
+
+I stopped here for review.
+
 ## Round dw — critical review of CPU corrections — 2026-10-31 — CHANGES REQUIRED
 
 Reviewed `3db3df3` on task/W4-3-live-buildings, production code `ba8f300`; verified subsequent commits change docs only. Main before this review: `fc3344a`. Executor checkout was clean and was not edited. Review probes link its existing ASan libraries; independent source/logs live in main's `cache/orch-dw/`. No merge or push.
@@ -8138,6 +11247,845 @@ There is useful progress: the dirty-child check and synchronous generation guard
 ### Decision and next assignment
 
 Keep the per-island immutable direction and the substantive R2/R3 fixes. Return the CPU unit for **DW1–DW7 overnight completion** as listed on TASKS and expanded in `cache/orch-dw/executor-packet.txt`: reliable test execution; multi-worker lifetime; final reclamation and failure recovery; byte bounds/local publication; representative Release measurements; required local gates; then a docs-only GPU handoff plan. Work is split into smaller verifiable stages, with independent authorized work available if one stage is blocked. No viewer/GPU integration, input, preview, merge or push before the next CPU review. This is an evidence-based sequencing decision, not a new permission request to run already-required tests.
+
+## MAP.2 — founding prerequisites: coordinates, exact cargo, payment preparation, island lock — 2026-11-01 — status: READY FOR REVIEW
+
+Scope: the four packages of the assignment; no `FoundCmd`, no sailing, no candidate installed, no change to `game/`, the manifests, the active map or another executor's files. Baseline `d5f0acef` (code `2b0c5b9`); final code head `9e059b2`; this report's commit is documentation only.
+
+### Packages (all with an independent read-only reviewer; a package was marked done only after its re-review)
+| Package | Commits | Reviewer record |
+|---|---|---|
+| A. coordinate repair (tiles addressed by local offset; ownership, occupancy, rectangle and disc claims on layers above INT32_MAX) | `c1ef387` | one reviewer, `c1ef387`, no findings; noted the same narrowing pattern in `walk_cells.cpp` (follow-up, out of scope) |
+| B. exact cargo (`ShipHold::amount_88`, u64 raw 1/256 ton), stream 116 -> 117 | `5c2b4df`, `b40544b`, `bc56953`, `91be8c1` | one reviewer, `b40544b`; two P3 documentation findings fixed |
+| C. pure payment preparation (`payment::prepare`) | `befec72` | one reviewer, `befec72`, no findings; material limit: the hold slot's notification call is not modelled |
+| D. island lock (`Island::lock`, LOCKED record), stream 117 -> 118 | `433d6cb`, `3d8a837` | one reviewer, `433d6cb`: CHANGES REQUIRED (docs not committed, a vacuous check, a missing template-refusal test); re-review of `3d8a837`: approved |
+| Canary | `9e059b2` | load, save, load, prepare payment with a locked island and fractional cargo; nothing in the world moves |
+Final integration review (fresh reviewer, code `9e059b2`, docs `e365026`): APPROVED, no P1/P2; one P3 (this line pointed to a missing section, and the territory-radius limit was missing from the list below), fixed in the next documentation commit. It checked schemas and goldens against Python, the loading paths, payment units end to end, the coordinate helper, scope, and the counts against the raw logs.
+
+### State representation, versions and goldens
+117: a hold is `u32 goods, u64 amount_88` (12 bytes; was `u32 tons`, 8 bytes). 118: each island gains `u8 lock` after its climate. Old streams and saves are refused by their version, never reinterpreted. Command encoding and the PRNG timeline (2) are unchanged. Goldens: at 117 the nine values of g0/g1/s5/s6 equal `tools/sim_stream.py`; the rest were justified by a control run with the version held at 116 and the new layout (every old golden, the corpus and the logs reproduced; `cache/map2-gates2/b-control-version116-layout117.log`). At 118 the same nine plus the new `s5_islands_locked_create` (locks 2 and 1) equal the Python values; the three event digests are identical to 117; `scenario_corpus.txt` changed only in the version header, the create hashes and the UnknownRecord count (down by one in exactly the eight LOCKED-bearing files, checked by the reviewer).
+
+### Counts (final revision `9e059b2`, macOS arm64 Apple clang, Debug, `-Werror`; each log records the tested source identity and an empty diff)
+| Gate | Selected | Executed | Failed | Empty | Skipped | Log |
+|---|---|---|---|---|---|---|
+| focused new tests | 56 | 56 | 0 | 0 | 0 | `cache/map2-gates2/f1-focused.log` |
+| full sim | 751 | 750 | 0 | 0 | 1 (opt-in) | `f2-sim-all.log` |
+| formats | 82 | 82 | 0 | 0 | 0 | `f3-formats.log` |
+| ASan+UBSan focused | 56 | 56 | 0 | 0 | 0 | `f4-asan-focused.log` |
+| ASan+UBSan full sim | 751 | 750 | 0 | 0 | 1 (opt-in) | `f5-asan-sim.log` |
+`tools/sim_stream.py --check`: goldens agree; `tools/lint_sim.py`: ok; both fixture generators `--check`: up to date (first attempt exit 2: the system Python lacks `pefile`; rerun with the evidence venv, `f0-fix-*.log`, `f0b-fix-*.log`). First failures kept: the Package D full run (5 hand-transcribed layout tests, `d-sim-all.log`), the 116-control run, `a1-first-failure.log`. NOT RUN: Windows/MSVC, Linux GCC/Clang, `check_unix_warnings.sh`.
+
+### Remaining founding prerequisites
+Evidence: figure-veto inputs (A1, A2), city registration, name draw, Kontor counter/KONTID, discovery/reveal/messages (A4, A5), virtual callees (A3), the hold slot's notification effect. Engine: figure classes/hull/range data, relations, city-ring allocation, registration data, the command with codec and `Reject` values, atomic application of a payment plan, a run-time lock setter, `walk_cells.cpp` narrowing. Owner decisions: C5, C8/C9, malformed LOCKED policy for modded data. Known widening: the territory claim equals the emulated original only for radius <= 126 (byte-wide spans wrap in the original from 127 on; documented in `territory.hpp`). Founding is not ready.
+
+## MAP.2 — version-test correction, city-creation prerequisites (allocation, registration, naming, Kontor ids), research ledger — 2026-11-01 — status: READY FOR REVIEW
+
+Scope: A–E of the assignment; no `FoundCmd`, sailing, UI or candidate; `game/`, the manifests, the active map, `TASKS.md` and other executors' files untouched. Baseline `302f95e` (code `9e059b2`); final code head `c28c958`; later commits of this report are documentation only. Streams: **119** (state), **PRNG timeline 3**. Review records: each review was a separate read-only review-agent subagent (general-purpose, no edits, no delegation); the reports are retained in the session transcript `/Users/dom/.claude/projects/-Users-dom-Dev-anno1503-worktrees-anno1503/8982de5f-71c9-45ee-8e2e-3ab88d2c851d.jsonl` (no separate review files exist; reviewer identities are internal session agents and are not named further).
+
+### Acceptance matrix and review ledger
+| Package | Result | Reviewed revision | Verdict | Findings | Resolution |
+|---|---|---|---|---|---|
+| A. version-test correction | the four "version" cases (ship_state ×3, scenario_formats ×1) used to patch a version byte without resealing and only showed the checksum diagnostic (`cache/map2-gates3/a1-actual-errors-before-fix.log`); `island_test::check_unsupported_versions` now edits the frame stream version and the state-header version with `reseal`, asserts the specific diagnostics and an unresealed contrast (`a2-actual-errors-after-fix.log`); doc nits (loop in AnnoWelt.dll, allocation wording, 116-control counts: selected 731, executed 729 passes, 1 failure, 1 skip) | `b1ba1ed` | APPROVED | none | — |
+| B. city contract (`docs/sim/city-creation.md`) | effect table E1–E15 from `0x100967e0`, `0x100861c0`, `0x100279a0`; allocation cursor (`ring+0x40`, ctor −1) ≠ scheduler cursor (`ring+0x46`); initialization; refusal order; stream 119 / timeline 3 | rev 1 `fb9d465`; rev 2 `d41542c` | rev 1 CHANGES REQUIRED; rev 2 APPROVED | rev 1: the original also draws the name at scenario load (E15), Kontor counter only for PRODTYPE `0x21` on the Create path, serializer flag, isolating test rows; rev 2: an invalid capacity/neutral pair in a test row | all applied (`d41542c`, `b23ac3b`) |
+| C. allocation and registration | `CityCreation::prepare/commit`; `Island::city_cursor`; neutral value never allocated; same player + same island refuses, anything else coexists; plan/commit with re-checks; loader cursor = last city in file order | `6cd619f`, re-review `330512b` | CHANGES REQUIRED → APPROVED | stale-plan rows did not isolate the commit re-checks; missing precedence pairs; scheduler-cursor precondition; hand-built plan naming the neutral slot | all fixed; mutants of every re-check caught (`d-mutants.txt`) |
+| D. naming, Kontor ids, persistence | `DrawSite::CityName` (ported) / `CityNameLoad` (unported); `Island::kontor_counter`, `City::name`, `Building::kontor_id`; loader reads `KONTORID` and keeps the market `KONTID`; goldens re-based with the Python reference | `6cd619f`, re-check `330512b` | APPROVED (both) | mutation evidence only for C; `commit_kontor` id/counter consistency; no byte-level name test | added (`d-mutants.txt`, forged-plan test, `city stream layout with a name`) |
+| E. research ledger (`docs/re/ship-founding.md` §13) | items 1–5; the author's claims verified by a separate reader who re-disassembled and recounted | `1446690`, `8ab0e12` | CHANGES REQUIRED → APPROVED | text corrections: the tile-bit routine's direction (CLEAR arm at founding) and gate, tile-dword wording, endless-evidence scope, property 5 | applied (`8ab0e12`, `0cc4e75`) |
+Final integration review (fresh reviewer, code `c28c958`, docs `48f331f`): APPROVED, no findings. It checked the stream 119 / timeline 3 schemas across code, Python and docs, the golden and corpus differences, the loader / operation / earlier-package interactions (lock, cargo, payment preparation), the canary, scope (no command, codec, `Reject`, candidate, `game/`, manifests or `TASKS.md` change) and the counts against the raw logs; it did not re-run the suites, the generators or the mutants.
+
+### Cause-specific evidence
+Tables: `docs/sim/city-creation.md` §6 (claim | valid control | intentional defect | earlier checks | expected | test). Real-code mutants, all caught: `cache/map2-gates3/c-mutants.txt` (allocation start, neutral skip, commit skips draw, no own-city check, cursor from highest slot [survived once → the gap-creation case was added]) and `d-mutants.txt` (each commit re-check in isolation, the neutral-plan guard, naming index, Kontor returns new value, no overflow guard, no stale check, KONTORID zero and length). First failures retained: `a1-actual-errors-before-fix.log`, `first-attempt-preflight-fail/`, `second-attempt-preflight-fail/` (the mandatory name preflight rejected a test name containing a semicolon, twice), the sim run with 16 hand-transcribed layout tests, the update run output.
+
+### State and PRNG compatibility
+Stream 119: `Island` + `i32 city_cursor`, `u32 kontor_counter` (after `lock`); `City` + `string name` (before the index scope); `Building` + `u32 kontor_id` (after `byte0f`). Timeline 3: `CityName` (ported, Advance), `CityNameLoad` (unported, Load, listed in the replay manifest). Older streams/saves are refused by version; command encoding unchanged. Goldens: the values of g0, g1, s5, s6 and the s5 variants `s5_islands_locked_create` and the new `s5_islands_city_created` (a city created by the operation, stamp 4242, name `Alpha` drawn at T[1235]) equal `tools/sim_stream.py`; the three event digests equal stream 118; `scenario_corpus.txt` differs from 118 only in the version header, `create_hash`, `UnknownRecord` (KONTORID known) and `MarketNumberNotKept` (KONTID kept); the remaining goldens are C++ values justified by that. Changed behaviour: a scenario's ring cursor is now the LAST city in file order (`create_remove_test` expects the cursor, not the hash, to follow the spec order).
+
+### Gate counts (macOS arm64 Apple clang, Debug, `-Werror`; each log records tested head `c28c958` with an empty diff)
+| Gate | Selected | Executed | Failed | Empty | Skipped | Log |
+|---|---|---|---|---|---|---|
+| focused (new and affected cases) | 87 | 87 | 0 | 0 | 0 | `cache/map2-gates3/f1-focused.log` |
+| full sim (incl. replay and loader cases) | 769 | 768 | 0 | 0 | 1 (opt-in) | `f2-sim-all.log` |
+| formats | 82 | 82 | 0 | 0 | 0 | `f3-formats.log` |
+| ASan+UBSan focused | 87 | 87 | 0 | 0 | 0 | `f4-asan-focused.log` |
+| ASan+UBSan full sim | 769 | 768 | 0 | 0 | 1 (opt-in) | `f5-asan-sim.log` |
+`anno-sim-replay run` on `g2.log`..`g6.log`: every checkpoint matched (`f3r-replay-*.log`). `tools/sim_stream.py --check`, `tools/lint_sim.py`, both fixture generators (`--check`, evidence venv) and clang-format: clean. Executor-count equality: `prepare_hash` with the serial executor equals the plain hash on a created-city world (`city creation: stamp and persistence`); the existing multi-executor hash tests ran unchanged. NOT RUN: Windows/MSVC, Linux GCC/Clang, `check_unix_warnings.sh`; a fresh-process comparison was not run beyond the replay CLI (each `run` is a separate process reproducing the recorded checkpoints).
+
+### Remaining founding dependencies
+Evidence (ledger §13.3): who stores 17 in player property `0x1c` and whether a run-time war makes veto path A true in an endless game (no endless scenario has WAR); run-time boarding and ship activity `0x13`; the `world+0x120` notifier and whether tile bit 31 is in the net checksum; who sets `[world+0xf8]`; the reveal's virtual calls; the AI arms; the `ship+0x3c` consumers. Engine: figure classes/hull data and the veto, the relation table (city mask, island `+0xaa`), the tile-bit-31 routine and the viewer pass, the further registration effects (city property 2, island property `0xb`), applying a payment plan atomically, the founding command with codec and `Reject` values, a run-time lock setter, `walk_cells.cpp` narrowing. Owner decisions: C5 initial diplomacy, C8/C9 discovery and messages, the malformed-LOCKED/KONTORID policy for modded data, whether a loader should reproduce the original's name draw (`CityNameLoad`). Founding is not ready.
+
+## MAP.2 — warehouse founding through the production command path (2026-11-01)
+Executor session (Claude Sonnet 5.5). Branch `task/MAP-2-original-like`, baseline `c15f3d9`, **final code `96770ed`** (this report and §17.2 of the contract follow as docs-only commits). Nothing merged, pushed, rebased or pruned; `game/`, the manifests, candidates, the active map, `TASKS.md`, the coordinator and other executors' files untouched (the asset test only reads `lan5-ship-a.json` and compares its bytes). Windows, Linux and original-runtime: **NOT_RUN**.
+
+### 1. Implemented and tested
+- `figure_veto.hpp/.cpp`: the pure nearby-figure veto (explicit fact inputs, `MissingFact` instead of a permissive default, no 256 cap, the odd-rotation B×B scan extents, selected-ship bit test separate). 14 cases; 17 mutants caught; independent review CHANGES REQUIRED (P1: a hostile figure of owner property `0x11` is *skipped*, not sent to the point test; tests placed it outside the rectangle) → fixed, discriminating cases added, targeted re-review APPROVED.
+- Stream 120: `Rules::{founding_types, city_names}`, `Player::{relations, discovery}`, `City::player_mask`, `Island::players_present`, `Figure::state_word`, `FigureType::{bewohntype, range_88, hull_half_88}`; loaders: `DIPL`, the BEWOHNTYPE name table, `load_city_names` (STAEDTE of `Texte.dat`). Goldens equal the independent `tools/sim_stream.py`; scenario corpus changed through the version, hashes and the `DIPL` records no longer unknown.
+- `FoundCmd` (wire `0xF070`, outside every original value: the existing suite already used `0x70` as a legacy type and the original's `0x6f/0x70` are diplomacy/tribute), `Reject` values appended, `creation_problem` shared with `create_building`, `Founding::apply` (prepare on the const world, commit with the only fallible operation first on a local city), the reveal ported literally including its single-visit quirk.
+- Tests (`founding_test.cpp`, `founding_assets_test.cpp`, `command_codec_test.cpp`): control with hand-derived values (30000→29650 gold, wood 12800→9728, first tools hold 12800→11520, name `names[T[1235] mod 4]` = "Delta", 1,976 tiles rows 7..56, KONTID 1, byte0f 0x30); 27 refusal rows from one control, each leaving bytes, hash and PRNG cursor unchanged; valid controls; same site in both orders (second `SiteOwned`, uncharged); two distant sites both found in both orders; a nearby site (the reveal); reveal radius R+8, centre and accepted-rotation dimensions; non-square type; registration through MILIT; save/load, ordinary Build and 300 ticks afterwards; recorded session written to bytes, read, replayed in a fresh world on 1/2/4 executors; exact FoundCmd bytes, hostile payloads; on the original files a legal Kontor site is **found by the engine's predicates** on the islands of candidate A and applied through `World::apply`. Demonstration: `cache/map2-gates4/demo.txt` (`ANNO_FOUNDING_DEMO=1 anno_sim_tests -tc='founding demonstration*'`).
+- Adversarial: double charge, reduced territory, extra draw, charge-before-veto (bypassed late rejection), wrong KONTID/rotation, reveal radius/centre/early variants, rule checks removed — all caught (`cache/map2-gates4/mutants-found*.txt`, `mutants.txt`); one equivalent mutant (early-out) documented.
+
+### 2. Established from original evidence (pass 4, `docs/re/ship-founding.md` §14–15; the authors' claims, spot-checked by reviewers)
+Property `0x1c` is `Player::volk` and 17 cannot come from any loader; ship state bits; embarked scout not in a sector cell; usable/crew rule; path A/B instruction details and f32/x87 roundings; the odd-rotation B×B scan quirk (re-read by the editor); relations (`DIPL`: byte 0 other, byte 1 value; TRADE/MILIT/WAR = 0/1/2; veto uses WAR, registration MILIT==3); city slot `+0xbc` leaves the first warehouse's defaults unchanged; the reveal (`0x10080c10`) rectangle, samples, test and single-visit quirk; claim stage 2 radius R+6 and the treasure gold; tile bit 31 readers (chunk builder only, per-client); `ship+0x3c` derived cache; STAEDTE is attached after the scene, so the original draws no name at load.
+
+### 3. Proposed adaptations needing an owner decision
+**Q-kind:** may founding be limited to kind-8 players? The five-ship start creates kind 8; the humans of the shipped `0010SingleEndlos` scenarios are kind 11 with an AI object whose type-`0x19` handler may place a building and draw the world PRNG. (A) kind 8 only (implemented default; others get `Unsupported`); (B) allow kind 11 without the handler (replays can diverge from the original); (C) port the handler first. **Q1:** first-discovery effects of claim stage 2 (treasure gold and removal timer, mountain masks) are omitted because the engine has no island objects; default omitted and named. **C5:** the initial relations of the five-ship start (the loader creates players without `DIPL`; all zero). Also: island/city masks as sets (no 16/32-player limit), reveal on unbounded integers, atomic founding where the original can lose the payment at a full ring.
+
+### 4. Unresolved dependencies
+Mountain object masks and consumers; player property 7 consumers; the type-11 handler's PRNG path; whether campaign scripts read the `tEvent` log; x87 precision control; scout disembark; activity `0x13`; HEAD2 city masks and DISCOVER presence of loaded scenarios; `ship+0x3c` inputs (type slots `0x84/0x88/0x90`) for sailing; per-site classification of about 100 `[reg+7]` loads for the bit-31 inference. Open test gaps (P3): `SerialExhausted` row, the absent-player MILIT guard, a committed founding log replayed by the CLI.
+
+### 5. Gates (final code `96770ed`, clean tree, macOS arm64, Debug, `-Werror`, binary hashes in `cache/map2-gates4/final/binary-hashes.txt`)
+| Gate | Selected | Executed | Failed | Empty | Skipped | Log |
+|---|---|---|---|---|---|---|
+| focused | 118 | 118 | 0 | 0 | 0 | `final/f1-focused.log` |
+| sim all (incl. the real-asset founding case) | 802 | 801 | 0 | 0 | 1 (opt-in) | `final/f2-sim-all.log` |
+| formats | 82 | 82 | 0 | 0 | 0 | `final/f3-formats.log` |
+| ASan+UBSan focused | 118 | 118 | 0 | 0 | 0 | `final/f4-asan-focused.log` |
+| ASan+UBSan sim all | 802 | 801 | 0 | 0 | 1 (opt-in) | `final/f5-asan-sim.log` |
+`anno-sim-replay` on g2–g6: every checkpoint matched; lint_sim, sim_stream `--check`, fixture checks, clang-format clean. First failures kept: `cache/map2-gates4/p2-first-attempt-preflight-fail.log`, `p2-second-attempt-preflight-fail.log` (a test name with a semicolon, twice), `s120-first-full.log` (27 expected layout failures of the stream bump).
+
+### 6. Reviews
+Continuation gate (CHANGES REQUIRED: missing registration-time recount, undefined name-list origin, under-specified precheck set, owner questions, stale text → all applied in §16.7); packages 6–8 (APPROVED; four P2 test gaps — reveal radius, centre, per-rotation ownership, +4 wrap docs — closed with new cases that fail the reviewer's mutants); final integration review of `96770ed` (APPROVED; P2 NOT_RUN statement added in §17.2; three P3 test gaps open, section 4). Evidence reports are retained in the session transcript only.
+
+## MAP.2 — second packet: founding defects repaired, replay evidence, kind 11, discovery, flexibility (2026-11-01)
+Executor session (Claude Sonnet 5.5). Branch `task/MAP-2-original-like`, baseline `d3bfbd7` (code `96770ed`), **final code `4f22cf6`** (clean tree for the gate, `cache/map2-gates4/final3/`; an earlier full gate on `84b7f79` is `final2/`, same counts; documentation commits follow). No merge, push, rebase or prune; `game/`, candidates, the active map, `TASKS.md`, the coordinator and other executors untouched. Review ledger with findings and dispositions: `docs/orchestration/evidence/map2-founding-reviews.md`; contract `docs/sim/ship-founding.md` §17.3–17.8; evidence `docs/re/ship-founding.md` §16.
+
+### Packages
+| Package | Status | Review |
+|---|---|---|
+| A. crew occupancy, hull facts, draw accounting | done (`ad575e7`). Crew = a child with a crew slot; the hull is a signed exact length or absent (shipped type 391 holds `0xCCCCCCCC`, 343/1510 have no field); the CityName draw is reported in an advance exactly once; regressions failed for the intended reasons first (`cache/map2-gates4/pkgA-before-fix.txt`) | APPROVED (P3 notes applied) |
+| B. replay evidence | done. Byte round trip, in-process replay and 1/2/4/7-executor creation + hashing (executor asserted used) are separate cases; `m2_found.log` (success, refusals, a reveal, an ordinary Build, two advances, 4 checkpoints) and `m2_found_wrong.log` run by `anno-sim-replay` in a fresh process (ctest cases); SerialExhausted and absent-MILIT-peer rows | CHANGES REQUIRED → applied → fixtures verified by decoding |
+| C. kind 11 | done per the reviewed contract: humans of kind 8 and 11 found with identical effects; a wrapped city number is refused for kind 11 (over-approximation of a stale CompLogic island record); other kinds refused. Evidence: for a fresh city the type-11 handlers reach no scan, no draw, no building | contract CHANGES REQUIRED → corrected; implementation APPROVED |
+| D. discovery | done: `Island::ore_objects` from `OCCUR` (island-local positions + origin), claim stage 2 with the radius+6 table, row limit R and parity terms, loader restoration of HEAD2 masks, DISCOVER, registration and the recount for loaded cities. **Treasure gold/timer are unreachable from founding** (kind mask 1): the earlier "Q1 omission" is withdrawn | APPROVED after the coordinate P1 was fixed |
+| E. flexibility | done: type 9401 (5×3, gold 120, tools 2 t, wood 4 t, radius 10), player 3, city number 5, against the emulated original (349 tiles); undecoded class refused; extension boundary stated; founding cost measured | APPROVED |
+
+### Demonstrated behaviour
+Founding through `World::apply` for kind 8 and 11 players with registry-derived costs, footprints and radii; atomic refusals; same-site and distant-site conflicts in both orders; the reveal; ore discovery on a real island (6 ore objects, 1 in reach discovered by the founder, 5 untouched); loaded cities with HEAD2 masks interacting with a new founding; save/load; recorded replay in a fresh process; one founding costs a linear pass over the figure registry (`cache/map2-gates4/E3-bench.txt`: 449 µs at 6 figures, 125 µs at 1,000, 374 µs at 50,000).
+
+### Gates (final code `4f22cf6`; macOS arm64, Debug, `-Werror`; binary hashes in `cache/map2-gates4/final3/binary-hashes.txt`)
+| Gate | Selected | Executed | Failed | Empty | Skipped |
+|---|---|---|---|---|---|
+| focused | 136 | 136 | 0 | 0 | 0 |
+| sim, all (incl. the real-asset founding case) | 819 | 818 | 0 | 0 | 1 (opt-in) |
+| formats | 82 | 82 | 0 | 0 | 0 |
+| ASan+UBSan focused | 136 | 136 | 0 | 0 | 0 |
+| ASan+UBSan sim, all | 819 | 818 | 0 | 0 | 1 (opt-in) |
+`anno-sim-replay` on `g2`–`g6` and `m2_found.log`: every checkpoint matched; `m2_found_wrong.log`: DIVERGED at entry 3, exit 1; ctest `anno_sim_replay_founding_run`/`_wrong_run` pass (the final3 ctest run had ANNO1503_GAME_DIR set). lint_sim, `sim_stream.py --check` (goldens agree), fixture checks and clang-format clean. First failures kept: `cache/map2-gates4/pkgA-before-fix.txt`, `p2-first-attempt-preflight-fail.log`, `p2-second-attempt-preflight-fail.log`, `pkgCD-sim-1.log`. Goldens that moved: G6 and the scenario corpus (figure-type digest, ore objects), the pin `m2_found_session` and the two fixtures; the Python reference covers the new island/player/city fields (not the figure-type digest, which is self-baselined).
+**NOT_RUN:** Windows MSVC, Linux/WSL GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`), the Linux sanitizer lane, any run of the original game.
+
+### Remaining fidelity gaps and consequences
+- The `tEvent` log post of an ore discovery is not modelled (consumers unknown; campaign scripts?). No simulation reader of the ore mask was found, mining needs none.
+- Ore objects come from `OCCUR`; `Island::deposits` (BERGWERK2 stand-in) stays empty from files; mines therefore still find no deposit from files.
+- Kind 11: a stale AI record (same island and city number) is approximated by refusing wrapped numbers; the COMP reader's pre-created records are UNKNOWN; kinds 9, 10, 12, 14–16 are refused.
+- Player `DISCO` (property 7?) is not loaded; the initial relations of the five-ship start are zero until a start specifies them (C5); runtime diplomacy, `ship+0x3c` (sailing), city slot `+0xbc` beyond the first warehouse, tile bit 31 and colours remain as in §17.
+- The distance limit 12, query margin, rotation order, coast rule and the reveal/object geometries are original rules in code, not data.
+### Next smallest task
+Load `DISCO` once its link to property 7 is read, and decide the five-ship start's initial relations (owner decision C5); then, if wanted, replace the kind-11 wrap over-approximation by porting the CompLogic island-record bookkeeping (messages 4, 0xe) so stale records are known exactly.
+
+### Final integration review
+Fresh reviewer on `84b7f79`: APPROVED, no P1/P2. P3 applied in `4f22cf6`: a non-finite or huge OCCUR position is refused (it would have been an undefined cast on a malformed file; new test), a mixed-parity stage-2 test (a swapped-term mutant is caught), supersession tags on the older contract lines (16.1 row 8, Q1, C8, Q-kind). The gate was re-run on `4f22cf6` (counts above). Unresolved owner decisions: C5 initial relations of the five-ship start; whether kind 11 should wait for a port of the CompLogic island-record bookkeeping; whether `tEvent` posts are needed for campaign scripts.
+
+## MAP.2 — MAP-FOUND-3: hull safety, replay status gate, digest oracle, peace/shared-visibility start, canary (2026-11-01) — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like` (Mac, Apple Clang, `-Werror`). Baseline docs `f0812cd`, code `4f22cf6`; **code head `92d4e04`** (final gates), documentation/ledger head recorded in the last commit of the branch. No merge, rebase, push, cherry-pick or reset; nothing under `game/`, `data/`, candidates, the active map, `test_support`, the coordinator or W4's worktree was touched; no candidate selected or installed, no spawn moved, no island equalised, no territory granted.
+
+### Effective start policy (owner decision C5; an explicit ADAPTATION, not an original-Anno claim)
+The five-ship start is **at peace** (no `DIPL` row exists; TRADE/MILIT/WAR all 0), **with shared visibility** (`Rules::shared_visibility`, default one group of the five seats, participants explicit data via `ShipStartPolicy`) and **without alliances** (no relation byte is ever written; the original's MILIT==3 registration marking is untouched and separate). Sharing mirrors what a member's founding actually reveals (new city's mask, island presence, ore discovery, the reveal's visited city and the resulting contact) to the group; it reveals nothing at start and grants no land or right. Original loaded scenarios have sharing off. Contract/evidence/acceptance: `docs/sim/shared-visibility.md`.
+
+### Acceptance per package
+| Package | Result | Commit(s) | Independent review |
+|---|---|---|---|
+| A hull domain | done: one domain `|hull| < 2^39` raw units enforced at the registry seal (builder and file paths), veto saturates before arithmetic; absent/zero/positive/shipped negative (type 391) preserved. First UBSan failure retained (`14208 + INT64_MAX` at `figure_veto.cpp:93`; builder accepted INT64_MAX): `cache/map2-found3/A/` | `f4d0bbd` | APPROVED, no findings |
+| B replay status | done: all replay run cases use `RunToolExpectError.cmake` (exit status AND output); `CheckToolCheckContract.cmake` proves rejection of right-text/wrong-status (both ways), right-status/wrong-text, no output, failed launch; real `m2_found.log` (0) and `m2_found_wrong.log` (1); required in the gate with `--require-test` | `9654b19` | APPROVED (8 lenient mutants rejected) |
+| C digest oracle | done: `tools/figure_digest_ref.py` (independent, from the written contract 17.3a) + 15 vectors; field-count guard; hand-derived non-empty ore wire bytes; CTest `figure_digest_reference_agrees`. No persisted layout changed in C | `f48ac6d`, follow-up | APPROVED with minors applied |
+| D start policy | done: contract reviewed before implementation (CHANGES REQUIRED, applied), DISCO/relation evidence (player `DISCO` = property 7, AnnoWelt `0x1001d61d`; loader implemented), `Rules::shared_visibility`, world-level peace + membership invariant (create and load), founding mirror, `ShipStartPolicy`, stream **121** (distinct version, goldens re-baselined, Python transcription agrees), version guards `{…,120}` | `f971e3d`, `581e9e9`, `052be30`, `b904e78` | CHANGES REQUIRED (one missing test, two doc items) then corrected |
+| E canary + closeout | done: real-candidate canary (five ships/crews, no city; two founders, payments, ownership, mirrored sets, a refused conflict without leak, replay from the log's own save); ships relocated beside engine-validated sites **as fixture setup, not a sailed route** | `d53b143` | see final integration review |
+
+### Gates (final code `92d4e04`, clean tree; macOS arm64 Debug and ASan/UBSan; binary hashes `cache/map2-found3/final/binary-hashes.txt`)
+| Gate | Selected | Executed | Failed | Empty | Skipped |
+|---|---|---|---|---|---|
+| focused (sim) | 171 | 171 | 0 | 0 | 0 |
+| sim, all | 836 | 835 | 0 | 0 | 1 (opt-in) |
+| formats | 82 | 82 | 0 | 0 | 0 |
+| replay-contract + digest reference (`anno_sim_replay`, `figure_digest_reference`; required: check_contract, founding_run, founding_wrong_run, figure_digest_reference_agrees) | 37 | 37 | 0 | 0 | 0 |
+| ASan+UBSan focused | 171 | 171 | 0 | 0 | 0 |
+| ASan+UBSan sim, all | 836 | 835 | 0 | 0 | 1 (opt-in) |
+Also: `lint_sim`, `clang-format --dry-run`, `sim_stream.py --check` (goldens agree), `figure_digest_ref.py --check`, coast/territory fixture checks all 0; CLI replay `g2`–`g6` and `m2_found.log` exit 0 with every checkpoint matched, `m2_found_wrong.log` DIVERGED at entry 3, exit 1. Disclosure: the first headless gate invocations in the final script exited 5 with `build/mac-headless.run.lock: File exists` (a stale lock left by my own earlier killed attempt; no tests ran); the saved logs `hl-*.log` are the reruns after removing that lock. **NOT_RUN:** Windows MSVC, Linux/WSL GCC/Clang `-Werror`, the Linux sanitizer lane, any run of the original game. A local Mac result is not cross-platform acceptance.
+
+### Mutation evidence (scratch `cache/map2-found3/mutate_d.py`)
+8 of 9 policy mutants killed; the survivor removes the filter that skips a group member absent from the player table, which `check_invariants` already makes unreachable (equivalent mutant, defence in depth); a tenth (peer rule replaced by the group) was added after the review and is killed.
+
+### Identities
+Candidate geometry = manifest `content_hash` (unchanged, candidate files unchanged). Gameplay setup = the world's rules digest / state hash / replay header (stream 121; every hash moves through the Rules layout, sharing-off outcomes are unchanged — the independent Python transcription agrees for every golden it models).
+
+### Remaining fidelity/platform limits
+Original: kind-11 city-number reuse is refused conservatively, loaded COMP records uncertain, discovery-event consumers and the first-discovery event are not modelled, file-loaded ore objects are not mineable deposits. The shared state is headless information (contact/masks/discovered sets), **not** rendered fog; sailing, diplomacy commands, fog rendering and full-map visibility are not built. UNKNOWN: readers of property 7, relation values other than 0/3, whether the 46 shipped `0xcdcdcdcd` DISCO values survive at runtime. Disclosed behaviour change to ORIGINAL loaded scenarios: non-zero player `DISCO` records now restore contact bits for existing players (corpus re-baselined). Peace is checked at creation/load, not maintained (no diplomacy commands exist).
+
+## MAP.2 — MAP-NAV-1: ship navigation evidence, contract and fixtures (2026-11-01) — status: READY FOR CONTRACT REVIEW
+
+Branch `task/MAP-2-original-like` (Mac). Baseline docs `4480200` (MAP-FOUND-3 accepted), **code head unchanged `92d4e04`** (nothing under `src/`, no state or command version change, no candidate manifest, active map, original asset, coordinator, `test_support`, W4 or board file touched; no merge/rebase/push; the rendering lane untouched). Documentation/reference head: the last commit of the branch (`git log -1`; at writing `a13a49b`). Deliverables: `docs/re/ship-navigation.md` sections 6-12 (evidence), `docs/sim/ship-navigation.md` (contract), `docs/testing/ship-navigation-capture-card.md` (NOT_RUN), `docs/orchestration/evidence/map-nav1-evidence.md` (matrix and review ledger), `tools/ship_nav_ref.py` and `fixtures/synthetic/sim/nav/{movement_vectors,passage_cases,route_runs}.txt` with six CTest cases.
+
+### What was established (static analysis of the original modules; addresses and tags in the evidence note)
+- **Order path.** A player's right-click is net command `0x84` (client slot `+0xc0`, AnnoFrame `0x10050af7` -> selection ownership check -> stop + SetOrder), the host/script command is `0x6c`; SetOrder builds no plan; the integrator picks the order up at a segment end (idle cycle up to 500 ticks); a failed plan clears the order; arrival sets no flag, founding reads position, bit `0x02` and holds. The multiplayer player id is packet-claimed and unauthenticated (DERIVED).
+- **Route engine** (not the `0x1003de40` function the first pass named, which is the local detour): a two-level search, coarse 8 x 8-tile cells with 12-bit edge-connectivity masks and a FIFO Dijkstra without node cap, then a one-tile fine Dijkstra (order NW,NE,N,SW,SE,S,W,E; cost 10/14; no corner cutting) over the coarse corridor, up to 8 learned-mask retries, goal accepted within 6.0 tiles, run cap 10, statuses 0/2/-2. Land is the tile-corner average (<= 19 water), **no hull or shore dilation**; ship stamps only choose among goal candidates. Executed on the real engine bytes under unicorn (block edges: 5000 randomised cases, no deviation).
+- **Movement.** Registry visit cadence, 5-tick stepper unit, `d >= 3` turn rule (reversal turns -1), chunking, speed-factor integer formula, 16-direction facing function and its non-exact 11.25-degree boundary, persistence (a sailing ship stands idle after load), crew units neither moved nor copied, no PRNG on the sailing path, float versus fixed-point drift quantified.
+- **Corrections** to earlier notes: segment pointer vs list head, the speed factor reaches movement only at segment start, `now` is a 2 ms tick, the hook radius is 16.0 (not LOGIC 0x24), `0x8000` means no crew, stamps do not change costs.
+
+### Answer to the packet's headline questions
+Diagonal-only gaps are closed (agrees with exterior-4); one-tile channels and shore-hugging routes are open in the original (no clearance; shore cells only cost more); enclosed water is unreachable from outside but navigable inside; the land rule is the corner average, not `HEIGHT < 16`; a goal on land within 6 tiles of reachable water routes to the nearest water tile. **Consequence for the three candidates:** their geometric witnesses stay tool-only; a witness that depends on a one-tile channel, shore tiles or a coast tile whose corner average exceeds 19 must be re-evaluated under the original land rule once the route query exists. No placement, label or manifest was changed and no candidate was selected.
+
+### Decisions proposed to the orchestrator (contract section 11)
+Failed-plan behaviour (accepted command, failed plan, idle + `RouteFailed`), the exact-rational 2^-32 integrator with portable 128-bit products (Q24.8 velocity is 7.6-84 % off), deferral of the local detour and hostile avoidance, planning budget semantics (`-3 BudgetExceeded`, serial planning at the visit), persistence of motion state (new stream version >= 122), unauthenticated-MP-id replaced by the authenticated issuer, crew position slaving.
+
+### Verification and review dispositions
+Local gate (canonical `run_selected.py`, binary identity as in the log `cache/map2-nav1/gates/nav-refs-01.log`): selected 7, executed 7, failed 0, empty 0, skipped 0 (six `ship_*` reference tests plus `figure_digest_reference_agrees`). Reference negative controls: 11 + 5 + 2 deliberate mistakes caught by the shipped selftests; the reviewer ran 37 further mutants. No broad C++ gate was run (documentation/reference only). **NOT_RUN:** every original-runtime observation (capture card CAP-1..6c), Windows, Linux/WSL. Independent reviews (read-only, fresh subagents): evidence note CHANGES REQUIRED (9 findings + one demoted rule) -> applied; references CHANGES REQUIRED (6 vector gaps, label, card gaps) -> applied; final contract review CHANGES REQUIRED (13 findings) -> applied, which also prompted two further static research rounds (coarse build timing, vertex padding, window, unit query, stamp semantics, block edges, MP authentication, state bits); focused re-review of all corrections and the new claims: **APPROVED**, with five small amendments applied in `a13a49b`. Full ledger: `docs/orchestration/evidence/map-nav1-evidence.md`.
+
+### Remaining unknowns (none blocks contract review)
+Static: UI pick provider (tile centre versus raw sub-tile) and the group order body; object-top contribution to block extrema / tile type 9; setters of state bits `0x2000`/`0x4000`; the exact `Offer` tie rule between equal-score candidates of different density (the stamped route vectors are single-source emulation). Runtime only (capture card, queued, not required of the rendering executor): x87 control word, registry cursor at load, whether a land start tile may itself be the goal candidate, confirmation of per-island coarse builds at load, the plan-time position fraction.
+
+## W4-WIN: round-ee repairs R1-R4 and the Windows/RTX verification packet — 2026-11-02 — status: REVIEW CANDIDATE (stopped at the packet's final review boundary)
+
+- **Executor / host:** the Windows executor of the 2026-11-01 dispatch. AMD Ryzen 7 9800X3D (8C/16T), 31.1 GiB,
+  Windows 11 Pro 10.0.26300, NVIDIA GeForce RTX 4090 (driver 617.14, Vulkan) and AMD Radeon(TM) Graphics (Vulkan),
+  one enumerated monitor, 2560x1440 at 500 Hz (the Radeon's reported 1920x1080 is a controller default, not a monitor).
+  MSVC through the `msvc` preset (Visual Studio generator, Release); WSL Ubuntu with GCC 13.3.0 and Clang 18.1.3.
+- **Pin and checkout:** `origin/task/W4-3-live-buildings` = `a29b079` (verified on the fetched remote). The owned
+  checkout `E:\anno1503-worktrees\anno1503-W4-3` was clean at `8972b3d`, an ancestor of the pin (172 behind, 0 ahead):
+  fast-forwarded with `git merge --ff-only`; no reset, force, prune, main merge or push. `origin/main` = `b57c6f0` supplied the
+  board and the canonical gate (`tools/test/run_selected.py` from `E:\anno1503`, `--source-root` and `--build-dir` explicit).
+- **Heads:** code `fa94bf0` (the last commit touches `tools/bench/dev_session_capture.py` only; `src/` is as of `4ecea07`;
+  the gates below name the head each ran at). This report's commit follows it; nothing under `src/` or `tools/` changes after.
+  **Superseded by W4-WIN-CLOSE below:** the last sentence holds for `9ba01f1` only; later `src/` and `tools/` changes are listed there.
+- **Evidence (ignored):** `cache/gates/` (every gate log, its inventory, failed attempts labelled `-FAILED-`/`-INVALID-`),
+  `cache/win-ee/` (builds, mutation logs `mut-*`, intake, contention runs), `cache/win-ee/window/` (canaries, sessions,
+  captures, `final/matrix`, `final/matrix.table.md`).
+- **Admission and contention:** the budget coordinator and `RESOURCE_LOCK gpu` stayed on; no coordinator was replaced. At intake
+  EA FC27 (8.9 GiB, 6.9 GiB of GPU memory) was running and was left alone: the first full app run failed two worker cases under that
+  load (below). Builds used `--parallel 6`, gates `--jobs 6` (GPU gates 1), `ANNO_TEST_THREADS=8`. The owner's keep-awake was
+  requested through the app for this session only.
+- **Commits** (`a29b079..fa94bf0`, in order): `0886a54` MSVC C4244 fix; R1 `64a3003` (+ `7e27f25`, `e56e686`); R3 `21fb122`;
+  R4 `ada68d6` (+ `28fcefe`); R2 `cdbd1fc`, `adcfc11`, `d8ed91d` (+ `dd20345`); `52dab64` starved-reaper tests; `1fd82b8` GPU
+  continuous-zoom preview test; `ad8a447`, `f9a731b` Windows window runner, matrix and capture; `76495aa` GCC/Clang `-Werror` fixes;
+  `98d9329` SDL-free tests moved into `anno_app_tests`; `381b3e3`, `70817ed`, `fa94bf0` integration-review closeout; `4ecea07`
+  the play-scene GPU-vs-CPU case on the Radeon.
+
+### What changed (one line each; the specs are in docs/app/game-shell.md and window-trace.md)
+
+- **R1** `PlayRunner::feedback` reads the snapshot first and answers the outcome against its `outcomes_next` watermark
+  (`OutcomeLog::find_published`); an outcome recorded before its snapshot is withheld as Queued/`deferred`; title and script read
+  through it. A publish gate (test seam) holds the interleaving.
+- **R2** `ChangeVisibility` (`visibility.hpp`): NotInPicture, Committing, AwaitingFrame, ChunksStale, NotOnGpu, NotPresented,
+  OutOfView while waiting; Visible, Offscreen, NothingToDraw, NoVisualChange, Unknown settled. One part per commit of an island,
+  settled in version order; observation shared with `FrameTracer` (`observe_keys`); bounded (1 024 takes, 1 024 history, 1 024 turns
+  per take, 64 parts per island); works with tracing off. `wait drawn` ends only when settled; `expect visibility NAME`.
+- **R3** the footprint is a 64-bit rectangle tested against the island before any tile exists (`footprint_extent`); occupancy by one
+  ordered lookup per column; the index clamps in 64 bits; `footprint_at` takes the admitted region's size.
+- **R4** occupancy follows the takes' deltas (`PlayFollower::set_batch_observer`, `PlacementKnowledge::on_batches`, `ensure`):
+  another island's delta is one comparison, a local delta adds/removes tiles, a resync reseeds, a disabled tool does nothing and is
+  reseeded from `ScenePicture::island_buildings`.
+- **W4-WIN-1/5 portability fixes found by running:** C4244 in a test (the pin did not build with MSVC `/WX`); five `drain()`
+  helpers hot-looped against a starved reaper and one barrier case changed an in-flight island while the reaper lagged (both reproduced
+  with 24 busy processes: `pending=6 commit_skipped=100 reclaim_completed=0`); three R1 case names with `;`; GCC 13 findings on ten
+  files of the pin (sign conversion, a shadowed lambda parameter, the `istreambuf_iterator` null-dereference report in
+  `picture_trace.cpp`), the script's missing `src/test_support/src` include; `window_table.py` UTF-8 output.
+
+### Acceptance table
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer |
+|---|---|---|---|---|
+| R1: an outcome never stands beside resources from before it | paid build (money + goods), refusal, no-op, lost, an older published outcome, a reader thread; deferred then final with `before - cost` | `feedback()` ignoring the watermark: 3 of 3 cases fail | `command_outcome_test.cpp`; `cache/win-ee/mut-r1-negative-control.log` | APPROVED (64a3003), notes 1-3 fixed |
+| R2: drawn only when a presented frame draws all of it | synthetic stages incl. turn 0, newer-than-snapshot batch, older stuck take, offscreen newer commit, merge, bounds; lan5 with held `ChunkWorkers`: ChunksStale, failed present NotPresented, then Visible and the frame equals a fresh-renderer reference (changed region > 100 px) | accepting the object-list commit as shown fails 5 + 14 assertions (two logs); the old rule said drawn exactly where the new answer waits; real window: removing `frame_done` or `begin_frame` from the GPU path fails `wait drawn` after 30 s (ChunksStale / AwaitingFrame) | `visibility_test.cpp`, `dev_visibility_test.cpp`, `dev_script_test.cpp`; `mut-r2-negative-control.log`, `window/mut-m1-*`, `mut-m2-*` | CHANGES REQUIRED twice, fixed (per-commit parts, per-take results, merge, back-off); third check is the integration review |
+| R3: oversized footprints refused before enumeration | 1 000 000 x 1 and 4 294 967 295 squared refused in O(1) under a 64 KiB single-allocation limit; a 12 x 7 valid control; island edges both rotations; clamped index | enumerating first fails with `bad allocation` | `alloc_test.cpp`; `mut-r3-negative-control.log` | APPROVED (21fb122) |
+| R4: unrelated edits cost no occupancy work | lan5 through the real runner, picture and follower: other island 0 deltas, local build/demolish, disabled spell, resync (one resync batch, one reseed, no deltas), compared with a fresh scan after each step; overlap counts; unknown type | dropping the island filter and the enabled gate: 21 failed assertions in 2 cases; deleting the resync branch: 6 | `dev_occupancy_test.cpp`; `mut-r4-negative-control.log`, `mut-r4-resync-negative-control.log` | CHANGES REQUIRED (minor), fixed in `28fcefe`, re-checked by the R2 review |
+| Continuous-zoom preview vs the CPU resample reference | RTX 4090 and Radeon: scale 0.8 and 1.3, max 1, 0 px over 2; 4 969 / 13 396 reference px changed | an overlay two tiles away: 7 820 / 20 897 px over 2 | `preview_gpu_test.cpp` | in the integration review |
+| Real native window | one-edit canary, scripted tool session (Applied+Visible, Refused Occupied+NoVisualChange, rotated, demolished), headless replay agrees, altered command diverges | altered command: `turn 60 differs ... (5 earlier checkpoints agreed)`, rc 1 | `window/final/` | integration review |
+
+### Gates (canonical runner, Release, original assets set; selected / executed passes / failed / empty / skipped / incomplete)
+
+| Gate | Head | Sel | Pass | Fail | Empty | Skip | Incompl | Verdict |
+|---|---|---:|---:|---:|---:|---|---:|---|
+| MSVC CPU: app, alloc, input, render, formats, assets (`msvc-cpu-03-final`) | 381b3e3 | 463 | 461 | 0 | 0 | 2 opt-in probes | 0 | PASS |
+| RTX 4090 GPU (`rtx4090-gpu-03-final`, `ANNO_REQUIRE_GPU=1`, adapter "NVIDIA GeForce RTX 4090 (Vulkan)") | 4ecea07 | 106 | 106 | 0 | 0 | 0 | 0 | PASS |
+| Radeon GPU (`radeon-gpu-03-final`, "AMD Radeon(TM) Graphics (Vulkan)") | 70817ed | 106 | 106 | 0 | 0 | 0 | 0 | PASS |
+| WSL GCC 13.3 + Clang 18.1.3 `-Werror`, `tools/check_unix_warnings.sh` | 70817ed (C++ as of 4ecea07) | 233 + 233 + 54 files | clean | | | | | PASS |
+| WSL GCC 13.3 ASan+UBSan, the 80 affected cases + `picture_matrix_contract` (213 s) + `window_table_contract` (19 s) required | 70817ed | 80 | 80 | 0 | 0 | 0 | 0 | PASS, 0 sanitizer lines |
+
+Notes on the table (true for `9ba01f1`; see W4-WIN-CLOSE for the final head): the MSVC CPU gate ran at `381b3e3`; `381b3e3..9ba01f1` changes under `src/` only `src/render/tests/play_gpu_test.cpp`
+(the GPU executable, run by the two GPU gates), and otherwise only Python tools, so that gate stands for the CPU suites.
+`unix-warnings-03-final.log` carries no head; it was started right after `git status` printed nothing at `70817ed` (the head then) and its C++ equals `4ecea07`'s; the
+log itself does not record that. The RTX-named case `play: GPU matches the CPU path on one scene` pins its adapter by name, so a Radeon gate
+only ran the RTX for it; a Radeon variant (`...on the Radeon iGPU`, max channel delta 1) was added (`4ecea07`) and runs on the Radeon.
+`msvc-cpu-03-final`'s 463 includes the SDL-free occupancy/visibility cases that now live in `anno_app_tests`
+(98d9329), so earlier inventories (`anno_app_input_tests.` prefixes) do not carry over.
+
+### Preserved failures and unusable attempts (not overwritten)
+
+- Fresh MSVC build of the pin: `scene_probe_test.cpp(101)` C4244 under `/WX` (`cache/win-ee/build-01.log`).
+- `cache/gates/app-r1-r4-01-FAILED-name-preflight.log` (R1 case names with `;`); `app-02-FAILED-reaper-starved.log` (203 selected, 2 failed:
+  `picture recovery: the same convergence ...` and `accounting: one, two and four workers ...`, also failing on the pin with the
+  C4244 fix: `build/pin`); `cache/win-ee/app-tests-full-01.log`, `app-tests-full-03-first-failure-reclaimer-stall.log` (one
+  `picture reclaim: a stalled process reclaimer ...` failure, not reproduced alone, 3 x contended, or in the full suite twice under
+  16-process contention: **unexplained, one occurrence**; it ran under the same host load as the starved-reaper failures, so it may be of that family).
+- `radeon-gpu-01-FAILED-source-changed.*` (105 passes, verdict FAIL: the tree changed during selection: invalid);
+  `wsl-asan-build-01-FAILED-sdl-no-x11.log`; `wsl-asan-app-01-FAILED-git-worktree-path.out`;
+  `wsl-asan-app-02-FAILED-timeout-heavy-case.log` (below); `unix-warnings-01-FAILED-sign-conversion-shadow.log` and
+  `unix-warnings-pin-baseline.log` (GCC failed ten files of the pin, Clang one script omission); `mut-r4-negative-control-INVALID-unmutated-binary.log`
+  and `mut-r4-resync-negative-control-INVALID-unmutated-binary.log` (a mutation that did not compile ran the unmutated binary).
+- `cache/win-ee/contention/standins-1..3-INVALID-0-cases-selected.log` (a comma in the case name split the filter: 0 cases ran);
+  chain 2's first Radeon gate attempt failed with `rc=5 File exists ...gates$name.log` (a quoting slip in my chain script wrote the RTX
+  gate's log to `gates$name.log`, which I renamed to `rtx4090-gpu-03-final.log`; its `.out` ends with the old path; the Radeon gate was
+  rerun alone as `radeon-gpu-03-final`);
+  `window/final/dev-session-REFUSED-frame-overhang` (the capture guard was too strict, fixed `fa94bf0`);
+  `window/matrix-01.table-FAILED-cp1252.stderr` (`window_table.py` died on an arrow in a legacy code page, fixed `f9a731b`); a first
+  final-chain table run died on a shadowed name I introduced in `381b3e3` (fixed `70817ed`).
+
+### Windows evidence, separately (never closes the Metal failures or OQ-525)
+
+- **Native window:** `window_case.py` / `window_matrix.py` (new; the shell runners need UNIX `time`/`perl`). 13 of 13 planned cases,
+  all exit 0, every trace `run=complete status=0`, 0 drops, 0 failed frames, `frames attempted = presented`; adapter NVIDIA GeForce
+  RTX 4090 (Vulkan); binary `anno1503.exe` sha256 `58c60ad2c045c958...`; revision `4ecea07`, clean.
+- **Drawables:** 1920x1080 for 9 cases (the resize case 1600x900 then 1920x1080). The "3840x2160" cases have a real
+  3840x2160 drawable (manifest and `frames.tsv`), **but this host has no 4K display**: Windows enumerates one 2560x1440 monitor, so it is an
+  oversized surface, not a 4K-display result (`window_table.py` now says so from the displays `window_case.py` records). The
+  cadence (500.0 fps) is the 2560x1440 monitor's 500 Hz, measured from the 2-second window lines; present-call return is not display time.
+- **Edit latency (sustained, 60 edits, desired -> stage, ms p50 / p95 / max):** object-ready 18.0 / 18.1 / 18.1-18.2; visible CPU-ready
+  42.6-44.3 / 52.4-52.5 / 54.4-66.3; present call returned 42.6-44.3 / 52.4-52.5 / 54.4-66.4, 0 unfinished, at both drawables;
+  one edit 32.4-32.5; 20-command burst (1 turn) 58.3-58.5. Window-thread busy per frame p50 0.34-0.36 ms (1080p), 0.50-0.59 ms (3840x2160).
+  Peak working set 1.12-1.16 GiB (1080p), 1.41-1.47 GiB (3840x2160 drawable); trace on/off pairs show the same cadence and busy time (0.40 ms).
+  The old Mac figures are not comparable and are not used.
+- **Per-frame cost of `ChangeVisibility` at its bound** (1 024 takes waiting, every part watched, Release): 29.1 us per
+  `begin_frame`+`frame_done` in the final MSVC gate log (28.7 us in the run that added the case; it varies run to run; about 1.4 %
+  of a 2 ms frame), 0.26 us per `classify`. Synthetic: hand-driven boundaries.
+- **R4 measurement (synthetic hand-built batches, no sim):** at 1 000 / 5 000 / 16 000 local buildings with 0 / 100 000 unrelated, in the
+  final MSVC gate log (`msvc-cpu-03-final`): the old rescan+rebuild per unrelated edit 0.33-8.27 ms; the unrelated edit now 0.039-0.060 us;
+  a local delta 0.13-0.27 us; the one-off seed 0.31-5.65 ms (the earlier runs, `msvc-cpu-01` and `-02`, gave 0.27-5.3 ms, 0.04 us, 0.14-0.15
+  us and 0.25-4.3 ms: the figures vary with the host's load). `ScenePicture::apply` for one unrelated delta (the picture's own sorted insert) remains on the window thread: about
+  1 ms at 50 000 buildings; it is not occupancy work and is outside this repair.
+- **Contention:** the picture-worker cases pass 165 of 165 twice under 16 busy processes (`cache/win-ee/contend.py`; the output is
+  `cache/win-ee/contention/app-tests-contended-16-procs-165-of-165-twice.log`; the earlier `pending=6 commit_skipped=100
+  reclaim_completed=0` reproduction with 24 busy processes was read from the terminal and **no log of it was kept**), and the
+  `picture_gpu` suite (12 cases, the corrected stand-ins/dissolve case included) passes 3 of 3 under 16 busy processes on the RTX
+  with GPU work serialized; the `clock held: STALLED` diagnostic is the case's own (frames 2 165 / 7 552 / 3 418 over 22 / 70 / 34 s
+  versus 4 952 in 1.3 s idle) and was recorded, not retried.
+- **OQ-525 reproduced:** the four pixels differ by 2 on both Vulkan adapters exactly as on Metal (RTX 4090 and Radeon: (4171,4572) CPU
+  38,56,72 GPU 38,57,74, and the other three), 4 pixels above 1, inside the existing tolerance. A CPU-truncation versus GPU-rounding
+  statement only; no original-runtime capture was made and no tolerance changed.
+- **Screenshots:** `window/final/dev-session/shots/cmdN-{client,window}.png` and `cmdN-title.txt` for four commands: real sprites
+  (two placed objects on open sea, the sim's terrain stand-in, OQ-052), the Applied, Refused (Occupied) and demolish titles. The
+  client image excludes the title, the whole-window image truncates it; the full text is in `-title.txt`. Taken by GDI from the screen
+  with the window raised; a covered window is not detected, only a minimised or off-desktop client area is refused.
+
+### Not run, unavailable, or not proven (reported separately)
+
+- A 3840x2160 **display**; physical display latency and scan-out (present-call return only); Radeon in the window matrix (the window ran on
+  the RTX; the Radeon ran the GPU gate only); an occluded window or forced slow upload/dissolve in the real window (NotOnGpu and the dissolve
+  boundary are covered by injected predicates and the held-worker pipeline test, and by `Visible` in the real window, not by a forced
+  real GPU stall).
+- **Viewer wiring has no automated test** of its own for R1 (`feedback()` in `update_title`/`script_tick`) and R4 (`ensure`, the observer,
+  `~Viewer`); reverting them fails no test. R2's viewer feed is covered by the two real-window mutations above; R1 and R4 are covered by
+  inspection and by the real-window session, whose titles and outcomes are consistent, nothing stronger.
+- WSL ASan on the **whole** app gate: `wsl-asan-app-02` (178 selected at 98d9329) ran 175 passes, 2 opt-in skips and **one timeout** at
+  3 400 s of `anno_app_tests.play: islands are the ones the sim placed` (a heavy original-scenario case under ASan, on DrvFs); it is not
+  attributed (no pin run under ASan). The final gate is the 80 affected cases (PASS). No GPU or Vulkan case ran in WSL (no Vulkan device).
+- `picture_matrix_contract` and `window_table_contract` are not registered on native Windows (`UNIX` only): they ran on the matching WSL
+  source (above) and no Windows pass is claimed for them. The Python `window_*` tools have no Windows contract test beyond the matrix run.
+- Large-city, complex-economy and multiplayer scaling, the PLAN's four-core target; OQ-052 terrain, OQ-550 height, wide-id rendering,
+  derived-level previews, the two Metal timing failures: untouched. No gameplay rule, map or founding behaviour was added.
+- The first-time-seen `picture reclaim: a stalled process reclaimer` failure is unexplained (above).
+
+**Never exercised:** `window_case.py`'s watchdog status (124), its peak-working-set-unreadable rule (3), and the final capture
+guard's refusal path (minimised window or a client area off the desktop); the only refusals seen came from the earlier, over-strict guard.
+The note that the Radeon's 1920x1080 is a controller default is an inference: Windows enumerates one monitor (`displays=2560x1440` in every run.txt).
+
+### Decisions and reasoning
+
+- **R2 as parts, not a merged watch:** the first design merged commits per island; the review showed a newer version could be called
+  visible by an older commit's chunks. One part per commit costs a bounded list and makes each take's result its own.
+- **Tests moved, not duplicated:** the occupancy and visibility lan5 cases do not use SDL, so they build in `anno_app_tests` and run in
+  WSL (no X11/Wayland dev libraries there); installing them would have been package churn.
+- **WSL tools:** `cmake` and `ninja` were installed into `~/anno-tools-venv` (PyPI, no sudo, nothing in the repo); the worktree's git
+  pointer is a Windows path, so the WSL gate sets `GIT_DIR`, `GIT_WORK_TREE`, autocrlf and `GIT_OPTIONAL_LOCKS=0`.
+- **Independent review:** read-only subagents, briefed with the requirement and the frozen commits, not the conclusion: R1, R3, R4,
+  R2 (twice), the R4 re-check, and the integration review of `98d9329`, whose findings (the oversize note, window evidence from the
+  final binary, final-head gates, the capture and runner docstrings, unlabelled failed logs, the per-frame cost at the bound, a Radeon
+  scene comparison) were fixed or are stated above. A **final** integration re-check of `fa94bf0` is pending: REVIEW PENDING.
+
+### Next smallest unit
+
+Orchestrator review of `fa94bf0`; then either UI.2 on these interfaces or a decision on the open items above (a 4K display run, a
+viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, prune or reset was done.
+
+## W4-WIN-CLOSE: publication, consumer wiring, presentation boundaries, the two failures, tools — 2026-11-02 — status: REVIEW CANDIDATE (stopped at the packet's final review boundary) — OPEN: the attribution of failure B; failure A explained as test cost, its policy decision is the orchestrator's
+
+- **Executor / host:** the Windows executor (host as in the W4-WIN section above; unchanged hardware, one enumerated monitor
+  2560x1440 at 500 Hz, no 4K display). Dispatch read from `origin/main` `e37a99c` (`docs/orchestration/TASKS.md`, W4-WIN-CLOSE and
+  `reviews/2026-11-02-w4-win-handoff.md`) without merging main; the canonical gate ran from `E:\anno1503` (main `b57c6f0`) with
+  `--source-root`/`--build-dir` explicit. Keep-awake held for the session.
+- **C0 publication:** `task/W4-3-live-buildings` was pushed with an ordinary push after confirming the remote (`a29b079`) was an
+  ancestor: `a29b079..9ba01f1`, remote hash verified with `git ls-remote` (`9ba01f14aa1b512292410f3add480ba4f70ff0e0`). No force, no
+  main merge, no rebase. The evidence index is `docs/orchestration/evidence/w4-win-close/INDEX.md` (source/binary/tool hashes, gate
+  run ids and counts, failure extracts, the 499-file manifest `MANIFEST-c0.sha256`); the source-free archive of the logs is kept at
+  `E:\anno1503-worktrees\anno1503-W4-3\cache\archive\w4-win-close-evidence-c0.zip` (17 720 697 bytes, sha256
+  `d54b7296fe346e313d952f978a5e850c08872fcdd366d12fc059f1fd38f6603e`) and the final-state archive at the path/hash in the INDEX.
+  **Windows-local, not a shared artifact:** no authorised shared channel for a binary archive was available to this session, so the
+  orchestrator cannot open the logs; it can read the tables, hashes and extracts in git. The archive contains screenshots of
+  rendered original art and must not be published.
+- **Heads:** source frozen at `07a7505`; the published review candidate and the report heads are in the last section. The remote task branch
+  was `9ba01f1` after C0 and `4dc9a35` (the index commit) after the second ordinary push; the final push is recorded below.
+- **Commits since the C0 checkpoint** (`4dc9a35`, the index; `git log --reverse 4dc9a35..07a7505`): `261c108` C1 seams and window cases;
+  `efc576d` C1 review fixes and C3 test changes (clang-format 23.1.3 applied to the candidate's C++); `220bf9f`, `43b3dbb` C2 stage holds,
+  cases and window-state driver; `e9cbc65`, `db7a70f` C4 tool contracts and their registration; `bb1975e`, `f9845d0` C2/C4 review
+  dispositions; `5db8838` stage-verb tests and INDEX corrections; `ebb1a73`, `bb0f67f`, `3217f2f` skip wording the verdict contract
+  caught; `07a7505` the hold test's use-after-free (found by ASan). Everything after `07a7505` is documentation and evidence.
+
+### C1 — R1 and R4 through the production window (independent review: APPROVE, nine non-blocking findings dispositioned)
+
+- **Seam:** `PublicationHold` (`publication_hold.hpp`): a scripted session (`ANNO_DEV_SCRIPT`) arms the runner's publish gate; the sim
+  thread then waits (condition variable, 20 s watchdog, released by `release`, the hold's and the window's destructors) at the first
+  publication that follows a newly recorded outcome, i.e. between the outcome record and the snapshot swap. The window keeps drawing
+  (frames and key events pass inside the interval). Created only for a scripted session; no sim state touched.
+- **Cases** (`tools/test/viewer_wiring.py`, headless real viewer: SDL dummy driver + CPU renderer; ctest
+  `viewer_wiring_r1_held_publication`, `viewer_wiring_r4_occupancy`, skip 77 without game files):
+  R1 holds a paid build and a refused build; inside the interval the title (rebuilt by the tool's own key events) and the script both
+  read `Queued`, money old, `expect published`; after release `Applied`/`Refused (Occupied)` and the paid money. R4 counts the
+  index's work (`rebuilds`, `deltas`, `tiles`, `foreign`, `off_batches`): tool off (local and another seat's build reach the picture,
+  not the index), reseed once on enable, another island's demolish = one comparison and zero tiles, local click build/demolish by tile
+  deltas without a rebuild, second off spell, reseed again. Counts, never microseconds. The foreign edit is a command of another
+  seat's city posted through the runner's normal queue (the sim applies its rules; a second city exists in `lan5`).
+- **Mutants (source diff, rebuilt target, exe sha256, run, expected assertion; `cache/c1/mut/`)**, all FAIL as intended (run on `261c108`; the mutated hunks of `viewer.cpp` and `dev_feedback.cpp` are textually identical at `07a7505`, the
+  run logs quote the pre-rename counter name `skipped` for `off_batches`; not re-run at the final head, where both cases pass in the gate), each with
+  the control rebuild passing (`cache/c1/control`, exe `19373b7d…`): `r1-title-raw-outcome` → line 33 `expect title-lacks Applied` (title
+  showed Applied beside money 9999980); `r1-script-raw-outcome` → line 29 `expect outcome Queued` (script saw Applied); `r4-no-observer` →
+  `off_batches >= 1` got 0; `r4-no-enable-gate` → `rebuilds == 0` got 1; `r4-observer-always-off` (shared adapter) → `foreign >= 1` got 0;
+  `r4-rescan` → `rebuilds == 1` got 2. One attempt did not compile (`r4-no-observer-ATTEMPT1-build-failed-C4551`, kept, not evidence).
+  The reviewer noted which later assertions (`tiles same` after the foreign edit) have no mutant of their own; stated limit.
+- **Review dispositions:** `PublicationHold` waits by release epoch (a release immediately followed by an arm no longer strands the
+  waiter); unit-test threads joined on every exit; `game-shell.md` documents the cases; the foreign-spot comment fixed. Not isolated by any mutant: the "local update still occurs" assertions (`deltas >= 1`, `tiles grew`, `occupied … yes`) — `r4-no-observer`
+  fails earlier, at `off_batches`; the mutants ran on commits whose mutated hunks equal the final head's (`220bf9f` for the two C2
+  controls that edit `frame_done`). Not done:
+  budget-coordinator admission for the viewer cases (they run a CPU render of the full map under `PROCESSORS 4`); the Python3-missing
+  silent omission of the ctest registration (the inventory-based gate names them).
+- **Never covered:** the Lost outcome inside the window (unit level only), anything on a second island of the developer player.
+
+### C2 — R2 presentation boundaries in the native window (independent review: CHANGES REQUIRED → B1, B2 fixed, see the final review)
+
+- **Seams** (scripted GPU session only; normal play unchanged): `StageHold` as `ChunkWorkers`' test gate (`hold chunks`),
+  `GpuFrame::set_test_hold_uploads` (`hold uploads`), presents counted as failed to the consumers (`hold presents`: the frame is still
+  presented; the seam is the one a failing surface takes), `ANNO_VIEW_FADE_MS` (dissolve), `resize`, `wait visibility`, `wait blocked`,
+  `expect held`; checkpoints print ms, scene generation and surface count (the window trace's epoch = surface + 1).
+- **Cases on the RTX 4090 (Vulkan), real window**, `tools/test/viewer_wiring.py <exe> <case> <dir> --gpu [--trace]`, final exe
+  `3cd70cd1…` in `cache/c2/final5/`: `boundary_stages` (baseline Visible; chunks held → `ChunksStale` with 3-8 builders parked and a second
+  edit Applied meanwhile; uploads held → `NotOnGpu` with a second edit Applied; presents failing → `NotPresented`; each followed by a
+  successful present before `Visible`), trace off and on give the same sequence; `boundary_dissolve` (fade 3000 ms: released at
+  about 1490 ms, `NotOnGpu` at +20 frames, a second edit applied meanwhile, Visible at about 4493 ms in `final5`); `boundary_view` (published-late change
+  committed while the view is elsewhere = `Offscreen`, stays so on return; in view then left behind = `OutOfView`, `ChunksStale` on
+  return; resize while waiting = surface 0 → 1 with the change still `ChunksStale`; presents failing across a second resize;
+  a refused command and an empty demolish = `NoVisualChange`), trace off and on; `boundary_exit_in_hold` (review B1: a session
+  that ends while the builders are held exits in 3.4 s in `cache/c2/final5` (4.0 s in the earlier `cache/c2/final`); with the fix removed it takes 24.4 s). All `boundary_*` cases and
+  `window_state_case.py` are manual GPU/desktop runs, not CTest cases or part of any gate; only `viewer_wiring_r1_held_publication` and `viewer_wiring_r4_occupancy` are.
+- **Negative controls** (`cache/c2/mut/`): `r2-premature-object-list` (fresh/usable forced true at `frame_done`) → expected
+  `ChunksStale`, at `Visible`; `r2-ignore-present-failure` → `wait visibility NotPresented` times out at `Visible`;
+  `r2-no-release-before-join` → `boundary_exit_in_hold` takes 24.4 s > 15 s. Restored builds rerun the cases (PASS).
+- **Native window state** (`tools/test/window_state_case.py`, `cache/c2/final5/winstate`): with the builders held the driver minimised the
+  window for 2.5 s, restored it, and covered it with an opaque topmost window (checked: the window at the game window's centre was the
+  cover). Trace: `Outdated` acquire at the minimise, then **no frame attempt for 2.5 s** (the loop does not draw a minimised window),
+  `Outdated` again on restore (surface epoch 3), and no failed or skipped acquire or present while covered: **an obscured window kept
+  presenting with Success**; this is not physical visibility. The change stayed `ChunksStale` through all of it and became `Visible`
+  only after the release and a presented frame. Not done: releasing while minimised.
+- **Retained positive comparison:** the non-empty changed-region CPU/fresh/GPU comparisons are the earlier ones
+  (`visibility through the pipeline` — presented frame equals a fresh reference, changed region > 100 px; the play GPU-vs-CPU cases,
+  both adapters), re-run in the final gates below.
+- **Not exercised in the window:** `NothingToDraw` (unit cases `visibility_test`/`dev_visibility_test`), the Radeon in the real window
+  (a canary was not needed: the changed shared GPU file's cases ran on both adapters in the GPU gates), physical display latency,
+  releasing while minimised.
+
+### C3 — the two failures (finite investigation)
+
+- **A. Whole-app WSL ASan timeout** (`play: islands are the ones the sim placed`, 3400 s). The files on the test's call path
+  (the files it executes in the loader, play loading, scene build, `src/render`, `src/sim`, `src/formats` and `src/assets`) are byte-identical to the pin; the files this work
+  changed (`play.cpp`'s `dev_tool_setup`/publish gate, `scene_picture.cpp` accessors, `gpu.*`, the app tests) are not on it, and `gpu.*` is not
+  in the ASan build. `play_test.cpp` gained only an opt-in progress line. Native Release: 126-148 s for the 50 scenarios in the canonical gate
+  logs (`msvc-cpu-01…-06`, about 2.5-3 s each) and 2.3 s for the one-map case, against 109 s for the one-map case in the failed ASan run
+  (about 40-50x). The same failed run's `play: tick 0 matches the viewer…` case took 2 313 s. Earlier observations of the same case: 2 670 s alone
+  in a Debug build (an earlier round of this report) and a timeout at 2 400 s under ASan in the first W4-WIN packet. The one instrumented isolated run
+  (`cache/c1/wsl-diag/`, WSL ASan+UBSan binary `binary.sha256` built from an uncommitted tree that already carried the progress line
+  (`start.txt` records no head: the WSL worktree path made `git` fail), `ANNO_TEST_PROGRESS=1`, 2 test threads, samples every 120/300 s; **other WSL
+  jobs of this packet (ASan builds and gates, the warnings gate) overlapped it at times, load average 5-9 in about a third of the samples**, and the
+  per-scenario rate stayed near 105 s, 120-140 s while load was 9):
+  completed when run by itself as a test process (script exit 0 after 5 130 s by the WSL wall clock; the case's own steady-clock progress timer and `ps` elapsed time read about
+  5 400 s — the WSL wall clock stepped about 4.5 minutes against monotonic time during the run, visible in `ps` elapsed versus `start.txt`), **all 5 492 assertions passed**; 50 scenarios at about 105 s each and linear (scenario 4 at 421 s, 25 at about 2 600 s, 50 at 5 398 s);
+  the process showed 4 436 s of CPU time at its last sample and a load average of 1.4 at its last sample (one busy thread then; see the load note above; the main thread was seen in a
+  9p file read, `p9_client_rpc`, in several samples: the corpus is read through `/mnt/e`); RSS 0.7-1.3 GB; no stall and no wait state. The case has no picture, runner or reclaimer in it: no lifecycle component.
+  **Disposition:** explained, not a regression: run by itself it needs about 5.1-5.4 ks under ASan+UBSan, 1.5x the gate's per-test limit of 3 400 s, so it times out
+  whatever else runs; its call path is byte-identical to the pin (no pin baseline was run: 90 more minutes would add nothing the
+  unchanged-source diff does not already say). Proposed test-specific policy, **not applied by me**: put the corpus case (and
+  `play: tick 0 matches the viewer…`, 2 313 s in the failed run, the next one to cross) in the `heavy` suite with a sanitizer-scaled timeout
+  of at least 8 000 s, or run a scenario subset under sanitizers. **The whole-app WSL sanitizer gate still has no green run** (and the ASan build has the viewer OFF, so `viewer.cpp` and the `anno_app_input_tests` cases never ran under ASan/UBSan): the 86 focused cases
+  below and this isolated pass do not replace it.
+- **B. `picture reclaim: a stalled process reclaimer…` (one occurrence, `scene_picture_recovery_test.cpp:692, 716, 717`).**
+  Mechanism found by reading: the case snapshots `before = SceneReclaimer::shared().stats()` and compares `waiting - before.waiting`
+  (unsigned) and `waiting == before.waiting`. The reclaimer is process-wide, so generations an earlier case in the same process
+  released and that were still waiting (a starved reclaimer thread under host load) are part of `before`; when they finish during the
+  case, `waiting - before.waiting` wraps to a huge number (line 692) and `waiting == before.waiting` fails with lower counts (716, 717):
+  exactly the three assertions seen. The canonical gate runs each case in its own process, so only a whole-binary run exposes it
+  (the original was a direct whole-binary run). **Fix and proof** (the regression pins the helper and the arithmetic; the stalled case's own call sites of the helper are not mutation-tested, and removing them leaves the new case green): the case settles the shared reclaimer (`settle_reclaimer`, bounded)
+  before its baseline and compares signed; a gate-controlled regression (`picture reclaim: a baseline taken while foreign generations
+  wait is not one…`) reproduces the wrap without load (two foreign generations stuck behind the reclaimer's own gate: stale baseline 1,
+  after release the old expression wraps) and checks that settling waits for in-flight work. Focused repeats: 5 runs of the picture-recovery
+  suite under 16 busy processes, 18/18 each (`cache/c4/reclaimer-contended-5.log`); green repeats do not explain the old failure.
+  **Disposition: the defect is identified and fixed with a deterministic regression; that it was the cause of the original occurrence is
+  an inference that fits all three assertions, not an observation (no reclaimer statistics were logged, and the 24-process terminal
+  reproduction has no log). The attribution stays OPEN; the one observation that would close it is the failing CHECK's
+  `before`/`now` reclaimer stats from a whole-binary run under load, which the case does not print yet.**
+- The five `drain()` helpers and the two worker cases (W4-WIN-1) were reviewed again: each waits for the event it asserts, releases its
+  gates on every exit and keeps a watchdog; production scheduling is unchanged.
+
+### C4 — tools, provenance and the final acceptance matrix
+
+- **New contracts** (`tools/test/window_tools_contract_test.py`, ctest `window_tools_contract`, Windows; tiny fixtures; skip lines named):
+  watchdog termination (rc 124, `child_exit=killed`, diagnostic, bounded time), unreadable peak (rc 3 when the window itself ended 0,
+  its own failure kept when it did not; `child_exit` recorded apart; `window_table.peak_rss` refuses a peak of 0), refused capture
+  (minimised, client area off the desktop) with controls. Seven mutations, each fails its contract for the intended reason
+  (`cache/c4/mut-tools-2/`); one (`capture-minimised-allowed`) is caught only by the message because the off-desktop guard also
+  refuses a minimised window (defence in depth), and one (`capture-offdesktop-allowed`) fails by a Pillow crash, not by the message.
+  Not exercised: Win32 `GetProcessMemoryInfo` failing (the hook bypasses it).
+- **Matrix re-aggregation** with the final tools: `window_table.py` over the retained 13-case raw traces → byte-identical to the retained table
+  (`cache/c4/matrix-retable.md`). From the raw `frames.tsv`/`events.tsv`/`manifest.txt` of five cases the independent review and I recomputed
+  identical counts. **What the numbers mean:** "500 fps" is the frame-loop cadence (median frame-start interval 1.99-2.00 ms; the
+  acquire wait paces it, the present call returns in 0.04 ms); "failed 0" = no frame had an acquire or present API failure; "dropped 0" =
+  **trace-record loss** (manifest `dropped=0` against 2 000 000 / 200 000 / 200 000 bounds). None of them observes scanout or missed
+  refreshes; frame-start intervals above 3 ms occur (maxima 7-15 ms) and the raw files cannot say whether the display missed a refresh.
+  The attribution to the 500 Hz monitor is an inference (no present mode is recorded). The 3840x2160 cases keep the oversized-surface label
+  (displays 2560x1440). The matrix is the `4ecea07` binary (exe `58c60ad…`), not the final head.
+- **Final gates** (canonical runner, Release, original assets, at the frozen head; first attempt kept, see below):
+
+| Gate | Head | Sel | Pass | Fail | Empty | Skip | Incompl | Verdict |
+|---|---|---:|---:|---:|---:|---|---:|---|
+| MSVC CPU: app, alloc, input tests + `viewer_wiring_*` + `window_tools_contract` + preflights (`msvc-cpu-06-final`) | 07a7505 | 216 | 214 | 0 | 0 | 2 opt-in probes | 0 | PASS |
+| RTX 4090 GPU (`rtx4090-gpu-06-final`, `ANNO_REQUIRE_GPU=1`) | 07a7505 | 106 | 106 | 0 | 0 | 0 | 0 | PASS |
+| Radeon GPU (`radeon-gpu-06-final`) | 07a7505 | 106 | 106 | 0 | 0 | 0 | 0 | PASS |
+| WSL GCC 13.3 + Clang 18.1.3 `-Werror`, viewer and GPU on, then Clang without GPU (`unix-warnings-06-final`) | 07a7505 | 234 + 234 + 55 files | clean | | | | | PASS |
+| WSL GCC 13.3 ASan+UBSan, 86 affected cases (`wsl-asan-final-06`); `picture_matrix_contract` (216 s) and `window_table_contract` (19 s) required and passed | 07a7505 | 86 | 86 | 0 | 0 | 0 | 0 | PASS, 0 sanitizer lines |
+  Failed/superseded attempts, kept: `msvc-cpu-04-final` at `5db8838` — 216/213/**1**/0/2/0: `test_verdict_contract` failed because
+  `src/render/tests/play_gpu_test.cpp` (my `4ecea07`) said `skipping: no ` + adapter, which the verdict classifies as a passing "other"
+  skip; the retained `msvc-cpu-03-final` predated that commit, so the defect was never seen. Fixed: the message now reads
+  `skipping: no GPU device (no adapter named …)`, a failing capability skip when `ANNO_REQUIRE_GPU` is unset. Also renamed the script
+  counter `skipped` → `off_batches` (the same contract scans for skip wording). `rtx4090-gpu-04-final` / `radeon-gpu-04-final` (106/106)
+  were at `5db8838`. The `-05` runs (`3217f2f`) passed, but the first WSL ASan run on that head (`wsl-asan-final-05`, 86/85/**1**) found a
+  use-after-free in my own new `publication hold` test (its thread-joiner kept a raw pointer to the hold that the case had already reset);
+  fixed in `07a7505` (test only) and every gate rerun: the `-06` rows are the final ones, the `-05` and `first-0*` copies are kept. `unix-warnings-04` (head `db7a70f`, dirty) was clean but is superseded.
+- **Reuse with rationale:** `msvc-cpu-03-final` (`381b3e3`) still stands for the formats, assets and CPU render suites, which this work does
+  not touch (`git diff 381b3e3..HEAD --stat -- src/formats src/assets src/render/src src/sim` shows only `src/render/src/gpu.cpp` and its
+  header, compiled into the GPU library); it is **not** valid for the app suites, and the retained `rtx4090-gpu-03-final` (`4ecea07`),
+  `radeon-gpu-03-final` (`70817ed`) and `wsl-asan-final-03` (`70817ed`) are valid only for those heads; the final head's own runs replace them.
+  The INDEX corrections: the Radeon gate did run the Radeon play case; `wsl-asan-final-03` ran at `70817ed`.
+- **Superseded statements in the W4-WIN section above:** "nothing under `src/` or `tools/` changes after" and "`381b3e3..HEAD` changes under
+  `src/` only `play_gpu_test.cpp`" are true for `9ba01f1` only; "0 drops" means trace-record loss; the 500 Hz attribution is an inference.
+
+### Open, unverified and not run (separately)
+
+- **Failure B attribution** (above): OPEN. **Failure A:** explained as cost; the whole-app sanitizer gate has no green run and the timeout policy is the orchestrator's decision.
+- No 4K display, no Radeon window matrix, no physical display latency, no late-game/multiplayer scaling, Metal timing, OQ-525, terrain,
+  height, roads or UI (all separately named follow-ups; none claimed).
+- The orchestrator cannot open the archive (Windows-local); independent verification of raw logs by the orchestrator is not possible
+  from git alone.
+- Review: C1 APPROVE; C2 and C4 reviews returned CHANGES REQUIRED, fixed here; the final integration review is recorded below.
+
+### Final integration review and heads
+
+- **Heads:** source and tools frozen at `07a7505201066a0522804527fd3abb4e8022fe8e` (every `-06-final` gate records it as the tested head with an
+  empty diff); everything after it is documentation and the evidence index (`f403287`, `cf8f6b1`, `618ff9b`, and the commit carrying this
+  paragraph; `git diff --stat 07a7505..HEAD` shows only `docs/`). The published head is whatever `git ls-remote origin
+  refs/heads/task/W4-3-live-buildings` returns after the final ordinary push (no force, no main merge, no rebase); an earlier push left the
+  remote at `4dc9a35`.
+- **Independent reviews:** C1 APPROVE (nine non-blocking, dispositioned); C2 CHANGES REQUIRED (B1 chunk hold not released before the workers
+  are joined; B2 window-state record too thin) fixed and covered by `boundary_exit_in_hold` and the timeline; C4 CHANGES REQUIRED (vacuous
+  assertion, lost child status, unnamed skips, no pass log, stale INDEX statements) fixed; final integration review (fresh reviewer, head
+  `f403287`): CHANGES REQUIRED, documentation only (an overbroad "identical to the pin", a "load about 1 / alone" claim, the native baseline,
+  the clock note, mutant-base and manual-run caveats), corrected in `cf8f6b1`; the same reviewer's re-check of `cf8f6b1` found four
+  remaining wording issues, corrected in `618ff9b`, which no reviewer has re-read. The reviewers found no source, test or evidence defect
+  that invalidates C1, C2 or C4, and no scope violation (no main merge, no coordinator or MAP change, no original asset in git).
+- **Result against the stopping criteria:** source published and indexed; R1/R4 consumer regressions and R2 boundary controls discriminate
+  (mutants recorded); final tools and affected gates reviewed and green at `07a7505`; both failure investigations have a disposition —
+  **but failure B's attribution is an inference (OPEN) and the whole-app sanitizer gate has no green run (failure A is a cost problem whose
+  timeout policy is the orchestrator's decision)**, so this is reported as a review candidate with those items OPEN, not as acceptance.
+- **Next smallest unit (not started):** the orchestrator's review; then (1) the timeout/heavy-suite policy for the two ASan-expensive corpus
+  cases, (2) a `CAPTURE` of the reclaimer baseline in the stalled-reclaimer case so the next occurrence explains itself, (3) the named
+  follow-ups (native 4K, Radeon window matrix, display latency, scaling).
+
+## W4-WIN-FINAL: verdict/capture contracts, CPU delivery, reclaimer path, complete sanitizer coverage — 2026-11-02 — status: REVIEW CANDIDATE
+
+- **Dispatch / identities:** `origin/main` `c30d830` (`TASKS.md` W4-WIN-FINAL and `reviews/2026-11-02-w4-win-close.md`, read without merging). Code frozen at
+  `8367dc0e02ba0d1a1e776ba4eaee7e55a5ef5db8`; `37da91b` adds a one-line `viewer_wiring.py` UTF-8 stdout fix (found by the first gate attempt); every
+  gate in the table of this section (MSVC, WSL ordinary lane, WSL corpus lane) records `37da91b` as its tested head (the F3 repeats and mutants ran at `8367dc0`, the RTX canary records only its exe hash). Documentation and the evidence subset follow. Commands, hashes, the numbered acceptance matrix and limits:
+  `docs/orchestration/evidence/w4-win-final/SUMMARY.md`; extracts and originals' hashes: `INDEX.md` there. Full logs stay local (`cache/`).
+- **F1** `tools/test/viewer_wiring.py` passes a session only when its record shows the script ran (`viewer_session.py`): reproduced false pass kept (zero-exit
+  fixture, no session), now FAIL; absent/empty/truncated/reordered/missing-step/wrong-script/extra/failed-step/no-quit/no-`session.txt` records fail at their own check,
+  the complete record passes first (`viewer_wiring_contract`, 14 tests; mutations over the whole file fail only their tests). `dev_session_capture.py` has an
+  aggregate verdict (exit 4 for refused/mismatched/unfinished/too few captures, a failing child's status preserved and logged apart; invalid grabs saved as `*.invalid`),
+  with native zero-exit and child-9 controls and mocked mismatch/watchdog cases (`window_tools_contract`, 19 tests). Retained C1/C2 sessions revalidate (VALID); superseded ones
+  fail only because the scripts changed. Independent review: CHANGES REQUIRED (green-run evidence, mismatch path, quit/session.txt cases, watchdog promptness) fixed; re-review APPROVE.
+- **F2** `Viewer::draw_cpu` checks `SDL_UpdateTexture`, `SDL_RenderTexture`, `SDL_RenderPresent`; a failed stage skips the later ones, keeps the command `NotPresented`,
+  names the call on stderr and retries at the 100 ms back-off; the same command becomes `Visible` after a delivered frame. Script seam `fail|pass update|submit|present`
+  hands the real call a null texture/renderer. Case `cpu_delivery_failures` (ctest, with `--expect-stderr`); mutants (forced success; real returns dropped on
+  update/submit, on present; no back-off) all fail at the intended step. A GCC pass for a viewer built without wgpu found an unused function and a damaged skip message
+  in `check_unix_warnings.sh` (both fixed). Review: CHANGES REQUIRED (seam masked real returns; back-off untested) fixed; re-review APPROVE.
+- **F3** the stalled-reclaimer body is `stalled_reclaimer_case`; the regression runs that body with gate-arranged foreign generations and a handshake from its own settling
+  poll; removing the settling call or making it return at once fails the final `waiting`/`bytes_waiting`/`in_flight` equalities with the counters in the message; the final waits use
+  a `waiting`+`in_flight` baseline predicate (a race the reviewer found). 5 + 5 focused repeats at the frozen head. Historical occurrence: documented uncertainty. Review: CHANGES
+  REQUIRED (racy wait; damaged script) fixed; re-review APPROVE.
+- **F4** the two full-corpus cases are `heavy`, with `TIMEOUT 8000` in sanitizer builds (a cmake script read after discovery; CTest's reader skips `if(TEST)`, found by
+  checking the generated metadata). Viewer-enabled ASan+UBSan WSL build (GPU library on, `SDL_UNIX_CONSOLE_BUILD=ON`; a GPU-off build fails `bench_picture` under GCC `-Werror`).
+- **Gates (canonical runner; selected / executed / failed / empty / skipped / incomplete):** native MSVC 220 / 218 / 0 / 0 / 2 opt-in / 0 PASS (first attempt kept:
+  workflow UTF-8 error); WSL warnings clean; WSL viewer-enabled ordinary lane 217 / 215 / 0 / 0 / 2 opt-in / 0, 0 sanitizer lines; **WSL corpus lane 2 / 2 / 0 / 0 / 0 / 0, 0 sanitizer
+  lines: `play: islands are the ones the sim placed` 5 303.65 s (5 492 assertions), `play: tick 0 matches the viewer…` 2 374.47 s (3 478 assertions)**, host load about 1, under the 8 000 s
+  timeout (ctest/monotonic durations; the WSL wall-clock stamps lag by about 10 minutes); RTX real-window canary PASS; 106-case RTX/Radeon gates reused from `07a7505` (no change to render/sim/formats/assets or `anno_app_core` sources since; `anno_render_gpu_tests` links only `anno_render_gpu`, `anno_app_core`, `anno_test_support`; the rebuilt exe hash differs because a reconfigure regenerated the WGSL sources unchanged). The gate counts sanitizer lines in the test output only: UBSan prints without aborting in the app targets and the viewer subprocess's stderr is not scanned by the gate; three viewer cases rerun with stderr kept show 0 `runtime error` / sanitizer lines (`extracts/wsl-viewer-runs-summary.txt`).
+- **Open / not done:** the whole-app sanitizer lane is now complete for the app, input and alloc suites in the viewer-enabled build, but not for other suites (render/formats/assets/sim under
+  sanitizers are outside this packet). Failure B's attribution stays historical. Not covered: a submit-only mutant; the `in_flight` leg of settling pinned by a single-foreign-scene
+  case; native 4K, Radeon real window, display latency, scale, OQ-525, terrain, roads, UI. W4-OPENING-1 is not started (queued behind the orchestrator's pin acceptance).
+- **Reviews:** F1, F2, F3 independent reviewers (read-only; each re-reviewed after fixes: APPROVE). The final integration review is recorded below.
+
+### Final integration review and heads
+
+- **Final integration review** (fresh read-only reviewer, head `553ed6a`): **APPROVE**, no blocking finding. It recounted the three gates from the raw logs (all record tested head `37da91b`,
+  empty diff), showed the ordinary and corpus lanes partition the 219-name required inventory with no gap or overlap, found the viewer-enabled build instrumented (`__asan_init`/`__ubsan_handle`
+  in all four binaries, `__asan_report` in `viewer.cpp.o`), recomputed all 61 evidence hashes (61 match), and checked scope. Its eight non-blocking items and nine statements to correct
+  were applied in documentation only (mutation-run base commits, the WSL workflow-identity note, the UBSan/stderr scan limit with a rerun of three viewer cases that shows 0 `runtime error` /
+  sanitizer lines, the 106-case reuse wording, tested-head qualification, wall-clock lag, redaction wording, an annotation for the one non-compiling mutant, canary extracts). Not changed:
+  the comment pointer in `src/app/CMakeLists.txt` (it names `docs/testing/README.md`; the text is in `docs/testing/app-sanitizer-lanes.md`) because it would touch frozen source for a comment;
+  no dedicated regression for the UTF-8 stdout fix (the gate attempt is the evidence).
+- **Heads:** code `8367dc0e02ba0d1a1e776ba4eaee7e55a5ef5db8`; tools/test `37da91b901a0ead4ee4c45205a909e9e4b1eae8c` (tested head of the three gates); documentation and evidence follow
+  (`553ed6a`, `f1b70e7` and the commit carrying this paragraph; `git diff --stat 37da91b..HEAD` shows only `docs/`). The published head is what `git ls-remote origin refs/heads/task/W4-3-live-buildings`
+  returns after the ordinary push recorded in the session; remote before it: `f5a323d`.
+- **Stopping criteria:** F1-F4 meet their stated criteria; the final integration review approves; the candidate and the portable text evidence are published for the orchestrator. Not accepted by
+  me: acceptance is the orchestrator's. W4-OPENING-1 is not started (it waits for the orchestrator to record acceptance of the exact published Windows and Mac gameplay pins).
+
+## W4-WIN-VERIFY: child sanitizer diagnostics and the complete parsed script in the viewer verdict — 2026-11-02 — status: REVIEW CANDIDATE
+
+- **Dispatch / identities:** `origin/main` `92d78ae` (`TASKS.md` W4-WIN-VERIFY and `reviews/2026-11-02-w4-win-final.md`, read without merging). Parent: the published W4-WIN-FINAL `dad27da7`.
+  Correction `beb36d89` (V1, V2), review fixes `f047165c` (the commit both viewer gates and the RTX canary ran at), re-review test additions `3c808780` (final tools head; native focused lane
+  and the WSL public contract rerun there). Later commits change only `docs/`. Commands, hashes, tables: `docs/orchestration/evidence/w4-win-verify/SUMMARY.md`; extracts and the originals' sha256:
+  `INDEX.md` there. Full logs and every retained session folder stay local (`cache/`). Retained and not repeated: the two corpus cases (5 303.65 s and 2 374.47 s), the W4-WIN-FINAL lanes
+  (217/215 and 220/218) and the 106-case RTX/Radeon gates (this package changes no `render`, `sim`, `formats`, `assets` or `anno_app_core` source, no timeout or `heavy` classification).
+- **Finding 1 (V1), child sanitizer output was invisible to the verdict.** Reproduced through the public wrapper at `dad27da`: a complete matching record with the child exiting 0 returned PASS with
+  a UBSan `runtime error:` on stderr, an ASan report on stderr, or a UBSan line on stdout (stdout was discarded). Now `viewer_wiring.py` keeps both streams (`<out>.stdout.txt`, `<out>.stderr.txt`), scans
+  them with `ctest_verdict.SANITIZER` (no second definition), prints `channel path:line: excerpt` (cut around the match) after echoing the session log, and fails first, before the watchdog, exit-status,
+  expected-stderr and session checks; `UBSAN_OPTIONS=halt_on_error=1` is set unless the caller or `--env` chose options (defence in depth). The expected `CPU frame delivery failed (SDL_…)`
+  lines still pass `--expect-stderr` and are not sanitizer lines. Contract cases: clean control, SDL diagnostics alone, stderr UBSan, stderr ASan, stdout, the other kinds, a report beside the expected SDL
+  messages, a report with a failing child and with the watchdog, long line, `--env` precedence.
+- **Finding 2 (V2), the record did not identify the whole script.** Reproduced: the log of `look 1 2` passed for an invoked `look 1 999`, and a changed `wait` value was invisible. Now `DevScript::parse`
+  records `script identity: steps=N fnv1a64=HEX` as the log's first line (FNV-1a 64 over `LINE VERB ARG...` for every parsed step, waits and all arguments), `ran line` records carry every argument, and
+  `viewer_session.py` recomputes the identity from the invoked script's bytes with the parser's own rules and requires it to be the one identity line that opens the record, plus the ordered full-argument
+  trace. The log is read byte for byte. Legacy logs (no identity line) are refused by the wrapper; `--revalidate` prints `LEGACY` (with an AMBIGUOUS marker when several scripts fit) and says only the
+  first-argument trace was checked; the three committed W4-WIN-FINAL traces print `LEGACY` and keep their existing pins. Accidental-mismatch detection only.
+- **Checks:** contract 41 tests (was 14); DevScript suite 9 cases / 297 assertions native; the same five scripts and constants are asserted by the C++ case and the Python contract (constants derived apart
+  from the code). Python mutants: 23 killed by the intended tests; C++ producer mutants (identity not pushed, waits/later arguments/line numbers dropped, ran records first-argument-only): each fails the
+  new case, tree restored and clean. **Gates (selected / executed passes / failed / empty / skipped / incomplete):** native MSVC `anno_app_input_tests` + `viewer_wiring_contract` + the three CPU viewer
+  cases 35 / 35 / 0 / 0 / 0 / 0, 0 sanitizer lines, PASS (at `f047165` and again at `3c80878`); WSL viewer-enabled ASan+UBSan, same selection, 35 / 35 / 0 / 0 / 0 / 0, 0 sanitizer lines, PASS (at `f047165`;
+  the contract alone at `3c80878`: 1 / 1 / 0 / 0 / 0 / 0, PASS); WSL warnings GCC 13.3 and Clang 18.1.3 `-O3 -Werror` with and without the viewer GPU definition: clean; RTX 4090 real window
+  `boundary_exit_in_hold --gpu` PASS in 3.9 s through the corrected wrapper (window-recorded identity `steps=11`). **Stream reconciliation** from the retained files, not from the summary: all
+  real-window sessions of both lanes have sanitizer-pattern count 0 on stdout and stderr, exactly 3 expected delivery-failure lines per `cpu_delivery_failures` session, and an identity line that
+  validates against its script. The old zero-file stderr scan of `/tmp/viewer_wiring_*` provides no evidence and is recorded as such.
+- **WSL workflow identity:** the W4-WIN-FINAL WSL logs' `workflow` block was contaminated by the exported `GIT_DIR`/`GIT_WORK_TREE`. Recovered from retained evidence: the runner checkout was `b57c6f0`
+  from 2026-11-01 20:27 through those runs, its `tools/test` equals `origin/main`; runner file hashes are recorded. New WSL runs record the workflow revision and hashes with the overrides cleared; the
+  shared runner was not changed, so its own log block still repeats the source head (stated in the summary). No old work was rerun.
+- **Reviews:** independent read-only reviewer on `beb36d8`: no blocking finding; should-fix: no cross-language vector (S1) and later arguments of `ran` records unpinned (S2); notes on byte-exact log reading,
+  the 300-character cut of sanitizer lines, the echo order, untested `--env` precedence and watchdog-with-report paths, the ambiguous legacy match; all fixed in `f047165`. Narrow re-review of that diff: no
+  blocking finding; its three small should-fixes (ambiguity test, non-UTF-8 byte test, `split("\n")` in `--revalidate`) are in `3c80878` with mutation proofs; this last increment (two test additions and
+  one line) has no further reviewer.
+- **Open / limits:** headless CPU sessions say nothing about the GPU path; one short RTX canary, no Radeon window, native 4K, scale, latency or broad performance run (not assigned). Reports sent to `log_path=` files
+  would not be seen (nothing sets it); UBSan stays recoverable in app targets. A window that forged a matching log would pass. The historical reclaimer occurrence stays an uncertainty; the submit-only
+  and single-foreign-scene mutants were not added. W4-OPENING-1 is not started (it waits for the orchestrator's acceptance of the exact published Windows and Mac pins).
+## MAP.2 — MAP-NAV-2: first sailing implementation, headless (2026-11-02) — status: READY FOR FINAL REVIEW (headless candidate; nothing merged or pushed)
+
+Branch `task/MAP-2-original-like` (Mac, Apple Clang). Pins: packet from fetched `origin/main` `3352ce5` (not merged), MAP-NAV-1 documentation head `a01c053`, package A approved at `7b0dcf3` (ledger `8107678`), **code head `eeb68b9`** (gates below), later commits are documentation only. No candidate manifest, active map, `game/`, `test_support`, coordinator, W4 or board file was changed; the rendering lane is untouched; no merge, rebase or push.
+
+### Delivered (what runs now)
+An unchanged lan5 candidate loads with five expeditions; authenticated-issuer `MoveCmd` (`0xF071`) and `StopCmd` (`0xF072`) go through `World::apply`, the codec and replay; the real stepper (segments, turns, chunks, speed factor, speed changes, stop trim, exact integer arithmetic with a portable 128-bit helper) sails the ships over the real terrain with the ported route engine (two-level search, shore band derived from block records, local-ship stamps, bounded work and memory), fair bounded planning admission, `ShipArrived` / `ShipRouteFailed{reason}` / `ShipStopped` events, crew positions through Effects; then the two participants found their cities through the existing `FoundCmd`. Stream version **122** (motion, order/ticket counters, NavRules, navigation facts all hashed and saved; independent Python transcription of the ids, rules and figure-type digest).
+
+### The sailed canary (real files, no relocation)
+Seat 0 sails 546 tiles and seat 2 884 tiles (35 311 Advances = 176 555 ticks; the log's final tick 176 805 includes the 500 ms after founding) from their ship starts to water tiles beside legal Kontor sites (found and verified on COPIES of the world; the real run never writes a ship), both report `ShipArrived`, then found: 2 cities, 350 gold each, discovery {0, 2} for all five, seats 1, 3, 4 untouched. Every position change is within what the ticks since the ship's last visit allow (largest single change 86 Q24.8 units because the registry visits a ship every n/k Advances). The crew rides with its ship. A mid-voyage save/load gives the identical arrival Advance and final hash; the recorded log (22.7 MB) replays in a fresh world, **and in a fresh process** (manual evidence, saved in `cache/map2-nav2/sail/`, NOT a CTest or gate case) with `anno-sim-replay` (now able to select the original registry by digest): `entries 35335, checkpoints 19/19, final tick 176805, reproduced`; a log with the first order's target changed by 3 tiles **DIVERGED at entry 2002, exit 1**; a one-tile different target gives a different state hash after 600 Advances; an order to an island interior (no water within 8 tiles) is accepted and ends `ShipRouteFailed{Unreachable}` with the ship idle in its tile.
+
+### Measurements (this Mac, Debug build, not a performance claim)
+Re-measured at code head `eeb68b9`: coast index build 246 ms (314 sectors; first plan only); seat 0 route: 58 runs, 18 249 coarse and 5 596 fine pops, 194 044 accounted bytes, 9.3 ms; seat 2: 101 runs, 24 932 / 21 371 pops, 208 848 bytes, 19.2 ms (defaults 600 000 / 4 000 000 pops, 64 MiB). Advance wall time p50 390 us, p95 436 us, p99 456 us, max 274 ms (the plan with the index build) while sailing, versus an idle baseline of the same world p50 389 us, p95 437 us, p99 455 us, max 500 us (run-to-run variation of a few percent; an independent run saw 384-469 us p50): ship movement is not visible in the per-Advance cost. Process peak resident set of the canary test binary 611 MB (610 926 592 bytes) (it holds several world copies). Stepper error against the exact-rational model: worst 34 units of 2^-32/500 tile on a 1200-tile voyage (about 1.6e-11 tile), bound derived per plan from the carry terms; arrival visit equals the model's in all 25 vectors.
+
+### Gates (canonical workflow, logs `cache/map2-nav2/gates/E2/`, source `eeb68b9`, clean tree)
+| Gate | Selected | Executed | Failed | Empty | Skipped |
+|---|---:|---:|---:|---:|---:|
+| focused (nav, stepper, route, canary, commands, admission, founding, golden ...) | 203 | 203 | 0 | 0 | 0 |
+| sim, all (with game files) | 935 | 934 | 0 | 0 | 1 (opt-in) |
+| formats | 82 | 82 | 0 | 0 | 0 |
+| replay contracts + reference tests (`anno_sim_replay`, `figure_digest_reference`, `ship_*`) | 51 | 51 | 0 | 0 | 0 |
+| ASan+UBSan focused | 203 | 203 | 0 | 0 | 0 |
+| ASan+UBSan sim, all | 935 | 934 | 0 | 0 | 1 (opt-in) |
+Also `lint_sim`, `clang-format --dry-run`, `sim_stream.py --check`, `figure_digest_ref.py --check` all 0. **NOT_RUN:** Windows MSVC, Linux/WSL GCC 13 / Clang 18 `-Werror` (`tools/check_unix_warnings.sh`) and the Linux sanitizer lane, every observation of the original runtime (capture card CAP-1..6c), a performance gate. A local Mac result is not cross-platform acceptance. Disclosures: an earlier gate run was killed by me after I edited a source file while it was running (its logs are not counted); stale-lock `rmdir` after my own killed run; the full sim run takes about 10 minutes here because of the two canary cases (75 s each, 5 s under the gate's parallelism).
+
+### Thread counts
+The executor is used by world creation and hashing only; the sailing path is serial. The 1/2/4/7-thread test therefore shows creation and hashing independent of the pool for a world that then sails; the route engine's own 1/2/4/7-thread reentrancy test is in package C (`route_unit_test`).
+
+### Review dispositions (details in `docs/orchestration/evidence/map-nav1-evidence.md`)
+B round 1 and 2 CHANGES REQUIRED (applied); C round 1 CHANGES REQUIRED, round 2 **APPROVED**; D CHANGES REQUIRED (applied); E CHANGES REQUIRED (applied); **final integration review (fresh, read-only, ran the canary, the fresh-process replay, the full sim and its own mutants on the B/D/E deltas): APPROVED as a headless candidate, no P1**, with recommended corrections, applied in the commit after it: refreshed measurements and counts above (the earlier numbers were from an earlier code state), the manual-evidence and thread-scope wording, a `run_cap + 1` node-shape test and the `kNavMaxNodes` comment (a comment and one test added after the gate at `eeb68b9`; the new case was run, the gate was not repeated).
+
+### Adaptations and limits that matter (all in `docs/sim/ship-navigation.md` 12.8-12.10 and `ship-route-*.md`)
+Exact-rational integer stepper (not original f32 noise; no runtime parity claimed); the speed factor is derived from the holds at every movement segment start (the original's stored multiplier and its reset by a stop are not modelled; health not modelled); the route cache reads terrain only (object blocking off: objects change without commands, which would make routes depend on save/load history); the placed items' height byte is not carried; the shore band exists for 8-aligned islands only (all three candidates); the world edge for sizes that are not a multiple of 64 differs (OQ-NAVC-1); local detours and hostile avoidance are deferred (ships may overlap); admission, stamps and the crew mirror scan the registry (O(registry) per attempt or moving-ship visit, a derived index is the improvement path); the planner is serial.
+
+
+## MAP.2 — MAP-NAV-3: finish navigation integration (2026-11-02) — status: READY FOR FINAL REVIEW (headless candidate; nothing merged or pushed)
+
+Branch `task/MAP-2-original-like`, start `4731d9a`, code/test head for the final gates `8ee8423bc6318a023ce4507db96e466d3f5547cb` (this report is documentation only on top of it). Mac, Apple Clang, `build/mac-headless` and `build/mac-asan`; Windows MSVC, Linux/WSL GCC and Clang `-Werror`, the Linux sanitizer lane, original-runtime captures and any performance gate are **NOT_RUN**.
+
+**Acceptance ledger (requirement -> evidence)**
+| Item | Result | Evidence |
+|---|---|---|
+| N0 three review findings reproduced before any fix | observed: stamp tile 46 against 22 by the velocity equation; carried navigating child: `check_invariants` and `save` fail with `Figure::pos does not equal floor(pos_u) on axis 0`; ninth-level descendant at x=5340 while the ship is at 5616 | `cache/map2-nav3/n0/n0-before.log`, commit `0a4dfff`; independent read-only review APPROVED |
+| N1 carried-motion invariant, derived children/ticket/ship-cell indexes, iterative subtree mirror | done; docs 12.12 | review CHANGES REQUIRED once (docs, locality-test strength, missing nested cases) -> fixed in `5f2dad7`; the fixes were not given a separate second review (the final integration review covers them) |
+| N2 stamp = position + 25 x segment velocity (2^-32 tile per stepper unit, captured factor) | done; docs 12.11 | review APPROVED, three P3 fixed; world-path endpoint (20,65) against (21,64) under a far look-ahead mutant |
+| N3 object-aware routing, item height byte (low byte of `aux`, layout unchanged), dirty rectangles + `RouteCache::sync`, objects block in production | done; docs 12.13; limitations OQ-NAVC-2 (growth height), OQ-NAVC-3 (command-built `byte0f`), OQ-NAVC-1 (unaligned edge) stay open | review CHANGES REQUIRED (4 P2) -> fixed (`58f80e2`, `22cae71`, `14b1e0f`) -> delta re-review APPROVED; mutants: `objects_block=false` fails 6 of 10 route-object cases, `sync` no-op fails 5; 15 witness routes unchanged |
+| N4 health input (`NavMotion::health`, unknown = full-health adaptation), stream **123**, populated byte oracle | done; docs 12.14 | review CHANGES REQUIRED (one stale doc line, wording) -> fixed in `19a078f`; full-health-only mutant fails 4 cases (damaged arrival 8505 ticks against 6955); `tools/nav_state_ref.py` bytes compared with production archive bytes |
+| N5.2 production-scale measurements | done; docs 12.15; `cache/map2-nav3/n5/measure/` (first run) and `measure-after-sync-fix/` | found an O(ships x islands) cost in `RouteCache::sync` (per ship visit) -> fixed with `sync_once` per tick (`19a078f`), re-measured |
+| N5.3 canary, fresh-process replay, changed target | done | `cache/map2-nav3/sail/`: seat 0 546 tiles and seat 2 882 tiles, 35,481 Advances (177,405 ticks) to the last arrival, both found with `FoundCmd`, no relocation; `anno-sim-replay run`: entries 35505, checkpoints 19/19, final tick 177655, reproduced, exit 0; changed first target: `DIVERGED at entry 2002`, exit 1 (manual evidence; the in-process equivalents are CHECKs of the canary test) |
+| N5.4 gates | below | `cache/map2-nav3/gates/F3` (F2 and F1 kept) |
+| N5.5 final integration review | fresh read-only reviewer: CHANGES REQUIRED, one P2 (below) and three P3 -> fixed in `8ee8423`; the fix then got a narrow re-review (see the closing section) | |
+
+**Failed and superseded runs (kept):** gate `F1` at `79ae02c` passed the five non-sanitizer lanes but its ASan/UBSan lanes FAILED (`island.hpp:123 signed integer overflow: 2147483647 + 1` in the N3 dirty rectangle, case `founding coordinates: occupancy sees an object on every tile, including above INT32_MAX`); fixed in `30db4da` (64-bit edges) and the whole set was re-run as `F2`. The first N5.2 run measured the sync cost above before the fix. The very first full-binary run during N1 (two `nav motion` cases) failed because the tests edited tickets in place without rebuilding the derived index; the tests were corrected (`f274aa2`).
+
+**Gates.** F2 (`30db4da`) passed all six lanes (266/265, 974/972, 82/82, 54/54, 266/265, 974/972; one and two opt-in skips). The final integration review then found a real P2 (`RouteCache::sync_once` keyed only on the tick, but two Advances can share a tick through `advance(0)` or odd millisecond steps while host commands and the AI change tiles between them: a continuous world could plan on a stale index that a reloaded one would not). Fixed in `8ee8423` (`begin_advance()` at the start of every Advance; the new test `route objects: two Advances that share a tick still see a change made between them` fails with a no-op `begin_advance`; also the dirty-cell counter underflow and the hidden 1280 fallback). Because scheduler code changed, the whole set was re-run:
+
+**Gate F3 (clean tree `8ee8423`, `ANNO1503_GAME_DIR` set, `tools/test/run_selected.py`):**
+| Gate | Selected | Executed | Failed / empty / incomplete | Skipped |
+|---|---:|---:|---|---:|
+| focused | 267 | 266 | 0 / 0 / 0 | 1 (opt-in `nav scale measurements`) |
+| sim all | 975 | 973 | 0 / 0 / 0 | 2 (opt-in: transport statistics, nav scale) |
+| formats | 82 | 82 | 0 / 0 / 0 | 0 |
+| replay and references (incl. `nav_state_reference_agrees`, `ship_speed_factor_reference_agrees`) | 54 | 54 | 0 / 0 / 0 | 0 |
+| ASan/UBSan focused | 267 | 266 | 0 / 0 / 0 | 1 |
+| ASan/UBSan sim all | 975 | 973 | 0 / 0 / 0 | 2 |
+Test binary sha256 `4b03021b...` (headless); lint, `sim_stream.py --check`, figure-digest check and clang-format all 0. The fresh-process replay of the canary log was re-run with the F3 binaries (`cache/map2-nav3/sail/replay-*-8ee8423.out`): 35505 entries, 19/19 checkpoints, final tick 177655, reproduced, exit 0; changed target: `DIVERGED at entry 2002`, exit 1. The canary log itself was recorded at `79ae02c`-era code (before the 64-bit dirty-rectangle and `begin_advance` fixes, which do not change sailing behaviour on that voyage) and replays identically; the canary test case also ran inside F3.
+
+**Original rule versus approved adaptation (unchanged boundaries plus this packet):** original: stamp velocity, object predicate `((h + base) & 0xff) > 19`, health/cargo formula (RE 7.5). Adaptations: derived indexes and fair admission by tickets, any-object invalidation (the original refreshes only for coast/road objects), unknown health = full-health term, health in `NavMotion` with a new stream version 123, carried figures never sail on their own, `state_word & 1` rejected on carried figures (the port's own moving bit).
+
+**Residual limits:** growth and command-built building height bytes are not the original's (OQ-NAVC-2, -3); partial-sector edge (OQ-NAVC-1); no local detours or hostile avoidance; island phase is O(islands) base work; measurements are one host, open sea, 6-300 ships, F up to 10,000; the planner is serial; no importer for original ship health; sync halo evidence in 12.13.
+
+**Final status.** The narrow re-review of `8ee8423` (the P2 fix) returned APPROVED with three P3 notes (a visit counter assertion in the new test, a documented precondition instead of a silent radius 0, no test for the guarded counter case); the assumption "the figure phase changes no tile" is stated in the docs but not enforced in code - a future figure seam writing object/aux/anchor would reopen the hole. Stopped at the reviewed corrected headless candidate: nothing merged, rebased, pushed or pruned; TASKS.md, test_support, coordinator, W4, game/, candidate manifests and the active map untouched. Branch head: see `git log` (documentation-only commits follow `8ee8423`).
+
+## MAP-BUILD-1 — executor report (in progress)
+
+Starting point: branch `task/MAP-2-original-like` at `6ad66ac` (tested code `8ee8423`), origin/main read at `33c60f6` without merging.
+
+**A — evidence writer (code `A` commit below).** Reproduced the review's finding on the tested binary: `summary.csv` as a directory gave exit 0 and `wrote 32 runs`. Now `write_outputs` (`nav_scale_test.cpp`) and the two sail-log exports (`founding_assets_test.cpp`: `ANNO_SAIL_LOG`, `ANNO_SAIL_LOG_TAMPERED`) publish through `sim::test::write_evidence_file` (`src/sim/tests/evidence_out.hpp`): directory check, open, write, flush, close and rename are each checked; the data goes to `<target>.partial` and is renamed only after success; stale targets of the measurement are removed first; a failure names the path and operation and fails the case with no success message. Real case with `summary.csv` a directory: exit 1, `summary.csv: destination is a directory`. Cheap registered tests: `evidence writer: ...` (stream seam with a full-disk `streambuf` and a bad stream), `nav scale writer: ...` (the real `write_outputs`, valid control plus each of the three files as a directory), `sail log export: ...` (the real export helper: valid round trip, no request, directory target, missing parent). Negative control: with both consumers restored to the old ignore-the-error behavior, 2 of the 4 cases fail (9 assertions); with the fix, 4/4 pass (21 assertions). Evidence-path and `sync_once` description corrections: `docs/sim/ship-navigation.md` 12.13 (6) and 12.15 (location and provenance paragraph; `measure-after-sync-fix` identity marked INCOMPLETE, not manufactured).
+
+**A review (CHANGES REQUIRED, two P2) and correction.** P2-1 verdict wiring untested: both writer functions are now `[[nodiscard]]` (dropping the result fails under `-Werror`); deleting the consumer's `REQUIRE_MESSAGE` itself is not machine-checked (the consumers are the long opt-in cases) and remains a reading check. P2-2 stale file after a failed export: `write_evidence_file` now removes an existing target before the attempt (test: a taken `.partial` name makes the open fail and the old file is gone). P3: flush-failure seam test added (`FlushFails` streambuf); the close-failure branch is read-only evidence (it cannot be injected into a real `ofstream`); the stale "Cold versus hot" text is labelled HISTORICAL. The earlier "2 of 4 fail" negative control was a hand edit of the consumers; after the fix 5 cases and 25 assertions pass.
+
+**B — contract (independent review APPROVED, six P3 folded in `8ab7def`).** `docs/re/ship-placement.md` (trace, hashes, emulation: 43,221 compared random cases 0 mismatches, vectors 45 compared 0 mismatches, threshold-31 negative control 47 mismatches) and `docs/sim/ship-placement.md` (dependency table, R1-R6, result type, 50 vectors in `fixtures/synthetic/sim/placement_vectors.txt`, oracle `tools/placement_ref.py`, now ctest `placement_reference_agrees` / `_selftest`). Original facts: the apply call passes `0x1000000` (skips the height analysis, trusts the wire byte8); ordinary land is flag word `(F & ~0x80) == 4` (352 of 921 types, 254 reachable by BuildCmd), coast `(F & 0x7017) == 0x2007` (30 types); classes `0x3000`, flag bit `0x10`, the `0x400000` replacement, roads, walls, single-quad scenery, ruins stay **Unsupported**. Growth (OQ-NAVC-2): `0x1008b5f0` writes only tile bytes 0-3, the item height byte remains (bounded trace). A real build click in the running original: NOT_RUN.
+
+**C — engine (review APPROVED, one P2 + P3 fixed in `4fe3537`).** `placement_rule` (R1-R6, `PlacementParams` defaults with addresses), full original overlap table, `Seams::placement_rule` returns `PlacementResult` (default = the rule; stand-in only as `stand_in_placement_seam()`), `check_record` order: ownership, live and budget-tile occupancy, rule on the effective type after the upgrade rewrite, then affordability; the byte is server-derived, wire byte7/8 never read. State layout and `kStateHashVersion` (123) unchanged; behaviour-only change under the S14 policy: old BuildCmd replays recorded with the stand-in diverge. Goldens moved: `s10_g2_end`, `m2_found_session` (+ `g2.log`, `m2_found.log`, `m2_found_wrong.log`), reasons in the commit messages. Pre-existing tests were given real flat terrain (none switched to the stand-in). Causal controls (D2): stand-in at the call site fails `build_terrain_test.cpp:185` and `route_objects_test.cpp:782-797`; forced zero height fails `build_terrain_test.cpp:206/219` (about 14 cases), `command_build_test.cpp:104/416`.
+
+**D4/D5 (review CHANGES REQUIRED, README provenance + two P3; fixed).** Finding: a newly founded city holds NOTHING (stock 0, gold 30000 -> 29650, ship cargo stays aboard), so PIONIER/HANDWERK is `CannotAfford`; therefore the separate stocked scenario on real island terrain + original registry (stock/gold declared in `ScenarioSpec` before creation): sea-class site `TerrainRefused`, other player `NotCityOwner` despite shared information, PIONIER -3 t wood, HANDWERK -300 gold -4 t wood -3 t tools, demolition no refund, heights 0x30 on building and every tile before and after demolition, reload equal, fresh-process replay 20 entries 9/9 exit 0, changed command `DIVERGED at entry 6` exit 1. **The combined sail -> found -> build loop is BLOCKED on unloading (MAP-CARGO-1); this fixture is not an opening loop.** Evidence at the frozen head: `cache/map2-build1/d4-frozen/` (source root = the MAP worktree, artifact root = main checkout `cache/map2-build1/`).
+
+**E1 gate (clean tree `ab5e651`, `ANNO_TEST_BUDGET_COORD=local`, `tools/test/run_selected.py`; first two attempts aborted and kept: `gates/E0-aborted-format` (clang-format on one comment) and `gates/E0b-aborted-stale-lock` (stale run lock after my own kill)).**
+| Lane | Selected | Executed | Failed / empty / incomplete | Skipped |
+|---|---:|---:|---|---:|
+| focused | 312 | 311 | 0 / 0 / 0 | 1 (opt-in nav scale) |
+| sim all | 1006 | 1004 | 0 / 0 / 0 | 2 (opt-in nav scale, transport stats) |
+| formats | 82 | 82 | 0 / 0 / 0 | 0 |
+| replay + references | 56 | 56 | 0 / 0 / 0 | 0 |
+| ASan/UBSan focused | 312 | 311 | 0 / 0 / 0 | 1 |
+| ASan/UBSan sim all | 1006 | 1004 | 0 / 0 / 0 | 2 |
+Binary sha256 (headless) `015b3cf6...`, (asan) `5f828d98...`. NOT_RUN: Windows MSVC, Linux/WSL GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`), Linux sanitizers, original-runtime captures, any renderer/GPU gate. Windows consumer delta: `Seams::PlacementRuleFn` (registry added, returns `PlacementResult`; app/render sources do not call it); `site::overlap_with_existing` no longer returns Unsupported (FoundCmd now decides rows it left open; golden `m2_found_session` moved); `BuildCmd` on a world without a readable HEIGHT column (including flat-state hash-only worlds) answers `Unsupported`; new helpers `site::type_replaceable`, `ordinary_land_flags()`, `give_flat_terrain`, synthetic scenery ids, `make_build_types` flag word 0x0084; `kStateHashVersion` stays 123, so BuildCmd replays recorded under the old stand-in report DIVERGED rather than a version refusal.
+
+**Final integration review (fresh reviewer): APPROVED, P3 only** (Windows-delta wording and stale predicate text in docs: corrected in the following docs-only commit; prose changes do not re-trigger the gate). **MAP-BUILD-1 acceptance pin: code `ab5e6510952b0bbff6d1a2dbba1ab9f98f8034aa`, gate E1 (clean), docs head recorded by `git log` after this commit.**
+
+## MAP-CARGO-1 — executor report (U1-U5)
+
+Start: MAP-BUILD-1 acceptance pin code `ab5e651`, docs `d9e3415`. Branch `task/MAP-2-original-like`; origin/main read at `92d78aea` without merging.
+
+**Placement checkpoint (separate from unloading):** unchanged, see the MAP-BUILD-1 entry. The orchestrator's placement P2 (fixed temporary-directory names in two writer tests) is fixed in `9b6c547f` (exclusive per-invocation directory; the review's 12-invocation/2-worker probe now passes 12 of 12).
+
+**U1 contract (independent review APPROVED with 1 P2 + 4 P3, all folded in).** `docs/re/ship-cargo.md`, `docs/sim/ship-cargo.md`, `tools/cargo_ref.py` + `fixtures/synthetic/sim/cargo_vectors.txt` (60 cases; ctest `cargo_reference_agrees/_selftest`). Original chain: ship view "Load/unload ship" tab `View 0x1005a7f0` -> `tNetClient` slot `+0x60` (`AnnoFrame 0x100591a0`) -> world slot `+0x100` (`AnnoWelt 0x100ac360`); multiplayer net type `0x6a` (`0x1005d0a0`); same-owner arm `0x100ac91f-0x100accde`: min(whole-ton request, hold amount, free space rounded up to a ton), hold take `0x1003b9a0` (clears the goods id when emptied), city add `0x1002da50`. Range is checked only in the view at click time (warehouse PRODTYPE 0x23 in a radius-5 digital disc, half-widths 5 5 5 4 3 2, own-city outline tile); the original checks neither ship state nor sender at execution. Original-versus-rebuild adaptations: debit == credit (the original destroys up to 255 units when free space is fractional), over-capacity stock -> `StockFull`, unknown goods refused; the named warehouse replaces "first qualifying". Unknown, non-blocking: OQ-CARGO-1 (tab enabling for a moving ship), -2 (consumers of stock words +6/+8), -3 (cannon/foreign/0x6b arms; excluded). No original-runtime capture (NOT_RUN).
+
+**U2/U3 (independent review APPROVED, P3 only).** `UnloadCmd{ship, warehouse, hold, goods, tons}`, variant alternative 10, wire tag `0xF073`, 28 bytes (hand-written bytes in `command_codec_test.cpp`); `Reject::{NotAWarehouse, HoldGoodsMismatch, UnsupportedGoods, StockFull}` appended; `RecordResult::transferred_88`; `ShipCargo::unload`, `CityStock::free_88/credit` (the existing `CityStock::add` is not used for transfers). `CargoRules` (`warehouse_prodtypes` default {35}, `dock_half_widths` default {5,5,5,4,3,2}) is hashed in `Rules`: **stream version 124**, independent Python bytes (`tools/sim_stream.py --write-cargo-rules`, `cargo_rules_bytes.txt`), version-negative reseal test 123 -> 124, 25 state-hash goldens moved through the version word and the Rules bytes (explanations in the commit and `goldens.txt`). Navigation untouched (the cargo factor is read at segment start: 92 for a segment started with cargo, still 92 for the running segment after an unload, 100 from the next segment). Mutants run on the real source: credit-without-debit fails 19 of 20 `unload*` cases (and also its credit-side checks, so it does not isolate the debit assertion); debit-the-request-despite-limited-credit fails 10 of 20 with the control step green. P3 left open: the ship class for unloading is the founding veto's `ship_kind` 113 default (not configurable, as in founding); `kCommandWireVersion` stays 1 (precedent: MoveCmd/StopCmd/FoundCmd; the state version and the rules digest already differ).
+
+**U4 (independent review CHANGES REQUIRED: stale evidence identity, duration, dead code -> fixed in `7e5529f4`).** Real files, unchanged candidate `lan5-ship-a` and loadout, seats 0 and 2, public commands only, no relocation, no grants: sail; found (Kontor: 350 gold, 12 t wood, 5 t tools; gold 29650); rival refusals (`NotCityOwner` x2, `NotShipOwner`); build before unloading `CannotAfford` and unchanged; unloads wood 9728, food 2560, tools 11520 (second tools hold limited by the 50 t per-goods store to 1280, 6400 stay aboard, repeat `StockFull`); then HANDWERK 1001 (300 gold, 3 t tools, 4 t wood) and PIONIER 501 (3 t wood) succeed with byte0f and every tile height 48; gold 30000 - 350 - 300 = 29350; wood store 7936, tools store 12032; ledger asserted for every goods and gold (observed simulation changes measured: 0). No move was needed to unload (the move path is not covered). Reload at three points equals the uninterrupted run; fresh-process replay `entries 35585, checkpoints 60/60, exit 0`; a changed unload (38 t -> 37 t) `DIVERGED at entry 35532`, exit 1. Evidence: `cache/map2-cargo1/u4/` (README names source `7e5529f4`, binary and log hashes; the superseded `08443e00` README is kept). The new case takes about 5.4 minutes alone; the canonical gate was run with a raised per-test timeout (see below).
+
+**Windows viewer handoff (API delta):** `UnloadCmd` (tag `0xF073`), the four new `Reject` values, `RecordResult::transferred_88`, `ShipCargo::{unload, amount_88, footprint_in_range}`, `CargoRules` in `Rules`, `CityStock::{free_88, credit}`, `friend struct ShipCargo` in `World`; stream version 124 (all saves/replays recorded under 123 are refused); founding keeps its terrain path; BuildCmd needs a readable HEIGHT column (MAP-BUILD-1).
+
+**U5 gate (clean tree `f0c8647f`, code head `7e5529f4`, `ANNO_TEST_BUDGET_COORD=local`, `tools/test/run_selected.py`; per-test timeout raised to 2400 s, ASan full lane 3600 s in the local wrapper `cache/map2-cargo1/run-gate.sh`, because the opening-loop case alone takes about 5.4 minutes; evidence `cache/map2-cargo1/gates/U5-1/`).**
+| Lane | Selected | Executed | Failed / empty / incomplete | Skipped |
+|---|---:|---:|---|---:|
+| focused | 335 | 334 | 0 / 0 / 0 | 1 (opt-in nav scale) |
+| sim all | 1029 | 1027 | 0 / 0 / 0 | 2 (opt-in nav scale, transport stats) |
+| formats | 82 | 82 | 0 / 0 / 0 | 0 |
+| replay + references | 60 | 60 | 0 / 0 / 0 | 0 (cargo_reference_agrees and the cargo-unload replays were required and selected) |
+| ASan/UBSan focused | 335 | 334 | 0 / 0 / 0 | 1 |
+| ASan/UBSan sim all | 1029 | 1027 | 0 / 0 / 0 | 2 |
+Binary sha256: headless `3d330a7e...` (equal to the U4 evidence README), asan `fee9a3c1...`. NOT_RUN: Windows MSVC, Linux/WSL GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`), Linux sanitizers, original-runtime captures, renderer/GPU/performance gates. Placement (MAP-BUILD-1 gate E1) results are reused for paths unchanged since `ab5e651` except where the cargo commit set re-ran them in these lanes (stream 124 moved every state-hash golden, so the whole sim selection was re-run).
+
+**Final integration review (fresh reviewer): APPROVED, P3 only.** Corrected in prose (no code or gate change): `docs/sim/ship-cargo.md` historical wording labelled; the opening case does not itself assert that shared visibility is on (the loader supplies the full set `{0..4}`, asserted in another test; B8 in `unload_test.cpp` does not set it) - so "shared knowledge grants the rival nothing" is demonstrated by the refusals but its precondition is not machine-checked in that case; the opening ledger term `observed` is MEASURED between commands and reported as 0 in the evidence, not asserted to be 0. **All MAP-CARGO-1 runs are local macOS arm64 (Apple Clang), headless, ASan/UBSan on `mac-asan`; nothing ran on Windows, Linux or against the original runtime.** **MAP-CARGO-1 acceptance pin: code `7e5529f4`, gate U5 clean tree `f0c8647f`, docs head recorded by `git log`.** Placement checkpoint (MAP-BUILD-1 `ab5e651`) and unloading completion are separate pins. W4-WIN-VERIFY was left to the Windows executor by owner decision; no W4 file or branch was touched.
+
+## W4-OPENING-1 — executor report (I1–I6): the real-window ship-start opening (2026-11-03) — status: READY FOR FINAL ACCEPTANCE (published candidate; owner playtest NOT_RUN)
+
+Branch `task/W4-opening-1` from the Windows publication `26107db0`, the accepted Mac pin `0c401c8d` merged with an ordinary merge (`870fc83`); nothing merged into or pushed to `main`, no rebase, no force push. Code head of every gate: `d129bba`. Evidence index: `docs/orchestration/evidence/w4-opening-1/INDEX.md`. Owner card and launcher: `docs/testing/ship-opening-playtest.md`, `tools/play_ship_opening.ps1` (design: `docs/app/ship-opening.md`).
+
+**What exists.** `anno1503 --ship-start <manifest> --seat N [--resume <save>]` loads the typed manifest (zero cities, original loadout, explicit local participant) and opens the production window on the seat's ship. Select (left click, stable `FigureId`), sail (right click, `MoveCmd` to the exact sea point; `H` = `StopCmd`), found (`F`, the sim's reach and footprint rules, advisory preview only), unload (`U`, one hold and a whole-ton request to the nearest own warehouse, `-`/`+`/`Page Up`/`Page Down`/`[`/`]`), build (`B`, the building tool follows the founded city), `F5` quick-save, `--resume`. Every command goes through the same queue and codec as the sim's tests; each has its own outcome (queued → accepted → sailing → arrived (shown) / refused (reason) / replaced / ended), taken from the sim's records, never inferred from a later snapshot. Ships are original figure frames drawn as a per-frame overlay (GPU compositor and CPU renderer alike) from immutable `OpeningView` snapshots; a sailing tick changes no scene generation. Session recordings (`commands.txt`, `hashes.txt`, `outcomes.txt`, `session.txt`) replay in a fresh process against the same manifest, seat, rules and start state, and are refused against any other.
+
+**Real windows, real files.** The RTX 4090 (Vulkan) full session passes: sail 550 tiles (~90 s at speed 200), arrive, save; resume, two refused foundings, founding, five unloads (the last refused `StockFull`), two builds, gold 30000 → 29650 → 29350; resume of the built city; replays agree (stage 1: checkpoints + 1 outcome; stage 2: checkpoints + 11 outcomes); one ton fewer / another goods diverge at a recorded checkpoint; six mismatching recordings are refused. The same driver passes on the CPU renderer.
+
+**Gates at `d129bba` (all PASS).** Native MSVC app 248/246 (2 opt-in), sim+formats 1056/1051 (2 opt-in, 3 symlink rows skipped for lack of privilege — executed and passed on WSL), RTX GPU 107/107; WSL warnings (GCC 13 / Clang 18 `-O3 -Werror`, four variants) clean; WSL ASan+UBSan app 247/245 and sim 81/81, 0 sanitizer lines; RTX session and wiring scripts; mutation check 5/5 killed (controls logic only).
+
+**Reviews.** Package reviews I1–I4/I5 (three reviewers) and a fresh final integration review (14 findings; 3 blockers fixed: sanitizer evidence, caption order, replay-refusal tests; the rest fixed or stated). Details and dispositions in the INDEX. Focused re-review of the fixes: see the INDEX.
+
+**Open item for the orchestrator.** With the building tool on, the tool's own line is the last part of the window caption (about 300 characters in); the card tells the owner to maximise the window for the build step. Moving it forward is a small code change that would rerun every gate; not done. The focused re-review of the fixes (1 blocker = this item, 11 notes) is dispositioned in the INDEX.
+
+**Not claimed.** The owner's playtest, native 4K, a Radeon window, display latency, five-seat load, original-runtime fidelity of ship facings; no test asserts sprite placement/facing/colour (looked at, not asserted); caption order read once in the real window; resume mismatches of registry digest, tick and island list untested; replay does not check speed.
+
+**Outside this package, for the Mac lane.** The Mac pin already failed `tools/check_unix_warnings.sh` (GCC 13 `-O3 -Werror`: `route_plan.cpp`, `figure.cpp`, four sim tests; Clang 18: `json::Value`). Fixed here by behaviour-preserving guards (`ae7dfcc`) — please take them or restate them upstream. The merged MAP-BUILD-1 terrain rule refuses the old island-relative lan5 test tiles; the lan5 test worlds now install the named stand-in placement seam through the opt-in `FixedPlayOptions::stand_in_placement` (never the default; the lan5 viewer scripts use legal tiles and the real rule).
+
+**Owner launch.** From the checkout: `.\tools\play_ship_opening.ps1 -GameDir E:\anno1503\game\app` (add `-Resume .\saves\quicksave-seat0.sav` later; saves go to `saves\` of the checkout). The card lists keys, a walk-through with the coordinates the automated session used, and the limits.
+
+**Owner playtest rounds 2026-11-03 (after the candidate).** Rounds 1-6 fixed in local commits up to `28f548c8` (gates at that
+head: app 252/0, GPU 111/0, render 184/0; WSL warnings clean; window tests and the WSL sanitizer lane NOT_RUN; nothing pushed).
+Round 7 is documented, not implemented, at the owner's request: the Kontor's turn is the mirrored picture (fixed on
+`task/iso-handedness-W4`, not merged, two open failures there); the dock stands on dry sand because the waterline treats
+height 16 as land; zoom artifacts reduced, not gone, no log. Details and the suggested order:
+`docs/orchestration/evidence/w4-opening-1/owner-playtest-2026-11-03-handover.md`.
+After the orchestrator's review (`reviews/2026-11-03-w4-opening1-playtest.md`): P1 and P2 fixed with tests, the low items fixed or
+dispositioned, an independent re-review (no P1/P2), H2 settled in the Wine runner (placement does not reshape the ground: the
+runtime height grids of all 20 islands unchanged over 17 placements), H1 shown against the GOG original (corners at 16 are
+water there; H1 closes part of the gap at a Kontor, not all), the three owner decisions asked. Same hand-over note, section 4.
+The owner's answers (2026-11-03, late evening), hand-over note section 4.1. All local, nothing pushed:
+- (a) projection merge: done by the orchestrator (`a150c11d`).
+- (b) H1 as the default: `53101c96` (render: terrain below `kShoreHeight` 16.5 is water, per scene) and `38af87b2`
+  (`--shore`). The recorded corpus tables stay at 16; the frames test adds the default shore.
+- (c) the founding turn restored: `ee6a12e0`; the status line shows it, `9173fc6e`.
+- Docs: `6793191d`, `99437681`, `d9704b98`.
+- Mutation checks: 14 mutants killed (5 key/preview, 9 shore).
+- Reviews: an independent package review (no P1, two P2 fixed or dispositioned with a measurement) and a focused
+  re-review of the fixes (no P1/P2).
+- Gates:
+  - native app at `99437681`: 257 executed, 1 failed (the merged projection branch's lan5 dev-tool pick, 1 wrong
+    pixel, unchanged), 2 opt-in skips (`native-n25a`);
+  - GPU 115/115 (`native-n25g`);
+  - render at `d9704b98`: 194 selected, 193 passed, 1 failed (river Q5, 0.4857 against 0.55), the scene and frame digests included (`native-n28r`); the earlier render run at the merge (`native-x1r`, `a150c11d` with 13 uncommitted files) is invalid: its source changed during the selection, and its Q5 case was refused for memory (`low-memory stop`), so no valid Q5 run exists at `a150c11d` itself;
+  - window tests on the RTX 4090 at `d9704b98`: `opening_gpu_window` and `opening_controls` PASS (`gpuwin-n26-*`);
+  - WSL warnings at `d9704b98`: GCC 13 / Clang 18, four variants clean (`unix-warnings-n27.log`);
+  - WSL ASan+UBSan at `a150c11d` (the merged head before these commits): app 261 executed, 1 failed (the same lan5
+    pick), 2 opt-in skips; sim 81/81; render P1/P2 3/3; 0 sanitizer lines (`wsl-w13*.txt`). The later commits are
+    covered by the native gates and the warnings only, not by a sanitizer run.
+- Open:
+  - river Q5 on `D_256x256_0045_5B` and the lan5 pick, both from the projection branch. Q5 (corrected 2026-11-04
+    after the orchestrator's review; "unchanged by the shore" had not been measured): 17 of 35 windows, 48.57 %,
+    against 55 %; with the shore at 16 (same head and configuration, the 16 run's binary with a one-line test edit that
+    is not committed) all five QA islands give the projection branch's numbers, `D_256x256_0045_5B` 16 of 33, 48.48 %
+    (`cache/o1/q5shore/`). The shore moved it by one window won and two counted (+0.09 points; the other islands'
+    counts move more, all of them pass either way); it fails either way;
+  - why the Kontor still floats: the original depth-tests every sprite pixel (`docs/re/annodisplay.md`), this renderer
+    draws sprites whole on top. A renderer task of its own (OQ-026 c), how to take it on is the owner's call;
+  - the zoom-artifact console log (waiting for the owner);
+  - the owner's playtest of this head.
+- NOT_RUN:
+  - a Linux corpus run with the game files at the new shore;
+  - the Wine check that the original's `.`/`,` reach the Kontor cursor while founding.
+- For the orchestrator:
+  - `docs/re/ship-founding.md` (Mac MAP lane) still calls `0x10049340` unread (lines 13, 166, §3.5);
+  - `tools/map2_shape.py` / `map2_measure.py` describe land as HEIGHT >= 16 "as the renderer", which no longer holds;
+  - `docs/PLAN.md` (4 places) and this file (line 2690) hold BEL characters where a `\a` escape ate a backslash
+    (`src\app\...`, `C:\anno1503-original`), from older commits.
 
 ## W4-OPENING-1-CLOSE — gate closeout and independent review — 2026-11-05 — status: ACCEPTED (follow-ups tracked)
 

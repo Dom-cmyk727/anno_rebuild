@@ -1,4 +1,4 @@
-// One play scene, GPU against the CPU path, on the RTX 4090 when it is present.
+// One play scene, GPU against the CPU path, on the RTX 4090 and on the Radeon iGPU when present.
 // The windowed play-versus-view check lives in the app tests; this one names
 // the adapter the compositor actually opened.
 #include <algorithm>
@@ -45,14 +45,16 @@ int channel_delta(const std::vector<std::uint32_t>& cpu, const std::vector<std::
 
 } // namespace
 
-TEST_CASE("play: GPU matches the CPU path on one scene") {
+/// The scene comparison on the adapter whose name contains `adapter_name` (the adapter is pinned by
+/// name, not by the default: a Radeon run is a Radeon result, never the RTX one).
+static void play_gpu_matches_cpu(const char* adapter_name) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
     const auto adapters = anno::render::gpu::list_adapters();
-    if (!anno::render::gpu::pick_adapter("RTX 4090", adapters)) {
+    if (!anno::render::gpu::pick_adapter(adapter_name, adapters)) {
         std::string names;
         for (const auto& adapter : adapters) {
             if (!names.empty()) {
@@ -61,25 +63,26 @@ TEST_CASE("play: GPU matches the CPU path on one scene") {
             names += adapter.name;
         }
         if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
-            FAIL("no RTX 4090 (ANNO_REQUIRE_GPU is set): " << names);
+            FAIL("no " << adapter_name << " (ANNO_REQUIRE_GPU is set): " << names);
         }
-        MESSAGE("skipping: no RTX 4090 among: " << names);
+        MESSAGE("skipping: no GPU device (no adapter named " << adapter_name << ", among: " << names
+                                                             << ")");
         return;
     }
     const char* previous = std::getenv("ANNO_GPU_ADAPTER");
     const std::string saved = previous != nullptr ? previous : "";
-    set_env("ANNO_GPU_ADAPTER", "RTX 4090");
+    set_env("ANNO_GPU_ADAPTER", adapter_name);
     auto ctx = anno::render::gpu::headless_context();
     set_env("ANNO_GPU_ADAPTER", saved.c_str());
     if (!ctx) {
         if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
             FAIL("no GPU device (ANNO_REQUIRE_GPU is set): " << ctx.error());
         }
-        MESSAGE("skipping: " << ctx.error());
+        MESSAGE("skipping: no GPU device: " << ctx.error());
         return;
     }
     MESSAGE("adapter " << ctx.value().name);
-    CHECK(ctx.value().name.find("RTX 4090") != std::string::npos);
+    CHECK(ctx.value().name.find(adapter_name) != std::string::npos);
 
     const auto file = *dir / "Scenes" / "0200Single" / "Single_01.sze";
     auto play = anno::app::load_play(*dir, file);
@@ -126,4 +129,12 @@ TEST_CASE("play: GPU matches the CPU path on one scene") {
     CHECK(made.value()->errors() == 0);
     MESSAGE("Single_01 group 2 " << kW << "x" << kH << " max channel delta " << delta << " on "
                                  << ctx.value().name);
+}
+
+TEST_CASE("play: GPU matches the CPU path on one scene") {
+    play_gpu_matches_cpu("RTX 4090");
+}
+
+TEST_CASE("play: GPU matches the CPU path on one scene, on the Radeon iGPU") {
+    play_gpu_matches_cpu("Radeon");
 }

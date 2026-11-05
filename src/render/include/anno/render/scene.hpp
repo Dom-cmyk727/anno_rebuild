@@ -26,6 +26,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -199,31 +200,267 @@ struct UnitSprite {
     bool draw(Canvas& canvas, std::size_t group, Lift lift, std::pair<int, int> offset) const;
 };
 
+/// The dynamic object lists of one island in one scene generation (round du, docs/app/
+/// game-shell.md, "Immutable per-island object lists"). Built by Scene::build_island_lists
+/// from the island's GELAENDE, PROD2 and FLUESSE records through prepare_objects, so the
+/// draw order is the one a fresh scene gives. Immutable once shared.
+struct IslandLists {
+    std::vector<Prepared> below, below_enhanced, above, above_enhanced, other;
+    std::vector<sea::RiverPiece> rivers;
+    /// Waterfalls and mouths (kRiverFallAnlagen) under / at or above the
+    /// sea surface: their sprites in original water, river-water shapes
+    /// in enhanced water.
+    std::vector<Prepared> falls_below, falls_above;
+    /// The river pieces' sprites (kRiverAnlagen, at or above the sea
+    /// surface): the extent of the painted riverbed (Scene::water_field_from).
+    std::vector<Prepared> river_sprites;
+
+    [[nodiscard]] const std::vector<Prepared>& below_list(WaterStyle s) const {
+        return s == WaterStyle::Original ? below : below_enhanced;
+    }
+    [[nodiscard]] const std::vector<Prepared>& above_list(WaterStyle s) const {
+        return s == WaterStyle::Original ? above : above_enhanced;
+    }
+};
+
 /// Everything needed to draw a scenario. Islands and Anlagen.dat refer to
 /// the caller's file buffers, which must outlive the scene. Every `group`
 /// argument must be < kGroups (callers validate user input).
-class Scene {
+///
+/// What an accounted allocation holds (docs/app/game-shell.md, "Retained work and reclamation").
+enum class PayloadKind : std::uint8_t {
+    /// The file bytes a scene family's islands and Anlagen.dat view (Scene::Backing), counted
+    /// once per family (by the assets every generation of the family shares).
+    Backing = 0,
+    /// The object lists of a scene built from files (generation 0).
+    Baseline = 1,
+    /// Object lists and record storage built for a change (a picture's worker).
+    Incremental = 2,
+    /// A generation's own metadata: its island and record descriptors, island slots and layouts.
+    Generation = 3,
+};
+inline constexpr std::size_t kPayloadKinds = 4;
+
+/// The process's accounted bytes by kind (round dy, A4). Each accounted allocation is counted once,
+/// by its owner, from the moment it is complete until its destruction has finished: a PayloadToken
+/// is the first member of the allocation's holder, so its bytes leave the count after everything
+/// else in the holder is freed. Bytes are element capacities times element sizes plus the owning
+/// vectors' headers; allocator overhead and the holder's own control block are not counted (an
+/// estimate, stated as such). Peaks are the largest live value seen since the process started.
+struct PayloadCounts {
+    std::array<std::size_t, kPayloadKinds> live{}, peak{}, allocations{};
+    [[nodiscard]] std::size_t of(PayloadKind k) const { return live[static_cast<std::size_t>(k)]; }
+};
+[[nodiscard]] PayloadCounts payload_counts();
+
+/// The count of one accounted allocation. Construction and reset add, destruction and reset
+/// subtract; neither allocates, takes a lock or throws (the counters are process-wide atomics with
+/// constant initialisation), so a token may be released by a last owner on any thread.
+class PayloadToken {
+  public:
+    PayloadToken() = default;
+    PayloadToken(PayloadKind kind, std::size_t bytes) noexcept { reset(kind, bytes); }
+    PayloadToken(PayloadToken&& other) noexcept;
+    PayloadToken& operator=(PayloadToken&& other) noexcept;
+    PayloadToken(const PayloadToken&) = delete;
+    PayloadToken& operator=(const PayloadToken&) = delete;
+    ~PayloadToken() { release(); }
+    /// Releases the current count, then counts `bytes` of `kind`.
+    void reset(PayloadKind kind, std::size_t bytes) noexcept;
+    [[nodiscard]] std::size_t bytes() const { return held_ ? bytes_ : 0; }
+
+  private:
+    void release() noexcept;
+    PayloadKind kind_ = PayloadKind::Incremental;
+    std::size_t bytes_ = 0;
+    bool held_ = false;
+};
+
+/// Record storage: the byte buffers an island's records point into.
+using Buffers = std::vector<std::vector<std::uint8_t>>;
+/// The accounted bytes of `lists`: every vector's capacity times its element size.
+[[nodiscard]] std::size_t lists_bytes(const IslandLists& lists);
+/// The accounted bytes of `buffers`: every buffer's capacity, plus the outer vector's capacity
+/// times the size of a buffer header.
+[[nodiscard]] std::size_t buffers_bytes(const Buffers& buffers);
+/// Moves `buffers` into an accounted allocation. The buffers keep their data addresses (only the
+/// outer vector moves), so spans into them stay valid.
+[[nodiscard]] std::shared_ptr<const Buffers> accounted_buffers(Buffers buffers, PayloadKind kind);
+
+/// A scene is a generation (generation()). with_islands() derives the next one: it
+/// shares the static parts (assets, sprite and frame caches, sea patterns, the
+/// flow builders, each island's grids, and an island's water and flow while its
+/// river pieces are unchanged) and carries new object lists for the islands it
+/// names. A generation is immutable once another thread can see it.
+class Scene;
+
+/// Destroys scene generations off the threads that release them (round dw, DW3a). A generation made
+/// by Scene::create (and every generation derived from one) hands its destruction here when its
+/// last owner of any kind lets go: a window thread, a frame, a chunk worker, a flow builder or a
+/// reaper. That release only enqueues. One reclaimer serves the process, so it outlives every
+/// picture, renderer and generation; it is never destroyed (its thread is left to the process).
+class SceneReclaimer {
+  public:
+    /// The process reclaimer (created on first use).
+    static SceneReclaimer& shared();
+    /// Takes over the destruction of `scene` (called by the generation's deleter). Never allocates,
+    /// never throws and does not walk the scene: the scene carries its own link and its own byte
+    /// count (Scene::own_bytes, fixed at construction), so a last release under memory pressure
+    /// cannot fail here and costs the same for any scene (rounds dx DX2d, dy A4).
+    void reclaim(const Scene* scene) noexcept;
+    struct Stats {
+        /// Scenes handed over, and scenes whose destruction finished.
+        std::uint64_t queued = 0, completed = 0;
+        /// Scenes waiting, and the largest number waiting at once.
+        std::size_t waiting = 0, peak_waiting = 0;
+        /// The waiting scenes' own metadata bytes (Scene::own_bytes), and the largest at once. The
+        /// payload a scene frees when it is destroyed (lists and storage it was the last owner of)
+        /// leaves payload_counts() when it is freed; it is not part of this queue count.
+        std::size_t bytes_waiting = 0, peak_bytes_waiting = 0;
+        /// Scenes being destroyed right now (0 or 1), and their own bytes: a scene leaves the
+        /// waiting count when it is dequeued and stays counted here until its destruction ends.
+        std::size_t in_flight = 0, bytes_in_flight = 0;
+    };
+    /// A test seam: called on the reclaimer thread before each destruction (a stalled reclaimer).
+    /// Null by default.
+    void set_test_gate(std::function<void()> gate);
+    /// A test seam: called on the reclaimer thread with each scene just before it is destroyed
+    /// (after the gate), so a test can tie a destruction to a particular generation. Null by
+    /// default.
+    void set_test_observer(std::function<void(const Scene&)> observer);
+    [[nodiscard]] Stats stats() const;
+    /// The thread that finished the most recent destruction (default-constructed before the first).
+    [[nodiscard]] std::thread::id last_thread() const;
+    ~SceneReclaimer();
+    SceneReclaimer(const SceneReclaimer&) = delete;
+    SceneReclaimer& operator=(const SceneReclaimer&) = delete;
+
+  private:
+    SceneReclaimer();
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+/// The deleter of every generation: the last owner's release hands the scene to the process
+/// reclaimer. Holds only the reclaimer's address (no allocation at release).
+struct SceneReclaimDeleter {
+    SceneReclaimer* reclaimer;
+    void operator()(const Scene* scene) const noexcept { reclaimer->reclaim(scene); }
+};
+
+class Scene : public std::enable_shared_from_this<Scene> {
+  public:
+    /// The byte buffers that the islands and `anlagen` view (their Bytes spans). The scene
+    /// owns them through its assets, so every generation derived from it keeps them alive:
+    /// nothing outside the scene has to outlive it (round dv, R3). Null when the caller keeps
+    /// the bytes alive itself.
+    using Backing = std::shared_ptr<const std::vector<std::vector<std::uint8_t>>>;
+
+  private:
+    /// This generation's own metadata bytes (PayloadKind::Generation), set at the end of
+    /// construction. The first member, so it is released after every other member is destroyed.
+    PayloadToken own_;
+    /// Owned by the scene: the assets (textures, Anlagen) and the caches shared by all of
+    /// its generations. Declared before the public references below, which bind to them.
+    struct SceneAssets {
+        /// The backing's bytes (PayloadKind::Backing), counted once for the scene family. First,
+        /// so it is released after the backing is freed.
+        PayloadToken token;
+        assets::island::GroundTextures textures;
+        formats::anlagen::AnlagenFile anlagen;
+        /// The bytes the islands' records and Anlagen.dat view (see Scene::Backing).
+        Backing backing;
+    };
+    struct SceneCaches;
+    struct WaterSlot;
+    struct FlowSlot;
+    struct FlowBuild;
+    struct FlowWaiter;
+    struct FlowRequest;
+    std::shared_ptr<SceneAssets> assets_;
+    std::shared_ptr<SceneCaches> caches_;
+
   public:
     /// Open water gets sea_floor_colour() if there is one, else the colour
     /// already set in `textures`.
     Scene(std::string name, std::vector<formats::insel::Island> islands,
-          assets::island::GroundTextures textures, formats::anlagen::AnlagenFile anlagen,
-          Lift lift);
+          assets::island::GroundTextures textures, formats::anlagen::AnlagenFile anlagen, Lift lift,
+          Backing backing = {});
+    /// The same scene as a generation: its last owner's release hands the destruction to
+    /// SceneReclaimer. Every generation of a play picture is made this way (the base included).
+    static std::shared_ptr<Scene> create(std::string name,
+                                         std::vector<formats::insel::Island> islands,
+                                         assets::island::GroundTextures textures,
+                                         formats::anlagen::AnlagenFile anlagen, Lift lift,
+                                         Backing backing = {});
     ~Scene();
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
 
+    /// The next generation: the islands in `updates` get their new object lists (and the
+    /// island record they came from); every other island, and all static data, is shared.
+    /// Generation numbers count up by one from the scene this is called on.
+    struct IslandUpdate {
+        std::size_t index = 0;
+        /// The island with its records after the change (the buildings' PROD2 items).
+        formats::insel::Island island;
+        /// Scene::build_island_lists(island, anlagen), built off the window thread.
+        std::shared_ptr<const IslandLists> lists;
+        /// The byte buffers the island's records point into (the payloads the change wrote).
+        /// The new generation keeps them alive for as long as it holds the island.
+        std::shared_ptr<const std::vector<std::vector<std::uint8_t>>> storage;
+    };
+    [[nodiscard]] std::shared_ptr<const Scene>
+    with_islands(std::vector<IslandUpdate> updates) const;
+    /// This scene's generation: 0 for a scene built from files, one more for each derivation.
+    [[nodiscard]] std::uint64_t generation() const { return generation_; }
+    /// The object lists of `island` as prepare_objects gives them for the scene (the same
+    /// records and draw order the constructor uses), in an allocation accounted as `kind`
+    /// (PayloadCounts). Pure: safe on any thread.
+    [[nodiscard]] static std::shared_ptr<const IslandLists>
+    build_island_lists(const formats::insel::Island& island,
+                       const formats::anlagen::AnlagenFile& anlagen,
+                       PayloadKind kind = PayloadKind::Incremental);
+    /// The lists of island `index` in this generation.
+    [[nodiscard]] const IslandLists& island_lists(std::size_t index) const {
+        return *objects_[index].lists;
+    }
+    /// The same lists as a shared handle: the identity of this generation's lists of an island
+    /// (generations that share the island's lists hand out the same object).
+    [[nodiscard]] std::shared_ptr<const IslandLists> island_lists_handle(std::size_t index) const {
+        return objects_[index].lists;
+    }
+    /// The screen rectangle at `group` (scene pixels) that object `o` of island `index`
+    /// can draw into: the union of the reach (frame rectangle plus overrun slack) of every
+    /// frame of its sprite set at that group, shadows included, so every animation frame
+    /// and every rotation is covered. Read from the frame headers only; nullopt when the
+    /// object draws nothing (no sprite set, or no placement for the island at `group`).
+    [[nodiscard]] std::optional<Rect> object_bounds(std::size_t index, const Prepared& o,
+                                                    std::size_t group) const;
+    /// The sprites of one object that is not in the scene (a placement preview, round ee C1):
+    /// ANLAGEN entry `anlage` at island `index`'s local tile (`x`, `y`) with `rotation` quarter
+    /// turns and `height` (HEIGHT units), as place_prepared draws an object of the island's lists
+    /// at `group` and `time_ms` (its footprint from the entry, odd rotations swapped), anchors in
+    /// scene coordinates. Empty at a derived level, for an island without a placement, and for an
+    /// entry with no sprite set.
+    [[nodiscard]] std::vector<SpriteDraw> preview_sprites(std::size_t index, std::uint16_t anlage,
+                                                          std::uint8_t rotation, std::uint16_t x,
+                                                          std::uint16_t y, std::uint8_t height,
+                                                          std::size_t group,
+                                                          std::uint64_t time_ms) const;
+
     std::string name;
     std::vector<formats::insel::Island> islands;
-    assets::island::GroundTextures textures;
-    formats::anlagen::AnlagenFile anlagen;
+    /// Shared by every generation of the scene (owned by the scene's assets).
+    const assets::island::GroundTextures& textures;
+    const formats::anlagen::AnlagenFile& anlagen;
     /// Placements per zoom group, in draw order.
     std::array<std::vector<Placement>, kGroups> layouts;
-    /// Decoded sprite frames, shared by all renders and threads.
-    mutable SpriteCache sprites;
+    /// Decoded sprite frames, shared by all renders, threads and generations.
+    SpriteCache& sprites;
     /// The frames chunk draw lists name (gpu-chunks.md 4.1), interned by the
     /// threads that build lists; ids never change meaning within a scene.
-    mutable FrameTable frame_table;
+    FrameTable& frame_table;
     Lift lift;
     /// Ships and soldiers (empty unless set by the caller).
     std::vector<UnitSprite> units;
@@ -231,6 +468,10 @@ class Scene {
     /// the first render or river_flow call; not to be changed while chunks
     /// are being built.
     river::RiverConfig river_cfg;
+    /// Terrain below this many HEIGHT units is water (kShoreHeight; 16 draws corners at 16 as
+    /// land, as this renderer did until 2026-11-03). Set before the first render: each island's
+    /// water is built once with it.
+    float shore_height = kShoreHeight;
 
     /// The flow of island `index` (rivers.md 3.1: the raster, phase A, and
     /// the solve, phase B): null for an island without rivers, when
@@ -263,7 +504,7 @@ class Scene {
     [[nodiscard]] bool river_active() const;
     /// Whether island `index` has river pieces.
     [[nodiscard]] bool has_river(std::size_t index) const {
-        return !objects_[index].rivers.empty();
+        return !objects_[index].lists->rivers.empty();
     }
     /// The flow lattice (rivers.md 3.3) for the pixels of `area` at `group`:
     /// the global lattice texels that cover `area` (texel pixels are multiples
@@ -289,6 +530,16 @@ class Scene {
     /// and the sprite lists answer from the level above (reduced or empty).
     void set_levels(ZoomLevels levels);
     [[nodiscard]] const ZoomLevels& levels() const { return levels_; }
+    /// The bytes this generation owns alone (PayloadKind::Generation): the scene object, its
+    /// island and record descriptors (a derivation copies them for every island), its island
+    /// slots and its layouts, as capacities times element sizes. Fixed at construction, so the
+    /// last owner's release does not walk the scene. The lists and record storage it shares are
+    /// counted by their own allocations (payload_counts), not here.
+    [[nodiscard]] std::size_t own_bytes() const { return own_.bytes(); }
+    /// The accounted payload this generation references, each allocation counted once whether it
+    /// is shared or not: its islands' lists and record storage (the same sizes their tokens count).
+    /// Walks the generation; for measurements and tests, not for a hot path.
+    [[nodiscard]] std::size_t referenced_payload_bytes() const;
 
     /// The sea pattern of `group`, rendered on first use (thread-safe).
     const sea::SeaPattern* sea(std::size_t group) const;
@@ -326,7 +577,7 @@ class Scene {
     }
     /// QA/debug: the river pieces (kRiverAnlagen) of island `index`.
     [[nodiscard]] std::span<const sea::RiverPiece> river_pieces(std::size_t index) const {
-        return objects_[index].rivers;
+        return objects_[index].lists->rivers;
     }
     /// The tile-space river raster of island `index` (rivers.md R1-R4): the
     /// shipped enhanced-water criteria (river level over the Catmull-Rom bed,
@@ -376,6 +627,10 @@ class Scene {
                         const std::function<std::optional<float>(int, int)>* terrain) const;
     /// Ground height at world point (x, y); nullopt over open sea.
     [[nodiscard]] std::optional<float> ground_height(float x, float y) const;
+    /// The ground height of island `index` at world point (x, y); nullopt outside it (or without
+    /// its height grid). ground_height is the first island in index order that has one.
+    [[nodiscard]] std::optional<float> island_ground_height(std::size_t index, float x,
+                                                            float y) const;
     /// Whether any unit is drawn into `rect` at `group`.
     /// With `ships` false, units on the sea surface are not counted.
     [[nodiscard]] bool units_touch(Rect rect, std::size_t group, bool ships = true) const;
@@ -383,28 +638,27 @@ class Scene {
     [[nodiscard]] std::optional<Rect> bounds(std::size_t group) const;
 
   private:
+    /// One island in one generation: its lists (always its own), and the static parts it
+    /// shares with the generation it was derived from (grids always; water and flow while the
+    /// island's river pieces are unchanged).
     struct IslandData {
-        std::vector<Prepared> below, below_enhanced, above, above_enhanced, other;
-        std::vector<sea::RiverPiece> rivers;
-        /// Waterfalls and mouths (kRiverFallAnlagen) under / at or above the
-        /// sea surface: their sprites in original water, river-water shapes
-        /// in enhanced water.
-        std::vector<Prepared> falls_below, falls_above;
-        /// The river pieces' sprites (kRiverAnlagen, at or above the sea
-        /// surface): the extent of the painted riverbed (Scene::water_field_from).
-        std::vector<Prepared> river_sprites;
-        /// nullopt if a grid cannot be read (no ground drawn).
-        std::optional<std::pair<std::vector<std::uint16_t>, std::vector<std::uint8_t>>> grids;
-        std::unique_ptr<std::once_flag> water_once = std::make_unique<std::once_flag>();
-        std::optional<sea::IslandWater> water;
-
-        [[nodiscard]] const std::vector<Prepared>& below_list(WaterStyle s) const {
-            return s == WaterStyle::Original ? below : below_enhanced;
-        }
-        [[nodiscard]] const std::vector<Prepared>& above_list(WaterStyle s) const {
-            return s == WaterStyle::Original ? above : above_enhanced;
-        }
+        std::shared_ptr<const IslandLists> lists;
+        /// The island's ground grids (gfx ids, heights); null if they cannot be read.
+        std::shared_ptr<const std::pair<std::vector<std::uint16_t>, std::vector<std::uint8_t>>>
+            grids;
+        std::shared_ptr<WaterSlot> water;
+        std::shared_ptr<FlowSlot> flow;
     };
+    /// Private constructor of with_islands: shares everything except the islands in `updates`.
+    Scene(const Scene& base, std::vector<IslandUpdate>&& updates);
+    /// Per island (empty entry: the record bytes are owned by the caller of the first scene).
+    std::vector<std::shared_ptr<const std::vector<std::vector<std::uint8_t>>>> island_storage_;
+    /// The process reclaimer's intrusive list (round dx, DX2d): while this scene waits for
+    /// destruction, the next waiting scene. Written only by SceneReclaimer.
+    friend class SceneReclaimer;
+    mutable const Scene* reclaim_next_ = nullptr;
+    /// own_bytes at construction (see own_).
+    [[nodiscard]] std::size_t metadata_bytes() const;
     struct SeaSlot {
         std::once_flag once;
         std::optional<sea::SeaPattern> pattern;
@@ -421,22 +675,13 @@ class Scene {
     [[nodiscard]] std::optional<Rect> unit_rect(const UnitSprite& u, std::size_t group) const;
     std::size_t draw_units(Canvas& canvas, std::size_t group) const;
 
-    struct FlowSlot;
-    struct FlowBuild;
     void build_flow(std::size_t index) const;
     void queue_flow(std::size_t index) const;
     void start_flow_builders() const;
 
     mutable std::vector<IslandData> objects_;
-    mutable std::array<SeaSlot, kGroups> seas_;
     ZoomLevels levels_ = ZoomLevels::original();
-    /// The sea patterns of the derived levels (index level - built_count()).
-    mutable std::deque<SeaSlot> derived_seas_;
-    mutable std::vector<std::unique_ptr<FlowSlot>> flow_slots_;
-    mutable std::unique_ptr<FlowBuild> flow_build_;
-    mutable std::once_flag flow_build_once_;
-    mutable std::once_flag river_cfg_once_;
-    mutable bool river_cfg_ok_ = true;
+    std::uint64_t generation_ = 0;
 };
 
 } // namespace anno::render

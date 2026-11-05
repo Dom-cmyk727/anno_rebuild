@@ -483,6 +483,58 @@ TEST_CASE("scenario links draw on the scenario's own table") {
     CHECK(s.spec.seed == 5);
 }
 
+TEST_CASE(
+    "scenario link template: its LOCKED byte reaches the placed island (INSEL4 root record)") {
+    // The dummy templates carry LOCKED 0 (21 of 21 in the installation); a template with another
+    // byte keeps it in the placed island, and a template without the record has lock 0.
+    const auto attempt = [&](const Buf& locked_record) {
+        Buf four;
+        put16(four, 16);
+        put16(four, 16);
+        put32(four, 0);
+        Buf kids = chunk("INSEL4", four);
+        Buf info(12, 0);
+        info[0] = 2;
+        info[5] = 9;
+        append(kids, chunk("INFO", info));
+        Buf height = {0, 0, 0, 0, 16, 16};
+        for (int i = 0; i < 256; ++i) {
+            height.push_back(1);
+        }
+        append(kids, chunk("HEIGHT", height));
+        append(kids, locked_record);
+        const Buf file = chunk("ANNO", kids);
+        const std::optional<sim::TemplateSummary> sum = sim::template_summary(file, "NORD/F.SCP");
+        REQUIRE(sum.has_value());
+        sim::LoadedScenario s =
+            load(scene(append_erze(link(64, 64, 16, 1, "n_016x016_dummy.scp"))));
+        const std::vector<sim::TemplateSummary> cands = {*sum};
+        auto r = sim::resolve_scenario_links(s, cands, sim::SimConfig{}, sim::Rules{});
+        REQUIRE(r.ok());
+        const std::vector<anno::formats::Bytes> views = {file};
+        auto e = sim::place_island_links(s, r.value(), views, *registry(), sim::SimConfig{});
+        return std::pair{e, s.spec.islands.empty() ? std::uint8_t{0} : s.spec.islands[0].lock};
+    };
+    const auto place = [&](const Buf& locked_record) {
+        const auto [e, lock] = attempt(locked_record);
+        REQUIRE_MESSAGE(!e.has_value(), (e ? *e : std::string()));
+        return lock;
+    };
+    // A template whose LOCKED record is not one byte is refused, with the record's path.
+    for (const Buf& bad : {Buf{}, Buf{1, 0}}) {
+        const auto [e, lock] = attempt(chunk("LOCKED", bad));
+        static_cast<void>(lock);
+        REQUIRE(e.has_value());
+        CHECK_MESSAGE(e->find(".LOCKED: expected 1 byte, got " + std::to_string(bad.size())) !=
+                          std::string::npos,
+                      *e);
+    }
+    CHECK(place({}) == 0);
+    CHECK(place(chunk("LOCKED", Buf{0})) == 0);
+    CHECK(place(chunk("LOCKED", Buf{1})) == 1);
+    CHECK(place(chunk("LOCKED", Buf{3})) == 3);
+}
+
 TEST_CASE("scenario link template may be an INSEL4 island") {
     // GetAnnoInselFileData takes an INSEL4 as well (its records are root siblings,
     // insel.md); such a template is a candidate and is placed from its root records.

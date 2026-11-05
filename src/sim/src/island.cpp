@@ -6,6 +6,7 @@
 #include <anno/sim/building.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/player.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/types.hpp>
 
@@ -76,6 +77,7 @@ bool TileLayer::reset(std::int32_t x0, std::int32_t y0, std::uint32_t w, std::ui
     digest_.assign(chunks, 0);
     dirty_.assign(chunks, 1);
     ignored_writes_ = 0;
+    route_dirty_.mark_all();
     return true;
 }
 
@@ -105,6 +107,9 @@ std::uint32_t TileLayer::owner(std::uint64_t idx) const {
 }
 std::uint32_t TileLayer::aux(std::uint64_t idx) const {
     return idx < aux_.size() ? aux_[static_cast<std::size_t>(idx)] : 0;
+}
+std::uint8_t TileLayer::item_height(std::uint64_t idx) const {
+    return static_cast<std::uint8_t>(aux(idx) & 0xffU);
 }
 std::uint16_t TileLayer::walk_code(std::uint64_t idx) const {
     return idx < walk_code_.size() ? walk_code_[static_cast<std::size_t>(idx)] : std::uint16_t{2};
@@ -142,10 +147,19 @@ void TileLayer::mark(std::uint64_t idx) {
     dirty_[static_cast<std::size_t>(chunk_of(idx))] = 1;
 }
 
+void TileLayer::mark_route(std::uint64_t idx) {
+    // w_ > 0 here: idx was checked against a non-empty column.
+    route_dirty_.add(std::int64_t{x0_} + static_cast<std::int64_t>(idx % w_),
+                     std::int64_t{y0_} + static_cast<std::int64_t>(idx / w_));
+}
+
 void TileLayer::set_object(std::uint64_t idx, std::uint32_t v) {
     if (idx >= object_.size()) {
         ++ignored_writes_;
         return;
+    }
+    if (object_[static_cast<std::size_t>(idx)] != v) {
+        mark_route(idx);
     }
     object_[static_cast<std::size_t>(idx)] = v;
     mark(idx);
@@ -171,8 +185,18 @@ void TileLayer::set_aux(std::uint64_t idx, std::uint32_t v) {
         ++ignored_writes_;
         return;
     }
+    if (((aux_[static_cast<std::size_t>(idx)] ^ v) & 0xffU) != 0) {
+        mark_route(idx);
+    }
     aux_[static_cast<std::size_t>(idx)] = v;
     mark(idx);
+}
+void TileLayer::set_item_height(std::uint64_t idx, std::uint8_t v) {
+    if (idx >= aux_.size()) {
+        ++ignored_writes_;
+        return;
+    }
+    set_aux(idx, (aux_[static_cast<std::size_t>(idx)] & ~0xffU) | v);
 }
 void TileLayer::set_walk_code(std::uint64_t idx, std::uint16_t v) {
     if (idx >= walk_code_.size()) {
@@ -218,6 +242,9 @@ void TileLayer::set_foot_anchor(std::uint64_t idx, std::uint8_t v) {
     if (idx >= foot_anchor_.size()) {
         ++ignored_writes_;
         return;
+    }
+    if (foot_anchor_[static_cast<std::size_t>(idx)] != v) {
+        mark_route(idx);
     }
     foot_anchor_[static_cast<std::size_t>(idx)] = v;
     mark(idx);
@@ -404,6 +431,9 @@ std::string validate_cities(const Island& is, std::size_t slot, const SimConfig&
             return cp + ".number: is " + std::to_string(city.number.v) + ", the slot is " +
                    std::to_string(c);
         }
+        if (!is_player_set(city.player_mask, cfg.player_slots)) {
+            return cp + ".player_mask: not an ascending unique set below SimConfig.player_slots";
+        }
         if (city.stock.stock.size() != cfg.warehouse_goods) {
             return cp + ".stock: " + std::to_string(city.stock.stock.size()) +
                    " goods, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
@@ -516,12 +546,36 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
     if (!inside_world(SlotRect{slot, t.x0(), t.y0(), t.width(), t.height()}, settings)) {
         return outside_message(slot, settings);
     }
+    // aux holds the placed item's height byte in bits 0..7 (TileLayer::item_height); nothing
+    // models bits 8..31 yet, so a state that sets one is refused instead of carrying them silently.
+    for (std::uint64_t i = 0; i < t.tile_count(); ++i) {
+        if ((t.aux(i) >> 8) != 0) {
+            return p + ".tiles.aux[" + std::to_string(i) + "]: " + std::to_string(t.aux(i)) +
+                   " sets bits 8..31; only the item height byte (bits 0..7) is modelled";
+        }
+    }
     if (is.climate >= cfg.monopoly_climate_mask.size()) {
         return p + ".climate: " + std::to_string(is.climate) + " has no entry in " +
                "SimConfig.monopoly_climate_mask";
     }
     if (is.next_serial < 1) {
         return p + ".next_serial: must be at least 1";
+    }
+    if (is.city_cursor < -1 || is.city_cursor >= static_cast<std::int64_t>(cfg.city_slots)) {
+        return p + ".city_cursor: " + std::to_string(is.city_cursor) + " is outside -1.." +
+               std::to_string(cfg.city_slots) + " (SimConfig.city_slots)";
+    }
+    if (!is_player_set(is.players_present, cfg.player_slots)) {
+        return p + ".players_present: not an ascending unique set below SimConfig.player_slots";
+    }
+    for (std::size_t o = 0; o < is.ore_objects.size(); ++o) {
+        if (!is_player_set(is.ore_objects[o].discovered, cfg.player_slots)) {
+            return p + ".ore_objects[" + std::to_string(o) +
+                   "].discovered: not an ascending unique set below SimConfig.player_slots";
+        }
+    }
+    if (is.kontor_counter < 1) {
+        return p + ".kontor_counter: must be at least 1";
     }
     {
         const std::string problem = validate_cities(is, slot, cfg, types);

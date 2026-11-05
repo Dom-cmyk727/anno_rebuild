@@ -95,6 +95,9 @@ struct Chunk {
     /// that keeps a copy (the GPU compositor's textures) sees that a chunk of
     /// the same key was rebuilt (e.g. after its river flow arrived).
     std::uint64_t serial = 0;
+    /// The generation of the scene the chunk was built from (Scene::generation): a
+    /// completed chunk older than an invalidation of its key is discarded (round du, step 8).
+    std::uint64_t generation = 0;
     /// The heap memory the chunk holds (its vectors' capacities), in bytes.
     [[nodiscard]] std::size_t bytes() const {
         auto of = [](const auto& v) { return v.capacity() * sizeof(v[0]); };
@@ -124,7 +127,18 @@ struct ChunkBuildOptions {
     ChunkBuilder builder = ChunkBuilder::Cpu;
     /// Pixels of a bin edge in the draw list (ChunkDraws::bin_px).
     std::uint32_t bin_px = kDefaultBinPx;
+    /// A chunk outside the scene's bounds (chunk_outside_scene) is open sea: it is returned as a
+    /// build would give it, without building it (and, at a derived level, without the 4^n chunks
+    /// below it). False builds it (the test that checks the two agree).
+    bool skip_outside = true;
 };
+
+/// Whether chunk (cx, cy) of `group` lies wholly outside Scene::bounds(group), which holds every
+/// island layout and unit of the level (a derived level's bounds are its source's, halved and
+/// rounded outwards, so the chunks below an outside chunk are outside too). Such a chunk draws
+/// nothing of the scene: open sea (owner playtest 2026-11-03, round 6: most chunk builds of a
+/// zoom out were open sea around the map, each far chunk built from 4^n chunks below it).
+[[nodiscard]] bool chunk_outside_scene(const Scene& scene, std::size_t group, int cx, int cy);
 Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy,
                    const ChunkBuildOptions& options);
 
@@ -148,7 +162,16 @@ Chunk render_derived_chunk(const Scene& scene, const std::array<ChunkPtr, 4>& ki
 struct ChunkJob {
     ChunkKey key;
     std::array<ChunkPtr, 4> kids{};
+    /// The scene generation the job reads. A job owns it until it completes, so a
+    /// retired generation is freed only after its last job (ownership, not a bound).
+    std::shared_ptr<const Scene> scene;
 };
+
+/// The chunk keys (at every zoom level the scene has) that a scene box of `group`
+/// touches: `box` in the scene pixels of the built group, then at each derived level
+/// that descends from it, scaled by the level's exact ratio and grown by one pixel so
+/// that rounding never misses a key. A key a box only grazes is included.
+std::vector<ChunkKey> chunk_keys_touching(const Scene& scene, Rect box, std::size_t group);
 
 /// Background chunk builders: a priority job list and a result queue. The
 /// scene must outlive them. Destroying them stops the builders and waits for
@@ -156,18 +179,30 @@ struct ChunkJob {
 /// the end of the viewer's thread scope instead).
 class ChunkWorkers {
   public:
+    /// `scene` is the default scene of jobs submitted without one. It is not owned: it
+    /// must outlive the workers (tests and single-generation callers).
     ChunkWorkers(const Scene& scene, std::size_t threads);
+    /// Workers without a default scene (the viewer): every job reads the owning handle it was
+    /// submitted with, and a submit without one queues nothing.
+    explicit ChunkWorkers(std::size_t threads);
     ~ChunkWorkers();
     ChunkWorkers(const ChunkWorkers&) = delete;
     ChunkWorkers& operator=(const ChunkWorkers&) = delete;
 
     /// Replaces the job list with `wanted` (priority order) minus the chunks
     /// being built, built with or without ships (render_chunk); whether any
-    /// work is queued or running.
+    /// work is queued or running. Every job reads `scene`, which it keeps alive
+    /// until it completes.
+    bool submit(const std::vector<ChunkJob>& wanted, std::shared_ptr<const Scene> scene,
+                bool ships = true, ChunkBuilder builder = ChunkBuilder::Cpu,
+                std::uint32_t bin_px = kDefaultBinPx);
+    /// submit with the default scene (none: nothing is queued).
     bool submit(const std::vector<ChunkJob>& wanted, bool ships = true,
                 ChunkBuilder builder = ChunkBuilder::Cpu, std::uint32_t bin_px = kDefaultBinPx);
     /// Finished chunks since the last call.
     std::vector<std::pair<ChunkKey, Chunk>> take_done();
+    /// Whether the build of one of `jobs`' chunks failed: it is not requested again.
+    [[nodiscard]] bool any_failed(const std::vector<ChunkJob>& jobs);
     /// Blocks until nothing is queued or being built. `update_chunks` does not
     /// call this: the window thread returns while workers are still running.
     /// A test waits here instead of sleeping and retrying.
@@ -179,12 +214,24 @@ class ChunkWorkers {
     /// background thread (freeing a chunk's vectors takes about a
     /// millisecond: the window thread must not).
     void discard(std::vector<ChunkPtr> chunks);
+    /// Test seam: called on the worker thread before each build, outside the lock, with the
+    /// job's key and the generation it reads; a test blocks in it to order completions without
+    /// sleeping. It must return (be opened) before the workers are destroyed. Null by default.
+    void set_test_gate(std::function<void(const ChunkKey& key, std::uint64_t generation)> gate);
+    /// Test seam: a build whose key it returns true for fails as a throwing build does (the
+    /// chunk stays missing and is not requested again). Null by default.
+    void set_test_failure(std::function<bool(const ChunkKey& key)> fail);
+    /// Test seam: called at the start of every submit, on the caller's thread and outside the
+    /// lock, so a test can let a build finish between update_chunks' take_done and its submit.
+    /// Set it between two updates, not while one runs. Null by default.
+    void set_test_before_submit(std::function<void()> hook);
 
   private:
     void run();
     void reap();
 
-    const Scene& scene_;
+    /// The scene of jobs submitted without one (non-owning).
+    std::shared_ptr<const Scene> default_scene_;
     std::mutex mutex_;
     std::condition_variable ready_, garbage_ready_, idle_;
     std::vector<ChunkPtr> garbage_;
@@ -200,6 +247,9 @@ class ChunkWorkers {
     bool ships_ = true;
     ChunkBuilder builder_ = ChunkBuilder::Cpu;
     std::uint32_t bin_px_ = kDefaultBinPx;
+    std::function<void(const ChunkKey&, std::uint64_t)> gate_;
+    std::function<bool(const ChunkKey&)> fail_;
+    std::function<void()> before_submit_;
     std::vector<std::thread> threads_;
 };
 
@@ -246,6 +296,22 @@ class FrameRenderer {
     /// visible chunks still missing).
     std::tuple<std::size_t, double, std::size_t> update_chunks(const Scene& scene, Rect view,
                                                                std::size_t group);
+    /// update_chunks for a scene the workers may outlive: the jobs keep it alive.
+    std::tuple<std::size_t, double, std::size_t>
+    update_chunks(const std::shared_ptr<const Scene>& scene, Rect view, std::size_t group);
+    /// Marks the keys as stale from generation `generation` on (round du, step 8-9): a
+    /// cached key keeps drawing until its replacement, built from a generation at least
+    /// this new, arrives; a completed chunk of an older generation is discarded and the key
+    /// stays marked. Marks are kept whether or not the key is cached, so a chunk in flight
+    /// is covered too. A key marked again keeps the newest generation.
+    void invalidate(const std::vector<ChunkKey>& keys, std::uint64_t generation);
+    /// Whether the key is marked stale, and by which generation (0: not marked).
+    [[nodiscard]] std::uint64_t stale_generation(const ChunkKey& key) const {
+        const auto it = dirty_.find(key);
+        return it == dirty_.end() ? 0 : it->second;
+    }
+    /// Completed chunks discarded because they were built before an invalidation of their key.
+    [[nodiscard]] std::uint64_t stale_discarded() const { return stale_discarded_; }
     /// The chunks of the neighbouring zoom groups that update_chunks keeps built
     /// for the view a zoom step would show (a ring included), both groups
     /// interleaved, nearest to the view (as it will be in a moment) first. Not
@@ -280,6 +346,9 @@ class FrameRenderer {
     /// chunk without a scene to build it from); it gets a new serial.
     void insert_chunk(const ChunkKey& key, Chunk chunk);
     /// Draws `view` at time_ms into `out` (view.w × view.h, row-major 0RGB).
+    /// render for a scene the workers may outlive (the jobs keep it alive).
+    FrameStats render(const std::shared_ptr<const Scene>& scene, Rect view, std::size_t group,
+                      std::uint64_t time_ms, WaterStyle style, std::uint32_t* out);
     FrameStats render(const Scene& scene, Rect view, std::size_t group, std::uint64_t time_ms,
                       WaterStyle style, std::uint32_t* out);
 
@@ -306,6 +375,10 @@ class FrameRenderer {
     /// build's way, every derived chunk builds its descendants from nothing and drops
     /// them (render_chunk): kept as the reference of the fill-time measurement.
     bool derive_from_cache = true;
+    /// true: a derived key outside the scene is reduced from its children like any other (the
+    /// planner before 2026-11-03), so a scene with no islands still exercises the derivation
+    /// chain (the synthetic freshness tests). false: it is open sea at once (chunk_outside_scene).
+    bool build_outside_chunks = false;
     /// Worker threads per stage.
     std::size_t threads;
     /// Chunks kept besides the visible ones.
@@ -316,6 +389,16 @@ class FrameRenderer {
     /// cores), while 16 chunks are about 70 MB. Raise it for more memory and an
     /// instant overview at more levels.
     std::size_t resident_level_chunks = 16;
+    /// Builds the resident derived levels (see resident_level_chunks) in the background, one chunk
+    /// at a time, whenever nothing visible is missing: the first zoom out to the whole map then
+    /// finds them built instead of waiting for 4^k group-2 chunks (owner playtest 2026-11-03:
+    /// islands were cut off for a while on the first zoom out, never again after it). A resident
+    /// chunk that a change marked stale (invalidate: a founding or a building marks the chunks over
+    /// its island at every level) is rebuilt the same way: it kept drawing the old picture, and
+    /// was rebuilt only once shown again, a rebuild down to the island's group-2 chunks at the next
+    /// zoom out (owner playtest 2026-11-03, round 5: after the founding the overview needed a
+    /// moment again). Off by default.
+    bool prewarm_far_levels = false;
     /// Most chunks the margin around the view grows in the direction the view is
     /// moving (lookahead_rect). Each chunk-wide strip is (view height / kChunk + 2)
     /// chunks of up to 4.3 MB (a land chunk; sea chunks are far smaller) in the
@@ -355,6 +438,13 @@ class FrameRenderer {
     /// displacement here before each update; the velocity of the margin follows it.
     /// nullopt (the default): the centre of the view is the motion.
     std::optional<std::pair<double, double>> motion_centre;
+    /// The scene point (of the group shown, scene pixels) a zoom step would keep fixed: the
+    /// window's wheel zoom keeps the point under the pointer where it is. The neighbouring
+    /// groups' chunks are built for the view around it (zoomed_view_at); nullopt (the pointer is
+    /// outside the window, or a caller without one): around the view's centre (zoomed_view).
+    /// Owner playtest 2026-11-04: zooming in over an island off the centre landed on chunks
+    /// nobody had built, and stand-ins dissolved in (up to 77 at once).
+    std::optional<std::pair<double, double>> zoom_anchor;
     /// The smoothed velocity of the view centre that sizes the margin, in scene
     /// pixels per second of the group shown (x, y).
     [[nodiscard]] std::pair<double, double> velocity() const { return {vx_, vy_}; }
@@ -391,13 +481,34 @@ class FrameRenderer {
     std::size_t fill_cache(const Scene& scene, std::size_t group,
                            const std::vector<std::pair<int, int>>& wanted);
 
+    /// The resident derived chunk being built for prewarm_far_levels, until it is cached.
+    std::optional<ChunkKey> prewarm_target_;
+    /// Resident chunks the prewarm gave up on: nothing was queued or running for the target after
+    /// a request and a build it needs had failed (prewarm_blocked). The rest of the overview is
+    /// still prewarmed; a skipped chunk is built when it is shown.
+    std::set<ChunkKey> prewarm_skipped_;
+    /// Whether a job of `target`'s plan failed (ChunkWorkers::any_failed): the workers never retry
+    /// it, so the target cannot be built.
+    [[nodiscard]] bool prewarm_blocked(const Scene& scene, const ChunkKey& target);
+    /// The first resident derived chunk of the scene that is not cached or is marked stale (the
+    /// farthest level first).
+    [[nodiscard]] std::optional<ChunkKey> next_prewarm_key(const Scene& scene) const;
+
     std::map<ChunkKey, ChunkPtr> cache_;
     std::map<ChunkKey, std::size_t> builds_, rebuilds_;
+    /// Keys marked stale, with the generation of the invalidation that marked them (step 8).
+    std::map<ChunkKey, std::uint64_t> dirty_;
+    std::uint64_t stale_discarded_ = 0;
+    /// The scene the jobs of the current update read: set by update_chunks and released before
+    /// it returns, so the renderer keeps no generation between frames (the jobs hold their own).
+    std::shared_ptr<const Scene> job_scene_;
     /// The jobs for `wanted` (most urgent first) and, for a derived key whose
     /// children are cached, the children; a missing child is a job of its own,
     /// before its parent, and the parent waits for the next frame in which all four
     /// are cached. Every key that is a job or waits is added to `keep`.
-    std::vector<ChunkJob> plan_jobs(const std::vector<ChunkKey>& wanted,
+    /// A derived key outside the scene (chunk_outside_scene) is a job without children: the
+    /// worker returns open sea for it at once.
+    std::vector<ChunkJob> plan_jobs(const Scene& scene, const std::vector<ChunkKey>& wanted,
                                     std::set<ChunkKey>& keep) const;
     std::unique_ptr<ChunkWorkers> workers_;
     bool pending_ = false;
@@ -408,6 +519,12 @@ class FrameRenderer {
 /// that `view` centres on at group `from`.
 Rect zoomed_view(Rect view, std::size_t from, std::size_t to,
                  const ZoomLevels& levels = ZoomLevels::original());
+
+/// The rectangle of view's size at group `to` in which the scene point `anchor` (scene pixels at
+/// group `from`) stays where it is in the window: what a zoom step at a pointer over `anchor`
+/// shows. The anchor is rounded to the pixel and scaled as zoomed_view scales the centre.
+Rect zoomed_view_at(Rect view, std::pair<double, double> anchor, std::size_t from, std::size_t to,
+                    const ZoomLevels& levels = ZoomLevels::original());
 
 /// The area whose chunks are kept built around `view`: a ring of one chunk, and
 /// where the view is moving (velocity vx, vy in scene pixels per second) the

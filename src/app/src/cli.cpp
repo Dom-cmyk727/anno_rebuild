@@ -75,12 +75,29 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             out.file = utf8_path(v);
             out.play = a == "--play";
             have_file = true;
+        } else if (a == "--ship-start") {
+            out.file = utf8_path(v);
+            out.play = true;
+            out.ship_start = true;
+            have_file = true;
+        } else if (a == "--seat") {
+            const auto seat = number<std::uint32_t>(v);
+            if (!seat) {
+                return std::nullopt;
+            }
+            out.seat = *seat;
+        } else if (a == "--resume") {
+            out.resume = utf8_path(v);
         } else if (a == "--speed") {
             const auto speed = number<unsigned>(v);
             if (!speed || (*speed != 50 && *speed != 100 && *speed != 200)) {
                 return std::nullopt;
             }
             out.play_speed = *speed;
+        } else if (a == "--commands") {
+            out.commands = utf8_path(v);
+        } else if (a == "--replay-hashes") {
+            out.replay_hashes = utf8_path(v);
         } else if (a == "--game-dir") {
             out.game_dir = utf8_path(v);
         } else if (a == "--group") {
@@ -132,6 +149,7 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             }
             out.size = *s;
         } else if (a == "--water") {
+            out.water_given = true;
             if (v == "original") {
                 out.water = render::WaterStyle::Original;
             } else if (v == "enhanced") {
@@ -159,6 +177,12 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
                 return std::nullopt;
             }
             out.river_gap_patch = *g;
+        } else if (a == "--shore") {
+            const auto s = number<float>(v);
+            if (!s || !(*s >= 0.0F) || *s > 255.0F) {
+                return std::nullopt;
+            }
+            out.shore = *s;
         } else if (a == "--river-speed") {
             if (v == "median") {
                 out.river_speed = render::river::RiverConfig::Reference::MedianCell;
@@ -227,6 +251,13 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
         }
     }
     if (!have_file) {
+        return std::nullopt;
+    }
+    if (out.ship_start && !out.play) {
+        return std::nullopt; // --ship-start and then --view: neither a view nor an opening
+    }
+    // The opening needs its participant named; the seat and the save mean nothing without it.
+    if (out.ship_start ? !out.seat.has_value() : (out.seat || out.resume)) {
         return std::nullopt;
     }
     // The resampling options belong to the headless picture.

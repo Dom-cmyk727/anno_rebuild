@@ -48,7 +48,7 @@ std::optional<gpu::Context> device_or_skip() {
     if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
         FAIL("no GPU device (ANNO_REQUIRE_GPU is set): " << ctx.error());
     }
-    MESSAGE("skipping: " << ctx.error());
+    MESSAGE("skipping: no GPU device: " << ctx.error());
     return std::nullopt;
 }
 

@@ -273,6 +273,10 @@ all resident keeps its stand-in, exactly as a built chunk whose frames are not a
 rule 2). `base` and `flow` stay un-derived (`chunk_reduce.hpp`). The ground/field/terrain planes of a
 GpuList child are still CPU-uploaded in 2a, so they are ordinary GPU textures on the child's bind
 group and `reduce_quad` reduces them unchanged alongside the compute-pass `objects`.
+A derived key wholly outside the scene (`chunk_outside_scene`, 2026-11-03) has no children: the planner
+builds none there, and its CPU chunk is the open sea a reduction would give, so it is uploaded as is
+(`build_derived_gpu`); waiting for children kept its stand-in for good (test `GpuList derived chunks
+(reduce_quad) equal the CPU render_derived_chunk`).
 
 Rejected: CPU `reduce_chunks_2x` over GpuList children needs a read-back (forbidden); building the
 reduced range on the CPU in GpuList mode is a second builder and rebuilds the children (forbidden).

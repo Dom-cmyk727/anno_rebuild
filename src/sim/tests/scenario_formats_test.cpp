@@ -6,7 +6,9 @@
 // every expected value follows from the bytes written and the evidence the adapter
 // cites, never from the adapter.
 #include <algorithm>
+#include <bit>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -24,6 +26,7 @@
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
 
+#include "island_helpers.hpp"
 #include "world_access.hpp"
 
 namespace sim = anno::sim;
@@ -214,6 +217,14 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
         big.width = 2;
         big.height = 2;
         b.add(big);
+    }
+    // Figure types of the OCCUR objects (BEWOHNTYPE ERZSYMBOL 145, SCHATZ 146, WALSYMBOL 147).
+    for (const std::pair<std::uint32_t, std::uint32_t>& ft :
+         {std::pair{1560U, 145U}, std::pair{1550U, 146U}, std::pair{1570U, 147U}}) {
+        sim::FigureType t;
+        t.id = ft.first;
+        t.bewohntype = ft.second;
+        b.figure_type(t);
     }
     auto r = b.build();
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
@@ -903,9 +914,10 @@ TEST_CASE("scenario HEAD2 player-mask with only the owner's bit does not warn (T
                       Kind::Head2FieldNotMapped) == 1);
 }
 
-TEST_CASE("scenario market KONTID is read but not kept (T26)") {
-    // A MARKTKOMBI (class MarketCombi) entry with one nested KONTID: read and consumed
-    // (not UndecodedBuildingRecord), its number not kept (the Market payload has none).
+TEST_CASE("scenario market KONTID is kept as Building::kontor_id (stream 119)") {
+    // A MARKTKOMBI (class MarketCombi) entry with one nested KONTID: read and consumed (not
+    // UndecodedBuildingRecord) and, since stream 119, kept in the building
+    // (docs/sim/city-creation.md E14).
     Buf prod2;
     item(prod2, kMarketCombi, 0, 0, 0, 5, 3);
     Buf kontid = record("KONTID", [] {
@@ -916,13 +928,31 @@ TEST_CASE("scenario market KONTID is read but not kept (T26)") {
     Buf prod = entry(5, 3, kontid);
     Buf recs = record("PROD", prod);
     const sim::LoadedScenario s = load(t26_city_scene({}, recs, prod2));
-    CHECK(warnings_of(s, Kind::MarketNumberNotKept) == 1);
+    CHECK(warnings_of(s, Kind::MarketNumberNotKept) == 0); // nothing is dropped any more
     CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 0);
     REQUIRE(s.spec.islands[0].cities.size() == 1);
     CHECK(s.spec.islands[0].cities[0].buildings.size() == 1); // the market is created
+    CHECK(s.spec.islands[0].cities[0].buildings[0].kontor_id == 7);
     auto w = sim::World::create(s.spec, registry());
     REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
     CHECK(w.value().check_invariants() == "");
+    // The created building carries the loaded KONTID; the island counter is untouched (default 1).
+    const sim::Island* first = nullptr;
+    for (const auto& slot : w.value().islands()) {
+        first = first == nullptr && slot.has_value() ? &*slot : first;
+    }
+    REQUIRE(first != nullptr);
+    const sim::Island& is = *first;
+    std::uint32_t found = 0;
+    for (const auto& c : is.cities) {
+        if (c.has_value()) {
+            const sim::Building* b = w.value().find_building(sim::make_building_id(is.index, 1));
+            REQUIRE(b != nullptr);
+            found = b->kontor_id;
+        }
+    }
+    CHECK(found == 7);
+    CHECK(is.kontor_counter == 1);
 }
 
 TEST_CASE("scenario VOLK people names map through the 14-name table (T26)") {
@@ -1113,7 +1143,7 @@ TEST_CASE("scenario warning kinds") {
         item(items, kRoad, 0, 0, 0, 3, 5); // the same item again: DuplicateObject
         append(island_extra, block_record("FLUESSE", items, 8, 8));
         append(island_extra, chunk("BERGWERK2", Buf(8, 1))); // UndecodedDeposits
-        append(island_extra, chunk("OCCUR", Buf(4, 0)));     // UnknownRecord
+        append(island_extra, chunk("FUTURE", Buf(4, 0)));    // UnknownRecord
         Buf more;
         item(more, kHouse, 0, 0, 0, 14, 0); // BuildingItemWithoutEntry
         item(more, kInn, 0, 0, 0, 6, 6);    // an Inn: its Load is not mapped
@@ -1168,7 +1198,7 @@ TEST_CASE("scenario warning kinds") {
     Buf scene_kids(file.begin() + 32, file.end());
     append(scene_kids, kids);
     const sim::LoadedScenario s = load(scene("ANNO", scene_kids));
-    CHECK(warnings_of(s, Kind::UnknownRecord) == 3);  // OCCUR, SCHIFF, SKTIMER
+    CHECK(warnings_of(s, Kind::UnknownRecord) == 3);  // FUTURE, SCHIFF, SKTIMER
     CHECK(warnings_of(s, Kind::LinkUnresolved) == 1); // no ERZE: the selection never runs
     CHECK(warnings_of(s, Kind::UnknownObject) == 1);
     CHECK(warnings_of(s, Kind::BuildingItemWithoutEntry) == 1); // the house at (14, 0)
@@ -1197,9 +1227,10 @@ TEST_CASE("scenario warning kinds") {
     // below (the market, the trade lists, the build goods, the HEAD2 fields, the
     // statistics); only their reachability is checked there, not here.
     static constexpr Kind kT26Dedicated[] = {
-        Kind::MarketNumberNotKept, Kind::BuildGoodsOutOfRange,  Kind::TradeEntryBeyondSlots,
-        Kind::Head2FieldNotMapped, Kind::StatisticsNotModelled, Kind::StatisticsHistoryNotModelled,
-        Kind::HouseResetNotApplied};
+        Kind::MarketNumberNotKept,   Kind::BuildGoodsOutOfRange,
+        Kind::TradeEntryBeyondSlots, Kind::Head2FieldNotMapped,
+        Kind::StatisticsNotModelled, Kind::StatisticsHistoryNotModelled,
+        Kind::HouseResetNotApplied,  Kind::PlayerDiscoveryBitsDropped /* the DISCO case */};
     for (const Kind k : sim::all_warning_kinds()) {
         INFO(sim::warning_kind_name(k));
         CHECK(sim::warning_kind_name(k) != "?");
@@ -1359,6 +1390,137 @@ TEST_CASE("scenario climate bound and a missing INFO") {
     CHECK(warnings_of(load(scene("ANNO", kids)), Kind::UnknownClimate) == 1);
 }
 
+TEST_CASE("scenario island LOCKED record: absent, zero, locked, raw byte, duplicates, malformed") {
+    // docs/re/ship-founding.md section 11.5: the record is one byte, island +0xc4; the loader
+    // stores the byte as it is and a later record overwrites an earlier one.
+    const auto with = [](const Buf& extra) {
+        Buf kids = chunk("HEAD", head_bytes());
+        append(kids, insel5(40, 60, 8, 8, 7, 2, extra));
+        return scene("ANNO", kids);
+    };
+    const auto lock_of = [&](const Buf& extra) {
+        const sim::LoadedScenario s = load(with(extra));
+        REQUIRE(s.spec.islands.size() == 1);
+        return s.spec.islands[0].lock;
+    };
+    CHECK(lock_of({}) == 0);                      // absent record: reset value 0
+    CHECK(lock_of(chunk("LOCKED", Buf{0})) == 0); // the 21 dummy templates' value
+    CHECK(lock_of(chunk("LOCKED", Buf{1})) == 1); // the 107 scenario islands' value
+    CHECK(lock_of(chunk("LOCKED", Buf{2})) == 2); // kept as the loader stores it
+    CHECK(lock_of(chunk("LOCKED", Buf{255})) == 255);
+    Buf twice = chunk("LOCKED", Buf{1});
+    append(twice, chunk("LOCKED", Buf{0}));
+    CHECK(lock_of(twice) == 0); // the later record wins
+    Buf thrice = chunk("LOCKED", Buf{0});
+    append(thrice, chunk("LOCKED", Buf{7}));
+    CHECK(lock_of(thrice) == 7);
+    // LOCKED is a known record now: no UnknownRecord warning for it.
+    CHECK(warnings_of(load(with(chunk("LOCKED", Buf{1}))), Kind::UnknownRecord) == 0);
+    // Anything but one byte is refused with the record's path (the original would write past
+    // the field).
+    CHECK(refusal(with(chunk("LOCKED", Buf{}))).find(".LOCKED: expected 1 byte, got 0") !=
+          std::string::npos);
+    CHECK(refusal(with(chunk("LOCKED", Buf{1, 0}))).find(".LOCKED: expected 1 byte, got 2") !=
+          std::string::npos);
+    // A LOCKED 0 record and no record are the same state.
+    auto a = sim::World::create(load(with({})).spec, registry(), sim::SimConfig{});
+    auto b =
+        sim::World::create(load(with(chunk("LOCKED", Buf{0}))).spec, registry(), sim::SimConfig{});
+    REQUIRE(a.ok());
+    REQUIRE(b.ok());
+    CHECK(a.value().state_hash() == b.value().state_hash());
+}
+
+TEST_CASE("scenario island KONTORID record: loaded counter, absent default, malformed refused") {
+    // D AnnoWelt 0x10089bb1: the record's u16 becomes the island's Kontor counter; without the
+    // record the constructor's 1 stays. ADAPTATION: a record that is not 2 bytes, or 0, is refused.
+    const auto with = [](const Buf& extra) {
+        Buf kids = chunk("HEAD", head_bytes());
+        append(kids, insel5(40, 60, 8, 8, 7, 2, extra));
+        return scene("ANNO", kids);
+    };
+    const auto counter_of = [&](const Buf& extra) {
+        const sim::LoadedScenario s = load(with(extra));
+        REQUIRE(s.spec.islands.size() == 1);
+        return s.spec.islands[0].kontor_counter;
+    };
+    const auto rec2 = [](std::uint32_t v) {
+        Buf b;
+        put16(b, v);
+        return chunk("KONTORID", b);
+    };
+    CHECK(counter_of({}) == 1);          // absent: the default
+    CHECK(counter_of(rec2(300)) == 300); // loaded
+    CHECK(counter_of(rec2(65535)) == 65535);
+    Buf twice = rec2(5);
+    append(twice, rec2(9));
+    CHECK(counter_of(twice) == 9); // a later record overwrites
+    // The loaded value reaches the world and is the next Kontor id.
+    auto w = sim::World::create(load(with(rec2(300))).spec, registry(), sim::SimConfig{});
+    REQUIRE(w.ok());
+    CHECK(w.value().islands()[7]->kontor_counter == 300);
+    // Malformed: 1 byte, 3 bytes, 0 bytes, and value 0 each have their own diagnostic; the control
+    // above (a valid 2-byte record) reaches the same code.
+    CHECK(refusal(with(chunk("KONTORID", Buf{5}))).find(".KONTORID: expected 2 bytes, got 1") !=
+          std::string::npos);
+    CHECK(
+        refusal(with(chunk("KONTORID", Buf{5, 0, 0}))).find(".KONTORID: expected 2 bytes, got 3") !=
+        std::string::npos);
+    CHECK(refusal(with(chunk("KONTORID", Buf{}))).find(".KONTORID: expected 2 bytes, got 0") !=
+          std::string::npos);
+    CHECK(refusal(with(rec2(0))).find(".KONTORID: 0 is not a usable Kontor counter") !=
+          std::string::npos);
+}
+
+TEST_CASE("scenario island lock: world state, hash, save and load, a failed load changes nothing") {
+    const auto make = [&](std::uint8_t lock) {
+        Buf extra = lock == 0 ? Buf{} : chunk("LOCKED", Buf{lock});
+        Buf kids = chunk("HEAD", head_bytes());
+        append(kids, insel5(40, 60, 8, 8, 7, 2, extra));
+        auto w = sim::World::create(load(scene("ANNO", kids)).spec, registry(), sim::SimConfig{});
+        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+        return std::move(w).value();
+    };
+    sim::World open = make(0);
+    sim::World locked = make(1);
+    sim::World raw2 = make(2);
+    REQUIRE(locked.islands().size() == 8);
+    REQUIRE(locked.islands()[7].has_value());
+    CHECK(locked.islands()[7]->lock == 1);
+    CHECK(locked.islands()[7]->locked());
+    CHECK_FALSE(open.islands()[7]->locked());
+    // The lock is state: three worlds that differ only in it have three hashes.
+    CHECK(open.state_hash() != locked.state_hash());
+    CHECK(locked.state_hash() != raw2.state_hash());
+    CHECK(open.state_hash() != raw2.state_hash());
+    // Only the islands scope moves.
+    sim::HashTree t_open, t_locked;
+    static_cast<void>(open.state_hash(t_open, 0));
+    static_cast<void>(locked.state_hash(t_locked, 0));
+    for (std::size_t i = 0; i < t_open.root.children.size(); ++i) {
+        CHECK((t_open.root.children[i].hash != t_locked.root.children[i].hash) ==
+              (t_open.root.children[i].name == "islands"));
+    }
+    // Save and load keep the raw byte; the saved bytes are reproduced.
+    for (sim::World* w : {&locked, &raw2}) {
+        const std::vector<std::uint8_t> bytes = w->save();
+        auto loaded = sim::World::load(bytes, registry());
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+        CHECK(loaded.value().islands()[7]->lock == w->islands()[7]->lock);
+        CHECK(loaded.value().state_hash() == w->state_hash());
+        CHECK(loaded.value().save() == bytes);
+    }
+    // A failed load returns no world (World::load is static: it builds a new one or none).
+    std::vector<std::uint8_t> bad = locked.save();
+    bad.resize(bad.size() - 3);
+    CHECK_FALSE(sim::World::load(bad, registry()).ok());
+    bad = locked.save();
+    bad[bad.size() / 2] ^= 0x5a;
+    CHECK_FALSE(sim::World::load(bad, registry()).ok());
+    // The previous stream version number (117: no lock byte) is refused by the version checks.
+    island_test::check_unsupported_versions(locked.save(), registry(), {117, 120});
+}
+
 namespace {
 
 /// The offset of the first occurrence of `name` in `file` (a record or chunk name).
@@ -1384,7 +1546,7 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     Buf kids = chunk("HEAD", head_bytes());     // child 0
     append(kids, chunk("SKTIMER", Buf(40, 0))); // child 1
     append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1))))); // 2
-    append(kids, insel5(40, 60, 8, 8, 7, 2, chunk("OCCUR", Buf(4, 0)))); // child 3
+    append(kids, insel5(40, 60, 8, 8, 7, 2, chunk("FUTURE", Buf(4, 0)))); // child 3
     Buf c = {3, 0};
     put16(c, 41);
     put16(c, 61);
@@ -1397,7 +1559,7 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     append(kids, chunk("SKTIMER", Buf(40, 0)));                               // child 6
     const Buf file = scene("ANNO", kids);
     const sim::LoadedScenario s = load(file);
-    // One UnknownRecord per scope and name: SKTIMER, OCCUR, SCHIFF (twice in the file
+    // One UnknownRecord per scope and name: SKTIMER, FUTURE, SCHIFF (twice in the file
     // each). STAT2 is its own kind since T26 (StatisticsNotModelled).
     REQUIRE(warnings_of(s, Kind::UnknownRecord) == 3);
     std::map<std::string, const sim::ScenarioWarning*> by_record;
@@ -1408,8 +1570,8 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     }
     CHECK(by_record.at("SKTIMER")->path == "scene.SKTIMER");
     CHECK(by_record.at("SKTIMER")->offset == offset_of(file, "SKTIMER"));
-    CHECK(by_record.at("OCCUR")->path == "islands[3].OCCUR");
-    CHECK(by_record.at("OCCUR")->offset == offset_of(file, "OCCUR"));
+    CHECK(by_record.at("FUTURE")->path == "islands[3].FUTURE");
+    CHECK(by_record.at("FUTURE")->offset == offset_of(file, "FUTURE"));
     CHECK(by_record.at("SCHIFF")->path == "players[1].SCHIFF");
     CHECK(by_record.at("SCHIFF")->offset == offset_of(file, "SCHIFF"));
     const sim::ScenarioWarning& st2 = the_warning(s, Kind::StatisticsNotModelled);
@@ -1796,4 +1958,207 @@ TEST_CASE("P1 import: created houses sum to resident_sum, save then load is exac
     REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
     CHECK(back.value().state_hash() == before);
     CHECK(back.value().check_invariants() == "");
+}
+
+TEST_CASE(
+    "scenario DISCOVER, HEAD2 mask, DIPL and the registration of loaded cities (stream 120)") {
+    // Players 0 (the city owner), 1, 2 and 3; player 0's DIPL: MILIT 3 towards player 1 (a peer),
+    // MILIT 3 towards player 5 (a legal slot, no player: never a peer), MILIT 2 towards player 2
+    // (not 3), WAR 3 towards player 3 (not MILIT). The island has a DISCOVER word with bit 2
+    // (player 2 present). The city of player 0 has HEAD2 [0x30] = 0b1001000 (bits 3 and 6).
+    //
+    // Expected by hand: the city mask is the file bits {3, 6} plus the registration {owner 0, the
+    // MILIT=3 peer 1} = {0, 1, 3, 6} (player 6 has no player block but the file bit is kept: a bit
+    // of a player below player_slots); the island's players present are the DISCOVER bit {2} plus
+    // the city owner {0} = {0, 2}; the recount lets players in the mask learn the owner: players 0,
+    // 1 (and 3, who has a block) learn player 0; player 6 has no block and learns nothing.
+    const auto player = [](std::uint32_t idx, const Buf& extra) {
+        Buf recs = record("HEAD", player_head(8, 1, "P", static_cast<std::uint8_t>(idx + 1)));
+        append(recs, extra);
+        return chunk("SPIELER", spieler(idx, recs));
+    };
+    Buf dipl;
+    append(dipl, record("MILIT", Buf{1, 3, 0, 0}));
+    append(dipl, record("MILIT", Buf{5, 3, 0, 0}));
+    append(dipl, record("MILIT", Buf{2, 2, 0, 0}));
+    append(dipl, record("WAR", Buf{3, 3, 0, 0}));
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, player(0, record("DIPL", dipl)));
+    append(kids, player(1, {}));
+    append(kids, player(2, {}));
+    append(kids, player(3, {}));
+    Buf discover;
+    put32(discover, 0x00000004U);
+    append(kids, insel5(40, 60, 16, 8, 7, 2, chunk("DISCOVER", discover)));
+    Buf head2(64, 0);
+    head2[0x30] = 0x48; // bits 3 and 6
+    Buf city = {2, 0};
+    put16(city, 50);
+    put16(city, 63);
+    append(city, record("HEAD2", head2));
+    append(kids, chunk("SPIELER", spieler(0, record("STADT2", city))));
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    REQUIRE(s.spec.islands.size() == 1);
+    const auto ids = [](std::initializer_list<std::uint32_t> v) {
+        std::vector<sim::PlayerId> out;
+        for (const std::uint32_t i : v) {
+            out.push_back(sim::PlayerId{i});
+        }
+        return out;
+    };
+    // The relation rows of player 0 as the loader stored them (byte 0 other, byte 1 value).
+    REQUIRE(s.spec.players.size() == 4);
+    REQUIRE(s.spec.players[0].relations.size() == 4); // rows for 1, 2, 3 and 5, ascending
+    CHECK(s.spec.players[0].relations[0] == sim::Relation{sim::PlayerId{1}, 0, 3, 0, 0});
+    CHECK(s.spec.players[0].relations[1] == sim::Relation{sim::PlayerId{2}, 0, 2, 0, 0});
+    CHECK(s.spec.players[0].relations[2] == sim::Relation{sim::PlayerId{3}, 0, 0, 3, 0});
+    CHECK(s.spec.players[0].relations[3] == sim::Relation{sim::PlayerId{5}, 0, 3, 0, 0});
+    const auto& is = s.spec.islands[0];
+    REQUIRE(is.cities.size() == 1);
+    CHECK(is.cities[0].player_mask == ids({0, 1, 3, 6}));
+    CHECK(is.players_present == ids({0, 2}));
+    CHECK(s.spec.players[0].discovery == ids({0}));
+    CHECK(s.spec.players[1].discovery == ids({0}));
+    CHECK(s.spec.players[2].discovery.empty());
+    CHECK(s.spec.players[3].discovery == ids({0}));
+    // And through World::create: the sets validate and persist.
+    auto w = sim::World::create(s.spec, registry(), sim::SimConfig{});
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    CHECK(w.value().check_invariants().empty());
+    CHECK(w.value().islands()[7]->cities[2]->player_mask == ids({0, 1, 3, 6}));
+    // DISCOVER: absent -> empty; a later record replaces; a record that is not 4 bytes is refused.
+    const auto with = [](const Buf& extra) {
+        Buf k = chunk("HEAD", head_bytes());
+        append(k, insel5(40, 60, 8, 8, 7, 2, extra));
+        return scene("ANNO", k);
+    };
+    CHECK(load(with({})).spec.islands[0].players_present.empty());
+    Buf two = chunk("DISCOVER", Buf{1, 0, 0, 0});
+    append(two, chunk("DISCOVER", Buf{2, 0, 0, 0}));
+    CHECK(load(with(two)).spec.islands[0].players_present == ids({1}));
+    CHECK(refusal(with(chunk("DISCOVER", Buf{1, 0}))).find(".DISCOVER: expected 4 bytes, got 2") !=
+          std::string::npos);
+}
+
+TEST_CASE("scenario player DISCO: property 7 restored for players that exist, others dropped") {
+    // AnnoWelt 0x1001d61d reads the 4-byte record into player property 7 (bit i = player i).
+    // Players 0, 1, 2, 3 exist. Player 0 DISCO = 0b1110 -> {1, 2, 3}; player 1 DISCO = 0xcdcdcdcd
+    // (the shipped uninitialised fill: bits 0,2,3,6,7,10,11,... ) -> only the bits of existing
+    // players {0, 2, 3} are kept and ONE warning reports the rest; player 2 has no DISCO -> empty;
+    // player 3 DISCO = 0 -> empty. A DISCO that is not 4 bytes refuses the load.
+    const auto player = [](std::uint32_t idx, const Buf& extra) {
+        Buf recs = record("HEAD", player_head(8, 1, "P", static_cast<std::uint8_t>(idx + 1)));
+        append(recs, extra);
+        return chunk("SPIELER", spieler(idx, recs));
+    };
+    const auto ids = [](std::initializer_list<std::uint32_t> v) {
+        std::vector<sim::PlayerId> out;
+        for (const std::uint32_t i : v) {
+            out.push_back(sim::PlayerId{i});
+        }
+        return out;
+    };
+    const auto scene_of = [&](const Buf& disco0, const Buf& disco1) {
+        Buf kids = chunk("HEAD", head_bytes());
+        append(kids, player(0, disco0));
+        append(kids, player(1, disco1));
+        append(kids, player(2, {}));
+        append(kids, player(3, record("DISCO", Buf{0, 0, 0, 0})));
+        return scene("ANNO", kids);
+    };
+    const sim::LoadedScenario s = load(scene_of(record("DISCO", Buf{0x0e, 0, 0, 0}),
+                                                record("DISCO", Buf{0xcd, 0xcd, 0xcd, 0xcd})));
+    REQUIRE(s.spec.players.size() == 4);
+    CHECK(s.spec.players[0].discovery == ids({1, 2, 3}));
+    CHECK(s.spec.players[1].discovery == ids({0, 2, 3}));
+    CHECK(s.spec.players[2].discovery.empty());
+    CHECK(s.spec.players[3].discovery.empty());
+    std::size_t dropped = 0;
+    for (const sim::ScenarioWarning& w : s.warnings) {
+        dropped += w.kind == sim::ScenarioWarningKind::PlayerDiscoveryBitsDropped ? 1 : 0;
+    }
+    CHECK(dropped == 1);
+    // Control: only existing bits -> no warning. Then the world validates and persists the sets.
+    const sim::LoadedScenario clean = load(scene_of(record("DISCO", Buf{0x0e, 0, 0, 0}), {}));
+    for (const sim::ScenarioWarning& w : clean.warnings) {
+        CHECK(w.kind != sim::ScenarioWarningKind::PlayerDiscoveryBitsDropped);
+    }
+    auto world = sim::World::create(clean.spec, registry(), sim::SimConfig{});
+    REQUIRE_MESSAGE(world.ok(), (world.ok() ? std::string() : world.error()));
+    auto back = sim::World::load(world.value().save(), registry());
+    REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+    CHECK(back.value().players().find(sim::PlayerId{0})->discovery == ids({1, 2, 3}));
+    // Wrong lengths refuse, with the path.
+    CHECK(refusal(scene_of(record("DISCO", Buf{1, 0, 0}), {})).find(".DISCO: 3 bytes") !=
+          std::string::npos);
+    CHECK(refusal(scene_of(record("DISCO", Buf{1, 0, 0, 0, 0}), {})).find(".DISCO: 5 bytes") !=
+          std::string::npos);
+}
+
+TEST_CASE("scenario OCCUR ore objects: island-local positions, masks, kinds, malformed refused") {
+    // Island at (40, 60), 16 x 8. ENTRY2 (24 bytes): dword0 = type << 14, f32 X, Z, height
+    // (ISLAND-LOCAL tiles), u16 amount, u16 pad, u32 discovery mask. Expected by hand: ore A (type
+    // 1560, X 3.5, Z 2.5, mask 0b101) -> tile (40 + 3, 60 + 2) = (43, 62), players {0, 2}; ore B
+    // (X 15.9, Z 7.2, mask 0, amount 400) -> (40 + 15, 60 + 7) = (55, 67); a treasure (1550) and a
+    // 42-byte whale symbol (1570) are not ore and not stored; type 1999 is unknown to the
+    // registry: one UnknownObject warning, skipped.
+    const auto f32 = [](Buf& b, float v) { put32(b, std::bit_cast<std::uint32_t>(v)); };
+    const auto entry = [&](std::uint32_t type, float x, float z, std::uint32_t amount,
+                           std::uint32_t mask, std::size_t size = 24) {
+        Buf p;
+        put32(p, type << 14);
+        f32(p, x);
+        f32(p, z);
+        f32(p, 0.0F);
+        put16(p, amount);
+        put16(p, 0);
+        put32(p, mask);
+        p.resize(size, 0);
+        return record("ENTRY2", p);
+    };
+    Buf occur;
+    append(occur, entry(1560, 3.5F, 2.5F, 2000, 0x5));
+    append(occur, entry(1550, 4.5F, 3.5F, 7, 0)); // treasure
+    append(occur, entry(1560, 15.9F, 7.2F, 400, 0));
+    append(occur, entry(1570, 5.0F, 5.0F, 1, 0, 42)); // whale symbol, 42 bytes
+    append(occur, entry(1999, 6.0F, 6.0F, 1, 0));     // unknown type
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, insel5(40, 60, 16, 8, 7, 2, chunk("OCCUR", occur)));
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    REQUIRE(s.spec.islands.size() == 1);
+    const auto& ore = s.spec.islands[0].ore_objects;
+    REQUIRE(ore.size() == 2);
+    CHECK(ore[0].type == 1560);
+    CHECK(ore[0].x == 43);
+    CHECK(ore[0].y == 62);
+    CHECK(ore[0].amount == 2000);
+    CHECK(ore[0].discovered == std::vector<sim::PlayerId>{sim::PlayerId{0}, sim::PlayerId{2}});
+    CHECK(ore[1].x == 55);
+    CHECK(ore[1].y == 67);
+    CHECK(ore[1].amount == 400);
+    CHECK(ore[1].discovered.empty());
+    CHECK(warnings_of(s, Kind::UnknownObject) == 1);
+    CHECK(warnings_of(s, Kind::UnknownRecord) == 0); // OCCUR is decoded now
+    // It reaches the world and the state (validated, hashed).
+    auto w = sim::World::create(s.spec, registry(), sim::SimConfig{});
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    CHECK(w.value().islands()[7]->ore_objects.size() == 2);
+    CHECK(w.value().check_invariants().empty());
+    // A position that is NaN, infinite or beyond 2^30 tiles is refused (no undefined cast).
+    for (const float bad_pos : {std::numeric_limits<float>::quiet_NaN(),
+                                std::numeric_limits<float>::infinity(), 2.0e9F}) {
+        Buf badp;
+        append(badp, entry(1560, bad_pos, 2.5F, 1, 0));
+        Buf bk = chunk("HEAD", head_bytes());
+        append(bk, insel5(40, 60, 16, 8, 7, 2, chunk("OCCUR", badp)));
+        CHECK(refusal(scene("ANNO", bk)).find("the position is not a tile coordinate") !=
+              std::string::npos);
+    }
+    // An ore entry that is not 24 bytes is refused with its path.
+    Buf bad;
+    append(bad, entry(1560, 3.5F, 2.5F, 1, 0, 26));
+    Buf bad_kids = chunk("HEAD", head_bytes());
+    append(bad_kids, insel5(40, 60, 16, 8, 7, 2, chunk("OCCUR", bad)));
+    CHECK(refusal(scene("ANNO", bad_kids)).find("an ore object is 24 bytes, got 26") !=
+          std::string::npos);
 }

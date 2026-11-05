@@ -1314,10 +1314,13 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                         }
                     }
                 }
-                auto pct = [](std::vector<double> v, double q) {
-                    if (v.empty()) {
+                auto pct = [](const std::vector<double>& in, double q) {
+                    if (in.empty()) {
                         return 0.0;
                     }
+                    std::vector<double> v;
+                    v.resize(in.size());
+                    std::copy(in.begin(), in.end(), v.begin());
                     std::sort(v.begin(), v.end());
                     return v[static_cast<std::size_t>(
                         std::lround(q * static_cast<double>(v.size() - 1)))];

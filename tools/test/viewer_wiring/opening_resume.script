@@ -1,0 +1,143 @@
+# W4-OPENING-1, stage 2 of the full opening: resumed at the coast of stage 1 (--resume <its save>), refused
+# foundings, the real founding, every hold unloaded from what the ship carries, a full store, and the first
+# two ordinary buildings, with the money and goods ledger. Launch:
+#   --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200 --resume <save>
+wait frames 30
+wait fact ship.1.x == 257 within 60000
+expect fact ship.1.y == 134
+expect fact cities == 0
+expect fact gold == 30000
+pick-ship 1
+expect fact selected == 1
+# A founding refused by the sim leaves everything as it was: a water tile of the island's rectangle...
+lookw 255 138
+wait frames 20
+# The preview applies the sim's coast rule: this tile is not on a coast (the sim refuses it below).
+key f
+hover-land 257 134
+wait frames 10
+wait fact found.coast == no within 5000
+# The sim's own answer to this very click arrives a turn later (probe_founding).
+wait fact found.sim == NoRotationFits within 5000
+click-land 257 134
+wait fact latest_kind == found within 10000
+wait fact latest == refused within 10000
+expect fact latest_reason == NoRotationFits
+expect fact cities == 0
+expect fact gold == 30000
+expect fact mode == select
+# ... and a coast far out of reach.
+lookw 150 250
+wait frames 20
+key f
+click-land 150 250
+wait fact tracked == 2 within 10000
+wait fact latest == refused within 10000
+expect fact latest_reason == OutOfRange
+expect fact cities == 0
+expect fact gold == 30000
+# The real founding, at the click whose origin the sim derives itself.
+lookw 255 138
+wait frames 20
+key f
+hover-land 255 138
+wait frames 10
+# Here the sim accepts a rotation: the preview shows the rotation that faces the shore.
+wait fact found.coast == yes within 5000
+wait fact found.sim == None within 5000
+screenshot 3-founding-preview
+click-land 255 138
+wait fact tracked == 3 within 10000
+wait fact latest == accepted within 10000
+expect fact cities == 1
+expect fact gold == 29650
+# The warehouse is a building change: the picture commits it (the only commit so far).
+wait fact committed >= 1 within 10000
+expect fact ship.1.hold0 == 9728
+expect fact ship.1.hold2 == 11520
+screenshot 4-founded
+# Every hold of the ship into the warehouse, each by its own command.
+key u
+expect fact mode == unload
+# The quantity keys: [ ] and the keys of a layout without them (minus / plus, Page Down / Page Up).
+wait fact request == 38 within 5000
+key pagedown
+wait fact request == 37 within 5000
+key minus
+wait fact request == 36 within 5000
+key pageup
+key plus
+wait fact request == 38 within 5000
+key enter
+wait fact tracked == 4 within 10000
+wait fact latest == accepted within 10000
+expect fact store.42 == 9728
+expect fact ship.1.hold0 == 0
+key tab
+key enter
+wait fact tracked == 5 within 10000
+wait fact latest == accepted within 10000
+expect fact store.26 == 2560
+key tab
+key enter
+wait fact tracked == 6 within 10000
+wait fact latest == accepted within 10000
+expect fact store.41 == 11520
+key tab
+key enter
+wait fact tracked == 7 within 10000
+wait fact latest == accepted within 10000
+expect fact latest_moved == 1280
+expect fact store.41 == 12800
+expect fact ship.1.hold3 == 6400
+screenshot 5-unloaded
+# The store is full: the same hold again is refused and nothing moves.
+key enter
+wait fact tracked == 8 within 10000
+wait fact latest == refused within 10000
+expect fact latest_reason == StockFull
+expect fact ship.1.hold3 == 6400
+expect fact gold == 29650
+# The first two ordinary buildings, paid from the supplies the ship brought.
+key esc
+key esc
+expect fact selected == none
+key b
+wait frames 5
+select 1001
+click 251 137
+wait outcome
+expect outcome Applied
+wait fact gold == 29350 within 10000
+select 501
+click 250 141
+wait outcome
+expect outcome Applied
+wait turns 10
+expect fact gold == 29350
+expect fact store.42 == 7936
+expect fact store.41 == 12032
+expect fact store.26 == 2560
+wait drawn
+screenshot 6-built
+# With a city on the island, a ship's voyage still rebuilds nothing: the picture's work does not move.
+wait fact pending_builds == 0 within 10000
+note fact generation
+note fact committed
+note fact discarded
+key b
+expect fact tool == off
+lookw 262 134
+wait frames 20
+pick-ship 1
+expect fact selected == 1
+sail 266 134
+wait fact latest_kind == move within 10000
+wait fact latest == arrived within 30000
+expect fact ship.1.x == 266
+expect fact generation same
+expect fact committed same
+expect fact discarded same
+key f5
+wait fact save contains saved within 30000
+quit

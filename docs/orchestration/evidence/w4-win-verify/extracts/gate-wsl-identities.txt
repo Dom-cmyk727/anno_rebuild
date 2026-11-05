@@ -1,0 +1,17 @@
+workflow head b57c6f0d0c747ecc41755b438d9377df38d2b7ac dirty 523
+f87fc882cfe4ff2205cda6ee5cab39a1e27d975aa0b63249c8250ef1c5e4927a  tools/test/run_selected.py
+b10bfc375c304d91529d1fe9ec02c2b9b95734eaea1e8cd523e791e4227c4683  tools/test/ctest_verdict.py
+7fc05a93fa6e17574cddae04c5e28d75debced1e9040f1bbefc01c754858b117  tools/test/ctest_verdict_test.py
+6b27d264577a019895b00df746653fed3715fcfb3892b8d45f68a0e651d9649a  cmake/CheckTestNames.cmake
+source head f047165c67bc26c1498c5201c014db83553c6f6f dirty 0 start 2026-11-02T16:14:26+01:00 mono 14.92
+ 16:14:26 up 0 min,  1 user,  load average: 0.23, 0.05, 0.02
+Mem:           15544         596       14683           3         459       14947
+configure rc=0
+build rc=0
+bd41fe09d069f070a20f2edcd1129d6ee1a377135b4189adc6c9108dc852ddf3  /home/altin/anno-build/w4-asan-viewer/src/app/anno1503
+3e257555d9f07c42e982295f0c2dab69e23be95c4d328118e46a924a492649f2  /home/altin/anno-build/w4-asan-viewer/src/app/anno_app_tests
+90ffa20769fd19751d5090f50de6d6eec7b9f7c1f41a94b3052fa65384b8d51c  /home/altin/anno-build/w4-asan-viewer/src/app/anno_app_input_tests
+beac356d1166479d9529c770921228b10e481c60485a91748a2eeefbcf16cfdc  /home/altin/anno-build/w4-asan-viewer/src/app/anno_app_alloc_tests
+warnings rc=0
+focused lane rc=0 COUNTS: selected=35 executed=35 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0 VERDICT: PASS  2026-11-02T16:46:15+01:00
+done 2026-11-02T16:46:15+01:00

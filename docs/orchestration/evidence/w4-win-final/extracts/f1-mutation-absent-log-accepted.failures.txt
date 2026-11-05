@@ -1,0 +1,4 @@
+FAIL: test_a_child_that_never_records_a_session_does_not_pass (__main__.ViewerWiringContract.test_a_child_that_never_records_a_session_does_not_pass)
+AssertionError: 'no script.log in the session directory' not found in 'viewer_wiring: FAIL tiny: window exit 0 but the session record does not show the script run:\n  - no session.txt in the session directory: the window did not write its session record\n' : viewer_wiring: FAIL tiny: window exit 0 but the session record does not show the script run:
+Ran 14 tests in 3.723s
+FAILED (failures=1)

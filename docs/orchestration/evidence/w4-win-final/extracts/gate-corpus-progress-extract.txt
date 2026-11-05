@@ -1,0 +1,67 @@
+1/1 Test #1324: picture_matrix_contract ..........   Passed  224.17 sec
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+608: [progress] play islands 1/50 0010SingleEndlos/00_1024_easyentry_01.sze 106.9 s
+608: [progress] play islands 2/50 0010SingleEndlos/01_1024_easy_256.sze 212.8 s
+608: [progress] play islands 3/50 0010SingleEndlos/02_1024_easy_128.sze 317.3 s
+608: [progress] play islands 4/50 0010SingleEndlos/03_1024_med_256.sze 423.8 s
+608: [progress] play islands 5/50 0010SingleEndlos/04_1024_med_128.sze 530.1 s
+608: [progress] play islands 6/50 0010SingleEndlos/05_800_Med_128.sze 634.4 s
+608: [progress] play islands 7/50 0010SingleEndlos/06_1024_heavy_256.sze 741.3 s
+608: [progress] play islands 8/50 0010SingleEndlos/07_1024_heavy_128.sze 846.2 s
+608: [progress] play islands 9/50 0010SingleEndlos/08_800_heavy_128.sze 951.9 s
+608: [progress] play islands 10/50 0011SingleEndlosAddon/endless01.sze 1058.8 s
+608: [progress] play islands 11/50 0011SingleEndlosAddon/endless02.sze 1169.7 s
+608: [progress] play islands 12/50 0011SingleEndlosAddon/endless03.sze 1274.1 s
+608: [progress] play islands 13/50 0100Kampagne01/S01_01_01.sze 1383.7 s
+608: [progress] play islands 14/50 0100Kampagne01/S01_02_01.sze 1494.1 s
+608: [progress] play islands 15/50 0100Kampagne01/S01_03_01.sze 1601.0 s
+608: [progress] play islands 16/50 0100Kampagne01/S01_04_01.sze 1703.8 s
+608: [progress] play islands 17/50 0100Kampagne01/S01_05_01.sze 1806.0 s
+608: [progress] play islands 18/50 0100Kampagne01/S01_06_01.sze 1909.9 s
+608: [progress] play islands 19/50 0100Kampagne01/S01_07_01.sze 2016.9 s
+608: [progress] play islands 20/50 0100Kampagne01/S01_08_01.sze 2120.5 s
+608: [progress] play islands 21/50 0100Kampagne01/S01_09_01.sze 2229.2 s
+608: [progress] play islands 22/50 0100Kampagne01/S01_10_01.sze 2338.0 s
+608: [progress] play islands 23/50 0100Kampagne01/S01_11_01.sze 2442.4 s
+608: [progress] play islands 24/50 0100Kampagne01/S01_12_01.sze 2553.6 s
+608: [progress] play islands 25/50 0100Kampagne01/S01_13_01.sze 2660.2 s
+608: [progress] play islands 26/50 0200Single/Single_01.sze 2768.6 s
+608: [progress] play islands 27/50 0200Single/Single_05.sze 2873.1 s
+608: [progress] play islands 28/50 0200Single/Single_06.sze 2976.6 s
+608: [progress] play islands 29/50 0200Single/Single_08.sze 3079.5 s
+608: [progress] play islands 30/50 0200Single/Single_10.sze 3184.8 s
+608: [progress] play islands 31/50 0200Single/Single_12.sze 3288.3 s
+608: [progress] play islands 32/50 0200Single/Single_14.sze 3393.8 s
+608: [progress] play islands 33/50 0200Single/Single_15.sze 3496.9 s
+608: [progress] play islands 34/50 0200Single/Single_16.sze 3600.7 s
+608: [progress] play islands 35/50 0200Single/Single_24.sze 3705.6 s
+608: [progress] play islands 36/50 0201SingleAddOn/single30.sze 3813.3 s
+608: [progress] play islands 37/50 0201SingleAddOn/single31.sze 3922.3 s
+608: [progress] play islands 38/50 0201SingleAddOn/single32.sze 4028.9 s
+608: [progress] play islands 39/50 0201SingleAddOn/single33.sze 4136.1 s
+608: [progress] play islands 40/50 0201SingleAddOn/single34.sze 4243.1 s
+608: [progress] play islands 41/50 0201SingleAddOn/single36.sze 4352.2 s
+608: [progress] play islands 42/50 0201SingleAddOn/single38.sze 4460.7 s
+608: [progress] play islands 43/50 0201SingleAddOn/single39.sze 4568.5 s
+608: [progress] play islands 44/50 0201SingleAddOn/single40.sze 4675.6 s
+608: [progress] play islands 45/50 0201SingleAddOn/single41.sze 4782.4 s
+608: [progress] play islands 46/50 0201SingleAddOn/single42.sze 4889.2 s
+608: [progress] play islands 47/50 0201SingleAddOn/single43.sze 4994.4 s
+608: [progress] play islands 48/50 Tutorial/01Discover01.sze 5095.7 s
+608: [progress] play islands 49/50 Tutorial/02Trade01.sze 5198.5 s
+608: [progress] play islands 50/50 Tutorial/03T_Combat_01.sze 5303.0 s
+608: [doctest] doctest version is "2.4.12"
+608: [doctest] run with "--help" for options
+608: [doctest] test cases:    1 |    1 passed | 0 failed | 176 skipped
+608: [doctest] assertions: 5492 | 5492 passed | 0 failed |
+608: [doctest] Status: SUCCESS!
+1/2 Test #608: anno_app_tests.play: islands are the ones the sim placed ..............................   Passed  5303.65 sec
+609: [doctest] doctest version is "2.4.12"
+609: [doctest] run with "--help" for options
+609: [doctest] test cases:    1 |    1 passed | 0 failed | 176 skipped
+609: [doctest] assertions: 3478 | 3478 passed | 0 failed |
+609: [doctest] Status: SUCCESS!
+2/2 Test #609: anno_app_tests.play: tick 0 matches the viewer except objects the sim did not place ...   Passed  2374.47 sec
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS

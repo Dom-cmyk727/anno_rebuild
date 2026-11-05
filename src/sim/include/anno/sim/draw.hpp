@@ -67,6 +67,13 @@ enum class DrawSite : std::uint8_t {
     /// The name of an unnamed computer player after the file is read
     /// (0x100025a0, docs/re/annoscene.md §1).
     ComputerName,
+    /// The name of a new city: one draw `mod` the world's STAEDTE name list when it exists
+    /// (D AnnoWelt 0x10096910, in the ring allocation 0x100967e0; docs/sim/city-creation.md E6).
+    /// A command applied inside the world step draws it.
+    CityName,
+    /// The same draw reached from the scenario loader (STADT2 -> island +0xf4, 0x1001e339): the
+    /// engine's loader creates cities directly and does not draw (docs/sim/city-creation.md E15).
+    CityNameLoad,
     /// Number of sites (not a site).
     Count_
 };
@@ -113,6 +120,10 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
         return "LinkTreasurePlace";
     case DrawSite::ComputerName:
         return "ComputerName";
+    case DrawSite::CityName:
+        return "CityName";
+    case DrawSite::CityNameLoad:
+        return "CityNameLoad";
     case DrawSite::Count_:
         break;
     }
@@ -134,7 +145,9 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
     case DrawSite::LinkTreasureKind:
     case DrawSite::LinkTreasurePlace:
     case DrawSite::ComputerName:
+    case DrawSite::CityNameLoad:
         return DrawPhase::Load;
+    case DrawSite::CityName:
     case DrawSite::SmallFarmAnimal:
     case DrawSite::Event300:
     case DrawSite::Event750Gate:
@@ -165,7 +178,7 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
            site == DrawSite::Event750Gate || site == DrawSite::Event750Island ||
            site == DrawSite::LinkRawMaterial || site == DrawSite::LinkOre ||
            site == DrawSite::LinkTemplatePick || site == DrawSite::LinkSpecialMark ||
-           site == DrawSite::LinkTreasure;
+           site == DrawSite::LinkTreasure || site == DrawSite::CityName;
 }
 
 /// A source of world draws. The world PRNG behind it is consumed in the

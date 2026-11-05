@@ -155,9 +155,11 @@ class IslandWater {
     /// gap_patch_tiles > 0 joins river pieces whose footprints are at most that
     /// many tiles apart (OQ-068): the corners between them get a river level and a
     /// shallow carved bed in this copy of the heights (never in the island).
+    /// Terrain below `shore_height` is water (kShoreHeight, Scene::shore_height).
     static std::optional<IslandWater> build(const formats::insel::Island& island,
                                             std::span<const RiverPiece> rivers,
-                                            float gap_patch_tiles = 0.0F);
+                                            float gap_patch_tiles = 0.0F,
+                                            float shore_height = kShoreHeight);
     /// River surface level at tile (tx, ty) + (fx, fy), nullopt away from
     /// rivers.
     [[nodiscard]] std::optional<float> river_level(std::size_t tx, std::size_t ty, float fx,
@@ -169,6 +171,9 @@ class IslandWater {
 
     std::size_t w = 0, h = 0;
     std::vector<std::uint8_t> heights;
+    /// Terrain below this many HEIGHT units is water (the original waterline and the enhanced
+    /// one's zero).
+    float shore_height = kShoreHeight;
     /// Per 8 × 8 tile chunk: contains a non-land tile (OQ-026 b).
     std::vector<bool> sea_chunk;
     /// Openness per height corner (approximation, OQ-026 b).
@@ -192,13 +197,16 @@ inline constexpr float kSlopeBand = 12.0F;
 inline constexpr float kNoiseCoarseWeight = 2.0F;
 inline constexpr float kNoiseFineWeight = 0.6F;
 /// Lowest of the 16 corner heights under a tile's smooth_height at which the
-/// tile is provably dry land far from the waterline (sd ≤ −kSlopeBand): the
-/// spline is at least its lowest corner, the noise at least −(coarse + fine) /
+/// tile is provably dry land far from the shore `shore_height` (sd ≤ −kSlopeBand):
+/// the spline is at least its lowest corner, the noise at least −(coarse + fine) /
 /// 2 · shore_noise (−2.6), plus 0.5 for rounding (docs/render/iso.md "Water
 /// field: empty cells").
-inline constexpr float kEmptyLandHeight =
-    static_cast<float>(kWaterline) + kSlopeBand +
-    0.5F * (kNoiseCoarseWeight + kNoiseFineWeight) * kWaves.shore_noise + 0.5F;
+constexpr float empty_land_height(float shore_height) {
+    return shore_height + kSlopeBand +
+           0.5F * (kNoiseCoarseWeight + kNoiseFineWeight) * kWaves.shore_noise + 0.5F;
+}
+/// empty_land_height at the default shore (31.6).
+inline constexpr float kEmptyLandHeight = empty_land_height(kShoreHeight);
 
 /// One texel of the water field (WaterField's four planes at one pixel).
 struct FieldTexel {
@@ -402,7 +410,7 @@ void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow
                 // Land points too (shore 0), so foam reaches the beach.
                 const FieldPx f = field(cy * rw + cx);
                 const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
-                const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
+                const std::pair<float, float> pos = screen_tile(px, py, twf, thf);
                 const float depth = (static_cast<float>(f[2]) - kDepthBias) / kDepthScale;
                 grid.push_back(wave_shade(static_cast<float>(f[1]) / kShoreScale, depth,
                                           slope_of(f[3]), pos, time_ms, detail));
@@ -432,7 +440,7 @@ void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow
                 if (sd < w.swash_depth && (flags & 2U) == 0) {
                     const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
                     run = swash_runup(static_cast<float>(f[1]) / kShoreScale, slope_of(flags),
-                                      {px / twf + py / thf, py / thf - px / twf}, time_ms);
+                                      screen_tile(px, py, twf, thf), time_ms);
                 }
                 alpha = smoothstep(-w.shore_edge, w.shore_edge, sd + run);
             }
@@ -485,7 +493,7 @@ void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow
                     shade = {blend(&Shade::light), blend(&Shade::foam), blend(&Shade::tint)};
                 } else {
                     const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
-                    const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
+                    const std::pair<float, float> pos = screen_tile(px, py, twf, thf);
                     // The flow shading where the lattice has a flow, else the
                     // legacy shimmer.
                     const FlowSample fs = rivers != nullptr ? flow(row * rw + col) : FlowSample{};

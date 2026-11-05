@@ -1,0 +1,18 @@
+# Publication policy (round dz, 4c): Monotonic (the default) against LatestOnly (--publish latest),
+# each pair the same workload as picture_d1.cases (the legal five-city baseline, 40 buildings per
+# city, 2000 t of test goods, two chunk workers, a 1920 x 1080 view at group 2, paced at 60 Hz).
+# Above the build rate with one, two and four picture workers; below it (the policies should agree);
+# a delayed consumer and reclaimer; edits offscreen and the return of the view. One case after
+# another (tools/bench/picture_matrix.sh).
+m-w1-above    --scenario stream --rate 400 --edits 400 --goods-tons 2000 --threads 1
+l-w1-above    --scenario stream --rate 400 --edits 400 --goods-tons 2000 --threads 1 --publish latest
+m-w2-above    --scenario stream --rate 400 --edits 400 --goods-tons 2000 --threads 2
+l-w2-above    --scenario stream --rate 400 --edits 400 --goods-tons 2000 --threads 2 --publish latest
+m-w4-above    --scenario stream --rate 400 --edits 400 --goods-tons 2000 --threads 4
+l-w4-above    --scenario stream --rate 400 --edits 400 --goods-tons 2000 --threads 4 --publish latest
+m-below       --scenario stream --rate 10 --edits 100 --goods-tons 2000
+l-below       --scenario stream --rate 10 --edits 100 --goods-tons 2000 --publish latest
+m-delayed     --scenario delayed --rate 10 --edits 60 --commit-every 6 --stall-ms 2000 --goods-tons 2000
+l-delayed     --scenario delayed --rate 10 --edits 60 --commit-every 6 --stall-ms 2000 --goods-tons 2000 --publish latest
+m-offscreen   --scenario offscreen --edits 20 --rate 20 --goods-tons 2000
+l-offscreen   --scenario offscreen --edits 20 --rate 20 --goods-tons 2000 --publish latest

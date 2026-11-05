@@ -1,0 +1,1 @@
+viewer_wiring: PASS r1_held_publication: window exit 0 after 0.0 s, no failed step; session cache\f\f1\repro

@@ -51,7 +51,46 @@ enum class Reject : std::uint16_t {
     /// refuses it: a LegacyRawCmd whose type is a native wire type, or a payload longer
     /// than kMaxRecordPayload). Recorder::submit answers it without logging or applying
     /// the command, so the log stays the ground truth of the session (S9).
-    Unencodable
+    Unencodable,
+    // MAP-2 (the founding command, docs/sim/ship-founding.md section 16), appended in order.
+    /// FoundCmd: the ship figure does not exist.
+    UnknownFigure,
+    /// The figure's type is not the ship class.
+    NotAShip,
+    /// The ship belongs to another player.
+    NotShipOwner,
+    /// The ship's state word has the rejecting bit.
+    ShipDisabled,
+    /// The building type is not offered for founding (Rules::founding_types, PRODTYPE 33..64).
+    NotAFoundingType,
+    /// The click is beyond the founding distance of the ship.
+    OutOfRange,
+    /// A footprint tile is owned by a city (the takeover path is not part of founding).
+    SiteOwned,
+    /// The issuer already has a city on the island.
+    OwnCityOnIsland,
+    /// No rotation passes bounds, ownership, overlap and terrain.
+    NoRotationFits,
+    /// A nearby figure vetoes the site.
+    FigureInTheWay,
+    /// A fact the figure veto needs is missing (an unknown figure type, owner or relation).
+    FigureFactsMissing,
+    /// The island is locked.
+    IslandLocked,
+    /// The island's city ring has no usable slot.
+    NoCitySlot,
+    // MAP-NAV-2 (MoveCmd / StopCmd, docs/sim/ship-navigation.md 12.1), appended in order.
+    /// The ship is a crew child (it has a parent) and takes no orders.
+    ShipEmbarked,
+    // MAP-CARGO-1 (UnloadCmd, docs/sim/ship-cargo.md section 3), appended in order.
+    /// UnloadCmd: the named building's type is not an eligible warehouse type.
+    NotAWarehouse,
+    /// UnloadCmd: the named hold does not hold the named goods, or holds none of it (amount 0).
+    HoldGoodsMismatch,
+    /// UnloadCmd: the goods id is 0 or outside the city's stock table.
+    UnsupportedGoods,
+    /// UnloadCmd: the city's store has no room left for the goods (full or over capacity).
+    StockFull
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -59,6 +98,9 @@ enum class Reject : std::uint16_t {
 struct RecordResult {
     Reject status = Reject::None;
     BuildingId building;
+    /// MAP-CARGO-1: the amount an accepted UnloadCmd moved from the hold into the city store, in
+    /// 1/256 ton (docs/sim/ship-cargo.md section 3). 0 for every other command and every refusal.
+    std::uint64_t transferred_88 = 0;
 };
 
 /// The result of World::apply (stage S8): the status of the command as a whole
@@ -123,6 +165,42 @@ struct ApplyResult {
         return "ListFull";
     case Reject::Unencodable:
         return "Unencodable";
+    case Reject::UnknownFigure:
+        return "UnknownFigure";
+    case Reject::NotAShip:
+        return "NotAShip";
+    case Reject::NotShipOwner:
+        return "NotShipOwner";
+    case Reject::ShipDisabled:
+        return "ShipDisabled";
+    case Reject::NotAFoundingType:
+        return "NotAFoundingType";
+    case Reject::OutOfRange:
+        return "OutOfRange";
+    case Reject::SiteOwned:
+        return "SiteOwned";
+    case Reject::OwnCityOnIsland:
+        return "OwnCityOnIsland";
+    case Reject::NoRotationFits:
+        return "NoRotationFits";
+    case Reject::FigureInTheWay:
+        return "FigureInTheWay";
+    case Reject::FigureFactsMissing:
+        return "FigureFactsMissing";
+    case Reject::IslandLocked:
+        return "IslandLocked";
+    case Reject::NoCitySlot:
+        return "NoCitySlot";
+    case Reject::ShipEmbarked:
+        return "ShipEmbarked";
+    case Reject::NotAWarehouse:
+        return "NotAWarehouse";
+    case Reject::HoldGoodsMismatch:
+        return "HoldGoodsMismatch";
+    case Reject::UnsupportedGoods:
+        return "UnsupportedGoods";
+    case Reject::StockFull:
+        return "StockFull";
     }
     return "?";
 }

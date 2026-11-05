@@ -1,0 +1,35 @@
+# R2 on the GPU window (W4-WIN-CLOSE C2): a visible dissolve that has not completed keeps the change
+# "not on the GPU" until it is done. Run with --gpu and ANNO_VIEW_FADE_MS=3000 (the chunk dissolve).
+# A view of chunks that are not on the GPU while uploads are held gets placeholders; the edit's chunk
+# replaces one when the uploads are released and dissolves in over the fade time.
+look 1052 444
+key b
+select 1307
+rotate 0
+wait frames 90
+# Zoom in, so that the view is small and a jump of 150 tiles lands on chunks never uploaded.
+wheel 6
+wait frames 150
+hold uploads
+look 1204 510
+wait frames 60
+click 1204 510
+wait outcome
+expect outcome Applied
+wait visibility NotOnGpu
+expect held uploads
+checkpoint dissolve_placeholder
+release uploads
+checkpoint dissolve_released
+wait frames 20
+expect visibility NotOnGpu
+checkpoint dissolving
+# Input meanwhile too: the sim goes on while the dissolve runs.
+click 1228 510
+wait outcome
+expect outcome Applied
+checkpoint dissolving_second_edit
+wait drawn
+expect visibility Visible
+checkpoint dissolved
+quit

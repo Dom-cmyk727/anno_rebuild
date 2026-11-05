@@ -1,5 +1,13 @@
 // Scene renders against the game files (ANNO1503_GAME_DIR; skips otherwise).
 //
+// Re-baselined 2026-11-03 (every line of the scene, legacy river and frame
+// tables): the handedness fix (docs/render/iso.md, "Handedness") draws the
+// world in the original's handedness instead of its mirror image. Each new
+// line keeps its old size and drawn / invisible / failed / unit counts (checked
+// when the hashes were replaced); only the pixels moved. From then on no line
+// equals the Rust reference, which keeps the former, mirrored projection (ADR
+// 0001: no new features there). The history below explains the lines before.
+//
 // Every 0200Single scenario and one island template, rendered with all
 // layers: the whole scene at zoom group 2 (original water at 0 ms, enhanced
 // water at 2,500 ms) and a 1600 × 900 region at the centre at group 1 (both
@@ -270,6 +278,10 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                 }
                 scene = std::make_unique<render::Scene>("", std::move(islands), std::move(textures),
                                                         std::move(anlagen), render::kHeightLift);
+                // The tables were recorded with the shore at 16, the renderer's until 2026-11-03
+                // (and the Rust reference's); the default shore (kShoreHeight) is the frames
+                // test's third pass.
+                scene->shore_height = 16.0F;
                 if (auto s = anno::formats::sze::Scene::parse(buf)) {
                     const anno::assets::unit::VolumeReader read =
                         [&](std::uint32_t g, std::uint64_t o,
@@ -378,90 +390,82 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
 }
 
 const std::vector<std::string> kExpected = {
-    "Single_01.sze g2 t0 Original 16960x9170 2f0395814262894d drawn=69864 inv=11717 failed=0 "
+    "Single_01.sze g2 t0 Original 16960x9170 5bb461ea865303b4 drawn=69864 inv=11717 failed=0 "
     "units=5",
-    "Single_01.sze g2 t2500 Enhanced 16960x9170 c173c978c6ae696b drawn=69256 inv=11717 failed=0 "
+    "Single_01.sze g2 t2500 Enhanced 16960x9170 00f5871e2160ef94 drawn=69256 inv=11717 failed=0 "
     "units=5",
-    "Single_01.sze g1 region Original f3c82ff0f061887a drawn=24371 units=0",
-    "Single_01.sze g1 region Enhanced 38fa6edcf261fb33 drawn=24110 units=0",
-    "Single_05.sze g2 t0 Original 9040x3291 2ab607c8c9c0890b drawn=12628 inv=1240 failed=0 units=2",
-    "Single_05.sze g2 t2500 Enhanced 9040x3291 84964184f8e64d2a drawn=12628 inv=1240 failed=0 "
+    "Single_01.sze g1 region Original 64ac3aafd29fdd02 drawn=24371 units=0",
+    "Single_01.sze g1 region Enhanced 8cf3c928653f8d67 drawn=24110 units=0",
+    "Single_05.sze g2 t0 Original 9040x3291 c79638e6a30238ae drawn=12628 inv=1240 failed=0 units=2",
+    "Single_05.sze g2 t2500 Enhanced 9040x3291 82966a82545fb6ea drawn=12628 inv=1240 failed=0 "
     "units=2",
-    "Single_05.sze g1 region Original c90b2060847e2a1f drawn=4603 units=0",
-    "Single_05.sze g1 region Enhanced 7bc859ab6cbbe7d0 drawn=4603 units=0",
-    "Single_06.sze g2 t0 Original 7280x4451 3f1ba536788d1526 drawn=13778 inv=3084 failed=0 units=3",
-    "Single_06.sze g2 t2500 Enhanced 7280x4451 0eda75c6891a3e3d drawn=13626 inv=3084 failed=0 "
+    "Single_05.sze g1 region Original 2786adab4fb6b400 drawn=4603 units=0",
+    "Single_05.sze g1 region Enhanced 4066883193efd0ff drawn=4603 units=0",
+    "Single_06.sze g2 t0 Original 7280x4451 8d88cf465f7623a1 drawn=13778 inv=3084 failed=0 units=3",
+    "Single_06.sze g2 t2500 Enhanced 7280x4451 0b798bbb1ac211c9 drawn=13626 inv=3084 failed=0 "
     "units=3",
-    "Single_06.sze g1 region Original 81d690c94bbb0fc5 drawn=599 units=0",
-    "Single_06.sze g1 region Enhanced 27da1a1ded12c916 drawn=599 units=0",
-    "Single_08.sze g2 t0 Original 4400x2211 d00b949e4837b656 drawn=7537 inv=1604 failed=0 units=1",
-    "Single_08.sze g2 t2500 Enhanced 4400x2211 129a47786c8ec006 drawn=7537 inv=1604 failed=0 "
+    "Single_06.sze g1 region Original d76bca6447a14328 drawn=599 units=0",
+    "Single_06.sze g1 region Enhanced 1b1f0e3cc0bf8689 drawn=599 units=0",
+    "Single_08.sze g2 t0 Original 4400x2211 7d633a053e39b114 drawn=7537 inv=1604 failed=0 units=1",
+    "Single_08.sze g2 t2500 Enhanced 4400x2211 e2fb1364164d6fde drawn=7537 inv=1604 failed=0 "
     "units=1",
-    "Single_08.sze g1 region Original 7837282ad86bf737 drawn=6670 units=0",
-    "Single_08.sze g1 region Enhanced 226bdaf64c2c1073 drawn=6670 units=0",
-    "Single_10.sze g2 t0 Original 17440x9131 059c44e48f227c12 drawn=53212 inv=8756 failed=0 "
+    "Single_08.sze g1 region Original 57cd299eb8e8be58 drawn=6670 units=0",
+    "Single_08.sze g1 region Enhanced 5311ad68fbe3ce2d drawn=6670 units=0",
+    "Single_10.sze g2 t0 Original 17440x9131 721bf4b8bfef321d drawn=53212 inv=8756 failed=0 "
     "units=1",
-    "Single_10.sze g2 t2500 Enhanced 17440x9131 7151216672105309 drawn=52883 inv=8756 failed=0 "
+    "Single_10.sze g2 t2500 Enhanced 17440x9131 39db15f58da306d2 drawn=52883 inv=8756 failed=0 "
     "units=1",
-    "Single_10.sze g1 region Original 13acfeb61e56be15 drawn=0 units=0",
-    "Single_10.sze g1 region Enhanced 135943759028480b drawn=0 units=0",
-    "Single_12.sze g2 t0 Original 3920x2491 9302ccbdc2a89d62 drawn=8342 inv=1282 failed=0 units=1",
-    "Single_12.sze g2 t2500 Enhanced 3920x2491 936c1a3a4a47af2e drawn=8342 inv=1282 failed=0 "
+    "Single_10.sze g1 region Original 10ce0f7a56a09d46 drawn=0 units=0",
+    "Single_10.sze g1 region Enhanced 2b255a312f1309e1 drawn=0 units=0",
+    "Single_12.sze g2 t0 Original 3920x2491 d4fbb4f6d3f149ce drawn=8342 inv=1282 failed=0 units=1",
+    "Single_12.sze g2 t2500 Enhanced 3920x2491 d15b4e66b36c61d2 drawn=8342 inv=1282 failed=0 "
     "units=1",
-    "Single_12.sze g1 region Original ccecc1c9e8ce52c9 drawn=7295 units=0",
-    "Single_12.sze g1 region Enhanced f75cd5ed42ab42b5 drawn=7295 units=0",
-    "Single_14.sze g2 t0 Original 14080x9291 23b01ba36bfbcc8c drawn=47209 inv=9450 failed=0 "
+    "Single_12.sze g1 region Original 3b0f055f6ab0b3b2 drawn=7295 units=0",
+    "Single_12.sze g1 region Enhanced 84d7d8a11e469c35 drawn=7295 units=0",
+    "Single_14.sze g2 t0 Original 14080x9291 64f5df13bb66456e drawn=47209 inv=9450 failed=0 "
     "units=3",
-    "Single_14.sze g2 t2500 Enhanced 14080x9291 fe84bb91f57b406e drawn=47064 inv=9450 failed=0 "
+    "Single_14.sze g2 t2500 Enhanced 14080x9291 e93664225bc52176 drawn=47064 inv=9450 failed=0 "
     "units=3",
-    "Single_14.sze g1 region Original 323ce1b9064247a3 drawn=16735 units=1",
-    "Single_14.sze g1 region Enhanced a5f9c1083372b79b drawn=16681 units=1",
-    "Single_15.sze g2 t0 Original 9120x3611 5344dcbd6f6ded86 drawn=8216 inv=1082 failed=0 units=2",
-    "Single_15.sze g2 t2500 Enhanced 9120x3611 8d72f483f5a43e1a drawn=8216 inv=1082 failed=0 "
+    "Single_14.sze g1 region Original 7a2c5878a1c14945 drawn=16735 units=1",
+    "Single_14.sze g1 region Enhanced 4c17863d5054a823 drawn=16681 units=1",
+    "Single_15.sze g2 t0 Original 9120x3611 70ef139817d832a7 drawn=8216 inv=1082 failed=0 units=2",
+    "Single_15.sze g2 t2500 Enhanced 9120x3611 f39205d48d6162e4 drawn=8216 inv=1082 failed=0 "
     "units=2",
-    "Single_15.sze g1 region Original 13acfeb61e56be15 drawn=0 units=0",
-    "Single_15.sze g1 region Enhanced f6d3a04f6785983f drawn=0 units=0",
-    "Single_16.sze g2 t0 Original 7200x4051 75e8330f63ced1f2 drawn=8743 inv=239 failed=0 units=3",
-    "Single_16.sze g2 t2500 Enhanced 7200x4051 98c476dc599b849f drawn=8743 inv=239 failed=0 "
+    "Single_15.sze g1 region Original 10ce0f7a56a09d46 drawn=0 units=0",
+    "Single_15.sze g1 region Enhanced 98396d449ab33986 drawn=0 units=0",
+    "Single_16.sze g2 t0 Original 7200x4051 568dccc4a3966df4 drawn=8743 inv=239 failed=0 units=3",
+    "Single_16.sze g2 t2500 Enhanced 7200x4051 c730e0a969165f70 drawn=8743 inv=239 failed=0 "
     "units=3",
-    "Single_16.sze g1 region Original 7a3fa2adca976f53 drawn=1384 units=0",
-    "Single_16.sze g1 region Enhanced 8a3caa97f52c354a drawn=1384 units=0",
-    "Single_24.sze g2 t0 Original 7200x2811 768dbcffaa6380e2 drawn=24577 inv=2880 failed=0 "
+    "Single_16.sze g1 region Original 06250f8c9d1f4f01 drawn=1384 units=0",
+    "Single_16.sze g1 region Enhanced 5699a9adf679aff1 drawn=1384 units=0",
+    "Single_24.sze g2 t0 Original 7200x2811 02273b3205ece214 drawn=24577 inv=2880 failed=0 "
     "units=541",
-    "Single_24.sze g2 t2500 Enhanced 7200x2811 8cd51f3c175b9611 drawn=24406 inv=2880 failed=0 "
+    "Single_24.sze g2 t2500 Enhanced 7200x2811 8778581d09caeb8e drawn=24406 inv=2880 failed=0 "
     "units=541",
-    "Single_24.sze g1 region Original 610c80610617b85a drawn=23697 units=0",
-    "Single_24.sze g1 region Enhanced 5f8671f1b63761f6 drawn=23526 units=0",
-    "N_064x064_0001_0B.scp g2 t0 Original 1280x891 d73b254ebe87486f drawn=949 inv=338 failed=0 "
+    "Single_24.sze g1 region Original a05e01aee281759f drawn=23697 units=0",
+    "Single_24.sze g1 region Enhanced 61ade0e565b61a78 drawn=23526 units=0",
+    "N_064x064_0001_0B.scp g2 t0 Original 1280x891 747c88b065e9794f drawn=949 inv=338 failed=0 "
     "units=0",
-    "N_064x064_0001_0B.scp g2 t2500 Enhanced 1280x891 5118c7e5cf5c0b0f drawn=930 inv=338 failed=0 "
+    "N_064x064_0001_0B.scp g2 t2500 Enhanced 1280x891 e725541db467004e drawn=930 inv=338 failed=0 "
     "units=0",
-    "N_064x064_0001_0B.scp g1 region Original 95cafb25426a2a9d drawn=949 units=0",
-    "N_064x064_0001_0B.scp g1 region Enhanced f24622877f58bc18 drawn=930 units=0",
+    "N_064x064_0001_0B.scp g1 region Original 4506818d74268479 drawn=949 units=0",
+    "N_064x064_0001_0B.scp g1 region Enhanced 2792fe96c3ebd4fe drawn=930 units=0",
 };
 
-// Lines that differ on MSVC's UCRT: the enhanced water calls std::exp and
-// std::pow (iso.cpp), which UCRT rounds differently in the last bit from
-// Apple's libm and glibc (as for the wave solver, fluid_test.cpp). Measured
-// 2026-10-18 on Windows 11 26H2 with MSVC 19.44; the Rust reference on the
-// same machine (Rust 1.99.1, x86_64-pc-windows-msvc, `digest_scene scenes`)
-// prints the same line, so C++ = Rust holds on UCRT too. Every other line,
-// including the enhanced lines of scenes with rivers, is identical there.
-// Fallback if more libms diverge: libm-free exp/pow in the enhanced water
-// (docs/render/iso.md, "Fidelity").
-const std::vector<std::pair<std::size_t, std::string>> kUcrt = {
-    {33, "Single_16.sze g2 t2500 Enhanced 7200x4051 b744196ec08d7b3e drawn=8743 inv=239 failed=0 "
-         "units=3"},
-};
+// Lines that differ on MSVC's UCRT from Apple's libm and glibc: the enhanced
+// water calls std::exp and std::pow (iso.cpp), which UCRT rounds differently in
+// the last bit (as for the wave solver, fluid_test.cpp). Until 2026-11-03 one
+// line differed (Single_16 g2 Enhanced). The table above was re-baselined on
+// 2026-11-03 for the handedness fix (docs/render/iso.md, "Handedness": every
+// line keeps its size and its drawn / invisible / failed / unit counts, only the
+// pixels move) on Windows 11 with MSVC (UCRT) only; the Apple and glibc values
+// are NOT_RUN since (no run with the game files there), so a run may differ in the enhanced lines
+// and then needs its own override table here (the former UCRT override is folded into kExpected;
+// restore a per-library table and its selection in expected_lines() when one is measured). Fallback
+// if more libms diverge: libm-free exp/pow in the enhanced water (docs/render/iso.md, "Fidelity").
 
 std::vector<std::string> expected_lines() {
-    std::vector<std::string> out = kExpected;
-#if defined(_MSC_VER)
-    for (const auto& [i, line] : kUcrt) {
-        out.at(i) = line;
-    }
-#endif
-    return out;
+    return kExpected;
 }
 
 } // namespace
@@ -510,25 +514,25 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
     };
     const std::vector<Old> old = {
         {"Single_01.sze",
-         "Single_01.sze g2 t2500 Enhanced 16960x9170 ba0b1101d9e6229f drawn=69256 inv=11717 "
+         "Single_01.sze g2 t2500 Enhanced 16960x9170 95b5083bfb7cd929 drawn=69256 inv=11717 "
          "failed=0 units=5",
          nullptr},
         {"Single_06.sze",
-         "Single_06.sze g2 t2500 Enhanced 7280x4451 e3a111d08b078b4b drawn=13626 inv=3084 "
+         "Single_06.sze g2 t2500 Enhanced 7280x4451 c8f619871bf77cfe drawn=13626 inv=3084 "
          "failed=0 units=3",
          nullptr},
         {"Single_10.sze",
-         "Single_10.sze g2 t2500 Enhanced 17440x9131 ec3566e92ecbcb5e drawn=52883 inv=8756 "
+         "Single_10.sze g2 t2500 Enhanced 17440x9131 11bc91250cff4a19 drawn=52883 inv=8756 "
          "failed=0 units=1",
          nullptr},
         {"Single_14.sze",
-         "Single_14.sze g2 t2500 Enhanced 14080x9291 e78f231176506a9d drawn=47064 inv=9450 "
+         "Single_14.sze g2 t2500 Enhanced 14080x9291 1d702bce968c7bb2 drawn=47064 inv=9450 "
          "failed=0 units=3",
          nullptr},
         {"Single_24.sze",
-         "Single_24.sze g2 t2500 Enhanced 7200x2811 de09ab1e97a17170 drawn=24406 inv=2880 "
+         "Single_24.sze g2 t2500 Enhanced 7200x2811 0500861b8f0adfdc drawn=24406 inv=2880 "
          "failed=0 units=541",
-         "Single_24.sze g1 region Enhanced febd87d511c3ec25 drawn=23526 units=0"},
+         "Single_24.sze g1 region Enhanced 317103d104e285be drawn=23526 units=0"},
     };
     const std::vector<std::string> now = expected_lines();
     // All five scenarios in one call per mode (20 renders on the test threads):
@@ -582,37 +586,63 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     }
     // FrameRenderer with 4 threads, chunks built in the frame; a 1280 × 720
     // view at the centre of each zoom group, 0RGB words hashed as LE bytes.
-    // Expected: crates/render/examples/digest_scene.rs frames.
+    // Expected: first crates/render/examples/digest_scene.rs frames; since the
+    // handedness fix (2026-11-03) this renderer's own, recorded on Windows 11 with
+    // MSVC (UCRT); no GCC or Clang run with the game files since.
     const std::vector<std::string> expected = {
-        "Single_01.sze g2 t0 Original f435559f2e90bf6c",
-        "Single_01.sze g2 t900 Original 56d4608c02dec8b8",
-        "Single_01.sze g2 t900 Enhanced 5f5038c7a0eb3691",
-        "Single_01.sze g1 t0 Original 09a628d338b317de",
-        "Single_01.sze g1 t900 Original b1981bfd551d3f3e",
-        "Single_01.sze g1 t900 Enhanced a5627197b93411f5",
-        "Single_01.sze g0 t0 Original 8755589201feb24a",
-        "Single_01.sze g0 t900 Original 8433a14744329f0f",
-        "Single_01.sze g0 t900 Enhanced 5298e2b2d0786b1f",
-        "Single_24.sze g2 t0 Original e7894f5a1560f7d2",
-        "Single_24.sze g2 t900 Original 154c9a87f81f5ff5",
-        "Single_24.sze g2 t900 Enhanced 1c4dd9c8aab9b746",
-        "Single_24.sze g1 t0 Original a17a423d76e40c10",
-        "Single_24.sze g1 t900 Original 9c02fbfb3767584d",
-        "Single_24.sze g1 t900 Enhanced c98bde27b8efb888",
-        "Single_24.sze g0 t0 Original 6b07c0d4d77df178",
-        "Single_24.sze g0 t900 Original b9a7aaa3f213ac65",
-        "Single_24.sze g0 t900 Enhanced 56f35854554ef7ce",
+        "Single_01.sze g2 t0 Original 248443d0e912b365",
+        "Single_01.sze g2 t900 Original 0ed9aaf8927d753d",
+        "Single_01.sze g2 t900 Enhanced 22fe4226cd4f1d3f",
+        "Single_01.sze g1 t0 Original 4e0236765b1926b1",
+        "Single_01.sze g1 t900 Original f1df5a2168cc2e00",
+        "Single_01.sze g1 t900 Enhanced 99ab7b2be4901afc",
+        "Single_01.sze g0 t0 Original 58c04f71658b5a9a",
+        "Single_01.sze g0 t900 Original 2f0fcf0922a0a65b",
+        "Single_01.sze g0 t900 Enhanced e8d0658f44f41e0e",
+        "Single_24.sze g2 t0 Original 4963d7d2454de4eb",
+        "Single_24.sze g2 t900 Original 11b6fb41ed724495",
+        "Single_24.sze g2 t900 Enhanced 5a85882cdd8042e0",
+        "Single_24.sze g1 t0 Original c689fe55ac196701",
+        "Single_24.sze g1 t900 Original 8985d21dccc229a1",
+        "Single_24.sze g1 t900 Enhanced 3d3e2907d075cbd1",
+        "Single_24.sze g0 t0 Original 542463abd22778ba",
+        "Single_24.sze g0 t900 Original 4abf941c513c226a",
+        "Single_24.sze g0 t900 Enhanced cd8b345f42d05069",
     };
     // With the legacy river shading the two Single_24 river frames are the
     // previous enhanced digests (the flow shading changed those only; the
     // Single_01 views and Single_24's group 0 view hold no river pixels).
     std::vector<std::string> expected_legacy = expected;
-    expected_legacy[11] = "Single_24.sze g2 t900 Enhanced 3ac692d3b0a5f43b";
-    expected_legacy[14] = "Single_24.sze g1 t900 Enhanced 4d4a2f8226e38ad1";
+    expected_legacy[11] = "Single_24.sze g2 t900 Enhanced 4e7455cc16c48e90";
+    expected_legacy[14] = "Single_24.sze g1 t900 Enhanced e987dc93660249e4";
+    // Both tables are at the shore of 16, the renderer's until 2026-11-03 (still selectable,
+    // Scene::shore_height). At the default shore (kShoreHeight 16.5, owner 2026-11-03) corners at
+    // 16 are water: the frames with such corners in view move (Single_01's group 2 view in the
+    // enhanced water only, every Single_24 view), the others stay. Recorded on Windows 11 with
+    // MSVC (UCRT) on 2026-11-03, the flow shading.
+    std::vector<std::string> expected_default = expected;
+    expected_default[2] = "Single_01.sze g2 t900 Enhanced 722717aef0870f20";
+    expected_default[9] = "Single_24.sze g2 t0 Original fbcd064eea92be92";
+    expected_default[10] = "Single_24.sze g2 t900 Original 8be1ac7dfa1de66c";
+    expected_default[11] = "Single_24.sze g2 t900 Enhanced 6324918fcfed5a13";
+    expected_default[12] = "Single_24.sze g1 t0 Original 8b3fe1f74847557a";
+    expected_default[13] = "Single_24.sze g1 t900 Original 51f8992c7c377d04";
+    expected_default[14] = "Single_24.sze g1 t900 Enhanced 141ccd32e8a400ca";
+    expected_default[15] = "Single_24.sze g0 t0 Original 5da2142143058342";
+    expected_default[16] = "Single_24.sze g0 t900 Original 1d080bd7a484b179";
+    expected_default[17] = "Single_24.sze g0 t900 Enhanced 69fdf2b6a961c9d3";
+    struct Pass {
+        render::RiverFlowMode mode;
+        float shore;
+        const std::vector<std::string>* want;
+    };
     const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
     const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
-    for (const render::RiverFlowMode mode :
-         {render::RiverFlowMode::Flow, render::RiverFlowMode::Legacy}) {
+    for (const Pass& pass :
+         {Pass{render::RiverFlowMode::Flow, 16.0F, &expected},
+          Pass{render::RiverFlowMode::Legacy, 16.0F, &expected_legacy},
+          Pass{render::RiverFlowMode::Flow, render::kShoreHeight, &expected_default}}) {
+        CAPTURE(pass.shore);
         std::vector<std::string> lines;
         for (const char* name : {"Single_01.sze", "Single_24.sze"}) {
             const auto buf = anno::test::read_file(*dir / "Scenes" / "0200Single" / name);
@@ -622,14 +652,16 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
             if (const auto c = render::water_colour(anlagen)) {
                 textures.set_water(*c);
             }
-            const render::Scene scene("", anno::formats::insel::islands(buf).value(),
-                                      std::move(textures), std::move(anlagen), render::kHeightLift);
+            render::Scene scene("", anno::formats::insel::islands(buf).value(), std::move(textures),
+                                std::move(anlagen), render::kHeightLift);
+            scene.shore_height = pass.shore;
             render::FrameRenderer fr(4);
-            fr.river_flow = mode;
+            fr.river_flow = pass.mode;
             for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
                 const auto b = *scene.bounds(group);
-                // Single_24's centre at group 0 is all land: move to a coast.
-                const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? 2000 : 0;
+                // Single_24's centre at group 0 is all land: move to a coast (to the
+                // left: +2000 before the handedness fix of 2026-11-03, the same coast).
+                const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? -2000 : 0;
                 const render::Rect view{b.x + b.w / 2 - 640 + dx, b.y + b.h / 2 - 360, 1280, 720};
                 for (const auto& [time, style] :
                      {std::pair{std::uint64_t{0}, render::WaterStyle::Original},
@@ -650,7 +682,7 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
                 }
             }
         }
-        const auto& want = mode == render::RiverFlowMode::Flow ? expected : expected_legacy;
+        const auto& want = *pass.want;
         REQUIRE(lines.size() == want.size());
         for (std::size_t i = 0; i < lines.size(); ++i) {
             CHECK(lines[i] == want[i]);
@@ -975,7 +1007,7 @@ MaskFidelity mask_fidelity(const render::Scene& scene, std::size_t island) {
         const float x = (static_cast<float>(cx) + 0.5F) / cf,
                     y = (static_cast<float>(cy) + 0.5F) / cf;
         const float t = render::terrain_height(iw->heights, iw->w, iw->h, x, y);
-        return std::pair{off.first + static_cast<int>(std::floor((x - y) * half_w)),
+        return std::pair{off.first + static_cast<int>(std::floor((y - x) * half_w)),
                          off.second + static_cast<int>(std::floor((x + y) * half_h - lift_px * t))};
     };
     // The chunks that hold wet cells (and their neighbours), so that a sprite the raster

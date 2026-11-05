@@ -12,6 +12,7 @@
 #include <anno/formats/insel.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/island_links.hpp>
+#include <anno/sim/production.hpp>
 #include <anno/sim_load/fixed_map.hpp>
 #include <anno/sim_load/scenario_load.hpp>
 
@@ -301,6 +302,23 @@ load_fixed_map(const formats::fixed_map::FixedMap& map, std::span<const sim::Sea
             building.y = start.y;
             building.rotation = static_cast<std::uint8_t>(start.rotation);
             city.buildings.push_back(building);
+            if (options.resources.enabled) {
+                // Test resources (DeveloperResources): the same goods stock in every goods
+                // number of the warehouse, goods 0 (UNUSED) empty, and the capacity raised
+                // to hold it. Money is set on the seat's player below.
+                const std::uint32_t units = options.resources.goods_tons * sim::kTon;
+                std::vector<std::uint32_t> stock(config.warehouse_goods, units);
+                if (!stock.empty()) {
+                    stock[0] = 0;
+                }
+                city.stock = std::move(stock);
+                city.capacity = units;
+                for (sim::ScenarioSpec::PlayerSpec& player : out.spec.players) {
+                    if (player.id.v == start.seat) {
+                        player.money = options.resources.gold;
+                    }
+                }
+            }
             island->cities.push_back(std::move(city));
             island->owner_runs.push_back({start.seat, static_cast<std::uint32_t>(tiles)});
         }

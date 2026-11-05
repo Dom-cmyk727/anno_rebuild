@@ -24,6 +24,8 @@ namespace {
 constexpr std::uint64_t kStepBytes = 32;
 /// Bytes of Params in fluid.wgsl: 5 vec4 + 16 vec4 swell components.
 constexpr std::uint64_t kParamsBytes = 80 + 16 * 16;
+/// Bytes of Ships in fluid.wgsl: one vec4 head and 2 vec4 per ship.
+constexpr std::uint64_t kShipsBytes = 16 + 2 * 16 * fluid::kMaxShipWakes;
 
 void put_u32(std::vector<std::uint8_t>& b, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) {
@@ -54,7 +56,7 @@ std::vector<std::uint8_t> params_bytes(const fluid::FluidConfig& cfg, const flui
                           cfg.force_rate,        static_cast<float>(cfg.sponge_cells),
                           cfg.infiltration,      cfg.deep_speed / cfg.depth_cap,
                           cfg.max_speed,         cfg.swash_foam,
-                          cfg.break_min_depth,   0.0F};
+                          cfg.break_min_depth,   cfg.ship_full_depth};
     std::vector<std::uint8_t> out;
     out.reserve(kParamsBytes);
     for (const float f : v) {
@@ -62,6 +64,25 @@ std::vector<std::uint8_t> params_bytes(const fluid::FluidConfig& cfg, const flui
     }
     for (const auto& c : comps) {
         for (const float f : {c.k[0], c.k[1], c.omega, c.phase, c.amplitude, 0.0F, 0.0F, 0.0F}) {
+            put_f32(out, f);
+        }
+    }
+    return out;
+}
+
+/// Ships of fluid.wgsl.
+std::vector<std::uint8_t> ships_bytes(const fluid::FluidConfig& cfg,
+                                      const std::vector<fluid::ShipWake>& ships) {
+    std::vector<std::uint8_t> out;
+    out.reserve(kShipsBytes);
+    const std::size_t n = std::min(ships.size(), fluid::kMaxShipWakes);
+    for (const float f :
+         {static_cast<float>(n), cfg.ship_wave_gain, cfg.ship_min_speed, cfg.ship_stern_share}) {
+        put_f32(out, f);
+    }
+    for (std::size_t i = 0; i < fluid::kMaxShipWakes; ++i) {
+        const fluid::ShipWake s = i < n ? ships[i] : fluid::ShipWake{};
+        for (const float f : {s.x, s.y, s.vx, s.vy, s.half_length, s.half_width, 0.0F, 0.0F}) {
             put_f32(out, f);
         }
     }
@@ -152,7 +173,8 @@ formats::Result<FluidGpu, std::string> FluidGpu::create(const DeviceRef& dev,
     }
     const std::uint64_t align_bytes =
         std::max<std::uint64_t>(limits.minUniformBufferOffsetAlignment, kStepBytes);
-    const std::uint64_t ring = align_bytes * std::max(cfg.max_steps, 1U);
+    // One slot more than the most steps of a frame: the pass that carries the old state over.
+    const std::uint64_t ring = align_bytes * (std::uint64_t{std::max(cfg.max_steps, 1U)} + 1U);
     if (ring > limits.maxBufferSize || ring > UINT32_MAX) {
         return "fluid max_steps " + std::to_string(cfg.max_steps) + " too large for the device";
     }
@@ -168,8 +190,9 @@ formats::Result<FluidGpu, std::string> FluidGpu::create(const DeviceRef& dev,
     storage.storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
     storage.storageTexture.format = WGPUTextureFormat_RGBA32Float;
     storage.storageTexture.viewDimension = WGPUTextureViewDimension_2D;
-    const std::array entries = {uniform_entry(0, false), uniform_entry(1, true), tex_entry(2),
-                                storage, tex_entry(4)};
+    const std::array entries = {
+        uniform_entry(0, false), uniform_entry(1, true),  tex_entry(2), storage, tex_entry(4),
+        uniform_entry(5, false), uniform_entry(6, false), tex_entry(7)};
     WGPUBindGroupLayoutDescriptor ld = WGPU_BIND_GROUP_LAYOUT_DESCRIPTOR_INIT;
     ld.label = sv("fluid");
     ld.entryCount = entries.size();
@@ -192,6 +215,7 @@ formats::Result<FluidGpu, std::string> FluidGpu::create(const DeviceRef& dev,
     wgpuDevicePushErrorScope(d, WGPUErrorFilter_Validation);
     f.vel_pipe_ = pipe("vel_step");
     f.eta_pipe_ = pipe("eta_step");
+    f.resample_pipe_ = pipe("resample_state");
     if (const std::string err = pop_error_scope(dev.instance.get(), d); !err.empty()) {
         return "fluid pipelines: " + err;
     }
@@ -201,6 +225,15 @@ formats::Result<FluidGpu, std::string> FluidGpu::create(const DeviceRef& dev,
     wgpuQueueWriteBuffer(dev.queue.get(), f.params_.get(), 0, pb.data(), pb.size());
     f.align_ = align_bytes;
     f.steps_ = uniform_buffer(d, "fluid steps", ring);
+    f.ships_ = uniform_buffer(d, "fluid ships", kShipsBytes);
+    f.old_ = uniform_buffer(d, "fluid old window", 32);
+    f.dummy_prev_tex_ = grid_texture(d, "fluid dummy", WGPUTextureFormat_RGBA32Float, 1,
+                                     WGPUTextureUsage_TextureBinding);
+    f.dummy_prev_ = view_of(f.dummy_prev_tex_.get());
+    {
+        const auto zero = ships_bytes(cfg, {});
+        wgpuQueueWriteBuffer(dev.queue.get(), f.ships_.get(), 0, zero.data(), zero.size());
+    }
     f.cfg_ = std::move(cfg);
     // Small until the first update sizes it to the view.
     f.grid_ = f.make_grid(64);
@@ -222,7 +255,7 @@ FluidGpu::Grid FluidGpu::make_grid(std::uint32_t n) const {
                            WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
     g.bathy_view = view_of(g.bathy.get());
     auto bind = [&](WGPUTextureView src, WGPUTextureView dst) {
-        std::array<WGPUBindGroupEntry, 5> e{};
+        std::array<WGPUBindGroupEntry, 8> e{};
         for (std::size_t i = 0; i < e.size(); ++i) {
             e[i] = WGPU_BIND_GROUP_ENTRY_INIT;
             e[i].binding = static_cast<std::uint32_t>(i);
@@ -234,6 +267,11 @@ FluidGpu::Grid FluidGpu::make_grid(std::uint32_t n) const {
         e[2].textureView = src;
         e[3].textureView = dst;
         e[4].textureView = g.bathy_view.get();
+        e[5].buffer = ships_.get();
+        e[5].size = kShipsBytes;
+        e[6].buffer = old_.get();
+        e[6].size = 32;
+        e[7].textureView = dummy_prev_.get();
         WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         desc.label = sv("fluid");
         desc.layout = layout_.get();
@@ -246,13 +284,30 @@ FluidGpu::Grid FluidGpu::make_grid(std::uint32_t n) const {
     return g;
 }
 
+void FluidGpu::set_ships(const std::vector<fluid::ShipWake>& ships) {
+    ship_list_ = ships;
+}
+
 bool FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<float, float> centre,
                       float span_tiles, std::uint64_t time_ms, const fluid::DepthFn& depth,
                       std::size_t threads, std::uint32_t cells_per_tile,
                       const WGPUPassTimestampWrites* timestamps) {
     const double target = static_cast<double>(time_ms) / 1000.0;
     const std::uint32_t cpt = cells_per_tile != 0 ? cells_per_tile : cfg_.cells_per_tile.at(group);
-    const std::uint32_t size = cfg_.window_size_for(cpt, span_tiles);
+    std::uint32_t size = cfg_.window_size_for(cpt, span_tiles);
+    if (window_ && window_->cells_per_tile == cpt) {
+        // A zoom changes the span the window must cover continuously, and a window of another size
+        // is a new one that starts at rest (owner playtest 2026-11-03: the waves vanished while the
+        // view zoomed and came back after). The window in use stays while it covers the view
+        // without being more than 1.6 times too wide; a zoom-out asks for a quarter more than
+        // needed, so the next notches fit as well.
+        const auto have = static_cast<std::uint32_t>(window_->size);
+        if (size <= have && have <= size + size * 3U / 5U) {
+            size = have;
+        } else if (size > have) {
+            size = cfg_.window_size_for(cpt, span_tiles * 1.25F);
+        }
+    }
     last_steps_ = 0;
     if (background_) {
         prepare_window(cpt, centre, size, target, depth, threads);
@@ -281,6 +336,11 @@ bool FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
     }
     const fluid::FluidWindow window = *window_;
     const auto dt = static_cast<double>(cfg_.dt);
+    if (resample_pending_) {
+        // The new window continues from where the old one was (its own start is the swell at the
+        // moment its preparation began).
+        sim_t_ = std::max(sim_t_, prev_sim_t_);
+    }
     if (target < sim_t_) {
         // Time went back (pause, clock wrap): restart from here.
         sim_t_ = target;
@@ -295,19 +355,88 @@ bool FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
         // Too far behind: skip ahead rather than stall the frame.
         sim_t_ += static_cast<double>(due - n) * dt;
     }
-    if (n == 0) {
+    if (n == 0 && !resample_pending_) {
         return false;
     }
     last_steps_ = static_cast<std::uint32_t>(n);
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(align_ * n), 0);
+    // One slot per step, and after them the one of the resample pass (the new window at sim_t_).
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(align_ * (n + 1)), 0);
     for (std::uint64_t k = 0; k < n; ++k) {
         const double t = sim_t_ + dt * static_cast<double>(k + 1);
         const auto step = step_bytes(window, static_cast<float>(t));
         std::memcpy(bytes.data() + align_ * k, step.data(), step.size());
     }
+    if (resample_pending_) {
+        const auto step = step_bytes(window, static_cast<float>(sim_t_));
+        std::memcpy(bytes.data() + align_ * n, step.data(), step.size());
+        std::vector<std::uint8_t> old;
+        for (const std::int64_t v :
+             {prev_window_.origin.first, prev_window_.origin.second, prev_window_.size}) {
+            put_u32(old, static_cast<std::uint32_t>(i32_of(v)));
+        }
+        put_f32(old, static_cast<float>(prev_window_.cells_per_tile));
+        old.resize(32, 0);
+        wgpuQueueWriteBuffer(ref_->queue.get(), old_.get(), 0, old.data(), old.size());
+    }
     wgpuQueueWriteBuffer(ref_->queue.get(), steps_.get(), 0, bytes.data(), bytes.size());
+    {
+        const auto sb = ships_bytes(cfg_, ship_list_);
+        wgpuQueueWriteBuffer(ref_->queue.get(), ships_.get(), 0, sb.data(), sb.size());
+    }
     sim_t_ += dt * static_cast<double>(n);
     const std::uint32_t groups = (grid_.n + 7) / 8;
+    if (resample_pending_) {
+        // The new window's own initial state is copied aside (texture 1) and read as `src`; the
+        // resampled result is written over texture 0, the state the steps continue from.
+        const std::uint32_t nn = grid_.n;
+        WGPUTexelCopyTextureInfo from = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        from.texture = grid_.states[0].get();
+        WGPUTexelCopyTextureInfo to = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        to.texture = grid_.states[1].get();
+        const WGPUExtent3D ext = {nn, nn, 1};
+        wgpuCommandEncoderCopyTextureToTexture(encoder, &from, &to, &ext);
+        std::array<WGPUBindGroupEntry, 8> e{};
+        for (std::size_t i = 0; i < e.size(); ++i) {
+            e[i] = WGPU_BIND_GROUP_ENTRY_INIT;
+            e[i].binding = static_cast<std::uint32_t>(i);
+        }
+        e[0].buffer = params_.get();
+        e[0].size = kParamsBytes;
+        e[1].buffer = steps_.get();
+        e[1].size = kStepBytes;
+        e[2].textureView = grid_.views[1].get();
+        e[3].textureView = grid_.views[0].get();
+        e[4].textureView = grid_.bathy_view.get();
+        e[5].buffer = ships_.get();
+        e[5].size = kShipsBytes;
+        e[6].buffer = old_.get();
+        e[6].size = 32;
+        e[7].textureView = prev_grid_->views[0].get();
+        WGPUBindGroupDescriptor bd = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        bd.label = sv("fluid resample");
+        bd.layout = layout_.get();
+        bd.entryCount = e.size();
+        bd.entries = e.data();
+        const BindGroup bg(wgpuDeviceCreateBindGroup(ref_->device.get(), &bd));
+        WGPUComputePassDescriptor rd = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;
+        rd.label = sv("fluid resample");
+        const WGPUComputePassEncoder rp = wgpuCommandEncoderBeginComputePass(encoder, &rd);
+        const auto off = static_cast<std::uint32_t>(align_ * n);
+        wgpuComputePassEncoderSetPipeline(rp, resample_pipe_.get());
+        wgpuComputePassEncoderSetBindGroup(rp, 0, bg.get(), 1, &off);
+        wgpuComputePassEncoderDispatchWorkgroups(rp, groups, groups, 1);
+        wgpuComputePassEncoderEnd(rp);
+        wgpuComputePassEncoderRelease(rp);
+        // The replaced grid is kept for the next window of its size; the commands above still read
+        // it and are ordered before any later write.
+        spare_ = std::move(prev_grid_);
+        prev_grid_.reset();
+        resample_pending_ = false;
+        ++resamples_;
+    }
+    if (n == 0) {
+        return true;
+    }
     WGPUComputePassDescriptor cd = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;
     cd.label = sv("fluid");
     cd.timestampWrites = timestamps;
@@ -523,6 +652,11 @@ void FluidGpu::free_job_in_background(std::unique_ptr<Job> job) {
 void FluidGpu::drop_window() {
     retire_job();
     window_.reset();
+    if (prev_grid_) {
+        spare_ = std::move(prev_grid_); // a window that is dropped carries nothing over
+        prev_grid_.reset();
+    }
+    resample_pending_ = false;
 }
 
 void FluidGpu::retire_job() {
@@ -661,7 +795,16 @@ bool FluidGpu::apply_job(Job& j) {
     if (j.next_piece < j.pieces.size()) {
         return false;
     }
-    spare_ = std::move(grid_);
+    if (carry_waves_over && window_ && grid_.n > 0) {
+        // The waves of the window being replaced carry over (resample_state, recorded by the next
+        // update): a zoom must not restart them at rest.
+        prev_grid_ = std::move(grid_);
+        prev_window_ = *window_;
+        prev_sim_t_ = sim_t_;
+        resample_pending_ = true;
+    } else {
+        spare_ = std::move(grid_);
+    }
     grid_ = std::move(*j.grid);
     window_ = j.window;
     ++window_serial_;

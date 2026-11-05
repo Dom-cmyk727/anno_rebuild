@@ -6,7 +6,7 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 114 (task T33.5 stage 3), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 116 (task MAP-2), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
@@ -25,8 +25,9 @@
 //                with an optional City, whose building lists are the scopes
 //                `index` / `list` / `building`)
 //   7 figures    the FigureRegistry: i64 hint, u32 cursor, u64 slot count, per slot
-//                (scope `figure`, ordinal = slot) an optional Figure, u16 stamp,
-//                the expiry ids
+//                (scope `figure`, ordinal = slot) an optional Figure (since 116 ending
+//                in u8 dir16, u64 parent, optional u32 crew slot, u64 count + (u32 goods,
+//                u32 tons) per hold), u16 stamp, the expiry ids
 //   8 events     the timed-event queue: u64 count, per event its key (u64 due, u64
 //                seq) and the TimedEvent
 //   9 timers_monopoly  the ScriptTimers (u32 last_tick, u8 flags, u32 counters) and
@@ -260,7 +261,41 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     fields(a, s.links);
 }
 
-static_assert(field_count<Rules>() == 20, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<NavClassCost>() == 4, "a NavClassCost member needs a line in fields");
+template <class A, Same<NavClassCost> S> void fields(A& a, S& s) {
+    a.u16(s.open_orth);
+    a.u16(s.open_diag);
+    a.u16(s.shore_orth);
+    a.u16(s.shore_diag);
+}
+
+static_assert(field_count<NavRules>() == 16, "a NavRules member needs a line in fields(NavRules)");
+template <class A, Same<NavRules> S> void fields(A& a, S& s) {
+    a.u32(s.move_blocked_mask);
+    a.u32(s.plans_per_advance);
+    a.u32(s.run_cap);
+    a.u32(s.retry_cap);
+    a.u32(s.goal_radius_tiles);
+    a.u32(s.unit_cap);
+    a.u32(s.window_radius_tiles);
+    a.u32(s.window_blocks);
+    a.u64(s.coarse_budget);
+    a.u64(s.fine_budget);
+    a.u64(s.memory_bytes);
+    a.u32(s.volk_number);
+    a.u32(s.health_span_percent);
+    a.u32(s.health_floor_percent);
+    a.u32(s.cargo_penalty_percent);
+    ar::seq(a, s.class_costs, 8, [&](auto& k) { fields(a, k); });
+}
+
+static_assert(field_count<CargoRules>() == 2, "a CargoRules member needs a line in fields");
+template <class A, Same<CargoRules> S> void fields(A& a, S& s) {
+    ar::seq(a, s.warehouse_prodtypes, 4, [&](auto& x) { a.u32(x); });
+    ar::seq(a, s.dock_half_widths, 4, [&](auto& x) { a.u32(x); });
+}
+
+static_assert(field_count<Rules>() == 25, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -283,6 +318,13 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.timer0_clamp);
     a.enumv(s.island_candidate_order);
     a.boolean(s.removal_clear_tile);
+    ar::seq(a, s.founding_types, 4, [&](auto& x) { a.u32(x); }); // stream 120
+    ar::seq(a, s.city_names, 8, [&](auto& x) { a.str(x); });     // stream 120
+    ar::seq(a, s.shared_visibility, 8, [&](auto& group) {        // stream 121
+        ar::seq(a, group, 4, [&](auto& x) { a.u32(x); });
+    });
+    fields(a, s.nav);   // stream 122
+    fields(a, s.cargo); // stream 124
 }
 
 // ---- settings scope
@@ -319,7 +361,17 @@ template <class A, Same<ResearchState> S> void fields(A& a, S& s) {
     ar::seq(a, s.progress, 2, [&](auto& x) { a.u16(x); });
 }
 
-static_assert(field_count<Player>() == 20, "a Player member needs a line in fields(Player)");
+static_assert(field_count<Relation>() == 5, "a Relation member needs a line in fields(Relation)");
+
+template <class A, Same<Relation> S> void fields(A& a, S& s) {
+    a.u32(s.other.v);
+    a.u8(s.trade);
+    a.u8(s.milit);
+    a.u8(s.war);
+    a.u16(s.credit);
+}
+
+static_assert(field_count<Player>() == 22, "a Player member needs a line in fields(Player)");
 
 template <class A, Same<Player> S> void fields(A& a, S& s) {
     a.u32(s.index.v);
@@ -348,6 +400,8 @@ template <class A, Same<Player> S> void fields(A& a, S& s) {
     a.boolean(s.free_build);
     ar::seq(a, s.name, 1, [&](auto& x) { a.u8(x); });
     fields(a, s.research);
+    ar::seq(a, s.relations, 9, [&](auto& r) { fields(a, r); }); // stream 120
+    ar::seq(a, s.discovery, 4, [&](auto& p) { a.u32(p.v); });   // stream 120
 }
 
 static_assert(field_count<PlayerTable>() == 3,
@@ -677,7 +731,7 @@ template <class A, Same<House> S> void fields(A& a, S& s) {
     ar::seq(a, s.stock, 4, [&](auto& x) { a.u32(x); });
 }
 
-static_assert(field_count<Building>() == 8, "a Building member needs a line in fields(Building)");
+static_assert(field_count<Building>() == 9, "a Building member needs a line in fields(Building)");
 
 /// The u8 tag of each Payload alternative in the stream: the PayloadTag values
 /// (Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5, Market 6,
@@ -700,6 +754,7 @@ template <class A, Same<Building> S> void fields(A& a, S& s) {
     a.u8(s.rotation);
     a.u8(s.byte0e);
     a.u8(s.byte0f);
+    a.u32(s.kontor_id); // stream 119: building +0x1e
     ar::variant<kPayloadTags>(a, s.payload, [&](auto& alternative) { fields(a, alternative); });
 }
 
@@ -804,7 +859,7 @@ template <class A, Same<TradeEntry> S> void fields(A& a, S& s) {
     a.u32(s.price);
 }
 
-static_assert(field_count<City>() == 8, "a City member needs a line in fields(City)");
+static_assert(field_count<City>() == 10, "a City member needs a line in fields(City)");
 
 /// One city (docs/sim/state.md §9.3): `u32 number, u32 owner, u16 tick_stamp`, the
 /// stock (`u32 capacity`, u32 list), the goods settings, the build goods, the trade
@@ -819,6 +874,8 @@ template <class A, Same<City> S> void fields(A& a, S& s) {
     ar::seq(a, s.build_goods, 12, [&](auto& g) { fields(a, g); });
     ar::seq(a, s.trade_lists, 8,
             [&](auto& list) { ar::seq(a, list, 12, [&](auto& e) { fields(a, e); }); });
+    a.str(s.name);                                              // stream 119: city property 0x12
+    ar::seq(a, s.player_mask, 4, [&](auto& p) { a.u32(p.v); }); // stream 120: city property 0
     fields(a, s.index);
 }
 
@@ -854,16 +911,27 @@ template <class A, class V> void cities_io(A& a, V& cities) {
 // can count its members: index, tiles, terrain, climate, deposits, next_serial,
 // sweep, event300_stamp, drought, objmgr, ring, cities, reserved_object_count, cache
 // (the derived index cache is not in the stream).
-static_assert(field_count<Island>() == 14,
+static_assert(field_count<OreObject>() == 5,
+              "an OreObject member needs a line in fields(OreObject)");
+
+template <class A, Same<OreObject> S> void fields(A& a, S& s) {
+    a.u32(s.type);
+    a.i32(s.x);
+    a.i32(s.y);
+    a.u32(s.amount);
+    ar::seq(a, s.discovered, 4, [&](auto& p) { a.u32(p.v); });
+}
+
+static_assert(field_count<Island>() == 19,
               "an Island member needs a line in fields(Island) or a derived note");
 
 /// One island (docs/sim/state.md §9.3): `u32 index`, the rectangle `i32 x0, i32 y0,
-/// u32 w, u32 h`, `u32 climate, u32 next_serial, u64 terrain_digest` (0 if none),
-/// the sweep, `u16 event300_stamp`, the object manager, the ring, the optional
-/// drought, the deposits, `u64 reserved_object_count`, scope `tiles`, scope `cities`
-/// (stage S6). The terrain itself is not in the stream (its blobs travel in the save frame, §9.5):
-/// reading leaves a placeholder that carries the digest, and the frame replaces it by the verified
-/// blobs.
+/// u32 w, u32 h`, `u32 climate, u8 lock (118), i32 city_cursor and u32 kontor_counter (119), u32
+/// next_serial, u64 terrain_digest` (0 if none), the sweep, `u16 event300_stamp`, the object
+/// manager, the ring, the optional drought, the deposits, `u64 reserved_object_count`, scope
+/// `tiles`, scope `cities` (stage S6). The terrain itself is not in the stream (its blobs travel in
+/// the save frame, §9.5): reading leaves a placeholder that carries the digest, and the frame
+/// replaces it by the verified blobs.
 template <class A, Same<Island> S> void fields(A& a, S& s) {
     a.u32(s.index.v);
     std::int32_t x0 = s.tiles.x0();
@@ -875,6 +943,10 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
     a.u32(w);
     a.u32(h);
     a.u32(s.climate);
+    a.u8(s.lock);            // stream 118: the LOCKED byte (island +0xc4)
+    a.i32(s.city_cursor);    // stream 119: the ring's allocation cursor
+    a.u32(s.kontor_counter); // stream 119: island +0xc6
+    ar::seq(a, s.players_present, 4, [&](auto& p) { a.u32(p.v); }); // stream 120: island +0xa6
     a.u32(s.next_serial);
     std::uint64_t terrain = s.terrain ? s.terrain->digest : 0;
     a.u64(terrain);
@@ -894,6 +966,7 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
     ar::opt(a, s.drought, [&](auto& d) { fields(a, d); });
     // Smallest Deposit on the wire: u64 name length + 3 x 4 + 1 bytes.
     ar::seq(a, s.deposits, 21, [&](auto& d) { fields(a, d); });
+    ar::seq(a, s.ore_objects, 24, [&](auto& o) { fields(a, o); }); // stream 120
     a.u64(s.reserved_object_count);
     a.scope("tiles", [&] { tiles_io(a, s.tiles, x0, y0, w, h); });
     a.scope("cities", [&] { cities_io(a, s.cities); });
@@ -929,12 +1002,14 @@ template <class A, class V> void islands_io(A& a, V& islands, const SimConfig& c
 
 // ---- ids, figures and the event queue (stage S7)
 
-static_assert(field_count<IdCounters>() == 2,
+static_assert(field_count<IdCounters>() == 4,
               "an IdCounters member needs a line in fields(IdCounters)");
 
 template <class A, Same<IdCounters> S> void fields(A& a, S& s) {
     a.u64(s.next_figure);
     a.u64(s.next_event_seq);
+    a.u64(s.next_order_id); // stream 122
+    a.u64(s.next_ticket);   // stream 122
 }
 
 template <> struct EnumInfo<TransportStep> : ContiguousEnum<5> {};
@@ -955,7 +1030,60 @@ template <class A, Same<TransportState> S> void fields(A& a, S& s) {
     a.u32(s.reserved_88);
 }
 
-static_assert(field_count<Figure>() == 14, "a Figure member needs a line in fields(Figure)");
+static_assert(field_count<ShipHold>() == 2, "a ShipHold member needs a line in fields(ShipHold)");
+
+template <class A, Same<ShipHold> S> void fields(A& a, S& s) {
+    a.u32(s.goods);
+    a.u64(s.amount_88);
+}
+
+// ---- ship motion (MAP-NAV-2, stream 122; docs/sim/ship-navigation.md 12.5)
+
+template <> struct EnumInfo<NavSegKind> : ContiguousEnum<4> {};
+
+static_assert(field_count<NavNode>() == 5, "a NavNode member needs a line in fields(NavNode)");
+template <class A, Same<NavNode> S> void fields(A& a, S& s) {
+    a.enumv(s.kind);
+    a.u8(s.dir8);
+    a.u8(s.facing);
+    a.u64(s.length_q32);
+    a.u32(s.speed_q32);
+}
+
+static_assert(field_count<NavSegment>() == 5,
+              "a NavSegment member needs a line in fields(NavSegment)");
+template <class A, Same<NavSegment> S> void fields(A& a, S& s) {
+    a.enumv(s.kind);
+    a.u8(s.dir8);
+    a.u32(s.factor_percent);
+    a.u32(s.speed_q32);
+    a.u64(s.remaining_x500);
+}
+
+static_assert(field_count<NavOrder>() == 4, "a NavOrder member needs a line in fields(NavOrder)");
+template <class A, Same<NavOrder> S> void fields(A& a, S& s) {
+    a.u64(s.order_id);
+    a.boolean(s.routed);
+    a.i32(s.target_x_q8);
+    a.i32(s.target_y_q8);
+}
+
+static_assert(field_count<NavMotion>() == 10,
+              "a NavMotion member needs a line in fields(NavMotion)");
+template <class A, Same<NavMotion> S> void fields(A& a, S& s) {
+    ar::opt(a, s.order, [&](auto& o) { fields(a, o); });
+    ar::opt(a, s.ticket, [&](auto& t) { a.u64(t); });
+    fields(a, s.seg);
+    ar::seq(a, s.nodes, 15, [&](auto& n) { fields(a, n); });
+    a.u16(s.last);
+    a.i64(s.pos_u[0]);
+    a.i64(s.pos_u[1]);
+    a.u32(s.res24[0]);
+    a.u32(s.res24[1]);
+    ar::opt(a, s.health, [&](auto& h) { a.u32(h); }); // stream 123
+}
+
+static_assert(field_count<Figure>() == 20, "a Figure member needs a line in fields(Figure)");
 
 template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -973,6 +1101,15 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u16(s.stamp);
     fields(a, s.transport);
     ar::opt(a, s.expiry_stamp, [&](auto& v) { a.u16(v); });
+    // MAP-2 (stream 116; the hold amount is a u64 raw 1/256-ton count since 117). A hold is 12
+    // bytes on the wire, which bounds the count of a hostile stream by its remaining input
+    // (ar::seq).
+    a.u8(s.dir16);
+    a.u64(s.parent.v);
+    ar::opt(a, s.crew_slot, [&](auto& v) { a.u32(v); });
+    ar::seq(a, s.holds, 12, [&](auto& hold) { fields(a, hold); });
+    a.u32(s.state_word);                               // stream 120
+    ar::opt(a, s.nav, [&](auto& m) { fields(a, m); }); // stream 122
 }
 
 /// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64
@@ -1011,8 +1148,9 @@ template <class A, Same<SlotList<Figure>> S> void fields(A& a, S& s) {
     }
 }
 
-// `by_id` is derived (rebuilt after a read) and is not in the stream.
-static_assert(field_count<FigureRegistry>() == 4,
+// `by_id`, `children`, `tickets` and `ship_cells` are derived (rebuilt after a read) and are not
+// in the stream.
+static_assert(field_count<FigureRegistry>() == 7,
               "a FigureRegistry member needs a line in fields(FigureRegistry) or a derived note");
 
 template <class A, Same<FigureRegistry> S> void fields(A& a, S& s) {

@@ -103,7 +103,8 @@ std::optional<sim::ReplayLog> load_log(const std::string& path) {
 std::shared_ptr<const sim::TypeRegistry> registry_for(const sim::ReplayLog& log) {
     std::vector<std::shared_ptr<const sim::TypeRegistry>> known{sim::TypeRegistry::empty()};
     for (auto make : {&sim::synthetic::make_synthetic_types, &sim::synthetic::make_build_types,
-                      &sim::synthetic::make_growth_types, &sim::synthetic::make_transport_types}) {
+                      &sim::synthetic::make_growth_types, &sim::synthetic::make_transport_types,
+                      &sim::synthetic::make_founding_types}) {
         auto t = make();
         if (t.ok()) {
             known.push_back(t.value().registry);
@@ -112,6 +113,16 @@ std::shared_ptr<const sim::TypeRegistry> registry_for(const sim::ReplayLog& log)
     for (const auto& r : known) {
         if (r->digest() == log.registry_digest) {
             return r;
+        }
+    }
+    // A log made on the original files (the ship-start canary): the registry of the game directory,
+    // with the figure types, when its digest is the log's.
+    if (const char* dir = std::getenv("ANNO1503_GAME_DIR"); dir != nullptr && *dir != '\0') {
+        const anno::sim_load::OriginalRegistryLoad loaded =
+            anno::sim_load::load_original_registry(dir, anno::sim_load::FigureEntries::Required);
+        if (loaded.error.empty() && loaded.types != nullptr &&
+            loaded.types->digest() == log.registry_digest) {
+            return loaded.types;
         }
     }
     return sim::TypeRegistry::empty();

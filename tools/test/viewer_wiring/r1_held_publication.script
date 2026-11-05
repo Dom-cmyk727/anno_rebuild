@@ -1,0 +1,68 @@
+# R1 through the real play window (W4-WIN-CLOSE C1): the title and the script read one consistent
+# state while a publication is held between a turn's outcome record and its snapshot.
+# Run by tools/test/viewer_wiring.py; every `expect` fails the session if it is not met.
+look 1140 516
+key b
+select paid
+rotate 0
+# A first paid build, to have a published outcome that stays shown (the "earlier" control).
+click 1140 516
+wait outcome
+expect outcome Applied
+expect published
+wait turns 2
+
+# ---- the paid build, held between the record and the swap ---------------------------------------
+note money
+hold publication
+select paid
+click 1156 516
+wait held
+# The window keeps drawing and handling input while the sim thread waits: frames pass, and keys
+# rebuild the title inside the interval (the tool's own events, not a refresh helper).
+wait frames 5
+key n
+key p
+select paid
+wait frames 3
+# The script consumer (PlayRunner::feedback in script_tick): the outcome is withheld.
+expect outcome Queued
+expect published
+expect money same
+# The title consumer (PlayRunner::feedback in update_title): the receipt is Queued, never Applied.
+expect title-lacks Applied
+expect title command #2: Queued
+checkpoint held_paid
+release publication
+wait outcome
+wait frames 3
+expect outcome Applied
+expect published
+expect money less
+expect title command #2: Applied
+checkpoint released_paid
+
+# ---- a refusal, held the same way (the sim refuses a second build on the occupied tile) --------
+note money
+hold publication
+click 1156 516
+wait held
+wait frames 5
+key n
+key p
+select paid
+wait frames 3
+expect outcome Queued
+expect published
+expect title-lacks Refused
+expect title command #3: Queued
+checkpoint held_refused
+release publication
+wait outcome
+wait frames 3
+expect outcome Refused Occupied
+expect published
+expect money same
+expect title command #3: Refused (Occupied)
+checkpoint released_refused
+quit

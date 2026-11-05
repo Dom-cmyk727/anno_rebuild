@@ -134,6 +134,43 @@ struct EntrancePoint {
     std::uint32_t x6 = 0, y6 = 0;
 };
 
+/// The navigation facts of a ship-class figure type (MAP-NAV-2 B; docs/sim/ship-navigation.md 4 and
+/// 12.4). All integers, converted once at load: an f32 of the file becomes round-to-nearest-even of
+/// its exact binary value times 2^32 (an ADAPTATION; absolute error at most 2^-33 tile per stepper
+/// unit). A type without these facts is not a navigating type (carts, walkers, scouts, donkeys).
+/// The domains are enforced where every registry is sealed (kMinNav...) so a mod or builder cannot
+/// overflow the integrator's widths.
+struct NavFacts {
+    /// HEAD f32 at byte 4 (type slot +0x60), tiles per stepper unit (1 unit = 5 ticks) in q32
+    /// (2^-32 tile). Domain: 0 < v < kMaxNavSpeedQ32 (2^28, about 0.0625 tile per unit).
+    std::uint32_t speed_q32 = 0;
+    /// HEAD f32 at byte 0 (type slot +0x64(0)): the length of one 1/16 turn phase in q32 at the
+    /// turn speed 0.01. Domain: 0 < v < 2^32 (below one tile, so a turn segment never reaches the
+    /// 1.0-length chunk size).
+    std::uint32_t turn_step_q32 = 0;
+    /// LOGIC u16 at byte 0x1e (type slot +0x90): maximum hit points, 1 .. 65535.
+    std::uint32_t max_hp = 0;
+    /// LOGIC bytes 0x13 and 0x14 (type slot +0x88(0), +0x88(1)): the hold counts of the speed
+    /// factor.
+    std::uint32_t hold_count_a = 0;
+    std::uint32_t hold_count_b = 0;
+    /// LOGIC byte 0x10 (type slot +0xac): the route cost class, below the Rules cost table size.
+    std::uint32_t nav_class = 0;
+    /// LOGIC byte 0x28 / 8 tile in 1/256 tile (0 means 2 tiles; type slot +0x68(5)): the radius of
+    /// the route query's obstacle stamps. Domain 1 .. 255 * 32.
+    std::uint32_t stamp_radius_88 = 0;
+    friend constexpr bool operator==(const NavFacts&, const NavFacts&) = default;
+};
+
+/// The supported domain of NavFacts::speed_q32 (exclusive): 2^28 q32 = 1/16 tile per stepper unit.
+/// It keeps a visit's budget ticks * speed_q32 * 100 below 2^51 (docs/sim/ship-navigation.md 12.4).
+inline constexpr std::uint32_t kMaxNavSpeedQ32 = std::uint32_t{1} << 28;
+
+/// Empty when `n` lies in the supported domains (see NavFacts), else the first violation. Used by
+/// the original-file loader (a type outside the domains is not a navigating type) and by the
+/// registry seal (a builder-supplied fact outside them is refused).
+[[nodiscard]] std::string nav_facts_problem(const NavFacts& n);
+
 /// A figure type of FigurenHeader.dat as the transport reads it (D: AnnoGame.dll
 /// 0x1000fe00 into the type object, vtable 0x10021d10; docs/re/transport.md §1, §4).
 /// Integers only: the f32 values of the file are converted once at load, in double
@@ -155,7 +192,35 @@ struct FigureType {
     /// 0x100101f4-0x10010211, type +0x30) at the wait rate 0.01 (0x10035260) and the
     /// time scale 0.2: round(500 · v) (OQ-162).
     std::uint32_t load_ticks = 0;
+    /// MAP-2 (stream 120): the BEWOHNTYPE record (type slot +0x50); 0 = none (97..128 are the
+    /// queried classes of the founding veto, 113 the ship class).
+    std::uint32_t bewohntype = 0;
+    /// LOGIC[0x25] * 0.125 in 1/256 tile, 7 tiles when the byte is 0 (type slot 0x68(4),
+    /// AnnoGame 0x1000fd04, constant 0x40e00000 at 0x10021d04): the hostile veto's range.
+    std::uint32_t range_88 = 0;
+    /// HEAD[0x10] (f32) rounded to 1/256 tile: the hull half-extent of ships (property 5).
+    ///
+    /// SIGNED, because the shipped file holds a ship-class type (391) whose field is the
+    /// uninitialised fill 0xCCCCCCCC (-1.07e8 tiles): the original does float arithmetic with it
+    /// (an inverted box that never overlaps) and so does the veto, exactly, in integers. Absent
+    /// (nullopt) for every type whose HEAD has no such field (all non-ship classes, where it is
+    /// irrelevant, and ship-class types with a 16-byte HEAD: 343, 1510), and for a value that is
+    /// not a finite length below 2^31 tiles. A consumer that needs a hull and finds it absent
+    /// must refuse, never read it as 0 (docs/sim/ship-founding.md section 17.3).
+    std::optional<std::int64_t> hull_half_88 = std::nullopt;
+    /// MAP-NAV-2 (stream 122): present for a navigating ship type.
+    std::optional<NavFacts> nav = std::nullopt;
 };
+
+/// The supported domain of FigureType::hull_half_88: |value| < 2^31 tiles, i.e. strictly below
+/// kMaxHullHalf88 in 1/256 tile (2^39). The original-file decoder keeps exactly this range; the
+/// registry seal (TypeRegistry::build, Builder::build) refuses a value outside it, so every
+/// construction path agrees. With |position| <= 2^31 raw units the veto's position +- hull sums
+/// stay below 2^40, far inside int64. (The pure veto additionally saturates, so it is safe for
+/// any int64 a caller hands it directly: figure_veto.cpp.) Absent, zero, positive and negative
+/// values inside the bound are all distinct, supported facts. A mod needing larger hulls raises
+/// this constant together with the veto's saturation limit.
+inline constexpr std::int64_t kMaxHullHalf88 = std::int64_t{1} << 39;
 
 /// The HEAD flag word bit of a road or bridge (type +0x12, HEAD u16 [0x1c];
 /// docs/re/production.md §2.3; P: 35 of the 921 types).

@@ -391,7 +391,8 @@ TEST_CASE("draw site phases") {
         const auto site = static_cast<Site>(i);
         const std::string name = sim::draw_site_name(site);
         INFO(name);
-        const bool link_site = name.rfind("Link", 0) == 0 || name == "ComputerName";
+        const bool link_site =
+            name.rfind("Link", 0) == 0 || name == "ComputerName" || name == "CityNameLoad";
         CHECK(sim::may_draw(site, sim::DrawPhase::Load) == link_site);
         CHECK(sim::may_draw(site, sim::DrawPhase::Advance) == !link_site);
     }

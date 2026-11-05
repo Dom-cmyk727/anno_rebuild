@@ -5,7 +5,9 @@
 // Projection rules (spec: docs/render/iso.md; derived from sprite
 // measurements and visual checks, OQ-026):
 // - Tile (x, y) is a diamond kTile[group] wide/high whose top vertex is at
-//   screen ((x − y) · w/2, (x + y) · h/2).
+//   screen ((y − x) · w/2, (x + y) · h/2): tile +x runs to the screen's lower
+//   left, +y to its lower right, as the original's camera at the default
+//   view (D: AnnoFrame.dll 0x100712c0; OQ-026, 2026-11-03).
 // - Ground: the point with tile coordinates (s, t) ∈ [0, 1)² shows
 //   GroundCell::texel (cells are 1/6 of a 256 × 256 Felder.tex texture).
 // - Objects: the sprite's anchor is put on the centre of the footprint
@@ -101,8 +103,48 @@ inline void over(Px& dst, const Px& src) {
     over(dst.data(), src.data());
 }
 
-/// Screen position of the top vertex of tile (x, y).
+/// Screen position of the top vertex of tile (x, y): ((y − x) · tw/2,
+/// (x + y) · th/2). The original projects world (tile x, height, tile y)
+/// with column 0 of Ry(a) · Rx(b) · S, Ry = [[c, 0, −s], [0, 1, 0], [s, 0, c]]
+/// at a = 135° for the default view, so screen x = 41.835 · (y − x) px at
+/// zoom 0 (D: AnnoFrame.dll 0x100712c0, 0x10071d70; AnnoDisplay.dll
+/// 0x10011e60; docs/re/annodisplay.md §5). Every tile-to-screen mapping of
+/// the C++ renderer and its tools is this one: tile_top at whole corners,
+/// tile_top2 at half-tile ones, tile_screen at any tile position (or a
+/// tile-space vector), screen_tile the inverse. Kept inline, with their reason: gpu.wgsl (another
+/// language; its `tile_pos` and the comment above it are screen_tile's twin) and the ground
+/// rasteriser's tile range in draw_ground_grids (the inverse of a screen rectangle's extent in the
+/// diamond coordinates u = y − x, v = x + y, not of a point).
 std::pair<int, int> tile_top(int x, int y, std::size_t group);
+
+/// tile_top at doubled coordinates (x2, y2), twice a position on the half-tile grid such as a
+/// footprint's centre (2x + w, 2y + h): ((y2 − x2) · tw / 4, (x2 + y2) · th / 4) in integers,
+/// truncating toward zero as the object anchor always has (place_prepared).
+inline std::pair<int, int> tile_top2(int x2, int y2, std::size_t group) {
+    const auto [tw, th] = kTile[group];
+    return {(y2 - x2) * tw / 4, (x2 + y2) * th / 4};
+}
+
+/// tile_top's mapping at tile position (x, y) on the height-0 plane, with
+/// tiles tw × th px; a tile-space vector maps the same way. The operations
+/// are tile_top's in the same order ((y − x) · tw / 2), so results do not
+/// change where an inline copy was replaced.
+inline std::pair<float, float> tile_screen(float x, float y, float tw, float th) {
+    return {(y - x) * tw / 2.0F, (x + y) * th / 2.0F};
+}
+inline std::pair<double, double> tile_screen(double x, double y, double tw, double th) {
+    return {(y - x) * tw / 2.0, (x + y) * th / 2.0};
+}
+
+/// The tile position on the height-0 plane shown at screen point (sx, sy)
+/// with tiles tw × th px: the inverse of tile_top's mapping. gpu.wgsl
+/// `tile_pos` is its twin (same operations in the same order).
+inline std::pair<float, float> screen_tile(float sx, float sy, float tw, float th) {
+    return {sy / th - sx / tw, sy / th + sx / tw};
+}
+inline std::pair<double, double> screen_tile(double sx, double sy, double tw, double th) {
+    return {sy / th - sx / tw, sy / th + sx / tw};
+}
 
 /// Pixels per HEIGHT unit at zoom group 0, as a fraction num / den.
 struct Lift {
@@ -178,10 +220,20 @@ inline constexpr std::uint32_t kSeaAnlage = 2801;
 /// Sea level in HEIGHT units: 1.28 world units / 0.04 (D: AnnoWelt.dll
 /// 0x100E3A20, set at 0x1009d010).
 inline constexpr std::int64_t kSeaLevel = 32;
-/// Waterline in HEIGHT units: terrain below it is under water (P: painted
-/// ground textures put the shore at 16.5; D: land classifier 0x100900c0;
-/// docs/render/iso.md, "Water"; OQ-026 b).
+/// Waterline in HEIGHT units of the water objects: a water object (sea, river, surf) below it is
+/// drawn under the sea plane, one at or above it over the sea (prepare_objects; surf items lie at
+/// 0 or 16, P), and a river piece at or above it is part of the river surface. Where the terrain
+/// is water is kShoreHeight's (docs/render/iso.md, "Water"; OQ-026 b). Kept at 16 when the shore
+/// moved to 16.5 (2026-11-03): which side an object at exactly 16 belongs to is not traced, and
+/// the owner's H1 pictures, made with this split at 16.5 too, are the same pixels with it at 16.
 inline constexpr std::int64_t kWaterline = 16;
+/// The shore by default: terrain below this many HEIGHT units is water, so a corner at 16 is
+/// water and one at 17 is land. P: the painted ground textures show water at every height <= 16
+/// and sand from 17 on; the original draws a Kontor's water-edge corners at 16 as water (Wine
+/// runner, docs/orchestration/evidence/w4-opening-1/owner-playtest-2026-11-03-handover.md
+/// section 4). This renderer drew corners at 16 as land until 2026-11-03; Scene::shore_height
+/// keeps that selectable (16, the viewer's --shore); the owner chose 16.5 as the default.
+inline constexpr float kShoreHeight = 16.5F;
 /// A tile counts as land when the average of its corner heights exceeds this
 /// (D: AnnoWelt.dll classifier 0x100900c0).
 inline constexpr std::int64_t kLandAverage = 19;
@@ -383,9 +435,9 @@ enum class WaterStyle {
 };
 
 /// Distance in tiles from each height corner to the nearest corner at or
-/// above the waterline (two-pass chamfer, 1 / √2 steps). Enhanced water.
+/// above the shore `shore_height` (two-pass chamfer, 1 / √2 steps). Enhanced water.
 std::vector<float> shore_distance(std::span<const std::uint8_t> heights, std::size_t w,
-                                  std::size_t h);
+                                  std::size_t h, float shore_height = kShoreHeight);
 
 /// Tuning of the enhanced water. Not derived from the original; tuned by eye
 /// (2026-10-17). gpu.wgsl mirrors these values.
@@ -600,7 +652,6 @@ DrawStats place_prepared(std::span<const Prepared> list,
                          std::uint64_t time_ms, V&& visible, std::vector<SpriteDraw>& out) {
     DrawStats stats;
     const auto g = static_cast<std::uint32_t>(group);
-    const auto [tw, th] = kTile[group];
     for (const auto& [o, fp] : list) {
         const auto [w, h] = fp;
         const std::uint32_t id = o.anlage;
@@ -619,7 +670,8 @@ DrawStats place_prepared(std::span<const Prepared> list,
         const int cy2 = 2 * int{o.y} + int{h};
         const std::int64_t z2 = 2 * std::int64_t{o.height()};
         const int raise = lift.scaled(z2, 2, group);
-        const std::pair<int, int> anchor{(cx2 - cy2) * tw / 4, (cx2 + cy2) * th / 4 - raise};
+        const auto [ax, ay] = tile_top2(cx2, cy2, group);
+        const std::pair<int, int> anchor{ax, ay - raise};
         const formats::figuren::FrameSet* frames = nullptr;
         for (const auto& fs : set.frame_sets) {
             if (fs.group == g) {

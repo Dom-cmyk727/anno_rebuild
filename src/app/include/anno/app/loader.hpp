@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include <anno/assets/figure.hpp>
+#include <anno/assets/unit.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/render/scene.hpp>
 
@@ -27,10 +29,14 @@ struct OmittedObject {
     std::uint16_t x = 0, y = 0;
 };
 
-/// A scene and the file buffers its islands and Anlagen.dat refer to.
+/// A scene and the file buffers its islands and Anlagen.dat refer to. While the scene is
+/// loaded the buffers are staged here; they move into the scene (render::Scene::Backing) once
+/// it exists, so `buffers` is empty afterwards and the scene keeps the bytes alive.
 struct LoadedScene {
     std::vector<std::vector<std::uint8_t>> buffers;
-    std::unique_ptr<render::Scene> scene;
+    /// Made by render::Scene::create: its last owner's release hands the destruction to the
+    /// reclaimer.
+    std::shared_ptr<render::Scene> scene;
     /// Messages for the user (stand-ins, skipped links or units).
     std::vector<std::string> notes;
     /// How many of scene->islands come from the file itself (the stand-ins
@@ -44,6 +50,13 @@ struct LoadedScene {
     std::vector<OmittedObject> omitted;
 };
 
+/// Every facing of FigurenHeader entry `figure` (sprite set 0 and its shadow, every zoom group) in
+/// `colour` (nullopt: uncoloured; ignored for a type that is not player-coloured). Reads the
+/// figure volumes of `dir`; W4-OPENING-1's live ships are drawn from these.
+[[nodiscard]] formats::Result<assets::unit::FacingSprites, std::string>
+load_figure_facings(const std::filesystem::path& dir, std::uint16_t figure, std::uint32_t facings,
+                    std::optional<assets::figure::Rgb> colour);
+
 /// One INSELLNK whose picture is a chosen template instead of the viewer's
 /// stand-in. `number` is the link head's u32 (the same value the scene island
 /// keeps).
@@ -51,6 +64,13 @@ struct LinkTemplate {
     std::uint32_t number = 0;
     std::filesystem::path file;
 };
+
+/// The Anlagen ids the picture can draw: 0 .. kPictureAnlageIds - 1. A PROD2 item holds the id in
+/// 12 bits (formats::insel::PlacedObject::parse masks 0x0FFF), and the picture draws buildings as
+/// PROD2 items; a wider id (a mod's type: TypeId is 32 bit in the sim and on the wire) is built by
+/// the sim but not drawn (a note, round ee D3). Path to lift it: an object source for the scene
+/// that is not a PROD2 item.
+inline constexpr std::uint32_t kPictureAnlageIds = 0x1000;
 
 /// A building the sim placed, in island-local tiles. `island` is the island
 /// table slot (the link number when it fits in 16 bits, or the embedded
@@ -63,6 +83,7 @@ struct SceneBuilding {
     std::uint16_t x = 0, y = 0;
     std::uint8_t rotation = 0;
     std::uint8_t height = 0;
+    friend bool operator==(const SceneBuilding&, const SceneBuilding&) = default;
 };
 
 /// How --play replaces building sprites. Null for --view, which is unchanged.
@@ -72,6 +93,29 @@ struct SceneObjects {
     std::function<bool(std::uint16_t anlage)> is_building;
     std::span<const SceneBuilding> buildings;
 };
+
+/// One island's buildings written into its records (play mode): the per-island form of
+/// apply_world_buildings, used by ScenePicture (docs/app/game-shell.md). `buildings` are the
+/// sim's buildings of this island; the payloads it writes go to `owned_out`, whose buffers keep
+/// their addresses when moved; notes and omitted objects go to `notes` and `omitted`. With
+/// `anlagen` (the scene's Anlagen.dat), a scenery item whose anchor tile lies under a building is
+/// dropped, as the sim's tile layer overwrites it (scenery_under_building); without, scenery is
+/// copied unchanged.
+void apply_island_buildings(formats::insel::Island& island,
+                            const std::vector<SceneBuilding>& buildings,
+                            const SceneObjects& objects,
+                            std::vector<std::vector<std::uint8_t>>& owned_out,
+                            std::vector<std::string>& notes, std::vector<OmittedObject>& omitted,
+                            const formats::anlagen::AnlagenFile* anlagen = nullptr);
+
+/// Whether a scenery item of type `item` at island tile (`x`, `y`) (its anchor, the footprint's
+/// top-left tile) is overwritten by building `b`: the tile lies in b's footprint (Anlagen HEAD
+/// bytes 0 and 1, swapped for an odd rotation), unless both types carry flag 0x10, whose anchored
+/// object the original keeps (AnnoWelt.dll 0x1008218f; sim::place_object_record). False when a
+/// type is not in `anlagen`.
+[[nodiscard]] bool scenery_under_building(const formats::anlagen::AnlagenFile& anlagen,
+                                          const SceneBuilding& b, std::uint16_t item,
+                                          std::uint16_t x, std::uint16_t y);
 
 /// The game directory: `explicit_dir`, else `env_dir` (the value of
 /// ANNO1503_GAME_DIR, read by the caller), else the nearest ancestor of

@@ -1,0 +1,48 @@
+ran line 5: look 1052
+ran line 6: key b
+ran line 7: select 1307
+ran line 8: rotate 0
+ran line 12: click 1052
+ran line 15: expect visibility
+checkpoint baseline_visible: turn 14, frames 246, outcome #1 Applied turn 14, visibility Visible, ms 1447, generation 1, surface 0, chunks_blocked 0, occupancy rebuilds 1 deltas 1 tiles 17 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — GPU NVIDIA GeForce RTX 4090 (Vulkan) — tick 750, game 1500 ms, turn p95 10.3 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1052,444 | money 10000000 | would be refused: occupied in the published picture | command #1: Applied
+ran line 16: checkpoint baseline_visible
+ran line 19: hold chunks
+ran line 20: click 1068
+ran line 22: expect outcome
+ran line 25: expect held
+ran line 26: expect visibility
+checkpoint chunks_held: turn 15, frames 320, outcome #2 Applied turn 15, visibility ChunksStale, ms 1595, generation 2, surface 0, chunks_blocked 3, occupancy rebuilds 1 deltas 2 tiles 18 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — GPU NVIDIA GeForce RTX 4090 (Vulkan) — tick 800, game 1600 ms, turn p95 10.3 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1068,444 | money 10000000 | would be refused: occupied in the published picture | not drawn yet: chunks of the change are being rebuilt | command #2: Applied
+ran line 27: checkpoint chunks_held
+ran line 29: click 1076
+ran line 31: expect outcome
+ran line 33: expect visibility
+checkpoint chunks_held_second_edit: turn 16, frames 358, outcome #3 Applied turn 16, visibility ChunksStale, ms 1671, generation 3, surface 0, chunks_blocked 4, occupancy rebuilds 1 deltas 3 tiles 19 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — GPU NVIDIA GeForce RTX 4090 (Vulkan) — tick 850, game 1700 ms, turn p95 10.3 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1076,444 | money 10000000 | would be refused: occupied in the published picture | not drawn yet: chunks of the change are being rebuilt | command #3: Applied
+ran line 34: checkpoint chunks_held_second_edit
+ran line 35: release chunks
+ran line 37: expect visibility
+checkpoint chunks_released: turn 16, frames 368, outcome #3 Applied turn 16, visibility Visible, ms 1691, generation 3, surface 0, chunks_blocked 0, occupancy rebuilds 1 deltas 3 tiles 19 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — GPU NVIDIA GeForce RTX 4090 (Vulkan) — tick 850, game 1700 ms, turn p95 10.3 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1076,444 | money 10000000 | would be refused: occupied in the published picture | command #3: Applied
+ran line 38: checkpoint chunks_released
+ran line 41: hold uploads
+ran line 42: click 1084
+ran line 46: expect held
+ran line 47: expect visibility
+checkpoint uploads_held: turn 18, frames 425, outcome #4 Applied turn 17, visibility NotOnGpu, ms 1805, generation 4, surface 0, chunks_blocked 0, uploads held, occupancy rebuilds 1 deltas 4 tiles 20 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — GPU NVIDIA GeForce RTX 4090 (Vulkan) — tick 950, game 1900 ms, turn p95 11.3 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1084,444 | money 10000000 | would be refused: occupied in the published picture | not drawn yet: waiting for the GPU copy of the chunks | command #4: Applied
+ran line 48: checkpoint uploads_held
+ran line 50: click 1100
+ran line 52: expect outcome
+ran line 54: expect visibility
+ran line 55: release uploads
+ran line 57: expect visibility
+checkpoint uploads_released: turn 19, frames 504, outcome #5 Applied turn 19, visibility Visible, ms 1963, generation 5, surface 0, chunks_blocked 0, occupancy rebuilds 1 deltas 5 tiles 21 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — GPU NVIDIA GeForce RTX 4090 (Vulkan) — tick 1000, game 2000 ms, turn p95 11.3 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1100,444 | money 10000000 | would be refused: occupied in the published picture | command #5: Applied
+ran line 58: checkpoint uploads_released
+ran line 61: hold presents
+ran line 62: click 1092
+ran line 66: expect held
+ran line 67: expect visibility
+checkpoint presents_failing: turn 43, frames 551, outcome #6 Applied turn 20, visibility NotPresented, ms 4325, generation 6, surface 0, chunks_blocked 0, presents failing, occupancy rebuilds 1 deltas 6 tiles 22 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — GPU NVIDIA GeForce RTX 4090 (Vulkan) — tick 2150, game 4300 ms, turn p95 0.2 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1092,444 | money 10000000 | would be refused: occupied in the published picture | not drawn yet: drawn, no frame has been presented since | command #6: Applied — 13 fps (0.6 ms/frame)
+ran line 68: checkpoint presents_failing
+ran line 69: release presents
+ran line 71: expect visibility
+checkpoint presents_ok: turn 43, frames 552, outcome #6 Applied turn 20, visibility Visible, ms 4328, generation 6, surface 0, chunks_blocked 0, occupancy rebuilds 1 deltas 6 tiles 22 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — GPU NVIDIA GeForce RTX 4090 (Vulkan) — tick 2200, game 4400 ms, turn p95 0.3 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1092,444 | money 10000000 | would be refused: occupied in the published picture | command #6: Applied — 13 fps (0.6 ms/frame)
+ran line 72: checkpoint presents_ok
+ran line 73: quit

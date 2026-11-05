@@ -1,0 +1,9 @@
+script identity: steps=11 fnv1a64=0642c645efd33296
+ran line 4: look 1052 444
+ran line 5: key b
+ran line 6: select 1307
+ran line 7: rotate 0
+ran line 9: hold chunks
+ran line 10: click 1068 444
+ran line 13: expect held chunks
+ran line 14: quit

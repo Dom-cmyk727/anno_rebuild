@@ -1,0 +1,45 @@
+ran line 7: look 1052
+ran line 8: key b
+ran line 9: select 1307
+ran line 10: rotate 0
+ran line 14: click 1052
+ran line 17: expect visibility
+checkpoint baseline_visible: turn 33, frames 179, outcome #1 Applied turn 32, visibility Visible, ms 3310, generation 1, surface 0, occupancy rebuilds 1 deltas 1 tiles 17 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — CPU — tick 1700, game 3400 ms, turn p95 11.2 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1052,444 | money 10000000 | would be refused: occupied in the published picture | command #1: Applied — 50 fps (7.7 ms/frame)
+ran line 18: checkpoint baseline_visible
+ran line 21: fail update
+ran line 22: click 1068
+ran line 24: expect outcome
+ran line 27: expect failing
+ran line 28: expect visibility
+ran line 30: click 1076
+ran line 32: expect outcome
+ran line 34: expect visibility
+checkpoint update_failing: turn 83, frames 225, outcome #3 Applied turn 61, visibility NotPresented, ms 8339, generation 3, surface 0, occupancy rebuilds 1 deltas 3 tiles 19 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — CPU — tick 4150, game 8300 ms, turn p95 11.4 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1076,444 | money 10000000 | would be refused: occupied in the published picture | not drawn yet: drawn, no frame has been presented since | command #3: Applied — 9 fps (8.6 ms/frame)
+ran line 35: checkpoint update_failing
+ran line 36: pass update
+ran line 38: expect visibility
+checkpoint update_released: turn 83, frames 226, outcome #3 Applied turn 61, visibility Visible, ms 8350, generation 3, surface 0, occupancy rebuilds 1 deltas 3 tiles 19 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — CPU — tick 4200, game 8400 ms, turn p95 11.4 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1076,444 | money 10000000 | would be refused: occupied in the published picture | command #3: Applied — 9 fps (8.6 ms/frame)
+ran line 39: checkpoint update_released
+ran line 42: fail submit
+ran line 43: click 1084
+ran line 47: expect failing
+ran line 48: expect visibility
+checkpoint submit_failing: turn 110, frames 251, outcome #4 Applied turn 85, visibility NotPresented, ms 11088, generation 4, surface 0, occupancy rebuilds 1 deltas 4 tiles 20 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — CPU — tick 5500, game 11000 ms, turn p95 11.6 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1084,444 | money 10000000 | would be refused: occupied in the published picture | not drawn yet: drawn, no frame has been presented since | command #4: Applied — 10 fps (8.8 ms/frame)
+ran line 49: checkpoint submit_failing
+ran line 50: pass submit
+ran line 52: expect visibility
+checkpoint submit_released: turn 110, frames 252, outcome #4 Applied turn 85, visibility Visible, ms 11098, generation 4, surface 0, occupancy rebuilds 1 deltas 4 tiles 20 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — CPU — tick 5550, game 11100 ms, turn p95 11.6 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1084,444 | money 10000000 | would be refused: occupied in the published picture | command #4: Applied — 10 fps (8.8 ms/frame)
+ran line 53: checkpoint submit_released
+ran line 56: fail present
+ran line 57: click 1092
+ran line 61: expect failing
+ran line 62: expect visibility
+ran line 64: note frames
+ran line 66: expect frames
+checkpoint present_failing: turn 149, frames 287, outcome #5 Applied turn 113, visibility NotPresented, ms 14918, generation 5, surface 0, occupancy rebuilds 1 deltas 5 tiles 21 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — CPU — tick 7450, game 14900 ms, turn p95 0.5 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1092,444 | money 10000000 | would be refused: occupied in the published picture | not drawn yet: drawn, no frame has been presented since | command #5: Applied — 9 fps (8.3 ms/frame)
+ran line 67: checkpoint present_failing
+ran line 68: pass present
+ran line 70: expect visibility
+checkpoint present_released: turn 149, frames 288, outcome #5 Applied turn 113, visibility Visible, ms 14928, generation 5, surface 0, occupancy rebuilds 1 deltas 5 tiles 21 foreign 0 off_batches 0, hold free, title: anno1503 — lan5 — zoom group 2 — CPU — tick 7500, game 15000 ms, turn p95 0.5 ms — tool: build 1307 (1x1, 0 gold) rotation 0 at 1092,444 | money 10000000 | would be refused: occupied in the published picture | command #5: Applied — 9 fps (8.3 ms/frame)
+ran line 71: checkpoint present_released
+ran line 72: quit

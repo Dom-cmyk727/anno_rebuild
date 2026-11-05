@@ -18,21 +18,26 @@
 namespace anno::app {
 
 inline constexpr const char* kUsage =
-    "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> [--game-dir <dir>] [--speed "
+    "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> | --ship-start <manifest.json> "
+    "--seat <n> [--resume <save>] [--game-dir <dir>] [--speed "
     "50|100|200] [--group "
     "<n>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
-    "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
+    "[--river-gap-patch <tiles>] [--shore <height>] [--renderer auto|gpu|cpu] [--lookahead-chunks "
+    "<n>] "
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
-    "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>]\n"
+    "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>] "
+    "[--commands <file> [--replay-hashes <file>]] (--play)\n"
     "(--group 0-2: the built zoom levels; 3 and up: derived levels, --png only, bounded by "
     "--max-derived-levels)\n"
     "(--png only: [--zoom-factor <scale>] [--resample nearest|bilinear|box|area], the picture "
     "composed at --group and resampled by the CPU model of the GPU pass)\n"
     "environment: ANNO_GPU_ADAPTER=<index> (bench_frame --list-adapters), "
     "ANNO_VIEW_RESAMPLE=nearest|bilinear|box|area (the continuous zoom's magnifying filter; "
-    "default bilinear above scale 1, box below)\n";
+    "default bilinear above scale 1, box below), ANNO_DEV_SCRIPT=<file> (--play: a scripted "
+    "developer-tool session, dev_script.hpp), ANNO_DEV_SESSION=<new dir> (--play: the "
+    "session's commands, outcomes and per-turn hashes)\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -106,8 +111,20 @@ struct Args {
     /// --play: run the sim and build the scene from the islands it placed.
     /// --view stays the file and the stand-in rule.
     bool play = false;
+    /// --ship-start <manifest.json> --seat <n> [--resume <save>]: the ship-start opening
+    /// (docs/app/ship-opening.md). `file` is the manifest; it implies `play`. The seat is the
+    /// local participant and must be given.
+    bool ship_start = false;
+    std::optional<std::uint32_t> seat;
+    std::optional<std::filesystem::path> resume;
     /// Multiplayer rate: fixed real-time cadence, variable game ms per step.
     unsigned play_speed = 100;
+    /// --play --commands <file>: scripted Build and Demolish lines (game-shell.md).
+    std::optional<std::filesystem::path> commands;
+    /// --play --commands <file> --replay-hashes <file>: no window; runs the commands' turns and
+    /// compares the state hash after each turn the file lists (round ee, E3: a recorded session's
+    /// hashes.txt, "<turn> <hash hex>" per line).
+    std::optional<std::filesystem::path> replay_hashes;
     std::optional<std::filesystem::path> game_dir;
     std::optional<std::size_t> group;
     std::optional<std::filesystem::path> png;
@@ -121,6 +138,9 @@ struct Args {
     std::optional<std::pair<int, int>> at;
     std::pair<int, int> size{1600, 900};
     render::WaterStyle water = render::WaterStyle::Original;
+    /// --water was given: the ship-start opening keeps `water` instead of switching to enhanced
+    /// water on the GPU (review 2026-11-03: an explicit --water original was overridden).
+    bool water_given = false;
     /// Enhanced water only: how rivers are shaded (docs/render/rivers.md). The
     /// flow shading is the default; legacy keeps the shimmer that slides
     /// along fixed axes. Key R in the viewer toggles it.
@@ -136,6 +156,9 @@ struct Args {
     /// River pieces at most this many tiles apart are joined (OQ-068; 0 = the
     /// gaps of the original data). The viewer joins gaps up to 8 tiles.
     float river_gap_patch = 8.0F;
+    /// --shore: terrain below this many HEIGHT units is water (render::Scene::shore_height; 16
+    /// draws corners at 16 as land, the renderer's choice until 2026-11-03).
+    float shore = render::kShoreHeight;
     Renderer renderer = Renderer::Auto;
     /// FrameRenderer::max_lookahead_chunks: how far (in chunks) the margin of
     /// built chunks grows ahead of a moving view. 3 is the library default;

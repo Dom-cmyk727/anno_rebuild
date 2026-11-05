@@ -54,6 +54,9 @@ class Contract(unittest.TestCase):
             "ANNO1503_GAME_DIR not set: skipping S01_07_01 search store",
             "skipping zei corpus: ANNO1503_GAME_DIR not set",
             "skipping the shipped BGruppen.dat: ANNO1503_GAME_DIR not set",
+            # depth review F6 (W4-MAIN-1): was classed "other", letting a no-game lane through
+            # only with --allow-skip other; it is a missing original asset like the rest here.
+            "skipping: no game files",
         ]
         for text in forms:
             code, out = one([text])

@@ -42,6 +42,8 @@ struct Command;
 struct Building;
 struct BuildingType;
 struct PlacementRecord;
+struct PlacementResult;
+class TypeRegistry;
 enum class Reject : std::uint16_t;
 
 /// The name of a seam without a function. validate_seams refuses an installed
@@ -114,9 +116,13 @@ struct Seams {
     Seam<PlaceHook> on_placed;
     Seam<PlaceHook> on_removed;
 
-    using PlacementRuleFn = Reject (*)(void* ctx, const Island&, const BuildingType&,
-                                       const PlacementRecord&);
-    /// D 0x1007c790 (O-27); the default rule is §8.4.
+    using PlacementRuleFn = PlacementResult (*)(void* ctx, const Island&, const TypeRegistry&,
+                                                const BuildingType& effective,
+                                                const PlacementRecord&);
+    /// D 0x1007c790 (O-27). The default (no function) is placement_rule (placement.hpp,
+    /// docs/sim/ship-placement.md): bounds, overlap, terrain class and height. The D17
+    /// stand-in is an installed, named seam (stand_in_placement_seam), never the default.
+    /// An installed function returns the verdict AND the height byte of the record.
     Seam<PlacementRuleFn> placement_rule;
 
     using Upgrade = void (*)(void* ctx, const BuildingType&, PlacementRecord&);

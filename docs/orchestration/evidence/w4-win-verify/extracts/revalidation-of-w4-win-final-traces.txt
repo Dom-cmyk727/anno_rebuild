@@ -1,0 +1,4 @@
+exit 0
+LEGACY   <reval>\canary-stages  = boundary_stages.script  (checked: the ordered first-argument trace only; the record has no full script identity, so wait values and later arguments are not verified)
+LEGACY   <reval>\canary-exit-in-hold  = boundary_exit_in_hold.script  (checked: the ordered first-argument trace only; the record has no full script identity, so wait values and later arguments are not verified)
+LEGACY   <reval>\f2-cpu-delivery-session  = cpu_delivery_failures.script  (checked: the ordered first-argument trace only; the record has no full script identity, so wait values and later arguments are not verified)

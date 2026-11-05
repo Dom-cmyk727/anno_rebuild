@@ -319,14 +319,39 @@ formats::Result<SyntheticTypes, std::string> make_build_types() {
             copy.width = c.w;
             copy.height = c.h;
         }
+        // The flag word of an ordinary land building (0x84 for the shipped PIONIER, workshops and
+        // farms): the BuildCmd terrain class the placement rule decides (ship-placement.md R3). The
+        // road is a tile object (no list) and stays as it was.
+        if (t.id != s.road) {
+            copy.flags_word = ordinary_land_flags();
+        }
         b.add(std::move(copy));
     }
+    // The tile objects of the g2 scenery (basic_scenario places 1201, 1202 and 1203): a fixed
+    // decoration (flag word 0: nothing may be built over it), a stone (0x3a) and a ripe growing
+    // object (0x29), both removable (flag 0x20; docs/re/ship-placement.md section 4).
+    b.add_plain(kSceneryFixed, 291).add_plain(kSceneryStone, 323).add_plain(kSceneryGrowing, 225);
+    b.flags_word(kSceneryStone, 0x3a).flags_word(kSceneryGrowing, 0x29);
     auto built = b.build();
     if (!built) {
         return built.error();
     }
     s.registry = std::move(built.value());
     return s;
+}
+
+void give_flat_terrain(ScenarioSpec::IslandSpec& island, std::uint8_t level) {
+    const std::size_t n = std::size_t{island.w} * island.h;
+    island.terrain =
+        make_terrain(std::vector<std::uint8_t>(n, level), std::vector<std::uint16_t>(n, 0),
+                     std::vector<std::uint8_t>(n, 0));
+}
+
+ScenarioSpec& give_flat_terrain(ScenarioSpec& spec, std::uint8_t level) {
+    for (ScenarioSpec::IslandSpec& island : spec.islands) {
+        give_flat_terrain(island, level);
+    }
+    return spec;
 }
 
 ScenarioSpec g2_scenario(const SyntheticTypes& types, std::uint32_t seed) {
@@ -340,6 +365,9 @@ ScenarioSpec g2_scenario(const SyntheticTypes& types, std::uint32_t seed) {
         stock[*wood] = 30 * kTon;
     }
     spec.islands[0].cities[0].stock = std::move(stock);
+    // The BuildCmd placement rule reads the terrain: a flat plateau of level 0x30 (the level of
+    // the original's lowland, a multiple of 16 and above the threshold 32).
+    give_flat_terrain(spec.islands[0], 0x30);
     return spec;
 }
 
@@ -541,6 +569,89 @@ ScenarioSpec g7_scenario(const SyntheticTypes& types, std::uint32_t seed) {
     is.cities = {std::move(city0)};
     spec.islands.push_back(std::move(is));
     return spec;
+}
+
+formats::Result<SyntheticTypes, std::string> make_founding_types() {
+    return make_founding_types_with({});
+}
+
+formats::Result<SyntheticTypes, std::string>
+make_founding_types_with(std::vector<FigureType> extra_figures) {
+    constexpr TypeId kKontor{1302}, kKontor63{9301}, kObstruction{9100}, kScenery{9101},
+        kWorkshop{9201};
+    const GoodsId kTools = 0x29, kWood = 0x2a;
+    const std::uint32_t kOne = 256; // one tile / one ton in the 8.8 units
+    // A market type, then patched into the Kontor: a second builder takes it fully specified.
+    TypeRegistry::Builder seed;
+    seed.add_market(kKontor, 1, 1, 24, 4, 4);
+    auto base = seed.build();
+    if (!base) {
+        return base.error();
+    }
+    BuildingType k = *base.value()->find(kKontor);
+    k.prodtype = 35;
+    k.width = k.height = 4;
+    k.action_radius = 24;
+    k.cost_gold = 350;
+    k.cost_goods = {CostEntry{kTools, 5 * kOne}, CostEntry{kWood, 12 * kOne}};
+    k.flags_word = 0x2087;
+    TypeRegistry::Builder b;
+    b.add(k);
+    BuildingType k63 = k;
+    k63.id = kKontor63;
+    k63.width = 6;
+    k63.height = 3;
+    b.add(k63);
+    // An alternate definition: a 5 x 3 Kontor-class type with its own id, costs (gold 120, tools 2
+    // t, wood 4 t) and action radius 10; and one in the market block whose flag word is not the
+    // decoded coast class (refused as Unsupported, never accepted blindly).
+    BuildingType alt = k;
+    alt.id = TypeId{9401};
+    alt.width = 5;
+    alt.height = 3;
+    alt.action_radius = 10;
+    alt.cost_gold = 120;
+    alt.cost_goods = {CostEntry{kTools, 2 * kOne}, CostEntry{kWood, 4 * kOne}};
+    b.add(alt);
+    BuildingType undecoded = k;
+    undecoded.id = TypeId{9402};
+    undecoded.flags_word = 0x0087;
+    b.add(undecoded);
+    b.add_plain(kObstruction, 193);
+    b.add_plain(kScenery, 193).flags_word(kScenery, 0x20);
+    b.add_workshop(kWorkshop, "STOFFE", "WOLLE", 6, 11, 5, 0);
+    // An ordinary land building: the BuildCmd placement rule's class (docs/sim/ship-placement.md
+    // R3), so the fixtures' ordinary Build in the new city is decided by the terrain.
+    b.flags_word(kWorkshop, ordinary_land_flags());
+    const auto fig = [](std::uint32_t id, std::uint32_t kind, std::uint32_t range,
+                        std::optional<std::int64_t> hull) {
+        FigureType t;
+        t.id = id;
+        t.bewohntype = kind;
+        t.range_88 = range;
+        t.hull_half_88 = hull;
+        return t;
+    };
+    b.figure_type(fig(1502, 113, 16 * kOne, 397)); // the ship: range 16, hull 1.55 rounded
+    b.figure_type(fig(717, 97, 7 * kOne, std::nullopt));
+    b.figure_type(fig(718, 53, 7 * kOne, std::nullopt));
+    b.figure_type(fig(9501, 99, 7 * kOne, std::nullopt));
+    b.figure_type(fig(9502, 108, 7 * kOne, std::nullopt));
+    b.figure_type(fig(9503, 113, 16 * kOne, 397));
+    b.figure_type(fig(9504, 113, 16 * kOne, std::nullopt)); // a ship type without a hull field
+    b.figure_type(fig(9505, 113, 16 * kOne, -7 * 256));     // an inverted box, like type 391
+    b.figure_type(fig(9506, 113, 16 * kOne, 0));            // a present zero hull
+    for (FigureType& extra : extra_figures) {
+        b.figure_type(std::move(extra));
+    }
+    auto built = b.build();
+    if (!built) {
+        return built.error();
+    }
+    SyntheticTypes s;
+    s.registry = std::move(built.value());
+    s.kontor = kKontor;
+    return s;
 }
 
 } // namespace anno::sim::synthetic

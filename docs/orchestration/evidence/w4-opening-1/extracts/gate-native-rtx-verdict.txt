@@ -1,0 +1,3 @@
+COUNTS: selected=107 executed=107 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+Evidence: E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\native-n7g.log

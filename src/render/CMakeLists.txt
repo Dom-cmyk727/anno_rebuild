@@ -29,11 +29,16 @@ if(ANNO_BUILD_TESTS)
     tests/chunk_draws_test.cpp
     tests/chunk_reduce_test.cpp
     tests/fluid_test.cpp
+    tests/picking_test.cpp
     tests/main.cpp
     tests/render_corpus_test.cpp
     tests/render_test.cpp
     tests/residency_test.cpp
     tests/river_flow_corpus_test.cpp
+    tests/river_lifecycle_test.cpp
+    tests/scene_reclaim_test.cpp
+    tests/scene_accounting_test.cpp
+    tests/derived_freshness_test.cpp
     tests/river_flow_test.cpp
     tests/river_shade_test.cpp
     tests/sprite_fidelity_test.cpp
@@ -63,7 +68,8 @@ if(ANNO_HAVE_WGPU)
   anno_target_defaults(anno_render_gpu)
   if(ANNO_BUILD_TESTS)
     add_executable(anno_render_gpu_tests tests/main.cpp tests/gpu_test.cpp
-      tests/gpu_chunk_build_test.cpp tests/play_gpu_test.cpp)
+      tests/gpu_chunk_build_test.cpp tests/play_gpu_test.cpp tests/picture_gpu_test.cpp
+      tests/preview_gpu_test.cpp)
     target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu anno_app_core
       anno_test_support doctest::doctest)
     # Our own synthetic files (fixtures/synthetic): a scene without islands.

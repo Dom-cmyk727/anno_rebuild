@@ -1,0 +1,17 @@
+diff --git a/src/app/src/viewer.cpp b/src/app/src/viewer.cpp
+index 9ff70b8..6cc65e4 100644
+--- a/src/app/src/viewer.cpp
++++ b/src/app/src/viewer.cpp
+@@ -1846,10 +1846,10 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
+     const bool bad_update = (cpu_fail_ & 1) != 0, bad_submit = (cpu_fail_ & 2) != 0,
+                bad_present = (cpu_fail_ & 4) != 0;
+     stage(1, "SDL_UpdateTexture",
+-          SDL_UpdateTexture(bad_update ? nullptr : texture_, nullptr, buffer_.data(), w * 4));
++          (SDL_UpdateTexture(bad_update ? nullptr : texture_, nullptr, buffer_.data(), w * 4), true));
+     if (delivered) {
+         stage(2, "SDL_RenderTexture",
+-              SDL_RenderTexture(renderer_, bad_submit ? nullptr : texture_, nullptr, nullptr));
++              (SDL_RenderTexture(renderer_, bad_submit ? nullptr : texture_, nullptr, nullptr), true));
+     }
+     const auto present_start = Clock::now();
+     steps_.push_back({"texture copy", since_ms(rendered, present_start)});

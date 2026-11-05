@@ -214,7 +214,8 @@ std::int32_t placement_block_origin(std::int32_t v) {
 } // namespace
 std::uint32_t place_object_record(TileLayer& layer, const TypeRegistry& types,
                                   const BuildingType& type, std::int32_t x0, std::int32_t y0,
-                                  std::uint32_t rotation, std::uint8_t phase) {
+                                  std::uint32_t rotation, std::uint8_t phase,
+                                  std::uint8_t item_height) {
     // D AnnoWelt 0x10082040..0x10082637. Y blocks outer (0x1008262e), X blocks
     // inner (0x1008260c); inside a block, rows outer and columns inner.
     // Ordinary stores: id 0x1008244a, dx 0x1008245c, dy 0x10082474, rotation
@@ -222,8 +223,8 @@ std::uint32_t place_object_record(TileLayer& layer, const TypeRegistry& types,
     // stores: 0x10082215..0x10082286, skip 0x100821e6..0x1008220c, anchor clear
     // only after a write (0x10082289). The code and the mask then cover every
     // footprint tile (0x10082342..0x100823e2), a skipped tile included.
-    // Byte 3 bit 6 is not modelled. deviation: the height byte (0x10082260,
-    // 0x10082494) is not a column (Terrain, OQ-060). A tile outside the layer
+    // Byte 3 bit 6 is not modelled. The height byte (0x10082260, 0x10082494) is
+    // stored in TileLayer::item_height (MAP-NAV-3 N3). A tile outside the layer
     // is skipped and does not clear the anchor: the original indexes the
     // island grid, and this layer has no record there. A missing type does not
     // satisfy the flag test (the catalogue load at 0x100821fa is not given a
@@ -262,6 +263,7 @@ std::uint32_t place_object_record(TileLayer& layer, const TypeRegistry& types,
                     layer.set_foot_dy(i, static_cast<std::uint16_t>(y - y0));
                     layer.set_foot_rotation(i, static_cast<std::uint8_t>(rotation));
                     layer.set_phase(i, phase);
+                    layer.set_item_height(i, item_height);
                     layer.set_foot_anchor(i, anchor ? std::uint8_t{1} : std::uint8_t{0});
                     anchor = false;
                 }

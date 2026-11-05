@@ -389,8 +389,10 @@ std::vector<CellPixel> project_cells(std::span<const std::uint8_t> heights, std:
             const float y = (static_cast<float>(ty0 * c + j) + 0.5F) / cf;
             const float t = terrain_height(heights, w, h, x, y);
             CellPixel& q = out[static_cast<std::size_t>(j * sw + i)];
-            q.sx = (x - y) * half_w;
-            q.sy = (x + y) * half_h - lift_px * t;
+            // tile_screen with tiles 2 half_w x 2 half_h (doubling and halving are exact).
+            const auto [sx, sy] = tile_screen(x, y, 2.0F * half_w, 2.0F * half_h);
+            q.sx = sx;
+            q.sy = sy - lift_px * t;
             q.pass = !depth_test || t <= pass_height;
         }
     }
@@ -515,22 +517,22 @@ river::RiverMask Scene::river_mask(std::size_t index, const river::RiverConfig& 
         s.cells = river::detail::cover_from_alpha(proj, plane, rx, ry);
         covers.push_back(std::move(s));
     };
-    for (const Prepared& p : d.river_sprites) {
+    for (const Prepared& p : d.lists->river_sprites) {
         add(p, river::SpriteCover::Kind::Bed, true);
     }
-    for (const Prepared& p : d.falls_above) {
+    for (const Prepared& p : d.lists->falls_above) {
         add(p,
             p.first.anlage == kRiverFallAnlagen[0] ? river::SpriteCover::Kind::Fall
                                                    : river::SpriteCover::Kind::Mouth,
             true);
     }
-    for (const Prepared& p : d.falls_below) {
+    for (const Prepared& p : d.lists->falls_below) {
         add(p,
             p.first.anlage == kRiverFallAnlagen[0] ? river::SpriteCover::Kind::Fall
                                                    : river::SpriteCover::Kind::Mouth,
             false);
     }
-    return river::RiverMask::from_island(*iw, d.rivers, covers, cfg);
+    return river::RiverMask::from_island(*iw, d.lists->rivers, covers, cfg);
 }
 
 } // namespace anno::render

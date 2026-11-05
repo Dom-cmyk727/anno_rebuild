@@ -1,0 +1,8 @@
+binary 0349259674e3891f1511c7cf5680a106bcdb5b17a8b715d79dc160744ec15ef7 head 
+r1_held_publication rc=0
+r4_occupancy rc=0
+cpu_delivery_failures rc=0
+cpu.stderr.txt: lines=1148 runtime_error=0 sanitizer=0
+r1.stderr.txt: lines=1297 runtime_error=0 sanitizer=0
+r4.stderr.txt: lines=974 runtime_error=0 sanitizer=0
+done 2026-11-02T13:00:06+01:00

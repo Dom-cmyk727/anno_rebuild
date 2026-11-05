@@ -4,7 +4,7 @@
 # flags at -O3 and -Werror, compile only (no link), once with GCC 13 and once
 # with Clang 18, with the viewer and GPU code switched on (ANNO_WITH_VIEWER,
 # ANNO_VIEWER_GPU, ANNO_BENCH_GPU: every CI configuration builds them); then
-# the app sources once more with Clang without ANNO_VIEWER_GPU (a viewer built
+# the app sources once more with GCC and Clang without ANNO_VIEWER_GPU (a viewer built
 # without wgpu, -Wunused-private-field). MSVC reports most of these warnings
 # not at all, so a clean MSVC build says nothing about them.
 #
@@ -60,9 +60,11 @@ flags="-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conv
 -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Wnull-dereference -ffp-contract=off -Werror"
 inc=""
 for d in "$repo"/src/*/include; do inc="$inc -I$d"; done
+# test_support's private headers (host_test includes coord_wire.hpp from src/)
+inc="$inc -I$repo/src/test_support/src"
 inc="$inc -isystem $deps/wgpu_native-src/include -isystem $deps/sdl3-src/include"
 inc="$inc -isystem $deps/doctest-src"
-common_defs="-DDOCTEST_CONFIG_USE_STD_HEADERS -DANNO_FIXTURES_DIR=\"$repo/fixtures/synthetic\""
+common_defs="-DDOCTEST_CONFIG_USE_STD_HEADERS -DANNO_FIXTURES_DIR=\"$repo/fixtures/synthetic\" -DANNO_REPO_DIR=\"$repo\""
 gpu_defs="-DANNO_WITH_VIEWER -DANNO_VIEWER_GPU -DANNO_BENCH_GPU"
 
 mapfile -t all_files < <(find "$repo/src" -name '*.cpp' | sort)
@@ -96,6 +98,9 @@ check() {
 
 status=0
 check "GCC, viewer and GPU on" "$gxx" "$common_defs $gpu_defs" "${all_files[@]}"
+# A viewer built without wgpu with GCC too (W4-WIN-FINAL F2: its viewer-enabled WSL sanitizer build has
+# no GPU, and GCC found an unused function there that Clang does not report).
+check "GCC, viewer without GPU" "$gxx" "$common_defs -DANNO_WITH_VIEWER" "${app_files[@]}"
 if [ -n "$clangxx" ]; then
     check "Clang, viewer and GPU on" "$clangxx" "$common_defs $gpu_defs" "${all_files[@]}"
     check "Clang, viewer without GPU" "$clangxx" "$common_defs -DANNO_WITH_VIEWER" "${app_files[@]}"

@@ -1,0 +1,4 @@
+FAIL: test_a_size_mismatch_fails_with_a_clean_child (__main__.CaptureVerdict.test_a_size_mismatch_fails_with_a_clean_child)
+AssertionError: 0 != 4
+Ran 19 tests in 47.578s
+FAILED (failures=1)

@@ -1,0 +1,15 @@
+workflow head 6b683ea5165e343a6c655bd3816dd733849362ee dirty 535
+f87fc882cfe4ff2205cda6ee5cab39a1e27d975aa0b63249c8250ef1c5e4927a  tools/test/run_selected.py
+b10bfc375c304d91529d1fe9ec02c2b9b95734eaea1e8cd523e791e4227c4683  tools/test/ctest_verdict.py
+6b27d264577a019895b00df746653fed3715fcfb3892b8d45f68a0e651d9649a  cmake/CheckTestNames.cmake
+source head d129bba6b4daf64cde72f84c37ec52ce918cde03 dirty 0 start 2026-11-03T01:51:04+01:00
+ 01:51:04 up 0 min,  1 user,  load average: 0.15, 0.03, 0.01
+Mem:           15544         595       14674           3         470       14949
+build rc=0 2026-11-03T01:51:57+01:00
+1debeb9965a8df84db6dbebe673cc0b140472572fbb258cd5c8a078938390893  /home/altin/anno-build/w4-open-asan/src/app/anno1503
+8b392211329ab860546f4c053cdd4c946061c1eed77641d0d20af868e0128d9a  /home/altin/anno-build/w4-open-asan/src/app/anno_app_tests
+9007040fa3acc81574bc0c993ad6129dd2a45e1484836c17a1ef4275b1638cc0  /home/altin/anno-build/w4-open-asan/src/app/anno_app_input_tests
+warnings rc=0 2026-11-03T01:58:54+01:00
+app lane rc=0 COUNTS: selected=247 executed=245 failed=0 empty=0 skipped=2 (required-asset=0 platform=0 opt-in=2 gpu=0 other=0) incomplete=0 sanitizer_lines=0 VERDICT: PASS  2026-11-03T03:55:16+01:00
+sim lane rc=0 COUNTS: selected=81 executed=81 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0 VERDICT: PASS  2026-11-03T04:17:11+01:00
+done 2026-11-03T04:17:11+01:00

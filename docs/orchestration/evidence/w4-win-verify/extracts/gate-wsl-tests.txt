@@ -1,0 +1,60 @@
+COMMAND: ["cmake", "-DSOURCE_DIR=/mnt/e/anno1503-worktrees/anno1503-W4-3", "-P", "/mnt/e/anno1503/cmake/CheckTestNames.cmake"]
+COMMAND: ["/home/altin/anno-tools-venv/bin/python3", "-I", "/mnt/e/anno1503/tools/test/ctest_verdict_test.py"]
+COMMAND: ["ctest", "--test-dir", "/home/altin/anno-build/w4-asan-viewer", "-R", "^viewer_wiring_contract$", "--no-tests=error", "--timeout", "3400", "-V"]
+1/1 Test #1327: viewer_wiring_contract ...........   Passed    9.44 sec
+The following tests passed:
+100% tests passed out of 1
+COMMAND: ["ctest", "--test-dir", "/home/altin/anno-build/w4-asan-viewer", "-R", "^viewer_wiring_cpu_delivery_failures$", "--no-tests=error", "--timeout", "3400", "-V"]
+1/1 Test #649: viewer_wiring_cpu_delivery_failures ...   Passed  148.93 sec
+The following tests passed:
+100% tests passed out of 1
+COMMAND: ["ctest", "--test-dir", "/home/altin/anno-build/w4-asan-viewer", "-R", "^viewer_wiring_r1_held_publication$", "--no-tests=error", "--timeout", "3400", "-V"]
+1/1 Test #647: viewer_wiring_r1_held_publication ...   Passed  139.09 sec
+The following tests passed:
+100% tests passed out of 1
+COMMAND: ["ctest", "--test-dir", "/home/altin/anno-build/w4-asan-viewer", "-R", "^viewer_wiring_r4_occupancy$", "--no-tests=error", "--timeout", "3400", "-V"]
+1/1 Test #648: viewer_wiring_r4_occupancy .......   Passed  133.49 sec
+The following tests passed:
+100% tests passed out of 1
+COMMAND: ["ctest", "--test-dir", "/home/altin/anno-build/w4-asan-viewer", "-R", "^picture_matrix_contract$", "--no-tests=error", "--timeout", "3400", "-V"]
+1/1 Test #1325: picture_matrix_contract ..........   Passed  215.80 sec
+The following tests passed:
+100% tests passed out of 1
+COMMAND: ["ctest", "--test-dir", "/home/altin/anno-build/w4-asan-viewer", "-R", "^anno_app_input_tests\\.|^viewer_wiring_(contract|r1_held_publication|r4_occupancy|cpu_delivery_failures)$", "-LE", "heavy", "--no-tests=error", "-V", "--timeout", "3400", "-j", "4"]
+ 1/35 Test  #616: anno_app_input_tests.dev tool at a picture barrier: input, turns and outcomes go on, an applied building is shown as not drawn yet, and the open gate draws it (game files) ......................   Passed  110.76 sec
+ 2/35 Test  #642: anno_app_input_tests.dev tool: on lan5's developer island, with its heights, every sampled ground pixel picks the tile the renderer drew there ...................................................   Passed  125.67 sec
+ 3/35 Test  #623: anno_app_input_tests.dev feedback: the developer start's resources are the fixed map's only, an original scenario keeps its own ..................................................................   Passed  162.43 sec
+ 4/35 Test  #622: anno_app_input_tests.dev feedback: the composed title never lets an earlier command's refusal pass for the latest command's, and shows the money once ............................................   Passed  109.04 sec
+ 5/35 Test  #619: anno_app_input_tests.dev feedback: every buildable type of lan5 at every rotation has the registry's footprint in its Anlagen entry, and a preview or a reason for none ..........................   Passed  110.36 sec
+ 6/35 Test  #617: anno_app_input_tests.dev feedback: the preview is the scene's own sprite of the type at the hovered tile, and another rotation or type is drawn differently ......................................   Passed  111.09 sec
+ 7/35 Test  #620: anno_app_input_tests.dev feedback: occupancy and costs are refusals only with a published basis, the rest is unchecked, and pointer moves never rebuild the index ................................   Passed  110.90 sec
+ 8/35 Test  #621: anno_app_input_tests.dev feedback: the line names the latest command's outcome by its receipt, not an earlier one's ..............................................................................   Passed  110.48 sec
+ 9/35 Test  #636: anno_app_input_tests.dev tool data: pointer moves rebuild nothing, and an unpublished list is not re-indexed .....................................................................................   Passed    7.40 sec
+10/35 Test #1327: viewer_wiring_contract ...........................................................................................................................................................................   Passed    9.59 sec
+11/35 Test  #639: anno_app_input_tests.dev tool: a click over a known tile builds there through the window's SDL mapping, at every zoom group, a derived level and continuous scales, at pixel densities 1 and 2 ...   Passed    0.15 sec
+12/35 Test  #638: anno_app_input_tests.dev tool data: another player's city on another island: its commands carry that issuer and city, and the index keys on that island ..........................................   Passed    0.05 sec
+13/35 Test  #645: anno_app_input_tests.dev tool: press, move, cancel, release and focus-loss sequences make exactly the intended commands, and motion alone makes none .............................................   Passed    0.05 sec
+14/35 Test  #626: anno_app_input_tests.dev script: a click step's events land on the tile it names, at density 1 and 2, and the waits end or fail ..................................................................   Passed    0.05 sec
+15/35 Test  #635: anno_app_input_tests.dev tool data: an empty buildable list only demolishes, and a malformed definition sends nothing ............................................................................   Passed    0.05 sec
+16/35 Test  #640: anno_app_input_tests.dev tool: under continuous zoom a point just inside a tile's edge picks that tile: the view's sub-pixel offset counts .......................................................   Passed    0.05 sec
+17/35 Test  #646: anno_app_input_tests.dev tool: a drag longer than one record is refused before its path is made, and a tool without a city stays off .............................................................   Passed    0.05 sec
+18/35 Test  #643: anno_app_input_tests.dev tool: a resized window maps the same tile with its new frame ............................................................................................................   Passed    0.04 sec
+19/35 Test  #644: anno_app_input_tests.dev tool: off the city's island, outside the window and non-finite points make no command and say why .......................................................................   Passed    0.04 sec
+20/35 Test  #634: anno_app_input_tests.dev tool data: a second definition (another id, a non-square footprint, other costs, no sprite) is driven by its data alone .................................................   Passed    0.05 sec
+21/35 Test  #624: anno_app_input_tests.dev script: the parser takes the steps and names a bad line .................................................................................................................   Passed    0.04 sec
+22/35 Test  #641: anno_app_input_tests.dev tool: an island whose origin has an odd x + y is drawn half a pixel high at group 1, and a point just inside a tile's edge still picks that tile ........................   Passed    0.04 sec
+23/35 Test  #628: anno_app_input_tests.dev script: wait drawn ends only when the change is settled on its way to the screen (round ee review, R2) ..................................................................   Passed    0.04 sec
+24/35 Test  #633: anno_app_input_tests.dev tool data: the buildable list is the registry's list-backed and road types in id order, of any id width .................................................................   Passed    0.04 sec
+25/35 Test  #625: anno_app_input_tests.dev script: only the script's own input is taken ............................................................................................................................   Passed    0.04 sec
+26/35 Test  #629: anno_app_input_tests.dev script: hold, release, note and the consistency expectations (W4-WIN-CLOSE C1) ..........................................................................................   Passed    0.05 sec
+27/35 Test  #630: anno_app_input_tests.dev script: stage holds, wait visibility, wait blocked and expect held (W4-WIN-CLOSE C2) ....................................................................................   Passed    0.04 sec
+28/35 Test  #631: anno_app_input_tests.dev script: fail and pass a CPU delivery stage, expect failing (W4-WIN-FINAL F2) ............................................................................................   Passed    0.04 sec
+29/35 Test  #632: anno_app_input_tests.dev script: the log opens with the identity of the whole parsed script and a ran record keeps every argument (W4-WIN-VERIFY V2) .............................................   Passed    0.04 sec
+30/35 Test  #637: anno_app_input_tests.dev tool data: per-move work against growing unrelated content (a measurement) ..............................................................................................   Passed   35.72 sec
+31/35 Test  #618: anno_app_input_tests.dev feedback: on an original scenario, the preview sprites of placed objects' types and rotations are the scene's own drawing of them .......................................   Passed  104.95 sec
+32/35 Test  #627: anno_app_input_tests.dev session: the replay agrees with a recorded run, and a moved command or a changed refusal does not (game files) ..........................................................   Passed  388.64 sec
+33/35 Test  #649: viewer_wiring_cpu_delivery_failures ..............................................................................................................................................................   Passed  148.59 sec
+34/35 Test  #647: viewer_wiring_r1_held_publication ................................................................................................................................................................   Passed  138.61 sec
+35/35 Test  #648: viewer_wiring_r4_occupancy .......................................................................................................................................................................   Passed  136.52 sec
+The following tests passed:
+100% tests passed out of 35

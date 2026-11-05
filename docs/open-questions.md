@@ -206,11 +206,22 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 
 ## OQ-026: Isometric projection details not yet calibrated
 - **Status:** open
+- **Update 2026-11-03 (handedness, resolved):** the renderer drew the mirror image of the original. The camera (D: `AnnoFrame.dll` `0x100712c0` Ry = [[c, 0, −s], [0, 1, 0], [s, 0, c]] at a = 135° + 90° · view rotation, `0x10071240` Rx, `0x10071d70` Ry · Rx · S; `AnnoDisplay.dll` `0x10011e60` reads column 0, row vectors; `AnnoWelt.dll`'s terrain builder `0x1009b920` passes (tile x, h · 0.04, tile y), vertex at `0x1009bba5`–`0x1009bbf3`) gives screen x = 41.835 · (y − x) px at zoom 0: tile +x goes to the lower left, +y to the lower right, while the renderer had `(x − y) · tw/2`. Corroborated by the non-square sprites (P: 266 of 276 rotation blocks of 69 types fit their footprint only in this handedness, `tools/footprint_handedness.py`), by the live hovered-tile sweeps (`docs/re/view.md` §2.1, §2.5: one tile right = (x − 1, y + 1)) and visually (fences and hedges of `single32.sze` were combs); the hovered-tile sweeps are corroboration only (they assume the pair's first `u16` is x). Also open: the draw-order tie-break between objects of equal far-corner sum (now right to left on screen), and whether the enhanced water's relief light, which now mirrors with the world to the screen's top right, should be re-tuned to the top left (owner decision; a −y light axis failed the river motion check Q5; no test pins the GPU-only `fluid_shade` axis). Q5 also FAILS with the kept −x light on one island, `D_256x256_0045_5B` (16 of 33 windows, 48.48 % against 55 %; 63.41 % of 41 before the fix): its river raster changed with the sprites' positions (`docs/render/iso.md`, "Handedness"); the per-island bar is the orchestrator's decision, open. Fixed in every tile-to-screen and screen-to-tile mapping of the CPU and GPU paths (`docs/render/iso.md`, "Handedness"); the sim was right and is unchanged. Still open from this item: the exact screen rounding of 83.67 × 41.24 to 84 × 42, and how the original's view rotations 1–3 map the frames (this renderer shows view rotation 0 only).
 - **Update 2026-10-25 (T15.B1c, `docs/re/view.md` §2.3/§3.2–3.3):** D, AnnoFrame scroll methods `0x10006850/0x100068d0/0x10006950/0x100069d0` change f32 negative tile-space x/z at tFrameGame base+0x1608/+0x1610; rotation byte+0x15f0, zoom scale+0x15f4, group+0x1604. Poller step is min(dt,50)/(zoom*10); Full skips scrolling when+0x16fc is not−1. HWND GWL_USERDATA anchors the base object (`0x100087d0`, getter `0x10007f2b`), but no module-global pointer chain was established. No module-only camera reader added. Three converter candidates end at a dynamic pair getter (`0x10004203/0x10004212`) and view geometry; pixel pitch/picking/rounding remain open. T15.B2 should calibrate the HWND-derived fields and record the hovered-pair frame.
 - **Update 2026-10-25 (T15.B1b):** the literal cursor-key sweep in AnnoFrame/Game/Scene/Display/Welt yields37 compare sites, no minus0x25 index and no contiguous byte/u32 key table in .data/.rdata (`docs/re/view.md` §3.1). Candidate reads do not select four scroll branches; parsing, range and property-selector cases are recorded with addresses. Camera global/fields and converter remain unanchored; no memory reader added. T15.B2's live frame walk/minimap calibration remains the independent route. This negative pattern search does not establish the key encoding or exclude a remapped/strided/runtime table.
 - **Update 2026-10-25 (T15.B1, `docs/re/view.md` §2.2–3):** no new projection constants confirmed. The proposed converter return address AnnoWelt `0x10023164` lies in building-list search `0x100230d0` (call `0x10023161`, virtual +0x58); `0x10023ca4` is BuildingIndex lookup `0x10023c80` calling `0x10023180`, while `0x10076829` is house goods-choice `0x10076670` calling supplier +0xc4. These addresses do not identify a pixel transform or camera. The live start-zoom mouse sweeps still imply approximately 40x20 pixels, but exact per-group constants, rotation and scroll units remain open. Resume from a validated hovered-pair writer/call stack or minimap calibration, not from assumed meaning of nearby stack words.
 - **Update 2026-10-19 (river gaps):** the river height byte is the bed's lowest corner (`D_256x256_0045_5B`: 152 of 184 pieces; the banks lie 16 units higher), which makes the original's "terrain at most height + 10" test the painted bed's contour; enhanced rivers follow the painted bed (the sprites' own coverage) and an interpolating bed surface, tuned by `kBedEdge`, `kBedDepth`, `kRiverBankNoise` (`docs/render/iso.md`, "River gaps"). Open: whether the original's per-pixel `z` offsets make its bed contour differ from `height + 10` on the triangulated terrain; the stray single sprite pixels at a bed's rim that pass the depth test.
 - **Update 2026-10-17 (rivers):** river sprites are now depth-tested against the terrain seen at each pixel; water shows where the terrain is at most the item height + 10 units, fitted to the painted riverbed. Open: the original's exact test (per-pixel `z` of `BSH_RGBWZ` frames) and the meaning of the per-item sub-offsets in the runtime chunk storage (`0x1009f870`: `pos = cell − (b & 7, (b >> 3) & 7)`).
+- **Update 2026-11-03 (waterline, W4-OPENING-1):** the original (GOG, Wine runner) draws a Kontor's water-edge corners at
+  exactly 16 as water (its piles stand in it): our `under < 16` draws them as sand. With 16 as water (shore at 16.5) the
+  Kontor's water edge gains water, but in the original's start view the water reaches all its piles and in ours it still does
+  not: the screen height of our water near the shore against the original's painted water is a candidate, not measured.
+  The original does not change the heights when it places buildings (the runtime grid unchanged over 17 placements).
+  Owner decision the same day: the shore at 16.5 is the default (`kShoreHeight`, `--shore 16` for the earlier look). What
+  still differs (the Kontor's poles and land side drawn over the water and the slope) is (c): the original depth-tests every
+  sprite pixel (the Kontor's frames are `BSH_RGBAZ` with per-pixel offsets −70…+54, roads `BSH_RGBAH` decals) against the
+  terrain triangles and the water, this renderer draws sprites whole on top.
+  Evidence: `docs/orchestration/evidence/w4-opening-1/owner-playtest-2026-11-03-handover.md` section 4.
 - **Update 2026-10-17 (waterline):** the visible waterline is at `HEIGHT` 16, not at the sprites' 32: the painted ground textures change from water to sand between 16 and 17 (P), the land classifier threshold is 19 (D), surf items lie at 0 or 16 (P). The renderer now clips the sea at 16 against the terrain point visible at each pixel (a reproduction of the depth test); this removed the sea over painted sand and most straight beach edges. Still open: how the original clips sprites drawn at 1.28 world units at the 16 contour (per-pixel `z` offsets of `BSH_RGBWZ`?), and what `2 ·` in `2 · 16 · 0.04` stands for.
 - **Update 2026-10-17 (open sea, colleague feedback):** the sea is now drawn everywhere, on a world-coordinate lattice, from a periodic pre-rendered image (`crates/render/src/sea.rs`). Open water (texture 0) shows the sea checkerboard over the colour of the scene's most common deepest floor texture (`Meer_Meer02.bmp` in `Single_01.sze`); the result, RGB (24, 92, 140), is close to the original's (28, 89, 138), so the colour parameter `0xC0` may matter less than assumed. Each island's floor fades into open water over 8 tiles towards its border. Still unverified against the original: whether open water has a floor texture, whether the lattice uses world coordinates, and what the original shows between islands (needs screenshots). The gap fill that made rivers and coasts tile-blocky is gone; rivers still show hard tile diamonds and seams (see the river note below).
 - **Update 2026-10-17 (reference video):** the sea's loop period in a History Edition gameplay video is ≈ 0.8 s, matching one animation step per `ANIM` ms (16 × 50 ms) — the current timing. The original's open sea is darker (RGB 28, 89, 138 vs ours 37, 107, 142); likely the unapplied colour parameter `0xC0` (`docs/render/iso.md`, "Reference").
@@ -428,11 +439,12 @@ Source: `docs/sim/state.md` §13 (rows D1..D18) and the decision-needed items of
 - **Rules option:** `Seams::*` (named, hashed).
 
 ## OQ-052: Placement validity is a stand-in (spec D17, stand-in)
-- **Status:** open, owner decides
+- **Status:** resolved for the supported classes and implemented (MAP-BUILD-1 packages B and C, 2026-11-02): `placement_rule` is the default of `Seams::placement_rule`; the D17 stand-in is only the named seam `stand_in_placement_seam()`. Open: the unsupported classes below.
 - **Area:** simulation / building UX
-- **What:** the island placement check (terrain, water/coast/mountain via the type flag word, overlap rule) is unread (`0x1007c790` through island slot `+0x6c`, AnnoGame `0x10008920`, `0x10008f90`). The default rule is: inside the island, owner tiles, no overlap.
-- **Why it may change the feel:** Build can accept placements the original refuses (mines off mountains, fishers inland).
-- **Faithful default implemented:** the stand-in rule (the best available, not the original).
+- **What:** the island placement check is `0x1007c790` through island slot `+0x6c`, type slots `+0x6c` (`0x10008920`) and `+0x68` (`0x10008f90`). Now read and emulated (`docs/re/ship-placement.md`; contract `docs/sim/ship-placement.md`): for ordinary land (flag word `& 0x7017 == 0x0004`, 254 BuildCmd-reachable types) every vertex of the footprint window must be one multiple of 16 and at least 32, and that value is the height byte; the coast class (`& 0x7017 == 0x2007`, 19 reachable types) uses the shore rule of `ship-founding.md` 10.4. The apply path of the original skips the analysis and trusts the client's byte 8; the port derives it on the server.
+- **Still open (explicit `Unsupported`, never a default accept):** class `0x3000` (8 `MINE`, 4 `STEINBRUCH`; helper `0x10008a80` reads the type's `HIGHMAP` table at `+0x234`), flag bit `0x10` (per-chunk coverage test `0x1007c955`-`0x1007cb3d`), `0x400000` same-PRODTYPE replacement over a market/warehouse (`0x10027b62`), and an original-runtime capture of a real build click (NOT_RUN).
+- **Why it may change the feel:** mines and quarries cannot be built until the `0x3000` helper is read; building over a same-type market is refused.
+- **Faithful default implemented:** the rule above (`placement.cpp`, `docs/sim/ship-placement.md` section 6); the stand-in is an explicit seam.
 - **Rules option:** `Seams::placement_rule`.
 
 ## OQ-053: Deposit goods and amounts are placeholders (spec D18, stand-in)
@@ -846,7 +858,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** no look-and-feel stake; the original keeps all sprites in system memory.
 
 ## OQ-100: Up to 8 players: how the world grows above 4 players (new, owner decision 2026-10-22, PLAN §0.6 / M4.1)
-- **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md` (to be written).
+- **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md`. The 99% floor is the later generator's rule. It is not the acceptance rule for the fixed-map ship starts (`fixed-map.md` §11, 2026-10-31).
 - **Area:** sim (world setup), net (handshake), UI (game setup)
 - **Evidence:**
   - The original has no world generator: an endless world is a scenario with a fixed size and fixed island links, and only the templates, raw materials, ores and treasures are drawn at start (`docs/re/annoscene.md` §3, §5).
@@ -2112,3 +2124,147 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** Which options-tab icons open the full-frame statistics (`STATISTIK_UNTERGRUND` is already bound to key **Q**, mean 23.41 on `f15_rating`), the quit `MESSAGEBOX`, and the right-side book/crest on `f15_options_tab`?
 - **What we know:** column x=800 opens load/save/music/speech at y=360/410/460/510. `OPTION_EXIT` id 1492 is (927, 660) 92 x 100 mean 11.23 on `r2_options`; a click there while speech was open did nothing (`f15_options_exit`). `OPTION_BILANZ` id 1486 69 x 61 best mean 66 on `r2_options`.
 - **How to resolve:** click the orange graph, the book, the green crest, and `OPTION_EXIT` from the main options list (`f15_options_tab`) without a leftover submenu.
+
+## OQ-525: CPU reference blends truncate; the GPU rounds (W4.3 round eb)
+- **Status:** open (cause established; the reference decision is open).
+- **Area:** render / fidelity (CPU reference against the GPU compositor).
+- **Question:** Which rounding is the reference for straight-alpha compositing and the sea's blend towards its filled colour: the CPU path's truncation, or round to nearest as the GPU's fixed-function blend and its shaders produce?
+- **What we know:**
+  - **Reproducer:** `src/render/tests/picture_gpu_test.cpp`, "picture GPU, water parity: the reproducer …". It uses `data/maps/lan5.txt` at tick 0, a 128 × 96 view at scene (4107, 4526), zoom group 2, time 0 and original water.
+  - **Pixels:** four pixels differ by 2 on Metal (Apple M5 Max). (4171, 4572) CPU 38,56,72, GPU 38,57,74; (4171, 4574) 29,51,67 against 30,52,69; (4175, 4574) 34,51,62 against 34,52,64; (4171, 4576) 44,56,62 against 46,56,62.
+  - **Sprite and layer:** each pixel lies under one water object below the waterline, Anlagen 2708 frame 54 (frame box at 4124, 4552, 72 × 34), not a shadow, with the sea shaded over it.
+  - **The CPU chain at these pixels:** `render::over` (`iso.cpp`, `num / out_a`) blends the object over the ground, `over` again blends the sea pattern sprite, and `sea::lerp4` (`/ scale`) blends towards the filled colour. Each step truncates.
+  - **The GPU chain:** it blends in float and rounds when it writes (the `under` target, then the sea pass).
+  - **Experiment (not committed):** round to nearest in `over` only gives max 1; in `lerp4` only, max 1; in both, 0 on this view (`cache/eb-runs/p4-experiment-*`).
+  - **Elsewhere:** docs/render/iso.md records the same effect on enhanced rivers ("the CPU path rounds down at each step of the sea", within 2/255). The ≤ 1 bound of "GPU frames match the CPU path" was measured on views without water objects on the per-frame sprite path.
+- **How to resolve:** decide the reference from the original where it applies. The original's 8-bit blends (the shadow `dst/2 + dst/8`, AnnoDisplay.dll 0x10019f80) truncate, but its sea and straight-alpha sprites are this project's model, not traced. Then either make both CPU steps round to nearest and re-baseline the CPU digests and river bounds, or keep truncation and state a per-stage bound for the GPU. Until then, GPU/CPU visual parity is not accepted for views with water objects below the waterline.
+
+## OQ-550: The height a command-built building is drawn at (W4.4 round ee)
+- **Status:** open.
+- **Area:** sim / app (the building's height byte, the placement preview).
+- **Question:** At which height does the original draw a building the player places? The terrain height under its origin tile, or 0?
+- **What we know:**
+  - A building made by a Build command gets `byte0f = 0` (`src/sim/src/apply.cpp`, `create.cpp`). The play picture draws a building at its height byte (`SceneBuilding::height`, `loader.cpp`).
+  - The developer tool's preview stands at the ground height under its origin tile (`make_preview`, `dev_feedback.hpp`). On lan5's developer island that is height 40 at the first city building's tile, so a placed building is drawn lower than its preview was.
+  - Buildings loaded from a scenario keep their file's height byte.
+- **How to resolve:** trace where the original sets the height byte of a building it creates (AnnoGame.dll, the build command's apply). Then set it in the sim, under the rules config if it is not the original's, and make the preview use the same value. Until then the preview discloses that it stands on the ground (`docs/app/game-shell.md`).
+- **Update (2026-10-31 readiness):** Kontor 1302's action radius byte is 24, and that byte is the market-search radius (`docs/re/transport.md` §1.1). The help text says the warehouse service area marks city limits. The founding click's commit callee was not opened (`docs/re/ship-founding.md` §3.3), so 24 is still not the city-claim radius.
+- **Correction (2026-10-31):** the unread callee is the Kontor handler's `0x10049340` (`docs/re/ship-founding.md` §3.5). Section 3.3 is the mine cursor and is not the city-claim walk. Radius 24 remains the market-search radius.
+
+## OQ-515: Equal land and equal distance as map acceptance (MAP.2, 2026-10-31)
+- **Status:** superseded 2026-10-31. Natural asymmetry is the settled rule. This is not a request to pick a wider tolerance.
+- **Area:** simulation / fixed map.
+- **What was asked:** whether ±10% large-island land and ±5% fairness were gates for `map2-proposed-v1`.
+- **What stands:** that profile's measurements remain historical failures of those gates (nord land worst 79 permille, dschungel 52). They are not passes. The active profile `map2-ship-start-v2` does not use those gates (`docs/sim/fixed-map.md` §11).
+
+## OQ-516: Filler density against ten large islands (MAP.2, 2026-10-31)
+- **Status:** open. The edge stays 1431 and the ten 256² islands stay.
+- **Area:** simulation / fixed map.
+- **Question:** should filler follow the coverage-matched reading (~45.5% rectangle share) or the denser reading that keeps more of the scaled 64/80/128 counts (~52–53%)?
+- **What is known:** ten 256² islands are 32.0% of 1431². Four 256² islands are 25% of 1024². Scaling 03's mix gives eight 256² islands and 46.3% rectangle share. Adding the owner's two extra large islands on top of the proportional filler is 52.7%. Shrinking the filler to hold the share near 45.6% is 40 islands and 45.5%. `lan5-a` and `lan5-b` are the second of those, measured at 45.5% with a slightly different 64/80 split (6 and 14, not 7 and 13) because the generator splits by the 03 climate×size weights. `lan5-c` is the denser reading, measured at 52.2%. Rectangle share is not buildable land.
+- **How to resolve:** the owner picks a density. Both are generated. Neither enlarges the world.
+
+## OQ-517: What a tool route is worth (MAP.2, 2026-10-31)
+- **Status:** open. Equality of those lengths is no longer the question (OQ-515 superseded).
+- **Area:** simulation / fixed map.
+- **Question:** which original movement, founding, fertility and deposit rules would replace the tool's geometric sea grid?
+- **What is known:** `map2-proposed-v1` used straight-line Kontor distances and nearest-Kontor reach. Those are retired as acceptance. The version-1 ship checker (rectangle route, origin-only obstacles, island-wide maximum component) is also withdrawn. `map2-ship-start-v2` uses a 4-connected route on water that reaches the world boundary, ending beside one 4×4, blocks ANLAGEN `HEAD` footprints, and counts that site's own component. The 256-tile figure is a geometric proxy. `raw` and `ore` are still not applied. None of this is the original's movement or a legal warehouse.
+- **How to resolve:** trace founding and ship movement (W6.1) before treating a tool route as engine certification.
+- **Update (2026-10-31 readiness):** exterior-4 stays the tool model. The ship replan at `AnnoWelt.dll` `0x1003de40` begins with a float test (`0x10030100`); the open-water planner is still unread, so diagonal passage and hull clearance stay unknown (`docs/re/ship-navigation.md`). The founding click's traced predicates are in `docs/re/ship-founding.md`. Neither replaces this checker.
+
+## OQ-518: Pairing a seat with a southern island (MAP.2, 2026-10-31)
+- **Status:** superseded 2026-10-31. Ship starts have no compulsory southern partner and no home island.
+- **Area:** simulation / fixed map.
+- **What stands:** `min-spread-lex` can prefer five equal long routes (sum 500) over a short cycle (sum 150). That objective is retired. The historical `lan5-a/b/c` files still record the pairing they used. A diagnostic matching of seats to distinct islands in `map2-ship-start-v2` is a witness that independent settlement is possible. It is not an assignment.
+
+## OQ-519: Which height counts as land for fairness (MAP.2, 2026-10-31)
+- **Status:** open. The profile uses one threshold and records the others.
+- **Area:** simulation / fixed map.
+- **Question:** should large-island land be `HEIGHT >= 16`, `HEIGHT > 0`, or the original classifier (average above 19)?
+- **What is known:** `HEIGHT >= 16` is the fixed-map land count and `kWaterline`. `HEIGHT > 0` counts tiles that are not buildable. The classifier is documented in `docs/render/iso.md` and is not what this lane counted. The 79 and 52 permille figures are the `>= 16` counts.
+- **How to resolve:** if a different threshold is required, remeasure the pools before judging the quintuples. Do not treat the three definitions as the same number.
+
+## OQ-520: Which way a founded Kontor faces (MAP.2, 2026-10-31)
+- **Status:** open, and narrowed. There is no preplaced starting Kontor to orient.
+- **Area:** simulation / fixed map.
+- **Question:** when a player founds the first warehouse, which way does its door face, and does the square 4×4 footprint depend on that facing?
+- **What is known:** the historical candidates stored rotation 0 because the footprint is square. The original door is unread. Ship-start manifests store a ship facing, which is the figure's facing at sea, not a warehouse door.
+- **How to resolve:** read the founding placement (W6.1). Do not invent a door direction in the manifest.
+- **Update (2026-10-31 readiness):** the click test reads a rotation byte in 0..3 and swaps the footprint axes (`AnnoFrame.dll` `0x1004638d`). Kontor 1302's `ENTRANCE` stores two points, `(2.5, 13/6)` and `(11/6, 0.5)`. The writer that chooses the rotation for a click was not found, so the manifest still does not store a door. Ship facing 0..3 remains the figure's cardinal heading (`docs/re/ship-navigation.md` §4).
+- **Correction (2026-10-31):** `0x1004638d` is inside `tCursorAnlageBergwerk`, not the warehouse handler. The Kontor handler is `AnnoFrame.dll` `0x10048e60`, and it was not shown to read a rotation. The two entrance points remain file data for type 1302. The door a founding click writes is still unread (`docs/re/ship-founding.md` §3.5).
+- **Update (2026-11-03, W4-OPENING-1):** the orchestrator's review traced the turn: the Kontor cursor's footprint helper returns the cursor's rotation byte `+0x46` (AnnoFrame `0x10049340`), the first of the four trials, written by the property-5 setter `0x10049166`. The opening now carries the cursor's turn (`T`/`.` on, `,` back). Still open: whether the original keeps or recreates its Kontor cursor between foundings, the byte's first value (ours: 0, kept between foundings), whether it shares the ordinary cursor's turn, which way `.` and `,` turn, and that they reach the cursor while founding (Wine runner).
+- **Update (2026-11-04, W4-OPENING-1-CLOSE, D, Wine runner):** checked in the first campaign mission (Nova Fora), the ship's warehouse button, the live Kontor cursor found by its vtable (`AnnoFrame.dll` RVA `0x88548`, the constructor `0x10049400`'s last store; the object's word `+0x44` = 1302): `.` and `,` reach it while founding; `.` turns back (byte `+0x46`: 0 → 3 → 2), `,` turns on (2 → 3 → 0 → 1). Its first value was 0. Esc closed founding and the button opened it again on the same object with the byte kept (1). The opening's keys follow: `,` (and `T`) on, `.` back. Still open: whether the ordinary cursor shares the turn. Run: `cache/orig/w4close-keys/d91-20261104-102540/` in the main checkout (not in git). Two side findings: the warehouse button stayed disabled on an island next to the Citizen game's start Kontor (cause not read), and in the silent runner a ship order with the ship-notification speech on crashed Wine's `dmime.dll` (the first run, `d91-20261104-102225`); with speech off it sailed.
+- **Update (2026-11-04, building tool, D static):** every placement cursor keeps its turn in the same byte `+0x46` (property-5 setters: base `0x100442df`, ordinary cursor `0x10047e5d`, Kontor `0x10049166`; the mine cursor uses the base); the turn handlers (View.dll `0x100190b3`, `0x10030440`/`0x10030480`) add −1 or +1 to the active cursor's byte. View.dll `0x1002b150` picks the cursor per PRODTYPE: 3 MINE and 13 STEINBRUCH get `tCursorAnlageBergwerk`, which builds with the nearest deposit record's turn (`0x10046300`, `0x10046715`; the records' source is open, OQ-024); the ordinary cursor tries the four turns from its own for 6 FISCHER, 7 WERFT, 15 WALFAENGER and 35 KONTOR (`0x100473cf`–`0x1004744c`). The building tool follows (`docs/app/game-shell.md`). Not checked in the Wine runner: whether a type change keeps the ordinary cursor's byte and which way `.` turns on screen (the manual says clockwise; by the pier frames +1 is clockwise and `.` is −1).
+
+## OQ-521: Clustered or dispersed ship spawns (MAP.2, 2026-10-31)
+- **Status:** open. The ship start itself does not choose this.
+- **Area:** simulation / fixed map.
+- **Question:** do the five human ships start in one cluster, or at separated authored positions?
+- **What is known:** original endless presets store party ship coordinates. On `03_1024_med_256` the pairwise straight-line gaps are about 126 to 447 tiles. Other presets differ (`01` about 39, `04` about 236). Those are stored coordinates, not sailing routes. The ship-start proposals use separated authored positions and a fixed seat order. That is a proposal, not this decision.
+- **How to resolve:** the owner chooses the spawn policy before a candidate is installed. OQ-522 through OQ-524 were reserved for MAP.2 and are unused.
+
+## OQ-NAVC-1: Ship routes near the east and south edge of a world that is not a multiple of 64 (MAP-NAV-2 package C, 2026-11-02)
+- **Status:** open. The port takes the conservative reading and pins it with a regression test.
+- **Area:** simulation / ship navigation (`docs/sim/ship-route-engine.md` deviation 3).
+- **Question:** what does the original's route engine do with the tiles and coarse cells that lie between the world edge and the end of the last 64-tile sector (a 1431-tile world ends 17 tiles into a sector)?
+- **What is known:** the coarse exporter fills a null sector with open water 0xfff and the kind-10 tile export of an empty region with water (8); both read past the world edge. The window is clipped to the world (`SetWindow` x1 = min(x1, width)) but the last coarse cell and block keep their full 8 and 64 tile extent. So the original MAY let a ship plan through water that exists only beyond the edge. Not run: no emulation with a world width that is not a multiple of 8.
+- **Port:** tiles outside the world are land and cells outside are mask 0; a cell that straddles the edge is packed with the outside as land (`route_unit_test.cpp`, "route partial cells": identical to the same world padded with explicit land). The 15 candidate witnesses end at x <= 1200, z <= 1146 of a 1431 world (more than 200 tiles from the edge), so none is in the affected zone; the seat ships start at least 100 tiles from it.
+- **How to resolve:** extend `tools/ship_nav_emulate.py` with a fake world of width 70 or 1431 and compare routes along the last column and row; or capture a ship route along the south coast of a 1431 map in the running game.
+
+## OQ-NAVC-2: Item height byte written by island growth (MAP-NAV-3 N3, 2026-11-02)
+
+- **Status:** resolved for the growth visit (D, bounded), MAP-BUILD-1 package B.
+- **Answer:** `AnnoWelt.dll 0x1008b5f0` replaces the object **in place** (`inc word [tile]`, `0x1008b6c6`), toggles bit 6 and rewrites the phase in tile byte 3 (`0x1008b681`, `0x1008b6a6`, `0x1008b6ca`) and notifies island slot `+0x188` (code `0xce`, `0x1008f2d0`: `inc byte [chunk_record + 5]`). Nothing stores to the second tile dword; **the item height byte remains**. No separate replacement callee exists. `grow_chunk` already behaves so.
+- **Residual:** only the visit and its notification were read; other tick passes (fauna sweep, drought) were not searched for tile `+4` stores. `docs/sim/ship-navigation.md` 12.13 limitation (1) should be restated by the owner of that file; see `docs/re/ship-placement.md` §6.
+
+## OQ-NAVC-3: Height byte of a command-built building (MAP-NAV-3 N3 review, 2026-11-02)
+
+- **Status:** resolved and implemented for the supported classes (MAP-BUILD-1 C): a command-built building stores the derived height in `byte0f` and every footprint tile; see `docs/sim/ship-placement.md` section 6 and `route_objects_test.cpp`.
+- **Answer:** the original's UI preview computes `rec[8]` (the height `v` of the footprint window) and sends it; the apply call (`flags | 0x1000000`) skips the analysis and stores the wire byte as the building's `byte0f` and the tile height. The port computes the same `v` on the server from validated terrain and never reads the client byte (so a client cannot build on sea, which the original allows). Ordinary land: `v` (all window vertices equal, multiple of 16, `>= 32`); coast: `max & 0xf0`.
+- **Open:** nothing for the supported classes; the unsupported classes are in OQ-052.
+
+
+## OQ-CARGO-1: Does the original disable the unload tab for a moving or otherwise busy ship? (MAP-CARGO-1 U1, 2026-11-02)
+
+- **Status:** open, **not a blocker**. The authoritative path has no such test, so the contract adds none.
+- **Area:** simulation / ship cargo (`docs/sim/ship-cargo.md` P3).
+- **Question:** the ship view's "Load/unload ship" tab (`View.dll`, builders at `0x1004ab80` and `0x1005e5xx`, refresh `0x1005d9e0`) may grey out the goods buttons while the ship moves, turns, is damaged, or no own warehouse is in range. Does it?
+- **What is known:** `AnnoWelt.dll 0x100ac360` (the transfer) and `0x1003f200` (the range test) read no state word, no hit points, no order and no parent (`docs/re/ship-cargo.md` section 8). The click handler `0x1005a7f0` passes the city from `0x1005d8c0` without testing it for null, which suggests the buttons are inert when no warehouse is found (shape only).
+- **Port:** a moving ship unloads at its apply-tick position if that position is in range; nothing else is checked. A rule such as "the ship must be stopped" would be a gameplay policy for the owner, not an original fact.
+- **How to resolve:** read the tab's enabling code (the property writers for the hold controls around `0x1005a650`), or watch the running original with a ship under way next to its warehouse.
+
+## OQ-CARGO-2: Consumers of the stock words `+6`/`+8` and of the foreign trade notifications (MAP-CARGO-1 U1, 2026-11-02)
+
+- **Status:** open, **not a blocker**.
+- **Area:** simulation / ship cargo and the balance sheet.
+- **Question:** city stock add/remove increment the u16 words `+6` ("added") and `+8` ("removed") of the 12-byte goods record (`0x1002da81`, `0x1002daaa`). Which code reads them (the balance sheet, a statistics page, an AI)? The foreign-owner arm of `0x100ac360` also posts `0xd` records to the property-`0x2c` listeners of the ship and the city (`0x100acc06`-`0x100accbc`); who listens?
+- **What is known:** the same-owner arm writes the words through add/remove and posts nothing. The rebuild's `CityStock` has no such words (`docs/sim/state.md` line 667 keeps them out of the stream). The words wrap at 65536 and are not part of stock.
+- **How to resolve:** list readers of `city + 0x334 + 12*g + 6/8` (and the `0x2c` property consumers) with the sweep used in `docs/re/ship-founding.md` 14.
+
+## OQ-CARGO-3: The cannon arm, the two-figure transfer `0x6b` and the foreign arm (MAP-CARGO-1 U1, 2026-11-02)
+
+- **Status:** open, excluded from MAP-CARGO-1 by the owner's scope.
+- **Area:** simulation / ship cargo.
+- **What is known:** the same function has an arm for `rec[6] == 1` (decrement a ship counter, add one ton of goods `rec[0]` to a city with no ownership test), an arm for owners that differ (relation 3, gold, notifications) and a load arm; multiplayer command `0x6b` is a different two-figure transfer (`docs/re/ship-cargo.md` sections 4, 7). None is reachable from the single-player view for the same-owner unload, except that a modified multiplayer client can set `rec[6]` and forge the city.
+- **Port:** none of them is accepted by the rebuild's `UnloadCmd`; the cannon arm in particular is a goods source without a ledger and must not be ported as written.
+- **How to resolve:** a separate package when loading, trading or cannons enter the scope.
+
+## OQ-CARGO-4: Where do the warehouse set and the dock disc live? (MAP-CARGO-1 U2, 2026-11-02) - CLOSED
+
+- **Status:** closed 2026-11-02 (coordinator decision).
+- **Area:** simulation / ship cargo / rules.
+- **Resolution:** `CargoRules { warehouse_prodtypes = {35}, dock_half_widths = {5,5,5,4,3,2} }` is a hashed, saved member of `Rules` from stream version 124, validated on create and load; the eligibility test uses it (no dependence on `founding_types`). See docs/sim/state.md (stream 124) and docs/sim/ship-cargo.md section 11.
+
+## OQ-551: How the original draws a scenery object whose anchor tile a building did not cover (W4-OPENING-1, 2026-11-03)
+- **Status:** open.
+- **Area:** app (the play picture) / render.
+- **Question:** A building is written over every tile of its footprint (AnnoWelt.dll `0x100823ed`). A multi-tile scenery object
+  (a 2 x 2 rock) whose anchor tile lies outside the footprint keeps its other tiles' object words outside, and loses the ones
+  inside. Does the original draw it whole, in part, or not at all?
+- **What we know:** the play picture drops a scenery item whose anchor tile lies under a building and keeps the others whole
+  (`scenery_under_building`, `loader.cpp`). The shipped scenarios store four Kontors with a 2 x 2 `STEIN`/`FELSEN` (1550, 1574,
+  1595) whose anchor lies outside and one column inside (e.g. `single34.sze`, island 18): the files keep such objects. The
+  chunk drawer positions an object from its tile's cell minus the footprint sub-offset (`docs/re/annowelt.md`), which suggests
+  it draws from the tile layer, but that is not traced to the end.
+- **How to resolve:** trace the chunk drawer `0x1009f870` for a tile whose anchor bit is clear, or capture the original drawing
+  `single34.sze` island 18 and compare the rock.

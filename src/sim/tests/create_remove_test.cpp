@@ -1026,6 +1026,12 @@ TEST_CASE("world create forwards the rotation and byte0f of a scenario building"
     const sim::Building& weaver = *city.index.lists[4].slots[0];
     CHECK(weaver.rotation == 0);
     CHECK(weaver.byte0f == 0x7f);
+    // byte0f is the placed footprint's height byte on every tile (MAP-NAV-3 N3).
+    const sim::TileLayer& tl = w.islands()[0]->tiles;
+    CHECK(tl.item_height(tl.index_of(101, 101)) == 0x7f);
+    CHECK(tl.item_height(tl.index_of(111, 142)) == 5);
+    CHECK(tl.item_height(tl.index_of(110, 140)) == 5);
+    CHECK(tl.item_height(tl.index_of(112, 140)) == 0);
     // The footprint is the turned one.
     const sim::CityRef c0{sim::IslandId{0}, sim::CityNo{0}};
     CHECK(w.building_at(c0, 111, 142) != nullptr);
@@ -1061,10 +1067,17 @@ TEST_CASE("world create makes cities in ascending number and keeps the file orde
           sim::make_building_id(sim::IslandId{0}, 3));
     CHECK(city_of(w, 0, 1).index.lists[4].slots[1]->id ==
           sim::make_building_id(sim::IslandId{0}, 4));
-    // The result does not depend on the order of the cities in the scenario.
+    // The result does not depend on the order of the cities in the scenario, except for the ring's
+    // ALLOCATION cursor, which is the slot of the last city added in file order (docs/sim/
+    // city-creation.md E3): [1, 0] ends on 0, [0, 1] on 1.
     sim::ScenarioSpec swapped = spec;
     swap_first_two_cities(swapped);
-    CHECK(make_world(k, swapped).state_hash() == w.state_hash());
+    sim::World other = make_world(k, swapped);
+    CHECK(w.islands()[0]->city_cursor == 0);
+    CHECK(other.islands()[0]->city_cursor == 1);
+    CHECK(other.state_hash() != w.state_hash());
+    sim::WorldTestAccess::islands(other)[0]->city_cursor = 0;
+    CHECK(other.state_hash() == w.state_hash());
 }
 
 TEST_CASE("world create stocks and refuses what a scenario city cannot hold") {

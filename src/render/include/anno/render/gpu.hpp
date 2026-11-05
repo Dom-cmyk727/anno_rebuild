@@ -25,6 +25,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -135,8 +136,18 @@ struct GpuStats {
     /// Its time steps recorded this frame, the cells of its window (size²) and the
     /// window's cells per tile (0 = no window yet).
     std::uint32_t fluid_steps = 0;
+    /// The windows the wave simulation has switched to since it started (FluidGpu::window_serial):
+    /// a switch restarts the waves at rest, so a zoom should cost few of them.
+    std::uint64_t fluid_windows = 0;
+    /// Of those, the switches that carried the old waves over (FluidGpu::resamples).
+    std::uint64_t fluid_resamples = 0;
     std::uint64_t fluid_cells = 0;
     std::uint32_t fluid_cells_per_tile = 0;
+    /// The tile position the wave window was asked to centre on (the view's centre at sea level).
+    std::pair<float, float> fluid_centre{0.0F, 0.0F};
+    /// The simulated waves' weight against the analytic ones in this frame (the wave_fade_ms
+    /// cross-fade of a new window; 1 = the simulation alone).
+    float fluid_fade = 1.0F;
     /// Visible chunks drawn from another zoom group's chunks because their own
     /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
     /// (draws) they took.
@@ -478,14 +489,65 @@ class GpuFrame {
     GpuFrame(const GpuFrame&) = delete;
     GpuFrame& operator=(const GpuFrame&) = delete;
 
+    /// The ships that act on the simulated waves in the next render() (enhanced water only; a bow
+    /// wave and a wake, fluid::ShipWake). Replaces the previous list: call each frame with the
+    /// positions and velocities as drawn, an empty list when no ship moves.
+    void set_wakes(const std::vector<fluid::ShipWake>& wakes);
+
     /// Composes `view` at `group` and `time_ms` into `target` (view.w ×
     /// view.h, in the frame's format) and submits the commands. With
     /// `resample` (not the identity) `view` is the scene grid the picture is
     /// composed on and `target` has the output's size: the grid is resampled
-    /// onto it by one extra pass (see Resample).
+    /// onto it by one extra pass (see Resample). `overlay` (round ee, C1: a placement preview,
+    /// Scene::preview_sprites) is drawn after everything else of the frame, ships included, with
+    /// no depth test: on top of the picture, not in its painter's order. `live_units`
+    /// (W4-OPENING-1: ships that move every turn) are drawn as the scene's own units are, after all
+    /// objects and in the same painter's order among them (x + y), but are not part of the scene:
+    /// handing a new list each frame changes no chunk and no scene generation. They are packed even
+    /// when the chunks hold the scene's ships.
     GpuStats render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                     std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
-                    const Resample* resample = nullptr);
+                    const Resample* resample = nullptr, std::span<const SpriteDraw> overlay = {},
+                    std::span<const UnitSprite> live_units = {});
+    /// render for a scene generation that may be released while work started by the frame is
+    /// still running (the play picture's generations; docs/app/gpu-handoff.md). The chunk jobs
+    /// the frame plans and the wave simulation's background preparation (GpuLimits::
+    /// background_fluid) keep `scene` alive until they finish; the compositor itself keeps no
+    /// reference to it, nor to its frame table, once render returns. The overload above borrows
+    /// the scene: its caller keeps it alive for as long as any of that work runs.
+    GpuStats render(FrameRenderer& frames, const std::shared_ptr<const Scene>& scene, Rect view,
+                    std::size_t group, std::uint64_t time_ms, WaterStyle style,
+                    WGPUTextureView target, const Resample* resample = nullptr,
+                    std::span<const SpriteDraw> overlay = {},
+                    std::span<const UnitSprite> live_units = {});
+
+    /// The compositor's copy of chunk `key` (round eb; docs/app/gpu-handoff.md, boundary 6). A
+    /// CPU chunk that is cached and fresh is CPU-ready; it is GPU-usable once `serial` equals its
+    /// Chunk::serial and it is not `fading` (then every plane of it is on the GPU and bound, and it
+    /// is drawn whole). Until then the key is GPU-pending: the GPU draws its previous copy (a
+    /// rebuilt chunk is swapped whole when its upload ends, never plane by plane), its stand-in or
+    /// the open sea.
+    struct ChunkGpuState {
+        /// Chunk::serial of the CPU chunk the GPU copy was uploaded from; 0 for none, a
+        /// placeholder or a stand-in.
+        std::uint64_t serial = 0;
+        /// An upload of the key is in progress (GpuLimits::upload_budget_ms spreads one over
+        /// frames, a plane at a time).
+        bool staging = false;
+        /// The copy is dissolving in over its placeholder (GpuLimits::chunk_fade_ms).
+        bool fading = false;
+    };
+    [[nodiscard]] ChunkGpuState chunk_state(const ChunkKey& key) const;
+    /// Work that later frames finish without new input, as of the last render(): a visible key
+    /// whose CPU chunk is cached but not GPU-usable yet (the upload limits deferred it), or a
+    /// dissolve in progress. A window that idles while paused keeps drawing while this is true
+    /// (app::FrameDemand::gpu_work).
+    [[nodiscard]] bool work_pending() const;
+    /// Test seam (W4-WIN-CLOSE C2; window thread only): while set, no chunk is uploaded or
+    /// replaced and no chunk is prefetched, so a chunk that is built on the CPU stays off the GPU,
+    /// and the visible chunks without a GPU copy keep their placeholder or stand-in. The window
+    /// keeps drawing. Cleared by passing false; never set by the library itself.
+    void set_test_hold_uploads(bool hold);
 
     /// Whether `group` can be shown without the window thread waiting for
     /// content: its sea pattern is rendered and fully on the GPU (render()

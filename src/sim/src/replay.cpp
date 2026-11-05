@@ -164,20 +164,33 @@ namespace {
 /// directly, with the recorder's rule in both cases: a command without a wire form
 /// (has_wire_form) is neither logged nor applied. Without that rule a Build too long
 /// for one record would change an unrecorded session and not a recorded one (the S9
-/// gap closed in S10, docs/sim/state.md §15).
-void submit_or_apply(World& world, Recorder* rec, const Command& c) {
+/// gap closed in S10, docs/sim/state.md §15). Returns what happened to it: World::apply's
+/// result, or Unencodable for a command without a wire form (Recorder::submit's result too).
+ApplyResult submit_or_apply(World& world, Recorder* rec, const Command& c) {
     if (rec != nullptr) {
-        rec->submit(c);
-    } else if (has_wire_form(c.body)) {
-        world.apply(c);
+        return rec->submit(c);
     }
+    if (has_wire_form(c.body)) {
+        return world.apply(c);
+    }
+    ApplyResult skipped;
+    skipped.status = Reject::Unencodable;
+    return skipped;
 }
 
 } // namespace
 
-void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps) {
+void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps,
+              std::vector<ApplyResult>* results) {
+    if (results != nullptr) {
+        results->clear();
+        results->reserve(turn.commands.size());
+    }
     for (const Command& c : turn.commands) {
-        submit_or_apply(world, rec, c);
+        ApplyResult r = submit_or_apply(world, rec, c);
+        if (results != nullptr) {
+            results->push_back(std::move(r));
+        }
     }
     for (std::uint32_t i = 0; i < steps; ++i) {
         if (rec != nullptr) {

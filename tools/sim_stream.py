@@ -58,6 +58,14 @@ T33.5 stage 2 (stream 113) adds foot_dx (u16), foot_dy (u16), foot_rotation
 T33.5 stage 3 (stream 114) adds Rules::removal_clear_tile, one byte of the
 header. The tile columns are unchanged.
 
+Stream 120 (task MAP-2, ship founding) adds Rules::founding_types (u64 count, u32 ids; the default
+holds 1302), per player the relation rows and the discovery set (two u64 counts, 0 here), per city
+the player mask, per island the players present (a u64 count each, 0 here) and per figure the u32
+state word (the transcribed registries hold no figure).
+
+Stream 124 (task MAP-CARGO-1) adds Rules::cargo after nav: the eligible warehouse PRODTYPEs and the dock
+half-widths (two u64-counted u32 lists).
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -70,6 +78,7 @@ SimConfig, Rules, WorldSettings, a seam, the class table) changes both this file
 and the C++ code, and goldens.txt is re-baselined with the values printed here.
 """
 import argparse
+import os
 import re
 import struct
 import sys
@@ -77,8 +86,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 115
-PRNG_TIMELINE_VERSION = 2
+STATE_HASH_VERSION = 124
+PRNG_TIMELINE_VERSION = 3
 
 
 def fnv(data, h=0xCBF29CE484222325):
@@ -231,15 +240,39 @@ def link_tables_bytes():
     return b
 
 
-def rules_bytes(full_tick=False):
+def nav_rules_bytes():
+    """Rules::nav defaults (stream 122, docs/sim/ship-navigation.md 7 and 12): move_blocked_mask 0x200e, plans_per_advance 4, run_cap 10,
+    retry_cap 8, goal_radius_tiles 6, unit_cap 64, window_radius_tiles 1024, window_blocks 32, the three u64 limits (600000 coarse pops,
+    4000000 fine pops, 64 MiB; package C measurements), volk_number 1, health span/floor 35/65, cargo penalty 17, then four cost classes of u16 10 13 50 69."""
+    b = u32(0x200E) + u32(4) + u32(10) + u32(8) + u32(6) + u32(64) + u32(1024) + u32(32)
+    b += u64(600000) + u64(4000000) + u64(64 << 20)
+    b += u32(1) + u32(35) + u32(65) + u32(17)
+    b += u64(4) + b''.join(u16(10) + u16(13) + u16(50) + u16(69) for _ in range(4))
+    return b
+
+
+CARGO_DEFAULT = ([35], [5, 5, 5, 4, 3, 2])
+
+
+def cargo_rules_bytes(cargo=CARGO_DEFAULT):
+    """Rules::cargo (stream 124, docs/sim/ship-cargo.md section 5): u64 count and u32 PRODTYPEs of the eligible
+    warehouses (default 35, KONTOR), then u64 count and u32 dock half-widths (default the radius-5 disc 5 5 5 4 3 2)."""
+    prodtypes, widths = cargo
+    return u64(len(prodtypes)) + b''.join(u32(x) for x in prodtypes) + u64(len(widths)) + b''.join(u32(x) for x in widths)
+
+
+def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT):
     # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
     # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
     # enforce_research, stat_decay_wide, bankrupt_deadline_wrap_safe, timer0_clamp,
     # island_candidate_order (S14 stage 2: Sorted = 0), removal_clear_tile (F37)
     flags = bytes([0, 0, 1 if full_tick else 0, 0, 0, 0])
+    # founding_types (stream 120): u64 count 1, the Kontor 1302; shared_visibility (121): u64 0
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
-            + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0))
+            + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u64(1) + u32(1302) + u64(0)
+            + u64(0) + nav_rules_bytes()  # city_names (120), shared_visibility (121): both empty; nav (122)
+            + cargo_rules_bytes(cargo))  # cargo (124)
 
 
 def settings_bytes(width=0, height=0):
@@ -247,12 +280,16 @@ def settings_bytes(width=0, height=0):
             + u8(0) + u32(0) + u8(0) + u8(0) + u32(3) + u32(100))
 
 
-def rng_table_digest():
+def rng_values():
     x, values = 1, []
     for _ in range(2048):
         x = (x * 214013 + 2531011) & 0xFFFFFFFF
         values.append((x >> 16) & 0x7FFF)
-    return fnv(b''.join(u16(v) for v in values))
+    return values
+
+
+def rng_table_digest():
+    return fnv(b''.join(u16(v) for v in rng_values()))
 
 
 def player_table_after(steps, step_ms):
@@ -288,6 +325,8 @@ def player_bytes(p):
     b += string(p['name'])
     b += u64(65) + bytes(65)   # research state
     b += u64(65) + bytes(130)  # research progress
+    b += u64(0)  # relations (stream 120): no row, the constructor's zero fill
+    b += u64(0)  # discovery (stream 120): empty set
     return b
 
 
@@ -405,7 +444,7 @@ def index_digest(stamp, lists):
 
 
 def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
-                index_stamp=0, cursors=None):
+                index_stamp=0, cursors=None, name=b''):
     """One present city. buildings_by_list: {list id: (hint, [bytes or None, ...])};
     a list that is not given is a fresh one (hint -1, cursor 0, one empty slot).
     cursors: {list id: scheduler cursor}; index_stamp: the index's shared stamp."""
@@ -422,6 +461,8 @@ def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
                                          for _ in range(WAREHOUSE_GOODS))
     b += u64(BUILD_GOODS) + b''.join(u32(0) + u64(0) for _ in range(BUILD_GOODS))
     b += u64(TRADE_LISTS) + b''.join(u64(0) for _ in range(TRADE_LISTS))
+    b += u64(len(name)) + name  # stream 119: city property 0x12 (u64 length, bytes)
+    b += u64(0)  # player_mask (stream 120): empty set
     b += u64(index_digest(index_stamp, lists))
     return fnv(u8(1) + b)
 
@@ -443,14 +484,15 @@ def farm_bytes(out=0, raw=0):
             + STATUS_NONE)
 
 
-def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload):
+def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload, kontor_id=0):
+    # rotation, byte0e, byte0f, u32 kontor_id (stream 119), payload tag, payload
     return (u64((island << 32) + serial) + u32(type_id) + struct.pack('<i', x)
-            + struct.pack('<i', y) + u8(0) + u8(byte0e) + u8(0) + u8(tag) + payload)
+            + struct.pack('<i', y) + u8(0) + u8(byte0e) + u8(0) + u32(kontor_id) + u8(tag) + payload)
 
 
 def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None,
                   cities=None, next_serial=1, sweep=(0, 0, 0, 0, 0), e300=0, objmgr=(0, 0),
-                  ring=(0, 0)):
+                  ring=(0, 0), lock=0, city_cursor=-1, kontor_counter=1):
     tiles = [[0, 0, NEUTRAL_OWNER, 0, 2, 0, 0, 0, 0, 0] for _ in range(w * h)]
     at = 0
     for owner, length in owner_runs:
@@ -475,7 +517,9 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
             tiles[index][9] = 1
     td = terrain_digest(*terrain) if terrain else 0
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
-         + u32(climate) + u32(next_serial) + u64(td))
+         + u32(climate) + u8(lock) + struct.pack('<i', city_cursor) + u32(kontor_counter)
+         + u64(0)  # players_present (stream 120): empty set
+         + u32(next_serial) + u64(td))
     b += u16(sweep[0]) + b''.join(u32(v) for v in sweep[1:])   # sweep: stamp, grow x/y, fauna x/y
     b += u16(e300)                    # event300_stamp
     b += u16(objmgr[0]) + u32(objmgr[1])    # objmgr
@@ -485,6 +529,7 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
     for goods, x, y, remaining, reserve in deposits:
         b += string(goods) + struct.pack('<i', x) + struct.pack('<i', y) + u32(remaining)
         b += u8(1 if reserve else 0)
+    b += u64(0)                       # ore_objects (stream 120): none in the transcribed islands
     b += u64(0)                       # reserved_object_count
     b += u64(tiles_digest(w, h, tiles))
     b += u64(cities_digest(cities or {}))
@@ -568,9 +613,13 @@ class IslandSim:
             self.tick((ms >> 1) & M32)
 
 
-def two_island_scenario(steps=0, step_ms=10):
+def two_island_scenario(steps=0, step_ms=10, locks=None, extra_city=None):
     """synthetic::two_island_scenario() after `steps` advances: (players, island
-    digests by slot)."""
+    digests by slot). `locks` maps a slot to its LOCKED byte (stream 118; default 0)."""
+    locks = locks or {}
+    # extra_city = (number, owner, stamp, name): a city created on island 0 by the city creation
+    # operation (docs/sim/city-creation.md): stamp in the city's tick stamp and its index stamp,
+    # the name from the draw, the island's allocation cursor on that slot.
     players = {0: new_player(0), 1: new_player(1, kind=12, money=25000, name=b'AI')}
     height = [i % 7 for i in range(600)]
     gfx = [(i * 3) & 0xFFFF for i in range(600)]
@@ -588,16 +637,23 @@ def two_island_scenario(steps=0, step_ms=10):
         c = sim.cities[no]
         return city_digest(no, owner, tick_stamp=c['tick_stamp'], index_stamp=c['index_stamp'],
                            cursors=c['cursor'])
+    cities0, cursor0 = {0: city(sim0, 0, 0)}, 0
+    if extra_city is not None:
+        no, owner, stamp, name = extra_city
+        cities0[no] = city_digest(no, owner, tick_stamp=stamp, index_stamp=stamp, name=name)
+        cursor0 = no
     islands = {
         0: island_digest(0, 100, 100, 64, 64, 2, [(15, 128), (0, 64 * 62)],
                          [(200, 1201, 0), (201, 1202, 3), (4095, 1203, 7)],
                          [(b'EISENERZ', 110, 120, 2000 * 256, True)],
-                         cities={0: city(sim0, 0, 0)}, **state(sim0)),
+                         cities=cities0, lock=locks.get(0, 0), city_cursor=cursor0,
+                         **state(sim0)),
         3: island_digest(3, 300, 200, 30, 20, 6, [(1, 300)],
                          [(0, 2001, 0), (599, 2002, 1)],
                          [(b'GOLD', 301, 202, 123456, False),
                           (b'STEINE', 329, 219, 2000 * 256, True)],
-                         (height, gfx, fertility), cities={1: city(sim3, 1, 1)}, **state(sim3)),
+                         (height, gfx, fertility), cities={1: city(sim3, 1, 1)}, lock=locks.get(3, 0),
+                         city_cursor=1, **state(sim3)),
     }
     return players, islands
 
@@ -634,7 +690,7 @@ def g1_scenario(steps=0, step_ms=10):
         cities={0: city_digest(0, 0, {4: production}, tick_stamp=c['tick_stamp'],
                                index_stamp=c['index_stamp'], cursors=c['cursor'])},
         next_serial=3, sweep=tuple(sim.sweep), e300=sim.e300, objmgr=tuple(sim.objmgr),
-        ring=tuple(sim.ring))
+        ring=tuple(sim.ring), city_cursor=0)
     return {0: new_player(0)}, {0: island}
 
 
@@ -726,7 +782,8 @@ def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, island
     assert step_ms < 30000, 'the monopoly refresh would run again (not transcribed)'
     acc750 = ms & M32
     acc_monopoly = step_ms if steps > 0 else 0
-    ids = fnv(u64(1) + u64(1) + u32(acc750) + u32(acc_monopoly) + u8(0))
+    # ids (stream 122): next_figure, next_event_seq, next_order_id, next_ticket, then the accumulators
+    ids = fnv(u64(1) + u64(1) + u64(1) + u64(1) + u32(acc750) + u32(acc_monopoly) + u8(0))
     events = fnv(u64(0))                # no timed events
     t = (ms >> 1) & M32
     figures = figures_digest(t & 0xFFFF if steps > 0 else 0)
@@ -761,6 +818,26 @@ def values():
         out[key] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2,
                               players_digest(stamp, cursor, slots), islands=isl,
                               world=(512, 512), steps=steps, step_ms=10, monopoly=monopoly)
+    # S5 plus one created city (stream 119): player 1 founds a city on island 0 at stamp 4242 with a
+    # three-name list; the name draw is T[(cursor + 1) mod 2048] mod 3 at the seed's cursor, which leaves
+    # the world generator one step on.
+    names = [b'Alpha', b'Beta', b'Gamma']
+    table = rng_values()
+    draw_at = (1234 + 1) % 2048
+    players, islands = two_island_scenario(0, extra_city=(1, 1, 4242, names[table[draw_at] % 3]))
+    isl = islands_digest(islands)
+    slots, stamp, cursor = table_run(players, 0, 10)
+    out['s5_islands_city_created'] = state_hash(
+        registry, draw_at, 0, 0, players_digest(stamp, cursor, slots), islands=isl, world=(512, 512),
+        steps=0, step_ms=10, monopoly=monopoly_entries([(2, [0]), (6, [1])], {0: 1, 1: 1}, 0))
+    # S5 with locks (stream 118): the same scenario at creation, island 0 with LOCKED byte 2 (a raw
+    # byte, not a bool) and island 3 with 1; the tick does not read the lock.
+    players, islands = two_island_scenario(0, locks={0: 2, 3: 1})
+    isl = islands_digest(islands)
+    slots, stamp, cursor = table_run(players, 0, 10)
+    out['s5_islands_locked_create'] = state_hash(
+        registry, 1234, 0, 0, players_digest(stamp, cursor, slots), islands=isl, world=(512, 512),
+        steps=0, step_ms=10, monopoly=monopoly_entries([(2, [0]), (6, [1])], {0: 1, 1: 1}, 0))
     # S6: the G1 scenario (a city with a weaver and a farm), seed 1234, advance(10) x steps
     for steps in (0, 100):
         players, islands = g1_scenario(steps)
@@ -797,10 +874,72 @@ def corpus_versions():
     return None
 
 
+SHIP_HOLD_CASES = [
+    # (name, [(goods id, raw 1/256-ton amount)]) -- hand-chosen; the encoding below is the spec.
+    ('empty', []),
+    ('one-raw-unit', [(3, 1)]),
+    ('whole-ton', [(3, 256)]),
+    ('baseline-order', [(5, 12800), (6, 2560), (9, 12800), (9, 7680)]),
+    ('baseline-swapped-tools', [(5, 12800), (6, 2560), (9, 7680), (9, 12800)]),
+    ('u32-max-tons', [(7, 0xFFFFFFFF * 256)]),
+    ('u64-max', [(1, 0xFFFFFFFFFFFFFFFF)]),
+]
+
+
+def ship_hold_stream(holds):
+    """A figure's hold list on the wire (stream 117, docs/sim/state.md): u64 count, then per
+    hold u32 goods and u64 amount in raw units of 1/256 ton (12 bytes, little endian)."""
+    return u64(len(holds)) + b''.join(u32(g) + u64(a) for g, a in holds)
+
+
+def ship_hold_fixture_text():
+    lines = ['# Ship hold wire encodings, stream version %d (task MAP-2, exact cargo).' % STATE_HASH_VERSION,
+             '# Written by tools/sim_stream.py --write-holds from the spec alone (no C++): u64 count, then',
+             '# u32 goods, u64 raw amount (1/256 ton) per hold. Columns: name hex fnv64.']
+    for name, holds in SHIP_HOLD_CASES:
+        data = ship_hold_stream(holds)
+        lines.append('%s %s %016x' % (name, data.hex(), fnv(data)))
+    return '\n'.join(lines) + '\n'
+
+
+CARGO_CUSTOM = ([35, 36, 40], [3, 3, 3, 2])
+
+
+def cargo_rules_fixture_text():
+    lines = ['# Rules bytes of stream version %d with the CargoRules of MAP-CARGO-1 (docs/sim/ship-cargo.md section 5).' % STATE_HASH_VERSION,
+             '# Written by tools/sim_stream.py --write-cargo-rules from the spec alone (no C++). Columns: name hex.',
+             '# cargo_* is the CargoRules part alone; rules_* is the whole Rules scope of a default world.']
+    for name, cargo in (('default', CARGO_DEFAULT), ('custom', CARGO_CUSTOM)):
+        lines.append('cargo_%s %s' % (name, cargo_rules_bytes(cargo).hex()))
+        lines.append('rules_%s %s' % (name, rules_bytes(False, cargo).hex()))
+    return '\n'.join(lines) + '\n'
+
+
+CARGO_RULES_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
+                                   'synthetic', 'sim', 'cargo_rules_bytes.txt')
+
+HOLDS_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
+                             'synthetic', 'sim', 'ship_holds.txt')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--check', action='store_true', help='compare with goldens.txt')
+    ap.add_argument('--write-holds', action='store_true',
+                    help='write fixtures/synthetic/sim/ship_holds.txt and exit')
+    ap.add_argument('--write-cargo-rules', action='store_true',
+                    help='write fixtures/synthetic/sim/cargo_rules_bytes.txt and exit')
     args = ap.parse_args()
+    if args.write_cargo_rules:
+        with open(CARGO_RULES_FIXTURE, 'w') as f:
+            f.write(cargo_rules_fixture_text())
+        print('wrote', os.path.normpath(CARGO_RULES_FIXTURE))
+        return 0
+    if args.write_holds:
+        with open(HOLDS_FIXTURE, 'w') as f:
+            f.write(ship_hold_fixture_text())
+        print('wrote', os.path.normpath(HOLDS_FIXTURE))
+        return 0
     computed = values()
     for name, value in computed.items():
         print('%-16s %016x' % (name, value))
@@ -825,6 +964,12 @@ def main():
         print('scenario_corpus.txt: header %s, this script is for kStateHashVersion=%d '
               'kPrngTimelineVersion=%d (re-baseline it with the game dir)' %
               (versions, STATE_HASH_VERSION, PRNG_TIMELINE_VERSION))
+        bad += 1
+    if not os.path.exists(HOLDS_FIXTURE) or open(HOLDS_FIXTURE).read() != ship_hold_fixture_text():
+        print('ship_holds.txt differs from the transcription (run --write-holds)')
+        bad += 1
+    if not os.path.exists(CARGO_RULES_FIXTURE) or open(CARGO_RULES_FIXTURE).read() != cargo_rules_fixture_text():
+        print('cargo_rules_bytes.txt differs from the transcription (run --write-cargo-rules)')
         bad += 1
     print('goldens agree' if bad == 0 else '%d difference(s)' % bad)
     return 1 if bad else 0

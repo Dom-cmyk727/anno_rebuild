@@ -1,0 +1,59 @@
+// The --commands file (docs/app/game-shell.md, "The command file"): scripted
+// Build and Demolish commands for the play runner's turns. The same commands
+// reach a turn whether they come from this file or from the window (W4.4).
+#pragma once
+
+#include <cstdint>
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include <anno/formats/result.hpp>
+#include <anno/sim/command.hpp>
+#include <anno/sim/ids.hpp>
+#include <anno/sim/world.hpp>
+
+namespace anno::app {
+
+/// One command and the turn it is applied in (the turn index the runner counts
+/// from 0).
+struct ScriptedCommand {
+    std::uint64_t turn = 0;
+    sim::Command command;
+};
+
+/// The developer player: the player whose cities the file's commands name
+/// (player slot 1, the owner of the developer start, MAP.1, OQ-490).
+[[nodiscard]] sim::PlayerId developer_player();
+
+/// Parses the text format against `world`. A build names the city of `player` on
+/// the island that holds its first placement; a line with no such city is an
+/// error (no city is invented). Errors name the line.
+[[nodiscard]] formats::Result<std::vector<ScriptedCommand>, std::string>
+parse_commands(std::string_view text, const sim::World& world, sim::PlayerId player);
+
+/// The text of `commands`, one line per command, in the file's format: the inverse
+/// of parse_commands, so a recorded session (PlayRunner::applied_commands) can be
+/// replayed through --commands. A command the format cannot carry (a body other than
+/// Build or Demolish, or a placement with byte7/byte8 set) is an error.
+/// The reason a command has no line form (a struct, so the error is not the value's type).
+struct FormatError {
+    std::string message;
+};
+
+/// `ship_start`: the ship-start opening's session form (W4-OPENING-1). Every line then names its
+/// issuer and nothing is resolved against the world at parse time (the opening's city does not
+/// exist when the file is read): `turn N buildc <issuer> <island> <city> <type> <x> <y> <rot> ...`,
+/// `demolishc <issuer> <island> <city> <x> <y> ...`, `found <issuer> <ship> <type> <rot> <x> <y>
+/// <click x> <click y>`, `move <issuer> <ship> <target x Q24.8> <target y Q24.8>`, `stop <issuer>
+/// <ship>` and `unload <issuer> <ship> <warehouse> <hold> <goods> <tons>`. parse_commands reads
+/// these lines whatever the mode; the older forms are unchanged.
+[[nodiscard]] formats::Result<std::string, FormatError>
+format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start = false);
+
+/// Reads `file` and parses it with parse_commands.
+[[nodiscard]] formats::Result<std::vector<ScriptedCommand>, std::string>
+load_commands(const std::filesystem::path& file, const sim::World& world, sim::PlayerId player);
+
+} // namespace anno::app

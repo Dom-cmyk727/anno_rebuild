@@ -1,0 +1,4 @@
+FAIL: test_a_record_without_the_window_session_files_does_not_pass (__main__.ViewerWiringContract.test_a_record_without_the_window_session_files_does_not_pass)
+AssertionError: 0 != 1 : ran line 2: look 1
+Ran 14 tests in 3.729s
+FAILED (failures=1)

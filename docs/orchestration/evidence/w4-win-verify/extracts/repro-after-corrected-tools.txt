@@ -1,0 +1,13 @@
+== AFTER corrected tools: wrapper E:\anno1503-worktrees\anno1503-W4-3\cache\v\..\..\tools\test\viewer_wiring.py
+PASS exit=0  clean complete record
+       viewer_wiring: PASS tiny: window exit 0 after 0.1 s, every step of the script recorded in order with the whole script's identity; session C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_t7451
+FAIL exit=1  stderr only: UBSan runtime error, child exit 0
+       viewer_wiring: FAIL tiny: the window wrote sanitizer diagnostics (1 line; window exit 0): | stderr C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_t7451the\session2.stderr.txt:1: fixture.cpp:42:7: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type '
+FAIL exit=1  stderr only: ASan report, child exit 0
+       viewer_wiring: FAIL tiny: the window wrote sanitizer diagnostics (1 line; window exit 0): | stderr C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_t7451the\session3.stderr.txt:1: ==4242==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010 at pc 0x0001 bp 0x0002
+FAIL exit=1  stdout only: UBSan runtime error, child exit 0
+       viewer_wiring: FAIL tiny: the window wrote sanitizer diagnostics (1 line; window exit 0): | stdout C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_t7451the\session4.stdout.txt:1: fixture.cpp:42:7: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type '
+FAIL exit=1  invoked `look 1 999`, log of `look 1 2`
+       viewer_wiring: FAIL look999: window exit 0 but the session record does not show the script run: | - script identity mismatch: the window parsed [steps=5 fnv1a64=c0292a5964fabae3], the invoked script is [steps=5 fnv1a64=f7c26d34e43afa92] (a different script, or one changed after the window read it) | - record 1 is (2, 'look 1 2'), the script's step is (2, 'look 1 999') (the log is not of this script, or out of order)
+FAIL exit=1  invoked `wait frames 3`, log of `wait frames 2`
+       viewer_wiring: FAIL wait3: window exit 0 but the session record does not show the script run: | - script identity mismatch: the window parsed [steps=5 fnv1a64=c0292a5964fabae3], the invoked script is [steps=5 fnv1a64=acbcaeec0048948e] (a different script, or one changed after the window read it)

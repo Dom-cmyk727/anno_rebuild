@@ -1,0 +1,7 @@
+control                                    exit=0 failing assertions at lines [] ['[doctest] test cases:   9 |   9 passed | 0 failed | 22 skipped']
+identity-not-pushed                        exit=1 failing assertions at lines [532, 535, 538, 540, 544, 546, 548, 551, 555, 562] ['[doctest] test cases:   9 |   8 passed |  1 failed | 22 skipped']
+waits-dropped-from-identity                exit=1 failing assertions at lines [535, 538, 544, 546, 551] ['[doctest] test cases:   9 |   8 passed | 1 failed | 22 skipped']
+later-arguments-dropped-from-identity      exit=1 failing assertions at lines [535, 538, 544, 546, 551] ['[doctest] test cases:   9 |   8 passed | 1 failed | 22 skipped']
+line-numbers-dropped-from-identity         exit=1 failing assertions at lines [535, 538, 544, 546, 551, 555] ['[doctest] test cases:   9 |   8 passed | 1 failed | 22 skipped']
+ran-records-first-argument-only            exit=1 failing assertions at lines [563] ['[doctest] test cases:   9 |   8 passed | 1 failed | 22 skipped']
+restored: rebuild rc=0; git status: clean

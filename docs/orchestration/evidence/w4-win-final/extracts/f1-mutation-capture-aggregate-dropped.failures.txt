@@ -1,0 +1,14 @@
+FAIL: test_a_client_area_off_the_desktop_is_refused_and_the_run_fails_though_the_child_exited_0 (__main__.Capture.test_a_client_area_off_the_desktop_is_refused_and_the_run_fails_though_the_child_exited_0)
+AssertionError: 0 != 4 : cmd1: REFUSED, the client area (-3868, 231, -3448, 531) is not inside the desktop
+FAIL: test_a_minimised_window_is_refused_and_the_run_fails_though_the_child_exited_0 (__main__.Capture.test_a_minimised_window_is_refused_and_the_run_fails_though_the_child_exited_0)
+AssertionError: 0 != 4 : cmd1: REFUSED, the window is minimised
+FAIL: test_a_missing_required_capture_fails (__main__.Capture.test_a_missing_required_capture_fails)
+AssertionError: 0 != 4 : captures requested=0 completed=0 refused=0 size_mismatch=0 unfinished=0 required=1
+FAIL: test_a_requested_capture_left_unfinished_when_the_window_ends_fails (__main__.Capture.test_a_requested_capture_left_unfinished_when_the_window_ends_fails)
+AssertionError: 0 != 4 : captures requested=1 completed=0 refused=0 size_mismatch=0 unfinished=1 required=0
+FAIL: test_a_size_mismatch_fails_with_a_clean_child (__main__.CaptureVerdict.test_a_size_mismatch_fails_with_a_clean_child)
+AssertionError: 0 != 4
+FAIL: test_an_unfinished_capture_and_too_few_captures_fail (__main__.CaptureVerdict.test_an_unfinished_capture_and_too_few_captures_fail)
+AssertionError: 0 != 4
+Ran 19 tests in 47.682s
+FAILED (failures=6)

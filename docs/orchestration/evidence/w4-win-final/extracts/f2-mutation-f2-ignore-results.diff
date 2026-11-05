@@ -1,0 +1,13 @@
+diff --git a/src/app/src/viewer.cpp b/src/app/src/viewer.cpp
+index 9ff70b8..f98c30e 100644
+--- a/src/app/src/viewer.cpp
++++ b/src/app/src/viewer.cpp
+@@ -1834,7 +1834,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
+     std::size_t failed_idx = 0;
+     const auto stage = [&](std::uint8_t bit, const char* name, bool ok) {
+         const std::size_t idx = bit == 1 ? 0 : bit == 2 ? 1 : 2;
+-        if (!ok) {
++        if (false) { // MUTANT: SDL results ignored
+             delivered = false;
+             failed_at = name;
+             failed_idx = idx;

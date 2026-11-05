@@ -1325,6 +1325,19 @@ void expected_player(Stream& s, const sim::Player& p) {
     for (const std::uint16_t c : p.research.progress) {
         s.u16(c);
     }
+    // Stream 120: the relation rows (u32 other, three bytes, u16 credit) and the discovery set.
+    s.u64(p.relations.size());
+    for (const sim::Relation& r : p.relations) {
+        s.u32(r.other.v);
+        s.u8(r.trade);
+        s.u8(r.milit);
+        s.u8(r.war);
+        s.u16(r.credit);
+    }
+    s.u64(p.discovery.size());
+    for (const sim::PlayerId d : p.discovery) {
+        s.u32(d.v);
+    }
 }
 
 std::vector<std::uint8_t> save_table(const sim::PlayerTable& t) {
@@ -1366,10 +1379,11 @@ TEST_CASE("players scope stream layout") {
     expected.u32(9);
     CHECK(save_table(t) == expected.v);
     // A player is 4+4+4+8+4+4+4+2+4+4+4+4+4+4+1+4+1+1 = 65 bytes, then the name
-    // (8 + n), the 65 research bytes (8 + 65) and the 65 words (8 + 130).
+    // (8 + n), the 65 research bytes (8 + 65), the 65 words (8 + 130) and, since stream 120, the
+    // empty relation rows (8) and discovery set (8).
     Stream one;
     expected_player(one, *t.slots[31]);
-    CHECK(one.v.size() == 65 + 8 + 8 + 65 + 8 + 130);
+    CHECK(one.v.size() == 65 + 8 + 8 + 65 + 8 + 130 + 8 + 8);
 
     // The world stream has the table after the ids scope and before the islands scope
     // (stage S5: the u64 slot count 0 of a world without islands), then the figures
@@ -1450,6 +1464,11 @@ TEST_CASE("every player field moves the players scope hash") {
         {"defeat_pending", [](sim::Player& p) { p.defeat_pending = !p.defeat_pending; }},
         {"free_build", [](sim::Player& p) { p.free_build = !p.free_build; }},
         {"name", [](sim::Player& p) { p.name.push_back('x'); }},
+        {"relations",
+         [](sim::Player& p) {
+             p.relations.push_back(sim::Relation{sim::PlayerId{p.index.v + 1}, 0, 0, 3, 0});
+         }},
+        {"discovery", [](sim::Player& p) { p.discovery.push_back(sim::PlayerId{p.index.v + 1}); }},
         {"research.state",
          [](sim::Player& p) {
              p.research.state[64] = static_cast<std::uint8_t>(p.research.state[64] ^ 2U);
@@ -1459,7 +1478,7 @@ TEST_CASE("every player field moves the players scope hash") {
              p.research.progress[64] = static_cast<std::uint16_t>(p.research.progress[64] + 1);
          }},
     };
-    static_assert(sim::field_count<sim::Player>() == 20);
+    static_assert(sim::field_count<sim::Player>() == 22);
     static_assert(sim::field_count<sim::ResearchState>() == 2);
     static_assert(sim::field_count<sim::PlayerTable>() == 3);
     CHECK(mutations.size() == sim::field_count<sim::Player>());

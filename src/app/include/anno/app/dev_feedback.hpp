@@ -1,0 +1,190 @@
+// The developer tool's preview and feedback (W4.4 round ee, package C): the selected type's own
+// sprite at the hovered tile, what the window knows about that placement from published data,
+// and one feedback line (the type and its costs, the money and the type's goods, the preview's
+// knowledge, and the outcome of the tool's latest command by its receipt). The window never reads
+// or changes the World: the picture's published buildings, the latest PlaySnapshot and the
+// runner's outcome log are its only sources. A geometric preview promises nothing: the sim
+// revalidates every command when it runs it.
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include <anno/app/command_outcome.hpp>
+#include <anno/app/dev_tool.hpp>
+#include <anno/app/loader.hpp>
+#include <anno/app/play.hpp>
+#include <anno/app/play_follow.hpp>
+#include <anno/app/scene_picture.hpp>
+#include <anno/app/visibility.hpp>
+#include <anno/render/iso.hpp>
+#include <anno/render/scene.hpp>
+
+namespace anno::app {
+
+/// The preview of the tool's selected type at the hovered tile: the city island's scene index,
+/// the object as the scene would hold it, and its sprites (Scene::preview_sprites).
+struct Preview {
+    std::size_t island = 0;
+    render::Prepared object;
+    std::vector<render::SpriteDraw> sprites;
+};
+
+/// Why the hovered placement has no preview in `scene` at zoom level `group` (round ee D3), ""
+/// when it has one or none is due (the tool off, the demolish mode, no type or hovered tile):
+/// an id the picture cannot draw (kPictureAnlageIds), no Anlagen entry for the type, a derived
+/// level (the sprites exist at the built groups only), the city's island not in the scene.
+[[nodiscard]] std::string preview_note(const DevTool& tool, const render::Scene& scene,
+                                       std::size_t group);
+
+/// The preview for `scene` at zoom level `group` and `time_ms`: none while the tool is off, in the
+/// demolish mode, without a type or a hovered tile, or when preview_note names a reason. The object
+/// stands at the ground height under its origin tile's corner (the sim's own height for the
+/// building may differ).
+[[nodiscard]] std::optional<Preview> make_preview(const DevTool& tool, const render::Scene& scene,
+                                                  std::size_t group, std::uint64_t time_ms);
+
+/// The preview of building type `type` standing at `origin` with `rotation` in `scene` (the
+/// founding cursor's warehouse; the same sprites the building tool previews with): the island of
+/// the scene that holds the tile, nullopt when none does, the type has no Anlagen entry or `group`
+/// is a derived level.
+[[nodiscard]] std::optional<Preview> make_type_preview(const render::Scene& scene, sim::TypeId type,
+                                                       std::uint8_t rotation, sim::TileXY origin,
+                                                       std::size_t group, std::uint64_t time_ms);
+
+/// The CPU renderer's preview: draws it (draw_prepared, the scene's sprite cache) and blends it
+/// onto `xrgb`, the frame of `view` (0x00RRGGBB, view.w x view.h), over what is there.
+void blend_preview(const render::Scene& scene, const Preview& preview, std::size_t group,
+                   std::uint64_t time_ms, render::Rect view, std::uint32_t* xrgb);
+
+/// What the window knows about the hovered placement (round ee, C2). Its sources:
+/// - the city's island tiles (DevToolSetup);
+/// - the tiles the picture's published buildings cover, indexed once per change of that list
+///   (ScenePicture::buildings_version), never scanned on a pointer move;
+/// - the latest snapshot's money, goods and cost waiver against the type's costs.
+/// A refusal is reported only with one of those as its basis; anything else is unchecked, and the
+/// text names what was not checked (the sim's placement rule always, which does not check terrain
+/// yet, OQ-052; occupancy without an
+/// index, costs without a snapshot, goods outside the published stock).
+class PlacementKnowledge {
+  public:
+    explicit PlacementKnowledge(DevToolSetup setup);
+    /// Re-indexes from a whole building list when `version` differs from the last one indexed;
+    /// returns whether it did. `scene` names the city island's number (the buildings' island key).
+    /// A scan of `buildings`: for a test or a one-off seed, not for the window's frames (they use
+    /// ensure and on_batches).
+    bool update(const std::vector<SceneBuilding>& buildings, std::uint64_t version,
+                const render::Scene& scene);
+    /// The tool builds in another city: the index is stale until the next ensure()/seed().
+    void retarget(const DevToolSetup& setup) {
+        setup_ = setup;
+        stale_ = true;
+        seeded_ = false;
+        version_.reset();
+        number_.reset();
+        occupied_.clear();
+        changed_ = true;
+    }
+    /// Rebuilds the index from the city island's own buildings (`local`; others are ignored).
+    /// O(local city). Counted by rebuilds().
+    void seed(std::span<const SceneBuilding> local, const render::Scene& scene);
+    /// Follows the batches the window took (PlayFollower::set_batch_observer) without a rebuild:
+    /// a delta of the city's island adds or removes its tiles, a delta of another island is one
+    /// comparison and nothing else, and a resync batch reseeds from its list. Does nothing while
+    /// the tool is disabled (`enabled` false): the index is then stale and ensure() reseeds it
+    /// when the tool is on again. Returns whether the index changed. Window thread.
+    bool on_batches(const std::vector<std::shared_ptr<const BuildingBatch>>& batches,
+                    const render::Scene& scene, bool enabled);
+    /// Seeds from the picture's per-island list when the index was never built or went stale
+    /// (the tool was disabled, or the first frame); O(1) otherwise and while disabled.
+    bool ensure(const ScenePicture& picture, const render::Scene& scene, bool enabled);
+    /// Whether the index changed since the last call (the window refreshes its title then).
+    [[nodiscard]] bool take_changed() {
+        const bool c = changed_;
+        changed_ = false;
+        return c;
+    }
+    /// Deltas of the city's island applied incrementally, and batches reseeded (a test counts
+    /// them next to rebuilds()).
+    [[nodiscard]] std::size_t deltas_applied() const { return deltas_applied_; }
+    /// Work counts, for the viewer-wiring regressions (W4-WIN-CLOSE C1): the tiles written into
+    /// or erased from the index in all (a seed counts its own), the deltas of other islands that
+    /// cost one comparison, and the batches skipped because the tool was off. A count, unlike a
+    /// time, does not move with the host's load.
+    [[nodiscard]] std::size_t tiles_enumerated() const { return tiles_enumerated_; }
+    [[nodiscard]] std::size_t foreign_deltas() const { return foreign_deltas_; }
+    [[nodiscard]] std::size_t batches_skipped_disabled() const { return batches_skipped_disabled_; }
+    struct Verdict {
+        /// A known refusal (its basis is in `text`); false: unchecked or nothing to check.
+        bool refused = false;
+        std::string text;
+    };
+    [[nodiscard]] Verdict check(const DevTool& tool, const PlaySnapshot* snapshot) const;
+    /// How many times the index was rebuilt (a test counts them).
+    [[nodiscard]] std::size_t rebuilds() const { return rebuilds_; }
+    [[nodiscard]] bool occupied(sim::TileXY tile) const;
+    /// Whether any tile of [x0, x1) x [y0, y1) is occupied: one ordered lookup per column. The
+    /// rectangle must be inside the city's island (check clamps first).
+    [[nodiscard]] bool occupied_in(std::int64_t x0, std::int64_t y0, std::int64_t x1,
+                                   std::int64_t y1) const;
+
+  private:
+    DevToolSetup setup_;
+    std::optional<std::uint64_t> version_;
+    /// Tiles of the city's island covered by published buildings, with how many cover each.
+    std::map<std::pair<std::int32_t, std::int32_t>, std::uint32_t> occupied_;
+    std::optional<std::uint32_t> number_;
+    bool seeded_ = false, stale_ = true, changed_ = false;
+    std::size_t deltas_applied_ = 0, tiles_enumerated_ = 0, foreign_deltas_ = 0,
+                batches_skipped_disabled_ = 0;
+    void add_tiles(const SceneBuilding& b, int sign);
+    /// Whether the last update built the index (the city's island in the scene, a registry).
+    bool indexed_ = false;
+    std::size_t rebuilds_ = 0;
+};
+
+/// Wires `knowledge` to `follower`'s batches the way the window does (round ee review, R4): every
+/// take is followed incrementally (PlacementKnowledge::on_batches) while `tool` is enabled. The
+/// window calls PlacementKnowledge::ensure each frame for the first seed and after a disabled
+/// spell. `knowledge`, `tool` and `follower` must outlive the observer (clear it with
+/// `follower.set_batch_observer({})` first otherwise).
+void attach_occupancy(PlayFollower& follower, PlacementKnowledge& knowledge, const DevTool& tool);
+
+/// The feedback line for the title: the tool's state (dev_tool_status), the money and the
+/// selected type's cost goods from `snapshot` (with its turn), the preview's knowledge, and the
+/// outcome of the latest command the tool sent (`latest`, looked up by its receipt): Queued,
+/// Applied (and how many of its records did something), Refused with the sim's reason, or Lost.
+/// `note` is preview_note's reason ("" when there is a preview).
+[[nodiscard]] std::string feedback_line(const DevTool& tool,
+                                        const PlacementKnowledge::Verdict& verdict,
+                                        const PlaySnapshot* snapshot,
+                                        const std::optional<CommandOutcome>& latest,
+                                        std::string_view note = {});
+
+/// Whether the window shows what an applied command built or removed (round ee, E4; review R2):
+/// "" when it does (a frame that draws every chunk of the change was presented) or the command
+/// was not applied; otherwise why not, from `visibility` (ChangeVisibility::classify for the
+/// command's turn): "not drawn yet: ..." at each earlier boundary (desired state, committed object
+/// list, fresh chunks, GPU copy, successful present, the view), and a plain statement for a change
+/// that is offscreen, draws nothing or changed no picture. The sim's outcome stands either way;
+/// only the picture is behind. Present-call success is not display time.
+[[nodiscard]] std::string drawn_note(const std::optional<CommandOutcome>& latest,
+                                     Visibility visibility);
+
+/// The window title's text after its name while the tool is on, from one snapshot (round ee
+/// review of C, P2-1): the runner's line without the money (PlayRunner::title_of; its refusal
+/// names its command), then feedback_line, which shows the money once.
+[[nodiscard]] std::string dev_title(const PlaySnapshot& snapshot, const DevTool& tool,
+                                    const PlacementKnowledge::Verdict& verdict,
+                                    const std::optional<CommandOutcome>& latest,
+                                    std::string_view note = {});
+
+} // namespace anno::app

@@ -1,0 +1,25 @@
+viewer_wiring: PASS opening_sail: window exit 0 after 90.5 s, every step of the script recorded in order with the whole script's identity; session E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\opening-session-cpu-chk2\stage1\run
+ok   stage 1 (launch, select, sail, arrive, save) passed the wrapper
+ok   stage 1 wrote its save (E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\opening-session-cpu-chk2\stage1\run.saves\quicksave-seat0.sav)
+viewer_wiring: PASS opening_resume: window exit 0 after 15.4 s, every step of the script recorded in order with the whole script's identity; session E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\opening-session-cpu-chk2\stage2\run
+ok   stage 2 (resume, found, unload, build, ledger) passed the wrapper
+ok   stage 2 wrote its save (E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\opening-session-cpu-chk2\stage2\run.saves\quicksave-seat0.sav)
+viewer_wiring: PASS opening_resume2: window exit 0 after 4.5 s, every step of the script recorded in order with the whole script's identity; session E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\opening-session-cpu-chk2\stage3\run
+ok   stage 3 (resume the built city: stores, hold, ship, building tool) passed the wrapper
+ok   stage 1: the window recorded its commands
+ok   stage 1: a fresh process replays every checkpoint and outcome (--replay-hashes: 37 checkpoints agree (turns 0 .. 875), 1 outcomes agree)
+ok   stage 2: the window recorded its commands
+ok   stage 2: a fresh process replays every checkpoint and outcome (--replay-hashes: 16 checkpoints agree (turns 0 .. 104), 11 outcomes agree)
+ok   stage 2 issued a FoundCmd through the window
+ok   stage 2 issued its unloads through the window (5)
+ok   stage 2 issued two builds through the window
+ok   stage 1 issued its MoveCmd through the window
+ok   the recording with one ton fewer unloaded diverges (--replay-hashes: turn 28 differs: recorded 8f6a225635acb29e, replayed 3615eab39e1492da (5 earlier checkpoints agreed))
+ok   the recording with another goods unloaded diverges (--replay-hashes: turn 28 differs: recorded 8f6a225635acb29e, replayed db46a0ddbb3b5519 (5 earlier checkpoints agreed))
+ok   the replay refuses a recording of another manifest (--replay-hashes: the recording was made with another manifest (e001442a55b8ee0890ec5cd3d23e5a53f05d66fe3a29fdb1c1b47d19a3363d90, now e001442a55b8ee0890ec5cd3d23e5a53f05d66fe3a29fdb1c1b47d19a3363d92))
+ok   the replay refuses a recording of another seat (--replay-hashes: the recording was made with another seat (1, now 0))
+ok   the replay refuses a recording of other rules (--replay-hashes: the recording was made with another rules (0000000000000000, now 9164681c42df9754))
+ok   the replay refuses a recording of another start state (--replay-hashes: the recording was made with another start state (0000000000000000, now b2aa6044304174d1))
+ok   the replay refuses a recording without its session.txt (--replay-hashes: no session.txt next to E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\opening-session-cpu-chk2\refused\without_its_session.txt\hashes.txt)
+ok   the replay refuses a recording that names no ship-start session (--replay-hashes: session.txt names no ship-start session)
+opening_session: PASS

@@ -1,0 +1,13 @@
+head 37da91b901a0ead4ee4c45205a909e9e4b1eae8c dirty 0 start 2026-11-02T09:30:17+01:00
+ 09:30:17 up 0 min,  1 user,  load average: 0.08, 0.02, 0.01
+Mem:           15544         609       14665           3         464       14934
+configure rc=0
+build rc=0
+0349259674e3891f1511c7cf5680a106bcdb5b17a8b715d79dc160744ec15ef7  /home/altin/anno-build/w4-asan-viewer/src/app/anno1503
+3e257555d9f07c42e982295f0c2dab69e23be95c4d328118e46a924a492649f2  /home/altin/anno-build/w4-asan-viewer/src/app/anno_app_tests
+f1dd04645c26acb83041782e8bc0bea31654a71ebb5db27533989f3ef2bf65c9  /home/altin/anno-build/w4-asan-viewer/src/app/anno_app_input_tests
+beac356d1166479d9529c770921228b10e481c60485a91748a2eeefbcf16cfdc  /home/altin/anno-build/w4-asan-viewer/src/app/anno_app_alloc_tests
+warnings rc=0
+ordinary lane rc=0 COUNTS: selected=217 executed=215 failed=0 empty=0 skipped=2 (required-asset=0 platform=0 opt-in=2 gpu=0 other=0) incomplete=0 sanitizer_lines=0 VERDICT: PASS  2026-11-02T10:36:53+01:00
+corpus lane rc=0 COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0 VERDICT: PASS  2026-11-02T12:38:16+01:00
+done 2026-11-02T12:38:18+01:00

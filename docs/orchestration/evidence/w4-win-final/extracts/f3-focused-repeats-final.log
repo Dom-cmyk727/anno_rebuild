@@ -1,0 +1,11 @@
+head 8367dc0e02ba0d1a1e776ba4eaee7e55a5ef5db8; binary sha256 21fcfd77d6dd0c384c240c43e9f19ee8607461bdbbf79de1187a2f9063435e1d; started 2026-11-02T09:21:21+01:00
+[09:21:21] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-case='picture reclaim*' -> [doctest] test cases:   3 |   3 passed | 0 failed | 174 skipped
+[09:21:21] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-suite=scene_picture_recovery -> [doctest] test cases:  19 |  19 passed | 0 failed | 158 skipped
+[09:21:22] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-case='picture reclaim*' -> [doctest] test cases:   3 |   3 passed | 0 failed | 174 skipped
+[09:21:22] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-suite=scene_picture_recovery -> [doctest] test cases:  19 |  19 passed | 0 failed | 158 skipped
+[09:21:22] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-case='picture reclaim*' -> [doctest] test cases:   3 |   3 passed | 0 failed | 174 skipped
+[09:21:22] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-suite=scene_picture_recovery -> [doctest] test cases:  19 |  19 passed | 0 failed | 158 skipped
+[09:21:22] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-case='picture reclaim*' -> [doctest] test cases:   3 |   3 passed | 0 failed | 174 skipped
+[09:21:22] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-suite=scene_picture_recovery -> [doctest] test cases:  19 |  19 passed | 0 failed | 158 skipped
+[09:21:22] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-case='picture reclaim*' -> [doctest] test cases:   3 |   3 passed | 0 failed | 174 skipped
+[09:21:22] build/win-a29b079/src/app/Release/anno_app_tests.exe --test-suite=scene_picture_recovery -> [doctest] test cases:  19 |  19 passed | 0 failed | 158 skipped

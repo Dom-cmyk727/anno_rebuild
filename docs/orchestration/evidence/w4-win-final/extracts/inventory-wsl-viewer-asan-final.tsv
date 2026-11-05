@@ -1,0 +1,222 @@
+# 1360 tests in the build; 221 listed (app, input, alloc, viewer_wiring*, contracts)
+anno_app_alloc_tests.alloc: releasing a credit and an accounted payload allocates nothing	{}
+anno_app_alloc_tests.alloc: the last owner's hand-off of a generation allocates nothing	{}
+anno_app_alloc_tests.alloc: the window counts this thread's allocations and refuses them when asked	{}
+anno_app_alloc_tests.footprint feedback: an oversized or absurd definition is refused before any tile is enumerated, and a legitimate larger one is not (round ee review, R3)	{}
+anno_app_alloc_tests.footprint feedback: indexing a published building with an absurd definition stays inside the island (round ee review, R3)	{}
+anno_app_alloc_tests.footprint feedback: the extent is exact in 64-bit coordinates and the tile list is bounded by the region the caller admits (round ee review, R3)	{}
+anno_app_input_tests.dev feedback: every buildable type of lan5 at every rotation has the registry's footprint in its Anlagen entry, and a preview or a reason for none	{}
+anno_app_input_tests.dev feedback: occupancy and costs are refusals only with a published basis, the rest is unchecked, and pointer moves never rebuild the index	{}
+anno_app_input_tests.dev feedback: on an original scenario, the preview sprites of placed objects' types and rotations are the scene's own drawing of them	{}
+anno_app_input_tests.dev feedback: the composed title never lets an earlier command's refusal pass for the latest command's, and shows the money once	{}
+anno_app_input_tests.dev feedback: the developer start's resources are the fixed map's only, an original scenario keeps its own	{}
+anno_app_input_tests.dev feedback: the line names the latest command's outcome by its receipt, not an earlier one's	{}
+anno_app_input_tests.dev feedback: the preview is the scene's own sprite of the type at the hovered tile, and another rotation or type is drawn differently	{}
+anno_app_input_tests.dev script: a click step's events land on the tile it names, at density 1 and 2, and the waits end or fail	{}
+anno_app_input_tests.dev script: fail and pass a CPU delivery stage, expect failing (W4-WIN-FINAL F2)	{}
+anno_app_input_tests.dev script: hold, release, note and the consistency expectations (W4-WIN-CLOSE C1)	{}
+anno_app_input_tests.dev script: only the script's own input is taken	{}
+anno_app_input_tests.dev script: stage holds, wait visibility, wait blocked and expect held (W4-WIN-CLOSE C2)	{}
+anno_app_input_tests.dev script: the parser takes the steps and names a bad line	{}
+anno_app_input_tests.dev script: wait drawn ends only when the change is settled on its way to the screen (round ee review, R2)	{}
+anno_app_input_tests.dev session: the replay agrees with a recorded run, and a moved command or a changed refusal does not (game files)	{}
+anno_app_input_tests.dev tool at a picture barrier: input, turns and outcomes go on, an applied building is shown as not drawn yet, and the open gate draws it (game files)	{}
+anno_app_input_tests.dev tool data: a second definition (another id, a non-square footprint, other costs, no sprite) is driven by its data alone	{}
+anno_app_input_tests.dev tool data: an empty buildable list only demolishes, and a malformed definition sends nothing	{}
+anno_app_input_tests.dev tool data: another player's city on another island: its commands carry that issuer and city, and the index keys on that island	{}
+anno_app_input_tests.dev tool data: per-move work against growing unrelated content (a measurement)	{}
+anno_app_input_tests.dev tool data: pointer moves rebuild nothing, and an unpublished list is not re-indexed	{}
+anno_app_input_tests.dev tool data: the buildable list is the registry's list-backed and road types in id order, of any id width	{}
+anno_app_input_tests.dev tool: a click over a known tile builds there through the window's SDL mapping, at every zoom group, a derived level and continuous scales, at pixel densities 1 and 2	{}
+anno_app_input_tests.dev tool: a drag longer than one record is refused before its path is made, and a tool without a city stays off	{}
+anno_app_input_tests.dev tool: a resized window maps the same tile with its new frame	{}
+anno_app_input_tests.dev tool: an island whose origin has an odd x + y is drawn half a pixel high at group 1, and a point just inside a tile's edge still picks that tile	{}
+anno_app_input_tests.dev tool: off the city's island, outside the window and non-finite points make no command and say why	{}
+anno_app_input_tests.dev tool: on lan5's developer island, with its heights, every sampled ground pixel picks the tile the renderer drew there	{}
+anno_app_input_tests.dev tool: press, move, cancel, release and focus-loss sequences make exactly the intended commands, and motion alone makes none	{}
+anno_app_input_tests.dev tool: under continuous zoom a point just inside a tile's edge picks that tile: the view's sub-pixel offset counts	{}
+anno_app_tests.--zoom-factor and --resample: the headless picture at a fractional scale	{}
+anno_app_tests.CRC-32 check value	{}
+anno_app_tests.PNG round trip, including more than one stored block	{}
+anno_app_tests.accounting: an incoming build much larger than the old records is reserved for its size	{}
+anno_app_tests.accounting: one oversized build is admitted alone and nothing runs beside it	{}
+anno_app_tests.accounting: one, two and four workers each hold a superseded generation at a barrier	{}
+anno_app_tests.backing: a derived generation keeps reading its islands after the loaded scene is released (game files)	{}
+anno_app_tests.backing: queued chunk jobs read valid bytes after the base generation is released (game files)	{}
+anno_app_tests.building delta: a building listed twice on one side is counted	{}
+anno_app_tests.building delta: add, remove, and a rotation change as a pair	{}
+anno_app_tests.building delta: cost at 1000 and 5000 buildings, one changed per turn	{}
+anno_app_tests.building delta: equal lists give no change	{}
+anno_app_tests.building delta: the order is total on the record	{}
+anno_app_tests.command line	{}
+anno_app_tests.command outcomes: a command posted while a turn is held at its gate waits for the next turn, the post does not wait, and outcomes wake the window	{}
+anno_app_tests.command outcomes: a command with no wire form is refused as Unencodable and changes nothing, and a refusal and a no-op change no picture and still wake the window	{}
+anno_app_tests.command outcomes: more outcomes than the bound, and a reader that waits, lose only what they are told they lost	{}
+anno_app_tests.command outcomes: one turn's mixed outcomes, identical commands and script before window order, each with its receipt, position and reason	{}
+anno_app_tests.command queue: a push never waits for a turn (measured)	{}
+anno_app_tests.command queue: order is push order, across takes, and receipts number the pushes	{}
+anno_app_tests.commands file: errors name the line	{}
+anno_app_tests.credit: a payload is destroyed while its credit is still held	{}
+anno_app_tests.credit: a swap keeps each credit with its payload	{}
+anno_app_tests.credit: a transfer releases the credit while the payload lives on elsewhere	{}
+anno_app_tests.credit: exception unwinding destroys the payload before the credit	{}
+anno_app_tests.credit: move assignment destroys the replaced payload before its credit	{}
+anno_app_tests.credit: move construction carries the credit with the payload	{}
+anno_app_tests.credit: resize replaces the estimate and the peak keeps the largest total	{}
+anno_app_tests.derived zoom levels for --png: the level table, the bound and a derived picture	{}
+anno_app_tests.developer resources: a Build too expensive for the start is refused without them	{}
+anno_app_tests.feedback: a refused build is reported once with its reason, and money is shown	{}
+anno_app_tests.game directory discovery	{}
+anno_app_tests.legal workload: five cities on five islands, built through the sim's commands (game files)	{}
+anno_app_tests.legal workload: intermediate publications under a stream of builds and a demolish each equal a fresh scene of the state they represent (game files)	{}
+anno_app_tests.legal workload: one accepted build and one accepted demolish reach the picture as a fresh scene of the desired state (game files)	{}
+anno_app_tests.mailbox: a delta for a building the picture does not hold is reported	{}
+anno_app_tests.mailbox: a picture that takes once after a collapse equals the world's list	{}
+anno_app_tests.mailbox: a prepared copy made when full is unused if the consumer empties the mailbox first	{}
+anno_app_tests.mailbox: a prepared push collapses to the same resync as push	{}
+anno_app_tests.mailbox: applying every batch in order reaches the same list as a resync	{}
+anno_app_tests.mailbox: batches up to the bound are kept in order	{}
+anno_app_tests.mailbox: past the bound the batches collapse into one resync	{}
+anno_app_tests.occupancy knowledge: ScenePicture::apply of one unrelated delta, for reference (a measurement, synthetic)	{}
+anno_app_tests.occupancy knowledge: an unrelated edit costs the same at any city size and world size, a local edit costs its own deltas (a measurement, synthetic)	{}
+anno_app_tests.occupancy knowledge: an unrelated island's edit, a local build and demolish, a disabled spell and a resync, through the window's own wiring (game files)	{}
+anno_app_tests.occupancy knowledge: overlapping buildings are counted, a removal of an uncounted tile changes nothing, an unknown type indexes as one tile, and a resync reseeds (synthetic)	{}
+anno_app_tests.outcome feedback: a lost outcome is withheld until its snapshot is published and then reads Lost, and the newest one is kept (round ee review R1, game files)	{}
+anno_app_tests.outcome feedback: a paid build seen from a reader thread while the sim thread holds its publication never shows Applied beside the old money, and the read never waits (round ee review R1, game files)	{}
+anno_app_tests.outcome feedback: an outcome recorded before its snapshot is withheld, and a paid build, a refusal and a no-op agree with the snapshot once published (round ee review R1, game files)	{}
+anno_app_tests.outcome log: a reader that falls behind is told exactly what it lost, and every receipt has a state	{}
+anno_app_tests.outcome log: the per-record bound evicts the oldest, and the newest is always kept	{}
+anno_app_tests.ownership: a dropped queued job's credit is held while its payload is destroyed	{}
+anno_app_tests.ownership: a dropped result's credit is held while its payload is destroyed	{}
+anno_app_tests.ownership: a frame-held generation outlives the bridge and is destroyed on the reclaimer	{}
+anno_app_tests.picker: a synthetic event sequence gives the expected commands	{}
+anno_app_tests.picture check: a moved or rotated building is a different island, with the same count (game files)	{}
+anno_app_tests.picture check: an added building changes objects, and an equal reference compares equal (game files)	{}
+anno_app_tests.picture check: negative controls fail (erased objects, a shifted object, a swapped chunk, an omitted chunk, a stale chunk) (game files)	{}
+anno_app_tests.picture credits: a dropped job keeps its credit until the reaper has destroyed it	{}
+anno_app_tests.picture credits: a superseded running build keeps its credit until its worker finishes	{}
+anno_app_tests.picture evidence: a file is replaced whole or left as it was	{}
+anno_app_tests.picture evidence: a run is recorded as successful only after every file is saved	{}
+anno_app_tests.picture evidence: a run whose own trace contradicts itself is recorded with status 7, not as a success	{}
+anno_app_tests.picture failures: a persistent failure is bounded per retry and stays reported	{}
+anno_app_tests.picture failures: an obsolete failure is not evidence about a newer change	{}
+anno_app_tests.picture failures: one island recovers by an explicit retry while the other stays failed	{}
+anno_app_tests.picture failures: two failed islands stay reported through an unrelated healthy edit	{}
+anno_app_tests.picture readiness: a set is ready only when all its keys are fresh at the same poll	{}
+anno_app_tests.picture reclaim: a stalled process reclaimer holds the commits back, and the picture converges after the release	{}
+anno_app_tests.picture reclaim: the stalled-reclaimer case settles foreign generations first, through its own baseline path (W4-WIN-FINAL F3)	{}
+anno_app_tests.picture reclaim: with foreign work waiting, an unsigned difference to the baseline wraps and a signed one says what happened (W4-WIN-FINAL F3)	{}
+anno_app_tests.picture recovery: a generation that outlives the bridge is destroyed on the reclaimer	{}
+anno_app_tests.picture recovery: a newer change during a retry is built from the newest desired state	{}
+anno_app_tests.picture recovery: a one-shot build failure is retried from the desired state with no new batch	{}
+anno_app_tests.picture recovery: a persistent failure stops after the attempts and is reported	{}
+anno_app_tests.picture recovery: a result of an older version is never published after a newer change	{}
+anno_app_tests.picture recovery: one over-budget island still makes progress, and the budget holds otherwise	{}
+anno_app_tests.picture recovery: shutdown with a retry waiting returns and releases the state	{}
+anno_app_tests.picture recovery: sustained changes over many islands converge and stay within the limit	{}
+anno_app_tests.picture recovery: the same convergence with one, two and four workers	{}
+anno_app_tests.picture starts: a start copies only its island's buildings, and the result is the desired state	{}
+anno_app_tests.picture trace: GPU readiness needs the CPU readiness of the same island and generation, not later than it	{}
+anno_app_tests.picture trace: a generation of two islands is measured per island, with coalescing, supersession, unfinished work and convergence	{}
+anno_app_tests.picture trace: a hand-specified stream gives its known latencies	{}
+anno_app_tests.picture trace: a reused or decreasing generation, a commit without a generation and an event after run_end are contradictions	{}
+anno_app_tests.picture trace: an idle run, a productive run, a cut trace and a failed run are told apart	{}
+anno_app_tests.picture trace: evidence files are read and saved with every step checked	{}
+anno_app_tests.picture trace: intermediate publications are counted against the desired version at their commit	{}
+anno_app_tests.picture trace: malformed traces are refused for the reason they are malformed	{}
+anno_app_tests.picture trace: percentiles report their sample counts and validity	{}
+anno_app_tests.picture trace: readiness of an island or generation that was not committed, readiness before the commit, duplicates and GPU events without GPU mode are contradictions	{}
+anno_app_tests.picture trace: the GPU boundary is measured per island and generation, after the CPU one, and an edit never GPU-usable is reported unfinished	{}
+anno_app_tests.picture trace: the summary is the same after the events are saved and read back	{}
+anno_app_tests.play follow: a hidden window keeps the mailbox bounded and takes the collapsed batches when shown again (game files)	{}
+anno_app_tests.play follow: a turn in flight when the window pauses publishes after the window went idle, and the batch is shown while paused, the sim stays paused and the window idles again (game files)	{}
+anno_app_tests.play follow: the window trace records each turn's outcome from the sim's rejections, a batch's publication before its take, and the generation after the commit (game files)	{}
+anno_app_tests.play loader: a .sze loads as a scenario file, as before	{}
+anno_app_tests.play loader: a malformed .txt names the file and the line	{}
+anno_app_tests.play loader: lan5.txt gives player 1 its start island with the test resources	{}
+anno_app_tests.play: --play parses and --view does not	{}
+anno_app_tests.play: --play takes the fixed map and places its islands	{}
+anno_app_tests.play: a late sim catches up at most five turns	{}
+anno_app_tests.play: a slow turn does not block a frame reading the snapshot	{}
+anno_app_tests.play: a turn with no commands publishes no building changes	{}
+anno_app_tests.play: absolute deadlines do not accumulate sleep overshoot	{}
+anno_app_tests.play: an id that does not fit PROD2 is refused	{}
+anno_app_tests.play: demolish before the scene drops that building	{}
+anno_app_tests.play: islands are the ones the sim placed	{"LABELS": ["heavy"], "PROCESSORS": 4, "TIMEOUT": 8000.0}
+anno_app_tests.play: lan5 islands are the ones the sim placed	{}
+anno_app_tests.play: runner turns match run_turn and ignore the wall clock	{}
+anno_app_tests.play: scripted commands match run_turn turn by turn (A6 d)	{}
+anno_app_tests.play: the building diff on the heavy endless scenario	{}
+anno_app_tests.play: the sim thread matches run_turn	{}
+anno_app_tests.play: tick 0 matches the viewer except objects the sim did not place	{"LABELS": ["heavy"], "PROCESSORS": 4, "TIMEOUT": 8000.0}
+anno_app_tests.play: turn cost on the heavy endless scenario	{}
+anno_app_tests.probe: per-island object-list build, commit and a 50-build burst (ScenePicture)	{}
+anno_app_tests.probe: whole-scene rebuild and a coalesced 50-build burst on the fixed map	{}
+anno_app_tests.progress: monotonic publication publishes a superseded build that is ahead, and never goes back	{}
+anno_app_tests.publication hold: an armed hold waits at the first publication that follows a recorded outcome, the reads inside it are the consistent ones, and release, the watchdog and the hold's destruction each end it (W4-WIN-CLOSE C1, game files)	{}
+anno_app_tests.publish: a frame-held intermediate generation and shutdown with work in flight are released on the reclaimer	{}
+anno_app_tests.publish: a held generation's destruction is told by its lineage, so another lineage's generation 0 destroyed later is not it, while its own premature destruction is caught	{}
+anno_app_tests.publish: a late older result is rejected after a newer commit, and an older result finishing first is replaced	{}
+anno_app_tests.publish: a newer job queued behind an intermediate commit is moved onto it and builds the desired state	{}
+anno_app_tests.publish: a stalled reaper holds an intermediate result back, which is published after the release	{}
+anno_app_tests.publish: a stream of edits moves the picture forward while it lasts, and LatestOnly does not	{}
+anno_app_tests.publish: competing islands under one admission both advance during the stream	{}
+anno_app_tests.publish: one, two and four workers each hold a version ahead at a barrier, and the newest is published	{}
+anno_app_tests.publish: transient and permanent failures under a stream, while the healthy island advances, and the failed one is reported after the edits stop	{}
+anno_app_tests.replay: a recorded session replays through --commands to the same state hash	{}
+anno_app_tests.scene loading: islands, links and units	{}
+anno_app_tests.scene picture bounds: a failed build is counted, and its island can be requested again	{}
+anno_app_tests.scene picture bounds: a stalled commit holds the outstanding islands to the limit	{}
+anno_app_tests.scene picture bounds: a stalled reaper makes commits wait, and the backlog stays bounded	{}
+anno_app_tests.scene picture bounds: destroying the picture with blocked workers and queued builds returns	{}
+anno_app_tests.scene picture bounds: sustained edits keep the window's change work to the worker's	{}
+anno_app_tests.scene picture: a resync after a delayed consumer reaches the same list	{}
+anno_app_tests.scene picture: a second change during a rebuild supersedes the first	{}
+anno_app_tests.scene picture: a stale completion neither overwrites nor clears the newer mark	{}
+anno_app_tests.scene picture: after a move the pixels equal a fresh scene, and only the marked keys rebuild	{}
+anno_app_tests.scene picture: an object whose box crosses a chunk boundary marks every chunk it touches	{}
+anno_app_tests.scene picture: every changed pixel lies in an invalidated key, at every zoom level	{}
+anno_app_tests.scene picture: no batch, no commit and no mark	{}
+anno_app_tests.scene picture: no building type of the registry is a river, fall or surf piece	{}
+anno_app_tests.scene picture: repeated updates keep the live generations bounded	{}
+anno_app_tests.stage hold: an unarmed gate passes, an armed one parks every caller, and release, the watchdog and the destructor each free them (W4-WIN-CLOSE C2)	{}
+anno_app_tests.trace: an edit's steps are reported in order, a superseded version included	{}
+anno_app_tests.visibility through the pipeline: a change outside the view is offscreen, never visible (game files)	{}
+anno_app_tests.visibility through the pipeline: held chunk workers keep a committed change not drawn, a failed present shows nothing, the presented frame equals a fresh reference, and the old object-list rule would have said drawn too early (game files)	{}
+anno_app_tests.visibility: a change passes every boundary in order and is shown only by a presented frame that draws all of it	{}
+anno_app_tests.visibility: a take behind a stuck one keeps its own result past the settle record's cap, a merge keeps a watched oldest part, and a part that left the view holds later parts	{}
+anno_app_tests.visibility: coalesced commits, independent islands and a resync	{}
+anno_app_tests.visibility: offscreen, out of view, nothing to draw and no change are explicit answers, and offscreen work is never labelled visible	{}
+anno_app_tests.visibility: the memory is bounded, merged takes wait longer and never lose a change, and a command older than the history reads Unknown	{}
+anno_app_tests.visibility: the per-frame cost with the most takes waiting (a measurement)	{}
+anno_app_tests.visibility: turn 0, a batch newer than the snapshot, an older stuck change that must not relabel a later one, and a newer commit whose chunks are offscreen	{}
+anno_app_tests.window trace: a change whose chunks are stale or off the GPU at a successful present is not presented by it, and is presented when a later frame draws them current	{}
+anno_app_tests.window trace: a failed present followed by a successful frame elsewhere presents nothing, and the same view's retry presents the change once	{}
+anno_app_tests.window trace: a session that ends with a change GPU-usable but not presented is complete and reports it unfinished, never presented	{}
+anno_app_tests.window trace: a turn's outcome comes from the sim's rejections, never from submission	{}
+anno_app_tests.window trace: an ordinary first-attempt success is ready, drawn and presented in its own frame	{}
+anno_app_tests.window trace: each acquire status is handled as the viewer handles it	{}
+anno_app_tests.window trace: each island is presented by a frame that draws it, after a pan, a resize and a zoom to another group	{}
+anno_app_tests.window trace: frames carry one epoch that never goes back, a frame fails once and not before its submission, and a window edit comes from a batch its frame boundary took	{}
+anno_app_tests.window trace: readiness waits for every key the change invalidated in the view, not for unchanged keys or keys out of view, and the row's epoch is the acquire's	{}
+anno_app_tests.window trace: recording from two threads at once keeps every record within the bound and counts the rest	{}
+anno_app_tests.window trace: the frame tracer records skipped and retried acquires, resizes and failed presents, and a change completes only at a successful present of a frame that draws it	{}
+anno_app_tests.window trace: the frame tracer's waiting changes are bounded and a refused commit is a drop, and a turn with more rejections than commands is invalid	{}
+anno_app_tests.window trace: the presentation rules refuse what a successful present cannot be	{}
+anno_app_tests.window trace: the recorder keeps what fits its bounds, counts the rest as dropped, and a trace with drops is written without run_end	{}
+anno_app_tests.window trace: the visible keys are the frame group's chunks over its view	{}
+anno_app_tests.zoom over derived levels: the range follows the last level and the minimum tile	{}
+anno_app_tests.zoom_advance: easing covers 95 % in ease_ms, steps compose, 0 jumps, rest stays	{}
+anno_app_tests.zoom_advance: the camera move of a zoom at the cursor is not a pan (pan_centre)	{}
+anno_app_tests.zoom_advance: the level switch has hysteresis on the coarse side, waits for ready, bridges	{}
+anno_app_tests.zoom_advance: the point under the anchor stays fixed, also across a group switch	{}
+anno_app_tests.zoom_advance: the zoom is held while the next coarser level is not ready	{}
+anno_app_tests.zoom_args: the bounds of the zoom options are inclusive and exact	{}
+picture_matrix_contract	{}
+test_names_are_selectable	{}
+test_verdict_contract	{}
+viewer_wiring_contract	{"TIMEOUT": 300.0}
+viewer_wiring_cpu_delivery_failures	{"PROCESSORS": 4, "TIMEOUT": 600.0}
+viewer_wiring_r1_held_publication	{"PROCESSORS": 4, "TIMEOUT": 600.0}
+viewer_wiring_r4_occupancy	{"PROCESSORS": 4, "TIMEOUT": 600.0}
+window_table_contract	{}

@@ -1,0 +1,8 @@
+FAIL: test_a_record_with_a_step_missing_does_not_pass (__main__.ViewerWiringContract.test_a_record_with_a_step_missing_does_not_pass)
+AssertionError: "the script's step is" not found in "ran line 2: look 1\ncheckpoint a: turn 1, frames 2, outcome none, visibility NoVisualChange, title: x\nran line 5: checkpoint a\nran line 6: quit\nviewer_wiring: FAIL tiny: window exit 0 but the session record does not show the script run:\n  - truncated: 3 of the script's 4 non-wait steps were recorded; the next is (6, 'quit', None)\n" : ran line 2: look 1
+FAIL: test_a_reordered_record_does_not_pass (__main__.ViewerWiringContract.test_a_reordered_record_does_not_pass)
+AssertionError: 0 != 1 : ran line 3: key b
+FAIL: test_the_record_of_another_script_does_not_pass (__main__.ViewerWiringContract.test_the_record_of_another_script_does_not_pass)
+AssertionError: 'not of this script' not found in "ran line 2: look 9\nran line 3: click 1\nran line 4: quit\nviewer_wiring: FAIL tiny: window exit 0 but the session record does not show the script run:\n  - truncated: 3 of the script's 4 non-wait steps were recorded; the next is (6, 'quit', None)\n" : ran line 2: look 9
+Ran 14 tests in 3.685s
+FAILED (failures=3)

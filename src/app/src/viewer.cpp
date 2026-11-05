@@ -7,11 +7,21 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include <anno/app/dev_feedback.hpp>
+#include <anno/app/dev_script.hpp>
+#include <anno/app/frame_projection.hpp>
+#include <anno/app/png.hpp>
+#include <anno/app/sdl_input.hpp>
+#include <anno/app/ship_motion.hpp>
+#include <anno/app/window_capture.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
 #ifdef ANNO_VIEWER_GPU
@@ -130,6 +140,24 @@ WGPUTextureFormat linear(WGPUTextureFormat f) {
     }
 }
 
+// The window trace names the statuses by the values webgpu.h and wgpu.h give them
+// (window_trace.hpp).
+static_assert(kAcquireSuccessOptimal ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal));
+static_assert(kAcquireSuccessSuboptimal ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal));
+static_assert(kAcquireTimeout ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Timeout));
+static_assert(kAcquireOutdated ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Outdated));
+static_assert(kAcquireLost == static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Lost));
+static_assert(kAcquireError ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Error));
+static_assert(kAcquireOccluded ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Occluded));
+static_assert(kPresentSuccess == static_cast<std::uint32_t>(WGPUStatus_Success));
+static_assert(kPresentError == static_cast<std::uint32_t>(WGPUStatus_Error));
+
 /// Opens the high-performance GPU for `window`.
 formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window* window, int w,
                                                                      int h) {
@@ -216,6 +244,17 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
             std::fprintf(stderr, "ANNO_VIEW_PREWARM=%s not known (on, off)\n", s);
         }
     }
+    // Test hook: ANNO_VIEW_FADE_MS=<ms> sets the chunk dissolve (GpuLimits::chunk_fade_ms), so a
+    // scripted session can observe a change while its chunk is still dissolving in.
+    if (const char* s = std::getenv("ANNO_VIEW_FADE_MS"); s != nullptr && *s != 0) {
+        char* end = nullptr;
+        const unsigned long long ms = std::strtoull(s, &end, 10);
+        if (end != s && *end == 0 && s[0] != '-') {
+            limits.chunk_fade_ms = ms;
+        } else {
+            std::fprintf(stderr, "ANNO_VIEW_FADE_MS=%s not understood (milliseconds)\n", s);
+        }
+    }
     b->prewarm_budget_mb = limits.prewarm_chunks > 0 ? limits.idle_plane_budget_mb : 0;
     // The cost tier of the river flow shading: automatic (High on a discrete GPU,
     // measured on others) unless ANNO_RIVER_QUALITY says low, medium or high.
@@ -267,20 +306,53 @@ gpu::ResampleFilter resample_filter(double s) {
 
 class Viewer {
   public:
-    Viewer(const render::Scene& scene, std::size_t group, std::size_t threads, Renderer renderer,
-           render::RiverFlowMode river_flow, render::WaterStyle water, std::size_t lookahead_chunks,
-           ZoomOptions zoom, const ViewerHooks* hooks)
-        : scene_(scene), group_(group), zoom_opt_(zoom), frames_(threads),
-          renderer_choice_(renderer), water_(water), hooks_(hooks) {
+    ~Viewer() {
+        if (hold_ != nullptr) {
+            hold_->release(); // a session that ends inside a held publication frees the sim thread
+        }
+        if (chunk_hold_) {
+            chunk_hold_->release(); // and the builders (also released before they are joined)
+        }
+        if (dev_ != nullptr && play_ != nullptr) {
+            play_->set_batch_observer({}); // it points into knowledge_
+        }
+    }
+    Viewer(const Viewer&) = delete;
+    Viewer& operator=(const Viewer&) = delete;
+    Viewer(std::shared_ptr<const render::Scene> scene, std::size_t group, std::size_t threads,
+           Renderer renderer, render::RiverFlowMode river_flow, render::WaterStyle water,
+           std::size_t lookahead_chunks, ZoomOptions zoom, const ViewerHooks* hooks,
+           PlayFollower* play)
+        : play_(play), levels_(scene->levels()), name_(scene->name), group_(group), zoom_opt_(zoom),
+          frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks),
+          trace_(hooks != nullptr ? hooks->trace : nullptr),
+          dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr),
+          script_(dev_ != nullptr ? hooks->script : nullptr),
+          hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr),
+          opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr) {
+        if (dev_ != nullptr) {
+            knowledge_.emplace(dev_->setup());
+            attach_occupancy(*play_, *knowledge_, *dev_); // follows the takes; ensure() seeds
+        }
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
-        const auto b = *scene.bounds(group);
+        const auto b = *scene->bounds(group);
         cam_x_ = b.x + b.w / 2.0;
         cam_y_ = b.y + b.h / 2.0;
         zoom_now_ = zoom_target_ = levels().tile_w(group);
+        if (play_ == nullptr) {
+            fixed_ = std::move(scene);
+        }
     }
 
-    const render::ZoomLevels& levels() const { return scene_.levels(); }
+    /// The zoom levels, the islands' placement and the sea are the same in every generation of
+    /// the scene (a generation changes object lists only): the levels are copied once.
+    const render::ZoomLevels& levels() const { return levels_; }
+    /// The generation shown now: the picture's current one in play, else the scene of --view.
+    /// An owning handle; a frame takes one at its start and draws all of it from that one.
+    [[nodiscard]] std::shared_ptr<const render::Scene> current() const {
+        return play_ != nullptr ? play_->picture().scene() : fixed_;
+    }
 
     /// The smallest tile width the continuous zoom may show: --min-zoom, else the
     /// width at which the whole scene fits the window, but never above group 2's
@@ -289,7 +361,7 @@ class Viewer {
         if (zoom_opt_.min_zoom > 0.0) {
             return zoom_opt_.min_zoom;
         }
-        const auto b = scene_.bounds(levels().built_count() - 1);
+        const auto b = current()->bounds(levels().built_count() - 1);
         if (!b || b->w <= 0 || b->h <= 0) {
             return 0.0;
         }
@@ -304,15 +376,34 @@ class Viewer {
   private:
     void handle(const SDL_Event& e);
     void draw();
-    void draw_cpu(render::Rect view);
+    /// The frame boundary of play (PlayFollower::follow): takes the sim's batches, applies them and
+    /// commits what is ready, before the frame takes its scene handle. Never waits for a build.
+    void follow_picture();
+    /// What the loop needs from this iteration (FrameDemand, play_follow.hpp).
+    [[nodiscard]] FrameDemand demand(bool can_draw) const;
+    /// `gen`: the frame's scene handle, the only scene the frame reads.
+    void draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view);
 #ifdef ANNO_VIEWER_GPU
     /// `view`: the scene grid composed (the window's rectangle, or with
     /// `resample` the larger one resampled onto the window); `out_w` x `out_h`:
     /// the window.
-    void draw_gpu(render::Rect view, const gpu::Resample* resample, int out_w, int out_h);
+    void draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view,
+                  const gpu::Resample* resample, int out_w, int out_h);
 #endif
     [[nodiscard]] bool on_gpu() const;
     void update_title();
+    /// Where the change of `latest` (an applied command) is on its way to the screen
+    /// (ChangeVisibility); NoVisualChange for anything else. Window thread.
+    Visibility command_visibility(const std::optional<CommandOutcome>& latest) const {
+        if (!latest || latest->state != CommandOutcome::State::Applied || play_ == nullptr) {
+            return Visibility::NoVisualChange;
+        }
+        return play_->visibility().classify(latest->turn);
+    }
+    Visibility title_visibility_ = Visibility::NoVisualChange;
+    /// Refreshes the title when the latest command's change moved to another stage (a frame
+    /// presented it, or its object list committed).
+    void refresh_visibility_title();
     void pan(double dx, double dy);
     void clamp();
     void zoom(int step, std::optional<std::pair<double, double>> anchor);
@@ -325,7 +416,8 @@ class Viewer {
     /// Moves the shown zoom towards the wanted one by the time since the last
     /// call (ease-out), keeps the anchor fixed and switches the zoom group when
     /// the zoom has moved closer to another group's tile width.
-    void zoom_tick();
+    /// Only the GPU path steps the continuous zoom; a viewer built without wgpu leaves it unused.
+    [[maybe_unused]] void zoom_tick();
     [[nodiscard]] bool zoom_animating() const { return continuous_ && zoom_now_ != zoom_target_; }
     /// Screen pixels per scene pixel of the group shown (1 when stepped).
     [[nodiscard]] double scale() const {
@@ -342,7 +434,18 @@ class Viewer {
     std::vector<Step> steps_, last_steps_, worst_steps_;
     Clock::time_point steps_end_ = Clock::now();
 
-    const render::Scene& scene_;
+    /// The scene of --view (null in play: the frames draw the picture's generations).
+    std::shared_ptr<const render::Scene> fixed_;
+    PlayFollower* play_ = nullptr;
+    /// The SDL event type the runner's batch listener posts (0: none registered).
+    std::uint32_t wake_event_ = 0;
+    render::ZoomLevels levels_;
+    std::string name_;
+    /// The frame boundary's work in the frame being drawn (follow_picture), and its end (the
+    /// draw prologue is measured from there). Islands committed since the last report.
+    double picture_ms_ = 0;
+    Clock::time_point picture_end_ = Clock::now();
+    std::size_t committed_ = 0;
     std::size_t group_;
     /// Scene screen position (at group_) shown in the window centre.
     double cam_x_ = 0, cam_y_ = 0;
@@ -389,11 +492,103 @@ class Viewer {
     bool reconfigure_ = false;
     bool present_error_shown_ = false;
 #endif
+    /// The window trace (ViewerHooks::trace; null when off) and, on the GPU, its bookkeeping of
+    /// the attempted frames (FrameTracer).
+    WindowTrace* trace_ = nullptr;
+#ifdef ANNO_VIEWER_GPU
+    std::optional<FrameTracer> tracer_;
+#endif
+    /// The developer tool (ViewerHooks::dev), the pointer frame of the last frame drawn (what the
+    /// pointer is over: its screen map, zoom geometry and scene), what the preview knows from the
+    /// published picture and snapshot, and the receipt of the tool's latest command (round ee).
+    DevTool* dev_ = nullptr;
+    std::optional<PointerFrame> pointer_frame_;
+    std::optional<PlacementKnowledge> knowledge_;
+    std::optional<CommandId> latest_receipt_;
+    /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
+    DevScript* script_ = nullptr;
+    PublicationHold* hold_ = nullptr;
+    /// A scripted GPU session's stage holds (hold chunks|uploads|presents): the builders' gate,
+    /// the compositor's upload hold (set on gpu_->frame), and presents counted as failed.
+    std::unique_ptr<StageHold> chunk_hold_;
+    bool uploads_held_ = false, presents_failing_ = false;
+    /// The CPU delivery seam's stages that report failure (script: fail update|submit|present;
+    /// bit 0 SDL_UpdateTexture, 1 SDL_RenderTexture, 2 SDL_RenderPresent) and how many frames
+    /// failed.
+    std::uint8_t cpu_fail_ = 0;
+    std::uint64_t cpu_stage_failures_[3] = {0, 0, 0}; // per stage, for the diagnostic's rate limit
+    std::uint64_t surface_epoch_ = 0;
+    std::uint64_t drawn_frames_ = 0;
+    Clock::time_point started_ = Clock::now();
+    void script_tick();
+    // ---- the ship-start opening (ViewerHooks::opening) ----
+    OpeningHooks* opening_ = nullptr;
+    /// The view of the newest snapshot the frame took, the ships drawn from it, and the tick of
+    /// the view the last DELIVERED frame (CPU: every stage returned true; GPU: the present
+    /// succeeded) was drawn from.
+    std::shared_ptr<const PlaySnapshot> opening_snapshot_;
+    std::vector<render::UnitSprite> live_units_;
+    /// What is drawn between two published turns (ships moved along their segment, turning in
+    /// steps) and the wall clock it is drawn at; the sim's own positions stay in opening_snapshot_.
+    ShipMotion motion_;
+    OpeningView display_view_;
+    /// The opening on the GPU starts with enhanced water (ships stir the simulated waves) unless
+    /// --water chose the water (OpeningHooks::enhanced_water); E toggles.
+    bool opening_water_set_ = false;
+    /// The founding question last asked of the sim (PlayRunner::request_found_probe).
+    std::optional<sim::FoundCmd> asked_probe_;
+    /// The wave simulation's windows so far (GpuStats::fluid_windows), for the scripts.
+    std::uint64_t fluid_windows_ = 0, fluid_resamples_ = 0;
+    /// The tile the last frame's wave window was centred on (GpuStats::fluid_centre): the ships
+    /// nearest to it stir the waves when there are more than fluid::kMaxShipWakes.
+    std::pair<double, double> wave_centre_{0.0, 0.0};
+    [[nodiscard]] static double wall_seconds() {
+        static const Clock::time_point epoch = Clock::now();
+        return std::chrono::duration<double>(Clock::now() - epoch).count();
+    }
+    std::uint64_t frame_view_tick_ = 0;
+    std::optional<std::uint64_t> shown_tick_;
+    std::size_t ships_missing_ = 0;
+    /// The founding cursor's preview of the frame being drawn.
+    std::optional<Preview> found_preview_;
+    /// Takes the newest snapshot, revalidates the controls against its view, retargets the building
+    /// tool at a city that appeared, and builds the ships to draw. Frame boundary; window thread.
+    void opening_refresh();
+    [[nodiscard]] UiFeed opening_feed() const;
+    /// The named facts a scripted session waits on and expects (DevScriptState::facts).
+    [[nodiscard]] std::map<std::string, std::string> opening_facts() const;
+    /// Applies a UiResult: posts the commands, records their receipts, asks for a save.
+    void opening_apply(const UiResult& result);
+    std::string save_note_;
+    /// The opening's share of handle(): returns whether the event was taken.
+    bool opening_handle(const SDL_Event& e);
+    /// Test hook (ANNO_VIEW_QUIT_S=<seconds>): the loop ends at this time.
+    std::optional<Clock::time_point> quit_at_;
+    /// Test hook (ANNO_VIEW_RESIZE=<seconds>:<w>x<h>): one resize at this time, to this drawable.
+    std::optional<Clock::time_point> resize_at_;
+    std::pair<int, int> resize_to_{0, 0};
     /// Chunks received since the last periodic report. A console write on the
     /// window thread is synchronous and can cost tens of milliseconds on a busy
     /// machine, so nothing is printed per frame (hitch lines excepted: they are
     /// printed in the frame after the hitch, outside its own busy time).
     std::size_t chunks_received_ = 0;
+    /// The report's view of what was not ready (GPU): frames of the interval that drew a visible
+    /// chunk not built yet (GpuStats::chunks_missing), the most at once and at which zoom level,
+    /// and the wave windows made and carried over since the last report (owner playtest
+    /// 2026-11-03, round 5: the overview "needs a moment" and islands flicker at the farthest
+    /// zoom).
+    std::size_t missing_frames_ = 0, missing_most_ = 0, missing_most_group_ = 0;
+    /// Frames of the interval that drew chunks dissolving in over their stand-in (built, then
+    /// uploaded: GpuStats::chunks_fading, GpuLimits::chunk_fade_ms) and the most at once (round 6:
+    /// a zoom back in showed the coarser level magnified until the real chunks had come in).
+    std::size_t fading_frames_ = 0, fading_most_ = 0;
+    /// The wave windows made and carried over since the last report.
+    std::uint64_t windows_new_ = 0, resamples_new_ = 0;
+#ifdef ANNO_VIEWER_GPU
+    /// The compositor's counters as last seen while the simulation ran (they read 0 while it is
+    /// off and restart with a new compositor).
+    std::uint64_t windows_seen_ = 0, resamples_seen_ = 0;
+#endif
     void back_off() {
         retry_at_ = Clock::now() + std::chrono::milliseconds(100);
         dirty_ = true;
@@ -452,10 +647,12 @@ std::string Viewer::run() {
             }
         }
     } join_seas{seas};
-    seas.emplace_back([this] { scene_.sea(group_); });
+    // Each thread holds the generation it builds from (the patterns are shared by every
+    // generation of the scene), so a commit meanwhile cannot free what it reads.
+    seas.emplace_back([s = current(), g = group_] { s->sea(g); });
     for (std::size_t g = 0; g < levels().size(); ++g) {
         if (g != group_) {
-            seas.emplace_back([this, g] { scene_.sea(g); });
+            seas.emplace_back([s = current(), g] { s->sea(g); });
         }
     }
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -481,6 +678,73 @@ std::string Viewer::run() {
         const std::string err = std::string("SDL_CreateWindow: ") + SDL_GetError();
         SDL_Quit();
         return err;
+    }
+    // Test hook (not documented for players): ANNO_VIEW_SIZE=<w>x<h> asks for a drawable of that
+    // many pixels (the window's size in points is that over the pixel density). The size the
+    // window gets is the one reported: a screen smaller than the request gives a smaller one.
+    if (const char* sz = std::getenv("ANNO_VIEW_SIZE"); sz != nullptr && *sz != 0) {
+        int want_w = 0, want_h = 0;
+        if (std::sscanf(sz, "%dx%d", &want_w, &want_h) == 2 && want_w > 0 && want_h > 0) {
+            float density = SDL_GetWindowPixelDensity(window_);
+            if (!(density > 0.0F)) {
+                density = 1.0F;
+            }
+            SDL_SetWindowSize(window_,
+                              static_cast<int>(std::lround(want_w / static_cast<double>(density))),
+                              static_cast<int>(std::lround(want_h / static_cast<double>(density))));
+            SDL_SyncWindow(window_);
+            const auto [got_w, got_h] = view_size();
+            std::fprintf(stderr, "window: drawable %dx%d px (asked for %dx%d, density %.2f)\n",
+                         got_w, got_h, want_w, want_h, static_cast<double>(density));
+            if (trace_ != nullptr) {
+                trace_->note("drawable_asked " + std::to_string(want_w) + "x" +
+                             std::to_string(want_h));
+            }
+        } else {
+            std::fprintf(stderr, "ANNO_VIEW_SIZE=%s not understood (<w>x<h>)\n", sz);
+        }
+    }
+    // Test hook: ANNO_VIEW_AT=<x>,<y> centres the camera on that tile.
+    if (const char* at = std::getenv("ANNO_VIEW_AT"); at != nullptr && *at != 0) {
+        int tx = 0, ty = 0;
+        if (std::sscanf(at, "%d,%d", &tx, &ty) == 2) {
+            const auto [sx, sy] = render::tile_top(tx, ty, levels().ancestor(group_));
+            cam_x_ = sx;
+            cam_y_ = sy;
+            clamp();
+        } else {
+            std::fprintf(stderr, "ANNO_VIEW_AT=%s not understood (<x>,<y>)\n", at);
+        }
+    }
+    if (opening_ != nullptr) {
+        // The opening starts on the participant's ship (on the sea surface, as the ship is drawn).
+        const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
+        const auto [sx, sy] = render::corner_point(opening_->look_x, opening_->look_y,
+                                                   static_cast<double>(render::kSeaLevel), g);
+        cam_x_ = sx;
+        cam_y_ = sy;
+        clamp();
+    }
+    // Test hook: ANNO_VIEW_RESIZE=<seconds>:<w>x<h> resizes the window once, that long after the
+    // start, to a drawable of that many pixels (the surface is reconfigured: a new epoch).
+    if (const char* rz = std::getenv("ANNO_VIEW_RESIZE"); rz != nullptr && *rz != 0) {
+        double seconds = 0;
+        int rw = 0, rh = 0;
+        if (std::sscanf(rz, "%lf:%dx%d", &seconds, &rw, &rh) == 3 && seconds > 0 && rw > 0 &&
+            rh > 0) {
+            resize_at_ = Clock::now() + std::chrono::duration_cast<Clock::duration>(
+                                            std::chrono::duration<double>(seconds));
+            resize_to_ = {rw, rh};
+        } else {
+            std::fprintf(stderr, "ANNO_VIEW_RESIZE=%s not understood (<seconds>:<w>x<h>)\n", rz);
+        }
+    }
+    if (const char* q = std::getenv("ANNO_VIEW_QUIT_S"); q != nullptr && *q != 0) {
+        double seconds = 0;
+        if (std::sscanf(q, "%lf", &seconds) == 1 && seconds > 0) {
+            quit_at_ = Clock::now() + std::chrono::duration_cast<Clock::duration>(
+                                          std::chrono::duration<double>(seconds));
+        }
     }
 #ifdef ANNO_VIEWER_GPU
     if (renderer_choice_ != Renderer::Cpu) {
@@ -536,6 +800,26 @@ std::string Viewer::run() {
     if (zoom_opt_.mode == ZoomMode::Continuous && zoom_opt_.mode_explicit && !continuous_) {
         std::fprintf(stderr, "--zoom-mode continuous needs the GPU renderer; zooming in steps\n");
     }
+    if (trace_ != nullptr) {
+#ifdef ANNO_VIEWER_GPU
+        if (gpu_) {
+            trace_->event_now(TraceKind::GpuMode, 0, 1);
+            tracer_.emplace(*trace_);
+            const auto [dw, dh] = view_size();
+            trace_->note("adapter " + gpu_->ctx.name);
+            trace_->note("drawable " + std::to_string(dw) + "x" + std::to_string(dh) + " density " +
+                         std::to_string(SDL_GetWindowPixelDensity(window_)));
+            trace_->note(
+                std::string("chunk_builder ") +
+                (frames_.chunk_builder == render::ChunkBuilder::GpuList ? "gpu_list" : "cpu"));
+        }
+#endif
+        if (!on_gpu()) {
+            SDL_DestroyWindow(window_);
+            SDL_Quit();
+            return "the window trace (ANNO_VIEW_TRACE) needs the GPU renderer";
+        }
+    }
     if (!on_gpu()) {
         renderer_ = SDL_CreateRenderer(window_, nullptr);
         if (renderer_ == nullptr) {
@@ -571,16 +855,80 @@ std::string Viewer::run() {
     // Chunk builders use half the cores; frames use all of them.
     // Queue the river flows now (low priority threads): chunks that are built
     // before a flow is ready show the legacy river look and are rebuilt.
-    scene_.prefetch_river_flow();
-    frames_.set_workers(std::make_unique<render::ChunkWorkers>(scene_, (hw + 1) / 2));
+    // A batch published while the loop waits for events wakes it (the runner's sim thread posts
+    // an SDL event; SDL_PushEvent is thread-safe). Cleared before the window goes, below, and on
+    // every other way out of run().
+    struct ClearListener {
+        PlayFollower* play;
+        explicit ClearListener(PlayFollower* p) : play(p) {}
+        ClearListener(const ClearListener&) = delete;
+        ClearListener& operator=(const ClearListener&) = delete;
+        ~ClearListener() {
+            if (play != nullptr) {
+                play->runner().set_wake_listener({});
+            }
+        }
+    } clear_listener{play_};
+    if (play_ != nullptr) {
+        wake_event_ = SDL_RegisterEvents(1);
+        if (wake_event_ != 0) {
+            play_->runner().set_wake_listener([type = wake_event_] {
+                SDL_Event e{};
+                e.type = type;
+                SDL_PushEvent(&e);
+            });
+        }
+    }
+    // (The flow builders hold the generation that asked: Scene::river_flow.)
+    current()->prefetch_river_flow();
+    // No default scene: every chunk job holds the generation of the frame that planned it.
+    {
+        // Three quarters of the cores (they run below normal priority): a zoom out to the whole map
+        // asks for thousands of chunks and was waiting on half of them.
+        auto workers = std::make_unique<render::ChunkWorkers>(std::max<std::size_t>(1, hw * 3 / 4));
+        if (script_ != nullptr && on_gpu()) {
+            // A scripted GPU session may hold the chunk builders (hold chunks): the gate does
+            // nothing until the script arms it.
+            chunk_hold_ = std::make_unique<StageHold>();
+            workers->set_test_gate(
+                [g = chunk_hold_->gate()](const render::ChunkKey&, std::uint64_t) { g(); });
+        }
+        frames_.set_workers(std::move(workers));
+        // The ship-start opening sails over the whole map and zooms out to see it: its overview
+        // levels are built while the player is busy with something else.
+        frames_.prewarm_far_levels = opening_ != nullptr;
+        if (opening_ != nullptr) {
+            // The levels from the whole map down to level 4 stay built (zoom.hpp).
+            frames_.resident_level_chunks = kOpeningResidentLevelChunks;
+        }
+    }
     while (running_) {
         SDL_Event e;
+        if (quit_at_ && Clock::now() >= *quit_at_) {
+            running_ = false;
+            break;
+        }
+        if (resize_at_ && Clock::now() >= *resize_at_) {
+            resize_at_.reset();
+            float density = SDL_GetWindowPixelDensity(window_);
+            if (!(density > 0.0F)) {
+                density = 1.0F;
+            }
+            SDL_SetWindowSize(
+                window_,
+                static_cast<int>(std::lround(resize_to_.first / static_cast<double>(density))),
+                static_cast<int>(std::lround(resize_to_.second / static_cast<double>(density))));
+            dirty_ = true;
+        }
         if (retry_at_ && Clock::now() >= *retry_at_) {
             retry_at_.reset();
         }
         // Nothing is drawn while hidden or backing off; dirty_ stays set.
         const bool can_draw = !hidden_ && !retry_at_;
-        const bool animating = (!paused_at_ || frames_.busy() || zoom_animating()) && can_draw;
+        // A batch waiting in the mailbox, a change not committed yet, chunk builds and the
+        // compositor's uploads and dissolves keep the frames coming, also while paused (round eb,
+        // 1A): they finish without a new turn or an input event.
+        const bool animating = demand(can_draw).animating();
         if (!animating && !(dirty_ && can_draw)) {
             int wait_ms = 100;
             if (retry_at_) {
@@ -598,6 +946,7 @@ std::string Viewer::run() {
             handle(e);
         }
         events_ms_ = std::chrono::duration<double, std::milli>(Clock::now() - events_start).count();
+        script_tick();
         if (running_ && can_draw && (animating || dirty_)) {
             dirty_ = false;
             if (pending_zoom_) {
@@ -623,6 +972,20 @@ std::string Viewer::run() {
             }
         }
     }
+    // Teardown (docs/app/gpu-handoff.md): the window stops calling into the picture here (its
+    // owner destroys it after run_viewer returns). The chunk workers are joined (at most one
+    // build per worker in progress); the generations their jobs held are released there, through
+    // the reclaimer. The GPU finishes its submissions before the compositor is destroyed; the
+    // wave simulation's background preparations release the generation they hold as they end.
+    if (play_ != nullptr) {
+        play_->runner().set_wake_listener({}); // no SDL event after the window is gone
+    }
+    if (chunk_hold_) {
+        // A session that ends inside `hold chunks` (quit, a failed step, the window closed): the
+        // workers parked in the gate must go before they are joined, or the exit waits for the
+        // hold's watchdog (W4-WIN-CLOSE C2 review, B1).
+        chunk_hold_->release();
+    }
     frames_.set_workers(nullptr);
     for (auto& t : seas) {
         t.join();
@@ -645,6 +1008,63 @@ std::string Viewer::run() {
 }
 
 void Viewer::handle(const SDL_Event& e) {
+    if (script_ != nullptr && foreign_input(e)) {
+        return; // a scripted session takes only its own input (dev_script.hpp, kScriptDevice)
+    }
+    if (wake_event_ != 0 && e.type == wake_event_) {
+        dirty_ = true; // a building batch or a command outcome (the runner's wake): draw it now
+        update_title();
+        return;
+    }
+    if (dev_ != nullptr) {
+        // The developer tool first (sdl_input.hpp: B toggles it; with it on, the left button,
+        // N, P, T, X and Esc with something to cancel are its). The frame is the one drawn, so
+        // the pointer picks what is on screen. Its commands go to the runner's queue; the
+        // receipts are kept for the feedback.
+        const bool was_on = dev_->enabled();
+        const auto hovered = dev_->hover();
+        ToolStep step = dev_tool_step(*dev_, e, SDL_GetWindowPixelDensity(window_),
+                                      pointer_frame_ ? &*pointer_frame_ : nullptr);
+        for (sim::Command& command : step.commands) {
+            latest_receipt_ = play_->runner().post_command(std::move(command));
+        }
+        if (step.taken && step.commands.empty() && e.type == SDL_EVENT_MOUSE_BUTTON_UP &&
+            e.button.button == SDL_BUTTON_LEFT) {
+            // A click that sent nothing (off the island, refused locally): the title shows the
+            // tool's reason, not the previous command's outcome (round ee review of C, P3).
+            latest_receipt_.reset();
+        }
+        if (step.taken) {
+            if (dev_->enabled() != was_on) {
+                drag_ = false; // a left drag that began as a pan ends with it
+                if (opening_ != nullptr && dev_->enabled()) {
+                    opening_->ui->leave_modes(); // the pointer is the building tool's now
+                }
+            }
+            // A motion within the same tile changes nothing shown: no redraw, no new title.
+            if (e.type != SDL_EVENT_MOUSE_MOTION || dev_->hover() != hovered) {
+                update_title();
+                dirty_ = true;
+            }
+            // The window keeps its own handling of motion (the cursor, a right-button pan) and
+            // of focus and visibility; the rest was the tool's.
+            switch (e.type) {
+            case SDL_EVENT_MOUSE_MOTION:
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+            case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+            case SDL_EVENT_WINDOW_HIDDEN:
+            case SDL_EVENT_WINDOW_MINIMIZED:
+                break;
+            default:
+                return;
+            }
+        }
+    }
+    if (opening_ != nullptr && opening_->ui != nullptr && opening_handle(e)) {
+        update_title();
+        dirty_ = true;
+        return;
+    }
     const float density = SDL_GetWindowPixelDensity(window_);
     switch (e.type) {
     case SDL_EVENT_QUIT:
@@ -739,7 +1159,9 @@ void Viewer::handle(const SDL_Event& e) {
     }
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     case SDL_EVENT_MOUSE_BUTTON_UP:
-        if (e.button.button == SDL_BUTTON_LEFT) {
+        // The left button pans (with the tool on it is the tool's and never reaches this); the
+        // right button pans too (round ee: the tool's pan).
+        if (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT) {
             drag_ = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN;
         }
         break;
@@ -789,6 +1211,303 @@ std::uint64_t Viewer::time_ms() const {
         std::chrono::duration_cast<std::chrono::milliseconds>(t).count());
 }
 
+UiFeed Viewer::opening_feed() const {
+    UiFeed feed;
+    if (opening_snapshot_ && opening_snapshot_->opening) {
+        feed.view = opening_snapshot_->opening.get();
+        feed.outcome = [snap = opening_snapshot_, this](CommandId id) {
+            return play_->runner().outcome_at(id, *snap);
+        };
+    }
+    feed.shown_tick = shown_tick_;
+    // The terrain's height bytes at the tile corners of the scene being drawn (the island files'
+    // own HEIGHT grids, what the sim's coast rule reads), for the founding preview.
+    feed.vertex_height = [scene = current()](std::int64_t x,
+                                             std::int64_t y) -> std::optional<std::uint8_t> {
+        return scene ? scene_vertex_height(*scene, x, y) : std::nullopt;
+    };
+    return feed;
+}
+
+void Viewer::opening_refresh() {
+    if (opening_ == nullptr || opening_->ui == nullptr || play_ == nullptr) {
+        return;
+    }
+    std::shared_ptr<const PlaySnapshot> snap = play_->runner().snapshot();
+    if (!snap || !snap->opening) {
+        live_units_.clear();
+        return;
+    }
+    const bool changed = !opening_snapshot_ || opening_snapshot_->opening != snap->opening;
+    opening_snapshot_ = std::move(snap);
+    const OpeningView& view = *opening_snapshot_->opening;
+    const double now = wall_seconds();
+    if (!opening_water_set_ && on_gpu()) {
+        opening_water_set_ = true;
+        if (opening_->enhanced_water) {
+            water_ = render::WaterStyle::Enhanced;
+            update_title();
+        }
+    }
+    if (changed) {
+        motion_.observe(view, now);
+        opening_->ui->on_view(opening_feed());
+        // The participant's first city exists (founded after launch): the building tool builds
+        // there from now on (the city is derived from the published view, never assumed).
+        if (dev_ != nullptr && !view.cities.empty()) {
+            const CityView& city = view.cities.front();
+            if (!dev_->setup().city || *dev_->setup().city != city.ref) {
+                for (const IslandRect& r : opening_->ui->setup().islands) {
+                    if (r.slot == city.ref.island.v) {
+                        dev_->retarget(city.ref, TileRect{r.x0, r.y0, r.w, r.h});
+                        if (knowledge_) {
+                            knowledge_->retarget(dev_->setup());
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        update_title();
+    }
+    const auto selected = opening_->ui->selected();
+    const ShipView* ship = selected ? view.ship(*selected) : nullptr;
+    ships_missing_ = 0;
+    display_view_ = motion_.display(view, now);
+    live_units_ = opening_->ships->units(
+        display_view_, selected, ship != nullptr && ship->owner == opening_->ui->setup().local,
+        &ships_missing_);
+    frame_view_tick_ = view.tick;
+    if (motion_.animating(now)) {
+        dirty_ = true; // the next frame draws the ships a little further along
+    }
+    // The founding cursor asks the sim what it would answer (a turn later, in the view).
+    if (const auto want = opening_->ui->probe_wanted(opening_feed());
+        want && want != asked_probe_) {
+        play_->runner().request_found_probe(*want);
+        asked_probe_ = want;
+    }
+}
+
+void Viewer::opening_apply(const UiResult& result) {
+    const std::uint64_t tick =
+        opening_snapshot_ && opening_snapshot_->opening ? opening_snapshot_->opening->tick : 0;
+    for (std::size_t i = 0; i < result.commands.size(); ++i) {
+        const CommandId id = play_->runner().post_command(result.commands[i]);
+        opening_->ui->submitted(i, id, tick);
+    }
+    if (result.save) {
+        save_note_ = opening_->quick_save ? opening_->quick_save() : "saving is not available";
+    }
+    update_title();
+    dirty_ = true;
+}
+
+bool Viewer::opening_handle(const SDL_Event& e) {
+    OpeningUi& ui = *opening_->ui;
+    const float density = SDL_GetWindowPixelDensity(window_);
+    const double d = density > 0.0F ? static_cast<double>(density) : 1.0;
+    const bool tool_on = dev_ != nullptr && dev_->enabled();
+    std::optional<FrameProjection> projection;
+    if (pointer_frame_) {
+        projection.emplace(*pointer_frame_, *opening_->ships, &display_view_);
+    }
+    const ScreenProjection* frame = projection ? &*projection : nullptr;
+    const UiFeed feed = opening_feed();
+    switch (e.type) {
+    case SDL_EVENT_KEY_DOWN: {
+        const bool shift = (e.key.mod & SDL_KMOD_SHIFT) != 0;
+        std::optional<OpeningKey> key = opening_key_from_sdl(e.key.key);
+        if (e.key.key == SDLK_ESCAPE) {
+            if (e.key.repeat) {
+                return true; // a held Esc is never the window's quit, whatever the first one
+                             // cancelled
+            }
+            key = ui.has_pending() ? std::optional<OpeningKey>(OpeningKey::Escape) : std::nullopt;
+        }
+        if (!key) {
+            return false;
+        }
+        if (e.key.repeat && *key != OpeningKey::QtyDown && *key != OpeningKey::QtyUp) {
+            // A held key does nothing twice; a held Esc after a cancel must not quit either.
+            return *key == OpeningKey::Escape || ui.mode() != OpeningMode::Select;
+        }
+        if (tool_on && (*key == OpeningKey::Found || *key == OpeningKey::Unload)) {
+            return false; // the building tool owns the pointer: B turns it off first
+        }
+        const UiResult r = ui.key(*key, shift, feed);
+        opening_apply(r);
+        return r.taken;
+    }
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    case SDL_EVENT_MOUSE_BUTTON_UP: {
+        if (tool_on ||
+            (e.button.button != SDL_BUTTON_LEFT && e.button.button != SDL_BUTTON_RIGHT)) {
+            return false;
+        }
+        const PointerButton button =
+            e.button.button == SDL_BUTTON_LEFT ? PointerButton::Left : PointerButton::Right;
+        const double px = static_cast<double>(e.button.x) * d,
+                     py = static_cast<double>(e.button.y) * d;
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            ui.pointer_down(button, px, py);
+            return false; // the window's own pan follows the same press
+        }
+        opening_apply(ui.pointer_up(button, px, py, frame, feed));
+        return false;
+    }
+    case SDL_EVENT_MOUSE_MOTION:
+        if (!tool_on) {
+            ui.pointer_move(static_cast<double>(e.motion.x) * d,
+                            static_cast<double>(e.motion.y) * d, frame, feed);
+            if (ui.mode() == OpeningMode::Found) {
+                dirty_ = true;
+            }
+            if (ui.mode() == OpeningMode::Found || ui.take_hover_changed()) {
+                update_title();
+            }
+        }
+        return false;
+    case SDL_EVENT_WINDOW_FOCUS_LOST:
+    case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+    case SDL_EVENT_WINDOW_HIDDEN:
+    case SDL_EVENT_WINDOW_MINIMIZED:
+        ui.abort_gestures();
+        return false;
+    default:
+        return false;
+    }
+}
+
+std::map<std::string, std::string> Viewer::opening_facts() const {
+    std::map<std::string, std::string> f;
+    if (opening_ == nullptr || !opening_snapshot_ || !opening_snapshot_->opening) {
+        return f;
+    }
+    const OpeningView& v = *opening_snapshot_->opening;
+    const OpeningUi& ui = *opening_->ui;
+    const UiFeed feed = opening_feed();
+    f["tick"] = std::to_string(v.tick);
+    // The picture's work: the scene generation of the last drawn frame and the islands committed
+    // and results discarded since the start. A sailing ship changes none of them.
+    f["generation"] = pointer_frame_ && pointer_frame_->scene
+                          ? std::to_string(pointer_frame_->scene->generation())
+                          : "0";
+    if (play_ != nullptr) {
+        const ScenePicture::Stats ps = play_->picture().stats();
+        f["committed"] = std::to_string(ps.committed);
+        f["discarded"] = std::to_string(ps.discarded);
+        f["pending_builds"] = std::to_string(play_->picture().pending());
+    }
+    f["gold"] = std::to_string(v.gold);
+    f["cities"] = std::to_string(v.cities.size());
+    f["mode"] = ui.mode() == OpeningMode::Found    ? "found"
+                : ui.mode() == OpeningMode::Unload ? "unload"
+                                                   : "select";
+    f["selected"] = ui.selected() ? std::to_string(ui.selected()->v) : "none";
+    {
+        const auto plan =
+            ui.mode() == OpeningMode::Unload ? ui.unload_plan(opening_feed()) : std::nullopt;
+        f["request"] = plan ? std::to_string(plan->tons) : "none";
+    }
+    {
+        const auto fp =
+            ui.mode() == OpeningMode::Found ? ui.found_preview(opening_feed()) : std::nullopt;
+        f["found.coast"] = fp ? (fp->coast_ok ? "yes" : "no") : "none";
+        f["found.rotation"] = fp ? std::to_string(fp->rotation) : "none";
+        f["found.cursor"] = fp ? std::to_string(fp->cursor_rotation) : "none";
+        f["found.sim"] = !fp               ? "none"
+                         : !fp->sim_answer ? "pending"
+                                           : std::string(sim::reject_name(*fp->sim_answer));
+    }
+    f["fluid.windows"] = std::to_string(fluid_windows_);
+    f["fluid.resamples"] = std::to_string(fluid_resamples_);
+    f["chunks.cached"] = std::to_string(frames_.cached());
+    {
+        // The chunks the whole scene covers at each derived level (what prewarm and the resident
+        // rule count), "3:12 4:6 ...", counted as the renderer does (render::visible_chunks: a
+        // negative x or y rounds down; the division here truncated, review 2026-11-03).
+        std::string levels;
+        const auto gen = current();
+        for (std::size_t g = gen->levels().built_count(); g < gen->levels().size(); ++g) {
+            if (const auto b = gen->bounds(g)) {
+                levels += (levels.empty() ? "" : " ") + std::to_string(g) + ":" +
+                          std::to_string(render::visible_chunks(*b).size());
+            }
+        }
+        f["levels.chunks"] = levels;
+    }
+    f["tracked"] = std::to_string(ui.tracked().size());
+    f["save"] = opening_->save_status ? opening_->save_status() : "";
+    if (f["save"].empty()) {
+        f["save"] = "none";
+    }
+    f["tool"] = dev_ != nullptr && dev_->enabled() ? "on" : "off";
+    f["tool_city"] = dev_ != nullptr && dev_->setup().city
+                         ? std::to_string(dev_->setup().city->island.v) + ":" +
+                               std::to_string(dev_->setup().city->city.v)
+                         : "none";
+    f["latest"] = "none";
+    f["latest_kind"] = "none";
+    f["latest_reason"] = "none";
+    f["latest_moved"] = "0";
+    if (!ui.tracked().empty()) {
+        const Tracked& t = ui.tracked().back();
+        std::string s = track_state_name(ui.state_of(t, feed));
+        for (char& c : s) {
+            if (c == ' ' || c == ',' || c == '(' || c == ')') {
+                c = '-';
+            }
+        }
+        f["latest"] = s;
+        f["latest_kind"] = t.kind == TrackKind::Move    ? "move"
+                           : t.kind == TrackKind::Stop  ? "stop"
+                           : t.kind == TrackKind::Found ? "found"
+                                                        : "unload";
+        if (feed.outcome) {
+            const CommandOutcome out = feed.outcome(t.receipt);
+            if (out.state == CommandOutcome::State::Refused) {
+                f["latest_reason"] = std::string(sim::reject_name(out.status));
+            }
+            f["latest_moved"] = std::to_string(out.transferred_88);
+        }
+    }
+    // Every tracked command by its index (oldest first, the bounded list): its kind and its own
+    // state.
+    for (std::size_t i = 0; i < ui.tracked().size(); ++i) {
+        const Tracked& t = ui.tracked()[i];
+        std::string s = track_state_name(ui.state_of(t, feed));
+        for (char& c : s) {
+            if (c == ' ' || c == ',' || c == '(' || c == ')') {
+                c = '-';
+            }
+        }
+        f["tracked." + std::to_string(i) + ".state"] = s;
+        f["tracked." + std::to_string(i) + ".kind"] = t.kind == TrackKind::Move    ? "move"
+                                                      : t.kind == TrackKind::Stop  ? "stop"
+                                                      : t.kind == TrackKind::Found ? "found"
+                                                                                   : "unload";
+    }
+    for (const ShipView& s : v.ships) {
+        const std::string p = "ship." + std::to_string(s.id.v) + ".";
+        f[p + "x"] = std::to_string(s.pos.x >> 8);
+        f[p + "y"] = std::to_string(s.pos.y >> 8);
+        f[p + "order"] = std::to_string(s.order_id ? *s.order_id : 0);
+        f[p + "dir"] = std::to_string(s.dir16);
+        f[p + "holds"] = std::to_string(s.holds.size());
+        for (std::size_t i = 0; i < s.holds.size(); ++i) {
+            f[p + "hold" + std::to_string(i)] = std::to_string(s.holds[i].amount_88);
+        }
+    }
+    if (!v.cities.empty()) {
+        const CityView& c = v.cities.front();
+        for (std::size_t g = 0; g < c.stock_88.size(); ++g) {
+            f["store." + std::to_string(g)] = std::to_string(c.stock_88[g]);
+        }
+    }
+    return f;
+}
+
 void Viewer::toggle_pause() {
     if (paused_at_) {
         clock_ = Clock::now() - *paused_at_;
@@ -800,6 +1519,7 @@ void Viewer::toggle_pause() {
     if (hooks_ != nullptr && hooks_->on_pause) {
         hooks_->on_pause(paused_at_.has_value());
     }
+    update_title();
 }
 
 void Viewer::pan(double dx, double dy) {
@@ -813,7 +1533,24 @@ void Viewer::pan(double dx, double dy) {
 }
 
 void Viewer::clamp() {
-    if (const auto b = scene_.bounds(group_)) {
+    if (opening_ != nullptr && opening_->ui != nullptr) {
+        // A ship sails over the whole world, not only over the islands: the camera is kept inside
+        // the world's rectangle (its four corners at the sea surface), not inside the islands'
+        // bounds.
+        const OpeningSetup& s = opening_->ui->setup();
+        const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
+        const double sea = static_cast<double>(render::kSeaLevel);
+        const auto a = render::corner_point(0, 0, sea, g);
+        const auto b = render::corner_point(s.world_w, 0, sea, g);
+        const auto c = render::corner_point(0, s.world_h, sea, g);
+        const auto d = render::corner_point(s.world_w, s.world_h, sea, g);
+        cam_x_ = std::clamp(cam_x_, std::min({a.first, b.first, c.first, d.first}),
+                            std::max({a.first, b.first, c.first, d.first}));
+        cam_y_ = std::clamp(cam_y_, std::min({a.second, b.second, c.second, d.second}),
+                            std::max({a.second, b.second, c.second, d.second}));
+        return;
+    }
+    if (const auto b = current()->bounds(group_)) {
         cam_x_ = std::clamp(cam_x_, static_cast<double>(b->x), static_cast<double>(b->x) + b->w);
         cam_y_ = std::clamp(cam_y_, static_cast<double>(b->y), static_cast<double>(b->y) + b->h);
     }
@@ -917,16 +1654,48 @@ void Viewer::zoom_tick() {
     }
 }
 bool Viewer::group_ready(std::size_t g) const {
+    // The query reads the sea patterns only (shared by all generations); the handle is held
+    // for the call.
+    const std::shared_ptr<const render::Scene> scene = current();
 #ifdef ANNO_VIEWER_GPU
     if (gpu_) {
-        return gpu_->frame->group_ready(scene_, g);
+        return gpu_->frame->group_ready(*scene, g);
     }
 #endif
-    return scene_.sea_built(g);
+    return scene->sea_built(g);
+}
+
+FrameDemand Viewer::demand(bool can_draw) const {
+    FrameDemand d;
+    d.can_draw = can_draw;
+    d.paused = paused_at_.has_value();
+    d.chunks_busy = frames_.busy();
+    d.zoom_animating = zoom_animating();
+    d.play_work = play_ != nullptr && play_->has_work();
+#ifdef ANNO_VIEWER_GPU
+    d.gpu_work = gpu_ && gpu_->frame->work_pending();
+#endif
+    d.dirty = dirty_;
+    return d;
+}
+
+void Viewer::refresh_visibility_title() {
+    if (dev_ == nullptr || play_ == nullptr || !dev_->enabled() || !latest_receipt_) {
+        return;
+    }
+    const Visibility now = command_visibility(play_->runner().feedback(latest_receipt_).latest);
+    if (now != title_visibility_) {
+        title_visibility_ = now;
+        update_title();
+    }
 }
 
 void Viewer::update_title() {
-    std::string title = "anno1503 — " + scene_.name + " — zoom group " + std::to_string(group_);
+    // Whatever stage the title is about to show is the stage refresh_visibility_title compares to.
+    if (dev_ != nullptr && play_ != nullptr && latest_receipt_) {
+        title_visibility_ = command_visibility(play_->runner().feedback(latest_receipt_).latest);
+    }
+    std::string title = "anno1503 — " + name_ + " — zoom group " + std::to_string(group_);
     if (water_ == render::WaterStyle::Enhanced) {
         title += " — enhanced water (not original)";
         if (frames_.river_flow == render::RiverFlowMode::Legacy) {
@@ -938,12 +1707,57 @@ void Viewer::update_title() {
 #else
     title += " — CPU";
 #endif
-    if (hooks_ != nullptr && hooks_->title) {
+    const bool dev_on = dev_ != nullptr && dev_->enabled() && knowledge_;
+    if (opening_ != nullptr && opening_->ui != nullptr) {
+        // The opening's own line comes first: a caption shows about 150 characters of a 1280 px
+        // window, and the command state, the advisory and the pointer are what the owner reads.
+        std::string lead = opening_->ui->status_line(opening_feed());
+        if (paused_at_) {
+            // Space pauses the sim and the water: say so where it cannot be missed.
+            lead = "PAUSED (Space resumes) | " + lead;
+        }
+        if (!save_note_.empty()) {
+            lead += " | " + save_note_;
+        }
+        if (opening_->save_status) {
+            if (const std::string s = opening_->save_status(); !s.empty()) {
+                lead += " | " + s;
+            }
+        }
+        if (ships_missing_ > 0) {
+            lead += " | " + std::to_string(ships_missing_) + " ship(s) without sprites";
+        }
+        title = lead + " — " + title;
+    }
+    if (hooks_ != nullptr && hooks_->title && !dev_on) {
         const std::string extra = hooks_->title();
         if (!extra.empty()) {
             title += " — ";
             title += extra;
         }
+    }
+    if (dev_on) {
+        // The runner's line and the feedback from one snapshot (dev_title), published data only
+        // (dev_feedback.hpp): the snapshot, the picture's buildings, and the outcome of the
+        // tool's latest command by its receipt.
+        // One consistent read (PlayRunner::feedback): the snapshot first, the outcome as of its
+        // publication, so "Applied" never stands next to money from before it. The runner
+        // records a turn's outcomes before it swaps the snapshot, so reading the outcome first
+        // does not give that (round ee review, R1).
+        const PlayFeedback read = play_->runner().feedback(latest_receipt_);
+        const std::optional<CommandOutcome>& latest = read.latest;
+        const auto& snap = read.snapshot;
+        // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
+        std::string note = pointer_frame_ && pointer_frame_->scene
+                               ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
+                               : std::string();
+        // Whether the picture shows the latest command's change yet (round ee, E4).
+        if (const std::string drawn = drawn_note(latest, command_visibility(latest));
+            !drawn.empty()) {
+            note += (note.empty() ? "" : " | ") + drawn;
+        }
+        title +=
+            " — " + dev_title(*snap, *dev_, knowledge_->check(*dev_, snap.get()), latest, note);
     }
     if (fps_) {
         char buf[64];
@@ -961,9 +1775,280 @@ bool Viewer::on_gpu() const {
 #endif
 }
 
+void Viewer::follow_picture() {
+    const auto start = Clock::now();
+    if (play_ != nullptr) {
+        const auto followed = play_->followed_turn();
+        const std::size_t n = play_->follow(frames_, trace_);
+        committed_ += n;
+        if ((n > 0 || play_->followed_turn() != followed) && dev_ != nullptr && dev_->enabled()) {
+            update_title(); // a commit or a newer followed turn can move "not drawn yet" on
+        }
+#ifdef ANNO_VIEWER_GPU
+        if (tracer_ && n > 0) {
+            const std::uint64_t g = play_->picture().scene()->generation();
+            for (const ScenePicture::CommittedIsland& c : play_->picture().last_commit()) {
+                tracer_->committed(static_cast<std::uint32_t>(c.index), g, c.keys);
+            }
+        }
+#endif
+    }
+    picture_end_ = Clock::now();
+    picture_ms_ = std::chrono::duration<double, std::milli>(picture_end_ - start).count();
+}
+
+void Viewer::script_tick() {
+    if (script_ == nullptr || script_->done()) {
+        return;
+    }
+    if (!pointer_frame_) {
+        // The script starts once a frame was drawn; a window that never draws one fails it
+        // within the script's wait limit instead of running forever (review of E3).
+        const double waited =
+            std::chrono::duration<double, std::milli>(Clock::now() - started_).count();
+        if (waited > DevScript::kWaitLimitMs) {
+            script_->abort("no frame was drawn within " +
+                           std::to_string(static_cast<int>(DevScript::kWaitLimitMs)) + " ms");
+            running_ = false;
+        }
+        return;
+    }
+    DevScriptState st;
+    st.frames = drawn_frames_;
+    st.now_ms = std::chrono::duration<double, std::milli>(Clock::now() - started_).count();
+    {
+        PlayFeedback read = play_->runner().feedback(latest_receipt_); // one consistent read (R1)
+        st.snapshot = std::move(read.snapshot);
+        st.latest = std::move(read.latest);
+    }
+    st.visibility = command_visibility(st.latest);
+    st.tool = dev_;
+    st.knowledge = knowledge_ ? &*knowledge_ : nullptr;
+    if (chunk_hold_) {
+        st.stage_holds_available = true;
+        st.chunks_blocked = chunk_hold_->blocked();
+        st.chunks_armed = chunk_hold_->armed();
+        st.uploads_held = uploads_held_;
+        st.presents_failing = presents_failing_;
+    }
+    st.scene_generation =
+        pointer_frame_ && pointer_frame_->scene ? pointer_frame_->scene->generation() : 0;
+    st.surface_epoch = surface_epoch_;
+    st.cpu_fail_available = !on_gpu();
+    st.cpu_failing = cpu_fail_;
+    if (hold_ != nullptr) {
+        st.hold_available = true;
+        st.held = hold_->held();
+        st.hold_expired = hold_->expired();
+    }
+    st.frame = &*pointer_frame_;
+    st.density = SDL_GetWindowPixelDensity(window_);
+    if (!(st.density > 0.0F)) {
+        st.density = 1.0F;
+    }
+    SDL_GetWindowSize(window_, &st.window_w, &st.window_h);
+    if (const char* t = SDL_GetWindowTitle(window_); t != nullptr) {
+        st.title = t;
+    }
+    if (opening_ != nullptr) {
+        st.facts = opening_facts();
+        st.ship_point = [this](std::uint64_t id) -> std::optional<std::pair<float, float>> {
+            if (!opening_snapshot_ || !opening_snapshot_->opening || !pointer_frame_) {
+                return std::nullopt;
+            }
+            const ShipView* ship = display_view_.ship(sim::FigureId{id});
+            const float density = SDL_GetWindowPixelDensity(window_);
+            if (ship == nullptr || !(density > 0.0F)) {
+                return std::nullopt;
+            }
+            const auto box = opening_->ships->box(*ship, *pointer_frame_);
+            if (!box) {
+                return std::nullopt;
+            }
+            return std::pair{static_cast<float>(box->cx / density),
+                             static_cast<float>(box->cy / density)};
+        };
+    }
+    DevScriptAction act = script_->step(st);
+    if (act.look_world) {
+        const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
+        const auto [sx, sy] = render::corner_point(act.look_world->first, act.look_world->second,
+                                                   static_cast<double>(render::kSeaLevel), g);
+        cam_x_ = sx;
+        cam_y_ = sy;
+        clamp();
+        dirty_ = true;
+    }
+    if (act.foreign != DevScriptAction::Foreign::None && dev_ != nullptr && dev_->setup().foreign) {
+        const ForeignSpot& f = *dev_->setup().foreign;
+        sim::Command c;
+        c.issuer = f.owner;
+        if (act.foreign == DevScriptAction::Foreign::Build) {
+            sim::BuildCmd b;
+            b.city = f.city;
+            b.placements.push_back(sim::PlacementWire{f.type, f.at.x, f.at.y, 0, 0, 0});
+            c.body = std::move(b);
+        } else {
+            c.body = sim::DemolishCmd{f.city, {f.at}};
+        }
+        static_cast<void>(play_->runner().post_command(std::move(c)));
+    }
+    if (act.local != DevScriptAction::Local::None && dev_ != nullptr && dev_->setup().city) {
+        sim::Command c;
+        c.issuer = dev_->setup().issuer;
+        if (act.local == DevScriptAction::Local::Build) {
+            sim::BuildCmd b;
+            b.city = *dev_->setup().city;
+            b.placements.push_back(
+                sim::PlacementWire{act.local_type, act.local_at.x, act.local_at.y, 0, 0, 0});
+            c.body = std::move(b);
+        } else {
+            c.body = sim::DemolishCmd{*dev_->setup().city, {act.local_at}};
+        }
+        static_cast<void>(play_->runner().post_command(std::move(c)));
+    }
+    if (act.stage != DevScriptAction::Stage::None && chunk_hold_) {
+        using Stage = DevScriptAction::Stage;
+        switch (act.stage) {
+        case Stage::ArmChunks:
+            chunk_hold_->arm();
+            break;
+        case Stage::ReleaseChunks:
+            chunk_hold_->release();
+            break;
+        case Stage::ArmUploads:
+        case Stage::ReleaseUploads:
+            uploads_held_ = act.stage == Stage::ArmUploads;
+#ifdef ANNO_VIEWER_GPU
+            if (gpu_) {
+                gpu_->frame->set_test_hold_uploads(uploads_held_);
+            }
+#endif
+            break;
+        case Stage::FailPresents:
+        case Stage::PassPresents:
+            presents_failing_ = act.stage == Stage::FailPresents;
+            dirty_ = true;
+            break;
+        case Stage::None:
+            break;
+        }
+    }
+    if (act.cpu_fail_set != 0 || act.cpu_fail_clear != 0) {
+        cpu_fail_ = static_cast<std::uint8_t>((cpu_fail_ | act.cpu_fail_set) & ~act.cpu_fail_clear);
+        dirty_ = true;
+    }
+    if (act.resize) {
+        SDL_SetWindowSize(window_, act.resize->first, act.resize->second);
+        dirty_ = true;
+    }
+    if (hold_ != nullptr && act.hold != DevScriptAction::Hold::None) {
+        if (act.hold == DevScriptAction::Hold::Arm) {
+            hold_->arm();
+        } else {
+            hold_->release();
+        }
+    }
+    for (SDL_Event& e : act.events) {
+        e.common.timestamp = SDL_GetTicksNS();
+        if (!SDL_PushEvent(&e)) {
+            std::fprintf(stderr, "dev script: SDL_PushEvent: %s\n", SDL_GetError());
+        }
+    }
+    if (act.look) {
+        // The camera on the tile's drawn centre at the zoom level last drawn (the forward rule
+        // of the pick, DevScript::scene_point).
+        if (const auto p = DevScript::scene_point(*pointer_frame_, *dev_, *act.look)) {
+            cam_x_ = p->first;
+            cam_y_ = p->second;
+            clamp();
+        }
+    }
+    if (act.screenshot) {
+        // The window's own rectangle only (never the rest of the screen), into the session
+        // directory (ANNO_DEV_SESSION): macOS's screencapture. Elsewhere: logged as not run.
+        const char* dir = std::getenv("ANNO_DEV_SESSION");
+#ifdef __APPLE__
+        int x = 0, y = 0, w = 0, h = 0;
+        SDL_GetWindowPosition(window_, &x, &y);
+        SDL_GetWindowSize(window_, &w, &h);
+        if (dir != nullptr && *dir != 0) {
+            const std::string file =
+                (std::filesystem::path(dir) / (*act.screenshot + ".png")).string();
+            const std::string cmd = "screencapture -x -R" + std::to_string(x) + "," +
+                                    std::to_string(y) + "," + std::to_string(w) + "," +
+                                    std::to_string(h) + " '" + file + "'";
+            const int rc = std::system(cmd.c_str());
+            script_->note("screenshot " + *act.screenshot + ": " + file + " (" + std::to_string(w) +
+                          "x" + std::to_string(h) + " points at " + std::to_string(x) + "," +
+                          std::to_string(y) + ", exit " + std::to_string(rc) + ")");
+        } else {
+            script_->note("screenshot " + *act.screenshot + ": NOT_RUN (no ANNO_DEV_SESSION)");
+        }
+#elif defined(_WIN32)
+        // Windows: the CPU renderer's own frame buffer, else a copy of the window's client area
+        // from the desktop (the swapchain image of a GPU window). The size actually captured is
+        // logged.
+        if (dir != nullptr && *dir != 0) {
+            const std::filesystem::path file =
+                std::filesystem::path(dir) / (*act.screenshot + ".png");
+            std::string error, how;
+            int w = 0, h = 0;
+            if (!on_gpu() && !buffer_.empty() && tex_w_ > 0 && tex_h_ > 0) {
+                w = tex_w_;
+                h = tex_h_;
+                std::vector<std::uint8_t> rgba(static_cast<std::size_t>(w) * h * 4);
+                for (std::size_t i = 0; i < static_cast<std::size_t>(w) * h; ++i) {
+                    const std::uint32_t px = buffer_[i];
+                    rgba[i * 4] = static_cast<std::uint8_t>(px >> 16);
+                    rgba[i * 4 + 1] = static_cast<std::uint8_t>(px >> 8);
+                    rgba[i * 4 + 2] = static_cast<std::uint8_t>(px);
+                    rgba[i * 4 + 3] = 255;
+                }
+                error = write_png(file, static_cast<std::uint32_t>(w),
+                                  static_cast<std::uint32_t>(h), rgba);
+                how = "CPU frame buffer";
+            } else {
+                error = capture_window_screen(window_, file, w, h);
+                how = "desktop copy of the window";
+            }
+            script_->note(error.empty()
+                              ? "screenshot " + *act.screenshot + ": " + file.string() + " (" +
+                                    std::to_string(w) + "x" + std::to_string(h) + " drawable px, " +
+                                    how + ")"
+                              : "screenshot " + *act.screenshot + ": NOT_RUN (" + error + ")");
+        } else {
+            script_->note("screenshot " + *act.screenshot + ": NOT_RUN (no ANNO_DEV_SESSION)");
+        }
+#else
+        static_cast<void>(dir);
+        script_->note("screenshot " + *act.screenshot + ": NOT_RUN (no capture on this platform)");
+#endif
+    }
+    if (!act.events.empty() || act.look) {
+        dirty_ = true;
+    }
+    if (act.quit || script_->done()) {
+        running_ = false;
+    }
+}
+
 void Viewer::draw() {
+    ++drawn_frames_;
     draw_start_ = Clock::now();
     display_wait_ms_ = 0;
+    // The frame boundary: the picture first, then the one scene handle of this frame.
+    follow_picture();
+    opening_refresh(); // the ships of the newest snapshot (an opening only)
+    const std::shared_ptr<const render::Scene> gen = current();
+    if (knowledge_ && play_ != nullptr) {
+        // The first seed, and the reseed after a spell with the tool off, from the picture's
+        // per-island list (O(the city), once); the takes keep it current otherwise (R4).
+        knowledge_->ensure(play_->picture(), *gen, dev_->enabled());
+        if (knowledge_->take_changed()) {
+            update_title(); // the occupancy the preview knows changed
+        }
+    }
     int pw = 0, ph = 0;
     SDL_GetWindowSizeInPixels(window_, &pw, &ph);
     if (pw <= 0 || ph <= 0) {
@@ -976,6 +2061,15 @@ void Viewer::draw() {
     // Scene screen position of the window's top-left pixel.
     const render::Rect view{static_cast<int>(std::lround(cam_x_ - w / 2.0)),
                             static_cast<int>(std::lround(cam_y_ - h / 2.0)), w, h};
+    // The point a wheel zoom would keep fixed: the one under the pointer (FrameRenderer::
+    // zoom_anchor builds the neighbouring groups' chunks around it).
+    if (cursor_) {
+        const double s = scale();
+        frames_.zoom_anchor = std::pair{cam_x_ + (cursor_->first - w / 2.0) / s,
+                                        cam_y_ + (cursor_->second - h / 2.0) / s};
+    } else {
+        frames_.zoom_anchor.reset();
+    }
 #ifdef ANNO_VIEWER_GPU
     if (gpu_) {
         if (continuous_) {
@@ -986,33 +2080,69 @@ void Viewer::draw() {
             const auto rv =
                 gpu::resampled_view(cam_x_, cam_y_, static_cast<std::uint32_t>(w),
                                     static_cast<std::uint32_t>(h), s, resample_filter(s));
-            draw_gpu(rv.view, &rv.resample, w, h);
+            draw_gpu(gen, rv.view, &rv.resample, w, h);
             // A zoom still on its way draws the next frame at once.
             dirty_ = dirty_ || zoom_animating();
             return;
         }
-        draw_gpu(view, nullptr, w, h);
+        draw_gpu(gen, view, nullptr, w, h);
         return;
     }
 #endif
-    draw_cpu(view);
+    draw_cpu(gen, view);
 }
 
 #ifdef ANNO_VIEWER_GPU
-void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_w, int out_h) {
+void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view,
+                      const gpu::Resample* resample, int out_w, int out_h) {
     GpuBackend& g = *gpu_;
     const auto w = static_cast<std::uint32_t>(out_w), h = static_cast<std::uint32_t>(out_h);
     steps_.clear();
     auto since_ms = [](Clock::time_point a, Clock::time_point b) {
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
+    // The window trace's row of this attempt, recorded on every way out (docs/app/window-trace.md).
+    if (play_ != nullptr) {
+        // Decides for each change committed since the last attempt whether this attempt's view
+        // holds it (ChangeVisibility), with or without a trace.
+        play_->visibility().begin_frame(view, group_);
+    }
+    if (tracer_) {
+        FrameRecord rec;
+        rec.generation = gen->generation();
+        rec.view_x = view.x;
+        rec.view_y = view.y;
+        rec.view_w = view.w;
+        rec.view_h = view.h;
+        rec.group = group_;
+        rec.scale = scale();
+        rec.drawable_w = w;
+        rec.drawable_h = h;
+        rec.t_start_ms = trace_->ms_at(draw_start_);
+        rec.picture_ms = picture_ms_;
+        tracer_->begin(std::move(rec), view, group_);
+    }
+    // A failed attempt: frame_failed at the acquire's end, and its row.
+    auto attempt_failed = [this](const char* outcome) {
+        if (tracer_) {
+            tracer_->failed(outcome);
+        }
+    };
+    auto reconfigured = [this] {
+        ++surface_epoch_;
+        if (tracer_) {
+            tracer_->reconfigured();
+        }
+    };
+    steps_.push_back({"picture", picture_ms_});
     // The prologue: window size queries, the view rectangle and, on a resize, the surface
     // (re)configuration, reported as its own step ("surface configure").
-    auto prologue_from = draw_start_;
+    auto prologue_from = picture_end_;
     if (g.width != w || g.height != h || reconfigure_) {
         const auto configure_start = Clock::now();
-        steps_.push_back({"draw prologue", since_ms(draw_start_, configure_start)});
+        steps_.push_back({"draw prologue", since_ms(picture_end_, configure_start)});
         g.configure(w, h);
+        reconfigured();
         reconfigure_ = false;
         if (g.prewarm_budget_mb > 0 && g.frame) {
             g.frame->set_prewarm_chunks(
@@ -1029,43 +2159,47 @@ void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_
     const auto acquired = Clock::now();
     display_wait_ms_ = since_ms(acquire_start, acquired);
     const gpu::Texture texture(st.texture);
-    // wgpu-native's own status (wgpu.h): the window is not visible (macOS
-    // reports it until the window is first shown). Not in webgpu.h's enum,
-    // so compared before the switch.
-    if (static_cast<std::uint32_t>(st.status) ==
-        static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Occluded)) {
-        back_off();
-        return;
+    // The status as webgpu.h and wgpu.h define it; wgpu-native's Occluded (the window is not
+    // visible; macOS reports it until the window is first shown) is not in webgpu.h's enum, so
+    // the action is chosen from the number (classify_acquire, window_trace.hpp).
+    const auto status = static_cast<std::uint32_t>(st.status);
+    const AcquireAction action = classify_acquire(status);
+    if (tracer_) {
+        tracer_->acquired(trace_->ms_at(acquire_start), trace_->ms_at(acquired), status);
     }
-    switch (st.status) {
-    case WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal:
+    switch (action) {
+    case AcquireAction::Draw:
         surface_failures_ = 0;
         break;
-    case WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal:
+    case AcquireAction::DrawThenReconfigure:
         surface_failures_ = 0;
         reconfigure_ = true;
         break;
-    case WGPUSurfaceGetCurrentTextureStatus_Outdated:
-    case WGPUSurfaceGetCurrentTextureStatus_Lost:
+    case AcquireAction::Reconfigure:
         // Reconfigure and try again (as the Rust viewer); back off when it
         // keeps happening, give up when it never recovers.
-        if (++surface_failures_ > 50) {
+        if (++surface_failures_ > kAcquireGiveUpAfter) {
+            attempt_failed("fatal");
             error_ = "the window surface stays outdated or lost";
             running_ = false;
             return;
         }
+        attempt_failed("acquire_retry");
         g.configure(w, h);
-        if (surface_failures_ > 2) {
+        reconfigured();
+        if (surface_failures_ > kAcquireBackOffAfter) {
             back_off();
         } else {
             dirty_ = true;
         }
         return;
-    case WGPUSurfaceGetCurrentTextureStatus_Timeout:
+    case AcquireAction::BackOff:
+        attempt_failed("acquire_skipped");
         back_off();
         return;
-    default:
-        error_ = "the window surface failed (status " + std::to_string(st.status) + ")";
+    case AcquireAction::Fatal:
+        attempt_failed("fatal");
+        error_ = "the window surface failed (status " + std::to_string(status) + ")";
         running_ = false;
         return;
     }
@@ -1075,21 +2209,110 @@ void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_
     const gpu::TextureView target(wgpuTextureCreateView(texture.get(), &vd));
     const auto render_start = Clock::now();
     steps_.push_back({"surface view", since_ms(acquired, render_start)});
-    const auto s =
-        g.frame->render(frames_, scene_, view, group_, time_ms(), water_, target.get(), resample);
+    // The developer tool's preview: its sprites, drawn last (dev_feedback.hpp).
+    std::vector<render::SpriteDraw> overlay;
+    if (dev_ != nullptr) {
+        if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+            overlay = std::move(p->sprites);
+        }
+    }
+    if (opening_ != nullptr) {
+        // The founding cursor: the warehouse sprite at the pointer, over the picture.
+        // Drawn where the warehouse can stand: the sim's answer, or the coast rule until it comes.
+        if (const auto fp = opening_->ui->found_preview(opening_feed());
+            fp && (fp->sim_answer ? *fp->sim_answer == sim::Reject::None : fp->coast_ok)) {
+            if (auto p = make_type_preview(*gen, fp->type, fp->rotation, fp->origin, group_,
+                                           time_ms())) {
+                overlay.insert(overlay.end(), p->sprites.begin(), p->sprites.end());
+            }
+        }
+    }
+    // The ships stir the simulated waves (enhanced water): a bow wave and a wake.
+    g.frame->set_wakes(opening_ != nullptr ? motion_.wakes(wall_seconds(), wave_centre_)
+                                           : std::vector<render::fluid::ShipWake>{});
+    const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
+                                   resample, overlay, live_units_);
+    fluid_windows_ = s.fluid_windows;
+    fluid_resamples_ = s.fluid_resamples;
+    if (s.wave_simulation) {
+        wave_centre_ = {s.fluid_centre.first, s.fluid_centre.second};
+        const auto grown = [](std::uint64_t now, std::uint64_t seen) {
+            return now >= seen ? now - seen : now; // smaller: a new compositor's count
+        };
+        windows_new_ += grown(s.fluid_windows, windows_seen_);
+        resamples_new_ += grown(s.fluid_resamples, resamples_seen_);
+        windows_seen_ = s.fluid_windows;
+        resamples_seen_ = s.fluid_resamples;
+    }
+    if (s.chunks_fading > 0) {
+        ++fading_frames_;
+        fading_most_ = std::max(fading_most_, s.chunks_fading);
+    }
+    if (s.chunks_missing > 0) {
+        ++missing_frames_;
+        if (s.chunks_missing > missing_most_) {
+            missing_most_ = s.chunks_missing;
+            missing_most_group_ = group_;
+        }
+    }
+    // What the pointer is over from now on: this frame's map, zoom level and scene.
+    pointer_frame_ = pointer_frame(view, resample, group_, levels().tile_w(group_),
+                                   levels().tile_h(group_), gen, out_w, out_h);
     const auto p = Clock::now();
     for (const auto& step : s.steps()) {
         steps_.push_back({step.name, step.ms});
     }
     // Locals of render() destroyed on the way out (command encoder, bind groups).
     steps_.push_back({"render exit", std::max(0.0, since_ms(render_start, p) - s.total_ms)});
-    if (wgpuSurfacePresent(g.surface.get()) != WGPUStatus_Success && !present_error_shown_) {
+    const auto present_start = Clock::now();
+    WGPUStatus presented = wgpuSurfacePresent(g.surface.get());
+    if (presents_failing_) {
+        // Test seam (hold presents): the consumers see a failed present, the one a failing surface
+        // gives (the frame itself was presented).
+        presented = WGPUStatus_Error;
+    }
+    if (presented != WGPUStatus_Success && !present_error_shown_) {
         std::fprintf(stderr, "presenting the frame failed\n");
         present_error_shown_ = true;
+    }
+    if (presented != WGPUStatus_Success && play_ != nullptr && play_->visibility().busy()) {
+        // A change waits for a presented frame (ChangeVisibility): draw again shortly, so an idle
+        // window does not stay NotPresented until some input arrives, and a surface that keeps
+        // failing is retried at the usual back-off, not at the loop's rate.
+        back_off();
     }
     steps_end_ = Clock::now();
     const double present = since_ms(p, steps_end_);
     steps_.push_back({"present", present});
+    // After the present call, so the trace adds nothing between submission and present; the
+    // events of the submission carry its time. CPU-ready: cached and not stale (bench_picture's
+    // boundary); GPU-usable: also the compositor's copy is that chunk's, whole, and not
+    // dissolving. The chunk state changes only inside render, so after the present call it is
+    // the render's. The window's own readiness (ChangeVisibility) uses the same two predicates.
+    auto fresh = [this](const render::ChunkKey& k) {
+        return frames_.chunk(k) != nullptr && frames_.stale_generation(k) == 0;
+    };
+    auto usable = [this, &fresh](const render::ChunkKey& k) {
+        if (!fresh(k)) {
+            return false;
+        }
+        const auto cs = gpu_->frame->chunk_state(k);
+        return cs.serial == frames_.chunk(k)->serial && !cs.fading;
+    };
+    if (play_ != nullptr) {
+        play_->visibility().frame_done(presented == WGPUStatus_Success, fresh, usable);
+        if (presented == WGPUStatus_Success && opening_ != nullptr) {
+            shown_tick_ = frame_view_tick_;
+        }
+        refresh_visibility_title();
+    }
+    if (tracer_) {
+        const bool picture_idle = play_ != nullptr && play_->picture().pending() == 0 &&
+                                  !play_->runner().batches_waiting();
+        tracer_->presented(trace_->ms_at(p), trace_->ms_at(present_start),
+                           trace_->ms_at(steps_end_), static_cast<std::uint32_t>(presented), fresh,
+                           usable, picture_idle);
+    }
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     tex_w_ = out_w;
     tex_h_ = out_h;
@@ -1097,7 +2320,7 @@ void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_
 }
 #endif
 
-void Viewer::draw_cpu(render::Rect view) {
+void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view) {
     const int w = view.w, h = view.h;
     if (texture_ == nullptr || tex_w_ != w || tex_h_ != h) {
         if (texture_ != nullptr) {
@@ -1120,8 +2343,31 @@ void Viewer::draw_cpu(render::Rect view) {
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
     const auto render_start = Clock::now();
-    steps_.push_back({"draw prologue", since_ms(draw_start_, render_start)});
-    const auto s = frames_.render(scene_, view, group_, time_ms(), water_, buffer_.data());
+    steps_.push_back({"picture", picture_ms_});
+    steps_.push_back({"draw prologue", since_ms(picture_end_, render_start)});
+    if (play_ != nullptr) {
+        play_->visibility().begin_frame(view, group_); // the CPU path's frame, as draw_gpu's
+    }
+    const auto s = frames_.render(gen, view, group_, time_ms(), water_, buffer_.data());
+    if (opening_ != nullptr) {
+        // The live ships after every object of the scene (the scene's own units are drawn last
+        // too), then the founding cursor over them.
+        blend_units(live_units_, *gen, group_, view, buffer_.data());
+        if (const auto fp = opening_->ui->found_preview(opening_feed());
+            fp && (fp->sim_answer ? *fp->sim_answer == sim::Reject::None : fp->coast_ok)) {
+            if (const auto p = make_type_preview(*gen, fp->type, fp->rotation, fp->origin, group_,
+                                                 time_ms())) {
+                blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+            }
+        }
+    }
+    if (dev_ != nullptr) {
+        if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+            blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+        }
+    }
+    pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),
+                                   levels().tile_h(group_), gen, w, h);
     const auto rendered = Clock::now();
     const double known = s.chunks_ms + s.ground_ms + s.water_objects_ms + s.sea_ms + s.objects_ms;
     steps_.push_back({"chunks", s.chunks_ms});
@@ -1130,12 +2376,65 @@ void Viewer::draw_cpu(render::Rect view) {
     steps_.push_back({"sea", s.sea_ms});
     steps_.push_back({"objects", s.objects_ms});
     steps_.push_back({"render other", std::max(0.0, since_ms(render_start, rendered) - known)});
-    SDL_UpdateTexture(texture_, nullptr, buffer_.data(), w * 4);
-    SDL_RenderTexture(renderer_, texture_, nullptr, nullptr);
+    // The delivery chain: texture update, render submission, present. The frame counts as delivered
+    // only if every call succeeded (SDL3 returns bool); after a failed stage the later ones are not
+    // attempted, so an old texture is never presented as this frame. The script seam (fail STAGE)
+    // makes the window see a failure for a stage whose real call was made.
+    bool delivered = true;
+    const char* failed_at = nullptr;
+    std::size_t failed_idx = 0;
+    const auto stage = [&](std::uint8_t bit, const char* name, bool ok) {
+        const std::size_t idx = bit == 1 ? 0 : bit == 2 ? 1 : 2;
+        if (!ok) {
+            delivered = false;
+            failed_at = name;
+            failed_idx = idx;
+        }
+    };
+    // The script seam (fail STAGE) hands the stage's real SDL call an invalid object (a null
+    // texture or renderer), so SDL itself reports the failure and the window reads it like any
+    // other.
+    const bool bad_update = (cpu_fail_ & 1) != 0, bad_submit = (cpu_fail_ & 2) != 0,
+               bad_present = (cpu_fail_ & 4) != 0;
+    stage(1, "SDL_UpdateTexture",
+          SDL_UpdateTexture(bad_update ? nullptr : texture_, nullptr, buffer_.data(), w * 4));
+    if (delivered) {
+        stage(2, "SDL_RenderTexture",
+              SDL_RenderTexture(renderer_, bad_submit ? nullptr : texture_, nullptr, nullptr));
+    }
     const auto present_start = Clock::now();
     steps_.push_back({"texture copy", since_ms(rendered, present_start)});
-    SDL_RenderPresent(renderer_);
+    if (delivered) {
+        stage(4, "SDL_RenderPresent", SDL_RenderPresent(bad_present ? nullptr : renderer_));
+    }
     steps_end_ = Clock::now();
+    if (!delivered) {
+        // The change (if any) stays pending (frame_done below gets false); draw again shortly, at
+        // the usual 100 ms back-off, and say why: the first failure and every hundredth after it.
+        std::uint64_t& at_stage = cpu_stage_failures_[failed_idx];
+        if (at_stage++ % 100 == 0) {
+            std::fprintf(
+                stderr,
+                "CPU frame delivery failed (%s: %s); the picture's pending changes wait for a "
+                "delivered frame, retrying (failure %llu of this stage)\n",
+                failed_at, SDL_GetError(), static_cast<unsigned long long>(at_stage));
+        }
+        back_off();
+    } else {
+        cpu_stage_failures_[0] = cpu_stage_failures_[1] = cpu_stage_failures_[2] =
+            0; // a new episode says why again
+    }
+    if (play_ != nullptr) {
+        // The CPU path has no GPU copy: a fresh chunk was drawn into this frame's buffer.
+        auto fresh = [this](const render::ChunkKey& k) {
+            return frames_.chunk(k) != nullptr && frames_.stale_generation(k) == 0;
+        };
+        play_->visibility().frame_done(delivered, fresh, fresh);
+        if (delivered && opening_ != nullptr) {
+            shown_tick_ = frame_view_tick_;
+        }
+        refresh_visibility_title();
+    }
     // SDL's present waits for vsync.
     display_wait_ms_ = since_ms(present_start, steps_end_);
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
@@ -1223,6 +2522,29 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
         std::fprintf(stderr, "  chunk(s) received in this interval: %zu\n", chunks_received_);
         chunks_received_ = 0;
     }
+    if (on_gpu()) {
+        std::fprintf(
+            stderr,
+            "  not ready: %zu of %zu frames drew a visible chunk not built yet (at most %zu "
+            "at once, zoom group %zu), %zu dissolved chunks in over a stand-in (at most %zu); "
+            "wave windows %llu new, %llu carried over\n",
+            missing_frames_, frames_n_, missing_most_, missing_most_group_, fading_frames_,
+            fading_most_, static_cast<unsigned long long>(windows_new_),
+            static_cast<unsigned long long>(resamples_new_));
+        missing_frames_ = missing_most_ = missing_most_group_ = 0;
+        fading_frames_ = fading_most_ = 0;
+        windows_new_ = resamples_new_ = 0;
+    }
+    if (play_ != nullptr) {
+        const std::string failed = play_->picture().error();
+        std::fprintf(stderr,
+                     "  picture: generation %llu, %zu island(s) committed in this interval, "
+                     "%zu pending%s%s\n",
+                     static_cast<unsigned long long>(play_->picture().scene()->generation()),
+                     committed_, play_->picture().pending(),
+                     failed.empty() ? "" : "; failed: ", failed.c_str());
+        committed_ = 0;
+    }
     fps_ = std::pair{fps, total_ms_ / n};
     frames_n_ = 0;
     total_ms_ = worst_ms_ = chunks_ms_ = 0;
@@ -1234,15 +2556,17 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
 
 } // namespace
 
-std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
-                       render::RiverFlowMode river_flow, render::WaterStyle water,
-                       std::size_t lookahead_chunks, ZoomOptions zoom, const ViewerHooks* hooks) {
-    if (!scene.bounds(group)) {
+std::string run_viewer(std::shared_ptr<const render::Scene> scene, std::size_t group,
+                       Renderer renderer, render::RiverFlowMode river_flow,
+                       render::WaterStyle water, std::size_t lookahead_chunks, ZoomOptions zoom,
+                       const ViewerHooks* hooks, PlayFollower* play) {
+    if (!scene || !scene->bounds(group)) {
         return "no islands";
     }
     const std::size_t threads =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
-    Viewer v(scene, group, threads, renderer, river_flow, water, lookahead_chunks, zoom, hooks);
+    Viewer v(std::move(scene), group, threads, renderer, river_flow, water, lookahead_chunks, zoom,
+             hooks, play);
     return v.run();
 }
 

@@ -144,7 +144,7 @@ For layer `l` with spatial scale `s_l` (1/tile), period `T_l` (ms), flow `u` (ti
     wt_k  = 1 - abs(2 phi_k - 1)                                wt_0 + wt_1 = 1
     c_k   = ( x - u * (T_l / 1000) * phi_k ) * s_l + o_k       (the design's stretch S(u, kappa_l) along u is not built: it aliased, 15.7)
     N_l   = ( wt_0 n(c_0, z) + wt_1 n(c_1, z) ) / sqrt( wt_0^2 + wt_1^2 )     variance-preserving, no contrast dip   (E18)
-    light = sum_l A_l f_l(turb) ( N_l(x) - N_l(x + e L) ) / e                  L = light direction (-x tile axis, as fluid_shade), e = 0.15 tile
+    light = sum_l A_l f_l(turb) ( N_l(x) - N_l(x + e L) ) / e                  L = light direction (-x tile axis, as fluid_shade: the screen's top right since the handedness fix of 2026-11-03, top left before; iso.md "Handedness"), e = 0.15 tile
 
 `d c_k / dt = -u s_l`, so a feature moves downstream with exactly `u`; each phase resets while its weight is 0. `n` is the existing `noise3`; `z` is a slow third coordinate (boil). Artefacts and their mitigations: pulsing (`psi`, variance-preserving blend), shear stretch where `u` varies (`T abs(grad u)` fades the layer amplitude by `smoothstep(0.5, 1.5, .)`, measured on 1-tile rivers at all groups, Q10), hourly wrap (`frame.time_ms` is taken modulo 3,600,000, so every `T_l` must divide it; 800, 1600, 2400 ms do).
 
@@ -187,11 +187,39 @@ Light variance is calibrated in S5 to the legacy shimmer's standard deviation (+
 
 A chunk worker never blocks on phase B. Phase A is bounded (budget 100 ms per island, measured in S3) and built under `std::call_once` by whichever worker first needs it. If phase B is not ready (`try_get()` returns null) the chunk is built with the **legacy river shimmer on the correct mask** and tagged `flow_pending`; it is re-queued when phase B finishes (generation counter), and the lattice replaces the legacy look. Prefetch at scene load keeps this rare; a test forces it (S5).
 
+### 3.1a Flow builder lifecycle (round dw, DW2; `src/render/src/scene.cpp`)
+
+Phase B runs on a pool of builders shared by the generations of one scene. The protocol that keeps a solve safe
+when its requester is gone, when the scene is destroyed, and when several builders solve at once:
+
+- **States of a slot.** Idle, Queued (a request exists or a builder holds it), Ready (`flow` is published; the
+  release store of `state` orders it), Failed (a solve threw; the picture keeps its last good state).
+- **Requests.** A request holds its slot (shared) and its asker: a shared asker by weak owner, a non-shared
+  asker by address. A non-shared scene removes its own queued requests and its waiter entries under the builders'
+  mutex before it is destroyed.
+- **Solver choice and registration are one step** under `FlowBuild::mutex`: the builder dequeues a request,
+  picks the solver (the asker if it is alive, else a surviving waiter of the slot) and registers the solve in
+  `FlowBuild::active` (one entry per solve in progress; several builders may solve one scene).
+- **Destruction.** `~Scene` removes its queued requests and waiter entries, then waits until `active` holds no
+  entry of the scene. A dequeued solve is in `active` before the lock is released, so no destructor misses it.
+- **Strong owners.** A builder that solves for a shared scene holds a strong owner for the solve. The owner is
+  released after the lock is gone and after the solve is unregistered: the last owner's destructor takes the same
+  mutex.
+- **Publication.** `FlowBuild` is created with the scene's caches (never published later); the flow threads belong
+  to the caches and are joined by their destructor, except that a builder which releases the last owner detaches
+  its own thread (it cannot join itself).
+- **Lock order.** `FlowBuild::mutex` is the only mutex of the protocol; no strong scene reference is released while
+  it is held, and no solve runs while it is held.
+- **Tests.** `river_lifecycle_test.cpp`: two workers with a gated solve (destruction stays blocked until the gate
+  opens, checked for 5 s); one, two and four workers with one gated and one throwing solve; queued requests of a
+  retired generation; a non-shared scene destroyed with a request queued; the last owner released by the builder.
+  Pre-fix evidence: the one-marker version returned early and read freed memory (ASan, `cache/dw-runs`).
+
 ### 3.2 Island raster algorithm (R1-R9; pure function of the inputs, deterministic, thread-count independent)
 
 | Step | What |
 |---|---|
-| R1 raw mask | cells 1/8 tile. Regular pieces: wet iff `T_raw(cell) <= Z_i` (G1, G2) inside the footprint dilated by 0.75 tile (the original's pixel test sees terrain displaced by up to ~0.5 tile from the decal tile), per piece, union, **no averaging across tiers**. Falls and mouths (2702-2704): wet where the **group-0 sprite alpha** (2 x 2 max-filtered, the sprite is a 50 % checkerboard) is >= 128 at the cell's **forward projection** `sx = (x - y) 42`, `sy = (x + y) 21 - lambda_0 T_raw`; needs no inverse of the iso mapping, is exact, and gives all zoom groups the same shape |
+| R1 raw mask | cells 1/8 tile. Regular pieces: wet iff `T_raw(cell) <= Z_i` (G1, G2) inside the footprint dilated by 0.75 tile (the original's pixel test sees terrain displaced by up to ~0.5 tile from the decal tile), per piece, union, **no averaging across tiers**. Falls and mouths (2702-2704): wet where the **group-0 sprite alpha** (2 x 2 max-filtered, the sprite is a 50 % checkerboard) is >= 128 at the cell's **forward projection** `sx = (y - x) 42` (`(x - y) 42` before the handedness fix of 2026-11-03), `sy = (x + y) 21 - lambda_0 T_raw`; needs no inverse of the iso mapping, is exact, and gives all zoom groups the same shape |
 | R2 close | morphological closing, radius 2 cells (0.25 tile), fills pinholes and one-cell necks; cells on the ridge of the distance transform stay wet (centreline guarantee) |
 | R3 soft edge | `C = box_box(M, sigma)` with `sigma = 0.30` tile, coverage `smoothstep(tau_e - 0.08, tau_e + 0.08, C)`; `tau_e = 0.5` (original width, default) or 0.40 (soft-wide, D6); the centreline cells force `cover = 1` so smoothing can never cut a neck |
 | R4 level, depth | `Z` per G1-G3 (falls and mouths take the level of the tier on each side and ramp linearly); `h` per G4 |
@@ -648,7 +676,7 @@ Code: `src/render/include/anno/render/river.hpp` (`RiverConfig`, `RiverMask`, `F
 
 ### 14.1 What it does
 
-1. **Raster (`RiverMask`, phase A).** Cells of 1/8 tile in island tile space, built from what the shipped gap fix already computes, not from a second model: the physical test of `sea::water_field` (`sea::tile_ground` and `sea::river_point`, now shared by `water_field` and the raster, so both classify identically; a test compares every cell with `water_field`), the painted bed and the waterfall and mouth shapes (the alpha of the river sprites at zoom group 0, closed over the checkerboard, projected forward per cell: `sx = (x - y) 42`, `sy = (x + y) 21 - 2.059 T`, depth-tested per cell as the original, wet when at least half of a 5 x 3 pixel window is covered). Sea is where the original draws sea or the enhanced waterline is above the terrain; sprites never make river water over the original's sea.
+1. **Raster (`RiverMask`, phase A).** Cells of 1/8 tile in island tile space, built from what the shipped gap fix already computes, not from a second model: the physical test of `sea::water_field` (`sea::tile_ground` and `sea::river_point`, now shared by `water_field` and the raster, so both classify identically; a test compares every cell with `water_field`), the painted bed and the waterfall and mouth shapes (the alpha of the river sprites at zoom group 0, closed over the checkerboard, projected forward per cell: `sx = (y - x) 42` since 2026-11-03, `sy = (x + y) 21 - 2.059 T`, depth-tested per cell as the original, wet when at least half of a 5 x 3 pixel window is covered). Sea is where the original draws sea or the enhanced waterline is above the terrain; sprites never make river water over the original's sea.
 2. **Flow (`RiverFlow`, phase B).** Per connected piece of river ("river"): masked bed smoothing (G4), conveyance `K = k_M h^(5/3) / nu(d_bank)` (E1, E4, E6), harmonic face conductances, uniform lateral inflow, outlets, one SPD solve (E5), cell velocity from the face fluxes, discharge rescale (E7, 14.2), soft floor (E9), falls speed (E10), cap (E11), one 3 x 3 smoothing; ponds (D7); Eikonal field if a solve fails. `RiverFlow::sample` is the valid-weighted bilinear field over the wet cells.
 3. **Options** (`RiverConfig`, defaults = section 2): `Discharge::{Normalised, Absolute, Sourced}`, `conveyance_exp` (5/3 Manning, 3/2 Chezy), speeds, bank profile, `bridge_tiles`, solver limits. Listed for the owner: `open-questions.md`, "Decisions for the owner (rivers)", OQ-065 to OQ-069.
 
@@ -733,7 +761,7 @@ Code: `src/render/include/anno/render/river.hpp` (`LayerConfig`, the S5 fields o
 ### 15.1 What it does
 
 1. **Lattice (`Chunk::flow`, 3.3).** A global lattice of `FlowPlane` texels: texel (i, j) at scene pixel (x0 + i s, y0 + j s), strides 8 / 4 / 4 px at groups 0 / 1 / 2 (`RiverConfig::lattice_stride`, validated: they divide the chunk size). A texel is the island's flow at the tile position the ground probe shows at its pixel: `RiverFlow::sample_extended` (R9: the nearest wet cell's flow and level past the raster, `valid` fading from 1 to 0 over `extend_tiles` = 2 tiles, nearest cell by an 8SSEDT pass) quantised to 1/4096 tiles/s (int16, +-`velocity_max` 8), `valid`, turbulence and wake (0 until S7), the level in 1/2 unit and the shear |grad u| in 1/32 1/s (the forward differences of the island's flow over `shear_probe_tiles` = 0.25 tile along each tile axis, a pure function of the probe position like the rest). `flow_at` reads the four texels around the pixel centre, `(1-a)(1-b)` weights times `valid`, normalised by their sum (a texel without flow does not drag the vector or the shear to zero); the shear is interpolated like the velocity (the first version derived it from the differences inside the texel quad, constant per lattice cell: the shear fade then stepped at every texel border, 15.7). A chunk that touches an island with rivers carries the plane; one without river pixels carries none (the plane is dropped when no texel has a flow).
-2. **Shading (`iso::river_flow_shade`, 2.8).** Per layer two phases `phi_k = fract(t / T + psi(x) + k/2)`, weights `1 - |2 phi - 1|`, coordinates `c_k = (x - u T phi_k) s + o_k` on the **river's own water plane** (`x = w(px, py + lambda * level)`, E19, `lambda` the lift at the group), variance-preserving blend of the centred noise, light = amplitude * (N(x) - N(x + e L)) / e (L = -x tile axis, e = 0.15 tile). The amplitude fades with the shear (`T |grad u|` from 0.5 to 1.5), with the zoom group's wave detail (layers marked `detail_fades`: 0 at group 2) and with the turbulence channel (S7). The rapids layer (whitewater streaks, no foam) keeps the legacy slope rule: `smoothstep(kRapidsFrom, kRapidsFull, slope) * (0.05 + amplitude * noise)`, advected like the others. Tint and the mix with the sea look at the mouths (`kb`) are the legacy ones, untouched. No time-dependent term except the phases: the hourly wrap is seamless.
+2. **Shading (`iso::river_flow_shade`, 2.8).** Per layer two phases `phi_k = fract(t / T + psi(x) + k/2)`, weights `1 - |2 phi - 1|`, coordinates `c_k = (x - u T phi_k) s + o_k` on the **river's own water plane** (`x = w(px, py + lambda * level)`, E19, `lambda` the lift at the group), variance-preserving blend of the centred noise, light = amplitude * (N(x) - N(x + e L)) / e (L = -x tile axis; the screen's top right since the handedness fix of 2026-11-03; e = 0.15 tile). The amplitude fades with the shear (`T |grad u|` from 0.5 to 1.5), with the zoom group's wave detail (layers marked `detail_fades`: 0 at group 2) and with the turbulence channel (S7). The rapids layer (whitewater streaks, no foam) keeps the legacy slope rule: `smoothstep(kRapidsFrom, kRapidsFull, slope) * (0.05 + amplitude * noise)`, advected like the others. Tint and the mix with the sea look at the mouths (`kb`) are the legacy ones, untouched. No time-dependent term except the phases: the hourly wrap is seamless.
 3. **Where flow is used.** `FrameRenderer::river_flow` (default Flow; key `R`, `--river-flow`), `Layers::river_flow` (`--png`, `Scene::render` builds the lattice of its region itself, blocking), `sea::shade_sea_flow(..., flow, RiverShading)`. A pixel without flow (`valid < min_valid` 0.02) keeps the legacy shimmer. Original water ignores the river mode.
 4. **`flow_pending` (3.1).** Flows are built by `Scene::river_flow(index, wait)`: the raster (phase A) and the solve (phase B) under a `call_once` per island. `wait = false` queues the island on the flow builders (1-4 threads, below-normal priority, started on the first request; the viewer queues every island with rivers at start) and returns *pending*: the chunk worker builds the chunk with the legacy look on the correct mask and tags it (`Chunk::flow_waiting` lists the islands). `FrameRenderer::request_chunks` rebuilds such a chunk (it stays in the cache meanwhile) as soon as `Scene::river_flow_done` holds for all of them. The window thread never calls a build.
 

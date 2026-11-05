@@ -35,7 +35,7 @@
 extern char** environ;
 #endif
 #if defined(__APPLE__)
-#include <mach-o/dyld.h>
+#include <libproc.h>
 #endif
 
 namespace anno::test {
@@ -108,10 +108,9 @@ std::filesystem::path module_directory() {
     }
     return std::filesystem::path(buffer).parent_path();
 #elif defined(__APPLE__)
-    // macOS has no /proc/self/exe.
-    char buffer[4096];
-    std::uint32_t size = static_cast<std::uint32_t>(sizeof(buffer));
-    if (::_NSGetExecutablePath(buffer, &size) != 0) {
+    // proc_pidpath names the executable of this process (libproc.h); no /proc.
+    char buffer[PROC_PIDPATHINFO_MAXSIZE];
+    if (::proc_pidpath(static_cast<int>(::getpid()), buffer, sizeof(buffer)) <= 0) {
         return {};
     }
     return std::filesystem::path(buffer).parent_path();
@@ -164,14 +163,25 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
         return false;
     }
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
-    // The coordinator is detached: it keeps stdio and no other descriptor of
-    // the starting client (T10c F3, D2).
+    // The coordinator is detached: it keeps no descriptor of the starting client
+    // (T10c F3, D2). Its stdio is /dev/null, below.
     posix_spawn_file_actions_t actions;
     if (posix_spawn_file_actions_init(&actions) != 0) {
         posix_spawnattr_destroy(&attr);
         return false;
     }
-    close_descriptors_from_3(&actions);
+    // The coordinator outlives the test that starts it, so it must not keep the
+    // starter's stdout: an inherited pipe kept ctest waiting for end-of-file (the
+    // Mac, 2026-10-30: the render corpus case finished and ctest hung until the
+    // orphan was killed). The coordinator's own lines reach no reader here.
+    posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+    if (!close_descriptors_from_3(&actions)) {
+        posix_spawn_file_actions_destroy(&actions);
+        posix_spawnattr_destroy(&attr);
+        return false;
+    }
     std::string path = exe.string();
     std::string port_text = std::to_string(port);
     std::string mode = all_interfaces ? "any" : "local";

@@ -1,0 +1,90 @@
+#!/bin/bash
+# picture_matrix.sh: runs bench_picture cases one after another (docs/perf/README.md, "Picture on a
+# legal city workload").
+#
+#   tools/bench/picture_matrix.sh <bench_picture binary> <game_dir> <out_dir> <cases_file>
+#
+# The cases file has one case per line, `name option...` (blank lines and lines starting with #
+# are skipped). Each case runs alone, in <out_dir>/<name> (its raw files, stdout.txt, stderr.txt).
+# The runner stops at the first case that does not exit 0, keeps that case's artifacts, and exits
+# with the case's own status (1 verification failed, 3 the drain did not converge, 4 the workload or
+# scene could not be built, 5 evidence not saved, 2 bad options); a failing case is never followed by
+# an echo that ends the run successfully. A cases file that selects no case is refused (exit 2), as
+# is an out_dir that already holds files (an earlier run's evidence is never overwritten). The
+# last line counts even without a final newline. results.tsv lists every case run with its status
+# and wall seconds; provenance.txt records the source revision, the binary's hash and the host.
+set -u
+if [ $# -ne 4 ]; then
+    echo "usage: $0 <bench_picture binary> <game_dir> <out_dir> <cases_file>" >&2
+    exit 2
+fi
+BIN=$1
+GAME=$2
+OUT=$3
+CASES=$4
+HERE=$(cd "$(dirname "$0")/../.." && pwd)
+if [ ! -x "$BIN" ] || [ ! -f "$CASES" ]; then
+    echo "picture_matrix: $BIN is not executable or $CASES is missing" >&2
+    exit 2
+fi
+if [ -d "$OUT" ] && [ -n "$(ls -A "$OUT" 2> /dev/null)" ]; then
+    echo "picture_matrix: $OUT already holds files; use a new out_dir" >&2
+    exit 2
+fi
+# The cases the file selects (a final line without a newline included), before anything runs.
+selected=0
+while IFS= read -r line || [ -n "$line" ]; do
+    read -r name _ <<< "$line"
+    if [ -n "$name" ] && [ "${name#\#}" = "$name" ]; then
+        selected=$((selected + 1))
+    fi
+done < "$CASES"
+if [ "$selected" -eq 0 ]; then
+    echo "picture_matrix: $CASES selects no case" >&2
+    exit 2
+fi
+mkdir -p "$OUT" || exit 2
+{
+    echo "started=$(date '+%Y-%m-%d %H:%M:%S %z')"
+    echo "revision=$(git -C "$HERE" rev-parse HEAD) dirty_diff_sha=$(git -C "$HERE" diff HEAD | shasum | cut -c1-12)"
+    echo "binary=$BIN sha256=$(shasum -a 256 "$BIN" | cut -d' ' -f1)"
+    echo "cases_file=$CASES sha256=$(shasum -a 256 "$CASES" | cut -d' ' -f1)"
+    echo "game_dir=$GAME"
+    echo "host=$(uname -srm)"
+    if command -v sysctl > /dev/null; then
+        echo "cpu=$(sysctl -n machdep.cpu.brand_string 2> /dev/null) cores=$(sysctl -n hw.ncpu 2> /dev/null) memory=$(sysctl -n hw.memsize 2> /dev/null)"
+    fi
+    if command -v memory_pressure > /dev/null; then
+        echo "memory_free_percent_at_start=$(memory_pressure 2> /dev/null | sed -n 's/.*free percentage: //p')"
+    fi
+    # Whether the host was quiet: the load and the busiest processes at the start (not stopped).
+    echo "load_at_start=$(uptime | sed 's/.*load averages*: //')"
+    echo "busiest_processes_at_start:"
+    ps -Ao pcpu,comm | sort -rn | head -6 | sed 's/^/  /'
+} > "$OUT/provenance.txt"
+printf 'case\tstatus\twall_s\tload_after\n' > "$OUT/results.tsv"
+executed=0
+while IFS= read -r line || [ -n "$line" ]; do
+    read -r name args <<< "$line"
+    if [ -z "$name" ] || [ "${name#\#}" != "$name" ]; then
+        continue
+    fi
+    executed=$((executed + 1))
+    dir="$OUT/$name"
+    mkdir -p "$dir" || exit 2
+    start=$(date +%s)
+    # shellcheck disable=SC2086 # the case's options are words
+    "$BIN" "$GAME" --out "$dir" $args > "$dir/stdout.txt" 2> "$dir/stderr.txt"
+    rc=$?
+    printf '%s\t%s\t%s\t%s\n' "$name" "$rc" "$(($(date +%s) - start))" \
+        "$(uptime | sed 's/.*load averages*: //')" >> "$OUT/results.tsv"
+    if [ "$rc" -ne 0 ]; then
+        echo "picture_matrix: case $name exited $rc; artifacts in $dir" >&2
+        exit "$rc"
+    fi
+done < "$CASES"
+if [ "$executed" -ne "$selected" ]; then
+    echo "picture_matrix: $executed of $selected selected cases ran" >&2
+    exit 2
+fi
+echo "finished=$(date '+%Y-%m-%d %H:%M:%S %z') cases=$executed" >> "$OUT/provenance.txt"

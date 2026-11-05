@@ -1,0 +1,3 @@
+VALID    cache/f/f2b  = cpu_delivery_failures.script
+VALID    cache/c1/control/r1  = r1_held_publication.script
+VALID    cache/c1/control/r4  = r4_occupancy.script

@@ -1693,7 +1693,7 @@ TEST_CASE("registry digest changes with every field") {
     goods[9].name = "WOLLE2";
     CHECK(sim::TypeRegistry::digest_of({}, goods, class_table) != empty_digest);
     // The figure types (T24) too, field by field.
-    static_assert(sim::field_count<sim::FigureType>() == 5);
+    static_assert(sim::field_count<sim::FigureType>() == 9);
     const sim::FigureType fig{220, 53687, 1280, 3, 500};
     std::map<std::uint64_t, std::string> fseen;
     fseen[sim::TypeRegistry::digest_of({}, goods_table, class_table, {&fig, 1})] = "base";
@@ -1704,6 +1704,10 @@ TEST_CASE("registry digest changes with every field") {
         {"capacity_88", [](auto& f) { f.capacity_88 += 1; }},
         {"layer", [](auto& f) { f.layer += 1; }},
         {"load_ticks", [](auto& f) { f.load_ticks += 1; }},
+        {"bewohntype", [](auto& f) { f.bewohntype += 1; }},
+        {"range_88", [](auto& f) { f.range_88 += 1; }},
+        {"hull_half_88", [](auto& f) { f.hull_half_88 = f.hull_half_88.value_or(0) + 1; }},
+        {"hull_half_88 present zero", [](auto& f) { f.hull_half_88 = 0; }},
     };
     for (const auto& [name, mutate] : fmuts) {
         sim::FigureType f = fig;

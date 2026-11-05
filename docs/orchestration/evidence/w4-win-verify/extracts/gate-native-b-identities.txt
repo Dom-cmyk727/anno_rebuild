@@ -1,0 +1,12 @@
+workflow head=b57c6f0d0c747ecc41755b438d9377df38d2b7ac dirty=0
+f87fc882cfe4ff2205cda6ee5cab39a1e27d975aa0b63249c8250ef1c5e4927a *tools/test/run_selected.py
+b10bfc375c304d91529d1fe9ec02c2b9b95734eaea1e8cd523e791e4227c4683 *tools/test/ctest_verdict.py
+7fc05a93fa6e17574cddae04c5e28d75debced1e9040f1bbefc01c754858b117 *tools/test/ctest_verdict_test.py
+6b27d264577a019895b00df746653fed3715fcfb3892b8d45f68a0e651d9649a *cmake/CheckTestNames.cmake
+source head=3c808780c4e5e59d26375151c3ff8215c4c68602 dirty=0 start=2026-11-02T16:54:56+01:00
+build rc=0
+cc2a388e099acaa9c1f30584ccb8e73907dbc8956c2d53a1e04979a3a8549f57 */e/anno1503-worktrees/anno1503-W4-3/build/win-a29b079/src/app/Release/anno1503.exe
+297d88f47c0bfee207b71538f8a83e0cb3579140d4e6c9a32f737378a8ad303a */e/anno1503-worktrees/anno1503-W4-3/build/win-a29b079/src/app/Release/anno_app_input_tests.exe
+21fcfd77d6dd0c384c240c43e9f19ee8607461bdbbf79de1187a2f9063435e1d */e/anno1503-worktrees/anno1503-W4-3/build/win-a29b079/src/app/Release/anno_app_tests.exe
+focused lane rc=0 COUNTS: selected=35 executed=35 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0 VERDICT: PASS  2026-11-02T16:56:22+01:00
+done 2026-11-02T16:56:22+01:00

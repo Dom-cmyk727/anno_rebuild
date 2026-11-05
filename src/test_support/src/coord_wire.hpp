@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <anno/test/parallel.hpp>
 
@@ -473,10 +474,37 @@ inline bool make_pipe(int fds[2]) {
 ///  - Elsewhere: one close action per descriptor from 3 to the open-file limit,
 ///    capped at 4096. A close of a descriptor that is not open succeeds in glibc
 ///    (checked in cache/f3/exp/fdexp.out), so the loop is safe.
-inline void close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
+///  - Darwin: no closefrom, and a close action on a descriptor that is not open
+///    makes posix_spawn fail with EBADF (probed: rc 9 with 4093 such actions,
+///    which stopped every coordinator start on the Mac). So only the descriptors
+///    this process has open, from PROC_PIDLISTFDS, get a close action.
+/// Returns false when the descriptor list cannot be read; the caller must not
+/// spawn then, because the child would inherit an unknown set.
+inline bool close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
 #if defined(__GLIBC__) && defined(__USE_GNU) &&                                                    \
     (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34))
     posix_spawn_file_actions_addclosefrom_np(actions, 3);
+    return true;
+#elif defined(__APPLE__)
+    const pid_t self = ::getpid();
+    int bytes = ::proc_pidinfo(self, PROC_PIDLISTFDS, 0, nullptr, 0);
+    if (bytes <= 0) {
+        return false;
+    }
+    // The count can grow between the two calls; the second one is the list.
+    std::vector<proc_fdinfo> fds(static_cast<std::size_t>(bytes) / sizeof(proc_fdinfo) + 16);
+    bytes = ::proc_pidinfo(self, PROC_PIDLISTFDS, 0, fds.data(),
+                           static_cast<int>(fds.size() * sizeof(proc_fdinfo)));
+    if (bytes <= 0) {
+        return false;
+    }
+    const std::size_t count = static_cast<std::size_t>(bytes) / sizeof(proc_fdinfo);
+    for (std::size_t i = 0; i < count; ++i) {
+        if (fds[i].proc_fd >= 3) {
+            posix_spawn_file_actions_addclose(actions, fds[i].proc_fd);
+        }
+    }
+    return true;
 #else
     long limit = ::sysconf(_SC_OPEN_MAX);
     if (limit < 0 || limit > 4096) {
@@ -485,6 +513,7 @@ inline void close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
     for (int fd = 3; fd < static_cast<int>(limit); ++fd) {
         posix_spawn_file_actions_addclose(actions, fd);
     }
+    return true;
 #endif
 }
 #endif
@@ -588,20 +617,31 @@ inline bool linux_zombie(const std::string& stat_path) {
 #endif
 
 #if defined(__APPLE__)
-/// What macOS tells about a process (it has no /proc): proc_pidinfo with
-/// PROC_PIDTBSDINFO. The start time, in microseconds since the epoch
-/// (pbi_start_tvsec, pbi_start_tvusec), names one process together with its
-/// pid, as the /proc starttime does on Linux.
-struct DarwinProcess {
-    enum class State { Gone, Unknown, Zombie, Running };
-    State state = State::Unknown;
+/// What proc_pidinfo(PROC_PIDTBSDINFO) says about one pid (libproc.h, Xcode SDK).
+/// Gone: no such process (ESRCH) or a pid outside pid_t's range (never issued,
+/// so never running). Exited: a zombie that is not reaped yet. Unknown: the
+/// call failed another way; that is never read as a stop.
+enum class DarwinProc : std::uint8_t { Running, Exited, Gone, Unknown };
+
+struct DarwinProcInfo {
+    DarwinProc state = DarwinProc::Unknown;
+    /// Start time in microseconds since the epoch (pbi_start_tvsec and
+    /// pbi_start_tvusec). With the pid it names one process, as /proc starttime
+    /// does on Linux. 0 when unknown.
     std::uint64_t started = 0;
 };
 
-inline DarwinProcess darwin_process(std::uint64_t pid) {
-    DarwinProcess out;
+/// The pbi_status value of a zombie (SZOMB in the xnu sys/proc.h).
+inline constexpr std::uint32_t kDarwinSzomb = 5;
+
+/// pid is uint64_t (as received over the wire, from another process's own
+/// report of itself) because it must be range-checked before the narrowing
+/// cast to pid_t: a pid outside that range was never issued, so it is read
+/// as Gone rather than cast and passed to proc_pidinfo.
+inline DarwinProcInfo darwin_proc_info(std::uint64_t pid) {
+    DarwinProcInfo out;
     if (pid == 0 || pid > static_cast<std::uint64_t>(std::numeric_limits<pid_t>::max())) {
-        out.state = DarwinProcess::State::Gone;
+        out.state = DarwinProc::Gone;
         return out;
     }
     proc_bsdinfo info{};
@@ -609,23 +649,19 @@ inline DarwinProcess darwin_process(std::uint64_t pid) {
     const int n = ::proc_pidinfo(static_cast<pid_t>(pid), PROC_PIDTBSDINFO, 0, &info,
                                  static_cast<int>(sizeof(info)));
     if (n != static_cast<int>(sizeof(info))) {
-        // ESRCH: no such process. Anything else (EPERM for another user's
-        // process): cannot tell.
-        out.state = errno == ESRCH ? DarwinProcess::State::Gone : DarwinProcess::State::Unknown;
+        out.state = (n == 0 && errno == ESRCH) ? DarwinProc::Gone : DarwinProc::Unknown;
         return out;
     }
     out.started = static_cast<std::uint64_t>(info.pbi_start_tvsec) * 1000000u +
                   static_cast<std::uint64_t>(info.pbi_start_tvusec);
-    out.state = info.pbi_status == static_cast<std::uint32_t>(SZOMB)
-                    ? DarwinProcess::State::Zombie
-                    : DarwinProcess::State::Running;
+    out.state = info.pbi_status == kDarwinSzomb ? DarwinProc::Exited : DarwinProc::Running;
     return out;
 }
 #endif
 
 /// The creation stamp that, with the pid, names one process: Windows
-/// GetProcessTimes creation (FILETIME), Linux /proc starttime, macOS the
-/// proc_pidinfo start time (darwin_process).
+/// GetProcessTimes creation (FILETIME), Linux /proc starttime, Darwin
+/// proc_pidinfo start time.
 inline std::uint64_t process_started() {
 #if defined(_WIN32)
     FILETIME created{};
@@ -640,7 +676,7 @@ inline std::uint64_t process_started() {
     stamp.HighPart = created.dwHighDateTime;
     return stamp.QuadPart;
 #elif defined(__APPLE__)
-    return darwin_process(static_cast<std::uint64_t>(::getpid())).started;
+    return darwin_proc_info(static_cast<std::uint64_t>(::getpid())).started;
 #else
     return linux_start_time("/proc/self/stat");
 #endif

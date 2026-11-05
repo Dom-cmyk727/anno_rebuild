@@ -1,12 +1,18 @@
 // anno_app_core: PNG output (always) and scene loading (needs
 // ANNO1503_GAME_DIR; skips otherwise).
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <iterator>
+#include <map>
+#include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -16,6 +22,9 @@
 #include <anno/app/png.hpp>
 #include <anno/app/still.hpp>
 #include <anno/app/zoom.hpp>
+#include <anno/formats/anlagen.hpp>
+#include <anno/formats/bytes.hpp>
+#include <anno/formats/insel.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace fs = std::filesystem;
@@ -226,6 +235,18 @@ TEST_CASE("command line") {
     CHECK_FALSE(d->group);
     CHECK(d->size == std::pair{1600, 900});
     CHECK(d->water == anno::render::WaterStyle::Original);
+    CHECK_FALSE(d->water_given); // the opening may switch to enhanced water
+    const auto wo = parse_args({"--view", "x.scp", "--water", "original"});
+    REQUIRE(wo);
+    CHECK(wo->water == anno::render::WaterStyle::Original);
+    CHECK(wo->water_given); // an explicit choice the opening keeps (review 2026-11-03)
+    CHECK(d->shore == anno::render::kShoreHeight); // corners at 16 are water by default
+    const auto sh = parse_args({"--view", "x.scp", "--shore", "16"});
+    REQUIRE(sh);
+    CHECK(sh->shore == 16.0F);
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "-1"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "256"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "nan"}));
     // The viewer shows the flow at gain 4 with the median-cell speed (OQ-083, OQ-065).
     using Ref = anno::render::river::RiverConfig::Reference;
     CHECK(d->river_gain == 4.0F);
@@ -586,4 +607,355 @@ TEST_CASE("zoom_advance: the camera move of a zoom at the cursor is not a pan (p
     const auto before = pan_centre(s);
     s.cam_x += 25.0;
     CHECK(pan_centre(s).first == before.first + 25.0);
+}
+
+namespace {
+
+/// HEAD's flag word of `id` (bytes 0x1c-0x1d), 0 without one.
+std::uint16_t flags_of(const anno::formats::anlagen::AnlagenFile& anlagen, std::uint32_t id) {
+    const auto* e = anlagen.entry(id);
+    const auto head = e != nullptr ? e->record("HEAD") : std::nullopt;
+    return head && head->size() >= 0x1e ? anno::formats::u16_le(*head, 0x1c) : std::uint16_t{0};
+}
+
+/// The first type whose flag word satisfies `pred`, and whose footprint satisfies `size`.
+std::optional<std::uint32_t>
+first_type(const anno::formats::anlagen::AnlagenFile& anlagen,
+           const std::function<bool(std::uint16_t)>& pred,
+           const std::function<bool(std::uint8_t, std::uint8_t)>& size) {
+    for (const auto& e : anlagen.entries) {
+        const auto fp = anlagen.footprint(e.id);
+        if (fp && pred(flags_of(anlagen, e.id)) && size(fp->first, fp->second)) {
+            return e.id;
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+// Owner playtest 2026-11-03, round 6: trees stood inside a founded Kontor. The original writes the
+// building over every footprint tile (AnnoWelt.dll 0x100823ed); a type with flag 0x10 keeps an
+// anchored flag-0x10 object (0x1008218f). Types and sizes from the real Anlagen.dat.
+TEST_CASE(
+    "scenery under a building: footprint, rotation and the flag 0x10 exception (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto buf = anno::test::read_file(*dir / "Anlagen.dat");
+    auto parsed = anno::formats::anlagen::AnlagenFile::parse(buf);
+    REQUIRE(parsed);
+    const auto& anlagen = parsed.value();
+    const auto any = [](std::uint8_t, std::uint8_t) { return true; };
+    // The warehouse: 4 x 4, flag word 0x2087 (no 0x10).
+    REQUIRE(anlagen.footprint(1302) == std::pair<std::uint8_t, std::uint8_t>{4, 4});
+    CHECK(flags_of(anlagen, 1302) == 0x2087);
+    // A tree: flag 0x20 (placement passes over it), not 0x10.
+    const auto tree = first_type(anlagen, [](std::uint16_t f) { return f == 0x0029; }, any);
+    REQUIRE(tree.has_value());
+    const auto tree_id = static_cast<std::uint16_t>(*tree);
+    anno::app::SceneBuilding kontor;
+    kontor.type = 1302;
+    kontor.x = 10;
+    kontor.y = 20;
+    for (std::uint8_t rot = 0; rot < 4; ++rot) {
+        kontor.rotation = rot;
+        CHECK(anno::app::scenery_under_building(anlagen, kontor, tree_id, 10, 20));
+        CHECK(anno::app::scenery_under_building(anlagen, kontor, tree_id, 13, 23));
+        CHECK_FALSE(anno::app::scenery_under_building(anlagen, kontor, tree_id, 14, 20));
+        CHECK_FALSE(anno::app::scenery_under_building(anlagen, kontor, tree_id, 10, 24));
+        CHECK_FALSE(anno::app::scenery_under_building(anlagen, kontor, tree_id, 9, 20));
+        CHECK_FALSE(anno::app::scenery_under_building(anlagen, kontor, tree_id, 10, 19));
+    }
+    // A non-square type without 0x10: an odd rotation swaps its width and height.
+    const auto tall = first_type(
+        anlagen, [](std::uint16_t f) { return (f & 0x10U) == 0; },
+        [](std::uint8_t w, std::uint8_t h) { return w >= 1 && h > w; });
+    REQUIRE(tall.has_value());
+    const auto [w, h] = *anlagen.footprint(*tall);
+    MESSAGE("non-square type " << *tall << ": " << int{w} << " x " << int{h});
+    anno::app::SceneBuilding b;
+    b.type = *tall;
+    b.x = 50;
+    b.y = 60;
+    const auto under = [&](int x, int y) {
+        return anno::app::scenery_under_building(anlagen, b, tree_id, static_cast<std::uint16_t>(x),
+                                                 static_cast<std::uint16_t>(y));
+    };
+    for (const std::uint8_t rot : {std::uint8_t{0}, std::uint8_t{2}}) {
+        b.rotation = rot;
+        CHECK(under(50 + w - 1, 60 + h - 1));
+        CHECK_FALSE(under(50 + w, 60));
+        CHECK_FALSE(under(50, 60 + h));
+    }
+    for (const std::uint8_t rot : {std::uint8_t{1}, std::uint8_t{3}}) {
+        b.rotation = rot; // swapped: h wide, w tall
+        CHECK(under(50 + h - 1, 60 + w - 1));
+        CHECK_FALSE(under(50, 60 + h - 1));
+        CHECK_FALSE(under(50 + h, 60));
+    }
+    // A type with flag 0x10 keeps a flag-0x10 object under it, not a tree.
+    const auto overlay = first_type(anlagen, [](std::uint16_t f) { return (f & 0x10U) != 0; }, any);
+    const auto rock = first_type(anlagen, [](std::uint16_t f) { return f == 0x8018; }, any);
+    REQUIRE(overlay.has_value());
+    REQUIRE(rock.has_value());
+    anno::app::SceneBuilding o;
+    o.type = *overlay;
+    o.x = 5;
+    o.y = 5;
+    CHECK_FALSE(
+        anno::app::scenery_under_building(anlagen, o, static_cast<std::uint16_t>(*rock), 5, 5));
+    CHECK(anno::app::scenery_under_building(anlagen, o, tree_id, 5, 5));
+    // A type the file does not have changes nothing.
+    anno::app::SceneBuilding unknown;
+    unknown.type = 0xFFF;
+    CHECK_FALSE(anno::app::scenery_under_building(anlagen, unknown, tree_id, 0, 0));
+}
+
+// The same through the picture's rewrite of a real island: a warehouse put over a tree of an
+// original island template drops that tree and keeps every other scenery item; without Anlagen.dat
+// (the old behaviour) the tree stays.
+TEST_CASE("scenery under a building: the island rewrite drops the tree a warehouse covers (game "
+          "files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
+    auto parsed = anno::formats::anlagen::AnlagenFile::parse(anl_buf);
+    REQUIRE(parsed);
+    const auto& anlagen = parsed.value();
+    // The island templates, in a fixed order; the first one with a tree item is used.
+    std::vector<fs::path> files;
+    for (const auto& entry : fs::recursive_directory_iterator(*dir)) {
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (entry.is_regular_file() && ext == ".scp") {
+            files.push_back(entry.path());
+        }
+    }
+    std::sort(files.begin(), files.end());
+    REQUIRE_FALSE(files.empty());
+    const auto gelaende = [](const anno::formats::insel::Island& island) {
+        std::vector<anno::formats::insel::PlacedObject> out;
+        for (const auto& rec : island.records) {
+            if (rec.name() != "GELAENDE") {
+                continue;
+            }
+            auto block = anno::formats::insel::Block::parse(rec.payload);
+            REQUIRE(block);
+            const auto& data = block.value().data;
+            for (std::size_t o = 0; o + anno::formats::insel::kItemLen <= data.size();
+                 o += anno::formats::insel::kItemLen) {
+                out.push_back(anno::formats::insel::PlacedObject::parse(
+                    data.subspan(o, anno::formats::insel::kItemLen), block.value()));
+            }
+        }
+        return out;
+    };
+    for (const fs::path& file : files) {
+        const auto buf = anno::test::read_file(file);
+        auto islands = anno::formats::insel::islands(buf);
+        if (!islands || islands.value().empty()) {
+            continue;
+        }
+        const anno::formats::insel::Island source = islands.value().front();
+        const auto items = gelaende(source);
+        const auto tree = std::find_if(items.begin(), items.end(), [&](const auto& it) {
+            return flags_of(anlagen, it.anlage) == 0x0029 && it.x >= 3 && it.y >= 3;
+        });
+        if (tree == items.end()) {
+            continue;
+        }
+        MESSAGE(file.filename().string()
+                << ": tree " << tree->anlage << " at " << tree->x << "," << tree->y);
+        // The warehouse's footprint ends on the tree's tile (bottom-right corner).
+        anno::app::SceneBuilding kontor;
+        kontor.island = source.number;
+        kontor.type = 1302;
+        kontor.x = static_cast<std::uint16_t>(tree->x - 3);
+        kontor.y = static_cast<std::uint16_t>(tree->y - 3);
+        std::size_t covered = 0;
+        for (const auto& it : items) {
+            covered +=
+                anno::app::scenery_under_building(anlagen, kontor, it.anlage, it.x, it.y) ? 1U : 0U;
+        }
+        anno::app::SceneObjects objects;
+        objects.is_building = [](std::uint16_t id) { return id == 1302; };
+        const auto rewrite = [&](const anno::formats::anlagen::AnlagenFile* with) {
+            anno::formats::insel::Island island = source;
+            std::vector<std::vector<std::uint8_t>> storage;
+            std::vector<std::string> notes;
+            std::vector<anno::app::OmittedObject> omitted;
+            anno::app::apply_island_buildings(island, {kontor}, objects, storage, notes, omitted,
+                                              with);
+            return gelaende(island);
+        };
+        const auto after = rewrite(&anlagen);
+        const auto before = rewrite(nullptr);
+        CHECK(before.size() == items.size());
+        CHECK(covered >= 1);
+        CHECK(after.size() == items.size() - covered);
+        const auto has_tree = [&](const std::vector<anno::formats::insel::PlacedObject>& list) {
+            return std::any_of(list.begin(), list.end(), [&](const auto& it) {
+                return it.anlage == tree->anlage && it.x == tree->x && it.y == tree->y;
+            });
+        };
+        CHECK(has_tree(before));
+        CHECK_FALSE(has_tree(after));
+        // A warehouse (no flag 0x10) keeps no item anchored in its footprint.
+        for (const auto& it : after) {
+            CHECK_FALSE((it.x >= kontor.x && it.x < kontor.x + 4 && it.y >= kontor.y &&
+                         it.y < kontor.y + 4));
+        }
+        return;
+    }
+    FAIL("no island template with a tree in " << dir->string());
+}
+
+// Every island of the shipped scenarios rewritten with its own buildings: the rewrite drops exactly
+// the scenery items that scenery_under_building names for some building over their anchor (the
+// rewrite marks the island's tiles once, review 2026-11-03: a test per item and building took 63 s
+// on endless02.sze's island 1), including the flag-0x10 objects a flag-0x10 type keeps (rocks under
+// mines).
+TEST_CASE("scenery under a building: the shipped scenarios' islands drop exactly the covered "
+          "scenery (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
+    auto parsed = anno::formats::anlagen::AnlagenFile::parse(anl_buf);
+    REQUIRE(parsed);
+    const auto& anlagen = parsed.value();
+    std::vector<fs::path> files;
+    for (const auto& entry : fs::recursive_directory_iterator(*dir / "Scenes")) {
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (entry.is_regular_file() && ext == ".sze") {
+            files.push_back(entry.path());
+        }
+    }
+    std::sort(files.begin(), files.end());
+    REQUIRE_FALSE(files.empty());
+    using Item = std::tuple<std::uint16_t, std::uint16_t, std::uint16_t>; // id, x, y
+    const auto items_of = [](const anno::formats::insel::Island& island, const char* name) {
+        std::vector<anno::formats::insel::PlacedObject> out;
+        for (const auto& rec : island.records) {
+            if (rec.name() != name) {
+                continue;
+            }
+            auto block = anno::formats::insel::Block::parse(rec.payload);
+            if (!block) {
+                continue;
+            }
+            const auto& data = block.value().data;
+            for (std::size_t o = 0; o + anno::formats::insel::kItemLen <= data.size();
+                 o += anno::formats::insel::kItemLen) {
+                out.push_back(anno::formats::insel::PlacedObject::parse(
+                    data.subspan(o, anno::formats::insel::kItemLen), block.value()));
+            }
+        }
+        return out;
+    };
+    std::size_t islands_n = 0, dropped = 0, kept_by_exception = 0;
+    double total_ms = 0, worst_ms = 0;
+    for (const fs::path& file : files) {
+        const auto buf = anno::test::read_file(file);
+        auto islands = anno::formats::insel::islands(buf);
+        if (!islands) {
+            continue;
+        }
+        for (const auto& source : islands.value()) {
+            if (source.number > 0xFFFF) {
+                continue;
+            }
+            std::vector<anno::app::SceneBuilding> buildings;
+            std::set<std::uint16_t> ids;
+            for (const auto& obj : items_of(source, "PROD2")) {
+                anno::app::SceneBuilding b;
+                b.island = source.number;
+                b.type = obj.anlage;
+                b.x = obj.x;
+                b.y = obj.y;
+                b.rotation = obj.rotation;
+                b.height = obj.height();
+                buildings.push_back(b);
+                ids.insert(obj.anlage);
+            }
+            if (buildings.empty()) {
+                continue;
+            }
+            // The buildings over each tile (by their footprint boxes), then the expected drops.
+            std::map<std::pair<std::uint32_t, std::uint32_t>, std::vector<std::size_t>> over;
+            for (std::size_t i = 0; i < buildings.size(); ++i) {
+                const auto& b = buildings[i];
+                const auto fp = anlagen.footprint(b.type);
+                if (!fp) {
+                    continue;
+                }
+                const bool odd = (b.rotation & 1U) != 0;
+                const std::uint32_t w = odd ? fp->second : fp->first;
+                const std::uint32_t h = odd ? fp->first : fp->second;
+                for (std::uint32_t y = b.y; y < std::uint32_t{b.y} + h; ++y) {
+                    for (std::uint32_t x = b.x; x < std::uint32_t{b.x} + w; ++x) {
+                        over[{x, y}].push_back(i);
+                    }
+                }
+            }
+            std::multiset<Item> expected;
+            for (const auto& it : items_of(source, "GELAENDE")) {
+                if (ids.contains(it.anlage)) {
+                    expected.insert({it.anlage, it.x, it.y});
+                    continue;
+                }
+                const auto found = over.find({it.x, it.y});
+                const bool drop =
+                    found != over.end() &&
+                    std::any_of(found->second.begin(), found->second.end(), [&](std::size_t i) {
+                        return anno::app::scenery_under_building(anlagen, buildings[i], it.anlage,
+                                                                 it.x, it.y);
+                    });
+                if (drop) {
+                    ++dropped;
+                } else {
+                    expected.insert({it.anlage, it.x, it.y});
+                    kept_by_exception += found != over.end() ? 1U : 0U;
+                }
+            }
+            anno::app::SceneObjects objects;
+            objects.is_building = [&ids](std::uint16_t id) { return ids.contains(id); };
+            anno::formats::insel::Island island = source;
+            std::vector<std::vector<std::uint8_t>> storage;
+            std::vector<std::string> notes;
+            std::vector<anno::app::OmittedObject> omitted;
+            const auto t0 = std::chrono::steady_clock::now();
+            anno::app::apply_island_buildings(island, buildings, objects, storage, notes, omitted,
+                                              &anlagen);
+            const double ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                    .count();
+            total_ms += ms;
+            worst_ms = std::max(worst_ms, ms);
+            std::multiset<Item> got;
+            for (const auto& it : items_of(island, "GELAENDE")) {
+                got.insert({it.anlage, it.x, it.y});
+            }
+            CHECK_MESSAGE(got == expected, file.filename().string() << " island " << source.number);
+            ++islands_n;
+        }
+    }
+    MESSAGE(islands_n << " islands with buildings: " << dropped << " scenery items dropped, "
+                      << kept_by_exception
+                      << " anchored under a building and kept (flag 0x10); rewrites " << total_ms
+                      << " ms in all, at most " << worst_ms << " ms");
+    CHECK(islands_n > 100);
+    CHECK(dropped > 0);
+    CHECK(kept_by_exception > 0);
 }

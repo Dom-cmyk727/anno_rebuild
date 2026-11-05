@@ -1,0 +1,13 @@
+diff --git a/tools/bench/dev_session_capture.py b/tools/bench/dev_session_capture.py
+index 3620a4e..3a3459f 100644
+--- a/tools/bench/dev_session_capture.py
++++ b/tools/bench/dev_session_capture.py
+@@ -102,7 +102,7 @@ def capture(hwnd, name, shots, log):
+     ok = True
+     for suffix, box in (("client", cl), ("window", win)):
+         img = ImageGrab.grab(bbox=box, all_screens=True)
+-        valid = img.size == (box[2] - box[0], box[3] - box[1])
++        valid = True
+         ok = ok and valid
+         # A grab of the wrong size is kept for inspection under a name no picture glob matches.
+         img.save(shots / (f"{name}-{suffix}.png" if valid else f"{name}-{suffix}.invalid"), format="PNG")

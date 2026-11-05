@@ -318,6 +318,52 @@ TEST_CASE("run_turn applies commands before steps") {
     CHECK(fs[1].kind == sim::ReplayEntry::Kind::Advance);
 }
 
+TEST_CASE("run_turn reports one result per command in stream order and changes nothing else") {
+    // Round ee, A2: the host's command feedback comes from the turn's own loop. An accepted
+    // command, a refused one, one without a wire form (skipped, never applied) and a legacy
+    // record (never executed), in that order.
+    const bt::Kit k = bt::make_kit();
+    sim::Command stranger = host_speed(150);
+    stranger.issuer = sim::PlayerId{77};
+    sim::Command oversized = legacy_cmd();
+    std::get<sim::LegacyRawCmd>(oversized.body).payload.assign(sim::kMaxRecordPayload + 1, 0);
+    REQUIRE_FALSE(sim::has_wire_form(oversized.body));
+    sim::Turn turn;
+    turn.step_ms = 20;
+    turn.commands = {host_speed(200), stranger, oversized, legacy_cmd()};
+    const std::vector<sim::Reject> expected{sim::Reject::None, sim::Reject::UnknownIssuer,
+                                            sim::Reject::Unencodable, sim::Reject::Unsupported};
+
+    sim::World direct = bt::all_classes_world(k);
+    std::vector<sim::ApplyResult> results{sim::ApplyResult{}}; // replaced, not appended to
+    sim::run_turn(direct, nullptr, turn, 3, &results);
+    REQUIRE(results.size() == turn.commands.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        CAPTURE(i);
+        CHECK(results[i].status == expected[i]);
+    }
+
+    // The same turn without the list, and recorded with it: the same world, the same results.
+    sim::World plain = bt::all_classes_world(k);
+    sim::run_turn(plain, nullptr, turn, 3);
+    CHECK(plain.state_hash() == direct.state_hash());
+    sim::World recorded = bt::all_classes_world(k);
+    sim::Recorder rec = recorder(recorded);
+    std::vector<sim::ApplyResult> logged;
+    sim::run_turn(recorded, &rec, turn, 3, &logged);
+    CHECK(recorded.state_hash() == direct.state_hash());
+    REQUIRE(logged.size() == results.size());
+    for (std::size_t i = 0; i < logged.size(); ++i) {
+        CHECK(logged[i].status == results[i].status);
+    }
+    // The skipped command is not in the log (Recorder::submit's rule).
+    std::size_t command_entries = 0;
+    for (const sim::ReplayEntry& e : rec.log().entries) {
+        command_entries += e.kind == sim::ReplayEntry::Kind::Commands ? 1U : 0U;
+    }
+    CHECK(command_entries == 3);
+}
+
 TEST_CASE("log header records the prng timeline") {
     const bt::Kit k = bt::make_kit();
     sim::World w = bt::all_classes_world(k);
@@ -326,8 +372,8 @@ TEST_CASE("log header records the prng timeline") {
 
     CHECK(log.prng_timeline_version == sim::kPrngTimelineVersion);
     const std::vector<std::string> expected{
-        "CityRandomEvents", "WildlifeSweep",     "Ai",          "LinkOrePlace", "LinkNativeName",
-        "LinkTreasureKind", "LinkTreasurePlace", "ComputerName"};
+        "CityRandomEvents", "WildlifeSweep",     "Ai",           "LinkOrePlace", "LinkNativeName",
+        "LinkTreasureKind", "LinkTreasurePlace", "ComputerName", "CityNameLoad"};
     CHECK(log.prng_timeline_missing == expected);
 
     // The digests pin the world the log was recorded against.

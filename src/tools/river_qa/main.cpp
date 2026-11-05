@@ -194,7 +194,7 @@ std::size_t cause_of(const render::Scene& scene, const render::sea::SceneProbe& 
     if (!level) {
         return 0;
     }
-    if (static_cast<float>(render::kWaterline) - smooth > 0.0F) {
+    if (iw->shore_height - smooth > 0.0F) {
         return 1;
     }
     const float bed = sea::river_bed_height(iw->heights, iw->w, iw->h, x, y) +

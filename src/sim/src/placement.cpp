@@ -3,8 +3,117 @@
 #include <optional>
 
 #include <anno/sim/placement.hpp>
+#include <anno/sim/site_checks.hpp>
+#include <anno/sim/terrain_view.hpp>
 
 namespace anno::sim {
+
+namespace {
+
+std::uint32_t group_of(std::uint32_t prodtype) {
+    return ((prodtype - 1U) & ~0x1fU) + 1U;
+}
+
+enum class Class : std::uint8_t { Ordinary, Coast, Other };
+
+Class classify(const BuildingType& t, const PlacementParams& p) {
+    // The original's flag word is HEAD u16 +0x1c; a wider word is not evidenced (Other).
+    if (t.flags_word > 0xffffU || (t.flags_word & p.coverage_flag) != 0) {
+        return Class::Other;
+    }
+    if ((t.flags_word & ~p.ignored_flag_bits) == p.ordinary_class) {
+        return Class::Ordinary;
+    }
+    if (site::coast_class_supported(t.flags_word)) {
+        return Class::Coast;
+    }
+    return Class::Other;
+}
+
+} // namespace
+
+PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
+                               const BuildingType& effective, const PlacementRecord& rec,
+                               const PlacementParams& params) {
+    constexpr PlacementResult kUnsupported{Reject::Unsupported, 0};
+    // R3 class gate first, as the oracle's engine_place: no flag word outside the two evidenced
+    // classes, no rotation above 3 (uninitialised footprint bytes in the original) and no empty
+    // footprint ever gets a default answer.
+    const Class cls = classify(effective, params);
+    const auto [fw, fh] = footprint(effective, rec.rotation);
+    if (cls == Class::Other || rec.rotation > 3 || fw == 0 || fh == 0) {
+        return kUnsupported;
+    }
+    // R1 bounds, 64-bit (the original compares 32-bit values of 16-bit fields, no wrap).
+    const TileLayer& tiles = island.tiles;
+    const site::Origin origin{rec.x, rec.y};
+    if (!site::footprint_inside(tiles, origin, fw, fh)) {
+        return {Reject::OutOfIsland, 0};
+    }
+    // R2 occupancy, row-major like the original: the first tile that decides wins.
+    for (std::int64_t dy = 0; dy < fh; ++dy) {
+        for (std::int64_t dx = 0; dx < fw; ++dx) {
+            const std::int64_t lx = rec.x - std::int64_t{tiles.x0()} + dx;
+            const std::int64_t ly = rec.y - std::int64_t{tiles.y0()} + dy;
+            const std::uint32_t id = tiles.object(static_cast<std::uint64_t>(ly) * tiles.width() +
+                                                  static_cast<std::uint64_t>(lx));
+            if (id == 0) {
+                continue;
+            }
+            const BuildingType* existing = types.find(TypeId{id});
+            if (existing == nullptr) {
+                return kUnsupported;
+            }
+            if (site::overlap_with_existing(effective, *existing) != site::Compat::Compatible) {
+                return {Reject::Occupied, 0};
+            }
+        }
+    }
+    // R4 / R5: the vertex window.
+    const VertexGrid grid = VertexGrid::of(island);
+    if (!grid.ok()) {
+        return kUnsupported;
+    }
+    if (cls == Class::Coast) {
+        const site::TerrainVerdict v =
+            site::coast_height_check(grid, effective, rec.rotation, origin);
+        switch (v.result) {
+        case site::TerrainResult::Accepted:
+            return {Reject::None, v.result_byte};
+        case site::TerrainResult::Rejected:
+            return {Reject::TerrainRefused, 0};
+        default:
+            return kUnsupported;
+        }
+    }
+    std::optional<std::uint8_t> level;
+    for (std::int64_t dy = 0; dy <= fh; ++dy) {
+        for (std::int64_t dx = 0; dx <= fw; ++dx) {
+            const std::optional<std::uint8_t> v = grid.at(rec.x + dx, rec.y + dy);
+            if (!v) {
+                return kUnsupported;
+            }
+            if (!level) {
+                level = v;
+            } else if (*level != *v) {
+                return {Reject::TerrainRefused, 0};
+            }
+        }
+    }
+    const std::uint32_t v = *level;
+    if (params.level_quantum > 1 && v % params.level_quantum != 0) {
+        return {Reject::TerrainRefused, 0};
+    }
+    if (v < params.min_level && group_of(effective.prodtype) != params.exempt_group) {
+        return {Reject::TerrainRefused, 0};
+    }
+    return {Reject::None, static_cast<std::uint8_t>(v)};
+}
+
+PlacementResult stand_in_placement_seam_fn(void*, const Island& island, const TypeRegistry&,
+                                           const BuildingType& type, const PlacementRecord& rec) {
+    return {stand_in_placement_rule(island, type, rec), 0};
+}
 
 Reject footprint_owner_rule(const Island& island, const SimConfig& cfg, const BuildingType& type,
                             const PlacementRecord& rec, CityNo city) {

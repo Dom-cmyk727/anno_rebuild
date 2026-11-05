@@ -319,6 +319,10 @@ struct GpuFrame::Impl {
     /// the bound turned it off in the last frame that asked for it.
     double fluid_cells_cap = 0.0;
     bool fluid_off = false;
+    /// The tile position the last update_fluid centred the wave window on (GpuStats::fluid_centre).
+    std::pair<float, float> fluid_centre{0.0F, 0.0F};
+    /// The cross-fade weight of the last frame uniform (GpuStats::fluid_fade).
+    float fluid_fade_drawn = 1.0F;
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
@@ -648,8 +652,12 @@ struct GpuFrame::Impl {
     /// The wave simulation, created on the first enhanced frame.
     std::optional<FluidGpu> fluid;
     bool fluid_failed = false;
+    /// The ships acting on the waves this frame (GpuFrame::set_wakes).
+    std::vector<fluid::ShipWake> wakes;
     /// The window serial the cross-fade has seen, and the fade-clock time (ms) it changed.
     std::uint64_t fluid_seen_serial = 0, fluid_arrival = 0;
+    /// The carried-over switches (FluidGpu::resamples) the cross-fade has seen.
+    std::uint64_t fluid_seen_resamples = 0;
 
     /// u32 words of one GPU frame-table entry (frame_table.hpp): layer, atlas x,
     /// atlas y, image w, image h, anchor_y (i32), keel offset (u32), resident.
@@ -694,8 +702,8 @@ struct GpuFrame::Impl {
 
         /// Atlas doublings recorded since the last render() (GpuStats).
         std::size_t grows = 0;
-        /// The current scene's frame table (set each render(); the draw lists'
-        /// FrameIds index it).
+        /// The current scene's frame table (set by render() and cleared when it returns: the
+        /// draw lists' FrameIds index it, and the scene may be released between frames).
         const FrameTable* ft = nullptr;
         /// The open-water colour of the current scene (reduce_quad's ground clear
         /// for a derived GpuList chunk, item 1); set each render().
@@ -708,6 +716,16 @@ struct GpuFrame::Impl {
         std::size_t built = 0, fallbacks = 0;
     };
     ChunkBuild cb;
+    /// The generation the render() in progress draws, when its caller passed an owning handle
+    /// (null otherwise, and between frames): what render() starts that outlives it holds this.
+    std::shared_ptr<const Scene> frame_scene;
+    /// The scene of the chunk sync in progress (null between syncs): a derived GpuList key outside
+    /// it is open sea, uploaded as the CPU chunk is (build_derived_gpu).
+    const Scene* sync_scene = nullptr;
+    /// A visible key's CPU chunk was not GPU-usable at the end of the last chunk sync.
+    bool uploads_pending = false;
+    /// GpuFrame::set_test_hold_uploads.
+    bool test_hold_uploads = false;
 
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
@@ -1112,6 +1130,12 @@ struct GpuFrame::Impl {
     /// the serial rule still replaces the stand-in. nullopt keeps the stand-in.
     std::optional<Chunk> build_derived_gpu(const ChunkKey& key, const render::Chunk& derived_cpu,
                                            const FrameRenderer& frames) {
+        if (const auto [g, kx, ky] = key;
+            sync_scene != nullptr && chunk_outside_scene(*sync_scene, g, kx, ky)) {
+            // Outside the scene the CPU chunk is the open sea already (render_chunk), with no
+            // children to reduce (the planner builds none there).
+            return upload_chunk(key, &derived_cpu);
+        }
         if (!cb_init()) {
             return std::nullopt;
         }
@@ -1971,7 +1995,8 @@ struct GpuFrame::Impl {
             waiting = true;
             // Count and time budget: the first chunk always goes, so a
             // slow device still makes progress.
-            const bool room = !partial_spent && uploads < limits.uploads_per_frame &&
+            const bool room = !partial_spent && !test_hold_uploads &&
+                              uploads < limits.uploads_per_frame &&
                               (uploads == 0 || limits.upload_budget_ms <= 0.0 ||
                                ms_since(begin) < limits.upload_budget_ms);
             if (c != nullptr && room) {
@@ -2052,6 +2077,17 @@ struct GpuFrame::Impl {
                 stats.sync_placeholder_ms += ms_since(p0);
             }
         }
+        // A visible CPU chunk that is not on the GPU as itself after this frame's uploads.
+        uploads_pending = false;
+        for (const auto& key : keys) {
+            const render::Chunk* c = frames.chunk(key);
+            const auto it = chunks.find(key);
+            if (c != nullptr &&
+                (it == chunks.end() || !it->second.real || it->second.serial != c->serial)) {
+                uploads_pending = true;
+                break;
+            }
+        }
         // Nothing visible is waiting: upload built chunks ahead, a few per frame,
         // first the margin of the group shown (what a pan brings into view next:
         // on the GPU before it is visible, so it appears at once, no placeholder,
@@ -2059,7 +2095,7 @@ struct GpuFrame::Impl {
         // step they are real chunks and the stand-ins have sources even for the
         // part of the view that was off screen before it). Bounded by
         // GpuLimits::prefetch_chunks of these resident at once.
-        if (!waiting && uploads == 0 && limits.prefetch_chunks > 0) {
+        if (!waiting && uploads == 0 && limits.prefetch_chunks > 0 && !test_hold_uploads) {
             const std::array<const std::vector<ChunkKey>*, 2> lists = {&margin, &adjacent};
             // Counted over the two lists (their length, not every GPU chunk).
             std::size_t resident = 0;
@@ -2265,7 +2301,8 @@ struct GpuFrame::Impl {
     /// Scene::draw_units order) and returns their number. Bit 17 marks a
     /// ship's frame, bits 18-31 hold its anchor row (the enhanced waterline,
     /// ship_in_water in gpu.wgsl).
-    std::uint32_t pack_ships(const Scene& scene, Rect view, std::size_t group, Bytes& bytes) {
+    std::uint32_t pack_ships(const Scene& scene, std::span<const UnitSprite> live, bool scene_units,
+                             Rect view, std::size_t group, Bytes& bytes) {
         std::vector<const UnitSprite*> order;
         // Units have frames at the built levels only. At a derived level a ship is the
         // frame of its built ancestor reduced by 2^shift (a box mean over the R x R
@@ -2279,7 +2316,14 @@ struct GpuFrame::Impl {
         if (derived && shift > kMaxShipShift) {
             return 0;
         }
-        for (const auto& u : scene.units) {
+        if (scene_units) {
+            for (const auto& u : scene.units) {
+                if (!u.z && base < kGroups) {
+                    order.push_back(&u);
+                }
+            }
+        }
+        for (const auto& u : live) {
             if (!u.z && base < kGroups) {
                 order.push_back(&u);
             }
@@ -2421,8 +2465,15 @@ struct GpuFrame::Impl {
                 const std::uint64_t now = fade_clock();
                 if (fluid->window_serial() != fluid_seen_serial) {
                     fluid_seen_serial = fluid->window_serial();
-                    fluid_arrival = now;
+                    // A window that carried the old waves over starts where they were: no fade
+                    // from the analytic waves (owner playtest 2026-11-03: with several zoom notches
+                    // the waves blinked off and on, one fade per switch).
+                    const bool carried = fluid->resamples() != fluid_seen_resamples;
+                    fluid_arrival =
+                        carried ? (now >= limits.wave_fade_ms ? now - limits.wave_fade_ms : 0)
+                                : now;
                 }
+                fluid_seen_resamples = fluid->resamples();
                 f.fluid_fade =
                     limits.wave_fade_ms == 0 || now >= fluid_arrival + limits.wave_fade_ms
                         ? 1.0F
@@ -2436,6 +2487,7 @@ struct GpuFrame::Impl {
                 f.fluid_cpt = static_cast<float>(w->cells_per_tile);
             }
         }
+        fluid_fade_drawn = f.fluid_fade;
         const auto u = frame_uniform_bytes(f);
         wgpuQueueWriteBuffer(queue(), frame_uniform.get(), 0, u.data(), u.size());
     }
@@ -2464,25 +2516,41 @@ struct GpuFrame::Impl {
         }
         const float tw = static_cast<float>(levels->tile_w(group));
         const float th = static_cast<float>(levels->tile_h(group));
-        const float raise = static_cast<float>(scene.lift.scaled(kSeaLevel, 1, group));
+        // ZoomLevels' lift: a derived group has no kTile entry (Lift::scaled is for built ones).
+        const float raise =
+            static_cast<float>(levels->lift_scaled(scene.lift, kSeaLevel, 1, group));
         const float px = static_cast<float>(view.x) + static_cast<float>(view.w) / 2.0F;
         const float py = static_cast<float>(view.y) + static_cast<float>(view.h) / 2.0F + raise;
-        const std::pair<float, float> centre{px / tw + py / th, py / th - px / tw};
+        const std::pair<float, float> centre = screen_tile(px, py, tw, th);
         const unsigned hw = std::thread::hardware_concurrency();
         const std::size_t threads = hw > 0 ? hw : 4;
-        const fluid::DepthFn depth = [&scene](float x, float y) { return scene.fluid_depth(x, y); };
+        // The depth function is copied into the background preparation of a new window
+        // (GpuLimits::background_fluid), which can run past this frame: it holds the frame's
+        // owning handle when there is one, so a generation released meanwhile stays alive until
+        // the preparation ends. A borrowed scene is kept alive by the caller (render's contract).
+        fluid::DepthFn depth;
+        if (frame_scene) {
+            depth = [owner = frame_scene](float x, float y) { return owner->fluid_depth(x, y); };
+        } else {
+            depth = [&scene](float x, float y) { return scene.fluid_depth(x, y); };
+        }
         const float span = static_cast<float>(view.w) / tw + static_cast<float>(view.h) / th;
         const auto current = fluid->window();
         const double tile_px = levels->tile_w(group) * scale;
+        // A derived zoom level (a group past the built ones) has no cells of its own: the coarsest
+        // built group's, halved by the same bound (owner playtest 2026-11-03: the waves of a ship
+        // vanished as the zoom passed the third level).
+        const std::size_t cells_group = std::min(group, kGroups - 1);
         std::uint32_t cpt =
-            fluid::bounded_cells_per_tile(fluid->config(), group, tile_px, fluid_cells_cap,
+            fluid::bounded_cells_per_tile(fluid->config(), cells_group, tile_px, fluid_cells_cap,
                                           current ? current->cells_per_tile : 0U);
         // Off (even one cell per tile is above the bound) and back on: on again only with
         // the hysteresis' room to spare (the bound checked on tiles kCellsHysteresis as
         // wide), so a zoom resting at the threshold does not flip; and with a new window,
         // so the waves fade in again instead of resuming a stale state.
         if (fluid_off && cpt != 0 &&
-            fluid::bounded_cells_per_tile(fluid->config(), group, tile_px * fluid::kCellsHysteresis,
+            fluid::bounded_cells_per_tile(fluid->config(), cells_group,
+                                          tile_px * fluid::kCellsHysteresis,
                                           fluid_cells_cap) == 0) {
             cpt = 0;
         }
@@ -2494,7 +2562,9 @@ struct GpuFrame::Impl {
             fluid_off = false;
             fluid->drop_window();
         }
-        if (fluid->update(enc, group, centre, span, time_ms, depth, threads, cpt, stamps) &&
+        fluid->set_ships(wakes);
+        fluid_centre = centre;
+        if (fluid->update(enc, cells_group, centre, span, time_ms, depth, threads, cpt, stamps) &&
             stamps != nullptr) {
             ts_mark(TimedPass::Fluid);
         }
@@ -2981,10 +3051,45 @@ std::uint64_t GpuFrame::errors() const {
     return impl_->ref->errors->load();
 }
 
+void GpuFrame::set_wakes(const std::vector<fluid::ShipWake>& wakes) {
+    impl_->wakes = wakes;
+}
+
+GpuStats GpuFrame::render(FrameRenderer& frames, const std::shared_ptr<const Scene>& scene,
+                          Rect view, std::size_t group, std::uint64_t time_ms, WaterStyle style,
+                          WGPUTextureView target, const Resample* resample,
+                          std::span<const SpriteDraw> overlay,
+                          std::span<const UnitSprite> live_units) {
+    impl_->frame_scene = scene;
+    return render(frames, *scene, view, group, time_ms, style, target, resample, overlay,
+                  live_units);
+}
+
 GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                           std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
-                          const Resample* resample) {
+                          const Resample* resample, std::span<const SpriteDraw> overlay,
+                          std::span<const UnitSprite> live_units) {
     Impl& m = *impl_;
+    // Nothing of the scene stays referenced once the frame is recorded and submitted: the frame
+    // table pointer and the owning handle (if any) are dropped on every way out. Uploads copy the
+    // chunk pixels (wgpuQueueWriteTexture copies at the call), and the textures, bind groups and
+    // buffers a submission uses are kept alive by the device until it completes.
+    struct EndOfFrame {
+        Impl& m;
+        explicit EndOfFrame(Impl& impl) : m(impl) {}
+        EndOfFrame(const EndOfFrame&) = delete;
+        EndOfFrame& operator=(const EndOfFrame&) = delete;
+        ~EndOfFrame() {
+            m.cb.ft = nullptr;
+            m.frame_scene.reset();
+        }
+    } end_of_frame{m};
+    // The jobs this frame plans hold the owning handle when there is one (FrameRenderer).
+    std::shared_ptr<const Scene> borrowed;
+    if (!m.frame_scene) {
+        borrowed = std::shared_ptr<const Scene>(std::shared_ptr<const Scene>{}, &scene);
+    }
+    const std::shared_ptr<const Scene>& handle = m.frame_scene ? m.frame_scene : borrowed;
     m.levels = &frames.levels();
     // GpuList chunk build (T11 stage 2a): this scene's frame table and this
     // frame's atlas upload budget and counters.
@@ -3021,7 +3126,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
     }
     std::tie(stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
-        frames.update_chunks(scene, view, group);
+        frames.update_chunks(handle, view, group);
     stats.chunks_ms = lap();
     const auto w = static_cast<std::uint32_t>(std::max(view.w, 1));
     const auto h = static_cast<std::uint32_t>(std::max(view.h, 1));
@@ -3043,8 +3148,10 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.visible_ms = lap();
     const std::size_t warm_before = m.planes_warm_taken;
     const std::uint64_t fade_now = m.fade_clock();
+    m.sync_scene = &scene;
     stats.chunks_uploaded = m.sync_chunks(frames, group, visible, frames.margin_keys(),
                                           frames.adjacent_keys(), fade_now, stats);
+    m.sync_scene = nullptr;
     frames.release(std::exchange(m.released_holds, {}));
     stats.planes_warm = m.planes_warm_taken - warm_before;
     stats.gpu_built_chunks = m.cb.built;
@@ -3069,7 +3176,15 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     // Ships are drawn here, after the cached objects, unless the chunks
     // already hold them (a FrameRenderer with ships in its chunks).
     const std::uint32_t n_ships =
-        frames.ships_in_chunks() ? 0 : m.pack_ships(scene, view, group, bytes);
+        frames.ships_in_chunks() && live_units.empty()
+            ? 0
+            : m.pack_ships(scene, live_units, !frames.ships_in_chunks(), view, group, bytes);
+    // The overlay last (a placement preview): no depth test, on top of everything.
+    const std::uint32_t n_overlay =
+        overlay.empty()
+            ? 0
+            : m.pack_sprites(scene, std::vector<SpriteDraw>(overlay.begin(), overlay.end()), false,
+                             bytes);
     m.write_instances(bytes.b);
     stats.upload_create_ms = m.up_create_ms;
     stats.upload_write_ms = m.up_write_ms;
@@ -3091,13 +3206,16 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     }
     // Coastal wave simulation (enhanced water only).
     const bool fluid_on =
-        style == WaterStyle::Enhanced && m.limits.wave_simulation && group < kGroups &&
+        style == WaterStyle::Enhanced && m.limits.wave_simulation &&
         m.update_fluid(enc.get(), scene, view, group, time_ms, resampling ? resample->scale : 1.0,
                        timed ? m.ts_writes(TimedPass::Fluid) : nullptr);
     stats.fluid_ms = lap();
     stats.wave_simulation = fluid_on;
     if (fluid_on && m.fluid) {
         stats.fluid_steps = m.fluid->last_steps();
+        stats.fluid_windows = m.fluid->window_serial();
+        stats.fluid_resamples = m.fluid->resamples();
+        stats.fluid_centre = m.fluid_centre;
         if (const auto win = m.fluid->window()) {
             stats.fluid_cells = static_cast<std::uint64_t>(win->size * win->size);
             stats.fluid_cells_per_tile = win->cells_per_tile;
@@ -3107,6 +3225,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const bool river_flow = style == WaterStyle::Enhanced &&
                             frames.river_flow == RiverFlowMode::Flow && scene.river_active();
     m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on, river_flow);
+    stats.fluid_fade = m.fluid_fade_drawn;
     {
         RiverParams rp = scene.river_cfg.params();
         rp.quality = m.quality;
@@ -3372,6 +3491,15 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                                                  WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDraw(p, 6, n_ships, 0, 0);
         }
+        if (m.instances && atlas != nullptr && n_overlay > 0) {
+            wgpuRenderPassEncoderSetPipeline(p, m.sprite_pipe.get());
+            wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(p, 2, atlas, 0, nullptr);
+            wgpuRenderPassEncoderSetVertexBuffer(
+                p, 0, m.instances.get(),
+                std::uint64_t{n_below + n_above + n_ships} * kInstanceBytes, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderDraw(p, 6, n_overlay, 0, 0);
+        }
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
     }
@@ -3432,6 +3560,24 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
     }
     return stats;
+}
+
+GpuFrame::ChunkGpuState GpuFrame::chunk_state(const ChunkKey& key) const {
+    ChunkGpuState s;
+    if (const auto it = impl_->chunks.find(key); it != impl_->chunks.end() && it->second.real) {
+        s.serial = it->second.serial;
+    }
+    s.staging = impl_->staged.contains(key);
+    s.fading = impl_->fading.contains(key);
+    return s;
+}
+
+void GpuFrame::set_test_hold_uploads(bool hold) {
+    impl_->test_hold_uploads = hold;
+}
+
+bool GpuFrame::work_pending() const {
+    return impl_->uploads_pending || !impl_->fading.empty();
 }
 
 bool GpuFrame::group_ready(const Scene& scene, std::size_t group) const {

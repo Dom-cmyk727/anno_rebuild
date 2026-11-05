@@ -28,11 +28,11 @@
 #include <spawn.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#if defined(__APPLE__)
+#include <libproc.h>
+#endif
 #include <unistd.h>
 extern char** environ;
-#endif
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
 #endif
 
 namespace anno::test::child {
@@ -59,10 +59,8 @@ inline std::filesystem::path sibling(const char* name) {
     }
     return std::filesystem::path(buffer).parent_path() / (std::string(name) + ".exe");
 #elif defined(__APPLE__)
-    // macOS has no /proc/self/exe.
-    char buffer[4096];
-    std::uint32_t size = static_cast<std::uint32_t>(sizeof(buffer));
-    if (::_NSGetExecutablePath(buffer, &size) != 0) {
+    char buffer[PROC_PIDPATHINFO_MAXSIZE];
+    if (::proc_pidpath(static_cast<int>(::getpid()), buffer, sizeof(buffer)) <= 0) {
         return {};
     }
     return std::filesystem::path(buffer).parent_path() / name;

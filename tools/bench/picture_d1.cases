@@ -1,0 +1,12 @@
+# The small discriminating set (round dy, D1): one workload and configuration (the legal five-city
+# baseline, 40 buildings per city, 2000 t of test goods, two picture workers, two chunk workers,
+# a 1920 x 1080 view at group 2, paced at 60 Hz), one case after another.
+a-idle            --scenario idle --duration-s 10 --goods-tons 2000
+b-one             --scenario one --goods-tons 2000
+c-one-unrelated   --scenario one --goods-tons 2000 --unrelated-extra 200 --attempts 200000
+d-burst50         --scenario burst --edits 50 --goods-tons 2000
+e-stream-below    --scenario stream --rate 10 --edits 100 --goods-tons 2000
+f-stream-above    --scenario stream --rate 400 --edits 400 --goods-tons 2000
+g-delayed         --scenario delayed --rate 10 --edits 60 --commit-every 6 --stall-ms 2000 --goods-tons 2000
+h-offscreen       --scenario offscreen --edits 20 --rate 20 --goods-tons 2000
+s-saturation      --scenario stream --timing saturation --edits 400 --goods-tons 2000

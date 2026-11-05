@@ -1,0 +1,13 @@
+diff --git a/src/app/src/viewer.cpp b/src/app/src/viewer.cpp
+index 9ff70b8..e0991f9 100644
+--- a/src/app/src/viewer.cpp
++++ b/src/app/src/viewer.cpp
+@@ -1854,7 +1854,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
+     const auto present_start = Clock::now();
+     steps_.push_back({"texture copy", since_ms(rendered, present_start)});
+     if (delivered) {
+-        stage(4, "SDL_RenderPresent", SDL_RenderPresent(bad_present ? nullptr : renderer_));
++        stage(4, "SDL_RenderPresent", (SDL_RenderPresent(bad_present ? nullptr : renderer_), true));
+     }
+     steps_end_ = Clock::now();
+     if (!delivered) {

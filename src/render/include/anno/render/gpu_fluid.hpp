@@ -46,6 +46,8 @@ class FluidGpu {
     [[nodiscard]] std::uint64_t window_serial() const { return window_serial_; }
     /// Simulation time in seconds.
     [[nodiscard]] double sim_time() const { return sim_t_; }
+    /// How many window switches carried the old waves over into the new window.
+    [[nodiscard]] std::uint64_t resamples() const { return resamples_; }
     /// Time steps the last update() recorded (0 when none was due).
     [[nodiscard]] std::uint32_t last_steps() const { return last_steps_; }
     [[nodiscard]] const fluid::FluidConfig& config() const { return cfg_; }
@@ -72,8 +74,17 @@ class FluidGpu {
     /// at most this many bytes (a 1024² window is 20 MiB) and, once this many
     /// milliseconds are spent, no further slice (0 = no time limit); at
     /// least one slice always goes.
+    /// A window switch starts the new window from the old one's waves (resample_state). Off: it
+    /// starts at rest from the swell, as the CPU reference's fresh fill does (tests that compare
+    /// with it).
+    bool carry_waves_over = true;
     std::size_t upload_bytes_per_frame = std::size_t{16} << 20;
     double upload_budget_ms = 2.0;
+
+    /// The ships that act on the water from the next update() on (fluid::ShipWake; at most
+    /// fluid::kMaxShipWakes, the rest are ignored). Their positions are held for the steps of that
+    /// update; call every frame with the positions as drawn.
+    void set_ships(const std::vector<fluid::ShipWake>& ships);
 
     /// Brings the simulation to `time_ms` for a view at zoom `group` centred
     /// on tile position `centre` and spanning `span_tiles` tiles (sizes the
@@ -132,7 +143,20 @@ class FluidGpu {
     std::optional<fluid::FluidWindow> window_;
     std::uint64_t window_serial_ = 0;
     BindGroupLayout layout_;
-    Buffer params_, steps_;
+    Buffer params_, steps_, ships_, old_;
+    ComputePipeline resample_pipe_;
+    /// A 1 x 1 texture for the `prev` binding of the passes that do not resample.
+    Texture dummy_prev_tex_;
+    TextureView dummy_prev_;
+    /// A window switch carries the old state over (resample_state): the grid and window that were
+    /// replaced, and the simulation time they had reached, until the next update records the pass.
+    std::optional<Grid> prev_grid_;
+    fluid::FluidWindow prev_window_;
+    double prev_sim_t_ = 0.0;
+    bool resample_pending_ = false;
+    /// Windows whose state was carried over, for tests.
+    std::uint64_t resamples_ = 0;
+    std::vector<fluid::ShipWake> ship_list_;
     std::uint64_t align_ = 0;
     ComputePipeline vel_pipe_, eta_pipe_;
     Grid grid_;

@@ -127,4 +127,21 @@ Result<Units, std::string> units(const formats::sze::Scene& scene,
                                  std::span<const UnitKind> kinds,
                                  std::span<const figure::Rgb> palette, const VolumeReader& read);
 
+/// One figure entry's sprite set 0 at every facing (W4-OPENING-1): `facings[k]` is the frame
+/// `k mod n` of each zoom group (the same rule `units()` applies to a unit's `attr`) with its
+/// shadow, in the colour of the owner when the type is player-coloured. A live ship (not a scenario
+/// unit) picks `facings[dir16]`; `x`/`y` of the entries are 0.
+struct FacingSprites {
+    std::uint16_t figure = 0;
+    std::vector<UnitFrames> facings;
+    UnitStats stats;
+};
+
+/// Decodes `facings` facings of `figure` (a FigurenHeader.dat entry) for one owner colour
+/// (`palette_colour`, nullopt: uncoloured). An error when the entry or its sprite set is missing.
+Result<FacingSprites, std::string> facing_sprites(const formats::figuren::FigurenHeader& header,
+                                                  std::uint16_t figure, std::uint32_t facings,
+                                                  std::optional<figure::Rgb> palette_colour,
+                                                  const VolumeReader& read);
+
 } // namespace anno::assets::unit

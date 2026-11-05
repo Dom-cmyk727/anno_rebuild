@@ -15,7 +15,7 @@ struct Params {
     c: vec4<f32>,
     // force_rate, sponge_cells, infiltration, deep_speed / depth_cap
     d: vec4<f32>,
-    // max_speed, swash_foam, break_min_depth, 0
+    // max_speed, swash_foam, break_min_depth, ship_full_depth
     e: vec4<f32>,
     // per swell component: (kx, ky, omega, phase), (amplitude, 0, 0, 0)
     comps: array<vec4<f32>, 16>,
@@ -35,6 +35,24 @@ struct Step {
 @group(0) @binding(2) var src: texture_2d<f32>;
 @group(0) @binding(3) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(4) var bathy: texture_2d<f32>;
+
+// Ships acting on the water (fluid.hpp ShipWake): head = (count, wave gain, min speed, stern
+// share); per ship
+// items[2 i] = (x, y, vx, vy) in tiles and tiles / s, items[2 i + 1] = (half length, half width, 0, 0).
+struct Ships {
+    head: vec4<f32>,
+    items: array<vec4<f32>, 32>,
+}
+@group(0) @binding(5) var<uniform> SH: Ships;
+
+// The window being replaced (resample_state only): its origin, size and cells per tile, and its state.
+struct Old {
+    origin: vec2<i32>,
+    size: i32,
+    cpt: f32,
+}
+@group(0) @binding(6) var<uniform> OLD: Old;
+@group(0) @binding(7) var prev: texture_2d<f32>;
 
 // Euclidean remainder (n > 0) with non-negative operands only: WGSL defines
 // % for negative operands, but backends that translate to GLSL (wgpu's GL
@@ -77,6 +95,37 @@ fn forcing(p: vec2<f32>, t: f32) -> vec3<f32> {
         let e = amp * cos(k.x * p.x + k.y * p.y - k.z * t + k.w);
         let kn = max(sqrt(k.x * k.x + k.y * k.y), 1e-6);
         r += vec3<f32>(e, e * P.d.w * k.x / kn, e * P.d.w * k.y / kn);
+    }
+    return r;
+}
+
+// fluid::ship_term: elevation rate of the ships at tile position p.
+fn ship_term(p: vec2<f32>) -> f32 {
+    var r = 0.0;
+    let n = i32(SH.head.x);
+    for (var i = 0; i < n; i++) {
+        let a0 = SH.items[2 * i];
+        let a1 = SH.items[2 * i + 1];
+        let speed = length(a0.zw);
+        if speed < SH.head.z {
+            continue;
+        }
+        let dir = a0.zw / speed;
+        let rel = p - a0.xy;
+        let a = dot(rel, dir);
+        let b = -rel.x * dir.y + rel.y * dir.x;
+        let la = a1.x;
+        let wb = a1.y;
+        let u = a / la;
+        if u <= -1.0 || u >= 1.0 {
+            continue; // nothing ahead of the stem or behind the stern
+        }
+        let w = b / wb;
+        var lengthwise = 4.0 * u * (1.0 - u * u);
+        if u <= 0.0 {
+            lengthwise *= SH.head.w;
+        }
+        r += SH.head.y * speed / la * lengthwise * exp(-w * w);
     }
     return r;
 }
@@ -192,6 +241,9 @@ fn eta_step(@builtin(global_invocation_id) id: vec3<u32>) {
     if h <= 0.0 {
         eta -= dt * P.d.z;
     }
+    if SH.head.x > 0.5 && h > WET {
+        eta += dt * clamp(h / P.e.w, 0.0, 1.0) * ship_term(cell_centre(x, y));
+    }
     eta = max(eta, -h);
     let d = eta + h;
     if h > P.e.z {
@@ -213,4 +265,65 @@ fn eta_step(@builtin(global_invocation_id) id: vec3<u32>) {
         eta += (max(fe, -h) - eta) * f;
     }
     textureStore(dst, vec2<i32>(id.xy), vec4<f32>(eta, s.y, s.z, foam));
+}
+
+fn prev_at(x: i32, y: i32) -> vec4<f32> {
+    return textureLoad(prev, vec2<i32>(wrapi(x, OLD.size), wrapi(y, OLD.size)), 0);
+}
+
+// Uniform cubic B-spline weights of the four samples around a point at fraction t past the second.
+fn bspline(t: f32) -> vec4<f32> {
+    let s = 1.0 - t;
+    return vec4<f32>(s * s * s, 3.0 * t * t * t - 6.0 * t * t + 4.0,
+                     -3.0 * t * t * t + 3.0 * t * t + 3.0 * t + 1.0, t * t * t) / 6.0;
+}
+
+// A window replaced by one of other cells per tile or size (a zoom): the new window starts from the
+// state of the old one where the old one has cells (two cells in from its edge); elsewhere, and on
+// land, from the new window's own initial state (`src`, a copy of what the host uploaded). Without
+// this every zoom restarted the waves at rest and a ship's wake vanished.
+// Into finer cells (a zoom in) the elevation and the velocities are a cubic B-spline of the old
+// cells, smooth with its slope, and no foam is carried: bilinear, the surface had a kink at every
+// old cell's edge, which the lighting drew as steps a coarse cell wide, and the far levels' surf
+// (one cell per tile) came in as white blobs off the shore (owner playtest 2026-11-03, round 6).
+// The fine window's own surf starts where its waves break. Into cells as fine or coarser, bilinear
+// (at equal cells it is the old state exactly).
+@compute @workgroup_size(8, 8)
+fn resample_state(@builtin(global_invocation_id) id: vec3<u32>) {
+    if i32(id.x) >= S.size || i32(id.y) >= S.size {
+        return;
+    }
+    let w = world_cell(id.xy);
+    var out = textureLoad(src, vec2<i32>(id.xy), 0);
+    let h = depth_at(w.x, w.y);
+    if h > WET {
+        let q = (vec2<f32>(f32(w.x), f32(w.y)) + 0.5) / S.cpt * OLD.cpt - vec2<f32>(0.5);
+        let i0 = vec2<i32>(floor(q));
+        let f = q - vec2<f32>(i0);
+        let lo = OLD.origin + vec2<i32>(2);
+        let hi = OLD.origin + vec2<i32>(OLD.size - 3);
+        if i0.x >= lo.x && i0.y >= lo.y && i0.x <= hi.x && i0.y <= hi.y {
+            if OLD.cpt < S.cpt {
+                let wx = bspline(f.x);
+                let wy = bspline(f.y);
+                var m = vec4<f32>(0.0);
+                for (var j = 0; j < 4; j++) {
+                    var row = vec4<f32>(0.0);
+                    for (var i = 0; i < 4; i++) {
+                        row += wx[i] * prev_at(i0.x + i - 1, i0.y + j - 1);
+                    }
+                    m += wy[j] * row;
+                }
+                out = vec4<f32>(max(m.x, -h), m.y, m.z, out.w);
+            } else {
+                let a = prev_at(i0.x, i0.y);
+                let b = prev_at(i0.x + 1, i0.y);
+                let c = prev_at(i0.x, i0.y + 1);
+                let d = prev_at(i0.x + 1, i0.y + 1);
+                let m = mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+                out = vec4<f32>(max(m.x, -h), m.y, m.z, max(m.w, 0.0));
+            }
+        }
+    }
+    textureStore(dst, vec2<i32>(id.xy), out);
 }

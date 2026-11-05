@@ -3,6 +3,7 @@
 // f32::max/min are fmaxf/fminf (NaN-ignoring), f32::clamp is clampf,
 // float-to-integer `as` casts saturate (sat_cast, sat_i64).
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <limits>
@@ -230,6 +231,80 @@ void FluidGrid::fill(CellRect r, const DepthFn& depth_fn, float t) {
     }
 }
 
+void FluidGrid::carry_from(const FluidGrid& old) {
+    const FluidWindow& ow = old.window;
+    const std::size_t n = to_size(window.size), on = to_size(ow.size);
+    const auto old_at = [&](std::int64_t x, std::int64_t y) -> const Cell& {
+        const auto [sx, sy] = ow.storage(x, y);
+        return old.state[sy * on + sx];
+    };
+    // Uniform cubic B-spline weights of the four samples around a point at fraction t past the
+    // second (the shader's bspline).
+    const auto bspline = [](float t) {
+        const float s = 1.0F - t;
+        return std::array<float, 4>{
+            s * s * s / 6.0F, (3.0F * t * t * t - 6.0F * t * t + 4.0F) / 6.0F,
+            (-3.0F * t * t * t + 3.0F * t * t + 3.0F * t + 1.0F) / 6.0F, t * t * t / 6.0F};
+    };
+    const auto mix = [](float a, float b, float t) { return a * (1.0F - t) + b * t; };
+    const std::int64_t lo_x = ow.origin.first + 2, lo_y = ow.origin.second + 2;
+    const std::int64_t hi_x = ow.origin.first + ow.size - 3, hi_y = ow.origin.second + ow.size - 3;
+    const CellRect r = window.rect();
+    for (std::int64_t y = r.y0; y < r.y1; ++y) {
+        for (std::int64_t x = r.x0; x < r.x1; ++x) {
+            const auto [sx, sy] = window.storage(x, y);
+            const std::size_t i = sy * n + sx;
+            const float h = depth[i];
+            if (!(h > kWet)) {
+                continue;
+            }
+            // The shader's order: (cell + 0.5) / new cells per tile * old cells per tile - 0.5.
+            const float qx = (static_cast<float>(x) + 0.5F) /
+                                 static_cast<float>(window.cells_per_tile) *
+                                 static_cast<float>(ow.cells_per_tile) -
+                             0.5F;
+            const float qy = (static_cast<float>(y) + 0.5F) /
+                                 static_cast<float>(window.cells_per_tile) *
+                                 static_cast<float>(ow.cells_per_tile) -
+                             0.5F;
+            const auto ix = static_cast<std::int64_t>(std::floor(qx));
+            const auto iy = static_cast<std::int64_t>(std::floor(qy));
+            if (ix < lo_x || iy < lo_y || ix > hi_x || iy > hi_y) {
+                continue;
+            }
+            const float fx = qx - static_cast<float>(ix), fy = qy - static_cast<float>(iy);
+            Cell& out = state[i];
+            if (ow.cells_per_tile < window.cells_per_tile) {
+                const auto wx = bspline(fx), wy = bspline(fy);
+                Cell m{0.0F, 0.0F, 0.0F, 0.0F};
+                for (std::int64_t j = 0; j < 4; ++j) {
+                    Cell row{0.0F, 0.0F, 0.0F, 0.0F};
+                    for (std::int64_t k = 0; k < 4; ++k) {
+                        const Cell& c = old_at(ix + k - 1, iy + j - 1);
+                        for (std::size_t q = 0; q < 4; ++q) {
+                            row[q] += wx[static_cast<std::size_t>(k)] * c[q];
+                        }
+                    }
+                    for (std::size_t q = 0; q < 4; ++q) {
+                        m[q] += wy[static_cast<std::size_t>(j)] * row[q];
+                    }
+                }
+                out = {fmaxf(m[0], -h), m[1], m[2], out[3]};
+            } else {
+                const Cell& a = old_at(ix, iy);
+                const Cell& b = old_at(ix + 1, iy);
+                const Cell& c = old_at(ix, iy + 1);
+                const Cell& d = old_at(ix + 1, iy + 1);
+                Cell m{};
+                for (std::size_t q = 0; q < 4; ++q) {
+                    m[q] = mix(mix(a[q], b[q], fx), mix(c[q], d[q], fx), fy);
+                }
+                out = {fmaxf(m[0], -h), m[1], m[2], fmaxf(m[3], 0.0F)};
+            }
+        }
+    }
+}
+
 float FluidGrid::force_factor(std::int64_t x, std::int64_t y, float h, float dt) const {
     const FluidConfig& c = cfg;
     const std::int64_t lx = x - window.origin.first, ly = y - window.origin.second;
@@ -239,6 +314,32 @@ float FluidGrid::force_factor(std::int64_t x, std::int64_t y, float h, float dt)
         smoothstep(static_cast<float>(c.sponge_cells), 0.0F, static_cast<float>(edge));
     const float deep = smoothstep(c.force_depth.first, c.force_depth.second, h);
     return fmaxf(fminf(deep * c.force_rate * dt, 1.0F), sponge);
+}
+
+float ship_term(const FluidConfig& cfg, const std::vector<ShipWake>& ships, float px, float py) {
+    float eta = 0.0F;
+    const std::size_t n = std::min(ships.size(), kMaxShipWakes);
+    for (std::size_t i = 0; i < n; ++i) {
+        const ShipWake& s = ships[i];
+        const float speed = std::sqrt(s.vx * s.vx + s.vy * s.vy);
+        if (speed < cfg.ship_min_speed) {
+            continue;
+        }
+        const float dx = s.vx / speed, dy = s.vy / speed;
+        const float rx = px - s.x, ry = py - s.y;
+        const float a = rx * dx + ry * dy;
+        const float b = -rx * dy + ry * dx;
+        const float la = s.half_length, wb = s.half_width;
+        const float u = a / la;
+        if (u <= -1.0F || u >= 1.0F) {
+            continue; // nothing ahead of the stem or behind the stern
+        }
+        const float w = b / wb;
+        const float lengthwise =
+            4.0F * u * (1.0F - u * u) * (u > 0.0F ? 1.0F : cfg.ship_stern_share);
+        eta += cfg.ship_wave_gain * speed / la * lengthwise * std::exp(-w * w);
+    }
+    return eta;
 }
 
 void FluidGrid::step(float t) {
@@ -321,6 +422,10 @@ void FluidGrid::step(float t) {
             eta -= dt * div / dx;
             if (h <= 0.0F) {
                 eta -= dt * c.infiltration;
+            }
+            if (!ships.empty() && h > kWet) {
+                const auto [px, py] = w.cell_centre(x, y);
+                eta += dt * ship_depth_factor(c, h) * ship_term(c, ships, px, py);
             }
             eta = fmaxf(eta, -h);
             const float d = eta + h;

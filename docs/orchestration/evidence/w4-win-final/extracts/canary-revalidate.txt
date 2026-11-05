@@ -1,0 +1,2 @@
+VALID    cache/f/canary/stages  = boundary_stages.script
+VALID    cache/f/canary/exit-hold  = boundary_exit_in_hold.script

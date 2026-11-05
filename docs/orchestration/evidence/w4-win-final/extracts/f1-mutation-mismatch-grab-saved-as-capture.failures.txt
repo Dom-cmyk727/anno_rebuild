@@ -1,0 +1,4 @@
+FAIL: test_a_grab_of_the_wrong_size_is_never_saved_as_a_capture (__main__.CaptureMismatch.test_a_grab_of_the_wrong_size_is_never_saved_as_a_capture)
+AssertionError: 'ok' != 'mismatch'
+Ran 19 tests in 47.620s
+FAILED (failures=1)

@@ -1,0 +1,8 @@
+SKIPPED(other): anno_sim_tests.ship start: a base that is not a content-relative path is refused before it is opened
+SKIPPED(other): anno_sim_tests.ship start: a content-relative base loads, also through links that stay inside
+SKIPPED(other): anno_sim_tests.ship start: the content path rules, as a function
+SKIPPED(opt-in): anno_sim_tests.nav scale measurements (ANNO_SIM_NAV_SCALE)
+SKIPPED(opt-in): anno_sim_tests.transport search statistics (ANNO_SIM_TRANSPORT_STATS)
+COUNTS: selected=1056 executed=1051 failed=0 empty=0 skipped=5 (required-asset=0 platform=0 opt-in=2 gpu=0 other=3) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+Evidence: E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\native-n7c.log

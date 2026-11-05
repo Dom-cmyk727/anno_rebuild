@@ -1,0 +1,4 @@
+FAIL: test_an_empty_record_does_not_pass (__main__.ViewerWiringContract.test_an_empty_record_does_not_pass)
+AssertionError: 0 != 1 : viewer_wiring: PASS tiny: window exit 0 after 0.1 s, every step of the script recorded in order; session C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_vuo5jivj\session10
+Ran 14 tests in 3.677s
+FAILED (failures=1)

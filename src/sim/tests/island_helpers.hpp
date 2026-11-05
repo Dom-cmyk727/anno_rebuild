@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <span>
 #include <string>
@@ -59,7 +60,8 @@ struct Stream {
 /// text, not from the field list): number, owner, tick stamp; the stock (capacity
 /// 50 t, 56 goods of 0); 56 goods settings; 5 build goods; 2 empty trade lists; the
 /// index (stamp 0, 6 fresh lists of one empty slot: hint -1, cursor 0).
-inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t owner) {
+inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t owner,
+                              const std::string& name = {}) {
     s.u32(number);
     s.u32(owner);
     s.u16(0);
@@ -81,6 +83,11 @@ inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t own
     s.u64(2);
     s.u64(0);
     s.u64(0);
+    s.u64(name.size()); // the city name (stream 119): u64 length, then the bytes
+    for (const char c : name) {
+        s.u8(static_cast<std::uint8_t>(c));
+    }
+    s.u64(0); // the player mask (stream 120): an empty set, a u64 count
     s.u16(0);
     s.u64(6);
     for (int i = 0; i < 6; ++i) {
@@ -244,6 +251,81 @@ inline std::uint32_t get32(const std::vector<std::uint8_t>& b, std::size_t at) {
         v |= static_cast<std::uint32_t>(b[at + i]) << (8 * i);
     }
     return v;
+}
+
+/// Unsupported-VERSION rejection of World::load for `good`, a valid save of this build
+/// (docs/sim/state.md 9.5; save.cpp). These cases alter only a version number and reseal the frame,
+/// so the checksum is valid and the frame is otherwise whole: they show WHICH version check fires.
+/// They are not historical payloads (no earlier layout is reconstructed). For each earlier version
+/// `v`:
+///  - the outer frame's stream version (offset 8) = v      -> "state stream version v is not
+///  supported";
+///  - the state header's version (first u32 of section 0, outer version current) = v
+///                                                          -> "state hash version differs";
+///  - the same edit WITHOUT the reseal -> the checksum diagnostic (the cause control: it is what
+///  the
+///    earlier tests of this kind were silently asserting).
+/// A frame save version above this build's is checked once.
+inline void check_unsupported_versions(const std::vector<std::uint8_t>& good,
+                                       const std::shared_ptr<const sim::TypeRegistry>& types,
+                                       std::initializer_list<std::uint32_t> earlier) {
+    constexpr std::size_t kSaveVersionAt = 4, kFrameStreamAt = 8;
+    const std::size_t header_at = frame_offset(0, 0); // section 0 = header, flat offset 0
+    const auto error_of = [&](const std::vector<std::uint8_t>& bytes) {
+        auto r = sim::World::load(bytes, types);
+        return r.ok() ? std::string() : r.error();
+    };
+    const auto has = [](const std::string& s, const std::string& part) {
+        return s.find(part) != std::string::npos;
+    };
+    // The valid control reaches every check, and the fields sit where the offsets say.
+    REQUIRE(error_of(good).empty());
+    REQUIRE(get32(good, 4) == sim::kSaveVersion);
+    REQUIRE(get32(good, kFrameStreamAt) == sim::kStateHashVersion);
+    REQUIRE(get32(good, header_at) == sim::kStateHashVersion);
+    REQUIRE(get32(good, header_at + 4) == sim::kPrngTimelineVersion);
+    {
+        std::vector<std::uint8_t> bad = good;
+        put32(bad, kSaveVersionAt, sim::kSaveVersion + 1);
+        reseal(bad);
+        const std::string e = error_of(bad);
+        MESSAGE("save frame version " << sim::kSaveVersion + 1 << " -> " << e);
+        CHECK_MESSAGE(
+            has(e, "version " + std::to_string(sim::kSaveVersion + 1) + " is not supported"), e);
+        CHECK_MESSAGE(has(e, "this build reads " + std::to_string(sim::kSaveVersion)), e);
+    }
+    for (const std::uint32_t v : earlier) {
+        INFO("earlier version " << v);
+        REQUIRE(v != sim::kStateHashVersion);
+        {
+            std::vector<std::uint8_t> bad = good;
+            put32(bad, kFrameStreamAt, v);
+            reseal(bad);
+            const std::string e = error_of(bad);
+            MESSAGE("frame stream version " << v << " -> " << e);
+            CHECK_MESSAGE(has(e, "state stream version " + std::to_string(v) + " is not supported"),
+                          e);
+            CHECK_MESSAGE(has(e, "this build reads " + std::to_string(sim::kStateHashVersion)), e);
+            CHECK_FALSE(has(e, "checksum"));
+        }
+        {
+            std::vector<std::uint8_t> bad = good;
+            put32(bad, header_at, v); // the outer version stays current
+            reseal(bad);
+            const std::string e = error_of(bad);
+            MESSAGE("state header version " << v << " -> " << e);
+            CHECK_MESSAGE(has(e, "state hash version differs"), e);
+            CHECK_FALSE(has(e, "checksum"));
+            CHECK_FALSE(has(e, "is not supported")); // the outer check passed
+        }
+        {
+            std::vector<std::uint8_t> bad = good;
+            put32(bad, header_at, v); // the same edit, not resealed: damage, not a version
+            const std::string e = error_of(bad);
+            MESSAGE("state header version " << v << " without reseal" << " -> " << e);
+            CHECK_MESSAGE(has(e, "the checksum does not match"), e);
+        }
+    }
 }
 
 /// An executor with `threads` threads that hands the jobs out through an atomic

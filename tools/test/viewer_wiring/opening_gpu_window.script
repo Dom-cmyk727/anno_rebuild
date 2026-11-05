@@ -1,0 +1,48 @@
+# W4-OPENING-1 I5: the GPU window (run with --gpu): the ship turns and moves, a zoom, a pan and a resize
+# leave selection working, and a held present (every present counted as failed to the window's consumers)
+# stops neither the turns nor the input; the arrival is "not drawn yet" until a delivered frame shows it.
+# Launch (--gpu, RTX 4090): --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200
+wait frames 40
+wait fact cities == 0 within 60000
+pick-ship 1
+expect fact selected == 1
+# The ship turns toward each target and moves: north (-y, dir16 12), then east (+x, dir16 8).
+sail 312 664
+wait fact latest == arrived within 60000
+expect fact ship.1.dir == 12
+sail 332 664
+wait fact tracked == 2 within 5000
+wait fact latest == arrived within 60000
+expect fact ship.1.dir == 8
+expect fact ship.1.x == 332
+expect fact ship.1.y == 664
+# Zoom, pan and resize: the pointer still maps to the same ship.
+lookship 1
+wheel 6
+wait frames 30
+pan 160 60
+resize 960 600
+wait frames 60
+lookship 1
+wait frames 30
+pick-ship 1
+expect fact selected == 1
+wheel -10
+wait frames 30
+lookship 1
+wait frames 30
+screenshot 7-zoom-resize
+# A held present: the sim goes on, orders still work, the arrival is not shown until the hold ends.
+hold presents
+wait frames 10
+sail 332 650
+wait fact tracked == 3 within 5000
+wait fact latest == arrived within 60000
+expect fact ship.1.y == 650
+expect title not drawn yet
+release presents
+wait turns 4
+expect title (shown)
+expect fact generation == 0
+expect fact committed == 0
+quit

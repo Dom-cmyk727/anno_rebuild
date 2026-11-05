@@ -72,9 +72,142 @@ TEST_CASE("wave noise is deterministic and bounded") {
 
 TEST_CASE("projection") {
     CHECK(render::tile_top(0, 0, 0) == std::pair{0, 0});
-    CHECK(render::tile_top(1, 0, 0) == std::pair{42, 21});
-    CHECK(render::tile_top(0, 1, 0) == std::pair{-42, 21});
+    CHECK(render::tile_top(1, 0, 0) == std::pair{-42, 21});
+    CHECK(render::tile_top(0, 1, 0) == std::pair{42, 21});
     CHECK(render::tile_top(2, 2, 1) == std::pair{0, 42});
+    CHECK(render::tile_top(3, 1, 2) == std::pair{-20, 20});
+}
+
+namespace {
+/// The original's camera at the default view, from its own constants (D,
+/// docs/re/annodisplay.md §5): Ry(a) · Rx(b) · S with row vectors, Ry =
+/// [[c, 0, −s], [0, 1, 0], [s, 0, c]] (AnnoFrame.dll 0x100712c0), Rx = [[1, 0,
+/// 0], [0, cb, −sb], [0, sb, cb]] (0x10071240), a = 0xC0 and b = 0x2A units of
+/// π/256 (0x1008E168 · 0x1008E170), S = 59.163303 · zoom (0x1008E1A0). Screen x
+/// is column 0 of the product (AnnoDisplay.dll 0x10011e60), screen y is H minus
+/// column 1; the world point is (tile x, height, tile y) (AnnoWelt.dll terrain
+/// builder 0x1009b920, vertex at 0x1009bba5-0x1009bbf3: x = the stride-1 column
+/// of the row-major island grid, 0x1009e740). Returns the screen offset of tile
+/// point (tx, ty) at height 0.
+std::pair<double, double> original_camera(double tx, double ty, double zoom) {
+    const double pi = 3.141592654;
+    const double a = 0xC0 * pi / 256.0, b = 0x2A * pi / 256.0, k = 59.163303 * zoom;
+    const double c = std::cos(a), s = std::sin(a), sb = std::sin(b);
+    // Column 0 of Ry · Rx = (c, 0, s); column 1 = (−s·sb, cb, c·sb).
+    return {k * (c * tx + s * ty), -k * (-s * sb * tx + c * sb * ty)};
+}
+
+/// Whether a tile-to-screen mapping f(x, y, group) has the original camera's
+/// handedness at every built group and its scale at group 0 (within the
+/// sprites' rounding of 83.67 × 41.24 to 84 × 42, half a pixel per tile).
+template <class F> bool fits_original_camera(F&& f) {
+    const double zoom[] = {1.0, 0.5, 0.25};
+    for (std::size_t g = 0; g < render::kGroups; ++g) {
+        for (const auto& [tx, ty] : {std::pair{1, 0}, std::pair{0, 1}, std::pair{3, 1}}) {
+            const auto [ox, oy] = original_camera(tx, ty, zoom[g]);
+            const auto [sx, sy] = f(tx, ty, g);
+            if ((sx > 0) != (ox > 0) || (sx < 0) != (ox < 0) || (sy > 0) != (oy > 0)) {
+                return false;
+            }
+            if (g == 0 &&
+                (std::fabs(sx - ox) > 0.5 * (tx + ty) || std::fabs(sy - oy) > 0.5 * (tx + ty))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+} // namespace
+
+TEST_CASE("projection: tile_top has the handedness and scale of the original's camera") {
+    // The documented numbers (annodisplay.md §5): one world unit along x or z is
+    // 41.835 px across and 20.620 px down at zoom 0, with +x to the left.
+    const auto [x1, y1] = original_camera(1, 0, 1.0);
+    const auto [x2, y2] = original_camera(0, 1, 1.0);
+    CHECK(x1 == doctest::Approx(-41.835).epsilon(1e-4));
+    CHECK(y1 == doctest::Approx(20.620).epsilon(1e-4));
+    CHECK(x2 == doctest::Approx(41.835).epsilon(1e-4));
+    CHECK(y2 == doctest::Approx(20.620).epsilon(1e-4));
+    CHECK(fits_original_camera(render::tile_top));
+    // Negative control: the mirrored projection this renderer used before
+    // 2026-11-03 ((x − y) · tw/2) has the wrong handedness and fails.
+    auto mirrored = [](int x, int y, std::size_t g) {
+        const auto [tw, th] = render::kTile[g];
+        return std::pair{(x - y) * tw / 2, (x + y) * th / 2};
+    };
+    CHECK_FALSE(fits_original_camera(mirrored));
+}
+
+TEST_CASE("projection: screen_tile inverts tile_top") {
+    for (std::size_t g = 0; g < render::kGroups; ++g) {
+        const auto [tw, th] = render::kTile[g];
+        for (const auto& [x, y] : {std::pair{0, 0}, std::pair{5, 2}, std::pair{2, 5},
+                                   std::pair{-7, 3}, std::pair{640, 512}}) {
+            const auto [sx, sy] = render::tile_top(x, y, g);
+            const auto [tx, ty] =
+                render::screen_tile(static_cast<float>(sx), static_cast<float>(sy),
+                                    static_cast<float>(tw), static_cast<float>(th));
+            // Group 1's 21 px tile height rounds (x + y) · 21 / 2 toward zero.
+            const float tol = th % 2 == 0 ? 0.0F : 0.5F / static_cast<float>(th);
+            CHECK(std::fabs(tx - static_cast<float>(x)) <= tol);
+            CHECK(std::fabs(ty - static_cast<float>(y)) <= tol);
+        }
+    }
+    // One tile width to the right is (x − 1, y + 1), as the original's hovered
+    // tile moves (docs/re/view.md §2.1); one tile height down is (x + 1, y + 1).
+    const auto [ax, ay] = render::screen_tile(84.0F, 0.0F, 84.0F, 42.0F);
+    CHECK(ax == -1.0F);
+    CHECK(ay == 1.0F);
+    const auto [bx, by] = render::screen_tile(0.0F, 42.0F, 84.0F, 42.0F);
+    CHECK(bx == 1.0F);
+    CHECK(by == 1.0F);
+}
+
+TEST_CASE("projection: the ground probe picks the tile drawn at a pixel") {
+    // A flat 6 × 4 island (height 0, texture 0): the probe holds the tile
+    // position of the terrain point drawn at each pixel, what picking reads.
+    const std::size_t w = 6, h = 4;
+    const std::vector<std::uint16_t> gfx(w * h, 0);
+    const std::vector<std::uint8_t> heights(w * h, 0);
+    for (std::size_t g = 0; g < render::kGroups; ++g) {
+        const auto [tw, th] = render::kTile[g];
+        render::Canvas canvas;
+        const int wi = static_cast<int>(w), hi = static_cast<int>(h);
+        canvas.width = static_cast<std::size_t>((wi + hi) * tw / 2);
+        canvas.height = static_cast<std::size_t>((wi + hi) * th / 2);
+        canvas.origin = {-static_cast<int>(w) * tw / 2, 0};
+        canvas.pixels.assign(canvas.width * canvas.height * 4, 0);
+        render::GroundProbe probe = render::GroundProbe::for_canvas(canvas);
+        render::draw_ground_grids(canvas, w, h, gfx, heights,
+                                  anno::assets::island::GroundTextures{}, g, render::kNoLift,
+                                  &probe);
+        for (const auto& [x, y] :
+             {std::pair{0, 0}, std::pair{5, 0}, std::pair{0, 3}, std::pair{4, 1}}) {
+            // The pixel at the centre of tile (x, y)'s diamond.
+            const auto [sx, sy] = render::tile_top(x, y, g);
+            const auto i = canvas.index(sx, sy + th / 2);
+            REQUIRE(i);
+            const auto [px, py] = probe.pos[*i / 4];
+            REQUIRE(std::isfinite(px));
+            REQUIRE(std::isfinite(py));
+            CHECK(static_cast<int>(std::floor(px)) == x);
+            CHECK(static_cast<int>(std::floor(py)) == y);
+        }
+        // The island's +x end (tile (5, 0), left vertex corner (6, 0) at
+        // screen (−3 tw, 3 th)) lies at its left edge and the +y end (tile
+        // (0, 3), right vertex corner (0, 4) at (2 tw, 2 th)) at its right
+        // edge; a quarter tile inside each vertex the diamond is th/4 high.
+        const auto left = canvas.index(-3 * tw + tw / 4, 3 * th);
+        const auto right = canvas.index(2 * tw - tw / 4, 2 * th);
+        REQUIRE(left);
+        REQUIRE(right);
+        REQUIRE(std::isfinite(probe.pos[*left / 4][0]));
+        REQUIRE(std::isfinite(probe.pos[*right / 4][0]));
+        CHECK(static_cast<int>(std::floor(probe.pos[*left / 4][0])) == 5);
+        CHECK(static_cast<int>(std::floor(probe.pos[*left / 4][1])) == 0);
+        CHECK(static_cast<int>(std::floor(probe.pos[*right / 4][0])) == 0);
+        CHECK(static_cast<int>(std::floor(probe.pos[*right / 4][1])) == 3);
+    }
 }
 
 TEST_CASE("layout: offsets, bounds and order") {
@@ -84,11 +217,12 @@ TEST_CASE("layout: offsets, bounds and order") {
     REQUIRE(p.size() == 2);
     CHECK(p[0].index == 1);
     CHECK(p[1].index == 0);
-    CHECK(p[1].offset == std::pair{(10 - 4) * 42, (10 + 4) * 21});
-    CHECK(p[1].bounds == Rect{6 * 42 - 6 * 42, 14 * 21 - render::margin(0), (8 + 6) * 42,
+    CHECK(p[1].offset == std::pair{(4 - 10) * 42, (10 + 4) * 21});
+    // The leftmost point is corner (x + w, y), the rightmost (x, y + h).
+    CHECK(p[1].bounds == Rect{-6 * 42 - 8 * 42, 14 * 21 - render::margin(0), (8 + 6) * 42,
                               (8 + 6) * 21 + render::margin(0)});
     CHECK(p[0].offset == std::pair{0, 0});
-    CHECK(render::scene_bounds(p) == Rect{-4 * 42, -render::margin(0), 4 * 42 + 6 * 42 + 8 * 42,
+    CHECK(render::scene_bounds(p) == Rect{-14 * 42, -render::margin(0), 14 * 42 + 4 * 42,
                                           14 * 21 + 14 * 21 + render::margin(0)});
     CHECK_FALSE(render::scene_bounds({}));
     // The bounds rectangle equals Canvas::for_island shifted by the offset.
@@ -96,20 +230,20 @@ TEST_CASE("layout: offsets, bounds and order") {
     const auto q = render::layout(one, 1)[0];
     const auto [tw, th] = render::kTile[1];
     CHECK(q.offset == render::tile_top(3, 5, 1));
-    CHECK(q.bounds.x - q.offset.first == -2 * tw / 2);
+    CHECK(q.bounds.x - q.offset.first == -7 * tw / 2);
     CHECK(q.bounds.w == 9 * tw / 2);
     CHECK(q.bounds.h == 9 * th / 2 + render::margin(1));
 }
 
 TEST_CASE("unit anchor projects the world point onto the sea surface") {
     render::UnitSprite u{10.5F, 4.5F, std::nullopt, {}, {}};
-    // Group 2 tile 20 × 10: ((x − y)·10, (x + y)·5).
-    CHECK(u.anchor(2, render::kNoLift) == std::pair{60, 75});
+    // Group 2 tile 20 × 10: ((y − x)·10, (x + y)·5).
+    CHECK(u.anchor(2, render::kNoLift) == std::pair{-60, 75});
     // Sea surface 32 units at 2.059 px per unit and group 0, scaled by 20/84.
-    CHECK(u.anchor(2, render::kHeightLift) == std::pair{60, 60});
+    CHECK(u.anchor(2, render::kHeightLift) == std::pair{-60, 60});
     // On the ground at height 16: half the sea-surface lift.
     u.z = 16.0F;
-    CHECK(u.anchor(2, render::kHeightLift) == std::pair{60, 68});
+    CHECK(u.anchor(2, render::kHeightLift) == std::pair{-60, 68});
 }
 
 TEST_CASE("rect operations") {
@@ -379,6 +513,45 @@ TEST_CASE("chunk profile: off without a sink, nested stages counted exclusively"
     CHECK(t[profile::Stage::objects] == before);
 }
 
+// The shore (owner 2026-11-03: corners at 16 are water, as the original draws them at a Kontor's
+// water edge; docs/render/iso.md "Water"). A plateau at exactly 16: water by default, land with
+// the shore at 16 (the renderer's choice until then); 17 is land either way.
+TEST_CASE("the shore: terrain at 16 is water by default, land with the shore at 16") {
+    namespace sea = render::sea;
+    const auto plateau = [](std::uint8_t height) {
+        sea::IslandWater iw;
+        iw.w = 16;
+        iw.h = 16;
+        iw.heights.assign(iw.w * iw.h, height);
+        iw.sea_chunk.assign(4, true);
+        iw.river.assign(iw.w * iw.h, std::numeric_limits<float>::quiet_NaN());
+        return iw;
+    };
+    CHECK(render::kShoreHeight == 16.5F);
+    sea::IslandWater at16 = plateau(16);
+    CHECK(at16.shore_height == render::kShoreHeight);
+    const sea::TileGround g = sea::tile_ground(at16, 8.5F, 8.5F);
+    CHECK(g.original_water);
+    at16.shore_height = 16.0F;
+    const sea::TileGround g16 = sea::tile_ground(at16, 8.5F, 8.5F);
+    CHECK_FALSE(g16.original_water);
+    // The enhanced water's zero moves with the shore (its shore noise is the same at both).
+    CHECK(g.sd - g16.sd == doctest::Approx(0.5F));
+    const sea::IslandWater at17 = plateau(17);
+    CHECK_FALSE(sea::tile_ground(at17, 8.5F, 8.5F).original_water);
+    // The shore distance: a corner at 16 is water (distance > 0) by default, land at 16.
+    const std::vector<std::uint8_t> row{15, 16, 17};
+    const auto d = render::shore_distance(row, 3, 1);
+    CHECK(d[0] > 0.0F);
+    CHECK(d[1] > 0.0F);
+    CHECK(d[2] == 0.0F);
+    const auto d16 = render::shore_distance(row, 3, 1, 16.0F);
+    CHECK(d16[0] > 0.0F);
+    CHECK(d16[1] == 0.0F);
+    // The empty-cell bound follows the shore.
+    CHECK(sea::empty_land_height(16.0F) == doctest::Approx(sea::kEmptyLandHeight - 0.5F));
+}
+
 TEST_CASE("water field: every position in an empty cell gets the empty texel") {
     namespace sea = render::sea;
     // A synthetic island: a ridge whose corners run through the waterline and
@@ -499,12 +672,49 @@ TEST_CASE("SmoothSampler equals smooth_height and height_noise, bit for bit") {
     CHECK(n > 30000);
     CHECK(differ == 0);
 }
+// The same proof at the default shore (16.5) and a much higher one (40: the bound follows the
+// island's shore; the default's bound, 31.6, would mark wet ridge cells empty there, and its
+// margin over the dry-land threshold, kSlopeBand against shore_edge + run_max, hides a smaller
+// shore): the empty-cell shortcut leaves every byte of the synthetic scene's field as the full
+// evaluation has it.
+TEST_CASE("water field: at the default shore and a higher one the empty cells leave the field as "
+          "it is") {
+    namespace sea = render::sea;
+    for (const float shore : {render::kShoreHeight, 40.0F}) {
+        CAPTURE(shore);
+        auto s = render::test::field_scene();
+        auto water = [&](std::size_t i) -> const sea::IslandWater* {
+            return i < s.islands.size() ? &s.islands[i] : nullptr;
+        };
+        for (auto& iw : s.islands) {
+            CHECK(iw.shore_height == render::kShoreHeight);
+            iw.shore_height = shore;
+        }
+        const std::uint64_t full =
+            render::test::field_digest(sea::water_field(s.rect, s.probe, water));
+        std::size_t empty = 0;
+        for (auto& iw : s.islands) {
+            iw.classify_cells();
+            empty +=
+                static_cast<std::size_t>(std::count(iw.empty_cell.begin(), iw.empty_cell.end(), 1));
+        }
+        CHECK(empty > 0);
+        CHECK(render::test::field_digest(sea::water_field(s.rect, s.probe, water)) == full);
+        CHECK(full != 0x51aadd2b3bf2a795ULL); // another field than at the shore of 16
+    }
+}
+
 TEST_CASE("water field: the synthetic scene's digest is the one before the T1f speedups") {
     // Recorded with the sources of 7479a2a (tests/water_field_fixture.hpp): every
     // shortcut must leave every byte as it was, classified or not.
     constexpr std::uint64_t kGolden = 0x51aadd2b3bf2a795ULL;
     namespace sea = render::sea;
     auto s = render::test::field_scene();
+    // Recorded with the shore at 16, the renderer's until 2026-11-03 (still selectable); the
+    // default shore's field is checked against its own unclassified field below.
+    for (auto& iw : s.islands) {
+        iw.shore_height = 16.0F;
+    }
     auto water = [&](std::size_t i) -> const sea::IslandWater* {
         return i < s.islands.size() ? &s.islands[i] : nullptr;
     };
@@ -555,7 +765,7 @@ TEST_CASE("water field: a tile is empty exactly when its 16 spline corners clear
     auto marked = [](const sea::IslandWater& iw) {
         return static_cast<std::size_t>(std::count(iw.empty_cell.begin(), iw.empty_cell.end(), 1));
     };
-    // The threshold: 31 < kEmptyLandHeight = 31.1 <= 32.
+    // The threshold: 31 < kEmptyLandHeight = 31.6 <= 32.
     auto low = plateau(31);
     low.classify_cells();
     CHECK(marked(low) == 0);

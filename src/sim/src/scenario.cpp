@@ -7,6 +7,7 @@
 #include <anno/sim/create.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/scenario.hpp>
+#include <anno/sim/ship.hpp>
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
@@ -183,6 +184,10 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     out.index = is.slot;
     static_cast<void>(out.tiles.reset(is.x0, is.y0, is.w, is.h, cfg.chunk_edge));
     out.climate = is.climate;
+    out.lock = is.lock;
+    out.kontor_counter = is.kontor_counter;
+    out.players_present = is.players_present;
+    out.ore_objects = is.ore_objects;
     out.terrain = is.terrain;
     const std::uint64_t tiles = out.tiles.tile_count();
     // Tiles after the last run are neutral.
@@ -206,13 +211,15 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
         if (ty == nullptr) {
             out.tiles.set_object(o.index, o.object);
             out.tiles.set_phase(o.index, o.phase);
+            out.tiles.set_item_height(o.index, o.height);
             continue;
         }
         const std::int32_t ox =
             out.tiles.x0() + static_cast<std::int32_t>(o.index % out.tiles.width());
         const std::int32_t oy =
             out.tiles.y0() + static_cast<std::int32_t>(o.index / out.tiles.width());
-        static_cast<void>(place_object_record(out.tiles, types, *ty, ox, oy, o.rotation, o.phase));
+        static_cast<void>(
+            place_object_record(out.tiles, types, *ty, ox, oy, o.rotation, o.phase, o.height));
     }
     out.deposits.reserve(is.deposits.size());
     for (const Spec::DepositSpec& d : is.deposits) {
@@ -238,6 +245,7 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     for (const std::size_t k : order) {
         const Spec::CitySpec& cs = is.cities[k];
         City city = make_city(cs.no, cs.owner, cfg);
+        city.player_mask = cs.player_mask;
         if (cs.capacity.has_value()) {
             city.stock.capacity = *cs.capacity;
         }
@@ -255,6 +263,11 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
         }
         out.cities[cs.no.v] = std::move(city);
     }
+    // The ring's allocation cursor is the slot of the LAST city added in load order (D 0x100967e0
+    // sets ring+0x40 at every add, STADT2 adds in file order); the creation loop above is sorted by
+    // number, so the cursor comes from the spec's last entry (the adapter lists cities in file
+    // order). No city: -1. docs/sim/city-creation.md E3, section 3.
+    out.city_cursor = is.cities.empty() ? -1 : static_cast<std::int32_t>(is.cities.back().no.v);
     for (const std::size_t k : order) {
         const Spec::CitySpec& cs = is.cities[k];
         City& city = *out.cities[cs.no.v];
@@ -266,6 +279,7 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
             rec.y = bs.y;
             rec.rotation = bs.rotation;
             rec.byte0f = bs.byte0f;
+            rec.kontor_id = bs.kontor_id;
             const auto made = create_building(cfg, rules, types, out, city, rec, 0,
                                               bs.payload.has_value() ? &*bs.payload : nullptr);
             if (!made.ok()) {
@@ -322,6 +336,20 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
             return p + ".id: slot " + std::to_string(ps.id.v) + " is used twice";
         }
         player_taken[ps.id.v] = 1;
+        {
+            // The relation and discovery shape (validate_players checks the built world again).
+            for (std::size_t r = 0; r < ps.relations.size(); ++r) {
+                const Relation& rel = ps.relations[r];
+                if (!rel.other.valid() || rel.other.v >= config.player_slots ||
+                    rel.other == ps.id || (r > 0 && !(ps.relations[r - 1].other < rel.other))) {
+                    return p + ".relations[" + std::to_string(r) +
+                           "]: not ascending, unique, below player_slots and other than the player";
+                }
+            }
+            if (!is_player_set(ps.discovery, config.player_slots)) {
+                return p + ".discovery: not an ascending unique set below player_slots";
+            }
+        }
         if (!ps.research.empty() && ps.research.size() != config.research_entries) {
             return p + ".research: " + std::to_string(ps.research.size()) +
                    " entries, SimConfig.research_entries is " +
@@ -364,6 +392,64 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         return problem;
     }
 
+    // The figures (MAP-2): their kind and goods are in the registry, their owner is a seated
+    // player, their parent is an earlier figure of the same owner, their position is inside
+    // the world. Nothing is built yet.
+    for (std::size_t i = 0; i < spec.figures.size(); ++i) {
+        const Spec::FigureSpec& fs = spec.figures[i];
+        const std::string p = idx_path("figures", i);
+        if (types->find_figure_type(fs.kind) == nullptr) {
+            return p + ".kind: " + std::to_string(fs.kind) +
+                   " is not a figure type of the registry";
+        }
+        if (!fs.owner.valid() || fs.owner.v >= config.player_slots ||
+            player_taken[fs.owner.v] == 0) {
+            return p + ".owner: " + std::to_string(fs.owner.v) + " is not a player of the scenario";
+        }
+        if (fs.dir16 > 15) {
+            return p + ".dir16: " + std::to_string(fs.dir16) + " is not in 0 .. 15";
+        }
+        const std::int64_t w_fixed = std::int64_t{spec.settings.world_width} * 256;
+        const std::int64_t h_fixed = std::int64_t{spec.settings.world_height} * 256;
+        if (fs.pos.x < 0 || fs.pos.y < 0 || fs.pos.x >= w_fixed || fs.pos.y >= h_fixed) {
+            return p + ".pos: (" + std::to_string(fs.pos.x) + ", " + std::to_string(fs.pos.y) +
+                   ") is outside the " + std::to_string(spec.settings.world_width) + " x " +
+                   std::to_string(spec.settings.world_height) + " tile world";
+        }
+        if (fs.parent.has_value()) {
+            if (*fs.parent >= i) {
+                return p + ".parent: " + std::to_string(*fs.parent) +
+                       " is not an earlier figure of the scenario";
+            }
+            if (spec.figures[*fs.parent].owner != fs.owner) {
+                return p + ".owner: differs from the owner of its parent figures[" +
+                       std::to_string(*fs.parent) + "]";
+            }
+        } else if (fs.crew_slot.has_value()) {
+            return p + ".crew_slot: the figure has no parent";
+        }
+        for (std::size_t h = 0; h < fs.holds.size(); ++h) {
+            if (types->goods(fs.holds[h].goods) == nullptr) {
+                return p + ".holds[" + std::to_string(h) +
+                       "].goods: " + std::to_string(fs.holds[h].goods) +
+                       " is not in the goods table";
+            }
+        }
+        {
+            const FigureType* ft = types->find_figure_type(fs.kind);
+            if (fs.health.has_value() && fs.health_unknown) {
+                return p + ".health: a value and health_unknown are exclusive";
+            }
+            if ((fs.health.has_value() || fs.health_unknown) && (ft == nullptr || !ft->nav)) {
+                return p + ".health: figure type " + std::to_string(fs.kind) + " does not navigate";
+            }
+            if (fs.health.has_value() && *fs.health > ft->nav->max_hp) {
+                return p + ".health: " + std::to_string(*fs.health) +
+                       " is above the type's max_hp " + std::to_string(ft->nav->max_hp);
+            }
+        }
+    }
+
     // 2. Configuration, rules, settings, seams, the PRNG and the players.
     World w;
     w.config_ = std::move(config);
@@ -390,10 +476,47 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         p.flags_a0 = ps.flags_a0;
         p.default_colour = ps.colour == 0xff ? kNoColour : static_cast<std::uint32_t>(ps.colour);
         p.name = ps.name;
+        p.relations = ps.relations;
+        p.discovery = ps.discovery;
         if (!ps.research.empty()) {
             p.research.state = ps.research;
         }
         w.players_.slots[ps.id.v] = std::move(p);
+    }
+
+    // The figures, ids from the world counter in spec order. A parent is an earlier figure,
+    // so its id is known here.
+    std::vector<FigureId> figure_ids;
+    figure_ids.reserve(spec.figures.size());
+    for (std::size_t i = 0; i < spec.figures.size(); ++i) {
+        const Spec::FigureSpec& fs = spec.figures[i];
+        Figure f;
+        f.id = FigureId{w.ids_.next_figure};
+        const FigureId id = f.id;
+        f.kind = fs.kind;
+        f.owner = fs.owner;
+        f.pos = fs.pos;
+        f.dir16 = fs.dir16;
+        if (fs.parent.has_value()) {
+            f.parent = figure_ids[*fs.parent];
+        }
+        f.crew_slot = fs.crew_slot;
+        f.holds = fs.holds;
+        f.state_word = fs.state_word;
+        if (const FigureType* ft = w.types_->find_figure_type(fs.kind); ft != nullptr && ft->nav) {
+            // The position is inside the configured world (checked above), far below 2^22 Q8, so
+            // pos * 500 * 2^24 stays inside i64.
+            f.nav = make_nav_motion(f.pos, static_cast<std::uint16_t>(w.clock_.tick()));
+            // A new expedition starts at full health unless the spec says otherwise (N4).
+            if (!fs.health_unknown) {
+                f.nav->health = fs.health.value_or(ft->nav->max_hp);
+            }
+        }
+        if (add_figure(w.figures_, std::move(f), w.config_, w.rules_) == kNoSlot) {
+            return idx_path("figures", i) + ": the figure registry cannot take it";
+        }
+        figure_ids.push_back(id);
+        ++w.ids_.next_figure;
     }
 
     // 3. Islands by slot (the rectangles were checked above). The content of each

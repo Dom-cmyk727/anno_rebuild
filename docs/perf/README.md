@@ -444,7 +444,7 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 ### 2026-10-21 - T1f item 2: exact shortcuts in the field and terrain stages (branch task/T1f-chunk-build-speed, 9b14840 for the numbers; 84ec121 adds only tests and named constants)
 
 **What changed.** Every output byte is identical: the digests are unchanged, and there is a golden digest from before the change in CI. Exactness was the owner's condition; the proof is in `docs/render/iso.md` "Water field: empty cells".
-- **Empty cells:** once per island, the tiles whose every position provably gets the empty water-field texel (no river nearby, and no sea in the block or every spline corner ≥ 31.1) are marked, and `water_field` writes the empty texel there without evaluating it. On the game's islands 37 % of all tiles are empty.
+- **Empty cells:** once per island, the tiles whose every position provably gets the empty water-field texel (no river nearby, and no sea in the block or every spline corner ≥ 31.1; 31.6 since the default shore moved to 16.5 on 2026-11-03, the same whole-number corners) are marked, and `water_field` writes the empty texel there without evaluating it. On the game's islands 37 % of all tiles are empty.
 - **Noise:** `height_noise` without the second noise plane, whose weight is exactly 0 at the integer z it uses.
 - **Samplers:** `smooth_height` and the noise sampled through per-tile and per-cell caches, with the same arithmetic.
 - **Terrain:** built per tile (`terrain_plane`) instead of `terrain_at` per pixel.
@@ -947,3 +947,999 @@ Window thread on the same host, code head `f9db0bb`, `--play` of `00_1024_easyen
 | paused | 3840×1421 | (loop waiting) | 0.4 ms | 13.0 ms, of which surface configure 9.6 | 0.3 ms |
 
 A requested 3840×2160 client is clamped to 3840×1421: the primary display is 2560×1440 and the virtual screen is 4480×1440. Pause stops the frame loop (`SDL_WaitEventTimeout`), so a paused interval has no steady fps; the averages above are the frames of the event that woke it, and the play line of that meter said `paused`. Across a 5 s pause at 3840×1421 the tick stayed put, then the wake-up line had advanced 100 ticks (200 ms of game time).
+
+## W4.3 A7b — whole-scene rebuild cost on the fixed map (Mac M5 Max, 2026-10-30)
+
+Probe: `src/app/tests/scene_probe_test.cpp` (`ANNO_PROBE=1`, game files, not a gate). Host: Apple M5 Max, macOS 27.0.1, arm64, Apple clang 21, Debug build (`dev` preset), commit of the W4.3 branch at the probe (the merge of the Mac host support plus A8). Map: `data/maps/lan5.txt` (21 islands, 2 tick-0 buildings; the 50-build burst adds 50 copies). Times are single runs per row, except the first row (5 runs).
+
+| measure | time |
+|---|---|
+| one change: full scene build as `--play` does it (file reads of `Felder.tex` and `Anlagen.dat`, parse, textures, buildings, `Scene` constructor, units), 5 runs | 6.73 to 6.85 s |
+| `Scene` constructor from the parts a built scene holds (copies, no file read or parse) | 0.47 s |
+| first sea pattern of a fresh scene (`sea(group 2)`, built lazily) | 0.25 s |
+| `prefetch_river_flow` of a fresh scene (no flow is built by it) | 0.1 ms |
+| 50-build burst, one coalesced rebuild (52 buildings) | 6.77 s |
+
+The burst costs one rebuild, as the coalescing rule intends: the cost is per rebuild, not per build. The probe's memory line (private bytes of one held scene) reads +0 MiB: freed pages are reused, so this method does not measure a scene's size. Not measured: the scene's resident size.
+
+Reading: whole-scene replacement costs at least 0.47 s + 0.25 s per change on this map even with every static asset reused, and it rebuilds the sea pattern and the river caches of islands that did not change. A change would be visible about 0.7 s after the sim turn, against the K = 3 frame target (about 50 ms at 60 Hz). See `docs/app/game-shell.md`, "Ownership and generations": the per-island object list is proposed instead.
+
+## W4.3 round du — object-list path and the heavy-item calibration (Mac, 2026-10-30)
+
+Host: Apple M5 Max (18 CPU cores), macOS 27.0.1, arm64, Apple clang 21.0.0, Metal not used here.
+Source: `task/W4-3-live-buildings` after commit `549ffc4` (the probe is `scene_probe_test.cpp`,
+`ANNO_PROBE=1`, game files; not a gate). Map `data/maps/lan5.txt`: 21 islands, 2 buildings at tick 0.
+One change moves one building two tiles right; the burst adds 50 buildings in one batch.
+
+| measure | Debug (`dev`) | Release (`release`) |
+|---|---|---|
+| one island's object-list build (worker), 2 runs x 2 thread settings | 64.98 to 65.92 ms | 9.71 to 10.05 ms |
+| commit on the window thread (new generation, invalidation) | 14.0 to 14.3 ms | 2.8 to 3.0 ms |
+| one change, apply to commit (frames at 60 Hz / 120 Hz) | 79.2 to 80.0 ms (4.8 / 9.6) | 12.5 to 13.1 ms (0.76 / 1.5) |
+| 50-build burst, coalesced into one island rebuild (frames at 60 Hz / 120 Hz) | 80.0 to 80.1 ms (4.8 / 9.6) | 12.7 to 13.1 ms (0.77 / 1.6) |
+
+Latency target (game-shell.md, step 10): K = 3 frames is 50 ms at 60 Hz and 25 ms at 120 Hz. The
+object-list stage meets it in Release (13 ms) and misses it in Debug (80 ms: the build is 65 ms
+of it). The chunk rebuild and the upload are not in these figures: they are measured with the
+GPU and the frame loop (outstanding). The burst costs one rebuild per island, as coalescing intends.
+
+Heavy-item calibration (round du, step "heavy budget"; the reservation model is unchanged): the render
+corpus reserves 256 MiB + 36 bytes per pixel + 1 GiB for the catalog while it is not loaded (render_corpus_test.cpp).
+One process, one worker, `ANNO_TEST_MEASURE_ITEMS=1`, `ANNO_TEST_HEADROOM_MB=8192`, the default stop
+threshold 2048 MiB, the scene renders case ("scene renders match the recorded digests"); log
+`cache/orch-du-calib/heavy-1w-run1.log`, sampler `heavy-1w-run1.samples.csv`. The 16 items that ran:
+
+| item | pixels | reserved GiB | measured growth GiB | growth / reserved |
+|---|---|---|---|---|
+| Single_01 g2 (the largest) | 155 523 200 | 5.46 | 4.70 | 0.86 |
+| Single_10 g0 | 159 244 640 | 5.59 | 4.04 | 0.72 |
+| Single_06 g0 | 32 403 280 | 1.34 | 0.76 | 0.57 |
+| Single_05 g0 | 29 750 640 | 1.25 | 0.57 | 0.46 |
+| the other 12 items | 1 440 000 to 9 728 400 | 0.30 to 0.58 | 0.00 to 0.20 | 0.00 to 0.34 |
+
+The largest growth over a reservation is 0.86: the model is conservative for every measured item.
+Earlier comparison (RSS 4 933 392 KiB against the reservation) was not a valid comparison: the
+process RSS includes everything else in the process, and the reservation is per item. The run did
+not complete: the 17th item (estimate 6 843 933 440 bytes) was refused with `wait deadline` after
+the default 1800 s, because free memory stayed below estimate + headroom (free 9.7 to 15.4 GB,
+headroom 8.6 GB, system compressor occupancy about 24 GiB at the time). The stdio fix did let CTest
+finish (no orphan), so the run ends as a test failure, not a hang. Not yet done: a complete heavy run
+at 1 worker, then 2 and 4 (staged by round du, only when the measured capacity allows).
+
+Object-list path, Debug and Release: `docs/app/game-shell.md`, "Immutable per-island object lists".
+
+## Building picture (W4.3, round dw): `bench_picture`
+
+**Superseded for every legal-city claim (round dy).** This section measured a SYNTHETIC workload: random
+anchors on the first islands of the scene order, anywhere in an island's box (water included), with the types
+of the map's own buildings at load (the two Kontors of the two seated players). It is not a city. The "five"
+tier was 40 such anchors on each of five islands (200 in all), of which two were inhabited; the round-dw review
+matrix wrote "the fixed map's two inhabited islands with 40 generated buildings each", which is wrong (see the
+round-dy correction in docs/orchestration/REPORTS.md). The numbers below stay as they were measured, for that
+workload only; the legal-city measurements are the next section.
+
+Benchmark of the window-side and worker costs of the building picture (`ScenePicture`,
+docs/app/game-shell.md, "Retained work and reclamation"). It is CPU only: no presented frame, no GPU upload.
+
+**Modes.** `micro` is the SYNCHRONOUS microbenchmark of round dv: it waits for the workers every cycle and
+is not a presentation measurement. `async` is a bounded-viewport frame loop with real `ChunkWorkers`: edits
+arrive on a cadence (a burst of `b` every `e` frames, round-robin over the islands), commits and chunk updates
+run every frame, and nothing waits for a worker inside the loop. The drain after the loop has a bound
+(`--drain-s`). After the drain the view's group-2 chunks are compared with a synchronous CPU build of the final
+state, and the picture's drawn objects are compared with the loader's own build of the final building list.
+
+**Workloads** (seeded, island-local, one building per tile; the manifest of each run is saved with its log).
+Five islands and 40 buildings each is the "five" tier on the fixed map `data/maps/lan5.txt` (21 islands in the
+scene). The "dense" tier uses `--per-island` buildings on `--islands` islands: 400 per island on 5 and 12
+islands, and 800 per island on 21 islands (16800 buildings). Validation before each run: every building is an
+island the scene draws, inside the island's local width and height, and on a tile no other building of that
+island holds. The stress tier of round dw was removed: its placements left their islands and were refused.
+The map's own two buildings are replaced by the workload (generation 0 holds the workload).
+
+**Method.** Release build of `bench_picture` (`build/release`), frozen as a copy before the runs. Each
+configuration runs 3 times, each run 2000 frames, `--threads 2` unless stated, `--verify 1`. Percentiles are
+nearest-rank over the samples of a run; the table gives the mean of the 3 runs' percentiles and the worst run's
+maximum. Sample counts are in the table: a configuration with one edit has one apply sample, so its apply row
+is not a distribution. The host: Mac (Apple Silicon); other applications running, the harness itself the
+largest process; not an isolated quiet machine.
+
+**Results (Release, binary sha `067795d733eabcf6`, final matrix, 33 runs, all passed their verification).**
+
+| configuration | stage | samples per run | p50 ms | p95 ms | p99 ms | max ms |
+|---|---|---:|---:|---:|---:|---:|
+| single edit, 5 x 40 | apply (window) | 1 | 0.005 | 0.005 | 0.005 | 0.006 |
+| single edit, 5 x 40 | commit (window) | 2000 | 0.000 | 0.000 | 0.000 | 0.001 |
+| single edit, 5 x 40 | frame: update_chunks (window) | 2000 | 0.003 | 0.004 | 0.004 | 0.011 |
+| single edit, 5 x 40 | job build time (worker) | 1 | 13.643 | 13.643 | 13.643 | 13.686 |
+| single edit, 12 x 400 | apply (window) | 1 | 0.015 | 0.015 | 0.015 | 0.017 |
+| single edit, 12 x 400 | commit (window) | 2000 | 0.000 | 0.000 | 0.000 | 0.001 |
+| single edit, 12 x 400 | frame: update_chunks (window) | 2000 | 0.003 | 0.004 | 0.005 | 0.013 |
+| single edit, 12 x 400 | job build time (worker) | 1 | 14.159 | 14.159 | 14.159 | 14.194 |
+| idle (one edit at frame 0, then none), 5 x 40 | commit (window) | 2000 | 0.000 | 0.000 | 0.000 | 0.031 |
+| idle (one edit at frame 0, then none), 5 x 40 | frame: update_chunks (window) | 2000 | 0.003 | 0.004 | 0.005 | 0.038 |
+| simultaneous edits, one per island, 12 x 400 | apply (window) | 1 | 0.049 | 0.049 | 0.049 | 0.053 |
+| simultaneous edits, one per island, 12 x 400 | commit (window) | 2000 | 0.008 | 0.009 | 0.010 | 0.045 |
+| simultaneous edits, one per island, 12 x 400 | job queue delay (worker) | 12 | 14.683 | 31.863 | 31.863 | 31.968 |
+| simultaneous edits, one per island, 12 x 400 | job build time (worker) | 12 | 2.002 | 14.673 | 14.673 | 14.714 |
+| 50-edit burst, 12 x 400 | apply (window) | 1 | 0.082 | 0.082 | 0.082 | 0.088 |
+| 50-edit burst, 12 x 400 | commit (window) | 2000 | 0.008 | 0.008 | 0.010 | 0.054 |
+| 50-edit burst, 12 x 400 | job queue delay (worker) | 12 | 14.668 | 31.879 | 31.879 | 32.002 |
+| 50-edit burst, 12 x 400 | job build time (worker) | 12 | 2.046 | 14.657 | 14.657 | 14.693 |
+| sustained, 4 edits every frame, 12 x 400 | apply (window) | 2000 | 0.018 | 0.023 | 0.025 | 0.034 |
+| sustained, 4 edits every frame, 12 x 400 | commit (window) | 2000 | 0.009 | 0.009 | 0.010 | 0.028 |
+| sustained, 4 edits every frame, 12 x 400 | frame: update_chunks (window) | 2000 | 0.004 | 0.005 | 0.006 | 0.022 |
+| sustained, 4 edits every frame, 12 x 400 | job queue delay (worker) | 20 | 6.455 | 42.171 | 43.364 | 48.854 |
+| sustained, 4 edits every frame, 12 x 400 | job build time (worker) | 20 | 14.730 | 15.155 | 15.219 | 15.404 |
+| sustained, 4 workers, 12 x 400 | job queue delay (worker) | 29 | 0.088 | 19.264 | 20.364 | 20.612 |
+| sustained, 4 workers, 12 x 400 | job build time (worker) | 29 | 14.965 | 20.106 | 20.681 | 20.897 |
+| sustained, commit every 20 frames (delayed consumer), 12 x 400 | apply (window) | 2000 | 0.018 | 0.024 | 0.026 | 0.038 |
+| sustained, commit every 20 frames (delayed consumer), 12 x 400 | job queue delay (worker) | 18 | 9.022 | 34.642 | 34.642 | 35.700 |
+| sustained + arithmetic busy threads x4 (contention proxy), 12 x 400 | apply (window) | 2000 | 0.020 | 0.025 | 0.030 | 0.087 |
+| sustained + arithmetic busy threads x4 (contention proxy), 12 x 400 | commit (window) | 2000 | 0.009 | 0.010 | 0.013 | 0.041 |
+| sustained + arithmetic busy threads x4 (contention proxy), 12 x 400 | job queue delay (worker) | 22 | 7.752 | 43.781 | 44.989 | 49.558 |
+| dense, 5 x 400, edit every 5 frames (burst 8) | apply (window) | 400 | 0.012 | 0.016 | 0.022 | 0.068 |
+| dense, 5 x 400, edit every 5 frames (burst 8) | commit (window) | 2000 | 0.000 | 0.000 | 0.000 | 0.517 |
+| dense, 5 x 400, edit every 5 frames (burst 8) | job queue delay (worker) | 7 | 1.379 | 31.471 | 31.471 | 31.580 |
+| dense, 5 x 400, edit every 5 frames (burst 8) | job build time (worker) | 7 | 15.019 | 15.180 | 15.180 | 15.219 |
+| dense, 21 x 800, edit every 5 frames (burst 8) | apply (window) | 400 | 0.078 | 0.107 | 0.112 | 0.141 |
+| dense, 21 x 800, edit every 5 frames (burst 8) | commit (window) | 2000 | 0.036 | 0.038 | 0.043 | 0.051 |
+| dense, 21 x 800, edit every 5 frames (burst 8) | job queue delay (worker) | 36 | 5.409 | 38.323 | 39.651 | 40.484 |
+| dense, 21 x 800, edit every 5 frames (burst 8) | job build time (worker) | 36 | 14.932 | 15.261 | 15.346 | 15.470 |
+
+Counters per configuration (last run of the 3; the full table is `cache/dw-measure/SUMMARY.md`): the busiest
+configuration had 8 outstanding islands (the limit), 2.16 MB of estimated island-record bytes in flight or
+finished at peak, a reaper backlog of at most 8 items, and no failed build. Committed islands per run were 12
+for 12 islands, 21 for 21 islands, 5 for 5 islands. Discarded results (superseded while building) occurred in the
+sustained configurations (up to 17 in a run). Coalescing never fired: builds finished before the next change in
+these workloads, so a replaced in-flight build was always discarded instead. No version requeue occurred.
+
+**What these numbers show, and what they do not.**
+
+- The window's cost is small in every configuration: apply, commit and the chunk update are below 0.1 ms at
+  p99 except the dense 21 x 800 commit (0.043 ms p99) and the 50-edit apply (0.082 ms, one sample).
+- A single edit costs one island rebuild of about 14 ms in a worker (5 x 40 and 12 x 400 alike): the build
+  is dominated by a fixed per-island cost (the island's records and lists), not by the number of buildings. That
+  is the first cost to attack (incremental lists per island); it is not yet done.
+- Under a burst, the queue delay dominates: with 2 workers the median wait is about 15 ms and the p95 about 40 ms
+  for 12 islands; 4 workers bring the median to 0.09 ms and the p95 to 19 ms. Two workers cannot keep up with a
+  sustained 4-edits-per-frame stream on 12 islands of 400 buildings (the picture stays behind the sim until the
+  stream stops; the drain takes about 50 ms after the loop).
+- The chunk stage here is the window side of `update_chunks` only. The chunk rebuilds run on the chunk workers
+  and are not timed by this table: that is a gap of the CPU measurement, to be closed with the viewer.
+- The frame targets of PLAN section 0.3 (16.7 ms p99 at 1080p, 60 fps) are presented-frame targets. They are
+  not measured by this CPU unit. Nothing here claims them.
+- Not measured: Release and Debug of the same workload side by side (the Debug table of round dv used the
+  invalid workload and the synchronous loop, and is superseded); the simulation's own load (the arithmetic busy
+  threads are a proxy, labelled as one; a real headless simulation contention run is not done); bytes of the
+  generations and of the chunk caches (only the picture's estimated island-record bytes are counted); the time a
+  reclamation takes (only its counts).
+
+**Measurements that were superseded.** Round dv's Debug table and the first round dw matrix are not evidence for
+this unit: the first used the two-building fixture and the synchronous loop; the second matrix used
+illegal (duplicate-tile) placements produced by the bench and failed its own oracle; both were replaced.
+
+## Building picture on a legal city workload (W4.3, round dy): `bench_picture`
+
+CPU stages only: the time until a change's objects are in a committed generation and until the visible chunks
+it invalidated are rebuilt. No presented frame, no GPU upload, no input: PLAN section 0.3's presentation targets
+and K are not measured here and nothing below claims them.
+
+**Workload** (`LegalWorkload`, a test fixture; `src/app/include/anno/app/legal_workload.hpp`). The fixed map
+`data/maps/lan5.txt` with five human seats and the developer start: five cities, one per start island
+(islands 0 to 4 of 21), each owning its island, with a Kontor and the documented test resources (2000 t of
+each goods here, `--goods-tons`, so that the cities of every case have the same means). Every building is
+placed by the sim through a Build command and a turn (`sim::run_turn`), with the registry's types, rotations and
+footprints, and charged as in play. The fixture chooses candidates by the sim's own read-only rules (footprint
+owner, the D17 placement stand-in, overlap, cost), keeps footprints on land (the original's land classifier,
+`render::kLandAverage`), leaves out the types that need a coast or a mountain (the stand-in does not read those
+flags) and the one placeable type without a sprite set (2227: it draws nothing). Baseline: 40 buildings per
+city (205 with the Kontors, 81 house types and 172 producer types to choose from, every city at least four types);
+`c-one-unrelated` adds 200 per unrelated city (1005 in all, city 0 identical). Not in the workload, because the
+current sim does not support them: roads (20 issued, 20 refused as `Unsupported`, O-4), and a running economy
+(30 settle turns change no city's stock). The density is bounded by the stand-in: about 98% of land candidates
+carry a tile object (scenery, growing items), which it refuses, so a city reaches about 240 buildings before
+the bounded search reports its capacity (`capacity_reached`, `free_land_tiles` in the manifest). This is
+neither a late-game city nor the original's placement rules (the coast, mountain and terrain checks are unread,
+O-27/OQ-052).
+
+**Method.** One case per process, sequential (`tools/bench/picture_matrix.sh`, which stops at the first failing
+case with its status). Release, frozen binary `cache/dy-runs/bench_picture.release-9ca5cb0` (sha256
+`fcf2064a22649d4b…`), source `9ca5cb0`, clean tree. Edits are generated through the sim before the loop; the
+loop publishes their batches on a wall-time schedule (paced: a frame every 16.667 ms, the loop sleeps to the
+deadline) or one per frame (saturation, `s-saturation`). Two picture workers, two chunk workers, a 1920 x 1080
+view at group 2 centred on city 0's first edit. Every case ends with the independent oracle (every island's
+PROD2 items and the chunk layers of the final view against a freshly loaded scene of the final desired state;
+offscreen also the panned view and its derived level 3): all cases passed it. The tables are generated from the
+raw files by `tools/bench/picture_table.py` (latencies recomputed from `events.tsv` through
+`bench_picture --aggregate`). Raw files: `cache/dy-runs/d1-r2/` and `cache/dy-runs/d3d4-r2/` (events, frames,
+chunks, memory, sim, manifest, summary per case).
+
+**Host: NOT quiet.** Apple M5 Max, 18 cores, 48 GiB; load average 3.0 to 3.8 during the runs; another agent's
+renderer (about 89% of a core) and Syncthing (about 82%) were busy at the start (`provenance.txt`). These are
+shared-host measurements. Apple Silicon's frequency and core placement matter: a lightly loaded paced loop
+measured a worker build of 22 to 30 ms, the same build under 16 busy threads or an unpaced simulation thread 13
+to 16 ms (`proxy-busy16-below`, `sim-unpaced-below`), so a slowdown under contention cannot be read off here.
+
+**Definitions.** Object-ready: from an edit's Desired event to the first commit of its island at that version or
+later (a coalesced edit's latency runs to that commit, never dropped). Visible CPU chunks ready: until every
+visible chunk key that commit invalidated is cached again and not stale (an edit whose commit invalidates no
+visible key is counted offscreen). Percentiles are nearest-rank with sample counts; p95 needs 20 samples, p99 100.
+
+### The small set (D1)
+
+| case | status | edits | object-ready ms n / p50 / p95 / p99 / max | visible CPU chunks ready ms n / p50 / p95 / p99 / max | max age ms | coalesced | offscreen | unfinished | worker build ms p50 / max |
+|---|---:|---:|---|---|---:|---:|---:|---:|---|
+| a-idle | 0 | 0 | 0 / 0.0 / insufficient / insufficient / 0.0 | 0 / 0.0 / insufficient / insufficient / 0.0 | 0.0 | 0 | 0 | 0 | 0.0 / 0.0 |
+| b-one | 0 | 1 | 1 / 20.3 / insufficient / insufficient / 20.3 | 1 / 58.8 / insufficient / insufficient / 58.8 | 20.3 | 0 | 0 | 0 | 13.7 / 13.7 |
+| c-one-unrelated | 0 | 1 | 1 / 18.0 / insufficient / insufficient / 18.0 | 1 / 37.2 / insufficient / insufficient / 37.2 | 18.0 | 0 | 0 | 0 | 13.9 / 13.9 |
+| d-burst50 | 0 | 50 | 50 / 41.6 / 62.368334 / insufficient / 62.4 | 40 / 100.2 / 100.318625 / insufficient / 100.3 | 62.4 | 45 | 10 | 0 | 13.6 / 14.1 |
+| e-stream-below | 0 | 100 | 100 / 38.1 / 41.712209 / 41.732500 / 52.3 | 15 / 62.5 / insufficient / insufficient / 82.1 | 52.3 | 0 | 85 | 0 | 27.3 / 36.7 |
+| f-stream-above | 0 | 400 | 400 / 543.7 / 981.566000 / 1018.752750 / 1039.6 | 320 / 606.2 / 1064.461042 / 1101.649667 / 1122.5 | 1039.6 | 395 | 80 | 0 | 13.7 / 15.0 |
+| g-delayed | 0 | 60 | 60 / 99.3 / 1063.038333 / insufficient / 1370.9 | 24 / 203.9 / 1291.127708 / insufficient / 1391.7 | 1370.9 | 9 | 36 | 0 | 21.6 / 35.1 |
+| h-offscreen | 0 | 20 | 20 / 20.8 / 20.909375 / insufficient / 20.9 | 0 / 0.0 / insufficient / insufficient / 0.0 | 20.9 | 0 | 20 | 0 | 13.9 / 17.5 |
+| s-saturation | 0 | 400 | 400 / 36.8 / 54.441375 / 56.000125 / 56.4 | 80 / 96.7 / 100.226917 / insufficient / 100.7 | 56.4 | 395 | 320 | 0 | 14.3 / 14.4 |
+
+Window stages per frame of the measured loop, ms: n / p50 / p95 / p99 / max (apply stages over the frames that published, commit over the frames that committed).
+
+| case | frames | apply: list | apply: reindex | apply: dispatch and copies | commit | chunk update |
+|---|---:|---|---|---|---|---|
+| a-idle | 507 | n=0 | n=0 | n=0 | n=0 | 507 / 0.078 / 0.113 / 0.125 / 0.200 |
+| b-one | 1 | 1 / 0.002 / (n=1) / (n=1) / 0.002 | 1 / 0.001 / (n=1) / (n=1) / 0.001 | 1 / 0.005 / (n=1) / (n=1) / 0.005 | n=0 | 1 / 0.038 / (n=1) / (n=1) / 0.038 |
+| c-one-unrelated | 1 | 1 / 0.003 / (n=1) / (n=1) / 0.003 | 1 / 0.002 / (n=1) / (n=1) / 0.002 | 1 / 0.007 / (n=1) / (n=1) / 0.007 | n=0 | 1 / 0.045 / (n=1) / (n=1) / 0.045 |
+| d-burst50 | 1 | 1 / 0.012 / (n=1) / (n=1) / 0.012 | 1 / 0.026 / (n=1) / (n=1) / 0.026 | 1 / 0.071 / (n=1) / (n=1) / 0.071 | n=0 | 1 / 0.054 / (n=1) / (n=1) / 0.054 |
+| e-stream-below | 500 | 100 / 0.003 / 0.005 / 0.006 / 0.007 | 100 / 0.006 / 0.012 / 0.016 / 0.019 | 100 / 0.014 / 0.024 / 0.031 / 0.031 | 99 / 0.045 / 0.076 / (n=99) / 0.089 | 500 / 0.063 / 0.103 / 0.120 / 0.134 |
+| f-stream-above | 253 | 51 / 0.002 / 0.007 / (n=51) / 0.009 | 51 / 0.007 / 0.020 / (n=51) / 0.025 | 51 / 0.012 / 0.058 / (n=51) / 0.063 | 2 / 0.047 / (n=2) / (n=2) / 0.077 | 253 / 0.075 / 0.124 / 0.139 / 0.170 |
+| g-delayed | 296 | 60 / 0.003 / 0.006 / (n=60) / 0.011 | 60 / 0.006 / 0.011 / (n=60) / 0.013 | 60 / 0.012 / 0.020 / (n=60) / 0.042 | 38 / 0.067 / 0.107 / (n=38) / 0.117 | 296 / 0.048 / 0.098 / 0.116 / 0.146 |
+| h-offscreen | 252 | 20 / 0.002 / 0.003 / (n=20) / 0.003 | 20 / 0.003 / 0.008 / (n=20) / 0.009 | 20 / 0.008 / 0.014 / (n=20) / 0.016 | 20 / 0.036 / 0.081 / (n=20) / 0.085 | 252 / 0.069 / 0.109 / 0.119 / 0.131 |
+| s-saturation | 400 | 400 / 0.000 / 0.000 / 0.000 / 0.002 | 400 / 0.000 / 0.000 / 0.001 / 0.002 | 400 / 0.000 / 0.001 / 0.001 / 0.007 | n=0 | 400 / 0.015 / 0.016 / 0.022 / 0.044 |
+
+| case | peak reservation B | largest result B | estimate shortfalls | peak incremental payload B | peak retired payload B | peak reclaim queue B | peak RSS B | peak footprint B | major faults | host page-outs / swap-outs | oracle |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| a-idle | 0 | 0 | 0 | 0 | 0 | 0 | 1060732928 | 1059259544 | 0 | 0 / 0 | VERIFY OK |
+| b-one | 4507638 | 854377 | 0 | 809773 | 396836 | 0 | 743112704 | 741458832 | 0 | 0 / 0 | VERIFY OK |
+| c-one-unrelated | 4507638 | 854377 | 0 | 809773 | 396836 | 0 | 723795968 | 722174912 | 0 | 0 / 0 | VERIFY OK |
+| d-burst50 | 36061712 | 856551 | 0 | 4049633 | 1984180 | 0 | 749502464 | 747865000 | 0 | 0 / 0 | VERIFY OK |
+| e-stream-below | 4507638 | 855411 | 0 | 4049045 | 1984180 | 0 | 1110097920 | 1108640944 | 0 | 0 / 0 | VERIFY OK |
+| f-stream-above | 36062072 | 858533 | 0 | 4050719 | 1984180 | 0 | 1162067968 | 1160643808 | 0 | 0 / 0 | VERIFY OK |
+| g-delayed | 17628563 | 855411 | 0 | 11337182 | 9272335 | 1111572 | 1138311168 | 1136870600 | 0 | 0 / 0 | VERIFY OK |
+| h-offscreen | 4507782 | 855411 | 0 | 3239218 | 1587344 | 0 | 1161379840 | 1159955704 | 0 | 0 / 0 | VERIFY OK |
+| s-saturation | 36061856 | 858533 | 0 | 4050719 | 1984180 | 0 | 724254720 | 722633664 | 0 | 0 / 0 | VERIFY OK |
+
+`h-offscreen` after the drain: panning to the last edited island took 117.6 ms until every visible group-2 key
+was ready, and zooming out to derived level 3 then took 38.9 ms; both views and the derived level passed the
+oracle.
+
+### Workers, simulation contention and the opt-in policy (D3, D4)
+
+| case | status | edits | object-ready ms n / p50 / p95 / p99 / max | visible CPU chunks ready ms n / p50 / p95 / p99 / max | max age ms | coalesced | offscreen | unfinished | worker build ms p50 / max |
+|---|---:|---:|---|---|---:|---:|---:|---:|---|
+| w1-burst50 | 0 | 50 | 50 / 61.7 / 103.291042 / insufficient / 103.3 | 20 / 124.1 / 124.199125 / insufficient / 124.2 | 103.3 | 45 | 30 | 0 | 13.7 / 14.0 |
+| w2-burst50 | 0 | 50 | 50 / 60.2 / 60.281417 / insufficient / 60.3 | 20 / 101.9 / 101.947792 / insufficient / 102.0 | 60.3 | 45 | 30 | 0 | 13.7 / 14.0 |
+| w4-burst50 | 0 | 50 | 50 / 41.0 / 60.852542 / insufficient / 60.9 | 40 / 102.5 / 102.539375 / insufficient / 102.6 | 60.9 | 45 | 10 | 0 | 18.2 / 20.5 |
+| w1-above | 0 | 400 | 400 / 539.8 / 995.871042 / 1034.325542 / 1055.1 | 160 / 598.1 / 1054.736500 / 1096.389500 / 1117.2 | 1055.1 | 395 | 240 | 0 | 13.2 / 16.7 |
+| w2-above | 0 | 400 | 400 / 535.9 / 994.596750 / 1036.025750 / 1036.1 | 80 / 615.0 / 1057.037917 / insufficient / 1119.3 | 1036.1 | 395 | 320 | 0 | 13.6 / 14.2 |
+| w4-above | 0 | 400 | 400 / 529.6 / 990.898542 / 1031.280750 / 1032.2 | 160 / 607.4 / 1049.253334 / 1090.599292 / 1110.5 | 1032.2 | 395 | 240 | 0 | 14.0 / 17.5 |
+| quiet-below | 0 | 100 | 100 / 39.5 / 41.732292 / 54.624083 / 57.8 | 15 / 77.0 / insufficient / insufficient / 96.3 | 57.8 | 0 | 85 | 0 | 29.8 / 37.7 |
+| sim-below | 0 | 100 | 100 / 41.0 / 41.731583 / 41.737417 / 56.6 | 15 / 62.6 / insufficient / insufficient / 98.3 | 56.6 | 0 | 85 | 0 | 23.7 / 37.1 |
+| sim-unpaced-below | 0 | 100 | 100 / 20.9 / 20.857583 / 20.865542 / 20.9 | 15 / 41.7 / insufficient / insufficient / 41.7 | 20.9 | 0 | 85 | 0 | 13.0 / 14.9 |
+| sim-above | 0 | 400 | 400 / 539.6 / 977.153583 / 1018.748625 / 1039.5 | 80 / 581.3 / 1039.578666 / insufficient / 1102.0 | 1039.5 | 395 | 320 | 0 | 13.1 / 19.8 |
+| proxy-busy16-below | 0 | 100 | 100 / 20.8 / 21.070583 / 21.347417 / 38.4 | 15 / 55.7 / insufficient / insufficient / 74.6 | 38.4 | 0 | 85 | 0 | 15.7 / 20.1 |
+| progress-above | 0 | 400 | 400 / 41.7 / 83.342125 / 123.998458 / 143.9 | 169 / 82.4 / 143.599291 / 181.539708 / 181.5 | 143.9 | 290 | 231 | 0 | 13.6 / 14.2 |
+| progress-below | 0 | 100 | 100 / 41.7 / 41.725083 / 41.732833 / 41.8 | 15 / 62.5 / insufficient / insufficient / 83.3 | 41.8 | 0 | 85 | 0 | 21.8 / 25.6 |
+
+Window stages per frame of the measured loop, ms: n / p50 / p95 / p99 / max (apply stages over the frames that published, commit over the frames that committed).
+
+| case | frames | apply: list | apply: reindex | apply: dispatch and copies | commit | chunk update |
+|---|---:|---|---|---|---|---|
+| w1-burst50 | 1 | 1 / 0.013 / (n=1) / (n=1) / 0.013 | 1 / 0.029 / (n=1) / (n=1) / 0.029 | 1 / 0.064 / (n=1) / (n=1) / 0.064 | n=0 | 1 / 0.044 / (n=1) / (n=1) / 0.044 |
+| w2-burst50 | 1 | 1 / 0.013 / (n=1) / (n=1) / 0.013 | 1 / 0.030 / (n=1) / (n=1) / 0.030 | 1 / 0.070 / (n=1) / (n=1) / 0.070 | n=0 | 1 / 0.055 / (n=1) / (n=1) / 0.055 |
+| w4-burst50 | 1 | 1 / 0.008 / (n=1) / (n=1) / 0.008 | 1 / 0.022 / (n=1) / (n=1) / 0.022 | 1 / 0.068 / (n=1) / (n=1) / 0.068 | n=0 | 1 / 0.042 / (n=1) / (n=1) / 0.042 |
+| w1-above | 252 | 51 / 0.002 / 0.004 / (n=51) / 0.007 | 51 / 0.006 / 0.013 / (n=51) / 0.015 | 51 / 0.010 / 0.030 / (n=51) / 0.040 | 3 / 0.059 / (n=3) / (n=3) / 0.063 | 252 / 0.067 / 0.114 / 0.125 / 0.145 |
+| w2-above | 253 | 52 / 0.002 / 0.006 / (n=52) / 0.007 | 52 / 0.006 / 0.020 / (n=52) / 0.020 | 52 / 0.011 / 0.038 / (n=52) / 0.041 | 2 / 0.051 / (n=2) / (n=2) / 0.100 | 253 / 0.081 / 0.121 / 0.124 / 0.146 |
+| w4-above | 253 | 51 / 0.002 / 0.007 / (n=51) / 0.008 | 51 / 0.007 / 0.017 / (n=51) / 0.021 | 51 / 0.017 / 0.044 / (n=51) / 0.090 | 2 / 0.075 / (n=2) / (n=2) / 0.100 | 253 / 0.083 / 0.124 / 0.135 / 0.149 |
+| quiet-below | 498 | 100 / 0.003 / 0.005 / 0.006 / 0.007 | 100 / 0.007 / 0.012 / 0.018 / 0.020 | 100 / 0.013 / 0.021 / 0.022 / 0.022 | 99 / 0.056 / 0.091 / (n=99) / 0.126 | 498 / 0.061 / 0.095 / 0.111 / 0.117 |
+| sim-below | 487 | 100 / 0.003 / 0.004 / 0.005 / 0.007 | 100 / 0.005 / 0.009 / 0.016 / 0.040 | 100 / 0.011 / 0.018 / 0.029 / 0.058 | 99 / 0.055 / 0.075 / (n=99) / 0.096 | 487 / 0.043 / 0.085 / 0.098 / 0.581 |
+| sim-unpaced-below | 480 | 100 / 0.001 / 0.001 / 0.002 / 0.019 | 100 / 0.002 / 0.003 / 0.003 / 0.003 | 100 / 0.005 / 0.006 / 0.007 / 0.009 | 99 / 0.022 / 0.028 / (n=99) / 0.053 | 480 / 0.020 / 0.031 / 0.040 / 0.090 |
+| sim-above | 249 | 49 / 0.002 / 0.006 / (n=49) / 0.009 | 49 / 0.006 / 0.021 / (n=49) / 0.023 | 49 / 0.008 / 0.054 / (n=49) / 0.072 | 3 / 0.035 / (n=3) / (n=3) / 0.084 | 249 / 0.061 / 0.097 / 0.108 / 0.134 |
+| proxy-busy16-below | 504 | 100 / 0.002 / 0.003 / 0.004 / 0.005 | 100 / 0.005 / 0.014 / 0.022 / 0.056 | 100 / 0.010 / 0.015 / 0.018 / 0.021 | 99 / 0.044 / 0.066 / (n=99) / 0.071 | 504 / 0.042 / 0.068 / 0.098 / 0.185 |
+| progress-above | 250 | 50 / 0.002 / 0.003 / (n=50) / 0.003 | 50 / 0.006 / 0.007 / (n=50) / 0.007 | 50 / 0.010 / 0.012 / (n=50) / 0.013 | 52 / 0.028 / 0.038 / (n=52) / 0.058 | 250 / 0.062 / 0.098 / 0.110 / 0.120 |
+| progress-below | 480 | 100 / 0.002 / 0.004 / 0.004 / 0.006 | 100 / 0.004 / 0.007 / 0.010 / 0.011 | 100 / 0.009 / 0.018 / 0.022 / 0.028 | 99 / 0.051 / 0.065 / (n=99) / 0.077 | 480 / 0.038 / 0.063 / 0.086 / 0.093 |
+
+| case | peak reservation B | largest result B | estimate shortfalls | peak incremental payload B | peak retired payload B | peak reclaim queue B | peak RSS B | peak footprint B | major faults | host page-outs / swap-outs | oracle |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| w1-burst50 | 36061780 | 856551 | 0 | 4049633 | 1984180 | 0 | 768606208 | 766985152 | 0 | 0 / 0 | VERIFY OK |
+| w2-burst50 | 36061604 | 856551 | 0 | 4049633 | 1984180 | 0 | 751058944 | 749405072 | 0 | 0 / 0 | VERIFY OK |
+| w4-burst50 | 36061712 | 856551 | 0 | 4049633 | 1984180 | 0 | 762527744 | 760906688 | 0 | 0 / 0 | VERIFY OK |
+| w1-above | 36061816 | 858533 | 0 | 4050719 | 1984180 | 0 | 1127448576 | 1126008008 | 0 | 0 / 0 | VERIFY OK |
+| w2-above | 36061888 | 858555 | 0 | 4050719 | 1984180 | 0 | 1109606400 | 1108149424 | 0 | 0 / 0 | VERIFY OK |
+| w4-above | 36061816 | 858555 | 0 | 4050719 | 1984180 | 0 | 878542848 | 820380704 | 0 | 0 / 0 | VERIFY OK |
+| quiet-below | 4507638 | 855411 | 0 | 4049045 | 1984180 | 0 | 1134166016 | 1132725448 | 0 | 0 / 0 | VERIFY OK |
+| sim-below | 4507638 | 855411 | 0 | 4445875 | 2381016 | 0 | 1402552320 | 1401275856 | 0 | 0 / 0 | VERIFY OK |
+| sim-unpaced-below | 4507638 | 855411 | 0 | 4049045 | 1984180 | 0 | 1383022592 | 1381713312 | 0 | 0 / 0 | VERIFY OK |
+| sim-above | 36061852 | 858549 | 0 | 4050719 | 1984180 | 0 | 1328529408 | 1327170904 | 0 | 0 / 0 | VERIFY OK |
+| proxy-busy16-below | 4507638 | 855411 | 0 | 4858860 | 2794007 | 0 | 1118896128 | 1117471968 | 0 | 0 / 0 | VERIFY OK |
+| progress-above | 32408011 | 856773 | 0 | 6478976 | 4413829 | 0 | 1128513536 | 1127056560 | 0 | 0 / 0 | VERIFY OK |
+| progress-below | 4507638 | 855411 | 0 | 4445875 | 2381016 | 0 | 1114423296 | 1112982728 | 0 | 0 / 0 | VERIFY OK |
+
+The contention world (`sim-*`) is a second five-city world turned through the production path on its own
+thread, one Build or Demolish command per turn: at the play cadence (10 turns per second) its `sim::run_turn`
+took p50 0.617 ms, p95 1.47 ms, p99 1.57 ms, max 1.84 ms over 100 turns (`sim-below`), with the play runner's
+building diff p50 0.020 ms; unpaced it ran 92 832 turns (37 929 with a command, 54 903 in which the fixture found
+nothing left to place; no refusal by the sim), `run_turn` p50 0.240 ms, p95 0.264 ms (`sim-unpaced-below`).
+State hashes and invariants are in each `summary.txt` (invariants held in all three).
+
+### Findings
+
+- **Target miss: a fast stream starves an island's picture.** With the accepted contract (only the desired
+  version is published), 400 edits at 400 per second (80 per second per island, faster than a 13 ms build plus
+  the next commit) supersede every finished build: object-ready p50 544 ms, max 1040 ms, two commits during the
+  stream (`f-stream-above`); one, two or four workers do not change it (`w1/w2/w4-above`). With the opt-in
+  `publish_progress` (off by default, a decision for review) the same stream gives object-ready p50 42 ms, p95
+  83 ms, p99 124 ms, max 144 ms (`progress-above`), and below capacity it changes nothing (`progress-below`).
+- **Below capacity** (10 edits per second): object-ready p50 38 to 41 ms, max 52 to 58 ms (100 samples);
+  visible CPU chunks ready p50 62 to 77 ms (15 samples: 85 of the 100 edits are on islands outside the view).
+- **A local edit does not pay for unrelated cities.** One build in city 0 with 205 and with 1005 buildings in the
+  world: object-ready 20.3 and 18.0 ms; the window's apply stages (list, reindex, dispatch with the copies) 0.002,
+  0.001, 0.005 ms and 0.003, 0.002, 0.007 ms. The list update and the reindex are O(buildings) passes, but at the
+  sizes this sim admits they stay in microseconds; no incremental index was added (the review's synthetic probe
+  measured 0.084 ms per apply at 100 000 unrelated buildings, also far inside a frame).
+- **Burst of 50** (object-ready p50 and max): one worker 61.7 and 103.3 ms; two workers 41.6 and 62.4 ms in the
+  D1 run and 60.2 and 60.3 ms in the D3 run of the same case (one run each: the difference is run to run, not
+  workers); four workers 41.0 and 60.9 ms.
+- **Delayed consumer and reclaimer** (`g-delayed`: commits every 6 frames, the process reclaimer stalled for 2 s
+  after the first commit): object-ready max 1371 ms, the reclaimer's queue peaked at 1.11 MB of generation
+  metadata and the retired payload at 9.3 MB, and the picture converged after the release.
+- **Retained bytes** (memory tables): reservation peaks at 4.5 MB for one build and 36 MB with eight builds
+  admitted, against a largest measured result of 0.86 MB: the incoming-size estimate is conservative by about
+  five times and was never short (`estimate_shortfalls` 0). Accounted incremental payload peaked at 4.0 MB
+  (11.3 MB in the delayed case), retired payload at 2.0 MB (9.3 MB). RSS stayed 0.72 to 1.16 GB (the sprite and
+  chunk caches dominate); no major fault, no host page-out or swap-out during any case.
+- **Window stages** stay far inside a 16.7 ms frame: apply under 0.07 ms, commit under 0.12 ms, the window side of
+  the chunk update under 0.2 ms (p99 0.14 ms at 60 Hz). The chunk rebuilds run on the chunk workers; only their
+  readiness is measured (per-key ready times in `chunks.tsv`, the workers' smoothed build time in
+  `frames.tsv`), not per-chunk build durations.
+
+**Not measured.** A quiet host (not available: see the host line); Windows, Linux and the RTX/Radeon machine;
+presented frames; a late-game economy or roads; cities denser than the stand-in admits; per-chunk build
+durations.
+
+### Publication policy: Monotonic against LatestOnly (round dz)
+
+The same workload, method and definitions as above; one change per pair, the publication policy
+(`--publish latest` selects LatestOnly; Monotonic is the default since round dz, docs/app/game-shell.md,
+"Publication policy"). Release, frozen binary `cache/dz-runs/bench_picture.release-b12d7d6` (sha256
+`bb3839daf4bd1204…`), source `b12d7d6`, clean tree; the runner recorded `19cb823`, which only adds the cases
+file. Cases `tools/bench/picture_dz.cases` (sha256 `a6e9ce55358f7d1d…`), one after another. Raw files:
+`cache/dz-runs/p4-matrix/`; the one-edit artifact check `cache/dz-runs/p4-one/`. `tools/bench/picture_d3d4.cases`
+still names `--publish-progress`, the round-dy option: it runs only with the round-dy binary it was recorded with.
+The round-dy tables' "peak retired payload" column is what the bench now calls the sampled peak of unreferenced
+payload (below).
+
+**Host: NOT quiet.** The same Apple M5 Max; load average 4.2 to 5.7 during the runs; another executor's simulation
+tests used about 400% CPU at the start (`provenance.txt`). The worker build time of the same below-rate case was
+bimodal over five pairs and three orders, 13.5 to 15.3 ms or 18.9 to 20.5 ms, under either policy
+(`cache/dz-runs/p4-below-reversed/`, `cache/dz-runs/p4-below-pairs/`): a difference of that size between two
+single cases is the host, not the policy, and no speed-up or slowdown is read off frequency or scheduling here.
+
+| case | status | edits | object-ready ms n / p50 / p95 / p99 / max | visible CPU chunks ready ms n / p50 / p95 / p99 / max | max age ms | coalesced | offscreen | unfinished | worker build ms p50 / max |
+|---|---:|---:|---|---|---:|---:|---:|---:|---|
+| m-w1-above | 0 | 400 | 400 / 72.8 / 232.066084 / 272.600375 / 292.6 | 80 / 167.2 / 372.456125 / insufficient / 408.5 | 292.6 | 341 | 320 | 0 | 14.5 / 15.2 |
+| l-w1-above | 0 | 400 | 400 / 549.7 / 1008.468834 / 1057.411458 / 1058.4 | 80 / 624.6 / 1058.436500 / insufficient / 1132.3 | 1058.4 | 395 | 320 | 0 | 14.1 / 15.0 |
+| m-w2-above | 0 | 400 | 400 / 49.0 / 100.957459 / 165.858792 / 208.2 | 75 / 99.4 / 275.647041 / insufficient / 292.9 | 208.2 | 294 | 325 | 0 | 14.4 / 18.5 |
+| l-w2-above | 0 | 400 | 400 / 518.3 / 975.223000 / 1019.909042 / 1024.1 | 80 / 603.0 / 1039.090125 / insufficient / 1108.8 | 1024.1 | 395 | 320 | 0 | 13.7 / 14.2 |
+| m-w4-above | 0 | 400 | 400 / 48.7 / 74.873500 / 98.284500 / 123.3 | 72 / 74.9 / 144.554917 / insufficient / 169.5 | 123.3 | 282 | 328 | 0 | 13.8 / 17.8 |
+| l-w4-above | 0 | 400 | 400 / 531.3 / 975.127125 / 1025.040875 / 1042.2 | 80 / 598.3 / 1042.126208 / insufficient / 1109.2 | 1042.2 | 395 | 320 | 0 | 13.8 / 17.5 |
+| m-below | 0 | 100 | 100 / 25.0 / 43.207791 / 45.859500 / 45.9 | 15 / 50.0 / insufficient / insufficient / 67.2 | 45.9 | 0 | 85 | 0 | 20.9 / 23.7 |
+| l-below | 0 | 100 | 100 / 25.0 / 25.014583 / 25.020209 / 25.0 | 15 / 49.5 / insufficient / insufficient / 50.0 | 25.0 | 0 | 85 | 0 | 13.5 / 14.0 |
+| m-delayed | 0 | 60 | 60 / 106.2 / 852.900292 / insufficient / 1167.4 | 10 / 128.5 / insufficient / insufficient / 1192.4 | 1167.4 | 3 | 50 | 0 | 13.8 / 14.8 |
+| l-delayed | 0 | 60 | 60 / 104.2 / 1016.935750 / insufficient / 1319.7 | 10 / 158.3 / insufficient / insufficient / 1339.9 | 1319.7 | 9 | 50 | 0 | 13.8 / 14.7 |
+| m-offscreen | 0 | 20 | 20 / 24.8 / 25.005750 / insufficient / 25.0 | 0 / 0.0 / insufficient / insufficient / 0.0 | 25.0 | 0 | 20 | 0 | 14.1 / 14.7 |
+| l-offscreen | 0 | 20 | 20 / 23.4 / 25.010167 / insufficient / 25.0 | 0 / 0.0 / insufficient / insufficient / 0.0 | 25.0 | 0 | 20 | 0 | 14.1 / 14.8 |
+
+Version progress (islands committed; of them intermediate, a version below the island's desired one when it was
+committed; results requeued; queued jobs moved to a new generation; results discarded, coalesced; requests
+deferred):
+
+| case | committed | intermediate | requeued | rebased | discarded | coalesced | deferred |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| m-w1-above | 59 | 54 | 7 | 135 | 0 | 7 | 195 |
+| l-w1-above | 5 | 0 | 0 | 4 | 47 | 19 | 166 |
+| m-w2-above | 106 | 101 | 23 | 93 | 0 | 14 | 218 |
+| l-w2-above | 5 | 0 | 0 | 1 | 86 | 36 | 177 |
+| m-w4-above | 118 | 113 | 60 | 5 | 0 | 35 | 188 |
+| l-w4-above | 5 | 0 | 0 | 0 | 166 | 39 | 193 |
+| m-below | 100 | 0 | 0 | 0 | 0 | 0 | 0 |
+| l-below | 100 | 0 | 0 | 0 | 0 | 0 | 0 |
+| m-delayed | 57 | 6 | 1 | 0 | 0 | 1 | 5 |
+| l-delayed | 51 | 0 | 0 | 0 | 6 | 1 | 5 |
+| m-offscreen | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
+| l-offscreen | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+Memory, bytes. Exact: the counter's own peak (the reservation from the credit ledger; incremental payload from
+the payload counter over the process). Sampled: the largest of the per-frame samples, which can miss a shorter
+maximum. Unreferenced: live list and storage payload the current generation does not reference (replaced
+generations still held, results not committed yet, builds in flight); it is not proven to be retired payload only.
+
+| case | exact peak reservation | largest result | estimate shortfalls | exact peak incremental | sampled peak incremental | sampled peak unreferenced | sampled peak reclaim queue | sampled peak RSS | sampled peak footprint | major faults | host page-outs / swap-outs | oracle |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| m-w1-above | 32408011 | 857027 | 0 | 6479666 | 4859322 | 2794043 | 0 | 1171881984 | 1170408672 | 0 | 0 / 0 | VERIFY OK |
+| l-w1-above | 36061816 | 858549 | 0 | 4050719 | 4050719 | 1984180 | 0 | 1146552320 | 1145062600 | 0 | 0 / 0 | VERIFY OK |
+| m-w2-above | 32408011 | 856543 | 0 | 8908751 | 6479060 | 4413883 | 0 | 996179968 | 994641000 | 0 | 0 / 0 | VERIFY OK |
+| l-w2-above | 36061820 | 858533 | 0 | 4050719 | 4050719 | 1984180 | 0 | 1113260032 | 1111770312 | 0 | 0 / 0 | VERIFY OK |
+| m-w4-above | 36042328 | 856447 | 0 | 10528387 | 6478928 | 4413799 | 0 | 874528768 | 823608328 | 0 | 0 / 0 | VERIFY OK |
+| l-w4-above | 36061744 | 858543 | 0 | 4050719 | 4050719 | 1984180 | 0 | 863125504 | 810533872 | 0 | 0 / 0 | VERIFY OK |
+| m-below | 4507638 | 855411 | 0 | 4858872 | 4445869 | 2381016 | 0 | 1106690048 | 1105167512 | 0 | 0 / 0 | VERIFY OK |
+| l-below | 4507638 | 855411 | 0 | 4858872 | 4049045 | 1984180 | 0 | 1121878016 | 1120371888 | 0 | 0 / 0 | VERIFY OK |
+| m-delayed | 22444134 | 855411 | 0 | 12147003 | 12147003 | 10082186 | 1111572 | 1137147904 | 1135674568 | 0 | 0 / 0 | VERIFY OK |
+| l-delayed | 19619812 | 855411 | 0 | 12147003 | 12147003 | 10082186 | 1111572 | 1102069760 | 1100563632 | 0 | 0 / 0 | VERIFY OK |
+| m-offscreen | 4507782 | 855411 | 0 | 4049063 | 3239218 | 1587344 | 0 | 1178386432 | 1176929528 | 0 | 0 / 0 | VERIFY OK |
+| l-offscreen | 4507782 | 855411 | 0 | 4049063 | 3239218 | 1587344 | 0 | 1163575296 | 1162101984 | 0 | 0 / 0 | VERIFY OK |
+
+Window stages (`cache/dz-runs/p4-matrix-table.md`): under Monotonic above the build rate the window commits in
+nearly every frame that publishes (43 to 47 commits in the loop against 1 to 3 under LatestOnly), commit p50 0.033
+to 0.051 ms, max 0.125 ms; apply under 0.06 ms; chunk update max 0.16 ms. All far inside a 16.7 ms frame.
+
+**Findings (round dz).**
+
+- **The stream no longer starves the picture.** At 400 edits per second, object-ready p50 / max: one worker 72.8 /
+  292.6 ms (LatestOnly 549.7 / 1058.4), two workers 49.0 / 208.2 ms (518.3 / 1024.1), four workers 48.7 / 123.3 ms
+  (531.3 / 1042.2); visible CPU chunks ready p50 167.2, 99.4 and 74.9 ms (624.6, 603.0, 598.3). LatestOnly commits
+  5 islands in the whole case, Monotonic 59, 106 and 118, of which 54, 101 and 113 are intermediate versions.
+- **The price is requeued builds, and it grows with the workers**: 7, 23 and 60 requeued results with one, two and
+  four workers. A build that runs while its island's previous version is committed has a change set against lists
+  that are gone and is built again (game-shell.md); more workers run more builds of one island side by side.
+  Each requeue is one build on a worker, not window time.
+- **Below the build rate the policies agree** (no intermediate commit, 100 commits each, object-ready p50 22.1 to
+  25.0 ms over the five pairs; the p95 spread 25 to 45 ms follows the bimodal host, not the policy). Delayed consumer and
+  reclaimer: maximum age 1167 against 1320 ms, the same 1.11 MB reclaimer queue; offscreen and its return: equal.
+- **Retained bytes.** Monotonic keeps finished builds that are ahead, so it holds more payload at once: exact peak
+  incremental payload 6.5, 8.9 and 10.5 MB with one, two and four workers against 4.05 MB, sampled peak
+  unreferenced payload 2.8 and 4.4 MB against 2.0 MB. Reservations stay within the same admission (exact peak 32.4
+  to 36.0 MB under both, inside the 64 MiB budget; no estimate shortfall). RSS 0.86 to 1.18 GB, sampled, on a
+  shared host; no major fault, page-out or swap-out.
+- **Not measured:** the same as above (quiet host, Windows and Linux, presented frames, late-game economy, roads,
+  denser cities, per-chunk build durations); in addition, a stream over many islands at once with Monotonic (the
+  cases edit five cities in turn).
+
+### Evidence finalization and the round-dz tables again (round ea)
+
+`bench_picture` saved its trace first, so a case whose `frames.tsv` could not be saved exited 5 while its trace
+said success, and `--aggregate` exited 0. This was reproduced with the round-dz binary by placing a directory
+named `frames.tsv` in a fresh `--out`. The bench now saves every other file first, then `summary.txt`, then the
+trace. Each file is written whole (a `.partial` renamed into place). `run_end` carries the verdict only when
+everything before it was saved, and 5 otherwise. When the trace itself cannot be saved, no trace and no summary
+remain (`app::finalize_evidence`).
+
+`tools/bench/picture_table.py` now exits 1 when a case's evidence is missing, malformed or incomplete, or when
+its aggregate failed in any other way. It exits 6 when the evidence is complete but a run failed, and 2 without
+`results.tsv`. Every case keeps a row that says why. The contract checks are in
+`tools/bench/picture_matrix_test.sh` (CTest `picture_matrix_contract`).
+
+The round-dz matrices were re-aggregated with the new table and the frozen round-dz binary: `p4-matrix`,
+`p4-one`, `p4-below-pairs` and `p4-below-reversed`. Each exited 0 with no diagnostic, and each output is
+byte-identical to the round-dz table (`cache/ea-runs/p3-reagg-*.md`). Every round-dz case had saved all its
+files, so no saved measurement changes and the matrix was not rerun.
+
+### Edit to GPU-usable on the compositor (round eb)
+
+**What is measured.** `bench_picture --gpu 1` (round eb, 5A) draws every frame of the legal five-city workload
+with the GPU compositor into an offscreen target of the view's size, under the interactive window's limits:
+- 6 uploads per frame;
+- a 1 ms upload budget per frame;
+- stand-ins, and a 150 ms dissolve over them;
+- 96 prefetched chunks.
+
+Per edit:
+- the edit's Desired event;
+- the commit of its object generation (object-ready);
+- every visible key of its island's change CPU-ready at one observation;
+- the same keys GPU-usable at one observation (`GpuFrame::chunk_state`: the compositor's copy is that CPU
+  chunk, whole, not dissolving). The time is the submission of the frame that draws them, the return of
+  `GpuFrame::render` after its queue submit.
+
+**What is not measured:**
+- **GPU completion:** the compositor has no non-blocking completion query, and a blocking wait would
+  change the measurement;
+- **presentation:** headless runs present nothing;
+- **the physical display:** a present call returning is not the pixel reaching it.
+
+So no PLAN §0.3 presented-frame target is claimed. The per-frame "frame" column is the window thread's
+work up to submission: apply, commit, and the compositor's render to its submit. GPU execution time is
+not in it. The known-failing Metal timestamp cases are not used for any number.
+
+**Method.**
+- **Binary:** Release, frozen `cache/eb-runs/bench_picture.release-00dab8d` (sha256 `8fb1892cf5b9ee88…`).
+- **Code:** `00dab8d`. The only uncommitted changes were documentation; the cases file was committed after
+  the run unchanged (sha256 `ca86113fe539692c…`).
+- **Cases:** `tools/bench/picture_eb.cases`, one after another (`picture_matrix.sh`). Raw files:
+  `cache/eb-runs/p5-matrix/` (events, frames, chunks, memory, manifest, summary per case); table
+  `p5-matrix-table.md`.
+- **Workload:** the legal five-city baseline: 40 buildings per city plus a Kontor, 2000 t of test goods,
+  the default seed. It is generated through the sim's Build/Demolish commands and the registry's placement
+  rules.
+- **View:** at group 2 on city 0's first edit. Requested pacing: a frame every 16.667 ms (60 Hz). The
+  observed cadence was slower (round ec correction below): 23 to 25 ms between frame starts.
+- **Workers:** 2 or 4 picture workers, 2 chunk workers.
+- **Viewports:** 1920 × 1080 and 3840 × 2160.
+- **Oracle, every case:**
+  - the CPU chunks and the PROD2 items against a freshly loaded scene of the final state;
+  - the GPU's final view against a compositor of its own drawing that scene, exactly, after the loop.
+  The read-backs wait for the GPU, outside the measurement. All 18 cases passed both.
+- **Canary:** `p5-canary/` (4 cases) ran first.
+- **First matrix (kept):** it failed `idle-uhd-w2` on the GPU oracle only, an oracle defect.
+  `p5-matrix-failed-oracle/`; fixed in `00dab8d`.
+
+**Host:** NOT quiet. Apple M5 Max, 18 cores, 48 GiB, macOS 27.0.1, Metal. Load average 2.3 to 3.0; Syncthing
+used about 80% of a core at the start (`provenance.txt`). These are shared-host numbers on an integrated
+GPU. No speed-up or slowdown is read off frequency or scheduling.
+
+**Results** (ms; n / p50 / p95 / p99 / max; p95 needs 20 samples and p99 100, else "insufficient"):
+
+| case | edits | object-ready | visible CPU-ready | visible GPU-usable (unfinished) | build queue delay | frame (window thread to submission) |
+|---|---:|---|---|---|---|---|
+| idle 1080p, w2 / w4 | 0 | — | — | — | — | 225 / 0.96 / 1.98 / 2.38 / 2.73; 223 / 0.93 / 1.78 / 2.52 / 2.65 |
+| idle 2160p, w2 / w4 | 0 | — | — | — | — | 227 / 1.30 / 2.29 / 2.72 / 3.00; 224 / 1.28 / 2.45 / 2.60 / 2.67 |
+| one 1080p, w2 | 1 | 1 / 19.1 | 1 / 63.4 | 1 / 63.4 (0) | 1 / 0.01 | 4 frames, max 0.99 |
+| one 2160p, w2 | 1 | 1 / 24.6 | 1 / 43.6 | 1 / 43.6 (0) | — | 3 frames, max 1.18 |
+| burst of 50, 1080p, w2 | 50 | 50 / 64.2 / 88.7 / – / 88.7 | 10 / 161.7 / – / – / 161.8 | 10 / 205.1 / – / – / 205.1 (0) | 9 / 10.9 / – / – / 24.5 | 10 frames, max 1.72 |
+| burst of 50, 1080p, w4 | 50 | 50 / 49.0 / 73.4 / – / 73.4 | 10 / 117.0 | 10 / 140.9 (0) | 11 / 0.01 / – / – / 14.1 | 7 frames, max 1.72 |
+| burst of 50, 2160p, w2 / w4 | 50 | 73.1 / 43.4 p50 | 143.6 / 136.9 p50 | 215.1 / 177.5 p50 (0) | — | max 2.10 / 1.99 |
+| sustained 10/s, 1080p, w2 | 100 | 100 / 24.8 / 43.7 / 45.3 / 45.7 | 15 / 50.0 / – / – / 71.1 | 15 / 50.5 / – / – / 89.3 (0) | 100 / 0.02 / 0.03 / 0.03 / 0.03 | 421 / 0.40 / 1.10 / 1.24 / 1.42 |
+| sustained 10/s, 1080p, w4 | 100 | 100 / 24.8 / 43.8 / 45.8 / 46.1 | 15 / 50.0 / – / – / 68.5 | 15 / 50.3 / – / – / 72.4 (0) | — | 419 / 0.41 / 1.17 / 1.38 / 1.61 |
+| sustained 10/s, 2160p, w2 | 100 | 100 / 24.7 / 43.7 / 45.6 / 47.0 | 20 / 50.4 / 70.6 / – / 72.5 | 20 / 50.4 / 72.6 / – / 74.3 (0) | — | 416 / 0.54 / 1.24 / 1.50 / 1.76 |
+| sustained 10/s, 2160p, w4 | 100 | 100 / 24.7 / 41.2 / 42.7 / 43.1 | 20 / 50.3 / 67.5 / – / 67.9 | 20 / 50.3 / 67.9 / – / 74.1 (0) | 100 / 0.02 / 0.03 / 0.03 / 0.03 | 421 / 0.56 / 1.23 / 1.48 / 1.64 |
+| above the build rate, 400/s, 1080p, w2 | 400 | 400 / 47.5 / 97.7 / 119.3 / 136.1 | 74 / 98.7 / 182.6 / – / 207.1 | 74 / 99.2 / 207.0 / – / 213.8 (0) | 151 / 11.8 / 23.4 / 24.4 / 27.4 | 222 / 1.16 / 2.14 / 2.36 / 2.46 |
+| above the build rate, 400/s, 1080p, w4 | 400 | 400 / 44.3 / 73.0 / 91.6 / 122.3 | 74 / 85.1 / 139.2 / – / 180.7 | 74 / 91.9 / 163.3 / – / 204.8 (0) | 223 / 3.0 / 14.2 / 15.6 / 16.3 | 224 / 1.13 / 2.11 / 2.22 / 2.32 |
+
+Visible counts below the edit count are the edits that touched no key of the view (offscreen): 85 or 80 of
+100 sustained edits, 40 of the burst's 50, 326 of 400. Every visible edit became GPU-usable before the run
+ended (unfinished 0 everywhere).
+
+**Outstanding work and retained memory** (memory table of `p5-matrix-table.md`):
+- **Reservations:** at most 36.1 MB (inside the 64 MiB budget).
+- **Builds outstanding at once:** at most 5 (burst, w2) and 8 (above rate, w4, the max_outstanding
+  limit).
+- **Exact peak incremental payload:** 4.9 MB sustained, 5.7 / 7.3 MB burst, 8.9 / 11.3 MB above rate.
+- **Sampled peak RSS:** 0.94 to 1.52 GB, with the 2160p views at the top.
+- **Paging:** no major fault, page-out or swap-out.
+
+GPU memory (chunk planes, pools, atlas, offscreen targets) is the compositor's own and is not in these CPU
+payload counts.
+
+**Readings, within these limits** (corrected in round ec; see "Round ec corrections" below).
+- **Upload delay** (CPU-ready → GPU-usable per edit, `cache/ec-runs/a3-eb-phases-r2.md`; corrected after the
+  round-ec review):
+  - single edits, the sustained stream and above the build rate: 0.0 ms at p50, so at the median uploads
+    add nothing after CPU readiness;
+  - above the build rate the tail is large: p95 92.8 ms and 24.2 ms, max 92.8 ms and 47.3 ms (w2, w4);
+    the four sustained cases have a max of 23.2 to 23.7 ms;
+  - under the 50-edit burst the upload limit adds 23.9 to 71.5 ms (n = 10 per case, so p50 and max are the
+    same sample).
+
+  Equal medians alone do not say where the earlier latency arose; the phases below do.
+- **Frame time:** the window thread's work per frame stayed under 3.0 ms at every percentile on this host.
+  That is CPU submission only.
+- **Not shown:**
+  - a 4-core x86 host;
+  - presented frames;
+  - an RTX or Radeon adapter;
+  - a late-game economy: the workload is five cities of about 40 buildings, without roads (the sim
+    refuses them) and with density capped by scenery;
+  - multiplayer load.
+
+
+### Round ec corrections to the round-eb notes
+
+**Cadence:** requested is not observed.
+- Every round-eb case requested a paced frame every 16.667 ms.
+- The saved `frames.tsv` frame starts (`picture_table.py`'s cadence table,
+  `cache/ec-runs/a3-eb-matrix-table.md`) show a slower observed cadence:
+  - idle measured loops: p50 23.1 to 23.5 ms (n = 222 to 226), p99 24.6 to 24.8;
+  - sustained loops: p50 24.6 to 24.7 ms (n = 415 to 420), max 24.83 to 24.90;
+  - above the build rate: p50 23.8 to 23.9 ms, max 30.6;
+  - one-edit and burst cases: their latency accrues in the drain; drain intervals p50 17.8 to 24.3 ms
+    (n = 1 to 8).
+- A paced frame sleeps to its next deadline after its work; on this host the wake-up came 6 to 8 ms late.
+  So the latencies of round eb were measured at roughly 40 Hz, not 60 Hz.
+
+**Where the latency is.** These are phases per edit from the saved raw events (`tools/bench/picture_phases.py`,
+which since the round-ec review reads only traces the aggregate accepts; `cache/ec-runs/a3-eb-phases-r2.md`,
+identical to the first reading). The values are ms, as n / p50 / p95 / p99 / max; "–" means fewer samples
+than the percentile needs.
+
+| case | desired → admitted (dispatch: deferral and the window's apply) | admission → start (queue) | worker build | built → committed (until a frame's commit takes it) | committed → visible CPU-ready (chunk rebuild and the frame that sees it) | CPU-ready → GPU-usable (uploads to the submission) |
+|---|---|---|---|---|---|---|
+| sustained 1080p, w2 | 100 / 0.0 / 0.0 / 0.0 / 0.0 | 100 / 0.0 / 0.0 / 0.0 / 0.0 | 100 / 19.5 / 22.4 / 23.0 / 23.0 | 100 / 4.6 / 22.3 / 24.7 / 24.8 | 15 / 25.4 / – / – / 25.9 | 15 / 0.0 / – / – / 23.7 |
+| sustained 2160p, w4 | 100 / 0.0 / 0.0 / 0.0 / 0.0 | 100 / 0.0 / 0.0 / 0.0 / 0.0 | 100 / 19.8 / 22.3 / 22.7 / 23.0 | 100 / 4.4 / 20.8 / 23.0 / 23.1 | 20 / 25.7 / 35.7 / – / 43.2 | 20 / 0.0 / 0.0 / – / 23.2 |
+| burst 1080p, w2 | 50 / 16.6 / 16.7 / – / 16.7 | 50 / 24.5 / 54.7 / – / 54.7 | 50 / 13.6 / 13.7 / – / 13.9 | 50 / 20.3 / 23.1 / – / 23.1 | 10 / 73.1 / – / – / 73.1 | 10 / 43.4 / – / – / 43.4 |
+| above the rate 1080p, w2 | 400 / 20.8 / 65.9 / 87.1 / 111.5 | 400 / 8.8 / 22.8 / 24.4 / 49.1 | 400 / 13.7 / 13.9 / 14.1 / 14.1 | 400 / 7.9 / 22.4 / 22.9 / 22.9 | 74 / 47.3 / 108.5 / – / 108.5 | 74 / 0.0 / 92.8 / – / 92.8 |
+
+With two workers above the build rate (above-hd-w2), an edit waits longer for its admission (20.8 ms at p50,
+up to 111.5 ms) than for the worker build (13.7 ms at p50): dispatch defers it while the outstanding builds
+are at their limit. With four workers (above-hd-w4, not in the table) admission is 0.1 ms at p50, p95 44.9
+ms and max 73.4 ms, against a worker build of 13.9 ms at p50.
+
+So in the sustained stream an edit's 50 ms to CPU readiness is roughly:
+- 20 ms of worker build;
+- up to one frame interval until a commit takes it (4.5 ms at p50);
+- about 25 ms of chunk rebuild and the frame that observes it.
+
+GPU completion and presentation are not in any of these numbers.
+
+**Gate accounting**, read per test from the saved logs by `tools/test/ctest_verdict.py`. CTest "Passed" totals
+are not executed passes:
+
+| Gate | Selected | Executed | Failed | Skipped |
+|---|---|---|---|---|
+| G1 dev CPU | 83 | 81 | 0 | 2 (the `probe:` cases, opt-in `ANNO_PROBE`) |
+| G2 ASan/UBSan | 35 | 35 | 0 | 0 |
+| G3 dev GPU | 102 | 99 | 2 (the Metal timestamp cases, open) | 1 (`play: GPU matches the CPU path on one scene`, platform: no RTX 4090) |
+
+**Evidence revalidated** with the corrected tools (originals unchanged):
+- all four round-dz matrices and the round-eb canary and matrix;
+- every `gpu_ready` has an earlier-or-equal `chunks_ready` of its island and generation: 125 of 125;
+- every frame row has the header's field count: 3,076 rows;
+- the strict frames reader and the causal validator accept every saved case.
+
+The one round-eb dev canary recorded before the GPU poll was moved after the CPU poll
+(`cache/eb-runs/p5-canary-one-gpu`) is now refused as contradictory. It was never a reported measurement.
+
+After the review of package A the validator also refuses:
+- a reused or decreasing generation;
+- a commit with no generation after it;
+- an event later than `run_end`.
+
+A run whose own trace contradicts itself now ends with status 7 (`kEvidenceContradictory`), not 0.
+
+Every trace under `cache/` was re-read with these rules: 105 traces.
+- Rounds dz, ea, eb and ec: every trace accepted, apart from the eb canary above.
+- Round dy: 37 traces refused. They are older than the commit/generation pairing, and the A1 rule ("the
+  island was not committed in that generation") refuses them. They are historical and are not cited as
+  measurements.
+
+None was refused by the three new rules.
+
+### The play window, traced: from a scripted command to the present call's return (round ec, D)
+
+These are the first measurements of the real viewer path. Each run is `anno1503 --play
+data/maps/lan5.txt --commands <file> --renderer gpu`, with the window trace on (`docs/app/window-trace.md`).
+
+Every row was checked by `tools/bench/window_table.py` before it was tabulated (round ec's reader; round
+ed's corrected readers refuse most of these traces, see "Round ed: the saved window evidence" below):
+- the aggregate's verdict;
+- a strict reading of every column of frames.tsv and sim.tsv;
+- each frame row cross-checked against its events: frame id, epoch and times;
+- the counts agree between the files and the trace;
+- the commands applied never exceed the command file's.
+
+The runner is `tools/bench/window_case.sh`. The raw files are in `cache/ec-runs/d-matrix-c025fc2-c025fc2/`
+and the table is `cache/ec-runs/d-matrix-c025fc2-table.md`.
+
+**Identity:**
+- Revision `c025fc2`, a clean tree: every case's `run.txt` says `clean=yes`, untracked 0.
+- Frozen release binaries:
+  - `cache/ec-runs/anno1503.release-c025fc2`, sha256 `e2860d9b54b2bb13…`;
+  - `cache/ec-runs/bench_picture.release-c025fc2`, sha256 `7e3800ff9fa67fc4…`;
+  - built from that commit (`cache/ec-runs/d-release-build-c025fc2.log`).
+- Host: Apple M5 Max (Mac17,6), 18 cores, 48 GiB, macOS 27.0.1; adapter "Apple M5 Max (Metal)".
+- Display: the built-in 3456 × 2234 Retina, ProMotion at 120 Hz.
+- Map: `lan5.txt`, sha256 `1a471d9f…`.
+- Defaults: interactive GPU limits, CPU chunk builder, chunk workers on half the cores (9).
+- The host was shared and loaded:
+  - another executor's sim tests ran at up to about 1,200 % CPU; load was 5 to 11 (`results.tsv`);
+  - this round's own ASan gate at `be40d56` ran until 23:49:18. So the matrix's first eight runs, from
+    idle at 1080p (23:47:08) to the start of sustained at 3456 × 1944 (23:49:09), had it beside them. The
+    resize run and the four overhead runs (23:49:43 to 23:52:31) had no other job of this round beside
+    them.
+
+**Workloads.** All are legal commands for the developer city, found by a trial world
+(`tools/bench/window_workloads/` in git, the same files as `cache/ec-runs/d-workloads/` by sha256, with
+the generator source). Acceptance is read from each run's own
+`sim.tsv`, never from the trial.
+- **idle:** no command, 12 s.
+- **one:** one build at turn 30, 12 s.
+- **burst:** 20 builds in turn 30. They form one batch and one island version, so they are one edit; 14 s.
+- **sustained:** 60 builds, one every 4 turns (2.5 per second), 32 s.
+- **resize:** the sustained stream, with the window resized to 1600 × 900 at 12 s (`ANNO_VIEW_RESIZE`).
+
+Every command was accepted: 342 applied over the 11 traced runs, 0 rejected, 0 ambiguous. The two
+trace-off runs record no acceptance. They are not the headless
+five-city workload of rounds dy–eb and are not comparable with it.
+
+**Drawables:**
+- 1920 × 1080, as asked.
+- A genuine 3840 × 2160 drawable is not possible on this display. Asked for one, the window got 3840 × 1976
+  (`cache/ec-runs/d3-probe-3840x2160`).
+- The largest 16:9 drawable that fits is 3456 × 1944, 81 % of the pixels of 2160p, and it is used here.
+  2160p is NOT RUN.
+- Every case kept one view, except the resize case, which has its two. The table counts views, because an
+  input that reaches the window moves the camera.
+
+**Frames.**
+- Every case: 1,432 to 3,836 attempted frames, all presented. No acquire failed, no present failed, no
+  record was dropped.
+- The resize case reconfigured the surface: 1,436 frames in epoch 1 at 1920 × 1080, then 2,400 in epoch 2
+  at 1600 × 900.
+- Requested cadence: vsync (Fifo) on the 120 Hz display, 8.33 ms.
+- Observed frame-start interval:
+  - p50 8.31 to 8.33 ms;
+  - p99 8.8 to 9.3 ms, and 12.1 ms in one overhead run;
+  - max 18.4 to 31.4 ms, every one at the start (frame 32 to 37, 0.41 to 0.45 s in).
+- Acquire, the wait for the next surface texture: p50 7.7 to 8.1 ms.
+- Present call: under 0.1 ms.
+- Window thread busy per presented frame, from draw start to present return less the acquire: p50 0.23 to
+  0.60 ms, p99 at most 2.8 ms, max 5.3 ms.
+- Batch publication (sim thread) to its take at a frame boundary:
+  - one edit: 3.5 to 4.5 ms;
+  - burst: 1.4 to 3.7 ms;
+  - sustained matrix cases: p50 1.8 to 2.1 ms, max 2.9 ms;
+  - resize case: max 8.2 ms;
+  - overhead runs: p50 3.9 and 5.6 ms, max 15.6 ms.
+
+**Edit boundaries.** ms from the edit's `desired` event (the window's apply, right after the take), as
+n / p50 / p95 / max; p99 has too few samples.
+
+| case | object-ready | visible CPU-ready | GPU-usable | present call returned |
+|---|---|---|---|---|
+| one, 1080p | 1 / 16.7 | 1 / 33.8 | 1 / 33.8 | 1 / 33.8 |
+| one, 3456 × 1944 | 1 / 16.8 | 1 / 34.0 | 1 / 34.0 | 1 / 34.0 |
+| burst (one edit of 20), 1080p | 1 / 16.4 | 1 / 50.3 | 1 / 50.3 | 1 / 50.3 |
+| burst, 3456 × 1944 | 1 / 16.8 | 1 / 42.9 | 1 / 42.9 | 1 / 42.9 |
+| sustained, 1080p | 60 / 16.8 / 17.2 / 17.2 | 60 / 42.1 / 42.7 / 50.8 | 60 / 42.1 / 42.7 / 50.8 | 60 / 42.1 / 42.7 / 50.9 |
+| sustained, 3456 × 1944 | 60 / 16.8 / 25.1 / 25.1 | 60 / 42.3 / 58.8 / 59.0 | 60 / 42.3 / 58.8 / 59.0 | 60 / 42.3 / 58.8 / 59.0 |
+| sustained with a resize, 1080p | 60 / 16.7 / 25.1 / 25.3 | 60 / 42.2 / 50.4 / 67.2 | 60 / 42.2 / 50.4 / 67.2 | 60 / 42.2 / 50.4 / 67.2 |
+| sustained, 1080p, overhead run 1 (trace on) | 60 / 16.8 / 17.1 / 17.3 | 60 / 42.2 / 42.6 / 50.6 | 60 / 42.2 / 42.6 / 50.6 | 60 / 42.2 / 42.6 / 50.6 |
+| sustained, 1080p, overhead run 2 (trace on) | 60 / 32.5 / 33.3 / 34.1 | 60 / 57.7 / 66.3 / 66.7 | 60 / 57.8 / 66.3 / 66.7 | 60 / 57.8 / 66.3 / 66.7 |
+
+Over the five traced runs of the 60-build stream, present-call returned is p50 42.1 to 57.8 ms, p95 42.6 to
+66.3 ms and max 50.6 to 67.2 ms. Overhead run 2 is the slowest: its window thread was also busier (above),
+with or without the trace.
+
+No edit was unfinished at any boundary, and none was offscreen. The latencies are close to whole frame
+intervals (16.7, 25, 33.8, 42 ms at 8.33 ms frames): the commit waits for a frame boundary, and readiness is
+observed once per frame.
+
+These boundaries start at `desired`, the window's apply right after the take. A command's full path starts
+earlier, and adds:
+- the wait for its turn (turns are 100 ms at the default speed; a command posted by the window waits for
+  the next one);
+- the turn itself;
+- its batch's publication to take (above).
+
+**Peak RSS:** 1.38 to 1.50 GiB at 1080p and 1.68 to 1.73 GiB at 3456 × 1944 (`/usr/bin/time -l`).
+
+**Overhead control.** The same sustained 1080p session ran four times, alternating trace off, on, off, on.
+On the window's own 2-second lines (fps p50 / average busy ms p50):
+
+| pair | trace off | trace on |
+|---|---|---|
+| 1 | 119.5 / 0.30 | 119.5 / 0.30 |
+| 2 | 118.6 / 0.60 | 119.0 / 0.60 |
+
+Peak RSS was 1.42 to 1.47 GiB. Within each pair the trace's cost is below the resolution of those lines,
+0.1 ms. Pair 2 ran busier with the trace off as well; the host's load moved between the pairs.
+
+The memory the trace reserves is its bounds, at libc++/arm64 record sizes:
+- 2,000,000 events × 24 bytes = 48 MB;
+- 200,000 frame rows × 160 bytes = 32 MB;
+- 200,000 turns × 72 bytes = 14 MB.
+
+It is only touched as it is used.
+
+**Superseded:** the first matrix, `cache/ec-runs/d-matrix/`. It ran on a tree with untracked sources, and the
+binary's source identity was not proven. In three of its runs the camera moved: a pointer input reached the
+window, and the trace's view columns show it. So its 1080p sustained run reports 6 offscreen edits. It is
+kept, with its table (`d-matrix-superseded-table.md`, views column), and not cited.
+
+**Claim limits:**
+- A present call returning is the CPU side of presentation. It is not GPU completion, not scanout, and not
+  display latency; none of those is observed.
+- No acquire or present failure happened in a real run. Those paths are covered by the FrameTracer tests,
+  not by field evidence. The reconfigure path has one real run, the resize.
+- Most cells come from a single run; the sustained cells have n = 60, enough for a p95 but not a p99.
+- One loaded host, one adapter, one display. No RTX 4090, no Radeon iGPU, no Windows or Linux window.
+- No genuine 2160p drawable.
+- No late-game economy. The city is the developer's start city with up to 60 cheap buildings.
+- PLAN §0.3 needs presented frames on target hardware. These rows do not decide it.
+
+### Round ed: the saved window evidence, read by the corrected readers
+
+Round ed changed what a `presented` means (`docs/app/window-trace.md`, boundary 9): the first successful
+present of a frame that draws the change, with a `drawn` event for each such frame. Round ec's traces
+have no `drawn`, and `window_table.py` now aggregates every raw trace itself instead of reading the saved
+`aggregate.txt`. The originals are untouched in `cache/ec-runs/d-matrix-c025fc2-c025fc2/`; the
+re-reading used a copy (`cache/ed-runs/h-ec-matrix-copy/`, with a `plan.tsv` reconstructed from its
+`results.tsv`, since round ec wrote none).
+
+- **The corrected aggregate** (`cache/ed-runs/h-revalidate-ec.txt`, `.json`): the two idle traces are
+  consistent (exit 0). The nine traces with edits are refused (exit 2): their `gpu_ready` events have no
+  `drawn` of their frame, and their `presented` events no `drawn` of the presenting frame. The table
+  therefore lists those nine as evidence not usable (`cache/ed-runs/h-ec-table.md`, exit 1).
+- **What the raw files still support** (`cache/ed-runs/revalidate_ec.py`): round ec's rule and round ed's
+  agree for a change when it was presented by its own `gpu_ready` frame, that frame presented, and every
+  attempt from the commit to that frame had one view. Then the `gpu_ready` frame drew the change usable
+  and was the first to. In all nine traces every attempted frame presented, and all 304 presented changes
+  meet the three conditions, the resize run's included (none of its changes waited across the resize).
+  So round ec's latency numbers are supported by this derivation from the raw files, not by the
+  validator, which cannot accept a trace without `drawn`.
+- **Remeasured:** only a canary at round ed's final source, because the producer's behaviour changed only
+  for failed presents and view changes during a wait, which no round-ec case had. The round-ec matrix is
+  not re-run.
+
+### Round ed: the canary at the final source
+
+`tools/bench/window_matrix.sh` with the subset `one-1920x1080|resize-sustained-1920x1080`, then the trace
+off/on pair `overhead-(off|on)-1`, with release binaries frozen from `c2bdf91`
+(`cache/ed-runs/anno1503.release-c2bdf91`, sha256 `c0eede236a01a02f…`;
+`cache/ed-runs/bench_picture.release-c2bdf91`, `b817833d34d3b73d…`). Raw files are in
+`cache/ed-runs/f-canary-c2bdf91/` and `f-overhead-c2bdf91/`, and the tables in `f-canary-table.md` and
+`f-overhead-table.md`. The table says "a requested subset, 2 of 13 planned cases; not the full matrix".
+
+- **Validity:** every trace is complete and consistent under the corrected aggregate, `drawn` included.
+  Every attempted frame presented (1,432; 3,821, with the resize's two epochs and views; 3,810), with no
+  failure and no drop. 121 commands were applied and none rejected. 121 edits were presented, none was
+  unfinished, and none was presented after a recommit.
+- **One edit, desired → present-call return:** 50.9 ms at 1920 × 1080; object-ready 32.9 ms.
+- **The resize run's 60-build stream:** p50 58.7 ms, p95 67.2 ms, max 75.0 ms.
+- **Cadence:** frame starts every 8.31 ms at p50 (120 Hz).
+- **The trace's overhead:** the window's own average busy time is 1.00 ms per frame both with the trace
+  off and with it on. That is below the 0.1 ms resolution of its lines, as in round ec.
+- **Not comparable with round ec's numbers:** the window's busy time, trace off, is 1.0 ms now against 0.2
+  to 0.6 ms in round ec. Round ec's own frozen binary, run trace-off on the same case now, also shows
+  1.0 ms (`cache/ed-runs/f-ec-binary-off-now/`). The viewer's code is identical between the two binaries
+  (no change under `src/app/src/viewer.cpp`, `main.cpp`, `play*.cpp` or `src/render/src` from `c025fc2`
+  to `c2bdf91`). That is consistent with the host's conditions differing between the two days (load 2 to
+  6 now; one run of each, so a deduction), and these rows are not a regression measurement. Round ec's latency rows stand for their own conditions (see the
+  saved-evidence section above).
+- **Not measured:** the same limits as round ec: one host, no genuine 2160p drawable, no target hosts,
+  present-call return only.
+## MAP-2 repair — owners on macOS, detached coordinator streams (2026-10-31)
+
+Context: the first macOS support commit (`8002ae8`) made the coordinator start and measure memory on a Mac, but its process identity was Linux's. A review reproduced three defects; the first two are in the coordinator and are described here. (They are not "test harness only": the first changes what a production coordinator admits.)
+
+**Ownership of a journaled promise (`coord_wire.hpp`, `coord_server.cpp`).** A promise in the journal names its owner as `{namespace, pid, start stamp}`. On macOS the namespace was 2 (Linux), the stamp came from `/proc` and was 0, and `owner_alive` looked for `/proc/<pid>/stat`, which does not exist: a live owner counted as stopped. Observed: capacity 100, client A holds 50, the coordinator restarts on the same journal, client B asks for 80 and is admitted with `pending=0`. Now:
+- **Namespace 3 is Darwin** (`kNamespaceDarwin`); 1 is Windows, 2 is Linux. The stamp is the `proc_pidinfo` start time in microseconds, which with the pid names one process (a reused pid has another stamp). `ESRCH` and a zombie are stopped; any other error is unknown. This is the reviewed MAC-1 source (`4cc0a3a`, `870a527`, `837fb5f`), with namespace 3 added.
+- **Fail closed.** An owner whose stamp is 0 on either side, whose namespace this host cannot judge (Windows on a Mac, anything unknown), or whose liveness cannot be established is *unknown* and its promise is kept. A missing `/proc` is never evidence of death.
+- **Older records.** (a) `8002ae8` wrote namespace 2 with stamp 0: not reinterpreted, kept (it can only be removed by deleting the journal once its owners are known to be gone). (b) The MAC-1 coordinators (`4cc0a3a`) wrote namespace 2 with a microsecond Darwin stamp. On a Mac such a record (namespace 2, stamp ≥ 10^15 µs, i.e. after 2001-09-09, where a Linux `starttime` is about 10^7 clock ticks a day) is judged by Darwin; this keeps the journal under `~/.cache/anno1503`, which every executor on the host shares, from accumulating promises no coordinator will ever release. Any other namespace-2 record on a Mac is not touched.
+- **`kCompatVersion` stays 3.** Nothing changes for Linux or Windows peers (a coordinator that meets namespace 3 does not know it and keeps the orphan, which is the safe direction), and the macOS coordinators that existed before could not recover live owners at all, so there is no working older behaviour to be compatible with. A bump would also have refused every client of a coordinator that another executor on the same Mac may be running on the shared port. The pin test `F3 (D1, pin)` is unchanged.
+- CPU tokens are journaled with the same owner triple (`C`/`D` lines) and go through the same `owner_alive`; case O4 covers them.
+
+**Detached coordinator streams (`coord.cpp`).** `spawn_local` kept the starter's stdin, stdout and stderr. The coordinator outlives the client that starts it (it exits after 30 s idle), so whatever read the client's output waited for end-of-file until then: measured 32.0 s for a client that finished in 2 s; the coordinator's `LISTENING` line appeared in the client's output. The detached coordinator now gets `/dev/null` for 0, 1 and 2 (every file action is checked; a failed one means no start), on every POSIX host; descriptors above 2 are closed as before and Windows is unchanged (`DETACHED_PROCESS`, no handle inheritance). A coordinator that a test starts itself uses `Child::start` with its own pipes and keeps its output (case S2). After: the same pipeline takes 2.0 s; a piped `ctest` of a 19.1 s test takes 19.2 s.
+
+**Native harness on macOS.** `sibling()` and `module_directory()` use `proc_pidpath`; cases that need WSL or `/proc` (`wsl_available()` is false on Darwin) skip with their own message and are listed as capability skips, not passes. One case (`two file clients cannot reserve the same free bytes`) depended on a coordinator being warm because `try_reserve` makes a single attempt; it now brings the coordinator up explicitly.
+
+**Regressions** (`tests/budget_f5_test.cpp`, ports 47850–47858, journals under `temp_directory_path()/anno1503-f5`, bounded waits, every child owned by a `Child`, cleanup of a started coordinator by the step-aside handshake on its port, never by name): O1 live holder through a restart and release on exit, O2 reused pid, O3 unattributable records, O4 CPU tokens, O5 Darwin namespace and the earlier stamp format, S1 EOF while the coordinator lives, S2 foreground output, S3 the captured pipeline. With the old Darwin behaviour restored (every owner stopped) O1, O4 and O5 fail.
+
+## MAP-2 repair 2 — compatibility 4, the verification gate (2026-10-31)
+
+Amendment to the section above: its line "`kCompatVersion` stays 3" was wrong for the shared coordinator and is superseded here. The earlier text is kept as history.
+
+**Defect.** A compatibility-3 coordinator (W4/MAC-1, source `c869fb7`, `anno_budget_coord` sha256 `92c30840…6262f4`, built from the `abc1f8c` test_support tree) accepts a namespace-3 client under compatibility 3, replays the record `A <budget> 1 50 3 <pid> <µs stamp> 1` as an owner it cannot judge, and keeps it forever. Reproduced with real binaries, isolated ports and journals: holder killed, 24 tries for 80 all `claim=0 pending=50` (`cache/map2-repair2-evidence/06-mixed-old-successor.txt`; the same run with the pre-change MAP-2 successor admits on try 1, `06-mixed-map2-successor-control.txt`). The older coordinator also *rewrites* what it replays and drops every line it does not recognise, so a marker or new record type in a shared journal cannot protect it.
+
+**Policy (compat 4).**
+1. `kCompatVersion` is 4. A compat-3 coordinator and a compat-4 client refuse each other by the existing handshake: an idle coordinator steps aside; a busy one is waited for, bounded by `ANNO_TEST_ADMIT_WAIT_S`, and the client ends with `infrastructure blocker: … compatibility version 3 … compatibility version 4 … busy with N client(s) … incompatible compatibility version`. The busy coordinator's own holder is untouched (real binaries, `10-mixed-rejected.txt` (b)).
+2. The default journal of version 4 is `coord-<port>-v4.journal`; versions 3 and below keep `coord-<port>.journal`. An older coordinator never opens, replays or rewrites a file that holds namespace-3 owners. Verified: an older coordinator started on the same HOME leaves the v4 journal byte-identical (`10-mixed-rejected.txt` (d)).
+3. The first start of a version-4 default journal (it does not exist yet) adopts the open promises of the unsuffixed journal, read-only. A live owner of the previous coordinator keeps its reservation; a dead one, a reused pid, is released by the usual rules; a zero-stamp or foreign-OS record is kept. Later starts do not adopt again. An explicit `--journal` or `ANNO_TEST_BUDGET_JOURNAL` names the file and adopts nothing; a version-4 coordinator reading an older coordinator's explicit journal recovers it (real binaries, `09-mixed-old-to-new.txt`: `claim=1` on try 1).
+
+**Kept:** live-owner reservations, conservative treatment of unattributable/zero-stamp records, recovery of attributable legacy Darwin records, bounded waits and diagnostics, one shared admission budget (no second budget, no bypass, no coordinator stopped but an idle one that is asked to step aside by the existing handshake).
+
+**Rollout limits (not universal interoperability).**
+- Do not point an older coordinator at a version-4 journal with `--journal`: it keeps namespace-3 owners forever. The default names prevent it; nothing prevents an explicit path.
+- If a version-4 coordinator stops while a version-4 holder lives and an older coordinator then starts, the older one does not know that holder's reservation (it reads another file; `orphans=0`). Its own clients are not protected from that holder until a version-4 coordinator runs again. Version-4 clients are refused by it, so the exposure is the older clients only.
+- An older coordinator that is idle when a version-4 client arrives steps aside; one that is busy must finish. On the shared port 47631 the W4 executor's compat-3 clients meet a version-4 coordinator the same way (refused, or it steps aside when idle). Merging this to a tree that also contains compat-3 clients means one of the two waits for the other's idle exit (30 s) or its work.
+- Adoption removes nothing from the older journal, so records released after adoption stay in it; an older coordinator started later judges them by its own rules (dead owners are released by it too).
+
+**Tests** (`tests/budget_f5_test.cpp`, ports 47860–47867): T1 modeled compat-3 coordinator vs compat-4 client, idle and busy; T2 journal names; T3 adoption of a live memory holder, its exit, no second adoption, legacy file byte-identical; T4 CPU token, reused pid, unattributable record; T5 a real older binary steps aside (opt-in `ANNO_TEST_OLD_COORD=<path>`; skipped, and reported as an opt-in skip, otherwise). T1–T4 use this build started with `--compat-version 3` as the "older coordinator" (handshake and journal name modeled, not the older recovery code); the mixed-binary evidence is the real W4 binary through `tools/test/mixed_coordinator_check.sh` and T5. Mutation checks (`08-mutations.txt`): without the version in the journal name T2, T3, T4 fail; without adoption T3, T4 fail; with compat 3 T1–T4 and the F3 pin fail.
+
+**Verification gate.** `tools/test/run_selected.sh <build> <target|-> <regex> <timeout> <log> [jobs]` (adapted from the W4 runner, `3d2fb9d`) builds, runs `test_names_are_selectable` as a mandatory preflight, runs the selection, and `tools/test/ctest_verdict.py` reads the log per test. It fails (exit) on: a failed build (2), a failed preflight (5), a failed test (1), zero selected tests (8), a sanitizer report (4), a test that needs the original files and skipped for want of `ANNO1503_GAME_DIR` (6), a doctest child that executed zero cases (7). A doctest "N skipped" is the filter excluding the other cases of the binary and is never counted; a printed "skipping" is an early-return skip and is listed as required-asset, platform (WSL, Windows-only) or opt-in (an `ANNO_…=1` switch) and does not count as executed. Bounded negative checks (`03-negative-checks.txt`): unknown target 2; nothing selected 8 (the first version of the wrapper counted its preflight and passed an empty selection; fixed); a `;` in a name 5; game dir unset 6; synthetic logs with an empty child and a sanitizer line fail. The earlier name defect: the O1 name held a `;`, CTest registered it as two tests that ran zero cases each and passed (`01-o1-names.txt`, `01-o1-zero-case.txt`); selected whole, the body runs (`01-o1-real-body.txt`: 1 case, 25 assertions).
+
+## MAP-2 repair 3 — one journal for every version, truthful gate verdicts (2026-10-31)
+
+**Supersedes** items 2 and 3 of the policy in "MAP-2 repair 2" (the versioned journal name `coord-<port>-v4.journal` and the one-time adoption of the unsuffixed journal). Item 1 (compatibility 4, the handshake refuses to mix clients) stands. The earlier text is kept as history. **The shared-host compat-4 rollout stays ON HOLD** (orchestrator decision); nothing below was applied to the shared coordinators or their journals.
+
+### Finding 1 — the handoff lost a live reservation
+Sequence: a v4 coordinator starts idle and exits (its `-v4` journal now exists); a v3 coordinator starts and admits a live holder of 50 into the unsuffixed journal; v3 exits, the holder lives on; v4 restarts. v4 reads only its own journal (it adopts the unsuffixed one only when the v4 file does not exist), never sees the holder, and admits 80 against capacity 100. Same for a CPU token, and for a v4 holder under a v3 start (v3 reads another file). Reproduced before any production change, modeled and with the real W4 binary (`cache/map2-repair3-evidence/01-handoff-before-fix.txt`: H1, H2, H4, H5 and the real-binary H7 fail with `a request of the v4 client must not be admitted beside the live holder`; the first-start control H3 and the unattributable-owner case H6 pass).
+
+### Repair
+Remove the second journal. Every compatibility version uses `coord-<port>.journal`; the record format (A/R/C/D lines) is unchanged. The failure class the review listed does not arise because nothing is copied or replayed twice: no duplicate replay, hold ids come from one file's counter and `max_hold_id` (F4 E1) covers every version's lines, an `R` names a record of the same file, CPU tokens are counted once, nothing is resurrected. (Repairing the two-journal design instead would need all five of: duplicate suppression, ids unique across files, release records that name their file, one count per token, tombstones for released legacy records. `cache/map2-repair3-evidence/02-transition-matrix.md`.)
+
+### Transition matrix
+| Transition | Memory reservations | CPU tokens | Unknown / unattributable owners | Status |
+|---|---|---|---|---|
+| first upgrade v3 → v4 | v4 replays the same file; owner judged by its own OS; Darwin namespace-2 microsecond stamps by the legacy rule | same file, same C/D counting | kept | supported (H3, H9, real binary: H7) |
+| same-version restart | replay of one file | same | kept | supported (O1–O5) |
+| repeated v4/v3/v4/v3/v4 | each side replays one file; one promise, counted once | same | kept | supported (H4) |
+| downgrade v4 → v3 | v3 reads a namespace-3 record as the owner of another OS: kept, so a **live** reservation survives (H5, real binary H7) | same | kept | supported for safety; **cost**: a *dead* namespace-3 owner stays reserved while v3 runs (`04-downgrade-real-binary.txt`: 24 tries, `claim=0 pending=50`); a v4 coordinator releases it when it runs again, **but an older coordinator holding it does not idle out**: see "MAP-2 repair 4" for the recovery |
+| reused pid while v4 was away | released at the restart (stamp differs) | same | | supported (H8) |
+| a v3 client served by a v4 coordinator, or the reverse | refused by the handshake (idle one steps aside, busy one waited for, bounded, with a diagnostic naming both versions) | same | | supported (T1, T5, real binary) |
+
+Not claimed: v4 does not control an unmodified older executable. An older coordinator that starts keeps namespace-3 owners forever (it never releases them); it does not lose them. Two coordinators on one port cannot exist (bind). Windows and Linux coordinators write their own namespace in both versions, so their journals are identical across versions; only a Darwin host is affected.
+
+### What coordination the rollout needs (prepared, not applied)
+Safety does not require all executors to upgrade together: no transition loses a promise. Progress does need the handshake to settle: a v3 client meeting a busy v4 coordinator (or the reverse) waits up to `ANNO_TEST_ADMIT_WAIT_S` and ends with an infrastructure diagnostic; an idle coordinator steps aside for the other version. The supported launch path refuses unsafe use by that handshake and by the shared journal; it cannot stop an unmodified v3 executable from starting a coordinator when none listens (it then keeps v4 owners as unknown, which is safe).
+1. Orchestrator lifts the hold and tells every executor that runs the test-support suites on the host.
+2. Pre-flight, read-only: `python3 -I tools/test/journal_report.py ~/.cache/anno1503/coord-47631.journal ~/.cache/anno1503/coord-47632.journal` lists the open promises per namespace; `lsof -nP -iTCP:47631 -sTCP:LISTEN` shows whether a coordinator is busy. Never stop a coordinator; wait for its 30 s idle exit.
+3. The first test run of a compat-4 build starts a compat-4 coordinator on the same journal; its `LISTENING … compat=4 … orphans=N` line and every test log's `[anno-test memory] coordinator build=… compat=4` confirm it.
+4. Executors still on compat 3 meet it through the handshake until they update; their runs wait or end with the diagnostic and are re-run after the update.
+5. Rolling back: start a compat-3 build only when no compat-4 holder is live, and expect the leak above until a compat-4 coordinator runs once.
+6. The `-v4` journals that revision `a71b07f` left in `~/.cache/anno1503` (`coord-47631-v4`, `coord-47632-v4`, `coord-47826-v4`) hold no open promise (`14-stale-v4-journals.txt`), are no longer read and were not touched; their owner may delete them.
+
+### Finding 2 — the verdict reader missed the "skipped" phrasing
+The two Bigbrother corpus cases print `ANNO1503_GAME_DIR not set: skipped` and pass in CTest. The reader only knew `skipping`, so a run without the game directory reported `executed=2`, exit 0 (`05-bigbrother-before.txt`). A skip is now a doctest MESSAGE that names a missing prerequisite and says it skipped (`skipping:`, `…: skipping X`, `…: skipped`, `skipped: …`), classified as required-asset (`ANNO1503_GAME_DIR not set`; fails the gate), opt-in (`set ANNO_…=`), platform (WSL, Windows, POSIX shell) or other (a message that starts with the skip word). Per-item outcomes inside an executed test (`overlay-skip …`, `…: skipped as the original does`) and a zero-assertion test are not skips; doctest's `N skipped` filter count is never read. The audit of every `MESSAGE` with "skip" in `src/` is `08-skip-audit.txt` (92 lines). Last round's gate log re-read with the new reader gives the same 894 / 890 / 4 (`08-regression-prev-gate-log.txt`).
+
+`tools/test/ctest_verdict_test.py` (CTest `test_verdict_contract`, a second mandatory preflight of `run_selected.sh`; 14 cases): real execution; each missing-asset form; platform and opt-in skips including the transport-statistics message; zero-case children; zero selection after a good preflight; sanitizer output; item outcomes are not skips. Mutation (the reader ignores `skipped`): 2 cases fail (`06-verifier-mutation.txt`). End to end: `tools/test/verdict_e2e.sh <build> <out>` runs the real Bigbrother cases through `run_selected.sh`: game dir absent → exit 6, executed 0, required-asset 2; present → exit 0, executed 2 (`07-verdict-e2e-after.txt`).
+
+### Tests and provenance
+`tests/budget_f5_test.cpp` H1–H9 (ports 47880–47895; H9 is Darwin only): v3 is this build started with `--compat-version 3` (**modeled**: handshake and journal behaviour, not the older recovery code) except H7, which runs the **real older binary** named by `ANNO_TEST_OLD_COORD` (opt-in; skipped and reported as an opt-in skip otherwise). Older binary: W4 worktree `c869fb7` (test_support tree of `abc1f8c`), `anno_budget_coord` sha256 `92c30840ae35eed799326fe2415f94c088fd8ef92a947fbe9b19c3d6f56262f4`, `LISTENING … build=0919b5444a8c50cd compat=3`. Tested current binaries: coordinator `1fffb80baca59e2710a91021c31aeb29cd15a49fa27c2e872ba355686e371366`, probe `9942d6d774a523fa1f8035262439e6dc686a843d4a22c92fa3b5a06ce547c222` (`12-final-binaries.txt`). Test-started coordinators idle out after 30 s and hold their ports until then: wait for `lsof -iTCP:47810-47899` to be empty between runs of the same cases (a Debug run followed at once by an ASan run produced three `BIND-FAILED` failures, kept in `11-asan-first-run-3-failures.log`; they pass alone and in the rerun).
+
+## MAP-2 repair 4 — the previously published compat-4 build's versioned journal (2026-10-31)
+
+**The shared-host compat-4 rollout stays ON HOLD.** Nothing below was applied to a shared coordinator or journal.
+
+### Three implementations that must not be confused
+| Implementation | Compat | Journal it reads and writes | Where it is identified |
+|---|---|---|---|
+| legacy | 3 | `coord-<port>.journal` | W4 `c869fb7`, `anno_budget_coord` sha256 `92c30840ae35eed799326fe2415f94c088fd8ef92a947fbe9b19c3d6f56262f4` |
+| previously published compat 4 (revision `a71b07f`) | **4** | `coord-<port>-v4.journal` | `anno_budget_coord` `d91571b0605626c7bc32dc21ee46a87682dfb868bfbff295c0a38a39e10891a9`, probe `1c2746c782be52b9faf2144384ad4a544f72f21add27a5f264968ef02c6d79e7` |
+| current compat 4 | **4** | `coord-<port>.journal` | the build of this repair (hashes below) |
+
+Both compat-4 builds advertise the same number: the handshake cannot tell their persisted state apart, so the check is on the state.
+
+### Finding — the successor forgot the predecessor's live promise
+Reproduced with the real published binaries before any production change (`cache/map2-repair4-evidence/01-red-before-fix.txt`): the predecessor admits a live holder of 50 (memory) or a CPU token into `coord-<port>-v4.journal`; its coordinator is stopped, the holder lives; the current coordinator starts on the same home and port and prints `LISTENING … orphans=0`; a request of 80 (or a second CPU token) is then admitted. V1/V2 fail for that reason (the unrefused start); the control V4 (another port) passes.
+
+### Repair: refuse, never merge
+Retained: one canonical journal `coord-<port>.journal`, Darwin namespace 3, no new owner-identity scheme, no migration. In `run_budget_server`, after the bind and **before** the journal is opened (the open compacts, i.e. rewrites), the coordinator reads `coord-<port>-v4.journal` **read-only** from the storage root of the journal it is about to use and classifies it (`inspect_predecessor`, same record grammar as `Journal::open`):
+
+| State of the predecessor file | Startup |
+|---|---|
+| absent | normal |
+| present, empty (or blank lines only) | normal |
+| historical records, all released (`A` with its `R`, `C` with its `D`) | normal |
+| a memory hold or CPU token still recorded as promised (live owner, **known-dead owner**, unknown or unattributable owner alike) | **refused** |
+| unreadable (cannot be examined, cannot be opened, is a directory, a read fails) | **refused** |
+| a line that is not a journal record | **refused** |
+| a last line without its newline (a truncated file; even when it still parses, a pid or stamp may be cut) | **refused** |
+| canonical journal also present | its contents do not matter: the predecessor decides whether to refuse; the canonical file is read as always when the start is allowed |
+| repeated start attempts | the same answer every time; no byte changes |
+| a predecessor journal of **another port** | does not block (the file name carries the port) |
+
+Dead owners are **not** judged automatically: the established namespace/pid/stamp rules answer "is the process alive" for the owners of the canonical journal; applying them to a file this build never wrote would make this build the first writer of its release records, which is migration. A refusal with a recovery path is the smaller change.
+
+A refusal: prints one line `JOURNAL-REFUSED startup refused: … Recovery: …` on stdout and exits with status **5** (4 stays `JOURNAL-FAILED`), after closing the socket, so the port is free again and nothing was announced (`LISTENING` is never printed) or admitted. It leaves **every journal byte as it was** (the canonical journal is not created or compacted) and writes one new file `<canonical journal>.refused` with the same text, removed by the next start that is not refused. The line names the file, what it holds (counts, up to four owners as `ns:pid:stamp`) and the recovery.
+
+### What the caller receives
+A client that finds no coordinator starts one (stdio `/dev/null`, so the line above reaches nobody). On its next attempt it reads the notice, if its modification time is not older than that start, and ends **at once**, without waiting for `ANNO_TEST_ADMIT_WAIT_S`, with no admission (`ADMITTED 0`):
+`infrastructure blocker: the test budget coordinator on port <p> did not start: startup refused: the previous compatibility-4 coordinator's journal <path>/coord-<p>-v4.journal holds promises that are not released (1 memory hold(s) and 0 CPU token(s) are still recorded as promised; hold 7 of owner 3:999999:1). Nothing was changed. Recovery: …` (`03-refusal-sample.txt`; the V1 case measures it with a real predecessor holder, bounded at 20 s with an 8 s wait configured; observed 0.06 s). A stale notice from an earlier start is ignored. The CPU request uses the same connect step; the client path is exercised through a memory request only.
+
+### Override behaviour (`--journal`, `ANNO_TEST_BUDGET_JOURNAL`)
+The check runs for every start: it looks at `coord-<port>-v4.journal` **beside the journal in use**. For the default location that is the user's cache directory (`~/.cache/anno1503`, `%LOCALAPPDATA%\anno1503`). With `--journal <path>` or the test override the storage root is that path's directory, and the check covers that directory only. The previous build wrote a versioned file only for the default location (it used an override path as given), so an override path has no predecessor layout by construction; a normal launch uses neither. There is no environment variable that skips the check: the only way past a refusal is the recovery below, so no ordinary launch path bypasses it. A test that points the override at the default cache directory is protected like production.
+
+### Recovery from a refusal (operator action, never automatic)
+1. `python3 -I tools/test/journal_report.py <the named -v4 journal>` lists the open promises by owner namespace.
+2. Confirm with the owner of each listed process that it is gone (or finished): `ps -p <pid> -o lstart,command` for a Darwin or Linux owner on this host; a Windows or other namespace owner must be confirmed on its own machine. An unknown namespace is never assumed dead.
+3. Move the file aside (`mv coord-<port>-v4.journal coord-<port>-v4.journal.retired-<date>`); do not delete or edit it. Start again. A holder that is still alive when the file is moved is no longer protected: its reservation is forgotten (that is the original defect), so do not move the file while any owner may live.
+
+### Downgrade recovery — correction of "v4 releases it when it returns"
+A compat-3 coordinator keeps a namespace-3 owner as unknown, forever. Outstanding orphans keep a coordinator from taking its 30 s idle exit, so **waiting does not end the leak**: the v3 coordinator listens until someone stops it, and no v4 coordinator can start on its port meanwhile (bind). The procedure (prepared, **not applied**; it needs the orchestrator's go-ahead and the agreement of whoever owns that coordinator):
+1. `lsof -nP -iTCP:<port> -sTCP:LISTEN` names the pid; check with `ps -p <pid> -o lstart,command` that it is the coordinator in question and that its owner (the executor whose test run started it) agrees. Never stop a coordinator by name or one you did not start.
+2. `python3 -I tools/test/journal_report.py ~/.cache/anno1503/coord-<port>.journal`: namespace 3 records are the Darwin owners; for each, `ps -p <pid>`: a record whose process is gone is the leak, a live one is a holder that is protected and must stay.
+3. If live holders exist, wait for them; stopping a coordinator under live clients ends their sessions and is the owner's decision.
+4. When the owner agrees, send that one pid a plain termination (`kill <pid>`), wait for the port to clear, and start the current build; it replays the same file, releases the dead namespace-3 owners (H8, O1) and keeps the live ones (H5, H7).
+Waiting 30 s is not part of the procedure.
+
+### Rollout prerequisites (supersedes item 6 of repair 3)
+Before the hold is lifted, in this order: (1) every `coord-<port>-v4.journal` in `~/.cache/anno1503` must read as clean (`journal_report.py` says 0 holds and 0 tokens; on this host `coord-47631-v4`, `coord-47632-v4` and `coord-47826-v4` do, `07-shared-v4-journals-readonly.txt`, and copies of them start the current coordinator, `08-real-shared-v4-copies-start.txt`), because a dirty one now stops the first start with the refusal above; (2) the pre-flight and handshake steps of repair 3 (the procedure there stands unchanged); (3) the orchestrator's decision on the downgrade cost.
+
+### Transitions
+| Transition | Result |
+|---|---|
+| legacy compat 3 → current | supported (H1, H3, H7 with the real binary) |
+| previous compat 4 (versioned journal) → current, no open promise in its file | supported: starts normally (V3 absent/empty/released) |
+| previous compat 4 → current, with open, unreadable, malformed or truncated predecessor file | **deliberately refused**, nothing changed (V1, V2 real binaries; V3 matrix) |
+| current → legacy 3 | live promises kept; dead namespace-3 owners leak until the coordinator is stopped (recovery above) |
+| current → previous compat 4 | **unsupported**: that build ignores the canonical journal and writes its own versioned file; promises admitted by the current build in the canonical journal are not seen by it. Do not run it again on a shared host |
+| previous compat 4 running while the current starts | the port is taken (bind): no start |
+
+### Tests and provenance
+`tests/budget_f5_test.cpp`: V1/V2 (opt-in `ANNO_TEST_V4_COORD`, `ANNO_TEST_V4_PROBE`; the real published binaries; memory and CPU token; direct start, ordinary client start, recovery), V3 (11 journal states plus the unreadable directory and the unreadable mode-000 file, each start repeated three times for the refusals), V3b (both journals present; recovery by moving the file aside), V4 (another port). Ports 47900–47925, a private `HOME` per case. Red: `01-red-before-fix.txt` (the production change stashed; V1, V2, V3, V3b fail, V4 passes); green: `02-green-after-fix.txt`. Current binaries at the code head: see `06-binaries.txt` of the evidence directory.

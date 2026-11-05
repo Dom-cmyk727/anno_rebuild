@@ -473,7 +473,7 @@ TEST_CASE("F3 (D1, silent): a coordinator that accepts but answers no hello is r
     const std::string waiting = want(client, "WAITING", 20000ms, &seen);
     INFO("client output: " << seen);
     REQUIRE(has(waiting, "WAITING"));
-    silent.send("q\n");
+    quit_and_wait(silent);
     const auto journal = f3_dir() / "g.journal";
     remove_file(journal);
     std::string listening;

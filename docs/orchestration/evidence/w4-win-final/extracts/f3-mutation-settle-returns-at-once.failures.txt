@@ -1,0 +1,16 @@
+TEST CASE:  picture reclaim: the stalled-reclaimer case settles foreign generations first, through its own baseline path (W4-WIN-FINAL F3)
+E:\anno1503-worktrees\anno1503-W4-3\src\app\tests\scene_picture_recovery_test.cpp(285): ERROR: CHECK( end.waiting == before.waiting ) is NOT correct!
+  logged: reclaimer before: waiting 1, in flight 1, bytes waiting 935, bytes in flight 935, queued 9, completed 7; at the end: waiting 0, in flight 0, bytes waiting 0, bytes in flight 0, queued 14, completed 14
+E:\anno1503-worktrees\anno1503-W4-3\src\app\tests\scene_picture_recovery_test.cpp(286): ERROR: CHECK( end.bytes_waiting == before.bytes_waiting ) is NOT correct!
+  logged: reclaimer before: waiting 1, in flight 1, bytes waiting 935, bytes in flight 935, queued 9, completed 7; at the end: waiting 0, in flight 0, bytes waiting 0, bytes in flight 0, queued 14, completed 14
+E:\anno1503-worktrees\anno1503-W4-3\src\app\tests\scene_picture_recovery_test.cpp(287): ERROR: CHECK( end.in_flight == before.in_flight ) is NOT correct!
+  logged: reclaimer before: waiting 1, in flight 1, bytes waiting 935, bytes in flight 935, queued 9, completed 7; at the end: waiting 0, in flight 0, bytes waiting 0, bytes in flight 0, queued 14, completed 14
+E:\anno1503-worktrees\anno1503-W4-3\src\app\tests\scene_picture_recovery_test.cpp(861): ERROR: CHECK( polls_that_saw_foreign_work.load() >= 1 ) is NOT correct!
+TEST CASE:  picture reclaim: with foreign work waiting, an unsigned difference to the baseline wraps and a signed one says what happened (W4-WIN-FINAL F3)
+E:\anno1503-worktrees\anno1503-W4-3\src\app\tests\scene_picture_recovery_test.cpp(903): ERROR: CHECK( wrapped > 100 ) is NOT correct!
+  logged: stale baseline: waiting 1, in flight 1, bytes waiting 935, bytes in flight 935, queued 17, completed 15
+E:\anno1503-worktrees\anno1503-W4-3\src\app\tests\scene_picture_recovery_test.cpp(904): ERROR: CHECK( waiting_since(now, stale) == -static_cast<std::int64_t>(stale.waiting) ) is NOT correct!
+  logged: stale baseline: waiting 1, in flight 1, bytes waiting 935, bytes in flight 935, queued 17, completed 15
+E:\anno1503-worktrees\anno1503-W4-3\src\app\tests\scene_picture_recovery_test.cpp(905): ERROR: CHECK( now.bytes_waiting != stale.bytes_waiting ) is NOT correct!
+  logged: stale baseline: waiting 1, in flight 1, bytes waiting 935, bytes in flight 935, queued 17, completed 15
+[doctest] test cases:   3 |   1 passed | 2 failed | 174 skipped

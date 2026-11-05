@@ -1,0 +1,22 @@
+# Round eb, 5D: the four workloads on the GPU path (the legal five-city baseline: 40 buildings per
+# city, 2000 t of test goods, group 2, paced at 60 Hz, two chunk workers, the interactive window's
+# upload limits), with 2 and 4 picture workers, at 1920 x 1080 and 3840 x 2160; and the stream above
+# the build rate of round dz (400 edits/s) at 1920 x 1080. One case after another.
+idle-hd-w2      --scenario idle --duration-s 5 --goods-tons 2000 --gpu 1 --threads 2 --view 1920,1080
+one-hd-w2       --scenario one --goods-tons 2000 --gpu 1 --threads 2 --view 1920,1080
+burst-hd-w2     --scenario burst --edits 50 --goods-tons 2000 --gpu 1 --threads 2 --view 1920,1080
+sustained-hd-w2 --scenario stream --rate 10 --edits 100 --goods-tons 2000 --gpu 1 --threads 2 --view 1920,1080
+idle-hd-w4      --scenario idle --duration-s 5 --goods-tons 2000 --gpu 1 --threads 4 --view 1920,1080
+one-hd-w4       --scenario one --goods-tons 2000 --gpu 1 --threads 4 --view 1920,1080
+burst-hd-w4     --scenario burst --edits 50 --goods-tons 2000 --gpu 1 --threads 4 --view 1920,1080
+sustained-hd-w4 --scenario stream --rate 10 --edits 100 --goods-tons 2000 --gpu 1 --threads 4 --view 1920,1080
+idle-uhd-w2      --scenario idle --duration-s 5 --goods-tons 2000 --gpu 1 --threads 2 --view 3840,2160
+one-uhd-w2       --scenario one --goods-tons 2000 --gpu 1 --threads 2 --view 3840,2160
+burst-uhd-w2     --scenario burst --edits 50 --goods-tons 2000 --gpu 1 --threads 2 --view 3840,2160
+sustained-uhd-w2 --scenario stream --rate 10 --edits 100 --goods-tons 2000 --gpu 1 --threads 2 --view 3840,2160
+idle-uhd-w4      --scenario idle --duration-s 5 --goods-tons 2000 --gpu 1 --threads 4 --view 3840,2160
+one-uhd-w4       --scenario one --goods-tons 2000 --gpu 1 --threads 4 --view 3840,2160
+burst-uhd-w4     --scenario burst --edits 50 --goods-tons 2000 --gpu 1 --threads 4 --view 3840,2160
+sustained-uhd-w4 --scenario stream --rate 10 --edits 100 --goods-tons 2000 --gpu 1 --threads 4 --view 3840,2160
+above-hd-w2      --scenario stream --rate 400 --edits 400 --goods-tons 2000 --gpu 1 --threads 2
+above-hd-w4      --scenario stream --rate 400 --edits 400 --goods-tons 2000 --gpu 1 --threads 4

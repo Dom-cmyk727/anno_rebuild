@@ -1,17 +1,28 @@
 #include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <memory>
+#include <optional>
 #include <thread>
 #include <utility>
+#include <variant>
 
 #include <anno/app/cli.hpp>
+#include <anno/app/opening.hpp>
 #include <anno/app/play.hpp>
+#include <anno/formats/fixed_map.hpp>
 #include <anno/sim/clock.hpp>
+#include <anno/sim/game_setup.hpp>
+#include <anno/sim/placement.hpp>
+#include <anno/sim/reject.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/sim_load/fixed_map.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/scenario_load.hpp>
 
@@ -23,6 +34,15 @@ namespace fs = std::filesystem;
 
 std::string path_text(const fs::path& p) {
     return to_utf8(p);
+}
+
+// The extension with a leading dot, lower case ("" for none).
+std::string extension_lower(const fs::path& p) {
+    std::string ext = p.extension().string();
+    for (char& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return ext;
 }
 
 class SteadySchedule final : public PlaySchedule {
@@ -59,7 +79,88 @@ std::uint64_t percentile_95(std::vector<std::uint64_t> values) {
 
 } // namespace
 
-formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const fs::path& file) {
+namespace {
+
+// A fixed map (the layout text) with the developer start and the developer's test
+// resources on (DeveloperResources): the world, the placed islands for the scene
+// (the same construction as the lan5 test), and the island rows.
+formats::Result<PlayLoad, std::string>
+load_fixed_play(const fs::path& game_dir, const formats::fixed_map::FixedMap& map,
+                const std::shared_ptr<const sim::TypeRegistry>& types,
+                const sim_load::IslandTemplates& templates, const fs::path& file,
+                const FixedPlayOptions& fixed) {
+    // Human seats P0, P1, ... with colours 0, 1, ... (two by default, as the lan5 test and
+    // the developer start use them).
+    std::vector<sim::Seat> seats;
+    for (std::size_t i = 0; i < fixed.seats; ++i) {
+        seats.push_back(sim::Seat{sim::SeatKind::Human, "P" + std::to_string(i),
+                                  static_cast<std::uint32_t>(i), 0});
+    }
+    sim_load::FixedMapOptions options;
+    options.resources.enabled = true;
+    options.resources.gold = fixed.gold;
+    options.resources.goods_tons = fixed.goods_tons;
+    const sim::SimConfig cfg;
+    auto loaded = sim_load::load_fixed_map(map, seats, game_dir, *types, cfg, options);
+    if (!loaded) {
+        return loaded.error();
+    }
+    sim::Seams seams;
+    if (fixed.stand_in_placement) {
+        seams.placement_rule = sim::stand_in_placement_seam();
+    }
+    auto created = sim::World::create(loaded.value().spec, types, cfg, sim::Rules{}, seams);
+    if (!created) {
+        return created.error();
+    }
+
+    std::map<std::string, std::size_t> by_name;
+    for (std::size_t i = 0; i < templates.summaries.size(); ++i) {
+        by_name.emplace(templates.summaries[i].name, i);
+    }
+    PlayLoad out;
+    std::map<std::uint32_t, std::string> key_by_slot;
+    for (const sim::IslandLinkSpec& link : loaded.value().links) {
+        std::string upper = link.path;
+        for (char& c : upper) {
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        }
+        const auto found = by_name.find(upper);
+        if (found == by_name.end()) {
+            return "link template " + link.path + " is not in Scenes/Islands";
+        }
+        PlacedIsland item;
+        item.number = link.number;
+        item.x = static_cast<std::int32_t>(link.x);
+        item.y = static_cast<std::int32_t>(link.y);
+        item.file = templates.files[found->second];
+        out.placed.push_back(std::move(item));
+        key_by_slot.emplace(link.number & 0xFFFFu, link.path);
+    }
+    for (const auto& island : created.value().islands()) {
+        if (!island) {
+            continue;
+        }
+        PlayIsland row;
+        row.slot = island->index.v;
+        row.x = island->rect().x0;
+        row.y = island->rect().y0;
+        row.w = island->rect().w;
+        row.h = island->rect().h;
+        const auto key = key_by_slot.find(row.slot);
+        row.template_key = key == key_by_slot.end() ? "embedded" : key->second;
+        out.islands.push_back(std::move(row));
+    }
+    out.world = std::move(created).value();
+    out.fixed_map = true;
+    out.name = file.stem().string();
+    return out;
+}
+
+} // namespace
+
+formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const fs::path& file,
+                                                 const FixedPlayOptions& fixed) {
     std::ifstream in(file, std::ios::binary);
     if (!in) {
         return std::string("cannot read ") + path_text(file);
@@ -72,6 +173,24 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     }
     const anno::sim_load::IslandTemplates templates =
         anno::sim_load::scan_island_templates(game_dir);
+    // The route is the extension, not the content: `.txt` is a fixed map (the layout
+    // text, data/maps) through load_fixed_map; anything else is a scenario file through
+    // load_scenario_with_links. A failure names the file and the loader that refused it.
+    if (extension_lower(file) == ".txt") {
+        auto fixed_map = anno::formats::fixed_map::parse(buf);
+        if (!fixed_map) {
+            return path_text(file) +
+                   ": parse_fixed_map: " + anno::formats::fixed_map::error_line(fixed_map.error());
+        }
+        auto built =
+            load_fixed_play(game_dir, fixed_map.value(), registry.types, templates, file, fixed);
+        if (!built) {
+            return path_text(file) + ": load_fixed_map: " + built.error();
+        }
+        PlayLoad out = std::move(built).value();
+        out.registry = registry.types;
+        return out;
+    }
     const sim::SimConfig cfg;
     auto resolved =
         anno::sim_load::load_scenario_with_links(buf, templates, *registry.types, cfg, {});
@@ -120,7 +239,90 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     out.world = std::move(created).value();
     out.islands = std::move(islands);
     out.links = std::move(links);
+    out.registry = registry.types;
     return out;
+}
+
+std::vector<sim::TypeId> buildable_types(const sim::TypeRegistry& registry,
+                                         const sim::ListLayout& layout) {
+    std::vector<sim::TypeId> out;
+    for (const sim::BuildingType& type : registry.types()) {
+        if (layout.list_for(type.prodtype).has_value() || (type.flags_word & sim::kRoadFlag) != 0) {
+            out.push_back(type.id);
+        }
+    }
+    std::sort(out.begin(), out.end(), [](sim::TypeId a, sim::TypeId b) { return a.v < b.v; });
+    return out;
+}
+
+DevToolSetup dev_tool_setup(const PlayLoad& load, sim::PlayerId player) {
+    DevToolSetup s;
+    s.registry = load.registry;
+    s.issuer = player;
+    const sim::World& world = load.world;
+    for (const auto& island : world.islands()) {
+        if (!island || s.city) {
+            continue;
+        }
+        for (const std::optional<sim::City>& city : island->cities) {
+            if (city && city->owner == player && !s.city) {
+                s.city = sim::CityRef{island->index, city->number};
+                s.island = TileRect{island->tiles.x0(), island->tiles.y0(), island->tiles.width(),
+                                    island->tiles.height()};
+            }
+        }
+    }
+    if (s.registry) {
+        s.types = buildable_types(*s.registry, world.config().layout);
+    }
+    // A goods-free building of the tool's types and a free tile in another player's city, for the
+    // scripted session's `foreign` step: the first plain type, the first tile away from the
+    // island's edge that holds no building (World::building_at is the sim's own lookup).
+    std::optional<sim::TypeId> plain;
+    for (const bool square : {true, false}) { // a 2 x 2 first, else any goods-free non-road type
+        for (const sim::TypeId id : s.types) {
+            const sim::BuildingType* type = s.registry ? s.registry->find(id) : nullptr;
+            if (!plain && type != nullptr && type->cost_goods.empty() &&
+                (type->flags_word & sim::kRoadFlag) == 0 &&
+                (!square || (type->width == 2 && type->height == 2))) {
+                plain = id;
+            }
+        }
+    }
+    std::optional<sim::World> trial;
+    for (const auto& island : world.islands()) {
+        if (!island || !plain || s.foreign || !s.city || island->index == s.city->island) {
+            continue;
+        }
+        for (const std::optional<sim::City>& city : island->cities) {
+            if (!city || city->owner == player || s.foreign) {
+                continue;
+            }
+            const sim::CityRef ref{island->index, city->number};
+            const auto w = static_cast<std::int32_t>(island->tiles.width());
+            const auto h = static_cast<std::int32_t>(island->tiles.height());
+            for (std::int32_t y = 2; y + 4 <= h && !s.foreign; ++y) {
+                for (std::int32_t x = 2; x + 4 <= w && !s.foreign; ++x) {
+                    const sim::TileXY at{island->tiles.x0() + x, island->tiles.y0() + y};
+                    if (world.building_at(ref, at.x, at.y) == nullptr) {
+                        // The sim's placement rule refuses sloped ground (MAP-BUILD-1): the spot is
+                        // one the city's own owner can build on, tried on a copy of the world (a
+                        // refusal changes nothing, so one copy serves every try).
+                        if (!trial) {
+                            trial.emplace(world);
+                        }
+                        sim::BuildCmd build;
+                        build.city = ref;
+                        build.placements.push_back(sim::PlacementWire{*plain, at.x, at.y, 0, 0, 0});
+                        if (trial->apply(sim::Command{city->owner, std::move(build)}).ok()) {
+                            s.foreign = ForeignSpot{ref, city->owner, at, *plain};
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return s;
 }
 
 std::vector<SceneBuilding> play_buildings(const sim::World& world) {
@@ -182,6 +384,27 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
     step_ms_ = step.value_or(10);
     steps_ = sim::Timing{}.mp_steps_per_turn;
     snap_ = std::make_shared<const PlaySnapshot>();
+    // The picture was built from these buildings at load, so the first diff starts here.
+    buildings_ = play_buildings(world_);
+    sort_buildings(buildings_);
+    // The developer player's first city (the one the developer input builds in).
+    for (std::size_t i = 0; i < world_.islands().size() && !developer_city_; ++i) {
+        const auto& island = world_.islands()[i];
+        if (!island) {
+            continue;
+        }
+        for (const std::optional<sim::City>& city : island->cities) {
+            if (city && city->owner == developer_player() && !developer_city_) {
+                developer_city_ = sim::CityRef{island->index, city->number};
+                has_city_.store(true);
+            }
+        }
+    }
+    // One second of turns. A window takes the mailbox once per frame, so it holds
+    // about one frame's batches; a stalled or minimised window reaches the bound
+    // after a second of turns and collapses to a resync (BuildingMailbox).
+    const auto turn_ms = static_cast<std::size_t>(sim::Timing{}.mp_turn_real_ms);
+    mailbox_ = BuildingMailbox(turn_ms == 0 ? 1 : std::max<std::size_t>(1, 1000 / turn_ms));
 }
 
 PlayRunner::~PlayRunner() {
@@ -230,8 +453,17 @@ std::shared_ptr<const PlaySnapshot> PlayRunner::snapshot() const {
     return snap_;
 }
 
+std::vector<PlayRunner::TurnHash> PlayRunner::recorded_hashes() const {
+    const std::lock_guard lock(snap_mu_);
+    return hashes_;
+}
+
 std::string PlayRunner::title_line() const {
-    const auto snap = snapshot();
+    return title_of(*snapshot(), has_city_.load());
+}
+
+std::string PlayRunner::title_of(const PlaySnapshot& snapshot, bool money) {
+    const PlaySnapshot* snap = &snapshot;
     char buf[192];
     std::snprintf(buf, sizeof buf, "tick %llu, game %llu ms, turn p95 %.1f ms",
                   static_cast<unsigned long long>(snap->tick),
@@ -243,6 +475,12 @@ std::string PlayRunner::title_line() const {
     }
     if (snap->paused) {
         line += ", paused";
+    }
+    if (money) {
+        line += ", money " + std::to_string(snap->money);
+    }
+    if (!snap->last_rejection.empty()) {
+        line += ", refused: " + snap->last_rejection;
     }
     return line;
 }
@@ -347,14 +585,123 @@ void PlayRunner::one_turn() {
     sim::Turn turn;
     turn.index = index_++;
     turn.step_ms = step_ms_;
+    // The script's commands for this turn, in file order (set_script sorted them by turn), then
+    // the window's commands queued before this turn started, in push order. Which turn takes a
+    // window command depends on wall time; its content and order do not (CommandQueue).
+    std::vector<CommandId> ids;
+    while (script_next_ < script_.size() && script_[script_next_].turn <= turn.index) {
+        turn.commands.push_back(script_[script_next_].command);
+        ids.push_back(CommandId{CommandOrigin::Script, script_next_ + 1});
+        ++script_next_;
+    }
+    for (CommandQueue::Entry& entry : queue_.take()) {
+        turn.commands.push_back(std::move(entry.command));
+        ids.push_back(CommandId{CommandOrigin::Window, entry.n});
+    }
+    {
+        std::lock_guard lock(snap_mu_);
+        for (const sim::Command& command : turn.commands) {
+            if (sim::has_wire_form(command.body)) {
+                applied_.push_back({turn.index, command});
+            }
+        }
+    }
+    if (turn_gate_) {
+        turn_gate_(turn.index); // test seam: the turn is in flight from here
+    }
     const auto started = schedule_->now();
-    sim::run_turn(world_, nullptr, turn, steps_);
+    // The order id a MoveCmd gets is the counter's value when it is applied: each accepted one
+    // takes the next (ShipOrders::move), so the ids are known from the results below.
+    std::uint64_t order_counter = world_.ids().next_order_id;
+    // One execution path: the sim's own loop reports what each command did (round ee, A2).
+    std::vector<sim::ApplyResult> results;
+    sim::run_turn(world_, nullptr, turn, steps_, &results);
+    // A turn that ran commands, and every kHashEvery-th turn: hashing the whole world each turn
+    // slowed lan5's turns past their cadence in a debug build (round ee, E3's first run).
+    if (record_hashes_ && (!turn.commands.empty() || turn.index % kHashEvery == 0)) {
+        const std::uint64_t hash = world_.state_hash();
+        const std::lock_guard lock(snap_mu_);
+        hashes_.push_back({turn.index, hash});
+    }
     const auto us =
         std::chrono::duration_cast<std::chrono::microseconds>(schedule_->now() - started).count();
-    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us));
+    // The turn cost above is the sim's; the diff that publishes its changes is
+    // timed separately (the bench reports both).
+    // The sim's host events are drained (their refusals are in `results`, per command); the ships'
+    // order events are kept for the opening's view.
+    for (const sim::SimEvent& event : world_.drain_events()) {
+        if (opening_) {
+            ship_events_.append(event);
+        }
+    }
+    std::vector<CommandOutcome> ran;
+    ran.reserve(results.size());
+    for (std::size_t i = 0; i < results.size(); ++i) {
+        CommandOutcome o;
+        o.id = ids[i];
+        o.turn = turn.index;
+        o.position = static_cast<std::uint32_t>(i);
+        o.status = results[i].status;
+        o.state = results[i].ok() ? CommandOutcome::State::Applied : CommandOutcome::State::Refused;
+        o.records.reserve(results[i].records.size());
+        for (const sim::RecordResult& r : results[i].records) {
+            o.records.push_back(r.status);
+            if (results[i].ok()) {
+                o.transferred_88 += r.transferred_88;
+                if (!o.created.valid() && r.building.valid()) {
+                    o.created = r.building;
+                }
+            }
+        }
+        if (results[i].ok() && std::holds_alternative<sim::MoveCmd>(turn.commands[i].body)) {
+            o.order_id = order_counter++;
+        }
+        ran.push_back(std::move(o));
+    }
+    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), turn.index, turn.commands.size(),
+            building_batch(turn.index), std::move(ran));
+    std::function<void(WorldCapture)> capture;
+    {
+        const std::lock_guard lock(capture_mu_);
+        capture = std::exchange(capture_, {});
+    }
+    if (capture) {
+        // After the publication: the capture is the state the newest snapshot describes.
+        WorldCapture c;
+        c.save = world_.save();
+        c.hash = world_.state_hash();
+        c.turn = turn.index;
+        c.tick = world_.clock().tick();
+        capture(std::move(c));
+    }
 }
 
-void PlayRunner::publish(std::uint64_t turn_us) {
+bool PlayRunner::request_capture(std::function<void(WorldCapture)> done) {
+    const std::lock_guard lock(capture_mu_);
+    if (capture_) {
+        return false;
+    }
+    capture_ = std::move(done);
+    return true;
+}
+
+std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
+    std::vector<SceneBuilding> cur = play_buildings(world_);
+    sort_buildings(cur);
+    std::vector<BuildingDelta> deltas = diff_sorted_buildings(buildings_, cur);
+    buildings_ = std::move(cur);
+    if (deltas.empty()) {
+        return nullptr;
+    }
+    auto batch = std::make_shared<BuildingBatch>();
+    batch->turn = turn;
+    batch->deltas = std::move(deltas);
+    return batch;
+}
+
+void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t applied,
+                         std::shared_ptr<const BuildingBatch> batch,
+                         std::vector<CommandOutcome> ran) {
     const auto now = std::chrono::steady_clock::now();
     costs_.push_back({now, turn_us});
     const auto cut = now - std::chrono::seconds(1);
@@ -368,7 +715,205 @@ void PlayRunner::publish(std::uint64_t turn_us) {
     next->p95_us = p95_locked();
     next->behind_ms = behind_ms_;
     next->paused = paused_.load();
-    publish_snapshot(std::move(next));
+    next->turn = turn;
+    // The local participant's money and its city's goods (copied; the window never reads the
+    // World). The city is looked for again while there is none: a ship start founds it later.
+    if (opening_) {
+        OpeningView view = collect_opening_view(world_, local_player_, ship_events_, turn);
+        std::optional<sim::FoundCmd> probe;
+        {
+            const std::lock_guard lock(probe_mu_);
+            probe = probe_;
+        }
+        if (probe) {
+            view.found_probe = probe_founding(world_, local_player_, *probe);
+        }
+        next->opening = std::make_shared<const OpeningView>(std::move(view));
+        // The participant's city is the first of its cities in (island, city) order, every turn:
+        // the same one the window's building tool follows (OpeningView::cities.front()).
+        if (next->opening && !next->opening->cities.empty()) {
+            developer_city_ = next->opening->cities.front().ref;
+        } else {
+            developer_city_.reset();
+        }
+        has_city_.store(developer_city_.has_value());
+    } else if (!developer_city_) {
+        for (std::size_t i = 0; i < world_.islands().size() && !developer_city_; ++i) {
+            const auto& island = world_.islands()[i];
+            if (!island) {
+                continue;
+            }
+            for (const std::optional<sim::City>& city : island->cities) {
+                if (city && city->owner == local_player_ && !developer_city_) {
+                    developer_city_ = sim::CityRef{island->index, city->number};
+                    has_city_.store(true);
+                }
+            }
+        }
+    }
+    if (developer_city_) {
+        if (const sim::Player* player = world_.players().find(local_player_)) {
+            next->money = player->money;
+            next->costs_waived = player->free_build || world_.rules().free_build_cheat;
+        }
+        const auto& island = world_.islands()[developer_city_->island.v];
+        if (island && developer_city_->city.v < island->cities.size() &&
+            island->cities[developer_city_->city.v]) {
+            next->goods = island->cities[developer_city_->city.v]->stock.stock;
+        }
+    }
+    for (const CommandOutcome& o : ran) {
+        if (o.state == CommandOutcome::State::Refused) {
+            // Attributed (round ee review of C, P2-1): the title must not let an earlier
+            // command's refusal pass for a later one's.
+            last_reason_ = std::string(sim::reject_name(o.status)) + " (" +
+                           (o.id.origin == CommandOrigin::Script ? "script" : "window") +
+                           " command #" + std::to_string(o.id.n) + ")";
+            last_reason_turn_ = o.turn;
+        }
+    }
+    if (!last_reason_.empty() && turn >= last_reason_turn_ + kRejectionShowTurns) {
+        last_reason_.clear();
+    }
+    next->last_rejection = last_reason_;
+    // One publication: the batch goes into the mailbox and the snapshot is swapped
+    // under the same lock, batch first. A reader that sees snapshot N therefore
+    // sees turn N's batch already waiting (W4.3, orchestrator correction 2).
+    // A collapse copies the list before the lock (W4.3 A8). Between this check and the
+    // push only the window can change the mailbox, and it can only take the waiting
+    // batches (empty it); the sim thread is the only pusher. So a copy made for a
+    // collapse can be unused, when the window emptied the mailbox in the gap. That copy
+    // is then destroyed while the lock is held: its cost is the list's size, bounded by
+    // the island count, and the test "a prepared copy made when full is unused" covers the
+    // interleaving (round du, step 6).
+    std::vector<SceneBuilding> full_list;
+    bool may_collapse = false;
+    {
+        std::lock_guard lock(snap_mu_);
+        may_collapse = mailbox_.full();
+    }
+    if (may_collapse) {
+        full_list = buildings_;
+    }
+    const bool pushed = batch != nullptr;
+    // The outcomes are recorded before the snapshot that follows them is published, so a reader
+    // that sees the snapshot finds them (outcomes_next).
+    for (CommandOutcome& o : ran) {
+        outcomes_.record(o);
+    }
+    next->outcomes_next = outcomes_.next();
+    if (publish_gate_) {
+        publish_gate_(turn); // the outcomes are readable, the snapshot is not yet (R1's test)
+    }
+    // The window trace's record of the turn (opt-in), filled before the batch and the refusals
+    // move into the mailbox.
+    std::optional<TurnObservation> observed;
+    if (turn_observer_) {
+        observed.emplace();
+        observed->turn = turn;
+        observed->applied = applied;
+        for (const CommandOutcome& o : ran) {
+            if (o.state == CommandOutcome::State::Refused) {
+                ++observed->rejected;
+                observed->reasons += (observed->reasons.empty() ? "" : ",") +
+                                     std::string(sim::reject_name(o.status));
+            }
+        }
+        observed->batch = pushed;
+        observed->deltas = batch ? batch->deltas.size() : 0;
+        observed->published = std::chrono::steady_clock::now();
+    }
+    {
+        std::lock_guard lock(snap_mu_);
+        if (batch) {
+            mailbox_.push_prepared(std::move(batch), std::move(full_list));
+            batches_waiting_.store(true);
+        }
+        snap_ = std::move(next);
+    }
+    if (pushed || !ran.empty() || opening_) {
+        // The window's wake-up, after the publication (outside the snapshot lock). With an
+        // opening every turn moves the ships.
+        const std::lock_guard lock(listener_mu_);
+        if (listener_) {
+            listener_();
+        }
+    }
+    if (observed) {
+        turn_observer_(*observed);
+    }
+}
+
+void PlayRunner::set_wake_listener(std::function<void()> listener) {
+    const std::lock_guard lock(listener_mu_);
+    listener_ = std::move(listener);
+}
+
+void PlayRunner::set_turn_gate(std::function<void(std::uint64_t)> gate) {
+    turn_gate_ = std::move(gate);
+}
+
+void PlayRunner::set_publish_gate(std::function<void(std::uint64_t)> gate) {
+    publish_gate_ = std::move(gate);
+}
+
+PlayFeedback PlayRunner::feedback(std::optional<CommandId> receipt) const {
+    // The snapshot first: its watermark (outcomes_next) bounds which outcomes may be shown with
+    // it. Reading the outcome first and the snapshot second cannot give that, because the sim
+    // thread records outcomes before it swaps the snapshot (publish).
+    PlayFeedback read;
+    read.snapshot = snapshot();
+    if (receipt) {
+        read.latest = outcomes_.find_published(*receipt, read.snapshot->outcomes_next);
+    }
+    return read;
+}
+
+void PlayRunner::set_turn_observer(std::function<void(const TurnObservation&)> observer) {
+    turn_observer_ = std::move(observer);
+}
+
+std::vector<std::shared_ptr<const BuildingBatch>> PlayRunner::take_building_batches() {
+    std::lock_guard lock(snap_mu_);
+    batches_waiting_.store(false);
+    return mailbox_.take();
+}
+
+std::vector<std::uint64_t> PlayRunner::pending_batch_turns() const {
+    std::lock_guard lock(snap_mu_);
+    std::vector<std::uint64_t> turns;
+    for (const auto& batch : mailbox_.waiting()) {
+        turns.push_back(batch->turn);
+    }
+    return turns;
+}
+
+void PlayRunner::set_batch_bound(std::size_t bound) {
+    mailbox_ = BuildingMailbox(bound);
+}
+
+void PlayRunner::set_script(std::vector<ScriptedCommand> script) {
+    std::stable_sort(
+        script.begin(), script.end(),
+        [](const ScriptedCommand& a, const ScriptedCommand& b) { return a.turn < b.turn; });
+    script_ = std::move(script);
+    script_next_ = 0;
+    outcomes_.issued(CommandOrigin::Script, script_.size());
+}
+
+CommandId PlayRunner::post_command(sim::Command command) {
+    const CommandId id{CommandOrigin::Window, queue_.push(std::move(command))};
+    outcomes_.issued(CommandOrigin::Window, id.n);
+    return id;
+}
+
+void PlayRunner::set_outcome_bounds(std::size_t outcomes, std::size_t records) {
+    outcomes_.set_bounds(outcomes, records);
+}
+
+std::vector<ScriptedCommand> PlayRunner::applied_commands() const {
+    std::lock_guard lock(snap_mu_);
+    return applied_;
 }
 
 void PlayRunner::note_behind() {

@@ -87,7 +87,7 @@ TEST_CASE("SCRIPT1 runtime exhaustion persists and stops world time") {
     CHECK(w.faulted());
     CHECK(w.timers().counter[1] == 0);
     CHECK(w.script().state.fault == ScriptFault::Budget);
-    CHECK(w.check_invariants().empty());
+    CHECK(w.check_invariants() == "world fault: script runtime fault");
     auto restored = World::load(w.save(), TypeRegistry::empty());
     REQUIRE(restored);
     CHECK(restored.value().state_hash() == w.state_hash());

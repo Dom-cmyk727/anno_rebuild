@@ -105,6 +105,10 @@ std::string validate_script(const ScriptRuntime& r, const TypeRegistry& types,
     const auto& s = r.state;
     if (r.policy != kScriptPolicy)
         return "script execution policy differs";
+    if (r.limits.source_bytes == 0 || r.limits.source_bytes > 1048576 || r.limits.nodes == 0 ||
+        r.limits.nodes > 65536 || r.limits.depth == 0 || r.limits.depth > 128 ||
+        r.limits.work == 0 || r.limits.work > 10000000)
+        return "invalid script limits";
     for (const auto& p : players.slots)
         if (p) {
             auto problem = validate_permissions(p->permissions, types);
@@ -130,6 +134,8 @@ std::string validate_script(const ScriptRuntime& r, const TypeRegistry& types,
     for (auto id : s.bindings)
         if (id.v >= cfg.player_slots || !players.find(id))
             return "invalid script binding";
+    if (s.fault_offset > r.source.size() || (s.fault == ScriptFault::None && s.fault_offset != 0))
+        return "invalid script fault location";
     if ((s.context == ScriptContext::Fault) != (s.fault != ScriptFault::None))
         return "invalid script fault state";
     if (s.context == ScriptContext::Pending &&

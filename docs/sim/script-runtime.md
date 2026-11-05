@@ -664,3 +664,8 @@ a nonzero goods name (Scene23b22..23b29). Compiler environment now carries actua
 registry goods names; compile/restore refuses collisions. Added original HOLZ and
 mod-name/casefold controls plus authoritative World rejection. Earlier B findings
 closed at b32e8d5b; frozen gate B-final-01 passed12/12.
+
+B-final-02 build failed under -Werror: the new optional goods_names span needed
+an explicit empty default to preserve existing three-field environment callers.
+No selection executed; failure retained. Added the default and explicit string_view
+include; re-run uses a fresh path.

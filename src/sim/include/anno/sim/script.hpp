@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <anno/formats/result.hpp>
@@ -28,7 +29,7 @@ struct ScriptError {
 struct ScriptEnvironment {
     std::span<const TypeId> types;
     std::uint32_t player_slots = 32, timer_count = 5;
-    std::span<const std::string_view> goods_names; // registry order, index0 is UNUSED
+    std::span<const std::string_view> goods_names{}; // registry order, index0 is UNUSED
 };
 struct ScriptMapping {
     std::string name;

@@ -280,6 +280,8 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             if (g.resident && w.transport_stats_ != nullptr && g.goods < c->stock.stock.size()) {
                 w.transport_stats_->residents.merged_taken_by_goods[g.goods] +=
                     before - c->stock.stock[g.goods]; // diagnostic ledger: the store really taken
+                w.transport_stats_->residents.merged_taken_by_city[{g.city, g.goods}] +=
+                    before - c->stock.stock[g.goods];
             }
         }
     }
@@ -307,7 +309,12 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             continue;
         }
         // D 0x100756e0 on the Inn: n = min(request, stock), taken += n, tavern -= n, 16-bit wraps.
+        const std::uint32_t tavern_before = inn->tavern;
         inn_take(*inn, std::int64_t{d.amount});
+        if (w.transport_stats_ != nullptr) {
+            w.transport_stats_->residents.inn_taken_by_building[d.inn] +=
+                tavern_before > inn->tavern ? tavern_before - inn->tavern : 0U; // diagnostic ledger
+        }
     }
     // 5. Reserves.
     for (const Reserve& r : fx.reserves) {

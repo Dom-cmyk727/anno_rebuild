@@ -1530,7 +1530,7 @@ TEST_CASE("state stream header and settings scopes") {
     // timers, 28 empty monopoly entries).
     Stream expected;
     expected.u32(sim::kStateHashVersion);
-    expected.u64(0x0032545049524353ULL); // SCRIPT2 schema
+    expected.u64(0x0031544e494d4953ULL); // SIMINT1 lineage schema
     expected.u32(sim::kPrngTimelineVersion);
     expected_config(expected);
     expected.u64(sim::TypeRegistry::empty()->digest());
@@ -1593,7 +1593,7 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u64(0);
     expected.u64(0); // signals/bindings
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 130);
+    CHECK(sim::kStateHashVersion == 131);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

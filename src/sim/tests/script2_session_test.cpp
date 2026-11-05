@@ -205,24 +205,12 @@ TEST_CASE("SCRIPT2 framed oversized namespace refuses before allocation") {
     CHECK(refused.error().find("checksum") == std::string::npos);
 }
 
-TEST_CASE("SCRIPT2 actual archived SCRIPT1 recordings reach explicit native129 refusal") {
-    for (const auto* name :
-         {"g2.log", "g3.log", "g4.log", "g5.log", "g6.log", "m2_found.log", "m2_found_wrong.log",
-          "cargo_load.log", "cargo_load_wrong.log", "cargo_unload.log", "cargo_unload_wrong.log"}) {
-        std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / name,
-                         std::ios::binary);
-        REQUIRE(in.good());
-        const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(in), {}};
-        auto log = read_log(bytes);
-        REQUIRE_MESSAGE(log, (log ? "" : log.error()));
-        REQUIRE(log.value().initial_save.size() > 20);
-        CHECK(anno::formats::u32_le(log.value().initial_save, 8) == 129);
-        const std::vector<std::uint8_t> tag{'S', 'C', 'R', 'I', 'P', 'T', '1', 0};
-        CHECK(std::vector<std::uint8_t>(log.value().initial_save.begin() + 12,
-                                        log.value().initial_save.begin() + 20) == tag);
-        auto refused = World::load(log.value().initial_save, TypeRegistry::empty());
-        REQUIRE_FALSE(refused);
-        CHECK(refused.error() ==
-              "save: state stream version 129 is not supported (this build reads 130)");
-    }
+TEST_CASE("integration historical replay frame2 refuses before current parsing") {
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / "g2.log",
+                     std::ios::binary);
+    REQUIRE(in.good());
+    const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(in), {}};
+    const auto log = read_log(bytes);
+    REQUIRE_FALSE(log);
+    CHECK(log.error().find("replay-log version 2 is not 4") != std::string::npos);
 }

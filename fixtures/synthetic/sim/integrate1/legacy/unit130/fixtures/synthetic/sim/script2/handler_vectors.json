@@ -1,0 +1,587 @@
+{
+  "reviewer": "/root/script2_review_area",
+  "derivation": "Expected results hand-derived from original instructions, not engine/reference execution",
+  "coordinate_representation": "Q24.8 raw signed integer; divide by 256 truncating toward zero before integer rectangle comparisons",
+  "default_case": {
+    "authored_y0_x0_x1_y1": [
+      30,
+      10,
+      20,
+      40
+    ],
+    "query": "ship",
+    "mapped_owner": 0,
+    "figure_owner": 0,
+    "bewohntype": 113,
+    "state_word": 0,
+    "sector_registered": true,
+    "removed": false
+  },
+  "vectors": [
+    {
+      "id": "authored-order-positive",
+      "authored_y0_x0_x1_y1": [
+        671,
+        218,
+        285,
+        736
+      ],
+      "pos_q8": [
+        56320,
+        179200
+      ],
+      "expected": true
+    },
+    {
+      "id": "authored-order-swapped",
+      "authored_y0_x0_x1_y1": [
+        671,
+        218,
+        285,
+        736
+      ],
+      "pos_q8": [
+        179200,
+        56320
+      ],
+      "expected": false
+    },
+    {
+      "id": "lower-both",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "expected": true
+    },
+    {
+      "id": "upper-adjacent",
+      "pos_q8": [
+        5119,
+        10239
+      ],
+      "expected": true
+    },
+    {
+      "id": "left-outside",
+      "pos_q8": [
+        2559,
+        7680
+      ],
+      "expected": false
+    },
+    {
+      "id": "right-edge",
+      "pos_q8": [
+        5120,
+        7680
+      ],
+      "expected": false
+    },
+    {
+      "id": "top-outside",
+      "pos_q8": [
+        2560,
+        7679
+      ],
+      "expected": false
+    },
+    {
+      "id": "bottom-edge",
+      "pos_q8": [
+        2560,
+        10240
+      ],
+      "expected": false
+    },
+    {
+      "id": "negative-truncation-predicate-only",
+      "authored_y0_x0_x1_y1": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "pos_q8": [
+        -128,
+        128
+      ],
+      "expected": true,
+      "qualification": "Requires independently spatially registered candidate; not a claim that original normal world permits negative sector positions"
+    },
+    {
+      "id": "owner-zero-exact",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "figure_owner": 1,
+      "expected": false
+    },
+    {
+      "id": "hull-not-read",
+      "pos_q8": [
+        5184,
+        7680
+      ],
+      "hull_half_q8": 512,
+      "expected": false
+    },
+    {
+      "id": "ship-upper-kind",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "bewohntype": 128,
+      "expected": true
+    },
+    {
+      "id": "ship-next-kind",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "bewohntype": 129,
+      "expected": false
+    },
+    {
+      "id": "ship-wrong-soldier",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "bewohntype": 97,
+      "expected": false
+    },
+    {
+      "id": "soldier-lower",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "query": "soldier",
+      "bewohntype": 97,
+      "expected": true
+    },
+    {
+      "id": "soldier-upper-crewed",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "query": "soldier",
+      "bewohntype": 112,
+      "crew_occupied": true,
+      "expected": true
+    },
+    {
+      "id": "soldier-next-kind",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "query": "soldier",
+      "bewohntype": 113,
+      "expected": false
+    },
+    {
+      "id": "world-state-bit2",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "state_word": 4,
+      "expected": false
+    },
+    {
+      "id": "world-state-bit13",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "state_word": 8192,
+      "expected": false
+    },
+    {
+      "id": "registered-state80-not-blanket-rejected",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "state_word": 128,
+      "expected": true,
+      "qualification": "Synthetic independently registered candidate. Authored carried CREW children are not registered"
+    },
+    {
+      "id": "war-machine-uncrewed",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "query": "soldier",
+      "bewohntype": 108,
+      "crew_occupied": false,
+      "expected": false
+    },
+    {
+      "id": "war-machine-crewed",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "query": "soldier",
+      "bewohntype": 108,
+      "crew_occupied": true,
+      "expected": true
+    },
+    {
+      "id": "pre-war-machine-uncrewed",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "query": "soldier",
+      "bewohntype": 107,
+      "crew_occupied": false,
+      "expected": true
+    },
+    {
+      "id": "authored-carried-child",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "query": "soldier",
+      "bewohntype": 97,
+      "sector_registered": false,
+      "parent_present": true,
+      "expected": false
+    },
+    {
+      "id": "removed-expiry-only",
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "sector_registered": false,
+      "removed": true,
+      "expected": false
+    },
+    {
+      "id": "reversed-x-empty",
+      "authored_y0_x0_x1_y1": [
+        30,
+        20,
+        10,
+        40
+      ],
+      "pos_q8": [
+        3840,
+        8960
+      ],
+      "expected": false
+    },
+    {
+      "id": "zero-width-empty",
+      "authored_y0_x0_x1_y1": [
+        30,
+        10,
+        10,
+        40
+      ],
+      "pos_q8": [
+        2560,
+        8960
+      ],
+      "expected": false
+    },
+    {
+      "id": "outward-clipped-raw-bounds",
+      "authored_y0_x0_x1_y1": [
+        -100,
+        -100,
+        20,
+        40
+      ],
+      "pos_q8": [
+        2560,
+        7680
+      ],
+      "expected": true,
+      "qualification": "Normally sector-registered positive position; clipping scan origin must not normalize the original raw rectangle endpoints"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "no-remembered-touch",
+      "pos_q8_sequence": [
+        [
+          2560,
+          7680
+        ],
+        [
+          5120,
+          7680
+        ],
+        [
+          2560,
+          7680
+        ]
+      ],
+      "expected_sequence": [
+        true,
+        false,
+        true
+      ]
+    }
+  ],
+  "validation": [
+    {
+      "id": "missing-area-name",
+      "expected": "compile-refusal"
+    },
+    {
+      "id": "missing-mapper-name",
+      "expected": "compile-refusal"
+    }
+  ],
+  "unresolved_policy": [
+    {
+      "id": "candidate-cap",
+      "original": "first 512 sector/class candidates before usable/owner filtering",
+      "discriminator": "512 foreign or unusable candidates before matching candidate 513",
+      "preserve_original_expected": false,
+      "complete_query_expected": true,
+      "disposition": "Owner explicitly approved complete indexed touch queries bounded by deterministic work; original512 truncation removal is owner authority, not reviewer choice"
+    },
+    {
+      "id": "extreme-endpoint-add15-overflow",
+      "original": "Sector end uses signed32 endpoint+15 before clipping; near INT32_MAX it wraps",
+      "disposition": "Preserve signed32 wrap before clipping, as specified in the reviewed contract; no endpoint widening."
+    }
+  ],
+  "query_scan_domain_vectors": [
+    {
+      "id": "one-tile-world-original-empty",
+      "world_width": 1,
+      "world_height": 1,
+      "authored_y0_x0_x1_y1": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "pos_q8": [
+        0,
+        0
+      ],
+      "expected_original": false,
+      "reason": "Upper scan row/column=floor(min(16,1)/16)=0; no sector visited"
+    },
+    {
+      "id": "partial-final-sector-original-empty",
+      "world_width": 17,
+      "world_height": 17,
+      "authored_y0_x0_x1_y1": [
+        16,
+        16,
+        17,
+        17
+      ],
+      "pos_q8": [
+        4096,
+        4096
+      ],
+      "expected_original": false,
+      "reason": "Start sector1, end sector=floor(min(32,17)/16)=1; no sector visited"
+    },
+    {
+      "id": "aligned-control",
+      "world_width": 32,
+      "world_height": 32,
+      "authored_y0_x0_x1_y1": [
+        16,
+        16,
+        17,
+        17
+      ],
+      "pos_q8": [
+        4096,
+        4096
+      ],
+      "expected_original": true,
+      "reason": "Start sector1,end2; current candidate checked against raw rectangle"
+    },
+    {
+      "id": "endpoint-wrap",
+      "world_width": 32,
+      "world_height": 32,
+      "authored_y0_x0_x1_y1": [
+        0,
+        0,
+        2147483647,
+        32
+      ],
+      "pos_q8": [
+        0,
+        0
+      ],
+      "expected_original": false
+    },
+    {
+      "id": "endpoint-no-wrap-control",
+      "world_width": 32,
+      "world_height": 32,
+      "authored_y0_x0_x1_y1": [
+        0,
+        0,
+        2147483632,
+        32
+      ],
+      "pos_q8": [
+        0,
+        0
+      ],
+      "expected_original": true
+    }
+  ],
+  "cap_disposition": "Owner explicitly approved complete indexed queries bounded by deterministic work on 2026-11-05; original512 truncation removed.",
+  "money_original_vectors": [
+    [
+      10000,
+      99999,
+      109999
+    ],
+    [
+      0,
+      -1,
+      -1
+    ],
+    [
+      2147483647,
+      1,
+      -2147483648
+    ],
+    [
+      -2147483648,
+      -1,
+      2147483647
+    ]
+  ],
+  "money_engine_vectors": [
+    [
+      10000,
+      99999,
+      109999
+    ],
+    [
+      0,
+      -1,
+      -1
+    ],
+    [
+      2147483647,
+      1,
+      2147483648
+    ],
+    [
+      9223372036854775807,
+      1,
+      9223372036854775807
+    ],
+    [
+      -9223372036854775808,
+      -1,
+      -9223372036854775808
+    ]
+  ],
+  "wave_vectors": [
+    {
+      "id": "namespace-broadcast",
+      "namespace": "scenes/0011SingleEndlosAddon",
+      "actions": [
+        "HAWAIMUCKE.WAV"
+      ],
+      "expected": [
+        {
+          "asset": "scenes/0011SingleEndlosAddon/HAWAIMUCKE.WAV",
+          "code": 317,
+          "audience": "AllLocal",
+          "original_recipient": 170
+        }
+      ]
+    },
+    {
+      "id": "order-repeat",
+      "namespace": "scenes/mod",
+      "actions": [
+        "A.WAV",
+        "B.WAV",
+        "A.WAV"
+      ],
+      "expected_assets": [
+        "scenes/mod/A.WAV",
+        "scenes/mod/B.WAV",
+        "scenes/mod/A.WAV"
+      ]
+    },
+    {
+      "id": "wrong-namespace",
+      "namespace": "scenes/mod",
+      "actions": [
+        "A.WAV"
+      ],
+      "reject_asset": "scenes/other/A.WAV"
+    },
+    {
+      "id": "wrong-recipient",
+      "namespace": "scenes/mod",
+      "actions": [
+        "A.WAV"
+      ],
+      "reject_audience": "Player170"
+    },
+    {
+      "id": "transaction-rollback",
+      "money_before": 100,
+      "money_delta": 5,
+      "actions": [
+        "A.WAV"
+      ],
+      "fault_after": true,
+      "expected_money": 100,
+      "expected_events": []
+    },
+    {
+      "id": "queue-drop-oldest",
+      "capacity": 2,
+      "actions": [
+        "A.WAV",
+        "B.WAV",
+        "C.WAV"
+      ],
+      "expected_assets": [
+        "B.WAV",
+        "C.WAV"
+      ],
+      "expected_dropped": 1,
+      "drain_changes_state": false,
+      "drain_changes_prng": false,
+      "drain_changes_work": false
+    },
+    {
+      "id": "ready-reload",
+      "previously_delivered": [
+        "A.WAV"
+      ],
+      "expected_events": [],
+      "next_visit_actions": [
+        "B.WAV"
+      ],
+      "expected_next": [
+        "B.WAV"
+      ]
+    }
+  ]
+}

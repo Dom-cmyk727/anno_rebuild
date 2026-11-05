@@ -177,8 +177,10 @@ TEST_CASE("write_log matches the documented frame byte for byte") {
     for (const char c : std::string("A3RP")) {
         s.u8(static_cast<std::uint8_t>(c)); // magic
     }
-    s.u32(3);                     // kReplayLogVersion
+    s.u32(4);                     // kReplayLogVersion
     s.u32(1);                     // kCommandWireVersion, once
+    s.u32(131);                   // combined state stream
+    s.u64(0x0031544e494d4953ULL); // SIMINT1 lineage
     s.u64(0);                     // script content digest in this wire-only specimen
     s.u64(0x1111111111111111ULL); // config digest
     s.u64(0x2222222222222222ULL); // rules digest
@@ -265,12 +267,13 @@ TEST_CASE("replay refuses a config mismatch") {
     sim::World other = bt::make_world(k, spec, {}, rules);
     auto refused = sim::replay(other, log);
     CHECK_FALSE(refused.ok());
-    CHECK(refused.error().find("rules") != std::string::npos);
+    CHECK(refused.error() == "replay refused: rules digest differs from the log's");
 
     // A world on another registry is refused too (registry digest).
     sim::World empty_reg = island_test::make_world(spec);
     auto refused_reg = sim::replay(empty_reg, log);
-    CHECK_FALSE(refused_reg.ok());
+    REQUIRE_FALSE(refused_reg.ok());
+    CHECK(refused_reg.error() == "replay refused: type registry digest differs from the log's");
 
     // The immutable walk tables are a separate compatibility input even when the
     // registry digest itself is unchanged.

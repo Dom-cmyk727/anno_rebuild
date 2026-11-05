@@ -6,6 +6,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/formats/bigbrother.hpp>
+#include <anno/formats/sha256.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/scenario_load.hpp>
 #include <anno/test/game_dir.hpp>
@@ -335,16 +336,36 @@ TEST_CASE("SCRIPT1 changed permission action diverges at its content identity an
 }
 
 TEST_CASE("SCRIPT1 published128 recordings stay unchanged and reach version refusal") {
-    for (const auto* name :
-         {"g2.log", "g3.log", "g4.log", "g5.log", "g6.log", "m2_found.log", "m2_found_wrong.log",
-          "cargo_load.log", "cargo_load_wrong.log", "cargo_unload.log", "cargo_unload_wrong.log"}) {
-        auto log = sim::read_log(read(fs::path(ANNO_FIXTURES_DIR) / "sim" / name));
-        REQUIRE_MESSAGE(log, (log ? "" : log.error()));
-        REQUIRE(log.value().initial_save.size() > 12);
-        CHECK(anno::formats::u32_le(log.value().initial_save, 8) == 128);
-        auto refused = sim::World::load(log.value().initial_save, sim::TypeRegistry::empty());
+    // Exact accepted published128 bytes, not supply129's ambiguous root paths.
+    // Current replay refuses at the outer frame; actual native128 refusal is separate.
+    const std::vector<std::pair<const char*, const char*>> recordings{
+        {"g2.log", "5aec84ad97ffec7ed9a901a0bfc4d0ce199631bede78287ce0db56055b404ae5"},
+        {"g3.log", "0cef47a4388417e50a45861c7ffe05f5e743fa4a36fe00f3a201a15f06e5c646"},
+        {"g4.log", "dcbf50959ab77855e280ffcf6359f92d47747bfffd50c523cecf4db4f00d548e"},
+        {"g5.log", "690d8d4517e80ad16490dbfa37857bc941a9a0c81f4c38dc0810d2e18c2f0603"},
+        {"g6.log", "e1129d0f15348fd4f94b8773512d4ec311daf87b6f094bd8427eace608cbf541"},
+        {"m2_found.log", "a64476f445f1f2af2aa781d7884aec53dee8872652a524b90370e4c8ca3aa07d"},
+        {"m2_found_wrong.log", "135c61e6a4936a7d0e5d4ed87f288772246967cb06c7bcecea6f363434647486"},
+        {"cargo_load.log", "db9323feaa616db53c0192fa09f8a34129341ca16584499eeb0d83de33ba78a3"},
+        {"cargo_load_wrong.log",
+         "8bbec637263054fb260eca0552be254c41f1e6946af476869db55426a0a4ff7e"},
+        {"cargo_unload.log", "70da9f6c9fad28f13af6070d967e71c448c968ebaf6e970314ea63801b908547"},
+        {"cargo_unload_wrong.log",
+         "90ec38e19e03e2f9168e6decf52b0baac03236c6c6af917b1f2e699facc6c3f7"}};
+    for (const auto& [name, sha] : recordings) {
+        const auto bytes = read(fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" / "legacy" /
+                                "published128" / "fixtures" / "synthetic" / "sim" / name);
+        CHECK(anno::formats::sha256_hex(bytes) == sha);
+        REQUIRE(bytes.size() > 8);
+        CHECK(anno::formats::u32_le(bytes, 4) == 2);
+        const auto refused = sim::read_log(bytes);
         REQUIRE_FALSE(refused);
-        CHECK(refused.error() ==
-              "save: state stream version 128 is not supported (this build reads 130)");
+        CHECK(refused.error().find("replay-log version 2 is not 4") != std::string::npos);
     }
+    const auto native =
+        read(fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" / "published128.save");
+    const auto refused = sim::World::load(native, sim::TypeRegistry::empty());
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error() ==
+          "save: state stream version 128 is not supported (this build reads 131)");
 }

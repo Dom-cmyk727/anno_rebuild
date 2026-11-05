@@ -7,7 +7,8 @@
 #include <anno/sim/tick.hpp>
 #include <anno/sim/timers.hpp>
 namespace anno::sim {
-inline constexpr std::uint64_t kScriptSchema = 0x0032545049524353ULL; // "SCRIPT2\0"
+inline constexpr std::uint64_t kScriptSchema =
+    0x0031544e494d4953ULL; // "SIMINT1\0", combined runtime lineage
 struct ScriptQueryStats {
     std::uint32_t slots = 0, inserted = 0, rows = 0, cells = 0, candidates = 0, crew = 0;
 };
@@ -23,7 +24,7 @@ struct ScriptRuntime {
 };
 [[nodiscard]] formats::Result<ScriptRuntime, std::string>
 prepare_script(std::string source, const TypeRegistry&, const PlayerTable&, const SimConfig&,
-               ScriptLimits = {}, std::optional<std::string> asset_namespace = {});
+               ScriptLimits limits = {}, std::optional<std::string> asset_namespace = {});
 [[nodiscard]] std::uint64_t script_content_digest(const ScriptRuntime&);
 // Native reload rebuilds immutable instructions, preserving and validating execution
 // state/bindings.

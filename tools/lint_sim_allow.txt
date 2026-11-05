@@ -147,5 +147,8 @@ src/sim/include/anno/sim/inn.hpp:kInnGatePeriod  # the Inn tick compare constant
 src/sim/include/anno/sim/inn.hpp:kInnRefillStock  # the stock threshold 0x100 (1 t) of the Inn tick (D 0x10075670): a rule constant, not a limit
 
 # SCRIPT1 fixed compatibility identities, not content limits.
-src/sim/include/anno/sim/script.hpp:inline constexpr std::uint32_t kScriptPolicy = 1;  # execution policy version, persisted and checked before rebuilding immutable instructions
-src/sim/include/anno/sim/script_runtime.hpp:inline constexpr std::uint64_t kScriptSchema = 0x0031545049524353ULL;  # fixed SCRIPT1 stream discriminator prevents independent version129 branches aliasing layouts
+src/sim/include/anno/sim/script.hpp:inline constexpr std::uint32_t kScriptPolicy = 2;  # execution policy version, persisted and checked before rebuilding immutable instructions
+src/sim/include/anno/sim/script_runtime.hpp:inline constexpr std::uint64_t kScriptSchema =  # fixed SIMINT1 lineage discriminator; a compatibility identity, not a content limit
+src/sim/include/anno/sim/figure.hpp:inline constexpr std::uint16_t kAnimalSearchLimit  # step A's callback limit of the animal job (D 0x1005932d = 0x14 vs 0x10058bfd = 0): a rule constant of the original job, not a count or limit
+
+src/sim/include/anno/sim/script_runtime.hpp:ScriptLimits limits =  # default arguments of prepare_script declaration; no variable or global state (lint parser false positive)

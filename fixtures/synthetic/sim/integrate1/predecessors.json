@@ -1,0 +1,42 @@
+[
+  {
+    "lineage": "published128",
+    "archived_log": "fixtures/synthetic/sim/integrate1/legacy/published128/fixtures/synthetic/sim/g2.log",
+    "log_sha256": "5aec84ad97ffec7ed9a901a0bfc4d0ce199631bede78287ce0db56055b404ae5",
+    "save_offset": 331,
+    "length": 115018,
+    "save_sha256": "82cc067fc9902b1dc7d8b26d0522a59463c62d5abb09ac1fd51fe496366437c7",
+    "native_version": 128,
+    "replay_version": 2
+  },
+  {
+    "lineage": "supply129",
+    "archived_log": "fixtures/synthetic/sim/integrate1/legacy/supply129/fixtures/synthetic/sim/g2.log",
+    "log_sha256": "a24287f8fd45db91e19a24d2d5167b1285664f8a9e39ff8d556f2076cea4b4e3",
+    "save_offset": 331,
+    "length": 115018,
+    "save_sha256": "a3ffef71e5232cdbf11cfd1d488e199a9121648ce8dff843584406ea0a76be39",
+    "native_version": 129,
+    "replay_version": 2
+  },
+  {
+    "lineage": "script129",
+    "archived_log": "fixtures/synthetic/sim/integrate1/legacy/unit130/fixtures/synthetic/sim/script1/g2.log",
+    "log_sha256": "dbddfccc4066960cae8a60e1ba4c7e7e74b3d282f5d9bc4759f104821e7c2312",
+    "save_offset": 331,
+    "length": 115112,
+    "save_sha256": "8a1505dd76a281413588eea910144d10056360f0a6c896a29563fd9103055013",
+    "native_version": 129,
+    "replay_version": 2
+  },
+  {
+    "lineage": "unit130",
+    "archived_log": "fixtures/synthetic/sim/integrate1/legacy/unit130/fixtures/synthetic/sim/script2/g2.log",
+    "log_sha256": "ebfaa4d66cf6b4d81d191ad0839dab12b7beeb4bdabb68e06d6c6f179d473a5b",
+    "save_offset": 339,
+    "length": 115117,
+    "save_sha256": "f30999bff10b3d561f3fa9a4f52990517657902861b50ab7bb23f3a71d8dae90",
+    "native_version": 130,
+    "replay_version": 3
+  }
+]

@@ -15,7 +15,7 @@ target_compile_features(anno_sim PUBLIC cxx_std_20)
 anno_target_defaults(anno_sim SANITIZE_NO_RECOVER)
 
 if(ANNO_BUILD_TESTS)
-  add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/production_test.cpp
+  add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/integration_gameplay_test.cpp tests/production_test.cpp
                  tests/archive_test.cpp tests/slot_list_test.cpp tests/scheduler_blocks_test.cpp
                  tests/container_probe_test.cpp tests/config_test.cpp tests/types_test.cpp
                  tests/player_test.cpp tests/tile_hash_test.cpp tests/island_state_test.cpp
@@ -28,7 +28,7 @@ if(ANNO_BUILD_TESTS)
                  tests/scenario_test.cpp tests/island_links_test.cpp
                  tests/fixed_map_load_test.cpp
                  tests/scenario_links_test.cpp tests/transport_test.cpp tests/walk_cells_test.cpp tests/walk_search_test.cpp
-                 tests/game_setup_test.cpp tests/house_test.cpp tests/population_goods_test.cpp tests/population_groups_test.cpp tests/house_kernel_test.cpp tests/resident_test.cpp tests/inn_test.cpp tests/population_supply_test.cpp tests/population_progression_test.cpp tests/resident_state_test.cpp tests/resident_job_test.cpp tests/house_transition_test.cpp tests/house_live_test.cpp tests/population_canary_test.cpp tests/population_live_canary_test.cpp tests/population_scale_test.cpp tests/ship_state_test.cpp tests/ship_start_load_test.cpp
+                 tests/game_setup_test.cpp tests/house_test.cpp tests/population_goods_test.cpp tests/population_groups_test.cpp tests/house_kernel_test.cpp tests/resident_test.cpp tests/inn_test.cpp tests/population_supply_test.cpp tests/population_progression_test.cpp tests/small_farm_vectors_test.cpp tests/small_farm_worker_test.cpp tests/small_farm_animal_test.cpp tests/small_farm_chain_test.cpp tests/small_farm_resilience_test.cpp tests/resident_state_test.cpp tests/resident_job_test.cpp tests/house_transition_test.cpp tests/house_live_test.cpp tests/population_canary_test.cpp tests/population_live_canary_test.cpp tests/population_scale_test.cpp tests/ship_state_test.cpp tests/ship_start_load_test.cpp
                  tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp tests/founding_coords_test.cpp tests/founding_payment_test.cpp tests/island_lock_corpus_test.cpp tests/city_creation_test.cpp tests/figure_veto_test.cpp tests/founding_test.cpp tests/founding_assets_test.cpp tests/figure_facts_test.cpp tests/wide_test.cpp tests/ship_nav_state_test.cpp tests/ship_step_test.cpp tests/ship_orders_test.cpp tests/ship_nav3_test.cpp tests/ship_health_test.cpp tests/route_objects_test.cpp tests/placement_rule_test.cpp tests/build_terrain_test.cpp tests/script2_scale_test.cpp tests/script2_canary_test.cpp tests/script2_session_test.cpp tests/script2_wave_test.cpp tests/script2_money_test.cpp tests/script2_test.cpp tests/script_scale_test.cpp tests/script_canary_test.cpp tests/script_build_test.cpp tests/script_runtime_test.cpp tests/permissions_test.cpp tests/script_test.cpp tests/build_availability_test.cpp
                  tests/nav_scale_test.cpp
                  tests/unload_test.cpp tests/harvest_state_test.cpp tests/harvest_lifecycle_test.cpp tests/harvest_delivery_test.cpp
@@ -82,10 +82,15 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME script2_fresh_process_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --self-test)
     add_test(NAME script2_synthetic_fresh_process COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --exe $<TARGET_FILE:anno_sim_tests>)
     add_test(NAME script2_original_fresh_process COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --original --exe $<TARGET_FILE:anno_sim_tests>)
+    # Accepted UNIT1 original sanitizer canary measured581.97s. The combined
+    # fresh-process contract gets1500s; the unrelated generated opening is excluded.
+    set_tests_properties(script2_original_fresh_process PROPERTIES TIMEOUT 1500)
     add_test(NAME script2_stream_reference_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/sim_stream_script2.py --self-test)
     add_test(NAME script2_stream_reference_agrees COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/sim_stream_script2.py --check)
     add_test(NAME script2_reference_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_runtime2_ref.py --self-test)
     add_test(NAME script2_reference_agrees COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_runtime2_ref.py --check ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/script2/handler_vectors.json)
+    add_test(NAME integration_stream_reference_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/integration_stream_ref.py --self-test)
+    add_test(NAME integration_stream_reference_agrees COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/integration_stream_ref.py)
     add_test(NAME script1_stream_reference_contract
              COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/sim_stream_script1.py --self-test)
     add_test(NAME script1_stream_reference_agrees

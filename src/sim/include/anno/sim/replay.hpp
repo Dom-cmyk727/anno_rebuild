@@ -36,7 +36,7 @@ namespace anno::sim {
 
 /// The version of the replay-log frame (a format version, like kCommandWireVersion
 /// and kSaveVersion; a reader refuses a log written with another one).
-inline constexpr std::uint32_t kReplayLogVersion = 3;
+inline constexpr std::uint32_t kReplayLogVersion = 4;
 
 /// One recorded step of a session: an advance by `ms`, a block of commands applied
 /// in stream order, or a checkpoint carrying the tick and the state hash at that
@@ -58,6 +58,8 @@ struct ReplayEntry {
 /// input recorded so porting a site is never a silent desync), the save of the world
 /// before entry 0, and the entries in order.
 struct ReplayLog {
+    std::uint32_t state_stream_version = kStateHashVersion;
+    std::uint64_t state_schema = kScriptSchema;
     std::uint64_t script_digest = 0; // source/namespace/policy/limits, excludes execution state
     std::uint64_t config_digest = 0;
     std::uint64_t rules_digest = 0;

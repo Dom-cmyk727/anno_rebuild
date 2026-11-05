@@ -278,11 +278,13 @@ TEST_CASE("farm dispatch: ineligible steps draw nothing, a full store and a refu
     }
 }
 
-TEST_CASE("farm dispatch: the small farm's line-0 worker (job 0x2a) gets no harvest state") {
-    // Job 0x2a is shared (docs/sim/forestry.md 2, selection rule): the small farm sends its line-0
-    // worker with kJobSmallFarmWorker = 0x2a once line 0's raw stock is gone (here at once: the
-    // fixture's raw stock is empty), even with the figure type the forester uses (kWorker, route
-    // 0x2a). Its home is a SmallFarm payload, so the spawn gives it no harvest state.
+TEST_CASE("farm dispatch: the small farm's line-0 worker (job 0x2a) is a harvest worker carrying "
+          "input 0") {
+    // MAP-SUPPLY-1 S2. Job 0x2a is shared (docs/sim/forestry.md 2,
+    // docs/sim/small-farm-supply.md 2.3): the small farm sends its line-0 worker with the literal
+    // job 0x2a once line 0's raw stock is gone (here at once: the fixture's raw stock is empty).
+    // Its home is a SmallFarm payload, and the spawn gives it the harvest state and the farm's
+    // input goods 0 as cargo goods (D 0x1006f78d-0x1006f7c2).
     Rig r = make_rig();
     r.place(kSmallFarm, 110, 110, sim::make_small_farm(registry()->find(kSmallFarm)->prod));
     sim::World w = create(r, registry());
@@ -305,7 +307,8 @@ TEST_CASE("farm dispatch: the small farm's line-0 worker (job 0x2a) gets no harv
     }
     REQUIRE(worker != nullptr);
     CHECK(worker->kind == kWorker);
-    CHECK_FALSE(worker->harvest.has_value());
+    REQUIRE(worker->harvest.has_value());
+    CHECK(worker->cargo_goods == registry()->find(kSmallFarm)->input_goods.at(0));
     CHECK(w.check_invariants() == "");
 }
 
@@ -544,7 +547,7 @@ TEST_CASE("harvest state: validators refuse impossible states and never repair v
         REQUIRE(w.islands()[0]->find_building(market) != nullptr);
         const sim::BuildingId farm = f.home;
         f.home = market;
-        CHECK(contains(w.check_invariants(), "is not a Farm-payload building"));
+        CHECK(contains(w.check_invariants(), "is not a Farm- or SmallFarm-payload building"));
         // A home id that no longer resolves (demolished): valid in Start and on the way, never
         // repaired. (The counter fact only counts existing buildings.)
         f.home = sim::make_building_id(sim::IslandId{0}, 77); // never issued, resolves to nothing

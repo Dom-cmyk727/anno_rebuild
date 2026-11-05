@@ -208,9 +208,11 @@ struct Body {
             std::min<std::int64_t>(std::int64_t{sq.y0} + sq.h, std::int64_t{ir.y0} + ir.h);
         std::set<TileXY> candidates;
         std::vector<WalkPoint> goals;
+        std::uint64_t scanned = 0;
         for (std::int64_t y = y_lo; y < y_hi; ++y) {
             for (std::int64_t x = x_lo; x < x_hi; ++x) {
                 const TileXY t{static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)};
+                ++scanned;
                 if (claimed(t) ||
                     !harvest_candidate_type(ctx.types, object(t), fig.cargo_goods, skip)) {
                     continue;
@@ -229,9 +231,7 @@ struct Body {
             }
         }
         if (stats != nullptr) {
-            stats->search_tiles_scanned +=
-                static_cast<std::uint64_t>(std::max<std::int64_t>(x_hi - x_lo, 0)) *
-                static_cast<std::uint64_t>(std::max<std::int64_t>(y_hi - y_lo, 0));
+            stats->search_tiles_scanned += scanned; // one per examined tile
             stats->search_candidates += candidates.size();
         }
         if (candidates.empty()) {
@@ -450,7 +450,8 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
                 // The credit slot (D SmallFarm 0x1006f960): raw 1 when the goods are the home's
                 // input goods 1, else raw 0 with no further goods test; a Farm has the one raw
                 // store.
-                const std::uint32_t slot = harvest_credit_slot(home->payload, *home_type, fig.cargo_goods);
+                const std::uint32_t slot =
+                    harvest_credit_slot(home->payload, *home_type, fig.cargo_goods);
                 world.fx.store_deltas.push_back(StoreDelta{home->id, StoreDelta::Store::Input, slot,
                                                            std::int64_t{fig.cargo_88}});
                 b.delivered = true;

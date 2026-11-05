@@ -112,7 +112,8 @@ inline sim::BuildingType wall_type() {
 /// The registry. `worker_capacity` is the forester worker's capacity (a larger data-defined
 /// capacity repeats the harvest, docs/sim/forestry.md E-14).
 inline std::shared_ptr<const sim::TypeRegistry>
-registry(std::uint32_t worker_capacity = 256, const std::vector<sim::BuildingType>& extra = {}) {
+registry(std::uint32_t worker_capacity = 256, const std::vector<sim::BuildingType>& extra = {},
+         const std::vector<sim::FigureType>& extra_figures = {}) {
     sim::TypeRegistry::Builder b;
     b.add_farm(kForester, "HOLZ", "BAUM", 14, 32, 5, 2)
         .footprint(kForester, 3, 3)      // 801's 3 x 3
@@ -165,6 +166,9 @@ registry(std::uint32_t worker_capacity = 256, const std::vector<sim::BuildingTyp
         .figure_type(sim::FigureType{kCart, 53687, 5 * 256, 3, 500});
     for (const sim::BuildingType& t : extra) {
         b.add(t);
+    }
+    for (const sim::FigureType& f : extra_figures) {
+        b.figure_type(f);
     }
     auto built = b.build();
     REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));

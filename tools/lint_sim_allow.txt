@@ -145,3 +145,7 @@ src/sim/include/anno/sim/island.hpp:inline constexpr std::uint32_t kTileClaim  #
 src/sim/src/harvest.cpp:constexpr std::uint32_t kRohstwachs  # PRODTYPE 226 ROHSTWACHS (D AnnoGame 0x100138e0)
 src/sim/include/anno/sim/inn.hpp:kInnGatePeriod  # the Inn tick compare constant 0x1388 (D 0x10075603): a rule constant of the original, not a count or limit
 src/sim/include/anno/sim/inn.hpp:kInnRefillStock  # the stock threshold 0x100 (1 t) of the Inn tick (D 0x10075670): a rule constant, not a limit
+
+# SCRIPT1 fixed compatibility identities, not content limits.
+src/sim/include/anno/sim/script.hpp:inline constexpr std::uint32_t kScriptPolicy = 1;  # execution policy version, persisted and checked before rebuilding immutable instructions
+src/sim/include/anno/sim/script_runtime.hpp:inline constexpr std::uint64_t kScriptSchema = 0x0031545049524353ULL;  # fixed SCRIPT1 stream discriminator prevents independent version129 branches aliasing layouts

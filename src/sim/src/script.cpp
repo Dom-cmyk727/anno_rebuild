@@ -130,10 +130,10 @@ struct Compiler {
         out.push_back(i);
         return true;
     }
-    bool block(const std::vector<bb::Statement>& statements,
-               const std::set<const bb::Statement*>& lost, std::vector<ScriptInstruction>& out) {
+    bool block(const std::vector<bb::Statement>& statements, const std::set<std::size_t>& lost,
+               std::vector<ScriptInstruction>& out) {
         for (const auto& s : statements)
-            if (!lost.contains(&s) && !statement(s, out))
+            if (!lost.contains(bb::offset_of(s)) && !statement(s, out))
                 return false;
         return true;
     }
@@ -260,10 +260,8 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
         limits.depth == 0 || limits.depth > 128 || limits.work == 0 || limits.work > 10000000)
         return ScriptError{0, "invalid script limits/source size"};
     // Normalize only grammar keywords, preserving symbol/string bytes and offsets.
-    const auto bytes = [](const std::string& text) {
-        return formats::Bytes(reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
-    };
-    auto tokens = bb::lex(bytes(source));
+    const formats::ByteBuffer original_bytes(source.begin(), source.end());
+    auto tokens = bb::lex(original_bytes);
     if (!tokens)
         return ScriptError{static_cast<std::uint32_t>(tokens.error().offset),
                            tokens.error().text()};
@@ -283,7 +281,8 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
     for (const auto& section : bb::known_sections())
         if (!sections.contains(std::string(section.name)))
             return ScriptError{0, "missing required script section: " + std::string(section.name)};
-    auto ast = bb::parse(bytes(grammar), {.max_condition_depth = limits.depth});
+    const formats::ByteBuffer grammar_bytes(grammar.begin(), grammar.end());
+    auto ast = bb::parse(grammar_bytes, {.max_condition_depth = limits.depth});
     if (!ast)
         return ScriptError{static_cast<std::uint32_t>(ast.error().offset), ast.error().text()};
     Compiler c{{}, env, {}, 0};
@@ -308,11 +307,12 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
         c.p.mappings.push_back(
             {m.name, static_cast<std::uint32_t>(*slot), static_cast<std::uint32_t>(m.offset)});
     }
-    std::set<const bb::Statement*> lost;
+    std::set<std::size_t> lost;
     for (const auto& r : bb::read_on(a)) {
         if (!r.end)
             c.fail(bb::offset_of(*r.statement), "unterminated read-on statement");
-        lost.insert(r.lost.begin(), r.lost.end());
+        for (const auto* statement : r.lost)
+            lost.insert(bb::offset_of(*statement));
     }
     for (const auto& item : a.kernel) {
         if (!c.error.message.empty())

@@ -10,12 +10,21 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
+import io
+from contextlib import redirect_stdout
 import subprocess
 import tempfile
 import unittest
 
 
+# Share the public gate's sanitizer-report policy; do not hide reports in child files.
+SANITIZER = runpy.run_path(str(Path(__file__).resolve().parent / 'test/ctest_verdict.py'))['SANITIZER']
+
+
 def checked_child(code, output):
+    if SANITIZER.search(output):
+        raise ValueError('sanitizer report in child output')
     if code != 0:
         raise ValueError(f'child exit {code}')
     if '[doctest] Status: SUCCESS!' not in output:
@@ -37,6 +46,37 @@ class Contracts(unittest.TestCase):
         for text in ('', self.good.replace('17 |', '0 |'), self.good.replace('1 passed', '0 passed')):
             with self.assertRaises(ValueError):
                 checked_child(0, text)
+
+    def test_sanitizer_cannot_pass(self):
+        for report in ('AddressSanitizer', 'LeakSanitizer', 'ThreadSanitizer',
+                       'runtime error:', 'UndefinedBehaviorSanitizer'):
+            with self.assertRaisesRegex(ValueError, 'sanitizer'):
+                checked_child(0, self.good + report)
+    def test_manifest_failure_has_no_success_marker(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = io.StringIO()
+            with redirect_stdout(output), self.assertRaises(OSError):
+                emit_success(Path(temp)/'absent', dict(verdict='PASS'))
+            self.assertNotIn('PASS', output.getvalue())
+    def test_manifest_is_committed_before_success(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                emit_success(Path(temp), dict(verdict='PASS'))
+            self.assertEqual(json.loads((Path(temp)/'manifest.json').read_text()), dict(verdict='PASS'))
+            self.assertIn('SCRIPT1_FRESH_PROCESS PASS', output.getvalue())
+
+
+def commit_manifest(directory, manifest):
+    path = directory/'manifest.json'
+    path.write_text(json.dumps(manifest, indent=2)+'\n')
+    if json.loads(path.read_text()) != manifest:
+        raise ValueError('written manifest failed verification')
+
+
+def emit_success(directory, manifest):
+    commit_manifest(directory, manifest)
+    print('SCRIPT1_FRESH_PROCESS PASS '+str(directory))
 
 
 def digest(path):
@@ -60,7 +100,11 @@ def run(executable, repo):
             output = process.communicate()[0].decode('utf-8', errors='replace')
             (directory / (role+'.log')).write_text(output)
             records.append(dict(role=role, pid=process.pid, command=command, exit=process.returncode))
-            checked_child(process.returncode, output)
+            try:
+                checked_child(process.returncode, output)
+            except ValueError:
+                print(output)
+                raise
         if records[0]['pid'] == records[1]['pid']:
             raise ValueError('producer and worker process identities must differ')
         artifacts = {}
@@ -70,14 +114,16 @@ def run(executable, repo):
                 raise ValueError('missing/nonempty artifact: '+name)
             artifacts[name] = dict(size=path.stat().st_size, sha256=digest(path))
         manifest.update(artifacts=artifacts, verdict='PASS')
-        print('SCRIPT1_FRESH_PROCESS PASS '+str(directory))
+        emit_success(directory, manifest)
     except (OSError, ValueError) as error:
         manifest['verdict'] = 'FAIL'
         manifest['error'] = str(error)
+        try:
+            commit_manifest(directory, manifest)
+        except (OSError, ValueError) as artifact_error:
+            print('manifest unavailable: '+str(artifact_error))
         print('SCRIPT1_FRESH_PROCESS FAIL '+str(directory)+': '+str(error))
         return 1
-    finally:
-        (directory/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
     return 0
 
 

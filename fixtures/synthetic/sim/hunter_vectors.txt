@@ -1,0 +1,35 @@
+# Hunter building tick arithmetic (MAP-NEEDS-2 N1 hunting read, AnnoWelt.dll 0x10069f40). DECODED CONTRACT ONLY: the engine does not
+# implement the hunter (class Hunter is inert), there is no C++ counterpart. Every expected value was derived BY HAND first;
+# tools/hunter_ref.py is the independent check. Hunter 805: output rate (line 0) 43, input need 57, capacity 1024 per line,
+# split byte [+0x2a] = 0x40 from the constructor 0x1006a9c0 (never written again): made = rate0 * ratio >> 7 is split 64:64
+# between the two outputs (NOT 43 and 26: only output 0's rate is read, 0x1006a06c). ratio = min(128, raw*128/need), below 64 starved.
+# Raw is consumed only when a line produced; a full ratio (128) never dispatches; ratio < 128 without a worker dispatches (elig=1).
+hunter H-empty    s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=0 out0=0 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=0 made1=0 raw=0 out0=0 out1=0 last=500 elig=1
+# raw 56: q = 7168/57 = 125; total = 43*125>>7 = 41; line0 = 64*41>>7 = 20, line1 = 20; raw -= 57*125>>7 = 55 -> 1; act += 20<<4
+hunter H-56       s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=56 out0=0 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=20 made1=20 raw=1 out0=20 out1=20 act0=320 act1=320 elig=1
+# raw 57: ratio 128: total 43, 21 + 21, raw 0, and NO dispatch
+hunter H-57       s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=57 out0=0 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=21 made1=21 raw=0 out0=21 out1=21 elig=0
+hunter H-114      s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=114 out0=0 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=21 made1=21 raw=57 elig=0
+# starved: raw 28 -> q 62 (3584/57); raw 29 -> q 65 (3712/57): total 43*65>>7 = 21, 10 + 10, raw -= 57*65>>7 = 28 -> 1
+hunter H-28       s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=28 out0=0 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=0 made1=0 raw=28 elig=1
+hunter H-29       s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=29 out0=0 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=10 made1=10 raw=1 out0=10 out1=10 elig=1
+# one line full: line 0 skipped, line 1 produces and the raw IS consumed
+hunter H-line0-full s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=57 out0=1024 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=0 made1=21 raw=0 out0=1024 out1=21 elig=0
+# both lines full: nothing produced, raw kept, ratio 128 -> no dispatch
+hunter H-both-full  s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=57 out0=1024 out1=1024 act0=0 act1=0 last=0 t=500 => run=1 made0=0 made1=0 raw=57 elig=0
+# both full but raw low: the starved test comes before the capacity test -> dispatch
+hunter H-full-low   s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=20 out0=1024 out1=1024 act0=0 act1=0 last=0 t=500 => run=1 made0=0 made1=0 raw=20 elig=1
+# a worker out: no production, no dispatch
+hunter H-worker   s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=1 susp=0 raw=57 out0=0 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=0 made1=0 raw=57 elig=0
+# only line 1 switched on: line 1 gets its half, line 0 nothing
+hunter H-line1-only s0=0 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=57 out0=0 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=0 made1=21 raw=0 out1=21 elig=0
+# both switches off: the stamp advances, nothing else (not even the activity decay)
+hunter H-off      s0=0 s1=0 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=57 out0=0 out1=0 act0=256 act1=100 last=0 t=500 => run=1 raw=57 act0=256 act1=100 last=500 elig=0
+# suspended (flag bits 4/5): the activities age (256*127>>7 = 254, 100*127>>7 = 99), nothing else
+hunter H-susp     s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=1 raw=57 out0=0 out1=0 act0=256 act1=100 last=0 t=500 => run=1 raw=57 act0=254 act1=99 elig=0
+# a non-default split (the byte is only ever 0x40 in the game): total 43 -> 100*43>>7 = 33 and 28*43>>7 = 9
+hunter H-split100 s0=1 s1=1 split=100 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=57 out0=0 out1=0 act0=0 act1=0 last=0 t=500 => run=1 made0=33 made1=9 raw=0 out0=33 out1=9 elig=0
+# the 16-bit gate
+hunter H-not-due  s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=57 out0=0 out1=0 act0=0 act1=0 last=0 t=499 => run=0 raw=57 last=0 elig=0
+hunter H-low16    s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=57 out0=0 out1=0 act0=0 act1=0 last=464 t=66000 => run=0 last=464
+hunter H-low16-due s0=1 s1=1 split=64 rate=43 need=57 cap0=1024 cap1=1024 worker=0 susp=0 raw=57 out0=0 out1=0 act0=0 act1=0 last=464 t=66500 => run=1 last=964 made0=21

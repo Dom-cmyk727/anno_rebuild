@@ -178,6 +178,28 @@ fn uniform_entry(binding: u32, dynamic: bool) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
+/// The bind group layout of the `vel_step` and `eta_step` pipelines: every binding of
+/// `fluid.wgsl` the two entry points use (the test `layout_binds_every_global_the_steps_use`).
+fn layout_entries() -> [wgpu::BindGroupLayoutEntry; 6] {
+    [
+        uniform_entry(0, false),
+        uniform_entry(1, true),
+        tex_entry(2),
+        wgpu::BindGroupLayoutEntry {
+            binding: 3,
+            visibility: ShaderStages::COMPUTE,
+            ty: BindingType::StorageTexture {
+                access: wgpu::StorageTextureAccess::WriteOnly,
+                format: TextureFormat::Rgba32Float,
+                view_dimension: TextureViewDimension::D2,
+            },
+            count: None,
+        },
+        tex_entry(4),
+        uniform_entry(5, false),
+    ]
+}
+
 impl FluidGpu {
     pub fn new(device: &Device, queue: &Queue, cfg: FluidConfig) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -188,23 +210,7 @@ impl FluidGpu {
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("fluid"),
-            entries: &[
-                uniform_entry(0, false),
-                uniform_entry(1, true),
-                tex_entry(2),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: BindingType::StorageTexture {
-                        access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: TextureFormat::Rgba32Float,
-                        view_dimension: TextureViewDimension::D2,
-                    },
-                    count: None,
-                },
-                tex_entry(4),
-                uniform_entry(5, false),
-            ],
+            entries: &layout_entries(),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("fluid"),
@@ -535,6 +541,45 @@ fn step_bytes(w: &FluidWindow, t: f32) -> Vec<u8> {
 mod tests {
     use super::*;
     use crate::fluid::FluidGrid;
+
+    /// Every resource `vel_step` and `eta_step` use is in the layout the host builds, without a
+    /// GPU: a binding the shader gained (the ships at 5) and the host did not is a validation
+    /// error of create_compute_pipeline on a real device (CI's Windows runner).
+    #[test]
+    fn layout_binds_every_global_the_steps_use() {
+        let src = include_str!("../../../src/render/shaders/fluid.wgsl");
+        let module = naga::front::wgsl::parse_str(src)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(src)));
+        let info = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("{e:?}"));
+        let bound: Vec<u32> = layout_entries().iter().map(|e| e.binding).collect();
+        for entry in ["vel_step", "eta_step"] {
+            let index = module
+                .entry_points
+                .iter()
+                .position(|e| e.name == entry)
+                .unwrap_or_else(|| panic!("no entry point {entry}"));
+            let used = info.get_entry_point(index);
+            for (handle, var) in module.global_variables.iter() {
+                if used[handle].is_empty() {
+                    continue;
+                }
+                if let Some(b) = &var.binding {
+                    assert_eq!(b.group, 0, "{entry}: {:?}", var.name);
+                    assert!(
+                        bound.contains(&b.binding),
+                        "{entry} uses binding {} ({:?}), which the layout lacks",
+                        b.binding,
+                        var.name
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn fluid_shader_is_valid_wgsl() {

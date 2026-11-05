@@ -122,15 +122,15 @@
 # digests are byte-identical to stream 118. scenario_corpus.txt differs from 118 only in the version
 # header, create_hash, UnknownRecord (the KONTORID record is known now) and MarketNumberNotKept (the
 # market KONTID is kept now, so the warning is gone). Other lines are the C++ values at 119.
-g0_step1 S1 128 aafce651330c0d91
-g0_step100 S1 128 67d6b2a5b48a5538
-g0_step1000 S1 128 ba146d6a55d8cd97
-g1_players_step100 S4 128 e7007b15f32db29a
-g1_players_step700 S4 128 0421296f5fbbca92
-s5_islands_create S5 128 b58f37c271d8c571
-s5_islands_step100 S5 128 a4c8d4d6f985e76e
-s5_islands_locked_create S5 128 bf3edb6641b2a70a
-s5_islands_city_created S5 128 a18d8548b63c0e61
+g0_step1 S1 129 9a8d47299e415088
+g0_step100 S1 129 31a4f02ec413c4ed
+g0_step1000 S1 129 a163a4663450adfa
+g1_players_step100 S4 129 58c59803eb99c4b6
+g1_players_step700 S4 129 eac0391d0a8f6546
+s5_islands_create S5 129 feee18cbd769965c
+s5_islands_step100 S5 129 975b730f198a1897
+s5_islands_locked_create S5 129 bcb51725d0f9bfff
+s5_islands_city_created S5 129 4be21305a0b859b4
 #
 # S6 G1 scenario (synthetic::g1_scenario: one player, island 0 with city 0 holding
 # the weaver with 5 t of wool at (110,110) and the grain farm with 5 t of raw
@@ -138,8 +138,8 @@ s5_islands_city_created S5 128 a18d8548b63c0e61
 # after World::create and after advance(10) x 100. tools/sim_stream.py transcribes
 # the city, the building lists and the Workshop and Farm payloads independently of
 # the C++ code; the registry digest of the synthetic types is its one literal.
-s6_g1_create S6 128 d843fe6485bc5e18
-s6_g1_step100 S6 128 9ec40b3849fa1487
+s6_g1_create S6 129 a02546982dc950c9
+s6_g1_step100 S6 129 394e59171e7d58c2
 #
 # S7 G1 (stage S7): the S6 G1 scenario run through the real scheduler (synthetic::
 # g1_scenario: the weaver with 5 t of wool and the grain farm with 5 t of raw material).
@@ -167,10 +167,10 @@ s6_g1_step100 S6 128 9ec40b3849fa1487
 # unchanged (no UI event of S12 occurs in these runs: no timer runs, the 7.5 minute event
 # is not reached). g2.log and g3.log were re-recorded (their initial saves carry the
 # stream version).
-s7_g1_mp_checkpoints S7 128 c44ccfc69aac3117
-s7_g1_mp_end S7 128 e72988e13b3b7ec9
-s7_g1_events S7 128 d705f409820828d2
-s7_g1_sp_end S7 128 a59284e2f7c84d85
+s7_g1_mp_checkpoints S7 129 717f213b7dfcebf3
+s7_g1_mp_end S7 129 d94729779aaa2e88
+s7_g1_events S7 129 d705f409820828d2
+s7_g1_sp_end S7 129 e525ff9693f04194
 #
 # S10 G2 (stage S10): the G1 scenario on the types with build costs (synthetic::
 # g2_scenario, synthetic::make_build_types) driven by the recorded command log
@@ -186,7 +186,7 @@ s7_g1_sp_end S7 128 a59284e2f7c84d85
 # reads the terrain, so g2_scenario gained a flat 0x30 plateau (the terrain digest is hashed) and the
 # build types the ordinary-land flag word 0x84 plus the three scenery types (the registry digest is
 # hashed); the recorded session's builds now store byte0f 0x30. The value before was 9c0cce6ee5ceb63e.
-s10_g2_end S10 128 790d87e4df44b654
+s10_g2_end S10 129 37805afe10f8d8b8
 #
 # S11 G3 (stage S11): synthetic::g3_scenario on synthetic::make_synthetic_types (two
 # players, two islands, two cities; a weaver, a grain farm, a fur trapper, a small farm, a
@@ -200,9 +200,9 @@ s10_g2_end S10 128 790d87e4df44b654
 # every building to values derived by hand from docs/sim/production.md (F2 weavers, F6
 # farm, the trapper's 20 steps, the small farm's lines, 143 bow steps on one line and 160
 # on two, the mine's 768 from the two deposits), the draw count and the notice 0x19.
-s11_g3_checkpoints S11 128 bf441d45f54367c8
-s11_g3_end S11 128 0c27841754ab1bdf
-s11_g3_events S11 128 3140bd8e1eb7db86
+s11_g3_checkpoints S11 129 d904dd576bbf45c8
+s11_g3_end S11 129 e69a0b509c99bf74
+s11_g3_events S11 129 3140bd8e1eb7db86
 #
 # S12 G4 (stage S12): synthetic::g4_scenario (seed 508; three players, islands in slots 0,
 # 2 and 4 with five cities, a weaver and a grain farm) with the state a scenario cannot
@@ -222,9 +222,9 @@ s11_g3_events S11 128 3140bd8e1eb7db86
 # bankruptcy tick, the timers, the queue, the figures' end ticks, the monopoly entries, the
 # draw counts per site (worked out from the PRNG table for seed 508) and the two UI events
 # to values derived by hand.
-s12_g4_checkpoints S12 128 1f032e7bf192bcac
-s12_g4_end S12 128 8e9d48abefecccf7
-s12_g4_events S12 128 39c10f583d4b7cc8
+s12_g4_checkpoints S12 129 f665db64b29b40bc
+s12_g4_end S12 129 9ac5b66ecec3b746
+s12_g4_events S12 129 39c10f583d4b7cc8
 #
 # Re-baselined at stream version 107 (stage S12 fix-up: Rules gained timer0_clamp, owner
 # decision on OQ-133, one more byte of the header scope; and G4 runs timer 0 the original's
@@ -299,8 +299,8 @@ s12_g4_events S12 128 39c10f583d4b7cc8
 # g5.log); sweeps_test.cpp holds the growth counters, the ripe ticks, the six draws (worked
 # out from the PRNG table for seed 514), the drought starts, states and city mask to values
 # derived by hand.
-s13_g5_checkpoints S13 128 1786b822ddf3073c
-s13_g5_end S13 128 5c90399cea029d17
+s13_g5_checkpoints S13 129 58105bd971a81523
+s13_g5_end S13 129 646899af741dd7d0
 # Re-baselined at stream version 111 (task T24, transport stage 1: the header's registry
 # digest gains the types' entrance points and the figure types, the market class ticks
 # (Market payload, tag 6), the payloads gain the cart reservations and the figure record its
@@ -325,8 +325,8 @@ s13_g5_end S13 128 5c90399cea029d17
 # before the first and after every 300th advance, t24_g6_end the hash at tick 300 000. SELF-BASELINED like the
 # S7 .. S13 goldens (ANNO_UPDATE_GOLDEN also rewrites g6.log); transport_test.cpp holds
 # the cart's and the carrier's trips tick by tick to values derived by hand.
-t24_g6_checkpoints T24 128 abded8c66b97dadc
-t24_g6_end T24 128 6599854c283ba48e
+t24_g6_checkpoints T24 129 7c3341ac69d5aebd
+t24_g6_end T24 129 67fed7cc8675b34c
 
 # Re-baselined at stream version 112 (T33.4 F5, 2026-10-26). The code has hashed
 # version 112, including the walk-table digest in the header, since bd336ce; this
@@ -378,14 +378,14 @@ t24_g6_end T24 128 6599854c283ba48e
 # that holds a navigating ship (m2_found_session) also through the new bytes. The `*_events`
 # goldens hash the UI event stream, which does not contain the version, and keep their values.
 # tools/sim_stream.py agrees on g0, g1, s5 and s6. g2.log-g6.log and m2_found*.log are rewritten.
-p1_g7_create P1 128 c0ef973d66061057
+p1_g7_create P1 129 ae944e65f3d3b0b6
 
 # M2: the recorded founding session of src/sim/tests/founding_test.cpp (a determinism pin, not an oracle:
 # the exact values of the founding are asserted by hand in that test).
 # Re-baselined inside version 123 (MAP-BUILD-1 C): the fixture registry's free workshop 9201 has the
 # ordinary-land flag word 0x84 (registry digest) and the session's ordinary Build stores the terrain
 # level 0x40 as byte0f. The value before was 359cf48e134bdcf1.
-m2_found_session M2 128 9c5d3bcf60f0bf03
+m2_found_session M2 129 fe578eb348cff8f3
 
 # Re-baselined at stream version 124 (task MAP-CARGO-1): Rules gained `cargo` (CargoRules: the
 # eligible warehouse PRODTYPEs and the dock half-widths, two u64-counted u32 lists) after nav. Every

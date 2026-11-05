@@ -148,7 +148,12 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // unchanged in layout (the house walker facts are the existing production data, PROD3 0x28/0x29/
 // 0x32). With Rules::house_updates off (the default) the tick is unchanged: only the version, the
 // config and rules bytes and the new fields move every hash.
-inline constexpr std::uint32_t kStateHashVersion = 128;
+// Stream at 129 (task MAP-SUPPLY-1 S2): 128 / timeline 5 was PUBLISHED at a50aec3a, so this is a new
+// identity. No field, scope or draw site changes (PRNG timeline stays 5): the small farm's line-0
+// worker (job 0x2a) becomes a harvest worker (cargo goods = input 0, harvest state, credit to the
+// raw slot by goods, docs/sim/small-farm-supply.md), which changes the evolution of every world that
+// holds a small farm. The version word moves every hash.
+inline constexpr std::uint32_t kStateHashVersion = 129;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

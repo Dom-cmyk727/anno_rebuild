@@ -501,7 +501,7 @@ bool visit_script(const ScriptProgram& p, ScriptState& state, std::uint32_t arg,
         }
         auto e = eval(p, staged, i.condition, host, work);
         if (!e.ok) {
-            fault = ScriptFault::Budget;
+            fault = work.exhausted ? ScriptFault::Budget : ScriptFault::Host;
             ok = false;
             break;
         }

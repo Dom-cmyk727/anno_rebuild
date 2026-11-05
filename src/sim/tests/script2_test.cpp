@@ -294,3 +294,19 @@ TEST_CASE("SCRIPT2 false AND area guard does not construct an unrelated large in
     CHECK(r.query_stats.candidates == 0);
     CHECK(r.state.fault == ScriptFault::None);
 }
+
+TEST_CASE("SCRIPT2 missing spatial context faults Host and rolls back prior writes") {
+    AreaFixture f;
+    auto source = area_source();
+    source.insert(source.find("IF AREA"), "INITBLOCK(){ HIT=TRUE; TIMER_SET(1,7); }\n");
+    auto r = f.runtime(source);
+    const auto before = f.timers;
+    const auto money = f.players.find(PlayerId{0})->money;
+    REQUIRE_FALSE(advance_script(r, f.players, f.timers, *f.types, 250));
+    CHECK(r.state.fault == ScriptFault::Host);
+    CHECK(r.state.signals[1] == 0);
+    CHECK(r.state.cursor == 0);
+    CHECK(f.timers.counter == before.counter);
+    CHECK(f.timers.active == before.active);
+    CHECK(f.players.find(PlayerId{0})->money == money);
+}

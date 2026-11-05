@@ -653,3 +653,8 @@ tracing23af0 cargo-qualified AREA operand selection.992db04b/B-correction-02
 Decorated AREA FROM is now an explicit unsupported-query refusal; plain two-owner
 casefold binding remains supported. Added same-Ready-runtime membership/movement/
 owner/crew/removal controls and large false-AND no-index-work proof per B review.
+
+B P2 query-host refusal classification fixed: evaluator failures now distinguish
+work.exhausted (Budget) from missing/refusing typed spatial host (Host), with
+transactional signal/timer rollback control. B-correction-03 passed11/11 prior
+to this final review fix.

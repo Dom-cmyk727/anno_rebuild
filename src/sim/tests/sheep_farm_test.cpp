@@ -347,10 +347,14 @@ TEST_CASE("sheep farm: five animals share three tiles: every unit is accounted, 
     CHECK(w.check_invariants() == "");
 }
 
-TEST_CASE("alternate configuration: a farm of other goods and recipe uses the same seam") {
+TEST_CASE(
+    "alternate configuration: a farm of other goods, recipe and figure id uses the same seam") {
     // KORN (rate 20, need 40) from GETREIDE grain tiles with an animal-route figure: 768 raw ->
     // 19 full steps (760) = 380 KORN, 8 raw left (q 25 < 64). Nothing names a sheep or 807.
     Pasture p = make_pasture(kBarnFarm, kThree, kGrain);
+    REQUIRE(tick_until(p.w, [&] { return !animals(p.w, kBarnAnimal).empty(); }, 2000));
+    CHECK(animals(p.w, kBarnAnimal)[0]->kind ==
+          kBarnAnimal); // an id and goods of its own (not 103, not grass)
     run_ticks(p.w, 60000);
     CHECK(p.stats.forestry.cuts == 3);
     CHECK(p.stats.forestry.raw_delivered_88 == 768);
@@ -361,5 +365,113 @@ TEST_CASE("alternate configuration: a farm of other goods and recipe uses the sa
     for (const auto& [x, y] : kThree) {
         CHECK(object_at(p.w, x, y) == kStalks.v);
     }
+    CHECK(p.w.check_invariants() == "");
+}
+
+TEST_CASE("sheep farm: a Farm-tick type whose figure has another route is neither refused nor "
+          "harvesting") {
+    // R7: route 51 (TRAEGER) is not 0x2d: the send is not refused (the counter is raised, a figure
+    // with that job exists), it has no harvest state, and unsupported_routes stays 0.
+    Pasture p = make_pasture(kOtherRouteFarm, kThree);
+    REQUIRE(tick_until(p.w, [&] { return !animals(p.w, kOtherRoute).empty(); }, 2000));
+    const sim::Figure& f = *animals(p.w, kOtherRoute)[0];
+    CHECK(f.job == 51);
+    CHECK_FALSE(f.harvest.has_value());
+    CHECK(farm_of(p.w, kOtherRouteFarm).workers_out == 1);
+    CHECK(p.stats.forestry.unsupported_routes == 0);
+}
+
+TEST_CASE("sheep farm: the animal limit 20 picks a different tile than the worker limit 0") {
+    // R5: the synthetic walk tables cost 1 per step, so every goal's score stays below 20. The
+    // animal goes on past each unclaimed goal (20 > score) and takes the LAST goal reached; the
+    // worker (limit 0) takes the first. Same tiles, same farm data, only the figure's route
+    // differs: the targets must differ.
+    const Tiles two{{114, 111}, {116, 111}}; // one near, one far from the farm entrance (outside the 3x3 footprint)
+    const auto first_target = [&](sim::TypeId farm, std::uint32_t kind) {
+        Pasture p = make_pasture(farm, two);
+        sim::World& w = p.w;
+        REQUIRE(tick_until(w, [&] { return !animals(w, kind).empty(); }, 2000));
+        const sim::FigureId id = animals(w, kind)[0]->id;
+        REQUIRE(tick_until(
+            w, [&] { return fig_of(w, id).harvest->step == sim::HarvestStep::ToTree; }, 14000));
+        return fig_of(w, id).harvest->target;
+    };
+    const sim::TileXY animal = first_target(kSheepFarm, kSheep);
+    const sim::TileXY worker = first_target(kWorkerPasture, kWorker);
+    CHECK(animal.x != worker.x);
+    CHECK(worker.x == 114);
+    CHECK(animal.x == 116);
+}
+
+TEST_CASE("sheep farm: the animal's first micro-step is paid across visits, then the search runs") {
+    // The harvest state owes 5 ticks at the spawn; 1-tick visits pay them one at a time and nothing
+    // is searched or claimed until the debt is paid (docs/sim/forestry.md E-21, the shared body).
+    Pasture p = make_pasture(kSheepFarm, kThree);
+    sim::World& w = p.w;
+    const sim::FigureId id = first_animal(w);
+    std::uint32_t last = fig_of(w, id).harvest->start_delay;
+    REQUIRE(last == 5);
+    int visits = 0;
+    while (fig_of(w, id).harvest->start_delay > 0 && visits < 20) {
+        w.advance(2); // one tick
+        const std::uint32_t d = fig_of(w, id).harvest->start_delay;
+        CHECK(d <= last);
+        if (d > 0) {
+            CHECK(fig_of(w, id).harvest->step == sim::HarvestStep::Start);
+            for (const auto& [x, y] : kThree) {
+                CHECK_FALSE(w.islands()[0]->tiles.claimed(w.islands()[0]->tile_index(x, y)));
+            }
+        }
+        last = d;
+        ++visits;
+    }
+    CHECK(fig_of(w, id).harvest->start_delay == 0);
+    CHECK(visits >= 1);
+}
+
+TEST_CASE("sheep farm: a full output store, a raw store above the send bound and the reservation "
+          "release") {
+    SUBCASE("full output: the delivered raw is kept, nothing is made") {
+        // Output at the 7 t capacity (1792): the step reports storage full and consumes nothing,
+        // the raw piles up (vector F-full).
+        Pasture p = make_pasture(kSheepFarm, kThree);
+        farm_of(p.w, kSheepFarm).out = 1792;
+        run_ticks(p.w, 60000);
+        const sim::Farm& f = farm_of(p.w, kSheepFarm);
+        CHECK(f.out == 1792);
+        CHECK(f.raw == p.stats.forestry.raw_delivered_88);
+        CHECK(p.stats.forestry.farms.begin()->second.made_88 == 0);
+        CHECK(p.stats.forestry.raw_delivered_88 == 768);
+    }
+    SUBCASE("raw above the send bound: no animal is sent and no draw is taken") {
+        // 384/6 = 64 < 5742/87 = 66 at the first step (vectors F-send-64/65): not eligible, so no
+        // draw either.
+        Pasture p = make_pasture(kSheepFarm, kThree);
+        farm_of(p.w, kSheepFarm).raw = 5742 + 87;
+        std::uint32_t draws = 0;
+        for (int i = 0; i < 400; ++i) {
+            p.w.advance(8);
+            draws += draws_at(p.w.last_output(), sim::DrawSite::FarmWorkerDispatch);
+        }
+        CHECK(draws == 0);
+        CHECK(animals(p.w).empty());
+        CHECK(p.stats.forestry.cuts == 0);
+    }
+}
+
+TEST_CASE(
+    "alternate configuration: another figure id and route (ERNTE 41, job 0x29) reaps the grain") {
+    // A farm of other goods whose figure has route 41: the worker case (limit 0), another id,
+    // another job.
+    Pasture p = make_pasture(kBarnWorkerFarm, kThree, kGrain);
+    REQUIRE(tick_until(p.w, [&] { return !animals(p.w, kBarnReaper).empty(); }, 2000));
+    CHECK(animals(p.w, kBarnReaper)[0]->job == 0x29);
+    REQUIRE(animals(p.w, kBarnReaper)[0]->harvest.has_value());
+    run_ticks(p.w, 60000);
+    CHECK(p.stats.forestry.cuts == 3);
+    CHECK(p.stats.forestry.raw_delivered_88 == 768);
+    const auto& led = p.stats.forestry.farms.begin()->second;
+    CHECK(led.consumed_88 == 760);
+    CHECK(led.made_88 == 380);
     CHECK(p.w.check_invariants() == "");
 }

@@ -59,6 +59,12 @@ inline constexpr sim::TypeId kWeaver{
     9354}; // STOFFE from WOLLE 6/11, 5 t, one carrier (203), radius 16
 inline constexpr sim::TypeId kBarnFarm{
     9355}; // ALTERNATE config: KORN from GETREIDE 20/40, 7 t, one animal
+inline constexpr sim::TypeId kWorkerPasture{
+    9357}; // WOLLE from GRAS 6/87 with a WORKER figure (route 0x2a): limit 0
+inline constexpr sim::TypeId kOtherRouteFarm{
+    9358}; // a Farm-tick type whose figure has route 51 (not harvest, not refused)
+inline constexpr sim::TypeId kBarnWorkerFarm{
+    9359}; // ALTERNATE: KORN from GETREIDE, figure of route ERNTE 41 (job 0x29)
 inline constexpr sim::TypeId kMill{
     9356}; // ALTERNATE config: MEHL from KORN 10/20, 5 t, one carrier
 inline constexpr sim::TypeId kWall{9340}; // a tile object of walk code 3: closed on every layer
@@ -69,6 +75,10 @@ inline constexpr std::uint32_t kHerder = 9402; // a farm figure of another route
 inline constexpr std::uint32_t kCart = 220;
 inline constexpr std::uint32_t kSheep =
     103; // MAP-NEEDS-2: the sheep farm's animal (route WEIDETIER 46), 3 t
+inline constexpr std::uint32_t kBarnAnimal = 9406; // alternate animal id (route 46)
+inline constexpr std::uint32_t kBarnReaper = 9407; // alternate worker id (route ERNTE 41)
+inline constexpr std::uint32_t kOtherRoute =
+    9405; // a figure of route 51 (TRAEGER): neither harvest nor refused
 inline constexpr std::uint32_t kFisher = 9404; // a figure of route FISCHER (45)
 inline constexpr std::uint32_t kCarrier = 203; // the workshop carrier (3 t, layer 0)
 
@@ -181,7 +191,22 @@ registry(std::uint32_t worker_capacity = 256, const std::vector<sim::BuildingTyp
         .footprint(kBarnFarm, 3, 3)
         .entrances(kBarnFarm, {{11, 9}})
         .action_radius(kBarnFarm, 5)
-        .figure_ids(kBarnFarm, {kSheep})
+        .figure_ids(kBarnFarm, {kBarnAnimal})
+        .add_farm(kWorkerPasture, "WOLLE", "GRAS", 6, 87, 7, 1)
+        .footprint(kWorkerPasture, 3, 3)
+        .entrances(kWorkerPasture, {{11, 9}})
+        .action_radius(kWorkerPasture, 5)
+        .figure_ids(kWorkerPasture, {kWorker})
+        .add_farm(kOtherRouteFarm, "WOLLE", "GRAS", 6, 87, 7, 1)
+        .footprint(kOtherRouteFarm, 3, 3)
+        .entrances(kOtherRouteFarm, {{11, 9}})
+        .action_radius(kOtherRouteFarm, 5)
+        .figure_ids(kOtherRouteFarm, {kOtherRoute})
+        .add_farm(kBarnWorkerFarm, "KORN", "GETREIDE", 20, 40, 7, 1)
+        .footprint(kBarnWorkerFarm, 3, 3)
+        .entrances(kBarnWorkerFarm, {{11, 9}})
+        .action_radius(kBarnWorkerFarm, 5)
+        .figure_ids(kBarnWorkerFarm, {kBarnReaper})
         .add_workshop(kMill, "MEHL", "KORN", 10, 20, 5, 1)
         .footprint(kMill, 3, 3)
         .entrances(kMill, {{3, 3}})
@@ -210,6 +235,9 @@ registry(std::uint32_t worker_capacity = 256, const std::vector<sim::BuildingTyp
         .figure_type(worker_type(kHerder, 256, 46))
         .figure_type(worker_type(kSheep, 768, 46))
         .figure_type(worker_type(kFisher, 256, 45))
+        .figure_type(worker_type(kBarnAnimal, 768, 46))
+        .figure_type(worker_type(kBarnReaper, 768, 41))
+        .figure_type(worker_type(kOtherRoute, 256, 51))
         .figure_type(sim::FigureType{kCarrier, 40265, 3 * 256, 0, 1000})
         .figure_type(sim::FigureType{kCart, 53687, 5 * 256, 3, 500});
     for (const sim::BuildingType& t : extra) {

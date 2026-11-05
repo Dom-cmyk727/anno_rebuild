@@ -812,8 +812,8 @@ TEST_CASE("population live canary: save and reload at the cuts of the real run")
         w.set_transport_stats(nullptr);
         CHECK(watch.wait_step.value_or(0) == 50);
         CHECK(watch.cargo_step.value_or(0) == 127);
-        REQUIRE(ref.transition_steps.size() >=
-                6); // N2: six (was seven before the animal job moved the draws)
+        REQUIRE(ref.transition_steps.size() ==
+                6); // measured at 130: steps 50, 52, 54, 56, 1806, 2151 (seven at 129)
         // a walker waiting or walking to a stand at the end of step 50, a walker carrying cargo
         // at the end of step 127, the first transition inside step 50, a later one inside step 1806
         CHECK(ref.transition_steps.front() == 50);

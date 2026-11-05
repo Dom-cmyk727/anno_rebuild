@@ -37,6 +37,7 @@ struct Run {
                   store_raw = 0;
     std::uint64_t processor_out = 0, cart_final = 0, carrier_raw = 0, proc_in = 0;
     std::uint64_t cuts = 0, credited = 0, delivered = 0, lost = 0;
+    std::uint64_t farm_reserved = 0, reserved_by_carriers = 0;
     bool invariants = true;
 };
 
@@ -117,6 +118,12 @@ Run run_chain(const Config& c, std::uint64_t horizon_ticks) {
         if (s->job == sim::kJobWorkshopCarrier && s->cargo_goods == raw)
             out.carrier_raw += s->cargo_88;
     }
+    out.farm_reserved = f.reserved;
+    for (const auto& s : w.figures().list.slots) {
+        if (s && !s->expiry_stamp.has_value() && s->transport.target == farm_id) {
+            out.reserved_by_carriers += s->transport.reserved_88;
+        }
+    }
     out.cuts = stats.forestry.cuts;
     out.credited = stats.forestry.raw_credited_88;
     out.delivered = stats.forestry.raw_delivered_88;
@@ -136,6 +143,21 @@ TEST_CASE(
             << a.processor_out << ", carrier cargo " << a.carrier_raw << ", farm left "
             << a.farm_left << ", loaded " << a.loaded_from_farm << ", cuts " << a.cuts);
     CHECK(a.invariants);
+    // Exact measured pins of THIS MINIATURE (synthetic registry, 40 finite tiles, G6 geometry);
+    // they are measurements, not predictions for the shipped town (docs/sim/early-needs.md section
+    // 10).
+    CHECK(a.first_pickup_tick == 57200);
+    CHECK(a.first_store_tick == 103400);
+    CHECK(a.farm_made == 706);
+    CHECK(a.farm_left == 142);
+    CHECK(a.loaded_from_farm == 564);
+    CHECK(a.proc_in == 3);
+    CHECK(a.processor_out == 30);
+    CHECK(a.store_final == 276);
+    CHECK(a.cuts == 40);
+    // The reservation is released when idle: what the farm has reserved is exactly what its active
+    // carriers hold.
+    CHECK(a.farm_reserved == a.reserved_by_carriers);
     CHECK(a.cuts > 0);
     CHECK(a.credited == 256 * a.cuts);
     CHECK(a.delivered + a.lost <= a.credited); // the rest is in animals' hands
@@ -163,5 +185,10 @@ TEST_CASE(
     CHECK(a.invariants);
     CHECK(a.cuts > 0);
     CHECK(a.farm_made == a.farm_left + a.loaded_from_farm);
-    CHECK(a.store_final > 0);
+    // Exact measured pins of this miniature (grain -> KORN -> mill -> MEHL).
+    CHECK(a.first_pickup_tick == 45200);
+    CHECK(a.first_store_tick == 260400);
+    CHECK(a.farm_made == 3454);
+    CHECK(a.store_final == 995);
+    CHECK(a.farm_reserved == a.reserved_by_carriers);
 }

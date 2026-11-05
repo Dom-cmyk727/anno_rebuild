@@ -225,7 +225,10 @@ TEST_CASE("supply K2: a fresh pioneer house is served by the stalls and the chap
     const std::int64_t cloth_in =
         std::int64_t{t.city->stock.stock[kStoffe]} -
         (std::int64_t{stoffe_before} - std::int64_t(rs.taken_by_goods.at(kStoffe)));
-    CHECK(cloth_in >= 0);
+    // The measured inflow into this store in this run is 288 raw (1.125 t of cloth from the
+    // Tutorial town's own sheep farm and weaver); the world-wide offered cloth bounds it from
+    // above.
+    CHECK(cloth_in == 288);
     CHECK(cloth_in <= std::int64_t(cloth_offered));
     CHECK(t.city->stock.stock[kSalz] == salz_before - rs.taken_by_goods.at(kSalz));
     // the chapel bills with take 0: bought > 0, nothing taken, the store has no entry for it

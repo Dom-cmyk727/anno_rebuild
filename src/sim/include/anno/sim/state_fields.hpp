@@ -89,11 +89,19 @@ namespace anno::sim {
 /// made with other versions fails.
 struct StateHeader {
     std::uint32_t state_hash_version = kStateHashVersion;
+    std::uint64_t script_schema = kScriptSchema;
     std::uint32_t prng_timeline_version = kPrngTimelineVersion;
 };
 
 template <class A, Same<StateHeader> S> void fields(A& a, S& s) {
     a.u32(s.state_hash_version);
+    if constexpr (A::kReading)
+        if (!a.failed() && s.state_hash_version != kStateHashVersion)
+            a.fail("state hash version differs from this build's");
+    a.u64(s.script_schema);
+    if constexpr (A::kReading)
+        if (!a.failed() && s.script_schema != kScriptSchema)
+            a.fail("script state schema differs from this build's");
     a.u32(s.prng_timeline_version);
     if constexpr (A::kReading) {
         if (!a.failed() && s.state_hash_version != kStateHashVersion) {
@@ -386,7 +394,7 @@ template <class A, Same<Relation> S> void fields(A& a, S& s) {
     a.u16(s.credit);
 }
 
-static_assert(field_count<Player>() == 22, "a Player member needs a line in fields(Player)");
+static_assert(field_count<Player>() == 23, "a Player member needs a line in fields(Player)");
 
 template <class A, Same<Player> S> void fields(A& a, S& s) {
     a.u32(s.index.v);
@@ -417,6 +425,10 @@ template <class A, Same<Player> S> void fields(A& a, S& s) {
     fields(a, s.research);
     ar::seq(a, s.relations, 9, [&](auto& r) { fields(a, r); }); // stream 120
     ar::seq(a, s.discovery, 4, [&](auto& p) { a.u32(p.v); });   // stream 120
+    ar::seq(a, s.permissions, 8, [&](auto& row) {
+        a.u32(row.type.v);
+        a.u32(row.value);
+    });
 }
 
 static_assert(field_count<PlayerTable>() == 3,
@@ -1347,6 +1359,42 @@ template <class T> std::uint64_t digest_of(const T& value) {
 
 /// The access door of the field list to the private members of World (a
 /// friend of World, world.hpp): the world's own fields() calls it. The stream is
+template <> struct EnumInfo<ScriptContext> : ContiguousEnum<6> {};
+template <> struct EnumInfo<ScriptFault> : ContiguousEnum<4> {};
+static_assert(field_count<ScriptLimits>() == 4);
+static_assert(field_count<ScriptState>() == 8);
+static_assert(field_count<ScriptRuntime>() == 5, "program is derived; other fields persist");
+template <class A, Same<ScriptRuntime> S> void fields(A& a, S& r) {
+    std::uint64_t size = r.source.size();
+    a.count(size, 1);
+    if constexpr (A::kReading) {
+        if (!a.failed() && size > 1048576)
+            a.fail("script source exceeds hard limit");
+        if (!a.failed())
+            r.source.resize(static_cast<std::size_t>(size));
+    }
+    for (auto& c : r.source) {
+        auto b = static_cast<std::uint8_t>(c);
+        a.u8(b);
+        if constexpr (A::kReading)
+            c = static_cast<char>(b);
+    }
+    a.u32(r.limits.source_bytes);
+    a.u32(r.limits.nodes);
+    a.u32(r.limits.depth);
+    a.u32(r.limits.work);
+    a.u32(r.policy);
+    auto& s = r.state;
+    a.enumv(s.context);
+    a.enumv(s.fault);
+    a.u32(s.cursor);
+    a.u32(s.last_arg);
+    a.u32(s.fault_offset);
+    a.u32(s.last_work);
+    ar::seq(a, s.signals, 1, [&](auto& b) { a.u8(b); });
+    ar::seq(a, s.bindings, 4, [&](auto& id) { a.u32(id.v); });
+}
+
 /// five sections, one function each (the save frame writes and reads them one
 /// by one, §9.5); `scopes` is the flat stream of all five in order, which is what
 /// the hash and the field-list tests run.
@@ -1561,17 +1609,32 @@ struct StateIO {
         });
     }
 
+    template <class A, class ScriptT, class Players, class Config>
+    static void script_section(A& a, ScriptT& script, const TypeRegistry& types,
+                               const Players& players, const Config& config) {
+        a.scope("script", [&] {
+            fields(a, script);
+            if constexpr (A::kReading) {
+                if (!a.failed()) {
+                    auto problem = restore_script(script, types, players, config);
+                    if (!problem.empty())
+                        a.fail(problem);
+                }
+            }
+        });
+    }
+
     /// The scopes of the stream over the configuration, rules, settings, clock,
     /// PRNG, id counters, players, islands, figures and events to use: the world's
     /// own members when writing or hashing, the read-side temporaries when reading
     /// (so one function defines the order of the stream for all four archives).
     template <class A, class W, class Config, class RulesT, class Settings, class Clock, class Rng,
               class Ids, class Players, class Islands, class Figures, class Events, class Timers,
-              class Monopoly, class U32, class Bool>
+              class Monopoly, class U32, class Bool, class ScriptT>
     static void scopes(A& a, W& w, Config& config, RulesT& rules, Settings& settings, Clock& clock,
                        Rng& rng, Ids& ids, Players& players, Islands& islands, Figures& figures,
                        Events& events, Timers& timers, Monopoly& monopoly, U32& event750_acc,
-                       Bool& faulted) {
+                       Bool& faulted, ScriptT& script) {
         header_section(a, w, config, rules);
         clock_rng_section(a, clock, rng);
         settings_section(a, settings);
@@ -1581,6 +1644,7 @@ struct StateIO {
         figures_section(a, figures, ids);
         events_section(a, events, ids);
         timers_monopoly_section(a, timers, monopoly, config);
+        script_section(a, script, *w.types_, players, config);
     }
 
     template <class A, class W> static void world(A& a, W& w) {
@@ -1603,8 +1667,9 @@ struct StateIO {
             MonopolyTable monopoly = w.monopoly_;
             std::uint32_t event750_acc = w.event750_acc_;
             bool faulted = w.faulted_;
+            ScriptRuntime script = w.script_;
             scopes(a, w, config, rules, settings, clock, rng, ids, players, islands, figures,
-                   events, timers, monopoly, event750_acc, faulted);
+                   events, timers, monopoly, event750_acc, faulted, script);
             if (!a.failed()) {
                 // The derived indexes (id map, footprint grids, counters) are not in
                 // the stream: rebuilt from the lists (docs/sim/state.md §9.1).
@@ -1627,11 +1692,12 @@ struct StateIO {
                 w.monopoly_ = std::move(monopoly);
                 w.event750_acc_ = event750_acc;
                 w.faulted_ = faulted;
+                w.script_ = std::move(script);
             }
         } else {
             scopes(a, w, w.config_, w.rules_, w.settings_, w.clock_, w.rng_, w.ids_, w.players_,
                    w.islands_, w.figures_, w.events_, w.timers_, w.monopoly_, w.event750_acc_,
-                   w.faulted_);
+                   w.faulted_, w.script_);
         }
     }
 

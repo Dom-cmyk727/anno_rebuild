@@ -22,11 +22,15 @@
 #include <anno/sim/player.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/rng.hpp>
+#include <anno/sim/script.hpp>
 #include <anno/sim/settings.hpp>
 
 namespace anno::sim {
 
 struct ScenarioSpec {
+    ScriptContext script_context = ScriptContext::Missing;
+    std::string script_source;
+    ScriptLimits script_limits;
     /// HEAD bytes -> properties (D: 0x10009cc0); prop14 from the root name (1
     /// ANNO, 3 ANNOADDON1). world_width/height bound the island rectangles.
     WorldSettings settings;
@@ -36,6 +40,7 @@ struct ScenarioSpec {
     std::optional<std::vector<std::uint16_t>> rng_table;
 
     struct PlayerSpec {
+        std::vector<BuildPermission> permissions;
         /// The slot in the player table.
         PlayerId id;
         std::uint32_t kind = 8, volk = 1;

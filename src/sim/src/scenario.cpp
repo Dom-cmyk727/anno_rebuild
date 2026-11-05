@@ -485,11 +485,25 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         p.name = ps.name;
         p.relations = ps.relations;
         p.discovery = ps.discovery;
+        p.permissions = ps.permissions;
         if (!ps.research.empty()) {
             p.research.state = ps.research;
         }
         w.players_.slots[ps.id.v] = std::move(p);
     }
+
+    if (spec.script_context == ScriptContext::Pending) {
+        auto script = prepare_script(spec.script_source, *w.types_, w.players_, w.config_,
+                                     spec.script_limits);
+        if (!script)
+            return script.error();
+        w.script_ = std::move(script).value();
+    } else if ((spec.script_context == ScriptContext::Missing ||
+                spec.script_context == ScriptContext::ExplicitNone) &&
+               spec.script_source.empty()) {
+        w.script_.state.context = spec.script_context;
+    } else
+        return std::string("invalid scenario script context");
 
     // The figures, ids from the world counter in spec order. A parent is an earlier figure,
     // so its id is known here.

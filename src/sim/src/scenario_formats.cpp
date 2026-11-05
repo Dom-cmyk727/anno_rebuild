@@ -16,12 +16,14 @@
 #include <variant>
 #include <vector>
 
+#include <anno/formats/bigbrother.hpp>
 #include <anno/formats/bytes.hpp>
 #include <anno/formats/chunk.hpp>
 #include <anno/formats/insel.hpp>
 #include <anno/formats/sze.hpp>
 #include <anno/formats/tagged.hpp>
 #include <anno/sim/building.hpp>
+#include <anno/sim/permissions.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/scenario_formats.hpp>
@@ -1383,6 +1385,11 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
     LoadedScenario out;
     Warnings warn{out.warnings, {}};
     ScenarioSpec& spec = out.spec;
+    const auto script = scene.chunks("BIGBROTHER");
+    if (script.size() != 1)
+        return std::string("scenario requires exactly one BIGBROTHER context");
+    spec.script_context = ScriptContext::Pending;
+    spec.script_source.assign(script[0]->payload.begin(), script[0]->payload.end());
 
     // SCENE/HEAD (P: present in all 50, first child).
     const std::vector<const formats::chunk::Chunk*> heads = scene.chunks("HEAD");
@@ -1492,6 +1499,28 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
             for (const tagged::Record& r : pl.records) {
                 if (r.name == "HEAD") {
                     read_player_head(r.payload, p);
+                } else if (r.name == "FORSCH") {
+                    // Construction-only researched projection. Full research prerequisites,
+                    // progress and bonuses remain outside this bounded runtime slice.
+                    auto records = tagged::parse_records(r.payload, r.offset + tagged::kHeaderLen);
+                    if (!records)
+                        return path + ".FORSCH: " + records.error();
+                    if (p.research.empty())
+                        p.research.resize(config.research_entries, 0);
+                    for (const auto& row : records.value()) {
+                        if (row.name != "ENTRY" || row.payload.size() != 4 ||
+                            row.payload[0] >= config.research_entries)
+                            return path + ".FORSCH: unsupported/malformed research row";
+                        auto& state = p.research[row.payload[0]];
+                        state =
+                            static_cast<std::uint8_t>((state & ~2u) | ((row.payload[1] & 1u) << 1));
+                    }
+                } else if (r.name == "ANLTRG") {
+                    auto permissions =
+                        import_permissions(r.payload, types, std::move(p.permissions));
+                    if (!permissions)
+                        return path + ".ANLTRG: " + permissions.error();
+                    p.permissions = std::move(permissions).value();
                 } else if (r.name == "VOLK") {
                     // D AnnoWelt 0x1001d657–0x1001d753 (switch 0x1001e8f4 on the player type):
                     // types 8, 11, 12 -> people 1; 15 -> 11, 16 -> 12 (both also set +0xA0 bits
@@ -1605,6 +1634,14 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         for (const tagged::Record& r : pl.records) {
             // The player reader also takes the older name STADT for the same record (D
             // AnnoWelt 0x1001d240, string test; docs/re/annoscene.md §10).
+            if (r.name == "ANLTRG") {
+                auto& p = spec.players[by_index.at(pl.index)];
+                auto rows = import_permissions(r.payload, types, std::move(p.permissions));
+                if (!rows)
+                    return path + ".ANLTRG: " + rows.error();
+                p.permissions = std::move(rows).value();
+                continue;
+            }
             if (r.name != "STADT2" && r.name != "STADT") {
                 warn.unknown_record("players", path + "." + std::string(r.name), r.name, r.offset);
                 continue;

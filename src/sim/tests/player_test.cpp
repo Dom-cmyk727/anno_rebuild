@@ -1468,6 +1468,7 @@ TEST_CASE("every player field moves the players scope hash") {
          [](sim::Player& p) {
              p.relations.push_back(sim::Relation{sim::PlayerId{p.index.v + 1}, 0, 0, 3, 0});
          }},
+        {"permissions", [](sim::Player& p) { p.permissions.push_back({sim::TypeId{90001}, 0}); }},
         {"discovery", [](sim::Player& p) { p.discovery.push_back(sim::PlayerId{p.index.v + 1}); }},
         {"research.state",
          [](sim::Player& p) {
@@ -1478,7 +1479,7 @@ TEST_CASE("every player field moves the players scope hash") {
              p.research.progress[64] = static_cast<std::uint16_t>(p.research.progress[64] + 1);
          }},
     };
-    static_assert(sim::field_count<sim::Player>() == 22);
+    static_assert(sim::field_count<sim::Player>() == 23);
     static_assert(sim::field_count<sim::ResearchState>() == 2);
     static_assert(sim::field_count<sim::PlayerTable>() == 3);
     CHECK(mutations.size() == sim::field_count<sim::Player>());

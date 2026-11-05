@@ -5,10 +5,6 @@
 #include <anno/sim/types.hpp>
 namespace anno::sim {
 // Explicit context until scenario ANLTRG/script permission state has its own integration contract.
-struct BuildPermission {
-    TypeId type;
-    std::uint32_t value = 0;
-};
 struct BuildPermissionContext {
     PlayerId owner;
     std::span<const BuildPermission> entries;

@@ -644,6 +644,14 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
         w.out_.rng_cursor_before = w.out_.rng_cursor_after = w.rng_.cursor();
         return w.clock_.tick();
     }
+    if (!advance_script(w.script_, w.players_, w.timers_, *w.types_,
+                        static_cast<std::uint32_t>(w.clock_.tick()))) {
+        w.faulted_ = true;
+        w.fault_message_ = "script runtime fault";
+        w.out_ = SimOutput{};
+        w.out_.rng_cursor_before = w.out_.rng_cursor_after = w.rng_.cursor();
+        return w.clock_.tick();
+    }
     w.route_cache_.begin_advance(); // derived index: compare again before the first plan
     // docs/sim/state.md §5.3. No early return for 0: the original adds 0 and still
     // runs every subsystem.

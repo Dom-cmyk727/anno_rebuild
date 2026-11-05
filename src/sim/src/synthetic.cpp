@@ -189,6 +189,7 @@ ScenarioSpec::CitySpec plain_city(std::uint32_t no, std::uint32_t owner) {
 
 ScenarioSpec empty_scenario(std::uint32_t seed) {
     ScenarioSpec spec;
+    spec.script_context = ScriptContext::ExplicitNone;
     spec.settings = synthetic_settings();
     spec.seed = seed;
     return spec;

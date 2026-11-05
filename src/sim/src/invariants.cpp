@@ -223,6 +223,10 @@ std::string World::harvest_problem() const {
 }
 
 std::string World::check_invariants() const {
+    if (auto problem = validate_script(script_, *types_, players_, config_); !problem.empty())
+        return problem;
+    if (script_.state.context == ScriptContext::Fault && !faulted_)
+        return "script fault without world fault barrier";
     // The configuration and what is built from it (§3.1): a state is only
     // meaningful against a valid configuration.
     std::string problem = config_.validate();

@@ -600,7 +600,9 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0x43d09475aa98121aULL); // empty_world at 128 + K1 (python transcription) Inn class row (sim_stream.py)
+    CHECK(sim::World().state_hash() ==
+          0x43d09475aa98121aULL); // empty_world at 128 + K1 (python transcription) Inn class row
+                                  // (sim_stream.py)
     CHECK(sim::kStateHashVersion == 128);
     CHECK(sim::kPrngTimelineVersion == 5);
 }
@@ -804,7 +806,7 @@ TEST_CASE("field count canary") {
     // must name exactly that many. A member added without a line in the field
     // list fails here (and the static_assert fails the build).
     static_assert(sim::field_count<sim::WorldClock>() == 2);
-    static_assert(sim::field_count<sim::StateHeader>() == 2);
+    static_assert(sim::field_count<sim::StateHeader>() == 3);
     static_assert(sim::field_count<sim::IdCounters>() == 4);
     static_assert(sim::field_count<sim::TileXY>() == 2);
     static_assert(sim::field_count<sim::TileRect>() == 4);

@@ -129,6 +129,7 @@ load_fixed_map(const formats::fixed_map::FixedMap& map, std::span<const sim::Sea
         return std::string("base: no human player");
     }
 
+    out.spec.script_context = sim::ScriptContext::ExplicitNone;
     out.spec.settings.world_width = map.width;
     out.spec.settings.world_height = map.height;
     out.spec.seed = map.seed;

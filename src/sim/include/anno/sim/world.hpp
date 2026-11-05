@@ -33,6 +33,7 @@
 #include <anno/sim/reject.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/route_cache.hpp>
+#include <anno/sim/script_runtime.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/tick.hpp>
@@ -148,7 +149,7 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // unchanged in layout (the house walker facts are the existing production data, PROD3 0x28/0x29/
 // 0x32). With Rules::house_updates off (the default) the tick is unchanged: only the version, the
 // config and rules bytes and the new fields move every hash.
-inline constexpr std::uint32_t kStateHashVersion = 128;
+inline constexpr std::uint32_t kStateHashVersion = 129;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -243,6 +244,7 @@ class World {
     [[nodiscard]] const Rules& rules() const { return rules_; }
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
+    [[nodiscard]] const ScriptRuntime& script() const { return script_; }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
     /// The counters of the ids assigned in the serial merge (figures, event sequence
     /// numbers).
@@ -347,11 +349,12 @@ class World {
         // host_events_, out_, transport_stats_, fault_message_ and route_cache_ are host-facing,
         // diagnostic or derived, deliberately not in the field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
-                                      rules_member, seams_member, types_member, ids_member,
-                                      players_member, islands_member, figures_member, events_member,
-                                      timers_member, monopoly_member, event750_acc_member,
-                                      faulted_member, fault_message_member, host_events_member,
-                                      out_member, transport_stats_member, route_cache_member] = w;
+                                      rules_member, seams_member, script_member, types_member,
+                                      ids_member, players_member, islands_member, figures_member,
+                                      events_member, timers_member, monopoly_member,
+                                      event750_acc_member, faulted_member, fault_message_member,
+                                      host_events_member, out_member, transport_stats_member,
+                                      route_cache_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
@@ -402,6 +405,7 @@ class World {
     SimConfig config_;
     Rules rules_;
     Seams seams_;
+    ScriptRuntime script_;
     RegistryRef types_; // never null, also after a move (types.hpp)
     IdCounters ids_;
     PlayerTable players_;

@@ -221,3 +221,24 @@ build. Independent reference4/4 passes. Wrong +125 omission and root-AND ELSE
 mutants both execute and fail their intended assertions; clean source restored.
 S2 review corrections add keyword folding (preserving names), built-in query
 precedence, explicit section guard and host/budget classification/cleanup tests.
+
+## S2/S3 reviewed component checkpoint
+
+S2 semantics APPROVED /root/script_semantics_review8d9d7197; five P2 compiler/
+fault findings corrected. S3 components APPROVED /root/permission_semantics_review
+0b8f5bfe inspected8d9d7197. Corrected control focused02 at8d9d7197 passes14/14,
+no failed/empty/skipped/incomplete. Raw1/257 and ALL-filter mutants reach intended
+assertions (not compilation/refusal); both exact sources restored before control.
+Build attempts S3-01/02 exposed test field-count canary,04 a missing import
+parameter; all are retained,05/restored build succeeds.
+
+FORSCH has separate original refresh/default/bonus semantics. The adapter will
+import only its construction-relevant researched projection: nested4-byte ENTRY
+{id,flags,progress_le}; savedflags bit0 maps exactly to state bit1, duplicates
+last-wins. Other research state/progress/bonus behavior remains the inherited
+engine model, not a claim of full original research restoration. Missing rows
+have no original default researched bit. Construction grants themselves call
+plain research-byte getter19160/setter19170; OR2 is complete for that setter
+path and invokes neither prerequisite nor bonus refresh. Independent permission
+review verified both paths. This limited import scope must be explicit in the
+handoff and original-file canary claims.

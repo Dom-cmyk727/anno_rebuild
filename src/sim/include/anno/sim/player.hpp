@@ -76,7 +76,12 @@ struct Relation {
     friend bool operator==(const Relation&, const Relation&) = default;
 };
 
+struct BuildPermission {
+    TypeId type;
+    std::uint32_t value = 0;
+};
 struct Player {
+    std::vector<BuildPermission> permissions;
     /// The player's slot in the table (original u8).
     PlayerId index;
     /// D: +0x78. 8 and 11 human, 12 computer, 14 natives, 15 pirates, 16 Venice.

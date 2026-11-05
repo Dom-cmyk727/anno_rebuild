@@ -183,3 +183,13 @@ TEST_CASE("SCRIPT1 host refusal on last unit is Host and failed begin rolls back
     CHECK(s.last_arg == 77);
     CHECK(h.rollbacks == 2);
 }
+
+TEST_CASE("SCRIPT1 timer-like signal names remain exact symbols") {
+    auto p = compile(source("SET TIMER_FLAG = TRUE;\nSET TIMER_01 = TRUE;\nSET X = FALSE;\nIF "
+                            "TIMER_FLAG && TIMER_01 THEN { X = TRUE; }\n"));
+    REQUIRE(p);
+    auto s = make_script_state(p.value());
+    Host h;
+    REQUIRE(visit_script(p.value(), s, 250, h));
+    CHECK(s.signals[3] == 1);
+}

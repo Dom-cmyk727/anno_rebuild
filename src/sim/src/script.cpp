@@ -149,16 +149,18 @@ struct Compiler {
                 fail(l.offset, "unsupported query: " + bb::describe(l));
                 return std::nullopt;
             }
-            if (upper(l.name) == "PLAYTIME")
+            const auto token = upper(l.name);
+            const auto suffix = token.starts_with("TIMER_") ? std::string_view(token).substr(6)
+                                                            : std::string_view{};
+            const auto timer = bb::to_integer(suffix);
+            const bool timer_builtin = timer && *timer >= 0 &&
+                                       static_cast<std::uint64_t>(*timer) < env.timer_count &&
+                                       std::to_string(*timer) == suffix;
+            if (token == "PLAYTIME")
                 e.query = ScriptQuery::Playtime;
-            else if (upper(l.name).starts_with("TIMER_")) {
-                auto n = number(std::string_view(l.name).substr(6), l.offset);
-                if (!n || *n < 0 || static_cast<std::uint32_t>(*n) >= env.timer_count) {
-                    fail(l.offset, "timer query index out of range");
-                    return std::nullopt;
-                }
+            else if (timer_builtin) {
                 e.query = ScriptQuery::Timer;
-                e.index = static_cast<std::uint32_t>(*n);
+                e.index = static_cast<std::uint32_t>(*timer);
             } else if (auto signal = symbol(l.name))
                 e.index = *signal;
             else {

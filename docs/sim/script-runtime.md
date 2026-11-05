@@ -34,24 +34,24 @@ and player permission rows are explicit state, not renderer/UI state.
 
 | Requirement | Primary evidence | Positive control | Distinguishing negative | Test/artifact | Review |
 |---|---|---|---|---|---|
-| S0 isolation/identities | git/host snapshot, task packet | exact clean4102196a | unexpected edits preserved | this ledger/cache/script1/S0 | pending |
-| S1 actual scheduling | Scene16b70; Frame5b161/fef6/ff7e | count4,tick32 visits1 | delta/Frameinterval or stamp-update reading | scheduler vectors/primary review | pending |
-| S1 grouping/branch | Scene22bf0/10290 | right-associated guard | C precedence; falseAND runs ELSE | interpreter reference trace | pending |
-| S1 restore/init | Scene16fb6/1706a/1708c/16360 | signals overwrite SET; INIT once | restore afterINIT; repeatedINIT | init/restored vectors | pending |
-| S1 permission effects | Welt1bca0; Scene15fa0/15fe0 | raw1 grant; individual2229 | raw257 unlock; ALL alltypes | permission reference/data | pending |
-| S2 compiled execution | parser/grouped/read_on + S1 | bool assigns/IF/timer/query | extractcalls from unsupported kernel | compiler/evaluator tests | pending |
-| S2 bounds/cursor | originalroundrobin + explicit safety | saved incomplete round resumes | restartIF0; wall-time budget; partialINIT | reference/runtime tests | pending |
-| S3 permissions/import | player1d240/ANLTRG branch | absence vszero, rawbytes | replayimportasactions; wrongowner | import/action tests | pending |
-| S3 data-definedALL | HEADfolk/exclusion fields | original461types + customcontent | flags_word filter; hardcoded idlist | original/custom profile tests | pending |
-| S4 native identity | explicit stream/schema/program policy | exact newbytes; reload | old128/checksum-first false refusal | independent stream vectors | pending |
-| S4 production boundary | proven script-beforeAdvance | recorder/unrecorded/replay same | canary-only runner; interval batching | publicsession tests | pending |
+| S0 isolation/identities | git/host snapshot, task packet | exact clean4102196a | unexpected edits preserved | this ledger/cache/script1/S0 | baseline verified / S1 reviewers |
+| S1 actual scheduling | Scene16b70; Frame5b161/fef6/ff7e | count4,tick32 visits1 | delta/Frameinterval or stamp-update reading | scheduler vectors/primary review | APPROVED5081f780 /1bb960b2 |
+| S1 grouping/branch | Scene22bf0/10290 | right-associated guard | C precedence; falseAND runs ELSE | interpreter reference trace | APPROVED5081f780 /1bb960b2 |
+| S1 restore/init | Scene16fb6/1706a/1708c/16360 | signals overwrite SET; INIT once | restore afterINIT; repeatedINIT | init/restored vectors | APPROVED5081f780 /1bb960b2 |
+| S1 permission effects | Welt1bca0; Scene15fa0/15fe0 | raw1 grant; individual2229 | raw257 unlock; ALL alltypes | permission reference/data | APPROVED5081f780 /1bb960b2 |
+| S2 compiled execution | parser/grouped/read_on + S1 | bool assigns/IF/timer/query | extractcalls from unsupported kernel | compiler/evaluator tests | APPROVED8d9d7197; quoted-id correction86abd3e1 |
+| S2 bounds/cursor | originalroundrobin + explicit safety | saved incomplete round resumes | restartIF0; wall-time budget; partialINIT | reference/runtime tests | APPROVED8d9d7197; quoted-id correction86abd3e1 |
+| S3 permissions/import | player1d240/ANLTRG branch | absence vszero, rawbytes | replayimportasactions; wrongowner | import/action tests | APPROVED0b8f5bfe; integrated86abd3e1 |
+| S3 data-definedALL | HEADfolk/exclusion fields | original461types + customcontent | flags_word filter; hardcoded idlist | original/custom profile tests | APPROVED0b8f5bfe; integrated86abd3e1 |
+| S4 native identity | explicit stream/schema/program policy | exact newbytes; reload | old128/checksum-first false refusal | independent stream vectors | APPROVED86abd3e1 / review_integration |
+| S4 production boundary | proven script-beforeAdvance | recorder/unrecorded/replay same | canary-only runner; interval batching | publicsession tests | APPROVED86abd3e1 / review_integration |
 | S5 authoritative build | shared check_record | scriptallow -> exactdebit | stalequery; deny ignored; dryrun bypass | atomic/live negative controls | pending |
 | S5 path separation | create/found/house callers | later building import/founding | restrict every create_building | caller regressions | pending |
 | S6 real vs synthetic | all50 AST inventory | executed supported complete program | fragment claimed as fullscenario | capability inventory/canaries | pending |
 | S6 scale | deterministic counters/Release | moreplayers/types/statements | query city/figure rescan | modest benchmark | pending |
 | S7 evidence | canonical runner + independent reviews | nonempty frozen-source gates | skipped/incomplete relabelled pass | retained raw logs/manifests | pending |
 
-## S1 proposed execution contract
+## S1 approved execution contract
 
 Evidence-backed original behavior is distinguished below from explicit safety or
 continuity adaptations. Construction wiring remains blocked until this contract
@@ -117,7 +117,7 @@ is independently approved.
     the existing World timer tick retains its ordering after script execution.
     PLAYTIME is signed32(callarg)/500, not a wall clock or a second timer system.
 
-## S1 proposed permission contract
+## S1 approved permission contract
 
 - Per-player sorted sparse rows preserve override absence versus a stored byte0.
   Engine ids and container sizes are widened; original ANLTRG rows are u16 id,
@@ -149,7 +149,7 @@ is independently approved.
   Repeated actions follow order; an explicit zero still wins over a reached bit.
   Import/player loading finishes before first script INIT.
 
-## S1 proposed authoritative boundary and identity
+## S1 approved authoritative boundary and identity
 
 Normal BuildCmd resolves issuer/city/type/rotation and existing structural/site
 checks as today, including requested/effective rewrite revalidation. After the
@@ -185,7 +185,7 @@ If no complete shipped permission program fits, original fragments and complete
 synthetic scenarios remain explicitly different evidence; do not claim full
 original scenario execution.
 
-S0/S1 independent reviews pending. S2 production implementation is not released.
+S0/S1 review checkpoint is historical; approvals and implementation dispositions follow below.
 
 ### S1 clarification before review
 
@@ -242,3 +242,25 @@ plain research-byte getter19160/setter19170; OR2 is complete for that setter
 path and invokes neither prerequisite nor bonus refresh. Independent permission
 review verified both paths. This limited import scope must be explicit in the
 handoff and original-file canary claims.
+
+## S4/S5 integration checkpoint
+
+S4 APPROVED /root/review_integration at86abd3e1: native execution/persistence,
+scenario/native import, nonempty74-byte runtime and24-byte widened row oracles,
+malformed continuations/bindings, real-host commit/rollback and both schema guards.
+S5-focused02 at that clean pin passes30/30, failed/empty/skipped/incomplete0.
+S4-focused01 retained18passes/1failure (live fault diagnostics intentionally make
+check_invariants report the fault); focused02 at6f0eab6e passes19/19; focused03
+at94a4dba3 passes20/20. Build01/02 exposed explicit field-count/version canaries;
+subsequent03/04/05 succeed. Schema-bypass mutant reaches the intended repaired-
+checksum REQUIRE_FALSE failure; outer source restored exactly before integration.
+
+S5-focused01 retained27passes/1failure: synthetic road had no supported class
+flags and refused Unsupported before the gate. Fixture declares flags0x4000;
+no production road predicate changed. The original individual permission parser
+requires quoted type text (Scene1a5d4->b370); compiler now accepts that syntax,
+uses strict nonnegative known widened ids, and rejects bare-number arguments.
+Quoted customid3000000000 is a legal content control. Numeric conditions remain
+signed32. Wrong raw setter, missing ALL exclusion, missing authoritative gate,
+and effective-only rewrite controls each fail their intended assertion; ordinary
+controls execute and pass. S5 final reviewer disposition follows after restore.

@@ -36,8 +36,22 @@ def checked_child(code, output):
         raise ValueError('empty child assertions')
 
 
+EXPECTED_INPUTS=dict(scenario_sha256='b289be7fe906264b1d0fe0b2be75c0e68813ed6691128c84cfebb6e4fd4cc8c0',program_sha256='cac0aeb9c14dfd5c0f9b18c664e5282dff57096e2938f93c67391e3c3f8a47d0',program_bytes=2488)
+
+def validate_input_identity(inputs):
+    if inputs != EXPECTED_INPUTS:
+        raise ValueError('original scenario/program input identity changed')
+
+
 class Contracts(unittest.TestCase):
     good = '[doctest] test cases: 1 | 1 passed | 0 failed\n[doctest] assertions: 17 | 17 passed | 0 failed\n[doctest] Status: SUCCESS!\n'
+    def test_original_input_identity(self):
+        validate_input_identity(EXPECTED_INPUTS)
+        for key in EXPECTED_INPUTS:
+            wrong=dict(EXPECTED_INPUTS)
+            wrong[key]=0 if key=='program_bytes' else '0'*64
+            with self.assertRaises(ValueError): validate_input_identity(wrong)
+
     def test_legal(self):
         checked_child(0, self.good)
     def test_failure_cannot_pass(self):
@@ -95,8 +109,7 @@ def run(executable, repo):
     import bigbrother
     payload=bigbrother.payload(scenario)
     inputs=dict(scenario_sha256=digest(scenario),program_sha256=hashlib.sha256(payload).hexdigest(),program_bytes=len(payload))
-    if inputs!=dict(scenario_sha256='b289be7fe906264b1d0fe0b2be75c0e68813ed6691128c84cfebb6e4fd4cc8c0',program_sha256='cac0aeb9c14dfd5c0f9b18c664e5282dff57096e2938f93c67391e3c3f8a47d0',program_bytes=2488):
-        raise ValueError('original scenario/program input identity changed')
+    validate_input_identity(inputs)
     records = []
     manifest = dict(executable=str(executable), sha256=digest(executable), processes=records,
                     source_revision=subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'], text=True).strip(),

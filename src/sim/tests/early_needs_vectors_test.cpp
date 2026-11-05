@@ -144,6 +144,6 @@ TEST_CASE("early needs vectors: the farm and workshop kernels and the harvest ch
             CHECK_MESSAGE(got.at(k) == v, t[0] << " " << t[1] << ": " << k);
         }
     }
-    CHECK(run == 35);
+    CHECK(run == 36);
     CHECK(pending == 31);
 }

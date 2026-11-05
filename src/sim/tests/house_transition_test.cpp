@@ -83,6 +83,18 @@ std::vector<std::int64_t> ints(const std::string& s) {
     return out;
 }
 
+/// The values of ints() as u32, converted one by one: the iterator-range constructor of a u32
+/// vector narrows int64 inside the standard library, which MSVC reports (C4244, an error under
+/// /WX).
+std::vector<std::uint32_t> u32s(const std::vector<std::int64_t>& in) {
+    std::vector<std::uint32_t> out;
+    out.reserve(in.size());
+    for (const std::int64_t v : in) {
+        out.push_back(static_cast<std::uint32_t>(v));
+    }
+    return out;
+}
+
 std::string join(const std::vector<std::int64_t>& v) {
     if (v.empty()) {
         return "none";
@@ -236,7 +248,7 @@ TEST_CASE("house transition: the hand-derived vectors (reference agrees, see CTe
             sim::SimConfig cfg;
             sim::City city = sim::make_city(sim::CityNo{0}, sim::PlayerId{0}, cfg);
             const auto amounts_i = ints(in_kv.at("amounts"));
-            std::vector<std::uint32_t> amounts(amounts_i.begin(), amounts_i.end());
+            std::vector<std::uint32_t> amounts = u32s(amounts_i);
             const auto store = ints(in_kv.at("store")), setting = ints(in_kv.at("setting")),
                        spent = ints(in_kv.at("spent"));
             for (std::size_t k = 0; k < 5; ++k) {
@@ -264,7 +276,7 @@ TEST_CASE("house transition: the hand-derived vectors (reference agrees, see CTe
             next.group.infra = table(in_kv.at("inf"));
             cur.group.no_upgrade = in_kv.count("noup") && in_kv.at("noup") == "1";
             const auto stock_i = ints(in_kv.at("stock"));
-            std::vector<std::uint32_t> stock(stock_i.begin(), stock_i.end());
+            std::vector<std::uint32_t> stock = u32s(stock_i);
             const std::int64_t tavern = in_kv.count("tavern") ? std::stoll(in_kv.at("tavern")) : -1;
             const sim::UpgradeScores s =
                 sim::upgrade_scores(view_of(cur, goods, tavern), view_of(next, goods, tavern),
@@ -283,7 +295,7 @@ TEST_CASE("house transition: the hand-derived vectors (reference agrees, see CTe
             const VGroup next = groups.at(in_kv.at("new"));
             const bool first = in_kv.at("old") == "none";
             const auto stock_i = ints(in_kv.at("stock"));
-            std::vector<std::uint32_t> stock(stock_i.begin(), stock_i.end());
+            std::vector<std::uint32_t> stock = u32s(stock_i);
             Scripted draw;
             for (const auto v : ints(in_kv.at("draws"))) {
                 draw.values.push_back(static_cast<std::uint16_t>(v));

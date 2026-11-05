@@ -151,4 +151,4 @@ src/sim/include/anno/sim/script.hpp:inline constexpr std::uint32_t kScriptPolicy
 src/sim/include/anno/sim/script_runtime.hpp:inline constexpr std::uint64_t kScriptSchema =  # fixed SIMINT1 lineage discriminator; a compatibility identity, not a content limit
 src/sim/include/anno/sim/figure.hpp:inline constexpr std::uint16_t kAnimalSearchLimit  # step A's callback limit of the animal job (D 0x1005932d = 0x14 vs 0x10058bfd = 0): a rule constant of the original job, not a count or limit
 
-src/sim/include/anno/sim/script_runtime.hpp:ScriptLimits limits = {}, std::optional<std::string> asset_namespace = {});  # default arguments of prepare_script declaration; no variable or global state (lint parser false positive)
+src/sim/include/anno/sim/script_runtime.hpp:ScriptLimits limits =  # default arguments of prepare_script declaration; no variable or global state (lint parser false positive)

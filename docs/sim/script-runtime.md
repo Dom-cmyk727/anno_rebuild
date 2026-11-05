@@ -779,3 +779,13 @@ tried to apply SCRIPT1 research/presence deltas a second time to the already
 corrected SCRIPT1 input. Corrected generation to copy those physical columns
 unchanged and replace only creation identity. Archived checksums remained identical.
 This is generation evidence, not an acceptance pass.
+
+E creation-only generation03 succeeded1005/1005 assertions at93967926 production
+source, output guarded to script2. Independent text comparison proves all50 rows
+retain every physical column, with only create_hash replaced. Archived SCRIPT1
+checksums match before/after (cache/script2/E-preserved-*.sha256). Generation is
+not physical/movement acceptance. Corrected E gate reruns new SCRIPT2/session/
+namespace/compatibility and relevant SCRIPT1 native/continuation cases;77 passing
+E-gate-03 entries are retained, with unchanged handler/action tests reused after
+namespace-decode guard and test-only fixture corrections. Both original failures
+remain failures in that gate; no single79/79 claim is made.

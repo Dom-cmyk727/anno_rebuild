@@ -140,7 +140,7 @@ def upcheck(e, stock, cur, nxt, nah, bed, inf, tavern, noup):
     mean = tdiv(total, count) if count else 128
     b = bed[(mean + 4) >> 3]
     i = inf[(low + 4) >> 3]
-    return {'result': int(f > 0 and b > 0 and i > 0), 'f': f, 'b': b, 'i': i}
+    return {'result': int(f > 0 and b > 0 and i > 0), 'f': f, 'b': b, 'i': i, 'food': food, 'mean': mean, 'infra': low}
 
 
 def setgroup(goods, old, new, e, res64, stock, draws):
@@ -219,7 +219,7 @@ KEYS = {
     'adjacent': {'ok'},
     'variant': {'draw', 'idx', 'type'},
     'matgate': {'ok', 'store', 'spent'},
-    'upcheck': {'result', 'f', 'b', 'i', 'fault'},
+    'upcheck': {'result', 'f', 'b', 'i', 'food', 'mean', 'infra', 'fault'},
     'setgroup': {'stock', 'e', 'res64', 'used', 'fault'},
 }
 

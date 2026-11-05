@@ -37,7 +37,7 @@
 #include <anno/test/game_dir.hpp>
 #include <anno/test/parallel.hpp>
 
-#include "construction_identity.hpp"
+#include "original_component.hpp"
 
 namespace sim = anno::sim;
 namespace fs = std::filesystem;
@@ -50,7 +50,7 @@ constexpr int kAdvances = 3000;
 constexpr std::uint32_t kStepMs = 100;
 
 fs::path expectations_path() {
-    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "scenario_corpus.txt";
+    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / "scenario_corpus.txt";
 }
 
 std::vector<fs::path> scenario_files(const fs::path& game) {
@@ -112,7 +112,8 @@ struct FileResult {
     std::uint64_t a14 = 0;           // islands whose w or h is not a multiple of chunk_edge
     std::uint64_t prod2_unknown = 0; // UnknownObject warnings on PROD2 items
     bool deterministic = false, save_identity = false;
-    std::uint64_t hash = 0, create_hash = 0, fixture_create_hash = 0;
+    std::uint64_t hash = 0, create_hash = 0;
+    std::string component_diagnostic;
     std::uint32_t link_draws = 0; // the resolver's draws
     Moved moved;
     /// P1: the residents of the created houses (`residents_64 >> 6` summed) against the
@@ -152,7 +153,8 @@ void house_totals(const sim::World& w, std::uint64_t& residents, std::uint64_t& 
 /// --check refuses a stale one too).
 std::string version_line() {
     return "# kStateHashVersion=" + std::to_string(sim::kStateHashVersion) +
-           " kPrngTimelineVersion=" + std::to_string(sim::kPrngTimelineVersion);
+           " kPrngTimelineVersion=" + std::to_string(sim::kPrngTimelineVersion) +
+           " schema=SCRIPT1 component=import-only";
 }
 
 std::shared_ptr<const sim::TypeRegistry> original_registry(const fs::path& game) {
@@ -284,20 +286,19 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         r.prod2_unknown +=
             w.kind == sim::ScenarioWarningKind::UnknownObject && w.record == "PROD2" ? 1U : 0U;
     }
-    const auto legacy = construction_test::legacy_registry(*types, cfg);
-    if (!legacy) {
-        r.create_error = legacy.error();
+    const auto component = original_component::import_only(loaded_scenario.spec, types, cfg);
+    if (!component) {
+        r.create_error = component.error();
         return r;
     }
+    r.component_diagnostic = component.value().diagnostic;
     auto run = [&](std::uint64_t& hash) -> std::string {
-        auto w = sim::World::create(loaded_scenario.spec, types, cfg);
+        auto w = sim::World::create(component.value().spec, types, cfg);
         if (!w) {
             return w.error();
         }
         sim::World world = std::move(w).value();
         r.create_hash = world.state_hash(); // actual current identity
-        r.fixture_create_hash = construction_test::legacy_hash(world, legacy.value());
-        // Only the historical fixture comparison projects. Every run/hash/save below is current.
         r.created_residents = r.houses_with_stock = 0;
         house_totals(world, r.created_residents, r.houses_with_stock);
         if (r.name.find("single36") != std::string::npos) {
@@ -315,9 +316,10 @@ FileResult run_file(const fs::path& game, const fs::path& p,
                                 std::any_of(h->stock.begin(), h->stock.end(),
                                             [](std::uint32_t s) { return s != 0; })) {
                                 shown = true;
-                                std::cout << "scenario corpus: a single36 house: type " << b->type.v
-                                          << " residents " << (h->residents_64 >> 6) << " E "
-                                          << h->e << " stock";
+                                std::cout << "scenario corpus original-data components: a single36 "
+                                             "house: type "
+                                          << b->type.v << " residents " << (h->residents_64 >> 6)
+                                          << " E " << h->e << " stock";
                                 for (const std::uint32_t s : h->stock) {
                                     std::cout << ' ' << s;
                                 }
@@ -369,14 +371,15 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         r.deterministic = h1 == h2;
         r.hash = h1;
     }
-    r.line = counts_line(r.name, r.counts, r.fixture_create_hash, r.moved);
+    r.line = counts_line(r.name, r.counts, r.create_hash, r.moved);
     return r;
 }
 
 /// The file's lines by scenario name; `versions` gets its version header line.
-std::map<std::string, std::string> read_expectations(std::string& versions) {
+std::map<std::string, std::string> read_expectations(std::string& versions,
+                                                     const fs::path& path = expectations_path()) {
     std::map<std::string, std::string> out;
-    std::ifstream in(expectations_path());
+    std::ifstream in(path);
     std::string line;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') {
@@ -403,7 +406,7 @@ bool update_requested() {
 } // namespace
 
 TEST_CASE(
-    "population A: the created players of every shipped scenario carry the independent masks") {
+    "population A original-data components: created players carry every independent shipped mask") {
     // MAP-POP-IMPL-1 A. The expectation is fixtures/synthetic/sim/player_masks.txt, written by
     // tools/player_mask_ref.py from the raw SPIELER heads without any C++ (373 heads, 263 of
     // them mask 1). The created world, not the importer alone, is compared.
@@ -446,7 +449,13 @@ TEST_CASE(
                 g.error = resolved.error();
                 return g;
             }
-            auto w = sim::World::create(resolved.value().loaded.spec, types, cfg);
+            const auto component =
+                original_component::import_only(resolved.value().loaded.spec, types, cfg);
+            if (!component) {
+                g.error = component.error();
+                return g;
+            }
+            auto w = sim::World::create(component.value().spec, types, cfg);
             if (!w) {
                 g.error = w.error();
                 return g;
@@ -479,7 +488,8 @@ TEST_CASE(
     CHECK(ones == 263);
 }
 
-TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
+TEST_CASE(
+    "scenario corpus original-data components: every .sze loads, creates and runs five minutes") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -491,7 +501,8 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     // The link selection's candidates (D AnnoScene 0x10007c50): 429 templates on this
     // installation (docs/re/annoscene.md §5 step 1).
     const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
-    std::cout << "scenario corpus: " << templates.summaries.size() << " island templates\n";
+    std::cout << "scenario corpus original-data components: " << templates.summaries.size()
+              << " island templates\n";
     CHECK(templates.summaries.size() == 429);
     const auto results = anno::test::parallel_indexed(
         files.size(),
@@ -508,6 +519,7 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     std::vector<std::string> lines;
     for (const FileResult& r : results) {
         INFO(r.name);
+        MESSAGE("whole-program capability " << r.name << ": " << r.component_diagnostic);
         CHECK(r.load_error == "");
         CHECK(r.create_error == "");
         CHECK(r.invariants == "");
@@ -532,8 +544,9 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
         if (r.counts.links > 0) {
             ++link_files;
             link_files_complete += r.counts.links_resolved == r.counts.links ? 1U : 0U;
-            std::cout << "scenario corpus: links " << r.name << " " << r.counts.links_resolved
-                      << " of " << r.counts.links << " resolved, " << r.link_draws << " draws\n";
+            std::cout << "scenario corpus original-data components: links " << r.name << " "
+                      << r.counts.links_resolved << " of " << r.counts.links << " resolved, "
+                      << r.link_draws << " draws\n";
         }
         cities += r.counts.cities;
         buildings += r.counts.buildings;
@@ -558,25 +571,26 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
         total_record_residents += r.record_residents;
         total_created_residents += r.created_residents;
         // T24: what the run moved, per scenario.
-        std::cout << "scenario corpus: moved " << r.name << " producers " << r.moved.producers_moved
-                  << " of " << r.moved.producers << ", warehouses " << r.moved.warehouses_moved
-                  << " of " << r.moved.warehouses << "\n";
+        std::cout << "scenario corpus original-data components: moved " << r.name << " producers "
+                  << r.moved.producers_moved << " of " << r.moved.producers << ", warehouses "
+                  << r.moved.warehouses_moved << " of " << r.moved.warehouses << "\n";
     }
-    std::cout << "scenario corpus: moved in all: producers " << moved.producers_moved << " of "
-              << moved.producers << ", warehouses " << moved.warehouses_moved << " of "
-              << moved.warehouses << "\n";
-    std::cout << "scenario corpus: houses " << total_houses << ", residents in the records "
-              << total_record_residents << ", residents of the created houses "
-              << total_created_residents << ", HouseResetNotApplied "
-              << totals[sim::ScenarioWarningKind::HouseResetNotApplied] << "\n";
+    std::cout << "scenario corpus original-data components: moved in all: producers "
+              << moved.producers_moved << " of " << moved.producers << ", warehouses "
+              << moved.warehouses_moved << " of " << moved.warehouses << "\n";
+    std::cout << "scenario corpus original-data components: houses " << total_houses
+              << ", residents in the records " << total_record_residents
+              << ", residents of the created houses " << total_created_residents
+              << ", HouseResetNotApplied " << totals[sim::ScenarioWarningKind::HouseResetNotApplied]
+              << "\n";
     // Package D4: the ore objects of the OCCUR records (the figure types of the file with
     // BEWOHNTYPE ERZSYMBOL) in the scenarios WITHOUT island links (their islands are the file\'s
     // own; linked islands are placed from templates by a PRNG selection): 41 files, 1727 objects,
     // 319 with a non-zero discovery mask, counted independently from the files with the Python
     // parsers (cache/map2-research5/objects/occur.py logic over tools/insel.py and figuren.py).
     // Treasures, whale and volcano symbols are not stored.
-    std::cout << "scenario corpus: ore objects " << ore_total << " in " << ore_files
-              << " link-free files, with a discovery mask " << ore_known << "\n";
+    std::cout << "scenario corpus original-data components: ore objects " << ore_total << " in "
+              << ore_files << " link-free files, with a discovery mask " << ore_known << "\n";
     CHECK(ore_files == 41);
     CHECK(ore_outside == 0); // every ore object, template islands included, lies inside its island
     CHECK(ore_total == 1727);
@@ -585,18 +599,36 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     CHECK(totals[sim::ScenarioWarningKind::HouseResetNotApplied] == 0);
     // T23: the cities' PROD/ENTRY records place buildings.
     CHECK(buildings > 0);
-    std::cout << "scenario corpus: " << results.size() << " files, " << with_island
-              << " with at least one island, " << links_only << " with links only; islands "
-              << islands << ", links " << links << ", cities " << cities << ", buildings "
-              << buildings << ", tile objects " << objects << "\n";
-    std::cout << "scenario corpus: links " << links << " in " << link_files
+    std::cout << "scenario corpus original-data components: " << results.size() << " files, "
+              << with_island << " with at least one island, " << links_only
+              << " with links only; islands " << islands << ", links " << links << ", cities "
+              << cities << ", buildings " << buildings << ", tile objects " << objects << "\n";
+    std::cout << "scenario corpus original-data components: links " << links << " in " << link_files
               << " files: " << resolved << " resolved, " << unresolved << " unresolved, "
               << link_draws << " draws; " << link_files_complete
               << " files create every linked island\n";
-    std::cout << "scenario corpus: islands not a multiple of chunk_edge (A14/F20): " << a14 << "\n";
+    std::cout << "scenario corpus original-data components: islands not a multiple of chunk_edge "
+                 "(A14/F20): "
+              << a14 << "\n";
     for (const sim::ScenarioWarningKind k : sim::all_warning_kinds()) {
-        std::cout << "scenario corpus: warnings " << sim::warning_kind_name(k) << " " << totals[k]
-                  << "\n";
+        std::cout << "scenario corpus original-data components: warnings "
+                  << sim::warning_kind_name(k) << " " << totals[k] << "\n";
+    }
+
+    // All physical counts and movement assertions remain pinned to published128.
+    std::string historical_versions;
+    const auto historical = read_expectations(
+        historical_versions, fs::path(ANNO_FIXTURES_DIR) / "sim" / "scenario_corpus.txt");
+    REQUIRE(historical.size() == results.size());
+    const auto without_identity = [](std::string row) {
+        const auto pos = row.find(" create_hash=");
+        REQUIRE(pos != std::string::npos);
+        row.erase(pos, 29); // space + create_hash= + sixteen hex digits
+        return row;
+    };
+    for (const auto& r : results) {
+        REQUIRE(historical.contains(r.name));
+        CHECK(without_identity(r.line) == without_identity(historical.at(r.name)));
     }
 
     // The per-file counts against the committed expectations.
@@ -631,7 +663,8 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     }
 }
 
-TEST_CASE("scenario corpus: the ten scenarios with the most buildings run 20000 ticks more") {
+TEST_CASE("scenario corpus original-data components: the ten scenarios with the most buildings run "
+          "20000 ticks more") {
     // §15 S14: the 5 add-on and the 5 base scenarios with the most buildings run longer;
     // under the asan preset this is the UBSan run. Since T23 "most buildings" ranks the
     // buildings the cities' PROD/ENTRY records place.
@@ -684,7 +717,7 @@ TEST_CASE("scenario corpus: the ten scenarios with the most buildings run 20000 
     }
 }
 
-TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
+TEST_CASE("scenario corpus original-data components: a shipped town's economy runs 150000 ticks") {
     // T23 Do 3 and T24 acceptance (3): the scenario with the most buildings runs 150 000
     // ticks (3 000 advances of 100 ms); its producing buildings work (their stocks
     // move, and some gain output), and since T24 the market carts and the workshop
@@ -713,7 +746,10 @@ TEST_CASE("scenario corpus: a shipped town's economy runs 150000 ticks") {
     }
     REQUIRE(loaded.has_value());
     INFO(rel_name(*dir, files[pick]));
-    auto w = sim::World::create(loaded->spec, types, sim::SimConfig{});
+    auto component = original_component::import_only(loaded->spec, types);
+    REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+    MESSAGE("original-data economy component: " << component.value().diagnostic);
+    auto w = sim::World::create(component.value().spec, types, sim::SimConfig{});
     REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
     sim::World world = std::move(w).value();
     const auto before = snapshot(world);
@@ -917,69 +953,46 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
     }
 }
 
-TEST_CASE("bootstrap corpus identity: original creation pins and masks preserve gameplay state") {
+TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
     const auto types = original_registry(*dir);
-    const auto legacy = construction_test::legacy_registry(*types, {});
-    REQUIRE_MESSAGE(legacy.ok(), (legacy.ok() ? std::string() : legacy.error()));
     std::string versions;
     const auto expected = read_expectations(versions);
     REQUIRE(versions == version_line());
     const auto files = scenario_files(*dir);
     REQUIRE(files.size() == 50);
     const auto templates = anno::sim_load::scan_island_templates(*dir);
-    struct Result {
-        std::string name, error;
-        std::uint64_t actual = 0, projected = 0;
-        std::size_t masks = 0;
-    };
-    const auto results = anno::test::parallel_indexed(
-        files.size(),
-        [&](std::size_t i) {
-            Result r;
-            r.name = rel_name(*dir, files[i]);
-            const auto loaded = anno::sim_load::load_scenario_with_links(
-                anno::test::read_file(files[i]), templates, *types, {}, {});
-            if (!loaded) {
-                r.error = loaded.error();
-                return r;
-            }
-            const auto made = sim::World::create(loaded.value().loaded.spec, types);
-            if (!made) {
-                r.error = made.error();
-                return r;
-            }
-            r.actual = made.value().state_hash();
-            r.projected = construction_test::legacy_hash(made.value(), legacy.value());
-            for (const auto& p : loaded.value().loaded.spec.players) {
-                const auto* got = made.value().players().find(p.id);
-                if (got == nullptr || got->flags != p.flags.value_or(1)) {
-                    r.error = "player mask changed";
-                    return r;
-                }
-                ++r.masks;
-            }
-            return r;
-        },
-        anno::test::parallel_options());
-    std::size_t masks = 0;
-    for (const auto& r : results) {
-        INFO(r.name);
-        REQUIRE_MESSAGE(r.error.empty(), r.error);
-        REQUIRE(expected.contains(r.name));
-        const auto& row = expected.at(r.name);
-        const auto at = row.find("create_hash=");
-        REQUIRE(at != std::string::npos);
-        const auto old = std::stoull(row.substr(at + 12, 16), nullptr, 16);
-        MESSAGE("creation identity " << r.name << " actual=" << r.actual
-                                     << " legacy_fixture=" << r.projected);
-        CHECK(r.projected == old);
-        CHECK(r.actual != old);
-        masks += r.masks;
+    std::size_t masks = 0, isolated = 0, supported = 0;
+    for (const auto& file : files) {
+        const auto name = rel_name(*dir, file);
+        INFO(name);
+        auto loaded = anno::sim_load::load_scenario_with_links(anno::test::read_file(file),
+                                                               templates, *types, {}, {});
+        REQUIRE(loaded);
+        auto component = original_component::import_only(loaded.value().loaded.spec, types);
+        REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+        MESSAGE("whole-program capability " << name << ": " << component.value().diagnostic);
+        isolated += component.value().isolated ? 1 : 0;
+        supported += component.value().isolated ? 0 : 1;
+        auto made = sim::World::create(component.value().spec, types);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        REQUIRE(expected.contains(name));
+        const auto& row = expected.at(name);
+        const auto pos = row.find("create_hash=");
+        REQUIRE(pos != std::string::npos);
+        CHECK(made.value().state_hash() == std::stoull(row.substr(pos + 12, 16), nullptr, 16));
+        for (const auto& p : loaded.value().loaded.spec.players) {
+            const auto* got = made.value().players().find(p.id);
+            REQUIRE(got != nullptr);
+            CHECK(got->flags == p.flags.value_or(1));
+            ++masks;
+        }
     }
     CHECK(masks == 373);
+    CHECK(isolated == 39);
+    CHECK(supported == 11);
 }

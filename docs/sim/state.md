@@ -1,5 +1,13 @@
 # Simulation state: world, buildings, scheduler, commands, hash and save
 
+**Current consolidated identity (2026-11-05): state 132, schema SIMINT1, PRNG
+timeline 5, replay framing 4, command wire 1.** See the
+[main consolidation record](../orchestration/reviews/2026-11-05-consolidation.md)
+and `src/sim/include/anno/sim/world.hpp`. Current fixtures are under
+`fixtures/synthetic/sim/consolidated132/`; earlier identities and their dated
+implementation notes below are historical. Parallel stream-130 layouts and the
+combined stream-131 predecessor are refused, not silently reinterpreted.
+
 Spec for the M3 state model of `src/sim` (`anno_sim`). It extends [`core.md`](core.md) (clock, PRNG, hash v1) and [`production.md`](production.md) (the step functions, which stay as they are except for one fix, §7.4). Evidence: [`docs/re/`](../re/) plus four disassembly reports of 2026-10-18 (building creation, group lists, world tick, command set) whose corrections to `docs/re` are collected in §16.
 
 Evidence tags used throughout:

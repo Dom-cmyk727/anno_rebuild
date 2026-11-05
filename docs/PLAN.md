@@ -1,5 +1,12 @@
 # ANNO 1503 Rebuild — Implementation Plan
 
+**Consolidation checkpoint, 2026-11-05:** completed work streams are combined on
+main at code `7b57ebd9` (state 132 / SIMINT1 / timeline 5). Read the
+[consolidation review](orchestration/reviews/2026-11-05-consolidation.md) and
+[current dispatch](orchestration/TASKS.md) for included pins, active exclusions
+and exact gate coverage. This does not declare the full game, balanced economy,
+original-runtime parity or late-game multiplayer performance complete.
+
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done. Update this file as work lands.
 
 ## 0. Starting point (verified 2026-10-16)

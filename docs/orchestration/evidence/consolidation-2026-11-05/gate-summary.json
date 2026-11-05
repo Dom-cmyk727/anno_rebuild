@@ -1,0 +1,621 @@
+{
+  "code_head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+  "raw_evidence_root": "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05",
+  "gates": [
+    {
+      "file": "final-debug.log",
+      "sha256": "7f29f0930f4eb77c6e308f3460f414d194de2ff3dad0870971e29ed6edcb935a",
+      "provenance": {
+        "workflow": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "source_before": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "started_unix": 1793916825.4022038,
+        "argv": [
+          "tools/test/run_selected.py",
+          "--source-root",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "--build-dir",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/build/consolidation-debug",
+          "--target",
+          "all",
+          "--log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/cache/consolidation-2026-11-05/final-debug.log",
+          "--select",
+          "^anno_sim_tests\\.|^anno_formats_tests\\.|^anno_app_input_tests\\.|^anno_sim_replay_|^[^.]*reference[^.]*$|^lint_sim$",
+          "--exclude",
+          "forester opening canary|sailed founding canary:|ship start canary:|bootstrap prefix:|encoded canary replay worker|scenario corpus original-data components:|SCRIPT2 original public voyage",
+          "--require-test",
+          "journal_report_contract",
+          "--require-test",
+          "early_needs_reference_contract",
+          "--require-test",
+          "hunter_reference_contract",
+          "--require-test",
+          "integration_stream_reference_contract",
+          "--require-test",
+          "script1_stream_reference_agrees",
+          "--require-test",
+          "script2_stream_reference_agrees",
+          "--jobs",
+          "4",
+          "--timeout",
+          "1500",
+          "--asset-policy",
+          "required"
+        ],
+        "asset_policy": "required",
+        "allowed_skips": [],
+        "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/game/app",
+        "configuration": "",
+        "jobs": 4,
+        "cmake_cache_sha256": "2fbf03b99f9cf734cad13d946a33120e4477cdfad1bd69b6cffa9203cd728840",
+        "gate_outputs": [
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-debug.log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-debug.log.inventory.json"
+        ]
+      },
+      "counts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1606 executed=1603 failed=0 empty=0 skipped=3 (required-asset=0 platform=0 opt-in=3 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+      ],
+      "terminal": [
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "file": "final-asan.log",
+      "sha256": "33d3aa696bec1c66b9d5ed52f75eaa3b78d926b5ccd0ea6b478c83cf9f83f239",
+      "provenance": {
+        "workflow": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "source_before": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "started_unix": 1793916696.384479,
+        "argv": [
+          "tools/test/run_selected.py",
+          "--source-root",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "--build-dir",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/build/consolidation-asan",
+          "--target",
+          "all",
+          "--log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/cache/consolidation-2026-11-05/final-asan.log",
+          "--select",
+          "^anno_app_input_tests\\.|^anno_app_tests\\.(play loader:|play:.*fault|picture.*outlives)|^anno_sim_tests\\.(SCRIPT[12]|UNIT1|integration|sheep|farm dispatch|Farm raw|early needs|cloth|founding replay: byte|G7 \\(P1\\)|G1 weaver|G1 with single|stand-in seam:)",
+          "--exclude",
+          "original public voyage|encoded canary replay worker|synthetic complete original program canary producer|mod canary producer",
+          "--require-test",
+          "journal_report_contract",
+          "--require-test",
+          "integration_stream_reference_contract",
+          "--require-test",
+          "integration_stream_reference_agrees",
+          "--require-test",
+          "early_needs_reference_contract",
+          "--require-test",
+          "hunter_reference_contract",
+          "--jobs",
+          "2",
+          "--timeout",
+          "1200",
+          "--asset-policy",
+          "required"
+        ],
+        "asset_policy": "required",
+        "allowed_skips": [],
+        "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/game/app",
+        "configuration": "",
+        "jobs": 2,
+        "cmake_cache_sha256": "4667d88ad259867220c3b594bad843fd48d4e05c11a18911a06d43e5782379c5",
+        "gate_outputs": [
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-asan.log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-asan.log.inventory.json"
+        ]
+      },
+      "counts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=166 executed=166 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+      ],
+      "terminal": [
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "file": "final-host.log",
+      "sha256": "2f5b62c85a5523bda75b469cb4d446a69956ff55d800946ae679d4bb546df686",
+      "provenance": {
+        "workflow": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "source_before": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "started_unix": 1793916692.060357,
+        "argv": [
+          "tools/test/run_selected.py",
+          "--source-root",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "--build-dir",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/build/consolidation-debug",
+          "--target",
+          "all",
+          "--log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/cache/consolidation-2026-11-05/final-host.log",
+          "--select",
+          "^anno_test_support_tests\\.|^anno_app_input_tests\\.dev feedback: the developer start",
+          "--require-test",
+          "journal_report_contract",
+          "--jobs",
+          "1",
+          "--timeout",
+          "600",
+          "--asset-policy",
+          "required"
+        ],
+        "asset_policy": "required",
+        "allowed_skips": [],
+        "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/game/app",
+        "configuration": "",
+        "jobs": 1,
+        "cmake_cache_sha256": "2fbf03b99f9cf734cad13d946a33120e4477cdfad1bd69b6cffa9203cd728840",
+        "gate_outputs": [
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-host.log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-host.log.inventory.json"
+        ]
+      },
+      "counts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=96 executed=90 failed=0 empty=0 skipped=6 (required-asset=0 platform=4 opt-in=2 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+      ],
+      "terminal": [
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "file": "final-host-asan.log",
+      "sha256": "d1d1d5481972483f142531ed91ba577b1bb80f787cd005724da098903ae5e071",
+      "provenance": {
+        "workflow": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "source_before": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "started_unix": 1793917819.148982,
+        "argv": [
+          "tools/test/run_selected.py",
+          "--source-root",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "--build-dir",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/build/consolidation-asan",
+          "--target",
+          "all",
+          "--log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/cache/consolidation-2026-11-05/final-host-asan.log",
+          "--select",
+          "^anno_test_support_tests\\.",
+          "--require-test",
+          "journal_report_contract",
+          "--jobs",
+          "1",
+          "--timeout",
+          "600",
+          "--asset-policy",
+          "required"
+        ],
+        "asset_policy": "required",
+        "allowed_skips": [],
+        "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/game/app",
+        "configuration": "",
+        "jobs": 1,
+        "cmake_cache_sha256": "4667d88ad259867220c3b594bad843fd48d4e05c11a18911a06d43e5782379c5",
+        "gate_outputs": [
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-host-asan.log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-host-asan.log.inventory.json"
+        ]
+      },
+      "counts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=95 executed=89 failed=0 empty=0 skipped=6 (required-asset=0 platform=4 opt-in=2 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+      ],
+      "terminal": [
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "file": "combined132-debug.log",
+      "sha256": "d983528fe914580007d8a3832f63e7f83024c529e070f0498d8640422754bc4c",
+      "provenance": {
+        "workflow": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+          "head": "6ce354cbf1707709bea301a1025b4062c65118c2",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "source_before": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+          "head": "6ce354cbf1707709bea301a1025b4062c65118c2",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "started_unix": 1793914196.031421,
+        "argv": [
+          "tools/test/run_selected.py",
+          "--source-root",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503",
+          "--build-dir",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/build/consolidation-debug",
+          "--target",
+          "all",
+          "--log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/combined132-debug.log",
+          "--select",
+          "anno_sim_tests\\.|anno_formats_tests\\.|anno_app_input_tests\\.|anno_sim_replay_|reference|lint_sim",
+          "--exclude",
+          "forester opening canary|sailed founding canary:|ship start canary:|bootstrap prefix:|encoded canary replay worker|scenario corpus original-data components:|play.*turn cost|SCRIPT2 original public voyage",
+          "--require-test",
+          "early_needs_reference_contract",
+          "--require-test",
+          "hunter_reference_contract",
+          "--require-test",
+          "integration_stream_reference_contract",
+          "--require-test",
+          "script1_stream_reference_agrees",
+          "--require-test",
+          "script2_stream_reference_agrees",
+          "--jobs",
+          "4",
+          "--timeout",
+          "1500",
+          "--asset-policy",
+          "required"
+        ],
+        "asset_policy": "required",
+        "allowed_skips": [],
+        "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "configuration": "",
+        "jobs": 4,
+        "cmake_cache_sha256": "4da41db8fd79244e4ebd6a80f400fbfbca10ad755f2c03d2e42887c55a862398",
+        "gate_outputs": [
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/combined132-debug.log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/combined132-debug.log.inventory.json"
+        ]
+      },
+      "counts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1625 executed=1602 failed=13 empty=0 skipped=10 (required-asset=0 platform=0 opt-in=3 gpu=7 other=0) incomplete=0 sanitizer_lines=0"
+      ],
+      "terminal": [
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: FAIL failed tests",
+        "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+      ]
+    },
+    {
+      "file": "final-focused.log",
+      "sha256": "6946c95063b072f1a7f69ba7e5ff2c123fcf7455adf05fe3f2329ab6a1d29ce1",
+      "provenance": {
+        "workflow": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "0e2b5e53a9103c39842a865581071a6bff05d96e",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "source_before": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "0e2b5e53a9103c39842a865581071a6bff05d96e",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "started_unix": 1793916426.8723168,
+        "argv": [
+          "tools/test/run_selected.py",
+          "--source-root",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "--build-dir",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/build/consolidation-debug",
+          "--target",
+          "all",
+          "--log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/cache/consolidation-2026-11-05/final-focused.log",
+          "--select",
+          "^anno_app_input_tests\\.dev feedback: on an original|^anno_app_input_tests\\.dev feedback: the developer start|^anno_app_input_tests\\.dev session: the replay agrees|^anno_sim_tests\\.(founding replay: byte round trip|G7 \\(P1\\)|G1 weaver and farm produce|G1 with single player style|stand-in seam: original|integration corpus: accepted|sheep farm: explicitly moved|integration identity:)|^anno_sim_replay_scenario_(refuses_a_non_scenario|single_01_refuses_unsupported_unit|endless_01_playable)$",
+          "--require-test",
+          "journal_report_contract",
+          "--require-test",
+          "integration_stream_reference_contract",
+          "--jobs",
+          "4",
+          "--timeout",
+          "600",
+          "--asset-policy",
+          "required"
+        ],
+        "asset_policy": "required",
+        "allowed_skips": [],
+        "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/game/app",
+        "configuration": "",
+        "jobs": 4,
+        "cmake_cache_sha256": "2fbf03b99f9cf734cad13d946a33120e4477cdfad1bd69b6cffa9203cd728840",
+        "gate_outputs": [
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-focused.log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-focused.log.inventory.json"
+        ]
+      },
+      "counts": [],
+      "terminal": [
+        "VERDICT: FAIL workflow: mandatory source/verdict preflight failed",
+        "GATE_END {\"status\": 5, \"ctest_rc\": null}"
+      ]
+    },
+    {
+      "file": "final-focused-02.log",
+      "sha256": "b8c715dae9cd22053b3f586b455d24991c23ba4e40d1fb23a9df73b1e84549cf",
+      "provenance": {
+        "workflow": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "31f411c9c620ac49132361decd208e85cb3581f3",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "source_before": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "head": "31f411c9c620ac49132361decd208e85cb3581f3",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "started_unix": 1793916464.960502,
+        "argv": [
+          "tools/test/run_selected.py",
+          "--source-root",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final",
+          "--build-dir",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/build/consolidation-debug",
+          "--target",
+          "all",
+          "--log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/cache/consolidation-2026-11-05/final-focused-02.log",
+          "--select",
+          "^anno_app_input_tests\\.dev feedback: on an original|^anno_app_input_tests\\.dev feedback: the developer start|^anno_app_input_tests\\.dev session: the replay agrees|^anno_sim_tests\\.(founding replay: byte round trip|G7 \\(P1\\)|G1 weaver and farm produce|G1 with single player style|stand-in seam: original|integration corpus: accepted|sheep farm: explicitly moved|integration identity:)|^anno_sim_replay_scenario_(refuses_a_non_scenario|single_01_refuses_unsupported_unit|endless_01_playable)$",
+          "--require-test",
+          "journal_report_contract",
+          "--require-test",
+          "integration_stream_reference_contract",
+          "--jobs",
+          "4",
+          "--timeout",
+          "600",
+          "--asset-policy",
+          "required"
+        ],
+        "asset_policy": "required",
+        "allowed_skips": [],
+        "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503-consolidation-final/game/app",
+        "configuration": "",
+        "jobs": 4,
+        "cmake_cache_sha256": "2fbf03b99f9cf734cad13d946a33120e4477cdfad1bd69b6cffa9203cd728840",
+        "gate_outputs": [
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-focused-02.log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/final-focused-02.log.inventory.json"
+        ]
+      },
+      "counts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=14 executed=13 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+      ],
+      "terminal": [
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "VERDICT: FAIL failed tests",
+        "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+      ]
+    },
+    {
+      "file": "startup-gate-04.log",
+      "sha256": "8d7e5c641b9b885a8fa5e839db5eb5b05a2e6d8673a24e018f894fcfe11544b7",
+      "provenance": {
+        "workflow": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+          "head": "b5fcd56457d9d193b1fdd69c5e236fcdcd597e88",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "source_before": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+          "head": "b5fcd56457d9d193b1fdd69c5e236fcdcd597e88",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "started_unix": 1793912937.450488,
+        "argv": [
+          "tools/test/run_selected.py",
+          "--source-root",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503",
+          "--build-dir",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/build/consolidation-debug",
+          "--log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/startup-gate-04.log",
+          "--select",
+          "script session:|play: startup fault|play loader: original endless",
+          "--jobs",
+          "2",
+          "--timeout",
+          "600",
+          "--asset-policy",
+          "required"
+        ],
+        "asset_policy": "required",
+        "allowed_skips": [],
+        "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "configuration": "",
+        "jobs": 2,
+        "cmake_cache_sha256": "4da41db8fd79244e4ebd6a80f400fbfbca10ad755f2c03d2e42887c55a862398",
+        "gate_outputs": [
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/startup-gate-04.log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/startup-gate-04.log.inventory.json"
+        ]
+      },
+      "counts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+      ],
+      "terminal": [
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "file": "startup-asan.log",
+      "sha256": "d275facf375bfd55bc3e2d39df657c1ab0c212fcdbe7eac7c183b4c25414b428",
+      "provenance": {
+        "workflow": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+          "head": "f5c151d407679a5fc81004f38cc35a68d928595f",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "source_before": {
+          "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+          "head": "f5c151d407679a5fc81004f38cc35a68d928595f",
+          "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "",
+          "untracked": {}
+        },
+        "started_unix": 1793913456.329213,
+        "argv": [
+          "tools/test/run_selected.py",
+          "--source-root",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503",
+          "--build-dir",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/build/consolidation-asan",
+          "--target",
+          "all",
+          "--log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/startup-asan.log",
+          "--select",
+          "script session:|play: startup fault|play loader: original endless|unsupported original actors|play component: demolish|a generation that outlives",
+          "--jobs",
+          "2",
+          "--timeout",
+          "900",
+          "--asset-policy",
+          "required"
+        ],
+        "asset_policy": "required",
+        "allowed_skips": [],
+        "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "configuration": "",
+        "jobs": 2,
+        "cmake_cache_sha256": "874d994e6e5ad1a2b7ced870dee13740af6db2f22192a4c938820fe8113740cd",
+        "gate_outputs": [
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/startup-asan.log",
+          "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/startup-asan.log.inventory.json"
+        ]
+      },
+      "counts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "COUNTS: selected=7 executed=7 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+      ],
+      "terminal": [
+        "VERDICT: PASS",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    }
+  ]
+}

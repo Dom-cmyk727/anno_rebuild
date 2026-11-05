@@ -13222,3 +13222,25 @@ footprints off the island). Scope: the full diff, callers of the stand-in, `appl
   builds (only the changed files compiled in WSL), any target-host gate.
 - Scratch worktree `E:\anno1503-worktrees\anno1503-standin-depth` removed after the measurements; its local branch
   `scratch/stand-in-height-depth` is kept as the record.
+
+
+## MAIN-CONSOLIDATION — 2026-11-05 (orchestrator)
+
+Owner-authorized consolidation brings the completed available Windows and Mac
+streams onto canonical main, preserving active executor branches and unfinished
+work. Frozen code: `7b57ebd968445bdb8ab8f0ad3e565632a7df24ee`; the publication
+commit is documentation only. Identity: state 132 / SIMINT1 / PRNG timeline 5 /
+replay frame 4 / command wire 1; coordinator compatibility 4 / Darwin namespace 3.
+House updates remain off by default. No game assets or active map were changed.
+
+Fresh canonical Mac gates: Debug 1606 selected/1603 executed/3 opt-in skips;
+affected ASan/UBSan 166/166; host Debug 96/90 and host ASan/UBSan 95/89, each with
+4 platform and 2 opt-in skips. All four have zero failures, empty/incomplete
+cases and sanitizer reports. These overlapping lanes are not summed. Earlier
+failed runs remain failed. Target-host and long-corpus limitations remain open.
+
+[Integration review, included pins, fixes and limits](reviews/2026-11-05-consolidation.md).
+[Evidence index, exact gate commands and retained-log hashes](evidence/consolidation-2026-11-05/INDEX.md).
+Independent reviewers: `/root/audit_completed_refs` and
+`/root/review_consolidation_plan`; source approved at `7b57ebd9`. Active N3+
+cloth/hunting and unavailable unpublished Windows work are not claimed included.

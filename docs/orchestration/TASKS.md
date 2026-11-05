@@ -2,6 +2,33 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
+## Canonical main consolidation — 2026-11-05
+
+The owner authorized consolidating completed streams into **main** and pushing
+GitHub. The integrated code pin is `7b57ebd9`; see the
+[consolidation review and evidence](reviews/2026-11-05-consolidation.md).
+Current identity is **state 132 / SIMINT1 / PRNG timeline 5 / replay frame 4 /
+command wire 1**. Current fixtures live in `fixtures/synthetic/sim/consolidated132/`.
+The restored test coordinator uses compatibility 4 and Darwin namespace 3.
+
+Included: completed Windows work already available through W4-MAIN-1, accepted
+Mac gameplay/supply, UNIT1/SCRIPT integration through `cafc1a7c`, bounded NEEDS N2
+through `8ff6d1ca`, and missing completed research/UI/host/CI corrections.
+**Not folded in:** active N3 and later cloth/hunting work, unpublished Windows
+opening/depth work, or paused/unaccepted experiments. A combined-source Mac pass
+is not Windows/Linux/GPU or multiplayer-performance acceptance.
+
+**Currently running executors:** finish the frozen package and its gate normally.
+Do not reset, merge main into that package, change its recorded identity, or restart
+a valid run to adopt this update. At the next checkpoint, report the exact head,
+remaining delta from the included pin, and results. The orchestrator will reconcile
+that delta against canonical main before the next package starts. Future tasks
+start from an explicitly pinned current main, not an obsolete workstream baseline.
+House updates remain false by default; no owner gameplay policy is silently flipped.
+
+The dispatches below preserve the scope and pins of work already in progress.
+They do not override the new canonical identity for subsequent integration.
+
 ## Current dispatch — 2026-11-05: Windows opening; first Mac cloth/leather; second Mac integration
 
 <!-- BEGIN MAP-NEEDS-2 DISPATCH -->

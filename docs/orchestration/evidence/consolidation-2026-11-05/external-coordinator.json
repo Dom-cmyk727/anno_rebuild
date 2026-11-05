@@ -1,0 +1,22 @@
+{
+  "external_input": "ANNO_TEST_OLD_COORD",
+  "path": "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/consolidation-2026-11-05/predecessor-main3/anno_budget_coord",
+  "sha256": "7a38ff57b127032513c6141a54946a870e7d1b102947ac4565dbace0b1203c6e",
+  "retained_from": "main build/consolidation-debug/src/test_support/anno_budget_coord at source 6ce354cb",
+  "gate": "final-host.log",
+  "tested_head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+  "ANNO_TEST_THREADS": 4,
+  "CMAKE_BUILD_PARALLEL_LEVEL": 4,
+  "admission": "enabled; default shared coordinator, private test ports for coordinator cases",
+  "not_supplied": [
+    "ANNO_TEST_V4_COORD",
+    "ANNO_TEST_V4_PROBE"
+  ],
+  "additional_gate": {
+    "gate": "final-host-asan.log",
+    "tested_head": "7b57ebd968445bdb8ab8f0ad3e565632a7df24ee",
+    "ANNO_TEST_THREADS": 2,
+    "CMAKE_BUILD_PARALLEL_LEVEL": 4,
+    "same_external_binary": true
+  }
+}

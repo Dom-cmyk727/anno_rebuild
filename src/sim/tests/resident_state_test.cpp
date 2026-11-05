@@ -50,7 +50,7 @@ template <class T> Bytes bytes_of(T& value) {
 } // namespace
 
 TEST_CASE("stream 128: versions, defaults and the three declared draw sites") {
-    CHECK(sim::kStateHashVersion == 129);
+    CHECK(sim::kStateHashVersion == 130);
     CHECK(sim::kPrngTimelineVersion == 5);
     const sim::Rules r;
     CHECK_FALSE(r.house_updates);

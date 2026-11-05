@@ -153,7 +153,14 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // worker (job 0x2a) becomes a harvest worker (cargo goods = input 0, harvest state, credit to the
 // raw slot by goods, docs/sim/small-farm-supply.md), which changes the evolution of every world that
 // holds a small farm. The version word moves every hash.
-inline constexpr std::uint32_t kStateHashVersion = 129;
+// Stream at 130 (task MAP-NEEDS-2 N2): 129 was local and unpublished but SUPPLY-1 was accepted with it pinned in its
+// gate evidence, so this is a new identity rather than an amendment. No field, scope or draw site changes (PRNG
+// timeline stays 5): a Farm-payload figure of the animal route (job 0x2e: sheep, pasture and cattle farms) now has
+// the harvest state, grazes and ends, releasing its counter, so those farms keep sending (every eligible attempt
+// draws FarmWorkerDispatch) instead of stopping after five inert figures; the route 0x2d is refused explicitly.
+// That changes the evolution and the draw count of every world with such a farm (Tutorial/02Trade01.sze:
+// 56 -> 206 dispatch draws in 55,000 ticks). The version word moves every hash.
+inline constexpr std::uint32_t kStateHashVersion = 130;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

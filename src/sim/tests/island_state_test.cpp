@@ -1885,24 +1885,31 @@ TEST_CASE("load refuses a damaged frame") {
         CHECK(contains(err, "state stream version " + std::to_string(sim::kStateHashVersion - 1) +
                                 " is not supported"));
     }
-    SUBCASE("a valid stream 129 control: the old versions 127 and 128 are refused with their own text") {
+    SUBCASE("a valid stream 130 control: the old versions 127, 128 and 129 are refused with their "
+            "own text") {
         // The stream before MAP-POP-LIVE-1 (stream 127: the population input pipeline; no billed
         // counters, walker slots, resident state or house rules) is version 127. The control is a
         // valid save of this build; only the version word is changed and the frame resealed, so the
         // refusal is the version text and not checksum damage.
-        static_assert(sim::kStateHashVersion == 129, "update this test with the next stream bump");
+        static_assert(sim::kStateHashVersion == 130, "update this test with the next stream bump");
         CHECK(island_test::load_error(good).empty()); // the control loads
         std::vector<std::uint8_t> old = good;
         island_test::put32(old, 8, 127);
         island_test::reseal(old);
         const std::string err = island_test::load_error(old);
-        CHECK(contains(err, "state stream version 127 is not supported (this build reads 129)"));
-        // 128 / timeline 5 was published (a50aec3a): its saves are refused too, never read as 129.
+        CHECK(contains(err, "state stream version 127 is not supported (this build reads 130)"));
+        // 129 (SUPPLY-1, pinned by its gates) and 128 / timeline 5 (published at a50aec3a): their
+        // saves are refused too, never read as 130.
+        std::vector<std::uint8_t> pinned = good;
+        island_test::put32(pinned, 8, 129);
+        island_test::reseal(pinned);
+        CHECK(contains(island_test::load_error(pinned),
+                       "state stream version 129 is not supported (this build reads 130)"));
         std::vector<std::uint8_t> published = good;
         island_test::put32(published, 8, 128);
         island_test::reseal(published);
         CHECK(contains(island_test::load_error(published),
-                       "state stream version 128 is not supported (this build reads 129)"));
+                       "state stream version 128 is not supported (this build reads 130)"));
     }
     SUBCASE("the PRNG table kind") {
         std::vector<std::uint8_t> bad = good;

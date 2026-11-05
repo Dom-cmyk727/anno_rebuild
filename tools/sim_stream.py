@@ -99,6 +99,10 @@ Stream 129 (task MAP-SUPPLY-1 S2): 128 / timeline 5 was published at a50aec3a. 1
 site (timeline stays 5): the small farm's line-0 worker becomes a harvest worker, which changes the evolution
 of worlds with a small farm; the version word moves every hash.
 
+Stream 130 (task MAP-NEEDS-2 N2): 129 was unpublished but pinned by the SUPPLY-1 gates. 130 changes no field and no draw
+site (timeline stays 5): a Farm figure of the animal route (job 0x2e) now grazes and ends, so sheep and pasture farms keep
+sending (more FarmWorkerDispatch draws); the version word moves every hash.
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -119,7 +123,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 129
+STATE_HASH_VERSION = 130
 PRNG_TIMELINE_VERSION = 5
 
 

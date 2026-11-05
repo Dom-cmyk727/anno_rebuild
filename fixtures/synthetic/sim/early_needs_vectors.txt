@@ -31,14 +31,14 @@ farm F-cap-over   on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=17
 # attached figures: 4 of 5 still send, 5 of 5 do not
 farm F-wout-4     on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=4 raw=0 out=0 act=0 last=0 t=500 => run=1 made=0 raw=0 out=0 act=0 status=1 send=1
 farm F-wout-5     on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=5 raw=0 out=0 act=0 last=0 t=500 => run=1 made=0 raw=0 out=0 act=0 status=1 send=0
-# switched off: the stamp advances (run=1) and nothing else changes; suspended: the activity ages, nothing is made
-farm F-off        on=0 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=100 last=0 t=500 => run=1 made=0 raw=87 out=0 act=100 status=0 send=0
-farm F-susp       on=1 susp=1 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=100 last=0 t=500 => run=1 made=0 raw=87 out=0 act=99 status=0 send=0
+# switched off: the stamp advances (run=1, last=500, 0x1006eab2-0x1006eabb before the switched-on byte) and nothing else changes; suspended: the activity ages, nothing is made
+farm F-off        on=0 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=100 last=0 t=500 => run=1 made=0 raw=87 out=0 act=100 last=500 status=0 send=0
+farm F-susp       on=1 susp=1 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=100 last=0 t=500 => run=1 made=0 raw=87 out=0 act=99 last=500 status=0 send=0
 # the activity ages as (a*255)>>8: 257 -> 255 (a - 1 would give 256)
 farm F-age-257    on=1 susp=1 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=257 last=0 t=500 => run=1 made=0 raw=87 out=0 act=255 status=0 send=0
 # status precedence: the capacity test comes first, so raw 0 with a full store reports "storage full" (2), not "missing" (1)
 farm F-full-empty on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=0 out=1792 act=0 last=0 t=500 => run=1 made=0 raw=0 out=1792 act=0 status=2 send=1
-farm F-not-due    on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=100 last=0 t=499 => run=0 made=0 raw=87 out=0 act=100 status=0 send=0
+farm F-not-due    on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=100 last=0 t=499 => run=0 made=0 raw=87 out=0 act=100 last=0 status=0 send=0
 # max figures 1 (the forester): a worker out skips production; a producing step does not send
 farm F-max1-out   on=1 susp=0 max=1 rate=6 need=87 cap=1792 wout=1 raw=87 out=0 act=0 last=0 t=500 => run=1 made=0 raw=87 out=0 act=0 status=0 send=0
 farm F-max1-made  on=1 susp=0 max=1 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=0 last=0 t=500 => run=1 made=6 raw=0 out=6 act=96 status=0 send=0
@@ -136,18 +136,21 @@ detach DT-twice    slots=7,3,0,0,0 fig=7 times=2 => slots=0,3,0,0,0
 detach DT-nomatch  slots=1,2,0,0,0 fig=7 times=1 => slots=1,2,0,0,0
 detach DT-first    slots=7,7,0,0,0 fig=7 times=1 => slots=0,7,0,0,0
 
-# --- this+0x118 = 0x10072d20 returns null in two ways: flag bits 4/5 (0x10 and 0x20 of [+0xc]) and no reachable entrance (0x10072b50) ---
+# --- this+0x118 = 0x10072d20 returns null three ways: flag bits 4/5 (0x10 and 0x20 of [+0xc]), no reachable entrance (0x10072b50), the registry create (0x10072d91) answering < 0 ---
 create CR-ok       flags=0x00 entrance=1 => fig=1
 create CR-bit4     flags=0x10 entrance=1 => fig=0
 create CR-bit5     flags=0x20 entrance=1 => fig=0
 create CR-noent    flags=0x00 entrance=0 => fig=0
 create CR-blocked  flags=0x08 entrance=1 => fig=1
 create CR-rotation flags=0x03 entrance=1 => fig=1
+create CR-spawn-neg flags=0x00 entrance=1 spawn=-1 => fig=0
+create CR-spawn-ok  flags=0x00 entrance=1 spawn=0 => fig=1
 
 # --- the dispatch order: tests (0x1006eda5-0x1006ede4), ONE world draw (0x1006edf3-0x1006ee06), this+0x118, then the cargo goods := input 0 (0x1006ee4d); a null figure skips attach and cargo but the draw happened ---
 send S-tests-fail  tests=0 flags=0x00 entrance=1 input0=69 => order=none draws=0 attached=0 cargo=0
 send S-ok          tests=1 flags=0x00 entrance=1 input0=69 => order=tests>draw>create>cargo draws=1 attached=1 cargo=69
 send S-null-flags  tests=1 flags=0x10 entrance=1 input0=69 => order=tests>draw>create draws=1 attached=0 cargo=0
+send S-null-spawn  tests=1 flags=0x00 entrance=1 spawn=-1 input0=69 => order=tests>draw>create draws=1 attached=0 cargo=0
 send S-null-entr   tests=1 flags=0x00 entrance=0 input0=69 => order=tests>draw>create draws=1 attached=0 cargo=0
 
 # --- step A with nothing to take: no candidate, all claimed, or none reachable -> the trip ends empty ---

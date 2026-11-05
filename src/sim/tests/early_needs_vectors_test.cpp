@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -45,7 +46,14 @@ int status_code(sim::Status s) {
 TEST_CASE("early needs vectors: the farm and workshop kernels and the harvest choice agree") {
     std::ifstream in(std::string(ANNO_FIXTURES_DIR) + "/sim/early_needs_vectors.txt");
     REQUIRE(in.good());
-    int run = 0, pending = 0;
+    // Record kinds the engine implements today. A kind moves from kPending to kHandled when N2
+    // converts it; an unknown kind fails, and the counts below follow the file instead of being
+    // hard-coded.
+    const std::set<std::string> kHandled{"gate", "farm", "wstep", "pick"};
+    const std::set<std::string> kPending{"route",  "credit",  "trip",   "offer",  "visit",
+                                         "arrive", "attach",  "detach", "create", "send",
+                                         "stepa",  "farmrun", "wrun"};
+    int run = 0, pending = 0, handled_in_file = 0, pending_in_file = 0;
     for (std::string line; std::getline(in, line);) {
         line = line.substr(0, line.find('#'));
         std::istringstream is(line);
@@ -61,6 +69,10 @@ TEST_CASE("early needs vectors: the farm and workshop kernels and the harvest ch
             arrow = t[i] == "=>" ? i : arrow;
         }
         REQUIRE(arrow > 1);
+        REQUIRE_MESSAGE(kHandled.count(t[0]) + kPending.count(t[0]) == 1,
+                        "unknown record kind " << t[0]);
+        handled_in_file += kHandled.count(t[0]) != 0 ? 1 : 0;
+        pending_in_file += kPending.count(t[0]) != 0 ? 1 : 0;
         const Kv in_kv = kv_of(t, 2, arrow);
         const Kv want = kv_of(t, arrow + 1, t.size());
         Kv got;
@@ -96,6 +108,7 @@ TEST_CASE("early needs vectors: the farm and workshop kernels and the harvest ch
                    {"raw", std::to_string(f.raw)},
                    {"out", std::to_string(f.out)},
                    {"act", std::to_string(f.activity)},
+                   {"last", std::to_string(f.last)},
                    {"status", std::to_string(status_code(r.status))},
                    {"send", r.send_figure ? "1" : "0"}};
         } else if (t[0] == "wstep") {
@@ -145,6 +158,7 @@ TEST_CASE("early needs vectors: the farm and workshop kernels and the harvest ch
             CHECK_MESSAGE(got.at(k) == v, t[0] << " " << t[1] << ": " << k);
         }
     }
-    CHECK(run == 41);
-    CHECK(pending == 68);
+    CHECK(run == handled_in_file);
+    CHECK(pending == pending_in_file);
+    CHECK(run > 0);
 }

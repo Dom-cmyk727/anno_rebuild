@@ -7,7 +7,7 @@ Every rule is transcribed from the disassembly named beside it (AnnoWelt.dll sha
 Records (key=value tokens, then `=>` and the expected keys):
 
   gate    last= t=                                          => run= last=
-  farm    on= susp= max= rate= need= cap= wout= raw= out= act= last= t= => run= made= raw= out= act= status= send=
+  farm    on= susp= max= rate= need= cap= wout= raw= out= act= last= t= => run= made= raw= out= act= last= status= send=
           (the Farm tick 0x1006ea90; max= is type max_figures(0), wout= the attached figures)
   route   id=                                               => job= kind= limit=
           (the farm family's job is the figure type's ROUTETYPE index; the shared job's case table 0x1003b0e0)
@@ -23,9 +23,10 @@ Records (key=value tokens, then `=>` and the expected keys):
   attach  slots= fig=                                       => slots= ret=
   detach  slots= fig= times=                                => slots=
           (Farm attach 0x10074540 / detach 0x1006f070: five pointer slots)
-  create  flags= entrance=                                  => fig=
-          (this+0x118 = 0x10072d20 returns null when flag bits 4/5 are set or the entrance search 0x10072b50 fails)
-  send    tests= flags= entrance= input0=                   => order= draws= attached= cargo=
+  create  flags= entrance= [spawn=]                         => fig=
+          (this+0x118 = 0x10072d20 returns null three ways: flag bits 4/5 set, the entrance search 0x10072b50 failing, the registry create
+           at 0x10072d91 returning < 0 (spawn=-1; default 0 = created))
+  send    tests= flags= entrance= [spawn=] input0=          => order= draws= attached= cargo=
           (the dispatch order: tests, one world draw, this+0x118, then the cargo goods; a null figure skips attach and cargo)
   stepa   cand= claimed= reach=                             => result=
   farmrun raw= rate= need= cap= steps=                      => out= raw= steps=
@@ -70,11 +71,12 @@ def age_farm(a):
 
 def farm(on, susp, mx, rate, need, cap, wout, raw, out, act, last, t):
     """0x1006ea90. Returns dict(run made raw out act status send)."""
-    r = dict(run=0, made=0, raw=raw, out=out, act=act, status=0, send=0)
-    run, _ = gate(last, t)
+    r = dict(run=0, made=0, raw=raw, out=out, act=act, last=last, status=0, send=0)
+    run, last2 = gate(last, t)
     if not run:
         return r
     r['run'] = 1
+    r['last'] = last2                            # the stamp advances before the switched-on test (0x1006eab2-0x1006eabb)
     if not on:                                   # 0x1006eabb: byte [+0x22] == 0 -> return (the stamp already advanced)
         return r
     act = age_farm(act)
@@ -176,14 +178,15 @@ def detach(slots, fig, times):
     return slots
 
 
-def create(flags, entrance):
-    # 0x10072d20: refused while (f >> 1 & 0x10) | (f & 0x10) != 0 (flag bits 5/4) or without a reachable entrance (0x10072b50)
-    if (((flags >> 1) & 0x10) | (flags & 0x10)) != 0 or not entrance:
+def create(flags, entrance, spawn=0):
+    # 0x10072d20: refused while (f >> 1 & 0x10) | (f & 0x10) != 0 (flag bits 5/4) or without a reachable entrance (0x10072b50);
+    # the registry create (0x10072d91) answering < 0 jumps to 0x10072de5 and returns the zero-initialised pointer
+    if (((flags >> 1) & 0x10) | (flags & 0x10)) != 0 or not entrance or spawn < 0:
         return 0
     return 1
 
 
-def send(tests, flags, entrance, input0):
+def send(tests, flags, entrance, input0, spawn=0):
     # 0x1006eda5-0x1006ede4 tests, 0x1006edf3-0x1006ee06 one world draw (discarded), 0x1006ee2d this+0x118, 0x1006ee4d cargo
     order = []
     draws = attached = cargo = 0
@@ -193,7 +196,7 @@ def send(tests, flags, entrance, input0):
     order.append('draw')
     draws = 1
     order.append('create')
-    if create(flags, entrance):                  # 0x1006ee33 test eax,eax; je -> skips attach and cargo
+    if create(flags, entrance, spawn):           # 0x1006ee33 test eax,eax; je -> skips attach and cargo
         order.append('cargo')
         attached = 1
         cargo = input0
@@ -309,9 +312,9 @@ def run_vector(kind, a):
     if kind == 'detach':
         return {'slots': fmt(detach(ints(a['slots']), int(a['fig']), int(a['times'])))}
     if kind == 'create':
-        return {'fig': str(create(int(a['flags'], 0), int(a['entrance'])))}
+        return {'fig': str(create(int(a['flags'], 0), int(a['entrance']), int(a.get('spawn', '0'))))}
     if kind == 'send':
-        o, dr, at, cg = send(int(a['tests']), int(a['flags'], 0), int(a['entrance']), int(a['input0']))
+        o, dr, at, cg = send(int(a['tests']), int(a['flags'], 0), int(a['entrance']), int(a['input0']), int(a.get('spawn', '0')))
         return {'order': '>'.join(o) if o else 'none', 'draws': str(dr), 'attached': str(at), 'cargo': str(cg)}
     if kind == 'stepa':
         return {'result': stepa(int(a['cand']), int(a['claimed']), int(a['reach']))}
@@ -336,7 +339,7 @@ def run_vector(kind, a):
 
 KEYS = {
     'gate': {'run', 'last'},
-    'farm': {'run', 'made', 'raw', 'out', 'act', 'status', 'send'},
+    'farm': {'run', 'made', 'raw', 'out', 'act', 'last', 'status', 'send'},
     'route': {'job', 'kind', 'limit'},
     'credit': {'raw'},
     'pick': {'tile'},

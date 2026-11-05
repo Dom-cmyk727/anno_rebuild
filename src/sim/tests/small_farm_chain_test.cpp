@@ -239,3 +239,60 @@ TEST_CASE("supply chain K4/S4: the Tutorial island-7 town, farms -> carriers and
     CHECK(d.city->stock.stock[kFood] < N_checkpoint); // with the farms the store ends higher
     CHECK(d.w.check_invariants() == "");
 }
+
+// ---- MAP-SUPPLY-1 CLOSE item 2: food dependence with a store that cannot explain the supply ----
+namespace {
+struct FoodArm {
+    std::uint64_t taken = 0, farm_made = 0;
+    std::uint32_t store_end = 0, store_start = 0;
+    std::uint32_t houses_food_up = 0;
+};
+FoodArm run_food_arm(const Original& o, bool producers, std::uint32_t store_raw) {
+    auto A = start(o, producers);
+    Chain& c = *A;
+    // MEASUREMENT SETUP (named, not a game command): the city's food store is set to `store_raw`
+    // (1/256 t) in both arms, so that the store alone cannot cover the purchases of the run.
+    c.city->stock.stock[kFood] = store_raw;
+    FoodArm r;
+    r.store_start = c.city->stock.stock[kFood];
+    while (c.w.clock().tick() < kCheckpoint) {
+        c.w.advance(100);
+        REQUIRE_FALSE(c.w.faulted());
+    }
+    r.taken = c.stats.residents.merged_taken_by_city.count({c.ref, kFood})
+                  ? c.stats.residents.merged_taken_by_city.at({c.ref, kFood})
+                  : 0U;
+    r.store_end = c.city->stock.stock[kFood];
+    const auto& fs = c.stats.forestry;
+    for (const auto& kv : fs.small_farms) {
+        r.farm_made += kv.second.made_88[1];
+    }
+    CHECK(c.w.check_invariants() == "");
+    return r;
+}
+} // namespace
+
+TEST_CASE(
+    "supply chain CLOSE-2: with a food store of 1 t the households keep buying only while the "
+    "small farms' animals refill it") {
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    constexpr std::uint32_t kStore =
+        256; // 1 t; the full run buys about 754 (3 t) with a full store
+    const FoodArm with = run_food_arm(*o, true, kStore);
+    const FoodArm without = run_food_arm(*o, false, kStore);
+    MESSAGE("store " << kStore << ": WITH farms taken " << with.taken << " end " << with.store_end
+                     << " farms made food " << with.farm_made << "; WITHOUT taken " << without.taken
+                     << " end " << without.store_end);
+    // The control can buy at most what the store held: nothing comes in.
+    CHECK(without.taken <= kStore);
+    CHECK(without.store_end == kStore - without.taken);
+    // With the farms the households bought more than the store ever held: the surplus came from
+    // food the farms' animals made.
+    CHECK(with.taken > kStore);
+    CHECK(with.taken > without.taken);
+    CHECK(with.farm_made > 0);
+}

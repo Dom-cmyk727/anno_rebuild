@@ -1,5 +1,6 @@
 // MAP-SUPPLY-1 S5: interruption and recovery, owners, reload and replay of the real chain.
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -398,52 +399,57 @@ TEST_CASE("resilience: save and reload at the crop, grazing, production, cart an
     CHECK(c.w.check_invariants() == "");
 }
 
-TEST_CASE("resilience: operation counters of the harvest search do not grow with unrelated farms") {
-    // One farm with fields and k unrelated farms far away without any field in reach. The farm-A
-    // search costs (tiles examined per search, candidates, walk nodes popped) are properties of the
-    // window and the fields; the k other farms add searches that stop at the empty candidate list.
-    // Deterministic counters, no timing.
-    const auto measure = [&](int k) {
-        sim::ScenarioSpec spec = ht::make_rig().spec;
-        std::vector<sim::ScenarioSpec::TileObjectSpec>& objs = spec.islands[0].objects;
-        const auto obj = [&](std::int32_t x, std::int32_t y, sim::TypeId t) {
-            const auto& is = spec.islands[0];
-            objs.push_back(sim::ScenarioSpec::TileObjectSpec{
-                static_cast<std::uint32_t>((y - is.y0) * static_cast<std::int32_t>(is.w) +
-                                           (x - is.x0)),
-                t.v, 0});
-        };
-        obj(113, 111, ht::kGrain);
-        obj(113, 112, ht::kGrain);
-        const auto types = ht::registry(3 * 256);
-        const auto add = [&](std::int32_t x, std::int32_t y) {
-            sim::ScenarioSpec::BuildingSpec b;
-            b.type = ht::kSmallFarm;
-            b.x = x;
-            b.y = y;
-            b.payload = sim::make_small_farm(types->find(ht::kSmallFarm)->prod);
-            spec.islands[0].cities[0].buildings.push_back(std::move(b));
-        };
-        add(110, 110);
-        for (int i = 0; i < k; ++i) {
-            add(102 + 4 * (i % 7),
-                118 + 4 * (i / 7)); // a grid of farms, none within 3 tiles of a field
-        }
-        auto built = sim::World::create(spec, types, sim::SimConfig{}, sim::Rules{});
-        REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
-        sim::World w = std::move(built).value();
-        sim::TransportStats stats;
-        w.set_transport_stats(&stats);
-        for (int i = 0; i < 8000; ++i) {
-            w.advance(100);
-        }
-        struct R {
-            std::uint64_t searches, scanned, candidates, popped, cuts;
-        };
-        return R{stats.forestry.searches, stats.forestry.search_tiles_scanned,
-                 stats.forestry.search_candidates, stats.forestry.search_popped,
-                 stats.forestry.cuts};
+namespace {
+struct UnrelatedRun {
+    std::uint64_t searches, scanned, candidates, popped, cuts;
+    double wall_ms; // measurement only, never asserted
+};
+UnrelatedRun run_unrelated(int k, int steps) {
+    sim::ScenarioSpec spec = ht::make_rig().spec;
+    std::vector<sim::ScenarioSpec::TileObjectSpec>& objs = spec.islands[0].objects;
+    const auto obj = [&](std::int32_t x, std::int32_t y, sim::TypeId t) {
+        const auto& is = spec.islands[0];
+        objs.push_back(sim::ScenarioSpec::TileObjectSpec{
+            static_cast<std::uint32_t>((y - is.y0) * static_cast<std::int32_t>(is.w) + (x - is.x0)),
+            t.v, 0});
     };
+    obj(113, 111, ht::kGrain);
+    obj(113, 112, ht::kGrain);
+    const auto types = ht::registry(3 * 256);
+    const auto add = [&](std::int32_t x, std::int32_t y) {
+        sim::ScenarioSpec::BuildingSpec b;
+        b.type = ht::kSmallFarm;
+        b.x = x;
+        b.y = y;
+        b.payload = sim::make_small_farm(types->find(ht::kSmallFarm)->prod);
+        spec.islands[0].cities[0].buildings.push_back(std::move(b));
+    };
+    add(110, 110);
+    for (int i = 0; i < k; ++i) {
+        add(102 + 4 * (i % 7),
+            118 + 4 * (i / 7)); // a grid of farms, none within 3 tiles of a field
+    }
+    auto built = sim::World::create(spec, types, sim::SimConfig{}, sim::Rules{});
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    sim::World w = std::move(built).value();
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int i = 0; i < steps; ++i) {
+        w.advance(100);
+    }
+    const auto t1 = std::chrono::steady_clock::now();
+    return UnrelatedRun{stats.forestry.searches,
+                        stats.forestry.search_tiles_scanned,
+                        stats.forestry.search_candidates,
+                        stats.forestry.search_popped,
+                        stats.forestry.cuts,
+                        std::chrono::duration<double, std::milli>(t1 - t0).count()};
+}
+} // namespace
+
+TEST_CASE("resilience: operation counters of the harvest search do not grow with unrelated farms") {
+    const auto measure = [&](int k) { return run_unrelated(k, 8000); };
     const auto r0 = measure(0), r10 = measure(7), r30 = measure(21);
     MESSAGE("k=0: searches " << r0.searches << " scanned " << r0.scanned << " candidates "
                              << r0.candidates << " popped " << r0.popped << " cuts " << r0.cuts);
@@ -710,4 +716,24 @@ TEST_CASE("resilience: two owners: workers of two cities sharing a field area ea
     CHECK(tb % 256 == 0);
     CHECK((ta == 256 && tb == 256)); // two workers, two distinct fields: one each
     CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE(
+    "resilience: harvest search work against unrelated farms (opt-in measure, Release samples)") {
+    // OPT-IN: runs only with ANNO_SIM_SUPPLY_SCALE set (any value); otherwise skips with a message.
+    // Wall time is measured here only and NEVER asserted; the counters are deterministic.
+    if (std::getenv("ANNO_SIM_SUPPLY_SCALE") == nullptr) {
+        MESSAGE("skipping: ANNO_SIM_SUPPLY_SCALE not set");
+        return;
+    }
+    for (const int k : {0, 7, 14, 21}) {
+        const UnrelatedRun r = run_unrelated(k, 8000);
+        std::printf("SCALE farms=%d searches=%llu scanned=%llu candidates=%llu popped=%llu "
+                    "cuts=%llu wall_ms=%.1f\n",
+                    k + 1, static_cast<unsigned long long>(r.searches),
+                    static_cast<unsigned long long>(r.scanned),
+                    static_cast<unsigned long long>(r.candidates),
+                    static_cast<unsigned long long>(r.popped),
+                    static_cast<unsigned long long>(r.cuts), r.wall_ms);
+    }
 }

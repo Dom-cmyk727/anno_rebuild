@@ -12,6 +12,9 @@ shipped permission program runs yet. This dispatch releases the missing
 `endless01` handlers and complete-program proof, not general campaign support.
 The first Mac's MAP-SUPPLY-1, ECON-BOOK-1 and all Windows assignments are unchanged.
 
+**Windows update, 2026-11-05 (orchestrator):** W4-MAIN-1 is reviewed and accepted, and its **Round R1** is current.
+Read the W4-MAIN-1 update under "Other active dispatches" and the [review](reviews/2026-11-05-w4-main1.md).
+
 <!-- BEGIN MAP-SCRIPT-2 -->
 ## MAP-SCRIPT-2 — second Mac: execute the complete endless01 script
 
@@ -510,10 +513,30 @@ delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, repor
   load time — a loader/sim-state change (hashed byte0f, fixed-map goldens move), so it is scheduled separately (MAP
   lane or this page), not part of DEPTH-1-CLOSE. Land it, or have the owner accept the gap, before merging the depth
   into anything the owner plays a fixed map with.
-- **Merge order (review §5):** if the owner's depth check passes before the closeout's final gate chain, the depth
-  merges into `task/W4-opening-1` first. Otherwise it merges into `main` after W4-MAIN-1, as its own merge, before
-  W4-OPENING-2.
+- **Merge order (review §5, superseded 2026-11-05 by the W4-MAIN-1 review D3):** the depth merges into `main` as its
+  own package after DEPTH-1-CLOSE is accepted and the fixed-map Kontor item is settled. W4-OPENING-2 does not wait for
+  it, and merges `main` once the depth has landed.
 - **Queued, not released:** W4-SHORE-2, which draws the sea against its plane per pixel.
+
+**Update 2026-11-05 (W4-MAIN-1 reviewed; orchestrator).** Read the [W4-MAIN-1 review](reviews/2026-11-05-w4-main1.md).
+- **Accepted, with one required round, R1, before `main` moves.** `main` gained three board commits after the merge,
+  so step 5's re-merge applies. The trial merge is conflict-free.
+- **R1 also carries:**
+  - F1: port the branch's source-scan guard for skip phrasings into main's verdict test, and class four
+    missing-file phrasings as required assets;
+  - D1: the River Q5 floor;
+  - F3: two report corrections.
+- **D1, River Q5:** `D_256x256_0045_5B` gets a per-island floor of 0.45. It measured 48.48–48.57 % since the
+  projection fix changed its river raster. Every other bar is unchanged, and the 0.55 target for D returns with the
+  river rework.
+- **D2:** W4-OPENING-1-CLOSE is accepted by the orchestrator at `3a2da9b9`.
+- **D3, after `main` moves:**
+  - W4-OPENING-2 starts from the new `main`. Its first package is W4-OPENING-CONTROLS-FLAKE, whose new step 0 is the
+    committed WSL gate script.
+  - W4-DEPTH-1-CLOSE continues beside it. Its merge into `main` is its own package, and the two no longer wait for
+    each other.
+- **Board writes:** the executor writes REPORTS and its own review files on its task branch. TASKS.md changes come from
+  an orchestrator (review F4).
 
 **MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
@@ -588,10 +611,10 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1-CLOSE (CURRENT), THEN W4-MAIN-1, THEN W4-OPENING-2, ALL RELEASED IN THIS ORDER.** Continue `task/W4-opening-1` from `02133ade` with the closeout below. Then merge into `main` on `task/W4-main-1` (the orchestrator moves `main` after its review). Then W4-OPENING-2 from the new `main`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time; the closeout stays the critical path. Its merge follows the depth review §5.** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1-CLOSE ACCEPTED; W4-MAIN-1 REVIEWED, ROUND R1 CURRENT; THEN W4-OPENING-2.** Do R1 on `task/W4-main-1` (W4-MAIN-1 section, "Round R1"; the orchestrator moves `main` after it). Then W4-OPENING-2 from the new `main`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. Its first package is W4-OPENING-CONTROLS-FLAKE, with the committed WSL gate script as step 0. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time. Its merge into `main` is its own package (W4-MAIN-1 review D3).** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
 | MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-CLOSE-2 ACCEPTED for enabled headless scope; MAP-SUPPLY-1 READY / RELEASED.** Continue `a50aec3a` through [S0–S6](tasks/map-supply-1.md), with independent package reviews and one final handoff. Keep House updates off by default. No ECON-BOOK work, Windows changes, merge/rebase or executor push. The older POP closeout packets are historical. The separate macOS test_support check at published task/W4-main-1 remains a non-blocking checkpoint; no coordinator redesign. |
 
-### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · RELEASED, CURRENT
+### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · ACCEPTED BY THE ORCHESTRATOR 2026-11-05 (W4-MAIN-1 review D2)
 
 **Base:** `task/W4-opening-1` at `02133ade9e66426ab093d8377992aec159367671`, the same branch.
 
@@ -632,7 +655,7 @@ open at `02133ade`, and §7 added more.
 
 **Stop:** the candidate for the orchestrator's acceptance review. Its exact head is W4-MAIN-1's input `H`.
 
-### W4-OPENING-CONTROLS-FLAKE — root-cause and fix the `opening_controls` real-time race under ASan · RELEASED
+### W4-OPENING-CONTROLS-FLAKE — root-cause and fix the `opening_controls` real-time race under ASan · RELEASED; FIRST PACKAGE OF W4-OPENING-2, STEP 0 ADDED
 
 **Why:** `viewer_wiring_opening_controls` failed `wsl-w18` and `wsl-w20` (not `wsl-w19`) at the same assertion —
 `src/app/src/dev_script.cpp` line ~464 area, script line 72, `tracked.1.state is 'sailing', expected == stopped`
@@ -657,6 +680,15 @@ leave as a vague low-priority note.
   and turn-gated waits, invisible at native (uncontended) frame rates.
 
 **Do, in order:**
+0. **The committed WSL gate script (W4-MAIN-1 review F5).** Move one canonical WSL gate script out of the git-ignored
+   `cache/` into `tools/test/`, and use it for every WSL lane from now on. It must include:
+   - the `core.autocrlf` override of `cache/o1/wsl_gate5.sh`, with a test that a clean checkout counts 0 dirty files;
+   - the source-change guard;
+   - no GPU-adapter suite in the ASan lane. A GPU lane, when one runs, uses lavapipe and `ANNO_REQUIRE_GPU=1` as CI
+     does (`docs/testing/gpu-tests.md`);
+   - its lane times recorded in the gate file.
+
+   Building on the WSL file system instead of `/mnt/e` may be measured; record the numbers before adopting it.
 1. Read the actual command dispatch path from an SDL key event through to the `PlayRunner`'s command queue (not
    yet read in this investigation) and confirm or refute the race above with evidence — a trace (`WindowTrace`,
    already used elsewhere in `viewer.cpp`) or an added diagnostic log is preferable to reasoning about it from
@@ -677,7 +709,7 @@ leave as a vague low-priority note.
 **Stop:** a WSL ASan rerun log showing the case green at least 3 times in a row inside the full batch, a REPORTS
 entry, and an independent review before claiming it closed.
 
-### W4-MAIN-1 — merge the accepted Windows lane into main · RELEASED, STARTS AFTER W4-OPENING-1-CLOSE IS ACCEPTED
+### W4-MAIN-1 — merge the accepted Windows lane into main · REVIEWED AND ACCEPTED 2026-11-05; ROUND R1 CURRENT (BELOW)
 
 **Owner decision, 2026-11-04** ("Yes and merge"; chose "Main, as own package").
 
@@ -748,6 +780,43 @@ as met. It also checks GitHub CI on `main` and dispositions each failure.
 
 **Stop condition:** `main` is the reviewed merge commit, and the task branches are preserved.
 
+#### Round R1 — re-merge and three small items · CURRENT (orchestrator, 2026-11-05)
+
+Read the [W4-MAIN-1 review](reviews/2026-11-05-w4-main1.md). The branch is accepted. `main` cannot be fast-forwarded:
+it gained three board commits after the merge. The trial merge of `origin/main` is conflict-free.
+
+1. **Re-merge.** In a separate checkout of `task/W4-main-1` (not a live worktree, and not `E:\anno1503`), make an
+   ordinary merge of `origin/main`. If the board has moved again by then, merge the newer `origin/main`.
+2. **The verdict guards (review F1; `tools/test` only).**
+   - Port the branch's `test_every_skip_phrasing_in_the_sources_has_a_known_class` (`9448a3af`) into main's
+     `ctest_verdict_test.py`, adapted to main's classes. It must handle the concatenated prefixes `"skipping: "` and
+     `"skipping the symlink rows: "`.
+   - List every phrasing that stays `other` with its reason.
+   - Class these four as `required-asset`, each with a regression case:
+     - `play_test.cpp`: `skipping: no scenario files` and `skipping: no endless scenario`;
+     - `building_delta_test.cpp`: the two `... is not in this game directory` messages.
+3. **River Q5 (review D1; `river_flow_corpus_test.cpp` only).**
+   - Add a per-island share floor to the island table, and set 0.45 for `D_256x256_0045_5B`.
+   - Write a comment with the measured values and the review link.
+   - Keep everything else unchanged: the other islands' 0.55, the 0.75 over all windows, the 150-window minimum and
+     the ratio checks.
+   - Update `docs/render/iso.md` and OQ-026: the bar is decided.
+4. **Corrections (review F3).**
+   - In `docs/testing/wsl-gate-root-cause-2026-11-05.md` §2, no fixture blob was renormalized, because the index was
+     already LF.
+   - In §5, cloud CI has no game files. The game-file sanitizer coverage of this merge is retained from H, and the
+     local WSL ASan lane stays a gate for game-file paths.
+   - Record both in a new REPORTS entry. Edit no old entry.
+5. **Gates. All must pass:**
+   - clang-format 23.1.3 on the changed C++ files;
+   - `ctest_verdict_test.py` and `workflow_test.py`;
+   - native MSVC, both Q5 cases;
+   - the sim founding-fixture tests;
+   - the WSL `-Werror` check for the changed C++ file;
+   - GitHub CI on the pushed head: 10/10 jobs.
+6. **Hand back.** Push with an ordinary push, verify the remote hash, add a REPORTS entry, and stop. The orchestrator
+   fast-forwards `main`, records it in PLAN, marks UI.2's "W4.4 merged" condition as met, and checks CI on `main`.
+
 ### W4-OPENING-2 — the first wood chain in the live window · RELEASED, STARTS AFTER W4-MAIN-1
 
 **Goal:** the owner's next playtest can run, in the real window:
@@ -760,6 +829,8 @@ as met. It also checks GitHub CI on `main` and dispositions each failure.
 
 **Inputs:**
 - **`main` after W4-MAIN-1.** Record its exact hash.
+- **First package:** W4-OPENING-CONTROLS-FLAKE (its section above, with step 0, the committed WSL gate script) on
+  `task/W4-opening-2`, before the steps below need a sanitizer gate.
 - **The accepted Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`** (MAP-POP-IMPL-1, on GitHub). It contains:
   - loading (MAP-CARGO-2, `LoadCmd`) and the hold-bounds correction (CARGO-3);
   - ordinary land roads as tile objects through `BuildCmd` and `DemolishCmd` (MAP-ROAD-1, CLOSE-1/2; 21 shipped road
@@ -836,7 +907,7 @@ as met. It also checks GitHub CI on `main` and dispositions each failure.
 
 **Out of scope:**
 - live population (MAP-POP-LIVE-1, a later integration);
-- W4-DEPTH-1's own work (its merge follows the depth review §5);
+- W4-DEPTH-1's own work (it merges into `main` as its own package; W4-MAIN-1 review D3);
 - UI.2, network and trade routes;
 - the zoom artifacts (separate, once the owner's console log arrives).
 

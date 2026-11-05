@@ -59,7 +59,7 @@ money/wave/query rule or original asset; the raw boundary audit remains historic
 | Requirement | Primary evidence | Positive proof / hand-derived result | Distinguishing negative | Evidence | Review disposition |
 |---|---|---|---|---|---|
 | Complete actor closure | unchanged scene bytes; recursive tagged records |5 actors with table above;8 ship cargo records |only top-level import; ID/slot swap; donkey attached to ship |raw-inventory.json + raw→World test planned |pending independent derivation|
-| Ownership/ordering/IDs | Welt1001dc7a/1001df31 and1004c65f; enclosing-player caller |creation traversal, raw-ID slots/hint and parent links; source0 maps to a serial engine ID starting1; invalid ID is UINT32_MAX |prefix-owner wins; grouped ship/soldier reordering; duplicate raw IDs |primary reader/caller trace pending |pending|
+| Ownership/ordering/IDs | Welt1001dc7a/1001df31 and1004c65f; enclosing-player caller |creation traversal, raw-ID slots/hint and parent links; source0 maps to a serial engine ID starting1; invalid FigureId is UINT64_MAX; Slot/kNoSlot sentinel is UINT32_MAX |prefix-owner wins; grouped ship/soldier reordering; duplicate raw IDs |primary reader/caller trace pending |pending|
 | Coordinates/facing | Welt1001ddad/1001e01d; property0x16; existing Q8/nav model |ship351.5,383.5 anddir4; exact checked conversion |x/y swap; ship4→soldier8; nonfinite/wrap; displaced held actor |conversion/parent trace pending |pending|
 | State/health | ship HEAD loader10042a40 and attach10041900; soldier HEAD reader pending |source health/state and held bits projected, no invented full-health grant |HEAD bytes treated as direct state; wrong128 scale; HP/crew conflation |primary trace and literal vectors pending |pending|
 | Holds | WAREN reader/caller pending; existing ShipHold amount_88 |8 ordered entries; repeated goods retained, source amount exact |sort/merge; whole-ton/raw8.8 confusion; truncated final record |primary trace and literal vectors pending |pending|
@@ -102,8 +102,10 @@ parent (36 examples in5 scenes); source preorder still gives earlier parent indi
 Raw IDs have one scenario-wide namespace across top-level units, CREW and ESEL.
 Duplicate raw IDs anywhere refuse before a World is created. Use existing stable
 engine FigureId serial allocation in creation order (1..N), separate from slots;
-raw0 is a valid original slot, not an invalid ID. The invalid Id sentinel is
-UINT32_MAX; model-created FigureIds start1. Record the rawslot→specindex mapping
+raw0 is a valid original slot, not an invalid ID. The invalid FigureId sentinel is
+UINT64_MAX (FigureId has64-bit representation); Slot/kNoSlot is32-bit with
+UINT32_MAX sentinel. FigureId0 passes Id::valid() but live-serial registry
+validation excludes it; model-created FigureIds start1. Record the rawslot→specindex mapping
 while decoding; parent indices resolve through that map/tree, never treat a rawID
 as an engine FigureId. Existing native FigureRegistry slots/IDs/parents/hint/cursor
 already serialize this entire result; no new native field is needed.
@@ -147,6 +149,16 @@ vtable100c3a30,113 to the ship constructor;114..128 take its default/no-object
 path. The area query's broader ship-class band is a different contract. This is
 not a list of special figure IDs or a filename-specific compiler/load path.
 
+Class support alone is insufficient: permit exactly these traced role pairings:
+SPIELER/SCHIFF→class113, SPIELER/SOLDAT→class97, ship PRIVAT/CREW/ENTRY→class97,
+and a held scout's PRIVAT/ESEL→class53. All other record/class/parent combinations
+refuse before creating a playable World, including ships inside SOLDAT/CREW and
+class97 inside ESEL. This finite role graph has at most3 actor levels (ship,
+scout,donkey). Do not generically recurse through untrusted nested tags. Decoder
+calls may follow only this finite role graph, or use an explicit bounded work
+stack; unsupported deeper nesting refuses before another actor-decoder call.
+The65536 actor budget is not permission for65536 C++ call-stack frames.
+
 Any other actor class, unknown required nested actor or unsupported required
 state is an explicit path/offset/type refusal, never a discarded actor with a
 successful unchanged-world claim. Previously supported geometry/component
@@ -163,7 +175,7 @@ HEAD0 affects deferred hostile avoidance (not presentation); NAME/VERK and auto
 route/task effects must retain their documented limits. Nonempty automatic routes
 or tasks that require unimplemented behavior refuse; do not claim them executed.
 
-Use configurable import allocation/recursion limits outside SimConfig/native
+Use configurable import allocation limits outside SimConfig/native
 state: default65536 actor/slot safety budget (source IDs are16-bit), with existing
 kListSizeBound as hard container ceiling and a documented raise path. Check MAIN
 and required growth before allocating; malformed huge MAIN cannot request a
@@ -227,7 +239,8 @@ Project generic nonnav positions into the established Q8 model by checked
 truncation toward zero. For navigating ships retain checked source-derived Q32
 position in existing nav.pos_u (Q32×500) as well as its derived Q8 view, using the
 existing navigation round-to-nearest-even Q32 policy for sub-Q32 inputs; no
-whole-tile rounding or loss of meaningful ship fractions. Proposed FigureSpec
+whole-tile rounding or loss of meaningful ship fractions. Signedzero (+0/−0)
+canonicalizes to0 before range checks; negative nonzero values refuse. Proposed FigureSpec
 input may carry initial Q32 coordinates, validated against its Q8 view/world bounds.
 This is input projection into established integer models, not a float in state.
 Literal ship351.5/383.5 givesQ8 89984/98176. Distinguish axes, tiny/nonfinite/large

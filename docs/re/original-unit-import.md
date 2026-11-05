@@ -21,10 +21,10 @@ pefile/Capstone read-only tools inspect the bounded reader/caller closure.
 |Welt100498e0|scout/donkey root vtables+0x140|signedi16HEAD+8, nonpositive→max thenclamp; HEAD1 sign→20|
 |Welt10035ce0|base root constructor used by scout/donkey chain|flags8; facing0; +14/+18/+1c are zeroed context pointers, not ownxyz|
 |Welt1001dde5→10035260|top-level SOLDAT initialsegment+e0|newmode0 vsconstructormode19 clears8 at10035336; not called for nestedCREW|
-|Welt10041959..1004196c|ship root crew attach+0xb0|childflags=(old&AE)|80, stop4/1; constructor8 retained|
+|Welt10041959..1004196c|ship root crew attach+0xb0|childflags=(old&AE) OR80, stop4/1; constructor8 retained|
 |Welt10042e68..10042fa1|ship root PRIVAT/CREW loader|ENTRYu16ID@0,kind@2,slotbyte4; nullpos creation→attach→ownerbind→setscoutpos toship+14→commonload|
 |Welt1004c688/68d/6aa|crew writer, local6-byte output buffer|memberID@0,slot@4,kind@2; earlier SCRIPT2 prose swapped ID/slot|
-|Welt10036ca0 /10037012|scout root PRIVAT ESEL helper|held parent80→nullpos child and(parentflags&AF)|80; ESELkind@0,ID@2; held x/yignored; prop1f parentpointer|
+|Welt10036ca0 /10037012|scout root PRIVAT ESEL helper|held parent80→nullpos child and(parentflags&AF) OR80; ESELkind@0,ID@2; held x/yignored; prop1f parentpointer|
 |Welt1001c817..1001c8aa|owner mode0 attach, called with same player root|context/color/typeaccount binding, no clearing constructor8|
 |Welt100afde0|scout/donkey commonload final+A0|stub; no flag change|
 

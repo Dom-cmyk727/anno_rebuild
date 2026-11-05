@@ -402,3 +402,23 @@ extractor now uses44 zero-filled bytes andLOGIC26. Original prerequisite also
 asserts1503 counts8/3/6 and717 othercrew0 from the hashed original type input,
 so it no longer bypasses converter fidelity with Builder-only declarations.
 This is a field correction with no native format/runtime-handler change.
+
+C-converter-corrected-05 at clean d5e98d2f passes15/15,841assertions, zero
+failed/empty/skipped/incomplete/sanitizer; reference contracts separate.
+/root/unit_import_state_review independently APPROVED inspected B/C at
+d5e98d2f3ec99f79e362989e09d02afe41f820ed, closing the withdrawn LOGIC26 A field.
+Contract/input reviewer final disposition remains pending. F2/G remain OPEN.
+
+## D early original canary prerequisites (before voyage/integration gates)
+
+| Requirement | Positive proof | Counterexample / negative | Evidence | Review |
+|---|---|---|---|---|
+| Original ship is usable | unchanged five actors, cargo, INIT, planned water endpoint inside NEGER; accepted founding transaction on planning copy at reachable neutral coast | failed route or affordability blocks dependent voyage; planning never mutates executed world | named route/founding prerequisite case; pending raw gate | pending |
+| Real condition and construction | MoveCmd from original position, naturally visited branch and wave; Found/Unload/Build with original stock, exact debits | wrong move/command must diverge; no teleport, grant or script extraction | implementation follows prerequisite and B/C approval | OPEN |
+| Continuation/identity | native cuts and encoded fresh-process replay preserve state and event suffix | wrong program/command must refuse/diverge at causal checkpoint | existing wrapper extended only after real path works | OPEN |
+
+The historical SCRIPT2 dependency test is renamed to reflect resolved actor import;
+its source/INIT/false-visit assertions remain. Read-only planning scans original
+neutral coast geometry and tests transactions on disposable copies only, then
+asserts the executed starting state/position are unchanged. A bounded search
+refusal is not promoted to proof that no legal site exists. No F2 acceptance yet.

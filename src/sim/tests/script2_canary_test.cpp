@@ -9,7 +9,9 @@
 #include <anno/formats/bigbrother.hpp>
 #include <anno/formats/sze.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/route_world.hpp>
 #include <anno/sim/scenario.hpp>
+#include <anno/sim/site_checks.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/scenario_load.hpp>
@@ -214,7 +216,7 @@ void verify(const Canary& canary, const std::shared_ptr<const TypeRegistry>& typ
     CHECK(refused.error() == "replay refused: script content digest differs from the log's");
 }
 } // namespace
-TEST_CASE("SCRIPT2 original unit import dependency is explicit") {
+TEST_CASE("SCRIPT2 original imported actors retain source and startup") {
     const auto game = anno::test::game_dir();
     if (!game) {
         MESSAGE("skipped: ANNO1503_GAME_DIR not set");
@@ -243,8 +245,13 @@ TEST_CASE("SCRIPT2 original unit import dependency is explicit") {
     CHECK(ships == 1);
     CHECK(human_cities == 0);
     auto input = original(*game);
-    CHECK(input.spec.figures.empty());
-    CHECK(input.world.figures().by_id.empty());
+    CHECK(input.spec.figures.size() == 5);
+    CHECK(input.world.figures().by_id.size() == 5);
+    const auto* imported = find_figure(input.world.figures(), FigureId{1});
+    REQUIRE(imported);
+    CHECK(imported->kind == 1503);
+    CHECK(imported->pos == FixedPos{89984, 98176});
+    CHECK(imported->holds.size() == 8);
     auto payload = anno::formats::bigbrother::find_payload(raw);
     REQUIRE(payload);
     CHECK(input.spec.script_source == std::string(payload.value().begin(), payload.value().end()));
@@ -288,9 +295,112 @@ TEST_CASE("SCRIPT2 original unit import dependency is explicit") {
         rec.value().advance(0);
     CHECK(input.world.script().state.signals == std::vector<std::uint8_t>{0, 1, 1, 1, 1, 1, 1, 1});
     CHECK(input.world.drain_events().empty());
-    MESSAGE("OPEN F2: original SCHIFF/SOLDAT/CREW import is absent; 1 raw Human ship, 0 imported "
-            "figures, 0 Human cities. Compile+INIT+false visits are not real "
-            "conditional/construction proof.");
+    MESSAGE("Original import prerequisite resolved: 1 raw Human ship, 5 imported actors, "
+            "0 Human cities. Compile+INIT+false visits alone do not establish F2.");
+}
+
+TEST_CASE("SCRIPT2 original canary route and founding prerequisites") {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("skipped: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto input = original(*game);
+    auto& w = input.world;
+    auto recorder = Recorder::start(w);
+    REQUIRE(recorder);
+    const auto before = w.state_hash();
+    const auto* ship = find_figure(w.figures(), FigureId{1});
+    REQUIRE(ship);
+    REQUIRE(ship->nav);
+    REQUIRE(ship->holds.size() == 8);
+    const auto* warehouse = w.types().find(TypeId{1302});
+    REQUIRE(warehouse);
+    const WorldTileSource source(w, ship_route_terrain_options());
+    const CoastIndex index(source, {});
+    RouteQuery query;
+    query.start_x = ship->pos.x / 256;
+    query.start_z = ship->pos.y / 256;
+    query.goal_x_q8 = 250 * 256 + 128;
+    query.goal_z_q8 = 700 * 256 + 128;
+    const auto route = plan_route(index, query, {}, RouteCostTable::original());
+    CHECK(route.status == RouteStatus::Planned);
+    CHECK(route.end_x >= 218);
+    CHECK(route.end_x < 285);
+    CHECK(route.end_z >= 671);
+    CHECK(route.end_z < 736);
+    struct Candidate {
+        std::int32_t x, y;
+        std::int64_t distance;
+    };
+    std::vector<Candidate> candidates;
+    for (const auto& slot : w.islands()) {
+        if (!slot || slot->locked())
+            continue;
+        const auto& is = *slot;
+        const auto grid = VertexGrid::of(is);
+        if (!grid.ok())
+            continue;
+        for (std::int32_t y = is.tiles.y0() + 1;
+             std::int64_t{y} < std::int64_t{is.tiles.y0()} + is.tiles.height(); ++y)
+            for (std::int32_t x = is.tiles.x0() + 1;
+                 std::int64_t{x} < std::int64_t{is.tiles.x0()} + is.tiles.width(); ++x) {
+                const site::Origin origin{x, y};
+                const auto rotation = site::first_accepted_rotation(0, [&](std::uint8_t r) {
+                    const auto [fw, fh] = footprint(*warehouse, r);
+                    return site::footprint_inside(is.tiles, origin, fw, fh) &&
+                           site::footprint_ownership(is.tiles, w.config().neutral_owner, origin, fw,
+                                                     fh) == site::Ownership::AllNeutral &&
+                           site::footprint_occupancy(is.tiles, w.types(), *warehouse, origin, fw,
+                                                     fh) == site::Compat::Compatible &&
+                           site::coast_height_check(grid, *warehouse, r, origin).result ==
+                               site::TerrainResult::Accepted;
+                });
+                if (rotation) {
+                    const auto dx = std::int64_t{x + 1} - query.start_x;
+                    const auto dy = std::int64_t{y + 1} - query.start_z;
+                    candidates.push_back({x + 1, y + 1, dx * dx + dy * dy});
+                }
+            }
+    }
+    std::stable_sort(candidates.begin(), candidates.end(),
+                     [](const auto& a, const auto& b) { return a.distance < b.distance; });
+    REQUIRE_FALSE(candidates.empty());
+    bool found = false;
+    // Planning copies only: no relocation is ever applied to the executed canary world.
+    // This checks the actual transaction/resource prerequisites before an expensive voyage.
+    std::size_t tried = 0;
+    for (const auto& c : candidates) {
+        if (++tried > 128)
+            break; // bounded planning search; refusal is not proof that no site exists
+        for (const auto [dx, dy] :
+             {std::pair{6, 0}, std::pair{-6, 0}, std::pair{0, 6}, std::pair{0, -6}}) {
+            if (!source.tile_is_water(c.x + dx, c.y + dy))
+                continue;
+            auto trial = w;
+            WorldTestAccess::relocate(trial, FigureId{1},
+                                      {(c.x + dx) * 256 + 128, (c.y + dy) * 256 + 128});
+            FoundCmd cmd{FigureId{1}, {TypeId{1302}, c.x - 1, c.y - 1}, c.x, c.y};
+            if (!trial.apply({PlayerId{0}, cmd}).ok())
+                continue;
+            query.goal_x_q8 = (c.x + dx) * 256 + 128;
+            query.goal_z_q8 = (c.y + dy) * 256 + 128;
+            const auto planned = plan_route(index, query, {}, RouteCostTable::original());
+            if (planned.status != RouteStatus::Planned || planned.end_x != c.x + dx ||
+                planned.end_z != c.y + dy)
+                continue;
+            MESSAGE("ORIGINAL_CANARY_PLAN click=" << c.x << ',' << c.y << " goal=" << c.x + dx
+                                                  << ',' << c.y + dy << " neutral_coast_candidates="
+                                                  << candidates.size());
+            found = true;
+            break;
+        }
+        if (found)
+            break;
+    }
+    REQUIRE(found);
+    CHECK(w.state_hash() == before);
+    CHECK(find_figure(w.figures(), FigureId{1})->pos == FixedPos{89984, 98176});
 }
 TEST_CASE("SCRIPT2 synthetic complete original program canary producer") {
     const auto game = anno::test::game_dir();

@@ -44,7 +44,8 @@ DOCTEST = re.compile(r"\[doctest\] test cases:\s*(\d+)\s*\|")
 
 REQUIRED = re.compile(r"ANNO1503_GAME_DIR (is )?not set|\bno game files\b", re.I)
 OPT_IN = re.compile(r"\bset ANNO_[A-Z0-9_]+=")
-PLATFORM = re.compile(r"WSL \(Ubuntu\) is not available|\bon Windows\b|POSIX shell", re.I)
+PLATFORM = re.compile(r"WSL \(Ubuntu\) is not available|\bon Windows\b|POSIX shell|"
+                      r"runs only from WSL|which only Linux has", re.I)
 SKIP_WORD = re.compile(r"skipp(ing|ed)\b", re.I)
 PRIORITY = ["required-asset", "opt-in", "platform", "gpu", "other"]
 

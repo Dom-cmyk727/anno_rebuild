@@ -68,7 +68,15 @@ class Contract(unittest.TestCase):
         for text in ["skipping: WSL (Ubuntu) is not available",
                      "skipping: WSL (Ubuntu) is not available; the meter path is WSL",
                      "skipping on Windows: bInheritHandles = FALSE is at coord.cpp:142",
-                     "skipped: the pipeline uses a POSIX shell"]:
+                     "skipped: the pipeline uses a POSIX shell",
+                     # budget_f3_test.cpp/budget_f4_test.cpp: classed "other" on linux-gcc CI
+                     # (W4-MAIN-1, 2026-11-05) until this phrasing was recognized.
+                     "skipping: the real PowerShell meter is not available (it runs only from "
+                     "WSL with the Windows PowerShell reachable)",
+                     # budget_f4_test.cpp (N4b, macOS branch): same package, classed "other"
+                     # on macos-clang CI.
+                     "skipping: the descriptor check reads /proc/<pid>/fd, which only Linux "
+                     "has"]:
             code, out = one([text])
             self.assertEqual(code, 0, text)
             self.assertIn("platform=1", self.counts(out), text)

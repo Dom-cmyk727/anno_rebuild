@@ -50,12 +50,27 @@ inline constexpr sim::TypeId kSmallFarm4{
            // every cost is 1, so scores stay below 20 here)
 inline constexpr sim::TypeId kPotatoYoung{9326}; // ROHSTWACHS, the young stage of kPotato
 inline constexpr sim::TypeId kPotato{9327};      // ROHSTOFF, WARE[0] KARTOFFEL: a ripe potato field
+inline constexpr sim::TypeId kSheepFarm{
+    9350}; // MAP-NEEDS-2: WOLLE from GRAS 6/87, 7 t, ONE animal (kSheep)
+inline constexpr sim::TypeId kSheepFarm5{9351}; // the same with five animals
+inline constexpr sim::TypeId kFisherFarm{
+    9352}; // a farm whose figure has route 45 (FISCHER, unsupported)
+inline constexpr sim::TypeId kWeaver{
+    9354}; // STOFFE from WOLLE 6/11, 5 t, one carrier (203), radius 16
+inline constexpr sim::TypeId kBarnFarm{
+    9355}; // ALTERNATE config: KORN from GETREIDE 20/40, 7 t, one animal
+inline constexpr sim::TypeId kMill{
+    9356}; // ALTERNATE config: MEHL from KORN 10/20, 5 t, one carrier
 inline constexpr sim::TypeId kWall{9340}; // a tile object of walk code 3: closed on every layer
 
 inline constexpr std::uint32_t kWorker = 102;  // the forester's worker (route MAEHER 0x2a)
 inline constexpr std::uint32_t kReaper = 9401; // another data-defined harvester (route ERNTE 0x29)
 inline constexpr std::uint32_t kHerder = 9402; // a farm figure of another route (WEIDETIER 46)
 inline constexpr std::uint32_t kCart = 220;
+inline constexpr std::uint32_t kSheep =
+    103; // MAP-NEEDS-2: the sheep farm's animal (route WEIDETIER 46), 3 t
+inline constexpr std::uint32_t kFisher = 9404; // a figure of route FISCHER (45)
+inline constexpr std::uint32_t kCarrier = 203; // the workshop carrier (3 t, layer 0)
 
 /// The worker's facts: speed round(0.01f * 0.2f * 2^24) = 33554 (one tile per 500 ticks), 1 t,
 /// layer 2, 6500 ticks, route 0x2a.
@@ -142,6 +157,36 @@ registry(std::uint32_t worker_capacity = 256, const std::vector<sim::BuildingTyp
         .entrances(kSmallFarm2, {{9, 9}})
         .action_radius(kSmallFarm2, 3)
         .figure_ids(kSmallFarm2, {kWorker})
+        .add_farm(kSheepFarm, "WOLLE", "GRAS", 6, 87, 7, 1)
+        .footprint(kSheepFarm, 3, 3)
+        .entrances(kSheepFarm, {{11, 9}})
+        .action_radius(kSheepFarm, 5)
+        .figure_ids(kSheepFarm, {kSheep})
+        .add_farm(kSheepFarm5, "WOLLE", "GRAS", 6, 87, 7, 5)
+        .footprint(kSheepFarm5, 3, 3)
+        .entrances(kSheepFarm5, {{11, 9}})
+        .action_radius(kSheepFarm5, 5)
+        .figure_ids(kSheepFarm5, {kSheep})
+        .add_farm(kFisherFarm, "WOLLE", "GRAS", 6, 87, 7, 1)
+        .footprint(kFisherFarm, 3, 3)
+        .entrances(kFisherFarm, {{11, 9}})
+        .action_radius(kFisherFarm, 5)
+        .figure_ids(kFisherFarm, {kFisher})
+        .add_workshop(kWeaver, "STOFFE", "WOLLE", 6, 11, 5, 1)
+        .footprint(kWeaver, 3, 3)
+        .entrances(kWeaver, {{3, 3}})
+        .action_radius(kWeaver, 16)
+        .figure_ids(kWeaver, {kCarrier})
+        .add_farm(kBarnFarm, "KORN", "GETREIDE", 20, 40, 7, 1)
+        .footprint(kBarnFarm, 3, 3)
+        .entrances(kBarnFarm, {{11, 9}})
+        .action_radius(kBarnFarm, 5)
+        .figure_ids(kBarnFarm, {kSheep})
+        .add_workshop(kMill, "MEHL", "KORN", 10, 20, 5, 1)
+        .footprint(kMill, 3, 3)
+        .entrances(kMill, {{3, 3}})
+        .action_radius(kMill, 16)
+        .figure_ids(kMill, {kCarrier})
         .add_market(kMarket, kCart, 1, 8)
         .entrances(kMarket, {{9, 15}})
         .add_plain(kRoad, 193)
@@ -163,6 +208,9 @@ registry(std::uint32_t worker_capacity = 256, const std::vector<sim::BuildingTyp
         .figure_type(animal_type(110))
         .figure_type(worker_type(kReaper, 3 * 256, 0x29))
         .figure_type(worker_type(kHerder, 256, 46))
+        .figure_type(worker_type(kSheep, 768, 46))
+        .figure_type(worker_type(kFisher, 256, 45))
+        .figure_type(sim::FigureType{kCarrier, 40265, 3 * 256, 0, 1000})
         .figure_type(sim::FigureType{kCart, 53687, 5 * 256, 3, 500});
     for (const sim::BuildingType& t : extra) {
         b.add(t);

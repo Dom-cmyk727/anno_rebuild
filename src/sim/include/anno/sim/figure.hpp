@@ -99,10 +99,10 @@ inline constexpr std::uint32_t kHarvestStartDelay = 5;
     return job == 0x29 || job == 0x2a;
 }
 
-/// The small farm's animal job (0x2e = ROUTETYPE WEIDETIER, 46): the job factory gives 0x2d and 0x2e the
-/// same object (D 0x1003b314); only 0x2e is sent by a traced building. It shares the run, arrival,
-/// abort, the cut step and the walk-home step with 0x29/0x2a; step A's start differs by one search
-/// constant (D 0x10059210 vs 0x10058ae0): the callback's limit is 20 instead of 0.
+/// The small farm's animal job (0x2e = ROUTETYPE WEIDETIER, 46): the job factory gives 0x2d and
+/// 0x2e the same object (D 0x1003b314); only 0x2e is sent by a traced building. It shares the run,
+/// arrival, abort, the cut step and the walk-home step with 0x29/0x2a; step A's start differs by
+/// one search constant (D 0x10059210 vs 0x10058ae0): the callback's limit is 20 instead of 0.
 [[nodiscard]] constexpr bool animal_job(std::uint32_t job) {
     return job == 0x2e;
 }
@@ -110,8 +110,25 @@ inline constexpr std::uint32_t kHarvestStartDelay = 5;
 [[nodiscard]] constexpr bool harvest_state_job(std::uint32_t job) {
     return harvest_job(job) || animal_job(job);
 }
-/// The step-A callback limit of a job (D `[esp+0x34]` of 0x10058ae0 = 0, of 0x10059210 = 0x14): the search
-/// goes on past an unclaimed goal while `limit > score` (docs/sim/small-farm-supply.md 2.3).
+/// What the engine does with the figure a Farm-tick home sends, by the figure type's ROUTETYPE (the
+/// job). MAP-NEEDS-2 N2: the farm family sends the type's route as the job (D 0x1006ee27); the job
+/// factory (D 0x1003b0e0, byte table 0x1003b480) gives 0x29/0x2a the worker case, 0x2d/0x2e the
+/// animal case. The engine implements the worker case and the animal case of 0x2e; 0x2d (FISCHER)
+/// shares the animal case in the original but is not implemented: such a send is REFUSED explicitly
+/// (no figure, no counter, counted in ForestryStats::unsupported_routes), never left as an inert
+/// figure. Every other route keeps its meaning (no harvest state).
+enum class FarmFigureRoute : std::uint8_t { Other, Worker, Animal, Unsupported };
+[[nodiscard]] constexpr FarmFigureRoute farm_figure_route(std::uint32_t job) {
+    if (harvest_job(job)) {
+        return FarmFigureRoute::Worker;
+    }
+    if (animal_job(job)) {
+        return FarmFigureRoute::Animal;
+    }
+    return job == 0x2d ? FarmFigureRoute::Unsupported : FarmFigureRoute::Other;
+}
+/// The step-A callback limit of a job (D `[esp+0x34]` of 0x10058ae0 = 0, of 0x10059210 = 0x14): the
+/// search goes on past an unclaimed goal while `limit > score` (docs/sim/small-farm-supply.md 2.3).
 inline constexpr std::uint16_t kAnimalSearchLimit = 20;
 [[nodiscard]] constexpr std::uint16_t harvest_search_limit(std::uint32_t job) {
     return animal_job(job) ? kAnimalSearchLimit : std::uint16_t{0};
@@ -138,8 +155,8 @@ struct HarvestState {
 
 /// The step of a resident job (job 0x35; docs/sim/population-live.md section 3): A = Start (the
 /// search from the house and the choice of a stand; ToStall the walk), B = Wait (the stall wait,
-/// FigureType::load_ticks, then the purchase at the stand; attach/detach have no state), C = ToHome (the
-/// walk home and the delivery of every cargo slot), then Done (the figure ends).
+/// FigureType::load_ticks, then the purchase at the stand; attach/detach have no state), C = ToHome
+/// (the walk home and the delivery of every cargo slot), then Done (the figure ends).
 enum class ResidentStep : std::uint8_t { Start = 0, ToStall = 1, Wait = 2, ToHome = 3, Done = 4 };
 
 /// The job code of the house walker (resident_job.hpp's kJobResident; spelled here for the figure

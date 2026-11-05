@@ -312,7 +312,7 @@ TEST_CASE("SCRIPT2 missing spatial context faults Host and rolls back prior writ
 }
 
 TEST_CASE("SCRIPT2 plain goods name collision refuses cargo semantics with registry context") {
-    const std::vector<std::string_view> names{"UNUSED", "HOLZ", "MOD_GOODS"};
+    const std::vector<std::string_view> names{"UNUSED", "HOLZ", "MOD_GOODS", "UNUSED"};
     for (auto name : {"HOLZ", "hOlZ", "MOD_GOODS"}) {
         auto source = area_source();
         source.replace(source.find("\"ME\""), 4, "\"" + std::string(name) + "\"");
@@ -322,6 +322,11 @@ TEST_CASE("SCRIPT2 plain goods name collision refuses cargo semantics with regis
         CHECK(r.error().message == "unsupported area cargo qualifier");
     }
     CHECK(compile_script(area_source(), {{}, 32, 5, names}));
+    auto unused = area_source();
+    unused.replace(unused.find("\"ME\""), 4, "\"UNUSED\"");
+    unused.replace(unused.find("FROM \"ME\""), 9, "FROM \"UNUSED\"");
+    CHECK(compile_script(unused, {{}, 32, 5, names})); // original first match0, despite duplicates
+
     // The authoritative World compiler receives its actual data-defined goods table.
     auto spec = synthetic::basic_scenario(77);
     spec.script_context = ScriptContext::Pending;

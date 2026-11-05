@@ -156,10 +156,11 @@ struct Compiler {
                 auto area = std::find_if(p.areas.begin(), p.areas.end(), [&](const auto& a) {
                     return a.offset < l.offset && upper(a.name) == upper(l.name);
                 });
+                const auto goods =
+                    std::find_if(env.goods_names.begin(), env.goods_names.end(),
+                                 [&](auto name) { return upper(name) == upper(*l.arg); });
                 if (l.arg->find('@') != std::string::npos ||
-                    (env.goods_names.size() > 1 &&
-                     std::any_of(env.goods_names.begin() + 1, env.goods_names.end(),
-                                 [&](auto name) { return upper(name) == upper(*l.arg); }))) {
+                    (goods != env.goods_names.end() && goods != env.goods_names.begin())) {
                     fail(l.offset, "unsupported area cargo qualifier");
                     return std::nullopt;
                 }

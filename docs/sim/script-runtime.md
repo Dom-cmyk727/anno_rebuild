@@ -669,3 +669,8 @@ B-final-02 build failed under -Werror: the new optional goods_names span needed
 an explicit empty default to preserve existing three-field environment callers.
 No selection executed; failure retained. Added the default and explicit string_view
 include; re-run uses a fresh path.
+
+B-final-03 passed13/13. Focused reviewer correction: goods lookup must retain
+first-match semantics across the full table; repeated UNUSED entries do not turn
+index0 into a cargo qualifier. Replaced any-nonzero-name check with full-table
+first match and added repeated-UNUSED legal control.

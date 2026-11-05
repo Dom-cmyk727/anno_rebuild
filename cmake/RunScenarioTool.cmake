@@ -2,7 +2,11 @@
 #   cmake -DPROG=<exe> -DSCENE=<path relative to Scenes> -DTICKS=<n> [-DEXPECT=<regex>]
 #         -P RunScenarioTool.cmake
 # Skips (the "skipping:" line, SKIP_REGULAR_EXPRESSION) when ANNO1503_GAME_DIR is not
-# set; otherwise passes only when the tool exits 0 and reports clean invariants.
+# set; by default requires exit 0 and clean invariants. A refusal case must set
+# EXPECT_RC and EXPECT explicitly, and is never a playable-scenario proof.
+if(DEFINED EXPECT_RC AND NOT EXPECT_RC EQUAL 0 AND NOT DEFINED EXPECT)
+  message(FATAL_ERROR "a refusal case requires an expected diagnostic")
+endif()
 if(NOT PROG OR NOT SCENE OR NOT DEFINED TICKS)
   message(FATAL_ERROR "RunScenarioTool.cmake: pass -DPROG, -DSCENE and -DTICKS")
 endif()
@@ -12,10 +16,13 @@ if("$ENV{ANNO1503_GAME_DIR}" STREQUAL "")
 endif()
 execute_process(COMMAND "${PROG}" scenario "$ENV{ANNO1503_GAME_DIR}/Scenes/${SCENE}" --ticks ${TICKS}
                 RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
-if(NOT rc STREQUAL "0")
+if(NOT DEFINED EXPECT_RC)
+  set(EXPECT_RC 0)
+endif()
+if(NOT rc STREQUAL "${EXPECT_RC}")
   message(FATAL_ERROR "exit status ${rc}:\n${out}${err}")
 endif()
-if(NOT out MATCHES "check_invariants clean")
+if(EXPECT_RC EQUAL 0 AND NOT out MATCHES "check_invariants clean")
   message(FATAL_ERROR "no clean check_invariants:\n${out}${err}")
 endif()
 # Optional: a regular expression the output must also match (-DEXPECT=...).

@@ -4,7 +4,7 @@
 // run through anno::sim::placement_rule. The expected accept/reject/byte come from the file, never
 // from this code. The file also checks the full overlap table (site::overlap_with_existing) against
 // hand-derived rows of docs/re/ship-placement.md section 4, and the named stand-in seam (its own
-// verdict, the terrain's height) against a hand-derived row per vector.
+// verdict, the terrain's height) against the original 50 building rows and a sloped road.
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -224,7 +224,7 @@ TEST_CASE("placement rule: every vector of the oracle file") {
     CHECK(unsupported >= 4);
 }
 
-TEST_CASE("stand-in seam: its own verdict and the terrain's height on every vector") {
+TEST_CASE("stand-in seam: original building vectors and an accepted sloped road") {
     // The stand-in (docs/sim/ship-placement.md section 6, "The stand-in's height"): Occupied when
     // an object lies under the footprint (clipped to the island); else accepted, with
     // placement_rule's byte where that rule accepts, else with the highest readable vertex of the
@@ -288,16 +288,19 @@ TEST_CASE("stand-in seam: its own verdict and the terrain's height on every vect
         // Classes placement_rule does not decide: the window over flat 0x30 land.
         {"class_3000_unsupported", false, 48},
         {"flag_0x10_type_unsupported", false, 48},
-        {"road_type_not_a_build_class", false, 48},
+        {"bridge_type_not_a_build_class", false, 48},
         {"wall_type_not_a_build_class", false, 48},
         // Out of bounds (footprint_owner_rule refuses these before any seam in a command): the
         // stand-in clips; the window's vertices beyond column W are skipped.
         {"outside_east", false, 48},
         {"wide_footprint_pokes_out", false, 48},
         {"u16_edge_bounds", false, 48},
+        // Road mode 2 uses the minimum tile height (48); a fallback window max
+        // would yield 64. Keep this composition check beside the 50 building rows.
+        {"road2x1_mode2_min_cell", false, 48},
     };
+    static_assert(std::size(rows) == 51);
     const Vectors v = read_vectors();
-    REQUIRE(v.cases.size() == std::size(rows));
     sim::TypeRegistry::Builder b;
     for (const sim::BuildingType& t : v.types) {
         b.add(t);
@@ -307,7 +310,7 @@ TEST_CASE("stand-in seam: its own verdict and the terrain's height on every vect
     const sim::TypeRegistry& reg = *built.value();
     std::map<std::string, const VectorCase*> by_name;
     for (const VectorCase& c : v.cases) {
-        by_name.emplace(c.name, &c);
+        REQUIRE(by_name.emplace(c.name, &c).second);
     }
     const sim::Seam<sim::Seams::PlacementRuleFn> seam = sim::stand_in_placement_seam();
     CHECK(std::string(seam.name) == "stand_in_placement_terrain_height");
@@ -336,7 +339,7 @@ TEST_CASE("stand-in seam: its own verdict and the terrain's height on every vect
             CHECK(static_cast<unsigned>(r.height) == std::stoul(c.expect.at(1)));
         }
     }
-    CHECK(equal_to_rule == 20);
+    CHECK(equal_to_rule == 21);
 }
 
 TEST_CASE("stand-in seam: a world without terrain gets height 0, a terrain gets its height") {

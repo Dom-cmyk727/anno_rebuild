@@ -244,10 +244,20 @@ TEST_CASE("dev session: the replay agrees with a recorded run, and a moved comma
     const auto m = app::replay_session(load(), 100, moved, hashes.value(), outcomes);
     CHECK_FALSE(m.agree);
     CHECK(m.message.find("differs") != std::string::npos);
-    // The refused command with another type: the state is the same (still refused), the
-    // outcome's reason is not (a road type is Unsupported before the occupancy check).
+    // A wire-representable absent type is refused before occupancy. Roads are now
+    // supported, so a road is no longer a valid Unsupported negative control.
+    constexpr std::uint32_t absent_type = 65535;
+    REQUIRE(st.registry->find(sim::TypeId{absent_type}) == nullptr);
     auto changed = session;
-    changed[1] = {4, build(2520, *free)};
+    changed[1] = {4, build(absent_type, *free)};
+    app::PlayRunner changed_live(load());
+    changed_live.set_script(changed);
+    changed_live.set_record_hashes(true);
+    changed_live.run_n(40);
+    CHECK(app::format_hashes(changed_live.recorded_hashes()) ==
+          app::format_hashes(live.recorded_hashes()));
+    CHECK(app::format_outcomes(changed_live.outcomes_since(1)).find("turn 4 Refused UnknownType") !=
+          std::string::npos);
     const auto c = app::replay_session(load(), 100, changed, hashes.value(), outcomes);
     CHECK_FALSE(c.agree);
     CHECK_MESSAGE(c.message.find("outcome 2 differs") != std::string::npos, c.message);

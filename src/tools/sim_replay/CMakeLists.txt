@@ -91,13 +91,22 @@ if(ANNO_BUILD_TESTS)
   anno_sim_replay_arg_test(scenario_no_file "scenario" "usage: anno-sim-replay")
   add_test(NAME anno_sim_replay_scenario_refuses_a_non_scenario
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
-                   "-DARGS=scenario|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sze_synthetic/noscene.sze"
-                   -DEXPECT_RC=1 "-DEXPECT=refused: not a scenario"
-                   -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
-  add_test(NAME anno_sim_replay_scenario_single_01
+                   -DFIXTURE=${PROJECT_SOURCE_DIR}/fixtures/synthetic/sze_synthetic/noscene.sze
+                   -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunScenarioRefusal.cmake)
+  # Strict unit import must not silently discard Single_01's unsupported donkey task.
+  add_test(NAME anno_sim_replay_scenario_single_01_refuses_unsupported_unit
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay> -DSCENE=0200Single/Single_01.sze
-                   -DTICKS=20000 -P ${PROJECT_SOURCE_DIR}/cmake/RunScenarioTool.cmake)
-  set_tests_properties(anno_sim_replay_scenario_single_01 PROPERTIES
+                   -DTICKS=20000 -DEXPECT_RC=1
+                   "-DEXPECT=ESEL.TASK: unsupported unit record/state"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunScenarioTool.cmake)
+  set_tests_properties(anno_sim_replay_scenario_single_01_refuses_unsupported_unit PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
+  add_test(NAME anno_sim_replay_scenario_endless_01_playable
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   -DSCENE=0011SingleEndlosAddon/endless01.sze -DTICKS=20000
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunScenarioTool.cmake)
+  set_tests_properties(anno_sim_replay_scenario_endless_01_playable PROPERTIES
                        SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
   # S14 stage 2: a scenario whose islands all come from links (27 INSELLNK) resolves
   # every link over the game's templates and runs five minutes clean.

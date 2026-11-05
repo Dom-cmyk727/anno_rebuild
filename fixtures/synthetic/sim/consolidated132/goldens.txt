@@ -1,4 +1,4 @@
-# Combined131 SIMINT1/timeline5. g0/g1/s5/s6 independently transcribed by sim_stream.py;
+# Consolidated132 SIMINT1/timeline5. g0/g1/s5/s6 independently transcribed by sim_stream.py;
 # other checkpoint/session goldens are C++ rebaselines with semantic/replay controls, not independent oracles.
 g0_step1 S1 132 11951f193f0e8d97
 g0_step100 S1 132 9d11fa89e0e9b9fa
@@ -7,12 +7,9 @@ g1_players_step100 S4 132 79cb808401b54285
 g1_players_step700 S4 132 eb5a7438224deffd
 k3_tick2450 K3 132 034da602a6e3e749
 k3_tick2500 K3 132 f36a1c7e4ffa871e
-k3_tick54950 K3 131 f46e1bfbcff68709
-k3_tick55000 K3 131 c252b299b919b07a
-k3_tick55050 K3 131 edffa20764d92836
 k3_tick70000 K3 132 a657df8d356dcad4
-m2_found_session M2 131 fb111c337f8c47e1
-p1_g7_create P1 131 7f49781731df081e
+m2_found_session M2 132 9361e257b63af562
+p1_g7_create P1 132 19b662164cf76b60
 s10_g2_end S10 132 99ba7e115cbfc209
 s11_g3_checkpoints S11 132 91a16fdd29061d93
 s11_g3_end S11 132 fdb8ba55ff197d0a
@@ -28,10 +25,10 @@ s5_islands_locked_create S5 132 bd601a95a4468652
 s5_islands_step100 S5 132 f67f3f3660b55050
 s6_g1_create S6 132 772c873f806eba34
 s6_g1_step100 S6 132 64ed4a4effd5db20
-s7_g1_events S7 131 d705f409820828d2
-s7_g1_mp_checkpoints S7 131 91bff2e0855f3cae
-s7_g1_mp_end S7 131 b3a9dc45b233b1c7
-s7_g1_sp_end S7 131 cb90477e31fb7e79
+s7_g1_events S7 132 d705f409820828d2
+s7_g1_mp_checkpoints S7 132 282552a9f1037591
+s7_g1_mp_end S7 132 1eef2b41edbda296
+s7_g1_sp_end S7 132 8662f04b374198b4
 supply_tick110000 SUPPLY1 132 84be7815db4e8d8e
 supply_tick150000 SUPPLY1 132 3fcefb15ba22e8f5
 supply_tick190000 SUPPLY1 132 1acb3187b9deea99

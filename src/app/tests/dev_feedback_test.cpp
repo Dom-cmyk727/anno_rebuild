@@ -25,6 +25,8 @@
 #include <anno/test/dev_lan5.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "play_component.hpp"
+
 namespace app = anno::app;
 namespace render = anno::render;
 namespace sim = anno::sim;
@@ -147,10 +149,10 @@ TEST_CASE("dev feedback: on an original scenario, the preview sprites of placed 
         return;
     }
     const auto file = *dir / "Scenes" / "0200Single" / "Single_01.sze";
-    app::FixedPlayOptions fixed;
-    fixed.stand_in_placement = true; // island-relative tiles, not chosen for terrain
-    auto play = app::load_play(*dir, file, fixed);
-    REQUIRE(play);
+    // This is a renderer geometry comparison, not a claim that every original actor
+    // in this scenario is playable. Select the explicit component fixture up front.
+    auto play = anno::test::load_scene_component(*dir, file);
+    REQUIRE_MESSAGE(play, (play ? "" : play.error()));
     // Loaded as --view loads it (no SceneObjects): the scenario's own placed objects (a start
     // without buildings; its trees, rocks and scenery have rotations too, and preview_sprites
     // treats every Anlagen entry alike).
@@ -464,7 +466,7 @@ TEST_CASE("dev feedback: the developer start's resources are the fixed map's onl
     const sim::Player* dev = l->play.world.players().find(app::developer_player());
     REQUIRE(dev != nullptr);
     CHECK(dev->money == app::FixedPlayOptions{}.gold);
-    auto original = app::load_play(*dir, *dir / "Scenes" / "0200Single" / "Single_01.sze");
+    auto original = app::load_play(*dir, *dir / "Scenes/0011SingleEndlosAddon/endless01.sze");
     REQUIRE(original.ok());
     std::size_t players = 0;
     for (const auto& player : original.value().world.players().slots) {

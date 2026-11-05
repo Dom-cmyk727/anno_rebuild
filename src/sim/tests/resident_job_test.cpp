@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -47,6 +48,13 @@ constexpr sim::TypeId kWall{9506};       // a tile object closed on every layer
 constexpr sim::TypeId kCrossStall{9508}; // PRODTYPE 161, the cross of stand 1314: WALKMASK 05/02/05 (mask 0x155, mapper 0)
 constexpr sim::TypeId kSideWall{9509};   // tile object: mask 0x001, mapped word 0x0111 (no step LEFT may enter it)
 constexpr sim::TypeId kBadCode{9510};    // tile object: walk code 5, which no layer admits
+constexpr sim::TypeId kHouseCross{9511}; // a house whose entrance tile maps to mapper 0 (mask 0x155)
+constexpr sim::TypeId kDownOnly{9512};   // tile object, code 6: the layer admits a DOWN step only (key 0x04)
+constexpr sim::TypeId kUpOnly{9513};     // code 1: UP only (0x40)
+constexpr sim::TypeId kLeftOnly{9514};   // code 5: LEFT only (0x01)
+constexpr sim::TypeId kCrossLeft{9517};  // the cross stand with ONLY its left entrance (0,1)
+constexpr sim::TypeId kCrossBottom{9518}; // the cross stand with ONLY its bottom entrance (1,2)
+constexpr sim::TypeId kBlockStall{9516}; // a stand whose tile is fully blocked (mask 0x1ff), one entrance sub-cell
 constexpr sim::TypeId kInn{9507};        // PRODTYPE 66 (public block), class Inn, WARE[0] = goods 26, input 27
 
 constexpr sim::GoodsId kFood = 26;
@@ -119,6 +127,10 @@ std::shared_ptr<const sim::TypeRegistry> registry(bool second_need = false, bool
         // may enter, 0x4888 for LEFT is absent) for the side-check tests of K2.
         auto tables = std::make_shared<sim::WalkTables>(*sim::synthetic_walk_tables());
         tables->mapper[0x001] = 0x0111;
+        // one-direction layer admissions (state.md 5.9 clause 2: 0x40 up, 0x04 down, 0x01 left, 0x10 right)
+        tables->layers[0][6] = 0x04; // code 6: DOWN only
+        tables->layers[0][1] = 0x40; // code 1: UP only
+        tables->layers[0][5] = 0x01; // code 5: LEFT only
         b.walk_tables(tables);
     }
     if (!goods.empty()) {
@@ -141,9 +153,35 @@ std::shared_ptr<const sim::TypeRegistry> registry(bool second_need = false, bool
         sim::BuildingType bad = tile_object_wall();
         bad.id = kBadCode;
         bad.head_raw.assign(56, 0);
-        bad.head_raw[0x2f] = 5; // a code the layer does not admit
+        bad.head_raw[0x2f] = 3; // a code the layer does not admit
         bad.walk_mask = {0, 0, 0};
         b.add(bad);
+    }
+    for (const auto& [id, code] : {std::pair{kDownOnly, 6}, std::pair{kUpOnly, 1}, std::pair{kLeftOnly, 5}}) {
+        sim::BuildingType one = tile_object_wall();
+        one.id = id;
+        one.head_raw.assign(56, 0);
+        one.head_raw[0x2f] = static_cast<std::uint8_t>(code);
+        one.walk_mask = {0, 0, 0};
+        b.add(one);
+    }
+    for (const auto& [id, ex, ey] : {std::tuple{kCrossLeft, 1U, 3U}, std::tuple{kCrossBottom, 3U, 5U}}) {
+        sim::BuildingType one = supplier_type(id, 161, sim::RuntimeClass::MarketStall, kFood);
+        one.entrances = {{ex, ey}};
+        one.walk_mask = {5, 2, 5};
+        b.add(one);
+    }
+    {
+        sim::BuildingType blockst = supplier_type(kBlockStall, 161, sim::RuntimeClass::MarketStall, kFood);
+        blockst.entrances = {{3, 5}}; // the bottom-middle sub-cell inside a fully blocked tile
+        blockst.walk_mask = {7, 7, 7};
+        b.add(blockst);
+    }
+    {
+        sim::BuildingType hx = house_type(kHouseCross, true);
+        hx.entrances = {{3, 1}};
+        hx.walk_mask = {5, 2, 5};
+        b.add(hx);
     }
     {
         sim::BuildingType cross = supplier_type(kCrossStall, 161, sim::RuntimeClass::MarketStall, kFood);
@@ -1765,5 +1803,101 @@ TEST_CASE("resident job K2: the Inn and the chapel are endpoints of a legal way 
         CHECK(sim::resident_route_legal(*w.islands()[0], w.types(), *home, *home_type, from, 0, *route,
                                         true)
                   .legal);
+    }
+}
+
+TEST_CASE("resident job K2: the leave step admits by the direction's own key, in each of the four directions") {
+    // The synthetic layer admits code 6 for a DOWN step only, 9 UP, 10 LEFT, 11 RIGHT. The walker
+    // leaves the stall at (114,110) one step in each direction onto such a tile: the matching tile is
+    // not refused at step 1 (a later step may be), the opposite one is.
+    const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
+    struct Case {
+        sim::TileXY next;
+        sim::TypeId matching, opposite;
+    };
+    // (code 7 is the start cell's own code, so no tile may admit by it; right is covered as the
+    // opposite of the left-only tile)
+    const Case cases[] = {{{114, 111}, kDownOnly, kUpOnly},    // step DOWN
+                          {{114, 109}, kUpOnly, kDownOnly},    // step UP
+                          {{113, 110}, kLeftOnly, kDownOnly},  // step LEFT
+                          {{115, 110}, kLeftOnly, kLeftOnly}}; // step RIGHT: a left-only tile refuses it
+    for (const Case& c : cases) {
+        const auto first_step = [&](sim::TypeId tile) {
+            const HomeRoute h = home_route([&](Rig& r) { r.wall(c.next.x, c.next.y, tile); });
+            return sim::resident_route_legal(*h.w.islands()[0], h.w.types(), *h.home, *h.home_type, from,
+                                             0, std::vector<sim::TileXY>{{114, 110}, c.next}, true);
+        };
+        if (c.next.x != 115) { // the step RIGHT case has no matching tile
+            const sim::RouteCheck ok = first_step(c.matching);
+            CHECK((ok.legal || ok.bad_step != 1));
+        }
+        const sim::RouteCheck bad = first_step(c.opposite);
+        CHECK_FALSE(bad.legal);
+        CHECK(bad.bad_step == 1);
+        CHECK(bad.reason.find("admit") != std::string::npos);
+    }
+}
+
+TEST_CASE("resident job K2: the leave and enter exemptions are what lets a walker out of a blocked stand tile and into a cross house") {
+    // A stand whose tile is fully blocked (mask 0x1ff, like the big public buildings' entrance tiles)
+    // at (114,110): a walker standing on its centre sub-cell has start keys 0 (every neighbour sub-cell
+    // is blocked), so the strict replay finds no move out at step 1; the scoped leave exemption accepts
+    // it because route[1] is an ordinary open tile. The house at (110,110) is a cross house: its entrance
+    // tile maps to 0, so the last step needs the enter exemption.
+    const auto types = registry();
+    Rig r = make_rig();
+    r.place(kHouseCross, 110, 110, fresh_house());
+    r.place(kBlockStall, 114, 110);
+    sim::World w = create(r, types);
+    const sim::Building* home = at(w, 110, 110);
+    const sim::BuildingType* home_type = w.types().find(home->type);
+    const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
+    const std::vector<sim::TileXY> route{{114, 110}, {113, 110}, {112, 110}, {111, 110}, {110, 110}};
+    const sim::RouteCheck strict = sim::resident_route_legal(*w.islands()[0], w.types(), *home, *home_type,
+                                                             from, 0, route, false);
+    CHECK_FALSE(strict.legal);
+    CHECK(strict.bad_step == 1); // the arrival state of the walled-in centre offers no move
+    CHECK(sim::resident_route_legal(*w.islands()[0], w.types(), *home, *home_type, from, 0, route, true)
+              .legal);
+    // The enter exemption is what the cross house needs: a walker starting on an OPEN tile whose route
+    // ends in it is refused at the last step with the adapter off, accepted with it on.
+    const sim::FixedPos open_from = sim::tile_centre(sim::TileXY{112, 110});
+    const std::vector<sim::TileXY> tail{{112, 110}, {111, 110}, {110, 110}};
+    const sim::RouteCheck no_adapter = sim::resident_route_legal(*w.islands()[0], w.types(), *home,
+                                                                 *home_type, open_from, 0, tail, false);
+    CHECK_FALSE(no_adapter.legal);
+    CHECK(no_adapter.bad_step == 2);
+    CHECK(sim::resident_route_legal(*w.islands()[0], w.types(), *home, *home_type, open_from, 0, tail, true)
+              .legal);
+}
+
+TEST_CASE("resident job K2: the walker ends on the goal sub-cell the search selected") {
+    // A cross stand with a single entrance: the walker's last waypoint is exactly that entrance's
+    // sub-cell (left (0,1) or bottom (1,2)), in the stand's tile. (With all four entrances the search
+    // selects the first of them in the goal-order table; the finer-route retry that would reconcile it
+    // with the approach side is the documented deviation of walk_search.cpp.)
+    struct Case {
+        sim::TypeId stall;
+        std::int32_t sub_x, sub_y;
+    };
+    const Case cases[] = {{kCrossLeft, 0, 1}, {kCrossBottom, 1, 2}};
+    for (const Case& c : cases) {
+        const auto types = registry();
+        Rig r = make_rig();
+        r.place(kHouse, 110, 110, fresh_house());
+        r.place(c.stall, 114, 110);
+        sim::World w = create(r, types);
+        city0(w).stock.stock[kFood] = 5000;
+        Sender sender;
+        const sim::FigureId id = spawn_one(w, sender);
+        const sim::Figure* f = sim::find_figure(w.figures(), id);
+        REQUIRE(f != nullptr);
+        REQUIRE(f->resident.has_value());
+        REQUIRE(f->resident->route.size() >= 2);
+        const sim::FixedPos end = f->resident->route.back();
+        CHECK(((end.x - 114 * 256) * 3) / 256 == c.sub_x);
+        CHECK(((end.y - 110 * 256) * 3) / 256 == c.sub_y);
+        until(w, [&] { return ended(w, id); });
+        CHECK(house_of(w).stock[0] == 151 * 16); // and it came home
     }
 }

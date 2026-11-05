@@ -369,6 +369,8 @@ TEST_CASE(
     CHECK(cost_501[kWerkzeugK] == 0);
 
     S.advance_to(kUpgradeTick - kStep);
+    const std::int64_t before_new_counter =
+        sim::residents_at_or_above(cfg, *o->types, *S.town.city, 1);
     const Snap before = snap(S);
     CHECK(S.transitions_of_house() == 0);
     CHECK(before.type == kPioneer);
@@ -408,6 +410,8 @@ TEST_CASE(
     CHECK(r.residents_after == after.residents_64); // SetGroup keeps the residents
     CHECK(after.residents_64 == before.residents_64);
     const sim::BuildingType& new_type = *o->types->find(after.type);
+    CHECK(new_type.width == o->types->find(kPioneer)->width); // the footprint is the same size
+    CHECK(new_type.height == o->types->find(kPioneer)->height);
     for (std::uint32_t dy = 0; dy < new_type.height; ++dy) {
         for (std::uint32_t dx = 0; dx < new_type.width; ++dx) {
             const sim::Building* at =
@@ -428,7 +432,10 @@ TEST_CASE(
     CHECK(r.houses_new_after == 9);
     CHECK(r.counter_old_before == 128);
     CHECK(r.counter_old_after == 128);
-    CHECK(r.counter_new_before == 0);
+    CHECK(r.counter_new_before ==
+          120); // the eight settler houses (measured below at the step before)
+    CHECK(r.counter_new_before == before_new_counter);
+    CHECK(r.counter_new_after == sim::residents_at_or_above(cfg, *o->types, *S.town.city, 1));
     CHECK(r.counter_new_after == 128);
     // the exact material debit: the registry's cost of the NEXT base type, once, from the store and
     // onto spent
@@ -823,9 +830,10 @@ TEST_CASE("progression K3 ledger: alcohol store -> carrier -> Inn -> resident ->
         CHECK_MESSAGE(v == 0, name << " = " << v);
     }
     // the chain really ran: alcohol left the store, reached the Inn and a resident bought from it
-    CHECK(loads >= 1);
-    CHECK(at(rs.bought_by_goods, kTavernRole) > 0);
-    CHECK(inn().tavern > 0);
+    CHECK(loads == 1);
+    CHECK(drawn == 768);
+    CHECK(inn().tavern == 576);
+    CHECK(at(rs.bought_by_goods, kTavernRole) == 192);
     CHECK(rs.faults == 0);
     CHECK(rs.lost_88 == 0);
     CHECK(S.world.check_invariants() == "");

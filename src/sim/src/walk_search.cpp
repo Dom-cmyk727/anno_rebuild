@@ -235,10 +235,11 @@ GoalMasks mark_goals(WalkCells& cells, std::span<const WalkPoint> goals, SearchR
             continue;
         }
         cell.high = static_cast<std::uint16_t>(cell.high | 0x400); // D0x10004068
-        // MAP-POP-CLOSE-2 K2 (OQ-463, docs/re/population.md section 19): the goal cell also takes the
-        // key nibble of its goal sub-cell (D 0x1000414b: `or word [cell], ax`, ax = 0x10003aa0), the
-        // way a start cell does (0x10003f73). Without it a tile whose mapped low word is 0 (stand
-        // 1314, mask 0x155) could never be entered, so its goals were never reached.
+        // MAP-POP-CLOSE-2 K2 (OQ-463, docs/re/population.md section 19): the goal cell also takes
+        // the key nibble of its goal sub-cell (D 0x1000414b: `or word [cell], ax`, ax =
+        // 0x10003aa0), the way a start cell does (0x10003f73). Without it a tile whose mapped low
+        // word is 0 (stand 1314, mask 0x155) could never be entered, so its goals were never
+        // reached.
         cell.low =
             static_cast<std::uint16_t>(cell.low | start_keys(raw.mask9, point.col, point.row));
         if (cells.set(point.tile, cell)) {
@@ -398,9 +399,8 @@ RouteCheck route_legal(const WalkCells& input, const WalkTables& tables, std::ui
     if (!(route.front() == start.tile)) {
         return refuse(0, "the route does not start on the start's tile");
     }
-    if (const std::string e = check_search(tables, layer, [](const SearchVisit&) {
-            return SearchDecision{};
-        });
+    if (const std::string e =
+            check_search(tables, layer, [](const SearchVisit&) { return SearchDecision{}; });
         !e.empty()) {
         return refuse(0, e);
     }
@@ -430,18 +430,25 @@ RouteCheck route_legal(const WalkCells& input, const WalkTables& tables, std::ui
             return refuse(i, "the step leaves the search rectangle");
         }
         const bool enter_step = i + 1 == route.size() && enter_exempt;
+        // MAP-POP-CLOSE-2 K2: the leave exemption is narrowed to the arrival-state offer of the
+        // first step; the side and layer checks below still apply (docs/sim/population-live.md 24
+        // C).
         const bool leave_step = i == 1 && leave_exempt && !enter_step;
         if (leave_step) {
-            // MAP-POP-CLOSE-2 K2 (review P3 1): leaving the stand skips only what the STAND'S side of
-            // the step needs (the arrival state's offer: the walker stands on a stand sub-cell whose
-            // keys do not describe where the way out leads). route[1] is an ordinary tile: it must
-            // admit entry from this side and the layer must admit its code, with the fixed key bit
-            // of the direction (up 0x40, down 0x04, left 0x01, right 0x10, state.md 5.9 clause 2).
+            // MAP-POP-CLOSE-2 K2 (review P3 1): leaving the stand skips only what the STAND'S side
+            // of the step needs (the arrival state's offer: the walker stands on a stand sub-cell
+            // whose keys do not describe where the way out leads). route[1] is an ordinary tile: it
+            // must admit entry from this side and the layer must admit its code, with the fixed key
+            // bit of the direction (up 0x40, down 0x04, left 0x01, right 0x10, state.md 5.9 clause
+            // 2).
             WalkCell dest = cells.get(route[i]);
             if ((dest.low & geometry(dir)) == 0) {
                 return refuse(i, "the destination cannot be entered from this side");
             }
-            const std::uint32_t key = dir == 6 ? 0x40U : dir == 2 ? 0x04U : dir == 0 ? 0x01U : 0x10U;
+            const std::uint32_t key = dir == 6   ? 0x40U
+                                      : dir == 2 ? 0x04U
+                                      : dir == 0 ? 0x01U
+                                                 : 0x10U;
             if ((admission(tables, layer, dest.high) & key) == 0) {
                 return refuse(i, "the layer does not admit the destination");
             }

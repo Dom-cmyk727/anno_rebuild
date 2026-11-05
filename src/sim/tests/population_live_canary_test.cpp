@@ -473,8 +473,9 @@ void print_run(const RunResult& r, const sim::TransportStats& stats) {
               << r.main_res.searches_failed << " arrivals " << r.main_res.arrivals << " purchases "
               << r.main_res.purchases << " bought_88 " << r.main_res.bought_88 << " deliveries "
               << r.main_res.deliveries << " delivered_88 " << r.main_res.delivered_88 << " lost "
-              << r.main_res.lost_88 << " no_path " << r.main_res.no_path_home << " adapted " << r.main_res.endpoint_adapted << " rejected " << r.main_res.reverse_rejected << " faults "
-              << r.main_res.faults << " growth " << r.main_growth << " transitions "
+              << r.main_res.lost_88 << " no_path " << r.main_res.no_path_home << " adapted "
+              << r.main_res.endpoint_adapted << " rejected " << r.main_res.reverse_rejected
+              << " faults " << r.main_res.faults << " growth " << r.main_growth << " transitions "
               << r.main_transitions << " unlocks " << r.main_unlocks << "\n";
     for (const auto& t : stats.population.transitions) {
         std::cout << "transition kind " << static_cast<int>(t.kind) << " house " << t.building.v
@@ -535,13 +536,15 @@ void check_growth(const sim::TransportStats& stats, std::size_t& exact, std::siz
             // F2: every claimed clip is checked against its applicable bound: the cap (the step
             // would have crossed Wohnmax * 64 and the kernel stops at it) or the below-64
             // correction (the floor 64 of the downgrade arm).
-            const bool cap_clip = g.residents_before + g.vermehr > g.cap_64 && g.residents_after == g.cap_64;
+            const bool cap_clip =
+                g.residents_before + g.vermehr > g.cap_64 && g.residents_after == g.cap_64;
             // K2 (review P3): the floor applies only when the step really fell below 64.
             const bool floor_clip = g.residents_before + g.vermehr < 64 && g.residents_after == 64;
             CHECK_MESSAGE((cap_clip || floor_clip), "unexplained delta of house " << g.building.v);
         }
         // The kernel number is what the House holds unless the tick removed the house.
-        CHECK((g.removed ? g.residents_committed == 0 : g.residents_committed == g.residents_after));
+        CHECK(
+            (g.removed ? g.residents_committed == 0 : g.residents_committed == g.residents_after));
     }
 }
 
@@ -658,7 +661,7 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     }
     CHECK(r.main_res.faults == 0);
     CHECK(r.main_res.lost_88 == 0);
-    CHECK(r.main_res.reverse_rejected == 0); // P-15 (C3): no reversed route refused by the replay
+    CHECK(r.main_res.reverse_rejected == 0);   // P-15 (C3): no reversed route refused by the replay
     CHECK(r.main_res.endpoint_adapted == 143); // accepted with the endpoint adapter (measured)
     CHECK(r.main_total.spawn_draws == 2287);
     CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2287);
@@ -670,7 +673,7 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(r.main_total.candidates_scored == 21146);
     CHECK(r.main_total.walk_expansions == 1750834);
     CHECK(r.main_total.upgrade_scores > 0); // caps were crossed; no house was eligible to upgrade
-    CHECK(r.up == 1); // K2: the one upgrade below
+    CHECK(r.up == 1);                       // K2: the one upgrade below
     CHECK(r.refused == 0);
     CHECK(r.down == 14);
     CHECK(r.main_transitions == 8);
@@ -681,9 +684,10 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     // reachable, the Inn supplies the tavern, the chapel the church need, and PIONIER house 509
     // (a mapper-0 free-cell type) upgrades at tick 72550.
     const auto& trs = stats.population.transitions;
-    const auto up_it = std::find_if(trs.begin(), trs.end(), [](const sim::HouseTransitionRecord& x) {
-        return x.kind == sim::HouseTransitionRecord::Kind::Upgrade;
-    });
+    const auto up_it =
+        std::find_if(trs.begin(), trs.end(), [](const sim::HouseTransitionRecord& x) {
+            return x.kind == sim::HouseTransitionRecord::Kind::Upgrade;
+        });
     REQUIRE(up_it != trs.end());
     CHECK(up_it->building.v == 227633266728ULL);
     CHECK(up_it->tick == 72550);
@@ -699,7 +703,7 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(up_it->houses_new_after == 1);
     CHECK(up_it->counter_old_before == 536);
     CHECK(up_it->counter_old_after == 536);
-    CHECK(up_it->counter_new_before == 0);
+    CHECK(up_it->counter_new_before == 520); // 528 - the house's 8 (derived, diagnostic only)
     CHECK(up_it->counter_new_after == 528);
     CHECK(up_it->variant_drawn);
     CHECK(up_it->variant_draw == 21945);
@@ -720,9 +724,10 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
         CHECK(want[1] == 1024); // HOLZ 4 t
     }
     // exact identity of the first downgrade
-    const auto dn_it = std::find_if(trs.begin(), trs.end(), [](const sim::HouseTransitionRecord& x) {
-        return x.kind == sim::HouseTransitionRecord::Kind::Downgrade;
-    });
+    const auto dn_it =
+        std::find_if(trs.begin(), trs.end(), [](const sim::HouseTransitionRecord& x) {
+            return x.kind == sim::HouseTransitionRecord::Kind::Downgrade;
+        });
     REQUIRE(dn_it != trs.end());
     const sim::HouseTransitionRecord& t = *dn_it;
     CHECK(t.building.v == 219043332203ULL);
@@ -732,20 +737,22 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(t.old_group == 3);
     CHECK(t.new_group == 2);
     CHECK(t.residents_before == 1358);
-    // F2: the House holds 1320 after the tick (the growth step of the group-3 mood -2 entry, VermehrTab
-    // -38, ran BEFORE SetGroup, which keeps the residents).
+    // F2: the House holds 1320 after the tick (the growth step of the group-3 mood -2 entry,
+    // VermehrTab -38, ran BEFORE SetGroup, which keeps the residents).
     CHECK(t.residents_after == 1358 - 38);
-    // The pins the K2 re-record had dropped (review P2), re-measured on the new deterministic run: the
-    // first downgrade is still house ...203 at tick 90250 (560 -> 542), the counters and the variant
-    // draw moved with the changed purchases (houses_old 54 -> 53 as before; counter_old 1690/1669 ->
-    // 1665/1644; HouseVariant draw 27446 -> 1338, index 6 -> 2, because the draws before it differ).
+    // The pins the K2 re-record had dropped (review P2), re-measured on the new deterministic run:
+    // the first downgrade is still house ...203 at tick 90250 (560 -> 542), the counters and the
+    // variant draw moved with the changed purchases (houses_old 54 -> 53 as before; counter_old
+    // 1690/1669 -> 1665/1644; HouseVariant draw 27446 -> 1338, index 6 -> 2, because the draws
+    // before it differ).
     CHECK(t.houses_old_before == 54);
     CHECK(t.houses_old_after == 53);
     CHECK(t.houses_new_before == 0);
     CHECK(t.houses_new_after == 1);
     CHECK(t.counter_old_before == 1665);
     CHECK(t.counter_old_after == 1644);
-    CHECK(t.counter_new_before == 0);
+    CHECK(t.counter_new_before ==
+          1665); // 1664 - (20 - 21): SetGroup took the house from 1358 to 1320
     CHECK(t.counter_new_after == 1664);
     CHECK(t.variant_drawn);
     CHECK(t.variant_draw == 1338);
@@ -1044,22 +1051,29 @@ TEST_CASE("population live P-14: the successor classes of the shipped house type
         if (c == sim::HouseSuccessor::Ladder) {
             const sim::TypeLadder l = sim::house_type_ladder(cfg, *o->types, t);
             REQUIRE(l.next != nullptr);
-            CHECK(l.next->width == t.width); // a ladder pair never lands in Special by its footprint
+            CHECK(l.next->width ==
+                  t.width); // a ladder pair never lands in Special by its footprint
             CHECK(l.next->height == t.height);
         }
     }
-    CHECK(count[static_cast<int>(sim::HouseSuccessor::Ladder)] == 30);       // 501-513 ... 560-567
+    CHECK(count[static_cast<int>(sim::HouseSuccessor::Ladder)] == 30);      // 501-513 ... 560-567
     CHECK(count[static_cast<int>(sim::HouseSuccessor::EndOfLadder)] == 39); // 33 scenery + 580-585
     CHECK(count[static_cast<int>(sim::HouseSuccessor::Special)] == 12);
     CHECK(count[static_cast<int>(sim::HouseSuccessor::Malformed)] == 0);
-    // The audited irregular families (docs 21.3): 3851-3854 -> 3860 (PRODTYPE 289), 3951-3954 -> 3960
-    // (a group-0 house), 3960 / 3969 / 3972 / 3979 -> 3980 (a stall). 3960 is both a successor and
-    // itself irregular: the declaration is per type.
+    // The audited irregular families (docs 21.3): 3851-3854 -> 3860 (PRODTYPE 289), 3951-3954 ->
+    // 3960 (a group-0 house), 3960 / 3969 / 3972 / 3979 -> 3980 (a stall). 3960 is both a successor
+    // and itself irregular: the declaration is per type.
     CHECK(special == std::set<std::uint32_t>{3851, 3852, 3853, 3854, 3951, 3952, 3953, 3954, 3960,
-                                              3969, 3972, 3979});
+                                             3969, 3972, 3979});
     // The world accepts the registry with house updates on (every type is classified).
-    CHECK(sim::house_updates_problem(cfg, [] { sim::Rules r; r.house_updates = true; return r; }(),
-                                     *o->types)
+    CHECK(sim::house_updates_problem(
+              cfg,
+              [] {
+                  sim::Rules r;
+                  r.house_updates = true;
+                  return r;
+              }(),
+              *o->types)
               .empty());
 }
 
@@ -1076,9 +1090,11 @@ namespace {
 
 constexpr const char* kClose = "0011SingleEndlosAddon/endless03.sze";
 constexpr std::uint32_t kCloseOwner = 4; // flags 0x1 in the scenario setup, 28 houses of its own
-constexpr std::int32_t kCloseX = 303, kCloseY = 234; // a free 4 x 4 site beside the city's first stall
-constexpr sim::TypeId kCloseHouse{501};               // PIONIER, PRODTYPE 97, group 0, Wohnmax 8
-constexpr std::uint64_t kCloseSteps = 1000;           // 50 000 ticks: the first delivery needs food below 116 %
+constexpr std::int32_t kCloseX = 303,
+                       kCloseY = 234;   // a free 4 x 4 site beside the city's first stall
+constexpr sim::TypeId kCloseHouse{501}; // PIONIER, PRODTYPE 97, group 0, Wohnmax 8
+constexpr std::uint64_t kCloseSteps =
+    1000; // 50 000 ticks: the first delivery needs food below 116 %
 
 struct Close {
     sim::World w;
@@ -1114,9 +1130,9 @@ Close close_world(const Original& o, const sim::ScenarioSpec& spec) {
 }
 
 sim::Command close_build(const Close& c, std::uint8_t rotation = 0) {
-    return sim::Command{c.city->owner,
-                        sim::BuildCmd{c.ref,
-                                      {sim::PlacementWire{kCloseHouse, kCloseX, kCloseY, rotation, 0, 0}}}};
+    return sim::Command{
+        c.city->owner,
+        sim::BuildCmd{c.ref, {sim::PlacementWire{kCloseHouse, kCloseX, kCloseY, rotation, 0, 0}}}};
 }
 
 const sim::Building* close_house(const Close& c) {
@@ -1125,7 +1141,8 @@ const sim::Building* close_house(const Close& c) {
 
 } // namespace
 
-TEST_CASE("population close C4: a fresh home in a real scenario, built by BuildCmd, supplied by walkers") {
+TEST_CASE("population close C4: a fresh home in a real scenario, built by BuildCmd, supplied by "
+          "walkers") {
     const auto o = load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -1165,7 +1182,8 @@ TEST_CASE("population close C4: a fresh home in a real scenario, built by BuildC
     CHECK(home->type == kCloseHouse);
     // tile identity: the footprint carries the type id
     CHECK(c.island->tiles.object(c.island->tiles.index_of(kCloseX, kCloseY)) == kCloseHouse.v);
-    CHECK(c.island->tiles.object(c.island->tiles.index_of(kCloseX + 3, kCloseY + 3)) == kCloseHouse.v);
+    CHECK(c.island->tiles.object(c.island->tiles.index_of(kCloseX + 3, kCloseY + 3)) ==
+          kCloseHouse.v);
     // first assignment, group 0 (hand: constructor 5 residents / E 640, slot 0 = trunc(41*640/12)
     // = 2186, no other need stocked, no draw), exact payment once, counters, no gold
     const auto* h0 = std::get_if<sim::House>(&home->payload);
@@ -1212,13 +1230,15 @@ TEST_CASE("population close C4: a fresh home in a real scenario, built by BuildC
         CHECK(g.residents_after > g.residents_before);
         CHECK(g.vermehr > 0);
         const bool exact = g.residents_after == g.residents_before + g.vermehr;
-        const bool cap_clip = g.residents_before + g.vermehr > g.cap_64 && g.residents_after == g.cap_64;
+        const bool cap_clip =
+            g.residents_before + g.vermehr > g.cap_64 && g.residents_after == g.cap_64;
         CHECK((exact || cap_clip));
         CHECK(g.residents_committed == g.residents_after);
         CHECK(g.cap_64 == 512);
         trace.push_back(g.residents_after);
     }
-    CHECK(trace == std::vector<std::int32_t>{320, 352, 384, 416, 428, 440, 452, 464, 476, 488, 500, 512});
+    CHECK(trace ==
+          std::vector<std::int32_t>{320, 352, 384, 416, 428, 440, 452, 464, 476, 488, 500, 512});
     CHECK(house.residents_64 == 512);
 
     // Real supply: the house sent walkers (draws), the walkers bought at a stall and delivered; a
@@ -1254,7 +1274,8 @@ TEST_CASE("population close C4: a fresh home in a real scenario, built by BuildC
 
     // The stage pass changed the player's mask: the scenario setup holds 0x1; at the first pass the
     // city has 45 residents (40 loaded + 5 of the new home) against stage 0 (count 0) and stage 1
-    // (count 30): city mask 0 -> 3, X16: low 23 bits 1 < 3 -> the OR is performed, player 0x1 -> 0x3.
+    // (count 30): city mask 0 -> 3, X16: low 23 bits 1 < 3 -> the OR is performed, player 0x1 ->
+    // 0x3.
     bool saw_stage1 = false;
     for (const sim::StageUnlockRecord& u : stats.population.unlocks) {
         if (u.city.island.v != c.ref.island.v || u.city.city.v != c.ref.city.v) {

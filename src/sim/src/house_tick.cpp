@@ -259,6 +259,14 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
         }
         tr.counter_old_after = residents_at_or_above(ctx.cfg, ctx.types, city, tr.old_group);
         tr.counter_new_after = residents_at_or_above(ctx.cfg, ctx.types, city, tr.new_group);
+        // Diagnostic, derived like houses_*_before (a scan before every house tick would cost
+        // O(houses)): an upgrade moves the house INTO the counted range of the new group, so its
+        // residents were not in the new group's before-sum; a downgrade keeps it counted, only
+        // SetGroup's residents change differs.
+        const std::int64_t units_after = std::int64_t{tr.residents_after} / 64;
+        const std::int64_t units_before = std::int64_t{tr.residents_before} / 64;
+        tr.counter_new_before =
+            tr.counter_new_after - (*kind == K::Upgrade ? units_after : units_after - units_before);
         tr.houses_new_before = tr.houses_new_after - 1U;
         tr.houses_old_before = tr.houses_old_after + 1U;
     } else if (*kind == K::Remove) {

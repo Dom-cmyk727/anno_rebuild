@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 import unittest
 import tempfile
@@ -23,6 +24,16 @@ def sha(path):
 def validate_original_scenario_file(path, inputs):
     if sha(path) != inputs['scenario_sha256']:
         raise ValueError('original scenario file differs from fresh-process proof')
+
+
+def execution_scope(row, original=False):
+    if not row['normal_startup']:
+        return 'NOT_EXECUTED'
+    if original:
+        return 'ORIGINAL_PUBLIC_COMMAND_CANARY: branch0 wave, founding, unload, HANDWERK1001, native cuts and fresh replay; other branches separate'
+    if row['empty_kernel']:
+        return 'EMPTY_KERNEL_ONLY; no original tutorial behavior claim'
+    return 'INIT_AND_BOUNDED_CALLS_ONLY; no full original-world acceptance'
 
 
 def parse_gate(text, expected):
@@ -130,6 +141,13 @@ class Contracts(unittest.TestCase):
         validate_manifest(self.identity,m,True)
         for key, value in [('verdict','FAIL'),('source_revision','f'*40),('sha256','0'*64)]:
             with self.assertRaises(ValueError): validate_manifest(self.identity,m|{key:value},True)
+    def test_execution_scope_requires_startup_before_empty_kernel_label(self):
+        started=dict(normal_startup=True,empty_kernel=True)
+        self.assertTrue(execution_scope(started).startswith('EMPTY_KERNEL_ONLY'))
+        self.assertEqual(execution_scope(started|dict(normal_startup=False)),'NOT_EXECUTED')
+        self.assertEqual(execution_scope(started|dict(normal_startup=False),True),'NOT_EXECUTED')
+        self.assertTrue(execution_scope(started|dict(empty_kernel=False)).startswith('INIT_AND_BOUNDED'))
+        self.assertTrue(execution_scope(started,True).startswith('ORIGINAL_PUBLIC_COMMAND_CANARY'))
     def test_full_file_join_distinguishes_same_program_different_map(self):
         with tempfile.TemporaryDirectory() as temp:
             path=Path(temp)/'scenario.sze'
@@ -278,11 +296,11 @@ def publish(log, game, manifest_path, output, original_manifest_path=None):
                              actions=dict(Counter(n.name.upper() for n in walked if isinstance(n,bb.Call))),
                              queries=dict(Counter(n.subject+':'+n.query for n in walked if isinstance(n,bb.Primary) and n.subject)),
                              original_true_branch_coverage=original,synthetic_true_branch_coverage=synthetic,
-                             execution_scope=('ORIGINAL_PUBLIC_COMMAND_CANARY: branch0 wave, founding, unload, HANDWERK1001, native cuts and fresh replay; other branches separate' if original else
-                                              'EMPTY_KERNEL_ONLY; no original tutorial behavior claim' if row['empty_kernel'] else
-                                              'INIT_AND_BOUNDED_CALLS_ONLY; no full original-world acceptance' if row['normal_startup'] else 'NOT_EXECUTED'),
+                             execution_scope=execution_scope(row,bool(original)),
                              executed_full_original_scenario=False))
     data = dict(schema='SCRIPT2-capabilities-2',source_revision=source,
+                publisher_revision=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),
+                publisher_script_sha256=sha(__file__),
                 workflow_revision=identity['workflow']['head'],gate=str(log),gate_sha256=sha(log),
                 binaries=identity['binaries'],parsed=50,compiled=sum(r['compiled'] for r in rows.values()),
                 normal_startups=sum(r['normal_startup'] for r in rows.values()),executed_full_original_scenarios=0,

@@ -571,3 +571,31 @@ program/differentheader negative, plus publicwrongfile refusalbeforeoutput.
 x-field offset2362182:351.5→352.5 changes scenarioSHA tocc32c9ce15816888ef99db7b4c6033da5e647ee8b98337604963f6bec45f6e6d
 while keepingthe2488byteprogram/cac0…7d0 unchanged. Originalasset remainsread-only.
 A focused restored-vs-program-only negative follows before broadergates.
+
+## G terminal gates and final report correction
+
+At clean1988471a396185fc8d7652ffb449b902079091fc, G-debug-01 passes256/256
+(165.16s), G-asan-01 passes256/256 (924.48s); zero failed/empty/skipped/incomplete/
+sanitizer in both. Separate required inventory11/fresh9/reference contracts pass.
+Original ASAN fresh takes581.97s and all4 encoded artifacts are byte-identical to
+Debug. Source/binary/manifests are retained in G-debug/asan-tested-identity.json,
+G-debug/asan-manifests.json and G-original-cross-config.json.
+
+G-asan-opening-01, the single previously timed-out generated opening case, now
+passes1/1 with76166/76166assertions,0other,2247.82s (gate2247.85s), declared3600s.
+Jobs1/admissionON,48GB/18CPU/1.5TiBfree/nootheranno jobs at start. Owner's display
+assertion untouched; no jobs stopped. Old592-selected gate at5e50 remainsFAIL
+with591passes+1timeout1800.06; only unchanged scopes are reused, never summed or
+relabeled as a uniform current592 run. Current256 includes121sharedregistered
+names,135selection differences, not135newtests; G-scope-reuse.json retains names.
+
+Postgate reader-only correction: two actor-refused empty-kernel programs were
+mislabelled EMPTY_KERNEL_ONLY under execution_scope despite startupfalse. Both
+independent reviewers confirm NOT_EXECUTED must take precedence. PriorE approval
+is withdrawn only for those labels; counts/hashes/runtime evidence remain valid.
+Preserved old draft SHA689a0c9184094fa998406d56cb3f28c06e7b6cddf6fb793b46c465a5e5828eae
+and E-scope-probe-before.log:4checks,2legalcontrols pass,2intended failures.
+Corrected reader has12cheap contracts; publisher revision/scriptSHA are separate
+from tested engine-source198. Revalidate the same saved gates/manifests; no engine
+remeasurement for this pure reporting correction. New output will use a freshpath.
+Permanent evidence contract reread at this package checkpoint.

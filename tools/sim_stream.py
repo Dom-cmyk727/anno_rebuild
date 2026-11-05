@@ -110,6 +110,10 @@ config_test.cpp transcribes byte by byte. A change of the stream (a field of
 SimConfig, Rules, WorldSettings, a seam, the class table) changes both this file
 and the C++ code, and goldens.txt is re-baselined with the values printed here.
 """
+# MAP-INTEGRATE-1 current lineage:131 + SIMINT1 schema, player permission rows,
+# and SCRIPT2 source/limits/namespace/policy/continuation scope after timers.
+# Published128 and both129 histories are retained separately under integrate1/legacy.
+# Supply activates existing harvest semantics, with no new native field or timeline site.
 import argparse
 import os
 import re
@@ -946,7 +950,7 @@ def corpus_versions():
     hashes move with both versions), or None when the file has none."""
     path = ROOT / 'fixtures/synthetic/sim/integrate1/scenario_corpus.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
-        m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+)$', line.strip())
+        m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+) schema=SIMINT1 component=import-only$', line.strip())
         if m:
             return int(m.group(1)), int(m.group(2))
     return None

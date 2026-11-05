@@ -156,7 +156,7 @@ void house_totals(const sim::World& w, std::uint64_t& residents, std::uint64_t& 
 std::string version_line() {
     return "# kStateHashVersion=" + std::to_string(sim::kStateHashVersion) +
            " kPrngTimelineVersion=" + std::to_string(sim::kPrngTimelineVersion) +
-           " schema=SCRIPT2 component=import-only";
+           " schema=SIMINT1 component=import-only";
 }
 
 std::shared_ptr<const sim::TypeRegistry> original_registry(const fs::path& game) {
@@ -466,13 +466,19 @@ std::string with_restored_research_production(std::string row) {
     for (const auto& delta : research_production_deltas()) {
         if (row.substr(0, row.find(' ')) != delta.name)
             continue;
-        const auto old = "producers_moved=" + std::to_string(delta.old_moved) + "/" +
-                         std::to_string(delta.total);
-        const auto pos = row.find(old);
+        const std::string key = "producers_moved=";
+        const auto pos = row.find(key);
         REQUIRE(pos != std::string::npos);
-        row.replace(pos, old.size(),
-                    "producers_moved=" + std::to_string(delta.new_moved) + "/" +
-                        std::to_string(delta.total));
+        const auto slash = row.find('/', pos + key.size());
+        REQUIRE(slash != std::string::npos);
+        const auto end = row.find(' ', slash);
+        const auto count = std::stoul(row.substr(pos + key.size(), slash - pos - key.size()));
+        const auto total = std::stoul(row.substr(slash + 1, end - slash - 1));
+        REQUIRE(total == delta.total);
+        REQUIRE(delta.new_moved == delta.old_moved + 1);
+        // The one newly researched producer is independent of supply's newly working farms.
+        // Do not require the pre-supply absolute97/214/38 totals on an accepted supply129 row.
+        row.replace(pos + key.size(), slash - pos - key.size(), std::to_string(count + 1));
     }
     return row;
 }
@@ -1054,7 +1060,7 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
     const bool generating = update_requested();
     const auto expected = generating
                               ? read_expectations(versions, fs::path(ANNO_FIXTURES_DIR) / "sim" /
-                                                                "script1" / "scenario_corpus.txt")
+                                                                "scenario_corpus.txt")
                               : read_expectations(versions);
     if (!generating)
         REQUIRE(versions == version_line());
@@ -1082,8 +1088,9 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
         const auto pos = row.find("create_hash=");
         REQUIRE(pos != std::string::npos);
         if (generating) {
-            auto new_row =
-                row; // SCRIPT1 input already includes reviewed research/presence corrections
+            // Accepted supply129 physical columns, with UNIT's reviewed research/presence
+            // corrections. Creation-only generation must not import stale128 movement counts.
+            auto new_row = with_restored_research_production(with_recognized_player_records(row));
             char hex[17];
             std::snprintf(hex, sizeof hex, "%016llx",
                           static_cast<unsigned long long>(made.value().state_hash()));
@@ -1107,8 +1114,9 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
                 fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" / "scenario_corpus.txt");
         std::ofstream out(expectations_path(), std::ios::binary);
         REQUIRE(out.good());
-        out << "# SCRIPT2 original-data component corpus. Creation identities generated here;\n"
-               "# physical/movement columns copied from published128, not executed by this\n"
+        out << "# SIMINT1 original-data component corpus. Creation identities generated here;\n"
+               "# physical/movement columns copied from accepted supply129 plus UNIT corrections, "
+               "not executed by this\n"
                "# creation-only generator. The normal long corpus gate validates those columns.\n"
             << version_line() << "\n";
         for (const auto& row : generated)
@@ -1218,5 +1226,23 @@ TEST_CASE(
         MESSAGE("research activation " << delta.name << " type=" << delta.type
                                        << " research=" << delta.research
                                        << " control=" << control_moved << " restored=" << moved);
+    }
+}
+
+TEST_CASE("integration corpus: accepted supply counts and restored research compose once") {
+    std::string versions;
+    const auto base =
+        read_expectations(versions, fs::path(ANNO_FIXTURES_DIR) / "sim" / "scenario_corpus.txt");
+    REQUIRE(versions == "# kStateHashVersion=129 kPrngTimelineVersion=5");
+    for (const auto& [name, expected] : std::array<std::pair<const char*, const char*>, 3>{
+             {{"0100Kampagne01/S01_03_01.sze", "producers_moved=103/139"},
+              {"0100Kampagne01/S01_07_01.sze", "producers_moved=223/302"},
+              {"0200Single/Single_24.sze", "producers_moved=43/58"}}}) {
+        REQUIRE(base.contains(name));
+        const auto normalized =
+            with_restored_research_production(with_recognized_player_records(base.at(name)));
+        CHECK(normalized.find(expected) != std::string::npos);
+        CHECK(normalized !=
+              with_restored_research_production(normalized)); // applying twice is a wrong reading
     }
 }

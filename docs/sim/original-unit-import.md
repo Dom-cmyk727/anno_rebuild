@@ -1,6 +1,7 @@
 # MAP-UNIT-IMPORT-1 — contract and acceptance ledger
 
-Status: A contract frozen for independent review; no production implementation yet.
+Status: A contract independently APPROVED; B validated import/focused proof begins.
+No production implementation or real canary acceptance is claimed at this checkpoint.
 Owner direction: 2026-11-05 review follow-up in this chat. Continue the owned
 MAP-BOOTSTRAP-1 checkout; branch task/MAP-UNIT-IMPORT-1 from clean
 066ef4bb363f3fbcdd7615dee290ac8db5cc5a38, preserving task/MAP-SCRIPT-1 and its
@@ -290,3 +291,15 @@ FigureId64/Slot32 distinction, finite role pairings and growth-before-allocation
 findings are closed. No B/C code or F2/G acceptance follows from this contract.
 State reviewer disposition follows after restoring its separating HEAD flag vectors;
 no engine run or production edit has occurred during A.
+
+A closure: `/root/unit_import_state_review` APPROVED state/health/cargo/position
+and the import-metadata boundary at clean
+`db9b31253916edd805aca1c120165f95fdc8cab0`. All primary findings are fixed:
+ID/slot reversal, original slot/hint ordering,64-bit FigureId sentinel, finite role
+graph, class113 factory boundary, uninitialized held-ESEL position distinction,
+Q32/signedzero vectors and restored independent state-bit controls. The separate
+identity reviewer approved6097d30e; subsequent edits restore state vectors and
+record dispositions only. B/C implementation, F2, gates and task acceptance remain
+unapproved. No engine build/test occurred in A; only static primary and independent
+raw inventory/hand derivations. B must establish the early normal-path actor/cargo
+prerequisite before an expensive campaign.

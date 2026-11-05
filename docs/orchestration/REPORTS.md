@@ -8984,3 +8984,33 @@ No aggregate or full A–G/COMPLETE LOCAL CANDIDATE claim.
 Windows/MSVC, Linux warnings/sanitizers, original-runtime captures, GPU, audible
 playback and multiplayer scale NOT_RUN. No merge/push/rebase/TASKS or original
 asset change, other executor edit/build/job stop, or default house_updates change.
+
+
+## MAP-UNIT-IMPORT-1 A — original actor contract — 2026-11-05 — status: IN PROGRESS (A approved)
+
+Overall package remains in progress; no unit implementation or SCRIPT2 F2 PASS.
+Branch task/MAP-UNIT-IMPORT-1 from preserved clean066ef4bb in the existing owned
+MAP-BOOTSTRAP-1 worktree. [Contract/acceptance table](../sim/original-unit-import.md),
+[primary RE](../re/original-unit-import.md), authored import_vectors.json and ignored
+cache/unit-import1/A retain scope, hashes and separating examples. No build/gate
+has run in A. Independent raw scan:50scenes/3473actors,2644top-level/829nested,
+zero within-scene duplicate rawIDs. Endless01 has5actors and8ordered shipholds.
+
+Reviewers: /root/unit_import_contract_review approved ownership/slot/identity/
+metadata architecture at6097d30e; /root/unit_import_state_review approved state/
+health/cargo/position atdb9b3125. Findings fixed before C++: rawID/crewslot swap;
+raw-ID slots and source-order hint; FigureId64 vsSlot32 sentinels; strict role graph;
+113 vs114..128 factory boundary; held ESEL ownposition is uninitialized, notzero;
+explicit parent-cache normalization; Q32 signedzero/rounding and state-bit vectors.
+
+Decisions and reasoning: preserve original slot holes and source traversal because
+39scenes reorder and17change nextfree when sorted; use existing serial engineIDs
+separately from rawslots. Keep import-only metadata in a separate immutable map,
+fully consumed before World creation, to preserve runtime digest/native semantics.
+Refuse unsupported role/class/state rather than dropping actors. Normalize only
+undefined nonspatial held-child cache to its known parent, preserving explicit
+parent exclusion and source ship positions. No disembark command exists, so real
+soldier-money branches cannot be promised by import alone. First B proof will check
+normal-path ship/cargo/slots before expensive gates. Historical SCRIPT2 handler/
+fixture/gate evidence, including591ASANpasses+1timeoutFAIL, remains unchanged.
+No main merge/push/TASKS/asset edit or other-executor work.

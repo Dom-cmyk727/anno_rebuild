@@ -494,7 +494,7 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
 
     if (spec.script_context == ScriptContext::Pending) {
         auto script = prepare_script(spec.script_source, *w.types_, w.players_, w.config_,
-                                     spec.script_limits);
+                                     spec.script_limits, spec.script_asset_namespace);
         if (!script)
             return script.error();
         w.script_ = std::move(script).value();

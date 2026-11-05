@@ -693,3 +693,21 @@ scheduler effect merge (F35); no account/statistic events added. Tests compare
 complete Player bytes against independently adjusted expected recipients, signed
 boundaries, aliases, permission mixing, Ready/reload idempotence and budget abort.
 C review/gates pending.
+
+C APPROVED `/root/script2_review_actions` at clean
+`0c20362a973f1fdcf6b14e49ae2950697fabac17`: full compiler/host/helper/scheduler
+diff, original signed32 mapper action, established F35 i64 adaptation, exact
+recipients/aliases, sequential effects and rollback. C-restored-01 passed19/19
+with zero other outcomes. Wrong-recipient mutation produced105/202 instead of
+109/198: four intended ledger failures, eight legal assertions passed. No C P1/P2.
+
+D implements typed ScriptWave events: code317, AllLocal broadcast, invalid player,
+portable namespaced asset and source offset, full world tick. Host stages events
+with money/permissions/timers, charges every copied asset byte and publishes only
+on success. Scheduler publishes after output reset; explicit startup appends
+without another world advance. Existing configurable bounded host queue drops
+oldest; output/queue consumption never enters native/hash state. Script limits
+now include asset_bytes (default4096, hard65536); optional namespace is persisted
+as content identity. Relative paths reject absolute/traversal/control/colon and
+empty components; slash conversion preserves case. Byte-only imports need explicit
+namespace for wave support; normal file-loader wiring is E. D gate/review pending.

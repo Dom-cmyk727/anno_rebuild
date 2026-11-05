@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <anno/sim/city.hpp>
@@ -300,7 +301,8 @@ struct BilledDelta {
 
 /// MAP-POP-CLOSE-1 C2: a resident bought `amount` from an Inn's tavern stock (D bill 0x100756e0:
 /// `tavern -= t`, `taken += t`, t = min(tavern, requested)). Applied only while the building still
-/// exists and is an Inn; the debit is clipped at the stock (never below 0), the statistic saturates.
+/// exists and is an Inn; the debit is clipped at the stock (never below 0), the statistic
+/// saturates.
 struct TavernDebit {
     BuildingId inn;
     std::uint32_t amount = 0;
@@ -330,7 +332,8 @@ enum class SimEventKind : std::uint8_t {
     ShipArrived,
     ShipRouteFailed, ///< code = NavFailReason (0 Unreachable, 1 BudgetExceeded, 2 OutsideWindow, 3
                      ///< ShipBlocked)
-    ShipStopped
+    ShipStopped,
+    ScriptWave
 };
 
 /// UI-facing output of the simulation; not state, never hashed. Which fields a
@@ -340,6 +343,13 @@ enum class SimEventKind : std::uint8_t {
 /// the home, figure, code = the figure kind, x, y = the tile}; Event15a {code =
 /// 0x15a, x, y = the centre tile of the island the 7.5 minute event hit; player,
 /// building and figure stay invalid}; TimerExpired {code = the timer index}.
+enum class WaveAudience : std::uint8_t { AllLocal };
+struct ScriptWave {
+    std::string asset;
+    std::uint32_t source_offset = 0;
+    WaveAudience audience = WaveAudience::AllLocal; // original0xaa is broadcast, not PlayerId170
+    friend bool operator==(const ScriptWave&, const ScriptWave&) = default;
+};
 struct SimEvent {
     SimEventKind kind = SimEventKind::StatusMessage;
     std::uint64_t tick = 0;
@@ -350,6 +360,8 @@ struct SimEvent {
     std::int32_t x = 0, y = 0;
     /// Ship events: the identity of the order the event is about (never reused).
     std::uint64_t order_id = 0;
+    std::optional<ScriptWave> wave{};
+    friend bool operator==(const SimEvent&, const SimEvent&) = default;
 };
 
 /// Filled by an island tick or a serial-phase seam, merged by the world (§5.3). Merge
@@ -385,7 +397,8 @@ struct Effects {
     std::vector<GoodsMove> goods_moves;
     /// MAP-POP-LIVE-1 L2: applied right after the goods moves.
     std::vector<BilledDelta> billed_deltas;
-    /// MAP-POP-CLOSE-1 C2: the Inn debits of the purchases, applied right after the billed counters.
+    /// MAP-POP-CLOSE-1 C2: the Inn debits of the purchases, applied right after the billed
+    /// counters.
     std::vector<TavernDebit> tavern_debits;
     std::vector<Reserve> reserves;
     std::vector<Deliver> deliveries;

@@ -15,9 +15,30 @@ auto compile_runtime(const ScriptRuntime& r, const TypeRegistry& types, const Si
     std::vector<std::string_view> goods;
     for (const auto& g : types.goods_table())
         goods.push_back(g.name);
-    return compile_script(r.source, {ids, cfg.player_slots, cfg.script_timers, goods}, r.limits);
+    std::optional<std::string_view> ns;
+    if (r.asset_namespace)
+        ns = *r.asset_namespace;
+    return compile_script(r.source, {ids, cfg.player_slots, cfg.script_timers, goods, ns},
+                          r.limits);
 }
 struct Host final : ScriptHost {
+    std::vector<SimEvent>* output;
+    std::uint64_t event_tick;
+    std::vector<SimEvent> staged_events;
+    bool wave(std::string_view asset, std::uint32_t offset, ScriptWork& work) override {
+        if (!output)
+            return false;
+        for (std::size_t i = 0; i < asset.size(); ++i)
+            if (!work.consume())
+                return false;
+        SimEvent e;
+        e.kind = SimEventKind::ScriptWave;
+        e.tick = event_tick;
+        e.code = 317;
+        e.wave = ScriptWave{std::string(asset), offset, WaveAudience::AllLocal};
+        staged_events.push_back(std::move(e));
+        return true;
+    }
     const FigureRegistry* figures;
     const WorldSettings* settings;
     ScriptQueryStats& stats;
@@ -97,26 +118,33 @@ struct Host final : ScriptHost {
     std::optional<ScriptTimers> staged_timers;
     Host(PlayerTable& p, ScriptTimers& t, const TypeRegistry& registry,
          const std::vector<PlayerId>& b, const FigureRegistry* f, const WorldSettings* s,
-         ScriptQueryStats& q)
-        : figures(f), settings(s), stats(q), players(p), timers(t), types(registry), bindings(b) {}
+         ScriptQueryStats& q, std::vector<SimEvent>* events, std::uint64_t tick)
+        : output(events), event_tick(tick), figures(f), settings(s), stats(q), players(p),
+          timers(t), types(registry), bindings(b) {}
     bool begin() override {
+        staged_events.clear();
         staged.clear();
         staged_money.clear();
         staged_timers.reset();
         return true;
     }
     void commit() override {
+        if (output)
+            for (auto& e : staged_events)
+                output->push_back(std::move(e));
         for (auto& [id, player] : staged)
             *players.find(id) = std::move(player);
         for (const auto& [id, balance] : staged_money)
             players.find(id)->money = balance;
         if (staged_timers)
             timers = std::move(*staged_timers);
+        staged_events.clear();
         staged.clear();
         staged_money.clear();
         staged_timers.reset();
     }
     void rollback() override {
+        staged_events.clear();
         staged.clear();
         staged_money.clear();
         staged_timers.reset();
@@ -182,10 +210,12 @@ struct Host final : ScriptHost {
 } // namespace
 formats::Result<ScriptRuntime, std::string>
 prepare_script(std::string source, const TypeRegistry& types, const PlayerTable& players,
-               const SimConfig& cfg, ScriptLimits limits) {
+               const SimConfig& cfg, ScriptLimits limits,
+               std::optional<std::string> asset_namespace) {
     ScriptRuntime r;
     r.source = std::move(source);
     r.limits = limits;
+    r.asset_namespace = std::move(asset_namespace);
     auto program = compile_runtime(r, types, cfg);
     if (!program)
         return "script offset " + std::to_string(program.error().offset) + ": " +
@@ -209,7 +239,8 @@ std::string validate_script(const ScriptRuntime& r, const TypeRegistry& types,
         return "script execution policy differs";
     if (r.limits.source_bytes == 0 || r.limits.source_bytes > 1048576 || r.limits.nodes == 0 ||
         r.limits.nodes > 65536 || r.limits.depth == 0 || r.limits.depth > 128 ||
-        r.limits.work == 0 || r.limits.work > 10000000)
+        r.limits.work == 0 || r.limits.work > 10000000 || r.limits.asset_bytes == 0 ||
+        r.limits.asset_bytes > 65536)
         return "invalid script limits";
     for (const auto& p : players.slots)
         if (p) {
@@ -218,8 +249,9 @@ std::string validate_script(const ScriptRuntime& r, const TypeRegistry& types,
                 return problem;
         }
     if (s.context == ScriptContext::Missing || s.context == ScriptContext::ExplicitNone) {
-        if (!r.source.empty() || r.program || !s.signals.empty() || !s.bindings.empty() ||
-            s.cursor || s.last_arg || s.last_work || s.fault != ScriptFault::None || s.fault_offset)
+        if (r.asset_namespace || !r.source.empty() || r.program || !s.signals.empty() ||
+            !s.bindings.empty() || s.cursor || s.last_arg || s.last_work ||
+            s.fault != ScriptFault::None || s.fault_offset)
             return "script-free context carries execution state";
         return {};
     }
@@ -263,12 +295,14 @@ std::string restore_script(ScriptRuntime& r, const TypeRegistry& types, const Pl
 }
 bool advance_script(ScriptRuntime& r, PlayerTable& players, ScriptTimers& timers,
                     const TypeRegistry& types, std::uint32_t arg, const FigureRegistry* figures,
-                    const WorldSettings* settings) {
+                    const WorldSettings* settings, std::vector<SimEvent>* output,
+                    std::uint64_t event_tick) {
     r.query_stats = {};
     if (!r.program)
         return r.state.context == ScriptContext::Missing ||
                r.state.context == ScriptContext::ExplicitNone;
-    Host host(players, timers, types, r.state.bindings, figures, settings, r.query_stats);
+    Host host(players, timers, types, r.state.bindings, figures, settings, r.query_stats, output,
+              event_tick);
     return visit_script(*r.program, r.state, arg, host);
 }
 } // namespace anno::sim

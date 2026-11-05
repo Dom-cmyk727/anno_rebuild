@@ -634,8 +634,10 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
         w.out_.rng_cursor_before = w.out_.rng_cursor_after = w.rng_.cursor();
         return w.clock_.tick();
     }
+    std::vector<SimEvent> script_events;
     if (!advance_script(w.script_, w.players_, w.timers_, *w.types_,
-                        static_cast<std::uint32_t>(w.clock_.tick()), &w.figures_, &w.settings_)) {
+                        static_cast<std::uint32_t>(w.clock_.tick()), &w.figures_, &w.settings_,
+                        &script_events, w.clock_.tick())) {
         w.faulted_ = true;
         w.fault_message_ = "script runtime fault";
         w.out_ = SimOutput{};
@@ -647,6 +649,10 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     // runs every subsystem.
     w.out_ = SimOutput{};
     w.out_.rng_cursor_before = w.rng_.cursor();
+    for (const auto& e : script_events) {
+        w.out_.events.push_back(e);
+        w.host_events_.push(e);
+    }
     const std::uint64_t tick = w.clock_.begin(game_ms);
     const auto t = static_cast<std::uint32_t>(tick);
     GlobalDraw global(w.rng_);
@@ -779,10 +785,16 @@ std::string World::initialize_scripts() {
         return "script startup requires supported script context";
     if (clock_.ms != 0 || clock_.last_tick != 0)
         return "script startup requires a fresh zero clock";
-    if (!advance_script(script_, players_, timers_, *types_, 0, &figures_, &settings_)) {
+    std::vector<SimEvent> script_events;
+    if (!advance_script(script_, players_, timers_, *types_, 0, &figures_, &settings_,
+                        &script_events, clock_.tick())) {
         faulted_ = true;
         fault_message_ = "script runtime fault";
         return fault_message_;
+    }
+    for (const auto& e : script_events) {
+        out_.events.push_back(e);
+        host_events_.push(e);
     }
     return {};
 }

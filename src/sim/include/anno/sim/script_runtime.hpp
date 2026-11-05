@@ -4,6 +4,7 @@
 #include <anno/sim/figure.hpp>
 #include <anno/sim/permissions.hpp>
 #include <anno/sim/settings.hpp>
+#include <anno/sim/tick.hpp>
 #include <anno/sim/timers.hpp>
 namespace anno::sim {
 inline constexpr std::uint64_t kScriptSchema = 0x0032545049524353ULL; // "SCRIPT2\0"
@@ -15,12 +16,14 @@ struct ScriptRuntime {
     ScriptLimits limits;
     std::uint32_t policy = kScriptPolicy;
     ScriptState state;
-    ScriptQueryStats query_stats;                 // derived diagnostic, never saved/hashed
+    std::optional<std::string>
+        asset_namespace;          // persisted content identity, no host absolute paths
+    ScriptQueryStats query_stats; // derived diagnostic, never saved/hashed
     std::shared_ptr<const ScriptProgram> program; // derived once, never serialized
 };
 [[nodiscard]] formats::Result<ScriptRuntime, std::string>
 prepare_script(std::string source, const TypeRegistry&, const PlayerTable&, const SimConfig&,
-               ScriptLimits = {});
+               ScriptLimits = {}, std::optional<std::string> asset_namespace = {});
 // Native reload rebuilds immutable instructions, preserving and validating execution
 // state/bindings.
 [[nodiscard]] std::string restore_script(ScriptRuntime&, const TypeRegistry&, const PlayerTable&,
@@ -28,5 +31,6 @@ prepare_script(std::string source, const TypeRegistry&, const PlayerTable&, cons
 [[nodiscard]] std::string validate_script(const ScriptRuntime&, const TypeRegistry&,
                                           const PlayerTable&, const SimConfig&);
 bool advance_script(ScriptRuntime&, PlayerTable&, ScriptTimers&, const TypeRegistry&, std::uint32_t,
-                    const FigureRegistry* = nullptr, const WorldSettings* = nullptr);
+                    const FigureRegistry* = nullptr, const WorldSettings* = nullptr,
+                    std::vector<SimEvent>* output = nullptr, std::uint64_t event_tick = 0);
 } // namespace anno::sim

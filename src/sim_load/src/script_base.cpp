@@ -23,6 +23,7 @@ std::string make_generated_script_free(sim::ScenarioSpec& spec, const sim::TypeR
     spec.script_source.clear();
     spec.script_context = sim::ScriptContext::ExplicitNone;
     spec.script_limits = {};
+    spec.script_asset_namespace.reset();
     return {};
 }
 } // namespace anno::sim_load

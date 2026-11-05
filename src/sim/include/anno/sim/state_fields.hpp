@@ -1361,9 +1361,9 @@ template <class T> std::uint64_t digest_of(const T& value) {
 /// friend of World, world.hpp): the world's own fields() calls it. The stream is
 template <> struct EnumInfo<ScriptContext> : ContiguousEnum<6> {};
 template <> struct EnumInfo<ScriptFault> : ContiguousEnum<4> {};
-static_assert(field_count<ScriptLimits>() == 4);
+static_assert(field_count<ScriptLimits>() == 5);
 static_assert(field_count<ScriptState>() == 8);
-static_assert(field_count<ScriptRuntime>() == 6,
+static_assert(field_count<ScriptRuntime>() == 7,
               "program and query_stats are derived; other fields persist");
 template <class A, Same<ScriptRuntime> S> void fields(A& a, S& r) {
     std::uint64_t size = r.source.size();
@@ -1384,6 +1384,8 @@ template <class A, Same<ScriptRuntime> S> void fields(A& a, S& r) {
     a.u32(r.limits.nodes);
     a.u32(r.limits.depth);
     a.u32(r.limits.work);
+    a.u32(r.limits.asset_bytes);
+    ar::opt(a, r.asset_namespace, [&](auto& ns) { a.str(ns); });
     a.u32(r.policy);
     auto& s = r.state;
     a.enumv(s.context);

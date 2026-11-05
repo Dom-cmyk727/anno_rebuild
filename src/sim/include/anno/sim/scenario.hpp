@@ -31,6 +31,7 @@ struct ScenarioSpec {
     ScriptContext script_context = ScriptContext::Missing;
     std::string script_source;
     ScriptLimits script_limits;
+    std::optional<std::string> script_asset_namespace;
     /// HEAD bytes -> properties (D: 0x10009cc0); prop14 from the root name (1
     /// ANNO, 3 ANNOADDON1). world_width/height bound the island rectangles.
     WorldSettings settings;

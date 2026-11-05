@@ -16,6 +16,28 @@ std::string upper(std::string_view s) {
             c = static_cast<char>(c - 'a' + 'A');
     return out;
 }
+bool relative_asset(std::string_view path) {
+    if (path.empty() || path.front() == '/' || path.back() == '/')
+        return false;
+    std::size_t from = 0;
+    for (std::size_t i = 0; i <= path.size(); ++i) {
+        if (i < path.size() &&
+            (static_cast<unsigned char>(path[i]) < 32 || path[i] == 127 || path[i] == ':'))
+            return false;
+        if (i == path.size() || path[i] == '/') {
+            const auto part = path.substr(from, i - from);
+            if (part.empty() || part == "." || part == "..")
+                return false;
+            from = i + 1;
+        }
+    }
+    return true;
+}
+std::string portable(std::string_view path) {
+    std::string out(path);
+    std::replace(out.begin(), out.end(), '\\', '/');
+    return out;
+}
 struct Compiler {
     ScriptProgram p;
     const ScriptEnvironment& env;
@@ -105,6 +127,20 @@ struct Compiler {
                 if (!b)
                     return false;
                 i.value = *b;
+            } else if (name == "PLAYWAVE") {
+                if (c.args.size() != 1 || c.args[0].kind != bb::ValueKind::String)
+                    return fail(at, "wave action requires one quoted asset");
+                if (!env.asset_namespace)
+                    return fail(at, "wave action requires scenario asset namespace");
+                auto asset = portable(c.args[0].contents());
+                if (!relative_asset(asset))
+                    return fail(at, "invalid relative wave asset");
+                asset = portable(*env.asset_namespace) + "/" + asset;
+                if (asset.size() > p.limits.asset_bytes)
+                    return fail(at, "wave asset reference exceeds limit");
+                i.action = ScriptAction::PlayWave;
+                i.index = static_cast<std::uint32_t>(p.assets.size());
+                p.assets.push_back(std::move(asset));
             } else if (name == "MONEY_ADD") {
                 if (c.args.size() != 2 || c.args[0].kind != bb::ValueKind::String ||
                     c.args[1].kind != bb::ValueKind::Number)
@@ -311,8 +347,12 @@ formats::Result<ScriptProgram, ScriptError>
 compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits limits) {
     if (limits.source_bytes == 0 || limits.source_bytes > 1048576 ||
         source.size() > limits.source_bytes || limits.nodes == 0 || limits.nodes > 65536 ||
-        limits.depth == 0 || limits.depth > 128 || limits.work == 0 || limits.work > 10000000)
+        limits.depth == 0 || limits.depth > 128 || limits.work == 0 || limits.work > 10000000 ||
+        limits.asset_bytes == 0 || limits.asset_bytes > 65536)
         return ScriptError{0, "invalid script limits/source size"};
+    if (env.asset_namespace &&
+        (env.asset_namespace->size() > 65536 || !relative_asset(portable(*env.asset_namespace))))
+        return ScriptError{0, "invalid scenario asset namespace"};
     // Normalize only grammar keywords, preserving symbol/string bytes and offsets.
     const formats::ByteBuffer original_bytes(source.begin(), source.end());
     auto tokens = bb::lex(original_bytes);
@@ -499,6 +539,11 @@ bool visit_script(const ScriptProgram& p, ScriptState& state, std::uint32_t arg,
                      i.action == ScriptAction::PermissionAll) {
                 if (!host.permission(i.index, i.type, i.value,
                                      i.action == ScriptAction::PermissionAll, work)) {
+                    fault = work.exhausted ? ScriptFault::Budget : ScriptFault::Host;
+                    return false;
+                }
+            } else if (i.action == ScriptAction::PlayWave) {
+                if (!host.wave(p.assets[i.index], i.offset, work)) {
                     fault = work.exhausted ? ScriptFault::Budget : ScriptFault::Host;
                     return false;
                 }

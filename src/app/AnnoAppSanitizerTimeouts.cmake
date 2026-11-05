@@ -8,7 +8,11 @@
 foreach(name
     "anno_app_tests.play: islands are the ones the sim placed"
     "anno_app_tests.play: tick 0 matches the viewer except objects the sim did not place")
-  if("${name}" IN_LIST anno_app_tests_HEAVY_TESTS)
+  # IN_LIST needs policy CMP0057, which CTest's script-mode if() reader (used while
+  # including this file during test discovery) does not set; list(FIND) has no such
+  # policy dependency.
+  list(FIND anno_app_tests_HEAVY_TESTS "${name}" anno_app_tests_heavy_index)
+  if(anno_app_tests_heavy_index GREATER -1)
     set_tests_properties("${name}" PROPERTIES TIMEOUT 8000)
   endif()
 endforeach()

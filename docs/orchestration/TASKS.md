@@ -2,7 +2,38 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-04: Windows opening sequence; Mac population closeout and progression
+## Current dispatch — 2026-11-05: Windows opening sequence; Mac recurring food/alcohol supply
+
+**Mac update 2026-11-05 — MAP-POP-CLOSE-2 accepted for its enabled headless scope.**
+Published pin `a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0`, code `42368dd7`, clean gate
+source `9bcfbf8b`. Read the [direct review](reviews/2026-11-05-map-pop-close2.md).
+Debug executed 1676/1685 selected (9 skips); ASan/UBSan executed 274/275 selected
+(one opt-in skip), with zero failures. One public-command-built pioneer becomes
+settlers with exact debit, real supplies, reload and replay. This does not flip
+`house_updates` or establish production replenishment, all stages or live play.
+Two small pointer/report corrections start the next package; no repeated full
+CLOSE-2 campaign is assigned. **128 / PRNG timeline 5 is published now; the old
+unpublished-amendment exception has ended.**
+
+**MAP-SUPPLY-1 is READY / RELEASED for the Mac executor.** Read and execute the
+[complete S0–S6 packet](tasks/map-supply-1.md): verify and complete small-farm
+food/alcohol production, transport, multi-house supply, shortage/recovery and
+persistence. Continue on the existing MAP branch from the accepted pin; independent
+package approvals release dependent work, with one final orchestrator handoff.
+Do not merge main or change the Windows lane. The historical POP closeout packets
+below are superseded for new Mac work.
+
+**ECON-BOOK-1 belongs to the orchestrator and its delegated research agent**, in
+`orchestrator-economy-booking` / `task/ECON-BOOK-1`. Resident sales, tax/price mapping,
+booking and upkeep are excluded from MAP-SUPPLY-1. Its arithmetic component at
+`a47a169a` has 13 passing research tests and eight targeted negative controls;
+the independently reviewed local follow-up `dfd2c7d3` establishes booking inputs,
+schedule and distinct upkeep ownership. Full lifecycle/overflow contract and
+engine integration remain unfinished. No engine changes from that lane are
+accepted or required by the Mac supply packet.
+
+**Windows assignments, review dispositions and exact integration inputs below
+are unchanged by this Mac update.**
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -247,7 +278,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1-CLOSE (CURRENT), THEN W4-MAIN-1, THEN W4-OPENING-2, ALL RELEASED IN THIS ORDER.** Continue `task/W4-opening-1` from `02133ade` with the closeout below. Then merge into `main` on `task/W4-main-1` (the orchestrator moves `main` after its review). Then W4-OPENING-2 from the new `main`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time; the closeout stays the critical path. Its merge follows the depth review §5.** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-CLOSE-1 REVIEWED, PARTIAL; MAP-POP-CLOSE-2 READY, RELEASED.** Continue local `1e65ea7d` through K0–K4 below, with independent package reviews and one final handoff. Add the Inn supply path, reusing job `0x33`, and prove the first real upgrade in an original town that stocks the settler goods; no production chain, no fixture stock, no default flip. At the handoff, one plain fast-forward push of the final head for review; no other push. Windows keeps exact `0c401c8d` until W4-OPENING-2, which takes accepted `73e7ab1a`; never substitute the population tip. At the next natural checkpoint, without interrupting this bundle, run macOS `test_support` at published `task/W4-main-1` and report its exact pin/result; this is non-blocking, authorizes no merge or coordinator redesign, and stays pending if unpublished. Complete the MAP documentation handoffs in playtest review §7 at the next docs checkpoint. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-CLOSE-2 ACCEPTED for enabled headless scope; MAP-SUPPLY-1 READY / RELEASED.** Continue `a50aec3a` through [S0–S6](tasks/map-supply-1.md), with independent package reviews and one final handoff. Keep House updates off by default. No ECON-BOOK work, Windows changes, merge/rebase or executor push. The older POP closeout packets are historical. The separate macOS test_support check at published task/W4-main-1 remains a non-blocking checkpoint; no coordinator redesign. |
 
 ### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · RELEASED, CURRENT
 

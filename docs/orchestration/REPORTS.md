@@ -12308,3 +12308,23 @@ and fixed during this session's cloud-CI work, documented in
 **Stop (per the board's step 5, and the owner's explicit instruction this round).** `main` is not
 moved from this session. `task/W4-main-1` remains published at `ef30b112` for the orchestrator's
 review and fast-forward.
+
+## W4-MAIN-1 — round R1: report corrections (review F3) — 2026-11-05 — status: CORRECTED
+
+Two claims in `docs/testing/wsl-gate-root-cause-2026-11-05.md` (and repeated in this file's own
+"WSL ASan gate root cause" entry above) overstated what actually happened, per the W4-MAIN-1
+review's F3. Corrected in the doc itself (not restated here); this entry is the record per the
+board's "edit no old entry" rule - the original entries above are left exactly as written.
+
+1. **§2: no fixture blob was renormalized.** `9e04c5a6` changes only `.gitattributes` and
+   `founding_fixture.hpp`. The 29 fixture files' committed content was always LF (generated on
+   Linux); only this Windows checkout's *working tree* had ever been CRLF, so `git add`/`git
+   commit` found zero bytes of difference for them - confirmed at the time by the commit's own
+   "0 insertions" for those paths, which the original write-up didn't call out.
+2. **§5: cloud CI does not replace the local WSL ASan gate's game-file coverage.** CI runs with
+   no original game files (`--asset-policy unavailable`), so every game-file-dependent case skips
+   there; it never exercised the game-file sanitizer paths this merge's WSL runs did. That
+   coverage is retained from H (`task/W4-opening-1`'s own `wsl-w18`-`w20` runs), not re-run on CI.
+   The local WSL ASan lane stays a required gate for any package that changes game-file paths,
+   starting with W4-OPENING-2 - it still needs the committed gate script (review F5), not a cloud
+   substitute.

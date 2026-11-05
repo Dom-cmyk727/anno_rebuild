@@ -44,8 +44,11 @@ Separately, `src/sim/tests/founding_fixture.hpp`'s body-hash check and
 `src/formats/tests/ship_manifest_test.cpp`'s exact-string field compare both choke on a
 trailing `\r` (Windows checkout CRLF) that `operator>>`-based readers elsewhere silently
 tolerate. Fixed: `.gitattributes` now forces `text eol=lf` on
-`fixtures/synthetic/{founding,map2_manifest,sim}/**`, all 29 affected files were
-renormalized, and `founding_fixture.hpp` strips a trailing `\r` defensively. This bug is
+`fixtures/synthetic/{founding,map2_manifest,sim}/**`, and `founding_fixture.hpp` strips a
+trailing `\r` defensively. **Correction (W4-MAIN-1 review F3, round R1):** no fixture blob
+was renormalized — `9e04c5a6` changes only `.gitattributes` and `founding_fixture.hpp`,
+because the index already held LF for all 29 files; only this Windows checkout's working
+tree had ever been CRLF. This bug is
 specific to a Windows-git-managed NTFS checkout read from WSL — a plain Linux clone
 (cloud CI) never produces CRLF bytes in the first place, so it could never have
 reproduced there.
@@ -106,9 +109,14 @@ rediscover fixes already made by an earlier one.
 
 - The local `wsl-m2` rerun was stopped; no WSL build/test processes remain running.
 - The CRLF fixture fix (§2) is committed and pushed on `task/W4-main-1`; the cloud
-  `linux-clang-asan` CI job runs it instead of a local WSL gate — it has no autocrlf
-  mismatch (plain Linux checkout) and never runs GPU-adapter tests, so neither failure
-  mode in this note can occur there.
+  `linux-clang-asan` CI job has no autocrlf mismatch (plain Linux checkout) and never runs
+  GPU-adapter tests, so neither failure mode in this note can occur there. **Correction
+  (W4-MAIN-1 review F3, round R1):** that is not the same as cloud CI replacing the local
+  WSL ASan gate. CI has no original game files, so every game-file-dependent case skips
+  there (`--asset-policy unavailable`); the merge's game-file sanitizer coverage is
+  retained from H (`task/W4-opening-1`'s own WSL runs), not re-run on CI. The local WSL
+  ASan lane stays a required gate for any package that changes game-file paths (starting
+  with W4-OPENING-2) — it needs the committed gate script below, not a cloud substitute.
 - Process rule: never edit a worktree a background gate script is still reading from;
   stop it first or wait for it to finish.
 - Open follow-up (not done here): promote one canonical, committed gate script — with

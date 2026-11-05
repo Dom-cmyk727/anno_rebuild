@@ -23,11 +23,10 @@ contract the S2-S5 packages implement; no behaviour here is guessed.
 | three unit domains | the **warehouse** counts 8.8 tons (1 t = 256); the farm's raw and output stocks are the same 8.8 units but u16 (`+0x24/+0x26`, `+0x18/+0x1a`); the **figure cargo** is a u16 amount (`+6`) raised by 256 per cut. One cut = 1 t; one worker or animal trip = 3 cuts = 768 |
 
 **Where the resources exist (P, 515 island and scenario files).** Grass objects: 1 279 352 placed objects in 445 files. Potato
-objects (709): only 2 388 in **16** scenario files (the add-on `0201SingleAddOn/single31-34, 38-41`, the campaign
+objects (709 only; a further 218 young 708 are placed): 2 388 in **16** scenario files (the add-on `0201SingleAddOn/single31-34, 38-41`, the campaign
 `S01_02/03/04/07/10/12`, `Single_24`, `Tutorial/02Trade01`; 18 files hold potatoes or a farm 809, `endless02` and `S01_08_01` only the farm); the files that place both a farm 809 and potatoes include `S01_07_01`
 (11 farms, 115 + 90 young potatoes) and `single33` (16 farms, 478). In the Tutorial town of K0-K3 (island 3, player 2) two small
-farms stand at (212,250) and (211,240) with 50 and 33 grass objects in reach and **no potato object in reach**; the neighbouring
-island 7 holds farms at (261,344) with 32 potatoes in reach. **U (OQ-491):** nothing traced puts a potato object on an island
+farms stand at (212,250) and (211,240). Counted in the farm's own search window (radius 3, footprint 3 x 3: the 7 x 7 square from `x-2` to `x+4`, `y-2` to `y+4`; one window for every count in this document) they have **28 and 11 ripe grass objects** (0 and 12 young) and **no potato object**; the neighbouring island 7 holds a farm at (261,344) with **32 potatoes** in the same window and others with at most 7 grass. (S1 first quoted 50 and 33 and 4 potatoes from an 11 x 11 window: that was wrong for this radius.) The search is further confined to the disc of radius `r` around the footprint centre (`docs/re/forestry.md` 2.5): a corner tile of the square can be a goal and still be unreachable, so the counts are upper bounds. S4 selects its scenario from the corrected numbers. **U (OQ-491):** nothing traced puts a potato object on an island
 that has none; planting by the player or a building is not found (`docs/re/forestry.md` 2.9: the cut is the only write; a young
 object grows back, but a missing crop never appears). The first real alcohol loop therefore needs a scenario that already
 holds potato objects.
@@ -49,18 +48,18 @@ type+0xb4(0,0), t)` and the new figure's cargo goods := `type+0xb0(0)` (input 0,
 step, then **one world draw** (`0x1006f810-0x1006f838`, `and eax, 7` into the u16 table `0x100c8d48` = 107 110 107 109 107 109 107 109), then
 `limit[kind-106] <= counter[kind-106] - (made1 != 0)` returns (limits `0x100c8d59` = 1 2 0 1 1 0 0 32), `max_figures(0) <= sum of counters 1..4` returns,
 `384 / rate1 >= raw1 / need1` sends `this+0x118(job 0x2e, world +0x6c(kind), t)` and sets the figure's cargo goods := `type+0xb0(1)` (input 1, grass;
-`0x1006f8f7-0x1006f920`). Line step (`docs/re/production.md` 4.5): capacity first, `q = (raw << 7) / need` capped at 128, below 64 starved,
+`0x1006f8f7-0x1006f920`). Line step (`docs/re/production.md` 4.5): capacity first (it reads output 0's capacity, `call [type+0xc0]` with no line argument, for BOTH lines; 809 has 4 t on both, so the shipped data cannot tell), `q = (raw << 7) / need` capped at 128, below 64 starved,
 `used = q * need >> 7`, `made = q * rate >> 7`. The existing kernel (`production.cpp small_farm_step`) agrees with all 32 `gate`, `line` and `tick` vectors.
 
 ### 2.2 Attach, counters, release (D)
-Attach (`0x1006fdb0`, vtable `0x100c8d60` slot `+0x28`): a figure (class `0x1500`) raises byte `[+0x2a + (figure type id - 106)]` (the table byte `0x100c8d58` = 106) and takes the first
-free of five pointer slots `+0x34..+0x44`; any other class goes to the base attach (`0x100732d0`: city 0x700 / island 0x1400). Detach (`0x1006fe40`,
+Attach (`0x1006fdb0`, vtable `0x100c8d60` slot `+0x28`): a figure (class `0x1500`) raises byte `[+0x2a + (figure type id - 106)]` (the table byte `0x100c8d58` = 106) **first**, then takes the first
+free of five pointer slots `+0x34..+0x44`; with all five full it returns -1 and the counter **stays raised** (`0x1006fdf4-0x1006fe16`, `docs/re/annowelt.md` side finding); any other class goes to the base attach (`0x100732d0`: city 0x700 / island 0x1400). Detach (`0x1006fe40`,
 slot `+0x2c`) lowers the same byte and clears the slot. So counter 0 is the worker type 106 and counters 1..4 are the animal types 107..110; the engine's explicit
 `home_counter` (0 for the worker, kind - 106 for an animal) is the same index on the shipped data. **ADAPT:** the original indexes by the figure type id, the engine by an explicit counter
 (a mod with a worker type other than 106 would differ; it must say so in the type data, S3).
 
 ### 2.3 The shared job (D, `0x1003b0e0`; `docs/re/forestry.md` 2.4-2.10)
-Job `0x2a` (and `0x29`) -> case `0x1003b255`, main vtable `0x100c4468`; job `0x2e` (and `0x2d`) -> case `0x1003b314`, main vtable `0x100c4340`.
+Job `0x2a` (and `0x29`) -> case `0x1003b255`, main object vtable (offset +0x00) `0x100c4468`, step A at `+0x34` with vtable `0x100c44c0`; job `0x2e` (and `0x2d`) -> case `0x1003b314`, main vtable `0x100c4340`, step A at `+0x34` with vtable `0x100c4398`.
 **Both share** the run `0x1005b6c0`, the arrival `0x1005c260`, the abort `0x1005b740`, the failed-start rule `0x1005e280`, step B (type `0xb`: wait
 `LOGIC f32[4]` then the cut, start `0x100553e0`, arrival `0x10054530`: clear the claim, `island +0x110` cut, cargo `+= 256` only when the cut changed the tile)
 and step C (walk home, `home +0xc0(goods, amount)`). They differ in step A's start: worker `0x10058ae0`, animal `0x10059210`. The two functions are

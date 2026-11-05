@@ -2,7 +2,352 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-04: Windows opening sequence; Mac population closeout and progression
+## Current dispatch — 2026-11-05: Windows opening; first Mac supply; second Mac scripting
+
+**Second Mac: MAP-SCRIPT-2 is READY / RELEASED.** Execute the complete packet
+between `BEGIN MAP-SCRIPT-2` and `END MAP-SCRIPT-2` below. Its starting candidate
+is local `b19b509b17d760f1ebaa41e0476af9dab767a48b`, on `task/MAP-SCRIPT-1`.
+MAP-SCRIPT-1 is accepted only as a bounded headless implementation; no complete
+shipped permission program runs yet. This dispatch releases the missing
+`endless01` handlers and complete-program proof, not general campaign support.
+The first Mac's MAP-SUPPLY-1, ECON-BOOK-1 and all Windows assignments are unchanged.
+
+**Windows update, 2026-11-05 (orchestrator):** W4-MAIN-1 is reviewed and accepted, and its **Round R1** is current.
+Read the W4-MAIN-1 update under "Other active dispatches" and the [review](reviews/2026-11-05-w4-main1.md).
+
+<!-- BEGIN MAP-SCRIPT-2 -->
+## MAP-SCRIPT-2 — second Mac: execute the complete endless01 script
+
+### Assignment, accepted input and boundaries
+
+**Owner:** second Mac executor. **Status:** READY / RELEASED, 2026-11-05.
+Continue in your existing owned checkout:
+`/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1`,
+branch `task/MAP-SCRIPT-1`, from `b19b509b17d760f1ebaa41e0476af9dab767a48b`.
+Do not reset if the actual head/tree differs: identify unexpected changes first.
+The reviewed SCRIPT1 code/test pin is `0001a020a8e1025e8531fa0e22358b5c166afce8`;
+later commits are handoff documentation. The prerequisite branch is preserved.
+
+The orchestrator's focused code/evidence review and additional independent
+read-only review found no blocking defect in the bounded permission/runtime
+implementation. ASan/UBSan executed 1316/1316. Debug retained 1297 passes and two
+failures, followed by three corrective passes with production code unchanged;
+do not rewrite this as one all-pass broad run. General integration remains
+unapproved: 39 original programs are refused, and component tests are not full
+scenario execution. A stale research-note disposition is corrected in A below.
+
+**Deliver the next complete slice:** load the unmodified original
+`Scenes/0011SingleEndlosAddon/endless01.sze`, compile its entire BIGBROTHER
+program, initialize it, execute conditional behavior through the normal headless
+runtime, and prove permissions, money and presentation-event consequences with
+reload and fresh-process replay. Preserve original scenario/script content.
+Full-program support means all its instructions have implemented semantics; a
+bounded run does not mean every branch was exercised or an endless game finished.
+
+Implement the reusable missing dependencies: object/area definitions actually
+needed by this program, `AREA:TOUCHED_BY_SHIP_FROM`,
+`AREA:TOUCHED_BY_SOLDIER_FROM`, `MONEY_ADD`, and `PLAYWAVE`. Verify this inventory
+first. A filename-specific compiler path, stripped program, always-false query
+or ignored action cannot satisfy acceptance. Preserve strict refusal of other
+unsupported programs. Do not add campaign completion, combat AI, a new scripting
+language, audio-device integration, renderer work or a general spatial rewrite.
+
+Proceed A–G with independent package approvals releasing dependent work. There
+is no routine orchestrator approval between packages. A new material gameplay
+adaptation unsupported by evidence requires an explicit decision; reviewers do
+not authorize it. Continue independent work while the affected part is blocked.
+No merge/rebase/push, TASKS edits, other-executor imports, coordinator work, map
+installation, resource grants to the real canary or default house_updates flip.
+The first Mac owns MAP-SUPPLY-1; the orchestrator owns ECON-BOOK-1. Do not edit,
+build or stop anything in their checkouts. Windows keeps its assigned inputs.
+
+### Read before implementation
+
+Paths in this list are relative to the owned checkout unless absolute. Read the
+actual current definitions/callers, not historical line numbers.
+
+1. `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, and this entire marked task packet.
+2. `/Users/dom/Dev/anno1503-worktrees/anno1503/docs/testing/evidence-contract.md`
+   and its sibling `README.md`. Use main's canonical runner with explicit owned
+   source/build paths if your branch lacks it; do not merge main for the runner.
+3. `docs/orchestration/reviews/2026-11-05-map-script1.md`,
+   `docs/sim/script-runtime.md`, `docs/re/script-runtime.md`, and
+   `docs/sim/script-capabilities.json`.
+4. `docs/formats/bigbrother.md`, `docs/re/annoscene.md` (interpreter/action/query
+   sections), `docs/re/build-availability.md`, `docs/sim/build-availability.md`.
+5. `src/formats/include/anno/formats/bigbrother.hpp`,
+   `src/formats/src/bigbrother.cpp`, `tools/bigbrother.py`, and parser tests.
+6. `src/sim/include/anno/sim/script.hpp`, `script_runtime.hpp`,
+   `src/sim/src/script.cpp`, `script_runtime.cpp`, `permissions.cpp`,
+   `build_availability.cpp`, `apply.cpp`, `scheduler.cpp`, and `scenario_formats.cpp`.
+7. `src/sim/include/anno/sim/world.hpp`, `state_fields.hpp`, current Player/Figure
+   types, existing spatial queries, output/event handling, and save/replay/session
+   callers. Read `docs/sim/state.md` and the applicable navigation/session contracts.
+8. `src/sim_load/src/script_base.cpp`; understand why generated script-free maps
+   are distinct from original scripted scenarios and preserve that distinction.
+9. Existing `script*_test.cpp`, `permissions_test.cpp`, `original_component.hpp`,
+   `tools/script_runtime_ref.py`, `tools/script_canary.py`,
+   `tools/sim_stream_script1.py`, and `fixtures/synthetic/sim/script1/`.
+10. The original endless01 file and required hashed DLLs, read-only. Locate
+    existing disassembly tooling/evidence with targeted searches; no home-wide scan.
+
+### A — pin the work and complete the minimal handler contract
+
+A1. Record source/workflow revisions, executable/build paths, module and scenario
+hashes, current hardware/memory/disk availability and host contention. Preserve
+the owner's keep-awake assertion; use admission control and calibrated limits.
+Own only your processes. Do not overlap expensive gates with your own other runs.
+
+A2. Correct `docs/re/script-runtime.md`'s stale contract-pending/no-production-
+implementation statement by marking it historical and linking the approved pin.
+Retain earlier failures and original scope limits.
+
+A3. Inventory every definition, query and action in the entire endless01 AST.
+Record which semantics are already supported and which are missing. Confirm the
+real load path reaches the runtime; identify initialization before first command
+and which current headless caller will own it. Do not leave it as a test-only call
+sequence. Do not change Windows UI code to accomplish this.
+
+A4. Trace only the missing dependency closure. Document exact primary evidence,
+field widths, units, owner resolution and separating examples for:
+- area rectangle origin/extent, edge inclusion, coordinate conversion and bounds;
+- whether touch means current overlap, an entry event or remembered visitation;
+- point/footprint semantics, ship/soldier classification, carried units, dead or
+  removed figures, foreign ownership and empty/missing bindings;
+- object definitions/binding lifetime needed by this program, including reload;
+- MONEY_ADD argument/player resolution, numeric representation, overflow behavior,
+  gold and any required account/event effects;
+- PLAYWAVE arguments, recipients, ordering, repetition and whether it affects
+  execution timing or is presentation only.
+Names are not proof. Do not presume current overlap or a figure-origin test.
+Keep research bounded to these handlers; unrelated actions stay unsupported.
+
+A5. Amend the runtime contract and write hand-derived vectors before C++ changes.
+Reuse one acceptance ledger: requirement, primary evidence, legal control,
+distinguishing wrong interpretation, evidence and reviewer disposition. Explicitly
+define transactional rollback, work accounting, continuation and identity changes.
+MONEY_ADD must fit existing authoritative money semantics without importing the
+unfinished ECON-BOOK implementation or launching a tax/upkeep project.
+
+**A exit:** independent reviewer derives decisive examples from original bytes/
+data, approves the complete dependency contract and flags every remaining unknown.
+A material unresolved predicate blocks only its dependent implementation.
+
+### B — reusable definitions, bindings and area queries
+
+B1. Extend the existing compiler/program representation with validated definitions
+and typed queries. Resolve names once where possible; retain stable source offsets.
+Keep original-format widths separate from configurable engine IDs/counts. Support
+synthetic non-original names, IDs and multiple mapped players through the same API.
+
+B2. Implement the reviewed touch behavior against authoritative figures/state.
+Do not add a full figure scan per IF per area. Reuse an appropriate existing index
+or build a bounded derived view at a documented boundary; measure its construction
+and query work. Derived caches must rebuild identically after load and observe
+movement, ownership, parent/crew and removal changes when semantics require them.
+If original semantics require persistent touch state, persist/hash it explicitly.
+Charge work proportional to actual relevant work, including scans/index building;
+one nominal query token must not hide unlimited processing.
+
+B3. Test each rectangle edge and adjacent outside point, fractional coordinates
+where applicable, matching/nonmatching player and unit class, carried units,
+multiple candidates, movement out/in, removal and save/reload. Add a large
+unrelated-content control using deterministic work counters. Test a genuinely true
+and genuinely false result; a program compiling proves neither.
+
+**B exit:** primary/reference vectors and focused engine tests pass; one targeted
+wrong-boundary/owner/class interpretation fails its intended assertion with the
+legal control passing; independent review approves code, callers and query costs.
+
+### C — transactional MONEY_ADD
+
+C1. Add a typed host action using the existing authoritative money representation.
+Staged effects must be visible to later relevant instructions in the same visit
+and commit once. Preserve exact recipient mapping and the reviewed account effects.
+No generic script access to mutable World internals.
+
+C2. Test positive/zero/negative inputs where supported, numeric boundaries,
+successive additions, different owners, reload, and failure/budget exhaustion after
+a prior staged addition. Verify every affected field and unchanged unrelated fields.
+Do not silently clamp, wrap or widen original behavior without a documented basis.
+
+C3. An independent expected ledger and a targeted wrong-recipient or duplicate-
+credit mutant must distinguish the fault. The real canary's script-authored money
+is legitimate scenario behavior, explicitly counted, not a test resource grant.
+
+**C exit:** exact ledger and rollback controls pass; independent review approves.
+
+### D — typed PLAYWAVE event, with headless proof
+
+D1. Implement the reviewed action as a typed presentation event emitted only after
+a successful script transaction. Reuse a suitable existing output/event mechanism.
+Document event identity, order, recipient and asset reference. A headless recording
+consumer must observe events; do not replace playback with a silent no-op.
+
+D2. Separate deterministic script decisions from local audio consumption. Listening,
+muting, draining output or having no audio device must not change gameplay state,
+PRNG or subsequent execution. Define rollback, queue bounds/overflow and save/reload
+delivery behavior without inventing exactly-once external audio guarantees.
+If tracing shows playback changes script timing, resolve that contract rather
+than treating the handler as presentation-only by assumption.
+
+D3. Test exact payload/order/count, multiple events, failure after a staged event,
+bounded output behavior and reload near emission. A missing/wrong event must fail
+the evidence check. Leave actual audio and window consumption to a documented
+Windows handoff; no audio engine is required for this headless package.
+
+**D exit:** real action emission and headless consumption are proven, transaction
+failure leaks no event, and independent review approves the boundary.
+
+### E — normal startup, persistence and compatibility
+
+E1. Wire explicit startup into the appropriate normal headless session/loader path
+before first user commands. Avoid a second whole-world zero advance. Prove INIT
+runs once, restored sessions do not rerun it, first commands see its permissions,
+and unrelated subsystem state/PRNG is untouched by script-only startup.
+
+E2. Persist/hash all new authoritative state. Keep derived indexes out of save data
+only if deterministic reconstruction is proven. Extend the independent stream
+reference and hand-written byte checks where layout changes. Test corruption with
+valid framing/checksums so the intended validator, not an unrelated check, refuses it.
+
+E3. Record compatibility before replacing fixtures. Preserve the SCRIPT1 pin and
+recordings; use an explicit changed schema/policy identity where new state or
+semantics require it. Do not assume another lane's stream number means compatible
+content. No cross-branch integration or silent reinterpretation of old recordings.
+
+E4. Prove continuation at initialization, condition evaluation, money/event effects
+and the next script visit. Keep supported SCRIPT1 regression cases and rejection
+of genuinely unsupported originals. Do not broadly weaken assertions to green the
+corpus. An unsupported scenario remains an explicit refusal, not a successful test
+of an automatically stripped program.
+
+**E exit:** normal-path startup and native continuity/identity controls pass;
+independent review approves cross-package state and transaction behavior.
+
+### F — unchanged complete-program canary and scale
+
+F1. Load the original endless01 scenario and its entire unchanged source through
+the normal APIs. Record file/program hashes, mappings, initial permission count,
+stage/research effects, initial gold and world identity. No synthetic replacement
+kernel, extracted INIT, injected permissions or asset edits in this canary.
+
+F2. Advance it for a bounded, justified interval and trigger a real area condition
+using existing gameplay commands where supported. Assert the causally linked
+signal/branch, money and presentation effects that actually occur. Demonstrate an
+ordinary legal BuildCmd allowed by the initialized permissions and a separate
+discriminating denied control in an explicitly separate fixture/copy, never by
+injecting permissions into the unchanged original canary. Permission query success alone is insufficient.
+Use the actual scenario's resources and terrain; do not teleport units or grant
+resources to force its outcome.
+
+F3. Cover both ship and soldier query semantics and every new action in separate
+explicit synthetic/public-API fixtures if the original run cannot naturally reach
+all branches. Do not start a soldier-movement/combat project just to increase branch
+coverage. Record which real branches executed and which have only synthetic proof.
+Full program compilation plus INIT alone is not the conditional-execution canary.
+If no real area condition can be reached with existing gameplay, report the exact
+dependency and stop that acceptance claim; do not replace it with a false PASS.
+
+F4. Save/reload before and after the triggered condition; compare uninterrupted
+outcomes, exact money ledger, permissions and relevant event sequence. Replay the
+encoded log in a fresh process with checked child exits and artifact writes. A
+legal changed command must diverge at the expected causal checkpoint. A changed
+program must produce the intended content/identity refusal or separately labelled
+semantic divergence, not a spurious malformed-file failure.
+
+F5. Refresh the 50-program capability inventory at the final source, separating
+parsed, compiled, executed and branch-covered. Do not retain a stale inventory pin
+or describe an empty kernel as original tutorial behavior. Measure a modest Release
+case with increasing areas/statements/players/unrelated figures: report query AND
+index-build work, allocations/memory where relevant, and host contention. This is
+architectural evidence, not late-game multiplayer or target-host acceptance.
+
+**F exit:** unchanged complete source is supported and executes real conditional
+behavior; all new handlers have distinguishing proof; canary reload/replay and
+independent review pass. Any unmet original-program requirement remains OPEN.
+
+### G — final gates, integration review and stop
+
+Run cheap contracts and focused negative controls first, then one end-to-end
+canary, then affected broader Debug and ASan/UBSan gates. Use the canonical runner
+with owned source/build paths, required original assets and required reference/
+artifact contracts. Select actual current test names, not guessed historical ones.
+Keep admission on. Inspect host contention; serialize expensive lanes. Freeze
+source/executable identities, restore all mutants, and rebuild clean before gates.
+Do not edit tracked files during a gate or overwrite failed evidence.
+
+Reuse unchanged SCRIPT1 evidence with a precise dependency justification. Rerun
+affected scheduling, money, output, state and integration tests; no new all-project
+campaign solely for a uniform headline. Distinguish selected/executed/failed/empty/
+skipped/incomplete. Platform, asset and opt-in skips are not executed proof. Keep
+first failures and explain corrections without relabelling the original run.
+
+Every substantive package needs an independent read-only reviewer inspecting the
+frozen diff, callers, primary evidence and raw tests. The reviewer independently
+derives decisive masks/units/boundaries and checks intended assertions, not just
+agreement of C++ and a reference sharing its assumptions. Record identity, pin,
+scope and findings immediately. Fix actionable findings and obtain focused
+re-review. Use a fresh final integration reviewer for interactions; do not repeat
+all package reviews or long gates without a specific reason.
+
+**Completion requires:** approved A–G; complete unchanged endless01 program support;
+real conditional execution; public construction consequence; exact money/event
+proof; native and fresh-process replay continuity; explicit identity; no blocking
+findings; accurately attributed gates; clean locally committed tree. Only then
+report COMPLETE LOCAL CANDIDATE. This closes SCRIPT1's missing full-program claim,
+not all original scenario/game support. Windows/MSVC, Linux warnings/sanitizers,
+original-runtime captures, GPU, actual audio and multiplayer scale remain NOT_RUN
+unless actually performed. Headless event acceptance is not audible playback.
+
+Final report in your branch's REPORTS.md and a focused handoff must give code/docs/
+gate pins, original-vs-synthetic coverage, exact branch/event/money ledger, failures,
+review records, compatibility and API delta, integration startup requirements,
+remaining unsupported handlers and first-Mac/Windows dependencies. Preserve the
+original assets, map/loadout/diplomacy and other lanes. Stop after this bundle;
+do not merge, push, start general campaign support or change TASKS.md.
+
+<!-- END MAP-SCRIPT-2 -->
+
+### Other active dispatches — unchanged by MAP-SCRIPT-2
+
+**Mac update 2026-11-05 — MAP-POP-CLOSE-2 accepted for its enabled headless scope.**
+Published pin `a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0`, code `42368dd7`, clean gate
+source `9bcfbf8b`. Read the [direct review](reviews/2026-11-05-map-pop-close2.md).
+Debug executed 1676/1685 selected (9 skips); ASan/UBSan executed 274/275 selected
+(one opt-in skip), with zero failures. One public-command-built pioneer becomes
+settlers with exact debit, real supplies, reload and replay. This does not flip
+`house_updates` or establish production replenishment, all stages or live play.
+Two small pointer/report corrections start the next package; no repeated full
+CLOSE-2 campaign is assigned. **128 / PRNG timeline 5 is published now; the old
+unpublished-amendment exception has ended.**
+
+**MAP-SUPPLY-1 is READY / RELEASED for the Mac executor.** Read and execute the
+[complete S0–S6 packet](tasks/map-supply-1.md): verify and complete small-farm
+food/alcohol production, transport, multi-house supply, shortage/recovery and
+persistence. Continue on the existing MAP branch from the accepted pin; independent
+package approvals release dependent work, with one final orchestrator handoff.
+Do not merge main or change the Windows lane. The historical POP closeout packets
+below are superseded for new Mac work.
+
+**ECON-BOOK-1 belongs to the orchestrator and its delegated research agent**, in
+`orchestrator-economy-booking` / `task/ECON-BOOK-1`. Resident sales, tax/price mapping,
+booking and upkeep are excluded from MAP-SUPPLY-1. Its arithmetic component at
+`a47a169a` has 13 passing research tests and eight targeted negative controls;
+the independently reviewed local follow-up `dfd2c7d3` establishes booking inputs,
+schedule and distinct upkeep ownership. Full lifecycle/overflow contract and
+engine integration remain unfinished. No engine changes from that lane are
+accepted or required by the Mac supply packet.
+
+**Windows assignments, review dispositions and exact integration inputs below
+are unchanged by this Mac update.**
+
+**Planning queue, not released:** the [next gameplay chain](gameplay-next-chain.md)
+maps availability/startup budget, renewable cloth/leather, salt extraction,
+ship-start town integration, construction supplies, second-island resupply and
+citizen progression. Original data and implementation gaps have been checked.
+It does not replace MAP-SUPPLY-1 or ECON-BOOK-1; a concrete packet and accepted
+base are required before any queued bundle starts.
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -168,10 +513,30 @@ delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, repor
   load time — a loader/sim-state change (hashed byte0f, fixed-map goldens move), so it is scheduled separately (MAP
   lane or this page), not part of DEPTH-1-CLOSE. Land it, or have the owner accept the gap, before merging the depth
   into anything the owner plays a fixed map with.
-- **Merge order (review §5):** if the owner's depth check passes before the closeout's final gate chain, the depth
-  merges into `task/W4-opening-1` first. Otherwise it merges into `main` after W4-MAIN-1, as its own merge, before
-  W4-OPENING-2.
+- **Merge order (review §5, superseded 2026-11-05 by the W4-MAIN-1 review D3):** the depth merges into `main` as its
+  own package after DEPTH-1-CLOSE is accepted and the fixed-map Kontor item is settled. W4-OPENING-2 does not wait for
+  it, and merges `main` once the depth has landed.
 - **Queued, not released:** W4-SHORE-2, which draws the sea against its plane per pixel.
+
+**Update 2026-11-05 (W4-MAIN-1 reviewed; orchestrator).** Read the [W4-MAIN-1 review](reviews/2026-11-05-w4-main1.md).
+- **Accepted, with one required round, R1, before `main` moves.** `main` gained three board commits after the merge,
+  so step 5's re-merge applies. The trial merge is conflict-free.
+- **R1 also carries:**
+  - F1: port the branch's source-scan guard for skip phrasings into main's verdict test, and class four
+    missing-file phrasings as required assets;
+  - D1: the River Q5 floor;
+  - F3: two report corrections.
+- **D1, River Q5:** `D_256x256_0045_5B` gets a per-island floor of 0.45. It measured 48.48–48.57 % since the
+  projection fix changed its river raster. Every other bar is unchanged, and the 0.55 target for D returns with the
+  river rework.
+- **D2:** W4-OPENING-1-CLOSE is accepted by the orchestrator at `3a2da9b9`.
+- **D3, after `main` moves:**
+  - W4-OPENING-2 starts from the new `main`. Its first package is W4-OPENING-CONTROLS-FLAKE, whose new step 0 is the
+    committed WSL gate script.
+  - W4-DEPTH-1-CLOSE continues beside it. Its merge into `main` is its own package, and the two no longer wait for
+    each other.
+- **Board writes:** the executor writes REPORTS and its own review files on its task branch. TASKS.md changes come from
+  an orchestrator (review F4).
 
 **MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
@@ -246,10 +611,10 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1-CLOSE (CURRENT), THEN W4-MAIN-1, THEN W4-OPENING-2, ALL RELEASED IN THIS ORDER.** Continue `task/W4-opening-1` from `02133ade` with the closeout below. Then merge into `main` on `task/W4-main-1` (the orchestrator moves `main` after its review). Then W4-OPENING-2 from the new `main`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time; the closeout stays the critical path. Its merge follows the depth review §5.** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-CLOSE-1 REVIEWED, PARTIAL; MAP-POP-CLOSE-2 READY, RELEASED.** Continue local `1e65ea7d` through K0–K4 below, with independent package reviews and one final handoff. Add the Inn supply path, reusing job `0x33`, and prove the first real upgrade in an original town that stocks the settler goods; no production chain, no fixture stock, no default flip. At the handoff, one plain fast-forward push of the final head for review; no other push. Windows keeps exact `0c401c8d` until W4-OPENING-2, which takes accepted `73e7ab1a`; never substitute the population tip. At the next natural checkpoint, without interrupting this bundle, run macOS `test_support` at published `task/W4-main-1` and report its exact pin/result; this is non-blocking, authorizes no merge or coordinator redesign, and stays pending if unpublished. Complete the MAP documentation handoffs in playtest review §7 at the next docs checkpoint. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1-CLOSE ACCEPTED; W4-MAIN-1 REVIEWED, ROUND R1 CURRENT; THEN W4-OPENING-2.** Do R1 on `task/W4-main-1` (W4-MAIN-1 section, "Round R1"; the orchestrator moves `main` after it). Then W4-OPENING-2 from the new `main`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. Its first package is W4-OPENING-CONTROLS-FLAKE, with the committed WSL gate script as step 0. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time. Its merge into `main` is its own package (W4-MAIN-1 review D3).** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-CLOSE-2 ACCEPTED for enabled headless scope; MAP-SUPPLY-1 READY / RELEASED.** Continue `a50aec3a` through [S0–S6](tasks/map-supply-1.md), with independent package reviews and one final handoff. Keep House updates off by default. No ECON-BOOK work, Windows changes, merge/rebase or executor push. The older POP closeout packets are historical. The separate macOS test_support check at published task/W4-main-1 remains a non-blocking checkpoint; no coordinator redesign. |
 
-### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · RELEASED, CURRENT
+### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · ACCEPTED BY THE ORCHESTRATOR 2026-11-05 (W4-MAIN-1 review D2)
 
 **Base:** `task/W4-opening-1` at `02133ade9e66426ab093d8377992aec159367671`, the same branch.
 
@@ -290,7 +655,7 @@ open at `02133ade`, and §7 added more.
 
 **Stop:** the candidate for the orchestrator's acceptance review. Its exact head is W4-MAIN-1's input `H`.
 
-### W4-OPENING-CONTROLS-FLAKE — root-cause and fix the `opening_controls` real-time race under ASan · RELEASED
+### W4-OPENING-CONTROLS-FLAKE — root-cause and fix the `opening_controls` real-time race under ASan · RELEASED; FIRST PACKAGE OF W4-OPENING-2, STEP 0 ADDED
 
 **Why:** `viewer_wiring_opening_controls` failed `wsl-w18` and `wsl-w20` (not `wsl-w19`) at the same assertion —
 `src/app/src/dev_script.cpp` line ~464 area, script line 72, `tracked.1.state is 'sailing', expected == stopped`
@@ -315,6 +680,15 @@ leave as a vague low-priority note.
   and turn-gated waits, invisible at native (uncontended) frame rates.
 
 **Do, in order:**
+0. **The committed WSL gate script (W4-MAIN-1 review F5).** Move one canonical WSL gate script out of the git-ignored
+   `cache/` into `tools/test/`, and use it for every WSL lane from now on. It must include:
+   - the `core.autocrlf` override of `cache/o1/wsl_gate5.sh`, with a test that a clean checkout counts 0 dirty files;
+   - the source-change guard;
+   - no GPU-adapter suite in the ASan lane. A GPU lane, when one runs, uses lavapipe and `ANNO_REQUIRE_GPU=1` as CI
+     does (`docs/testing/gpu-tests.md`);
+   - its lane times recorded in the gate file.
+
+   Building on the WSL file system instead of `/mnt/e` may be measured; record the numbers before adopting it.
 1. Read the actual command dispatch path from an SDL key event through to the `PlayRunner`'s command queue (not
    yet read in this investigation) and confirm or refute the race above with evidence — a trace (`WindowTrace`,
    already used elsewhere in `viewer.cpp`) or an added diagnostic log is preferable to reasoning about it from
@@ -335,7 +709,7 @@ leave as a vague low-priority note.
 **Stop:** a WSL ASan rerun log showing the case green at least 3 times in a row inside the full batch, a REPORTS
 entry, and an independent review before claiming it closed.
 
-### W4-MAIN-1 — merge the accepted Windows lane into main · RELEASED, STARTS AFTER W4-OPENING-1-CLOSE IS ACCEPTED
+### W4-MAIN-1 — merge the accepted Windows lane into main · REVIEWED AND ACCEPTED 2026-11-05; ROUND R1 CURRENT (BELOW)
 
 **Owner decision, 2026-11-04** ("Yes and merge"; chose "Main, as own package").
 
@@ -406,6 +780,43 @@ as met. It also checks GitHub CI on `main` and dispositions each failure.
 
 **Stop condition:** `main` is the reviewed merge commit, and the task branches are preserved.
 
+#### Round R1 — re-merge and three small items · CURRENT (orchestrator, 2026-11-05)
+
+Read the [W4-MAIN-1 review](reviews/2026-11-05-w4-main1.md). The branch is accepted. `main` cannot be fast-forwarded:
+it gained three board commits after the merge. The trial merge of `origin/main` is conflict-free.
+
+1. **Re-merge.** In a separate checkout of `task/W4-main-1` (not a live worktree, and not `E:\anno1503`), make an
+   ordinary merge of `origin/main`. If the board has moved again by then, merge the newer `origin/main`.
+2. **The verdict guards (review F1; `tools/test` only).**
+   - Port the branch's `test_every_skip_phrasing_in_the_sources_has_a_known_class` (`9448a3af`) into main's
+     `ctest_verdict_test.py`, adapted to main's classes. It must handle the concatenated prefixes `"skipping: "` and
+     `"skipping the symlink rows: "`.
+   - List every phrasing that stays `other` with its reason.
+   - Class these four as `required-asset`, each with a regression case:
+     - `play_test.cpp`: `skipping: no scenario files` and `skipping: no endless scenario`;
+     - `building_delta_test.cpp`: the two `... is not in this game directory` messages.
+3. **River Q5 (review D1; `river_flow_corpus_test.cpp` only).**
+   - Add a per-island share floor to the island table, and set 0.45 for `D_256x256_0045_5B`.
+   - Write a comment with the measured values and the review link.
+   - Keep everything else unchanged: the other islands' 0.55, the 0.75 over all windows, the 150-window minimum and
+     the ratio checks.
+   - Update `docs/render/iso.md` and OQ-026: the bar is decided.
+4. **Corrections (review F3).**
+   - In `docs/testing/wsl-gate-root-cause-2026-11-05.md` §2, no fixture blob was renormalized, because the index was
+     already LF.
+   - In §5, cloud CI has no game files. The game-file sanitizer coverage of this merge is retained from H, and the
+     local WSL ASan lane stays a gate for game-file paths.
+   - Record both in a new REPORTS entry. Edit no old entry.
+5. **Gates. All must pass:**
+   - clang-format 23.1.3 on the changed C++ files;
+   - `ctest_verdict_test.py` and `workflow_test.py`;
+   - native MSVC, both Q5 cases;
+   - the sim founding-fixture tests;
+   - the WSL `-Werror` check for the changed C++ file;
+   - GitHub CI on the pushed head: 10/10 jobs.
+6. **Hand back.** Push with an ordinary push, verify the remote hash, add a REPORTS entry, and stop. The orchestrator
+   fast-forwards `main`, records it in PLAN, marks UI.2's "W4.4 merged" condition as met, and checks CI on `main`.
+
 ### W4-OPENING-2 — the first wood chain in the live window · RELEASED, STARTS AFTER W4-MAIN-1
 
 **Goal:** the owner's next playtest can run, in the real window:
@@ -418,6 +829,8 @@ as met. It also checks GitHub CI on `main` and dispositions each failure.
 
 **Inputs:**
 - **`main` after W4-MAIN-1.** Record its exact hash.
+- **First package:** W4-OPENING-CONTROLS-FLAKE (its section above, with step 0, the committed WSL gate script) on
+  `task/W4-opening-2`, before the steps below need a sanitizer gate.
 - **The accepted Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`** (MAP-POP-IMPL-1, on GitHub). It contains:
   - loading (MAP-CARGO-2, `LoadCmd`) and the hold-bounds correction (CARGO-3);
   - ordinary land roads as tile objects through `BuildCmd` and `DemolishCmd` (MAP-ROAD-1, CLOSE-1/2; 21 shipped road
@@ -494,7 +907,7 @@ as met. It also checks GitHub CI on `main` and dispositions each failure.
 
 **Out of scope:**
 - live population (MAP-POP-LIVE-1, a later integration);
-- W4-DEPTH-1's own work (its merge follows the depth review §5);
+- W4-DEPTH-1's own work (it merges into `main` as its own package; W4-MAIN-1 review D3);
 - UI.2, network and trade routes;
 - the zoom artifacts (separate, once the owner's console log arrives).
 

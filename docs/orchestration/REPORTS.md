@@ -8876,3 +8876,29 @@ Start: `origin/main` read (dispatch `fd6c703e`; fetched, not merged); branch `ta
 **NOT_RUN.** Original runtime (the wait unit `500 * d` rests on the cart precedent; the irregular upgrade families), Windows/MSVC, Linux/WSL GCC and Clang warnings, GPU, multiplayer scale, the sailing / rendering / coordinator campaigns, the W4-main-1 macOS `test_support` check (the branch is not on origin), and the Inn tick and delivery (unported).
 
 **Windows API delta:** none. Windows keeps `0c401c8d` until W4-OPENING-2 takes the accepted `73e7ab1a`; this branch is unpublished and unmerged.
+
+
+## MAP-BOOTSTRAP-1 — reviewed local facts/query and ship-start budget (2026-11-05)
+
+Branch `task/MAP-BOOTSTRAP-1`, accepted base `a50aec3a`, frozen gate source
+`4bafd5d0`; local only, no push/merge/rebase/default House flip. Consolidated
+[handoff and independent review](reviews/2026-11-05-map-bootstrap1.md).
+Original availability includes per-player script overrides, a stage bit and
+research alternatives. Validated registry facts and a typed pure query are
+implemented. **The owner explicitly blocked authoritative BuildCmd wiring until
+a separate scenario-permission contract exists.** Atomic/live enforcement,
+stale-query refusal and availability refusal non-mutation are not claimed.
+
+Final broader Debug: 1290 selected, 1288 executed passes, 2 opt-in skips, no
+failures/empty/incomplete. ASan correction: 12/12; retained model/caller ASan:
+108/108. No sanitizer reports. Earlier failed and incomplete attempts are kept;
+old checkpoints/scenario fixtures are preserved via a tested identity-only
+projection on unexecuted copies. Fresh encoded prefix replay matches 10/10.
+
+Unchanged ship prefix sails/founds/unloads/builds a forester, 25 roads and a small
+farm: 29125 gold, 34 t wood, 46 t tools ashore + 25 t aboard, 10 t food. The
+narrow audited chain plus 16 pioneer houses/one upgrade costs 4110 gold,
+125 t wood and 41 t tools plus roads; this is not a sufficient layout or a proven
+production chain. Supply, grazing/hunter, salt placement and economy work remain
+separate dependencies. Next chain recommendation: cloth 807 -> 1001 after
+accepted matching grazing work. Windows/Linux/original-runtime remain NOT_RUN.

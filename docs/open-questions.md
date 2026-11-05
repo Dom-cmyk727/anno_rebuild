@@ -2136,5 +2136,14 @@ Stand 1314 (STOFFE/LEDER, the only seller of both) has WALKMASK rows `05/02/05`,
 ## OQ-464: Where the original enforces INFRAMIN (the stage a building needs) (MAP-POP-CLOSE-2 K0, 2026-11-04)
 The engine's `BuildCmd` does not check a type's INFRAMIN record (the Inn is `INFRA_STUFE_1B`, the chapel's goods stage is 1C). Unread: whether the original enforces it in the build UI only or also in `City::Place` (`0x100279a0`) and the apply modes. Matters for any run that builds an Inn or a chapel in a town whose player mask lacks the stage.
 
+**MAP-BOOTSTRAP-1 update (2026-11-05):** the per-player override/stage/research
+query and its menu consumer are now independently traced in
+[build-availability.md](re/build-availability.md). The inspected built-in command
+path lacks that query; an external callback remains unread. Runtime facts and
+the pure query are implemented in the isolated candidate. Authoritative
+BuildCmd enforcement remains **blocked by the owner** until ANLTRG and scenario
+script permissions have a separate implementation contract. This does not
+retroactively make locked public builds legal or close the integration gap.
+
 ## OQ-465: The original's walker timing for the house figures (MAP-POP-CLOSE-2 K0, 2026-11-04)
 The 4,650-tick walk of the first delivery on endless03 is the engine's integer move model for a 12-point route at the figure's speed (0.010 or 0.012, figures 298-301; capacity 3 t except figure 301, 1 t). The original's speed in ticks per tile, the exact `last` stamp of a house built in play (`+0x0a`), and the variant draw have not been observed. The stall wait is a read only in its float (`[type+0x30]` via `0x1000fd10`, rate 0.01 at `0x10035260`); the 500 ticks per unit is the cart precedent (`transport.md` 4.7). Also unread/model: the IdSec raise of the house choice (`0x10076960`, called at `0x100767cf`/`0x100768ca`, chain `0x100769b4`) and the residents-growth increments in `gate_check.py`, which are FITTED to the engine's run (32, 32, 32, then 12 per update), not derived from VermehrTab.

@@ -85,9 +85,9 @@ contracts; an ordinary build query does not establish their rules.
 ## Review and unresolved policy
 
 Read-only reviewer /root/review_original independently derived the bytes/data
-above and checked the locked/legal baseline at15b4ef02. B1 final disposition
-pending the frozen-note review. Production enforcement awaits the owner's scope
-decision for worlds with missing script/ANLTRG context. Pure query and immutable
+above and checked the locked/legal baseline at15b4ef02. B1 was independently approved at66223203, with the module-identity correction
+recorded below. The owner explicitly blocked production enforcement until the
+scenario-permission implementation contract exists. Pure query and immutable
 facts can be implemented independently with explicit override inputs. No reviewer
 can silently authorize dropping scenario permissions.
 

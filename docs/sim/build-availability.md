@@ -11,15 +11,15 @@ owner packet releases this work independently of its historical queued wording.
 
 | Requirement | Legal control | Distinguishing negative | Primary source | Test/evidence | Review |
 |---|---|---|---|---|---|
-| B0 present behavior | Original Inn 1335 with player mask 5 builds | Same build with mask 1 currently ALSO builds | Anlagen INFRAMIN 1B; apply.cpp check_record | bootstrap baseline test/raw B0 gate | pending |
-| B0 imports | Later-stage original Inn loads with mask 1 | Do not use command gate for scenario import | scenario.cpp create_building caller | same baseline | pending |
-| B1 bit semantics | mask 8 meets stage 3 | mask 16 does not; ordinal >= is wrong | AnnoWelt 1001bb49..1001bb70 | independent byte review, fixtures | pending |
-| B1 exceptions | Original EVER reads bit 0 | mask 0 must not mean default 1 | same original routine | pure-query tests | pending |
-| B1 research/overrides | Trace original branches before wiring | Stage-only model must not claim full fidelity | AnnoWelt 1001bae0..1001bc70 | B1 note and reviewer | pending |
-| B2 validated content | New id using existing requirements | Unknown/repeated/malformed must not become EVER | AnnoGame type parser + reviewed adaptation | parser/query/digest tests | pending |
-| B3 authoritative apply | Eligible effective type builds | stale query, wrong owner, locked effective type | shared check_record atomic/live | nonmutation and mutation controls | pending |
-| B4 real budget | Unchanged cargo can pay a supported prefix | Cannot treat inert/unsupported chains as supply | original HEAD/loadout and public commands | ledger and prefix | pending |
-| B5 compatibility | Reload/replay joins unlock/build/debit | changed registry rejects identity mismatch | header/registry/callers | focused + broader canonical gate | pending |
+| B0 present behavior | Original Inn 1335 with player mask 5 builds | Same build with mask 1 currently ALSO builds | Anlagen INFRAMIN 1B; apply.cpp check_record | bootstrap baseline test/raw B0 gate | APPROVED / review_original |
+| B0 imports | Later-stage original Inn loads with mask 1 | Do not use command gate for scenario import | scenario.cpp create_building caller | same baseline | APPROVED / review_original + final 50-file creation check |
+| B1 bit semantics | mask 8 meets stage 3 | mask 16 does not; ordinal >= is wrong | AnnoWelt 1001bb49..1001bb70 | independent byte review, fixtures | APPROVED / review_original + review_model |
+| B1 exceptions | Original EVER reads bit 0 | mask 0 must not mean default 1 | same original routine | pure-query tests | APPROVED / review_original + review_model |
+| B1 research/overrides | Trace original branches before wiring | Stage-only model must not claim full fidelity | AnnoWelt 1001bae0..1001bc70 | B1 note and reviewer | APPROVED original contract; B3 policy block remains |
+| B2 validated content | New id using existing requirements | Unknown/repeated/malformed must not become EVER | AnnoGame type parser + reviewed adaptation | parser/query/digest tests | APPROVED / review_model + focused correction |
+| B3 authoritative apply | Eligible effective type builds | stale query, wrong owner, locked effective type | shared check_record atomic/live | nonmutation and mutation controls | BLOCKED by owner; authoritative controls NOT_IMPLEMENTED |
+| B4 real budget | Unchanged cargo can pay a supported prefix | Cannot treat inert/unsupported chains as supply | original HEAD/loadout and public commands | ledger and prefix | APPROVED / review_budget |
+| B5 compatibility | Reload/replay joins unlock/build/debit | changed registry rejects identity mismatch | header/registry/callers | focused + broader canonical gate | APPROVED package proofs; final integration review recorded in handoff |
 
 ## Boundary and caller inventory
 
@@ -89,8 +89,9 @@ allocation-free. Typed outcomes: Allowed, UnknownPlayer, UnknownType,
 InvalidPermissions, ScenarioDenied, StageLocked, ResearchRequired. Context owns
 an ascending unique type/byte-value span and names its player; wrong owner,
 unknown type, duplicate rows or values above255 are errors. An explicit override
-precedes mask and research; its raw truthy byte is retained. A missing override
-context means an explicitly empty set, not proof scripts had no restrictions.
+precedes mask and research; its raw truthy byte is retained. A default/empty override
+context is accepted as an explicitly empty set; the API does not detect missing
+script context or prove that a scenario had no restrictions.
 A successful query says nothing about terrain, payment or command authority.
 
 No production BuildCmd integration is present: owner explicitly requested the
@@ -115,7 +116,7 @@ for id90001/stage3 and extends the preexisting FNV value by hand.
 Focused B2 model-02 canonical gate: selected5,executed5,failed0,empty0,skipped0,
 incomplete0. model-01 build failure is retained (test Chunk payload incorrectly
 assumed owning instead of a span). Investigation model-build-01/02 failures
-retained; model-build-03 builds. Independent B2 review pending.
+retained; model-build-03 builds. Independent B2 review and its focused corrections are approved; see below.
 
 ## Reviewed correction and integration checkpoint
 
@@ -170,3 +171,23 @@ a non-construction type-cost change gives a different legacy digest. The cheap
 and373imported player masks, without running another long simulation for costs.
 Focused compatibility-01 passes2/2 with no failures/skips/empty/incomplete and
 visible coordinator admissions. Production code remains unchanged.
+
+## Final frozen-source gates
+
+At clean `4bafd5d00e7f2c0f199f31339350f12d0e7fe191`:
+Debug `debug-final-02.log` PASS: 1290 selected, 1288 executed passes, 0 failed,
+0 empty, 2 opt-in skips (navigation scale and transport statistics), 0 incomplete.
+It includes all 50 scenario five-minute runs, top-ten extended runs, original
+player masks, and the new creation-identity comparison. ASan/UBSan correction
+`asan-final-02.log` PASS: 12 selected/executed, no failures/skips/empty/incomplete
+or sanitizer lines. The earlier ASan `asan-final-01.log` at0ceea121 passes
+108/108 and is retained for its unaffected production/model coverage. Both final
+gates require budget, verdict and House-reference contracts separately from
+selection counts. Workflow contracts pass 21 methods; canonical verdict
+preflight passes 24. No tracked source changed during either gate.
+
+The first Debug attempt remains FAIL with 3 incomplete user-authorized terminated
+workers. Host-permitted final runs retain admission control and show coordinator
+admissions. No shared coordinator, infrastructure or another owner's job was
+modified. Final handoff and review dispositions are in
+`../orchestration/reviews/2026-11-05-map-bootstrap1.md`.

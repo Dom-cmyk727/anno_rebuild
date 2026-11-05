@@ -107,8 +107,10 @@ raw/output vectors are0,0; this is a creation observation, not dynamic proof of
 inertness. Missing worker/animal bodies are established separately from the
 accepted source's callers. The salt command returned Unsupported without any
 save-byte change; its pure availability query separately returned StageLocked.
-In-memory replay and save/reload matched. Encoded exported-log replay is a
-separate check below; the original prefix test replays rec.log() in memory. The new test starts from the unchanged ship
+In-memory replay and save/reload matched. The original prefix test replays rec.log() in memory. Separately, the public
+`anno-sim-replay run cache/bootstrap/B4/opening.log` command read the encoded
+export in a fresh process: 17181 entries, 10/10 checkpoints matched, final tick
+85805, reproduced. Raw result: `cache/bootstrap/B4/encoded-replay-01.log`. The new test starts from the unchanged ship
 manifest, sails/founds/unloads, constructs a forester and connecting dirt roads,
 then a small farm. Planning copies may search placements; recorded execution
 never teleports, grants resources or edits stage flags. It separately records
@@ -129,3 +131,10 @@ packages plus these missing chains. This package does not start the next bundle.
 The upgrade bill uses original base520 (`501 - 501%20 +20`); type522 is one
 possible settler variant and happens to have the same material costs. The budget
 review corrected the attribution without changing any totals.
+
+Independent B4 reviewer `/root/review_budget` approved `0ceea121` after the base520
+and replay-scope corrections. The fresh integration reviewer separately checked
+the encoded replay result. The prefix is retained across subsequent test-only
+compatibility corrections: runtime code, original content, manifest and accepted
+command sequence did not change. Final gate/review totals and limits are in
+`../orchestration/reviews/2026-11-05-map-bootstrap1.md`.

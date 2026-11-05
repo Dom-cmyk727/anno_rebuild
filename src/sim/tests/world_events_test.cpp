@@ -259,7 +259,7 @@ std::uint64_t hash_events(const std::vector<sim::SimEvent>& events) {
 }
 
 std::filesystem::path g4_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "g4.log";
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / "g4.log";
 }
 
 std::vector<std::uint8_t> read_bytes(const std::filesystem::path& p) {

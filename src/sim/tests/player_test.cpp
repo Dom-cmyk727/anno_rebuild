@@ -1338,6 +1338,11 @@ void expected_player(Stream& s, const sim::Player& p) {
     for (const sim::PlayerId d : p.discovery) {
         s.u32(d.v);
     }
+    s.u64(p.permissions.size());
+    for (const auto& row : p.permissions) {
+        s.u32(row.type.v);
+        s.u32(row.value);
+    }
 }
 
 std::vector<std::uint8_t> save_table(const sim::PlayerTable& t) {
@@ -1496,7 +1501,7 @@ TEST_CASE("every player field moves the players scope hash") {
         return out;
     };
     const auto base_scopes = scope_hashes(tree);
-    REQUIRE(base_scopes.size() == 9);
+    REQUIRE(base_scopes.size() == 10);
     for (const std::uint32_t slot : {0U, 3U, 31U}) {
         for (const auto& [name, mutate] : mutations) {
             INFO("slot " << slot << " field " << std::string(name));
@@ -1697,7 +1702,7 @@ TEST_CASE("players scope reads back and validates what it read") {
         // bytes ends with the players scope, the islands scope (u64 count 0), the
         // figures and events scopes of a world without either (31 + 8 bytes) and the
         // timers_monopoly scope of the default configuration (193 bytes).
-        constexpr std::ptrdiff_t kTail = 31 + 8 + 193;
+        constexpr std::ptrdiff_t kTail = 31 + 8 + 193 + 62;
         REQUIRE(bytes.size() > table_size + 8 + kTail);
         Stream s;
         s.v.assign(bytes.begin(),

@@ -78,6 +78,10 @@ if(ANNO_BUILD_TESTS)
     find_package(Python3 COMPONENTS Interpreter)
   endif()
   if(Python3_FOUND)
+    add_test(NAME script1_stream_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/sim_stream_script1.py --self-test)
+    add_test(NAME script1_stream_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/sim_stream_script1.py --check)
     add_test(NAME script1_fresh_process_contract
              COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary.py --self-test)
     add_test(NAME script1_fresh_process

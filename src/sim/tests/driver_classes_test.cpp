@@ -899,7 +899,7 @@ TEST_CASE("fur trapper sends nothing without prey") {
 namespace {
 
 std::filesystem::path g3_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "g3.log";
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / "g3.log";
 }
 
 std::vector<std::uint8_t> read_bytes(const std::filesystem::path& p) {

@@ -1237,7 +1237,7 @@ TEST_CASE("founding hull domain: the edge of the supported domain through regist
 namespace {
 
 std::filesystem::path fixture_log_path(const char* name) {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / name;
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / name;
 }
 
 std::vector<std::uint8_t> read_file(const std::filesystem::path& p) {

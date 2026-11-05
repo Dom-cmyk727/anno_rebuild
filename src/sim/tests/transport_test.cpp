@@ -670,7 +670,7 @@ TEST_CASE("transport runs are deterministic and survive a save mid-walk") {
 namespace {
 
 std::filesystem::path g6_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "g6.log";
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / "g6.log";
 }
 
 /// Finds the market's TypeId's search area and runs choose_source on `w` for every

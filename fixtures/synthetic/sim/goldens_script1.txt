@@ -1,0 +1,13 @@
+# SCRIPT1 stream129 + SCRIPT1 schema. Published128 goldens.txt stays unchanged.
+# Independent new-field transcription: tools/sim_stream_script1.py.
+g0_step1 S1 129 baebcc2e5d708e6b
+g0_step100 S1 129 202f222fa0b175de
+g0_step1000 S1 129 7e6235c91ce3427d
+g1_players_step100 S4 129 b47426104805812f
+g1_players_step700 S4 129 b2eb405a28c8b0ff
+s5_islands_create S5 129 533cf0cec8e21152
+s5_islands_step100 S5 129 7203a0a06d912fe7
+s5_islands_city_created S5 129 0d2477b38b8913f2
+s5_islands_locked_create S5 129 b2d6c9d9f2bce315
+s6_g1_create S6 129 a56a5875dc872df4
+s6_g1_step100 S6 129 815218ea2fd30250

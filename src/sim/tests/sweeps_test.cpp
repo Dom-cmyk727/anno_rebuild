@@ -983,7 +983,7 @@ TEST_CASE("G5 growth and the 300 s drought through 1000000 ticks equal golden") 
     const sim::ReplayLog log = rec.log();
     auto written = sim::write_log(log);
     REQUIRE_MESSAGE(written.ok(), (written.ok() ? std::string() : written.error()));
-    const std::filesystem::path path = std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "g5.log";
+    const std::filesystem::path path = std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / "g5.log";
     if (anno::test::update_mode()) {
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         out.write(reinterpret_cast<const char*>(written.value().data()),

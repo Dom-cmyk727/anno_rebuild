@@ -34,7 +34,7 @@ struct Golden {
 };
 
 inline std::filesystem::path goldens_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "goldens.txt";
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "goldens_script1.txt";
 }
 
 inline std::vector<Golden> read_goldens() {

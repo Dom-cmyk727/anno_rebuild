@@ -490,7 +490,7 @@ TEST_CASE("state_hash relational properties") {
     sim::HashTree tree;
     CHECK(base.state_hash(tree, 0) == h);
     CHECK(tree.root.hash == h);
-    REQUIRE(tree.root.children.size() == 9);
+    REQUIRE(tree.root.children.size() == 10);
     CHECK(tree.root.children[0].name == "header");
     CHECK(tree.root.children[1].name == "clock_rng");
     CHECK(tree.root.children[2].name == "settings");
@@ -509,6 +509,7 @@ TEST_CASE("state_hash relational properties") {
     fields(rules_bytes, base.rules());
     sim::StateHasher header;
     header.u32(sim::kStateHashVersion);
+    header.u64(0x0031545049524353ULL);
     header.u32(sim::kPrngTimelineVersion);
     header.bytes(config_bytes.data());
     header.bytes(rules_bytes.data());
@@ -585,6 +586,17 @@ TEST_CASE("state_hash relational properties") {
         timers.u8(0);
     }
     CHECK(tree.root.children[8].hash == timers.value());
+    sim::StateHasher script;
+    script.u64(0);
+    for (auto v : {1048576u, 65536u, 128u, 100000u, 1u})
+        script.u32(v);
+    script.u8(0);
+    script.u8(0);
+    for (int i = 0; i < 4; ++i)
+        script.u32(0);
+    script.u64(0);
+    script.u64(0);
+    CHECK(tree.root.children[9].hash == script.value());
     sim::StateHasher root;
     root.u64(header.value());
     root.u64(base.core_hash());
@@ -595,15 +607,16 @@ TEST_CASE("state_hash relational properties") {
     root.u64(figures.value());
     root.u64(events.value());
     root.u64(timers.value());
+    root.u64(script.value());
     CHECK(root.value() == h);
     // The empty world, from the independent Python transcription of the stream
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
     CHECK(sim::World().state_hash() ==
-          0x43d09475aa98121aULL); // empty_world at 128 + K1 (python transcription) Inn class row
+          0x708747823698a4acULL); // empty_world at 128 + K1 (python transcription) Inn class row
                                   // (sim_stream.py)
-    CHECK(sim::kStateHashVersion == 128);
+    CHECK(sim::kStateHashVersion == 129);
     CHECK(sim::kPrngTimelineVersion == 5);
 }
 
@@ -669,7 +682,7 @@ TEST_CASE("hash_state records the scopes down to the requested depth") {
     // without islands: one scope `player` per slot, indexed by the slot (S4, the
     // first world scope that nests), and one scope `figure` per slot of the registry
     // (S7: one empty slot), recorded from depth 1 on and not at depth 0.
-    REQUIRE(tree.root.children.size() == 9);
+    REQUIRE(tree.root.children.size() == 10);
     for (const sim::HashNode& c : tree.root.children) {
         CHECK(c.children.size() == (c.name == "players" ? 32U : c.name == "figures" ? 1U : 0U));
     }
@@ -682,7 +695,7 @@ TEST_CASE("hash_state records the scopes down to the requested depth") {
     }
     sim::HashTree shallow;
     CHECK(w.state_hash(shallow, 0) == w.state_hash());
-    REQUIRE(shallow.root.children.size() == 9);
+    REQUIRE(shallow.root.children.size() == 10);
     CHECK(shallow.root.children[4].children.empty());
 }
 
@@ -934,7 +947,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another PRNG timeline version is refused") {
         auto bad = bytes;
-        bad[4] = 3; // this build's timeline is 4 (3 is the one before FarmWorkerDispatch)
+        bad[12] = 3; // this build's timeline is 4 (3 is the one before FarmWorkerDispatch)
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

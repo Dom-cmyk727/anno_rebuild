@@ -858,3 +858,12 @@ requires exactly four nonempty checked artifacts and unique successful producer/
 worker roles, and checks compiled row branch/empty/call facts against fresh AST.
 Public negative contracts reject unrelated or missing proof before any publication
 output. Prior scale/current recording-sink review found no blocker. F2 remainsOPEN.
+
+F-reviewed-02 at250c15ad passed2/2 fresh synthetic/inventory entries plus required
+contracts, including per-cut event corrections. Independent evidence challenge
+found copied child checker accepted contradictory doctest terminal counts. Both
+current canary wrappers now require exactly one successful testcase summary,
+positive assertion total=passed with zero failures, and one consistent SUCCESS
+status. Added wrong totals/failures/duplicate-status controls. This is evidence
+validation hardening; SCRIPT1 recorded bytes, pure stream/runtime references and
+goldens remain unchanged. Historical real child logs have consistent counts.

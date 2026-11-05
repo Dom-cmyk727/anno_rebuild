@@ -28,12 +28,16 @@ def checked_child(code, output):
         raise ValueError('sanitizer report in child output')
     if code != 0:
         raise ValueError(f'child exit {code}')
-    if '[doctest] Status: SUCCESS!' not in output:
-        raise ValueError('missing successful doctest terminal record')
-    if not re.search(r'\[doctest\] test cases:\s+1\s+\|\s+1 passed', output):
-        raise ValueError('expected exactly one executed testcase')
-    if not re.search(r'\[doctest\] assertions:\s+[1-9][0-9]*\s+\|', output):
-        raise ValueError('empty child assertions')
+    status = re.findall(r'^\[doctest\] Status:\s*(SUCCESS!|FAILURE!)\s*$', output, re.M)
+    cases = re.findall(r'^\[doctest\] test cases:\s*(\d+)\s*\|\s*(\d+) passed\s*\|\s*(\d+) failed(?:\s*\|\s*\d+ skipped)?\s*\|?\s*$', output, re.M)
+    assertions = re.findall(r'^\[doctest\] assertions:\s*(\d+)\s*\|\s*(\d+) passed\s*\|\s*(\d+) failed\s*\|?\s*$', output, re.M)
+    if status != ['SUCCESS!'] or len(cases) != 1 or tuple(map(int,cases[0])) != (1,1,0):
+        raise ValueError('require one consistent successful executed testcase')
+    if len(assertions) != 1:
+        raise ValueError('missing/ambiguous assertion terminal record')
+    total, passed, failed = map(int,assertions[0])
+    if total <= 0 or total != passed + failed or passed != total or failed != 0:
+        raise ValueError('empty/contradictory child assertion counts')
 
 
 EXPECTED_INPUTS=dict(scenario_sha256='b289be7fe906264b1d0fe0b2be75c0e68813ed6691128c84cfebb6e4fd4cc8c0',program_sha256='cac0aeb9c14dfd5c0f9b18c664e5282dff57096e2938f93c67391e3c3f8a47d0',program_bytes=2488)
@@ -54,6 +58,16 @@ class Contracts(unittest.TestCase):
 
     def test_legal(self):
         checked_child(0, self.good)
+    def test_contradictory_summaries_cannot_pass(self):
+        for cases, assertions in [('1 | 1 passed | 1 failed','17 | 17 passed | 0 failed'),
+                                  ('1 | 1 passed | 0 failed','17 | 16 passed | 1 failed'),
+                                  ('1 | 1 passed | 0 failed','17 | 1 passed | 0 failed'),
+                                  ('2 | 2 passed | 0 failed','17 | 17 passed | 0 failed')]:
+            wrong='[doctest] test cases: '+cases+'\n[doctest] assertions: '+assertions+'\n[doctest] Status: SUCCESS!\n'
+            with self.assertRaises(ValueError): checked_child(0,wrong)
+        with self.assertRaises(ValueError): checked_child(0,self.good+self.good)
+        with self.assertRaises(ValueError): checked_child(0,self.good+'[doctest] Status: FAILURE!\n')
+
     def test_failure_cannot_pass(self):
         with self.assertRaises(ValueError):
             checked_child(1, self.good)

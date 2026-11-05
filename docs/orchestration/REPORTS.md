@@ -12357,12 +12357,13 @@ Round R1 (orchestrator review, 2026-11-05) done on a fresh checkout
 - The sim founding-fixture tests (`site checks`, `territory`, 11 cases): 11/11 PASS.
 - WSL GCC 13 / Clang 18 `-Werror`: clean, all four configurations (full-tree run, which covers
   the one changed file).
-- GitHub CI on the pushed head (`a240ee45`): run
-  [`42028717774`](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42028717774) queued at
-  push time; result to follow once it completes (this entry predates it, written at hand-back
-  per the board's step 6).
+- GitHub CI on the final pushed head (`0368a4e5`, the hand-back entry commit itself): run
+  [`42028810051`](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42028810051) is
+  **green, 10/10 jobs** (`lint`, `build-macos`, `test` x2, `cpp-format`, and all five `cpp`
+  matrix legs). This run's tree is the code-bearing push (`a240ee45`) plus this one docs-only
+  commit, so it alone establishes the 10/10 result for this round; the earlier run on `a240ee45`
+  by itself (`42028717774`) was still in progress when this was written and is superseded.
 
-**Hand back.** `task/W4-main-1` pushed to `a240ee45`; remote hash verified
-(`a240ee4593a67174931cc38774c4083565539ef4`). Per the board's step 6 and round R1 item 6:
-stopping here. The orchestrator fast-forwards `main`, records it in `docs/PLAN.md`, marks UI.2's
-"W4.4 merged" condition met, and checks CI on `main`.
+**Hand back.** `task/W4-main-1` pushed to `0368a4e5`; remote hash verified. Per the board's step
+6 and round R1 item 6: stopping here. The orchestrator fast-forwards `main`, records it in
+`docs/PLAN.md`, marks UI.2's "W4.4 merged" condition met, and checks CI on `main`.

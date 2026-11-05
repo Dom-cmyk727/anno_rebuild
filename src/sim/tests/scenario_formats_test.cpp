@@ -783,10 +783,10 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     append(prod,
            entry(2, 0, Buf{0, 0x01, 0x10, 0x02, 0x20, 0x02, 0x30, 0x02, 0x40, 0x02, 3, 0, 4, 0}));
     append(prod, entry(4, 0, Buf{0, 0, 0x50, 0, 0x60, 0, 0x77, 0x77, 6, 0}));
-    append(prod, entry(6, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1}));       // 9 bytes: skipped
-    append(prod, entry(8, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1})); // 11 bytes: skipped
-    append(prod, entry(10, 0, Buf(11, 1)));                          // over the mine's 10
-    append(prod, entry(12, 0, Buf(15, 1)));                          // over the small farm's 14
+    append(prod, entry(6, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1}));        // 9 bytes: skipped
+    append(prod, entry(8, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1}));  // 11 bytes: skipped
+    append(prod, entry(10, 0, Buf(11, 1)));                           // over the mine's 10
+    append(prod, entry(12, 0, Buf(15, 1)));                           // over the small farm's 14
     append(prod, entry(14, 0, Buf{0, 0, 200, 0, 0, 0, 0, 0, 49, 1})); // Inn Load 0x10075740
     append(prod, entry(14, 2, Buf{0, 0, 200, 0, 0, 0, 0, 0, 49}));
     Buf c = {2, 0};
@@ -1248,9 +1248,9 @@ TEST_CASE("scenario warning kinds") {
         put16(ware, 3);
         put32(ware, 0);
         append(city_records, record("WARE", ware));
-        Buf prod = entry(0, 7);               // no item there: EntryWithoutBuildingItem
-        append(prod, entry(8, 4, Buf{1, 2})); // the house with bytes
-        append(prod, entry(8, 4));            // the house again: BuildingRefused
+        Buf prod = entry(0, 7);                // no item there: EntryWithoutBuildingItem
+        append(prod, entry(8, 4, Buf{1, 2}));  // the house with bytes
+        append(prod, entry(8, 4));             // the house again: BuildingRefused
         append(prod, entry(6, 6, Buf(11, 1))); // the mine with 11 bytes: UndecodedBuildingRecord
         append(city_records, record("PROD", prod));
     }
@@ -2249,4 +2249,44 @@ TEST_CASE("scenario OCCUR ore objects: island-local positions, masks, kinds, mal
     append(bad_kids, insel5(40, 60, 16, 8, 7, 2, chunk("OCCUR", bad)));
     CHECK(refusal(scene("ANNO", bad_kids)).find("an ore object is 24 bytes, got 26") !=
           std::string::npos);
+}
+TEST_CASE("SCRIPT1 normal scenario ANLTRG merges and research projection swaps saved bits") {
+    const auto types = registry();
+    Buf rows1;
+    put16(rows1, kRoad);
+    rows1.insert(rows1.end(), {1, 99});
+    put16(rows1, kHouse);
+    rows1.insert(rows1.end(), {255, 77});
+    Buf rows2;
+    put16(rows2, kRoad);
+    rows2.insert(rows2.end(), {0, 123});
+    auto state = record("ANLTRG", rows1);
+    append(state, record("ANLTRG", rows2));
+    auto research = record("ENTRY", {12, 1, 10, 0});
+    append(research, record("ENTRY", {17, 2, 7, 0}));
+    append(state, record("FORSCH", research));
+    auto loaded = sim::load_scenario(base_scene({}, state), *types, sim::SimConfig{});
+    REQUIRE_MESSAGE(loaded, (loaded ? "" : loaded.error()));
+    const auto& p = loaded.value().spec.players[0];
+    REQUIRE(p.permissions.size() == 2);
+    CHECK(p.permissions[0].type == sim::TypeId{kRoad});
+    CHECK(p.permissions[0].value == 0);
+    CHECK(p.permissions[1].type == sim::TypeId{kHouse});
+    CHECK(p.permissions[1].value == 255);
+    CHECK((p.research[12] & 2) != 0);
+    CHECK((p.research[17] & 2) == 0);
+    CHECK(loaded.value().spec.script_context == sim::ScriptContext::Missing);
+    auto made = sim::World::create(loaded.value().spec, types);
+    REQUIRE(made);
+    const auto hash = made.value().state_hash();
+    rows2.push_back(0);
+    auto broken = record("ANLTRG", rows1);
+    append(broken, record("ANLTRG", rows2));
+    auto refused = sim::load_scenario(base_scene({}, broken), *types, sim::SimConfig{});
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().find("ANLTRG length") != std::string::npos);
+    CHECK(made.value().state_hash() == hash);
+    auto saved = sim::World::load(made.value().save(), types);
+    REQUIRE(saved);
+    CHECK(saved.value().state_hash() == hash);
 }

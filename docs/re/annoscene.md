@@ -427,3 +427,11 @@ So the INITBLOCK runs once, before any IF, in the first step, and only while `SC
 - Colour button → value mapping on the colour screens; whether computer colours can collide with preset ones in practice.
 - Whether anything reads `INFO` bytes 6–7 (area / 64) or byte 1.
 - Script step (§12): what the step's argument is and how many IFs a step evaluates in practice; whether `+0x3c` is written anywhere else; whether evaluating a condition changes state (it would make `&&`'s skip and `||`'s full evaluation observable).
+
+### MAP-SCRIPT-1 caller correction (2026-11-05)
+
+The older script-step attribution at Frame0x1005fe2e is a network call. Verified
+SP0x1005b161 and MP0x1005fef6/0x1005ff7e invoke the Scene step with old absolute
+world tick before World advancement. See [script-runtime.md](script-runtime.md)
+for hashed modules, exact byte evidence, signed wrapped schedule and separating
+vectors. The new startup boundary is an explicit rebuild API adaptation.

@@ -8902,3 +8902,31 @@ narrow audited chain plus 16 pioneer houses/one upgrade costs 4110 gold,
 production chain. Supply, grazing/hunter, salt placement and economy work remain
 separate dependencies. Next chain recommendation: cloth 807 -> 1001 after
 accepted matching grazing work. Windows/Linux/original-runtime remain NOT_RUN.
+
+
+## MAP-SCRIPT-1 — local bounded runtime and authoritative permissions (2026-11-05)
+
+Branch `task/MAP-SCRIPT-1`, preserved bootstrap base `4102196a`; final code/test
+source `0001a020`, local only. [Detailed handoff](reviews/2026-11-05-map-script1.md)
+and [single acceptance ledger](../sim/script-runtime.md). The separate S1 contract
+is independently approved, releasing production wiring: complete-program compiler,
+transactional runtime/startup, ANLTRG/researched-state import, original permission
+effects, live/atomic current-state BuildCmd enforcement, persisted129+SCRIPT1
+identity and native/fresh-process replay are implemented. Published128 artifacts
+remain unchanged. No other-lane work or original content was changed.
+
+Final ASan/UBSan:1316selected/1316executedpasses, zero failed/empty/skipped/
+incomplete/sanitizer reports. Broad Debug retained FAIL1299selected/1297passes/
+2fails; exact test/expectation corrections pass3/3 including the full50-file
+corpus and independent original-research causal controls. Unaffected passes are
+explicitly reused; there is no invented single all-pass Debug run. Cheap29/29,
+semantic45/45, freshprocess2/2. All package reviews approved their bounded scope;
+fresh final integration review and handoff disposition are in the ledger.
+
+**BLOCKED full-original permission-program claim:**50programs parsed,11empty
+kernels compiled; all6permission-containing whole programs need unsupported
+handlers. Labelled original endless01 INIT fragment plus complete stocked custom
+scenario prove real BuildCmd consequences and replay, not full scenario support.
+No unrestricted/no-op/extraction fallback was introduced. Windows/MSVC, Linux
+warning/sanitizer lanes, original runtime and GPU remain NOT_RUN. No merge, push,
+rebase, TASKS update or default House flip.

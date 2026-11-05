@@ -46,10 +46,10 @@ and player permission rows are explicit state, not renderer/UI state.
 | S4 native identity | explicit stream/schema/program policy | exact newbytes; reload | old128/checksum-first false refusal | independent stream vectors | APPROVED86abd3e1 / review_integration |
 | S4 production boundary | proven script-beforeAdvance | recorder/unrecorded/replay same | canary-only runner; interval batching | publicsession tests | APPROVED86abd3e1 / review_integration |
 | S5 authoritative build | shared check_record | scriptallow -> exactdebit | stalequery; deny ignored; dryrun bypass | atomic/live negative controls | APPROVED86abd3e1 / permission_semantics_review |
-| S5 path separation | create/found/house callers | later building import/founding | restrict every create_building | caller regressions | APPROVED86abd3e1; generated-loader correction pending |
+| S5 path separation | create/found/house callers | later building import/founding | restrict every create_building | caller regressions | APPROVED86abd3e1; generated adapter APPROVED790921b7 |
 | S6 real vs synthetic | all50 AST inventory | executed supported complete program | fragment claimed as fullscenario | capability inventory/canaries | bounded proof APPROVEDdb13e91e / review_canaries; full original BLOCKED |
 | S6 scale | deterministic counters/Release | moreplayers/types/statements | query city/figure rescan | modest benchmark | APPROVEDdb13e91e; Release9da32085 |
-| S7 evidence | canonical runner + independent reviews | nonempty frozen-source gates | skipped/incomplete relabelled pass | retained raw logs/manifests | pending |
+| S7 evidence | canonical runner + independent reviews | nonempty frozen-source gates | skipped/incomplete relabelled pass | retained raw logs/manifests | corrected Debug and ASan complete at0001a020; final handoff review pending |
 
 ## S1 approved execution contract
 
@@ -496,3 +496,33 @@ Only those3 movement expectations are amended via research_production_delta.txt;
 all others stay fixed. This is an existing production reader of restored research,
 not new weapons gameplay or a full original-script execution claim. Full50-file
 corrective gate and focused re-review remain pending.
+
+## Final verification checkpoint
+
+At clean0001a020a8e1025e8531fa0e22358b5c166afce8, Debug corrective PASS3/3,
+zero failed/empty/skipped/incomplete/sanitizer,154.08seconds. Full50-file corpus
+passes1242assertions; exact research controls and timer case112each. Independent
+final reviewer approved source and corrected raw evidence. Prior broader Debug
+remains FAIL1299selected/1297passes/2fails. Its unaffected1297cases are reused
+because subsequent edits affect only the failing expectations/tests; correction
+covers both failures plus one new causal case. The successful unique union is1300
+cases, not a single all-pass Debug run.
+
+Final ASan/UBSan at the same clean pin PASS1316/1316: failed0,empty0,skipped0,
+incomplete0,sanitizer0,732.91seconds. Required five contract entries each pass
+separately. Build is Debug/Werror/ASan+UBSan; four CTest jobs with host admission.
+ExecutableSHA b0ff126e3b662e4b4fc57c7224b9fe55ffa88888e7db8010f4abf41c161c322e.
+Fresh producer95079/worker95083 exit0, checked manifest fresh-odoyd744. The lane
+covers parser/runtime/state/native/build/import/original creation/K3/C4/research
+and encoded replay. Completed long original-data population/corpus and settlement
+matrices are reused from Debug, not claimed as sanitizer executions.
+
+Permanent main evidence contract re-read before handoff. Published128 fixtures,
+original assets and TASKS remain unchanged. All mutants restored; no other lane's
+job was stopped or rebuilt. Final source integration was independently approved
+through0001a020; final sanitizer/handoff review pending at this writing. Historical
+'pending' notes above record their original package checkpoints, superseded by
+this final checkpoint and the ledger dispositions. The precise S6 full-original
+permission-program blocker remains; do not report COMPLETE LOCAL CANDIDATE.
+
+Forwardable handoff: orchestration/reviews/2026-11-05-map-script1.md.

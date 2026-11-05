@@ -52,3 +52,7 @@ the authoritative compiler receives the registry goods-name table and also refus
 a plain operand resolving a nonzero goods name (including mod names). Original
 UNUSED/index0 does not select cargo. Standalone compiler callers supply their goods
 context; normal World compile/restore always use the actual registry.
+
+The same23af0 helper also splits at colon23b09..23b3d. Both `@` and `:`
+decorations are explicitly refused, regardless of mapper spelling, so no unsupported
+cargo/quantity form can silently become an unqualified touch.

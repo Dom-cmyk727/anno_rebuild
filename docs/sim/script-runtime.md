@@ -674,3 +674,7 @@ B-final-03 passed13/13. Focused reviewer correction: goods lookup must retain
 first-match semantics across the full table; repeated UNUSED entries do not turn
 index0 into a cargo qualifier. Replaced any-nonzero-name check with full-table
 first match and added repeated-UNUSED legal control.
+
+B-final-04 passed13/13. The same bounded23af0 closure splits colon operands;
+colon as well as at-sign forms now explicitly refuse cargo semantics. Added HOLZ:1
+and ME:1 refusal controls. Final focused re-review requested.

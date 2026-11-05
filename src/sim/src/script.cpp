@@ -159,7 +159,7 @@ struct Compiler {
                 const auto goods =
                     std::find_if(env.goods_names.begin(), env.goods_names.end(),
                                  [&](auto name) { return upper(name) == upper(*l.arg); });
-                if (l.arg->find('@') != std::string::npos ||
+                if (l.arg->find_first_of("@:") != std::string::npos ||
                     (goods != env.goods_names.end() && goods != env.goods_names.begin())) {
                     fail(l.offset, "unsupported area cargo qualifier");
                     return std::nullopt;

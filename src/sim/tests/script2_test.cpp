@@ -230,7 +230,7 @@ TEST_CASE("SCRIPT2 area plain mapper casefold exact owner and cargo qualifier re
     auto r = f.runtime(source);
     REQUIRE(f.visit(r));
     CHECK(r.state.signals[1] == 1);
-    for (const auto name : {"OTHER@WOOD", "ME@anything", "UNKNOWN@WOOD"}) {
+    for (const auto name : {"OTHER@WOOD", "ME@anything", "UNKNOWN@WOOD", "HOLZ:1", "ME:1"}) {
         auto bad = source;
         bad.replace(bad.find("oThEr"), 5, name);
         auto refused = compile_script(bad, {{}, 32, 5});

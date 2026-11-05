@@ -3,7 +3,7 @@
 A contract, not production acceptance. Scope/class limits and authored vectors:
 [acceptance ledger](../sim/original-unit-import.md). Original bytes/dumps remain
 ignored. Input SHA256: AnnoWelt.dll
-`dd3f36ff564d2685d10795272c4ed3c0b2da32a946c2883fb1158ff439249b91`;
+`f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`;
 scenario/endless source hashes are retained by SCRIPT2 and the new inventory.
 This is static instruction/record proof on the original GOG modules, not a runtime
 capture. Ghidra is unavailable at the installed-tool path on this host; existing

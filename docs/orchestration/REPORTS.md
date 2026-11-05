@@ -12179,3 +12179,30 @@ frame-gated input dispatch (`key h` dispatched at most once per rendered window 
 least 3 consecutive times inside a full `-j4` ASan batch, not one clean pass).
 
 `task/W4-opening-1` at `3a2da9b9` and the local `main` commits are pushed. W4-MAIN-1 proceeds next.
+
+## W4-MAIN-1 — WSL ASan gate root cause: autocrlf noise + llvmpipe GPU fallback — 2026-11-05 — status: GATE MOVED TO CLOUD CI
+
+The local WSL ASan/UBSan gate (`wsl-m1`) ran 6h17m and came back unusable: sim/formats
+lanes reflect a pre-fix fixture state, and the render lane self-invalidated
+(`VERDICT: FAIL tested source changed during selection`) because a CRLF fixture fix was
+applied to the worktree while the script was still reading it, against plan. Root cause
+of both the integrity-check noise and the gate's unusually long runtime (co-developer
+flagged it as abnormal; confirmed the host is not resource-capped) is written up in full
+in [`docs/testing/wsl-gate-root-cause-2026-11-05.md`](../testing/wsl-gate-root-cause-2026-11-05.md):
+a Windows-git/WSL-git `core.autocrlf` mismatch inflates every WSL gate's "dirty" count to
+~1000 (already present, same magnitude, in every prior `wsl-w*` gate back to 2026-11-02 —
+previously solved once in `wsl_gate5.sh`, not carried into `wsl_gate_m1.sh`), and the
+render lane's GPU tests silently ran on Mesa's `llvmpipe` software rasterizer instead of
+a real adapter (CI's already-proven `lavapipe` + `ANNO_REQUIRE_GPU=1` setup from
+`docs/testing/gpu-tests.md` was never applied), making two named-adapter tests
+structurally unable to pass and inflating the render lane to 3+ hours (vs 117s of GPU
+test time on CI's lavapipe).
+
+**Action:** the local `wsl-m2` rerun was stopped (no processes left running). The CRLF
+fixture fix itself (`.gitattributes`, 29 renormalized fixtures, a defensive `\r` strip in
+`founding_fixture.hpp`) is committed on `task/W4-main-1` and pushed; the cloud
+`linux-clang-asan` CI job runs the real gate instead — it has no autocrlf mismatch (plain
+Linux checkout) and does not run GPU-adapter tests, so neither failure mode applies
+there. Local WSL ASan remains fine for narrow single-test debugging, not for a full
+merge gate, until a canonical committed gate script exists (open follow-up, not filed as
+its own task yet).

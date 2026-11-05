@@ -192,8 +192,8 @@ TEST_CASE("synthetic mechanics fixture: reload at in-flight states equals the un
               << " houses " << ref.houses << "\n";
 }
 
-TEST_CASE("synthetic mechanics fixture: recorded log replays; a legal changed command diverges at "
-          "the first checkpoint; a changed checkpoint is named") {
+TEST_CASE("synthetic mechanics fixture: recorded log replays, a changed legal command and a "
+          "changed checkpoint diverge where named") {
     const auto o = load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");

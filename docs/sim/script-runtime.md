@@ -186,3 +186,22 @@ synthetic scenarios remain explicitly different evidence; do not claim full
 original scenario execution.
 
 S0/S1 independent reviews pending. S2 production implementation is not released.
+
+### S1 clarification before review
+
+Signal names preserve exact bytes and compare case-sensitively. Keywords use
+ASCII case-insensitive matching. SET declarations become visible in source order;
+an earlier condition/assignment cannot refer to a later SET. Implicit
+SCHUETTIINITSIG exists first. Restored SIGNALS preserve those exact names.
+Mapper declarations likewise become visible in source order, with first matching
+ASCII-case-insensitive prefix-before-@ winning. Forward mapper references refuse.
+The initial binding validates a signed slot and resolves the configured neutral
+fallback only when that slot has no player; actual bindings remain persisted.
+
+The original INIT guard first checks its cursor, then SCHUETTI. With any IF,
+rearming SCHUETTI after the first visit does not rerun INIT; with zero IFs the
+original null cursor can permit repeated INIT. This slice deliberately uses an
+explicit started state and executes INIT at most once, including zero-IF programs.
+That continuity/safety adaptation is part of the policy identity. WON/LOST are
+unsupported: their global stop flag is therefore unreachable in accepted programs.
+The world script fault barrier is separate from original endgame stop handling.

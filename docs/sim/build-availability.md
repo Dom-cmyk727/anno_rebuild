@@ -191,3 +191,18 @@ workers. Host-permitted final runs retain admission control and show coordinator
 admissions. No shared coordinator, infrastructure or another owner's job was
 modified. Final handoff and review dispositions are in
 `../orchestration/reviews/2026-11-05-map-bootstrap1.md`.
+
+## MAP-SCRIPT-1 successor contract (not bootstrap implementation)
+
+The bootstrap block above remains historical. The new owner packet authorizes a
+separate execution/permission contract in [script-runtime.md](script-runtime.md).
+Its S1 approval is required before production enforcement. The proposed runtime
+keeps explicit Missing/Pending/Ready/ExplicitNone/Fault contexts; only Ready and
+ExplicitNone permit an authoritative query. ANLTRG raw import has no setter
+side effects. Script actions preserve exact-type overrides and the separately
+reviewed stage/research grant facts. The shared live/atomic check_record is the
+integration point, after placement/rewrite validation and before optional
+research, affordability, serials or mutation. The requested type and final
+effective type must both qualify; this stronger rewrite rule is an explicitly
+declared rebuild policy. Imports/founding/automatic transitions keep their
+separate paths. This amendment does not assert any wiring has been implemented.

@@ -117,3 +117,20 @@ Strict row-length/known-id validation is an explicit safety adaptation.
 Independent S1 reviewers: /root/script_semantics_review and
 /root/permission_semantics_review derived these cases read-only. Formal frozen
 contract disposition pending; no production implementation is released yet.
+
+### Final independently derived edges
+
+SET declaration visibility is sequential: condition22940 and assignment1b5b5
+look up immediately through23e00. Signal vt1003b944+18=1d590..1d5e7 compares
+literal bytes, so Foo and FOO are distinct. Mapper action resolution similarly
+uses already appended declarations; PLAYERMAPPER_DEFINE23400 appends,23ea0
+finds first case-insensitive match after prefix stripping. Forward references
+are not supported. Portable ASCII folding is an explicit definition for mapper
+names and keywords, not a blanket normalization of symbols.
+
+INIT checks cursor16b89 before SCHUETTI; when no IF exists, the original cursor
+remains null and a later rearmed signal could permit another INIT. The explicit
+native started state intentionally prevents that edge as a labelled policy
+adaptation. Scene global43438 has only constructor1611f zero, step16b7d read,
+and action155c5/155f5 writes1. Action155a0/155d0 implement WON/LOST; these are
+unsupported whole-program dependencies, so the flag is unreachable in the slice.

@@ -280,8 +280,12 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
             return;
         }
         w->status.shows_icons = icons;
-        const std::vector<std::uint32_t> in_before = w->in;
-        const std::vector<std::uint32_t> out_before = w->out;
+        std::vector<std::uint32_t> in_before,
+            out_before; // diagnostic ledger only: no copy without a sink
+        if (ctx.transport_stats != nullptr) {
+            in_before = w->in;
+            out_before = w->out;
+        }
         r = workshop_step(*w, type->prod, ctx.t);
         if (ctx.transport_stats != nullptr && r.stepped) {
             // MAP-NEEDS-2 N3 ledger (diagnostic, never state): what this step consumed of each

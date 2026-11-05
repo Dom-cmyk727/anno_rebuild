@@ -38,6 +38,12 @@ using namespace island7;
 
 constexpr sim::GoodsId kWolle = 9, kGras = 69;
 
+struct PaySnap {
+    std::int64_t money = 0;
+    std::vector<std::uint32_t> store;
+    std::vector<std::uint64_t> spent;
+};
+
 struct HouseW {
     std::uint32_t stoffe_slot = 0, stoffe0 = 0, prev = 0;
     bool rose = false;
@@ -54,6 +60,7 @@ struct Cloth {
     sim::BuildingId weaver;
     sim::TypeId stall_type;
     std::optional<sim::TileXY> stall_at;
+    std::optional<PaySnap> pay_before, pay_after; // around the stall BuildCmd
     std::map<sim::BuildingId, HouseW> houses;
     // per grass tile of the sheep farms' discs: the tick of the cut and of the regrowth
     std::map<std::pair<int, int>, std::vector<std::uint64_t>> cut_at, regrown_at;
@@ -65,6 +72,32 @@ struct Cloth {
     Cloth(const Cloth&) = delete;
     Cloth& operator=(const Cloth&) = delete;
 };
+
+/// The payment of a build: the owner's gold and the city's store of every cost good before, then
+/// the exact debit after.
+PaySnap pay_snap(const Cloth& c, const sim::BuildingType& t) {
+    PaySnap p;
+    p.money = c.w.players().find(c.city->owner)->money;
+    for (const sim::CostEntry& e : t.cost_goods) {
+        p.store.push_back(c.city->stock.stock[e.goods]);
+        p.spent.push_back(c.city->build_goods[e.goods - c.w.config().build_goods_first].spent);
+    }
+    return p;
+}
+
+/// Asserts that the build between `a` and `b` was PAID: gold down by cost_gold, every cost good
+/// down in the store by its amount and up in the city's `spent` ledger by the same (the BuildCmd
+/// debits at apply.cpp, not free).
+void check_paid(const Cloth& c, const sim::BuildingType& t, const PaySnap& a, const PaySnap& b) {
+    CHECK_FALSE(c.w.rules().free_build_cheat);
+    CHECK(t.cost_gold > 0);
+    CHECK(a.money - b.money == std::int64_t{t.cost_gold});
+    CHECK_FALSE(t.cost_goods.empty());
+    for (std::size_t i = 0; i < t.cost_goods.size(); ++i) {
+        CHECK(a.store[i] - b.store[i] == t.cost_goods[i].amount_88);
+        CHECK(b.spent[i] - a.spent[i] == t.cost_goods[i].amount_88);
+    }
+}
 
 sim::Command cmd(const Cloth& c, sim::Body body) {
     sim::Command k;
@@ -162,6 +195,7 @@ std::unique_ptr<Cloth> start_cloth(const Original& o, bool build_stall, std::uin
             }
         }
         bool done = false;
+        c->pay_before = pay_snap(*c, *T.find(c->stall_type));
         for (int r = 1; r <= 8 && !done; ++r) {
             for (int dy = -r; dy <= r && !done; ++dy) {
                 for (int dx = -r; dx <= r && !done; ++dx) {
@@ -180,6 +214,7 @@ std::unique_ptr<Cloth> start_cloth(const Original& o, bool build_stall, std::uin
             }
         }
         REQUIRE(done);
+        c->pay_after = pay_snap(*c, *T.find(c->stall_type));
     }
     if (stoffe_store != 0) {
         c->city->stock.stock[kStoffe] =
@@ -412,6 +447,7 @@ TEST_CASE("cloth canary: the unmodified original, zero-start: new wool becomes n
     REQUIRE(c.stall_at.has_value());
     CHECK(c.stall_at->x == 306);
     CHECK(c.stall_at->y == 339);
+    check_paid(c, *o->types->find(c.stall_type), *c.pay_before, *c.pay_after);
     std::cerr << "PIN start farm raw " << c.farm_raw0 << " out " << c.farm_out0 << " weaver in "
               << c.weaver_in0 << " out " << c.weaver_out0 << "\n";
     constexpr std::uint64_t kEnd = 300000;
@@ -591,9 +627,11 @@ TEST_CASE(
     const std::uint64_t taken_gap = taken(c);
     // the restoration: a paid public command at the same site
     CHECK_FALSE(c.w.rules().free_build_cheat);
+    const PaySnap pay0 = pay_snap(c, *o->types->find(wtype));
     const auto res =
         c.w.apply(cmd(c, sim::BuildCmd{c.ref, {sim::PlacementWire{wtype, at.x, at.y, rot, 0, 0}}}));
     REQUIRE_MESSAGE(res.ok(), std::string(sim::reject_name(res.status)));
+    check_paid(c, *o->types->find(wtype), pay0, pay_snap(c, *o->types->find(wtype)));
     const sim::Building* nb = c.isl->building_at(c.w.config().layout, c.city->number, at.x, at.y);
     REQUIRE(nb != nullptr);
     const sim::BuildingId new_weaver = nb->id;

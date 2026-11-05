@@ -263,8 +263,10 @@ FoodArm run_food_arm(const Original& o, bool producers, std::uint32_t store_raw)
                   : 0U;
     r.store_end = c.city->stock.stock[kFood];
     const auto& fs = c.stats.forestry;
-    for (const auto& kv : fs.small_farms) {
-        r.farm_made += kv.second.made_88[1];
+    // Only the four farms of this town: the ledger also holds the other town's farms of the
+    // scenario.
+    for (const sim::BuildingId f : {c.farm_potato, c.farm_empty, c.farm_grass1, c.farm_grass2}) {
+        r.farm_made += fs.small_farms.count(f) ? fs.small_farms.at(f).made_88[1] : 0U;
     }
     CHECK(c.w.check_invariants() == "");
     return r;

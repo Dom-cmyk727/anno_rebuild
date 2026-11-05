@@ -15,7 +15,7 @@ target_compile_features(anno_sim PUBLIC cxx_std_20)
 anno_target_defaults(anno_sim SANITIZE_NO_RECOVER)
 
 if(ANNO_BUILD_TESTS)
-  add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/production_test.cpp
+  add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/production_test.cpp
                  tests/archive_test.cpp tests/slot_list_test.cpp tests/scheduler_blocks_test.cpp
                  tests/container_probe_test.cpp tests/config_test.cpp tests/types_test.cpp
                  tests/player_test.cpp tests/tile_hash_test.cpp tests/island_state_test.cpp
@@ -86,6 +86,8 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME script2_stream_reference_agrees COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/sim_stream_script2.py --check)
     add_test(NAME script2_reference_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_runtime2_ref.py --self-test)
     add_test(NAME script2_reference_agrees COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_runtime2_ref.py --check ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/script2/handler_vectors.json)
+    add_test(NAME integration_stream_reference_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/integration_stream_ref.py --self-test)
+    add_test(NAME integration_stream_reference_agrees COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/integration_stream_ref.py)
     add_test(NAME script1_stream_reference_contract
              COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/sim_stream_script1.py --self-test)
     add_test(NAME script1_stream_reference_agrees

@@ -119,7 +119,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 129
+STATE_HASH_VERSION = 131
 PRNG_TIMELINE_VERSION = 5
 
 
@@ -389,6 +389,7 @@ def player_bytes(p):
     b += u64(65) + bytes(130)  # research progress
     b += u64(0)  # relations (stream 120): no row, the constructor's zero fill
     b += u64(0)  # discovery (stream 120): empty set
+    b += u64(0)  # current script permission overrides, empty in scheduler goldens
     return b
 
 
@@ -834,11 +835,12 @@ def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, island
                world=(0, 0), steps=0, step_ms=0, monopoly=None, walk_digest=0):
     """`steps` advances of `step_ms` reached `ms`; `monopoly` is the table its first
     advance wrote (None: all entries empty)."""
-    header = (u32(STATE_HASH_VERSION) + u32(PRNG_TIMELINE_VERSION) + config_bytes()
+    header = (u32(STATE_HASH_VERSION) + b'SIMINT1\0' + u32(PRNG_TIMELINE_VERSION) + config_bytes()
               + rules_bytes(full_tick))
     header += (u64(registry) + u64(walk_digest) + u64(22)
                + b''.join(string(b'default') for _ in range(22)))
     clock_rng = u64(ms) + u64(last_tick) + u64(2048) + u64(rng_table_digest()) + u32(cursor)
+    context = 0 if islands is None else 1
     islands = islands_digest({}) if islands is None else islands
     # The 7.5 minute accumulator holds every ms (below 450000 within these goldens: the
     # event would draw), the monopoly accumulator the first step only (D5: the body ran
@@ -856,7 +858,17 @@ def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, island
     timers = timers_monopoly_digest(t if steps > 0 else 0, monopoly if steps > 0 else None)
     return fnv(u64(fnv(header)) + u64(fnv(clock_rng)) + u64(fnv(settings_bytes(*world)))
                + u64(ids) + u64(players) + u64(islands) + u64(figures) + u64(events)
-               + u64(timers))
+               + u64(timers) + u64(fnv(script_runtime_bytes(context=context))))
+
+
+def script_runtime_bytes(source=b'', limits=(1048576,65536,128,100000,4096), namespace=None,
+                         policy=2, context=0, fault=0, cursor=0, arg=0, offset=0, work=0,
+                         signals=b'', bindings=()):
+    return (string(source) + b''.join(u32(v) for v in limits)
+            + (b'\0' if namespace is None else b'\1'+string(namespace))
+            + u32(policy) + bytes([context,fault])
+            + b''.join(u32(v) for v in (cursor,arg,offset,work)) + string(signals)
+            + u64(len(bindings)) + b''.join(u32(v) for v in bindings))
 
 
 def values():
@@ -920,7 +932,7 @@ def values():
 
 def goldens():
     found = {}
-    path = ROOT / 'fixtures/synthetic/sim/goldens.txt'
+    path = ROOT / 'fixtures/synthetic/sim/integrate1/goldens.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         parts = line.split('#')[0].split()
         if len(parts) == 4:
@@ -932,7 +944,7 @@ def corpus_versions():
     """(kStateHashVersion, kPrngTimelineVersion) from the version header line of
     fixtures/synthetic/sim/scenario_corpus.txt (written by scenario_test.cpp; its create
     hashes move with both versions), or None when the file has none."""
-    path = ROOT / 'fixtures/synthetic/sim/scenario_corpus.txt'
+    path = ROOT / 'fixtures/synthetic/sim/integrate1/scenario_corpus.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+)$', line.strip())
         if m:

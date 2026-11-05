@@ -35,6 +35,61 @@ std::uint8_t kind_byte(ReplayEntry::Kind k) {
     return static_cast<std::uint8_t>(k);
 }
 
+// Replay can be supplied directly, without read_log or the CLI's World::load.
+// Check the native envelope identity here too; do not compare initial-world bytes,
+// since replaying a suffix against a valid continuation is supported.
+std::string identity_error(const ReplayLog& log) {
+    if (log.state_stream_version != kStateHashVersion)
+        return "replay refused: state stream version differs from this build's";
+    if (log.state_schema != kScriptSchema)
+        return "replay refused: state schema differs from this build's";
+    const auto bytes = std::span(log.initial_save);
+    if (bytes.size() < 28)
+        return "replay refused: initial save is too short";
+    StateHasher hash;
+    hash.bytes(bytes.first(bytes.size() - 8));
+    ReadArchive tail(bytes.last(8));
+    std::uint64_t checksum = 0;
+    tail.u64(checksum);
+    if (checksum != hash.value())
+        return "replay refused: initial save checksum differs";
+    ReadArchive r(bytes.first(bytes.size() - 8));
+    std::array<std::uint8_t, 4> magic{};
+    r.bytes(magic);
+    std::uint32_t frame = 0, version = 0;
+    std::uint64_t schema = 0;
+    r.u32(frame);
+    r.u32(version);
+    r.u64(schema);
+    if (r.failed() || magic != std::array<std::uint8_t, 4>{'A', '3', 'S', 'V'} ||
+        frame != kSaveVersion)
+        return "replay refused: initial save frame differs";
+    if (version != kStateHashVersion)
+        return "replay refused: initial save state stream version differs from this build's";
+    if (schema != kScriptSchema)
+        return "replay refused: initial save state schema differs from this build's";
+    std::uint8_t kind = 0;
+    r.u8(kind);
+    if (kind == 1) {
+        std::uint64_t count = 0;
+        r.count(count, 2);
+        if (!r.failed())
+            r.skip(count * 2);
+    }
+    std::uint64_t length = 0;
+    r.u64(length);
+    if (r.failed() || kind > 1 || length < 16 || length > r.remaining())
+        return "replay refused: initial save header is truncated";
+    r.u32(version);
+    r.u64(schema);
+    std::uint32_t timeline = 0;
+    r.u32(timeline);
+    if (r.failed() || version != kStateHashVersion || schema != kScriptSchema ||
+        timeline != kPrngTimelineVersion)
+        return "replay refused: initial save header identity differs from this build's";
+    return {};
+}
+
 std::string apply_entry(World& w, const ReplayEntry& e) {
     switch (e.kind) {
     case ReplayEntry::Kind::Advance:
@@ -229,6 +284,8 @@ formats::Result<std::vector<std::uint8_t>, std::string> write_log(const ReplayLo
     w.bytes(kMagic);
     w.u32(kReplayLogVersion);
     w.u32(kCommandWireVersion); // once, not per record (§8.5)
+    w.u32(log.state_stream_version);
+    w.u64(log.state_schema);
     w.u64(log.script_digest);
     w.u64(log.config_digest);
     w.u64(log.rules_digest);
@@ -293,7 +350,7 @@ formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> b
     }
     std::uint32_t version = 0;
     r.u32(version);
-    if (!r.failed() && version != kReplayLogVersion && version != 2) {
+    if (!r.failed() && version != kReplayLogVersion) {
         r.fail("replay-log version " + std::to_string(version) + " is not " +
                std::to_string(kReplayLogVersion));
     }
@@ -305,8 +362,13 @@ formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> b
     }
 
     ReplayLog log;
-    if (version >= 3)
-        r.u64(log.script_digest);
+    r.u32(log.state_stream_version);
+    r.u64(log.state_schema);
+    if (!r.failed() && log.state_stream_version != kStateHashVersion)
+        r.fail("replay state stream version differs from this build's");
+    if (!r.failed() && log.state_schema != kScriptSchema)
+        r.fail("replay state schema differs from this build's");
+    r.u64(log.script_digest);
     r.u64(log.config_digest);
     r.u64(log.rules_digest);
     r.u64(log.registry_digest);
@@ -405,6 +467,8 @@ formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> b
 
 formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog& log,
                                                    ReplayObserver observer) {
+    if (auto error = identity_error(log); !error.empty())
+        return error;
     if (log.script_digest != script_content_digest(world.script()))
         return std::string("replay refused: script content digest differs from the log's");
     if (log.prng_timeline_version != kPrngTimelineVersion) {
@@ -468,6 +532,8 @@ formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog
 
 std::vector<std::uint64_t> hash_per_entry(World initial, const ReplayLog& log) {
     std::vector<std::uint64_t> hashes;
+    if (!identity_error(log).empty())
+        return hashes;
     hashes.reserve(log.entries.size());
     for (const ReplayEntry& e : log.entries) {
         if (!apply_entry(initial, e).empty())
@@ -492,6 +558,8 @@ std::optional<std::size_t> first_divergent_entry(std::span<const std::uint64_t> 
 }
 
 HashTree tree_at(World initial, const ReplayLog& log, std::size_t entry, std::uint32_t depth) {
+    if (!identity_error(log).empty())
+        return {};
     for (std::size_t i = 0; i < log.entries.size() && i <= entry; ++i) {
         if (!apply_entry(initial, log.entries[i]).empty())
             break;

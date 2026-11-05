@@ -177,8 +177,10 @@ TEST_CASE("write_log matches the documented frame byte for byte") {
     for (const char c : std::string("A3RP")) {
         s.u8(static_cast<std::uint8_t>(c)); // magic
     }
-    s.u32(3);                     // kReplayLogVersion
+    s.u32(4);                     // kReplayLogVersion
     s.u32(1);                     // kCommandWireVersion, once
+    s.u32(131);                   // combined state stream
+    s.u64(0x0031544e494d4953ULL); // SIMINT1 lineage
     s.u64(0);                     // script content digest in this wire-only specimen
     s.u64(0x1111111111111111ULL); // config digest
     s.u64(0x2222222222222222ULL); // rules digest

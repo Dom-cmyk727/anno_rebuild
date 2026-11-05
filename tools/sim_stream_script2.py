@@ -12,7 +12,7 @@ import struct
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location('published128_reference', ROOT/'tools/sim_stream.py')
+spec = importlib.util.spec_from_file_location('published128_reference', ROOT/'fixtures/synthetic/sim/integrate1/legacy/published128/tools/sim_stream.py')
 old = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(old)
 base_player_bytes = old.player_bytes

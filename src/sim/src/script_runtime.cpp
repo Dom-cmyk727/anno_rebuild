@@ -244,7 +244,8 @@ std::uint64_t script_content_digest(const ScriptRuntime& r) {
     StateHasher h;
     const auto text = [&](std::string_view value) {
         h.u64(value.size());
-        h.bytes(std::span(reinterpret_cast<const std::uint8_t*>(value.data()), value.size()));
+        for (const auto byte : value)
+            h.u8(static_cast<std::uint8_t>(byte));
     };
     h.u32(r.policy);
     h.u32(r.limits.source_bytes);

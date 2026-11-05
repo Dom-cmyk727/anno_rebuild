@@ -153,8 +153,8 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // script source/policy/limits and exact continuation/fault/binding state. The
 // compiled program is derived once. Published128 is never reinterpreted.
 // Supply129 independently enables SmallFarm harvest workers/animals and raw-slot credit.
-// I2 assigns the combined candidate a fresh identity before recording acceptance artifacts.
-inline constexpr std::uint32_t kStateHashVersion = 130;
+// Stream131 combines accepted UNIT130 and supply129; SIMINT1 schema distinguishes this lineage.
+inline constexpr std::uint32_t kStateHashVersion = 131;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

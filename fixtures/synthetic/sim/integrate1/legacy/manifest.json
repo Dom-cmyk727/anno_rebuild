@@ -796,5 +796,23 @@
     "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
     "path": "fixtures/synthetic/sim/script2/scenario_corpus.txt",
     "sha256": "2a9fbff9c045def8b2cf7ea859986495913efbe9435dc1bce11e0a663993a462"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "src/sim/src/goods_table.cpp",
+    "sha256": "126f66c2b06337c93dd5467a8eb46e8d5ec47ece4972aadf46fad7194fcd79db"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "src/sim/src/goods_table.cpp",
+    "sha256": "126f66c2b06337c93dd5467a8eb46e8d5ec47ece4972aadf46fad7194fcd79db"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "src/sim/src/goods_table.cpp",
+    "sha256": "126f66c2b06337c93dd5467a8eb46e8d5ec47ece4972aadf46fad7194fcd79db"
   }
 ]

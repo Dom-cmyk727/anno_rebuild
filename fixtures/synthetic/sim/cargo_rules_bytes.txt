@@ -1,4 +1,4 @@
-# Rules bytes of stream version 129 with the CargoRules of MAP-CARGO-1 (docs/sim/ship-cargo.md section 5).
+# Rules bytes of stream version 131 with the CargoRules of MAP-CARGO-1 (docs/sim/ship-cargo.md section 5).
 # Written by tools/sim_stream.py --write-cargo-rules from the spec alone (no C++). Columns: name hex.
 # cargo_* is the CargoRules part alone; rules_* is the whole Rules scope of a default world.
 # Stream 125 (MAP-ROAD-CLOSE-1): the Rules scope ends with the two road booleans; rules_roads has both on.

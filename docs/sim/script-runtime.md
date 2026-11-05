@@ -54,7 +54,7 @@ and player permission rows are explicit state, not renderer/UI state.
 | SCRIPT2 A closure | entire original AST + hashed bytes | seven IFs/all instructions inventoried | permission fragment substituted | cache/script2/A/endless01-inventory.json | pending A review |
 | SCRIPT2 B area | Scene232a0/11010; Welt985c0/a5f70/97150 | true/false, every edge, exact owner/class/crew | swapped tuples/closed edge/ID0 wildcard/hull/nav shortcut | script2 handler vectors + focused query gate | pending |
 | SCRIPT2 B bounded view | original spatial query + owner-approved cap removal |513th match, index rebuild/large unrelated set |512 truncation or hidden scan per IF | deterministic build/query work counters | owner cap choice approved; code pending |
-| SCRIPT2 C money | Scene15940; Welt1cfd0; approved F15/F28 | exact signed deltas/mixed staging/ledger | wrong recipient/duplicate credit/partial commit | handler vectors + money gate/mutant | primary reviewed; frozen A pending |
+| SCRIPT2 C money | Scene15940; Welt1cfd0; approved F15/F28/F35 | exact signed deltas/mixed staging/ledger | wrong recipient/duplicate credit/partial commit | handler vectors + money gate/mutant | primary reviewed; frozen A pending |
 | SCRIPT2 D wave | Scene156f0; Frame61010/62090/62380 | exact broadcast namespaced output/order | silent/wrong event, output erased, rollback leak | typed-event consumer and artifact contracts | primary reviewed; frozen A pending |
 | SCRIPT2 E startup/identity | normal Recorder/driver callers + explicit native schema | first command after INIT; Startup replay; native Ready | constructor eager/second world zero visit/old schema accepted | native literal/reference/corruption and replay gates | pending |
 | SCRIPT2 F original canary | unchanged file/program hashes and actual resources | natural public-command area condition + real build | teleport/grant/extracted source/compiled-only claim | exact branch/money/event ledger, fresh process | pending |
@@ -575,7 +575,7 @@ an index that later exhausts its budget. Idle short-circuit guards do not scan.
 A large unrelated-content control must show build work separately from query work.
 
 MONEY_ADD sign-extends validated i32 operands into the established i64 saturating
-money policy (F15/F28), one mapped recipient and no account/event side effects.
+money policy (F15/F28/F35), one mapped recipient and no account/event side effects.
 Staging must preserve ordered additions across aliases and mixed permission writes,
 commit exactly once, and roll back after later failure. No ECON work is imported.
 A typed wave instruction carries an immutable quoted asset. A generic normal file

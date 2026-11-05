@@ -358,7 +358,7 @@
     {
       "id": "extreme-endpoint-add15-overflow",
       "original": "Sector end uses signed32 endpoint+15 before clipping; near INT32_MAX it wraps",
-      "disposition": "Specify supported endpoint/domain or policy before claiming fidelity for this corner; endless01 unaffected"
+      "disposition": "Preserve signed32 wrap before clipping, as specified in the reviewed contract; no endpoint widening."
     }
   ],
   "query_scan_domain_vectors": [
@@ -412,6 +412,38 @@
       ],
       "expected_original": true,
       "reason": "Start sector1,end2; current candidate checked against raw rectangle"
+    },
+    {
+      "id": "endpoint-wrap",
+      "world_width": 32,
+      "world_height": 32,
+      "authored_y0_x0_x1_y1": [
+        0,
+        0,
+        2147483647,
+        32
+      ],
+      "pos_q8": [
+        0,
+        0
+      ],
+      "expected_original": false
+    },
+    {
+      "id": "endpoint-no-wrap-control",
+      "world_width": 32,
+      "world_height": 32,
+      "authored_y0_x0_x1_y1": [
+        0,
+        0,
+        2147483632,
+        32
+      ],
+      "pos_q8": [
+        0,
+        0
+      ],
+      "expected_original": true
     }
   ],
   "cap_disposition": "Owner explicitly approved complete indexed queries bounded by deterministic work on 2026-11-05; original512 truncation removed.",
@@ -463,5 +495,93 @@
       -1,
       -9223372036854775808
     ]
+  ],
+  "wave_vectors": [
+    {
+      "id": "namespace-broadcast",
+      "namespace": "scenes/0011SingleEndlosAddon",
+      "actions": [
+        "HAWAIMUCKE.WAV"
+      ],
+      "expected": [
+        {
+          "asset": "scenes/0011SingleEndlosAddon/HAWAIMUCKE.WAV",
+          "code": 317,
+          "audience": "AllLocal",
+          "original_recipient": 170
+        }
+      ]
+    },
+    {
+      "id": "order-repeat",
+      "namespace": "scenes/mod",
+      "actions": [
+        "A.WAV",
+        "B.WAV",
+        "A.WAV"
+      ],
+      "expected_assets": [
+        "scenes/mod/A.WAV",
+        "scenes/mod/B.WAV",
+        "scenes/mod/A.WAV"
+      ]
+    },
+    {
+      "id": "wrong-namespace",
+      "namespace": "scenes/mod",
+      "actions": [
+        "A.WAV"
+      ],
+      "reject_asset": "scenes/other/A.WAV"
+    },
+    {
+      "id": "wrong-recipient",
+      "namespace": "scenes/mod",
+      "actions": [
+        "A.WAV"
+      ],
+      "reject_audience": "Player170"
+    },
+    {
+      "id": "transaction-rollback",
+      "money_before": 100,
+      "money_delta": 5,
+      "actions": [
+        "A.WAV"
+      ],
+      "fault_after": true,
+      "expected_money": 100,
+      "expected_events": []
+    },
+    {
+      "id": "queue-drop-oldest",
+      "capacity": 2,
+      "actions": [
+        "A.WAV",
+        "B.WAV",
+        "C.WAV"
+      ],
+      "expected_assets": [
+        "B.WAV",
+        "C.WAV"
+      ],
+      "expected_dropped": 1,
+      "drain_changes_state": false,
+      "drain_changes_prng": false,
+      "drain_changes_work": false
+    },
+    {
+      "id": "ready-reload",
+      "previously_delivered": [
+        "A.WAV"
+      ],
+      "expected_events": [],
+      "next_visit_actions": [
+        "B.WAV"
+      ],
+      "expected_next": [
+        "B.WAV"
+      ]
+    }
   ]
 }

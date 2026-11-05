@@ -30,11 +30,11 @@ def fnv(data):
     for b in data:h=((h^b)*0x100000001b3)&M
     return h
 
-SOURCE=b'[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n"ME" 0\n[SCRIPT_KERNEL]\nINITBLOCK(){ MONEY_ADD("ME",7); }\n[SIGNALS]\n[CAMARAPOS]\n0,0\n'
+SOURCE=b'[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n"ME" 0\n[SCRIPT_KERNEL]\nSET X = TRUE;\nSET Y = FALSE;\nSET Z = TRUE;\nINITBLOCK(){ MONEY_ADD("ME",7); }\n[SIGNALS]\n[CAMARAPOS]\n0,0\n'
 
 def script():
     return (text(SOURCE)+pack('5I',1048576,65536,128,100000,4096)+b'\1'+text(b'authored/joint')
-            +u32(2)+bytes([3,0])+pack('4I',0,17,0,23)+text(bytes([1,0,1]))+u64(1)+u32(0))
+            +u32(2)+bytes([3,0])+pack('4I',0,17,0,23)+text(bytes([0,1,0,1]))+u64(1)+u32(0))
 
 def figure(serial,kind,parent=M,crew=None,animal=False,ship=False):
     # TransportState defaults, including invalid BuildingId target.
@@ -68,7 +68,7 @@ def records():
     raw=prefix+b''.join(b'\1'+figures[i] if i in figures else b'\0' for i in range(40))+tail
     hierarchical=prefix+b''.join(u64(fnv(b'\1'+figures[i] if i in figures else b'\0')) for i in range(40))+tail
     return {'header':(u32(131)+b'SIMINT1\0'+u32(5),None),
-            'player':(old.player_bytes(old.new_player(0))+u64(2)+pack('4I',70001,0,90001,257),None),
+            'player':(old.player_bytes(old.new_player(0))+u64(2)+pack('4I',70001,0,90001,255),None),
             'figures':(raw,fnv(hierarchical)), 'script':(script(),None)}
 
 def fixture():
@@ -98,7 +98,7 @@ class Contracts(unittest.TestCase):
         self.assertNotEqual(a,figure(4,106))
         self.assertNotEqual(figure(2,717,1,0),figure(2,717,2,0))
         self.assertNotEqual(script(),script().replace(b'authored/joint',b'authored/other'))
-        self.assertNotEqual(fnv(pack('4I',70001,0,90001,257)),fnv(pack('4I',70001,0,90001,1)))
+        self.assertNotEqual(fnv(pack('4I',70001,0,90001,255)),fnv(pack('4I',70001,0,90001,1)))
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()

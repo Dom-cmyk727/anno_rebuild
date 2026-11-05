@@ -90,7 +90,7 @@ TEST_CASE(
     p.index = sim::PlayerId{0};
     p.research.state.resize(65);
     p.research.progress.resize(65);
-    p.permissions = {{sim::TypeId{70001}, 0}, {sim::TypeId{90001}, 257}};
+    p.permissions = {{sim::TypeId{70001}, 0}, {sim::TypeId{90001}, 255}};
     compare(e.at("player"), p);
     sim::FigureRegistry registry;
     registry.list.slots.resize(40);
@@ -104,13 +104,26 @@ TEST_CASE(
     compare(e.at("figures"), registry);
     sim::ScriptRuntime r;
     r.source = "[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n\"ME\" 0\n[SCRIPT_KERNEL]\n"
-               "INITBLOCK(){ MONEY_ADD(\"ME\",7); }\n[SIGNALS]\n[CAMARAPOS]\n0,0\n";
+               "SET X = TRUE;\nSET Y = FALSE;\nSET Z = TRUE;\nINITBLOCK(){ MONEY_ADD(\"ME\",7); "
+               "}\n[SIGNALS]\n[CAMARAPOS]\n0,0\n";
     r.asset_namespace = "authored/joint";
     r.state.context = sim::ScriptContext::Ready;
     r.state.last_arg = 17;
     r.state.last_work = 23;
-    r.state.signals = {1, 0, 1};
+    r.state.signals = {0, 1, 0, 1};
     r.state.bindings = {sim::PlayerId{0}};
+    sim::TypeRegistry::Builder builder;
+    for (auto id : {70001u, 90001u}) {
+        sim::BuildingType type;
+        type.id = sim::TypeId{id};
+        builder.add(type);
+    }
+    const auto types = builder.build();
+    REQUIRE(types);
+    auto players = sim::make_player_table(sim::SimConfig{});
+    players.slots[0] = p;
+    REQUIRE(sim::restore_script(r, *types.value(), players, sim::SimConfig{}).empty());
+    REQUIRE(sim::validate_script(r, *types.value(), players, sim::SimConfig{}).empty());
     compare(e.at("script"), r);
     // Direct wrong readings fail the same oracle; a round-trip alone would miss these.
     registry.list.slots[8]->job = 0x2a;

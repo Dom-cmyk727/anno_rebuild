@@ -24,6 +24,22 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
                            std::ios::binary);
         REQUIRE(file.good());
         const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file), {}};
+        const auto relative = std::string(name) == "script129"
+                                  ? "unit130/fixtures/synthetic/sim/script1/g2.log"
+                                  : (std::string(name) == "unit130"
+                                         ? "unit130/fixtures/synthetic/sim/script2/g2.log"
+                                         : std::string(name) + "/fixtures/synthetic/sim/g2.log");
+        std::ifstream original_log(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" /
+                                       "legacy" / relative,
+                                   std::ios::binary);
+        REQUIRE(original_log.good());
+        const std::vector<std::uint8_t> historical{std::istreambuf_iterator<char>(original_log),
+                                                   {}};
+        const auto log_refused = sim::read_log(historical);
+        REQUIRE_FALSE(log_refused);
+        CHECK(log_refused.error().find(std::string("replay-log version ") +
+                                       (std::string(name) == "unit130" ? "3" : "2") +
+                                       " is not 4") != std::string::npos);
         const auto refused = sim::World::load(bytes, f.types.registry);
         REQUIRE_FALSE(refused);
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +

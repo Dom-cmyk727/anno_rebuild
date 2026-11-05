@@ -125,8 +125,16 @@ delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, repor
     both PASS (`gpuwin-close1-*`).
   - WSL warnings (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on and off): clean on both compilers, both
     configurations (`unix-warnings-closeout-final.log`).
-  **Item 6 (review + publish) in progress:** an independent read-only review of the full closeout package
-  (`02133ade`..`3a2da9b9`, all 11 commits) is running now. Push is pending that review and a REPORTS entry.
+  **Item 6 (review + publish): the independent review is back — ACCEPT WITH FOLLOW-UPS, no blockers**
+  ([review](reviews/2026-11-05-w4-opening1-close.md), [REPORTS entry](REPORTS.md)). The reviewer specifically
+  rejected the sibling-contention mechanism for the `opening_controls` failure (both tests carry `PROCESSORS 4`, so
+  CTest's `-j4` scheduler never overlaps them — confirmed in `wsl-w18-app.log`) and attributed it instead to a
+  pre-existing, structurally tight real-time margin under ASan, unrelated to `3a2da9b9`; asked for one more
+  confirmation rerun before fully trusting it. That rerun (`wsl-w20`, same binaries) is running now — push is
+  gated on its result, not on the review. Three non-blocking follow-ups are tracked in the review doc (sanitizer
+  slack for `opening_controls`'s own waits; a turn-based completion signal as a design observation; a minor
+  PRODTYPE config note). Once `wsl-w20` is clean: push `task/W4-opening-1` and the local-only `main` commits, then
+  proceed to W4-MAIN-1.
 - **New finding, for the orchestrator (depth session, in passing).** With the depth on, `--play` on a *fixed* map
   draws no start Kontor: `fixed_map.cpp:299` creates it with item byte0f 0, so the depth puts it under the land and
   the 26.5 sea (`--depth off`, or `--shore 16.5`/`26.5`, makes no difference; verified with `--png`, sheet

@@ -8138,3 +8138,68 @@ There is useful progress: the dirty-child check and synchronous generation guard
 ### Decision and next assignment
 
 Keep the per-island immutable direction and the substantive R2/R3 fixes. Return the CPU unit for **DW1–DW7 overnight completion** as listed on TASKS and expanded in `cache/orch-dw/executor-packet.txt`: reliable test execution; multi-worker lifetime; final reclamation and failure recovery; byte bounds/local publication; representative Release measurements; required local gates; then a docs-only GPU handoff plan. Work is split into smaller verifiable stages, with independent authorized work available if one stage is blocked. No viewer/GPU integration, input, preview, merge or push before the next CPU review. This is an evidence-based sequencing decision, not a new permission request to run already-required tests.
+
+## W4-OPENING-1-CLOSE — gate closeout and independent review — 2026-11-05 — status: ACCEPTED (follow-ups tracked)
+
+Rendering executor, `task/W4-opening-1`, worktree `E:\anno1503-worktrees\anno1503-W4-opening-1`; base
+`02133ade9e66426ab093d8377992aec159367671`, head `3a2da9b92698000416a69053b3d77a8dc569fbb6`; 11 commits.
+
+### What this closes
+
+Items 1–4 of the [playtest review](reviews/2026-11-03-w4-opening1-playtest.md) §6/§7 were already fixed on this
+branch before tonight's session (river Q5 measurement, the lan5 pick fix, the projection/doc P3 cleanups, the Wine
+founding-key check — commits `4d37bfd2` through `a315b51a`/`86dec376`). Tonight's work was item 5 (the gate chain)
+and item 6 (review and publish):
+
+- **Gate 5.1, the WSL ASan/UBSan lane, found and fixed a real bug.** `opening_session_replay` was failing stage 1 at
+  head `1d34dd97` because `tools/test/viewer_wiring.py` hardcoded its window auto-quit test hook
+  (`ANNO_VIEW_QUIT_S="240"`), clobbering any value the caller's (CMake's) environment set. Under ASan the voyage
+  needs far longer than 240 real seconds (turn p95 509.5 ms vs. 0.2–0.4 ms native; stage 1 alone measured
+  434.4–494.9 s across two standalone runs). Fixed in `3a2da9b9`: the wrapper now reads the hook from its own
+  environment (default unchanged for every other caller), and `src/app/CMakeLists.txt` scales it 5x (1200 s) inside
+  `if(ANNO_SANITIZE)` only, mirroring the existing watchdog scale factor.
+- **A second, unrelated failure surfaced once gate 5.1 could finally run to completion.** The first full lane
+  (`wsl-w18`) passed `opening_session_replay` twice (1889.4 s standalone, 1830.4 s in-batch) but failed
+  `viewer_wiring_opening_controls` only inside the full `-j4` parallel batch (passed standalone at 187.6 s, failed
+  in-batch at 184.1 s; no sanitizer report; stderr showed a sustained ~50–57 ms/frame cost from ASan rendering
+  overhead under host-wide contention). Two same-binaries reruns of the app lane alone (`wsl-w19`, `wsl-w20`) both
+  came back clean (266/266, 0 failed), consistent with a pre-existing, contention-sensitive real-time margin in
+  `opening_controls`, not a regression from `3a2da9b9` — see the independent review's mechanism check below.
+- **Gates 5.2–5.4, at head `3a2da9b9` (clean, dirty 0):** native app PASS (260/262 executed, `native-close1a.txt`);
+  native GPU PASS (116/116, `native-close1g.txt`); native render FAIL with exactly the known, accepted River Q5
+  disposition and nothing else (`native-close1r.txt/.log`); GPU window tests (`opening_gpu_window`,
+  `opening_controls`) PASS on the real RTX 4090 (`gpuwin-close1-*`); WSL warnings clean on GCC 13 and Clang 18, both
+  with and without the viewer/GPU (`unix-warnings-closeout-final.log`).
+- **Gate 5, overall:** the lane boundary rule ("never run the sanitizer lane and the native render gate side by
+  side") was followed; the WSL ASan lane ran to completion before any native render/GPU work started.
+
+### Independent review (item 6)
+
+A dispatched, independent read-only agent reviewed the full 11-commit diff against the raw gate logs (not only the
+executor's summaries) and hand-derived the lan5 pick fix, the zoom-step chunk fix and the Wine key trace against
+their own evidence. Full findings: [the review](reviews/2026-11-05-w4-opening1-close.md).
+
+**Verdict: ACCEPT WITH FOLLOW-UPS, no blockers.** The reviewer specifically checked, and rejected, the executor's
+proposed mechanism for the `opening_controls` failure (sibling contention with the now-longer-running
+`opening_session_replay`): both tests carry `PROCESSORS 4`, so CTest's scheduler never runs them concurrently at
+`-j4` — confirmed directly in `wsl-w18-app.log`, where the two tests' Start/Passed lines never overlap. The real
+cause is a structurally tight, pre-existing real-time polling margin under ASan's rendering overhead, independent of
+this package's changes. The reviewer asked for one more confirmation rerun before fully trusting it; `wsl-w20` (see
+above) provides that.
+
+Follow-ups tracked, none blocking: (1) give `opening_controls`'s real-time waits the same `ANNO_SANITIZE`-scoped
+slack `3a2da9b9` gave the quit deadline; (2) consider a turn-based (not wall-clock) completion signal for these two
+tests generally, as `dev_script.cpp`'s own `wait turns` already uses; (3) `a315b51a`'s `coast_turned`/
+`deposit_turned` PRODTYPE list could move to config if coast-kind modding becomes near-term scope.
+
+### Evidence
+
+`cache/gates/wsl-w18.txt` (+`-app/-sim/-render.log`), `cache/gates/wsl-w19.txt`, `cache/gates/wsl-w20.txt`,
+`cache/gates/native-close1{a,g,r}.txt` (+`.log`), `cache/gates/unix-warnings-closeout-final.log`,
+`cache/gates/gpuwin-close1-opening_gpu_window/`, `cache/gates/gpuwin-close1-opening_controls/`. No `src/sim`,
+`src/formats` or `src/test_support` file is touched by this package (`git diff --stat` confirms zero files).
+
+### Next
+
+Push `task/W4-opening-1` at `3a2da9b9` and the local-only `docs/orchestration` commits on `main`, then proceed with
+W4-MAIN-1 (merge into `main`), per the board's released sequence.

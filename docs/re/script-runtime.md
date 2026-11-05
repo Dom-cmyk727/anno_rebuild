@@ -134,3 +134,17 @@ native started state intentionally prevents that edge as a labelled policy
 adaptation. Scene global43438 has only constructor1611f zero, step16b7d read,
 and action155c5/155f5 writes1. Action155a0/155d0 implement WON/LOST; these are
 unsupported whole-program dependencies, so the flag is unreachable in the slice.
+
+## Independent direct-registry identity derivation
+
+Permission reviewer independently packed PRM1 from original Anlagen HEAD fields,
+INFRAMIN and FORSCHTYPE; Game raw name-pointer table100250f8 is read by getter
+10013cf0..13d47 and parser100097d5..9869 (index0..64, field+24). This is the
+EMPTY availability-profile direct build, not the production original adapter's
+output research profile. Base digestb62eba128fce9259 extends to3610424ea558d5cd.
+827nondefaultrows,1173folkmemberships,20basegrants:22151bytes =
+12+827*21+1173*4+20*4. Extension SHA256
+053df2abffb2ec56da4df369516d8c41c198b6f60695203679337460ec3d5fc9.
+AnlagenSHA256b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75.
+This profile gives1012 only research38; production adapter additionally declares
+output0 research12. No new C++ digest output served as the reference.

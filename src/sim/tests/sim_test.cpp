@@ -614,8 +614,7 @@ TEST_CASE("state_hash relational properties") {
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
     CHECK(sim::World().state_hash() ==
-          0x708747823698a4acULL); // empty_world at 128 + K1 (python transcription) Inn class row
-                                  // (sim_stream.py)
+          0x708747823698a4acULL); // SCRIPT1 empty_world; independent sim_stream_script1.py
     CHECK(sim::kStateHashVersion == 129);
     CHECK(sim::kPrngTimelineVersion == 5);
 }
@@ -948,7 +947,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another PRNG timeline version is refused") {
         auto bad = bytes;
-        bad[12] = 3; // this build's timeline is 4 (3 is the one before FarmWorkerDispatch)
+        bad[12] = 3; // this build's timeline is 5; 3 predates FarmWorkerDispatch
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

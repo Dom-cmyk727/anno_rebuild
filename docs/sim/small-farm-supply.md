@@ -233,3 +233,6 @@ This shows the cycle in one town for 600 000 ticks; it is **not** a claim of a b
 
 **Limits.** One town, imported farms; potato availability is the scenario's (OQ-491); the resident side is the existing (partly ADAPT) walker model; the Inn's carriers take alcohol from the farm and from the warehouse alike (the existing `pick`), which this ledger
 does not separate. Windows/Linux, sanitizer coverage and replay of this run are S5/S6.
+
+**Checks run for S4.** Debug: the chain test (about 30 s) with the small-farm and harvest cases, 59 of 59. ASan/UBSan (`cache/map2-supply1/gates/S4_asan.log`): 70 cases selected by name (supply chain, small farm, harvest, farm dispatch, G3, G1, state_hash, the S01_07_01 canary), 70 of 70 passed, 0 sanitizer reports; coverage of the changed files:
+`driver.cpp` (the small-farm ledger) and `scheduler.cpp` (the two resident diagnostics) are reached by the chain, canary and G cases, `transport.hpp` is header-only. `lint_sim` ok; no state or stream change.

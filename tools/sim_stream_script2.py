@@ -22,11 +22,18 @@ def player_bytes(player):
     return base_player_bytes(player) + old.u64(0)  # SCRIPT2: no override rows in these fixtures
 
 
+def runtime_bytes(source=b'', limits=(1048576,65536,128,100000,4096), namespace=None,
+                  policy=2, context=0, fault=0, cursor=0, arg=0, offset=0, work=0,
+                  signals=b'', bindings=()):
+    return (old.string(source) + struct.pack('<5I',*limits)
+            + (b'\0' if namespace is None else b'\1'+old.string(namespace))
+            + old.u32(policy) + bytes([context,fault])
+            + struct.pack('<4I',cursor,arg,offset,work) + old.string(signals)
+            + old.u64(len(bindings)) + b''.join(old.u32(x) for x in bindings))
+
+
 def script_bytes(context):
-    # source length0; four fixed safety limits; policy1; context/fault;
-    # cursor,lastarg,faultoffset,lastwork; empty signals and actual bindings.
-    return (old.u64(0) + struct.pack('<4I',1048576,65536,128,100000) + old.u32(4096) + b'\0' + old.u32(2)
-            + bytes([context,0]) + bytes(16) + old.u64(0) + old.u64(0))
+    return runtime_bytes(context=context)
 
 
 def state_hash(registry,cursor,ms,last_tick,players,full_tick=False,islands=None,
@@ -65,6 +72,15 @@ class Contracts(unittest.TestCase):
             '0000000000000000000000000000000000000000000000000000000000000000')
         self.assertEqual(len(script_bytes(0)),67)
         self.assertNotEqual(old.fnv(script_bytes(0)),old.fnv(script_bytes(1)))
+    def test_nonempty_distinctive_scope(self):
+        value=runtime_bytes(b'X',(3,4,5,6,7),b'z',0x01020304,5,2,
+                            0x11223344,0x55667788,0x12345678,0x23456789,
+                            bytes([1,0,1]),(0x10203,70))
+        self.assertEqual(value.hex(),
+            '0100000000000000580300000004000000050000000600000007000000'
+            '0101000000000000007a04030201050244332211887766557856341289674523'
+            '030000000000000001000102000000000000000302010046000000')
+
     def test_schema_identity_is_not_just_integer130(self):
         self.assertEqual((old.u32(130)+b'SCRIPT2\0'+old.u32(5)).hex(),
                          '82000000534352495054320005000000')

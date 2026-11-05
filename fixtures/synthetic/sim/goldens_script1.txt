@@ -32,3 +32,12 @@ t24_g6_end T24 129 e6612cf1b948b904
 s12_g4_checkpoints S12 129 04418136085a4ab1
 s12_g4_end S12 129 5b62c83e683cd9ed
 s12_g4_events S12 129 39c10f583d4b7cc8
+
+# K3 complete supported empty original kernel, explicit startup then unchanged
+# population vectors. Native checkpoint identities are self-baselined.
+k3_tick2450 K3 129 9c37a4120ad687b1
+k3_tick2500 K3 129 576c028371710f49
+k3_tick54950 K3 129 34b28e753eb40aaa
+k3_tick55000 K3 129 0127a38c4b516fc1
+k3_tick55050 K3 129 d42e5fd0666795ea
+k3_tick70000 K3 129 30063e64d9d25dd0

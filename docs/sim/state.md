@@ -2555,3 +2555,41 @@ Names → numbers: AnnoGame 0x100138e0 maps 32-number blocks onto name arrays (0
 | 0 UNUSED, ≥ 193 | not a building | | none | `Place` skips `Create` when the block start `(p - 1) & ~0x1f` is above 0xa0, i.e. for p >= 193 (0x10027b32-0x10027b3c; roads, walls, scenery are tile objects only) |
 
 Tick gate periods (**D**: the compare constant is read in every class tick; what the body does with `last` after the gate is not read except for MARKTSTAND and the ported production classes; `ClassInfo::gate_period`, hashed in the registry digest): 500 in workshop 0x100680b0, farm/fisher 0x1006ea90, trapper 0x1006e5d0, mine 0x1006def0, 0x1006f660, class 12 0x10068a70, class 17 0x10069550, market classes 0x1006b6d0/0x1006c2e0, 0x100676b0, 0x10067b50, 0x1006cc40, **PublicService and School 0x1006b4e0 (`cmp dx, 0x1f4` at 0x1006b4ec, shared tick; 13 instructions, the MARKTSTAND rule: add the period to `last` once the u16 difference reaches it), Hunter 0x10069f40 (0x10069f5d), Whaler 0x10073720 (0x10073737), Shipyard 0x10074e90 (0x10074ea1)**; 2500 houses 0x10076230; 5000 0x100702d0 and 0x10075608; 166 towers 0x10070c50 (0x10070c62) and **cannon towers 0x1006ab50 (0x1006ab6a, `0xa6`)**. Castle 0x1006f1d0 has no stamp gate (a byte counter at +0x38) and the Quarry class is the stub 0x10001030: both are 0. (Before the S3 review round the periods of PublicService, School, Hunter, Whaler, Shipyard and CannonTower were 0, "unread"; the registry digests and the goldens were re-baselined, `goldens.txt`.)
+
+## SCRIPT1 branch stream129 amendment (MAP-SCRIPT-1)
+
+Published128 stays frozen. This branch writes `u32 129,u64 0x0031545049524353`
+(the bytes SCRIPT1\0), then the existing `u32 timeline5` in the inner header.
+The outer A3SV/save1 frame likewise puts this u64 immediately after streamversion.
+An independent lane's integer129 does not establish compatibility; mismatched
+schema is refused. Commandwire1, log2 and PRNGtimeline5 are unchanged.
+
+Each player's existing fields are followed by u64 permission-row count, then
+strictly sorted pairs of widened u32 type and u8 exact value. A tenth root scope
+`script` follows `timers_monopoly`. Its flat fields in order are:
+
+- u64-counted source bytes; u32 source/node/depth/work limits; u32 policy.
+- u8 context, u8 fault; u32 cursor,last_arg,fault_offset,last_work.
+- u64 signal count followed by u8 values; u64 binding count followed by u32 IDs.
+
+Default source-free scope is62bytes. All these fields reach hash/save; compiled
+program/instruction tables are derived once on creation/native reload and never
+serialized. Source/policy/limits/schema distinguish future gameplay identities.
+Bindings are validated against declarations and real players, never silently
+rebound. Native source size is bounded before allocation. Version-refusal tests
+repair surrounding checksums and assert the specific refusal; retained128 logs
+are structurally valid and reach their128 native-version refusal.
+
+Missing context is not script-free. Original import is Pending after complete
+compilation, or is refused. Explicit fresh startup invokes the same transactional
+arg0 script visit before player commands, without world advancement; lazy first
+World::advance initialization remains supported. Full advance(0) retains all
+world subsystem visits. Script visits receive old absolute tick low32 before
+world advancement in unrecorded, recorded and replay paths. Faults persist and
+freeze further advancement. See script-runtime.md for original/adaptation
+boundaries and evidence.
+
+Old goldens/recordings/corpus remain in their published paths. New SCRIPT1 goldens
+and recordings live in goldens_script1.txt and sim/script1/. No current hash is
+projected back to128 by clearing runtime state. New self-baselined identities
+remain distinct from independent stream and original-data semantic proofs.

@@ -427,3 +427,12 @@ text omitted its removed-program diagnostic. Both are corrected: success is
 reported only after checked close, and each exported ledger now carries explicit
 component-versus-supported mode and exact complete-program refusal. Re-review
 pending; no physical or semantic expectation changes.
+
+Identity generation at5a99eccd: two sequential children passed (K3 replay87
+assertions; corpuscreation1004assertions), retained cache/script1/identity-generation-01
+manifest with executableSHA/sourcepin. Six newK3pins preserve old55000tick/31418
+variant semantic vectors. New50creation rows use39explicitMissing components and
+11retainedsupportedprograms, all373importedmasks; physical/movement columns copied
+unchanged from128 await the normal longgate. Prior full11recordings were parsed
+independently by script_semantics_review: validA3RP/log2, wire1,timeline5,
+A3SV/save1/native129+SCRIPT1 checksums, exactEOF.

@@ -206,3 +206,25 @@ research, affordability, serials or mutation. The requested type and final
 effective type must both qualify; this stronger rewrite rule is an explicitly
 declared rebuild policy. Imports/founding/automatic transitions keep their
 separate paths. This amendment does not assert any wiring has been implemented.
+
+## SCRIPT1 superseding production boundary
+
+The separate scenario-permission contract requested in MAP-BOOTSTRAP-1 has been
+implemented and independently approved (script-runtime.md S1 ledger). Production
+BuildCmd now checks current authoritative permission context and exact requested
+type, then effective type when rewritten, after existing site/ownership checks
+and before optional research/payment/serial/draw/write effects. Shared check_record
+serves live and atomic paths. Missing/Pending/Fault contexts refuse; Ready and
+ExplicitNone permit the reviewed exact-row then stage/research predicate. Exact
+value0 differs from absent; other stored bytes keep their reviewed predicate
+meaning. ANLTRG import performs no setter grants. Full rawvalue1 script writes
+perform sticky stage/research side effects; raw257 stores1 without those grants.
+Founding/import/automatic transitions retain their distinct creation paths.
+
+The bootstrap registry-only128 projection described above is historical and is
+retired for SCRIPT1. Its oldpins/logs/corpus remain unchanged as published128
+evidence. Current native identities use129+SCRIPT1, including permission rows
+and complete script execution state; there is no mutable-state projection.
+Complete shipped permission-program execution remains blocked by unsupported
+handlers; the existing approved bounded original fragment and complete synthetic
+canary do not replace that claim.

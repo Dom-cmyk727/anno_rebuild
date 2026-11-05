@@ -8,6 +8,7 @@
 
 #include <anno/formats/bigbrother.hpp>
 #include <anno/formats/sze.hpp>
+#include <anno/sim/placement.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/route_world.hpp>
 #include <anno/sim/scenario.hpp>
@@ -410,6 +411,145 @@ TEST_CASE("SCRIPT2 original canary route and founding prerequisites") {
     REQUIRE(found);
     CHECK(w.state_hash() == before);
     CHECK(find_figure(w.figures(), FigureId{1})->pos == FixedPos{89984, 98176});
+}
+
+TEST_CASE("SCRIPT2 original public voyage founding and construction") {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("skipped: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto input = original(*game);
+    auto& w = input.world;
+    REQUIRE(find_figure(w.figures(), FigureId{1})->pos == FixedPos{89984, 98176});
+    auto started = Recorder::start(w);
+    REQUIRE(started);
+    auto rec = std::move(started).value();
+    rec.checkpoint();
+    REQUIRE(rec.submit({PlayerId{0}, SetSpeedCmd{100}}).ok());
+    std::vector<SimEvent> waves;
+    const auto sail = [&](int x, int y) {
+        const auto ordered =
+            rec.submit({PlayerId{0}, MoveCmd{FigureId{1}, x * 256 + 128, y * 256 + 128}});
+        REQUIRE_MESSAGE(ordered.ok(), reject_name(ordered.status));
+        bool arrived = false;
+        std::uint32_t advances = 0;
+        // 1000ms =500ticks, well inside the supported u16 visit interval. Bound4000s
+        // exceeds this route's distance at the source ship's evidenced minimum speed.
+        for (; advances < 4000 && !arrived; ++advances) {
+            const auto old_tick = w.clock().tick();
+            const auto signal = w.script().state.signals[1];
+            rec.advance(1000);
+            REQUIRE_FALSE(w.faulted());
+            const auto events = w.drain_events();
+            for (const auto& e : events) {
+                REQUIRE(e.kind != SimEventKind::ShipRouteFailed);
+                if (e.kind == SimEventKind::ShipArrived)
+                    arrived = true;
+                if (e.kind == SimEventKind::ScriptWave) {
+                    CHECK(signal == 1);
+                    CHECK(w.script().state.signals[1] == 0);
+                    CHECK(e.tick == old_tick);
+                    waves.push_back(e);
+                }
+            }
+        }
+        REQUIRE(arrived);
+        MESSAGE("ORIGINAL_VOYAGE goal=" << x << "," << y << " advances=" << advances
+                                        << " tick=" << w.clock().tick());
+        rec.checkpoint();
+    };
+    sail(224, 672);
+    // Branch visitation is bounded one-per-call. Finish the seven-way cycle at
+    // the arrived position, without advancing navigation or economic time.
+    for (int i = 0; i < 7; ++i) {
+        const auto tick = w.clock().tick();
+        rec.advance(0);
+        const auto events = w.drain_events();
+        for (const auto& e : events)
+            if (e.kind == SimEventKind::ScriptWave) {
+                CHECK(e.tick == tick);
+                waves.push_back(e);
+            }
+    }
+    REQUIRE(waves.size() == 1);
+    CHECK(waves[0].code == 317);
+    REQUIRE(waves[0].wave);
+    CHECK(waves[0].wave->asset == "scenes/0011SingleEndlosAddon/HAWAIMUCKE.WAV");
+    CHECK(waves[0].wave->audience == WaveAudience::AllLocal);
+    CHECK_FALSE(waves[0].player.valid());
+    CHECK(w.script().state.signals == std::vector<std::uint8_t>{0, 0, 1, 1, 1, 1, 1, 1});
+    CHECK(w.players().find(PlayerId{0})->money == 10000000);
+    sail(350, 405);
+    CHECK(waves.size() == 1);
+    CHECK(w.players().find(PlayerId{0})->money == 10000000);
+    FoundCmd founding{FigureId{1}, {TypeId{1302}, 343, 404}, 344, 405};
+    const auto before_holds = find_figure(w.figures(), FigureId{1})->holds;
+    const auto founded = rec.submit({PlayerId{0}, founding});
+    REQUIRE_MESSAGE(founded.ok(), reject_name(founded.status));
+    REQUIRE(founded.records.size() == 1);
+    const auto warehouse_id = founded.records[0].building;
+    CHECK(w.players().find(PlayerId{0})->money == 9999650);
+    const auto& holds = find_figure(w.figures(), FigureId{1})->holds;
+    REQUIRE(holds.size() == before_holds.size());
+    CHECK(holds[0].amount_88 == before_holds[0].amount_88 - 1280);
+    CHECK(holds[3].amount_88 == before_holds[3].amount_88 - 3072);
+    std::optional<CityRef> city;
+    for (std::uint32_t i = 0; i < w.islands().size(); ++i)
+        if (w.islands()[i])
+            for (const auto& c : w.islands()[i]->cities)
+                if (c && c->owner == PlayerId{0}) {
+                    REQUIRE_FALSE(city);
+                    city = CityRef{IslandId{i}, c->number};
+                }
+    REQUIRE(city);
+    for (std::uint32_t h = 0; h < holds.size(); ++h) {
+        const auto hold = find_figure(w.figures(), FigureId{1})->holds[h];
+        if (!hold.goods || hold.amount_88 < 256)
+            continue;
+        const auto unloaded =
+            rec.submit({PlayerId{0},
+                        UnloadCmd{FigureId{1}, warehouse_id, h, hold.goods, hold.amount_88 / 256}});
+        REQUIRE_MESSAGE(unloaded.ok(), "hold " << h << ": " << reject_name(unloaded.status));
+        REQUIRE(unloaded.records.size() == 1);
+        CHECK(unloaded.records[0].transferred_88 > 0);
+    }
+    const auto& is = *w.islands()[city->island.v];
+    const auto* handwerk = w.types().find(TypeId{1001});
+    REQUIRE(handwerk);
+    std::optional<PlacementWire> placement;
+    for (std::int32_t y = is.tiles.y0();
+         std::int64_t{y} < std::int64_t{is.tiles.y0()} + is.tiles.height() && !placement; ++y)
+        for (std::int32_t x = is.tiles.x0();
+             std::int64_t{x} < std::int64_t{is.tiles.x0()} + is.tiles.width(); ++x) {
+            const PlacementRecord p{TypeId{1001}, x, y};
+            if (footprint_owner_rule(is, w.config(), *handwerk, p, city->city) == Reject::None &&
+                placement_rule(is, w.types(), *handwerk, p).reject == Reject::None) {
+                placement = PlacementWire{TypeId{1001}, x, y};
+                break;
+            }
+        }
+    REQUIRE(placement);
+    const Command build{PlayerId{0}, BuildCmd{*city, {*placement}}};
+    const auto stock = is.city(city->city)->stock.stock;
+    const auto built = rec.submit(build);
+    REQUIRE_MESSAGE(built.ok(), reject_name(built.status));
+    REQUIRE(built.records.size() == 1);
+    CHECK(built.records[0].building.valid());
+    CHECK(w.players().find(PlayerId{0})->money == 9999350);
+    for (std::size_t g = 0; g < stock.size(); ++g) {
+        std::uint64_t cost = 0;
+        for (const auto& c : handwerk->cost_goods)
+            if (c.goods == g)
+                cost += c.amount_88;
+        CHECK(is.city(city->city)->stock.stock[g] + cost == stock[g]);
+    }
+    CHECK(w.script().source == input.spec.script_source);
+    CHECK(w.check_invariants().empty());
+    rec.checkpoint();
+    MESSAGE("ORIGINAL_CONSTRUCTION type=1001 site="
+            << placement->x << "," << placement->y << " wave_tick=" << waves[0].tick
+            << " gold=10000000->9999650->9999350 final_hash=" << w.state_hash());
 }
 TEST_CASE("SCRIPT2 synthetic complete original program canary producer") {
     const auto game = anno::test::game_dir();

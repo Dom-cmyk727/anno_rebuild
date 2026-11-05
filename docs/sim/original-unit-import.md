@@ -435,3 +435,17 @@ findclick344,405 with watergoal350,405 among11555neutral coast candidates.
 No voyage was attempted. The area planner now queries actual water on a bounded
 7x7grid inside NEGER and requires a real planned endpoint inside its rectangle.
 This fixes an unverified test target, not production routing or area semantics.
+
+D-prerequisites-03 at47916aed passes2/2,45assertions, zeroother outcomes,
+11.38s. Confirmed route to224,672 withinNEGER and affordable founding click344,405
+with planned watergoal350,405; executed original state unchanged by planning.
+
+The first public voyage case uses those proved goals, source shipID1 and original
+INIT/resources,1000ms (500tick) advances at speed100. Each leg is bounded4000
+advances; the expected few-hundred-tile paths fit well inside that travel budget,
+and each visit interval is safely below u16 wrap. Gate timeout600s is for this
+focused first voyage, not the historical long generated opening sanitizer case.
+It checks the actual branch0 wave, source money unchanged until350gold founding,
+original-hold payment, public unloads and ordinary HANDWERK1001 construction with
+300gold and exact stock debit. Continuation/denied-copy/fresh-process controls
+follow only after the unmodified-world path succeeds; no fullF2 claim yet.

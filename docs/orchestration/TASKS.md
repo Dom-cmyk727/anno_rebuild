@@ -2,7 +2,21 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-05: Windows opening; first Mac supply; second Mac scripting
+## Current dispatch — 2026-11-05: Windows opening; first Mac cloth/leather; second Mac scripting
+
+<!-- BEGIN MAP-NEEDS-2 DISPATCH -->
+**First Mac: MAP-NEEDS-2 is READY / RELEASED.** MAP-SUPPLY-1 and CLOSE are accepted
+within their documented headless scope; see the [acceptance note](reviews/2026-11-05-map-supply1-close.md).
+Continue your existing `task/MAP-2-original-like` checkout from local
+`67158af4d29d87fed8686dc6542ca2a9f4b1f75c`. Read and execute the complete
+[N0–N7 packet](tasks/map-needs-2.md): sheep/wool/cloth and hunting/hides/leather,
+actual household supply, isolation, recovery, persistence and bounded scaling.
+Independent package approvals release dependent work without routine
+orchestrator pauses. One final consolidated handoff; no merge, rebase or push.
+Read these task files from fetched main without merging it into your branch.
+This dispatch supersedes the older first-Mac supply assignments below and does
+not change either the second Mac's scope or Windows' inputs and assignments.
+<!-- END MAP-NEEDS-2 DISPATCH -->
 
 **Second Mac: MAP-SCRIPT-2 is READY / RELEASED.** Execute the complete packet
 between `BEGIN MAP-SCRIPT-2` and `END MAP-SCRIPT-2` below. Its starting candidate
@@ -323,13 +337,11 @@ Two small pointer/report corrections start the next package; no repeated full
 CLOSE-2 campaign is assigned. **128 / PRNG timeline 5 is published now; the old
 unpublished-amendment exception has ended.**
 
-**MAP-SUPPLY-1 is READY / RELEASED for the Mac executor.** Read and execute the
-[complete S0–S6 packet](tasks/map-supply-1.md): verify and complete small-farm
-food/alcohol production, transport, multi-house supply, shortage/recovery and
-persistence. Continue on the existing MAP branch from the accepted pin; independent
-package approvals release dependent work, with one final orchestrator handoff.
-Do not merge main or change the Windows lane. The historical POP closeout packets
-below are superseded for new Mac work.
+**MAP-SUPPLY-1 / CLOSE: ACCEPTED for the documented headless scope.** The old
+[S0–S6 packet](tasks/map-supply-1.md) is historical. The current first-Mac
+assignment is [MAP-NEEDS-2, N0–N7](tasks/map-needs-2.md) at the dispatch above.
+Ship-founded alcohol feasibility, balanced economies and target-host acceptance
+remain open. Do not restart supply work or merge main to obtain the new packet.
 
 **ECON-BOOK-1 belongs to the orchestrator and its delegated research agent**, in
 `orchestrator-economy-booking` / `task/ECON-BOOK-1`. Resident sales, tax/price mapping,
@@ -343,12 +355,12 @@ accepted or required by the Mac supply packet.
 **Windows assignments, review dispositions and exact integration inputs below
 are unchanged by this Mac update.**
 
-**Planning queue, not released:** the [next gameplay chain](gameplay-next-chain.md)
+**Planning queue (only MAP-NEEDS-2 is released here):** the [next gameplay chain](gameplay-next-chain.md)
 maps availability/startup budget, renewable cloth/leather, salt extraction,
 ship-start town integration, construction supplies, second-island resupply and
 citizen progression. Original data and implementation gaps have been checked.
-It does not replace MAP-SUPPLY-1 or ECON-BOOK-1; a concrete packet and accepted
-base are required before any queued bundle starts.
+The released cloth/leather packet is linked above. Other queued bundles need
+their own dispatch and accepted base; ECON-BOOK-1 remains separately owned.
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -633,7 +645,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-MAIN-1 DONE (`main` `88968580`); W4-OPENING-2 CURRENT.** W4-OPENING-2 from `main` `88968580`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. Its first package is W4-OPENING-CONTROLS-FLAKE, with the committed WSL gate script as step 0. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time. Its merge into `main` is its own package (W4-MAIN-1 review D3).** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-CLOSE-2 ACCEPTED for enabled headless scope; MAP-SUPPLY-1 READY / RELEASED.** Continue `a50aec3a` through [S0–S6](tasks/map-supply-1.md), with independent package reviews and one final handoff. Keep House updates off by default. No ECON-BOOK work, Windows changes, merge/rebase or executor push. The older POP closeout packets are historical. The separate macOS test_support check at published task/W4-main-1 remains a non-blocking checkpoint; no coordinator redesign. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-SUPPLY-1 / CLOSE ACCEPTED; MAP-NEEDS-2 READY / RELEASED.** Continue local `67158af4` through [N0–N7](tasks/map-needs-2.md), with independent package reviews and one final handoff. Keep House updates off by default. No other-lane imports, Windows changes, merge/rebase or executor push. Older POP/SUPPLY packets are historical. |
 
 ### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · ACCEPTED BY THE ORCHESTRATOR 2026-11-05 (W4-MAIN-1 review D2)
 

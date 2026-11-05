@@ -1,3 +1,9 @@
+**Dispatch update, 2026-11-05:** MAP-SUPPLY-1/CLOSE is accepted within its
+headless scope. MAP-NEEDS-2 alone is now released through
+[tasks/map-needs-2.md](tasks/map-needs-2.md), starting at local `67158af4`.
+The historical planning status below does not supersede that packet; other
+queued work still needs an explicit dispatch.
+
 # Next gameplay chain — evidence-led planning, 2026-11-05
 
 **QUEUED / NOT RELEASED.** This identifies work after the current MAP-SUPPLY-1
@@ -18,7 +24,9 @@ the corresponding chain from the ship start.
 Current prerequisites remain:
 
 - MAP-SUPPLY-1: small-farm food/alcohol, real workers/animals and deliveries,
-  several households, shortage and recovery. Released, not yet accepted.
+  several households, shortage and recovery. Accepted within the scope of the
+  [SUPPLY/CLOSE review](reviews/2026-11-05-map-supply1-close.md); ship-founded
+  alcohol feasibility and balanced economies remain open.
 - ECON-BOOK-1: resident-sales booking and building upkeep. Arithmetic and a
   bounded input/ownership trace reviewed; lifecycle, overflow policy and engine
   integration unfinished. City costs must not be copied into player upkeep.

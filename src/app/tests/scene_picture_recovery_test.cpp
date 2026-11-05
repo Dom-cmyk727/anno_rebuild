@@ -3,12 +3,14 @@
 // needed. The buildings are added to the islands' records, so a committed generation shows its
 // changes as record counts: an island's record count must equal the number of buildings the desired
 // state has on it.
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -507,10 +509,32 @@ TEST_CASE("picture recovery: a generation that outlives the bridge is destroyed 
     // The bridge is destroyed while a commit's generation is still held by the test (a consumer
     // that outlived the picture). The final release is the test's, on this thread; the destruction
     // must run on the reclaimer, and the bridge's own references must be gone with the bridge.
+    // Which generations the reclaimer destroyed, by number. The process-wide `completed` count is
+    // not that: the base generation's release (scene.reset() below) is destroyed asynchronously, so
+    // a count read right after it races the reclaimer (CI, linux-gcc: 1 == 0).
+    std::mutex destroyed_mutex;
+    std::vector<std::uint64_t> destroyed;
+    std::thread::id destroyed_kept_on;
+    struct ObserverReset {
+        ~ObserverReset() { render::SceneReclaimer::shared().set_test_observer({}); }
+    };
     auto scene = islands_scene(2);
     std::vector<app::SceneBuilding> none;
     std::shared_ptr<const render::Scene> kept;
+    std::uint64_t kept_generation = 0;
     const std::uint64_t before = render::SceneReclaimer::shared().stats().completed;
+    const auto was_destroyed = [&](std::uint64_t generation) {
+        const std::lock_guard<std::mutex> lock(destroyed_mutex);
+        return std::find(destroyed.begin(), destroyed.end(), generation) != destroyed.end();
+    };
+    render::SceneReclaimer::shared().set_test_observer([&](const render::Scene& gone) {
+        const std::lock_guard<std::mutex> lock(destroyed_mutex);
+        destroyed.push_back(gone.generation());
+        if (kept_generation != 0 && gone.generation() == kept_generation) {
+            destroyed_kept_on = std::this_thread::get_id();
+        }
+    });
+    const ObserverReset reset_observer;
     {
         app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 2);
         render::FrameRenderer frames(1);
@@ -518,19 +542,28 @@ TEST_CASE("picture recovery: a generation that outlives the bridge is destroyed 
         picture.wait_idle();
         REQUIRE(picture.commit(frames) == 1);
         kept = picture.scene();
+        const std::lock_guard<std::mutex> lock(destroyed_mutex);
+        kept_generation = kept->generation();
     }
+    REQUIRE(kept_generation != 0);
     scene.reset(); // the base generation and the bridge's references are gone; `kept` is the last
                    // owner
-    CHECK(render::SceneReclaimer::shared().stats().completed == before);
+    // Held, so not destroyed: the reclaimer can only see a generation after its last release, so
+    // this holds at any interleaving (the base generation may or may not be destroyed by now).
+    CHECK_FALSE(was_destroyed(kept_generation));
     kept.reset();
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (render::SceneReclaimer::shared().stats().completed < before + 2 &&
+    while ((!was_destroyed(kept_generation) ||
+            render::SceneReclaimer::shared().stats().completed < before + 2) &&
            std::chrono::steady_clock::now() < deadline) {
         std::this_thread::yield();
     }
-    // Both generations (the base and the committed one) were destroyed by the reclaimer.
+    // Both generations (the base and the committed one) were destroyed by the reclaimer, the
+    // committed one off this thread.
+    REQUIRE(was_destroyed(kept_generation));
     REQUIRE(render::SceneReclaimer::shared().stats().completed >= before + 2);
-    CHECK(render::SceneReclaimer::shared().last_thread() != std::this_thread::get_id());
+    const std::lock_guard<std::mutex> lock(destroyed_mutex);
+    CHECK(destroyed_kept_on != std::this_thread::get_id());
 }
 
 // DX3: the failures stay visible per island, and a retry restarts the failed islands from the

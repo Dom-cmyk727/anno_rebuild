@@ -12268,3 +12268,43 @@ as its own entry once back.
 `753ada5862b9cd0a04db8f36ad8f98ef9ae3338c`, matching local. Per the board's own text for this
 step, `main` is **not** moved from this session — that is the orchestrator's action, after its
 review.
+
+## W4-MAIN-1 — independent review of the 11 conflict resolutions — 2026-11-05 — status: ACCEPT WITH FOLLOW-UPS, BOTH ALREADY CLOSED
+
+Independent reviewer (fresh session, briefed with only the conflict list and the two parent
+hashes, `179845f5`/`3a2da9b9`; no conclusions given) reviewed merge commit `4f56e800` read-only.
+
+**Verdict: ACCEPT WITH FOLLOW-UPS.** Items 1-10 (CMakeLists.txt union, REPORTS.md's lossless
+append verified by line arithmetic, the Darwin coordinator files' per-function resolutions, and
+tools/test's main-wins-plus-one-ported-fix pattern) are each CORRECT, with the Darwin conflicts
+judged as resolved on technical evidence (code comments, Apple's documented `host_statistics64`
+semantics, consistency with `proc_pidpath`/libproc.h already used elsewhere) rather than a bare
+"ours" or "theirs" pick; `coord_wire.hpp`'s Darwin process-info helper was judged *better than
+either input*, synthesizing branch's naming/zombie modeling with main's `errno` reset and
+pid-range check.
+
+Item 11 (`tools/test/run_selected.sh`) raised one CONCERN: the merge correctly took main's thin
+wrapper per the board's instruction, but branch's accompanying contract test
+(`tools/test/run_selected_test.sh`, a non-conflicting add that git auto-merged in untouched)
+exercised branch's abandoned implementation via dead `ANNO_RUN_SELECTED_*` env vars, and
+`CMakeLists.txt`'s union (item 1) left it wired up as `run_selected_contract` - a completeness
+gap that should have been caught in step 3's gates before publishing.
+
+**Both follow-ups the reviewer named are already closed, independently of the review** (found
+and fixed during this session's cloud-CI work, documented in
+`docs/orchestration/W4-MAIN-1-ci-incident-2026-11-05.md` before the review ran):
+- Follow-up 1 (confirm `test_workflow_contract` genuinely covers the contract end to end):
+  confirmed. `tools/test/workflow_test.py` has dedicated, passing coverage -
+  `test_missing_required_contract_blocks_selection`, `test_failing_required_contract_blocks_selection`,
+  `test_required_contract_does_not_inflate_selection`,
+  `test_name_preflight_catches_multiline_semicolon_before_build` (the exact bad-test-name case
+  the old script tested separately), `test_renderer_contract_required_even_if_unregistered` - and
+  it passed as `test_workflow_contract` in the green CI run (`42015604171`).
+- Follow-up 2 (nothing else assumes `run_selected_test.sh` exists): confirmed. `grep` across
+  `*.py/*.cmake/*.sh/*.txt/*.md` finds it referenced only in this session's own docs (this file
+  and the incident report) - no code path references it. The file was deleted and
+  `CMakeLists.txt`'s `run_selected_contract` registration removed in commits `82b4134b`/`5b6ee95a`.
+
+**Stop (per the board's step 5, and the owner's explicit instruction this round).** `main` is not
+moved from this session. `task/W4-main-1` remains published at `ef30b112` for the orchestrator's
+review and fast-forward.

@@ -51,6 +51,16 @@ and player permission rows are explicit state, not renderer/UI state.
 | S6 scale | deterministic counters/Release | moreplayers/types/statements | query city/figure rescan | modest benchmark | APPROVEDdb13e91e; Release9da32085 |
 | S7 evidence | canonical runner + independent reviews | nonempty frozen-source gates | skipped/incomplete relabelled pass | retained raw logs/manifests | APPROVED0001a020 / final_integration_review; docs reviewed12569eaf; full original claim BLOCKED |
 
+| SCRIPT2 A closure | entire original AST + hashed bytes | seven IFs/all instructions inventoried | permission fragment substituted | cache/script2/A/endless01-inventory.json | pending A review |
+| SCRIPT2 B area | Scene232a0/11010; Welt985c0/a5f70/97150 | true/false, every edge, exact owner/class/crew | swapped tuples/closed edge/ID0 wildcard/hull/nav shortcut | script2 handler vectors + focused query gate | pending |
+| SCRIPT2 B bounded view | original spatial query + owner-approved cap removal |513th match, index rebuild/large unrelated set |512 truncation or hidden scan per IF | deterministic build/query work counters | owner cap choice approved; code pending |
+| SCRIPT2 C money | Scene15940; Welt1cfd0; approved F15/F28 | exact signed deltas/mixed staging/ledger | wrong recipient/duplicate credit/partial commit | handler vectors + money gate/mutant | primary reviewed; frozen A pending |
+| SCRIPT2 D wave | Scene156f0; Frame61010/62090/62380 | exact broadcast namespaced output/order | silent/wrong event, output erased, rollback leak | typed-event consumer and artifact contracts | primary reviewed; frozen A pending |
+| SCRIPT2 E startup/identity | normal Recorder/driver callers + explicit native schema | first command after INIT; Startup replay; native Ready | constructor eager/second world zero visit/old schema accepted | native literal/reference/corruption and replay gates | pending |
+| SCRIPT2 F original canary | unchanged file/program hashes and actual resources | natural public-command area condition + real build | teleport/grant/extracted source/compiled-only claim | exact branch/money/event ledger, fresh process | pending |
+| SCRIPT2 F scale/capabilities | complete50 AST inventory + Release counters | build AND query work, branch labels | empty kernel called tutorial/hidden unlimited query | capability snapshot/measurement provenance | pending |
+| SCRIPT2 G acceptance | canonical immutable gates and fresh review | exact terminal counts/clean commits | failed/skipped outcomes promoted | final handoff and retained failures | pending |
+
 ## S1 approved execution contract
 
 Evidence-backed original behavior is distinguished below from explicit safety or
@@ -537,3 +547,78 @@ distinct successful PIDs, corrected Debug reuse and accurate scope/platform
 limits. No unresolved P1/P2 findings. S6 full shipped permission-program execution
 remains BLOCKED, so this is not COMPLETE LOCAL CANDIDATE for the entire packet.
 Only documentation records this disposition after the frozen gates.
+
+## MAP-SCRIPT-2 package A — complete endless01 contract (proposed)
+
+This is the continuation authorized by the exact marked packet at main27022d75,
+without merging or editing local TASKS. Baseline b19b509b is clean and preserved.
+Primary evidence: [SCRIPT2 research](../re/script-runtime2.md); complete AST/hash
+inventory and current host/build census are in cache/script2/A. SCRIPT1's former
+contract-pending research sentence is explicitly historical, not current status.
+
+The dependency closure is empty objects, seven areas, five ship/two soldier
+queries and MONEY_ADD/PLAYWAVE. Existing signal/permission/scheduling semantics
+remain. Nonempty object definitions and other actions/queries still refuse whole
+programs. No filename-specific compiler or stripped production source is allowed.
+
+The owner explicitly approved complete indexed queries instead of original512
+candidate truncation. All other researched area predicates remain: authored
+(y0,x0,x1,y1), signed endpoints, current registered truncated point, half-open
+bounds, exact mapped owner including0, class bands, masks, occupied crew, and
+original clipped sector range/partial-final-sector omission and endpoint+15 wrap.
+A derived sparse row/column16-tile view is built lazily at the first executed area
+query of a script visit. It observes current authoritative figures/types/parent/
+crew/expiry state; it is discarded after the visit and rebuilt after load. No
+persistent visitation flag exists. Slot scans, relevant insertions, visited rows/
+cells/candidates and crew checks consume deterministic work, including building
+an index that later exhausts its budget. Idle short-circuit guards do not scan.
+A large unrelated-content control must show build work separately from query work.
+
+MONEY_ADD sign-extends validated i32 operands into the established i64 saturating
+money policy (F15/F28), one mapped recipient and no account/event side effects.
+Staging must preserve ordered additions across aliases and mixed permission writes,
+commit exactly once, and roll back after later failure. No ECON work is imported.
+A typed wave instruction carries an immutable quoted asset. A generic normal file
+loader supplies its scene-relative source namespace; synthetic specs can declare
+one. Byte-only imports remain distinct and a wave program without known namespace
+refuses instead of silently becoming a bare asset. Combined namespace/asset length
+is bounded by configurable ScriptLimits asset_bytes (default4096, hard safetybound
+65536 with documented build-time raise path); copied bytes are charged before
+staging. This is a modern safety bound, not original sprintf overflow behavior.
+
+PLAYWAVE emits a typed SimEvent with original code317, explicit broadcast audience,
+namespaced asset, source offset and old world tick. Multiple events retain issue
+order and repeat whenever the script issues them. Local queue overflow/drops do
+not fail scripts or affect gameplay, work, PRNG or future decisions. Only budget/
+validation/host faults roll back the transaction, including staged events. Existing
+HostEventQueue capacity/drop-oldest semantics are reused; per-visit SimOutput is
+bounded by charged work and asset length. Publish committed script output after
+Scheduler's output reset; script-only startup appends its committed events without
+resetting unrelated output or advancing world subsystems. Host output is not
+saved/hashed; loaded Ready state never redelivers past output. No exactly-once
+external audio promise or audio-device integration is introduced.
+
+Normal startup ownership: Recorder::start initializes a fresh Pending world before
+returning a recorder that can accept commands; unrecorded run_turn/run_frame do the
+same before commands. Ready/ExplicitNone is idempotent and Missing never changes
+to ExplicitNone. Failed startup exposes no command/world-advance prefix. Low-level
+World::create retains Pending and pre-initialization save support. To preserve
+INIT presentation in encoded replay, a recorder captures the Pending initial save
+and records a typed Startup replay entry; native Ready resumes add no entry and
+never rerun INIT. A bounded event-only replay observer allows headless recording
+consumers to check emissions without mutable gameplay access. The normal CLI uses
+the generic namespace-aware loader; no Windows UI change is needed.
+
+Compatibility is planned before new fixtures: native130 + SCRIPT2 discriminator,
+script policy2, replay frame3 with explicit Startup entry (legacyframe2 can remain
+readable for framing/version-refusal inspection without reinterpreting its native
+state). SCRIPT1 native129+SCRIPT1 and its recordings/tools/goldens remain frozen.
+New fields include asset limit and optional namespace; derived program/index/work
+telemetry are not state. An independent new stream reference and literal bytes
+must precede the corresponding persistence claim. Default empty script scope is
+67bytes (old62 + asset-limit4 + absent-namespace1). No cross-lane version-number
+compatibility is inferred and no automatic merge is authorized.
+
+All packages require read-only approval before their dependent implementation.
+A is pending frozen contract review. This section is the current proposal, not a
+claim that the new code or complete original canary has executed.

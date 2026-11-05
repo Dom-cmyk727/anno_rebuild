@@ -114,9 +114,13 @@ Full saver1e920 contains ANLTRG branch1f21d..1f2e2: rowbuffer+24..27 zeroed at
 1f234 (after PUSH offset adjustment), key/value overwrite first3 bytes, pad0.
 Strict row-length/known-id validation is an explicit safety adaptation.
 
-Independent S1 reviewers: /root/script_semantics_review and
-/root/permission_semantics_review derived these cases read-only. Formal frozen
-contract disposition pending; no production implementation is released yet.
+Historical S1 pre-approval checkpoint: independent reviewers
+/root/script_semantics_review and /root/permission_semantics_review derived these
+cases read-only before contract release. Superseded by the approved SCRIPT1 code/
+test pin0001a020a8e1025e8531fa0e22358b5c166afce8 and final local headb19b509b.
+Production enforcement is implemented under that separate approved contract;
+[handoff](../orchestration/reviews/2026-11-05-map-script1.md). The full endless01
+claim remained blocked there; [SCRIPT2 evidence](script-runtime2.md) addresses it.
 
 ### Final independently derived edges
 

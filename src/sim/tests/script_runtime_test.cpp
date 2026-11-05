@@ -249,4 +249,14 @@ TEST_CASE("SCRIPT1 generated adapter contract validates an inert base before cle
                 .empty());
         CHECK(bad.script_source == source);
     }
+    ScenarioSpec area;
+    area.script_context = ScriptContext::Pending;
+    area.script_source = text("");
+    area.script_source.insert(area.script_source.find("[PLAYERMAPPER_DEFINE]"),
+                              "\"FIELD\" 1,2,3,4\n");
+    const auto before = area.script_source;
+    CHECK_FALSE(
+        anno::sim_load::make_generated_script_free(area, *TypeRegistry::empty(), SimConfig{})
+            .empty());
+    CHECK(area.script_source == before);
 }

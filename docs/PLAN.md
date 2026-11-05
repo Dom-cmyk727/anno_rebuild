@@ -283,6 +283,7 @@ Goal: headless simulation that loads a scenario and advances by ticks; faithful 
 Acceptance M3: a 1-hour headless run of an endless scenario produces identical hashes across Windows and Linux builds and across two runs. Production/population numbers match differential fixtures where executed.
 
 Status M3 population (2026-11-04, MAP-POP-CLOSE-1): PARTIAL. A fresh home built by BuildCmd gets its first assignment, pays exactly, grows to its cap, is supplied by real resident walkers, survives save/reload and replay on a real scenario (headless, `Rules::house_updates` on only in tests; the default stays false; this is not live gameplay). A real pioneer -> settler upgrade is blocked by one unported supplier rule: goods 76 (WIRTSHAUS) comes only from an Inn's tavern stock, whose tick, alcohol carrier and chain are not ported, and no shipped scenario has a stocked Inn. Details: `docs/sim/population-live.md` section 21 and `docs/orchestration/REPORTS.md`.
+Status M3 population (2026-11-05, MAP-POP-CLOSE-2): headless progression reached. The Inn is ported (tick, carrier, take, unload; `Rules::house_updates` only), OQ-463 is closed (goal-cell key nibble), and a pioneer house built by `BuildCmd` in the original Tutorial town upgrades 501 -> 522 at tick 55000 with the exact debit, masks, ledger, controls, save/reload cuts and replay (fresh process included). Not live gameplay; default `house_updates` false. Details: `docs/sim/population-live.md` sections 22-26.
 
 ## 5. Milestone M4 — Lockstep multiplayer (`crates/net`)
 

@@ -1179,8 +1179,9 @@ TEST_CASE("V1: the real published compat-4 coordinator's live memory holder bloc
     const char* coord = std::getenv("ANNO_TEST_V4_COORD");
     const char* probe_exe = std::getenv("ANNO_TEST_V4_PROBE");
     if (coord == nullptr || coord[0] == '\0' || probe_exe == nullptr || probe_exe[0] == '\0') {
-        MESSAGE("skipping: opt-in, set ANNO_TEST_V4_COORD and ANNO_TEST_V4_PROBE to the published "
-                "compat-4 binaries to run");
+        MESSAGE(
+            "skipping: set ANNO_TEST_V4_COORD=path and ANNO_TEST_V4_PROBE=path to the published "
+            "compat-4 binaries to run");
         return;
     }
     run_predecessor(Kind::Memory, kPortV1, "v1", coord, probe_exe);
@@ -1191,8 +1192,9 @@ TEST_CASE("V2: the same for the CPU token (opt-in ANNO_TEST_V4_COORD, ANNO_TEST_
     const char* coord = std::getenv("ANNO_TEST_V4_COORD");
     const char* probe_exe = std::getenv("ANNO_TEST_V4_PROBE");
     if (coord == nullptr || coord[0] == '\0' || probe_exe == nullptr || probe_exe[0] == '\0') {
-        MESSAGE("skipping: opt-in, set ANNO_TEST_V4_COORD and ANNO_TEST_V4_PROBE to the published "
-                "compat-4 binaries to run");
+        MESSAGE(
+            "skipping: set ANNO_TEST_V4_COORD=path and ANNO_TEST_V4_PROBE=path to the published "
+            "compat-4 binaries to run");
         return;
     }
     run_predecessor(Kind::Cpu, kPortV2, "v2", coord, probe_exe);

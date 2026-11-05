@@ -405,8 +405,7 @@ UpgradeScores upgrade_scores(const PopulationView& cur, const PopulationView& ne
     return r;
 }
 
-HouseFault house_first_assignment_domain(const PopulationView& new_group,
-                                         std::size_t goods_count) {
+HouseFault house_first_assignment_domain(const PopulationView& new_group, std::size_t goods_count) {
     if (new_group.group->number == 0) {
         return HouseFault::None;
     }
@@ -798,18 +797,29 @@ HouseOutcome apply_house_effects(const HouseEnv& env, Island& island, const Buil
         ++env.work->upgrade_scores;
     }
     const UpgradeScores scores = upgrade_scores(cur, next, loc.house->e, loc.house->stock);
+    const auto diagnostics = [&](HouseOutcome& o) {
+        o.scores = scores;
+        o.check_ran = true;
+        o.check_e = loc.house->e;
+        o.check_stock = loc.house->stock;
+    };
     if (scores.fault != HouseFault::None) {
         HouseOutcome o = fault_outcome(scores.fault);
-        o.scores = scores;
+        diagnostics(o);
         return o;
     }
     if (!scores.eligible) {
         HouseOutcome o;
-        o.scores = scores;
+        diagnostics(o);
         return o;
     }
+    const std::uint32_t check_e = loc.house->e;
+    const std::vector<std::uint32_t> check_stock = loc.house->stock;
     HouseOutcome o = upgrade_house(env, island, key);
     o.scores = scores;
+    o.check_ran = true;
+    o.check_e = check_e;
+    o.check_stock = check_stock;
     return o;
 }
 

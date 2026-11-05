@@ -67,11 +67,12 @@ enum class HouseFault : std::uint8_t {
                                               const BuildingType& next);
 
 /// What UpgradeCheck makes of a House type's ladder successor (D 0x1002e000 only needs the next
-/// type to exist and its materials to be in store; it never checks its kind or group - population.md
-/// 17(c)). Ladder: a regular successor. EndOfLadder: no next type exists (the original returns 0).
-/// Special: the successor exists but is irregular and the type is declared (BuildingType::
-/// special_successor); the engine does not replay the original's unchecked type swap, it is a named
-/// not-eligible outcome. Malformed: irregular and undeclared - a content error, never "not eligible".
+/// type to exist and its materials to be in store; it never checks its kind or group -
+/// population.md 17(c)). Ladder: a regular successor. EndOfLadder: no next type exists (the
+/// original returns 0). Special: the successor exists but is irregular and the type is declared
+/// (BuildingType:: special_successor); the engine does not replay the original's unchecked type
+/// swap, it is a named not-eligible outcome. Malformed: irregular and undeclared - a content error,
+/// never "not eligible".
 enum class HouseSuccessor : std::uint8_t { Ladder, EndOfLadder, Special, Malformed };
 [[nodiscard]] HouseSuccessor house_successor(const SimConfig& cfg, const TypeRegistry& types,
                                              const BuildingType& type);
@@ -202,6 +203,9 @@ struct HouseOutcome {
     std::uint32_t first_assignment_draws = 0;
     std::uint32_t walkers_detached = 0; ///< removal: walkers whose home became none (not ended)
     UpgradeScores scores;               ///< filled by apply_house_effects' UpgradeCheck arm
+    bool check_ran = false;             ///< K3 diagnostics: the check read check_e / check_stock
+    std::uint32_t check_e = 0;
+    std::vector<std::uint32_t> check_stock;
 };
 
 /// Upgrade (0x1002cbe0, immediate). Materials gate first (a failure changes nothing), then in the

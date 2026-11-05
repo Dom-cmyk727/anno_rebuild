@@ -1,12 +1,13 @@
 // MAP-POP-CLOSE-2 K2 B: the supply paths on ORIGINAL data (docs/sim/population-live.md section 24).
-// The Tutorial town (Tutorial/02Trade01.sze island 3, player 2, section 22.4) holds a market hall, a
-// Kontor, the leather and cloth stand 1314, the food and salt stands 1310, the chapel 1320 and an Inn.
-// With the goal cells carrying their key nibble (OQ-463) every one of them is reached by a house
-// walker. Checks: (1) the eight existing houses and eight BuildCmd-built 1314 stands reach every
-// stand like the 1310 control; (2) a fresh pioneer house built by BuildCmd is served by the stalls
-// (LEDER, STOFFE, SALZ out of the city store, take 1) and by the chapel (the KAPELLE slot, billed
-// with take 0, the store untouched); (3) the exact ledger of those purchases.
+// The Tutorial town (Tutorial/02Trade01.sze island 3, player 2, section 22.4) holds a market hall,
+// a Kontor, the leather and cloth stand 1314, the food and salt stands 1310, the chapel 1320 and an
+// Inn. With the goal cells carrying their key nibble (OQ-463) every one of them is reached by a
+// house walker. Checks: (1) the eight existing houses and eight BuildCmd-built 1314 stands reach
+// every stand like the 1310 control; (2) a fresh pioneer house built by BuildCmd is served by the
+// stalls (LEDER, STOFFE, SALZ out of the city store, take 1) and by the chapel (the KAPELLE slot,
+// billed with take 0, the store untouched); (3) the exact ledger of those purchases.
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -18,8 +19,6 @@
 
 #include <doctest/doctest.h>
 
-#include <array>
-
 #include <anno/sim/building.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/types.hpp>
@@ -30,74 +29,14 @@
 #include <anno/sim_load/scenario_load.hpp>
 #include <anno/test/game_dir.hpp>
 
-#include "world_access.hpp"
+#include "tutorial_town.hpp"
 
 namespace {
 
 namespace sim = anno::sim;
 namespace fs = std::filesystem;
 
-constexpr const char* kTutorial = "Tutorial/02Trade01.sze";
-constexpr std::uint32_t kIsland = 3, kOwner = 2;
-constexpr sim::TypeId kPioneer{501};
-constexpr sim::GoodsId kLeder = 27, kSalz = 28, kStoffe = 33, kKapelle = 82;
-
-struct Original {
-    std::shared_ptr<const sim::TypeRegistry> types;
-    sim::SimConfig cfg;
-    anno::sim_load::IslandTemplates templates;
-    fs::path dir;
-};
-
-std::optional<Original> load_original() {
-    const auto dir = anno::test::game_dir();
-    if (!dir) {
-        return std::nullopt;
-    }
-    static const auto loaded =
-        anno::sim_load::load_original_registry(*dir, anno::sim_load::FigureEntries::Required);
-    REQUIRE_MESSAGE(loaded.error.empty(), loaded.error);
-    Original o;
-    o.types = loaded.types;
-    o.templates = anno::sim_load::scan_island_templates(*dir);
-    o.dir = *dir;
-    return o;
-}
-
-sim::World tutorial_world(const Original& o, bool live) {
-    auto resolved = anno::sim_load::load_scenario_with_links(
-        anno::test::read_file(o.dir / "Scenes" / kTutorial), o.templates, *o.types, o.cfg, {});
-    REQUIRE(resolved);
-    sim::Rules rules;
-    rules.house_updates = live;
-    auto created = sim::World::create(resolved.value().loaded.spec, o.types, o.cfg, rules);
-    REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
-    return std::move(created).value();
-}
-
-struct Town {
-    sim::Island* island = nullptr;
-    sim::City* city = nullptr;
-    sim::CityRef ref;
-};
-
-Town find_town(sim::World& w) {
-    Town t;
-    for (auto& isl : sim::WorldTestAccess::islands(w)) {
-        if (!isl || isl->index.v != kIsland) {
-            continue;
-        }
-        for (auto& c : isl->cities) {
-            if (c && c->owner.v == kOwner) {
-                t.island = &*isl;
-                t.city = &*c;
-                t.ref = sim::CityRef{isl->index, c->number};
-            }
-        }
-    }
-    REQUIRE(t.city != nullptr);
-    return t;
-}
+using namespace tutorial_town;
 
 /// Builds `type` on a 3 x 3 grid of sites two tiles apart centred on (sx, sy), the centre excluded,
 /// so that no stand is enclosed by other stands (a mapper-0 tile is passable only as a goal, never
@@ -110,7 +49,8 @@ int build_cluster(sim::World& w, const Town& t, sim::TypeId type, int sx, int sy
                 continue;
             }
             const auto res = w.apply(sim::Command{
-                t.city->owner, sim::BuildCmd{t.ref, {sim::PlacementWire{type, sx + dx, sy + dy, 0, 0, 0}}}});
+                t.city->owner,
+                sim::BuildCmd{t.ref, {sim::PlacementWire{type, sx + dx, sy + dy, 0, 0, 0}}}});
             built += res.ok() ? 1 : 0;
         }
     }
@@ -118,7 +58,8 @@ int build_cluster(sim::World& w, const Town& t, sim::TypeId type, int sx, int sy
 }
 
 /// The stands (stall, public and Inn classes) a house's walker search reaches, by building origin.
-std::set<std::pair<int, int>> reached_stands(const Original& o, const Town& t, const sim::Building& house) {
+std::set<std::pair<int, int>> reached_stands(const Original& o, const Town& t,
+                                             const sim::Building& house) {
     const sim::BuildingType& ht = *o.types->find(house.type);
     const auto& tables = o.types->walk_tables();
     REQUIRE(tables != nullptr);
@@ -151,14 +92,15 @@ std::set<std::pair<int, int>> reached_stands(const Original& o, const Town& t, c
     }
     std::set<std::pair<int, int>> reached;
     const auto starts = sim::entrance_walk_points(house, ht);
-    const sim::SearchResult found = sim::search(cells, *tables, 0, starts, gp, [&](const sim::SearchVisit& v) {
-        for (const G& g : goals) {
-            if (g.p == v.point) {
-                reached.insert({g.x, g.y});
+    const sim::SearchResult found =
+        sim::search(cells, *tables, 0, starts, gp, [&](const sim::SearchVisit& v) {
+            for (const G& g : goals) {
+                if (g.p == v.point) {
+                    reached.insert({g.x, g.y});
+                }
             }
-        }
-        return sim::SearchDecision{sim::GoalAction::Expand, false};
-    });
+            return sim::SearchDecision{sim::GoalAction::Expand, false};
+        });
     REQUIRE(found.complete);
     return reached;
 }
@@ -177,7 +119,8 @@ std::vector<const sim::Building*> houses_of(const Town& t) {
 
 } // namespace
 
-TEST_CASE("supply K2: every stand of the Tutorial town is reached, and eight built 1314 stands like eight 1310") {
+TEST_CASE("supply K2: every stand of the Tutorial town is reached, and eight built 1314 stands "
+          "like eight 1310") {
     const auto o = load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -188,8 +131,9 @@ TEST_CASE("supply K2: every stand of the Tutorial town is reached, and eight bui
     for (const sim::TypeId stall : {sim::TypeId{1314}, sim::TypeId{1310}}) {
         sim::World w = tutorial_world(*o, false);
         const Town t = find_town(w);
-        // the original stands: 1314 (222,255), 1310 (223,255) and (224,255), the chapel (228,255), the Inn
-        // (219,238); the eight settler houses all reach all five (before K2: 4 of 5, never the 1314)
+        // the original stands: 1314 (222,255), 1310 (223,255) and (224,255), the chapel (228,255),
+        // the Inn (219,238); the eight settler houses all reach all five (before K2: 4 of 5, never
+        // the 1314)
         const auto houses = houses_of(t);
         REQUIRE(houses.size() == 8);
         for (const sim::Building* h : houses) {
@@ -207,7 +151,8 @@ TEST_CASE("supply K2: every stand of the Tutorial town is reached, and eight bui
         for (const auto& l : t.city->index.lists) {
             for (const auto& b : l.slots) {
                 if (b && b->type == stall && reached.count({b->x, b->y}) == 0) {
-                    MESSAGE("stand " << stall.v << " at (" << b->x << "," << b->y << ") is NOT reached");
+                    MESSAGE("stand " << stall.v << " at (" << b->x << "," << b->y
+                                     << ") is NOT reached");
                 }
             }
         }
@@ -217,7 +162,8 @@ TEST_CASE("supply K2: every stand of the Tutorial town is reached, and eight bui
     CHECK(stands_seen[0] == stands_seen[1]); // 1314 like 1310
 }
 
-TEST_CASE("supply K2: a fresh pioneer house is served by the stalls and the chapel with the exact ledger") {
+TEST_CASE("supply K2: a fresh pioneer house is served by the stalls and the chapel with the exact "
+          "ledger") {
     const auto o = load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -234,10 +180,11 @@ TEST_CASE("supply K2: a fresh pioneer house is served by the stalls and the chap
     const std::uint32_t salz_before = t.city->stock.stock[kSalz];
     sim::TransportStats stats;
     w.set_transport_stats(&stats);
-    // The fresh house's slots 1 (LEDER), 2 (STOFFE), 3 (SALZ) and 5 (KAPELLE) start at 0; each fills only
-    // by a walker's delivery. One advance(100) is 100 ms = 50 ticks (a tick is 2 ms): 2400 advances =
-    // 120000 ticks (checked below against the clock). The ledger below is TOWN-WIDE (the eight settler
-    // houses buy too); what is specific to the fresh house is the slot assertions.
+    // The fresh house's slots 1 (LEDER), 2 (STOFFE), 3 (SALZ) and 5 (KAPELLE) start at 0; each
+    // fills only by a walker's delivery. One advance(100) is 100 ms = 50 ticks (a tick is 2 ms):
+    // 2400 advances = 120000 ticks (checked below against the clock). The ledger below is TOWN-WIDE
+    // (the eight settler houses buy too); what is specific to the fresh house is the slot
+    // assertions.
     std::array<bool, 6> filled{};
     for (int i = 0; i < 2400; ++i) {
         w.advance(100);
@@ -257,11 +204,12 @@ TEST_CASE("supply K2: a fresh pioneer house is served by the stalls and the chap
     CHECK(filled[5]); // KAPELLE by the chapel
     const sim::ResidentStats& rs = stats.residents;
     for (const sim::GoodsId g : {kLeder, kStoffe, kSalz}) {
-        // a stall takes the store (take 1): bought == taken, and billed raised by the requested amount
+        // a stall takes the store (take 1): bought == taken, and billed raised by the requested
+        // amount
         CHECK(rs.bought_by_goods.count(g) == 1);
         CHECK(rs.taken_by_goods.at(g) == rs.bought_by_goods.at(g));
-        // the request is billed in full and the stall returns the clipped amount: here the stall store
-        // always covers the request, so billed == bought exactly (measured, town-wide)
+        // the request is billed in full and the stall returns the clipped amount: here the stall
+        // store always covers the request, so billed == bought exactly (measured, town-wide)
         CHECK(rs.billed_by_goods.at(g) == rs.bought_by_goods.at(g));
     }
     // the store fell by exactly what the stalls took (the Tutorial town holds no producer of these)

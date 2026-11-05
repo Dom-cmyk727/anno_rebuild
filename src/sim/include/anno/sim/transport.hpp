@@ -152,9 +152,10 @@ struct ResidentStats {
     std::uint64_t lost_88 = 0;            ///< cargo of residents that ended without a delivery
     std::uint64_t no_path_home = 0;       ///< step C found no path home (the job ends, cargo kept)
     std::uint64_t reverse_rejected = 0;   ///< C3 P-15: reverse routes the forward replay refused
-    std::uint64_t endpoint_adapted = 0;   ///< C3 P-15: reverse routes accepted only by the endpoint adapter
-    std::uint64_t forward_used = 0;       ///< C3 P-15: routes supplied by the shared forward search
-    std::uint64_t home_gone = 0;          ///< the home was gone or lost the walker's slot
+    std::uint64_t endpoint_adapted =
+        0; ///< C3 P-15: reverse routes accepted only by the endpoint adapter
+    std::uint64_t forward_used = 0; ///< C3 P-15: routes supplied by the shared forward search
+    std::uint64_t home_gone = 0;    ///< the home was gone or lost the walker's slot
     /// The per-goods ledger of the whole live chain (MAP-POP-LIVE-1 L5; same rules, diagnostic).
     /// Job side, at the purchase: the cargo amounts the suppliers returned, the city store they
     /// took (a stall takes it, a public building only bills), and the billed deltas (the REQUESTED
@@ -192,8 +193,8 @@ struct HouseWork {
     std::uint64_t walk_searches = 0;       ///< walk searches run
     std::uint64_t walk_expansions = 0;     ///< cells popped by those searches
     std::uint64_t upgrade_scores = 0;      ///< upgrade_scores evaluations
-    std::uint64_t upgrade_terminal = 0;    ///< C3: end-of-ladder houses at their cap (named outcome)
-    std::uint64_t upgrade_special = 0;     ///< C3: declared special successors at their cap
+    std::uint64_t upgrade_terminal = 0; ///< C3: end-of-ladder houses at their cap (named outcome)
+    std::uint64_t upgrade_special = 0;  ///< C3: declared special successors at their cap
 };
 
 /// One growth step that changed a house's residents (the kernel's result, committed).
@@ -229,6 +230,15 @@ struct HouseTransitionRecord {
     bool variant_drawn = false;
     std::uint16_t variant_draw = 0;
     std::uint32_t variant_index = 0;
+    /// MAP-POP-CLOSE-2 K3 diagnostics (never read by the sim): when the UpgradeCheck ran in this
+    /// tick, the E and the per-slot stock it read (the committed values of that tick, not the ones
+    /// before the kernel) and its scores: food, goods mean, infra min and the table entries f/b/i.
+    bool check_ran = false;
+    bool check_eligible = false;
+    std::uint32_t check_e = 0;
+    std::vector<std::uint32_t> check_stock;
+    std::int64_t check_food = 0, check_mean = 0, check_infra = 0;
+    std::int64_t check_f = 0, check_b = 0, check_i = 0;
 };
 
 /// One stage bit set by the stage pass.

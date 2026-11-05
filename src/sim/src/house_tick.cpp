@@ -225,6 +225,16 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
     tr.variant_drawn = outcome.variant_drawn;
     tr.variant_draw = outcome.variant_draw;
     tr.variant_index = outcome.variant_index;
+    tr.check_ran = outcome.check_ran;
+    tr.check_eligible = outcome.scores.eligible;
+    tr.check_e = outcome.check_e;
+    tr.check_stock = outcome.check_stock;
+    tr.check_food = outcome.scores.food;
+    tr.check_mean = outcome.scores.mean;
+    tr.check_infra = outcome.scores.infra;
+    tr.check_f = outcome.scores.f;
+    tr.check_b = outcome.scores.b;
+    tr.check_i = outcome.scores.i;
     for (std::size_t k = 0; k < spent_before.size(); ++k) {
         tr.spent_by_good.push_back(static_cast<std::int64_t>(city.build_goods[k].spent) -
                                    static_cast<std::int64_t>(spent_before[k]));
@@ -239,7 +249,8 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
     }
     if (*kind == K::Upgrade || *kind == K::Downgrade) {
         tr.new_group = outcome.new_group;
-        tr.residents_after = committed.value_or(0); // SetGroup keeps the residents (F2: read, not assumed)
+        tr.residents_after =
+            committed.value_or(0); // SetGroup keeps the residents (F2: read, not assumed)
         if (tr.old_group < city.index.house_counts.size()) {
             tr.houses_old_after = city.index.house_counts[tr.old_group];
         }

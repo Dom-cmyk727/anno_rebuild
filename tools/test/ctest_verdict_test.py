@@ -243,6 +243,8 @@ class Contract(unittest.TestCase):
                         # expression; a new MESSAGE("skipped") must still fail this audit.
                         if os.path.relpath(os.path.join(d, f), root) == "sim/tests/resident_test.cpp":
                             source = source.replace('out["status"] = d ? "decoded" : "skipped";', "")
+                        if os.path.relpath(os.path.join(d, f), root) == "sim/tests/house_kernel_test.cpp":
+                            source = source.replace('m["status"] = r.status == sim::HouseKernelStatus::Skipped     ? "skipped"', "")
                         for text in literal.findall(source):
                             found.setdefault(text, os.path.join(d, f))
         self.assertGreater(len(found), 10)

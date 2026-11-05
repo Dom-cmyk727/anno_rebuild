@@ -131,9 +131,12 @@ std::string validate_script(const ScriptRuntime& r, const TypeRegistry& types,
         s.cursor >= std::max<std::size_t>(1, p.branches.size()) || s.last_work > r.limits.work ||
         std::any_of(s.signals.begin(), s.signals.end(), [](auto b) { return b > 1; }))
         return "invalid script continuation";
-    for (auto id : s.bindings)
-        if (id.v >= cfg.player_slots || !players.find(id))
+    for (std::size_t i = 0; i < s.bindings.size(); ++i) {
+        const auto id = s.bindings[i];
+        if (id.v >= cfg.player_slots || !players.find(id) ||
+            (id.v != p.mappings[i].slot && id.v != cfg.neutral_player))
             return "invalid script binding";
+    }
     if (s.fault_offset > r.source.size() || (s.fault == ScriptFault::None && s.fault_offset != 0))
         return "invalid script fault location";
     if ((s.context == ScriptContext::Fault) != (s.fault != ScriptFault::None))

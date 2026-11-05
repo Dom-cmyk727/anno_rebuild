@@ -8,6 +8,8 @@
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
+
+#include "world_access.hpp"
 using namespace anno::sim;
 namespace {
 std::string text(std::string kernel) {
@@ -135,4 +137,73 @@ TEST_CASE("SCRIPT1 recorder and fresh decoded replay share normal visits") {
     auto replayed = replay(fresh.value(), decoded.value());
     REQUIRE_MESSAGE(replayed, (replayed ? "" : replayed.error()));
     CHECK(fresh.value().state_hash() == world.state_hash());
+}
+
+TEST_CASE("SCRIPT1 nonempty continuation and widened permission rows have literal bytes") {
+    // Wire-only specimen: distinctive values expose swapped fields. It is not a playable runtime.
+    ScriptRuntime r;
+    r.source = "X";
+    r.limits = {3, 4, 5, 6};
+    r.policy = 0x01020304;
+    r.state.context = ScriptContext::Fault;
+    r.state.fault = ScriptFault::Host;
+    r.state.cursor = 0x11223344;
+    r.state.last_arg = 0x55667788;
+    r.state.fault_offset = 0x12345678;
+    r.state.last_work = 0x23456789;
+    r.state.signals = {1, 0, 1};
+    r.state.bindings = {PlayerId{0x10203}, PlayerId{70}};
+    const std::vector<std::uint8_t> expected{
+        1,    0,    0,    0,    0,    0,    0,    0,    'X',  3,    0,    0,    0,    4,    0,
+        0,    0,    5,    0,    0,    0,    6,    0,    0,    0,    4,    3,    2,    1,    5,
+        2,    0x44, 0x33, 0x22, 0x11, 0x88, 0x77, 0x66, 0x55, 0x78, 0x56, 0x34, 0x12, 0x89, 0x67,
+        0x45, 0x23, 3,    0,    0,    0,    0,    0,    0,    0,    1,    0,    1,    2,    0,
+        0,    0,    0,    0,    0,    0,    3,    2,    1,    0,    70,   0,    0,    0};
+    WriteArchive out;
+    fields(out, r);
+    CHECK(out.data() == expected);
+    auto p = make_player(PlayerId{0}, SimConfig{});
+    p.permissions = {{TypeId{70000}, 0}, {TypeId{90001}, 255}};
+    WriteArchive player;
+    fields(player, p);
+    const std::vector<std::uint8_t> tail{2, 0, 0, 0, 0,    0,    0, 0, 0x70, 0x11, 1, 0,
+                                         0, 0, 0, 0, 0x91, 0x5f, 1, 0, 255,  0,    0, 0};
+    REQUIRE(player.data().size() >= tail.size());
+    CHECK(std::vector<std::uint8_t>(player.data().end() - static_cast<std::ptrdiff_t>(tail.size()),
+                                    player.data().end()) == tail);
+}
+TEST_CASE("SCRIPT1 native restore refuses malformed continuation and unrelated binding") {
+    auto spec = synthetic::basic_scenario(77);
+    auto other = spec.players[0];
+    other.id = PlayerId{1};
+    spec.players.push_back(other);
+    spec.script_context = ScriptContext::Pending;
+    spec.script_source = text("SET X = TRUE;\nIF X THEN {}\n");
+    auto made = World::create(spec, TypeRegistry::empty());
+    REQUIRE(made);
+    const auto base = made.value();
+    for (int mutant = 0; mutant < 5; ++mutant) {
+        auto w = base;
+        auto& r = WorldTestAccess::script(w);
+        switch (mutant) {
+        case 0:
+            r.state.signals[1] = 2;
+            break;
+        case 1:
+            r.state.cursor = 1;
+            break;
+        case 2:
+            r.state.bindings[0] = PlayerId{1};
+            break;
+        case 3:
+            r.policy = 2;
+            break;
+        case 4:
+            r.limits.depth = 129;
+            break;
+        }
+        auto refused = World::load(w.save(), TypeRegistry::empty());
+        REQUIRE_FALSE(refused);
+        CHECK(refused.error().find("script") != std::string::npos);
+    }
 }

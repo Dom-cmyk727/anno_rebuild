@@ -40,6 +40,8 @@ bool set_construction_permission(Player& player, PermissionRows& rows, const Typ
     const auto* type = types.find(id);
     if (!type || type->construction.stage >= 32)
         return false;
+    if (type->construction.stage == 31 && type->research_id >= player.research.state.size())
+        return false;
     for (auto research : type->permissions.grant_research)
         if (research >= player.research.state.size())
             return false;
@@ -48,9 +50,12 @@ bool set_construction_permission(Player& player, PermissionRows& rows, const Typ
         return true;
     if (type->construction.stage != 31)
         player.flags |= std::uint32_t{1} << type->construction.stage;
-    else
+    else {
+        // FORSCHTYPE is mandatory, including zero; declarative extras cannot suppress it.
+        player.research.state[type->research_id] |= 2u;
         for (auto research : type->permissions.grant_research)
             player.research.state[research] |= 2u;
+    }
     return true;
 }
 bool set_all_construction_permissions(Player& player, PermissionRows& rows,

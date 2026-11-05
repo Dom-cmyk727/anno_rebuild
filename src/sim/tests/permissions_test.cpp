@@ -133,3 +133,41 @@ TEST_CASE("SCRIPT1 permission fact digest has independent PRM1 bytes") {
     }
     CHECK(changed.value()->digest() == expected);
 }
+TEST_CASE("SCRIPT1 stage31 always grants the base research including zero without extras") {
+    for (auto research : {0u, 7u}) {
+        BuildingType type;
+        type.id = TypeId{90001};
+        type.construction.stage = 31;
+        type.research_id = research;
+        TypeRegistry::Builder builder;
+        builder.add(type);
+        auto types = builder.build();
+        REQUIRE(types);
+        auto player = make_player(PlayerId{0}, SimConfig{});
+        PermissionRows rows;
+        REQUIRE(set_construction_permission(player, rows, *types.value(), type.id, 257));
+        CHECK(rows[0].value == 1);
+        CHECK_FALSE(player.research.researched(research));
+        REQUIRE(set_construction_permission(player, rows, *types.value(), type.id, 1));
+        CHECK(player.research.researched(research));
+        REQUIRE(set_construction_permission(player, rows, *types.value(), type.id, 0));
+        CHECK(player.research.researched(research));
+        CHECK(rows[0].value == 0);
+        auto short_player = player;
+        short_player.research.state.resize(research);
+        PermissionRows absent;
+        const auto flags = short_player.flags;
+        CHECK_FALSE(set_construction_permission(short_player, absent, *types.value(), type.id, 1));
+        CHECK(absent.empty());
+        CHECK(short_player.flags == flags);
+    }
+    BuildingType bad;
+    bad.id = TypeId{90001};
+    bad.construction.stage = 31;
+    bad.research_id = 65;
+    TypeRegistry::Builder builder;
+    builder.add(bad);
+    auto refused = builder.build();
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().find("stage31 base research") != std::string::npos);
+}

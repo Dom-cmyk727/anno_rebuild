@@ -728,6 +728,8 @@ std::string check_against_config(std::span<const BuildingType> types, const SimC
         if (t.construction.stage >= kStageIndexCount) {
             return "entry " + std::to_string(t.id.v) + ": construction stage is outside 0..31";
         }
+        if (t.construction.stage == 31 && t.research_id >= cfg.research_entries)
+            return who + "stage31 base research id is outside research_entries";
         for (const auto research : t.construction.research_any) {
             if (research >= cfg.research_entries) {
                 return "entry " + std::to_string(t.id.v) + ": construction research id " +

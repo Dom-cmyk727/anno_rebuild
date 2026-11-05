@@ -108,3 +108,25 @@ TEST_CASE("SCRIPT2 MONEY_ADD and permission aliases preserve transaction order a
     CHECK(player_bytes(expected0) == player_bytes(*fixture.world.players().find(PlayerId{0})));
     CHECK(player_bytes(expected1) == player_bytes(*fixture.world.players().find(PlayerId{1})));
 }
+TEST_CASE("SCRIPT2 MONEY_ADD sequential saturation is not saturation of a combined delta") {
+    auto w = money_world("MONEY_ADD(\"ME\",2); MONEY_ADD(\"ME\",-1);", INT64_MAX - 1);
+    REQUIRE(w.initialize_scripts().empty());
+    CHECK(w.players().find(PlayerId{0})->money == INT64_MAX - 1);
+}
+TEST_CASE("SCRIPT2 MONEY_ADD query Host refusal rolls back prior credit") {
+    auto w = money_world("");
+    auto source = money_source("MONEY_ADD(\"ME\",5); TIMER_SET(1,7);");
+    source.insert(source.find("[PLAYERMAPPER_DEFINE]"), "\"MOD_AREA\" 0,0,16,16\n");
+    source.insert(source.find("[SIGNALS]"),
+                  "IF AREA \"MOD_AREA\" TOUCHED_BY_SHIP_FROM \"ME\" THEN {}\n");
+    auto r = prepare_script(source, *TypeRegistry::empty(), w.players(), w.config());
+    REQUIRE(r);
+    auto players = w.players();
+    auto timers = w.timers();
+    auto before = player_bytes(*players.find(PlayerId{0}));
+    REQUIRE_FALSE(advance_script(r.value(), players, timers, *TypeRegistry::empty(), 250));
+    CHECK(r.value().state.fault == ScriptFault::Host);
+    CHECK(player_bytes(*players.find(PlayerId{0})) == before);
+    CHECK(timers.counter == w.timers().counter);
+    CHECK(timers.active == w.timers().active);
+}

@@ -3,6 +3,7 @@
 // address), P = the corpus (the spec section that states it).
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -202,10 +203,10 @@ ScenarioCounts count(const LoadedScenario& s) {
             const bool inside = o.x >= is.x0 && o.y >= is.y0 &&
                                 o.x < is.x0 + static_cast<std::int64_t>(is.w) &&
                                 o.y < is.y0 + static_cast<std::int64_t>(is.h);
-            c.ore_outside += inside ? 0 : 1;
+            c.ore_outside += inside ? 0U : 1U;
         }
         for (const OreObject& o : is.ore_objects) {
-            c.ore_discovered += o.discovered.empty() ? 0 : 1;
+            c.ore_discovered += o.discovered.empty() ? 0U : 1U;
         }
         c.cities += is.cities.size();
         for (const ScenarioSpec::CitySpec& city : is.cities) {

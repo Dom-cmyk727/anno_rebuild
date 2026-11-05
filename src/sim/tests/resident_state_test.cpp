@@ -438,6 +438,13 @@ sim::Building* find_house(sim::World& w) {
     return nullptr;
 }
 
+/// The house of find_house, which every case here has (fails the case otherwise).
+sim::House& house_of(sim::World& w) {
+    sim::Building* const house = find_house(w);
+    REQUIRE(house != nullptr);
+    return std::get<sim::House>(house->payload);
+}
+
 Populated populate(bool save_billed) {
     auto base = syn::make_population_types();
     REQUIRE(base.ok());
@@ -519,8 +526,7 @@ TEST_CASE("stream 128: a populated world saves and loads with billed saved (the 
     c.stage_stamp += 1;
     CHECK(p.world.state_hash() != h0);
     c.stage_stamp -= 1;
-    sim::Building* house = find_house(p.world);
-    std::get<sim::House>(house->payload).walkers[0] = sim::FigureId{};
+    house_of(p.world).walkers[0] = sim::FigureId{};
     CHECK(p.world.state_hash() == h0); // an empty slot stays empty: same bytes
     CHECK(p.world.check_invariants() == "");
 }
@@ -564,7 +570,7 @@ TEST_CASE("stream 128: the invariants name a broken walker or resident fact") {
     REQUIRE(p.world.check_invariants() == ""); // the control
     {
         sim::World w = p.world;
-        std::get<sim::House>(find_house(w)->payload).walkers[0] = sim::FigureId{999};
+        house_of(w).walkers[0] = sim::FigureId{999};
         CHECK(contains(w.check_invariants(), "is not a live figure holding that slot"));
     }
     {
@@ -603,20 +609,20 @@ TEST_CASE("stream 128: the invariants name a broken walker or resident fact") {
     {
         // Surplus slots are legal since L4 (a type change trims lazily, never shrinks the table).
         sim::World w = p.world;
-        std::get<sim::House>(find_house(w)->payload).walkers.push_back(sim::FigureId{});
+        house_of(w).walkers.push_back(sim::FigureId{});
         CHECK(w.check_invariants() == "");
     }
     {
         // Too few slots is as wrong as too many (the vector is sized by the type's maximum).
         sim::World w = p.world;
-        std::get<sim::House>(find_house(w)->payload).walkers.pop_back();
+        house_of(w).walkers.pop_back();
         CHECK(contains(w.check_invariants(), "walkers has 1 entries, the type needs 2"));
     }
     {
         // A live house walker without a home is legal since L4: the house destructor detaches the
         // walkers (0x10075bc0), they live on and end at their next arrival.
         sim::World w = p.world;
-        std::get<sim::House>(find_house(w)->payload).walkers[1] = sim::FigureId{};
+        house_of(w).walkers[1] = sim::FigureId{};
         sim::find_figure(sim::WorldTestAccess::figures(w), p.figure)->home = sim::BuildingId{};
         CHECK(w.check_invariants() == "");
     }

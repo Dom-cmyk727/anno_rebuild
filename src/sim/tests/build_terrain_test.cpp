@@ -1325,8 +1325,8 @@ TEST_CASE("road build: dry run and live run decide alike over random mixed batch
                     CHECK(dry.records[i].status == sim::Reject::AtomicAbort);
                 } else {
                     CHECK(dry.records[i].status == live.records[i].status);
-                    occupied += live.records[i].status == sim::Reject::Occupied ? 1 : 0;
-                    terrain += live.records[i].status == sim::Reject::TerrainRefused ? 1 : 0;
+                    occupied += live.records[i].status == sim::Reject::Occupied ? 1U : 0U;
+                    terrain += live.records[i].status == sim::Reject::TerrainRefused ? 1U : 0U;
                 }
             }
         }

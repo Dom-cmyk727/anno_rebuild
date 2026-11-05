@@ -127,6 +127,7 @@ struct Scene {
         sim::ScenarioSpec::CitySpec c = syn::plain_city(0, 0);
         c.capacity = 100000000;
         std::vector<std::uint32_t> stock(mod_config().warehouse_goods, 0);
+        REQUIRE(stock.size() > kG30);
         stock[kG29] = stock[kG30] = 50000000;
         c.stock = stock;
         is.cities.push_back(std::move(c));

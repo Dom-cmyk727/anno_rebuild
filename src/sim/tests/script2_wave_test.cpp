@@ -77,8 +77,8 @@ TEST_CASE("SCRIPT2 PLAYWAVE bounded queue consumption is outside canonical state
     REQUIRE(w.initialize_scripts().empty());
     REQUIRE(mute.initialize_scripts().empty());
     CHECK(w.state_hash() == mute.state_hash());
-    CHECK(w.event_dropped() == 1);
-    CHECK(mute.event_dropped() == 3);
+    CHECK(w.events_dropped() == 1);
+    CHECK(mute.events_dropped() == 3);
     auto events = w.drain_events();
     REQUIRE(events.size() == 2);
     CHECK(events[0].wave->asset == "scenes/mod/B.WAV");

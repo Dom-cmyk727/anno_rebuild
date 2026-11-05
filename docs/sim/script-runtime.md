@@ -711,3 +711,7 @@ now include asset_bytes (default4096, hard65536); optional namespace is persiste
 as content identity. Relative paths reject absolute/traversal/control/colon and
 empty components; slash conversion preserves case. Byte-only imports need explicit
 namespace for wave support; normal file-loader wiring is E. D gate/review pending.
+
+D-gate-01 failed during build (no selected tests executed): wave queue test used
+singular event_dropped instead of the existing events_dropped API. Corrected the
+test caller; retained original build failure and fresh re-run path.

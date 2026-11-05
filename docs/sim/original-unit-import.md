@@ -487,3 +487,12 @@ ReplayLog pointers in deduced initializer_list. A failed text replacement left
 source unchanged before02; that redundant build attempt is retained. No selection
 executed in either. An explicit const-pointer array fixes the export type; no
 behavior/oracle changes.
+
+D-fresh-03 at9cff8013 retainedFAIL1wrapper/1failed: producer3987passing/1failed
+assertion, allnativecuts/finalstate/exportcompleted. Newcursorassert incorrectly
+expected1 afterbranch0, but Scheduler passes absoluteoldtick; script_visits
+clamps toall7 onceoldtick>=250, so finalcursor stays0. Corrected expectedcursor0
+and the misleading one-per-call comment; exactsignal, sourceoffset1068, captured
+insideNEGERpoint, oneeventat48000 andallresource/constructionchecks passed.
+Failedmanifest/artifacts remainfresh-jwg7oj31; worker didnotexecute because the
+producer failed. No runtime rule change.

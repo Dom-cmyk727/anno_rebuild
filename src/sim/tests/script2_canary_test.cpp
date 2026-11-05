@@ -462,7 +462,7 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
                     CHECK(point.x / 256 < 285);
                     CHECK(point.y / 256 >= 671);
                     CHECK(point.y / 256 < 736);
-                    CHECK(w.script().state.cursor == 1);
+                    CHECK(w.script().state.cursor == 0); // old tick >=250 visits all seven branches
                     CHECK(signal == 1);
                     CHECK(w.script().state.signals[1] == 0);
                     CHECK(e.tick == old_tick);
@@ -484,8 +484,8 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
         rec.checkpoint();
     };
     sail(224, 672);
-    // Branch visitation is bounded one-per-call. Finish the seven-way cycle at
-    // the arrived position, without advancing navigation or economic time.
+    // Additional bounded visits at the arrived position must not repeat the
+    // one-shot effect. At this old tick each call visits all seven branches.
     for (int i = 0; i < 7; ++i) {
         const auto tick = w.clock().tick();
         rec.advance(0);

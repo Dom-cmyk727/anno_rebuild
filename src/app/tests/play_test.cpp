@@ -32,6 +32,8 @@
 #include <anno/sim_load/scenario_load.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "../../sim/tests/original_component.hpp"
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -43,13 +45,53 @@ std::string upper_copy(std::string s) {
     return s;
 }
 
-fs::path single_01(const fs::path& dir) {
-    return dir / "Scenes" / "0200Single" / "Single_01.sze";
+fs::path supported_endless(const fs::path& dir) {
+    return dir / "Scenes/0011SingleEndlosAddon/endless01.sze";
 }
 
-fs::path endless_sze(const fs::path& dir) {
-    const auto files = anno::test::files_with_ext(dir / "Scenes" / "0010SingleEndlos", "sze");
-    return files.empty() ? fs::path{} : files.front();
+// Explicit geometry/renderer component input, selected before any playable load.
+// No production loader can select this actor-free projection. Unsupported whole
+// scripts remain a verified refusal and Missing permission context in this fixture.
+anno::formats::Result<anno::app::PlayLoad, std::string> load_scene_component(const fs::path& dir,
+                                                                             const fs::path& file) {
+    auto registry =
+        anno::sim_load::load_original_registry(dir, anno::sim_load::FigureEntries::Required);
+    if (!registry.error.empty())
+        return registry.error;
+    auto templates = anno::sim_load::scan_island_templates(dir);
+    auto loaded = anno::sim_load::load_scenario_file(file, dir, templates, *registry.types, {}, {},
+                                                     original_component::actor_free_units());
+    if (!loaded)
+        return loaded.error();
+    auto component = original_component::import_only(loaded.value().loaded.spec, registry.types);
+    if (!component)
+        return component.error();
+    auto world = anno::sim::World::create(component.value().spec, registry.types);
+    if (!world)
+        return world.error();
+    anno::app::PlayLoad out;
+    out.world = std::move(world).value();
+    out.registry = registry.types;
+    std::map<std::uint32_t, std::string> keys;
+    for (std::size_t i = 0; i < loaded.value().resolution.links.size(); ++i) {
+        const auto& link = loaded.value().resolution.links[i];
+        if (!link.candidate || *link.candidate >= templates.files.size())
+            continue;
+        const auto number = loaded.value().loaded.links[i].number;
+        keys[number & 0xffffU] = templates.summaries[*link.candidate].name;
+        anno::app::LinkTemplate chosen;
+        chosen.number = number;
+        chosen.file = templates.files[*link.candidate];
+        out.links.push_back(std::move(chosen));
+    }
+    for (const auto& is : component.value().spec.islands) {
+        if (!is.terrain)
+            continue;
+        const auto key = keys.find(is.slot.v);
+        out.islands.push_back(
+            {is.slot.v, is.x0, is.y0, is.w, is.h, key == keys.end() ? "embedded" : key->second});
+    }
+    return out;
 }
 
 void expect_play_islands(const std::string& label, const anno::app::LoadedScene& scene,
@@ -109,7 +151,8 @@ TEST_CASE("play: --play parses and --view does not") {
     CHECK_FALSE(anno::app::parse_args({"--play", "x.sze", "--speed", "75"}));
 }
 
-TEST_CASE("play: islands are the ones the sim placed" * doctest::test_suite("heavy")) {
+TEST_CASE("play component: all original islands are the ones the sim placed" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -129,7 +172,7 @@ TEST_CASE("play: islands are the ones the sim placed" * doctest::test_suite("hea
     std::size_t done = 0;
     for (const fs::path& file : files) {
         const std::string label = fs::relative(file, *dir / "Scenes").generic_string();
-        auto opened = anno::app::load_play(*dir, file);
+        auto opened = load_scene_component(*dir, file);
         if (!opened) {
             const std::string err = opened.error();
             REQUIRE_MESSAGE(false, label << ": " << err);
@@ -251,9 +294,9 @@ TEST_CASE("play: runner turns match run_turn and ignore the wall clock") {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const fs::path file = single_01(*dir);
+    const fs::path file = supported_endless(*dir);
     if (!fs::exists(file)) {
-        MESSAGE("skipping: Single_01.sze is not in this game directory");
+        MESSAGE("skipping: endless01.sze is not in this game directory");
         return;
     }
     auto through = anno::app::load_play(*dir, file);
@@ -272,6 +315,8 @@ TEST_CASE("play: runner turns match run_turn and ignore the wall clock") {
                             anno::sim::Timing{}.mp_steps_per_turn);
     }
     CHECK(runner.state_hash() == direct.value().world.state_hash());
+    CHECK(runner.snapshot()->game_ms > 0);
+    CHECK_FALSE(runner.snapshot()->paused);
 
     auto delayed = anno::app::load_play(*dir, file);
     auto plain = anno::app::load_play(*dir, file);
@@ -297,9 +342,9 @@ TEST_CASE("play: a slow turn does not block a frame reading the snapshot") {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const fs::path file = single_01(*dir);
+    const fs::path file = supported_endless(*dir);
     if (!fs::exists(file)) {
-        MESSAGE("skipping: Single_01.sze is not in this game directory");
+        MESSAGE("skipping: endless01.sze is not in this game directory");
         return;
     }
     auto opened = anno::app::load_play(*dir, file);
@@ -320,19 +365,16 @@ TEST_CASE("play: a slow turn does not block a frame reading the snapshot") {
     CHECK(title.find("tick 0") != std::string::npos);
 }
 
-TEST_CASE("play: demolish before the scene drops that building") {
+TEST_CASE("play component: demolish before the scene drops that building") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const fs::path file = endless_sze(*dir);
-    if (file.empty()) {
-        MESSAGE("skipping: no endless scenario");
-        return;
-    }
-    auto kept = anno::app::load_play(*dir, file);
-    auto edited = anno::app::load_play(*dir, file);
+    const fs::path file = *dir / "Scenes/0200Single/Single_01.sze";
+    REQUIRE(fs::exists(file));
+    auto kept = load_scene_component(*dir, file);
+    auto edited = load_scene_component(*dir, file);
     REQUIRE(kept);
     REQUIRE(edited);
     const anno::app::PlayIsland* origin = nullptr;
@@ -461,7 +503,7 @@ std::size_t diffs_outside(const anno::render::Canvas& play, const anno::render::
 
 } // namespace
 
-TEST_CASE("play: tick 0 matches the viewer except objects the sim did not place" *
+TEST_CASE("play component: tick 0 matches the viewer except objects the sim did not place" *
           doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
@@ -480,7 +522,7 @@ TEST_CASE("play: tick 0 matches the viewer except objects the sim did not place"
     std::size_t windows = 0;
     std::size_t building_count = 0;
     for (const fs::path& file : files) {
-        auto play = anno::app::load_play(*dir, file);
+        auto play = load_scene_component(*dir, file);
         REQUIRE(play);
         const auto buildings = anno::app::play_buildings(play.value().world);
         auto objects = objects_of(play.value().world, buildings);
@@ -887,7 +929,7 @@ TEST_CASE("play: the sim thread matches run_turn") {
     CHECK(runner.state_hash() == direct.state_hash());
 }
 
-TEST_CASE("play: turn cost on the heavy endless scenario") {
+TEST_CASE("play component: turn cost on the heavy endless scenario") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -898,7 +940,7 @@ TEST_CASE("play: turn cost on the heavy endless scenario") {
         MESSAGE("skipping: 06_1024_heavy_256.sze is not in this game directory");
         return;
     }
-    auto opened = anno::app::load_play(*dir, file);
+    auto opened = load_scene_component(*dir, file);
     REQUIRE(opened);
     anno::app::PlayRunner runner(std::move(opened.value().world));
     std::vector<double> ms;
@@ -906,7 +948,9 @@ TEST_CASE("play: turn cost on the heavy endless scenario") {
     ms.reserve(kTurns);
     for (int i = 0; i < kTurns; ++i) {
         const auto t0 = std::chrono::steady_clock::now();
+        const auto before_tick = runner.snapshot()->tick;
         runner.run_n(1);
+        REQUIRE(runner.snapshot()->tick > before_tick);
         ms.push_back(
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
                 .count());

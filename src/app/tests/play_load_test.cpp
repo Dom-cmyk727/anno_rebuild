@@ -99,7 +99,7 @@ TEST_CASE("play loader: original endless scenario keeps script context and start
     REQUIRE_MESSAGE(ok, error_of(loaded));
     CHECK_FALSE(loaded.value().fixed_map);
     CHECK(loaded.value().placed.empty());
-    CHECK(loaded.value().world.script().asset_namespace.has_value());
+    CHECK(loaded.value().world.script().asset_namespace == "scenes/0011SingleEndlosAddon");
     CHECK(loaded.value().world.script().state.context == anno::sim::ScriptContext::Pending);
     CHECK(std::count_if(loaded.value().world.figures().list.slots.begin(),
                         loaded.value().world.figures().list.slots.end(),
@@ -132,4 +132,15 @@ TEST_CASE("play: startup fault pauses and repeated synchronous turns cannot cons
     runner.set_paused(false);
     runner.run_n(2);
     CHECK(runner.state_hash() == frozen);
+}
+
+TEST_CASE("play loader: unsupported original actors are refused instead of silently omitted") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipped: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = anno::app::load_play(*dir, *dir / "Scenes/0200Single/Single_01.sze");
+    REQUIRE_FALSE(loaded);
+    CHECK(loaded.error().find("unsupported actor") != std::string::npos);
 }

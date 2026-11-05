@@ -7,6 +7,7 @@
 
 #include <anno/formats/bigbrother.hpp>
 #include <anno/sim_load/original_registry.hpp>
+#include <anno/sim_load/scenario_load.hpp>
 #include <anno/test/game_dir.hpp>
 
 #include "script_fixture.hpp"
@@ -152,7 +153,7 @@ TEST_CASE("SCRIPT1 encoded canary replay worker") {
         verify(c.log, c.wrong, c.types, c.final_hash);
     }
 }
-TEST_CASE("SCRIPT1 original capability inventory distinguishes parsing compilation and execution "
+TEST_CASE("SCRIPT2 original capability inventory distinguishes parsing compilation and execution "
           "(game files)") {
     auto game = anno::test::game_dir();
     if (!game) {
@@ -172,6 +173,10 @@ TEST_CASE("SCRIPT1 original capability inventory distinguishes parsing compilati
     std::sort(files.begin(), files.end());
     REQUIRE(files.size() == 50);
     std::size_t parsed = 0, compiled = 0, permission_programs = 0, permission_compiled = 0;
+    std::vector<std::string_view> goods;
+    for (const auto& g : loaded.types->goods_table())
+        goods.push_back(g.name);
+    const auto templates = anno::sim_load::scan_island_templates(*game);
     for (const auto& file : files) {
         auto bytes = read(file);
         auto payload = bb::find_payload(bytes);
@@ -196,19 +201,46 @@ TEST_CASE("SCRIPT1 original capability inventory distinguishes parsing compilati
         }
         const auto& p = payload.value();
         std::string source(p.begin(), p.end());
-        auto program = sim::compile_script(source, {ids, 32, 5});
+        const auto ns =
+            "scenes/" + fs::relative(file.parent_path(), *game / "Scenes").generic_string();
+        auto program = sim::compile_script(source, {ids, 32, 5, goods, ns});
         compiled += program ? 1u : 0u;
         permission_programs += permission ? 1u : 0u;
         permission_compiled += (program && permission) ? 1u : 0u;
-        MESSAGE("CAPABILITY " << fs::relative(file, *game).generic_string() << " parsed=1 compiled="
-                              << (program ? 1 : 0) << " executed=0 permission=" << permission
-                              << " dependency=" << (program ? "none" : program.error().message));
-        if (permission)
-            CHECK_FALSE(program); // honest full-program blocker; fragments are separate below
+        bool startup = false;
+        std::size_t visits = 0;
+        std::string diagnostic = program ? "none" : program.error().message;
+        if (program) {
+            auto resolved =
+                anno::sim_load::load_scenario_file(file, *game, templates, *loaded.types, {}, {});
+            REQUIRE(resolved);
+            auto made = sim::World::create(resolved.value().loaded.spec, loaded.types);
+            if (made) {
+                auto started = sim::Recorder::start(made.value());
+                if (started) {
+                    startup = true;
+                    started.value().advance(36);
+                    for (std::size_t i = 0; i < program.value().branches.size(); ++i) {
+                        started.value().advance(0);
+                        ++visits;
+                    }
+                    REQUIRE_FALSE(made.value().faulted());
+                } else
+                    diagnostic = started.error();
+            } else
+                diagnostic = made.error();
+        }
+        MESSAGE("CAPABILITY2 " << fs::relative(file, *game).generic_string()
+                               << " compiled=" << (program ? 1 : 0)
+                               << " startup=" << (startup ? 1 : 0) << " visits=" << visits
+                               << " branches=" << (program ? program.value().branches.size() : 0)
+                               << " empty=" << (program && program.value().kernel_empty ? 1 : 0)
+                               << " dependency=" << diagnostic);
     }
     CHECK(parsed == 50);
     CHECK(permission_programs == 6);
-    CHECK(permission_compiled == 0);
+    CHECK(permission_compiled == 1);
+    CHECK(compiled == 14);
     MESSAGE("CAPABILITY_TOTAL parsed=" << parsed << " compiled=" << compiled
                                        << " executed_full_scenario=0 permission_compiled="
                                        << permission_compiled);

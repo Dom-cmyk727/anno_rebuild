@@ -78,8 +78,9 @@ is independently approved.
    Unsupported and Fault never authorize a player build. ScenarioSpec defaults
    Missing; synthetic/ship loaders must explicitly declare their known-free
    contract, while original scenario import supplies its whole script.
-5. A Pending supported program runs its entire INIT transaction on the first
-   normal World::advance visit, before clock/world advancement. While Pending,
+5. A Pending supported program runs its entire INIT transaction on the explicit
+   fresh-session World::initialize_scripts startup visit, or the first normal
+   World::advance visit, before clock/world advancement. While Pending,
    public construction refuses with a context reason. No partial initialization
    is exposed: variable/timer/permission effects commit together or fault without
    their partial effects. SCHUETTI controls original INIT suppression; after the
@@ -382,3 +383,27 @@ component coverage and print the exact whole-program dependency. It is not
 campaign/quest/script/permission execution evidence. Existing physical counts,
 ledgers, transitions, save/reload and negative controls remain the acceptance
 criteria. Review of the resulting patch and normal gates is pending.
+
+### S7 startup lifecycle correction
+
+S7-fixture-pop01 at5161f6bd selected31/executedpasses26/failed5/empty0/skipped0/
+incomplete0, including a test SIGSEGV from dereferencing an absent K3 transition.
+The extra whole-world advance(0) changed the existing K3 schedule (material
+control reached55200 versus55000) and variant sequence, not the empty script's
+permission semantics. The failed attempt is retained. The missing-transition
+assertion is now guarded before dereference. No population vectors are rebaselined.
+
+World::initialize_scripts is an explicit lifecycle adaptation, recommended by
+script_semantics_review from Scene16b70's separate script-step and Frame5b161's
+script-before-world order. It executes the SAME transactional runtime visit at
+arg0 for Pending fresh clock.ms=0,last_tick=0. q=trunc(125/250)=0, so complete
+INIT/suppression occurs without IF dispatch. It does not visit world subsystems
+or reset outputs. Ready/ExplicitNone is idempotent; missing/fault/nonfresh Pending
+is refused. INIT failure persists the same fault and stops subsequent advancement.
+The lazy first-advance path and full-world advance(0) remain unchanged. Native
+pending saves still work through either documented start sequence. Callers
+initialize before capturing stores/stats/initial Recorder save. Different call
+sequences need not have identical last_work; exact native continuation retains it.
+Focused scope/continuity/barrier/fault controls and corrected population vectors
+remain pending acceptance. No policy/schema field reinterpretation is required:
+this adds a declared call boundary using identical arg0 execution semantics.

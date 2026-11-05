@@ -61,10 +61,10 @@ inline sim::World tutorial_world(const Original& o, bool live) {
     auto created = sim::World::create(resolved.value().loaded.spec, o.types, o.cfg, rules);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
     sim::World world = std::move(created).value();
-    // The complete shipped empty kernel is supported. Reach Ready through the normal
-    // zero-time session visit before issuing commands; every subsystem also visits tick 0.
+    // Run the complete supported kernel through the explicit normal startup boundary
+    // before commands, without an extra world-subsystem visit.
     REQUIRE(world.script().state.context == sim::ScriptContext::Pending);
-    CHECK(world.advance(0) == 0);
+    REQUIRE(world.initialize_scripts().empty());
     REQUIRE(world.script().state.context == sim::ScriptContext::Ready);
     return world;
 }

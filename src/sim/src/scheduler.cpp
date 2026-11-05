@@ -779,6 +779,24 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     return tick;
 }
 
+std::string World::initialize_scripts() {
+    if (faulted_)
+        return "script startup refuses a faulted world";
+    if (script_.state.context == ScriptContext::Ready ||
+        script_.state.context == ScriptContext::ExplicitNone)
+        return {};
+    if (script_.state.context != ScriptContext::Pending)
+        return "script startup requires supported script context";
+    if (clock_.ms != 0 || clock_.last_tick != 0)
+        return "script startup requires a fresh zero clock";
+    if (!advance_script(script_, players_, timers_, *types_, 0)) {
+        faulted_ = true;
+        fault_message_ = "script runtime fault";
+        return fault_message_;
+    }
+    return {};
+}
+
 std::uint64_t World::advance(std::uint32_t game_ms) {
     return Scheduler::advance(*this, game_ms);
 }

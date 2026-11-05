@@ -260,3 +260,91 @@ TEST_CASE("SCRIPT1 generated adapter contract validates an inert base before cle
             .empty());
     CHECK(area.script_source == before);
 }
+
+TEST_CASE("SCRIPT1 explicit startup visits only the script once and preserves native continuity") {
+    auto made = setup("SET X = FALSE; INITBLOCK(){ X = TRUE; } IF X THEN { X = FALSE; }");
+    REQUIRE(made);
+    auto w = std::move(made).value();
+    const auto pending_save = w.save();
+    auto pending = World::load(pending_save, TypeRegistry::empty());
+    REQUIRE(pending);
+    HashTree before, after;
+    static_cast<void>(w.state_hash(before, 0));
+    REQUIRE(w.initialize_scripts().empty());
+    REQUIRE(pending.value().initialize_scripts().empty());
+    CHECK(w.save() == pending.value().save());
+    CHECK(w.clock().ms == 0);
+    CHECK(w.clock().last_tick == 0);
+    CHECK(w.script().state.context == ScriptContext::Ready);
+    CHECK(w.script().state.signals[1] == 1); // full INIT; no IF at arg0
+    CHECK(w.script().state.cursor == 0);
+    static_cast<void>(w.state_hash(after, 0));
+    REQUIRE(before.root.children.size() == after.root.children.size());
+    for (std::size_t i = 0; i < before.root.children.size(); ++i) {
+        CHECK(before.root.children[i].name == after.root.children[i].name);
+        CHECK((before.root.children[i].hash != after.root.children[i].hash) ==
+              (before.root.children[i].name == "script"));
+    }
+    const auto initialized = w.save();
+    REQUIRE(w.initialize_scripts().empty());
+    CHECK(w.save() == initialized); // no second visit, including last_work
+    auto loaded = World::load(initialized, TypeRegistry::empty());
+    REQUIRE(loaded);
+    CHECK(loaded.value().initialize_scripts().empty());
+    CHECK(loaded.value().save() == initialized);
+    w.advance(126);
+    loaded.value().advance(126);
+    w.advance(0); // oldtick63 dispatches the one IF
+    loaded.value().advance(0);
+    CHECK(w.script().state.signals[1] == 0);
+    CHECK(w.save() == loaded.value().save());
+    auto rec = Recorder::start(pending.value());
+    REQUIRE(rec);
+    rec.value().advance(126);
+    rec.value().checkpoint();
+    auto fresh = World::load(rec.value().log().initial_save, TypeRegistry::empty());
+    REQUIRE(fresh);
+    const auto replayed = replay(fresh.value(), rec.value().log());
+    REQUIRE(replayed);
+    CHECK(replayed.value().reproduced());
+}
+TEST_CASE(
+    "SCRIPT1 explicit startup refuses missing fault and nonfresh pending without partial INIT") {
+    auto free = World::create(synthetic::basic_scenario(), TypeRegistry::empty());
+    REQUIRE(free);
+    const auto free_save = free.value().save();
+    CHECK(free.value().initialize_scripts().empty());
+    CHECK(free.value().save() == free_save);
+    World missing;
+    const auto missing_hash = missing.state_hash();
+    CHECK_FALSE(missing.initialize_scripts().empty());
+    CHECK(missing.state_hash() == missing_hash);
+    for (bool last : {false, true}) {
+        auto made = setup("INITBLOCK(){ TIMER_SET(1,7); }");
+        REQUIRE(made);
+        auto w = std::move(made).value();
+        if (last)
+            WorldTestAccess::clock(w).last_tick = 1;
+        else
+            WorldTestAccess::clock(w).ms = 1; // even ms1 whose tick() is0 is nonfresh
+        auto back = World::load(w.save(), TypeRegistry::empty());
+        REQUIRE(back);
+        const auto saved = back.value().save();
+        CHECK(back.value().initialize_scripts().find("fresh zero clock") != std::string::npos);
+        CHECK(back.value().save() == saved);
+    }
+    auto made = setup("INITBLOCK(){ TIMER_SET(1,7); TIMER_START(1); }", {.work = 1});
+    REQUIRE(made);
+    auto w = std::move(made).value();
+    const auto timers = w.timers();
+    CHECK_FALSE(w.initialize_scripts().empty());
+    CHECK(w.faulted());
+    CHECK(w.script().state.context == ScriptContext::Fault);
+    CHECK(w.timers().counter == timers.counter);
+    CHECK(w.timers().active == timers.active);
+    CHECK(w.timers().last_tick == timers.last_tick);
+    CHECK(w.clock().ms == 0);
+    const auto saved = w.save();
+    CHECK_FALSE(w.initialize_scripts().empty());
+    CHECK(w.save() == saved);
+}

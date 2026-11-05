@@ -1,5 +1,6 @@
 // Test-only original-data component fixtures. Never use this in production loading.
 #pragma once
+#include <anno/sim/scenario.hpp>
 #include <anno/sim/world.hpp>
 
 namespace original_component {

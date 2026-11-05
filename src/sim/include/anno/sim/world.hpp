@@ -370,6 +370,12 @@ class World {
     /// every subsystem. Returns the new tick.
     std::uint64_t advance(std::uint32_t game_ms);
 
+    /// Explicit fresh-session startup: execute the same transactional script visit at
+    /// argument0 before exposing player commands, without visiting other subsystems.
+    /// Ready/ExplicitNone is idempotent; Pending requires the untouched zero clock.
+    /// Empty means success. Missing/fault/nonfresh Pending is refused.
+    [[nodiscard]] std::string initialize_scripts();
+
     /// Hash of the canonical state, version kStateHashVersion: hierarchical,
     /// over the one field list of state_fields.hpp (docs/sim/state.md §9).
     [[nodiscard]] std::uint64_t state_hash() const;

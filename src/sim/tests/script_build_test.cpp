@@ -2,6 +2,7 @@
 
 #include <anno/sim/placement.hpp>
 
+#include "original_component.hpp"
 #include "script_fixture.hpp"
 namespace sim = anno::sim;
 using namespace command_test;
@@ -183,4 +184,48 @@ TEST_CASE("SCRIPT1 staged world permission grants and timers commit or roll back
             CHECK(w.timers().counter[1] == 3500);
         }
     }
+}
+
+TEST_CASE("SCRIPT1 explicit startup is a construction barrier before world advancement") {
+    auto f = script_test::make(
+        false, "INITBLOCK(){" + script_test::permission("ME", sim::TypeId{90001}, true) + "}");
+    auto& w = f.world;
+    const auto cmd = build(0, kCity0, {at(f.types.weaver, 120, 112)});
+    const auto before = w.state_hash();
+    CHECK(w.apply(cmd).status == sim::Reject::PermissionContext);
+    CHECK(w.state_hash() == before);
+    REQUIRE(w.initialize_scripts().empty());
+    CHECK(w.clock().ms == 0);
+    CHECK(w.construction_eligibility(sim::PlayerId{0}, f.types.weaver).allowed());
+    REQUIRE(w.apply(cmd).ok());
+}
+
+TEST_CASE(
+    "SCRIPT1 original-data component fixtures retain complete refusal and never grant builds") {
+    auto types = command_test::build_types();
+    auto spec = command_test::two_city_spec(types);
+    spec.script_context = sim::ScriptContext::Pending;
+    spec.script_source = script_test::source("INITBLOCK(){ MONEY_ADD(\"ME\",1); }");
+    auto original = sim::World::create(spec, types.registry);
+    REQUIRE_FALSE(original);
+    auto component = original_component::import_only(spec, types.registry);
+    REQUIRE(component);
+    CHECK(component.value().isolated);
+    CHECK(component.value().diagnostic == original.error());
+    CHECK(component.value().spec.script_context == sim::ScriptContext::Missing);
+    CHECK(component.value().spec.script_source.empty());
+    auto made = sim::World::create(component.value().spec, types.registry);
+    REQUIRE(made);
+    auto& w = made.value();
+    REQUIRE(w.building_at(kCity0, 110, 110) != nullptr);
+    const auto hash = w.state_hash();
+    CHECK(w.apply(build(0, kCity0, {at(types.weaver, 120, 112)})).status ==
+          sim::Reject::PermissionContext);
+    CHECK(w.state_hash() == hash);
+    spec.script_source = script_test::source("");
+    auto retained = original_component::import_only(spec, types.registry);
+    REQUIRE(retained);
+    CHECK_FALSE(retained.value().isolated);
+    CHECK(retained.value().spec.script_source == spec.script_source);
+    CHECK(retained.value().spec.script_context == sim::ScriptContext::Pending);
 }

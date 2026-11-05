@@ -41,6 +41,9 @@ inline constexpr sim::TypeId kOddTree{9313};   // ROHSTOFF, WARE[0] BAUM: an unc
 inline constexpr sim::TypeId kStalks{9320};    // ROHSTWACHS, the young stage of kGrain
 inline constexpr sim::TypeId kGrain{9321};     // ROHSTOFF, WARE[0] GETREIDE: a ripe field
 inline constexpr sim::TypeId kSmallFarm{9330}; // a small farm: its line-0 worker is job 0x2a too
+inline constexpr sim::TypeId kSmallFarm2{9331}; // another small farm: ALKOHOL from KARTOFFEL, NAHRUNG from GRAS
+inline constexpr sim::TypeId kPotatoYoung{9326}; // ROHSTWACHS, the young stage of kPotato
+inline constexpr sim::TypeId kPotato{9327};      // ROHSTOFF, WARE[0] KARTOFFEL: a ripe potato field
 inline constexpr sim::TypeId kWall{9340}; // a tile object of walk code 3: closed on every layer
 
 inline constexpr std::uint32_t kWorker = 102;  // the forester's worker (route MAEHER 0x2a)
@@ -110,8 +113,15 @@ inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_ca
         .entrances(kHerdFarm, {{9, 9}})
         .figure_ids(kHerdFarm, {kHerder})
         .add_small_farm(kSmallFarm, "KORN", "WOLLE", "GETREIDE", "GRAS", 13, 4, 128, 50, 4)
+        .footprint(kSmallFarm, 3, 3)
         .entrances(kSmallFarm, {{9, 9}})
+        .action_radius(kSmallFarm, 3)
         .figure_ids(kSmallFarm, {kWorker})
+        .add_small_farm(kSmallFarm2, "ALKOHOL", "NAHRUNG", "KARTOFFEL", "GRAS", 13, 4, 128, 50, 4)
+        .footprint(kSmallFarm2, 3, 3)
+        .entrances(kSmallFarm2, {{9, 9}})
+        .action_radius(kSmallFarm2, 3)
+        .figure_ids(kSmallFarm2, {kWorker})
         .add_market(kMarket, kCart, 1, 8)
         .entrances(kMarket, {{9, 15}})
         .add_plain(kRoad, 193)
@@ -122,6 +132,8 @@ inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_ca
         .add(resource_type(kOddTree, 225, goods_id("BAUM")))
         .add(resource_type(kStalks, 226, 0))
         .add(resource_type(kGrain, 225, goods_id("GETREIDE")))
+        .add(resource_type(kPotatoYoung, 226, 0))
+        .add(resource_type(kPotato, 225, goods_id("KARTOFFEL")))
         .add(wall_type())
         .figure_type(worker_type(kWorker, worker_capacity, 0x2a))
         .figure_type(worker_type(kReaper, 3 * 256, 0x29))

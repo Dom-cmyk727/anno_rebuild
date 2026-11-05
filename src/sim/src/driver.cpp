@@ -156,6 +156,10 @@ std::uint32_t* input_store(Payload& payload, std::uint32_t index) {
     return nullptr;
 }
 
+std::uint32_t input_slot_for(const BuildingType& type, GoodsId goods) {
+    return type.input_goods.size() > 1 && goods == type.input_goods[1] ? 1U : 0U;
+}
+
 bool payload_blocked(const Payload& payload) {
     return std::visit(
         [](const auto& alternative) {
@@ -465,6 +469,14 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
                 s.job = ft != nullptr ? ft->route : 0;
                 s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
                 s.harvest = harvest_job(s.job) && std::holds_alternative<Farm>(b.payload);
+            }
+            if (std::holds_alternative<SmallFarm>(b.payload)) {
+                // MAP-SUPPLY-1 S2 (D 0x1006f78d-0x1006f7c2): the small farm passes the literal job
+                // 0x2a (not the figure type's route) and sets the new figure's cargo goods to its
+                // input 0; the 0x2a body is the shared harvest job
+                // (docs/sim/small-farm-supply.md 2.3).
+                s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
+                s.harvest = harvest_job(s.job);
             }
             if (type.cls == RuntimeClass::Inn) {
                 // D 0x100756a9-0x100756c3: the new figure's cargo goods byte is the Inn's input 0

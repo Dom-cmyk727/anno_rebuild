@@ -8,6 +8,7 @@
 #include <variant>
 #include <vector>
 
+#include <anno/sim/driver.hpp>
 #include <anno/sim/harvest.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/walk_cells.hpp>
@@ -302,7 +303,8 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
     }
     const Building* home = world.find_building(fig.home);
     const BuildingType* home_type = home != nullptr ? ctx.types.find(home->type) : nullptr;
-    if (home != nullptr && !std::holds_alternative<Farm>(home->payload)) {
+    if (home != nullptr && !std::holds_alternative<Farm>(home->payload) &&
+        !std::holds_alternative<SmallFarm>(home->payload)) {
         home = nullptr; // validated away (World::harvest_problem); never a stand-in home
         home_type = nullptr;
     }
@@ -416,8 +418,12 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             // Step C's arrival (0x10057bd0 -> home +0xc0 = 0x1006ee70: raw += amount, u16 add, no
             // clip; here the u32 store with the merge's clamp, docs/sim/forestry.md 2.2).
             if (home != nullptr && fig.cargo_goods != 0 && fig.cargo_88 > 0) {
-                world.fx.store_deltas.push_back(
-                    StoreDelta{home->id, StoreDelta::Store::Input, 0, std::int64_t{fig.cargo_88}});
+                // The credit slot (D SmallFarm 0x1006f960): raw 1 when the goods are the home's
+                // input goods 1, else raw 0 with no further goods test; a Farm has the one raw
+                // store.
+                const std::uint32_t slot = input_slot_for(*home_type, fig.cargo_goods);
+                world.fx.store_deltas.push_back(StoreDelta{home->id, StoreDelta::Store::Input, slot,
+                                                           std::int64_t{fig.cargo_88}});
                 b.delivered = true;
                 if (b.stats != nullptr) {
                     b.stats->raw_delivered_88 += fig.cargo_88;

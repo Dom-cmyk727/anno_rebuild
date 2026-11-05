@@ -13,6 +13,7 @@
 
 #include <anno/sim/building.hpp>
 #include <anno/sim/draw.hpp>
+#include <anno/sim/driver.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/rng.hpp>
 
@@ -163,6 +164,17 @@ TEST_CASE("small farm vectors: the kernel agrees with the gate, line and tick re
                    {"worker", r.send_figure ? "1" : "0"},
                    {"animal", r.send_animal ? std::to_string(r.animal_kind) : "0"},
                    {"draws", std::to_string(d.calls)}};
+        } else if (t[0] == "credit") {
+            // The raw slot of a delivery (engine: input_slot_for, the merge adds to that slot) and the
+            // add itself. ADAPT: the engine's raw stock is a u32 (no hardcoded limits), the
+            // original's a u16 that wraps; the sums below 65536 are identical.
+            sim::BuildingType ty;
+            ty.input_goods = {68, static_cast<sim::GoodsId>(std::stoul(in_kv.at("in1")))};
+            const auto raw = list_of(in_kv.at("raw"));
+            std::vector<std::int64_t> after = raw;
+            after.at(sim::input_slot_for(ty, static_cast<sim::GoodsId>(std::stoul(in_kv.at("goods"))))) +=
+                std::stoll(in_kv.at("amount"));
+            got = {{"raw", join(after)}};
         } else {
             ++skipped;
             continue;
@@ -177,11 +189,13 @@ TEST_CASE("small farm vectors: the kernel agrees with the gate, line and tick re
             // wraps; the engine's is a u32 (no hardcoded limits), identical for every capacity
             // below 65536.
             const std::string expect =
-                (t[1] == "L-out-wrap" && k == "out") ? std::string("65543") : v;
+                (t[1] == "L-out-wrap" && k == "out")    ? std::string("65543")
+                : (t[1] == "C-wrap" && k == "raw") ? std::string("66000,0")
+                                                   : v;
             CHECK_MESSAGE(got.at(k) == expect, t[0] << " " << t[1] << ": " << k);
         }
     }
-    CHECK(run == 36);
-    CHECK(skipped == 17);       // credit (5), pick (7), cut (3) and two failed sends (driver, S3)
+    CHECK(run == 41);
+    CHECK(skipped == 12);       // pick (7), cut (3) and two failed sends (S3)
     CHECK(unchecked_keys == 4); // counters and cargo of the two successful-send tick records
 }

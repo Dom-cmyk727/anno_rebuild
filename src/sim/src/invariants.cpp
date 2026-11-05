@@ -157,9 +157,10 @@ std::string World::harvest_problem() const {
         if (f.home.valid()) {
             const Island* is = island_ptr(island_of(f.home));
             const Building* b = is != nullptr ? is->find_building(f.home) : nullptr;
-            if (b != nullptr && !std::holds_alternative<Farm>(b->payload)) {
+            if (b != nullptr && !std::holds_alternative<Farm>(b->payload) &&
+                !std::holds_alternative<SmallFarm>(b->payload)) {
                 return where + ": the home " + std::to_string(f.home.v) +
-                       " is not a Farm-payload building";
+                       " is not a Farm- or SmallFarm-payload building";
             }
         }
         if (h.step == HarvestStep::ToTree || h.step == HarvestStep::Cut) {

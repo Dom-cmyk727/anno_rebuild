@@ -4,3 +4,11 @@
 # Fixed-map fixtures include a CRLF copy. Keep the committed bytes.
 fixtures/synthetic/fixed_map/** -text
 fixtures/synthetic/fixed_map_game/** -text
+# Evidence fixtures read by exact string/hash comparison (not operator>> extraction,
+# which skips \r as whitespace): a CRLF checkout breaks founding_fixture.hpp's body-hash
+# check and ship_manifest_test.cpp's literal field compare on WSL/Linux (found W4-MAIN-1,
+# 2026-11-05) because Windows text-mode ifstream strips \r on read and Linux's does not.
+# Normalize to LF so the checked-out bytes match what generated the recorded hashes.
+fixtures/synthetic/founding/** text eol=lf
+fixtures/synthetic/map2_manifest/** text eol=lf
+fixtures/synthetic/sim/** text eol=lf

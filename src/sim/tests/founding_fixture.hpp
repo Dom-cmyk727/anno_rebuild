@@ -30,6 +30,9 @@ inline std::vector<std::string> read_lines(const std::string& name) {
     std::vector<std::string> lines;
     std::string body, line, want;
     while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();  // a CRLF checkout (core.autocrlf) must hash the same as LF
+        }
         const std::string tag = "# body fnv64: ";
         if (line.rfind(tag, 0) == 0) {
             want = line.substr(tag.size(), 16);

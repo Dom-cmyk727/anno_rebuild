@@ -378,7 +378,7 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
         if (f.harvest.has_value()) {
             const HarvestState& h = *f.harvest;
             const std::string hw = where + ".harvest";
-            if (!harvest_job(f.job)) {
+            if (!harvest_state_job(f.job)) {
                 return hw + ": present on a figure of job " + std::to_string(f.job) +
                        " (only the harvest jobs 0x29 and 0x2a have one)";
             }

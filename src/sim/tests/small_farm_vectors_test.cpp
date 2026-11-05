@@ -14,6 +14,7 @@
 #include <anno/sim/building.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/harvest.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/rng.hpp>
 
@@ -165,16 +166,39 @@ TEST_CASE("small farm vectors: the kernel agrees with the gate, line and tick re
                    {"animal", r.send_animal ? std::to_string(r.animal_kind) : "0"},
                    {"draws", std::to_string(d.calls)}};
         } else if (t[0] == "credit") {
-            // The raw slot of a delivery (engine: input_slot_for, the merge adds to that slot) and the
-            // add itself. ADAPT: the engine's raw stock is a u32 (no hardcoded limits), the
+            // The raw slot of a delivery (engine: input_slot_for, the merge adds to that slot) and
+            // the add itself. ADAPT: the engine's raw stock is a u32 (no hardcoded limits), the
             // original's a u16 that wraps; the sums below 65536 are identical.
             sim::BuildingType ty;
             ty.input_goods = {68, static_cast<sim::GoodsId>(std::stoul(in_kv.at("in1")))};
             const auto raw = list_of(in_kv.at("raw"));
             std::vector<std::int64_t> after = raw;
-            after.at(sim::input_slot_for(ty, static_cast<sim::GoodsId>(std::stoul(in_kv.at("goods"))))) +=
+            after.at(sim::input_slot_for(
+                ty, static_cast<sim::GoodsId>(std::stoul(in_kv.at("goods"))))) +=
                 std::stoll(in_kv.at("amount"));
             got = {{"raw", join(after)}};
+        } else if (t[0] == "pick") {
+            // the step-A callback as a pure function (harvest_pick_tile), limit 0 for the worker,
+            // 20 for the animal
+            std::vector<sim::HarvestGoalNode> nodes;
+            std::istringstream ns(in_kv.at("nodes"));
+            for (std::string n; std::getline(ns, n, ';');) {
+                std::istringstream one(n);
+                std::string x, y, s, c;
+                std::getline(one, x, ':');
+                std::getline(one, y, ':');
+                std::getline(one, s, ':');
+                std::getline(one, c, ':');
+                nodes.push_back(sim::HarvestGoalNode{static_cast<std::int32_t>(std::stol(x)),
+                                                     static_cast<std::int32_t>(std::stol(y)),
+                                                     static_cast<std::uint16_t>(std::stoul(s)),
+                                                     c == "1"});
+            }
+            const std::uint16_t limit = static_cast<std::uint16_t>(std::stoul(in_kv.at("limit")));
+            CHECK(limit == sim::harvest_search_limit(in_kv.at("mode") == "animal" ? 0x2e : 0x2a));
+            const auto tile = sim::harvest_pick_tile(limit, nodes);
+            got = {
+                {"tile", tile ? std::to_string(tile->x) + ":" + std::to_string(tile->y) : "none"}};
         } else {
             ++skipped;
             continue;
@@ -188,14 +212,13 @@ TEST_CASE("small farm vectors: the kernel agrees with the gate, line and tick re
             // ADAPT (docs/sim/small-farm-supply.md 2.1): the original's output stock is a u16 and
             // wraps; the engine's is a u32 (no hardcoded limits), identical for every capacity
             // below 65536.
-            const std::string expect =
-                (t[1] == "L-out-wrap" && k == "out")    ? std::string("65543")
-                : (t[1] == "C-wrap" && k == "raw") ? std::string("66000,0")
-                                                   : v;
+            const std::string expect = (t[1] == "L-out-wrap" && k == "out") ? std::string("65543")
+                                       : (t[1] == "C-wrap" && k == "raw")   ? std::string("66000,0")
+                                                                            : v;
             CHECK_MESSAGE(got.at(k) == expect, t[0] << " " << t[1] << ": " << k);
         }
     }
-    CHECK(run == 41);
-    CHECK(skipped == 12);       // pick (7), cut (3) and two failed sends (S3)
+    CHECK(run == 48);
+    CHECK(skipped == 5);        // cut (3) and two failed sends (driver level)
     CHECK(unchecked_keys == 4); // counters and cargo of the two successful-send tick records
 }

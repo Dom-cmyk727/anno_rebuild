@@ -241,8 +241,13 @@ struct Body {
         const SearchResult found =
             anno::sim::search(cells, *tables, ft.layer, starts, goals, [&](const SearchVisit& v) {
                 if (candidates.contains(v.point.tile) && !claimed(v.point.tile)) {
+                    // D 0x10058a40: take the goal (best := node), go on only while limit > score.
                     chosen = v.point.tile;
-                    return SearchDecision{GoalAction::Stop, true};
+                    return SearchDecision{
+                        harvest_search_goes_on(harvest_search_limit(fig.job), v.score)
+                            ? GoalAction::Expand
+                            : GoalAction::Stop,
+                        true};
                 }
                 return SearchDecision{};
             });
@@ -254,6 +259,21 @@ struct Body {
 };
 
 } // namespace
+
+std::optional<TileXY> harvest_pick_tile(std::uint16_t limit,
+                                        const std::vector<HarvestGoalNode>& nodes) {
+    std::optional<TileXY> tile;
+    for (const HarvestGoalNode& n : nodes) {
+        if (n.claimed) {
+            continue;
+        }
+        tile = TileXY{n.x, n.y};
+        if (!harvest_search_goes_on(limit, n.score)) {
+            break;
+        }
+    }
+    return tile;
+}
 
 bool harvest_cuttable(const TypeRegistry& types, std::uint32_t id) {
     if (id == 0) {

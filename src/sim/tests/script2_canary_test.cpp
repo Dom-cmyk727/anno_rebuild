@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -674,9 +675,11 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
     wrong_program.initial_save =
         changed.value().save(); // valid framing, different program identity
     if (const char* dir = std::getenv("ANNO_SCRIPT2_ORIGINAL_CANARY_DIR"); dir && *dir) {
-        for (const auto& [name, log] :
-             {std::pair{"normal.log", &rec.log()}, std::pair{"wrong-command.log", &wrong_command},
-              std::pair{"wrong-program.log", &wrong_program}}) {
+        const std::array<std::pair<const char*, const ReplayLog*>, 3> logs{
+            {{"normal.log", &rec.log()},
+             {"wrong-command.log", &wrong_command},
+             {"wrong-program.log", &wrong_program}}};
+        for (const auto& [name, log] : logs) {
             auto bytes = write_log(*log);
             REQUIRE(bytes);
             write(fs::path(dir) / name, bytes.value());

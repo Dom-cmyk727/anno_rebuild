@@ -481,3 +481,9 @@ whole originalsource, literalwave/branch/money/construction ledger, alternate
 Build's expected nextcheckpoint divergence and programidentity refusal.
 Publicwrapperchild-summary/artifact/sanitizer contracts remain required;
 9 cheap wrappercontracts pass before the canonicalgate. No fullF2 approval yet.
+
+D-fresh-01 and02 atd52a42cb retainedbuildFAIL: producer artifact loop mixed const/nonconst
+ReplayLog pointers in deduced initializer_list. A failed text replacement left
+source unchanged before02; that redundant build attempt is retained. No selection
+executed in either. An explicit const-pointer array fixes the export type; no
+behavior/oracle changes.

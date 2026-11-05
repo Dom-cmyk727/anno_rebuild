@@ -142,5 +142,7 @@ TEST_CASE("play loader: unsupported original actors are refused instead of silen
     }
     auto loaded = anno::app::load_play(*dir, *dir / "Scenes/0200Single/Single_01.sze");
     REQUIRE_FALSE(loaded);
-    CHECK(loaded.error().find("unsupported actor") != std::string::npos);
+    CHECK_MESSAGE(loaded.error() == "players[7].SCHIFF[0].PRIVAT.CREW.ENTRY[0].PRIVAT.ESEL.TASK: "
+                                    "unsupported unit record/state",
+                  loaded.error());
 }

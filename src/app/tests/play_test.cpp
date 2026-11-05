@@ -371,7 +371,7 @@ TEST_CASE("play component: demolish before the scene drops that building") {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const fs::path file = *dir / "Scenes/0200Single/Single_01.sze";
+    const fs::path file = *dir / "Scenes/Tutorial/02Trade01.sze";
     REQUIRE(fs::exists(file));
     auto kept = load_scene_component(*dir, file);
     auto edited = load_scene_component(*dir, file);
@@ -405,15 +405,18 @@ TEST_CASE("play component: demolish before the scene drops that building") {
                         anno::sim::CityRef{anno::sim::IslandId{static_cast<std::uint32_t>(i)},
                                            city->number},
                         {anno::sim::TileXY{building->x, building->y}}};
+                    const auto target_x = building->x;
+                    const auto target_y = building->y;
+                    const auto target_type = building->type;
                     const anno::sim::ApplyResult applied = edited.value().world.apply(cmd);
                     if (!applied.ok()) {
                         last_reject = std::string(anno::sim::reject_name(applied.status));
                         continue;
                     }
-                    const std::int32_t local_x = building->x - islands[i]->tiles.x0();
-                    const std::int32_t local_y = building->y - islands[i]->tiles.y0();
+                    const std::int32_t local_x = target_x - islands[i]->tiles.x0();
+                    const std::int32_t local_y = target_y - islands[i]->tiles.y0();
                     target.island = static_cast<std::uint32_t>(i);
-                    target.type = static_cast<std::uint16_t>(building->type.v);
+                    target.type = static_cast<std::uint16_t>(target_type.v);
                     target.x = static_cast<std::uint16_t>(local_x);
                     target.y = static_cast<std::uint16_t>(local_y);
                     demolished = true;

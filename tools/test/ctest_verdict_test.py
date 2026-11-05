@@ -241,9 +241,9 @@ class Contract(unittest.TestCase):
                         # This is an asserted decoder outcome in a reference-vector map,
                         # not a test skip message. Keep the exemption local to its exact
                         # expression; a new MESSAGE("skipped") must still fail this audit.
-                        if os.path.relpath(os.path.join(d, f), root) == "sim/tests/resident_test.cpp":
+                        if os.path.relpath(os.path.join(d, f), root).replace("\\", "/") == "sim/tests/resident_test.cpp":
                             source = source.replace('out["status"] = d ? "decoded" : "skipped";', "")
-                        if os.path.relpath(os.path.join(d, f), root) == "sim/tests/house_kernel_test.cpp":
+                        if os.path.relpath(os.path.join(d, f), root).replace("\\", "/") == "sim/tests/house_kernel_test.cpp":
                             source = source.replace('m["status"] = r.status == sim::HouseKernelStatus::Skipped     ? "skipped"', "")
                         for text in literal.findall(source):
                             found.setdefault(text, os.path.join(d, f))

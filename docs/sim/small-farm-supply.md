@@ -196,7 +196,7 @@ it says nothing about the original scale. (An earlier version of this section cl
 walking, waiting and returning phases, each with the continuation. (5) Limits: at most 3 animals out and per kind at most limit + 1 (the producing-step allowance of D `0x1006f855-0x1006f86b`, which the kernel vectors pin).
 (6) Original data and original cost tables: the Tutorial town's farm (212,250), 28 ripe grass objects in its window and no potatoes. Asserted (pinned): first target (212,248) at exact score 20, scores 10..36 (9 values), and at tick 26 085 exactly 9 of the 28 fields cut (28 -> 19), 40 NAHRUNG made, all three kinds seen, line 0 untouched. The `>=` mutant now dies on the pinned target and score.
 Mutants (scratch checkout, legal control first, `cache/map2-supply1/S3mut/`): cargo goods not set, harvest state not attached, limit 0, `>=` instead of `>`, animal not a harvest-state job, credit slot always 0,
-pick never stops: 7 of 7 killed.
+pick never stops: 7 of 7 killed; re-run after the review fixes (`S3mut/mut2.log`, legal control first): 7 of 7 killed again, the `>=` mutant now also on the engine's real-table run (`stop_score == 20`).
 
 **Identity.** No new field and no new draw site: 129 / timeline 5 is amended in place, because 129 is NOT published (S2 and S3 travel together, nothing is pushed). **129 as of `ab40919b` (S2 only) is superseded and was never published**; its values, for the record:
 G3 `s11_g3_checkpoints d904dd576bbf45c8`, `s11_g3_end e69a0b509c99bf74`; the Tutorial K3 replay checkpoints `bedae9dd2e1a44cd 1de337941cadec47 28cf97e36e3b0e21 e85b6fb7cce9be38 9c76d456ea5de184 c52f3a9fe3df8357`; `scenario_corpus.txt` as committed at `ab40919b`.

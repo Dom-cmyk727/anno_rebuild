@@ -12206,3 +12206,65 @@ Linux checkout) and does not run GPU-adapter tests, so neither failure mode appl
 there. Local WSL ASan remains fine for narrow single-test debugging, not for a full
 merge gate, until a canonical committed gate script exists (open follow-up, not filed as
 its own task yet).
+
+## W4-MAIN-1 — merge gates and full conflict accounting — 2026-11-05 — status: PUBLISHED, AWAITING ORCHESTRATOR REVIEW/MERGE
+
+Full accounting for the merge commit `4f56e800` (parents: `main` at `179845f5`, branch
+`task/W4-opening-1` at `3a2da9b9`, "H"), per the board's step 2. The merge commit's own
+message already gives the per-file resolution detail; this entry is the gates record and
+the pointer, not a restatement.
+
+**The 11 conflicts, resolution summary** (full detail in `git show 4f56e800`):
+- `CMakeLists.txt`: union of both sides' test registrations, de-duplicating one identical
+  registration.
+- `docs/orchestration/REPORTS.md`: every entry from both sides kept verbatim, reordered by
+  each entry's own dated title; undated entries keep their original side's relative order.
+  No entry edited or dropped.
+- Coordinator files (`src/test_support/src/{coord.cpp,coord_server.cpp,coord_wire.hpp,memory.cpp}`,
+  `src/test_support/tests/{budget_proc_harness.hpp,child_process.hpp}`): both sides fixed the
+  same macOS gaps independently (main's `7e897fac`, the branch's `4cc0a3ad`); kept one
+  implementation per duplicated function, chosen on evidence (documented per-function in the
+  merge commit message: module path lookup, `free_memory_bytes`, `total_memory_bytes`, the
+  Darwin process-liveness check, `wsl_available`). No wire/reservation semantic changed;
+  `kCompatVersion` (3) unchanged.
+- `tools/test/{ctest_verdict.py,ctest_verdict_test.py,run_selected.sh}` (add/add): took main's
+  versions whole (the workflow authority), porting the one fix the depth review (F6) already
+  named — "skipping: no game files" was classed "other" instead of "required-asset" — with a
+  regression case.
+
+**Gates (board step 3):**
+- Native MSVC, all lanes (`cache/gates/m1-ctest-native2.log`): 1839/1840 passed. The one
+  failure, `anno_render_tests.the flow shading moves with the flow in all windows... (Q5, game
+  files)`, is the already-accepted River Q5 disposition (not a new failure from this merge).
+- Window/GPU tests (`cache/gates/gpuwin-m1-{opening_controls,opening_gpu_window}.out`): both PASS.
+- WSL GCC 13 / Clang 18 `-Werror` (`cache/gates/m1-unix-warnings.log`): clean, all four
+  configurations (GCC/Clang, GPU on/off).
+- WSL ASan/UBSan: the local run (`wsl-m1`) came back contaminated by a mid-run race and is not
+  usable as evidence either way (see `docs/testing/wsl-gate-root-cause-2026-11-05.md` and the
+  `W4-MAIN-1-ci-incident-2026-11-05.md` report for the full root cause and decision). Superseded
+  by the cloud CI run below, which this merge's own fixes made possible for the first time.
+- `tools/agree.py` (built `anno-dump.exe`, real game files): **46 of 46 cases agree.**
+- CI checks reproduced: **cloud CI run [`42015604171`](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42015604171)
+  is fully green, all 10 jobs** (`lint`, `build-macos`, `test` x2, `cpp-format`, and all five
+  `cpp` matrix legs including `linux-gcc-release` and `linux-clang-asan`) — the first green run
+  after at least 30 consecutive failures on `main`, none of them caused by this merge. Getting
+  there required seven unplanned fixes (CMake `IN_LIST`/`CMP0057`, a clang-format violation, two
+  macOS `-Werror` warnings, a Rust `wgpu` pipeline-layout mismatch, retiring a dead contract test
+  superseded by `workflow_test.py`, a racy reclaimer-count test assertion, and two unrecognized
+  platform-skip phrasings in `ctest_verdict.py`), each root-caused from the actual CI log and
+  committed separately — full detail in `docs/orchestration/W4-MAIN-1-ci-incident-2026-11-05.md`.
+  This supersedes running clang-format/the Linux GCC release lane locally, per the same board row.
+- macOS: the coordinator's macOS paths cannot run on this Windows host; recorded NOT_RUN here.
+  `cpp (macos-clang)` now builds and passes on cloud CI (confirming the coordinator file
+  resolutions compile and test clean on Darwin's own toolchain), but the MAP row's own
+  `test_support` suite run at this published head is still a separate, non-blocking checkpoint
+  per the board.
+
+**Review (board step 4).** Dispatched to an independent reviewer with the conflict list and both
+parent hashes only, no conclusions, per the board's instruction. Result pending; will be added
+as its own entry once back.
+
+**Publish and stop (board step 5).** `task/W4-main-1` pushed; remote head verified
+`753ada5862b9cd0a04db8f36ad8f98ef9ae3338c`, matching local. Per the board's own text for this
+step, `main` is **not** moved from this session — that is the orchestrator's action, after its
+review.

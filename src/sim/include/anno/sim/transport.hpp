@@ -134,6 +134,12 @@ struct ForestryStats {
         std::uint64_t consumed_88 = 0, made_88 = 0;
     };
     std::map<BuildingId, FarmLedger> farms;
+    /// MAP-SUPPLY-1 S4: the same for a small farm, per line (what each production step used of the raw
+    /// stock and made of the output; credits and loads are other terms).
+    struct SmallFarmLedger {
+        std::uint64_t consumed_88[2] = {0, 0}, made_88[2] = {0, 0};
+    };
+    std::map<BuildingId, SmallFarmLedger> small_farms;
 };
 
 /// MAP-POP-LIVE-1 L2: a diagnostic tally of the resident (house walker) jobs; measurement and test
@@ -175,6 +181,10 @@ struct ResidentStats {
     /// 16 x amount x (the length of the IdSec chain the delivery walked): what the stock must have
     /// risen by in total (a chain may add twice to one slot when a substitute shares it).
     std::map<GoodsId, std::uint64_t> stock_expected_by_goods;
+    /// MAP-SUPPLY-1 S4 (diagnostic): the city store really taken by resident purchases, per city and goods,
+    /// and the tavern stock really taken from each Inn (what a purchase removed, after the clip to its stock).
+    std::map<std::pair<CityRef, GoodsId>, std::uint64_t> merged_taken_by_city;
+    std::map<BuildingId, std::uint64_t> inn_taken_by_building;
 };
 
 /// MAP-POP-LIVE-1 L5: the operation counters of one house (scale and proportionality checks,

@@ -206,3 +206,30 @@ and 15 lines of `scenario_corpus.txt`. The S01_07_01 canary did not move for the
 
 **Not done / limits.** (A small-farm type without input goods 1 sends no animal: no invented goods fallback.) Walking, graze waits and the fine route are the engine's integer model (as for the worker); the Farm-class sheep farms and the hunter (108) are untouched; refusal of a send (no figure created)
 is covered by the kernel's `fail=` vectors only at reference level and by the scheduler's existing release path, not by an engine test of a refused spawn (the stand-in spawn cannot fail for a typed small farm); the Farm-class sheep farms are not wired to the animal body. The output of both lines is collected by the market cart in S4.
+
+## 10. S4: warehouse, Inn and households on original data (2026-11-05)
+
+**Slice claimed.** `Tutorial/02Trade01.sze`, island 7, city 1 (player 0), **imported** buildings: nothing is built by command in the main run, no stock is granted, nothing is relocated or seeded,
+no stage flag is touched. The town (survey of all 515 files in `cache/map2-supply1/S1/s4_survey.txt`; 49 city rows hold small farms): four small farms 809 at (261,344) (32 potato objects in its 7 x 7 window, no grass),
+(259,352) (neither), (307,349) and (292,333) (grass only), one Inn 1335 at (301,351), one food stall 1310 at (305,339), market halls and a Kontor, 13 houses (139 residents). **Initial inventory of the alcohol path:** warehouse alcohol 0,
+Inn stock 0, every farm output and raw stock 0, no carrier or cart out; 8 of the 13 houses hold no tavern goods. Warehouse food 17 408 (68 t). `Rules::house_updates` is true in the test world only. Nothing else claims
+this slice: the Tutorial island-3 town has grass but no potatoes (its food line works, S3), and no other file was run. A fresh public-command farm build was not attempted (the scenario's own farms already stand with their fields; a
+BuildCmd farm would need a legal site with potatoes in reach, which is the same inventory).
+
+**Ledger at tick 150 000** (before any cut field can have regrown, 150 000 ticks after the first cut; `small_farm_chain_test.cpp`, every term observed on its own, every unexplained term asserted zero; diagnostic ledgers added for it:
+`ForestryStats::small_farms`, `ResidentStats::merged_taken_by_city`, `inn_taken_by_building`). **Potatoes:** 24 fields cut (the window's ripe count 32 -> 8) = 6144 = raw left 0 + used 6144 + carried 0. **Alcohol (one conservation identity over the whole path):**
+made 624 (48 full steps x 13) = 312 still in the farm + 0 in the warehouse + 0 in the Inn + 312 sold by the Inn + 0 in a cart or carrier (the warehouse held up to 312 at one sample: a cart delivered a load and the Inn's carrier fetched it from
+the store, so both the cart path and the carrier path ran). **Food:** made 1183 = 270 still in the farms + 913 loaded; the warehouse 17 408 -> 17 250 = +913 loaded - 314 in carts - 757 taken by the stall for the residents of this city.
+Reservations are inside the farm outputs and are not counted twice; ended figures' cargo is history (the in-flight sums read living figures of this island only). Households: tavern goods reached **4** of the 8 houses that held none at the start; food reached
+**8** of 13. **Pinned values** (they move with any legitimate change of the walk or timing model): 24 cuts, 624 made, 312 sold, store 17 250.
+
+**Causal control (producer removed).** The same town with the four farms demolished by `DemolishCmd` at tick 0 (a supported public command, issued by the owner), 150 000 ticks: the Inn never receives anything (stock 0, sold 0, warehouse alcohol 0), the food store only falls,
+17 408 -> 16 654 = exactly the 754 the stall took (nothing comes in), against 17 250 with the farms. So every unit of alcohol sold and the 596 units of food the store gained over the control were produced by the farms after the start.
+
+**Repeated cycles.** A 600 000-tick run of the same town: the potato fields were cut and **grew back** (the ripe count rose 43 times, minimum 7 of 32), and 24 576 raw potatoes (96 t) were used or held against the 8192 (32 t) the fields held ripe at the start, so tiles were cut again after the 150 000-tick regrowth.
+This shows the cycle in one town for 600 000 ticks; it is **not** a claim of a balanced or infinite economy: the Inn's sales (2064 raw units in that run) and the food balance were not driven to equilibrium, and no settlers upgrade is claimed or asserted.
+
+**Mutants** (scratch checkout, legal control first, sha256-restored; `cache/map2-supply1/S4mut/`): no behaviour was added in S4 (only diagnostics), so they cut the links the chain depends on: the small-farm food line not collectable (`store_line`), a small farm without an output store (nothing is picked up), the credit slot always 0, and the Inn-sold diagnostic dropped: 4 of 4 killed by the chain test (the first run of the fourth did not compile, `mut_first.log`; rewritten, `mut2.log`).
+
+**Limits.** One town, imported farms; potato availability is the scenario's (OQ-491); the resident side is the existing (partly ADAPT) walker model; the Inn's carriers take alcohol from the farm and from the warehouse alike (the existing `pick`), which this ledger
+does not separate. Windows/Linux, sanitizer coverage and replay of this run are S5/S6.

@@ -23,7 +23,7 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
                                                           {"unit130", 130},
                                                           {"needs130", 130},
                                                           {"combined131", 131}}}) {
-        INFO(name);
+        INFO(std::string(name));
         std::ifstream file(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" /
                                (std::string(name) + ".save"),
                            std::ios::binary);
@@ -43,7 +43,8 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
         const auto decoded = sim::read_log(historical);
         if (std::string(name) == "combined131") {
             REQUIRE_FALSE(decoded); // Current framing, refused at its state identity.
-            CHECK(decoded.error() == "replay state stream version differs from this build's");
+            CHECK(decoded.error() ==
+                  "stream (byte 24): replay state stream version differs from this build's");
         } else {
             REQUIRE_FALSE(decoded);
             CHECK(decoded.error().find(std::string("replay-log version ") +

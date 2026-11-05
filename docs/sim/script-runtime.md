@@ -443,3 +443,10 @@ legal construction control passed9assertions; scope-isolation test executed42
 assertions and failed exactly3 non-script scope comparisons (39passes), no crash,
 timeout or unrelated refusal. Clean scheduler restored byte-for-byte (git diff
 empty) and normal full Debug rebuild completed; corrected final control pending.
+
+Final cheap gate at c0a3d668 PASS29/29 (zero failed/empty/skipped/incomplete, no
+sanitizer diagnostics): BIGBROTHER parser/corpus/reference and public SCRIPT1
+reference/tool contracts. Final integration reviewer independently caught a P2
+state-note width typo: native permission rows are u32type+u32value,8bytes; value
+is constrained0..255. Documentation corrected to match the literal byte oracle
+and explicit field list; original ANLTRG remains u16/u8/pad.

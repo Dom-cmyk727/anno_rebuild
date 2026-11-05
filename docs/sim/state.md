@@ -2565,7 +2565,7 @@ An independent lane's integer129 does not establish compatibility; mismatched
 schema is refused. Commandwire1, log2 and PRNGtimeline5 are unchanged.
 
 Each player's existing fields are followed by u64 permission-row count, then
-strictly sorted pairs of widened u32 type and u8 exact value. A tenth root scope
+strictly sorted pairs of widened u32 type and u32 stored value (constrained0..255). A tenth root scope
 `script` follows `timers_monopoly`. Its flat fields in order are:
 
 - u64-counted source bytes; u32 source/node/depth/work limits; u32 policy.

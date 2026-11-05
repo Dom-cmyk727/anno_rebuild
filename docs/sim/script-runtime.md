@@ -1,9 +1,10 @@
 # MAP-SCRIPT-1 — contract and package acceptance ledger
-Current SCRIPT2 status: A–E approved; implemented synthetic F3/F4 and F5 subsets
-approved. F2 original-world conditional/construction is OPEN because the normal
-scenario adapter drops original units. Final G integration closeout is in progress; broad ASAN retained591 passes
-and one1800s timeout, with no sanitizer diagnostics. Historical SCRIPT1 evidence and scope limits below remain attributed
-to their original pins; they are not the current full-program capability claim.
+Current SCRIPT2 status: A–E and implemented synthetic F3/F4 and F5 subsets
+approved. Fresh scoped integration and bounded handoff APPROVED at c0e0355f.
+F2 original-world conditional/construction is OPEN because the scenario adapter
+drops original units. Full G remains OPEN: broad ASAN retained591 passes and one
+1800s timeout, with no sanitizer diagnostics. Historical SCRIPT1 evidence below
+remains attributed to its original pins; it is not the current capability claim.
 
 
 ## S0 baseline and ownership
@@ -57,6 +58,8 @@ and player permission rows are explicit state, not renderer/UI state.
 | S6 scale | deterministic counters/Release | moreplayers/types/statements | query city/figure rescan | modest benchmark | APPROVEDdb13e91e; Release9da32085 |
 | S7 evidence | canonical runner + independent reviews | nonempty frozen-source gates | skipped/incomplete relabelled pass | retained raw logs/manifests | APPROVED0001a020 / final_integration_review; docs reviewed12569eaf; full original claim BLOCKED |
 
+| Requirement | Primary evidence | Positive control | Distinguishing negative | Test/artifact | Review |
+|---|---|---|---|---|---|
 | SCRIPT2 A closure | entire original AST + hashed bytes | seven IFs/all instructions inventoried | permission fragment substituted | cache/script2/A/endless01-inventory.json | APPROVED fe964e24 / script2_review_area + script2_review_actions |
 | SCRIPT2 B area | Scene232a0/11010; Welt985c0/a5f70/97150 | true/false, every edge, exact owner/class/crew | swapped tuples/closed edge/ID0 wildcard/hull/nav shortcut | script2 handler vectors + focused query gate | APPROVED d159b141 / script2_review_area;13/13 |
 | SCRIPT2 B bounded view | original spatial query + owner-approved cap removal |513th match, index rebuild/large unrelated set |512 truncation or hidden scan per IF | deterministic build/query work counters | owner cap removal approved; APPROVED d159b141 / script2_review_area |
@@ -65,7 +68,7 @@ and player permission rows are explicit state, not renderer/UI state.
 | SCRIPT2 E startup/identity | normal Recorder/driver callers + explicit native schema | first command after INIT; Startup replay; native Ready | constructor eager/second world zero visit/old schema accepted | native literal/reference/corruption and replay gates | APPROVED f6354a97 / script2_review_session;46/46 corrective, prior77pass/2fail retained |
 | SCRIPT2 F original canary | unchanged file/program hashes and actual resources | natural public-command area condition + real build | teleport/grant/extracted source/compiled-only claim | exact branch/money/event ledger, fresh process | OPEN F2: no original unit import; compile/INIT only; dependency audit2e964b80 |
 | SCRIPT2 F scale/capabilities | complete50 AST inventory + Release counters | build AND query work, branch labels | empty kernel called tutorial/hidden unlimited query | capability snapshot/measurement provenance | implemented subsets APPROVED69380a73 /250c15ad; final inventory522a0a27:50/14/14/full0 |
-| SCRIPT2 G acceptance | canonical immutable gates and fresh review | exact terminal counts/clean commits | failed/skipped outcomes promoted | final handoff and retained failures | fresh final integration pending; Debug595/595 pre-fix; focused85/85 post-fix; ASAN591pass/1timeout |
+| SCRIPT2 G acceptance | canonical immutable gates and fresh review | exact terminal counts/clean commits | failed/skipped outcomes promoted | final handoff and retained failures | scoped integration/handoff APPROVED c0e0355f / script2_final_integration; full G OPEN; ASAN591pass/1timeout |
 
 ## S1 approved execution contract
 
@@ -957,3 +960,17 @@ Historical SCRIPT1 JSON is preserved verbatim in script-capabilities-script1.jso
 The final integration reviewer caught the draft prose's13-empty count; JSON was
 already correct and prose is corrected to12. Archived11 SCRIPT1 recordings,
 goldens and pure references match the starting head, and local TASKS is unchanged.
+
+Final independent `/root/script2_final_integration` disposition: APPROVED scoped
+integration and bounded handoff at clean
+`c0e0355f8abaebd689732f21ce4c1a64240b2942`. Scope is implemented A–E and reviewed F
+subsets, interactions, raw evidence, compatibility, final capability publication
+and handoff/REPORTS/PLAN. No unresolved actionable implementation/evidence finding;
+allocation P2 closed34101c42. Reviewer verified published JSON matches reviewed
+same-pin draft and archived SCRIPT1 JSON matches b19 verbatim (SHA256
+2a24989460cae13e29d165013c23a438ac52d6aaa4117427703bd6d226c6061f).
+Reviewer presentation correction adds a proper header/separator before SCRIPT2
+acceptance rows; recording this disposition needs no new engine run/review layer.
+F2 and full G remain OPEN, timed-out case's ASAN completion NOT_COMPLETED; no
+COMPLETE LOCAL CANDIDATE or cross-platform acceptance. This final doc-only commit
+records that disposition; code/test source remains522a0a27, ASAN source5e50da4b.

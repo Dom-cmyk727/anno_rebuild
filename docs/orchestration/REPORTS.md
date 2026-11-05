@@ -8973,8 +8973,11 @@ canary, zero empty/skipped/incomplete/sanitizer lines. Five required contracts
 passed separately. Independent dependency audit permits exact reuse of that
 case's76166-assertion Debug pass: generated ExplicitNone skips SCRIPT2 entirely,
 and final shared-prefix fix is unreachable. Its ASAN completion remains
-NOT_COMPLETED; no full G or broad-ASAN PASS inferred. Final bounded integration
-review of frozen handoff/metadata remains pending.
+NOT_COMPLETED; no full G or broad-ASAN PASS inferred. Final scoped integration/bounded handoff APPROVED at c0e0355f by
+`/root/script2_final_integration`: implemented A–E/F subsets, interactions,
+evidence, compatibility and publication, with no unresolved actionable finding.
+Full F2/full G remain OPEN; no COMPLETE LOCAL CANDIDATE. A documentation-only
+follow-up records the disposition and fixes the acceptance-table header.
 Earlier E79selected/77passes/2fails, discovery failures and mutants stay recorded.
 No aggregate or full A–G/COMPLETE LOCAL CANDIDATE claim.
 

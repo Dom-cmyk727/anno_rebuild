@@ -292,5 +292,23 @@
       "held_scout.ESEL": "class53"
     },
     "other_pairings": "explicit refusal before World creation"
-  }
+  },
+  "type_import_metadata": [
+    {
+      "logic15": 6,
+      "logic26": 6,
+      "expected_other_crew": 6,
+      "head8": 1,
+      "expected_ship_state": 0,
+      "control": "equal fields legal"
+    },
+    {
+      "logic15": 15,
+      "logic26": 0,
+      "expected_other_crew": 0,
+      "head8": 1,
+      "expected_ship_state": 32768,
+      "separates": "slot88 mode2 versus cannon getter"
+    }
+  ]
 }

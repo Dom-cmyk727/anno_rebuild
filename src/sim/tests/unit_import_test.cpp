@@ -19,6 +19,7 @@
 #include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/ship.hpp>
 #include <anno/sim/synthetic.hpp>
+#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/scenario_load.hpp>
@@ -725,5 +726,55 @@ TEST_CASE("UNIT1 zero positions require a nonempty world extent before canonical
         auto empty = sim::load_scenario(source(actor, 100, 0), *types, {});
         REQUIRE_FALSE(empty);
         CHECK(empty.error().find("nonempty world extent") != std::string::npos);
+    }
+}
+
+TEST_CASE("UNIT1 raw figure LOGIC distinguishes abstract crew from cannon capacity") {
+    // First run an equal-fields legal control, then a value that separates the two getters.
+    for (auto counts : {std::pair{std::uint8_t{6}, std::uint8_t{6}},
+                        std::pair{std::uint8_t{15}, std::uint8_t{0}}}) {
+        CAPTURE(counts.first);
+        CAPTURE(counts.second);
+        Buf type_head;
+        u32(type_head, 0x3de147ae);
+        u32(type_head, 0x3d1374bc);
+        type_head.resize(24, 0);
+        Buf name{'S', 'H', 'I', 'P', 0};
+        Buf logic(44, 0);
+        logic[0x11] = 50;
+        logic[0x13] = 2;
+        logic[0x14] = 2;
+        logic[0x15] = counts.first;  // Original +0x101, separate cannon getter.
+        logic[0x26] = counts.second; // Original +0xf8, slot+0x88(mode2).
+        logic[0x1e] = 0xe0;
+        logic[0x1f] = 0x2e; // 12000 HP.
+        const auto rec = [](std::string_view label, const Buf& data) {
+            anno::formats::chunk::Chunk r;
+            std::copy(label.begin(), label.end(), r.name_field.begin());
+            r.payload = data;
+            return r;
+        };
+        anno::formats::figuren::Entry e;
+        e.id = ship_kind;
+        e.records = {rec("HEAD", type_head), rec("BEWOHNTYPE", name), rec("LOGIC", logic)};
+        auto built = sim::TypeRegistry::build({}, sim::original_goods(), {}, std::span(&e, 1),
+                                              sim::synthetic_walk_tables());
+        REQUIRE_MESSAGE(built, (built ? "" : built.error()));
+        const auto* facts = built.value()->unit_import_facts(ship_kind);
+        REQUIRE(facts);
+        CHECK(facts->max_hp == 12000);
+        CHECK(facts->cargo_slots == 2);
+        CHECK(facts->crew_slots == 2);
+        CHECK(facts->other_crew == counts.second);
+        Buf h = head(128, 0);
+        h[8] = 1;
+        Buf records = tagged("HEAD", h);
+        append(records, tagged("WAREN", holds()));
+        auto loaded = sim::load_scenario(source(tagged("SCHIFF", unit(0, ship_kind, records))),
+                                         *built.value(), {});
+        REQUIRE(loaded);
+        CHECK(loaded.value().spec.figures[0].state_word == (counts.second == 0 ? 0x8000U : 0U));
+        auto w = made(loaded.value().spec, built.value());
+        CHECK(w.figures().list.slots[0]->state_word == (counts.second == 0 ? 0x8000U : 0U));
     }
 }

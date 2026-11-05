@@ -369,3 +369,27 @@ helper now rejects empty/over-bound world extents before canonical signedzero;
 a dedicated legal512-width vsinvalid0-width control covers both+0/−0. Cargo
 width proof now executes a legal byte1=0 control before the distinguishingAB case,
 so its intended wrong-width mutant can retain a passing legal region.
+
+
+### Reopened A import-catalog field during converter review
+
+C-corrected-02 and exact-restoration C-restored-03 each pass14/14 at6a2c6414,
+with806assertions and0other outcomes. Crew mutant selected1/failed1 with31legal
+assertions/2intendedfailures; goods-width mutant selected1/failed1 with13legal/
+1intendedfailure at highbyteAB after the byte1=0 legalcontrol. All mutants restored
+byte-identically (original_units.cpp SHA256
+16415eb5e9188af855b7773c9a0fa4f265c643c802e3e6be59160c6e84ea2525).
+
+Separate review found production metadata extraction still needed a raw-entry
+control: AnnoGame slot+88 mode2 reads+f8 (1000fb60), written at10010352 from AH of
+EAX loaded100102f3 at LOGIC+25, so the byte is LOGIC26. LOGIC15 instead feeds+101,
+a separate cannon getter (10010274 /1000fcb4). A's adjacent-count field assumption
+was incorrect; the affected field approval is withdrawn pending correction.
+Actual1503 other-crew capacity6,1502 capacity0,717 capacity0. Existing manual
+Builder metadata vectors test configured values, not this raw converter.
+
+A new authored figure-entry case first gives equal15/26 values6/6 as a legal
+control, then15/0 to distinguish the fields through TypeRegistry::build and
+HEAD8=1 import. Preserve its first failure under the old field mapping before
+correcting extraction. Other reviewed health/state/slot/position semantics remain
+unchanged; source endless01 HEAD8=0 means the corrected source flag8000 is unaffected.

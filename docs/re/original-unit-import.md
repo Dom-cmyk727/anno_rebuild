@@ -53,3 +53,12 @@ class!=97; attach100419e7 repeats the inequality. Earlier A/source0 was incorrec
 and its flag approval retracted. Source HEAD8=0 retains8000 with scouts. A legal
 HEAD8=1 within other-crew capacity clears8000. The class97-only crew closure needs
 no extra qualifying-fact metadata; do not normalize this bit away.
+
+Abstract-crew type input correction during B/C review: slot+88's getter AnnoGame
+1000fb60 reads byte+f6+mode, so mode2 is+f8. LOGIC buffer begins stack+30;
+100102f3 loads EAX at stack+55 (LOGIC25..28), and EAX remains live until10010352
+stores AH to+f8. Therefore other_crew is LOGIC26, not15. The separate LOGIC15 write
+at10010274 goes to+101, read by1000fcb4 (cannon capacity). New type-catalog decoding
+requires the established44-byte zero-filled LOGIC buffer. Observed source other
+crew:1503=6,1502=0,717=0. Old manually declared synthetic metadata remains a valid
+configured fixture but cannot establish raw field extraction.

@@ -849,3 +849,12 @@ to script2; only current-byte comparison/generation callers use it. The separate
 exact native129 refusal, and old Python references remain registered. No archived
 fixture is edited; checksums still match the E baseline. The pending Release run
 is separate from migration/generation actions.
+
+F subset review P2 findings fixed before publication: per-cut full-program replay
+now observes prefix/suffix waves, asserts before-wave suffix1 versus after-wave
+suffix0, empty restored queue, and exact concatenated wave ledger. Inventory
+publisher now joins executable/SHA/child commands to canonical tested identity,
+requires exactly four nonempty checked artifacts and unique successful producer/
+worker roles, and checks compiled row branch/empty/call facts against fresh AST.
+Public negative contracts reject unrelated or missing proof before any publication
+output. Prior scale/current recording-sink review found no blocker. F2 remainsOPEN.

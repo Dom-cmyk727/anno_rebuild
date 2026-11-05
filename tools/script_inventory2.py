@@ -8,6 +8,9 @@ from pathlib import Path
 import re
 import sys
 import unittest
+import tempfile
+import io
+from contextlib import redirect_stdout
 
 ROOT = Path(__file__).resolve().parents[1]
 ROW = re.compile(r'MESSAGE: CAPABILITY2 (\S+) compiled=([01]) startup=([01]) visits=(\d+) branches=(\d+) empty=([01]) dependency=(.*)')
@@ -48,10 +51,88 @@ def parse_gate(text, expected):
     return identity, result
 
 
+REQUIRED_ARTIFACTS={'normal.log','wrong-command.log','wrong-program.log','expected.txt'}
+CASES={'producer':'SCRIPT2 synthetic complete original program canary producer',
+       'worker':'SCRIPT2 synthetic encoded canary replay worker'}
+
+
+def validate_manifest(identity, manifest):
+    source=identity['source_tested']['head']
+    if manifest['verdict']!='PASS' or manifest['source_revision']!=source:
+        raise ValueError('fresh-process proof must use same frozen source')
+    executable=manifest['executable']
+    digest=manifest['sha256']
+    if not re.fullmatch('[0-9a-f]{64}',digest) or identity['binaries'].get(executable)!=digest:
+        raise ValueError('manifest executable differs from canonical tested binary')
+    processes=manifest['processes']
+    if len(processes)!=2 or {p['role'] for p in processes}!=set(CASES):
+        raise ValueError('require exactly producer and worker roles')
+    if len({p['pid'] for p in processes})!=2 or any(p['pid']<=0 or p['exit']!=0 for p in processes):
+        raise ValueError('require distinct successful child processes')
+    for process in processes:
+        if process['command']!=[executable,'--test-case='+CASES[process['role']]]:
+            raise ValueError('child command differs from tested executable/case')
+    if set(manifest['artifacts'])!=REQUIRED_ARTIFACTS:
+        raise ValueError('require exact nonempty replay artifact set')
+    for fact in manifest['artifacts'].values():
+        if fact['size']<=0 or not re.fullmatch('[0-9a-f]{64}',fact['sha256']):
+            raise ValueError('invalid nonempty artifact identity')
+
+
+def validate_program_row(row, items, branch_count, synthetic):
+    if row['compiled']:
+        if row['branch_count']!=branch_count or row['empty_kernel']!=(len(items)==0):
+            raise ValueError('compiled row differs from independently parsed AST')
+        if row['normal_startup'] and row['normal_zero_ms_calls']!=branch_count:
+            raise ValueError('bounded-call count differs from exercised protocol')
+    if any(i<0 or i>=branch_count for i in synthetic):
+        raise ValueError('synthetic branch index outside program')
+
+
 class Contracts(unittest.TestCase):
     identity = dict(source_tested=dict(head='a'*40,status='',untracked={}), binaries={'exe':'b'*64})
     def text(self, row='A compiled=1 startup=1 visits=0 branches=0 empty=1 dependency=none'):
         return ('== tested identity '+json.dumps(self.identity)+'\nX: MESSAGE: CAPABILITY2 '+row+'\nGATE_END {"status":0}\n')
+    def manifest(self):
+        return dict(verdict='PASS',source_revision='a'*40,executable='exe',sha256='b'*64,
+                    processes=[dict(role=r,pid=i+1,exit=0,command=['exe','--test-case='+case])
+                               for i,(r,case) in enumerate(CASES.items())],
+                    artifacts={n:dict(size=1,sha256='e'*64) for n in REQUIRED_ARTIFACTS})
+    def test_manifest_join_and_required_proof(self):
+        validate_manifest(self.identity,self.manifest())
+        for kind in range(7):
+            m=self.manifest()
+            if kind==0: m['artifacts']={}
+            if kind==1: m['executable']='/unrelated/executable'
+            if kind==2: m['sha256']='0'*64
+            if kind==3: m['processes'][1]['role']='producer'
+            if kind==4: m['processes'][0]['command'][0]='other'
+            if kind==5: m['artifacts']['normal.log']['size']=0
+            if kind==6: m['source_revision']='f'*40
+            with self.assertRaises(ValueError): validate_manifest(self.identity,m)
+    def test_program_row_semantics(self):
+        row=dict(compiled=True,normal_startup=True,normal_zero_ms_calls=0,branch_count=0,empty_kernel=True)
+        validate_program_row(row,[],0,[])
+        for mutation in (dict(branch_count=999),dict(empty_kernel=False),dict(normal_zero_ms_calls=1)):
+            with self.assertRaises(ValueError): validate_program_row(row|mutation,[],0,[])
+        with self.assertRaises(ValueError): validate_program_row(row,[],0,[0])
+    def test_public_publish_rejects_unrelated_or_empty_proof_before_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); game=root/'game'; scenes=game/'Scenes'; scenes.mkdir(parents=True)
+            for i in range(50): (scenes/(str(i)+'.sze')).write_bytes(b'x')
+            rows=''.join('X: MESSAGE: CAPABILITY2 Scenes/'+str(i)+'.sze compiled=1 startup=1 visits=0 branches=0 empty=1 dependency=none\n' for i in range(50))
+            log=root/'gate.log'; log.write_text('== tested identity '+json.dumps(self.identity)+'\n'+rows+'GATE_END {"status":0}\n')
+            manifest=root/'manifest.json'; output=root/'output.json'
+            for kind in range(2):
+                m=self.manifest()
+                if kind==0: m['artifacts']={}
+                else: m['executable']='/unrelated/executable'
+                manifest.write_text(json.dumps(m))
+                captured=io.StringIO()
+                with redirect_stdout(captured),self.assertRaises(ValueError): publish(log,game,manifest,output)
+                self.assertFalse(output.exists())
+                self.assertNotIn('SCRIPT2 inventory:',captured.getvalue())
+
     def test_legal(self):
         _, rows = parse_gate(self.text(), ['A'])
         self.assertTrue(rows['A']['compiled'])
@@ -84,12 +165,9 @@ def publish(log, game, manifest_path, output):
     identity, rows = parse_gate(log.read_text(), expected)
     source = identity['source_tested']['head']
     manifest = json.loads(manifest_path.read_text())
-    if manifest['verdict'] != 'PASS' or manifest['source_revision'] != source:
-        raise ValueError('fresh-process proof must use same frozen source')
+    validate_manifest(identity,manifest)
     canary.validate_input_identity(manifest['inputs'])
-    processes = manifest['processes']
-    if len(processes) != 2 or processes[0]['pid'] == processes[1]['pid']:
-        raise ValueError('require distinct producer and worker')
+    processes=manifest['processes']
     for process in processes:
         canary.checked_child(process['exit'], manifest_path.with_name(process['role']+'.log').read_text())
     for name, fact in manifest['artifacts'].items():
@@ -104,6 +182,7 @@ def publish(log, game, manifest_path, output):
         walked = list(bb.walk(items))
         row = rows[name]
         synthetic = [0,5,6] if name == 'Scenes/0011SingleEndlosAddon/endless01.sze' else []
+        validate_program_row(row,items,sum(isinstance(n,bb.If) for n in items),synthetic)
         if synthetic and hashlib.sha256(payload).hexdigest() != manifest['inputs']['program_sha256']:
             raise ValueError('synthetic coverage source differs')
         programs.append(dict(file=name,sha256=sha(path),program_sha256=hashlib.sha256(payload).hexdigest(),

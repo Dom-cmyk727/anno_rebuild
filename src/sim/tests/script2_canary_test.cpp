@@ -152,7 +152,8 @@ Canary produce(const Original& input) {
         prefix.entries.resize(cut);
         auto before = World::load(pending, input.types);
         REQUIRE(before);
-        auto a = replay(before.value(), prefix);
+        std::vector<SimEvent> prefix_waves;
+        auto a = replay(before.value(), prefix, {&prefix_waves, observe});
         REQUIRE(a);
         REQUIRE(a.value().reproduced());
         auto restored = World::load(before.value().save(), input.types);
@@ -160,10 +161,16 @@ Canary produce(const Original& input) {
         auto suffix = rec.log();
         suffix.entries.erase(suffix.entries.begin(),
                              suffix.entries.begin() + static_cast<std::ptrdiff_t>(cut));
-        auto b = replay(restored.value(), suffix);
+        CHECK(restored.value().drain_events().empty());
+        std::vector<SimEvent> suffix_waves;
+        auto b = replay(restored.value(), suffix, {&suffix_waves, observe});
         REQUIRE(b);
         CHECK(b.value().reproduced());
         CHECK(restored.value().save() == final);
+        CHECK(prefix_waves.size() == (cut > 6 ? 1u : 0u));
+        CHECK(suffix_waves.size() == (cut <= 6 ? 1u : 0u));
+        prefix_waves.insert(prefix_waves.end(), suffix_waves.begin(), suffix_waves.end());
+        wave_ledger(prefix_waves);
     }
     auto wrong = rec.log();
     REQUIRE(wrong.entries[2].kind == ReplayEntry::Kind::Commands);

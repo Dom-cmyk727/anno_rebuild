@@ -39,11 +39,12 @@ to this routine. Context is the player, not a city/island resident count.
    by CL, AND, normalize to0/1. A set bit immediately succeeds. EVER is bit0,
    not unconditional; mask0 fails EVER. It is not an ordinal comparison.
 3. Only stage31 (cmp at1001bb6d) gets ordinary research alternatives. Type
-   vtable+0xac(0) reads INPUT goods (AnnoGame1000a410,type+0x206+i), NOT output
-   (+0xb0,type+0x200+i). Signed comparisons at1001bb84/89 include46..55.
-   If first input is in that interval, consult goods byte+26*g+0x18 (research id)
+   vtable+0xac(0) reads OUTPUT goods (AnnoGame1000a410,type+0x206+i), NOT input
+   (+0xb0,type+0x200+i); WARE parser1000a1dc stores+0x206,
+   ROHSTOFF parser1000a2c2 stores+0x200. Signed comparisons at1001bb84/89 include46..55.
+   If first output is in that interval, consult goods byte+26*g+0x18 (research id)
    and player research slot+8; bit1 (`test al,2`) succeeds. If first research
-   fails, nonzero second input's research is also tried, without another range
+   fails, nonzero second output's research is also tried, without another range
    test. Then type FORSCHTYPE getter+0xec is tried (1001bc00..1001bc1e).
    These are OR alternatives. A reached stage31 bypasses research entirely.
    FORSCHTYPE is not a separate mandatory AND for ordinary construction.
@@ -54,7 +55,7 @@ to this routine. Context is the player, not a city/island resident count.
 
 Hand-derived separating cases: stage3,mask8 ->true; stage3,mask16 ->false
 (despite16>3). EVER,mask0 ->false. stage31,mask0x80000000,unresearched ->true.
-For stage31/input research1: state[1]=1 ->false; state[1]=2 ->true (researchable
+For stage31/output research1: state[1]=1 ->false; state[1]=2 ->true (researchable
 is not researched). Override0 with an otherwise satisfied bit ->false;
 override2 with mask0 ->truthy. Research36 enables1021 with its stage4A absent,
 but not a different type unless its profile declares that alternative.
@@ -89,3 +90,8 @@ pending the frozen-note review. Production enforcement awaits the owner's scope
 decision for worlds with missing script/ANLTRG context. Pure query and immutable
 facts can be implemented independently with explicit override inputs. No reviewer
 can silently authorize dropping scenario permissions.
+
+The inspected Frame mode6 path100589a0..10058a9e has no built-in stage check;
+it calls City::Build at10058a67 and Place10058a7f. Its external callback
+(this+0x124,100589f9..10058a20) remains unread, so this is not proof about every
+possible callback. Frame SHA256 dd3f36ff564d2685d10795272c4ed3c0b2da32a946c2883fb1158ff439249b91.

@@ -260,8 +260,8 @@ enum class OriginalActorProjection : std::uint8_t {
 struct UnitImportOptions {
     OriginalActorProjection projection = OriginalActorProjection::ImportRequired;
     /// Import allocation safety budgets, configurable independently of live SimConfig/state.
-    /// Defaults cover the original u16 ID domain; required growth must fit, never be clipped.
-    /// Raise these up to kListSizeBound for larger original-like inputs.
+    /// Defaults cover the measured original corpus; requested-slot growth must fit, never be
+    /// clipped. Raise these up to kListSizeBound for larger original-like inputs.
     std::uint32_t max_actors = 1U << 16;
     std::uint32_t max_registry_slots = 1U << 16;
 };

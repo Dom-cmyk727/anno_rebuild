@@ -541,3 +541,24 @@ proof is rejected before output.10cheap inventorycontracts pass. Currentmetadata
 will be published from finalsame-pin gates/manifests; the oldSCRIPT2 JSON will
 be preserved verbatim as historical evidence. New schema2 separates the measured
 original public-command branch0canary from fullscenario/allbranch coverage.
+
+Fresh integration reviewer /root/unit_import_final_integration inspected1572161a
+and found no blocking interaction in normal/explicitcomponent policy, old-vs-new
+figureinsertion, nativefields or runtime-importmetadata boundary. Its comment
+precision is fixed: default65536registrybudget covers measured corpus, not every
+rawu16slot'sgrowth (slot65535requires81918). No default/behavior change.
+
+Planned final affected selection is256 actualregisteredtests, retained in
+cache/unit-import1/G-selection.json. It includes UNIT1, SCRIPT1/2, type/slot/figure
+contracts, scenarioformat/link inputs, strictnormal inventory, original+synthetic
+freshwrappers, originalgeometry/lock/walk components, generatedmanifest loaders,
+50creationidentity/mask checks and affected K2/K3 tutorial proofs. Separate required
+reference, freshchild and inventorycontracts do not inflate these counts.
+Unchanged long economy/transport/performance matrices are reused from reviewed
+SCRIPT2 evidence because their actor-free initial identities/goldens and live
+handlers remain unchanged; no goldens are rewritten. Admission stays ON atjobs4.
+Debug per-case timeout600s; affected ASAN per-case timeout1200s gives over7x the
+156s Debug originalfresh case and is separate from the historical opening-loop
+timeout. The one historically timed-out generated opening case, if required to
+close fullG, will run alone with3600s declared beforehand (about5x its723s Debug
+measurement and2x the inadequate1800s ASAN limit), not another unchanged matrix.

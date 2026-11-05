@@ -298,3 +298,18 @@ TEST_CASE("SCRIPT1 changed permission action diverges at its content identity an
     CHECK(changed.world.apply(command).status == sim::Reject::ConstructionDenied);
     CHECK(changed.world.state_hash() == hash);
 }
+
+TEST_CASE("SCRIPT1 published128 recordings stay unchanged and reach version refusal") {
+    for (const auto* name :
+         {"g2.log", "g3.log", "g4.log", "g5.log", "g6.log", "m2_found.log", "m2_found_wrong.log",
+          "cargo_load.log", "cargo_load_wrong.log", "cargo_unload.log", "cargo_unload_wrong.log"}) {
+        auto log = sim::read_log(read(fs::path(ANNO_FIXTURES_DIR) / "sim" / name));
+        REQUIRE_MESSAGE(log, (log ? "" : log.error()));
+        REQUIRE(log.value().initial_save.size() > 12);
+        CHECK(anno::formats::u32_le(log.value().initial_save, 8) == 128);
+        auto refused = sim::World::load(log.value().initial_save, sim::TypeRegistry::empty());
+        REQUIRE_FALSE(refused);
+        CHECK(refused.error() ==
+              "save: state stream version 128 is not supported (this build reads 129)");
+    }
+}

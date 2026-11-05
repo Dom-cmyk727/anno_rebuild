@@ -1388,7 +1388,7 @@ TEST_CASE("players scope stream layout") {
     // empty relation rows (8) and discovery set (8).
     Stream one;
     expected_player(one, *t.slots[31]);
-    CHECK(one.v.size() == 65 + 8 + 8 + 65 + 8 + 130 + 8 + 8);
+    CHECK(one.v.size() == 65 + 8 + 8 + 65 + 8 + 130 + 8 + 8 + 8);
 
     // The world stream has the table after the ids scope and before the islands scope
     // (stage S5: the u64 slot count 0 of a world without islands), then the figures
@@ -1397,7 +1397,7 @@ TEST_CASE("players scope stream layout") {
     sim::World w;
     sim::WorldTestAccess::players(w) = t;
     const std::vector<std::uint8_t> world = save_world(w);
-    constexpr std::ptrdiff_t kIslandsBytes = 8 + 31 + 8 + 193;
+    constexpr std::ptrdiff_t kIslandsBytes = 8 + 31 + 8 + 193 + 62;
     REQUIRE(world.size() > expected.v.size() + static_cast<std::size_t>(kIslandsBytes));
     CHECK(std::equal(expected.v.begin(), expected.v.end(),
                      world.end() - kIslandsBytes - static_cast<std::ptrdiff_t>(expected.v.size())));

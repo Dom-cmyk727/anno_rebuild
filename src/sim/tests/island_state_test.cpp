@@ -865,7 +865,7 @@ TEST_CASE("island perturbation moves the hash") {
     const sim::World base = make_world(zero_island_scenario());
     const std::uint64_t base_hash = sim::World(base).state_hash();
     const std::vector<std::uint64_t> base_scopes = scope_hashes(base);
-    REQUIRE(base_scopes.size() == 9);
+    REQUIRE(base_scopes.size() == 10);
     for (const auto& [name, mutate] : mutations) {
         INFO("mutation " << name);
         sim::World w = base;
@@ -1913,7 +1913,7 @@ TEST_CASE("load refuses a damaged frame") {
         island_test::reseal(bad);
         CHECK(contains(island_test::load_error(bad), "claims"));
         bad = good;
-        island_test::put32(bad, 17, 0x7FFFFFFFU); // the high word: more than a size
+        island_test::put32(bad, 25, 0x7FFFFFFFU); // the high word: more than a size
         island_test::reseal(bad);
         CHECK(contains(island_test::load_error(bad), "claims"));
         // A section one byte too long swallows a byte of the next length.

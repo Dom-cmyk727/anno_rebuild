@@ -5,7 +5,7 @@ Contract and acceptance index. Status 2026-11-05: **N0 inventory only** (nothing
 Marks: **D** read from original bytes, **P** parsed from the files, **A** adaptation (named), **U** unread.
 
 ## 1. Evidence identities (N0)
-All under `game/app` (private, never committed): `Anlagen.dat` sha256 `b2317a5c...dd75`, `FigurenHeader.dat` `29fa1f05...68a8`, `Data/BGruppen.dat` `63e876fd...9e849e3b`... see list below, `AnnoWelt.dll` `f220a878...a6ae2`, `AnnoGame.dll` `ac721220...7db`; scenes `Scenes/Tutorial/02Trade01.sze` `90123783c1ed4fb8cab32cedbb3612e7f6210e207d91be8c53a65b83513480e8`, `Scenes/0100Kampagne01/S01_07_01.sze` `04f60b235f3137d83eb2078d1a727ca5e3c737d973f5a87a26c2ea6725e58d62`, `Scenes/0011SingleEndlosAddon/endless02.sze` `734151588c5cd5854fc809c14fbd65cc7afa8050676690a87d5a2c42ae711f97`.
+All under `game/app` (private, never committed). Scenes: `Scenes/Tutorial/02Trade01.sze` sha256 `90123783c1ed4fb8cab32cedbb3612e7f6210e207d91be8c53a65b83513480e8`, `Scenes/0100Kampagne01/S01_07_01.sze` `04f60b235f3137d83eb2078d1a727ca5e3c737d973f5a87a26c2ea6725e58d62`, `Scenes/0011SingleEndlosAddon/endless02.sze` `734151588c5cd5854fc809c14fbd65cc7afa8050676690a87d5a2c42ae711f97`.
 Full hashes: Anlagen `b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`; FigurenHeader `29fa1f0528fb337d9a61e8b73169281fd05bb27efa6df65638580a4c36c468a8`; BGruppen `63e876fd3afedca214b3d9cc45f022f2c595f473839690e96f34e12ed7849e3b`; AnnoWelt `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`; AnnoGame `ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc`.
 Raw probes (git-ignored): `cache/map-needs2/N0/` (`n0_inventory.txt`, `n0_scenes.txt`, `n0_figs.txt`, sources `n0_*.cpp`).
 

@@ -141,7 +141,7 @@ void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
 /// never does (Recorder::submit refuses such a command); a hand-built one may, and is
 /// refused rather than written without the command.
 [[nodiscard]] formats::Result<std::vector<std::uint8_t>, std::string>
-write_log(const ReplayLog& log, ReplayObserver observer = {});
+write_log(const ReplayLog& log);
 [[nodiscard]] formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> bytes);
 
 /// The result of replaying a log against a world.
@@ -169,8 +169,8 @@ struct ReplayObserver {
     void* ctx = nullptr;
     void (*events)(void*, std::span<const SimEvent>) = nullptr;
 };
-[[nodiscard]] formats::Result<ReplayOutcome, std::string> replay(World& world,
-                                                                 const ReplayLog& log);
+[[nodiscard]] formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog& log,
+                                                                 ReplayObserver observer = {});
 
 /// The world state hash after each entry of `log` applied in order to `initial`
 /// (8 bytes per entry; what the `hashes` tool prints). `initial` is taken by value.

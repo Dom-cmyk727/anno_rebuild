@@ -262,7 +262,7 @@ TEST_CASE(
     CHECK(restored.value().state_hash() == w.state_hash());
     MESSAGE("FRAGMENT_ONLY endless01 INIT offset="
             << init->offset << " length=" << fragment.size()
-            << " full scenario unsupported: AREA queries, PLAYWAVE, MONEY_ADD");
+            << " retained SCRIPT1 fragment regression; complete scenario proof belongs to SCRIPT2");
 }
 TEST_CASE("SCRIPT1 changed permission action diverges at its content identity and action visit") {
     auto original = script_test::make();

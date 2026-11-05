@@ -745,3 +745,7 @@ frame2 envelopes remain readable for explicit old-native refusal; no old native
 state is reinterpreted. SCRIPT1 fixtures/references remain unchanged; new default
 SCRIPT2 goldens are independently transcribed, remaining current self-baselines
 await labelled regeneration. E gate/review pending.
+
+E-gate-01 build failed before selection: observer default argument was attached
+to write_log instead of the replay declaration. Corrected both declarations;
+reviewer independently identified the same error. Original failure retained.

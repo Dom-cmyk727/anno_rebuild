@@ -17,6 +17,8 @@ use crate::fluid::{
 
 /// Bytes of the per-step uniform (`Step` in `fluid.wgsl`).
 const STEP_BYTES: u64 = 32;
+/// Bytes of `Ships` in `fluid.wgsl` (binding 5): `head` and `items: array<vec4<f32>, 32>`.
+const SHIPS_BYTES: u64 = 16 + 32 * 16;
 
 /// The simulation on the GPU.
 pub struct FluidGpu {
@@ -28,6 +30,7 @@ pub struct FluidGpu {
     layout: wgpu::BindGroupLayout,
     params: Buffer,
     steps: Buffer,
+    ships: Buffer,
     align: u64,
     vel_pipe: ComputePipeline,
     eta_pipe: ComputePipeline,
@@ -56,6 +59,7 @@ impl Grid {
         layout: &wgpu::BindGroupLayout,
         params: &Buffer,
         steps: &Buffer,
+        ships: &Buffer,
         n: u32,
     ) -> Self {
         let size = Extent3d {
@@ -123,6 +127,10 @@ impl Grid {
                         binding: 4,
                         resource: BindingResource::TextureView(&bathy_view),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: ships.as_entire_binding(),
+                    },
                 ],
             })
         };
@@ -166,6 +174,28 @@ fn uniform_entry(binding: u32, dynamic: bool) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
+/// The bind group layout of the `vel_step` and `eta_step` pipelines: every binding of
+/// `fluid.wgsl` the two entry points use (the test `layout_binds_every_global_the_steps_use`).
+fn layout_entries() -> [wgpu::BindGroupLayoutEntry; 6] {
+    [
+        uniform_entry(0, false),
+        uniform_entry(1, true),
+        tex_entry(2),
+        wgpu::BindGroupLayoutEntry {
+            binding: 3,
+            visibility: ShaderStages::COMPUTE,
+            ty: BindingType::StorageTexture {
+                access: wgpu::StorageTextureAccess::WriteOnly,
+                format: TextureFormat::Rgba32Float,
+                view_dimension: TextureViewDimension::D2,
+            },
+            count: None,
+        },
+        tex_entry(4),
+        uniform_entry(5, false),
+    ]
+}
+
 impl FluidGpu {
     pub fn new(device: &Device, queue: &Queue, cfg: FluidConfig) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -176,22 +206,7 @@ impl FluidGpu {
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("fluid"),
-            entries: &[
-                uniform_entry(0, false),
-                uniform_entry(1, true),
-                tex_entry(2),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: BindingType::StorageTexture {
-                        access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: TextureFormat::Rgba32Float,
-                        view_dimension: TextureViewDimension::D2,
-                    },
-                    count: None,
-                },
-                tex_entry(4),
-            ],
+            entries: &layout_entries(),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("fluid"),
@@ -224,8 +239,16 @@ impl FluidGpu {
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        // `Ships` of fluid.wgsl (binding 5, read by eta_step): the C++ host's ship wakes. The
+        // reference has no ships: a zeroed buffer is a count of 0, so ship_term adds nothing.
+        let ships = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("fluid ships"),
+            size: SHIPS_BYTES,
+            usage: BufferUsages::UNIFORM,
+            mapped_at_creation: false,
+        });
         // Small until the first update sizes it to the view.
-        let grid = Grid::new(device, &layout, &params, &steps, 64);
+        let grid = Grid::new(device, &layout, &params, &steps, &ships, 64);
         Self {
             cfg,
             comps,
@@ -235,6 +258,7 @@ impl FluidGpu {
             layout,
             params,
             steps,
+            ships,
             align,
             vel_pipe,
             eta_pipe,
@@ -284,7 +308,14 @@ impl FluidGpu {
         let target = time_ms as f64 / 1000.0;
         let size = self.cfg.window_size(group, span_tiles);
         if size != self.grid.n {
-            self.grid = Grid::new(device, &self.layout, &self.params, &self.steps, size);
+            self.grid = Grid::new(
+                device,
+                &self.layout,
+                &self.params,
+                &self.steps,
+                &self.ships,
+                size,
+            );
             self.window = None;
         }
         let new_rects = match &mut self.window {
@@ -515,6 +546,45 @@ mod tests {
         )
         .validate(&module)
         .unwrap_or_else(|e| panic!("{e:?}"));
+    }
+
+    /// Every resource `vel_step` and `eta_step` use is in the layout the host builds, without a
+    /// GPU: a binding the shader gained (the ships at 5) and the host did not is a validation
+    /// error of create_compute_pipeline on a real device (CI's Windows runner).
+    #[test]
+    fn layout_binds_every_global_the_steps_use() {
+        let src = include_str!("../../../src/render/shaders/fluid.wgsl");
+        let module = naga::front::wgsl::parse_str(src)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(src)));
+        let info = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("{e:?}"));
+        let bound: Vec<u32> = layout_entries().iter().map(|e| e.binding).collect();
+        for entry in ["vel_step", "eta_step"] {
+            let index = module
+                .entry_points
+                .iter()
+                .position(|e| e.name == entry)
+                .unwrap_or_else(|| panic!("no entry point {entry}"));
+            let used = info.get_entry_point(index);
+            for (handle, var) in module.global_variables.iter() {
+                if used[handle].is_empty() {
+                    continue;
+                }
+                if let Some(b) = &var.binding {
+                    assert_eq!(b.group, 0, "{entry}: {:?}", var.name);
+                    assert!(
+                        bound.contains(&b.binding),
+                        "{entry} uses binding {} ({:?}), which the layout lacks",
+                        b.binding,
+                        var.name
+                    );
+                }
+            }
+        }
     }
 
     /// The GPU solver matches the CPU reference (`FluidGrid`) after many

@@ -31,6 +31,9 @@ struct Coordinate {
 // Exact f32 decomposition, checked before shifts. The simulation never receives a float.
 // Nonnav Q8 truncates; a ship's finer Q32 uses the established navigation ties-even policy.
 formats::Result<Coordinate, std::string> coordinate(std::uint32_t bits, std::uint32_t extent) {
+    if (extent == 0 || extent > kWorldEdgeBound) {
+        return std::string("position outside a supported nonempty world extent");
+    }
     const auto exponent = (bits >> 23) & 255U;
     const auto fraction = bits & 0x7fffffU;
     if (exponent == 255U) {

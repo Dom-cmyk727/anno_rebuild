@@ -388,6 +388,7 @@ Buf esel(std::uint16_t raw = 4, std::uint16_t kind = donkey_kind) {
 void refused(const Buf& file, std::string_view reason, sim::UnitImportOptions options = {}) {
     const auto types = registry();
     auto loaded = sim::load_scenario(file, *types, {}, options);
+    CAPTURE(reason);
     REQUIRE_FALSE(loaded);
     CAPTURE(loaded.error());
     CHECK(loaded.error().find(reason) != std::string::npos);
@@ -472,13 +473,20 @@ TEST_CASE("UNIT1 authored positions retain Q32 fractions and round ties to even"
 
 TEST_CASE("UNIT1 cargo remaps the low goods byte and preserves ordered empty and named slots") {
     const auto custom = registry(350, true, false, true);
-    auto decoded = sim::load_scenario(source(tagged("SCHIFF", unit(0, ship_kind, ship_records()))),
-                                      *custom, {});
-    REQUIRE(decoded);
-    CHECK(decoded.value().spec.figures[0].holds ==
-          std::vector<sim::ShipHold>{{90001, 768}, {0, 0}});
-    auto w = made(decoded.value().spec, custom);
-    CHECK(sim::find_figure(w.figures(), sim::FigureId{1})->holds[0].goods == 90001);
+    for (const std::uint8_t high : {std::uint8_t{0}, std::uint8_t{0xab}}) {
+        CAPTURE(high);
+        auto cargo = holds();
+        cargo[1] = high;
+        Buf records = tagged("HEAD", head(64, 0));
+        append(records, tagged("WAREN", cargo));
+        auto decoded =
+            sim::load_scenario(source(tagged("SCHIFF", unit(0, ship_kind, records))), *custom, {});
+        REQUIRE(decoded);
+        CHECK(decoded.value().spec.figures[0].holds ==
+              std::vector<sim::ShipHold>{{90001, 768}, {0, 0}});
+        auto w = made(decoded.value().spec, custom);
+        CHECK(sim::find_figure(w.figures(), sim::FigureId{1})->holds[0].goods == 90001);
+    }
     Buf r = tagged("HEAD", head(128, 0));
     append(r, tagged("WAREN", holds(50)));
     auto clamped = sim::load_scenario(source(tagged("SCHIFF", unit(0, ship_kind, r))), *custom, {});
@@ -704,4 +712,18 @@ TEST_CASE("UNIT1 import catalogs reject orphan and duplicate type metadata") {
     auto repeated = duplicate.build();
     REQUIRE_FALSE(repeated);
     CHECK(repeated.error().find("duplicate unit import facts") != std::string::npos);
+}
+
+TEST_CASE("UNIT1 zero positions require a nonempty world extent before canonicalization") {
+    const auto types = registry();
+    for (auto bits : {0U, 0x80000000U}) {
+        CAPTURE(bits);
+        const auto actor = tagged("SCHIFF", unit(0, ship_kind, ship_records(), bits));
+        auto legal = sim::load_scenario(source(actor, 100, 512), *types, {});
+        REQUIRE(legal);
+        CHECK(legal.value().spec.figures[0].pos.x == 0);
+        auto empty = sim::load_scenario(source(actor, 100, 0), *types, {});
+        REQUIRE_FALSE(empty);
+        CHECK(empty.error().find("nonempty world extent") != std::string::npos);
+    }
 }

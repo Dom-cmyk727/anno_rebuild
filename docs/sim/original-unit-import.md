@@ -360,3 +360,12 @@ A new zero-width-world/zero-coordinate counterexample probes a suspected early
 canonical-zero bounds bypass. Preserve the first resulting gate, even if this
 new assertion exposes it, before correcting the input guard. No broader matrix
 or actual movement canary has run at this point.
+
+C-probe-01 at cleanec0d87c7 retainedFAIL:13selected/12executedpasses/1failed,
+zero empty/skipped/incomplete/sanitizer. The malformed-input testcase retained
+219legal assertions and1fatal acceptance of its final zero-width/zero-coordinate
+case. Other12cases, including original prerequisite, passed. The coordinate
+helper now rejects empty/over-bound world extents before canonical signedzero;
+a dedicated legal512-width vsinvalid0-width control covers both+0/−0. Cargo
+width proof now executes a legal byte1=0 control before the distinguishingAB case,
+so its intended wrong-width mutant can retain a passing legal region.

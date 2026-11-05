@@ -130,11 +130,36 @@ delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, repor
   rejected the sibling-contention mechanism for the `opening_controls` failure (both tests carry `PROCESSORS 4`, so
   CTest's `-j4` scheduler never overlaps them — confirmed in `wsl-w18-app.log`) and attributed it instead to a
   pre-existing, structurally tight real-time margin under ASan, unrelated to `3a2da9b9`; asked for one more
-  confirmation rerun before fully trusting it. That rerun (`wsl-w20`, same binaries) is running now — push is
-  gated on its result, not on the review. Three non-blocking follow-ups are tracked in the review doc (sanitizer
-  slack for `opening_controls`'s own waits; a turn-based completion signal as a design observation; a minor
-  PRODTYPE config note). Once `wsl-w20` is clean: push `task/W4-opening-1` and the local-only `main` commits, then
-  proceed to W4-MAIN-1.
+  confirmation rerun before fully trusting it on a single clean pass.
+  **`wsl-w20` (same binaries, same selection) came back FAIL, not clean** — `rc=1`, 265/268 executed, 1 failed, the
+  exact same assertion as `wsl-w18`: `viewer_wiring_opening_controls` line 72, `tracked.1.state is 'sailing',
+  expected == stopped`, same frame-hitch signature (sustained ~48-52 ms/frame, no sanitizer report). So across three
+  reruns of the identical binaries: `wsl-w18` FAIL, `wsl-w19` PASS, `wsl-w20` FAIL — **2 of 3, a frequent recurrence,
+  not a rare blip.** The review's own resolution bar ("if `wsl-w20` also comes back clean, move to tracked,
+  non-blocking") was **not met**; this is not settled by rerun alone.
+  **Causal read, still a hypothesis, not confirmed by code evidence:** `opening_controls` runs the sim at
+  `--speed 200` (`src/app/CMakeLists.txt` line 143). The window's followed turn
+  (`PlayFollower::follow`, `src/app/src/play_follow.cpp`) reads whatever turn the sim runner has already reached on
+  its own schedule, independent of frame rate; `wait turns N` (`dev_script.cpp`) is gated on that followed turn,
+  not wall-clock. Input (`key h`) is dispatched at most once per rendered window frame. Under ASan + `-j4` host
+  contention, frame cadence collapses toward ~20 fps; at 200x sim speed the followed turn can leap forward by many
+  turns between two rare frames. If the single frame that dispatches `key h`'s stop command lands late relative to
+  where `wait turns 3`'s own baseline/check frames fall, the wait can read "3 turns past baseline" as already true
+  while the stop command has not yet been queued/applied — a race between frame-gated input dispatch and
+  turn-gated waits that is normally invisible at native frame rates. Not verified against the actual command-queue
+  code; needs a dedicated read of the command dispatch path, not a guess-and-patch.
+  **Decision (same disposition class as River Q5, item 1):** this failure is the identical, already-recorded
+  signature on both occurrences, pre-existing (no commit in this 11-commit package touches `opening_controls`'s
+  timing, the sim-speed setting, `play_follow.cpp`, or `dev_script.cpp`'s wait logic — `git diff --stat
+  02133ade..3a2da9b9` confirms), and explained by a plausible contention-and-speed-ratio mechanism rather than a
+  logic defect introduced here. It does not block this package. It is **not** filed as a low-priority follow-up,
+  given the 2-of-3 recurrence: **W4-OPENING-CONTROLS-FLAKE is a new, separately tracked task** (see its own section
+  below) to actually read the command-dispatch path, confirm or refute the mechanism above with evidence, and fix
+  the timing margin (most likely the same kind of `ANNO_SANITIZE`-scoped slack `3a2da9b9` gave the quit deadline) —
+  verified by repeated reruns inside the full `-j4` ASan batch, not a single clean pass. The other two review
+  follow-ups (turn-based completion signal design note; PRODTYPE config) stay with it.
+  **Pushed and merged**: `task/W4-opening-1` at `3a2da9b9` and the local-only `main` commits are now on `origin`;
+  W4-MAIN-1 follows below.
 - **New finding, for the orchestrator (depth session, in passing).** With the depth on, `--play` on a *fixed* map
   draws no start Kontor: `fixed_map.cpp:299` creates it with item byte0f 0, so the depth puts it under the land and
   the 26.5 sea (`--depth off`, or `--shore 16.5`/`26.5`, makes no difference; verified with `--png`, sheet
@@ -264,6 +289,51 @@ open at `02133ade`, and §7 added more.
    publish with an ordinary push.
 
 **Stop:** the candidate for the orchestrator's acceptance review. Its exact head is W4-MAIN-1's input `H`.
+
+### W4-OPENING-CONTROLS-FLAKE — root-cause and fix the `opening_controls` real-time race under ASan · RELEASED
+
+**Why:** `viewer_wiring_opening_controls` failed `wsl-w18` and `wsl-w20` (not `wsl-w19`) at the same assertion —
+`src/app/src/dev_script.cpp` line ~464 area, script line 72, `tracked.1.state is 'sailing', expected == stopped`
+after `key h` + `wait turns 3` — 2 of 3 reruns of identical binaries, only inside the full `-j4` WSL ASan batch
+(never standalone). No sanitizer report either time; the failing run's stderr shows a sustained ~48-52 ms/frame
+cost (not a spike) from 4-way ASan host contention. This is documented as a non-blocking disposition on
+W4-OPENING-1-CLOSE (item 6) because no commit in that package touches it, but at 2-of-3 it recurs too often to
+leave as a vague low-priority note.
+
+**What is already known, not yet confirmed:**
+- `opening_controls` runs the window at `--speed 200` (`src/app/CMakeLists.txt`, the `opening_controls` test
+  definition).
+- The window's followed turn (`PlayFollower::follow`, `src/app/src/play_follow.cpp`) takes whatever turn the sim
+  runner has already reached on its own schedule; `dev_script.cpp`'s `wait turns N` gates on that followed turn,
+  not wall-clock (confirmed by reading `DevScript::step()`).
+- Keyboard input (`key h`) is dispatched at most once per rendered window frame (per the codebase's own comment
+  in `dev_script.cpp`: "One input step per call: the window handles it before the next step").
+- Hypothesis, not yet verified against the command-queue code: under heavy frame-rate collapse (~20 fps here)
+  combined with 200x sim speed, the followed turn can leap forward by many turns between two rare frames, so a
+  `wait turns 3` baselined right after `key h`'s own frame can already read "3 turns later" as true before that
+  same frame's `key h` has actually been queued/applied to the sim — a race between frame-gated input dispatch
+  and turn-gated waits, invisible at native (uncontended) frame rates.
+
+**Do, in order:**
+1. Read the actual command dispatch path from an SDL key event through to the `PlayRunner`'s command queue (not
+   yet read in this investigation) and confirm or refute the race above with evidence — a trace (`WindowTrace`,
+   already used elsewhere in `viewer.cpp`) or an added diagnostic log is preferable to reasoning about it from
+   source alone, since the mechanism must be demonstrated, not guessed (`docs/testing/evidence-contract.md`).
+2. Fix the actual margin, not just the symptom: most likely the same kind of `ANNO_SANITIZE`-scoped slack
+   `3a2da9b9` gave `opening_session_replay`'s quit deadline (scale the script's wait or the test's speed/frame
+   assumptions for the sanitizer build only; the normal build's margin is not known to be a problem and must stay
+   untouched).
+3. **Acceptance: the case passes repeatedly inside a full `-j4` ASan batch** (at least 3 consecutive clean reruns
+   of the same binaries under the same contention this bug needs to reproduce) — a single clean pass does not
+   settle it, per this package's own history (`wsl-w19` alone was not enough).
+4. Carry the review's other two non-blocking notes along with this task: a turn-based completion signal (as
+   `wait turns` already is) would be strictly more robust than any wall-clock deadline here, invariant to host
+   speed — worth it if this fix needs more than a slack constant; and `coast_turned`/`deposit_turned`'s inline
+   PRODTYPE list (from `a315b51a`) is fine as-is but worth a config table if coast-kind moddability becomes
+   near-term scope.
+
+**Stop:** a WSL ASan rerun log showing the case green at least 3 times in a row inside the full batch, a REPORTS
+entry, and an independent review before claiming it closed.
 
 ### W4-MAIN-1 — merge the accepted Windows lane into main · RELEASED, STARTS AFTER W4-OPENING-1-CLOSE IS ACCEPTED
 

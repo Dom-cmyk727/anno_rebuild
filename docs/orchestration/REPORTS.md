@@ -8203,3 +8203,31 @@ tests generally, as `dev_script.cpp`'s own `wait turns` already uses; (3) `a315b
 
 Push `task/W4-opening-1` at `3a2da9b9` and the local-only `docs/orchestration` commits on `main`, then proceed with
 W4-MAIN-1 (merge into `main`), per the board's released sequence.
+
+## W4-OPENING-1-CLOSE — addendum: wsl-w20 was not clean — 2026-11-05 — status: ACCEPTED (flake elevated to its own task)
+
+The confirmation rerun named above (`wsl-w20`, same binaries as `wsl-w18`/`wsl-w19`, no rebuild) has now completed.
+**It came back FAIL, not clean:** `rc=1`, 265/268 executed, 1 failed — `viewer_wiring_opening_controls`, line 72,
+the identical assertion as `wsl-w18` (`tracked.1.state is 'sailing', expected == stopped`), the identical
+frame-hitch signature (sustained ~48-52 ms/frame, no sanitizer report). Correcting the prior entry's framing: across
+three reruns of the same binaries the result is `wsl-w18` FAIL, `wsl-w19` PASS, `wsl-w20` FAIL — a 2-of-3 recurrence,
+not a single confirmed-clean pass. The independent review's own stated resolution bar ("if `wsl-w20` also comes back
+clean, move to tracked, non-blocking") was not met; this was not fully settled by rerun.
+
+**Disposition, not a blocker for this package.** The failure is the exact same, already-recorded signature on both
+occurrences (not a new or different failure), and `git diff --stat 02133ade..3a2da9b9` confirms none of this
+package's 11 commits touches `opening_controls`'s timing, the sim's `--speed 200` setting, `play_follow.cpp`, or
+`dev_script.cpp`'s wait logic — consistent with the independent review's causal finding (sibling-contention
+mechanism disproven via `PROCESSORS 4`; real cause is a pre-existing, structurally tight real-time margin under
+ASan host contention), which does not depend on `wsl-w20`'s own cleanliness. Applying the same disposition class
+already used for the River Q5 corpus failure (item 1): a pre-existing, unrelated, identically-recorded failure is
+not grounds to block an otherwise-reviewed package.
+
+Given the 2-of-3 recurrence, this is **not** left as a vague "next idle slot" follow-up: it is filed as its own
+task, [W4-OPENING-CONTROLS-FLAKE](TASKS.md), with a documented (unconfirmed) causal hypothesis — a race between
+frame-gated input dispatch (`key h` dispatched at most once per rendered window frame) and turn-gated waits
+(`wait turns N` reads the sim runner's own followed turn, independent of frame rate), made visible only when
+200x sim speed and ~20 fps frame collapse combine under ASan contention — and an explicit acceptance bar (green at
+least 3 consecutive times inside a full `-j4` ASan batch, not one clean pass).
+
+`task/W4-opening-1` at `3a2da9b9` and the local `main` commits are pushed. W4-MAIN-1 proceeds next.

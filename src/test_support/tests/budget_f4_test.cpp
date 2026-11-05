@@ -34,13 +34,13 @@ namespace {
 using anno::test::child::Child;
 using namespace std::chrono_literals;
 
-constexpr std::uint16_t kPortOrphanReuse = 47820; // E1, orphan kept
-constexpr std::uint16_t kPortLiveHold = 47821;    // E1, live hold kept
-constexpr std::uint16_t kPortCancelAll = 47822;   // E2
-constexpr std::uint16_t kPortRawHello = 47823;    // N2, server exact-build
-constexpr std::uint16_t kPortCloexec = 47824;     // N3, sockets CLOEXEC
-constexpr std::uint16_t kPortMeterLeak = 47825;   // N4, meter closefrom
-constexpr std::uint16_t kPortClientLeak = 47826;  // N4b, client spawn closefrom
+constexpr std::uint16_t kPortOrphanReuse = 47820;                 // E1, orphan kept
+constexpr std::uint16_t kPortLiveHold = 47821;                    // E1, live hold kept
+constexpr std::uint16_t kPortCancelAll = 47822;                   // E2
+constexpr std::uint16_t kPortRawHello = 47823;                    // N2, server exact-build
+constexpr std::uint16_t kPortCloexec = 47824;                     // N3, sockets CLOEXEC
+constexpr std::uint16_t kPortMeterLeak = 47825;                   // N4, meter closefrom
+[[maybe_unused]] constexpr std::uint16_t kPortClientLeak = 47826; // N4b (Linux only)
 
 std::filesystem::path f4_dir() {
     const auto dir = std::filesystem::temp_directory_path() / "anno1503-f4";
@@ -435,8 +435,8 @@ TEST_CASE("F4 (N4): a descriptor the coordinator holds without close-on-exec doe
           "meter child" *
           doctest::test_suite("budget")) {
     if (!wsl_meter_available()) {
-        MESSAGE("skipping: the real PowerShell meter is not available (it runs only from WSL "
-                "with the Windows PowerShell reachable)");
+        MESSAGE("skipping: WSL (Ubuntu) is not available with the Windows PowerShell "
+                "reachable; the real PowerShell meter runs only from there");
         return;
     }
     const std::string port = std::to_string(kPortMeterLeak);
@@ -489,7 +489,8 @@ TEST_CASE("F4 (N4b): a descriptor the client holds without close-on-exec does no
             "(CreateProcessW(..., FALSE, ...)); POSIX spawn closefrom is the Linux/WSL path");
     return;
 #elif !defined(__linux__)
-    MESSAGE("skipping: the descriptor check reads /proc/<pid>/fd, which only Linux has");
+    MESSAGE("skipping: WSL (Ubuntu) is not available; the descriptor check reads "
+            "/proc/<pid>/fd, which only Linux and WSL have");
     return;
 #else
     const auto leak = f4_dir() / "n4b.leak";

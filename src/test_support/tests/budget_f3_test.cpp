@@ -327,8 +327,8 @@ TEST_CASE("F3 (D2): coordinator death with the real meter child: no inherited de
           "is free, a replacement binds at once, a gap client is bounded" *
           doctest::test_suite("budget")) {
     if (!wsl_meter_available()) {
-        MESSAGE("skipping: the real PowerShell meter is not available (it runs only from WSL "
-                "with the Windows PowerShell reachable)");
+        MESSAGE("skipping: WSL (Ubuntu) is not available with the Windows PowerShell "
+                "reachable; the real PowerShell meter runs only from there");
         return;
     }
     const std::string port = std::to_string(kPortMeter);

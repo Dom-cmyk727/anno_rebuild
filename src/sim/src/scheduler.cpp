@@ -162,9 +162,13 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         }
         ++w.ids_.next_figure;
         if (s.resident) {
+            // The same house the slot check above found (nothing ran in between); looked up again
+            // with the same guards so no path dereferences a null.
             Island* hi = island_of_id(w, island_of(s.home));
-            House* hh = std::get_if<House>(&find_building_mut(*hi, s.home)->payload);
-            hh->walkers[s.home_counter] = f.id;
+            Building* hb = hi != nullptr ? find_building_mut(*hi, s.home) : nullptr;
+            if (House* hh = hb != nullptr ? std::get_if<House>(&hb->payload) : nullptr) {
+                hh->walkers[s.home_counter] = f.id;
+            }
         }
         SimEvent e;
         e.kind = SimEventKind::FigureSpawned;

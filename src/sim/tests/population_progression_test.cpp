@@ -134,7 +134,9 @@ struct Session {
         }
     }
     [[nodiscard]] const sim::Player& player() const {
-        return *world.players().find(town.city->owner);
+        const sim::Player* const owner = world.players().find(town.city->owner);
+        REQUIRE(owner != nullptr);
+        return *owner;
     }
     [[nodiscard]] sim::ApplyResult build(sim::TypeId type, int x, int y) {
         return world.apply(sim::Command{
@@ -866,8 +868,10 @@ TEST_CASE("progression K3 persistence: save and reload at the cuts of the real r
         const Town t = find_town(w);
         const sim::Building* b = t.island->building_at(w.config().layout, t.city->number, kX, kY);
         REQUIRE(b != nullptr);
-        pending.push_back({at, w.state_hash(), std::move(name), b->type, t.city->stage_mask,
-                           w.players().find(t.city->owner)->flags});
+        const sim::Player* const owner = w.players().find(t.city->owner);
+        REQUIRE(owner != nullptr);
+        pending.push_back(
+            {at, w.state_hash(), std::move(name), b->type, t.city->stage_mask, owner->flags});
     };
     const auto live_carriers = [&](const sim::World& w) {
         std::size_t n = 0;

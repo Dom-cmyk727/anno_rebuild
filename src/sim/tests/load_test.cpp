@@ -1580,7 +1580,9 @@ TEST_CASE("load sailing: a segment started after the load has the new factor, th
             CHECK(ship(loaded, 2).parent == crew_parent); // the scout is still carried
             CHECK(ship(loaded, 2).parent == sim::FigureId{1});
             done = true;
-            b.starts.resize(1);
+            // Keep the first start (b.starts is not empty here). erase, not resize(1): GCC 13 -O3
+            // reports resize's growth path as an out-of-bounds write (-Warray-bounds).
+            b.starts.erase(b.starts.begin() + 1, b.starts.end());
         }
     }
     REQUIRE(done);

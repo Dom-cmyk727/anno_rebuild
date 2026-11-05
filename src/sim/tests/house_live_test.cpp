@@ -14,12 +14,12 @@
 // Spawn variant: k = ((r & 1) + y + x + serial) mod 3 = ((r & 1) + 221) mod 3: r = 99 (odd) -> 222
 // mod 3 = 0 -> figure 203; r = 106 (even) -> 221 mod 3 = 2 -> figure 205.
 #include <algorithm>
-#include <fstream>
-#include <sstream>
 #include <cstdint>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <variant>
 #include <vector>
@@ -66,7 +66,8 @@ struct Opt {
     bool stall_next = false;      // house type 9560 (group 0) whose ladder next 9580 is a stall
     bool declare_special = false; // C3: ... and 9560 is declared a special successor
     bool orphan = false;          // an extra House type whose PRODTYPE names no group of the table
-    std::uint16_t g1_menge_food = 0; // MAP-POP-CLOSE-1 C2: group 1 food Menge and Wohnmax 65535 (0 = shipped)
+    std::uint16_t g1_menge_food =
+        0; // MAP-POP-CLOSE-1 C2: group 1 food Menge and Wohnmax 65535 (0 = shipped)
 };
 constexpr sim::TypeId kPioneer{
     9560}; // PRODTYPE 97, ladder next 9580 = a market stall (real: 3852 -> 3860)
@@ -263,7 +264,7 @@ std::uint32_t object_at(const sim::World& w, std::int32_t x, std::int32_t y) {
 std::size_t figure_count(const sim::World& w) {
     std::size_t n = 0;
     for (const auto& s : w.figures().list.slots) {
-        n += s.has_value() ? 1 : 0;
+        n += s.has_value() ? 1U : 0U;
     }
     return n;
 }
@@ -586,7 +587,9 @@ TEST_CASE("house live: the player-mask rule compares the low 23 bits (X16)") {
         r.place(kP, 110, 110, make_house(kP, 320, 640, {5000, 5000}));
         sim::World w = create(r, types);
         city0(w).stage_mask = c.city_mask;
-        sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->flags = c.player;
+        sim::Player* const p0 = sim::WorldTestAccess::players(w).find(sim::PlayerId{0});
+        REQUIRE(p0 != nullptr);
+        p0->flags = c.player;
         until(w, [&] { return city0(w).stage_stamp != 0; }, 3000);
         CHECK(city0(w).stage_mask == (c.city_mask | 0x2));
         CHECK(w.players().find(sim::PlayerId{0})->flags == c.want);
@@ -1170,10 +1173,12 @@ TEST_CASE("house live F1: house updates with unsaved billed goods are refused at
     CHECK(stale_r.error().find("save_billed_goods") == std::string::npos);
 }
 
-TEST_CASE("house live F1: saved billed counters agree after reload below the bound and at overflow") {
+TEST_CASE(
+    "house live F1: saved billed counters agree after reload below the bound and at overflow") {
     const auto types = registry();
     // Below the bound: billed food at max - 1000, the purchase books at most 151 (hand: demand
-    // trunc(41*640*256/44236) = 151, stall store 5000, threshold 10): the purchase succeeds, no fault.
+    // trunc(41*640*256/44236) = 151, stall store 5000, threshold 10): the purchase succeeds, no
+    // fault.
     {
         sim::World live = f1_world(types, 0xFFFFFFFFU - 1000U);
         auto back = sim::World::load(live.save(), types);
@@ -1245,7 +1250,8 @@ TEST_CASE("goods G2: a cyclic IdSec is a registry error and a legal chain is not
     CHECK(build(27, 26, false).ok());
 }
 
-TEST_CASE("goods G2: a shared need slot through IdSec substitution is legal and a cycle through it is not") {
+TEST_CASE("goods G2: a shared need slot through IdSec substitution is legal and a cycle through it "
+          "is not") {
     // KAPELLE (82) is the only need; goods 83 (KIRCHE) has no slot of its own, so the derived
     // lookup gives it KAPELLE's slot 0 (the one-pass IdSec substitution, AnnoGame 0x10014b78). Two
     // goods then share one slot: legal. 82 <-> 83 closes a cycle through the shared slot: refused.
@@ -1285,8 +1291,9 @@ namespace {
 constexpr std::uint16_t kEdgeOk = 6144, kEdgeBad = 6145;
 
 sim::ApplyResult build_cmd(sim::World& w, std::vector<sim::PlacementWire> placements) {
-    return w.apply(sim::Command{sim::PlayerId{0}, sim::BuildCmd{sim::CityRef{sim::IslandId{0}, sim::CityNo{0}},
-                                                                std::move(placements)}});
+    return w.apply(
+        sim::Command{sim::PlayerId{0}, sim::BuildCmd{sim::CityRef{sim::IslandId{0}, sim::CityNo{0}},
+                                                     std::move(placements)}});
 }
 
 sim::World build_world(const std::shared_ptr<const sim::TypeRegistry>& types, bool live,
@@ -1381,7 +1388,8 @@ TEST_CASE("house create G1: rule off and imported payloads are unchanged") {
     }
 }
 
-TEST_CASE("house create G1: a refused initialization draws nothing charges nothing and takes no id") {
+TEST_CASE(
+    "house create G1: a refused initialization draws nothing charges nothing and takes no id") {
     Opt bad;
     bad.g1_menge_food = kEdgeBad;
     Opt ok;
@@ -1429,7 +1437,8 @@ TEST_CASE("house create G1: batches and the atomic dry run draw and charge once"
                     .ok());
         CHECK(w.rng().cursor() == 1); // 13 + 4 draws on a 16-entry table
         // second house: T[0] = 1 -> sat 128 - 1 = 127 and T[1] = 8 -> 120 (cursor wraps after 15)
-        // stock0 = trunc(60 * 127 * 1920 / 1536) = 9525, stock1 = trunc(40 * 120 * 1920 / 1536) = 6000
+        // stock0 = trunc(60 * 127 * 1920 / 1536) = 9525, stock1 = trunc(40 * 120 * 1920 / 1536) =
+        // 6000
         CHECK((house_at(w, 126, 120).stock == std::vector<std::uint32_t>{9525, 6000}));
         CHECK(city0(w).stock.stock[kTools] == 5000 - 2 * 512);
     }
@@ -1459,7 +1468,8 @@ TEST_CASE("house create G1: batches and the atomic dry run draw and charge once"
     }
 }
 
-TEST_CASE("house create G1: the built house is stamped with the world tick and an own save keeps it") {
+TEST_CASE(
+    "house create G1: the built house is stamped with the world tick and an own save keeps it") {
     // P-6 replacement (population-live.md 21.5): the engine stamps the clock tick at the command.
     const auto types = registry();
     sim::World w = build_world(types, true);
@@ -1475,8 +1485,9 @@ TEST_CASE("house create G1: the built house is stamped with the world tick and a
 
 TEST_CASE("house create G1: one public BuildCmd leads to the first resident delivery") {
     // The causal chain a package reviewer traces: BuildCmd (group 1 house, payment, first
-    // assignment: two draws) -> the first taken gate -> the spawn draw -> the walker buys at the stall
-    // (city store debit, billed) -> the delivery raises the house stock -> the walker slot is released.
+    // assignment: two draws) -> the first taken gate -> the spawn draw -> the walker buys at the
+    // stall (city store debit, billed) -> the delivery raises the house stock -> the walker slot is
+    // released.
     const auto types = registry();
     Rig r = make_rig();
     syn::give_flat_terrain(r.spec);
@@ -1531,9 +1542,10 @@ TEST_CASE("house create G1: one public BuildCmd leads to the first resident deli
 
 TEST_CASE("house live F2: a downgrade record carries the committed residents 300 to 284") {
     // Hand derivation (the same fixture as the downgrade case above): group 1 food table is -2
-    // below index 10, mood -2, VermehrTab[0] = -16: 300 - 16 = 284, below the floor 48 * 8 = 384, so
-    // the house downgrades and SetGroup keeps the residents. The record must say 284, the number the
-    // resulting House holds, and the growth record must agree with the cap of group 1 (15 * 64).
+    // below index 10, mood -2, VermehrTab[0] = -16: 300 - 16 = 284, below the floor 48 * 8 = 384,
+    // so the house downgrades and SetGroup keeps the residents. The record must say 284, the number
+    // the resulting House holds, and the growth record must agree with the cap of group 1 (15 *
+    // 64).
     Opt o;
     o.low_negative = true;
     const auto types = registry(o);
@@ -1636,7 +1648,8 @@ TEST_CASE("house live F3: stage-bit vectors through the engine agree with the re
                 want_player = tok.substr(7);
             }
         }
-        const std::uint32_t stage = static_cast<std::uint32_t>(std::stoul(table.substr(0, table.find(':'))));
+        const std::uint32_t stage =
+            static_cast<std::uint32_t>(std::stoul(table.substr(0, table.find(':'))));
         INFO(name);
         Opt o;
         o.high_stage = stage;
@@ -1644,8 +1657,9 @@ TEST_CASE("house live F3: stage-bit vectors through the engine agree with the re
         Rig r = make_rig();
         r.place(kP, 110, 110, make_house(kP, 320, 640, {5000, 5000}));
         sim::World w = create(r, types);
-        sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->flags =
-            static_cast<std::uint32_t>(std::stoul(player, nullptr, 0));
+        sim::Player* const p0 = sim::WorldTestAccess::players(w).find(sim::PlayerId{0});
+        REQUIRE(p0 != nullptr);
+        p0->flags = static_cast<std::uint32_t>(std::stoul(player, nullptr, 0));
         until(w, [&] { return city0(w).stage_stamp != 0; }, 3000);
         CHECK(w.players().find(sim::PlayerId{0})->flags ==
               static_cast<std::uint32_t>(std::stoul(want_player, nullptr, 0)));
@@ -1656,10 +1670,12 @@ TEST_CASE("house live F3: stage-bit vectors through the engine agree with the re
 
 // ------------------------------------------------------------------ MAP-POP-CLOSE-1 C3 (P-14)
 
-TEST_CASE("house live P-14: the successor of a House type is classified Ladder EndOfLadder Special or Malformed") {
+TEST_CASE("house live P-14: the successor of a House type is classified Ladder EndOfLadder Special "
+          "or Malformed") {
     const sim::SimConfig cfg = syn::population_config();
     // Ladder: 9501 (group 0) -> 9520 (group 1, the same 2 x 2 footprint). EndOfLadder: 9520 -> 9540
-    // does not exist. Special: 9560 -> 9580 (a stall) when declared. Malformed: the same undeclared.
+    // does not exist. Special: 9560 -> 9580 (a stall) when declared. Malformed: the same
+    // undeclared.
     Opt plain;
     const auto t1 = registry(plain);
     CHECK(sim::house_successor(cfg, *t1, *t1->find(kP)) == sim::HouseSuccessor::Ladder);
@@ -1683,7 +1699,8 @@ TEST_CASE("house live P-14: the successor of a House type is classified Ladder E
     CHECK(t3->digest() != registry(undeclared)->digest());
 }
 
-TEST_CASE("house live P-14: an undeclared irregular successor is a content error at creation and load") {
+TEST_CASE(
+    "house live P-14: an undeclared irregular successor is a content error at creation and load") {
     Opt o;
     o.stall_next = true; // 9560 -> 9580 (a market stall), not declared
     const auto types = registry(o);

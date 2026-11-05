@@ -38,6 +38,7 @@
 #include <anno/test/parallel.hpp>
 
 #include "original_component.hpp"
+#include "world_access.hpp"
 
 namespace sim = anno::sim;
 namespace fs = std::filesystem;
@@ -1065,5 +1066,80 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
         out.close();
         REQUIRE(out.good());
         MESSAGE("SCRIPT1 creation-only generation: physical/movement acceptance remains pending");
+    }
+}
+
+TEST_CASE("SCRIPT1 restored research production consequence investigation") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_registry(*dir);
+    const auto templates = anno::sim_load::scan_island_templates(*dir);
+    for (const auto& name : {"0100Kampagne01/S01_03_01.sze", "0100Kampagne01/S01_07_01.sze",
+                             "0200Single/Single_24.sze"}) {
+        INFO(name);
+        auto loaded = anno::sim_load::load_scenario_with_links(
+            anno::test::read_file(*dir / "Scenes" / name), templates, *types, {}, {});
+        REQUIRE(loaded);
+        auto component = original_component::import_only(loaded.value().loaded.spec, types);
+        REQUIRE(component);
+        auto made = sim::World::create(component.value().spec, types);
+        REQUIRE(made);
+        sim::World with = std::move(made).value();
+        sim::World without = with;
+        for (auto& player : sim::WorldTestAccess::players(without).slots)
+            if (player)
+                std::fill(player->research.state.begin(), player->research.state.end(), 0);
+        const auto before = snapshot(with);
+        CHECK(snapshot(without).size() == before.size());
+        for (int i = 0; i < kAdvances; ++i) {
+            with.advance(kStepMs);
+            without.advance(kStepMs);
+        }
+        REQUIRE(with.check_invariants().empty());
+        REQUIRE(without.check_invariants().empty());
+        const auto after = snapshot(with), off = snapshot(without);
+        std::vector<std::uint64_t> activated;
+        for (const auto& [id, initial] : before) {
+            const bool a = after.at(id).state != initial.state;
+            const bool b = off.at(id).state != initial.state;
+            if (a != b) {
+                CHECK(a);
+                CHECK_FALSE(b);
+                activated.push_back(id);
+            }
+        }
+        REQUIRE(activated.size() == 1);
+        for (const auto& island : with.islands()) {
+            if (!island)
+                continue;
+            for (const auto& city : island->cities) {
+                if (!city)
+                    continue;
+                for (const auto& list : city->index.lists)
+                    for (const auto& building : list.slots) {
+                        if (!building || building->id.v != activated[0])
+                            continue;
+                        const auto* type = types->find(building->type);
+                        REQUIRE(type);
+                        MESSAGE("research activates file="
+                                << name << " island=" << island->index.v
+                                << " city=" << city->number.v << " owner=" << city->owner.v
+                                << " type=" << building->type.v << " x=" << building->x
+                                << " y=" << building->y);
+                        for (const auto goods : type->output_goods) {
+                            const auto* info = types->goods(goods);
+                            REQUIRE(info);
+                            MESSAGE("output=" << goods << " research=" << info->forsch
+                                              << " restored="
+                                              << with.players()
+                                                     .find(city->owner)
+                                                     ->research.researched(info->forsch));
+                        }
+                    }
+            }
+        }
     }
 }

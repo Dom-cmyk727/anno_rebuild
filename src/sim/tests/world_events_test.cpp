@@ -1473,7 +1473,7 @@ TEST_CASE("timers and monopoly state is checked, hashed, saved and refused when 
         return out;
     };
     const std::vector<std::uint64_t> before = scope_hashes(base);
-    REQUIRE(before.size() == 9);
+    REQUIRE(before.size() == 10);
     struct Mutation {
         const char* name;
         std::size_t scope;

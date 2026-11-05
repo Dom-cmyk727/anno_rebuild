@@ -467,3 +467,14 @@ Finalsemantic gate7eac32b0 PASS45/45 and freshprocess PASS2/2; both nofail/empty
 skips/incomplete/sanitizer reports. Fresh manifest fresh-sfam28__ records distinct
 producer81796/worker81797, executableSHA c4d9164c68e040d7564aa7f5692f84c2e31f0b3e39efcd913abe03d4ba071805.
 Startup review APPROVED7eac32b0 / script_semantics_review, noP1/P2.
+
+Broader final01 at clean a7940cc6 retained FAIL:1299selected/1297executedpasses/
+2failed/0empty/0skipped/0incomplete/0sanitizer,857.19seconds. One remaining
+legacy timer test expected9root scopes instead of10; corrected expectation only.
+Full50-file corpus otherwise validates determinism, native save identity, physical
+counts and all warning deltas, but three producers_moved expectations differ by1:
+S01_03_01:97→98/139; S01_07_01:214→215/302; Single_24:38→39/58. No blanket
+movement rebaseline is authorized. Existing WeaponsWorkshop refresh_unlocked is
+the only production reader of Player researched bits; the newly imported FORSCH
+projection may activate an existing line. A paired with/without-research probe
+and independent original-record/type review are pending before changing pins.

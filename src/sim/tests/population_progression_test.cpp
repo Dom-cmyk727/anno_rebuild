@@ -380,7 +380,10 @@ TEST_CASE(
 
     // ---- the transition record of the deciding tick ----
     REQUIRE(S.transitions_of_house() == 1);
-    const sim::HouseTransitionRecord& r = *S.transition(sim::HouseTransitionRecord::Kind::Upgrade);
+    const sim::HouseTransitionRecord* upgrade =
+        S.transition(sim::HouseTransitionRecord::Kind::Upgrade);
+    REQUIRE_MESSAGE(upgrade != nullptr, "no Upgrade transition recorded for the house");
+    const sim::HouseTransitionRecord& r = *upgrade;
     CHECK(r.tick == kUpgradeTick);
     CHECK(r.from == kPioneer);
     const sim::TypeLadder ladder =
@@ -495,7 +498,10 @@ TEST_CASE("progression K3: the deciding-tick values equal the independent refere
     auto sp = start(*o, Opts{});
     Session& S = *sp;
     S.advance_to(kUpgradeTick);
-    const sim::HouseTransitionRecord& r = *S.transition(sim::HouseTransitionRecord::Kind::Upgrade);
+    const sim::HouseTransitionRecord* upgrade =
+        S.transition(sim::HouseTransitionRecord::Kind::Upgrade);
+    REQUIRE_MESSAGE(upgrade != nullptr, "no Upgrade transition recorded for the house");
+    const sim::HouseTransitionRecord& r = *upgrade;
     REQUIRE(r.check_ran);
     CHECK(r.check_eligible);
     // the engine's own numbers at the deciding tick

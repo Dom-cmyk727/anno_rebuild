@@ -867,3 +867,26 @@ positive assertion total=passed with zero failures, and one consistent SUCCESS
 status. Added wrong totals/failures/duplicate-status controls. This is evidence
 validation hardening; SCRIPT1 recorded bytes, pure stream/runtime references and
 goldens remain unchanged. Historical real child logs have consistent counts.
+
+Implemented F subset dispositions: `/root/script2_review_actions` approved
+F3/F4 synthetic proof at cleanf3a92591 after per-cut waves and strict child-summary
+fixes. F-reviewed-03 passed5/5, zero other outcomes; distinct freshPIDs20370/20382,
+exits0 and four artifact identities independently verified. `/root/script2_review_area`
+approved scale/current archive separation at69380a73 and publisher at250c15ad;
+prior invalid-manifest/no-output and wrong-AST negatives now reject, legal control
+publishes50parsed/14compiled/14startups/full-original0. Full F/F2 remainsOPEN.
+
+Release scale F-scale-release-01 at69380a73 passed1/1:64 visits take34/1447/11428us
+for the three modest cases; exactwork162/10992/52180, allocations sum9088bytes
+each. Hardware/process/memory/disk snapshots under cache/script2/F-host-*; Mac
+architectural evidence only, not target-host/multiplayer/late-game acceptance.
+Subsequent changes are proof tools, replay sink paths and cut assertions, not
+indexed query/benchmark code; Release timing is reused on that dependency basis.
+
+G fixture generation01 is explicitly non-acceptance:14cases/7090assertions passed
+with update mode, writing only11 new script2 regression recordings and printing23
+self-baseline hashes (17existing mechanism pins +6K3). All archived SCRIPT1 hashes
+remain identical. New goldens keep11 independent transcriptions separate from23
+self-baselines; schema130/frame3 explains their migration. Normal gates will run
+with update mode unset. No original scenario/script content is committed in these
+recordings; full-original-source synthetic canary artifacts stay ignored in cache.

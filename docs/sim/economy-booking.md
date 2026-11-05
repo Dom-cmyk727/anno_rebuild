@@ -296,7 +296,7 @@ The existing arithmetic research is approved only within its original-wrap model
 
 | Package | Positive acceptance | Small distinguishing negative/control | Evidence and disposition |
 |---|---|---|---|
-| B0 adoption/inventory | Exact clean pin, module hashes, actual callers, cheap preflight/ref checks, unchanged old refs/evidence, scoped participating paths | No replay of old merge, no unexplained132 edit/default flip, no claim that Python baseline executes economy |13/13 reference and source preflight pass; independent review pending |
+| B0 adoption/inventory | Exact clean pin, module hashes, actual callers, cheap preflight/ref checks, unchanged old refs/evidence, scoped participating paths | No replay of old merge, no unexplained132 edit/default flip, no claim that Python baseline executes economy |13/13 reference and source preflight pass; `/root/econ_b0_review` APPROVED75b16493 after manual-switch inventory correction |
 | B1a inputs | Verified climate/tax/ordered prices, actual billing units, imported stats/stamps | Requested stall versus delivered/Inn-clipped/service-only; repeated Preis resets, partial repeated tax lists, invalid names/dimensions | Primary bounded reads and hand derivation planned; not engine-authorized |
 | B1b lifecycle | Type getter/stat-kind and every current create/load/switch/house replace/remove path table | Failed/duplicate transition unchanged; city28/player14+rem1 charged1+1, no cost mirroring | Primary/caller audit planned; absent owner-transfer remains Unsupported |
 | B1c checked policy | Signed domains, exact ordinary arithmetic, word stamps, sum-before-rounding, gross credit then debit, negative money, explicit atomic booking fault | Final net fits but gross credit overflows; no reset/stats/stamp/debit on failure | Written original/adapted split and primary examples required |
@@ -316,3 +316,9 @@ of the lifecycle audit; unsupported original classes/ownership transitions stay
 explicit refusals, never silently omitted. No full-game balance, ship-founded
 alcohol feasibility, planting, new tax UI, figure upkeep rewrite or default change
 is implied. B1 contract review must resolve every fact used by B3/B4 first.
+
+B0 approval: `/root/econ_b0_review` independently reviewed clean
+`75b16493070f0f333fdf98e31a5326795a013a09`, primary module identities, baseline
+logs and current billing/lifecycle/order callers. The missing manual production
+switch route was added and re-reviewed; no actionable B0 finding remains. This
+releases B1 contract work, not C++ implementation before B1/B2 approval.

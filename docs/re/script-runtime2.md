@@ -46,3 +46,9 @@ carry a cargo qualifier after `@`; the mapper prefix alone does not define this
 operand. SCRIPT2 explicitly refuses decorated area operands. Complete endless01
 uses undecorated HUMAN. Cargo-qualified touch remains unsupported, rather than
 quietly discarding the qualifier. Permission action prefix rules are unchanged.
+
+At23b22..23b29 no-`@` leaves the whole operand as goods lookup input. Accordingly
+the authoritative compiler receives the registry goods-name table and also refuses
+a plain operand resolving a nonzero goods name (including mod names). Original
+UNUSED/index0 does not select cargo. Standalone compiler callers supply their goods
+context; normal World compile/restore always use the actual registry.

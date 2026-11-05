@@ -12,7 +12,10 @@ auto compile_runtime(const ScriptRuntime& r, const TypeRegistry& types, const Si
     ids.reserve(types.types().size());
     for (const auto& t : types.types())
         ids.push_back(t.id);
-    return compile_script(r.source, {ids, cfg.player_slots, cfg.script_timers}, r.limits);
+    std::vector<std::string_view> goods;
+    for (const auto& g : types.goods_table())
+        goods.push_back(g.name);
+    return compile_script(r.source, {ids, cfg.player_slots, cfg.script_timers, goods}, r.limits);
 }
 struct Host final : ScriptHost {
     const FigureRegistry* figures;

@@ -310,3 +310,26 @@ TEST_CASE("SCRIPT2 missing spatial context faults Host and rolls back prior writ
     CHECK(f.timers.active == before.active);
     CHECK(f.players.find(PlayerId{0})->money == money);
 }
+
+TEST_CASE("SCRIPT2 plain goods name collision refuses cargo semantics with registry context") {
+    const std::vector<std::string_view> names{"UNUSED", "HOLZ", "MOD_GOODS"};
+    for (auto name : {"HOLZ", "hOlZ", "MOD_GOODS"}) {
+        auto source = area_source();
+        source.replace(source.find("\"ME\""), 4, "\"" + std::string(name) + "\"");
+        source.replace(source.find("FROM \"ME\""), 9, "FROM \"" + std::string(name) + "\"");
+        auto r = compile_script(source, {{}, 32, 5, names});
+        REQUIRE_FALSE(r);
+        CHECK(r.error().message == "unsupported area cargo qualifier");
+    }
+    CHECK(compile_script(area_source(), {{}, 32, 5, names}));
+    // The authoritative World compiler receives its actual data-defined goods table.
+    auto spec = synthetic::basic_scenario(77);
+    spec.script_context = ScriptContext::Pending;
+    spec.script_source = area_source();
+    auto& source = spec.script_source;
+    source.replace(source.find("\"ME\""), 4, "\"HOLZ\"");
+    source.replace(source.find("FROM \"ME\""), 9, "FROM \"HOLZ\"");
+    auto made = World::create(spec, TypeRegistry::empty());
+    REQUIRE_FALSE(made);
+    CHECK(made.error().find("unsupported area cargo qualifier") != std::string::npos);
+}

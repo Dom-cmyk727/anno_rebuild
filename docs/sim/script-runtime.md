@@ -658,3 +658,9 @@ B P2 query-host refusal classification fixed: evaluator failures now distinguish
 work.exhausted (Budget) from missing/refusing typed spatial host (Host), with
 transactional signal/timer rollback control. B-correction-03 passed11/11 prior
 to this final review fix.
+
+B final bounded P2: undecorated FROM can also select cargo when its whole name is
+a nonzero goods name (Scene23b22..23b29). Compiler environment now carries actual
+registry goods names; compile/restore refuses collisions. Added original HOLZ and
+mod-name/casefold controls plus authoritative World rejection. Earlier B findings
+closed at b32e8d5b; frozen gate B-final-01 passed12/12.

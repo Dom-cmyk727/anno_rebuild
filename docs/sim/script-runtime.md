@@ -749,3 +749,7 @@ await labelled regeneration. E gate/review pending.
 E-gate-01 build failed before selection: observer default argument was attached
 to write_log instead of the replay declaration. Corrected both declarations;
 reviewer independently identified the same error. Original failure retained.
+
+E-gate-02 also failed build before selection: test corruption helper named a
+nonexistent formats u64_le convenience. It now reads the two explicit u32 halves
+of the existing u64 section length; production code unchanged by this correction.

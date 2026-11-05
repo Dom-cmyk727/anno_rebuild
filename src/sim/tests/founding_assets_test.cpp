@@ -265,7 +265,7 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     const sim::Command command{sim::PlayerId{0}, cmd};
     bool placed = false;
     for (const std::pair<int, int>& d : {std::pair{6, 0}, std::pair{-6, 0}, std::pair{0, 6},
-                                        std::pair{0, -6}, std::pair{7, 7}, std::pair{-7, -7}}) {
+                                         std::pair{0, -6}, std::pair{7, 7}, std::pair{-7, -7}}) {
         sim::World trial = w;
         sim::Figure* s = sim::find_figure(sim::WorldTestAccess::figures(trial), sim::FigureId{1});
         s->pos.x = (found->click_x + d.first) * 256 + 128;
@@ -423,7 +423,7 @@ std::optional<sim::Command> place_for_founding(sim::World& w, const Site& site,
     cmd.click_y = site.click_y;
     const sim::Command command{sim::PlayerId{seat}, cmd};
     for (const std::pair<int, int>& d : {std::pair{6, 0}, std::pair{-6, 0}, std::pair{0, 6},
-                                        std::pair{0, -6}, std::pair{7, 7}, std::pair{-7, -7}}) {
+                                         std::pair{0, -6}, std::pair{7, 7}, std::pair{-7, -7}}) {
         sim::World trial = w;
         sim::Figure* s = sim::find_figure(sim::WorldTestAccess::figures(trial), cmd.ship);
         s->pos.x = (site.click_x + d.first) * 256 + 128;
@@ -514,10 +514,13 @@ TEST_CASE("ship start policy: peace, shared visibility and no alliances on the r
     CHECK(reached > 0); // not vacuous
     for (std::uint32_t p = 0; p < 5; ++p) {
         // The recount: every player in the new city's mask learns its owner (seat 0).
-        CHECK(w.players().find(sim::PlayerId{p})->discovery == pid_set({0}));
-        CHECK(w.players().find(sim::PlayerId{p})->relations.empty()); // still no alliance
-        CHECK(w.players().find(sim::PlayerId{p})->money ==
-              (p == 0 ? 29650 : before_founding.players().find(sim::PlayerId{p})->money));
+        const auto* const now = w.players().find(sim::PlayerId{p});
+        const auto* const before = before_founding.players().find(sim::PlayerId{p});
+        REQUIRE(now != nullptr);
+        REQUIRE(before != nullptr);
+        CHECK(now->discovery == pid_set({0}));
+        CHECK(now->relations.empty()); // still no alliance
+        CHECK(now->money == (p == 0 ? 29650 : before->money));
     }
     // Other islands stay unexplored; the only owned tiles are the founder's city 0 on this island.
     for (std::size_t i = 0; i < w.islands().size(); ++i) {
@@ -1305,7 +1308,9 @@ struct Origin {
 };
 
 std::int64_t gold_of(const sim::World& w, std::uint32_t p) {
-    return w.players().find(sim::PlayerId{p})->money;
+    const auto* const player = w.players().find(sim::PlayerId{p});
+    REQUIRE(player != nullptr);
+    return player->money;
 }
 
 /// Every origin of the island where the placement rule accepts `type` (rotation 0), row-major.
@@ -1627,7 +1632,9 @@ std::uint64_t territory_of(const sim::World& w) {
 std::string info_of(const sim::World& w) {
     const sim::Island& is = *w.islands()[0];
     std::string s = "mask=";
-    for (const sim::PlayerId p : is.city(sim::CityNo{0})->player_mask) {
+    const auto* const city = is.city(sim::CityNo{0});
+    REQUIRE(city != nullptr);
+    for (const sim::PlayerId p : city->player_mask) {
         s += std::to_string(p.v) + ",";
     }
     s += " present=";
@@ -1635,7 +1642,9 @@ std::string info_of(const sim::World& w) {
         s += std::to_string(p.v) + ",";
     }
     s += " discovery1=";
-    for (const sim::PlayerId p : w.players().find(sim::PlayerId{1})->discovery) {
+    const auto* const player = w.players().find(sim::PlayerId{1});
+    REQUIRE(player != nullptr);
+    for (const sim::PlayerId p : player->discovery) {
         s += std::to_string(p.v) + ",";
     }
     return s;

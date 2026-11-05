@@ -532,7 +532,9 @@ TEST_CASE("founding conflicts: the same site in one turn, in both orders") {
         const sim::Command& second = p0_first ? c1 : c0;
         const std::uint32_t winner = p0_first ? 0 : 1, loser = p0_first ? 1 : 0;
         REQUIRE(w.apply(first).ok());
-        const std::int64_t loser_gold = w.players().find(sim::PlayerId{loser})->money;
+        const auto* const loser_player = w.players().find(sim::PlayerId{loser});
+        REQUIRE(loser_player != nullptr);
+        const std::int64_t loser_gold = loser_player->money;
         const std::vector<sim::ShipHold> loser_holds =
             sim::find_figure(w.figures(), sim::FigureId{loser == 0 ? 1U : 4U})->holds;
         // The loser sees owned tiles: SiteOwned, uncharged, nothing changed.

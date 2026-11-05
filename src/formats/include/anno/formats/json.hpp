@@ -38,6 +38,15 @@ struct Value {
     /// Object members in file order; keys are unique.
     std::vector<std::pair<std::string, Value>> members;
 
+    // Defined in json.cpp, where Value is complete: a std::pair<std::string, Value> member vector
+    // needs the complete type for its destructor (libstdc++ with Clang rejects the implicit one).
+    Value();
+    ~Value();
+    Value(const Value&);
+    Value(Value&&) noexcept;
+    Value& operator=(const Value&);
+    Value& operator=(Value&&) noexcept;
+
     /// The member named `key`, or nullptr (also when this is not an object).
     [[nodiscard]] const Value* find(std::string_view key) const;
 

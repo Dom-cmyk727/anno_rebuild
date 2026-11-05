@@ -255,7 +255,8 @@ std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id) {
     if (s == kNoSlot) {
         return std::nullopt;
     }
-    std::optional<Figure> out = std::move(registry.list.slots[s]);
+    std::optional<Figure> out;
+    out.swap(registry.list.slots[s]);
     unindex_figure(registry, *out);
     registry.list.remove(s);
     registry.by_id.erase(id);

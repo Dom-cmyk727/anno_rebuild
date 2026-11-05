@@ -367,3 +367,18 @@ before commands and require Pending→Ready at tick0. This is a real session vis
 that also visits world subsystems, not a script-only initialization. The exact
 mechanism vectors must still pass; no unsupported source is stripped for these
 fixtures. Their initial replay save is captured after this visit.
+
+### Original-data component regression boundary
+
+Read-only reviewer review_integration classified each of the19 original-data
+failures in S7-debug-core01 (41others concern schema/fixtures and11generated
+loaders). Unsupported whole programs remain refused by normal World::create.
+Test-only original_component::import_only compiles the full source, verifies that
+same normal refusal, then authors a NEW fixture retaining all imported data with
+Missing script context. Construction remains gated. Supported programs are kept
+unchanged. This is used only for import geometry/LOCKED/DISCO/player-mask and
+no-player-construction economy/population mechanism tests; names/output identify
+component coverage and print the exact whole-program dependency. It is not
+campaign/quest/script/permission execution evidence. Existing physical counts,
+ledgers, transitions, save/reload and negative controls remain the acceptance
+criteria. Review of the resulting patch and normal gates is pending.

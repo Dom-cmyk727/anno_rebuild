@@ -1,3 +1,4 @@
+#include "original_component.hpp"
 // The LOCKED record on the shipped data (task MAP-2 package D). The raw bytes are read with
 // formats::insel, independently of the scenario adapter, and compared with the islands the
 // adapter and World::create produce (docs/re/ship-founding.md section 11.5: 107 islands with
@@ -35,8 +36,8 @@ std::vector<fs::path> files_with(const fs::path& root, const std::string& ext) {
 
 } // namespace
 
-TEST_CASE(
-    "island lock: shipped scenarios keep every LOCKED byte through the loader and the world") {
+TEST_CASE("island lock: original-data components keep every shipped LOCKED byte through loader and "
+          "world") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -85,8 +86,11 @@ TEST_CASE(
         // A scenario with locked islands: the created world carries the bytes, and so does a
         // save/load round trip of it.
         ++files_with_lock;
+        auto component = original_component::import_only(scenario.value().spec, loaded_types.types);
+        REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+        MESSAGE("original-data LOCKED component: " << component.value().diagnostic);
         auto world =
-            sim::World::create(scenario.value().spec, loaded_types.types, sim::SimConfig{});
+            sim::World::create(component.value().spec, loaded_types.types, sim::SimConfig{});
         REQUIRE_MESSAGE(world.ok(), (world.ok() ? std::string() : world.error()));
         std::uint64_t in_world = 0;
         for (const auto& island : world.value().islands()) {

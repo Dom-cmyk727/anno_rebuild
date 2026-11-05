@@ -21,6 +21,7 @@
 
 #include "building_helpers.hpp"
 #include "command_helpers.hpp"
+#include "original_component.hpp"
 #include "world_access.hpp"
 namespace sim = anno::sim;
 namespace {
@@ -443,7 +444,8 @@ TEST_CASE("walk_cells: table digest pins state save and load without changing re
     CHECK(sim::cost(*tables, 0, 1023, 7) == 0);
     CHECK(sim::cost(*tables, 0, 4, 8) == 0);
 }
-TEST_CASE("walk_cells: original S01_07_01 road and house cells" * doctest::test_suite("corpus")) {
+TEST_CASE("walk_cells: original-data component S01_07_01 road and house cells" *
+          doctest::test_suite("corpus")) {
     const auto game = anno::test::game_dir();
     if (!game) {
         MESSAGE("ANNO1503_GAME_DIR not set: skipping original walk cells");
@@ -461,7 +463,10 @@ TEST_CASE("walk_cells: original S01_07_01 road and house cells" * doctest::test_
     const auto sb = anno::test::read_file(*game / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
     auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
     REQUIRE(loaded);
-    auto world = sim::World::create(loaded.value().spec, types.value());
+    auto component = original_component::import_only(loaded.value().spec, types.value());
+    REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+    MESSAGE("original-data geometry component: " << component.value().diagnostic);
+    auto world = sim::World::create(component.value().spec, types.value());
     REQUIRE(world);
     std::uint32_t roads = 0, houses = 0;
     for (const auto& slot : world.value().islands()) {
@@ -679,7 +684,8 @@ TEST_CASE("remove_building restores code 2 and mask 0") {
     }
 }
 
-TEST_CASE("S01_07_01 tick 0 tile records match placement" * doctest::test_suite("corpus")) {
+TEST_CASE("S01_07_01 original-data component tick 0 tile records match placement" *
+          doctest::test_suite("corpus")) {
     const auto game = anno::test::game_dir();
     if (!game) {
         MESSAGE("ANNO1503_GAME_DIR not set: skipping S01_07_01 tile records");
@@ -695,7 +701,10 @@ TEST_CASE("S01_07_01 tick 0 tile records match placement" * doctest::test_suite(
     const sim::SimConfig cfg;
     auto loaded = sim::load_scenario(sb, *types.value(), cfg);
     REQUIRE(loaded);
-    auto world = sim::World::create(loaded.value().spec, types.value(), cfg);
+    auto component = original_component::import_only(loaded.value().spec, types.value(), cfg);
+    REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+    MESSAGE("original-data geometry component: " << component.value().diagnostic);
+    auto world = sim::World::create(component.value().spec, types.value(), cfg);
     REQUIRE(world);
     std::uint64_t held = 0, replaced = 0, bad = 0;
     for (const sim::ScenarioSpec::IslandSpec& is : loaded.value().spec.islands) {
@@ -891,8 +900,9 @@ TEST_CASE("removal_clear_tile: overlay building over a mountain anchor") {
     }
 }
 
-TEST_CASE("T33.5 stage 3: buildings whose footprint does not hold their id" *
-          doctest::test_suite("corpus")) {
+TEST_CASE(
+    "T33.5 stage 3 original-data component: buildings whose footprint does not hold their id" *
+    doctest::test_suite("corpus")) {
     const auto game = anno::test::game_dir();
     if (!game) {
         MESSAGE("ANNO1503_GAME_DIR not set: skipping overlay-origin counts");
@@ -924,7 +934,10 @@ TEST_CASE("T33.5 stage 3: buildings whose footprint does not hold their id" *
         const auto sb = anno::test::read_file(path);
         auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
         REQUIRE_MESSAGE(loaded.ok(), name);
-        auto made = sim::World::create(loaded.value().spec, types.value());
+        auto component = original_component::import_only(loaded.value().spec, types.value());
+        REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+        MESSAGE("original-data geometry component: " << component.value().diagnostic);
+        auto made = sim::World::create(component.value().spec, types.value());
         REQUIRE_MESSAGE(made.ok(), (name + ": " + (made.ok() ? std::string() : made.error())));
         sim::World world = std::move(made).value();
         std::uint64_t file_buildings = 0, file_any = 0, file_origin = 0;

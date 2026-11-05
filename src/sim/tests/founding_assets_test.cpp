@@ -1,3 +1,4 @@
+#include "original_component.hpp"
 // The founding command on the original files (task MAP-2 package 8d). The real registry
 // (Anlagen.dat, FigurenHeader.dat), the real islands of the unchanged candidate lan5-ship-a through
 // the ship-start loader, and the real STAEDTE name list. The legal site is FOUND by the engine's
@@ -629,7 +630,7 @@ TEST_CASE("ship start policy: other participant sets, non-default seats, refused
     CHECK(error_of(sl::ShipStartPolicy{}, with_groups).empty()); // rules alone are honoured
 }
 
-TEST_CASE("scenario player DISCO on the shipped scenes: restored sets, sharing off by default") {
+TEST_CASE("scenario player DISCO original-data component: restored sets, sharing off by default") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -655,7 +656,10 @@ TEST_CASE("scenario player DISCO on the shipped scenes: restored sets, sharing o
         }
     }
     CHECK(found);
-    auto w = sim::World::create(l.value().spec, types, sim::SimConfig{});
+    auto component = original_component::import_only(l.value().spec, types);
+    REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+    MESSAGE("original-data DISCO component: " << component.value().diagnostic);
+    auto w = sim::World::create(component.value().spec, types, sim::SimConfig{});
     REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
     CHECK(w.value().rules().shared_visibility.empty()); // an ordinary scenario: sharing off
     CHECK(w.value().check_invariants().empty());

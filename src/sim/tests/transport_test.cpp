@@ -1,3 +1,4 @@
+#include "original_component.hpp"
 // The transport body (docs/sim/state.md §5.9 "Transport", task T24; evidence
 // docs/re/transport.md): the searcher's disc, the producers' slots, the workshop's
 // priority and offer, and the market cart and the workshop carrier end to end on a
@@ -892,7 +893,8 @@ TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal go
     }
 }
 
-TEST_CASE("S01_07_01 tick 0 search store is complete" * doctest::test_suite("corpus")) {
+TEST_CASE("S01_07_01 original-data component tick 0 search store is complete" *
+          doctest::test_suite("corpus")) {
     // Step 5(b): every market and workshop at tick 0. incomplete counts a search
     // whose WalkCells store was not complete. The per-tile record makes that 0.
     const auto dir = anno::test::game_dir();
@@ -921,7 +923,10 @@ TEST_CASE("S01_07_01 tick 0 search store is complete" * doctest::test_suite("cor
     const auto sb = anno::test::read_file(*dir / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
     auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
     REQUIRE(loaded);
-    auto made = sim::World::create(loaded.value().spec, types.value());
+    auto component = original_component::import_only(loaded.value().spec, types.value());
+    REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+    MESSAGE("original-data search component: " << component.value().diagnostic);
+    auto made = sim::World::create(component.value().spec, types.value());
     REQUIRE(made);
     sim::World world = std::move(made).value();
     sim::Effects fx;

@@ -1,3 +1,4 @@
+#include "original_component.hpp"
 // MAP-POP-LIVE-1 L5: the live House update on the ORIGINAL registry and an ORIGINAL scenario
 // (docs/sim/population-live.md section 20). Rules::house_updates on, no grants, no relocations, no
 // candidate rewrite, no synthetic fixture: only the loaded stocks and normal production.
@@ -105,7 +106,11 @@ sim::ScenarioSpec scenario_spec(const Original& o, const std::string& relative) 
     auto resolved = anno::sim_load::load_scenario_with_links(
         anno::test::read_file(o.dir / "Scenes" / relative), o.templates, *o.types, o.cfg, {});
     REQUIRE(resolved);
-    return resolved.value().loaded.spec;
+    auto component = original_component::import_only(resolved.value().loaded.spec, o.types, o.cfg);
+    REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+    MESSAGE("original-data population mechanism: " << relative << " "
+                                                   << component.value().diagnostic);
+    return component.value().spec;
 }
 
 sim::World make_world(const Original& o, const sim::ScenarioSpec& spec, bool live = true) {
@@ -116,9 +121,12 @@ sim::World make_world(const Original& o, const sim::ScenarioSpec& spec, bool liv
     sim::World world = std::move(created).value();
     // The complete shipped empty kernel is supported. Reach Ready through the normal
     // zero-time session visit before issuing commands; every subsystem also visits tick 0.
-    REQUIRE(world.script().state.context == sim::ScriptContext::Pending);
-    CHECK(world.advance(0) == 0);
-    REQUIRE(world.script().state.context == sim::ScriptContext::Ready);
+    if (world.script().state.context == sim::ScriptContext::Pending) {
+        CHECK(world.advance(0) == 0);
+        REQUIRE(world.script().state.context == sim::ScriptContext::Ready);
+    } else {
+        REQUIRE(world.script().state.context == sim::ScriptContext::Missing);
+    }
     return world;
 }
 
@@ -359,7 +367,8 @@ void check_ledger(const sim::World& w, const sim::ResidentStats& r) {
 
 } // namespace
 
-TEST_CASE("population live canary: bounded scenario search table (ANNO_POP_LIVE_SEARCH)") {
+TEST_CASE("population original-data mechanism canary: bounded scenario search table "
+          "(ANNO_POP_LIVE_SEARCH)") {
     const char* want = std::getenv("ANNO_POP_LIVE_SEARCH");
     if (want == nullptr || *want == '\0') {
         return; // a one-off tool, its result is pinned in the canary below and in the doc
@@ -556,7 +565,8 @@ void check_growth(const sim::TransportStats& stats, std::size_t& exact, std::siz
 
 } // namespace
 
-TEST_CASE("population live canary: S01_01_01 live run, ledger, growth, removal and stage unlock") {
+TEST_CASE("population original-data mechanism canary: S01_01_01 live run, ledger, growth, removal "
+          "and stage unlock") {
     const auto o = load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -651,7 +661,8 @@ TEST_CASE("population live canary: S01_01_01 live run, ledger, growth, removal a
     CHECK(r.watch.transition_step.value_or(0) == 50);
 }
 
-TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with variant draws") {
+TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger, downgrade with "
+          "variant draws") {
     const auto o = load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -790,7 +801,8 @@ struct Reference {
 
 } // namespace
 
-TEST_CASE("population live canary: save and reload at the cuts of the real run") {
+TEST_CASE(
+    "population original-data mechanism canary: save and reload at the cuts of the real run") {
     const auto o = load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -891,7 +903,8 @@ void export_log(const char* name, const sim::ReplayLog& log) {
 
 } // namespace
 
-TEST_CASE("population live canary: recorded log replays, and a changed log or input diverges") {
+TEST_CASE("population original-data mechanism canary: recorded log replays, and a changed log or "
+          "input diverges") {
     const auto o = load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");

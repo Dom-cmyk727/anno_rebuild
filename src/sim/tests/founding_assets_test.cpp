@@ -26,6 +26,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/formats/ship_manifest.hpp>
+#include <anno/sim/build_availability.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/harvest.hpp>
@@ -3718,4 +3719,144 @@ TEST_CASE("forester opening canary: one seat sails, founds, unloads, builds a fo
     REQUIRE(fresh2.ok());
     auto bad = sim::replay(fresh2.value(), tampered);
     CHECK((!bad.ok() || !bad.value().reproduced()));
+}
+
+TEST_CASE("bootstrap prefix: unchanged ship sails founds unloads builds then exposes supply and "
+          "salt gaps") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    namespace ct = command_test;
+    const RealStart rs = real_start(*dir);
+    auto loaded = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+    REQUIRE(loaded.ok());
+    auto w = std::move(loaded).value();
+    REQUIRE(sl::expedition_baseline_problem(w).empty());
+    const sim::World pristine = w;
+    auto legs = plan_opening_legs(rs, pristine);
+    legs.resize(1);
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    auto rec = std::move(started).value();
+    Driver d{&w, &rec};
+    REQUIRE(sail_phase(d, w, legs, false).all_arrived);
+    const auto found = d.apply(found_command(legs[0]));
+    REQUIRE(found.ok());
+    const auto warehouse = found.records.at(0).building;
+    const auto ref = city_of_player(w, 0);
+    REQUIRE(ref.has_value());
+    const auto gold = [&] { return w.players().find(sim::PlayerId{0})->money; };
+    CHECK(gold() == 29650);
+    for (std::uint32_t i = 0; i < ship_of(w, 1).holds.size(); ++i) {
+        const auto h = ship_of(w, 1).holds[i];
+        if (h.goods == 0 || h.amount_88 == 0)
+            continue;
+        const auto r = d.apply(
+            sim::Command{sim::PlayerId{0},
+                         sim::UnloadCmd{sim::FigureId{1}, warehouse, i, h.goods,
+                                        static_cast<std::uint32_t>((h.amount_88 + 255) / 256)}});
+        REQUIRE(r.ok());
+    }
+    const auto stock = [&](sim::GoodsId g) { return ct::city(w, *ref).stock.stock[g]; };
+    CHECK(stock(42) == 38 * 256);
+    CHECK(stock(41) == 50 * 256);
+    CHECK(aboard_of(ship_of(w, 1).holds, 41) == 25 * 256);
+    CHECK(stock(26) == 10 * 256);
+    const auto eligible = [&](std::uint32_t id) {
+        return sim::build_eligibility(w.types(), w.players(), sim::PlayerId{0}, sim::TypeId{id});
+    };
+    const auto& forester = *w.types().find(sim::TypeId{801});
+    const auto& road = *w.types().find(sim::TypeId{kRoadDirt});
+    const auto& kontor = *w.types().find(sim::TypeId{1302});
+    std::optional<ForestPlan> plan;
+    for (const auto& site : legal_origins(*w.islands()[ref->island.v], w.types(), forester)) {
+        if (std::max(std::abs(site.x - w.find_building(warehouse)->x),
+                     std::abs(site.y - w.find_building(warehouse)->y)) > 16)
+            continue;
+        sim::World trial = w;
+        if (!trial.apply(ct::build(0, *ref, {ct::at(forester.id, site.x, site.y)})).ok())
+            continue;
+        const auto path =
+            road_path(trial, *ref, road, *trial.find_building(warehouse), kontor, site);
+        if (path && !path->empty() && trial.apply(road_drag(0, *ref, *path)).ok()) {
+            plan = ForestPlan{site, *path, 0};
+            break;
+        }
+    }
+    REQUIRE(plan.has_value());
+    REQUIRE(eligible(801).allowed());
+    REQUIRE(eligible(kRoadDirt).allowed());
+    REQUIRE(d.apply(ct::build(0, *ref, {ct::at(forester.id, plan->site.x, plan->site.y)})).ok());
+    REQUIRE(d.apply(road_drag(0, *ref, plan->road)).ok());
+    CHECK(gold() == 29500 - static_cast<std::int64_t>(5 * plan->road.size()));
+    CHECK(stock(42) == 38 * 256);
+    CHECK(stock(41) == 48 * 256);
+    REQUIRE(eligible(809).allowed());
+    sim::BuildingId farm;
+    for (const auto& site :
+         legal_origins(*w.islands()[ref->island.v], w.types(), *w.types().find(sim::TypeId{809}))) {
+        const auto cmd = ct::build(0, *ref, {ct::at(sim::TypeId{809}, site.x, site.y)});
+        sim::World trial = w;
+        if (!trial.apply(cmd).ok())
+            continue;
+        const auto r = d.apply(cmd);
+        REQUIRE(r.ok());
+        farm = r.records.at(0).building;
+        break;
+    }
+    REQUIRE(farm.valid());
+    const auto& f = std::get<sim::SmallFarm>(w.find_building(farm)->payload);
+    CHECK(f.raw == std::vector<std::uint32_t>{0, 0});
+    CHECK(f.out == std::vector<std::uint32_t>{0, 0});
+    CHECK(gold() == 29250 - static_cast<std::int64_t>(5 * plan->road.size()));
+    CHECK(stock(42) == 34 * 256);
+    CHECK(stock(41) == 46 * 256);
+    // No stage injection: the content query refuses salt at stage1C. BuildCmd's existing
+    // placement refusal is separately demonstrated, because authoritative wiring is blocked.
+    CHECK(eligible(1203).status == sim::BuildEligibilityStatus::StageLocked);
+    bool salt_unsupported = false;
+    const auto& island = *w.islands()[ref->island.v];
+    for (std::int32_t y = island.tiles.y0();
+         y < island.tiles.y0() + static_cast<std::int32_t>(island.tiles.height()) &&
+         !salt_unsupported;
+         ++y) {
+        for (std::int32_t x = island.tiles.x0();
+             x < island.tiles.x0() + static_cast<std::int32_t>(island.tiles.width()); ++x) {
+            const auto cmd = ct::build(0, *ref, {ct::at(sim::TypeId{1203}, x, y)});
+            sim::World trial = w;
+            if (trial.apply(cmd).status != sim::Reject::Unsupported)
+                continue;
+            const auto before = w.save();
+            const auto r = d.apply(cmd);
+            CHECK(r.status == sim::Reject::Unsupported);
+            CHECK(w.save() == before);
+            salt_unsupported = true;
+            break;
+        }
+    }
+    REQUIRE(salt_unsupported);
+    d.checkpoint();
+    REQUIRE(w.check_invariants().empty());
+    MESSAGE("BOOTSTRAP_STOP road_tiles="
+            << plan->road.size() << " gold=" << gold() << " wood_88=" << stock(42)
+            << " tools_city_88=" << stock(41)
+            << " tools_ship_88=" << aboard_of(ship_of(w, 1).holds, 41) << " food_88=" << stock(26)
+            << " farm_raw=0,0 farm_output=0,0 next_supply=MAP-SUPPLY-1 salt_query=StageLocked "
+               "salt_command=Unsupported hash="
+            << w.state_hash());
+    auto bytes = sim::write_log(rec.log());
+    REQUIRE(bytes.ok());
+    const auto error = export_log_if_requested(std::getenv("ANNO_BOOTSTRAP_LOG"), bytes.value());
+    REQUIRE_MESSAGE(error.empty(), error);
+    auto fresh = sim::World::load(rec.log().initial_save, rs.types, {});
+    REQUIRE(fresh.ok());
+    auto replayed = sim::replay(fresh.value(), rec.log());
+    REQUIRE(replayed.ok());
+    CHECK(replayed.value().reproduced());
+    CHECK(fresh.value().save() == w.save());
+    auto reloaded = sim::World::load(w.save(), rs.types, {});
+    REQUIRE(reloaded.ok());
+    CHECK(reloaded.value().save() == w.save());
 }

@@ -78,6 +78,11 @@ if(ANNO_BUILD_TESTS)
     find_package(Python3 COMPONENTS Interpreter)
   endif()
   if(Python3_FOUND)
+    add_test(NAME bootstrap_budget_contract
+             COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/bootstrap_budget.py --self-test)
+    add_test(NAME bootstrap_budget_original
+             COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/bootstrap_budget.py
+                     --check ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/bootstrap_budget.json)
     add_test(NAME anno_sim_tests_lint_sim_passes
              COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/lint_sim.py
                      --root ${PROJECT_SOURCE_DIR})

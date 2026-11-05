@@ -1,5 +1,12 @@
 # ECON-BOOK-1: resident sales and building upkeep
 
+**Dispatch update, 2026-11-06:** research and engine completion are assigned to the
+second Mac by `docs/orchestration/TASKS.md`, section
+“Second Mac — ECON-BOOK-1: earned income and building upkeep”, packages B0–B7.
+That packet supersedes the historical research-only ownership, old base and
+pre-132 identity guidance below. Engine work follows independent contract review;
+this note does not declare the remaining lifecycle/policy research complete.
+
 Status: research started; engine implementation NOT_STARTED. This is an
 orchestrator-owned parallel package, based on MAP `ec0e832e`. It does not replace
 MAP-POP-CLOSE-2, approve its unfinished gates, or enable live house updates.

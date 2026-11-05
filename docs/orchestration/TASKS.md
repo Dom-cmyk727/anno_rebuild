@@ -29,7 +29,329 @@ House updates remain false by default; no owner gameplay policy is silently flip
 The dispatches below preserve the scope and pins of work already in progress.
 They do not override the new canonical identity for subsequent integration.
 
-## Current dispatch — 2026-11-05: Windows opening; first Mac cloth/leather; second Mac integration
+<!-- BEGIN ECON-BOOK-1-MAIN -->
+## Second Mac — ECON-BOOK-1: earned income and building upkeep (2026-11-06)
+
+**READY / RELEASED, B0–B7, one final orchestrator handoff.** This transfers the
+unfinished ECON-BOOK-1 research and implementation from the orchestrator to the
+second Mac executor. It supersedes the old research-only ownership and completed
+MAP-INTEGRATE-1 assignment. The first Mac retains MAP-NEEDS-2; Windows retains
+opening/depth. Neither depends on this new feature being enabled.
+
+**Outcome:** a headless town produces and sells goods to residents, accumulates
+bills, credits the correct player's money and pays its buildings' upkeep. Show
+shortage and recovery, two-owner isolation, native continuation and fresh-process
+replay with exact ledgers. This is a working economic subsystem, not a claim of a
+balanced ship-founded town or all original financial behavior.
+
+### Start, ownership and identity
+
+- Reuse your owned MAP-BOOTSTRAP-1 checkout. Preserve completed branch
+  `task/MAP-INTEGRATE-1` at `5ef163a6`, its raw evidence and any unexpected edits.
+  Let any current job finish. Do not reset, clean or rewrite the old branch.
+- Fetch origin and start a **successor branch `task/ECON-BOOK-1-main`** from the
+  published main containing this dispatch. The accepted code baseline is
+  `7b57ebd968445bdb8ab8f0ad3e565632a7df24ee`; published documentation baseline
+  `5f6092b4211936d2a421710494d73a4f5e551660`. Pin the actual starting commit.
+  The task-publication commit adds documentation only. If a later main contains
+  code changes, inspect and record them before adopting; do not assume equivalent.
+  Do not replay cafc1a7c or merge the old supply/script branches again.
+- Current canonical identity is state **132 / SIMINT1 / PRNG 5 / replay frame 4 /
+  command wire 1**. Never amend published132 in place. Reserve **133 / ECONBK1**
+  for this branch's changed state/content/trajectory, with the exact marker bytes
+  specified and independently tested in B3. This is a branch candidate, not an
+  authorization for others to adopt133; the orchestrator owns eventual combined
+  identity. An observed conflicting allocation must be reconciled before state
+  code lands, while independent research/reference work continues. Do not change
+  PRNG timeline or command wire merely because the state version changes.
+- Allowed: relevant `src/sim`, `src/sim_load`, their tests, bounded source-format
+  parsing where needed, references/fixtures, CMake test registration and economy
+  documentation. Change shared files minimally and record the consumer delta.
+  No renderer/viewer/UI, coordinator/test_support, test-runner overhaul, original
+  assets, map selection, automatic planting, cloth/hunting, mining, new tax UI,
+  trading routes, diplomacy or unrelated player-upkeep rewrite.
+- **Default remains off:** add a separately hashed city-booking rule, default
+  false. Keep `house_updates` and all existing defaults unchanged. Real canaries
+  explicitly enable supported household and booking rules. Do not silently make
+  old scripts/scenarios restricted, free, or incomplete to obtain a pass.
+- Implement and commit small reviewed packages. No merge/rebase/push to main,
+  no force push or deletion of executor branches/worktrees. Final acceptance and
+  publication remain orchestrator-owned.
+
+### Read these files in order
+
+1. `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md` §§0.1–0.3,
+   `docs/testing/evidence-contract.md`, `docs/testing/README.md`, this whole packet.
+2. `docs/orchestration/reviews/2026-11-05-consolidation.md` and
+   `2026-11-05-map-integrate1.md` in the same directory: pin limits and strict
+   original loading. `docs/orchestration/gameplay-next-chain.md` is context only.
+3. `docs/sim/economy-booking.md` in full, including B1–B4; then
+   `docs/re/economy-booking.md`, `docs/re/population.md` §§8/11 and the cited
+   original city/player/type/loader callees. The existing arithmetic and bounded
+   mapping research are approved research, **not a completed implementation contract**.
+4. `docs/sim/population-live.md`, `small-farm-supply.md`, `gameplay-integration.md`,
+   `state.md` and `script-runtime.md`: current billing,
+   effect ordering, rules, startup and persistence. Read the relevant sections,
+   not every historical round. Locate associated open questions before adding any.
+5. `src/sim/include/anno/sim/{city,player,config,world,state_fields}.hpp`;
+   `src/sim/src/{player,scheduler,driver,city_creation,building,house_transition,
+   resident,resident_job,goods_metadata,scenario_formats,config,types}.cpp`;
+   `src/sim_load/src/original_registry.cpp` and their actual callers. Use `rg`
+   for `billed`, `BilledDelta`, `MoneyDelta`, `city_pass`, `running_cost`,
+   `upkeep_stamp`, `prop10`, `save_billed_goods` and lifecycle mutators.
+6. `tools/booking_ref.py`, `tools/tests/booking_ref_test.py`, `tools/sim_stream.py`,
+   `tools/integration_stream_ref.py`; current132 fixtures and the city/player,
+   population, resident, house-transition, small-farm and integration tests.
+   Research artifacts under ignored `cache/economy-booking/` may be absent in
+   your checkout: use recorded hashes and bounded reads of original modules;
+   do not search the whole home directory or treat missing cache as missing evidence.
+
+### Independent review workflow — applies to every package
+
+Use an independent **read-only reviewer subagent**, different from that package's
+implementer. It reads the frozen diff, acceptance assertions, primary data/bytes
+for newly relied-on facts and raw terminal evidence. It must independently derive
+at least the decisive examples; agreement with a copied Python oracle is not proof.
+Record reviewer identity, pin, verdict, findings and focused correction results.
+Fix P1/P2 findings and re-review affected changes before dependent implementation.
+An approved package releases the next one automatically: do not stop for routine
+orchestrator approval. Reuse a reviewer across packages, but use a fresh reviewer
+for the final interactions. No endless rotating reviewer campaign.
+
+Before broad tests, pair each decisive assertion with a legal nonempty control and
+one plausible wrong interpretation. A failure must hit the intended assertion,
+not compilation, timeout, wrong version or unavailable assets. Restore and rebuild
+mutants before gates. References must reject empty/type-only input, bad expected
+answers and incomplete execution; echoing expected values must fail the contract.
+One compact acceptance table and ledger serve the whole package; no duplicate
+framework is requested.
+
+### B0 — safe adoption and baseline inventory
+
+1. Record source/status, original-module hashes, current host CPU/RAM/free disk,
+   tools, competing builds and existing admission settings. Use calibrated
+   concurrency where available, leaving the other Mac executor's capacity alone.
+   Keep admission enabled; stop only exact PIDs you own, never pattern kills.
+2. Inventory existing monetary effects, requested-versus-delivered billing,
+   counter widths/saturation, save_billed_goods behavior, timestamps, statistics,
+   cost contributions and import defaults. Identify which fields are authoritative
+   and which can be reconstructed. Trace the actual current calls, not old paths.
+3. Run cheap canonical preflight and the existing booking-reference tests; retain
+   outcome and source. Do not repeat the full original sailing/corpus gate here.
+4. Write the B1–B7 acceptance/dependency table. Explicitly identify which current
+   resident/city classes and lifecycle paths can participate in the first slice.
+
+**Exit:** clean successor baseline, reviewed scope and no duplicate ownership or
+identity. Baseline failures are preserved and isolated, not silently fixed outside
+scope or labelled pre-existing without verification.
+
+### B1 — close the original contract in four bounded subunits
+
+**B1a Inputs:** verify scenario/link climate and tax-index mapping, price and
+surcharge readers, ordered Preis/PreisLevel/Bonus/Malus semantics, billed goods
+selection and units. Distinguish requested purchase from actual delivery and
+returns; do not replace the original's bill definition with an intuitive sales
+model. Current stall requested-vs-delivered, Inn clipped billing and service-only
+billing differ: distinguish these with hand-derived examples. Audit both direct
+bill overflow faults and BilledDelta merge saturation; a helper-level fix cannot
+silently change accepted resident semantics. Resolve imported stamps/statistics and original versus modern saved bills.
+
+**B1b Lifecycle:** trace the type-cost/stat-kind getter and create/load,
+active/inactive switch, queued upgrade/downgrade, removal, owner/city reassignment
+and failed/duplicate transitions. List actual engine entry points, not just one
+helper. Prove city contributions never flow into Player::upkeep_a/upkeep_b.
+Classify missing engine transitions as unsupported, not silently implemented.
+
+**B1c Arithmetic policy for this opt-in slice:** retain the original-wrap oracle
+as research, but implement checked widened arithmetic with no UB, silent wrap,
+clamp or invented rounding. Match the original within its documented nonoverflow
+domain; preserve measured word-timestamp semantics, sum-before-rounding, city
+upkeep's lack of remainder, and existing player upkeep's separate remainder.
+Specify supported signedness at every stage. Invalid dimensions/unknown climate/
+unsupported final price domains fail validation transactionally. Effective prices
+for this slice are nonnegative; ordered Malus remains legal if its resolved price
+is valid. Preserve supported negative player balances rather than clamping to zero.
+Check gross income credit and upkeep debit in the verified original order,
+including each intermediate balance; do not net the two to hide an intermediate
+overflow. Preflight that ordered calculation before committing any of it.
+An overflow or invalid booking input produces an explicit deterministic fault
+before that booking's money, bills, statistics or stamp change. It does not roll
+back unrelated earlier simulation activity. Describe observable failure and retry
+behavior; no command that always refuses counts as implementation. If original
+shipped data needs a different domain or a gameplay choice changes beyond these
+explicit opt-in safeguards, stop that dependency and present exact evidence.
+
+**B1d Order:** draw the actual city-worker/effect/booking/player schedule. Establish
+whether the current visit sees newly queued bills and cost changes. Include two
+cities sharing one owner so independent effects cannot each pass a balance check
+then overflow when merged. Cover two cities on one island sharing an effect
+buffer and cities on different islands owned by one player. Include the actual
+figure/purchase phase after islands. Specify read-your-own effects and deterministic
+fault handling at the actual merge boundary; earlier house/script faults must
+prevent later booking mutation. Preflight money at commit time, accounting for
+other queued effects, so neither a bill reset nor a partial debit escapes a fault. Reject or correctly support booking with
+save_billed_goods=false; do not allow reload to erase pending income.
+
+**Exit:** independent contract approval with every implementation-critical rule
+resolved. Available static reads are work to finish, not external blockers. Do not
+use a guessed rule or arbitrary faithful-looking fallback to escape a dependency.
+
+### B2 — references, fixtures and adversarial controls before C++
+
+1. Extend independent reference inputs to resolved prices, real billing units,
+   stamps, statistics and both accounting owners. Keep original-wrap and modern
+   checked results explicitly distinct. Commit hand-derived vectors before engine.
+2. Cover 1999/2000 ticks, zero/repeated visit, word wrap, long delay without an
+   invented catch-up loop, rounding below/at/above a half, sum-before-rounding,
+   duplicate/reset price directives, extra/missing columns, non-original ids,
+   maximum supported products and money near both i64 bounds. Include cases where
+   the final net fits but an intermediate gross credit/debit does not. At the
+   production scheduler, test the smallest supported positive Advance/elapsed
+   interval (including milliseconds-to-ticks accumulation), zero elapsed time,
+   and partitioned delays with retained surplus. Test the supported
+   interval domain and split delays; do not promise partition invariance where
+   the original visit contract intentionally lacks it.
+3. Pin city cost28 -> charge1 versus player cost14 + remainder1 -> charge1,
+   including repeated ticks and fifteen city visits at cost14 without a remainder.
+   Pin the actual saturation/requested-bill policy and no double booking after
+   return, retry or reload. Add lifecycle vectors from B1b.
+4. Register public reference/CLI contracts in CTest and require them in gates.
+   Use targeted width/order/double-charge/reset-before-fault mutants, with legal
+   controls. Pending engine coverage is explicit, never a passing placeholder.
+
+**Exit:** reviewed independent examples and references that detect the intended
+mistakes. Original modules remain read-only and are never committed.
+
+### B3 — validated facts, state and identity
+
+1. Extend existing goods metadata and registry digest for verified price roles.
+   Reuse WorldSettings::prop10, Island::climate, BuildingType::running_cost and
+   City::billed where appropriate; do not create competing copies. Collections
+   and role mappings are data-sized, with original defaults and explicit limits.
+2. Add only necessary authoritative stamp/stat/cost state and hashed opt-in rules.
+   Decide reconstruction versus persistence from B1 and validate both. Do not
+   narrow accepted u32 bills to the original u16 or reset imported debt silently.
+3. Adopt the reserved133/ECONBK1 identity consistently in native/replay guards,
+   independent byte oracle and current fixtures. Keep actual132 saves/logs with
+   provenance and test refusal at the intended boundary. Do not relabel old logs.
+   Independently hand-pin a populated booking state, not only a version byte.
+4. Test alternate goods, more than original price/role counts and a second
+   data-defined producer/service with no C++ id-list change. Invalid registry
+   construction leaves the existing world untouched and names the invalid field.
+
+**Exit:** reviewed parsing/state/identity, legal round-trip, distinct malformed
+input and old-version controls. A changed hash alone is not proof of correctness.
+
+### B4 — production booking and complete supported lifecycle
+
+1. Implement a pure checked booking calculation and connect it through the normal
+   deterministic scheduler/effect path. Reuse resident billing; do not add a
+   second purchase credit. A before-booking bill books once; an after-booking bill
+   stays pending. Default-off behavior preserves the established gameplay values.
+2. Maintain city cost contributions on all supported B1b transitions, updating
+   once on success and not on refused/duplicate actions. Handle house replacement,
+   destruction and loaded cities; no all-building scan on every booking visit.
+   An import/load reconstruction is allowed outside the hot path and must match
+   independently computed totals. Do not implement new ownership commands solely
+   for a test; validate existing reassignment paths or retain explicit Unsupported.
+3. Prove the city/player split, several cities per owner, different owners,
+   removal between purchase and booking, fault/retry, negative balance and exact
+   cleanup. Compare default-off behavior semantically against132 where version
+   bytes differ. Include both relevant house rule settings.
+4. Check the fault at the actual production boundary, including the last city
+   causing combined money overflow. Preserve counters and stamps as contracted;
+   a helper-only overflow test is insufficient.
+
+**Exit:** independently reviewed engine implementation and focused Debug/ASan
+checks, intended accounting mutants killed, no duplicate charge or dropped bill.
+
+### B5 — actual economic loop, shortage/recovery and replay
+
+1. Choose a cheap supported original-data path before a long run. Prefer the
+   accepted Tutorial supply/purchase case. If its full actor/script import is
+   unsupported, label an existing explicit component projection and separately
+   test normal-loader refusal; never silently drop actors or disable permissions.
+2. Use original goods, prices and costs. Assert newly produced goods reach several
+   households, accrue bills and generate positive income, while nonzero building
+   upkeep debits the correct owner. Assert each ledger term and zero unexplained
+   residual; do not count starting stock as new production. No test-only grant,
+   bill write, teleport, price override or funded fake purchase in the real arm.
+   Synthetic boundary fixtures may use labelled setup separately.
+3. Interrupt and restore the chain through supported public commands within the
+   authored resources. Show reduced/stopped relevant sales, cost change where
+   traced, and recovery. Prove a second owner's treasury and an unrelated city's
+   bill/cost state stay isolated. A synthetic two-owner proof complements, rather
+   than replaces, the actual-data loop if the selected original town has one owner.
+4. Reload before booking, after booking, during a resident trip and after a
+   lifecycle change; compare uninterrupted exact state/events/draws. Record and
+   replay in a fresh process using retained artifacts. A changed **legal public
+   command** must diverge at its causal checkpoint; a malformed/version-rejected
+   recording is not that negative control.
+5. Report inherited inventory, missing supplies and net profit/loss honestly.
+   No full ship voyage is required for this city-accounting slice. If the original
+   resources cannot support the chosen recovery, retain the exact failed budget
+   and select another supported original setup without changing the rules.
+
+**Exit:** reviewed real income/upkeep loop with exact ledger, isolation, native
+continuation and genuine/tampered replay. It need not be profitable or balanced.
+
+### B6 — bounded scaling and consumer contract
+
+1. Measure booking/lifecycle work as active cities and goods increase, and as
+   unrelated figures/buildings increase. Pin operation counts where feasible;
+   compare wall-time separately using a modest Release workload with fixed seed,
+   manifests and raw samples. No synthetic stand-in may be labelled a large
+   multiplayer or complex-economy performance pass.
+2. Use at least three workload sizes, prove fixture legality/nonempty bookings
+   and report host contention and memory. A city's visit may scale with its
+   configured goods; it must not repeatedly scan the world's unrelated buildings.
+   Fix an introduced accidental global scan within this scope, not the scheduler
+   or renderer at large. Avoid brittle machine-specific latency assertions.
+3. Document Windows-facing data/events/refusals, configuration, state identity
+   and future UI observability. Expose typed diagnostic outcomes through existing
+   mechanisms; no debug-only money mutation or unversioned mod hook. No new mod
+   SDK is requested; data-defined roles and serializable rules are the seam.
+
+**Exit:** measured local cost behavior, generic configuration proof and a precise
+consumer delta. Windows remains responsible for its target-host/UI integration.
+
+### B7 — frozen gates, final independent integration review, stop
+
+1. Close all package findings, freeze source and exact required contracts, then
+   run the canonical runner with explicit source/build paths and build target.
+   Gates: affected Debug and ASan/UBSan, full relevant sim/formats/replay/reference
+   coverage for the actual diff, the real loop once per justified configuration,
+   formatter and lint. Include player-upkeep, resident/lifecycle, script permission
+   and native/replay compatibility regressions; no GPU matrix on this Mac.
+2. Preflight and cheap focused controls precede broad work. Anchor selectors,
+   inspect inventory and classify skips. Set original game directory. Serialize
+   expensive own gates; no edits during frozen runs. Give a timeout from measured
+   cost and admission behavior, not repeated blind escalation. Reuse unrelated
+   sailing/render/corpus results with exact dependency justification. State which
+   full-suite or target-host lanes were not run instead of implying completion.
+3. A fresh independent reviewer checks package interactions, primary contract
+   boundaries, real ledger/replay, clean-source identities, reference semantics,
+   default-off preservation and the consumer delta. Correct actionable findings
+   and rerun only affected checks; source changes need corresponding evidence.
+4. Commit the final report in `docs/orchestration/REPORTS.md` and one consolidated
+   handoff. Include acceptance table, reviewer pins, selected/executed/failed/
+   empty/skipped/incomplete counts, raw hashes/paths, preserved first failures,
+   original versus adapted rules and all NOT_RUN limits. Do not edit TASKS.md.
+
+**Final stop:** B0–B7 independently approved, opt-in booking/upkeep works through
+production paths with checked ledger and replay, clean committed local candidate,
+no owned jobs left running. Report once to the orchestrator. No main push, default
+flip, unrequested follow-on feature, or claim that live Windows gameplay is done.
+A genuine unresolved primary predicate blocks only its dependent subtask: finish
+independent packages, identify the exact missing function/input/decision, and
+report partial completion honestly rather than manufacture a full-pass label.
+**Dispatch review:** `/root/review_consolidation_plan` independently approved this
+B0–B7 assignment on 2026-11-06 after the ordered-intermediate-overflow and
+smallest-positive-interval requirements were made explicit. This approves the
+work packet, not its unfinished research, implementation or future gates.
+<!-- END ECON-BOOK-1-MAIN -->
+
+## Other lane dispatches and completed integration history — 2026-11-05
 
 <!-- BEGIN MAP-NEEDS-2 DISPATCH -->
 **First Mac: MAP-NEEDS-2 is READY / RELEASED.** MAP-SUPPLY-1 and CLOSE are accepted
@@ -120,7 +442,7 @@ adaptation unsupported by evidence requires an explicit decision; reviewers do
 not authorize it. Continue independent work while the affected part is blocked.
 No merge/rebase/push, TASKS edits, other-executor imports, coordinator work, map
 installation, resource grants to the real canary or default house_updates flip.
-The first Mac owns MAP-SUPPLY-1; the orchestrator owns ECON-BOOK-1. Do not edit,
+Historical scope: the first Mac owned MAP-SUPPLY-1; ECON-BOOK-1 was orchestrator-owned (transferred to the second Mac by the 2026-11-06 packet above). Do not edit,
 build or stop anything in their checkouts. Windows keeps its assigned inputs.
 
 ### Read before implementation
@@ -390,7 +712,7 @@ assignment is [MAP-NEEDS-2, N0–N7](tasks/map-needs-2.md) at the dispatch above
 Ship-founded alcohol feasibility, balanced economies and target-host acceptance
 remain open. Do not restart supply work or merge main to obtain the new packet.
 
-**ECON-BOOK-1 belongs to the orchestrator and its delegated research agent**, in
+**Historical ECON-BOOK-1 ownership (superseded on 2026-11-06 by the second-Mac packet above):** research was owned by the orchestrator and its delegated agent, in
 `orchestrator-economy-booking` / `task/ECON-BOOK-1`. Resident sales, tax/price mapping,
 booking and upkeep are excluded from MAP-SUPPLY-1. Its arithmetic component at
 `a47a169a` has 13 passing research tests and eight targeted negative controls;
@@ -407,7 +729,7 @@ maps availability/startup budget, renewable cloth/leather, salt extraction,
 ship-start town integration, construction supplies, second-island resupply and
 citizen progression. Original data and implementation gaps have been checked.
 The released cloth/leather packet is linked above. Other queued bundles need
-their own dispatch and accepted base; ECON-BOOK-1 remains separately owned.
+their own dispatch and accepted base; ECON-BOOK-1 is now released separately to the second Mac by the 2026-11-06 packet above.
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub

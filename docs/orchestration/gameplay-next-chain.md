@@ -1,3 +1,8 @@
+**Dispatch update, 2026-11-06:** second Mac ECON-BOOK-1 B0–B7 is now released on
+consolidated main through TASKS.md. First Mac retains MAP-NEEDS-2. The remaining
+queue below stays planning only; canonical baseline is state132, not the older
+identities in historical planning paragraphs.
+
 **Dispatch update, 2026-11-05:** MAP-SUPPLY-1/CLOSE is accepted within its
 headless scope. MAP-NEEDS-2 alone is now released through
 [tasks/map-needs-2.md](tasks/map-needs-2.md), starting at local `67158af4`.

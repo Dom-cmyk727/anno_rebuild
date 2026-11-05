@@ -1584,7 +1584,7 @@ TEST_CASE("registry digest changes with every field") {
     // stable" pins the synthetic digest 0x96fbf9c80cb07372 (stream 128: + the empty stage table),
     // unchanged by T27). T33.2 adds un-hashed walk_mask input; header/digest changes belong to
     // T33.4.
-    static_assert(sim::field_count<sim::BuildingType>() == 24);
+    static_assert(sim::field_count<sim::BuildingType>() == 25);
     static_assert(sim::field_count<sim::ProductionType>() == 18);
     sim::BuildingType base;
     base.id = sim::TypeId{10};

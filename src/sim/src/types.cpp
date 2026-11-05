@@ -22,6 +22,7 @@
 #include <anno/sim/archive.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/field_count.hpp>
+#include <anno/sim/goods_metadata.hpp>
 #include <anno/sim/house_transition.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/walk_cells.hpp>
@@ -144,7 +145,8 @@ std::optional<std::uint32_t> number_of(const Table& table, std::string_view name
 }
 
 formats::Result<BuildingType, std::string>
-type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const SimConfig& cfg) {
+type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const SimConfig& cfg,
+                const BuildAvailabilityProfile& availability) {
     const std::string who = "entry " + std::to_string(e.id) + ": ";
     const auto head = e.record("HEAD");
     if (!head) {
@@ -216,6 +218,28 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
         return who + "unknown FORSCHTYPE '" + research + "'";
     }
     t.research_id = *research_id;
+    // Original known repetitions overwrite; strict content validation is an adaptation.
+    bool has_stage = false;
+    for (const auto& record : e.records) {
+        if (record.name() != "INFRAMIN") {
+            continue;
+        }
+        if (has_stage) {
+            return who + "repeated INFRAMIN";
+        }
+        has_stage = true;
+        const auto& bytes = record.payload;
+        const auto end = std::find(bytes.begin(), bytes.end(), std::uint8_t{0});
+        if (end == bytes.end() || std::any_of(end, bytes.end(), [](auto x) { return x != 0; })) {
+            return who + "INFRAMIN must be one NUL-terminated stage name";
+        }
+        const std::string name(bytes.begin(), end);
+        const auto stage = stage_index_of(name);
+        if (!stage) {
+            return who + "unknown INFRAMIN '" + name + "'";
+        }
+        t.construction.stage = *stage;
+    }
     auto resolve = [&](const char* record, std::vector<GoodsId>& out) -> std::string {
         const auto bytes = e.record(record);
         if (!bytes) {
@@ -237,6 +261,28 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
     if (std::string problem = resolve("ROHSTOFF", t.input_goods); !problem.empty()) {
         return problem;
     }
+    if (t.construction.stage == 31) {
+        if (!t.output_goods.empty() &&
+            std::find(availability.research_outputs.begin(), availability.research_outputs.end(),
+                      t.output_goods[0]) != availability.research_outputs.end()) {
+            t.construction.research_any.push_back(goods[t.output_goods[0]].forsch);
+            if (t.output_goods.size() > 1 && t.output_goods[1] != 0) {
+                t.construction.research_any.push_back(goods[t.output_goods[1]].forsch);
+            }
+        }
+        // Id0 is meaningful to the original research-state bit test, too.
+        t.construction.research_any.push_back(t.research_id);
+    }
+    for (const auto& extra : availability.extra_research) {
+        if (extra.type == t.id) {
+            t.construction.research_any.insert(t.construction.research_any.end(),
+                                               extra.research.begin(), extra.research.end());
+        }
+    }
+    std::sort(t.construction.research_any.begin(), t.construction.research_any.end());
+    t.construction.research_any.erase(
+        std::unique(t.construction.research_any.begin(), t.construction.research_any.end()),
+        t.construction.research_any.end());
     if (!t.output_goods.empty()) {
         t.service_mask = service_mask_for_goods(t.output_goods[0]);
     }
@@ -265,7 +311,7 @@ static_assert(field_count<ProductionType>() == 18,
               "a ProductionType member needs a line in digest_production");
 // T33.2: walk_class is derived; walk_mask is a side input until T33.4.
 // digest_type skips both, preserving every existing digest byte. (cls is hashed.)
-static_assert(field_count<BuildingType>() == 24,
+static_assert(field_count<BuildingType>() == 25,
               "a BuildingType member needs a line in digest_type (walk_class derived; walk_mask "
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
@@ -405,6 +451,21 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(r.wissen);
         a.u32(r.count);
     });
+    const auto nondefault = [](const BuildingType& t) {
+        return t.construction.stage != 0 || !t.construction.research_any.empty();
+    };
+    if (std::any_of(types.begin(), types.end(), nondefault)) {
+        a.u32(0x31415642U); // little-endian "BVA1", registry extension, not state layout
+        a.u64(static_cast<std::uint64_t>(std::count_if(types.begin(), types.end(), nondefault)));
+        for (const auto& t : types) {
+            if (!nondefault(t)) {
+                continue;
+            }
+            a.u32(t.id.v);
+            a.u32(t.construction.stage);
+            ar::seq(a, t.construction.research_any, 4, [&](auto r) { a.u32(r); });
+        }
+    }
     return a.finish();
 }
 
@@ -633,6 +694,15 @@ std::string check_against_config(std::span<const BuildingType> types, const SimC
     const std::uint64_t goods_end = std::uint64_t{cfg.build_goods_first} + cfg.build_goods_count;
     for (const BuildingType& t : types) {
         const std::string who = "type " + std::to_string(t.id.v) + ": ";
+        if (t.construction.stage >= kStageIndexCount) {
+            return "entry " + std::to_string(t.id.v) + ": construction stage is outside 0..31";
+        }
+        for (const auto research : t.construction.research_any) {
+            if (research >= cfg.research_entries) {
+                return "entry " + std::to_string(t.id.v) + ": construction research id " +
+                       std::to_string(research) + " is outside research_entries";
+            }
+        }
         // Every bit of a public-need mask is a counter of BuildingIndex
         // (SimConfig::service_bits of them).
         if (cfg.service_bits < 32 && (t.service_mask >> cfg.service_bits) != 0) {
@@ -696,9 +766,9 @@ std::string check_consistency(std::span<const BuildingType> types,
             return who + "class " + std::to_string(index) + " is outside the class table";
         }
         if (t.cls == RuntimeClass::Inn && t.has_prod) {
-            // MAP-POP-CLOSE-2 K1 (population.md 18 (g)): the base priority 0x10072870 divides by the
-            // input per step (+0xe4(i)), which traps in the original at 0. A typed refusal here, so
-            // no running Inn can meet a zero divisor.
+            // MAP-POP-CLOSE-2 K1 (population.md 18 (g)): the base priority 0x10072870 divides by
+            // the input per step (+0xe4(i)), which traps in the original at 0. A typed refusal
+            // here, so no running Inn can meet a zero divisor.
             for (std::size_t i = 0; i < t.input_goods.size(); ++i) {
                 const std::uint32_t need =
                     i < t.prod.input_per_step.size() ? t.prod.input_per_step[i] : 0;
@@ -985,13 +1055,11 @@ std::string goods_metadata_problem(std::span<const GoodsInfo> goods) {
 
 } // namespace
 
-formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
-TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
-                     std::vector<ClassInfo> classes, const SimConfig& cfg,
-                     std::vector<FigureType> figures,
-                     std::shared_ptr<const formats::annowelt::WalkTables> tables,
-                     std::vector<HouseGroup> groups, std::vector<StageRecord> stages,
-                     bool declare_irregular_successors) {
+formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::finish(
+    std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
+    std::vector<ClassInfo> classes, const SimConfig& cfg, std::vector<FigureType> figures,
+    std::shared_ptr<const formats::annowelt::WalkTables> tables, std::vector<HouseGroup> groups,
+    std::vector<StageRecord> stages, bool declare_irregular_successors) {
     for (std::size_t i = 0; i < stages.size(); ++i) {
         // The stage mask is 32 bits wide (Player::flags / City::stage_mask: a stage index is a
         // shift count); the table is ascending and unique; a group beyond the group table is a
@@ -1035,11 +1103,11 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
             if (t.cls != RuntimeClass::House || cfg.house_type_stride == 0) {
                 continue;
             }
-            const std::uint64_t next_id = t.id.v - t.id.v % cfg.house_type_stride +
-                                          std::uint64_t{cfg.house_type_stride};
-            const auto it = std::lower_bound(
-                types.begin(), types.end(), next_id,
-                [](const BuildingType& a, std::uint64_t v) { return a.id.v < v; });
+            const std::uint64_t next_id =
+                t.id.v - t.id.v % cfg.house_type_stride + std::uint64_t{cfg.house_type_stride};
+            const auto it =
+                std::lower_bound(types.begin(), types.end(), next_id,
+                                 [](const BuildingType& a, std::uint64_t v) { return a.id.v < v; });
             if (it != types.end() && it->id.v == next_id &&
                 !house_successor_is_regular(cfg, t, *it)) {
                 t.special_successor = true;
@@ -1190,7 +1258,7 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
     std::vector<BuildingType> types;
     types.reserve(entries.size());
     for (const fig::Entry& e : entries) {
-        auto t = type_from_entry(e, goods_in, cfg);
+        auto t = type_from_entry(e, goods_in, cfg, {});
         if (!t) {
             return t.error();
         }
@@ -1204,11 +1272,30 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
                     const SimConfig& cfg, std::span<const fig::Entry> figure_entries,
                     std::shared_ptr<const formats::annowelt::WalkTables> tables,
                     std::vector<HouseGroup> groups, std::vector<StageRecord> stages,
-                    bool declare_irregular_successors) {
+                    bool declare_irregular_successors,
+                    const BuildAvailabilityProfile& availability) {
+    for (const auto g : availability.research_outputs) {
+        if (g >= goods_in.size()) {
+            return std::string("availability profile: unknown output goods ") + std::to_string(g);
+        }
+    }
+    std::vector<TypeId> extra_types;
+    for (const auto& extra : availability.extra_research) {
+        if (std::find(extra_types.begin(), extra_types.end(), extra.type) != extra_types.end()) {
+            return std::string("availability profile: repeated type ") +
+                   std::to_string(extra.type.v);
+        }
+        extra_types.push_back(extra.type);
+        if (std::none_of(entries.begin(), entries.end(),
+                         [&](const auto& e) { return e.id == extra.type.v; })) {
+            return std::string("availability profile: unknown type ") +
+                   std::to_string(extra.type.v);
+        }
+    }
     std::vector<BuildingType> types;
     types.reserve(entries.size());
     for (const fig::Entry& e : entries) {
-        auto t = type_from_entry(e, goods_in, cfg);
+        auto t = type_from_entry(e, goods_in, cfg, availability);
         if (!t) {
             return t.error();
         }

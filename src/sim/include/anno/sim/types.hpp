@@ -246,7 +246,28 @@ inline constexpr std::int64_t kMaxHullHalf88 = std::int64_t{1} << 39;
 /// docs/re/production.md §2.3; P: 35 of the 921 types).
 inline constexpr std::uint32_t kRoadFlag = 0x4000;
 
+/// Immutable construction facts. Research ids are OR alternatives when the stage bit is absent.
+/// Original reader: docs/re/build-availability.md; extra alternatives belong to a content profile.
+struct BuildRequirement {
+    std::uint32_t stage = 0;
+    std::vector<std::uint32_t> research_any;
+};
+
+/// Content-adapter declarations, consumed at registry load, not live state or an engine allowlist.
+struct BuildResearchAlternatives {
+    TypeId type;
+    std::vector<std::uint32_t> research;
+};
+struct BuildAvailabilityProfile {
+    /// Only stage31, and only when output0 is in this set, considers output0/1 goods research.
+    std::vector<GoodsId> research_outputs;
+    /// Additional research ORs independent of the stage, e.g. the original large shipyard.
+    std::vector<BuildResearchAlternatives> extra_research;
+};
+
 struct BuildingType {
+    BuildRequirement construction;
+
     TypeId id;
     /// MAP-POP-CLOSE-1 C3 (P-14 replacement): a House type whose id ladder successor
     /// (`id - id % stride + stride`) exists but is no House of the next group with the same
@@ -422,7 +443,8 @@ class TypeRegistry {
           const SimConfig& cfg, std::span<const formats::figuren::Entry> figure_entries,
           std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
           std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {},
-          bool declare_irregular_successors = false);
+          bool declare_irregular_successors = false,
+          const BuildAvailabilityProfile& availability = {});
 
     /// A registry without types (the original goods and class tables): what a
     /// default-constructed World holds. Shared, immutable.

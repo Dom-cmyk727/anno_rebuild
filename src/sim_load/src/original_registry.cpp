@@ -78,7 +78,10 @@ OriginalRegistryLoad load_original_registry(const fs::path& game_dir, FigureEntr
         anlagen.value().entries, goods, sim::SimConfig{}, figure_entries,
         std::make_shared<const formats::annowelt::WalkTables>(std::move(walk).value()),
         std::move(groups).value(), std::move(stages).value(),
-        /*declare_irregular_successors=*/true);
+        /*declare_irregular_successors=*/true,
+        // Original content declarations, not runtime id branches. Welt1001bb84..1001bc65.
+        sim::BuildAvailabilityProfile{{46, 47, 48, 49, 50, 51, 52, 53, 54, 55},
+                                      {{sim::TypeId{1021}, {35, 36}}}});
     if (!built) {
         out.error = built.error();
         return out;

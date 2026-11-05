@@ -63,3 +63,56 @@ Both preserved under cache/bootstrap/B0; corrected03 supersedes neither historic
 failure. No enforcement changed. Tests include original Inn1335 with masks1 and5
 and scenario import while locked. The baseline test remains a regression of the
 unchanged command until an authorized production scope is established.
+
+## B2 runtime facts and pure query
+
+`BuildingType::construction` stores stage u32 and a vector of research OR ids.
+INFRAMIN uses existing stage_index_of, defaults0; unknown, empty, nonterminated,
+trailing nonzero and repeated records fail with entry/name diagnostics. Original
+parser accepted unknown/repeated differently; strict validation is an adaptation.
+Stage values must fit the existing32-bit player mask; research ids must fit the
+world research table, revalidated against each world's config. Runtime type/goods
+ids remain widened; the original parser's32-stage scan is not an id-count cap.
+
+Stage31 research candidates are derived once from a content-adapter profile:
+if output0 belongs to declared research_outputs, include its goods Forsch and
+(nonzero) output1's Forsch; then type FORSCHTYPE, including id0. Extra declared
+research ORs are independent of stage. The original loader declares original
+output ids46..55 and type1021 alternatives35/36. The generic sim query contains
+no original building-id branch. Alternate content can declare other output ids
+and other type ids through the same profile. Generic TypeRegistry::build callers
+that need these profile-specific exceptions must explicitly supply that profile;
+the production original_registry adapter does so.
+
+`build_eligibility(types, players, owner, type, permission_context)` is pure and
+allocation-free. Typed outcomes: Allowed, UnknownPlayer, UnknownType,
+InvalidPermissions, ScenarioDenied, StageLocked, ResearchRequired. Context owns
+an ascending unique type/byte-value span and names its player; wrong owner,
+unknown type, duplicate rows or values above255 are errors. An explicit override
+precedes mask and research; its raw truthy byte is retained. A missing override
+context means an explicitly empty set, not proof scripts had no restrictions.
+A successful query says nothing about terrain, payment or command authority.
+
+No production BuildCmd integration is present: owner explicitly requested the
+scenario-permission contract first. No new menu, state permission table or script
+interpreter is introduced. Founding, imports and automatic transitions are
+untouched. Atomic/live availability enforcement and stale-preview refusal are
+BLOCKED/NOT_IMPLEMENTED, never counted as proved by this query.
+
+## Identity
+
+No persisted field or PRNG draw changed: stream128 and timeline5 stay published
+and unchanged. Behavior-relevant immutable facts extend registry identity, after
+the existing stage table: only if any nondefault facts exist, LE u32 0x31415642
+(bytes BVA1),u64 nondefault type count; ascending type rows u32 id,u32 stage,u64
+research count,then u32 research ids. Default stage0/no-alternatives adds no bytes,
+so existing synthetic golden/replay identities remain valid. Original registries
+change identity; old saves/recordings remain preserved at their old pins and are
+intentionally rejected when loaded with a changed registry. No unrelated golden
+is regenerated. The independent exact extension-byte test uses literal bytes
+for id90001/stage3 and extends the preexisting FNV value by hand.
+
+Focused B2 model-02 canonical gate: selected5,executed5,failed0,empty0,skipped0,
+incomplete0. model-01 build failure is retained (test Chunk payload incorrectly
+assumed owning instead of a span). Investigation model-build-01/02 failures
+retained; model-build-03 builds. Independent B2 review pending.

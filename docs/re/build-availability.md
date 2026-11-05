@@ -95,3 +95,11 @@ The inspected Frame mode6 path100589a0..10058a9e has no built-in stage check;
 it calls City::Build at10058a67 and Place10058a7f. Its external callback
 (this+0x124,100589f9..10058a20) remains unread, so this is not proof about every
 possible callback. Frame SHA256 dd3f36ff564d2685d10795272c4ed3c0b2da32a946c2883fb1158ff439249b91.
+
+Source-identity correction (review): AnnoScene SHA256
+`5b521f9541332846d32b57c93eaaee9c9d8de2ac2404cd75da0fe93e0e36fd38`;
+View SHA256 `e32fa8a5ff0f3f0b00ef05618daf8309c692daaa57316147eb6cb1f3637733a1`.
+B1 reviewer /root/review_original approved66223203 subject to those identities,
+now recorded. Its B0 symbol correction is also applied. The owner subsequently
+explicitly chose: keep production wiring blocked until scenario permissions have
+a separate implementation contract. This is the named B3 policy dependency.

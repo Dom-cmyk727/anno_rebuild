@@ -2,7 +2,7 @@
 # arithmetic in all state (docs/sim/core.md, docs/sim/state.md). Uses
 # anno_formats to read type data from the original files.
 add_library(anno_sim src/sim.cpp src/production.cpp src/config.cpp src/types.cpp
-            src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp
+            src/build_availability.cpp src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp
             src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp src/ship.cpp src/ship_step.cpp
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
             src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp

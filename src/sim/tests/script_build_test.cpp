@@ -157,3 +157,30 @@ TEST_CASE("SCRIPT1 missing context and unsupported program cannot authorize cons
     CHECK(refused.error().find("unsupported action") != std::string::npos);
     CHECK(w.state_hash() == hash);
 }
+
+TEST_CASE("SCRIPT1 staged world permission grants and timers commit or roll back together") {
+    for (auto budget : {1u, 2u}) {
+        const auto kernel = "INITBLOCK(){" +
+                            script_test::permission("ME", sim::TypeId{90001}, true) +
+                            "TIMER_SET(1,7);}";
+        auto f = script_test::make(false, kernel, {}, {.work = budget});
+        auto& w = f.world;
+        REQUIRE(w.players().find(sim::PlayerId{0})->permissions.empty());
+        const auto tick = w.advance(500);
+        const auto* p = w.players().find(sim::PlayerId{0});
+        if (budget == 1) {
+            CHECK(tick == 0);
+            CHECK(w.faulted());
+            CHECK(p->permissions.empty());
+            CHECK(p->flags == 1);
+            CHECK(w.timers().counter[1] == 0);
+        } else {
+            CHECK(tick == 250);
+            CHECK_FALSE(w.faulted());
+            REQUIRE(p->permissions.size() == 1);
+            CHECK(p->permissions[0].value == 1);
+            CHECK(p->flags == 9);
+            CHECK(w.timers().counter[1] == 3500);
+        }
+    }
+}

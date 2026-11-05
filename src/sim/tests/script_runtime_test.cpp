@@ -38,6 +38,13 @@ TEST_CASE("SCRIPT1 native header and empty runtime have hand written bytes") {
     const std::vector<std::uint8_t> expected_header{129,  0,    0,    0, 0x53, 0x43, 0x52, 0x49,
                                                     0x50, 0x54, 0x31, 0, 5,    0,    0,    0};
     CHECK(header.data() == expected_header);
+    auto wrong = expected_header;
+    wrong[4] ^= 1;
+    ReadArchive reader(wrong);
+    StateHeader other;
+    fields(reader, other);
+    REQUIRE(reader.failed());
+    CHECK(reader.error().find("script state schema differs") != std::string::npos);
     ScriptRuntime r;
     r.state.context = ScriptContext::ExplicitNone;
     WriteArchive out;

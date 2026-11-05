@@ -96,17 +96,18 @@ TEST_CASE("SCRIPT1 INIT restoration cursor and same visit writes") {
 }
 TEST_CASE("SCRIPT1 compiler refuses whole unsupported and forward symbols") {
     auto p = compile(
-        source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",90001,TRUE); PLAYWAVE(\"x\"); }", {},
-               "\"ME\" 0\n"));
+        source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",\"90001\",TRUE); PLAYWAVE(\"x\"); }",
+               {}, "\"ME\" 0\n"));
     REQUIRE_FALSE(p);
     CHECK(p.error().message == "unsupported action: PLAYWAVE");
     CHECK_FALSE(compile(source("IF LATER THEN {}\nSET LATER = FALSE;\n")));
     CHECK_FALSE(compile(source("SET Foo = TRUE;\nIF FOO THEN {}\n")));
     CHECK(compile(source("SET Foo = TRUE;\nSET FOO = FALSE;\nIF Foo THEN {}\n")));
-    CHECK(compile(source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"foo@x\",90001,TRUE); }", {},
+    CHECK(compile(source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"foo@x\",\"90001\",TRUE); }", {},
                          "\"Foo\" 0\n")));
-    CHECK_FALSE(compile(source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"foo@x\",90001,TRUE); }",
-                               {}, "\"Foo@x\" 0\n")));
+    CHECK_FALSE(
+        compile(source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"foo@x\",\"90001\",TRUE); }", {},
+                       "\"Foo@x\" 0\n")));
 }
 TEST_CASE("SCRIPT1 budget and host faults roll back entire visit") {
     auto p = compile(source("SET X = FALSE;\nINITBLOCK(){ X = TRUE; TIMER_SET(1,7); X = FALSE; }"),
@@ -163,9 +164,9 @@ TEST_CASE("SCRIPT1 grammar folds keywords but builtins precede exact signals") {
 }
 
 TEST_CASE("SCRIPT1 host refusal on last unit is Host and failed begin rolls back") {
-    auto p = compile(
-        source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",90001,TRUE); }", {}, "\"ME\" 0\n"),
-        {.work = 1});
+    auto p = compile(source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",\"90001\",TRUE); }", {},
+                            "\"ME\" 0\n"),
+                     {.work = 1});
     REQUIRE(p);
     auto s = make_script_state(p.value());
     s.bindings = {PlayerId{0}};
@@ -192,4 +193,20 @@ TEST_CASE("SCRIPT1 timer-like signal names remain exact symbols") {
     Host h;
     REQUIRE(visit_script(p.value(), s, 250, h));
     CHECK(s.signals[3] == 1);
+}
+
+TEST_CASE("SCRIPT1 original quoted type ids validate against widened content ids") {
+    const std::array types{TypeId{3000000000u}};
+    auto p = compile_script(
+        source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",\"3000000000\",TRUE); }", {},
+               "\"ME\" 0\n"),
+        {types, 32, 5});
+    REQUIRE(p);
+    CHECK(p.value().init[0].type.v == 3000000000u);
+    auto bare = compile(
+        source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",90001,TRUE); }", {}, "\"ME\" 0\n"));
+    REQUIRE_FALSE(bare);
+    CHECK(bare.error().message == "expected quoted type id");
+    CHECK_FALSE(compile(source(
+        "INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",\"90001junk\",TRUE); }", {}, "\"ME\" 0\n")));
 }

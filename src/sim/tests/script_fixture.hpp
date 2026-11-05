@@ -14,16 +14,19 @@ inline std::string source(std::string kernel) {
            kernel + "\n[SIGNALS]\n[CAMARAPOS]\n0,0\n";
 }
 inline std::string permission(std::string owner, sim::TypeId id, bool value) {
-    return "SETCONSTRUCTION_DRAWSTATE(\"" + owner + "\"," + std::to_string(id.v) + "," +
+    return "SETCONSTRUCTION_DRAWSTATE(\"" + owner + "\",\"" + std::to_string(id.v) + "\"," +
            (value ? "TRUE" : "FALSE") + ");";
 }
 inline Fixture make(bool atomic = false, std::optional<std::string> kernel = {},
-                    sim::Seams seams = {}) {
+                    sim::Seams seams = {}, sim::ScriptLimits limits = {}) {
     auto types = command_test::build_types();
     sim::TypeRegistry::Builder builder;
     builder.walk_tables(types.registry->walk_tables());
-    for (const auto& t : types.registry->types())
+    for (auto t : types.registry->types()) {
+        if (t.id == types.road)
+            t.flags_word = 0x4000; // declared supported land-road facts
         builder.add(t);
+    }
     auto custom = *types.registry->find(types.weaver);
     custom.id = sim::TypeId{90001};
     custom.construction.stage = 3;
@@ -37,6 +40,7 @@ inline Fixture make(bool atomic = false, std::optional<std::string> kernel = {},
     // Explicitly stocked synthetic fixture, unrelated to unchanged ship-start cargo.
     for (auto& city : spec.islands[0].cities)
         (*city.stock)[43] = 20 * sim::kTon;
+    spec.script_limits = limits;
     spec.script_context = sim::ScriptContext::Pending;
     if (!kernel)
         kernel = "INITBLOCK(){" + permission("ME", types.weaver, false) +

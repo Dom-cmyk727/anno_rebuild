@@ -91,10 +91,11 @@ struct Compiler {
                 i.index = static_cast<std::uint32_t>(mapped - p.mappings.begin());
                 i.action = all ? ScriptAction::PermissionAll : ScriptAction::Permission;
                 if (!all) {
-                    if (c.args[1].kind != bb::ValueKind::Number)
-                        return fail(at, "expected type id");
-                    auto n = number(c.args[1].text, at);
-                    if (!n || *n < 0)
+                    if (c.args[1].kind != bb::ValueKind::String)
+                        return fail(at, "expected quoted type id");
+                    auto n = bb::to_integer(c.args[1].contents());
+                    if (!n || *n < 0 ||
+                        static_cast<std::uint64_t>(*n) >= std::numeric_limits<std::uint32_t>::max())
                         return fail(at, "invalid type id");
                     i.type = TypeId{static_cast<std::uint32_t>(*n)};
                     if (std::find(env.types.begin(), env.types.end(), i.type) == env.types.end())

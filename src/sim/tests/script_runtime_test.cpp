@@ -8,6 +8,7 @@
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
+#include <anno/sim_load/script_base.hpp>
 
 #include "world_access.hpp"
 using namespace anno::sim;
@@ -212,5 +213,40 @@ TEST_CASE("SCRIPT1 native restore refuses malformed continuation and unrelated b
         auto refused = World::load(w.save(), TypeRegistry::empty());
         REQUIRE_FALSE(refused);
         CHECK(refused.error().find("script") != std::string::npos);
+    }
+}
+TEST_CASE("SCRIPT1 generated adapter contract validates an inert base before clearing mappings") {
+    ScenarioSpec s;
+    s.script_context = ScriptContext::Pending;
+    s.script_source = "[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n\"ABSENT_NEUTRAL\" "
+                      "31\n[SCRIPT_KERNEL]\n[SIGNALS]\n[CAMARAPOS]\n0,0\n";
+    // Generated adapters will create other players; unused mappings must never be rebound.
+    REQUIRE(
+        anno::sim_load::make_generated_script_free(s, *TypeRegistry::empty(), SimConfig{}).empty());
+    CHECK(s.script_context == ScriptContext::ExplicitNone);
+    CHECK(s.script_source.empty());
+    for (const auto& kernel : {std::string("SET X=TRUE;"), std::string("INITBLOCK(){}"),
+                               std::string("IF SCHUETTIINITSIG THEN {}")}) {
+        ScenarioSpec bad;
+        bad.script_context = ScriptContext::Pending;
+        bad.script_source = text(kernel);
+        const auto before = bad.script_source;
+        CHECK_FALSE(
+            anno::sim_load::make_generated_script_free(bad, *TypeRegistry::empty(), SimConfig{})
+                .empty());
+        CHECK(bad.script_source == before);
+        CHECK(bad.script_context == ScriptContext::Pending);
+    }
+    for (const auto& source : {text("") + "[UNKNOWN]\n", std::string("malformed"),
+                               std::string("[OBJECT_DEFINE]\nOBJECT_FIGUR \"X\" "
+                                           "1\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n[SCRIPT_"
+                                           "KERNEL]\n[SIGNALS]\n[CAMARAPOS]\n0,0\n")}) {
+        ScenarioSpec bad;
+        bad.script_context = ScriptContext::Pending;
+        bad.script_source = source;
+        CHECK_FALSE(
+            anno::sim_load::make_generated_script_free(bad, *TypeRegistry::empty(), SimConfig{})
+                .empty());
+        CHECK(bad.script_source == source);
     }
 }

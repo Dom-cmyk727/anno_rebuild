@@ -289,6 +289,7 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
     c.p.source = std::move(source);
     c.p.limits = limits;
     const auto& a = ast.value();
+    c.p.kernel_empty = a.kernel.empty();
     for (const auto& section : a.sections)
         if (section.kind == bb::SectionKind::Unknown)
             c.fail(0, "unsupported section: " + section.name);

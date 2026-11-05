@@ -14,6 +14,7 @@
 #include <anno/sim/island_links.hpp>
 #include <anno/sim/scenario_formats.hpp>
 #include <anno/sim_load/scenario_load.hpp>
+#include <anno/sim_load/script_base.hpp>
 #include <anno/sim_load/ship_start.hpp>
 
 namespace anno::sim_load {
@@ -251,6 +252,8 @@ load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
         return "base: " + loaded.error();
     }
     sim::LoadedScenario out = std::move(loaded).value();
+    if (auto error = make_generated_script_free(out.spec, *types, config); !error.empty())
+        return "base: " + error;
     out.spec.settings.world_width = static_cast<std::uint32_t>(manifest.edge_w);
     out.spec.settings.world_height = static_cast<std::uint32_t>(manifest.edge_h);
     out.spec.seed = static_cast<std::uint32_t>(manifest.seed);

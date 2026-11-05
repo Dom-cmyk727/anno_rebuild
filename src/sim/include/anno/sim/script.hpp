@@ -69,6 +69,7 @@ struct ScriptProgram {
     std::vector<ScriptExpr> expressions;
     std::vector<ScriptInstruction> init;
     std::vector<ScriptIf> branches;
+    bool kernel_empty = true; // derived syntax fact; includes empty INIT/IF/SET presence
 };
 struct ScriptState {
     ScriptContext context = ScriptContext::Missing;

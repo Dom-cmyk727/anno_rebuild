@@ -45,10 +45,10 @@ and player permission rows are explicit state, not renderer/UI state.
 | S3 data-definedALL | HEADfolk/exclusion fields | original461types + customcontent | flags_word filter; hardcoded idlist | original/custom profile tests | APPROVED0b8f5bfe; integrated86abd3e1 |
 | S4 native identity | explicit stream/schema/program policy | exact newbytes; reload | old128/checksum-first false refusal | independent stream vectors | APPROVED86abd3e1 / review_integration |
 | S4 production boundary | proven script-beforeAdvance | recorder/unrecorded/replay same | canary-only runner; interval batching | publicsession tests | APPROVED86abd3e1 / review_integration |
-| S5 authoritative build | shared check_record | scriptallow -> exactdebit | stalequery; deny ignored; dryrun bypass | atomic/live negative controls | pending |
-| S5 path separation | create/found/house callers | later building import/founding | restrict every create_building | caller regressions | pending |
-| S6 real vs synthetic | all50 AST inventory | executed supported complete program | fragment claimed as fullscenario | capability inventory/canaries | pending |
-| S6 scale | deterministic counters/Release | moreplayers/types/statements | query city/figure rescan | modest benchmark | pending |
+| S5 authoritative build | shared check_record | scriptallow -> exactdebit | stalequery; deny ignored; dryrun bypass | atomic/live negative controls | APPROVED86abd3e1 / permission_semantics_review |
+| S5 path separation | create/found/house callers | later building import/founding | restrict every create_building | caller regressions | APPROVED86abd3e1; generated-loader correction pending |
+| S6 real vs synthetic | all50 AST inventory | executed supported complete program | fragment claimed as fullscenario | capability inventory/canaries | bounded proof APPROVEDdb13e91e / review_canaries; full original BLOCKED |
+| S6 scale | deterministic counters/Release | moreplayers/types/statements | query city/figure rescan | modest benchmark | APPROVEDdb13e91e; Release9da32085 |
 | S7 evidence | canonical runner + independent reviews | nonempty frozen-source gates | skipped/incomplete relabelled pass | retained raw logs/manifests | pending |
 
 ## S1 approved execution contract
@@ -311,3 +311,40 @@ Exact additional parsed dependencies for the six permission programs:
 - Scenes/0201SingleAddOn/single36.sze: actions LOST, PLAYVIDEO, PLAYWAVE, QUESTLOG_DRAW, QUESTLOG_SHOW, SHOWTEXT, WON; queries AREA:TOUCHED_BY_SHIP_FROM, AREA:TOUCHED_BY_SOLDIER_FROM, PLAYER:INHABITANTCOUNT, PLAYER:WAR_STATUS.
 
 - Scenes/0201SingleAddOn/single39.sze: actions ATTACK_AREA, FREEZE_CITY, GOTO_SCREEN, LOST, MONEY_ADD, QUESTLOG_DRAW, QUESTLOG_SHOW, SET_FOR_BUY, WON; queries AREA:TOUCHED_BY_SHIP_FROM, OBJECT:KILLED, PLAYER:SHIPCNT, PLAYER:WARECOUNT.
+
+## S7 first broader regression checkpoint
+
+S6 bounded proof APPROVED /root/review_canaries db13e91e after two P2 wrapper
+fixes. Corrected S7-focused01 PASS39/39, no failures/empty/skips/incomplete;
+required six-method wrapper contract separately passes. Distinct retained fresh
+producer60496 / worker60499 in fresh-lnb378t3. Full original S6 claim stays blocked.
+Release9da32085 scale gate1/1:8players/100types/64statements gives85eligible,
+150initwork,0idlework;128players/10000types/2000statements gives8571eligible,
+10572initwork,0idlework.250000queries take3921/11301microseconds on this Mac.
+Compiler-only offset/bytebuffer corrections do not alter measured hot code.
+
+Cheap workflow contracts: first direct attempt lacked PATHcmake (0methods,
+FileNotFoundError); corrected PATH run21methods passes (S7-workflow02). First
+lint records5findings: two fixed identity constants, pointer membership keys,
+byte reinterpretview. Stable source offsets and bounded byte buffers replace
+pointer/raw-view use; narrowly documented identity exceptions keep policy/schema
+constants distinct from gameplay limits. S7-lint02 passes.
+
+Frozen db13e91e S7-debug-core01 FAIL:1282selected/1210executedpasses/71failed/
+0empty/1opt-in skip/0incomplete, no sanitizer lines. Named long sailing/corpus/
+population matrices were excluded while identifying compatibility effects;
+this is not a complete broader gate. Original assets were present. Failures are
+retained, not waived: published128fixture/native-offset expectations need explicit
+SCRIPT1 treatment, generated-layout base contexts need normalization, and former
+original-data component tests need explicit scope under whole-program refusal.
+No tracked source changed during this gate; all workers finished naturally.
+
+Generated-loader correction contract reviewed read-only by review_integration:
+fixed-map and ship-start use bases only for settings/catalogues and replace their
+players/islands (ship-start figures too). Validate supplied scripts through the
+complete compiler and reject every nonempty kernel (including SET/empty INIT),
+unsupported definitions/sections or malformed syntax. Unused mapper metadata
+must not bind to generated players. Only these generated adapters may explicitly
+produce ExplicitNone and clear validated inert/missing base source; ordinary
+scenario Missing/Pending semantics are unchanged. Existing manifests, settings,
+loadout, player counts and resources remain unchanged. Code proof pending.

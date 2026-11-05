@@ -14,6 +14,7 @@
 #include <anno/sim/island_links.hpp>
 #include <anno/sim_load/fixed_map.hpp>
 #include <anno/sim_load/scenario_load.hpp>
+#include <anno/sim_load/script_base.hpp>
 
 namespace anno::sim_load {
 namespace {
@@ -115,6 +116,8 @@ load_fixed_map(const formats::fixed_map::FixedMap& map, std::span<const sim::Sea
         return "base: " + loaded.error();
     }
     sim::LoadedScenario out = std::move(loaded).value();
+    if (auto error = make_generated_script_free(out.spec, types, config); !error.empty())
+        return "base: " + error;
 
     std::optional<std::int64_t> human_money;
     for (const sim::ScenarioSpec::PlayerSpec& player : out.spec.players) {
@@ -129,7 +132,6 @@ load_fixed_map(const formats::fixed_map::FixedMap& map, std::span<const sim::Sea
         return std::string("base: no human player");
     }
 
-    out.spec.script_context = sim::ScriptContext::ExplicitNone;
     out.spec.settings.world_width = map.width;
     out.spec.settings.world_height = map.height;
     out.spec.seed = map.seed;

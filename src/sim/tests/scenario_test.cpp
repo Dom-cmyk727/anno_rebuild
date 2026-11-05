@@ -634,7 +634,9 @@ TEST_CASE(
     // The per-file counts against the committed expectations.
     if (update_requested()) {
         std::ofstream out(expectations_path(), std::ios::binary);
-        out << "# The scenario corpus through the S14 adapter (T23: with the cities): per file\n"
+        REQUIRE(out.good());
+        out << "# Original-data component corpus, full physical/movement run.\n"
+               "# The scenario corpus through the S14 adapter (T23: with the cities): per file\n"
                "# (relative to Scenes) the counts of the loaded ScenarioSpec, of its warnings per\n"
                "# kind, and the state hash after World::create (it moves with kStateHashVersion\n"
                "# and with what the adapter decodes). No content of the files. Rewritten by\n"
@@ -644,7 +646,9 @@ TEST_CASE(
         for (const std::string& l : lines) {
             out << l << "\n";
         }
-        MESSAGE("scenario_corpus.txt rewritten");
+        out.close();
+        REQUIRE(out.good());
+        MESSAGE("SCRIPT1 scenario_corpus.txt written and closed successfully");
         return;
     }
     std::string versions;

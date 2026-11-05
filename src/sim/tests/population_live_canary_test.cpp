@@ -1,7 +1,8 @@
 #include "original_component.hpp"
-// MAP-POP-LIVE-1 L5: the live House update on the ORIGINAL registry and an ORIGINAL scenario
-// (docs/sim/population-live.md section 20). Rules::house_updates on, no grants, no relocations, no
-// candidate rewrite, no synthetic fixture: only the loaded stocks and normal production.
+// MAP-POP-LIVE-1 L5 House mechanisms on original registry/data. Unsupported scripts
+// are explicitly refused then removed only in NEW test component fixtures (Missing context).
+// This is not full campaign execution. No stocks or placements are added; normal production
+// and unchanged semantic ledgers remain the oracle (docs/sim/population-live.md section20).
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -102,7 +103,8 @@ std::optional<Original> load_original() {
     return o;
 }
 
-sim::ScenarioSpec scenario_spec(const Original& o, const std::string& relative) {
+sim::ScenarioSpec scenario_spec(const Original& o, const std::string& relative,
+                                std::string* capability = nullptr) {
     auto resolved = anno::sim_load::load_scenario_with_links(
         anno::test::read_file(o.dir / "Scenes" / relative), o.templates, *o.types, o.cfg, {});
     REQUIRE(resolved);
@@ -110,6 +112,11 @@ sim::ScenarioSpec scenario_spec(const Original& o, const std::string& relative) 
     REQUIRE_MESSAGE(component, (component ? "" : component.error()));
     MESSAGE("original-data population mechanism: " << relative << " "
                                                    << component.value().diagnostic);
+    if (capability)
+        *capability = std::string(component.value().isolated
+                                      ? "original-data component; whole-program refused: "
+                                      : "complete supported program retained: ") +
+                      component.value().diagnostic;
     return component.value().spec;
 }
 
@@ -224,7 +231,8 @@ void check_ledger(const sim::World& w, const sim::ResidentStats& r);
 RunResult run_canary(const Original& o, const std::string& relative, std::uint64_t steps,
                      sim::TransportStats& stats) {
     RunResult res;
-    const sim::ScenarioSpec spec = scenario_spec(o, relative);
+    std::string capability;
+    const sim::ScenarioSpec spec = scenario_spec(o, relative, &capability);
     sim::World w = make_world(o, spec);
     REQUIRE(w.check_invariants() == "");
     w.set_transport_stats(&stats);
@@ -238,6 +246,7 @@ RunResult run_canary(const Original& o, const std::string& relative, std::uint64
     const double secs =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     std::ostringstream out;
+    out << "capability " << capability << "\n";
     out << "file " << relative << " steps " << steps << " ticks " << w.clock().tick() << " wall "
         << secs << " s\n";
     // The drain: a copy in which every empty house walker slot holds a dummy id, so no house

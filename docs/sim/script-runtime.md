@@ -420,3 +420,10 @@ published128 fixture and replaces ONLY create_hash after actual creation, with
 an explicit provenance header. It does not claim to rerun movement. The normal
 long corpus gate compares every physical/movement column with the retained128
 rows and with the new fixture, avoiding a duplicated expensive generation run.
+
+Component review at927fe9c3 found two P2 evidence-write/provenance gaps: the long
+corpus generator did not check open/write/close success, and exported population
+text omitted its removed-program diagnostic. Both are corrected: success is
+reported only after checked close, and each exported ledger now carries explicit
+component-versus-supported mode and exact complete-program refusal. Re-review
+pending; no physical or semantic expectation changes.

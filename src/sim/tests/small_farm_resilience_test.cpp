@@ -109,7 +109,7 @@ TEST_CASE("resilience: the alcohol path interrupted by demolishing the farm, dra
     CHECK(r.w.state_hash() == c.w.state_hash());
     const std::uint64_t sold0 = sold(r), htav0 = house_tavern(r, *o);
     CHECK(sold0 == 312);
-    CHECK(htav0 == 13537);
+    CHECK(htav0 == 13700);
     sim::Command d;
     d.issuer = r.city->owner;
     d.body = sim::DemolishCmd{r.ref, {sim::TileXY{261, 344}}};
@@ -125,7 +125,7 @@ TEST_CASE("resilience: the alcohol path interrupted by demolishing the farm, dra
     CHECK(cargo_in_flight(r, kAlcohol) == 0);
     CHECK(r.city->stock.stock[kAlcohol] == 0);
     CHECK(house_tavern(r, *o) < htav0);
-    CHECK(house_tavern(r, *o) == 8188);
+    CHECK(house_tavern(r, *o) == 8304);
     // ---- the restoration: a public command ----
     sim::Command b;
     b.issuer = r.city->owner;
@@ -177,10 +177,10 @@ TEST_CASE("resilience: the alcohol path interrupted by demolishing the farm, dra
                                << "), houses that received " << houses_up.size());
     CHECK(sold_c == sold0); // without the farm nothing is ever sold again
     CHECK(sold_r > sold0);  // with it the Inn sells again: actual production and delivery
-    CHECK(sold_r == 936);
+    CHECK(sold_r == 1014);
     CHECK(house_tavern(r, *o) > house_tavern(c, *o));
-    CHECK(house_tavern(r, *o) == 9726);
-    CHECK(house_tavern(c, *o) == 1957);
+    CHECK(house_tavern(r, *o) == 11049);
+    CHECK(house_tavern(c, *o) == 2013);
     CHECK(houses_up.size() >=
           3); // at least three households received tavern goods after the rebuild
     CHECK(houses_up_control.empty()); // and without the rebuild none did
@@ -391,11 +391,11 @@ TEST_CASE("resilience: save and reload at the crop, grazing, production, cart an
     // measured and pinned (the advance(100) schedule; a legitimate change of the models re-pins
     // them)
     CHECK(at_tick.at(boundaries[0].first) == 800);
-    CHECK(at_tick.at(boundaries[1].first) == 1450);
+    CHECK(at_tick.at(boundaries[1].first) == 1000);
     CHECK(at_tick.at(boundaries[2].first) == 14100);
     CHECK(at_tick.at(boundaries[3].first) == 8600);
     CHECK(at_tick.at(boundaries[4].first) == 8050);
-    CHECK(at_tick.at(boundaries[5].first) == 95700);
+    CHECK(at_tick.at(boundaries[5].first) == 105700);
     CHECK(c.w.check_invariants() == "");
 }
 
@@ -554,8 +554,8 @@ TEST_CASE("resilience: the interruption and recovery run is recorded, replays fr
     // the pinned checkpoints (stream 129, the advance(100) schedule; a legitimate change of the
     // models re-pins them)
     constexpr std::array<std::uint64_t, 7> kPinned{
-        0x75d0ff60eba4153aULL, 0x8ad338178bf6bdb2ULL, 0x137fc9ad91424c61ULL, 0x9d53b64a865a113fULL,
-        0x833edcef11749aabULL, 0xf68461b9d4b4a252ULL, 0x8a665b979c6fc9f5ULL};
+        0x417321798ccf4893ULL, 0xc1fb4f9eefa80c4bULL, 0x28a14fa07956e76dULL, 0x8d45431ae7364f9aULL,
+        0x16dd6bb1dabd79bbULL, 0xd55656b2624e416eULL, 0x5d80954a271a3927ULL};
     for (std::size_t i = 0; i < kPinned.size(); ++i) {
         CHECK_MESSAGE(log.entries[cp_entries[i]].hash == kPinned[i], "checkpoint " << cps[i]);
     }

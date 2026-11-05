@@ -212,9 +212,21 @@ TEST_CASE("supply K2: a fresh pioneer house is served by the stalls and the chap
         // store always covers the request, so billed == bought exactly (measured, town-wide)
         CHECK(rs.billed_by_goods.at(g) == rs.bought_by_goods.at(g));
     }
-    // the store fell by exactly what the stalls took (the Tutorial town holds no producer of these)
+    // the store fell by exactly what the stalls took. The Tutorial town holds no producer of LEDER
+    // or SALZ. Since MAP-NEEDS-2 N2 its sheep farm (animals now graze) and weaver make cloth, so
+    // for STOFFE the fall is the stalls' take minus an inflow, bounded below by 0 and above by what
+    // any cart offered.
+    const std::uint64_t cloth_offered =
+        stats.unload_offered.count(kStoffe) != 0 ? stats.unload_offered.at(kStoffe) : 0U;
     CHECK(t.city->stock.stock[kLeder] == leder_before - rs.taken_by_goods.at(kLeder));
-    CHECK(t.city->stock.stock[kStoffe] == stoffe_before - rs.taken_by_goods.at(kStoffe));
+    // STOFFE: the stats are world-wide (the scenario has other towns with their own cloth carts),
+    // so the inflow into THIS store is bounded, not equated: 0 <= stock - (before - taken) <=
+    // offered by any cart.
+    const std::int64_t cloth_in =
+        std::int64_t{t.city->stock.stock[kStoffe]} -
+        (std::int64_t{stoffe_before} - std::int64_t(rs.taken_by_goods.at(kStoffe)));
+    CHECK(cloth_in >= 0);
+    CHECK(cloth_in <= std::int64_t(cloth_offered));
     CHECK(t.city->stock.stock[kSalz] == salz_before - rs.taken_by_goods.at(kSalz));
     // the chapel bills with take 0: bought > 0, nothing taken, the store has no entry for it
     CHECK(rs.bought_by_goods.count(kKapelle) == 1);

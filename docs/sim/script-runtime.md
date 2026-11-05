@@ -637,3 +637,12 @@ derived primary bytes plus50 vector checks and3 Python contracts; deliberate
 wrong namespace/recipient/unsigned-negative expectations failed as intended.
 Probe: `/private/tmp/script2-actions-review/A-reference-review.json`. No remaining
 P1/P2 in that scope. This approves A only; B–G remain pending.
+
+SCRIPT2 B frozencced061f gate `cache/script2/B-gate-01.log`:8 selected/8
+executed passes,0 failed/empty/skipped/incomplete/sanitizer lines. Wrong right-edge
+`>=`→`>` mutation failed exactly the adjacent-right-edge assertion with other
+legal controls executing (B-boundary-mutant-01:1 selected/1 failed). Restored gate
+B-restored-01:8/8 passes. B-correction-01 repeated unchanged code because the edit
+script refused its unmatched text; it supplies no correction evidence. Reviewer
+P2: AREA mapper omitted original `@` suffix truncation. Corrected with casefolded
+OTHER@ignored and unknown-prefix controls. B re-review remains pending.

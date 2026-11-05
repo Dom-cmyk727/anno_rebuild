@@ -219,3 +219,18 @@ TEST_CASE("SCRIPT2 area validation and source order bindings remain strict") {
     bad.replace(bad.find("30,10,20,40"), 11, "30,10,2147483648,40");
     CHECK_FALSE(compile_script(bad, {{}, 32, 5}));
 }
+
+TEST_CASE("SCRIPT2 area mapper suffix resolves casefolded prefix and exact owner") {
+    AreaFixture f;
+    f.figure(113, {2560, 7680}, PlayerId{1});
+    f.players.slots[1] = make_player(PlayerId{1}, f.cfg);
+    auto source = area_source();
+    source.insert(source.find("[SCRIPT_KERNEL]"), "\"OTHER\" 1\n");
+    source.replace(source.find("FROM \"ME\""), 9, "FROM \"oThEr@ignored\"");
+    auto r = f.runtime(source);
+    REQUIRE(f.visit(r));
+    CHECK(r.state.signals[1] == 1);
+    auto bad = source;
+    bad.replace(bad.find("oThEr@ignored"), 13, "UNKNOWN@ignored");
+    CHECK_FALSE(compile_script(bad, {{}, 32, 5}));
+}

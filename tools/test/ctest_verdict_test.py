@@ -5,6 +5,7 @@ Every message below is a phrasing that exists in the suites run_selected.sh supp
 audit is docs/perf/README.md, "MAP-2 repair 3"). Run: python3 -I tools/test/ctest_verdict_test.py
 """
 import os
+import re
 import sys
 import unittest
 
@@ -57,6 +58,12 @@ class Contract(unittest.TestCase):
             # depth review F6 (W4-MAIN-1): was classed "other", letting a no-game lane through
             # only with --allow-skip other; it is a missing original asset like the rest here.
             "skipping: no game files",
+            # W4-MAIN-1 review F1 (round R1): four more "other" phrasings the source scan below
+            # found, each naming a missing original file like the rest here.
+            "skipping: no scenario files",
+            "skipping: no endless scenario",
+            "skipping: 06_1024_heavy_256.sze is not in this game directory",
+            "skipping: Single_01.sze is not in this game directory",
         ]
         for text in forms:
             code, out = one([text])
@@ -200,6 +207,44 @@ class Contract(unittest.TestCase):
         self.assertEqual(cv.recorded_verdict(body)[0], 0)  # Historical classification only.
         self.assertEqual(cv.recorded_verdict(["== provenance {}"] + body +
                          ['GATE_END {"status":0,"ctest_rc":0}'])[0], 8)
+
+    def test_every_skip_phrasing_in_the_sources_has_a_known_class(self):
+        # Ported from task/W4-opening-1 (9448a3af) per the W4-MAIN-1 review (F1, round R1), adapted
+        # to main's classes. A new phrasing that the reader would class "other" (a gate pass) must
+        # be listed here with the reason it is not a prerequisite; the game-file and GPU ones fail
+        # the gate. The regex matches one string literal starting with "skipping"/"skipped" up to
+        # its closing quote, so a stream-concatenated message ("skipping: " << dynamic << "...")
+        # is found by its literal prefix alone, without the runtime-built remainder.
+        allowed_other = {
+            # A timing condition of one case, not an asset or a capability.
+            "skipping: the wave simulation did not start a background preparation here",
+            # A part of an executed case whose data has no road type.
+            "skipping the road part: the registry has no road type",
+            # ship_start_load_test.cpp: a per-item environment-capability probe (symlink
+            # creation) inside an otherwise-executed test; only that row is excluded, the rest
+            # of the test still runs.
+            "skipping the symlink rows: ",
+            # founding_assets_test.cpp:639: the literal prefix of "skipping: " << file.string()
+            # << " not present" - a stream-concatenated message this static scan cannot classify
+            # past its prefix. At runtime it names a missing scenario file, the same class as the
+            # required-asset messages above; not reclassified here (flagged, W4-MAIN-1 round R1).
+            "skipping: ",
+        }
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src")
+        literal = re.compile(r'"((?:skipping|skipped)[^"]*)"')
+        found = {}
+        for d, _, files in os.walk(root):
+            for f in files:
+                if f.endswith(".cpp"):
+                    with open(os.path.join(d, f), errors="replace") as h:
+                        for text in literal.findall(h.read()):
+                            found.setdefault(text, os.path.join(d, f))
+        self.assertGreater(len(found), 10)
+        for text, where in sorted(found.items()):
+            kind = cv.classify(text)
+            self.assertIsNotNone(kind, "%s: %r is not read as a skip" % (where, text))
+            if kind == "other":
+                self.assertIn(text, allowed_other, "%s: %r is classed 'other'" % (where, text))
 
 
 if __name__ == "__main__":

@@ -42,7 +42,9 @@ START = re.compile(r"^\s*Start\s+(\d+): (.*)$")
 DOCTEST = re.compile(r"\[doctest\] test cases:\s*(\d+)\s*\|")
 
 
-REQUIRED = re.compile(r"ANNO1503_GAME_DIR (is )?not set|\bno game files\b", re.I)
+REQUIRED = re.compile(r"ANNO1503_GAME_DIR (is )?not set|\bno game files\b|"
+                      r"\bno scenario files\b|\bno endless scenario\b|"
+                      r"is not in this game directory", re.I)
 OPT_IN = re.compile(r"\bset ANNO_[A-Z0-9_]+=")
 PLATFORM = re.compile(r"WSL \(Ubuntu\) is not available|\bon Windows\b|POSIX shell|"
                       r"runs only from WSL|which only Linux has", re.I)

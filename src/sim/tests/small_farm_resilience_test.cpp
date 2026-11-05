@@ -19,6 +19,7 @@
 #include <anno/sim/world.hpp>
 
 #include "evidence_out.hpp"
+#include "golden.hpp"
 #include "harvest_helpers.hpp"
 #include "island7_town.hpp"
 
@@ -551,13 +552,16 @@ TEST_CASE("resilience: the interruption and recovery run is recorded, replays fr
         MESSAGE("checkpoint " << cps[i] << " entry " << cp_entries[i] << " hash " << std::hex
                               << log.entries[cp_entries[i]].hash);
     }
-    // the pinned checkpoints (stream 129, the advance(100) schedule; a legitimate change of the
-    // models re-pins them)
-    constexpr std::array<std::uint64_t, 7> kPinned{
-        0x75d0ff60eba4153aULL, 0x8ad338178bf6bdb2ULL, 0x137fc9ad91424c61ULL, 0x9d53b64a865a113fULL,
-        0x833edcef11749aabULL, 0xf68461b9d4b4a252ULL, 0x8a665b979c6fc9f5ULL};
-    for (std::size_t i = 0; i < kPinned.size(); ++i) {
-        CHECK_MESSAGE(log.entries[cp_entries[i]].hash == kPinned[i], "checkpoint " << cps[i]);
+    // Combined131 identities are new recordings. Retained supply129 pins live in
+    // the exact input archive; the independent stream oracle is a separate proof.
+    for (std::size_t i = 0; i < cp_entries.size(); ++i) {
+        std::string line;
+        const auto problem =
+            anno::test::check_golden("supply_tick" + std::to_string(cps[i]), "SUPPLY1",
+                                     log.entries[cp_entries[i]].hash, line);
+        if (anno::test::update_mode())
+            MESSAGE("golden line: " << line);
+        CHECK_MESSAGE(problem.empty(), problem);
     }
     export_log("supply_chain.log", log);
     const auto bytes = sim::write_log(log);

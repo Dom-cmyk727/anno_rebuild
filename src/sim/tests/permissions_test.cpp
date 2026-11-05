@@ -80,7 +80,7 @@ TEST_CASE("SCRIPT1 ANLTRG is raw last write wins with strict validation") {
 TEST_CASE("SCRIPT1 original ALL filter and research grants (game files)") {
     auto game = anno::test::game_dir();
     if (!game) {
-        MESSAGE("SKIP: ANNO1503_GAME_DIR is unset");
+        MESSAGE("skipped: ANNO1503_GAME_DIR not set");
         return;
     }
     const auto loaded =

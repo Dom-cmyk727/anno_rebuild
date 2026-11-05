@@ -157,7 +157,7 @@ TEST_CASE("SCRIPT2 original capability inventory distinguishes parsing compilati
           "(game files)") {
     auto game = anno::test::game_dir();
     if (!game) {
-        MESSAGE("SKIP: ANNO1503_GAME_DIR is unset");
+        MESSAGE("skipped: ANNO1503_GAME_DIR not set");
         return;
     }
     const auto loaded =
@@ -252,7 +252,7 @@ TEST_CASE(
     "SCRIPT1 original INIT fragment allows actual build in labelled stocked harness (game files)") {
     auto game = anno::test::game_dir();
     if (!game) {
-        MESSAGE("SKIP: ANNO1503_GAME_DIR is unset");
+        MESSAGE("skipped: ANNO1503_GAME_DIR not set");
         return;
     }
     const auto loaded =

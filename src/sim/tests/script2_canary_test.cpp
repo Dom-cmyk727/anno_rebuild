@@ -703,7 +703,7 @@ TEST_CASE("SCRIPT2 original encoded canary replay worker") {
     }
     const char* dir = std::getenv("ANNO_SCRIPT2_ORIGINAL_CANARY_DIR");
     if (!dir || !*dir) {
-        MESSAGE("skipped: opt-in ANNO_SCRIPT2_ORIGINAL_CANARY_DIR required for encoded worker");
+        MESSAGE("skipped: set ANNO_SCRIPT2_ORIGINAL_CANARY_DIR=path for the encoded worker");
         return;
     }
     const auto registry =

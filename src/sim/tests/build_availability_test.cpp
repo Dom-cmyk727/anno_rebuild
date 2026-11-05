@@ -25,7 +25,7 @@ TEST_CASE(
     "bootstrap B0 successor: authoritative locked build and scenario exception (game files)") {
     const auto game = anno::test::game_dir();
     if (!game) {
-        MESSAGE("SKIP: ANNO1503_GAME_DIR is unset");
+        MESSAGE("skipped: ANNO1503_GAME_DIR not set");
         return;
     }
     const auto loaded =

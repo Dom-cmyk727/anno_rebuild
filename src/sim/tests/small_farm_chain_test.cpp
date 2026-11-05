@@ -229,7 +229,8 @@ TEST_CASE("supply chain K4/S4: the Tutorial island-7 town, farms -> carriers and
     // households: tavern goods reached at least three houses that held none at the start
     std::uint32_t tavern_houses = 0, food_houses = 0, zero_start = 0;
     for (const auto& [id, hw] : watch) {
-        tavern_houses += hw.tavern_up ? 1U : 0U;
+        tavern_houses +=
+            (hw.tavern_up && hw.tavern0 == 0) ? 1U : 0U; // only houses that started with none
         food_houses += hw.food_up ? 1U : 0U;
         zero_start += hw.tavern0 == 0 ? 1U : 0U;
     }

@@ -11,12 +11,14 @@ Companion doc (part A in full): [`docs/testing/wsl-gate-root-cause-2026-11-05.md
 
 ## Status as of this writing
 
-Branch `task/W4-main-1` (base: the accepted merge commit `4f56e800`), 9 commits on top, pushed.
-CI run [`42015604171`](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42015604171) is
-in progress on the latest push (started 11:02, ~20+ min in). Two prior pushes on this branch
-both came back red; each round fixed everything that round surfaced and was re-pushed. This
-document will need a final line added once that run concludes — it is not yet confirmed green
-end to end.
+**Confirmed green.** Branch `task/W4-main-1` (base: the accepted merge commit `4f56e800`), 9
+fix/docs commits on top, pushed. CI run
+[`42015604171`](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42015604171) completed
+with **all 10 jobs passing** (`lint`, `build-macos`, `test` (windows-latest, ubuntu-latest),
+`cpp-format`, and all five `cpp` matrix legs: `windows-msvc`, `linux-gcc`, `linux-gcc-release`,
+`linux-clang-asan`, `macos-clang`) — the first fully green run after at least 30 consecutive
+failures on `main`. Two prior pushes on this branch came back red; each round fixed everything
+that round surfaced and was re-pushed; this is the third and first clean round.
 
 ---
 
@@ -223,11 +225,8 @@ before that commit was written; functionally it belongs with `5b6ee95a`, which d
 
 ### B4. What's confirmed vs. still open
 
-- Confirmed fixed and verified (locally, where tooling allowed): all seven bugs above.
-- Confirmed by evidence, not yet re-run end-to-end on CI: whether these seven are the *complete*
-  set of blockers. Rounds 1→2 (build-blocking fixes) exposed round 3's failures only after the
-  builds started succeeding; it's possible (though nothing currently known points to it) that a
-  further round surfaces after `b1e95579`'s run finishes.
+- Confirmed fixed **and verified end-to-end on cloud CI**: all seven bugs above — run
+  `42015604171` is fully green, all 10 jobs.
 - Still open, out of scope for this incident: the five other `other`-classified skip messages
   (asset/scenario-specific, never exercised on CI); promoting a canonical committed gate script
   out of `cache/` (Part A4); confirming whether the pre-existing CI breakage predates
@@ -237,9 +236,9 @@ before that commit was written; functionally it belongs with `5b6ee95a`, which d
 
 ## Recommendation
 
-Once `42015604171` (or whichever run follows) comes back fully green, fast-forward `main` is the
-only remaining step for the WSL-gate root-cause work itself; the cloud-CI fixes are a necessary,
-unplanned prerequisite that turned out to be load-bearing for the original ask ("move the gate to
-the cloud") rather than optional — the gate literally could not run there before today. Suggest
+With `42015604171` fully green, fast-forwarding `main` to this branch's tip is the only remaining
+step for the WSL-gate root-cause work itself; the cloud-CI fixes were a necessary, unplanned
+prerequisite that turned out to be load-bearing for the original ask ("move the gate to the
+cloud") rather than optional — the gate literally could not run there before today. Suggest
 `main`'s own CI (next push to `main`) gets watched at least once immediately after merging, given
 how long it was silently red.

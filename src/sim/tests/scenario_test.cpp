@@ -25,6 +25,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/driver.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/scenario_formats.hpp>
@@ -436,6 +437,45 @@ std::string with_recognized_player_records(std::string row) {
     return row;
 }
 
+struct ResearchProductionDelta {
+    std::string name;
+    std::uint32_t island = 0, city = 0, owner = 0, type = 0, x = 0, y = 0, research = 0;
+    std::uint32_t old_moved = 0, new_moved = 0, total = 0;
+};
+std::vector<ResearchProductionDelta> research_production_deltas() {
+    std::ifstream in(fs::path(ANNO_FIXTURES_DIR) / "sim" / "script1" /
+                     "research_production_delta.txt");
+    REQUIRE(in.good());
+    std::vector<ResearchProductionDelta> result;
+    for (std::string line; std::getline(in, line);) {
+        if (line.empty() || line[0] == '#')
+            continue;
+        ResearchProductionDelta r;
+        std::istringstream fields(line);
+        REQUIRE(static_cast<bool>(fields >> r.name >> r.island >> r.city >> r.owner >> r.type >>
+                                  r.x >> r.y >> r.research >> r.old_moved >> r.new_moved >>
+                                  r.total));
+        REQUIRE(r.new_moved == r.old_moved + 1);
+        result.push_back(std::move(r));
+    }
+    REQUIRE(result.size() == 3);
+    return result;
+}
+std::string with_restored_research_production(std::string row) {
+    for (const auto& delta : research_production_deltas()) {
+        if (row.substr(0, row.find(' ')) != delta.name)
+            continue;
+        const auto old = "producers_moved=" + std::to_string(delta.old_moved) + "/" +
+                         std::to_string(delta.total);
+        const auto pos = row.find(old);
+        REQUIRE(pos != std::string::npos);
+        row.replace(pos, old.size(),
+                    "producers_moved=" + std::to_string(delta.new_moved) + "/" +
+                        std::to_string(delta.total));
+    }
+    return row;
+}
+
 bool update_requested() {
     const char* u = std::getenv("ANNO_UPDATE_GOLDEN");
     const char* ci = std::getenv("CI");
@@ -668,7 +708,8 @@ TEST_CASE(
     for (const auto& r : results) {
         REQUIRE(historical.contains(r.name));
         CHECK(without_identity(r.line) ==
-              without_identity(with_recognized_player_records(historical.at(r.name))));
+              without_identity(with_restored_research_production(
+                  with_recognized_player_records(historical.at(r.name)))));
     }
 
     // The per-file counts against the committed expectations.
@@ -1035,7 +1076,7 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
         const auto pos = row.find("create_hash=");
         REQUIRE(pos != std::string::npos);
         if (generating) {
-            auto new_row = with_recognized_player_records(row);
+            auto new_row = with_restored_research_production(with_recognized_player_records(row));
             char hex[17];
             std::snprintf(hex, sizeof hex, "%016llx",
                           static_cast<unsigned long long>(made.value().state_hash()));
@@ -1069,7 +1110,8 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
     }
 }
 
-TEST_CASE("SCRIPT1 restored research production consequence investigation") {
+TEST_CASE(
+    "SCRIPT1 restored original research activates exactly the three recorded weapon producers") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -1077,69 +1119,94 @@ TEST_CASE("SCRIPT1 restored research production consequence investigation") {
     }
     const auto types = original_registry(*dir);
     const auto templates = anno::sim_load::scan_island_templates(*dir);
-    for (const auto& name : {"0100Kampagne01/S01_03_01.sze", "0100Kampagne01/S01_07_01.sze",
-                             "0200Single/Single_24.sze"}) {
-        INFO(name);
+    for (const auto& delta : research_production_deltas()) {
+        INFO(delta.name);
         auto loaded = anno::sim_load::load_scenario_with_links(
-            anno::test::read_file(*dir / "Scenes" / name), templates, *types, {}, {});
+            anno::test::read_file(*dir / "Scenes" / delta.name), templates, *types, {}, {});
         REQUIRE(loaded);
         auto component = original_component::import_only(loaded.value().loaded.spec, types);
         REQUIRE(component);
+        REQUIRE(component.value().isolated);
         auto made = sim::World::create(component.value().spec, types);
         REQUIRE(made);
         sim::World with = std::move(made).value();
         sim::World without = with;
-        for (auto& player : sim::WorldTestAccess::players(without).slots)
-            if (player)
-                std::fill(player->research.state.begin(), player->research.state.end(), 0);
+        const sim::PlayerId owner{delta.owner};
+        REQUIRE(with.players().find(owner)->research.state[delta.research] == 2);
+        auto& bit = sim::WorldTestAccess::players(without)
+                        .slots[delta.owner]
+                        ->research.state[delta.research];
+        bit = static_cast<std::uint8_t>(bit & ~2u); // ONLY the one reviewed research bit
+        REQUIRE_FALSE(without.players().find(owner)->research.researched(delta.research));
+        const sim::CityRef city{sim::IslandId{delta.island}, sim::CityNo{delta.city}};
+        const auto* building = with.building_at(city, static_cast<std::int32_t>(delta.x),
+                                                static_cast<std::int32_t>(delta.y));
+        REQUIRE(building != nullptr);
+        REQUIRE(building->type.v == delta.type);
+        const auto id = building->id.v;
+        const auto* type = types->find(building->type);
+        REQUIRE(type != nullptr);
+        const auto initial = std::get<sim::WeaponsWorkshop>(building->payload);
+        CHECK(initial.line_on == std::vector<bool>{true, false});
+        CHECK_FALSE(initial.suspended);
+        const bool bow = delta.type == 1006;
+        CHECK(initial.out == (bow ? (delta.island == 35 ? std::vector<std::uint32_t>{0, 0}
+                                                        : std::vector<std::uint32_t>{65, 0})
+                                  : std::vector<std::uint32_t>{13, 72}));
+        CHECK(initial.in == (bow ? (delta.island == 35 ? std::vector<std::uint32_t>{10, 11042}
+                                                       : std::vector<std::uint32_t>{583, 753})
+                                 : std::vector<std::uint32_t>{9, 952}));
+        REQUIRE(type->output_goods.size() == 2);
+        CHECK(types->goods(type->output_goods[0])->forsch == delta.research);
+        // Isolated first legal kernel visit from these ORIGINAL stocks. Reset only the
+        // copy's step stamp; do not add resources or alter the two simulation worlds.
+        auto on = initial, off = initial;
+        on.last = off.last = 0;
+        sim::refresh_unlocked(on, *type, *types, sim::PlayersView(with.players()), owner);
+        sim::refresh_unlocked(off, *type, *types, sim::PlayersView(without.players()), owner);
+        REQUIRE(on.unlocked[0]);
+        REQUIRE_FALSE(off.unlocked[0]);
+        const std::uint32_t rate = bow ? 9 : 6, need0 = bow ? 8 : 6, need1 = bow ? 4 : 6;
+        CHECK(type->prod.output_per_step[0] == rate);
+        CHECK(type->prod.input_per_step == std::vector<std::uint32_t>{need0, need1});
+        const auto produced = sim::weapons_workshop_step(on, type->prod, 500);
+        CHECK(produced.stepped);
+        CHECK(produced.made == std::vector<std::uint32_t>{rate, 0});
+        CHECK(on.out == std::vector<std::uint32_t>{initial.out[0] + rate, initial.out[1]});
+        CHECK(on.in == std::vector<std::uint32_t>{initial.in[0] - need0, initial.in[1] - need1});
+        CHECK(sim::weapons_workshop_step(off, type->prod, 500).stepped);
+        CHECK(off.out == initial.out);
+        CHECK(off.in == initial.in);
         const auto before = snapshot(with);
-        CHECK(snapshot(without).size() == before.size());
         for (int i = 0; i < kAdvances; ++i) {
             with.advance(kStepMs);
             without.advance(kStepMs);
         }
         REQUIRE(with.check_invariants().empty());
         REQUIRE(without.check_invariants().empty());
-        const auto after = snapshot(with), off = snapshot(without);
+        const auto after = snapshot(with), control = snapshot(without);
         std::vector<std::uint64_t> activated;
-        for (const auto& [id, initial] : before) {
-            const bool a = after.at(id).state != initial.state;
-            const bool b = off.at(id).state != initial.state;
+        std::uint32_t moved = 0, control_moved = 0, producers = 0;
+        for (const auto& [bid, original] : before) {
+            if (original.state.empty())
+                continue;
+            ++producers;
+            const bool a = after.at(bid).state != original.state;
+            const bool b = control.at(bid).state != original.state;
+            moved += a ? 1u : 0u;
+            control_moved += b ? 1u : 0u;
             if (a != b) {
                 CHECK(a);
                 CHECK_FALSE(b);
-                activated.push_back(id);
+                activated.push_back(bid);
             }
         }
-        REQUIRE(activated.size() == 1);
-        for (const auto& island : with.islands()) {
-            if (!island)
-                continue;
-            for (const auto& city : island->cities) {
-                if (!city)
-                    continue;
-                for (const auto& list : city->index.lists)
-                    for (const auto& building : list.slots) {
-                        if (!building || building->id.v != activated[0])
-                            continue;
-                        const auto* type = types->find(building->type);
-                        REQUIRE(type);
-                        MESSAGE("research activates file="
-                                << name << " island=" << island->index.v
-                                << " city=" << city->number.v << " owner=" << city->owner.v
-                                << " type=" << building->type.v << " x=" << building->x
-                                << " y=" << building->y);
-                        for (const auto goods : type->output_goods) {
-                            const auto* info = types->goods(goods);
-                            REQUIRE(info);
-                            MESSAGE("output=" << goods << " research=" << info->forsch
-                                              << " restored="
-                                              << with.players()
-                                                     .find(city->owner)
-                                                     ->research.researched(info->forsch));
-                        }
-                    }
-            }
-        }
+        CHECK(activated == std::vector<std::uint64_t>{id});
+        CHECK(producers == delta.total);
+        CHECK(moved == delta.new_moved);
+        CHECK(control_moved == delta.old_moved);
+        MESSAGE("research activation " << delta.name << " type=" << delta.type
+                                       << " research=" << delta.research
+                                       << " control=" << control_moved << " restored=" << moved);
     }
 }

@@ -1,0 +1,5 @@
+# Original-record and type-derived researched-line activation. No stocks are added.
+# path island city owner type x y research old_moved new_moved total
+0100Kampagne01/S01_03_01.sze 35 0 0 1006 144 308 4 97 98 139
+0100Kampagne01/S01_07_01.sze 51 0 0 1006 136 316 4 214 215 302
+0200Single/Single_24.sze 0 0 0 1036 223 229 6 38 39 58

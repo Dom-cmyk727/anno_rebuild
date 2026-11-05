@@ -478,3 +478,21 @@ movement rebaseline is authorized. Existing WeaponsWorkshop refresh_unlocked is
 the only production reader of Player researched bits; the newly imported FORSCH
 projection may activate an existing line. A paired with/without-research probe
 and independent original-record/type review are pending before changing pins.
+
+Research cause01 at3b82c76f PASS2/2 (61.32seconds): clear imported research in
+paired worlds and observe exactlyone newly moving producer in each named file;
+timer scope correction also passes. Independent final reviewer derived from raw
+FORSCH/Anlagen/PROD3/BGruppen/city records and Welt69580..69640 the exact sites,
+line switches, research requirements and full-ratio first steps. Original flags3
+restore researched bit2. Both lines have research, but switchmask1 enables only
+line0: type1006 needs research4; type1036 needs6. First outputs/inputs are:
+S01_03 at144,308: [0,0]→[9,0], [10,11042]→[2,11038]; S01_07 at136,316:
+[65,0]→[74,0], [583,753]→[575,749]; Single24 at223,229: [13,72]→[19,72],
+[9,952]→[3,946]. Independent reproducer/JSON retained as
+cache/script1/S7-{derive-research-production-controls.py,research-production-controls.json}.
+The final control clears ONLY the owner's one bit4/6, pins these original stocks,
+checks the isolated first legal kernel step and pairs five-minute normal advances.
+Only those3 movement expectations are amended via research_production_delta.txt;
+all others stay fixed. This is an existing production reader of restored research,
+not new weapons gameplay or a full original-script execution claim. Full50-file
+corrective gate and focused re-review remain pending.

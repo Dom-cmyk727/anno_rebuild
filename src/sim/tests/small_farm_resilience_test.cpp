@@ -723,7 +723,7 @@ TEST_CASE(
     // OPT-IN: runs only with ANNO_SIM_SUPPLY_SCALE set (any value); otherwise skips with a message.
     // Wall time is measured here only and NEVER asserted; the counters are deterministic.
     if (std::getenv("ANNO_SIM_SUPPLY_SCALE") == nullptr) {
-        MESSAGE("skipping: ANNO_SIM_SUPPLY_SCALE not set");
+        MESSAGE("skipping: set ANNO_SIM_SUPPLY_SCALE=1 to run the Release samples");
         return;
     }
     for (const int k : {0, 7, 14, 21}) {

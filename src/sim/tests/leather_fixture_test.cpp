@@ -398,3 +398,112 @@ TEST_CASE("synthetic mechanics fixture: three owners, three towns, shared stream
     CHECK(cz4.stock[kHaeute] == 0);
     CHECK(bz.stock[kLeder] <= b0.stock[kLeder]);
 }
+
+TEST_CASE(
+    "synthetic mechanics fixture: a rival owner's tannery and hides stay in the rival's town") {
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // This town (player 0, island 7) has a tannery and a stall but NO hides. The rival (player 2,
+    // island 3) gets a tannery by its OWN public BuildCmd and the same LABELLED hide stock in its
+    // own store. The rival's hides become the rival's leather; nothing of it reaches this town.
+    auto A = start_leather(*o, 0, true, true);
+    Cloth& c = *A->t;
+    sim::Island* rival_isl = nullptr;
+    sim::City* rival = nullptr;
+    for (auto& isl : sim::WorldTestAccess::islands(c.w)) {
+        if (isl && isl->index.v == kIsland) {
+            for (auto& ci : isl->cities) {
+                if (ci && ci->owner.v == kOwner) {
+                    rival_isl = &*isl;
+                    rival = &*ci;
+                }
+            }
+        }
+    }
+    REQUIRE(rival != nullptr);
+    const sim::CityRef rref{rival_isl->index, rival->number};
+    // the site: the nearest accepted site in rings around the rival's first workshop
+    sim::TileXY centre{0, 0};
+    for (auto& l : rival->index.lists) {
+        for (auto& b : l.slots) {
+            const sim::BuildingType* t = b ? o->types->find(b->type) : nullptr;
+            if (t != nullptr && t->cls == sim::RuntimeClass::Workshop && centre.x == 0) {
+                centre = {b->x, b->y};
+            }
+        }
+    }
+    REQUIRE(centre.x != 0);
+    sim::BuildingId rival_tannery;
+    for (int r = 1; r <= 14 && !rival_tannery.valid(); ++r) {
+        for (int dy = -r; dy <= r && !rival_tannery.valid(); ++dy) {
+            for (int dx = -r; dx <= r && !rival_tannery.valid(); ++dx) {
+                if (std::max(std::abs(dx), std::abs(dy)) != r) {
+                    continue;
+                }
+                sim::Command k;
+                k.issuer = rival->owner;
+                k.body = sim::BuildCmd{
+                    rref,
+                    {sim::PlacementWire{A->tannery_type, centre.x + dx, centre.y + dy, 0, 0, 0}}};
+                if (c.w.apply(k).ok()) {
+                    const sim::Building* b = rival_isl->building_at(
+                        c.w.config().layout, rival->number, centre.x + dx, centre.y + dy);
+                    REQUIRE(b != nullptr);
+                    rival_tannery = b->id;
+                }
+            }
+        }
+    }
+    REQUIRE(rival_tannery.valid());
+    const std::uint32_t rival_leather0 = rival->stock.stock[kLeder];
+    rival->stock.stock[kHaeute] = kHides; // LABELLED stock, in the RIVAL's store
+    // every step: each figure that carries hides or leather belongs to the rival's owner; the count
+    // of such observations proves the check is not vacuous
+    std::uint64_t observed = 0;
+    while (c.w.clock().tick() < kControlEnd) {
+        step(c);
+        for (const auto& f : c.w.figures().list.slots) {
+            if (f && !f->expiry_stamp.has_value() &&
+                (f->cargo_goods == kHaeute || f->cargo_goods == kLeder) && f->cargo_88 > 0) {
+                ++observed;
+                CHECK(f->owner == rival->owner);
+            }
+        }
+    }
+    CHECK(observed > 0);
+    std::cerr << "PIN rival observations of carried hides or leather " << observed << "\n";
+    const LeatherLedger la = leather_ledger(*A);
+    const auto it = c.stats.forestry.workshops.find(rival_tannery);
+    REQUIRE(it != c.stats.forestry.workshops.end());
+    const std::uint64_t rival_made = it->second.made_88[0];
+    const std::uint64_t rival_loaded =
+        c.stats.loaded_from.count(rival_tannery) ? c.stats.loaded_from.at(rival_tannery) : 0U;
+    std::cerr << "PIN rival made " << rival_made << " loaded " << rival_loaded << " rival hides "
+              << rival->stock.stock[kHaeute] << " rival leather " << rival_leather0 << " -> "
+              << rival->stock.stock[kLeder] << " | this town made " << la.leather_made << " hides "
+              << la.hide_store << " leather store " << la.leather_store << " taken "
+              << la.leather_taken << " houses " << houses_reached(c) << "\n";
+    // the rival's tannery works, in the rival's town (measured at 60 000 ticks, stream 130)
+    CHECK(rival_made == 665);
+    CHECK(rival_loaded == 658);
+    CHECK(rival->stock.stock[kLeder] == 7936);
+    CHECK(rival->stock.stock[kHaeute] < kHides);
+    // this town stays at zero in every term: no hide, no leather made, stored or taken, no house
+    CHECK(la.hide_store == 0);
+    CHECK(la.hide_in == 0);
+    CHECK(la.hide_cargo == 0);
+    CHECK(la.leather_made == 0);
+    CHECK(la.leather_out == 0);
+    CHECK(la.leather_loaded == 0);
+    CHECK(la.leather_store == 0);
+    CHECK(la.leather_taken == 0);
+    CHECK(houses_reached(c) == 0);
+    CHECK(c.city->stock.stock[kLeder] == 0);
+    CHECK(c.city->stock.stock[kHaeute] == 0);
+    CHECK(la.u_hides == 0);
+    CHECK(la.u_made == 0);
+    CHECK(la.u_loaded == 0);
+}

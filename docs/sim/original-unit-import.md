@@ -520,3 +520,24 @@ Actor-free options are caller declarations for existing separately labelled
 components, never an automatic recovery path for a failed playable scenario.
 Generated fixed-map/ship-start loadouts already exclude base actors by their
 original manifest policy and use that explicit projection; no loadout changes.
+
+Both /root/unit_import_contract_review and /root/unit_import_state_review
+APPROVED bounded D/F2 at4e0ff63e95cbb9800580cee8bf9adc7d62719396 after independently
+joining the successful canonicalgate, distinctchildren and allartifact hashes.
+Actualcity=island2/city0, HANDWERK ID8589934594 at318,401. FullG pending.
+
+E-corpus-01 atclean60b6dc58 passes5/5,687assertions,0other,17.88s.
+All50hashed originals reconcile to the independent A count3473:19accepted inputs
+with119actors,31 explicitunsupportedrefusals. This is adapter/count proof, not
+19 fullscenario executions. Script inventory remains50parsed/14compiled, now
+11normalstartups. The other3compile-supported inputs refuse original actors:
+easy128/heavy128 have a nested donkey TASK, endless02 has unsupportedkind373.
+Emptykernels remain labelledempty; actorrefusal is not compilerrefusal.
+
+Existing inventorypublication now joins optional explicit-original manifest with
+exactoriginalproducer/worker cases, samefrozen source/exe/input hashes, checked
+child summaries and all4artifact hashes. Wrongprotocol/failed/mismatchedoriginal
+proof is rejected before output.10cheap inventorycontracts pass. Currentmetadata
+will be published from finalsame-pin gates/manifests; the oldSCRIPT2 JSON will
+be preserved verbatim as historical evidence. New schema2 separates the measured
+original public-command branch0canary from fullscenario/allbranch coverage.

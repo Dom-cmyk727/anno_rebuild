@@ -54,9 +54,11 @@ def parse_gate(text, expected):
 REQUIRED_ARTIFACTS={'normal.log','wrong-command.log','wrong-program.log','expected.txt'}
 CASES={'producer':'SCRIPT2 synthetic complete original program canary producer',
        'worker':'SCRIPT2 synthetic encoded canary replay worker'}
+ORIGINAL_CASES={'producer':'SCRIPT2 original public voyage founding and construction',
+                'worker':'SCRIPT2 original encoded canary replay worker'}
 
 
-def validate_manifest(identity, manifest):
+def validate_manifest(identity, manifest, original=False):
     source=identity['source_tested']['head']
     if manifest['verdict']!='PASS' or manifest['source_revision']!=source:
         raise ValueError('fresh-process proof must use same frozen source')
@@ -64,13 +66,16 @@ def validate_manifest(identity, manifest):
     digest=manifest['sha256']
     if not re.fullmatch('[0-9a-f]{64}',digest) or identity['binaries'].get(executable)!=digest:
         raise ValueError('manifest executable differs from canonical tested binary')
+    cases=ORIGINAL_CASES if original else CASES
+    if original and manifest.get('mode') != 'original':
+        raise ValueError('require explicit original-world protocol')
     processes=manifest['processes']
-    if len(processes)!=2 or {p['role'] for p in processes}!=set(CASES):
+    if len(processes)!=2 or {p['role'] for p in processes}!=set(cases):
         raise ValueError('require exactly producer and worker roles')
     if len({p['pid'] for p in processes})!=2 or any(p['pid']<=0 or p['exit']!=0 for p in processes):
         raise ValueError('require distinct successful child processes')
     for process in processes:
-        if process['command']!=[executable,'--test-case='+CASES[process['role']]]:
+        if process['command']!=[executable,'--test-case='+cases[process['role']]]:
             raise ValueError('child command differs from tested executable/case')
     if set(manifest['artifacts'])!=REQUIRED_ARTIFACTS:
         raise ValueError('require exact nonempty replay artifact set')
@@ -110,6 +115,16 @@ class Contracts(unittest.TestCase):
             if kind==5: m['artifacts']['normal.log']['size']=0
             if kind==6: m['source_revision']='f'*40
             with self.assertRaises(ValueError): validate_manifest(self.identity,m)
+    def test_original_manifest_cannot_borrow_synthetic_protocol(self):
+        m=self.manifest()
+        with self.assertRaises(ValueError): validate_manifest(self.identity,m,True)
+        m['mode']='original'
+        with self.assertRaises(ValueError): validate_manifest(self.identity,m,True)
+        for process in m['processes']:
+            process['command']=['exe','--test-case='+ORIGINAL_CASES[process['role']]]
+        validate_manifest(self.identity,m,True)
+        for key, value in [('verdict','FAIL'),('source_revision','f'*40),('sha256','0'*64)]:
+            with self.assertRaises(ValueError): validate_manifest(self.identity,m|{key:value},True)
     def test_program_row_semantics(self):
         row=dict(compiled=True,normal_startup=True,normal_zero_ms_calls=0,branch_count=0,empty_kernel=True)
         validate_program_row(row,[],0,[])
@@ -130,6 +145,29 @@ class Contracts(unittest.TestCase):
                 manifest.write_text(json.dumps(m))
                 captured=io.StringIO()
                 with redirect_stdout(captured),self.assertRaises(ValueError): publish(log,game,manifest,output)
+                self.assertFalse(output.exists())
+                self.assertNotIn('SCRIPT2 inventory:',captured.getvalue())
+    def test_public_publish_rejects_wrong_original_proof_before_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); game=root/'game'; scenes=game/'Scenes'; scenes.mkdir(parents=True)
+            for i in range(50): (scenes/(str(i)+'.sze')).write_bytes(b'x')
+            rows=''.join('X: MESSAGE: CAPABILITY2 Scenes/'+str(i)+'.sze compiled=0 startup=0 visits=0 branches=0 empty=0 dependency=unsupported\n' for i in range(50))
+            log=root/'gate.log'; log.write_text('== tested identity '+json.dumps(self.identity)+'\n'+rows+'GATE_END {"status":0}\n')
+            sys.path.insert(0,str(ROOT/'tools'))
+            import script_canary2 as canary
+            m=self.manifest(); m['inputs']=canary.EXPECTED_INPUTS
+            for name in REQUIRED_ARTIFACTS:
+                path=root/name; path.write_bytes(b'nonempty')
+                m['artifacts'][name]=dict(size=path.stat().st_size,sha256=sha(path))
+            for role in CASES:
+                (root/(role+'.log')).write_text(canary.Contracts.good)
+            manifest=root/'synthetic.json'; manifest.write_text(json.dumps(m))
+            original=root/'original.json'; output=root/'output.json'
+            for mutation in ({'mode':'original'}, {'mode':'original','verdict':'FAIL'}, {'mode':'original','source_revision':'f'*40}):
+                original.write_text(json.dumps(m|mutation))
+                captured=io.StringIO()
+                with redirect_stdout(captured),self.assertRaises(ValueError):
+                    publish(log,game,manifest,output,original)
                 self.assertFalse(output.exists())
                 self.assertNotIn('SCRIPT2 inventory:',captured.getvalue())
 
@@ -154,7 +192,7 @@ class Contracts(unittest.TestCase):
         with self.assertRaises(ValueError): parse_gate(self.text().replace('"status": ""','"status": " M source"'),['A'])
 
 
-def publish(log, game, manifest_path, output):
+def publish(log, game, manifest_path, output, original_manifest_path=None):
     sys.path.insert(0,str(ROOT/'tools'))
     import bigbrother as bb
     import script_canary2 as canary
@@ -174,6 +212,17 @@ def publish(log, game, manifest_path, output):
         p = manifest_path.with_name(name)
         if p.stat().st_size != fact['size'] or sha(p) != fact['sha256']:
             raise ValueError('fresh artifact identity differs: '+name)
+    original_manifest = None
+    if original_manifest_path is not None:
+        original_manifest=json.loads(original_manifest_path.read_text())
+        validate_manifest(identity,original_manifest,True)
+        canary.validate_input_identity(original_manifest['inputs'])
+        for process in original_manifest['processes']:
+            canary.checked_child(process['exit'],original_manifest_path.with_name(process['role']+'.log').read_text())
+        for name,fact in original_manifest['artifacts'].items():
+            path=original_manifest_path.with_name(name)
+            if path.stat().st_size!=fact['size'] or sha(path)!=fact['sha256']:
+                raise ValueError('original fresh artifact identity differs: '+name)
     programs = []
     for name, path in expected.items():
         payload = bb.payload(path)
@@ -182,6 +231,9 @@ def publish(log, game, manifest_path, output):
         walked = list(bb.walk(items))
         row = rows[name]
         synthetic = [0,5,6] if name == 'Scenes/0011SingleEndlosAddon/endless01.sze' else []
+        original = [0] if synthetic and original_manifest is not None else []
+        if original and not row['normal_startup']:
+            raise ValueError('original canary requires normal startup in the joined inventory')
         validate_program_row(row,items,sum(isinstance(n,bb.If) for n in items),synthetic)
         if synthetic and hashlib.sha256(payload).hexdigest() != manifest['inputs']['program_sha256']:
             raise ValueError('synthetic coverage source differs')
@@ -189,20 +241,24 @@ def publish(log, game, manifest_path, output):
                              parsed=True,**row,kernel_items=len(items),
                              actions=dict(Counter(n.name.upper() for n in walked if isinstance(n,bb.Call))),
                              queries=dict(Counter(n.subject+':'+n.query for n in walked if isinstance(n,bb.Primary) and n.subject)),
-                             original_true_branch_coverage=[],synthetic_true_branch_coverage=synthetic,
-                             execution_scope=('EMPTY_KERNEL_ONLY; no original tutorial behavior claim' if row['empty_kernel'] else
+                             original_true_branch_coverage=original,synthetic_true_branch_coverage=synthetic,
+                             execution_scope=('ORIGINAL_PUBLIC_COMMAND_CANARY: branch0 wave, founding, unload, HANDWERK1001, native cuts and fresh replay; other branches separate' if original else
+                                              'EMPTY_KERNEL_ONLY; no original tutorial behavior claim' if row['empty_kernel'] else
                                               'INIT_AND_BOUNDED_CALLS_ONLY; no full original-world acceptance' if row['normal_startup'] else 'NOT_EXECUTED'),
                              executed_full_original_scenario=False))
-    data = dict(schema='SCRIPT2-capabilities-1',source_revision=source,
+    data = dict(schema='SCRIPT2-capabilities-2',source_revision=source,
                 workflow_revision=identity['workflow']['head'],gate=str(log),gate_sha256=sha(log),
                 binaries=identity['binaries'],parsed=50,compiled=sum(r['compiled'] for r in rows.values()),
                 normal_startups=sum(r['normal_startup'] for r in rows.values()),executed_full_original_scenarios=0,
-                original_world_canary='OPEN: original SCHIFF/SOLDAT/CREW import absent; no Human actors/city',
+                original_public_command_canaries=1 if original_manifest is not None else 0,
+                original_world_canary='PUBLIC_COMMAND_BRANCH0_AND_CONSTRUCTION_PROVEN; not full campaign or all-branch coverage' if original_manifest is not None else 'NOT_JOINED: no original-world fresh-process artifact supplied',
+                original_canary_manifest=str(original_manifest_path) if original_manifest is not None else None,
+                original_canary_manifest_sha256=sha(original_manifest_path) if original_manifest is not None else None,
                 synthetic_canary_manifest=str(manifest_path),synthetic_canary_manifest_sha256=sha(manifest_path),programs=programs)
     output.write_text(json.dumps(data,indent=2)+'\n')
     if json.loads(output.read_text()) != data:
         raise ValueError('inventory write verification failed')
-    print('SCRIPT2 inventory: parsed='+str(data['parsed'])+' compiled='+str(data['compiled'])+' normal_startups='+str(data['normal_startups'])+' full_original_acceptance=0')
+    print('SCRIPT2 inventory: parsed='+str(data['parsed'])+' compiled='+str(data['compiled'])+' normal_startups='+str(data['normal_startups'])+' original_public_command_canaries='+str(data['original_public_command_canaries'])+' full_original_scenarios=0')
 
 
 if __name__ == '__main__':
@@ -211,11 +267,12 @@ if __name__ == '__main__':
     p.add_argument('--log',type=Path)
     p.add_argument('--game-dir',type=Path)
     p.add_argument('--canary-manifest',type=Path)
+    p.add_argument('--original-manifest',type=Path)
     p.add_argument('--output',type=Path)
     a = p.parse_args()
     if a.self_test:
         unittest.main(argv=['script_inventory2'])
     elif all((a.log,a.game_dir,a.canary_manifest,a.output)):
-        publish(a.log,a.game_dir,a.canary_manifest,a.output)
+        publish(a.log,a.game_dir,a.canary_manifest,a.output,a.original_manifest)
     else:
         p.error('require --self-test or --log/--game-dir/--canary-manifest/--output')

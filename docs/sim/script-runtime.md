@@ -840,3 +840,12 @@ adds8/64/128players,4/32/128areas,16/128/512statements and100/10000/50000 unrela
 figures. It counts scan/build and row/cell/candidate work separately, and sums64
 visit allocations (not peak RSS), with an exact work assertion. Release evidence
 and final inventory publication/review remain pending.
+
+Automatic approval review rejected a combined recording-migration/scale command
+before execution, citing risk to historical SCRIPT1 coverage. Safer separation:
+new current_replay_fixture_path has a native130 compile guard and always points
+to script2; only current-byte comparison/generation callers use it. The separate
+11-file SCRIPT1 archive compatibility testcase still reads script1 and asserts
+exact native129 refusal, and old Python references remain registered. No archived
+fixture is edited; checksums still match the E baseline. The pending Release run
+is separate from migration/generation actions.

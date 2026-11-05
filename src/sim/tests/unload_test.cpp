@@ -1121,7 +1121,7 @@ const std::vector<sim::Reject> kSessionStatus = {
 const std::vector<std::uint64_t> kSessionAmount = {9728, 2560, 11520, 1280, 0, 0, 0};
 
 std::filesystem::path fixture_log_path(const char* name) {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / name;
+    return anno::test::current_replay_fixture_path(name);
 }
 
 std::vector<std::uint8_t> read_file(const std::filesystem::path& p) {

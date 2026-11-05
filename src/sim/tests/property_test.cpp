@@ -241,7 +241,7 @@ TEST_CASE("random command streams keep invariants") {
 namespace {
 
 std::filesystem::path g2_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / "g2.log";
+    return anno::test::current_replay_fixture_path("g2.log");
 }
 
 /// What the G2 session checks besides the hashes.

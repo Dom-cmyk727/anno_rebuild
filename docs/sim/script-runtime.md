@@ -1,8 +1,8 @@
 # MAP-SCRIPT-1 — contract and package acceptance ledger
 Current SCRIPT2 status: A–E approved; implemented synthetic F3/F4 and F5 subsets
 approved. F2 original-world conditional/construction is OPEN because the normal
-scenario adapter drops original units. Final G sanitizer/integration closeout is
-in progress. Historical SCRIPT1 evidence and scope limits below remain attributed
+scenario adapter drops original units. Final G integration closeout is in progress; broad ASAN retained591 passes
+and one1800s timeout, with no sanitizer diagnostics. Historical SCRIPT1 evidence and scope limits below remain attributed
 to their original pins; they are not the current full-program capability claim.
 
 
@@ -57,15 +57,15 @@ and player permission rows are explicit state, not renderer/UI state.
 | S6 scale | deterministic counters/Release | moreplayers/types/statements | query city/figure rescan | modest benchmark | APPROVEDdb13e91e; Release9da32085 |
 | S7 evidence | canonical runner + independent reviews | nonempty frozen-source gates | skipped/incomplete relabelled pass | retained raw logs/manifests | APPROVED0001a020 / final_integration_review; docs reviewed12569eaf; full original claim BLOCKED |
 
-| SCRIPT2 A closure | entire original AST + hashed bytes | seven IFs/all instructions inventoried | permission fragment substituted | cache/script2/A/endless01-inventory.json | pending A review |
-| SCRIPT2 B area | Scene232a0/11010; Welt985c0/a5f70/97150 | true/false, every edge, exact owner/class/crew | swapped tuples/closed edge/ID0 wildcard/hull/nav shortcut | script2 handler vectors + focused query gate | pending |
-| SCRIPT2 B bounded view | original spatial query + owner-approved cap removal |513th match, index rebuild/large unrelated set |512 truncation or hidden scan per IF | deterministic build/query work counters | owner cap choice approved; code pending |
-| SCRIPT2 C money | Scene15940; Welt1cfd0; approved F15/F28/F35 | exact signed deltas/mixed staging/ledger | wrong recipient/duplicate credit/partial commit | handler vectors + money gate/mutant | primary reviewed; frozen A pending |
-| SCRIPT2 D wave | Scene156f0; Frame61010/62090/62380 | exact broadcast namespaced output/order | silent/wrong event, output erased, rollback leak | typed-event consumer and artifact contracts | primary reviewed; frozen A pending |
-| SCRIPT2 E startup/identity | normal Recorder/driver callers + explicit native schema | first command after INIT; Startup replay; native Ready | constructor eager/second world zero visit/old schema accepted | native literal/reference/corruption and replay gates | pending |
-| SCRIPT2 F original canary | unchanged file/program hashes and actual resources | natural public-command area condition + real build | teleport/grant/extracted source/compiled-only claim | exact branch/money/event ledger, fresh process | pending |
-| SCRIPT2 F scale/capabilities | complete50 AST inventory + Release counters | build AND query work, branch labels | empty kernel called tutorial/hidden unlimited query | capability snapshot/measurement provenance | pending |
-| SCRIPT2 G acceptance | canonical immutable gates and fresh review | exact terminal counts/clean commits | failed/skipped outcomes promoted | final handoff and retained failures | pending |
+| SCRIPT2 A closure | entire original AST + hashed bytes | seven IFs/all instructions inventoried | permission fragment substituted | cache/script2/A/endless01-inventory.json | APPROVED fe964e24 / script2_review_area + script2_review_actions |
+| SCRIPT2 B area | Scene232a0/11010; Welt985c0/a5f70/97150 | true/false, every edge, exact owner/class/crew | swapped tuples/closed edge/ID0 wildcard/hull/nav shortcut | script2 handler vectors + focused query gate | APPROVED d159b141 / script2_review_area;13/13 |
+| SCRIPT2 B bounded view | original spatial query + owner-approved cap removal |513th match, index rebuild/large unrelated set |512 truncation or hidden scan per IF | deterministic build/query work counters | owner cap removal approved; APPROVED d159b141 / script2_review_area |
+| SCRIPT2 C money | Scene15940; Welt1cfd0; approved F15/F28/F35 | exact signed deltas/mixed staging/ledger | wrong recipient/duplicate credit/partial commit | handler vectors + money gate/mutant | APPROVED0c20362a / script2_review_actions;19/19 + recipient mutant |
+| SCRIPT2 D wave | Scene156f0; Frame61010/62090/62380 | exact broadcast namespaced output/order | silent/wrong event, output erased, rollback leak | typed-event consumer and artifact contracts | APPROVED e668fca9 / script2_review_actions;25/25 + event mutant |
+| SCRIPT2 E startup/identity | normal Recorder/driver callers + explicit native schema | first command after INIT; Startup replay; native Ready | constructor eager/second world zero visit/old schema accepted | native literal/reference/corruption and replay gates | APPROVED f6354a97 / script2_review_session;46/46 corrective, prior77pass/2fail retained |
+| SCRIPT2 F original canary | unchanged file/program hashes and actual resources | natural public-command area condition + real build | teleport/grant/extracted source/compiled-only claim | exact branch/money/event ledger, fresh process | OPEN F2: no original unit import; compile/INIT only; dependency audit2e964b80 |
+| SCRIPT2 F scale/capabilities | complete50 AST inventory + Release counters | build AND query work, branch labels | empty kernel called tutorial/hidden unlimited query | capability snapshot/measurement provenance | implemented subsets APPROVED69380a73 /250c15ad; final inventory522a0a27:50/14/14/full0 |
+| SCRIPT2 G acceptance | canonical immutable gates and fresh review | exact terminal counts/clean commits | failed/skipped outcomes promoted | final handoff and retained failures | fresh final integration pending; Debug595/595 pre-fix; focused85/85 post-fix; ASAN591pass/1timeout |
 
 ## S1 approved execution contract
 
@@ -298,7 +298,8 @@ uses customtype90001, two players, INIT denial, later allowance/denial, exact
 native cuts0/1/5/7/10 and a changed command diverging at actionentry7 /
 checkpoint8. It is not a no-grants ship-start demonstration.
 
-Capability inventory [script-capabilities.json](script-capabilities.json):
+Historical SCRIPT1 capability inventory
+[script-capabilities-script1.json](script-capabilities-script1.json):
 50parsed,11compiled,0complete permission programs compiled,0full original
 scenarios executed by this inventory. All six shipped permission programs need
 unsupported object/area/query/action features. Compiled empty kernels are not
@@ -928,3 +929,31 @@ the joined-wave storage branch. Native/query/money/output/startup/script/replay,
 original load/import controls and synthetic gameplay mechanisms remain selected.
 This scoped reuse avoids repeating the original full physical five-minute matrix;
 it does not claim post-fix execution of those four ASAN exclusions.
+
+G ASAN terminal at clean5e50da4b retained FAIL:592selected/591executed passes/
+1failed timeout/0empty/0skipped/0incomplete/0sanitizer lines,1993.77s overall.
+Only failed test is `sailed founding canary: the opening loop unloads the unchanged
+loadout and builds, two seats, reload and replay`, timeout1800.06s. It was actively
+using CPU before timeout; this is not a passing sanitizer run. The final serial
+route case then passed. Same canary's prior Debug pass723.26s is retained at454a83e4.
+ASAN executable SHA2569fe991d5143745e54a89a5ca6d1af0e874f7d60fdf1fc160711b2d5d32ce991f;
+all five required contracts pass separately. No tracked file changed during the run.
+Independent `/root/script2_final_integration` dependency audit justifies reusing
+this case's76166-assertion Debug pass for the changed SCRIPT2 scope: ship_start's
+generated adapter sets ExplicitNone and clears source/program/namespace;
+advance_script returns before Host/index/money/wave, Recorder adds no Startup,
+and this replay uses no observer. Only post454a production delta34101c42 wave-prefix
+storage is unreachable here. The591 successful ASAN terminals cover changed
+native/replay/startup/query/money/wave and storage regression. This case's final-source
+ASAN completion remains NOT_COMPLETED. Full G approval and a broad-ASAN PASS are
+not inferred; no longer unchanged physical campaign is needed solely for uniformity.
+
+Final capability publication uses clean522a0a27's85/85 gate and same-pin fresh
+manifest fresh-m4vxi2v_. Later5e50 documentation-only pin has identical C++/tests.
+Current JSON records50parsed/14compiled/14normal startups/0full-original acceptance:
+12empty kernels plus endless01 and endless02 (7/6 bounded visits respectively),
+with no original-world true-branch coverage; synthetic endless01 covers0/5/6.
+Historical SCRIPT1 JSON is preserved verbatim in script-capabilities-script1.json.
+The final integration reviewer caught the draft prose's13-empty count; JSON was
+already correct and prose is corrected to12. Archived11 SCRIPT1 recordings,
+goldens and pure references match the starting head, and local TASKS is unchanged.

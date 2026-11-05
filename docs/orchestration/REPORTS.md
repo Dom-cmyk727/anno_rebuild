@@ -8935,3 +8935,49 @@ Final `/root/final_integration_review` disposition: APPROVED bounded implementat
 at code/test pin `0001a020`, handoff `12569eaf`, after final sanitizer/raw artifact
 inspection. No unresolved P1/P2 findings. S6 full-original claim remains BLOCKED;
 no COMPLETE LOCAL CANDIDATE declaration for the whole packet.
+
+
+## MAP-SCRIPT-2 — complete-source handlers; original-world dependency — 2026-11-05 — status: BLOCKED
+
+Branch `task/MAP-SCRIPT-1`; owned MAP-BOOTSTRAP-1 worktree only. Final production
+change34101c42, C++ test/source pin522a0a27; sanitizer documentation-only pin5e50da4b.
+[Focused handoff](reviews/2026-11-05-map-script2.md) and
+[acceptance ledger](../sim/script-runtime.md) contain primary contracts, exact
+review pins, compatibility/API changes, raw evidence paths and retained failures.
+
+A–E and implemented F subsets are independently approved: typed area definitions/
+indexed ship/soldier queries, transactional MONEY_ADD and code317 broadcast wave
+events, normal pre-command INIT, native130/SCRIPT2/policy2 and replay3 Startup/
+content identity. Owner approved removing original512candidate truncation with
+complete indexed queries bounded by deterministic work. Final integration P2
+namespace allocation amplification is fixed and independently closed.
+
+Entire unchanged2488-byte endless01 source compiles/initializes through normal
+APIs: gold10000000 unchanged, permission rows0→462, RNG/clock unchanged. F2 remains
+OPEN: scenario adapter skips original SCHIFF/SOLDAT and never fills spec.figures;
+original Human ship/crew exists in low-level bytes but loaded world has no actors
+or Human city. Existing Move/Found/Build cannot bridge this. Separate original-unit
+import contract is required; it is necessary, not proof future route/build success.
+No injected unit/resource/permission or extracted kernel substitutes for F2.
+
+Separate synthetic full-source proof executes branches0/5/6, gold10000→109999→209998,
+one HAWAIMUCKE code317/AllLocal event atoldtick18, native cuts and distinct fresh
+producer/worker with checked artifact identities. Published final inventory:
+50parsed/14compiled/14normal startups/0full-original acceptance;12empty kernels,
+endless01/endless02 nonempty. Historical SCRIPT1 inventory/recordings preserved.
+
+Canonical gates: Debug595/595 at454a83e4 before prefix-storage fix; post-fix
+focused85/85 and restoredwave7/7 at522a0a27. ASAN at5e50da4b retained FAIL:
+592selected/591passes/1timeout in unchanged long sailed-founding opening-loop
+canary, zero empty/skipped/incomplete/sanitizer lines. Five required contracts
+passed separately. Independent dependency audit permits exact reuse of that
+case's76166-assertion Debug pass: generated ExplicitNone skips SCRIPT2 entirely,
+and final shared-prefix fix is unreachable. Its ASAN completion remains
+NOT_COMPLETED; no full G or broad-ASAN PASS inferred. Final bounded integration
+review of frozen handoff/metadata remains pending.
+Earlier E79selected/77passes/2fails, discovery failures and mutants stay recorded.
+No aggregate or full A–G/COMPLETE LOCAL CANDIDATE claim.
+
+Windows/MSVC, Linux warnings/sanitizers, original-runtime captures, GPU, audible
+playback and multiplayer scale NOT_RUN. No merge/push/rebase/TASKS or original
+asset change, other executor edit/build/job stop, or default house_updates change.

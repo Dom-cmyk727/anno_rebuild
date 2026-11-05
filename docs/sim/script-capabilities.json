@@ -1,143 +1,203 @@
 {
-  "schema": "SCRIPT1-capabilities-1",
-  "source_revision": "8e2350db5483548bb968be09518eac93495cbd49",
+  "schema": "SCRIPT2-capabilities-1",
+  "source_revision": "522a0a278665927987a2ea5d19ec5267c354995f",
+  "workflow_revision": "27022d75b5b83957456f1db27ae2bb8d794eab7f",
+  "gate": "cache/script2/G-focused-correction-02.log",
+  "gate_sha256": "01cc68bde272f5a654cd4e9bbc7b35e9de664d6337fc169f7f9febf300fbd7e5",
+  "binaries": {
+    "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/build/debug/src/sim/anno_sim_tests": "546c33ac1a6699e41830ea1cdd3e8058c4ea62ca11a07cd8a30ac8a59e3200c9",
+    "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14": "07919b0fbf82742c24420d7dcadbd459f61bc1feb638eca02b81dccab2daf4d5"
+  },
   "parsed": 50,
-  "compiled": 11,
-  "executed_full_scenarios": 0,
-  "complete_permission_programs": 0,
+  "compiled": 14,
+  "normal_startups": 14,
+  "executed_full_original_scenarios": 0,
+  "original_world_canary": "OPEN: original SCHIFF/SOLDAT/CREW import absent; no Human actors/city",
+  "synthetic_canary_manifest": "cache/script2/replays/fresh-m4vxi2v_/manifest.json",
+  "synthetic_canary_manifest_sha256": "44d3f21942be4896a5d0e1fba99f064aee030366a8194f6abce55b6885a356a9",
   "programs": [
     {
       "file": "Scenes/0010SingleEndlos/00_1024_easyentry_01.sze",
-      "sha256": "860cb0cf253f11b16aded40c8b2b7903b02a7d87a59b086767b4859efe7c9ff0",
+      "sha256": "73a9f986ce1297f7291d59639c8bc5e39af368eb300c4fec08ece720786a55d3",
+      "program_sha256": "860cb0cf253f11b16aded40c8b2b7903b02a7d87a59b086767b4859efe7c9ff0",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0010SingleEndlos/01_1024_easy_256.sze",
-      "sha256": "50dcba24b7f5e251b2a9a12a501db861a309cab668844dbe7c21a47cd75601df",
+      "sha256": "3e0d2c72e1ae87b76cc817f0aead7198b4f0509cb11a5246463e338ccf060e05",
+      "program_sha256": "50dcba24b7f5e251b2a9a12a501db861a309cab668844dbe7c21a47cd75601df",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0010SingleEndlos/02_1024_easy_128.sze",
-      "sha256": "02fd3fc0414fd4c7f122291a8168957deab488696579d19444c7c2f6823f0e72",
+      "sha256": "253aae13647f0cd4296b2ad8aa03ea0acec3dcc8966b8af23f4bfe8daa1953a3",
+      "program_sha256": "02fd3fc0414fd4c7f122291a8168957deab488696579d19444c7c2f6823f0e72",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0010SingleEndlos/03_1024_med_256.sze",
-      "sha256": "c9e1ebd5271c1753aedda757d6d6fe560e3387c5bd97b1eac8ece2acdcd08b42",
+      "sha256": "22a6ccbe68b1e21f8610f494866cb1affd693d7e833106ab73de586e80967719",
+      "program_sha256": "c9e1ebd5271c1753aedda757d6d6fe560e3387c5bd97b1eac8ece2acdcd08b42",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0010SingleEndlos/04_1024_med_128.sze",
-      "sha256": "8b94bb5e13fdcb3710df6642b0a7f23b3f01b0e9874abb274a874c2afa423c21",
+      "sha256": "1ea2f99cc84dff56baa10cebf82c07c63d53f0600a7f8f118aa283a39978942d",
+      "program_sha256": "8b94bb5e13fdcb3710df6642b0a7f23b3f01b0e9874abb274a874c2afa423c21",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0010SingleEndlos/05_800_Med_128.sze",
-      "sha256": "02fd3fc0414fd4c7f122291a8168957deab488696579d19444c7c2f6823f0e72",
+      "sha256": "78c105861464e9e779b49f2fb664d15adc6d39c8efbdfe874e83ae0eb9c3f9e4",
+      "program_sha256": "02fd3fc0414fd4c7f122291a8168957deab488696579d19444c7c2f6823f0e72",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0010SingleEndlos/06_1024_heavy_256.sze",
-      "sha256": "c9e1ebd5271c1753aedda757d6d6fe560e3387c5bd97b1eac8ece2acdcd08b42",
+      "sha256": "884ca992e8c88feba47565185ebc6ff0e89de44e0d4745bad406834b93516c9b",
+      "program_sha256": "c9e1ebd5271c1753aedda757d6d6fe560e3387c5bd97b1eac8ece2acdcd08b42",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0010SingleEndlos/07_1024_heavy_128.sze",
-      "sha256": "8b94bb5e13fdcb3710df6642b0a7f23b3f01b0e9874abb274a874c2afa423c21",
+      "sha256": "81eaf24398ee64a9b98b2afc3025170f2a209d4928277397a126ccb221812963",
+      "program_sha256": "8b94bb5e13fdcb3710df6642b0a7f23b3f01b0e9874abb274a874c2afa423c21",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0010SingleEndlos/08_800_heavy_128.sze",
-      "sha256": "7ede9fddcce588c483fa5a763786d7466a827d14ccc2f1e75d04bdd42735f90f",
+      "sha256": "a7e8ae3b4e61603194f19180d9f4a98a92fbdbd04725bc3728c8fa724eda3862",
+      "program_sha256": "7ede9fddcce588c483fa5a763786d7466a827d14ccc2f1e75d04bdd42735f90f",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0011SingleEndlosAddon/endless01.sze",
-      "sha256": "cac0aeb9c14dfd5c0f9b18c664e5282dff57096e2938f93c67391e3c3f8a47d0",
+      "sha256": "b289be7fe906264b1d0fe0b2be75c0e68813ed6691128c84cfebb6e4fd4cc8c0",
+      "program_sha256": "cac0aeb9c14dfd5c0f9b18c664e5282dff57096e2938f93c67391e3c3f8a47d0",
       "parsed": true,
-      "compiled": false,
-      "executed": false,
+      "compiled": true,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 7,
+      "branch_count": 7,
+      "empty_kernel": false,
+      "refusal": null,
       "kernel_items": 15,
       "actions": {
         "SETCONSTRUCTION_DRAWSTATE_ALL": 1,
@@ -146,71 +206,69 @@
         "MONEY_ADD": 2
       },
       "queries": {
-        "VARIABLE:ONETIME": 1,
         "AREA:TOUCHED_BY_SHIP_FROM": 5,
-        "VARIABLE:ONETIME1": 1,
-        "VARIABLE:ONETIME2": 1,
-        "VARIABLE:ONETIME3": 1,
-        "VARIABLE:ONETIME4": 1,
-        "VARIABLE:ONETIME5": 1,
-        "AREA:TOUCHED_BY_SOLDIER_FROM": 2,
-        "VARIABLE:ONETIME6": 1
+        "AREA:TOUCHED_BY_SOLDIER_FROM": 2
       },
-      "permission_calls": 2,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "MONEY_ADD",
-        "PLAYWAVE"
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [
+        0,
+        5,
+        6
       ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_SHIP_FROM",
-        "AREA:TOUCHED_BY_SOLDIER_FROM"
-      ]
+      "execution_scope": "INIT_AND_BOUNDED_CALLS_ONLY; no full original-world acceptance",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0011SingleEndlosAddon/endless02.sze",
-      "sha256": "c8169160172f1974c9b54fac14f9737e2ffb58ec0021ef7364becee8e732b67c",
+      "sha256": "734151588c5cd5854fc809c14fbd65cc7afa8050676690a87d5a2c42ae711f97",
+      "program_sha256": "c8169160172f1974c9b54fac14f9737e2ffb58ec0021ef7364becee8e732b67c",
       "parsed": true,
-      "compiled": false,
-      "executed": false,
+      "compiled": true,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 6,
+      "branch_count": 6,
+      "empty_kernel": false,
+      "refusal": null,
       "kernel_items": 13,
       "actions": {},
       "queries": {
-        "VARIABLE:ONETIME": 1,
-        "AREA:TOUCHED_BY_SHIP_FROM": 6,
-        "VARIABLE:ONETIME1": 1,
-        "VARIABLE:ONETIME2": 1,
-        "VARIABLE:ONETIME3": 1,
-        "VARIABLE:ONETIME4": 1,
-        "VARIABLE:ONETIME5": 1
+        "AREA:TOUCHED_BY_SHIP_FROM": 6
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_SHIP_FROM"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "INIT_AND_BOUNDED_CALLS_ONLY; no full original-world acceptance",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0011SingleEndlosAddon/endless03.sze",
-      "sha256": "d23e7454986522b6969d296c697d7679c9465415f92935f0abccc1c6aab90b61",
+      "sha256": "0a5d7e2c88660c18afc887cf5c11b064bf3664251a27ade0dddedc1a5cd1eeeb",
+      "program_sha256": "d23e7454986522b6969d296c697d7679c9465415f92935f0abccc1c6aab90b61",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_01_01.sze",
-      "sha256": "743a7900a15bd802f66ff744a0240508a770b2ebcf817aef3fc7184f0050c6a2",
+      "sha256": "0934c17d3296ead9af93134dfca42232f3ffd0838833448c9917edaf4a5f1953",
+      "program_sha256": "743a7900a15bd802f66ff744a0240508a770b2ebcf817aef3fc7184f0050c6a2",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 14,
       "actions": {
         "SET_UNIT_VISIBLE": 3,
@@ -225,48 +283,29 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:PART1": 1,
         "PLAYER:INHABITANTCOUNT": 1,
-        "VARIABLE:PART2": 3,
-        "VARIABLE:SUCH_TUSSY": 2,
         "AREA:TOUCHED_BY_OBJECT": 1,
         "OBJECT:KILLED": 1,
-        "VARIABLE:ONETIME": 1,
         "PLAYER:WAR_STATUS": 1,
-        "VARIABLE:PART3": 1,
         "PLAYER:BOUGHT": 1,
-        "VARIABLE:PART4": 1,
         "AREA:CONTAINS": 6
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "BEAMUP",
-        "GOTO_SCREEN",
-        "LOST",
-        "MINIMAP_ALERT",
-        "PLAYVIDEO",
-        "QUESTLOG_SHOW",
-        "SETWARELOG",
-        "SET_UNIT_VISIBLE",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:CONTAINS",
-        "AREA:TOUCHED_BY_OBJECT",
-        "OBJECT:KILLED",
-        "PLAYER:BOUGHT",
-        "PLAYER:INHABITANTCOUNT",
-        "PLAYER:WAR_STATUS"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_02_01.sze",
-      "sha256": "cf4168eb2d3c6ed46df5b2b103a6eb2e62e8101cf31c0a68ad17e29ceedcfe03",
+      "sha256": "23a99f002e422df6580781746f4cf3ed6766595540f67acd867d88b6ddf17630",
+      "program_sha256": "cf4168eb2d3c6ed46df5b2b103a6eb2e62e8101cf31c0a68ad17e29ceedcfe03",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 17,
       "actions": {
         "QUESTLOG_SHOW": 12,
@@ -282,46 +321,27 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:END_FLAG": 4,
-        "VARIABLE:TRIGGER_TO_SHIPKAMPF": 1,
         "PLAYER:INHABITANTCOUNT": 2,
         "PLAYER:DEAD": 2,
-        "VARIABLE:CITY_KILLED": 3,
         "OBJECT:KILLED": 2,
-        "VARIABLE:TEIL1_1": 2,
-        "VARIABLE:TEIL1_2": 2,
-        "PLAYER:BOUGHT": 1,
-        "VARIABLE:TEIL1": 2,
-        "VARIABLE:TRIGGER_FLAG": 1
+        "PLAYER:BOUGHT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ATTACK_AREA",
-        "BEAMDOWN",
-        "GOTO_SCREEN",
-        "LOST",
-        "QUESTLOG_SHOW",
-        "SETWARELOG",
-        "SET_DIPLOMACY",
-        "SET_FOR_BUY",
-        "SET_PROFILE",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "OBJECT:KILLED",
-        "PLAYER:BOUGHT",
-        "PLAYER:DEAD",
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_03_01.sze",
-      "sha256": "799de71147708ed1f8dc9f97ba373642bec03a0ec888ac62565ebd6739d8e170",
+      "sha256": "fa4e6100f8a5bdcaa7818c0a5e9e8a821955a505e35a419fde69b533de0adfce",
+      "program_sha256": "799de71147708ed1f8dc9f97ba373642bec03a0ec888ac62565ebd6739d8e170",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported action: GOTO_SCREEN",
       "kernel_items": 8,
       "actions": {
         "GOTO_SCREEN": 1,
@@ -334,40 +354,28 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:RESTORE_STADT": 2,
         "PLAYER:MAKES_PROFIT": 1,
         "PLAYER:INHABITANTCOUNT": 1,
-        "VARIABLE:DEADEND": 1,
         "PLAYER:WAR_STATUS": 4,
-        "VARIABLE:END_FLAG": 2,
         "PLAYER:DEAD": 4,
         "AREA:CONTAINS": 2
       },
-      "permission_calls": 5,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "GOTO_SCREEN",
-        "LOST",
-        "PLAYVIDEO",
-        "PLAYWAVE",
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:CONTAINS",
-        "PLAYER:DEAD",
-        "PLAYER:INHABITANTCOUNT",
-        "PLAYER:MAKES_PROFIT",
-        "PLAYER:WAR_STATUS"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_04_01.sze",
-      "sha256": "82ef0efdf7aa198f0fe4e0f76a048edbbe5bc63f468f4e2949d557026b5b21ad",
+      "sha256": "2b4cb582bdfb226c9a6d746859a0813da01f1a093695dfeb32f7d63121223912",
+      "program_sha256": "82ef0efdf7aa198f0fe4e0f76a048edbbe5bc63f468f4e2949d557026b5b21ad",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 13,
       "actions": {
         "QUESTLOG_SHOW": 9,
@@ -378,40 +386,27 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:END_FLAG": 2,
         "PLAYER:DEAD": 3,
-        "VARIABLE:DEADEND": 1,
         "PLAYER:WAR_STATUS": 2,
-        "VARIABLE:TASK_1": 2,
         "PLAYER:PAID_TRIBUTE_TO": 2,
-        "VARIABLE:TASK_2": 2,
-        "VARIABLE:TASK_3": 2,
-        "OBJECT:KILLED": 1,
-        "VARIABLE:TASK_COMPLETE": 1
+        "OBJECT:KILLED": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "FREEZE_CITY",
-        "LOST",
-        "QUESTLOG_SHOW",
-        "SETTRIBUTE",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "OBJECT:KILLED",
-        "PLAYER:DEAD",
-        "PLAYER:PAID_TRIBUTE_TO",
-        "PLAYER:WAR_STATUS"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_05_01.sze",
-      "sha256": "625e7ae9accc6c86adc2d9c5f49e9894668789c8aaebbf551b2d40045ef65195",
+      "sha256": "a74c955501d6edb7685fd4cf6077026060075a099d81d5d603e193e1bfe9cff9",
+      "program_sha256": "625e7ae9accc6c86adc2d9c5f49e9894668789c8aaebbf551b2d40045ef65195",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 16,
       "actions": {
         "QUESTLOG_SHOW": 14,
@@ -424,79 +419,57 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:DEADEND": 1,
         "PLAYER:WAR_STATUS": 2,
-        "VARIABLE:INUIT_FOUND": 1,
         "AREA:TOUCHED_BY_SOLDIERS_FROM": 1,
-        "VARIABLE:END_FLAG": 2,
-        "VARIABLE:TEIL1": 5,
         "PLAYER:INHABITANTCOUNT": 1,
         "PLAYER:WARECOUNT": 1,
-        "VARIABLE:TEIL2_1A": 1,
         "PLAYER:SHIPCNT": 2,
         "OBJECT:KILLED": 1,
-        "VARIABLE:TEIL2_1": 2,
         "PLAYER:BOUGHT": 1,
-        "VARIABLE:TEIL2_2": 2,
         "OBJECT:INHABITANTCOUNT": 1
       },
-      "permission_calls": 4,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "CHEAT",
-        "LOST",
-        "PLAYVIDEO",
-        "QUESTLOG_SHOW",
-        "SETWARELOG",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_SOLDIERS_FROM",
-        "OBJECT:INHABITANTCOUNT",
-        "OBJECT:KILLED",
-        "PLAYER:BOUGHT",
-        "PLAYER:INHABITANTCOUNT",
-        "PLAYER:SHIPCNT",
-        "PLAYER:WARECOUNT",
-        "PLAYER:WAR_STATUS"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_06_01.sze",
-      "sha256": "7aae727acb24ab6d0c5e5a0269130047ab1d416ff1c8ae99c7b5a9b7d011ebb6",
+      "sha256": "ed56f6ceb738ad0696d050bc113b8fcaffb87aff5b4069af3c7c62915bbbf3cb",
+      "program_sha256": "7aae727acb24ab6d0c5e5a0269130047ab1d416ff1c8ae99c7b5a9b7d011ebb6",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported query: PLAYER \"HUMAN\" SOLDIERCOUNT \"MOERSER\" == 0",
       "kernel_items": 4,
       "actions": {
         "LOST": 2,
         "WON": 1
       },
       "queries": {
-        "VARIABLE:END_FLAG": 3,
         "PLAYER:SOLDIERCOUNT": 2,
         "PLAYER:SHIPCNT": 1,
         "AREA:TOUCHED_BY_SOLDIERS_FROM": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "LOST",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_SOLDIERS_FROM",
-        "PLAYER:SHIPCNT",
-        "PLAYER:SOLDIERCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_07_01.sze",
-      "sha256": "b21dcb11a63f4024545d7a5b2012a1c34986b139c586b21f652e5147052d7e3a",
+      "sha256": "04f60b235f3137d83eb2078d1a727ca5e3c737d973f5a87a26c2ea6725e58d62",
+      "program_sha256": "b21dcb11a63f4024545d7a5b2012a1c34986b139c586b21f652e5147052d7e3a",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 9,
       "actions": {
         "SET_DIPLOMACY": 1,
@@ -509,37 +482,26 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:STARTWAIT": 1,
-        "VARIABLE:TIMER_1": 1,
-        "VARIABLE:FIRST_LANDKAMPF": 2,
         "AREA:SOLDIERCNT_FROM": 1,
-        "VARIABLE:VEIGELN_LASSEN": 1,
         "PLAYER:INHABITANTCOUNT": 1,
-        "VARIABLE:END_FLAG": 1,
         "OBJECT:KILLED": 3
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ATTACK_AREA",
-        "GOTO_SCREEN",
-        "PLAYVIDEO",
-        "SET_DIPLOMACY",
-        "SET_PROFILE",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:SOLDIERCNT_FROM",
-        "OBJECT:KILLED",
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_08_01.sze",
-      "sha256": "0e45250fc88a68995ab4ae3ef095df7d882e5bdee89975f5e9445f768bb175e9",
+      "sha256": "7f03b03cf9ba07ea184ef3093e46760d7385776a3702f007df86d3956bc0a133",
+      "program_sha256": "0e45250fc88a68995ab4ae3ef095df7d882e5bdee89975f5e9445f768bb175e9",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 7,
       "actions": {
         "SET_UNIT_VISIBLE": 14,
@@ -552,36 +514,26 @@
         "GOTO_SCREEN": 1
       },
       "queries": {
-        "VARIABLE:END_FLAG": 3,
         "OBJECT:KILLED": 1,
         "OBJECT:OWNER": 1,
-        "VARIABLE:DEADEND_ABFRAGE": 2,
         "PLAYER:SOLDIERCOUNT": 2
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ASSIGN_OBJECT",
-        "GOTO_SCREEN",
-        "LOST",
-        "PLAYWAVE",
-        "SET_DIPLOMACY",
-        "SET_UNIT_VISIBLE",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "OBJECT:KILLED",
-        "OBJECT:OWNER",
-        "PLAYER:SOLDIERCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_09_01.sze",
-      "sha256": "9e0b93a5c0d4f7b60dcf64534675149fbe073c5031079451aed1ebe249f49f8a",
+      "sha256": "8c85dedf8f94c6c428e6561ba6ee0d59e5d5c5045b49d85518618b1d0928c81a",
+      "program_sha256": "9e0b93a5c0d4f7b60dcf64534675149fbe073c5031079451aed1ebe249f49f8a",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 9,
       "actions": {
         "QUESTLOG_SHOW": 11,
@@ -596,42 +548,27 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:TEIL1_1": 2,
         "PLAYER:INHABITANTCOUNT": 1,
-        "VARIABLE:TEIL2_1": 3,
         "PLAYER:WAR_STATUS": 1,
         "PLAYER:BOUGHT": 1,
-        "VARIABLE:END_FLAG": 1,
-        "VARIABLE:TEIL3_1": 1,
         "OBJECT:INHABITANTCOUNT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "FREEZE_CITY",
-        "LOST",
-        "MINIMAP_ALERT",
-        "PLAYVIDEO",
-        "QUESTLOG_SHOW",
-        "SETWARELOG",
-        "SET_DIPLOMACY",
-        "SET_FOR_BUY",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "OBJECT:INHABITANTCOUNT",
-        "PLAYER:BOUGHT",
-        "PLAYER:INHABITANTCOUNT",
-        "PLAYER:WAR_STATUS"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_10_01.sze",
-      "sha256": "af2fb6bc3ec2845b6a04044f573faa429fa82b13a9bfdc57bfd3a624f92cf5d6",
+      "sha256": "b15f613887fb172e86d575ef49c6eb0ef0c046289d30c11a16708e33a71afaad",
+      "program_sha256": "af2fb6bc3ec2845b6a04044f573faa429fa82b13a9bfdc57bfd3a624f92cf5d6",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 3,
       "actions": {
         "SET_DIPLOMACY": 1,
@@ -639,26 +576,24 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:END_FLAG": 1,
         "OBJECT:KILLED": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "FREEZE_CITY",
-        "SET_DIPLOMACY",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "OBJECT:KILLED"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_11_01.sze",
-      "sha256": "c6ec5970b5d5fcb852e904230bc29a345e8367ec745616ec7e83cff09c74bf44",
+      "sha256": "5ed26ec10a76e5aa5b3f14a640b61afa555299ade4e5a399a03705888fd4ba62",
+      "program_sha256": "c6ec5970b5d5fcb852e904230bc29a345e8367ec745616ec7e83cff09c74bf44",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 18,
       "actions": {
         "QUESTLOG_SHOW": 3,
@@ -669,41 +604,26 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:WP01_HIT": 1,
         "AREA:TOUCHED_BY_OBJECT": 7,
-        "VARIABLE:WP02_HIT": 1,
-        "VARIABLE:WP03_HIT": 1,
-        "VARIABLE:WP04_HIT": 1,
-        "VARIABLE:WP05_HIT": 1,
-        "VARIABLE:WP06_HIT": 1,
-        "VARIABLE:END_FLAG": 2,
-        "VARIABLE:WPEND_HIT": 1,
         "OBJECT:KILLED": 1,
-        "VARIABLE:MISSION_FLAG": 1,
         "OBJECT:HEALTH": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "LOST",
-        "MOVE_UNIT",
-        "QUESTLOG_SHOW",
-        "SET_DIPLOMACY",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_OBJECT",
-        "OBJECT:HEALTH",
-        "OBJECT:KILLED"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_12_01.sze",
-      "sha256": "e8196805b928ce6d974b2a18f9d17a2adaed975b061899281a4c75a83639135b",
+      "sha256": "29fcc1b81818f6e52765f2985126478dbb513029b8f7474dbd6c13ce0e0f0057",
+      "program_sha256": "e8196805b928ce6d974b2a18f9d17a2adaed975b061899281a4c75a83639135b",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 3,
       "actions": {
         "QUESTLOG_SHOW": 1,
@@ -711,51 +631,48 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:END_FLAG": 1,
         "OBJECT:KILLED": 21
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "QUESTLOG_SHOW",
-        "SET_DIPLOMACY",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "OBJECT:KILLED"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0100Kampagne01/S01_13_01.sze",
-      "sha256": "e0e833898d59145cf399cbfc48ed7b652352e8eca8e513363a7efbace4703ef2",
+      "sha256": "560a94509ab0b6b0c47d7b5e7e251a2ea89b75d6be5ece451a3ab698413576a2",
+      "program_sha256": "e0e833898d59145cf399cbfc48ed7b652352e8eca8e513363a7efbace4703ef2",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported query: AREA \"SCHATZ_AREA\" TOUCHED_BY_SOLDIERS_FROM \"HUMAN01\"",
       "kernel_items": 2,
       "actions": {
         "PLAYWAVE": 2,
         "WON": 1
       },
       "queries": {
-        "VARIABLE:END_FLAG": 1,
         "AREA:TOUCHED_BY_SOLDIERS_FROM": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "PLAYWAVE",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_SOLDIERS_FROM"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_01.sze",
-      "sha256": "ada79ccfd48fed4fc787d330cf178759cbe23efe90ef006ca9bb5a7c030e93f6",
+      "sha256": "dd51638dd9367f9fe19bde85f85a8f93b4b0c02a79027c7c95c760435fc8c3d0",
+      "program_sha256": "ada79ccfd48fed4fc787d330cf178759cbe23efe90ef006ca9bb5a7c030e93f6",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported action: QUESTLOG_SHOW",
       "kernel_items": 3,
       "actions": {
         "QUESTLOG_SHOW": 3,
@@ -763,28 +680,25 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:MISSION_FLAG": 1,
         "PLAYER:DEAD": 3,
         "PLAYER:INHABITANTCOUNT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported action: QUESTLOG_SHOW",
-      "unsupported_actions": [
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "PLAYER:DEAD",
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_05.sze",
-      "sha256": "99d6225176a8f2373a703093437b8614d098c03ced44417aef0727dc33b4c6d6",
+      "sha256": "9a2f280c691ebe9660e0d203439990bc912080ab6a6234b3936c7502de787500",
+      "program_sha256": "99d6225176a8f2373a703093437b8614d098c03ced44417aef0727dc33b4c6d6",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 3,
       "actions": {
         "QUESTLOG_SHOW": 3,
@@ -792,28 +706,25 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:MISSION_FLAG": 1,
         "OBJECT:KILLED": 1,
         "PLAYER:INHABITANTCOUNT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "OBJECT:KILLED",
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_06.sze",
-      "sha256": "c261f83e54dbdcde5c09b03683ce704925a63afdde7e1f9cacf54e0e718d6236",
+      "sha256": "29767be35e21f5c59dfc4f9178ece33f342e482fa22380ea0bf74f5dc6ef5fed",
+      "program_sha256": "c261f83e54dbdcde5c09b03683ce704925a63afdde7e1f9cacf54e0e718d6236",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported action: QUESTLOG_SHOW",
       "kernel_items": 3,
       "actions": {
         "QUESTLOG_SHOW": 3,
@@ -821,26 +732,24 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:MISSION_FLAG": 1,
         "PLAYER:INHABITANTCOUNT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported action: QUESTLOG_SHOW",
-      "unsupported_actions": [
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_08.sze",
-      "sha256": "29e7a3753a51f161d823fcd3670146b2767ffc15e8dc5445e07f474c48a62b78",
+      "sha256": "6e04fd8fd841de2915ceb6ef8c9b1619f42af0b5cd229a931585997340633028",
+      "program_sha256": "29e7a3753a51f161d823fcd3670146b2767ffc15e8dc5445e07f474c48a62b78",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported action: QUESTLOG_SHOW",
       "kernel_items": 6,
       "actions": {
         "QUESTLOG_SHOW": 3,
@@ -851,28 +760,24 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:TIMER_FLAG": 3,
-        "PLAYER:INHABITANTCOUNT": 2,
-        "VARIABLE:MISSION_FLAG": 1,
-        "VARIABLE:TIMER_0": 1
+        "PLAYER:INHABITANTCOUNT": 2
       },
-      "permission_calls": 0,
-      "refusal": "unsupported action: QUESTLOG_SHOW",
-      "unsupported_actions": [
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_10.sze",
-      "sha256": "75d226b4d3299da2b6894b2c0a522722e01bb2e3602de48e4e31cb503a235121",
+      "sha256": "f9bf548ee35af393be8ecc4339f013a9b2b6ce54737692cef265daff35e0fe41",
+      "program_sha256": "75d226b4d3299da2b6894b2c0a522722e01bb2e3602de48e4e31cb503a235121",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported action: QUESTLOG_SHOW",
       "kernel_items": 11,
       "actions": {
         "QUESTLOG_SHOW": 12,
@@ -885,33 +790,24 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:END_FLAG": 2,
-        "VARIABLE:TIMER_0": 1,
-        "VARIABLE:STUFE_1": 2,
-        "PLAYER:INHABITANTCOUNT": 4,
-        "VARIABLE:STUFE_2": 2,
-        "VARIABLE:STUFE_3": 2,
-        "VARIABLE:STUFE_4": 1
+        "PLAYER:INHABITANTCOUNT": 4
       },
-      "permission_calls": 0,
-      "refusal": "unsupported action: QUESTLOG_SHOW",
-      "unsupported_actions": [
-        "LOST",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_12.sze",
-      "sha256": "e6175bff06235ac47c7a86314e4423ef78edd6354671686c267cc705354fe793",
+      "sha256": "3865f0b30f9f6c07c0b011e1a0c2b7afe9ffc176d40ca9dca9eb175dc48fa159",
+      "program_sha256": "e6175bff06235ac47c7a86314e4423ef78edd6354671686c267cc705354fe793",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported action: QUESTLOG_SHOW",
       "kernel_items": 3,
       "actions": {
         "QUESTLOG_SHOW": 3,
@@ -919,26 +815,24 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:MISSION_FLAG": 1,
         "PLAYER:INHABITANTCOUNT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported action: QUESTLOG_SHOW",
-      "unsupported_actions": [
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_14.sze",
-      "sha256": "1ab697ee536c91a59b53bec0d8cc1d3477ad874c777a60ac224e8b41074221d0",
+      "sha256": "8c25fb9c74ae1ecffaf0280e98ac6c9b170aaee85e2463ab83de16e79199fffd",
+      "program_sha256": "1ab697ee536c91a59b53bec0d8cc1d3477ad874c777a60ac224e8b41074221d0",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 6,
       "actions": {
         "QUESTLOG_SHOW": 3,
@@ -950,31 +844,25 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:END_FLAG": 2,
-        "VARIABLE:TIMER_0": 1,
         "OBJECT:KILLED": 6,
-        "VARIABLE:MISSION_FLAG": 1,
         "OBJECT:WARECOUNT": 6
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "LOST",
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "OBJECT:KILLED",
-        "OBJECT:WARECOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_15.sze",
-      "sha256": "316e4a63cbef13cb1765a36539f370a870ad616d2de75e34bf07fa2452bf9d8a",
+      "sha256": "f34508e4d7467e25360e3db8b65f2df23289b5a62a8484bfacdbed0cae2f8b31",
+      "program_sha256": "316e4a63cbef13cb1765a36539f370a870ad616d2de75e34bf07fa2452bf9d8a",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported action: QUESTLOG_SHOW",
       "kernel_items": 3,
       "actions": {
         "QUESTLOG_SHOW": 3,
@@ -982,26 +870,24 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:MISSION_FLAG": 1,
         "PLAYER:INHABITANT_AMOUNT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported action: QUESTLOG_SHOW",
-      "unsupported_actions": [
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "PLAYER:INHABITANT_AMOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_16.sze",
-      "sha256": "fd0aaa54af7161a8d426c27a271b0e1cb65b794cb46b6458dea17c0448a1bfd9",
+      "sha256": "78229c7c6b47d9c393a0bcab3aae52057b8088040c8374a80040bba8af7753ea",
+      "program_sha256": "fd0aaa54af7161a8d426c27a271b0e1cb65b794cb46b6458dea17c0448a1bfd9",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported action: QUESTLOG_SHOW",
       "kernel_items": 3,
       "actions": {
         "QUESTLOG_SHOW": 3,
@@ -1009,26 +895,24 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:MISSION_FLAG": 1,
         "PLAYER:INHABITANT_AMOUNT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported action: QUESTLOG_SHOW",
-      "unsupported_actions": [
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "PLAYER:INHABITANT_AMOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0200Single/Single_24.sze",
-      "sha256": "b10e70a7c2fdd385eb79c693ec20f4d17a7d61891efdaa7f35c1fded20d8d37d",
+      "sha256": "861ad2066a1c26c53367f8538e328e6b00e467e4a00238265d9f20747661ffc4",
+      "program_sha256": "b10e70a7c2fdd385eb79c693ec20f4d17a7d61891efdaa7f35c1fded20d8d37d",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 30,
       "actions": {
         "TIMER_SET": 2,
@@ -1043,48 +927,25 @@
         "LOST": 1
       },
       "queries": {
-        "VARIABLE:TIMER_1": 7,
-        "VARIABLE:OBJ04": 1,
-        "VARIABLE:OBJ05": 1,
-        "VARIABLE:OBJ06": 1,
-        "VARIABLE:OBJ07": 1,
-        "VARIABLE:OBJ08": 1,
-        "VARIABLE:OBJ09": 1,
-        "VARIABLE:OBJ10": 1,
         "PLAYER:DEAD": 8,
-        "VARIABLE:ONETIME02": 1,
-        "VARIABLE:OBJ03": 1,
-        "VARIABLE:TIMER_0": 1,
-        "VARIABLE:OBJ01": 1,
-        "VARIABLE:ONETIME01": 1,
-        "OBJECT:KILLED": 1,
-        "VARIABLE:OBJ02": 1,
-        "VARIABLE:ONETIME03": 1,
-        "VARIABLE:ONETIME04": 1
+        "OBJECT:KILLED": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ADD_SCORE",
-        "ATTACK_AREA",
-        "ATTACK_OBJECT",
-        "LOST",
-        "PLAYVIDEO",
-        "SET_DIPLOMACY",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "OBJECT:KILLED",
-        "PLAYER:DEAD"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single30.sze",
-      "sha256": "b8a959138b652790a2e47989c336aecc7baa5da6b3f0f612fb69526cd7758e89",
+      "sha256": "e0a04f2cfd55cdc828320cee5ec8bde978a153cfef6f0cdf2c9ff71947f5811a",
+      "program_sha256": "b8a959138b652790a2e47989c336aecc7baa5da6b3f0f612fb69526cd7758e89",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 76,
       "actions": {
         "GOTO_SCREEN": 2,
@@ -1104,83 +965,29 @@
         "LOST": 5
       },
       "queries": {
-        "VARIABLE:PART": 1,
         "AREA:TOUCHED_BY_SOLDIERS_FROM": 10,
-        "VARIABLE:PART1": 1,
-        "VARIABLE:PART2": 1,
-        "VARIABLE:PART3": 1,
         "OBJECT:CONTAINS": 5,
         "AREA:TOUCHED_BY_SHIP_FROM": 6,
-        "VARIABLE:PART4": 1,
         "AREA:TOUCHED_BY_OBJECT": 7,
-        "VARIABLE:PART5": 1,
-        "VARIABLE:PART6": 1,
-        "VARIABLE:PART8": 1,
-        "VARIABLE:PART9": 1,
-        "VARIABLE:PART10": 1,
-        "VARIABLE:PART11": 1,
-        "VARIABLE:PART12": 1,
-        "VARIABLE:PART14": 1,
-        "VARIABLE:PART15": 1,
-        "VARIABLE:PART16": 1,
-        "VARIABLE:PART17": 1,
         "AREA:TOUCHED_BY_SOLDIER_FROM": 6,
-        "VARIABLE:PART18": 1,
-        "VARIABLE:PART20": 1,
-        "VARIABLE:PART21": 1,
-        "VARIABLE:PART22": 1,
-        "VARIABLE:PART23": 1,
-        "VARIABLE:PART24": 1,
-        "VARIABLE:PART25": 1,
-        "VARIABLE:PART26": 1,
-        "VARIABLE:PART27": 1,
-        "VARIABLE:PART29": 1,
-        "VARIABLE:PART30": 1,
-        "VARIABLE:PART31": 1,
-        "VARIABLE:PART32": 1,
-        "VARIABLE:PART33": 1,
-        "VARIABLE:PART34": 1,
-        "VARIABLE:ONETIME4": 1,
-        "OBJECT:KILLED": 8,
-        "VARIABLE:ONETIME": 1,
-        "VARIABLE:ONETIME1": 1,
-        "VARIABLE:ONETIME3": 1,
-        "VARIABLE:PUTT": 1
+        "OBJECT:KILLED": 8
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ADD_HEALTH",
-        "ASSIGN_OBJECT",
-        "DISASTER_AT",
-        "GOTO_SCREEN",
-        "KILLPLAYER",
-        "LOST",
-        "MINIMAP_ALERT",
-        "MONEY_ADD",
-        "PLAYVIDEO",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SET_PIONIER_ITEM",
-        "SET_UNIT_VISIBLE",
-        "WAKEUP",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_OBJECT",
-        "AREA:TOUCHED_BY_SHIP_FROM",
-        "AREA:TOUCHED_BY_SOLDIERS_FROM",
-        "AREA:TOUCHED_BY_SOLDIER_FROM",
-        "OBJECT:CONTAINS",
-        "OBJECT:KILLED"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single31.sze",
-      "sha256": "8233d420c527489e78c0011d8c973aadfd9bfd7c72b97cec22c117f37f2523ff",
+      "sha256": "eb9b8cfb8fdf685a4c39f261fb1c24dbfd1b4f4326a5e6dfb43a629ace7cbaf4",
+      "program_sha256": "8233d420c527489e78c0011d8c973aadfd9bfd7c72b97cec22c117f37f2523ff",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 32,
       "actions": {
         "GOTO_SCREEN": 1,
@@ -1201,55 +1008,28 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:PART1": 6,
-        "VARIABLE:PART2": 6,
         "OBJECT:OWNER": 6,
-        "VARIABLE:ONETIME1": 1,
         "OBJECT:KILLED": 4,
-        "VARIABLE:ONETIME5": 1,
         "AREA:TOUCHED_BY_SOLDIERS_FROM": 3,
-        "VARIABLE:TIMER_0": 2,
-        "VARIABLE:ONETIME6": 1,
-        "VARIABLE:PART3": 2,
-        "VARIABLE:ONETIME2": 1,
-        "VARIABLE:ONETIME3": 1,
         "PLAYER:SOLDIERLOST": 1,
-        "VARIABLE:ONETIME4": 1,
-        "VARIABLE:PART4": 1,
-        "VARIABLE:PART5": 1,
-        "AREA:TOUCHED_BY_OBJECT": 1,
-        "VARIABLE:PART6": 1
+        "AREA:TOUCHED_BY_OBJECT": 1
       },
-      "permission_calls": 9,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ASSIGN_ALL_SOLDIERS",
-        "ASSIGN_OBJECT",
-        "FREEZE_CITY",
-        "GOTO_SCREEN",
-        "LOST",
-        "MINIMAP_ALERT",
-        "PLAYVIDEO",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SET_DIPLOMACY",
-        "SET_UNIT_VISIBLE",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_OBJECT",
-        "AREA:TOUCHED_BY_SOLDIERS_FROM",
-        "OBJECT:KILLED",
-        "OBJECT:OWNER",
-        "PLAYER:SOLDIERLOST"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single32.sze",
-      "sha256": "7fc265b49a7554eae476317d6b0b5462691ddd866108c7eebc30b4aaa0f6bb40",
+      "sha256": "4761fea1fade65433043bf83295aecb8c90d2b6be04b1f921f9f9b0913875694",
+      "program_sha256": "7fc265b49a7554eae476317d6b0b5462691ddd866108c7eebc30b4aaa0f6bb40",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 19,
       "actions": {
         "SET_UNIT_VISIBLE": 4,
@@ -1265,48 +1045,27 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:SELBSTMORD": 1,
         "OBJECT:KILLED": 1,
-        "VARIABLE:ONETIME": 1,
         "AREA:TOUCHED_BY_SHIP_FROM": 4,
-        "VARIABLE:ONETIME1": 1,
-        "VARIABLE:ONETIME2": 1,
-        "VARIABLE:ONETIME3": 1,
-        "VARIABLE:PART1": 1,
         "AREA:SHIPCNT_FROM": 8,
-        "VARIABLE:PART2": 1,
-        "VARIABLE:PART3": 1,
-        "VARIABLE:STADT": 1,
         "PLAYER:INHABITANTCOUNT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ASSIGN_OBJECT",
-        "GOTO_SCREEN",
-        "LOST",
-        "MONEY_ADD",
-        "PLAYVIDEO",
-        "PLAYWAVE",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SET_UNIT_VISIBLE",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:SHIPCNT_FROM",
-        "AREA:TOUCHED_BY_SHIP_FROM",
-        "OBJECT:KILLED",
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single33.sze",
-      "sha256": "d1b533e105aac33afd650591839119ecc615173cc8e4bb517225e8e1ce7069d5",
+      "sha256": "2e3c53c990bc48d48cf247e4cc2c37c83be91c50c48b957c7a8677b9757799d4",
+      "program_sha256": "d1b533e105aac33afd650591839119ecc615173cc8e4bb517225e8e1ce7069d5",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 45,
       "actions": {
         "GOTO_SCREEN": 1,
@@ -1323,51 +1082,26 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:WAV01": 1,
         "AREA:TOUCHED_BY_SHIP_FROM": 1,
-        "VARIABLE:WAV02": 1,
         "AREA:TOUCHED_BY_SOLDIERS_FROM": 1,
-        "VARIABLE:TIMER_1": 1,
-        "VARIABLE:PART1": 3,
-        "AREA:TOUCHED_BY_CONSTRUCTION": 25,
-        "VARIABLE:CHKPART1": 5,
-        "VARIABLE:MINE1": 4,
-        "VARIABLE:MINE1_NOW": 3,
-        "VARIABLE:MINE2": 6,
-        "VARIABLE:MINE2_NOW": 5,
-        "VARIABLE:PART2": 3,
-        "VARIABLE:CHKPART2": 5,
-        "VARIABLE:PART3": 3,
-        "VARIABLE:CHKPART3": 5,
-        "VARIABLE:MINE3": 5,
-        "VARIABLE:MINE3_NOW": 4,
-        "VARIABLE:PART4": 1
+        "AREA:TOUCHED_BY_CONSTRUCTION": 25
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "FREEZE_CITY",
-        "GOTO_SCREEN",
-        "MINIMAP_ALERT",
-        "PLAYVIDEO",
-        "PLAYWAVE",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SET_DIPLOMACY",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_CONSTRUCTION",
-        "AREA:TOUCHED_BY_SHIP_FROM",
-        "AREA:TOUCHED_BY_SOLDIERS_FROM"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single34.sze",
-      "sha256": "aa341779384d215670ce3a3c24852e682b248899e39456ae10b6311319c983b5",
+      "sha256": "760a22c63a2c5f2d60c5ce80558f2d8b150c1c0fd696ef34a25a5ae0fac95591",
+      "program_sha256": "aa341779384d215670ce3a3c24852e682b248899e39456ae10b6311319c983b5",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 18,
       "actions": {
         "ATTACK_AREA": 6,
@@ -1386,52 +1120,28 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:ONETIME1": 1,
         "AREA:TOUCHED_BY_CONSTRUCTION": 3,
-        "VARIABLE:ONETIME2": 1,
-        "VARIABLE:ONETIME4": 2,
-        "VARIABLE:PART1": 2,
         "PLAYER:INHABITANTCOUNT": 1,
-        "VARIABLE:PART2": 1,
         "PLAYER:SOLDIERLOST": 1,
-        "VARIABLE:PART7": 2,
-        "VARIABLE:PART4": 1,
         "OBJECT:KILLED": 6,
-        "VARIABLE:PART8": 1,
         "AREA:TOUCHED_BY_SOLDIERS_FROM": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ASSIGN_ALL_SOLDIERS",
-        "ASSIGN_OBJECT",
-        "ATTACK_AREA",
-        "FREEZE_CITY",
-        "MINIMAP_ALERT",
-        "MONEY_ADD",
-        "MOVE_UNIT",
-        "PLAYVIDEO",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SET_DIPLOMACY",
-        "SET_PROFILE",
-        "SET_UNIT_VISIBLE",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_CONSTRUCTION",
-        "AREA:TOUCHED_BY_SOLDIERS_FROM",
-        "OBJECT:KILLED",
-        "PLAYER:INHABITANTCOUNT",
-        "PLAYER:SOLDIERLOST"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single36.sze",
-      "sha256": "520598cc654f92ecb65ba8862b14579a98944dfc4f7861968f9d5b75937f1481",
+      "sha256": "5db119faea8ae9dccbd3da8844340f05a199130f9b19ea1648cb6ac1d7360664",
+      "program_sha256": "520598cc654f92ecb65ba8862b14579a98944dfc4f7861968f9d5b75937f1481",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 35,
       "actions": {
         "QUESTLOG_SHOW": 73,
@@ -1444,52 +1154,27 @@
         "LOST": 2
       },
       "queries": {
-        "VARIABLE:PART1": 1,
         "AREA:TOUCHED_BY_SHIP_FROM": 14,
         "AREA:TOUCHED_BY_SOLDIER_FROM": 14,
-        "VARIABLE:PART2": 1,
-        "VARIABLE:PART3": 1,
-        "VARIABLE:SIOUX": 1,
-        "VARIABLE:SIOUX1": 1,
-        "VARIABLE:ONETIME": 1,
-        "VARIABLE:ONETIME1": 1,
-        "VARIABLE:ONETIME2": 1,
-        "VARIABLE:ONETIME3": 1,
-        "VARIABLE:ONETIME4": 1,
-        "VARIABLE:ONETIME5": 1,
-        "VARIABLE:ONETIME6": 1,
-        "VARIABLE:ONETIME7": 1,
-        "VARIABLE:ONETIME8": 1,
-        "VARIABLE:ENDE": 1,
         "PLAYER:INHABITANTCOUNT": 2,
-        "VARIABLE:KRIEG": 1,
-        "PLAYER:WAR_STATUS": 2,
-        "VARIABLE:LEUTEWEG": 1
+        "PLAYER:WAR_STATUS": 2
       },
-      "permission_calls": 1,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "LOST",
-        "PLAYVIDEO",
-        "PLAYWAVE",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_SHIP_FROM",
-        "AREA:TOUCHED_BY_SOLDIER_FROM",
-        "PLAYER:INHABITANTCOUNT",
-        "PLAYER:WAR_STATUS"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single38.sze",
-      "sha256": "c78a8cbdc951731ce4b61e6c9642a2172a06b68e99851ee4818305ba7f822f88",
+      "sha256": "9d13fda80c8fcb58e72c3242f5082e932171559f83ae7d11bfa18cc39cd720ed",
+      "program_sha256": "c78a8cbdc951731ce4b61e6c9642a2172a06b68e99851ee4818305ba7f822f88",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 36,
       "actions": {
         "GOTO_SCREEN": 1,
@@ -1506,70 +1191,33 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:ONETIME1": 1,
         "AREA:TOUCHED_BY_SHIP_FROM": 4,
-        "VARIABLE:ONETIME10": 2,
         "AREA:TOUCHED_BY_OBJECT": 3,
-        "VARIABLE:PART1": 1,
-        "VARIABLE:PART2": 2,
         "PLAYER:SHIPLOST": 1,
-        "VARIABLE:ONETIME2": 2,
         "OBJECT:KILLED": 7,
-        "VARIABLE:ONETIME3": 2,
-        "VARIABLE:ONETIME4": 2,
-        "VARIABLE:ONETIME5": 1,
         "AREA:TOUCHED_BY_SOLDIERS_FROM": 1,
-        "VARIABLE:PART3": 1,
-        "VARIABLE:ONETIME8": 1,
         "AREA:SOLDIERCNT_FROM": 1,
-        "VARIABLE:ONETIME7": 1,
-        "VARIABLE:PART4": 2,
-        "VARIABLE:PART5": 1,
-        "VARIABLE:PART6": 3,
-        "VARIABLE:ONETIME6": 1,
         "AREA:TOUCHED_BY_SOLDIER_FROM": 3,
-        "VARIABLE:ONETIME9": 1,
-        "VARIABLE:ONETIME11": 1,
         "PLAYER:SHIPCNT": 1,
         "PLAYER:INHABITANT_AMOUNT": 1,
-        "PLAYER:SOLDIERCOUNT": 1,
-        "VARIABLE:PART7": 1
+        "PLAYER:SOLDIERCOUNT": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ASSIGN_ALL_SOLDIERS",
-        "ASSIGN_OBJECT",
-        "GOTO_SCREEN",
-        "LOST",
-        "MINIMAP_ALERT",
-        "PLAYVIDEO",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SET_DIPLOMACY",
-        "SET_UNIT_VISIBLE",
-        "WAKEUP",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:SOLDIERCNT_FROM",
-        "AREA:TOUCHED_BY_OBJECT",
-        "AREA:TOUCHED_BY_SHIP_FROM",
-        "AREA:TOUCHED_BY_SOLDIERS_FROM",
-        "AREA:TOUCHED_BY_SOLDIER_FROM",
-        "OBJECT:KILLED",
-        "PLAYER:INHABITANT_AMOUNT",
-        "PLAYER:SHIPCNT",
-        "PLAYER:SHIPLOST",
-        "PLAYER:SOLDIERCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single39.sze",
-      "sha256": "d72b721b3b58be7b3710e2e29cd57ee397832a008f1155b8ea5691ec1baa153b",
+      "sha256": "87e533e9f0e1310824854f5c0d1afbc1a1157a26988d2b335b51388bdae9b3eb",
+      "program_sha256": "d72b721b3b58be7b3710e2e29cd57ee397832a008f1155b8ea5691ec1baa153b",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 21,
       "actions": {
         "SET_FOR_BUY": 3,
@@ -1586,40 +1234,25 @@
       "queries": {
         "AREA:TOUCHED_BY_SHIP_FROM": 8,
         "OBJECT:KILLED": 2,
-        "VARIABLE:PART1": 1,
         "PLAYER:WARECOUNT": 3,
-        "VARIABLE:PART2": 1,
-        "VARIABLE:PART3": 2,
-        "VARIABLE:PART4": 1,
-        "PLAYER:SHIPCNT": 1,
-        "VARIABLE:LOOSER": 1
+        "PLAYER:SHIPCNT": 1
       },
-      "permission_calls": 5,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ATTACK_AREA",
-        "FREEZE_CITY",
-        "GOTO_SCREEN",
-        "LOST",
-        "MONEY_ADD",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SET_FOR_BUY",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_SHIP_FROM",
-        "OBJECT:KILLED",
-        "PLAYER:SHIPCNT",
-        "PLAYER:WARECOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single40.sze",
-      "sha256": "f756493ab4c41bd41bf501e6a103bec365f7be4439923b6255b05c5096b570c3",
+      "sha256": "fb57934f9256546556f593a1ca07a5fa181a58f202a57dbc5fc01b256a6b6d90",
+      "program_sha256": "f756493ab4c41bd41bf501e6a103bec365f7be4439923b6255b05c5096b570c3",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 20,
       "actions": {
         "QUESTLOG_SHOW": 41,
@@ -1635,50 +1268,29 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:PART1": 1,
-        "VARIABLE:TIMER_1": 4,
-        "VARIABLE:AQUATA": 1,
         "OBJECT:KILLED": 1,
-        "VARIABLE:PART2": 1,
-        "VARIABLE:PART3": 1,
-        "VARIABLE:ARTEFAKT": 5,
-        "VARIABLE:PART4": 2,
         "AREA:TOUCHED_BY_SOLDIERS_FROM": 1,
         "PLAYER:DEAD": 1,
         "PLAYER:INHABITANT_AMOUNT": 1,
-        "VARIABLE:ONETIME": 1,
         "AREA:TOUCHED_BY_CONSTRUCTION": 2,
-        "VARIABLE:ONETIME1": 1,
-        "VARIABLE:TIMER_2": 1,
         "PLAYER:INHABITANTCOUNT": 2
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "ASSIGN_OBJECT",
-        "DISASTER_AT",
-        "GOTO_SCREEN",
-        "LOST",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_CONSTRUCTION",
-        "AREA:TOUCHED_BY_SOLDIERS_FROM",
-        "OBJECT:KILLED",
-        "PLAYER:DEAD",
-        "PLAYER:INHABITANTCOUNT",
-        "PLAYER:INHABITANT_AMOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single41.sze",
-      "sha256": "858e40252d78d15bf672fc764d0f66e9f8c5af1c0611a1b8abf6833d78138f67",
+      "sha256": "34f53e8fd1f386818f13cb30c8a905615a0090b932222418fdde5bd06d05e0e8",
+      "program_sha256": "858e40252d78d15bf672fc764d0f66e9f8c5af1c0611a1b8abf6833d78138f67",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 65,
       "actions": {
         "SHOWTEXT": 14,
@@ -1696,73 +1308,30 @@
         "SETWARELOG": 1
       },
       "queries": {
-        "VARIABLE:ENDABFRAGEN": 6,
         "PLAYER:WAR_STATUS": 3,
-        "VARIABLE:OWN_ALL_ARTEFAKT": 5,
-        "VARIABLE:NO_APPROVED_INDYWAR": 1,
         "OBJECT:KILLED": 5,
-        "VARIABLE:LOSTGAME": 1,
         "OBJECT:INHABITANTCOUNT": 11,
-        "VARIABLE:OWN_1_ARTEFAKT": 4,
-        "VARIABLE:ARTEFAKT_1": 12,
-        "VARIABLE:ARTEFAKT_2": 11,
-        "VARIABLE:ARTEFAKT_3": 12,
-        "VARIABLE:ARTEFAKT_4": 11,
-        "VARIABLE:OWN_2_ARTEFAKT": 3,
-        "VARIABLE:OWN_3_ARTEFAKT": 3,
-        "VARIABLE:RESET_ARTEFAKT_QUESTLOG": 4,
-        "VARIABLE:ONETIME_2": 1,
-        "VARIABLE:ONETIME_1": 1,
-        "VARIABLE:TIMER_4": 1,
-        "VARIABLE:KILL_TO_700": 2,
-        "VARIABLE:KILL_TO_900": 2,
-        "VARIABLE:KILL_TO_1100": 2,
-        "VARIABLE:MAKE_DISASTER": 1,
-        "VARIABLE:DISASTER_AKTIV": 2,
-        "VARIABLE:TIMER_2": 1,
-        "VARIABLE:WAKEUP_MONSTER": 1,
-        "VARIABLE:TIMER_3": 1,
-        "VARIABLE:ESKIMOS_FOUND": 2,
         "AREA:TOUCHED_BY_SHIP_FROM": 5,
         "PLAYER:BOUGHT": 1,
-        "VARIABLE:AFRO_FOUND": 1,
         "AREA:TOUCHED_BY_SOLDIER_FROM": 1,
-        "VARIABLE:INDY_FOUND": 2,
-        "VARIABLE:ATZEK_FOUND": 1,
-        "VARIABLE:ATZEK_WAKEUP": 1,
-        "AREA:TOUCHED_BY_SOLDIERS_FROM": 1,
-        "VARIABLE:ATZEK_CHECKDEAD": 1
+        "AREA:TOUCHED_BY_SOLDIERS_FROM": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "DISASTER_AT",
-        "LOST",
-        "QUESTLOG_SHOW",
-        "SETWARELOG",
-        "SET_DIPLOMACY",
-        "SET_PROFILE",
-        "SHOWMESSAGE",
-        "SHOWTEXT",
-        "WAKEUP",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_SHIP_FROM",
-        "AREA:TOUCHED_BY_SOLDIERS_FROM",
-        "AREA:TOUCHED_BY_SOLDIER_FROM",
-        "OBJECT:INHABITANTCOUNT",
-        "OBJECT:KILLED",
-        "PLAYER:BOUGHT",
-        "PLAYER:WAR_STATUS"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single42.sze",
-      "sha256": "ff5685618f4cea56c027914dc5c1a828e07fc8bdccaafbb11ef6d78d514b1969",
+      "sha256": "ecf7124d1f8f9888e2e12d00ee2038ccfd6659deab8ce358b8593c5822a6a726",
+      "program_sha256": "ff5685618f4cea56c027914dc5c1a828e07fc8bdccaafbb11ef6d78d514b1969",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 20,
       "actions": {
         "QUESTLOG_SHOW": 1,
@@ -1775,37 +1344,27 @@
         "WON": 1
       },
       "queries": {
-        "VARIABLE:ONETIME": 2,
         "AREA:TOUCHED_BY_ANYCITY": 1,
         "OBJECT:KILLED": 3,
-        "VARIABLE:ONETIME1": 1,
         "PLAYER:DEAD": 9,
-        "VARIABLE:ZEIT": 1,
-        "PLAYER:INHABITANTCOUNT": 3,
-        "VARIABLE:TIMER_0": 1
+        "PLAYER:INHABITANTCOUNT": 3
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "LOST",
-        "QUESTLOG_DRAW",
-        "QUESTLOG_SHOW",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_ANYCITY",
-        "OBJECT:KILLED",
-        "PLAYER:DEAD",
-        "PLAYER:INHABITANTCOUNT"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/0201SingleAddOn/single43.sze",
-      "sha256": "6798a0fdfa459336d87fe9ca99e9d3c46a0b39fddb74022a17517c3269094f68",
+      "sha256": "f9e5201919657a9b1ce8f7cc2d09b5693ea03ad4e4f7605161aa1d0ddfef1561",
+      "program_sha256": "6798a0fdfa459336d87fe9ca99e9d3c46a0b39fddb74022a17517c3269094f68",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported action: SHOWTEXT",
       "kernel_items": 5,
       "actions": {
         "SHOWTEXT": 2,
@@ -1814,63 +1373,69 @@
         "WON": 1
       },
       "queries": {
-        "AREA:TOUCHED_BY_SOLDIERS_FROM": 1,
-        "VARIABLE:OB1": 1,
-        "VARIABLE:ONETIME01": 1
+        "AREA:TOUCHED_BY_SOLDIERS_FROM": 1
       },
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [
-        "GOTO_SCREEN",
-        "SET_DIPLOMACY",
-        "SHOWTEXT",
-        "WON"
-      ],
-      "unsupported_queries": [
-        "AREA:TOUCHED_BY_SOLDIERS_FROM"
-      ]
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/Tutorial/01Discover01.sze",
-      "sha256": "84d75e1ded02632976a85cf8ff590a5fc453809e7a3834c608a083f5ee839373",
+      "sha256": "225ed50b005743e00d8d3ffe18667d4565dc781ef45bd6d9b767fd2fe056c0f6",
+      "program_sha256": "84d75e1ded02632976a85cf8ff590a5fc453809e7a3834c608a083f5ee839373",
       "parsed": true,
-      "compiled": false,
-      "executed": false,
+      "compiled": true,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/Tutorial/02Trade01.sze",
-      "sha256": "5662a5dfa656a1647152e5556d033b88d1c70c8304c1305bc4314f5e88e47b8e",
+      "sha256": "90123783c1ed4fb8cab32cedbb3612e7f6210e207d91be8c53a65b83513480e8",
+      "program_sha256": "5662a5dfa656a1647152e5556d033b88d1c70c8304c1305bc4314f5e88e47b8e",
       "parsed": true,
       "compiled": true,
-      "executed": false,
+      "normal_startup": true,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": true,
+      "refusal": null,
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": null,
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "executed_full_original_scenario": false
     },
     {
       "file": "Scenes/Tutorial/03T_Combat_01.sze",
-      "sha256": "e108ac6d75ed63d1d55b84287caef8155418c75e66db98192204154d2c909886",
+      "sha256": "b68304e1a0557f37d809ff1f5e0fa3be38be4f2124cda8b7992ba5b96496af33",
+      "program_sha256": "e108ac6d75ed63d1d55b84287caef8155418c75e66db98192204154d2c909886",
       "parsed": true,
       "compiled": false,
-      "executed": false,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
+      "branch_count": 0,
+      "empty_kernel": false,
+      "refusal": "unsupported object definitions",
       "kernel_items": 0,
       "actions": {},
       "queries": {},
-      "permission_calls": 0,
-      "refusal": "unsupported object/area definitions",
-      "unsupported_actions": [],
-      "unsupported_queries": []
+      "original_true_branch_coverage": [],
+      "synthetic_true_branch_coverage": [],
+      "execution_scope": "NOT_EXECUTED",
+      "executed_full_original_scenario": false
     }
   ]
 }

@@ -348,3 +348,22 @@ must not bind to generated players. Only these generated adapters may explicitly
 produce ExplicitNone and clear validated inert/missing base source; ordinary
 scenario Missing/Pending semantics are unchanged. Existing manifests, settings,
 loadout, player counts and resources remain unchanged. Code proof pending.
+
+### S7 versioned fixture refresh
+
+At b3d78191 the generation-only run `cache/script1/fixture-generation-01/`
+ran16 existing synthetic cases under explicit ANNO_UPDATE_GOLDEN=1 (all children
+returned0). Eleven new recordings are stored under `fixtures/synthetic/sim/script1/`;
+the published128 recordings and goldens remain byte-for-byte unchanged. The17
+additional SCRIPT1 determinism pins are self-baselined, supported by the existing
+hand-derived state/ledger assertions and changed-command negatives; they are not
+original-runtime or independent stream oracles. The three event digests remain
+identical to128, since event records do not include world identity. Normal-mode
+canonical acceptance of this refresh is pending.
+
+Tutorial/02Trade01.sze and 0011SingleEndlosAddon/endless03.sze both have complete
+supported empty kernels. K2/K3 and C4 fixtures now take one normal advance(0)
+before commands and require Pending→Ready at tick0. This is a real session visit
+that also visits world subsystems, not a script-only initialization. The exact
+mechanism vectors must still pass; no unsupported source is stripped for these
+fixtures. Their initial replay save is captured after this visit.

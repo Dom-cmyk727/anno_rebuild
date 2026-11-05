@@ -113,7 +113,13 @@ sim::World make_world(const Original& o, const sim::ScenarioSpec& spec, bool liv
     rules.house_updates = live;
     auto created = sim::World::create(spec, o.types, o.cfg, rules);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
-    return std::move(created).value();
+    sim::World world = std::move(created).value();
+    // The complete shipped empty kernel is supported. Reach Ready through the normal
+    // zero-time session visit before issuing commands; every subsystem also visits tick 0.
+    REQUIRE(world.script().state.context == sim::ScriptContext::Pending);
+    CHECK(world.advance(0) == 0);
+    REQUIRE(world.script().state.context == sim::ScriptContext::Ready);
+    return world;
 }
 
 /// Everything one advance of the canary run is observed through: draws by site, the first step a

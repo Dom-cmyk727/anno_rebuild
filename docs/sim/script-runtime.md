@@ -810,3 +810,21 @@ number member. Fixed diagnostic to use its terrain origin; no gameplay code chan
 F-discovery-02 selected1/failed1: assumed FigureId1 was the original ship, before
 any move. Corrected fixture discovery to select the actual unparented Human
 navigating figure and retain its data-defined ID. No unit is added or relocated.
+
+F2 genuine dependency independently confirmed `/root/script2_review_area` at
+2e964b80 (input scratch `/private/tmp/script2-area-review/F-import-boundary-input.json`).
+Original Human state has SCHIFF1503 id0 at351.5,383.5; two CREW slots1/3 contain
+717 scouts with718 ESEL descendants, and no Human STADT/STADT2. Formats exposes
+Player::units, but sim::load_scenario state loop skips SCHIFF/SOLDAT as UnknownRecord
+and never populates spec.figures. Link/file namespace adapters add no figures;
+World::create only instantiates spec.figures. Both discovery gates fail before
+movement; no resource/unit injection is substituted. Real conditional execution
+and actual-resource construction acceptance remain OPEN under task F2 stopping
+criteria. A dedicated, honestly named dependency test verifies this boundary, not
+a conditional PASS. Original-unit import needs its own verified contract for
+ordering/IDs, enclosing-owner semantics, coordinate/facing/health/state/holds,
+recursive crew/ESEL links and native/replay continuity; no new import project is
+started here. Independent F3 uses the entire unchanged source in an explicitly
+authored synthetic world with standalone soldiers on two flat islands and a ship
+at NEGER. It covers original branches0/5/6, exact money10000→109999→209998, one
+HAWAIMUCKE broadcast, native cuts and encoded replay. It is not the original world.

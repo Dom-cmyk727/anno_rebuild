@@ -23,6 +23,7 @@
 #include <anno/sim/transport.hpp>
 #include <anno/sim/world.hpp>
 
+#include "construction_identity.hpp"
 #include "evidence_out.hpp"
 #include "tutorial_town.hpp"
 
@@ -1014,11 +1015,22 @@ TEST_CASE("progression K3 replay: the recorded run replays from bytes, and a cha
     const auto built = rec.submit(sim::Command{
         t.city->owner, sim::BuildCmd{t.ref, {sim::PlacementWire{kPioneer, kX, kY, 0, 0, 0}}}});
     REQUIRE(built.ok());
+    const auto legacy = construction_test::legacy_registry(*o->types, o->cfg);
+    REQUIRE_MESSAGE(legacy.ok(), (legacy.ok() ? std::string() : legacy.error()));
+    std::vector<std::uint64_t> legacy_cp_hashes;
     std::size_t next_cp = 0;
     while (w.clock().tick() < kEndTick) {
         rec.advance(100);
         if (next_cp < kCheckpointTicks.size() && w.clock().tick() == kCheckpointTicks[next_cp]) {
             rec.checkpoint();
+            legacy_cp_hashes.push_back(construction_test::legacy_hash(w, legacy.value()));
+            if (next_cp == 0) {
+                // Projection changes only header identity, so a real state defect must still show.
+                sim::World wrong = w;
+                ++sim::WorldTestAccess::players(wrong).slots[t.city->owner.v]->money;
+                CHECK(construction_test::legacy_hash(wrong, legacy.value()) !=
+                      legacy_cp_hashes.back());
+            }
             ++next_cp;
         }
     }
@@ -1038,13 +1050,14 @@ TEST_CASE("progression K3 replay: the recorded run replays from bytes, and a cha
         MESSAGE("checkpoint tick " << kCheckpointTicks[i] << " entry " << cp_entries[i] << " hash "
                                    << hex64(cp_hashes[i]));
     }
-    // the pinned checkpoints (stream 128, PRNG timeline 5): re-pinned after a legitimate behaviour
-    // change
+    // Preserve accepted stream128/timeline5 pins. Only registry identity is projected;
+    // current commands, recorder, encoded log and replay below keep the new registry.
     constexpr std::array<std::uint64_t, 6> kPinned{0x65d13922f5a15383ULL, 0x46ea29b9ad8169b7ULL,
                                                    0x666f938018336639ULL, 0x4b3943d7569830cfULL,
                                                    0xf171056cdedaa7f2ULL, 0x39644392a84ce22bULL};
     for (std::size_t i = 0; i < kPinned.size(); ++i) {
-        CHECK_MESSAGE(cp_hashes[i] == kPinned[i],
+        CHECK(cp_hashes[i] != kPinned[i]); // intentional current content-identity change
+        CHECK_MESSAGE(legacy_cp_hashes[i] == kPinned[i],
                       "checkpoint tick " << kCheckpointTicks[i] << " is " << hex64(cp_hashes[i]));
     }
     CHECK(log.rules_digest == w.rules().digest());

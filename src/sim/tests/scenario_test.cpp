@@ -37,6 +37,8 @@
 #include <anno/test/game_dir.hpp>
 #include <anno/test/parallel.hpp>
 
+#include "construction_identity.hpp"
+
 namespace sim = anno::sim;
 namespace fs = std::filesystem;
 
@@ -110,7 +112,7 @@ struct FileResult {
     std::uint64_t a14 = 0;           // islands whose w or h is not a multiple of chunk_edge
     std::uint64_t prod2_unknown = 0; // UnknownObject warnings on PROD2 items
     bool deterministic = false, save_identity = false;
-    std::uint64_t hash = 0, create_hash = 0;
+    std::uint64_t hash = 0, create_hash = 0, fixture_create_hash = 0;
     std::uint32_t link_draws = 0; // the resolver's draws
     Moved moved;
     /// P1: the residents of the created houses (`residents_64 >> 6` summed) against the
@@ -282,13 +284,20 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         r.prod2_unknown +=
             w.kind == sim::ScenarioWarningKind::UnknownObject && w.record == "PROD2" ? 1U : 0U;
     }
+    const auto legacy = construction_test::legacy_registry(*types, cfg);
+    if (!legacy) {
+        r.create_error = legacy.error();
+        return r;
+    }
     auto run = [&](std::uint64_t& hash) -> std::string {
         auto w = sim::World::create(loaded_scenario.spec, types, cfg);
         if (!w) {
             return w.error();
         }
         sim::World world = std::move(w).value();
-        r.create_hash = world.state_hash();
+        r.create_hash = world.state_hash(); // actual current identity
+        r.fixture_create_hash = construction_test::legacy_hash(world, legacy.value());
+        // Only the historical fixture comparison projects. Every run/hash/save below is current.
         r.created_residents = r.houses_with_stock = 0;
         house_totals(world, r.created_residents, r.houses_with_stock);
         if (r.name.find("single36") != std::string::npos) {
@@ -360,7 +369,7 @@ FileResult run_file(const fs::path& game, const fs::path& p,
         r.deterministic = h1 == h2;
         r.hash = h1;
     }
-    r.line = counts_line(r.name, r.counts, r.create_hash, r.moved);
+    r.line = counts_line(r.name, r.counts, r.fixture_create_hash, r.moved);
     return r;
 }
 
@@ -906,4 +915,71 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
                       << " flags " << hex << " walk_class " << wc << "\n";
         }
     }
+}
+
+TEST_CASE("bootstrap corpus identity: original creation pins and masks preserve gameplay state") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_registry(*dir);
+    const auto legacy = construction_test::legacy_registry(*types, {});
+    REQUIRE_MESSAGE(legacy.ok(), (legacy.ok() ? std::string() : legacy.error()));
+    std::string versions;
+    const auto expected = read_expectations(versions);
+    REQUIRE(versions == version_line());
+    const auto files = scenario_files(*dir);
+    REQUIRE(files.size() == 50);
+    const auto templates = anno::sim_load::scan_island_templates(*dir);
+    struct Result {
+        std::string name, error;
+        std::uint64_t actual = 0, projected = 0;
+        std::size_t masks = 0;
+    };
+    const auto results = anno::test::parallel_indexed(
+        files.size(),
+        [&](std::size_t i) {
+            Result r;
+            r.name = rel_name(*dir, files[i]);
+            const auto loaded = anno::sim_load::load_scenario_with_links(
+                anno::test::read_file(files[i]), templates, *types, {}, {});
+            if (!loaded) {
+                r.error = loaded.error();
+                return r;
+            }
+            const auto made = sim::World::create(loaded.value().loaded.spec, types);
+            if (!made) {
+                r.error = made.error();
+                return r;
+            }
+            r.actual = made.value().state_hash();
+            r.projected = construction_test::legacy_hash(made.value(), legacy.value());
+            for (const auto& p : loaded.value().loaded.spec.players) {
+                const auto* got = made.value().players().find(p.id);
+                if (got == nullptr || got->flags != p.flags.value_or(1)) {
+                    r.error = "player mask changed";
+                    return r;
+                }
+                ++r.masks;
+            }
+            return r;
+        },
+        anno::test::parallel_options());
+    std::size_t masks = 0;
+    for (const auto& r : results) {
+        INFO(r.name);
+        REQUIRE_MESSAGE(r.error.empty(), r.error);
+        REQUIRE(expected.contains(r.name));
+        const auto& row = expected.at(r.name);
+        const auto at = row.find("create_hash=");
+        REQUIRE(at != std::string::npos);
+        const auto old = std::stoull(row.substr(at + 12, 16), nullptr, 16);
+        MESSAGE("creation identity " << r.name << " actual=" << r.actual
+                                     << " legacy_fixture=" << r.projected);
+        CHECK(r.projected == old);
+        CHECK(r.actual != old);
+        masks += r.masks;
+    }
+    CHECK(masks == 373);
 }

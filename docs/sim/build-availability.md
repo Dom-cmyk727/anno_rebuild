@@ -145,3 +145,28 @@ the first synthetic integration setup (`Unsupported` placement flags). That
 first failure is preserved. The corrected fixture gives `focused-03` above;
 the successful prefix is retained without repeating sailing for this test-only
 correction. Production code, manifest, original files and prefix test are identical.
+
+## Compatibility correction after the broader gate
+
+The first broad Debug attempt at0ceea121 exposed six accepted K3 checkpoint
+hashes that include the old registry identity. Its three parallel corpus cases
+also could not reach a local admission coordinator because sandbox sockets
+returned EPERM. After automatic approval review rejected interruption under the
+workspace running-job rule, the owner explicitly authorized stopping only those
+three blocked tests and rerunning with host permission. Their terminated outcomes
+remain INCOMPLETE, not passes. Raw debug-final-01:1289selected,1283executed passes,
+1failed,2opt-in skips,3incomplete; final verdict FAIL/status9.
+
+Accepted checkpoint constants and original scenario fixture rows are preserved.
+The test-only construction_identity helper copies every registry fact except
+construction, then requires legacy full-registry digest1bd52ba547c3878a, read
+independently at byte28 of retained accepted K3 log SHA256
+56e389b172d45a7f08df85e82b3f7ac735e7204b9c692d929f7b4f1921dd8765.
+Only a World copy's registry reference is changed for historical hash comparison;
+it is never advanced, built into or replayed. Current recorder/replay/save paths
+keep current identity. A one-gold state change still changes the projected hash;
+a non-construction type-cost change gives a different legacy digest. The cheap
+50-file creation case checks all original creation pins under that projection
+and373imported player masks, without running another long simulation for costs.
+Focused compatibility-01 passes2/2 with no failures/skips/empty/incomplete and
+visible coordinator admissions. Production code remains unchanged.

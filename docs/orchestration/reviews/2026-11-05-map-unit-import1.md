@@ -1,13 +1,14 @@
 # MAP-UNIT-IMPORT-1 and the original SCRIPT2 F2 canary
 
-Status: REVIEW PENDING — final integration disposition of this tracked bundle.
-The implementation, package reviews, affected gates and corrected publication are complete.
+Status: **COMPLETE LOCAL CANDIDATE** for the bounded headless UNIT1 / SCRIPT2 slice.
+Fresh final integration APPROVED at e61ab52096040ff8e7903d616bea448f4d969ccd by
+/root/unit_import_final_integration; no actionable finding remains.
 
 The original missing-ship dependency is resolved for unchanged endless01. Normal
 scenario loading imports its full five-actor closure before normal session INIT.
 The original ship naturally reaches a true area condition, emits the expected
 wave, returns, founds, unloads and builds HANDWERK1001 through public commands.
-Independent A/B/C, bounded D/F2 and E reviews are approved. Final G integration review of this bundle remains pending; all required gate terminals are recorded below.
+Independent A/B/C, bounded D/F2 and E reviews are approved. Final G scoped integration is APPROVED; all required gate terminals are recorded below.
 
 ## Scope and preserved work
 
@@ -145,7 +146,7 @@ zero other outcomes, 156.39 seconds.
 E code/control approved1988471a after full-scenario hash join fix,11 cheap contracts,
 and actual ship x 351.5 → 352.5 same-program negative. Reader correction/republication
 approved f437ac73 after12 contracts and the4/4 saved-data probe. Fresh integration reviewer is
-/root/unit_import_final_integration; final disposition pending.
+/root/unit_import_final_integration; APPROVED at e61ab52096040ff8e7903d616bea448f4d969ccd.
 
 Current affected gates at source 1988471a: Debug **256 selected / 256 passes**,
 zero other outcomes, 165.16 seconds; ASan/UBSan **256 selected / 256 passes**, zero
@@ -187,7 +188,7 @@ dependency results are superseded, not reused as unchanged proof. Only unchanged
 implementation/input scopes reuse older results, supported by current50creation
 identities/goldens and absence of runtime/old insertion/native changes.
 
-Final fresh integration disposition of this tracked bundle: REVIEW PENDING. Current G/reader workflow is04f578f6889fc910304db6cfce3a5165a5c41596.
+Final fresh integration disposition: APPROVED at e61ab52096040ff8e7903d616bea448f4d969ccd; no actionable findings remain. Current G/reader workflow is04f578f6889fc910304db6cfce3a5165a5c41596.
 Use the canonical runner with explicit owned paths, original assets,
 ANNO_UPDATE_GOLDEN=0,admissionON. Required contracts are separate from main counts.
 Legacy595/595Debug before storagefix,85/85+7/7afterward, and ASANFAIL591passes plus
@@ -203,3 +204,12 @@ Windows/MSVC, Linux compiler/sanitizer checks, original-runtime capture, GPU,
 audible playback and multiplayer/late-game scale are NOT_RUN here. macOS is a
 headless development host. Stop after the reviewed local handoff; integration and
 any further actor/gameplay contract belong to the orchestrator.
+
+
+Final review scope includes actor import/native/session interactions, explicit
+component/generated projections, original public canary and synthetic coverage,
+all raw gate terminals/manifests/artifacts, corrected publication and historical
+preservation, source/reporter/document identities and clean owned-branch state.
+The only final tracked-doc finding was the stale PLAN blocker, now superseded.
+This closeout records the disposition only; no engine or evidence measurement
+changed after the reviewed document head. Stop after this local bundle.

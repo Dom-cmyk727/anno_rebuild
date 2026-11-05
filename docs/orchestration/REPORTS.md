@@ -9016,7 +9016,7 @@ fixture/gate evidence, including591ASANpasses+1timeoutFAIL, remains unchanged.
 No main merge/push/TASKS/asset edit or other-executor work.
 
 
-## MAP-UNIT-IMPORT-1 + SCRIPT2 F2 — 2026-11-05 — final integration REVIEW PENDING
+## MAP-UNIT-IMPORT-1 + SCRIPT2 F2 — 2026-11-05 — COMPLETE LOCAL CANDIDATE
 
 Owned branch task/MAP-UNIT-IMPORT-1, preserving task/MAP-SCRIPT-1 at066ef4bb.
 Implementation and independent A–E/D-F2 reviews complete. Full unchanged endless01
@@ -9053,7 +9053,15 @@ land mover, disembark, combat or money/wave-handler rewrite.
 [Final acceptance table](../sim/original-unit-import.md#final-acceptance-table-and-handoff)
 and [handoff](reviews/2026-11-05-map-unit-import1.md) contain source/binary/artifact
 identities, package reviews, API/compatibility and precise reuse/failure attribution.
-Fresh integration reviewer /root/unit_import_final_integration awaits this tracked
-bundle; no unresolved code finding remains. Windows/MSVC, Linux checks, original
+Fresh integration reviewer /root/unit_import_final_integration APPROVED this
+bundle at e61ab52096040ff8e7903d616bea448f4d969ccd; no actionable finding remains. Windows/MSVC, Linux checks, original
 runtime captures, actual audio/GPU and late-game/multiplayer remain NOT_RUN.
 No merge/push/TASKS/asset edit or other-executor build/edit/job stop.
+
+Final record: A–G for the assigned bounded headless slice locally satisfied.
+Reviewed document head e61ab52096040ff8e7903d616bea448f4d969ccd; engine/test head
+1988471a396185fc8d7652ffb449b902079091fc; corrected publisher head
+f437ac732e8855ccc7ebd6e0fc65974ba8218770. The final commit records this approval
+only. Historical failed gates remain failed, and no uniform current592 claim is
+made. This is not full M3/campaign, cross-platform, audible or multiplayer acceptance.
+Stop after the local handoff; integration remains orchestrator-owned.

@@ -301,7 +301,8 @@ normal adapter imports all five original endless01 actors. Its complete unchange
 script reaches a real branch0 wave and public founding/unload/HANDWERK consequence,
 with exact resources, native cuts and fresh-process proof. Independent package
 reviews and current Debug256/256, ASAN256/256, isolated prior opening ASAN1/1 and
-corrected-reader1/1 pass. Final integration review of the tracked handoff is pending.
+corrected-reader1/1 pass. Final scoped integration APPROVED at e61ab520; COMPLETE LOCAL CANDIDATE for this
+bounded headless slice.
 [Current handoff](orchestration/reviews/2026-11-05-map-unit-import1.md). This does not
 complete M3's one-hour Windows/Linux acceptance or all scenario/game behavior.
 
@@ -359,7 +360,7 @@ parents, holds and position. The unchanged full script reaches a real ship-area
 wave and public founding/unload/HANDWERK consequence, with exact money/resource
 and native/fresh-replay proof. Package reviews approved; affected Debug256/256,
 ASAN256/256 and isolated prior opening ASAN1/1 pass. Final tracked-bundle integration
-review is pending. [Handoff](orchestration/reviews/2026-11-05-map-unit-import1.md).
+APPROVED at e61ab520; COMPLETE LOCAL CANDIDATE for this bounded slice. [Handoff](orchestration/reviews/2026-11-05-map-unit-import1.md).
 This is a bounded local headless slice, not completion of M3/M4, all scenarios,
 Windows/Linux checks, actual audio, rendering or multiplayer scale. Main/TASKS and
 other lanes remain untouched; no merge or push.

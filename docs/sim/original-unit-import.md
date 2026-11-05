@@ -1,7 +1,8 @@
 # MAP-UNIT-IMPORT-1 — contract and acceptance ledger
 
 Current status: A–E and the bounded original SCRIPT2 F2 proof independently APPROVED.
-Affected Debug/ASAN and isolated opening gates PASS. Final integration review pending.
+Affected Debug/ASAN and isolated opening gates PASS. Final integration APPROVED
+at e61ab52096040ff8e7903d616bea448f4d969ccd: COMPLETE LOCAL CANDIDATE for this bounded headless slice.
 The chronological checkpoints below retain their original pins and dispositions.
 Owner direction: 2026-11-05 review follow-up in this chat. Continue the owned
 MAP-BOOTSTRAP-1 checkout; branch task/MAP-UNIT-IMPORT-1 from clean
@@ -610,7 +611,7 @@ Permanent evidence contract reread at this package checkpoint.
 | C state, identity and compatibility | Q32/Q8/native parent/HP/holds/slots round trips; immutable import facts consumed only before creation | wrong crew and goods-width mutants fail legal-separated checks; raw converter and zero-extent probes retain first failures | 15/15 and 841 assertions at d5; corpus extends current selection to16 UNIT1 cases | both reviewers APPROVED d5e98d2f; native130 unchanged |
 | D / SCRIPT2 F2 real public consequence | original ship reaches NEGER, one source1068 wave at tick48000; found/unload/HANDWERK with exact ledger; returned building resolved in actual city/site | no original mutation outside public commands; denied-copy rejects; legal alternate build diverges at checkpoint408; wrong valid-native program refuses identity | D-fresh-04 and current Debug/ASAN fresh artifacts; exact native cuts/final root | both reviewers APPROVED bounded D at4e0ff63e; current artifacts independently joined |
 | E components and publication | actor-free components declared before load; all prior goldens preserved; 19 complete actor-count imports/31 explicit refusals,14 compiled/11 normal startups | normal malformed-actor warning controls refuse; full-file changed-position join and refused-empty scope controls distinguish false coverage | E-corpus-01 5/5; E-reader-corrected-01 1/1; corrected JSON SHAae4b2d…fae6 | contract reviewer APPROVED f437ac73; label withdrawal restored |
-| G affected gates | Debug256/256; ASAN256/256; isolated prior opening1/1 with76166 assertions | zero failed/empty/skipped/incomplete/sanitizer in these gates; historical592 gate remainsFAIL, never summed as current uniform coverage | G-debug-01 / G-asan-01 / G-asan-opening-01, tested engine198 | fresh final integration review pending final tracked bundle |
+| G affected gates | Debug256/256; ASAN256/256; isolated prior opening1/1 with76166 assertions | zero failed/empty/skipped/incomplete/sanitizer in these gates; historical592 gate remainsFAIL, never summed as current uniform coverage | G-debug-01 / G-asan-01 / G-asan-opening-01, tested engine198 | fresh final integration APPROVED e61ab52096040ff8e7903d616bea448f4d969ccd |
 
 Corrected reader canonical E-reader-corrected-01 atf437ac73 passes1/1 main test,
 12 unittest contracts,0other; required reference/fresh contracts separate. Same
@@ -640,3 +641,11 @@ Final integration review at197865af found one stale current PLAN scripting
 paragraph claiming actor import absent. It is now explicitly historical/superseded
 with a current bounded status/link; no engine evidence rerun is warranted. The
 new handoff also names unchanged F5 Release evidence at its actual69380a73 pin.
+
+Final disposition: /root/unit_import_final_integration APPROVED scoped integration
+and handoff at e61ab52096040ff8e7903d616bea448f4d969ccd, no actionable findings.
+A–G for the assigned bounded headless slice are locally satisfied: COMPLETE LOCAL
+CANDIDATE. Runtime/test source198, corrected reporterf437 and reviewed docheade61
+remain distinct. This record-only closeout requires no repeated engine gate.
+Full scenarios/campaigns, Windows/Linux target checks, audio/GPU and multiplayer
+acceptance remain outside the claim. No merge/push or additional project follows.

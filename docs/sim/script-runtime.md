@@ -4,7 +4,8 @@ and bounded SCRIPT2 F2 proof. The complete unchanged source now drives a real
 ship-area event, founding, unloading and HANDWERK construction through public
 commands; native cuts and fresh replay pass. A–E/package and corrected-publication
 reviews are approved; affected Debug256/256, ASAN256/256 and isolated prior opening
-ASAN1/1 pass. Final fresh integration review of the tracked bundle is pending.
+ASAN1/1 pass. Fresh final integration APPROVED at e61ab52096040ff8e7903d616bea448f4d969ccd;
+COMPLETE LOCAL CANDIDATE for the bounded headless slice.
 See [the new handoff](../orchestration/reviews/2026-11-05-map-unit-import1.md).
 Historical entries below retain their actual pins and failures, including the
 old592-selected ASAN gate with591passes+1timeoutFAIL. No uniform current592 run,
@@ -70,7 +71,7 @@ and player permission rows are explicit state, not renderer/UI state.
 | SCRIPT2 C money | Scene15940; Welt1cfd0; approved F15/F28/F35 | exact signed deltas/mixed staging/ledger | wrong recipient/duplicate credit/partial commit | handler vectors + money gate/mutant | APPROVED0c20362a / script2_review_actions;19/19 + recipient mutant |
 | SCRIPT2 D wave | Scene156f0; Frame61010/62090/62380 | exact broadcast namespaced output/order | silent/wrong event, output erased, rollback leak | typed-event consumer and artifact contracts | APPROVED e668fca9 / script2_review_actions;25/25 + event mutant |
 | SCRIPT2 E startup/identity | normal Recorder/driver callers + explicit native schema | first command after INIT; Startup replay; native Ready | constructor eager/second world zero visit/old schema accepted | native literal/reference/corruption and replay gates | APPROVED f6354a97 / script2_review_session;46/46 corrective, prior77pass/2fail retained |
-| SCRIPT2 F original canary | unchanged full file/program; five imported actors and source resources | real branch0 wave, public founding/unload/build, native/fresh replay | denied-copy, legal alternate-build checkpoint408, valid changed-program identity | UNIT1 D plus current198 Debug/ASAN artifacts | bounded F2 APPROVED; final integration pending; see new handoff |
+| SCRIPT2 F original canary | unchanged full file/program; five imported actors and source resources | real branch0 wave, public founding/unload/build, native/fresh replay | denied-copy, legal alternate-build checkpoint408, valid changed-program identity | UNIT1 D plus current198 Debug/ASAN artifacts | bounded F2/G locally APPROVED at e61ab520; see new handoff |
 | SCRIPT2 F scale/capabilities | complete50 AST inventory + Release counters | build AND query work, branch labels | empty kernel called tutorial/hidden unlimited query | capability snapshot/measurement provenance | implemented subsets APPROVED69380a73 /250c15ad; final inventory522a0a27:50/14/14/full0 |
 | SCRIPT2 G acceptance | canonical immutable gates and fresh review | exact terminal counts/clean commits | failed/skipped outcomes promoted | final handoff and retained failures | scoped integration/handoff APPROVED c0e0355f / script2_final_integration; full G OPEN; ASAN591pass/1timeout |
 

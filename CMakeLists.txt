@@ -131,6 +131,9 @@ if(ANNO_BUILD_TESTS)
   add_test(NAME test_workflow_contract
            COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/workflow_test.py)
   set_tests_properties(test_verdict_contract test_workflow_contract PROPERTIES LABELS "workflow")
+  add_test(NAME journal_report_contract
+           COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/journal_report_test.py)
+  set_tests_properties(journal_report_contract PROPERTIES LABELS "workflow")
   # The gate's verdict reader (tools/test/ctest_verdict.py, ported from MAP-2) and the launcher's
   # preflight order (round ec): tools/test/run_selected.sh runs test_verdict_contract, with
   # test_names_are_selectable and picture_matrix_contract, as mandatory preflights. Python3 is

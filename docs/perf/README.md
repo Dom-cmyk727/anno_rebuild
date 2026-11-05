@@ -1943,3 +1943,20 @@ Before the hold is lifted, in this order: (1) every `coord-<port>-v4.journal` in
 
 ### Tests and provenance
 `tests/budget_f5_test.cpp`: V1/V2 (opt-in `ANNO_TEST_V4_COORD`, `ANNO_TEST_V4_PROBE`; the real published binaries; memory and CPU token; direct start, ordinary client start, recovery), V3 (11 journal states plus the unreadable directory and the unreadable mode-000 file, each start repeated three times for the refusals), V3b (both journals present; recovery by moving the file aside), V4 (another port). Ports 47900–47925, a private `HOME` per case. Red: `01-red-before-fix.txt` (the production change stashed; V1, V2, V3, V3b fail, V4 passes); green: `02-green-after-fix.txt`. Current binaries at the code head: see `06-binaries.txt` of the evidence directory.
+
+
+### Consolidated recovery-report contract (2026-11-05)
+
+`tools/test/journal_report.py` is read-only and prints each outstanding hold or
+CPU token with its owner namespace, PID and start stamp. Its former summary
+could ignore a truncated release and print zero; that is withdrawn. Malformed,
+truncated, oversized, non-ASCII or unreadable input now exits 1 before totals
+are printed; no arguments exits 2. Complete unsigned decimal records are
+required (stricter than C scanf's signs/trailing-token extensions).
+
+Exit 0 means the records parsed, **not** that an owner is dead or that a journal
+may be retired. Continue the owner-confirmation/recovery procedure above; never
+use a zero count as an independent safety verdict. `journal_report_contract`
+checks the public command, owner identities, read-only behavior, widths, releases
+and malformed inputs. The distinguishing missing-final-newline mutant preserves
+the legal open-promise control and fails the truncated-release assertion.

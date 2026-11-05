@@ -806,3 +806,7 @@ fresh-process replay, soldier/action fixture and scale/inventory remain pending.
 
 F-discovery-01 build failed before selection: diagnostic used nonexistent Island
 number member. Fixed diagnostic to use its terrain origin; no gameplay code change.
+
+F-discovery-02 selected1/failed1: assumed FigureId1 was the original ship, before
+any move. Corrected fixture discovery to select the actual unparented Human
+navigating figure and retain its data-defined ID. No unit is added or relocated.

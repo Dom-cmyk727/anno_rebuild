@@ -43,8 +43,14 @@ TEST_CASE("SCRIPT2 unchanged original conditional canary producer") {
     auto& w = f.world;
     const auto source = w.script().source;
     REQUIRE(source.size() == 2488);
-    const auto* ship = find_figure(w.figures(), FigureId{1});
+    const Figure* ship = nullptr;
+    for (const auto& slot : w.figures().list.slots)
+        if (slot && slot->owner == PlayerId{0} && slot->nav && !slot->parent.valid()) {
+            ship = &*slot;
+            break;
+        }
     REQUIRE(ship);
+    const auto ship_id = ship->id;
     MESSAGE("ORIGINAL_SHIP id=" << ship->id.v << " kind=" << ship->kind
                                 << " owner=" << ship->owner.v << " xq8=" << ship->pos.x
                                 << " yq8=" << ship->pos.y);
@@ -87,10 +93,10 @@ TEST_CASE("SCRIPT2 unchanged original conditional canary producer") {
         }
     REQUIRE_MESSAGE(goal, "no public-navigation goal found inside the authored NEGER area");
     MESSAGE("ORIGINAL_GOAL xq8=" << goal->x << " yq8=" << goal->y);
-    REQUIRE(rec.submit(Command{PlayerId{0}, MoveCmd{FigureId{1}, goal->x, goal->y}}).ok());
+    REQUIRE(rec.submit(Command{PlayerId{0}, MoveCmd{ship_id, goal->x, goal->y}}).ok());
     rec.checkpoint();
     std::uint32_t steps = 0;
-    while (!contains(area, find_figure(w.figures(), FigureId{1})->pos) && steps < 1000) {
+    while (!contains(area, find_figure(w.figures(), ship_id)->pos) && steps < 1000) {
         rec.advance(1000);
         ++steps;
         REQUIRE_FALSE(w.faulted());

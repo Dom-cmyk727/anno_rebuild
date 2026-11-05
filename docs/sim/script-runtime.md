@@ -803,3 +803,6 @@ MoveCmd to a genuinely routable water goal in the authored NEGER rectangle. No
 map/unit/resource/permission edits. Bounded1000steps×1000ms, stop before the next
 script visit after physical entry to capture a native cut. Construction, encoded
 fresh-process replay, soldier/action fixture and scale/inventory remain pending.
+
+F-discovery-01 build failed before selection: diagnostic used nonexistent Island
+number member. Fixed diagnostic to use its terrain origin; no gameplay code change.

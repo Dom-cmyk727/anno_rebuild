@@ -54,7 +54,7 @@ TEST_CASE("SCRIPT2 unchanged original conditional canary producer") {
         if (is)
             for (const auto& c : is->cities)
                 if (c)
-                    MESSAGE("ORIGINAL_CITY island=" << is->number << " city=" << c->number.v
+                    MESSAGE("ORIGINAL_CITY island=" << is->tiles.x0() << " city=" << c->number.v
                                                     << " owner=" << c->owner.v);
     const auto initial_gold = w.players().find(PlayerId{0})->money;
     auto started = Recorder::start(w);

@@ -764,3 +764,11 @@ Newly supported area-only programs change raw-byte component classification from
 Independent E reviewer P2 decode bound fixed before namespace allocation with a
 valid-frame/checksum oversized-namespace test. P3 duplicate CLI I/O corrected by
 generic bytes-with-source-context adapter, preserving existing read/parse timing.
+
+Automatic approval review rejected the first corpus-generation command because
+its retained SCRIPT1 test name appeared to risk the archived fixture. No command
+ran. Source inspection verified expectations_path targets script2; the generator
+now also has an explicit script2-only path assertion and a SCRIPT2 test name.
+Archive checksums are recorded before generation and compared afterwards. This
+is authorized creation of a separate SCRIPT2 fixture, not replacement of SCRIPT1.
+Added actual archived SCRIPT1 frame2/native129 load/refusal controls for E3.

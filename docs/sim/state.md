@@ -2593,3 +2593,35 @@ Old goldens/recordings/corpus remain in their published paths. New SCRIPT1 golde
 and recordings live in goldens_script1.txt and sim/script1/. No current hash is
 projected back to128 by clearing runtime state. New self-baselined identities
 remain distinct from independent stream and original-data semantic proofs.
+
+## MAP-SCRIPT-2 current identity and startup transition
+
+Current writes use native130, schema0x0032545049524353 (SCRIPT2\0), policy2 and
+replay frame3. Saveframe1, commandwire1 and PRNGtimeline5 are unchanged. Published128
+and SCRIPT1/native129 fixtures/references remain archived; native load explicitly
+refuses their stream/schema. Frame2 replay envelopes remain readable to expose
+old initial saves; they acquire no inferred current content identity.
+
+The script scope is u64 source count+bytes; five u32 limits (source,nodes,depth,
+work,asset bytes); optional namespace (u8 presence, u64 count+bytes when present,
+hard65536 checked before allocation); u32 policy; u8 context/fault; four u32
+continuation fields; u64 signal count+u8 values; u64 binding count+u32 player IDs.
+The empty scope is67bytes. Compiled program, spatial index, query metrics and host
+output are derived and excluded from native/hash state.
+
+Replay3 adds a u64 script-content digest after command wire version, before config
+digest. It covers exact source/namespace/policy/all limits, excludes continuation
+and permits suffix replay while refusing changed executable content before effects.
+Startup kind3+u64 zero tick is9bytes; existing minimum-entry bound9 remains valid.
+Recorder saves Pending state, executes script-only INIT, records Startup and then
+accepts commands. Unrecorded session drivers likewise initialize before commands,
+without a whole-world zero advance. Ready reload does not rerun INIT. Startup
+replay requires Pending context, zero clock and zero entry tick.
+
+The normal file adapter derives namespace relative to game/Scenes; the equivalent
+bytes-with-source-context adapter preserves separate file-read measurements. Raw
+byte imports supply known namespace explicitly for waves. Typed code317/AllLocal
+wave events commit transactionally and publish after output reset; startup appends
+without advancing other subsystems. Existing bounded queue dropping/draining and
+replay observation affect no canonical state or PRNG. Ready load starts with an
+empty host queue. Actual audio/window consumption remains external.

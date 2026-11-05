@@ -1038,7 +1038,7 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
     }
 }
 
-TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks") {
+TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -1096,6 +1096,8 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
     CHECK(isolated == 37);
     CHECK(supported == 13);
     if (generating) {
+        REQUIRE(expectations_path() ==
+                fs::path(ANNO_FIXTURES_DIR) / "sim" / "script2" / "scenario_corpus.txt");
         std::ofstream out(expectations_path(), std::ios::binary);
         REQUIRE(out.good());
         out << "# SCRIPT2 original-data component corpus. Creation identities generated here;\n"

@@ -236,3 +236,30 @@ does not separate. Windows/Linux, sanitizer coverage and replay of this run are 
 
 **Checks run for S4.** Debug: the chain test (about 30 s) with the small-farm and harvest cases, 59 of 59. ASan/UBSan (`cache/map2-supply1/gates/S4_asan.log`): 70 cases selected by name (supply chain, small farm, harvest, farm dispatch, G3, G1, state_hash, the S01_07_01 canary), 70 of 70 passed, 0 sanitizer reports; coverage of the changed files:
 `driver.cpp` (the small-farm ledger) and `scheduler.cpp` (the two resident diagnostics) are reached by the chain, canary and G cases, `transport.hpp` is header-only. `lint_sim` ok; no state or stream change.
+
+## 11. S5: interruption, owners, reload, replay, operation counts (2026-11-05)
+
+Code: `small_farm_resilience_test.cpp`, `island7_town.hpp` (the shared island-7 fixture), diagnostic counters `ForestryStats::search_tiles_scanned / search_candidates / search_popped`.
+Everything below uses the advance(100) schedule; chunking changes trajectories (section 10).
+
+**Interruption and recovery (Tutorial island 7, imported farm).** Two identical worlds run to tick 150 000, where the Inn has sold 312 units made by the potato farm and the houses hold 13 537 units of tavern goods. The farm is demolished by `DemolishCmd`
+(owner's command, both worlds). Gap 150 000 -> 270 000: the two worlds stay hash-identical; nothing more is sold (312), the Inn is drained (0), nothing is in carts or carriers, the warehouse holds no alcohol, and the households' own stock falls 13 537 -> 8188 (it is initial inventory and decays by itself).
+At 270 000 the farm is rebuilt by `BuildCmd` (type 809 on the same site, accepted) in one world; the control never rebuilds. To 510 000: control sold 312 (flat), households 1 957; rebuilt run **sold 936**, households **9 726**, the new building (a new id, new counters) made alcohol
+from potatoes its own worker cut, and **9 houses** received tavern goods after the rebuild (the control none). The households' dependence is the difference between the two runs, not the rise of the warehouse. Food is not used for this test: 17 408 units in stock mask an interruption of the food line (stated, not worked around).
+Pinned: 312, 13 537, 8 188, 936, 9 726, 1 957.
+
+**Two owners (focused synthetic world, one island, two cities).** Player 0 owns a market and a farm at the end of a road; player 1's farm stands beside the road nearer to the market. Both farms hold 960 units of output (a disclosed preset: KORN is a raw good, so a cart takes it only above 75 % fill,
+docs/re/production.md 5.2; production lines off). The cart takes the owner's farm only: its output 960 -> 0 and its warehouse 0 -> 960; the rival farm keeps 960, was never loaded (`loaded_from` has no entry), and the other city's warehouse stays 0. The worker's credit to its own home is in the S2 two-island case and every worker case; the Inn's carrier uses the same
+source query, so the same city filter. The first fixture attempt moved nothing (the output was below 75 %), which is why the preset is 960.
+
+**Reload at the boundaries of the real chain.** In the uninterrupted island-7 run the first steps at which each condition holds were found, the save was loaded there, the loaded world ran 3000 ticks, and the uninterrupted world's hash at that tick matched, six times:
+a worker waiting at a field (tick 800), an animal waiting at a field (1 450), raw potatoes in the farm (14 100), a market cart carrying goods (8 600), a house walker carrying purchases (8 050), Inn stock above zero (95 700) (the boundary ticks are pinned).
+
+**Replay (fresh process included).** `Recorder` over the interruption scenario (demolish at 150 000, rebuild at 270 000, 7 checkpoints to 430 000, 8609 entries): replays from bytes in a fresh world, 7 of 7 (checkpoint hashes pinned in the test). Two logs with one changed legal command: the demolition naming the other farm (259,352) diverges at the first checkpoint
+after it (190 000; 110 000 and 150 000 matched); the rebuild one tile east diverges at 310 000 (the checkpoints through 270 000 matched). **Fresh process:** `anno-sim-replay`, built as its own target, sha256 `17d1b18753f0dd6109c7d6919e096e184b97678543062273da4797d6c8fd66d9`, `ANNO1503_GAME_DIR` set: the genuine log reproduces (exit 0, 7/7),
+the changed-demolish log diverges at entry 3803 (expected 137fc9ad91424c61, got 83cedd67b2bb9aff, exit 1), the changed-rebuild log at entry 6206 (expected 833edcef11749aab, got a7151ec5811f0809, exit 1) (`cache/map2-supply1/S5logs/fresh_process.txt`).
+
+**Operation counts.** One farm with two fields and 0, 7 and 21 unrelated farms without fields in reach, 8000 steps each (deterministic counters, no timing): the work of the farm that has fields is unchanged (2 cuts, 28 walk nodes popped, 3 candidates); each extra search examines exactly the farm's 7 x 7 = 49-tile window
+(scanned = 49 x searches in all three runs: 76 636 / 1 564, ...), never the island, and the walk search is not started when the window holds no candidate. Searches grow linearly with the farms (1 564, 12 750, 35 122). **Release timing samples: NOT_RUN** (no Release build on this host in this packet). No multiplayer-scale claim.
+
+**Ship-founded settlement smoke: not attempted** (bounded result). It needs a founding site with potato objects inside a 7 x 7 window of a legal farm site and the loadout's materials; the survey above lists only existing cities, and no survey of free islands with potatoes was made. If wanted, the exact blockers to measure first are: potato objects on a free island, the INFRAMIN stage of the farm and Inn types, and the loadout's HOLZ / WERKZEUG.

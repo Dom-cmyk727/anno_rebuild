@@ -242,6 +242,13 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/small_farm_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/small_farm_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/small_farm_vectors.txt)
+    add_test(NAME early_needs_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/early_needs_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/early_needs_vectors.txt)
+    add_test(NAME early_needs_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/early_needs_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/early_needs_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/early_needs_vectors.txt)
     add_test(NAME house_live_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_live_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_live_vectors.txt)

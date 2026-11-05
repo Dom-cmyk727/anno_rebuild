@@ -1,0 +1,96 @@
+# Early needs (cloth chain) vectors, MAP-NEEDS-2 N1. Every expected value was derived BY HAND from the disassembly of
+# AnnoWelt.dll (sha256 f220a878510f7407...; addresses in docs/sim/early-needs.md section 7) before any engine change;
+# tools/early_needs_ref.py is the independent check. Sheep farm 807: rate 6, need 87, capacity 1792, max figures 5;
+# weaver 1001: rate 6, need 11, capacity 1280, max figures 1 (8.8 amounts; 256 = 1 t). 384 / 6 = 64.
+
+# --- gate 0x1006eaa7: (u16)(t - last) >= 500, then last := (last + 500) as a word ---
+gate G-499      last=0 t=499 => run=0 last=0
+gate G-500      last=0 t=500 => run=1 last=500
+gate G-behind   last=0 t=1000 => run=1 last=500
+gate G-wrap     last=65500 t=70000 => run=1 last=464
+
+# --- Farm tick 0x1006ea90 (807 constants unless stated) ---
+# raw 0: the ratio 0 is below 64 -> status 1; the dispatch test 64 >= 0/87 passes -> send
+farm F-fresh      on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=0 out=0 act=0 last=0 t=500 => run=1 made=0 raw=0 out=0 act=0 status=1 send=1
+# raw 43: (43*128)/87 = 63 < 64 starved; raw 44: 5632/87 = 64 -> used (64*87)>>7 = 43, made (64*6)>>7 = 3
+farm F-43         on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=43 out=0 act=0 last=0 t=500 => run=1 made=0 raw=43 out=0 act=0 status=1 send=1
+farm F-44         on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=44 out=0 act=0 last=0 t=500 => run=1 made=3 raw=1 out=3 act=48 status=0 send=1
+# raw 86: q = 11008/87 = 126, used 10962>>7 = 85, made 756>>7 = 5
+farm F-86         on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=86 out=0 act=0 last=0 t=500 => run=1 made=5 raw=1 out=5 act=80 status=0 send=1
+farm F-87         on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=0 last=0 t=500 => run=1 made=6 raw=0 out=6 act=96 status=0 send=1
+farm F-768        on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=768 out=0 act=0 last=0 t=500 => run=1 made=6 raw=681 out=6 act=96 status=0 send=1
+# the dispatch bound: 384/6 = 64 >= raw/87 after production: raw 5741 -> 5654 -> 64 (send), raw 5742 -> 5655 -> 65 (no send)
+farm F-send-64    on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=5741 out=0 act=0 last=0 t=500 => run=1 made=6 raw=5654 out=6 act=96 status=0 send=1
+farm F-send-65    on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=5742 out=0 act=0 last=0 t=500 => run=1 made=6 raw=5655 out=6 act=96 status=0 send=0
+# a full output store stops production (status 2) but not the dispatch; the check is before the step, so 1791 still adds 6
+farm F-full       on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=500 out=1792 act=0 last=0 t=500 => run=1 made=0 raw=500 out=1792 act=0 status=2 send=1
+farm F-cap-over   on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=1791 act=0 last=0 t=500 => run=1 made=6 raw=0 out=1797 act=96 status=0 send=1
+# attached figures: 4 of 5 still send, 5 of 5 do not
+farm F-wout-4     on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=4 raw=0 out=0 act=0 last=0 t=500 => run=1 made=0 raw=0 out=0 act=0 status=1 send=1
+farm F-wout-5     on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=5 raw=0 out=0 act=0 last=0 t=500 => run=1 made=0 raw=0 out=0 act=0 status=1 send=0
+# switched off: the stamp advances (run=1) and nothing else changes; suspended: the activity ages, nothing is made
+farm F-off        on=0 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=100 last=0 t=500 => run=1 made=0 raw=87 out=0 act=100 status=0 send=0
+farm F-susp       on=1 susp=1 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=100 last=0 t=500 => run=1 made=0 raw=87 out=0 act=99 status=0 send=0
+farm F-not-due    on=1 susp=0 max=5 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=100 last=0 t=499 => run=0 made=0 raw=87 out=0 act=100 status=0 send=0
+# max figures 1 (the forester): a worker out skips production; a producing step does not send
+farm F-max1-out   on=1 susp=0 max=1 rate=6 need=87 cap=1792 wout=1 raw=87 out=0 act=0 last=0 t=500 => run=1 made=0 raw=87 out=0 act=0 status=0 send=0
+farm F-max1-made  on=1 susp=0 max=1 rate=6 need=87 cap=1792 wout=0 raw=87 out=0 act=0 last=0 t=500 => run=1 made=6 raw=0 out=6 act=96 status=0 send=0
+farm F-max1-idle  on=1 susp=0 max=1 rate=6 need=87 cap=1792 wout=0 raw=0 out=0 act=0 last=0 t=500 => run=1 made=0 raw=0 out=0 act=0 status=1 send=1
+
+# --- the farm's job is the figure type's ROUTETYPE index (0x1006ee27); the shared job's case table 0x1003b0e0 ---
+route R-sheep      id=46 => job=0x2e kind=animal limit=20
+route R-mower      id=42 => job=0x2a kind=worker limit=0
+route R-harvest    id=41 => job=0x29 kind=worker limit=0
+route R-fisher     id=45 => job=0x2d kind=animal limit=20
+route R-carrier    id=51 => job=0x33 kind=none limit=0
+route R-wildlife   id=62 => job=0x3e kind=none limit=0
+route R-none       id=0  => job=0x0 kind=none limit=0
+
+# --- the credit at home: Farm 0x1006ee70 adds to its one raw store with no goods test; SmallFarm 0x1006f960 picks the slot ---
+credit C-farm        home=farm goods=69 in1=0 raw=0 amount=256 => raw=256
+credit C-farm-add    home=farm goods=69 in1=69 raw=100 amount=768 => raw=868
+credit C-farm-other  home=farm goods=68 in1=69 raw=0 amount=256 => raw=256
+credit C-small-in1   home=small goods=69 in1=69 raw=0,0 amount=256 => raw=0,256
+credit C-small-in0   home=small goods=68 in1=69 raw=0,0 amount=256 => raw=256,0
+
+# --- step A's callback (0x10058a40): the worker (limit 0) takes the first unclaimed goal; the animal (limit 20) goes on while 20 > score ---
+pick P-worker-first   limit=0  nodes=1:1:10:0;2:2:13:0;3:3:16:0 => tile=1:1
+pick P-animal-score20 limit=20 nodes=1:1:10:0;2:2:13:0;3:3:16:0;4:4:19:0;5:5:20:0;6:6:23:0 => tile=5:5
+pick P-animal-below   limit=20 nodes=1:1:10:0;2:2:13:0 => tile=2:2
+pick P-animal-claimed limit=20 nodes=1:1:5:1;2:2:5:0 => tile=2:2
+pick P-all-claimed    limit=20 nodes=1:1:5:1;2:2:5:1 => tile=none
+
+# --- a trip: the job repeats step A while capacity > amount; every cut credits 256 (0x1005c260, 0x10054530) ---
+trip T-768         cap=768 tiles=9 => amount=768 cuts=3
+trip T-2-tiles     cap=768 tiles=2 => amount=512 cuts=2
+trip T-none        cap=768 tiles=0 => amount=0 cuts=0
+trip T-700         cap=700 tiles=9 => amount=768 cuts=3
+trip T-512         cap=512 tiles=9 => amount=512 cuts=2
+trip T-1           cap=1 tiles=9 => amount=256 cuts=1
+trip T-0           cap=0 tiles=9 => amount=0 cuts=0
+
+# --- the Workshop tick 0x100680b0 (weaver 1001) ---
+wstep W-empty    susp=0 n_in=1 need=11 rate=6 cap=1280 in=0 out=0 carriers=0 max=1 => made=0 in=0 out=0 status=1 send=1
+wstep W-5        susp=0 n_in=1 need=11 rate=6 cap=1280 in=5 out=0 carriers=0 max=1 => made=0 in=5 out=0 status=1 send=1
+wstep W-6        susp=0 n_in=1 need=11 rate=6 cap=1280 in=6 out=0 carriers=0 max=1 => made=3 in=1 out=3 status=0 send=1
+wstep W-11       susp=0 n_in=1 need=11 rate=6 cap=1280 in=11 out=0 carriers=0 max=1 => made=6 in=0 out=6 status=0 send=1
+wstep W-22       susp=0 n_in=1 need=11 rate=6 cap=1280 in=22 out=0 carriers=0 max=1 => made=6 in=11 out=6 status=0 send=1
+wstep W-full     susp=0 n_in=1 need=11 rate=6 cap=1280 in=22 out=1280 carriers=0 max=1 => made=0 in=22 out=1280 status=2 send=1
+wstep W-carrier  susp=0 n_in=1 need=11 rate=6 cap=1280 in=11 out=0 carriers=1 max=1 => made=6 in=0 out=6 status=0 send=0
+wstep W-susp     susp=1 n_in=1 need=11 rate=6 cap=1280 in=11 out=0 carriers=0 max=1 => made=0 in=11 out=0 status=0 send=0
+
+# --- the carrier's source choice: input priority 0x10068500 (steps < 30 -> 128, < 60 -> 96, else -1), score 0x10072974 ---
+offer O-empty     sum=0   need=11 avail=256  cap=1792 => prio=128 score=155
+offer O-329       sum=329 need=11 avail=256  cap=1792 => prio=128 score=155
+offer O-330       sum=330 need=11 avail=256  cap=1792 => prio=96 score=123
+offer O-659       sum=659 need=11 avail=256  cap=1792 => prio=96 score=123
+offer O-660       sum=660 need=11 avail=256  cap=1792 => prio=-1 score=-1
+offer O-255       sum=0   need=11 avail=255  cap=1792 => prio=128 score=-1
+offer O-full      sum=0   need=11 avail=1792 cap=1792 => prio=128 score=320
+
+# --- whole runs, hand-added: raw grass 768 (one trip) -> 9 steps, 52 wool (8 x 6 + 4), 1 raw left; 52 wool -> 5 weaver steps, 28 cloth ---
+farmrun R-trip    raw=768  rate=6 need=87 cap=1792 steps=100 => out=52 raw=1 steps=9
+farmrun R-3trips  raw=2304 rate=6 need=87 cap=1792 steps=100 => out=156 raw=42 steps=26
+farmrun R-capped  raw=2304 rate=6 need=87 cap=1792 steps=4 => out=24 raw=1956 steps=4
+wrun W-wool52     in=52 rate=6 need=11 cap=1280 steps=100 => out=28 in=1 steps=5
+wrun W-wool156    in=156 rate=6 need=11 cap=1280 steps=100 => out=84 in=2 steps=14

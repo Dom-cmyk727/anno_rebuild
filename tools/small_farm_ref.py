@@ -8,7 +8,8 @@ not from the engine. Records (key=value tokens, then `=>` and the expected keys)
 
   gate   last= t=                              => run= last=
   line   raw= out= cap= rate= need=            => made= raw= out= status=
-  tick   s0= s1= susp= c= raw= out= act= last= t= draw=   => run= made= raw= out= act= last= worker= animal= draws=
+  tick   s0= s1= susp= c= raw= out= act= last= t= draw= [fail=1]  => run= made= raw= out= act= last= worker= animal= draws= counters= cargo=
+         (fail=1: the send this+0x118 returned no figure: the attempt and the draw happen, the counter and the cargo do not)
   credit goods= in1= raw= amount=              => raw=
   pick   mode= limit= nodes=                   => tile=
   cut    id= pred_prod= phase=                 => ok= id= phase=
@@ -77,10 +78,10 @@ def wants(rate, need, raw):
     return 384 // rate >= raw // need
 
 
-def tick(s0, s1, susp, c, raw, out, act, last, t, draws):
+def tick(s0, s1, susp, c, raw, out, act, last, t, draws, fail=0):
     run, last2 = gate(last, t)
     res = dict(run=int(run), made=[0, 0], raw=list(raw), out=list(out), act=list(act), last=last2, worker=0, animal=0,
-               draws=0)
+               draws=0, counters=list(c), cargo=0)
     if not run:
         return res
     if not s0 and not s1:                                  # 0x1006f680-0x1006f695: after the stamp
@@ -95,6 +96,9 @@ def tick(s0, s1, susp, c, raw, out, act, last, t, draws):
         res['act'][0] = (res['act'][0] + (m << 4)) & 0xFFFF
         if (m & 0xFFFF) == 0 and c[0] < 1 and wants(R0, N0, res['raw'][0]):
             res['worker'] = 1                              # job 0x2a
+            if not fail:                                   # 0x1006f797-0x1006f799: a null figure skips the cargo and the attach
+                res['counters'][0] += 1                    # attach 0x1006fdb0 raises byte [+0x2a + type - 106]
+                res['cargo'] = 68                          # type+0xb0(0): input goods 0
     if s1:
         res['act'][1] = age(act[1])
         m, r2, o2, _ = line(raw[1], out[1], CAP, R1, N1)
@@ -110,6 +114,9 @@ def tick(s0, s1, susp, c, raw, out, act, last, t, draws):
             return res
         if wants(R1, N1, res['raw'][1]):
             res['animal'] = kind                           # job 0x2e
+            if not fail:                                   # 0x1006f8fd: je skips the cargo on a null figure
+                res['counters'][i] += 1
+                res['cargo'] = 69                          # type+0xb0(1): input goods 1
     return res
 
 
@@ -154,10 +161,10 @@ def run_vector(kind, a):
         return {'made': str(m), 'raw': str(r), 'out': str(o), 'status': str(s)}
     if kind == 'tick':
         r = tick(int(a['s0']), int(a['s1']), int(a['susp']), ints(a['c']), ints(a['raw']), ints(a['out']),
-                 ints(a['act']), int(a['last']), int(a['t']), ints(a.get('draw', '0')))
+                 ints(a['act']), int(a['last']), int(a['t']), ints(a.get('draw', '0')), int(a.get('fail', '0')))
         return {'run': str(r['run']), 'made': fmt(r['made']), 'raw': fmt(r['raw']), 'out': fmt(r['out']),
                 'act': fmt(r['act']), 'last': str(r['last']), 'worker': str(r['worker']), 'animal': str(r['animal']),
-                'draws': str(r['draws'])}
+                'draws': str(r['draws']), 'counters': fmt(r['counters']), 'cargo': str(r['cargo'])}
     if kind == 'credit':
         return {'raw': fmt(credit(int(a['goods']), int(a['in1']), ints(a['raw']), int(a['amount'])))}
     if kind == 'pick':
@@ -176,7 +183,7 @@ def run_vector(kind, a):
 KEYS = {
     'gate': {'run', 'last'},
     'line': {'made', 'raw', 'out', 'status'},
-    'tick': {'run', 'made', 'raw', 'out', 'act', 'last', 'worker', 'animal', 'draws'},
+    'tick': {'run', 'made', 'raw', 'out', 'act', 'last', 'worker', 'animal', 'draws', 'counters', 'cargo'},
     'credit': {'raw'},
     'pick': {'tile'},
     'cut': {'ok', 'id', 'phase'},

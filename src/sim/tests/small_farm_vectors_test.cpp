@@ -72,7 +72,7 @@ struct OneDraw {
 TEST_CASE("small farm vectors: the kernel agrees with the gate, line and tick records") {
     std::ifstream in(std::string(ANNO_FIXTURES_DIR) + "/sim/small_farm_vectors.txt");
     REQUIRE(in.good());
-    int run = 0, skipped = 0;
+    int run = 0, skipped = 0, unchecked_keys = 0;
     for (std::string line; std::getline(in, line);) {
         line = line.substr(0, line.find('#'));
         std::istringstream is(line);
@@ -123,6 +123,10 @@ TEST_CASE("small farm vectors: the kernel agrees with the gate, line and tick re
                                                                                         : 0)}};
             }
         } else if (t[0] == "tick") {
+            if (in_kv.count("fail") != 0) {
+                ++skipped; // a failed send is the driver's (consume / scheduler), not the kernel's
+                continue;
+            }
             const sim::ProductionType ty = small_farm_809(13, 128, 4, 50, 1024);
             sim::SmallFarm f = sim::make_small_farm(ty);
             f.line_on = {in_kv.at("s0") == "1", in_kv.at("s1") == "1"};
@@ -165,9 +169,19 @@ TEST_CASE("small farm vectors: the kernel agrees with the gate, line and tick re
         }
         ++run;
         for (const auto& [k, v] : want) {
-            CHECK_MESSAGE(got.at(k) == v, t[0] << " " << t[1] << ": " << k);
+            if (got.count(k) == 0) {
+                ++unchecked_keys; // counters/cargo of the send belong to the driver (S3)
+                continue;
+            }
+            // ADAPT (docs/sim/small-farm-supply.md 2.1): the original's output stock is a u16 and
+            // wraps; the engine's is a u32 (no hardcoded limits), identical for every capacity
+            // below 65536.
+            const std::string expect =
+                (t[1] == "L-out-wrap" && k == "out") ? std::string("65543") : v;
+            CHECK_MESSAGE(got.at(k) == expect, t[0] << " " << t[1] << ": " << k);
         }
     }
-    CHECK(run == 32);
-    CHECK(skipped == 15); // credit (5), pick (7) and cut (3): S2/S3 records
+    CHECK(run == 36);
+    CHECK(skipped == 17);       // credit (5), pick (7), cut (3) and two failed sends (driver, S3)
+    CHECK(unchecked_keys == 4); // counters and cargo of the two successful-send tick records
 }

@@ -21,6 +21,7 @@ line L-clamp     raw=200 out=10 cap=1024 rate=13 need=128 => made=13 raw=72 out=
 line L-full      raw=500 out=1024 cap=1024 rate=13 need=128 => made=0 raw=500 out=1024 status=2
 line L-last-fit  raw=128 out=1011 cap=1024 rate=13 need=128 => made=13 raw=0 out=1024 status=0
 line L-scarce    raw=100 out=0 cap=1024 rate=13 need=128 => made=10 raw=0 out=10 status=0
+line L-out-wrap  raw=128 out=65530 cap=65535 rate=13 need=128 => made=13 raw=0 out=7 status=0
 line L-grass-25  raw=25 out=0 cap=1024 rate=4 need=50 => made=2 raw=0 out=2 status=0
 line L-grass-24  raw=24 out=0 cap=1024 rate=4 need=50 => made=0 raw=24 out=0 status=1
 
@@ -38,6 +39,11 @@ tick T-grass-4850   s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,4850 out=0,1024 act=0,0 l
 tick T-kind-limit   s0=0 s1=1 susp=0 c=0,2,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => animal=0 draws=1
 tick T-limit-made   s0=0 s1=1 susp=0 c=0,2,0,0,0 raw=0,64 out=0,0 act=0,0 last=0 t=500 draw=0 => made=0,4 raw=0,14 out=0,4 act=0,64 animal=107 draws=1
 tick T-sum-limit    s0=0 s1=1 susp=0 c=0,1,0,1,1 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => animal=0 draws=1
+tick T-sum-no-worker s0=0 s1=1 susp=0 c=1,1,0,1,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => animal=107 draws=1 counters=1,2,0,1,0 cargo=69
+tick T-send-fail-w  s0=1 s1=0 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 fail=1 => worker=1 counters=0,0,0,0,0 cargo=0 draws=0
+tick T-send-ok-w    s0=1 s1=0 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => worker=1 counters=1,0,0,0,0 cargo=68 draws=0
+tick T-send-fail-a  s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 fail=1 => animal=107 counters=0,0,0,0,0 cargo=0 draws=1
+tick T-act-near-max s0=1 s1=0 susp=0 c=1,0,0,0,0 raw=128,0 out=0,0 act=65535,0 last=0 t=500 draw=0 => made=13,0 act=65487,0 worker=0
 tick T-draw-9       s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=9 => animal=110 draws=1
 tick T-draw-3       s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=3 => animal=109 draws=1
 tick T-draw-2       s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=2 => animal=107 draws=1

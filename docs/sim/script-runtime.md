@@ -828,3 +828,15 @@ started here. Independent F3 uses the entire unchanged source in an explicitly
 authored synthetic world with standalone soldiers on two flat islands and a ship
 at NEGER. It covers original branches0/5/6, exact money10000→109999→209998, one
 HAWAIMUCKE broadcast, native cuts and encoded replay. It is not the original world.
+
+F-handler-01 clean990015dc passed2/2 dependency-boundary and explicitly synthetic
+complete-program cases (not a real conditional pass). F-replay-inventory-01 at
+4db5f10d passed2/2 plus required contracts: synthetic producer/worker distinct
+processes, checked exits/nonempty artifacts and source/executable identity; current
+50-program compiler/context scan has14compiled,1complete permission program.
+Actual original-world conditional/construction remains OPEN. Fresh process input
+manifest now also pins original file/program SHA256 and2488byte length. F scale
+adds8/64/128players,4/32/128areas,16/128/512statements and100/10000/50000 unrelated
+figures. It counts scan/build and row/cell/candidate work separately, and sums64
+visit allocations (not peak RSS), with an exact work assertion. Release evidence
+and final inventory publication/review remain pending.

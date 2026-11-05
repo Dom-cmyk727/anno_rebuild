@@ -15,6 +15,7 @@ import io
 from contextlib import redirect_stdout
 import subprocess
 import tempfile
+import sys
 import unittest
 
 
@@ -88,11 +89,19 @@ def run(executable, repo):
     root.mkdir(parents=True, exist_ok=True)
     directory = Path(tempfile.mkdtemp(prefix='fresh-', dir=root))
     env = dict(os.environ, ANNO_SCRIPT2_CANARY_DIR=str(directory))
+    game=Path(os.environ.get('ANNO1503_GAME_DIR',''))
+    scenario=game/'Scenes/0011SingleEndlosAddon/endless01.sze'
+    sys.path.insert(0,str(repo/'tools'))
+    import bigbrother
+    payload=bigbrother.payload(scenario)
+    inputs=dict(scenario_sha256=digest(scenario),program_sha256=hashlib.sha256(payload).hexdigest(),program_bytes=len(payload))
+    if inputs!=dict(scenario_sha256='b289be7fe906264b1d0fe0b2be75c0e68813ed6691128c84cfebb6e4fd4cc8c0',program_sha256='cac0aeb9c14dfd5c0f9b18c664e5282dff57096e2938f93c67391e3c3f8a47d0',program_bytes=2488):
+        raise ValueError('original scenario/program input identity changed')
     records = []
     manifest = dict(executable=str(executable), sha256=digest(executable), processes=records,
                     source_revision=subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'], text=True).strip(),
                     verdict='INCOMPLETE', directory=str(directory),
-                    scope='Synthetic world executing entire unchanged endless01 source; original-world F2 OPEN: unit import absent')
+                    inputs=inputs, scope='Synthetic world executing entire unchanged endless01 source; original-world F2 OPEN: unit import absent')
     try:
         for role, case in [('producer','SCRIPT2 synthetic complete original program canary producer'),('worker','SCRIPT2 synthetic encoded canary replay worker')]:
             command = [str(executable), '--test-case='+case]

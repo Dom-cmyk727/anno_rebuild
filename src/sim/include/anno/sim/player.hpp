@@ -29,6 +29,8 @@
 #include <anno/sim/ids.hpp>
 
 namespace anno::sim {
+// Shared F35 authoritative money-effect policy; no account/statistic side effects.
+std::int64_t add_money_saturating(std::int64_t balance, std::int64_t delta);
 
 /// D: player +0x28d, an open byte: the property setter (0x1001be0d..0x1001be1f)
 /// stores any value, the record loader maps 7 to 8, and the tick only tests
@@ -76,7 +78,12 @@ struct Relation {
     friend bool operator==(const Relation&, const Relation&) = default;
 };
 
+struct BuildPermission {
+    TypeId type;
+    std::uint32_t value = 0;
+};
 struct Player {
+    std::vector<BuildPermission> permissions;
     /// The player's slot in the table (original u8).
     PlayerId index;
     /// D: +0x78. 8 and 11 human, 12 computer, 14 natives, 15 pirates, 16 Venice.

@@ -1338,6 +1338,11 @@ void expected_player(Stream& s, const sim::Player& p) {
     for (const sim::PlayerId d : p.discovery) {
         s.u32(d.v);
     }
+    s.u64(p.permissions.size());
+    for (const auto& row : p.permissions) {
+        s.u32(row.type.v);
+        s.u32(row.value);
+    }
 }
 
 std::vector<std::uint8_t> save_table(const sim::PlayerTable& t) {
@@ -1383,7 +1388,7 @@ TEST_CASE("players scope stream layout") {
     // empty relation rows (8) and discovery set (8).
     Stream one;
     expected_player(one, *t.slots[31]);
-    CHECK(one.v.size() == 65 + 8 + 8 + 65 + 8 + 130 + 8 + 8);
+    CHECK(one.v.size() == 65 + 8 + 8 + 65 + 8 + 130 + 8 + 8 + 8);
 
     // The world stream has the table after the ids scope and before the islands scope
     // (stage S5: the u64 slot count 0 of a world without islands), then the figures
@@ -1392,7 +1397,7 @@ TEST_CASE("players scope stream layout") {
     sim::World w;
     sim::WorldTestAccess::players(w) = t;
     const std::vector<std::uint8_t> world = save_world(w);
-    constexpr std::ptrdiff_t kIslandsBytes = 8 + 31 + 8 + 193;
+    constexpr std::ptrdiff_t kIslandsBytes = 8 + 31 + 8 + 193 + 67;
     REQUIRE(world.size() > expected.v.size() + static_cast<std::size_t>(kIslandsBytes));
     CHECK(std::equal(expected.v.begin(), expected.v.end(),
                      world.end() - kIslandsBytes - static_cast<std::ptrdiff_t>(expected.v.size())));
@@ -1468,6 +1473,7 @@ TEST_CASE("every player field moves the players scope hash") {
          [](sim::Player& p) {
              p.relations.push_back(sim::Relation{sim::PlayerId{p.index.v + 1}, 0, 0, 3, 0});
          }},
+        {"permissions", [](sim::Player& p) { p.permissions.push_back({sim::TypeId{90001}, 0}); }},
         {"discovery", [](sim::Player& p) { p.discovery.push_back(sim::PlayerId{p.index.v + 1}); }},
         {"research.state",
          [](sim::Player& p) {
@@ -1478,7 +1484,7 @@ TEST_CASE("every player field moves the players scope hash") {
              p.research.progress[64] = static_cast<std::uint16_t>(p.research.progress[64] + 1);
          }},
     };
-    static_assert(sim::field_count<sim::Player>() == 22);
+    static_assert(sim::field_count<sim::Player>() == 23);
     static_assert(sim::field_count<sim::ResearchState>() == 2);
     static_assert(sim::field_count<sim::PlayerTable>() == 3);
     CHECK(mutations.size() == sim::field_count<sim::Player>());
@@ -1495,7 +1501,7 @@ TEST_CASE("every player field moves the players scope hash") {
         return out;
     };
     const auto base_scopes = scope_hashes(tree);
-    REQUIRE(base_scopes.size() == 9);
+    REQUIRE(base_scopes.size() == 10);
     for (const std::uint32_t slot : {0U, 3U, 31U}) {
         for (const auto& [name, mutate] : mutations) {
             INFO("slot " << slot << " field " << std::string(name));
@@ -1696,7 +1702,7 @@ TEST_CASE("players scope reads back and validates what it read") {
         // bytes ends with the players scope, the islands scope (u64 count 0), the
         // figures and events scopes of a world without either (31 + 8 bytes) and the
         // timers_monopoly scope of the default configuration (193 bytes).
-        constexpr std::ptrdiff_t kTail = 31 + 8 + 193;
+        constexpr std::ptrdiff_t kTail = 31 + 8 + 193 + 67;
         REQUIRE(bytes.size() > table_size + 8 + kTail);
         Stream s;
         s.v.assign(bytes.begin(),

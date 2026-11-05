@@ -1,10 +1,12 @@
 // World::create: the scenario loader (docs/sim/state.md §10, stage S5).
 #include <algorithm>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <anno/sim/create.hpp>
+#include <anno/sim/house_tick.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/ship.hpp>
@@ -315,6 +317,9 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         }
     }
     if (problem.empty()) {
+        problem = house_updates_problem(config, rules, *types);
+    }
+    if (problem.empty()) {
         problem = spec.settings.validate();
     }
     if (!problem.empty()) {
@@ -392,12 +397,25 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         return problem;
     }
 
+    if (spec.original_figure_slots && *spec.original_figure_slots > kListSizeBound) {
+        return std::string("original_figure_slots: above the container safety bound");
+    }
+    std::set<Slot> requested_slots;
+    const bool explicit_slots =
+        !spec.figures.empty() && spec.figures.front().registry_slot.has_value();
     // The figures (MAP-2): their kind and goods are in the registry, their owner is a seated
     // player, their parent is an earlier figure of the same owner, their position is inside
     // the world. Nothing is built yet.
     for (std::size_t i = 0; i < spec.figures.size(); ++i) {
         const Spec::FigureSpec& fs = spec.figures[i];
         const std::string p = idx_path("figures", i);
+        if (fs.registry_slot.has_value() != explicit_slots) {
+            return p + ".registry_slot: cannot mix explicit and automatic figure slots";
+        }
+        if (fs.registry_slot && (*fs.registry_slot >= kListSizeBound ||
+                                 !requested_slots.insert(*fs.registry_slot).second)) {
+            return p + ".registry_slot: duplicate or outside the container safety bound";
+        }
         if (types->find_figure_type(fs.kind) == nullptr) {
             return p + ".kind: " + std::to_string(fs.kind) +
                    " is not a figure type of the registry";
@@ -447,6 +465,19 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
                 return p + ".health: " + std::to_string(*fs.health) +
                        " is above the type's max_hp " + std::to_string(ft->nav->max_hp);
             }
+            if (fs.nav_position_q32) {
+                if (!ft->nav) {
+                    return p + ".nav_position_q32: figure does not navigate";
+                }
+                const auto& q = *fs.nav_position_q32;
+                const std::int64_t width = std::int64_t{spec.settings.world_width} << 32;
+                const std::int64_t height = std::int64_t{spec.settings.world_height} << 32;
+                if (q[0] < 0 || q[1] < 0 || q[0] >= width || q[1] >= height ||
+                    q[0] / (std::int64_t{1} << 24) != fs.pos.x ||
+                    q[1] / (std::int64_t{1} << 24) != fs.pos.y) {
+                    return p + ".nav_position_q32: outside the world or differs from its Q8 view";
+                }
+            }
         }
     }
 
@@ -464,6 +495,11 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     w.rng_ = std::move(*rng);
     w.players_ = make_player_table(w.config_);
     w.figures_ = make_figure_registry(w.config_);
+    if (spec.original_figure_slots && *spec.original_figure_slots != 0) {
+        // Welt MAIN+4 -> 0x100980e0: resize before explicit actor insertions without
+        // changing the initial hint (-1) or cursor (0).
+        w.figures_.list.slots.resize(*spec.original_figure_slots);
+    }
     // §10 step 2: the monopoly entries sized from the configuration and empty, the
     // script timers stopped at 0.
     w.timers_ = make_script_timers(w.config_);
@@ -474,15 +510,32 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         p.volk = ps.volk;
         p.money = ps.money;
         p.flags_a0 = ps.flags_a0;
+        if (ps.flags.has_value()) {
+            p.flags = *ps.flags; // an explicit 0 stays 0 (population-contract.md P-A4)
+        }
         p.default_colour = ps.colour == 0xff ? kNoColour : static_cast<std::uint32_t>(ps.colour);
         p.name = ps.name;
         p.relations = ps.relations;
         p.discovery = ps.discovery;
+        p.permissions = ps.permissions;
         if (!ps.research.empty()) {
             p.research.state = ps.research;
         }
         w.players_.slots[ps.id.v] = std::move(p);
     }
+
+    if (spec.script_context == ScriptContext::Pending) {
+        auto script = prepare_script(spec.script_source, *w.types_, w.players_, w.config_,
+                                     spec.script_limits, spec.script_asset_namespace);
+        if (!script)
+            return script.error();
+        w.script_ = std::move(script).value();
+    } else if ((spec.script_context == ScriptContext::Missing ||
+                spec.script_context == ScriptContext::ExplicitNone) &&
+               spec.script_source.empty()) {
+        w.script_.state.context = spec.script_context;
+    } else
+        return std::string("invalid scenario script context");
 
     // The figures, ids from the world counter in spec order. A parent is an earlier figure,
     // so its id is known here.
@@ -503,16 +556,24 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         f.crew_slot = fs.crew_slot;
         f.holds = fs.holds;
         f.state_word = fs.state_word;
+        f.hp = fs.hp;
         if (const FigureType* ft = w.types_->find_figure_type(fs.kind); ft != nullptr && ft->nav) {
             // The position is inside the configured world (checked above), far below 2^22 Q8, so
             // pos * 500 * 2^24 stays inside i64.
             f.nav = make_nav_motion(f.pos, static_cast<std::uint16_t>(w.clock_.tick()));
+            if (fs.nav_position_q32) {
+                f.nav->pos_u[0] = (*fs.nav_position_q32)[0] * static_cast<std::int64_t>(kNavScale);
+                f.nav->pos_u[1] = (*fs.nav_position_q32)[1] * static_cast<std::int64_t>(kNavScale);
+            }
             // A new expedition starts at full health unless the spec says otherwise (N4).
             if (!fs.health_unknown) {
                 f.nav->health = fs.health.value_or(ft->nav->max_hp);
             }
         }
-        if (add_figure(w.figures_, std::move(f), w.config_, w.rules_) == kNoSlot) {
+        const Slot slot =
+            fs.registry_slot ? add_figure_at(w.figures_, std::move(f), *fs.registry_slot, w.config_)
+                             : add_figure(w.figures_, std::move(f), w.config_, w.rules_);
+        if (slot == kNoSlot) {
             return idx_path("figures", i) + ": the figure registry cannot take it";
         }
         figure_ids.push_back(id);

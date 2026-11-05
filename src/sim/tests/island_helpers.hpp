@@ -87,7 +87,13 @@ inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t own
     for (const char c : name) {
         s.u8(static_cast<std::uint8_t>(c));
     }
-    s.u64(0); // the player mask (stream 120): an empty set, a u64 count
+    s.u64(0);  // the player mask (stream 120): an empty set, a u64 count
+    s.u32(0);  // the stage mask (stream 128)
+    s.u16(0);  // the stage stamp (stream 128)
+    s.u64(56); // the billed counters (stream 128, Rules::save_billed_goods default): 56 goods of 0
+    for (int i = 0; i < 56; ++i) {
+        s.u32(0);
+    }
     s.u16(0);
     s.u64(6);
     for (int i = 0; i < 6; ++i) {
@@ -200,7 +206,7 @@ inline constexpr std::size_t kTimersMonopolyBytes = 193;
 /// u64 slot count, one empty slot byte, u16 stamp, the empty expiry list = 8 + 4 + 8 +
 /// 1 + 2 + 8 = 31 bytes; 39 before T22 dropped the deferred list), the events scope
 /// (the u64 count 0 = 8 bytes) and the timers_monopoly scope (stage S12).
-inline constexpr std::size_t kTailBytes = 31 + 8 + kTimersMonopolyBytes;
+inline constexpr std::size_t kTailBytes = 31 + 8 + kTimersMonopolyBytes + 67; // empty SCRIPT2 scope
 
 /// The flat stream of `w` with the bytes of its islands scope replaced by `table`;
 /// the scopes before it and the scopes after it (figures, events) stay as they are.
@@ -220,10 +226,10 @@ inline std::vector<std::uint8_t> with_island_table(const sim::World& w,
 /// The offset in the save frame of a byte at `flat` in the flat stream, which
 /// lies in the section with the 0-based index `section` (header 0, clock_rng 1,
 /// settings 2, ids 3, players 4, islands 5, figures 6, events 7): 4 magic + 4 + 4
-/// versions + 1 table kind (the original table), then every section behind a u64
+/// versions + 8 schema + 1 table kind (the original table), then every section behind a u64
 /// length.
 inline std::size_t frame_offset(std::size_t flat, std::size_t section) {
-    return 13 + 8 * (section + 1) + flat;
+    return 21 + 8 * (section + 1) + flat;
 }
 
 /// Recomputes the trailing checksum of a save after a test patched its bytes.
@@ -283,7 +289,7 @@ inline void check_unsupported_versions(const std::vector<std::uint8_t>& good,
     REQUIRE(get32(good, 4) == sim::kSaveVersion);
     REQUIRE(get32(good, kFrameStreamAt) == sim::kStateHashVersion);
     REQUIRE(get32(good, header_at) == sim::kStateHashVersion);
-    REQUIRE(get32(good, header_at + 4) == sim::kPrngTimelineVersion);
+    REQUIRE(get32(good, header_at + 12) == sim::kPrngTimelineVersion);
     {
         std::vector<std::uint8_t> bad = good;
         put32(bad, kSaveVersionAt, sim::kSaveVersion + 1);

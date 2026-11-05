@@ -247,13 +247,17 @@ std::vector<DigestCase> read_vectors() {
             if (hull != "-") {
                 f.hull_half_88 = std::stoll(hull);
             }
-            std::string nav_tag;
-            if (ls >> nav_tag) {
-                REQUIRE(nav_tag == "nav");
-                sim::NavFacts n;
-                ls >> n.speed_q32 >> n.turn_step_q32 >> n.max_hp >> n.hold_count_a >>
-                    n.hold_count_b >> n.nav_class >> n.stamp_radius_88;
-                f.nav = n;
+            std::string tail_tag;
+            while (ls >> tail_tag) {
+                if (tail_tag == "nav") {
+                    sim::NavFacts n;
+                    ls >> n.speed_q32 >> n.turn_step_q32 >> n.max_hp >> n.hold_count_a >>
+                        n.hold_count_b >> n.nav_class >> n.stamp_radius_88;
+                    f.nav = n;
+                } else {
+                    REQUIRE(tail_tag == "route"); // stream 126
+                    ls >> f.route;
+                }
             }
             out.back().figures.push_back(f);
         }
@@ -265,7 +269,7 @@ std::vector<DigestCase> read_vectors() {
 
 TEST_CASE("figure digest: the registry identity of figure facts equals the independent reference") {
     const std::vector<DigestCase> cases = read_vectors();
-    REQUIRE(cases.size() == 23); // tools/figure_digest_ref.py CASES
+    REQUIRE(cases.size() == 25); // tools/figure_digest_ref.py CASES (two route cases, stream 126)
     std::vector<std::uint64_t> seen;
     for (const DigestCase& c : cases) {
         INFO("case " << c.name);
@@ -355,7 +359,7 @@ TEST_CASE("ore objects: the discovery-set wire bytes, derived by hand") {
     CHECK(lw.data() == want_list);
 }
 
-// A ninth FigureType member must reach the digest, the reference and its vectors.
-static_assert(sim::field_count<sim::FigureType>() == 9,
+// An eleventh FigureType member must reach the digest, the reference and its vectors.
+static_assert(sim::field_count<sim::FigureType>() == 10,
               "a FigureType member needs a line in digest_registry, figure_digest_ref.py and the "
               "vectors");

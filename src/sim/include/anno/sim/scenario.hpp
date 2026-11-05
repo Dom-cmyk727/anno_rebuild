@@ -8,6 +8,7 @@
 // S6 added the cities and their buildings (CitySpec, BuildingSpec).
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,11 +23,16 @@
 #include <anno/sim/player.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/rng.hpp>
+#include <anno/sim/script.hpp>
 #include <anno/sim/settings.hpp>
 
 namespace anno::sim {
 
 struct ScenarioSpec {
+    ScriptContext script_context = ScriptContext::Missing;
+    std::string script_source;
+    ScriptLimits script_limits;
+    std::optional<std::string> script_asset_namespace;
     /// HEAD bytes -> properties (D: 0x10009cc0); prop14 from the root name (1
     /// ANNO, 3 ANNOADDON1). world_width/height bound the island rectangles.
     WorldSettings settings;
@@ -36,11 +42,17 @@ struct ScenarioSpec {
     std::optional<std::vector<std::uint16_t>> rng_table;
 
     struct PlayerSpec {
+        std::vector<BuildPermission> permissions;
         /// The slot in the player table.
         PlayerId id;
         std::uint32_t kind = 8, volk = 1;
         std::int64_t money = 10000;
         std::uint32_t flags_a0 = 0;
+        /// MAP-POP-IMPL-1 A (stream 127, docs/sim/population-contract.md): the player's stage mask
+        /// (`Player::flags`, original +0x90), restored from an original SPIELER head
+        /// (AnnoWelt 0x1001d389-0x1001d3df). nullopt = no head: the constructor's 1 stays (a
+        /// synthetic, fixed-map or ship-start spec); a stored 0 is kept as 0.
+        std::optional<std::uint32_t> flags;
         /// The start colour; 0xff = none (becomes kNoColour).
         std::uint8_t colour = 0xff;
         std::vector<std::uint8_t> name;
@@ -169,10 +181,22 @@ struct ScenarioSpec {
         /// True = the health is explicitly unknown (what an import without the field would
         /// carry); exclusive with `health`. The speed then uses the full-health term.
         bool health_unknown = false;
+        /// Original unit import: the requested source registry slot, separate from the stable
+        /// serial FigureId. Absent preserves existing generated/authored allocation behavior.
+        std::optional<Slot> registry_slot = std::nullopt;
+        /// Original nonship HEAD health, projected to the existing Figure::hp field. Ship HP
+        /// uses health/NavMotion as before. Default preserves all existing authored specs.
+        std::uint32_t hp = 0;
+        /// A navigating import's initial tile coordinates in Q32. Its Q8 view must equal pos.
+        /// Absent retains make_nav_motion(pos); this is input, not a new native field.
+        std::optional<std::array<std::int64_t, 2>> nav_position_q32 = std::nullopt;
     };
     std::vector<PlayerSpec> players;
     /// Figures at tick 0, in id order. Default: none.
     std::vector<FigureSpec> figures;
+    /// Original MAIN u32 at +4: nonzero pre-sizes the registry before source-order insertions;
+    /// zero leaves the configured constructor size. Absent preserves authored/generated specs.
+    std::optional<std::uint32_t> original_figure_slots = std::nullopt;
     /// The island table is as long as the highest slot + 1; unused slots stay null.
     std::vector<IslandSpec> islands;
 };

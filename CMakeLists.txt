@@ -195,9 +195,65 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py selftest)
     add_test(NAME cargo_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/cargo_ref.py check
-                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/cargo_vectors.txt)
+                     # no path: both fixtures, the unload cargo_vectors.txt and (MAP-CARGO-2) the
+                     # load cargo_load_vectors.txt; a missing file fails the test
+                     )
     add_test(NAME cargo_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/cargo_ref.py selftest)
+    add_test(NAME forester_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/forester_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/forester_vectors.txt)
+    add_test(NAME forester_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/forester_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/forester_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/forester_vectors.txt)
+    add_test(NAME house_kernel_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_kernel_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_kernel_vectors.txt)
+    add_test(NAME house_kernel_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_kernel_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/house_kernel_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_kernel_vectors.txt)
+    add_test(NAME resident_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/resident_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/resident_vectors.txt)
+    add_test(NAME resident_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/resident_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/resident_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/resident_vectors.txt)
+    add_test(NAME inn_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/inn_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/inn_vectors.txt)
+    add_test(NAME inn_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/inn_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/inn_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/inn_vectors.txt)
+    add_test(NAME walk_goal_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/walk_goal_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/walk_goal_vectors.txt)
+    add_test(NAME walk_goal_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/walk_goal_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/walk_goal_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/walk_goal_vectors.txt)
+    add_test(NAME house_transition_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_transition_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_transition_vectors.txt)
+    add_test(NAME house_transition_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_transition_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/house_transition_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_transition_vectors.txt)
+    add_test(NAME house_progression_vectors_agree
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_transition_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_progression_vectors.txt)
+    add_test(NAME house_live_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_live_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_live_vectors.txt)
+    add_test(NAME house_live_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_live_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/house_live_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_live_vectors.txt)
+    add_test(NAME population_oracles_agree
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/sim_stream.py --check)
     add_test(NAME ship_step_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py selftest)
   else()

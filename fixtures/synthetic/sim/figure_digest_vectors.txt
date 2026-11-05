@@ -2,74 +2,80 @@
 # the C++ serializer). case <name> <fnv64 hex>, then one "fig id speed cap layer load
 # bewohntype range hull" line per figure in ascending id; hull "-" is absent.
 
-case hull_positive f5eae1434ecf2ae9
+case hull_positive d2f5c531401da319
 fig 1502 1024 0 2 0 113 4096 397
 
-case hull_absent 3bf042c08b62e196
+case hull_absent b727f23e436ac8b6
 fig 1502 1024 0 2 0 113 4096 -
 
-case hull_zero 963cf57f9e70d56f
+case hull_zero 7b09041a0005d9bf
 fig 1502 1024 0 2 0 113 4096 0
 
-case hull_shipped_negative_391 7ad48d106632008e
+case hull_shipped_negative_391 33a3f1dff6f5722e
 fig 391 1024 0 2 0 113 4096 -27487789056
 
-case hull_edge_positive 21f3c7ff7a90a1aa
+case hull_edge_positive 2c95abeb3c28f68a
 fig 1502 1024 0 2 0 113 4096 549755813887
 
-case hull_edge_negative 22125f99b06cc055
+case hull_edge_negative 22f29f1b6ba992c5
 fig 1502 1024 0 2 0 113 4096 -549755813887
 
-case changed_id de15229209eb5790
+case changed_id b0c2fb4d6cbf0a90
 fig 1503 1024 0 2 0 113 4096 397
 
-case changed_speed 8ce50ffb46140bac
+case changed_speed 7138c3cbb2d1b1ec
 fig 1502 1025 0 2 0 113 4096 397
 
-case changed_capacity 08ababb37d1d243c
+case changed_capacity d4214028215b2d7c
 fig 1502 1024 1 2 0 113 4096 397
 
-case changed_layer 0a693904a67a8d8c
+case changed_layer 86299883085a7dcc
 fig 1502 1024 0 3 0 113 4096 397
 
-case changed_load_ticks 6b1f151845525e1c
+case changed_load_ticks 45f8c7cf8511315c
 fig 1502 1024 0 2 1 113 4096 397
 
-case changed_bewohntype 63aeeafcc594bed2
+case changed_bewohntype a9c7c6048691df32
 fig 1502 1024 0 2 0 114 4096 397
 
-case changed_range 8e951cdb7b85bafc
+case changed_range 53ab319eb725683c
 fig 1502 1024 0 2 0 113 4097 397
 
-case nav_present 6724df926abf9894
+case nav_present 184ef5e686f0de54
 fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 4 2 0 1280
 
-case nav_changed_speed 57a64e3494144ad1
+case nav_changed_speed ee20930080937281
 fig 1502 1024 0 2 0 113 4096 397 nav 154618823 472446402 6000 4 2 0 1280
 
-case nav_changed_turn 97dccb28375182bd
+case nav_changed_turn 4b37db95ba0abcad
 fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446403 6000 4 2 0 1280
 
-case nav_changed_hp 2bbee1a063a9a321
+case nav_changed_hp 5191c32ce28701d1
 fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6001 4 2 0 1280
 
-case nav_changed_hold_a 1c24ea85e65821f1
+case nav_changed_hold_a eb145171944a2fa1
 fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 5 2 0 1280
 
-case nav_changed_hold_b 609fd7df7b8a9381
+case nav_changed_hold_b 3cdb7988c6e23431
 fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 4 3 0 1280
 
-case nav_changed_class f3ce7df990acf411
+case nav_changed_class eb7327cd3ca677c1
 fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 4 2 1 1280
 
-case nav_changed_stamp 4d89102148f3d3a1
+case nav_changed_stamp 1b8c8333ac6e8a51
 fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 4 2 0 1281
 
-case two_ascending ed97b7b97d6e2a0c
+case route_maeher ec76b7ddfbe332a0
+fig 102 33554 256 2 6500 0 1792 - route 42
+
+case route_changed cea373c0241aab71
+fig 102 33554 256 2 6500 0 1792 - route 43
+
+case two_ascending d302d133bba9aafc
 fig 391 1024 0 2 0 113 4096 -27487789056
 fig 1502 1024 0 2 0 113 4096 397
 
-case three_ascending e43b524df61ff9e9
+case three_ascending 3deee8358f4cb799
 fig 391 1024 0 2 0 113 4096 -27487789056
 fig 717 512 0 1 0 97 1792 -
 fig 1502 1024 0 2 0 113 4096 397

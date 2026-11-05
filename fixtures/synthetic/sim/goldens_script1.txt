@@ -1,0 +1,43 @@
+# SCRIPT1 stream129 + SCRIPT1 schema. Published128 goldens.txt stays unchanged.
+# Independent new-field transcription: tools/sim_stream_script1.py.
+g0_step1 S1 129 baebcc2e5d708e6b
+g0_step100 S1 129 202f222fa0b175de
+g0_step1000 S1 129 7e6235c91ce3427d
+g1_players_step100 S4 129 b47426104805812f
+g1_players_step700 S4 129 b2eb405a28c8b0ff
+s5_islands_create S5 129 533cf0cec8e21152
+s5_islands_step100 S5 129 7203a0a06d912fe7
+s5_islands_city_created S5 129 0d2477b38b8913f2
+s5_islands_locked_create S5 129 b2d6c9d9f2bce315
+s6_g1_create S6 129 a56a5875dc872df4
+s6_g1_step100 S6 129 815218ea2fd30250
+
+# Determinism pins regenerated for the new field list and registry identity.
+# Self-baselined; hand-derived mechanism assertions and changed-command controls
+# remain in their cases. These are not independent original-runtime oracles.
+s11_g3_checkpoints S11 129 ef8440f7789d227d
+s11_g3_end S11 129 62ef3de98dfd9ce5
+s11_g3_events S11 129 3140bd8e1eb7db86
+m2_found_session M2 129 c53fc45b6f884d50
+p1_g7_create P1 129 cd640c3bf9d1f25f
+s10_g2_end S10 129 e660a9286a3c5854
+s7_g1_mp_checkpoints S7 129 a48bacc1c8b1826e
+s7_g1_mp_end S7 129 a80a46e825474d32
+s7_g1_events S7 129 d705f409820828d2
+s7_g1_sp_end S7 129 5c43f3e10ca4d70c
+s13_g5_checkpoints S13 129 980e08b66da62374
+s13_g5_end S13 129 aeb4a171cb1a3ad0
+t24_g6_checkpoints T24 129 f2c247b076ef8506
+t24_g6_end T24 129 e6612cf1b948b904
+s12_g4_checkpoints S12 129 04418136085a4ab1
+s12_g4_end S12 129 5b62c83e683cd9ed
+s12_g4_events S12 129 39c10f583d4b7cc8
+
+# K3 complete supported empty original kernel, explicit startup then unchanged
+# population vectors. Native checkpoint identities are self-baselined.
+k3_tick2450 K3 129 9c37a4120ad687b1
+k3_tick2500 K3 129 576c028371710f49
+k3_tick54950 K3 129 34b28e753eb40aaa
+k3_tick55000 K3 129 0127a38c4b516fc1
+k3_tick55050 K3 129 d42e5fd0666795ea
+k3_tick70000 K3 129 30063e64d9d25dd0

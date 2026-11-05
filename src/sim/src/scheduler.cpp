@@ -13,8 +13,12 @@
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/harvest.hpp>
+#include <anno/sim/house_tick.hpp>
+#include <anno/sim/inn.hpp>
 #include <anno/sim/island_tick.hpp>
 #include <anno/sim/player.hpp>
+#include <anno/sim/resident_job.hpp>
 #include <anno/sim/scheduler.hpp>
 #include <anno/sim/ship.hpp>
 #include <anno/sim/ship_mover.hpp>
@@ -48,16 +52,6 @@ struct AiCtx {
     const TickContext* ctx = nullptr;
     CountingDraw* draws = nullptr;
 };
-
-std::int64_t add_saturating(std::int64_t a, std::int64_t b) {
-    if (b > 0 && a > std::numeric_limits<std::int64_t>::max() - b) {
-        return std::numeric_limits<std::int64_t>::max();
-    }
-    if (b < 0 && a < std::numeric_limits<std::int64_t>::min() - b) {
-        return std::numeric_limits<std::int64_t>::min();
-    }
-    return a + b;
-}
 
 /// |delta| as a u32, cut at 0xFFFFFFFF.
 std::uint32_t magnitude32(std::int64_t delta) {
@@ -97,12 +91,30 @@ City* Scheduler::city_of_ref(World& w, CityRef ref) {
     return is != nullptr ? is->city(ref.city) : nullptr;
 }
 
+void Scheduler::record_fault(World& w, const FaultRecord& fault) {
+    if (!w.faulted_) {
+        w.faulted_ = true;
+        w.fault_message_ = fault_message(fault);
+    }
+}
+
 void Scheduler::release_counter(World& w, BuildingId home, std::uint32_t home_counter) {
     Island* is = island_of_id(w, island_of(home));
     Building* b = is != nullptr ? find_building_mut(*is, home) : nullptr;
     std::uint32_t* counter = b != nullptr ? figure_counter(b->payload, home_counter) : nullptr;
     if (counter != nullptr && *counter > 0) {
         --*counter;
+    }
+}
+
+void Scheduler::release_walker(World& w, BuildingId home, std::uint32_t slot, FigureId figure) {
+    // A House holds its walkers as ids: the slot is cleared only while it still names this figure
+    // (an old job never clears a newer owner's slot).
+    Island* is = island_of_id(w, island_of(home));
+    Building* b = is != nullptr ? find_building_mut(*is, home) : nullptr;
+    House* h = b != nullptr ? std::get_if<House>(&b->payload) : nullptr;
+    if (h != nullptr && slot < h->walkers.size() && h->walkers[slot] == figure) {
+        h->walkers[slot] = FigureId{};
     }
 }
 
@@ -121,6 +133,24 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         f.home_counter = s.home_counter;
         f.job = s.job;
         f.pos = s.pos;
+        f.cargo_goods = s.cargo_goods;
+        if (s.harvest) {
+            f.harvest = HarvestState{}; // Start, the first delay owed (docs/sim/forestry.md 2)
+        }
+        if (s.resident) {
+            // A house walker needs an empty walker slot of a House (L2): else no figure, and
+            // nothing was taken at the tick, so there is nothing to give back.
+            Island* hi = island_of_id(w, island_of(s.home));
+            Building* hb = hi != nullptr ? find_building_mut(*hi, s.home) : nullptr;
+            House* hh = hb != nullptr ? std::get_if<House>(&hb->payload) : nullptr;
+            if (hh == nullptr || s.home_counter >= hh->walkers.size() ||
+                hh->walkers[s.home_counter].valid()) {
+                continue;
+            }
+            ResidentState rs;
+            rs.cargo.assign(w.config_.resident_cargo_slots, ResidentCargo{});
+            f.resident = std::move(rs);
+        }
         f.born = t;
         f.stamp = static_cast<std::uint16_t>(t); // the unit's +8 from its creation
         if (add_figure(w.figures_, f, w.config_, w.rules_) == kNoSlot) {
@@ -131,6 +161,11 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             continue;
         }
         ++w.ids_.next_figure;
+        if (s.resident) {
+            Island* hi = island_of_id(w, island_of(s.home));
+            House* hh = std::get_if<House>(&find_building_mut(*hi, s.home)->payload);
+            hh->walkers[s.home_counter] = f.id;
+        }
         SimEvent e;
         e.kind = SimEventKind::FigureSpawned;
         e.tick = tick;
@@ -148,11 +183,67 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             nav_place(*f, m.pos); // also keeps the fine position of a carried navigating figure
         }
     }
+    // 1c. The residents' deliveries (L2), before the releases the figure's end pushed: a delivery
+    // is applied only while the house exists and the figure still holds one of its walker slots.
+    for (const HouseDelivery& d : fx.house_deliveries) {
+        Island* is = island_of_id(w, island_of(d.home));
+        Building* b = is != nullptr ? find_building_mut(*is, d.home) : nullptr;
+        House* h = b != nullptr ? std::get_if<House>(&b->payload) : nullptr;
+        const BuildingType* type = b != nullptr ? w.types_->find(b->type) : nullptr;
+        const Figure* f = find_figure(w.figures_, d.figure);
+        if (h == nullptr || type == nullptr || f == nullptr ||
+            f->home_counter >= h->walkers.size() || h->walkers[f->home_counter] != d.figure) {
+            if (w.transport_stats_ != nullptr) {
+                w.transport_stats_->residents.merge_dropped_by_goods[d.goods] += d.amount_88;
+            }
+            continue;
+        }
+        const std::optional<HouseFacts> facts = house_facts_of(w.config_, *w.types_, *type, *h);
+        if (!facts) {
+            if (w.transport_stats_ != nullptr) {
+                w.transport_stats_->residents.merge_dropped_by_goods[d.goods] += d.amount_88;
+            }
+            continue;
+        }
+        const std::vector<std::uint32_t> stock_before = h->stock;
+        const DeliverResult r = house_deliver(*facts, h->stock, d.goods, d.amount_88);
+        if (w.transport_stats_ != nullptr && r.fault == ResidentFault::None) {
+            // Diagnostic ledger: the amount applied and the stock raised at the goods' own slot
+            // and by the IdSec replays (stock units).
+            ResidentStats& rs = w.transport_stats_->residents;
+            rs.merged_delivered_by_goods[d.goods] += d.amount_88;
+            std::uint64_t primary = 0, other = 0;
+            const std::size_t own = d.goods < facts->lookup.size() ? facts->lookup[d.goods] : 0;
+            for (std::size_t k = 0; k < h->stock.size() && k < stock_before.size(); ++k) {
+                const std::uint64_t diff = h->stock[k] - stock_before[k];
+                (k == own ? primary : other) += diff;
+            }
+            rs.stock_expected_by_goods[d.goods] +=
+                std::uint64_t{d.amount_88} * 16 * r.touched; // one add per chain entry
+            rs.stock_primary_by_goods[d.goods] += primary;
+            rs.stock_replay_by_goods[d.goods] += other;
+        }
+        if (r.fault != ResidentFault::None) {
+            if (w.transport_stats_ != nullptr) {
+                ++w.transport_stats_->residents.deliveries_refused; // diagnostic only
+            }
+            // P-1/P-3: a refused delivery is a typed fault, not a counted skip.
+            FaultRecord rec;
+            rec.resident = r.fault;
+            rec.building = d.home;
+            rec.figure = d.figure;
+            rec.goods = d.goods;
+            record_fault(w, rec);
+        }
+    }
     // 2. Releases. One that names a figure goes through it (D 0x1003b6e0: only while the
     // unit's home +0x78 is set, which it then clears), so a figure releases once.
     for (const ReleaseCounter& r : fx.releases) {
         if (!r.figure.valid()) {
             release_counter(w, r.home, r.home_counter);
+            if (r.holder.valid()) {
+                release_walker(w, r.home, r.home_counter, r.holder);
+            }
             continue;
         }
         Figure* f = find_figure(w.figures_, r.figure);
@@ -160,13 +251,14 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             const BuildingId home = f->home;
             f->home = BuildingId{};
             release_counter(w, home, f->home_counter);
+            release_walker(w, home, f->home_counter, f->id);
         }
     }
     // 3. Money.
     for (const MoneyDelta& m : fx.money) {
         Player* p = w.players_.find(m.player);
         if (p != nullptr) {
-            p->money = add_saturating(p->money, m.delta);
+            p->money = add_money_saturating(p->money, m.delta);
         }
     }
     // 4. Goods moves.
@@ -178,8 +270,40 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         if (g.delta_88 > 0) {
             static_cast<void>(c->stock.add(g.goods, magnitude32(g.delta_88)));
         } else if (g.delta_88 < 0) {
+            const std::uint32_t before =
+                g.goods < c->stock.stock.size() ? c->stock.stock[g.goods] : 0U;
             static_cast<void>(c->stock.remove(g.goods, magnitude32(g.delta_88)));
+            if (g.resident && w.transport_stats_ != nullptr && g.goods < c->stock.stock.size()) {
+                w.transport_stats_->residents.merged_taken_by_goods[g.goods] +=
+                    before - c->stock.stock[g.goods]; // diagnostic ledger: the store really taken
+            }
         }
+    }
+    // 4b. Billed counters (L2): the requested amounts, saturating at u32.
+    for (const BilledDelta& d : fx.billed_deltas) {
+        City* c = city_of_ref(w, d.city);
+        if (c == nullptr || d.goods >= c->billed.size()) {
+            continue;
+        }
+        const std::uint32_t billed_before = c->billed[d.goods];
+        const std::uint64_t sum = std::uint64_t{c->billed[d.goods]} + d.amount;
+        c->billed[d.goods] = static_cast<std::uint32_t>(
+            std::min<std::uint64_t>(sum, std::numeric_limits<std::uint32_t>::max()));
+        if (w.transport_stats_ != nullptr) {
+            w.transport_stats_->residents.merged_billed_by_goods[d.goods] +=
+                c->billed[d.goods] - billed_before; // diagnostic ledger
+        }
+    }
+    // 4c. Inn debits (C2): the tavern stock falls by what was sold, the taken statistic rises.
+    for (const TavernDebit& d : fx.tavern_debits) {
+        Island* is = island_of_id(w, island_of(d.inn));
+        Building* b = is != nullptr ? find_building_mut(*is, d.inn) : nullptr;
+        auto* inn = b != nullptr ? std::get_if<Inn>(&b->payload) : nullptr;
+        if (inn == nullptr) {
+            continue;
+        }
+        // D 0x100756e0 on the Inn: n = min(request, stock), taken += n, tavern -= n, 16-bit wraps.
+        inn_take(*inn, std::int64_t{d.amount});
     }
     // 5. Reserves.
     for (const Reserve& r : fx.reserves) {
@@ -228,6 +352,13 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
     for (const StoreDelta& d : fx.store_deltas) {
         Island* is = island_of_id(w, island_of(d.building));
         Building* b = is != nullptr ? find_building_mut(*is, d.building) : nullptr;
+        if (b != nullptr && d.store == StoreDelta::Store::Input) {
+            if (auto* inn = std::get_if<Inn>(&b->payload)) {
+                // D 0x100756d0: a 16-bit add of the carried amount (8.8).
+                inn_unload(*inn, static_cast<std::uint32_t>(std::max<std::int64_t>(d.delta_88, 0)));
+                continue;
+            }
+        }
         std::uint32_t* store = nullptr;
         if (b != nullptr) {
             switch (d.store) {
@@ -249,9 +380,61 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         *store = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(v, 0, std::numeric_limits<std::uint32_t>::max()));
     }
+    // 6c. The harvest body's tile writes (MAP-ECON-1 E3, docs/sim/forestry.md 3.2), in issue
+    // order. The planned cut is re-checked against the tile (it cannot differ: nothing writes the
+    // island between the body and this merge); a mismatch is a defect counter, never repaired.
+    for (const TileEdit& e : fx.tile_edits) {
+        Island* is = island_of_id(w, e.island);
+        const Slot idx = is != nullptr ? is->tile_index(e.tile.x, e.tile.y) : kNoSlot;
+        if (idx == kNoSlot) {
+            continue;
+        }
+        switch (e.kind) {
+        case TileEdit::Kind::Claim:
+            is->tiles.set_aux(idx, is->tiles.aux(idx) | kTileClaim);
+            if (w.rules_.forestry_claim_hygiene) {
+                is->claims[e.tile] = e.actor;
+            }
+            break;
+        case TileEdit::Kind::Unclaim:
+            is->tiles.set_aux(idx, is->tiles.aux(idx) & ~kTileClaim);
+            if (w.rules_.forestry_claim_hygiene) {
+                is->claims.erase(e.tile);
+            }
+            break;
+        case TileEdit::Kind::Release:
+            // The shared end path (MAP-ECON-1-CLOSE-1): enhanced only, and only the ending
+            // worker's own entry; the faithful rules write nothing here.
+            if (w.rules_.forestry_claim_hygiene) {
+                const auto it = is->claims.find(e.tile);
+                if (it != is->claims.end() && it->second == e.actor) {
+                    is->tiles.set_aux(idx, is->tiles.aux(idx) & ~kTileClaim);
+                    is->claims.erase(it);
+                }
+            }
+            break;
+        case TileEdit::Kind::Cut: {
+            const std::uint32_t id = is->tiles.object(idx);
+            if (harvest_cuttable(*w.types_, id)) {
+                is->tiles.set_object(idx, id - 1);
+                is->tiles.set_phase(idx, static_cast<std::uint8_t>(is->tiles.phase(idx) & 0x80U));
+            } else if (w.transport_stats_ != nullptr) {
+                ++w.transport_stats_->forestry.cut_mismatches;
+            }
+            break;
+        }
+        }
+    }
+    if (fx.harvest_lost_88 != 0 && w.transport_stats_ != nullptr) {
+        w.transport_stats_->forestry.raw_lost_88 += fx.harvest_lost_88; // diagnostic only
+    }
     // 7. Timed events.
     for (const EnqueueEvent& e : fx.events) {
         w.events_.enqueue(w.ids_, tick, e.delay, e.e);
+    }
+    // 7b. Typed faults of the live population update (L4): the first one stops the world.
+    for (const FaultRecord& f : fx.faults) {
+        record_fault(w, f);
     }
     // 8. UI events, and the telemetry of the call (inside an advance only: between two
     // advances SimOutput belongs to the last advance and is not touched).
@@ -327,7 +510,34 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                     // docs/sim/state.md §5.9): the same protocol as a seam (its own figure
                     // and its Effects, merged right after the call, C2). It draws nothing.
                     bool ran = false;
-                    if (transport_runs_job(fig.job)) {
+                    if (fig.harvest.has_value()) {
+                        // MAP-ECON-1 E3: the harvest job (docs/sim/forestry.md 3.2), chosen by the
+                        // state the spawn created, never by the job id alone (0x2a is also the
+                        // small farm's worker job). The same protocol as the transport.
+                        const bool had_stamp = fig.expiry_stamp.has_value();
+                        Effects fx;
+                        {
+                            SerialWorld serial(w.islands_, w.config_.layout, reg, w.players_, fx);
+                            ran = harvest_tick(ctx, serial, fig);
+                        }
+                        if (ran) {
+                            sync_figure_lists(reg, fig, had_stamp, fx);
+                            merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used
+                        }
+                    } else if (resident_runs_job(fig.job)) {
+                        // MAP-POP-LIVE-1 L2: the house walker (docs/sim/population-live.md
+                        // section 3), the same protocol as the transport.
+                        const bool had_stamp = fig.expiry_stamp.has_value();
+                        Effects fx;
+                        {
+                            SerialWorld serial(w.islands_, w.config_.layout, reg, w.players_, fx);
+                            ran = resident_tick(ctx, serial, fig);
+                        }
+                        if (ran) {
+                            sync_figure_lists(reg, fig, had_stamp, fx);
+                            merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used
+                        }
+                    } else if (transport_runs_job(fig.job)) {
                         const bool had_stamp = fig.expiry_stamp.has_value();
                         Effects fx;
                         {
@@ -339,7 +549,10 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                             merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used
                         }
                     }
-                    if (!ran && interim > 0 && !fig.expiry_stamp.has_value() &&
+                    // A harvest worker never takes the D12 stand-in: its own body ends it (and
+                    // releases its claims), E2 review.
+                    if (!ran && interim > 0 && !fig.harvest.has_value() &&
+                        !fig.expiry_stamp.has_value() &&
                         static_cast<std::uint32_t>(t - fig.born) >= interim) {
                         // D12 (OQ-047, off by default): a figure returns after N ticks. It
                         // ends as the original's do (end_figure: the counter back now, the
@@ -415,15 +628,38 @@ void Scheduler::run_ai(void* raw) {
 }
 
 std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
+    if (w.faulted_) {
+        // A recorded fault (World::fault) stops the world: nothing changes, not even the clock.
+        w.out_ = SimOutput{};
+        w.out_.rng_cursor_before = w.out_.rng_cursor_after = w.rng_.cursor();
+        return w.clock_.tick();
+    }
+    std::vector<SimEvent> script_events;
+    if (!advance_script(w.script_, w.players_, w.timers_, *w.types_,
+                        static_cast<std::uint32_t>(w.clock_.tick()), &w.figures_, &w.settings_,
+                        &script_events, w.clock_.tick())) {
+        w.faulted_ = true;
+        w.fault_message_ = "script runtime fault";
+        w.out_ = SimOutput{};
+        w.out_.rng_cursor_before = w.out_.rng_cursor_after = w.rng_.cursor();
+        return w.clock_.tick();
+    }
     w.route_cache_.begin_advance(); // derived index: compare again before the first plan
     // docs/sim/state.md §5.3. No early return for 0: the original adds 0 and still
     // runs every subsystem.
     w.out_ = SimOutput{};
     w.out_.rng_cursor_before = w.rng_.cursor();
+    for (const auto& e : script_events) {
+        w.out_.events.push_back(e);
+        w.host_events_.push(e);
+    }
     const std::uint64_t tick = w.clock_.begin(game_ms);
     const auto t = static_cast<std::uint32_t>(tick);
     GlobalDraw global(w.rng_);
     CountingDraw draw(global);
+    // MAP-POP-LIVE-1 L4: the serial resources of the live House path (house_tick.hpp). Set only
+    // with Rules::house_updates: nothing else reads them.
+    const SerialResources serial{&w.players_, &w.figures_};
     const TickContext ctx{tick,
                           t,
                           w.config_,
@@ -434,7 +670,8 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
                           IslandsView(w.islands_),
                           draw,
                           w.seams_,
-                          w.transport_stats_};
+                          w.transport_stats_,
+                          w.rules_.house_updates ? &serial : nullptr};
     // 1. The islands, in table order (D: 0x100a2e60, nulls skipped); each island's
     // Effects are merged right after its tick (C1), so figure ids, registry slots
     // and event sequence numbers follow the island order.
@@ -447,11 +684,26 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
         island_tick(ctx, *w.islands_[i], fx);
         fx.draws = draw_records_between(before, draw.counts);
         merge(w, fx, tick, t);
+        if (w.faulted_) {
+            // P-1: a fault of the live population update ends the advance after this island's
+            // merge; the clock stays where this advance put it.
+            w.clock_.end();
+            w.out_.rng_cursor_after = w.rng_.cursor();
+            return tick;
+        }
     }
     // 2. The timed events (D: 0x100add90; events.cpp).
     PopResult events = run_events(w, ctx, draw);
     // 3. The figure registry (D: 0x1009a8a0 via world +0x114, slot +0x20).
     run_figures(w, ctx, draw);
+    if (w.faulted_) {
+        // A resident fault recorded by the figure phase (its merge ran right after the call)
+        // stops the world here, like a House fault after its island's merge: the rest of the
+        // advance (second event pass, players, timers, monopoly, 7.5 minute event) does not run.
+        w.clock_.end();
+        w.out_.rng_cursor_after = w.rng_.cursor();
+        return tick;
+    }
     // D4 (OQ-039, off by default): a second event pass after the figure phase, so a
     // delayed hit a figure enqueued with delay 0 lands in this advance.
     if (w.rules_.events_flush_after_figures) {
@@ -521,6 +773,30 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     w.clock_.end();
     w.out_.rng_cursor_after = w.rng_.cursor();
     return tick;
+}
+
+std::string World::initialize_scripts() {
+    if (faulted_)
+        return "script startup refuses a faulted world";
+    if (script_.state.context == ScriptContext::Ready ||
+        script_.state.context == ScriptContext::ExplicitNone)
+        return {};
+    if (script_.state.context != ScriptContext::Pending)
+        return "script startup requires supported script context";
+    if (clock_.ms != 0 || clock_.last_tick != 0)
+        return "script startup requires a fresh zero clock";
+    std::vector<SimEvent> script_events;
+    if (!advance_script(script_, players_, timers_, *types_, 0, &figures_, &settings_,
+                        &script_events, clock_.tick())) {
+        faulted_ = true;
+        fault_message_ = "script runtime fault";
+        return fault_message_;
+    }
+    for (const auto& e : script_events) {
+        out_.events.push_back(e);
+        host_events_.push(e);
+    }
+    return {};
 }
 
 std::uint64_t World::advance(std::uint32_t game_ms) {

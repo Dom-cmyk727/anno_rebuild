@@ -430,6 +430,38 @@ struct SimConfig {
     /// before the world exists, hashed with the configuration so a world records the
     /// tables its links were drawn with.
     LinkTables links;
+    /// MAP-POP-IMPL-1 B (stream 127, docs/sim/population-contract.md section 3): which goods ids
+    /// the population rules treat as infrastructure and as the tavern. They are properties of the
+    /// original goods table, so they are configuration with the original values as defaults, never
+    /// engine constants. D: first/last infrastructure id AnnoGame 0x1001487e-0x10014889 and
+    /// 0x10014b25-0x10014b2a (0x4c WIRTSHAUS .. 0x5a); tavern 0x10014b60 and AnnoWelt 0x100760d9
+    /// (0x4c); the lookup slot the first tavern may take 0x10014b65-0x10014b6d (0x1d ALKOHOL).
+    /// validate() checks the order only; the goods-domain checks run where a goods table and house
+    /// groups exist (TypeRegistry::build / validate_against), so a registry without groups never
+    /// needs these ids.
+    std::uint32_t population_infra_first = 0x4c;
+    std::uint32_t population_infra_last = 0x5a;
+    std::uint32_t population_tavern_goods = 0x4c;
+    std::uint32_t population_tavern_alias_goods = 0x1d;
+    /// MAP-POP-LIVE-1 L1 (stream 128, docs/sim/population-live.md section 2 "Billing"): the goods
+    /// range whose bill() is recorded and taken: the consumer goods ids. D: the range test
+    /// `goods < 0x1a || goods > 0x28` of the city billing slot 0x1002dac0. Data with the original
+    /// values as defaults; validate() checks the order only (the goods-domain check is the
+    /// ledger's: a goods beyond City::billed is a typed refusal, never a wrap).
+    std::uint32_t billed_goods_first = 0x1a;
+    std::uint32_t billed_goods_last = 0x28;
+    /// MAP-POP-LIVE-1 L1 (stream 128): the number of cargo slots of a resident walker's job
+    /// (ResidentState::cargo). D: the arrival 0x10057d70 delivers the cargo slots 0..2 and the
+    /// purchase loop 0x10056480 fills at most two of them; the slot count is not in the parsed
+    /// figure data (FigureType), so it is configuration with the original 3 as its default.
+    /// validate() requires at least 1.
+    std::uint32_t resident_cargo_slots = 3;
+    /// MAP-POP-LIVE-1 L3 (stream 128, docs/sim/population-live.md section 5): the type-id spacing
+    /// between house levels. D: UpgradeCheck/Upgrade/Downgrade (AnnoWelt 0x10075dd0, 0x1002cbe0,
+    /// 0x1002cdd0) use `id - id % 20 + 20` for the next type and `id - id % 20 - 20` (else `+ 1`)
+    /// for the previous one (`div 0x14` at 0x1002cc22). Data with the original 20 as default;
+    /// validate() requires at least 1.
+    std::uint32_t house_type_stride = 20;
 
     /// docs/sim/state.md §3.1. Empty when valid, else one message naming the
     /// first offending field ("SimConfig.building_div: must be non-zero").
@@ -598,6 +630,42 @@ struct Rules {
     NavRules nav;
     /// MAP-CARGO-1 (stream 124): the ship unloading rule's data.
     CargoRules cargo;
+    /// MAP-ROAD-CLOSE-1 (stream 125, docs/sim/road-placement.md section 3): an ENHANCED road
+    /// choice, not an original rule. Off: a class-0x4000 land road is accepted at any terrain
+    /// level, as the original island function does (AnnoWelt 0x1007cbc2: accepted at once). On: it
+    /// needs the level floor PlacementParams::min_level (R-A2). The class-0x1000 threshold and its
+    /// bit-4 gated slope test are original and never optional. The server derives the height either
+    /// way. Intended value in an enhanced session: true.
+    bool road_require_land_level = false;
+    /// MAP-ROAD-CLOSE-1 (stream 125): an ENHANCED road choice (R-A3). Off: a road may replace a
+    /// compatible ramp or pier piece (the original compat row for group 0xc1). On: a group-0xc1
+    /// piece that is not itself a land road is `Occupied`. Existing compatibility rows (a bridge
+    /// piece, buildings) and the unsupported-class gates apply either way. Intended value in an
+    /// enhanced session: true.
+    bool road_preserve_nonroad_pieces = false;
+    /// MAP-ECON-1 E2 (stream 126, docs/sim/forestry.md 3.5, 3.6): an ENHANCED harvest choice, not
+    /// an original rule. Off (the original): the claim is one tile bit with no owner; a worker's
+    /// cut arrival and abort clear it unconditionally; placement and clearing keep it. On: the
+    /// island keeps the claim's owner (Island::claims), a worker clears only its own claim,
+    /// placement and clearing invalidate the bit and the entry, and a worker revalidates its target
+    /// at each visit. Intended value in an enhanced session: true.
+    bool forestry_claim_hygiene = false;
+    /// MAP-ECON-1 E2 (stream 126, docs/sim/forestry.md 3.6): an ENHANCED harvest choice. Off (the
+    /// original candidate list, AnnoWelt 0x10092320 mode 0): a tile whose type's WARE[0] is the
+    /// cargo goods and whose claim bit is clear. On: additionally the cut's own predicate (the type
+    /// `id - 1` exists and its PRODTYPE is ROHSTWACHS, 0x10087340), so a tile the cut cannot change
+    /// is never chosen. Derived from the registry; no literal id. Intended enhanced value: true.
+    bool forestry_skip_uncuttable = false;
+    /// MAP-POP-LIVE-1 L1 (stream 128, docs/sim/population-live.md section 8, P-7): the House tick
+    /// applies the kernel's effects (walker spawn, growth, upgrade, downgrade, removal). Off (the
+    /// default) keeps the dispatch an exact no-op, so every accepted golden and replay is
+    /// unchanged. Intended value in a game with living houses: true (an owner decision).
+    bool house_updates = false;
+    /// MAP-POP-LIVE-1 L1 (stream 128, owner 2026-10-25, section 2 "Billed counters"): true saves,
+    /// hashes and restores City::billed; false leaves it out of the stream, so a loaded city starts
+    /// with zero billed counters (the original drops this scratch at a save). Either way the live
+    /// tick writes it.
+    bool save_billed_goods = true;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

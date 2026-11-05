@@ -390,6 +390,7 @@ enum class DrawSite : std::uint8_t {
     ComputerName,      // unported: 0x100025a0
     CityName,          // ported (PRNG timeline 3): the city name draw, 0x10096910, DrawPhase::Advance
     CityNameLoad,      // unported (timeline 3): the same draw from the scenario loader, DrawPhase::Load
+    FarmWorkerDispatch, // ported (PRNG timeline 4, MAP-ECON-1 E2): one draw per eligible farm dispatch attempt, 0x1006edf3, DrawPhase::Advance
     Count_
 };
 enum class DrawPhase : std::uint8_t { Load, Advance };
@@ -448,7 +449,13 @@ struct ClassInfo {
 struct GoodsInfo { std::string name; std::uint32_t forsch = 0; };           // forsch: BGruppen [WAREN] research id, 0 = none (OQ-034)
 struct CostEntry { GoodsId goods = 0; std::uint32_t amount_88 = 0; };
 
+// MAP-BOOTSTRAP-1: immutable construction facts; see build-availability.md.
+struct BuildRequirement {
+    std::uint32_t stage = 0;
+    std::vector<std::uint32_t> research_any;
+};
 struct BuildingType {
+    BuildRequirement construction;
     TypeId id;
     std::uint32_t prodtype = 0;                 // PRODTYPE number (D AnnoGame 0x100138e0)
     RuntimeClass cls = RuntimeClass::Plain;
@@ -1769,7 +1776,7 @@ Not ported first and kept as `LegacyRawCmd` (fail closed): ships and routes `0x6
 2. Footprint `(w', h')` = `(width, height)` swapped on odd rotation (D 0x100279e6, 0x10071c80). Every footprint tile must be inside the island (`OutOfIsland`); every tile's owner must be `neutral_owner` or one single common owner (D `0x10058890`), which must be the target city (`TileNotOwned`); at least one tile belongs to the city (an all-neutral footprint resolves to the city numbered 15, which does not exist).
 3. The building-occupancy test first (a tile under a building of the island, or, in the atomic dry run, under an earlier record of the command: `Occupied`; the live run sees the earlier building's type id on its tiles, the dry run has no tile writes, so both answer `Occupied` before any terrain verdict), then `placement_rule` for the **effective** type (D `0x1007c790` through island slot `+0x6c`, O-27; contract `docs/sim/ship-placement.md`, MAP-BUILD-1 C): the class gate (ordinary land `(F & ~0x80) == 0x4`, coast `(F & 0x7017) == 0x2007`, everything else, flag bit `0x10`, a zero footprint or a flag word above 16 bits `Unsupported`), bounds in 64 bits, the objects under the footprint through the full overlap table of the original's type slot `+0x6c` (`site::overlap_with_existing`: `Occupied`; an object the registry does not know `Unsupported`), then the vertex window of `VertexGrid` (ordinary land: one multiple of 16, at least 32 unless the type's PRODTYPE group is `0x141`, else `TerrainRefused`; coast: `site::coast_height_rule`, no level test). A world whose island has no readable HEIGHT column answers `Unsupported`. `PlacementResult` carries the verdict **and** the item height; `Seams::placement_rule` replaces the rule, its default (no function) is this rule, and the D17 stand-in (a non-zero `object` is `Occupied`, height 0) is only an installed seam (`stand_in_placement_seam()`).
 4. `upgrade_rewrite` (D `0x100276a0`, PRODTYPE `0x43`/`0x48` rewrite `rec.id`; O-28). Default none.
-5. `rules.enforce_research` and the type's `research_id` not researched → `NotResearched`. Default off (the original has no sim-side research gate on build; where research gates availability is unknown, O-30).
+5. `rules.enforce_research` and the type's `research_id` not researched → `NotResearched`. Default off. This optional extra AND gate is distinct from the original player availability query, whose research OR alternatives are now traced in `build-availability.md`; authoritative integration remains blocked by scenario permissions.
 6. Affordability, **read-only** (D `0x100275d0`), skipped when `owner.free_build` (D owner slot `+0x9c(7)`, O-9): `cost_gold <= owner.money` and, for each cost entry, `amount <= city.stock[goods]` (`CannotAfford`). Evaluated per record against the state left by the previous records, so a drag build spends in stream order and may end partially built (D8).
 7. Place (D `0x100279a0`): charge (`owner.money -= cost_gold`; per cost entry `city.build_goods[g - first].spent += amount` and `city.stock.remove(g, amount)`), `create_building(now = tick)` (§7.3), `seams.on_placed` (D hooks `0x1002c920/0x1002ca80/0x1002d2a0/0x1002cf60`, land claim for 0x21–0x23, market/Kontor in-place replacement `0x10027b62`: O-4; an overlap that the original would replace is rejected `Occupied`). The original charges before `Create` and does not refund if `Create` fails; here validation precedes the charge and creation after validation cannot fail, so the case does not arise (F18).
 `byte0f` of a command-created building is the height the placement rule derived from the terrain at execution time (`PlacementResult::height`: the window level for ordinary land, `max & 0xf0` for the coast class), stored in `Building::byte0f` and the aux low byte of **every footprint tile**; the wire bytes 7 and 8 are never read (carried for the legacy import only). The original's apply call passes `flags | 0x1000000`, skips the height analysis and **trusts** the wire byte (the UI preview is what computes it, `docs/re/ship-placement.md` §2), so a client can build on sea there; the port derives the byte itself (ADAPT A1). Route and navigation code read the stored byte (`docs/sim/ship-navigation.md` 12.13): a command-built building blocks according to its real level, and a save, a load and a replay read it back without recomputing.
@@ -1792,10 +1799,11 @@ A command travels in two forms. From a client to the host: `ClientRecord = {u16 
 | `0x73` | SetTradeSlot | `u32 island, u32 city, u32 list, u32 index, u32 goods, u32 amount_88, u32 price` |
 | `0x7a` | SetSpeed | `u32 percent` (the original sends an `f32`) |
 | `0xF070` | Found (MAP-2) | `u64 ship, {u32 type, i32 x, i32 y, u8 rotation, u8 byte7, u8 byte8, u8 0}, i32 click_x, i32 click_y` (32 bytes). The tag is not an original value (the original\'s `0x6f/0x70` are diplomacy and tribute, its ship records carry the building type id); a `LegacyRawCmd` of this type is refused by the encoder |
-| `0xF073` | Unload (MAP-CARGO-1) | `u64 ship, u64 warehouse, u32 hold, u32 goods, u32 tons` (28 bytes), little endian; the payer, owner and city are derived from the authenticated issuer and the warehouse, never supplied (docs/sim/ship-cargo.md section 3). `0xF071` Move (16 bytes) and `0xF072` Stop (8 bytes) are described in docs/sim/ship-navigation.md. `kCommandWireVersion` stays 1 (new tags are appended; a log of the earlier set stays readable). Rejects appended after `ShipEmbarked`: `NotAWarehouse`, `HoldGoodsMismatch`, `UnsupportedGoods`, `StockFull`; `RecordResult::transferred_88` reports the amount |
+| `0xF073` | Unload (MAP-CARGO-1) | `u64 ship, u64 warehouse, u32 hold, u32 goods, u32 tons` (28 bytes), little endian; the payer, owner and city are derived from the authenticated issuer and the warehouse, never supplied (docs/sim/ship-cargo.md section 3). `0xF071` Move (16 bytes) and `0xF072` Stop (8 bytes) are described in docs/sim/ship-navigation.md. `kCommandWireVersion` stays 1 (new tags are appended; a log of the earlier set stays readable). Rejects appended after `ShipEmbarked`: `NotAWarehouse`, `HoldGoodsMismatch`, `UnsupportedGoods`, `StockFull`; `RecordResult::transferred_88` reports the amount  |
+| `0xF074` | Load (MAP-CARGO-2) | `u64 ship, u64 warehouse, u32 hold, u32 goods, u32 tons` (28 bytes), little endian, the same layout as `0xF073`; `hold` is only the preferred hold, `goods` the goods to take aboard; the payer, owner, city, price and debit are derived from the authenticated issuer and the warehouse, never supplied (docs/sim/ship-cargo.md section 12). Native, so a `LegacyRawCmd` of `0xF074` is unencodable and a log that holds one from before is no longer representable (none exists in the repository: the only earlier mention was a codec test pinning `0xF074` as a legacy neighbour, now `0xF075`). `kCommandWireVersion` stays 1, as for `0xF073`: the policy is that a tag is appended and a log of the earlier set stays readable; a reader built before the tag decodes the record as `LegacyRawCmd` and refuses it at apply (`Unsupported`), so a log that holds `LoadCmd` is for builds that know the tag. Rejects appended after `StockFull`, in order: `NoCargoFacts`, `HoldsFull`, `StockShort` (the numbering of every earlier enumerator is unchanged); `RecordResult::transferred_88` reports the amount that left the city and entered the hold. No state, rules or digest field is added: `kStateHashVersion` stays 124 |
 | other | LegacyRaw | the original type in the header, raw payload |
 
-`decode_record(span) -> Result<Body, std::string>` rejects: a length beyond the input, trailing bytes, a count larger than `remaining / min_element_size` (checked **before** any allocation), a native tag with the wrong length, a `LegacyRaw` whose type is a native tag, an unknown flag byte. Property: `decode(encode(c)) == c`; no prefix, suffix or single-byte mutation of a valid record crashes, over-reads or allocates more than a small multiple of the input. Unknown tags are decode errors dropped and logged by the host, never silently executed.
+`decode_record(span) -> Result<Body, std::string>` rejects: a length beyond the input, trailing bytes, a count larger than `remaining / min_element_size` (checked **before** any allocation), a native tag with the wrong length, a `LegacyRaw` whose type is a native tag (an UNKNOWN tag, e.g. a native tag of a newer build, decodes as `LegacyRaw` and is refused at apply with `Unsupported`; it is not a decode error), an unknown flag byte. Property: `decode(encode(c)) == c`; no prefix, suffix or single-byte mutation of a valid record crashes, over-reads or allocates more than a small multiple of the input. Unknown tags are decode errors dropped and logged by the host, never silently executed.
 
 `legacy::decode_0x64(span) -> Result<BuildCmd>` imports the original group codec for replay import (optional, D14): `u32 flags, u8 island, u8 city`, then groups of an 8-byte head `{u16 type | n<<12, u16 x, u16 y, u8 rot | rec7<<2, u8 rec8}` plus `n ≤ 15` followers of 3 bytes `{rot, s8 dx, s8 dy}` **relative to the head** (not cumulative); the Demolish tile list is run-length coded `{u16 x, u16 y, u8 n, n bytes}` with signed nibbles applied **cumulatively**. Tested on synthetic bytes only.
 
@@ -1890,6 +1898,7 @@ The `MonopolyTable` entries match `MONOPOL2`: 28 × {u32 time, player or −1}.
 - `Inert`: `u16 last, bool blocked, bool suspended, Status`.
 - `Workshop`: `u16 last, bool switched_on, bool suspended, bool blocked`, `u32` vectors `out`, `in`, `activity`, `u32 carriers_out`, `Status`.
 - `WeaponsWorkshop`: `u16 last`, bools `line_on`, `bool suspended, bool blocked`, `u32` vectors `out`, `in`, `u16` vector `activity`, `u32 carriers_out`, `Status` (`unlocked` is derived).
+- `Inn` (MAP-POP-CLOSE-2 K1, stream 128 amendment): `u16 last`, bools `blocked`, `suspended`, `Status`, `u32 tavern` (8.8 units, holds the original's u16 and wraps modulo 65536, range-checked), `u32 taken` (the decaying 31/32 counter, also u16), `u32 carriers_out`. Its tick (`TickKind::Inn`, period 5000, `inn_step`, `docs/re/population.md` section 18) runs only with `Rules::house_updates` and sends the existing job 0x33 (cargo goods byte `type+0xb0`, limit = `max_figures[0]`); the take (`inn_take`) and unload (`inn_unload`) are the Workshop carrier's shared arms.
 - `Farm`: `u16 last, bool switched_on, bool suspended, bool blocked, u32 out, u32 raw, u16 activity, u32 workers_out, Status`.
 - `SmallFarm`: `u16 last`, bools `line_on`, `bool suspended, bool blocked`, `u32` vectors `out`, `raw`, `u16` vector `activity`, `u32` vector `figures_out`, `Status`.
 - `Mine`: `u16 last, bool switched_on, bool deep, bool blocked, u32 out, u16 activity`, optional `u64 deposit`, `Status`.
@@ -2046,7 +2055,7 @@ Honest cost note: the faithful scheduler performs about `Σ_lists (n·dt/500 + 1
 | O-27 | Placement validity: island slot `+0x6c` = 0x1007c790 (terrain, water/coast/mountain via the type flag word, overlap rule 0x10008920, height reference 0x10008f90, writes `rec[8]`); **read in MAP-BUILD-1 B**: `docs/re/ship-placement.md`, contract `docs/sim/ship-placement.md` (OQ-052) | `Seams::placement_rule` | in island, owners, no overlap (D17) |
 | O-28 | PRODTYPE 0x43/0x48 upgrade rewrite of `rec.id` (helpers 0x1002c090, 0x1002c740; flag 0x4000000; flag 0x40000000 set by 0x100279a0) | `Seams::upgrade_rewrite` | none |
 | O-29 | Meaning of world properties 0, 1, 2, 3, 11–13 (UI/AI side), prop 6 bits 0, 4, 5, 6, 8–15, prop 5 toggle (AnnoFrame 0x10006fa0) | `WorldSettings` carries them | stored, not read |
-| O-30 | Where a type's research id gates availability or placement (only the deep-iron-mine use is known) | `Rules::enforce_research` | off |
+| O-30 | Original availability ORs are traced in build-availability.md; authoritative wiring awaits the scenario-permission contract | `Rules::enforce_research` | off |
 | O-31 | SKTIMER load (0x1009cdd0: restores `last`?) and script consumers | `ScriptTimers` | counts only; clamp at 0 (F5) |
 | O-32 | Saved layout of the original `ENTRY` event records (0x100ad8d0, 0x100ada30) | none (own save) | n/a |
 | O-33 | World `+0x69e0` dword (set to 0x640014 by Reset) and the 32-dword table at `+0x6948` | none | not modelled |
@@ -2475,6 +2484,10 @@ So B1 … B13 take the slots 2, 3, 4, 5, 6, 7, 8, 9, 1, 10, 11, 2, 3, the list e
 
 **MAP-CARGO-1 (2026-11-02): stream version 124.** `Rules` gains `cargo` (`CargoRules`) after `nav`: `u64` count and `u32` PRODTYPE numbers of the eligible warehouses (default `{35}`), then `u64` count and `u32` dock half-widths of the ship unloading disc (default `{5,5,5,4,3,2}`); `docs/sim/ship-cargo.md` section 5. `Rules::validate` refuses an unsorted, repeated or zero PRODTYPE, an empty or over-long (more than 256) table, entry 0 other than the radius, and an increasing table, each with its field name. `kStateHashVersion` 123 -> 124; the registry digest is unchanged; every state hash moves through the version number and the Rules bytes. Independent bytes: `tools/sim_stream.py` (`cargo_rules_bytes`, fixture `cargo_rules_bytes.txt` written by `--write-cargo-rules`); the old-version test re-seals a valid 124 control with 123.
 
+**MAP-ROAD-CLOSE-1 (2026-11-03): stream version 125.** `Rules` gains `road_require_land_level` and `road_preserve_nonroad_pieces` (one boolean byte each, default false) after `cargo`; `docs/sim/road-placement.md` sections 3 and 10. `kStateHashVersion` 124 -> 125; the registry digest is unchanged; every state hash moves through the version number and the two Rules bytes. Independent bytes: `tools/sim_stream.py` (`rules_bytes(..., road_level, road_pieces)`, fixture `cargo_rules_bytes.txt` line `rules_roads`); the old-version tests re-seal a valid 125 save and a valid recording's initial save with 124.
+
+**MAP-ECON-1 E2 (2026-11-03): stream version 126, PRNG timeline 4.** `docs/sim/forestry.md` sections 2, 3.1, 3.6, 3.7. `Rules` gains `forestry_claim_hygiene` and `forestry_skip_uncuttable` (one boolean byte each, default false = the original) after the road booleans; each `Figure` gains `std::optional<HarvestState> harvest` at its end (u8 step, u32 start_delay, u32 wait, i32 target x, i32 target y, the route as u64 count of i32 pairs, u32 next, u32 along); each `Island` gains `claims` (the enhanced owners: u64 count, then i32 x, i32 y, u64 figure id per entry, ascending tile) after `reserved_object_count`; the registry digest's figure types gain `u32 route` (the ROUTETYPE index, AnnoGame 0x10024fb8) after the navigation facts; the tile `aux` admits bit 29 (`kTileClaim`). The new ported draw site `FarmWorkerDispatch` draws once per eligible farm dispatch attempt (D 0x1006edf3-0x1006ee06), so every world with a farm-class building whose step sends moves its PRNG cursor; the farm family's sends carry the figure type's route as the job and the farm's input 0 as cargo goods, and a harvest job (0x29/0x2a) of a Farm-payload home gets `harvest`. Independent bytes: `tools/sim_stream.py` (version 126, timeline 4, `rules_bytes(..., hygiene, skip_uncuttable)`, the island's claims count, fixture line `rules_forestry`) and `tools/figure_digest_ref.py` (the route). The old-version test re-seals a valid 126 save with 125.
+
 **S15. Hardening and acceptance.** `src/tools/bench_sim/`, `fixtures/diff` exporter, lint completed, **the state stream frozen: `kStateHashVersion = 2` and every golden re-baselined in that one commit (§14.3)**, 1-hour determinism acceptance run (PLAN M3), `docs/PLAN.md` and `docs/perf/README.md` status, `docs/open-questions.md` entries for O-1..O-52 (the decisions D1..D18 are already filed as OQ-036..OQ-053). Tests: "one hour run is deterministic across two runs" (long, opt-in), 24 h soak under ASan (nightly), cross-platform golden matrix, "state hash version is frozen at 2". Exit: PLAN M3 acceptance.
 
 **S16 (optional, benchmark-gated). Executor.** `executor.hpp`/`executor.cpp` (island ticks, `may_draw` registry, `GuardedDraw`, `faulted`), and **only if the owner chooses `PrngMode::PerIsland` (D11)**: `StreamDraw`, a `WorldRng stream` cursor in `Island` (field list, hash scope `stream`, save entry), `u64 stream_seed` in the `header` scope, `Rules::validate()` accepting the value, a `kStateHashVersion` bump (version 3 or higher after the freeze) and re-baselined goldens, all in one commit. Until S16 the value is design-only and rejected. Tests (`executor_test.cpp`): "thread count equality 1 2 8", "may_draw soundness for every site", "guarded violation sets faulted", and, with the mode: "per-island stream golden", "per-island stream cursor survives save and load", "per-island stream cursor is hashed" (a perturbation of the cursor moves the hash), "validate accepts PerIsland only with a stream seed". Exit: only if `bench_sim` shows the island phase above budget.
@@ -2529,7 +2542,7 @@ Names → numbers: AnnoGame 0x100138e0 maps 32-number blocks onto name arrays (0
 | 18–32 (unnamed), 37–64, 102–128, 132–160, 162–192, and 65 BRUNNEN, 75 GALGEN, 76 GERICHT, 80–96 | Plain | None | by block | default class 0x100734c0, size 0x18, vtable 0x100c92b8, tick 0x10001030 (`ret 4`) |
 | 33 HAUPT, 34 MARKT, 35 KONTOR | Market | None | 5 | 0x1006c080 / 0x50 / 0x1006b6d0 (unread) |
 | 36 MARKTKOMBI | MarketCombi | None | 5 | 0x1006c080 + vtable 0x100c2740 / 0x1006c2e0 (unread) |
-| 66 WIRT | Inn | None | 1 | 0x10075970 / 0x24 / 0x100755f0 |
+| 66 WIRT | Inn | Inn (K1: runs only with Rules::house_updates) | 1 | 0x10075970 / 0x24 / 0x100755f0 |
 | 67 KAPELLE, 68 KIRCHE, 69 BADEHAUS, 70 THEATER, 78 BIBLIOTHEK, 79 PAVILLION | PublicService | None | 1 | 0x1006b550 / 0x18 / 0x1006b4e0 |
 | 71 ARZT | Doctor | None | 1 | base ctor, vtable 0x100c2998 / 0x20 / 0x100676b0 |
 | 72 SCHULE, 73 HOCHSCHULE | School | None | 1 | 0x10070160 / 0x18 / 0x1006b4e0 |
@@ -2542,3 +2555,73 @@ Names → numbers: AnnoGame 0x100138e0 maps 32-number blocks onto name arrays (0
 | 0 UNUSED, ≥ 193 | not a building | | none | `Place` skips `Create` when the block start `(p - 1) & ~0x1f` is above 0xa0, i.e. for p >= 193 (0x10027b32-0x10027b3c; roads, walls, scenery are tile objects only) |
 
 Tick gate periods (**D**: the compare constant is read in every class tick; what the body does with `last` after the gate is not read except for MARKTSTAND and the ported production classes; `ClassInfo::gate_period`, hashed in the registry digest): 500 in workshop 0x100680b0, farm/fisher 0x1006ea90, trapper 0x1006e5d0, mine 0x1006def0, 0x1006f660, class 12 0x10068a70, class 17 0x10069550, market classes 0x1006b6d0/0x1006c2e0, 0x100676b0, 0x10067b50, 0x1006cc40, **PublicService and School 0x1006b4e0 (`cmp dx, 0x1f4` at 0x1006b4ec, shared tick; 13 instructions, the MARKTSTAND rule: add the period to `last` once the u16 difference reaches it), Hunter 0x10069f40 (0x10069f5d), Whaler 0x10073720 (0x10073737), Shipyard 0x10074e90 (0x10074ea1)**; 2500 houses 0x10076230; 5000 0x100702d0 and 0x10075608; 166 towers 0x10070c50 (0x10070c62) and **cannon towers 0x1006ab50 (0x1006ab6a, `0xa6`)**. Castle 0x1006f1d0 has no stamp gate (a byte counter at +0x38) and the Quarry class is the stub 0x10001030: both are 0. (Before the S3 review round the periods of PublicService, School, Hunter, Whaler, Shipyard and CannonTower were 0, "unread"; the registry digests and the goldens were re-baselined, `goldens.txt`.)
+
+## SCRIPT1 branch stream129 amendment (MAP-SCRIPT-1)
+
+Published128 stays frozen. This branch writes `u32 129,u64 0x0031545049524353`
+(the bytes SCRIPT1\0), then the existing `u32 timeline5` in the inner header.
+The outer A3SV/save1 frame likewise puts this u64 immediately after streamversion.
+An independent lane's integer129 does not establish compatibility; mismatched
+schema is refused. Commandwire1, log2 and PRNGtimeline5 are unchanged.
+
+Each player's existing fields are followed by u64 permission-row count, then
+strictly sorted pairs of widened u32 type and u32 stored value (constrained0..255). A tenth root scope
+`script` follows `timers_monopoly`. Its flat fields in order are:
+
+- u64-counted source bytes; u32 source/node/depth/work limits; u32 policy.
+- u8 context, u8 fault; u32 cursor,last_arg,fault_offset,last_work.
+- u64 signal count followed by u8 values; u64 binding count followed by u32 IDs.
+
+Default source-free scope is62bytes. All these fields reach hash/save; compiled
+program/instruction tables are derived once on creation/native reload and never
+serialized. Source/policy/limits/schema distinguish future gameplay identities.
+Bindings are validated against declarations and real players, never silently
+rebound. Native source size is bounded before allocation. Version-refusal tests
+repair surrounding checksums and assert the specific refusal; retained128 logs
+are structurally valid and reach their128 native-version refusal.
+
+Missing context is not script-free. Original import is Pending after complete
+compilation, or is refused. Explicit fresh startup invokes the same transactional
+arg0 script visit before player commands, without world advancement; lazy first
+World::advance initialization remains supported. Full advance(0) retains all
+world subsystem visits. Script visits receive old absolute tick low32 before
+world advancement in unrecorded, recorded and replay paths. Faults persist and
+freeze further advancement. See script-runtime.md for original/adaptation
+boundaries and evidence.
+
+Old goldens/recordings/corpus remain in their published paths. New SCRIPT1 goldens
+and recordings live in goldens_script1.txt and sim/script1/. No current hash is
+projected back to128 by clearing runtime state. New self-baselined identities
+remain distinct from independent stream and original-data semantic proofs.
+
+## MAP-SCRIPT-2 current identity and startup transition
+
+Current writes use native130, schema0x0032545049524353 (SCRIPT2\0), policy2 and
+replay frame3. Saveframe1, commandwire1 and PRNGtimeline5 are unchanged. Published128
+and SCRIPT1/native129 fixtures/references remain archived; native load explicitly
+refuses their stream/schema. Frame2 replay envelopes remain readable to expose
+old initial saves; they acquire no inferred current content identity.
+
+The script scope is u64 source count+bytes; five u32 limits (source,nodes,depth,
+work,asset bytes); optional namespace (u8 presence, u64 count+bytes when present,
+hard65536 checked before allocation); u32 policy; u8 context/fault; four u32
+continuation fields; u64 signal count+u8 values; u64 binding count+u32 player IDs.
+The empty scope is67bytes. Compiled program, spatial index, query metrics and host
+output are derived and excluded from native/hash state.
+
+Replay3 adds a u64 script-content digest after command wire version, before config
+digest. It covers exact source/namespace/policy/all limits, excludes continuation
+and permits suffix replay while refusing changed executable content before effects.
+Startup kind3+u64 zero tick is9bytes; existing minimum-entry bound9 remains valid.
+Recorder saves Pending state, executes script-only INIT, records Startup and then
+accepts commands. Unrecorded session drivers likewise initialize before commands,
+without a whole-world zero advance. Ready reload does not rerun INIT. Startup
+replay requires Pending context, zero clock and zero entry tick.
+
+The normal file adapter derives namespace relative to game/Scenes; the equivalent
+bytes-with-source-context adapter preserves separate file-read measurements. Raw
+byte imports supply known namespace explicitly for waves. Typed code317/AllLocal
+wave events commit transactionally and publish after output reset; startup appends
+without advancing other subsystems. Existing bounded queue dropping/draining and
+replay observation affect no canonical state or PRNG. Ready load starts with an
+empty host queue. Actual audio/window consumption remains external.

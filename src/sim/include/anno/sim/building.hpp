@@ -44,6 +44,24 @@ struct Inert {
     StatusTracker status;
 };
 
+/// The state of an Inn (D vtable 0x100c96d8): the Inert prefix plus the tavern stock (+0x18; delivered
+/// by `+0xc0` = 0x100756d0, offered by `+0xa4` = 0x10075940, debited by the bill 0x100756e0), the
+/// taken statistic (+0x1a, raised by the bill, decayed by the tick) and the carriers on their way
+/// (the original's two pointer slots +0x1c / +0x20; here a counter like the workshop's, so the number
+/// of active carriers is data-limited by the type's max figures, docs/sim/population-live.md 23).
+/// MAP-POP-CLOSE-2 K1: `tavern` and `taken` are the original's u16 values held in a u32 field: every
+/// operation wraps modulo 65536 exactly as the original's 16-bit adds (inn.hpp), and the invariant
+/// check refuses a value above 0xffff. `last` is the gate stamp of the tick 0x100755f0.
+struct Inn {
+    std::uint16_t last = 0;
+    bool blocked = false;
+    bool suspended = false;
+    StatusTracker status;
+    std::uint32_t tavern = 0;
+    std::uint32_t taken = 0;
+    std::uint32_t carriers_out = 0;
+};
+
 /// The state of a house (docs/sim/state.md §4.7c, docs/re/population.md §11.2; D house
 /// object, vtable 0x100c9958). The group is not a field: it follows from the type
 /// (house_group) and the registry's group table. Mood is computed, not stored; the
@@ -64,12 +82,17 @@ struct House {
     /// widened, 16 slots; here one entry per need of the group, as the group table
     /// says).
     std::vector<std::uint32_t> stock;
+    /// MAP-POP-LIVE-1 L1 (stream 128): +0x18..+0x24, the walker slots (D: 4 in the original; here
+    /// one per walker the TYPE allows, the type's +0xb8(0), validated against the registry). An
+    /// invalid id is an empty slot; a figure that holds slot k has `home` = this building and
+    /// `home_counter` = k (World::check_invariants).
+    std::vector<FigureId> walkers;
 };
 
 /// Alternative order = the save tag order of PayloadTag (types.hpp), append-only.
 /// FurTrapper uses Farm; the class comes from the type.
 using Payload =
-    std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine, Market, House>;
+    std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine, Market, House, Inn>;
 
 /// The byte +0x0e of a building (D: 0x86 in the base constructor, 0x82 for a
 /// house; property 0x2b sets it from a COMP chunk; meaning open, O-38).

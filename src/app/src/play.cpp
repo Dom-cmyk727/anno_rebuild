@@ -175,7 +175,7 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
         anno::sim_load::scan_island_templates(game_dir);
     // The route is the extension, not the content: `.txt` is a fixed map (the layout
     // text, data/maps) through load_fixed_map; anything else is a scenario file through
-    // load_scenario_with_links. A failure names the file and the loader that refused it.
+    // load_scenario_with_context. A failure names the file and the loader that refused it.
     if (extension_lower(file) == ".txt") {
         auto fixed_map = anno::formats::fixed_map::parse(buf);
         if (!fixed_map) {
@@ -193,7 +193,7 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     }
     const sim::SimConfig cfg;
     auto resolved =
-        anno::sim_load::load_scenario_with_links(buf, templates, *registry.types, cfg, {});
+        anno::sim_load::load_scenario_with_context(buf, file, game_dir, templates, *registry.types, cfg, {});
     if (!resolved) {
         return resolved.error();
     }
@@ -615,7 +615,10 @@ void PlayRunner::one_turn() {
     std::uint64_t order_counter = world_.ids().next_order_id;
     // One execution path: the sim's own loop reports what each command did (round ee, A2).
     std::vector<sim::ApplyResult> results;
-    sim::run_turn(world_, nullptr, turn, steps_, &results);
+    simulation_error_ = sim::run_turn(world_, nullptr, turn, steps_, &results);
+    if (!simulation_error_.empty()) {
+        paused_.store(true);
+    }
     // A turn that ran commands, and every kHashEvery-th turn: hashing the whole world each turn
     // slowed lan5's turns past their cadence in a debug build (round ee, E3's first run).
     if (record_hashes_ && (!turn.commands.empty() || turn.index % kHashEvery == 0)) {
@@ -775,7 +778,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     if (!last_reason_.empty() && turn >= last_reason_turn_ + kRejectionShowTurns) {
         last_reason_.clear();
     }
-    next->last_rejection = last_reason_;
+    next->last_rejection = simulation_error_.empty() ? last_reason_ : simulation_error_;
     // One publication: the batch goes into the mailbox and the snapshot is swapped
     // under the same lock, batch first. A reader that sees snapshot N therefore
     // sees turn N's batch already waiting (W4.3, orchestrator correction 2).

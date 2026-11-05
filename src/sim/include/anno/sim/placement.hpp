@@ -14,6 +14,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 
 #include <anno/sim/building.hpp>
 #include <anno/sim/config.hpp>
@@ -68,7 +69,36 @@ struct PlacementParams {
     std::uint32_t ignored_flag_bits = 0x0080;
     /// The flag bit whose coverage test is not decoded: always Unsupported (0x1007c955-0x1007cb3d).
     std::uint32_t coverage_flag = 0x10;
+    /// MAP-ROAD-CLOSE-1: the enhanced road choices (Rules::road_require_land_level and
+    /// Rules::road_preserve_nonroad_pieces), false = the original predicates. The world passes its
+    /// Rules values; a direct caller states them.
+    bool road_require_land_level = false;
+    bool road_preserve_nonroad_pieces = false;
+    /// MAP-ROAD-CLOSE-2: the latest object per island-local tile index (y * width + x) that earlier
+    /// records of an atomic dry run write (a land road replaces the tile's object), or null. The
+    /// occupancy step reads it BEFORE the physical layer, so the dry run sees the same latest
+    /// object the live run reads from the tile it wrote. The pointee must outlive the call.
+    const std::map<std::uint64_t, TypeId>* object_overlay = nullptr;
 };
+
+/// The facts that make a type an ordinary land road (docs/sim/road-placement.md section 2). A
+/// default argument like PlacementParams: no hashed state moves, and a data-defined type with
+/// these facts is a road without an engine edit.
+struct RoadParams {
+    /// PRODTYPE of the land roads (STRASSE; types.cpp name table, Named{193}).
+    std::uint32_t prodtype = 193;
+    /// The class bits (flag word & 0x7000) of a land road: the road class (accepted at once by the
+    /// original) and the slope class (mx - lo > 0x10 refused; AnnoGame 0x10008f90).
+    std::uint32_t road_class = 0x4000;
+    std::uint32_t slope_class = 0x1000;
+    /// The slope limit of the slope class.
+    std::uint32_t slope_limit = 0x10;
+};
+
+/// Whether `t` is an ordinary land road: PRODTYPE `params.prodtype`, a 16-bit flag word whose class
+/// bits are the road or the slope class, no coverage bit 0x10, a mode other than the single-quad
+/// average (flag word & 3 != 1) and a non-empty footprint. Facts of the parsed type only.
+[[nodiscard]] bool is_land_road(const BuildingType& t, const RoadParams& params = {});
 
 /// The placement rule of a normal Build record for the EFFECTIVE type (after any upgrade
 /// rewrite), docs/sim/ship-placement.md section 2 (R1-R6); oracle tools/placement_ref.py
@@ -83,6 +113,10 @@ struct PlacementParams {
 /// never an accept and never a height of 0. Building tiles carry the building's type id, so a
 /// building under the footprint is answered by R2 (or, when the types are replaceable, by the
 /// F32 check of create_building).
+/// A land road (is_land_road) is a tile object and goes the road way of docs/sim/road-placement.md
+/// section 3: occupancy with the extra refusal of an existing group-0xc1 piece that is no land road
+/// (R-A3), then the window result by the flag word's mode (0 max, 2 min, 3 window max of the cell
+/// minima), the slope test of the slope class, and the level floor `params.min_level` (R-A2).
 [[nodiscard]] PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
                                              const BuildingType& effective,
                                              const PlacementRecord& rec,

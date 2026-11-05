@@ -90,7 +90,22 @@ enum class Reject : std::uint16_t {
     /// UnloadCmd: the goods id is 0 or outside the city's stock table.
     UnsupportedGoods,
     /// UnloadCmd: the city's store has no room left for the goods (full or over capacity).
-    StockFull
+    StockFull,
+    // MAP-CARGO-2 (LoadCmd, docs/sim/ship-cargo.md section 12.2), appended in order.
+    /// LoadCmd: the ship's type has no navigation facts, so no cargo hold count (no guessed limit).
+    NoCargoFacts,
+    /// LoadCmd: no hold of the first hold_count_a can take the goods (no same-goods hold with room
+    /// and no empty hold with capacity).
+    HoldsFull,
+    /// LoadCmd: the city holds less than one whole ton of the goods.
+    StockShort,
+    // MAP-POP-CLOSE-1 C2 (BuildCmd, docs/sim/population-live.md section 21.5), appended in order.
+    /// BuildCmd: with Rules::house_updates, the house type's group has a first-assignment domain
+    /// the engine cannot represent (E, residents or a worst-case stock would leave its width).
+    /// Refused before any draw, charge or serial.
+    HouseDomain,
+    PermissionContext,
+    ConstructionDenied
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -98,9 +113,14 @@ enum class Reject : std::uint16_t {
 struct RecordResult {
     Reject status = Reject::None;
     BuildingId building;
-    /// MAP-CARGO-1: the amount an accepted UnloadCmd moved from the hold into the city store, in
-    /// 1/256 ton (docs/sim/ship-cargo.md section 3). 0 for every other command and every refusal.
+    /// MAP-CARGO-1/2: the amount an accepted UnloadCmd moved from the hold into the city store, or
+    /// an accepted LoadCmd moved from the city store into a hold, in 1/256 ton
+    /// (docs/sim/ship-cargo.md sections 3 and 12). 0 for every other command and every refusal.
     std::uint64_t transferred_88 = 0;
+    /// MAP-ROAD-1: true for an accepted BuildCmd record that placed a tile object (a land road):
+    /// no building was created, `building` stays the invalid id and no serial was taken
+    /// (docs/sim/road-placement.md section 4). False for every other record.
+    bool tile_object = false;
 };
 
 /// The result of World::apply (stage S8): the status of the command as a whole
@@ -201,6 +221,18 @@ struct ApplyResult {
         return "UnsupportedGoods";
     case Reject::StockFull:
         return "StockFull";
+    case Reject::NoCargoFacts:
+        return "NoCargoFacts";
+    case Reject::HoldsFull:
+        return "HoldsFull";
+    case Reject::StockShort:
+        return "StockShort";
+    case Reject::PermissionContext:
+        return "PermissionContext";
+    case Reject::ConstructionDenied:
+        return "ConstructionDenied";
+    case Reject::HouseDomain:
+        return "HouseDomain";
     }
     return "?";
 }

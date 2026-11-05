@@ -1,0 +1,131 @@
+{
+  "anlagen_sha256": "b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75",
+  "costs": {
+    "1302": {
+      "gold": 350,
+      "wood": 12,
+      "tools": 5,
+      "bricks": 0,
+      "marble": 0
+    },
+    "801": {
+      "gold": 150,
+      "wood": 0,
+      "tools": 2,
+      "bricks": 0,
+      "marble": 0
+    },
+    "809": {
+      "gold": 250,
+      "wood": 4,
+      "tools": 2,
+      "bricks": 0,
+      "marble": 0
+    },
+    "807": {
+      "gold": 220,
+      "wood": 4,
+      "tools": 2,
+      "bricks": 0,
+      "marble": 0
+    },
+    "1001": {
+      "gold": 300,
+      "wood": 4,
+      "tools": 3,
+      "bricks": 0,
+      "marble": 0
+    },
+    "805": {
+      "gold": 140,
+      "wood": 3,
+      "tools": 1,
+      "bricks": 0,
+      "marble": 0
+    },
+    "1023": {
+      "gold": 300,
+      "wood": 5,
+      "tools": 2,
+      "bricks": 0,
+      "marble": 0
+    },
+    "1310": {
+      "gold": 50,
+      "wood": 1,
+      "tools": 1,
+      "bricks": 0,
+      "marble": 0
+    },
+    "1314": {
+      "gold": 50,
+      "wood": 1,
+      "tools": 1,
+      "bricks": 0,
+      "marble": 0
+    },
+    "1335": {
+      "gold": 500,
+      "wood": 9,
+      "tools": 5,
+      "bricks": 0,
+      "marble": 0
+    },
+    "1320": {
+      "gold": 700,
+      "wood": 10,
+      "tools": 6,
+      "bricks": 0,
+      "marble": 0
+    },
+    "1203": {
+      "gold": 700,
+      "wood": 15,
+      "tools": 5,
+      "bricks": 0,
+      "marble": 0
+    },
+    "1022": {
+      "gold": 400,
+      "wood": 5,
+      "tools": 5,
+      "bricks": 0,
+      "marble": 0
+    },
+    "501": {
+      "gold": 0,
+      "wood": 3,
+      "tools": 0,
+      "bricks": 0,
+      "marble": 0
+    },
+    "520": {
+      "gold": 0,
+      "wood": 4,
+      "tools": 1,
+      "bricks": 0,
+      "marble": 0
+    },
+    "2520": {
+      "gold": 5,
+      "wood": 0,
+      "tools": 0,
+      "bricks": 0,
+      "marble": 0
+    }
+  },
+  "chain_bill": {
+    "gold": 4110,
+    "wood": 73,
+    "tools": 40,
+    "bricks": 0,
+    "marble": 0
+  },
+  "capacity_lower_bound_bill": {
+    "gold": 4110,
+    "wood": 125,
+    "tools": 41,
+    "bricks": 0,
+    "marble": 0
+  }
+}

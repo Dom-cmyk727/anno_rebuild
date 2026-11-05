@@ -36,7 +36,7 @@ struct HouseNeed {
 /// §1), BauFirst, BauLast, Hiscore and Wissen (unread), and the derived tables
 /// whose first reader is P2 (the id -> need slot lookup with its substitution
 /// pass, the ends of the goods and infrastructure needs, the forced-infrastructure
-/// bit set); they come with that reader.
+/// bit set); they are derived data of the registry (HouseGroupDerived, derive_group).
 struct HouseGroup {
     /// The slot BGruppeNr names (PIONIER 0 ... ARISTOKRATEN 4): the index in the table.
     std::uint32_t number = 0;
@@ -54,6 +54,60 @@ struct HouseGroup {
 
     bool operator==(const HouseGroup&) const = default;
 };
+
+/// One record of Data/BGruppen.dat [BAUSTUFEN] (MAP-POP-LIVE-1 L3; docs/re/population.md 1 "Stage
+/// record", 15.5): the stage `stage` (a bit index of the 32-bit stage mask, INFRA_EVER 0 ..
+/// INFRA_STUFE_FORSCH 31) unlocks once the city has `count` residents in `group` and all higher
+/// groups; `wissen` is the `Wissen:` byte (use not traced). The original stores group and wissen as
+/// bytes and count as a u16 at slot `stage`; the engine keeps them widened (shipped values fit).
+/// Only stages the file names have a record; the table is ascending by stage.
+struct StageRecord {
+    std::uint32_t stage = 0;
+    std::uint32_t group = 0;
+    std::uint32_t wissen = 0;
+    std::uint32_t count = 0;
+
+    bool operator==(const StageRecord&) const = default;
+};
+
+/// The goods roles the population rules read (SimConfig::population_*; docs/sim/
+/// population-contract.md section 3). A derived group table is bound to exactly these.
+struct PopulationRoles {
+    GoodsId infra_first = 0x4c, infra_last = 0x5a, tavern_goods = 0x4c, tavern_alias_goods = 0x1d;
+
+    friend constexpr bool operator==(const PopulationRoles&, const PopulationRoles&) = default;
+};
+
+/// The data of one group the original's loader derives after parsing (MAP-POP-IMPL-1 C;
+/// docs/sim/population-inputs.md 2.6-2.10, section 3). A pure function of the group's needs, the
+/// goods `id_sec` and the roles; computed once when the registry is built, never serialised and not
+/// hashed (its inputs are).
+struct HouseGroupDerived {
+    /// The need count n (the original's byte, here the vector length).
+    std::uint32_t need_count = 0;
+    /// D `+0xcc`: written per Ware by the loader, Force is not read.
+    std::uint32_t goods_end = 0;
+    /// D `+0xcd`: the position after the last infrastructure need (forced or not), then max with
+    /// `goods_end`.
+    std::uint32_t infra_end = 0;
+    /// One entry per goods id of the registry: the need slot that serves the goods, `need_count` =
+    /// none (the sentinel). The last of duplicate needs wins; the tavern alias and the one-pass
+    /// IdSec substitution are applied.
+    std::vector<std::uint32_t> lookup;
+    /// D `+0xc4`, widened from a u32 to a set over the configured infrastructure range: entry i is
+    /// 1 when the need for goods `infra_first + i` is forced. Size infra_last - infra_first + 1.
+    std::vector<std::uint8_t> forced;
+
+    bool operator==(const HouseGroupDerived&) const = default;
+};
+
+/// Derives the table of one group (the loader's per-Ware update of +0xcc, the post-pass of
+/// AnnoGame 0x10014afc-0x10014bd9). `goods` is the registry's goods table. Returns an empty string,
+/// or the reason for a refusal: a need on goods 0 (UNUSED), a need on a goods id outside the table,
+/// a need with Menge 0 (a zero demand), or roles outside the goods domain. These refusals are
+/// approved adaptations (the original's handling is untraced), not fidelity claims.
+[[nodiscard]] std::string derive_group(const HouseGroup& group, std::span<const GoodsInfo> goods,
+                                       const PopulationRoles& roles, HouseGroupDerived& out);
 
 /// Parses the [BGRUPPE] section of Data/BGruppen.dat. `goods` resolves the names of
 /// the `Ware` lines (the goods table the registry is built with). The groups are

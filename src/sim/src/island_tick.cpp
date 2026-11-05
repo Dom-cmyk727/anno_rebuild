@@ -12,6 +12,7 @@
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/house_tick.hpp>
 #include <anno/sim/island_tick.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/scheduler.hpp>
@@ -90,6 +91,11 @@ void building_scheduler(const TickContext& ctx, Island& island, City& city, Effe
 
 void city_tick(const TickContext& ctx, Island& island, City& city, Effects& fx) {
     building_scheduler(ctx, island, city, fx);
+    // MAP-POP-LIVE-1 L4 (population-live.md section 6.1): the stage pass follows the building
+    // ticks of the city update (D 0x10029610); a fault of a House tick stops the rest.
+    if (fx.faults.empty()) {
+        stage_pass(ctx, city, fx, island.index);
+    }
     for (const Seam<Seams::CityPass>& pass : ctx.seams.city_pass) {
         if (pass.fn != nullptr) {
             pass.fn(pass.ctx, ctx, island, city, fx);
@@ -106,7 +112,7 @@ void city_ring_tick(const TickContext& ctx, Island& island, Effects& fx) {
     if (island.ring.cursor < n) {
         for (std::uint64_t i = 0; i < count; ++i) {
             std::optional<City>& slot = island.cities[island.ring.cursor];
-            if (slot.has_value()) {
+            if (slot.has_value() && fx.faults.empty()) {
                 city_tick(ctx, island, *slot, fx);
             }
             island.ring.cursor = static_cast<std::uint32_t>((island.ring.cursor + 1U) % n);

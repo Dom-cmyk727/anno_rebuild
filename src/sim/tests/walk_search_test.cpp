@@ -1,8 +1,12 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <fstream>
 #include <limits>
+#include <map>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -445,4 +449,89 @@ TEST_CASE(
     REQUIRE(extreme.selected);
     CHECK(extreme.cost == 10);
     CHECK(extreme.route.size() == 2);
+}
+
+// MAP-POP-CLOSE-2 K2 (OQ-463, docs/re/population.md section 19): a GOAL cell carries the key nibble of
+// its goal sub-cell in its low word (D 0x1000414b), as a start cell does (0x10003f73). The vectors in
+// fixtures/synthetic/sim/walk_goal_vectors.txt were derived by hand before this code existed and are
+// checked independently by tools/walk_goal_ref.py.
+namespace {
+std::map<std::string, std::string> kv_of(const std::vector<std::string>& t, std::size_t from,
+                                         std::size_t to) {
+    std::map<std::string, std::string> m;
+    for (std::size_t i = from; i < to; ++i) {
+        const auto eq = t[i].find('=');
+        REQUIRE_MESSAGE(eq != std::string::npos, t[i]);
+        m[t[i].substr(0, eq)] = t[i].substr(eq + 1);
+    }
+    return m;
+}
+/// A 3 x 3 tile grid: the goal tile (1,1) holds `low` (the mapped word before the goal pass) and the
+/// raw record `mask9`; the start tile is the neighbour from which a step in `dir` enters the goal tile
+/// (0 up from the south, 1 down from the north, 2 left from the east, 3 right from the west).
+bool goal_enterable(std::uint16_t low, std::uint16_t mask9, std::uint32_t col, std::uint32_t row,
+                    int dir) {
+    Grid g(3, 3);
+    const auto idx = g.island.tiles.index_of(1, 1);
+    g.island.tiles.set_walk_code(idx, 2);
+    g.island.tiles.set_walk_mask(idx, mask9);
+    auto c = g.cells();
+    open(c, {1, 1}, 0, low);
+    const std::array<sim::TileXY, 4> from{{{1, 2}, {1, 0}, {2, 1}, {0, 1}}};
+    open(c, from[static_cast<std::size_t>(dir)], 0, 0xfff);
+    return run(c, g.tables, point(from[static_cast<std::size_t>(dir)].x,
+                                  from[static_cast<std::size_t>(dir)].y),
+               point(1, 1, col, row))
+        .selected.has_value();
+}
+} // namespace
+TEST_CASE("walk_search: a goal cell carries its sub-cell keys, so a mapper-0 tile is a reachable goal") {
+    std::ifstream in(std::string(ANNO_FIXTURES_DIR) + "/sim/walk_goal_vectors.txt");
+    REQUIRE(in.good());
+    std::string line;
+    int executed = 0, bad = 0;
+    while (std::getline(in, line)) {
+        line = line.substr(0, line.find('#'));
+        std::istringstream is(line);
+        std::vector<std::string> t;
+        for (std::string w; is >> w;) {
+            t.push_back(w);
+        }
+        if (t.empty()) {
+            continue;
+        }
+        std::size_t arrow = 0;
+        for (std::size_t i = 0; i < t.size(); ++i) {
+            if (t[i] == "=>") {
+                arrow = i;
+            }
+        }
+        REQUIRE(arrow > 1);
+        const auto kv = kv_of(t, 2, arrow);
+        const auto exp = kv_of(t, arrow + 1, t.size());
+        const auto mask9 = static_cast<std::uint16_t>(std::stoul(kv.at("mask9"), nullptr, 0));
+        const auto col = static_cast<std::uint32_t>(std::stoul(kv.at("col")));
+        const auto row = static_cast<std::uint32_t>(std::stoul(kv.at("row")));
+        ++executed;
+        if (t[0] == "keys") {
+            const unsigned want = static_cast<unsigned>(std::stoul(exp.at("keys"), nullptr, 0));
+            if (sim::start_keys(mask9, col, row) != want) {
+                MESSAGE(t[1] << ": keys expected " << exp.at("keys"));
+                ++bad;
+            }
+            continue;
+        }
+        REQUIRE(t[0] == "cell");
+        const auto low = static_cast<std::uint16_t>(std::stoul(kv.at("low"), nullptr, 0));
+        const std::array<const char*, 4> names{"up", "down", "left", "right"};
+        for (int d = 0; d < 4; ++d) {
+            const bool want = exp.at(names[static_cast<std::size_t>(d)]) == "1";
+            if (goal_enterable(low, mask9, col, row, d) != want) {
+                MESSAGE(t[1] << ": " << names[static_cast<std::size_t>(d)] << " expected " << want);
+                ++bad;
+            }
+        }
+    }
+    CHECK(bad == 0);
+    CHECK(executed == 25);
 }

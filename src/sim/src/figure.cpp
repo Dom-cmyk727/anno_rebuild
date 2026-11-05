@@ -143,6 +143,28 @@ Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const 
     return slot;
 }
 
+Slot add_figure_at(FigureRegistry& registry, Figure f, Slot slot, const SimConfig& cfg) {
+    const FigureId id = f.id;
+    if (!id.valid() || id.v == 0 || registry.by_id.contains(id) || slot >= kListSizeBound ||
+        (slot < registry.list.slots.size() && registry.list.slots[slot].has_value())) {
+        return kNoSlot;
+    }
+    if (slot >= registry.list.slots.size()) {
+        // Explicit slot growth is based on the requested slot (Welt 0x1009734b),
+        // unlike a normal free-slot insert. grown_size also retains the small-config floor.
+        const auto grown = SlotList<Figure>::grown_size(slot, cfg.figure_min_growth);
+        if (grown == 0 || grown > kListSizeBound) {
+            return kNoSlot;
+        }
+        registry.list.slots.resize(static_cast<std::size_t>(grown));
+    }
+    registry.list.slots[slot] = std::move(f);
+    registry.list.hint = slot;
+    registry.by_id[id] = slot;
+    index_figure(registry, *registry.list.slots[slot]);
+    return slot;
+}
+
 namespace {
 
 /// The slot of the figure `id` when the id map points at it, else kNoSlot.
@@ -193,6 +215,46 @@ void erase_id(std::vector<FigureId>& list, FigureId id) {
     }
 }
 
+/// MAP-ECON-1-CLOSE-1: the harvest job's terminal state on the shared end path (docs/sim/
+/// forestry.md 2.1, 3.5). Runs before release_home clears the home id, which names the island of
+/// the target. Done (the body's own end, already normalized) is left untouched, so the ordinary
+/// completion's bytes do not change; repeated calls do nothing.
+void finish_harvest(Figure& figure, Effects& fx) {
+    if (!figure.harvest.has_value() || figure.harvest->step == HarvestStep::Done) {
+        return;
+    }
+    HarvestState& h = *figure.harvest;
+    if (h.step == HarvestStep::ToTree || h.step == HarvestStep::Cut) {
+        // Only these steps hold a claim (Start has not selected, the cut arrival released it before
+        // ToHome). Owner-conditional and hygiene-gated at the merge: never another worker's claim.
+        fx.tile_edits.push_back(
+            TileEdit{TileEdit::Kind::Release, island_of(figure.home), h.target, figure.id});
+    }
+    fx.harvest_lost_88 += figure.cargo_88; // the cargo stays on the figure as history
+    h.step = HarvestStep::Done;
+    h.start_delay = 0;
+    h.wait = 0;
+    h.route.clear();
+    h.next = 0;
+    h.along = 0;
+}
+
+/// MAP-POP-LIVE-1 L2: the resident job's terminal state on the shared end path (docs/sim/
+/// population-live.md section 3). Done (the body's own end, already normalized) is left untouched;
+/// the cargo stays on the figure as history. Repeated calls do nothing.
+void finish_resident(Figure& figure) {
+    if (!figure.resident.has_value() || figure.resident->step == ResidentStep::Done) {
+        return;
+    }
+    ResidentState& r = *figure.resident;
+    r.step = ResidentStep::Done;
+    r.wait = 0;
+    r.target = BuildingId{};
+    r.route.clear();
+    r.next = 0;
+    r.along = 0;
+}
+
 /// D 0x1003b6e0's release: the home counter through the figure, once (the unit's +0x78
 /// is cleared after the home's slot +0x2c).
 void release_home(Figure& figure, Effects& fx) {
@@ -202,6 +264,7 @@ void release_home(Figure& figure, Effects& fx) {
     ReleaseCounter r;
     r.home = figure.home;
     r.home_counter = figure.home_counter;
+    r.holder = figure.id;
     fx.releases.push_back(r);
     figure.home = BuildingId{};
 }
@@ -226,6 +289,8 @@ bool end_figure(Figure& figure, std::uint32_t t, Effects& fx) {
     if (figure.expiry_stamp.has_value()) {
         return false;
     }
+    finish_harvest(figure, fx);
+    finish_resident(figure);
     release_home(figure, fx);
     figure.expiry_stamp = static_cast<std::uint16_t>(t);
     return true;
@@ -241,7 +306,10 @@ void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp,
     const bool has_stamp = figure.expiry_stamp.has_value();
     if (has_stamp) {
         // A stamp means the figure has ended: its counter goes back now if the seam did
-        // not end it through SerialWorld::end_figure (own design, the seam protocol).
+        // not end it through SerialWorld::end_figure (own design, the seam protocol); an active
+        // harvest job is finished first, as end_figure does.
+        finish_harvest(figure, fx);
+        finish_resident(figure);
         release_home(figure, fx);
     }
     if (has_stamp && !had_stamp) {
@@ -325,6 +393,98 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
         if (tr.route.empty() && (tr.next != 0 || tr.along != 0)) {
             return where + ".transport: no route, but next " + std::to_string(tr.next) +
                    " and along " + std::to_string(tr.along);
+        }
+        // MAP-ECON-1 E2: the harvest job's own facts (docs/sim/forestry.md 2, 2.1). The facts that
+        // need the buildings or the tiles (the home's payload, the target's island, the claims) are
+        // World::check_invariants'. Nothing here requires an existing home: a demolished home is a
+        // valid state until the worker's next arrival.
+        if (f.harvest.has_value()) {
+            const HarvestState& h = *f.harvest;
+            const std::string hw = where + ".harvest";
+            if (!harvest_job(f.job)) {
+                return hw + ": present on a figure of job " + std::to_string(f.job) +
+                       " (only the harvest jobs 0x29 and 0x2a have one)";
+            }
+            if (static_cast<std::uint8_t>(h.step) > static_cast<std::uint8_t>(HarvestStep::Done)) {
+                return hw + ".step: " + std::to_string(static_cast<unsigned>(h.step)) +
+                       " is no step";
+            }
+            if (h.start_delay > kHarvestStartDelay) {
+                return hw + ".start_delay: " + std::to_string(h.start_delay) + " is above " +
+                       std::to_string(kHarvestStartDelay);
+            }
+            if (h.start_delay > 0 &&
+                (h.step != HarvestStep::Start || !h.route.empty() || f.cargo_88 != 0)) {
+                return hw + ".start_delay: " + std::to_string(h.start_delay) +
+                       " ticks still owed, but the job has started (a step, a route or cargo)";
+            }
+            if ((h.step == HarvestStep::Cut) != (h.wait > 0)) {
+                return hw + ".wait: " + std::to_string(h.wait) + " in step " +
+                       std::to_string(static_cast<unsigned>(h.step)) +
+                       " (a wait is owed exactly in Cut, and a finished wait is resolved at once)";
+            }
+            if (!h.route.empty() && (h.next == 0 || h.next > h.route.size())) {
+                return hw + ".next: " + std::to_string(h.next) + " is not in 1 .. " +
+                       std::to_string(h.route.size());
+            }
+            if (h.route.empty() && (h.next != 0 || h.along != 0)) {
+                return hw + ": no route, but next " + std::to_string(h.next) + " and along " +
+                       std::to_string(h.along);
+            }
+            if (!h.route.empty() && h.step != HarvestStep::ToTree &&
+                h.step != HarvestStep::ToHome) {
+                return hw + ".route: a walk outside the walking steps ToTree and ToHome";
+            }
+            if (h.step == HarvestStep::Done && !f.expiry_stamp.has_value()) {
+                return hw + ".step: Done, but the figure has not ended (Done is resolved in the "
+                            "same call by its end)";
+            }
+            // MAP-ECON-1-CLOSE-1: and every end path finishes the job first (Done <=> ended).
+            if (f.expiry_stamp.has_value() && h.step != HarvestStep::Done) {
+                return hw + ".step: " + std::to_string(static_cast<unsigned>(h.step)) +
+                       ", but the figure has ended (every end path finishes the job: Done)";
+            }
+        }
+    }
+    // MAP-POP-LIVE-1 L2: the resident job's own facts (docs/sim/population-live.md section 3); the
+    // facts that need the buildings (the home's payload and walker slot) are
+    // World::check_invariants'.
+    for (std::size_t s = 0; s < l.slots.size(); ++s) {
+        if (!l.slots[s].has_value() || !l.slots[s]->resident.has_value()) {
+            continue;
+        }
+        const Figure& f = *l.slots[s];
+        const ResidentState& r = *f.resident;
+        const std::string rw = "figures.list.slots[" + std::to_string(s) + "].resident";
+        if (f.job != kJobResidentCode) {
+            return rw + ": present on a figure of job " + std::to_string(f.job) +
+                   " (only the house walker job 0x35 has one)";
+        }
+        if (static_cast<std::uint8_t>(r.step) > static_cast<std::uint8_t>(ResidentStep::Done)) {
+            return rw + ".step: " + std::to_string(static_cast<unsigned>(r.step)) + " is no step";
+        }
+        if ((r.step == ResidentStep::Wait) != (r.wait > 0)) {
+            return rw + ".wait: " + std::to_string(r.wait) + " in step " +
+                   std::to_string(static_cast<unsigned>(r.step)) +
+                   " (a wait is owed exactly in Wait, and a finished wait is resolved at once)";
+        }
+        if (!r.route.empty() && (r.next == 0 || r.next > r.route.size())) {
+            return rw + ".next: " + std::to_string(r.next) + " is not in 1 .. " +
+                   std::to_string(r.route.size());
+        }
+        if (r.route.empty() && (r.next != 0 || r.along != 0)) {
+            return rw + ": no route, but next " + std::to_string(r.next) + " and along " +
+                   std::to_string(r.along);
+        }
+        if (!r.route.empty() && r.step != ResidentStep::ToStall && r.step != ResidentStep::ToHome) {
+            return rw + ".route: a walk outside the walking steps ToStall and ToHome";
+        }
+        if ((r.step == ResidentStep::Done) != f.expiry_stamp.has_value()) {
+            return rw + ".step: " + std::to_string(static_cast<unsigned>(r.step)) +
+                   (f.expiry_stamp.has_value()
+                        ? ", but the figure has ended (every end path finishes the job: Done)"
+                        : ", Done but the figure has not ended (Done is resolved in the same call "
+                          "by its end)");
         }
     }
     // MAP-2: the facing, the parent links and the crew slots. Every figure of the registry

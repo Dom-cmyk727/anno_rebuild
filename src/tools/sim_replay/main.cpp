@@ -104,7 +104,7 @@ std::shared_ptr<const sim::TypeRegistry> registry_for(const sim::ReplayLog& log)
     std::vector<std::shared_ptr<const sim::TypeRegistry>> known{sim::TypeRegistry::empty()};
     for (auto make : {&sim::synthetic::make_synthetic_types, &sim::synthetic::make_build_types,
                       &sim::synthetic::make_growth_types, &sim::synthetic::make_transport_types,
-                      &sim::synthetic::make_founding_types}) {
+                      &sim::synthetic::make_founding_types, &sim::synthetic::make_cargo_types}) {
         auto t = make();
         if (t.ok()) {
             known.push_back(t.value().registry);
@@ -374,7 +374,9 @@ int cmd_scenario(const std::string& path, std::uint64_t ticks, std::uint32_t ste
     const sim::SimConfig cfg;
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
-    auto resolved = anno::sim_load::load_scenario_with_links(buf, templates, *types, cfg, {});
+    auto resolved = anno::sim_load::load_scenario_with_context(
+        buf, path, std::getenv("ANNO1503_GAME_DIR") ? std::getenv("ANNO1503_GAME_DIR") : "",
+        templates, *types, cfg, {});
     const auto t1 = clock::now();
     if (!resolved) {
         std::cout << "refused: " << resolved.error() << "\n";
@@ -574,8 +576,9 @@ int cmd_measure(const std::string& path, std::uint64_t ticks, std::uint64_t reps
         types = scenario_registry();
         const anno::sim_load::IslandTemplates templates = scenario_templates();
         const sim::SimConfig load_cfg;
-        auto resolved =
-            anno::sim_load::load_scenario_with_links(buf, templates, *types, load_cfg, {});
+        auto resolved = anno::sim_load::load_scenario_with_context(
+            buf, path, std::getenv("ANNO1503_GAME_DIR") ? std::getenv("ANNO1503_GAME_DIR") : "",
+            templates, *types, load_cfg, {});
         if (!resolved) {
             std::cout << "refused: " << resolved.error() << "\n";
             return 1;
@@ -784,8 +787,9 @@ int prepare_join(const std::string& path, std::uint64_t ticks, Prepared& out) {
         bool parsed = false;
         std::string parse_error;
         out.parse_us = time_call_us([&] {
-            auto resolved =
-                anno::sim_load::load_scenario_with_links(buf, templates, *out.types, load_cfg, {});
+            auto resolved = anno::sim_load::load_scenario_with_context(
+                buf, path, std::getenv("ANNO1503_GAME_DIR") ? std::getenv("ANNO1503_GAME_DIR") : "",
+                templates, *out.types, load_cfg, {});
             if (!resolved) {
                 parse_error = resolved.error();
                 return;

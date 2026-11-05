@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -45,7 +46,10 @@ enum class TickKind : std::uint8_t {
     Market,
     /// The house (D 0x10076230): the population update is P2's; until then the tick
     /// does nothing and touches nothing, `last` included, like TickKind::None.
-    House
+    House,
+    /// The Inn (D 0x100755f0, MAP-POP-CLOSE-2 K1): the alcohol fetch send (job 0x33). Runs only
+    /// with Rules::house_updates, like the house.
+    Inn
 };
 
 /// The runtime class of a building by PRODTYPE (D: byte table 0x1002528c, jump
@@ -91,7 +95,9 @@ enum class PayloadTag : std::uint8_t {
     Mine = 5,
     Market = 6,
     /// The residents and the stocks of a house (docs/sim/state.md §4.7c, P1).
-    House = 7
+    House = 7,
+    /// The tavern stock and statistic of an Inn (MAP-POP-CLOSE-1 C2, stream 128).
+    Inn = 8
 };
 
 struct ClassInfo {
@@ -115,6 +121,12 @@ struct GoodsInfo {
     std::string name;
     /// BGruppen [WAREN] research id (Appendix B), 0 = none (OQ-034).
     std::uint32_t forsch = 0;
+    /// MAP-POP-IMPL-1 B (stream 127): BGruppen [WAREN] BauFirst, the stage index (0..31) whose
+    /// bit in the owner's stage mask enables the need (D: goods record +2, read by the house tick
+    /// AnnoWelt 0x100762c2-0x100762e2). Absent = INFRA_EVER = 0.
+    std::uint32_t bau_first = 0;
+    /// [WAREN] IdSec, the substitute goods id; 0 = none (D: goods record +1). Absent = 0.
+    GoodsId id_sec = 0;
 };
 
 /// A build cost in goods: the amount in 8.8 tons.
@@ -210,7 +222,16 @@ struct FigureType {
     std::optional<std::int64_t> hull_half_88 = std::nullopt;
     /// MAP-NAV-2 (stream 122): present for a navigating ship type.
     std::optional<NavFacts> nav = std::nullopt;
+    /// MAP-ECON-1 E2 (stream 126): the ROUTETYPE record's index in the original's route-name table
+    /// (AnnoGame 0x10024fb8, read by the loader 0x1000fe00 into type +0xc; figure-type slot +0x54 =
+    /// 0x1000fae0 returns it). A farm-family building sends its worker with this job (AnnoWelt
+    /// 0x1006ea90, docs/re/forestry.md 2.1, 2.2); 0 = no ROUTETYPE or UNUSED. 102's MAEHER = 0x2a.
+    std::uint32_t route = 0;
 };
+
+/// The ROUTETYPE number of a route name (AnnoGame 0x10024fb8, the loader's name lookup); 0 for an
+/// empty name or UNUSED, nullopt for a name the original's table does not hold.
+[[nodiscard]] std::optional<std::uint32_t> routetype_by_name(std::string_view name);
 
 /// The supported domain of FigureType::hull_half_88: |value| < 2^31 tiles, i.e. strictly below
 /// kMaxHullHalf88 in 1/256 tile (2^39). The original-file decoder keeps exactly this range; the
@@ -226,8 +247,41 @@ inline constexpr std::int64_t kMaxHullHalf88 = std::int64_t{1} << 39;
 /// docs/re/production.md §2.3; P: 35 of the 921 types).
 inline constexpr std::uint32_t kRoadFlag = 0x4000;
 
+/// Immutable construction facts. Research ids are OR alternatives when the stage bit is absent.
+/// Original reader: docs/re/build-availability.md; extra alternatives belong to a content profile.
+struct BuildRequirement {
+    std::uint32_t stage = 0;
+    std::vector<std::uint32_t> research_any;
+};
+
+/// Content-adapter declarations, consumed at registry load, not live state or an engine allowlist.
+struct BuildResearchAlternatives {
+    TypeId type;
+    std::vector<std::uint32_t> research;
+};
+struct BuildAvailabilityProfile {
+    /// Only stage31, and only when output0 is in this set, considers output0/1 goods research.
+    std::vector<GoodsId> research_outputs;
+    /// Additional research ORs independent of the stage, e.g. the original large shipyard.
+    std::vector<BuildResearchAlternatives> extra_research;
+};
+
+struct PermissionFacts {
+    std::vector<std::uint32_t> folks;
+    bool bulk_excluded = false;
+    std::vector<std::uint32_t> grant_research;
+};
 struct BuildingType {
+    BuildRequirement construction;
+    PermissionFacts permissions;
+
     TypeId id;
+    /// MAP-POP-CLOSE-1 C3 (P-14 replacement): a House type whose id ladder successor
+    /// (`id - id % stride + stride`) exists but is no House of the next group with the same
+    /// footprint is accepted only when declared here. The original loader declares exactly the
+    /// audited irregular types (3851-3854, 3951-3954, 3960-3979); a mod must say so itself.
+    /// Digested only when set, so a registry without any declaration keeps its digest.
+    bool special_successor = false;
     /// The PRODTYPE number (D AnnoGame 0x100138e0), 0 = UNUSED.
     std::uint32_t prodtype = 0;
     RuntimeClass cls = RuntimeClass::Plain;
@@ -279,7 +333,34 @@ struct BuildingType {
     std::uint8_t walk_class = 0;
 };
 
+/// The immutable inputs of one population calculation: a group, its derived tables, the goods table
+/// and the roles they were derived under (MAP-POP-IMPL-1 C, docs/sim/population-contract.md
+/// section 3). Obtained only from TypeRegistry::population_view, which refuses a config whose
+/// roles differ from the registry's binding, so a table never meets other roles. Valid while the
+/// registry lives.
+struct PopulationView {
+    const HouseGroup* group = nullptr;
+    const HouseGroupDerived* derived = nullptr;
+    std::span<const GoodsInfo> goods;
+    PopulationRoles roles;
+    std::uint32_t group_index = 0;
+    /// The preceding group's Wohnmax; nullopt for group 0 (the original reads layout-adjacent bytes
+    /// there, OD-5 - never replicated). A caller may supply any value explicitly instead.
+    std::optional<std::uint32_t> previous_wohnmax;
+};
+
 /// The immutable type data of a world.
+/// Original-file import metadata, consumed before a World exists. These are not runtime
+/// FigureType fields: projected health/holds/flags are persisted on Figure. Native load and
+/// simulation never consult this catalog, so it is deliberately outside the live type digest.
+/// A future runtime consumer requires a content-identity review (original-unit-import.md).
+struct UnitImportFacts {
+    std::uint32_t max_hp = 0;
+    std::uint32_t cargo_slots = 0;
+    std::uint32_t crew_slots = 0;
+    std::uint32_t other_crew = 0;
+};
+
 class TypeRegistry {
   public:
     class Builder;
@@ -313,20 +394,37 @@ class TypeRegistry {
     /// house has no stocks); a non-empty table has exactly SimConfig::house_groups
     /// groups. Immutable, part of digest().
     [[nodiscard]] std::span<const HouseGroup> house_groups() const { return house_groups_; }
+    /// The [BAUSTUFEN] stage table (MAP-POP-LIVE-1 L3): ascending by stage, empty for a registry
+    /// without one. Immutable, part of digest(); the stage pass that reads it is L4.
+    [[nodiscard]] std::span<const StageRecord> stage_table() const { return stages_; }
+    /// The derived table of each group (same order), built once with the roles of the SimConfig
+    /// the registry was built with; empty when there are no groups. Not hashed (a pure function of
+    /// the hashed groups and goods).
+    [[nodiscard]] std::span<const HouseGroupDerived> derived_groups() const {
+        return derived_groups_;
+    }
+    /// The roles the derived tables are bound to (the defaults for a registry without groups).
+    [[nodiscard]] const PopulationRoles& population_roles() const { return population_roles_; }
+    /// The roles of a config.
+    [[nodiscard]] static PopulationRoles roles_of(const SimConfig& cfg);
+    /// One group with its derived data, or an error naming the mismatch: no such group, or `cfg`'s
+    /// roles differ from the binding.
+    [[nodiscard]] formats::Result<PopulationView, std::string>
+    population_view(std::uint32_t group_index, const SimConfig& cfg) const;
     /// Immutable side input; its separate digest is in the state/replay headers.
     [[nodiscard]] const std::shared_ptr<const formats::annowelt::WalkTables>& walk_tables() const {
         return walk_tables_;
     }
     [[nodiscard]] std::span<const FigureType> figure_types() const { return figure_types_; }
+    [[nodiscard]] const UnitImportFacts* unit_import_facts(std::uint32_t kind) const;
     /// The digest of these tables exactly as given (types in the order given,
     /// which build() sorts by id first), without checking or sealing them: for
     /// tests that perturb one field at a time, including combinations that
     /// build() refuses.
-    [[nodiscard]] static std::uint64_t digest_of(std::span<const BuildingType> types,
-                                                 std::span<const GoodsInfo> goods,
-                                                 std::span<const ClassInfo> classes,
-                                                 std::span<const FigureType> figures = {},
-                                                 std::span<const HouseGroup> groups = {});
+    [[nodiscard]] static std::uint64_t
+    digest_of(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
+              std::span<const ClassInfo> classes, std::span<const FigureType> figures = {},
+              std::span<const HouseGroup> groups = {}, std::span<const StageRecord> stages = {});
     /// Whether the registry fits a configuration (docs/sim/state.md §4.4, §9.6):
     /// the checks of build() that depend on `cfg` (the build cost goods lie in
     /// SimConfig::build_goods_first .. + build_goods_count, service masks fit
@@ -338,6 +436,7 @@ class TypeRegistry {
     /// Empty when it fits, else one message naming the type.
     [[nodiscard]] std::string validate_against(const SimConfig& cfg) const;
     /// All types in ascending id order.
+    [[nodiscard]] std::span<const TypeId> permission_types(std::uint32_t folk) const;
     [[nodiscard]] std::span<const BuildingType> types() const { return types_; }
     [[nodiscard]] std::span<const GoodsInfo> goods_table() const { return goods_; }
     [[nodiscard]] std::span<const ClassInfo> class_table() const { return classes_; }
@@ -363,7 +462,9 @@ class TypeRegistry {
     build(std::span<const formats::figuren::Entry> entries, std::vector<GoodsInfo> goods_in,
           const SimConfig& cfg, std::span<const formats::figuren::Entry> figure_entries,
           std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
-          std::vector<HouseGroup> groups = {});
+          std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {},
+          bool declare_irregular_successors = false,
+          const BuildAvailabilityProfile& availability = {});
 
     /// A registry without types (the original goods and class tables): what a
     /// default-constructed World holds. Shared, immutable.
@@ -379,13 +480,20 @@ class TypeRegistry {
            std::vector<ClassInfo> classes, const SimConfig& cfg,
            std::vector<FigureType> figures = {},
            std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
-           std::vector<HouseGroup> groups = {});
+           std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {},
+           bool declare_irregular_successors = false,
+           std::map<std::uint32_t, UnitImportFacts> unit_import = {});
 
-    std::vector<BuildingType> types_;      // ascending id; lookup by binary search
-    std::vector<FigureType> figure_types_; // ascending id
+    std::vector<std::pair<std::uint32_t, std::vector<TypeId>>> permission_types_;
+    std::vector<BuildingType> types_;                      // ascending id; lookup by binary search
+    std::vector<FigureType> figure_types_;                 // ascending id
+    std::map<std::uint32_t, UnitImportFacts> unit_import_; // import-only, never a World input
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
     std::vector<HouseGroup> house_groups_;
+    std::vector<StageRecord> stages_;
+    std::vector<HouseGroupDerived> derived_groups_;
+    PopulationRoles population_roles_;
     std::uint32_t max_footprint_ = 1;
     std::uint64_t digest_ = 0;
     std::shared_ptr<const formats::annowelt::WalkTables> walk_tables_;
@@ -432,6 +540,10 @@ class TypeRegistry::Builder {
     Builder& walk_tables(std::shared_ptr<const formats::annowelt::WalkTables> tables);
     /// The group table (tests build two small groups in code).
     Builder& house_groups(std::vector<HouseGroup> groups);
+    /// The [BAUSTUFEN] stage table.
+    Builder& stage_table(std::vector<StageRecord> stages);
+    /// Declares the House type `id` a special successor type (BuildingType::special_successor).
+    Builder& special_successor(TypeId id);
     Builder& goods(std::vector<GoodsInfo> table);
     Builder& classes(std::vector<ClassInfo> table);
     Builder& config(const SimConfig& cfg);
@@ -487,6 +599,9 @@ class TypeRegistry::Builder {
     Builder& figure_ids(TypeId id, std::vector<std::uint32_t> ids);
     /// Adds a figure type.
     Builder& figure_type(FigureType type);
+    /// Declares original-file decoding facts for a synthetic/mod figure kind; duplicate keys
+    /// and keys without a figure type refuse build(). This never changes a live type digest.
+    Builder& unit_import_facts(std::uint32_t kind, UnitImportFacts facts);
 
     /// Seals the registry. Errors: a duplicate id, a goods name that did not
     /// resolve, a class table that does not have RuntimeClass::Count_ entries,
@@ -504,9 +619,11 @@ class TypeRegistry::Builder {
 
     std::vector<BuildingType> types_;
     std::vector<FigureType> figures_;
+    std::map<std::uint32_t, UnitImportFacts> unit_import_;
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
     std::vector<HouseGroup> house_groups_;
+    std::vector<StageRecord> stages_;
     SimConfig cfg_;
     std::string error_;
     std::shared_ptr<const formats::annowelt::WalkTables> walk_tables_;

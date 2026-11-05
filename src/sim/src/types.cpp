@@ -20,7 +20,10 @@
 
 #include <anno/formats/bytes.hpp>
 #include <anno/sim/archive.hpp>
+#include <anno/sim/building.hpp>
 #include <anno/sim/field_count.hpp>
+#include <anno/sim/goods_metadata.hpp>
+#include <anno/sim/house_transition.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/walk_cells.hpp>
 
@@ -87,6 +90,22 @@ constexpr std::array kProdtypeNames = {
     Named{324, "ROHSTSPEZ"}, Named{325, "TIERHOEHLE"},    Named{353, "FLUSS"},
     Named{354, "MEER"},      Named{355, "WASSERFALL"},    Named{385, "RUINE"}};
 
+/// ROUTETYPE names (D: AnnoGame.dll the table of 80 string pointers at 0x10024fb8, matched by the
+/// FigurenHeader loader 0x1000fe00 through game slot +0x48 kind 0x3b = 0x10013b40; the index is the
+/// figure type's +0xc, slot +0x54). Read from AnnoGame.dll sha256 ac721220...7bc for MAP-ECON-1 E2:
+/// the 24 non-null entries, every other index holds no name. MARKTLER 52 = 0x34 and TRAEGER 51 =
+/// 0x33 are the market cart's and the workshop carrier's job codes (transport.hpp), MAEHER 42 =
+/// 0x2a the farm worker's (docs/re/forestry.md 2.2).
+constexpr std::array kRoutetypeNames = {
+    Named{1, "WALKDEST"},   Named{2, "WALKFOLLOW"}, Named{3, "WALKANLAGE"},
+    Named{11, "ATTACK"},    Named{12, "JAEGER"},    Named{21, "FLIGHT"},
+    Named{31, "HELP"},      Named{32, "LOESCH"},    Named{33, "SEUCHE"},
+    Named{41, "ERNTE"},     Named{42, "MAEHER"},    Named{43, "MAEHER_SPEZ"},
+    Named{44, "STEINMETZ"}, Named{45, "FISCHER"},   Named{46, "WEIDETIER"},
+    Named{51, "TRAEGER"},   Named{52, "MARKTLER"},  Named{53, "EINKAUF"},
+    Named{54, "PARK"},      Named{61, "SPECIAL"},   Named{62, "HIRSCH"},
+    Named{63, "RAUBTIER"},  Named{64, "HASE"},      Named{65, "TAENZER"}};
+
 /// FORSCHTYPE names (D: AnnoGame.dll 0x10013cf0, numbers 1..0x40; Appendix B).
 // clang-format off
 constexpr std::array kResearchNames = {
@@ -126,7 +145,8 @@ std::optional<std::uint32_t> number_of(const Table& table, std::string_view name
 }
 
 formats::Result<BuildingType, std::string>
-type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const SimConfig& cfg) {
+type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const SimConfig& cfg,
+                const BuildAvailabilityProfile& availability) {
     const std::string who = "entry " + std::to_string(e.id) + ": ";
     const auto head = e.record("HEAD");
     if (!head) {
@@ -169,6 +189,11 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
     t.rubble = h[0x0a];
     t.action_radius = h[0x11];
     t.flags_word = formats::u16_le(h, 0x1c);
+    const auto folk_mask = formats::u32_le(h, 0x0c);
+    for (std::uint32_t folk = 0; folk < 32; ++folk)
+        if ((folk_mask & (std::uint32_t{1} << folk)) != 0)
+            t.permissions.folks.push_back(folk);
+    t.permissions.bulk_excluded = (h[0x2e] & 3u) != 0;
     t.max_hp = formats::u16_le(h, 0x2c);
     t.can_burn = h[0x31];
     // ENTRANCE (D AnnoGame 0x10009a48-0x10009aa8): length / 8 points of two f32 (x, y)
@@ -198,6 +223,28 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
         return who + "unknown FORSCHTYPE '" + research + "'";
     }
     t.research_id = *research_id;
+    // Original known repetitions overwrite; strict content validation is an adaptation.
+    bool has_stage = false;
+    for (const auto& record : e.records) {
+        if (record.name() != "INFRAMIN") {
+            continue;
+        }
+        if (has_stage) {
+            return who + "repeated INFRAMIN";
+        }
+        has_stage = true;
+        const auto& bytes = record.payload;
+        const auto end = std::find(bytes.begin(), bytes.end(), std::uint8_t{0});
+        if (end == bytes.end() || std::any_of(end, bytes.end(), [](auto x) { return x != 0; })) {
+            return who + "INFRAMIN must be one NUL-terminated stage name";
+        }
+        const std::string name(bytes.begin(), end);
+        const auto stage = stage_index_of(name);
+        if (!stage) {
+            return who + "unknown INFRAMIN '" + name + "'";
+        }
+        t.construction.stage = *stage;
+    }
     auto resolve = [&](const char* record, std::vector<GoodsId>& out) -> std::string {
         const auto bytes = e.record(record);
         if (!bytes) {
@@ -219,6 +266,36 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
     if (std::string problem = resolve("ROHSTOFF", t.input_goods); !problem.empty()) {
         return problem;
     }
+    if (t.construction.stage == 31) {
+        if (!t.output_goods.empty() &&
+            std::find(availability.research_outputs.begin(), availability.research_outputs.end(),
+                      t.output_goods[0]) != availability.research_outputs.end()) {
+            t.construction.research_any.push_back(goods[t.output_goods[0]].forsch);
+            if (t.output_goods.size() > 1 && t.output_goods[1] != 0) {
+                t.construction.research_any.push_back(goods[t.output_goods[1]].forsch);
+            }
+        }
+        t.permissions.grant_research.push_back(t.research_id);
+        if (!t.output_goods.empty() &&
+            std::find(availability.research_outputs.begin(), availability.research_outputs.end(),
+                      t.output_goods[0]) != availability.research_outputs.end() &&
+            goods[t.output_goods[0]].forsch != 0 &&
+            goods[t.output_goods[0]].forsch != t.research_id)
+            t.permissions.grant_research.push_back(goods[t.output_goods[0]].forsch);
+        std::sort(t.permissions.grant_research.begin(), t.permissions.grant_research.end());
+        // Id0 is meaningful to the original research-state bit test, too.
+        t.construction.research_any.push_back(t.research_id);
+    }
+    for (const auto& extra : availability.extra_research) {
+        if (extra.type == t.id) {
+            t.construction.research_any.insert(t.construction.research_any.end(),
+                                               extra.research.begin(), extra.research.end());
+        }
+    }
+    std::sort(t.construction.research_any.begin(), t.construction.research_any.end());
+    t.construction.research_any.erase(
+        std::unique(t.construction.research_any.begin(), t.construction.research_any.end()),
+        t.construction.research_any.end());
     if (!t.output_goods.empty()) {
         t.service_mask = service_mask_for_goods(t.output_goods[0]);
     }
@@ -247,13 +324,15 @@ static_assert(field_count<ProductionType>() == 18,
               "a ProductionType member needs a line in digest_production");
 // T33.2: walk_class is derived; walk_mask is a side input until T33.4.
 // digest_type skips both, preserving every existing digest byte. (cls is hashed.)
-static_assert(field_count<BuildingType>() == 23,
+static_assert(field_count<PermissionFacts>() == 3, "permission facts need digest coverage");
+static_assert(field_count<BuildRequirement>() == 2, "construction facts need digest coverage");
+static_assert(field_count<BuildingType>() == 26,
               "a BuildingType member needs a line in digest_type (walk_class derived; walk_mask "
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
-static_assert(field_count<FigureType>() == 9, "a FigureType member needs a line in the digest");
-static_assert(field_count<GoodsInfo>() == 2, "a GoodsInfo member needs a line in the digest");
+static_assert(field_count<FigureType>() == 10, "a FigureType member needs a line in the digest");
+static_assert(field_count<GoodsInfo>() == 4, "a GoodsInfo member needs a line in the digest");
 static_assert(field_count<ClassInfo>() == 4, "a ClassInfo member needs a line in the digest");
 static_assert(field_count<CostEntry>() == 2, "a CostEntry member needs a line in the digest");
 
@@ -310,17 +389,23 @@ template <class A> void digest_type(A& a, const BuildingType& t) {
     });
     a.boolean(t.has_prod);
     digest_production(a, t.prod);
+    if (t.special_successor) {
+        a.boolean(true); // C3: only a declared type adds the byte, so no other digest moves
+    }
 }
 
 std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
                               std::span<const ClassInfo> classes,
                               std::span<const FigureType> figures,
-                              std::span<const HouseGroup> groups) {
+                              std::span<const HouseGroup> groups,
+                              std::span<const StageRecord> stages) {
     HashArchive a(HashOptions{nullptr, 0, true});
     ar::seq(a, types, 1, [&](const BuildingType& t) { digest_type(a, t); });
-    ar::seq(a, goods, 12, [&](const GoodsInfo& g) {
+    ar::seq(a, goods, 20, [&](const GoodsInfo& g) {
         a.str(g.name);
         a.u32(g.forsch);
+        a.u32(g.bau_first); // stream 127
+        a.u32(g.id_sec);    // stream 127
     });
     ar::seq(a, classes, 7, [&](const ClassInfo& c) {
         a.enumv(c.cls);
@@ -328,7 +413,7 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.enumv(c.payload);
         a.u32(c.gate_period);
     });
-    ar::seq(a, figures, 20 + 1 + 28, [&](const FigureType& f) {
+    ar::seq(a, figures, 20 + 1 + 28 + 4, [&](const FigureType& f) {
         a.u32(f.id);
         a.u32(f.speed_q24);
         a.u32(f.capacity_88);
@@ -349,6 +434,7 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(nf.hold_count_b);
         a.u32(nf.nav_class);
         a.u32(nf.stamp_radius_88);
+        a.u32(f.route); // stream 126
     });
     // The group table (P1, stream 115): u64 count, then per group the slot, the two
     // flags, Wohnmax, the needs (u64 count; goods id, forced flag, Menge) and the
@@ -372,6 +458,45 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
             a.u8(static_cast<std::uint8_t>(v));
         }
     });
+    // The [BAUSTUFEN] stage table (MAP-POP-LIVE-1 L3, stream 128): u64 count, then four u32 per
+    // record (stage, group, wissen, count).
+    ar::seq(a, stages, 16, [&](const StageRecord& r) {
+        a.u32(r.stage);
+        a.u32(r.group);
+        a.u32(r.wissen);
+        a.u32(r.count);
+    });
+    const auto nondefault = [](const BuildingType& t) {
+        return t.construction.stage != 0 || !t.construction.research_any.empty();
+    };
+    if (std::any_of(types.begin(), types.end(), nondefault)) {
+        a.u32(0x31415642U); // little-endian "BVA1", registry extension, not state layout
+        a.u64(static_cast<std::uint64_t>(std::count_if(types.begin(), types.end(), nondefault)));
+        for (const auto& t : types) {
+            if (!nondefault(t)) {
+                continue;
+            }
+            a.u32(t.id.v);
+            a.u32(t.construction.stage);
+            ar::seq(a, t.construction.research_any, 4, [&](auto r) { a.u32(r); });
+        }
+    }
+    const auto has_permission = [](const BuildingType& t) {
+        return !t.permissions.folks.empty() || t.permissions.bulk_excluded ||
+               !t.permissions.grant_research.empty();
+    };
+    if (std::any_of(types.begin(), types.end(), has_permission)) {
+        a.u32(0x314d5250U); // PRM1; distinct from availability's OR facts
+        a.u64(
+            static_cast<std::uint64_t>(std::count_if(types.begin(), types.end(), has_permission)));
+        for (const auto& t : types)
+            if (has_permission(t)) {
+                a.u32(t.id.v);
+                ar::seq(a, t.permissions.folks, 4, [&](auto f) { a.u32(f); });
+                a.boolean(t.permissions.bulk_excluded);
+                ar::seq(a, t.permissions.grant_research, 4, [&](auto r) { a.u32(r); });
+            }
+    }
     return a.finish();
 }
 
@@ -480,6 +605,16 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
             }
         }
     }
+    // MAP-ECON-1 E2 (stream 126): the ROUTETYPE index (loader 0x1000fe00, branch 0x10010029-
+    // 0x100100d9, store 0x100100cf). A name the original's table does not hold is a load error, as
+    // an unknown PRODTYPE is (P: every shipped entry names a table entry, UNUSED or none).
+    if (const auto name = e.record_str("ROUTETYPE")) {
+        const auto route = routetype_by_name(*name);
+        if (!route) {
+            return who + "unknown ROUTETYPE '" + std::string(*name) + "'";
+        }
+        t.route = *route;
+    }
     // LOGIC[0x25] * 0.125 tile (type slot 0x68(4)), 7 tiles when 0 (constant 0x40e00000).
     t.range_88 = logic[0x25] == 0 ? 7U * 256U : std::uint32_t{logic[0x25]} * 32U;
     // HEAD f32 at byte 0x10 (type property 5, the hull half-extent), in 1/256 tile, for the hull
@@ -544,6 +679,8 @@ std::optional<PayloadTag> payload_for_tick(TickKind tick) {
         return PayloadTag::Market;
     case TickKind::House:
         return PayloadTag::House;
+    case TickKind::Inn:
+        return PayloadTag::Inn;
     }
     return std::nullopt;
 }
@@ -567,6 +704,7 @@ std::optional<BuildingClass> production_kind_for_tick(TickKind tick) {
         return BuildingClass::SmallFarm;
     case TickKind::Market: // reads prod.max_figures / figure_ids only when present
     case TickKind::House:  // no production data (P1: the tick does nothing yet)
+    case TickKind::Inn:    // reads prod.max_figures / figure_ids / input_per_step only when present
     case TickKind::None:
         break;
     }
@@ -587,6 +725,24 @@ std::string check_against_config(std::span<const BuildingType> types, const SimC
     const std::uint64_t goods_end = std::uint64_t{cfg.build_goods_first} + cfg.build_goods_count;
     for (const BuildingType& t : types) {
         const std::string who = "type " + std::to_string(t.id.v) + ": ";
+        if (t.construction.stage >= kStageIndexCount) {
+            return "entry " + std::to_string(t.id.v) + ": construction stage is outside 0..31";
+        }
+        if (t.construction.stage == 31 && t.research_id >= cfg.research_entries)
+            return who + "stage31 base research id is outside research_entries";
+        for (const auto research : t.construction.research_any) {
+            if (research >= cfg.research_entries) {
+                return "entry " + std::to_string(t.id.v) + ": construction research id " +
+                       std::to_string(research) + " is outside research_entries";
+            }
+        }
+        for (const auto* ids : {&t.permissions.folks, &t.permissions.grant_research}) {
+            for (std::size_t i = 0; i < ids->size(); ++i) {
+                if ((i != 0 && (*ids)[i - 1] >= (*ids)[i]) ||
+                    (ids == &t.permissions.grant_research && (*ids)[i] >= cfg.research_entries))
+                    return who + "invalid permission facts";
+            }
+        }
         // Every bit of a public-need mask is a counter of BuildingIndex
         // (SimConfig::service_bits of them).
         if (cfg.service_bits < 32 && (t.service_mask >> cfg.service_bits) != 0) {
@@ -649,6 +805,29 @@ std::string check_consistency(std::span<const BuildingType> types,
         if (index >= classes.size()) {
             return who + "class " + std::to_string(index) + " is outside the class table";
         }
+        if (t.cls == RuntimeClass::Inn && t.has_prod) {
+            // MAP-POP-CLOSE-2 K1 (population.md 18 (g)): the base priority 0x10072870 divides by
+            // the input per step (+0xe4(i)), which traps in the original at 0. A typed refusal
+            // here, so no running Inn can meet a zero divisor.
+            for (std::size_t i = 0; i < t.input_goods.size(); ++i) {
+                const std::uint32_t need =
+                    i < t.prod.input_per_step.size() ? t.prod.input_per_step[i] : 0;
+                if (need == 0) {
+                    return who + "an Inn type's input " + std::to_string(i) +
+                           " has an input per step of 0; the carrier priority (0x10072870) divides "
+                           "by it";
+                }
+            }
+        }
+        if (t.cls == RuntimeClass::House) {
+            // MAP-POP-LIVE-1 L1 (population-live.md 10a, P): a house that may send walkers needs a
+            // figure type to send; the facts are registry data (PROD3 0x28/0x29/0x32), hashed with
+            // the production data.
+            const std::string problem = house_walker_problem(t);
+            if (!problem.empty()) {
+                return problem;
+            }
+        }
         const auto kind = production_kind_for_tick(classes[index].tick);
         if (!kind) {
             continue; // the class does not tick (or its tick is unported): no data needed
@@ -676,6 +855,10 @@ struct Sealed : TypeRegistry {
 
 std::optional<std::uint32_t> prodtype_by_name(std::string_view name) {
     return number_of(kProdtypeNames, name);
+}
+
+std::optional<std::uint32_t> routetype_by_name(std::string_view name) {
+    return number_of(kRoutetypeNames, name);
 }
 
 std::string_view prodtype_name(std::uint32_t number) {
@@ -801,7 +984,7 @@ std::vector<ClassInfo> original_class_table() {
         {C::Market, T::Market, P::Market, 500},                            // 0x1006b6d0
         {C::MarketCombi, T::None, P::Inert, 500},                          // 0x1006c2e0
         {C::MarketStall, T::None, P::Inert, 5000},                         // 0x100702d0
-        {C::Inn, T::None, P::Inert, 5000},          // 0x100755f0 (0x10075608)
+        {C::Inn, T::Inn, P::Inn, 5000},             // 0x100755f0 (0x10075608); K1
         {C::PublicService, T::None, P::Inert, 500}, // 0x1006b4e0 (0x1006b4ec)
         {C::Doctor, T::None, P::Inert, 500},        // 0x100676b0
         {C::School, T::None, P::Inert, 500},        // 0x1006b4e0 (shared with PublicService)
@@ -867,13 +1050,86 @@ const BuildingType* TypeRegistry::find_growing(std::uint32_t object) const {
     return t != nullptr && t->has_prod && t->prod.kind == BuildingClass::GrowingItem ? t : nullptr;
 }
 
+namespace {
+
+/// The goods-domain checks of the population roles (docs/sim/population-contract.md section 3):
+/// they need a goods table and run only for a registry that has house groups, so a registry without
+/// groups never depends on the original default ids. SimConfig::validate() checked the order.
+std::string population_roles_problem(const SimConfig& cfg, std::size_t goods_count) {
+    if (cfg.population_infra_last >= goods_count) {
+        return "SimConfig.population_infra_last " + std::to_string(cfg.population_infra_last) +
+               " is not a goods id (the table has " + std::to_string(goods_count) + " goods)";
+    }
+    if (cfg.population_tavern_goods < cfg.population_infra_first ||
+        cfg.population_tavern_goods > cfg.population_infra_last) {
+        return "SimConfig.population_tavern_goods " + std::to_string(cfg.population_tavern_goods) +
+               " is outside the infrastructure range";
+    }
+    if (cfg.population_tavern_alias_goods >= cfg.population_infra_first &&
+        cfg.population_tavern_alias_goods <= cfg.population_infra_last) {
+        return "SimConfig.population_tavern_alias_goods lies inside the infrastructure range";
+    }
+    if (cfg.population_tavern_alias_goods >= goods_count) {
+        return "SimConfig.population_tavern_alias_goods " +
+               std::to_string(cfg.population_tavern_alias_goods) +
+               " is not a goods id (the table has " + std::to_string(goods_count) + " goods)";
+    }
+    return {};
+}
+
+/// The population metadata of the goods: a stage index is a shift count into the u32 mask, a
+/// substitute is a goods id.
+std::string goods_metadata_problem(std::span<const GoodsInfo> goods) {
+    for (std::size_t i = 0; i < goods.size(); ++i) {
+        if (goods[i].bau_first >= 32) {
+            return "goods " + std::to_string(i) + " (" + goods[i].name + "): bau_first " +
+                   std::to_string(goods[i].bau_first) + " is not a stage index 0..31";
+        }
+        if (goods[i].id_sec >= goods.size()) {
+            return "goods " + std::to_string(i) + " (" + goods[i].name + "): id_sec " +
+                   std::to_string(goods[i].id_sec) + " is not a goods id";
+        }
+    }
+    return {};
+}
+
+} // namespace
+
 formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::finish(
     std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
     std::vector<ClassInfo> classes, const SimConfig& cfg, std::vector<FigureType> figures,
-    std::shared_ptr<const formats::annowelt::WalkTables> tables, std::vector<HouseGroup> groups) {
+    std::shared_ptr<const formats::annowelt::WalkTables> tables, std::vector<HouseGroup> groups,
+    std::vector<StageRecord> stages, bool declare_irregular_successors,
+    std::map<std::uint32_t, UnitImportFacts> unit_import) {
+    for (std::size_t i = 0; i < stages.size(); ++i) {
+        // The stage mask is 32 bits wide (Player::flags / City::stage_mask: a stage index is a
+        // shift count); the table is ascending and unique; a group beyond the group table is a
+        // content error.
+        if (stages[i].stage >= 32) {
+            return "stage table record " + std::to_string(i) + ": stage " +
+                   std::to_string(stages[i].stage) + " is not a bit of the 32-bit stage mask";
+        }
+        if (i > 0 && stages[i - 1].stage >= stages[i].stage) {
+            return "stage table record " + std::to_string(i) +
+                   ": stages must be ascending and unique";
+        }
+        if (!groups.empty() && stages[i].group >= groups.size()) {
+            return "stage table record " + std::to_string(i) + ": group " +
+                   std::to_string(stages[i].group) + " is not in the group table";
+        }
+    }
     if (!groups.empty() && groups.size() != cfg.house_groups) {
         return "the group table has " + std::to_string(groups.size()) +
                " groups, SimConfig::house_groups is " + std::to_string(cfg.house_groups);
+    }
+    if (std::string problem = goods_metadata_problem(goods_in); !problem.empty()) {
+        return problem;
+    }
+    if (!groups.empty()) {
+        if (std::string problem = population_roles_problem(cfg, goods_in.size());
+            !problem.empty()) {
+            return problem;
+        }
     }
     if (classes.size() != static_cast<std::size_t>(RuntimeClass::Count_)) {
         return "class table has " + std::to_string(classes.size()) + " entries, RuntimeClass has " +
@@ -881,6 +1137,24 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
     }
     std::sort(types.begin(), types.end(),
               [](const BuildingType& a, const BuildingType& b) { return a.id.v < b.id.v; });
+    if (declare_irregular_successors) {
+        // The original data profile: declare every House type whose ladder successor exists and is
+        // no regular successor (the audited families, population-live.md 21.3).
+        for (BuildingType& t : types) {
+            if (t.cls != RuntimeClass::House || cfg.house_type_stride == 0) {
+                continue;
+            }
+            const std::uint64_t next_id =
+                t.id.v - t.id.v % cfg.house_type_stride + std::uint64_t{cfg.house_type_stride};
+            const auto it =
+                std::lower_bound(types.begin(), types.end(), next_id,
+                                 [](const BuildingType& a, std::uint64_t v) { return a.id.v < v; });
+            if (it != types.end() && it->id.v == next_id &&
+                !house_successor_is_regular(cfg, t, *it)) {
+                t.special_successor = true;
+            }
+        }
+    }
     std::uint32_t footprint = 1;
     for (std::size_t i = 0; i < types.size(); ++i) {
         const BuildingType& t = types[i];
@@ -912,6 +1186,14 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
             return "duplicate figure type id " + std::to_string(figures[i].id);
         }
     }
+    for (const auto& [kind, facts] : unit_import) {
+        (void)facts;
+        const auto type = std::lower_bound(figures.begin(), figures.end(), kind,
+                                           [](const FigureType& f, auto id) { return f.id < id; });
+        if (type == figures.end() || type->id != kind) {
+            return "unit import facts: unknown figure kind " + std::to_string(kind);
+        }
+    }
     for (const FigureType& f : figures) {
         if (f.nav.has_value()) {
             if (std::string problem = nav_facts_problem(*f.nav); !problem.empty()) {
@@ -928,25 +1210,55 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
                    " in 1/256 tile)";
         }
     }
+    // The derived group tables, once, under the roles of this config (MAP-POP-IMPL-1 C).
+    std::vector<HouseGroupDerived> derived(groups.size());
+    for (std::size_t i = 0; i < groups.size(); ++i) {
+        if (std::string problem =
+                derive_group(groups[i], goods_in, TypeRegistry::roles_of(cfg), derived[i]);
+            !problem.empty()) {
+            return "house group " + std::to_string(i) + ": " + problem;
+        }
+    }
     auto sealed = std::make_shared<Sealed>();
     TypeRegistry& r = *sealed;
-    r.digest_ = digest_registry(types, goods_in, classes, figures, groups);
+    r.digest_ = digest_registry(types, goods_in, classes, figures, groups, stages);
+    r.derived_groups_ = std::move(derived);
+    r.population_roles_ = TypeRegistry::roles_of(cfg);
     r.house_groups_ = std::move(groups);
+    r.stages_ = std::move(stages);
     r.walk_tables_ = std::move(tables);
+    for (const auto& t : types)
+        if (!t.permissions.bulk_excluded) {
+            for (auto folk : t.permissions.folks) {
+                auto it =
+                    std::lower_bound(r.permission_types_.begin(), r.permission_types_.end(), folk,
+                                     [](const auto& row, auto f) { return row.first < f; });
+                if (it == r.permission_types_.end() || it->first != folk)
+                    it = r.permission_types_.insert(it, {folk, {}});
+                it->second.push_back(t.id);
+            }
+        }
     r.types_ = std::move(types);
     r.figure_types_ = std::move(figures);
+    r.unit_import_ = std::move(unit_import);
     r.goods_ = std::move(goods_in);
     r.classes_ = std::move(classes);
     r.max_footprint_ = footprint;
     return std::shared_ptr<const TypeRegistry>(std::move(sealed));
 }
 
-std::uint64_t TypeRegistry::digest_of(std::span<const BuildingType> types,
-                                      std::span<const GoodsInfo> goods,
-                                      std::span<const ClassInfo> classes,
-                                      std::span<const FigureType> figures,
-                                      std::span<const HouseGroup> groups) {
-    return digest_registry(types, goods, classes, figures, groups);
+std::uint64_t
+TypeRegistry::digest_of(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
+                        std::span<const ClassInfo> classes, std::span<const FigureType> figures,
+                        std::span<const HouseGroup> groups, std::span<const StageRecord> stages) {
+    return digest_registry(types, goods, classes, figures, groups, stages);
+}
+
+std::span<const TypeId> TypeRegistry::permission_types(std::uint32_t folk) const {
+    auto it = std::lower_bound(permission_types_.begin(), permission_types_.end(), folk,
+                               [](const auto& row, auto f) { return row.first < f; });
+    return it != permission_types_.end() && it->first == folk ? std::span<const TypeId>(it->second)
+                                                              : std::span<const TypeId>{};
 }
 
 const FigureType* TypeRegistry::find_figure_type(std::uint32_t id) const {
@@ -955,7 +1267,57 @@ const FigureType* TypeRegistry::find_figure_type(std::uint32_t id) const {
     return it != figure_types_.end() && it->id == id ? &*it : nullptr;
 }
 
+const UnitImportFacts* TypeRegistry::unit_import_facts(std::uint32_t kind) const {
+    const auto it = unit_import_.find(kind);
+    return it == unit_import_.end() ? nullptr : &it->second;
+}
+
+PopulationRoles TypeRegistry::roles_of(const SimConfig& cfg) {
+    return PopulationRoles{cfg.population_infra_first, cfg.population_infra_last,
+                           cfg.population_tavern_goods, cfg.population_tavern_alias_goods};
+}
+
+formats::Result<PopulationView, std::string>
+TypeRegistry::population_view(std::uint32_t group_index, const SimConfig& cfg) const {
+    if (group_index >= house_groups_.size()) {
+        return "population view: no group " + std::to_string(group_index) + " (the registry has " +
+               std::to_string(house_groups_.size()) + ")";
+    }
+    if (roles_of(cfg) != population_roles_) {
+        return std::string("population view: the SimConfig population roles differ from the roles "
+                           "the group tables were derived under");
+    }
+    PopulationView v;
+    v.group = &house_groups_[group_index];
+    v.derived = &derived_groups_[group_index];
+    v.goods = goods_;
+    v.roles = population_roles_;
+    v.group_index = group_index;
+    if (group_index > 0) {
+        v.previous_wohnmax = house_groups_[group_index - 1].wohnmax;
+    }
+    return v;
+}
+
 std::string TypeRegistry::validate_against(const SimConfig& cfg) const {
+    if (!house_groups_.empty()) {
+        if (std::string problem = population_roles_problem(cfg, goods_.size()); !problem.empty()) {
+            return problem;
+        }
+        if (roles_of(cfg) != population_roles_) {
+            return "SimConfig population roles (infra " +
+                   std::to_string(cfg.population_infra_first) + ".." +
+                   std::to_string(cfg.population_infra_last) + ", tavern " +
+                   std::to_string(cfg.population_tavern_goods) + ", alias " +
+                   std::to_string(cfg.population_tavern_alias_goods) +
+                   ") differ from the roles the registry's group tables were derived under "
+                   "(infra " +
+                   std::to_string(population_roles_.infra_first) + ".." +
+                   std::to_string(population_roles_.infra_last) + ", tavern " +
+                   std::to_string(population_roles_.tavern_goods) + ", alias " +
+                   std::to_string(population_roles_.tavern_alias_goods) + ")";
+        }
+    }
     if (!house_groups_.empty() && house_groups_.size() != cfg.house_groups) {
         return "the group table has " + std::to_string(house_groups_.size()) +
                " groups, SimConfig::house_groups is " + std::to_string(cfg.house_groups);
@@ -969,7 +1331,7 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
     std::vector<BuildingType> types;
     types.reserve(entries.size());
     for (const fig::Entry& e : entries) {
-        auto t = type_from_entry(e, goods_in, cfg);
+        auto t = type_from_entry(e, goods_in, cfg, {});
         if (!t) {
             return t.error();
         }
@@ -982,11 +1344,31 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> goods_in,
                     const SimConfig& cfg, std::span<const fig::Entry> figure_entries,
                     std::shared_ptr<const formats::annowelt::WalkTables> tables,
-                    std::vector<HouseGroup> groups) {
+                    std::vector<HouseGroup> groups, std::vector<StageRecord> stages,
+                    bool declare_irregular_successors,
+                    const BuildAvailabilityProfile& availability) {
+    for (const auto g : availability.research_outputs) {
+        if (g >= goods_in.size()) {
+            return std::string("availability profile: unknown output goods ") + std::to_string(g);
+        }
+    }
+    std::vector<TypeId> extra_types;
+    for (const auto& extra : availability.extra_research) {
+        if (std::find(extra_types.begin(), extra_types.end(), extra.type) != extra_types.end()) {
+            return std::string("availability profile: repeated type ") +
+                   std::to_string(extra.type.v);
+        }
+        extra_types.push_back(extra.type);
+        if (std::none_of(entries.begin(), entries.end(),
+                         [&](const auto& e) { return e.id == extra.type.v; })) {
+            return std::string("availability profile: unknown type ") +
+                   std::to_string(extra.type.v);
+        }
+    }
     std::vector<BuildingType> types;
     types.reserve(entries.size());
     for (const fig::Entry& e : entries) {
-        auto t = type_from_entry(e, goods_in, cfg);
+        auto t = type_from_entry(e, goods_in, cfg, availability);
         if (!t) {
             return t.error();
         }
@@ -994,15 +1376,28 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
     }
     std::vector<FigureType> figures;
     figures.reserve(figure_entries.size());
+    std::map<std::uint32_t, UnitImportFacts> unit_import;
     for (const fig::Entry& e : figure_entries) {
         auto f = figure_type_from_entry(e);
         if (!f) {
             return f.error();
         }
         figures.push_back(f.value());
+        // AnnoGame figure-type LOGIC reader (0x1000fe00), getters +0x90/+0x88:
+        // max HP at 0x1e, cargo/crew counts at 0x13/0x14. Slot+0x88(mode2) reads
+        // +0xf8, written from LOGIC[0x26] at 0x10010352 (not cannon byte 0x15).
+        // The existing reader zero-fills short LOGIC records. These values are used only
+        // by original_units.cpp; they do not extend the simulation's type content.
+        std::array<std::uint8_t, 44> logic{};
+        if (const auto bytes = e.record("LOGIC")) {
+            std::copy_n(bytes->begin(), std::min(bytes->size(), logic.size()), logic.begin());
+        }
+        unit_import.emplace(e.id, UnitImportFacts{formats::u16_le(logic, 0x1e), logic[0x13],
+                                                  logic[0x14], logic[0x26]});
     }
     return finish(std::move(types), std::move(goods_in), original_class_table(), cfg,
-                  std::move(figures), std::move(tables), std::move(groups));
+                  std::move(figures), std::move(tables), std::move(groups), std::move(stages),
+                  declare_irregular_successors, std::move(unit_import));
 }
 
 std::shared_ptr<const TypeRegistry> TypeRegistry::empty() {
@@ -1023,6 +1418,18 @@ TypeRegistry::Builder::walk_tables(std::shared_ptr<const formats::annowelt::Walk
 
 TypeRegistry::Builder& TypeRegistry::Builder::house_groups(std::vector<HouseGroup> groups) {
     house_groups_ = std::move(groups);
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::special_successor(TypeId id) {
+    if (BuildingType* t = last_with(id)) {
+        t->special_successor = true;
+    }
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::stage_table(std::vector<StageRecord> stages) {
+    stages_ = std::move(stages);
     return *this;
 }
 
@@ -1277,13 +1684,21 @@ TypeRegistry::Builder& TypeRegistry::Builder::figure_type(FigureType type) {
     return *this;
 }
 
+TypeRegistry::Builder& TypeRegistry::Builder::unit_import_facts(std::uint32_t kind,
+                                                                UnitImportFacts facts) {
+    if (!unit_import_.emplace(kind, facts).second) {
+        error_ = "duplicate unit import facts for figure " + std::to_string(kind);
+    }
+    return *this;
+}
+
 formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::Builder::build() const {
     if (!error_.empty()) {
         return error_;
     }
     return TypeRegistry::finish(types_, goods_, classes_, cfg_, figures_, walk_tables_,
-                                house_groups_);
+                                house_groups_, stages_, false, unit_import_);
 }
 
 } // namespace anno::sim

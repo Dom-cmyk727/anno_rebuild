@@ -856,6 +856,16 @@ bool CityStock::credit(std::uint32_t g, std::uint64_t amount) {
     return true;
 }
 
+bool CityStock::debit(std::uint32_t g, std::uint64_t amount) {
+    if (g >= stock.size() || amount > stock[g]) {
+        return false;
+    }
+    // amount <= stock[g] <= 2^32 - 1: the narrowing cannot lose a bit and the subtraction cannot
+    // wrap.
+    stock[g] -= static_cast<std::uint32_t>(amount);
+    return true;
+}
+
 std::uint32_t CityStock::remove(std::uint32_t g, std::uint32_t amount) {
     if (g >= stock.size()) {
         return 0;

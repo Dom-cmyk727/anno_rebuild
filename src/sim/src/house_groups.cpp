@@ -245,3 +245,99 @@ parse_house_groups(formats::Bytes file, std::span<const GoodsInfo> goods) {
 }
 
 } // namespace anno::sim
+
+namespace anno::sim {
+
+std::string derive_group(const HouseGroup& group, std::span<const GoodsInfo> goods,
+                         const PopulationRoles& roles, HouseGroupDerived& out) {
+    out = HouseGroupDerived{};
+    if (roles.infra_first > roles.infra_last || roles.infra_last >= goods.size() ||
+        roles.tavern_alias_goods >= goods.size() || roles.tavern_goods < roles.infra_first ||
+        roles.tavern_goods > roles.infra_last ||
+        (roles.tavern_alias_goods >= roles.infra_first &&
+         roles.tavern_alias_goods <= roles.infra_last)) {
+        return "the population roles are outside the goods table";
+    }
+    const std::size_t n = group.needs.size();
+    if (n > 0xFFFFFFFEU) {
+        return "the group has too many needs";
+    }
+    const auto count = static_cast<std::uint32_t>(n);
+    for (std::size_t j = 0; j < n; ++j) {
+        const HouseNeed& need = group.needs[j];
+        if (need.ware == 0) {
+            return "need " + std::to_string(j) + ": goods 0 (UNUSED) is not a need";
+        }
+        if (need.ware >= goods.size()) {
+            return "need " + std::to_string(j) + ": goods " + std::to_string(need.ware) +
+                   " is not in the goods table";
+        }
+        if (need.menge == 0) {
+            return "need " + std::to_string(j) + ": Menge 0 is a zero demand";
+        }
+    }
+    out.need_count = count;
+    // The loader's per-Ware update (0x1001486b-0x100148a6), n = slot + 1; Force is not read.
+    for (std::uint32_t j = 0; j < count; ++j) {
+        const GoodsId ware = group.needs[j].ware;
+        if (ware < roles.infra_first) {
+            out.goods_end = j + 1;
+        } else if (ware > roles.infra_last && out.goods_end == 0) {
+            out.goods_end = j + 1;
+        }
+    }
+    // The post-pass (0x10014afc-0x10014bd9).
+    out.lookup.assign(goods.size(), count);
+    out.forced.assign(static_cast<std::size_t>(roles.infra_last - roles.infra_first) + 1, 0);
+    for (std::uint32_t j = 0; j < count; ++j) {
+        const HouseNeed& need = group.needs[j];
+        out.lookup[need.ware] = j; // a repeated ware: the last slot wins
+        if (need.ware >= roles.infra_first && need.ware <= roles.infra_last) {
+            out.infra_end = j + 1; // forced or not (0x10014b33 precedes the Force test)
+            if (need.force) {
+                out.forced[need.ware - roles.infra_first] = 1;
+            }
+        }
+        if (need.ware == roles.tavern_goods && out.lookup[roles.tavern_alias_goods] == count) {
+            out.lookup[roles.tavern_alias_goods] = j; // the first tavern takes the alias
+        }
+    }
+    // One ascending IdSec substitution pass (0x10014b78-0x10014bab).
+    for (GoodsId id = roles.infra_first; id <= roles.infra_last; ++id) {
+        if (out.lookup[id] == count) {
+            const std::uint32_t via = out.lookup[goods[id].id_sec];
+            if (via != count) {
+                out.lookup[id] = via;
+            }
+        }
+    }
+    // MAP-POP-CLOSE-1 G2 (population-contract P-3): the IdSec walk of a delivery starts at any goods
+    // id that has a need slot and continues through substitutes that have one; visiting a goods id
+    // twice (a cycle or self-loop) is a content error. Only that relevant walk is checked, so an
+    // unrelated cycle among goods nobody needs is not an error, and the goods count is irrelevant.
+    std::vector<std::uint32_t> visited(goods.size(), 0); // stamp = start + 1: no clearing per walk
+    for (GoodsId start = 0; start < goods.size(); ++start) {
+        if (out.lookup[start] == count) {
+            continue;
+        }
+        const std::uint32_t stamp = start + 1U;
+        visited[start] = stamp;
+        GoodsId cur = start;
+        for (;;) {
+            const GoodsId sec = goods[cur].id_sec;
+            if (sec == 0 || sec >= goods.size() || out.lookup[sec] == count) {
+                break;
+            }
+            if (visited[sec] == stamp) {
+                return "IdSec cycle through goods " + std::to_string(sec) + " (reached from goods " +
+                       std::to_string(start) + "): a delivery would credit the cycle repeatedly";
+            }
+            visited[sec] = stamp;
+            cur = sec;
+        }
+    }
+    out.infra_end = std::max(out.infra_end, out.goods_end);
+    return {};
+}
+
+} // namespace anno::sim

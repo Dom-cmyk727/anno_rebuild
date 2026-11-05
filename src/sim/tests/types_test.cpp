@@ -320,7 +320,7 @@ TEST_CASE("class table payload tags") {
                              {C::Market, T::Market, P::Market, 500},
                              {C::MarketCombi, T::None, P::Inert, 500},
                              {C::MarketStall, T::None, P::Inert, 5000},
-                             {C::Inn, T::None, P::Inert, 5000},
+                             {C::Inn, T::Inn, P::Inn, 5000},
                              {C::PublicService, T::None, P::Inert, 500},
                              {C::Doctor, T::None, P::Inert, 500},
                              {C::School, T::None, P::Inert, 500},
@@ -339,6 +339,7 @@ TEST_CASE("class table payload tags") {
     }
     // Every ported tick has its own payload alternative; every other class is inert.
     for (const sim::ClassInfo& c : table) {
+        // A class has no tick exactly when its payload is Inert (K1: the Inn ticks).
         CHECK((c.tick == T::None) == (c.payload == P::Inert));
     }
     // The registry serves the same table.
@@ -1543,6 +1544,8 @@ TEST_CASE("registry digest stable") {
             h.u8(static_cast<std::uint8_t>(c));
         }
         h.u32(g.forsch);
+        h.u32(0); // bau_first (stream 127)
+        h.u32(0); // id_sec (stream 127)
     }
     const std::vector<sim::ClassInfo> classes = sim::original_class_table();
     h.u64(classes.size());
@@ -1554,10 +1557,13 @@ TEST_CASE("registry digest stable") {
     }
     h.u64(0); // no figure types
     h.u64(0); // no group table (P1)
+    h.u64(0); // no stage table (stream 128, L3)
     CHECK(sim::TypeRegistry::empty()->digest() == h.value());
     // And the value of an independent Python transcription (tools/sim_stream.py:
     // goods names read from AnnoGame.dll, classes from Appendix C).
-    CHECK(h.value() == 0x57bf8db1367ab475ULL);
+    CHECK(
+        h.value() ==
+        0x3a9d19d59b4f3f58ULL); // Inn tick kind 9 + payload tag 8 (K1); python transcription agrees
     // Rebuilding gives the same digest; the order types are added in does not matter.
     auto a = sim::synthetic::make_synthetic_types();
     auto b = sim::synthetic::make_synthetic_types();
@@ -1571,15 +1577,16 @@ TEST_CASE("registry digest stable") {
     CHECK(forward.build().value()->digest() == backward.build().value()->digest());
     // The synthetic registry's digest, pinned (a change of the type data, the
     // class or goods tables, or the digest layout moves it).
-    CHECK(a.value().registry->digest() == 0x20bd3120bcf7e4f2ULL);
+    CHECK(a.value().registry->digest() == 0x4de8c88166f5684fULL);
 }
 
 TEST_CASE("registry digest changes with every field") {
     // 22 since T27: the derived walk_class is the 22nd member. It is NOT in the digest,
     // so it is deliberately absent from the mutation list below ("registry digest
-    // stable" pins the synthetic digest 0x20bd3120bcf7e4f2, unchanged by T27).
-    // T33.2 adds un-hashed walk_mask input; header/digest changes belong to T33.4.
-    static_assert(sim::field_count<sim::BuildingType>() == 23);
+    // stable" pins the synthetic digest 0x96fbf9c80cb07372 (stream 128: + the empty stage table),
+    // unchanged by T27). T33.2 adds un-hashed walk_mask input; header/digest changes belong to
+    // T33.4.
+    static_assert(sim::field_count<sim::BuildingType>() == 26);
     static_assert(sim::field_count<sim::ProductionType>() == 18);
     sim::BuildingType base;
     base.id = sim::TypeId{10};
@@ -1693,7 +1700,7 @@ TEST_CASE("registry digest changes with every field") {
     goods[9].name = "WOLLE2";
     CHECK(sim::TypeRegistry::digest_of({}, goods, class_table) != empty_digest);
     // The figure types (T24) too, field by field.
-    static_assert(sim::field_count<sim::FigureType>() == 9);
+    static_assert(sim::field_count<sim::FigureType>() == 10);
     const sim::FigureType fig{220, 53687, 1280, 3, 500};
     std::map<std::uint64_t, std::string> fseen;
     fseen[sim::TypeRegistry::digest_of({}, goods_table, class_table, {&fig, 1})] = "base";
@@ -1708,6 +1715,7 @@ TEST_CASE("registry digest changes with every field") {
         {"range_88", [](auto& f) { f.range_88 += 1; }},
         {"hull_half_88", [](auto& f) { f.hull_half_88 = f.hull_half_88.value_or(0) + 1; }},
         {"hull_half_88 present zero", [](auto& f) { f.hull_half_88 = 0; }},
+        {"route", [](auto& f) { f.route += 1; }}, // stream 126 (MAP-ECON-1 E2)
     };
     for (const auto& [name, mutate] : fmuts) {
         sim::FigureType f = fig;
@@ -1908,7 +1916,11 @@ TEST_CASE("registry builds all 921 entries of Anlagen.dat") {
     REQUIRE(again);
     CHECK(again.value()->digest() == r.digest());
     // T24: the digest covers the ENTRANCE points and the figure types (none here).
-    CHECK(r.digest() == 0xe5165c06384996edULL);
+    // BVA1 extension independently decoded from original names/data:241 rows,3948bytes.
+    // Old direct-build identity855fce5ed63c1090 is preserved at the accepted base.
+    // PRM1 independently derived from HEAD and Game research-name pointers:
+    // 827rows,22151bytes,SHA256053df2ab...d5fc9, extends b62eba128fce9259.
+    CHECK(r.digest() == 0x3610424ea558d5cdULL);
     // The growing items (ROHSTWACHS / ROHSTDUERR): grain field 712 and forest 104.
     CHECK(r.find_growing(712) == r.find(sim::TypeId{712}));
     CHECK(r.find_growing(712)->prod.growth_period == 15500);
@@ -1934,4 +1946,34 @@ TEST_CASE("registry build is deterministic and independent of entry order") {
     REQUIRE(forward);
     REQUIRE(backward);
     CHECK(forward.value()->digest() == backward.value()->digest());
+}
+
+TEST_CASE("registry digest: a populated stage table matches the independent transcription") {
+    // L3 review P2-4: tools/sim_stream.py writes the digest of the registry with three hand-written
+    // stage records (stage, group, wissen, count as four u32 after a u64 count) and the same with
+    // stage and group swapped (the control).
+    std::ifstream in(std::string(ANNO_FIXTURES_DIR) + "/sim/stage_table_digest.txt");
+    REQUIRE(in.good());
+    std::map<std::string, std::uint64_t> v;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        const auto sp = line.find(' ');
+        v[line.substr(0, sp)] = std::stoull(line.substr(sp + 1), nullptr, 16);
+    }
+    REQUIRE(v.size() == 3);
+    const auto build = [](std::vector<sim::StageRecord> stages) {
+        sim::TypeRegistry::Builder b;
+        b.stage_table(std::move(stages));
+        auto built = b.build();
+        REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+        return built.value()->digest();
+    };
+    CHECK(build({}) == v.at("empty"));
+    CHECK(build({{1, 0, 0, 30}, {4, 1, 20, 25}, {31, 2, 7, 999}}) == v.at("populated"));
+    // Swapped-field control: records with stage and group exchanged hash differently.
+    CHECK(build({{0, 1, 0, 30}, {1, 4, 20, 25}, {2, 31, 7, 999}}) != v.at("populated"));
+    CHECK(v.at("populated") != v.at("swapped"));
 }

@@ -270,6 +270,9 @@ TEST_CASE("each class through the scheduler equals the direct step-function test
             ++steps.farm0;
             const sim::StepResult r = sim::farm_step(farm0, prod(t, t.farm), now);
             if (r.send_figure) {
+                // MAP-ECON-1 E2: an eligible dispatch attempt draws once, before the send (D
+                // 0x1006edf3-0x1006ee06, DrawSite::FarmWorkerDispatch); the value is discarded.
+                static_cast<void>(rng.next());
                 ++farm0.workers_out;
                 expect_sent.push_back(Sent{id0(kFarm0), 0, 22, 0, 0, now});
             }
@@ -692,29 +695,39 @@ TEST_CASE("mine deposit by index and depletion only in the add-on") {
 // --------------------------------------------------------------- the small farm
 
 TEST_CASE("small farm draws once per step through the world") {
-    // The small farm is the only draw site of G3 before tick 150 000: every advance draws
-    // exactly as often as the small farm stepped with line 1 on (the draw follows the gate,
-    // whatever the limits say), and the world's generator moves by that much.
+    // The small farm draws once per step with line 1 on (the draw follows the gate, whatever the
+    // limits say). Since MAP-ECON-1 E2 G3's farm (kFarm0) also draws, once per ELIGIBLE dispatch
+    // attempt (DrawSite::FarmWorkerDispatch): exactly the steps at which its worker counter rises
+    // (no send of G3 is refused). These are the only two draw sites before tick 150 000, and the
+    // world's generator moves by their sum.
     G3 g = G3::make();
     sim::World& w = g.world;
     const std::uint32_t cursor0 = w.rng().cursor();
-    std::uint32_t steps = 0, draws = 0;
+    std::uint32_t steps = 0, draws = 0, farm_draws = 0;
     bool per_advance = true;
     for (int i = 0; i < 6000; ++i) { // tick 30 000: about 60 steps
         const std::uint16_t last = payload<sim::SmallFarm>(w, 0, kSmallFarm0).last;
+        const std::uint32_t farm_out = payload<sim::Farm>(w, 0, kFarm0).workers_out;
         w.advance(10);
         const std::uint32_t stepped =
             payload<sim::SmallFarm>(w, 0, kSmallFarm0).last != last ? 1U : 0U;
+        const std::uint32_t sent = payload<sim::Farm>(w, 0, kFarm0).workers_out - farm_out;
         const std::uint32_t drawn = draws_at(w.last_output(), sim::DrawSite::SmallFarmAnimal);
-        per_advance = per_advance && drawn == stepped && w.last_output().draws.size() == drawn;
+        const std::uint32_t farm_drawn =
+            draws_at(w.last_output(), sim::DrawSite::FarmWorkerDispatch);
+        per_advance =
+            per_advance && drawn == stepped && farm_drawn == sent &&
+            w.last_output().draws.size() == (drawn > 0 ? 1U : 0U) + (farm_drawn > 0 ? 1U : 0U);
         steps += stepped;
         draws += drawn;
+        farm_draws += farm_drawn;
     }
     CHECK(per_advance);
     CHECK(steps >= 57);
     CHECK(draws == steps);
+    CHECK(farm_draws >= 1); // the farm's worker went out: one eligible attempt drew
     const std::uint32_t len = static_cast<std::uint32_t>(w.rng().table().size());
-    CHECK(w.rng().cursor() == (cursor0 + draws) % len);
+    CHECK(w.rng().cursor() == (cursor0 + draws + farm_draws) % len);
     // The animals it sent are figures with job 0x2e, their kinds the counters 1..4 count,
     // and never more than max_figures(0) = 3 together.
     const sim::SmallFarm& f = payload<sim::SmallFarm>(w, 0, kSmallFarm0);
@@ -742,11 +755,16 @@ TEST_CASE("small farm draws once per step through the world") {
             sf.line_on[1] = false;
         }
         const std::uint32_t c0 = v.rng().cursor();
+        std::uint32_t small_draws = 0, dispatch_draws = 0;
         for (int i = 0; i < 2000; ++i) {
             v.advance(10);
+            small_draws += draws_at(v.last_output(), sim::DrawSite::SmallFarmAnimal);
+            dispatch_draws += draws_at(v.last_output(), sim::DrawSite::FarmWorkerDispatch);
         }
         CHECK(sf.last != 0);
-        CHECK(v.rng().cursor() == c0);
+        CHECK(small_draws == 0);
+        // Only G3's farm dispatch drew (MAP-ECON-1 E2).
+        CHECK(v.rng().cursor() == c0 + dispatch_draws);
     }
 }
 
@@ -881,7 +899,7 @@ TEST_CASE("fur trapper sends nothing without prey") {
 namespace {
 
 std::filesystem::path g3_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "g3.log";
+    return anno::test::current_replay_fixture_path("g3.log");
 }
 
 std::vector<std::uint8_t> read_bytes(const std::filesystem::path& p) {
@@ -905,11 +923,12 @@ TEST_CASE("G3 every production class through advance equals golden") {
     sim::Recorder rec = std::move(started).value();
     rec.checkpoint();
     sim::StateHasher checkpoints;
-    std::uint32_t draws = 0;
+    std::uint32_t draws = 0, farm_draws = 0;
     std::vector<sim::SimEvent> ui;
     for (int i = 1; i <= 2000; ++i) {
         rec.advance(100);
         draws += draws_at(w.last_output(), sim::DrawSite::SmallFarmAnimal);
+        farm_draws += draws_at(w.last_output(), sim::DrawSite::FarmWorkerDispatch);
         if (i % 100 == 0) {
             rec.checkpoint();
             checkpoints.u64(w.state_hash());
@@ -980,8 +999,13 @@ TEST_CASE("G3 every production class through advance equals golden") {
     // 100 000 ticks (one gate per 500 ticks; the scheduler reaches the farm a little after
     // each gate opens, so the 200th falls after the end). Pinned like the goldens.
     CHECK(draws == 199);
+    // MAP-ECON-1 E2: the farm draws once per eligible dispatch attempt (FarmWorkerDispatch). Its
+    // one worker (max_figures 1) goes out once and never returns (no body for its job here), so
+    // there is exactly one eligible attempt: the draw count equals its worker counter.
+    CHECK(farm_draws == 1);
+    CHECK(payload<sim::Farm>(w, 0, kFarm0).workers_out == farm_draws);
     const std::uint32_t len = static_cast<std::uint32_t>(w.rng().table().size());
-    CHECK(w.rng().cursor() == (cursor0 + draws) % len);
+    CHECK(w.rng().cursor() == (cursor0 + draws + farm_draws) % len);
     // UI events: one Notice 0x19 (the mine), no figure with the trapper's job.
     std::size_t notices = 0;
     for (const sim::SimEvent& e : ui) {

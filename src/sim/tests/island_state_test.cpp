@@ -580,7 +580,7 @@ TEST_CASE("world create does not depend on the executor") {
 TEST_CASE("island fields are counted") {
     // The canaries of state_fields.hpp, restated: a member added to a persistent
     // island type without a line in its fields() function fails the build there.
-    CHECK(sim::field_count<sim::Island>() == 19);
+    CHECK(sim::field_count<sim::Island>() == 20);
     CHECK(sim::field_count<sim::Drought>() == 10);
     CHECK(sim::field_count<sim::SweepState>() == 5);
     CHECK(sim::field_count<sim::CityRing>() == 2);
@@ -607,7 +607,8 @@ TEST_CASE("island fields are counted") {
     // word, stream 108), deposits count + goods length + goods bytes + x + y + remaining + reserve
     // (7), reserved (1), tiles: 3 dims + 6 x 10 columns, cities: the slot count (no slot in this
     // island).
-    CHECK(prims == 11 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 1 + 3 + 60 + 1); // + the ore-object count
+    // + the ore-object count, + the claims count (stream 126, an empty map: one primitive)
+    CHECK(prims == 11 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 1 + 3 + 60 + 1 + 1);
 }
 
 TEST_CASE("islands scope stream layout") {
@@ -654,7 +655,8 @@ TEST_CASE("islands scope stream layout") {
             want.boolean(d.reserve);
         }
         want.u64(0); // no ore objects (stream 120)
-        want.u64(0);
+        want.u64(0); // reserved_object_count
+        want.u64(0); // claims: no enhanced owner (stream 126)
         want.u32(wd);
         want.u32(ht);
         want.u32(8);
@@ -835,6 +837,10 @@ TEST_CASE("island perturbation moves the hash") {
         {"deposit removed", [](sim::Island& i) { i.deposits.pop_back(); }},
         {"deposits swapped", [](sim::Island& i) { std::swap(i.deposits[0], i.deposits[1]); }},
         {"reserved_object_count", [](sim::Island& i) { i.reserved_object_count = 1; }},
+        // stream 126: the enhanced claim owners, an entry, its tile and its worker.
+        {"claims entry", [](sim::Island& i) { i.claims[sim::TileXY{0, 0}] = sim::FigureId{1}; }},
+        {"claims tile", [](sim::Island& i) { i.claims[sim::TileXY{0, 1}] = sim::FigureId{1}; }},
+        {"claims worker", [](sim::Island& i) { i.claims[sim::TileXY{0, 0}] = sim::FigureId{2}; }},
         {"first tile object", [](sim::Island& i) { i.tiles.set_object(0, 1); }},
         {"first tile phase", [](sim::Island& i) { i.tiles.set_phase(0, 1); }},
         {"first tile owner", [](sim::Island& i) { i.tiles.set_owner(0, 1); }},
@@ -859,7 +865,7 @@ TEST_CASE("island perturbation moves the hash") {
     const sim::World base = make_world(zero_island_scenario());
     const std::uint64_t base_hash = sim::World(base).state_hash();
     const std::vector<std::uint64_t> base_scopes = scope_hashes(base);
-    REQUIRE(base_scopes.size() == 9);
+    REQUIRE(base_scopes.size() == 10);
     for (const auto& [name, mutate] : mutations) {
         INFO("mutation " << name);
         sim::World w = base;
@@ -1747,7 +1753,7 @@ TEST_CASE("save load save identical with islands") {
     CHECK(bytes[3] == 'V');
     CHECK(island_test::get32(bytes, 4) == sim::kSaveVersion);
     CHECK(island_test::get32(bytes, 8) == sim::kStateHashVersion);
-    CHECK(bytes[12] == 0); // the original PRNG table
+    CHECK(bytes[20] == 0); // the original PRNG table
     sim::World back = island_test::load_world(bytes);
     CHECK(back.state_hash() == w.state_hash());
     CHECK(back.save() == bytes);
@@ -1795,8 +1801,8 @@ TEST_CASE("save load with a custom PRNG table and without islands") {
     spec.rng_table = sim::msvc_rand_sequence(100, 5);
     const sim::World w = make_world(spec);
     const std::vector<std::uint8_t> bytes = w.save();
-    CHECK(bytes[12] == 1);
-    CHECK(island_test::get32(bytes, 13) == 100); // u64 count, low word
+    CHECK(bytes[20] == 1);
+    CHECK(island_test::get32(bytes, 21) == 100); // u64 count, low word
     sim::World back = island_test::load_world(bytes);
     CHECK(back.rng().size() == 100);
     CHECK(back.rng().cursor() == 34);
@@ -1879,44 +1885,45 @@ TEST_CASE("load refuses a damaged frame") {
         CHECK(contains(err, "state stream version " + std::to_string(sim::kStateHashVersion - 1) +
                                 " is not supported"));
     }
-    SUBCASE("a valid stream 123 control: the old version is refused with its own text, 124 loads") {
-        // The stream before MAP-CARGO-1 (Rules without `cargo`) is version 123. The control is a
-        // valid save of this build; only the version word is changed and the frame resealed.
-        static_assert(sim::kStateHashVersion == 124, "update this test with the next stream bump");
+    SUBCASE("a valid SCRIPT1 stream129 refuses published128 specifically") {
+        // Published128 has no SCRIPT1 discriminator, script continuation or permission rows. The
+        // control is a valid save of this build; only the version word is changed and the frame
+        // resealed, so the refusal is the version text and not checksum damage.
+        static_assert(sim::kStateHashVersion == 130, "update this test with the next stream bump");
         CHECK(island_test::load_error(good).empty()); // the control loads
         std::vector<std::uint8_t> old = good;
-        island_test::put32(old, 8, 123);
+        island_test::put32(old, 8, 128);
         island_test::reseal(old);
         const std::string err = island_test::load_error(old);
-        CHECK(contains(err, "state stream version 123 is not supported (this build reads 124)"));
+        CHECK(contains(err, "state stream version 128 is not supported (this build reads 130)"));
     }
     SUBCASE("the PRNG table kind") {
         std::vector<std::uint8_t> bad = good;
-        bad[12] = 2;
+        bad[20] = 2;
         island_test::reseal(bad);
         CHECK(contains(island_test::load_error(bad), "unknown PRNG table kind 2"));
-        bad[12] = 1; // claims a custom table the bytes do not hold
+        bad[20] = 1; // claims a custom table the bytes do not hold
         island_test::reseal(bad);
         CHECK(island_test::load_error(bad) != "");
     }
     SUBCASE("section lengths") {
-        // The header section's length is the u64 at byte 13.
+        // The header section's length is the u64 at byte21.
         std::vector<std::uint8_t> bad = good;
-        island_test::put32(bad, 13, 0xFFFFFFFFU);
+        island_test::put32(bad, 21, 0xFFFFFFFFU);
         island_test::reseal(bad);
         CHECK(contains(island_test::load_error(bad), "claims"));
         bad = good;
-        island_test::put32(bad, 17, 0x7FFFFFFFU); // the high word: more than a size
+        island_test::put32(bad, 25, 0x7FFFFFFFU); // the high word: more than a size
         island_test::reseal(bad);
         CHECK(contains(island_test::load_error(bad), "claims"));
         // A section one byte too long swallows a byte of the next length.
         bad = good;
-        island_test::put32(bad, 13, island_test::get32(good, 13) + 1);
+        island_test::put32(bad, 21, island_test::get32(good, 21) + 1);
         island_test::reseal(bad);
         CHECK(contains(island_test::load_error(bad), "bytes after its last field"));
         // One byte too short ends the section inside its last field.
         bad = good;
-        island_test::put32(bad, 13, island_test::get32(good, 13) - 1);
+        island_test::put32(bad, 21, island_test::get32(good, 21) - 1);
         island_test::reseal(bad);
         CHECK(island_test::load_error(bad) != "");
     }
@@ -2018,8 +2025,8 @@ TEST_CASE("a custom PRNG table of the original length is saved as custom") {
     const sim::World w = make_world(spec);
     REQUIRE(w.rng().size() == 2048);
     const std::vector<std::uint8_t> bytes = w.save();
-    CHECK(bytes[12] == 1);
-    CHECK(island_test::get32(bytes, 13) == 2048);
+    CHECK(bytes[20] == 1);
+    CHECK(island_test::get32(bytes, 21) == 2048);
     const sim::World back = island_test::load_world(bytes);
     CHECK(back.rng().size() == 2048);
     CHECK(back.rng().table_digest() == w.rng().table_digest());
@@ -2030,7 +2037,7 @@ TEST_CASE("a custom PRNG table of the original length is saved as custom") {
     sim::ScenarioSpec orig = syn::basic_scenario(77);
     orig.rng_table = sim::msvc_rand_sequence(2048, 1);
     const sim::World ow = make_world(orig);
-    CHECK(ow.save()[12] == 0);
+    CHECK(ow.save()[20] == 0);
     CHECK(island_test::load_world(ow.save()).state_hash() == ow.state_hash());
 }
 
@@ -2039,13 +2046,13 @@ TEST_CASE("load refuses a PRNG table count the remaining bytes cannot back") {
     spec.rng_table = sim::msvc_rand_sequence(100, 5);
     const std::vector<std::uint8_t> good = make_world(spec).save();
     REQUIRE(island_test::load_error(good) == "");
-    // The u64 count is at byte 13, the entries (u16) follow it at byte 21.
-    const std::size_t remaining = good.size() - 8 - 21;
+    // The u64 count is at byte21; entries follow at byte29.
+    const std::size_t remaining = good.size() - 8 - 29;
     // Each entry takes two bytes: a count of half the remaining bytes plus one is
     // too much, although as a byte count it would still fit (n <= remaining).
     for (const std::size_t n : {remaining / 2 + 1, remaining}) {
         std::vector<std::uint8_t> bad = good;
-        island_test::put32(bad, 13, static_cast<std::uint32_t>(n));
+        island_test::put32(bad, 21, static_cast<std::uint32_t>(n));
         island_test::reseal(bad);
         INFO("claimed entries " << n);
         CHECK(contains(island_test::load_error(bad), "count exceeds the remaining input"));
@@ -2055,11 +2062,11 @@ TEST_CASE("load refuses a PRNG table count the remaining bytes cannot back") {
 TEST_CASE("load refuses a header whose config has a zero divisor before any container is sized") {
     const sim::World w = make_world(syn::basic_scenario());
     const std::vector<std::uint8_t> good = w.save();
-    // The header section starts at byte 21 (13 + its u64 length): u32 stream
-    // version, u32 PRNG timeline version, then SimConfig. island_slots is its
+    // The header section starts at byte29 (21 + its u64 length): u32 stream,
+    // u64 SCRIPT1 schema, u32 PRNG timeline, then SimConfig. island_slots is its
     // first field, chunk_edge its 16th, building_div its 21st (figure_min_growth, T22,
     // is the 19th).
-    constexpr std::size_t kConfig = 21 + 8;
+    constexpr std::size_t kConfig = 29 + 16;
     REQUIRE(island_test::get32(good, kConfig) == 256);
     REQUIRE(island_test::get32(good, kConfig + 4 * 20) == 500);
     SUBCASE("a zero divisor") {
@@ -2069,7 +2076,7 @@ TEST_CASE("load refuses a header whose config has a zero divisor before any cont
         const std::string err = island_test::load_error(bad);
         CHECK(contains(err, "SimConfig.building_div"));
         CHECK(contains(err, "header"));
-        CHECK(contains(err, "section header (starts at file byte 21): "));
+        CHECK(contains(err, "section header (starts at file byte 29): "));
     }
     SUBCASE("a table size that would ask for gigabytes") {
         for (const std::size_t field : {std::size_t{0}, std::size_t{1}, std::size_t{3}}) {

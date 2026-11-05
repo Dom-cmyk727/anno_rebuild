@@ -1,0 +1,314 @@
+{
+  "ship_health": [
+    {
+      "max_hp": 12000,
+      "head9": 128,
+      "expected": 12000,
+      "wrong_full_default": 12000
+    },
+    {
+      "max_hp": 12000,
+      "head9": 64,
+      "expected": 6000,
+      "wrong_full_default": 12000
+    },
+    {
+      "max_hp": 12000,
+      "head9": 1,
+      "expected": 93,
+      "wrong_nearest_round": 94
+    },
+    {
+      "max_hp": 12000,
+      "head9": 0,
+      "expected": 12000,
+      "wrong_zero": 0
+    },
+    {
+      "max_hp": 12000,
+      "head9": 129,
+      "original_reader_result": 12093,
+      "engine_domain": "over-max; require explicit refusal/contract, not silent clamp"
+    }
+  ],
+  "walker_health": [
+    {
+      "max_hp": 350,
+      "signed_head_word8": 350,
+      "expected": 350
+    },
+    {
+      "max_hp": 350,
+      "signed_head_word8": 175,
+      "expected": 175
+    },
+    {
+      "max_hp": 350,
+      "signed_head_word8": 0,
+      "expected": 350
+    },
+    {
+      "max_hp": 350,
+      "signed_head_word8": -1,
+      "expected": 350
+    },
+    {
+      "max_hp": 350,
+      "signed_head_word8": 351,
+      "expected": 350
+    }
+  ],
+  "holds": [
+    {
+      "record_hex": "29ab0300f00ff00f",
+      "goods_map": {
+        "41": 90001
+      },
+      "cap_88": 2560,
+      "expected_goods": 90001,
+      "expected_amount_88": 768,
+      "separates": "goods low byte and WARETYPE mapping; ignored byte1/tail; tons to8.8"
+    },
+    {
+      "record_hex": "2900050000000000",
+      "goods_map": {
+        "41": 90001
+      },
+      "cap_88": 512,
+      "expected_goods": 90001,
+      "expected_amount_88": 512,
+      "separates": "capacity clamp"
+    },
+    {
+      "record_hex": "2900000000000000",
+      "goods_map": {
+        "41": 90001
+      },
+      "cap_88": 512,
+      "expected_goods": 90001,
+      "expected_amount_88": 0,
+      "legal_control": "zero amount"
+    }
+  ],
+  "state": [
+    {
+      "role": "top_ship",
+      "head1": 255,
+      "head9": 128,
+      "head10": 0,
+      "expected": 32768,
+      "crew_classes": [
+        97,
+        97
+      ],
+      "head8": 0
+    },
+    {
+      "role": "crew_scout",
+      "head1": 255,
+      "expected": 136
+    },
+    {
+      "role": "held_donkey",
+      "head1": 255,
+      "expected": 136
+    },
+    {
+      "role": "top_scout",
+      "head1": 255,
+      "expected": 0,
+      "separates": "top-level initial segment clears constructor8"
+    },
+    {
+      "role": "top_scout",
+      "head1": 0,
+      "expected": 32,
+      "separates": "nonnegative signedHEAD1 sets20"
+    },
+    {
+      "role": "top_ship",
+      "head1": 0,
+      "head10": 3,
+      "n2_crew": 0,
+      "expected": 33056,
+      "separates": "independent20/100/8000 projection",
+      "crew_classes": [
+        97,
+        97
+      ],
+      "head8": 0
+    },
+    {
+      "role": "top_ship",
+      "head1": 255,
+      "head8": 1,
+      "head9": 128,
+      "head10": 0,
+      "other_crew_capacity": 15,
+      "crew_classes": [
+        97,
+        97
+      ],
+      "expected": 0,
+      "separates": "HEAD8 abstract crew clears8000; scouts do not qualify"
+    }
+  ],
+  "identity": [
+    {
+      "raw_ids": [
+        37,
+        2
+      ],
+      "parent_ordinals": [
+        null,
+        0
+      ],
+      "initial_slots": 100,
+      "expected_engine_ids": [
+        1,
+        2
+      ],
+      "expected_slots": [
+        37,
+        2
+      ],
+      "expected_hint": 2,
+      "expected_next_free": 3
+    }
+  ],
+  "crew_prefix": [
+    {
+      "id": 4660,
+      "kind": 717,
+      "slot": 3,
+      "expected_id": 4660,
+      "expected_slot": 3
+    },
+    {
+      "id": 0,
+      "kind": 717,
+      "slot": 0,
+      "expected_id": 0,
+      "expected_slot": 0
+    }
+  ],
+  "slot_growth": [
+    {
+      "initial_slots": 100,
+      "requested_slot": 100,
+      "min_growth": 100,
+      "expected_slots": 125,
+      "wrong_current_length_plus_one": 101
+    },
+    {
+      "initial_slots": 1,
+      "requested_slot": 9,
+      "min_growth": 100,
+      "expected_slots": 100
+    }
+  ],
+  "positions": [
+    {
+      "f32_bits": "3f8ccccd",
+      "q8": 281,
+      "q32": 4724464128,
+      "pos_u": 2362232064000,
+      "separates": "preserve ship non-Q8 fraction"
+    },
+    {
+      "f32_bits": "2f000000",
+      "q32": 0,
+      "separates": "half ties to even zero"
+    },
+    {
+      "f32_bits": "2fc00000",
+      "q32": 2,
+      "separates": "one-and-half ties to even two"
+    },
+    {
+      "f32_bits": "2f800000",
+      "q32": 1,
+      "separates": "exact positive control"
+    },
+    {
+      "f32_bits": "00000000",
+      "q8": 0,
+      "q32": 0
+    },
+    {
+      "f32_bits": "80000000",
+      "q8": 0,
+      "q32": 0
+    },
+    {
+      "f32_bits": "bf800000",
+      "refusal": "negative nonzero position"
+    },
+    {
+      "f32_bits": "7f800000",
+      "refusal": "nonfinite"
+    },
+    {
+      "f32_bits": "7fc00000",
+      "refusal": "nonfinite"
+    }
+  ],
+  "facing": [
+    {
+      "role": "top_ship",
+      "source": 4,
+      "dir16": 4
+    },
+    {
+      "role": "top_scout",
+      "source": 4,
+      "dir16": 8
+    },
+    {
+      "role": "crew_scout",
+      "dir16": 0
+    },
+    {
+      "role": "held_donkey",
+      "dir16": 0
+    }
+  ],
+  "ownership": [
+    {
+      "enclosing_player": 7,
+      "ignored_prefix_owner": 255,
+      "expected_owner": 7
+    }
+  ],
+  "domains": {
+    "figure_id_invalid": "UINT64_MAX",
+    "slot_invalid": "UINT32_MAX",
+    "live_figure_id_min": 1,
+    "raw_slot_zero_legal": true,
+    "role_pairings": {
+      "SCHIFF": "class113",
+      "SOLDAT": "class97",
+      "ship.CREW.ENTRY": "class97",
+      "held_scout.ESEL": "class53"
+    },
+    "other_pairings": "explicit refusal before World creation"
+  },
+  "type_import_metadata": [
+    {
+      "logic15": 6,
+      "logic26": 6,
+      "expected_other_crew": 6,
+      "head8": 1,
+      "expected_ship_state": 0,
+      "control": "equal fields legal"
+    },
+    {
+      "logic15": 15,
+      "logic26": 0,
+      "expected_other_crew": 0,
+      "head8": 1,
+      "expected_ship_state": 32768,
+      "separates": "slot88 mode2 versus cannon getter"
+    }
+  ]
+}

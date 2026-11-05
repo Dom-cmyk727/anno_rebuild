@@ -340,6 +340,7 @@ class PlayRunner {
     [[nodiscard]] std::uint64_t p95_locked() const;
 
     sim::World world_;
+    std::string simulation_error_; // sim-thread owned; published as the refusal reason
     std::unique_ptr<PlaySchedule> owned_schedule_;
     PlaySchedule* schedule_ = nullptr;
     std::uint32_t step_ms_ = 10;

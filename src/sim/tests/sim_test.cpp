@@ -394,7 +394,15 @@ TEST_CASE("draw sources forward the site and the world stream") {
     CHECK(static_cast<int>(sim::DrawSite::ComputerName) == 16);
     CHECK(static_cast<int>(sim::DrawSite::CityName) == 17);
     CHECK(static_cast<int>(sim::DrawSite::CityNameLoad) == 18);
-    CHECK(static_cast<int>(sim::DrawSite::Count_) == 19);
+    CHECK(static_cast<int>(sim::DrawSite::FarmWorkerDispatch) == 19); // MAP-ECON-1 E2, appended
+    CHECK(static_cast<int>(sim::DrawSite::HouseWalkerTarget) == 20);  // MAP-POP-LIVE-1 L1, declared
+    CHECK(static_cast<int>(sim::DrawSite::HouseVariant) == 21);
+    CHECK(static_cast<int>(sim::DrawSite::HouseFirstAssignment) == 22);
+    CHECK(static_cast<int>(sim::DrawSite::Count_) == 23);
+    CHECK(sim::draw_site_ported(sim::DrawSite::FarmWorkerDispatch));
+    CHECK(sim::draw_site_phase(sim::DrawSite::FarmWorkerDispatch) == sim::DrawPhase::Advance);
+    CHECK(std::string(sim::draw_site_name(sim::DrawSite::FarmWorkerDispatch)) ==
+          "FarmWorkerDispatch");
     CHECK(sim::DrawRecord{}.count == 0);
 }
 
@@ -482,7 +490,7 @@ TEST_CASE("state_hash relational properties") {
     sim::HashTree tree;
     CHECK(base.state_hash(tree, 0) == h);
     CHECK(tree.root.hash == h);
-    REQUIRE(tree.root.children.size() == 9);
+    REQUIRE(tree.root.children.size() == 10);
     CHECK(tree.root.children[0].name == "header");
     CHECK(tree.root.children[1].name == "clock_rng");
     CHECK(tree.root.children[2].name == "settings");
@@ -501,6 +509,7 @@ TEST_CASE("state_hash relational properties") {
     fields(rules_bytes, base.rules());
     sim::StateHasher header;
     header.u32(sim::kStateHashVersion);
+    header.u64(0x0032545049524353ULL);
     header.u32(sim::kPrngTimelineVersion);
     header.bytes(config_bytes.data());
     header.bytes(rules_bytes.data());
@@ -577,6 +586,19 @@ TEST_CASE("state_hash relational properties") {
         timers.u8(0);
     }
     CHECK(tree.root.children[8].hash == timers.value());
+    sim::StateHasher script;
+    script.u64(0);
+    for (auto v : {1048576u, 65536u, 128u, 100000u, 4096u})
+        script.u32(v);
+    script.u8(0);  // namespace absent
+    script.u32(2); // execution policy
+    script.u8(0);
+    script.u8(0);
+    for (int i = 0; i < 4; ++i)
+        script.u32(0);
+    script.u64(0);
+    script.u64(0);
+    CHECK(tree.root.children[9].hash == script.value());
     sim::StateHasher root;
     root.u64(header.value());
     root.u64(base.core_hash());
@@ -587,14 +609,16 @@ TEST_CASE("state_hash relational properties") {
     root.u64(figures.value());
     root.u64(events.value());
     root.u64(timers.value());
+    root.u64(script.value());
     CHECK(root.value() == h);
     // The empty world, from the independent Python transcription of the stream
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0x2084357819816c0fULL); // empty_world at 124 (sim_stream.py)
-    CHECK(sim::kStateHashVersion == 124);
-    CHECK(sim::kPrngTimelineVersion == 3);
+    CHECK(sim::World().state_hash() ==
+          0x6598d00ddc83aca6ULL); // SCRIPT2 empty_world; independent sim_stream_script2.py
+    CHECK(sim::kStateHashVersion == 130);
+    CHECK(sim::kPrngTimelineVersion == 5);
 }
 
 namespace {
@@ -659,7 +683,7 @@ TEST_CASE("hash_state records the scopes down to the requested depth") {
     // without islands: one scope `player` per slot, indexed by the slot (S4, the
     // first world scope that nests), and one scope `figure` per slot of the registry
     // (S7: one empty slot), recorded from depth 1 on and not at depth 0.
-    REQUIRE(tree.root.children.size() == 9);
+    REQUIRE(tree.root.children.size() == 10);
     for (const sim::HashNode& c : tree.root.children) {
         CHECK(c.children.size() == (c.name == "players" ? 32U : c.name == "figures" ? 1U : 0U));
     }
@@ -672,7 +696,7 @@ TEST_CASE("hash_state records the scopes down to the requested depth") {
     }
     sim::HashTree shallow;
     CHECK(w.state_hash(shallow, 0) == w.state_hash());
-    REQUIRE(shallow.root.children.size() == 9);
+    REQUIRE(shallow.root.children.size() == 10);
     CHECK(shallow.root.children[4].children.empty());
 }
 
@@ -796,7 +820,7 @@ TEST_CASE("field count canary") {
     // must name exactly that many. A member added without a line in the field
     // list fails here (and the static_assert fails the build).
     static_assert(sim::field_count<sim::WorldClock>() == 2);
-    static_assert(sim::field_count<sim::StateHeader>() == 2);
+    static_assert(sim::field_count<sim::StateHeader>() == 3);
     static_assert(sim::field_count<sim::IdCounters>() == 4);
     static_assert(sim::field_count<sim::TileXY>() == 2);
     static_assert(sim::field_count<sim::TileRect>() == 4);
@@ -875,13 +899,14 @@ TEST_CASE("world core stream layout round trip and rejects") {
     constexpr std::size_t kIdsBytes = 25 + 16; // + next_order_id, next_ticket (stream 122)
     constexpr std::size_t kPlayersBytes = 8 + 32 + 2 + 4;
     constexpr std::size_t kIslandsBytes = 8;
-    constexpr std::size_t kTailBytes = 31 + 8 + 193;
+    constexpr std::size_t kTailBytes = 31 + 8 + 193 + 67;
     REQUIRE(bytes.size() >
             8 + 36 + kSettingsBytes + kIdsBytes + kPlayersBytes + kIslandsBytes + kTailBytes);
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
-    CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{124, 0, 0, 0, 3, 0, 0, 0});
+    CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16) ==
+          std::vector<std::uint8_t>{130, 0, 0, 0, 0x53, 0x43, 0x52, 0x49, 0x50, 0x54, 0x32, 0, 5, 0,
+                                    0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -924,7 +949,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another PRNG timeline version is refused") {
         auto bad = bytes;
-        bad[4] = 4; // this build's timeline is 3
+        bad[12] = 3; // this build's timeline is 5; 3 predates FarmWorkerDispatch
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

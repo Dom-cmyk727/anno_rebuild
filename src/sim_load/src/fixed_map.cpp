@@ -15,6 +15,7 @@
 #include <anno/sim/production.hpp>
 #include <anno/sim_load/fixed_map.hpp>
 #include <anno/sim_load/scenario_load.hpp>
+#include <anno/sim_load/script_base.hpp>
 
 namespace anno::sim_load {
 namespace {
@@ -111,11 +112,17 @@ load_fixed_map(const formats::fixed_map::FixedMap& map, std::span<const sim::Sea
     if (!base_bytes) {
         return "base: cannot read " + base_path.string();
     }
-    auto loaded = sim::load_scenario(*base_bytes, types, config);
+    // This base supplies settings/catalogs, not the original actors. Preserve that explicit
+    // generated-map boundary; playable original files use ImportRequired by default.
+    sim::UnitImportOptions base_units;
+    base_units.projection = sim::OriginalActorProjection::ActorFreeComponent;
+    auto loaded = sim::load_scenario(*base_bytes, types, config, base_units);
     if (!loaded) {
         return "base: " + loaded.error();
     }
     sim::LoadedScenario out = std::move(loaded).value();
+    if (auto error = make_generated_script_free(out.spec, types, config); !error.empty())
+        return "base: " + error;
 
     std::optional<std::int64_t> human_money;
     for (const sim::ScenarioSpec::PlayerSpec& player : out.spec.players) {

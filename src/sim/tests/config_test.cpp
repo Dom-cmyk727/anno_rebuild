@@ -174,6 +174,15 @@ void expected_config(Stream& s) {
            {10, {64, 80, 128, 256}}}); // ore_width_rank
     s.u32s({4, 3, 2, 1});              // raw_rank_score
     s.u32s({116, 6, 3, 1});            // ore_rank_score
+    // MAP-POP-IMPL-1 B (stream 127): the population goods roles, hand-written defaults
+    for (const std::uint32_t x : {0x4cU, 0x5aU, 0x4cU, 0x1dU}) {
+        s.u32(x); // infra_first, infra_last, tavern_goods, tavern_alias_goods
+    }
+    // MAP-POP-LIVE-1 L1 (stream 128): the billed consumer-goods range 0x1a..0x28 (D 0x1002dac0)
+    // and the resident cargo slot count 3 (D 0x10057d70), hand-written defaults
+    for (const std::uint32_t x : {0x1aU, 0x28U, 3U, 20U}) {
+        s.u32(x); // billed_goods_first, billed_goods_last, resident_cargo_slots, house_type_stride
+    }
     // Rules
     s.u8(0); // slot_policy
     s.u8(0); // spatial_order
@@ -227,6 +236,15 @@ void expected_config(Stream& s) {
     for (const std::uint32_t w : {5U, 5U, 5U, 4U, 3U, 2U}) {
         s.u32(w);
     }
+    // road options (stream 125): hand-written defaults, both off (docs/sim/road-placement.md 3)
+    s.boolean(false); // road_require_land_level
+    s.boolean(false); // road_preserve_nonroad_pieces
+    // forestry options (stream 126): hand-written defaults, both off (docs/sim/forestry.md 3.6)
+    s.boolean(false); // forestry_claim_hygiene
+    s.boolean(false); // forestry_skip_uncuttable
+    // house options (stream 128): house_updates off, save_billed_goods on
+    s.boolean(false); // house_updates
+    s.boolean(true);  // save_billed_goods
 }
 
 void expected_settings(Stream& s) {
@@ -352,6 +370,18 @@ std::vector<std::pair<const char*, ConfigMut>> config_mutations() {
                    [](sim::SimConfig& c) { c.small_farm_animals.kind_by_draw[0] += 1; });
     m.emplace_back("layout", [](sim::SimConfig& c) { c.layout.schedule.pop_back(); });
     m.emplace_back("links", [](sim::SimConfig& c) { c.links.ore_rank_score[0] += 1; });
+    m.emplace_back("population_infra_first",
+                   [](sim::SimConfig& c) { c.population_infra_first += 1; });
+    m.emplace_back("population_infra_last",
+                   [](sim::SimConfig& c) { c.population_infra_last += 1; });
+    m.emplace_back("population_tavern_goods",
+                   [](sim::SimConfig& c) { c.population_tavern_goods += 1; });
+    m.emplace_back("population_tavern_alias_goods",
+                   [](sim::SimConfig& c) { c.population_tavern_alias_goods += 1; });
+    m.emplace_back("billed_goods_first", [](sim::SimConfig& c) { c.billed_goods_first += 1; });
+    m.emplace_back("billed_goods_last", [](sim::SimConfig& c) { c.billed_goods_last += 1; });
+    m.emplace_back("resident_cargo_slots", [](sim::SimConfig& c) { c.resident_cargo_slots += 1; });
+    m.emplace_back("house_type_stride", [](sim::SimConfig& c) { c.house_type_stride += 1; });
     return m;
 }
 
@@ -392,6 +422,16 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("shared_visibility", [](sim::Rules& r) { r.shared_visibility = {{0, 1}}; });
     m.emplace_back("nav", [](sim::Rules& r) { r.nav.plans_per_advance += 1; });
     m.emplace_back("cargo", [](sim::Rules& r) { r.cargo.dock_half_widths = {4, 4, 3, 2, 1}; });
+    m.emplace_back("road_require_land_level",
+                   [](sim::Rules& r) { r.road_require_land_level = true; });
+    m.emplace_back("road_preserve_nonroad_pieces",
+                   [](sim::Rules& r) { r.road_preserve_nonroad_pieces = true; });
+    m.emplace_back("forestry_claim_hygiene",
+                   [](sim::Rules& r) { r.forestry_claim_hygiene = true; });
+    m.emplace_back("forestry_skip_uncuttable",
+                   [](sim::Rules& r) { r.forestry_skip_uncuttable = true; });
+    m.emplace_back("house_updates", [](sim::Rules& r) { r.house_updates = true; });
+    m.emplace_back("save_billed_goods", [](sim::Rules& r) { r.save_billed_goods = false; });
     return m;
 }
 
@@ -598,10 +638,16 @@ TEST_CASE("rules defaults are faithful") {
     CHECK_FALSE(r.timer0_clamp);
     CHECK(r.island_candidate_order == sim::IslandCandidateOrder::Sorted);
     CHECK_FALSE(r.removal_clear_tile);
+    CHECK_FALSE(r.road_require_land_level); // the faithful convention: both road choices off
+    CHECK_FALSE(r.road_preserve_nonroad_pieces);
+    CHECK_FALSE(r.forestry_claim_hygiene); // the faithful convention: both forestry choices off
+    CHECK_FALSE(r.forestry_skip_uncuttable);
+    CHECK_FALSE(r.house_updates); // the House dispatch stays a no-op by default (P-7)
+    CHECK(r.save_billed_goods);   // owner 2026-10-25: billed is saved by default
     CHECK(r.validate().empty());
     CHECK(r.founding_types == std::vector<std::uint32_t>{1302});
     CHECK(r.shared_visibility.empty());
-    static_assert(sim::field_count<sim::Rules>() == 25);
+    static_assert(sim::field_count<sim::Rules>() == 31);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -662,6 +708,10 @@ TEST_CASE("sim config defaults are the originals") {
     CHECK(c.links.raw_kinds == 20);
     CHECK(c.links.ore_kinds == 9);
     CHECK(c.links.rounds == 25);
+    CHECK(c.billed_goods_first == 0x1a); // D 0x1002dac0: the billed consumer-goods range
+    CHECK(c.billed_goods_last == 0x28);
+    CHECK(c.resident_cargo_slots == 3); // D 0x10057d70: cargo slots 0..2
+    CHECK(c.house_type_stride == 20);   // D 0x1002cc22: div 0x14
     CHECK(c.validate().empty());
     // kOriginalWarehouseGoods and the city pass count the Seams default uses.
     CHECK(sim::kOriginalCityPassCount == 8);
@@ -669,7 +719,7 @@ TEST_CASE("sim config defaults are the originals") {
 }
 
 TEST_CASE("config digest changes with every field") {
-    static_assert(sim::field_count<sim::SimConfig>() == 52);
+    static_assert(sim::field_count<sim::SimConfig>() == 60);
     const sim::SimConfig base;
     const std::uint64_t base_digest = base.digest();
     CHECK(sim::SimConfig{}.digest() == base_digest);
@@ -948,6 +998,25 @@ TEST_CASE("config validate rejects each bad field") {
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_rank_score[0] = 254; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.best_list_cap = 0; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.pick_list_cap = 0; }});
+    // The population roles (MAP-POP-IMPL-1 B): the order only; the goods domain is the registry's.
+    rows.push_back({"population_infra_first", [](sim::SimConfig& c) {
+                        c.population_infra_first = 0x5b; // above infra_last 0x5a
+                    }});
+    rows.push_back({"population_tavern_goods", [](sim::SimConfig& c) {
+                        c.population_tavern_goods = 0x4b; // below the range
+                    }});
+    rows.push_back({"population_tavern_goods", [](sim::SimConfig& c) {
+                        c.population_tavern_goods = 0x5b; // above the range
+                    }});
+    rows.push_back({"population_tavern_alias_goods", [](sim::SimConfig& c) {
+                        c.population_tavern_alias_goods = 0x50; // inside the range
+                    }});
+    // MAP-POP-LIVE-1 L1: the billed range order, and at least one resident cargo slot.
+    rows.push_back({"billed_goods_first", [](sim::SimConfig& c) {
+                        c.billed_goods_first = 0x29; // above billed_goods_last 0x28
+                    }});
+    rows.push_back({"resident_cargo_slots", [](sim::SimConfig& c) { c.resident_cargo_slots = 0; }});
+    rows.push_back({"house_type_stride", [](sim::SimConfig& c) { c.house_type_stride = 0; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.raw_kinds = 0; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_mask_bit[0] = 32; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_kinds = 0; }});
@@ -1461,6 +1530,7 @@ TEST_CASE("state stream header and settings scopes") {
     // timers, 28 empty monopoly entries).
     Stream expected;
     expected.u32(sim::kStateHashVersion);
+    expected.u64(0x0032545049524353ULL); // SCRIPT2 schema
     expected.u32(sim::kPrngTimelineVersion);
     expected_config(expected);
     expected.u64(sim::TypeRegistry::empty()->digest());
@@ -1511,8 +1581,19 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u32(0); // time_s
         expected.u8(0);  // no player
     }
+    expected.u64(0); // script: source length
+    for (auto v : {1048576u, 65536u, 128u, 100000u, 4096u})
+        expected.u32(v);
+    expected.u8(0);  // namespace absent
+    expected.u32(2); // execution policy // limits/policy
+    expected.u8(0);
+    expected.u8(0); // Missing/no fault
+    for (int i = 0; i < 4; ++i)
+        expected.u32(0); // cursor,arg,faultoffset,work
+    expected.u64(0);
+    expected.u64(0); // signals/bindings
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 124);
+    CHECK(sim::kStateHashVersion == 130);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
@@ -1524,7 +1605,8 @@ TEST_CASE("state stream header and settings scopes") {
     // figures: 31 bytes (the empty registry without the deferred list, T22).
     CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 41 + 46 + 8 + 31);
     CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8);
-    CHECK(bytes.size() == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8 + 193);
+    CHECK(scope_offset(w, "script") == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8 + 193);
+    CHECK(bytes.size() == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8 + 193 + 67);
 }
 
 TEST_CASE("state hash moves with every config rules settings and seam field") {
@@ -1532,7 +1614,7 @@ TEST_CASE("state hash moves with every config rules settings and seam field") {
     const std::uint64_t base_hash = base.state_hash();
     sim::HashTree base_tree;
     CHECK(base.state_hash(base_tree, 0) == base_hash);
-    REQUIRE(base_tree.root.children.size() == 9);
+    REQUIRE(base_tree.root.children.size() == 10);
     CHECK(base_tree.root.children[0].name == "header");
     CHECK(base_tree.root.children[1].name == "clock_rng");
     CHECK(base_tree.root.children[2].name == "settings");
@@ -1986,21 +2068,66 @@ TEST_CASE("cargo rules: the Rules bytes equal the independent Python transcripti
             want[name] = hex;
         }
     }
-    REQUIRE(want.size() == 4);
+    REQUIRE(want.size() == 8);
     sim::Rules def;
     const std::string def_hex = hex_of(rules_stream(def));
     CHECK(def_hex == want["rules_default"]);
-    // The CargoRules bytes are the tail of the Rules scope.
-    CHECK(def_hex.size() >= want["cargo_default"].size());
-    CHECK(def_hex.substr(def_hex.size() - want["cargo_default"].size()) == want["cargo_default"]);
+    // The CargoRules bytes precede the two road booleans (stream 125), the two forestry booleans
+    // (stream 126) and the two house booleans (stream 128) at the end of the Rules scope.
+    constexpr std::size_t kTailHex =
+        12; // six bytes: road level, pieces, hygiene, skip, house, billed
+    CHECK(def_hex.size() >= want["cargo_default"].size() + kTailHex);
+    CHECK(def_hex.substr(def_hex.size() - kTailHex - want["cargo_default"].size(),
+                         want["cargo_default"].size()) == want["cargo_default"]);
+    CHECK(def_hex.substr(def_hex.size() - kTailHex) == "000000000001"); // choices off, billed saved
+    // Both road choices on: the whole scope equals the independent transcription (a default and a
+    // flipped byte pair differ only in those two bytes).
+    sim::Rules roads;
+    roads.road_require_land_level = true;
+    roads.road_preserve_nonroad_pieces = true;
+    const std::string roads_hex = hex_of(rules_stream(roads));
+    CHECK(roads_hex == want["rules_roads"]);
+    CHECK(roads_hex.substr(roads_hex.size() - kTailHex) == "010100000001");
+    CHECK(roads_hex.substr(0, roads_hex.size() - kTailHex) ==
+          def_hex.substr(0, def_hex.size() - kTailHex));
+    sim::Rules only_floor;
+    only_floor.road_require_land_level = true;
+    CHECK(hex_of(rules_stream(only_floor)).substr(def_hex.size() - kTailHex) == "010000000001");
+    sim::Rules only_pieces;
+    only_pieces.road_preserve_nonroad_pieces = true;
+    CHECK(hex_of(rules_stream(only_pieces)).substr(def_hex.size() - kTailHex) == "000100000001");
+    // Both forestry choices on (stream 126): the independent transcription, and each alone.
+    sim::Rules forestry;
+    forestry.forestry_claim_hygiene = true;
+    forestry.forestry_skip_uncuttable = true;
+    const std::string forestry_hex = hex_of(rules_stream(forestry));
+    CHECK(forestry_hex == want["rules_forestry"]);
+    CHECK(forestry_hex.substr(forestry_hex.size() - kTailHex) == "000001010001");
+    sim::Rules only_hygiene;
+    only_hygiene.forestry_claim_hygiene = true;
+    CHECK(hex_of(rules_stream(only_hygiene)).substr(def_hex.size() - kTailHex) == "000001000001");
+    sim::Rules only_skip;
+    only_skip.forestry_skip_uncuttable = true;
+    CHECK(hex_of(rules_stream(only_skip)).substr(def_hex.size() - kTailHex) == "000000010001");
+    // The house booleans (stream 128): the independent transcription, and each alone.
+    sim::Rules house;
+    house.house_updates = true;
+    const std::string house_hex = hex_of(rules_stream(house));
+    CHECK(house_hex == want["rules_house"]);
+    CHECK(house_hex.substr(house_hex.size() - kTailHex) == "000000000101");
+    sim::Rules nobilled;
+    nobilled.save_billed_goods = false;
+    const std::string nobilled_hex = hex_of(rules_stream(nobilled));
+    CHECK(nobilled_hex == want["rules_nobilled"]);
+    CHECK(nobilled_hex.substr(nobilled_hex.size() - kTailHex) == "000000000000");
     sim::Rules custom;
     custom.cargo.warehouse_prodtypes = {35, 36, 40};
     custom.cargo.dock_half_widths = {3, 3, 3, 2};
     REQUIRE(custom.validate().empty());
     const std::string custom_hex = hex_of(rules_stream(custom));
     CHECK(custom_hex == want["rules_custom"]);
-    CHECK(custom_hex.substr(custom_hex.size() - want["cargo_custom"].size()) ==
-          want["cargo_custom"]);
+    CHECK(custom_hex.substr(custom_hex.size() - kTailHex - want["cargo_custom"].size(),
+                            want["cargo_custom"].size()) == want["cargo_custom"]);
     CHECK(def_hex != custom_hex);
     // The rules digest moves with each list, and the stream reads back.
     CHECK(def.digest() != custom.digest());

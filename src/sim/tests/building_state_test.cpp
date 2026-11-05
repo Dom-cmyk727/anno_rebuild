@@ -292,12 +292,14 @@ std::vector<LayoutRow> layout_rows() {
         rows.push_back({"Market", common(p), s, 8 + 3 + 3 + 1});
     }
     {
-        // The House (P1): u16 last, i32 residents_64, u32 e, u64 count, count x u32 stock.
+        // The House (P1): u16 last, i32 residents_64, u32 e, u64 count, count x u32 stock, then
+        // (stream 128) the walker slots: u64 count, count x u64 figure id (invalid = max).
         sim::House p;
         p.last = 0x3132;
         p.residents_64 = 0x0102'0304;
         p.e = 0x0a0b'0c0d;
         p.stock = {0x11, 0x2233};
+        p.walkers = {sim::FigureId{5}, sim::FigureId{}};
         Stream s = common_bytes(7);
         s.u16(0x3132);
         s.u32(0x0102'0304);
@@ -305,7 +307,33 @@ std::vector<LayoutRow> layout_rows() {
         s.u64(2);
         s.u32(0x11);
         s.u32(0x2233);
-        rows.push_back({"House", common(p), s, 8 + 4 + 2});
+        s.u64(2);
+        s.u64(5);
+        s.u64(0xffffffffffffffffULL);
+        rows.push_back({"House", common(p), s, 8 + 4 + 2 + 3});
+    }
+    {
+        // MAP-POP-CLOSE-1 C2 (stream 128, tag 8): the Inert prefix, then the tavern stock and the taken
+        // statistic as u32 each. Distinct values, so a swapped pair or a narrowed width is caught here
+        // by hand-written bytes (the transcription is the spec text of population-live.md 21.5, not the
+        // C++ field list).
+        sim::Inn p;
+        p.last = 0x1234;
+        p.blocked = false;
+        p.suspended = true;
+        p.status = status(sim::Status::MissingInput, 6, 0x5678);
+        p.tavern = 0x0102'0304;
+        p.taken = 0x0a0b'0c0d;
+        p.carriers_out = 0x0e0f'1011; // K1: the carriers on their way (+0x1c/+0x20)
+        Stream s = common_bytes(8);
+        s.u16(0x1234);
+        s.boolean(false);
+        s.boolean(true);
+        status_bytes(s, 1, 6, 0x5678);
+        s.u32(0x0102'0304);
+        s.u32(0x0a0b'0c0d);
+        s.u32(0x0e0f'1011);
+        rows.push_back({"Inn", common(p), s, 8 + 3 + 3 + 3});
     }
     for (LayoutRow& row : rows) {
         row.primitives += 1; // the kontor_id scalar (stream 119)
@@ -326,20 +354,21 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::SmallFarm>() == 10);
     CHECK(sim::field_count<sim::Mine>() == 9);
     CHECK(sim::field_count<sim::Market>() == 5);
-    CHECK(sim::field_count<sim::House>() == 4); // last, residents_64, e, stock
+    CHECK(sim::field_count<sim::House>() == 5); // last, residents_64, e, stock, walkers
     CHECK(sim::field_count<sim::Building>() == 9);
     CHECK(sim::field_count<sim::BuildingIndex>() == 4); // service_counters*, house_counts*
-    CHECK(sim::field_count<sim::City>() == 10);
+    CHECK(sim::field_count<sim::City>() == 13);         // + stage_mask, stage_stamp, billed (128)
     CHECK(sim::field_count<sim::CityStock>() == 2);
     CHECK(sim::field_count<sim::GoodsSetting>() == 2);
     CHECK(sim::field_count<sim::BuildGoods>() == 2);
     CHECK(sim::field_count<sim::TradeEntry>() == 3);
     CHECK(sim::field_count<sim::IslandIndexCache>() == 2); // derived, no field list
-    CHECK(sim::field_count<sim::Island>() == 19);          // cache*
+    CHECK(sim::field_count<sim::Island>() == 20);          // cache* (claims: stream 126)
     CHECK(sim::field_count<sim::PlacementRecord>() == 6);
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
-    CHECK(std::variant_size_v<sim::Payload> == 8);
-    CHECK(sim::kPayloadTags.size() == 8);
+    CHECK(std::variant_size_v<sim::Payload> == 9);
+    CHECK(sim::kPayloadTags.size() == 9);
+    CHECK(sim::field_count<sim::Inn>() == 7); // C2: the tavern stock and statistic; K1: carriers_out
     for (std::size_t i = 0; i < sim::kPayloadTags.size(); ++i) {
         CHECK(sim::kPayloadTags[i] == i);
     }
@@ -405,7 +434,7 @@ TEST_CASE("building stream layout per payload") {
 
 TEST_CASE("a building stream refuses a payload tag and a status code that do not exist") {
     LayoutRow row = layout_rows()[1]; // the Workshop
-    for (const std::uint8_t tag : {std::uint8_t{8}, std::uint8_t{9}, std::uint8_t{255}}) {
+    for (const std::uint8_t tag : {std::uint8_t{9}, std::uint8_t{10}, std::uint8_t{255}}) {
         std::vector<std::uint8_t> bad = row.expect.v;
         bad[8 + 4 + 4 + 4 + 3 + 4] = tag; // the tag byte (after id, type, x, y, 3 bytes, kontor_id)
         sim::Building b;
@@ -1098,7 +1127,7 @@ TEST_CASE("golden s6 G1 city with a weaver and a farm") {
     auto types = syn::make_synthetic_types();
     REQUIRE(types.ok());
     // The one literal of tools/sim_stream.py for this golden.
-    CHECK(types.value().registry->digest() == 0x20bd3120bcf7e4f2ULL);
+    CHECK(types.value().registry->digest() == 0x4de8c88166f5684fULL);
     auto created =
         sim::World::create(syn::g1_scenario(types.value(), 1234), types.value().registry);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));

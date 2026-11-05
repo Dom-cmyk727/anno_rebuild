@@ -189,6 +189,7 @@ ScenarioSpec::CitySpec plain_city(std::uint32_t no, std::uint32_t owner) {
 
 ScenarioSpec empty_scenario(std::uint32_t seed) {
     ScenarioSpec spec;
+    spec.script_context = ScriptContext::ExplicitNone;
     spec.settings = synthetic_settings();
     spec.seed = seed;
     return spec;
@@ -573,6 +574,17 @@ ScenarioSpec g7_scenario(const SyntheticTypes& types, std::uint32_t seed) {
 
 formats::Result<SyntheticTypes, std::string> make_founding_types() {
     return make_founding_types_with({});
+}
+
+formats::Result<SyntheticTypes, std::string> make_cargo_types() {
+    FigureType ship;
+    ship.id = 9510;
+    ship.bewohntype = 113;
+    ship.range_88 = 16 * 256;
+    ship.hull_half_88 = 397;
+    ship.capacity_88 = 50 * 256;
+    ship.nav = NavFacts{154618816U, 472446400U, 6000U, 4U, 0U, 0U, 1280U};
+    return make_founding_types_with({ship});
 }
 
 formats::Result<SyntheticTypes, std::string>

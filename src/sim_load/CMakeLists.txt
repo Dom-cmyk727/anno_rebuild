@@ -2,7 +2,7 @@
 # (docs/sim/state.md §10, S14 stage 2): the island templates of a game directory for
 # the INSELLNK resolver, read and handed to anno_sim as bytes.
 add_library(anno_sim_load src/scenario_load.cpp src/original_registry.cpp src/fixed_map.cpp
-            src/ship_start.cpp)
+            src/ship_start.cpp src/script_base.cpp)
 target_include_directories(anno_sim_load PUBLIC include)
 target_link_libraries(anno_sim_load PUBLIC anno_sim)
 target_compile_features(anno_sim_load PUBLIC cxx_std_20)

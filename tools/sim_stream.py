@@ -66,6 +66,35 @@ state word (the transcribed registries hold no figure).
 Stream 124 (task MAP-CARGO-1) adds Rules::cargo after nav: the eligible warehouse PRODTYPEs and the dock
 half-widths (two u64-counted u32 lists).
 
+Stream 125 (task MAP-ROAD-CLOSE-1) adds two Rules booleans after cargo: road_require_land_level and
+road_preserve_nonroad_pieces (one byte each, default 0).
+
+Stream 126 (task MAP-ECON-1 E2, docs/sim/forestry.md 2) adds two Rules booleans after the road ones:
+forestry_claim_hygiene and forestry_skip_uncuttable (one byte each, default 0); each island gains the
+enhanced claim owners after reserved_object_count (u64 count, 0 in every transcribed island); each
+figure gains an optional harvest state and each figure type a u32 route (the transcribed registries
+hold no figure and no figure type). PRNG timeline 4 ports the farm dispatch draw FarmWorkerDispatch;
+the transcribed goldens' production gate stays closed, so no farm step and no such draw happens.
+
+Stream 127 (task MAP-POP-IMPL-1, docs/sim/population-contract.md) is one combined increment for
+packages A-C. Package A changes no layout: an original scenario's created players carry the imported
+stage mask (flags), which the transcribed goldens (no SPIELER head) never hold, so only the version
+word moves their hashes. Package B appends the four population goods roles to the config scope
+(u32 each, defaults 0x4c 0x5a 0x4c 0x1d) and `bau_first`, `id_sec` (u32 each, 0 in the transcribed
+original_goods()) to every goods entry of the registry digest.
+
+Stream 128 (task MAP-POP-LIVE-1 L1, docs/sim/population-live.md section 8) is one combined increment
+for L1-L4. The config scope appends billed_goods_first, billed_goods_last, resident_cargo_slots (u32
+each, defaults 0x1a 0x28 3); Rules append house_updates (default 0) and save_billed_goods (default 1)
+after forestry_skip_uncuttable; each city appends u32 stage_mask, u16 stage_stamp and, because
+save_billed_goods is 1, the billed counters (u64 count = warehouse goods, u32 each, 0) after its
+player mask; each house gains its walker slots (u64 count, u64 ids) and each figure an optional
+resident state (the transcribed worlds hold no house and no figure). PRNG timeline 5 declares the
+House sites; nothing draws them here. MAP-POP-CLOSE-1/2 amended 128 IN PLACE (never accepted or
+published): an Inn payload (tag 8) is the Inert prefix (u16 last, bool blocked, bool suspended, the
+status tracker) then u32 tavern, u32 taken (the original's u16 values, wrapping) and, K1, u32
+carriers_out; the class table's Inn row is TickKind 9 (Inn). The transcribed worlds hold no Inn.
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -86,8 +115,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 124
-PRNG_TIMELINE_VERSION = 3
+STATE_HASH_VERSION = 128
+PRNG_TIMELINE_VERSION = 5
 
 
 def fnv(data, h=0xCBF29CE484222325):
@@ -146,7 +175,7 @@ CLASSES = [
     (13, 7, 6, 500),   # Market 0x1006b6d0 (T24: the cart send)
     (14, 0, 0, 500),   # MarketCombi
     (15, 0, 0, 5000),  # MarketStall
-    (16, 0, 0, 5000),  # Inn
+    (16, 9, 8, 5000),  # Inn 0x100755f0 (TickKind::Inn 9, payload Inn 8; K1: the alcohol fetch send)
     (17, 0, 0, 500),   # PublicService 0x1006b4ec
     (18, 0, 0, 500),   # Doctor
     (19, 0, 0, 500),   # School (0x1006b4e0, shared)
@@ -158,17 +187,38 @@ CLASSES = [
 ]
 
 
-def registry_digest(names):
+def registry_digest(names, stages=(), swap=False):
     d = u64(0)  # no types
     d += u64(len(names))
     for i, n in enumerate(names):
-        d += string(n) + u32(FORSCH.get(i, 0))
+        d += string(n) + u32(FORSCH.get(i, 0)) + u32(0) + u32(0)  # + bau_first, id_sec (127)
     d += u64(len(CLASSES))
     for cls, tick, payload, gate in CLASSES:
         d += u8(cls) + u8(tick) + u8(payload) + u32(gate)
     d += u64(0)  # no figure types (T24)
     d += u64(0)  # no group table (P1)
+    # The [BAUSTUFEN] stage table (stream 128, L3): u64 count, then u32 stage, group, wissen, count per
+    # record. `swap` is the control: stage and group exchanged (a different layout reading).
+    d += u64(len(stages))
+    for stage, group, wissen, count in stages:
+        a, b = (group, stage) if swap else (stage, group)
+        d += u32(a) + u32(b) + u32(wissen) + u32(count)
     return fnv(d)
+
+
+# A populated stage table (hand-written records: stage, group, wissen, count); includes the
+# FORSCH stage 31 the registry accepts and a count above 255.
+STAGES_SAMPLE = [(1, 0, 0, 30), (4, 1, 20, 25), (31, 2, 7, 999)]
+STAGE_DIGEST_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
+                                    'synthetic', 'sim', 'stage_table_digest.txt')
+
+
+def stage_digest_fixture_text():
+    names = goods_names()
+    return ('# registry digest with the stage table %s (tools/sim_stream.py, L3 review P2-4)\n'
+            'populated %016x\nswapped %016x\nempty %016x\n' %
+            (STAGES_SAMPLE, registry_digest(names, STAGES_SAMPLE), registry_digest(names, STAGES_SAMPLE, True),
+             registry_digest(names)))
 
 
 def synthetic_walk_tables_digest():
@@ -216,6 +266,10 @@ def config_bytes():
     b += u32(1) + u32(32) + u32(4)
     b += b''.join(u32(x) for x in [5, 3, 1, 2, 4, 0])
     b += link_tables_bytes()
+    # stream 127: population_infra_first/last, population_tavern_goods, population_tavern_alias_goods
+    b += b''.join(u32(x) for x in [0x4C, 0x5A, 0x4C, 0x1D])
+    # stream 128: billed_goods_first, billed_goods_last, resident_cargo_slots, house_type_stride (L3)
+    b += b''.join(u32(x) for x in [0x1A, 0x28, 3, 20])
     return b
 
 
@@ -261,7 +315,8 @@ def cargo_rules_bytes(cargo=CARGO_DEFAULT):
     return u64(len(prodtypes)) + b''.join(u32(x) for x in prodtypes) + u64(len(widths)) + b''.join(u32(x) for x in widths)
 
 
-def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT):
+def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT, road_level=False, road_pieces=False,
+                hygiene=False, skip_uncuttable=False, house_updates=False, save_billed=True):
     # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
     # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
@@ -272,7 +327,10 @@ def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT):
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
             + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u64(1) + u32(1302) + u64(0)
             + u64(0) + nav_rules_bytes()  # city_names (120), shared_visibility (121): both empty; nav (122)
-            + cargo_rules_bytes(cargo))  # cargo (124)
+            + cargo_rules_bytes(cargo)  # cargo (124)
+            + u8(1 if road_level else 0) + u8(1 if road_pieces else 0)  # road_require_land_level, road_preserve_nonroad_pieces (125)
+            + u8(1 if hygiene else 0) + u8(1 if skip_uncuttable else 0)  # forestry_claim_hygiene, forestry_skip_uncuttable (126)
+            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0))  # house_updates, save_billed_goods (128)
 
 
 def settings_bytes(width=0, height=0):
@@ -444,7 +502,7 @@ def index_digest(stamp, lists):
 
 
 def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
-                index_stamp=0, cursors=None, name=b''):
+                index_stamp=0, cursors=None, name=b'', save_billed=True):
     """One present city. buildings_by_list: {list id: (hint, [bytes or None, ...])};
     a list that is not given is a fresh one (hint -1, cursor 0, one empty slot).
     cursors: {list id: scheduler cursor}; index_stamp: the index's shared stamp."""
@@ -463,6 +521,9 @@ def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
     b += u64(TRADE_LISTS) + b''.join(u64(0) for _ in range(TRADE_LISTS))
     b += u64(len(name)) + name  # stream 119: city property 0x12 (u64 length, bytes)
     b += u64(0)  # player_mask (stream 120): empty set
+    b += u32(0) + u16(0)  # stage_mask, stage_stamp (stream 128)
+    if save_billed:  # Rules::save_billed_goods (stream 128): u64 count, u32 each
+        b += u64(WAREHOUSE_GOODS) + b''.join(u32(0) for _ in range(WAREHOUSE_GOODS))
     b += u64(index_digest(index_stamp, lists))
     return fnv(u8(1) + b)
 
@@ -531,6 +592,7 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
         b += u8(1 if reserve else 0)
     b += u64(0)                       # ore_objects (stream 120): none in the transcribed islands
     b += u64(0)                       # reserved_object_count
+    b += u64(0)                       # claims (stream 126): no enhanced claim owner
     b += u64(tiles_digest(w, h, tiles))
     b += u64(cities_digest(cities or {}))
     return fnv(u8(1) + b)
@@ -668,7 +730,7 @@ def islands_digest(by_slot):
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
 # building_state_test.cpp checks it);
 # a literal here because the type table is not transcribed by this script.
-SYNTHETIC_REGISTRY = 0x20BD3120BCF7E4F2
+SYNTHETIC_REGISTRY = 0x4DE8C88166F5684F
 
 
 def g1_scenario(steps=0, step_ms=10):
@@ -908,10 +970,18 @@ CARGO_CUSTOM = ([35, 36, 40], [3, 3, 3, 2])
 def cargo_rules_fixture_text():
     lines = ['# Rules bytes of stream version %d with the CargoRules of MAP-CARGO-1 (docs/sim/ship-cargo.md section 5).' % STATE_HASH_VERSION,
              '# Written by tools/sim_stream.py --write-cargo-rules from the spec alone (no C++). Columns: name hex.',
-             '# cargo_* is the CargoRules part alone; rules_* is the whole Rules scope of a default world.']
+             '# cargo_* is the CargoRules part alone; rules_* is the whole Rules scope of a default world.',
+             '# Stream 125 (MAP-ROAD-CLOSE-1): the Rules scope ends with the two road booleans; rules_roads has both on.',
+             '# Stream 126 (MAP-ECON-1 E2): then the two forestry booleans; rules_forestry has both on (roads off).']
     for name, cargo in (('default', CARGO_DEFAULT), ('custom', CARGO_CUSTOM)):
         lines.append('cargo_%s %s' % (name, cargo_rules_bytes(cargo).hex()))
         lines.append('rules_%s %s' % (name, rules_bytes(False, cargo).hex()))
+    lines.append('rules_roads %s' % rules_bytes(False, CARGO_DEFAULT, True, True).hex())
+    lines.append('rules_forestry %s' % rules_bytes(False, CARGO_DEFAULT, False, False, True, True).hex())
+    lines.append('# Stream 128 (MAP-POP-LIVE-1 L1): then house_updates (default 0) and save_billed_goods (default 1);')
+    lines.append('# rules_house has house_updates on, rules_nobilled has save_billed_goods off.')
+    lines.append('rules_house %s' % rules_bytes(False, CARGO_DEFAULT, False, False, False, False, True, True).hex())
+    lines.append('rules_nobilled %s' % rules_bytes(False, CARGO_DEFAULT, False, False, False, False, False, False).hex())
     return '\n'.join(lines) + '\n'
 
 
@@ -927,6 +997,8 @@ def main():
     ap.add_argument('--check', action='store_true', help='compare with goldens.txt')
     ap.add_argument('--write-holds', action='store_true',
                     help='write fixtures/synthetic/sim/ship_holds.txt and exit')
+    ap.add_argument('--write-stage-digest', action='store_true',
+                    help='write fixtures/synthetic/sim/stage_table_digest.txt and exit')
     ap.add_argument('--write-cargo-rules', action='store_true',
                     help='write fixtures/synthetic/sim/cargo_rules_bytes.txt and exit')
     args = ap.parse_args()
@@ -934,6 +1006,11 @@ def main():
         with open(CARGO_RULES_FIXTURE, 'w') as f:
             f.write(cargo_rules_fixture_text())
         print('wrote', os.path.normpath(CARGO_RULES_FIXTURE))
+        return 0
+    if args.write_stage_digest:
+        with open(STAGE_DIGEST_FIXTURE, 'w') as f:
+            f.write(stage_digest_fixture_text())
+        print('wrote', os.path.normpath(STAGE_DIGEST_FIXTURE))
         return 0
     if args.write_holds:
         with open(HOLDS_FIXTURE, 'w') as f:
@@ -970,6 +1047,9 @@ def main():
         bad += 1
     if not os.path.exists(CARGO_RULES_FIXTURE) or open(CARGO_RULES_FIXTURE).read() != cargo_rules_fixture_text():
         print('cargo_rules_bytes.txt differs from the transcription (run --write-cargo-rules)')
+        bad += 1
+    if not os.path.exists(STAGE_DIGEST_FIXTURE) or open(STAGE_DIGEST_FIXTURE).read() != stage_digest_fixture_text():
+        print('stage_table_digest.txt differs from the transcription (run --write-stage-digest)')
         bad += 1
     print('goldens agree' if bad == 0 else '%d difference(s)' % bad)
     return 1 if bad else 0

@@ -33,6 +33,7 @@
 #include <anno/sim/reject.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/route_cache.hpp>
+#include <anno/sim/script_runtime.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/tick.hpp>
@@ -122,7 +123,36 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // (CargoRules: u64 count and u32 PRODTYPEs of the eligible warehouses, then u64 count and u32 dock
 // half-widths), after nav. Nothing else changes; every state hash moves through the version in the
 // header and the Rules bytes.
-inline constexpr std::uint32_t kStateHashVersion = 124;
+// Stream at 125 (task MAP-ROAD-CLOSE-1, docs/sim/road-placement.md section 3): Rules gain two
+// booleans after `cargo`, road_require_land_level and road_preserve_nonroad_pieces (one byte
+// each, default false). Nothing else changes; every state hash moves through the version in the
+// header and the two Rules bytes.
+// Stream at 126 (task MAP-ECON-1 E2, docs/sim/forestry.md 2): Rules gain two booleans after the
+// road ones, forestry_claim_hygiene and forestry_skip_uncuttable (one byte each, default false);
+// each Figure gains an optional HarvestState at its end; each Island gains the enhanced claim
+// owners (u64 count, then i32 x, i32 y, u64 worker) after reserved_object_count; the registry
+// digest's figure types gain `route` (u32) after the navigation facts. The tile aux admits bit 29
+// (the claim). A world without harvest workers moves only through the version and the Rules and
+// Island bytes (two Rules bytes, one u64 count 0 per island).
+// Stream at 127 (task MAP-POP-IMPL-1, docs/sim/population-contract.md section 1): one combined,
+// unpublished increment for the population input pipeline. Package A: a scenario import stores the
+// full player stage mask, so a created player of an original scenario may hash with a mask other
+// than 1 (no layout change). Packages B and C add to this same version: four SimConfig population
+// roles in the config scope and the goods BauFirst/IdSec in the registry digest.
+// Stream at 128 (task MAP-POP-LIVE-1 L1, docs/sim/population-live.md section 8): one combined,
+// unpublished increment for the population live effects (L1-L4). SimConfig gains
+// billed_goods_first, billed_goods_last and resident_cargo_slots; Rules gain house_updates and
+// save_billed_goods (after forestry_skip_uncuttable); each City gains u32 stage_mask, u16
+// stage_stamp and (only with Rules::save_billed_goods) the billed counters (u64 count, u32 each)
+// after player_mask; each House gains its walker slots (u64 count, u64 id each, invalid = max)
+// after the stock; each Figure gains an optional ResidentState at its end. The registry digest is
+// unchanged in layout (the house walker facts are the existing production data, PROD3 0x28/0x29/
+// 0x32). With Rules::house_updates off (the default) the tick is unchanged: only the version, the
+// config and rules bytes and the new fields move every hash.
+// Stream129 (MAP-SCRIPT-1): SCRIPT1 schema discriminator, player override rows,
+// script source/policy/limits and exact continuation/fault/binding state. The
+// compiled program is derived once. Published128 is never reinterpreted.
+inline constexpr std::uint32_t kStateHashVersion = 130;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -135,7 +165,13 @@ inline constexpr std::uint32_t kSaveVersion = 1;
 /// ComputerName (0x100025a0) in the manifest.
 /// Version 3 (task MAP-2, city creation): the ported advance-phase site CityName (D AnnoWelt
 /// 0x10096910) and the unported load-phase site CityNameLoad in the manifest.
-inline constexpr std::uint32_t kPrngTimelineVersion = 3;
+/// Version 4 (task MAP-ECON-1 E2, docs/sim/forestry.md 3.1, 3.7): the ported advance-phase site
+/// FarmWorkerDispatch (D AnnoWelt 0x1006edf3-0x1006ee06), one draw per eligible farm dispatch
+/// attempt.
+/// Version 5 (task MAP-POP-LIVE-1 L1, docs/sim/population-live.md section 8): the House tick's draw
+/// sites HouseWalkerTarget, HouseVariant and HouseFirstAssignment are declared (advance phase,
+/// unported until L2-L4: they draw only with Rules::house_updates on).
+inline constexpr std::uint32_t kPrngTimelineVersion = 5;
 
 struct StateIO;
 struct ScenarioSpec;
@@ -211,6 +247,8 @@ class World {
     [[nodiscard]] const Rules& rules() const { return rules_; }
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
+    [[nodiscard]] BuildEligibility construction_eligibility(PlayerId, TypeId) const;
+    [[nodiscard]] const ScriptRuntime& script() const { return script_; }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
     /// The counters of the ids assigned in the serial merge (figures, event sequence
     /// numbers).
@@ -228,8 +266,16 @@ class World {
     /// The 7.5 minute event's accumulator in ms (stage S12; D: world +0x69e4).
     [[nodiscard]] std::uint32_t event750_acc() const { return event750_acc_; }
     /// Whether a draw-guard violation was recorded (docs/sim/state.md §11, stage
-    /// S16). Hashed and saved; nothing sets it before S16, so it is always false.
+    /// S16). Hashed and saved. This is the SAME flag the live population update sets for a typed
+    /// fault (P-1, below): one state bit for "the world is stopped", whichever guard set it.
     [[nodiscard]] bool faulted() const { return faulted_; }
+    /// MAP-POP-LIVE-1 L4 (population-live.md sections 7, 19, P-1): the first typed fault of the
+    /// live population update ("house fault not_evaluated building 4294967297 (kernel:
+    /// zero_divisor)"), empty when there is none. A fault sets `faulted()` (state: hashed and
+    /// saved) and STOPS the world: the advance that recorded it finishes no later phase and every
+    /// further advance changes nothing. The text is a diagnostic: it is not saved, so a reloaded
+    /// faulted world reports only `faulted()`. check_invariants reports it while it is set.
+    [[nodiscard]] const std::string& fault() const { return fault_message_; }
     /// What the last advance produced for the host (UI events of that advance, the
     /// draws per site, the PRNG cursor before and after). Not state, not hashed.
     [[nodiscard]] const SimOutput& last_output() const { return out_; }
@@ -291,6 +337,12 @@ class World {
     /// table, the islands and their cities and buildings (validate_islands), the
     /// city owners, then the footprints and the derived indexes.
     [[nodiscard]] std::string check_invariants() const;
+    /// The harvest facts that need buildings, tiles and rules (docs/sim/forestry.md 2.1); part of
+    /// check_invariants. Empty when they hold.
+    [[nodiscard]] std::string harvest_problem() const;
+    /// MAP-POP-LIVE-1 L1 (stream 128): the resident/walker facts that need the figures, the
+    /// buildings or the config; empty when they hold (resident_problem in invariants.cpp).
+    [[nodiscard]] std::string resident_problem() const;
 
     /// Compile-time canary (never called): binds every data member of World.
     /// A member added without extending this line fails to compile here,
@@ -298,14 +350,15 @@ class World {
     /// (state_fields.hpp) and to bump kStateHashVersion, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
-        // host_events_, out_, transport_stats_ and route_cache_ are host-facing, diagnostic or
-        // derived, deliberately not in the field list (not state).
+        // host_events_, out_, transport_stats_, fault_message_ and route_cache_ are host-facing,
+        // diagnostic or derived, deliberately not in the field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
-                                      rules_member, seams_member, types_member, ids_member,
-                                      players_member, islands_member, figures_member, events_member,
-                                      timers_member, monopoly_member, event750_acc_member,
-                                      faulted_member, host_events_member, out_member,
-                                      transport_stats_member, route_cache_member] = w;
+                                      rules_member, seams_member, script_member, types_member,
+                                      ids_member, players_member, islands_member, figures_member,
+                                      events_member, timers_member, monopoly_member,
+                                      event750_acc_member, faulted_member, fault_message_member,
+                                      host_events_member, out_member, transport_stats_member,
+                                      route_cache_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
@@ -316,6 +369,12 @@ class World {
     /// `game_ms` == 0 is not special-cased: the original adds 0 and still runs
     /// every subsystem. Returns the new tick.
     std::uint64_t advance(std::uint32_t game_ms);
+
+    /// Explicit fresh-session startup: execute the same transactional script visit at
+    /// argument0 before exposing player commands, without visiting other subsystems.
+    /// Ready/ExplicitNone is idempotent; Pending requires the untouched zero clock.
+    /// Empty means success. Missing/fault/nonfresh Pending is refused.
+    [[nodiscard]] std::string initialize_scripts();
 
     /// Hash of the canonical state, version kStateHashVersion: hierarchical,
     /// over the one field list of state_fields.hpp (docs/sim/state.md §9).
@@ -356,6 +415,7 @@ class World {
     SimConfig config_;
     Rules rules_;
     Seams seams_;
+    ScriptRuntime script_;
     RegistryRef types_; // never null, also after a move (types.hpp)
     IdCounters ids_;
     PlayerTable players_;
@@ -366,6 +426,8 @@ class World {
     MonopolyTable monopoly_;
     std::uint32_t event750_acc_ = 0;
     bool faulted_ = false;
+    // Not state (a diagnostic, never hashed or saved): the text of the fault that set faulted_.
+    std::string fault_message_;
     // Not state (never hashed or saved): the host-facing output.
     HostEventQueue host_events_;
     SimOutput out_;

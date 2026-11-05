@@ -1,3 +1,4 @@
+#include "original_component.hpp"
 // The transport body (docs/sim/state.md §5.9 "Transport", task T24; evidence
 // docs/re/transport.md): the searcher's disc, the producers' slots, the workshop's
 // priority and offer, and the market cart and the workshop carrier end to end on a
@@ -9,6 +10,7 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -669,7 +671,7 @@ TEST_CASE("transport runs are deterministic and survive a save mid-walk") {
 namespace {
 
 std::filesystem::path g6_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "g6.log";
+    return anno::test::current_replay_fixture_path("g6.log");
 }
 
 /// Finds the market's TypeId's search area and runs choose_source on `w` for every
@@ -768,15 +770,18 @@ TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal go
     rec.checkpoint();
     sim::StateHasher checkpoints;
     std::optional<sim::BuildingId> first_target, second_target;
-    std::uint32_t other_draws = 0;
+    std::uint32_t other_draws = 0, dispatch_draws = 0;
     for (int i = 1; i <= 6000; ++i) {
         rec.advance(100);
         for (const sim::DrawRecord& r : w.last_output().draws) {
             // The world's own draws: the 300 s event (once per 150 000 ticks for the one
-            // island) and the 7.5 minute event's gate (once per 225 000 ticks).
+            // island) and the 7.5 minute event's gate (once per 225 000 ticks); since MAP-ECON-1
+            // E2 also the farm's eligible dispatch attempts (FarmWorkerDispatch), counted apart.
+            dispatch_draws += r.site == sim::DrawSite::FarmWorkerDispatch ? r.count : 0U;
             other_draws += r.site != sim::DrawSite::Event300 &&
                                    r.site != sim::DrawSite::Event750Gate &&
-                                   r.site != sim::DrawSite::Event750Island
+                                   r.site != sim::DrawSite::Event750Island &&
+                                   r.site != sim::DrawSite::FarmWorkerDispatch
                                ? r.count
                                : 0U;
         }
@@ -797,6 +802,28 @@ TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal go
     }
     REQUIRE(w.clock().tick() == 300000);
     CHECK(other_draws == 0); // the transport draws nothing
+    // The farm's worker counter rose once per eligible attempt (its workers never return here),
+    // and each attempt drew once.
+    std::uint32_t farm_workers = 0;
+    for (const auto& is : w.islands()) {
+        if (!is) {
+            continue;
+        }
+        for (const auto& c : is->cities) {
+            if (!c) {
+                continue;
+            }
+            for (const auto& list : c->index.lists) {
+                for (const auto& b : list.slots) {
+                    if (b && std::holds_alternative<sim::Farm>(b->payload)) {
+                        farm_workers += std::get<sim::Farm>(b->payload).workers_out;
+                    }
+                }
+            }
+        }
+    }
+    CHECK(dispatch_draws >= 1);
+    CHECK(dispatch_draws == farm_workers);
     // The first cart takes the weaver's cloth: reached at cost 15 with the score
     // 1280 · 128 / 1280 = 128 (not a raw goods: the early stop, 0x1005aa83), before the
     // farm (cost 30). The next takes the farm's corn: KORN is raw (13), q = 960, score
@@ -866,7 +893,8 @@ TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal go
     }
 }
 
-TEST_CASE("S01_07_01 tick 0 search store is complete" * doctest::test_suite("corpus")) {
+TEST_CASE("S01_07_01 original-data component tick 0 search store is complete" *
+          doctest::test_suite("corpus")) {
     // Step 5(b): every market and workshop at tick 0. incomplete counts a search
     // whose WalkCells store was not complete. The per-tile record makes that 0.
     const auto dir = anno::test::game_dir();
@@ -893,9 +921,13 @@ TEST_CASE("S01_07_01 tick 0 search store is complete" * doctest::test_suite("cor
         std::move(groups).value());
     REQUIRE(types);
     const auto sb = anno::test::read_file(*dir / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
-    auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
+    auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{},
+                                     original_component::actor_free_units());
     REQUIRE(loaded);
-    auto made = sim::World::create(loaded.value().spec, types.value());
+    auto component = original_component::import_only(loaded.value().spec, types.value());
+    REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+    MESSAGE("original-data search component: " << component.value().diagnostic);
+    auto made = sim::World::create(component.value().spec, types.value());
     REQUIRE(made);
     sim::World world = std::move(made).value();
     sim::Effects fx;
@@ -944,4 +976,192 @@ TEST_CASE("S01_07_01 tick 0 search store is complete" * doctest::test_suite("cor
     CHECK(markets + workshops > 0);
     CHECK(cart.incomplete == 0);
     CHECK(carrier.incomplete == 0);
+}
+
+// =============================================================================================
+// MAP-ROAD-1 R3/R4: roads built and removed through the public commands decide what a market
+// cart can reach. The weaver is PRE-STOCKED by the fixture, so this proves delivery and its
+// dependence on the road net, not production.
+// =============================================================================================
+
+namespace {
+
+constexpr sim::CityRef kRoadCity{sim::IslandId{0}, sim::CityNo{0}};
+
+/// make_rig() with terrain (flat 0x30, so a road command is valid) and funds.
+Rig make_command_rig() {
+    Rig r = make_rig();
+    r.spec.players[0].money = 10000;
+    const std::size_t n = 32U * 32U;
+    r.spec.islands[0].terrain =
+        sim::make_terrain(std::vector<std::uint8_t>(n, 0x30), std::vector<std::uint16_t>(n, 0),
+                          std::vector<std::uint8_t>(n, 0));
+    return r;
+}
+
+sim::Command road_cmd(std::vector<std::pair<std::int32_t, std::int32_t>> tiles) {
+    sim::BuildCmd b;
+    b.city = kRoadCity;
+    for (const auto& [x, y] : tiles) {
+        b.placements.push_back(sim::PlacementWire{kRoad, x, y, 0, 0, 0});
+    }
+    return sim::Command{sim::PlayerId{0}, b};
+}
+
+sim::Command remove_cmd(std::int32_t x, std::int32_t y) {
+    sim::DemolishCmd d;
+    d.city = kRoadCity;
+    d.tiles = {{x, y}};
+    return sim::Command{sim::PlayerId{0}, d};
+}
+
+std::uint32_t& weaver_out(sim::World& w) {
+    sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+    sim::Building* b = sim::find_building_mut(is, at(w, 111, 115).id);
+    REQUIRE(b != nullptr);
+    return std::get<sim::Workshop>(b->payload).out[0];
+}
+
+/// Advances `ticks` ticks; the number of distinct figures that entered the expiry list meanwhile
+/// (a market cart that was sent and ended: its search ran) and whether a cart was ever visible.
+struct Watch {
+    std::size_t ended = 0;
+    bool cart_seen = false;
+};
+Watch run_watch(sim::World& w, std::uint64_t ticks) {
+    Watch out;
+    std::set<std::uint64_t> seen;
+    for (std::uint64_t i = 0; i < ticks; ++i) {
+        w.advance(2);
+        out.cart_seen = out.cart_seen || !figures_of(w, sim::kJobMarketCart).empty();
+        for (const sim::FigureId f : w.figures().expiry) {
+            seen.insert(f.v);
+        }
+    }
+    out.ended = seen.size();
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("roads by command: a producer is unreachable, reachable, cut off and reachable again") {
+    const auto types = registry();
+    Rig r = make_command_rig();
+    r.place(kMarket, 110, 110);
+    r.place(kWeaver, 111, 115, weaver_with(5 * 256));
+    sim::World w = create(r, types);
+    // 1. No road: the first cart ends at once, nothing moves (the existing negative case).
+    until(w, [&] { return !w.figures().expiry.empty(); });
+    CHECK(figures_of(w, sim::kJobMarketCart).empty());
+    CHECK(weaver_out(w) == 1280);
+    CHECK(city0(w).stock.stock[33] == 0);
+    // 2. The two road tiles by one drag command: tile objects, no building, no serial.
+    const std::uint32_t serial = w.islands()[0]->next_serial;
+    const sim::ApplyResult built = w.apply(road_cmd({{111, 113}, {111, 114}}));
+    REQUIRE_MESSAGE(built.ok(), "got " << sim::reject_name(built.status));
+    REQUIRE(built.records.size() == 2);
+    for (const sim::RecordResult& rec : built.records) {
+        CHECK(rec.status == sim::Reject::None);
+        CHECK(rec.tile_object);
+        CHECK_FALSE(rec.building.valid());
+    }
+    CHECK(w.islands()[0]->next_serial == serial);
+    {
+        const sim::TileLayer& t = w.islands()[0]->tiles;
+        const sim::Slot a = t.index_of(111, 113), b = t.index_of(111, 114);
+        CHECK(t.object(a) == kRoad.v);
+        CHECK(t.object(b) == kRoad.v);
+        CHECK(t.walk_code(a) == 4); // the synthetic type has no HEAD pair: the encoder's default
+        CHECK(t.walk_code(b) == 4);
+    }
+    // The first search after the change reads the road: goods really move (weaver -> cart ->
+    // warehouse), the reservation is released and the cart ends at home.
+    until(w, [&] { return city0(w).stock.stock[33] != 0; }, 60000);
+    CHECK(city0(w).stock.stock[33] == 1280);
+    CHECK(weaver_out(w) == 0);
+    CHECK(std::get<sim::Workshop>(at(w, 111, 115).payload).reserved[0] == 0);
+    until(w, [&] { return figures_of(w, sim::kJobMarketCart).empty(); });
+    CHECK(w.check_invariants() == "");
+    // 3. Cut the road (one tile) and restock the weaver: carts keep being sent and ending, but
+    // none reaches it; stock, weaver and reservation stay exactly as they were.
+    REQUIRE(w.apply(remove_cmd(111, 114)).ok());
+    CHECK(w.islands()[0]->tiles.object(w.islands()[0]->tiles.index_of(111, 114)) == 0);
+    CHECK(w.islands()[0]->tiles.walk_code(w.islands()[0]->tiles.index_of(111, 114)) == 2);
+    weaver_out(w) = 1280;
+    const Watch cut = run_watch(w, 25000);
+    CHECK(cut.ended >= 1); // a cart searched and found nothing: the break was seen
+    CHECK(city0(w).stock.stock[33] == 1280);
+    CHECK(weaver_out(w) == 1280);
+    CHECK(std::get<sim::Workshop>(at(w, 111, 115).payload).reserved[0] == 0);
+    CHECK(w.check_invariants() == "");
+    // 4. Rebuild the tile: reachable again, a second delivery.
+    REQUIRE(w.apply(road_cmd({{111, 114}})).ok());
+    until(w, [&] { return city0(w).stock.stock[33] != 1280; }, 60000);
+    CHECK(city0(w).stock.stock[33] == 2560);
+    CHECK(weaver_out(w) == 0);
+    CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("roads by command: a cart already walking keeps its route and has no way home") {
+    // The route is planned when the cart starts (set_route) and followed without reading the tiles
+    // again: removing a road under a walking cart neither crashes nor redirects it. It reaches
+    // the producer, loads, and then needs a path home: with the net cut there is none, so the job
+    // ends with the cargo on the figure (step C, 0x10057ae0; the original's fate of that cargo is
+    // not read, docs/sim/road-placement.md section 8). The control with the road intact delivers.
+    const auto types = registry();
+    Rig r = make_command_rig();
+    r.place(kMarket, 110, 110);
+    r.place(kWeaver, 111, 115, weaver_with(5 * 256));
+    r.road(111, 113);
+    r.road(111, 114);
+    sim::World w = create(r, types);
+    until(w, [&] { return !figures_of(w, sim::kJobMarketCart).empty(); });
+    for (int i = 0; i < 300; ++i) { // the cart is under way: three tiles take 938 ticks
+        w.advance(2);
+    }
+    {
+        const auto carts = figures_of(w, sim::kJobMarketCart);
+        REQUIRE(carts.size() == 1);
+        CHECK(carts[0]->transport.step == sim::TransportStep::ToSource);
+        CHECK(carts[0]->transport.route.size() == 4);
+    }
+    sim::World control = w; // the same moment, the road left alone
+    const std::size_t route_size = figures_of(w, sim::kJobMarketCart)[0]->transport.route.size();
+    REQUIRE(w.apply(remove_cmd(111, 114)).ok()); // under the walking cart's path
+    {
+        const auto carts = figures_of(w, sim::kJobMarketCart);
+        REQUIRE(carts.size() == 1);
+        CHECK(carts[0]->transport.route.size() == route_size); // the planned route is untouched
+    }
+    // It arrives and loads: the producer is drained although the net is cut. With no path home
+    // the job ends in the same call, so the cart is already on the expiry list, its cargo still on
+    // the figure.
+    until(w, [&] { return weaver_out(w) == 0; });
+    REQUIRE(figures_of(w, sim::kJobMarketCart).empty());
+    REQUIRE(w.figures().expiry.size() == 1);
+    {
+        const sim::Figure* ended = sim::find_figure(w.figures(), w.figures().expiry.front());
+        REQUIRE(ended != nullptr);
+        CHECK(ended->cargo_88 == 1280);
+    }
+    // Nothing is delivered, nothing stays reserved, the market has no cart out.
+    CHECK(city0(w).stock.stock[33] == 0);
+    CHECK(std::get<sim::Workshop>(at(w, 111, 115).payload).reserved[0] == 0);
+    CHECK(std::get<sim::Market>(at(w, 110, 110).payload).carts_out == 0);
+    CHECK(w.check_invariants() == "");
+    // The control delivers the same goods.
+    until(control, [&] { return city0(control).stock.stock[33] != 0; });
+    CHECK(city0(control).stock.stock[33] == 1280);
+    CHECK(control.check_invariants() == "");
+    // The next search sees the cut net: a restocked weaver is not collected ...
+    weaver_out(w) = 1280;
+    const Watch cut = run_watch(w, 15000);
+    CHECK(cut.ended >= 1);
+    CHECK(city0(w).stock.stock[33] == 0);
+    CHECK(weaver_out(w) == 1280);
+    // ... and after the tile is rebuilt, it is.
+    REQUIRE(w.apply(road_cmd({{111, 114}})).ok());
+    until(w, [&] { return city0(w).stock.stock[33] != 0; }, 60000);
+    CHECK(city0(w).stock.stock[33] == 1280);
+    CHECK(w.check_invariants() == "");
 }

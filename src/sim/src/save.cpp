@@ -52,6 +52,7 @@ std::vector<std::uint8_t> StateIO::save(const World& w) {
     out.bytes(kMagic);
     out.u32(kSaveVersion);
     out.u32(kStateHashVersion);
+    out.u64(kScriptSchema);
     const bool original = original_table(w.rng_);
     out.u8(static_cast<std::uint8_t>(original ? 0 : 1));
     if (!original) {
@@ -73,11 +74,15 @@ std::vector<std::uint8_t> StateIO::save(const World& w) {
         ids_section(s, w.ids_, w.event750_acc_, w.monopoly_.acc, w.faulted_);
     });
     section([&](WriteArchive& s) { players_section(s, w.players_, w.config_); });
-    section([&](WriteArchive& s) { islands_section(s, w, w.islands_, w.config_, w.settings_); });
+    section([&](WriteArchive& s) {
+        islands_section(s, w, w.islands_, w.config_, w.settings_, w.rules_);
+    });
     section([&](WriteArchive& s) { figures_section(s, w.figures_, w.ids_); });
     section([&](WriteArchive& s) { events_section(s, w.events_, w.ids_); });
     section(
         [&](WriteArchive& s) { timers_monopoly_section(s, w.timers_, w.monopoly_, w.config_); });
+    section(
+        [&](WriteArchive& s) { script_section(s, w.script_, *w.types_, w.players_, w.config_); });
     for (const std::optional<Island>& is : w.islands_) {
         if (!is.has_value()) {
             continue;
@@ -151,6 +156,10 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
         return "save: state stream version " + std::to_string(stream_version) +
                " is not supported (this build reads " + std::to_string(kStateHashVersion) + ")";
     }
+    std::uint64_t schema = 0;
+    r.u64(schema);
+    if (!r.failed() && schema != kScriptSchema)
+        return std::string("save: script state schema differs from this build's");
     std::uint8_t kind = 0;
     r.u8(kind);
     if (!r.failed() && kind > 1) {
@@ -228,7 +237,7 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
     }
     if (problem.empty()) {
         problem = section("islands", [&](ReadArchive& s) {
-            islands_section(s, w, w.islands_, w.config_, w.settings_);
+            islands_section(s, w, w.islands_, w.config_, w.settings_, w.rules_);
         });
     }
     if (problem.empty()) {
@@ -241,6 +250,11 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
     if (problem.empty()) {
         problem = section("timers_monopoly", [&](ReadArchive& s) {
             timers_monopoly_section(s, w.timers_, w.monopoly_, w.config_);
+        });
+    }
+    if (problem.empty()) {
+        problem = section("script", [&](ReadArchive& s) {
+            script_section(s, w.script_, *w.types_, w.players_, w.config_);
         });
     }
     if (!problem.empty()) {

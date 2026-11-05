@@ -17,15 +17,19 @@
 #include <variant>
 #include <vector>
 
+#include <anno/formats/bigbrother.hpp>
 #include <anno/formats/bytes.hpp>
 #include <anno/formats/chunk.hpp>
 #include <anno/formats/insel.hpp>
 #include <anno/formats/sze.hpp>
 #include <anno/formats/tagged.hpp>
 #include <anno/sim/building.hpp>
+#include <anno/sim/permissions.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/scenario_formats.hpp>
+
+#include "original_units.hpp"
 
 namespace anno::sim {
 
@@ -224,6 +228,14 @@ ScenarioCounts count(const LoadedScenario& s) {
     return c;
 }
 
+std::optional<InnRecord> decode_inn_record(std::span<const std::uint8_t> record) {
+    if (record.size() != 10) {
+        return std::nullopt;
+    }
+    return InnRecord{static_cast<std::uint16_t>(record[2] | (record[3] << 8)),
+                     static_cast<std::uint16_t>(record[8] | (record[9] << 8))};
+}
+
 namespace {
 
 /// The warnings of one load, with the "once per scope and name" rule.
@@ -367,6 +379,15 @@ std::uint32_t le32(const std::uint8_t* p) {
 /// bit is the record's bit, mapped here unchanged.
 bool read_class_record(Payload& payload, RuntimeClass cls, Bytes rec) {
     if (rec.empty()) {
+        return true;
+    }
+    if (auto* inn = std::get_if<Inn>(&payload); inn != nullptr && cls == RuntimeClass::Inn) {
+        // 0x10075740: exactly 10 bytes are read (tavern stock u16 at byte 2 -> +0x18, taken
+        // statistic u16 at byte 8 -> +0x1a); any other length is skipped whole (0x10075792).
+        if (const auto d = decode_inn_record(rec)) {
+            inn->tavern = d->tavern;
+            inn->taken = d->taken;
+        }
         return true;
     }
     if (auto* w = std::get_if<Workshop>(&payload); w != nullptr && cls == RuntimeClass::Workshop) {
@@ -991,6 +1012,28 @@ std::optional<std::string> read_head(Bytes record, sze::Edition edition, WorldSe
     return std::nullopt;
 }
 
+/// The stage mask at `player +0x90` (D AnnoWelt 0x1001d389-0x1001d3df, T32.5 accepted,
+/// docs/re/population.md section 15). `head_48` is HEAD+0x48 (u32), of which only the low 23 bits
+/// are kept (`and eax,0x7fffff`); `head_5c` is HEAD+0x5c (u8): bit 3 sets bit 24, bit 2 sets bit
+/// 27, bit 4 sets bit 29, bit 5 sets bit 30. Every other bit of either field, bit 23 included, is
+/// dropped. OQ-460 (the extra OR at 0x1001bda3) is not imported.
+std::uint32_t decode_player_mask(std::uint32_t head_48, std::uint8_t head_5c) {
+    std::uint32_t mask = head_48 & 0x7fffffU;
+    if ((head_5c & 0x08U) != 0) {
+        mask |= 0x01000000U;
+    }
+    if ((head_5c & 0x04U) != 0) {
+        mask |= 0x08000000U;
+    }
+    if ((head_5c & 0x10U) != 0) {
+        mask |= 0x20000000U;
+    }
+    if ((head_5c & 0x20U) != 0) {
+        mask |= 0x40000000U;
+    }
+    return mask;
+}
+
 /// The player fields of a HEAD record (108 bytes; D AnnoWelt 0x1001d2b9–0x1001d430,
 /// docs/re/annoscene.md §6, docs/formats/sze.md "Players").
 void read_player_head(Bytes h, ScenarioSpec::PlayerSpec& p) {
@@ -1002,6 +1045,34 @@ void read_player_head(Bytes h, ScenarioSpec::PlayerSpec& p) {
     // +0xA0 = u16 [0x4e] & 0xFFBF, a value >= 0x100 read as 0.
     const std::uint32_t a0 = formats::u16_le(h, 0x4e);
     p.flags_a0 = a0 >= 0x100 ? 0U : (a0 & 0xFFBFU);
+    // The caller passes a full 108-byte HEAD, so +0x48 and +0x5c exist. A stored 0 stays 0.
+    p.flags = decode_player_mask(formats::u32_le(h, 0x48), h[0x5c]);
+}
+
+// Only the construction-relevant FORSCH researched bit is projected here.
+// Original prerequisite refresh/progress/bonuses are a separate research model.
+std::string read_construction_record(const tagged::Record& r, ScenarioSpec::PlayerSpec& p,
+                                     const TypeRegistry& types, const SimConfig& config) {
+    if (r.name == "ANLTRG") {
+        auto rows = import_permissions(r.payload, types, std::move(p.permissions));
+        if (!rows)
+            return rows.error();
+        p.permissions = std::move(rows).value();
+        return {};
+    }
+    auto records = tagged::parse_records(r.payload, r.offset + tagged::kHeaderLen);
+    if (!records)
+        return records.error();
+    if (p.research.empty())
+        p.research.resize(config.research_entries, 0);
+    for (const auto& row : records.value()) {
+        if (row.name != "ENTRY" || row.payload.size() != 4 ||
+            row.payload[0] >= config.research_entries)
+            return "unsupported/malformed research row";
+        auto& state = p.research[row.payload[0]];
+        state = static_cast<std::uint8_t>((state & ~2u) | ((row.payload[1] & 1u) << 1));
+    }
+    return {};
 }
 
 /// Whether an INSELLNK path names a dummy: its last 9 characters are "DUMMY.scp" in
@@ -1334,7 +1405,12 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
 } // namespace
 
 formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const TypeRegistry& types,
-                                                           const SimConfig& config) {
+                                                           const SimConfig& config,
+                                                           const UnitImportOptions& units) {
+    if (units.projection != OriginalActorProjection::ImportRequired &&
+        units.projection != OriginalActorProjection::ActorFreeComponent) {
+        return std::string("unit import: unknown actor projection policy");
+    }
     auto parsed = sze::Scene::parse(file);
     if (!parsed) {
         return "not a scenario: " + parsed.error();
@@ -1343,6 +1419,13 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
     LoadedScenario out;
     Warnings warn{out.warnings, {}};
     ScenarioSpec& spec = out.spec;
+    const auto script = scene.chunks("BIGBROTHER");
+    if (script.size() > 1)
+        return std::string("scenario has duplicate BIGBROTHER context");
+    if (!script.empty()) {
+        spec.script_context = ScriptContext::Pending;
+        spec.script_source.assign(script[0]->payload.begin(), script[0]->payload.end());
+    }
 
     // SCENE/HEAD (P: present in all 50, first child).
     const std::vector<const formats::chunk::Chunk*> heads = scene.chunks("HEAD");
@@ -1452,6 +1535,10 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
             for (const tagged::Record& r : pl.records) {
                 if (r.name == "HEAD") {
                     read_player_head(r.payload, p);
+                } else if (r.name == "ANLTRG" || r.name == "FORSCH") {
+                    auto error = read_construction_record(r, p, types, config);
+                    if (!error.empty())
+                        return path + "." + std::string(r.name) + ": " + error;
                 } else if (r.name == "VOLK") {
                     // D AnnoWelt 0x1001d657–0x1001d753 (switch 0x1001e8f4 on the player type):
                     // types 8, 11, 12 -> people 1; 15 -> 11, 16 -> 12 (both also set +0xA0 bits
@@ -1543,6 +1630,9 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                     for (const auto& [other, row] : rows) {
                         p.relations.push_back(row); // ascending by `other` (std::map order)
                     }
+                } else if ((r.name == "SCHIFF" || r.name == "SOLDAT") &&
+                           units.projection == OriginalActorProjection::ImportRequired) {
+                    // The whole scenario-wide actor pass below retains file creation order.
                 } else {
                     warn.unknown_record("players", path + "." + std::string(r.name), r.name,
                                         r.offset);
@@ -1563,8 +1653,19 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                    ", which has no header block";
         }
         for (const tagged::Record& r : pl.records) {
+            if ((r.name == "SCHIFF" || r.name == "SOLDAT") &&
+                units.projection == OriginalActorProjection::ImportRequired) {
+                continue; // Decoded transactionally by import_original_units, not discarded.
+            }
             // The player reader also takes the older name STADT for the same record (D
             // AnnoWelt 0x1001d240, string test; docs/re/annoscene.md §10).
+            if (r.name == "ANLTRG" || r.name == "FORSCH") {
+                auto error =
+                    read_construction_record(r, spec.players[by_index.at(pl.index)], types, config);
+                if (!error.empty())
+                    return path + "." + std::string(r.name) + ": " + error;
+                continue;
+            }
             if (r.name != "STADT2" && r.name != "STADT") {
                 warn.unknown_record("players", path + "." + std::string(r.name), r.name, r.offset);
                 continue;
@@ -1717,6 +1818,9 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         if (name == "HEAD" || name == "INSEL5" || name == "SPIELER" || name == "WARETYPE") {
             continue; // WARETYPE: the goods remap of the city WARE records
         }
+        if (name == "MAIN" && units.projection == OriginalActorProjection::ImportRequired) {
+            continue; // The actor pass validates and reads MAIN's registry length.
+        }
         if (name == "INSELLNK") {
             auto parsed_link = sze::IslandLink::parse(child.payload);
             if (!parsed_link) {
@@ -1824,6 +1928,18 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
     }
     out.link_inputs.raw_materials.resize(config.links.raw_kinds, 0);
     out.link_inputs.ores.resize(config.links.ore_kinds, 0);
+    if (units.projection == OriginalActorProjection::ImportRequired) {
+        auto imported = import_original_units(scene, players.value(), types, config, spec.settings,
+                                              goods, units);
+        if (!imported) {
+            return imported.error();
+        }
+        spec.original_figure_slots = imported.value().initial_slots;
+        spec.figures = std::move(imported.value().figures);
+        for (auto& warning : imported.value().warnings) {
+            out.warnings.push_back(std::move(warning));
+        }
+    }
     return out;
 }
 

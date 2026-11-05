@@ -143,6 +143,13 @@ class RouteDirty {
     std::int64_t x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
 };
 
+/// The harvest claim: bit 29 of the original tile record's second dword (AnnoWelt 0x10087880 mode 0
+/// sets and clears exactly this bit, 0x10087400 reads it; docs/re/forestry.md 2.7), kept in
+/// TileLayer::aux at the same position. Placement and clearing keep it (0x100824a7 `and
+/// 0x3fffffff`, the clear arm 0x10082f05), which TileLayer's writers do (set_item_height replaces
+/// byte 0 only).
+inline constexpr std::uint32_t kTileClaim = 1U << 29;
+
 /// The tile columns of one island with their chunk digest cache.
 class TileLayer {
   public:
@@ -186,9 +193,12 @@ class TileLayer {
     /// City number, or neutral_owner. A u32 (F3).
     [[nodiscard]] std::uint32_t owner(std::uint64_t idx) const;
     /// The remaining record bits (flag 0x80 of byte +3, ...): O-11. Byte 0 is the placed item's
-    /// height byte (item_height); bits 8..31 are 0 until a later stage models them, and
-    /// validate_island refuses a state that holds anything there (MAP-NAV-3 N3).
+    /// height byte (item_height); bit 29 is the harvest claim (kTileClaim, MAP-ECON-1 E2); the
+    /// other bits 8..31 are 0 until a later stage models them, and validate_island refuses a state
+    /// that holds anything there (MAP-NAV-3 N3).
     [[nodiscard]] std::uint32_t aux(std::uint64_t idx) const;
+    /// Whether the harvest claim bit (kTileClaim) is set on the tile.
+    [[nodiscard]] bool claimed(std::uint64_t idx) const { return (aux(idx) & kTileClaim) != 0; }
     /// The placed item's height byte: byte 0 of the original tile record's second dword
     /// (docs/re/transport.md; written by AnnoWelt 0x10082260 / 0x10082494, kept by the clear arm
     /// 0x10082f00). The base of the route predicate ((h + base) & 0xff) > 19. Stored in the low
@@ -468,6 +478,11 @@ struct Island {
     /// Flames, plague, volcano and wildlife objects (O-12): 0 until ported; the
     /// slot keeps the stream stable.
     std::uint64_t reserved_object_count = 0;
+    /// MAP-ECON-1 E2 (stream 126, docs/sim/forestry.md 2, 2.1): the owner of each claimed tile
+    /// (world tile -> the harvest worker that claimed it). An ADAPTATION of the enhanced rule
+    /// Rules::forestry_claim_hygiene only; the original stores no owner, and under the faithful
+    /// rules the map is empty (World::check_invariants refuses anything else).
+    std::map<TileXY, FigureId> claims;
     /// Derived (see IslandIndexCache).
     IslandIndexCache cache;
 

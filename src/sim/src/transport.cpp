@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <anno/sim/driver.hpp>
+#include <anno/sim/inn.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/walk_search.hpp>
 
@@ -186,6 +187,21 @@ std::int64_t output_capacity(const BuildingType& t) {
 
 } // namespace
 
+bool pick_matches(GoodsId input, GoodsId out0, GoodsId out1) {
+    // 0x10072952-0x10072961 (output 0: ALL or the goods) and 0x100729bd-0x100729cb (output 1, only
+    // when output 0 is not ALL).
+    return out0 == kAllGoods || out0 == input || out1 == input;
+}
+
+std::int64_t pick_score(std::int32_t priority, std::int64_t avail, std::int64_t capacity) {
+    // 0x10072974-0x100729a1: the source must hold 1 t, the priority must be above 0; score =
+    // priority + avail * 192 / cap (an idiv by 0 in the original; no source type has capacity 0).
+    if (avail < kOneTon || priority <= 0 || capacity == 0) {
+        return -1;
+    }
+    return priority + avail * 192 / capacity;
+}
+
 bool transport_runs_job(std::uint32_t job) {
     return job == kJobMarketCart || job == kJobWorkshopCarrier;
 }
@@ -283,8 +299,20 @@ std::int32_t workshop_priority(const SerialWorld& world, const Building& worksho
             break;
         }
     }
+    if (!index) {
+        return -1;
+    }
+    if (const auto* inn = std::get_if<Inn>(&workshop.payload)) {
+        // MAP-POP-CLOSE-2 K1, the Inn's vtable +0xd8 is the BASE priority 0x10072870 (not the
+        // workshop's 0x10068500): the stock proxy is its slot +0xbc = the tavern stock, no carrier
+        // is counted. A need of 0 would trap in the original (the registry refuses such a type).
+        const std::int64_t n =
+            *index < type.prod.input_per_step.size() ? type.prod.input_per_step[*index] : 0;
+        const auto prio = base_priority(inn->tavern, static_cast<std::uint32_t>(n));
+        return prio.value_or(-1);
+    }
     const auto* w = std::get_if<Workshop>(&workshop.payload);
-    if (!index || w == nullptr) {
+    if (w == nullptr) {
         return -1;
     }
     // +0xbc(g) = 0x100683c0: input 1 when g is the type's input goods 1, else input 0.
@@ -318,39 +346,26 @@ std::int32_t workshop_priority(const SerialWorld& world, const Building& worksho
 std::int64_t workshop_offer(const SerialWorld& world, const TypeRegistry& types,
                             const Building& workshop, const BuildingType& type,
                             const Building& source, const City* source_city, GoodsId& goods) {
-    // D 0x100728f0 (workshop slot +0xd4).
+    // D 0x100728f0 (the sender's slot +0xd4, shared by the workshop and the Inn).
     const BuildingType* st = types.find(source.type);
     if (st == nullptr) {
         return -1;
     }
     std::int64_t best = -1;
-    auto consider = [&](GoodsId g) {
+    for (std::size_t i = 0; i < type.input_goods.size(); ++i) {
+        const GoodsId g = type.input_goods[i];
+        if (!pick_matches(g, source_output(source, *st, 0), source_output(source, *st, 1))) {
+            continue;
+        }
         const std::int64_t avail = available(source, *st, g, source_city);
         if (avail < kOneTon) {
-            return;
+            continue;
         }
         const std::int32_t p = workshop_priority(world, workshop, type, g);
-        if (p <= 0) {
-            return;
-        }
-        const std::int64_t cap = output_capacity(*st);
-        if (cap == 0) {
-            return; // idiv by 0 in the original (P: no source type has a 0 capacity)
-        }
-        const std::int64_t v = p + avail * 192 / cap;
+        const std::int64_t v = pick_score(p, avail, output_capacity(*st));
         if (v > best) {
             best = v;
             goods = g;
-        }
-    };
-    for (std::size_t i = 0; i < type.input_goods.size(); ++i) {
-        const GoodsId g = type.input_goods[i];
-        const GoodsId s0 = source_output(source, *st, 0);
-        if (s0 == kAllGoods || s0 == g) {
-            consider(g);
-        }
-        if (s0 != kAllGoods && source_output(source, *st, 1) == g) {
-            consider(g);
         }
     }
     return best;
@@ -628,16 +643,7 @@ namespace {
 /// the first (the path starts on the figure's own or its home's tile).
 void set_route(Figure& fig, const std::vector<TileXY>& path) {
     TransportState& tr = fig.transport;
-    tr.route.clear();
-    tr.route.push_back(fig.pos);
-    for (std::size_t i = 0; i < path.size(); ++i) {
-        if (i == 0 && path.size() > 1) {
-            continue; // the start tile: the walk starts from the figure's spot
-        }
-        tr.route.push_back(centre(path[i]));
-    }
-    tr.next = 1;
-    tr.along = 0;
+    start_walk(fig.pos, path, WalkRef{tr.route, tr.next, tr.along});
 }
 
 /// Walks `ticks` along the route at `speed` (2^-24 tile per tick); the ticks left after
@@ -646,6 +652,47 @@ void set_route(Figure& fig, const std::vector<TileXY>& path) {
 /// the walk goes on.
 std::optional<std::uint64_t> walk(Figure& fig, std::uint64_t ticks, std::uint32_t speed) {
     TransportState& tr = fig.transport;
+    return walk_ticks(fig.pos, WalkRef{tr.route, tr.next, tr.along}, ticks, speed);
+}
+
+} // namespace
+
+std::int32_t tile_of_q8(std::int32_t q) {
+    return tile_of(q);
+}
+
+WalkPoint walk_point_of(FixedPos p) {
+    return walk_point(p);
+}
+
+std::vector<WalkPoint> entrance_walk_points(const Building& b, const BuildingType& type) {
+    return entrance_points(b, type);
+}
+
+FixedPos tile_centre(TileXY t) {
+    return centre(t);
+}
+
+bool tile_in_footprint(const Building& b, const BuildingType& type, std::int32_t x,
+                       std::int32_t y) {
+    return in_footprint(b, type, x, y);
+}
+
+void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w) {
+    w.route.clear();
+    w.route.push_back(pos);
+    for (std::size_t i = 0; i < path.size(); ++i) {
+        if (i == 0 && path.size() > 1) {
+            continue; // the start tile: the walk starts from the figure's spot
+        }
+        w.route.push_back(centre(path[i]));
+    }
+    w.next = 1;
+    w.along = 0;
+}
+
+std::optional<std::uint64_t> walk_ticks(FixedPos& pos, WalkRef tr, std::uint64_t ticks,
+                                        std::uint32_t speed) {
     if (tr.route.empty() || tr.next >= tr.route.size()) {
         tr.route.clear();
         tr.next = 0;
@@ -665,13 +712,13 @@ std::optional<std::uint64_t> walk(Figure& fig, std::uint64_t ticks, std::uint32_
             tr.along = static_cast<std::uint32_t>(tr.along + dist);
             const std::int64_t num = tr.along;
             const auto den = static_cast<std::int64_t>(seg);
-            fig.pos = FixedPos{clamp32(a.x + (std::int64_t{b.x} - a.x) * num / den),
-                               clamp32(a.y + (std::int64_t{b.y} - a.y) * num / den)};
+            pos = FixedPos{clamp32(a.x + (std::int64_t{b.x} - a.x) * num / den),
+                           clamp32(a.y + (std::int64_t{b.y} - a.y) * num / den)};
             return std::nullopt;
         }
         dist -= left;
         tr.along = 0;
-        fig.pos = b;
+        pos = b;
         ++tr.next;
     }
     tr.route.clear();
@@ -679,6 +726,8 @@ std::optional<std::uint64_t> walk(Figure& fig, std::uint64_t ticks, std::uint32_
     tr.along = 0;
     return dist / speed;
 }
+
+namespace {
 
 struct Job {
     const TickContext& ctx;
@@ -689,6 +738,8 @@ struct Job {
     const Building* home;
     const BuildingType* home_type;
     std::optional<CityRef> home_city;
+    /// E4 ledger (diagnostic): the cargo went to a home in this call.
+    bool unloaded = false;
 };
 
 /// Step C's start (0x10057ae0): inside the home's footprint the step is done at once;
@@ -801,6 +852,9 @@ void load(Job& j) {
     }
     j.fig.cargo_88 += take;
     tr.reserved_88 = 0; // cargo +0x20 takes the reservation
+    if (j.ctx.transport_stats != nullptr && target != nullptr && take > 0) {
+        j.ctx.transport_stats->loaded_from[target->id] += take; // E4 ledger (diagnostic)
+    }
 }
 
 /// Step C's arrival (0x10057bd0): with a home and goods, home +0xc0(g, amount): a market
@@ -815,10 +869,22 @@ void unload(Job& j) {
         if (j.home_city) {
             j.world.fx.goods_moves.push_back(
                 GoodsMove{*j.home_city, j.fig.cargo_goods, std::int64_t{j.fig.cargo_88}});
+            j.unloaded = true;
+            if (j.ctx.transport_stats != nullptr) {
+                j.ctx.transport_stats->unload_offered[j.fig.cargo_goods] += j.fig.cargo_88;
+            }
         }
         return;
     }
+    if (std::holds_alternative<Inn>(j.home->payload) && j.fig.cargo_88 > 0) {
+        // D 0x100756d0: tavern += amount (8.8, a 16-bit add), applied at the merge (scheduler 6b).
+        j.unloaded = true;
+        j.world.fx.store_deltas.push_back(StoreDelta{j.home->id, StoreDelta::Store::Input, 0,
+                                                     std::int64_t{j.fig.cargo_88}});
+        return;
+    }
     if (std::holds_alternative<Workshop>(j.home->payload) && j.fig.cargo_88 > 0) {
+        j.unloaded = true;
         const GoodsId g = j.fig.cargo_goods;
         const std::uint32_t index =
             j.home_type->input_goods.size() > 1 && g == j.home_type->input_goods[1] ? 1U : 0U;
@@ -879,7 +945,8 @@ bool transport_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
     const Building* home = world.find_building(fig.home);
     const BuildingType* home_type = home != nullptr ? ctx.types.find(home->type) : nullptr;
     if (fig.job == kJobWorkshopCarrier && home != nullptr &&
-        !std::holds_alternative<Workshop>(home->payload)) {
+        !std::holds_alternative<Workshop>(home->payload) &&
+        !std::holds_alternative<Inn>(home->payload)) {
         return false; // the weapons workshop's carrier: stage 2 (it never leaves Start)
     }
     if (!timed) {
@@ -887,7 +954,8 @@ bool transport_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
         fig.stamp = static_cast<std::uint16_t>(t);
     }
     Job j{ctx,       world, fig,       ft,
-          ft->layer, home,  home_type, home != nullptr ? city_of(world, home->id) : std::nullopt};
+          ft->layer, home,  home_type, home != nullptr ? city_of(world, home->id) : std::nullopt,
+          false};
     // Every pass waits for time or moves to a later step (Start, ToSource, Load, ToHome,
     // Done), so a call ends after at most five passes.
     for (int pass = 0; pass < 8; ++pass) {
@@ -936,6 +1004,9 @@ bool transport_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             // No step left (0x10034380 deletes the job): the end path 0x1003af00 inside the
             // home is a walk of 0 (the release and the Remove at t; outside it the original
             // walks 15.0 first, which end_figure does not model).
+            if (!j.unloaded && fig.cargo_88 > 0 && ctx.transport_stats != nullptr) {
+                ctx.transport_stats->cart_lost[fig.cargo_goods] += fig.cargo_88; // E4 ledger
+            }
             world.end_figure(fig, t);
             return true;
         }

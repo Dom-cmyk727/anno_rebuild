@@ -24,6 +24,8 @@ cannot be one of those until it exists.
 | --- | --- | --- | --- | --- |
 | `slot_policy` | `Original` | not decided | D1, OQ-036. Visit order of buildings. | yes, feel |
 | `spatial_order` | `YXSlot`. This default is the canonical order. The original's unstable quicksort is the reserved enumerator `Original0x10027000`, which `validate` rejects (O-7). | not decided | D2, OQ-037. | yes, feel |
+| `road_require_land_level` | `false` (the original accepts a class-`0x4000` road at any level) | `true` | MAP-ROAD-CLOSE-1, `docs/sim/road-placement.md` section 3 (R-A2); original cursor test unread | yes, feel |
+| `road_preserve_nonroad_pieces` | `false` (the original lets a road replace a ramp or pier piece) | `true` | MAP-ROAD-CLOSE-1, `docs/sim/road-placement.md` section 3 (R-A3) | yes, feel |
 | `events_drain_new` | `false` | not decided | D3, OQ-038. | yes, feel |
 | `events_max_dispatch` | `kEventsMaxDispatchDefault` (2^20) | the same cap | F24. A safety limit, not a feel switch. The original had no cap. | no |
 | `events_flush_after_figures` | `false` | not decided | D4, OQ-039. | yes, feel |

@@ -1,6 +1,8 @@
 // The placement rules of Build (docs/sim/state.md §8.4 steps 2 and 3, stage S10).
+#include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include <anno/sim/placement.hpp>
 #include <anno/sim/site_checks.hpp>
@@ -14,12 +16,15 @@ std::uint32_t group_of(std::uint32_t prodtype) {
     return ((prodtype - 1U) & ~0x1fU) + 1U;
 }
 
-enum class Class : std::uint8_t { Ordinary, Coast, Other };
+enum class Class : std::uint8_t { Ordinary, Coast, Road, Other };
 
 Class classify(const BuildingType& t, const PlacementParams& p) {
     // The original's flag word is HEAD u16 +0x1c; a wider word is not evidenced (Other).
     if (t.flags_word > 0xffffU || (t.flags_word & p.coverage_flag) != 0) {
         return Class::Other;
+    }
+    if (is_land_road(t)) {
+        return Class::Road;
     }
     if ((t.flags_word & ~p.ignored_flag_bits) == p.ordinary_class) {
         return Class::Ordinary;
@@ -30,7 +35,60 @@ Class classify(const BuildingType& t, const PlacementParams& p) {
     return Class::Other;
 }
 
+/// The window result of a land road (AnnoGame 0x10008f90 for flag word & 3 in {0, 2, 3}), the slope
+/// test of the slope class, and the level floor. Unsupported when a vertex cannot be read.
+PlacementResult road_window(const VertexGrid& grid, const BuildingType& t,
+                            const PlacementRecord& rec, std::int64_t fw, std::int64_t fh,
+                            const PlacementParams& params, const RoadParams& road) {
+    constexpr PlacementResult kUnsupported{Reject::Unsupported, 0};
+    const auto w = static_cast<std::size_t>(fw + 1);
+    std::vector<std::uint8_t> v(w * static_cast<std::size_t>(fh + 1));
+    unsigned mx = 0;
+    for (std::int64_t dy = 0; dy <= fh; ++dy) {
+        for (std::int64_t dx = 0; dx <= fw; ++dx) {
+            const std::optional<std::uint8_t> at = grid.at(rec.x + dx, rec.y + dy);
+            if (!at) {
+                return kUnsupported;
+            }
+            v[static_cast<std::size_t>(dy) * w + static_cast<std::size_t>(dx)] = *at;
+            mx = std::max<unsigned>(mx, *at);
+        }
+    }
+    unsigned lo = 0xff, hi = 0;
+    for (std::size_t y = 0; y < static_cast<std::size_t>(fh); ++y) {
+        for (std::size_t x = 0; x < static_cast<std::size_t>(fw); ++x) {
+            const unsigned cell = std::min({v[y * w + x], v[y * w + x + 1], v[(y + 1) * w + x],
+                                            v[(y + 1) * w + x + 1]}) &
+                                  0xf0U;
+            lo = std::min(lo, cell);
+            hi = std::max(hi, cell);
+        }
+    }
+    const std::uint32_t mode = t.flags_word & 3U;
+    const unsigned result = mode == 0 ? hi : mode == 2 ? lo : (mx & 0xf0U); // mode 3
+    // The class test runs only with flag bit 4 (A & 0x1000004 == 4, AnnoGame 0x10009111); a
+    // data-defined slope-class road without that bit has no slope test, like the original.
+    if ((t.flags_word & 4U) != 0 && (t.flags_word & 0x7000U) == road.slope_class &&
+        mx - lo > road.slope_limit) {
+        return {Reject::TerrainRefused, 0};
+    }
+    // The original needs a byte >= min_level for the slope class (0x1007cbeb) but accepts the road
+    // class at once; the floor for the road class is the enhanced choice R-A2.
+    const bool slope_class = (t.flags_word & 0x7000U) == road.slope_class;
+    if (result < params.min_level && (slope_class || params.road_require_land_level)) {
+        return {Reject::TerrainRefused, 0};
+    }
+    return {Reject::None, static_cast<std::uint8_t>(result)};
+}
+
 } // namespace
+
+bool is_land_road(const BuildingType& t, const RoadParams& p) {
+    const std::uint32_t cls = t.flags_word & 0x7000U;
+    return t.prodtype == p.prodtype && t.flags_word <= 0xffffU && (t.flags_word & 0x10U) == 0 &&
+           (cls == p.road_class || cls == p.slope_class) && (t.flags_word & 3U) != 1U &&
+           t.width > 0 && t.height > 0;
+}
 
 PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
                                const BuildingType& effective, const PlacementRecord& rec,
@@ -55,8 +113,16 @@ PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
         for (std::int64_t dx = 0; dx < fw; ++dx) {
             const std::int64_t lx = rec.x - std::int64_t{tiles.x0()} + dx;
             const std::int64_t ly = rec.y - std::int64_t{tiles.y0()} + dy;
-            const std::uint32_t id = tiles.object(static_cast<std::uint64_t>(ly) * tiles.width() +
-                                                  static_cast<std::uint64_t>(lx));
+            const std::uint64_t local =
+                static_cast<std::uint64_t>(ly) * tiles.width() + static_cast<std::uint64_t>(lx);
+            // The latest object: an earlier record of the dry run supersedes the physical one.
+            std::uint32_t id = tiles.object(local);
+            if (params.object_overlay != nullptr) {
+                if (const auto it = params.object_overlay->find(local);
+                    it != params.object_overlay->end()) {
+                    id = it->second.v;
+                }
+            }
             if (id == 0) {
                 continue;
             }
@@ -67,12 +133,21 @@ PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
             if (site::overlap_with_existing(effective, *existing) != site::Compat::Compatible) {
                 return {Reject::Occupied, 0};
             }
+            // R-A3: a group-0xc1 piece that is not itself a land road (ramp, pier) is not replaced
+            // by a road (the original accepts it; docs/sim/road-placement.md section 3).
+            if (cls == Class::Road && params.road_preserve_nonroad_pieces &&
+                group_of(existing->prodtype) == 0xc1U && !is_land_road(*existing)) {
+                return {Reject::Occupied, 0};
+            }
         }
     }
     // R4 / R5: the vertex window.
     const VertexGrid grid = VertexGrid::of(island);
     if (!grid.ok()) {
         return kUnsupported;
+    }
+    if (cls == Class::Road) {
+        return road_window(grid, effective, rec, fw, fh, params, RoadParams{});
     }
     if (cls == Class::Coast) {
         const site::TerrainVerdict v =

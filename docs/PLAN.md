@@ -285,6 +285,31 @@ Goal: headless simulation that loads a scenario and advances by ticks; faithful 
 
 Acceptance M3: a 1-hour headless run of an endless scenario produces identical hashes across Windows and Linux builds and across two runs. Production/population numbers match differential fixtures where executed.
 
+Status M3 population (2026-11-04, MAP-POP-CLOSE-1): PARTIAL. A fresh home built by BuildCmd gets its first assignment, pays exactly, grows to its cap, is supplied by real resident walkers, survives save/reload and replay on a real scenario (headless, `Rules::house_updates` on only in tests; the default stays false; this is not live gameplay). A real pioneer -> settler upgrade is blocked by one unported supplier rule: goods 76 (WIRTSHAUS) comes only from an Inn's tavern stock, whose tick, alcohol carrier and chain are not ported, and no shipped scenario has a stocked Inn. Details: `docs/sim/population-live.md` section 21 and `docs/orchestration/REPORTS.md`.
+Status M3 population (2026-11-05, MAP-POP-CLOSE-2): headless progression reached. The Inn is ported (tick, carrier, take, unload; `Rules::house_updates` only), OQ-463 is closed (goal-cell key nibble), and a pioneer house built by `BuildCmd` in the original Tutorial town upgrades 501 -> 522 at tick 55000 with the exact debit, masks, ledger, controls, save/reload cuts and replay (fresh process included). Not live gameplay; default `house_updates` false. Details: `docs/sim/population-live.md` sections 22-26.
+
+**Historical, superseded by MAP-UNIT-IMPORT-1 below:** Status M3 scripting
+(2026-11-05, pre-import MAP-SCRIPT-2): PARTIAL / BLOCKED original-world
+acceptance. The complete unchanged endless01 source compiles and initializes;
+reviewed indexed area queries, money/wave actions, normal session startup and
+native/replay continuity have separate synthetic proof. Original SCHIFF/SOLDAT/
+CREW import is absent, so the normal world lacks the Human ship/crew needed for a
+real area condition and founding. Human has no original city; construction needs
+an owned city. A separate unit-import
+contract is required. Final scoped gate/review closeout is recorded in the
+[handoff](orchestration/reviews/2026-11-05-map-script2.md); no M3 completion claim.
+
+Current bounded M3 scripting slice (2026-11-05, MAP-UNIT-IMPORT-1 / SCRIPT2): the
+normal adapter imports all five original endless01 actors. Its complete unchanged
+script reaches a real branch0 wave and public founding/unload/HANDWERK consequence,
+with exact resources, native cuts and fresh-process proof. Independent package
+reviews and current Debug256/256, ASAN256/256, isolated prior opening ASAN1/1 and
+corrected-reader1/1 pass. Final scoped integration APPROVED at e61ab520; COMPLETE LOCAL CANDIDATE for this
+bounded headless slice.
+[Current handoff](orchestration/reviews/2026-11-05-map-unit-import1.md). This does not
+complete M3's one-hour Windows/Linux acceptance or all scenario/game behavior.
+
+
 ## 5. Milestone M4 — Lockstep multiplayer (`crates/net`)
 
 Goal: 2–8 players (owner decision 2026-10-22: up to 8 by the end of the project, humans and computer players mixed, on a world that grows above 4 players, §0.6), robust against the known failure modes of the original (undetected asyncs, OS/fps-dependent divergence, state-size blowup).
@@ -337,6 +362,17 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 since 2026-10-30, and it brings the Mac pin `0c401c8d`. Review: `docs/orchestration/reviews/2026-11-05-w4-main1.md`.
 CI is 10/10 on the head (run `42031477838`). UI.2's "W4.4 merged" condition is met. Next on Windows: W4-OPENING-2 and
 W4-DEPTH-1-CLOSE (`docs/orchestration/TASKS.md`).
+**Executor update, 2026-11-05 — MAP-UNIT-IMPORT-1 / SCRIPT2 F2:** normal endless01
+loading now imports its complete five-actor closure with original slots, health,
+parents, holds and position. The unchanged full script reaches a real ship-area
+wave and public founding/unload/HANDWERK consequence, with exact money/resource
+and native/fresh-replay proof. Package reviews approved; affected Debug256/256,
+ASAN256/256 and isolated prior opening ASAN1/1 pass. Final tracked-bundle integration
+APPROVED at e61ab520; COMPLETE LOCAL CANDIDATE for this bounded slice. [Handoff](orchestration/reviews/2026-11-05-map-unit-import1.md).
+This is a bounded local headless slice, not completion of M3/M4, all scenarios,
+Windows/Linux checks, actual audio, rendering or multiplayer scale. Main/TASKS and
+other lanes remain untouched; no merge or push.
+
 
 **Historical status 2026-10-26 (round bj; superseded by round bq below):** **T33 is done** (T33.1–T33.4 merged locally, T33.4 as `acd45cd`; GitHub is suspended, so `main` is unpushed). The market cart and the workshop carrier find sources by the original's decoded walk rule, and every tile stores the original's walk code and mask (stream 112). Open: OQ-200 (water), OQ-170 (coast), OQ-201 (cleared footprint, narrowed), OQ-203..205 (tile-record bits). T33.5 stage 1 (the original's tile record, `transport.md` §3.4.17) merged as `d30d20b` (round bk); OQ-202 answered: growth leaves the walk record as placement wrote it. Live lane: T33.5 stage 2 (the tile layer as the original's record, the main executor); T30b.5–7 (the Wine validation, the orchestrator); P1 (population, from `state.md` §4.7c).
 

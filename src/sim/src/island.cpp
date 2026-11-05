@@ -442,6 +442,10 @@ std::string validate_cities(const Island& is, std::size_t slot, const SimConfig&
             return cp + ".goods: " + std::to_string(city.goods.size()) +
                    " settings, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
         }
+        if (city.billed.size() != cfg.warehouse_goods) {
+            return cp + ".billed: " + std::to_string(city.billed.size()) +
+                   " counters, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
+        }
         if (city.build_goods.size() != cfg.build_goods_count) {
             return cp + ".build_goods: " + std::to_string(city.build_goods.size()) +
                    " records, SimConfig.build_goods_count is " +
@@ -546,12 +550,15 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
     if (!inside_world(SlotRect{slot, t.x0(), t.y0(), t.width(), t.height()}, settings)) {
         return outside_message(slot, settings);
     }
-    // aux holds the placed item's height byte in bits 0..7 (TileLayer::item_height); nothing
-    // models bits 8..31 yet, so a state that sets one is refused instead of carrying them silently.
+    // aux holds the placed item's height byte in bits 0..7 (TileLayer::item_height) and the harvest
+    // claim in bit 29 (kTileClaim, MAP-ECON-1 E2); nothing models the other bits 8..31 yet, so a
+    // state that sets one is refused instead of carrying them silently. Any claim pattern is
+    // accepted here: how claims relate to workers is the rules' question (World::check_invariants).
     for (std::uint64_t i = 0; i < t.tile_count(); ++i) {
-        if ((t.aux(i) >> 8) != 0) {
+        if ((t.aux(i) & ~(0xffU | kTileClaim)) != 0) {
             return p + ".tiles.aux[" + std::to_string(i) + "]: " + std::to_string(t.aux(i)) +
-                   " sets bits 8..31; only the item height byte (bits 0..7) is modelled";
+                   " sets bits 8..31 other than the claim bit 29; only the item height byte "
+                   "(bits 0..7) and the claim are modelled";
         }
     }
     if (is.climate >= cfg.monopoly_climate_mask.size()) {

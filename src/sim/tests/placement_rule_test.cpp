@@ -33,7 +33,9 @@ struct VectorCase {
     std::uint32_t type = 0;
     std::int32_t x = 0, y = 0;
     std::uint32_t rot = 0;
-    std::vector<std::string> expect;
+    std::vector<std::string> expect; // the ENHANCED answer (both road choices on)
+    std::vector<std::string>
+        original; // the faithful answer where it differs (both road choices off)
 };
 
 std::vector<std::uint8_t> hex_bytes(const std::string& s) {
@@ -105,6 +107,11 @@ Vectors read_vectors() {
             while (ss >> word) {
                 v.cases.back().expect.push_back(word);
             }
+        } else if (k == "original") {
+            std::string word;
+            while (ss >> word) {
+                v.cases.back().original.push_back(word);
+            }
         }
     }
     return v;
@@ -151,7 +158,7 @@ sim::Reject reject_for(const std::string& reason) {
 
 TEST_CASE("placement rule: every vector of the oracle file") {
     const Vectors v = read_vectors();
-    REQUIRE(v.cases.size() == 50);
+    REQUIRE(v.cases.size() == 77);
     sim::TypeRegistry::Builder b;
     for (const sim::BuildingType& t : v.types) {
         b.add(t);
@@ -174,24 +181,41 @@ TEST_CASE("placement rule: every vector of the oracle file") {
         // byte0f is a result, never an input: pass the hostile value the oracle's flag column
         // names.
         rec.byte0f = 0x40;
-        const sim::PlacementResult r = sim::placement_rule(is, reg, *t, rec);
+        // Both policies: the enhanced road choices on (R-A2 level floor, R-A3 ramp/pier refusal)
+        // answer `expect`; both off answer the `original` line where the file gives one (the
+        // original island function, reproduced by the emulation) and `expect` otherwise.
+        sim::PlacementParams enhanced;
+        enhanced.road_require_land_level = true;
+        enhanced.road_preserve_nonroad_pieces = true;
+        const sim::PlacementParams faithful;
+        for (const bool is_enhanced : {true, false}) {
+            INFO((is_enhanced ? "enhanced road choices" : "faithful road choices"));
+            const std::vector<std::string>& want =
+                !is_enhanced && !c.original.empty() ? c.original : c.expect;
+            const sim::PlacementResult r =
+                sim::placement_rule(is, reg, *t, rec, is_enhanced ? enhanced : faithful);
+            if (want[0] == "accept") {
+                CHECK(r.reject == sim::Reject::None);
+                CHECK(static_cast<unsigned>(r.height) == std::stoul(want.at(1)));
+            } else if (want[0] == "reject") {
+                CHECK(r.reject == reject_for(want.at(1)));
+                CHECK(r.height == 0);
+            } else {
+                REQUIRE(want[0] == "unsupported");
+                CHECK(r.reject == sim::Reject::Unsupported);
+                CHECK(r.height == 0);
+            }
+        }
         if (c.expect[0] == "accept") {
             ++accepts;
-            CHECK(r.reject == sim::Reject::None);
-            CHECK(static_cast<unsigned>(r.height) == std::stoul(c.expect.at(1)));
         } else if (c.expect[0] == "reject") {
             ++rejects;
-            CHECK(r.reject == reject_for(c.expect.at(1)));
-            CHECK(r.height == 0);
         } else {
-            REQUIRE(c.expect[0] == "unsupported");
             ++unsupported;
-            CHECK(r.reject == sim::Reject::Unsupported);
-            CHECK(r.height == 0);
         }
     }
     // The file's mix, so a parser that silently drops cases cannot pass.
-    CHECK(accepts + rejects + unsupported == 50);
+    CHECK(accepts + rejects + unsupported == 77);
     CHECK(accepts >= 15);
     CHECK(rejects >= 15);
     CHECK(unsupported >= 4);

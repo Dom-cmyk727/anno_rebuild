@@ -718,6 +718,7 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     want.u64(0); // no deposits
     want.u64(0); // no ore objects (stream 120)
     want.u64(0x0102030405060708ULL);
+    want.u64(0); // claims (stream 126): no enhanced owner
     const std::size_t before_tiles = want.v.size();
     want.u32(3);
     want.u32(2);

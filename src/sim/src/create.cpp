@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <anno/sim/create.hpp>
+#include <anno/sim/house_transition.hpp>
 #include <anno/sim/walk_cells.hpp>
 
 namespace anno::sim {
@@ -97,20 +98,25 @@ void count_type(std::vector<std::uint32_t>& service, std::vector<std::uint32_t>&
 bool has_status_time(const Payload& payload, RuntimeClass cls) {
     // A market (T24) keeps the Inert rule it had as an unported class: no evidence
     // that its Create writes the status time.
-    return (!std::holds_alternative<Inert>(payload) && !std::holds_alternative<Market>(payload)) ||
+    return (!std::holds_alternative<Inert>(payload) && !std::holds_alternative<Market>(payload) &&
+            !std::holds_alternative<Inn>(payload)) ||
            cls == RuntimeClass::DualWorkshop;
 }
 
 /// Sets `last` (D: property 0x23, 0x10073380, always writes u16 +0x0a) of any
 /// payload alternative and the status time of the classes that have the slot.
-void stamp_placement(Payload& payload, RuntimeClass cls, std::uint16_t value) {
+void stamp_placement(Payload& payload, RuntimeClass cls, std::uint16_t value, bool stamp_house) {
     const bool with_time = has_status_time(payload, cls);
     std::visit(
-        [value, with_time](auto& p) {
+        [value, with_time, stamp_house](auto& p) {
             if constexpr (std::is_same_v<std::decay_t<decltype(p)>, House>) {
-                // P1 decision 8: the house keeps last = 0; P2, its first reader, writes the
-                // creation time (the original's property 0x23 does, 0x100733ac).
-                (void)value;
+                // P1 decision 8: the house keeps last = 0 (Rules::house_updates off: the accepted
+                // behaviour). MAP-POP-LIVE-1 L4, P-6 (population-live.md section 8): with the live
+                // House update on a created house stamps last = u16(tick), the original's property
+                // 0x23 (0x100733ac); a scenario import and a saved house are not created here.
+                if (stamp_house) {
+                    p.last = value;
+                }
                 (void)with_time;
             } else {
                 p.last = value;
@@ -132,6 +138,7 @@ City make_city(CityNo number, PlayerId owner, const SimConfig& cfg) {
     c.index = make_building_index(cfg);
     c.goods.assign(cfg.warehouse_goods, GoodsSetting{});
     c.build_goods.assign(cfg.build_goods_count, BuildGoods{});
+    c.billed.assign(cfg.warehouse_goods, 0);
     c.trade_lists.assign(cfg.trade_lists, std::vector<TradeEntry>{});
     return c;
 }
@@ -168,10 +175,33 @@ Reject creation_problem(const SimConfig& cfg, const TypeRegistry& types, const I
     return Reject::None;
 }
 
+Reject first_assignment_problem(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types,
+                                const BuildingType& type) {
+    if (!rules.house_updates || type.cls != RuntimeClass::House) {
+        return Reject::None;
+    }
+    const std::optional<std::uint32_t> g = house_group(cfg, type.prodtype);
+    if (!g) {
+        // A House-class type whose PRODTYPE names no group (an orphan). A live world never contains
+        // one (house_updates_problem refuses the registry at creation and load), so this is a
+        // defensive refusal that shares the HouseDomain code instead of having its own.
+        return Reject::HouseDomain;
+    }
+    const auto view = types.population_view(*g, cfg);
+    if (!view.ok()) {
+        return Reject::HouseDomain;
+    }
+    return house_first_assignment_domain(view.value(), types.goods_table().size()) ==
+                   HouseFault::None
+               ? Reject::None
+               : Reject::HouseDomain;
+}
+
 formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const Rules& rules,
                                                      const TypeRegistry& types, Island& island,
                                                      City& city, const PlacementRecord& rec,
-                                                     std::uint32_t now, const Payload* initial) {
+                                                     std::uint32_t now, const Payload* initial,
+                                                     DrawSource* first_assignment) {
     // 1. Validation: no state is touched until it has passed.
     if (const Reject problem = creation_problem(cfg, types, island, city.index.lists.size(), rec);
         problem != Reject::None) {
@@ -196,6 +226,13 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
         }
     }
 
+    const bool first = initial == nullptr && first_assignment != nullptr &&
+                       rules.house_updates && ty->cls == RuntimeClass::House;
+    if (first) {
+        if (const Reject r = first_assignment_problem(cfg, rules, types, *ty); r != Reject::None) {
+            return r;
+        }
+    }
     // 2.-3. The payload of the class, every bit zero (F2); a mine's deep flag
     // (D: type attach, slot +0x28, before the position).
     Building b;
@@ -224,7 +261,32 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     b.kontor_id = rec.kontor_id;
     // 5. The placement tick (D: property 0x23 -> 0x10073380 -> slot +0x120, F1).
     if (initial == nullptr) {
-        stamp_placement(b.payload, ty->cls, static_cast<std::uint16_t>(now));
+        stamp_placement(b.payload, ty->cls, static_cast<std::uint16_t>(now), rules.house_updates);
+    }
+    // RESIDUAL (disclosed): the draws below happen before the list insert of step 7. The only way
+    // the insert can then refuse is ListFull (a list of 2^32 - 1 slots), which no game reaches; a
+    // creation that fails there has drawn the first-assignment values and takes no id. Everything
+    // that can really refuse (type, rotation, list, serial, footprint, overlap, the supported domain)
+    // is checked in step 1, before any draw.
+    // 5b. SetGroup's first assignment (MAP-POP-CLOSE-1 G1; D Create 0x10024c3c -> 0x10076b90): after the
+    // stamp and before the building is inserted. The domain was checked above, so it cannot fail and
+    // has drawn nothing when it does not; a defensive fault refuses with nothing drawn.
+    if (first) {
+        auto* house = std::get_if<House>(&b.payload);
+        const auto g = house_group(cfg, ty->prodtype);
+        const auto view = g ? types.population_view(*g, cfg) : formats::Result<PopulationView, std::string>(std::string("no group"));
+        if (house == nullptr || !view.ok()) {
+            return Reject::BadValue;
+        }
+        const SetGroupResult sg = house_set_group(*first_assignment, types.goods_table(), nullptr,
+                                                  view.value(), house->e, house->residents_64,
+                                                  house->stock);
+        if (sg.fault != HouseFault::None) {
+            return Reject::HouseDomain;
+        }
+        house->stock = sg.stock;
+        house->e = sg.e;
+        house->residents_64 = sg.residents_64;
     }
     // 6. Attach to the city: a mine finds its deposit, position already set (D
     // slot +0x128).
@@ -256,8 +318,10 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     // the stored phase is 0, the reset of byte 3 (0x1008c81e). `b` was moved
     // into the slot; the placed copy still holds x, y and rotation.
     const Building& placed = *target.slots[slot];
+    std::vector<std::uint64_t> written;
     static_cast<void>(place_object_record(island.tiles, types, *ty, placed.x, placed.y,
-                                          placed.rotation, 0, placed.byte0f));
+                                          placed.rotation, 0, placed.byte0f, &written));
+    invalidate_claims(island, rules, written); // enhanced only (docs/sim/forestry.md 3.5)
     // 9. The shared tail (residents, running-cost statistics): no stored state yet
     // (O-9, O-23).
     return key;
@@ -309,7 +373,9 @@ bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistr
         const std::int32_t named_y = named.has_value() ? named->y : b.y;
         const auto [clear_x, clear_y] = removal_clear_xy(
             island.tiles, *ty, b.x, b.y, b.rotation, named_x, named_y, rules.removal_clear_tile);
-        clear_object_record(island.tiles, types, clear_x, clear_y);
+        std::vector<std::uint64_t> cleared;
+        clear_object_record(island.tiles, types, clear_x, clear_y, &cleared);
+        invalidate_claims(island, rules, cleared); // enhanced only (docs/sim/forestry.md 3.5)
     }
     island.cache.by_id.erase(b.id);
     list.remove(key.slot);

@@ -1,3 +1,4 @@
+#include "original_component.hpp"
 // The scenario adapter on synthetic scenarios (docs/sim/state.md §10, stage S14):
 // the HEAD byte map, a player series, one INSEL5 island with terrain, tile objects
 // and building items, a STADT2 city with its records (T23: HEAD2, WARE, ID3,
@@ -8,6 +9,7 @@
 #include <algorithm>
 #include <bit>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
@@ -231,8 +233,8 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
     return r.value();
 }
 
-sim::LoadedScenario load(const Buf& file) {
-    auto r = sim::load_scenario(file, *registry(), sim::SimConfig{});
+sim::LoadedScenario load(const Buf& file, const sim::UnitImportOptions& units = {}) {
+    auto r = sim::load_scenario(file, *registry(), sim::SimConfig{}, units);
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
     return std::move(r).value();
 }
@@ -319,6 +321,80 @@ TEST_CASE("scenario HEAD byte map") {
     CHECK(e.spec.settings.prop6 == 0x8401);
     // No HEAD at all.
     CHECK(refusal(scene("ANNO", chunk("SKTIMER", Buf(40, 0)))) == "scene.HEAD: missing");
+}
+
+/// A player HEAD with the stage-mask inputs written by hand: the u32 at +0x48 and the byte at
+/// +0x5c (D AnnoWelt 0x1001d389-0x1001d3df). Everything else as player_head.
+Buf player_head_mask(std::uint32_t head48, std::uint8_t head5c) {
+    Buf b = player_head(8, 1000, "M", 1);
+    for (int i = 0; i < 4; ++i) {
+        b[0x48 + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(head48 >> (8 * i));
+    }
+    b[0x5c] = head5c;
+    return b;
+}
+
+TEST_CASE("population A: the player stage mask is restored through the created world") {
+    // MAP-POP-IMPL-1 A. Expected values are hand-derived from the instruction spans (population-
+    // contract.md P-A1..P-A4): flags = (HEAD48 & 0x7fffff) | (+0x5c bit3 -> 1<<24) | (bit2 ->
+    // 1<<27) | (bit4 -> 1<<29) | (bit5 -> 1<<30); nothing else survives.
+    struct Row {
+        std::uint32_t head48;
+        std::uint8_t head5c;
+        std::uint32_t want;
+    };
+    const Row rows[] = {
+        {0x1f, 0x00, 0x1f},              // A1: the low bits (the legal control)
+        {0x1, 0x3c, 0x69000001},         // A2: all four reconstructed bits
+        {0x1f, 0x20, 0x4000001f},        // A2: bit 5 alone -> bit 30
+        {0x0, 0x08, 0x01000000},         // bit 3 -> bit 24
+        {0x0, 0x04, 0x08000000},         // bit 2 -> bit 27
+        {0x0, 0x10, 0x20000000},         // bit 4 -> bit 29
+        {0xffffffffU, 0xc3, 0x007fffff}, // A3: other packed bits and the high half are dropped
+        {0x00800000, 0x00, 0x00000000},  // A3: bit 23 is dropped
+        {0x00000000, 0x00, 0x00000000},  // A4: a stored zero is zero, not the constructor's 1
+        {0x00000001, 0x00, 0x00000001},  // INFRA_EVER only
+        {0x007fffff, 0x3c, 0x697fffff},  // everything that can survive
+    };
+    Buf kids = chunk("HEAD", head_bytes());
+    std::uint32_t slot = 0;
+    for (const Row& r : rows) {
+        append(kids, chunk("SPIELER",
+                           spieler(slot++, record("HEAD", player_head_mask(r.head48, r.head5c)))));
+    }
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    REQUIRE(s.spec.players.size() == std::size(rows));
+    auto w = sim::World::create(s.spec, registry());
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    for (std::size_t i = 0; i < std::size(rows); ++i) {
+        CAPTURE(i);
+        REQUIRE(s.spec.players[i].flags.has_value());
+        CHECK(*s.spec.players[i].flags == rows[i].want);
+        // The created world, not just the importer: the final assignment is checked too.
+        REQUIRE(w.value().players().slots[i].has_value());
+        CHECK(w.value().players().slots[i]->flags == rows[i].want);
+    }
+}
+
+TEST_CASE("population A: a spec without a mask keeps the constructor value") {
+    // The optional semantics (P-A4): no flags -> 1 (synthetic, fixed-map and ship-start specs);
+    // an explicit value, zero included, is taken as is.
+    sim::ScenarioSpec spec;
+    for (std::uint32_t i = 0; i < 3; ++i) {
+        sim::ScenarioSpec::PlayerSpec ps;
+        ps.id = sim::PlayerId{i};
+        spec.players.push_back(ps);
+    }
+    spec.players[1].flags = 0U;
+    spec.players[2].flags = 0x4000001fU;
+    auto w = sim::World::create(spec, registry());
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    REQUIRE(w.value().players().slots[0].has_value());
+    CHECK(w.value().players().slots[0]->flags == 1U);
+    REQUIRE(w.value().players().slots[1].has_value());
+    CHECK(w.value().players().slots[1]->flags == 0U);
+    REQUIRE(w.value().players().slots[2].has_value());
+    CHECK(w.value().players().slots[2]->flags == 0x4000001fU);
 }
 
 TEST_CASE("scenario player series") {
@@ -698,6 +774,8 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     item(prod2, kWeaver, 0, 0, 0, 8, 0);
     item(prod2, kMine, 0, 0, 0, 10, 0);
     item(prod2, kSmallFarm, 0, 0, 0, 12, 0);
+    item(prod2, kInn, 0, 0, 0, 14, 0); // MAP-POP-CLOSE-1 C2: the Inn record (10 bytes: decoded)
+    item(prod2, kInn, 0, 0, 0, 14, 2); // 9 bytes: skipped whole, the Inn keeps 0 / 0
     Buf kids = chunk("HEAD", head_bytes());
     append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1)))));
     append(kids, insel5(40, 60, 16, 8, 7, 2, block_record("PROD2", prod2)));
@@ -706,10 +784,12 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     append(prod,
            entry(2, 0, Buf{0, 0x01, 0x10, 0x02, 0x20, 0x02, 0x30, 0x02, 0x40, 0x02, 3, 0, 4, 0}));
     append(prod, entry(4, 0, Buf{0, 0, 0x50, 0, 0x60, 0, 0x77, 0x77, 6, 0}));
-    append(prod, entry(6, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1}));       // 9 bytes: skipped
-    append(prod, entry(8, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1})); // 11 bytes: skipped
-    append(prod, entry(10, 0, Buf(11, 1)));                          // over the mine's 10
-    append(prod, entry(12, 0, Buf(15, 1)));                          // over the small farm's 14
+    append(prod, entry(6, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1}));        // 9 bytes: skipped
+    append(prod, entry(8, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1}));  // 11 bytes: skipped
+    append(prod, entry(10, 0, Buf(11, 1)));                           // over the mine's 10
+    append(prod, entry(12, 0, Buf(15, 1)));                           // over the small farm's 14
+    append(prod, entry(14, 0, Buf{0, 0, 200, 0, 0, 0, 0, 0, 49, 1})); // Inn Load 0x10075740
+    append(prod, entry(14, 2, Buf{0, 0, 200, 0, 0, 0, 0, 0, 49}));
     Buf c = {2, 0};
     put16(c, 41);
     put16(c, 61);
@@ -717,7 +797,7 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     append(kids, chunk("SPIELER", spieler(0, record("STADT2", c))));
     const sim::LoadedScenario s = load(scene("ANNO", kids));
     const auto& b = s.spec.islands[0].cities[0].buildings;
-    REQUIRE(b.size() == 7);
+    REQUIRE(b.size() == 9);
     for (const auto& bs : b) {
         REQUIRE(bs.payload.has_value());
     }
@@ -755,6 +835,15 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     const auto* sf2 = std::get_if<sim::SmallFarm>(&*b[6].payload);
     REQUIRE(sf2 != nullptr);
     CHECK(sf2->out == std::vector<std::uint32_t>{0, 0});
+    // The Inn (Load 0x10075740): tavern stock = u16 at byte 2, taken statistic = u16 at byte 8.
+    const auto* inn = std::get_if<sim::Inn>(&*b[7].payload);
+    REQUIRE(inn != nullptr);
+    CHECK(inn->tavern == 200);
+    CHECK(inn->taken == 305); // 49 + 256
+    const auto* inn_short = std::get_if<sim::Inn>(&*b[8].payload);
+    REQUIRE(inn_short != nullptr);
+    CHECK(inn_short->tavern == 0);
+    CHECK(inn_short->taken == 0);
     CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 2); // the mine and the small farm
     auto w = sim::World::create(s.spec, registry());
     REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
@@ -1146,7 +1235,7 @@ TEST_CASE("scenario warning kinds") {
         append(island_extra, chunk("FUTURE", Buf(4, 0)));    // UnknownRecord
         Buf more;
         item(more, kHouse, 0, 0, 0, 14, 0); // BuildingItemWithoutEntry
-        item(more, kInn, 0, 0, 0, 6, 6);    // an Inn: its Load is not mapped
+        item(more, kMine, 0, 0, 0, 6, 6);   // a mine whose record overruns the buffer
         append(island_extra, block_record("PROD2", more));
     }
     // City 2's records.
@@ -1160,17 +1249,17 @@ TEST_CASE("scenario warning kinds") {
         put16(ware, 3);
         put32(ware, 0);
         append(city_records, record("WARE", ware));
-        Buf prod = entry(0, 7);               // no item there: EntryWithoutBuildingItem
-        append(prod, entry(8, 4, Buf{1, 2})); // the house with bytes
-        append(prod, entry(8, 4));            // the house again: BuildingRefused
-        append(prod, entry(6, 6, Buf{1, 2})); // the Inn with bytes: UndecodedBuildingRecord
+        Buf prod = entry(0, 7);                // no item there: EntryWithoutBuildingItem
+        append(prod, entry(8, 4, Buf{1, 2}));  // the house with bytes
+        append(prod, entry(8, 4));             // the house again: BuildingRefused
+        append(prod, entry(6, 6, Buf(11, 1))); // the mine with 11 bytes: UndecodedBuildingRecord
         append(city_records, record("PROD", prod));
     }
     Buf city_off = {1, 0};
     put16(city_off, 500); // no island there: CityOffIsland
     put16(city_off, 500);
     Buf state = record("STADT2", city_off);
-    append(state, record("SCHIFF", Buf(16, 0))); // UnknownRecord (players)
+    append(state, record("SCHIFF", Buf(16, 0))); // explicit component-only UnknownRecord (players)
     Buf file = base_scene(island_extra, state, city_records);
     // Add: an INSELLNK, an unknown SCENE child, a native player with VOLK, an unnamed
     // computer, an island without a climate mask.
@@ -1197,7 +1286,9 @@ TEST_CASE("scenario warning kinds") {
     // Splice the extra children into the SCENE (after its own children).
     Buf scene_kids(file.begin() + 32, file.end());
     append(scene_kids, kids);
-    const sim::LoadedScenario s = load(scene("ANNO", scene_kids));
+    const auto input = scene("ANNO", scene_kids);
+    CHECK_FALSE(sim::load_scenario(input, *registry(), {}));
+    const sim::LoadedScenario s = load(input, original_component::actor_free_units());
     CHECK(warnings_of(s, Kind::UnknownRecord) == 3);  // FUTURE, SCHIFF, SKTIMER
     CHECK(warnings_of(s, Kind::LinkUnresolved) == 1); // no ERZE: the selection never runs
     CHECK(warnings_of(s, Kind::UnknownObject) == 1);
@@ -1213,7 +1304,7 @@ TEST_CASE("scenario warning kinds") {
     CHECK(warnings_of(s, Kind::UnknownClimate) == 1);
     CHECK(warnings_of(s, Kind::EntryWithoutBuildingItem) == 1);
     CHECK(warnings_of(s, Kind::BuildingRefused) == 1);
-    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 1); // the Inn
+    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 1); // the mine
     CHECK(warnings_of(s, Kind::HouseResetNotApplied) == 0); // the house with bytes: no group table
     CHECK(warnings_of(s, Kind::UnknownGoods) == 1);
     CHECK(warnings_of(s, Kind::OwnerTileOutsideIsland) == 1);
@@ -1558,7 +1649,8 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     append(kids, chunk("SPIELER", spieler(0, record("SCHIFF", Buf(16, 0))))); // child 5
     append(kids, chunk("SKTIMER", Buf(40, 0)));                               // child 6
     const Buf file = scene("ANNO", kids);
-    const sim::LoadedScenario s = load(file);
+    CHECK_FALSE(sim::load_scenario(file, *registry(), {}));
+    const sim::LoadedScenario s = load(file, original_component::actor_free_units());
     // One UnknownRecord per scope and name: SKTIMER, FUTURE, SCHIFF (twice in the file
     // each). STAT2 is its own kind since T26 (StatisticsNotModelled).
     REQUIRE(warnings_of(s, Kind::UnknownRecord) == 3);
@@ -2161,4 +2253,44 @@ TEST_CASE("scenario OCCUR ore objects: island-local positions, masks, kinds, mal
     append(bad_kids, insel5(40, 60, 16, 8, 7, 2, chunk("OCCUR", bad)));
     CHECK(refusal(scene("ANNO", bad_kids)).find("an ore object is 24 bytes, got 26") !=
           std::string::npos);
+}
+TEST_CASE("SCRIPT1 normal scenario ANLTRG merges and research projection swaps saved bits") {
+    const auto types = registry();
+    Buf rows1;
+    put16(rows1, kRoad);
+    rows1.insert(rows1.end(), {1, 99});
+    put16(rows1, kHouse);
+    rows1.insert(rows1.end(), {255, 77});
+    Buf rows2;
+    put16(rows2, kRoad);
+    rows2.insert(rows2.end(), {0, 123});
+    auto state = record("ANLTRG", rows1);
+    append(state, record("ANLTRG", rows2));
+    auto research = record("ENTRY", {12, 1, 10, 0});
+    append(research, record("ENTRY", {17, 2, 7, 0}));
+    append(state, record("FORSCH", research));
+    auto loaded = sim::load_scenario(base_scene({}, state), *types, sim::SimConfig{});
+    REQUIRE_MESSAGE(loaded, (loaded ? "" : loaded.error()));
+    const auto& p = loaded.value().spec.players[0];
+    REQUIRE(p.permissions.size() == 2);
+    CHECK(p.permissions[0].type == sim::TypeId{kRoad});
+    CHECK(p.permissions[0].value == 0);
+    CHECK(p.permissions[1].type == sim::TypeId{kHouse});
+    CHECK(p.permissions[1].value == 255);
+    CHECK((p.research[12] & 2) != 0);
+    CHECK((p.research[17] & 2) == 0);
+    CHECK(loaded.value().spec.script_context == sim::ScriptContext::Missing);
+    auto made = sim::World::create(loaded.value().spec, types);
+    REQUIRE(made);
+    const auto hash = made.value().state_hash();
+    rows2.push_back(0);
+    auto broken = record("ANLTRG", rows1);
+    append(broken, record("ANLTRG", rows2));
+    auto refused = sim::load_scenario(base_scene({}, broken), *types, sim::SimConfig{});
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().find("ANLTRG length") != std::string::npos);
+    CHECK(made.value().state_hash() == hash);
+    auto saved = sim::World::load(made.value().save(), types);
+    REQUIRE(saved);
+    CHECK(saved.value().state_hash() == hash);
 }

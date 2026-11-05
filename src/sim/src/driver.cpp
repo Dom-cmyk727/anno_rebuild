@@ -8,6 +8,8 @@
 
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/house_tick.hpp>
+#include <anno/sim/inn.hpp>
 #include <anno/sim/transport.hpp>
 
 namespace anno::sim {
@@ -50,6 +52,9 @@ std::uint32_t* figure_counter(Payload& payload, std::uint32_t home_counter) {
         if (auto* f = std::get_if<Farm>(&payload)) {
             return &f->workers_out;
         }
+        if (auto* i = std::get_if<Inn>(&payload)) {
+            return &i->carriers_out;
+        }
     }
     if (auto* s = std::get_if<SmallFarm>(&payload)) {
         if (home_counter < s->figures_out.size()) {
@@ -73,6 +78,9 @@ const std::uint32_t* figure_counter(const Payload& payload, std::uint32_t home_c
         if (const auto* f = std::get_if<Farm>(&payload)) {
             return &f->workers_out;
         }
+        if (const auto* i = std::get_if<Inn>(&payload)) {
+            return &i->carriers_out;
+        }
     }
     if (const auto* s = std::get_if<SmallFarm>(&payload)) {
         if (home_counter < s->figures_out.size()) {
@@ -84,7 +92,8 @@ const std::uint32_t* figure_counter(const Payload& payload, std::uint32_t home_c
 
 std::uint32_t figure_counter_count(const Payload& payload) {
     if (std::holds_alternative<Market>(payload) || std::holds_alternative<Workshop>(payload) ||
-        std::holds_alternative<WeaponsWorkshop>(payload) || std::holds_alternative<Farm>(payload)) {
+        std::holds_alternative<WeaponsWorkshop>(payload) || std::holds_alternative<Farm>(payload) ||
+        std::holds_alternative<Inn>(payload)) {
         return 1;
     }
     if (const auto* s = std::get_if<SmallFarm>(&payload)) {
@@ -237,8 +246,26 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
     case TickKind::None:
         return; // inert: `last` untouched (D15)
     case TickKind::House:
-        return; // P1: the house holds its state but has no update yet (P2); `last` untouched, like
-                // None
+        // MAP-POP-LIVE-1 L4: the complete live update behind Rules::house_updates (default off:
+        // P1's inert house, `last` untouched, like None). Serial path: house_tick.hpp.
+        if (ctx.rules.house_updates && fx.faults.empty()) {
+            house_tick(ctx, island, city, b, *type, fx);
+        }
+        return;
+    case TickKind::Inn: {
+        // MAP-POP-CLOSE-2 K1 (D 0x100755f0): behind Rules::house_updates like the house (default
+        // off: the Inn is inert, `last` untouched). The limit is the type's max figures of group 0
+        // (+0xb8(0)); a type without production data sends nothing.
+        auto* inn = std::get_if<Inn>(&b.payload);
+        if (inn == nullptr || !ctx.rules.house_updates || !fx.faults.empty()) {
+            return;
+        }
+        const std::int32_t limit = type->has_prod && !type->prod.max_figures.empty()
+                                       ? static_cast<std::int32_t>(type->prod.max_figures[0])
+                                       : 0;
+        r.send_figure = inn_step(*inn, ctx.t, limit).send;
+        break;
+    }
     case TickKind::Workshop: {
         auto* w = std::get_if<Workshop>(&b.payload);
         if (w == nullptr) {
@@ -266,7 +293,22 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
             return;
         }
         f->status.shows_icons = icons;
+        const std::uint32_t raw_before = f->raw;
+        const std::uint32_t out_before = f->out;
         r = farm_step(*f, type->prod, ctx.t);
+        if (ctx.transport_stats != nullptr && r.stepped) {
+            // MAP-ECON-1 E4 ledger (diagnostic): what this step consumed and made.
+            ForestryStats::FarmLedger& l = ctx.transport_stats->forestry.farms[b.id];
+            l.consumed_88 += raw_before - f->raw;
+            l.made_88 += f->out - out_before;
+        }
+        // MAP-ECON-1 E2: one world draw per ELIGIBLE dispatch attempt, before the send and whatever
+        // the send then does (D 0x1006edf3-0x1006ee06: city +0x18, island +0x18, world +0xb4 =
+        // 0x100a1740, the result discarded; docs/sim/forestry.md 3.1). farm_step's send_figure is
+        // exactly that eligibility (gate, switched on, not suspended, the count and rate tests).
+        if (r.send_figure) {
+            static_cast<void>(ctx.draw.next(DrawSite::FarmWorkerDispatch));
+        }
         break;
     }
     case TickKind::FurTrapper: {
@@ -333,8 +375,8 @@ namespace {
 ///  - 0x2a the small farm's line-0 worker (D 0x1006f660: `this+0x118(job 0x2a, ...)`,
 ///    §4.5);
 ///  - 0x2e the small farm's animal (D 0x1006f660, §4.5).
-/// The farm's worker takes its job from the figure type's slot +0x54 (§4.2), which is
-/// not read: 0 (unknown, O-8).
+/// The farm family's worker takes its job from the figure type's slot +0x54 = its ROUTETYPE
+/// (FigureType::route, MAP-ECON-1 E2, docs/re/forestry.md 2.1, 2.2), see consume.
 /// The carrier's 0x33 is kJobWorkshopCarrier and the market cart's 0x34 (D 0x1006b6d0:
 /// `this+0x118(0x34, figure list[0], t)`, docs/re/transport.md §1.5) kJobMarketCart,
 /// both in transport.hpp.
@@ -347,6 +389,7 @@ std::uint32_t send_figure_job(RuntimeClass cls) {
     switch (cls) {
     case RuntimeClass::Workshop:
     case RuntimeClass::WeaponsWorkshop:
+    case RuntimeClass::Inn: // D 0x10075691-0x1007569f: the constant 0x33
         return kJobWorkshopCarrier;
     case RuntimeClass::FurTrapper:
         return kJobFurTrapper;
@@ -355,7 +398,7 @@ std::uint32_t send_figure_job(RuntimeClass cls) {
     case RuntimeClass::Market:
         return kJobMarketCart;
     default:
-        return 0; // the farm family: unknown (O-8); other classes send no figure here
+        return 0; // the farm family: the figure type's route (consume); others send no figure here
     }
 }
 
@@ -408,8 +451,27 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
         if (counter != nullptr) {
             ++*counter;
             const std::uint32_t kind = type.prod.figure_ids.empty() ? 0 : type.prod.figure_ids[0];
-            fx.spawns.push_back(
-                spawn_request(island, city, b, type, 0, send_figure_job(type.cls), kind));
+            SpawnRequest s =
+                spawn_request(island, city, b, type, 0, send_figure_job(type.cls), kind);
+            // The farm family is the class whose tick is the farm tick (the one test used for the
+            // dispatch draw in tick_building too, so a class table cannot split the two).
+            if (ctx.types.class_info(type.cls).tick == TickKind::Farm) {
+                // MAP-ECON-1 E2 (D 0x1006ee06-0x1006ee56): the job is the figure type's slot +0x54
+                // (its ROUTETYPE), and the new figure's cargo carries the farm's input 0. A harvest
+                // job (0x29/0x2a) of a Farm-payload home gets the harvest state
+                // (docs/sim/forestry.md 2: chosen by the spawn, never by the job alone). An unknown
+                // figure type has no route: job 0, as before.
+                const FigureType* ft = ctx.types.find_figure_type(kind);
+                s.job = ft != nullptr ? ft->route : 0;
+                s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
+                s.harvest = harvest_job(s.job) && std::holds_alternative<Farm>(b.payload);
+            }
+            if (type.cls == RuntimeClass::Inn) {
+                // D 0x100756a9-0x100756c3: the new figure's cargo goods byte is the Inn's input 0
+                // (type +0xb0(0)); the amount is not touched.
+                s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
+            }
+            fx.spawns.push_back(s);
         }
     }
     if (r.send_animal) {

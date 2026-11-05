@@ -1737,8 +1737,8 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 ## OQ-204: What bits 29–31 of the tile record's second dword are (T33.5 stage 1, 2026-10-26)
 - **Status:** open. Not marked unused: the clear arm keeps them.
 - **Area:** simulation / tile record.
-- **What was read.** Placement's ordinary path clears them (`and 0x3fffffff` at `0x100824a7`); the overlay path does the same at `0x1008227b`. The reset dword `0x1e000200` leaves them 0. The clear arm of `0x10082c30` keeps them (`0xfe0002ff` at `0x10082f05`). T33.5 F1 found one nonzero store: `or dword [record+4], 0x80000000` at `0x10082a46` sets bit 31 on an anchor tile whose id and byte-2 origin match the placement record, after compares with `0x45` and `0x46` (`0x1008299d`, `0x100829a6`) and a nonzero return from `[island+0x20]` slot `+0x74` with argument 5 (`0x100829b6`). No reader of the bit was found in that pass.
-- **How to resolve:** read `0x10087880`, the earlier sweep's candidate for bit 29 (`transport.md` §3.4.13), then any other store into those three bits.
+- **What was read.** Placement's ordinary path clears **bits 30–31 and keeps bit 29** (`and 0x3fffffff` at `0x100824a7`; corrected in MAP-ECON-1 E2.0, this line earlier said it clears all three); the overlay path does the same at `0x1008227b`. Bit 29 is answered: it is the harvest claim (`0x10087880` mode 0, `docs/re/forestry.md` §2.7); the question stays open for bits 30–31. The reset dword `0x1e000200` leaves them 0. The clear arm of `0x10082c30` keeps them (`0xfe0002ff` at `0x10082f05`). T33.5 F1 found one nonzero store: `or dword [record+4], 0x80000000` at `0x10082a46` sets bit 31 on an anchor tile whose id and byte-2 origin match the placement record, after compares with `0x45` and `0x46` (`0x1008299d`, `0x100829a6`) and a nonzero return from `[island+0x20]` slot `+0x74` with argument 5 (`0x100829b6`). No reader of the bit was found in that pass.
+- **How to resolve:** bit 29 is resolved (`0x10087880`, `docs/re/forestry.md` §2.7). For bits 30–31: find any store of a nonzero value besides the bit-31 store at `0x10082a46`, and its readers.
 
 ## OQ-205: Who supplies the 4-bit field in bits 25–28, and who reads it (T33.5 stage 1, 2026-10-26)
 - **Status:** open. The field itself is read: reset writes 15 (`0x1e000200` at `0x1008c80d..0x1008c821`), and `0x100854ca` replaces it when the current value is 15. The sim's name "owner" is not proved by this pass.
@@ -2268,3 +2268,38 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   it draws from the tile layer, but that is not traced to the end.
 - **How to resolve:** trace the chunk drawer `0x1009f870` for a tile whose anchor bit is clear, or capture the original drawing
   `single34.sze` island 18 and compare the rock.
+## OQ-CARGO-5: Which goods does the load list show, and when is the load button inert? (MAP-CARGO-2 L1, 2026-11-02)
+
+- **Status:** open, **not a blocker** for the command. The world arm has no goods class test, ban list or bound (`docs/re/ship-cargo.md` 11.4), so the contract bounds the goods only by the city's stock table.
+- **Area:** simulation / ship cargo (load), UI.
+- **Question:** the ship view's "Load goods" click (`View.dll 0x1005a8d0`) sends the goods byte of the selected entry of the city goods list (`0x1005b2c0`, object `[view+0x634]`). Which goods does that list offer (all 56, only goods with stock, the four categories of `[TOOLTIP:SCHIFF_HANDELEIGEN]`)? Is the button inert for a moving ship or when `0x1005d8c0` finds no city (the handler passes a null city on, and the world arm dereferences it at `0x100ac5b7`)? This is the load-side twin of OQ-CARGO-1.
+- **What is known:** the click needs a non-zero selected goods (`0x1005a8e4`); the hold hint avoids a hold with other goods when an empty one exists (`0x1005a92b`-`0x1005a98a`); the arm itself is state-free.
+- **Port:** the command accepts any goods in the table for which the city holds at least one whole ton; a UI that offers fewer goods is a presentation choice, not an original rule. A restriction would be a gameplay policy for the owner.
+- **How to resolve:** read the writers of the list control's property `0x1bf` (the builder around `0x1005e5xx`) and the enabling code of the tab, or watch the running original.
+
+## OQ-522: A farm-family harvest home without an input goods (MAP-ECON-1 E3, 2026-11-03)
+- **Status:** open (no shipped data reaches it).
+- **Area:** simulation / harvest worker.
+- **What was read.** The farm tick sets the new worker's cargo goods to the type's input 0 (AnnoWelt `0x1006ee06`). A data-defined Farm whose type has no input gives cargo goods 0; the harvest candidate test then compares tile types' WARE[0] with 0, and step C hands nothing over (the arrival needs goods != 0, `0x10057bd0`). Every shipped PLANTAGE/UNIVERSAL harvest home has an input.
+- **How to resolve:** decide whether the registry seal should refuse a Farm-class type with a harvest-route figure and no input (a mod error), or whether the original's behaviour (a worker that may cut tiles whose WARE[0] is UNUSED and then drops the cargo) is to be kept; read the original's goods-0 handling in `0x10092320` first.
+
+
+## OQ-463: Stands on mapper-0 tiles are never reached by the ported resident search (MAP-POP-CLOSE-2 K0, 2026-11-04)
+Stand 1314 (STOFFE/LEDER, the only seller of both) has WALKMASK rows `05/02/05`, blocked mask9 `0x155`; the original table `0x100c1af8` maps `0x155` to 0 (as the full block `0x1ff`; 21 of 512 masks map to 0). The tile entry rule `(dest.low & geometry(dir)) != 0` (`0x10006a81`; `walk_search.cpp` `expand`) and the goal test at pop time mean such a tile cannot be entered. 0 of 1198 houses in the 28 stock-qualifying towns reach a LEDER/STOFFE stand; eight 1314 stands built on open land are not reached either. This is the ported rule, not a conversion bug. Other families with free-cell mapper-0 tiles: stands 1313-1318, 3311, 3980; houses and workshops (PIONIER 503/505/509, SIEDLER 522, ...). Unknown: how the original reaches goals on them. Candidates: (a) the omitted finer-route stage `0x100054ef`..`0x100055d5`; (b) a goal callback in `0x10054240`/`0x1005a900`; (c) the stand's tile record not being the raw WALKMASK mapper input. Next: the stand placement writer feeding the walk mask (`0x10082ca5` family), the goal test `0x10003220` and callbacks, then `0x100054ef`..`0x100055d5`. Evidence: `docs/sim/population-live.md` section 22.3.
+
+**Closed by MAP-POP-CLOSE-2 K2 (2026-11-04):** the original ORs the 0x10003aa0 key nibble into each GOAL cell (`0x1000414b`), as for start cells; ported in `mark_goals`; see `docs/re/population.md` section 19 and `docs/sim/population-live.md` section 24. Still unread: the finer-route stage `0x100054ef`..`0x100055d5` (the exact end point of a walk).
+
+## OQ-464: Where the original enforces INFRAMIN (the stage a building needs) (MAP-POP-CLOSE-2 K0, 2026-11-04)
+The engine's `BuildCmd` does not check a type's INFRAMIN record (the Inn is `INFRA_STUFE_1B`, the chapel's goods stage is 1C). Unread: whether the original enforces it in the build UI only or also in `City::Place` (`0x100279a0`) and the apply modes. Matters for any run that builds an Inn or a chapel in a town whose player mask lacks the stage.
+
+**MAP-BOOTSTRAP-1 update (2026-11-05):** the per-player override/stage/research
+query and its menu consumer are now independently traced in
+[build-availability.md](re/build-availability.md). The inspected built-in command
+path lacks that query; an external callback remains unread. Runtime facts and
+the pure query are implemented in the isolated candidate. Authoritative
+BuildCmd enforcement remains **blocked by the owner** until ANLTRG and scenario
+script permissions have a separate implementation contract. This does not
+retroactively make locked public builds legal or close the integration gap.
+
+## OQ-465: The original's walker timing for the house figures (MAP-POP-CLOSE-2 K0, 2026-11-04)
+The 4,650-tick walk of the first delivery on endless03 is the engine's integer move model for a 12-point route at the figure's speed (0.010 or 0.012, figures 298-301; capacity 3 t except figure 301, 1 t). The original's speed in ticks per tile, the exact `last` stamp of a house built in play (`+0x0a`), and the variant draw have not been observed. The stall wait is a read only in its float (`[type+0x30]` via `0x1000fd10`, rate 0.01 at `0x10035260`); the 500 ticks per unit is the cart precedent (`transport.md` 4.7). Also unread/model: the IdSec raise of the house choice (`0x10076960`, called at `0x100767cf`/`0x100768ca`, chain `0x100769b4`) and the residents-growth increments in `gate_check.py`, which are FITTED to the engine's run (32, 32, 32, then 12 per update), not derived from VermehrTab.

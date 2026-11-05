@@ -14,6 +14,7 @@ Domains the trace did not decode are reported as UNSUPPORTED, never as accept or
   placement_ref.py check [vectors.txt]           run a vector file (default: the fixture); exit 0/1
   placement_ref.py classify [game_dir]           support classes over every Anlagen.dat type
   placement_ref.py corpus [game_dir]             the rule against every PROD2/GELAENDE item of the shipped islands
+  placement_ref.py roads [game_dir]              MAP-ROAD-1: the STRASSE inventory and every shipped STRASSE placement against the road rule
 
 Runtime vertex grid: the original keeps heights in a corner grid of stride W + 1 (docs/re/ship-founding.md
 12.3); vertex (W, y) and (x, H) are 0. A vector gives that grid explicitly (rows 0..H, W+1 values each).
@@ -34,6 +35,8 @@ ANALYSIS = 0x2000000                 # a flag value that the chain ignores; used
 THRESHOLD = 32                       # trunc(2 * 0.64f / 0.04f), 0x1007cbeb-0x1007cc03 (E, docs/re 10.2)
 
 ACCEPT, REJECT, UNSUPPORTED = 'accept', 'reject', 'unsupported'
+STRASSE = 193                        # PRODTYPE of the ordinary land roads (AnnoGame name table, sim types.cpp Named{193, "STRASSE"})
+ROAD_FLOOR = 32                      # MAP-ROAD-1 adaptation R-A2: the smallest accepted road level (the 0x4000 class is accepted at once by the original)
 
 
 def group(prodtype):
@@ -193,10 +196,41 @@ def place(isl, reg, tid, x, y, rot, flags, rec8_in=0):
     return ACCEPT, '', rec8
 
 
-def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0):
-    """The BuildCmd contract (docs/sim/ship-placement.md): place() for the two supported terrain classes,
-    UNSUPPORTED for every other flag word, so a class the trace did not cover never gets a default answer."""
+def road_class(t):
+    """MAP-ROAD-1 R1: the types a BuildCmd may place as a tile object (docs/sim/road-placement.md section 2). Facts only:
+    PRODTYPE STRASSE, class bits 0x4000 or 0x1000, no coverage bit 0x10, a mode other than the single-quad average (F & 3 == 1)."""
+    f = t.flags
+    return (t.prodtype == STRASSE and f <= 0xFFFF and f & 0x10 == 0 and f & 0x7000 in (0x4000, 0x1000)
+            and f & 3 != 1 and t.w > 0 and t.h > 0)
+
+
+def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0, road_floor=True, road_preserve=True):
+    """The BuildCmd contract (docs/sim/ship-placement.md, docs/sim/road-placement.md): place() for the supported terrain
+    classes, UNSUPPORTED for every other flag word, so a class the trace did not cover never gets a default answer.
+    A road class type is the original rule (analysis requested: the server derives the byte) plus, as separate enhanced
+    choices (Rules::road_require_land_level / road_preserve_nonroad_pieces), the level floor R-A2 for the class 0x4000
+    (the class 0x1000 threshold is the original's and never optional) and the ramp/pier refusal R-A3."""
     t = reg.get(tid)
+    if t is not None and road_class(t):
+        fw, fh = (t.w, t.h) if rot & 1 == 0 else (t.h, t.w)
+        inside = isl.x0 <= x and x + fw <= isl.x0 + isl.W and isl.y0 <= y and y + fh <= isl.y0 + isl.H
+        if inside and rot in (0, 1, 2, 3):                                         # the occupancy step, row-major: the first deciding tile wins
+            for dy in range(fh):
+                for dx in range(fw):
+                    o = isl.obj(x + dx, y + dy)
+                    if o == 0:
+                        continue
+                    e = reg.get(o)
+                    if e is None:
+                        return UNSUPPORTED, 'object id %d not in the registry' % o, rec8_in
+                    if compat(t, e, t.flags | flags) == 0:
+                        return REJECT, 'OCCUPIED', rec8_in
+                    if road_preserve and e.group == 0xC1 and not road_class(e):     # R-A3: ramp, pier (a bridge piece the original refuses itself)
+                        return REJECT, 'OCCUPIED', rec8_in
+        v, why, b = place(isl, reg, tid, x, y, rot, flags, rec8_in)
+        if v == ACCEPT and road_floor and b < ROAD_FLOOR:                          # R-A2 (class 0x1000 has the original's own threshold in place())
+            return REJECT, 'LOWLEVEL', b
+        return v, why, b
     if t is not None:
         name, sup = terrain_class(t.flags)
         if not sup:
@@ -244,7 +278,7 @@ def parse_vectors(text):
         if k == 'type':                               # type <id> <w> <h> <prodtype> <flags hex> <replaceable>
             reg[int(w[1])] = Type(int(w[2]), int(w[3]), int(w[4]), int(w[5], 16), bool(int(w[6])))
         elif k == 'case':
-            cur = dict(name=w[1], line=ln, island=None, rows={}, objs={}, place=None, expect=None)
+            cur = dict(name=w[1], line=ln, island=None, rows={}, objs={}, place=None, expect=None, original=None)
             cases.append(cur)
         elif k == 'island':                           # island <x0> <y0> <W> <H>
             cur['island'] = tuple(int(v) for v in w[1:5])
@@ -256,6 +290,8 @@ def parse_vectors(text):
             cur['place'] = (int(w[1]), int(w[2]), int(w[3]), int(w[4]), int(w[5], 16), int(w[6]))
         elif k == 'expect':                           # expect accept <byte> | reject <REASON> | unsupported
             cur['expect'] = tuple(w[1:])
+        elif k == 'original':                         # original accept <byte> | reject <REASON>: what the ORIGINAL answers where a documented adaptation differs
+            cur['original'] = tuple(w[1:])
         elif k == 'end':
             cur = None
         else:
@@ -275,9 +311,9 @@ def case_island(c):
     return Island(x0, y0, W, H, vertex, lambda tx, ty: c['objs'].get((tx, ty), 0))
 
 
-def run_case(reg, c):
+def run_case(reg, c, road_floor=True, road_preserve=True):
     tid, x, y, rot, flags, rec8 = c['place']
-    return engine_place(case_island(c), reg, tid, x, y, rot, flags, rec8)
+    return engine_place(case_island(c), reg, tid, x, y, rot, flags, rec8, road_floor, road_preserve)
 
 
 def check_vectors(path):
@@ -295,6 +331,26 @@ def check_vectors(path):
         if not ok:
             bad += 1
             print('MISMATCH %s (line %d): expected %s, got %s %s %d' % (c['name'], c['line'], ' '.join(e), verdict, reason, byte))
+        # The faithful mode (both enhanced road choices off) answers the `original` line where the file gives one,
+        # else `expect`; and for a road it must equal the transcription of the original island function (place()).
+        fv, fr, fb = run_case(reg, c, False, False)
+        o = c['original'] or e
+        if o[0] == ACCEPT:
+            fok = fv == ACCEPT and fb == int(o[1])
+        elif o[0] == REJECT:
+            fok = fv == REJECT and fr == o[1]
+        else:
+            fok = fv == UNSUPPORTED
+        if not fok:
+            bad += 1
+            print('MISMATCH %s (line %d) faithful mode: expected %s, got %s %s %d' % (c['name'], c['line'], ' '.join(o), fv, fr, fb))
+        tid, x, y, rot, flags, rec8 = c['place']
+        if c['original'] is not None and reg[tid].prodtype == STRASSE:
+            ov, orr, ob = place(case_island(c), reg, tid, x, y, rot, flags, rec8)
+            ook = (ov == ACCEPT and o[0] == ACCEPT and ob == int(o[1])) or (ov == REJECT and o[0] == REJECT and orr == o[1])
+            if not ook:
+                bad += 1
+                print('MISMATCH %s (line %d): original line %s, transcription %s %s %d' % (c['name'], c['line'], ' '.join(o), ov, orr, ob))
     print('placement vectors: %d cases, %d mismatches (%s)' % (len(cases), bad, os.path.normpath(path)))
     return bad == 0
 
@@ -324,10 +380,25 @@ def selftest():
     eq('wide type pokes out at rotation 0', place(plain, reg, 4, 8, 2, 0, ANALYSIS)[:2], (REJECT, 'BOUNDS'))
     eq('the same type turned fits', place(plain, reg, 4, 8, 2, 1, ANALYSIS)[::2], (ACCEPT, 0x30))
     eq('trunc4', (trunc4(0x31 * 4 + 3), trunc4(0)), (0x31, 0))
+    # MAP-ROAD-CLOSE-1: the 2 x 2 table of the two enhanced road choices (floor, preserve), hand-derived:
+    # a road on flat 0x10 refuses only with the floor; a road over a ramp refuses only with preserve;
+    # both at once: preserve is the occupancy step and answers first; class 0x1000 keeps its own floor.
+    rr = {1: Type(1, 1, 193, 0x4186), 2: Type(1, 1, 194, 0x4186), 3: Type(1, 1, 193, 0x1186)}
+    low = Island(0, 0, 10, 10, flat(0x10, 10, 10), lambda x, y: 0)
+    low_ramp = Island(0, 0, 10, 10, flat(0x10, 10, 10), lambda x, y: 2 if (x, y) == (3, 3) else 0)
+    land_ramp = Island(0, 0, 10, 10, flat(0x30, 10, 10), lambda x, y: 2 if (x, y) == (3, 3) else 0)
+    for fl in (False, True):
+        for pr in (False, True):
+            tag = 'floor=%d preserve=%d ' % (fl, pr)
+            eq(tag + 'low road', engine_place(low, rr, 1, 3, 3, 0, ANALYSIS, 0, fl, pr)[:2], (REJECT, 'LOWLEVEL') if fl else (ACCEPT, ''))
+            eq(tag + 'ramp on land', engine_place(land_ramp, rr, 1, 3, 3, 0, ANALYSIS, 0, fl, pr)[:2], (REJECT, 'OCCUPIED') if pr else (ACCEPT, ''))
+            eq(tag + 'ramp on low land', engine_place(low_ramp, rr, 1, 3, 3, 0, ANALYSIS, 0, fl, pr)[:2],
+               (REJECT, 'OCCUPIED') if pr else ((REJECT, 'LOWLEVEL') if fl else (ACCEPT, '')))
+            eq(tag + 'class 0x1000 keeps its floor', engine_place(low, rr, 3, 3, 3, 0, ANALYSIS, 0, fl, pr)[:2], (REJECT, 'LOWLEVEL'))
     if fails:
         print('\n'.join('FAIL ' + f for f in fails))
         return False
-    print('placement_ref selftest: 9 checks passed')
+    print('placement_ref selftest: %d checks passed' % (9 + 16))
     return True
 
 
@@ -444,18 +515,67 @@ def corpus(game_dir):
         print('sample reject:', s)
 
 
+def roads(game_dir):
+    """MAP-ROAD-1 R1 evidence: which registry types are land roads (road_class) and how the shipped STRASSE placements
+    (PROD2 items of every island) relate to the road rule: stored height vs the mode result, the level floor R-A2 and
+    the 0x1000 slope test. Prints counts only; the numbers are quoted in docs/re/road-placement.md section 4."""
+    sys.path.insert(0, HERE)
+    import insel
+    from collections import Counter
+    reg = load_registry(game_dir)
+    inv = Counter()
+    for tid, t in reg.items():
+        if t.name in ('STRASSE', 'RAMPE', 'RAMPELOW', 'RAMPEHIGH', 'BRUECKE', 'PIER'):
+            inv[(t.name, hex(t.flags), 'road_class' if road_class(t) else 'not road_class')] += 1
+    for k, n in sorted(inv.items()):
+        print('%4d types  %s' % (n, ' | '.join(k)))
+    stat = Counter()
+    files = []
+    for root, _, fs in os.walk(os.path.join(game_dir, 'Scenes')):
+        files += [os.path.join(root, f) for f in fs if f.lower().endswith(('.scp', '.sze'))]
+    for path in sorted(files):
+        try:
+            isls = insel.islands(open(path, 'rb').read())
+        except insel.Bad:
+            continue
+        for i in isls:
+            try:
+                hs = insel.grid(i, 'HEIGHT', 1)
+            except insel.Bad:
+                continue
+            W, H = i['width'], i['height']
+
+            def vertex(vx, vy, hs=hs, W=W, H=H):
+                return hs[vy * W + vx] if 0 <= vx < W and 0 <= vy < H else 0
+            for bx, by, bw, bh, data in insel.blocks(i, 'PROD2'):
+                for k in range(0, len(data), 6):
+                    idrot, state, ix, iy = struct.unpack_from('<HHBB', data, k)
+                    t = reg.get(idrot & 0xFFF)
+                    if t is None or not road_class(t):
+                        continue
+                    x, y = bx + ix, by + iy
+                    r = height_analysis(t, (idrot >> 14) & 3, lambda dx, dy: vertex(x + dx, y + dy), t.flags | ANALYSIS)
+                    cls = hex(t.flags & 0x7000)
+                    stat[(cls, 'items')] += 1
+                    stat[(cls, 'analysis rejects (class 0x1000 slope)' if r < 0 else ('byte equals stored height' if r == state >> 8 else 'byte differs from stored height'))] += 1
+                    if r >= 0:
+                        stat[(cls, 'byte >= 32 (floor R-A2 accepts)' if r >= ROAD_FLOOR else 'byte < 32 (floor R-A2 refuses)')] += 1
+    for k, n in sorted(stat.items()):
+        print('%7d  %s' % (n, ' | '.join(k)))
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
     if cmd == 'selftest':
         return 0 if selftest() else 1
     if cmd == 'check':
         return 0 if check_vectors(argv[2] if len(argv) > 2 else DEFAULT_VECTORS) else 1
-    if cmd in ('classify', 'corpus'):
+    if cmd in ('classify', 'corpus', 'roads'):
         gd = argv[2] if len(argv) > 2 else os.environ.get('ANNO1503_GAME_DIR')
         if not gd:
             print('set ANNO1503_GAME_DIR or pass the game directory', file=sys.stderr)
             return 2
-        (classify if cmd == 'classify' else corpus)(gd)
+        {'classify': classify, 'corpus': corpus, 'roads': roads}[cmd](gd)
         return 0
     print(__doc__)
     return 2

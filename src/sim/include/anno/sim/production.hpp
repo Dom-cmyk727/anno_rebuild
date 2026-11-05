@@ -495,6 +495,11 @@ struct CityStock {
     /// above the capacity is never lowered, unlike add(): the caller moves a precomputed amount and
     /// debits exactly what this accepted.
     [[nodiscard]] bool credit(std::uint32_t g, std::uint64_t amount);
+    /// MAP-CARGO-2 (docs/sim/ship-cargo.md section 12.4 commit): removes exactly `amount` of goods
+    /// `g` and returns true, or changes nothing and returns false (`g` outside the table, or
+    /// `amount` above stock[g]). Unlike remove() it never clamps: the caller moves a precomputed
+    /// amount and credits exactly what this accepted.
+    [[nodiscard]] bool debit(std::uint32_t g, std::uint64_t amount);
 };
 
 /// Warehouse goods in the original (numbers 0–0x37; D: 0x1002da50 refuses

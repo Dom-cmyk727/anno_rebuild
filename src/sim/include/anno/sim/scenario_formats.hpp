@@ -27,6 +27,15 @@
 
 namespace anno::sim {
 
+/// The Inn's scenario record (Load 0x10075740, Save 0x100757c0; MAP-POP-CLOSE-1 C2): exactly 10
+/// bytes, tavern stock u16 at byte 2 (Inn +0x18) and the taken statistic u16 at byte 8 (+0x1a);
+/// nullopt for any other length (the original skips such a record whole and keeps 0 / 0).
+struct InnRecord {
+    std::uint16_t tavern = 0;
+    std::uint16_t taken = 0;
+};
+[[nodiscard]] std::optional<InnRecord> decode_inn_record(std::span<const std::uint8_t> record);
+
 /// What a warning reports. Data, not a limit: a new kind is added when the
 /// adapter meets a new thing it does not decode.
 enum class ScenarioWarningKind : std::uint8_t {
@@ -241,12 +250,30 @@ struct ScenarioCounts {
 };
 [[nodiscard]] ScenarioCounts count(const LoadedScenario& s);
 
+enum class OriginalActorProjection : std::uint8_t {
+    ImportRequired,
+    /// Explicit historical geometry/component or generated-base projection, never a fallback
+    /// after a failed playable import. Keeps actor records as named unprojected warnings.
+    ActorFreeComponent
+};
+
+struct UnitImportOptions {
+    OriginalActorProjection projection = OriginalActorProjection::ImportRequired;
+    /// Import allocation safety budgets, configurable independently of live SimConfig/state.
+    /// Defaults cover the measured original corpus; requested-slot growth must fit, never be
+    /// clipped. Raise these up to kListSizeBound for larger original-like inputs.
+    std::uint32_t max_actors = 1U << 16;
+    std::uint32_t max_registry_slots = 1U << 16;
+};
+
 /// Reads an original scenario (root ANNO or ANNOADDON1 with one SCENE).
 /// `types` resolves the ANLAGEN ids of the placed items and tells buildings (a
 /// list in `config.layout`) from tile objects; `config` gives the table sizes the
 /// file is checked against. Errors name the path ("players[2]: …").
-formats::Result<LoadedScenario, std::string>
-load_scenario(formats::Bytes file, const TypeRegistry& types, const SimConfig& config);
+formats::Result<LoadedScenario, std::string> load_scenario(formats::Bytes file,
+                                                           const TypeRegistry& types,
+                                                           const SimConfig& config,
+                                                           const UnitImportOptions& units = {});
 
 /// One island template the caller read (the bytes of an .scp below Scenes/Islands)
 /// as a candidate of the link selection, under the caller's `name` (the upper-cased

@@ -74,6 +74,25 @@ enum class DrawSite : std::uint8_t {
     /// The same draw reached from the scenario loader (STADT2 -> island +0xf4, 0x1001e339): the
     /// engine's loader creates cities directly and does not draw (docs/sim/city-creation.md E15).
     CityNameLoad,
+    /// D: AnnoWelt 0x1006edf3-0x1006ee06 (the farm tick 0x1006ea90): once per ELIGIBLE dispatch
+    /// attempt of a farm (the step passed its gate, is switched on and not suspended, the
+    /// worker-count and the raw-rate tests passed), before the send, whether or not the send then
+    /// creates a figure; the result is discarded (docs/sim/forestry.md 3.1). The fur trapper's own
+    /// tick is not read for it (U-13).
+    FarmWorkerDispatch,
+    // MAP-POP-LIVE-1 L1 (PRNG timeline 5): the House tick's three sites, declared now and drawn
+    // only
+    // with Rules::house_updates on (L2-L4). All draw inside World::advance.
+    /// D: AnnoWelt 0x10076397: the walker target variant, one draw per taken House tick with
+    /// `lowest < 102` and fewer walkers than the type allows, BEFORE the send and whatever the send
+    /// does (docs/sim/population-live.md section 1, step 3, X14).
+    HouseWalkerTarget,
+    /// D: the upgrade/downgrade variant draw (property 0x32 count c, idx = r mod c; section 5).
+    HouseVariant,
+    /// D: SetGroup's first assignment (the old group is null): one draw per forced need,
+    /// satisfaction
+    /// `128 - (r & 31)` (section 5, X21).
+    HouseFirstAssignment,
     /// Number of sites (not a site).
     Count_
 };
@@ -124,6 +143,14 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
         return "CityName";
     case DrawSite::CityNameLoad:
         return "CityNameLoad";
+    case DrawSite::FarmWorkerDispatch:
+        return "FarmWorkerDispatch";
+    case DrawSite::HouseWalkerTarget:
+        return "HouseWalkerTarget";
+    case DrawSite::HouseVariant:
+        return "HouseVariant";
+    case DrawSite::HouseFirstAssignment:
+        return "HouseFirstAssignment";
     case DrawSite::Count_:
         break;
     }
@@ -148,6 +175,10 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
     case DrawSite::CityNameLoad:
         return DrawPhase::Load;
     case DrawSite::CityName:
+    case DrawSite::FarmWorkerDispatch:
+    case DrawSite::HouseWalkerTarget:
+    case DrawSite::HouseVariant:
+    case DrawSite::HouseFirstAssignment:
     case DrawSite::SmallFarmAnimal:
     case DrawSite::Event300:
     case DrawSite::Event750Gate:
@@ -178,7 +209,17 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
            site == DrawSite::Event750Gate || site == DrawSite::Event750Island ||
            site == DrawSite::LinkRawMaterial || site == DrawSite::LinkOre ||
            site == DrawSite::LinkTemplatePick || site == DrawSite::LinkSpecialMark ||
-           site == DrawSite::LinkTreasure || site == DrawSite::CityName;
+           site == DrawSite::LinkTreasure || site == DrawSite::CityName ||
+           site == DrawSite::FarmWorkerDispatch;
+}
+/// The same with the rule that switches a site on: the House walker and variant draws exist only
+/// while Rules::house_updates is on (with it off nothing draws there, so the cursor is short of the
+/// original's: the sites stay in the manifest). HouseFirstAssignment has no production caller (no
+/// path passed a null old group before MAP-POP-CLOSE-1 C2; the player-build path of Rules::house_updates draws it now).
+[[nodiscard]] constexpr bool draw_site_ported(DrawSite site, bool house_updates) {
+    return draw_site_ported(site) || (house_updates && (site == DrawSite::HouseWalkerTarget ||
+                                                        site == DrawSite::HouseVariant ||
+                                                        site == DrawSite::HouseFirstAssignment));
 }
 
 /// A source of world draws. The world PRNG behind it is consumed in the

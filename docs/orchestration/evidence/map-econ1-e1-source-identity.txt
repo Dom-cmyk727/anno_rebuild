@@ -1,0 +1,27 @@
+# SOURCE-IDENTITY (MAP-ECON-1 E1 research), 2026-11-03
+# sha256 of every module and data file read
+f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2  /Users/dom/Dev/anno1503-worktrees/anno1503/game/app/AnnoWelt.dll
+ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc  /Users/dom/Dev/anno1503-worktrees/anno1503/game/app/AnnoGame.dll
+b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75  /Users/dom/Dev/anno1503-worktrees/anno1503/game/app/Anlagen.dat
+29fa1f0528fb337d9a61e8b73169281fd05bb27efa6df65638580a4c36c468a8  /Users/dom/Dev/anno1503-worktrees/anno1503/game/app/FigurenHeader.dat
+# AnnoFrame.dll / AnnoDisplay.dll / View.dll were NOT read in this packet (not needed: the forester path never leaves AnnoWelt/AnnoGame)
+# island corpus (GELAENDE tree count, P): 465 .scp files; sha256 of the sorted list of per-file sha256:
+67032d8a40e5f556b972a85d3179becdacc9f27bc75fd63afcf1712dbbff834a  -
+# tool revisions
+
+main repo HEAD: fce45be3fd062e4c14379a4ac82169a2d2749dc5
+33bd30e4f61721bfdaf4399f1948ead5f4e089bf40e03efc8d31fd4ffc01ad48  /Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/tools/disasm.py
+0ded48beeac3db8bf322fa7d57eb4ee1a76df00ef49a6b59f9c43e4e61830114  /Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/tools/xref.py
+80caacfb79c168ca22e469cb7f3c61798cc266c4772801561113e89e659f36e6  /Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/tools/figuren.py
+7e9cf45b1fde4788779d2f568015620bb5d6524b9c206180710ebd515b9d8dca  /Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/tools/insel.py
+f37b64712a0012765e1e38e6e3041092f419905c2737e3e6c33472b62de7471f  /Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/tools/chunks.py
+python 3.14.6 pefile 2024.8.26 capstone 5.0.7 unicorn 2.1.4
+worktree MAP-2 HEAD advanced to eae9f4ae during review (DLL/data/tool hashes unchanged)
+# outputs of this packet (after round-2 review fixes)
+be41dcb16ee17c7da9d845fc2679aba5c472137f123614fdd9ad23ab9c9f614e  forester_ref.py
+ed8f4abb4715cadfe56500d7a5f0052f5c0cc86fb670539b37203e9ab592370d  forester_vectors.txt
+3e33b468e53a4d1645bea834f692cdb6558cb5bf02a6e089e2ebef993d0fcedd  emu_forester.py
+e97c6b71142c4cae90eaa53eb35fe8fd4768ed52f18b83240109c1f486701a94  walk_tree_check.py
+2a32cd8f6f40bf218ae734858f3c123ba635329772cb16f7c15ee26f4e8bbd0a  docs-re-forestry.md
+51397056ea23464f0fd9dd06f55b64620270967f27ae1c642039b37afc6b36e3  docs-sim-forestry.md
+14325e4677bb67f790001e206b3ac3963cc290bdbb42cc12db1027cb6968f41f  research-log.md

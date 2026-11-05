@@ -8,6 +8,7 @@
 #include <anno/formats/annowelt.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/text.hpp>
+#include <anno/sim/goods_metadata.hpp>
 #include <anno/sim/house_groups.hpp>
 #include <anno/sim_load/original_registry.hpp>
 
@@ -56,17 +57,31 @@ OriginalRegistryLoad load_original_registry(const fs::path& game_dir, FigureEntr
     }
 
     const std::vector<std::uint8_t> group_bytes = read_all(game_dir / "Data" / "BGruppen.dat");
-    const std::vector<sim::GoodsInfo> goods = sim::original_goods();
+    std::vector<sim::GoodsInfo> goods = sim::original_goods();
+    if (const std::string problem = sim::apply_goods_metadata(group_bytes, goods);
+        !problem.empty()) {
+        out.error = problem;
+        return out;
+    }
     auto groups = sim::parse_house_groups(group_bytes, goods);
     if (!groups) {
         out.error = "BGruppen.dat: " + groups.error();
         return out;
     }
 
+    auto stages = sim::parse_stage_table(group_bytes);
+    if (!stages) {
+        out.error = stages.error();
+        return out;
+    }
     auto built = sim::TypeRegistry::build(
         anlagen.value().entries, goods, sim::SimConfig{}, figure_entries,
         std::make_shared<const formats::annowelt::WalkTables>(std::move(walk).value()),
-        std::move(groups).value());
+        std::move(groups).value(), std::move(stages).value(),
+        /*declare_irregular_successors=*/true,
+        // Original content declarations, not runtime id branches. Welt1001bb84..1001bc65.
+        sim::BuildAvailabilityProfile{{46, 47, 48, 49, 50, 51, 52, 53, 54, 55},
+                                      {{sim::TypeId{1021}, {35, 36}}}});
     if (!built) {
         out.error = built.error();
         return out;

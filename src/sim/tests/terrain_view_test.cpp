@@ -1,3 +1,4 @@
+#include "original_component.hpp"
 // The corner-height view (task MAP-2 U1; docs/re/ship-founding.md section 12.3):
 // the disk samples of Terrain::height (W x H, row-major) seen as the original's
 // corner grid (stride W + 1; column W and rows H, H + 1 are 0).
@@ -277,7 +278,8 @@ TEST_CASE("vertex grid: shipped scenarios through the existing loader agree with
     for (const fs::path& f : files) {
         INFO(f.string());
         const auto buf = anno::test::read_file(f);
-        auto scenario = sim::load_scenario(buf, *loaded_types.types, sim::SimConfig{});
+        auto scenario = sim::load_scenario(buf, *loaded_types.types, sim::SimConfig{},
+                                           original_component::actor_free_units());
         REQUIRE(scenario);
         auto raw = anno::formats::insel::islands(buf);
         REQUIRE(raw);

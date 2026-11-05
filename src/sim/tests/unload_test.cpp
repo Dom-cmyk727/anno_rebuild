@@ -1121,7 +1121,7 @@ const std::vector<sim::Reject> kSessionStatus = {
 const std::vector<std::uint64_t> kSessionAmount = {9728, 2560, 11520, 1280, 0, 0, 0};
 
 std::filesystem::path fixture_log_path(const char* name) {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / name;
+    return anno::test::current_replay_fixture_path(name);
 }
 
 std::vector<std::uint8_t> read_file(const std::filesystem::path& p) {
@@ -1242,6 +1242,21 @@ TEST_CASE("unload session: a recorded transfer replays, a changed amount or targ
     // Conservation over the whole replay: what the replay starts with is what it ends with.
     auto initial = sim::World::load(committed.value().initial_save, registry(), {});
     REQUIRE(initial.ok());
+    // MAP-ROAD-CLOSE-1: the same valid recording with only the version word of its initial save set
+    // to the previous stream (124) and the integrity seal recomputed is refused by VERSION, not as
+    // checksum damage; the unchanged control loads (above).
+    {
+        std::vector<std::uint8_t> old_save = committed.value().initial_save;
+        island_test::put32(old_save, 8, sim::kStateHashVersion - 1);
+        island_test::reseal(old_save);
+        const auto refused_old = sim::World::load(old_save, registry(), {});
+        REQUIRE_FALSE(refused_old.ok());
+        CHECK(refused_old.error().find(
+                  "state stream version " + std::to_string(sim::kStateHashVersion - 1) +
+                  " is not supported (this build reads " + std::to_string(sim::kStateHashVersion) +
+                  ")") != std::string::npos);
+        CHECK(refused_old.error().find("checksum") == std::string::npos);
+    }
     CHECK(totals(initial.value()) == totals(good));
     // Retries create nothing: send every command of the session again to the end state.
     const Snap end = snap(good);
@@ -1447,8 +1462,11 @@ TEST_CASE("unload data: another owner and a data-defined ship and warehouse type
         CHECK(city(w, 0).stock.stock[kFood] == 0);
         expect_refused(w, 0, cmd(2, r, 0, kWood, 5), sim::Reject::NotShipOwner);
         expect_refused(w, 0, cmd(1, r, 0, kWood, 5), sim::Reject::NotCityOwner);
-        // The declared hold count of the type (2 + 1) limits the index, not the five holds.
-        (void)unload_ok(w, 1, cmd(2, r, 2, kTools, 4), 4 * kT, 1);
+        // The cargo hold count of the type (hold_count_a = 2) limits the index, not the five
+        // holds and not a + b = 3 (original 0x100ac476: valid indices end at a - 1). Index 2 is a
+        // legal request in every other respect (its own tools, room, owner), so BadIndex is the
+        // only refusal; index 1 (a - 1) is the legal control above.
+        expect_refused(w, 1, cmd(2, r, 2, kTools, 4), sim::Reject::BadIndex);
         expect_refused(w, 1, cmd(2, r, 3, kTools, 4), sim::Reject::BadIndex);
         expect_refused(w, 1, cmd(2, r, 4, kWood, 4), sim::Reject::BadIndex);
         // Player 1's ship cannot use player 0's warehouse.
@@ -1473,6 +1491,74 @@ TEST_CASE("unload data: another owner and a data-defined ship and warehouse type
         sim::World w = make(z);
         expect_refused(w, 1, cmd(2, bid(w, 1, 60, 10), 1, kFood, 3), sim::Reject::NotAWarehouse);
     }
+}
+
+/// MAP-CARGO-3 C1 (F-L1): the unload addresses only the first hold_count_a cargo holds; the second
+/// group (hold_count_b) and the figure's further records are not transfer targets. Each row is a
+/// ship of the registry type 9801 (a, b) carrying `holds` records; `legal` indices unload exactly
+/// and conserve, every other index is a BadIndex that leaves the world byte-identical although the
+/// request is legal in all other respects (owner, goods of that very hold, range, room).
+TEST_CASE("unload hold bound: only the first hold_count_a holds, never a + b (F-L1)") {
+    struct Row {
+        const char* what;
+        std::uint32_t a, b;
+        std::size_t records;              // holds the figure carries
+        std::vector<std::size_t> legal;   // indices below min(records, a)
+        std::vector<std::size_t> refused; // indices at and beyond the bound, all within records + 1
+    };
+    const std::vector<Row> rows = {
+        // The causal pair: a - 1 executes, a is refused while a + b would have allowed it.
+        {"a=2 b=1, five records", 2, 1, 5, {0, 1}, {2, 3, 4, 5}},
+        {"a=1 b=3, four records", 1, 3, 4, {0}, {1, 2, 3, 4}},
+        // Extra records far beyond a + b.
+        {"a=2 b=0, five records", 2, 0, 5, {0, 1}, {2, 3, 4}},
+        // The carried holds are shorter than a: the figure caps the bound.
+        {"a=4 b=2, two records", 4, 2, 2, {0, 1}, {2, 3, 4, 5, 6}},
+        // a = 0 (valid for the registry): no cargo hold at all, even with b > 0 and records.
+        {"a=0 b=2, three records", 0, 2, 3, {}, {0, 1, 2, 3}},
+    };
+    const sim::GoodsId goods_of[] = {kWood, kFood, kTools, kTools, kWood, kFood};
+    for (const Row& row : rows) {
+        INFO(row.what);
+        Setup s;
+        s.types = registry_with(9801, row.a, row.b);
+        ShipDef sh;
+        sh.kind = 9801;
+        sh.holds.clear();
+        for (std::size_t k = 0; k < row.records; ++k) {
+            sh.holds.push_back(sim::ShipHold{goods_of[k], 20 * kT});
+        }
+        s.ships = {sh};
+        s.capacity = 4000 * kT;
+        sim::World w = make(s);
+        const sim::BuildingId wh = bid(w, 0, 15, 10);
+        for (const std::size_t k : row.legal) {
+            INFO("legal index " << k);
+            const auto before = totals(w);
+            (void)unload_ok(w, 0, cmd(1, wh, static_cast<std::uint32_t>(k), goods_of[k], 5),
+                            5 * kT);
+            CHECK(ship(w).holds[k].amount_88 == 15 * kT);
+            CHECK(totals(w) == before);
+        }
+        for (const std::size_t k : row.refused) {
+            INFO("refused index " << k);
+            // A request for the goods that record k really carries (or wood past the records).
+            const sim::GoodsId g = k < row.records ? goods_of[k] : kWood;
+            expect_refused(w, 0, cmd(1, wh, static_cast<std::uint32_t>(k), g, 5),
+                           sim::Reject::BadIndex);
+        }
+    }
+}
+
+TEST_CASE("unload hold bound: a type without navigation facts keeps the carried-holds fallback") {
+    // Established adaptation (not an original rule): a registry type without NavFacts has no hold
+    // count, so the carried records bound the index; the load refuses such a type (NoCargoFacts).
+    Setup s; // the 1502 of registry() carries no NavFacts here, four holds
+    sim::World w = make(s);
+    const sim::BuildingId wh = bid(w, 0, 15, 10);
+    CHECK_FALSE(w.types().find_figure_type(1502)->nav.has_value());
+    (void)unload_ok(w, 0, cmd(1, wh, 3, kTools, 5), 5 * kT);
+    expect_refused(w, 0, cmd(1, wh, 4, kTools, 5), sim::Reject::BadIndex);
 }
 
 // ---------------------------------------------------------------------------------------------

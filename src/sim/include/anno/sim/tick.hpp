@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <anno/sim/city.hpp>
@@ -32,6 +33,39 @@
 namespace anno::sim {
 
 struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
+
+// Opaque declarations of the typed population faults (house_transition.hpp, resident.hpp,
+// house_kernel.hpp), so the effect buffer can carry them without including those modules.
+enum class HouseFault : std::uint8_t;
+enum class ResidentFault : std::uint8_t;
+enum class NotEvaluatedReason : std::uint8_t;
+
+/// MAP-POP-LIVE-1 L4 (docs/sim/population-live.md section 19): a typed fault of the live House
+/// update (P-1/P-3: fail loudly). `house` names the House operation that could not be performed
+/// (HouseFault::NotEvaluated carries the kernel's `reason`); `resident` is a ResidentFault of a
+/// choice, bill or add. Exactly one of the two is non-zero. The world merges it in issue order;
+/// the first one stops the world (World::fault()).
+struct FaultRecord {
+    HouseFault house{};
+    NotEvaluatedReason reason{};
+    ResidentFault resident{};
+    BuildingId building;
+    FigureId figure;
+    GoodsId goods = 0;
+};
+
+/// The serial resources the live House update and the stage pass write DIRECTLY (not through
+/// Effects, because the original order interleaves them with the other building ticks and their
+/// draws): the player table (the stage mask OR, the defeat flag of a removal) and the figure
+/// registry (a removed or shrunk house ends its walkers). The island phase of World::advance is
+/// serial today (islands in table order, each merged before the next); a parallel island phase
+/// (stage S16) must move the House path into the merge phase before it can use more than one
+/// worker. Null for a context that does not belong to an advance: the House update then reports a
+/// fault instead of running half-way.
+struct SerialResources {
+    PlayerTable* players = nullptr;
+    FigureRegistry* figures = nullptr;
+};
 
 /// The players as a tick sees them: read-only, and deliberately without a money
 /// accessor (money changes only through Effects::money, merged by the world, so
@@ -55,6 +89,11 @@ class PlayersView {
     [[nodiscard]] bool researched(PlayerId id, std::uint32_t research_id) const {
         const Player* p = find(id);
         return p != nullptr && p->research.researched(research_id);
+    }
+    /// The player's stage mask (Player::flags, D +0x90); 0 for a player that is not there.
+    [[nodiscard]] std::uint32_t flags(PlayerId id) const {
+        const Player* p = find(id);
+        return p != nullptr ? p->flags : 0;
     }
     /// O-9: whether the player's build cost is waived; false when not there.
     [[nodiscard]] bool free_build(PlayerId id) const {
@@ -151,6 +190,8 @@ struct TickContext {
     /// null if island ticks ever run in parallel (stage S16): a concurrent write
     /// across islands would race on the std::map and the counters.
     TransportStats* transport_stats = nullptr;
+    /// MAP-POP-LIVE-1 L4: see SerialResources. Set by Scheduler::advance; default null.
+    const SerialResources* serial = nullptr;
 };
 
 /// A figure a building asks for. The building's own counter was already raised in
@@ -163,6 +204,15 @@ struct SpawnRequest {
     std::uint32_t figure_kind = 0;
     PlayerId owner;
     FixedPos pos;
+    /// MAP-ECON-1 E2: the new figure's cargo goods (a farm worker carries its home's input 0, D
+    /// 0x1006ee06) and whether it gets the harvest state (docs/sim/forestry.md 2).
+    GoodsId cargo_goods = 0;
+    bool harvest = false;
+    /// MAP-POP-LIVE-1 L2 (docs/sim/population-live.md section 3): the new figure is a house walker
+    /// (job 0x35). The merge gives it its ResidentState (empty cargo slots) and writes its id into
+    /// the home House's walker slot `home_counter`; a request whose slot is not an empty slot of a
+    /// House creates no figure.
+    bool resident = false;
 };
 
 /// A counter of figures out goes down by one (if the building still exists and the
@@ -175,6 +225,10 @@ struct ReleaseCounter {
     BuildingId home;
     std::uint32_t home_counter = 0;
     FigureId figure;
+    /// MAP-POP-LIVE-1 L2: the figure that held the slot (set by the end path). A House keeps its
+    /// walkers as ids: the slot `home_counter` is cleared only while it still names `holder`, so an
+    /// old job never clears a newer owner's slot. Invalid for the counters of the other payloads.
+    FigureId holder;
 };
 
 /// A change of a player's money (i64; saturating at the ends of the type).
@@ -199,6 +253,9 @@ struct GoodsMove {
     CityRef city;
     GoodsId goods = 0;
     std::int64_t delta_88 = 0;
+    /// Diagnostic only (MAP-POP-LIVE-1 L5): the move is a resident purchase (counted in the
+    /// per-goods ledger of ResidentStats at the merge). Never read by the sim.
+    bool resident = false;
 };
 
 /// A cart takes up to `amount_88` from the building's output store `out_index`; the
@@ -233,6 +290,36 @@ struct StoreDelta {
     std::int64_t delta_88 = 0;
 };
 
+/// MAP-POP-LIVE-1 L2 (docs/sim/population-live.md section 2 "Billing"): `amount` is ADDED to the
+/// city's billed counter of `goods` (the REQUESTED amount, saturating at u32). A city that is gone
+/// or a goods beyond the table changes nothing.
+struct BilledDelta {
+    CityRef city;
+    GoodsId goods = 0;
+    std::uint32_t amount = 0;
+};
+
+/// MAP-POP-CLOSE-1 C2: a resident bought `amount` from an Inn's tavern stock (D bill 0x100756e0:
+/// `tavern -= t`, `taken += t`, t = min(tavern, requested)). Applied only while the building still
+/// exists and is an Inn; the debit is clipped at the stock (never below 0), the statistic
+/// saturates.
+struct TavernDebit {
+    BuildingId inn;
+    std::uint32_t amount = 0;
+};
+
+/// MAP-POP-LIVE-1 L2 (section 2 "House delivery"): a resident hands `amount_88` of `goods` to its
+/// home house (house_deliver: stock += amount * 16 and the IdSec replay). Applied only while the
+/// building still exists, is a House, and `figure` still holds one of its walker slots (so it is
+/// merged BEFORE the releases of the same buffer, which the figure's end pushes); a refused
+/// delivery (stock overflow) changes nothing and is counted.
+struct HouseDelivery {
+    BuildingId home;
+    FigureId figure;
+    GoodsId goods = 0;
+    std::uint32_t amount_88 = 0;
+};
+
 enum class SimEventKind : std::uint8_t {
     StatusMessage,
     Notice,
@@ -245,7 +332,8 @@ enum class SimEventKind : std::uint8_t {
     ShipArrived,
     ShipRouteFailed, ///< code = NavFailReason (0 Unreachable, 1 BudgetExceeded, 2 OutsideWindow, 3
                      ///< ShipBlocked)
-    ShipStopped
+    ShipStopped,
+    ScriptWave
 };
 
 /// UI-facing output of the simulation; not state, never hashed. Which fields a
@@ -255,6 +343,13 @@ enum class SimEventKind : std::uint8_t {
 /// the home, figure, code = the figure kind, x, y = the tile}; Event15a {code =
 /// 0x15a, x, y = the centre tile of the island the 7.5 minute event hit; player,
 /// building and figure stay invalid}; TimerExpired {code = the timer index}.
+enum class WaveAudience : std::uint8_t { AllLocal };
+struct ScriptWave {
+    std::string asset;
+    std::uint32_t source_offset = 0;
+    WaveAudience audience = WaveAudience::AllLocal; // original0xaa is broadcast, not PlayerId170
+    friend bool operator==(const ScriptWave&, const ScriptWave&) = default;
+};
 struct SimEvent {
     SimEventKind kind = SimEventKind::StatusMessage;
     std::uint64_t tick = 0;
@@ -265,11 +360,13 @@ struct SimEvent {
     std::int32_t x = 0, y = 0;
     /// Ship events: the identity of the order the event is about (never reused).
     std::uint64_t order_id = 0;
+    std::optional<ScriptWave> wave{};
+    friend bool operator==(const SimEvent&, const SimEvent&) = default;
 };
 
 /// Filled by an island tick or a serial-phase seam, merged by the world (§5.3). Merge
-/// order inside one buffer: spawns, releases, money, goods_moves, reserves,
-/// deliveries, store_deltas, events, ui; each vector in order.
+/// order inside one buffer: spawns, house_deliveries, releases, money, goods_moves, billed_deltas,
+/// reserves, deliveries, store_deltas, tile_edits, events, ui; each vector in order.
 /// A figure moved by its carrier (MAP-NAV-2): a ship's crew (children, grandchildren) is written
 /// from the ship's position by the world after the ship's visit, never by the ship's own call.
 struct FigureMove {
@@ -277,11 +374,32 @@ struct FigureMove {
     FixedPos pos;
 };
 
+/// MAP-ECON-1 E3 (docs/sim/forestry.md 3.2): one tile write of the harvest body, applied at the
+/// merge in issue order after the store deltas. Claim sets bit 29 (kTileClaim; under
+/// Rules::forestry_claim_hygiene also Island::claims[tile] = actor), Unclaim clears it (and the
+/// entry), Cut turns the tile object `id` into `id - 1` with phase `& 0x80` when the type `id - 1`
+/// is ROHSTWACHS (AnnoWelt 0x10087340; the merge re-applies that predicate). Release
+/// (MAP-ECON-1-CLOSE-1, the shared end path, docs/sim/forestry.md 3.5): under
+/// Rules::forestry_claim_hygiene only, clears the bit and the entry when `Island::claims[tile]` is
+/// still `actor` (never another worker's claim); under the faithful rules it writes nothing.
+struct TileEdit {
+    enum class Kind : std::uint8_t { Claim, Unclaim, Cut, Release };
+    Kind kind = Kind::Claim;
+    IslandId island;
+    TileXY tile;
+    FigureId actor;
+};
+
 struct Effects {
     std::vector<SpawnRequest> spawns;
     std::vector<ReleaseCounter> releases;
     std::vector<MoneyDelta> money;
     std::vector<GoodsMove> goods_moves;
+    /// MAP-POP-LIVE-1 L2: applied right after the goods moves.
+    std::vector<BilledDelta> billed_deltas;
+    /// MAP-POP-CLOSE-1 C2: the Inn debits of the purchases, applied right after the billed
+    /// counters.
+    std::vector<TavernDebit> tavern_debits;
     std::vector<Reserve> reserves;
     std::vector<Deliver> deliveries;
     std::vector<StoreDelta> store_deltas;
@@ -291,6 +409,17 @@ struct Effects {
     std::vector<FigureMove> figure_moves;
     /// Telemetry: the draws the call made, per site (the world fills it).
     std::vector<DrawRecord> draws;
+    /// MAP-ECON-1 E3: the harvest body's tile writes, in issue order.
+    std::vector<TileEdit> tile_edits;
+    /// MAP-POP-LIVE-1 L2: the residents' deliveries to their houses, applied right after the spawns
+    /// and before the releases.
+    std::vector<HouseDelivery> house_deliveries;
+    /// MAP-POP-LIVE-1 L4: typed faults of the live population update, merged in order; the first
+    /// one stops the world.
+    std::vector<FaultRecord> faults;
+    /// Diagnostic (TransportStats::forestry.raw_lost_88, never state): the cargo of harvest workers
+    /// that the shared end path ended before their delivery (MAP-ECON-1-CLOSE-1).
+    std::uint64_t harvest_lost_88 = 0;
 };
 
 /// The world as a serial-phase seam sees it (event handlers, figure behaviour,
@@ -346,8 +475,9 @@ class SerialWorld {
     [[nodiscard]] const FigureRegistry& figures() const { return figures_; }
     /// The list layout of the world's configuration.
     [[nodiscard]] const ListLayout& layout() const { return layout_; }
-    /// Ends the figure a behaviour seam is ticking (end_figure on its fields: the
-    /// release goes into `fx`, home none, the stamp u16(t)); the registry appends it to
+    /// Ends the figure a behaviour seam is ticking (end_figure on its fields: an active
+    /// harvest job is finished first, the release goes into `fx`, home none, the stamp
+    /// u16(t)); the registry appends it to
     /// the expiry list after the seam returns (sync_figure_lists). Returns false when the
     /// figure had ended already.
     bool end_figure(Figure& figure, std::uint32_t t) {

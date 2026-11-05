@@ -259,7 +259,7 @@ std::uint64_t hash_events(const std::vector<sim::SimEvent>& events) {
 }
 
 std::filesystem::path g4_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "g4.log";
+    return anno::test::current_replay_fixture_path("g4.log");
 }
 
 std::vector<std::uint8_t> read_bytes(const std::filesystem::path& p) {
@@ -1473,7 +1473,7 @@ TEST_CASE("timers and monopoly state is checked, hashed, saved and refused when 
         return out;
     };
     const std::vector<std::uint64_t> before = scope_hashes(base);
-    REQUIRE(before.size() == 9);
+    REQUIRE(before.size() == 10);
     struct Mutation {
         const char* name;
         std::size_t scope;

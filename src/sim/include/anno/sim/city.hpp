@@ -42,7 +42,10 @@ struct GoodsSetting {
 };
 
 /// D: the 8-byte record at city +0x5d4 + 8k (k = goods - build_goods_first): the
-/// setting (command 0x7c mode 9) and the cumulative spend (+0x5d8).
+/// setting (command 0x7c mode 9) and the cumulative spend (+0x5d8). MAP-POP-LIVE-1: `setting`
+/// IS the dword the Upgrade materials check subtracts as "reserve" (population-live.md section 5,
+/// `City::build_reserve` in the contract's words) and `spent` IS the +0x5d8 dword Upgrade books
+/// into; both were already saved and hashed (stream <= 127), so no second copy exists.
 struct BuildGoods {
     std::uint32_t setting = 0;
     std::uint64_t spent = 0;
@@ -78,6 +81,20 @@ struct City {
     /// unique (the original's dword mask). Registration sets the owner and the peers whose MILIT
     /// relation is 3; the reveal adds the discoverer.
     std::vector<PlayerId> player_mask;
+    /// MAP-POP-LIVE-1 L1 (stream 128, docs/sim/population-live.md section 6): D city +0x618, the
+    /// unlocked stage bits (stage i = bit i). The original does not save it (a loaded city starts
+    /// with 0 and the first pass re-derives it); the engine's own save stores it. The stage pass
+    /// itself is L4.
+    std::uint32_t stage_mask = 0;
+    /// D city +0x10, the u16 tick of the last stage pass (the pass runs when u16(t - stamp) >=
+    /// 2500).
+    std::uint16_t stage_stamp = 0;
+    /// MAP-POP-LIVE-1 L1 (stream 128, section 2 "Billed counters"): the REQUESTED amount billed per
+    /// goods id (the consumer goods only; the original's u16 widened to u32), size
+    /// SimConfig::warehouse_goods. Saved and hashed only when Rules::save_billed_goods is true; a
+    /// city loaded from a stream without it starts at zero. The tax pass that consumes it is
+    /// outside this task.
+    std::vector<std::uint32_t> billed;
 
     // ---- island-level queries (const; Island and the World members of the same
     // names delegate here or are delegated to). All return the canonical order

@@ -20,6 +20,7 @@
 #include <anno/sim/building.hpp>
 #include <anno/sim/city.hpp>
 #include <anno/sim/config.hpp>
+#include <anno/sim/draw.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/reject.hpp>
@@ -44,6 +45,12 @@ namespace anno::sim {
 /// footprint tiles' object := the type id (stand-in, O-5). A rejected creation
 /// changes nothing.
 ///
+/// `first_assignment` (MAP-POP-CLOSE-1 G1) is the world draw source of a PLAYER build: with
+/// Rules::house_updates, a House created without `initial` runs SetGroup's first assignment (the
+/// original's Create calls SetGroup with a null old group, AnnoWelt 0x10024c3c -> 0x10076b90): residents
+/// and E from the group, one draw per forced need in need order, the need stocks. The scenario
+/// loader, a saved house and every other caller pass no source and keep the constructor numbers.
+///
 /// `initial` (the loader's BuildingSpec::payload) replaces the make_* default:
 /// stocks, switches and `last` are kept as given (a mine without a deposit still
 /// finds one at attach). It must satisfy payload_problem for the type, else the
@@ -65,7 +72,14 @@ namespace anno::sim {
 [[nodiscard]] formats::Result<BuildingKey, Reject>
 create_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types, Island& island,
                 City& city, const PlacementRecord& rec, std::uint32_t now,
-                const Payload* initial = nullptr);
+                const Payload* initial = nullptr, DrawSource* first_assignment = nullptr);
+
+/// MAP-POP-CLOSE-1 G1: the check a BuildCmd record makes (and create_building repeats) before any
+/// draw, charge or serial: with Rules::house_updates, a House type whose group is outside the
+/// first-assignment domain (house_first_assignment_domain) is Reject::HouseDomain; everything else
+/// None. Pure.
+[[nodiscard]] Reject first_assignment_problem(const SimConfig& cfg, const Rules& rules,
+                                              const TypeRegistry& types, const BuildingType& type);
 
 /// Removes the building at `key` (D 0x100255c0): undoes the derived counters,
 /// erases the id and the footprint from the cache, clears the footprint through

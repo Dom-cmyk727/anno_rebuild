@@ -1,6 +1,7 @@
-// UnloadCmd: a ship's hold into the owner's warehouse city (MAP-CARGO-1 U2). Contract:
-// docs/sim/ship-cargo.md; evidence: docs/re/ship-cargo.md; independent reference:
-// tools/cargo_ref.py.
+// UnloadCmd: a ship's hold into the owner's warehouse city (MAP-CARGO-1 U2); LoadCmd: the owner's
+// warehouse city into a ship's hold (MAP-CARGO-2 L2). Contract:
+// docs/sim/ship-cargo.md (sections 1-11 unload, 12 load); evidence: docs/re/ship-cargo.md;
+// independent reference: tools/cargo_ref.py.
 //
 // Shape (as Founding): validation reads the world and decides, the transfer plan is computed from
 // the live hold and store before any write, and the commit is two stores of precomputed values
@@ -8,11 +9,15 @@
 // its only side effect is the host-facing CommandRejected event of Commands::apply.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 #include <anno/sim/apply.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/sim/config.hpp>
+#include <anno/sim/figure.hpp>
 #include <anno/sim/reject.hpp>
 
 namespace anno::sim {
@@ -24,6 +29,21 @@ struct ShipCargo {
     /// warehouse and `transferred_88`.
     static ApplyResult unload(World& w, const Command& command, const UnloadCmd& cmd,
                               const InAdvance* in_advance = nullptr);
+
+    /// Validates (atomically) and applies one LoadCmd (docs/sim/ship-cargo.md section 12.4): the
+    /// plan (hold, amount) is computed from the live hold and store before any write; the commit
+    /// debits the store and credits the hold by that same amount. Total. On success `records[0]`
+    /// carries the warehouse and `transferred_88`.
+    static ApplyResult load(World& w, const Command& command, const LoadCmd& cmd,
+                            const InAdvance* in_advance = nullptr);
+
+    /// The hold a load goes to (section 12.4 step 12): the preferred hold when it holds `goods`
+    /// and has at least one whole ton free, else the same-goods hold with the most room (strictly
+    /// greater, lowest index on ties) or, when none has room, the first empty hold (goods 0 and
+    /// amount 0), over the first `limit` holds. nullopt when there is none. Pure.
+    [[nodiscard]] static std::optional<std::size_t>
+    resolve_hold(const std::vector<ShipHold>& holds, std::size_t limit, std::uint32_t capacity_88,
+                 std::size_t preferred, GoodsId goods);
 
     /// The amount a request moves: min(tons * 256, hold amount, free), all in 1/256 ton, formed in
     /// u64 (tons < 2^32 so the product is below 2^40). Pure; the caller has checked that each of

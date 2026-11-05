@@ -36,14 +36,14 @@ namespace anno::sim {
 
 /// The version of the replay-log frame (a format version, like kCommandWireVersion
 /// and kSaveVersion; a reader refuses a log written with another one).
-inline constexpr std::uint32_t kReplayLogVersion = 2;
+inline constexpr std::uint32_t kReplayLogVersion = 3;
 
 /// One recorded step of a session: an advance by `ms`, a block of commands applied
 /// in stream order, or a checkpoint carrying the tick and the state hash at that
 /// point. The fields a kind uses: Advance {ms, tick = the new tick}; Commands
 /// {commands}; Checkpoint {tick, hash}.
 struct ReplayEntry {
-    enum class Kind : std::uint8_t { Advance, Commands, Checkpoint };
+    enum class Kind : std::uint8_t { Advance, Commands, Checkpoint, Startup };
     Kind kind = Kind::Advance;
     std::uint32_t ms = 0;
     std::vector<Command> commands;
@@ -58,6 +58,7 @@ struct ReplayEntry {
 /// input recorded so porting a site is never a silent desync), the save of the world
 /// before entry 0, and the entries in order.
 struct ReplayLog {
+    std::uint64_t script_digest = 0; // source/namespace/policy/limits, excludes execution state
     std::uint64_t config_digest = 0;
     std::uint64_t rules_digest = 0;
     std::uint64_t registry_digest = 0;
@@ -75,8 +76,9 @@ struct ReplayLog {
 [[nodiscard]] std::uint64_t seams_digest(const Seams& seams);
 
 /// The names of the original draw sites the sim does not reproduce yet, in DrawSite
-/// order (docs/sim/state.md §6). Recorded in the replay-log header.
-[[nodiscard]] std::vector<std::string> prng_timeline_missing();
+/// order (docs/sim/state.md §6). Recorded in the replay-log header. The House walker and variant
+/// sites are listed unless `house_updates` (Rules::house_updates) is on.
+[[nodiscard]] std::vector<std::string> prng_timeline_missing(bool house_updates = false);
 
 /// The one door a session drives a World through: every command it applies and every
 /// advance it makes becomes an entry of its log, so the log is the ground truth of what
@@ -134,7 +136,9 @@ struct Turn {
 /// from the same loop: World::apply's (or Recorder::submit's) result, and Unencodable for a
 /// command skipped for having no wire form. It changes nothing in the world (round ee, A2: the
 /// host's command feedback).
-void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps,
+/// Returns an initialization/runtime error, or empty on success. Failed INIT produces
+/// PermissionContext for each command and performs no command or time step.
+std::string run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps,
               std::vector<ApplyResult>* results = nullptr);
 void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
                std::uint32_t step_ms);
@@ -168,8 +172,12 @@ struct ReplayOutcome {
 /// replay of someone else's build, refused before anything runs, §8.2 item 4). Otherwise it applies
 /// the entries in order and stops at the first checkpoint whose hash differs, reporting it in the
 /// outcome.
-[[nodiscard]] formats::Result<ReplayOutcome, std::string> replay(World& world,
-                                                                 const ReplayLog& log);
+struct ReplayObserver {
+    void* ctx = nullptr;
+    void (*events)(void*, std::span<const SimEvent>) = nullptr;
+};
+[[nodiscard]] formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog& log,
+                                                                 ReplayObserver observer = {});
 
 /// The world state hash after each entry of `log` applied in order to `initial`
 /// (8 bytes per entry; what the `hashes` tool prints). `initial` is taken by value.

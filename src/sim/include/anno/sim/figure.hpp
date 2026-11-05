@@ -27,6 +27,7 @@
 
 #include <anno/sim/config.hpp>
 #include <anno/sim/ids.hpp>
+#include <anno/sim/resident.hpp>
 #include <anno/sim/slot_list.hpp>
 
 namespace anno::sim {
@@ -39,6 +40,7 @@ struct Effects; // tick.hpp
 /// Path to raise both: widen the members to i64, or lower the fraction bits.
 struct FixedPos {
     std::int32_t x = 0, y = 0;
+    friend constexpr bool operator==(const FixedPos&, const FixedPos&) = default;
 };
 static_assert(kWorldEdgeBound <= (1U << 23),
               "FixedPos (Q24.8 in an i32) cannot hold a tile coordinate of this world edge");
@@ -78,6 +80,70 @@ struct TransportState {
     BuildingId target;
     /// The amount the target reserved for this figure (the cargo's +0x1c, D 0x1005aef1).
     std::uint32_t reserved_88 = 0;
+};
+
+/// The step of a harvest job (docs/sim/forestry.md 2, 3.2; D AnnoWelt job factory 0x1003b0e0,
+/// jobs 0x29/0x2a -> 0x1003b255): step A (Start: search and claim a tile; ToTree: the walk), step B
+/// (Cut: the wait, then the cut), step C (ToHome: the walk home and the delivery), then the end.
+enum class HarvestStep : std::uint8_t { Start = 0, ToTree = 1, Cut = 2, ToHome = 3, Done = 4 };
+
+/// The first micro-step of a figure's life in ticks: the constructor's remaining 0.001 at rate
+/// 0.001 (D 0x10035ce0) is 1.0 time unit, 5 ticks at the figure tick's 0.2 scale (0x10034760). The
+/// integer model of docs/sim/forestry.md 2 (E2.0): saved, consumed once across visits. A fact of
+/// the original's figure constructor, not a limit.
+inline constexpr std::uint32_t kHarvestStartDelay = 5;
+
+/// The jobs whose figures run the harvest body: the job factory gives 0x29 (ERNTE) and 0x2a
+/// (MAEHER) the same constructor (D 0x1003b480 byte table -> 0x1003b255).
+[[nodiscard]] constexpr bool harvest_job(std::uint32_t job) {
+    return job == 0x29 || job == 0x2a;
+}
+
+/// What a harvest job keeps between calls (docs/sim/forestry.md 2). Present on a figure exactly
+/// when the spawn of a Farm-payload home created it (never chosen by the job id alone: 0x2a is
+/// also the small farm's worker job).
+struct HarvestState {
+    HarvestStep step = HarvestStep::Start;
+    /// Ticks of the first micro-step still owed (kHarvestStartDelay at the spawn, 0 afterwards,
+    /// never re-armed; docs/sim/forestry.md 3.2).
+    std::uint32_t start_delay = kHarvestStartDelay;
+    /// Ticks left of the cut wait (Cut).
+    std::uint32_t wait = 0;
+    /// The claimed tile in world coordinates (step +4/+6); meaningful in ToTree and Cut only.
+    TileXY target;
+    /// The walk, as TransportState's: waypoints, the next one and the distance along the segment.
+    std::vector<FixedPos> route;
+    std::uint32_t next = 0;
+    std::uint32_t along = 0;
+    friend bool operator==(const HarvestState&, const HarvestState&) = default;
+};
+
+/// The step of a resident job (job 0x35; docs/sim/population-live.md section 3): A = Start (the
+/// search from the house and the choice of a stand; ToStall the walk), B = Wait (the stall wait,
+/// FigureType::load_ticks, then the purchase at the stand; attach/detach have no state), C = ToHome
+/// (the walk home and the delivery of every cargo slot), then Done (the figure ends).
+enum class ResidentStep : std::uint8_t { Start = 0, ToStall = 1, Wait = 2, ToHome = 3, Done = 4 };
+
+/// The job code of the house walker (resident_job.hpp's kJobResident; spelled here for the figure
+/// validators, which do not include the job).
+inline constexpr std::uint32_t kJobResidentCode = 0x35;
+
+/// What a resident job keeps between calls (MAP-POP-LIVE-1 L1, stream 128; the job itself is L2).
+/// Present on a figure exactly when a House spawned it (never chosen by the job id alone). The
+/// walk is TransportState's: waypoints, the next one and the distance along the segment.
+struct ResidentState {
+    ResidentStep step = ResidentStep::Start;
+    /// Ticks left of the current wait (Wait).
+    std::uint32_t wait = 0;
+    std::vector<FixedPos> route;
+    std::uint32_t next = 0;
+    std::uint32_t along = 0;
+    /// The chosen stand or public building (invalid until step A chose one).
+    BuildingId target;
+    /// The walker's cargo slots, SimConfig::resident_cargo_slots of them (the original's 3,
+    /// D 0x10057d70): goods 0 = empty; a slot holding goods with amount 0 is not empty.
+    std::vector<ResidentCargo> cargo;
+    friend bool operator==(const ResidentState&, const ResidentState&) = default;
 };
 
 /// Raw units per ton in a ship hold: amounts are exact multiples of 1/256 ton (the original's 8.8
@@ -230,6 +296,11 @@ struct Figure {
     std::uint32_t state_word = 0;
     /// MAP-NAV-2 (stream 122): the motion state of a navigating ship.
     std::optional<NavMotion> nav;
+    /// MAP-ECON-1 E2 (stream 126): the harvest job of a farm worker (docs/sim/forestry.md 2).
+    std::optional<HarvestState> harvest;
+    /// MAP-POP-LIVE-1 L1 (stream 128): the resident job of a house walker (docs/sim/
+    /// population-live.md section 3).
+    std::optional<ResidentState> resident;
 };
 
 /// D: the unit registry (world +0x114).
@@ -286,6 +357,12 @@ void note_ship_moved(FigureRegistry& registry, const Figure& ship, FixedPos befo
 /// slot type, SlotList::insert) or `f.id` is invalid or already in the registry.
 Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const Rules& rules);
 
+/// Original-file explicit-slot insertion (Welt 0x10097347..0x1009739a): preserve holes and
+/// update the allocation hint to the supplied slot. Growth uses the requested slot, not the
+/// previous length. Invalid/occupied/over-bound requests change nothing. Stable IDs remain
+/// distinct from source slots; existing generated callers continue to use add_figure.
+Slot add_figure_at(FigureRegistry& registry, Figure f, Slot slot, const SimConfig& cfg);
+
 /// The figure with this id, or nullptr (a figure that is gone is never an error).
 [[nodiscard]] const Figure* find_figure(const FigureRegistry& registry, FigureId id);
 [[nodiscard]] Figure* find_figure(FigureRegistry& registry, FigureId id);
@@ -312,6 +389,13 @@ std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id);
 /// already (it has a stamp) is left alone. Returns true when it ended the figure now.
 /// The original's last walk between the release and the Remove (0x1003af00: 0 or 15.0
 /// at rate 0.01) belongs to a behaviour body (O-8); here both happen at `t`.
+/// MAP-ECON-1-CLOSE-1 (docs/sim/forestry.md 3.5, "W ends by any path"): before the release
+/// a harvest job that is not Done is finished while the home id still names its island:
+/// the step becomes Done with no walk, wait or first delay owed (target and cargo stay
+/// as history); in ToTree/Cut `fx` gets a TileEdit::Release of the target, which the
+/// merge applies only under Rules::forestry_claim_hygiene and only to the worker's own
+/// entry (the faithful rules write nothing beyond the traced cut/abort). A Done job, the
+/// body's own end, is left exactly as it is.
 bool end_figure(Figure& figure, std::uint32_t t, Effects& fx);
 
 /// end_figure on a figure of `registry`, which also appends it to the expiry list
@@ -323,9 +407,10 @@ void end_figure(FigureRegistry& registry, Figure& figure, std::uint32_t t, Effec
 /// docs/sim/state.md §4.11 C2), the registry follows: a figure that gained an
 /// expiry_stamp is appended to the expiry list and one that lost it leaves it; a
 /// figure that has a stamp but still a home (a seam that set the stamp instead of
-/// calling SerialWorld::end_figure) releases its counter into `fx` as end_figure does,
-/// so the counter goes back once (own design: the seam protocol, which keeps the facts
-/// of validate_figures). `had_stamp` is the flag before the call.
+/// calling SerialWorld::end_figure) finishes its harvest job and releases its counter
+/// into `fx` as end_figure does, so the counter goes back once (own design: the seam
+/// protocol, which keeps the facts of validate_figures). `had_stamp` is the flag before
+/// the call.
 void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp, Effects& fx);
 
 /// The structural facts of a figure registry (docs/sim/state.md §9.6; MAP-2 added the

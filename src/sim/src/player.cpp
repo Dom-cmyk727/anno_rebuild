@@ -5,6 +5,16 @@
 
 namespace anno::sim {
 
+std::int64_t add_money_saturating(std::int64_t a, std::int64_t b) {
+    if (b > 0 && a > std::numeric_limits<std::int64_t>::max() - b) {
+        return std::numeric_limits<std::int64_t>::max();
+    }
+    if (b < 0 && a < std::numeric_limits<std::int64_t>::min() - b) {
+        return std::numeric_limits<std::int64_t>::min();
+    }
+    return a + b;
+}
+
 std::uint8_t Player::relation(std::uint32_t which, PlayerId other) const {
     for (const Relation& r : relations) { // ascending by `other`; rows are few
         if (r.other == other) {

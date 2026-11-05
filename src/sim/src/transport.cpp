@@ -879,8 +879,8 @@ void unload(Job& j) {
     if (std::holds_alternative<Inn>(j.home->payload) && j.fig.cargo_88 > 0) {
         // D 0x100756d0: tavern += amount (8.8, a 16-bit add), applied at the merge (scheduler 6b).
         j.unloaded = true;
-        j.world.fx.store_deltas.push_back(StoreDelta{j.home->id, StoreDelta::Store::Input, 0,
-                                                     std::int64_t{j.fig.cargo_88}});
+        j.world.fx.store_deltas.push_back(
+            StoreDelta{j.home->id, StoreDelta::Store::Input, 0, std::int64_t{j.fig.cargo_88}});
         return;
     }
     if (std::holds_alternative<Workshop>(j.home->payload) && j.fig.cargo_88 > 0) {

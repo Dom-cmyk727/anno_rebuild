@@ -270,8 +270,8 @@ DeliverResult house_deliver(const HouseFacts& house, std::span<std::uint32_t> st
     // own IdSec; a substitute without a slot ends the chain. The original recurses without bound (a
     // cycle crashes it). MAP-POP-CLOSE-1 G2: a walk that would visit a goods id twice (a cycle or a
     // self-loop) is refused whole before any credit. Goods ids are compared, not slots: two goods
-    // sharing one need slot are a legal chain. The registry rejects such cycles (derive_group); this
-    // is the defensive guard.
+    // sharing one need slot are a legal chain. The registry rejects such cycles (derive_group);
+    // this is the defensive guard.
     std::vector<std::size_t> chain{slot};
     std::vector<GoodsId> seen{g};
     GoodsId cur = g;

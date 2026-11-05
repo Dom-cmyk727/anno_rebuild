@@ -311,10 +311,11 @@ std::string derive_group(const HouseGroup& group, std::span<const GoodsInfo> goo
             }
         }
     }
-    // MAP-POP-CLOSE-1 G2 (population-contract P-3): the IdSec walk of a delivery starts at any goods
-    // id that has a need slot and continues through substitutes that have one; visiting a goods id
-    // twice (a cycle or self-loop) is a content error. Only that relevant walk is checked, so an
-    // unrelated cycle among goods nobody needs is not an error, and the goods count is irrelevant.
+    // MAP-POP-CLOSE-1 G2 (population-contract P-3): the IdSec walk of a delivery starts at any
+    // goods id that has a need slot and continues through substitutes that have one; visiting a
+    // goods id twice (a cycle or self-loop) is a content error. Only that relevant walk is checked,
+    // so an unrelated cycle among goods nobody needs is not an error, and the goods count is
+    // irrelevant.
     std::vector<std::uint32_t> visited(goods.size(), 0); // stamp = start + 1: no clearing per walk
     for (GoodsId start = 0; start < goods.size(); ++start) {
         if (out.lookup[start] == count) {
@@ -329,8 +330,9 @@ std::string derive_group(const HouseGroup& group, std::span<const GoodsInfo> goo
                 break;
             }
             if (visited[sec] == stamp) {
-                return "IdSec cycle through goods " + std::to_string(sec) + " (reached from goods " +
-                       std::to_string(start) + "): a delivery would credit the cycle repeatedly";
+                return "IdSec cycle through goods " + std::to_string(sec) +
+                       " (reached from goods " + std::to_string(start) +
+                       "): a delivery would credit the cycle repeatedly";
             }
             visited[sec] = stamp;
             cur = sec;

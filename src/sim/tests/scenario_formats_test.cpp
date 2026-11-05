@@ -783,10 +783,10 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     append(prod,
            entry(2, 0, Buf{0, 0x01, 0x10, 0x02, 0x20, 0x02, 0x30, 0x02, 0x40, 0x02, 3, 0, 4, 0}));
     append(prod, entry(4, 0, Buf{0, 0, 0x50, 0, 0x60, 0, 0x77, 0x77, 6, 0}));
-    append(prod, entry(6, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1}));       // 9 bytes: skipped
-    append(prod, entry(8, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1})); // 11 bytes: skipped
-    append(prod, entry(10, 0, Buf(11, 1)));                          // over the mine's 10
-    append(prod, entry(12, 0, Buf(15, 1)));                          // over the small farm's 14
+    append(prod, entry(6, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1}));        // 9 bytes: skipped
+    append(prod, entry(8, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1}));  // 11 bytes: skipped
+    append(prod, entry(10, 0, Buf(11, 1)));                           // over the mine's 10
+    append(prod, entry(12, 0, Buf(15, 1)));                           // over the small farm's 14
     append(prod, entry(14, 0, Buf{0, 0, 200, 0, 0, 0, 0, 0, 49, 1})); // Inn Load 0x10075740
     append(prod, entry(14, 2, Buf{0, 0, 200, 0, 0, 0, 0, 0, 49}));
     Buf c = {2, 0};
@@ -1248,9 +1248,9 @@ TEST_CASE("scenario warning kinds") {
         put16(ware, 3);
         put32(ware, 0);
         append(city_records, record("WARE", ware));
-        Buf prod = entry(0, 7);               // no item there: EntryWithoutBuildingItem
-        append(prod, entry(8, 4, Buf{1, 2})); // the house with bytes
-        append(prod, entry(8, 4));            // the house again: BuildingRefused
+        Buf prod = entry(0, 7);                // no item there: EntryWithoutBuildingItem
+        append(prod, entry(8, 4, Buf{1, 2}));  // the house with bytes
+        append(prod, entry(8, 4));             // the house again: BuildingRefused
         append(prod, entry(6, 6, Buf(11, 1))); // the mine with 11 bytes: UndecodedBuildingRecord
         append(city_records, record("PROD", prod));
     }

@@ -1561,7 +1561,9 @@ TEST_CASE("registry digest stable") {
     CHECK(sim::TypeRegistry::empty()->digest() == h.value());
     // And the value of an independent Python transcription (tools/sim_stream.py:
     // goods names read from AnnoGame.dll, classes from Appendix C).
-    CHECK(h.value() == 0x3a9d19d59b4f3f58ULL); // Inn tick kind 9 + payload tag 8 (K1); python transcription agrees
+    CHECK(
+        h.value() ==
+        0x3a9d19d59b4f3f58ULL); // Inn tick kind 9 + payload tag 8 (K1); python transcription agrees
     // Rebuilding gives the same digest; the order types are added in does not matter.
     auto a = sim::synthetic::make_synthetic_types();
     auto b = sim::synthetic::make_synthetic_types();

@@ -696,9 +696,9 @@ std::string check_consistency(std::span<const BuildingType> types,
             return who + "class " + std::to_string(index) + " is outside the class table";
         }
         if (t.cls == RuntimeClass::Inn && t.has_prod) {
-            // MAP-POP-CLOSE-2 K1 (population.md 18 (g)): the base priority 0x10072870 divides by the
-            // input per step (+0xe4(i)), which traps in the original at 0. A typed refusal here, so
-            // no running Inn can meet a zero divisor.
+            // MAP-POP-CLOSE-2 K1 (population.md 18 (g)): the base priority 0x10072870 divides by
+            // the input per step (+0xe4(i)), which traps in the original at 0. A typed refusal
+            // here, so no running Inn can meet a zero divisor.
             for (std::size_t i = 0; i < t.input_goods.size(); ++i) {
                 const std::uint32_t need =
                     i < t.prod.input_per_step.size() ? t.prod.input_per_step[i] : 0;
@@ -985,13 +985,11 @@ std::string goods_metadata_problem(std::span<const GoodsInfo> goods) {
 
 } // namespace
 
-formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
-TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
-                     std::vector<ClassInfo> classes, const SimConfig& cfg,
-                     std::vector<FigureType> figures,
-                     std::shared_ptr<const formats::annowelt::WalkTables> tables,
-                     std::vector<HouseGroup> groups, std::vector<StageRecord> stages,
-                     bool declare_irregular_successors) {
+formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::finish(
+    std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
+    std::vector<ClassInfo> classes, const SimConfig& cfg, std::vector<FigureType> figures,
+    std::shared_ptr<const formats::annowelt::WalkTables> tables, std::vector<HouseGroup> groups,
+    std::vector<StageRecord> stages, bool declare_irregular_successors) {
     for (std::size_t i = 0; i < stages.size(); ++i) {
         // The stage mask is 32 bits wide (Player::flags / City::stage_mask: a stage index is a
         // shift count); the table is ascending and unique; a group beyond the group table is a
@@ -1035,11 +1033,11 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
             if (t.cls != RuntimeClass::House || cfg.house_type_stride == 0) {
                 continue;
             }
-            const std::uint64_t next_id = t.id.v - t.id.v % cfg.house_type_stride +
-                                          std::uint64_t{cfg.house_type_stride};
-            const auto it = std::lower_bound(
-                types.begin(), types.end(), next_id,
-                [](const BuildingType& a, std::uint64_t v) { return a.id.v < v; });
+            const std::uint64_t next_id =
+                t.id.v - t.id.v % cfg.house_type_stride + std::uint64_t{cfg.house_type_stride};
+            const auto it =
+                std::lower_bound(types.begin(), types.end(), next_id,
+                                 [](const BuildingType& a, std::uint64_t v) { return a.id.v < v; });
             if (it != types.end() && it->id.v == next_id &&
                 !house_successor_is_regular(cfg, t, *it)) {
                 t.special_successor = true;

@@ -8,8 +8,8 @@
 // The House tick calls resident_dispatch under Rules::house_updates (L4; the rule stays false by
 // default). Evidence: D AnnoWelt.dll 0x10076341-0x10076397 (the
 // spawn block), the base send 0x10072d20 / 0x10072b50, the job's steps 0x1005b170 (A), 0x10056480
-// (B arrival), 0x10057ae0 / 0x10057d70 (C); the wait is FigureType::load_ticks (C2); the unread edges
-// (flag bits 4/5, first-walkable-entrance rule) stay simplifications.
+// (B arrival), 0x10057ae0 / 0x10057d70 (C); the wait is FigureType::load_ticks (C2); the unread
+// edges (flag bits 4/5, first-walkable-entrance rule) stay simplifications.
 #pragma once
 
 #include <cstdint>
@@ -37,12 +37,13 @@ inline constexpr std::uint32_t kJobResident = kJobResidentCode;
 // Original default; the configurable path is a SimConfig field (not added in this task).
 inline constexpr std::int64_t kWalkerSpawnBelow = 102;
 
-
 /// Diagnostics of one walk-home computation (not state).
 struct ResidentPathNote {
-    std::uint32_t endpoint_adapted = 0; ///< accepted only with the endpoint adapter (first/last step exempt)
-    std::uint32_t reverse_rejected = 0; ///< the reverse search found a route even the adapter refused
-    std::uint32_t forward_used = 0;     ///< the shared forward search supplied the route
+    std::uint32_t endpoint_adapted =
+        0; ///< accepted only with the endpoint adapter (first/last step exempt)
+    std::uint32_t reverse_rejected =
+        0;                          ///< the reverse search found a route even the adapter refused
+    std::uint32_t forward_used = 0; ///< the shared forward search supplied the route
 };
 
 /// The walk home of a resident (step C, D 0x10057ae0; population-live.md 21.6, P-15): the tile
@@ -55,8 +56,8 @@ resident_path_home(const Island& island, const TypeRegistry& types, const Buildi
                    const BuildingType& home_type, FixedPos from, std::uint32_t layer,
                    ResidentPathNote* note = nullptr);
 
-/// The forward legality of `route` for a walker at `from` going home (walk_search.hpp route_legal on
-/// the home's search area). For tests and for resident_path_home.
+/// The forward legality of `route` for a walker at `from` going home (walk_search.hpp route_legal
+/// on the home's search area). For tests and for resident_path_home.
 [[nodiscard]] RouteCheck resident_route_legal(const Island& island, const TypeRegistry& types,
                                               const Building& home, const BuildingType& home_type,
                                               FixedPos from, std::uint32_t layer,
@@ -77,8 +78,8 @@ resident_path_home(const Island& island, const TypeRegistry& types, const Buildi
                                                        const BuildingType& type,
                                                        const House& house);
 
-/// The supplier model of a building type (class, the two WARE goods; the stall flags stay 1). An Inn
-/// offers the tavern stock of its payload (C2); the model is built inside resident_job.cpp.
+/// The supplier model of a building type (class, the two WARE goods; the stall flags stay 1). An
+/// Inn offers the tavern stock of its payload (C2); the model is built inside resident_job.cpp.
 
 /// Why a walker was not sent after the draw.
 enum class ResidentRefusal : std::uint8_t {
@@ -126,11 +127,12 @@ struct StandChoice {
     GoodsId goods = 0;
     std::int64_t score = 0;
     std::vector<TileXY> path;
-    /// MAP-POP-CLOSE-2 K2: the goal sub-cell the search selected (an entrance point of the stand, on
-    /// the path's last tile). The walker ends its walk THERE (the original walks the finer sub-cell
-    /// route, state.md 5.9 clause 6, and starts its way home from its own position, transport.md
-    /// section 3), so a stand whose tile centre is walled in (the cross of stand 1314) can be left.
-    /// ADAPT / U: the finer-route stage 0x100054ef..0x100055d5 is unread; the sub-cell formula
+    /// MAP-POP-CLOSE-2 K2: the goal sub-cell the search selected (an entrance point of the stand,
+    /// on the path's last tile). The walker ends its walk THERE (the original walks the finer
+    /// sub-cell route, state.md 5.9 clause 6, and starts its way home from its own position,
+    /// transport.md section 3), so a stand whose tile centre is walled in (the cross of stand 1314)
+    /// can be left. ADAPT / U: the finer-route stage 0x100054ef..0x100055d5 is unread; the sub-cell
+    /// formula
     /// ((2c+1)*256+3)/6-128 in resident_job.cpp is not tied to a read.
     std::uint32_t end_col = 1, end_row = 1;
 };

@@ -44,14 +44,15 @@ struct Inert {
     StatusTracker status;
 };
 
-/// The state of an Inn (D vtable 0x100c96d8): the Inert prefix plus the tavern stock (+0x18; delivered
-/// by `+0xc0` = 0x100756d0, offered by `+0xa4` = 0x10075940, debited by the bill 0x100756e0), the
-/// taken statistic (+0x1a, raised by the bill, decayed by the tick) and the carriers on their way
-/// (the original's two pointer slots +0x1c / +0x20; here a counter like the workshop's, so the number
-/// of active carriers is data-limited by the type's max figures, docs/sim/population-live.md 23).
-/// MAP-POP-CLOSE-2 K1: `tavern` and `taken` are the original's u16 values held in a u32 field: every
-/// operation wraps modulo 65536 exactly as the original's 16-bit adds (inn.hpp), and the invariant
-/// check refuses a value above 0xffff. `last` is the gate stamp of the tick 0x100755f0.
+/// The state of an Inn (D vtable 0x100c96d8): the Inert prefix plus the tavern stock (+0x18;
+/// delivered by `+0xc0` = 0x100756d0, offered by `+0xa4` = 0x10075940, debited by the bill
+/// 0x100756e0), the taken statistic (+0x1a, raised by the bill, decayed by the tick) and the
+/// carriers on their way (the original's two pointer slots +0x1c / +0x20; here a counter like the
+/// workshop's, so the number of active carriers is data-limited by the type's max figures,
+/// docs/sim/population-live.md 23). MAP-POP-CLOSE-2 K1: `tavern` and `taken` are the original's u16
+/// values held in a u32 field: every operation wraps modulo 65536 exactly as the original's 16-bit
+/// adds (inn.hpp), and the invariant check refuses a value above 0xffff. `last` is the gate stamp
+/// of the tick 0x100755f0.
 struct Inn {
     std::uint16_t last = 0;
     bool blocked = false;

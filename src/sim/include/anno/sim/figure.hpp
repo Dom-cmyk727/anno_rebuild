@@ -120,8 +120,8 @@ struct HarvestState {
 
 /// The step of a resident job (job 0x35; docs/sim/population-live.md section 3): A = Start (the
 /// search from the house and the choice of a stand; ToStall the walk), B = Wait (the stall wait,
-/// FigureType::load_ticks, then the purchase at the stand; attach/detach have no state), C = ToHome (the
-/// walk home and the delivery of every cargo slot), then Done (the figure ends).
+/// FigureType::load_ticks, then the purchase at the stand; attach/detach have no state), C = ToHome
+/// (the walk home and the delivery of every cargo slot), then Done (the figure ends).
 enum class ResidentStep : std::uint8_t { Start = 0, ToStall = 1, Wait = 2, ToHome = 3, Done = 4 };
 
 /// The job code of the house walker (resident_job.hpp's kJobResident; spelled here for the figure

@@ -451,10 +451,10 @@ TEST_CASE(
     CHECK(extreme.route.size() == 2);
 }
 
-// MAP-POP-CLOSE-2 K2 (OQ-463, docs/re/population.md section 19): a GOAL cell carries the key nibble of
-// its goal sub-cell in its low word (D 0x1000414b), as a start cell does (0x10003f73). The vectors in
-// fixtures/synthetic/sim/walk_goal_vectors.txt were derived by hand before this code existed and are
-// checked independently by tools/walk_goal_ref.py.
+// MAP-POP-CLOSE-2 K2 (OQ-463, docs/re/population.md section 19): a GOAL cell carries the key nibble
+// of its goal sub-cell in its low word (D 0x1000414b), as a start cell does (0x10003f73). The
+// vectors in fixtures/synthetic/sim/walk_goal_vectors.txt were derived by hand before this code
+// existed and are checked independently by tools/walk_goal_ref.py.
 namespace {
 std::map<std::string, std::string> kv_of(const std::vector<std::string>& t, std::size_t from,
                                          std::size_t to) {
@@ -466,9 +466,10 @@ std::map<std::string, std::string> kv_of(const std::vector<std::string>& t, std:
     }
     return m;
 }
-/// A 3 x 3 tile grid: the goal tile (1,1) holds `low` (the mapped word before the goal pass) and the
-/// raw record `mask9`; the start tile is the neighbour from which a step in `dir` enters the goal tile
-/// (0 up from the south, 1 down from the north, 2 left from the east, 3 right from the west).
+/// A 3 x 3 tile grid: the goal tile (1,1) holds `low` (the mapped word before the goal pass) and
+/// the raw record `mask9`; the start tile is the neighbour from which a step in `dir` enters the
+/// goal tile (0 up from the south, 1 down from the north, 2 left from the east, 3 right from the
+/// west).
 bool goal_enterable(std::uint16_t low, std::uint16_t mask9, std::uint32_t col, std::uint32_t row,
                     int dir) {
     Grid g(3, 3);
@@ -479,13 +480,14 @@ bool goal_enterable(std::uint16_t low, std::uint16_t mask9, std::uint32_t col, s
     open(c, {1, 1}, 0, low);
     const std::array<sim::TileXY, 4> from{{{1, 2}, {1, 0}, {2, 1}, {0, 1}}};
     open(c, from[static_cast<std::size_t>(dir)], 0, 0xfff);
-    return run(c, g.tables, point(from[static_cast<std::size_t>(dir)].x,
-                                  from[static_cast<std::size_t>(dir)].y),
+    return run(c, g.tables,
+               point(from[static_cast<std::size_t>(dir)].x, from[static_cast<std::size_t>(dir)].y),
                point(1, 1, col, row))
         .selected.has_value();
 }
 } // namespace
-TEST_CASE("walk_search: a goal cell carries its sub-cell keys, so a mapper-0 tile is a reachable goal") {
+TEST_CASE(
+    "walk_search: a goal cell carries its sub-cell keys, so a mapper-0 tile is a reachable goal") {
     std::ifstream in(std::string(ANNO_FIXTURES_DIR) + "/sim/walk_goal_vectors.txt");
     REQUIRE(in.good());
     std::string line;

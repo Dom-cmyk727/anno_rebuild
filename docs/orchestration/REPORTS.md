@@ -9014,3 +9014,46 @@ soldier-money branches cannot be promised by import alone. First B proof will ch
 normal-path ship/cargo/slots before expensive gates. Historical SCRIPT2 handler/
 fixture/gate evidence, including591ASANpasses+1timeoutFAIL, remains unchanged.
 No main merge/push/TASKS/asset edit or other-executor work.
+
+
+## MAP-UNIT-IMPORT-1 + SCRIPT2 F2 — 2026-11-05 — final integration REVIEW PENDING
+
+Owned branch task/MAP-UNIT-IMPORT-1, preserving task/MAP-SCRIPT-1 at066ef4bb.
+Implementation and independent A–E/D-F2 reviews complete. Full unchanged endless01
+imports five actors through normal APIs, triggers branch0/source1068 at tick48000,
+then public Move/Found/Unload/Build yields HANDWERK1001 at318,401/island2/city0.
+Money10000000→9999650→9999350; source cargo/position retained, exact debits and
+capacity-limited transfers checked. Original soldier-money branches remain
+separately synthetic. Native cuts/fresh processes, legal alternate-build divergence
+atcheckpoint408 and valid-native changed-program identity refusal all pass.
+
+Tested engine source1988471a396185fc8d7652ffb449b902079091fc: current Debug256/256
+(165.16s), ASAN256/256 (924.48s), isolated prior opening ASAN1/1 with76166 assertions
+(2247.82s; declared3600). Each has0failed/empty/skipped/incomplete/sanitizer lines;
+required contracts separate. Old592gateFAIL/591passes+1800.06timeout remains at5e50.
+Only unchanged scopes are reused; no uniform current592 or summed headline.
+
+Corrected report reader f437ac732e8855ccc7ebd6e0fc65974ba8218770: canonical1/1 main,
+12cheap contracts; saved-data scope probe changes from2legalpasses/2intendedfailures
+to4/4PASS. Publisher identity is separate from tested source198. Current JSON has
+50parsed/14compiled/11normal startups, original public-command canary1/branch[0],
+synthetic[0,5,6], fullscenariofalse. Historical schema1 is preserved verbatim.
+Corpus reconciles50hashed files/3473actors:19accepted119actors,31explicitrefusals.
+
+Decisions: preserve raw-slot holes/source-order allocation hint with separate serial
+engine IDs; keep immutable import-only metadata outside live registry digest;
+use existing HP/nav/holds/parent/native fields; refuse unsupported actor/state,
+never silently discard or fallback. Held-ESEL undefined nonspatial cache is explicitly
+normalized to its parent. Primary JNE/8000 and LOGIC26 corrections were reopened,
+fixed and re-reviewed; wrong interpretations and first failures remain retained.
+Existing generated bases and historical components explicitly choose actor-free
+projection before loading; prior fixtures/goldens unchanged. No new loadout grant,
+land mover, disembark, combat or money/wave-handler rewrite.
+
+[Final acceptance table](../sim/original-unit-import.md#final-acceptance-table-and-handoff)
+and [handoff](reviews/2026-11-05-map-unit-import1.md) contain source/binary/artifact
+identities, package reviews, API/compatibility and precise reuse/failure attribution.
+Fresh integration reviewer /root/unit_import_final_integration awaits this tracked
+bundle; no unresolved code finding remains. Windows/MSVC, Linux checks, original
+runtime captures, actual audio/GPU and late-game/multiplayer remain NOT_RUN.
+No merge/push/TASKS/asset edit or other-executor build/edit/job stop.

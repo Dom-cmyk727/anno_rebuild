@@ -1,7 +1,8 @@
 # MAP-UNIT-IMPORT-1 — contract and acceptance ledger
 
-Status: A contract independently APPROVED; B validated import/focused proof begins.
-No production implementation or real canary acceptance is claimed at this checkpoint.
+Current status: A–E and the bounded original SCRIPT2 F2 proof independently APPROVED.
+Affected Debug/ASAN and isolated opening gates PASS. Final integration review pending.
+The chronological checkpoints below retain their original pins and dispositions.
 Owner direction: 2026-11-05 review follow-up in this chat. Continue the owned
 MAP-BOOTSTRAP-1 checkout; branch task/MAP-UNIT-IMPORT-1 from clean
 066ef4bb363f3fbcdd7615dee290ac8db5cc5a38, preserving task/MAP-SCRIPT-1 and its
@@ -55,7 +56,7 @@ in slots1/3. The6-byte ENTRY layout documented in annoscene §8 and its writer
 The missing-actor diagnosis remains valid. This correction changes no reviewed
 money/wave/query rule or original asset; the raw boundary audit remains historical.
 
-## Acceptance table (before production changes)
+## Historical acceptance table (written before production changes)
 
 | Requirement | Primary evidence | Positive proof / hand-derived result | Distinguishing negative | Evidence | Review disposition |
 |---|---|---|---|---|---|
@@ -599,3 +600,38 @@ Corrected reader has12cheap contracts; publisher revision/scriptSHA are separate
 from tested engine-source198. Revalidate the same saved gates/manifests; no engine
 remeasurement for this pure reporting correction. New output will use a freshpath.
 Permanent evidence contract reread at this package checkpoint.
+
+## Final acceptance table and handoff
+
+| Requirement | Positive proof | Distinguishing negative / limit | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| A complete actor contract | 50 hashed files / 3473 actors; exact five-actor endless01 tree, source slots/hint, owner/parent and primary bytes | nonmonotone IDs, swapped crew IDs/slots, class97 crew exclusion, LOGIC26 vs cannon15; held-ESEL cache normalization explicit | primary notes + independent inventories + literal vectors | contract/state reviewers APPROVED; corrected fields closed at d5e98d2f |
+| B normal validated import | normal APIs import all five source actors, original HP/holds/position before INIT | duplicate IDs/slots, unsupported class/nav pair, malformed/missing state, growth/actor budgets; no silent fallback | B-corrected-02, C-converter-corrected-05, current UNIT1 selection | both reviewers APPROVED d5e98d2f |
+| C state, identity and compatibility | Q32/Q8/native parent/HP/holds/slots round trips; immutable import facts consumed only before creation | wrong crew and goods-width mutants fail legal-separated checks; raw converter and zero-extent probes retain first failures | 15/15 and 841 assertions at d5; corpus extends current selection to16 UNIT1 cases | both reviewers APPROVED d5e98d2f; native130 unchanged |
+| D / SCRIPT2 F2 real public consequence | original ship reaches NEGER, one source1068 wave at tick48000; found/unload/HANDWERK with exact ledger; returned building resolved in actual city/site | no original mutation outside public commands; denied-copy rejects; legal alternate build diverges at checkpoint408; wrong valid-native program refuses identity | D-fresh-04 and current Debug/ASAN fresh artifacts; exact native cuts/final root | both reviewers APPROVED bounded D at4e0ff63e; current artifacts independently joined |
+| E components and publication | actor-free components declared before load; all prior goldens preserved; 19 complete actor-count imports/31 explicit refusals,14 compiled/11 normal startups | normal malformed-actor warning controls refuse; full-file changed-position join and refused-empty scope controls distinguish false coverage | E-corpus-01 5/5; E-reader-corrected-01 1/1; corrected JSON SHAae4b2d…fae6 | contract reviewer APPROVED f437ac73; label withdrawal restored |
+| G affected gates | Debug256/256; ASAN256/256; isolated prior opening1/1 with76166 assertions | zero failed/empty/skipped/incomplete/sanitizer in these gates; historical592 gate remainsFAIL, never summed as current uniform coverage | G-debug-01 / G-asan-01 / G-asan-opening-01, tested engine198 | fresh final integration review pending final tracked bundle |
+
+Corrected reader canonical E-reader-corrected-01 atf437ac73 passes1/1 main test,
+12 unittest contracts,0other; required reference/fresh contracts separate. Same
+saved-report probe now4/4 passes, versus preserved4checks/2intendedfailures before.
+Only two execution_scope labels and publisher identity fields change; old bad
+report remains in cache untouched. Corrected publication SHA256
+ae4b2d51925aa20e290846d02eee3722224968c44f61e0013afef4f5a001fae6; tested engine
+source1988471a396185fc8d7652ffb449b902079091fc, publisher
+f437ac732e8855ccc7ebd6e0fc65974ba8218770 / scriptSHA
+8d6cff7d48237678942d32307bb1ece37d5ae931822b3944a3239e2447cf75a9.
+No engine/fixture/CMake delta after the engine gates. The permanent evidence
+contract expressly supports corrected-reader revalidation without remeasurement.
+
+Handoff: [original import and real SCRIPT2 canary](../orchestration/reviews/2026-11-05-map-unit-import1.md).
+Prior SCRIPT2 schema1 JSON is preserved byte-for-byte in
+script-capabilities-script2-pre-unit-import.json; SCRIPT1 and all old fixtures are
+unchanged. Full scenario/campaign completion and target-platform/audio/GPU/late-game
+claims remain outside this local headless slice. No merge, push or TASKS/asset edit.
+
+Current G and corrected-reader gates record canonical workflow
+04f578f6889fc910304db6cfce3a5165a5c41596. Earlier gates retain their actual
+workflow pins in their provenance; the original270assignment pin is not relabelled
+as the current runner revision. Final publication takes workflow identity from
+the frozen Debug gate.

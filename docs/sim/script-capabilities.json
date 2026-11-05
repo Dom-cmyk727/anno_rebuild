@@ -1,20 +1,25 @@
 {
-  "schema": "SCRIPT2-capabilities-1",
-  "source_revision": "522a0a278665927987a2ea5d19ec5267c354995f",
-  "workflow_revision": "27022d75b5b83957456f1db27ae2bb8d794eab7f",
-  "gate": "cache/script2/G-focused-correction-02.log",
-  "gate_sha256": "01cc68bde272f5a654cd4e9bbc7b35e9de664d6337fc169f7f9febf300fbd7e5",
+  "schema": "SCRIPT2-capabilities-2",
+  "source_revision": "1988471a396185fc8d7652ffb449b902079091fc",
+  "publisher_revision": "f437ac732e8855ccc7ebd6e0fc65974ba8218770",
+  "publisher_script_sha256": "8d6cff7d48237678942d32307bb1ece37d5ae931822b3944a3239e2447cf75a9",
+  "workflow_revision": "04f578f6889fc910304db6cfce3a5165a5c41596",
+  "gate": "cache/unit-import1/G-debug-01.log",
+  "gate_sha256": "361aec5bc19e576597d0e098483686724828f0622e4b31c2419ecbf1f15bfde5",
   "binaries": {
-    "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/build/debug/src/sim/anno_sim_tests": "546c33ac1a6699e41830ea1cdd3e8058c4ea62ca11a07cd8a30ac8a59e3200c9",
+    "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/build/debug/src/sim/anno_sim_tests": "894a2abc25ecc28e7ef6b365ad5ce7ceebd2abb5fb565a6759eb50c47e6af76c",
     "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14": "07919b0fbf82742c24420d7dcadbd459f61bc1feb638eca02b81dccab2daf4d5"
   },
   "parsed": 50,
   "compiled": 14,
-  "normal_startups": 14,
+  "normal_startups": 11,
   "executed_full_original_scenarios": 0,
-  "original_world_canary": "OPEN: original SCHIFF/SOLDAT/CREW import absent; no Human actors/city",
-  "synthetic_canary_manifest": "cache/script2/replays/fresh-m4vxi2v_/manifest.json",
-  "synthetic_canary_manifest_sha256": "44d3f21942be4896a5d0e1fba99f064aee030366a8194f6abce55b6885a356a9",
+  "original_public_command_canaries": 1,
+  "original_world_canary": "PUBLIC_COMMAND_BRANCH0_AND_CONSTRUCTION_PROVEN; not full campaign or all-branch coverage",
+  "original_canary_manifest": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/cache/unit-import1/replays/fresh-zo6ompai/manifest.json",
+  "original_canary_manifest_sha256": "b283f54a078920b305991735aa3535e416d704a7b71e46827d0ef6a59a15fae6",
+  "synthetic_canary_manifest": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/cache/script2/replays/fresh-ipgmgm1x/manifest.json",
+  "synthetic_canary_manifest_sha256": "2fb655b4b499144a70d2ae3710f7b3d01d9ac9166f4f2322b086a134857735b0",
   "programs": [
     {
       "file": "Scenes/0010SingleEndlos/00_1024_easyentry_01.sze",
@@ -60,17 +65,17 @@
       "program_sha256": "02fd3fc0414fd4c7f122291a8168957deab488696579d19444c7c2f6823f0e72",
       "parsed": true,
       "compiled": true,
-      "normal_startup": true,
+      "normal_startup": false,
       "normal_zero_ms_calls": 0,
       "branch_count": 0,
       "empty_kernel": true,
-      "refusal": null,
+      "refusal": "actor_import: players[7].SCHIFF[0].PRIVAT.CREW.ENTRY[0].PRIVAT.ESEL.TASK: unsupported unit record/state",
       "kernel_items": 0,
       "actions": {},
       "queries": {},
       "original_true_branch_coverage": [],
       "synthetic_true_branch_coverage": [],
-      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "execution_scope": "NOT_EXECUTED",
       "executed_full_original_scenario": false
     },
     {
@@ -174,17 +179,17 @@
       "program_sha256": "7ede9fddcce588c483fa5a763786d7466a827d14ccc2f1e75d04bdd42735f90f",
       "parsed": true,
       "compiled": true,
-      "normal_startup": true,
+      "normal_startup": false,
       "normal_zero_ms_calls": 0,
       "branch_count": 0,
       "empty_kernel": true,
-      "refusal": null,
+      "refusal": "actor_import: players[7].SCHIFF[0].PRIVAT.CREW.ENTRY[0].PRIVAT.ESEL.TASK: unsupported unit record/state",
       "kernel_items": 0,
       "actions": {},
       "queries": {},
       "original_true_branch_coverage": [],
       "synthetic_true_branch_coverage": [],
-      "execution_scope": "EMPTY_KERNEL_ONLY; no original tutorial behavior claim",
+      "execution_scope": "NOT_EXECUTED",
       "executed_full_original_scenario": false
     },
     {
@@ -209,13 +214,15 @@
         "AREA:TOUCHED_BY_SHIP_FROM": 5,
         "AREA:TOUCHED_BY_SOLDIER_FROM": 2
       },
-      "original_true_branch_coverage": [],
+      "original_true_branch_coverage": [
+        0
+      ],
       "synthetic_true_branch_coverage": [
         0,
         5,
         6
       ],
-      "execution_scope": "INIT_AND_BOUNDED_CALLS_ONLY; no full original-world acceptance",
+      "execution_scope": "ORIGINAL_PUBLIC_COMMAND_CANARY: branch0 wave, founding, unload, HANDWERK1001, native cuts and fresh replay; other branches separate",
       "executed_full_original_scenario": false
     },
     {
@@ -224,11 +231,11 @@
       "program_sha256": "c8169160172f1974c9b54fac14f9737e2ffb58ec0021ef7364becee8e732b67c",
       "parsed": true,
       "compiled": true,
-      "normal_startup": true,
-      "normal_zero_ms_calls": 6,
+      "normal_startup": false,
+      "normal_zero_ms_calls": 0,
       "branch_count": 6,
       "empty_kernel": false,
-      "refusal": null,
+      "refusal": "actor_import: players[11].SOLDAT[0]: unsupported actor kind/class/import facts 373 at offset 4700322",
       "kernel_items": 13,
       "actions": {},
       "queries": {
@@ -236,7 +243,7 @@
       },
       "original_true_branch_coverage": [],
       "synthetic_true_branch_coverage": [],
-      "execution_scope": "INIT_AND_BOUNDED_CALLS_ONLY; no full original-world acceptance",
+      "execution_scope": "NOT_EXECUTED",
       "executed_full_original_scenario": false
     },
     {

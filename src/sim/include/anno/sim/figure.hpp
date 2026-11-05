@@ -120,8 +120,8 @@ struct HarvestState {
 
 /// The step of a resident job (job 0x35; docs/sim/population-live.md section 3): A = Start (the
 /// search from the house and the choice of a stand; ToStall the walk), B = Wait (the stall wait,
-/// FigureType::load_ticks, then the purchase at the stand; attach/detach have no state), C = ToHome (the
-/// walk home and the delivery of every cargo slot), then Done (the figure ends).
+/// FigureType::load_ticks, then the purchase at the stand; attach/detach have no state), C = ToHome
+/// (the walk home and the delivery of every cargo slot), then Done (the figure ends).
 enum class ResidentStep : std::uint8_t { Start = 0, ToStall = 1, Wait = 2, ToHome = 3, Done = 4 };
 
 /// The job code of the house walker (resident_job.hpp's kJobResident; spelled here for the figure
@@ -356,6 +356,12 @@ void note_ship_moved(FigureRegistry& registry, const Figure& ship, FixedPos befo
 /// the slot; kNoSlot, changing nothing, when the list cannot grow (a limit of the
 /// slot type, SlotList::insert) or `f.id` is invalid or already in the registry.
 Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const Rules& rules);
+
+/// Original-file explicit-slot insertion (Welt 0x10097347..0x1009739a): preserve holes and
+/// update the allocation hint to the supplied slot. Growth uses the requested slot, not the
+/// previous length. Invalid/occupied/over-bound requests change nothing. Stable IDs remain
+/// distinct from source slots; existing generated callers continue to use add_figure.
+Slot add_figure_at(FigureRegistry& registry, Figure f, Slot slot, const SimConfig& cfg);
 
 /// The figure with this id, or nullptr (a figure that is gone is never an error).
 [[nodiscard]] const Figure* find_figure(const FigureRegistry& registry, FigureId id);

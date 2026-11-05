@@ -2,7 +2,7 @@
 # arithmetic in all state (docs/sim/core.md, docs/sim/state.md). Uses
 # anno_formats to read type data from the original files.
 add_library(anno_sim src/sim.cpp src/production.cpp src/config.cpp src/types.cpp
-            src/script_runtime.cpp src/permissions.cpp src/script.cpp src/build_availability.cpp src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp
+            src/script_runtime.cpp src/permissions.cpp src/script.cpp src/build_availability.cpp src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp src/original_units.cpp
             src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp src/ship.cpp src/ship_step.cpp
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
             src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
@@ -24,7 +24,7 @@ if(ANNO_BUILD_TESTS)
                  tests/command_codec_test.cpp tests/command_apply_test.cpp tests/replay_test.cpp
                  tests/command_build_test.cpp tests/property_test.cpp
                  tests/driver_classes_test.cpp tests/world_events_test.cpp tests/sweeps_test.cpp
-                 tests/figure_removal_test.cpp tests/scenario_formats_test.cpp
+                 tests/figure_removal_test.cpp tests/scenario_formats_test.cpp tests/unit_import_test.cpp
                  tests/scenario_test.cpp tests/island_links_test.cpp
                  tests/fixed_map_load_test.cpp
                  tests/scenario_links_test.cpp tests/transport_test.cpp tests/walk_cells_test.cpp tests/walk_search_test.cpp

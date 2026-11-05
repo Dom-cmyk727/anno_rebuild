@@ -247,7 +247,11 @@ load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
     if (!base_bytes) {
         return "base: cannot read " + base_path.value().string();
     }
-    auto loaded = sim::load_scenario(*base_bytes, *types, config);
+    // The manifest explicitly excludes base-scenario units/players. This is a generated-base
+    // component projection, never a fallback for a failed original-world import.
+    sim::UnitImportOptions base_units;
+    base_units.projection = sim::OriginalActorProjection::ActorFreeComponent;
+    auto loaded = sim::load_scenario(*base_bytes, *types, config, base_units);
     if (!loaded) {
         return "base: " + loaded.error();
     }

@@ -1099,7 +1099,8 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
     std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
     std::vector<ClassInfo> classes, const SimConfig& cfg, std::vector<FigureType> figures,
     std::shared_ptr<const formats::annowelt::WalkTables> tables, std::vector<HouseGroup> groups,
-    std::vector<StageRecord> stages, bool declare_irregular_successors) {
+    std::vector<StageRecord> stages, bool declare_irregular_successors,
+    std::map<std::uint32_t, UnitImportFacts> unit_import) {
     for (std::size_t i = 0; i < stages.size(); ++i) {
         // The stage mask is 32 bits wide (Player::flags / City::stage_mask: a stage index is a
         // shift count); the table is ascending and unique; a group beyond the group table is a
@@ -1185,6 +1186,14 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
             return "duplicate figure type id " + std::to_string(figures[i].id);
         }
     }
+    for (const auto& [kind, facts] : unit_import) {
+        (void)facts;
+        const auto type = std::lower_bound(figures.begin(), figures.end(), kind,
+                                           [](const FigureType& f, auto id) { return f.id < id; });
+        if (type == figures.end() || type->id != kind) {
+            return "unit import facts: unknown figure kind " + std::to_string(kind);
+        }
+    }
     for (const FigureType& f : figures) {
         if (f.nav.has_value()) {
             if (std::string problem = nav_facts_problem(*f.nav); !problem.empty()) {
@@ -1231,6 +1240,7 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
         }
     r.types_ = std::move(types);
     r.figure_types_ = std::move(figures);
+    r.unit_import_ = std::move(unit_import);
     r.goods_ = std::move(goods_in);
     r.classes_ = std::move(classes);
     r.max_footprint_ = footprint;
@@ -1255,6 +1265,11 @@ const FigureType* TypeRegistry::find_figure_type(std::uint32_t id) const {
     const auto it = std::lower_bound(figure_types_.begin(), figure_types_.end(), id,
                                      [](const FigureType& t, std::uint32_t v) { return t.id < v; });
     return it != figure_types_.end() && it->id == id ? &*it : nullptr;
+}
+
+const UnitImportFacts* TypeRegistry::unit_import_facts(std::uint32_t kind) const {
+    const auto it = unit_import_.find(kind);
+    return it == unit_import_.end() ? nullptr : &it->second;
 }
 
 PopulationRoles TypeRegistry::roles_of(const SimConfig& cfg) {
@@ -1361,16 +1376,27 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
     }
     std::vector<FigureType> figures;
     figures.reserve(figure_entries.size());
+    std::map<std::uint32_t, UnitImportFacts> unit_import;
     for (const fig::Entry& e : figure_entries) {
         auto f = figure_type_from_entry(e);
         if (!f) {
             return f.error();
         }
         figures.push_back(f.value());
+        // AnnoGame figure-type LOGIC reader (0x1000fe00), getters +0x90/+0x88:
+        // max HP at 0x1e, ordered cargo/crew/other-crew counts at 0x13..0x15.
+        // The existing reader zero-fills short LOGIC records. These values are used only
+        // by original_units.cpp; they do not extend the simulation's type content.
+        std::array<std::uint8_t, 32> logic{};
+        if (const auto bytes = e.record("LOGIC")) {
+            std::copy_n(bytes->begin(), std::min(bytes->size(), logic.size()), logic.begin());
+        }
+        unit_import.emplace(e.id, UnitImportFacts{formats::u16_le(logic, 0x1e), logic[0x13],
+                                                  logic[0x14], logic[0x15]});
     }
     return finish(std::move(types), std::move(goods_in), original_class_table(), cfg,
                   std::move(figures), std::move(tables), std::move(groups), std::move(stages),
-                  declare_irregular_successors);
+                  declare_irregular_successors, std::move(unit_import));
 }
 
 std::shared_ptr<const TypeRegistry> TypeRegistry::empty() {
@@ -1657,13 +1683,21 @@ TypeRegistry::Builder& TypeRegistry::Builder::figure_type(FigureType type) {
     return *this;
 }
 
+TypeRegistry::Builder& TypeRegistry::Builder::unit_import_facts(std::uint32_t kind,
+                                                                UnitImportFacts facts) {
+    if (!unit_import_.emplace(kind, facts).second) {
+        error_ = "duplicate unit import facts for figure " + std::to_string(kind);
+    }
+    return *this;
+}
+
 formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::Builder::build() const {
     if (!error_.empty()) {
         return error_;
     }
     return TypeRegistry::finish(types_, goods_, classes_, cfg_, figures_, walk_tables_,
-                                house_groups_, stages_);
+                                house_groups_, stages_, false, unit_import_);
 }
 
 } // namespace anno::sim

@@ -303,3 +303,21 @@ record dispositions only. B/C implementation, F2, gates and task acceptance rema
 unapproved. No engine build/test occurred in A; only static primary and independent
 raw inventory/hand derivations. B must establish the early normal-path actor/cargo
 prerequisite before an expensive campaign.
+
+
+## B first implementation checkpoint (not yet accepted)
+
+Normal default loading now attempts the complete supported actor closure through
+original_units.cpp. Explicit original registry slots and MAIN allocation shape,
+serial FigureIds, generic HP, finer ship Q32 position and immutable import facts
+reuse existing native fields. Generated fixed-map/ship-start base reads explicitly
+select their already-established actor-free component role; normal files never
+fall back to it. Existing full SCRIPT2 handlers were not changed.
+
+First focused gate selects only `UNIT1 original endless01 imported starting
+prerequisites`, before movement/build or any broader campaign. It compares file/
+program hashes and the five-actor tree, source slots0..4 in100/hint4/cursor0,
+source HP/holds and positions, then native round trip. A failure is retained and
+corrected before subsequent implementation gates. Two authored structural tests
+are also present but not part of this initial single-case selection. No runtime
+PASS or B/C approval is claimed before its terminal evidence.

@@ -143,6 +143,28 @@ Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const 
     return slot;
 }
 
+Slot add_figure_at(FigureRegistry& registry, Figure f, Slot slot, const SimConfig& cfg) {
+    const FigureId id = f.id;
+    if (!id.valid() || id.v == 0 || registry.by_id.contains(id) || slot >= kListSizeBound ||
+        (slot < registry.list.slots.size() && registry.list.slots[slot].has_value())) {
+        return kNoSlot;
+    }
+    if (slot >= registry.list.slots.size()) {
+        // Explicit slot growth is based on the requested slot (Welt 0x1009734b),
+        // unlike a normal free-slot insert. grown_size also retains the small-config floor.
+        const auto grown = SlotList<Figure>::grown_size(slot, cfg.figure_min_growth);
+        if (grown == 0 || grown > kListSizeBound) {
+            return kNoSlot;
+        }
+        registry.list.slots.resize(static_cast<std::size_t>(grown));
+    }
+    registry.list.slots[slot] = std::move(f);
+    registry.list.hint = slot;
+    registry.by_id[id] = slot;
+    index_figure(registry, *registry.list.slots[slot]);
+    return slot;
+}
+
 namespace {
 
 /// The slot of the figure `id` when the id map points at it, else kNoSlot.

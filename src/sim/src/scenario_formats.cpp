@@ -28,6 +28,8 @@
 #include <anno/sim/rng.hpp>
 #include <anno/sim/scenario_formats.hpp>
 
+#include "original_units.hpp"
+
 namespace anno::sim {
 
 namespace sze = formats::sze;
@@ -1402,7 +1404,12 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
 } // namespace
 
 formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const TypeRegistry& types,
-                                                           const SimConfig& config) {
+                                                           const SimConfig& config,
+                                                           const UnitImportOptions& units) {
+    if (units.projection != OriginalActorProjection::ImportRequired &&
+        units.projection != OriginalActorProjection::ActorFreeComponent) {
+        return std::string("unit import: unknown actor projection policy");
+    }
     auto parsed = sze::Scene::parse(file);
     if (!parsed) {
         return "not a scenario: " + parsed.error();
@@ -1622,6 +1629,9 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                     for (const auto& [other, row] : rows) {
                         p.relations.push_back(row); // ascending by `other` (std::map order)
                     }
+                } else if ((r.name == "SCHIFF" || r.name == "SOLDAT") &&
+                           units.projection == OriginalActorProjection::ImportRequired) {
+                    // The whole scenario-wide actor pass below retains file creation order.
                 } else {
                     warn.unknown_record("players", path + "." + std::string(r.name), r.name,
                                         r.offset);
@@ -1642,6 +1652,10 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                    ", which has no header block";
         }
         for (const tagged::Record& r : pl.records) {
+            if ((r.name == "SCHIFF" || r.name == "SOLDAT") &&
+                units.projection == OriginalActorProjection::ImportRequired) {
+                continue; // Decoded transactionally by import_original_units, not discarded.
+            }
             // The player reader also takes the older name STADT for the same record (D
             // AnnoWelt 0x1001d240, string test; docs/re/annoscene.md §10).
             if (r.name == "ANLTRG" || r.name == "FORSCH") {
@@ -1803,6 +1817,9 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         if (name == "HEAD" || name == "INSEL5" || name == "SPIELER" || name == "WARETYPE") {
             continue; // WARETYPE: the goods remap of the city WARE records
         }
+        if (name == "MAIN" && units.projection == OriginalActorProjection::ImportRequired) {
+            continue; // The actor pass validates and reads MAIN's registry length.
+        }
         if (name == "INSELLNK") {
             auto parsed_link = sze::IslandLink::parse(child.payload);
             if (!parsed_link) {
@@ -1910,6 +1927,18 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
     }
     out.link_inputs.raw_materials.resize(config.links.raw_kinds, 0);
     out.link_inputs.ores.resize(config.links.ore_kinds, 0);
+    if (units.projection == OriginalActorProjection::ImportRequired) {
+        auto imported = import_original_units(scene, players.value(), types, config, spec.settings,
+                                              goods, units);
+        if (!imported) {
+            return imported.error();
+        }
+        spec.original_figure_slots = imported.value().initial_slots;
+        spec.figures = std::move(imported.value().figures);
+        for (auto& warning : imported.value().warnings) {
+            out.warnings.push_back(std::move(warning));
+        }
+    }
     return out;
 }
 

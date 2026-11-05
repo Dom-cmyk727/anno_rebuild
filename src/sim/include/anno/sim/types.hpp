@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -349,6 +350,17 @@ struct PopulationView {
 };
 
 /// The immutable type data of a world.
+/// Original-file import metadata, consumed before a World exists. These are not runtime
+/// FigureType fields: projected health/holds/flags are persisted on Figure. Native load and
+/// simulation never consult this catalog, so it is deliberately outside the live type digest.
+/// A future runtime consumer requires a content-identity review (original-unit-import.md).
+struct UnitImportFacts {
+    std::uint32_t max_hp = 0;
+    std::uint32_t cargo_slots = 0;
+    std::uint32_t crew_slots = 0;
+    std::uint32_t other_crew = 0;
+};
+
 class TypeRegistry {
   public:
     class Builder;
@@ -404,6 +416,7 @@ class TypeRegistry {
         return walk_tables_;
     }
     [[nodiscard]] std::span<const FigureType> figure_types() const { return figure_types_; }
+    [[nodiscard]] const UnitImportFacts* unit_import_facts(std::uint32_t kind) const;
     /// The digest of these tables exactly as given (types in the order given,
     /// which build() sorts by id first), without checking or sealing them: for
     /// tests that perturb one field at a time, including combinations that
@@ -468,11 +481,13 @@ class TypeRegistry {
            std::vector<FigureType> figures = {},
            std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
            std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {},
-           bool declare_irregular_successors = false);
+           bool declare_irregular_successors = false,
+           std::map<std::uint32_t, UnitImportFacts> unit_import = {});
 
     std::vector<std::pair<std::uint32_t, std::vector<TypeId>>> permission_types_;
-    std::vector<BuildingType> types_;      // ascending id; lookup by binary search
-    std::vector<FigureType> figure_types_; // ascending id
+    std::vector<BuildingType> types_;                      // ascending id; lookup by binary search
+    std::vector<FigureType> figure_types_;                 // ascending id
+    std::map<std::uint32_t, UnitImportFacts> unit_import_; // import-only, never a World input
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
     std::vector<HouseGroup> house_groups_;
@@ -584,6 +599,9 @@ class TypeRegistry::Builder {
     Builder& figure_ids(TypeId id, std::vector<std::uint32_t> ids);
     /// Adds a figure type.
     Builder& figure_type(FigureType type);
+    /// Declares original-file decoding facts for a synthetic/mod figure kind; duplicate keys
+    /// and keys without a figure type refuse build(). This never changes a live type digest.
+    Builder& unit_import_facts(std::uint32_t kind, UnitImportFacts facts);
 
     /// Seals the registry. Errors: a duplicate id, a goods name that did not
     /// resolve, a class table that does not have RuntimeClass::Count_ entries,
@@ -601,6 +619,7 @@ class TypeRegistry::Builder {
 
     std::vector<BuildingType> types_;
     std::vector<FigureType> figures_;
+    std::map<std::uint32_t, UnitImportFacts> unit_import_;
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
     std::vector<HouseGroup> house_groups_;

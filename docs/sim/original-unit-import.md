@@ -562,3 +562,12 @@ Debug per-case timeout600s; affected ASAN per-case timeout1200s gives over7x the
 timeout. The one historically timed-out generated opening case, if required to
 close fullG, will run alone with3600s declared beforehand (about5x its723s Debug
 measurement and2x the inadequate1800s ASAN limit), not another unchanged matrix.
+
+E publicationreview found and blocked a full-file identity gap: programhash alone
+could join branch0coverage onto changed actor/map bytes. Added an exact scenario
+SHA join before parsing/publication, with unchanged-file legalcontrol and same
+program/differentheader negative, plus publicwrongfile refusalbeforeoutput.
+11cheap inventorycontracts pass. Independentreviewer also derives actualship
+x-field offset2362182:351.5→352.5 changes scenarioSHA tocc32c9ce15816888ef99db7b4c6033da5e647ee8b98337604963f6bec45f6e6d
+while keepingthe2488byteprogram/cac0…7d0 unchanged. Originalasset remainsread-only.
+A focused restored-vs-program-only negative follows before broadergates.

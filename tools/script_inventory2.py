@@ -20,6 +20,11 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def validate_original_scenario_file(path, inputs):
+    if sha(path) != inputs['scenario_sha256']:
+        raise ValueError('original scenario file differs from fresh-process proof')
+
+
 def parse_gate(text, expected):
     ends = [json.loads(line[len('GATE_END '):]) for line in text.splitlines() if line.startswith('GATE_END ')]
     if len(ends) != 1 or ends[0]['status'] != 0:
@@ -125,6 +130,17 @@ class Contracts(unittest.TestCase):
         validate_manifest(self.identity,m,True)
         for key, value in [('verdict','FAIL'),('source_revision','f'*40),('sha256','0'*64)]:
             with self.assertRaises(ValueError): validate_manifest(self.identity,m|{key:value},True)
+    def test_full_file_join_distinguishes_same_program_different_map(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'scenario.sze'
+            program=b'[SCRIPT_KERNEL]\nSET X=TRUE;\n'
+            path.write_bytes(b'map0'+program)
+            inputs=dict(scenario_sha256=sha(path))
+            validate_original_scenario_file(path,inputs)
+            path.write_bytes(b'map1'+program)
+            self.assertEqual(path.read_bytes()[4:],program)
+            with self.assertRaisesRegex(ValueError,'scenario file differs'):
+                validate_original_scenario_file(path,inputs)
     def test_program_row_semantics(self):
         row=dict(compiled=True,normal_startup=True,normal_zero_ms_calls=0,branch_count=0,empty_kernel=True)
         validate_program_row(row,[],0,[])
@@ -170,6 +186,22 @@ class Contracts(unittest.TestCase):
                     publish(log,game,manifest,output,original)
                 self.assertFalse(output.exists())
                 self.assertNotIn('SCRIPT2 inventory:',captured.getvalue())
+            # All protocol/manifest checks pass, but the corpus scenario differs.
+            # This must fail on its full-file identity before parsing or output.
+            old=scenes/'49.sze'; old.unlink()
+            scenario=scenes/'0011SingleEndlosAddon/endless01.sze'
+            scenario.parent.mkdir(); scenario.write_bytes(b'different map; unchanged program')
+            rows=rows.replace('Scenes/49.sze','Scenes/0011SingleEndlosAddon/endless01.sze')
+            log.write_text('== tested identity '+json.dumps(self.identity)+'\n'+rows+'GATE_END {"status":0}\n')
+            m['mode']='original'
+            for process in m['processes']:
+                process['command']=['exe','--test-case='+ORIGINAL_CASES[process['role']]]
+            original.write_text(json.dumps(m))
+            captured=io.StringIO()
+            with redirect_stdout(captured),self.assertRaisesRegex(ValueError,'scenario file differs'):
+                publish(log,game,manifest,output,original)
+            self.assertFalse(output.exists())
+            self.assertNotIn('SCRIPT2 inventory:',captured.getvalue())
 
     def test_legal(self):
         _, rows = parse_gate(self.text(), ['A'])
@@ -217,6 +249,10 @@ def publish(log, game, manifest_path, output, original_manifest_path=None):
         original_manifest=json.loads(original_manifest_path.read_text())
         validate_manifest(identity,original_manifest,True)
         canary.validate_input_identity(original_manifest['inputs'])
+        scenario=expected.get('Scenes/0011SingleEndlosAddon/endless01.sze')
+        if scenario is None:
+            raise ValueError('original canary scenario missing from corpus')
+        validate_original_scenario_file(scenario,original_manifest['inputs'])
         for process in original_manifest['processes']:
             canary.checked_child(process['exit'],original_manifest_path.with_name(process['role']+'.log').read_text())
         for name,fact in original_manifest['artifacts'].items():

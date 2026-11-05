@@ -28,7 +28,7 @@ Normal builds use `Commands::apply -> build -> check_record -> place` in
 virtual Budget. Rewrites loop through placement again before the existing
 optional research check. Both paths must use the authoritative owner and facts.
 
-Scenario import uses `scenario.cpp::import_buildings -> create_building` with no
+Scenario import uses `scenario.cpp::build_island -> create_building` with no
 payment. Founding calls `create_building` in `founding.cpp` under its ship/city
 contract. Automatic house transitions replace the existing record/payload and
 tiles in `house_transition.cpp`; they are not player construction. The common
@@ -52,3 +52,14 @@ Canonical gate is main `tools/test/run_selected.py` with explicit source/build.
 The app create_worktree workflow rejected both nested repository sourceRoot and
 non-repository workspace root; Git worktree add created this isolated checkout
 at the exact accepted pin. No other worktree was changed.
+
+## B0 checkpoint
+
+Commit15b4ef02; independent reviewer /root/review_original: APPROVED B0.
+Canonical baseline-03: selected1/executed1/failed0/empty0/skipped0/incomplete0.
+Baseline-01: build failed (test author used wrong stock shape and unparenthesized
+doctest message). Baseline-02: test failed at scenario stock size143 vs required56.
+Both preserved under cache/bootstrap/B0; corrected03 supersedes neither historical
+failure. No enforcement changed. Tests include original Inn1335 with masks1 and5
+and scenario import while locked. The baseline test remains a regression of the
+unchanged command until an authorized production scope is established.

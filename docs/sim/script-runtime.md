@@ -450,3 +450,20 @@ reference/tool contracts. Final integration reviewer independently caught a P2
 state-note width typo: native permission rows are u32type+u32value,8bytes; value
 is constrained0..255. Documentation corrected to match the literal byte oracle
 and explicit field list; original ANLTRG remains u16/u8/pad.
+
+Final integration review independently derived a necessary corpus warning delta
+from all50rawsources using tools/sze.py:28SPIELER/FORSCH records in20files and
+zeroANLTRG records. Prior loader emitted UnknownRecord once per(players,name);
+recognizing FORSCH removes exactly1 in each of those20files, aggregate20. The
+small committed player_research_record_counts.txt fixture records raw presence,
+not C++ counts; exactJSON/per-file hashes/reproducer retained in cache/script1/
+S7-player-warning-delta.json and S7-derive-player-warning-delta.py. Comparison
+amends ONLY this known warning and create_hash; every physical/movement column
+and every other warning stays pinned to128. New fixture rows amended by that
+primary derivation before the longgate, not by observed C++ mismatches. The pure
+House-kernel original-data case also uses the same explicit component boundary.
+
+Finalsemantic gate7eac32b0 PASS45/45 and freshprocess PASS2/2; both nofail/empty/
+skips/incomplete/sanitizer reports. Fresh manifest fresh-sfam28__ records distinct
+producer81796/worker81797, executableSHA c4d9164c68e040d7564aa7f5692f84c2e31f0b3e39efcd913abe03d4ba071805.
+Startup review APPROVED7eac32b0 / script_semantics_review, noP1/P2.

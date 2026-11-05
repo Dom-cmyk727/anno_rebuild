@@ -1,4 +1,6 @@
-// MAP-POP-IMPL-1 E: a short real-file canary. The original registry and original scenarios feed the
+#include "original_component.hpp"
+// MAP-POP-IMPL-1 E: original-data component canary; unsupported complete scripts are
+// explicitly refused then omitted in a NEW Missing-context fixture. The original data feeds the
 // imported players, houses, group tables and config into the pure House kernel; the extraction
 // reads the world through const interfaces only, save/reload must reproduce the extracted inputs
 // and the calculations at the same supplied time, and the House tick dispatch stays a no-op. An
@@ -206,7 +208,7 @@ TEST_CASE("population canary: evidence output errors fail the writer") {
     CHECK_FALSE(write_vectors(failing, "group control\n", vectors));
 }
 
-TEST_CASE("population canary: real registry and scenarios feed the pure House kernel") {
+TEST_CASE("population canary: original-data components feed the pure House kernel") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -245,7 +247,11 @@ TEST_CASE("population canary: real registry and scenarios feed the pure House ke
         auto resolved = anno::sim_load::load_scenario_with_links(anno::test::read_file(file),
                                                                  templates, *types, cfg, {});
         REQUIRE(resolved);
-        auto created = sim::World::create(resolved.value().loaded.spec, types, cfg);
+        auto component = original_component::import_only(resolved.value().loaded.spec, types, cfg);
+        REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+        MESSAGE("original-data pure-House component: " << file.filename().string() << " "
+                                                       << component.value().diagnostic);
+        auto created = sim::World::create(component.value().spec, types, cfg);
         REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
         sim::World world = std::move(created).value();
         const std::vector<Extracted> houses = extract(world, *types, file.filename().string());

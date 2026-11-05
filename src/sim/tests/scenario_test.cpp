@@ -397,6 +397,44 @@ std::map<std::string, std::string> read_expectations(std::string& versions,
     return out;
 }
 
+// Independent SPIELER record-presence fixture: only this known warning changes.
+std::string with_recognized_player_records(std::string row) {
+    static const auto presence = [] {
+        std::ifstream in(fs::path(ANNO_FIXTURES_DIR) / "sim" / "script1" /
+                         "player_research_record_counts.txt");
+        REQUIRE(in.good());
+        std::map<std::string, std::uint32_t> result;
+        std::uint32_t total = 0;
+        for (std::string line; std::getline(in, line);) {
+            if (line.empty() || line[0] == '#')
+                continue;
+            std::istringstream fields(line);
+            std::string name;
+            std::uint32_t forsch = 0, anltrg = 0;
+            REQUIRE(static_cast<bool>(fields >> name >> forsch >> anltrg));
+            REQUIRE(forsch > 0);
+            REQUIRE(anltrg == 0);
+            REQUIRE(result.emplace(name, 1).second);
+            total += forsch;
+        }
+        REQUIRE(result.size() == 20);
+        REQUIRE(total == 28);
+        return result;
+    }();
+    const auto found = presence.find(row.substr(0, row.find(' ')));
+    if (found == presence.end())
+        return row;
+    const std::string key = " UnknownRecord=";
+    const auto start = row.find(key);
+    REQUIRE(start != std::string::npos);
+    const auto digits = start + key.size();
+    const auto end = row.find(' ', digits);
+    const auto old = std::stoul(row.substr(digits, end - digits));
+    REQUIRE(old >= found->second);
+    row.replace(digits, end - digits, std::to_string(old - found->second));
+    return row;
+}
+
 bool update_requested() {
     const char* u = std::getenv("ANNO_UPDATE_GOLDEN");
     const char* ci = std::getenv("CI");
@@ -628,7 +666,8 @@ TEST_CASE(
     };
     for (const auto& r : results) {
         REQUIRE(historical.contains(r.name));
-        CHECK(without_identity(r.line) == without_identity(historical.at(r.name)));
+        CHECK(without_identity(r.line) ==
+              without_identity(with_recognized_player_records(historical.at(r.name))));
     }
 
     // The per-file counts against the committed expectations.
@@ -995,11 +1034,11 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
         const auto pos = row.find("create_hash=");
         REQUIRE(pos != std::string::npos);
         if (generating) {
-            auto new_row = row;
+            auto new_row = with_recognized_player_records(row);
             char hex[17];
             std::snprintf(hex, sizeof hex, "%016llx",
                           static_cast<unsigned long long>(made.value().state_hash()));
-            new_row.replace(pos + 12, 16, hex);
+            new_row.replace(new_row.find("create_hash=") + 12, 16, hex);
             generated.push_back(std::move(new_row));
         } else {
             CHECK(made.value().state_hash() == std::stoull(row.substr(pos + 12, 16), nullptr, 16));

@@ -280,7 +280,22 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
             return;
         }
         w->status.shows_icons = icons;
+        const std::vector<std::uint32_t> in_before = w->in;
+        const std::vector<std::uint32_t> out_before = w->out;
         r = workshop_step(*w, type->prod, ctx.t);
+        if (ctx.transport_stats != nullptr && r.stepped) {
+            // MAP-NEEDS-2 N3 ledger (diagnostic, never state): what this step consumed of each
+            // input and made of each output.
+            ForestryStats::WorkshopLedger& l = ctx.transport_stats->forestry.workshops[b.id];
+            l.consumed_88.resize(in_before.size());
+            l.made_88.resize(out_before.size());
+            for (std::size_t i = 0; i < in_before.size() && i < w->in.size(); ++i) {
+                l.consumed_88[i] += in_before[i] - w->in[i];
+            }
+            for (std::size_t i = 0; i < out_before.size() && i < w->out.size(); ++i) {
+                l.made_88[i] += w->out[i] - out_before[i];
+            }
+        }
         break;
     }
     case TickKind::WeaponsWorkshop: {

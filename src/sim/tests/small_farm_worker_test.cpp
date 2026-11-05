@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <variant>
 #include <vector>
@@ -13,6 +14,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/command.hpp>
+#include <anno/sim/driver.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/transport.hpp>
@@ -71,11 +73,22 @@ const sim::Figure* worker_of(const sim::World& w) {
 }
 
 /// Save, load, same hash; then both continue 2000 ticks and still agree.
-void reload_agrees(const Farmland& f) {
+void reload_agrees(Farmland& f) {
     auto loaded = sim::World::load(f.w.save(), f.types);
     REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
-    CHECK(loaded.value().state_hash() == f.w.state_hash());
-    CHECK(loaded.value().check_invariants() == "");
+    sim::World& c = loaded.value();
+    CHECK(c.state_hash() == f.w.state_hash());
+    CHECK(c.check_invariants() == "");
+    // the continuation: 400 advances of 10 ms (2000 ticks) on both, compared every 100 advances
+    for (int i = 0; i < 400; ++i) {
+        f.w.advance(10);
+        c.advance(10);
+        if (i % 100 == 99) {
+            CHECK_MESSAGE(c.state_hash() == f.w.state_hash(),
+                          "continuation diverged at advance " << i);
+        }
+    }
+    CHECK(c.check_invariants() == "");
 }
 
 } // namespace
@@ -114,11 +127,10 @@ TEST_CASE("small farm worker: three ripe fields are cut, credited to raw 0 and c
     CHECK(sf.out[0] == 78);
     CHECK(sf.figures_out[0] == 0); // released exactly once per worker
     CHECK(worker_of(f.w) == nullptr);
-    // one SmallFarmAnimal draw per gate step with line 1 on: 60000 / 500 = 120 (the first gate runs
-    // at tick 500; advance(10) is 5 ticks, so the 12000 advances end at tick 60000 and run 120
-    // gates)
-    CHECK(steps == 119); // measured: the last gate is not reached, buildings are visited on the
-                         // island pass schedule
+    // One SmallFarmAnimal draw per gate step with line 1 on. The 12000 advances of 5 ticks end at
+    // tick 60000 and 119 gates have drawn by then; the 120th is reached 5 ticks later (a
+    // tick-boundary fencepost of this loop, not a schedule effect).
+    CHECK(steps == 119);
     CHECK(f.w.check_invariants() == "");
     reload_agrees(f);
 }
@@ -291,4 +303,74 @@ TEST_CASE("small farm worker on original data: the Tutorial scenario's island-7 
     CHECK(sf.raw[0] == 0);
     CHECK(stats.forestry.raw_lost_88 == 0);
     CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("small farm worker: reload mid-trip at each phase continues identically") {
+    Farmland f = make([](Rig& r) {
+        r.object(113, 111, kGrain);
+        r.object(113, 112, kGrain);
+        r.object(111, 113, kGrain);
+        r.place(kSmallFarm, 110, 110,
+                sim::make_small_farm(registry(3 * 256)->find(kSmallFarm)->prod));
+    });
+    std::set<sim::HarvestStep> seen;
+    bool reloaded_with_cargo = false;
+    for (int i = 0; i < 12000 && !(seen.contains(sim::HarvestStep::ToHome) && reloaded_with_cargo);
+         ++i) {
+        f.w.advance(10);
+        const sim::Figure* w = worker_of(f.w);
+        if (w != nullptr && w->harvest.has_value() && !seen.contains(w->harvest->step)) {
+            seen.insert(w->harvest->step);
+            reload_agrees(f); // the first time each step is seen: walking, waiting, returning
+            reloaded_with_cargo =
+                reloaded_with_cargo || (worker_of(f.w) != nullptr && worker_of(f.w)->cargo_88 > 0);
+        }
+    }
+    CHECK(seen.contains(sim::HarvestStep::ToTree));
+    CHECK(seen.contains(sim::HarvestStep::Cut));
+    CHECK(seen.contains(sim::HarvestStep::ToHome));
+    CHECK(reloaded_with_cargo);
+    CHECK(f.w.check_invariants() == "");
+}
+
+TEST_CASE("small farm worker: a field replaced under the worker fails the cut, credits nothing, "
+          "and clears the claim") {
+    // The faithful cut re-checks only the predecessor (docs/re/forestry.md 2.9): the object under a
+    // claimed tile is replaced by an uncuttable one (its id - 1 is not a ROHSTWACHS type). The cut
+    // fails (cuts_failed), nothing is credited, the claim is cleared by the arrival, the worker
+    // goes on.
+    Farmland f = make([](Rig& r) {
+        r.object(113, 111, kGrain);
+        r.place(kSmallFarm, 110, 110,
+                sim::make_small_farm(registry(3 * 256)->find(kSmallFarm)->prod));
+    });
+    REQUIRE(run_until(f.w, [&] {
+        const sim::Figure* w = worker_of(f.w);
+        return w != nullptr && w->harvest && w->harvest->step == sim::HarvestStep::Cut;
+    }));
+    sim::Island& is = *sim::WorldTestAccess::islands(f.w)[0];
+    is.tiles.set_object(is.tile_index(113, 111), kOddTree.v);
+    CHECK(f.w.check_invariants() == "");
+    REQUIRE(run_until(f.w, [&] { return f.stats.forestry.cuts_failed == 1; }));
+    CHECK(f.stats.forestry.cuts == 0);
+    CHECK(f.stats.forestry.raw_credited_88 == 0);
+    CHECK(tile_object(f.w, 0, 113, 111) == kOddTree.v); // untouched by the failed cut
+    CHECK((is.tiles.aux(is.tile_index(113, 111)) & sim::kTileClaim) == 0);
+    REQUIRE(run_until(f.w, [&] { return worker_of(f.w) == nullptr; }, 12000));
+    CHECK(farm(f.w, 0, 1).raw[0] == 0);
+    CHECK(farm(f.w, 0, 1).figures_out[0] == 0);
+    CHECK(f.w.check_invariants() == "");
+    reload_agrees(f);
+}
+
+TEST_CASE("harvest credit slot: only a SmallFarm home has a second raw slot") {
+    // A Farm type with two input goods whose cargo equals input 1 must not credit a store the Farm
+    // lacks (input_store(Farm, 1) is null): the slot rule applies to the SmallFarm payload only.
+    sim::BuildingType t;
+    t.input_goods = {10, 11};
+    CHECK(sim::input_slot_for(t, 11) == 1);
+    CHECK(sim::harvest_credit_slot(sim::Payload{sim::Farm{}}, t, 11) == 0);
+    CHECK(sim::harvest_credit_slot(sim::Payload{sim::SmallFarm{}}, t, 11) == 1);
+    CHECK(sim::harvest_credit_slot(sim::Payload{sim::SmallFarm{}}, t, 10) == 0);
+    CHECK(sim::harvest_credit_slot(sim::Payload{sim::SmallFarm{}}, t, 99) == 0);
 }

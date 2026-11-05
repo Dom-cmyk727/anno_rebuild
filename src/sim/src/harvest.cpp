@@ -421,7 +421,7 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
                 // The credit slot (D SmallFarm 0x1006f960): raw 1 when the goods are the home's
                 // input goods 1, else raw 0 with no further goods test; a Farm has the one raw
                 // store.
-                const std::uint32_t slot = input_slot_for(*home_type, fig.cargo_goods);
+                const std::uint32_t slot = harvest_credit_slot(home->payload, *home_type, fig.cargo_goods);
                 world.fx.store_deltas.push_back(StoreDelta{home->id, StoreDelta::Store::Input, slot,
                                                            std::int64_t{fig.cargo_88}});
                 b.delivered = true;

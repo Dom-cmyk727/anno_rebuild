@@ -160,6 +160,10 @@ std::uint32_t input_slot_for(const BuildingType& type, GoodsId goods) {
     return type.input_goods.size() > 1 && goods == type.input_goods[1] ? 1U : 0U;
 }
 
+std::uint32_t harvest_credit_slot(const Payload& payload, const BuildingType& type, GoodsId goods) {
+    return std::holds_alternative<SmallFarm>(payload) ? input_slot_for(type, goods) : 0U;
+}
+
 bool payload_blocked(const Payload& payload) {
     return std::visit(
         [](const auto& alternative) {

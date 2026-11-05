@@ -622,3 +622,18 @@ compatibility is inferred and no automatic merge is authorized.
 All packages require read-only approval before their dependent implementation.
 A is pending frozen contract review. This section is the current proposal, not a
 claim that the new code or complete original canary has executed.
+
+SCRIPT2 A area review: `/root/script2_review_area` independently approved
+`fe964e24996c2e2b1ddd59bbd0a24b066c2f4910`, after frozen6214ac5e P2
+endpoint-vector finding was fixed. Scope: primary rectangle, class, ownership,
+registration, current-touch, empty-object closure and proposed work/startup/identity
+boundary. No remaining P1/P2 in that scope. Read-only direct investigation:50
+hand vectors and3 Python contracts exit0; canonical evidence remains pending.
+
+SCRIPT2 A action review: `/root/script2_review_actions` approved frozen
+`fe964e24996c2e2b1ddd59bbd0a24b066c2f4910` money/wave, namespace, transaction,
+startup/persistence contract. P2 missing wave vectors CLOSED. Independently
+derived primary bytes plus50 vector checks and3 Python contracts; deliberate
+wrong namespace/recipient/unsigned-negative expectations failed as intended.
+Probe: `/private/tmp/script2-actions-review/A-reference-review.json`. No remaining
+P1/P2 in that scope. This approves A only; B–G remain pending.

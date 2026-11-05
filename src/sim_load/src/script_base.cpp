@@ -14,7 +14,7 @@ std::string make_generated_script_free(sim::ScenarioSpec& spec, const sim::TypeR
         if (!program)
             return "generated layout requires a validated empty base script: " +
                    program.error().message;
-        if (!program.value().kernel_empty)
+        if (!program.value().kernel_empty || !program.value().areas.empty())
             return "generated layout refuses a nonempty base script kernel";
     } else if (spec.script_context != sim::ScriptContext::Missing &&
                spec.script_context != sim::ScriptContext::ExplicitNone) {

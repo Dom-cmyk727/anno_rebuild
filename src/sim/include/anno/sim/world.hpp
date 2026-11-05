@@ -152,7 +152,7 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // Stream129 (MAP-SCRIPT-1): SCRIPT1 schema discriminator, player override rows,
 // script source/policy/limits and exact continuation/fault/binding state. The
 // compiled program is derived once. Published128 is never reinterpreted.
-inline constexpr std::uint32_t kStateHashVersion = 129;
+inline constexpr std::uint32_t kStateHashVersion = 130;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

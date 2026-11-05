@@ -147,8 +147,29 @@ struct Compiler {
             const auto& l = *g.leaf;
             e.offset = static_cast<std::uint32_t>(l.offset);
             if (!l.subject.empty()) {
-                fail(l.offset, "unsupported query: " + bb::describe(l));
-                return std::nullopt;
+                const auto query = upper(l.query);
+                if (upper(l.subject) != "AREA" || !l.arg || l.value ||
+                    (query != "TOUCHED_BY_SHIP_FROM" && query != "TOUCHED_BY_SOLDIER_FROM")) {
+                    fail(l.offset, "unsupported query: " + bb::describe(l));
+                    return std::nullopt;
+                }
+                auto area = std::find_if(p.areas.begin(), p.areas.end(), [&](const auto& a) {
+                    return a.offset < l.offset && upper(a.name) == upper(l.name);
+                });
+                auto mapping =
+                    std::find_if(p.mappings.begin(), p.mappings.end(), [&](const auto& m) {
+                        return m.offset < l.offset && upper(m.name) == upper(*l.arg);
+                    });
+                if (area == p.areas.end() || mapping == p.mappings.end()) {
+                    fail(l.offset, "unknown area or player mapping");
+                    return std::nullopt;
+                }
+                e.query = query == "TOUCHED_BY_SHIP_FROM" ? ScriptQuery::ShipTouch
+                                                          : ScriptQuery::SoldierTouch;
+                e.index = static_cast<std::uint32_t>(area - p.areas.begin());
+                e.mapping = static_cast<std::uint32_t>(mapping - p.mappings.begin());
+                p.expressions.push_back(e);
+                return static_cast<std::uint32_t>(p.expressions.size() - 1);
             }
             const auto token = upper(l.name);
             const auto suffix = token.starts_with("TIMER_") ? std::string_view(token).substr(6)
@@ -231,6 +252,12 @@ Evaluation eval(const ScriptProgram& p, const ScriptState& s, std::uint32_t n, S
         return {e.kind == ScriptExpr::Kind::And ? a.truth && b.truth : a.truth || b.truth, false,
                 true};
     }
+    if (e.query == ScriptQuery::ShipTouch || e.query == ScriptQuery::SoldierTouch) {
+        bool result = false;
+        const bool ok =
+            host.touch(p.areas[e.index], e.mapping, e.query == ScriptQuery::ShipTouch, w, result);
+        return {result, false, ok};
+    }
     const std::int32_t value = e.query == ScriptQuery::Signal ? s.signals[e.index]
                                : e.query == ScriptQuery::Playtime
                                    ? std::bit_cast<std::int32_t>(s.last_arg) / 500
@@ -293,8 +320,24 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
     for (const auto& section : a.sections)
         if (section.kind == bb::SectionKind::Unknown)
             c.fail(0, "unsupported section: " + section.name);
-    if (!a.objects.empty() || !a.areas.empty())
-        c.fail(0, "unsupported object/area definitions");
+    if (!a.objects.empty())
+        c.fail(0, "unsupported object definitions");
+    for (const auto& area : a.areas) {
+        if (!c.node(area.offset) || area.corners.size() != 4) {
+            c.fail(area.offset, "area requires four signed32 endpoints");
+            break;
+        }
+        ScriptArea out;
+        out.name = area.name;
+        out.offset = static_cast<std::uint32_t>(area.offset);
+        std::int32_t* endpoints[]{&out.y0, &out.x0, &out.x1, &out.y1};
+        for (std::size_t i = 0; i < 4; ++i) {
+            auto value = c.number(area.corners[i], area.offset);
+            if (value)
+                *endpoints[i] = *value;
+        }
+        c.p.areas.push_back(std::move(out));
+    }
     c.p.symbols.push_back("SCHUETTIINITSIG");
     c.p.initial.push_back(1);
     for (const auto& m : a.players) {

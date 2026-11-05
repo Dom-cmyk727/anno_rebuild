@@ -1,4 +1,7 @@
 #include <algorithm>
+#include <bit>
+#include <map>
+#include <set>
 #include <utility>
 
 #include <anno/sim/script_runtime.hpp>
@@ -12,6 +15,76 @@ auto compile_runtime(const ScriptRuntime& r, const TypeRegistry& types, const Si
     return compile_script(r.source, {ids, cfg.player_slots, cfg.script_timers}, r.limits);
 }
 struct Host final : ScriptHost {
+    const FigureRegistry* figures;
+    const WorldSettings* settings;
+    ScriptQueryStats& stats;
+    bool indexed = false;
+    std::map<std::int32_t, std::map<std::int32_t, std::vector<const Figure*>>> cells;
+    std::set<FigureId> crewed;
+    bool touch(const ScriptArea& a, std::uint32_t mapping, bool ship, ScriptWork& work,
+               bool& result) override {
+        result = false;
+        if (!figures || !settings || mapping >= bindings.size())
+            return false;
+        if (!indexed) {
+            for (const auto& slot : figures->list.slots) {
+                if (!work.consume())
+                    return false;
+                ++stats.slots;
+                if (!slot)
+                    continue;
+                const auto& f = *slot;
+                if (f.parent.valid() && f.crew_slot) {
+                    if (!work.consume())
+                        return false;
+                    ++stats.crew;
+                    crewed.insert(f.parent);
+                }
+                if (f.parent.valid() || f.expiry_stamp)
+                    continue;
+                const auto* type = types.find_figure_type(f.kind);
+                if (!type || type->bewohntype < 97 || type->bewohntype > 128)
+                    continue;
+                if (!work.consume())
+                    return false;
+                ++stats.inserted;
+                cells[f.pos.y / 256 / 16][f.pos.x / 256 / 16].push_back(&f);
+            }
+            indexed = true;
+        }
+        const auto end = [](std::int32_t hi, std::uint32_t dimension) {
+            const auto wrapped = std::bit_cast<std::int32_t>(static_cast<std::uint32_t>(hi) + 15u);
+            return std::min<std::int64_t>(wrapped, dimension) / 16;
+        };
+        const auto x0 = std::max(a.x0, 0) / 16, y0 = std::max(a.y0, 0) / 16;
+        const auto x1 = end(a.x1, settings->world_width), y1 = end(a.y1, settings->world_height);
+        for (auto row = cells.lower_bound(y0); row != cells.end() && row->first < y1; ++row) {
+            if (!work.consume())
+                return false;
+            ++stats.rows;
+            for (auto cell = row->second.lower_bound(x0);
+                 cell != row->second.end() && cell->first < x1; ++cell) {
+                if (!work.consume())
+                    return false;
+                ++stats.cells;
+                for (const auto* f : cell->second) {
+                    if (!work.consume())
+                        return false;
+                    ++stats.candidates;
+                    const auto kind = types.find_figure_type(f->kind)->bewohntype;
+                    const auto x = f->pos.x / 256, y = f->pos.y / 256;
+                    if (f->owner != bindings[mapping] || (f->state_word & 0x200e) ||
+                        (ship ? kind < 113 || kind > 128 : kind < 97 || kind > 112) ||
+                        (kind >= 108 && kind <= 112 && !crewed.contains(f->id)) || x < a.x0 ||
+                        x >= a.x1 || y < a.y0 || y >= a.y1)
+                        continue;
+                    result = true;
+                    return true;
+                }
+            }
+        }
+        return true;
+    }
     PlayerTable& players;
     ScriptTimers& timers;
     const TypeRegistry& types;
@@ -19,8 +92,9 @@ struct Host final : ScriptHost {
     std::vector<std::pair<PlayerId, Player>> staged;
     std::optional<ScriptTimers> staged_timers;
     Host(PlayerTable& p, ScriptTimers& t, const TypeRegistry& registry,
-         const std::vector<PlayerId>& b)
-        : players(p), timers(t), types(registry), bindings(b) {}
+         const std::vector<PlayerId>& b, const FigureRegistry* f, const WorldSettings* s,
+         ScriptQueryStats& q)
+        : figures(f), settings(s), stats(q), players(p), timers(t), types(registry), bindings(b) {}
     bool begin() override {
         staged.clear();
         staged_timers.reset();
@@ -160,11 +234,13 @@ std::string restore_script(ScriptRuntime& r, const TypeRegistry& types, const Pl
     return validate_script(r, types, players, cfg);
 }
 bool advance_script(ScriptRuntime& r, PlayerTable& players, ScriptTimers& timers,
-                    const TypeRegistry& types, std::uint32_t arg) {
+                    const TypeRegistry& types, std::uint32_t arg, const FigureRegistry* figures,
+                    const WorldSettings* settings) {
+    r.query_stats = {};
     if (!r.program)
         return r.state.context == ScriptContext::Missing ||
                r.state.context == ScriptContext::ExplicitNone;
-    Host host(players, timers, types, r.state.bindings);
+    Host host(players, timers, types, r.state.bindings, figures, settings, r.query_stats);
     return visit_script(*r.program, r.state, arg, host);
 }
 } // namespace anno::sim

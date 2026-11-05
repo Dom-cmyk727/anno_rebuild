@@ -1363,7 +1363,8 @@ template <> struct EnumInfo<ScriptContext> : ContiguousEnum<6> {};
 template <> struct EnumInfo<ScriptFault> : ContiguousEnum<4> {};
 static_assert(field_count<ScriptLimits>() == 4);
 static_assert(field_count<ScriptState>() == 8);
-static_assert(field_count<ScriptRuntime>() == 5, "program is derived; other fields persist");
+static_assert(field_count<ScriptRuntime>() == 6,
+              "program and query_stats are derived; other fields persist");
 template <class A, Same<ScriptRuntime> S> void fields(A& a, S& r) {
     std::uint64_t size = r.source.size();
     a.count(size, 1);

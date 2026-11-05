@@ -1889,7 +1889,7 @@ TEST_CASE("load refuses a damaged frame") {
         // Published128 has no SCRIPT1 discriminator, script continuation or permission rows. The
         // control is a valid save of this build; only the version word is changed and the frame
         // resealed, so the refusal is the version text and not checksum damage.
-        static_assert(sim::kStateHashVersion == 129, "update this test with the next stream bump");
+        static_assert(sim::kStateHashVersion == 130, "update this test with the next stream bump");
         CHECK(island_test::load_error(good).empty()); // the control loads
         std::vector<std::uint8_t> old = good;
         island_test::put32(old, 8, 128);

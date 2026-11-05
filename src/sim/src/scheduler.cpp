@@ -645,7 +645,7 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
         return w.clock_.tick();
     }
     if (!advance_script(w.script_, w.players_, w.timers_, *w.types_,
-                        static_cast<std::uint32_t>(w.clock_.tick()))) {
+                        static_cast<std::uint32_t>(w.clock_.tick()), &w.figures_, &w.settings_)) {
         w.faulted_ = true;
         w.fault_message_ = "script runtime fault";
         w.out_ = SimOutput{};
@@ -789,7 +789,7 @@ std::string World::initialize_scripts() {
         return "script startup requires supported script context";
     if (clock_.ms != 0 || clock_.last_tick != 0)
         return "script startup requires a fresh zero clock";
-    if (!advance_script(script_, players_, timers_, *types_, 0)) {
+    if (!advance_script(script_, players_, timers_, *types_, 0, &figures_, &settings_)) {
         faulted_ = true;
         fault_message_ = "script runtime fault";
         return fault_message_;

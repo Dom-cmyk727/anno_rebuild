@@ -141,3 +141,33 @@ below `P / 2 < 2000` (not the case here).
 - OQ-491: the first appearance of potato objects (no planter traced).
 - U: `world +0x6c(kind)` body; node-score units; the fine-route stage; whether a modded worker type other than 106 changes the counter index.
 - Nothing above blocks the crop line (worker) or the animal line from being implemented with the stated adaptations; the loop cannot be claimed original in walking time.
+
+## 8. S2 delivered: the line-0 worker (2026-11-05)
+
+**Change.** `consume` (driver.cpp): a `SmallFarm` worker is spawned with job `0x2a` (the literal, D `0x1006f78d`), cargo goods = input 0 and the
+harvest state (docs/sim/forestry.md 2); `harvest.cpp` accepts a `SmallFarm` home and credits it with `input_slot_for(type, goods)` (driver.cpp: slot 1 when the
+goods equal input goods 1, else slot 0; D `0x1006f960`); `World::harvest_problem` accepts the payload. Nothing else: the candidate search, the claim, the cut, the
+growth, the end path and the counter release are the forester's, unchanged. No new field, no new draw site. No 809-only branch: nothing names 809, 106 or a goods id.
+
+**Identity.** Because 128 / timeline 5 was published, the change of evolution of every world with a small farm is a new identity: `kStateHashVersion` **129**, timeline 5
+(no draw semantics change). `tools/sim_stream.py` is the independent transcription: `g0/g1/s5/s6` goldens were written from it and the C++ prints agree
+(`s6_g1_create a02546982dc950c9`, `s6_g1_step100 394e59171e7d58c2`; `empty_world 9970bb137ac3bfcf`); the other goldens, the recorded logs, `ship_holds`, `cargo_rules_bytes`, the stage
+digest and `scenario_corpus.txt` were re-recorded; the saves of 127 and 128 are refused with their own text. The 128 records are preserved in git history
+(`a50aec3a`) and in the S1/K3 evidence under `cache/`.
+
+**Behavioural pins that moved (S01_07_01, 11 small farms and 115 + 90 potatoes; legitimate: the workers now cut fields, the objects change walk codes and routes).**
+spawn draws / searches 2287 -> 2282, purchases 612 -> 608, bought 35026 -> 34729, deliveries 550 -> 547, delivered 104100 -> 103388, candidates scored 21146 -> 21097,
+walk expansions 1750834 -> 1743166, transitions 8 -> 9, HouseVariant draws 8 -> 9, the upgrade 509 -> 520 now lands on 522 (draw 21945 -> 22619, index 0 -> 2), the first
+downgrade's variant draw 1338 -> 19882 and its counters by one (1665 -> 1664 and so on). The Tutorial K3 upgrade itself (tick 55000, E 668, the stocks, 501 -> 522) is
+**unchanged**; only its six replay checkpoint hashes moved (version word and the Tutorial small farms' workers).
+
+**Evidence.** `src/sim/tests/small_farm_worker_test.cpp`: (1) three ripe fields -> three cuts, 768 credited to raw 0, six full steps (78 made), counter released, 119 gate draws in
+60 000 ticks; (2) failed search; (3) the home destroyed with the worker out, before the first cut and with one cut carried (the carried amount is lost as history, no claim left); (4) two farms
+contending for two fields; (5) another type id (9331), goods (KARTOFFEL) and owner (island 1, player 1) with the other owner's field untouched; every case ends with `check_invariants`
+and a save/load that reproduces the hash. (6) Original data: the Tutorial scenario's island-7 farm (261,344) cuts 3 of its 32 potatoes (709 -> 708) and makes 78 alcohol by tick 16 800.
+Mutants (scratch checkout, legal control first, `cache/map2-supply1/S2mut/`): home check without SmallFarm, credit slot always 0, always 1, cargo goods not set, harvest state not attached,
+validator refusing a SmallFarm home: 6 of 6 killed.
+
+**Adaptations and limits (named, not original).** The credit is a u32 add clamped at the u32 maximum (the original's raw stock is a u16 add that wraps; identical below 65536, vector `C-wrap`);
+walking and the cut wait use the engine's integer move model (the fine route is unread); the worker's capacity comes from the figure type (3 t for 106 on the shipped data; the synthetic cases use it too).
+Not done in S2: animals (S3); the `Rules::house_updates` default stays false. Replacement of a resource under a worker and the full-stock case are the forester's tested paths, not re-tested here beyond the cases above.

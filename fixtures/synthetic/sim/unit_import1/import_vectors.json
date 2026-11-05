@@ -1,0 +1,169 @@
+{
+  "ship_health": [
+    {
+      "max_hp": 12000,
+      "head9": 128,
+      "expected": 12000,
+      "wrong_full_default": 12000
+    },
+    {
+      "max_hp": 12000,
+      "head9": 64,
+      "expected": 6000,
+      "wrong_full_default": 12000
+    },
+    {
+      "max_hp": 12000,
+      "head9": 1,
+      "expected": 93,
+      "wrong_nearest_round": 94
+    },
+    {
+      "max_hp": 12000,
+      "head9": 0,
+      "expected": 12000,
+      "wrong_zero": 0
+    },
+    {
+      "max_hp": 12000,
+      "head9": 129,
+      "original_reader_result": 12093,
+      "engine_domain": "over-max; require explicit refusal/contract, not silent clamp"
+    }
+  ],
+  "walker_health": [
+    {
+      "max_hp": 350,
+      "signed_head_word8": 350,
+      "expected": 350
+    },
+    {
+      "max_hp": 350,
+      "signed_head_word8": 175,
+      "expected": 175
+    },
+    {
+      "max_hp": 350,
+      "signed_head_word8": 0,
+      "expected": 350
+    },
+    {
+      "max_hp": 350,
+      "signed_head_word8": -1,
+      "expected": 350
+    },
+    {
+      "max_hp": 350,
+      "signed_head_word8": 351,
+      "expected": 350
+    }
+  ],
+  "holds": [
+    {
+      "record_hex": "29ab0300f00ff00f",
+      "goods_map": {
+        "41": 90001
+      },
+      "cap_88": 2560,
+      "expected_goods": 90001,
+      "expected_amount_88": 768,
+      "separates": "goods low byte and WARETYPE mapping; ignored byte1/tail; tons to8.8"
+    },
+    {
+      "record_hex": "2900050000000000",
+      "goods_map": {
+        "41": 90001
+      },
+      "cap_88": 512,
+      "expected_goods": 90001,
+      "expected_amount_88": 512,
+      "separates": "capacity clamp"
+    },
+    {
+      "record_hex": "2900000000000000",
+      "goods_map": {
+        "41": 90001
+      },
+      "cap_88": 512,
+      "expected_goods": 90001,
+      "expected_amount_88": 0,
+      "legal_control": "zero amount"
+    }
+  ],
+  "state": [
+    {
+      "case": "endless01 ship at reader return",
+      "expected": 0
+    },
+    {
+      "case": "endless01 scouts/donkeys at reader return",
+      "expected": 136
+    },
+    {
+      "case": "top SOLDAT, HEAD1ff, prefix flags0",
+      "expected": 0
+    },
+    {
+      "case": "top SOLDAT, HEAD1=0, prefix flags0",
+      "expected": 32
+    },
+    {
+      "case": "ship no scout/no n2 crew, HEAD1=0 HEAD10=3",
+      "expected": 33056
+    }
+  ],
+  "identity": [
+    {
+      "raw_ids": [
+        37,
+        2
+      ],
+      "parent_ordinals": [
+        null,
+        0
+      ],
+      "initial_slots": 100,
+      "expected_engine_ids": [
+        1,
+        2
+      ],
+      "expected_slots": [
+        37,
+        2
+      ],
+      "expected_hint": 2,
+      "expected_next_free": 3
+    }
+  ],
+  "crew_prefix": [
+    {
+      "id": 4660,
+      "kind": 717,
+      "slot": 3,
+      "expected_id": 4660,
+      "expected_slot": 3
+    },
+    {
+      "id": 0,
+      "kind": 717,
+      "slot": 0,
+      "expected_id": 0,
+      "expected_slot": 0
+    }
+  ],
+  "slot_growth": [
+    {
+      "initial_slots": 100,
+      "requested_slot": 100,
+      "min_growth": 100,
+      "expected_slots": 125,
+      "wrong_current_length_plus_one": 101
+    },
+    {
+      "initial_slots": 1,
+      "requested_slot": 9,
+      "min_growth": 100,
+      "expected_slots": 100
+    }
+  ]
+}

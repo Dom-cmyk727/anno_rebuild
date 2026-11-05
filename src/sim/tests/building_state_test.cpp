@@ -313,10 +313,10 @@ std::vector<LayoutRow> layout_rows() {
         rows.push_back({"House", common(p), s, 8 + 4 + 2 + 3});
     }
     {
-        // MAP-POP-CLOSE-1 C2 (stream 128, tag 8): the Inert prefix, then the tavern stock and the taken
-        // statistic as u32 each. Distinct values, so a swapped pair or a narrowed width is caught here
-        // by hand-written bytes (the transcription is the spec text of population-live.md 21.5, not the
-        // C++ field list).
+        // MAP-POP-CLOSE-1 C2 (stream 128, tag 8): the Inert prefix, then the tavern stock and the
+        // taken statistic as u32 each. Distinct values, so a swapped pair or a narrowed width is
+        // caught here by hand-written bytes (the transcription is the spec text of
+        // population-live.md 21.5, not the C++ field list).
         sim::Inn p;
         p.last = 0x1234;
         p.blocked = false;
@@ -368,7 +368,8 @@ TEST_CASE("field count canary per struct") {
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
     CHECK(std::variant_size_v<sim::Payload> == 9);
     CHECK(sim::kPayloadTags.size() == 9);
-    CHECK(sim::field_count<sim::Inn>() == 7); // C2: the tavern stock and statistic; K1: carriers_out
+    CHECK(sim::field_count<sim::Inn>() ==
+          7); // C2: the tavern stock and statistic; K1: carriers_out
     for (std::size_t i = 0; i < sim::kPayloadTags.size(); ++i) {
         CHECK(sim::kPayloadTags[i] == i);
     }

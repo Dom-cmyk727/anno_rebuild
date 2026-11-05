@@ -29,8 +29,8 @@ struct InnTickResult {
 /// compare); `limit` is the type's max figures of group 0 (`+0xb8(0)`), `inn.carriers_out` the
 /// carriers on their way. Order: gate, `last += 5000` (u16), the statistic decays by
 /// (31 * taken) / 32 BEFORE the switched-off test, flags bits 4/5 (`inn.suspended`) stop, a signed
-/// `limit > carriers_out` is needed, then send iff `tavern < 0x100 || tavern < (taken >> 1)` with the
-/// decayed statistic. Does not touch `carriers_out` (the caller raises it when it spawns).
+/// `limit > carriers_out` is needed, then send iff `tavern < 0x100 || tavern < (taken >> 1)` with
+/// the decayed statistic. Does not touch `carriers_out` (the caller raises it when it spawns).
 [[nodiscard]] InnTickResult inn_step(Inn& inn, std::uint32_t tick, std::int32_t limit);
 
 /// D 0x100756e0 (the part on the Inn): n = min(request, stock) as SIGNED values (a negative request
@@ -41,9 +41,9 @@ std::int64_t inn_take(Inn& inn, std::int64_t request);
 void inn_unload(Inn& inn, std::uint32_t amount);
 
 /// D 0x10072870, the BASE priority of a sender whose stock proxy is its tavern stock (`+0xbc`):
-/// steps = stock / need; < 30 -> 0x80, < 60 -> 0x60, else -1. nullopt when `need` is 0 (the original
-/// traps in `idiv`; the registry refuses such an Inn type, types.cpp, and the carrier treats a
-/// missing value as "no priority").
+/// steps = stock / need; < 30 -> 0x80, < 60 -> 0x60, else -1. nullopt when `need` is 0 (the
+/// original traps in `idiv`; the registry refuses such an Inn type, types.cpp, and the carrier
+/// treats a missing value as "no priority").
 [[nodiscard]] std::optional<std::int32_t> base_priority(std::uint32_t stock, std::uint32_t need);
 
 } // namespace anno::sim

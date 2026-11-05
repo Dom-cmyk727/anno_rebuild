@@ -141,7 +141,7 @@ struct Turn {
 /// Returns an initialization/runtime error, or empty on success. Failed INIT produces
 /// PermissionContext for each command and performs no command or time step.
 std::string run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps,
-              std::vector<ApplyResult>* results = nullptr);
+                     std::vector<ApplyResult>* results = nullptr);
 void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
                std::uint32_t step_ms);
 

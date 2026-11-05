@@ -314,7 +314,8 @@ TEST_CASE("house transition: the hand-derived vectors (reference agrees, see CTe
                 got["fault"] = sim::house_fault_name(r.fault);
                 got["used"] = std::to_string(draw.sites.size());
                 for (const auto& [k, v] : want) {
-                    CHECK_MESSAGE(got[k] == v, where << " " << k << " expected " << v << " got " << got[k]);
+                    CHECK_MESSAGE(got[k] == v,
+                                  where << " " << k << " expected " << v << " got " << got[k]);
                 }
                 ++executed;
                 continue;
@@ -694,7 +695,8 @@ TEST_CASE(
     const auto poor = run(1900, 511, kP1);
     CHECK(poor.first.kind == sim::HouseOutcomeKind::UpgradeRefusedMaterials);
     CHECK(poor.second == 0);
-    // a missing next type (9521 -> 9540): the end of the ladder, a named outcome (C3), nothing changes
+    // a missing next type (9521 -> 9540): the end of the ladder, a named outcome (C3), nothing
+    // changes
     const auto none = run(1900, 1000, kS1);
     CHECK(none.first.kind == sim::HouseOutcomeKind::NotEligibleTerminal);
     CHECK(none.second == 0);
@@ -1127,7 +1129,8 @@ DomainGroup domain_group(std::uint16_t wohn, std::uint16_t menge, std::uint32_t 
     d.group.wohnmax = wohn;
     d.group.needs = {{26, true, menge}};
     const std::vector<sim::GoodsInfo> goods = sim::original_goods();
-    const std::string problem = sim::derive_group(d.group, goods, sim::PopulationRoles{}, d.derived);
+    const std::string problem =
+        sim::derive_group(d.group, goods, sim::PopulationRoles{}, d.derived);
     REQUIRE_MESSAGE(problem.empty(), problem);
     return d;
 }
@@ -1222,8 +1225,8 @@ TEST_CASE("house set group G3: a refused first assignment draws nothing and chan
             CHECK(draw.sites.empty());
         }
     }
-    // A repeated ware (derive_group lets the last slot win): the forced draw of slot 0 satisfies every
-    // slot of ware 26, so the UNFORCED slot 1 is bounded at sat = 128 too (review P2).
+    // A repeated ware (derive_group lets the last slot win): the forced draw of slot 0 satisfies
+    // every slot of ware 26, so the UNFORCED slot 1 is bounded at sat = 128 too (review P2).
     {
         const auto rep = [&](std::uint16_t m1) {
             DomainGroup d;

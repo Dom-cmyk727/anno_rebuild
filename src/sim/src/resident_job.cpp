@@ -334,8 +334,8 @@ namespace {
 /// tile's centre subcell) can be enclosed, so on real maps it failed for a large share of walkers
 /// (S01_01_01: 78 of 201 arrivals). The way out already proved walkable: search FROM the home's
 /// entrance points TO the walker's subcell and reverse the route. The search is DIRECTED (the exits
-/// of a cell depend on the arrival direction and a constraint can clear one directed member), so the
-/// reversed route is only a candidate: resident_path_home replays it forward with route_legal.
+/// of a cell depend on the arrival direction and a constraint can clear one directed member), so
+/// the reversed route is only a candidate: resident_path_home replays it forward with route_legal.
 std::optional<std::vector<TileXY>>
 reverse_route_home(const Island& island, const TypeRegistry& types, const Building& home,
                    const BuildingType& home_type, FixedPos from, std::uint32_t layer) {
@@ -398,9 +398,9 @@ struct Body {
         }
         const Island* hi = world.island(island_of(home->id));
         ResidentPathNote note;
-        const auto path =
-            hi != nullptr ? resident_path_home(*hi, ctx.types, *home, *home_type, fig.pos, ft.layer, &note)
-                          : std::nullopt;
+        const auto path = hi != nullptr ? resident_path_home(*hi, ctx.types, *home, *home_type,
+                                                             fig.pos, ft.layer, &note)
+                                        : std::nullopt;
         if (stats != nullptr) {
             stats->reverse_rejected += note.reverse_rejected;
             stats->endpoint_adapted += note.endpoint_adapted;
@@ -556,10 +556,11 @@ RouteCheck resident_route_legal(const Island& island, const TypeRegistry& types,
     return out;
 }
 
-std::optional<std::vector<TileXY>>
-resident_path_home(const Island& island, const TypeRegistry& types, const Building& home,
-                   const BuildingType& home_type, FixedPos from, std::uint32_t layer,
-                   ResidentPathNote* note) {
+std::optional<std::vector<TileXY>> resident_path_home(const Island& island,
+                                                      const TypeRegistry& types,
+                                                      const Building& home,
+                                                      const BuildingType& home_type, FixedPos from,
+                                                      std::uint32_t layer, ResidentPathNote* note) {
     // P-15 (population-live.md 21.6): the candidate is the reverse search; it is used only when the
     // FORWARD replay accepts it (adjacent steps, the arrival-state moves, the edge keys and the
     // layer's admission) and it ends on one of the home's entrance tiles. Otherwise the shared
@@ -655,15 +656,17 @@ bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             }
             r.target = stand->building;
             start_walk(fig.pos, stand->path, WalkRef{r.route, r.next, r.along});
-            // K2: the walk ends at the selected goal sub-cell, not the tile centre (see StandChoice).
-            // ADAPT / U: finer-route stage 0x100054ef..0x100055d5 unread; the sub-cell formula
+            // K2: the walk ends at the selected goal sub-cell, not the tile centre (see
+            // StandChoice). ADAPT / U: finer-route stage 0x100054ef..0x100055d5 unread; the
+            // sub-cell formula
             // ((2c+1)*256+3)/6-128 is not tied to a read.
             if (!stand->path.empty() && r.route.size() >= 2) {
                 const FixedPos tile = tile_centre(stand->path.back());
                 const auto sub = [](std::uint32_t c) {
                     return static_cast<std::int32_t>(((2 * c + 1) * 256 + 3) / 6) - 128;
                 };
-                r.route.back() = FixedPos{tile.x + sub(stand->end_col), tile.y + sub(stand->end_row)};
+                r.route.back() =
+                    FixedPos{tile.x + sub(stand->end_col), tile.y + sub(stand->end_row)};
             }
             r.step = ResidentStep::ToStall;
             break;
@@ -681,10 +684,10 @@ bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
                 b.finish();
                 break;
             }
-            // D step B start 0x10056330: the wait is the figure type's float (type slot +0x64(1), AnnoGame
-            // 0x1000fd10 = LOGIC f32 [4], 1.0 when not above 0) through figure slot +0xe0 = 0x10035260
-            // (duration to +0x3c, rate 0.01 to +0x40), the cart's load wait: round(500 * d) ticks =
-            // FigureType::load_ticks. The progress persists in r.wait across calls.
+            // D step B start 0x10056330: the wait is the figure type's float (type slot +0x64(1),
+            // AnnoGame 0x1000fd10 = LOGIC f32 [4], 1.0 when not above 0) through figure slot +0xe0
+            // = 0x10035260 (duration to +0x3c, rate 0.01 to +0x40), the cart's load wait: round(500
+            // * d) ticks = FigureType::load_ticks. The progress persists in r.wait across calls.
             r.wait = ft->load_ticks;
             r.step = ResidentStep::Wait;
             break;

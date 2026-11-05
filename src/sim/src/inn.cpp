@@ -1,6 +1,6 @@
-#include <anno/sim/inn.hpp>
-
 #include <algorithm>
+
+#include <anno/sim/inn.hpp>
 
 namespace anno::sim {
 

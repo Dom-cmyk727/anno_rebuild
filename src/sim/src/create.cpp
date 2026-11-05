@@ -226,8 +226,8 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
         }
     }
 
-    const bool first = initial == nullptr && first_assignment != nullptr &&
-                       rules.house_updates && ty->cls == RuntimeClass::House;
+    const bool first = initial == nullptr && first_assignment != nullptr && rules.house_updates &&
+                       ty->cls == RuntimeClass::House;
     if (first) {
         if (const Reject r = first_assignment_problem(cfg, rules, types, *ty); r != Reject::None) {
             return r;
@@ -266,21 +266,22 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     // RESIDUAL (disclosed): the draws below happen before the list insert of step 7. The only way
     // the insert can then refuse is ListFull (a list of 2^32 - 1 slots), which no game reaches; a
     // creation that fails there has drawn the first-assignment values and takes no id. Everything
-    // that can really refuse (type, rotation, list, serial, footprint, overlap, the supported domain)
-    // is checked in step 1, before any draw.
-    // 5b. SetGroup's first assignment (MAP-POP-CLOSE-1 G1; D Create 0x10024c3c -> 0x10076b90): after the
-    // stamp and before the building is inserted. The domain was checked above, so it cannot fail and
-    // has drawn nothing when it does not; a defensive fault refuses with nothing drawn.
+    // that can really refuse (type, rotation, list, serial, footprint, overlap, the supported
+    // domain) is checked in step 1, before any draw. 5b. SetGroup's first assignment
+    // (MAP-POP-CLOSE-1 G1; D Create 0x10024c3c -> 0x10076b90): after the stamp and before the
+    // building is inserted. The domain was checked above, so it cannot fail and has drawn nothing
+    // when it does not; a defensive fault refuses with nothing drawn.
     if (first) {
         auto* house = std::get_if<House>(&b.payload);
         const auto g = house_group(cfg, ty->prodtype);
-        const auto view = g ? types.population_view(*g, cfg) : formats::Result<PopulationView, std::string>(std::string("no group"));
+        const auto view = g ? types.population_view(*g, cfg)
+                            : formats::Result<PopulationView, std::string>(std::string("no group"));
         if (house == nullptr || !view.ok()) {
             return Reject::BadValue;
         }
-        const SetGroupResult sg = house_set_group(*first_assignment, types.goods_table(), nullptr,
-                                                  view.value(), house->e, house->residents_64,
-                                                  house->stock);
+        const SetGroupResult sg =
+            house_set_group(*first_assignment, types.goods_table(), nullptr, view.value(), house->e,
+                            house->residents_64, house->stock);
         if (sg.fault != HouseFault::None) {
             return Reject::HouseDomain;
         }

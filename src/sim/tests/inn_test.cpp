@@ -27,8 +27,8 @@
 #include <anno/sim/driver.hpp>
 #include <anno/sim/inn.hpp>
 #include <anno/sim/synthetic.hpp>
-#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/transport.hpp>
+#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 
 #include "world_access.hpp"
@@ -64,7 +64,8 @@ std::string str(std::int64_t v) {
 
 } // namespace
 
-TEST_CASE("inn vectors: the gate, decay, stops, take, unload, priority and pick agree with the file") {
+TEST_CASE(
+    "inn vectors: the gate, decay, stops, take, unload, priority and pick agree with the file") {
     std::ifstream in(std::string(ANNO_FIXTURES_DIR) + "/sim/inn_vectors.txt");
     REQUIRE(in.good());
     std::string line;
@@ -97,13 +98,15 @@ TEST_CASE("inn vectors: the gate, decay, stops, take, unload, priority and pick 
             inn.tavern = static_cast<std::uint32_t>(num(kv, "stock"));
             inn.suspended = (num(kv, "flags") & 0x30) != 0;
             inn.carriers_out = static_cast<std::uint32_t>(num(kv, "count"));
-            const sim::InnTickResult r = sim::inn_step(inn, static_cast<std::uint32_t>(num(kv, "tick")),
-                                                       static_cast<std::int32_t>(num(kv, "limit")));
+            const sim::InnTickResult r =
+                sim::inn_step(inn, static_cast<std::uint32_t>(num(kv, "tick")),
+                              static_cast<std::int32_t>(num(kv, "limit")));
             got = {{"gate", r.stepped ? "open" : "closed"},
                    {"last", str(inn.last)},
                    {"taken", str(inn.taken)},
                    {"send", r.send ? "1" : "0"}};
-            CHECK(inn.carriers_out == static_cast<std::uint32_t>(num(kv, "count"))); // never touched
+            CHECK(inn.carriers_out ==
+                  static_cast<std::uint32_t>(num(kv, "count"))); // never touched
         } else if (t[0] == "take") {
             sim::Inn inn;
             inn.tavern = static_cast<std::uint32_t>(num(kv, "stock"));
@@ -160,9 +163,9 @@ TEST_CASE("inn vectors: the gate, decay, stops, take, unload, priority and pick 
 namespace {
 
 constexpr sim::TypeId kMarketT{9701};
-constexpr sim::TypeId kInnT{9702};    // PRODTYPE 66, input ALKOHOL (29), need 48, one carrier
-constexpr sim::TypeId kInnAlt{9703};  // a non-original Inn type: input goods 47, need 30
-constexpr sim::TypeId kInnTwo{9704};  // two carriers at once
+constexpr sim::TypeId kInnT{9702};   // PRODTYPE 66, input ALKOHOL (29), need 48, one carrier
+constexpr sim::TypeId kInnAlt{9703}; // a non-original Inn type: input goods 47, need 30
+constexpr sim::TypeId kInnTwo{9704}; // two carriers at once
 constexpr std::uint32_t kCartFigure = 220;
 constexpr std::uint32_t kInnCarrier = 204;
 constexpr sim::GoodsId kAlcohol = 29;
@@ -317,8 +320,8 @@ void end_to_end(sim::TypeId type, sim::GoodsId goods) {
     sim::World w = create(r, types);
     REQUIRE(inn_at(w).carriers_out == 0);
     const std::uint64_t spawn = until(w, [&] { return !carriers(w).empty(); });
-    // The gate opens at tick 5000 (diff 5000, stock 0 < 0x100); the building is visited on the island
-    // pass schedule, so the figure appears within the same 50-tick step.
+    // The gate opens at tick 5000 (diff 5000, stock 0 < 0x100); the building is visited on the
+    // island pass schedule, so the figure appears within the same 50-tick step.
     CHECK(spawn >= 5000);
     CHECK(spawn < 5050);
     {
@@ -343,9 +346,9 @@ void end_to_end(sim::TypeId type, sim::GoodsId goods) {
     CHECK(inn_at(w).taken == 0);
     until(w, [&] { return carriers(w).empty(); });
     CHECK(inn_at(w).carriers_out == 0); // released at the end of the figure
-    // The gate at 10000 found the carrier still out (stock 0, so the stock rule alone would send, but
-    // limit 1 == count 1 blocks it): no second figure, the stamp advanced. By now the carrier is back
-    // with 768 and the Inn holds it.
+    // The gate at 10000 found the carrier still out (stock 0, so the stock rule alone would send,
+    // but limit 1 == count 1 blocks it): no second figure, the stamp advanced. By now the carrier
+    // is back with 768 and the Inn holds it.
     CHECK(carriers(w).empty());
     CHECK(inn_at(w).last == 10000);
     CHECK(inn_at(w).tavern == 768);
@@ -361,7 +364,8 @@ void end_to_end(sim::TypeId type, sim::GoodsId goods) {
 
 } // namespace
 
-TEST_CASE("inn end to end: the tick sends job 0x33, it loads from the warehouse, the Inn gains 768") {
+TEST_CASE(
+    "inn end to end: the tick sends job 0x33, it loads from the warehouse, the Inn gains 768") {
     end_to_end(kInnT, kAlcohol);
 }
 
@@ -386,8 +390,8 @@ TEST_CASE("inn limit: no second carrier while one is out, and a limit of two sen
         CHECK(inn_at(w).carriers_out == 1);
     }
     {
-        // Two carriers at once: limit 2. The first gate sends one (count 0 < 2); the stock stays 0 and
-        // the carrier is out for 5502 ticks, so the gate at 10000 sends a second (count 1 < 2).
+        // Two carriers at once: limit 2. The first gate sends one (count 0 < 2); the stock stays 0
+        // and the carrier is out for 5502 ticks, so the gate at 10000 sends a second (count 1 < 2).
         Rig r = make_rig();
         r.place(kMarketT, 110, 110);
         r.place(kInnTwo, 111, 115);
@@ -403,9 +407,9 @@ TEST_CASE("inn limit: no second carrier while one is out, and a limit of two sen
 
 TEST_CASE("inn removal: a demolished Inn leaves no carrier, counter or cargo behind") {
     // Pinned behaviour (K1 review P3): the carrier of a removed home loses its home at the removal
-    // (the figure's end path, D 0x1003b6e0), ends, and its cargo is lost with it; nothing refers to the
-    // Inn afterwards and the invariants (counters equal the figures that refer to them) hold. The
-    // warehouse keeps what the carrier already took (768 at the load).
+    // (the figure's end path, D 0x1003b6e0), ends, and its cargo is lost with it; nothing refers to
+    // the Inn afterwards and the invariants (counters equal the figures that refer to them) hold.
+    // The warehouse keeps what the carrier already took (768 at the load).
     for (const std::uint64_t cut : {std::uint64_t{5000 + 1500}, std::uint64_t{5000 + 3300}}) {
         // 6500: on the way out (nothing taken yet); 8300: loaded (cargo 768) and walking home.
         const auto types = registry();
@@ -431,7 +435,8 @@ TEST_CASE("inn removal: a demolished Inn leaves no carrier, counter or cargo beh
     }
 }
 
-TEST_CASE("inn controls: switched off still decays, the rule off is inert, enough stock sends nothing") {
+TEST_CASE(
+    "inn controls: switched off still decays, the rule off is inert, enough stock sends nothing") {
     const auto types = registry();
     {
         sim::Inn off;
@@ -484,7 +489,8 @@ TEST_CASE("inn controls: switched off still decays, the rule off is inert, enoug
     }
 }
 
-TEST_CASE("inn with no alcohol in the warehouse: the carrier keeps the goods byte and goes home empty") {
+TEST_CASE(
+    "inn with no alcohol in the warehouse: the carrier keeps the goods byte and goes home empty") {
     // D 0x100756a9-0x100756c3: the send pre-sets the cargo goods; with no source (the market holds
     // none) the carrier walks nowhere, the cargo amount stays 0 and the Inn gains nothing.
     const auto types = registry();
@@ -549,7 +555,8 @@ TEST_CASE("inn save and reload with stock above zero and a carrier on its way") 
     CHECK(c.check_invariants() == "");
 }
 
-TEST_CASE("inn state: the 16-bit fields are refused above 65535, and a zero input is a typed refusal") {
+TEST_CASE(
+    "inn state: the 16-bit fields are refused above 65535, and a zero input is a typed refusal") {
     const auto types = registry();
     {
         sim::Inn bad;

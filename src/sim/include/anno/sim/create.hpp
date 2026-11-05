@@ -47,9 +47,10 @@ namespace anno::sim {
 ///
 /// `first_assignment` (MAP-POP-CLOSE-1 G1) is the world draw source of a PLAYER build: with
 /// Rules::house_updates, a House created without `initial` runs SetGroup's first assignment (the
-/// original's Create calls SetGroup with a null old group, AnnoWelt 0x10024c3c -> 0x10076b90): residents
-/// and E from the group, one draw per forced need in need order, the need stocks. The scenario
-/// loader, a saved house and every other caller pass no source and keep the constructor numbers.
+/// original's Create calls SetGroup with a null old group, AnnoWelt 0x10024c3c -> 0x10076b90):
+/// residents and E from the group, one draw per forced need in need order, the need stocks. The
+/// scenario loader, a saved house and every other caller pass no source and keep the constructor
+/// numbers.
 ///
 /// `initial` (the loader's BuildingSpec::payload) replaces the make_* default:
 /// stocks, switches and `last` are kept as given (a mine without a deposit still

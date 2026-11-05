@@ -272,9 +272,10 @@ Kv run_vector(const std::string& kind, const Kv& kv, const std::map<std::string,
         const sim::DeliverResult r =
             sim::house_deliver(hv.facts, stock, static_cast<sim::GoodsId>(num("goods_id")),
                                static_cast<std::uint32_t>(num("amount")));
-        out["status"] = r.fault == sim::ResidentFault::None
-                            ? "ok"
-                            : (r.fault == sim::ResidentFault::IdSecCycle ? "idsec_cycle" : "refused");
+        out["status"] =
+            r.fault == sim::ResidentFault::None
+                ? "ok"
+                : (r.fault == sim::ResidentFault::IdSecCycle ? "idsec_cycle" : "refused");
         out["stock"] = fmt_list(stock);
         out["touched"] = std::to_string(r.touched);
     } else if (kind == "innrec") {
@@ -290,7 +291,8 @@ Kv run_vector(const std::string& kind, const Kv& kv, const std::map<std::string,
         const Goods& g = goods.at(kv.at("goods"));
         const House& h = houses.at(kv.at("house"));
         sim::HouseGroup grp;
-        grp.needs = h.needs; // the vector's lookup= field is the reference's input; the C++ derives its own
+        grp.needs =
+            h.needs; // the vector's lookup= field is the reference's input; the C++ derives its own
         // derive_group binds the population roles (infrastructure goods 0x4c..0x5a), which need a
         // table of the original's size; a vector with a smaller goods table is padded (the padding
         // goods have no IdSec and no need).
@@ -299,11 +301,10 @@ Kv run_vector(const std::string& kind, const Kv& kv, const std::map<std::string,
             padded.resize(96);
         }
         sim::HouseGroupDerived derived;
-        const std::string problem =
-            sim::derive_group(grp, padded, sim::PopulationRoles{}, derived);
-        out["status"] = problem.empty() ? "ok"
+        const std::string problem = sim::derive_group(grp, padded, sim::PopulationRoles{}, derived);
+        out["status"] = problem.empty()                                    ? "ok"
                         : problem.find("IdSec cycle") != std::string::npos ? "cycle"
-                                                                            : "other:" + problem;
+                                                                           : "other:" + problem;
     } else if (kind == "buy") {
         const Goods& g = goods.at(kv.at("goods"));
         const House& h = houses.at(kv.at("house"));

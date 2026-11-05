@@ -521,7 +521,14 @@ TEST_CASE("picture recovery: a generation that outlives the bridge is destroyed 
     }
     scene.reset(); // the base generation and the bridge's references are gone; `kept` is the last
                    // owner
-    CHECK(render::SceneReclaimer::shared().stats().completed == before);
+    // No check here that `completed` is still `before`: ScenePicture's own reaper thread may have
+    // already released its copy of the base generation before this point (asynchronously, off the
+    // test thread), making `scene.reset()` above the one that drops it to zero and queues it on
+    // SceneReclaimer, whose single worker thread can then finish that queued job before this line
+    // runs — a real race with no synchronization forcing the other order (found: linux-gcc CI,
+    // 2026-11-05, `completed` observed as `before + 1` here). The property this test cares about —
+    // that the drop on this thread does not block for an inline destruction, and that the eventual
+    // destruction runs on another thread — is covered below without depending on that ordering.
     kept.reset();
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (render::SceneReclaimer::shared().stats().completed < before + 2 &&

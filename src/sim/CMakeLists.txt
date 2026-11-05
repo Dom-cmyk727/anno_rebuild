@@ -82,6 +82,9 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME script2_fresh_process_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --self-test)
     add_test(NAME script2_synthetic_fresh_process COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --exe $<TARGET_FILE:anno_sim_tests>)
     add_test(NAME script2_original_fresh_process COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --original --exe $<TARGET_FILE:anno_sim_tests>)
+    # Accepted UNIT1 original sanitizer canary measured581.97s. The combined
+    # fresh-process contract gets1500s; the unrelated generated opening is excluded.
+    set_tests_properties(script2_original_fresh_process PROPERTIES TIMEOUT 1500)
     add_test(NAME script2_stream_reference_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/sim_stream_script2.py --self-test)
     add_test(NAME script2_stream_reference_agrees COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/sim_stream_script2.py --check)
     add_test(NAME script2_reference_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_runtime2_ref.py --self-test)

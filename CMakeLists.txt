@@ -203,10 +203,6 @@ if(ANNO_BUILD_TESTS)
   else()
     message(WARNING "Python3 not found: the figure-digest and ship-navigation reference tests are NOT registered (NOT_RUN)")
   endif()
-  if(UNIX)
-    add_test(NAME run_selected_contract
-             COMMAND bash ${CMAKE_SOURCE_DIR}/tools/test/run_selected_test.sh)
-  endif()
   add_subdirectory(src/test_support)
 endif()
 

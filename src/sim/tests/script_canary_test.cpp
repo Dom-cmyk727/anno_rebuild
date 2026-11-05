@@ -264,3 +264,37 @@ TEST_CASE(
             << init->offset << " length=" << fragment.size()
             << " full scenario unsupported: AREA queries, PLAYWAVE, MONEY_ADD");
 }
+TEST_CASE("SCRIPT1 changed permission action diverges at its content identity and action visit") {
+    auto original = script_test::make();
+    auto kernel = original.world.script().source;
+    const std::string header = "[SCRIPT_KERNEL]\n";
+    const auto first = kernel.find(header) + header.size();
+    const auto last = kernel.find("[SIGNALS]");
+    kernel = kernel.substr(first, last - first);
+    const auto allow = script_test::permission("ME", original.types.weaver, true);
+    const auto found = kernel.find(allow);
+    REQUIRE(found != std::string::npos);
+    kernel.replace(found, allow.size(),
+                   script_test::permission("ME", original.types.weaver, false));
+    auto changed = script_test::make(false, kernel);
+    CHECK(original.world.state_hash() !=
+          changed.world.state_hash()); // distinct content identity at entry0
+    original.world.advance(0);
+    changed.world.advance(0);
+    CHECK(original.world.players().find(sim::PlayerId{0})->permissions[0].value == 0);
+    CHECK(changed.world.players().find(sim::PlayerId{0})->permissions[0].value == 0);
+    original.world.advance(1000);
+    changed.world.advance(1000);
+    original.world.advance(0);
+    changed.world.advance(0); // old tick500, PLAYTIME1, first causal action visit
+    CHECK(
+        original.world.construction_eligibility(sim::PlayerId{0}, original.types.weaver).allowed());
+    CHECK_FALSE(
+        changed.world.construction_eligibility(sim::PlayerId{0}, changed.types.weaver).allowed());
+    const auto command = command_test::build(0, command_test::kCity0,
+                                             {command_test::at(original.types.weaver, 120, 112)});
+    CHECK(original.world.apply(command).ok());
+    const auto hash = changed.world.state_hash();
+    CHECK(changed.world.apply(command).status == sim::Reject::ConstructionDenied);
+    CHECK(changed.world.state_hash() == hash);
+}

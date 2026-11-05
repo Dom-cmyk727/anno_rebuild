@@ -264,3 +264,50 @@ Quoted customid3000000000 is a legal content control. Numeric conditions remain
 signed32. Wrong raw setter, missing ALL exclusion, missing authoritative gate,
 and effective-only rewrite controls each fail their intended assertion; ordinary
 controls execute and pass. S5 final reviewer disposition follows after restore.
+
+## S5/S6 checkpoint and precise original-program blocker
+
+S5 APPROVED /root/permission_semantics_review86abd3e1 inspected8aada9a5;
+no P1/P2. Quoted-type correction separately checked against primary parserbytes.
+All authoritative-gate mutants restored and clean rebuild completes.
+
+S6-canary01 at8e2350db PASS35selected/35executed/0failed/0empty/0skipped/
+0incomplete; required fresh-process contract3methods separately passes.
+The retained fresh-mnm9838s manifest pins executable SHA256
+a5a08a5c40ac003b8b19898d5ecf4c0d8e3b91391097c612b54f16a7e66af880,
+producerPID57252 and workerPID57253. The complete stocked synthetic program
+uses customtype90001, two players, INIT denial, later allowance/denial, exact
+300gold/3ttools/4twood build debit,13encoded entries/5matching checkpoints,
+native cuts0/1/5/7/10 and a changed command diverging at actionentry7 /
+checkpoint8. It is not a no-grants ship-start demonstration.
+
+Capability inventory [script-capabilities.json](script-capabilities.json):
+50parsed,11compiled,0complete permission programs compiled,0full original
+scenarios executed by this inventory. All six shipped permission programs need
+unsupported object/area/query/action features. Compiled empty kernels are not
+tutorial behavior. A bounded original endless01 INIT fragment (offset551,
+length173) runs via the normal loader/World.advance in a stocked synthetic
+harness:461ALL rows plus exact2229 row, then actual Inn1335 BuildCmd succeeds.
+This is labelled FRAGMENT_ONLY; the complete endless01 program remains refused.
+
+**S6_REAL_COMPLETE_PROGRAM is blocked.** No complete shipped permission program
+fits this reviewed handler subset. Fragments and the complete synthetic canary
+do not replace the missing full-original claim. Completing that claim requires
+a new bounded handler scope and primary contracts, beyond the reviewed first
+slice. Do not substitute no-op handlers or remove the surrounding program.
+Independent remaining scale, compatibility/regression checks and final review
+continue; this is not COMPLETE LOCAL CANDIDATE.
+
+Exact additional parsed dependencies for the six permission programs:
+
+- Scenes/0011SingleEndlosAddon/endless01.sze: actions MONEY_ADD, PLAYWAVE; queries AREA:TOUCHED_BY_SHIP_FROM, AREA:TOUCHED_BY_SOLDIER_FROM.
+
+- Scenes/0100Kampagne01/S01_03_01.sze: actions GOTO_SCREEN, LOST, PLAYVIDEO, PLAYWAVE, QUESTLOG_SHOW, SHOWTEXT, WON; queries AREA:CONTAINS, PLAYER:DEAD, PLAYER:INHABITANTCOUNT, PLAYER:MAKES_PROFIT, PLAYER:WAR_STATUS.
+
+- Scenes/0100Kampagne01/S01_05_01.sze: actions CHEAT, LOST, PLAYVIDEO, QUESTLOG_SHOW, SETWARELOG, SHOWTEXT, WON; queries AREA:TOUCHED_BY_SOLDIERS_FROM, OBJECT:INHABITANTCOUNT, OBJECT:KILLED, PLAYER:BOUGHT, PLAYER:INHABITANTCOUNT, PLAYER:SHIPCNT, PLAYER:WARECOUNT, PLAYER:WAR_STATUS.
+
+- Scenes/0201SingleAddOn/single31.sze: actions ASSIGN_ALL_SOLDIERS, ASSIGN_OBJECT, FREEZE_CITY, GOTO_SCREEN, LOST, MINIMAP_ALERT, PLAYVIDEO, QUESTLOG_DRAW, QUESTLOG_SHOW, SET_DIPLOMACY, SET_UNIT_VISIBLE, WON; queries AREA:TOUCHED_BY_OBJECT, AREA:TOUCHED_BY_SOLDIERS_FROM, OBJECT:KILLED, OBJECT:OWNER, PLAYER:SOLDIERLOST.
+
+- Scenes/0201SingleAddOn/single36.sze: actions LOST, PLAYVIDEO, PLAYWAVE, QUESTLOG_DRAW, QUESTLOG_SHOW, SHOWTEXT, WON; queries AREA:TOUCHED_BY_SHIP_FROM, AREA:TOUCHED_BY_SOLDIER_FROM, PLAYER:INHABITANTCOUNT, PLAYER:WAR_STATUS.
+
+- Scenes/0201SingleAddOn/single39.sze: actions ATTACK_AREA, FREEZE_CITY, GOTO_SCREEN, LOST, MONEY_ADD, QUESTLOG_DRAW, QUESTLOG_SHOW, SET_FOR_BUY, WON; queries AREA:TOUCHED_BY_SHIP_FROM, OBJECT:KILLED, PLAYER:SHIPCNT, PLAYER:WARECOUNT.

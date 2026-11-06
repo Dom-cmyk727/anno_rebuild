@@ -140,6 +140,11 @@ struct ForestryStats {
         std::uint64_t consumed_88 = 0, made_88 = 0;
     };
     std::map<BuildingId, FarmLedger> farms;
+    /// MAP-NEEDS-2 N3: the same for a workshop, per input and per output line (diagnostic).
+    struct WorkshopLedger {
+        std::vector<std::uint64_t> consumed_88, made_88;
+    };
+    std::map<BuildingId, WorkshopLedger> workshops;
     /// MAP-SUPPLY-1 S4: the same for a small farm, per line (what each production step used of the
     /// raw stock and made of the output; credits and loads are other terms).
     struct SmallFarmLedger {

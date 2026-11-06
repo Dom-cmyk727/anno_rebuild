@@ -184,3 +184,46 @@ single-forest115.63s Debug workload. Measure this pilot before selecting a deadl
 for the later combined sanitizer itinerary. Frozen focused selector is the one
 new E1 case; required cargo/reference, bootstrap-budget and populated-state
 contracts remain separate. E1 execution and independent review PENDING.
+
+### E1 first pilot and focused review corrections
+
+First canonical E1 build at4740aaf9 failed before selection: an unparenthesized
+ternary inside doctest's streamed diagnostic. Retained `canonical-debug-01.log`,
+status2/CTestnull, no selected test executed. Test-only cbc0ce7c corrects it.
+Canonical02 at clean cbc0ce7c passes1/1 (239 assertions),6 exact prerequisites
+separately1/1, all other outcome categories0. Raw SHA256
+b5d7a25e1463c2a05796f5a49ac58ec549046f98a854a4def1083ef40ad1b2b6.
+Planning15.25s includes original registry/load; its inner planning is6400.51ms.
+Observed: source island0 click255,138 dock257,134; forester238,128,20roads and65
+cuttable trees;37500ticks gives448warehouse wood,1tload/192residue. Destination
+island1 click456,353 dock452,349 and receiver450,355 pass authoritative commands.
+
+Independent E1 reviewer confirms the pilot, all472 input hashes (281337946bytes)
+and the original primary facts. It requests three focused closures: repeat
+outbound route after receiving construction, explicit travel/upkeep budget, and
+another source batch within its declared production cap. These are addressed
+before E1 approval, not waived on the strength of the initial PASS.
+
+The strengthened second-batch cut counts existing HOLZ after first export as
+P0=source residual+Farm.out+active cart cargo whose home is the source warehouse.
+Reserved is already inside output; BAUM raw is not wood; ended/Done cargo is
+history and excluded. Second request=floor(P0/256)+1 tons, with actual hold room
+checked after second founding and first unload. Therefore its raw quantity>P0
+cannot be supplied entirely by already-produced wood. The bounded second pilot
+must observe enough new per-home made_88 and warehouse stock, load it with exact
+debit/credit and re-plan the repeat source→destination leg on the resulting
+post-construction/post-production world. This is still planning-copy evidence.
+Both production trials use at most400×1000ms each; at most8 destination trials
+imply at most400+8×400 planning production advances overall. No search cap or
+production rule is silently changed.
+
+Conservative main-itinerary gold feasibility, before actual timing:4 sailed legs
+at<=1000000ticks each plus2 production waits at<=200000ticks each gives4400000
+elapsed ticks. At most2 cities, each costing1 per2000ticks, plus at most1 first-
+booking allowance per city, gives at most4402city upkeep. Player buckets start0
+and these city-only lifecycle operations do not add player upkeep (the accepted
+bac3 regression stays the nonzero simultaneous control). The generated start is
+script-free and this plan builds no households. Construction900+5R with R20 gives
+1000; total conservative spending<=5402 leaves>=24598of30000gold. Actual money,
+player remainders and any other legitimate effects still must be reconciled in
+E5, independently per owner; the bound is not a measured economic ledger.

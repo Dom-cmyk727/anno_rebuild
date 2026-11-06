@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -3885,6 +3886,8 @@ struct Plan {
     Origin receiver;
     std::uint32_t first_stock = 0, first_tons = 0, first_residue = 0;
     std::uint64_t production_ticks = 0;
+    std::uint64_t old_wood_pipeline = 0, second_made = 0, second_ticks = 0;
+    std::uint32_t second_tons = 0, second_stock = 0;
 };
 
 sim::CityRef city_of_warehouse(const sim::World& w, sim::BuildingId warehouse) {
@@ -4090,6 +4093,20 @@ Plan plan(const sim::World& pristine, const RealStart& rs) {
     REQUIRE(result.first_residue == result.first_stock % 256);
     REQUIRE(result.first_residue > 0);
     REQUIRE(result.first_residue < 256);
+    // Reserved is inside out, BAUM raw is not wood, ended cargo is history.
+    result.old_wood_pipeline =
+        result.first_residue +
+        std::uint64_t{std::get<sim::Farm>(trial.find_building(forest_id)->payload).out};
+    for (const auto& f : trial.figures().list.slots) {
+        if (f && !f->expiry_stamp && f->home == warehouse && f->job == sim::kJobMarketCart &&
+            f->cargo_goods == wood &&
+            (!f->transport || f->transport->step != sim::TransportStep::Done)) {
+            result.old_wood_pipeline += f->cargo_88;
+        }
+    }
+    REQUIRE(result.old_wood_pipeline / 256 < std::numeric_limits<std::uint32_t>::max());
+    result.second_tons = static_cast<std::uint32_t>(result.old_wood_pipeline / 256 + 1);
+    REQUIRE(std::uint64_t{result.second_tons} * 256 > result.old_wood_pipeline);
     bool selected = false;
     for (const auto& candidate : destination_sites(trial, ref.island.v)) {
         auto leg = result.destination;
@@ -4144,6 +4161,45 @@ Plan plan(const sim::World& pristine, const RealStart& rs) {
         if (back.status != sim::RouteStatus::Planned || back.end_x != result.source.goal_x ||
             back.end_z != result.source.goal_y)
             continue;
+        // Planning-only return. The genuine arm must sail and match arrival.
+        sim::WorldTestAccess::relocate(
+            destination, sim::FigureId{1},
+            {result.source.goal_x * 256 + 128, result.source.goal_y * 256 + 128});
+        REQUIRE(stock(destination, ref, wood) == result.first_residue);
+        const auto room = std::uint64_t{rs.types->find_figure_type(1502)->capacity_88} -
+                          ship_of(destination, 1).holds.at(0).amount_88;
+        REQUIRE(std::uint64_t{result.second_tons} * 256 <= room);
+        sim::TransportStats further;
+        destination.set_transport_stats(&further);
+        const auto second_start = destination.clock().tick();
+        for (std::uint32_t n = 0; n < 400; ++n) {
+            destination.advance(1000);
+            REQUIRE_FALSE(destination.faulted());
+            if (stock(destination, ref, wood) >= std::uint64_t{result.second_tons} * 256) {
+                result.second_stock = stock(destination, ref, wood);
+                result.second_ticks = destination.clock().tick() - second_start;
+                break;
+            }
+        }
+        destination.set_transport_stats(nullptr);
+        REQUIRE_MESSAGE(result.second_stock >= std::uint64_t{result.second_tons} * 256,
+                        "second export unavailable within bounded production trial");
+        result.second_made = further.forestry.farms.at(forest_id).made_88;
+        REQUIRE(result.second_made >=
+                std::uint64_t{result.second_tons} * 256 - result.old_wood_pipeline);
+        const auto second_load =
+            destination.apply({sim::PlayerId{0}, sim::LoadCmd{sim::FigureId{1}, warehouse, 0, wood,
+                                                              result.second_tons}});
+        REQUIRE(second_load.ok());
+        REQUIRE(second_load.records.at(0).transferred_88 ==
+                std::uint64_t{result.second_tons} * 256);
+        const auto repeat = route(destination, ship_of(destination, 1).pos, leg.goal_x, leg.goal_y);
+        MESSAGE("expansion repeat route status "
+                << static_cast<int>(repeat.status) << " end " << repeat.end_x << "," << repeat.end_z
+                << " pops " << repeat.work.coarse_pops << "/" << repeat.work.fine_pops);
+        if (repeat.status != sim::RouteStatus::Planned || repeat.end_x != leg.goal_x ||
+            repeat.end_z != leg.goal_y)
+            continue;
         result.receiver = *receiver_site;
         result.destination = leg;
         selected = true;
@@ -4191,10 +4247,13 @@ TEST_CASE("expansion E1: unchanged candidate route docks forest and finite budge
             << " road " << plan.forest.road.size() << " trees " << plan.forest.trees
             << " productionticks " << plan.production_ticks << " receipt " << plan.first_stock
             << " loadtons " << plan.first_tons << " residue " << plan.first_residue
-            << " destination " << plan.destination.site.island << " click "
-            << plan.destination.site.click_x << "," << plan.destination.site.click_y << " dock "
-            << plan.destination.goal_x << "," << plan.destination.goal_y << " receiver "
-            << plan.receiver.x << "," << plan.receiver.y << " planning_ms "
+            << " oldpipeline " << plan.old_wood_pipeline << " secondtons " << plan.second_tons
+            << " secondmade " << plan.second_made << " secondstock " << plan.second_stock
+            << " secondticks " << plan.second_ticks << " destination "
+            << plan.destination.site.island << " click " << plan.destination.site.click_x << ","
+            << plan.destination.site.click_y << " dock " << plan.destination.goal_x << ","
+            << plan.destination.goal_y << " receiver " << plan.receiver.x << "," << plan.receiver.y
+            << " planning_ms "
             << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
                    .count());
 }

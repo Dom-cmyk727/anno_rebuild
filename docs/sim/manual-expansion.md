@@ -568,3 +568,8 @@ one shared exact-transfer oracle: rivaldebit (globaltotalstillconserved), credit
 only, an unlogged duplicateeffect (public repeats themselves remainlegal), and
 staleaccepted after publicDemolish. Legal controls mustexecute. No mutation of
 active production source or the genuine world is permitted. Review/gates pending.
+
+E5 cheap01 at18b30fdf failed during compilation before any selected execution:
+a nested final-evidence byte vector shadowed the earlier recording bytes under
+Werror. Rename only that local; retain the first failed build. No runtime change
+or failed gameplay expectation is hidden by this preparation correction.

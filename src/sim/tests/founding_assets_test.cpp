@@ -5027,9 +5027,9 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     expansion_test::publish("continuation.txt",
                             std::vector<std::uint8_t>(text.begin(), text.end()));
     if (const char* expected = std::getenv("ANNO_EXPAND_E4_EXPECTED_FINAL")) {
-        const auto bytes = read_all(expected);
-        REQUIRE_FALSE(bytes.empty());
-        CHECK(w.save() == bytes);
+        const auto expected_final_bytes = read_all(expected);
+        REQUIRE_FALSE(expected_final_bytes.empty());
+        CHECK(w.save() == expected_final_bytes);
         MESSAGE("EXPANSION_E4 trajectory byte-identical under full native monitoring");
     }
     MESSAGE("EXPANSION_E5 checkpoints " << checkpoints << " changed_entry " << changed_entry

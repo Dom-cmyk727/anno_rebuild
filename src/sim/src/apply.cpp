@@ -435,6 +435,19 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         out.status = Reject::NotResearched;
         return out;
     }
+    // 5b. Policy B (docs/sim/salt-extraction.md section 22): a mine with no ore object of its ware in
+    // reach is refused here, before the serial, the affordability test and any charge, so a refusal
+    // changes nothing and the dry run equals the live apply. ADAPTATION: the radius-7 lookup of the
+    // production step is our rule, not a proven copy of the original's placement predicate (unread);
+    // discovery is not consulted. Only a mine class (quarries and the rest never reach this point).
+    if (type->cls == RuntimeClass::Mine) {
+        const MineArea area{rec.x, rec.y, footprint(*type, rec.rotation).first,
+                            footprint(*type, rec.rotation).second};
+        if (!find_ore_in_reach(is, env.types, *type, area, mine_is_deep(type->prod, type->research_id))) {
+            out.status = Reject::NoDepositInReach;
+            return out;
+        }
+    }
     // The serial the creation takes (create_building refuses 0 and 0xffffffff). A tile object
     // takes none.
     const std::uint64_t serials_before = budget != nullptr ? budget->serials : 0;
@@ -576,9 +589,10 @@ RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checke
     }
     Building& b = *city.index.lists[key.value().list].slots[key.value().slot];
     r.building = b.id;
-    // Stream 135: a mine placed by a command binds the shared deposit of an ore in reach (policy A:
-    // none in reach = an unbound, idle mine). Here and not in create_building, which the scenario
-    // loader shares: imported mines keep no deposit. This overrides the find_deposit of creation.
+    // Stream 135: a mine placed by a command binds the shared deposit of an ore in reach (policy B: the
+    // check refused a mine with none in reach before any charge, so the lookup always finds one here).
+    // Here and not in create_building, which the scenario loader shares: imported mines keep no
+    // deposit. This overrides the find_deposit of creation.
     if (auto* mine = std::get_if<Mine>(&b.payload)) {
         mine->deposit = bind_mine_deposit(is, env.types, b, *c.type, mine->deep);
     }

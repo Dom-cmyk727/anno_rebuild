@@ -14,8 +14,8 @@ DepositInit deposit_load(std::uint32_t amount_tons, GoodsId ore_goods, bool rese
     return d;
 }
 
-std::optional<std::size_t> bind_mine_deposit(Island& island, const TypeRegistry& types,
-                                             const Building& b, const BuildingType& t, bool deep) {
+std::optional<std::size_t> find_ore_in_reach(const Island& island, const TypeRegistry& types,
+                                             const BuildingType& t, const MineArea& area, bool deep) {
     if (!t.has_prod || t.prod.outputs.empty()) {
         return std::nullopt;
     }
@@ -24,7 +24,6 @@ std::optional<std::size_t> bind_mine_deposit(Island& island, const TypeRegistry&
     if (!ore_goods) {
         return std::nullopt;
     }
-    const MineArea area = mine_area(b, t);
     std::optional<std::size_t> best_ore;
     std::uint32_t best_remaining = 0;
     for (std::size_t i = 0; i < island.ore_objects.size(); ++i) {
@@ -50,9 +49,19 @@ std::optional<std::size_t> bind_mine_deposit(Island& island, const TypeRegistry&
             best_remaining = score;
         }
     }
+    return best_ore;
+}
+
+std::optional<std::size_t> bind_mine_deposit(Island& island, const TypeRegistry& types,
+                                             const Building& b, const BuildingType& t,
+                                             bool deep) {
+    const std::optional<std::size_t> best_ore =
+        find_ore_in_reach(island, types, t, mine_area(b, t), deep);
     if (!best_ore) {
         return std::nullopt;
     }
+    const std::string& goods = t.prod.outputs[0];
+    const GoodsId ore_goods = *types.goods_by_name(goods);
     const OreObject& ob = island.ore_objects[*best_ore];
     for (std::size_t d = 0; d < island.deposits.size(); ++d) {
         const Deposit& dep = island.deposits[d];
@@ -60,7 +69,7 @@ std::optional<std::size_t> bind_mine_deposit(Island& island, const TypeRegistry&
             return d;
         }
     }
-    const DepositInit init = deposit_load(ob.amount, *ore_goods);
+    const DepositInit init = deposit_load(ob.amount, ore_goods);
     island.deposits.push_back(Deposit{goods, ob.x, ob.y, init.remaining, init.reserve});
     return island.deposits.size() - 1;
 }

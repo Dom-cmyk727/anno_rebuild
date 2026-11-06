@@ -22,6 +22,7 @@
 #include <anno/sim/command.hpp>
 #include <anno/sim/mine_source.hpp>
 #include <anno/sim/placement.hpp>
+#include <anno/sim/replay.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/site_checks.hpp>
 #include <anno/sim/terrain_view.hpp>
@@ -716,27 +717,91 @@ TEST_CASE("salt mine: the COVERAGE row, a separate predicate with its legal neig
     CHECK(attempt(arrange({{354, 359}, {354, 361}})) == sim::Reject::None);
 }
 
-TEST_CASE("salt mine: policy A accepts and pays a mine with no ore in reach and leaves it idle") {
-    auto s = salt_world(true);
+TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before any payment") {
+    // ADAPTATION (docs/sim/salt-extraction.md section 22): the radius-7 lookup is our placement rule, not a
+    // proven copy of the original's predicate; discovery is not consulted. Each refusal leaves the saved state
+    // byte-identical (no payment, no serial, no building, no deposit) and the dry run (build_atomic) answers
+    // the same as the live apply.
+    auto live = salt_world(true, false);
+    auto dry = salt_world(true, true);
+    if (!live || !dry) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    struct Row {
+        std::int32_t x, y;
+        const char* what;
+    };
+    for (const Row r : {Row{335, 340, "no ore of any ware in reach"},
+                        Row{366, 353, "only a deposit of another ware in reach (wrong mineral)"},
+                        Row{352, 359, "a salt deposit just outside the reach"}}) {
+        INFO(r.what << " at " << r.x << "," << r.y);
+        for (SaltWorld* sw : {&*live, &*dry}) {
+            sim::World w = sw->w;
+            const auto before = w.save();
+            const std::int64_t gold0 = gold(w);
+            const sim::ApplyResult res = w.apply(build_cmd({mine_at(r.x, r.y)}));
+            // the atomic command reports AtomicAbort as a whole, with the same per-record reason
+            CHECK(res.status == (sw == &*dry ? sim::Reject::AtomicAbort : sim::Reject::NoDepositInReach));
+            REQUIRE(res.records.size() >= 1);
+            CHECK(res.records[0].status == sim::Reject::NoDepositInReach);
+            CHECK(gold(w) == gold0);
+            CHECK(w.save() == before);
+            CHECK(isle(w).deposits.empty());
+        }
+    }
+    // the neighbour just inside the reach builds, and the mine it makes is bound: a mine made by a command
+    // never exists without a deposit
+    for (SaltWorld* sw : {&*live, &*dry}) {
+        sim::World w = sw->w;
+        const sim::ApplyResult res = w.apply(build_cmd({mine_at(353, 359)}));
+        REQUIRE_MESSAGE(res.ok(), sim::reject_name(res.status));
+        const auto* m = std::get_if<sim::Mine>(&w.find_building(res.records.at(0).building)->payload);
+        REQUIRE(m != nullptr);
+        CHECK(m->deposit.has_value());
+        CHECK(isle(w).deposits.size() == 1);
+    }
+    // a refusal inside a batch: the whole atomic command changes nothing; the plain world keeps the first
+    // record and refuses the second, and no mine of either is unbound
+    {
+        sim::World a = dry->w, p = live->w;
+        const auto before = a.save();
+        const sim::Command mixed = build_cmd({mine_at(353, 359), mine_at(335, 340)});
+        CHECK_FALSE(a.apply(mixed).ok());
+        CHECK(a.save() == before);
+        const sim::ApplyResult pr = p.apply(mixed);
+        REQUIRE(pr.records.size() == 2);
+        CHECK(pr.records[0].status == sim::Reject::None);
+        CHECK(pr.records[1].status == sim::Reject::NoDepositInReach);
+    }
+    // the imported mine stays inert and unchanged
+    const sim::Building* imported = nullptr;
+    for (const auto& l : isle(live->w).city(kSaltCity.city)->index.lists)
+        for (const auto& b : l.slots)
+            if (b && b->type.v == 1203) imported = &*b;
+    REQUIRE(imported != nullptr);
+    CHECK_FALSE(std::get<sim::Mine>(imported->payload).deposit.has_value());
+}
+
+TEST_CASE("salt mine: salt never depletes while the edition setting depletes") {
+    auto s = salt_world(true, false, true);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    sim::World& w = s->w;
-    const std::int64_t gold0 = gold(w);
-    const sim::ApplyResult r = w.apply(build_cmd({mine_at(335, 340)}));
-    REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
-    CHECK(gold(w) < gold0);
-    CHECK(isle(w).deposits.empty());
-    const auto* mine = std::get_if<sim::Mine>(&w.find_building(r.records.at(0).building)->payload);
-    REQUIRE(mine != nullptr);
-    CHECK_FALSE(mine->deposit.has_value());
-    for (int i = 0; i < 20; ++i) {
-        w.advance(kStepMs);
-        REQUIRE_MESSAGE(!w.faulted(), w.fault());
+    REQUIRE(sim::WorldTestAccess::settings(s->w).depletes()); // the add-on edition (prop14 bit 1): the setting that depletes
+    const sim::ApplyResult r = s->w.apply(build_cmd({mine_at(353, 359)}));
+    REQUIRE(r.ok());
+    std::uint64_t out_seen = 0;
+    for (int i = 0; i < 3000; ++i) {
+        s->w.advance(kStepMs);
+        REQUIRE_MESSAGE(!s->w.faulted(), s->w.fault());
+        out_seen = std::max<std::uint64_t>(out_seen, std::get<sim::Mine>(s->w.find_building(r.records.at(0).building)->payload).out);
     }
-    CHECK(std::get<sim::Mine>(w.find_building(r.records.at(0).building)->payload).out == 0);
-    CHECK(isle(w).deposits.empty());
+    CHECK(out_seen > 0); // it really produced
+    REQUIRE(isle(s->w).deposits.size() == 1);
+    CHECK(isle(s->w).deposits[0].remaining == 2000U * sim::kTon); // deep: worked, never drawn down
+    CHECK(isle(s->w).deposits[0].reserve);
 }
 
 TEST_CASE("salt mine: shared deposit and no refill by teardown rebuild or reload") {
@@ -2230,3 +2295,37 @@ TEST_CASE("salt interruption X4: the Kontor is not a link of the chain") {
     CHECK(all_positive(w.p3, 0, true, true, true, true, true));
 }
 
+
+TEST_CASE("salt mine: a refused mine command is logged and the log reproduces") {
+    // Reject::NoDepositInReach is appended at the end of the enum. A Reject is a host-facing answer: it is
+    // in no command wire form, no replay log, no saved state and no hash (a log holds the commands and the
+    // checkpoint hashes), so the append needs no format or stream version change. This test records a
+    // refused command between accepted ones, writes and reads the log, and replays it from the initial save.
+    auto s = salt_world(true, false, true);
+    if (!s) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto started = sim::Recorder::start(s->w);
+    REQUIRE_MESSAGE(started.ok(), (started.ok() ? std::string() : started.error()));
+    sim::Recorder rec = std::move(started).value();
+    const auto before = s->w.save();
+    const sim::ApplyResult refused = rec.submit(build_cmd({mine_at(335, 340)}));
+    CHECK(refused.status == sim::Reject::NoDepositInReach);
+    CHECK(s->w.save() == before); // nothing changed; the command is nevertheless in the log
+    rec.advance(100);
+    REQUIRE(rec.submit(build_cmd({mine_at(353, 359)})).ok());
+    for (int i = 0; i < 20; ++i) rec.advance(100);
+    rec.checkpoint();
+    const auto bytes = sim::write_log(rec.log());
+    REQUIRE_MESSAGE(bytes.ok(), (bytes.ok() ? std::string() : bytes.error()));
+    auto read = sim::read_log(bytes.value());
+    REQUIRE_MESSAGE(read.ok(), (read.ok() ? std::string() : read.error()));
+    CHECK(read.value() == rec.log());
+    auto fresh = sim::World::load(rec.log().initial_save, s->types, {});
+    REQUIRE_MESSAGE(fresh.ok(), (fresh.ok() ? std::string() : fresh.error()));
+    auto replayed = sim::replay(fresh.value(), read.value());
+    REQUIRE_MESSAGE(replayed.ok(), (replayed.ok() ? std::string() : replayed.error()));
+    CHECK(replayed.value().reproduced());
+    CHECK(fresh.value().save() == s->w.save());
+}

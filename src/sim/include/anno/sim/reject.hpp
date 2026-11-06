@@ -106,7 +106,13 @@ enum class Reject : std::uint16_t {
     HouseDomain,
     PermissionContext,
     ConstructionDenied,
-    CityAccounting
+    CityAccounting,
+    // MAP-EXTRACT-1 (policy B, docs/sim/salt-extraction.md section 22), appended in order.
+    /// BuildCmd of a mine: no ore object of its output ware lies in the mine's reach (an ADAPTATION: the
+    /// radius-7 runtime lookup of the production step, not a proven copy of the original's placement
+    /// predicate, which is unread). Refused before any charge, serial or world change. Discovery by a
+    /// scout is not read and is not a reason.
+    NoDepositInReach
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -236,6 +242,8 @@ struct ApplyResult {
         return "CityAccounting";
     case Reject::HouseDomain:
         return "HouseDomain";
+    case Reject::NoDepositInReach:
+        return "NoDepositInReach";
     }
     return "?";
 }

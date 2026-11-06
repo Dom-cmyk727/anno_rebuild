@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted; gameplay assignments unchanged). Windows job details below retain the Claude Code orchestrator’s 13:30 checkpoint.
+**Last updated:** 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted; gameplay assignments unchanged). Windows job details below retain the Claude Code orchestrator’s 14:10 checkpoint, including its `2f2b45ac` cache fix.
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -40,7 +40,7 @@ statistics pointers were corrected. No gameplay identity/default or production
 coordinator change. The final source is independently reviewed and published.
 
 Consumers adopt the portable repairs only at an owned checkpoint; do not overwrite
-lane-specific133/135/136 identities with main134 test pins. The private GitLab
+lane-specific132/133/135/136 identities with main134 test pins. The private GitLab
 mirror still requires the owner/Windows sync after main publication.
 
 ### Windows executor
@@ -49,7 +49,7 @@ mirror still requires the owner/Windows sync after main publication.
   proven in the real window.
   - The owner dispatched it in chat on 2026-11-06. It is not on the board yet.
   - **Done:** W2–W5, with the MSVC regression gate green.
-  - **Now:** the W7 WSL ASan/UBSan gate remains **OPEN**. Its inherited-main CI
+  - **Now:** the W7 WSL ASan/UBSan gate awaits repair intake. Its inherited-main CI
     prerequisite is cleared by MAIN-CI-1; take the portable repairs at the next
     checkpoint, preserving this lane’s identity. Its own findings below remain open.
     - WSL now runs from E:, and the gate script follows the new WSL disk rules (`6b327759`).
@@ -57,10 +57,11 @@ mirror still requires the owner/Windows sync after main publication.
       ("aggregate of a missing trace: exit 127, expected 2"). The cause is not yet found.
     - The app-lane rerun `w7app1` was voided and stopped.
     - The rerun `gatecheck2` was meant to use a clean checkout at `743ccf9c`. It reused a CMake cache that the voided
-      run had left, so it built the live worktree. It is not evidence of the clean head. The gate script needs a
-      fix: it must reconfigure when the cache belongs to another source folder.
+      run had left, so it built the live worktree. It is not evidence of the clean head. The gate script now
+      reconfigures when the cache belongs to another source folder (`2f2b45ac`).
+    - `picture_matrix_contract` stays open until a valid run tests it.
   - **Then:** the review and the owner's playtest card.
-- **Branch:** `task/W4-settlement-1`, head `f1dc0baf` (pushed).
+- **Branch:** `task/W4-settlement-1`, head `2f2b45ac` (pushed).
   - It is based on `task/W4-opening-2-main`: `main` `3b74201f` plus the reviewed W4-OPENING-CONTROLS-FLAKE delta.
 - **Also open:**
   - `task/W4-opening-2` (`3fd68746`): W4-OPENING-CONTROLS-FLAKE steps 0–3, on the older base `88968580`. It was adopted

@@ -13549,5 +13549,5 @@ execution is distinct. The closeout commit changes docs only.
 
 The consolidation CI hold is satisfied. Windows W7’s own contract/cache findings
 remain its lane’s responsibility; its inherited-main prerequisite is cleared.
-Keep133/135/136 lane identities when adopting portable fixes. GitLab sync is
+Keep132/133/135/136 lane identities when adopting portable fixes. GitLab sync is
 left to the owner/Windows orchestrator with the key.

@@ -40,9 +40,34 @@ section and use the lane's authorized integration procedure. Preserve running
 jobs, task history, ongoing work and reserved identities. Do not reset/rebase or
 merge a moving main automatically. Compiler/test-lifetime/prerequisite fixes are
 portable; the `056fc126` economy134 fixture and its test-path change are specific
-to134. A133 Windows baseline keeps its valid133 expectations; Mac135/136 lanes
+to134. The Windows base `3b74201f` is state132 and keeps its own expectations; Mac135/136 lanes
 retain their own identities and attribute any changed hashes. Do not blindly
 cherry-pick the whole repair range over lane-specific identity or board files.
+
+**Windows W7 intake is RELEASED from source pin `92e4817b`.** The repair-only
+comparison is `d1a2e191..92e4817b`, not the full difference from W4's older base.
+At a clean checkpoint on the owned W4 branch, apply the portable repair hunks
+from that range to files already present, preserving the lane's current code.
+Inspect the four named repair commits above and the acceptance report. Do not
+merge all of main or blindly cherry-pick commits containing board/identity changes.
+
+The verified `3b74201f` base uses state132 and lacks the economy-loop tests,
+`city_booking_test.cpp` and `cmake/RunExpansionReplay.cmake`. Do not import those
+later features or state134 fixtures merely to apply this repair. In
+`src/sim/CMakeLists.txt`, adopt the SCRIPT2 prerequisite properties for its existing
+two tests; the economy-consumer hunks are not applicable to that base. Take the
+script-runtime target-lifetime fix, the compiler/header/checking fixes in existing
+sim tests, both farm-fixture lifetime fixes, the SCRIPT2 CLI prerequisite/contract
+fix, and the metadata-only port0 test fix. Verify the actual W4 head's identity;
+keep any separately approved lane delta. Record omitted non-applicable hunks.
+
+Commit the adapted repair separately on the owned task branch. Have the existing
+W7 reviewer inspect only adaptations/conflict resolutions and changed test meaning;
+no new broad review campaign is required. Reconfigure the owned clean W7 build
+so `CMAKE_HOME_DIRECTORY` matches its source, run required preflights/contracts,
+then rerun the assigned W7 WSL gate. Preserve prior failed/voided evidence and
+report exact source/tool pins and terminal counts. Push the owned branch normally.
+This intake authorizes these portable repairs, not a gameplay/identity integration.
 
 Windows W7's inherited-main CI prerequisite is cleared; its own source-cache
 and picture-contract findings remain Windows-owned until checked. This is not

@@ -30,7 +30,7 @@ a balanced town, original-runtime ship collision fidelity or network multiplayer
 
 | Package / requirement | Positive proof | Distinguishing negative / legal control | Evidence / independent reviewer |
 |---|---|---|---|
-|E0 adoption and plan|clean exact successor, preserved ECON/evidence, host/admission/tools and cheap canonical contracts|moving main not adopted; first PATH failure retained; completed preflight not counted as voyage|E0/adoption.json,host.json, canonical-debug-01.log; expand_e0_review PENDING|
+|E0 adoption and plan|clean exact successor, preserved ECON/evidence, host/admission/tools and cheap canonical contracts|moving main not adopted; first PATH failure retained; completed preflight not counted as voyage|E0/adoption.json,host.json, canonical-debug-01.log; expand_e0_review APPROVEDbe8d163b|
 |E1 physically feasible itinerary and budget|same owner can found on distinct islands; actual route endpoints and cargo docks; reachable forester/road; complete input hashes and finite bill|geometry witness alone cannot pass; unsupported stage/source/road/dock refusal recorded; disposable planning cannot mutate pristine real world|bounded planning diagnostics, raw HEAD/LOGIC derivation and budget; review PENDING|
 |E2 source produces export|zero initial/imported source wood, real cuts/raw/output/cart receipt, exact LoadCmd debit=credit and residual|public switch off immediately after construction before any advance prevents workers/production; same source request is StockShort|per-home raw/output/in-flight/store ledger, unfaulted separate native fork; review PENDING|
 |E3 second founding and construction|same actual ship arrives, second island/city/owner/footprint/height; exact founding and unload costs; paid receiving building|with declared tools already transferred but wood missing, BuildCmd refuses unchanged; same command succeeds after freight unload|public outcomes, per-city/per-hold stock and gold snapshots; review PENDING|
@@ -151,5 +151,37 @@ required, admission defaults enabled. Raw `cache/expand1/E0/canonical-debug-01.l
 SHA25605f27066f206e42ae7744e7fbb8f3ff9733402d990cd234b87c1a5408095f3ac.
 No original long opening or closed ECON matrix was repeated for E0.
 
-Current disposition: E0 plan REVIEW PENDING. E1–E7 are not yet implemented or
-accepted; the preliminary arithmetic is not a physical multi-island proof.
+E0 disposition: `/root/expand_e0_review` APPROVED
+be8d163b3b9935cd283c916366b8ae2f95e19a37 after the focused source/production/arrival
+cap correction. No runtime change or additional gate was needed for that docs-only
+correction. Read-only reviewer independently decoded original cost records,
+1502 hold facts and the stock-floor AND0xffffff00 at AnnoWelt100ac5bf, including
+448→256+192 and255→StockShort. Notes `/private/tmp/map-expand1-e0-review.md`.
+E1–E7 still require their own physical/evidence acceptance.
+
+## E1 implementation and predeclared focused gate
+
+The new `expansion E1: unchanged candidate route docks forest and finite budget`
+case composes existing test fixtures without changing production. It plans on
+copies, with source-world hash unchanged. It validates exact engine route ends,
+FoundCmd and both cargo range predicates, the one known forest hint and an actual
+road-connected fractional warehouse receipt. It loads all available whole tons
+within real hold room, checks the remaining fraction, then plans distinct-island
+founding/receiving-tool transfer and the before/after-wood BuildCmd consequence.
+A return route is checked against the post-construction world. These are bounded
+planning proofs, not a recorded genuine voyage or completion of E2–E5.
+
+A complete input fingerprint superset under ignored `E1/content-inputs.json`
+covers472 original inputs: original registry/walk/city-name/base files plus every
+file beneath Scenes/Islands, including all scanner candidates. Manifest world
+edge is1431×1431 (not the base scenario's1024 edge); original loadout/content hash
+remain unchanged. Source bytes are not copied or modified. Exact per-trial
+refusals and route work are retained in canonical raw output.
+
+Predeclared E1 Debug timeout900s includes the existing admission margin; bounded
+copy/planning+400 production advances is smaller than the accepted same-map
+single-forest115.63s Debug workload. Measure this pilot before selecting a deadline
+for the later combined sanitizer itinerary. Frozen focused selector is the one
+new E1 case; required cargo/reference, bootstrap-budget and populated-state
+contracts remain separate. E1 execution and independent review PENDING.
+

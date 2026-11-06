@@ -380,9 +380,11 @@ int main(int argc, char** argv) {
                 view_w = 1920, view_h = 1080, frames_max = 100000;
     double frame_ms = 1000.0 / 60.0, duration_s = 5, rate = 10;
     bool edits_given = false;
-    std::size_t gpu = 0, gpu_uploads = 0, gpu_fade_ms = 0;
-    double gpu_budget_ms = -1;
-    bool gpu_uploads_given = false, gpu_fade_given = false;
+    std::size_t gpu = 0;
+    // Parse and validate the same options in CPU-only builds; only the GPU path consumes them.
+    [[maybe_unused]] std::size_t gpu_uploads = 0, gpu_fade_ms = 0;
+    [[maybe_unused]] double gpu_budget_ms = -1;
+    [[maybe_unused]] bool gpu_uploads_given = false, gpu_fade_given = false;
     for (int i = 2; i < argc; ++i) {
         const std::string key = argv[i];
         if (i + 1 >= argc) {

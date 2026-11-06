@@ -590,14 +590,16 @@ balanced ship-founded opening or live Windows acceptance. See the
 source/evidence, preserved failures and platform limits.
 
 
-## Bounded integration checkpoint — MAP-EXPAND-1 (2026-11-06)
+## Local candidate checkpoint — MAP-EXPAND-1 (2026-11-06)
 
-The second Mac's exactc5c7007f successor has independently approved E0/E1 and
-bounded E4/E6 cargo/scale companions; tested637da167 shortASAN16/16 passes. Full
-expansion acceptance remains open. Genuine E2 exposed a publicFound integration
-bug dropping prepared warehouse15-unit cost history; causalrepro/default-off
-control and reviewed one-line proposal are retained, but no runtimefix or silent
-state133 change landed. Explicit compatibility coordination is required before
-that deterministic correction, then genuine E2–E7 must continue. Two islands/two
-freight cycles, five native cuts and current combined sanitizer sailing are not
-claimed. See the [bounded dependency handoff](orchestration/reviews/2026-11-06-map-expand1.md).
+The second Mac's exactc5c7007f successor has independently approved E0–E6 and
+current-source gates atca257614: affectedDebug75/75, combinedASAN/UBSAN78/78,
+seven required contracts separately per gate, all other categories0. Fresh final
+integration review of the consolidated report remains pending. Two genuine
+founded islands, two freight cycles from real new wood, paid receiving build,
+five full native suffixes and honest/causally changed fresh replay are proved.
+Coordinated134/ECONBK1 preserves founding history and strictly refuses old133;
+no default flip or moving-main merge. See the
+[consolidated handoff](orchestration/reviews/2026-11-06-map-expand1.md) and
+[consumer card](testing/manual-expansion.md). Windows Load adapters/live playtest
+and target-host/MP/late-game/balanced-town acceptance remain separate.

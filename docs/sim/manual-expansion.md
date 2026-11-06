@@ -1,5 +1,50 @@
 # MAP-EXPAND-1: second-island settlement and manual resupply
 
+## Current candidate — frozen gates passed, final review pending
+
+Current tested source is ca257614be0068840a9af4cb58f1abd9ffd6a9fb on the owned
+task/MAP-EXPAND-1-main branch. State134/ECONBK1/PRNG5/replay4/command1/native1
+is explicitly coordinated and accepted on main; the sole gameplay correction
+preserves prepared founding accounts. Old133 states/logs strictly refuse.
+Application defaults remain unchanged. The real unchanged lan5-ship-a voyage
+uses public commands and completes two distinct founded islands and two freight
+cycles, with exact all-owner money/goods ledgers and five native continuations.
+No original resource, position, cargo loadout or permission was injected.
+
+| Package | Current disposition | Independent reviewer |
+|---|---|---|
+| E0 | APPROVEDbe8d163b, safe exact adoption | expand_e0_review |
+| E1 | APPROVEDfcc71179, original bill/bounded copied-world feasibility | expand_e0_review |
+| E2 | APPROVED15b220b3, genuine receipt/export + public no-production control | expand_e2_review |
+| E3 | APPROVEDc0ec23cb, real second founding and freight-funded build | expand_e0_review |
+| E4 | APPROVED4fa38e69, actual second cycle from further production | expand_e2_review |
+| E5 | APPROVED6c6e09cf, five full suffixes and causal fresh replay | expand_e0_review |
+| E6 | APPROVEDca257614, consumer card and bounded multisize measurements | expand_e2_review |
+| E7 | Gates PASS atca257614; fresh final report review pending | expand_boundary_review |
+
+Current affected Debug75/75 and combinedASAN/UBSAN78/78 pass, seven required
+contracts separately1/1 per gate, all other outcome categories0. CombinedSAN
+producer504.80s, honestfresh110.22s, changedfresh99.47s, selection627.67s. All15
+outputs equal refinedDebug byte-for-byte. Honest replay13/13; legal changed
+secondLoad2→1t matches ten checkpoints then diverges at460. Final265000ticks,
+28863gold, source2368rawwood/destination512; ordered holds26wood/10food/37tools/
+30tools. Raw credited7680=7456consumed+224farmraw; woodmade3262=2368store+768export
++126output. Full per-entry actor/city scopes and checkpoint/final worldbytes
+match all five resumed native arms.
+
+See the [consolidated handoff](../orchestration/reviews/2026-11-06-map-expand1.md)
+for exact source, artifacts, counts, hashes, preserved failures and limits, and
+the [consumer card](../testing/manual-expansion.md) for typed commands/targets.
+Windows owns its missing Load UI/text adapter and live playtest; no Windows/UI,
+Linux target, network MP, late-game scale or balanced town acceptance is claimed.
+
+## Historical package journal
+
+The entries below preserve the original plan, dependency, failures, compatibility
+decision and intermediate package reviews. Their words “current”, “pending” and
+“not run” describe their recorded checkpoint; the table above is the current
+candidate disposition. No earlier failed run has been relabelled as a pass.
+
 ## Scope and exact adoption
 
 Assigned E0–E7 by `c5c7007f374a3ead95303150dea877b5590d45d6`, TASKS section

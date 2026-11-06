@@ -99,6 +99,31 @@ load_play(const std::filesystem::path& game_dir, const std::filesystem::path& fi
 [[nodiscard]] DevToolSetup dev_tool_setup(const PlayLoad& load,
                                           sim::PlayerId player = developer_player());
 
+/// A read-only summary of one building, formatted from its Payload (building_inspect,
+/// W4-SETTLEMENT-1 W3/W4: the developer inspection UI). Goods amounts are tons (8.8 fixed-point,
+/// `kind`-specific fields only). For a class without a ported tick, `kind` is "Inert" and `status`
+/// is empty.
+struct BuildingInspection {
+    sim::TileXY tile;
+    sim::BuildingId id;
+    sim::TypeId type;
+    std::uint32_t prodtype = 0;
+    /// The payload's runtime class name ("SmallFarm", "Workshop", "Farm", "Mine", "Market",
+    /// "House", "Inn", or "Inert" for a class without a ported tick).
+    std::string kind;
+    /// One line of the kind-specific fields (output/raw/input stock in tons, activity,
+    /// workers/animals/carriers out); empty for Inert.
+    std::string status;
+};
+
+/// `city`'s building at world tile `tile` (World::building_at), formatted for the developer
+/// inspection UI; nullopt when there is none. Read-only, never mutates `world`. Callable from any
+/// thread that owns a `const World&` for as long as the call takes (the sim thread, inside
+/// PlayRunner::publish; a test with its own World).
+[[nodiscard]] std::optional<BuildingInspection> inspect_building(const sim::World& world,
+                                                                 sim::CityRef city,
+                                                                 sim::TileXY tile);
+
 /// What the window reads. Not a World.
 struct PlaySnapshot {
     std::uint64_t tick = 0;
@@ -131,6 +156,11 @@ struct PlaySnapshot {
     /// The ship-start opening's facts (opening_view.hpp), taken in the same turn as this snapshot;
     /// null unless the runner was given a local participant for an opening (set_opening_player).
     std::shared_ptr<const OpeningView> opening;
+    /// The developer inspection UI's answer for the last requested tile (request_inspect), taken
+    /// in the same turn as this snapshot (W4-SETTLEMENT-1 W2: one coherent read, not a fresh query
+    /// against a newer World); null when nothing was requested or the tile holds no building of
+    /// the developer's city.
+    std::shared_ptr<const BuildingInspection> inspection;
 };
 
 /// What the window reads for the developer tool's feedback (round ee review, R1): a snapshot and
@@ -242,6 +272,15 @@ class PlayRunner {
     void request_found_probe(const sim::FoundCmd& f) {
         const std::lock_guard lock(probe_mu_);
         probe_ = f;
+    }
+    /// The developer inspection UI's tile (W4-SETTLEMENT-1 W2/W4): answered against the
+    /// developer's city in every snapshot published from now on (PlaySnapshot::inspection), until
+    /// another tile replaces it or `std::nullopt` turns it off. Thread-safe; same pattern as
+    /// request_found_probe, so the window can call it every frame the pointer moves without
+    /// querying the World itself.
+    void request_inspect(std::optional<sim::TileXY> tile) {
+        const std::lock_guard lock(inspect_mu_);
+        inspect_tile_ = tile;
     }
     /// Ends a capture that was asked for and has not run (the requester is going away).
     /// Thread-safe.
@@ -383,6 +422,8 @@ class PlayRunner {
     std::mutex capture_mu_;
     std::mutex probe_mu_;
     std::optional<sim::FoundCmd> probe_;
+    std::mutex inspect_mu_;
+    std::optional<sim::TileXY> inspect_tile_;
     std::function<void(WorldCapture)> capture_;
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.

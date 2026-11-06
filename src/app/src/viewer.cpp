@@ -1747,6 +1747,10 @@ void Viewer::update_title() {
         const PlayFeedback read = play_->runner().feedback(latest_receipt_);
         const std::optional<CommandOutcome>& latest = read.latest;
         const auto& snap = read.snapshot;
+        // The developer inspection UI (W4-SETTLEMENT-1 W4): ask for the hovered tile's building
+        // now, shown from `snap->inspection` next time (same one-turn-lag pattern as the founding
+        // probe below — this frame's title still reads what the previous request answered).
+        play_->runner().request_inspect(dev_->hover());
         // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
         std::string note = pointer_frame_ && pointer_frame_->scene
                                ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
@@ -1758,6 +1762,12 @@ void Viewer::update_title() {
         }
         title +=
             " — " + dev_title(*snap, *dev_, knowledge_->check(*dev_, snap.get()), latest, note);
+        if (snap->inspection) {
+            title += " — " + snap->inspection->kind;
+            if (!snap->inspection->status.empty()) {
+                title += " " + snap->inspection->status;
+            }
+        }
     }
     if (fps_) {
         char buf[64];
@@ -1855,8 +1865,22 @@ void Viewer::script_tick() {
     if (const char* t = SDL_GetWindowTitle(window_); t != nullptr) {
         st.title = t;
     }
+    // The developer inspection UI's facts (W4-SETTLEMENT-1 W5): available in any session, not
+    // only an opening one — Proof B (an existing-town session with no ship-start opening) needs
+    // these to assert production/worker activity, which opening_facts() below never reports.
+    if (st.snapshot && st.snapshot->inspection) {
+        const BuildingInspection& insp = *st.snapshot->inspection;
+        st.facts["inspection.kind"] = insp.kind;
+        st.facts["inspection.status"] = insp.status;
+        st.facts["inspection.type"] = std::to_string(insp.type.v);
+        st.facts["inspection.prodtype"] = std::to_string(insp.prodtype);
+        st.facts["inspection.tile.x"] = std::to_string(insp.tile.x);
+        st.facts["inspection.tile.y"] = std::to_string(insp.tile.y);
+    }
     if (opening_ != nullptr) {
-        st.facts = opening_facts();
+        for (auto& [key, value] : opening_facts()) {
+            st.facts[key] = std::move(value);
+        }
         st.ship_point = [this](std::uint64_t id) -> std::optional<std::pair<float, float>> {
             if (!opening_snapshot_ || !opening_snapshot_->opening || !pointer_frame_) {
                 return std::nullopt;

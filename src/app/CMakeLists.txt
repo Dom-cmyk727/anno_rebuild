@@ -120,6 +120,14 @@ if(ANNO_BUILD_TESTS)
         set_tests_properties(viewer_wiring_${case} PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       endforeach()
+      # W4-SETTLEMENT-1 W5 Proof B: the developer inspection UI (PlayRunner::request_inspect,
+      # PlaySnapshot::inspection) reports real, live building/household state through the real
+      # window, built through the legal dev-tool placement path on the lan5 developer island.
+      add_test(NAME viewer_wiring_settlement_activity
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> settlement_activity)
+      set_tests_properties(viewer_wiring_settlement_activity PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # F2 (W4-WIN-FINAL): the CPU window settles a change only after the frame was delivered through
       # SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent; each stage is made to fail in turn.
       add_test(NAME viewer_wiring_cpu_delivery_failures

@@ -1325,6 +1325,20 @@ TEST_CASE("expansion route scale: legal open-water lengths retain bounded query 
         const auto expected = sim::plan_route(index, q, limits, costs);
         REQUIRE(expected.status == sim::RouteStatus::Planned);
         REQUIRE_FALSE(expected.runs.empty());
+        const auto walked = walk_runs(map, 16, 16, expected.runs, limits.run_cap);
+        REQUIRE_MESSAGE(walked.problem.empty(), walked.problem);
+        CHECK(walked.end_x == expected.end_x);
+        CHECK(walked.end_z == expected.end_z);
+        CHECK(walked.end_x == edge - 16);
+        CHECK(walked.end_z == edge - 16);
+        // A single legal step changes either axis by at most one tile. The hand-derived
+        // Chebyshev lower bound is96/224/480, without asserting shortest-path behavior.
+        CHECK(total_run_steps(expected.runs) >= static_cast<std::uint64_t>(edge - 32));
+        auto too_short = expected.runs;
+        too_short.pop_back();
+        const auto short_walk = walk_runs(map, 16, 16, too_short, limits.run_cap);
+        CHECK(short_walk.problem.empty()); // a legal prefix still must fail the endpoint oracle
+        CHECK_FALSE(short_walk.end_x == edge - 16 && short_walk.end_z == edge - 16);
         CHECK(expected.work.coarse_pops > 0);
         CHECK(expected.work.fine_pops > 0);
         CHECK(expected.work.coarse_pops <= limits.coarse_budget);

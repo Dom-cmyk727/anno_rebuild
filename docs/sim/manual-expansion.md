@@ -11,8 +11,8 @@ only TASKS and gameplay-next-chain documentation. Preserved completed ECON branc
 is467373d2; its ignored evidence and all prior build directories stay untouched.
 
 Current identity remains state133 / ECONBK1 / PRNG5 / replay4 / command1 / save1.
-No layout, rules default, registry, navigation trajectory or production change is
-planned. New tests/recipes are not authority for an identity change. A demonstrated
+No layout, rules default, registry, navigation trajectory or production change has
+landed. New tests/recipes are not authority for an identity change. A demonstrated
 production defect needs a causal reproducer, bounded review and an explicit
 compatibility decision if saved layout or deterministic trajectories would change.
 Do not silently patch published133. No main merge, push, active-map install,
@@ -347,3 +347,70 @@ places the final row beyond its80×40 island; the World::create refusal correctl
 exposed invalid fixture geometry. A14-column grid keeps origins22..74/20..36
 and all4×4 footprints inside the island. Fix the fixture, retain02, and rerun the
 affected local cargo-scale case only; unaffected15 passes remain their exactpin.
+
+The corrected cargo-scale gate03 at6a17d647 passes1/1, all other categories0,
+with all48paired samples across legal1/16/64 extra-island fixtures. It supersedes
+only the failed cargo-scale fixture, not the whole16-test gate. Review also caught
+a route-oracle gap: equality against another call proves determinism, not path
+relevance. The strengthened route check independently walks every run, validates
+water/bounds/corners, exact endpoint and hand Chebyshev lower bound96/224/480.
+Removing the last run stays legal but fails that endpoint oracle. Gate04 reruns
+only this changed route-scale case; earlier raw passes remain scoped to theirpin.
+
+## Existing typed command recipe and Windows boundary (pending genuine completion)
+
+Use the original `data/maps/candidates/ship-start-v2/lan5-ship-a.json`, seat0,
+registry/content digests from E1/content-inputs.json, unchanged holds and map.
+Explicit city_booking=true/save_billed_goods=true and house_updates=false is the
+accounting test configuration, not a new application default. State133 currently
+loses the founding warehouse cost: this recipe is blocked at the reviewed
+compatibility boundary; it is not a completed Windows playtest.
+
+A consumer posts existing `sim::Command{PlayerId{0}, body}` through
+`PlayRunner::post_command`; receipt means queued, not accepted. Re-read stable
+FigureId/CityRef/BuildingId from the latest snapshot after each accepted command.
+Never cache City/Building pointers or choose a rival warehouse by visibility.
+`MoveCmd` needs this ship's actual order ID plus `ShipArrived` before founding or
+cargo. Match outcome player/order/ship, distinguish route refusal/failure.
+
+1. Select original owned ship1, type1502, with crew2 and nested donkey3. Initial
+   holds in order: wood50t, food10t, tools50t, tools30t. Gold30000. Start cityless.
+2. Move to tile257,134, Q24.8 centre65920,34432. Actual E2 source arrival is
+   proved after86000ticks. Found1302 using rotation0, origin254,137 and click255,138;
+   the existing coast trials choose orientation. Derive the created warehouse ID
+   and CityRef on island0 from the successful result; do not assume serial/city0.
+   Gold−350, wood−12t/tools−5t aboard, source stock0wood.
+3. Unload only tools2t from hold2 to that warehouse, transferred512raw. Build801
+   at238,128, gold−150/tools−2t and wood−0. Reuse the legal road_path selection
+   between actual forester and warehouse, dirt2520,20road tiles/gold100. Full road
+   command coordinates must come from the executed recording (not yet published).
+4. Advance normally until actual harvest/raw→wood→home cart→source stock arrives.
+   Source must have0inherited wood; no editing or all-wood unload. LoadCmd fields
+   ship1, source warehouse ID, preferred hold0, wood42, whole tons floor(stock/256),
+   subject to remaining hold room; exact actual transfer, source fraction and all
+   four ordered holds must be shown. Do not set timing/quantity from E1's copied
+   planning result (448raw receipt/1t export is not a genuine-run fixed input).
+5. Planned destination is island1 dock452,349 (Q24.8 centre115840,89472), click456,353,
+   Found origin455,352/rotation0. E1 validated a copied world and exact legal route;
+   real second arrival/founding is NOT proved yet. PublicFound costs350gold/12twood/
+   5ttools, leaving a distinct same-owner CityRef. Unload1ttool from hold2. Build1310
+   at450,355 is initially refused for missingwood unchanged. Unload produced freight
+   from hold0, then retry same building:50gold/1twood/1ttool. Verify height/footprint.
+6. Planned return uses dock257,134. A second load must exceed the entire previously
+   made unexported wood pipeline, so further real output is necessary; derive its
+   quantity from actual ledger, respect hold room/stock flooring. Return to452,349,
+   unload through the second actual warehouse ID and record exact debit=credit.
+
+Existing window modes are Select/Found/Unload, and existing commands_file.cpp
+reads/writes found/move/stop/unload/buildc/demolishc. There is no `load` text token or
+Load UI mode in this pin. Typed LoadCmd is already wire-encodable and post_command
+can queue it; Windows owns adding any live control/line adapter. This task does not
+introduce a parallel DSL or edit UI. Existing BuildCmd handles forest/roads/receiver;
+public SetProductionLineCmd is used only on the separate no-production control.
+
+Finite tools remain the eventual construction bound. No household population,
+food cycle/needs fulfillment, stage advancement, salt/cloth/hunting chain or mineral
+survey is established by this freight itinerary. House updates and economy stay
+independently default-off. Nav uses bounded original-style coarse/fine queries,
+acceptance radius/density stamps; it does not prove physical ship collision,
+congestion avoidance/replanning, automated routes, network MP or late-game cost.

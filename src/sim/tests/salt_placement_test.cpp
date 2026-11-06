@@ -750,6 +750,22 @@ TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before an
             CHECK(isle(w).deposits.empty());
         }
     }
+    // refusal order: a site that is BOTH unaffordable and without a deposit answers NoDepositInReach (the check
+    // precedes the affordability test), with no charge, no serial and nothing changed
+    for (SaltWorld* sw : {&*live, &*dry}) {
+        sim::World w = sw->w;
+        sim::WorldTestAccess::players(w).find(kSaltPlayer)->money = 0;
+        const auto before = w.save();
+        const sim::ApplyResult res = w.apply(build_cmd({mine_at(335, 340)}));
+        REQUIRE(res.records.size() >= 1);
+        CHECK(res.records[0].status == sim::Reject::NoDepositInReach);
+        CHECK(w.save() == before);
+        // while a site with a deposit and no gold is the affordability refusal
+        const sim::ApplyResult poor = w.apply(build_cmd({mine_at(353, 359)}));
+        REQUIRE(poor.records.size() >= 1);
+        CHECK(poor.records[0].status == sim::Reject::CannotAfford);
+        CHECK(w.save() == before);
+    }
     // the neighbour just inside the reach builds, and the mine it makes is bound: a mine made by a command
     // never exists without a deposit
     for (SaltWorld* sw : {&*live, &*dry}) {

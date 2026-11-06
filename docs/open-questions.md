@@ -2333,7 +2333,7 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
 - **To settle:** read the placement cursor's predicate (the function the island placement uses for mine types) and compare its footprint/reach with `deposit_in_reach`. Until then the radius-7 rule stands as an adaptation (`docs/sim/salt-extraction.md` section 22).
 
 ## OQ-553: Discovery of a deposit: does an undiscovered deposit refuse the placement or only stop production? (2026-11-06)
-- **What:** `Salvorkommen`/`Salzvorkommen.htm` says a scout must discover a deposit before it can be mined. Whether the original refuses the *placement* on an undiscovered deposit, or only stops production, is unread. Policy B does not consult discovery and does not refuse on it (the ore objects carry a `discovered` set, unread by the rule).
+- **What:** `Salzvorkommen.htm` says a scout must discover a deposit before it can be mined. Whether the original refuses the *placement* on an undiscovered deposit, or only stops production, is unread. Policy B does not consult discovery and does not refuse on it (the ore objects carry a `discovered` set, unread by the rule).
 - **To settle:** the placement cursor and the production step's use of the deposit's discovered state.
 
 ## OQ-554: The quarry's "any mountain" rule (2026-11-06)

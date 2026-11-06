@@ -1653,8 +1653,8 @@ TEST_CASE("expansion cargo scale: named transfers stay local with unrelated lega
         spec.settings.world_width = spec.settings.world_height = 512;
         for (std::uint32_t i = 0; i < n; ++i) {
             spec.islands[0].cities[0].buildings.push_back({.type = kKontor,
-                                                           .x = 22 + static_cast<int>(i % 12) * 4,
-                                                           .y = 20 + static_cast<int>(i / 12) * 4});
+                                                           .x = 22 + static_cast<int>(i % 14) * 4,
+                                                           .y = 20 + static_cast<int>(i / 14) * 4});
             const int x = 200 + static_cast<int>(i % 8) * 24;
             const int y = 100 + static_cast<int>(i / 8) * 24;
             auto island = syn::plain_island(i + 1, x, y, 16, 16);

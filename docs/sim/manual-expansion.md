@@ -339,3 +339,11 @@ The first independent-companion gate at5892da6e stopped during compilation:
 CitySpec.stock is optional, so the scale fixture must index its explicitly assigned
 vector through value(). No selected tests executed; canonical-debug-01 remains a
 failed build. The focused correction changes fixture initialization only.
+
+Canonical independent02 at8b285645 is FAIL16selected/15passes/1failed, all other
+outcome categories0. Boundary, route-scale and13 existing short cargo controls
+pass. Independent review found that the64-building fixture's12-column grid
+places the final row beyond its80×40 island; the World::create refusal correctly
+exposed invalid fixture geometry. A14-column grid keeps origins22..74/20..36
+and all4×4 footprints inside the island. Fix the fixture, retain02, and rerun the
+affected local cargo-scale case only; unaffected15 passes remain their exactpin.

@@ -1,12 +1,44 @@
 # Simulation state: world, buildings, scheduler, commands, hash and save
 
-**Current consolidated identity (2026-11-05): state 132, schema SIMINT1, PRNG
+**Published consolidated baseline (2026-11-05): state 132, schema SIMINT1, PRNG
 timeline 5, replay framing 4, command wire 1.** See the
 [main consolidation record](../orchestration/reviews/2026-11-05-consolidation.md)
 and `src/sim/include/anno/sim/world.hpp`. Current fixtures are under
 `fixtures/synthetic/sim/consolidated132/`; earlier identities and their dated
 implementation notes below are historical. Parallel stream-130 layouts and the
 combined stream-131 predecessor are refused, not silently reinterpreted.
+
+**ECON-BOOK-1 branch candidate (2026-11-06): state133 / ECONBK1, PRNG5,
+replay4, command1, save1.** This is not authorization for other executors to adopt
+133; the orchestrator owns combined publication. The exact schema bytes are
+`45 43 4f 4e 42 4b 31 00`, u64LE `0x00314b424e4f4345`. Candidate fixtures live
+under `fixtures/synthetic/sim/econbook1/current133`; published132 remains intact.
+Actual132 log/native save controls have provenance under `econbook1/legacy132`.
+
+Candidate133 appends `EconomyConfig` after SimConfig.house_type_stride:
+count-prefixed climate-name strings, u32 tax_count, u32 period (defaults seven
+original names,3,2000). Rules appends bool city_booking=false, independently of
+house_updates=false; booking requires save_billed_goods=true. Settings.prop10
+widens to u32 and validates against the configured tax_count (default0..2).
+City appends after billed and before its index a42-byte `CityAccounts` record:
+u16 stamp; u64 sales, trade_sales, trade_purchases, civil_cost, military_cost.
+Those five history values always persist, including when booking is off. They
+cannot be reconstructed on native load: house type/research transitions do not
+retroactively repair cost history. Original imports start stamp/bills0, retain
+HEAD sales and HEAD2's three statistics with exact widened saved*105/15; current
+type/manual-state cost reconstruction belongs to the opt-in initial import.
+
+Inert appends optional<bool> financial_active (presence byte, then0/1), preserving
+knownness for unported financial switches without implementing their bodies.
+Present goods price facts add optional tables to the registry digest after id_sec:
+presence byte, u32 climate vector and u32 tax vector (u64 counts). Absent means
+original constructor zero for every configured role; present dimensions must be
+exact. BuildingType.statistic_kind u32 follows running_cost in that digest;
+audited original classes use1, explicit data may select2. Climate role order is
+bound at registry sealing and validated like existing population roles; names
+and tax count are hashed in SimConfig. [Economy contract](economy-booking.md)
+specifies arithmetic, original/adapted boundaries and package evidence. Historical
+layouts in the chronological sections below retain their original versions.
 
 Branch-local integration note (2026-11-05): MAP-INTEGRATE-1 freezes native131 /
 SIMINT1 (`0x0031544e494d4953`), replay4 with explicit native identity, save1,
@@ -642,7 +674,9 @@ struct City {
 };
 ```
 `City` needs the island's derived `grids`/`by_id` to answer point and rect queries, so the query takes the `Island` (`City::building_at(I, ...)`), and `Island` offers the same names with a `CityNo` argument (§4.8). Both are const, allocation-free except for the caller-provided `out`, and are what `tick_building`, market catchment and coverage code call; `World::find_building`/`building_at`/`rect_query` only locate the island and delegate.
-Not modelled: `[city+0x17]` counter (use unknown), `[city+0x61c]` mask (O-40), the resident counter object `+0x2ec` and the running-cost statistics (`city slot +0x70/+0x74`): they are derivable from the lists when a consumer exists (O-9, O-23).
+Historical S6 omissions: `[city+0x17]` counter and resident counter object `+0x2ec`.
+The player mask is now modelled. ECON-BOOK-1's authoritative running-cost history
+is described above; it is not a native-load cache derived from current types.
 
 *Implemented in S6 (`city.hpp`, `create.cpp`).* `City` is an aggregate of the eight listed members; `make_city(number, owner, cfg)` builds the initial one. Because an `Island` holds no configuration, the three queries take the world's `ListLayout` (`lookup_order`, `rect_order`, the list masks) as an extra argument after the island: `City::building_at(island, layout, x, y, mask)`, `City::rect_query(island, layout, rect, mask, out)` (`out` is cleared first), `City::find_building(island, id)` (answers only for a building of this city). `GoodsSetting`, `BuildGoods`, `TradeEntry` are as listed. **`GoodsSetting` has no limit field (S6 review):** the original has ONE byte at city+12g+0x0b. SetTradeFlag (0x1002dbd0) mode 0/1 stores the low byte of `value` there and `mode` in bit 0 of +0x0a; the getter (0x1002db53) returns the byte sign-extended (`movsx`) when bit 0 equals the requested mode and -1 otherwise; the STADT2 VK / EK loader (0x1002e997, 0x1002ea7c) stores the loop index of the entry in the same byte, the removal of a trade-list entry writes 0xff, the city constructor starts it at 0xff. The earlier reading as a separate "goods limit" (and `SimConfig::trade_limit_max`) was wrong and is gone from the model, the stream and the configuration; the setter's byte is the trade-list index. `validate_cities` checks the part that is certain: a `list_index` is -1 or the index of an entry of the list its bit selects that holds this goods (the loader's invariant; the original can break it with a setter value that matches no entry, which the rebuild's command layer refuses, S10, O-14), and every `TradeEntry::goods` is below `warehouse_goods`. `BuildGoods::setting` (any `u32` that mode 9 stores) and `CityStock::capacity` (the original's HEAD2 gives tons << 8, and how a Kontor level changes it is untraced) have no index role and no checked range (O-57).
 

@@ -1546,6 +1546,7 @@ TEST_CASE("registry digest stable") {
         h.u32(g.forsch);
         h.u32(0); // bau_first (stream 127)
         h.u32(0); // id_sec (stream 127)
+        h.u8(0);  // no explicit prices (133): all configured entries default0
     }
     const std::vector<sim::ClassInfo> classes = sim::original_class_table();
     h.u64(classes.size());
@@ -1561,9 +1562,7 @@ TEST_CASE("registry digest stable") {
     CHECK(sim::TypeRegistry::empty()->digest() == h.value());
     // And the value of an independent Python transcription (tools/sim_stream.py:
     // goods names read from AnnoGame.dll, classes from Appendix C).
-    CHECK(
-        h.value() ==
-        0x3a9d19d59b4f3f58ULL); // Inn tick kind 9 + payload tag 8 (K1); python transcription agrees
+    CHECK(h.value() == 0x804f19da7cae34eeULL); // stream133; independent Python transcription agrees
     // Rebuilding gives the same digest; the order types are added in does not matter.
     auto a = sim::synthetic::make_synthetic_types();
     auto b = sim::synthetic::make_synthetic_types();
@@ -1577,7 +1576,7 @@ TEST_CASE("registry digest stable") {
     CHECK(forward.build().value()->digest() == backward.build().value()->digest());
     // The synthetic registry's digest, pinned (a change of the type data, the
     // class or goods tables, or the digest layout moves it).
-    CHECK(a.value().registry->digest() == 0x4de8c88166f5684fULL);
+    CHECK(a.value().registry->digest() == 0x77d2dd9ed3f484b1ULL);
 }
 
 TEST_CASE("registry digest changes with every field") {
@@ -1586,7 +1585,7 @@ TEST_CASE("registry digest changes with every field") {
     // stable" pins the synthetic digest 0x96fbf9c80cb07372 (stream 128: + the empty stage table),
     // unchanged by T27). T33.2 adds un-hashed walk_mask input; header/digest changes belong to
     // T33.4.
-    static_assert(sim::field_count<sim::BuildingType>() == 26);
+    static_assert(sim::field_count<sim::BuildingType>() == 27);
     static_assert(sim::field_count<sim::ProductionType>() == 18);
     sim::BuildingType base;
     base.id = sim::TypeId{10};
@@ -1654,6 +1653,7 @@ TEST_CASE("registry digest changes with every field") {
         {"rubble", [](auto& t) { t.rubble += 1; }},
         {"service_mask", [](auto& t) { t.service_mask += 1; }},
         {"running_cost", [](auto& t) { t.running_cost[1] += 1; }},
+        {"statistic_kind", [](auto& t) { t.statistic_kind = 2; }},
         {"output_goods", [](auto& t) { t.output_goods[0] += 1; }},
         {"input_goods", [](auto& t) { t.input_goods[0] += 1; }},
         {"head_raw", [](auto& t) { t.head_raw[1] += 1; }},

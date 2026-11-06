@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/city_accounts.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/production.hpp>
@@ -92,9 +93,11 @@ struct City {
     /// MAP-POP-LIVE-1 L1 (stream 128, section 2 "Billed counters"): the REQUESTED amount billed per
     /// goods id (the consumer goods only; the original's u16 widened to u32), size
     /// SimConfig::warehouse_goods. Saved and hashed only when Rules::save_billed_goods is true; a
-    /// city loaded from a stream without it starts at zero. The tax pass that consumes it is
-    /// outside this task.
+    /// city loaded from a stream without it starts at zero. Opt-in city booking
+    /// consumes this one ledger and therefore requires save_billed_goods.
     std::vector<std::uint32_t> billed;
+    /// Stream133: exact booking stamp, raw statistics and historical city cost buckets.
+    CityAccounts accounts;
 
     // ---- island-level queries (const; Island and the World members of the same
     // names delegate here or are delegated to). All return the canonical order

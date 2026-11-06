@@ -16,7 +16,7 @@ struct Expected {
     std::uint64_t hash;
 };
 std::map<std::string, Expected> expected() {
-    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "consolidated132" /
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "econbook1" / "current133" /
                      "populated_fields.txt");
     REQUIRE(in.good());
     std::map<std::string, Expected> out;
@@ -32,7 +32,7 @@ std::map<std::string, Expected> expected() {
         for (std::size_t i = 0; i < hex.size(); i += 2)
             e.bytes.push_back(static_cast<std::uint8_t>(std::stoul(hex.substr(i, 2), nullptr, 16)));
     }
-    REQUIRE(out.size() == 4);
+    REQUIRE(out.size() == 7);
     return out;
 }
 template <class T> void compare(const Expected& e, const T& value) {
@@ -86,6 +86,25 @@ TEST_CASE(
     "integration oracle: populated script permission actor navigation holds and animal scopes") {
     const auto e = expected();
     compare(e.at("header"), sim::StateHeader{});
+    compare(e.at("accounts"),
+            sim::CityAccounts{65000, 0x0102030405060708ULL, 105, 210, 4294967313ULL, 28});
+    auto economy = sim::EconomyConfig{};
+    economy.climate_names.push_back("CUSTOM");
+    economy.tax_count = 4;
+    compare(e.at("economy"), economy);
+    sim::SimConfig config;
+    config.economy = economy;
+    std::vector<sim::GoodsInfo> priced{{"UNUSED"}, {"ALPHA"}, {"BETA"}};
+    priced[1].prices = sim::GoodsPrices{{45, 45, 45, 50, 50, 50, 45, 17}, {0, 5, 10, 15}};
+    priced[2].prices =
+        sim::GoodsPrices{std::vector<std::uint32_t>(8, 7), std::vector<std::uint32_t>(4, 2)};
+    sim::TypeRegistry::Builder price_builder;
+    auto price_registry = price_builder.config(config).goods(priced).build();
+    REQUIRE(price_registry);
+    CHECK(price_registry.value()->digest() == e.at("goods_registry").hash);
+    priced[1].prices->climate[7] = 18;
+    CHECK(sim::TypeRegistry::digest_of({}, priced, sim::original_class_table()) !=
+          e.at("goods_registry").hash);
     sim::Player p;
     p.index = sim::PlayerId{0};
     p.research.state.resize(65);

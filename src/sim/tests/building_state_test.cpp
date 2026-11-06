@@ -347,7 +347,7 @@ TEST_CASE("field count canary per struct") {
     // The numbers the library's static_asserts hold, restated with the members in
     // the comment: a member added without a line in fields() fails the build there.
     CHECK(sim::field_count<sim::StatusTracker>() == 4); // code, icons, shows_icons*, time
-    CHECK(sim::field_count<sim::Inert>() == 4);         // last, blocked, suspended, status
+    CHECK(sim::field_count<sim::Inert>() == 5);         // last, blocked, suspended, status
     CHECK(sim::field_count<sim::Workshop>() == 10);
     CHECK(sim::field_count<sim::WeaponsWorkshop>() == 11); // unlocked*
     CHECK(sim::field_count<sim::Farm>() == 10);
@@ -357,7 +357,7 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::House>() == 5); // last, residents_64, e, stock, walkers
     CHECK(sim::field_count<sim::Building>() == 9);
     CHECK(sim::field_count<sim::BuildingIndex>() == 4); // service_counters*, house_counts*
-    CHECK(sim::field_count<sim::City>() == 13);         // + stage_mask, stage_stamp, billed (128)
+    CHECK(sim::field_count<sim::City>() == 14);         // + stage_mask, stage_stamp, billed (128)
     CHECK(sim::field_count<sim::CityStock>() == 2);
     CHECK(sim::field_count<sim::GoodsSetting>() == 2);
     CHECK(sim::field_count<sim::BuildGoods>() == 2);
@@ -1128,7 +1128,7 @@ TEST_CASE("golden s6 G1 city with a weaver and a farm") {
     auto types = syn::make_synthetic_types();
     REQUIRE(types.ok());
     // The one literal of tools/sim_stream.py for this golden.
-    CHECK(types.value().registry->digest() == 0x4de8c88166f5684fULL);
+    CHECK(types.value().registry->digest() == 0x77d2dd9ed3f484b1ULL);
     auto created =
         sim::World::create(syn::g1_scenario(types.value(), 1234), types.value().registry);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));

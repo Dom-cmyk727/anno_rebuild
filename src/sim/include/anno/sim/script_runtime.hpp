@@ -8,7 +8,7 @@
 #include <anno/sim/timers.hpp>
 namespace anno::sim {
 inline constexpr std::uint64_t kScriptSchema =
-    0x0031544e494d4953ULL; // "SIMINT1\0", combined runtime lineage
+    0x00314b424e4f4345ULL; // "ECONBK1\0", checked city-booking candidate lineage
 struct ScriptQueryStats {
     std::uint32_t slots = 0, inserted = 0, rows = 0, cells = 0, candidates = 0, crew = 0;
 };

@@ -42,6 +42,10 @@ struct Inert {
     bool blocked = false;
     bool suspended = false;
     StatusTracker status;
+    /// Stream133: minimal financial selector for unported bodies. nullopt means
+    /// unsafe/truncated original financial input; booking-enabled worlds refuse it.
+    /// This does not implement production or enable new switch commands.
+    std::optional<bool> financial_active = true;
 };
 
 /// The state of an Inn (D vtable 0x100c96d8): the Inert prefix plus the tavern stock (+0x18;

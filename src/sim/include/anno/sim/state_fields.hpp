@@ -212,7 +212,14 @@ template <class A, Same<LinkTables> S> void fields(A& a, S& s) {
     u32_list(a, s.ore_rank_score);
 }
 
-static_assert(field_count<SimConfig>() == 60,
+static_assert(field_count<EconomyConfig>() == 3, "economy config needs field coverage");
+template <class A, Same<EconomyConfig> S> void fields(A& a, S& s) {
+    ar::seq(a, s.climate_names, 8, [&](auto& name) { a.str(name); });
+    a.u32(s.tax_count);
+    a.u32(s.period);
+}
+
+static_assert(field_count<SimConfig>() == 61,
               "a SimConfig member needs a line in fields(SimConfig)");
 
 template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
@@ -276,6 +283,7 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     a.u32(s.billed_goods_last);             // stream 128
     a.u32(s.resident_cargo_slots);          // stream 128
     a.u32(s.house_type_stride);             // stream 128 (L3)
+    fields(a, s.economy);                   // stream133
 }
 
 static_assert(field_count<NavClassCost>() == 4, "a NavClassCost member needs a line in fields");
@@ -312,7 +320,7 @@ template <class A, Same<CargoRules> S> void fields(A& a, S& s) {
     ar::seq(a, s.dock_half_widths, 4, [&](auto& x) { a.u32(x); });
 }
 
-static_assert(field_count<Rules>() == 31, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 32, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -348,6 +356,7 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.forestry_skip_uncuttable);     // stream 126
     a.boolean(s.house_updates);                // stream 128
     a.boolean(s.save_billed_goods);            // stream 128
+    a.boolean(s.city_booking);                 // stream133, default false
 }
 
 // ---- settings scope
@@ -366,7 +375,7 @@ template <class A, Same<WorldSettings> S> void fields(A& a, S& s) {
     a.u32(s.prop6);
     a.u32(s.prop7_offset);
     a.u8(s.prop9);
-    a.u8(s.prop10);
+    a.u32(s.prop10); // stream133: configured tax column, no duplicate selector
     a.u32(s.prop11);
     a.boolean(s.prop12);
     a.boolean(s.prop13);
@@ -638,13 +647,14 @@ template <class A, Same<StatusTracker> S> void fields(A& a, S& s) {
     a.u16(s.time);
 }
 
-static_assert(field_count<Inert>() == 4, "an Inert member needs a line in fields(Inert)");
+static_assert(field_count<Inert>() == 5, "an Inert member needs a line in fields(Inert)");
 
 template <class A, Same<Inert> S> void fields(A& a, S& s) {
     a.u16(s.last);
     a.boolean(s.blocked);
     a.boolean(s.suspended);
     fields(a, s.status);
+    ar::opt(a, s.financial_active, [&](auto& active) { a.boolean(active); });
 }
 
 static_assert(field_count<Inn>() == 7, "an Inn member needs a line in fields(Inn)");
@@ -900,7 +910,17 @@ template <class A, Same<TradeEntry> S> void fields(A& a, S& s) {
     a.u32(s.price);
 }
 
-static_assert(field_count<City>() == 13, "a City member needs a line in fields(City)");
+static_assert(field_count<CityAccounts>() == 6, "city accounts need field coverage");
+template <class A, Same<CityAccounts> S> void fields(A& a, S& s) {
+    a.u16(s.stamp);
+    a.u64(s.sales);
+    a.u64(s.trade_sales);
+    a.u64(s.trade_purchases);
+    a.u64(s.civil_cost);
+    a.u64(s.military_cost);
+}
+
+static_assert(field_count<City>() == 14, "a City member needs a line in fields(City)");
 
 /// One city (docs/sim/state.md §9.3): `u32 number, u32 owner, u16 tick_stamp`, the
 /// stock (`u32 capacity`, u32 list), the goods settings, the build goods, the trade
@@ -932,6 +952,7 @@ template <class A, Same<City> S> void fields(A& a, S& s, const CityStream& ctx =
     } else if constexpr (A::kReading) {
         s.billed.assign(ctx.warehouse_goods, 0); // not in the stream: starts at zero
     }
+    fields(a, s.accounts); // stream133: history persists independently of opt-in state
     fields(a, s.index);
 }
 
@@ -1436,6 +1457,9 @@ struct StateIO {
                         problem = rules.validate();
                     }
                     if (problem.empty()) {
+                        problem = city_booking_problem(config, rules, *w.types_);
+                    }
+                    if (problem.empty()) {
                         problem = validate_seams(w.seams_, config);
                     }
                     if (problem.empty()) {
@@ -1489,12 +1513,13 @@ struct StateIO {
     }
 
     /// Section 3.
-    template <class A, class Settings> static void settings_section(A& a, Settings& settings) {
+    template <class A, class Settings>
+    static void settings_section(A& a, Settings& settings, const SimConfig& config) {
         a.scope("settings", [&] {
             fields(a, settings);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
-                    const std::string problem = settings.validate();
+                    const std::string problem = settings.validate(config);
                     if (!problem.empty()) {
                         a.fail(problem);
                     }
@@ -1655,7 +1680,7 @@ struct StateIO {
                        Bool& faulted, ScriptT& script) {
         header_section(a, w, config, rules);
         clock_rng_section(a, clock, rng);
-        settings_section(a, settings);
+        settings_section(a, settings, config);
         ids_section(a, ids, event750_acc, monopoly.acc, faulted);
         players_section(a, players, config);
         islands_section(a, w, islands, config, settings, rules);

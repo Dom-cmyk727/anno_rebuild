@@ -94,6 +94,9 @@ inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t own
     for (int i = 0; i < 56; ++i) {
         s.u32(0);
     }
+    s.u16(0); // accounts stamp (133)
+    for (int i = 0; i < 5; ++i)
+        s.u64(0); // sales/trades/costs
     s.u16(0);
     s.u64(6);
     for (int i = 0; i < 6; ++i) {

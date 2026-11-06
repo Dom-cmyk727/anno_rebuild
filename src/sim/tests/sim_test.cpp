@@ -509,7 +509,7 @@ TEST_CASE("state_hash relational properties") {
     fields(rules_bytes, base.rules());
     sim::StateHasher header;
     header.u32(sim::kStateHashVersion);
-    header.u64(0x0031544e494d4953ULL);
+    header.u64(0x00314b424e4f4345ULL);
     header.u32(sim::kPrngTimelineVersion);
     header.bytes(config_bytes.data());
     header.bytes(rules_bytes.data());
@@ -616,8 +616,8 @@ TEST_CASE("state_hash relational properties") {
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
     CHECK(sim::World().state_hash() ==
-          0xde38295e314f2638ULL); // SIMINT1 empty_world; independent sim_stream.py
-    CHECK(sim::kStateHashVersion == 132);
+          0x69871c0febf78a1cULL); // ECONBK1 empty_world; independent sim_stream.py
+    CHECK(sim::kStateHashVersion == 133);
     CHECK(sim::kPrngTimelineVersion == 5);
 }
 
@@ -895,7 +895,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     // players: u64 32, 32 absent bytes, u16 stamp, u32 cursor (46 bytes); islands:
     // u64 0 (8 bytes); figures (31 bytes: no deferred list since T22), events (8 bytes) and
     // timers_monopoly (193 bytes), config_test.cpp. The clock_rng scope is found from the end.
-    constexpr std::size_t kSettingsBytes = 38;
+    constexpr std::size_t kSettingsBytes = 41;
     constexpr std::size_t kIdsBytes = 25 + 16; // + next_order_id, next_ticket (stream 122)
     constexpr std::size_t kPlayersBytes = 8 + 32 + 2 + 4;
     constexpr std::size_t kIslandsBytes = 8;
@@ -905,7 +905,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16) ==
-          std::vector<std::uint8_t>{132, 0, 0, 0, 0x53, 0x49, 0x4d, 0x49, 0x4e, 0x54, 0x31, 0, 5, 0,
+          std::vector<std::uint8_t>{133, 0, 0, 0, 0x45, 0x43, 0x4f, 0x4e, 0x42, 0x4b, 0x31, 0, 5, 0,
                                     0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8

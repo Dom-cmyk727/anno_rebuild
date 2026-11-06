@@ -54,7 +54,7 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
         const auto refused = sim::World::load(bytes, f.types.registry);
         REQUIRE_FALSE(refused);
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
-                                     " is not supported (this build reads 132)");
+                                     " is not supported (this build reads 133)");
     }
     auto rec = sim::Recorder::start(f.world);
     REQUIRE(rec);

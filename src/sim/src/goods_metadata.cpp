@@ -1,6 +1,8 @@
 // The [WAREN] metadata reader (header: goods_metadata.hpp).
 #include <algorithm>
 #include <array>
+#include <limits>
+#include <map>
 #include <optional>
 
 #include <anno/formats/text.hpp>
@@ -40,6 +42,51 @@ std::optional<std::size_t> goods_named(formats::Bytes name, std::span<const Good
     return std::nullopt;
 }
 
+// The general text reader intentionally accepts only18 digits. Economy's
+// reviewed signed-i64 input domain includes both19-digit endpoints; keep this
+// bounded parser local rather than changing every existing metadata reader.
+std::optional<std::int64_t> price_number(formats::Bytes text) {
+    const bool negative = !text.empty() && text.front() == '-';
+    if (negative)
+        text = text.subspan(1);
+    if (text.empty())
+        return std::nullopt;
+    const std::uint64_t limit = negative ? (std::uint64_t{1} << 63)
+                                         : std::uint64_t(std::numeric_limits<std::int64_t>::max());
+    std::uint64_t value = 0;
+    for (const auto c : text) {
+        if (c < '0' || c > '9')
+            return std::nullopt;
+        const auto digit = std::uint64_t(c - '0');
+        if (value > (limit - digit) / 10)
+            return std::nullopt;
+        value = value * 10 + digit;
+    }
+    if (negative && value == (std::uint64_t{1} << 63))
+        return std::numeric_limits<std::int64_t>::min();
+    return negative ? -static_cast<std::int64_t>(value) : static_cast<std::int64_t>(value);
+}
+
+std::optional<std::vector<std::int64_t>> price_numbers(formats::Bytes text) {
+    const auto separator = [](auto c) { return c == ',' || c == ' ' || c == '\t'; };
+    std::vector<std::int64_t> out;
+    std::size_t i = 0;
+    while (i < text.size()) {
+        if (separator(text[i])) {
+            ++i;
+            continue;
+        }
+        const auto start = i;
+        while (i < text.size() && !separator(text[i]))
+            ++i;
+        const auto value = price_number(text.subspan(start, i - start));
+        if (!value)
+            return std::nullopt;
+        out.push_back(*value);
+    }
+    return out;
+}
+
 } // namespace
 
 std::optional<std::uint32_t> stage_index_of(std::string_view name) {
@@ -51,7 +98,34 @@ std::optional<std::uint32_t> stage_index_of(std::string_view name) {
     return std::nullopt;
 }
 
-std::string apply_goods_metadata(formats::Bytes file, std::span<GoodsInfo> goods) {
+std::string apply_goods_metadata(formats::Bytes file, std::span<GoodsInfo> destination,
+                                 const EconomyConfig& economy) {
+    if (auto problem = economy.validate(); !problem.empty())
+        return problem;
+    std::vector<GoodsInfo> goods(destination.begin(), destination.end());
+    struct SignedPrices {
+        std::vector<std::int64_t> climate, tax;
+    };
+    std::map<std::size_t, SignedPrices> pending;
+    for (const auto& g : goods) {
+        if (g.prices && (g.prices->climate.size() != economy.climate_names.size() ||
+                         g.prices->tax.size() != economy.tax_count))
+            return "BGruppen.dat [WAREN] prices.climate/tax: existing dimensions differ from "
+                   "economy";
+    }
+    const auto price_of = [&](std::size_t id) -> SignedPrices& {
+        auto [it, inserted] = pending.try_emplace(id);
+        if (inserted) {
+            it->second.climate.assign(economy.climate_names.size(), 0);
+            it->second.tax.assign(economy.tax_count, 0);
+            if (goods[id].prices) {
+                const auto& p = *goods[id].prices;
+                it->second.climate.assign(p.climate.begin(), p.climate.end());
+                it->second.tax.assign(p.tax.begin(), p.tax.end());
+            }
+        }
+        return it->second;
+    };
     const auto entries = text::section_entries(file, "WAREN");
     const auto [head, records] = text::split_records(entries, "Id");
     for (const auto& r : records) {
@@ -74,9 +148,80 @@ std::string apply_goods_metadata(formats::Bytes file, std::span<GoodsInfo> goods
                     return at(e) + "IdSec '" + str(e.value) + "' is not in the goods table";
                 }
                 goods[*id].id_sec = static_cast<GoodsId>(*sec);
+            } else if (text::equals(e.key, "Preis")) {
+                const auto value = price_number(e.value);
+                if (!value)
+                    return at(e) + "Preis: expected signed i64";
+                auto& p = price_of(*id);
+                std::fill(p.climate.begin(), p.climate.end(), *value);
+            } else if (text::equals(e.key, "PreisLevel")) {
+                const auto values = price_numbers(e.value);
+                if (!values)
+                    return at(e) + "PreisLevel: expected signed i64 columns";
+                if (values->size() > economy.tax_count)
+                    return at(e) + "PreisLevel.columns: exceeds economy.tax_count";
+                if (!values->empty()) {
+                    auto& p = price_of(*id);
+                    std::copy(values->begin(), values->end(), p.tax.begin());
+                }
+            } else if (text::equals(e.key, "Bonus") || text::equals(e.key, "Malus")) {
+                const auto fields = text::fields(e.value);
+                if (fields.size() != 2)
+                    return at(e) + "Bonus/Malus: needs amount, climate|climate";
+                const auto amount = price_number(fields[0]);
+                if (!amount)
+                    return at(e) + "Bonus/Malus: expected signed i64 amount";
+                const bool malus = text::equals(e.key, "Malus");
+                if (malus && *amount == std::numeric_limits<std::int64_t>::min())
+                    return at(e) + "Malus.negation: outside i64";
+                const std::int64_t delta = malus ? -*amount : *amount;
+                auto& p = price_of(*id);
+                formats::Bytes names = fields[1];
+                while (true) {
+                    const auto bar = std::find(names.begin(), names.end(), std::uint8_t{'|'});
+                    auto name = names.first(static_cast<std::size_t>(bar - names.begin()));
+                    while (!name.empty() && (name.front() == ' ' || name.front() == '\t'))
+                        name = name.subspan(1);
+                    while (!name.empty() && (name.back() == ' ' || name.back() == '\t'))
+                        name = name.first(name.size() - 1);
+                    std::optional<std::size_t> climate;
+                    for (std::size_t i = 0; i < economy.climate_names.size(); ++i)
+                        if (text::equals(name, economy.climate_names[i])) {
+                            climate = i;
+                            break;
+                        }
+                    if (!climate)
+                        return at(e) + "Bonus/Malus.climate: unknown '" + str(name) + "'";
+                    auto& value = p.climate[*climate];
+                    if ((delta > 0 && value > std::numeric_limits<std::int64_t>::max() - delta) ||
+                        (delta < 0 && value < std::numeric_limits<std::int64_t>::min() - delta))
+                        return at(e) + "Bonus/Malus.price_accumulator: outside i64";
+                    value += delta;
+                    if (bar == names.end())
+                        break;
+                    names = names.subspan(static_cast<std::size_t>(bar - names.begin()) + 1);
+                }
             }
         }
     }
+    for (const auto& [id, raw] : pending) {
+        GoodsPrices p;
+        const auto resolve = [&](const auto& values, auto& out, const char* field) -> std::string {
+            for (const auto value : values) {
+                if (value < 0 || std::uint64_t(value) > std::numeric_limits<std::uint32_t>::max())
+                    return "BGruppen.dat [WAREN] " + goods[id].name + "." + field +
+                           ": outside nonnegative u32";
+                out.push_back(static_cast<std::uint32_t>(value));
+            }
+            return {};
+        };
+        if (auto problem = resolve(raw.climate, p.climate, "resolved_price"); !problem.empty())
+            return problem;
+        if (auto problem = resolve(raw.tax, p.tax, "resolved_surcharge"); !problem.empty())
+            return problem;
+        goods[id].prices = std::move(p);
+    }
+    std::copy(goods.begin(), goods.end(), destination.begin());
     return {};
 }
 

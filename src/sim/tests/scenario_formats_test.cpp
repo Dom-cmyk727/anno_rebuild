@@ -900,6 +900,41 @@ Buf t26_city_scene(const std::vector<std::pair<std::uint32_t, std::string_view>>
 }
 } // namespace
 
+TEST_CASE("economy facts: original city statistics widen imports without restoring scratch") {
+    Buf head2(64);
+    const auto store = [&](std::size_t offset, std::uint32_t value) {
+        for (unsigned i = 0; i < 4; ++i)
+            head2[offset + i] = static_cast<std::uint8_t>(value >> (8 * i));
+    };
+    store(0x28, 37);
+    store(0x38, 40904451);
+    store(0x3c, 0xffffffffU);
+    const auto loaded = load(t26_city_scene({}, record("HEAD2", head2)));
+    REQUIRE(loaded.spec.islands.size() == 1);
+    REQUIRE(loaded.spec.islands[0].cities.size() == 1);
+    const auto& c = loaded.spec.islands[0].cities[0];
+    CHECK(c.sales == 259);
+    CHECK(c.trade_sales == 286331157); // original low-dword(saved*105)/15 would be3
+    CHECK(c.trade_purchases == 30064771065ULL);
+    const auto world = sim::World::create(loaded.spec, registry());
+    REQUIRE_MESSAGE(world.ok(), (world ? "" : world.error()));
+    const auto& island = world.value().islands().at(loaded.spec.islands[0].slot.v);
+    REQUIRE(island);
+    const auto* native = island->city(c.no);
+    REQUIRE(native);
+    CHECK(native->accounts.sales == 259);
+    CHECK(native->accounts.trade_sales == 286331157);
+    CHECK(native->accounts.stamp == 0);
+    CHECK(std::all_of(native->billed.begin(), native->billed.end(), [](auto n) { return n == 0; }));
+    const auto legacy = load(t26_city_scene({}, record("HEAD", head2)));
+    REQUIRE(legacy.spec.islands.size() == 1);
+    REQUIRE(legacy.spec.islands[0].cities.size() == 1);
+    const auto& old = legacy.spec.islands[0].cities[0];
+    CHECK(old.sales == 259);
+    CHECK(old.trade_sales == 0);
+    CHECK(old.trade_purchases == 0);
+}
+
 TEST_CASE("scenario city HEAD2 slot counts, statistics and fields, BAUMAT, VK and EK (T26)") {
     const auto wolle = registry()->goods_by_name("WOLLE");
     const auto holz = registry()->goods_by_name("HOLZ");
@@ -978,7 +1013,7 @@ TEST_CASE("scenario city HEAD2 slot counts, statistics and fields, BAUMAT, VK an
     CHECK((*city.goods)[hg].buy == true); // only in VK (list 1)
     CHECK((*city.goods)[hg].list_index == 2);
 
-    CHECK(warnings_of(s, Kind::StatisticsNotModelled) == 1); // HEAD2 [0x28]
+    CHECK(warnings_of(s, Kind::StatisticsNotModelled) == 0); // city statistics now mapped (133)
     CHECK(warnings_of(s, Kind::Head2FieldNotMapped) == 1);   // [0x30] bit, slots 1/2: one per city
     CHECK(warnings_of(s, Kind::UnknownRecord) == 0);
 

@@ -131,6 +131,9 @@ struct ScenarioSpec {
         /// City property 0 (stream 120): ascending unique players; empty by default (the loaders do
         /// not read HEAD2 [0x30] yet: docs/sim/ship-founding.md section 16).
         std::vector<PlayerId> player_mask;
+        /// ECON-BOOK-1 original HEAD/HEAD2 statistics after checked widened
+        /// saved*105/15 conversion. Import booking stamp/bills remain constructor0.
+        std::uint64_t sales = 0, trade_sales = 0, trade_purchases = 0;
     };
     struct IslandSpec {
         /// The slot in the island table (INSELLNK order == slot order).

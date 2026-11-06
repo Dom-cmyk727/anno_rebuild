@@ -326,13 +326,14 @@ static_assert(field_count<ProductionType>() == 18,
 // digest_type skips both, preserving every existing digest byte. (cls is hashed.)
 static_assert(field_count<PermissionFacts>() == 3, "permission facts need digest coverage");
 static_assert(field_count<BuildRequirement>() == 2, "construction facts need digest coverage");
-static_assert(field_count<BuildingType>() == 26,
+static_assert(field_count<BuildingType>() == 27,
               "a BuildingType member needs a line in digest_type (walk_class derived; walk_mask "
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
 static_assert(field_count<FigureType>() == 10, "a FigureType member needs a line in the digest");
-static_assert(field_count<GoodsInfo>() == 4, "a GoodsInfo member needs a line in the digest");
+static_assert(field_count<GoodsInfo>() == 5, "a GoodsInfo member needs a line in the digest");
+static_assert(field_count<GoodsPrices>() == 2, "prices need digest coverage");
 static_assert(field_count<ClassInfo>() == 4, "a ClassInfo member needs a line in the digest");
 static_assert(field_count<CostEntry>() == 2, "a CostEntry member needs a line in the digest");
 
@@ -380,6 +381,7 @@ template <class A> void digest_type(A& a, const BuildingType& t) {
     a.u32(t.rubble);
     a.u32(t.service_mask);
     u32s(a, t.running_cost);
+    a.u32(t.statistic_kind); // stream133, original audited getters return1
     u32s(a, t.output_goods);
     u32s(a, t.input_goods);
     ar::seq(a, t.head_raw, 1, [&](const std::uint8_t& b) { a.u8(b); });
@@ -406,6 +408,10 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(g.forsch);
         a.u32(g.bau_first); // stream 127
         a.u32(g.id_sec);    // stream 127
+        ar::opt(a, g.prices, [&](const GoodsPrices& p) {
+            u32s(a, p.climate);
+            u32s(a, p.tax);
+        });
     });
     ar::seq(a, classes, 7, [&](const ClassInfo& c) {
         a.enumv(c.cls);
@@ -1079,7 +1085,7 @@ std::string population_roles_problem(const SimConfig& cfg, std::size_t goods_cou
 
 /// The population metadata of the goods: a stage index is a shift count into the u32 mask, a
 /// substitute is a goods id.
-std::string goods_metadata_problem(std::span<const GoodsInfo> goods) {
+std::string goods_metadata_problem(std::span<const GoodsInfo> goods, const SimConfig& cfg) {
     for (std::size_t i = 0; i < goods.size(); ++i) {
         if (goods[i].bau_first >= 32) {
             return "goods " + std::to_string(i) + " (" + goods[i].name + "): bau_first " +
@@ -1088,6 +1094,12 @@ std::string goods_metadata_problem(std::span<const GoodsInfo> goods) {
         if (goods[i].id_sec >= goods.size()) {
             return "goods " + std::to_string(i) + " (" + goods[i].name + "): id_sec " +
                    std::to_string(goods[i].id_sec) + " is not a goods id";
+        }
+        if (goods[i].prices &&
+            (goods[i].prices->climate.size() != cfg.economy.climate_names.size() ||
+             goods[i].prices->tax.size() != cfg.economy.tax_count)) {
+            return "goods " + std::to_string(i) +
+                   " prices.climate/tax: dimensions differ from SimConfig.economy";
         }
     }
     return {};
@@ -1122,7 +1134,7 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
         return "the group table has " + std::to_string(groups.size()) +
                " groups, SimConfig::house_groups is " + std::to_string(cfg.house_groups);
     }
-    if (std::string problem = goods_metadata_problem(goods_in); !problem.empty()) {
+    if (std::string problem = goods_metadata_problem(goods_in, cfg); !problem.empty()) {
         return problem;
     }
     if (!groups.empty()) {
@@ -1158,6 +1170,11 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
     std::uint32_t footprint = 1;
     for (std::size_t i = 0; i < types.size(); ++i) {
         const BuildingType& t = types[i];
+        if (t.statistic_kind != 1 && t.statistic_kind != 2)
+            return "type " + std::to_string(t.id.v) + " statistic_kind: must be1 or2";
+        if (!t.running_cost.empty() && t.running_cost.size() != 2)
+            return "type " + std::to_string(t.id.v) +
+                   " running_cost: needs inactive and active columns";
         if (i > 0 && types[i - 1].id == t.id) {
             return "duplicate building type id " + std::to_string(t.id.v);
         }
@@ -1242,6 +1259,11 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
     r.figure_types_ = std::move(figures);
     r.unit_import_ = std::move(unit_import);
     r.goods_ = std::move(goods_in);
+    if (std::any_of(r.goods_.begin(), r.goods_.end(),
+                    [](const auto& g) { return g.prices.has_value(); })) {
+        r.price_climates_ = cfg.economy.climate_names;
+        r.price_tax_count_ = cfg.economy.tax_count;
+    }
     r.classes_ = std::move(classes);
     r.max_footprint_ = footprint;
     return std::shared_ptr<const TypeRegistry>(std::move(sealed));
@@ -1300,6 +1322,11 @@ TypeRegistry::population_view(std::uint32_t group_index, const SimConfig& cfg) c
 }
 
 std::string TypeRegistry::validate_against(const SimConfig& cfg) const {
+    if (!price_climates_.empty() &&
+        (price_climates_ != cfg.economy.climate_names || price_tax_count_ != cfg.economy.tax_count))
+        return "SimConfig.economy.climate_names/tax_count: differ from sealed price role binding";
+    if (auto problem = goods_metadata_problem(goods_, cfg); !problem.empty())
+        return problem;
     if (!house_groups_.empty()) {
         if (std::string problem = population_roles_problem(cfg, goods_.size()); !problem.empty()) {
             return problem;

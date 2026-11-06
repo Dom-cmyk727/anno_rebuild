@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/city_accounts.hpp>
 #include <anno/sim/resident.hpp>
 
 namespace anno::sim {
@@ -94,7 +95,9 @@ Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimCo
     case PayloadTag::Inert:
         break;
     }
-    return Inert{};
+    Inert inert;
+    inert.financial_active = inert_financial_active(type);
+    return inert;
 }
 
 namespace {

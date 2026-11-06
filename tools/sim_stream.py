@@ -127,7 +127,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 132
+STATE_HASH_VERSION = 133
 PRNG_TIMELINE_VERSION = 5
 
 
@@ -203,7 +203,7 @@ def registry_digest(names, stages=(), swap=False):
     d = u64(0)  # no types
     d += u64(len(names))
     for i, n in enumerate(names):
-        d += string(n) + u32(FORSCH.get(i, 0)) + u32(0) + u32(0)  # + bau_first, id_sec (127)
+        d += string(n) + u32(FORSCH.get(i, 0)) + u32(0) + u32(0) + u8(0)  # + bau_first, id_sec (127)
     d += u64(len(CLASSES))
     for cls, tick, payload, gate in CLASSES:
         d += u8(cls) + u8(tick) + u8(payload) + u32(gate)
@@ -282,6 +282,7 @@ def config_bytes():
     b += b''.join(u32(x) for x in [0x4C, 0x5A, 0x4C, 0x1D])
     # stream 128: billed_goods_first, billed_goods_last, resident_cargo_slots, house_type_stride (L3)
     b += b''.join(u32(x) for x in [0x1A, 0x28, 3, 20])
+    b += u64(7) + b''.join(string(n) for n in (b'POLAR',b'TUNDRA',b'NORD',b'PRAERIE',b'DSCHUNGEL',b'STEPPE',b'WUESTE')) + u32(3) + u32(2000)
     return b
 
 
@@ -342,12 +343,12 @@ def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT, road_level=False, road_pie
             + cargo_rules_bytes(cargo)  # cargo (124)
             + u8(1 if road_level else 0) + u8(1 if road_pieces else 0)  # road_require_land_level, road_preserve_nonroad_pieces (125)
             + u8(1 if hygiene else 0) + u8(1 if skip_uncuttable else 0)  # forestry_claim_hygiene, forestry_skip_uncuttable (126)
-            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0))  # house_updates, save_billed_goods (128)
+            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0) + u8(0))  # house_updates, save_billed_goods (128)
 
 
 def settings_bytes(width=0, height=0):
     return (u32(width) + u32(height) + u8(0) + u8(1) + u8(2) + u16(2550) + u8(1) + u32(0) + u32(0) + u8(0)
-            + u8(0) + u32(0) + u8(0) + u8(0) + u32(3) + u32(100))
+            + u32(0) + u32(0) + u8(0) + u8(0) + u32(3) + u32(100))
 
 
 def rng_values():
@@ -537,6 +538,7 @@ def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
     b += u32(0) + u16(0)  # stage_mask, stage_stamp (stream 128)
     if save_billed:  # Rules::save_billed_goods (stream 128): u64 count, u32 each
         b += u64(WAREHOUSE_GOODS) + b''.join(u32(0) for _ in range(WAREHOUSE_GOODS))
+    b += bytes(42)  #133 accounts: u16 stamp, five u64 history values
     b += u64(index_digest(index_stamp, lists))
     return fnv(u8(1) + b)
 
@@ -743,7 +745,7 @@ def islands_digest(by_slot):
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
 # building_state_test.cpp checks it);
 # a literal here because the type table is not transcribed by this script.
-SYNTHETIC_REGISTRY = 0x4DE8C88166F5684F
+SYNTHETIC_REGISTRY = 0x77D2DD9ED3F484B1
 
 
 def g1_scenario(steps=0, step_ms=10):
@@ -843,7 +845,7 @@ def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, island
                world=(0, 0), steps=0, step_ms=0, monopoly=None, walk_digest=0):
     """`steps` advances of `step_ms` reached `ms`; `monopoly` is the table its first
     advance wrote (None: all entries empty)."""
-    header = (u32(STATE_HASH_VERSION) + b'SIMINT1\0' + u32(PRNG_TIMELINE_VERSION) + config_bytes()
+    header = (u32(STATE_HASH_VERSION) + b'ECONBK1\0' + u32(PRNG_TIMELINE_VERSION) + config_bytes()
               + rules_bytes(full_tick))
     header += (u64(registry) + u64(walk_digest) + u64(22)
                + b''.join(string(b'default') for _ in range(22)))
@@ -940,7 +942,7 @@ def values():
 
 def goldens():
     found = {}
-    path = ROOT / 'fixtures/synthetic/sim/consolidated132/goldens.txt'
+    path = ROOT / 'fixtures/synthetic/sim/econbook1/current133/goldens.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         parts = line.split('#')[0].split()
         if len(parts) == 4:
@@ -952,9 +954,9 @@ def corpus_versions():
     """(kStateHashVersion, kPrngTimelineVersion) from the version header line of
     fixtures/synthetic/sim/scenario_corpus.txt (written by scenario_test.cpp; its create
     hashes move with both versions), or None when the file has none."""
-    path = ROOT / 'fixtures/synthetic/sim/consolidated132/scenario_corpus.txt'
+    path = ROOT / 'fixtures/synthetic/sim/econbook1/current133/scenario_corpus.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
-        m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+) schema=SIMINT1 component=import-only$', line.strip())
+        m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+) schema=ECONBK1 component=import-only$', line.strip())
         if m:
             return int(m.group(1)), int(m.group(2))
     return None

@@ -377,9 +377,14 @@ std::uint32_t le32(const std::uint8_t* p) {
 /// switch bit), which books the running-cost change (0x10072a60) and stores the bit at
 /// +0x24 (workshop 0x100686aa / 0x100686b3, farm 0x1006efd1 / 0x1006efda). The stored
 /// bit is the record's bit, mapped here unchanged.
-bool read_class_record(Payload& payload, RuntimeClass cls, Bytes rec) {
+bool read_class_record(Payload& payload, const BuildingType& type, Bytes rec) {
+    const auto cls = type.cls;
     if (rec.empty()) {
         return true;
+    }
+    if (auto* inert = std::get_if<Inert>(&payload)) {
+        inert->financial_active = inert_financial_active(type, rec);
+        return false; // Financial fact only: retain UndecodedBuildingRecord for body.
     }
     if (auto* inn = std::get_if<Inn>(&payload); inn != nullptr && cls == RuntimeClass::Inn) {
         // 0x10075740: exactly 10 bytes are read (tavern stock u16 at byte 2 -> +0x18, taken
@@ -636,16 +641,15 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
             const std::uint32_t vk_byte = b[0x26], ek_byte = b[0x27];
             const bool slots_not_kept = (vk_byte != 0 && vk_byte != kDefaultVkSlots) ||
                                         (ek_byte != 0 && ek_byte != kDefaultEkSlots);
-            // [0x28]/[0x38]/[0x3c] statistics 0/4/5 (stored × 7 by the original, the getter
-            // divides): the City has no statistics field (state.md §4.7 "Not modelled",
-            // O-9/O-23), so they are read but not kept.
-            const bool stat = le32(&b[0x28]) != 0 ||
-                              (k.name == "HEAD2" && (le32(&b[0x38]) != 0 || le32(&b[0x3c]) != 0));
-            if (stat) {
-                warn.once(ScenarioWarningKind::StatisticsNotModelled, "cities", "head2 stat", kp,
-                          k.name, k.offset,
-                          "HEAD2 holds city statistics (sales/trade); the City has no statistics "
-                          "field (not modelled, O-9/O-23)");
+            // Welt2e1c9/2e399: saved*105/15, widened before multiplication rather
+            // than original low-dword wrap. Legacy HEAD writes only sales.
+            const auto stat = [&](std::size_t offset) {
+                return std::uint64_t{le32(&b[offset])} * 105 / 15;
+            };
+            city.sales = stat(0x28);
+            if (k.name == "HEAD2") {
+                city.trade_sales = stat(0x38);
+                city.trade_purchases = stat(0x3c);
             }
             // [0x2c] property 1, [0x34]/[0x36] the research sub-object (OQ-157), a foreign
             // bit in the player mask [0x30] (the owner's own bit is the default, O-40) and
@@ -933,16 +937,17 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                         if (auto* mine = std::get_if<Mine>(&*payload)) {
                             mine->deep = mine_is_deep(type->prod, type->research_id);
                         }
-                        if (!read_class_record(*payload, type->cls, rec) &&
+                        if (!read_class_record(*payload, *type, rec) &&
                             warn.seen_once
                                 .emplace("building record",
                                          std::to_string(static_cast<int>(type->cls)))
                                 .second) {
-                            warn.add(ScenarioWarningKind::UndecodedBuildingRecord, ep, e.name,
-                                     e.offset,
-                                     "the record of class " +
-                                         std::to_string(static_cast<int>(type->cls)) +
-                                         " is not mapped: the make_* default stays");
+                            warn.add(
+                                ScenarioWarningKind::UndecodedBuildingRecord, ep, e.name, e.offset,
+                                "the record of class " +
+                                    std::to_string(static_cast<int>(type->cls)) +
+                                    " body is not mapped; verified financial metadata is retained, "
+                                    "other make_* defaults stay");
                         }
                         if (const std::string p =
                                 payload_problem(*payload, *type, cls, config, types);

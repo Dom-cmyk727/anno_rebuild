@@ -7,9 +7,9 @@ That packet supersedes the historical research-only ownership, old base and
 pre-132 identity guidance below. Engine work follows independent contract review;
 this note does not declare the remaining lifecycle/policy research complete.
 
-Current execution: B0 and B1 independently approved; B2 reference validation on
+Current execution: B0–B2 independently approved; B3 facts/state candidate on
 `task/ECON-BOOK-1-main`, initially pinned to
-`3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; engine implementation NOT_STARTED.
+`3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; production booking/lifecycle wiring NOT_STARTED.
 The second Mac owns B0–B7 under the dispatch above. Historical research/ownership
 and prior identity language below retain their actual dates and source pins.
 Existing rules remain unchanged; booking will be separately default-off.
@@ -302,7 +302,7 @@ The existing arithmetic research is approved only within its original-wrap model
 | B1b lifecycle | Type getter/stat-kind and every current create/load/switch/house replace/remove path table | Failed/duplicate transition unchanged; city28/player14+rem1 charged1+1, no cost mirroring | APPROVED4f644fc8; absent owner-transfer remains Unsupported |
 | B1c checked policy | Signed domains, exact ordinary arithmetic, word stamps, sum-before-rounding, gross credit then debit, negative money, explicit atomic booking fault | Final net fits but gross credit overflows; no reset/stats/stamp/debit on failure | APPROVED4f644fc8 by `/root/econ_b0_review` after comparison-domain/fault corrections |
 | B1d order | Actual island/city/effect/figure/player sequence; same- and cross-island owner preflight | Two cities each individually fit but second combined credit overflows; earlier house/script fault blocks booking; save_billed_goods=false cannot lose income | APPROVED4f644fc8; actual-boundary engine proofs remain B4 |
-| B2 independent references | Hand-pinned checked versus original-wrap vectors, lifecycle/order/width and smallest-positive/zero/partitioned timing | Width/order/double-charge/reset-before-fault mutants fail intended assertions; CLI empty/bad expected/incomplete refused | Public contracts registered and required before C++ implementation |
+| B2 independent references | Hand-pinned checked versus original-wrap vectors, lifecycle/order/width and smallest-positive/zero/partitioned timing | Width/order/double-charge/reset-before-fault mutants fail intended assertions; CLI empty/bad expected/incomplete refused | APPROVEDb62047ee by `/root/econ_b0_review`, canonical03 selected2/executed2, required3 invocations separate |
 | B3 facts/state/identity | Data-sized prices/roles; minimal authoritative stamp/stats/cost state;133/ECONBK1 populated byte oracle and native round-trip | Actual132 save/log refuses intended boundary; invalid dimensions/signed prices/unknown climate transactional; alternate generic types/roles | Independently reviewed parser/state/reference/compatibility required |
 | B4 production/lifecycle | Opt-in scheduler booking exactly once, full supported lifecycle, owner split and negative-balance continuation | Real last-city merge overflow leaves its money/bills/stats/stamp unchanged, queued prior effects accounted; default-off132 semantic controls | Focused Debug/ASAN, accounting mutants, independent engine review required |
 | B5 actual loop | Cheap original Tutorial path, new goods reach several households, bills/income/upkeep exact, public shortage/recovery, owner/city isolation | No starting-stock-as-production or grant in real arm; explicit component versus strict loader refusal; legal altered command diverges causally | Native cuts and genuine fresh replay artifacts; independent real-ledger review required |
@@ -676,3 +676,111 @@ a GPU/render acceptance campaign. The own ignored CMAKE_PROJECT_INCLUDE file
 formats/load/replay targets retain-Werror. Reviewer independently confirmed the
 single affected compile command. Current other-executor gates are left alone;
 18 logical CPUs/48GiB/~1.5TiB available permits4 build jobs and1 CTest child.
+
+## B3 — facts/state candidate contract and proof plan
+
+Candidate identity is133 / ECONBK1 (`45 43 4f 4e 42 4b 31 00`, u64LE
+`0x00314b424e4f4345`), with unchanged save1/replay4/wire1/PRNG5. Canonical
+main's132 files and the completed MAP branch remain intact. Actual published132
+G2 was reproduced6/6 in a fresh process atb62047ee by the canonical gate
+`cache/econ-book1/B3/actual132-control-01.log` (selected1/executed1/others0,
+three required invocations separately passed). Its initial native save was
+extracted byte-for-byte with checksum validation; provenance/offset/hashes are
+committed under `econbook1/legacy132`. The actual132 executable is retained in
+own cache for later default-off semantic projection, not rebuilt as133.
+
+Schema and facts:
+
+- `SimConfig.economy` holds climate names in existing Island.climate index order,
+  tax_count and word booking period; defaults original7/3/2000. Sizes use the
+  existing entry-table allocation bound, never original-count limits. Booking
+  requires the climate-name count to match monopoly_climate_mask. The one existing
+  WorldSettings.prop10 widens from byte to u32 and validates against tax_count.
+- Optional immutable GoodsPrices follows id_sec in registry digest: presence,
+  count-prefixed climate u32s and tax u32s. Absence explicitly means original
+  constructor zero in all configured roles. Present rows must have exact sizes.
+  Registry sealing retains a derived name-order/tax-count binding, like existing
+  population roles; a world cannot reinterpret tables under reordered names.
+  Roles are hashed in SimConfig, not a competing world copy. Period is not part
+  of the immutable price binding and can be configured independently.
+- The goods reader stages *all* metadata, including existing BauFirst/IdSec,
+  before commit. Ordered signed-i64 Preis/Bonus/Malus/PreisLevel supports negative
+  intermediate values and rejects invalid final u32 values, unknown names,
+  excessive source columns, arithmetic overflow and I64_MIN Malus negation.
+  Empty source tax lists are no-ops; partial lists retain prior suffixes; Preis
+  resets climate values only. A local checked full-i64 decimal reader is used:
+  the shared text::to_int intentionally accepts only18 digits, so widening it
+  globally would change unrelated parsers. No generic formats change is needed.
+- BuildingType.statistic_kind u32 follows running_cost in registry digest.
+  Original audited defaults1; explicit facts may select2. Running costs remain
+  the existing inactive/active vector (empty zero default or exactly2 columns).
+  Neither field is copied to Player upkeep.
+- CityAccounts is exactlyu16 stamp then fiveu64s: sales, trade_sales,
+  trade_purchases, civil_cost, military_cost. It is saved/hashed after billed and
+  before index regardless of booking flag. Native restores historical totals,
+  never rescans them. Original map import retains HEAD sales / HEAD2 all three
+  raw statistics using widened saved*105/15, constructor stamp/bills0; B4 supplies
+  opt-in current-type/manual-state initial cost reconstruction.
+- Inert stores optional financial_active. Defaults/import masks are the reviewed
+  B1 table; unsafe Hunter/Dual>14 or truncated version1 Whaler returns unknown.
+  Booking-enabled world validation refuses the named field; booking-off retains
+  warned body limitations. UndecodedBuildingRecord still describes the unported
+  body, even when its minimal financial selector was decoded. No new production
+  body or line command is added. Rules.city_booking remains separately false;
+  enabled plus save_billed_goods=false refuses both creation and native load.
+
+Independent populated `integration_stream_ref.py` now encodes7 complete structural
+records, adding a42-byte accounts record,8-climate/4-tax configuration and a
+three-goods price-registry digest. The accounts literal includes sales
+0x0102030405060708 and civil cost4294967313, catching narrowing/field swaps, not
+just a header change. Its existing public CLI contract now has5 methods.
+The scheduler oracle uses an explicitly opaque synthetic-registry binding (as
+before); its new binding is77d2dd9ed3f484b1 from generated registry evidence,
+not an independent transcription of every synthetic type. Independent empty
+registry804f19da7cae34ee and empty world69871c0febf78a1c are computed by Python;
+new price-registry/role/account bytes are independently transcribed separately.
+The structural CLI contract has6 methods after adding re-signed wrong accounts,
+tax count and climate-price controls; matching a digest alone cannot satisfy it.
+
+The independent raw-SZE inventory of50 source files is committed as
+`econbook1/city_statistics_import.txt` (only counts/derived sums, no asset bytes).
+It records23 scenarios whose former nonzero HEAD statistics warning disappears,
+and separately retains STAT2 tick-counter warnings. C++ creation-only corpus
+checks imported raw sums/warning counts against this fixture. Only that verified
+warning column changes in reused physical/movement rows; actual133 creation
+identities are generated anew. Creation-only evidence does not re-execute those
+historical movement columns or become a full corpus movement claim.
+
+Focused tests cover transactional ordered parsing, signed endpoints, >original
+goods/role counts, a second producer/service via data, u32 tax299, exact native
+history/u32 bills, malformed dimensions, role reorder, known/unknown financial
+flags, opt-in persistence refusal and actual132 version refusal with a legal133
+recording. No money movement is connected yet. Engine integration B4 waits for
+independent B3 approval.
+
+Development evidence remains exploratory until the clean frozen gate: first
+compiler failures were missing settings_section config argument/callers and
+test-helper typos, all retained in build logs. `facts-exploration-01.log` crashed
+because the new test dereferenced island slot0 although its fixture explicitly
+uses7; corrected test now asserts the actual slot/pointer, and02 passes7/7.
+`facts-exploration-03.log` passes12/13; the remaining8 assertions are stale
+38-byte settings offsets after prop10 widens to41 bytes, now corrected. A
+separate registry-binding exploratory failure records old expected bindings,
+corrected against new byte schema/Python empty-registry calculation. These
+are preserved first failures, not acceptance results or waived runtime defects.
+
+Fixture generation completed14+6 direct CTest invocations, all passing in24.14s
+and36.85s respectively, under explicit ANNO_UPDATE_GOLDEN=1 (not acceptance).
+The six-case run's original Tutorial replay controls measured progression and
+interruption/recovery with their full existing semantic assertions; the latter
+took25.48s Debug. Own gates remain serial with admission enabled. There are41
+new133 checkpoint values and11 newly recorded133/ECONBK1 logs. Independent
+scheduler values reconcile before the C++ values are installed. Every recording
+outer identity is checked; copied132 placeholders are not retained as133 data.
+The final players scope of newly recorded default-off133 G2 is byte-for-byte
+the actual132 CLI's players scope, including monetary state. B4 must add a
+nonempty priced-bill/cost default-off control once money wiring exists.
+`independent-stream-check-01.log` agrees with all current oracle-controlled
+fixtures, including freshly generated creation-only corpus identity. The broad
+movement corpus is reused by dependency, not counted as executed here. Clean
+frozen canonical B3 acceptance and independent review are still pending.

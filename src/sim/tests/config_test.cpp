@@ -183,6 +183,12 @@ void expected_config(Stream& s) {
     for (const std::uint32_t x : {0x1aU, 0x28U, 3U, 20U}) {
         s.u32(x); // billed_goods_first, billed_goods_last, resident_cargo_slots, house_type_stride
     }
+    // Stream133 EconomyConfig: data-sized roles, tax_count, word period.
+    s.u64(7);
+    for (const char* n : {"POLAR", "TUNDRA", "NORD", "PRAERIE", "DSCHUNGEL", "STEPPE", "WUESTE"})
+        s.str(n);
+    s.u32(3);
+    s.u32(2000);
     // Rules
     s.u8(0); // slot_policy
     s.u8(0); // spatial_order
@@ -245,6 +251,7 @@ void expected_config(Stream& s) {
     // house options (stream 128): house_updates off, save_billed_goods on
     s.boolean(false); // house_updates
     s.boolean(true);  // save_billed_goods
+    s.boolean(false); // city_booking (133)
 }
 
 void expected_settings(Stream& s) {
@@ -258,7 +265,7 @@ void expected_settings(Stream& s) {
     s.u32(0);
     s.u32(0);
     s.u8(0);
-    s.u8(0);
+    s.u32(0); // prop10 widened (133)
     s.u32(0);
     s.boolean(false);
     s.boolean(false);
@@ -382,6 +389,7 @@ std::vector<std::pair<const char*, ConfigMut>> config_mutations() {
     m.emplace_back("billed_goods_last", [](sim::SimConfig& c) { c.billed_goods_last += 1; });
     m.emplace_back("resident_cargo_slots", [](sim::SimConfig& c) { c.resident_cargo_slots += 1; });
     m.emplace_back("house_type_stride", [](sim::SimConfig& c) { c.house_type_stride += 1; });
+    m.emplace_back("economy", [](sim::SimConfig& c) { c.economy.tax_count += 1; });
     return m;
 }
 
@@ -432,6 +440,7 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
                    [](sim::Rules& r) { r.forestry_skip_uncuttable = true; });
     m.emplace_back("house_updates", [](sim::Rules& r) { r.house_updates = true; });
     m.emplace_back("save_billed_goods", [](sim::Rules& r) { r.save_billed_goods = false; });
+    m.emplace_back("city_booking", [](sim::Rules& r) { r.city_booking = true; });
     return m;
 }
 
@@ -647,7 +656,7 @@ TEST_CASE("rules defaults are faithful") {
     CHECK(r.validate().empty());
     CHECK(r.founding_types == std::vector<std::uint32_t>{1302});
     CHECK(r.shared_visibility.empty());
-    static_assert(sim::field_count<sim::Rules>() == 31);
+    static_assert(sim::field_count<sim::Rules>() == 32);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -719,7 +728,7 @@ TEST_CASE("sim config defaults are the originals") {
 }
 
 TEST_CASE("config digest changes with every field") {
-    static_assert(sim::field_count<sim::SimConfig>() == 60);
+    static_assert(sim::field_count<sim::SimConfig>() == 61);
     const sim::SimConfig base;
     const std::uint64_t base_digest = base.digest();
     CHECK(sim::SimConfig{}.digest() == base_digest);
@@ -1530,7 +1539,7 @@ TEST_CASE("state stream header and settings scopes") {
     // timers, 28 empty monopoly entries).
     Stream expected;
     expected.u32(sim::kStateHashVersion);
-    expected.u64(0x0031544e494d4953ULL); // SIMINT1 lineage schema
+    expected.u64(0x00314b424e4f4345ULL); // ECONBK1 lineage schema
     expected.u32(sim::kPrngTimelineVersion);
     expected_config(expected);
     expected.u64(sim::TypeRegistry::empty()->digest());
@@ -1593,20 +1602,20 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u64(0);
     expected.u64(0); // signals/bindings
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 132);
+    CHECK(sim::kStateHashVersion == 133);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
     CHECK(scope_offset(w, "settings") == header_size + 36);
-    CHECK(scope_offset(w, "ids") == header_size + 36 + 38);
-    CHECK(scope_offset(w, "players") == header_size + 36 + 38 + 41);
-    CHECK(scope_offset(w, "islands") == header_size + 36 + 38 + 41 + 46);
-    CHECK(scope_offset(w, "figures") == header_size + 36 + 38 + 41 + 46 + 8);
+    CHECK(scope_offset(w, "ids") == header_size + 36 + 41);
+    CHECK(scope_offset(w, "players") == header_size + 36 + 41 + 41);
+    CHECK(scope_offset(w, "islands") == header_size + 36 + 41 + 41 + 46);
+    CHECK(scope_offset(w, "figures") == header_size + 36 + 41 + 41 + 46 + 8);
     // figures: 31 bytes (the empty registry without the deferred list, T22).
-    CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 41 + 46 + 8 + 31);
-    CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8);
-    CHECK(scope_offset(w, "script") == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8 + 193);
-    CHECK(bytes.size() == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8 + 193 + 67);
+    CHECK(scope_offset(w, "events") == header_size + 36 + 41 + 41 + 46 + 8 + 31);
+    CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 41 + 41 + 46 + 8 + 31 + 8);
+    CHECK(scope_offset(w, "script") == header_size + 36 + 41 + 41 + 46 + 8 + 31 + 8 + 193);
+    CHECK(bytes.size() == header_size + 36 + 41 + 41 + 46 + 8 + 31 + 8 + 193 + 67);
 }
 
 TEST_CASE("state hash moves with every config rules settings and seam field") {

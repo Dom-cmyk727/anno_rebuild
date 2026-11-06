@@ -11,6 +11,7 @@
 #include <string>
 
 namespace anno::sim {
+struct SimConfig;
 
 struct WorldSettings {
     /// HEAD[0..7] of the scene: world size in tiles.
@@ -36,9 +37,9 @@ struct WorldSettings {
     std::uint32_t prop7_offset = 0;
     /// AI not loaded when non-zero.
     std::uint8_t prop9 = 0;
-    /// Tax level 0..2 (economy, CompLogic); WorldSettings::validate rejects
-    /// larger values because the economy indexes its tax tables by it.
-    std::uint8_t prop10 = 0;
+    /// Tax column; original scene imports a byte, widened for configured columns.
+    /// One selector, validated against SimConfig::economy.tax_count.
+    std::uint32_t prop10 = 0;
     std::uint32_t prop11 = 0;
     bool prop12 = false, prop13 = false;
     /// Bit 1 (0x2) = add-on edition (A11, D 0x100a3aed: the World constructor
@@ -56,6 +57,7 @@ struct WorldSettings {
     /// island rect are bounded by them; their product is formed in u64 and
     /// cannot wrap) and prop10 must be 0..2.
     [[nodiscard]] std::string validate() const;
+    [[nodiscard]] std::string validate(const SimConfig&) const;
 
     [[nodiscard]] bool addon() const { return (prop14 & 2U) != 0; }
     /// Deposits deplete only in the add-on edition (OQ-035, D 0x10063686).

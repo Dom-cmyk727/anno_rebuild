@@ -1,8 +1,8 @@
 // The per-goods population metadata of Data/BGruppen.dat [WAREN] (MAP-POP-IMPL-1 B,
 // docs/sim/population-inputs.md sections 2.2-2.3): BauFirst (the stage index that enables a need)
-// and IdSec (the substitute goods id). Registry data like the group table: parsed once, in the
-// registry digest, never state. Other [WAREN] keys (Preis, Bonus, Forsch, BauLast, ...) are not
-// read.
+// and IdSec (the substitute goods id), plus ECON-BOOK-1 ordered price directives.
+// Registry data like the group table: parsed once, in the registry digest, never
+// state. Other keys such as Forsch/BauLast are not read here.
 #pragma once
 
 #include <cstdint>
@@ -32,7 +32,12 @@ inline constexpr std::uint32_t kStageIndexCount = 32;
 /// of 0..31 (unknown names, GOTT and SPIELER are refused: an adaptation, the original's handling is
 /// untraced), an `IdSec` naming a goods the table does not have. A missing [WAREN] section changes
 /// nothing. `goods` is the table the registry will be built with.
-[[nodiscard]] std::string apply_goods_metadata(formats::Bytes file, std::span<GoodsInfo> goods);
+/// ECON-BOOK-1 also resolves ordered Preis/PreisLevel/Bonus/Malus with signed
+/// checked intermediates and final u32 tables. All fields commit together only
+/// after complete validation. Partial/empty source tax lists retain prior values;
+/// a present runtime table always has exact configured dimensions.
+[[nodiscard]] std::string apply_goods_metadata(formats::Bytes file, std::span<GoodsInfo> goods,
+                                               const EconomyConfig& economy = EconomyConfig{});
 
 /// Reads the [BAUSTUFEN] section: `Stufe: <stage name>, <group>, <count>` lines and `Wissen:
 /// <stage name>, <n>` lines (a Wissen line needs an earlier Stufe line of its stage). Returns the

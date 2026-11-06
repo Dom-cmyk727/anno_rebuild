@@ -52,7 +52,7 @@ constexpr int kAdvances = 3000;
 constexpr std::uint32_t kStepMs = 100;
 
 fs::path expectations_path() {
-    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "consolidated132" / "scenario_corpus.txt";
+    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "econbook1" / "current133" / "scenario_corpus.txt";
 }
 
 std::vector<fs::path> scenario_files(const fs::path& game) {
@@ -156,7 +156,7 @@ void house_totals(const sim::World& w, std::uint64_t& residents, std::uint64_t& 
 std::string version_line() {
     return "# kStateHashVersion=" + std::to_string(sim::kStateHashVersion) +
            " kPrngTimelineVersion=" + std::to_string(sim::kPrngTimelineVersion) +
-           " schema=SIMINT1 component=import-only";
+           " schema=ECONBK1 component=import-only";
 }
 
 std::shared_ptr<const sim::TypeRegistry> original_registry(const fs::path& game) {
@@ -489,6 +489,45 @@ bool update_requested() {
     return u != nullptr && std::string(u) == "1" && (ci == nullptr || std::string(ci).empty());
 }
 
+struct CityStatisticsImport {
+    std::uint32_t removed_head_warning = 0, stat2_warning = 0, cities = 0;
+    std::uint64_t sales = 0, trade_sales = 0, trade_purchases = 0;
+};
+std::map<std::string, CityStatisticsImport> city_statistics_imports() {
+    std::ifstream in(fs::path(ANNO_FIXTURES_DIR) / "sim" / "econbook1" /
+                     "city_statistics_import.txt");
+    REQUIRE(in.good());
+    std::map<std::string, CityStatisticsImport> result;
+    for (std::string line; std::getline(in, line);) {
+        if (line.empty() || line[0] == '#')
+            continue;
+        std::istringstream fields(line);
+        std::string name;
+        CityStatisticsImport row;
+        REQUIRE(bool(fields >> name >> row.removed_head_warning >> row.stat2_warning >> row.sales >>
+                     row.trade_sales >> row.trade_purchases >> row.cities));
+        REQUIRE(result.emplace(name, row).second);
+    }
+    REQUIRE(result.size() == 50);
+    return result;
+}
+std::string with_imported_city_statistics(std::string row) {
+    const auto inputs = city_statistics_imports();
+    const auto name = row.substr(0, row.find(' '));
+    REQUIRE(inputs.contains(name));
+    const auto expected = inputs.at(name);
+    const std::string key = "StatisticsNotModelled=";
+    const auto at = row.find(key);
+    REQUIRE(at != std::string::npos);
+    const auto from = at + key.size();
+    const auto end = row.find(' ', from);
+    REQUIRE(end != std::string::npos);
+    const auto old = std::stoul(row.substr(from, end - from));
+    REQUIRE(old == expected.removed_head_warning + expected.stat2_warning);
+    row.replace(from, end - from, std::to_string(expected.stat2_warning));
+    return row;
+}
+
 } // namespace
 
 TEST_CASE(
@@ -716,8 +755,8 @@ TEST_CASE(
     for (const auto& r : results) {
         REQUIRE(historical.contains(r.name));
         CHECK(without_identity(r.line) ==
-              without_identity(with_restored_research_production(
-                  with_recognized_player_records(historical.at(r.name)))));
+              without_identity(with_imported_city_statistics(with_restored_research_production(
+                  with_recognized_player_records(historical.at(r.name))))));
     }
 
     // The per-file counts against the committed expectations.
@@ -1069,6 +1108,7 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
     REQUIRE(files.size() == 50);
     const auto templates = anno::sim_load::scan_island_templates(*dir);
     std::size_t masks = 0, isolated = 0, supported = 0;
+    const auto statistics = city_statistics_imports();
     for (const auto& file : files) {
         const auto name = rel_name(*dir, file);
         INFO(name);
@@ -1076,6 +1116,24 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
             anno::test::read_file(file), templates, *types, {}, {},
             original_component::actor_free_units());
         REQUIRE(loaded);
+        REQUIRE(statistics.contains(name));
+        const auto& expected_statistics = statistics.at(name);
+        std::uint64_t sales = 0, trade_sales = 0, trade_purchases = 0, city_count = 0;
+        for (const auto& island : loaded.value().loaded.spec.islands)
+            for (const auto& city : island.cities) {
+                sales += city.sales;
+                trade_sales += city.trade_sales;
+                trade_purchases += city.trade_purchases;
+                ++city_count;
+            }
+        CHECK(sales == expected_statistics.sales);
+        CHECK(trade_sales == expected_statistics.trade_sales);
+        CHECK(trade_purchases == expected_statistics.trade_purchases);
+        CHECK(city_count == expected_statistics.cities);
+        const auto warnings = sim::count(loaded.value().loaded);
+        const auto found = warnings.warnings.find(sim::ScenarioWarningKind::StatisticsNotModelled);
+        CHECK((found == warnings.warnings.end() ? 0 : found->second) ==
+              expected_statistics.stat2_warning);
         auto component = original_component::import_only(loaded.value().loaded.spec, types);
         REQUIRE_MESSAGE(component, (component ? "" : component.error()));
         MESSAGE("whole-program capability " << name << ": " << component.value().diagnostic);
@@ -1090,7 +1148,8 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
         if (generating) {
             // Accepted supply129 physical columns, with UNIT's reviewed research/presence
             // corrections. Creation-only generation must not import stale128 movement counts.
-            auto new_row = with_restored_research_production(with_recognized_player_records(row));
+            auto new_row = with_imported_city_statistics(
+                with_restored_research_production(with_recognized_player_records(row)));
             char hex[17];
             std::snprintf(hex, sizeof hex, "%016llx",
                           static_cast<unsigned long long>(made.value().state_hash()));
@@ -1110,11 +1169,11 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
     CHECK(isolated == 37);
     CHECK(supported == 13);
     if (generating) {
-        REQUIRE(expectations_path() ==
-                fs::path(ANNO_FIXTURES_DIR) / "sim" / "consolidated132" / "scenario_corpus.txt");
+        REQUIRE(expectations_path() == fs::path(ANNO_FIXTURES_DIR) / "sim" / "econbook1" /
+                                           "current133" / "scenario_corpus.txt");
         std::ofstream out(expectations_path(), std::ios::binary);
         REQUIRE(out.good());
-        out << "# SIMINT1 original-data component corpus. Creation identities generated here;\n"
+        out << "# ECONBK1 original-data component corpus. Creation identities generated here;\n"
                "# physical/movement columns copied from accepted supply129 plus UNIT corrections, "
                "not executed by this\n"
                "# creation-only generator. The normal long corpus gate validates those columns.\n"

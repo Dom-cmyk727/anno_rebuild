@@ -67,31 +67,67 @@ def records():
     tail=u16(19)+u64(0)
     raw=prefix+b''.join(b'\1'+figures[i] if i in figures else b'\0' for i in range(40))+tail
     hierarchical=prefix+b''.join(u64(fnv(b'\1'+figures[i] if i in figures else b'\0')) for i in range(40))+tail
-    return {'header':(u32(132)+b'SIMINT1\0'+u32(5),None),
+    # Independent configured price-registry stream: no types, three named goods,
+    # existing25 class facts, then empty figure/group/stage tables. Present price
+    # vectors follow id_sec, each count-prefixed. No C++ digest is read.
+    module=importlib.util.spec_from_file_location('current_stream',ROOT/'tools/sim_stream.py')
+    current=importlib.util.module_from_spec(module);module.loader.exec_module(current)
+    goods=u64(0)+u64(3)
+    for name,climates,taxes in ((b'UNUSED',None,None),
+            (b'ALPHA',[45,45,45,50,50,50,45,17],[0,5,10,15]),
+            (b'BETA',[7]*8,[2]*4)):
+        goods+=text(name)+pack('3I',0,0,0)
+        goods+=b'\0' if climates is None else b'\1'+u64(len(climates))+pack('8I',*climates)+u64(len(taxes))+pack('4I',*taxes)
+    goods+=u64(25)+b''.join(pack('3BI',*row) for row in current.CLASSES)+u64(0)*3
+    names=(b'POLAR',b'TUNDRA',b'NORD',b'PRAERIE',b'DSCHUNGEL',b'STEPPE',b'WUESTE',b'CUSTOM')
+    economy=u64(8)+b''.join(text(n) for n in names)+u32(4)+u32(2000)
+    return {'header':(u32(133)+b'ECONBK1\0'+u32(5),None),
             'player':(old.player_bytes(old.new_player(0))+u64(2)+pack('4I',70001,0,90001,255),None),
-            'figures':(raw,fnv(hierarchical)), 'script':(script(),None)}
+            'figures':(raw,fnv(hierarchical)), 'script':(script(),None),
+            'accounts':(u16(65000)+pack('5Q',0x0102030405060708,105,210,4294967313,28),None),
+            'economy':(economy,None),'goods_registry':(goods,None)}
 
 def fixture():
-    return '# Independent combined132 structural scopes: name hex hierarchical_fnv64\n'+''.join(
+    return '# Independent ECONBK1 structural scopes: name hex hierarchical_fnv64\n'+''.join(
         f'{name} {data.hex()} {(fnv(data) if digest is None else digest):016x}\n'
         for name,(data,digest) in records().items())
 
 class Contracts(unittest.TestCase):
-    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8400000053494d494e54310005000000')
+    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8500000045434f4e424b310005000000')
     def test_sparse_registry_has_four_actors(self):
         self.assertEqual(len(records()['figures'][0]),20+40+200+133+129+150+10)
         self.assertNotEqual(records()['figures'][1],fnv(records()['figures'][0]))
+    def test_populated_accounts_literal_and_widened_cost(self):
+        self.assertEqual(records()['accounts'][0].hex(),
+            'e8fd08070605040302016900000000000000d20000000000000011000000010000001c00000000000000')
+        self.assertEqual(len(records()['accounts'][0]),42)
+        self.assertEqual(records()['economy'][0][-8:].hex(),'04000000d0070000')
     def test_public_command_rejects_changed_or_missing_fixture(self):
         with tempfile.TemporaryDirectory() as td:
             path=Path(td)/'fields.txt';path.write_text(fixture())
             command=[sys.executable,'-I',str(Path(__file__).resolve()),'--fixture',str(path)]
             result=subprocess.run(command,capture_output=True,text=True)
-            self.assertEqual(result.returncode,0);self.assertIn('4 populated combined scopes agree',result.stdout)
-            path.write_text(fixture().replace('84000000','83000000',1))
+            self.assertEqual(result.returncode,0);self.assertIn('7 populated combined scopes agree',result.stdout)
+            path.write_text(fixture().replace('85000000','84000000',1))
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
             path.unlink();result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,1);self.assertIn('fixture unavailable',result.stdout)
+
+    def test_populated_wrong_readings_reject_even_with_consistent_digest(self):
+        for name in ('accounts','economy','goods_registry'):
+            with self.subTest(record=name),tempfile.TemporaryDirectory() as td:
+                original=records()[name][0];wrong=bytearray(original)
+                if name=='accounts':
+                    wrong[2:10],wrong[10:18]=wrong[10:18],wrong[2:10]
+                elif name=='economy':wrong[-8]=3 # wrong tax count, no marker change
+                else:wrong[original.index(pack('I',45))]=44 # wrong climate price
+                row=f'{name} {original.hex()} {fnv(original):016x}'
+                changed=f'{name} {wrong.hex()} {fnv(wrong):016x}'
+                path=Path(td)/'fields.txt';path.write_text(fixture().replace(row,changed))
+                result=subprocess.run([sys.executable,'-I',str(Path(__file__).resolve()),
+                    '--fixture',str(path)],capture_output=True,text=True)
+                self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
 
     def test_wrong_seams_distinguishable(self):
         a=figure(4,106,animal=True)
@@ -103,10 +139,10 @@ class Contracts(unittest.TestCase):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
     if a.self_test:return 0 if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)).wasSuccessful() else 1
-    path=a.fixture or ROOT/'fixtures/synthetic/sim/consolidated132/populated_fields.txt'
+    path=a.fixture or ROOT/'fixtures/synthetic/sim/econbook1/current133/populated_fields.txt'
     if a.write:path.write_text(fixture());return 0
     try: actual=path.read_text()
     except OSError as error: print('fixture unavailable: '+str(error));return 1
     if actual!=fixture():print('combined oracle differs');return 1
-    print('4 populated combined scopes agree');return 0
+    print('7 populated combined scopes agree');return 0
 if __name__=='__main__':raise SystemExit(main())

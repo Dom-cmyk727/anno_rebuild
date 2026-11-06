@@ -179,8 +179,8 @@ TEST_CASE("write_log matches the documented frame byte for byte") {
     }
     s.u32(4);                     // kReplayLogVersion
     s.u32(1);                     // kCommandWireVersion, once
-    s.u32(132);                   // combined state stream
-    s.u64(0x0031544e494d4953ULL); // SIMINT1 lineage
+    s.u32(133);                   // combined state stream
+    s.u64(0x00314b424e4f4345ULL); // ECONBK1 lineage
     s.u64(0);                     // script content digest in this wire-only specimen
     s.u64(0x1111111111111111ULL); // config digest
     s.u64(0x2222222222222222ULL); // rules digest

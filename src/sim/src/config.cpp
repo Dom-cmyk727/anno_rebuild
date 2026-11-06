@@ -242,8 +242,28 @@ std::uint64_t ListLayout::digest() const {
 
 // ---- SimConfig
 
+std::string EconomyConfig::validate() const {
+    // Shared allocation bound for untrusted configured role tables; raise
+    // kEntryTableBound with resource evidence for a larger mod, not the original7/3.
+    if (climate_names.empty() || climate_names.size() > kEntryTableBound) {
+        return "SimConfig.economy.climate_names: empty or above entry-table bound";
+    }
+    std::set<std::string> names;
+    for (const auto& name : climate_names) {
+        if (name.empty() || name.find('\0') != std::string::npos || !names.insert(name).second)
+            return "SimConfig.economy.climate_names: empty, NUL or duplicate name";
+    }
+    if (tax_count == 0 || tax_count > kEntryTableBound)
+        return "SimConfig.economy.tax_count: must be 1..entry-table bound";
+    if (period == 0 || period > kMaxStampPeriod)
+        return "SimConfig.economy.period: must be 1..65535 (word stamp)";
+    return {};
+}
+
 std::string SimConfig::validate() const {
     constexpr const char* kOwner = "SimConfig";
+    if (auto problem = economy.validate(); !problem.empty())
+        return problem;
     // Divisors, moduli and periods that are divisors of visit_count, operands
     // of `%` or of `ceil(w / chunk_edge)`.
     const std::pair<const char*, std::uint32_t> non_zero[] = {
@@ -480,6 +500,10 @@ std::uint64_t SimConfig::digest() const {
 // ---- WorldSettings
 
 std::string WorldSettings::validate() const {
+    return validate(SimConfig{});
+}
+
+std::string WorldSettings::validate(const SimConfig& config) const {
     constexpr const char* kOwner = "WorldSettings";
     if (world_width > kWorldEdgeBound) {
         return bad(kOwner, "world_width",
@@ -491,9 +515,9 @@ std::string WorldSettings::validate() const {
                    "must be at most " + std::to_string(kWorldEdgeBound) + ", is " +
                        std::to_string(world_height));
     }
-    if (prop10 > 2) {
-        // The tax level indexes the economy's tables (documented 0..2).
-        return bad(kOwner, "prop10", "must be 0..2, is " + std::to_string(prop10));
+    if (prop10 >= config.economy.tax_count) {
+        return bad(kOwner, "prop10",
+                   "outside SimConfig.economy.tax_count, is " + std::to_string(prop10));
     }
     return {};
 }
@@ -526,6 +550,8 @@ std::string CargoRules::problem() const {
 
 std::string Rules::validate() const {
     constexpr const char* kOwner = "Rules";
+    if (city_booking && !save_billed_goods)
+        return bad(kOwner, "save_billed_goods", "city_booking requires persisted pending bills");
     if (!valid_slot_policy(slot_policy)) {
         return bad(kOwner, "slot_policy", "is not an enumerator");
     }

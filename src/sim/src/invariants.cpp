@@ -247,7 +247,10 @@ std::string World::check_invariants() const {
         problem = house_updates_problem(config_, rules_, *types_);
     }
     if (problem.empty()) {
-        problem = settings_.validate();
+        problem = city_booking_problem(config_, rules_, *types_);
+    }
+    if (problem.empty()) {
+        problem = settings_.validate(config_);
     }
     // The player table, the islands with their tiles, cities and buildings.
     if (problem.empty()) {
@@ -273,6 +276,16 @@ std::string World::check_invariants() const {
             if (city.has_value() && players_.find(city->owner) == nullptr) {
                 return p + ".cities[" + std::to_string(c) + "].owner: player " +
                        std::to_string(city->owner.v) + " is not in the player table";
+            }
+            if (rules_.city_booking && city) {
+                for (const auto& list : city->index.lists)
+                    for (const auto& slot : list.slots)
+                        if (slot)
+                            if (const auto* inert = std::get_if<Inert>(&slot->payload);
+                                inert && !inert->financial_active.has_value())
+                                return p + ".cities[" + std::to_string(c) + "].buildings[" +
+                                       std::to_string(slot->id.v) +
+                                       "].financial_active: unsupported original financial record";
             }
         }
     }

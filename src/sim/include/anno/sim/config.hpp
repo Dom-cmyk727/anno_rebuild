@@ -262,6 +262,17 @@ struct LinkTables {
     [[nodiscard]] std::string validate() const;
 };
 
+/// ECON-BOOK-1 immutable role dimensions. Defaults are the original name table
+/// AnnoGame10024ca0 and three tax columns; mods may supply more names/columns.
+struct EconomyConfig {
+    std::vector<std::string> climate_names = {"POLAR",     "TUNDRA", "NORD",  "PRAERIE",
+                                              "DSCHUNGEL", "STEPPE", "WUESTE"};
+    std::uint32_t tax_count = 3;
+    /// Word-stamp gate (AnnoWelt10029950); one visit, stamp now, no catch-up.
+    std::uint32_t period = 2000;
+    [[nodiscard]] std::string validate() const;
+};
+
 /// The original's number of city passes after the building scheduler (D:
 /// 0x1002d9a0): the default of SimConfig::city_pass_count and the length of a
 /// default Seams::city_pass.
@@ -462,6 +473,7 @@ struct SimConfig {
     /// for the previous one (`div 0x14` at 0x1002cc22). Data with the original 20 as default;
     /// validate() requires at least 1.
     std::uint32_t house_type_stride = 20;
+    EconomyConfig economy;
 
     /// docs/sim/state.md §3.1. Empty when valid, else one message naming the
     /// first offending field ("SimConfig.building_div: must be non-zero").
@@ -666,6 +678,9 @@ struct Rules {
     /// with zero billed counters (the original drops this scratch at a save). Either way the live
     /// tick writes it.
     bool save_billed_goods = true;
+    /// ECON-BOOK-1 opt-in checked city sales/upkeep. Separate from house_updates.
+    /// Requires save_billed_goods so native continuation cannot erase pending income.
+    bool city_booking = false;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

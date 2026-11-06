@@ -69,7 +69,7 @@ std::vector<std::uint8_t> StateIO::save(const World& w) {
     };
     section([&](WriteArchive& s) { header_section(s, w, w.config_, w.rules_); });
     section([&](WriteArchive& s) { clock_rng_section(s, w.clock_, w.rng_); });
-    section([&](WriteArchive& s) { settings_section(s, w.settings_); });
+    section([&](WriteArchive& s) { settings_section(s, w.settings_, w.config_); });
     section([&](WriteArchive& s) {
         ids_section(s, w.ids_, w.event750_acc_, w.monopoly_.acc, w.faulted_);
     });
@@ -224,7 +224,8 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
             section("clock_rng", [&](ReadArchive& s) { clock_rng_section(s, w.clock_, w.rng_); });
     }
     if (problem.empty()) {
-        problem = section("settings", [&](ReadArchive& s) { settings_section(s, w.settings_); });
+        problem = section("settings",
+                          [&](ReadArchive& s) { settings_section(s, w.settings_, w.config_); });
     }
     if (problem.empty()) {
         problem = section("ids", [&](ReadArchive& s) {

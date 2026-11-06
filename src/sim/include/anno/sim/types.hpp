@@ -114,6 +114,11 @@ struct ClassInfo {
     std::uint32_t gate_period = 0;
 };
 
+struct GoodsPrices {
+    std::vector<std::uint32_t> climate;
+    std::vector<std::uint32_t> tax;
+};
+
 /// One entry of the goods table (D: AnnoGame.dll 0x10013be0, ids 0..0x8e).
 struct GoodsInfo {
     /// The name as the files spell it (Latin-1 bytes); "UNUSED" for an id
@@ -127,6 +132,9 @@ struct GoodsInfo {
     std::uint32_t bau_first = 0;
     /// [WAREN] IdSec, the substitute goods id; 0 = none (D: goods record +1). Absent = 0.
     GoodsId id_sec = 0;
+    /// Absent = original constructor's all-zero prices, for every configured role.
+    /// Present tables must have exact EconomyConfig dimensions, never partial rows.
+    std::optional<GoodsPrices> prices{};
 };
 
 /// A build cost in goods: the amount in 8.8 tons.
@@ -303,8 +311,13 @@ struct BuildingType {
     /// 0x53 -> 0xc0, 0x54 -> 0x1c0 (D AnnoGame 0x1000a600).
     std::uint32_t service_mask = 0;
     /// PROD3 u16 [0x00] and [0x02] (size = running-cost stats, 2); which of them
-    /// applies per instance (index P) is O-9. {0, 0} for a type without PROD3.
+    /// applies per instance is its verified financial selector (0 inactive,
+    /// 1 active), independent of blocked status; economy-booking.md B1b.
+    /// An empty vector or {0,0} means zero for a type without PROD3.
     std::vector<std::uint32_t> running_cost;
+    /// Property-kind getter (+0x90): all audited original classes return1.
+    /// Explicit data may select the separate military bucket2; never Player upkeep.
+    std::uint32_t statistic_kind = 1;
     /// Resolved from the first two WARE / ROHSTOFF names (the original reads
     /// exactly two, D: AnnoGame.dll 0x1000a1f4, 0x1000a2e2; further names are
     /// ignored, as there); an unresolved name is a load error.
@@ -494,6 +507,11 @@ class TypeRegistry {
     std::vector<StageRecord> stages_;
     std::vector<HouseGroupDerived> derived_groups_;
     PopulationRoles population_roles_;
+    /// Derived binding, like population_roles_: names/column count of the config
+    /// that sealed present price tables. These roles are hashed in SimConfig;
+    /// validate_against refuses reinterpreting their indices under another order.
+    std::vector<std::string> price_climates_;
+    std::uint32_t price_tax_count_ = 0;
     std::uint32_t max_footprint_ = 1;
     std::uint64_t digest_ = 0;
     std::shared_ptr<const formats::annowelt::WalkTables> walk_tables_;

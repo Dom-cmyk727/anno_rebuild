@@ -34,15 +34,16 @@ struct Golden {
 };
 
 inline std::filesystem::path goldens_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "consolidated132" / "goldens.txt";
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "econbook1" / "current133" /
+           "goldens.txt";
 }
 
 // Current-version recording checks are separate from archived SCRIPT1 compatibility
 // inputs (script2_session_test.cpp). An update must never write the archive.
 inline std::filesystem::path current_replay_fixture_path(const char* name) {
-    static_assert(sim::kStateHashVersion == 132,
+    static_assert(sim::kStateHashVersion == 133,
                   "choose a new recording directory for a new identity");
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "consolidated132" / name;
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "econbook1" / "current133" / name;
 }
 
 inline std::vector<Golden> read_goldens() {

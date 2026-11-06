@@ -248,6 +248,9 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
         const Spec::CitySpec& cs = is.cities[k];
         City city = make_city(cs.no, cs.owner, cfg);
         city.player_mask = cs.player_mask;
+        city.accounts.sales = cs.sales;
+        city.accounts.trade_sales = cs.trade_sales;
+        city.accounts.trade_purchases = cs.trade_purchases;
         if (cs.capacity.has_value()) {
             city.stock.capacity = *cs.capacity;
         }
@@ -320,7 +323,10 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         problem = house_updates_problem(config, rules, *types);
     }
     if (problem.empty()) {
-        problem = spec.settings.validate();
+        problem = city_booking_problem(config, rules, *types);
+    }
+    if (problem.empty()) {
+        problem = spec.settings.validate(config);
     }
     if (!problem.empty()) {
         return problem;

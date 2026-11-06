@@ -1572,7 +1572,8 @@ Terms2 terms2(XChain& x) {
 }
 
 void closed2(const Terms2& t, const char* label) {
-    INFO("ledger " << label);
+    const std::string checkpoint = label; // logged as a string, so a failure names the checkpoint
+    INFO("ledger " << checkpoint);
     CHECK(t.u_mine == 0);
     CHECK(t.u_ore == 0);
     CHECK(t.u_made == 0);
@@ -2360,7 +2361,9 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
         CHECK(rt.u_ore == 0);
         CHECK(rt.u_made == 0);
     }
-    // our saltworks never lifted the rival's ore; the rival's saltworks never lifted ours
+    // our saltworks never lifted the rival's ore (this zero discriminates: the city-filter mutant makes it positive);
+    // the rival's saltworks never lifted ours (this zero is a CONSISTENCY check only: under the mutant the rival
+    // saltworks still prefers its nearer own mine, so the value does not change)
     CHECK(two->x.c->stats.loaded_by_home[{two->rival_mine, two->x.c->works}] == 0U);
     CHECK(two->x.c->stats.loaded_by_home[{two->x.mines[0], two->rival_works}] == 0U);
     // single-owner control: our ledger closes in both worlds and the rival changed none of OUR flows

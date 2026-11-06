@@ -16,6 +16,18 @@ next coordinated checkpoint. See the [acceptance record](../orchestration/review
 under `fixtures/synthetic/sim/econbook1/current133`; published132 remains intact.
 Actual132 log/native save controls have provenance under `econbook1/legacy132`.
 
+**MAP-EXPAND local successor134 reservation (2026-11-06):** explicit orchestrator
+contract acbe5a24 GAMEPLAY-IDENTITY-134-135 authorizes134/ECONBK1/PRNG5/replay4/
+command1/save1 for the bounded founding accounts correction only. Field order and
+all defaults remain unchanged. Successful enabledFound adopts the already checked
+temporary City.accounts beside its index; no rescan, compensation or draw/payment
+reorder. Builds134 reject ALL133 native states/replays including booking-off,
+without migration or reconstruction. Off gameplay is unchanged, while identity
+bytes/hashes change. Historical133 fixtures stay undereconbook1/current133;
+new current fixtures/recordings are underexpand1/current134. Published main remains
+133 until acceptance; first-Mac135 must include the independently reviewed134
+prerequisite and is reserved for its separate narrow salt scope.
+
 Stream133 appends `EconomyConfig` after SimConfig.house_type_stride:
 count-prefixed climate-name strings, u32 tax_count, u32 period (defaults seven
 original names,3,2000). Rules appends bool city_booking=false, independently of

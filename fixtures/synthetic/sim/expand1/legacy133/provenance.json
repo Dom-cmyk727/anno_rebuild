@@ -1,0 +1,7 @@
+{
+  "source_log": "../../econbook1/current133/g2.log",
+  "source_log_sha256": "7444049ba6a9865861e618b9d41d58f0a78d3d9b97381a69ef0bd1fa5291f8ca",
+  "native_sha256": "c9249e58a8587ff39968fb387a5dbcab462a9d653830bfe90ac0f2ae300224e2",
+  "extraction": "Replay4: after seven u64 identities, timeline u32 and counted missing-site strings, copy the counted native blob verbatim; no header modification",
+  "original_source": "03bb4a5c (accepted ECON133 fixture producer); historical validity retained from original g2 replay control"
+}

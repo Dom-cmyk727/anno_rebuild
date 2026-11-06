@@ -96,6 +96,59 @@ class Original:
         return struct.unpack('<f', bytes(u.mem_read(vec + 4, 4)))[0]
 
 
+def _sweep_chunk(arg):
+    # one value of b; (1,1) and (3,3): all (a|d, c) with b fixed; (1,3), (3,1): all c with 16 (a, d) pairs
+    game, b = arg
+    o = Original(game)
+    u = o.u
+    S = 16
+    grid = bytearray(S * S)
+    GRID_ = GRID
+    u.mem_write(GRID_, bytes(grid))
+    vec = STACK + 0x100
+    pair = [(0, 0), (255, 255), (0, 255), (255, 0), (1, 254), (16, 16), (127, 128), (200, 3),
+            (3, 200), (77, 77), (31, 32), (64, 191), (99, 5), (5, 99), (240, 15), (15, 240)]
+    sp0 = STACK + 0x8000 - 12
+    argblk = struct.pack('<III', GRID_, S, 0x3F800000)
+    u.mem_write(sp0 + 4, argblk)
+    u.mem_write(sp0, struct.pack('<I', RET))
+    total = bad = 0
+    firsts = []
+
+    def call(px, pz):
+        u.mem_write(vec, struct.pack('<fff', px, 0.0, pz))
+        u.mem_write(sp0 + 4, argblk)  # the callee reuses its argument slots as temporaries
+        u.reg_write(UC_X86_REG_ESP, sp0)
+        u.reg_write(UC_X86_REG_ECX, vec)
+        u.emu_start(SAMPLER, RET, count=400000)
+        return struct.unpack('<f', bytes(u.mem_read(vec + 4, 4)))[0]
+
+    def put(a, bb, c, d):
+        u.mem_write(GRID_ + 3 * S + 2, bytes([a, bb]))
+        u.mem_write(GRID_ + 4 * S + 2, bytes([c, d]))
+
+    def chk(a, bb, c, d, px, pz, x4):
+        nonlocal total, bad
+        total += 1
+        r = call(px, pz)
+        if r != x4 / 4.0 or int(r) != x4 // 4:
+            bad += 1
+            if len(firsts) < 5:
+                firsts.append((a, bb, c, d, px, pz, r, x4 / 4.0))
+
+    for c in range(256):
+        for a in range(256):
+            put(a, b, c, (a * 7 + b * 13 + c * 29) & 255)
+            chk(a, b, c, (a * 7 + b * 13 + c * 29) & 255, 2.25, 3.25, 2 * a + b + c)
+            put((a * 5 + b * 11 + c * 3) & 255, b, c, a)
+            chk((a * 5 + b * 11 + c * 3) & 255, b, c, a, 2.75, 3.75, 2 * a + b + c)
+        for (pa, pd) in pair:
+            put(pa, b, c, pd)
+            chk(pa, b, c, pd, 2.25, 3.75, b + 3 * c)
+            chk(pa, b, c, pd, 2.75, 3.25, 3 * b + c)
+    return total, bad, firsts
+
+
 def main():
     game = os.environ['ANNO1503_GAME_DIR']
     o = Original(game)
@@ -108,6 +161,19 @@ def main():
             print('rotation', rot, 'result', ok, 'samples', len(tr))
             print(' ', [(round(x, 3), round(z, 3)) for x, z in tr])
         return 0
+    if sys.argv[1] == 'sweep':
+        # exhaustive sampler sweep: the original sampler 0x10008d90 at the four sample fractions against x4/4
+        import multiprocessing as mp
+        procs = int(sys.argv[2]) if len(sys.argv) > 2 else 4
+        with mp.Pool(procs) as pool:
+            parts = pool.map(_sweep_chunk, [(game, b) for b in range(256)])
+        total = sum(p[0] for p in parts)
+        bad = sum(p[1] for p in parts)
+        first = [x for p in parts for x in p[2]][:5]
+        print('sampler sweep: points', total, 'exact-float differences', bad)
+        for f in first:
+            print('DIFF', f)
+        return 0 if bad == 0 else 1
     if sys.argv[1] == 'vectors':
         n = bad = 0
         for line in open(sys.argv[2]).read().splitlines():

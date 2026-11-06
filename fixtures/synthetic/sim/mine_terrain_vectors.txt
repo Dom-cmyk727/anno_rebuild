@@ -59,6 +59,35 @@ terrain salt-flat-r1 w=3 h=4 rot=1 off=32 table=255,255,255,255,255,255,255,255,
 terrain salt-front-raised-38 w=3 h=4 rot=0 off=32 table=255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,32,32,255,255,255,255,16,16,255,255,255,255,16,16,16,16,255,16,12,12,16,16,255,255,4,4,255,255 heights=32,32,32,32/32,32,32,32/32,32,32,32/32,32,32,32/32,38,32,32 => refuse
 terrain salt-front-raised-37 w=3 h=4 rot=0 off=32 table=255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,32,32,255,255,255,255,16,16,255,255,255,255,16,16,16,16,255,16,12,12,16,16,255,255,4,4,255,255 heights=32,32,32,32/32,32,32,32/32,32,32,32/32,32,32,32/32,37,32,32 => accept
 
+# Rotation vectors on the NON-SQUARE 3x4 footprint (hand-derived; table = 255 everywhere except cell
+# (r=7, c=0) = 1, i.e. index 42; flat terrain 32, off 32, one vertex raised to 96). The cell (7,0) is
+# sampled at rot0 (1,15) tile (0,3) frac (1,3): (b+3c)/4 with b=(1,3), c=(0,4);
+# rot1 (15,11) tile (3,2) frac (3,3): (2d+b+c)/4 with d=(4,3), b=(4,2), c=(3,3);
+# rot2 (11,1) tile (2,0) frac (3,1): (3b+c)/4 with b=(3,0), c=(2,1);
+# rot3 (1,1) tile (0,0) frac (1,1): (2a+b+c)/4 with a=(0,0), b=(1,0), c=(0,1).
+# Raising the sampled vertex to 96 lifts that sample to >= 64 -> 64-32 >= 1 -> refuse; raising a vertex that
+# ANOTHER rotation's formula would sample leaves this sample at 32 -> 0 < 1 -> accept.
+terrain rot0-3x4-hit w=3 h=4 rot=0 off=32 table=255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,1,255,255,255,255,255 heights=32,32,32,32/32,32,32,32/32,32,32,32/32,32,32,32/96,32,32,32 => refuse
+terrain rot1-3x4-hit w=3 h=4 rot=1 off=32 table=255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,1,255,255,255,255,255 heights=32,32,32,32,32/32,32,32,32,32/32,32,32,32,32/32,32,32,32,96 => refuse
+terrain rot2-3x4-hit w=3 h=4 rot=2 off=32 table=255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,1,255,255,255,255,255 heights=32,32,32,96/32,32,32,32/32,32,32,32/32,32,32,32/32,32,32,32 => refuse
+terrain rot3-3x4-hit w=3 h=4 rot=3 off=32 table=255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,1,255,255,255,255,255 heights=96,32,32,32,32/32,32,32,32,32/32,32,32,32,32/32,32,32,32,32 => refuse
+# the vertex (1,3) is what the rot0 formula samples: rot1, rot2 and rot3 must NOT see it
+terrain rot1-3x4-miss w=3 h=4 rot=1 off=32 table=255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,1,255,255,255,255,255 heights=32,32,32,32,32/32,32,32,32,32/32,32,32,32,32/32,96,32,32,32 => accept
+terrain rot2-3x4-miss w=3 h=4 rot=2 off=32 table=255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,1,255,255,255,255,255 heights=32,32,32,32/32,32,32,32/32,32,32,32/32,96,32,32/32,32,32,32 => accept
+# the vertex (4,3) is what the rot1 formula samples: rot3 must NOT see it
+terrain rot3-3x4-miss w=3 h=4 rot=3 off=32 table=255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,1,255,255,255,255,255 heights=32,32,32,32,32/32,32,32,32,32/32,32,32,32,32/32,32,32,32,96 => accept
+
+# Placement level (lo != hi): footprint 1x2 (table 4 rows x 2 columns), window rows z0..2 of 2 vertices:
+# row0 32,32 / row1 48,48 / row2 48,48 -> cell minima 32 and 48 -> lo = 32, hi = 48 (flag word 0x3096 & 3 = 2: the offset is lo).
+# Samples (rot0): r0: (1,1) = (2*32+32+48)/4 = 36 and (3,1) = (3*32+48)/4 = 36; r1: 44, 44; r2, r3: 48.
+# With the offset lo = 32 the differences are 4,4,12,12,16,... -> table cell (0,0) = 4 <= 4 refuses; with hi = 48 the
+# differences are -12,... and the same table would ACCEPT, so this vector pins lo against hi.
+place lo-not-hi-refuse w=1 h=2 rot=0 table=4,255,255,255,255,255,255,255 heights=32,32/48,48/48,48 => refuse
+place lo-not-hi-accept w=1 h=2 rot=0 table=5,255,255,255,255,255,255,255 heights=32,32/48,48/48,48 => accept
+# step 7 (inherited, lo >= 32): the helper alone accepts flat 16 with off 16 (differences 0, table 255) but lo = 16 < 32 refuses
+place step7-lo-16 w=1 h=1 rot=0 table=255,255,255,255 heights=16,16/16,16 => refuse
+place step7-lo-32 w=1 h=1 rot=0 table=255,255,255,255 heights=32,32/32,32 => accept
+
 # deposit load: the constructor gives 0x7d000 (2,000 t) and flag 1; the file amount replaces it;
 # an ore goods (1..8) with the flag set and amount < 1,600 t is reset to 2,000 t.
 deposit file-2000 amount=2000 goods=3 flag=1 => remaining=512000 flag=1

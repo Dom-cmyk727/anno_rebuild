@@ -9,7 +9,8 @@ table       the HIGHMAP bytes, 2h rows x 2w columns, row-major (type +0x234)
 heights     the vertex grid of the footprint window: heights[z][x], z in 0..H', x in 0..W'
             where (W', H') = (w, h) for rotation 0 and 2, (h, w) for rotation 1 and 3
 rotation    0..3
-offset      the fourth argument (the window's `hi`, the building's base level); only its low byte is used
+offset      the fourth argument: the window's `lo` (the lowest cell minimum & 0xf0, the ordinary analysis'
+            mode-2 result for flag word 0x3096; NOT the highest); only its low byte is used
 
 Rule (D, confirmed against the original bytes by tools/mine_terrain_emulate.py):
 for every table cell k = (row r, column c) the sample point is in quarter tiles
@@ -56,6 +57,18 @@ def height4(heights, X, Z):
     raise ValueError('sample points are odd quarters')
 
 
+def placement_accepts(w, h, table, heights, rotation):
+    """The terrain part of a placement of a 0x3096 type: the ordinary window analysis gives
+    lo = min over the footprint cells of (min of the cell's four vertices & 0xf0); the helper runs with
+    offset = lo (flag word 0x3096 & 3 = 2); step 7 of the island function then needs lo >= 32 (INHERITED
+    from tools/placement_ref.py and docs/re/ship-founding.md section 10.2 step 7, not re-derived here)."""
+    ww, hh = (w, h) if rotation % 2 == 0 else (h, w)
+    cellmin = [min(heights[z][x], heights[z][x + 1], heights[z + 1][x], heights[z + 1][x + 1]) & 0xF0
+               for z in range(hh) for x in range(ww)]
+    lo = min(cellmin)
+    return accepts(w, h, table, heights, rotation, lo) and lo >= 32
+
+
 def accepts(w, h, table, heights, rotation, offset):
     rows, cols = 2 * h, 2 * w
     assert len(table) == rows * cols
@@ -63,6 +76,8 @@ def accepts(w, h, table, heights, rotation, offset):
     for r in range(rows):
         for c in range(cols):
             X, Z = sample_point(w, h, rotation, r, c)
+            ww, hh = (w, h) if rotation % 2 == 0 else (h, w)
+            assert 0 < X < 4 * ww and 0 < Z < 4 * hh, 'sample point outside the footprint window'
             if table[r * cols + c] <= height4(heights, X, Z) // 4 - off:
                 return False
     return True
@@ -118,11 +133,15 @@ def run(path):
             toks = lhs.split()
             kind, name = toks[0], toks[1]
             kv = _kv(toks[2:])
-            if kind == 'terrain':
-                w, h, rot, off = int(kv['w']), int(kv['h']), int(kv['rot']), int(kv['off'])
+            if kind in ('terrain', 'place'):
+                w, h, rot = int(kv['w']), int(kv['h']), int(kv['rot'])
+                off = int(kv.get('off', 0))
                 table = [int(x) for x in kv['table'].split(',')]
                 heights = [[int(x) for x in row.split(',')] for row in kv['heights'].split('/')]
-                got = 'accept' if accepts(w, h, table, heights, rot, off) else 'refuse'
+                if kind == 'place':
+                    got = 'accept' if placement_accepts(w, h, table, heights, rot) else 'refuse'
+                else:
+                    got = 'accept' if accepts(w, h, table, heights, rot, off) else 'refuse'
                 want = rhs.strip()
                 if want not in ('accept', 'refuse'):
                     raise ValueError('result must be accept or refuse')

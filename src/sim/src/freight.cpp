@@ -7,7 +7,9 @@
 #include <anno/sim/figure_veto.hpp>
 #include <anno/sim/freight.hpp>
 #include <anno/sim/ship_cargo.hpp>
+#include <anno/sim/ship_mover.hpp>
 #include <anno/sim/ship_orders.hpp>
+#include <anno/sim/ship_step.hpp>
 #include <anno/sim/world.hpp>
 
 namespace anno::sim {
@@ -132,6 +134,7 @@ ApplyResult FreightRoutes::assign(World& w, const Command& command,
     auto& ship = *find_figure(w.figures_, cmd.ship);
     ++ship.freight_generation;
     ship.freight = std::move(slot);
+    observe(w, ship, FreightSignal::Assigned, nullptr, ctx);
     return {};
 }
 ApplyResult FreightRoutes::control(World& w, const Command& command,
@@ -158,6 +161,7 @@ ApplyResult FreightRoutes::control(World& w, const Command& command,
         route.last_tick = w.clock_.tick();
         route.last_reject = Reject::None;
         route.nav_failure = 0;
+        observe(w, *find_figure(w.figures_, cmd.ship), FreightSignal::Resumed, nullptr, ctx);
         return {};
     }
     if (cmd.control == FreightControl::Suspend && old.status != FreightStatus::Running)
@@ -174,6 +178,7 @@ ApplyResult FreightRoutes::control(World& w, const Command& command,
         return stopped;
     auto& ship = *find_figure(w.figures_, cmd.ship);
     if (cmd.control == FreightControl::Cancel) {
+        observe(w, ship, FreightSignal::Cancelled, nullptr, ctx);
         ship.freight.reset();
         return {};
     }
@@ -185,11 +190,14 @@ ApplyResult FreightRoutes::control(World& w, const Command& command,
         route.phase = FreightPhase::NeedLeg;
     route.expected_order_id = 0;
     route.order_generation = 0;
+    observe(w, ship, FreightSignal::Paused, nullptr, ctx);
     return {};
 }
-void FreightRoutes::manual_takeover(World& w, FigureId id) {
-    if (auto* f = find_figure(w.figures_, id))
+void FreightRoutes::manual_takeover(World& w, FigureId id, const InAdvance* ctx) {
+    if (auto* f = find_figure(w.figures_, id); f != nullptr && f->freight.has_value()) {
+        observe(w, *f, FreightSignal::ManualTakeover, nullptr, ctx);
         f->freight.reset();
+    }
 }
 
 std::string FreightRoutes::validate(const World& w) {
@@ -285,5 +293,374 @@ std::string FreightRoutes::validate(const World& w) {
             return bad();
     }
     return {};
+}
+} // namespace anno::sim
+
+namespace anno::sim {
+namespace {
+void index_note(FreightHoldIndex& index, std::uint32_t i, const ShipHold& hold, GoodsId goods,
+                std::uint32_t capacity, bool add) {
+    if (hold.goods == goods && hold.amount_88 < capacity) {
+        const auto key = std::pair{UINT64_MAX - (std::uint64_t{capacity} - hold.amount_88), i};
+        if (add)
+            index.rooms.insert(key);
+        else
+            index.rooms.erase(key);
+    } else if (hold.goods == 0 && hold.amount_88 == 0) {
+        if (add)
+            index.empty.insert(i);
+        else
+            index.empty.erase(i);
+    }
+}
+void index_start(Figure& ship) {
+    auto& index = ship.freight.index();
+    index = {};
+    index.generation = ship.freight_generation;
+    index.stop = ship.freight->stop_index;
+    index.action = ship.freight->action_index;
+}
+bool index_current(const Figure& ship, const FreightHoldIndex& index) {
+    const auto& r = *ship.freight;
+    return index.generation == ship.freight_generation && index.stop == r.stop_index &&
+           index.action == r.action_index && index.scanned == r.scan_next;
+}
+std::optional<std::uint32_t> indexed_hold(const Figure& ship, std::uint32_t preferred,
+                                          GoodsId goods, std::uint32_t capacity,
+                                          const FreightHoldIndex& index) {
+    const auto& hold = ship.holds[preferred];
+    if (hold.goods == goods && hold.amount_88 <= capacity && capacity - hold.amount_88 >= 256)
+        return preferred;
+    if (!index.rooms.empty())
+        return index.rooms.begin()->second;
+    if (!index.empty.empty())
+        return *index.empty.begin();
+    return std::nullopt;
+}
+bool resource_refusal(Reject r) {
+    return r == Reject::StockShort || r == Reject::StockFull || r == Reject::HoldsFull ||
+           r == Reject::HoldGoodsMismatch;
+}
+void clear_action(Figure& ship) {
+    auto& r = *ship.freight;
+    r.scan_next = 0;
+    r.matching_raw = 0;
+    r.remaining_raw = 0;
+    r.candidate_next = 0;
+    r.matching_holds.clear();
+    r.empty_holds.clear();
+    ship.freight.index() = {};
+}
+void next_action(Figure& ship, std::uint32_t wait) {
+    auto& r = *ship.freight;
+    clear_action(ship);
+    ++r.action_index;
+    if (r.action_index == r.stops[r.stop_index].actions.size())
+        r.phase = FreightPhase::CompleteStop;
+    else {
+        r.phase = FreightPhase::Wait;
+        r.wait_remaining = wait;
+    }
+}
+} // namespace
+void FreightRoutes::observe(World& w, const Figure& ship, FreightSignal signal, Effects* fx,
+                            const InAdvance* ctx, Reject reason, std::uint64_t amount,
+                            std::uint64_t order) {
+    if (!ship.freight.has_value())
+        return;
+    const auto& r = *ship.freight;
+    const auto& stop = r.stops[r.stop_index];
+    FreightObservation o;
+    o.signal = signal;
+    o.generation = ship.freight_generation;
+    o.stop = r.stop_index;
+    o.action = r.action_index;
+    o.warehouse = stop.warehouse;
+    o.status = r.status;
+    o.phase = r.phase;
+    o.amount_88 = amount;
+    o.completed_cycles = r.completed_cycles;
+    o.reason = reason;
+    o.nav_failure = r.nav_failure;
+    if (r.action_index < stop.actions.size()) {
+        o.goods = stop.actions[r.action_index].goods;
+        o.direction = stop.actions[r.action_index].direction;
+    }
+    SimEvent event;
+    event.kind = SimEventKind::Freight;
+    event.tick = w.clock_.tick();
+    event.player = ship.owner;
+    event.figure = ship.id;
+    event.building = stop.warehouse;
+    event.order_id = order ? order : r.expected_order_id;
+    event.code = static_cast<std::uint32_t>(signal);
+    event.freight = o;
+    if (fx)
+        fx->ui.push_back(std::move(event));
+    else {
+        w.host_events_.push(event);
+        if (ctx)
+            w.out_.events.push_back(std::move(event));
+    }
+}
+void FreightRoutes::rebuild_indexes(World& w) {
+    for (auto& slot : w.figures_.list.slots) {
+        if (!slot || !slot->freight.has_value())
+            continue;
+        auto& ship = *slot;
+        const auto& r = *ship.freight;
+        if (r.phase != FreightPhase::Scan && r.phase != FreightPhase::Transfer)
+            continue;
+        const auto* type = w.types_->find_figure_type(ship.kind);
+        index_start(ship);
+        auto& index = ship.freight.index();
+        const auto limit = r.phase == FreightPhase::Scan
+                               ? r.scan_next
+                               : static_cast<std::uint32_t>(std::min<std::uint64_t>(
+                                     ship.holds.size(), type->nav->hold_count_a));
+        for (std::uint32_t i = 0; i < limit; ++i) {
+            index_note(index, i, ship.holds[i], r.stops[r.stop_index].actions[r.action_index].goods,
+                       type->capacity_88, true);
+            ++w.freight_work_.cold_scans;
+        }
+        index.scanned = limit;
+    }
+}
+void FreightRoutes::visit(World& w, const TickContext& ctx, Figure& ship, Effects& fx,
+                          std::uint32_t& plans_started) {
+    auto& work = w.freight_work_;
+    ++work.visits;
+    const auto begin = fx.ui.size();
+    // Always reuse the accepted mover, including idle stamps/crew merging. A
+    // newly issued leg follows this visit and cannot retroactively sail elapsed time.
+    ShipMover::visit(w, ctx, ship, fx, plans_started);
+    if (!ship.freight.has_value())
+        return;
+    auto& r = *ship.freight;
+    if (r.status != FreightStatus::Running)
+        return;
+    const auto* type = w.types_->find_figure_type(ship.kind);
+    const auto now = ctx.tick;
+    const auto fail = [&](Reject reason, std::uint8_t nav = 0) {
+        const InAdvance in{&ctx, nullptr};
+        (void)ShipOrders::stop_route(w, {ship.owner, StopCmd{ship.id}}, StopCmd{ship.id}, &in);
+        if (r.phase == FreightPhase::Sailing || r.phase == FreightPhase::NeedLeg) {
+            r.phase = FreightPhase::NeedLeg;
+            r.expected_order_id = 0;
+            r.order_generation = 0;
+            r.credit_ticks = 0;
+        }
+        r.status = FreightStatus::Failed;
+        r.last_reject = reason;
+        r.nav_failure = nav;
+        observe(w, ship, FreightSignal::Failed, &fx, nullptr, reason);
+    };
+    if (r.phase == FreightPhase::Sailing) {
+        // Consume only this mover call's authenticated order events, never the
+        // host queue or an externally published notification.
+        std::optional<SimEvent> completed;
+        for (std::size_t i = begin; i < fx.ui.size(); ++i) {
+            const auto& e = fx.ui[i];
+            if (e.figure == ship.id && e.order_id == r.expected_order_id &&
+                r.order_generation == ship.freight_generation &&
+                (e.kind == SimEventKind::ShipArrived || e.kind == SimEventKind::ShipRouteFailed)) {
+                completed = e;
+                break;
+            }
+        }
+        r.last_tick = now;
+        if (!completed)
+            return;
+        if (completed->kind == SimEventKind::ShipRouteFailed) {
+            fail(Reject::BadValue, static_cast<std::uint8_t>(completed->code));
+            return;
+        }
+        const auto order = r.expected_order_id;
+        r.expected_order_id = 0;
+        r.order_generation = 0;
+        r.credit_ticks = 0;
+        r.phase =
+            r.stops[r.stop_index].actions.empty() ? FreightPhase::CompleteStop : FreightPhase::Wait;
+        r.wait_remaining = r.phase == FreightPhase::Wait ? type->load_ticks : 0;
+        observe(w, ship, FreightSignal::Arrived, &fx, nullptr, Reject::None, 0, order);
+    } else if (stop_clock(r.phase)) {
+        if (now < r.last_tick || now - r.last_tick > UINT64_MAX - r.credit_ticks) {
+            fail(Reject::BadValue);
+            return;
+        }
+        r.credit_ticks += now - r.last_tick;
+        r.last_tick = now;
+    }
+    if ((ship.state_word & w.rules_.nav.move_blocked_mask) != 0) {
+        fail(Reject::ShipDisabled);
+        return;
+    }
+    const auto& live_stop = r.stops[r.stop_index];
+    ++work.target_checks;
+    if (const auto reason = target(w, ship, live_stop, r.phase != FreightPhase::NeedLeg);
+        reason != Reject::None) {
+        fail(reason);
+        return;
+    }
+    for (std::uint32_t used = 0; used < w.rules_.freight.work_per_visit; ++used) {
+        ++work.steps;
+        const auto& stop = r.stops[r.stop_index];
+        if (r.phase == FreightPhase::NeedLeg) {
+            ++work.target_checks;
+            if (const auto reason = target(w, ship, stop, false); reason != Reject::None) {
+                fail(reason);
+                return;
+            }
+            const auto moved = ShipOrders::move(w, {ship.owner, MoveCmd{}},
+                                                {ship.id, stop.dock_x_q8, stop.dock_y_q8}, nullptr);
+            if (!moved.ok()) {
+                fail(moved.status);
+                return;
+            }
+            r.phase = FreightPhase::Sailing;
+            r.expected_order_id = ship.nav->order->order_id;
+            r.order_generation = ship.freight_generation;
+            r.last_tick = now;
+            r.credit_ticks = 0;
+            observe(w, ship, FreightSignal::Pending, &fx, nullptr);
+            return;
+        }
+        if (r.phase == FreightPhase::Wait) {
+            const auto spent = std::min<std::uint64_t>(r.credit_ticks, r.wait_remaining);
+            r.credit_ticks -= spent;
+            r.wait_remaining -= static_cast<std::uint32_t>(spent);
+            if (r.wait_remaining)
+                return;
+            r.phase = FreightPhase::Scan;
+            index_start(ship);
+            continue;
+        }
+        if (r.phase == FreightPhase::Scan) {
+            auto& index = ship.freight.index();
+            if (!index_current(ship, index)) {
+                fail(Reject::BadValue);
+                return;
+            }
+            const auto limit = std::min<std::uint64_t>(ship.holds.size(), type->nav->hold_count_a);
+            const auto& action = stop.actions[r.action_index];
+            if (r.scan_next < limit) {
+                const auto i = r.scan_next;
+                const auto& hold = ship.holds[i];
+                if (hold.goods == action.goods) {
+                    if (hold.amount_88 > UINT64_MAX - r.matching_raw) {
+                        fail(Reject::BadValue);
+                        return;
+                    }
+                    r.matching_raw += hold.amount_88;
+                    if (action.direction == FreightDirection::UnloadAmount ||
+                        hold.amount_88 < type->capacity_88)
+                        r.matching_holds.push_back(i);
+                } else if (action.direction == FreightDirection::LoadTarget && hold.goods == 0 &&
+                           hold.amount_88 == 0)
+                    r.empty_holds.push_back(i);
+                index_note(index, i, hold, action.goods, type->capacity_88, true);
+                ++r.scan_next;
+                ++index.scanned;
+                ++work.hold_scans;
+                continue;
+            }
+            const auto raw = action.tons * 256;
+            r.remaining_raw = action.direction == FreightDirection::LoadTarget
+                                  ? (raw > r.matching_raw ? raw - r.matching_raw : 0)
+                                  : raw;
+            r.phase = FreightPhase::Transfer;
+            continue;
+        }
+        if (r.phase == FreightPhase::Transfer) {
+            auto& index = ship.freight.index();
+            const auto& action = stop.actions[r.action_index];
+            if (!index_current(ship, index)) {
+                fail(Reject::BadValue);
+                return;
+            }
+            const auto total = r.matching_holds.size() + r.empty_holds.size();
+            if (r.remaining_raw == 0 || r.candidate_next == total) {
+                if (r.candidate_next == 0 || r.remaining_raw != 0)
+                    observe(w, ship, FreightSignal::Skipped, &fx, nullptr);
+                next_action(ship, type->load_ticks);
+                continue;
+            }
+            const auto selected = r.candidate_next < r.matching_holds.size()
+                                      ? r.matching_holds[r.candidate_next]
+                                      : r.empty_holds[r.candidate_next - r.matching_holds.size()];
+            const auto& hold = ship.holds[selected];
+            const auto bound = action.direction == FreightDirection::UnloadAmount
+                                   ? hold.amount_88
+                                   : (hold.amount_88 < type->capacity_88
+                                          ? std::uint64_t{type->capacity_88} - hold.amount_88
+                                          : 0);
+            const auto tons = static_cast<std::uint32_t>(
+                std::min<std::uint64_t>(std::min(r.remaining_raw, bound) / 256, UINT32_MAX));
+            if (tons == 0) {
+                observe(w, ship, FreightSignal::Skipped, &fx, nullptr, Reject::BadValue);
+                next_action(ship, type->load_ticks);
+                continue;
+            }
+            ApplyResult transfer;
+            std::optional<std::uint32_t> chosen;
+            ShipHold before;
+            if (action.direction == FreightDirection::LoadTarget) {
+                ++work.resolver_queries;
+                chosen = indexed_hold(ship, selected, action.goods, type->capacity_88, index);
+                if (chosen) {
+                    before = ship.holds[*chosen];
+                    transfer = ShipCargo::load_impl(
+                        w, {ship.owner, LoadCmd{}},
+                        {ship.id, stop.warehouse, selected, action.goods, tons}, nullptr, *chosen);
+                } else
+                    transfer.status = Reject::HoldsFull;
+            } else {
+                chosen = selected;
+                before = hold;
+                transfer = ShipCargo::unload(
+                    w, {ship.owner, UnloadCmd{}},
+                    {ship.id, stop.warehouse, selected, action.goods, tons}, nullptr);
+            }
+            if (!transfer.ok()) {
+                if (resource_refusal(transfer.status)) {
+                    observe(w, ship, FreightSignal::Skipped, &fx, nullptr, transfer.status);
+                    next_action(ship, type->load_ticks);
+                    continue;
+                }
+                fail(transfer.status);
+                return;
+            }
+            // The shared primitive committed exactly actual. There is no
+            // fallible operation between that effect and canonical continuation.
+            const auto actual = transfer.records[0].transferred_88;
+            r.remaining_raw -= actual;
+            ++r.candidate_next;
+            ++work.transfers;
+            index_note(index, *chosen, before, action.goods, type->capacity_88, false);
+            index_note(index, *chosen, ship.holds[*chosen], action.goods, type->capacity_88, true);
+            ++work.index_updates;
+            observe(w, ship, FreightSignal::Transferred, &fx, nullptr, Reject::None, actual);
+            continue;
+        }
+        if (r.phase == FreightPhase::CompleteStop) {
+            const bool wrap = std::size_t{r.stop_index} + 1 == r.stops.size();
+            if (wrap && r.completed_cycles == UINT64_MAX) {
+                fail(Reject::SerialExhausted);
+                return;
+            }
+            if (wrap) {
+                ++r.completed_cycles;
+                observe(w, ship, FreightSignal::Cycle, &fx, nullptr);
+            }
+            r.stop_index = wrap ? 0 : r.stop_index + 1;
+            r.action_index = 0;
+            r.phase = FreightPhase::NeedLeg;
+            r.credit_ticks = 0;
+            r.last_tick = now;
+            // The next primitive may issue Move now, but movement itself starts
+            // at a later visit. No old credit reaches that future destination.
+            continue;
+        }
+    }
 }
 } // namespace anno::sim

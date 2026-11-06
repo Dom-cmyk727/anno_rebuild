@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -51,32 +52,53 @@ struct FreightState {
     friend bool operator==(const FreightState&, const FreightState&) = default;
 };
 
-// Deep-copy logical optional: unrelated figures pay an empty pointer instead of
-// inline route/cursor/vector storage. World snapshots never share mutable progress.
+// Derived per-action resolver index. Ordered by inverse room then hold index,
+// exactly matching maximum-room/lowest-index and first-empty manual selection.
+// Never serialized, hashed or used as transfer authority. Only active routes
+// allocate it; a native reader rebuilds it outside figure visits.
+struct FreightHoldIndex {
+    std::uint64_t generation = 0;
+    std::uint32_t stop = 0, action = 0, scanned = 0;
+    std::set<std::pair<std::uint64_t, std::uint32_t>> rooms;
+    std::set<std::uint32_t> empty;
+};
+struct FreightWork {
+    std::uint64_t visits = 0, steps = 0, hold_scans = 0, resolver_queries = 0;
+    std::uint64_t index_updates = 0, target_checks = 0, transfers = 0, cold_scans = 0;
+};
+
+// One pointer on unrelated figures. Snapshots own independent canonical state
+// and derived index; cancelling/ending the assignment frees both together.
 class FreightSlot {
+    struct Storage {
+        FreightState state;
+        FreightHoldIndex index;
+    };
+
   public:
     FreightSlot() = default;
     FreightSlot(const FreightSlot& other)
-        : state_(other.state_ ? std::make_unique<FreightState>(*other.state_) : nullptr) {}
+        : storage_(other.storage_ ? std::make_unique<Storage>(*other.storage_) : nullptr) {}
     FreightSlot(FreightSlot&&) noexcept = default;
     FreightSlot& operator=(const FreightSlot& other) {
         if (this != &other)
-            state_ = other.state_ ? std::make_unique<FreightState>(*other.state_) : nullptr;
+            storage_ = other.storage_ ? std::make_unique<Storage>(*other.storage_) : nullptr;
         return *this;
     }
     FreightSlot& operator=(FreightSlot&&) noexcept = default;
-    [[nodiscard]] bool has_value() const { return state_ != nullptr; }
-    void reset() { state_.reset(); }
+    [[nodiscard]] bool has_value() const { return storage_ != nullptr; }
+    void reset() { storage_.reset(); }
     FreightState& emplace() {
-        state_ = std::make_unique<FreightState>();
-        return *state_;
+        storage_ = std::make_unique<Storage>();
+        return storage_->state;
     }
-    FreightState& operator*() { return *state_; }
-    const FreightState& operator*() const { return *state_; }
-    FreightState* operator->() { return state_.get(); }
-    const FreightState* operator->() const { return state_.get(); }
+    FreightState& operator*() { return storage_->state; }
+    const FreightState& operator*() const { return storage_->state; }
+    FreightState* operator->() { return &storage_->state; }
+    const FreightState* operator->() const { return &storage_->state; }
+    FreightHoldIndex& index() { return storage_->index; }
 
   private:
-    std::unique_ptr<FreightState> state_;
+    std::unique_ptr<Storage> storage_;
 };
 } // namespace anno::sim

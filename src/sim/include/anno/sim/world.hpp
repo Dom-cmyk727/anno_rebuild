@@ -256,6 +256,8 @@ class World {
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
     [[nodiscard]] BuildEligibility construction_eligibility(PlayerId, TypeId) const;
+    [[nodiscard]] const FreightWork& freight_work() const { return freight_work_; }
+    void clear_freight_work() { freight_work_ = {}; }
     [[nodiscard]] const FreightState* freight_route(FigureId id) const {
         const auto* f = find_figure(figures_, id);
         return f != nullptr && f->freight.has_value() ? &*f->freight : nullptr;
@@ -363,14 +365,15 @@ class World {
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
         // host_events_, out_, transport_stats_, fault_message_ and route_cache_ are host-facing,
-        // diagnostic or derived, deliberately not in the field list (not state).
+        // freight_work_ is a host counter. All are diagnostic or derived, deliberately not in the
+        // field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
                                       rules_member, seams_member, script_member, types_member,
                                       ids_member, players_member, islands_member, figures_member,
                                       events_member, timers_member, monopoly_member,
                                       event750_acc_member, faulted_member, fault_message_member,
                                       host_events_member, out_member, transport_stats_member,
-                                      route_cache_member] = w;
+                                      freight_work_member, route_cache_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
@@ -448,6 +451,7 @@ class World {
     // routes into every TickContext Scheduler::advance builds. Default null; nothing
     // in the sim writes it.
     TransportStats* transport_stats_ = nullptr;
+    FreightWork freight_work_; // host measurement only, never state
     // Not state (derived, never hashed or saved): the coast index the ship route queries read;
     // built on first use, kept in step by RouteCache::sync from the tile layers' dirty rectangles
     // (docs/sim/ship-navigation.md 12.13), emptied by copying or moving the World.

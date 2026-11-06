@@ -64,6 +64,11 @@ struct ShipCargo {
     [[nodiscard]] static bool footprint_in_range(std::int64_t tx, std::int64_t ty, std::int64_t x0,
                                                  std::int64_t y0, std::int64_t w, std::int64_t h,
                                                  const CargoRules& rules);
+
+  private:
+    friend struct FreightRoutes;
+    static ApplyResult load_impl(World&, const Command&, const LoadCmd&, const InAdvance*,
+                                 std::optional<std::size_t> resolved);
 };
 
 } // namespace anno::sim

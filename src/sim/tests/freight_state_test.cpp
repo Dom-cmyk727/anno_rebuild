@@ -409,8 +409,9 @@ TEST_CASE(
         r.credit_ticks = 10;
         if (phase == P::Sailing) {
             r.credit_ticks = 0;
-            const auto moved = sim::ShipOrders::move(w, {sim::PlayerId{0}, sim::MoveCmd{}},
-                                                     {ft::ship_id, 95 * 256, 110 * 256}, nullptr);
+            const auto moved = sim::ShipOrders::move(
+                w, {sim::PlayerId{0}, sim::MoveCmd{}},
+                {ft::ship_id, r.stops[0].dock_x_q8, r.stops[0].dock_y_q8}, nullptr);
             REQUIRE(moved.ok());
             r.expected_order_id = ship.nav->order->order_id;
             r.order_generation = ship.freight_generation;

@@ -931,7 +931,7 @@ ApplyResult Commands::apply(World& w, const Command& command, const InAdvance* i
                 if constexpr (std::is_same_v<T, MoveCmd> || std::is_same_v<T, StopCmd> ||
                               std::is_same_v<T, LoadCmd> || std::is_same_v<T, UnloadCmd> ||
                               std::is_same_v<T, FoundCmd>)
-                    FreightRoutes::manual_takeover(w, body.ship);
+                    FreightRoutes::manual_takeover(w, body.ship, in_advance);
             },
             command.body);
     }

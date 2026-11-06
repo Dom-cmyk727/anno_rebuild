@@ -13,6 +13,7 @@
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/freight.hpp>
 #include <anno/sim/harvest.hpp>
 #include <anno/sim/house_tick.hpp>
 #include <anno/sim/inn.hpp>
@@ -612,7 +613,10 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                     // goes to the mover, with the same protocol as a seam (its own figure and its
                     // Effects, merged right after the call, C2).
                     Effects fx;
-                    ShipMover::visit(w, ctx, fig, fx, plans_started);
+                    if (fig.freight.has_value())
+                        FreightRoutes::visit(w, ctx, fig, fx, plans_started);
+                    else
+                        ShipMover::visit(w, ctx, fig, fx, plans_started);
                     merge(w, fx, ctx.tick, t);
                 } else if (seam.fn != nullptr) {
                     // The unit's slot +0x74 (0x1009aaa8) is the behaviour seam (O-8):

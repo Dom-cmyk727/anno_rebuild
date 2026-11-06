@@ -160,6 +160,15 @@ ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd&
     // The plan: x > 0 because tons, the hold amount and the room are all non-zero.
     const std::uint64_t x = amount_88(cmd.tons, hold.amount_88, room);
 
+    // Allocate result storage before the shared stock commit. Automatic callers
+    // can advance their saved cursor immediately after this returns, with no
+    // intervening allocation between the goods effect and its canonical cursor.
+    ApplyResult out;
+    RecordResult rr;
+    rr.building = cmd.warehouse;
+    rr.transferred_88 = x;
+    out.records.push_back(rr);
+
     // Commit: nothing below can fail. The credit is the exact planned amount (refused otherwise,
     // before the hold is touched), then the hold is debited by exactly that amount.
     if (!city->stock.credit(cmd.goods, x)) {
@@ -170,11 +179,6 @@ ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd&
     if (debited.amount_88 == 0) {
         debited.goods = 0; // the emptied-hold normal form (0x1003b9a0)
     }
-    ApplyResult out;
-    RecordResult rr;
-    rr.building = cmd.warehouse;
-    rr.transferred_88 = x;
-    out.records.push_back(rr);
     return out;
 }
 
@@ -208,7 +212,12 @@ std::optional<std::size_t> ShipCargo::resolve_hold(const std::vector<ShipHold>& 
 }
 
 ApplyResult ShipCargo::load(World& w, const Command& command, const LoadCmd& cmd,
-                            const InAdvance*) {
+                            const InAdvance* ctx) {
+    return load_impl(w, command, cmd, ctx, std::nullopt);
+}
+
+ApplyResult ShipCargo::load_impl(World& w, const Command& command, const LoadCmd& cmd,
+                                 const InAdvance*, std::optional<std::size_t> resolved) {
     const TypeRegistry& types = *w.types_;
     const veto::Rules vrules; // the ship class is the founding command's (BEWOHNTYPE 113)
     // Step 0 (the issuer is a known player) is Commands::apply's. 1: the request.
@@ -248,10 +257,14 @@ ApplyResult ShipCargo::load(World& w, const Command& command, const LoadCmd& cmd
     // 12-14: the plan, from the live hold and store, before any write.
     const std::uint32_t capacity = ship_type->capacity_88;
     const std::optional<std::size_t> chosen =
-        resolve_hold(ship->holds, limit, capacity, cmd.hold, cmd.goods);
+        resolved ? resolved : resolve_hold(ship->holds, limit, capacity, cmd.hold, cmd.goods);
     if (!chosen.has_value()) {
         return refuse(Reject::HoldsFull);
     }
+    if (*chosen >= limit ||
+        (ship->holds[*chosen].goods != cmd.goods &&
+         !(ship->holds[*chosen].goods == 0 && ship->holds[*chosen].amount_88 == 0)))
+        return refuse(Reject::HoldGoodsMismatch);
     const std::uint64_t held = ship->holds[*chosen].amount_88;
     const std::uint64_t room = held >= capacity ? 0 : std::uint64_t{capacity} - held;
     if (room == 0) {
@@ -263,6 +276,15 @@ ApplyResult ShipCargo::load(World& w, const Command& command, const LoadCmd& cmd
     }
     const std::uint64_t x = amount_88(cmd.tons, room, available); // > 0: all three are non-zero
 
+    // Allocate result storage before the shared stock commit. Automatic callers
+    // can advance their saved cursor immediately after this returns, with no
+    // intervening allocation between the goods effect and its canonical cursor.
+    ApplyResult out;
+    RecordResult rr;
+    rr.building = cmd.warehouse;
+    rr.transferred_88 = x;
+    out.records.push_back(rr);
+
     // Commit: nothing below can fail. The debit is the exact planned amount (refused before the
     // hold is touched), then the hold is credited by exactly that amount; held + x <= capacity.
     if (!city->stock.debit(cmd.goods, x)) {
@@ -271,11 +293,6 @@ ApplyResult ShipCargo::load(World& w, const Command& command, const LoadCmd& cmd
     ShipHold& credited = find_figure(w.figures_, cmd.ship)->holds[*chosen];
     credited.goods = cmd.goods;
     credited.amount_88 = held + x;
-    ApplyResult out;
-    RecordResult rr;
-    rr.building = cmd.warehouse;
-    rr.transferred_88 = x;
-    out.records.push_back(rr);
     return out;
 }
 

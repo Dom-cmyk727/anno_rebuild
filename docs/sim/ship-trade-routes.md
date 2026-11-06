@@ -537,3 +537,38 @@ blocking R2 finding remains. R3 execution is released without an owner pause.
 | Clock/continuation | smallest/zero/split/surplus waits, quota continuation, native suffix | positive wait expires without credit; saved cursor repeats debit | pending |
 | Shared safe primitives | exact hand-derived target/group/rounding/partial quantities | additive request, rounded stock, wrong fallback hold, no A-prefix | pending |
 | Work and no-route reuse | bounded primitive work, route-local hold index, unchanged unassigned mover | colocated/refused spin; repeated whole-world/hold fallback scan | pending |
+
+
+R3 candidate integrates assigned ships inside the existing serial figure ring.
+The accepted mover runs once per visit; only its local matching order/generation
+arrival starts the first500tick wait at that visit stamp. Work quotas continue
+Scan/Transfer/action/stop state; Move is issued at now and sails on a later visit.
+Manual ingress and notifications cannot inject an arrival. Actions recheck the
+live stable warehouse/owner and both cargo range predicates. Structural errors
+stop recoverably; resource zero/partial follows the reviewed advancement policy.
+
+The route slot's active heap also owns a DERIVED hold index, with inverse-room/
+index ordering and first-empty set. Unrelated figures retain one empty pointer.
+The index is built during saved-prefix Scan, updated after transfers, copied by
+value and rebuilt from current holds during native load, outside visits. It is
+not serialized or authority. All reviewed136 bytes remain unchanged. Internal
+resolved loading enters the SAME validation/plan/commit as manual Load; manual
+calls keep their original resolver/failure order. Cargo result allocation occurs
+before stock writes, so the canonical cursor can advance immediately after the
+shared commit. Host observations and work counters are not saved/hash state.
+
+Direct R3 controls pass19 pre-C++ cargo vectors through actual visits, two actual
+automatic synthetic deliveries, distant-warehouse range refusal, one reachable
+partial-effect full native suffix, zero/1ms/2ms/499+1 waits,1250tick surplus across
+two waits with8step quotas/native continuation, and deferred Move credit reset.
+Same-tick run_turn cancel/reassign wins before due cargo; a refused manual Move
+preserves it; cancel after advance cannot undo a commit. Colocated/no-cargo input
+stays within configured work. Canonical acceptance/review are pending.
+
+Preserved direct failures exposed a SYNTHETIC boundary dock whose accepted mover
+arrived one tile outside cargo range, and unrelated fixture market carts changing
+the figure ring during an isolated clock check. The synthetic dock now has range
+margin; its registry disables cart spawning for the isolated route-only fixture.
+No engine range/visit rule, original canary position/resource, or wait was relaxed.
+The existing mover's idle/pickup delay is observed, not bypassed. R3 reference/caller
+claims remain isolated transitions, not whole-world partition invariance.

@@ -337,7 +337,8 @@ enum class SimEventKind : std::uint8_t {
                      ///< ShipBlocked)
     ShipStopped,
     ScriptWave,
-    CityBooking
+    CityBooking,
+    Freight
 };
 
 /// UI-facing output of the simulation; not state, never hashed. Which fields a
@@ -354,6 +355,32 @@ struct ScriptWave {
     WaveAudience audience = WaveAudience::AllLocal; // original0xaa is broadcast, not PlayerId170
     friend bool operator==(const ScriptWave&, const ScriptWave&) = default;
 };
+enum class FreightSignal : std::uint8_t {
+    Assigned,
+    Pending,
+    Arrived,
+    Transferred,
+    Skipped,
+    Paused,
+    Resumed,
+    Cancelled,
+    Failed,
+    Cycle,
+    ManualTakeover
+};
+struct FreightObservation {
+    FreightSignal signal = FreightSignal::Assigned;
+    std::uint64_t generation = 0, amount_88 = 0, completed_cycles = 0;
+    std::uint32_t stop = 0, action = 0;
+    BuildingId warehouse;
+    GoodsId goods = 0;
+    FreightDirection direction = FreightDirection::LoadTarget;
+    FreightStatus status = FreightStatus::Running;
+    FreightPhase phase = FreightPhase::NeedLeg;
+    Reject reason = Reject::None;
+    std::uint8_t nav_failure = 0;
+    friend bool operator==(const FreightObservation&, const FreightObservation&) = default;
+};
 struct SimEvent {
     SimEventKind kind = SimEventKind::StatusMessage;
     std::uint64_t tick = 0;
@@ -366,6 +393,7 @@ struct SimEvent {
     std::uint64_t order_id = 0;
     std::optional<ScriptWave> wave{};
     std::optional<CityBookingLedger> booking{};
+    std::optional<FreightObservation> freight{};
     friend bool operator==(const SimEvent&, const SimEvent&) = default;
 };
 

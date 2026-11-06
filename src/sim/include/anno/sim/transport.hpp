@@ -23,6 +23,7 @@
 #include <optional>
 #include <vector>
 
+#include <anno/sim/ore_lookup_stats.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/figure.hpp>
@@ -360,6 +361,8 @@ struct TransportStats {
     /// source building; what they offered at their unload into a market's city (before the city's
     /// capacity clip), and the cargo of those that ended without an unload, per goods.
     std::map<BuildingId, std::uint64_t> loaded_from;
+    /// MAP-EXTRACT-1 X5 (diagnostic): the operation counters of the mine source lookups the commands made.
+    OreLookupStats ore_lookup;
     /// MAP-EXTRACT-1 X3 (diagnostic): the same loads keyed by (source building, home of the lifting
     /// figure), so a test can say WHICH figure lifted from a source.
     std::map<std::pair<BuildingId, BuildingId>, std::uint64_t> loaded_by_home;

@@ -15,7 +15,11 @@ DepositInit deposit_load(std::uint32_t amount_tons, GoodsId ore_goods, bool rese
 }
 
 std::optional<std::size_t> find_ore_in_reach(const Island& island, const TypeRegistry& types,
-                                             const BuildingType& t, const MineArea& area, bool deep) {
+                                             const BuildingType& t, const MineArea& area, bool deep,
+                                             OreLookupStats* stats) {
+    if (stats != nullptr) {
+        ++stats->lookups;
+    }
     if (!t.has_prod || t.prod.outputs.empty()) {
         return std::nullopt;
     }
@@ -28,16 +32,30 @@ std::optional<std::size_t> find_ore_in_reach(const Island& island, const TypeReg
     std::uint32_t best_remaining = 0;
     for (std::size_t i = 0; i < island.ore_objects.size(); ++i) {
         const OreObject& ob = island.ore_objects[i];
-        const FigureType* ft = types.find_figure_type(ob.type);
-        if (ft == nullptr || ft->bewohntype != 145 || ft->ware != goods ||
-            !deposit_in_reach(area, ob.x, ob.y)) {
+        if (stats != nullptr) {
+            ++stats->ore_objects_examined;
+        }
+        if (!deposit_in_reach(area, ob.x, ob.y)) { // the cheap geometry first
             continue;
+        }
+        if (stats != nullptr) {
+            ++stats->in_reach;
+        }
+        const FigureType* ft = types.find_figure_type(ob.type);
+        if (ft == nullptr || ft->bewohntype != 145 || ft->ware != goods) {
+            continue;
+        }
+        if (stats != nullptr) {
+            ++stats->ware_matches;
         }
         Deposit prospective{goods, ob.x, ob.y, 0, true};
         const DepositInit init = deposit_load(ob.amount, *ore_goods);
         prospective.remaining = init.remaining;
         prospective.reserve = init.reserve;
         for (const Deposit& d : island.deposits) {
+            if (stats != nullptr) {
+                ++stats->deposits_examined;
+            }
             if (d.goods == goods && d.x == ob.x && d.y == ob.y) {
                 prospective = d; // the CURRENT state of an existing deposit
                 break;
@@ -54,9 +72,9 @@ std::optional<std::size_t> find_ore_in_reach(const Island& island, const TypeReg
 
 std::optional<std::size_t> bind_mine_deposit(Island& island, const TypeRegistry& types,
                                              const Building& b, const BuildingType& t,
-                                             bool deep) {
+                                             bool deep, OreLookupStats* stats) {
     const std::optional<std::size_t> best_ore =
-        find_ore_in_reach(island, types, t, mine_area(b, t), deep);
+        find_ore_in_reach(island, types, t, mine_area(b, t), deep, stats);
     if (!best_ore) {
         return std::nullopt;
     }
@@ -64,6 +82,9 @@ std::optional<std::size_t> bind_mine_deposit(Island& island, const TypeRegistry&
     const GoodsId ore_goods = *types.goods_by_name(goods);
     const OreObject& ob = island.ore_objects[*best_ore];
     for (std::size_t d = 0; d < island.deposits.size(); ++d) {
+        if (stats != nullptr) {
+            ++stats->deposits_examined;
+        }
         const Deposit& dep = island.deposits[d];
         if (dep.goods == goods && dep.x == ob.x && dep.y == ob.y) {
             return d;

@@ -1,7 +1,7 @@
 # anno_sim: the deterministic simulation. Headless, no I/O, integer
 # arithmetic in all state (docs/sim/core.md, docs/sim/state.md). Uses
 # anno_formats to read type data from the original files.
-add_library(anno_sim src/sim.cpp src/production.cpp src/mine_source.cpp src/config.cpp src/types.cpp src/city_accounts.cpp src/city_booking.cpp
+add_library(anno_sim src/sim.cpp src/production.cpp src/mine_source.cpp src/mine_facts.cpp src/config.cpp src/types.cpp src/city_accounts.cpp src/city_booking.cpp
             src/script_runtime.cpp src/permissions.cpp src/script.cpp src/build_availability.cpp src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp src/original_units.cpp
             src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp src/ship.cpp src/ship_step.cpp
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
@@ -83,6 +83,31 @@ if(ANNO_BUILD_TESTS)
                    -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
   set_tests_properties(economy_loop_fresh_process economy_loop_changed_command_fresh_process
                        PROPERTIES FIXTURES_REQUIRED econbook_loop_record)
+
+  # MAP-EXTRACT-1 X5: the salt chain recorded once; the log and its changed-command twin are replayed by
+  # anno-sim-replay in a fresh process. Both skip explicitly without the original files.
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/salt-chain")
+  set(salt_chain_environment "ANNO_SALT_OUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/salt-chain")
+  if(ANNO_SANITIZE AND NOT MSVC)
+    list(APPEND salt_chain_environment "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+  endif()
+  configure_file(${PROJECT_SOURCE_DIR}/cmake/SaltChainProperties.cmake.in
+                 ${CMAKE_CURRENT_BINARY_DIR}/salt_chain_properties.cmake @ONLY)
+  set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+               "${CMAKE_CURRENT_BINARY_DIR}/salt_chain_properties.cmake")
+  add_test(NAME salt_chain_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/salt-chain/salt-chain.log"
+                   -DEXPECT_RC=0 "-DEXPECT=checkpoints 31/31.*reproduced: every checkpoint matched"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunSaltReplay.cmake)
+  add_test(NAME salt_chain_changed_command_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/salt-chain/salt-chain-changed-command.log"
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 0/1.*DIVERGED at entry 2"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunSaltReplay.cmake)
+  set_tests_properties(salt_chain_fresh_process salt_chain_changed_command_fresh_process
+                       PROPERTIES FIXTURES_REQUIRED salt_chain_record
+                                  SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 
 
   # tools/lint_sim.py: the mechanical part of the determinism rules (no

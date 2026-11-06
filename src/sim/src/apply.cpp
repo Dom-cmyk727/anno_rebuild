@@ -443,7 +443,8 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
     if (type->cls == RuntimeClass::Mine) {
         const MineArea area{rec.x, rec.y, footprint(*type, rec.rotation).first,
                             footprint(*type, rec.rotation).second};
-        if (!find_ore_in_reach(is, env.types, *type, area, mine_is_deep(type->prod, type->research_id))) {
+        if (!find_ore_in_reach(is, env.types, *type, area, mine_is_deep(type->prod, type->research_id),
+                               env.w.transport_stats() != nullptr ? &env.w.transport_stats()->ore_lookup : nullptr)) {
             out.status = Reject::NoDepositInReach;
             return out;
         }
@@ -594,7 +595,8 @@ RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checke
     // Here and not in create_building, which the scenario loader shares: imported mines keep no
     // deposit. This overrides the find_deposit of creation.
     if (auto* mine = std::get_if<Mine>(&b.payload)) {
-        mine->deposit = bind_mine_deposit(is, env.types, b, *c.type, mine->deep);
+        mine->deposit = bind_mine_deposit(is, env.types, b, *c.type, mine->deep,
+                                          env.w.transport_stats() != nullptr ? &env.w.transport_stats()->ore_lookup : nullptr);
     }
     run_building_seam(env, env.seams.on_placed, is, city, b);
     return r;

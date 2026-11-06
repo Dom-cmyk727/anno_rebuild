@@ -1,0 +1,4 @@
+# Loaded by CTest after discovery (MAP-EXTRACT-1 X5): the recording case is the fixture that writes the logs.
+set_tests_properties("anno_sim_tests.salt X5: the chain recorded for the fresh-process replay and its changed command"
+                     PROPERTIES FIXTURES_SETUP salt_chain_record
+                                ENVIRONMENT "@salt_chain_environment@")

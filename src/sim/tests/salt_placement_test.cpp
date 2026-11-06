@@ -3,6 +3,7 @@
 // engine; layer 2 builds in the original endless02 island 1 (owner 8) through PUBLIC commands.
 // Needs ANNO1503_GAME_DIR for layer 2.
 #include <algorithm>
+#include <chrono>
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -20,6 +21,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/command.hpp>
+#include <anno/sim/mine_facts.hpp>
 #include <anno/sim/mine_source.hpp>
 #include <anno/sim/placement.hpp>
 #include <anno/sim/replay.hpp>
@@ -2477,4 +2479,393 @@ TEST_CASE("salt mine: a refused mine command is logged and the log reproduces") 
     REQUIRE_MESSAGE(replayed.ok(), (replayed.ok() ? std::string() : replayed.error()));
     CHECK(replayed.value().reproduced());
     CHECK(fresh.value().save() == s->w.save());
+}
+
+
+// ---- X5: read-only facts, continuation, fresh-process replay, bounded lookup cost -------------------------
+
+TEST_CASE("salt X5: the mine facts against known state, read-only") {
+    auto s = salt_world(true, false, true);
+    if (!s) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    sim::World& w = s->w;
+    sim::TransportStats stats;
+    const sim::ApplyResult r = w.apply(build_cmd({mine_at(353, 359)}));
+    REQUIRE(r.ok());
+    const sim::BuildingId mine = r.records.at(0).building;
+    // The expected values are independent of the code under test: the ore at (357,369) with 2,000 t is the OCCUR
+    // object read from endless02 (cache/close-extract/endless02_i1.txt line "R 1562 357 369 2000"), the load rule
+    // amount<<8 raised to 2,000 t = 512,000 in 8.8 units with the flag set is OQ-035 b/c
+    // (fixtures/synthetic/sim/mine_terrain_vectors.txt deposit vectors).
+    const auto before = w.save();
+    const auto f = sim::mine_facts(w, mine);
+    REQUIRE(f.has_value());
+    CHECK(f->bound);
+    CHECK(f->deposit_index == std::optional<std::size_t>{0});
+    CHECK(f->ore_x == 357);
+    CHECK(f->ore_y == 369);
+    CHECK(f->remaining_88 == 512000U);
+    CHECK(f->reserve);
+    CHECK(f->deep);
+    CHECK_FALSE(f->depletes); // a salt mine is deep: even in the add-on edition (setting on) it never uses the deposit up
+    CHECK(sim::WorldTestAccess::settings(w).depletes());
+    CHECK(f->state == sim::MineState::Working);
+    CHECK(f->output_88 == 0);
+    CHECK_FALSE(f->produced_88.has_value()); // no diagnostic sink installed
+    CHECK(w.save() == before); // reading changed nothing, byte for byte
+    // with a sink the produced total appears and equals the ledger; the output store equals the Mine's
+    w.set_transport_stats(&stats);
+    for (int i = 0; i < 400; ++i) w.advance(kStepMs);
+    const auto g = sim::mine_facts(w, mine);
+    REQUIRE(g.has_value());
+    REQUIRE(g->produced_88.has_value());
+    CHECK(*g->produced_88 > 0);
+    CHECK(*g->produced_88 == stats.forestry.mine_made_88.at(mine));
+    CHECK(g->output_88 == std::get<sim::Mine>(w.find_building(mine)->payload).out);
+    CHECK(g->remaining_88 == 512000U); // deep, flagged: worked, not drawn down
+    const auto mid = w.save();
+    static_cast<void>(sim::mine_facts(w, mine));
+    CHECK(w.save() == mid);
+    // the imported mine is unbound and idle; a non-mine and an unknown id answer nothing
+    const sim::Building* imported = nullptr;
+    const sim::Building* works = nullptr;
+    for (const auto& l : isle(w).city(kSaltCity.city)->index.lists)
+        for (const auto& b : l.slots) {
+            if (b && b->type.v == 1203 && b->id != mine) imported = &*b;
+            if (b && b->type.v == 1022) works = &*b;
+        }
+    REQUIRE(imported != nullptr);
+    REQUIRE(works != nullptr);
+    const auto u = sim::mine_facts(w, imported->id);
+    REQUIRE(u.has_value());
+    CHECK_FALSE(u->bound);
+    CHECK_FALSE(u->deposit_index.has_value());
+    CHECK(u->state == sim::MineState::Unbound);
+    CHECK_FALSE(sim::mine_facts(w, works->id).has_value());
+    CHECK_FALSE(sim::mine_facts(w, sim::BuildingId{}).has_value());
+    CHECK(w.save() == mid);
+}
+
+TEST_CASE("salt X5: the depletes fact follows the extraction rule for every combination") {
+    auto s = salt_world(true, false, true);
+    if (!s) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    sim::World& w = s->w;
+    const sim::ApplyResult r = w.apply(build_cmd({mine_at(353, 359)}));
+    REQUIRE(r.ok());
+    const sim::BuildingId id = r.records.at(0).building;
+    sim::Island& is = *sim::WorldTestAccess::islands(w)[1];
+    sim::Mine* m = nullptr;
+    for (auto& l : is.city(kSaltCity.city)->index.lists)
+        for (auto& b : l.slots)
+            if (b && b->id == id) m = &std::get<sim::Mine>(b->payload);
+    REQUIRE(m != nullptr);
+    // hand-written truth table (reserve, deep, setting) -> depletes (docs/re/production.md 4.4)
+    struct Row {
+        bool reserve, deep, setting, want;
+    };
+    for (const Row row : {Row{true, true, true, false}, Row{true, true, false, false}, Row{true, false, true, true},
+                          Row{true, false, false, false}, Row{false, true, true, true}, Row{false, true, false, false},
+                          Row{false, false, true, true}, Row{false, false, false, false}}) {
+        is.deposits[0].reserve = row.reserve;
+        is.deposits[0].remaining = 2000U * sim::kTon; // above the 1,600 t reserve floor
+        m->deep = row.deep;
+        sim::WorldTestAccess::settings(w).prop14 = row.setting ? 3U : 1U;
+        INFO("reserve " << row.reserve << " deep " << row.deep << " setting " << row.setting);
+        const auto f = sim::mine_facts(w, id);
+        REQUIRE(f.has_value());
+        CHECK(f->depletes == row.want);
+        // and the extraction code agrees: the deposit really goes down exactly when the fact says so
+        sim::Deposit probe = is.deposits[0];
+        const std::uint32_t got = sim::deposit_extract(probe, 100U, row.deep, row.setting);
+        CHECK(got <= 100U);
+        CHECK((probe.remaining != is.deposits[0].remaining) == row.want);
+    }
+    // off and blocked states from the Mine's own switches
+    sim::WorldTestAccess::settings(w).prop14 = 3U;
+    is.deposits[0].reserve = true;
+    m->deep = true;
+    m->switched_on = false;
+    CHECK(sim::mine_facts(w, id)->state == sim::MineState::SwitchedOff);
+    m->switched_on = true;
+    m->blocked = true;
+    CHECK(sim::mine_facts(w, id)->state == sim::MineState::Blocked);
+    m->blocked = false;
+    CHECK(sim::mine_facts(w, id)->state == sim::MineState::Working);
+}
+
+namespace {
+
+/// Saves at the first step where `at` holds, loads that save into a second world and continues both for 800
+/// steps: the bytes, the hash and the PRNG cursor must stay equal (no stats sink in the loaded world: the
+/// sink is diagnostic and does not decide anything).
+template <class At>
+void continuation_at(const char* boundary, At at) {
+    XChain x = start_x(true);
+    if (!x.c) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    INFO("boundary: " << boundary);
+    const int k = step_until(x, 4000, [&] { return at(x); });
+    REQUIRE_MESSAGE(k > 0, "the boundary state was never reached");
+    sim::World& w = x.c->sw.w;
+    const auto bytes = w.save();
+    auto loaded = sim::World::load(bytes, x.c->sw.types, {});
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    sim::World& re = loaded.value();
+    CHECK(re.check_invariants().empty());
+    CHECK(re.save() == bytes);
+    CHECK(re.state_hash() == w.state_hash());
+    for (int i = 0; i < 800; ++i) {
+        w.advance(kStepMs);
+        re.advance(kStepMs);
+        const bool faulted = w.faulted() || re.faulted();
+        REQUIRE_MESSAGE(!faulted, w.fault());
+    }
+    CHECK(re.state_hash() == w.state_hash());
+    CHECK(re.rng().cursor() == w.rng().cursor());
+    CHECK(re.save() == w.save());
+    CHECK(re.check_invariants().empty());
+}
+
+} // namespace
+
+TEST_CASE("salt X5: a reload at each boundary of the chain continues like the uninterrupted run") {
+    // the mine: the step in which a carrier lifts ore from it
+    {
+        std::uint64_t seen = 0;
+        continuation_at("mine, at a load", [&](XChain& x) {
+            const auto it = x.c->stats.loaded_from.find(x.mines[0]);
+            const std::uint64_t now = it == x.c->stats.loaded_from.end() ? 0U : it->second;
+            const bool hit = now > seen;
+            seen = now;
+            return hit;
+        });
+    }
+    // the saltworks carrier with ore in its hands
+    continuation_at("saltworks carrier holds ore", [&](XChain& x) { return in_flight(x, x.works[0], kSalzstein) > 0; });
+    // a market cart (the stall's side of the chain) with SALZ in its hands
+    continuation_at("market cart holds SALZ", [&](XChain& x) {
+        const sim::Building* a = building_on(x.c->sw.w, 346, 346);
+        const sim::Building* b = building_on(x.c->sw.w, 346, 371);
+        return a != nullptr && b != nullptr && in_flight(x, a->id, kSalz) + in_flight(x, b->id, kSalz) > 0;
+    });
+    // a household walker with SALZ in its hands
+    continuation_at("household walker holds SALZ", [&](XChain& x) { return terms2(x).res_cargo > 0; });
+}
+
+TEST_CASE("salt X5: the chain recorded for the fresh-process replay and its changed command") {
+    // A real session: the mine is built by a public command, the chain runs 1,500 steps with a checkpoint every
+    // 50. The same log is replayed in-process here; with ANNO_SALT_OUT_DIR set the log and a changed-command
+    // twin (the mine placed at (356,359) instead of (353,359)) are also written for the fresh-process CTests
+    // (anno-sim-replay in a child process, cmake/SaltChainProperties.cmake.in).
+    auto s = salt_world(true, false, true);
+    if (!s) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto started = sim::Recorder::start(s->w);
+    REQUIRE_MESSAGE(started.ok(), (started.ok() ? std::string() : started.error()));
+    sim::Recorder rec = std::move(started).value();
+    REQUIRE(rec.submit(build_cmd({mine_at(353, 359)})).ok());
+    rec.advance(100);
+    rec.checkpoint();
+    for (int block = 0; block < 30; ++block) {
+        for (int i = 0; i < 50; ++i) rec.advance(100);
+        rec.checkpoint();
+    }
+    REQUIRE(s->w.check_invariants().empty());
+    sim::ReplayLog changed = rec.log();
+    std::size_t command_entry = 0, first_checkpoint = 0;
+    for (std::size_t i = 0; i < changed.entries.size(); ++i) {
+        if (changed.entries[i].kind == sim::ReplayEntry::Kind::Commands && command_entry == 0) {
+            command_entry = i;
+            std::get<sim::BuildCmd>(changed.entries[i].commands[0].body).placements.at(0).x = 356;
+        }
+        if (changed.entries[i].kind == sim::ReplayEntry::Kind::Checkpoint && first_checkpoint == 0) first_checkpoint = i;
+    }
+    REQUIRE(first_checkpoint > command_entry);
+    const auto good_bytes = sim::write_log(rec.log());
+    const auto bad_bytes = sim::write_log(changed);
+    REQUIRE(good_bytes.ok());
+    REQUIRE(bad_bytes.ok());
+    // in-process: the log reproduces all 31 checkpoints, the changed twin diverges at the first one
+    {
+        auto fresh = sim::World::load(rec.log().initial_save, s->types, {});
+        REQUIRE(fresh.ok());
+        auto out = sim::replay(fresh.value(), rec.log());
+        REQUIRE(out.ok());
+        CHECK(out.value().checkpoints_total == 31);
+        CHECK(out.value().checkpoints_matched == 31);
+        CHECK(out.value().reproduced());
+    }
+    {
+        auto fresh = sim::World::load(changed.initial_save, s->types, {});
+        REQUIRE(fresh.ok());
+        auto out = sim::replay(fresh.value(), changed);
+        REQUIRE(out.ok());
+        REQUIRE(out.value().diverged_entry.has_value());
+        CHECK(*out.value().diverged_entry == first_checkpoint);
+        CHECK(out.value().checkpoints_matched == 0);
+    }
+    MESSAGE("command entry " << command_entry << ", first checkpoint entry " << first_checkpoint);
+    if (const char* dir = std::getenv("ANNO_SALT_OUT_DIR"); dir != nullptr && *dir != '\0') {
+        const std::filesystem::path out(dir);
+        const auto write = [&](const char* name, const std::vector<std::uint8_t>& bytes) {
+            std::ofstream f(out / name, std::ios::binary);
+            REQUIRE(f.good());
+            f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        };
+        write("salt-chain.log", good_bytes.value());
+        write("salt-chain-changed-command.log", bad_bytes.value());
+    }
+}
+
+// ---- X5: bounded cost of the reach lookup and the bind -----------------------------------------------
+
+namespace {
+
+/// An independent copy of the reach table (docs/re/production.md 4.4: rows 0..7 beyond the footprint have
+/// half-widths 7, 7, 7, 6, 6, 5, 4, 2), written from the document, not from the code under test.
+bool reach_ref(std::int32_t ax, std::int32_t ay, std::int32_t w, std::int32_t h, std::int32_t ox, std::int32_t oy) {
+    static const int half[8] = {7, 7, 7, 6, 6, 5, 4, 2};
+    int dy = oy < ay ? ay - oy : (oy > ay + h - 1 ? oy - (ay + h - 1) : 0);
+    int dx = ox < ax ? ax - ox : (ox > ax + w - 1 ? ox - (ax + w - 1) : 0);
+    return dy <= 7 && dx <= half[dy];
+}
+
+struct OreIsland {
+    sim::Island is;
+    std::size_t in_reach_expected = 0;
+};
+
+/// A bare island of 400 x 400 tiles with `k` ore objects of the salt ore symbol 1562, `near` of them inside
+/// the reach of a 3 x 4 mine at (200,200) and the rest far away on a grid, and `deposits` unrelated deposits.
+OreIsland ore_island(std::size_t k, std::size_t near_count, std::size_t deposits) {
+    OreIsland o;
+    REQUIRE(o.is.tiles.reset(0, 0, 400, 400, 8));
+    for (std::size_t i = 0; i < k; ++i) {
+        sim::OreObject ob;
+        ob.type = 1562;
+        ob.amount = 2000;
+        if (i < near_count) { // a column of tiles just below the footprint: all within the table
+            ob.x = 200 + static_cast<std::int32_t>(i % 3);
+            ob.y = 204 + static_cast<std::int32_t>(i / 3 % 4);
+        } else { // far: x in 0..99, y in 0..99 (the footprint is at 200,200: out of reach)
+            ob.x = static_cast<std::int32_t>(i % 100);
+            ob.y = static_cast<std::int32_t>(i / 100 % 100);
+        }
+        o.is.ore_objects.push_back(ob);
+        o.in_reach_expected += reach_ref(200, 200, 3, 4, ob.x, ob.y) ? 1U : 0U;
+    }
+    for (std::size_t d = 0; d < deposits; ++d)
+        o.is.deposits.push_back(sim::Deposit{"EISENERZ", 300 + static_cast<std::int32_t>(d % 90), 300 + static_cast<std::int32_t>(d / 90), 1000U, true});
+    return o;
+}
+
+} // namespace
+
+TEST_CASE("salt X5: the lookup visits the ore objects of its island once and nothing else") {
+    auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sim::BuildingType& mine = *o->types->find(sim::TypeId{1203});
+    const sim::MineArea area{200, 200, 3, 4};
+    std::vector<sim::OreLookupStats> series;
+    for (const std::size_t k : {10U, 100U, 1000U, 10000U}) {
+        const std::size_t deposits = 25;
+        OreIsland oi = ore_island(k, 5, deposits);
+        REQUIRE(oi.in_reach_expected == 5); // the independent reach count, constant while k grows
+        sim::OreLookupStats st;
+        const auto found = sim::find_ore_in_reach(oi.is, *o->types, mine, area, true, &st);
+        INFO("ore objects " << k);
+        CHECK(found.has_value());
+        CHECK(st.lookups == 1);
+        CHECK(st.ore_objects_examined == k);                  // linear in the island's ore objects, exactly
+        CHECK(st.in_reach == oi.in_reach_expected);           // equals the independent count
+        CHECK(st.ware_matches == oi.in_reach_expected);       // all of them are salt
+        CHECK(st.deposits_examined == oi.in_reach_expected * deposits); // per in-reach ore, the island's deposit table
+        series.push_back(st);
+    }
+    // what does NOT grow with the number of ore objects: the in-reach work
+    for (const auto& st : series) {
+        CHECK(st.in_reach == series.front().in_reach);
+        CHECK(st.deposits_examined == series.front().deposits_examined);
+    }
+    // the bind adds one pass over the deposit table (the dedupe) and nothing else
+    {
+        OreIsland oi = ore_island(1000, 5, 25);
+        sim::Building b;
+        b.type = sim::TypeId{1203};
+        b.x = 200;
+        b.y = 200;
+        b.rotation = 0;
+        sim::OreLookupStats st;
+        const auto idx = sim::bind_mine_deposit(oi.is, *o->types, b, mine, true, &st);
+        REQUIRE(idx.has_value());
+        CHECK(st.ore_objects_examined == 1000);
+        CHECK(st.deposits_examined == 5 * 25 + 25); // lookup + the dedupe scan, once each
+        CHECK(oi.is.deposits.size() == 26);
+    }
+}
+
+TEST_CASE("salt X5: the cost of a command's lookup does not depend on cities or other mines") {
+    // the same BuildCmd of our mine in three worlds: the pilot alone, the pilot with a second city, and the pilot
+    // with a second city holding a mine and a saltworks. Per lookup the ore objects visited equal the island's
+    // ore objects in every world; the number of cities and mines changes nothing.
+    auto solo = two_owners(false);
+    auto cut = two_owners(true, false);
+    auto both = two_owners(true);
+    if (!solo || !cut || !both) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::size_t lookups_seen = 0;
+    for (TwoOwners* t : {&*solo, &*cut, &*both}) {
+        const sim::OreLookupStats& st = t->x.c->stats.ore_lookup;
+        INFO("cities " << (t == &*solo ? 1 : 2) << ", ore lookups " << st.lookups);
+        REQUIRE(st.lookups >= 2); // our command: the check and the bind (the rival's add two more)
+        CHECK(st.ore_objects_examined == st.lookups * isle(t->x.c->sw.w).ore_objects.size());
+        CHECK(st.in_reach <= st.ore_objects_examined);
+        lookups_seen += st.lookups;
+    }
+    CHECK(solo->x.c->stats.ore_lookup.lookups == 2);
+    CHECK(cut->x.c->stats.ore_lookup.lookups == 2);
+    CHECK(both->x.c->stats.ore_lookup.lookups == 4);
+    // our own command's lookups: identical counts in every world
+    CHECK(solo->x.c->stats.ore_lookup.ore_objects_examined / 2 == both->x.c->stats.ore_lookup.ore_objects_examined / 4);
+    CHECK(lookups_seen == 8);
+}
+
+TEST_CASE("salt X5: lookup timing sample (opt-in measure)") {
+    const char* on = std::getenv("ANNO_SALT_PERF");
+    if (on == nullptr || *on == '\0') {
+        MESSAGE("skipping: set ANNO_SALT_PERF=1 to run the lookup timing sample");
+        return;
+    }
+    auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sim::BuildingType& mine = *o->types->find(sim::TypeId{1203});
+    const sim::MineArea area{200, 200, 3, 4};
+    for (const std::size_t k : {100U, 1000U, 10000U, 100000U}) {
+        OreIsland oi = ore_island(k, 5, 25);
+        sim::OreLookupStats st;
+        const int reps = static_cast<int>(2000000 / k) + 10;
+        const auto t0 = std::chrono::steady_clock::now();
+        std::size_t sink = 0;
+        for (int r = 0; r < reps; ++r) sink += sim::find_ore_in_reach(oi.is, *o->types, mine, area, true, &st).value_or(0);
+        const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / reps;
+        std::cout << "PERF ore_objects " << k << " reps " << reps << " us_per_lookup " << us << " examined_per_lookup "
+                  << st.ore_objects_examined / st.lookups << " sink " << sink << "\n";
+    }
 }

@@ -13,6 +13,7 @@
 
 #include <anno/sim/building.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/ore_lookup_stats.hpp>
 #include <anno/sim/types.hpp>
 
 namespace anno::sim {
@@ -39,7 +40,7 @@ struct DepositInit {
 [[nodiscard]] std::optional<std::size_t> find_ore_in_reach(const Island& island,
                                                            const TypeRegistry& types,
                                                            const BuildingType& t, const MineArea& area,
-                                                           bool deep);
+                                                           bool deep, OreLookupStats* stats = nullptr);
 
 /// Binds the mine `b` (type `t`, payload Mine) to the ore found by find_ore_in_reach: appends the
 /// deposit if the ore has none yet and returns its index. Policy B: a BuildCmd refuses a mine with no
@@ -48,6 +49,6 @@ struct DepositInit {
 /// nothing: the caller stores the result in Mine::deposit.
 [[nodiscard]] std::optional<std::size_t> bind_mine_deposit(Island& island, const TypeRegistry& types,
                                                            const Building& b, const BuildingType& t,
-                                                           bool deep);
+                                                           bool deep, OreLookupStats* stats = nullptr);
 
 } // namespace anno::sim

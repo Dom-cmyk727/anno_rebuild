@@ -85,42 +85,53 @@ def prices(*, climates, tax_count, directives):
             raise Invalid('directive')
         kind, *args = directive
         if kind == 'Preis' and len(args) == 1:
-            price = unsigned(args[0], U32, 'Preis')
+            price = bounded(args[0], I64_MIN, I64_MAX, 'Preis')
             values = [price] * len(climates)
         elif kind == 'PreisLevel' and len(args) == 1 and type(args[0]) is list:
             if len(args[0]) > tax_count:
                 raise Invalid('PreisLevel.columns')
             for i, value in enumerate(args[0]):
-                tax[i] = unsigned(value, U32, 'PreisLevel')
+                tax[i] = bounded(value, I64_MIN, I64_MAX, 'PreisLevel')
         elif kind in ('Bonus', 'Malus') and len(args) == 2:
             if args[0] not in climates:
                 raise Invalid('climate')
-            delta = unsigned(args[1], U32, kind) * (1 if kind == 'Bonus' else -1)
+            amount = bounded(args[1], I64_MIN, I64_MAX, kind)
+            if kind == 'Malus' and amount == I64_MIN:
+                raise Invalid('malus_negation')
             i = climates.index(args[0])
-            values[i] = bounded(values[i] + delta, I64_MIN, I64_MAX, 'price_accumulator')
+            value = values[i] + amount if kind == 'Bonus' else values[i] - amount
+            values[i] = bounded(value, I64_MIN, I64_MAX, 'price_accumulator')
         else:
             raise Invalid('directive')
     for value in values:
         unsigned(value, U32, 'resolved_price')
+    for value in tax:
+        unsigned(value, U32, 'resolved_surcharge')
     return dict(prices=values, tax=tax)
 
 
 def bill(*, kind, request, stock, pending):
+    """Returned service/purchase quantity differs from physical stock taken.
+
+    merge is only a queued invoice delta; return denotes no second billing call
+    during a walker's later delivery/return (resource movement is outside here).
+    """
     unsigned(request, U32, 'request')
     unsigned(stock, U32, 'stock')
     unsigned(pending, U32, 'pending')
     if kind not in ('stall', 'service', 'inn', 'merge', 'return'):
         raise Invalid('billing_kind')
-    delivered = min(request, stock) if kind in ('stall', 'inn') else 0
-    amount = delivered if kind == 'inn' else (0 if kind == 'return' else request)
+    taken = min(request, stock) if kind in ('stall', 'inn') else 0
+    returned = request if kind == 'service' else taken
+    amount = taken if kind == 'inn' else (0 if kind == 'return' else request)
     if kind == 'merge':
         added = min(amount, U32 - pending)
     elif pending + amount > U32:
-        return dict(pending=pending, stock=stock, delivered=0, added=0, fault='bill')
+        return dict(pending=pending, stock=stock, returned=0, taken=0, added=0, fault='bill')
     else:
         added = amount
-    return dict(pending=pending + added, stock=stock - delivered,
-                delivered=delivered, added=added)
+    return dict(pending=pending + added, stock=stock - taken,
+                returned=returned, taken=taken, added=added)
 
 
 def clock(*, elapsed, initial_ms=0):
@@ -151,7 +162,8 @@ def sequence(*, cities, money, events):
         elif kind == 'bill':
             city = cities[event['city']]
             unsigned(event['delta'], U32, 'delta')
-            row = city['rows'][event['good']]
+            good = bounded(event['good'], 0, len(city['rows']) - 1, 'event.good')
+            row = city['rows'][good]
             row[2] = min(U32, row[2] + event['delta'])
         elif kind == 'fault':
             stopped = True
@@ -202,7 +214,7 @@ def lifecycle(*, events):
                 if key in actors:
                     raise Invalid('duplicate')
                 actor = copy.deepcopy(event['actor'])
-                if actor['kind'] not in (1, 2) or len(actor['cost']) != 2:
+                if type(actor['kind']) is not int or actor['kind'] not in (1, 2) or len(actor['cost']) != 2:
                     raise Invalid('actor')
                 if actor['class'] not in ('single', 'dual', 'weapons', 'house', 'inert'):
                     raise Invalid('class')
@@ -222,20 +234,29 @@ def lifecycle(*, events):
                     raise Invalid('missing')
                 actor = actors[key]
                 bucket = actor['kind'] - 1
+                was_active = active(actor)
                 old = contribution(actor)
                 if op == 'switch':
                     if actor['class'] not in ('single', 'dual', 'weapons'):
                         raise Invalid('unsupported')
-                    actor['on'][event['line']] = event['on']
+                    if type(event['on']) is not bool:
+                        raise Invalid('switches')
+                    line = bounded(event['line'], 0, len(actor['on']) - 1, 'line')
+                    actor['on'][line] = event['on']
                     new = contribution(actor)
-                    if old != new:
+                    if was_active != active(actor):
                         costs[bucket] = unsigned(costs[bucket] - old, U64, 'cost_sub')
                         costs[bucket] = unsigned(costs[bucket] + new, U64, 'cost_add')
                 elif op == 'research':
-                    actor['eligible'][event['line']] = event['eligible']
+                    if actor['class'] != 'weapons' or type(event['eligible']) is not bool:
+                        raise Invalid('research')
+                    line = bounded(event['line'], 0, len(actor['eligible']) - 1, 'line')
+                    actor['eligible'][line] = event['eligible']
                 elif op == 'house_replace':
                     if actor['class'] != 'house':
                         raise Invalid('unsupported')
+                    if len(event['cost']) != 2:
+                        raise Invalid('running_cost')
                     for value in event['cost']:
                         unsigned(value, U32, 'running_cost')
                     actor['cost'] = event['cost'][:]
@@ -265,8 +286,14 @@ def city_player(*, city_cost, player_a, player_b, remainder, visits):
     return dict(city_charge=city_charge, player_charge=player_charge, remainder=remainder)
 
 
+def import_stat(*, saved):
+    unsigned(saved, U32, 'saved')
+    return dict(raw=saved * 105 // 15)
+
+
 MODELS = dict(book=book, prices=prices, bill=bill, clock=clock,
-              sequence=sequence, lifecycle=lifecycle, city_player=city_player)
+              sequence=sequence, lifecycle=lifecycle, city_player=city_player,
+              import_stat=import_stat)
 
 
 def evaluate(case):
@@ -285,7 +312,8 @@ def evaluate(case):
 def run(path):
     try:
         document = json.loads(Path(path).read_text())
-        if type(document) is not dict or set(document) != {'version', 'cases'} or document['version'] != 1:
+        if (type(document) is not dict or set(document) != {'version', 'cases'} or
+                type(document['version']) is not int or document['version'] != 1):
             raise Invalid('document')
         cases = document['cases']
         if type(cases) is not list or not cases:
@@ -297,7 +325,8 @@ def run(path):
         for case in cases:
             actual = evaluate(case)
             results.append(dict(id=case['id'], actual=actual))
-            if actual != case['expected']:
+            if json.dumps(actual, sort_keys=True, allow_nan=False) != json.dumps(
+                    case['expected'], sort_keys=True, allow_nan=False):
                 print(json.dumps(dict(id=case['id'], expected=case['expected'], actual=actual)), file=sys.stderr)
                 return 1
         print(json.dumps(dict(executed=len(results), results=results), sort_keys=True))

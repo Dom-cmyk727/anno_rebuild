@@ -1394,7 +1394,8 @@
       "expected": {
         "pending": 300,
         "stock": 0,
-        "delivered": 50,
+        "returned": 50,
+        "taken": 50,
         "added": 300
       }
     },
@@ -1410,7 +1411,8 @@
       "expected": {
         "pending": 300,
         "stock": 50,
-        "delivered": 0,
+        "returned": 300,
+        "taken": 0,
         "added": 300
       }
     },
@@ -1426,7 +1428,8 @@
       "expected": {
         "pending": 50,
         "stock": 0,
-        "delivered": 50,
+        "returned": 50,
+        "taken": 50,
         "added": 50
       }
     },
@@ -1442,7 +1445,8 @@
       "expected": {
         "pending": 0,
         "stock": 50,
-        "delivered": 0,
+        "returned": 0,
+        "taken": 0,
         "added": 0
       }
     },
@@ -1458,7 +1462,8 @@
       "expected": {
         "pending": 4294967290,
         "stock": 50,
-        "delivered": 0,
+        "returned": 0,
+        "taken": 0,
         "added": 0,
         "fault": "bill"
       }
@@ -1475,7 +1480,8 @@
       "expected": {
         "pending": 4294967295,
         "stock": 50,
-        "delivered": 0,
+        "returned": 0,
+        "taken": 0,
         "added": 5
       }
     },
@@ -1768,6 +1774,272 @@
       },
       "expected": {
         "invalid": "elapsed"
+      }
+    },
+    {
+      "id": "signed-preis-recovers",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Preis",
+            -1
+          ],
+          [
+            "Bonus",
+            "ONE",
+            2
+          ]
+        ]
+      },
+      "expected": {
+        "prices": [
+          1
+        ],
+        "tax": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "signed-bonus-and-malus",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Preis",
+            1
+          ],
+          [
+            "Bonus",
+            "ONE",
+            -2
+          ],
+          [
+            "Malus",
+            "ONE",
+            -2
+          ]
+        ]
+      },
+      "expected": {
+        "prices": [
+          1
+        ],
+        "tax": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "signed-min-malus-negation-refused",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Preis",
+            -9223372036854775808
+          ],
+          [
+            "Malus",
+            "ONE",
+            -9223372036854775808
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "malus_negation"
+      }
+    },
+    {
+      "id": "signed-max-recovers",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Preis",
+            9223372036854775807
+          ],
+          [
+            "Bonus",
+            "ONE",
+            -9223372036854775807
+          ]
+        ]
+      },
+      "expected": {
+        "prices": [
+          0
+        ],
+        "tax": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "signed-tax-overwritten",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "PreisLevel",
+            [
+              -1,
+              2,
+              3
+            ]
+          ],
+          [
+            "PreisLevel",
+            [
+              0
+            ]
+          ]
+        ]
+      },
+      "expected": {
+        "prices": [
+          0
+        ],
+        "tax": [
+          0,
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "id": "signed-min-negation-at-zero-refused",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Malus",
+            "ONE",
+            -9223372036854775808
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "malus_negation"
+      }
+    },
+    {
+      "id": "signed-accumulator-overflow-before-reset",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Preis",
+            9223372036854775807
+          ],
+          [
+            "Bonus",
+            "ONE",
+            1
+          ],
+          [
+            "Preis",
+            0
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "price_accumulator"
+      }
+    },
+    {
+      "id": "signed-final-tax-invalid",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "PreisLevel",
+            [
+              -1
+            ]
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "resolved_surcharge"
+      }
+    },
+    {
+      "id": "signed-preis-outside-i64",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Preis",
+            9223372036854775808
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "Preis"
+      }
+    },
+    {
+      "id": "signed-bonus-outside-i64",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Bonus",
+            "ONE",
+            -9223372036854775809
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "Bonus"
       }
     },
     {
@@ -2148,6 +2420,453 @@
         "dispositions": [
           "ok",
           "unsupported"
+        ]
+      }
+    },
+    {
+      "id": "switch-invalid-index--1",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "single",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": -1,
+            "on": false
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "single",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              true
+            ]
+          }
+        },
+        "costs": [
+          10,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "line"
+        ]
+      }
+    },
+    {
+      "id": "switch-invalid-index-1",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "single",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": 1,
+            "on": false
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "single",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              true
+            ]
+          }
+        },
+        "costs": [
+          10,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "line"
+        ]
+      }
+    },
+    {
+      "id": "switch-invalid-index-True",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "single",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": true,
+            "on": false
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "single",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              true
+            ]
+          }
+        },
+        "costs": [
+          10,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "line"
+        ]
+      }
+    },
+    {
+      "id": "switch-rejects-integer-bool",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "single",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": 0,
+            "on": 0
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "single",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              true
+            ]
+          }
+        },
+        "costs": [
+          10,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "switches"
+        ]
+      }
+    },
+    {
+      "id": "research-invalid-index",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "weapons",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true,
+                true
+              ],
+              "eligible": [
+                false,
+                false
+              ]
+            }
+          },
+          {
+            "op": "research",
+            "id": "x",
+            "line": -1,
+            "eligible": true
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "weapons",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              true,
+              true
+            ],
+            "eligible": [
+              false,
+              false
+            ]
+          }
+        },
+        "costs": [
+          2,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "line"
+        ]
+      }
+    },
+    {
+      "id": "research-rejects-integer-bool",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "weapons",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true,
+                true
+              ],
+              "eligible": [
+                false,
+                false
+              ]
+            }
+          },
+          {
+            "op": "research",
+            "id": "x",
+            "line": 0,
+            "eligible": 1
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "weapons",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              true,
+              true
+            ],
+            "eligible": [
+              false,
+              false
+            ]
+          }
+        },
+        "costs": [
+          2,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "research"
+        ]
+      }
+    },
+    {
+      "id": "actor-kind-is-not-bool",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "single",
+              "kind": true,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          }
+        ]
+      },
+      "expected": {
+        "actors": {},
+        "costs": [
+          0,
+          0
+        ],
+        "dispositions": [
+          "actor"
+        ]
+      }
+    },
+    {
+      "id": "equal-cost-selector-still-preflights-history-underflow",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "w",
+            "actor": {
+              "class": "single",
+              "kind": 1,
+              "cost": [
+                20,
+                20
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "create",
+            "id": "h",
+            "actor": {
+              "class": "house",
+              "kind": 1,
+              "cost": [
+                0,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "house_replace",
+            "id": "h",
+            "cost": [
+              0,
+              30
+            ]
+          },
+          {
+            "op": "remove",
+            "id": "h"
+          },
+          {
+            "op": "switch",
+            "id": "w",
+            "line": 0,
+            "on": false
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "w": {
+            "class": "single",
+            "kind": 1,
+            "cost": [
+              20,
+              20
+            ],
+            "on": [
+              true
+            ]
+          }
+        },
+        "costs": [
+          0,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "ok",
+          "ok",
+          "ok",
+          "cost_sub"
         ]
       }
     },
@@ -2795,6 +3514,172 @@
             "upkeep": 0
           }
         ]
+      }
+    },
+    {
+      "id": "queued-bill-invalid-index--1",
+      "kind": "sequence",
+      "input": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 0
+        },
+        "events": [
+          {
+            "kind": "bill",
+            "city": "a",
+            "good": -1,
+            "delta": 1
+          }
+        ]
+      },
+      "expected": {
+        "invalid": "event.good"
+      }
+    },
+    {
+      "id": "queued-bill-invalid-index-1",
+      "kind": "sequence",
+      "input": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 0
+        },
+        "events": [
+          {
+            "kind": "bill",
+            "city": "a",
+            "good": 1,
+            "delta": 1
+          }
+        ]
+      },
+      "expected": {
+        "invalid": "event.good"
+      }
+    },
+    {
+      "id": "queued-bill-invalid-index-False",
+      "kind": "sequence",
+      "input": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 0
+        },
+        "events": [
+          {
+            "kind": "bill",
+            "city": "a",
+            "good": false,
+            "delta": 1
+          }
+        ]
+      },
+      "expected": {
+        "invalid": "event.good"
+      }
+    },
+    {
+      "id": "import-stat-0",
+      "kind": "import_stat",
+      "input": {
+        "saved": 0
+      },
+      "expected": {
+        "raw": 0
+      }
+    },
+    {
+      "id": "import-stat-37",
+      "kind": "import_stat",
+      "input": {
+        "saved": 37
+      },
+      "expected": {
+        "raw": 259
+      }
+    },
+    {
+      "id": "import-stat-40904451",
+      "kind": "import_stat",
+      "input": {
+        "saved": 40904451
+      },
+      "expected": {
+        "raw": 286331157
+      }
+    },
+    {
+      "id": "import-stat-4294967295",
+      "kind": "import_stat",
+      "input": {
+        "saved": 4294967295
+      },
+      "expected": {
+        "raw": 30064771065
       }
     }
   ]

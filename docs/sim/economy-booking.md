@@ -578,7 +578,7 @@ own schema/facts proofs. No routine orchestrator pause is required.
 
 `tools/booking_checked_ref.py` is separate from the unchanged original-wrap
 `tools/booking_ref.py`. Its inputs are resolved rows, never C++ output. The
-committed `fixtures/synthetic/sim/econbook1/checked_vectors.json` contains66
+committed `fixtures/synthetic/sim/econbook1/checked_vectors.json` contains91
 hand-pinned complete results. The CLI computes all fields, compares the entire
 answer, reports each executed id and rejects empty/type-only/malformed/duplicate
 inputs, partial expected answers and unknown kinds. CTest names
@@ -602,8 +602,10 @@ The existing acceptance table's B2 assertions are realized as follows:
   retained `cache/econ-book1/B2/reference-exploration-01.log` records it, and
   quotient/remainder derivation corrected only that expected literal before
   acceptance. `reference-exploration-02.log` executes all66.
-- Requested Stall300/delivered50 bills300; service300 bills300 without take;
-  Inn bills/delivers50; return adds0. Direct MAX-5+10 faults unchanged,
+- Requested Stall300 returns/takes50 and bills300; service300 returns300 and
+  bills300 without warehouse take; Inn returns/takes/bills50; later return adds0.
+  Returned purchase/service units and physical stock taken are distinct fields.
+  Direct MAX-5+10 faults unchanged,
   effect merge saturates with actual increment5. City28 charges1; fifteen
   visits at city14 charge0, while player14+initial remainder1 totals14/rem1.
 - Four tax columns and custom climate are data-sized. Repeated partial tax
@@ -621,18 +623,46 @@ The existing acceptance table's B2 assertions are realized as follows:
   island boundaries and saved fault/retry remain explicitly PENDING B4, rather
   than counted as passing by this arithmetic reference.
 
-The public contract executes legal controls before eight intentional wrong
+The public contract executes legal controls before twelve intentional wrong
 models: u32 product, row rounding, netting gross credit, reset before fault,
-double booking, house rescan, raw Weapons OR and blanket final-fault suppression.
+double booking, house rescan, raw Weapons OR, blanket final-fault suppression,
+unsigned source Preis, unchecked signed accumulation, equal-cost selector bypass
+and unchecked I64_MIN Malus negation.
 Each must return a disagreement at its named decisive vector, not timeout,
 compilation or unavailable assets. Bad expected-income89 must be recomputed88
 and rejected; an echo-expected mutant demonstrates that this negative control
 distinguishes the fake implementation. Partial expected fields also disagree.
 
-Initial local CLI contracts:9 Python methods pass; canonical frozen gate and
-independent B2 review pending. New own `build/econ-debug` avoids modifying the
+Initial local CLI contracts:9 Python methods passed at18da741b. Canonical01
+failed the unchanged ancillary headless bench_picture build before selection
+(five AppleClang unused-but-set GPU-option variables);02 then passed both selected
+references, with0 failed/empty/skipped/incomplete/sanitizer lines. Its three
+required invocations (agrees, contract, picture_matrix_contract) each passed1/1,
+separate from selection2/2. These results retain their original source18da741b;
+they do not approve the following reference corrections.
+
+Independent reviewer `/root/econ_b0_review` found signed-source directives were
+incorrectly restricted to unsignedu32; equal old/new cost values incorrectly
+bypassed a changed selector's checked subtract/add; Python equality conflated
+JSON88.0 with integer88; service returned quantity was conflated with stock take;
+and negative event indices could use Python's last-element indexing. Corrections
+add25 vectors, strict result JSON types, bounded indices/boolean fields and
+the original-stat import pair37→259 and40904451→286331157 (original3). The existing
+B1 refusal of I64_MIN Malus negation is retained, including when mathematical
+subtraction might cancel; no arithmetic-policy expansion is hidden here.
+The equal-cost counterexample creates workshop20, house10, replaces house cost30
+without historical recomputation, removes house30 leaving0, then switches the
+workshop20→20: checked subtraction must refuse and preserve its old switch.
+Current local corrections:91 vectors,10 Python contract methods,12 model mutants.
+Focused frozen canonical successor gate and correction review pending.
+
+New own `build/econ-debug` avoids modifying the
 preserved MAP-INTEGRATE-1 builds. Its read-only doctest dependency was copied
 into own ignored cache before configuration. Headless bench_picture is built
 only to satisfy the canonical compulsory public picture contract; this is not
-a GPU/render acceptance campaign. Current other-executor gates are left alone;
+a GPU/render acceptance campaign. The own ignored CMAKE_PROJECT_INCLUDE file
+`cache/econ-book1/B2/ancillary-headless.cmake` adds only to bench_picture
+`-Wno-error=unused-but-set-variable`; warnings remain visible and all simulation,
+formats/load/replay targets retain-Werror. Reviewer independently confirmed the
+single affected compile command. Current other-executor gates are left alone;
 18 logical CPUs/48GiB/~1.5TiB available permits4 build jobs and1 CTest child.

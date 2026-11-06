@@ -31,7 +31,7 @@ class PublicContract(unittest.TestCase):
         child = self.execute(document)
         self.assertEqual(child.returncode, 0, child.stderr)
         result = json.loads(child.stdout)
-        self.assertGreaterEqual(result['executed'], 66)
+        self.assertGreaterEqual(result['executed'], 91)
         self.assertEqual(result['executed'], len(document['cases']))
         self.assertEqual([r['id'] for r in result['results']], [c['id'] for c in document['cases']])
         self.assertEqual([r['actual'] for r in result['results']], [c['expected'] for c in document['cases']])
@@ -47,6 +47,12 @@ class PublicContract(unittest.TestCase):
         value = self.one('ordinary-22500-plus128-div256-is88')
         value['cases'][0]['expected'] = {'stepped': True}
         self.assertEqual(self.execute(value).returncode, 1)
+
+    def test_expected_result_json_types_are_exact(self):
+        for key, wrong in (('income', 88.0), ('upkeep', False), ('stepped', 1)):
+            value = self.one('due-2000')
+            value['cases'][0]['expected'][key] = wrong
+            self.assertEqual(self.execute(value).returncode, 1)
 
     def test_invalid_documents_refused(self):
         one = self.one('due-2000')['cases'][0]
@@ -100,6 +106,14 @@ class PublicContract(unittest.TestCase):
             ('blanket-final-fault', 'stopped, bookings = False, []',
              "stopped, bookings = any(e['kind']=='fault' for e in events), []",
              'book-then-fault-preserves-booking'),
+            ('unsigned-price-source', "bounded(args[0], I64_MIN, I64_MAX, 'Preis')",
+             "unsigned(args[0], U32, 'Preis')", 'signed-preis-recovers'),
+            ('unchecked-signed-accumulator', "bounded(value, I64_MIN, I64_MAX, 'price_accumulator')",
+             'value', 'signed-accumulator-overflow-before-reset'),
+            ('cost-values-instead-of-selectors', 'if was_active != active(actor):',
+             'if old != new:', 'equal-cost-selector-still-preflights-history-underflow'),
+            ('unbounded-malus-negation', "if kind == 'Malus' and amount == I64_MIN:",
+             'if False:', 'signed-min-malus-negation-refused'),
         ]
         source = args.ref.read_text()
         control = self.one('ordinary-22500-plus128-div256-is88')

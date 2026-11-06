@@ -19,6 +19,307 @@
 - **The status page.** [`STATUS.md`](STATUS.md) says who works on what, where the work is, and what it waits on. Every
   orchestrator updates it in the same commit as each dispatch, acceptance or change of lane.
 
+<!-- BEGIN MAP-ROUTE-1 -->
+## Second Mac — MAP-ROUTE-1: automatic freight between owned warehouses (2026-11-06)
+
+**RELEASED: R0–R7, one comprehensive headless gameplay bundle.** This is the
+second Mac executor's current assignment and supersedes the completed expansion
+packet's stop/await-next-task instruction. Independent package approvals release
+the next package automatically. Return once at the final candidate or a genuine
+out-of-scope dependency; do not seek routine permission between R0–R7.
+
+### Player outcome and boundaries
+
+The player assigns an owned ship an ordered route between owned warehouses.
+The simulation sails, arrives, loads/unloads and repeats without a test driver
+issuing a Move/Load/Unload for every stop. The player can suspend/cancel it and
+regain manual control. Newly produced wood must reach the second settlement over
+at least two complete automatic cycles, with exact ledgers and save/replay.
+This extends the accepted manual expansion; it does not claim a balanced town.
+
+First Mac owns MAP-EXTRACT-1, salt/deposit placement and reserved state135;
+hunting/fauna stays outside both this package and this lane. Windows owns viewer,
+UI, rendering and its active W7 verification. Do not edit their worktrees, import
+their unaccepted changes or interrupt their jobs. No foreign trade, prices,
+diplomacy, combat, fleet/group routing, collision avoidance, original savegame
+route import, full route editor or general scripting automation is released.
+The first slice supports independently assigned ships and variable-length stop
+lists; two stops is the canary, not an engine-wide maximum.
+
+### R0 — Adopt the accepted base and define the proof
+
+1. Preserve `task/MAP-EXPAND-1-main` at published `a4617184` and all its evidence.
+   In the existing owned checkout, with a clean tree and no owned jobs, fetch
+   origin, verify accepted main **`e0bb6be7bd26dddd53d2f7e69ae29651fc5c49b9`**, and
+   create `task/MAP-ROUTE-1-main` from that exact commit. Read this new dispatch
+   from fetched `origin/main` without merging a moving main. No rebase, reset,
+   pruning or cross-lane cherry-pick. Record task-board blob/published revision.
+2. Read the files below in order. Inventory current navigation, arrival/order
+   identity, cargo, command ingress, serialization and ownership seams. Verify
+   original inputs/hashes; do not start by re-running the completed long voyage.
+3. Inspect actual CPU/RAM/free disk and concurrent load; retain memory admission.
+   Use owned build/cache directories and measured concurrency, one expensive
+   campaign at a time. Keep the display awake only with an owned assertion if
+   needed; never stop the owner's assertion or another lane's processes.
+4. Write a requirement/positive/control/evidence table and a small dependency
+   graph in `docs/sim/ship-trade-routes.md`. Record the first cheap gate baseline,
+   intended test inventory, long-canary work bounds and current compatibility.
+
+Read first:
+- `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, this entire marked TASKS section,
+  `docs/orchestration/STATUS.md`, `docs/testing/evidence-contract.md` and
+  `docs/testing/README.md`.
+- `docs/orchestration/reviews/2026-11-06-map-expand1-acceptance.md`,
+  `docs/orchestration/reviews/2026-11-06-map-expand1.md`,
+  `docs/sim/manual-expansion.md`, `docs/testing/manual-expansion.md` and the
+  final MAP-EXPAND entries in `docs/orchestration/REPORTS.md`. Earlier OPEN rows
+  in historical expansion tables are not the final acceptance verdict.
+- `docs/re/ship-cargo.md` §§7,11 (especially automatic-stop `0x10055bb0` and
+  shared transfer calls `0x10055d8a`/`0x10055ee3`), `docs/sim/ship-cargo.md`,
+  `docs/re/ship-navigation.md`, `docs/sim/ship-navigation.md`,
+  `docs/sim/ship-route-engine.md`, `docs/sim/ship-route-limits.md`.
+- `docs/sim/state.md`, `docs/sim/economy-booking.md`,
+  `docs/sim/build-availability.md`, `docs/sim/shared-visibility.md`.
+- `src/sim/include/anno/sim/{command,ship_orders,ship_cargo,world,state_fields}.hpp`;
+  `src/sim/src/{apply,codec,ship_orders,ship_cargo,ship_mover,ship_step,driver,
+  scheduler,save,invariants,replay}.cpp`. Follow actual callers; these lists
+  identify starting files, not permission to refactor all of them.
+- `src/sim/tests/{ship_orders,ship_nav_state,load,unload,founding_assets,
+  command_codec,replay,integration_stream}_test.cpp`,
+  `src/sim/tests/cargo_transfer_oracle.hpp`, `src/sim/CMakeLists.txt`,
+  `tools/cargo_ref.py`, `tools/sim_stream.py`,
+  `tools/integration_stream_ref.py`, `src/tools/sim_replay/main.cpp`.
+
+### R1 — Original route contract and independent reference, before runtime edits
+
+1. Trace the original automatic-stop caller and record construction, not only
+   the already traced manual cargo arm. Resolve stop fields/units, target-city
+   resolution, action order, hold selection, quantity meaning (transfer amount
+   versus desired stock), partial/full/empty behavior, stop advancement and
+   route wrap. Identify when arrival is considered complete and what happens
+   on manual interruption, invalid destination or route failure. Follow exact
+   function boundaries and vtable targets; an address in an old note is a lead.
+2. Record module hashes, addresses and decisive predicates in the new
+   `docs/re/ship-trade-routes.md`. Keep original bytes, dumps and disassembly in
+   ignored cache only. Separate established original behavior, explicit modern
+   adaptations and unresolved behavior. No claim of runtime parity without an
+   original-runtime observation.
+3. Specify a typed route definition, assignment/control commands, authenticated
+   issuer checks, ordered stops/actions, current leg/action progress, errors and
+   public observations. Distinguish command acceptance, sailing arrival,
+   transfer success and completion of a cycle. Define same-tick ordering with
+   manual commands and prevent stale arrivals from advancing a replacement route.
+4. Authorize these bounded robustness adaptations explicitly: invalid/missing/
+   foreign destinations must never transfer or silently retarget; report a
+   recoverable stopped/suspended state. Authority is the authenticated ship
+   owner, never shared visibility. No busy loop when no progress can be made.
+   Reuse accepted safe cargo arithmetic and conservation. The exact empty/full
+   wait/skip policy and partial-transfer advancement must be traced and reviewed;
+   do not invent a wait-until-full rule because it makes the canary pass.
+5. Write a small independent transition/transfer reference and hand-derived
+   synthetic vectors before C++. Pin legal progress plus competing wrong
+   interpretations: request versus target amount, rounded stock, action order,
+   zero versus partial transfer, wrap, duplicate notification, stale generation,
+   stop/reassign, zero/small/split elapsed time, and surplus interval handling.
+   Reference inputs must not contain answers it merely echoes. CLI contracts
+   reject zero executed vectors, malformed/truncated input and bad expectations.
+6. An independent read-only reviewer re-derives the decisive original predicates
+   from actual bytes and reviews the contract/reference. Approval releases R2.
+   Unsupported nonessential original arms stay explicitly excluded. An unread
+   essential route predicate is remaining research, not permission to guess.
+   If evidence truly cannot settle it, stop dependent engine work with the exact
+   question, trace attempted and smallest owner decision needed; finish other
+   independent authorized artifacts rather than calling the full packet complete.
+
+### Identity and integration boundary (record during R1)
+
+This branch starts from canonical **134 / ECONBK1 / PRNG5 / replay4 / command1 /
+ native wrapper1**. **State136 is reserved for this route-state package; 135 stays
+owned by first Mac salt.** Reservation is not main acceptance and a branch based
+on134 does not contain salt merely because its number is136. Document that fact
+on every compatibility/handoff record. Do not adopt135 or merge the salt branch.
+Orchestrator owns the later combined integration and its final identity. That
+combination must not simply take max(135,136) or amend published route-only136;
+it requires a fresh compatibility decision.
+
+Before runtime changes, review the entire saved route schema, command tags,
+field widths/order, rules/digest coverage and compatibility plan. Preserve command
+variant order and allocate unused tags after checking the frozen source. Retain
+PRNG5: route scheduling introduces no new random draws. Existing navigation draws
+and their ordering must be accounted for; an unavoidable timeline change is a
+real coordination stop before implementing it. Do not silently amend a published
+schema or reuse another lane's identity; seek a revised reservation if the
+reviewed published layout must change. Keep the existing wire/framing versions
+only if the reviewed compatibility checks actually reject incompatible peers.
+
+New branch-native136 states/replays reject earlier134 input explicitly; no
+migration or relabelling. Preserve old artifacts. Do not claim a tested135
+compatibility check without a real valid artifact and the intended refusal.
+Update explicit serialization, native validation, independent stream reference
+and synthetic fixtures together. Baseline semantic equivalence without routes
+must be checked excluding intentional identity bytes. Explain each changed
+current golden; do not replace unrelated history or count C++ self-output as an
+independent oracle. All existing gameplay defaults remain unchanged; worlds with
+no assigned route must retain their existing behavior and draw order.
+
+### R2 — Route data, commands and persistence
+
+1. Implement the reviewed per-ship route state and public assign/control/query
+   surfaces. Use stable typed ship/warehouse references and action indices,
+   never persistent pointers. Validate lengths, arithmetic and references before
+   writing. Failed commands leave serialized state, money, goods and draws intact.
+2. Serialize every future-affecting cursor, pending identity and control state;
+   validate impossible cursors, corrupt references and malformed command input.
+   Hand-write nonempty expected bytes independently of the encoder. Test codec
+   roundtrips plus independent bytes, current native load and real old refusal.
+3. Keep content roles/goods/warehouse eligibility data-driven. No island, ship,
+   warehouse or goods allowlist from the real canary. Test a non-original goods
+   id/eligible warehouse fixture and more than two stops. Operator caps for tests
+   are not engine limits; public input/work budgets must have a documented reason
+   and a configuration path. No general mod framework is required.
+4. Independent reviewer checks schema/identity, authority, public callers and
+   refusal atomicity. Fix/re-review before scheduler integration.
+
+### R3 — Integrate automatic sailing and cargo execution
+
+1. Connect the route state machine to production simulation visits. Route code
+   must reuse existing movement and cargo validation/commit primitives; do not
+   implement a second stock arithmetic path. A narrow shared internal seam is
+   allowed with parity controls for existing manual commands and failure order.
+2. Wait for the matching ship/order/route revision's arrival before executing
+   actions. Re-resolve warehouse/owner/range at the action, even if valid when
+   assigned. Original's omitted range check is not blanket authorization for
+   distant cargo. Define a checked arrival-to-transfer invariant and test it.
+3. Preserve declared action order, exact partial quantities and one-time effects.
+   Persist the action cursor before any subsequent visit can repeat a committed
+   debit. Rejected/zero transfers do not masquerade as delivered goods or completed
+   productive cycles. Apply the reviewed shortage/full/route-failed policy.
+4. Bound work per visit with deterministic continuation. A zero-length leg,
+   colocated stops or all-refused actions must not spin through cycles forever.
+   Route work should scale with active routes/due actions rather than all
+   buildings/figures. Keep integer arithmetic and deterministic ordering; no
+   background thread, wall-clock timer or unrecorded external controller.
+5. Test real scheduler calls with public assignment commands, same-tick command
+   order, smallest supported visit and split delay. Manual Move/Stop and cargo
+   interactions must follow R1's explicit ownership-of-control policy.
+   Independent review approves actual integration, not just a pure model.
+
+### R4 — Interruptions, recovery and adversarial controls
+
+1. Cover suspend/resume/cancel/reassign while sailing, at arrival, between actions
+   and after a partial transfer. No replayed or stale completion can transfer twice
+   or advance the replacement route. Remove the ship and remove/rebuild a target;
+   stable identity must not accidentally authorize the replacement warehouse.
+2. Cover no route, malformed route, unreachable dock, source shortage, destination
+   full, hold full/mismatch, wrong owner, closer rival warehouse, finite capacity,
+   fractional residual and multiple actions for the same goods. Recovery uses
+   public commands and the reviewed policy; no internal flag/stock repair.
+3. Exercise two ships and two owners on short synthetic maps. Deterministic
+   shared-stock contention follows declared simulation order, never thread timing;
+   conservation must hold for each city, hold, goods and owner after every action.
+4. Use a small set of precise faults: arrival bypass, wrong warehouse, credit-only,
+   duplicate action, stale revision and lost cursor on reload. Each fault must
+   fail its intended assertion after the legal control runs. Retain failure
+   extracts, then rebuild clean binaries before any final gate. Do not multiply
+   long voyage mutants or start a generic mutation infrastructure project.
+5. Independent review includes alternate orderings, end/removal cleanup and
+   whether a test could pass on the wrong refusal or an unrelated crash.
+
+### R5 — Real production-backed automatic freight
+
+1. Reuse accepted MAP-EXPAND's unchanged manifest, original loadout, source/dock
+   sites, public founding/forester/road setup and receiving construction recipe.
+   Booking is enabled explicitly for the canary; house updates stay off. Both
+   settlements may be founded manually as setup. Label this honestly: automation
+   begins on assignment, not on initial founding. No grant, stock edit, relocation,
+   new permission, candidate installation or invented source resource.
+2. Establish a production/stock cut that distinguishes new freight from inherited
+   cargo. Arrange the canary only through legal public commands, and independently
+   derive the bill/hold allocation first. After assignment, the harness issues
+   Advance and observations only during the uninterrupted cycle proof: no per-stop
+   Move/Load/Unload or callback that secretly completes the route. Issue the
+   receiving BuildCmd after that interval, with an unchanged command shown to
+   refuse before sufficient freight and succeed afterwards.
+3. Prove at least two complete automatic source-to-destination cycles on the same
+   route with positive transfers, new production between them, actual sailing,
+   crew attachment, and causal receiving stock/construction. Account for every
+   goods source/sink, residual, city bill and player's money; unexplained terms
+   must be asserted zero. An inherited hold balance cannot count as new output.
+4. Add a bounded no-production control from before workers/in-flight output exist,
+   then one public interruption/recovery branch (e.g. suspend/resume). Choose
+   deterministic tick/work bounds from a short pilot; a deadline is a failing
+   bound, not a success condition. One source/destination from accepted evidence
+   suffices; do not repeat a broad site search or silently extend failed timeouts.
+5. Reviewer checks the ledger independently and proves the driver isn't doing
+   the automatic work. Retain exact commands, counts, failure records and input
+   hashes in ignored evidence. Publish summaries/our own synthetic fixtures only.
+
+### R6 — Continuation, replay, bounded scale and Windows contract
+
+1. Establish five meaningful, reachable public save cuts with the R1 reviewer:
+   sailing, arrival before transfer, between actions, after partial effect and
+   suspended are candidate phases, not requirements to expose atomic internals.
+   If arrival/transfer or several actions are atomic within a visit, prove that
+   atomicity with a focused test and substitute adjacent reachable cuts (for
+   example after completion, on the next leg, or after reassignment). Never add
+   test-only halfway transactions or delay gameplay merely to create a cut.
+   Every reload executes the full remaining suffix, comparing state, route cursor,
+   events/draws and terminal ledger to uninterrupted execution; a matching
+   immediate hash is insufficient.
+2. Register a single genuine-recording producer plus fresh-process honest and
+   changed-command replay consumers in CTest with correct fixture dependencies.
+   The changed route/action command must be independently legal and diverge at
+   its first causal checkpoint, after matching the earlier prefix. Check artifacts,
+   child exit status and stderr; preserve exact binary/source/fixture hashes.
+3. Measure short Release synthetic workloads at multiple active-route counts,
+   stop-list lengths and unrelated-world sizes, separately reporting operation
+   counts and raw timings. Assert no new per-route whole-world cargo scan. Measure
+   algorithm cost without claiming original navigation bottlenecks solved or
+   multiplayer/late-game acceptance. Only fix regressions introduced by this work.
+4. Write `docs/testing/automatic-freight.md`: typed command recipe, stable IDs,
+   actual pending/arrived/transferred/paused/failed observations, cancel/manual
+   takeover, rule/identity requirements and Windows adapter delta. Do not edit
+   `src/app` or promise a live window implementation. Keep manual-expansion card.
+5. Independent review verifies persistence completeness, replay causality,
+   timing labels, cost bounds and the executable consumer recipe.
+
+### R7 — One finite final gate and integration review
+
+Freeze code, tests, references and tools before the final campaign. Use the
+canonical runner with explicit owned source/build paths, required originals,
+reconciled test inventory and exact required reference/CLI contract names.
+Run cheap controls first, then focused Debug and ASan/UBSan for route/navigation/
+manual cargo/command/state/replay/shared seams. Run affected broader regressions
+where a shared scheduler/serializer change requires them. Include one current
+source real automatic-voyage sanitizer run; do not rerun unrelated heavy render,
+all old sailing canaries or whole corpus matrices merely to enlarge a pass count.
+Run honest/changed CLI replay as registered gate consumers. Record not-run target
+Windows/Linux, original-runtime and live/GPU evidence explicitly.
+
+Each R package has an independent read-only review subagent, separate from its
+implementer. Record durable reviewer identity, exact source, inspected primary
+facts/callers/raw evidence, findings and focused re-review. Reviewers do not
+implement their own fixes or repeat long matrices. One fresh final reviewer
+checks cross-package interaction, tested-source identity and evidence reuse.
+Fix blocking findings; re-run only the affected checks unless dependencies really
+changed. Separate required contracts from selected case counts. Do not call a
+missing prerequisite a pass or accept a pre-fix executable after mutation work.
+
+**Completion:** automatic production-backed cycles, authority/lifecycle tests,
+all five reviewed reachable continuations, genuine and causal changed replay,
+affected gates and independent approvals are complete at a named source. Commit the contract,
+references, tests, consumer card, review ledger and REPORTS entry. Report separate
+code/test/docs pins, exact counts, preserved failures, adaptations, open limits,
+compatibility delta and Windows integration needs. Ordinary push the owned task
+branch at every checkpoint and final report; never force or push main. Leave
+TASKS.md/STATUS.md to the orchestrator. Stop with a clean tree and no owned jobs.
+
+If an essential predicate/identity conflict blocks a package, report PARTIAL with
+its exact remaining work. Do not weaken the canary, seed supplies, enable house/
+economy defaults, invent original rules or start another feature to fill time.
+GitLab mirroring follows the owner rules above via the Windows orchestrator.
+<!-- END MAP-ROUTE-1 -->
+
 <!-- BEGIN MAP-EXPAND1-ACCEPTED -->
 ## MAP-EXPAND-1 accepted — 2026-11-06
 
@@ -34,9 +335,9 @@ fresh-process replay pass. Executor Debug75/75 and combined ASan78/78 are verifi
 and reused by exact dependency. Fresh main build and four short controls pass;
 no repeated long sanitizer voyage or wider performance claim is implied.
 
-**Second Mac:** stop at the completed package; keep the owned branch/evidence and
-ordinary checkpoint push. No new feature or routine broad test campaign is released
-by this acceptance. Await the next comprehensive assignment.
+**Second Mac:** the completion stop is superseded by MAP-ROUTE-1 R0–R7 above.
+Preserve the expansion branch/evidence; its acceptance alone does not authorize
+other features or another broad test campaign.
 **First Mac:** continue the existing MAP-EXTRACT-1 scope and reserved135 path;
 no expansion branch intake is required for your already consumed134 prerequisite.
 **Windows:** the [consumer card](../testing/manual-expansion.md) is available for a

@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-06, by the Codex orchestrator (owner publication rules and observed Mac checkpoints); Windows lane by the Claude Code orchestrator, 11:15.
+**Last updated:** 2026-11-06, by the Codex orchestrator (MAP-ROUTE-1 dispatch and observed Mac checkpoints); Windows lane by the Claude Code orchestrator, 11:15.
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -81,8 +81,20 @@ Live-window and target-host acceptance are separate.
 - **Verification:** executor Debug75/75 and combined ASan78/78 (seven required
   contracts separately each); new main build and short controls4/4. Long evidence
   is reused by exact dependency, not represented as another main voyage run.
-- **Now:** stopped at the completed package, ready for the next assignment.
-  No follow-on gameplay scope is released yet. First Mac's salt work is separate.
+- **Now dispatched:** **MAP-ROUTE-1 R0–R7**, automatic freight between owned
+  warehouses: original contract/reference, typed route state and commands,
+  scheduler/cargo integration, interruption/recovery, real production-backed
+  cycles, save/replay, bounded scale and independent package/final reviews.
+- **Successor:** `task/MAP-ROUTE-1-main`, to be created in the existing owned
+  checkout from accepted main `e0bb6be7`. This is an assignment, not a claim that
+  execution has started. Preserve published expansion branch `a4617184`.
+- **Identity:** state136 reserved for route state; starts from134 and does not
+  include first Mac's reserved135 salt. Orchestrator owns combined integration.
+  Existing feature defaults and PRNG5 remain unchanged. Essential unresolved
+  original predicates or a timeline/schema conflict stop dependent work.
+- **Outcome:** at least two automatic freight cycles of newly produced wood,
+  without per-stop commands from the test driver. First Mac's salt work stays
+  separate; no foreign trade, wildlife, viewer/UI or target-host claims.
 - **Windows handoff:** [manual expansion consumer card](../testing/manual-expansion.md).
   Load UI/text wiring and a live playtest remain Windows work after its current
   checkpoint; no automatic new dispatch or W7 interruption is implied.

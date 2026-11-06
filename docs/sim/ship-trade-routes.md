@@ -618,3 +618,38 @@ Fault attempts retain their individual logs and source substitutions. Restore th
 exact clean source and rebuild before any acceptance gate; no mutant executable
 may supply later evidence. These are short synthetic controls, never six reruns
 of the real voyage. No original stocks, flags or positions are repaired.
+
+### R4 reviewed checkpoint
+
+Independent `/root/expand_e0_review` approved clean runtime/test source
+`2a82870e5af5b29ea55d5a3539e490e87c6ca0f1`. All four R4 acceptance rows above
+are approved for their bounded synthetic scope: public interruptions at actual
+arrival/action/partial boundaries, exact city/hold/goods/owner ledgers, stale
+order and generation authority, stable rebuilt destination identities and ended
+ship cleanup. Six precise fault controls each pass their legal case then fail
+the intended assertion; no crash or unrelated refusal supplies the failure.
+
+Canonical `cache/route1/R4/canonical-debug-01.log`:31 selected/31 executed, eight
+required contracts separately, all other outcome categories zero,2.18s. RawSHA
+`cece2a472b7aa272a877355a38472116e40533ebba110563f8448af918ebb11b`.
+Original binary/config/inventory hashes are frozen in `debug-receipt-01.json`.
+The first mutation campaign lacked individual executable hashes; its logs remain
+untouched. The supplemental short `faults02` campaign records each legal/mutant
+binary, source and patch hash. Exact source restoration, clean economy_checks
+rebuild and27/27 legal cases are bound by `faults02/restoration.json`. Later
+relinking changes executable bytes; it does not relabel the original gate.
+
+Earlier investigative failures are retained: a fixed navigation-pickup interval
+assumption was replaced with the actual matching-event invariant; ordinary Build
+of original harbour1302 is unsupported, so lawful reconstruction uses a clearly
+synthetic eligible land-warehouse type70001 and unchanged public costs. Neither
+original canary positions/resources nor gameplay rules were altered. Reviewer
+independently checked primary caller/order seams, hand-derived quantities, raw
+failures and restoration hashes; note `cache/route1/reviews/r4.md`.
+
+R5 is released. R1 reviewer `/root/expand_e2_review` agreed five proposed public
+canary cuts (actual source-leg Sailing, source arrival Wait, loaded outbound,
+destination arrival Wait, return after first delivery) and independently derived
+the1000g/26↔28t ledger. Planning agreement is not R5/R6 acceptance; actual pilot
+reachability, new-production provenance and full suffixes remain pending.
+Route-only136 stays based134 with no salt135; no defaults changed.

@@ -13580,3 +13580,19 @@ rawSHA68aa9d7011003320b546e293c45db5132703fe04e284939cb3d4b25c3a6e17d6.
 R4 released. Original-data two cycles, final cuts/replay/scale and sanitizer
 acceptance are still pending. No salt135/main intake, original loadout edit or UI
 change. Route-only136 remains separately reserved from the future combined main.
+
+
+### MAP-ROUTE-1 R4 — approved lifecycle and adversarial checkpoint
+
+Source2a82870e, independent `/root/expand_e0_review` APPROVE. Canonical31/31
+plus eight required separately, all other categories0,2.18s; rawSHA
+cece2a472b7aa272a877355a38472116e40533ebba110563f8448af918ebb11b.
+Six legal controls then six intended assertion failures (arrival bypass, wrong
+warehouse, credit-only, duplicated quantity, stale order, lost reload cursor);
+per-mutant binary/source hashes in supplementalfaults02, final source restored
+and rebuilt,27/27 legal cases. Original gate receipt preserved before relink.
+Public lifecycle, authority, per-owner goods, stable rebuilding/end cleanup and
+Found/manual takeover reviewed. No original canary claim yet; R5 released.
+Retain route-only136/ECONBK1/PRNG5/replay4/command1/native1, no salt/default/UI
+intake. Read MAIN-CI-1 at fetched96775da4 withoutmerge; applicable portable
+repairs will be a separate adapted/reviewed commit, excluding134 fixture pins.

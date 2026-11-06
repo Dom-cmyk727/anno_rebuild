@@ -113,7 +113,14 @@ Planning caps are explicit fixture/operator work limits, not engine limits. Begi
 with known accepted first-island/forester hints, revalidate all public commands
 against a fresh untouched start, then examine at most8 legal destination-site
 candidates across other unchanged manifest islands and at most64 water-dock
-candidates per site; record every attempted route/refusal and exact limits.
+candidates per site; record every attempted route/refusal and exact limits. The
+initial source search is one accepted first-coast/forester hint only (801 origin
+238,128); no fallback forest search is authorized by that attempt. Bound its
+production trial to200000ticks /400 advances at1000ms, and each sailed leg to2000
+advances at1000ms (1000000ticks); every visit age stays500ticks. A source/site or
+arrival failure stops that bounded attempt and retains its first refusal/elapsed
+work. Review any expansion of these operator fixture caps before running it;
+these guards neither alter the engine's limits nor establish impossibility.
 If the bounded search is insufficient, retain results and review a justified
 expansion, never silently replace a map or treat a witness as navigability.
 A forest site is not accepted until its legal road and actual delivery execute

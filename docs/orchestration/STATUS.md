@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-06, by the Codex orchestrator (owner publication rules and observed Mac checkpoints; Windows lane retained).
+**Last updated:** 2026-11-06, by the Codex orchestrator (owner publication rules and observed Mac checkpoints); Windows lane by the Claude Code orchestrator, 11:15.
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -32,11 +32,15 @@ The [founding-account prerequisite](reviews/2026-11-06-founding134-acceptance.md
   proven in the real window.
   - The owner dispatched it in chat on 2026-11-06. It is not on the board yet.
   - **Done:** W2–W5, with the MSVC regression gate green.
-  - **Now:** the W7 WSL ASan/UBSan gate. The first try was blocked when C: filled up; WSL now runs from E:. The gate
-    script `tools/test/wsl_gate.sh` was first updated to the new WSL disk rules (TASKS.md, W4-OPENING-CONTROLS-FLAKE
-    step 0).
+  - **Now:** the W7 WSL ASan/UBSan gate, which is not passing yet.
+    - The first try was blocked when C: filled up; WSL now runs from E:.
+    - The gate script `tools/test/wsl_gate.sh` follows the new WSL disk rules (`6b327759`).
+    - Its first full run (`w7scoped`, 08:51) failed in every lane on the required `picture_matrix_contract`:
+      "aggregate of a missing trace: exit 127, expected 2". The sim lane was left out of that run.
+    - An app-lane rerun is still going. It was started outside the gate script, and its provenance shows 1,147
+      modified files (the line-ending view), so it cannot be acceptance evidence.
   - **Then:** the review and the owner's playtest card.
-- **Branch:** `task/W4-settlement-1`, head `6b327759`.
+- **Branch:** `task/W4-settlement-1`, head `743ccf9c` (pushed).
   - It is based on `task/W4-opening-2-main`: `main` `3b74201f` plus the reviewed W4-OPENING-CONTROLS-FLAKE delta.
 - **Also open:**
   - `task/W4-opening-2` (`3fd68746`): W4-OPENING-CONTROLS-FLAKE steps 0–3, on the older base `88968580`. It was adopted

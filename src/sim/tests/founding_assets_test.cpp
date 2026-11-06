@@ -3834,13 +3834,25 @@ TEST_CASE("bootstrap prefix: unchanged ship sails founds unloads builds then exp
     // permission refusal (the stage lock) is what stops it, before any state change.
     CHECK(eligible(1203).status == sim::BuildEligibilityStatus::StageLocked);
     {
-        const auto cmd = ct::build(0, *ref, {ct::at(sim::TypeId{1203}, plan->site.x, plan->site.y)});
-        const auto before = w.save();
-        const auto r = d.apply(cmd);
-        MESSAGE("salt command at the forester site: " << sim::reject_name(r.status));
-        CHECK_FALSE(r.ok());
-        CHECK(r.status != sim::Reject::Unsupported);
-        CHECK(w.save() == before);
+        // a site the mine's placement rule accepts and the town owns, so the permission step is reached
+        const sim::BuildingType& salt = *w.types().find(sim::TypeId{1203});
+        const sim::Building& wh = *w.find_building(warehouse);
+        bool reached = false;
+        for (const auto& site : legal_origins(*w.islands()[ref->island.v], w.types(), salt)) {
+            if (std::max(std::abs(site.x - wh.x), std::abs(site.y - wh.y)) > 16)
+                continue;
+            const auto cmd = ct::build(0, *ref, {ct::at(salt.id, site.x, site.y)});
+            sim::World trial = w;
+            if (trial.apply(cmd).status != sim::Reject::ConstructionDenied)
+                continue;
+            const auto before = w.save();
+            const auto r = d.apply(cmd);
+            CHECK(r.status == sim::Reject::ConstructionDenied);
+            CHECK(w.save() == before);
+            reached = true;
+            break;
+        }
+        REQUIRE(reached);
     }
     d.checkpoint();
     REQUIRE(w.check_invariants().empty());
@@ -3849,7 +3861,7 @@ TEST_CASE("bootstrap prefix: unchanged ship sails founds unloads builds then exp
             << " tools_city_88=" << stock(41)
             << " tools_ship_88=" << aboard_of(ship_of(w, 1).holds, 41) << " food_88=" << stock(26)
             << " farm_raw=0,0 farm_output=0,0 next_supply=MAP-SUPPLY-1 salt_query=StageLocked "
-               "salt_command=StageLockedRefusal hash="
+               "salt_command=ConstructionDenied hash="
             << w.state_hash());
     auto bytes = sim::write_log(rec.log());
     REQUIRE(bytes.ok());

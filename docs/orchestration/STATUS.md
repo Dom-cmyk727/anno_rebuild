@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-06, by the Claude Code orchestrator (the Windows lane).
+**Last updated:** 2026-11-06, by the Codex orchestrator (state-134 prerequisite; Windows lane retained).
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -23,7 +23,8 @@ not edit it; their reports go into `REPORTS.md` on their task branch.
 
 ## Current work
 
-Canonical identity on `main`: **state133 / ECONBK1 / PRNG5 / replay4 / command1** (since ECON-BOOK-1, 2026-11-06).
+Canonical identity on `main`: **state134 / ECONBK1 / PRNG5 / replay4 / command1**.
+The [founding-account prerequisite](reviews/2026-11-06-founding134-acceptance.md) is accepted; full expansion remains open.
 
 ### Windows executor
 
@@ -55,18 +56,19 @@ Canonical identity on `main`: **state133 / ECONBK1 / PRNG5 / replay4 / command1*
 - **Branch:** `task/MAP-EXTRACT-1-main`, a new branch from the `main` that carries the dispatch and the bench fix
   `b408f311`. The candidate stays on `task/MAP-2-needs2-main` (`5df34b38`).
 - **Identity:** state 135 is reserved for the salt slice. It may only be claimed after the second Mac's reviewed 134
-  correction has been taken in.
+  correction has been taken in. That prerequisite is now accepted: consume `7ba07750`, then `f406374d`,
+  at a clean checkpoint while preserving owned work. Salt X1 contract approval is still required.
 
 ### Second Mac executor
 
 - **Now:** **MAP-EXPAND-1** (TASKS.md, "Second Mac — MAP-EXPAND-1" and "Compatibility decision — founding accounts and
   salt sequencing"): settle a second island and resupply it by ship, with goods produced by the first settlement.
-  - **First, the founding correction:** `city.accounts = local.accounts` under the new state identity 134. 134 rejects
-    every state-133 save and replay, with explicit version diagnostics.
-  - **Then:** E2 revalidation and E3–E7.
+  - **Accepted prerequisite:** `city.accounts = local.accounts` under state134, with strict133 refusal.
+    Portable `7ba07750` plus CLI-consumer correction `f406374d`; focused Debug15/15 and ASan15/15.
+  - **Now:** E2 revalidation and E3–E7. Full voyage acceptance remains open.
   - No new production class, trade route, combat or UI is in scope.
 - **Branch:** `task/MAP-EXPAND-1-main`.
-  - It started from `main` `303b3faf`, with checkpoint `71af3846`.
+  - It started from exact assignment `c5c7007f` (runtime baseline `303b3faf`); historical partial checkpoint `71af3846`.
   - The tested source `637da167` is the partial evidence pin.
 - **Just finished:** ECON-BOOK-1, earned income and building upkeep.
   - It was accepted on 2026-11-06 ([acceptance](reviews/2026-11-06-econ-book1-acceptance.md)) and is on `main`.
@@ -96,3 +98,10 @@ Canonical identity on `main`: **state133 / ECONBK1 / PRNG5 / replay4 / command1*
   when that branch is merged.
 - **[`reviews/`](reviews/):** one file per orchestrator review or acceptance.
 - **[`docs/PLAN.md`](../PLAN.md):** milestones and status; §7 holds the latest status notes.
+
+## Mirror handoff for this acceptance
+
+Windows orchestrator must run `python -I tools/orch/sync_gitlab.py` after the
+state134 acceptance push and verify the resulting heads. The Mac SSH read-only
+probe failed host-key verification; no trust settings were changed or GitLab
+push attempted. GitHub publication does not itself establish mirror currency.

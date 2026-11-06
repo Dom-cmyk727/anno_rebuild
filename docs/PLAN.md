@@ -1,5 +1,12 @@
 # ANNO 1503 Rebuild — Implementation Plan
 
+**Founding checkpoint, 2026-11-06:** the reviewed accounts-adoption correction is
+integrated under state134/ECONBK1/PRNG5. Focused Debug and ASan/UBSan each pass15/15,
+including current replay CLI consumers and strict old133 refusal. No migration,
+default flip, full expansion or target-host acceptance is implied.
+[Acceptance and first-Mac intake](orchestration/reviews/2026-11-06-founding134-acceptance.md).
+The earlier133 economy checkpoint below is the predecessor.
+
 **Gameplay checkpoint, 2026-11-06:** ECON-BOOK-1 is accepted on main under
 state133/ECONBK1, with independently default-off city booking and house updates.
 Original-data production, resident income, upkeep and paid recovery are proved;

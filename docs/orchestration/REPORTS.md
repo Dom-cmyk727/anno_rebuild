@@ -13331,3 +13331,30 @@ Debug63/63, ASan1388/1388. These overlapping results are not summed or relabelle
 Canonical state133/ECONBK1 is adopted; booking and houses remain default-off.
 The first Mac and Windows keep their in-progress pins until a checkpoint.
 [Full acceptance and limitations](reviews/2026-11-06-econ-book1-acceptance.md).
+
+
+## FOUNDING-134 — 2026-11-06 — narrow prerequisite ACCEPTED (orchestrator)
+
+Integrated portable `7ba07750` plus replay CLI registration correction `f406374d`;
+frozen source `f406374d`. Main uses state134/ECONBK1/PRNG5/replay4/command1/save1.
+Founding retains the checked temporary city accounts (original warehouse15);
+old133 states/replays refuse explicitly, no repair or migration. Defaults and
+field layout unchanged. Full MAP-EXPAND-1 and salt remain open.
+
+Independent read-only integration reviewer `/root/review_consolidation_plan`
+closed the P2 of11CLI tests pointing at old133 logs after f406374d preserved their
+semantic expectations and selected current134 fixtures. Upstream portable4/4 and
+original36/36 evidence remain at their exact pins, not summed with new gates.
+
+Fresh canonical Debug15/15 (42.07s) and ASan/UBSan15/15 (136.11s) at clean f406374d;
+six required contracts separately pass in each, zero failures/skips/empty/
+incomplete/sanitizer reports. Both actual old133 controls execute in both lanes;
+four exported original-data artifacts match across Debug/ASan and portable output.
+No assets are committed. Windows/Linux target, GPU and full expansion not run.
+
+[Acceptance, scope and intake](reviews/2026-11-06-founding134-acceptance.md).
+[Compact receipts](evidence/founding134/receipts.json). Raw logs under
+`cache/founding134-orchestrator/` remain Mac-local. First Mac may consume7ba07750
+thenf406374d without unfinished voyage helpers; reserved135 still requires X1.
+Second Mac continues E2–E7. GitLab mirroring remains with Windows; this Mac's
+read-only host-key verification failed. No unverified mirror claim is made.

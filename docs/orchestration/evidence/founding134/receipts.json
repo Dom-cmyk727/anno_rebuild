@@ -1,0 +1,116 @@
+{
+  "gates": {
+    "debug": {
+      "source": {
+        "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "head": "f406374dfde78dafee125fbcfc00181c59350662",
+        "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "",
+        "untracked": {}
+      },
+      "argv": [
+        "tools/test/run_selected.py",
+        "--source-root",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "--build-dir",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/build/consolidation-debug",
+        "--target",
+        "economy_checks",
+        "--select",
+        "^(anno_sim_tests[.](expansion founding accounting: public founding retains prepared warehouse history|expansion identity134: real133 archives and independent replay identity layers refuse)|integration_stream_reference_agrees|population_oracles_agree|anno_sim_replay_.*_run)$",
+        "--jobs",
+        "2",
+        "--timeout",
+        "900",
+        "--asset-policy",
+        "required",
+        "--require-test",
+        "cargo_reference_selftest",
+        "--require-test",
+        "bootstrap_budget_contract",
+        "--require-test",
+        "integration_stream_reference_contract",
+        "--require-test",
+        "booking_checked_reference_contract",
+        "--require-test",
+        "anno_sim_replay_check_contract",
+        "--log",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/founding134-orchestrator/debug.log"
+      ],
+      "raw_log": "cache/founding134-orchestrator/debug.log",
+      "sha256": "cf37be266e37334f4dbc3ff0c9cc9e94b31f1971579445ba2f021ca03af44a0b",
+      "counts": "COUNTS: selected=15 executed=15 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "separate_required_contract_count": 6,
+      "historical133_branches_executed": 2,
+      "legacy133_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/cache/expand1/E2/founding-repro-01",
+      "inventory_sha256": "da317ecb749adf73e88433fd3b8671bcc985c7c8bab1f77c6303888903d10fb1"
+    },
+    "asan": {
+      "source": {
+        "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "head": "f406374dfde78dafee125fbcfc00181c59350662",
+        "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "",
+        "untracked": {}
+      },
+      "argv": [
+        "tools/test/run_selected.py",
+        "--source-root",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "--build-dir",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/build/consolidation-asan",
+        "--target",
+        "economy_checks",
+        "--select",
+        "^(anno_sim_tests[.](expansion founding accounting: public founding retains prepared warehouse history|expansion identity134: real133 archives and independent replay identity layers refuse)|integration_stream_reference_agrees|population_oracles_agree|anno_sim_replay_.*_run)$",
+        "--jobs",
+        "2",
+        "--timeout",
+        "900",
+        "--asset-policy",
+        "required",
+        "--require-test",
+        "cargo_reference_selftest",
+        "--require-test",
+        "bootstrap_budget_contract",
+        "--require-test",
+        "integration_stream_reference_contract",
+        "--require-test",
+        "booking_checked_reference_contract",
+        "--require-test",
+        "anno_sim_replay_check_contract",
+        "--log",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/founding134-orchestrator/asan.log"
+      ],
+      "raw_log": "cache/founding134-orchestrator/asan.log",
+      "sha256": "26d1bc9f4b6958bf667227f6e382f122ea4cdfb3ca5843533316f57239eaaca8",
+      "counts": "COUNTS: selected=15 executed=15 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "separate_required_contract_count": 6,
+      "historical133_branches_executed": 2,
+      "legacy133_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/cache/expand1/E2/founding-repro-01",
+      "inventory_sha256": "9d64a772b1101b5c2450f302d28463892a87c032da25fc67ad900de34ccd30a3"
+    }
+  },
+  "original_data_artifacts_not_committed": {
+    "current134-default-off-founded.save": {
+      "bytes": 22192976,
+      "sha256": "20b1b9af71b9af34ece941ceb1e6b68d653cde449f4626fa0bf131a386127c4a",
+      "debug_equals_asan": true
+    },
+    "current134-enabled-found.log": {
+      "bytes": 22192248,
+      "sha256": "49a482f8a3cdee84494c71a96646948869fdecfc59989b1fc0c365091a24ba84",
+      "debug_equals_asan": true
+    },
+    "current134-enabled-founded.save": {
+      "bytes": 22192976,
+      "sha256": "346f95d7c4183d0c1a52d0a72a120d5b22f8e5ddf90afe8e731c2e657fc309ae",
+      "debug_equals_asan": true
+    },
+    "current134-off-found.log": {
+      "bytes": 22192248,
+      "sha256": "c22cff49f2ed8a250cc559ec41aff044b0ab6e5c8ec9bfa2ae19dde323f77575",
+      "debug_equals_asan": true
+    }
+  }
+}

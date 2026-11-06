@@ -14,11 +14,45 @@
 - **The status page.** [`STATUS.md`](STATUS.md) says who works on what, where the work is, and what it waits on. Every
   orchestrator updates it in the same commit as each dispatch, acceptance or change of lane.
 
+<!-- BEGIN FOUNDING134-ACCEPTED -->
+## Accepted state-134 prerequisite — 2026-11-06
+
+**The narrow founding-account correction is ACCEPTED and integrated.** Main now
+uses **state134 / ECONBK1 / PRNG5 / replay4 / command1 / native wrapper1**.
+[Acceptance and exact evidence](reviews/2026-11-06-founding134-acceptance.md).
+Frozen integrated source `f406374d`: Debug15/15 and ASan/UBSan15/15, six required
+contracts separately in each lane, no failures/skips/empty/incomplete/sanitizer
+reports. Full MAP-EXPAND-1, salt and target-host acceptance remain open.
+
+**First Mac:** at the next clean checkpoint, consume the ordered prerequisite
+commits **7ba077506e7ab9c11bef3894739b4c1d0d4f66fb**, then
+**f406374dfde78dafee125fbcfc00181c59350662**, or a named accepted main checkpoint
+containing both. This controlled intake is authorized on the owned salt successor;
+preserve NEEDS corrections and all old evidence. The second commit repairs11CLI
+replay registrations to use current134 fixtures; do not omit it. No expansion
+helpers, voyage package or manual-expansion.md dependency is needed.
+This satisfies the 134 dependency for reserved135. X1 independent contract approval
+and all salt evidence/scope conditions below still apply before X2 runtime work.
+
+**Second Mac:** the existing equivalent correction need not be cherry-picked
+again. Adopt the f406374d replay-registration companion at a clean checkpoint,
+then continue the already released E2–E7; no broad duplicate campaign is requested.
+
+All old133 native states/replays, including default-off, are refused unchanged;
+no migration or silent repair. House/economy defaults and the PRNG timeline remain
+unchanged. Windows finishes its current frozen work normally. Older133 baseline
+clauses below are historical inputs, not instructions to downgrade current code.
+Own task-branch pushes follow the newer owner rule at the top; no executor pushes
+main. Windows orchestrator: sync the GitLab mirror after this acceptance push;
+this Mac's read-only SSH probe failed host-key verification, so no mirror update
+is claimed here.
+<!-- END FOUNDING134-ACCEPTED -->
+
 <!-- BEGIN GAMEPLAY-IDENTITY-134-135 -->
 ## Compatibility decision — founding accounts and salt sequencing (2026-11-06)
 
-**Released to the two Mac lanes; reservations, not main acceptance.** Published
-main still implements state 133 / ECONBK1 / PRNG 5. The following distinct
+**Released to the two Mac lanes; reservations, not main acceptance.** At reservation,
+main implemented state 133 / ECONBK1 / PRNG 5; 134 is now accepted above. The following distinct
 successor identities prevent concurrent branches from silently redefining 133:
 
 | Identity | Owner and prerequisite | Scope |
@@ -125,7 +159,7 @@ the 134/135 reservation, strict compatibility policy and conditional salt scope.
 This is not acceptance of either unimplemented successor.
 <!-- END GAMEPLAY-IDENTITY-134-135 -->
 
-## Current canonical gameplay baseline — 2026-11-06
+## ECON-BOOK-1 predecessor baseline — 2026-11-06 (state 133)
 
 **ECON-BOOK-1 B0–B7 is ACCEPTED within its bounded headless scope.** Executor
 candidate `467373d2` (tested runtime `03bb4a5c`) is integrated unchanged; the
@@ -134,7 +168,7 @@ upkeep control and passes 16/16 in both Debug and ASan/UBSan. See the
 [acceptance record](reviews/2026-11-06-econ-book1-acceptance.md) and
 [executor handoff](reviews/2026-11-06-econ-book1.md).
 
-Canonical identity is now **state133 / ECONBK1 / PRNG5 / replay4 / command1**.
+This predecessor identity was **state133 / ECONBK1 / PRNG5 / replay4 / command1**.
 City booking and house updates remain independently default-off. Previous 132
 recordings remain historical and incompatible; no automatic migration is claimed.
 The old ECON assignment below is completed, not authorization to repeat it.

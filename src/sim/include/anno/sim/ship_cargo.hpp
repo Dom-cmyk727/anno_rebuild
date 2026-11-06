@@ -24,7 +24,14 @@ namespace anno::sim {
 
 class World;
 
+struct CargoDestination {
+    Reject status = Reject::None;
+    CityRef city;
+};
 struct ShipCargo {
+    /// Shared read-only warehouse/city/owner/range validation in manual failure
+    /// order. Only assignment omits range; each actual transfer checks it live.
+    static CargoDestination destination(const World&, const Figure&, BuildingId, bool range);
     /// Validates (atomically) and applies one UnloadCmd. Total. On success `records[0]` carries the
     /// warehouse and `transferred_88`.
     static ApplyResult unload(World& w, const Command& command, const UnloadCmd& cmd,

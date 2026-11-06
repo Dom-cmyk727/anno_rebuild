@@ -17,6 +17,7 @@
 #include <vector>
 
 #include <anno/formats/result.hpp>
+#include <anno/sim/freight_state.hpp>
 #include <anno/sim/ids.hpp>
 
 namespace anno::sim {
@@ -152,10 +153,21 @@ struct LoadCmd {
     friend bool operator==(const LoadCmd&, const LoadCmd&) = default;
 };
 
+struct AssignFreightRouteCmd {
+    FigureId ship;
+    std::vector<FreightStop> stops;
+    friend bool operator==(const AssignFreightRouteCmd&, const AssignFreightRouteCmd&) = default;
+};
+struct ControlFreightRouteCmd {
+    FigureId ship;
+    FreightControl control = FreightControl::Suspend;
+    friend bool operator==(const ControlFreightRouteCmd&, const ControlFreightRouteCmd&) = default;
+};
+
 /// Alternative order = the codec's tag order and part of the replay format.
-using Body =
-    std::variant<BuildCmd, DemolishCmd, SetProductionLineCmd, SetTradeFlagCmd, SetTradeSlotCmd,
-                 SetSpeedCmd, LegacyRawCmd, FoundCmd, MoveCmd, StopCmd, UnloadCmd, LoadCmd>;
+using Body = std::variant<BuildCmd, DemolishCmd, SetProductionLineCmd, SetTradeFlagCmd,
+                          SetTradeSlotCmd, SetSpeedCmd, LegacyRawCmd, FoundCmd, MoveCmd, StopCmd,
+                          UnloadCmd, LoadCmd, AssignFreightRouteCmd, ControlFreightRouteCmd>;
 
 struct Command {
     /// Stamped by the host (single player: the local player), never read from a
@@ -178,7 +190,9 @@ enum WireType : std::uint16_t {
     kWireMove = 0xF071, ///< MAP-NAV-2, same reasoning as kWireFound
     kWireStop = 0xF072,
     kWireUnload = 0xF073, ///< MAP-CARGO-1, same reasoning as kWireFound
-    kWireLoad = 0xF074,   ///< MAP-CARGO-2, same reasoning as kWireFound
+    kWireAssignFreight = 0xF075,
+    kWireControlFreight = 0xF076,
+    kWireLoad = 0xF074, ///< MAP-CARGO-2, same reasoning as kWireFound
     kWireSetProductionLine = 0x74,
     kWireSetSpeed = 0x7a,
     kWireSetTradeFlag = 0x7c
@@ -191,7 +205,7 @@ enum WireType : std::uint16_t {
     return type == kWireBuild || type == kWireDemolish || type == kWireSetTradeSlot ||
            type == kWireSetProductionLine || type == kWireSetSpeed || type == kWireSetTradeFlag ||
            type == kWireFound || type == kWireMove || type == kWireStop || type == kWireUnload ||
-           type == kWireLoad;
+           type == kWireLoad || type == kWireAssignFreight || type == kWireControlFreight;
 }
 
 /// The record type a body is written with (LegacyRawCmd: its own type field).

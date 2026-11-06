@@ -5174,7 +5174,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         CHECK(ship_of(w, 1).holds == expected_holds);
         CHECK(w.rng().cursor() == (cursor + 1) % w.rng().size()); // one original city-name draw
         const auto cut = w.save();
-        publish(enabled ? "current134-enabled-founded.save" : "current134-default-off-founded.save",
+        publish(enabled ? "current136-enabled-founded.save" : "current136-default-off-founded.save",
                 cut);
         auto native = sim::World::load(cut, original.types);
         REQUIRE(native.ok());
@@ -5192,7 +5192,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
             const auto refused = sim::World::load(old, original.types);
             REQUIRE_FALSE(refused.ok());
             CHECK(refused.error() ==
-                  "save: state stream version 133 is not supported (this build reads 134)");
+                  "save: state stream version 133 is not supported (this build reads 136)");
             auto old_log =
                 rec.log(); // current outer identity: the embedded native is the sole mismatch
             old_log.initial_save = old;
@@ -5258,7 +5258,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         REQUIRE(replayed.ok());
         REQUIRE(replayed.value().reproduced());
         CHECK(fresh.value().save() == w.save());
-        publish(enabled ? "current134-enabled-found.log" : "current134-off-found.log",
+        publish(enabled ? "current136-enabled-found.log" : "current136-off-found.log",
                 bytes.value());
         const auto gold = gold_of(w, 0);
         w.advance(0);

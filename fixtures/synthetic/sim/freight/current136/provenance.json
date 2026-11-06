@@ -1,0 +1,49 @@
+{
+  "identity": "route-only136/ECONBK1/PRNG5/replay4/command1/native1; excludes salt135",
+  "decision": "MAP-ROUTE-1 dispatch049b0270 R1 approved cc440c51",
+  "generation": {
+    "parent": "c6d699a31a873f287d7a4784e42403f7d5d991ce",
+    "dirty_diff_sha256": "17430f8945291941477bad79f467715b250c599e162c035e89ed4df3207a6e58",
+    "binary_sha256": "0ecd25e119e0e15b49e54683acdb984a202f176a7341548f5f6750c31748f6d2",
+    "scope": "generation only, not acceptance"
+  },
+  "generation_selected": 20,
+  "generation_seconds": 64.66,
+  "scope": "new synthetic recordings and no-route create identities; generation is not acceptance",
+  "artifacts": {
+    "cargo_load.log": "9fec27373110213f287c366094071b8b0dab6d63ed0ec6e63850eca81918114c",
+    "m2_found_wrong.log": "ea38e38b1cdf55c570950f1661cb7ba452b4a7863f9abf1c86d27ed03ca49825",
+    "scenario_corpus.txt": "ab97e535639ebcbc3248791bf0b434002966cab8841c601cf954c72a24ea3856",
+    "cargo_unload_wrong.log": "1697a2a81642c750dcac9b6bd113e725592ce2af19a727fe4a514ed24e255310",
+    "cargo_unload.log": "deebfc35efe613a43c6fc59c0a94099f6bfb404a1f6d1bf9926928e5a23cbd08",
+    "cargo_load_wrong.log": "806d1175d62824f9f1d02269791cd12545aaf6bcc23a8dd27c52f09a9efce355",
+    "g3.log": "675a016e036ce3792a0f846d13cbc8b02e570d6a6a703624ab69858c134826a1",
+    "g2.log": "71fed0cc4b14fe7a42490d463fe4aa4426ec136adcbf8a8f37143906b1d59e93",
+    "g5.log": "61004bbeb231ee825d32872254f72f88a3818b25efeeca1a953d99fc4c050868",
+    "g4.log": "79b6a00f307b3115c5efa3d26ff83f7faeeaf1e96edfd431fdcd202480adb0f3",
+    "goldens.txt": "6162d2fe7a5d00f139f9ae423ce30fddf39d5f81a70420b5723afcebe32821e9",
+    "g6.log": "e1dc816303d3338c70950ad8869cd686f29efc0ebd65a3cc70352754a6eda69e",
+    "ship_holds.txt": "c8e915e2ea0e585bdc8d327ca994c73445debd13dab137202490a14572002ce1",
+    "cargo_rules_bytes.txt": "29f28e00109842b511f66f7f7f8af4ebd4c2f02148ddd05326a44979be5aec7b",
+    "m2_found.log": "3d6245b88d93b94ee8c96350a61a79162417ebc86e6760b30cf1be72d1f9ec33",
+    "populated_fields.txt": "9edc0e5dfa6ac9fc40796ef6277efd8d4ab69a544645b3bb451353cd3175014e"
+  },
+  "old134_unchanged": {
+    "cargo_load.log": "d0a09cc5efb202f554df639008dc1747f85ada6d0c9112d0e2a98516f3796136",
+    "m2_found_wrong.log": "e3657414abf49fa78cb5d9ef0001e32025b7ad985e9a69ff1dfe6657e3e1781e",
+    "provenance.json": "56cc20dab21a3dc4d7c758e266edb13b273773c0a9d43aebdad4836b43b0a9c7",
+    "scenario_corpus.txt": "94486fd9119ca5ecf850a2696e7a7af63c274f8559806711c985b5e8d0cd147e",
+    "cargo_unload_wrong.log": "224eeb359b7756e85cc80a5802acd9b4a6d2993e2833006eed76407f9da9098d",
+    "cargo_unload.log": "0a95b070478a4545a8c93b38ea2929f7ad1d567515da3d95f015a7288b9147aa",
+    "cargo_load_wrong.log": "16016a366a672914fb4d487155dff1078fb6fefaeac6f212aeac28796a323a53",
+    "g3.log": "fe142005aee0b5464e8a61d94fcb65dc859d33d5bf95ff480451ff5fbdda6cac",
+    "README.md": "7ef1aa0be1e1974c77f9ddec0ca9563a8d9cd43b94b1ea0d20fe712a110861b2",
+    "g2.log": "388ea242cc7ceb593e667de9448cfc0d50a8e968a18b791d8635b934a991be3a",
+    "g5.log": "54bdcdcfb9953e8e69c83c2f77a34738e24c353e44f72548e92f01125fb73789",
+    "g4.log": "314c2d715b73e0a7dba39f3b521de01164ecea920b6665620f14364218f17ed4",
+    "goldens.txt": "4cf39246aa9d4c20aad582769b05782a0fac12ff76af332079889f757e40d9d7",
+    "g6.log": "70c1ad7b0f413d76d6575674b32f09a92be8020cf288a7576532877ef1555adc",
+    "m2_found.log": "81f8c9e02938572b976f9daf554f88cc915bf203841ea1592158496a3873b26a",
+    "populated_fields.txt": "3590970f874e462aeb2c15096efb817435e6c0d0bdbdfb15410d796eae4cc85d"
+  }
+}

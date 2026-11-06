@@ -74,10 +74,42 @@ bool ShipCargo::footprint_in_range(std::int64_t tx, std::int64_t ty, std::int64_
     return dx <= static_cast<std::int64_t>(half[static_cast<std::size_t>(dy)]);
 }
 
+CargoDestination ShipCargo::destination(const World& w, const Figure& ship, BuildingId warehouse,
+                                        bool range) {
+    const auto bad = [](Reject r) { return CargoDestination{r, {}}; };
+    const auto island_id = island_of(warehouse);
+    if (!island_id.valid() || island_id.v >= w.islands().size() || !w.islands()[island_id.v])
+        return bad(Reject::NoBuildingAtTile);
+    const auto& island = *w.islands()[island_id.v];
+    const auto* building = island.find_building(warehouse);
+    if (building == nullptr)
+        return bad(Reject::NoBuildingAtTile);
+    const auto* type = w.types().find(building->type);
+    const auto& cargo = w.rules().cargo;
+    if (type == nullptr || !std::binary_search(cargo.warehouse_prodtypes.begin(),
+                                               cargo.warehouse_prodtypes.end(), type->prodtype))
+        return bad(Reject::NotAWarehouse);
+    const auto key = island.cache.by_id.find(warehouse);
+    if (key == island.cache.by_id.end())
+        return bad(Reject::NoBuildingAtTile);
+    const auto* city = island.city(key->second.city.city);
+    if (city == nullptr)
+        return bad(Reject::UnknownCity);
+    if (city->owner != ship.owner)
+        return bad(Reject::NotCityOwner);
+    if (range) {
+        const std::int64_t tx = ship.pos.x >> 8, ty = ship.pos.y >> 8;
+        const auto [fw, fh] = footprint(*type, building->rotation);
+        if (!footprint_in_range(tx, ty, building->x, building->y, fw, fh, cargo) ||
+            !city_owns_outline_tile(island, city->number.v, tx, ty, cargo))
+            return bad(Reject::OutOfRange);
+    }
+    return {Reject::None, key->second.city};
+}
+
 ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd& cmd,
                               const InAdvance*) {
     const TypeRegistry& types = *w.types_;
-    const CargoRules& cargo = w.rules_.cargo;
     const veto::Rules vrules; // the ship class is the founding command's (BEWOHNTYPE 113)
     // Step 0 (the issuer is a known player) is Commands::apply's. 1: the request.
     if (cmd.tons == 0) {
@@ -95,44 +127,10 @@ ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd&
     if (ship->owner != command.issuer) {
         return refuse(Reject::NotShipOwner);
     }
-    // 5-7: the warehouse and its city, found by id in the island that the id names (no scan).
-    const IslandId island_id = island_of(cmd.warehouse);
-    if (!island_id.valid() || island_id.v >= w.islands_.size() ||
-        !w.islands_[island_id.v].has_value()) {
-        return refuse(Reject::NoBuildingAtTile);
-    }
-    Island& island = *w.islands_[island_id.v];
-    const Building* building = island.find_building(cmd.warehouse);
-    if (building == nullptr) {
-        return refuse(Reject::NoBuildingAtTile);
-    }
-    const BuildingType* btype = types.find(building->type);
-    if (btype == nullptr || !std::binary_search(cargo.warehouse_prodtypes.begin(),
-                                                cargo.warehouse_prodtypes.end(), btype->prodtype)) {
-        return refuse(Reject::NotAWarehouse);
-    }
-    const auto key = island.cache.by_id.find(cmd.warehouse);
-    if (key == island.cache.by_id.end()) {
-        return refuse(Reject::NoBuildingAtTile);
-    }
-    City* city = island.city(key->second.city.city);
-    if (city == nullptr) {
-        return refuse(Reject::UnknownCity);
-    }
-    if (city->owner != command.issuer) {
-        return refuse(Reject::NotCityOwner);
-    }
-    // 8: range, against the live state. The ship tile is the truncated position (Q24.8 >> 8).
-    const std::int64_t tx = ship->pos.x >> 8, ty = ship->pos.y >> 8;
-    const auto [fw, fh] = footprint(*btype, building->rotation);
-    if (!footprint_in_range(tx, ty, building->x, building->y, fw, fh, cargo)) {
-        return refuse(Reject::OutOfRange);
-    }
-    // The warehouse's city must own one of the tiles of the disc outline (24 reads); the same
-    // predicate as the load's, one implementation.
-    if (!city_owns_outline_tile(island, city->number.v, tx, ty, cargo)) {
-        return refuse(Reject::OutOfRange);
-    }
+    const auto dest = destination(w, *ship, cmd.warehouse, true);
+    if (dest.status != Reject::None)
+        return refuse(dest.status);
+    City* city = w.islands_[dest.city.island.v]->city(dest.city.city);
     // 9: the hold index, below the cargo hold count. With navigation facts that is hold_count_a
     // only (original 0x100ac476: valid cargo indices end at a - 1; hold_count_b is not a transfer
     // bound, MAP-CARGO-3 C1); it is also capped by the holds the figure actually carries. A type
@@ -212,7 +210,6 @@ std::optional<std::size_t> ShipCargo::resolve_hold(const std::vector<ShipHold>& 
 ApplyResult ShipCargo::load(World& w, const Command& command, const LoadCmd& cmd,
                             const InAdvance*) {
     const TypeRegistry& types = *w.types_;
-    const CargoRules& cargo = w.rules_.cargo;
     const veto::Rules vrules; // the ship class is the founding command's (BEWOHNTYPE 113)
     // Step 0 (the issuer is a known player) is Commands::apply's. 1: the request.
     if (cmd.tons == 0) {
@@ -230,41 +227,10 @@ ApplyResult ShipCargo::load(World& w, const Command& command, const LoadCmd& cmd
     if (ship->owner != command.issuer) {
         return refuse(Reject::NotShipOwner);
     }
-    // 5-7: the warehouse and its city, found by id in the island that the id names (no scan).
-    const IslandId island_id = island_of(cmd.warehouse);
-    if (!island_id.valid() || island_id.v >= w.islands_.size() ||
-        !w.islands_[island_id.v].has_value()) {
-        return refuse(Reject::NoBuildingAtTile);
-    }
-    Island& island = *w.islands_[island_id.v];
-    const Building* building = island.find_building(cmd.warehouse);
-    if (building == nullptr) {
-        return refuse(Reject::NoBuildingAtTile);
-    }
-    const BuildingType* btype = types.find(building->type);
-    if (btype == nullptr || !std::binary_search(cargo.warehouse_prodtypes.begin(),
-                                                cargo.warehouse_prodtypes.end(), btype->prodtype)) {
-        return refuse(Reject::NotAWarehouse);
-    }
-    const auto key = island.cache.by_id.find(cmd.warehouse);
-    if (key == island.cache.by_id.end()) {
-        return refuse(Reject::NoBuildingAtTile);
-    }
-    City* city = island.city(key->second.city.city);
-    if (city == nullptr) {
-        return refuse(Reject::UnknownCity);
-    }
-    if (city->owner != command.issuer) {
-        return refuse(Reject::NotCityOwner);
-    }
-    // 8: range, against the live state (the unload's test: footprint disc, then the city owning a
-    // tile of the disc outline). The ship tile is the truncated position (Q24.8 >> 8).
-    const std::int64_t tx = ship->pos.x >> 8, ty = ship->pos.y >> 8;
-    const auto [fw, fh] = footprint(*btype, building->rotation);
-    if (!footprint_in_range(tx, ty, building->x, building->y, fw, fh, cargo) ||
-        !city_owns_outline_tile(island, city->number.v, tx, ty, cargo)) {
-        return refuse(Reject::OutOfRange);
-    }
+    const auto dest = destination(w, *ship, cmd.warehouse, true);
+    if (dest.status != Reject::None)
+        return refuse(dest.status);
+    City* city = w.islands_[dest.city.island.v]->city(dest.city.city);
     // 9: the cargo facts. A type without navigation facts has no hold count: refused, not guessed.
     if (!ship_type->nav.has_value()) {
         return refuse(Reject::NoCargoFacts);

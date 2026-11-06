@@ -52,7 +52,7 @@ constexpr int kAdvances = 3000;
 constexpr std::uint32_t kStepMs = 100;
 
 fs::path expectations_path() {
-    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "expand1" / "current134" / "scenario_corpus.txt";
+    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "freight" / "current136" / "scenario_corpus.txt";
 }
 
 std::vector<fs::path> scenario_files(const fs::path& game) {
@@ -1169,8 +1169,8 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
     CHECK(isolated == 37);
     CHECK(supported == 13);
     if (generating) {
-        REQUIRE(expectations_path() == fs::path(ANNO_FIXTURES_DIR) / "sim" / "expand1" /
-                                           "current134" / "scenario_corpus.txt");
+        REQUIRE(expectations_path() == fs::path(ANNO_FIXTURES_DIR) / "sim" / "freight" /
+                                           "current136" / "scenario_corpus.txt");
         std::ofstream out(expectations_path(), std::ios::binary);
         REQUIRE(out.good());
         out << "# ECONBK1 original-data component corpus. Creation identities generated here;\n"

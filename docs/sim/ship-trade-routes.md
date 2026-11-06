@@ -494,3 +494,20 @@ route state at ship end/removal without making a legitimate native cut invalid.
 
 R2 does not connect automatic visits until independent approval. No original
 content role, default gameplay switch or random timeline changes are released.
+
+
+R2 implementation candidate: public assignment/control/query, per-actor deep-copy
+optional storage, checked grouping/authority/clock controls, successful manual
+takeover and end cleanup, reviewed explicit136 field list and native validation.
+Shared read-only cargo destination validation preserves existing manual refusal
+order; assignment alone omits range, not actual transfers. Six independent
+wire/native literal cases agree; all25 nested future-field changes affect the
+hash and roundtrip. Four direct public cases pass after correcting test diagnostic
+and replay-start mistakes (first failure retained). They are not acceptance yet.
+
+Twenty actual producer cases generated a new136 family/41 current goldens in
+64.66s. Independent no-route world/scopes/rules agree. Old/new actual G2 projection
+matches all old fields at entries0/100/200/421, including identical clock_rng and
+all other scopes, excluding only reviewed header/absent route bytes. Original134
+files and old reader are unchanged. Generation is separate from canonical R2
+acceptance and independent review, both pending. No scheduler automation yet.

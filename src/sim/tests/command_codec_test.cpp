@@ -111,7 +111,7 @@ TEST_CASE("command wire: the alternative order and the native types are the form
     static_assert(std::is_same_v<std::variant_alternative_t<9, sim::Body>, sim::StopCmd>);
     static_assert(std::is_same_v<std::variant_alternative_t<10, sim::Body>, sim::UnloadCmd>);
     static_assert(std::is_same_v<std::variant_alternative_t<11, sim::Body>, sim::LoadCmd>);
-    static_assert(std::variant_size_v<sim::Body> == 12);
+    static_assert(std::variant_size_v<sim::Body> == 14);
     CHECK(sim::kCommandWireVersion == 1);
     CHECK(sim::kWireBuild == 0x64);
     CHECK(sim::kWireDemolish == 0x68);

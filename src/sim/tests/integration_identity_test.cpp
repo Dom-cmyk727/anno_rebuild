@@ -54,7 +54,7 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
         const auto refused = sim::World::load(bytes, f.types.registry);
         REQUIRE_FALSE(refused);
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
-                                     " is not supported (this build reads 134)");
+                                     " is not supported (this build reads 136)");
     }
     auto rec = sim::Recorder::start(f.world);
     REQUIRE(rec);
@@ -133,7 +133,7 @@ TEST_CASE("expansion identity134: real133 archives and independent replay identi
     const auto old_recording = bytes_of(base / "econbook1/current133/g2.log");
     const auto old = sim::World::load(old_native, f.types.registry);
     REQUIRE_FALSE(old.ok());
-    CHECK(old.error() == "save: state stream version 133 is not supported (this build reads 134)");
+    CHECK(old.error() == "save: state stream version 133 is not supported (this build reads 136)");
     const auto decoded = sim::read_log(old_recording);
     REQUIRE_FALSE(decoded.ok());
     CHECK(decoded.error() ==

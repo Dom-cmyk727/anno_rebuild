@@ -2730,6 +2730,8 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
          }},
         // MAP-POP-LIVE-1 L1 (stream 128): presence and the 7 members of the resident state (the
         // cargo being a list of two-field slots), each reaching the world hash.
+        {"freight.generation", [](sim::Figure& f) { f.freight_generation = 1; }},
+        {"freight.presence", [](sim::Figure& f) { f.freight.emplace(); }},
         {"resident.presence", [](sim::Figure& f) { f.resident = sim::ResidentState{}; }},
         {"resident.step",
          [](sim::Figure& f) {
@@ -2772,7 +2774,7 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
              f.resident->cargo = {sim::ResidentCargo{0, 1}};
          }},
     };
-    static_assert(sim::field_count<sim::Figure>() == 22);
+    static_assert(sim::field_count<sim::Figure>() == 24);
     static_assert(sim::field_count<sim::ResidentState>() == 7);
     static_assert(sim::field_count<sim::ResidentCargo>() == 2);
     static_assert(sim::field_count<sim::HarvestState>() == 7);
@@ -2781,7 +2783,7 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
     // The 18 members, the position being two scalars, the transport state seven fields and
     // a hold two: 21 earlier cases and 8 for the four new members.
     // MAP-ECON-1 E2: 9 harvest cases (presence and the 7 members, the target being two scalars).
-    CHECK(figure.size() == 48);
+    CHECK(figure.size() == 50);
     std::set<std::uint64_t> seen;
     for (const auto& [name, mutate] : figure) {
         INFO("figure " << name);

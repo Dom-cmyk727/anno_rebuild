@@ -160,7 +160,7 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // selector, price registry facts and data-sized tax roles. ECONBK1, no new PRNG site.
 // Stream134: retain prepared founding accounts; unchanged fields/tag/timeline.
 // Explicit compatibility decision acbe5a24, old133 is refused even with booking off.
-inline constexpr std::uint32_t kStateHashVersion = 134;
+inline constexpr std::uint32_t kStateHashVersion = 136;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -256,6 +256,10 @@ class World {
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
     [[nodiscard]] BuildEligibility construction_eligibility(PlayerId, TypeId) const;
+    [[nodiscard]] const FreightState* freight_route(FigureId id) const {
+        const auto* f = find_figure(figures_, id);
+        return f != nullptr && f->freight.has_value() ? &*f->freight : nullptr;
+    }
     [[nodiscard]] const ScriptRuntime& script() const { return script_; }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
     /// The counters of the ids assigned in the serial merge (figures, event sequence
@@ -414,6 +418,7 @@ class World {
     friend struct Founding;
     friend struct ShipOrders;
     friend struct ShipCargo;
+    friend struct FreightRoutes;
     friend struct ShipMover;
     friend class RouteCache;
 

@@ -291,6 +291,7 @@ bool end_figure(Figure& figure, std::uint32_t t, Effects& fx) {
     }
     finish_harvest(figure, fx);
     finish_resident(figure);
+    figure.freight.reset();
     release_home(figure, fx);
     figure.expiry_stamp = static_cast<std::uint16_t>(t);
     return true;
@@ -310,6 +311,7 @@ void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp,
         // harvest job is finished first, as end_figure does.
         finish_harvest(figure, fx);
         finish_resident(figure);
+        figure.freight.reset();
         release_home(figure, fx);
     }
     if (has_stamp && !had_stamp) {

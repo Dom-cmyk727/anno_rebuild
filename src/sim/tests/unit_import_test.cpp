@@ -411,7 +411,7 @@ TEST_CASE("UNIT1 authored health and independent HEAD state vectors") {
     const auto types = registry();
     const std::array<std::pair<std::uint8_t, std::uint32_t>, 4> ratios{
         std::pair{std::uint8_t{0}, 12000U}, {1, 93}, {64, 6000}, {128, 12000}};
-    for (const auto [ratio, hp] : ratios) {
+    for (const auto& [ratio, hp] : ratios) {
         auto loaded = sim::load_scenario(
             source(tagged("SCHIFF", unit(0, ship_kind, ship_records({}, ratio)))), *types, {});
         REQUIRE(loaded);
@@ -420,7 +420,7 @@ TEST_CASE("UNIT1 authored health and independent HEAD state vectors") {
     refused(source(tagged("SCHIFF", unit(0, ship_kind, ship_records({}, 129)))), "health exceeds");
     const std::array<std::pair<std::uint16_t, std::uint32_t>, 5> health{
         std::pair{std::uint16_t{175}, 175U}, {0, 350}, {0xffff, 350}, {350, 350}, {351, 350}};
-    for (const auto [raw, hp] : health) {
+    for (const auto& [raw, hp] : health) {
         auto loaded = sim::load_scenario(
             source(tagged("SOLDAT", unit(0, scout_kind, scout_records(raw)))), *types, {});
         REQUIRE(loaded);

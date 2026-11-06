@@ -4,10 +4,12 @@
 // and output stores start at zero, the fields are placed tile objects (the cut turns a ripe object
 // into its young predecessor and nothing regrows in the fixture's horizon).
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -32,6 +34,14 @@ struct Farmland {
     std::shared_ptr<const sim::TypeRegistry> types;
     sim::World w;
     sim::TransportStats stats;
+
+    Farmland(std::shared_ptr<const sim::TypeRegistry> registry, sim::World world)
+        : types(std::move(registry)), w(std::move(world)) {
+        w.set_transport_stats(&stats);
+    }
+    // World observes this object's stats; optional NRVO must not decide its lifetime.
+    Farmland(const Farmland&) = delete;
+    Farmland(Farmland&&) = delete;
 };
 
 Farmland make(const std::function<void(Rig&)>& fill) {
@@ -39,9 +49,7 @@ Farmland make(const std::function<void(Rig&)>& fill) {
     fill(r);
     auto types =
         registry(3 * 256); // the shipped small-farm worker carries 3 t (LOGIC byte 0x11 = 3)
-    Farmland f{types, create(r, types), {}};
-    f.w.set_transport_stats(&f.stats);
-    return f;
+    return Farmland{types, create(r, types)};
 }
 
 const sim::SmallFarm& farm(const sim::World& w, std::size_t island, std::uint32_t serial) {
@@ -93,6 +101,11 @@ void reload_agrees(Farmland& f) {
 
 } // namespace
 
+TEST_CASE("small farm worker: fixture statistics belong to the returned object") {
+    Farmland f = make([](Rig&) {});
+    CHECK(f.w.transport_stats() == &f.stats);
+}
+
 TEST_CASE("small farm worker: three ripe fields are cut, credited to raw 0 and consumed, the "
           "counter is released") {
     // The farm at (110,110) (3 x 3) has radius 3: the window x 108..114, y 108..114. Three GETREIDE
@@ -105,6 +118,7 @@ TEST_CASE("small farm worker: three ripe fields are cut, credited to raw 0 and c
         r.place(kSmallFarm, 110, 110,
                 sim::make_small_farm(registry(3 * 256)->find(kSmallFarm)->prod));
     });
+    REQUIRE(f.w.transport_stats() == &f.stats);
     std::uint32_t steps = 0;
     for (int i = 0; i < 12000; ++i) { // 120 000 ms = 60 000 ticks: 120 gate steps of 500 ticks
         f.w.advance(10);
@@ -117,7 +131,8 @@ TEST_CASE("small farm worker: three ripe fields are cut, credited to raw 0 and c
     CHECK(fs.raw_delivered_88 == 768); // the whole trip, to raw 0 (the potato slot)
     CHECK(fs.raw_lost_88 == 0);
     CHECK(fs.searches_failed >= 1); // the next worker finds only young fields
-    for (const auto [x, y] : std::vector<std::pair<int, int>>{{113, 111}, {113, 112}, {111, 113}}) {
+    for (const auto& [x, y] :
+         std::vector<std::pair<int, int>>{{113, 111}, {113, 112}, {111, 113}}) {
         CHECK(tile_object(f.w, 0, x, y) == kStalks.v); // id - 1, the ROHSTWACHS predecessor
     }
     const sim::SmallFarm& sf = farm(f.w, 0, 1);
@@ -186,7 +201,7 @@ TEST_CASE("small farm worker: the home destroyed with the worker out, in each ph
         CHECK(f.stats.forestry.raw_delivered_88 == 0);  // nothing reaches a farm that is gone
         CHECK(f.stats.forestry.raw_lost_88 == carried); // history, not stock
         // no claim is left on any field
-        for (const auto [x, y] :
+        for (const auto& [x, y] :
              std::vector<std::pair<int, int>>{{113, 111}, {113, 112}, {111, 113}}) {
             const sim::Island& is = *f.w.islands()[0];
             CHECK((is.tiles.aux(is.tile_index(x, y)) & sim::kTileClaim) == 0);
@@ -322,8 +337,9 @@ TEST_CASE("small farm worker: reload mid-trip at each phase continues identicall
         if (w != nullptr && w->harvest.has_value() && !seen.contains(w->harvest->step)) {
             seen.insert(w->harvest->step);
             reload_agrees(f); // the first time each step is seen: walking, waiting, returning
+            const auto* reloaded = worker_of(f.w);
             reloaded_with_cargo =
-                reloaded_with_cargo || (worker_of(f.w) != nullptr && worker_of(f.w)->cargo_88 > 0);
+                reloaded_with_cargo || (reloaded != nullptr && reloaded->cargo_88 > 0);
         }
     }
     CHECK(seen.contains(sim::HarvestStep::ToTree));

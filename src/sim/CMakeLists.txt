@@ -109,6 +109,9 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME script2_fresh_process_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --self-test)
     add_test(NAME script2_synthetic_fresh_process COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --exe $<TARGET_FILE:anno_sim_tests>)
     add_test(NAME script2_original_fresh_process COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --original --exe $<TARGET_FILE:anno_sim_tests>)
+    # Both modes execute the original endless01 program; synthetic refers to the world.
+    set_tests_properties(script2_synthetic_fresh_process script2_original_fresh_process
+                         PROPERTIES SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
     # Accepted UNIT1 original sanitizer canary measured581.97s. The combined
     # fresh-process contract gets1500s; the unrelated generated opening is excluded.
     set_tests_properties(script2_original_fresh_process PROPERTIES TIMEOUT 1500)

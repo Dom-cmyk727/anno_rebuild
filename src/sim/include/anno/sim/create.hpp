@@ -73,7 +73,12 @@ namespace anno::sim {
 [[nodiscard]] formats::Result<BuildingKey, Reject>
 create_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types, Island& island,
                 City& city, const PlacementRecord& rec, std::uint32_t now,
-                const Payload* initial = nullptr, DrawSource* first_assignment = nullptr);
+                const Payload* initial = nullptr, DrawSource* first_assignment = nullptr,
+                const Player* financial_owner = nullptr);
+
+/// Opt-in historical cost subtraction preflight, before seams/walker cleanup.
+[[nodiscard]] Reject building_removal_problem(const Rules&, const TypeRegistry&, const PlayerTable&,
+                                              const City&, const Building&);
 
 /// MAP-POP-CLOSE-1 G1: the check a BuildCmd record makes (and create_building repeats) before any
 /// draw, charge or serial: with Rules::house_updates, a House type whose group is outside the

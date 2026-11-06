@@ -58,7 +58,7 @@ struct WorldTestAccess {
            std::uint32_t now = 0, const Payload* initial = nullptr) {
         Island& is = *w.islands_[island];
         return create_building(w.config_, w.rules_, *w.types_, is, *is.cities[city], rec, now,
-                               initial);
+                               initial, nullptr, w.players_.find(is.cities[city]->owner));
     }
     /// remove_building with the world's own configuration, registry and players.
     static bool remove(World& w, const BuildingKey& key) {

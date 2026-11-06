@@ -3681,6 +3681,112 @@
       "expected": {
         "raw": 30064771065
       }
+    },
+    {
+      "id": "configured-u64-debit-entire-i64-domain",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [],
+        "money": 9223372036854775807,
+        "costs": [
+          18446744073709551615,
+          0
+        ],
+        "slices": 1
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [],
+        "money": -9223372036854775808,
+        "stats": [
+          0,
+          0,
+          0
+        ],
+        "income": 0,
+        "upkeep": 18446744073709551615
+      }
+    },
+    {
+      "id": "configured-sales-overflow-atomic",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            256
+          ]
+        ],
+        "money": 0,
+        "stats": [
+          18446744073709551615,
+          0,
+          0
+        ],
+        "decay_num": 1,
+        "decay_den": 1
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          256
+        ],
+        "money": 0,
+        "stats": [
+          18446744073709551615,
+          0,
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "fault": "sales"
+      }
+    },
+    {
+      "id": "configured-trade-decay-overflow-atomic",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            256
+          ]
+        ],
+        "money": 0,
+        "stats": [
+          0,
+          18446744073709551615,
+          0
+        ],
+        "decay_num": 2,
+        "decay_den": 1
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          256
+        ],
+        "money": 0,
+        "stats": [
+          0,
+          18446744073709551615,
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "fault": "stat_decay"
+      }
     }
   ]
 }

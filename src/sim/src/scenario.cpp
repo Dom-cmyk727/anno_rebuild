@@ -182,7 +182,8 @@ std::string building_refusal(Reject r) {
 /// charged, so the list slots follow file order, D 0x100264a0). Touches only
 /// `out`. Returns the first refusal as a message ("" when the island was built).
 std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, const SimConfig& cfg,
-                         const Rules& rules, const TypeRegistry& types, Island& out) {
+                         const Rules& rules, const TypeRegistry& types, const PlayerTable& players,
+                         Island& out) {
     out.index = is.slot;
     static_cast<void>(out.tiles.reset(is.x0, is.y0, is.w, is.h, cfg.chunk_edge));
     out.climate = is.climate;
@@ -285,8 +286,16 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
             rec.rotation = bs.rotation;
             rec.byte0f = bs.byte0f;
             rec.kontor_id = bs.kontor_id;
+            if (rules.city_booking && bs.payload) {
+                const auto* inert = std::get_if<Inert>(&*bs.payload);
+                if (inert != nullptr && !inert->financial_active)
+                    return idx_path("islands", island_index) + ".cities[" + std::to_string(k) +
+                           "].buildings[" + std::to_string(b) +
+                           "].financial_active: unsupported original financial record";
+            }
             const auto made = create_building(cfg, rules, types, out, city, rec, 0,
-                                              bs.payload.has_value() ? &*bs.payload : nullptr);
+                                              bs.payload.has_value() ? &*bs.payload : nullptr,
+                                              nullptr, players.find(city.owner));
             if (!made.ok()) {
                 return idx_path("islands", island_index) + ".cities[" + std::to_string(k) +
                        "].buildings[" + std::to_string(b) + "]: " + building_refusal(made.error());
@@ -596,7 +605,8 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     const TypeRegistry& registry = *w.types_;
     parallel_for(ex, spec.islands.size(), [&](std::uint64_t i) {
         const auto k = static_cast<std::size_t>(i);
-        refused[k] = build_island(spec.islands[k], k, cfg, build_rules, registry, built[k]);
+        refused[k] =
+            build_island(spec.islands[k], k, cfg, build_rules, registry, w.players_, built[k]);
     });
     for (const std::string& message : refused) {
         if (!message.empty()) {

@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/sim/city_booking.hpp>
 #include <anno/sim/create.hpp>
 #include <anno/sim/house_transition.hpp>
 #include <anno/sim/walk_cells.hpp>
@@ -197,11 +198,10 @@ Reject first_assignment_problem(const SimConfig& cfg, const Rules& rules, const 
                : Reject::HouseDomain;
 }
 
-formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const Rules& rules,
-                                                     const TypeRegistry& types, Island& island,
-                                                     City& city, const PlacementRecord& rec,
-                                                     std::uint32_t now, const Payload* initial,
-                                                     DrawSource* first_assignment) {
+formats::Result<BuildingKey, Reject>
+create_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types, Island& island,
+                City& city, const PlacementRecord& rec, std::uint32_t now, const Payload* initial,
+                DrawSource* first_assignment, const Player* financial_owner) {
     // 1. Validation: no state is touched until it has passed.
     if (const Reject problem = creation_problem(cfg, types, island, city.index.lists.size(), rec);
         problem != Reject::None) {
@@ -248,6 +248,16 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
         if (auto* mine = std::get_if<Mine>(&b.payload)) {
             mine->deep = mine_is_deep(ty->prod, ty->research_id);
         }
+    }
+    std::optional<CityAccounts> cost_after;
+    if (rules.city_booking) {
+        const auto contribution = building_cost(types, *ty, b, financial_owner);
+        if (!contribution)
+            return Reject::CityAccounting;
+        const auto next = change_city_cost(city.accounts, contribution.value(), true);
+        if (!next)
+            return Reject::CityAccounting;
+        cost_after = next.value(); // Preflight before first-assignment draws or insertion.
     }
     // 4. Position, rotation, the flag bytes (D: the house base constructor 0x10075c60
     // sets 0x82, and only the factory's House class kinds 97..101 run it; every other
@@ -323,9 +333,22 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     static_cast<void>(place_object_record(island.tiles, types, *ty, placed.x, placed.y,
                                           placed.rotation, 0, placed.byte0f, &written));
     invalidate_claims(island, rules, written); // enhanced only (docs/sim/forestry.md 3.5)
-    // 9. The shared tail (residents, running-cost statistics): no stored state yet
-    // (O-9, O-23).
+    if (cost_after)
+        city.accounts = *cost_after;
     return key;
+}
+
+Reject building_removal_problem(const Rules& rules, const TypeRegistry& types,
+                                const PlayerTable& players, const City& city, const Building& b) {
+    if (!rules.city_booking)
+        return Reject::None;
+    const auto* type = types.find(b.type);
+    if (type == nullptr)
+        return Reject::CityAccounting;
+    const auto contribution = building_cost(types, *type, b, players.find(city.owner));
+    if (!contribution || !change_city_cost(city.accounts, contribution.value(), false))
+        return Reject::CityAccounting;
+    return Reject::None;
 }
 
 bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types,
@@ -344,6 +367,18 @@ bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistr
     }
     const Building& b = *list.slots[key.slot];
     const BuildingType* ty = types.find(b.type);
+    std::optional<CityAccounts> cost_after;
+    if (rules.city_booking) {
+        if (ty == nullptr)
+            return false;
+        const auto contribution = building_cost(types, *ty, b, players.find(city->owner));
+        if (!contribution)
+            return false;
+        const auto next = change_city_cost(city->accounts, contribution.value(), false);
+        if (!next)
+            return false;
+        cost_after = next.value();
+    }
     // Undo the derived counters, erase the id and the footprint, clear the tiles.
     if (ty != nullptr) {
         count_type(city->index.service_counters, city->index.house_counts, cfg, *ty, false);
@@ -380,6 +415,8 @@ bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistr
     }
     island.cache.by_id.erase(b.id);
     list.remove(key.slot);
+    if (cost_after)
+        city->accounts = *cost_after;
     if (key.list == cfg.layout.roles.market_list) {
         if (Player* owner = players.find(city->owner)) {
             owner->defeat_pending = true;

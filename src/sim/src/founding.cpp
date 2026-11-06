@@ -430,8 +430,9 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
 
     // ---- commit: the one fallible operation first, on a local city -------------------------
     City local = make_city(number, me, cfg);
-    const auto key = create_building(cfg, w.rules_, types, *island, local, rec,
-                                     static_cast<std::uint32_t>(w.clock_.tick()));
+    const auto key =
+        create_building(cfg, w.rules_, types, *island, local, rec,
+                        static_cast<std::uint32_t>(w.clock_.tick()), nullptr, nullptr, player);
     if (!key.ok()) {
         return refuse(key.error()); // unreachable after creation_problem; refuses unchanged
     }

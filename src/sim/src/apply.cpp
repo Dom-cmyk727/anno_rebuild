@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <anno/sim/apply.hpp>
+#include <anno/sim/city_booking.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/create.hpp>
 #include <anno/sim/draw.hpp>
@@ -108,7 +109,7 @@ Reject set_production_line(World& w, const SimConfig& cfg, const TypeRegistry& t
     }
     const Slot idx = is->tile_index(s.tile.x, s.tile.y);
     const std::uint32_t owner = is->tiles.owner(idx);
-    const City* city = owner == cfg.neutral_owner ? nullptr : is->city(CityNo{owner});
+    City* city = owner == cfg.neutral_owner ? nullptr : is->city(CityNo{owner});
     if (city == nullptr) {
         return Reject::UnknownCity;
     }
@@ -128,10 +129,35 @@ Reject set_production_line(World& w, const SimConfig& cfg, const TypeRegistry& t
         return Reject::LineNotFound;
     }
     Building* b = find_building_mut(*is, found->id);
-    if (b == nullptr ||
-        !switch_line(b->payload, static_cast<std::size_t>(it - type->output_goods.begin()), s.on)) {
+    if (b == nullptr)
+        return Reject::LineNotFound;
+    if (!w.rules().city_booking)
+        return switch_line(b->payload, static_cast<std::size_t>(it - type->output_goods.begin()),
+                           s.on)
+                   ? Reject::None
+                   : Reject::LineNotFound;
+    Building changed = *b;
+    if (!switch_line(changed.payload, static_cast<std::size_t>(it - type->output_goods.begin()),
+                     s.on)) {
         return Reject::LineNotFound;
     }
+    if (w.rules().city_booking) {
+        const auto* player = w.players().find(city->owner);
+        const auto before = building_cost(types, *type, *b, player);
+        const auto after = building_cost(types, *type, changed, player);
+        if (!before || !after)
+            return Reject::CityAccounting;
+        if (before.value().active != after.value().active) {
+            const auto sub = change_city_cost(city->accounts, before.value(), false);
+            if (!sub)
+                return Reject::CityAccounting;
+            const auto add = change_city_cost(sub.value(), after.value(), true);
+            if (!add)
+                return Reject::CityAccounting;
+            city->accounts = add.value();
+        }
+    }
+    b->payload = std::move(changed.payload);
     return Reject::None;
 }
 
@@ -514,7 +540,7 @@ RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checke
                             ? static_cast<DrawSource&>(*env.in_advance->draws)
                             : static_cast<DrawSource&>(global);
     const auto key = create_building(env.cfg, env.rules, env.types, is, city, c.rec,
-                                     static_cast<std::uint32_t>(env.tick), nullptr, &draws);
+                                     static_cast<std::uint32_t>(env.tick), nullptr, &draws, &owner);
     if (!key.ok()) {
         r.status = key.error();
         return r;
@@ -616,8 +642,39 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
 /// market list's defeat flag), every tile of the city becomes neutral (a stand-in that
 /// keeps §9.6 "every owner is a present city or neutral"; what the original does with
 /// the tiles is unread, OQ-126), and the slot is emptied.
-void remove_city(Env& env, Island& is, CityNo no) {
+bool remove_city(Env& env, Island& is, CityNo no) {
     City& city = *is.cities[no.v];
+    // Preflight this cleanup primitive before deleting any of its remaining
+    // buildings. An earlier successful tile removal remains a completed action.
+    if (env.rules.city_booking) {
+        auto remaining = city.accounts;
+        for (const auto& list : city.index.lists) {
+            for (const auto& slot : list.slots) {
+                if (!slot)
+                    continue;
+                const auto* type = env.types.find(slot->type);
+                AccountingFault fault = AccountingFault::Type;
+                if (type != nullptr) {
+                    const auto cost =
+                        building_cost(env.types, *type, *slot, env.players.find(city.owner));
+                    if (cost) {
+                        const auto next = change_city_cost(remaining, cost.value(), false);
+                        if (next) {
+                            remaining = next.value();
+                            continue;
+                        }
+                        fault = next.error();
+                    } else
+                        fault = cost.error();
+                }
+                FaultRecord record;
+                record.accounting = fault;
+                record.city = CityRef{is.index, no};
+                Scheduler::record_fault(env.w, record);
+                return false;
+            }
+        }
+    }
     for (std::size_t l = 0; l < city.index.lists.size(); ++l) {
         const std::size_t n = city.index.lists[l].slots.size();
         for (std::size_t s = 0; s < n; ++s) {
@@ -635,6 +692,7 @@ void remove_city(Env& env, Island& is, CityNo no) {
         }
     }
     is.cities[no.v].reset();
+    return true;
 }
 
 ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
@@ -673,6 +731,12 @@ ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
                 r.status = Reject::NoBuildingAtTile; // a derived index out of date
             } else {
                 const BuildingKey k = key->second;
+                if (const auto problem =
+                        building_removal_problem(env.rules, env.types, env.players, *city, *b);
+                    problem != Reject::None) {
+                    r.status = problem;
+                    continue;
+                }
                 run_building_seam(env, env.seams.on_removed, is, *city, *b);
                 r.status = remove_building(env.cfg, env.rules, env.types, env.players, is, k, tile)
                                ? Reject::None
@@ -696,7 +760,8 @@ ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
         if (still != nullptr && !env.rules.keep_empty_city &&
             env.seams.city_is_empty.fn != nullptr &&
             env.seams.city_is_empty.fn(env.seams.city_is_empty.ctx, *still)) {
-            remove_city(env, is, no);
+            if (!remove_city(env, is, no))
+                break;
         }
     }
     return result;

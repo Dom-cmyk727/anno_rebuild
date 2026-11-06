@@ -19,6 +19,7 @@
 #include <vector>
 
 #include <anno/sim/city.hpp>
+#include <anno/sim/city_booking.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/events.hpp>
@@ -52,6 +53,8 @@ struct FaultRecord {
     BuildingId building;
     FigureId figure;
     GoodsId goods = 0;
+    AccountingFault accounting = AccountingFault::None;
+    CityRef city;
 };
 
 /// The serial resources the live House update and the stage pass write DIRECTLY (not through
@@ -333,7 +336,8 @@ enum class SimEventKind : std::uint8_t {
     ShipRouteFailed, ///< code = NavFailReason (0 Unreachable, 1 BudgetExceeded, 2 OutsideWindow, 3
                      ///< ShipBlocked)
     ShipStopped,
-    ScriptWave
+    ScriptWave,
+    CityBooking
 };
 
 /// UI-facing output of the simulation; not state, never hashed. Which fields a
@@ -361,6 +365,7 @@ struct SimEvent {
     /// Ship events: the identity of the order the event is about (never reused).
     std::uint64_t order_id = 0;
     std::optional<ScriptWave> wave{};
+    std::optional<CityBookingLedger> booking{};
     friend bool operator==(const SimEvent&, const SimEvent&) = default;
 };
 
@@ -397,6 +402,7 @@ struct Effects {
     std::vector<GoodsMove> goods_moves;
     /// MAP-POP-LIVE-1 L2: applied right after the goods moves.
     std::vector<BilledDelta> billed_deltas;
+    std::vector<CityBookingRequest> city_bookings;
     /// MAP-POP-CLOSE-1 C2: the Inn debits of the purchases, applied right after the billed
     /// counters.
     std::vector<TavernDebit> tavern_debits;

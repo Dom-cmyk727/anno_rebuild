@@ -33,11 +33,15 @@ def unsigned(value, high, name):
     return bounded(value, 0, high, name)
 
 
-def book(*, tick, stamp, rows, money=0, costs=(0, 0), stats=(0, 0, 0), period=2000):
+def book(*, tick, stamp, rows, money=0, costs=(0, 0), stats=(0, 0, 0), period=2000,
+         slices=15, decay_num=104, decay_den=105):
     """One city visit. A fault carries no partial money/stamp/counter mutation."""
     unsigned(tick, U32, 'tick')
     unsigned(stamp, U16, 'stamp')
     bounded(period, 1, U16, 'period')
+    bounded(slices, 1, U32, 'slices')
+    unsigned(decay_num, U32, 'decay_num')
+    bounded(decay_den, 1, U32, 'decay_den')
     bounded(money, I64_MIN, I64_MAX, 'money')
     if len(costs) != 2 or len(stats) != 3:
         raise Invalid('dimensions')
@@ -62,10 +66,10 @@ def book(*, tick, stamp, rows, money=0, costs=(0, 0), stats=(0, 0, 0), period=20
             product = unsigned((price + surcharge) * bill, U64, 'product')
             total = unsigned(total + product, U64, 'sum')
         income = unsigned(total + 128, U64, 'rounding') // 256
-        upkeep = unsigned(sum(costs), U64, 'cost_sum') // 15
+        upkeep = unsigned(sum(costs), U64, 'cost_sum') // slices
         credited = bounded(money + income, I64_MIN, I64_MAX, 'credit')
         balance = bounded(credited - upkeep, I64_MIN, I64_MAX, 'debit')
-        decayed = [n * 104 // 105 for n in stats]
+        decayed = [unsigned(n * decay_num // decay_den, U64, 'stat_decay') for n in stats]
         decayed[0] = unsigned(decayed[0] + income, U64, 'sales')
     except Invalid as exc:
         return dict(unchanged, fault=str(exc))

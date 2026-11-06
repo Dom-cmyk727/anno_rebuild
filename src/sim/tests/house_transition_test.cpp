@@ -1268,3 +1268,47 @@ TEST_CASE("house set group G3: a refused first assignment draws nothing and chan
         CHECK(r.residents_64 == 320);
     }
 }
+
+TEST_CASE(
+    "city booking: house replacement preserves cost history and refusal precedes walker changes") {
+    const auto base = registry();
+    sim::TypeRegistry::Builder b;
+    b.config(syn::population_config()).walk_tables(base->walk_tables());
+    b.house_groups({base->house_groups().begin(), base->house_groups().end()});
+    for (auto t : base->types()) {
+        if (t.cls == sim::RuntimeClass::House)
+            t.running_cost = {2, t.prodtype == 97 ? 10U : 20U};
+        b.add(t);
+    }
+    auto types = b.build();
+    REQUIRE(types);
+    auto r = upgrade_rig();
+    sim::Rules rules;
+    rules.city_booking = true;
+    auto made = sim::World::create(r.spec, types.value(), syn::population_config(), rules);
+    REQUIRE(made);
+    auto w = std::move(made).value();
+    stock_materials(w);
+    CHECK(city0(w).accounts.civil_cost == 10);
+    Spy spy;
+    spy.values = {0, 0, 0};
+    REQUIRE(sim::upgrade_house(env_of(w, spy), island0(w), key_at(w, 110, 110)).kind ==
+            sim::HouseOutcomeKind::Upgraded);
+    CHECK(city0(w).accounts.civil_cost == 10);
+    const auto cut = w.save();
+    auto loaded = sim::World::load(cut, types.value());
+    REQUIRE(loaded);
+    CHECK(city0(loaded.value()).accounts.civil_cost == 10);
+    const auto draws = spy.sites.size();
+    const auto refused = sim::remove_house(env_of(w, spy), island0(w), key_at(w, 110, 110));
+    CHECK(refused.fault == sim::HouseFault::CityAccounting);
+    CHECK(w.save() == cut);
+    CHECK(spy.sites.size() == draws);
+    REQUIRE(sim::downgrade_house(env_of(w, spy), island0(w), key_at(w, 110, 110)).kind ==
+            sim::HouseOutcomeKind::Downgraded);
+    CHECK(city0(w).accounts.civil_cost == 10);
+    REQUIRE(sim::remove_house(env_of(w, spy), island0(w), key_at(w, 110, 110)).kind ==
+            sim::HouseOutcomeKind::Removed);
+    CHECK(city0(w).accounts.civil_cost == 0);
+    CHECK(w.check_invariants().empty());
+}

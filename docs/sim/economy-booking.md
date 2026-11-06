@@ -9,7 +9,7 @@ this note does not declare the remaining lifecycle/policy research complete.
 
 Current execution: B0–B3 independently approved; B4 production integration on
 `task/ECON-BOOK-1-main`, initially pinned to
-`3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; production booking/lifecycle wiring NOT_STARTED.
+`3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; production booking/lifecycle wiring implemented; B4 review/gates pending.
 The second Mac owns B0–B7 under the dispatch above. Historical research/ownership
 and prior identity language below retain their actual dates and source pins.
 Existing rules remain unchanged; booking will be separately default-off.
@@ -813,3 +813,66 @@ required contracts plus compulsory picture each passed1/1 separately. Log SHA
 c17ba4329a300de90e871742a016539c987b2cfef9c083d44b1325d49f7e5762.
 The206 unaffected passes keep their originalb244a45c provenance. B4 is released;
 this approval does not claim production booking or the real loop is complete.
+
+
+## B4 production package — frozen candidate (2026-11-06)
+
+`city_booking.cpp` is a pure checked calculation; the production scheduler emits
+call-time barriers into each island's existing Effects and consumes the exact
+money/bill prefixes at merge. It checks the actual shared treasury before each
+credit then debit. A later fault does not erase an earlier successful booking;
+an earlier queued/immediate fault prevents a later booking. Figure-phase purchases
+follow islands and remain pending. The successful commit changes only the booked
+money, selected bills, stamp and three statistics, retaining later lifecycle costs.
+Typed `CityBookingLedger` observations use existing SimEvent/host output; they are
+not saved state, commands, an extra money mutation, or a new random draw.
+
+Import insertion, paid BuildCmd and founding all use the same checked contribution
+preflight, before draws/charges/insertion. Native load retains saved history.
+SetProductionLine preflights old-selector subtraction/new-selector addition even
+when amounts happen to match. Same-state changes do nothing to history. Removal
+checks before tiles/cache/counters; live house removal checks before walkers.
+House replacement deliberately retains historical totals. Research eligibility
+changes do not repair them. Current-selector underflow is a named refusal, not a
+rescan or clamp. No new ownership/reassignment command is implemented.
+
+City cleanup preflights its remaining building removals as one primitive. A
+successful named tile removal that triggered cleanup remains completed if cleanup
+then faults: all other buildings and city tiles remain, and the sticky world fault
+stops subsequent work. This is separate from command-record acceptance; observers
+must inspect the world fault. Player upkeep_a/upkeep_b/remainder are unchanged.
+
+The existing acceptance table's B4 assertions are now paired with these controls:
+
+| Assertion | Legal nonempty control | Distinguishing error/control | Evidence / disposition |
+|---|---|---|---|
+| Checked pure arithmetic | 88 income,1 upkeep,87 net | full hand-vector engine projection incl u64 debit spanning i64, configured statistic faults | 94 independent JSON cases; projection contract plus C++ comparisons; review pending |
+| Actual ordered shared treasury | two bills1 at MAX-1, paid Build retry | second city faults at MAX on same/different islands; gross MAX+1-upkeep1 refuses | `city booking: shared owner...`, `production gross...`; review pending |
+| Exact effect boundary | before-city bills book; after-city bills remain | queued pre/post faults; late money20 affects second city only | `prefixes...`, `production gross...`; review pending |
+| Time/no duplicate booking | 4000x1ms; odd-ms native cut; split3999+1 | zero/repeated time, one late visit rather than catchup | `smallest elapsed...`; review pending |
+| Complete supported lifecycle | all five production payload alternatives, Inert import, house/market constant facts | failed/duplicate create/switch/remove, locked weapons, historical underflow, equal-valued selectors, cleanup | new booking cases + extended house transition test; review pending |
+| Default-off and separate owner | priced/costed fixture unchanged money/bills/stamp, second owner own ledger | on/off, both house rules, nonconsumer bill retained, pending bill after removal | `actual scheduler...`, `smallest elapsed...`; review pending |
+| Fault/continuation | native before cut, legal paid command then retry | native saved fault remains stopped; no reset API | `shared owner...`, `actual scheduler...`; review pending |
+
+Exploration `cache/econ-book1/B4/engine-exploration-06.log` passes12 cases/879
+assertions. Earlier retained explorations expose test setup errors (island deposit
+coordinates, ring visitation, missing group table, a dangling fixture pointer),
+not accepted results. Compiler errors and the first failed mutation-driver attempt
+are preserved; that driver wrongly required a fixed doctest spacing. Its already
+valid width/order kills remain in the first raw logs; double/reset reran with a
+whitespace-tolerant test-count check. All four mutants built, passed the legal
+arithmetic control, and failed the intended accounting assertion with exit1;
+no timeout/crash/asset or compilation failure counts as a kill. Sources restored
+and rebuilt before the final12-case exploration. Raw per-mutant logs and receipt
+are under `B4/mutants/`; reference contract now11 methods, including exact engine
+projection completeness against the hand-pinned JSON, and retains12 model mutants.
+
+Canonical gates will use own econ-debug/econ-asan builds, required original assets,
+serial CTest, four build jobs, enabled admission, and900s per focused case. The
+focused examples take under a second outside admission;900s allows shared-host
+admission and sanitizer startup without borrowing an old long canary's timeout.
+No other executor job was active at the read-only host observation; memory/free
+disk remain ample. The bench_picture-only ancillary warning exception from B2 is
+unchanged; sim/formats/replay retain warnings as errors. This package adds no new
+state bytes after B3, so current default-off133 fixtures must remain exact. Full
+relevant integration and the original economic loop remain B5/B7, not claimed here.

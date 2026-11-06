@@ -226,6 +226,8 @@ const char* house_fault_name(HouseFault fault) {
         return "count_mismatch";
     case HouseFault::BadSuccessor:
         return "bad_successor";
+    case HouseFault::CityAccounting:
+        return "city_accounting";
     }
     return "unknown";
 }
@@ -704,6 +706,9 @@ HouseOutcome remove_house(const HouseEnv& env, Island& island, const BuildingKey
     if (loc.fault != HouseFault::None) {
         return fault_outcome(loc.fault);
     }
+    if (building_removal_problem(env.rules, env.types, env.players, *loc.city, *loc.building) !=
+        Reject::None)
+        return fault_outcome(HouseFault::CityAccounting);
     HouseOutcome out;
     out.from = loc.type->id;
     if (const auto g = house_group(env.cfg, loc.type->prodtype)) {

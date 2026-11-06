@@ -31,10 +31,29 @@ class PublicContract(unittest.TestCase):
         child = self.execute(document)
         self.assertEqual(child.returncode, 0, child.stderr)
         result = json.loads(child.stdout)
-        self.assertGreaterEqual(result['executed'], 91)
+        self.assertGreaterEqual(result['executed'], 94)
         self.assertEqual(result['executed'], len(document['cases']))
         self.assertEqual([r['id'] for r in result['results']], [c['id'] for c in document['cases']])
         self.assertEqual([r['actual'] for r in result['results']], [c['expected'] for c in document['cases']])
+
+    def test_engine_projection_contains_every_valid_hand_pinned_booking(self):
+        projected = []
+        for case in document['cases']:
+            if case['kind'] != 'book' or 'invalid' in case['expected']:
+                continue
+            v, e = case['input'], case['expected']
+            costs, stats = v.get('costs', [0, 0]), v.get('stats', [0, 0, 0])
+            fields = [case['id'], v['tick'], v['stamp'], v.get('period', 2000),
+                      v.get('slices', 15), v.get('decay_num', 104), v.get('decay_den', 105),
+                      v.get('money', 0), *costs, *stats, len(v['rows'])]
+            fields += [n for row in v['rows'] for n in row]
+            fields += ['=>', int(e['stepped']), e.get('fault', 'none'), e['money'], e['stamp'],
+                       e.get('income', 0), e.get('upkeep', 0), *e['stats']]
+            projected.append(' '.join(map(str, fields)))
+        actual = [s for s in args.vectors.with_name('booking_engine_vectors.txt').read_text().splitlines()
+                  if s and not s.startswith('#')]
+        self.assertGreater(len(projected), 30)
+        self.assertEqual(actual, projected)
 
     def test_bad_expected_answer_is_computed_not_echoed(self):
         value = self.one('ordinary-22500-plus128-div256-is88')

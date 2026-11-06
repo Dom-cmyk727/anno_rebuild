@@ -51,6 +51,7 @@ enum class HouseFault : std::uint8_t {
     GroupNotAdjacent,  ///< the new type's group is not old group +1 (upgrade) / -1 (downgrade)
     CountMismatch,     ///< the city's house count of the old group is zero (a broken derived index)
     BadSuccessor,      ///< the ladder successor exists, is no regular successor and is not declared
+    CityAccounting,    ///< checked historical cost removal cannot be represented
 };
 [[nodiscard]] const char* house_fault_name(HouseFault fault);
 

@@ -96,6 +96,20 @@ void city_tick(const TickContext& ctx, Island& island, City& city, Effects& fx) 
     if (fx.faults.empty()) {
         stage_pass(ctx, city, fx, island.index);
     }
+    if (ctx.rules.city_booking && fx.faults.empty() &&
+        static_cast<std::uint16_t>(ctx.t - city.accounts.stamp) >= ctx.cfg.economy.period) {
+        CityBookingRequest request;
+        request.city = CityRef{island.index, city.number};
+        request.owner = city.owner;
+        request.tick = ctx.t;
+        request.climate = island.climate;
+        request.tax = ctx.settings.prop10;
+        request.money_prefix = fx.money.size();
+        request.billed_prefix = fx.billed_deltas.size();
+        request.fault_prefix = fx.faults.size();
+        request.accounts = city.accounts;
+        fx.city_bookings.push_back(request);
+    }
     for (const Seam<Seams::CityPass>& pass : ctx.seams.city_pass) {
         if (pass.fn != nullptr) {
             pass.fn(pass.ctx, ctx, island, city, fx);

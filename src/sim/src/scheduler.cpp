@@ -258,13 +258,18 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             release_walker(w, home, f->home_counter, f->id);
         }
     }
-    // 3. Money.
-    for (const MoneyDelta& m : fx.money) {
-        Player* p = w.players_.find(m.player);
-        if (p != nullptr) {
-            p->money = add_money_saturating(p->money, m.delta);
+    // 3. Generic monetary effects retain their established saturation. Booking
+    // barriers consume only their call-time prefix, then the remainder follows.
+    std::size_t money_cursor = 0;
+    const auto money_to = [&](std::size_t end) {
+        while (money_cursor < end) {
+            const auto& m = fx.money[money_cursor++];
+            if (auto* p = w.players_.find(m.player))
+                p->money = add_money_saturating(p->money, m.delta);
         }
-    }
+    };
+    if (fx.city_bookings.empty())
+        money_to(fx.money.size());
     // 4. Goods moves.
     for (const GoodsMove& g : fx.goods_moves) {
         City* c = city_of_ref(w, g.city);
@@ -286,20 +291,129 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         }
     }
     // 4b. Billed counters (L2): the requested amounts, saturating at u32.
-    for (const BilledDelta& d : fx.billed_deltas) {
-        City* c = city_of_ref(w, d.city);
-        if (c == nullptr || d.goods >= c->billed.size()) {
+    std::size_t billed_cursor = 0;
+    const auto billed_to = [&](std::size_t end) {
+        while (billed_cursor < end) {
+            const BilledDelta& d = fx.billed_deltas[billed_cursor++];
+            City* c = city_of_ref(w, d.city);
+            if (c == nullptr || d.goods >= c->billed.size()) {
+                continue;
+            }
+            const std::uint32_t billed_before = c->billed[d.goods];
+            const std::uint64_t sum = std::uint64_t{c->billed[d.goods]} + d.amount;
+            c->billed[d.goods] = static_cast<std::uint32_t>(
+                std::min<std::uint64_t>(sum, std::numeric_limits<std::uint32_t>::max()));
+            if (w.transport_stats_ != nullptr) {
+                w.transport_stats_->residents.merged_billed_by_goods[d.goods] +=
+                    c->billed[d.goods] - billed_before; // diagnostic ledger
+            }
+        }
+    };
+    for (const auto& request : fx.city_bookings) {
+        if (!w.rules_.city_booking)
+            continue;
+        // A malformed internal request cannot make a prefix wrap or replay an
+        // effect. Normal requests are emitted in city visit order with one tick.
+        if (request.money_prefix < money_cursor || request.money_prefix > fx.money.size() ||
+            request.billed_prefix < billed_cursor ||
+            request.billed_prefix > fx.billed_deltas.size() ||
+            request.fault_prefix > fx.faults.size() || request.tick != t) {
+            FaultRecord f;
+            f.accounting = AccountingFault::Configuration;
+            f.city = request.city;
+            record_fault(w, f);
             continue;
         }
-        const std::uint32_t billed_before = c->billed[d.goods];
-        const std::uint64_t sum = std::uint64_t{c->billed[d.goods]} + d.amount;
-        c->billed[d.goods] = static_cast<std::uint32_t>(
-            std::min<std::uint64_t>(sum, std::numeric_limits<std::uint32_t>::max()));
-        if (w.transport_stats_ != nullptr) {
-            w.transport_stats_->residents.merged_billed_by_goods[d.goods] +=
-                c->billed[d.goods] - billed_before; // diagnostic ledger
+        money_to(static_cast<std::size_t>(request.money_prefix));
+        billed_to(static_cast<std::size_t>(request.billed_prefix));
+        // Queued faults after this barrier do not suppress an earlier booking.
+        // Immediate faults from earlier merge phases and earlier booking faults do.
+        if (request.fault_prefix != 0 && !w.faulted_)
+            record_fault(w, fx.faults.front());
+        if (w.faulted_)
+            continue;
+        City* city = city_of_ref(w, request.city);
+        Player* player = w.players_.find(request.owner);
+        AccountingFault fault = AccountingFault::None;
+        if (city == nullptr)
+            fault = AccountingFault::City;
+        else if (player == nullptr || city->owner != request.owner)
+            fault = AccountingFault::Owner;
+        std::vector<BookingRow> rows;
+        if (fault == AccountingFault::None) {
+            if (w.config_.billed_goods_last >= city->billed.size())
+                fault = AccountingFault::PriceDimensions;
+            else {
+                rows.reserve(
+                    std::size_t{w.config_.billed_goods_last - w.config_.billed_goods_first} + 1);
+                for (std::uint64_t g = w.config_.billed_goods_first;
+                     g <= w.config_.billed_goods_last; ++g) {
+                    const auto* info = w.types_->goods(static_cast<GoodsId>(g));
+                    if (info == nullptr) {
+                        fault = AccountingFault::PriceDimensions;
+                        break;
+                    }
+                    BookingRow row;
+                    row.billed = city->billed[static_cast<std::size_t>(g)];
+                    if (info->prices) {
+                        if (request.climate >= info->prices->climate.size() ||
+                            request.tax >= info->prices->tax.size()) {
+                            fault = AccountingFault::PriceDimensions;
+                            break;
+                        }
+                        row.price = info->prices->climate[request.climate];
+                        row.surcharge = info->prices->tax[request.tax];
+                    }
+                    rows.push_back(row);
+                }
+            }
         }
+        CityBookingLedger ledger;
+        ledger.city = request.city;
+        ledger.owner = request.owner;
+        ledger.money_before = player == nullptr ? 0 : player->money;
+        ledger.money_after = ledger.money_before;
+        BookingResult result;
+        if (fault == AccountingFault::None) {
+            auto snapshot = request.accounts;
+            snapshot.stamp = city->accounts.stamp; // duplicate requests see an earlier commit
+            result = calculate_city_booking(w.config_, request.tick, snapshot, rows, player->money);
+            fault = result.fault;
+            ledger.rows = result.rows;
+            if (fault == AccountingFault::None && !result.stepped)
+                continue;
+        }
+        ledger.fault = fault;
+        if (fault != AccountingFault::None) {
+            FaultRecord f;
+            f.accounting = fault;
+            f.city = request.city;
+            record_fault(w, f);
+        } else {
+            player->money = result.money;
+            // Booking changes these fields only. Later successful lifecycle
+            // activity must not be overwritten by the call-time cost snapshot.
+            city->accounts.stamp = result.accounts.stamp;
+            city->accounts.sales = result.accounts.sales;
+            city->accounts.trade_sales = result.accounts.trade_sales;
+            city->accounts.trade_purchases = result.accounts.trade_purchases;
+            for (std::uint64_t g = w.config_.billed_goods_first; g <= w.config_.billed_goods_last;
+                 ++g)
+                city->billed[static_cast<std::size_t>(g)] = 0;
+            ledger.income = result.income;
+            ledger.upkeep = result.upkeep;
+            ledger.money_after = result.money;
+        }
+        SimEvent event;
+        event.kind = SimEventKind::CityBooking;
+        event.tick = tick;
+        event.player = request.owner;
+        event.code = static_cast<std::uint32_t>(fault);
+        event.booking = ledger;
+        fx.ui.push_back(std::move(event));
     }
+    money_to(fx.money.size());
+    billed_to(fx.billed_deltas.size());
     // 4c. Inn debits (C2): the tavern stock falls by what was sold, the taken statistic rises.
     for (const TavernDebit& d : fx.tavern_debits) {
         Island* is = island_of_id(w, island_of(d.inn));

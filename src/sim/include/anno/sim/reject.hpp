@@ -105,7 +105,8 @@ enum class Reject : std::uint16_t {
     /// Refused before any draw, charge or serial.
     HouseDomain,
     PermissionContext,
-    ConstructionDenied
+    ConstructionDenied,
+    CityAccounting
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -231,6 +232,8 @@ struct ApplyResult {
         return "PermissionContext";
     case Reject::ConstructionDenied:
         return "ConstructionDenied";
+    case Reject::CityAccounting:
+        return "CityAccounting";
     case Reject::HouseDomain:
         return "HouseDomain";
     }

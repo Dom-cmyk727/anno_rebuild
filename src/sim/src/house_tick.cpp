@@ -415,6 +415,9 @@ std::string house_updates_problem(const SimConfig& cfg, const Rules& rules,
 }
 
 std::string fault_message(const FaultRecord& f) {
+    if (f.accounting != AccountingFault::None)
+        return std::string("city accounting fault ") + accounting_fault_name(f.accounting) +
+               " city " + std::to_string(f.city.island.v) + ":" + std::to_string(f.city.city.v);
     std::string where;
     if (f.building.valid()) {
         where = " building " + std::to_string(f.building.v);

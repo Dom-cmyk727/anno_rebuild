@@ -120,3 +120,25 @@ After a workflow change, run both contract suites and source preflight. CI uses
 the same gate on Linux, Windows and macOS; an unexecuted CI platform remains an
 external validation limitation. Require independent read-only review, preserve
 the review record, and keep gameplay/rendering changes in their own packages.
+
+## The WSL ASan/UBSan gate
+
+`tools/test/wsl_gate.sh` is the one committed WSL (Ubuntu, GCC 13) viewer-enabled
+ASan+UBSan gate (W4-MAIN-1 review F5 / W4-OPENING-CONTROLS-FLAKE step 0), used for
+every WSL lane from now on instead of a fresh, gitignored `cache/` script per gate
+(see `docs/testing/wsl-gate-root-cause-2026-11-05.md` for why that pattern kept
+rediscovering the same two bugs). It takes the WSL path of a *separate* worktree
+(never a live executor worktree, never the owner's `E:\anno1503` checkout):
+
+```sh
+wsl -d Ubuntu -- bash tools/test/wsl_gate.sh /mnt/e/anno1503-worktrees/<name> --tag <tag>
+```
+
+It applies the `core.autocrlf` override before checking the tree is clean (refusing
+to gate a dirty checkout), never runs `anno_render_gpu_tests` as part of the
+ASan lane (WSL's only adapter, llvmpipe, cannot pass those tests' named-adapter
+checks; CI deliberately keeps "full ASan" and "full GPU-adapter parity" apart), and
+records each lane's elapsed time in its gate summary file. Pass `--gpu-lane` to
+additionally run the GPU-adapter suite on Mesa lavapipe with `ANNO_REQUIRE_GPU=1`
+(the same setup `docs/testing/gpu-tests.md` and CI's `linux-gcc` job use), as a
+separate, explicit lane, never folded into the ASan one.

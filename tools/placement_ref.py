@@ -49,6 +49,7 @@ class Type:
 
     def __init__(self, w, h, prodtype, flags, replaceable=False):
         self.w, self.h, self.prodtype, self.flags = w, h, prodtype, flags & 0xFFFF
+        self.highmap = None                     # the HIGHMAP record bytes (type +0x234), class 0x3000 only
         self.replaceable = replaceable          # bit 8 of type word +0x14 = HEAD byte 0x2e bit 0 (slot +0xd0)
 
     @property
@@ -123,7 +124,14 @@ def height_analysis(t, rot, V, flags):
             if not coast_ok(t.w, t.h, rot, V, mx):
                 return -1
         elif cls == 0x3000:
-            raise Unsupported('class 0x3000: helper 0x10008a80 needs type +0x234 (HIGHMAP) and float helpers')
+            # helper 0x10008a80 (AnnoGame), proven equal to the original bytes by
+            # tools/mine_terrain_emulate.py; its fourth argument is the mode result `res` (esi)
+            if t.highmap is None or len(t.highmap) != 4 * t.w * t.h or res < 0:
+                raise Unsupported('class 0x3000 without a usable HIGHMAP table')
+            import mine_terrain_ref
+            heights = [[V(x, y) for x in range(fw + 1)] for y in range(fh + 1)]
+            if not mine_terrain_ref.accepts(t.w, t.h, list(t.highmap), heights, rot, res):
+                return -1
         # every other class value passes without a test (0x10009199 jne 0x100091c6)
     return res
 
@@ -437,6 +445,8 @@ def load_registry(game_dir):
         word14 = (head[0x2e] << 8) | (head[0x25] & 1)          # type word +0x14 (0x10009432-0x10009449)
         t = Type(head[0], head[1], PRODTYPE_NUMBERS[pt], struct.unpack_from('<H', head, 0x1c)[0], bool(word14 & 0x100))
         t.name = pt
+        if 'HIGHMAP' in rec:
+            t.highmap = rec['HIGHMAP']
         reg[e['id']] = t
     return reg
 

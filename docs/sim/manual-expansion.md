@@ -606,3 +606,35 @@ change. New compact final ledger exposes tree/raw/output/cart/allowner/stamp ter
 Wrapper now retains actualchildstdout/stderr so checkpoint counts, exact entry460
 and sanitizer output remain visible; its public contract checks diagnosticretention.
 Current refined Debug proof precedes the current combinedSAN deadline declaration.
+
+### E5 refined Debug proof and E6 diagnostic acceptance plan
+
+Clean 6c6e09cf passes canonical Debug02: 4/4, seven required invocations
+separately 1/1, all other categories zero. Producer 159.27s; honest and changed
+fresh consumers match 13/13 and 10/11 respectively, changed divergence entry460;
+selection 192.93s. All fourteen binary outputs match the strong prototype and
+final native matches E4. Receipt E5/receipt-debug-02.json includes actual CLI
+binary, test binary, cache, inventory, raw and artifacts. Source remains frozen
+through the completed terminal result. Independent current-evidence review pending.
+
+E6 review found a missing several-size diagnostic measurement, not a runtime
+defect. Approved bounded plan: extend the existing 1/16/64-extra-island cargo
+fixtures with public World::find_building target resolution (own, rival, missing;
+16 samples of 192 queries), and public state_hash(HashTree&,8) diagnostics
+(8 samples). Expected live counts are n+1 islands, n+2 cities, 2n+2 warehouses,
+one figure, 3200+256n tiles. Require unchanged state, exact flat/root hashes and
+empty same-state diff; isolated rival-stock mutant must name city[1]. Record
+node counts and query counts separately from timings; internal map comparison
+counts are not instrumented. This is stable-ID resolution, not spatial selection
+or ownership authorization. Full diagnostics remain opt-in, outside cargo apply.
+
+The consumer card lives at ../testing/manual-expansion.md. Reviewer corrected a
+planning-only range simplification: actual site::within_range subtracts Q24.8
+positions before dividing toward zero; do not floor the ship tile first. No
+unsupported squared-distance numbers are carried into the card. No UI code is
+changed. E6 card/measurement review and current-source focused gate are pending.
+
+Sanitizer deadline remains 900s per test: measured refined Debug producer159.27s
+× accepted focused ASAN/Debug136.11/42.07 ratio3.23 predicts about515s, leaving
+1.75x margin. Fresh Debug consumers take about34s. This is a declared estimate,
+not a sanitizer pass. Serialize the long own lanes and keep admission enabled.

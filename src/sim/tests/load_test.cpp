@@ -27,6 +27,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/command.hpp>
+#include <anno/sim/hash_tree.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/ship_cargo.hpp>
@@ -1674,6 +1675,86 @@ TEST_CASE("expansion cargo scale: named transfers stay local with unrelated lega
         const auto own = bid(w, 0, 15, 10);
         const auto before = snap(w);
         const auto conserved = totals(w);
+        // Existing public stable-ID resolution and opt-in state diagnostics, measured separately
+        // from cargo application. Resolution is not ownership authorization or spatial selection.
+        // This deliberately full-world diagnostic is never inserted into a production command.
+        const auto rival_id = bid(w, 1, 60, 10);
+        const auto unchanged_bytes = w.save();
+        const auto unchanged_hash = w.state_hash();
+        std::size_t live_islands = 0, live_cities = 0, live_buildings = 0, live_figures = 0;
+        std::uint64_t tiles = 0;
+        for (const auto& island : w.islands()) {
+            if (!island)
+                continue;
+            ++live_islands;
+            for (const auto& c : island->cities) {
+                if (!c)
+                    continue;
+                ++live_cities;
+                for (const auto& list : c->index.lists)
+                    for (const auto& building : list.slots)
+                        live_buildings += building.has_value();
+            }
+        }
+        for (const auto& actor : w.figures().list.slots)
+            live_figures += actor.has_value();
+        for (const auto& island : spec.islands)
+            tiles += static_cast<std::uint64_t>(island.w) * island.h;
+        REQUIRE(live_islands == n + 1);
+        REQUIRE(live_cities == n + 2);
+        REQUIRE(live_buildings == 2 * n + 2);
+        REQUIRE(live_figures == 1);
+        REQUIRE(tiles == 3200 + 256 * n);
+        for (int sample = 0; sample < 16; ++sample) {
+            std::size_t hits = 0, misses = 0;
+            const auto a = Clock::now();
+            for (int repeat = 0; repeat < 64; ++repeat) {
+                const auto* own_target = w.find_building(own);
+                const auto* rival_target = w.find_building(rival_id);
+                hits += own_target != nullptr && own_target->id == own;
+                hits += rival_target != nullptr && rival_target->id == rival_id;
+                misses += w.find_building(sim::BuildingId{}) == nullptr;
+            }
+            const auto b = Clock::now();
+            REQUIRE(hits == 128);
+            REQUIRE(misses == 64);
+            MESSAGE("target_resolution extra_islands="
+                    << n << " sample=" << sample << " queries=192 hits=" << hits
+                    << " misses=" << misses << " batch_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count());
+        }
+        const auto node_count = [](const auto& self, const sim::HashNode& node) -> std::size_t {
+            std::size_t count = 1;
+            for (const auto& child : node.children)
+                count += self(self, child);
+            return count;
+        };
+        sim::HashTree baseline_tree;
+        REQUIRE(w.state_hash(baseline_tree, 8) == unchanged_hash);
+        for (int sample = 0; sample < 8; ++sample) {
+            sim::HashTree tree;
+            const auto a = Clock::now();
+            const auto hash = w.state_hash(tree, 8);
+            const auto b = Clock::now();
+            REQUIRE(hash == unchanged_hash);
+            REQUIRE(tree.root.hash == hash);
+            CHECK(sim::diff_trees(baseline_tree, tree).empty());
+            const auto nodes = node_count(node_count, tree.root);
+            CHECK(nodes == node_count(node_count, baseline_tree.root));
+            MESSAGE("state_diagnostic extra_islands="
+                    << n << " sample=" << sample << " depth=8 islands=" << live_islands
+                    << " cities=" << live_cities << " buildings=" << live_buildings << " figures="
+                    << live_figures << " tiles=" << tiles << " nodes=" << nodes << " hash_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count());
+        }
+        // Isolated diagnostic mutant only: a different city's stock must name that exact scope.
+        auto changed = w;
+        --sim::WorldTestAccess::islands(changed)[0]->cities[1]->stock.stock[kWood];
+        sim::HashTree changed_tree;
+        CHECK(changed.state_hash(changed_tree, 8) != unchanged_hash);
+        CHECK(sim::diff_trees(baseline_tree, changed_tree) ==
+              "world/islands/island[0]/cities/city[1]");
+        CHECK(w.save() == unchanged_bytes);
         const sim::Command load{sim::PlayerId{0}, cmd(1, own, 0, kWood, 1)};
         const sim::Command unload{sim::PlayerId{0}, ucmd(1, own, 0, kWood, 1)};
         for (int sample = 0; sample < 16; ++sample) {

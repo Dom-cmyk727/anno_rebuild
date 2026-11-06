@@ -335,10 +335,10 @@ climates/three tax levels; modern registry/config dimensions are data-sized and
 validated separately, not bounded by the original format's record size. Runtime
 resolved vectors must have exact configured dimensions; source partial writes
 are not malformed runtime rows. Malus negation at I64_MIN, unknown climate,
-empty/excess source tax lists, invalid final prices or incomplete runtime rows
+excess source tax lists, invalid final prices or incomplete runtime rows
 must name the field and leave the destination unchanged. No signed-price wrapping
-or clipping is approved. Ordinary unsigned-word/nonoverflow inputs match the
-original; the modern wider domain is an opt-in safeguard, to be finalized in B1c.
+or clipping is approved. The precise original-agreement domain is in B1c; the wider modern domain is an
+opt-in safeguard, not a claim of wrapped signed-original arithmetic.
 
 Decisive examples to hand-pin in B2: Preis45; Bonus5 STEPPE; Bonus2 STEPPE =>52
 there/45elsewhere; later Preis40 resets all climates40. Tax[1,2,3] then[7] =>[7,2,3].
@@ -362,7 +362,7 @@ field-role distinction, not a building/type-id allowlist.
 | Supported engine entry | Original contribution rule / proposed checked equivalent | Refused or duplicate |
 |---|---|---|
 | create_building, scenario/import creation, public Build/Found warehouse creation | Add type.running_cost[active-selector] once to its city kind after complete creation validation. Native continuation restores authoritative totals instead. | Validate prospective sum before payment/placement/IDs; failure adds nothing. |
-| SetProductionLineCmd / set_production_line / switch_line | Single-line selector switched_on; dual/SmallFarm selector OR of line_on. Subtract old selected cost then add new selected cost only if selector changes. | Invalid owner/goods/index or same state leaves costs unchanged; switching one of two enabled lines off keeps active cost. |
+| SetProductionLineCmd / set_production_line / switch_line | Single-line selector switched_on; base dual/SmallFarm OR of line_on; WeaponsWorkshop OR of enabled AND research-eligible output lines (research id0 or owner state bit2). Subtract old selected cost then add new selected cost only if selector changes. | Invalid owner/goods/index or same state leaves costs unchanged; switching one of two eligible enabled lines off keeps active cost. A research-ineligible remaining weapons line does not keep the selector active. |
 | production blocked/status transition | No cost contribution change merely for blocked/starved/full/suspended display state. | Do not confuse flags with manual switch. |
 | house_transition shared Upgrade/Downgrade type swap | Preserve existing city cost contribution, matching inspected original path. A level change is not the adjacent general type-replace helper. | Failed materials/domain/duplicate outcome leaves totals unchanged; no invented cost correction. |
 | remove_building via public Demolish/whole-city cleanup or remove_house | Subtract current type cost at its current active-selector, then remove once. Checked preflight precedes walker detach, tile changes and every other mutation. | Missing slot does not subtract; insufficient accounted total explicitly refuses before removal, rather than reproducing original underflow. |
@@ -378,6 +378,16 @@ before mutation if the city's recorded bucket is only10. This preserves the
 original transition while replacing unsafe underflow with the packet's explicit
 checked safeguard. The native cut must retain10 rather than silently rebuild20.
 No per-visit building scan is permitted. City costs never touch Player::upkeep_a/b.
+Script research grants can change the weapons selector without changing recorded
+city cost totals: the original research setter only updates research bytes.
+Retain this history as well. Creation with both lines locked may record inactive
+cost; after a grant, removal uses the now-active selector and can checked-refuse
+an insufficient total. A same-state command must not silently repair it.
+Original weapon setters reject enabling a research-ineligible line, while the
+accepted current SetProductionLineCmd already permits that switch (production
+remains research-gated). Keep the existing command acceptance, including with
+booking off; the new cost calculation still uses the verified eligibility filter.
+No new permission restriction or research-notification scan is introduced.
 Original unmodelled stall manual flags remain the existing default-on component
 boundary; this task does not introduce a new stall switch command.
 
@@ -389,8 +399,12 @@ engine uses these exact checked domains, with no negative-balance clamp:
 - Source price directives parse checked signed i64. Malus negation/addition must
   be representable; intermediate climate values may be negative, final resolved
   prices and surcharges must be0..U32_MAX. Runtime goods/climate/tax vectors have
-  exact configured dimensions. Source defaults0 and partial nonempty tax writes
-  are preserved; empty/extra original-format columns and unknown names refuse.
+  exact configured dimensions. Tax count is an explicit SimConfig field, default3;
+  world validation uses it rather than the old hard-coded<=2. prop10 remains the
+  one tax selector and may be widened under133 to index the configured domain.
+  Climate-name roles are configured in index order and must match the existing
+  monopoly_climate_mask dimensions; Island::climate indexes those same rows. Source defaults0, partial tax writes and the original empty-list no-op
+  are preserved; excess configured source columns and unknown names refuse.
   Modern data builders may use larger configured tables; no original id list is
   an engine limit. Effective price is u64(climate_price)+u64(surcharge).
 - Bills retain accepted u32 values and existing direct-fault/queued-saturation
@@ -427,15 +441,23 @@ engine uses these exact checked domains, with no negative-balance clamp:
   existing valid pending bills and upkeep. Real-loop arms explicitly enable both.
   Neither default changes. Booking state is authoritative when enabled; mode-off
   lifecycle must preserve established default-off behavior and add no new money
-  mutation or fault. The exact conditional stream layout is frozen in B3.
+  mutation or fault. B3 freezes exact byte placement; required authoritative fields are the u16
+  booking stamp, three u64 raw sales/trade statistics and two u64 cost buckets.
+  Modern native continuation preserves these fields without reconstruction.
+  Original import widens statistics; original pending bills/stamp initialize0.
+  With booking off, newly maintained cost bookkeeping is inactive/zero and
+  cannot introduce new command faults; imported statistics may still be retained.
+  Serialization of these fields is explicit and must not silently lose data.
 
 A booking fault names a typed cause/city, stops the world through the existing
 fault/output mechanism, and leaves *that booking's* money, billed counters,
 statistics and stamp unchanged. Earlier committed activity remains committed.
-The current world fault latch is sticky: further Advance does nothing. Native
-save/reload retains all accounting data; an unchanged invalid booking faults
-again without duplicate income. A corrected, otherwise legal continuation can
-book the retained bill once; no new clear-fault command is part of this slice.
+The current world fault latch is authoritative and sticky: further Advance does
+nothing, and a native save of that faulted world reloads stopped (not cleared).
+Retry tests start from the still-unfaulted pre-fault checkpoint: unchanged invalid
+inputs reproduce the fault without duplicate income. A legal correction before
+advancing that unfaulted checkpoint can book the retained bill once. No implicit
+fault reset or new clear-fault command is part of this slice.
 Invalid lifecycle arithmetic likewise preflights before its command/transition
 mutates anything; failure is a typed refusal/fault appropriate to its existing
 caller, never a partial walker detach or charged failed build.
@@ -452,7 +474,7 @@ cannot be forced to wait for later figure purchases in the same Advance.
 Cities on one island share an Effects buffer and const external player views.
 Booking therefore queues a typed request rather than resetting its City early
 or trusting an isolated read-only balance check. The request records its city,
-owner, tick and the current prefix lengths of queued money and bill effects,
+owner, tick and the current prefix lengths of queued money, bill and fault effects,
 plus the cost/stat snapshot needed to preserve the call-time contribution.
 At the serial merge, process those prior prefixes with their established
 semantics, then preflight the complete booking against the *actual* owner
@@ -464,7 +486,13 @@ islands, the existing immediate island merge already supplies this ordering.
 No new PRNG site or wall clock is involved.
 
 Earlier script failure prevents the advance. Earlier House/stage faults prevent
-queuing a later booking; merge-time earlier faults prevent its commit. A fault
+queuing a later booking; merge-time earlier faults prevent its commit. Fault
+prefix barriers classify queued faults too: consume only faults preceding each
+booking before its preflight. Valid bookingA followed by a later city/seam fault
+commitsA, then records that later fault; inverse order queues no later booking
+(or suppresses it at its recorded fault barrier). Immediate earlier merge-phase
+faults already latched on World also prevent commit. A blanket check of the
+whole final fx.faults vector would incorrectly suppressA and is forbidden. A fault
 from one booking prevents later booking commits in that advance. Non-booking
 activity already executed/queued before discovery of a serial commit fault keeps
 its existing effect-merge semantics; it is not rolled back and its earned bills
@@ -483,3 +511,26 @@ must reach the next due city visit through that real scheduler, prove two1ms
 calls retain the fractional tick, and preserve partial elapsed delay across
 native cuts. Interval partitions can change which original visits occur and
 stamps become now; no full-world or overdue-partition invariance is promised.
+
+
+#### B1c exact comparison and ordering corrections
+
+Original-agreement domain is *not* merely unsigned-word inputs. Require original
+price/directive/row products and summed numerator to avoid word/dword wrap, and
+**sum+128 <= I32_MAX**, because original income reinterprets that dword as signed.
+Also require original i32 money credit/debit intermediates, u32 cost sum,
+statistics decay product/addition and import product105 to fit their original
+widths. Within that domain the algorithms agree. Beyond it, checked modern
+positive/wider results are explicit adaptations. Example65535²+128 fits u32 but
+original income is-511, modern16776704; both expected answers must be pinned.
+For import, saved37 gives259 ordinarily; saved40904451 gives original3 versus
+modern286331157 (original last nonoverflow multiplicand40904450).
+
+Ordering controls: MAX-1 and two cities each income1/upkeep0 => first commitsMAX,
+second faults without its own bill/stat/stamp reset. AtMAX, a queued money-1
+*before* income1 lets booking succeed; the same-1 *after* booking cannot rescue
+its gross overflow. After that booking faults, the unrelated queued-1 still
+follows the established effect merge, so final world money may differ even
+though the failed booking contributes no mutation. Diagnose those ledger terms
+separately. The request's fault-prefix barrier is necessary alongside its money/
+bill barriers. None of these controls requires a new command or live tax UI.

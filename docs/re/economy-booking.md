@@ -173,9 +173,11 @@ re-read. The shipped Data/BGruppen.dat has48 Preis,11 PreisLevel and11 Bonus
 records, with no Malus; e.g. NAHRUNG45 plus5 in STEPPE/PRAERIE/DSCHUNGEL,
 ALKOHOL50 plus5 there and tax surcharges0/5/10. Two GEWUERZE bonus directives
 accumulate in repeated climates; a later Preis resets climate prices but does
-not clear already written tax columns. Empty source tax lists, too many original
-columns and unknown climate names require explicit modern refusal rather than
-the original's out-of-record/index-minus-one writes. A nonempty partial source
+not clear already written tax columns. An empty PreisLevel list is an original no-op (10014eee branches out without
+writes). Excess columns at the default three-column configuration and unknown
+climate names require explicit modern refusal rather than out-of-record/index-
+minus-one writes. A deliberately larger modern configured table accepts its
+own longer bounded list. A nonempty partial source
 list is legal and retains previous/default values in unmentioned columns.
 
 **Bills (new direct reads).** City1002dac0..1002daff checks inclusive goods1a..28,
@@ -239,14 +241,14 @@ to the city+70. Removal100255e4..10025645 repeats that selector/getter sequence
 and subtracts city+74 before destruction. Repeated remove must not reach this
 subtraction after the slot is already gone.
 
-The raw vtable audit (cache/econ-book1/B1/stat-getters.json) covers the named
+The raw26-vtable audit (cache/econ-book1/B1/stat-getters.json) covers the named
 production, service, market, house, plain and military classes. All inspected
 building+90 entries resolve10025400, `mov eax,1; ret`. Do not infer kind2 merely
 from a military production/list category. Kind2 is an existing separate city
 statistics bucket, not evidence that each military class actually returns2.
 
 Manual switches: Workshop100684c0..d9 uses its old switched_on byte and requested
-new byte. Dual10069050..10069130 and SmallFarm1006fbd0..1006fc77 compute old
+new byte. Base Dual10069050..10069130 and SmallFarm1006fbd0..1006fc77 compute old
 OR(line switches) and new OR(changed line,other line), normalized0/1, before
 calling10072a60. Its equal-old/new guard returns before accounting; otherwise
 it subtracts old cost then adds new cost to the building's statistic kind. A
@@ -277,3 +279,28 @@ incorrectly claim every original house has zero costs or silently repair a
 historical contribution when a modded replacement changes costs. Native cost
 reconstruction versus authoritative history must be decided with this actual
 path, not a scan-of-current-types assumption. No engine implementation yet.
+
+
+### B1b review correction: weapons and research history
+
+WeaponsWorkshop uses vtable100c2d1c, not base Dual100c8150. Its property8e is
+10069a90..10069bfa: active iff at least one switched-on output has research id0
+or the owner's research state has bit2. Setter10069c00..10069dee computes old/new
+states with this filter; disabling the sole eligible line changes active1->0
+even when the other (locked) line remains switched on. Enabling a locked line
+branches to69de7 before switch/cost mutation. Current engine command acceptance
+is broader (it permits that flag); preserve that existing boundary rather than
+silently tightening default-off semantics. Filter the new accounting selector.
+Raw vtable audit labels were corrected to DualWorkshop(c8150) and
+WeaponsWorkshop(c2d1c), and FurTrapper is explicit rather than misnamed Hunter.
+
+Research writes do not repair accounting. Player ctor10021600 initializes
+embedded research+b0 via10019190, vtable100c20a0. Its slot+c is10019170: store
+low byte at research+86+id, ret8, no notification. The availability setter stage31
+path1001bd16..1001bd9d ORs research bit2 through that slot, including optional
+output0 grant, without a city/cost scan. Current engine runtime writes are in
+permissions.cpp::set_construction_permission, reached by scripts; player progress
+has no separate implemented completion body. A newly unlocked line can therefore
+change the selector but leave old cost totals, just like house replacement.
+Native continuation must retain that historical total, not recompute it. Checked
+removal/disable underflow is a typed safeguard, not permission to rescan/repair.

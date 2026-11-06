@@ -7,7 +7,7 @@ That packet supersedes the historical research-only ownership, old base and
 pre-132 identity guidance below. Engine work follows independent contract review;
 this note does not declare the remaining lifecycle/policy research complete.
 
-Current execution: B0–B4 independently approved; B5 real-loop implementation on
+Current execution: B0–B5 independently approved; B6 scaling/consumer work on
 `task/ECON-BOOK-1-main`, initially pinned to
 `3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; production booking/lifecycle wiring approved at ff095351.
 The second Mac owns B0–B7 under the dispatch above. Historical research/ownership
@@ -305,7 +305,7 @@ The existing arithmetic research is approved only within its original-wrap model
 | B2 independent references | Hand-pinned checked versus original-wrap vectors, lifecycle/order/width and smallest-positive/zero/partitioned timing | Width/order/double-charge/reset-before-fault mutants fail intended assertions; CLI empty/bad expected/incomplete refused | APPROVEDb62047ee by `/root/econ_b0_review`, canonical03 selected2/executed2, required3 invocations separate |
 | B3 facts/state/identity | Data-sized prices/roles; minimal authoritative stamp/stats/cost state;133/ECONBK1 populated byte oracle and native round-trip | Actual132 save/log refuses intended boundary; invalid dimensions/signed prices/unknown climate transactional; alternate generic types/roles | APPROVEDb7908bef by `/root/econ_b1_primary_review`; canonical correction02 selected69/passed69/others0, required7 invocations separate; first211 gate retained206/5 |
 | B4 production/lifecycle | Opt-in scheduler booking exactly once, full supported lifecycle, owner split and negative-balance continuation | Real last-city merge overflow leaves its money/bills/stats/stamp unchanged, queued prior effects accounted; default-off132 semantic controls | APPROVEDff095351 by `/root/econ_b0_review`; corrected Debug/ASAN each34/34, all other categories0; atomic P2 fixed and regression negative verified |
-| B5 actual loop | Cheap original Tutorial path, new goods reach several households, bills/income/upkeep exact, public shortage/recovery, owner/city isolation | No starting-stock-as-production or grant in real arm; explicit component versus strict loader refusal; legal altered command diverges causally | Native cuts and genuine fresh replay artifacts; independent real-ledger review required |
+| B5 actual loop | Cheap original Tutorial path, new goods reach several households, bills/income/upkeep exact, public shortage/recovery, owner/city isolation | No starting-stock-as-production or grant in real arm; explicit component versus strict loader refusal; legal altered command diverges causally | APPROVED9801afcf by `/root/econ_b1_primary_review`; final Debug producer1/1 + exact-artifact prior full6/6, final ASAN6/6, all other categories0 |
 | B6 scaling/consumer | Three nonempty legal sizes, city/goods operation counts and modest Release samples, unrelated objects do not add global scans | Fixture legality/positive bookings first; no latency threshold or multiplayer performance claim | Host/raw manifests and Windows data/events/refusal/config contract required |
 | B7 frozen closeout | Corrected focused Debug/ASAN, relevant full coverage, required refs/CLI, real loop integrated once per configuration, format/lint | Keep first failures/known skips distinct; fresh final reviewer checks interactions and default-off/primary/replay claims | One final REPORTS+handoff, clean local candidate; no main merge/push |
 
@@ -1050,3 +1050,23 @@ This only changes observations/assertions, not engine state. Debug03 reruns the
 changed producer; earlier fresh-process passes are reusable only with equal
 record hashes. ASAN runs the whole6-test slice at this final source, with its
 positive-cargo cut and native actor-preservation assertions.
+
+
+### B5 approval and release
+
+`/root/econ_b1_primary_review` APPROVED clean
+`9801afcf91387865c278324c40d0c50bace53120`, no remaining P1/P2. Final Debug03
+changed producer1/1 (62616 assertions), all other categories0, SHA256
+`1f3e9d53e5d87423530fccc08933d589fc95e2b7d0d2eef76133c261ea95ec30`;
+prior full Debug02 atf508fc2d6/6, SHA256
+`9f735fef087e1201a93abafacfbc1a175937cface1af104372ca2b5b952432bf`.
+Final ASan/UBSan01 at9801afcf6/6, failed/empty/skipped/incomplete/sanitizer0,
+GATE_END0, SHA256 `b849e31231310594d91807f27d4a14674dab1e3e0aafdfb8eb94623da0c997c1`.
+Six required contract invocations separately1/1 per gate. Sanitized producer74.85s;
+selected slice212.91s; picture prerequisite120.39s. The900s timeout was adequate,
+with no restart, admission bypass or sanitizer waiver. Genuine records across
+exploration, Debug and ASAN have the same exacta790ceb5... SHA above; final ASAN
+actually re-executes both CLI arms. `B5/receipt.json` preserves all artifacts,
+source/config/binary hashes before later builds. Reviewer report and raw-derived
+inventory retained `/private/tmp/econ-book1-b5-review.md` and
+`/private/tmp/econ-book1-b5-primary.json`. B6 is released; B7 remains required.

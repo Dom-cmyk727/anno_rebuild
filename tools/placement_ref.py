@@ -130,6 +130,7 @@ def height_analysis(t, rot, V, flags):
             # tools/mine_terrain_emulate.py; its fourth argument is the mode result `res` (esi)
             if t.highmap is None or len(t.highmap) != 4 * t.w * t.h or res < 0:
                 raise Unsupported('class 0x3000 without a usable HIGHMAP table')
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -I drops the script directory
             import mine_terrain_ref
             heights = [[V(x, y) for x in range(fw + 1)] for y in range(fh + 1)]
             if not mine_terrain_ref.accepts(t.w, t.h, list(t.highmap), heights, rot, res):

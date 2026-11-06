@@ -7,19 +7,290 @@
 **ECON-BOOK-1 B0–B7 is ACCEPTED within its bounded headless scope.** Executor
 candidate `467373d2` (tested runtime `03bb4a5c`) is integrated unchanged; the
 orchestrator's test-only `bac3eb37` closes the simultaneous nonzero city/player
-upkeep control and passes16/16 in both Debug and ASan/UBSan. See the
+upkeep control and passes 16/16 in both Debug and ASan/UBSan. See the
 [acceptance record](reviews/2026-11-06-econ-book1-acceptance.md) and
 [executor handoff](reviews/2026-11-06-econ-book1.md).
 
 Canonical identity is now **state133 / ECONBK1 / PRNG5 / replay4 / command1**.
-City booking and house updates remain independently default-off. Previous132
+City booking and house updates remain independently default-off. Previous 132
 recordings remain historical and incompatible; no automatic migration is claimed.
 The old ECON assignment below is completed, not authorization to repeat it.
-Second Mac stops at this completed package; no follow-on implementation is
-released here. First Mac and Windows finish their frozen packages normally and
+Second Mac moves to the released MAP-EXPAND-1 packet below; ECON-BOOK-1
+itself remains closed. First Mac and Windows finish their frozen packages normally and
 consume this baseline only at their next coordinated checkpoint. Do not reset,
 rebase or merge another executor's current work to obtain this update. Windows/
 Linux target-host, GPU/window and multiplayer-scale acceptance remain open.
+
+<!-- BEGIN MAP-EXPAND-1-MAIN -->
+## Second Mac — MAP-EXPAND-1: second-island settlement and manual resupply (2026-11-06)
+
+**READY / RELEASED, E0–E7.** ECON-BOOK-1 is accepted and published; do not repeat
+its completed package. The next player-facing outcome is to support two islands
+with one player's ship using goods actually produced by the first settlement.
+This moves the previously queued manual-expansion slice forward independently
+of salt extraction, cloth/hunting and the live Windows interface.
+
+### Baseline and boundaries
+
+Start a successor branch `task/MAP-EXPAND-1-main` in your existing owned checkout
+from published main containing this dispatch. Baseline
+`303b3faf048ece9a72f9438e39fc8612fd995327` includes accepted ECON runtime `03bb4a5c`,
+executor `467373d2` and the orchestrator's test-only `bac3eb37`. Preserve your completed
+ECON branch/evidence. Fetch/pin the actual start; if main advanced in code, inspect
+the intervening accepted delta instead of blindly using a moving tip. Never reset,
+clean, rebase or merge another executor's worktree to adopt this task.
+
+Current identity: **state133 / ECONBK1 / PRNG5 / replay4 / command1**. Compose the
+existing public interfaces first. Test/tool-only additions do not warrant a state
+bump. Any required engine change that changes saved layout or deterministic
+trajectories needs an explicit compatibility decision before landing; do not amend
+published 133 silently or claim a new shared number without coordinating it with
+the orchestrator and first Mac. Independent fixture/planning work can continue.
+
+Ownership: you own this headless opening/expansion integration, bounded fixes to
+existing navigation/founding/cargo/placement contracts if proven necessary, and
+its replay/consumer evidence. First Mac owns cloth/hunting and salt extraction;
+Windows owns the live opening/settlement window. No new mining, hunting, production
+class, automated trade route, foreign trading, diplomacy, combat, renderer/UI,
+coordinator/test-runner repair campaign or global rule-default change. No widening
+cargo capacity, cheaper buildings, extra starting goods, altered maps or injected
+permissions to make the itinerary succeed.
+
+Keep ship starts, natural island differences, optional island sharing, peace,
+shared visibility and no alliances. Visibility never grants ownership permissions.
+No default house/economy flip; explicitly enable existing city booking in the
+main economic-accounting canary. Household behavior is not a prerequisite for
+this freight proof. Do not claim settlers or a self-sufficient balanced town.
+
+### Required reading, in order
+
+1. `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md` §§0.1–0.3,
+   `docs/testing/evidence-contract.md`, `docs/testing/README.md`, this packet.
+2. `docs/orchestration/reviews/2026-11-06-econ-book1-acceptance.md`,
+   `2026-11-06-econ-book1.md`, `2026-11-05-consolidation.md` and
+   `2026-11-05-map-integrate1.md` in the same directory: identities and limits.
+3. `docs/orchestration/gameplay-next-chain.md` (context, not additional scope),
+   `docs/sim/ship-start-bootstrap.md` (historical costs/dependencies, not current
+   enforcement status), `ship-start-integration.md`, `ship-navigation.md`,
+   `ship-founding.md`, `ship-cargo.md`, `forestry.md`, `road-placement.md`,
+   `economy-booking.md` and `state.md` under `docs/sim/`. Follow the relevant
+   original-evidence links when a contract is newly relied on or ambiguous.
+4. Read the current navigation/founding/cargo/BuildCmd implementations and their
+   callers using `rg` for `MoveCmd`, `FoundCmd`, `LoadCmd`, `UnloadCmd`,
+   `CityBookingLedger`, `RecordResult`, `CityRef`, `hold_count_a`, and cargo stock
+   debit/credit. Inspect `src/sim_load/src/ship_start.cpp`, `src/sim/src/apply.cpp`,
+   `founding.cpp`, `scheduler.cpp`, and relevant files actually found by `rg`.
+5. Find and reuse the sailed-founding, forester opening, cargo-load, bootstrap,
+   economy-loop, native/replay and owner-isolation fixtures. Read
+   `tools/cargo_ref.py`, `tools/sim_stream.py`, current state-133 fixtures and
+   `docs/app/ship-opening.md` for the Windows consumer interface. Read current
+   CMake fixture dependencies before adding a new recording producer.
+
+### E0 — safe adoption and acceptance plan
+
+Record source/status, host CPU/RAM/disk/tools, other running jobs and admission
+settings. Use the existing calibrated concurrency. Keep admission control enabled;
+let existing jobs finish and stop only exact owned PIDs. No pattern kills.
+
+Inventory which steps already work through public interfaces; do not rewrite them
+because a new package name exists. Produce an acceptance table with positive
+proof, distinguishing negative case, evidence and independent reviewer for each
+E1–E7 requirement. Identify stage, terrain, source, warehouse range, cargo and
+initial-material constraints before starting a long voyage. Run cheap canonical
+preflight and relevant existing contract checks first.
+
+**Exit:** clean successor, exact scope and source, reviewed execution plan.
+
+### E1 — legal itinerary and independent resource budget
+
+1. Use an unchanged accepted ship-start candidate, initially lan5-ship-a unless
+   a documented physical constraint requires another unchanged candidate. Do not
+   install it as the active map. Record complete manifest/content hashes.
+2. Find two distinct islands on which the same player's ship can legally found.
+   Establish an actual cuttable-tree site and a legal road/warehouse collection
+   path on the first. A rectangle/witness or Manhattan distance is not an engine
+   navigation, founding or producer-reachability proof.
+3. Search only on disposable planning copies, with explicit candidate/work caps
+   and retained failures. Revalidate the selected commands against the untouched
+   execution world. No teleports, ownership writes or modified resources in the
+   real run; planning state must not leak into the recording.
+4. Independently derive the bill from original data: two founding costs,
+   forester/tools/roads, optional receiving building, cargo holds and gold.
+   Include city upkeep during actual travel/production waits. Tools/food and
+   founding materials inherited from the original loadout remain named finite
+   inputs; do not describe them as newly produced.
+5. Plan the source warehouse's wood flow so newly produced export is identifiable.
+   Prefer zero initial/imported wood there and a forester/road construction bill
+   that does not consume warehouse wood. If any inherited wood enters the source,
+   track it explicitly and design a control that cannot pass by re-exporting it.
+   Establish that zero-stock cutoff through public construction/transfers, never
+   an initialization edit. Budget whole-ton loading and retained fractions: stock
+   448 raw permits loading 256 raw and leaves 192; do not relax LoadCmd rounding.
+6. Pin peace/shared visibility/no alliances as actual scenario assertions, without
+   confusing them with cargo ownership. Select a rival seat for later controls.
+
+**Exit:** independently reviewed feasible itinerary and exact resource budget.
+If no examined candidate works, record examined bounds and the first authoritative
+refusal; do not claim global impossibility from a partial search or change the map.
+Continue independent short contract/isolation work while resolving the dependency.
+
+### E2 — first settlement produces the export
+
+1. Through public commands, sail, found, unload only the declared required starting
+   supplies, place a forester and valid connecting roads, and wait for real worker
+   harvest and carrier delivery. Reuse accepted production contracts.
+2. Assert new wood arrives in this warehouse from that producer, with tree/raw/
+   output/in-flight/warehouse accounting as applicable. Record nonempty cuts and
+   deliveries, not just an end stock greater than zero.
+3. Load a bounded quantity of that warehouse's new wood into the actual owned ship.
+   Assert requested versus transferred amount, debit=credit, hold contents/order
+   and the remaining finite founding supplies. Assert the fractional source stock
+   retained after whole-ton loading. No test-only stock/bill writes.
+4. Use an unfaulted native planning/control fork before production to show the same
+   source-load request cannot obtain that export when production/delivery is
+   prevented through a supported public command. Keep the control separate from
+   the genuine world and account for its legitimate cost changes.
+
+**Exit:** newly produced wood is aboard via the existing LoadCmd, with a meaningful
+no-production control. Fungible cargo has no invented provenance field: attribution
+comes from the complete stock/transfer ledger and the control.
+
+### E3 — sail, found and build on the second island
+
+1. Sail the same ship normally with its actual crew/holds to the second island.
+   Observe arrival and valid dock/founding range, not only a target command being
+   accepted. Preserve the reviewed navigation limitations explicitly.
+2. Found a second city through FoundCmd and verify distinct island/city identity,
+   owner, footprint/height, territory and exact gold/material deductions. No direct
+   city creation in the real arm and no forced shared island.
+3. Unload the planned freight/tools through UnloadCmd. Assert both ship and city
+   sides of every transfer, capacity limits and no mutation of the first city.
+4. Before unloading, demonstrate an affordable-after-transfer building is refused
+   for missing goods, with unchanged world/payment; after unloading, place it
+   legally through BuildCmd and assert exact stock/gold debit and terrain height.
+   Use an existing supported affordable type, not a new production dependency.
+5. Explicitly distinguish the newly produced source export from original cargo
+   spent on founding and construction. Do not claim all second-city construction
+   materials were produced if tools or some wood came from the starting ship.
+
+**Exit:** one player's two genuine founded cities exist, and receiving freight has
+an actual construction consequence. No settlement-stage or balanced-economy claim.
+
+### E4 — return, repeat and exercise failure boundaries
+
+1. Sail back, load a second batch generated by further production, return and
+   unload it. Demonstrate at least two completed source-load/destination-unload
+   cycles; neither can be a repeated replay of the same credited transfer.
+2. In short companion fixtures, cover wrong owner, missing/destroyed warehouse,
+   out-of-range ship, stock shortage, full/mismatched holds, partial transfer and
+   repeated requests. Each must assert its actual refusal/partial result, both
+   balances and the applicable unchanged-state contract.
+3. Exercise a closer rival warehouse and correct own target selection through the
+   API's real ownership rules. A short clearly labelled synthetic geometry case
+   may provide this boundary; it is not the original-map voyage proof.
+4. Destroy or invalidate a target through a supported public command on a fork,
+   then issue the already-prepared request. Verify apply-time lookup/refusal;
+   cached pointers or previous selection success must not grant access.
+5. Preserve distinct worker homes, ownership, warehouse stocks and city accounting
+   across both islands. World-wide totals alone cannot establish isolation.
+6. Implement only demonstrated defects in the already-reviewed public contracts,
+   with a failing causal reproducer first and an independently reviewed fix.
+   New unexplored mechanics or broad refactors require a separate decision.
+
+**Exit:** repeatable manual resupply and meaningful ownership/stale-target/partial
+controls, without implementing automatic routes or cross-player commerce.
+
+### E5 — two-city economy, native continuation and fresh replay
+
+1. Run the genuine itinerary with city booking explicitly enabled. Assert every
+   owner's money change decomposes into construction/founding, resident income if
+   any, city upkeep, existing player upkeep and any legitimate script effects.
+   Require zero unexplained residual; zero resident income is a valid result for
+   this freight scenario. Do not silently omit player upkeep from the ledger.
+2. Verify two same-owner cities each charge their actual contributions once, with
+   independent bill/stamp/history state; rival treasury activity stays isolated.
+   Reuse the accepted simultaneous city/player-upkeep regression rather than
+   rebuilding ECON-BOOK's test suite. A short booking-disabled comparison isolates
+   that optional effect without duplicating the entire sailing campaign.
+3. Native cuts: loaded outbound ship, mid-voyage, immediately after second founding,
+   after a partial/complete unload, and during the return/second export. Compare
+   against uninterrupted state, outcomes, events and per-site PRNG draws at the
+   same logical checkpoints. Preserve carrying relationships and both cities.
+4. Record the actual public-command itinerary and replay it in a fresh process.
+   Register producer/consumer ordering and ensure artifacts belong to the exact
+   source/config. A changed legal load amount or destination/build command must
+   diverge causally after matching prior checkpoints, not merely fail decoding,
+   identity or legality at the start.
+5. Pin errors with discriminating fixtures: wrong warehouse debited, cargo credited
+   without debit, repeated transfer, and stale target accepted. Use existing
+   mutation seams or isolated restored copies; no mutation runs in active source.
+   Legal controls must execute and the intended assertion must catch the break.
+
+**Exit:** exact economic and goods accounting, multi-cut continuation and honest/
+changed-command replay. This is one-owner expansion plus adversarial owner tests,
+not real network multiplayer or physical ship collision acceptance.
+
+### E6 — reusable itinerary and bounded work
+
+1. Retain a reproducible command/recording recipe, site-selection evidence and
+   prerequisite checks that Windows can consume through its existing window
+   command adapters. No duplicate scripting language, direct state-mutating demo
+   launcher or UI implementation. Document exact selection targets, ranges and
+   visible results; distinguish planning coordinates from executed commands.
+2. Measure bounded route-query, cargo lookup and selection/diagnostic work at
+   several legal fixture sizes. Prefer operation counts; retain raw timings and
+   sample counts separately. No full-world scan added to each cargo command.
+   Do not turn a pre-existing navigation-scale limitation into an unrequested
+   rewrite; identify it precisely as an owned follow-up.
+3. Confirm typed API/config seams remain reusable with an alternate supported
+   ship/warehouse definition or goods role in a labelled short fixture. No
+   hardcoded island/type whitelist to make this itinerary pass.
+4. Record what still prevents a full town: finite tools, unavailable needs,
+   unverified resources, household defaults, future salt/cloth integration and
+   navigation limitations. Do not widen those tasks or claim them solved.
+
+**Exit:** Windows-consumable headless recipe, measured local cost and explicit
+remaining settlement dependencies.
+
+### E7 — frozen verification and final independent review
+
+Each package has an independent read-only reviewer distinct from its implementer.
+Review decisive primary facts/callers, nonempty legal controls and raw evidence;
+fix blocking findings and obtain focused re-review. Approval releases dependent
+packages without routine orchestrator pauses. A fresh final reviewer checks the
+combined itinerary, ownership, causal controls, accounting, identities and reuse.
+
+Run cheap checks and one short end-to-end pilot before the long itinerary.
+Freeze source before canonical gates with explicit source/build/targets and exact
+required reference/tool contracts. Inspect the selected inventory before launch.
+Run relevant Debug and ASan/UBSan command/navigation/founding/cargo/placement/
+economy/native/replay coverage and the real itinerary with its fresh replay under
+justified configurations. At least one current-source sanitizer execution must
+cover the new combined multi-island path; do not substitute world-creation/hash
+thread tests for actual sailing. Set timeout from a measured pilot, distinguish
+admission delay, and serialize long own lanes. Keep asset requirements explicit.
+
+Reuse unaffected broad/corpus/render evidence by dependency. Do not repeatedly
+run the old single-island opening to investigate a local cargo assertion. Restore
+and rebuild mutated copies before acceptance. Preserve first failures; report
+selected, executed, failed, empty, skipped and incomplete separately, without
+adding overlapping runs or treating prerequisites as headline test counts.
+
+Commit the final handoff and REPORTS entry with exact pins, the acceptance table,
+reviewer identities/dispositions, itinerary/budget/ledger, raw hashes, replay/native
+cuts, actual source changes, Windows delta and NOT_RUN limits. Update relevant
+specs where facts changed; do not edit TASKS.md. No unrelated coordinator/build
+workflow repair or large new report framework is assigned.
+
+**Stop:** E0–E7 reviewed, clean committed local candidate, two real founded islands
+and two freight cycles proved through public commands, exact ledgers/replay, no
+owned jobs remaining. Report once to the orchestrator; no main merge/push, default
+flip or next feature. A genuine unresolved dependency yields a precise bounded
+partial report after independent work is completed, never a fabricated full pass.
+Dispatch review: `/root/review_consolidation_plan` independently approved E0–E7
+after the whole-ton/fractional-stock correction. This approves the assignment,
+not an unexecuted itinerary or gameplay result.
+<!-- END MAP-EXPAND-1-MAIN -->
 
 ## Canonical main consolidation — 2026-11-05
 

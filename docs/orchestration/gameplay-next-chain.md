@@ -1,4 +1,10 @@
-**Dispatch update, 2026-11-06:** second Mac ECON-BOOK-1 B0–B7 is now released on
+**Dispatch update, 2026-11-06 (after ECON acceptance):** ECON-BOOK-1 is accepted
+on canonical main `303b3faf` / state 133. Second Mac MAP-EXPAND-1 E0–E7 is now released
+through TASKS.md: two-island manual resupply using existing accepted mechanics.
+First Mac retains cloth/hunting and its extraction follow-up; Windows retains
+live settlement work. Town/industry/progression packages remain queued.
+
+**Historical dispatch, 2026-11-06 (superseded above):** second Mac ECON-BOOK-1 B0–B7 was released on
 consolidated main through TASKS.md. First Mac retains MAP-NEEDS-2. The remaining
 queue below stays planning only; canonical baseline is state132, not the older
 identities in historical planning paragraphs.

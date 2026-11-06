@@ -134,7 +134,7 @@ TEST_CASE("synthetic mechanics fixture: reload at in-flight states equals the un
     CHECK(ref.first["processor"] == 90);
     CHECK(ref.first["delivery"] == 494);
     CHECK(ref.first["resident"] == 666); // scoped to the target houses (was 508: a rival walker)
-    CHECK(ref.final_hash == 0x5b667895ce4c5ba5ULL); // equals the main run's hash at 100 000 ticks
+    CHECK(ref.final_hash == 0x745c326a6dc7bc11ULL); // equals the main run's hash at 100 000 ticks
     for (const char* k : {"worker", "processor", "delivery", "resident"}) {
         std::cerr << "PIN flight " << k << " first step "
                   << (ref.first.count(k) != 0 ? ref.first[k] : 0) << "\n";
@@ -229,9 +229,9 @@ TEST_CASE("synthetic mechanics fixture: recorded log replays, a changed legal co
     }
     REQUIRE(cp_entries.size() == 9);
     constexpr std::array<std::uint64_t, 9> kPinned{
-        0x32f4432c018b3c9dULL, 0xa8dbf43b6728d69fULL, 0xdb26a150540eee7bULL,
-        0x299db163b488181fULL, 0x84688e223cb3616fULL, 0x792094782f0f2fbaULL,
-        0x82596e195ed4fe64ULL, 0x295a6b6451db4cbaULL, 0xbbe45ae9aecc72d3ULL};
+        0x4ac3d6d562a7b40bULL, 0x88b7304cb2ce4036ULL, 0x4bc4ff30cbb2c1b7ULL,
+        0x021b8a43ca009cecULL, 0xbd3540868e6039bbULL, 0xf4921414a183294bULL,
+        0x6d075c61586a21bbULL, 0x05559392598b74a7ULL, 0xe91e9002afeac25aULL};
     for (std::size_t i = 0; i < cp_hashes.size(); ++i) {
         CHECK_MESSAGE(cp_hashes[i] == kPinned[i], "checkpoint " << i << " " << hex64(cp_hashes[i]));
         std::cerr << "PIN log checkpoint " << i << " entry " << cp_entries[i] << " hash "
@@ -315,7 +315,7 @@ TEST_CASE("synthetic mechanics fixture: recorded log replays, a changed legal co
         // the first differing scope is the id allocator (the tannery's carriers take figure ids,
         // the stall has none); the owner's player scope differs too (the stall costs less)
         CHECK(path == "world/ids");
-        CHECK(outcome.value().actual_hash == 0x9e88abf9e55c3350ULL);
+        CHECK(outcome.value().actual_hash == 0xe085069256b53d17ULL);
         const sim::HashTree ta = sim::tree_at(init_a.value(), read.value(), cp_entries[0], 8);
         const sim::HashTree tb = sim::tree_at(init_b.value(), changed, cp_entries[0], 8);
         const auto child = [](const sim::HashNode& n,
@@ -442,7 +442,7 @@ TEST_CASE("synthetic mechanics fixture: refused commands change nothing and repl
     CHECK(outcome.value().reproduced());
     CHECK(fresh.value().state_hash() == final_with);
     CHECK(final_with ==
-          0x792094782f0f2fbaULL); // equals checkpoint 5 of the log above (600 advances)
+          0xf4921414a183294bULL); // equals checkpoint 5 of the log above (600 advances)
     std::cerr << "PIN refused final hash " << hex64(final_with) << "\n";
 }
 

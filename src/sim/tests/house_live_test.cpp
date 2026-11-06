@@ -1159,12 +1159,17 @@ TEST_CASE("house live F1: house updates with unsaved billed goods are refused at
     const std::vector<std::uint8_t> rb = rules_bytes(only_unsaved);
     const auto at = std::search(save.begin(), save.end(), rb.begin(), rb.end());
     REQUIRE(at != save.end());
-    REQUIRE(*(at + static_cast<std::ptrdiff_t>(rb.size()) - 2) == 0); // the house_updates byte
-    *(at + static_cast<std::ptrdiff_t>(rb.size()) - 2) = 1;
+    // Independent stream133 tail: house_updates, save_billed_goods, city_booking.
+    REQUIRE(rb.size() >= 3);
+    REQUIRE(rb[rb.size() - 3] == 0);
+    REQUIRE(rb[rb.size() - 2] == 0);
+    REQUIRE(rb.back() == 0);
+    *(at + static_cast<std::ptrdiff_t>(rb.size()) - 3) = 1;
     reseal_save(save);
     auto loaded = sim::World::load(save, types);
     REQUIRE_FALSE(loaded.ok());
     CHECK(loaded.error().find("save_billed_goods") != std::string::npos);
+    CHECK(loaded.error().find("house updates") != std::string::npos);
     // The cause control: the same patch with a stale checksum is a checksum error instead.
     std::vector<std::uint8_t> stale = save;
     stale[stale.size() - 1] ^= 1;

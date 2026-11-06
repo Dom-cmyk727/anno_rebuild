@@ -221,8 +221,9 @@ TEST_CASE("population B: the metadata is in the registry digest") {
 }
 
 TEST_CASE("population B: the digest layout of nonzero metadata, hand-written") {
-    // bau_first then id_sec, u32 each, after forsch, per goods (stream 127). The expected value is
-    // the FNV-1a 64 of an independent byte transcription, not TypeRegistry::digest of itself.
+    // Stream133: bau_first then id_sec, u32 each, after forsch; then one
+    // price-presence byte per goods. Expected FNV is a complete independent byte
+    // transcription, never TypeRegistry::digest used as its own expected answer.
     auto goods = sim::original_goods();
     goods[26].bau_first = 5;
     goods[28].id_sec = 33;
@@ -230,30 +231,39 @@ TEST_CASE("population B: the digest layout of nonzero metadata, hand-written") {
     b.goods(goods);
     auto built = b.build();
     REQUIRE(built.ok());
-    sim::StateHasher h;
-    h.u64(0); // no types
-    h.u64(goods.size());
-    for (const sim::GoodsInfo& g : goods) {
-        h.u64(g.name.size());
-        for (const char c : g.name) {
-            h.u8(static_cast<std::uint8_t>(c));
+    const auto hand_digest = [&](bool include_price_presence) {
+        sim::StateHasher h;
+        h.u64(0); // no types
+        h.u64(goods.size());
+        for (const sim::GoodsInfo& g : goods) {
+            h.u64(g.name.size());
+            for (const char c : g.name) {
+                h.u8(static_cast<std::uint8_t>(c));
+            }
+            h.u32(g.forsch);
+            h.u32(g.bau_first);
+            h.u32(g.id_sec);
+            REQUIRE_FALSE(g.prices.has_value());
+            if (include_price_presence)
+                h.u8(0); // no prices in this nonempty fixture
         }
-        h.u32(g.forsch);
-        h.u32(g.bau_first);
-        h.u32(g.id_sec);
-    }
-    const auto classes = sim::original_class_table();
-    h.u64(classes.size());
-    for (const sim::ClassInfo& c : classes) {
-        h.u8(static_cast<std::uint8_t>(c.cls));
-        h.u8(static_cast<std::uint8_t>(c.tick));
-        h.u8(static_cast<std::uint8_t>(c.payload));
-        h.u32(c.gate_period);
-    }
-    h.u64(0); // no figure types
-    h.u64(0); // no group table
-    h.u64(0); // no stage table (stream 128, L3)
-    CHECK(built.value()->digest() == h.value());
+        const auto classes = sim::original_class_table();
+        h.u64(classes.size());
+        for (const sim::ClassInfo& c : classes) {
+            h.u8(static_cast<std::uint8_t>(c.cls));
+            h.u8(static_cast<std::uint8_t>(c.tick));
+            h.u8(static_cast<std::uint8_t>(c.payload));
+            h.u32(c.gate_period);
+        }
+        h.u64(0); // no figure types
+        h.u64(0); // no group table
+        h.u64(0); // no stage table (stream 128, L3)
+        return h.value();
+    };
+    CHECK(built.value()->digest() == hand_digest(true));
+    // Plausible old-layout transcription must fail while all nonzero metadata
+    // and every other byte stay identical.
+    CHECK(built.value()->digest() != hand_digest(false));
     // A swapped order (id_sec first) would hash differently, so the order above is pinned.
     sim::StateHasher swapped;
     swapped.u32(33);

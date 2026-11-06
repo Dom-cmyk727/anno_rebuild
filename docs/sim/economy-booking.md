@@ -1247,3 +1247,64 @@ the ASAN gate; no coordinator/test_support/runner implementation changes.
 Completion still requires both frozen gates, any focused corrections, a fresh
 independent integration verdict and one REPORTS/consolidated handoff commit.
 No main merge, push, default flip or follow-on work is authorized.
+
+### B7 broad Debug result and reviewed fixture corrections
+
+The first Debug workflow stopped before selected execution because the1390-name
+flat regex exceeded CMake bytecode capacity (status5, CTestnull). A capture-heavy
+inventory attempt also failed and is retained. A compact include/exclude pattern
+was checked for exact equality against the same1390 names before Debug02. No
+runner/coordinator or tracked-source correction was needed for that workflow.
+
+Debug02 at clean `d77a9b1f917847ffd922813d8f6333b99f49707d` is **FAIL**:
+1390 selected,1384 executed passes,6 failed,0 empty/skipped/incomplete/sanitizer
+lines;15 exact prerequisite invocations separately pass1/1 each. Raw retained
+`cache/econ-book1/B7/canonical-debug-02.log`, SHA256
+`0523ba3f83034c0d2376a2e658c17977df9e4f51f7163d06845453cb2b5087b4`.
+`receipt-debug-02.json` freezes clean source, configuration, binaries, inventory,
+real-loop record and raw identities before any correction build. All four long
+physical opening cases additionally passed Debug at this pin. This failed gate
+is not relabelled after corrections.
+
+Fresh `/root/econ_b7_final_review` independently inspected all6 fixture failures:
+
+| Stable check | Old expectation / correction | Boundary retained or strengthened |
+|---|---|---|
+|house live F1 unsaved billed goods create/load|old two-flag tail offset now points at save policy; use explicit three-flag tail and patch house_updates at-3|valid load and stale-checksum controls; require both house-updates and saved-bills error terms|
+|population B hand-written nonzero metadata digest|per-good optional-price presence byte was omitted; transcribe literalu8(0) after IdSec|full independent byte transcript, assert all prices absent, deliberately omitted-byte digest disagrees|
+|SCRIPT1 published128 recordings|native refusal reader literal132→133|all11 original archive SHA256s and outer replay2 refusal unchanged|
+|SCRIPT2 hand-written header / empty runtime|literal current header132/SIMINT1→133/ECONBK1|independent16-byte header, legal full read, only schema byte4 corrupted, exact schema-boundary refusal; empty-runtime bytes unchanged|
+|SCRIPT1 resealed version/schema refusals|exact current reader literal132→133|actual current save, version-only128 and same-version schema mutation remain separately resealed/refused|
+|ship holds old-layout/truncation|current version assertion132→133|all historical refusal and actual truncated-hold assertions unchanged|
+
+The reviewer also found a current-version assertion in an otherwise excluded
+navigation file. Its exact `nav motion: save, load, save is byte-identical and
+every field reaches the hash` case is now required in focused Debug and final
+ASAN; its literal changes132→133, with independent per-field hash changes,
+byte-identical native roundtrip and historical-version refusals retained. This
+is a coverage correction, not authority to omit an affected identity consumer.
+Original Debug1390/excluded225 manifests remain exact; final affected inventory
+is1391/excluded224. The targeted correction is63 cases: all34 house_live,9
+population_goods,12 script_runtime,6 script_canary, the1 ship-holds refusal and
+this1 native navigation case. No financial/runtime/helper/fixture archive bytes
+change in this correction. Unaffected Debug passes may be reused only under this
+reviewed test-only delta; the63 corrected cases require their own canonical gate.
+
+Final ASAN selection is1388: originalDebug1390 minus exactly4 long default-off
+physical opening cases, plus the required actual UBSAN probe and the newly added
+native navigation case. Exact names/rationale are retained in
+`B7/asan-extra-reused-names.json`, `asan-scope-reuse.json` and reviewed final
+inventories. The four are bootstrap prefix; forester opening; two-participant
+sailed founding; and complete two-seat opening/reload/replay. Each uses faithful
+RealStart with booking disabled; no ship/nav/route/transport/harvest body changed.
+The founding owner value is consumed only by enabled financial accounting. Fast
+changed import/settings/founding/build/native/replay, all enabled booking and the
+complete actorful B5 loop remain selected. Reviewer accepts this precise reuse;
+no current-pin ASAN completion is claimed for those four cases.
+
+Prior UNIT130 opening ASAN2247.82s used a declared3600s timeout, and old SCRIPT2
+ASAN1800s remains failed. Thus the final900s ASAN limit is for remaining scoped
+cases, not the long openings. Remaining prior Debug maximum116.41s yields a
+conservative5×+120s admission=702.05s below900; B5 actual ASAN producer74.85s also
+supports this bound. Final actual inventory equality, focused Debug correction,
+ASAN terminal reconciliation and final independent approval remain pending.

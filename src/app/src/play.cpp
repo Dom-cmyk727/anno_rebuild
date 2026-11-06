@@ -734,8 +734,8 @@ struct DescribePayload {
     std::string operator()(const sim::Farm& f) const {
         return "out=" + tons(f.out) + " raw=" + tons(f.raw) +
                " activity=" + std::to_string(f.activity) +
-               " workers_out=" + std::to_string(f.workers_out) +
-               (f.suspended ? " suspended" : "") + (f.blocked ? " blocked" : "");
+               " workers_out=" + std::to_string(f.workers_out) + (f.suspended ? " suspended" : "") +
+               (f.blocked ? " blocked" : "");
     }
     std::string operator()(const sim::SmallFarm& f) const {
         // activity and figures_out are plain counters (a u16 average, a per-line/animal-kind
@@ -748,9 +748,9 @@ struct DescribePayload {
             figures += (i == 0 ? "" : ",") + std::to_string(f.figures_out[i]);
         }
         return "out=" + join_tons(f.out) + " raw=" + join_tons(f.raw) + " activity=" + activity +
-               " figures_out=" + figures + " status_code=" +
-               std::to_string(static_cast<int>(f.status.code)) + (f.suspended ? " suspended" : "") +
-               (f.blocked ? " blocked" : "");
+               " figures_out=" + figures +
+               " status_code=" + std::to_string(static_cast<int>(f.status.code)) +
+               (f.suspended ? " suspended" : "") + (f.blocked ? " blocked" : "");
     }
     std::string operator()(const sim::Mine& m) const {
         return "out=" + tons(m.out) + " activity=" + std::to_string(m.activity) +
@@ -805,7 +805,7 @@ std::string payload_kind_name(const sim::Payload& payload) {
 } // namespace
 
 std::optional<BuildingInspection> inspect_building(const sim::World& world, sim::CityRef city,
-                                                    sim::TileXY tile) {
+                                                   sim::TileXY tile) {
     const sim::Building* b = world.building_at(city, tile.x, tile.y);
     if (b == nullptr) {
         return std::nullopt;

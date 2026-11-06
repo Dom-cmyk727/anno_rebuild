@@ -120,9 +120,8 @@ struct BuildingInspection {
 /// inspection UI; nullopt when there is none. Read-only, never mutates `world`. Callable from any
 /// thread that owns a `const World&` for as long as the call takes (the sim thread, inside
 /// PlayRunner::publish; a test with its own World).
-[[nodiscard]] std::optional<BuildingInspection> inspect_building(const sim::World& world,
-                                                                 sim::CityRef city,
-                                                                 sim::TileXY tile);
+[[nodiscard]] std::optional<BuildingInspection>
+inspect_building(const sim::World& world, sim::CityRef city, sim::TileXY tile);
 
 /// What the window reads. Not a World.
 struct PlaySnapshot {

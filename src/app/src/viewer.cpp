@@ -1914,9 +1914,10 @@ void Viewer::script_tick() {
                      static_cast<unsigned long long>(drawn_frames_),
                      static_cast<unsigned long long>(trace_live_turn),
                      static_cast<unsigned long long>(trace_opening_turn),
-                     static_cast<long long>(trace_live_turn) - static_cast<long long>(trace_opening_turn),
+                     static_cast<long long>(trace_live_turn) -
+                         static_cast<long long>(trace_opening_turn),
                      st.facts.count("tracked.1.state") != 0 ? st.facts.at("tracked.1.state").c_str()
-                                                             : "<none>",
+                                                            : "<none>",
                      script_->log().empty() ? "" : script_->log().back().c_str());
     }
     if (act.look_world) {

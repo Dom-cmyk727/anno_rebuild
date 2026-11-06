@@ -12422,3 +12422,70 @@ Round R1 (orchestrator review, 2026-11-05) done on a fresh checkout
   step 0 has not happened yet; not pushed beyond the local branch as of this entry.
 - Time spent / subagents used: single session, no subagents; two build/test cycles (MSVC native,
   WSL ASan full gate ~2h45m wall clock dominated by the `app`/`render` lanes).
+
+## W4-OPENING-2 — W4-OPENING-CONTROLS-FLAKE steps 1-3 (root-cause and fix) — 2026-11-06 — status: FINISHED
+
+- Branch: `task/W4-opening-2` at `49ea97a3`; worktree: `E:\anno1503-worktrees\anno1503-W4-opening-2`.
+- Built (`49ea97a3`, one commit):
+  - `src/app/include/anno/app/dev_script.hpp`: added `DevScriptState::facts_turn` - the turn
+    `facts` reflects, distinct from the live `snapshot->turn` read fresh every call.
+  - `src/app/src/dev_script.cpp`: `wait turns N` now baselines and checks `facts_turn` instead of
+    `st.snapshot->turn`.
+  - `src/app/src/viewer.cpp`, `Viewer::script_tick()`: sets `st.facts_turn` to the turn
+    `opening_snapshot_` belongs to (equal to the live turn in a session without an opening, so no
+    behavior change there); added an opt-in diagnostic trace (`ANNO_DEV_SCRIPT_TRACE`, zero cost
+    unless set) logging, per call: `drawn_frames`, the live turn, the frame-gated
+    (`opening_snapshot_`) turn, their gap, `tracked.1.state`, and the script's last log line.
+- Mechanism, measured not reasoned (step 1): the trace was run directly against a real WSL ASan
+  `-j4` batch (not synthetic all-core `yes` busy loops - those stall the sim thread equally and
+  never open a gap, confirmed by a 290s contended run that stayed at gap 0-1 throughout; the real
+  flake needs the asymmetric contention of actual sibling ASan test processes). In
+  `cache/gates/wsl-o2trace-app.out`'s run (`/tmp/viewer_wiring_opening_controls_ulv46vgs/run.stderr.txt`,
+  not kept, paths recorded here), the live/frame-gated turn gap reached 3 at `drawn_frames=33/35`
+  (startup contention) elsewhere in the same 268-test `-j4` batch, while `opening_controls`'s own
+  `key h` / `wait turns 3` window (script lines 69-72) only reached gap 1 that run - PASS that
+  time, consistent with this task's own 2-of-3 history (`wsl-w18` FAIL, `wsl-w19` PASS, `wsl-w20`
+  FAIL): the race is real and reaches the exact margin (3) needed to flip the assertion, just not
+  on every run. This directly confirms the mechanism TASKS.md described as a hypothesis: `wait
+  turns 3`'s baseline/check (fresh `PlayFeedback::feedback()` every `script_tick()` call) can run
+  ahead of `opening_facts()`'s own `tracked.1.state` (built from `opening_snapshot_`, refreshed
+  only once per drawn frame in `draw()`/`opening_refresh()`, never in `script_tick()` itself).
+- Fix (step 2): close the gap at its source rather than add slack - `wait turns N` now reads the
+  same turn source the subsequent `expect fact ...` step will read (`facts_turn`), so it cannot
+  report "N turns later" as true before a frame exists whose facts show it. Not `ANNO_SANITIZE`-
+  scoped (unlike `3a2da9b9`'s deadline fix): the race is a real correctness gap in `wait turns`'
+  semantics for an opening session at any frame rate, just unreachably rare without contention: the
+  fix applies to every build.
+- Gates:
+  - `anno_app_input_tests -tc="dev script:*"` (native WSL build, ASan): 8/8 passed, 280/280
+    assertions, 25 skipped (pre-existing, unrelated) - no regression from the `DevScriptState`
+    field addition or the baseline-source change.
+  - Acceptance (step 3), same rebuilt WSL ASan binaries, no rebuild between runs, full `-j4` batch
+    each time (`^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.|^viewer_wiring_
+    (contract|r1_held_publication|r4_occupancy|cpu_delivery_failures|opening_controls)$|^opening_
+    session_replay$`, `--require-test` on the three contracts, matching `wsl-w18/19/20`'s own
+    methodology):
+    - r1: `cache/gates/wsl-fix-r1-app.log`, VERDICT PASS, 268 selected/266 executed/0 failed/2
+      opt-in skipped; `opening_controls` 178.86s standalone, 173.60s in the full batch.
+    - r2: `cache/gates/wsl-fix-r2-app.log`, VERDICT PASS, same counts; `opening_controls` 175.48s
+      standalone, 179.17s in the full batch.
+    - r3: `cache/gates/wsl-fix-r3-app.log`, VERDICT PASS, same counts; `opening_controls` 175.89s
+      standalone, 179.74s in the full batch.
+    - Three consecutive clean reruns, meeting this task's own bar (a single clean pass, as
+      `wsl-w19` showed, is explicitly not enough per this task's history).
+- Evidence: `cache/gates/wsl-o2trace-app.{out,log}` (the step-1 trace run, pre-fix binaries),
+  `cache/gates/wsl-fix-r{1,2,3}-app.{out,log}` (the step-3 acceptance reruns, post-fix binaries);
+  all gitignored, in the worktree, paths recorded here per the evidence contract. The per-test
+  session's own stderr capture (`/tmp/viewer_wiring_opening_controls_*/run.stderr.txt` inside WSL)
+  held the actual trace lines quoted above; not preserved past the session.
+- Reviewers: none yet - independent read-only package review for steps 1-3 is still open.
+- Left open / questions for the orchestrator or owner: step 4's first carry-forward (a turn-based
+  completion signal in place of a wall-clock deadline) was not needed here, since the fix is a
+  turn-source correction, not a deadline; still worth a look only if a *different* opening_controls-
+  style flake turns up elsewhere. Step 4's second carry-forward
+  (`coast_turned`/`deposit_turned` PRODTYPE list, `a315b51a`) is untouched, not in this fix's scope.
+  Not pushed; independent review has not happened for steps 1-3, same as step 0.
+- Time spent / subagents used: one fork (background investigation + fix), no further subagents;
+  roughly 4 real-time hours end to end, almost all of it WSL ASan `-j4` wall clock (one ~95 min
+  reproduction run under the pre-fix binaries, then three ~95-98 min acceptance reruns under the
+  fixed binaries - the MSVC/unit-test/native checks were each under a minute).

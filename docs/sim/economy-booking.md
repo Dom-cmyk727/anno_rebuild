@@ -7,9 +7,9 @@ That packet supersedes the historical research-only ownership, old base and
 pre-132 identity guidance below. Engine work follows independent contract review;
 this note does not declare the remaining lifecycle/policy research complete.
 
-Current execution: B0–B3 independently approved; B4 production integration on
+Current execution: B0–B4 independently approved; B5 real-loop implementation on
 `task/ECON-BOOK-1-main`, initially pinned to
-`3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; production booking/lifecycle wiring implemented; B4 review/gates pending.
+`3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; production booking/lifecycle wiring approved at ff095351.
 The second Mac owns B0–B7 under the dispatch above. Historical research/ownership
 and prior identity language below retain their actual dates and source pins.
 Existing rules remain unchanged; booking will be separately default-off.
@@ -304,7 +304,7 @@ The existing arithmetic research is approved only within its original-wrap model
 | B1d order | Actual island/city/effect/figure/player sequence; same- and cross-island owner preflight | Two cities each individually fit but second combined credit overflows; earlier house/script fault blocks booking; save_billed_goods=false cannot lose income | APPROVED4f644fc8; actual-boundary engine proofs remain B4 |
 | B2 independent references | Hand-pinned checked versus original-wrap vectors, lifecycle/order/width and smallest-positive/zero/partitioned timing | Width/order/double-charge/reset-before-fault mutants fail intended assertions; CLI empty/bad expected/incomplete refused | APPROVEDb62047ee by `/root/econ_b0_review`, canonical03 selected2/executed2, required3 invocations separate |
 | B3 facts/state/identity | Data-sized prices/roles; minimal authoritative stamp/stats/cost state;133/ECONBK1 populated byte oracle and native round-trip | Actual132 save/log refuses intended boundary; invalid dimensions/signed prices/unknown climate transactional; alternate generic types/roles | APPROVEDb7908bef by `/root/econ_b1_primary_review`; canonical correction02 selected69/passed69/others0, required7 invocations separate; first211 gate retained206/5 |
-| B4 production/lifecycle | Opt-in scheduler booking exactly once, full supported lifecycle, owner split and negative-balance continuation | Real last-city merge overflow leaves its money/bills/stats/stamp unchanged, queued prior effects accounted; default-off132 semantic controls | Focused Debug/ASAN, accounting mutants, independent engine review required |
+| B4 production/lifecycle | Opt-in scheduler booking exactly once, full supported lifecycle, owner split and negative-balance continuation | Real last-city merge overflow leaves its money/bills/stats/stamp unchanged, queued prior effects accounted; default-off132 semantic controls | APPROVEDff095351 by `/root/econ_b0_review`; corrected Debug/ASAN each34/34, all other categories0; atomic P2 fixed and regression negative verified |
 | B5 actual loop | Cheap original Tutorial path, new goods reach several households, bills/income/upkeep exact, public shortage/recovery, owner/city isolation | No starting-stock-as-production or grant in real arm; explicit component versus strict loader refusal; legal altered command diverges causally | Native cuts and genuine fresh replay artifacts; independent real-ledger review required |
 | B6 scaling/consumer | Three nonempty legal sizes, city/goods operation counts and modest Release samples, unrelated objects do not add global scans | Fixture legality/positive bookings first; no latency threshold or multiplayer performance claim | Host/raw manifests and Windows data/events/refusal/config contract required |
 | B7 frozen closeout | Corrected focused Debug/ASAN, relevant full coverage, required refs/CLI, real loop integrated once per configuration, format/lint | Keep first failures/known skips distinct; fresh final reviewer checks interactions and default-off/primary/replay claims | One final REPORTS+handoff, clean local candidate; no main merge/push |
@@ -915,3 +915,17 @@ purchases happen later in the figure phase. The actual House-fault control fixes
 the test setup; no phase was moved to make it pass. Corrected exploration02:
 15/15 cases,956 assertions. Independent re-review and focused correction gates
 remain pending at this paragraph's commit.
+
+
+### B4 approval and release
+
+`/root/econ_b0_review` independently APPROVED clean
+`ff0953518e7d37872abde1e1f78cc92a8901e3ba`, no remaining P1/P2. Corrected
+Debug02 and ASan/UBSan02 each selected34/executed34, failed/empty/skipped/
+incomplete/sanitizer0, six required invocations each1/1 separately, GATE_END0.
+Debug02 SHA256 `22d05637656a32614268b71bf14c68ff6611a666ed7280b86e746a4070ca5c6e`;
+ASAN02 SHA256 `0e619055e79c79d312f04e9076db834ff369e5166cdc872cca9db6ed56c20d48`.
+`B4/receipt.json` freezes binary/config/selector/fixture identities; reviewer notes
+retained `/private/tmp/econ-book1-b4-review.md`. The d55 gates remain evidence for
+the original source only. B5 is automatically released; its original economic
+loop and B7 final interactions are still required.

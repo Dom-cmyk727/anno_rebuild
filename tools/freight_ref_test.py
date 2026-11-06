@@ -55,7 +55,8 @@ def main():
             {"direction": 0, "goods": 42, "tons": 1}]
         probe(wrong, "group quantity overflow")
         probe(json.dumps(cases[0]) + "\n" + json.dumps(cases[0]), "duplicate/malformed names", True)
-        wrong = copy.deepcopy(cases[-1]); wrong["input"]["stops"] = []
+        wrong = copy.deepcopy(next(case for case in cases if case["kind"] == "assign_wire"))
+        wrong["input"]["stops"] = []
         probe(wrong, "nonempty stop list")
         invoke(["check", str(Path(tmp) / "missing.jsonl")], False, "freight reference:")
         invoke(["unknown", str(fixture)], False, "usage:")

@@ -1611,16 +1611,20 @@ struct Windows {
     std::vector<Snap> p1, p2, p3; // 500-step windows
     std::map<sim::DrawSite, std::uint64_t> draws;
     std::vector<std::uint64_t> cursors;
+    std::uint64_t start_salz = ~0ULL, start_ore = ~0ULL; // the store at the start of the run (the low-stock setup)
 };
 
-/// The chain, interrupted and restored: phase 1 (2,000 steps) establishes it from the low-stock
-/// setup, phase 2 (3,000) runs interrupted, phase 3 (3,000) runs restored; the ledger must close at
+/// The chain, interrupted and restored: phase 1 (1,000 steps) establishes it from the low-stock
+/// setup, phase 2 (4,000) runs interrupted, phase 3 (3,000) runs restored; native state, ledger and
+/// save/load are checked at once after the cut and after the restoration, and again at every phase end; the ledger must close at
 /// the end of every phase.
 template <class Interrupt, class Restore>
 Windows run_interruption(const char* name, Interrupt interrupt, Restore restore, bool print, bool instant = false, bool live = true) {
     Windows out;
     auto x = start_x(true, live);
     if (!x.c) return out;
+    out.start_salz = city_of(x.c->sw.w).stock.stock[kSalz];
+    out.start_ore = city_of(x.c->sw.w).stock.stock[kSalzstein];
     const auto phase = [&](std::vector<Snap>& v, int windows, const char* label) {
         for (int i = 0; i < windows; ++i) {
             const Snap a = snap(x);
@@ -1630,11 +1634,19 @@ Windows run_interruption(const char* name, Interrupt interrupt, Restore restore,
         closed2(terms2(x), label);
         CHECK(x.c->sw.w.check_invariants().empty());
     };
+    const auto immediately = [&](const char* label) {
+        // native state checked at once after a cut or a restoration, before any tick
+        CHECK(x.c->sw.w.check_invariants().empty());
+        closed2(terms2(x), label);
+        validate_and_reload(x, label);
+    };
     phase(out.p1, 2, "P1");
     interrupt(x);
+    immediately("at the cut");
     if (instant) restore(x);
     phase(out.p2, 8, "P2");
     if (!instant) restore(x);
+    immediately("at the restoration");
     phase(out.p3, 6, "P3");
     validate_and_reload(x, name);
     out.draws = x.c->draws;
@@ -1701,6 +1713,11 @@ Windows control_run(bool live = true) {
 template <class Interrupt, class Restore>
 void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore restore, bool quiet_worlds = true) {
     const Windows control = control_run(true);
+    // the low-stock setup is applied alike in every arm (it is the baseline the comparison stands on)
+    CHECK(live_run.start_salz == 0);
+    CHECK(live_run.start_ore == 0);
+    CHECK(control.start_salz == 0);
+    CHECK(control.start_ore == 0);
     const auto stable = {sim::DrawSite::HouseWalkerTarget, sim::DrawSite::HouseVariant, sim::DrawSite::FarmWorkerDispatch};
     const auto minus_sites = [](std::map<sim::DrawSite, std::uint64_t> m, std::initializer_list<sim::DrawSite> sites) {
         for (const sim::DrawSite site : sites) m.erase(site);
@@ -1711,10 +1728,16 @@ void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore resto
     if (!quiet_worlds) return;
     const Windows quiet_control = control_run(false);
     const Windows instant = run_interruption("quiet-instant", interrupt, restore, false, true, false);
+    CHECK(quiet_control.start_salz == 0);
+    CHECK(quiet_control.start_ore == 0);
+    CHECK(instant.start_salz == 0);
+    CHECK(instant.start_ore == 0);
     REQUIRE(instant.cursors.size() == quiet_control.cursors.size());
     CHECK(instant.cursors.back() == quiet_control.cursors.back()); // the same number of draws overall
     CHECK(instant.draws == quiet_control.draws);                     // at every site
     const Windows quiet = run_interruption("quiet", interrupt, restore, false, false, false);
+    CHECK(quiet.start_salz == 0);
+    CHECK(quiet.start_ore == 0);
     auto minus = [](std::map<sim::DrawSite, std::uint64_t> m, std::initializer_list<sim::DrawSite> sites) {
         for (const sim::DrawSite site : sites) m.erase(site);
         return m;
@@ -1776,19 +1799,18 @@ TEST_CASE("salt interruption X4: the road cut and rebuilt") {
 TEST_CASE("salt interruption X4: the markets that carry the salt demolished and not restorable") {
     std::vector<Placed> markets;
     sim::Reject rebuild = sim::Reject::None;
-    const Windows w = run_interruption(
-        "markets",
-        [&](XChain& x) {
-            for (const Placed& p : placed_of(x.c->sw.w, 1305))
-                if ((p.x == 346 && p.y == 346) || (p.x == 346 && p.y == 371)) markets.push_back(p);
-            REQUIRE(markets.size() == 2);
-            demolish_x(x, kMarketTiles);
-        },
-        [&](XChain& x) {
-            // the market type is not buildable for the player (permission): the link cannot be restored
-            rebuild = x.c->sw.w.apply(build_cmd({sim::PlacementWire{sim::TypeId{1305}, markets[0].x, markets[0].y, markets[0].rot, 0, 0}})).status;
-        },
-        false);
+    const auto interrupt = [&](XChain& x) {
+        markets.clear();
+        for (const Placed& p : placed_of(x.c->sw.w, 1305))
+            if ((p.x == 346 && p.y == 346) || (p.x == 346 && p.y == 371)) markets.push_back(p);
+        REQUIRE(markets.size() == 2);
+        demolish_x(x, kMarketTiles);
+    };
+    const auto restore = [&](XChain& x) {
+        // the market type is not buildable for the player (permission): the link cannot be restored
+        rebuild = x.c->sw.w.apply(build_cmd({sim::PlacementWire{sim::TypeId{1305}, markets[0].x, markets[0].y, markets[0].rot, 0, 0}})).status;
+    };
+    const Windows w = run_interruption("markets", interrupt, restore, false);
     if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
     CHECK(rebuild == sim::Reject::ConstructionDenied);
     // no cart lifts the SALZ any more: the saltworks fills up and stops, nothing reaches the store
@@ -1797,6 +1819,19 @@ TEST_CASE("salt interruption X4: the markets that carry the salt demolished and 
     CHECK(all_zero(w.p2, 4, true, true, true, true, true));
     // and there is no recovery without the restorable link
     CHECK(all_zero(w.p3, 0, true, true, true, true, true));
+    draws_unchanged(w, interrupt, restore);
+}
+
+TEST_CASE("salt interruption X4: the saltworks demolished and rebuilt") {
+    const auto interrupt = [](XChain& x) { demolish_x(x, {{kWorksX, kWorksY}}); };
+    const auto restore = [](XChain& x) { build_x(x, 1022, kWorksX, kWorksY, 0); };
+    const Windows w = run_interruption("saltworks", interrupt, restore, false);
+    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    // the mine goes on until its output is full and then stops; no ore is processed, no salt arrives
+    CHECK(all_zero(w.p2, 0, true, false, false, false, false));
+    CHECK(all_zero(w.p2, 4, true, true, true, true, true));
+    CHECK(all_positive(w.p3, 3, true, true, true, true, true));
+    draws_unchanged(w, interrupt, restore);
 }
 
 TEST_CASE("salt interruption X4: the stalls demolished and rebuilt") {
@@ -2194,7 +2229,7 @@ std::optional<TwoOwners> two_owners(bool with_rival, bool build_rival = true, bo
             return {};
         };
         if (rival_mine_on) t.rival_mine = place(1203, 356, 360, 361, 363);
-        if (rival_works_on) t.rival_works = place(1022, 340, 346, 352, 364);
+        if (rival_works_on) t.rival_works = place(1022, 346, 346, 352, 364); // x 346..349: beside the trunk road at x = 350
     }
     c.mine = build_x(t.x, 1203, 359, 369, 1);
     return t;
@@ -2203,6 +2238,49 @@ std::optional<TwoOwners> two_owners(bool with_rival, bool build_rival = true, bo
 sim::CityNo city_no_of(const sim::World& w, sim::BuildingId id) {
     const auto it = isle(w).cache.by_id.find(id);
     return it == isle(w).cache.by_id.end() ? sim::CityNo{0xffffU} : it->second.city.city;
+}
+
+} // namespace
+
+namespace {
+
+/// The rival city's own chain ledger (mine -> saltworks; it has no market, so its SALZ stays in its
+/// saltworks): the same terms as ours, scoped to the rival's buildings and figures.
+struct RivalTerms {
+    std::uint64_t mine_made = 0, mine_out = 0, ore_loaded = 0, works_in = 0, works_consumed = 0, works_made = 0,
+                  works_out = 0, salz_loaded = 0, ore_cargo = 0;
+    std::int64_t u_mine = 0, u_ore = 0, u_made = 0;
+};
+
+RivalTerms rival_terms(TwoOwners& t) {
+    RivalTerms r;
+    sim::World& w = t.x.c->sw.w;
+    const sim::TransportStats& st = t.x.c->stats;
+    const auto get = [](const auto& m, const auto& k) -> std::uint64_t {
+        const auto it = m.find(k);
+        return it == m.end() ? 0U : it->second;
+    };
+    r.mine_made = get(st.forestry.mine_made_88, t.rival_mine);
+    r.ore_loaded = get(st.loaded_from, t.rival_mine);
+    if (const sim::Building* m = w.find_building(t.rival_mine)) r.mine_out = std::get<sim::Mine>(m->payload).out;
+    if (const sim::Building* b = w.find_building(t.rival_works)) {
+        const auto& ws = std::get<sim::Workshop>(b->payload);
+        r.works_in = ws.in.at(0);
+        r.works_out = ws.out.at(0);
+    }
+    if (const auto it = st.forestry.workshops.find(t.rival_works); it != st.forestry.workshops.end()) {
+        r.works_consumed = it->second.consumed_88.at(0);
+        r.works_made = it->second.made_88.at(0);
+    }
+    r.salz_loaded = get(st.loaded_from, t.rival_works);
+    for (const auto& f : w.figures().list.slots)
+        if (f && !f->expiry_stamp.has_value() && f->owner == t.rival && f->cargo_goods == kSalzstein && !f->resident)
+            r.ore_cargo += f->cargo_88;
+    const auto I = [](std::uint64_t v) { return static_cast<std::int64_t>(v); };
+    r.u_mine = I(r.mine_made) - I(r.mine_out) - I(r.ore_loaded);
+    r.u_ore = I(r.ore_loaded) - I(r.ore_cargo) - I(r.works_in) - I(r.works_consumed);
+    r.u_made = I(r.works_made) - I(r.works_out) - I(r.salz_loaded);
+    return r;
 }
 
 } // namespace
@@ -2222,7 +2300,9 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
     {
         sim::DemolishCmd dem;
         dem.city = sim::CityRef{sim::IslandId{1}, sim::CityNo{1}};
-        dem.tiles = {{356, 361}, {340, 354}};
+        const sim::Building* rw = gone->x.c->sw.w.find_building(gone->rival_works);
+        REQUIRE(rw != nullptr);
+        dem.tiles = {{356, 361}, {rw->x, rw->y}};
         REQUIRE(gone->x.c->sw.w.apply(sim::Command{gone->rival, dem}).ok());
     }
     for (TwoOwners* t : {&*two, &*solo, &*cut_only, &*unbound, &*gone}) step_chain(*t->x.c, 3000);
@@ -2240,7 +2320,17 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
         CHECK_MESSAGE(a == b, "load of " << n << " from city " << a.v << " by a figure of city " << b.v);
     }
     CHECK(resolved > 0);
-    // our saltworks never lifted the rival's ore; the rival's ore stays in its mine
+    // positive control: the rival's own chain runs (its saltworks, beside the same trunk road, lifts its own mine's
+    // ore and makes salt) and ITS ledger closes, so the cross-owner zeros below are not vacuous
+    CHECK(two->x.c->stats.loaded_by_home[{two->rival_mine, two->rival_works}] > 0U);
+    {
+        const RivalTerms rt = rival_terms(*two);
+        CHECK(rt.works_made > 0);
+        CHECK(rt.u_mine == 0);
+        CHECK(rt.u_ore == 0);
+        CHECK(rt.u_made == 0);
+    }
+    // our saltworks never lifted the rival's ore; the rival's saltworks never lifted ours
     CHECK(two->x.c->stats.loaded_by_home[{two->rival_mine, two->x.c->works}] == 0U);
     CHECK(two->x.c->stats.loaded_by_home[{two->x.mines[0], two->rival_works}] == 0U);
     // single-owner control: our ledger closes in both worlds and the rival changed none of OUR flows
@@ -2276,25 +2366,51 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
 TEST_CASE("salt interruption X4: the Kontor is not a link of the chain") {
     // The warehouse (Kontor 1306) is far from the salt chain; the city store is the CITY's, reached by the
     // markets' carts at unload and by the stalls at purchase, not through the Kontor building. Demolishing it
-    // leaves production, receipts, purchases and deliveries going (ledger closed, save/load valid).
+    // leaves production, receipts, purchases and deliveries going (ledger closed, save/load valid), and the
+    // salt chain's flows stay positive in every window.
     sim::Reject st = sim::Reject::Unsupported;
-    const Windows w = run_interruption(
-        "kontor",
-        [&](XChain& x) {
-            sim::DemolishCmd dem;
-            dem.city = kSaltCity;
-            dem.tiles = {{268, 293}};
-            REQUIRE(building_on(x.c->sw.w, 268, 293) != nullptr);
-            REQUIRE(building_on(x.c->sw.w, 268, 293)->type.v == 1306);
-            st = x.c->sw.w.apply(sim::Command{kSaltPlayer, dem}).status;
-        },
-        [](XChain&) {}, false);
+    const auto interrupt = [&](XChain& x) {
+        sim::DemolishCmd dem;
+        dem.city = kSaltCity;
+        dem.tiles = {{268, 293}};
+        REQUIRE(building_on(x.c->sw.w, 268, 293) != nullptr);
+        REQUIRE(building_on(x.c->sw.w, 268, 293)->type.v == 1306);
+        st = x.c->sw.w.apply(sim::Command{kSaltPlayer, dem}).status;
+    };
+    const auto restore = [](XChain&) {};
+    const Windows w = run_interruption("kontor", interrupt, restore, false);
     if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
     CHECK(st == sim::Reject::None);
     CHECK(all_positive(w.p2, 1, true, true, true, true, true));
     CHECK(all_positive(w.p3, 0, true, true, true, true, true));
+    const Windows control = control_run();
+    const auto same = [](const std::vector<Snap>& a, const std::vector<Snap>& b) {
+        if (a.size() != b.size()) return false;
+        for (std::size_t i = 0; i < a.size(); ++i)
+            if (a[i].works_made != b[i].works_made || a[i].mine_made != b[i].mine_made || a[i].unloaded != b[i].unloaded ||
+                a[i].taken != b[i].taken || a[i].delivered != b[i].delivered)
+                return false;
+        return true;
+    };
+    // before the cut the two runs are identical; after it the flows stay positive but are NOT byte-equal to the
+    // control (the Kontor's carts serve other producers of the city, so its removal shifts timing elsewhere:
+    // the chain's windows move by a few units, the claim is only that no window of the salt chain stops)
+    CHECK(same(w.p1, control.p1));
+    // PRNG: only the existing state-following sites may differ (the Kontor's removal is not a no-op for the
+    // rest of the economy, unlike the instant demolish-and-rebuild of the chain's own links)
+    const Windows quiet = run_interruption("kontor-quiet", interrupt, restore, false, false, false);
+    const Windows quiet_control = control_run(false);
+    const auto minus3 = [](std::map<sim::DrawSite, std::uint64_t> m) {
+        m.erase(sim::DrawSite::HouseWalkerTarget);
+        m.erase(sim::DrawSite::HouseVariant);
+        m.erase(sim::DrawSite::FarmWorkerDispatch);
+        return m;
+    };
+    CHECK(minus3(quiet.draws) == minus3(quiet_control.draws));
+    CHECK(minus3(w.draws) == minus3(control.draws));
+    CHECK(quiet.start_salz == 0);
+    CHECK(quiet_control.start_salz == 0);
 }
-
 
 TEST_CASE("salt mine: a refused mine command is logged and the log reproduces") {
     // Reject::NoDepositInReach is appended at the end of the enum. A Reject is a host-facing answer: it is

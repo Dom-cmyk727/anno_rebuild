@@ -653,3 +653,27 @@ destination arrival Wait, return after first delivery) and independently derived
 the1000g/26↔28t ledger. Planning agreement is not R5/R6 acceptance; actual pilot
 reachability, new-production provenance and full suffixes remain pending.
 Route-only136 stays based134 with no salt135; no defaults changed.
+
+### Portable MAIN-CI-1 intake checkpoint
+
+Read main board/report at96775da4; no merge. Separately adapted the15 applicable
+portable files from repair-only d1a2e191..92e4817b atbba78fce: checked local script
+transaction targets, portable test includes/references/null checks, final-location
+nonmovable farm statistics fixtures, truthful script/economy consumer prerequisites
+and metadata-only port0 isolation. No conflict resolution, gameplay/default/schema
+change, salt135 or app/Windows intake. Omits main134 economy fixture/path and board.
+
+Independent `/root/expand_e2_review` approved clean052d7143. Gate01:99selected,
+98executed passes,1failed stale134 header literal, five required separately.
+Gate02 retains a diagnostic-string assertion mistake in the new134 refusal check.
+Gate03 at052d7143:1/1 header case plus two required separately, all other0.
+The corrected16 hand bytes are136u32/ECONBK1u64/PRNG5u32; old134 explicitly fails.
+Only that test changed after the98passes, reused with this dependency; no99/99
+single-run claim. Raw logs and pre-rebuild hashes remain in
+`cache/route1/ci-intake/receipt-0{1,2,3}.json`; review in `reviews/ci-intake.md`.
+
+Historical root economy-loop checkpoint pins still say133 and are not valid136
+expectations. No full original economy-loop acceptance is claimed by this intake.
+Any later affected full economy loop requires independently attributed136 pins,
+preserving133/134; copying main134 expectations is excluded. R5 current136 city/
+money proof remains independent of that historical canary.

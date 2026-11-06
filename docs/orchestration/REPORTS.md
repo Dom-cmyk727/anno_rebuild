@@ -13596,3 +13596,15 @@ Found/manual takeover reviewed. No original canary claim yet; R5 released.
 Retain route-only136/ECONBK1/PRNG5/replay4/command1/native1, no salt/default/UI
 intake. Read MAIN-CI-1 at fetched96775da4 withoutmerge; applicable portable
 repairs will be a separate adapted/reviewed commit, excluding134 fixture pins.
+
+
+### MAP-ROUTE-1 — portable CI repairs approved without identity integration
+
+Source052d7143, independent `/root/expand_e2_review` APPROVE.15 applicable
+portable files from d1a2e191..92e4817b, no moving-main merge or134 fixture/board/
+salt/default/UI intake. Canonical01 98passes/1stale header failure, preserved;
+header-only correction and explicit134 refusal canonical03 1/1+2 separate, all
+other0;98unchanged passes reused explicitly. Diagnostic-only second attempt
+retained. Historical economy133 pins remain stale/unaccepted for136, not copied
+from main134. Exact receipts/review in route1/ci-intake and route1/reviews.
+R5 released; automatic original proof still pending.

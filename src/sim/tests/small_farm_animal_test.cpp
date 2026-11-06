@@ -143,7 +143,7 @@ TEST_CASE("small farm animals: grass is grazed, credited to raw 1 and made into 
     CHECK(fs.raw_credited_88 == 5 * 256);
     CHECK(fs.raw_delivered_88 == 5 * 256);
     CHECK(fs.raw_lost_88 == 0);
-    for (const auto [x, y] : std::vector<std::pair<int, int>>{
+    for (const auto& [x, y] : std::vector<std::pair<int, int>>{
              {113, 111}, {113, 112}, {111, 113}, {112, 113}, {109, 113}}) {
         CHECK(object_at(p.w, x, y) == kGrassYoung.v);
     }
@@ -298,7 +298,7 @@ TEST_CASE("small farm animals: the home destroyed with animals out, in each phas
         CHECK(p.stats.forestry.raw_delivered_88 == 0);
         CHECK(p.stats.forestry.raw_lost_88 >= carried);
         const sim::Island& is = *p.w.islands()[0];
-        for (const auto [x, y] :
+        for (const auto& [x, y] :
              std::vector<std::pair<int, int>>{{113, 111}, {113, 112}, {111, 113}}) {
             CHECK((is.tiles.aux(is.tile_index(x, y)) & sim::kTileClaim) == 0);
         }

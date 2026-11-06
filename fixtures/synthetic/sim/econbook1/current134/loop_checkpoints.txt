@@ -1,0 +1,11 @@
+# Engine recording, complete normal Tutorial input, state134 ECONBK1.
+# All seven roots independently reconstruct the preserved133 pins when ONLY
+# the header version is changed; no new gameplay or arithmetic baseline.
+# entry tick hash
+39 1950 c0b3d42814790157
+41 2000 709de7de76036e97
+3002 150000 1a8a2dfaf261864a
+3804 190000 d4da4ddbccacafd9
+5405 270000 f1518f252c69e590
+6207 310000 62b34e76003f7f3b
+10208 510000 e2ea0760cdc0d8c5

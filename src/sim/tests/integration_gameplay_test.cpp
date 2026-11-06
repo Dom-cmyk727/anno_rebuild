@@ -109,6 +109,18 @@ const sim::Figure* worker(const sim::World& w) {
             return &*slot;
     return nullptr;
 }
+bool worker_is_cut(const sim::World& w) {
+    const auto* current = worker(w);
+    if (!current)
+        return false;
+    REQUIRE(current->harvest);
+    return current->harvest->step == sim::HarvestStep::Cut;
+}
+const sim::Player& player(const sim::World& w, sim::PlayerId id) {
+    const auto* current = w.players().find(id);
+    REQUIRE(current != nullptr);
+    return *current;
+}
 void actors_intact(const sim::World& w) {
     REQUIRE(w.figures().list.slots[37]);
     REQUIRE(w.figures().list.slots[2]);
@@ -171,7 +183,7 @@ TEST_CASE("integration joint: Pending INIT permissions and imported slots coexis
     rec.value().advance(0);
     sim::run_frame(pending.value(), nullptr, {}, 0);
     CHECK(w.save() == pending.value().save());
-    CHECK(w.players().find(sim::PlayerId{0})->money == 10007);
+    CHECK(player(w, sim::PlayerId{0}).money == 10007);
     auto events = w.drain_events();
     CHECK(events == pending.value().drain_events());
     CHECK(std::count_if(events.begin(), events.end(), [](const auto& e) {
@@ -187,16 +199,17 @@ TEST_CASE("integration joint: Pending INIT permissions and imported slots coexis
     rec.value().advance(1000);
     rec.value().advance(0);
     REQUIRE(w.construction_eligibility(sim::PlayerId{0}, target_type).allowed());
-    REQUIRE(worker(w));
-    CHECK(worker(w)->id == sim::FigureId{4});
+    const auto* started_worker = worker(w);
+    REQUIRE(started_worker != nullptr);
+    CHECK(started_worker->id == sim::FigureId{4});
     REQUIRE(w.figures().list.slots[8]);
     CHECK(w.figures().list.slots[8]->id == sim::FigureId{4});
     CHECK(farm(w).figures_out[0] == 1);
     actors_intact(w);
-    const auto money = w.players().find(sim::PlayerId{0})->money;
+    const auto money = player(w, sim::PlayerId{0}).money;
     const auto stock = w.islands()[0]->city(sim::CityNo{0})->stock.stock;
     REQUIRE(rec.value().submit(cmd).ok());
-    CHECK(money - w.players().find(sim::PlayerId{0})->money == 300);
+    CHECK(money - player(w, sim::PlayerId{0}).money == 300);
     const auto& after = w.islands()[0]->city(sim::CityNo{0})->stock.stock;
     CHECK(stock[41] - after[41] == 768);
     CHECK(stock[42] - after[42] == 1024);
@@ -246,8 +259,7 @@ TEST_CASE("integration joint: active worker Ready script nested actors and trans
         REQUIRE(started);
         sim::TransportStats pre;
         w.set_transport_stats(&pre);
-        for (int i = 0;
-             i < 2000 && (!worker(w) || worker(w)->harvest->step != sim::HarvestStep::Cut); ++i)
+        for (int i = 0; i < 2000 && !worker_is_cut(w); ++i)
             w.advance(100);
         const auto* active = worker(w);
         REQUIRE(active);
@@ -338,8 +350,7 @@ TEST_CASE("integration joint: repeated public worker end releases once and prese
     for (bool hygiene : {false, true}) {
         auto w = authored(*o, hygiene);
         REQUIRE(w.initialize_scripts().empty());
-        for (int i = 0;
-             i < 2000 && (!worker(w) || worker(w)->harvest->step != sim::HarvestStep::Cut); ++i)
+        for (int i = 0; i < 2000 && !worker_is_cut(w); ++i)
             w.advance(100);
         const auto* live = worker(w);
         REQUIRE(live);

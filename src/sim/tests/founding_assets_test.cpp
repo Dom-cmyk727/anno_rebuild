@@ -4099,8 +4099,7 @@ Plan plan(const sim::World& pristine, const RealStart& rs) {
         std::uint64_t{std::get<sim::Farm>(trial.find_building(forest_id)->payload).out};
     for (const auto& f : trial.figures().list.slots) {
         if (f && !f->expiry_stamp && f->home == warehouse && f->job == sim::kJobMarketCart &&
-            f->cargo_goods == wood &&
-            (!f->transport || f->transport->step != sim::TransportStep::Done)) {
+            f->cargo_goods == wood && f->transport.step != sim::TransportStep::Done) {
             result.old_wood_pipeline += f->cargo_88;
         }
     }

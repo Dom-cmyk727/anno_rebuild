@@ -13548,3 +13548,18 @@ remain cache/route1/R1, review cache/route1/reviews. Actual unmodified134 native
 and pinned old-reader6/6 are preserved. R2 released; runtime still134 at this
 checkpoint. Reserved136 is route-only, excludes salt135 and moving main. No
 original-runtime or Windows/Linux gate claim; no src/app/other-worktree edits.
+
+
+## MAP-ROUTE-1 R2 — commands/native approved (2026-11-06)
+
+Independent expand_e0_review APPROVED f1dbf910; runtime/schema e1a1ddb1. Route-only
+136 excludes salt135. Typed append-only commands/query/control, complete explicit
+native state, validated counts/cursors, shared manual cargo validation, takeover
+and end cleanup. Six independent byte cases,25 future-field perturbations and
+six focused public/prepared-state cases. Canonical01 preservedFAIL103pass/3stale
+test assumptions; corrected canonical02 32/32 plus eight required separately,
+all other categories0;103 unaffected passes reused with identical runtime.
+Receipt/rawSHA42ab6ed1aef9739b75d67cdefff42c35c7934e740fabc052881fb7edfeaabffa.
+Actual old/new G2 no-route field/scopes/PRNG projection verified; current136
+recordings genuinely produced, all134 history preserved. R3 released; scheduler,
+real automatic proof, current sanitizer and final acceptance remain pending.

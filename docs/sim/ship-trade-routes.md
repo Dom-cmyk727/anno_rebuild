@@ -511,3 +511,29 @@ matches all old fields at entries0/100/200/421, including identical clock_rng an
 all other scopes, excluding only reviewed header/absent route bytes. Original134
 files and old reader are unchanged. Generation is separate from canonical R2
 acceptance and independent review, both pending. No scheduler automation yet.
+
+
+R2 APPROVED at f1dbf9106b41b918da359647c4a8ba7ade2238d9 by
+/root/expand_e0_review; runtime/schema e1a1ddb1 unchanged by focused test fixes.
+Canonical01 remains FAIL:selected106/executed103/failed3, all other categories0.
+Three old native-tag/member assumptions were corrected. Canonical02 PASS32/32
+(0.48s), eight prerequisites separately1/1, all other categories0. The103 unchanged
+prior passes are explicitly reused; no false106/106 claim. Receipt freezes actual
+source, binaries, inventory, configuration and rawSHA
+42ab6ed1aef9739b75d67cdefff42c35c7934e740fabc052881fb7edfeaabffa.
+
+Reviewer-requested focused controls cover full World reload of prepared Sailing,
+Wait, Scan and partial Transfer; intended corruption refusals; pre-Suspend active
+credit; repeated controls/running Resume no-op; paused-time exclusion; blocked
+cleanup/missing stable target refusal; accepted/refused manual Move/cargo/Stop.
+These are prepared schema fixtures, not yet R3/R6 reachable public cuts. No
+blocking R2 finding remains. R3 execution is released without an owner pause.
+
+### R3 acceptance before integration
+
+| Requirement | Positive proof | Wrong interpretation / control | Review |
+|---|---|---|---|
+| Real visits | public assignment issues deferred Move and matching arrival starts wait; real cargo effects | stale/bypassed arrival or distant dock cannot transfer | pending |
+| Clock/continuation | smallest/zero/split/surplus waits, quota continuation, native suffix | positive wait expires without credit; saved cursor repeats debit | pending |
+| Shared safe primitives | exact hand-derived target/group/rounding/partial quantities | additive request, rounded stock, wrong fallback hold, no A-prefix | pending |
+| Work and no-route reuse | bounded primitive work, route-local hold index, unchanged unassigned mover | colocated/refused spin; repeated whole-world/hold fallback scan | pending |

@@ -252,6 +252,9 @@ void expected_config(Stream& s) {
     s.boolean(false); // house_updates
     s.boolean(true);  // save_billed_goods
     s.boolean(false); // city_booking (133)
+    s.u32(1024);
+    s.u32(2048);
+    s.u32(64); // reviewed route-only136 FreightRules
 }
 
 void expected_settings(Stream& s) {
@@ -441,6 +444,7 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("house_updates", [](sim::Rules& r) { r.house_updates = true; });
     m.emplace_back("save_billed_goods", [](sim::Rules& r) { r.save_billed_goods = false; });
     m.emplace_back("city_booking", [](sim::Rules& r) { r.city_booking = true; });
+    m.emplace_back("freight", [](sim::Rules& r) { ++r.freight.work_per_visit; });
     return m;
 }
 

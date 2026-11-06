@@ -8,6 +8,7 @@
 
 #include <anno/formats/json.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/ship_orders.hpp>
 #include <anno/sim/state_fields.hpp>
 
 #include "freight_helpers.hpp"
@@ -387,4 +388,134 @@ TEST_CASE("freight state: every future field reaches hash and roundtrip and rule
     CHECK(w.freight_route(ft::ship_id) == nullptr);
     CHECK(w.check_invariants().empty());
     CHECK(sim::World::load(w.save(), ft::registry()).ok());
+}
+
+// Prepared data fixtures exercise the R2 reader/control state, not R6 public
+// reachability. R3 must independently produce these stages through visits.
+TEST_CASE(
+    "freight controls: native sailing wait scan and partial cursors resume without clock loss") {
+    using P = sim::FreightPhase;
+    using C = sim::FreightControl;
+    using S = sim::FreightStatus;
+    for (const auto phase : {P::Sailing, P::Wait, P::Scan, P::Transfer}) {
+        INFO(static_cast<unsigned>(phase));
+        auto w = ft::make();
+        sim::WorldTestAccess::clock(w).advance(2000);
+        REQUIRE(ft::apply(w, ft::route(w)).ok());
+        auto& ship = ft::ship(w);
+        auto& r = *ship.freight;
+        r.phase = phase;
+        r.last_tick = 900;
+        r.credit_ticks = 10;
+        if (phase == P::Sailing) {
+            r.credit_ticks = 0;
+            const auto moved = sim::ShipOrders::move(w, {sim::PlayerId{0}, sim::MoveCmd{}},
+                                                     {ft::ship_id, 95 * 256, 110 * 256}, nullptr);
+            REQUIRE(moved.ok());
+            r.expected_order_id = ship.nav->order->order_id;
+            r.order_generation = ship.freight_generation;
+        }
+        if (phase == P::Wait)
+            r.wait_remaining = 321;
+        if (phase == P::Scan) {
+            r.scan_next = 2;
+            r.empty_holds = {0, 1};
+        }
+        if (phase == P::Transfer) {
+            r.scan_next = 4;
+            r.empty_holds = {0, 1, 2, 3};
+            r.candidate_next = 1;
+            r.remaining_raw = 256;
+            ship.holds[0] = {42, 256};
+        }
+        REQUIRE(w.check_invariants().empty());
+        auto loaded = sim::World::load(w.save(), ft::registry());
+        REQUIRE_MESSAGE(loaded, (loaded ? "" : loaded.error()));
+        CHECK(loaded.value().save() == w.save());
+        const auto running = w.save();
+        REQUIRE(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, C::Resume}).ok());
+        CHECK(w.save() == running); // must not lose active elapsed between visits
+        auto bad = w;
+        if (phase == P::Sailing)
+            ++ft::ship(bad).freight->expected_order_id;
+        else if (phase == P::Transfer)
+            ft::ship(bad).freight->candidate_next = 5;
+        else if (phase == P::Scan)
+            ft::ship(bad).freight->matching_raw = 1;
+        else
+            ft::ship(bad).freight->wait_remaining = 501;
+        auto rejected = sim::World::load(bad.save(), ft::registry());
+        REQUIRE_FALSE(rejected);
+        CHECK(rejected.error().find("freight") != std::string::npos);
+        ship.state_word = 2; // trusted cleanup must remain available
+        REQUIRE(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, C::Suspend}).ok());
+        CHECK(r.status == S::Suspended);
+        CHECK(r.last_tick == 1000);
+        CHECK(r.credit_ticks == (phase == P::Sailing ? 0 : 110));
+        CHECK_FALSE(ship.nav->order);
+        CHECK(r.expected_order_id == 0);
+        CHECK(r.order_generation == 0);
+        if (phase == P::Sailing)
+            CHECK(r.phase == P::NeedLeg);
+        const auto stopped = w.save();
+        REQUIRE(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, C::Suspend}).ok());
+        CHECK(w.save() == stopped);
+        ship.state_word = 0;
+        sim::WorldTestAccess::clock(w).advance(2000); // paused interval, no service work
+        const auto credit = r.credit_ticks;
+        const auto wait = r.wait_remaining;
+        REQUIRE(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, C::Resume}).ok());
+        CHECK(r.status == S::Running);
+        CHECK(r.last_tick == 2000);
+        CHECK(r.credit_ticks == credit);
+        CHECK(r.wait_remaining == wait);
+        loaded = sim::World::load(w.save(), ft::registry());
+        REQUIRE(loaded);
+        CHECK(loaded.value().save() == w.save());
+        // Missing live stable target: Resume refuses without changing a paused cursor.
+        REQUIRE(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, C::Suspend}).ok());
+        const auto* island = &*w.islands()[0];
+        const auto key = island->cache.by_id.at(ft::warehouse(w));
+        REQUIRE(sim::WorldTestAccess::remove(w, key));
+        const auto missing = w.save();
+        CHECK(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, C::Resume}).status ==
+              sim::Reject::NoBuildingAtTile);
+        CHECK(w.save() == missing);
+        loaded = sim::World::load(w.save(), ft::registry());
+        REQUIRE(loaded);
+        ship.state_word = 2;
+        REQUIRE(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, C::Cancel}).ok());
+        CHECK(w.freight_route(ft::ship_id) == nullptr);
+    }
+}
+TEST_CASE("freight takeover: accepted public Move Load Unload take control and refusals do not") {
+    auto w = ft::make();
+    const auto assign = [&] { REQUIRE(ft::apply(w, ft::route(w)).ok()); };
+    assign();
+    const auto generation = ft::ship(w).freight_generation;
+    REQUIRE(ft::apply(w, sim::MoveCmd{ft::ship_id, 94 * 256, 110 * 256}).ok());
+    CHECK(w.freight_route(ft::ship_id) == nullptr);
+    CHECK(ft::ship(w).nav->order.has_value());
+    CHECK(ft::ship(w).freight_generation == generation);
+    assign();
+    auto before = w.save();
+    CHECK(ft::apply(w, sim::LoadCmd{ft::ship_id, ft::warehouse(w), 0, 42, 0}).status ==
+          sim::Reject::BadValue);
+    CHECK(w.save() == before);
+    REQUIRE(w.freight_route(ft::ship_id) != nullptr);
+    REQUIRE(ft::apply(w, sim::LoadCmd{ft::ship_id, ft::warehouse(w), 0, 42, 2}).ok());
+    CHECK(w.freight_route(ft::ship_id) == nullptr);
+    CHECK(ft::ship(w).holds[0].amount_88 == 512);
+    assign();
+    before = w.save();
+    CHECK(ft::apply(w, sim::UnloadCmd{ft::ship_id, ft::warehouse(w), 0, 41, 1}).status ==
+          sim::Reject::HoldGoodsMismatch);
+    CHECK(w.save() == before);
+    REQUIRE(w.freight_route(ft::ship_id) != nullptr);
+    REQUIRE(ft::apply(w, sim::UnloadCmd{ft::ship_id, ft::warehouse(w), 0, 42, 1}).ok());
+    CHECK(w.freight_route(ft::ship_id) == nullptr);
+    CHECK(ft::ship(w).holds[0].amount_88 == 256);
+    assign();
+    REQUIRE(ft::apply(w, sim::StopCmd{ft::ship_id}).ok());
+    CHECK(w.freight_route(ft::ship_id) == nullptr);
 }

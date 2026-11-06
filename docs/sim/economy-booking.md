@@ -349,3 +349,137 @@ bill faults, but an accepted queued delta saturates and credits5. These are
 contract examples, not a claim that new engine cases already execute. Remaining
 B1a direct island INFO/save/init reads and B1b–d lifecycle/arithmetic/order work
 must close before B1 authorizes B2/B3 implementation.
+
+### B1b supported lifecycle and accounting history — proposed contract
+
+Primary callee audit is the ExecutorB1b section of the RE note. Each original
+inspected building stat-kind getter returns1, including military classes; the
+second city cost bucket exists but must not be selected by guessing from a list.
+Modern type facts may explicitly select supported statistic kind1/2, defaulting
+to the verified1 for original types; unknown kinds refuse validation. This is a
+field-role distinction, not a building/type-id allowlist.
+
+| Supported engine entry | Original contribution rule / proposed checked equivalent | Refused or duplicate |
+|---|---|---|
+| create_building, scenario/import creation, public Build/Found warehouse creation | Add type.running_cost[active-selector] once to its city kind after complete creation validation. Native continuation restores authoritative totals instead. | Validate prospective sum before payment/placement/IDs; failure adds nothing. |
+| SetProductionLineCmd / set_production_line / switch_line | Single-line selector switched_on; dual/SmallFarm selector OR of line_on. Subtract old selected cost then add new selected cost only if selector changes. | Invalid owner/goods/index or same state leaves costs unchanged; switching one of two enabled lines off keeps active cost. |
+| production blocked/status transition | No cost contribution change merely for blocked/starved/full/suspended display state. | Do not confuse flags with manual switch. |
+| house_transition shared Upgrade/Downgrade type swap | Preserve existing city cost contribution, matching inspected original path. A level change is not the adjacent general type-replace helper. | Failed materials/domain/duplicate outcome leaves totals unchanged; no invented cost correction. |
+| remove_building via public Demolish/whole-city cleanup or remove_house | Subtract current type cost at its current active-selector, then remove once. Checked preflight precedes walker detach, tile changes and every other mutation. | Missing slot does not subtract; insufficient accounted total explicitly refuses before removal, rather than reproducing original underflow. |
+| Native load | Restore authoritative booking stamp/statistics/cost totals exactly; reconstruct derived indexes only. | Recomputing costs from current types could erase the preserved house history and is forbidden for native continuation. |
+| Original-format import | Rebuild costs using imported current types/manual states; original headers did not save those totals. Booking stamp/pending bills start0; saved sales/trade statistics follow B1c's explicit widened import rule. | No invented debt reset on modern reload. |
+| Owner/city reassignment | No supported engine command exists. Initial scenario ownership is validated before creating a world. | Remains Unsupported; no new transfer command or hidden repair. |
+
+City cost totals are authoritative history, not a cache derivable solely from
+current building types. Original household costs are mostly0, but one original
+PIONIER has10/20; mods can distinguish history. A synthetic house changing active
+cost10->20 retains10 on replacement, and later removal at cost20 must refuse
+before mutation if the city's recorded bucket is only10. This preserves the
+original transition while replacing unsafe underflow with the packet's explicit
+checked safeguard. The native cut must retain10 rather than silently rebuild20.
+No per-visit building scan is permitted. City costs never touch Player::upkeep_a/b.
+Original unmodelled stall manual flags remain the existing default-on component
+boundary; this task does not introduce a new stall switch command.
+
+### B1c modern arithmetic, dimensions and fault domain — proposed contract
+
+Original word/dword wrapping stays in booking_ref's research mode. The opt-in
+engine uses these exact checked domains, with no negative-balance clamp:
+
+- Source price directives parse checked signed i64. Malus negation/addition must
+  be representable; intermediate climate values may be negative, final resolved
+  prices and surcharges must be0..U32_MAX. Runtime goods/climate/tax vectors have
+  exact configured dimensions. Source defaults0 and partial nonempty tax writes
+  are preserved; empty/extra original-format columns and unknown names refuse.
+  Modern data builders may use larger configured tables; no original id list is
+  an engine limit. Effective price is u64(climate_price)+u64(surcharge).
+- Bills retain accepted u32 values and existing direct-fault/queued-saturation
+  policies. Only configured billed goods are priced/reset; malformed counter or
+  price dimensions refuse. Products and total numerator use checked u64, including
+  the final+128. Income is floor((sum+128)/256), computed after summing all rows.
+  A nonrepresentable product/sum/rounding intermediate is a typed deterministic
+  booking fault, never a wrap or saturation.
+- Each city owns u64 cost-kind1/2 totals and u64 raw sales/trade-sales/trade-purchase
+  statistics, plus an independent u16 booking stamp. Sum costs checked in u64,
+  charge=floor(sum/15) with no remainder. Existing player upkeep/rem semantics
+  are unchanged. Original imported displayed statistics are widened to exact
+  u64(saved_u32)*105/15 (equivalently7*saved), explicitly avoiding original
+  multiplication overflow. Legacy HEAD imports sales only; HEAD2 all three.
+  Modern native saves preserve exact raw statistics, bills, stamps and totals,
+  with no original save quantization/reconstruction loss.
+- Statistics decay is exact floor(stat*104/105) without overflow, using checked
+  widening or quotient/remainder decomposition; sales then adds income checked.
+  Nonoverflow original examples match; original overflowing statistical products
+  remain separately labelled research results. No unexplained statistical clamp.
+- Player money remains i64, including negative values. Preflight the *gross*
+  income credit against the actual ordered balance, then upkeep debit against
+  that intermediate. Both must fit. Netting income-upkeep first is forbidden:
+  money=I64_MAX, income1, upkeep1 must fault even though the final net fits.
+  money=I64_MIN, income0, upkeep1 likewise faults. Compute all new stats/reset
+  effects before committing any booking mutation.
+- Due test is u16(low32(tick)-stamp)>=configured booking period, default2000;
+  period must be1..65535. A taken visit stamps current low16, not stamp+period;
+  an overdue visit performs one booking, not catch-up. 1999 is not due,2000 is;
+  wrap65000->1464 is exactly due;65536 elapsed aliases0 by original word semantics.
+  No failed/undue/repeated booking advances stamp or clears bills.
+- Worlds with booking enabled and save_billed_goods=false refuse creation/load.
+  Booking does not require house_updates=true: with houses off it may still book
+  existing valid pending bills and upkeep. Real-loop arms explicitly enable both.
+  Neither default changes. Booking state is authoritative when enabled; mode-off
+  lifecycle must preserve established default-off behavior and add no new money
+  mutation or fault. The exact conditional stream layout is frozen in B3.
+
+A booking fault names a typed cause/city, stops the world through the existing
+fault/output mechanism, and leaves *that booking's* money, billed counters,
+statistics and stamp unchanged. Earlier committed activity remains committed.
+The current world fault latch is sticky: further Advance does nothing. Native
+save/reload retains all accounting data; an unchanged invalid booking faults
+again without duplicate income. A corrected, otherwise legal continuation can
+book the retained bill once; no new clear-fault command is part of this slice.
+Invalid lifecycle arithmetic likewise preflights before its command/transition
+mutates anything; failure is a typed refusal/fault appropriate to its existing
+caller, never a partial walker detach or charged failed build.
+
+### B1d production order and transaction boundary — proposed contract
+
+Actual order is scripts-before-advance; islands in table order; each city's
+building work then stage pass then booking; configured city seams; island effects
+merge; next island; events/figures with per-figure merges (resident purchases);
+then existing player upkeep/AI/timers. A figure purchase made after the island
+phase is pending for the next due city booking. An original overdue booking
+cannot be forced to wait for later figure purchases in the same Advance.
+
+Cities on one island share an Effects buffer and const external player views.
+Booking therefore queues a typed request rather than resetting its City early
+or trusting an isolated read-only balance check. The request records its city,
+owner, tick and the current prefix lengths of queued money and bill effects,
+plus the cost/stat snapshot needed to preserve the call-time contribution.
+At the serial merge, process those prior prefixes with their established
+semantics, then preflight the complete booking against the *actual* owner
+balance. Commit credit, statistics, debit, selected-bill reset and stamp together
+only on success. Remaining bill effects follow and stay pending. Requests are
+handled in actual city visitation order; a second city sees the first city's
+committed money, including when both individually fit an old snapshot. Across
+islands, the existing immediate island merge already supplies this ordering.
+No new PRNG site or wall clock is involved.
+
+Earlier script failure prevents the advance. Earlier House/stage faults prevent
+queuing a later booking; merge-time earlier faults prevent its commit. A fault
+from one booking prevents later booking commits in that advance. Non-booking
+activity already executed/queued before discovery of a serial commit fault keeps
+its existing effect-merge semantics; it is not rolled back and its earned bills
+must not be dropped. No global all-Advance transaction or player-policy rewrite
+is implied. Legal configured city seams that queue bills before/after the booking
+barrier are distinguished; directly rewriting booking-owned authoritative fields
+inside arbitrary hooks is not an unversioned supported mutation API.
+
+Production-boundary controls must use: two same-island cities sharing Effects,
+two different islands with one owner, a different-owner city, prior queued money,
+bills on both sides of the barrier, a late gross overflow, earlier House/script
+fault, duplicate request/repeated visit, save/reload and retry. All include a
+legal nonempty booking control. Existing World::advance accepts u32 milliseconds,
+including0/1: the clock keeps odd-millisecond surplus in its accumulator. Tests
+must reach the next due city visit through that real scheduler, prove two1ms
+calls retain the fractional tick, and preserve partial elapsed delay across
+native cuts. Interval partitions can change which original visits occur and
+stamps become now; no full-world or overdue-partition invariance is promised.

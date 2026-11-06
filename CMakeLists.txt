@@ -203,6 +203,13 @@ if(ANNO_BUILD_TESTS)
                      )
     add_test(NAME cargo_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/cargo_ref.py selftest)
+    add_test(NAME booking_checked_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/booking_checked_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/econbook1/checked_vectors.json)
+    add_test(NAME booking_checked_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/booking_checked_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/booking_checked_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/econbook1/checked_vectors.json)
     add_test(NAME forester_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/forester_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/forester_vectors.txt)

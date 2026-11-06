@@ -7,7 +7,8 @@ That packet supersedes the historical research-only ownership, old base and
 pre-132 identity guidance below. Engine work follows independent contract review;
 this note does not declare the remaining lifecycle/policy research complete.
 
-Current execution: B0 baseline inventory on `task/ECON-BOOK-1-main`, pinned to
+Current execution: B0 and B1 independently approved; B2 reference validation on
+`task/ECON-BOOK-1-main`, initially pinned to
 `3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; engine implementation NOT_STARTED.
 The second Mac owns B0–B7 under the dispatch above. Historical research/ownership
 and prior identity language below retain their actual dates and source pins.
@@ -297,10 +298,10 @@ The existing arithmetic research is approved only within its original-wrap model
 | Package | Positive acceptance | Small distinguishing negative/control | Evidence and disposition |
 |---|---|---|---|
 | B0 adoption/inventory | Exact clean pin, module hashes, actual callers, cheap preflight/ref checks, unchanged old refs/evidence, scoped participating paths | No replay of old merge, no unexplained132 edit/default flip, no claim that Python baseline executes economy |13/13 reference and source preflight pass; `/root/econ_b0_review` APPROVED75b16493 after manual-switch inventory correction |
-| B1a inputs | Verified climate/tax/ordered prices, actual billing units, imported stats/stamps | Requested stall versus delivered/Inn-clipped/service-only; repeated Preis resets, partial repeated tax lists, invalid names/dimensions | Primary bounded reads and hand derivation planned; not engine-authorized |
-| B1b lifecycle | Type getter/stat-kind and every current create/load/switch/house replace/remove path table | Failed/duplicate transition unchanged; city28/player14+rem1 charged1+1, no cost mirroring | Primary/caller audit planned; absent owner-transfer remains Unsupported |
-| B1c checked policy | Signed domains, exact ordinary arithmetic, word stamps, sum-before-rounding, gross credit then debit, negative money, explicit atomic booking fault | Final net fits but gross credit overflows; no reset/stats/stamp/debit on failure | Written original/adapted split and primary examples required |
-| B1d order | Actual island/city/effect/figure/player sequence; same- and cross-island owner preflight | Two cities each individually fit but second combined credit overflows; earlier house/script fault blocks booking; save_billed_goods=false cannot lose income | Order contract and actual-boundary controls planned |
+| B1a inputs | Verified climate/tax/ordered prices, actual billing units, imported stats/stamps | Requested stall versus delivered/Inn-clipped/service-only; repeated Preis resets, partial repeated tax lists, invalid names/dimensions | APPROVED4f644fc8 by primary reviewer; additive inert selectors independently derived and recorded7d92b230 |
+| B1b lifecycle | Type getter/stat-kind and every current create/load/switch/house replace/remove path table | Failed/duplicate transition unchanged; city28/player14+rem1 charged1+1, no cost mirroring | APPROVED4f644fc8; absent owner-transfer remains Unsupported |
+| B1c checked policy | Signed domains, exact ordinary arithmetic, word stamps, sum-before-rounding, gross credit then debit, negative money, explicit atomic booking fault | Final net fits but gross credit overflows; no reset/stats/stamp/debit on failure | APPROVED4f644fc8 by `/root/econ_b0_review` after comparison-domain/fault corrections |
+| B1d order | Actual island/city/effect/figure/player sequence; same- and cross-island owner preflight | Two cities each individually fit but second combined credit overflows; earlier house/script fault blocks booking; save_billed_goods=false cannot lose income | APPROVED4f644fc8; actual-boundary engine proofs remain B4 |
 | B2 independent references | Hand-pinned checked versus original-wrap vectors, lifecycle/order/width and smallest-positive/zero/partitioned timing | Width/order/double-charge/reset-before-fault mutants fail intended assertions; CLI empty/bad expected/incomplete refused | Public contracts registered and required before C++ implementation |
 | B3 facts/state/identity | Data-sized prices/roles; minimal authoritative stamp/stats/cost state;133/ECONBK1 populated byte oracle and native round-trip | Actual132 save/log refuses intended boundary; invalid dimensions/signed prices/unknown climate transactional; alternate generic types/roles | Independently reviewed parser/state/reference/compatibility required |
 | B4 production/lifecycle | Opt-in scheduler booking exactly once, full supported lifecycle, owner split and negative-balance continuation | Real last-city merge overflow leaves its money/bills/stats/stamp unchanged, queued prior effects accounted; default-off132 semantic controls | Focused Debug/ASAN, accounting mutants, independent engine review required |
@@ -572,3 +573,66 @@ approved the additive financial selector facts/length boundaries above. No
 unresolved rule for the first slice is hidden in a default. B2 may implement the
 reviewed independent models; engine implementation still waits on B2 and B3's
 own schema/facts proofs. No routine orchestrator pause is required.
+
+## B2 — independent checked references and hand vectors
+
+`tools/booking_checked_ref.py` is separate from the unchanged original-wrap
+`tools/booking_ref.py`. Its inputs are resolved rows, never C++ output. The
+committed `fixtures/synthetic/sim/econbook1/checked_vectors.json` contains66
+hand-pinned complete results. The CLI computes all fields, compares the entire
+answer, reports each executed id and rejects empty/type-only/malformed/duplicate
+inputs, partial expected answers and unknown kinds. CTest names
+`booking_checked_reference_agrees` and `booking_checked_reference_contract`
+must be required in every affected gate. Python methods are not CTest counts.
+
+The existing acceptance table's B2 assertions are realized as follows:
+
+- Word gate:0/1/1999 preserve bills;2000 books;65000→1463 is1999,
+  →1464 is2000;65536→word0 intentionally aliases;6001 books once and stamps now.
+- Rounding:127/256→0,128/256→1,129/256→1; two128 numerators sum to256
+  and yield1, not2. Ordinary15000+7500 yields88. The original65535² case
+  yields-511; checked yields16776704. U32_MAX² yields72057594004373504.
+- Width/fault: effective price2^32+1 times bill2^32-1 equalsU64_MAX,
+  so the product fits but rounding+128 refuses. Separate product, sum, cost sum,
+  credit and debit failures preserve every booking field. MAX+income1-upkeep1
+  must fail gross credit despite net fitting; MIN+income1-upkeep1 succeeds.
+- Statistics:105 decays104 before income88→192. AtU64_MAX, division proof
+  n=105×175683276892471920+15 gives floor(n×104/105)=18271060796817079694.
+  The first exploratory expected answer had a one-unit transcription error;
+  retained `cache/econ-book1/B2/reference-exploration-01.log` records it, and
+  quotient/remainder derivation corrected only that expected literal before
+  acceptance. `reference-exploration-02.log` executes all66.
+- Requested Stall300/delivered50 bills300; service300 bills300 without take;
+  Inn bills/delivers50; return adds0. Direct MAX-5+10 faults unchanged,
+  effect merge saturates with actual increment5. City28 charges1; fifteen
+  visits at city14 charge0, while player14+initial remainder1 totals14/rem1.
+- Four tax columns and custom climate are data-sized. Repeated partial tax
+  overwrites prefix, empty source tax does nothing; later Preis resets climate
+  prices, retains tax. Intermediate negative Malus may recover; invalid final
+  negative/wide price, excessive columns and unknown climate refuse.
+- Lifecycle history distinguishes dual OR, research-filtered Weapons, research
+  without retroactive accounting and house type changes without recomputation.
+  Removal underflow/failed duplicate/unsupported inert switch preserve state.
+- Chronological event tape proves two-city combined overflow, money before/after
+  booking, fault before/after booking, late pending bills and owner isolation.
+  This intentionally does not copy the proposed engine prefix-buffer algorithm.
+- Clock model retains1ms surplus across0/1/partitioned advances and acceptsU32
+  milliseconds. Real scheduler visits, native fractional cuts, real same/cross
+  island boundaries and saved fault/retry remain explicitly PENDING B4, rather
+  than counted as passing by this arithmetic reference.
+
+The public contract executes legal controls before eight intentional wrong
+models: u32 product, row rounding, netting gross credit, reset before fault,
+double booking, house rescan, raw Weapons OR and blanket final-fault suppression.
+Each must return a disagreement at its named decisive vector, not timeout,
+compilation or unavailable assets. Bad expected-income89 must be recomputed88
+and rejected; an echo-expected mutant demonstrates that this negative control
+distinguishes the fake implementation. Partial expected fields also disagree.
+
+Initial local CLI contracts:9 Python methods pass; canonical frozen gate and
+independent B2 review pending. New own `build/econ-debug` avoids modifying the
+preserved MAP-INTEGRATE-1 builds. Its read-only doctest dependency was copied
+into own ignored cache before configuration. Headless bench_picture is built
+only to satisfy the canonical compulsory public picture contract; this is not
+a GPU/render acceptance campaign. Current other-executor gates are left alone;
+18 logical CPUs/48GiB/~1.5TiB available permits4 build jobs and1 CTest child.

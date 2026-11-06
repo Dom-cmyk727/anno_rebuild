@@ -1,0 +1,2801 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "ordinary-22500-plus128-div256-is88",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0,
+          0
+        ],
+        "income": 88,
+        "upkeep": 0,
+        "money": 88,
+        "stats": [
+          88,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "not-due-0",
+      "kind": "book",
+      "input": {
+        "tick": 0,
+        "stamp": 0,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          300,
+          100
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "not-due-1",
+      "kind": "book",
+      "input": {
+        "tick": 1,
+        "stamp": 0,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          300,
+          100
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "not-due-1999",
+      "kind": "book",
+      "input": {
+        "tick": 1999,
+        "stamp": 0,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          300,
+          100
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "due-2000",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0,
+          0
+        ],
+        "income": 88,
+        "upkeep": 0,
+        "money": 88,
+        "stats": [
+          88,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "long-delay-one-call",
+      "kind": "book",
+      "input": {
+        "tick": 6001,
+        "stamp": 0,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 6001,
+        "bills": [
+          0,
+          0
+        ],
+        "income": 88,
+        "upkeep": 0,
+        "money": 88,
+        "stats": [
+          88,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "repeat-does-not-rebook",
+      "kind": "book",
+      "input": {
+        "tick": 6001,
+        "stamp": 6001,
+        "rows": [
+          [
+            50,
+            0,
+            0
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 6001,
+        "bills": [
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "wrap-one-tick-short",
+      "kind": "book",
+      "input": {
+        "tick": 1463,
+        "stamp": 65000,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 65000,
+        "bills": [
+          300,
+          100
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "wrap-due",
+      "kind": "book",
+      "input": {
+        "tick": 1464,
+        "stamp": 65000,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 1464,
+        "bills": [
+          0,
+          0
+        ],
+        "income": 88,
+        "upkeep": 0,
+        "money": 88,
+        "stats": [
+          88,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "whole-word-alias",
+      "kind": "book",
+      "input": {
+        "tick": 65536,
+        "stamp": 0,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          300,
+          100
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "half-127",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            127
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "half-128",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            128
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0
+        ],
+        "income": 1,
+        "upkeep": 0,
+        "money": 1,
+        "stats": [
+          1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "half-129",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            129
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0
+        ],
+        "income": 1,
+        "upkeep": 0,
+        "money": 1,
+        "stats": [
+          1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "round-after-sum",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            128
+          ],
+          [
+            1,
+            0,
+            128
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0,
+          0
+        ],
+        "income": 1,
+        "upkeep": 0,
+        "money": 1,
+        "stats": [
+          1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "original-signed-wrap-is-not-modern-policy",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            65535,
+            0,
+            65535
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0
+        ],
+        "income": 16776704,
+        "upkeep": 0,
+        "money": 16776704,
+        "stats": [
+          16776704,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "u32-product-high-control",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            4294967295,
+            0,
+            4294967295
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0
+        ],
+        "income": 72057594004373504,
+        "upkeep": 0,
+        "money": 72057594004373504,
+        "stats": [
+          72057594004373504,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "u64-product-overflow",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            4294967295,
+            4294967295,
+            4294967295
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          4294967295
+        ],
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "fault": "product"
+      }
+    },
+    {
+      "id": "u64-sum-overflow",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            4294967295,
+            0,
+            4294967295
+          ],
+          [
+            4294967295,
+            0,
+            4294967295
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          4294967295,
+          4294967295
+        ],
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "fault": "sum"
+      }
+    },
+    {
+      "id": "u64-rounding-overflow",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            4294967295,
+            2,
+            4294967295
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          4294967295
+        ],
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "fault": "rounding"
+      }
+    },
+    {
+      "id": "cost-sum-overflow",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            256
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          18446744073709551615,
+          1
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          256
+        ],
+        "money": 0,
+        "stats": [
+          0,
+          0,
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "fault": "cost_sum"
+      }
+    },
+    {
+      "id": "negative-money-preserved",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": -100,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0,
+          0
+        ],
+        "income": 88,
+        "upkeep": 0,
+        "money": -12,
+        "stats": [
+          88,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "credit-exact-max",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            256
+          ]
+        ],
+        "money": 9223372036854775806,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0
+        ],
+        "income": 1,
+        "upkeep": 0,
+        "money": 9223372036854775807,
+        "stats": [
+          1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "credit-overflow-even-when-net-fits",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            256
+          ]
+        ],
+        "money": 9223372036854775807,
+        "costs": [
+          15,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [
+          256
+        ],
+        "money": 9223372036854775807,
+        "stats": [
+          0,
+          0,
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "fault": "credit"
+      }
+    },
+    {
+      "id": "debit-exact-min",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [],
+        "money": -9223372036854775807,
+        "costs": [
+          15,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [],
+        "income": 0,
+        "upkeep": 1,
+        "money": -9223372036854775808,
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "debit-underflow",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [],
+        "money": -9223372036854775808,
+        "costs": [
+          15,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": false,
+        "stamp": 0,
+        "bills": [],
+        "money": -9223372036854775808,
+        "stats": [
+          0,
+          0,
+          0
+        ],
+        "income": 0,
+        "upkeep": 0,
+        "fault": "debit"
+      }
+    },
+    {
+      "id": "gross-credit-before-debit-at-min",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            256
+          ]
+        ],
+        "money": -9223372036854775808,
+        "costs": [
+          15,
+          0
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0
+        ],
+        "income": 1,
+        "upkeep": 1,
+        "money": -9223372036854775808,
+        "stats": [
+          1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "decay-before-credit",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            50,
+            0,
+            300
+          ],
+          [
+            70,
+            5,
+            100
+          ]
+        ],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          105,
+          210,
+          104
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [
+          0,
+          0
+        ],
+        "income": 88,
+        "upkeep": 0,
+        "money": 88,
+        "stats": [
+          192,
+          208,
+          103
+        ]
+      }
+    },
+    {
+      "id": "max-stats-no-intermediate-overflow",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [],
+        "money": 0,
+        "costs": [
+          0,
+          0
+        ],
+        "stats": [
+          18446744073709551615,
+          18446744073709551615,
+          18446744073709551615
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [],
+        "income": 0,
+        "upkeep": 0,
+        "money": 0,
+        "stats": [
+          18271060796817079694,
+          18271060796817079694,
+          18271060796817079694
+        ]
+      }
+    },
+    {
+      "id": "city-cost28-charge1",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [],
+        "money": 0,
+        "costs": [
+          14,
+          14
+        ],
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "stepped": true,
+        "stamp": 2000,
+        "bills": [],
+        "income": 0,
+        "upkeep": 1,
+        "money": -1,
+        "stats": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "invalid-price",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            -1,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "price"
+      }
+    },
+    {
+      "id": "bill-not-narrowed-but-bounded",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            4294967296
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "bill"
+      }
+    },
+    {
+      "id": "missing-cost-column",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            1
+          ]
+        ],
+        "costs": [
+          1
+        ]
+      },
+      "expected": {
+        "invalid": "dimensions"
+      }
+    },
+    {
+      "id": "extra-stat-column",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            1
+          ]
+        ],
+        "stats": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "invalid": "dimensions"
+      }
+    },
+    {
+      "id": "zero-period",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            1
+          ]
+        ],
+        "period": 0
+      },
+      "expected": {
+        "invalid": "period"
+      }
+    },
+    {
+      "id": "period-too-wide",
+      "kind": "book",
+      "input": {
+        "tick": 2000,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            1
+          ]
+        ],
+        "period": 65536
+      },
+      "expected": {
+        "invalid": "period"
+      }
+    },
+    {
+      "id": "tick-too-wide",
+      "kind": "book",
+      "input": {
+        "tick": 4294967296,
+        "stamp": 0,
+        "rows": [
+          [
+            1,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "tick"
+      }
+    },
+    {
+      "id": "city-no-remainder-player-has-remainder",
+      "kind": "city_player",
+      "input": {
+        "city_cost": 14,
+        "player_a": 14,
+        "player_b": 0,
+        "remainder": 1,
+        "visits": 15
+      },
+      "expected": {
+        "city_charge": 0,
+        "player_charge": 14,
+        "remainder": 1
+      }
+    },
+    {
+      "id": "player14-plus-remainder1-charge1",
+      "kind": "city_player",
+      "input": {
+        "city_cost": 28,
+        "player_a": 14,
+        "player_b": 0,
+        "remainder": 1,
+        "visits": 1
+      },
+      "expected": {
+        "city_charge": 1,
+        "player_charge": 1,
+        "remainder": 0
+      }
+    },
+    {
+      "id": "billing-stall",
+      "kind": "bill",
+      "input": {
+        "kind": "stall",
+        "request": 300,
+        "stock": 50,
+        "pending": 0
+      },
+      "expected": {
+        "pending": 300,
+        "stock": 0,
+        "delivered": 50,
+        "added": 300
+      }
+    },
+    {
+      "id": "billing-service",
+      "kind": "bill",
+      "input": {
+        "kind": "service",
+        "request": 300,
+        "stock": 50,
+        "pending": 0
+      },
+      "expected": {
+        "pending": 300,
+        "stock": 50,
+        "delivered": 0,
+        "added": 300
+      }
+    },
+    {
+      "id": "billing-inn",
+      "kind": "bill",
+      "input": {
+        "kind": "inn",
+        "request": 300,
+        "stock": 50,
+        "pending": 0
+      },
+      "expected": {
+        "pending": 50,
+        "stock": 0,
+        "delivered": 50,
+        "added": 50
+      }
+    },
+    {
+      "id": "billing-return",
+      "kind": "bill",
+      "input": {
+        "kind": "return",
+        "request": 300,
+        "stock": 50,
+        "pending": 0
+      },
+      "expected": {
+        "pending": 0,
+        "stock": 50,
+        "delivered": 0,
+        "added": 0
+      }
+    },
+    {
+      "id": "direct-bill-overflow-atomic",
+      "kind": "bill",
+      "input": {
+        "kind": "stall",
+        "request": 10,
+        "stock": 50,
+        "pending": 4294967290
+      },
+      "expected": {
+        "pending": 4294967290,
+        "stock": 50,
+        "delivered": 0,
+        "added": 0,
+        "fault": "bill"
+      }
+    },
+    {
+      "id": "merged-bill-saturates-actual-five",
+      "kind": "bill",
+      "input": {
+        "kind": "merge",
+        "request": 10,
+        "stock": 50,
+        "pending": 4294967290
+      },
+      "expected": {
+        "pending": 4294967295,
+        "stock": 50,
+        "delivered": 0,
+        "added": 5
+      }
+    },
+    {
+      "id": "ordered-prices-tax-partial-reset-keeps-tax",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "POLAR",
+          "STEPPE",
+          "CUSTOM"
+        ],
+        "tax_count": 4,
+        "directives": [
+          [
+            "Preis",
+            45
+          ],
+          [
+            "Bonus",
+            "STEPPE",
+            5
+          ],
+          [
+            "Bonus",
+            "STEPPE",
+            5
+          ],
+          [
+            "PreisLevel",
+            [
+              0,
+              5,
+              10,
+              15
+            ]
+          ],
+          [
+            "PreisLevel",
+            [
+              2
+            ]
+          ],
+          [
+            "Preis",
+            50
+          ],
+          [
+            "Malus",
+            "CUSTOM",
+            60
+          ],
+          [
+            "Bonus",
+            "CUSTOM",
+            20
+          ],
+          [
+            "PreisLevel",
+            []
+          ]
+        ]
+      },
+      "expected": {
+        "prices": [
+          50,
+          50,
+          10
+        ],
+        "tax": [
+          2,
+          5,
+          10,
+          15
+        ]
+      }
+    },
+    {
+      "id": "missing-source-columns-default-zero",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 4,
+        "directives": [
+          [
+            "Preis",
+            7
+          ],
+          [
+            "PreisLevel",
+            [
+              3
+            ]
+          ]
+        ]
+      },
+      "expected": {
+        "prices": [
+          7
+        ],
+        "tax": [
+          3,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "extra-tax-columns",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "PreisLevel",
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "PreisLevel.columns"
+      }
+    },
+    {
+      "id": "unknown-climate",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Bonus",
+            "UNKNOWN",
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "climate"
+      }
+    },
+    {
+      "id": "negative-final-price",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Malus",
+            "ONE",
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "resolved_price"
+      }
+    },
+    {
+      "id": "too-wide-final-price",
+      "kind": "prices",
+      "input": {
+        "climates": [
+          "ONE"
+        ],
+        "tax_count": 3,
+        "directives": [
+          [
+            "Preis",
+            4294967295
+          ],
+          [
+            "Bonus",
+            "ONE",
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "invalid": "resolved_price"
+      }
+    },
+    {
+      "id": "millisecond-surplus-preserved",
+      "kind": "clock",
+      "input": {
+        "elapsed": [
+          0,
+          1,
+          0,
+          1,
+          3,
+          1
+        ]
+      },
+      "expected": {
+        "visits": [
+          {
+            "ms": 0,
+            "tick": 0,
+            "surplus": 0
+          },
+          {
+            "ms": 1,
+            "tick": 0,
+            "surplus": 1
+          },
+          {
+            "ms": 1,
+            "tick": 0,
+            "surplus": 1
+          },
+          {
+            "ms": 2,
+            "tick": 1,
+            "surplus": 0
+          },
+          {
+            "ms": 5,
+            "tick": 2,
+            "surplus": 1
+          },
+          {
+            "ms": 6,
+            "tick": 3,
+            "surplus": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "maximum-advance-supported",
+      "kind": "clock",
+      "input": {
+        "elapsed": [
+          4294967295,
+          1
+        ]
+      },
+      "expected": {
+        "visits": [
+          {
+            "ms": 4294967295,
+            "tick": 2147483647,
+            "surplus": 1
+          },
+          {
+            "ms": 4294967296,
+            "tick": 2147483648,
+            "surplus": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "elapsed-too-wide",
+      "kind": "clock",
+      "input": {
+        "elapsed": [
+          4294967296
+        ]
+      },
+      "expected": {
+        "invalid": "elapsed"
+      }
+    },
+    {
+      "id": "elapsed-negative",
+      "kind": "clock",
+      "input": {
+        "elapsed": [
+          -1
+        ]
+      },
+      "expected": {
+        "invalid": "elapsed"
+      }
+    },
+    {
+      "id": "create-switch-duplicate-refusal-remove",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "single",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "single",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": 0,
+            "on": false
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": 0,
+            "on": false
+          },
+          {
+            "op": "remove",
+            "id": "x"
+          },
+          {
+            "op": "remove",
+            "id": "x"
+          }
+        ]
+      },
+      "expected": {
+        "actors": {},
+        "costs": [
+          0,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "duplicate",
+          "ok",
+          "ok",
+          "ok",
+          "missing"
+        ]
+      }
+    },
+    {
+      "id": "dual-or-only-last-line-changes-cost",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "dual",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true,
+                true
+              ]
+            }
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": 0,
+            "on": false
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": 1,
+            "on": false
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "dual",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              false,
+              false
+            ]
+          }
+        },
+        "costs": [
+          2,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "ok",
+          "ok"
+        ]
+      }
+    },
+    {
+      "id": "weapons-selector-not-raw-or",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "weapons",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true,
+                true
+              ],
+              "eligible": [
+                true,
+                false
+              ]
+            }
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": 0,
+            "on": false
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "weapons",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              false,
+              true
+            ],
+            "eligible": [
+              true,
+              false
+            ]
+          }
+        },
+        "costs": [
+          2,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "ok"
+        ]
+      }
+    },
+    {
+      "id": "research-not-retroactive-same-switch-not-repair-removal-atomic",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "weapons",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true,
+                true
+              ],
+              "eligible": [
+                false,
+                false
+              ]
+            }
+          },
+          {
+            "op": "research",
+            "id": "x",
+            "line": 0,
+            "eligible": true
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": 0,
+            "on": true
+          },
+          {
+            "op": "remove",
+            "id": "x"
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "weapons",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              true,
+              true
+            ],
+            "eligible": [
+              true,
+              false
+            ]
+          }
+        },
+        "costs": [
+          2,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "ok",
+          "ok",
+          "cost_sub"
+        ]
+      }
+    },
+    {
+      "id": "house-type-history-not-reconstructed",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "house",
+              "kind": 1,
+              "cost": [
+                0,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "house_replace",
+            "id": "x",
+            "cost": [
+              0,
+              20
+            ]
+          },
+          {
+            "op": "remove",
+            "id": "x"
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "house",
+            "kind": 1,
+            "cost": [
+              0,
+              20
+            ],
+            "on": [
+              true
+            ]
+          }
+        },
+        "costs": [
+          10,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "ok",
+          "cost_sub"
+        ]
+      }
+    },
+    {
+      "id": "inert-switch-explicitly-unsupported",
+      "kind": "lifecycle",
+      "input": {
+        "events": [
+          {
+            "op": "create",
+            "id": "x",
+            "actor": {
+              "class": "inert",
+              "kind": 1,
+              "cost": [
+                2,
+                10
+              ],
+              "on": [
+                true
+              ]
+            }
+          },
+          {
+            "op": "switch",
+            "id": "x",
+            "line": 0,
+            "on": false
+          }
+        ]
+      },
+      "expected": {
+        "actors": {
+          "x": {
+            "class": "inert",
+            "kind": 1,
+            "cost": [
+              2,
+              10
+            ],
+            "on": [
+              true
+            ]
+          }
+        },
+        "costs": [
+          10,
+          0
+        ],
+        "dispositions": [
+          "ok",
+          "unsupported"
+        ]
+      }
+    },
+    {
+      "id": "two-cities-combined-overflow",
+      "kind": "sequence",
+      "input": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          },
+          "b": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 9223372036854775806
+        },
+        "events": [
+          {
+            "kind": "book",
+            "city": "a",
+            "tick": 2000
+          },
+          {
+            "kind": "book",
+            "city": "b",
+            "tick": 2000
+          }
+        ]
+      },
+      "expected": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 2000,
+            "rows": [
+              [
+                1,
+                0,
+                0
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              1,
+              0,
+              0
+            ]
+          },
+          "b": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 9223372036854775807
+        },
+        "stopped": true,
+        "bookings": [
+          {
+            "city": "a",
+            "stepped": true,
+            "stamp": 2000,
+            "bills": [
+              0
+            ],
+            "money": 9223372036854775807,
+            "stats": [
+              1,
+              0,
+              0
+            ],
+            "income": 1,
+            "upkeep": 0
+          },
+          {
+            "city": "b",
+            "stepped": false,
+            "stamp": 0,
+            "bills": [
+              256
+            ],
+            "money": 9223372036854775807,
+            "stats": [
+              0,
+              0,
+              0
+            ],
+            "income": 0,
+            "upkeep": 0,
+            "fault": "credit"
+          }
+        ]
+      }
+    },
+    {
+      "id": "book-then-fault-preserves-booking",
+      "kind": "sequence",
+      "input": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 0
+        },
+        "events": [
+          {
+            "kind": "book",
+            "city": "a",
+            "tick": 2000
+          },
+          {
+            "kind": "fault"
+          }
+        ]
+      },
+      "expected": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 2000,
+            "rows": [
+              [
+                1,
+                0,
+                0
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              1,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 1
+        },
+        "stopped": true,
+        "bookings": [
+          {
+            "city": "a",
+            "stepped": true,
+            "stamp": 2000,
+            "bills": [
+              0
+            ],
+            "money": 1,
+            "stats": [
+              1,
+              0,
+              0
+            ],
+            "income": 1,
+            "upkeep": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fault-then-book-suppressed-bill-retained",
+      "kind": "sequence",
+      "input": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 0
+        },
+        "events": [
+          {
+            "kind": "fault"
+          },
+          {
+            "kind": "book",
+            "city": "a",
+            "tick": 2000
+          },
+          {
+            "kind": "bill",
+            "city": "a",
+            "good": 0,
+            "delta": 3
+          }
+        ]
+      },
+      "expected": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                259
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 0
+        },
+        "stopped": true,
+        "bookings": [
+          {
+            "city": "a",
+            "suppressed": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "money-before-book-rescues-credit",
+      "kind": "sequence",
+      "input": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 9223372036854775807
+        },
+        "events": [
+          {
+            "kind": "money",
+            "owner": "p",
+            "delta": -1
+          },
+          {
+            "kind": "book",
+            "city": "a",
+            "tick": 2000
+          }
+        ]
+      },
+      "expected": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 2000,
+            "rows": [
+              [
+                1,
+                0,
+                0
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              1,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 9223372036854775807
+        },
+        "stopped": false,
+        "bookings": [
+          {
+            "city": "a",
+            "stepped": true,
+            "stamp": 2000,
+            "bills": [
+              0
+            ],
+            "money": 9223372036854775807,
+            "stats": [
+              1,
+              0,
+              0
+            ],
+            "income": 1,
+            "upkeep": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "money-after-book-cannot-rescue-credit",
+      "kind": "sequence",
+      "input": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 9223372036854775807
+        },
+        "events": [
+          {
+            "kind": "book",
+            "city": "a",
+            "tick": 2000
+          },
+          {
+            "kind": "money",
+            "owner": "p",
+            "delta": -1
+          }
+        ]
+      },
+      "expected": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 9223372036854775806
+        },
+        "stopped": true,
+        "bookings": [
+          {
+            "city": "a",
+            "stepped": false,
+            "stamp": 0,
+            "bills": [
+              256
+            ],
+            "money": 9223372036854775807,
+            "stats": [
+              0,
+              0,
+              0
+            ],
+            "income": 0,
+            "upkeep": 0,
+            "fault": "credit"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bill-after-book-pending-two-owner-isolation",
+      "kind": "sequence",
+      "input": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          },
+          "b": {
+            "owner": "q",
+            "stamp": 0,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 0,
+          "q": -4
+        },
+        "events": [
+          {
+            "kind": "book",
+            "city": "a",
+            "tick": 2000
+          },
+          {
+            "kind": "bill",
+            "city": "a",
+            "good": 0,
+            "delta": 256
+          },
+          {
+            "kind": "book",
+            "city": "b",
+            "tick": 2000
+          }
+        ]
+      },
+      "expected": {
+        "cities": {
+          "a": {
+            "owner": "p",
+            "stamp": 2000,
+            "rows": [
+              [
+                1,
+                0,
+                256
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              1,
+              0,
+              0
+            ]
+          },
+          "b": {
+            "owner": "q",
+            "stamp": 2000,
+            "rows": [
+              [
+                1,
+                0,
+                0
+              ]
+            ],
+            "costs": [
+              0,
+              0
+            ],
+            "stats": [
+              1,
+              0,
+              0
+            ]
+          }
+        },
+        "money": {
+          "p": 1,
+          "q": -3
+        },
+        "stopped": false,
+        "bookings": [
+          {
+            "city": "a",
+            "stepped": true,
+            "stamp": 2000,
+            "bills": [
+              0
+            ],
+            "money": 1,
+            "stats": [
+              1,
+              0,
+              0
+            ],
+            "income": 1,
+            "upkeep": 0
+          },
+          {
+            "city": "b",
+            "stepped": true,
+            "stamp": 2000,
+            "bills": [
+              0
+            ],
+            "money": -3,
+            "stats": [
+              1,
+              0,
+              0
+            ],
+            "income": 1,
+            "upkeep": 0
+          }
+        ]
+      }
+    }
+  ]
+}

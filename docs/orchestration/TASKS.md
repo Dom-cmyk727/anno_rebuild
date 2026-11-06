@@ -19,6 +19,24 @@
 - **The status page.** [`STATUS.md`](STATUS.md) says who works on what, where the work is, and what it waits on. Every
   orchestrator updates it in the same commit as each dispatch, acceptance or change of lane.
 
+<!-- BEGIN MAIN-CI-1 -->
+## MAIN-CI-1 — repair canonical main before consolidation (2026-11-06)
+
+**Owner priority; orchestrator owns this separate repair package.** All ten CI
+jobs must pass on the repaired main source before another gameplay consolidation.
+The missing standard headers, GCC warning errors and four asset-bound replay
+failures are not waived by local Mac gates. Fix newly exposed failures too;
+retain warnings-as-errors, test meaning and all first failures. No gameplay-rule,
+identity, default, coordinator or unrelated tooling redesign is released.
+
+Codex orchestrator reproduces, fixes, independently reviews, pushes ordinary
+main repair commits and verifies the complete GitHub matrix. STATUS changes in
+the same commits. Windows W7 remains blocked on this prerequisite. Mac executors
+may continue independent current work, preserving running jobs; do not re-run
+known failing inherited gates or merge moving main. Exact repair intake pins and
+portability notes follow verified closure. Task-branch pushes remain authorized.
+<!-- END MAIN-CI-1 -->
+
 <!-- BEGIN MAP-ROUTE-1 -->
 ## Second Mac — MAP-ROUTE-1: automatic freight between owned warehouses (2026-11-06)
 

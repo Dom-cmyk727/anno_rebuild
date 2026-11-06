@@ -1,5 +1,6 @@
 // MAP-INTEGRATE-1 I2: each predecessor and each compatibility predicate has its own control.
 #include <array>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>

@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-06, by the Codex orchestrator (MAP-ROUTE-1 dispatch and observed Mac checkpoints); Windows lane and the `main` CI note by the Claude Code orchestrator, 13:30.
+**Last updated:** 2026-11-06, by the Codex orchestrator (MAIN-CI-1 repair ownership; gameplay lanes unchanged); Windows lane and the `main` CI note by the Claude Code orchestrator, 13:30.
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -27,6 +27,10 @@ Canonical identity on `main`: **state134 / ECONBK1 / PRNG5 / replay4 / command1*
 The [founding prerequisite](reviews/2026-11-06-founding134-acceptance.md) and
 [headless manual expansion](reviews/2026-11-06-map-expand1-acceptance.md) are accepted.
 Live-window and target-host acceptance are separate.
+
+**MAIN-CI-1 is active, owned by the Codex orchestrator.** No further consolidation
+until all ten jobs pass at the repaired main source. Gameplay research may
+continue; a repair intake pin will follow closure.
 
 **`main`'s C++ CI is red** on all five build jobs (MSVC, GCC, GCC release, Clang ASan, macOS Clang). It has been red
 since `944cec89` (2026-11-05 22:38, the consolidated baseline); the last green run was `cafa74d5`. On `e0bb6be7`:

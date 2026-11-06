@@ -149,7 +149,8 @@ struct Audit {
     Balances before_money;
     std::map<sim::GoodsId, std::uint64_t> initial_pending, booked_bills;
     std::map<std::uint32_t, std::uint64_t> income, upkeep;
-    std::uint64_t count = 0, positive = 0, target_income = 0, target_upkeep = 0;
+    std::uint64_t count = 0, positive = 0, target_income = 0, target_upkeep = 0,
+                  target_alcohol_income = 0;
     std::ostringstream rows;
     explicit Audit(const sim::World& w) {
         rows << "tick\tisland\tcity\towner\tnumerator\tincome\tupkeep\tbefore\tafter\tpriced_"
@@ -188,7 +189,7 @@ struct Audit {
                 const auto* c = is.city(b.city.city);
                 REQUIRE(c);
                 CHECK(c->owner == b.owner);
-                std::uint64_t numerator = 0;
+                std::uint64_t numerator = 0, alcohol_numerator = 0;
                 std::ostringstream terms;
                 for (std::uint32_t g = w.config().billed_goods_first;
                      g <= w.config().billed_goods_last; ++g) {
@@ -198,6 +199,8 @@ struct Audit {
                     const auto surcharge =
                         info->prices ? info->prices->tax[w.settings().prop10] : 0;
                     numerator += (std::uint64_t{price} + surcharge) * bills[g];
+                    if (g == 29)
+                        alcohol_numerator = (std::uint64_t{price} + surcharge) * bills[g];
                     booked_bills[g] += bills[g];
                     if (bills[g])
                         terms << g << ":" << price << "+" << surcharge << "*" << bills[g] << ",";
@@ -223,6 +226,7 @@ struct Audit {
                 if (b.city == town) {
                     target_income += gross;
                     target_upkeep += charge;
+                    target_alcohol_income += gross - (numerator - alcohol_numerator + 128) / 256;
                 }
                 rows << event.tick << '\t' << b.city.island.v << '\t' << b.city.city.v << '\t'
                      << b.owner.v << '\t' << numerator << '\t' << gross << '\t' << charge << '\t'
@@ -332,6 +336,11 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
     Audit audit(w);
     Homes homes(w);
     const auto initial_money = balances(w);
+    std::map<sim::FigureId, std::pair<std::uint32_t, sim::PlayerId>> original_actors;
+    for (const auto& f : w.figures().list.slots)
+        if (f)
+            original_actors[f->id] = {f->kind, f->owner};
+    REQUIRE(original_actors.size() == 3);
     const auto inn = at(w, 301, 351).id, original_farm = at(w, 261, 344).id;
     const auto initial_food = city7(w).stock.stock[26];
     const auto initial_cost = city7(w).accounts.civil_cost;
@@ -445,7 +454,10 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
             for (const auto& f : w.figures().list.slots)
                 if (f && f->resident && f->resident->step == sim::ResidentStep::ToHome &&
                     f->home.valid() && w.islands()[7]->find_building(f->home) &&
-                    f->resident->cargo[0].goods != 0) {
+                    !f->resident->cargo.empty() &&
+                    std::any_of(
+                        f->resident->cargo.begin(), f->resident->cargo.end(),
+                        [](const auto& item) { return item.goods != 0 && item.amount_88 > 0; })) {
                     native_cut(w, *o, "resident-purchased-trip");
                     trip_cut = true;
                     break;
@@ -474,6 +486,14 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
     control_audit->check_bills(*control, control_stats);
     CHECK(audit.positive > 0);
     CHECK(audit.target_income > 0);
+    CHECK(audit.target_alcohol_income > 0);
+    CHECK(audit.booked_bills[29] > 0);
+    for (const auto& [id, facts] : original_actors) {
+        const auto* f = sim::find_figure(w.figures(), id);
+        REQUIRE(f);
+        CHECK(f->kind == facts.first);
+        CHECK(f->owner == facts.second);
+    }
     CHECK(audit.target_upkeep > 0);
     for (const auto& [owner, cash] : initial_money)
         CHECK(w.players().find(sim::PlayerId{owner})->money ==
@@ -510,6 +530,8 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
             << " inherited; alcohol farm/raw/store/Inn initially0\n"
             << "bookings=" << audit.count << " positive=" << audit.positive
             << " target_income=" << audit.target_income << " target_upkeep=" << audit.target_upkeep
+            << " target_alcohol_marginal_income=" << audit.target_alcohol_income
+            << " booked_alcohol_units=" << audit.booked_bills[29]
             << "\nfirst_sold=" << sold_at_removal << " final_sold=" << sold(stats, inn)
             << " no-rebuild_additional_sold=" << sold(control_stats, inn)
             << " recovered_households=" << homes.recovered.size()

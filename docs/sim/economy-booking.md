@@ -1012,3 +1012,28 @@ property-inventory attempt used unsupported CTest set_property(APPEND); it is
 retained as a failed inventory, corrected to set_tests_properties with explicit
 environment. The successful inventory pins producer/consumer fixture ordering.
 Independent B5 review, canonical gates and final B7 remain pending.
+
+### B5 first gate and explicit new-goods attribution
+
+Frozen12f9afaa canonical Debug01 selected6/executed6, all other categories0,
+GATE_END0; producer23.27s/62603 assertions, total selected65.61s. Its genuine
+record SHA256 `a790ceb5e03ca51602537bcb8921a7a98bb288da95e5deed08d78eee97c3917f`
+exactly equals exploration01, so retained raw CLI outputs concern the same record.
+`B5/receipt-12f9.json` preserves source/binary/log/record identities.
+Before ASAN the author strengthened an assertion gap: positive overall income
+could otherwise come solely from inherited food even alongside new alcohol sales.
+The test now asserts positive marginal booked income attributable to good29:
+for each target booking, gross(all rows)-gross(without29), retaining sum-before-
+rounding in each expression. This is a diagnostic calculation; it never edits
+prices, bills or a real world. Independent TSV derivation gives217 gold and1014
+booked alcohol units through510000. All3 original actor identities/kinds/owners
+are also checked present at completion. These test-only additions do not change
+the saved trajectory or checkpoint pins. Independent review and corrected gates
+remain pending.
+
+Reviewer `/root/econ_b1_primary_review` identified a related native-cut predicate:
+ResidentCargo permits a named goods slot with amount0. The corrected trip
+selection requires a nonempty cargo collection and at least one named slot with
+positive amount, rather than merely a goods ID. This makes the cut a purchased,
+loaded return trip. No production state or replay trajectory changes; native probe
+outputs may legitimately select a later trip. This finding is fixed before ASAN.

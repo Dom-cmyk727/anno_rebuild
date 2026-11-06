@@ -142,3 +142,17 @@ records each lane's elapsed time in its gate summary file. Pass `--gpu-lane` to
 additionally run the GPU-adapter suite on Mesa lavapipe with `ANNO_REQUIRE_GPU=1`
 (the same setup `docs/testing/gpu-tests.md` and CI's `linux-gcc` job use), as a
 separate, explicit lane, never folded into the ASan one.
+
+**Where the logs live.** Every gate run's summary (`wsl-<tag>.txt`) and per-lane
+`.log`/`.out` pair land under `~/anno-gate-logs/<worktree-basename>/`, never inside
+the worktree under test: an earlier run's raw evidence (`w7final2`) was lost when
+its diagnostic worktree was removed, because the gate used to write into that
+worktree's gitignored `cache/gates/`, and `git worktree remove` takes the whole
+tree with it (W4-SETTLEMENT-1 W7 review, 2026-11-07). The script refuses to
+overwrite an existing summary file; pass a distinct `--tag` for a rerun against
+the same worktree in the same minute. `--build-dir`, if given explicitly, must
+resolve (via `realpath`) to `~/anno-build` or a path under it — anything else is
+refused before it is ever handed to the end-of-run `rm -rf`. The script exits
+non-zero if any lane fails, or if a lane that was requested (such as `--gpu-lane`
+with no lavapipe ICD installed) could not run at all; a reviewer or CI step can
+rely on the exit code alone, without re-deriving the verdict from the log text.

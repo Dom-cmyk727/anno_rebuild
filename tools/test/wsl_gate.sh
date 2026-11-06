@@ -26,15 +26,18 @@
 #                     never the owner's E:\anno1503): see CLAUDE.md's merge-outside-worktree rule.
 #   --tag TAG         distinguishes this run's gate files (default: date +%H%M%S).
 #   --build-dir DIR   default: $HOME/anno-build/wsl-gate (one folder, shared across every worktree
-#                     and run — WSL disk rules, owner 2026-11-06, below).
-#   --gpu-lane        also run anno_render_gpu_tests on lavapipe (ANNO_REQUIRE_GPU=1).
+#                     and run — WSL disk rules, owner 2026-11-06, below). Resolved with realpath;
+#                     refused unless it is $HOME/anno-build itself or a path under it.
+#   --gpu-lane        also run anno_render_gpu_tests on lavapipe (ANNO_REQUIRE_GPU=1). Refusing to
+#                     run it (no lavapipe ICD installed) fails the gate, since it was requested.
 #   --keep-build      skip the end-of-run build-tree deletion, for an immediate rerun of the same
 #                     head (configure+build is skipped next time when CMakeCache.txt is still there).
 #   --min-free-gib N  the free-space floor checked before configuring (default: 20).
 #
-# The default build folder is shared and deleted at the end of every run: do not run two gate
-# invocations against it at the same time (they would race on the same CMake build tree). Give
-# concurrent runs distinct --build-dir values if that is ever genuinely needed.
+# The default build folder is shared: a second invocation against it queues behind a `flock` held
+# by the first (bounded by ANNO_GATE_LOCK_TIMEOUT_S, default 1800s) rather than racing its build or
+# its end-of-run deletion. Give concurrent runs distinct --build-dir values if that is ever
+# genuinely needed.
 #
 # WSL disk rules (owner, 2026-11-06; docs/orchestration/TASKS.md, W4-OPENING-CONTROLS-FLAKE step 0):
 # C: ran out of space once because Ubuntu's disk image lived there and every worktree's gate run
@@ -47,9 +50,14 @@
 # it is reused by a later build, not returned to the host, so deleting the build tree keeps the
 # image itself lean, not just the host's view of it.
 #
-# Gate files land in <worktree-path>/cache/gates/ (gitignored), one $S summary file per run plus
-# a .log/.out pair per lane, each line in $S timestamped so lane wall-clock time is directly
-# readable (W4-OPENING-CONTROLS-FLAKE step 0's "lane times recorded").
+# Gate files land under $HOME/anno-gate-logs/, never inside the worktree under test (docs/testing/
+# README.md documents the exact path): a worktree removed with `git worktree remove` takes its
+# whole tree with it, gitignored files included, and that is exactly how the raw logs of an
+# earlier run (`w7final2`) were lost before a reviewer could read them (W4-SETTLEMENT-1 W7 review,
+# 2026-11-07). One $S summary file per run plus a .log/.out pair per lane, each line in $S
+# timestamped so lane wall-clock time is directly readable (W4-OPENING-CONTROLS-FLAKE step 0's
+# "lane times recorded"). A run never overwrites another run's summary (below); give --tag an
+# explicit, distinct value for a rerun in the same minute, or let a collision fail loudly.
 set -u
 
 WORKTREE=""
@@ -77,12 +85,29 @@ export PATH=$HOME/anno-tools-venv/bin:$PATH
 export ANNO1503_GAME_DIR=/mnt/e/anno1503/game/app
 export ANNO_TEST_THREADS=${ANNO_TEST_THREADS:-4}
 
-W=$WORKTREE
+W=$(realpath "$WORKTREE" 2>/dev/null) || { echo "cannot resolve worktree path $WORKTREE" >&2; exit 2; }
+
+# --build-dir, resolved and required under ~/anno-build (W7 review finding 8): the shared default
+# below is always there, but an explicit value used to be taken as-is, trusted through a later
+# `cd "$W"` and then handed straight to `rm -rf` in cleanup() — $HOME, the repository itself or any
+# other path a caller mistypes would be deleted on exit. `realpath -m` works even when the
+# directory does not exist yet (the common case: it is created just below).
+if [ -n "$BUILD_DIR" ]; then
+  BUILD_DIR=$(realpath -m "$BUILD_DIR" 2>/dev/null) || { echo "cannot resolve --build-dir $BUILD_DIR" >&2; exit 2; }
+  case "$BUILD_DIR" in
+    "$HOME/anno-build"|"$HOME/anno-build"/*) ;;
+    *) echo "refusing --build-dir $BUILD_DIR: must be $HOME/anno-build or a path under it" >&2; exit 2 ;;
+  esac
+fi
 # One reused build folder by default (WSL disk rules above) — never one per worktree. An explicit
 # --build-dir still works for a caller that genuinely wants its own (e.g. to keep two runs' builds
 # apart deliberately); the default no longer does that implicitly.
 B=${BUILD_DIR:-$HOME/anno-build/wsl-gate}
-G=$W/cache/gates
+# Gate logs live outside every tested worktree (header comment above): a worktree removal takes
+# its gitignored cache/ directory with it, which is exactly how an earlier run's raw logs were
+# lost before review. Namespaced by the worktree's own basename so distinct worktrees under test
+# do not share a log directory; TAG still distinguishes runs against the same worktree.
+G=$HOME/anno-gate-logs/$(basename "$W")
 # The pinned FetchContent sources, outside every build tree (WSL disk rules above) so deleting $B
 # at the end of a run never forces a slow refetch next time. Seeded once (2026-11-06) from the
 # W4-SETTLEMENT-1 `5a5de598` pins into $HOME/anno-build/w4-asan-viewer/_deps, then moved here.
@@ -90,10 +115,33 @@ OLD=$HOME/anno-deps
 S=$G/wsl-$TAG.txt
 mkdir -p "$G" "$B"
 
+# Never silently overwrite another run's summary (W7 review finding 6): the default tag is a
+# wall-clock HHMMSS, so two runs started in the same second, or a caller reusing an explicit --tag,
+# used to clobber each other's evidence with no warning.
+if [ -e "$S" ]; then
+  echo "refusing to overwrite existing summary $S; pass a different --tag" >&2
+  exit 2
+fi
+
+# A lock on the build folder, acquired before the cleanup trap is registered (W7 review finding
+# 7): the trap used to run unconditionally on every exit, including the free-space, dirty-tree and
+# stale-cache-mismatch refusals below, which happen before any work starts. A second invocation
+# against the same (default, shared) $B that hit one of those refusals at once would still run
+# `rm -rf "$B"` and destroy another gate's in-progress build. The lock file is a sibling of $B, not
+# inside it, so the stale-cache wipe's `rm -rf "$B"` further down never touches the held fd. A
+# bounded wait (not a bare failure) lets a second invocation queue behind a running one instead of
+# racing it; raise ANNO_GATE_LOCK_TIMEOUT_S for a deliberately long first run sharing the default
+# build dir.
+exec 9>"$B.lock"
+if ! flock -w "${ANNO_GATE_LOCK_TIMEOUT_S:-1800}" 9; then
+  echo "VERDICT: INVALID could not lock build dir $B within ${ANNO_GATE_LOCK_TIMEOUT_S:-1800}s (another gate run holds it)" >&2
+  exit 1
+fi
+
 # Delete the build tree when the run finishes (WSL disk rules above), pass or fail (including the
 # free-space and dirty-checkout refusals below), unless the caller asked to keep it for an
-# immediate rerun of the same head. A trap, registered right after $B first exists, so every exit
-# path is covered, not just a clean fall-through to the end of the script.
+# immediate rerun of the same head. Registered only once the lock above is held, so an invocation
+# that never acquires the lock never deletes a build dir it does not own.
 cleanup() {
   if [ "$KEEP_BUILD" -eq 0 ]; then
     rm -rf "$B"
@@ -186,6 +234,12 @@ if [ $RC -ne 0 ]; then echo "VERDICT: INVALID build failed, nothing tested" >> "
 sha256sum "$B/src/app/anno1503" "$B/src/app/anno_app_tests" "$B/src/app/anno_app_input_tests" >> "$S"
 mkdir -p "$G/wsl-tmp-$TAG"; export TMPDIR="$G/wsl-tmp-$TAG"
 
+# Tracks whether the run as a whole should fail (W7 review finding 5): the script used to end on
+# `cat "$S"`, so a run with one or more failing lanes, or a requested lane that never actually
+# executed, still exited 0. A reviewer or CI step that only checks the exit code would then read a
+# broken gate as green.
+OVERALL_RC=0
+
 run_lane() {
   local name=$1 select=$2 jobs=$3; shift 3
   local start=$(date +%s)
@@ -194,11 +248,15 @@ run_lane() {
     --log "$G/wsl-$TAG-$name.log" "$@" > "$G/wsl-$TAG-$name.out" 2>&1
   local rc=$?
   echo "$name lane rc=$rc elapsed=$(( $(date +%s) - start ))s $(grep -E 'COUNTS|VERDICT' "$G/wsl-$TAG-$name.out" | tr '\n' ' ') $(date -Is)" >> "$S"
+  if [ "$rc" -ne 0 ]; then
+    OVERALL_RC=1
+  fi
 }
 
 cd "$W"
-run_lane app '^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.|^viewer_wiring_(contract|r1_held_publication|r4_occupancy|cpu_delivery_failures|opening_controls)$|^opening_session_replay$' 4 \
-  --require-test viewer_wiring_contract --require-test viewer_wiring_opening_controls --require-test opening_session_replay
+run_lane app '^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.|^viewer_wiring_(contract|r1_held_publication|r4_occupancy|cpu_delivery_failures|opening_controls|settlement_activity)$|^opening_session_replay$' 4 \
+  --require-test viewer_wiring_contract --require-test viewer_wiring_opening_controls \
+  --require-test viewer_wiring_settlement_activity --require-test opening_session_replay
 run_lane sim '^anno_sim_tests\.' 4
 run_lane formats '^anno_formats_tests\.|^anno_assets_tests\.' 4
 # anno_render_gpu_tests is deliberately excluded here: see the header comment.
@@ -208,7 +266,10 @@ run_lane tsupport '^anno_test_support_tests\.' 4
 if [ "$GPU_LANE" -eq 1 ]; then
   ICD=$(ls /usr/share/vulkan/icd.d/*lvp*.json 2>/dev/null | head -1)
   if [ -z "$ICD" ]; then
+    # Requested but unable to run is a failure, not a quiet skip (W7 review finding 5): the caller
+    # asked for the GPU lane specifically, so a missing lavapipe ICD must not pass silently.
     echo "gpu lane rc=skip no lavapipe ICD found under /usr/share/vulkan/icd.d (install mesa-vulkan-drivers)" >> "$S"
+    OVERALL_RC=1
   else
     start=$(date +%s)
     env $SRC_GIT WGPU_BACKEND=vulkan VK_ICD_FILENAMES="$ICD" ANNO_REQUIRE_GPU=1 \
@@ -217,8 +278,13 @@ if [ "$GPU_LANE" -eq 1 ]; then
       --log "$G/wsl-$TAG-gpu.log" > "$G/wsl-$TAG-gpu.out" 2>&1
     rc=$?
     echo "gpu lane (lavapipe, ANNO_REQUIRE_GPU=1) rc=$rc elapsed=$(( $(date +%s) - start ))s $(grep -E 'COUNTS|VERDICT' "$G/wsl-$TAG-gpu.out" | tr '\n' ' ') $(date -Is)" >> "$S"
+    if [ "$rc" -ne 0 ]; then
+      OVERALL_RC=1
+    fi
   fi
 fi
 
 echo "done $(date -Is)" >> "$S"
+echo "overall rc=$OVERALL_RC" >> "$S"
 cat "$S"
+exit "$OVERALL_RC"

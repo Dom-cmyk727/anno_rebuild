@@ -837,3 +837,33 @@ Current whole-world timing grows even where freight counters stay constant.
 Exact raw tables/config/executables are bound in R6/scale-release-receipt-01.json;
 registered replay receipt is R6/replay-debug-receipt-01.json. No engine, defaults,
 identity, original assets or another executor's work changed in R6.
+
+### R6 independent approval and R7 frozen campaign
+
+`/root/expand_e0_review` APPROVE tested code/test/tools73eb40eb and docs7cdc4cbd.
+Actual replay primary-width decode, changed-byte/prefix attribution, ten binary/
+event artifacts equal R5, all16Debug/sevenRelease receipt hashes, all7/1400scale
+rows and nine-counter equality independently reconciled. Timing and NAV limits
+above are corrected reviewer advisories, not waivers. Full note in
+`cache/route1/reviews/r6.md`. R7 released.
+
+| R7 requirement | Positive evidence planned | Negative/prerequisite | Review |
+|---|---|---|---|
+| Frozen affected Debug |149 named cheap route/nav/manualcargo/codec/config/state/archive/native/replay/shared/integration/reference/lint cases | same eight required contracts separately, no skip/empty/incomplete | pending |
+| Final current SAN |same149 plus one genuine producer/two fresh CLI =152, originals required,1200s declared per case | producer4slots alone; wrong replay must exit1/diverge491; no diagnostic may be hidden | pending |
+| Evidence identity |exact source/config/tools/binaries/raw/native/recording hashes; unchanged input checks | no mutant or prior-pin binary, no relabelled failure; R6Release reused unchanged | pending |
+| Fresh integration |new `/root/expand_boundary_review` inspects whole feature/callers and terminal handoff | fixes only actual blockers, affected reruns only; no other lane/identity intake | pending |
+
+Exact finite selectors cached R7/focused-planned-names.json and
+R7/asan-planned-names.json. The initial147plan adds two determinism-lint cases
+before execution, yielding149/152; there are no selected fixture prerequisites
+beyond the explicitly included producer. Required contracts: cargo_reference_selftest,
+bootstrap_budget_contract, integration_stream_reference_contract,
+booking_checked_reference_contract, anno_sim_replay_check_contract,
+expansion_replay_asset_contract, freight_reference_contract and automatic
+picture_matrix_contract. Old real sailing/corpus/render/opt-in NAV scale omitted;
+no unrelated pass inflation. Existing R0–R6 evidence reused only at its named
+source/dependencies. All54 changed C++/header/inc files pass clang-format23.1.3
+dry-run. Source/runtime/tests/references/tools frozen before this campaign.
+Current Mac18logical/48GiB,1.5TiBfree, load2.51;4jobs and memory admission retained.
+Windows/Linux/original-runtime/liveUI/GPU evidence remains NOT_RUN.

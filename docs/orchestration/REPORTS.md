@@ -13625,3 +13625,21 @@ Build refuses before and succeeds after; dest1280rawwood remains. NoProdexport0
 and inheriteddelivery1536 are explicitly unproductive. Five full native suffixes
 match,790entry genuine/one-byte legalchanged logs recorded. Fresh CLI/Release/
 SAN stillpending; R6 released. Route-only136 remains based134 withoutsalt135.
+
+
+### MAP-ROUTE-1 R6 — approved replay, continuation, scale and consumer contract
+
+Independent `/root/expand_e0_review` APPROVE testedcode73eb40eb/docs7cdc4cbd.
+RegisteredDebug3/3+five contracts separately (oneproducer/twofreshchildren),
+Release1/1+five contracts, allother0. Honest11/11; legalchanged29→28 matches3/4
+and diverges491; singlebytecausality independentlydecoded. Fivefullnative
+suffixes/R5trajectoryreused byte-for-byte.11producerartifacts,16Debug/seven
+Release receipt hashes verified.7shortscale samples/1400timings, allninefreight
+workfields8/8 equal acrossunrelatedworldsizes. Whole-scheduler timing and64route
+NAVbackpressure explicitly not linear/equal-work latency or late-game proof.
+Consumer card docs/testing/automatic-freight.md preservesmanualcard and defines
+Windowsadapter only;noappchange. Preservedcrowded-dockOutOfRange and default
+synthetic512-bound failures; onlyfixturegeometry/dimensions corrected, noRules.
+R7released: freeze149focusedDebug/152SAN(withonecurrentoriginalproducer+twoCLI),
+eightcontracts separately, freshintegrationreview;1200sdeclared from measured
+Debug/SANratio. No completion/SANclaim yet. Route-only136/no135 unchanged.

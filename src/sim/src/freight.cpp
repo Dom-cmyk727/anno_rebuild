@@ -99,14 +99,13 @@ bool stop_clock(FreightPhase p) {
 } // namespace
 
 Reject FreightRoutes::target(const World& w, const Figure& ship, const FreightStop& stop,
-                             bool range) {
+                             bool range, GoodsId goods) {
     const auto result = ShipCargo::destination(w, ship, stop.warehouse, range);
     if (result.status != Reject::None)
         return result.status;
     const auto* city = w.islands()[result.city.island.v]->city(result.city.city);
-    for (const auto& action : stop.actions)
-        if (action.goods >= city->stock.stock.size())
-            return Reject::UnsupportedGoods;
+    if (goods != 0 && goods >= city->stock.stock.size())
+        return Reject::UnsupportedGoods;
     return Reject::None;
 }
 ApplyResult FreightRoutes::assign(World& w, const Command& command,
@@ -154,7 +153,10 @@ ApplyResult FreightRoutes::control(World& w, const Command& command,
     if (cmd.control == FreightControl::Resume) {
         if (old.status == FreightStatus::Running)
             return {};
-        if (const auto r = target(w, *checked, old.stops[old.stop_index], false); r != Reject::None)
+        const auto& stop = old.stops[old.stop_index];
+        const auto goods =
+            old.action_index < stop.actions.size() ? stop.actions[old.action_index].goods : 0;
+        if (const auto r = target(w, *checked, stop, false, goods); r != Reject::None)
             return refuse(r);
         auto& route = *find_figure(w.figures_, cmd.ship)->freight;
         route.status = FreightStatus::Running;
@@ -298,27 +300,90 @@ std::string FreightRoutes::validate(const World& w) {
 
 namespace anno::sim {
 namespace {
-void index_note(FreightHoldIndex& index, std::uint32_t i, const ShipHold& hold, GoodsId goods,
-                std::uint32_t capacity, bool add) {
-    if (hold.goods == goods && hold.amount_88 < capacity) {
-        const auto key = std::pair{UINT64_MAX - (std::uint64_t{capacity} - hold.amount_88), i};
-        if (add)
-            index.rooms.insert(key);
-        else
-            index.rooms.erase(key);
-    } else if (hold.goods == 0 && hold.amount_88 == 0) {
-        if (add)
-            index.empty.insert(i);
-        else
-            index.empty.erase(i);
+void heap_swap(FreightHoldIndex& index, std::size_t a, std::size_t b) {
+    std::swap(index.rooms[a], index.rooms[b]);
+    index.positions[index.rooms[a].hold] = static_cast<std::uint32_t>(a);
+    index.positions[index.rooms[b].hold] = static_cast<std::uint32_t>(b);
+}
+void heap_up(FreightHoldIndex& index, std::size_t at, FreightWork* work) {
+    while (at != 0) {
+        const auto parent = (at - 1) / 2;
+        if (work)
+            ++work->heap_steps;
+        if (!(index.rooms[at] < index.rooms[parent]))
+            break;
+        heap_swap(index, at, parent);
+        at = parent;
     }
 }
-void index_start(Figure& ship) {
+void heap_down(FreightHoldIndex& index, std::size_t at, FreightWork* work) {
+    for (;;) {
+        const auto left = at * 2 + 1;
+        if (left >= index.rooms.size())
+            return;
+        auto child = left;
+        if (left + 1 < index.rooms.size()) {
+            if (work)
+                ++work->heap_steps;
+            if (index.rooms[left + 1] < index.rooms[left])
+                child = left + 1;
+        }
+        if (work)
+            ++work->heap_steps;
+        if (!(index.rooms[child] < index.rooms[at]))
+            return;
+        heap_swap(index, at, child);
+        at = child;
+    }
+}
+void heap_insert(FreightHoldIndex& index, std::uint32_t i, const ShipHold& hold, GoodsId goods,
+                 std::uint32_t capacity, FreightWork* work) {
+    if (hold.goods != goods || hold.amount_88 >= capacity)
+        return;
+    const auto at = index.rooms.size();
+    index.positions[i] = static_cast<std::uint32_t>(at);
+    index.rooms.push_back({UINT64_MAX - (std::uint64_t{capacity} - hold.amount_88), i});
+    heap_up(index, at, work);
+}
+void heap_erase(FreightHoldIndex& index, std::uint32_t i, FreightWork* work) {
+    const auto at = index.positions[i];
+    if (at == kNoSlot)
+        return;
+    index.positions[i] = kNoSlot;
+    if (std::size_t{at} + 1 == index.rooms.size()) {
+        index.rooms.pop_back();
+        return;
+    }
+    index.rooms[at] = index.rooms.back();
+    index.rooms.pop_back();
+    index.positions[index.rooms[at].hold] = at;
+    if (at != 0 && index.rooms[at] < index.rooms[(at - 1) / 2])
+        heap_up(index, at, work);
+    else
+        heap_down(index, at, work);
+}
+void index_scan(FreightHoldIndex& index, std::uint32_t i, const ShipHold& hold, GoodsId goods,
+                std::uint32_t capacity, FreightWork* work) {
+    index.positions.push_back(kNoSlot); // one initialized position per saved scan unit
+    heap_insert(index, i, hold, goods, capacity, work);
+    if (hold.goods == 0 && hold.amount_88 == 0)
+        index.empty.push_back(i);
+}
+void index_start(Figure& ship, std::size_t holds, bool load) {
     auto& index = ship.freight.index();
-    index = {};
+    index.reset();
     index.generation = ship.freight_generation;
     index.stop = ship.freight->stop_index;
     index.action = ship.freight->action_index;
+    if (load) {
+        index.rooms.reserve(holds);
+        index.positions.reserve(holds);
+        index.empty.reserve(holds);
+    }
+    // Logical sizes are zero: reserve allocates raw trivial buffers, without a
+    // hidden H-element initialization/copy. Subsequent pushes occur under Scan.
+    ship.freight->matching_holds.reserve(holds);
+    ship.freight->empty_holds.reserve(holds);
 }
 bool index_current(const Figure& ship, const FreightHoldIndex& index) {
     const auto& r = *ship.freight;
@@ -332,9 +397,9 @@ std::optional<std::uint32_t> indexed_hold(const Figure& ship, std::uint32_t pref
     if (hold.goods == goods && hold.amount_88 <= capacity && capacity - hold.amount_88 >= 256)
         return preferred;
     if (!index.rooms.empty())
-        return index.rooms.begin()->second;
-    if (!index.empty.empty())
-        return *index.empty.begin();
+        return index.rooms.front().hold;
+    if (index.empty_next < index.empty.size())
+        return index.empty[index.empty_next];
     return std::nullopt;
 }
 bool resource_refusal(Reject r) {
@@ -349,7 +414,7 @@ void clear_action(Figure& ship) {
     r.candidate_next = 0;
     r.matching_holds.clear();
     r.empty_holds.clear();
-    ship.freight.index() = {};
+    ship.freight.index().reset();
 }
 void next_action(Figure& ship, std::uint32_t wait) {
     auto& r = *ship.freight;
@@ -412,17 +477,19 @@ void FreightRoutes::rebuild_indexes(World& w) {
         if (r.phase != FreightPhase::Scan && r.phase != FreightPhase::Transfer)
             continue;
         const auto* type = w.types_->find_figure_type(ship.kind);
-        index_start(ship);
+        const auto full = static_cast<std::size_t>(
+            std::min<std::uint64_t>(ship.holds.size(), type->nav->hold_count_a));
+        const auto& action = r.stops[r.stop_index].actions[r.action_index];
+        const bool load = action.direction == FreightDirection::LoadTarget;
+        index_start(ship, full, load);
         auto& index = ship.freight.index();
-        const auto limit = r.phase == FreightPhase::Scan
-                               ? r.scan_next
-                               : static_cast<std::uint32_t>(std::min<std::uint64_t>(
-                                     ship.holds.size(), type->nav->hold_count_a));
-        for (std::uint32_t i = 0; i < limit; ++i) {
-            index_note(index, i, ship.holds[i], r.stops[r.stop_index].actions[r.action_index].goods,
-                       type->capacity_88, true);
-            ++w.freight_work_.cold_scans;
-        }
+        const auto limit =
+            r.phase == FreightPhase::Scan ? r.scan_next : static_cast<std::uint32_t>(full);
+        if (load)
+            for (std::uint32_t i = 0; i < limit; ++i) {
+                index_scan(index, i, ship.holds[i], action.goods, type->capacity_88, nullptr);
+                ++w.freight_work_.cold_scans;
+            }
         index.scanned = limit;
     }
 }
@@ -495,12 +562,15 @@ void FreightRoutes::visit(World& w, const TickContext& ctx, Figure& ship, Effect
         fail(Reject::ShipDisabled);
         return;
     }
-    const auto& live_stop = r.stops[r.stop_index];
-    ++work.target_checks;
-    if (const auto reason = target(w, ship, live_stop, r.phase != FreightPhase::NeedLeg);
-        reason != Reject::None) {
-        fail(reason);
-        return;
+    if (r.phase != FreightPhase::NeedLeg) {
+        const auto& live_stop = r.stops[r.stop_index];
+        const auto goods =
+            r.action_index < live_stop.actions.size() ? live_stop.actions[r.action_index].goods : 0;
+        ++work.target_checks;
+        if (const auto reason = target(w, ship, live_stop, true, goods); reason != Reject::None) {
+            fail(reason);
+            return;
+        }
     }
     for (std::uint32_t used = 0; used < w.rules_.freight.work_per_visit; ++used) {
         ++work.steps;
@@ -531,8 +601,17 @@ void FreightRoutes::visit(World& w, const TickContext& ctx, Figure& ship, Effect
             r.wait_remaining -= static_cast<std::uint32_t>(spent);
             if (r.wait_remaining)
                 return;
+            ++work.target_checks;
+            if (const auto reason = target(w, ship, stop, true, stop.actions[r.action_index].goods);
+                reason != Reject::None) {
+                fail(reason);
+                return;
+            }
             r.phase = FreightPhase::Scan;
-            index_start(ship);
+            index_start(ship,
+                        static_cast<std::size_t>(
+                            std::min<std::uint64_t>(ship.holds.size(), type->nav->hold_count_a)),
+                        stop.actions[r.action_index].direction == FreightDirection::LoadTarget);
             continue;
         }
         if (r.phase == FreightPhase::Scan) {
@@ -558,7 +637,8 @@ void FreightRoutes::visit(World& w, const TickContext& ctx, Figure& ship, Effect
                 } else if (action.direction == FreightDirection::LoadTarget && hold.goods == 0 &&
                            hold.amount_88 == 0)
                     r.empty_holds.push_back(i);
-                index_note(index, i, hold, action.goods, type->capacity_88, true);
+                if (action.direction == FreightDirection::LoadTarget)
+                    index_scan(index, i, hold, action.goods, type->capacity_88, &work);
                 ++r.scan_next;
                 ++index.scanned;
                 ++work.hold_scans;
@@ -636,8 +716,15 @@ void FreightRoutes::visit(World& w, const TickContext& ctx, Figure& ship, Effect
             r.remaining_raw -= actual;
             ++r.candidate_next;
             ++work.transfers;
-            index_note(index, *chosen, before, action.goods, type->capacity_88, false);
-            index_note(index, *chosen, ship.holds[*chosen], action.goods, type->capacity_88, true);
+            if (action.direction == FreightDirection::LoadTarget) {
+                heap_erase(index, *chosen, &work);
+                heap_insert(index, *chosen, ship.holds[*chosen], action.goods, type->capacity_88,
+                            &work);
+                // A load only fills the earliest empty when no matching room is
+                // available. Maintain the cursor here; never scan stale entries.
+                if (before.goods == 0 && before.amount_88 == 0)
+                    ++index.empty_next;
+            }
             ++work.index_updates;
             observe(w, ship, FreightSignal::Transferred, &fx, nullptr, Reject::None, actual);
             continue;

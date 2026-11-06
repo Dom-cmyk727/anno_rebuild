@@ -332,3 +332,76 @@ TEST_CASE("freight ingress: same-tick cancellation replacement and refused manua
     CHECK(stock(normal, 0, 42) == committed);
     CHECK(ft::ship(normal).holds[0].amount_88 == 256); // cannot undo earlier commit
 }
+
+TEST_CASE(
+    "freight heap: fractional maximum-room tie uses lowest index and preferred matching wins") {
+    ft::Setup setup;
+    setup.capacity = 1024;
+    setup.cargo_holds = 3;
+    setup.initial_holds = {{42, 724}, {42, 724}, {0, 0}};
+    setup.stock = {{42, 4096}};
+    auto w = ft::make_with(setup);
+    REQUIRE(ft::apply(w, single(w, {{sim::FreightDirection::LoadTarget, 42, 12}})).ok());
+    std::vector<std::uint64_t> amounts;
+    for (unsigned i = 0; i < 30 && w.freight_route(ft::ship_id)->completed_cycles == 0; ++i) {
+        w.advance(1000);
+        healthy(w);
+        for (const auto& e : w.drain_events())
+            if (e.freight && e.freight->signal == sim::FreightSignal::Transferred)
+                amounts.push_back(e.freight->amount_88);
+    }
+    REQUIRE(w.freight_route(ft::ship_id)->completed_cycles == 1);
+    CHECK(amounts == std::vector<std::uint64_t>{256, 256, 44});
+    CHECK(ft::ship(w).holds == std::vector<sim::ShipHold>{{42, 1024}, {42, 980}, {0, 0}});
+    CHECK(stock(w, 0, 42) == 3540);
+}
+TEST_CASE("freight buffers: partial scan copies and native loads retain bounded initialization") {
+    constexpr std::uint32_t count = 129;
+    ft::Setup setup;
+    setup.capacity = 1024;
+    setup.cargo_holds = count;
+    setup.work = 1;
+    setup.initial_holds = std::vector<sim::ShipHold>(count);
+    setup.stock = {{42, 512}};
+    auto w = ft::make_with(setup);
+    REQUIRE(ft::apply(w, single(w, {{sim::FreightDirection::LoadTarget, 42, 2}})).ok());
+    wait_at_source(w);
+    w.advance(1000);
+    healthy(w);
+    REQUIRE(w.freight_route(ft::ship_id)->phase == sim::FreightPhase::Scan);
+    for (unsigned i = 0; i < 17; ++i)
+        w.advance(0);
+    REQUIRE(w.freight_route(ft::ship_id)->scan_next == 17);
+    auto copy = w;
+    auto native = sim::World::load(w.save(), ft::registry(false, 1024, count));
+    REQUIRE(native);
+    for (auto* world : {&w, &copy, &native.value()}) {
+        const auto& index = ft::ship(*world).freight.index();
+        CHECK(index.positions.size() == 17);
+        CHECK(index.positions.capacity() >= count);
+        CHECK(index.empty.size() == 17);
+        CHECK(index.empty.capacity() >= count);
+        CHECK(ft::ship(*world).freight->empty_holds.size() == 17);
+        CHECK(ft::ship(*world).freight->empty_holds.capacity() >= count);
+        (void)world->drain_events();
+    }
+    unsigned steps = 0;
+    while (w.freight_route(ft::ship_id)->completed_cycles == 0 && steps++ < 200) {
+        w.advance(0);
+        copy.advance(0);
+        native.value().advance(0);
+        healthy(w);
+        CHECK(w.save() == copy.save());
+        CHECK(w.save() == native.value().save());
+        const auto events = w.drain_events();
+        CHECK(events == copy.drain_events());
+        CHECK(events == native.value().drain_events());
+    }
+    REQUIRE(steps < 200);
+    CHECK(ft::ship(w).holds[0].amount_88 == 512);
+    CHECK(stock(w, 0, 42) == 0);
+    const auto& work = w.freight_work();
+    CHECK(work.hold_scans == count);
+    CHECK(work.steps <= work.visits);
+    CHECK(work.target_checks <= work.visits + work.steps);
+}

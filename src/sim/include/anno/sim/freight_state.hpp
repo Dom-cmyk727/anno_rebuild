@@ -1,9 +1,10 @@
 // Route-only136. Explicit layout/semantics: docs/sim/ship-trade-routes.md R1.
 #pragma once
 
+#include <compare>
 #include <cstdint>
 #include <memory>
-#include <set>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -56,15 +57,48 @@ struct FreightState {
 // exactly matching maximum-room/lowest-index and first-empty manual selection.
 // Never serialized, hashed or used as transfer authority. Only active routes
 // allocate it; a native reader rebuilds it outside figure visits.
+struct FreightHeapNode {
+    std::uint64_t inverse_room = 0;
+    std::uint32_t hold = 0;
+    friend auto operator<=>(const FreightHeapNode&, const FreightHeapNode&) = default;
+};
+static_assert(std::is_trivially_destructible_v<FreightHeapNode>);
 struct FreightHoldIndex {
     std::uint64_t generation = 0;
-    std::uint32_t stop = 0, action = 0, scanned = 0;
-    std::set<std::pair<std::uint64_t, std::uint32_t>> rooms;
-    std::set<std::uint32_t> empty;
+    std::uint32_t stop = 0, action = 0, scanned = 0, empty_next = 0;
+    std::vector<FreightHeapNode> rooms;
+    std::vector<std::uint32_t> positions, empty;
+    FreightHoldIndex() = default;
+    FreightHoldIndex(const FreightHoldIndex& other)
+        : generation(other.generation), stop(other.stop), action(other.action),
+          scanned(other.scanned), empty_next(other.empty_next) {
+        // Snapshot work occurs outside visits. Preserve reserved raw capacities,
+        // so continuing a partially scanned copy cannot cause a prefix copy in a visit.
+        rooms.reserve(other.rooms.capacity());
+        positions.reserve(other.positions.capacity());
+        empty.reserve(other.empty.capacity());
+        rooms.assign(other.rooms.begin(), other.rooms.end());
+        positions.assign(other.positions.begin(), other.positions.end());
+        empty.assign(other.empty.begin(), other.empty.end());
+    }
+    FreightHoldIndex(FreightHoldIndex&&) noexcept = default;
+    FreightHoldIndex& operator=(FreightHoldIndex&&) noexcept = default;
+    void reset() {
+        generation = 0;
+        stop = 0;
+        action = 0;
+        scanned = 0;
+        empty_next = 0;
+        // Trivial elements: no per-hold destructor walk; retain raw buffers.
+        rooms.clear();
+        positions.clear();
+        empty.clear();
+    }
 };
 struct FreightWork {
     std::uint64_t visits = 0, steps = 0, hold_scans = 0, resolver_queries = 0;
     std::uint64_t index_updates = 0, target_checks = 0, transfers = 0, cold_scans = 0;
+    std::uint64_t heap_steps = 0;
 };
 
 // One pointer on unrelated figures. Snapshots own independent canonical state
@@ -73,6 +107,11 @@ class FreightSlot {
     struct Storage {
         FreightState state;
         FreightHoldIndex index;
+        Storage() = default;
+        Storage(const Storage& other) : state(other.state), index(other.index) {
+            state.matching_holds.reserve(other.state.matching_holds.capacity());
+            state.empty_holds.reserve(other.state.empty_holds.capacity());
+        }
     };
 
   public:

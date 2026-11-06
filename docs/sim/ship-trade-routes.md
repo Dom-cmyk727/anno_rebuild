@@ -572,3 +572,24 @@ margin; its registry disables cart spawning for the isolated route-only fixture.
 No engine range/visit rule, original canary position/resource, or wait was relaxed.
 The existing mover's idle/pickup delay is observed, not bypassed. R3 reference/caller
 claims remain isolated transitions, not whole-world partition invariance.
+
+
+R3 independent review at99d34ad7 found two hidden costs despite the preserved
+canonical115/115 plus eight separate contract passes: target validation walked
+all actions each visit, and resetting node sets destroyed O(H) entries in one
+quota unit. Both are corrected before package approval. Runtime target checks
+now inspect only live warehouse/owner/range and current goods; full definitions
+remain assignment/native validation. Newly selected NeedLeg stops are checked
+inside the quota loop before Move, without duplicating the initial check.
+
+The derived resolver now uses a mutable inverse-room/index binary heap, direct
+hold-position buffer and ascending initial-empty buffer/cursor. Trivial raw
+buffers reserve at logical size0, each initialized hold is charged to scan_next,
+updates are O(logH), and action reset retains capacities without per-node walks.
+Snapshot copies preserve capacities; cold native load reserves/rebuilds outside
+visits. Current empty fills increment the cursor immediately, without a pruning
+scan. Canonical candidate buffers have the same bounded initialization policy.
+This changes no authoritative136 byte/field/clock/PRNG semantics. New focused
+controls hand-check fractional max-room ties (256,256,44 raw) and full suffix
+continuation of a public129-hold partial Scan across copy/native reload. Existing
+navigation's hold-speed-factor work is unchanged and remains a separate cost.

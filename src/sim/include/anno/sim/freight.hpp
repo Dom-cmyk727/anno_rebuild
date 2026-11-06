@@ -16,7 +16,7 @@ struct FreightRoutes {
                               const InAdvance*);
     static ApplyResult control(World&, const Command&, const ControlFreightRouteCmd&,
                                const InAdvance*);
-    static Reject target(const World&, const Figure&, const FreightStop&, bool range);
+    static Reject target(const World&, const Figure&, const FreightStop&, bool range, GoodsId = 0);
     static std::string validate(const World&);
     static void visit(World&, const TickContext&, Figure&, Effects&, std::uint32_t& plans_started);
     static void rebuild_indexes(World&);

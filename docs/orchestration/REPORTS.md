@@ -13276,3 +13276,162 @@ records this disposition.
 Canonical main944cec89 already includes code throughcafc under132; remaining
 delta is documentation/evidence only. Preserve canonical132 on reconciliation.
 No moving-main rerun or Windows pin change is requested.
+
+
+## W4-OPENING-2 — adoption of consolidated main — 2026-11-06 — status: FINISHED
+
+Ported `task/W4-opening-2`'s W4-OPENING-CONTROLS-FLAKE delta (steps 0-3, its full
+WSL-flake package) onto consolidated `main` at `origin/main` `3b74201f` (code
+pin `7b57ebd9`, doc-acceptance `5f6092b4`, consolidation baseline `944cec89`;
+all four pins confirmed ancestors by `git merge-base --is-ancestor`), per the
+owner's adoption-at-checkpoint instruction. New branch `task/W4-opening-2-main`,
+worktree `E:\anno1503-worktrees\anno1503-W4-opening-2-main`. The original
+`task/W4-opening-2` branch/worktree is untouched and preserved at `3fd68746`.
+
+- Ported commits (5 unique to `task/W4-opening-2` since merge-base `88968580`):
+  `6380f9f1` (wsl_gate.sh) and `49ea97a3` (the viewer.cpp/dev_script fix) applied
+  by clean cherry-pick — those files were untouched by main's 419 intervening
+  commits; `49ea97a3`'s ported diff verified byte-identical to the original
+  commit's code diff. `729e842a` (the skip-message wording + its verdict-test
+  contract edit) required hand reconciliation: main independently restructured
+  the surrounding founding_assets_test.cpp function
+  (`original_component::import_only`) and added two unrelated skip-message
+  exemptions to ctest_verdict_test.py (resident/house-kernel, commits
+  `eefac615`/`4d5734f1`) in the same functions; the wording change itself
+  applied identically, hand-reapplied around both upstream changes rather than
+  cherry-picked (a raw 3-way apply of the verdict-test file incorrectly dropped
+  main's exemptions — caught and reverted before committing). `c2f04116` and
+  `3fd68746` (REPORTS.md entries) are this entry and the one below.
+- Identity: no `src/sim`, serialization, PRNG or replay file touched by any
+  ported commit — confirmed by diff, not assumed. state132/SIMINT1/PRNG5/
+  replay-frame4/command-wire1 unaffected; this delta is app/viewer/test-harness
+  only.
+- Gates: see the entry immediately below for the successor branch's build/test
+  results.
+
+
+Carried verbatim from `task/W4-opening-2` for the record (unchanged from the
+originals; this is the evidence being adopted, not new work performed here):
+
+## W4-OPENING-2 — W4-OPENING-CONTROLS-FLAKE step 0 — 2026-11-05 — status: FINISHED
+
+- Branch: `task/W4-opening-2` at `729e842a`; input `main` `88968580`; worktree:
+  `E:\anno1503-worktrees\anno1503-W4-opening-2`.
+- Built:
+  - `tools/test/wsl_gate.sh` (new, committed; `6380f9f1`): the one canonical WSL (Ubuntu, GCC 13)
+    ASan+UBSan viewer-enabled gate script, replacing the historical pattern of a fresh, gitignored
+    `cache/` script per gate. Carries forward the autocrlf override and the Windows-worktree
+    `.git`-pointer-file-to-`/mnt/<drive>` translation (both proven in earlier ad-hoc scripts, now
+    generalized instead of hardcoded to one worktree), refuses to run on a dirty autocrlf-view
+    checkout, never runs `anno_render_gpu_tests` in the default (ASan) lanes, supports an explicit
+    `--gpu-lane` opt-in (lavapipe + `ANNO_REQUIRE_GPU=1`), and records each lane's elapsed time in
+    its `$S` summary file. Documented in `docs/testing/README.md`'s new "The WSL ASan/UBSan gate"
+    section.
+  - `src/app/tests/founding_assets_test.cpp:639` (`729e842a`): reworded the skip `MESSAGE` so its
+    leading string literal alone (before the stream-concatenated file path) is a self-describing,
+    already-recognized required-asset phrase ("...scenario file is not in this game directory:"),
+    instead of the bare, unclassifiable `"skipping: "`.
+  - `tools/test/ctest_verdict_test.py` (`729e842a`): added the new phrasing to
+    `test_every_existing_missing_asset_phrasing_fails`'s `forms`; removed the now-unused bare
+    `"skipping: "` entry from `test_every_skip_phrasing_in_the_sources_has_a_known_class`'s
+    `allowed_other` set (confirmed via `grep -rn '"skipping: "' src` that no other site produces
+    that exact literal).
+- Gates:
+  - `python -I tools/test/ctest_verdict_test.py`: 25/25.
+  - `python -I tools/test/workflow_test.py`: 21/21.
+  - Native MSVC build of `anno_sim_tests` (`cmake --build build/msvc --preset msvc --target
+    anno_sim_tests -j 16`): clean; targeted case run (`-tc="*DISCO on the shipped scenes*"`): 1
+    passed, 6 assertions.
+  - Full WSL ASan/UBSan gate via the committed script against this same worktree/commit
+    (`wsl -d Ubuntu -- bash tools/test/wsl_gate.sh /mnt/e/anno1503-worktrees/anno1503-W4-opening-2
+    --tag o2b`), summary `cache/gates/wsl-o2b.txt` (gitignored, evidence kept in this entry):
+    - source head `729e842a`; dirty (raw, no autocrlf override) 979; dirty (autocrlf=true view)
+      **0** — the "clean checkout counts 0 dirty files" check the task asked for, confirmed.
+    - `app` lane: selected=268 executed=266 failed=0 skipped=2 (opt-in=2, everything else 0)
+      VERDICT: PASS, elapsed 7998s.
+    - `sim` lane: selected=1029 executed=1027 failed=0 skipped=2 (opt-in=2) VERDICT: PASS, elapsed
+      1650s.
+    - `formats` lane: selected=92 executed=92 failed=0 skipped=0 VERDICT: PASS, elapsed 1102s.
+    - `render` lane (non-GPU `anno_render_tests` only): selected=185 executed=185 failed=0
+      skipped=0 VERDICT: PASS, elapsed 2334s.
+    - `tsupport` lane: selected=66 executed=66 failed=0 skipped=0 VERDICT: PASS, elapsed 239s.
+    - `anno_render_gpu_tests` did not run in any of the above (grep of the summary file confirms
+      no `gpu lane` line, since `--gpu-lane` was not passed) — the task's "no GPU-adapter suite in
+      the ASan lane" requirement, confirmed by omission.
+- Evidence: `cache/gates/wsl-o2b.txt` and the per-lane `.log`/`.out` files under
+  `cache/gates/` in the worktree (gitignored, not pushed; paths recorded here per the evidence
+  contract).
+- Reviewers: none yet — independent read-only package review for this step is still open.
+- Left open / questions for the orchestrator or owner: W4-OPENING-CONTROLS-FLAKE steps 1-4 (the
+  flake's actual root-cause trace and fix) are next, on this same branch. Independent review of
+  step 0 has not happened yet; not pushed beyond the local branch as of this entry.
+- Time spent / subagents used: single session, no subagents; two build/test cycles (MSVC native,
+  WSL ASan full gate ~2h45m wall clock dominated by the `app`/`render` lanes).
+
+## W4-OPENING-2 — W4-OPENING-CONTROLS-FLAKE steps 1-3 (root-cause and fix) — 2026-11-06 — status: FINISHED
+
+- Branch: `task/W4-opening-2` at `49ea97a3`; worktree: `E:\anno1503-worktrees\anno1503-W4-opening-2`.
+- Built (`49ea97a3`, one commit):
+  - `src/app/include/anno/app/dev_script.hpp`: added `DevScriptState::facts_turn` - the turn
+    `facts` reflects, distinct from the live `snapshot->turn` read fresh every call.
+  - `src/app/src/dev_script.cpp`: `wait turns N` now baselines and checks `facts_turn` instead of
+    `st.snapshot->turn`.
+  - `src/app/src/viewer.cpp`, `Viewer::script_tick()`: sets `st.facts_turn` to the turn
+    `opening_snapshot_` belongs to (equal to the live turn in a session without an opening, so no
+    behavior change there); added an opt-in diagnostic trace (`ANNO_DEV_SCRIPT_TRACE`, zero cost
+    unless set) logging, per call: `drawn_frames`, the live turn, the frame-gated
+    (`opening_snapshot_`) turn, their gap, `tracked.1.state`, and the script's last log line.
+- Mechanism, measured not reasoned (step 1): the trace was run directly against a real WSL ASan
+  `-j4` batch (not synthetic all-core `yes` busy loops - those stall the sim thread equally and
+  never open a gap, confirmed by a 290s contended run that stayed at gap 0-1 throughout; the real
+  flake needs the asymmetric contention of actual sibling ASan test processes). In
+  `cache/gates/wsl-o2trace-app.out`'s run (`/tmp/viewer_wiring_opening_controls_ulv46vgs/run.stderr.txt`,
+  not kept, paths recorded here), the live/frame-gated turn gap reached 3 at `drawn_frames=33/35`
+  (startup contention) elsewhere in the same 268-test `-j4` batch, while `opening_controls`'s own
+  `key h` / `wait turns 3` window (script lines 69-72) only reached gap 1 that run - PASS that
+  time, consistent with this task's own 2-of-3 history (`wsl-w18` FAIL, `wsl-w19` PASS, `wsl-w20`
+  FAIL): the race is real and reaches the exact margin (3) needed to flip the assertion, just not
+  on every run. This directly confirms the mechanism TASKS.md described as a hypothesis: `wait
+  turns 3`'s baseline/check (fresh `PlayFeedback::feedback()` every `script_tick()` call) can run
+  ahead of `opening_facts()`'s own `tracked.1.state` (built from `opening_snapshot_`, refreshed
+  only once per drawn frame in `draw()`/`opening_refresh()`, never in `script_tick()` itself).
+- Fix (step 2): close the gap at its source rather than add slack - `wait turns N` now reads the
+  same turn source the subsequent `expect fact ...` step will read (`facts_turn`), so it cannot
+  report "N turns later" as true before a frame exists whose facts show it. Not `ANNO_SANITIZE`-
+  scoped (unlike `3a2da9b9`'s deadline fix): the race is a real correctness gap in `wait turns`'
+  semantics for an opening session at any frame rate, just unreachably rare without contention: the
+  fix applies to every build.
+- Gates:
+  - `anno_app_input_tests -tc="dev script:*"` (native WSL build, ASan): 8/8 passed, 280/280
+    assertions, 25 skipped (pre-existing, unrelated) - no regression from the `DevScriptState`
+    field addition or the baseline-source change.
+  - Acceptance (step 3), same rebuilt WSL ASan binaries, no rebuild between runs, full `-j4` batch
+    each time (`^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.|^viewer_wiring_
+    (contract|r1_held_publication|r4_occupancy|cpu_delivery_failures|opening_controls)$|^opening_
+    session_replay$`, `--require-test` on the three contracts, matching `wsl-w18/19/20`'s own
+    methodology):
+    - r1: `cache/gates/wsl-fix-r1-app.log`, VERDICT PASS, 268 selected/266 executed/0 failed/2
+      opt-in skipped; `opening_controls` 178.86s standalone, 173.60s in the full batch.
+    - r2: `cache/gates/wsl-fix-r2-app.log`, VERDICT PASS, same counts; `opening_controls` 175.48s
+      standalone, 179.17s in the full batch.
+    - r3: `cache/gates/wsl-fix-r3-app.log`, VERDICT PASS, same counts; `opening_controls` 175.89s
+      standalone, 179.74s in the full batch.
+    - Three consecutive clean reruns, meeting this task's own bar (a single clean pass, as
+      `wsl-w19` showed, is explicitly not enough per this task's history).
+- Evidence: `cache/gates/wsl-o2trace-app.{out,log}` (the step-1 trace run, pre-fix binaries),
+  `cache/gates/wsl-fix-r{1,2,3}-app.{out,log}` (the step-3 acceptance reruns, post-fix binaries);
+  all gitignored, in the worktree, paths recorded here per the evidence contract. The per-test
+  session's own stderr capture (`/tmp/viewer_wiring_opening_controls_*/run.stderr.txt` inside WSL)
+  held the actual trace lines quoted above; not preserved past the session.
+- Reviewers: none yet - independent read-only package review for steps 1-3 is still open.
+- Left open / questions for the orchestrator or owner: step 4's first carry-forward (a turn-based
+  completion signal in place of a wall-clock deadline) was not needed here, since the fix is a
+  turn-source correction, not a deadline; still worth a look only if a *different* opening_controls-
+  style flake turns up elsewhere. Step 4's second carry-forward
+  (`coast_turned`/`deposit_turned` PRODTYPE list, `a315b51a`) is untouched, not in this fix's scope.
+  Not pushed; independent review has not happened for steps 1-3, same as step 0.
+- Time spent / subagents used: one fork (background investigation + fix), no further subagents;
+  roughly 4 real-time hours end to end, almost all of it WSL ASan `-j4` wall clock (one ~95 min
+  reproduction run under the pre-fix binaries, then three ~95-98 min acceptance reruns under the
+  fixed binaries - the MSVC/unit-test/native checks were each under a minute).
+

@@ -1,3 +1,4 @@
+#include "island_helpers.hpp"
 #include "original_component.hpp"
 // The founding command on the original files (task MAP-2 package 8d). The real registry
 // (Anlagen.dat, FigurenHeader.dat), the real islands of the unchanged candidate lan5-ship-a through
@@ -4633,8 +4634,8 @@ TEST_CASE(
 }
 
 TEST_CASE("expansion founding accounting: public founding retains prepared warehouse history") {
-    // Isolated original-data founding component: the fixture ship is relocated
-    // here only. This is the short causal reproducer, not the genuine voyage.
+    // Relocated original-data component, not the genuine voyage. Compatibility disposition:
+    // acbe5a24 GAMEPLAY-IDENTITY-134-135. Preserve the actual buggy133 files; never repair on load.
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -4649,11 +4650,24 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         auto made = sl::load_ship_start(original.manifest, *dir, original.types, {}, rules);
         REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string{} : made.error()));
         auto w = std::move(made).value();
-        const auto leg = expansion_test::selected_recipe().source;
+        const auto recipe = expansion_test::selected_recipe();
+        const auto leg = recipe.source;
         sim::WorldTestAccess::relocate(w, sim::FigureId{1},
                                        {leg.goal_x * 256 + 128, leg.goal_y * 256 + 128});
-        const auto answer = w.apply(found_command(leg));
+        const auto pristine = w.save();
+        auto wrong_owner = found_command(leg);
+        wrong_owner.issuer = sim::PlayerId{1};
+        CHECK(w.apply(wrong_owner).status == sim::Reject::NotShipOwner);
+        CHECK(w.save() == pristine);
+        (void)w.drain_events();
+        const auto initial_holds = ship_of(w, 1).holds;
+        const auto cursor = w.rng().cursor();
+        auto recording = sim::Recorder::start(w);
+        REQUIRE(recording.ok());
+        auto rec = std::move(recording).value();
+        const auto answer = rec.submit(found_command(leg));
         REQUIRE(answer.ok());
+        rec.checkpoint();
         const auto wh = answer.records.at(0).building;
         const auto ref = expansion_test::city_of_warehouse(w, wh);
         const auto* building = w.find_building(wh);
@@ -4667,20 +4681,82 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         REQUIRE(cost.ok());
         REQUIRE(cost.value().active);
         REQUIRE(cost.value().kind == 1);
-        REQUIRE(cost.value().amount == 15); // independent raw1302/constantMarket selector
-        const auto& city = command_test::city(w, ref);
-        CHECK(city.accounts.civil_cost == (enabled ? 15 : 0));
-        CHECK(city.accounts.military_cost == 0);
+        REQUIRE(cost.value().amount == 15);
+        CHECK(command_test::city(w, ref).accounts.civil_cost == (enabled ? 15 : 0));
+        CHECK(command_test::city(w, ref).accounts.military_cost == 0);
         CHECK(w.players().find(sim::PlayerId{0})->upkeep_a == 0);
         CHECK(w.players().find(sim::PlayerId{0})->upkeep_b == 0);
         CHECK(gold_of(w, 0) == 29650);
-        expansion_test::publish(enabled ? "actual133-enabled-founded.save"
-                                        : "actual133-default-off-founded.save",
-                                w.save());
-        const auto native = sim::World::load(w.save(), original.types);
+        auto expected_holds = initial_holds;
+        expected_holds[0].amount_88 -= 12 * 256;
+        expected_holds[2].amount_88 -= 5 * 256;
+        CHECK(ship_of(w, 1).holds == expected_holds);
+        CHECK(w.rng().cursor() == (cursor + 1) % w.rng().size()); // one original city-name draw
+        const auto cut = w.save();
+        expansion_test::publish(enabled ? "current134-enabled-founded.save"
+                                        : "current134-default-off-founded.save",
+                                cut);
+        auto native = sim::World::load(cut, original.types);
         REQUIRE(native.ok());
-        CHECK(native.value().save() == w.save()); // native preserves history, never repairs it
-        w.advance(4000); // 2000ticks: one due city booking, no other payable upkeep
+        CHECK(native.value().save() == cut);
+
+        // Optional external historical originals are required by the focused operator gate.
+        // They were produced/round-tripped at e1369d7a before the correction. They remain133.
+        if (const char* archive = std::getenv("ANNO_EXPAND_LEGACY133_DIR")) {
+            const auto path =
+                std::filesystem::path(archive) /
+                (enabled ? "actual133-enabled-founded.save" : "actual133-default-off-founded.save");
+            std::ifstream file(path, std::ios::binary);
+            REQUIRE_MESSAGE(file.good(), path.string());
+            const std::vector<std::uint8_t> old{std::istreambuf_iterator<char>(file), {}};
+            const auto refused = sim::World::load(old, original.types);
+            REQUIRE_FALSE(refused.ok());
+            CHECK(refused.error() ==
+                  "save: state stream version 133 is not supported (this build reads 134)");
+            auto old_log =
+                rec.log(); // current outer identity: the embedded native is the sole mismatch
+            old_log.initial_save = old;
+            auto clean = sim::World::load(rec.log().initial_save, original.types);
+            REQUIRE(clean.ok());
+            const auto before = clean.value().save();
+            auto replay_refused = sim::replay(clean.value(), old_log);
+            REQUIRE_FALSE(replay_refused.ok());
+            CHECK(replay_refused.error() ==
+                  "replay refused: initial save state stream version differs from this build's");
+            CHECK(clean.value().save() == before);
+            // Diagnostic byte transcript ONLY, never loaded or saved as a corrected artifact.
+            // With the original PRNG table the first header starts at29. Field layout is fixed.
+            REQUIRE(old.at(20) == 0);
+            auto normalized = old;
+            island_test::put32(normalized, 8, 134);
+            island_test::put32(normalized, 29, 134);
+            island_test::reseal(normalized);
+            if (!enabled) {
+                CHECK(normalized == cut); // default-off gameplay differs by identity only
+            } else {
+                REQUIRE(normalized.size() == cut.size());
+                std::size_t changes = 0;
+                for (std::size_t i = 0; i < cut.size() - 8; ++i)
+                    if (cut[i] != normalized[i]) {
+                        ++changes;
+                        CHECK(normalized[i] == 0);
+                        CHECK(cut[i] == 15); // only the missing prepared civil-cost contribution
+                    }
+                CHECK(changes == 1);
+            }
+            MESSAGE("valid historical133 original refused; identity-only off / history15 on "
+                    "distinguished");
+        }
+        (void)w.drain_events();
+        rec.advance(4000); // 2000ticks: one due city booking
+        native.value().advance(4000);
+        CHECK(native.value().save() == w.save());
+        CHECK(native.value().last_output().events == w.last_output().events);
+        REQUIRE(native.value().last_output().draws.size() == w.last_output().draws.size());
+        for (std::size_t i = 0; i < w.last_output().draws.size(); ++i) {
+            CHECK(native.value().last_output().draws[i].site == w.last_output().draws[i].site);
+            CHECK(native.value().last_output().draws[i].count == w.last_output().draws[i].count);
+        }
         CHECK(gold_of(w, 0) == (enabled ? 29649 : 29650));
         std::uint64_t charges = 0;
         for (const auto& event : w.drain_events())
@@ -4691,5 +4767,59 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
                 charges += event.booking->upkeep;
             }
         CHECK(charges == (enabled ? 1 : 0));
+        rec.checkpoint();
+        const auto bytes = sim::write_log(rec.log());
+        REQUIRE(bytes.ok());
+        const auto decoded = sim::read_log(bytes.value());
+        REQUIRE(decoded.ok());
+        auto fresh = sim::World::load(decoded.value().initial_save, original.types);
+        REQUIRE(fresh.ok());
+        const auto replayed = sim::replay(fresh.value(), decoded.value());
+        REQUIRE(replayed.ok());
+        REQUIRE(replayed.value().reproduced());
+        CHECK(fresh.value().save() == w.save());
+        expansion_test::publish(
+            enabled ? "current134-enabled-found.log" : "current134-off-found.log", bytes.value());
+        const auto gold = gold_of(w, 0);
+        w.advance(0);
+        CHECK(gold_of(w, 0) == gold);
+        for (const auto& event : w.drain_events())
+            CHECK_FALSE(event.booking.has_value()); // no double charge at the same logical tick
+
+        // Additional public lifecycle/city-isolation checks remain in this labelled short fixture.
+        const auto tools = *w.types().goods_by_name("WERKZEUG");
+        const auto wood = *w.types().goods_by_name("HOLZ");
+        REQUIRE(
+            w.apply({sim::PlayerId{0}, sim::UnloadCmd{sim::FigureId{1}, wh, 2, tools, 2}}).ok());
+        REQUIRE(w.apply(command_test::build(0, ref, {command_test::at(sim::TypeId{801}, 238, 128)}))
+                    .ok());
+        CHECK(command_test::city(w, ref).accounts.civil_cost == (enabled ? 27 : 0));
+        REQUIRE(
+            w.apply({sim::PlayerId{0}, sim::SetProductionLineCmd{{238, 128}, wood, false}}).ok());
+        CHECK(command_test::city(w, ref).accounts.civil_cost == (enabled ? 19 : 0));
+        sim::WorldTestAccess::relocate(
+            w, sim::FigureId{1},
+            {recipe.destination.goal_x * 256 + 128, recipe.destination.goal_y * 256 + 128});
+        const auto second = w.apply(found_command(recipe.destination));
+        REQUIRE(second.ok());
+        const auto other = expansion_test::city_of_warehouse(w, second.records.at(0).building);
+        REQUIRE(other.island != ref.island);
+        CHECK(command_test::city(w, other).accounts.civil_cost == (enabled ? 15 : 0));
+        CHECK(command_test::city(w, ref).accounts.civil_cost == (enabled ? 19 : 0));
+        (void)w.drain_events();
+        const auto before_two = gold_of(w, 0);
+        w.advance(4000);
+        CHECK(gold_of(w, 0) == before_two - (enabled ? 2 : 0));
+        std::map<sim::CityRef, std::uint64_t> by_city;
+        for (const auto& event : w.drain_events())
+            if (event.booking)
+                by_city[event.booking->city] += event.booking->upkeep;
+        if (enabled) {
+            CHECK(by_city[ref] == 1);
+            CHECK(by_city[other] == 1);
+            CHECK(by_city.size() == 2);
+        } else
+            CHECK(by_city.empty());
+        CHECK(w.check_invariants().empty());
     }
 }

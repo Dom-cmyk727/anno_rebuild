@@ -439,3 +439,36 @@ Fresh /root/expand_boundary_review APPROVED the bounded checkpoint atdocs16c34df
 tested637da167 after correcting tested-versus-docs delta wording, auditing14raw
 hashes/6receipts and actual sanitizer flags. This closes checkpoint reporting
 only: fullMAP-EXPAND E0–E7 acceptance remains open.
+
+### Released focused founding correction / identity134 acceptance plan
+
+Explicit independently reviewed contract acbe5a244271cbe80e2d6f68ff939556c51d804b,
+TASKS GAMEPLAY-IDENTITY-134-135, releases this correction on the preserved branch.
+Documentation-only descendanta12358bd retains checkpoint71af3846; separately
+cherry-picked benchmarkb408f311 becomes949d383d. Normal no-workaround benchmark
+build and registered window-table1/1 plus requiredpicture1/1 pass; nativeWindows
+window_tools is unregistered here/NOT_RUN. Both owned buildconfigs remove the
+preload; old config snapshots are preserved under identity134/pre-normal-*.
+
+|Requirement|Positive proof|Distinguishing negative / control|Evidence / review|
+|---|---|---|---|
+|Prepared founding history survives|public enabledFound15, firstbooking1, forester27/off19, per-city history|defaultoff0history/same payment/goods/draws; refusedFound unchanged; no double charge|focused originaldata case, native cut before firstbooking; reviewPENDING|
+|Explicit134/ECONBK1 boundary, unchangedlayout|current native/replay valid; newcurrent134 fixtures/oracle and freshrecordings|real old133save/log refused forversion incloff; separate currentouter/oldnative mismatch; no reconstruction|historical133 inputs unchanged; focusedidentity controls; reviewPENDING|
+|Version-only versus enabledsemantic delta|independentoracle derives134 header; offgameplay equal afteridentity normalization|enabledhistory and booking expected15/+1charge differences distinct fromheader; retainedbugreprofailsold133|neworacle fields/recording/provenance; reviewPENDING|
+
+134 retainsECONBK1/PRNG5/replay4/wire1/save1/fieldorder and all defaults. No
+migration, old133 acceptance, rescan, compensation or PRNG/payment reorder is
+allowed. FirstMac135 depends on this separately reviewed small prerequisite;
+whole voyage acceptance is not required to supply it. No mainmerge/push is added.
+
+Focused134 preparation: generator20/20 in63.79s, not acceptance; fresh11recordings/
+41checkpoints/50creation-only originaldata identities. Preserved old133binary
+executes G2/50asserts successfully. Independent populated oracle changes header
+only (FNV7132e1a78e5ba779),6nonheader scopes identical, registry804f19da7cae34ee
+unchanged. EmptyWorld13479917e7717153494 derives independently;133oldvalue
+69871c0febf78a1c differs by version only. Review caught stale literal headers/hash
+expectations, corrected beforefreeze. Generationbuild01 failed test-only command
+initializer and DrawRecord comparison;02/03 compile correctedsource. First oracle
+preparation detects ship_holds comment's stale version; regenerate current comment
+without changing hold bytes, retaining failedpreparation01. All old133fixture
+hashes remain exact. Current134 README/provenance separates generation from gates.

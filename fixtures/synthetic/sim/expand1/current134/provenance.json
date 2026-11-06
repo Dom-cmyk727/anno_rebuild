@@ -1,0 +1,46 @@
+{
+  "identity": "134/ECONBK1/PRNG5/replay4/command1/save1",
+  "decision": "acbe5a244271cbe80e2d6f68ff939556c51d804b GAMEPLAY-IDENTITY-134-135",
+  "generation": {
+    "parent": "949d383d4ed39c7f34d5d0b3d486e5e0cc872d99",
+    "dirty_diff_sha256": "b2ff3009bb426163ebe5d39a0bb83f2b6da7618fa451be5ffba902a67fb7d709",
+    "binary_sha256": "757e3a0a92d2099716d4bd2f38ab67aa2c706670a8fb5dee6605e54c20e68b28",
+    "scope": "generation not acceptance"
+  },
+  "generation_selected": 20,
+  "generation_seconds": 63.79,
+  "acceptance": "generation is not acceptance; frozen canonical gate follows",
+  "old133_files_unchanged": {
+    "fixtures/synthetic/sim/econbook1/current133/README.md": "eb8250ddaf89a9746241332c24bba60253acbac24eb64e267881c0be30848e7d",
+    "fixtures/synthetic/sim/econbook1/current133/cargo_load.log": "80de315f9bbef1e7c6922aaa8ce4db29d16d88d7430ccddcf823093ea2f51889",
+    "fixtures/synthetic/sim/econbook1/current133/cargo_load_wrong.log": "39005ed8d22dd281421c6d272d47bbcc6e4168d149e1706a3dd1ce73955df6ea",
+    "fixtures/synthetic/sim/econbook1/current133/cargo_unload.log": "e539b522b8b4e7e204105ea65771f11ef07c3faf4b730c76ec3861090c58da3b",
+    "fixtures/synthetic/sim/econbook1/current133/cargo_unload_wrong.log": "6456c244ea4cc7548d8c3581885231fef3514809126d5c3259980bc2f2a6d995",
+    "fixtures/synthetic/sim/econbook1/current133/g2.log": "7444049ba6a9865861e618b9d41d58f0a78d3d9b97381a69ef0bd1fa5291f8ca",
+    "fixtures/synthetic/sim/econbook1/current133/g3.log": "75dfb5904669623bab4385fb16ac488035e76119ac96677580a2dcf037854fdf",
+    "fixtures/synthetic/sim/econbook1/current133/g4.log": "4c79dadbe2748b347bf57370ce118d7598fe479b78e444802b076b25e229606f",
+    "fixtures/synthetic/sim/econbook1/current133/g5.log": "6cf08c7c6c6e24897813a8d6b80305e57a707e9dacf5fe12386769e4652ce6ef",
+    "fixtures/synthetic/sim/econbook1/current133/g6.log": "83f33d488559226bf28c0c70976891a88ffc53d5cb9b2390ca16d7197ca293e7",
+    "fixtures/synthetic/sim/econbook1/current133/goldens.txt": "9b8603c9648471dc1bb3f39c719383d677b5216b0e6b148e3abd79f9f685c975",
+    "fixtures/synthetic/sim/econbook1/current133/m2_found.log": "9c45a0730ac07fd00293d9f67c5ca817ae1754496eee6f1f4ef736a4e0b02da5",
+    "fixtures/synthetic/sim/econbook1/current133/m2_found_wrong.log": "848c28a62d771900a443651b7c8eb4ad7601f25299ed6e4831fb0cb29a76a08e",
+    "fixtures/synthetic/sim/econbook1/current133/populated_fields.txt": "29fa1b45396a83b28bf893c0f546b348c707a9e8a1e2e4280e723d5192054f57",
+    "fixtures/synthetic/sim/econbook1/current133/scenario_corpus.txt": "324b37bfd9c93ccc849f4bb63843a62e0fc733a86cedbbf1aef8df13ae98bc90"
+  },
+  "current_artifacts": {
+    "cargo_load.log": "d0a09cc5efb202f554df639008dc1747f85ada6d0c9112d0e2a98516f3796136",
+    "cargo_load_wrong.log": "16016a366a672914fb4d487155dff1078fb6fefaeac6f212aeac28796a323a53",
+    "cargo_unload.log": "0a95b070478a4545a8c93b38ea2929f7ad1d567515da3d95f015a7288b9147aa",
+    "cargo_unload_wrong.log": "224eeb359b7756e85cc80a5802acd9b4a6d2993e2833006eed76407f9da9098d",
+    "g2.log": "388ea242cc7ceb593e667de9448cfc0d50a8e968a18b791d8635b934a991be3a",
+    "g3.log": "fe142005aee0b5464e8a61d94fcb65dc859d33d5bf95ff480451ff5fbdda6cac",
+    "g4.log": "314c2d715b73e0a7dba39f3b521de01164ecea920b6665620f14364218f17ed4",
+    "g5.log": "54bdcdcfb9953e8e69c83c2f77a34738e24c353e44f72548e92f01125fb73789",
+    "g6.log": "70c1ad7b0f413d76d6575674b32f09a92be8020cf288a7576532877ef1555adc",
+    "goldens.txt": "4cf39246aa9d4c20aad582769b05782a0fac12ff76af332079889f757e40d9d7",
+    "m2_found.log": "81f8c9e02938572b976f9daf554f88cc915bf203841ea1592158496a3873b26a",
+    "m2_found_wrong.log": "e3657414abf49fa78cb5d9ef0001e32025b7ad985e9a69ff1dfe6657e3e1781e",
+    "populated_fields.txt": "3590970f874e462aeb2c15096efb817435e6c0d0bdbdfb15410d796eae4cc85d",
+    "scenario_corpus.txt": "94486fd9119ca5ecf850a2696e7a7af63c274f8559806711c985b5e8d0cd147e"
+  }
+}

@@ -13720,3 +13720,23 @@ extra for a building class whose simulation tick is not ported (`Inert`); does n
 anything blocked — building or road-connecting that building is still the player's job, same as
 before this package.
 
+**W7 WSL gate rerun — status update (disk-fix rerun, tag `w7app1`):** after the owner moved WSL's
+Ubuntu disk to `E:\wsl\Ubuntu` and freed C:, `tools/test/wsl_gate.sh` was rerun following the new
+disk rules (shared build dir `$HOME/anno-build/wsl-gate`, EXIT-trap cleanup, `--min-free-gib`
+floor, deps moved to `$HOME/anno-deps`; fix committed `6b327759`, spot-verified: floor refusal,
+trap-on-exit, and `--keep-build` all independently confirmed). The full gate still cannot finish:
+`anno_sim_tests` hits the same pre-existing, out-of-scope `-Werror` breaks already flagged above
+(MAP-NEEDS-2/MAP-INTEGRATE-1 territory, six test files, unrelated to this package). A scoped manual
+rerun of the remaining lanes (app/formats/render/tsupport, `anno_sim_tests` excluded, `bench_frame`
+rebuilt as a dependency of `picture_matrix_contract`) was launched under tag `w7app1`. At the time
+of this entry it is **still running, not yet concluded**: 28/271 selected tests passed, 0 failed,
+0 timed out so far (log: `cache/gates/wsl-w7app1-app.log`); E: has 843G free and the run shows no
+sign of the earlier disk exhaustion. This is reported as **IN PROGRESS**, not PASS and not
+NOT_RUN — the true result is whatever that run concludes with, not guessed here. Independent
+review of this package's diff is still **not done** (unchanged from above: a fork cannot spawn a
+second reviewing agent).
+
+**Push (owner rule, 2026-11-06):** per the new "push your own task branch at every checkpoint"
+rule, this branch (`task/W4-settlement-1`) is pushed to `origin` with this report. Ordinary push
+only; `main` and other lanes' branches are untouched.
+

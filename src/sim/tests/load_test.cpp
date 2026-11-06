@@ -1661,7 +1661,7 @@ TEST_CASE("expansion cargo scale: named transfers stay local with unrelated lega
             island.owner_runs = {{0, 256}};
             auto c = syn::plain_city(0, 0);
             c.stock = std::vector<std::uint32_t>(s.goods_count, 0);
-            c.stock[kWood] = i + 1;
+            c.stock.value()[kWood] = i + 1;
             c.buildings.push_back({.type = kKontor, .x = x + 4, .y = y + 4});
             island.cities.push_back(std::move(c));
             spec.islands.push_back(std::move(island));

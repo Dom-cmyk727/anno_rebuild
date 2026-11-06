@@ -334,3 +334,8 @@ each, deterministic coarse/fine pops and working bytes compared separately from
 index-build/query nanoseconds. A fine-budget1 counterexample must refuse with no
 partial route while the legal default query executes. These are local API cost
 measurements, not late-game acceptance or an original-map geometry substitute.
+
+The first independent-companion gate at5892da6e stopped during compilation:
+CitySpec.stock is optional, so the scale fixture must index its explicitly assigned
+vector through value(). No selected tests executed; canonical-debug-01 remains a
+failed build. The focused correction changes fixture initialization only.

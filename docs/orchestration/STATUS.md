@@ -69,7 +69,9 @@ mirror still requires the owner/Windows sync after main publication.
   them because it has no game files.
   - The strict scene loader (`f7c31ed8`) refuses `Single_01.sze`; only 11 of the 50 original scenes still load.
   - The construction-eligibility check (`d2be23aa`) stage-locks the buildings the legal workload chooses.
-  - The tests are out of date. W4-MAIN-2 part A repairs them on a branch, and the orchestrator merges it after review.
+  - The tests are out of date. **Owner decision, 2026-11-07:** the Windows lane repairs them in W4-MAIN-2 part A, on
+    a branch the orchestrator merges after review. No other lane starts a parallel repair.
+  - Play mode refuses 39 of the 50 original scenes; view mode (`--view`) still opens them.
 - **Branch:** `task/W4-settlement-1`, head `384df19d` (pushed).
   - It is based on `task/W4-opening-2-main`: `main` `3b74201f` plus the reviewed W4-OPENING-CONTROLS-FLAKE delta.
 - **Also open:**

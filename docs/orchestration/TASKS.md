@@ -1462,6 +1462,14 @@ packages. The old SCRIPT2 packet below is historical, not a new assignment.
 
 The old-base W7 rerun is replaced by C. Every part ends REVIEW PENDING; the orchestrator reviews the next morning.
 
+**Owner decision, 2026-11-07: the Windows lane repairs main's 18 real-file test failures in W4-MAIN-2 part A.** The
+other lanes don't start a parallel repair of these tests. They fail only with the original game files, which hosted CI
+doesn't have:
+- `f7c31ed8`'s strict loader opens only 11 of the 50 original scenes in play mode;
+- `d2be23aa`'s stage lock refuses the legal workload's buildings.
+
+The [W4-SETTLEMENT-1 review](reviews/2026-11-07-w4-settlement-1-w7.md) names every one of the 18 tests.
+
 **Windows update, 2026-11-06 (orchestrator):** WSL Ubuntu now runs from E: (`E:\wsl\Ubuntu`), and its old
 build trees are deleted. Rerun W4-SETTLEMENT-1's W7 WSL ASan gate; its first build is a full rebuild. The new WSL disk
 rules are under W4-OPENING-CONTROLS-FLAKE step 0.

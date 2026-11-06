@@ -13472,3 +13472,109 @@ Branch `task/W4-opening-2-main` at `8137b415`, from `origin/main` `3b74201f`.
   replay file in the ported delta; the one disclosed out-of-scope fix
   (`8137b415`) is a test-only missing-include, not a behavior change.
 
+## W4-SETTLEMENT-1 — W0 baseline, capability table and build/test validation — 2026-11-06 — status: BLOCKED (reports partial completion; see blocker below)
+
+**Not in `docs/orchestration/TASKS.md`:** this package was dispatched directly by
+the owner in chat, not yet published to the task board. Flagged to the owner
+before starting; owner said proceed.
+
+Branch `task/W4-settlement-1` at `11e3c687` (no new commits past this point —
+the branch is unmodified; only a local, untracked NTFS junction `game -> ../../anno1503/game`
+was added to this worktree so tests needing `ANNO1503_GAME_DIR` could run — not
+committed, git-ignored by `game/` already, affects only this worktree).
+
+**Honest base description (W0 steps 1-3):** this branch is **not** "`origin/main`
+plus a fresh port done in this package" — it is the tip of `task/W4-opening-2-main`
+(the previous package), which is itself `origin/main` `3b74201f` (all four named
+pins — doc baseline `944cec89`, doc-acceptance `5f6092b4`, integrated code
+`7b57ebd9`, ECON-BOOK publication `3b74201f` — reconfirmed ancestors, re-fetched
+twice during this package, origin/main unchanged both times) with the already-
+ported, already-reviewed W4-OPENING-CONTROLS-FLAKE delta applied. That already
+satisfies W0's "consolidated baseline + completed/reviewed Windows delta" intent
+in one step; starting a second, separate port would have just repeated it.
+`git worktree list` was checked for other unmerged Windows-owned work relevant to
+this package (`W4-1`, `W4-3`, `W4-depth-1`, `W4-main-1`, `W4-opening-1`, `W4-gate`,
+`W4-h1exp`, `W4-preproj`): `task/W4-3-live-buildings` is confirmed already merged
+into `origin/main` (`git merge-base --is-ancestor task/W4-3-live-buildings
+origin/main` succeeds) — its building-sprite/live-picture work is already present
+on this base, not something to port again. Nothing else inspected looked both
+unmerged and in-scope; nothing further was ported.
+
+**Identity:** unchanged — state 132 / SIMINT1 / PRNG timeline 5 / replay frame 4 /
+command wire 1. State 133 / ECONBK1 remains reserved for the second Mac. No
+`src/sim` file was touched in this package (no commits were made at all beyond
+the inherited ones above).
+
+### Capability table (W0 deliverable)
+
+Built from reading `docs/orchestration/gameplay-next-chain.md` (2026-11-05/06,
+the orchestrator's own evidence-led gap inventory) and surveying
+`src/sim/include/anno/sim/{production,building,city,world}.hpp`,
+`src/render/include/anno/render/frame_table.hpp`, `src/render/src/scene.cpp`,
+`src/app/src/{viewer,scene_picture,legal_workload}.cpp` and
+`src/app/include/anno/app/dev_tool.hpp` on this exact base commit — not from
+memory or from what other packages claim elsewhere.
+
+| Capability | Status on this base | Evidence |
+|---|---|---|
+| Ship selection/sailing/founding/unloading/loading | **Accepted on main** | W4-OPENING-1/2's `opening.cpp`/`opening_session.cpp`/`opening_view.cpp`, `DevScript` `key h`/`wait turns` idiom, `viewer_wiring_opening_controls` passes standalone (10.03s, this package) |
+| Legal building placement, rotation, demolish | **Accepted on main** | `src/app/include/anno/app/dev_tool.hpp` (`DevTool`, explicitly "a test tool... not UI.2"), `legal_workload.cpp`/`.hpp`, `dev_tool_test.cpp`/`dev_feedback_test.cpp` suites (mostly pass; see failures below) |
+| Live building sprites reaching the picture | **Accepted on main** | `task/W4-3-live-buildings` merged (confirmed above); `render::FrameTable` has `FrameKind::Building`/`intern_building`; `scene.cpp` (2377 lines), `scene_picture.cpp` (1051 lines) |
+| Small-farm food/alcohol production, real workers/animals, several households, shortage/recovery | **Accepted on main, within MAP-SUPPLY-1's reviewed scope** | `gameplay-next-chain.md` lines 31-34: "Accepted within the scope of the SUPPLY/CLOSE review; ship-founded alcohol feasibility and balanced economies remain open" |
+| Cloth (sheep/wool), leather (hunter) production | **Unavailable — explicitly out of this package's boundary** | `gameplay-next-chain.md` lines 90-92: "Leather is not already renewable... Hunter is TickKind::None / Inert"; first-Mac-owned, queued (MAP-NEEDS-2), not to be implemented here per the user's own boundary |
+| Salt extraction | **Unavailable — explicitly out of this package's boundary** | `gameplay-next-chain.md` line 55, 93-95 (quarry/mine stub ticks); first-Mac-owned (MAP-EXTRACT-1, queued, not released) |
+| Resident-income booking, building upkeep | **Unavailable — explicitly out of this package's boundary** | ECON-BOOK-1 (second Mac) is "READY/RELEASED, B0-B7" per `TASKS.md` but mid-implementation, not yet merged to `origin/main`'s tip (`3b74201f` is the *publication* commit, not a completed-B7 merge) |
+| Session-only-enabled household population behavior | **Partially accepted** | small-farm household state exists per MAP-SUPPLY-1's scope above; general `house_updates`/population progression defaults remain false project-wide (CLAUDE.md, `gameplay-next-chain.md` line 41) and must stay false by default |
+| Save/resume, deterministic headless replay | **Accepted on main** | `anno_app_input_tests.dev session: the replay agrees with a recorded run...` test exists and, under this run, PASSED with real game files |
+| Developer inspection UI for building/production/household state | **Unavailable, not yet built** | No dev-overlay/inspection surface beyond `dev_tool_status()`'s one-line window-title string (`dev_tool.hpp` line 166) and `DevScript`'s scripted `expect fact` assertions was found; this is genuinely new work, not already present |
+
+### W1 — target-platform validation
+
+- `cmake --preset msvc` configures clean; `cmake --build --preset msvc --target
+  anno1503` builds `anno1503.exe` clean (confirmed twice, background and
+  foreground). `anno_app_tests.exe`/`anno_app_input_tests.exe` also build clean
+  once requested as explicit targets (they are not part of the default build set
+  — note for whoever next configures this preset from scratch).
+- `anno_sim_tests` **fails to build** — same pre-existing `small_farm_worker_test.cpp`
+  MSVC break already reported on `task/W4-opening-2-main` above; not touched here,
+  not this package's territory (MAP-NEEDS-2).
+- A junction `game -> ../../anno1503/game` was added to this worktree (original
+  game files are not copied per worktree; this one had none). With it,
+  `ANNO1503_GAME_DIR` set, ran `ctest --preset msvc -j 8 -R
+  '^anno_app_tests\.|^anno_app_input_tests\.'`: **255/260 passed (98%)**, 204.78s
+  real. Five failures, none touching any file this package or `task/W4-opening-2-main`
+  changed (the branch has zero new commits of its own beyond the inherited ones):
+  - `anno_app_tests.play: a turn with no commands publishes no building changes`
+  - `anno_app_tests.developer resources: a Build too expensive for the start is refused without them`
+  - `anno_app_tests.legal workload: one accepted build and one accepted demolish reach the picture as a fresh scene of the desired state (game files)`
+  - `anno_app_tests.legal workload: intermediate publications under a stream of builds and a demolish each equal a fresh scene of the state they represent (game files)`
+  - `anno_app_tests.founding sites, real files: the original's own warehouses pass the coast rule as stored` — concretely, `CHECK( seen >= 62 )` got `4`, i.e. the test found only 4 of an expected 62 stored warehouse-1302 coast-rule rotations in this worktree's game files.
+  Not investigated further (out of this package's scope to fix); reported as-is.
+  No independent review of this list has been done — flagged for the orchestrator
+  or a dedicated reviewer, not claimed as triaged.
+- RTX 4090 / GPU-adapter: NOT_RUN, same blocked WSL/GPU lane as `task/W4-opening-2-main`
+  above (the gate hasn't been re-tried here; no reason to expect a different result
+  since nothing changed on that lane).
+
+### Blocker — stopping here, W2-W7 not attempted
+
+W0 (baseline + capability table, done above) and W1 (target build/run validation,
+done above) are the parts of this package genuinely completed with real evidence
+in this pass. **W2 through W7 — new rendering/dev-UI wiring for live production/
+worker/household observability, two real-window proofs, RTX 4090 performance
+measurement, and a final independently-reviewed candidate with an owner playtest
+card — were not attempted.** This is a deliberate stop at a genuine blocker, not
+a skipped step: that scope is substantial new engineering (a developer inspection
+UI does not exist yet per the capability table above; it would need to be designed
+and built, then proven against whatever MAP-SUPPLY-1's small-farm chain actually
+exposes, which this pass did not have the room to verify at the `src/sim` call-site
+level, only at the header-existence level). Completing it with the same evidence
+standard as W0/W1 above (built, run, and checked — not asserted) needs a dedicated
+pass with its own time budget, not a continuation squeezed into this report.
+Nothing was fabricated to meet the stopping criteria; the stopping criteria were
+not reached.
+
+Not pushed, not merged. No commits beyond what `task/W4-opening-2-main` already
+had. No household/economy default was touched, UI.2 was not started, no new
+simulation mechanics were added, and no completeness claim is made.
+

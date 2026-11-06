@@ -20,12 +20,32 @@
 # setup linux-gcc CI uses; omit it (the default) for an ASan-only gate.
 #
 # Usage: tools/test/wsl_gate.sh <worktree-path> [--tag TAG] [--build-dir DIR] [--gpu-lane]
+#                                [--keep-build] [--min-free-gib N]
 #   <worktree-path>  the WSL path (/mnt/e/...) of the git worktree to test. Must be a *separate*
 #                     checkout from the one driving this script (never a live executor worktree,
 #                     never the owner's E:\anno1503): see CLAUDE.md's merge-outside-worktree rule.
 #   --tag TAG         distinguishes this run's gate files (default: date +%H%M%S).
-#   --build-dir DIR   default: $HOME/anno-build/wsl-gate-<basename of worktree-path>.
+#   --build-dir DIR   default: $HOME/anno-build/wsl-gate (one folder, shared across every worktree
+#                     and run — WSL disk rules, owner 2026-11-06, below).
 #   --gpu-lane        also run anno_render_gpu_tests on lavapipe (ANNO_REQUIRE_GPU=1).
+#   --keep-build      skip the end-of-run build-tree deletion, for an immediate rerun of the same
+#                     head (configure+build is skipped next time when CMakeCache.txt is still there).
+#   --min-free-gib N  the free-space floor checked before configuring (default: 20).
+#
+# The default build folder is shared and deleted at the end of every run: do not run two gate
+# invocations against it at the same time (they would race on the same CMake build tree). Give
+# concurrent runs distinct --build-dir values if that is ever genuinely needed.
+#
+# WSL disk rules (owner, 2026-11-06; docs/orchestration/TASKS.md, W4-OPENING-CONTROLS-FLAKE step 0):
+# C: ran out of space once because Ubuntu's disk image lived there and every worktree's gate run
+# left its own never-deleted build tree under $HOME/anno-build (47 GB of them). Ubuntu's image now
+# lives on E: (`wsl --manage Ubuntu --move`), and this script itself must never recreate that
+# problem: one reused build folder (not one per worktree), deleted when the run finishes (unless
+# told to keep it), a pinned-dependency cache that lives outside every build tree so deleting a
+# build never re-triggers a slow refetch, and a refusal before configuring if the build filesystem
+# is nearly out of room. The image is not sparse (WSL disabled sparse images): space freed inside
+# it is reused by a later build, not returned to the host, so deleting the build tree keeps the
+# image itself lean, not just the host's view of it.
 #
 # Gate files land in <worktree-path>/cache/gates/ (gitignored), one $S summary file per run plus
 # a .log/.out pair per lane, each line in $S timestamped so lane wall-clock time is directly
@@ -36,16 +56,20 @@ WORKTREE=""
 TAG="$(date +%H%M%S)"
 BUILD_DIR=""
 GPU_LANE=0
+KEEP_BUILD=0
+MIN_FREE_GIB=20
 while [ $# -gt 0 ]; do
   case "$1" in
     --tag) TAG=$2; shift 2 ;;
     --build-dir) BUILD_DIR=$2; shift 2 ;;
     --gpu-lane) GPU_LANE=1; shift ;;
+    --keep-build) KEEP_BUILD=1; shift ;;
+    --min-free-gib) MIN_FREE_GIB=$2; shift 2 ;;
     *) if [ -z "$WORKTREE" ]; then WORKTREE=$1; else echo "unexpected argument: $1" >&2; exit 2; fi; shift ;;
   esac
 done
 if [ -z "$WORKTREE" ]; then
-  echo "usage: $0 <worktree-path> [--tag TAG] [--build-dir DIR] [--gpu-lane]" >&2
+  echo "usage: $0 <worktree-path> [--tag TAG] [--build-dir DIR] [--gpu-lane] [--keep-build] [--min-free-gib N]" >&2
   exit 2
 fi
 
@@ -54,11 +78,36 @@ export ANNO1503_GAME_DIR=/mnt/e/anno1503/game/app
 export ANNO_TEST_THREADS=${ANNO_TEST_THREADS:-4}
 
 W=$WORKTREE
-B=${BUILD_DIR:-$HOME/anno-build/wsl-gate-$(basename "$W")}
+# One reused build folder by default (WSL disk rules above) — never one per worktree. An explicit
+# --build-dir still works for a caller that genuinely wants its own (e.g. to keep two runs' builds
+# apart deliberately); the default no longer does that implicitly.
+B=${BUILD_DIR:-$HOME/anno-build/wsl-gate}
 G=$W/cache/gates
-OLD=$HOME/anno-build/w4-asan-viewer/_deps
+# The pinned FetchContent sources, outside every build tree (WSL disk rules above) so deleting $B
+# at the end of a run never forces a slow refetch next time. Seeded once (2026-11-06) from the
+# W4-SETTLEMENT-1 `5a5de598` pins into $HOME/anno-build/w4-asan-viewer/_deps, then moved here.
+OLD=$HOME/anno-deps
 S=$G/wsl-$TAG.txt
-mkdir -p "$G"
+mkdir -p "$G" "$B"
+
+# Delete the build tree when the run finishes (WSL disk rules above), pass or fail (including the
+# free-space and dirty-checkout refusals below), unless the caller asked to keep it for an
+# immediate rerun of the same head. A trap, registered right after $B first exists, so every exit
+# path is covered, not just a clean fall-through to the end of the script.
+cleanup() {
+  if [ "$KEEP_BUILD" -eq 0 ]; then
+    rm -rf "$B"
+  fi
+}
+trap cleanup EXIT
+
+# The free-space floor (WSL disk rules above): refuse before configuring rather than fail
+# confusingly mid-build, or worse, mid-build on some *other* concurrent job sharing the same disk.
+FREE_GIB=$(df -BG --output=avail "$B" | tail -1 | tr -dc '0-9')
+if [ -z "$FREE_GIB" ] || [ "$FREE_GIB" -lt "$MIN_FREE_GIB" ]; then
+  echo "VERDICT: INVALID only ${FREE_GIB:-unknown} GiB free on the filesystem under $B, below the ${MIN_FREE_GIB} GiB floor; refusing to configure" >&2
+  exit 1
+fi
 
 # The worktree's gitdir. For a git worktree, $W/.git is a file ("gitdir: <path>"); that path is
 # written by Windows git as a drive-letter path (e.g. "E:/anno1503/.git/worktrees/name"), which

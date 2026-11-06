@@ -867,3 +867,19 @@ source/dependencies. All54 changed C++/header/inc files pass clang-format23.1.3
 dry-run. Source/runtime/tests/references/tools frozen before this campaign.
 Current Mac18logical/48GiB,1.5TiBfree, load2.51;4jobs and memory admission retained.
 Windows/Linux/original-runtime/liveUI/GPU evidence remains NOT_RUN.
+
+### R7 terminal evidence
+
+Frozen tested source6fd98db3, code/test/reference/tool tree73eb40eb unchanged.
+Canonical Debug149/149 +eight required separately, all other0,16.00s;
+ASan/UBSan152/152 +eight separately, all other0,698.98s. One current original
+producer537.05s/69745assertions, honest/changed children120.63/88.52s. Actual
+child11/11 and3/4/divergence491; ten binary/event artifacts equal Debug, only
+continuationwalltime differs. All472originalfiles' sizes/hashes revalidated.
+Raw/inventory/actualbinary/config/artifact hashes committed in
+`docs/orchestration/evidence/map-route1/receipts.json`; final SAN rawSHA
+a24ba60ef39446a4cf2f8f9daea17ebdc291f52b8fe80fa73f10d94e049067c7.
+Freshreviewer independentlyreconciledall18SANreceipt hashes/scope/ledger/reuse;
+consolidatedhandoff docs/orchestration/reviews/2026-11-06-map-route1.md awaits
+finaldocumentationapproval. Owned jobs/sleep assertion ended; sharedcoordinator
+untouched. No code changes or further campaign attached tocloseout.

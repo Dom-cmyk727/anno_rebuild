@@ -822,6 +822,14 @@ std::optional<BuildingInspection> inspect_building(const sim::World& world, sim:
     return out;
 }
 
+std::uint64_t facts_turn_for(const PlaySnapshot* opening_snapshot,
+                             const PlaySnapshot* live_snapshot) {
+    if (opening_snapshot != nullptr) {
+        return opening_snapshot->turn;
+    }
+    return live_snapshot != nullptr ? live_snapshot->turn : 0;
+}
+
 std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
     std::vector<SceneBuilding> cur = play_buildings(world_);
     sort_buildings(cur);

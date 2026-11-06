@@ -172,6 +172,15 @@ struct PlayFeedback {
     std::optional<CommandOutcome> latest;
 };
 
+/// The turn `DevScriptState::facts_turn` should carry (W4-OPENING-CONTROLS-FLAKE): in an opening
+/// session, the opening snapshot's turn, since the facts a script's `wait fact`/`expect fact`
+/// steps read are built from that snapshot, refreshed once per drawn frame — not the live
+/// snapshot's turn, which a fresh feedback() read can run ahead of under a slow frame cadence.
+/// Equal to the live snapshot's turn in a session without an opening (`opening_snapshot` null),
+/// where facts is always empty and this has no effect. Null-safe in both arguments.
+[[nodiscard]] std::uint64_t facts_turn_for(const PlaySnapshot* opening_snapshot,
+                                            const PlaySnapshot* live_snapshot);
+
 /// What one turn did, for the window trace (round ec, B2; docs/app/window-trace.md): the commands
 /// it applied, the refusals among them (from the turn's results, round ee: the reasons in command
 /// order), and the batch it pushed. `published` is read just before the batch enters the mailbox,

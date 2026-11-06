@@ -928,3 +928,31 @@ TEST_CASE("play component: turn cost on the heavy endless scenario") {
     CHECK(runner.step_ms() == 10);
     CHECK(runner.snapshot()->tick > 0);
 }
+
+TEST_CASE("play: facts_turn_for follows the opening snapshot's turn, not a later live one "
+          "(W4-OPENING-CONTROLS-FLAKE)") {
+    using anno::app::facts_turn_for;
+    using anno::app::PlaySnapshot;
+
+    PlaySnapshot opening;
+    opening.turn = 5;
+    PlaySnapshot live;
+    live.turn = 9; // a fresh feedback() read taken after `opening` was drawn, still ahead of it.
+
+    // The case the original fix claimed to cover but did not: the two turns differ, and
+    // facts_turn_for must report the opening snapshot's turn, never the later live one, so a
+    // scripted `wait turns` cannot resolve ahead of the facts it gates.
+    CHECK(facts_turn_for(&opening, &live) == 5);
+    CHECK(facts_turn_for(&opening, &live) != live.turn);
+
+    // Equal turns are not evidence either way; cover the common case too.
+    live.turn = opening.turn;
+    CHECK(facts_turn_for(&opening, &live) == opening.turn);
+
+    // A session without an opening (Proof B, W4-SETTLEMENT-1): falls back to the live turn, since
+    // facts is always empty there and has nothing to race against.
+    CHECK(facts_turn_for(nullptr, &live) == live.turn);
+
+    // Neither snapshot exists yet (before the first drawn frame): 0, not a crash.
+    CHECK(facts_turn_for(nullptr, nullptr) == 0);
+}

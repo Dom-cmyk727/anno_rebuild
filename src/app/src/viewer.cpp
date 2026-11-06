@@ -1835,8 +1835,10 @@ void Viewer::script_tick() {
     // Set alongside st.facts below (opening_facts() reads opening_snapshot_, refreshed only once
     // per drawn frame in draw()/opening_refresh(), never here): this is the turn opening_snapshot_
     // belongs to, not the live one above, so `wait turns` cannot resolve ahead of what the facts
-    // it gates (`expect fact ...`) can actually show (W4-OPENING-CONTROLS-FLAKE).
-    st.facts_turn = st.snapshot ? st.snapshot->turn : 0;
+    // it gates (`expect fact ...`) can actually show (W4-OPENING-CONTROLS-FLAKE). In a session
+    // without an opening, opening_snapshot_ is null and facts_turn_for falls back to the live
+    // turn, as dev_script.hpp documents; the inspection.* facts below are built from that read.
+    st.facts_turn = facts_turn_for(opening_snapshot_.get(), st.snapshot.get());
     st.tool = dev_;
     st.knowledge = knowledge_ ? &*knowledge_ : nullptr;
     if (chunk_hold_) {

@@ -315,5 +315,8 @@ add_subdirectory(src/tools)
 if(ANNO_BUILD_TESTS)
   # Explicit canonical gate build target: current sim/formats/replay binaries
   # and the mandatory ancillary picture contract, without viewer/GPU matrices.
-  add_custom_target(economy_checks DEPENDS anno_sim_tests anno_formats_tests sim_replay bench_picture)
+  add_custom_target(economy_checks DEPENDS anno_sim_tests anno_formats_tests sim_replay anno_dump bench_picture)
+  if(TARGET anno_sim_ubsan_probe)
+    add_dependencies(economy_checks anno_sim_ubsan_probe)
+  endif()
 endif()

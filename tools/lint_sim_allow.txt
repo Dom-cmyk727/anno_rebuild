@@ -152,3 +152,4 @@ src/sim/include/anno/sim/script_runtime.hpp:inline constexpr std::uint64_t kScri
 src/sim/include/anno/sim/figure.hpp:inline constexpr std::uint16_t kAnimalSearchLimit  # step A's callback limit of the animal job (D 0x1005932d = 0x14 vs 0x10058bfd = 0): a rule constant of the original job, not a count or limit
 
 src/sim/include/anno/sim/script_runtime.hpp:ScriptLimits limits =  # default arguments of prepare_script declaration; no variable or global state (lint parser false positive)
+src/sim/src/city_booking.cpp:constexpr std::uint64_t kBias  # exact 2^63 offset orders the complete i64 money domain without signed overflow; a type-width arithmetic fact, not a game count or configurable capacity (ECON-BOOK-1 B1c/B4)

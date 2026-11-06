@@ -1188,3 +1188,62 @@ correction is applied above: successful booking gathers, calculates AND clears i
 three linear loops, not an implication of two total loops. This is documentation
 precision only; no runtime or measurement input changed and no gate is restarted.
 Final B6 approval follows this docs-only precision commit. B7 remains required.
+
+### B6 final approval
+
+`/root/econ_b0_review` APPROVED `200f7e41c2e2faecfa743bb4c638776b228526b7`, retaining
+tested code c7880a64. Independent counts/checksums/control derivations,15 raw samples,
+11 receipt hashes and separate RSS observation verified; no remaining P1/P2. The
+docs-only three-loop precision fix changes no input, so no gate is repeated.
+Review retained `/private/tmp/econ-book1-b6-review.md`. B7 is released.
+
+## B7 final gate plan and stopping boundary
+
+The frozen selection manifest in ignored `B7/selected-names.json` currently names
+1390 tests before the ASAN-only probe. It includes every affected city/building/
+player/config/type/command/house/resident/supply/native/identity path, broad
+script permission/startup/money and applicable references,83 full formats cases,
+current replay CLI/negative cases, the real B5 loop/fresh CLI arms and B6 counts.
+No source edits during a gate. Required contracts are exact-name invocations,
+separate from selected counts. Serial Debug then ASan/UBSan,900s per selected case:
+B5 measured23.56s Debug/74.85s ASAN producer, previous original supply replay
+25.48s Debug, and the corresponding bounded original mechanisms justify this
+margin for admission and instrumentation. Original full voyage uses its separately
+accepted587.38s/1500s evidence and is excluded, not assigned the old inadequate1800s
+SCRIPT2 timeout again. The900s setting is not a claim that every repository lane
+can complete within it.
+
+225 sim cases are explicitly excluded by name/source in `B7/excluded-sim-names.json`:
+unmodified navigation/coast/route/shore/terrain-coordinate algorithms and their
+large corpora; optional search/measurement tools without inputs; original
+SCRIPT2 voyage/path workers, whose accepted functionality is not changed here.
+The original full50-map five-minute/top-ten movement corpus and long link CLI
+are not repeated. Their creation/import finance inputs were independently
+inventoried in B3 across50 raw scenes and checked against the original corpus
+creation hashes; affected creation/HEAD/native paths remain selected. Scenario
+component masks, research/permissions and a shipped economy run remain selected.
+No renderer/GPU/viewer/Windows/MSVC or Linux-host suite is run on this Mac. This is
+an affected gate, not an unqualified all-repository/full-suite pass.
+
+Reuse dependencies: no sailing, hull/HP, route/coast/walk geometry, production/
+resident purchase algorithm or PRNG draw-site body was edited by this packet.
+B3 prices/history/rules are versioned133, B4 changes opt-in financial paths and
+retains default-off values; the shared effect refactor's empty-booking branch is
+covered by default-off native/current133 gameplay regressions. Accepted integrated
+runtime cafc1a7c / canonical7b57ebd9 histories in the consolidation and MAP-INTEGRATE
+handoffs retain their exact source/evidence scope. Their actual published132
+archives are not relabelled. Original132 player scope is compared again with
+current default-off133 G2 before final handoff, not binary-equal whole saves.
+
+Cheap preflight:55 changed C++ headers/sources pass clang-format23 --dry-run
+--Werror (`B7/format-preflight-01.log`). First lint preflight flags the named2^63
+money-domain offset as a constexpr count. A narrow reasoned allow-list entry now
+identifies this as the fixed i64 type-width arithmetic, not a capacity or gameplay
+limit; no lint rule was relaxed. Second lint preflight passes. Fresh final reviewer
+must accept that reason. `economy_checks` now builds anno_dump for the selected
+public format-agreement tool and conditionally the existing sanitizer probe for
+the ASAN gate; no coordinator/test_support/runner implementation changes.
+
+Completion still requires both frozen gates, any focused corrections, a fresh
+independent integration verdict and one REPORTS/consolidated handoff commit.
+No main merge, push, default flip or follow-on work is authorized.

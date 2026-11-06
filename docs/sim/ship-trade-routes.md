@@ -677,3 +677,20 @@ expectations. No full original economy-loop acceptance is claimed by this intake
 Any later affected full economy loop requires independently attributed136 pins,
 preserving133/134; copying main134 expectations is excluded. R5 current136 city/
 money proof remains independent of that historical canary.
+
+### R5 acceptance before the unchanged-original pilot
+
+| Requirement | Positive proof | Counterexample | Review |
+|---|---|---|---|
+| Genuine automatic freight | original manifest/loadout/sites; public source/destination founding and forester20roads; after Assign only Advance/observe through two positive512raw exports/receipts | inherited26t hold baseline is retained, first-load totalmade<1024 requires later new production | pending |
+| Complete ledgers | every advance closes tree/raw/farm/cart/source/export and all city/hold goods; all-owner money, city bills and zero income/trade/billed terms | no unexplained goods or money residual; same1310 Build refuses before and succeeds after | pending |
+| Controls | pre-workers world publicly Off forever; same bounded setup/route suffix yields zero source export/new production; inherited deliveries explicitly unqualified | separate real loaded-sailing Suspend/Resume/Cancel branch, no main interval commands | pending |
+| Reachable continuations | five R1-reviewed actual public cuts, each full remaining Advance/command/events/draws/actor/city/native suffix | no artificial partial transaction, source initial leg labelled possibly degenerate | pending R6 |
+
+Pilot bound is6000 automatic1000ms advances (each full figure/city-ring visit),
+400 first-production waits and existing2000 per manually sailed leg, with no
+search or gameplay/resource change. This is a finite failing work bound, not an
+engine limit or a success condition. Debug pilot timeout900s is declared before
+execution using prior original expansion measurements; final SAN bound will be
+declared from the measured pilot and known SAN ratio. Pilot artifacts live in
+a new ignored directory, never overwriting accepted expansion evidence.

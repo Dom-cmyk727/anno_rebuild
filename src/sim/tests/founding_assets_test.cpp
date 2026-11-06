@@ -4333,7 +4333,10 @@ struct Run {
     std::array<std::uint64_t, sim::kDrawSiteCount> draws{};
     std::function<void()> source_check{};
 
-    sim::ApplyResult apply(const sim::Command& command, std::uint64_t expected_gold = 0) {
+    std::function<void(const char*, const std::vector<std::uint8_t>&)> sink = publish;
+
+    sim::ApplyResult apply(const sim::Command& command, std::uint64_t expected_gold = 0,
+                           std::optional<sim::CityRef> target = {}) {
         auto money = balances(world);
         using View = decltype(city_view(std::declval<const sim::City&>()));
         std::map<sim::CityRef, View> cities;
@@ -4342,7 +4345,6 @@ struct Run {
                 for (const auto& city : island->cities)
                     if (city)
                         cities.emplace(sim::CityRef{island->index, city->number}, city_view(*city));
-        std::optional<sim::CityRef> target;
         if (const auto* b = std::get_if<sim::BuildCmd>(&command.body))
             target = b->city;
         if (const auto* l = std::get_if<sim::LoadCmd>(&command.body))
@@ -4467,7 +4469,7 @@ struct Run {
         if (natives.empty())
             natives.reserve(5); // keep resumed worlds at stable addresses
         const auto bytes = world.save();
-        publish(("cut-" + label + ".save").c_str(), bytes);
+        sink(("cut-" + label + ".save").c_str(), bytes);
         auto loaded = sim::World::load(bytes, std::move(types));
         REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string{} : loaded.error()));
         loaded.value().set_transport_stats(nullptr);
@@ -5303,3 +5305,5 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         CHECK(w.check_invariants().empty());
     }
 }
+
+#include "freight_original.inc"

@@ -4629,6 +4629,11 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
             << std::get<sim::Farm>(w.find_building(forest)->payload).out << " cart_active "
             << expansion_test::cart_wood(w, warehouse, wood) << " observed_cuts " << observed_cuts
             << " growth " << observed_growth);
+    // First-export old-made wood excludes raw BAUM and reserved (already inside Farm.out).
+    const auto first_made = stats.forestry.farms.at(forest).made_88;
+    const auto first_pipeline = std::uint64_t{expansion_test::stock(w, ref, wood)} +
+                                std::get<sim::Farm>(w.find_building(forest)->payload).out +
+                                expansion_test::cart_wood(w, warehouse, wood);
     // E3: continue this exact real ship/holds and world; no copied planning position enters it.
     expansion_test::sail(run, recipe.destination);
     const auto source_stock = command_test::city(w, ref).stock.stock;
@@ -4655,6 +4660,7 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     CHECK(destination_building->type == sim::TypeId{1302});
     CHECK(destination_building->x == 455);
     CHECK(destination_building->y == 352);
+    CHECK(destination_building->rotation == 2);  // independent original-template bottom shore edge
     CHECK(destination_building->byte0f == 0x30); // original accepted coast max&f0, ship-founding§4
     const auto& destination_island = *w.islands()[destination_ref.island.v];
     for (std::int32_t y = 352; y < 356; ++y)
@@ -4733,6 +4739,78 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
                                  << " receiver_height " << static_cast<unsigned>(*level) << " gold "
                                  << gold_of(w, 0) << " construction " << run.construction[0]
                                  << " upkeep " << run.upkeep[0]);
+    // E4: a distinct later batch must require output made AFTER the first source export.
+    REQUIRE(first_pipeline / 256 < std::numeric_limits<std::uint32_t>::max());
+    const auto second_tons = static_cast<std::uint32_t>(first_pipeline / 256 + 1);
+    const auto second_quantity = std::uint64_t{second_tons} * 256;
+    REQUIRE(second_quantity > first_pipeline);
+    expansion_test::sail(run, recipe.source);
+    for (std::uint32_t n = 0; n < 400 && (expansion_test::stock(w, ref, wood) < second_quantity ||
+                                          stats.forestry.farms.at(forest).made_88 - first_made <
+                                              second_quantity - first_pipeline);
+         ++n) {
+        run.advance();
+        expansion_test::source_ledger(w, ref, warehouse, forest, wood, stats, transferred);
+    }
+    const auto additionally_made = stats.forestry.farms.at(forest).made_88 - first_made;
+    REQUIRE(additionally_made >= second_quantity - first_pipeline);
+    REQUIRE(expansion_test::stock(w, ref, wood) >= second_quantity);
+    const auto source_before_second_load = expansion_test::stock(w, ref, wood);
+    const auto destination_before_second = command_test::city(w, destination_ref).stock.stock;
+    const auto second_loaded = run.apply(
+        {sim::PlayerId{0}, sim::LoadCmd{sim::FigureId{1}, warehouse, 0, wood, second_tons}});
+    REQUIRE(second_loaded.ok());
+    REQUIRE(second_loaded.records.at(0).transferred_88 == second_quantity);
+    auto second_held = end_holds;
+    second_held[0].amount_88 += second_quantity;
+    CHECK(ship_of(w, 1).holds == second_held);
+    CHECK(expansion_test::stock(w, ref, wood) == source_before_second_load - second_quantity);
+    CHECK(command_test::city(w, destination_ref).stock.stock == destination_before_second);
+    expansion_test::source_ledger(w, ref, warehouse, forest, wood, stats,
+                                  transferred + second_quantity);
+    run.checkpoint();
+    expansion_test::sail(run, recipe.destination);
+    const auto source_before_second_unload = command_test::city(w, ref).stock.stock;
+    const auto destination_before_unload = expansion_test::stock(w, destination_ref, wood);
+    const auto second_unloaded = run.apply(
+        {sim::PlayerId{0}, sim::UnloadCmd{sim::FigureId{1}, destination_wh, 0, wood, second_tons}});
+    REQUIRE(second_unloaded.ok());
+    REQUIRE(second_unloaded.records.at(0).transferred_88 == second_quantity);
+    CHECK(ship_of(w, 1).holds == end_holds);
+    CHECK(expansion_test::stock(w, destination_ref, wood) ==
+          destination_before_unload + second_quantity);
+    CHECK(command_test::city(w, ref).stock.stock == source_before_second_unload);
+    expansion_test::source_ledger(w, ref, warehouse, forest, wood, stats,
+                                  transferred + second_quantity);
+    CHECK(std::uint64_t{12800} + stats.forestry.farms.at(forest).made_88 - 25 * 256 ==
+          std::uint64_t{aboard_of(ship_of(w, 1).holds, wood)} +
+              expansion_test::stock(w, ref, wood) +
+              expansion_test::stock(w, destination_ref, wood) +
+              std::get<sim::Farm>(w.find_building(forest)->payload).out +
+              expansion_test::cart_wood(w, warehouse, wood));
+    CHECK(command_test::city(w, ref).accounts.civil_cost == 27);
+    CHECK(command_test::city(w, destination_ref).accounts.civil_cost == 20);
+    REQUIRE(run.city_upkeep.at(ref) > 0);
+    REQUIRE(run.city_upkeep.at(destination_ref) > 0);
+    for (const auto& [owner, cash] : initial_money)
+        CHECK(expansion_test::balances(w).at(owner) ==
+              cash - static_cast<std::int64_t>(run.construction[owner] + run.upkeep[owner]) +
+                  static_cast<std::int64_t>(run.income[owner]));
+    run.checkpoint();
+    const auto e4_log = sim::write_log(rec.log());
+    REQUIRE(e4_log.ok());
+    expansion_test::publish("e4-genuine.log", e4_log.value());
+    expansion_test::publish("two-cycles.save", w.save());
+    REQUIRE(w.check_invariants().empty());
+    MESSAGE("EXPANSION_E4 tick " << w.clock().tick() << " old_pipeline " << first_pipeline
+                                 << " second_export " << second_quantity << " additionally_made "
+                                 << additionally_made << " source_wood "
+                                 << expansion_test::stock(w, ref, wood) << " destination_wood "
+                                 << expansion_test::stock(w, destination_ref, wood) << " gold "
+                                 << gold_of(w, 0) << " construction " << run.construction[0]
+                                 << " upkeep " << run.upkeep[0] << " source_upkeep "
+                                 << run.city_upkeep.at(ref) << " destination_upkeep "
+                                 << run.city_upkeep.at(destination_ref));
     w.set_transport_stats(nullptr);
 }
 

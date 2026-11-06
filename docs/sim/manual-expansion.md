@@ -505,3 +505,22 @@ E3 gate01 at1ca653b7 is a failed build, no selected execution: the appended
 source-ledger call used the wrong argument order. Correct it to the existing
 helper signature and allow both sourceforest harvester homes and sourcewarehouse
 cart homes. Neither correction changes production code or expected balances.
+
+### E3 approved; E4 repeat plan
+
+Independent E3 approval c0ec23cb:1/1,11515asserts,39.83s,6required separately1/1,
+allothercategories0; all7receipt hashes and3unchangedE2prefixartifacts verified.
+Actual secondleg47500ticks→171000, destination0city onisland1, height48, gold
+30000−1000−43=28957. Reviewer decoded actual original5×5coast window and4receiver
+vertices: unique bottomshoreedge gives rotation2/height48. The advisoryrotation2
+field assertion joins E4's changedcombinedgate, not a redundantE3-only campaign.
+
+E4 uses the same ship to return, load and complete a second distinct freight
+cycle. Capture entire made-but-unexported wood P0 at first load (source remainder+
+Farm.out+active sourcecart wood, excluding raw and reserved duplication); choose
+q2=floor(P0/256)+1 wholetons so priorwood alone cannot satisfy it. Require measured
+newmade>=q2raw−P0, actual source stock/holdroom, exact public load/unload debit=
+credit and allhold ordering. Wholewood equation is initial12800+made−25×256 =
+shipwood+two warehousewood+sourceFarm.out+activecart. Both cost histories27/20 and
+per-city upkeep remain distinct. Approved short ownership/stale/partial/alternate
+companions are reused; their current134 sanitizer rerun joins E7. E4 pending.

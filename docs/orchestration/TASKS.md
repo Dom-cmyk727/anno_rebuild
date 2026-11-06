@@ -885,6 +885,10 @@ Read the packet from fetched main; independent package approvals release later
 packages. The old SCRIPT2 packet below is historical, not a new assignment.
 <!-- END MAP-INTEGRATE-1 DISPATCH -->
 
+**Windows update, 2026-11-06 (orchestrator):** WSL Ubuntu now runs from E: (`E:\wsl\Ubuntu`), and its old
+build trees are deleted. Rerun W4-SETTLEMENT-1's W7 WSL ASan gate; its first build is a full rebuild. The new WSL disk
+rules are under W4-OPENING-CONTROLS-FLAKE step 0.
+
 **Windows update, 2026-11-05 (orchestrator):** W4-MAIN-1 is done, and `main` is at `88968580`. **W4-OPENING-2 is
 current.** Its first package is W4-OPENING-CONTROLS-FLAKE, with step 0 first. W4-DEPTH-1-CLOSE runs beside it. Read
 the "W4-MAIN-1 done" update under "Other active dispatches".
@@ -1588,7 +1592,27 @@ leave as a vague low-priority note.
      carry a literal the scan can class: either make the literal self-describing, or list each such site by file and
      line.
 
-   Building on the WSL file system instead of `/mnt/e` may be measured; record the numbers before adopting it.
+   **WSL disk rules (owner, 2026-11-06).** These replace the earlier note that building on the WSL file system "may be
+   measured".
+   - **What happened:** C: ran out of space (0 GB free). Ubuntu's disk image was still on C:, and it held 47 GB of
+     gate build trees, one per worktree under `$HOME/anno-build`, that were never deleted. WSL failed with I/O errors,
+     and W4-SETTLEMENT-1's W7 ASan gate could not run.
+   - **What changed:**
+     - the orchestrator moved Ubuntu to `E:\wsl\Ubuntu\ext4.vhdx` (`wsl --manage Ubuntu --move`);
+     - it deleted the old build trees;
+     - it re-fetched the sources that `wsl_gate.sh` pins with `FETCHCONTENT_SOURCE_DIR_*` into
+       `$HOME/anno-build/w4-asan-viewer/_deps`, at W4-SETTLEMENT-1's pins (`5a5de598`).
+     - The image is not sparse, because WSL has disabled sparse images. Space freed inside it is reused, not returned
+       to E:.
+   - **Rules for the gate script:**
+     - Builds go under `/mnt/e`, or into **one** reused folder (for example `$HOME/anno-build/wsl-gate`), never one
+       folder per worktree.
+     - The script deletes its own build tree when it finishes. A `--keep-build` flag may keep it for an immediate rerun
+       of the same head.
+     - The pinned dependency sources move to a stable folder outside every build tree (for example
+       `$HOME/anno-deps`), so deleting a build never removes them.
+     - Before configuring, the script checks the free space on the build file system and refuses with a clear message
+       below a stated floor.
 1. Read the actual command dispatch path from an SDL key event through to the `PlayRunner`'s command queue (not
    yet read in this investigation) and confirm or refute the race above with evidence — a trace (`WindowTrace`,
    already used elsewhere in `viewer.cpp`) or an added diagnostic log is preferable to reasoning about it from

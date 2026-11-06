@@ -1086,6 +1086,8 @@ std::string population_roles_problem(const SimConfig& cfg, std::size_t goods_cou
 /// The population metadata of the goods: a stage index is a shift count into the u32 mask, a
 /// substitute is a goods id.
 std::string goods_metadata_problem(std::span<const GoodsInfo> goods, const SimConfig& cfg) {
+    if (auto problem = cfg.economy.validate(); !problem.empty())
+        return problem;
     for (std::size_t i = 0; i < goods.size(); ++i) {
         if (goods[i].bau_first >= 32) {
             return "goods " + std::to_string(i) + " (" + goods[i].name + "): bau_first " +

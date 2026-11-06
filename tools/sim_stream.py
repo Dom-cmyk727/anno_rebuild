@@ -329,7 +329,7 @@ def cargo_rules_bytes(cargo=CARGO_DEFAULT):
 
 
 def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT, road_level=False, road_pieces=False,
-                hygiene=False, skip_uncuttable=False, house_updates=False, save_billed=True):
+                hygiene=False, skip_uncuttable=False, house_updates=False, save_billed=True, booking=False):
     # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
     # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
@@ -343,7 +343,7 @@ def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT, road_level=False, road_pie
             + cargo_rules_bytes(cargo)  # cargo (124)
             + u8(1 if road_level else 0) + u8(1 if road_pieces else 0)  # road_require_land_level, road_preserve_nonroad_pieces (125)
             + u8(1 if hygiene else 0) + u8(1 if skip_uncuttable else 0)  # forestry_claim_hygiene, forestry_skip_uncuttable (126)
-            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0) + u8(0))  # house_updates, save_billed_goods (128)
+            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0) + u8(1 if booking else 0))  # house_updates, save_billed_goods (128)
 
 
 def settings_bytes(width=0, height=0):
@@ -1008,6 +1008,7 @@ def cargo_rules_fixture_text():
     lines.append('# rules_house has house_updates on, rules_nobilled has save_billed_goods off.')
     lines.append('rules_house %s' % rules_bytes(False, CARGO_DEFAULT, False, False, False, False, True, True).hex())
     lines.append('rules_nobilled %s' % rules_bytes(False, CARGO_DEFAULT, False, False, False, False, False, False).hex())
+    lines.append('rules_booking %s' % rules_bytes(booking=True).hex())
     return '\n'.join(lines) + '\n'
 
 

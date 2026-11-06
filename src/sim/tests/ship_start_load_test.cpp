@@ -15,9 +15,11 @@
 
 #include <doctest/doctest.h>
 
+#include <anno/formats/fixed_map.hpp>
 #include <anno/formats/ship_manifest.hpp>
 #include <anno/sim/executor.hpp>
 #include <anno/sim/world.hpp>
+#include <anno/sim_load/fixed_map.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/ship_start.hpp>
 #include <anno/test/game_dir.hpp>
@@ -363,6 +365,58 @@ TEST_CASE("ship start: content fixtures own distinct directories and remove only
         CHECK(fs::is_directory(first.path)); // the neighbour is untouched
     }
     CHECK_FALSE(fs::exists(first_path));
+}
+
+TEST_CASE("economy facts: generated loaders use configured tax columns") {
+    // A private copy of our authored fixture, never the original assets or a
+    // neighbour's files. Chunk HEAD starts at32, payload48; tax is payload+0xb.
+    OwnedDir owned;
+    const auto root = owned.path / "game";
+    fs::copy(synthetic_game(), root, fs::copy_options::recursive);
+    const auto path = root / "Scenes" / "base.sze";
+    std::ifstream input(path, std::ios::binary);
+    std::vector<std::uint8_t> b{std::istreambuf_iterator<char>(input), {}};
+    input.close();
+    REQUIRE(b.size() > 80);
+    REQUIRE(std::string(b.begin() + 32, b.begin() + 36) == "HEAD");
+    REQUIRE(anno::formats::u32_le(b, 44) == 32);
+    b[48 + 0xb] = 3; // legal fourth tax column
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    output.write(reinterpret_cast<const char*>(b.data()), static_cast<std::streamsize>(b.size()));
+    output.close();
+    REQUIRE(output.good());
+    const auto types = ship_registry();
+    sim::SimConfig cfg;
+    cfg.economy.tax_count = 4;
+    auto ship = sl::load_ship_start(synthetic_manifest(), root, types, cfg);
+    REQUIRE_MESSAGE(ship.ok(), message_of(ship));
+    CHECK(ship.value().settings().prop10 == 3);
+    const std::string map_text =
+        "anno1503-fixed-map 1\nname tax\nedge 128 128\n"
+        "base Scenes/base.sze\nseed 42\nisland 0 0 0 NORD/N_A.SCP\n"
+        "island 1 64 0 DSCHUNGEL/D_A.SCP\nstart 0 0 1 1 0\nstart 1 1 65 1 0\n";
+    const auto parsed = anno::formats::fixed_map::parse(
+        std::vector<std::uint8_t>(map_text.begin(), map_text.end()));
+    REQUIRE(parsed);
+    std::vector<sim::Seat> seats(2);
+    seats[0].name = "A";
+    seats[1].name = "B";
+    seats[0].colour = 1;
+    seats[1].colour = 2;
+    sl::FixedMapOptions options;
+    options.developer_start = false;
+    auto fixed = sl::load_fixed_map(parsed.value(), seats, root, *types, cfg, options);
+    REQUIRE_MESSAGE(fixed.ok(), (fixed ? "" : fixed.error()));
+    CHECK(fixed.value().spec.settings.prop10 == 3);
+    REQUIRE(sim::World::create(fixed.value().spec, types, cfg));
+    cfg.economy.tax_count = 3;
+    const auto refused_ship = sl::load_ship_start(synthetic_manifest(), root, types, cfg);
+    REQUIRE_FALSE(refused_ship);
+    CHECK(refused_ship.error().find("WorldSettings.prop10") != std::string::npos);
+    const auto refused_fixed =
+        sl::load_fixed_map(parsed.value(), seats, root, *types, cfg, options);
+    REQUIRE_FALSE(refused_fixed);
+    CHECK(refused_fixed.error().find("WorldSettings.prop10") != std::string::npos);
 }
 
 TEST_CASE("ship start: a base that is not a content-relative path is refused before it is opened") {

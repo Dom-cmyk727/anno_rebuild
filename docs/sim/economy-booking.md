@@ -733,7 +733,7 @@ Independent populated `integration_stream_ref.py` now encodes7 complete structur
 records, adding a42-byte accounts record,8-climate/4-tax configuration and a
 three-goods price-registry digest. The accounts literal includes sales
 0x0102030405060708 and civil cost4294967313, catching narrowing/field swaps, not
-just a header change. Its existing public CLI contract now has5 methods.
+just a header change. Its existing public CLI contract now has6 methods.
 The scheduler oracle uses an explicitly opaque synthetic-registry binding (as
 before); its new binding is77d2dd9ed3f484b1 from generated registry evidence,
 not an independent transcription of every synthetic type. Independent empty
@@ -784,3 +784,27 @@ nonempty priced-bill/cost default-off control once money wiring exists.
 fixtures, including freshly generated creation-only corpus identity. The broad
 movement corpus is reused by dependency, not counted as executed here. Clean
 frozen canonical B3 acceptance and independent review are still pending.
+
+First frozen B3 gate atb244a45c: selected211, executed passes206, failed5;
+empty/skipped/incomplete/sanitizer0, terminal status1. Raw
+`canonical-debug-01.log` SHA35404c77b7e5477c56509caa73e144730d40c8b3d685f80e0f2c0eae90aca22a
+and its LastTest copy are retained. The failures were exact legacy transcriptions
+of Inert's tail, the Rules tail, a current-version assertion, the City prefix and
+the full original-registry digest binding. They are corrected by adding the new
+bytes/field counts/current binding, retaining full byte/hash comparisons. Rules
+now has an independent explicitly enabled booking row as well as default-off.
+
+Independent B3 review `/root/econ_b1_primary_review` found two actual caller bugs:
+fixed_map and ship_start still validated settings against default3 columns.
+Both now pass their supplied config. A private authored base HEAD with tax3 is
+accepted by both loaders under four configured columns and refused under three;
+the existing default loaders are separate regressions. The duplicate climate
+addition now asserts45+5+5=55 before a later Preis reset can mask it. Author audit
+also made the registry reject invalid economy roles (including zero tax_count)
+at construction, even for an unpriced table, not only at World validation.
+
+Reviewer independently packed the42-byte accounts/129-byte economy records,
+rejected swapped cost bytes with a recomputed digest after a legal control, and
+re-derived all50 raw SZE rows. No other P1/P2 was found in inspected B3 facts,
+state/native/default-off code. A correction gate and focused re-review are
+pending; the206 unaffected passes keep their originalb244a45c provenance.

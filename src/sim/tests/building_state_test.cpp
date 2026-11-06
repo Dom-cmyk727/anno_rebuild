@@ -101,7 +101,9 @@ std::vector<LayoutRow> layout_rows() {
         s.boolean(true);
         s.boolean(false);
         status_bytes(s, 1, 6, 0x5678);
-        rows.push_back({"Inert", common(p), s, 8 + 3 + 3});
+        s.boolean(true); // financial_active present (133)
+        s.boolean(true); // constructor selector
+        rows.push_back({"Inert", common(p), s, 8 + 3 + 3 + 2});
     }
     {
         sim::Workshop p;

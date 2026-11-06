@@ -140,7 +140,7 @@ load_fixed_map(const formats::fixed_map::FixedMap& map, std::span<const sim::Sea
     out.spec.settings.world_width = map.width;
     out.spec.settings.world_height = map.height;
     out.spec.seed = map.seed;
-    if (const std::string problem = out.spec.settings.validate(); !problem.empty()) {
+    if (const std::string problem = out.spec.settings.validate(config); !problem.empty()) {
         return problem;
     }
     out.spec.islands.clear();

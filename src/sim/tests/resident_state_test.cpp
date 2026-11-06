@@ -50,7 +50,7 @@ template <class T> Bytes bytes_of(T& value) {
 } // namespace
 
 TEST_CASE("population schema in SCRIPT1: versions, defaults and the three declared draw sites") {
-    CHECK(sim::kStateHashVersion == 132);
+    CHECK(sim::kStateHashVersion == 133);
     CHECK(sim::kPrngTimelineVersion == 5);
     const sim::Rules r;
     CHECK_FALSE(r.house_updates);
@@ -241,6 +241,9 @@ Bytes expected_city_prefix(bool save_billed, Variant v) {
             s.u32(i == 1 ? 7U : (i == 55 ? 9U : 0U));
         }
     }
+    s.u16(0); // CityAccounts stamp (133), independent of save_billed
+    for (int i = 0; i < 5; ++i)
+        s.u64(0); // sales, trade sales/purchases, civil/military costs
     return s.v;
 }
 

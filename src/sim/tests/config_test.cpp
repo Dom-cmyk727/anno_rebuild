@@ -2077,18 +2077,19 @@ TEST_CASE("cargo rules: the Rules bytes equal the independent Python transcripti
             want[name] = hex;
         }
     }
-    REQUIRE(want.size() == 8);
+    REQUIRE(want.size() == 9);
     sim::Rules def;
     const std::string def_hex = hex_of(rules_stream(def));
     CHECK(def_hex == want["rules_default"]);
     // The CargoRules bytes precede the two road booleans (stream 125), the two forestry booleans
     // (stream 126) and the two house booleans (stream 128) at the end of the Rules scope.
     constexpr std::size_t kTailHex =
-        12; // six bytes: road level, pieces, hygiene, skip, house, billed
+        14; // seven bytes: road level, pieces, hygiene, skip, house, billed, booking
     CHECK(def_hex.size() >= want["cargo_default"].size() + kTailHex);
     CHECK(def_hex.substr(def_hex.size() - kTailHex - want["cargo_default"].size(),
                          want["cargo_default"].size()) == want["cargo_default"]);
-    CHECK(def_hex.substr(def_hex.size() - kTailHex) == "000000000001"); // choices off, billed saved
+    CHECK(def_hex.substr(def_hex.size() - kTailHex) ==
+          "00000000000100"); // choices off, billed saved
     // Both road choices on: the whole scope equals the independent transcription (a default and a
     // flipped byte pair differ only in those two bytes).
     sim::Rules roads;
@@ -2096,39 +2097,45 @@ TEST_CASE("cargo rules: the Rules bytes equal the independent Python transcripti
     roads.road_preserve_nonroad_pieces = true;
     const std::string roads_hex = hex_of(rules_stream(roads));
     CHECK(roads_hex == want["rules_roads"]);
-    CHECK(roads_hex.substr(roads_hex.size() - kTailHex) == "010100000001");
+    CHECK(roads_hex.substr(roads_hex.size() - kTailHex) == "01010000000100");
     CHECK(roads_hex.substr(0, roads_hex.size() - kTailHex) ==
           def_hex.substr(0, def_hex.size() - kTailHex));
     sim::Rules only_floor;
     only_floor.road_require_land_level = true;
-    CHECK(hex_of(rules_stream(only_floor)).substr(def_hex.size() - kTailHex) == "010000000001");
+    CHECK(hex_of(rules_stream(only_floor)).substr(def_hex.size() - kTailHex) == "01000000000100");
     sim::Rules only_pieces;
     only_pieces.road_preserve_nonroad_pieces = true;
-    CHECK(hex_of(rules_stream(only_pieces)).substr(def_hex.size() - kTailHex) == "000100000001");
+    CHECK(hex_of(rules_stream(only_pieces)).substr(def_hex.size() - kTailHex) == "00010000000100");
     // Both forestry choices on (stream 126): the independent transcription, and each alone.
     sim::Rules forestry;
     forestry.forestry_claim_hygiene = true;
     forestry.forestry_skip_uncuttable = true;
     const std::string forestry_hex = hex_of(rules_stream(forestry));
     CHECK(forestry_hex == want["rules_forestry"]);
-    CHECK(forestry_hex.substr(forestry_hex.size() - kTailHex) == "000001010001");
+    CHECK(forestry_hex.substr(forestry_hex.size() - kTailHex) == "00000101000100");
     sim::Rules only_hygiene;
     only_hygiene.forestry_claim_hygiene = true;
-    CHECK(hex_of(rules_stream(only_hygiene)).substr(def_hex.size() - kTailHex) == "000001000001");
+    CHECK(hex_of(rules_stream(only_hygiene)).substr(def_hex.size() - kTailHex) == "00000100000100");
     sim::Rules only_skip;
     only_skip.forestry_skip_uncuttable = true;
-    CHECK(hex_of(rules_stream(only_skip)).substr(def_hex.size() - kTailHex) == "000000010001");
+    CHECK(hex_of(rules_stream(only_skip)).substr(def_hex.size() - kTailHex) == "00000001000100");
     // The house booleans (stream 128): the independent transcription, and each alone.
     sim::Rules house;
     house.house_updates = true;
     const std::string house_hex = hex_of(rules_stream(house));
     CHECK(house_hex == want["rules_house"]);
-    CHECK(house_hex.substr(house_hex.size() - kTailHex) == "000000000101");
+    CHECK(house_hex.substr(house_hex.size() - kTailHex) == "00000000010100");
     sim::Rules nobilled;
     nobilled.save_billed_goods = false;
     const std::string nobilled_hex = hex_of(rules_stream(nobilled));
     CHECK(nobilled_hex == want["rules_nobilled"]);
-    CHECK(nobilled_hex.substr(nobilled_hex.size() - kTailHex) == "000000000000");
+    CHECK(nobilled_hex.substr(nobilled_hex.size() - kTailHex) == "00000000000000");
+    sim::Rules booking;
+    booking.city_booking = true;
+    const auto booking_hex = hex_of(rules_stream(booking));
+    CHECK(booking_hex == want["rules_booking"]);
+    CHECK(booking_hex.substr(booking_hex.size() - kTailHex) == "00000000000101");
+    CHECK(booking_hex.substr(0, booking_hex.size() - 2) == def_hex.substr(0, def_hex.size() - 2));
     sim::Rules custom;
     custom.cargo.warehouse_prodtypes = {35, 36, 40};
     custom.cargo.dock_half_widths = {3, 3, 3, 2};

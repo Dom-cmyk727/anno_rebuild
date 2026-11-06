@@ -261,7 +261,7 @@ load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
     out.spec.settings.world_width = static_cast<std::uint32_t>(manifest.edge_w);
     out.spec.settings.world_height = static_cast<std::uint32_t>(manifest.edge_h);
     out.spec.seed = static_cast<std::uint32_t>(manifest.seed);
-    if (const std::string problem = out.spec.settings.validate(); !problem.empty()) {
+    if (const std::string problem = out.spec.settings.validate(config); !problem.empty()) {
         return problem;
     }
     out.spec.islands.clear();

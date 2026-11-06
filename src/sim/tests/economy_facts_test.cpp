@@ -44,6 +44,9 @@ TEST_CASE("economy facts: ordered signed prices partial taxes and transactional 
     sim::EconomyConfig roles;
     roles.climate_names = {"ONE", "TWO", "CUSTOM"};
     roles.tax_count = 4;
+    REQUIRE(parse("Preis: 45\nBonus: 5, TWO|TWO\n", g, roles).empty());
+    REQUIRE(g[1].prices);
+    CHECK(g[1].prices->climate == std::vector<std::uint32_t>{45, 55, 45});
     REQUIRE(parse("Preis: 45\nBonus: 5, TWO|TWO\nPreisLevel: 0,5,10,15\n"
                   "PreisLevel: 2\nPreis: 50\nMalus: 60, CUSTOM\nBonus: 20, CUSTOM\n"
                   "PreisLevel:\nBauFirst: INFRA_STUFE_2B\nIdSec: BETA\n",
@@ -193,6 +196,13 @@ TEST_CASE("economy facts: generic dimensions wide tax selector and exact native 
     const auto refused = malformed.build();
     REQUIRE_FALSE(refused);
     CHECK(refused.error().find("prices.climate/tax") != std::string::npos);
+    CHECK(w.save() == saved);
+    auto invalid_roles = cfg;
+    invalid_roles.economy.tax_count = 0;
+    sim::TypeRegistry::Builder zero_tax;
+    const auto invalid_registry = zero_tax.config(invalid_roles).build();
+    REQUIRE_FALSE(invalid_registry);
+    CHECK(invalid_registry.error().find("economy.tax_count") != std::string::npos);
     CHECK(w.save() == saved);
 }
 

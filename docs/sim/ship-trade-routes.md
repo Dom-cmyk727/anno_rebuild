@@ -593,3 +593,28 @@ This changes no authoritative136 byte/field/clock/PRNG semantics. New focused
 controls hand-check fractional max-room ties (256,256,44 raw) and full suffix
 continuation of a public129-hold partial Scan across copy/native reload. Existing
 navigation's hold-speed-factor work is unchanged and remains a separate cost.
+
+
+R3 APPROVED at92264de4fc0dfa79d77d474fe4a01a6a45caa177 by
+/root/expand_e2_review. Canonical02 PASS18/18 (1.97s) plus eight separate required
+contracts, all other categories0; rawSHA
+68aa9d7011003320b546e293c45db5132703fe04e284939cb3d4b25c3a6e17d6.
+The original115/115 at99d34ad7 remains preserved, with unchanged manual/non-route
+dependencies explicitly reused. Both hidden-cost findings were fixed/re-reviewed;
+all seven receipt hashes and the actual old/new no-route field projection were
+independently reconciled. R4 is released. Real original freight, five final public
+cuts, fresh replay/scale and current sanitizer/final acceptance remain open.
+
+### R4 acceptance before adversarial work
+
+| Requirement | Positive proof | Counterexample | Review |
+|---|---|---|---|
+| Control lifecycle | public suspend/resume/cancel/reassign at sailing/wait/action/partial; no repeated effect | stale notification/order cannot advance replacement; failed control unchanged | pending |
+| Authority/live targets | two owners/ships, explicit stable warehouse, owner-local conservation | closer rival/other owned city, demolished/rebuilt target, shared visibility grants no cargo authority | pending |
+| Failure/end recovery | public retry/reassign/cancel, ended/removed ship releases route | unreachable/blocked/range/short/full/fractions/counter limits | pending |
+| Causal faults | legal baseline then six precise faults fail intended assertions | arrival bypass, wrong warehouse, credit-only, duplicate action, stale revision, lost native cursor | pending |
+
+Fault attempts retain their individual logs and source substitutions. Restore the
+exact clean source and rebuild before any acceptance gate; no mutant executable
+may supply later evidence. These are short synthetic controls, never six reruns
+of the real voyage. No original stocks, flags or positions are repaired.

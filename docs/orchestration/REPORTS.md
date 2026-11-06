@@ -13563,3 +13563,20 @@ Receipt/rawSHA42ab6ed1aef9739b75d67cdefff42c35c7934e740fabc052881fb7edfeaabffa.
 Actual old/new G2 no-route field/scopes/PRNG projection verified; current136
 recordings genuinely produced, all134 history preserved. R3 released; scheduler,
 real automatic proof, current sanitizer and final acceptance remain pending.
+
+
+## MAP-ROUTE-1 R3 — automatic visits approved (2026-11-06)
+
+Independent expand_e2_review APPROVED92264de4. Real serial visits now perform
+matching-order sailing, integer waits, bounded scan/transfer progress and shared
+safe cargo commits; host observations are separate from authority.19 independent
+cargo vectors run through production scheduler calls; short two-cycle sailing,
+range refusal, same-tick ingress and reachable partial native suffix controls.
+Review found hidden action-walk and node-set cleanup costs; fixed with current-
+goods checks and incrementally initialized reserved POD heap/buffers, preserving
+all136 bytes. Canonical02 18/18 plus eight required separately, all other0;
+prior115/115 at99d34ad7 retained/reused only for unchanged dependencies. Receipt
+rawSHA68aa9d7011003320b546e293c45db5132703fe04e284939cb3d4b25c3a6e17d6.
+R4 released. Original-data two cycles, final cuts/replay/scale and sanitizer
+acceptance are still pending. No salt135/main intake, original loadout edit or UI
+change. Route-only136 remains separately reserved from the future combined main.

@@ -184,4 +184,3 @@ single-forest115.63s Debug workload. Measure this pilot before selecting a deadl
 for the later combined sanitizer itinerary. Frozen focused selector is the one
 new E1 case; required cargo/reference, bootstrap-budget and populated-state
 contracts remain separate. E1 execution and independent review PENDING.
-

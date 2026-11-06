@@ -472,3 +472,16 @@ initializer and DrawRecord comparison;02/03 compile correctedsource. First oracl
 preparation detects ship_holds comment's stale version; regenerate current comment
 without changing hold bytes, retaining failedpreparation01. All old133fixture
 hashes remain exact. Current134 README/provenance separates generation from gates.
+
+###134 correction approved; genuine voyage resumes
+
+The acbe5a24 decision resolves the prior compatibility dependency. Narrow fix
+ d97ad449 passes focusedDebug36/36; portable7ba07750 on exactb408f311 passes4/4,
+each6required invocations separately1/1, all other categories0. Independent
+expand_e2_review approves both. All old133 inputs stay immutable, including the
+actual buggy snapshots. Default-off gameplay is identical after diagnostic
+in-memory identity normalization; enabled differs by the missing15 history byte,
+then exactly1first upkeep. The portable commit has no E1/E2 helper/voyage/manual
+history dependency; REPORTS gives the exact first-Mac intake. No defaultflip,
+mainmerge or push. E2's old failures remain failures; a current134 genuine gate
+is required before claiming E2 or proceeding with its dependent actual voyage.

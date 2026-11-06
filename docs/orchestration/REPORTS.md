@@ -13372,3 +13372,43 @@ instrumentation were independently checked; no remaining checkpoint P1/P2. This
 does not waive full acceptance. Final documentation-only record retains the
 unresolved compatibility decision and all genuine voyage limits.
 All own gate sessions are terminal; no owned expansion job remains.
+
+## MAP-EXPAND-1 narrow134 prerequisite — 2026-11-06 — APPROVED, voyage open
+
+Explicit acbe5a24 GAMEPLAY-IDENTITY-134-135 releases the founding correction:
+copy prepared local.accounts beside index adoption;134/ECONBK1/PRNG5/replay4/
+wire1/save1, unchanged field layout/defaults, strict refusal of ALL133 saves/logs
+including booking-off. No migration, rescan, compensation or payment/draw reorder.
+
+Original correction d97ad449f71470a9ba6156030cd2ead344fb7c1e is independently
+APPROVED by /root/expand_e2_review: frozen canonical Debug36/36, six required
+contracts separate1/1, all other outcome categories0. Both actual old133 off/on
+snapshots execute intended version refusals. Current native cut/replay, one due
+charge,27→19 costs, two cities and no-double-charge controls pass. Off payload is
+identity-only; enabled adds exactly the missing15 contribution.15 archived133
+file hashes remain exact;11current134 recordings are generated anew. Generation
+20/20 is not acceptance and is not added to selected gate counts.
+
+Portable first-Mac intake is SINGLE commit
+7ba077506e7ab9c11bef3894739b4c1d0d4f66fb on exact main base
+b408f3117be4a395c480898824b5af328d298f46, localbranch
+ task/MAP-FOUND-134-prerequisite. It carries runtime/identity/oracles/current134
+fixtures/rejection controls and self-contained original-data regression. No E1/E2
+helper, voyage, scale, CMake addition or manual-expansion.md dependency; absent
+manual-expansion.md on recipient is intentional, not a missing prerequisite.
+Static intake audit and focused canonical Debug4/4 are independently APPROVED;
+six required contracts pass separately, all other outcomes0. All four current
+native/replay artifacts match d97 byte-for-byte. No duplicate broad campaign.
+
+Raw d97 log SHA cd0450f5d5ba04bd5b371af1e4ba1074e6174231ea8e5c9773bc7a410a65a9e9;
+portable SHA3d3def9e91faedfb42517589fb1a0c0cedc6a6ac1b505e0686f0e3a2b9b35f09.
+Receipts/source mapping/review live under cache/expand1/identity134. The human-
+authorized orchestrator chat was notified with exact intake pin/base and limits.
+No push/mainmerge/first-Mac edit occurred. Separate benchmark cherry949d383d is
+exact b408f311 source; normal no-workaround build and available picture/window-
+table contracts pass. Windows-only window_tools remains NOT_RUN here.
+
+Executor returned to preserved task/MAP-EXPAND-1-main (self-contained regression
+cleanup3072d9d4). E2 revalidation and E3–E7 are released, not already passed; full
+expansion and affected sanitizer acceptance remain open. Old71af3846 partial
+checkpoint and every failure retain their original source attribution.

@@ -226,17 +226,24 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
     REQUIRE(aboard_of(ship_of(w, 1).holds, wood) == 26 * 256);
     REQUIRE(run.apply(on, 0, source).ok());
     REQUIRE(command_test::city(w, source).accounts.civil_cost == 27);
+    unsigned collection_waits = 0;
+    for (; collection_waits < 60 && expansion_test::stock(w, source, wood) < 768;
+         ++collection_waits)
+        run.advance();
+    REQUIRE(collection_waits < 60);
+    REQUIRE(expansion_test::stock(w, source, wood) >= 768);
+    REQUIRE(made_wood() < 1536);
     const auto pre_assign = w.save();
     const auto assign_entry = rec.log().entries.size();
     sim::AssignFreightRouteCmd route{sim::FigureId{1},
                                      {{source_wh,
                                        recipe.source.goal_x * 256 + 128,
                                        recipe.source.goal_y * 256 + 128,
-                                       {{D::LoadTarget, wood, 28}}},
+                                       {{D::LoadTarget, wood, 29}}},
                                       {destination_wh,
                                        recipe.destination.goal_x * 256 + 128,
                                        recipe.destination.goal_y * 256 + 128,
-                                       {{D::UnloadAmount, wood, 2}}}}};
+                                       {{D::UnloadAmount, wood, 3}}}}};
     REQUIRE(run.apply({sim::PlayerId{0}, route}).ok());
     run.checkpoint();
     const auto assignment_generation = ship_of(w, 1).freight_generation;
@@ -284,10 +291,10 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
             REQUIRE(unloads.size() == before_unloads);
         }
         if (loads.size() == 1 && first_load_made == 0) {
-            REQUIRE(loads[0].second == 512);
+            REQUIRE(loads[0].second == 768);
             first_load_made = made_wood();
-            REQUIRE(first_load_made >= 512);
-            REQUIRE(first_load_made < 1024);
+            REQUIRE(first_load_made >= 768);
+            REQUIRE(first_load_made < 1536);
         }
         const auto cut = [&](unsigned number, const char* label) {
             if (cuts.insert(number).second)
@@ -298,7 +305,7 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
         if (arrived && r->stop_index == 0 && loads.empty())
             cut(2, "02-source-arrival-wait");
         if (r->phase == P::Sailing && r->stop_index == 1 && loads.size() == 1 && unloads.empty()) {
-            REQUIRE(aboard_of(ship.holds, wood) == 28 * 256);
+            REQUIRE(aboard_of(ship.holds, wood) == 29 * 256);
             cut(3, "03-loaded-outbound");
             if (!suspend_start)
                 suspend_start = w.save();
@@ -318,20 +325,20 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
     REQUIRE(cuts.size() == 5);
     REQUIRE(loads.size() == 2);
     REQUIRE(unloads.size() == 2);
-    REQUIRE(exported == 1024);
-    REQUIRE(received == 1024);
+    REQUIRE(exported == 1536);
+    REQUIRE(received == 1536);
     for (const auto& [tick, amount] : loads) {
         REQUIRE(tick > 0);
-        REQUIRE(amount == 512);
+        REQUIRE(amount == 768);
     }
     for (const auto& [tick, amount] : unloads) {
         REQUIRE(tick > 0);
-        REQUIRE(amount == 512);
+        REQUIRE(amount == 768);
     }
     REQUIRE(loads[0].first < unloads[0].first);
     REQUIRE(unloads[0].first < loads[1].first);
     REQUIRE(loads[1].first < unloads[1].first);
-    REQUIRE(made_wood() - first_load_made >= 1024 - first_load_made);
+    REQUIRE(made_wood() - first_load_made >= 1536 - first_load_made);
     REQUIRE(aboard_of(ship_of(w, 1).holds, wood) == 26 * 256);
     run.checkpoint();
     REQUIRE(run.apply(receiver, 50).ok());
@@ -342,7 +349,7 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
     expected[0].amount_88 = 26 * 256;
     expected[2].amount_88 = 37 * 256;
     REQUIRE(ship_of(w, 1).holds == expected);
-    REQUIRE(expansion_test::stock(w, *destination, wood) == 768);
+    REQUIRE(expansion_test::stock(w, *destination, wood) == 1280);
     REQUIRE(expansion_test::stock(w, *destination, tools) == 0);
     REQUIRE(run.construction.at(0) == 1000);
     REQUIRE(command_test::city(w, source).accounts.civil_cost == 27);
@@ -357,7 +364,7 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
     auto changed = rec.log();
     auto& changed_route =
         std::get<sim::AssignFreightRouteCmd>(changed.entries.at(assign_entry).commands.at(0).body);
-    changed_route.stops[0].actions[0].tons = 27;
+    changed_route.stops[0].actions[0].tons = 28;
     auto changed_world = sim::World::load(pre_assign, rs.types);
     REQUIRE(changed_world.ok());
     REQUIRE(changed_world.value().apply({sim::PlayerId{0}, changed_route}).ok());
@@ -379,6 +386,7 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
              << " checkpoints=" << checkpoints << " assign_entry=" << assign_entry
              << " changed_checkpoint=" << assign_entry + 1 << " matched_prior=" << prior
              << " initial_wait_advances=" << initial_waits
+             << " collection_wait_advances=" << collection_waits
              << " auto_advances=" << automatic_advances << " first_load_made=" << first_load_made
              << " made=" << made_wood() << " export=" << exported << " received=" << received
              << "\n";
@@ -443,12 +451,12 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
         for (const auto& e : branch_run.events)
             if (e.freight && e.freight->signal == S::Transferred &&
                 e.freight->warehouse == destination_wh) {
-                REQUIRE(e.freight->amount_88 == 512);
+                REQUIRE(e.freight->amount_88 == 768);
                 delivered = true;
             }
     }
     REQUIRE(delivered);
-    REQUIRE(expansion_test::stock(branch, *destination, wood) == 512);
+    REQUIRE(expansion_test::stock(branch, *destination, wood) == 768);
     REQUIRE(aboard_of(ship_of(branch, 1).holds, wood) == 26 * 256);
     REQUIRE(branch_run
                 .apply({sim::PlayerId{0},
@@ -520,7 +528,7 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
     REQUIRE(control.check_invariants().empty());
     evidence << "no_production_export=" << control_export
              << " inherited_delivery=" << control_received << " qualified_productive_cycles=0\n"
-             << "pause_branch_delivery=512 main_construction=1000 wall_ms="
+             << "pause_branch_delivery=768 main_construction=1000 wall_ms="
              << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                           started)
                     .count()

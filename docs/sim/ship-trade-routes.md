@@ -694,3 +694,30 @@ engine limit or a success condition. Debug pilot timeout900s is declared before
 execution using prior original expansion measurements; final SAN bound will be
 declared from the measured pilot and known SAN ratio. Pilot artifacts live in
 a new ignored directory, never overwriting accepted expansion evidence.
+
+#### R5 measured prerequisite correction (supersedes proposed2t recipe)
+
+Pilot01 at46001a06 failed an oracle scope error: all five owners' cargo was
+summed against Human-only starting totals. e3f0ee35 derives pristine per-owner/
+goods totals, closes each owner's deltas, asserts militarycost0 and source civil
+history27→19→27. Pilot02 then faithfully loaded256raw from448stock, failing the
+planned512 first load. Partial/skip semantics remain unchanged; both failed
+canonical logs and pre-rebuild receipts are retained.
+
+Saved-source-arrival short public Cancel/Advance probe disproved the assumed
+2t/P<1024 prerequisite: the next collection occurs at237500 with952stock,168out,
+zero active cart, P1120. A second short public Assign probe proved an actual
+768raw first load at239000 with unchanged P1120 and29t aboard. Each probe binds
+source/binary hashes, restores exact source and rebuilds; these investigative
+controls are not full-voyage acceptance. Raw evidence `R5/probe02`, `R5/probe03`.
+
+Reviewer `/root/expand_e2_review` independently checked the trace and revised
+operator arithmetic: after public On, bounded Advance/observe setup waits for
+768warehouse wood (60advance cap measured from the39advance prerequisite); route
+source LoadTarget29t/destination Unload3t preserves26t inherited cargo, and
+first-loadP<1536 makes the second768export require further production. Two
+receipts1536 minus256receiver sink leave1280raw destination stock. Normal1000g
+construction,13t tools and original food/sites/loadout are unchanged. No rule,
+resource, position, permission or identity change authorizes this recipe.
+The current R5 positive/control/table quantities use768/1536/29t; earlier2t
+proposal/failed evidence remains historical. Full revised canary is pending.

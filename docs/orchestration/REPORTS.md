@@ -13276,3 +13276,42 @@ records this disposition.
 Canonical main944cec89 already includes code throughcafc under132; remaining
 delta is documentation/evidence only. Preserve canonical132 on reconciliation.
 No moving-main rerun or Windows pin change is requested.
+
+
+## ECON-BOOK-1 — 2026-11-06 — COMPLETE LOCAL CANDIDATE
+
+Owned task/ECON-BOOK-1-main starts at exact3b74201f (runtime baseline7b57ebd9),
+preserving task/MAP-INTEGRATE-1 at5ef163a6 and all old evidence. B0–B7 independently
+approved; fresh `/root/econ_b7_final_review` approves tested03bb4a5c and the frozen
+terminal-evidence/consolidated report, with no remaining P1/P2.
+Opt-in resident income/building upkeep works through normal scheduling and public
+lifecycle, with checked atomic booking, ordered shared-owner effects, native history
+and real production/shortage/paid-recovery proof. Rules remain default-off.
+Candidate state133/ECONBK1; PRNG5/replay4/wire1/save1 unchanged. No main merge/push,
+old-merge replay, asset edit, task-board edit or target-host adoption.
+
+Broad Debug d77 remains FAIL1390selected/1384passes/6fixturefailures, all other
+categories0. Reviewed test-only correction03bb4a5c passes Debug63/63; final affected
+ASan/UBSan1388/1388 with0 failed/empty/skipped/incomplete/sanitizer reports. Required
+invocations15/7/16 respectively each pass1/1 and are separate from selected counts.
+Unchanged Debug results and four omitted current-ASAN default-off physical paths
+are reused with precise source/dependency limits, not relabelled current ASAN.
+
+Normal complete original Tutorial economy produces/sells new alcohol, charges
+upkeep, loses supply after public demolition and recovers after250-gold paid
+rebuild, with no grants, bill edits, relocation or balance overrides.765 bookings,
+183positive; target1014 booked alcohol units/217 marginal income. Owner0 exact
+50000+1020−5805−250=44965; all owner flows and resource/bill residuals reconcile.
+Five native cuts and fresh7/7-checkpoint replay agree in Debug/ASAN; accepted
+changed-command arm diverges at the expected real cut. Release synthetic scaling
+covers1/4/8 cities and15/31/63 goods plus unrelated objects, with work counts,
+15 timing samples and separate9.234375MiB RSS measurement; no late-game target.
+
+[Consolidated handoff](reviews/2026-11-06-econ-book1.md) records package/source pins,
+primary/adapted rules, reviewers, exact counts/log hashes/receipts, preserved
+failures,132 semantic control, default-off consumer delta and all NOT_RUN scopes.
+Windows/MSVC/Linux/UI/GPU/large live multiplayer are not claimed accepted. Final
+fresh review APPROVED03bb4a5c; the documentation-only closeout records its explicit
+authorization to replace pending verdicts and commit. All owned gate sessions
+ended; no owned build/test process remains and shared coordinators are untouched.
+Old MAP branch/evidence remain intact; no next package is started.

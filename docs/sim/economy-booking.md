@@ -7,12 +7,13 @@ That packet supersedes the historical research-only ownership, old base and
 pre-132 identity guidance below. Engine work follows independent contract review;
 this note does not declare the remaining lifecycle/policy research complete.
 
-Current execution: B0–B5 independently approved; B6 scaling/consumer work on
+Current execution: B0–B7 independently approved; terminal gates and fresh final
+integration review are complete on
 `task/ECON-BOOK-1-main`, initially pinned to
 `3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; production booking/lifecycle wiring approved at ff095351.
 The second Mac owns B0–B7 under the dispatch above. Historical research/ownership
 and prior identity language below retain their actual dates and source pins.
-Existing rules remain unchanged; booking will be separately default-off.
+Existing rules remain unchanged; booking remains separately default-off.
 
 The player-facing outcome is a town whose purchases earn money and whose
 buildings cost money to maintain. For example, two groups of resident purchases
@@ -306,8 +307,8 @@ The existing arithmetic research is approved only within its original-wrap model
 | B3 facts/state/identity | Data-sized prices/roles; minimal authoritative stamp/stats/cost state;133/ECONBK1 populated byte oracle and native round-trip | Actual132 save/log refuses intended boundary; invalid dimensions/signed prices/unknown climate transactional; alternate generic types/roles | APPROVEDb7908bef by `/root/econ_b1_primary_review`; canonical correction02 selected69/passed69/others0, required7 invocations separate; first211 gate retained206/5 |
 | B4 production/lifecycle | Opt-in scheduler booking exactly once, full supported lifecycle, owner split and negative-balance continuation | Real last-city merge overflow leaves its money/bills/stats/stamp unchanged, queued prior effects accounted; default-off132 semantic controls | APPROVEDff095351 by `/root/econ_b0_review`; corrected Debug/ASAN each34/34, all other categories0; atomic P2 fixed and regression negative verified |
 | B5 actual loop | Cheap original Tutorial path, new goods reach several households, bills/income/upkeep exact, public shortage/recovery, owner/city isolation | No starting-stock-as-production or grant in real arm; explicit component versus strict loader refusal; legal altered command diverges causally | APPROVED9801afcf by `/root/econ_b1_primary_review`; final Debug producer1/1 + exact-artifact prior full6/6, final ASAN6/6, all other categories0 |
-| B6 scaling/consumer | Three nonempty legal sizes, city/goods operation counts and modest Release samples, unrelated objects do not add global scans | Fixture legality/positive bookings first; no latency threshold or multiplayer performance claim | Host/raw manifests and Windows data/events/refusal/config contract required |
-| B7 frozen closeout | Corrected focused Debug/ASAN, relevant full coverage, required refs/CLI, real loop integrated once per configuration, format/lint | Keep first failures/known skips distinct; fresh final reviewer checks interactions and default-off/primary/replay claims | One final REPORTS+handoff, clean local candidate; no main merge/push |
+| B6 scaling/consumer | Three nonempty legal sizes, city/goods operation counts and modest Release samples, unrelated objects do not add global scans | Fixture legality/positive bookings first; no latency threshold or multiplayer performance claim | APPROVED200f7e41 by `/root/econ_b0_review`, testedcodec7880a64; Release1/1, required6 separate,15 samples and separate RSS; fixed15 mutant distinguishes wider goods |
+| B7 frozen closeout | Corrected focused Debug/ASAN, relevant full coverage, required refs/CLI, real loop integrated once per configuration, format/lint | Keep first failures/known skips distinct; fresh final reviewer checks interactions and default-off/primary/replay claims | APPROVED03bb4a5c by fresh `/root/econ_b7_final_review`; broad Debug1390/1384passes/6fixturefailures retained, corrected63/63, ASAN1388/1388, all other categories0; one REPORTS+handoff, no merge/push |
 
 First participating path is the existing configured resident service model
 (MarketStall/PublicService/School/Inn), House lifecycle, SmallFarm/Farm production
@@ -1308,3 +1309,86 @@ cases, not the long openings. Remaining prior Debug maximum116.41s yields a
 conservative5×+120s admission=702.05s below900; B5 actual ASAN producer74.85s also
 supports this bound. Final actual inventory equality, focused Debug correction,
 ASAN terminal reconciliation and final independent approval remain pending.
+
+
+### B7 terminal gates and final evidence disposition
+
+The test-only correction at clean `03bb4a5c2832759f632ea3aaa77b61927398cbfc`
+passes canonical Debug63/63 (all other categories0), with7 exact prerequisites
+separately1/1. Its actual inventory exactly matches the63-case manifest. Raw
+`B7/canonical-debug-03-fixture-correction.log`, SHA256
+`2eba34438e3d42d589814391587a3d2ca9d605cf355545c8eb8cea1a436a6519`.
+Receipt freezes the source/configuration/binary/inventory identities. The fresh
+reviewer independently approved this committed six-test-file migration; no
+production/header/helper/archive/CMake delta from the broad Debug pin exists.
+The1384 unaffected broad Debug passes retain d77 provenance; no uniform new-pin
+1391/1391 Debug pass is claimed and the original six failures remain FAIL.
+
+Final canonical ASan/UBSan at the same clean03bb source passes1388/1388; failed,
+empty, skipped (all categories), incomplete and sanitizer lines are all0. The16
+required invocations each pass1/1 separately, including picture_matrix_contract
+and the actual existing UBSAN probe. Probe is additionally selected and handled
+by the existing probe-verdict contract. Actual inventory equals the complete1388
+expected-name set, independently checked. Selected runtime1370.96s; maximum case
+447.96s stays within the predeclared900s limit. Raw `B7/canonical-asan-01.log`,
+SHA256 `363787d9821f06f67cab7bf7ed94ee6598f0ade0212782413cdb8db2f0b306cd`;
+`receipt-asan-01.json` records both workflow and tested-source provenance, clean
+post-run identity, configuration/executables/inventory and real-record hashes.
+
+ASAN uses4 CTest slots/4 build jobs after Debug has ended, with original admission
+and headroom defaults and global UBSAN halt_on_error=1. Fresh read-only host check
+finds18 logical CPUs/48GiB/~1.53TiB free and no competing executor build/test. This
+is a reviewed pre-launch scheduling update from conservative serial CTest, not a
+runner change or repeated measurement. Only existing heavy-labelled cases reserve
+4 processors; up to4 ordinary worlds can overlap. Producer fixture ordering is
+retained for the two read-only replay consumers. `asan-launch-policy.json` and
+`pre-asan-host.json` preserve this policy/measurement; the performance measurements
+in B6 retain their original serial context.
+
+The final ASAN real producer passes76.47s; fresh genuine replay52.97s and expected
+legal changed-command divergence34.04s. Genuine record SHA256 remains
+`a790ceb5e03ca51602537bcb8921a7a98bb288da95e5deed08d78eee97c3917f`.
+Fresh reviewer independently recomputes all765 current ASAN rows, owner money and
+217 marginal target-alcohol income, and compares five native cuts, ledgers,
+checkpoints and changed record byte for byte against Debug; all agree.
+
+The four omitted current-ASAN physical trajectories have current Debug passes
+plus applicable historical physical evidence, not an assertion all four have old
+ASAN completion. Exact retained historical sources:
+`cache/unit-import1/G-asan-opening-01.log` at
+`1988471a396185fc8d7652ffb449b902079091fc` (full opening ASAN2247.82s/3600s,
+SHA256 `69dd2df72c9581192f0e92595888c6ebabe0c3b0de3911aa890fc009be90f22d`), and
+`cache/integrate1/I5-debug-01.log` at
+`aa06d6dbe0df8e48f0adc61e8b0716916ae76d48`
+(SHA256 `597e892ff8c48a36e3038f450ad53599bcd0da7d865255c3577198cea2b0f667`).
+No historical identity is relabelled current133. Original Debug excludes225;
+corrected final affected inventory excludes224 after adding the one affected
+navigation native/hash case. All83 formats,1213 selected sim cases and92 selected
+tool/reference cases are represented in the final1388 ASAN inventory.
+
+Final preflight covers60 changed C++ files with clang-format23.1.3 dry-run/Werror;
+lint passes and the fresh reviewer accepts the intrinsic fixed-i64-width reason.
+29 retained package cache hashes match. Completed package review notes are copied
+under `B7/review-snapshots/` with their hash manifest. The actual132/133 full-player
+semantic control remains equal3881B, independently checked, without claiming
+whole-save binary equality. Old task/MAP-INTEGRATE-1 remains exactly5ef163a6;
+no merge since the assignment, game asset edit or TASKS edit occurred. Permanent
+shared evidence contract reread before final review. All owned gate sessions have
+ended; fresh final integration verdict APPROVED03bb4a5c with no remaining P1/P2.
+The documentation-only closeout records this verdict without changing tested code.
+See the consolidated handoff `docs/orchestration/reviews/2026-11-06-econ-book1.md`.
+
+
+Fresh B7 reviewer approved the exact source/terminal receipts and frozen report
+diff SHA256 `50895f57845866c17e7782a5d362e36a440118416b9a1aaef5143ce9925e8292`
+plus consolidated handoff SHA256
+`64f98eebbb33ea719f953059b8a50ea46b7ffa6d876e5574600e9eb63b12c9fc`, then explicitly
+approved replacing pending verdicts and committing this documentation-only
+closeout. All6 final ASAN receipt artifact hashes independently match. Final notes
+retained under `B7/review-snapshots/econ-book1-b7-final-review.md`, SHA256
+`6b122c820ec9195e8cc61abb2b31e83013c830acb013f6c22aa80b48e18f8ddf`.
+The author's read-only terminal job scan finds no owned build/test processes;
+shared coordinators are untouched. Reviewer used terminal gate/driver exits and
+does not claim its own full-host process scan. No remaining package finding,
+main merge, push, default flip or follow-on work. Windows/UI/target-host adoption
+remains outside this local candidate's acceptance scope.

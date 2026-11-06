@@ -569,3 +569,15 @@ Older list (M0–M2 era):
 | Scope creep into engine features | Milestones gate on acceptance criteria; QoL only in M5 behind flags |
 | Legal | No assets or binaries in repo; clean-room notes cite evidence; GOG install required |
 | Scaled 5–8 player worlds unfair, or different on different peers | Fairness measures defined on the original endless worlds and checked per generated world over many seeds (M4.1); the generator is integer-only, seeded and versioned, its inputs in the lockstep handshake, the world hash compared before the first tick |
+
+
+## Local candidate checkpoint — ECON-BOOK-1 (2026-11-06)
+
+The second Mac completed the scoped earned-income/building-upkeep implementation
+and local gates on task/ECON-BOOK-1-main; B0–B7 and the fresh final integration
+review are independently approved at tested03bb4a5c. Booking is default-off, candidate state133/ECONBK1 is unpublished, and no
+main merge or push occurred. Real original-town production, sales, upkeep,
+shortage and paid recovery reconcile with native/replay proof; this is not a
+balanced ship-founded opening or live Windows acceptance. See the
+[consolidated handoff](orchestration/reviews/2026-11-06-econ-book1.md) for exact
+source/evidence, preserved failures and platform limits.

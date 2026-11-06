@@ -47,7 +47,7 @@ using anno::test::child::set_env;
 using anno::test::child::sibling;
 using namespace std::chrono_literals;
 
-// Ports of this file: 47810–47818 (the F2 file uses 47700–47760).
+// Ports of this file: 47810–47817 (the F2 file uses 47700–47760).
 constexpr std::uint16_t kPortAccept = 47810;   // (a) two compatible builds
 constexpr std::uint16_t kPortIncompat = 47811; // (b) incompatible version, deadline
 constexpr std::uint16_t kPortCancel = 47812;   // (b) exact build, cancellation
@@ -56,7 +56,9 @@ constexpr std::uint16_t kPortCrash = 47814;    // (c) crash handover
 constexpr std::uint16_t kPortMeter = 47815;    // (d) real meter child in WSL
 constexpr std::uint16_t kPortSilentOk = 47816; // silent, then served
 constexpr std::uint16_t kPortSilent = 47817;   // silent, deadline
-constexpr std::uint16_t kPortPin = 47818;      // compatibility version pin
+// The metadata-only pin has no connecting client or restart. Let the OS bind a
+// free port so an unrelated listener or ephemeral connection cannot break it.
+constexpr std::uint16_t kPortPin = 0;
 
 std::filesystem::path f3_dir() {
     const auto dir = std::filesystem::temp_directory_path() / "anno1503-f3";

@@ -121,8 +121,18 @@ struct Host final : ScriptHost {
     ScriptTimers& timers;
     const TypeRegistry& types;
     const std::vector<PlayerId>& bindings;
-    std::map<PlayerId, Player> staged;
-    std::map<PlayerId, std::int64_t> staged_money;
+    // Targets are checked when staged. A script transaction cannot resize/remove player
+    // slots; retain those references rather than repeating a nullable lookup at commit.
+    struct PlayerChange {
+        Player& target;
+        Player value;
+    };
+    struct MoneyChange {
+        Player& target;
+        std::int64_t value;
+    };
+    std::map<PlayerId, PlayerChange> staged;
+    std::map<PlayerId, MoneyChange> staged_money;
     std::optional<ScriptTimers> staged_timers;
     Host(PlayerTable& p, ScriptTimers& t, const TypeRegistry& registry,
          const std::vector<PlayerId>& b, const FigureRegistry* f, const WorldSettings* s,
@@ -140,10 +150,10 @@ struct Host final : ScriptHost {
         if (output)
             for (auto& e : staged_events)
                 output->push_back(std::move(e));
-        for (auto& [id, player] : staged)
-            *players.find(id) = std::move(player);
-        for (const auto& [id, balance] : staged_money)
-            players.find(id)->money = balance;
+        for (auto& [id, change] : staged)
+            change.target = std::move(change.value);
+        for (const auto& [id, change] : staged_money)
+            change.target.money = change.value;
         if (staged_timers)
             timers = std::move(*staged_timers);
         staged_events.clear();
@@ -162,36 +172,37 @@ struct Host final : ScriptHost {
         if (mapping >= bindings.size())
             return false;
         const auto owner = bindings[mapping];
-        const auto* player = players.find(owner);
+        auto* player = players.find(owner);
         if (!player)
             return false;
         auto it = staged.find(owner);
         if (it == staged.end()) {
-            it = staged.emplace(owner, *player).first;
+            it = staged.emplace(owner, PlayerChange{*player, *player}).first;
             const auto money = staged_money.find(owner);
             if (money != staged_money.end()) {
-                it->second.money = money->second;
+                it->second.value.money = money->second.value;
                 staged_money.erase(money);
             }
         }
-        return all ? set_all_construction_permissions(it->second, it->second.permissions, types,
-                                                      raw, work)
-                   : set_construction_permission(it->second, it->second.permissions, types, id,
-                                                 raw);
+        return all ? set_all_construction_permissions(
+                         it->second.value, it->second.value.permissions, types, raw, work)
+                   : set_construction_permission(it->second.value, it->second.value.permissions,
+                                                 types, id, raw);
     }
     bool money(std::uint32_t mapping, std::int32_t delta) override {
         if (mapping >= bindings.size())
             return false;
         const auto owner = bindings[mapping];
-        const auto* player = players.find(owner);
+        auto* player = players.find(owner);
         if (!player)
             return false;
         if (auto it = staged.find(owner); it != staged.end()) {
-            it->second.money = add_money_saturating(it->second.money, delta);
+            it->second.value.money = add_money_saturating(it->second.value.money, delta);
         } else {
-            auto [entry, inserted] = staged_money.try_emplace(owner, player->money);
+            auto [entry, inserted] =
+                staged_money.try_emplace(owner, MoneyChange{*player, player->money});
             (void)inserted;
-            entry->second = add_money_saturating(entry->second, delta);
+            entry->second.value = add_money_saturating(entry->second.value, delta);
         }
         return true;
     }

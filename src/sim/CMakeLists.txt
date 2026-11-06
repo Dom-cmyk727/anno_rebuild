@@ -72,14 +72,15 @@ if(ANNO_BUILD_TESTS)
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
                    "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/economy-loop/economy.log"
                    -DEXPECT_RC=0 "-DEXPECT=checkpoints 7/7.*reproduced: every checkpoint matched"
-                   -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
   add_test(NAME economy_loop_changed_command_fresh_process
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
                    "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/economy-loop/economy-changed-command.log"
                    -DEXPECT_RC=1 "-DEXPECT=checkpoints 3/4.*DIVERGED at entry 3804"
-                   -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
   set_tests_properties(economy_loop_fresh_process economy_loop_changed_command_fresh_process
-                       PROPERTIES FIXTURES_REQUIRED econbook_loop_record)
+                       PROPERTIES FIXTURES_REQUIRED econbook_loop_record
+                                  SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 
 
   # MAP-EXPAND E5: one original-data voyage plus five full native suffixes supplies both CLI arms.
@@ -141,6 +142,9 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME script2_fresh_process_contract COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --self-test)
     add_test(NAME script2_synthetic_fresh_process COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --exe $<TARGET_FILE:anno_sim_tests>)
     add_test(NAME script2_original_fresh_process COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/script_canary2.py --original --exe $<TARGET_FILE:anno_sim_tests>)
+    # Both modes execute the original endless01 program; synthetic refers to the world.
+    set_tests_properties(script2_synthetic_fresh_process script2_original_fresh_process
+                         PROPERTIES SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
     # Accepted UNIT1 original sanitizer canary measured581.97s. The combined
     # fresh-process contract gets1500s; the unrelated generated opening is excluded.
     set_tests_properties(script2_original_fresh_process PROPERTIES TIMEOUT 1500)

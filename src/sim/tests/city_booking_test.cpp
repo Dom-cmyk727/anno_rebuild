@@ -58,8 +58,18 @@ std::vector<sim::CityBookingLedger> bookings(const sim::World& w) {
             out.push_back(*e.booking);
     return out;
 }
+const sim::Player& booking_player(const sim::World& w, std::uint32_t owner = 0) {
+    const auto* current = w.players().find(sim::PlayerId{owner});
+    REQUIRE(current != nullptr);
+    return *current;
+}
+sim::Player& booking_player_mut(sim::World& w, std::uint32_t owner = 0) {
+    auto* current = sim::WorldTestAccess::players(w).find(sim::PlayerId{owner});
+    REQUIRE(current != nullptr);
+    return *current;
+}
 std::int64_t money(const sim::World& w, std::uint32_t owner = 0) {
-    return w.players().find(sim::PlayerId{owner})->money;
+    return booking_player(w, owner).money;
 }
 sim::ScenarioSpec scenario(const sim::synthetic::SyntheticTypes& t, bool same_owner = false,
                            bool separate_island = false) {
@@ -152,8 +162,8 @@ TEST_CASE("city booking: actual scheduler bills once signed balances costs and o
         c.accounts.sales = 105;
         c.accounts.trade_sales = 210;
         c.accounts.trade_purchases = 315;
-        sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->money = -100;
-        const auto p0up = w.players().find(sim::PlayerId{0})->upkeep_a;
+        booking_player_mut(w).money = -100;
+        const auto p0up = booking_player(w).upkeep_a;
         w.advance(3998);
         CHECK(bookings(w).empty());
         CHECK(c.billed[26] == 300);
@@ -168,7 +178,7 @@ TEST_CASE("city booking: actual scheduler bills once signed balances costs and o
         CHECK(c.accounts.trade_sales == 208);
         CHECK(c.accounts.trade_purchases == 312);
         CHECK(c.accounts.stamp == 2000);
-        CHECK(w.players().find(sim::PlayerId{0})->upkeep_a == p0up);
+        CHECK(booking_player(w).upkeep_a == p0up);
         const auto led = bookings(w);
         REQUIRE(led.size() == 2);
         CHECK(led[0].income + led[1].income == 310);
@@ -204,7 +214,7 @@ TEST_CASE(
         a.billed[26] = 1;
         b.billed[26] = 1;
         b.accounts.sales = 105;
-        sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->money = hi - 1;
+        booking_player_mut(w).money = hi - 1;
         const auto pre = w.save();
         w.advance(4000);
         REQUIRE(w.faulted());
@@ -421,7 +431,7 @@ TEST_CASE("city booking: every supported production selector imported switched a
     CHECK(city(w, kCity0).accounts.civil_cost == 10);
     // Labelled simulation of the already-supported research grant's state mutation:
     // historical city totals remain untouched; same-state switch is not a repair.
-    sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->research.state[7] = 2;
+    booking_player_mut(w).research.state[7] = 2;
     REQUIRE(
         w.apply({sim::PlayerId{0}, sim::SetProductionLineCmd{tile, bow_outputs[0], true}}).ok());
     CHECK(city(w, kCity0).accounts.civil_cost == 10);
@@ -440,13 +450,13 @@ TEST_CASE("city booking: every supported production selector imported switched a
         auto r = w.apply(demolish(0, kCity0, {{104 + static_cast<int>(i) * 6, 110}}));
         REQUIRE(r.records[0].status == sim::Reject::None);
     }
-    sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->research.state[7] = 0;
+    booking_player_mut(w).research.state[7] = 0;
     auto r = w.apply(demolish(0, kCity0, {tile}));
     REQUIRE(r.records[0].status == sim::Reject::None);
     CHECK(city(w, kCity0).accounts.civil_cost == 0);
     CHECK(city(w, kCity0).accounts.military_cost == 0);
-    CHECK(w.players().find(sim::PlayerId{0})->upkeep_a == 0);
-    CHECK(w.players().find(sim::PlayerId{0})->upkeep_b == 0);
+    CHECK(booking_player(w).upkeep_a == 0);
+    CHECK(booking_player(w).upkeep_b == 0);
 }
 
 TEST_CASE("city booking: cost preflight overflow equal-selector costs and city cleanup") {
@@ -512,7 +522,7 @@ TEST_CASE(
     auto w = make_world(t, scenario(t), enabled());
     auto& c = city_mut(w, kCity0);
     c.billed[26] = 1;
-    sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->money = hi;
+    booking_player_mut(w).money = hi;
     w.advance(4000);
     REQUIRE(w.faulted());
     CHECK(money(w) == hi);

@@ -13536,3 +13536,15 @@ cache/route1/R0. [Plan](../sim/ship-trade-routes.md). Route-only136 reserved,
 not salt135; current runtime still134. R1 original contract/reference is released
 and in progress; no runtime/schema change yet. Ordinary ownedbranch checkpoint
 publication follows owner rules; no main push, other-lane intake or UI change.
+
+
+## MAP-ROUTE-1 R1 — original contract and reference approved (2026-11-06)
+
+Tested source cc440c5150376fe5fda2d5230a2c06d423d447bd; independent reviewer
+/root/expand_e2_review approved the actual original bytes/callers, adapted clock,
+commands/schema and40 hand-derived vectors. Canonical02 1/1 plus eight separate
+prerequisites, CLI23; all other outcome categories0. Raw/receipt/first failures
+remain cache/route1/R1, review cache/route1/reviews. Actual unmodified134 native
+and pinned old-reader6/6 are preserved. R2 released; runtime still134 at this
+checkpoint. Reserved136 is route-only, excludes salt135 and moving main. No
+original-runtime or Windows/Linux gate claim; no src/app/other-worktree edits.

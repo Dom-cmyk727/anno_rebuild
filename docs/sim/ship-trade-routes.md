@@ -471,3 +471,26 @@ aad758490b57f78e06a895f90a1e9384ef87b4c55ce614130dd376cdabe33a37.
 Its pinned old134 CLI reader reproduces6/6 checkpoints at tick20000. Provenance
 and old-reader hash are retained; this is a valid old-refusal control, never a
 136 schema oracle. No135 compatibility proof is fabricated.
+
+
+R1 APPROVED at cc440c5150376fe5fda2d5230a2c06d423d447bd by
+/root/expand_e2_review, independently inspecting original module bytes/vtables,
+caller boundaries, quantities, integer timing adaptation, the full schema and
+hand answers. Canonical02:1/1 selected,40 vectors; eight prerequisites separately
+1/1; CLI23 probes; failed/empty/skipped/incomplete/sanitizer0. Raw SHA256
+ e7110b9610415cbcc82505ef43264965317f1b8d46c22ee913bdfd922f005e21.
+R2 is released. Assignment/Resume additionally require a live (not expiry-list)
+actor; Suspend/Cancel may clean up an ended/blocked assignment. R3/R4 must clear
+route state at ship end/removal without making a legitimate native cut invalid.
+
+### R2 acceptance before runtime implementation
+
+| Requirement | Positive proof | Counterexample | Review |
+|---|---|---|---|
+| Public assignment/control | authenticated variable stops, canonical grouping/query, alternate goods/warehouse, deep-copy snapshots | unknown/foreign/dead/blocked/parent ship; bad quantities/targets/counts; byte-identical refusal | pending |
+| Complete saved schema | hand-written pending/partial/wait/cancel suffixes and rules bytes; native roundtrip | malformed counts/enums/cursors/clocks/order revision and canonical duplicates | pending |
+| Identity and no-route behavior | independent136 scopes/goldens, old-field projection versus134, unchanged draws | real134 native/replay and nested identity refusal; old fixtures untouched | pending |
+| Existing command compatibility | append-only tags/variant and manual takeover only after success | failed manual input retains route; unknown native tags cannot hide as legacy | pending |
+
+R2 does not connect automatic visits until independent approval. No original
+content role, default gameplay switch or random timeline changes are released.

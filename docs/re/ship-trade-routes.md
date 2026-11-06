@@ -5,7 +5,8 @@ save import is claimed. Original-derived bytes/listings remain ignored under
 `cache/route1/R1`; only findings and our synthetic examples are published.
 Tools: read-only PE ranges/vtables with pefile2024.8.26 and Capstone5.0.7, matching
 the existing cargo research method. Independent reviewer: expand_e2_review.
-The contract/reference/schema still require complete R1 approval before C++.
+The complete contract/reference/schema was approved at cc440c51 by
+/root/expand_e2_review before C++; detailed disposition is in the execution contract.
 
 ## Inputs and function boundaries
 

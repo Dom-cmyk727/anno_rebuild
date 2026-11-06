@@ -794,3 +794,46 @@ from that pre-existing crowded-dock NAV behavior, which remains outside scope.
 R4's two-ship named-store contention and real R5 sailing remain separate proof.
 For128stops the short window requires positive stop progress/effects, not a full
 128stop wrap; bounded whole cycles are established by the separate real canary.
+
+### R6 terminal evidence and timing interpretation
+
+Registered Debug at73eb40eb:3selected/3executed, five required separately, all
+other0,201.37s. One producer69745assertions/158.85s; honest790entries/11of11
+checkpoints ends382500, changed492entries/3of4 diverges491 at237500. Reviewer
+independently decodes one changed29→28 byte, all prior entry/checkpoint identities
+and only receiving Build788 after Assign490. Ten binary/event artifacts equal
+R5pilot03 bytes; continuation differs only observed walltime. The11producer
+artifacts and five log/inventory/config/binary files have16 frozen receipt hashes.
+
+Canonical Release at73eb40eb:1/1, five required separately, all other0;0.13s
+test/0.16s selection. Seven valid samples,1400 unique positive Advance-only timing
+rows. `advances.tsv.elapsed_ns` times World::advance alone. `summary.tsv.measured_ns`
+times the complete measurement loop, including assertions, event draining and
+TSV formatting. Both include existing scheduler/navigation work; neither is a
+cargo-only latency. Setup/assignment/warmup times are recorded separately.
+
+| Routes | Stops | Unrelated figures/buildings | Advance median μs | Full measurement loop ms |
+|---:|---:|---:|---:|---:|
+| 1 | 2 | 0/0 | 1.458 | 0.541 |
+| 8 | 2 | 0/0 | 17.083 | 2.699 |
+| 64 | 2 | 0/0 | 39.688 | 8.057 |
+| 8 | 8 | 0/0 | 17.000 | 2.682 |
+| 8 | 128 | 0/0 | 16.833 | 2.664 |
+| 8 | 8 | 512/256 | 57.917 | 10.987 |
+| 8 | 8 | 8192/2048 | 88.792 | 17.236 |
+
+Fixed8routes/8stops all three world sizes have identical nine-counter tuple
+`visits1600/steps10644/scans4256/resolvers532/updates1064/targetchecks3196/
+transfers1064/coldscans0/heapsteps0`; NAV536admission/2144stampcells/1005entries
+are separately reported. Source code uses direct named-warehouse/indexed hold
+lookups; this measures absence of new per-route whole-world cargo traversal.
+
+The64route sample has1600transfers (25perroute), versus8routes1064transfers
+(133perroute), and NAV admission24736 versus536. These are different productive
+throughputs under existing NAV backpressure; no equal-work per-route latency or
+linear throughput claim follows. Short colocated independent routes, not the
+congested single-dock fleet, long sailing or late-game performance, are measured.
+Current whole-world timing grows even where freight counters stay constant.
+Exact raw tables/config/executables are bound in R6/scale-release-receipt-01.json;
+registered replay receipt is R6/replay-debug-receipt-01.json. No engine, defaults,
+identity, original assets or another executor's work changed in R6.

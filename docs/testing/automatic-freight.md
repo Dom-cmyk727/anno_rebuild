@@ -61,6 +61,7 @@ results. The fixture has source `BuildingId{1}` and destination
 `BuildingId{4294967297}`; general callers retain their actual returned IDs.
 
 ```cpp
+using namespace anno::sim;
 Command assign{authenticated_player,
     AssignFreightRouteCmd{ship, {
         {source_warehouse, 257*256+128, 134*256+128,
@@ -93,3 +94,10 @@ and ledger. Honest child matches11/11 checkpoints; changed child matches3/4 and
 diverges at entry491, immediately after independently legal assignment29→28.
 The two children reuse the one producer through CTest fixtures. These commands
 are a headless consumer contract, not evidence of a Windows executable or UI.
+
+Short Release measurements vary independent active routes, stop count and
+unrelated world content. Their per-Advance timings include the whole scheduler
+and existing navigation; full-loop totals also include diagnostics/output
+formatting. Higher active counts contend for NAV admission and have different
+productive throughput. Matching freight counters across unrelated-world sizes
+is local-work evidence, not linear latency or late-game acceptance.

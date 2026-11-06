@@ -13412,3 +13412,30 @@ Executor returned to preserved task/MAP-EXPAND-1-main (self-contained regression
 cleanup3072d9d4). E2 revalidation and E3–E7 are released, not already passed; full
 expansion and affected sanitizer acceptance remain open. Old71af3846 partial
 checkpoint and every failure retain their original source attribution.
+
+
+## MAP-EXPAND-1 E2–E4 checkpoint — 2026-11-06 — APPROVED
+
+E2 current13415b220b3:1/1,8559asserts, source448=256export+192fraction; raw
+1536=1440consumed+96raw, made630=182out+448store;gold29381. E3c0ec23cb:1/1,
+11515asserts, actual secondarrival/founding/paid1310, independent originalheight48/
+rotation2, endholds26wood/10food/37tools/30tools, source-isolated destination
+commands;gold28957. E44fa38e69:1/1,17439asserts, realreturn andsecond distinct
+512raw freight from furtherproduction (P0374,newmade1834), two completecycles,
+source2368/destination512wood, treasury30000−1000−90−47=28863. Each gate has six
+required contracts separately1/1 and0failed/empty/skipped/incomplete/SAN. First
+failed E3compile remains retained, corrected scope only rerun. E2/E3/E4 reviewers
+expand_e2_review/expand_e0_review/expand_e2_review APPROVE; all receipts/artifacts
+verified at their exact pins, no summed uniform-source claim.
+
+Main acceptance3c2796ef/f406374d was read at a clean checkpoint. Existing equivalent
+134 runtime retained; exact CLI-path companionf406374d cherry-picked as46ec410a.
+Reuse accepted narrow mainDebug15/ASAN15 by unchanged runtime/fixture dependency,
+not as combined voyage proof. Portable standalone7ba07750 is pushed normally to
+origin/task/MAP-FOUND-134-prerequisite after direct human authorization; the newer
+426bf964 owner taskbranchpush rule is adopted, with no force/main push or GitLab
+trust/mirror changes. A normal push publishes this owned expansion checkpoint.
+
+E5–E7 remain open: five nativecontinuationcuts, actual fresh honest/changedcommand
+replay, targeted mutants/current combinedASAN and finalreview are still required.
+Current-owned branch/evidence and completedECON467373d2/MAP5ef163a6 preserved.

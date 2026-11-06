@@ -524,3 +524,21 @@ credit and allhold ordering. Wholewood equation is initial12800+made−25×256 =
 shipwood+two warehousewood+sourceFarm.out+activecart. Both cost histories27/20 and
 per-city upkeep remain distinct. Approved short ownership/stale/partial/alternate
 companions are reused; their current134 sanitizer rerun joins E7. E4 pending.
+
+### E4 approved and accepted companion adopted
+
+Independent E4 approval4fa38e69:1/1,17439asserts,45.88s,6required separately1/1,
+allothercategories0.554recordentries=530advances+16commandblocks+8checkpoints;
+ship1 sourceLoad1t@123500→destUnload@171000, thenLoad2t@218000→Unload@265000.
+P0374 requires138new for512secondbatch; actual1834new=131×14. Source2368/dest512;
+gold30000−1000−source90−dest47=28863. All9receiptfiles and5priorprefixartifacts
+verified. E5 is released; native/freshreplay/combinedASAN remain open.
+
+Accepted main3c2796ef/f406374d publishes134 and narrow Debug15/15/ASAN15/15 with
+actualoldoff/on and11CLI consumer paths. Read full founding134 acceptance and
+FOUNDING134-ACCEPTED at that exactpin. Cherry-picked ONLYf406374d as46ec410a at
+this clean checkpoint; no duplicate7ba or mainmerge. Reuse that reviewed bounded
+main15/15 evidence by byte-identical runtime/oracle/fixtures, keeping E5combined
+coverage required. The user explicitly authorizes ordinary ownedtaskbranchpushes
+under owner426bf964; portable7ba branch is already pushed, originalECON/MAPbranches
+remain preserved. No force/main push or GitLabmirror operation is assigned here.

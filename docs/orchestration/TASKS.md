@@ -10,7 +10,12 @@
     other lanes' branches are unchanged.
 - **The GitLab mirror.** The co-developer works from the private GitLab mirror (`gitlab.com/fuitable/open1503`). The
   Claude Code orchestrator on the Windows PC mirrors every GitHub branch there with `tools/orch/sync_gitlab.py` after
-  each push to `main`.
+  each push to `main` (and after task-branch checkpoints). Use ordinary pushes only: no force and no deletion.
+  The owner or that orchestrator runs the sync after this orchestrator publishes main. A host with GitLab SSH
+  access through remote `gitlab` may also run `python -I tools/orch/sync_gitlab.py`.
+- **GitHub is public.** `Dom-cmyk727/anno_rebuild` remains the dispatch and CI channel. Visibility is the owner's
+  separate decision. Publish only the normal project flow: no original files, decoded assets, listings or
+  credentials. A private GitLab mirror does not make publication on GitHub private.
 - **The status page.** [`STATUS.md`](STATUS.md) says who works on what, where the work is, and what it waits on. Every
   orchestrator updates it in the same commit as each dispatch, acceptance or change of lane.
 
@@ -24,8 +29,12 @@ Frozen integrated source `f406374d`: Debug15/15 and ASan/UBSan15/15, six require
 contracts separately in each lane, no failures/skips/empty/incomplete/sanitizer
 reports. Full MAP-EXPAND-1, salt and target-host acceptance remain open.
 
-**First Mac:** at the next clean checkpoint, consume the ordered prerequisite
-commits **7ba077506e7ab9c11bef3894739b4c1d0d4f66fb**, then
+**Intake observed complete:** first Mac `c177f391` contains the prerequisite as
+`668ff3c6` then `e067d109`; second Mac `bdb77ec7` contains the CLI companion as
+`46ec410a` alongside its equivalent founding correction. Do not repeat these
+cherry-picks. The authorized original pins below remain the integration record.
+
+**First Mac:** the ordered prerequisite commits were **7ba077506e7ab9c11bef3894739b4c1d0d4f66fb**, then
 **f406374dfde78dafee125fbcfc00181c59350662**, or a named accepted main checkpoint
 containing both. This controlled intake is authorized on the owned salt successor;
 preserve NEEDS corrections and all old evidence. The second commit repairs11CLI
@@ -34,9 +43,9 @@ helpers, voyage package or manual-expansion.md dependency is needed.
 This satisfies the 134 dependency for reserved135. X1 independent contract approval
 and all salt evidence/scope conditions below still apply before X2 runtime work.
 
-**Second Mac:** the existing equivalent correction need not be cherry-picked
-again. Adopt the f406374d replay-registration companion at a clean checkpoint,
-then continue the already released E2–E7; no broad duplicate campaign is requested.
+**Second Mac:** the equivalent correction and f406374d companion are already
+adopted at the observed checkpoint. Continue the remaining released expansion
+work; no duplicate intake or broad repeat campaign is requested.
 
 All old133 native states/replays, including default-off, are refused unchanged;
 no migration or silent repair. House/economy defaults and the PRNG timeline remain
@@ -106,8 +115,9 @@ Required focused proof before resuming E2:
 Independent correction review releases E2 revalidation and the already assigned
 E3–E7; no routine orchestrator pause after the fix. Publish the small reviewed
 fix/identity commit hashes in REPORTS and notify this orchestrator as soon as
-available so the first Mac can consume the exact prerequisite. No main merge,
-push or default flip is authorized. Final full-expansion acceptance remains open.
+available so the first Mac can consume the exact prerequisite. No main merge/push
+or default flip is authorized. Push the owned task branch normally at each
+checkpoint under the top owner rule. Final full-expansion acceptance remains open.
 
 The CPU-only benchmark issue is separately fixed at main `b408f311`. At an owned
 clean checkpoint, a **single cherry-pick of b408f311** is authorized to remove the
@@ -180,6 +190,11 @@ Linux target-host, GPU/window and multiplayer-scale acceptance remain open.
 
 <!-- BEGIN MAP-NEEDS-CLOSE-EXTRACT-1 -->
 ## First Mac — close MAP-NEEDS-2, then MAP-EXTRACT-1 (2026-11-06)
+
+**Checkpoint publication:** push your own task branch to origin at every checkpoint
+and report, ordinary pushes only. Never push main or force-push. This supersedes
+older no-push wording for your task branch; all merge/rebase/other-lane boundaries
+remain in force. Keep public GitHub content within the top owner publication rule.
 
 **Released:** C0–C2 corrections, followed by X0–X6 salt extraction within the
 conditions below. Independent package approvals release dependent work without
@@ -264,7 +279,8 @@ A warning-clean benchmark build and picture_matrix_contract are mandatory.
 Reuse unaffected broad gates with their actual pins. No full 1600-case campaign
 merely to close these local corrections. Report C0–C2 independently approved as
 cloth/component and synthetic leather mechanics closure, hunting still PARTIAL.
-This approval releases X0–X6; do not merge into main or push yourself.
+This approval releases X0–X6; do not merge or push main. Push your owned task
+branch at the checkpoint under the current owner rule.
 
 ### X0 — salt dependency inventory and compatibility plan
 
@@ -380,6 +396,11 @@ not the unexecuted correction or salt results.
 
 <!-- BEGIN MAP-EXPAND-1-MAIN -->
 ## Second Mac — MAP-EXPAND-1: second-island settlement and manual resupply (2026-11-06)
+
+**Checkpoint publication:** push your own task branch to origin at every checkpoint
+and report, ordinary pushes only. Never push main or force-push. This supersedes
+older no-push wording for your task branch; all merge/rebase/other-lane boundaries
+remain in force. Keep public GitHub content within the top owner publication rule.
 
 **READY / RELEASED, E0–E7.** ECON-BOOK-1 is accepted and published; do not repeat
 its completed package. The next player-facing outcome is to support two islands

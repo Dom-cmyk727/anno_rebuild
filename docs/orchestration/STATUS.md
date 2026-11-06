@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-06, by the Codex orchestrator (state-134 prerequisite; Windows lane retained).
+**Last updated:** 2026-11-06, by the Codex orchestrator (owner publication rules and observed Mac checkpoints; Windows lane retained).
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -48,30 +48,44 @@ The [founding-account prerequisite](reviews/2026-11-06-founding134-acceptance.md
 
 ### First Mac executor
 
-- **Now:** **close MAP-NEEDS-2 (C0–C2), then MAP-EXTRACT-1 (X0–X6), salt extraction** (TASKS.md, "First Mac — close
-  MAP-NEEDS-2, then MAP-EXTRACT-1"; [review](reviews/2026-11-06-map-needs2-orchestrator.md)).
-  - The MAP-NEEDS-2 candidate `5df34b38` (sheep, wool and cloth; hides and leather) is reviewed and preserved, but not
-    accepted on `main`.
-  - Hunting stays PARTIAL and outside this packet.
-- **Branch:** `task/MAP-EXTRACT-1-main`, a new branch from the `main` that carries the dispatch and the bench fix
-  `b408f311`. The candidate stays on `task/MAP-2-needs2-main` (`5df34b38`).
-- **Identity:** state 135 is reserved for the salt slice. It may only be claimed after the second Mac's reviewed 134
-  correction has been taken in. That prerequisite is now accepted: consume `7ba07750`, then `f406374d`,
-  at a clean checkpoint while preserving owned work. Salt X1 contract approval is still required.
+- **Now:** **MAP-EXTRACT-1: salt contract and implementation preparation.**
+  C0–C2 NEEDS corrections are reported complete locally, with review notes at
+  `7b480584`; this is not a new orchestrator acceptance of that whole candidate.
+  - Accepted state134 intake is present: `668ff3c6` (portable founding fix) and
+    `e067d109` (current replay CLI registrations).
+  - Latest observed committed checkpoint: **`c177f391`**, re-pinning NEEDS hashes
+    at134 with unchanged reported numerical behavior and fresh replay results.
+  - X1/X2 preparation is committed. Runtime salt work remains conditional on the
+    required independent contract approval; no completed salt result is claimed.
+  - Hunting remains PARTIAL and outside this packet.
+- **Branch:** `task/MAP-EXTRACT-1-main`. Earlier NEEDS candidate `5df34b38` remains
+  preserved on `task/MAP-2-needs2-main`; owned corrections are not merged into main.
+- **Identity:** current intake134; **135 reserved for salt**. The founding dependency
+  is consumed, not still waiting to be supplied.
+- **Publication:** ordinary push of the owned task branch at every checkpoint and
+  report. Never force or push main; existing merge/rebase/other-lane boundaries remain.
 
 ### Second Mac executor
 
-- **Now:** **MAP-EXPAND-1** (TASKS.md, "Second Mac — MAP-EXPAND-1" and "Compatibility decision — founding accounts and
-  salt sequencing"): settle a second island and resupply it by ship, with goods produced by the first settlement.
-  - **Accepted prerequisite:** `city.accounts = local.accounts` under state134, with strict133 refusal.
-    Portable `7ba07750` plus CLI-consumer correction `f406374d`; focused Debug15/15 and ASan15/15.
-  - **Now:** E2 revalidation and E3–E7. Full voyage acceptance remains open.
-  - No new production class, trade route, combat or UI is in scope.
-- **Branch:** `task/MAP-EXPAND-1-main`.
-  - It started from exact assignment `c5c7007f` (runtime baseline `303b3faf`); historical partial checkpoint `71af3846`.
-  - The tested source `637da167` is the partial evidence pin.
-- **Just finished:** ECON-BOOK-1, earned income and building upkeep.
-  - It was accepted on 2026-11-06 ([acceptance](reviews/2026-11-06-econ-book1-acceptance.md)) and is on `main`.
+- **Now:** **MAP-EXPAND-1, E5 continuation/replay work and remaining closeout.**
+  - The narrow134 founding prerequisite is accepted on main: `7ba07750` plus
+    `f406374d`, focused Debug15/15 and ASan15/15.
+  - Latest observed committed checkpoint: **`bdb77ec7`**. Its report records
+    independent E4 approval at `4fa38e69`: two actual freight cycles completed;
+    E5 released. This is executor evidence, not final orchestrator acceptance.
+  - CLI companion `f406374d` is adopted locally as `46ec410a`.
+  - Full continuation/fresh-process replay, combined voyage sanitizer execution
+    and E7 acceptance remain open in that checkpoint.
+- **Branch:** `task/MAP-EXPAND-1-main`, from assignment `c5c7007f` (runtime baseline
+  `303b3faf`). Historical `71af3846` / tested `637da167` remain partial evidence;
+  they no longer describe the latest work.
+- **Already finished:** ECON-BOOK-1, accepted on main; no new production class,
+  automatic trade route, combat or UI is assigned to expansion.
+- **Publication:** ordinary push of the owned task branch at every checkpoint and
+  report. Never force or push main; existing merge/rebase/other-lane boundaries remain.
+
+These are observed committed checkpoints, not live job status or confirmation that
+those task heads are already on GitHub. Executors may be working beyond them.
 
 ## Waiting on the owner
 
@@ -86,7 +100,8 @@ The [founding-account prerequisite](reviews/2026-11-06-founding134-acceptance.md
 - **Repositories:**
   - **GitLab `gitlab.com/fuitable/open1503`, private:** the co-developer's repository, a mirror of every GitHub branch
     (`tools/orch/sync_gitlab.py`). It is updated after each push to `main` and each executor push.
-  - **GitHub `Dom-cmyk727/anno_rebuild`:** the dispatch channel and CI.
+  - **GitHub `Dom-cmyk727/anno_rebuild`, public:** the dispatch channel and CI. Visibility is a separate owner
+    decision. No original files, decoded assets, listings or credentials may be published there.
 - **Task branches:** every executor pushes its own task branch at each checkpoint (owner rule, 2026-11-06). The branch
   names are the ones above.
 - **`main`** is the canonical, reviewed state, and CI runs on every push to it.
@@ -99,9 +114,12 @@ The [founding-account prerequisite](reviews/2026-11-06-founding134-acceptance.md
 - **[`reviews/`](reviews/):** one file per orchestrator review or acceptance.
 - **[`docs/PLAN.md`](../PLAN.md):** milestones and status; §7 holds the latest status notes.
 
-## Mirror handoff for this acceptance
+## Mirror coordination
 
-Windows orchestrator must run `python -I tools/orch/sync_gitlab.py` after the
-state134 acceptance push and verify the resulting heads. The Mac SSH read-only
-probe failed host-key verification; no trust settings were changed or GitLab
-push attempted. GitHub publication does not itself establish mirror currency.
+The owner reports the formerly stale private GitLab mirror is now current.
+After each new main push and task-branch checkpoint, the owner or Windows Claude
+Code orchestrator runs `python -I tools/orch/sync_gitlab.py` and verifies heads.
+Only ordinary pushes are allowed, never force or deletion. Another host may run
+it if its `gitlab` remote has working SSH access. This Mac's earlier read-only
+probe failed host-key verification; no trust setting was changed. A GitHub push
+alone does not prove that its new commit has already reached GitLab.

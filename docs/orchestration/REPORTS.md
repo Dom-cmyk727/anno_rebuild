@@ -13922,3 +13922,44 @@ worktree (this package's own, not another executor's — safe to delete once tha
 done, not before). Independent review of this package's diff is still **not claimed here** —
 left for the owner once W7 has a valid result, as instructed.
 
+
+## W4-SETTLEMENT-1 — MAIN-CI-1 intake + MSVC regression gate (2026-11-06)
+
+**MAIN-CI-1 intake adopted at `b7be2a1d`**, hand-adapted (not a merge/cherry-pick) per
+`docs/orchestration/TASKS.md`'s MAIN-CI-1 section and
+`docs/orchestration/reviews/2026-11-06-main-ci1.md`. Taken onto this state132 base: the
+`script_runtime.cpp` target-lifetime fix; GCC-warning fixes (missing includes, structured-binding
+copies, checked nullable lookups) in `build_terrain_test.cpp`, `integration_gameplay_test.cpp`,
+`scenario_test.cpp`, `script2_canary_test.cpp`, `script_build_test.cpp`, `script_scale_test.cpp`,
+`small_farm_animal_test.cpp`, `small_farm_worker_test.cpp`, `unit_import_test.cpp`; both
+farm-fixture lifetime fixes (prvalue elision instead of optional NRVO, pointer-identity asserts);
+the SCRIPT2 CLI prerequisite/contract fix in `tools/script_canary2.py`; the port0 metadata-test fix
+in `budget_f3_test.cpp`; and, in `src/sim/CMakeLists.txt`, the `SKIP_REGULAR_EXPRESSION` property
+for this branch's two existing SCRIPT2 fresh-process tests. **Omitted as not applicable to
+state132**: the economy134 checkpoint fixture, the `economy_loop_*` CMake hunk, and
+`city_booking_test.cpp`/`economy_loop_test.cpp` (none of the latter two exist on this branch).
+`integration_identity_test.cpp`'s `<filesystem>` include was already present (`8137b415`).
+MSVC build: exit 0.
+
+**MSVC regression gate (`ctest --preset msvc -j 16`, `ANNO1503_GAME_DIR=E:\anno1503\game\app`):
+2262/2280 passed (99%), 18 failed.** Rerunning the 18 serially (`-j 1`, by test number) reproduced
+all 18 identically, ruling out `-j16` resource contention.
+
+**Evidence the 18 failures are pre-existing, not caused by this intake**: built a separate detached
+worktree (`anno1503-W4-settlement-1-msvccheck`) at the unmodified pre-intake head `2f2b45ac` and ran
+the same 18 tests the same way. Result: **0/18 passed, byte-for-byte identical failure messages and
+near-identical timings** (e.g. test 613 "founding sites, real files": `CHECK( seen >= 62 )` with
+`4 >= 62` on both; test 594 "legal workload": `REQUIRE( edits.back().accepted )` with `logged:
+ConstructionDenied` on both; all 13 GPU-labelled tests fail identically on both the RTX 4090 and the
+Radeon iGPU adapters on both commits). This intake's one production change
+(`script_runtime.cpp`) is not implicated — the failures predate it and are identical with or
+without it. Root cause not yet diagnosed (candidates: a host/driver/game-dir environment change
+since W2-W5's gate was last run green, or a real pre-existing regression on this branch); out of
+scope for this repair-intake package. Flagging for the owner/orchestrator rather than
+investigating further here.
+
+Diagnostic worktree `anno1503-W4-settlement-1-msvccheck` (detached at `2f2b45ac`, no uncommitted
+work) left in place rather than deleted, pending explicit authorization like the earlier
+`-gatecheck` worktree.
+
+Tested head: `b7be2a1d`. Pushed next.

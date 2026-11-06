@@ -30,7 +30,10 @@ Live-window and target-host acceptance are separate.
 
 **MAIN-CI-1 is active, owned by the Codex orchestrator.** No further consolidation
 until all ten jobs pass at the repaired main source. Gameplay research may
-continue; a repair intake pin will follow closure.
+continue; a repair intake pin will follow closure. Repairs `5b387618` and
+`056fc126` clear GCC/macOS and local asset-present gates. The full Linux ASan
+run exposed a fixed-port metadata-test collision (no sanitizer diagnostic);
+its narrow test-only repair is under verification. This is not closure.
 
 **`main`'s C++ CI is red** on all five build jobs (MSVC, GCC, GCC release, Clang ASan, macOS Clang). It has been red
 since `944cec89` (2026-11-05 22:38, the consolidated baseline); the last green run was `cafa74d5`. On `e0bb6be7`:

@@ -29,7 +29,9 @@ TEST_CASE("SCRIPT1 bounded scale work and idle queries") {
         auto players = make_player_table(cfg);
         for (std::uint32_t i = 0; i < players_count; ++i)
             players.slots[i] = make_player(PlayerId{i}, cfg);
-        players.find(owner)->volk = folk;
+        auto* participant = players.find(owner);
+        REQUIRE(participant != nullptr);
+        participant->volk = folk;
         std::string source = "[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n\"ME\" " +
                              std::to_string(owner.v) +
                              "\n[SCRIPT_KERNEL]\nSET X=FALSE;\nINITBLOCK(){\n";
@@ -41,17 +43,17 @@ TEST_CASE("SCRIPT1 bounded scale work and idle queries") {
         auto timers = make_script_timers(cfg);
         REQUIRE(advance_script(runtime.value(), players, timers, *registry.value(), 0));
         CHECK(runtime.value().state.last_work == statements + 1 + eligible);
-        CHECK(players.find(owner)->permissions.size() == eligible);
+        CHECK(participant->permissions.size() == eligible);
         for (unsigned i = 0; i < 1000; ++i)
             REQUIRE(advance_script(runtime.value(), players, timers, *registry.value(), 0));
         CHECK(runtime.value().state.last_work == 0);
-        REQUIRE(set_construction_permission(*players.find(owner), players.find(owner)->permissions,
+        REQUIRE(set_construction_permission(*participant, participant->permissions,
                                             *registry.value(), TypeId{100001}, 0));
         std::uint64_t denied = 0;
         const auto start = std::chrono::steady_clock::now();
         for (std::uint32_t q = 0; q < 250000; ++q)
             denied += stored_build_eligibility(*registry.value(), players, owner, TypeId{100001},
-                                               players.find(owner)->permissions)
+                                               participant->permissions)
                               .allowed()
                           ? 0u
                           : 1u;

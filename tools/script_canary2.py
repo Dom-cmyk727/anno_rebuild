@@ -49,6 +49,30 @@ def validate_input_identity(inputs):
 
 class Contracts(unittest.TestCase):
     good = '[doctest] test cases: 1 | 1 passed | 0 failed\n[doctest] assertions: 17 | 17 passed | 0 failed\n[doctest] Status: SUCCESS!\n'
+    def test_asset_prerequisite_through_public_cli(self):
+        # Both modes need the original program, even when the world is synthetic.
+        # A nonexistent child also proves the absent-assets branch never launches it.
+        with tempfile.TemporaryDirectory() as temp:
+            for mode in ([], ['--original']):
+                for declared in (None, '', str(Path(temp)/'invalid-game')):
+                    env = dict(os.environ)
+                    env.pop('ANNO1503_GAME_DIR', None)
+                    if declared is not None:
+                        env['ANNO1503_GAME_DIR'] = declared
+                    child = subprocess.run(
+                        [sys.executable, '-I', str(Path(__file__).resolve()),
+                         '--exe', str(Path(temp)/'missing-child'), *mode],
+                        env=env, capture_output=True, text=True, timeout=30)
+                    output = child.stdout + child.stderr
+                    if not declared:
+                        self.assertEqual(child.returncode, 0, output)
+                        self.assertIn('skipping: ANNO1503_GAME_DIR not set', output)
+                    else:
+                        self.assertNotEqual(child.returncode, 0, output)
+                        self.assertIn('original scenario unavailable', output)
+                        self.assertNotIn('skipping:', output)
+                    self.assertNotIn('FRESH_PROCESS PASS', output)
+
     def test_modes_use_distinct_inputs_and_cases(self):
         old_env, old_cases = protocol(False)
         new_env, new_cases = protocol(True)
@@ -126,14 +150,20 @@ def protocol(original):
 
 
 def run(executable, repo, original=False):
+    declared_game = os.environ.get('ANNO1503_GAME_DIR', '')
+    if not declared_game:
+        print('skipping: ANNO1503_GAME_DIR not set')
+        return 0
+    scenario = Path(declared_game)/'Scenes/0011SingleEndlosAddon/endless01.sze'
+    if not scenario.is_file():
+        print('SCRIPT2 FRESH_PROCESS FAIL: original scenario unavailable: '+str(scenario))
+        return 1
     root = repo / ('cache/unit-import1/replays' if original else 'cache/script2/replays')
     root.mkdir(parents=True, exist_ok=True)
     directory = Path(tempfile.mkdtemp(prefix='fresh-', dir=root))
     env_key, cases = protocol(original)
     env = dict(os.environ)
     env[env_key] = str(directory)
-    game=Path(os.environ.get('ANNO1503_GAME_DIR',''))
-    scenario=game/'Scenes/0011SingleEndlosAddon/endless01.sze'
     sys.path.insert(0,str(repo/'tools'))
     import bigbrother
     payload=bigbrother.payload(scenario)

@@ -212,7 +212,9 @@ sim::Command build_at(sim::TypeId type, std::int32_t lx, std::int32_t ly, std::u
 }
 
 std::int64_t money_of(const sim::World& w, std::uint32_t p = 0) {
-    return w.players().find(sim::PlayerId{p})->money;
+    const auto* player = w.players().find(sim::PlayerId{p});
+    REQUIRE(player != nullptr);
+    return player->money;
 }
 
 /// The command is refused with `want` and nothing at all changed (bytes, hash, money, events).

@@ -1079,8 +1079,8 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
         auto component = original_component::import_only(loaded.value().loaded.spec, types);
         REQUIRE_MESSAGE(component, (component ? "" : component.error()));
         MESSAGE("whole-program capability " << name << ": " << component.value().diagnostic);
-        isolated += component.value().isolated ? 1 : 0;
-        supported += component.value().isolated ? 0 : 1;
+        isolated += component.value().isolated ? 1u : 0u;
+        supported += component.value().isolated ? 0u : 1u;
         auto made = sim::World::create(component.value().spec, types);
         REQUIRE_MESSAGE(made, (made ? "" : made.error()));
         REQUIRE(expected.contains(name));
@@ -1154,12 +1154,17 @@ TEST_CASE(
         sim::World with = std::move(made).value();
         sim::World without = with;
         const sim::PlayerId owner{delta.owner};
-        REQUIRE(with.players().find(owner)->research.state[delta.research] == 2);
+        const auto* owner_with = with.players().find(owner);
+        REQUIRE(owner_with != nullptr);
+        REQUIRE(delta.research < owner_with->research.state.size());
+        REQUIRE(owner_with->research.state[delta.research] == 2);
         auto& bit = sim::WorldTestAccess::players(without)
                         .slots[delta.owner]
                         ->research.state[delta.research];
         bit = static_cast<std::uint8_t>(bit & ~2u); // ONLY the one reviewed research bit
-        REQUIRE_FALSE(without.players().find(owner)->research.researched(delta.research));
+        const auto* owner_without = without.players().find(owner);
+        REQUIRE(owner_without != nullptr);
+        REQUIRE_FALSE(owner_without->research.researched(delta.research));
         const sim::CityRef city{sim::IslandId{delta.island}, sim::CityNo{delta.city}};
         const auto* building = with.building_at(city, static_cast<std::int32_t>(delta.x),
                                                 static_cast<std::int32_t>(delta.y));

@@ -101,12 +101,16 @@ TEST_CASE("SCRIPT1 build still refuses ownership terrain and resource failures")
           sim::Reject::TerrainRefused);
     CHECK(w.state_hash() == terrain_hash);
     sim::WorldTestAccess::seams(w).placement_rule = {};
-    sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->money = 0;
+    auto* owner = sim::WorldTestAccess::players(w).find(sim::PlayerId{0});
+    REQUIRE(owner != nullptr);
+    owner->money = 0;
     auto hash = w.state_hash();
     CHECK(w.apply(build(0, kCity0, {at(f.types.weaver, 120, 112)})).status ==
           sim::Reject::CannotAfford);
     CHECK(w.state_hash() == hash);
-    sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->money = 10000;
+    owner = sim::WorldTestAccess::players(w).find(sim::PlayerId{0});
+    REQUIRE(owner != nullptr);
+    owner->money = 10000;
     city_mut(w, kCity0).stock.stock[41] = 0;
     hash = w.state_hash();
     CHECK(w.apply(build(0, kCity0, {at(f.types.weaver, 120, 112)})).status ==

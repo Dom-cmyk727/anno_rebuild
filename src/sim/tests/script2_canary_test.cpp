@@ -386,7 +386,7 @@ TEST_CASE("SCRIPT2 original canary route and founding prerequisites") {
     for (const auto& c : candidates) {
         if (++tried > 128)
             break; // bounded planning search; refusal is not proof that no site exists
-        for (const auto [dx, dy] :
+        for (const auto& [dx, dy] :
              {std::pair{6, 0}, std::pair{-6, 0}, std::pair{0, 6}, std::pair{0, -6}}) {
             if (!source.tile_is_water(c.x + dx, c.y + dy))
                 continue;
@@ -535,13 +535,21 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
                     city = CityRef{IslandId{i}, c->number};
                 }
     REQUIRE(city);
-    const auto& initial_stock = w.islands()[city->island.v]->city(city->city)->stock.stock;
+    const auto* founded_city = w.islands()[city->island.v]->city(city->city);
+    REQUIRE(founded_city != nullptr);
+    const auto& initial_stock = founded_city->stock.stock;
     CHECK(std::all_of(initial_stock.begin(), initial_stock.end(), [](auto n) { return n == 0; }));
     for (std::uint32_t h = 0; h < holds.size(); ++h) {
-        const auto hold = find_figure(w.figures(), FigureId{1})->holds[h];
+        const auto* carrier = find_figure(w.figures(), FigureId{1});
+        REQUIRE(carrier != nullptr);
+        REQUIRE(h < carrier->holds.size());
+        const auto hold = carrier->holds[h];
         if (!hold.goods || hold.amount_88 < 256)
             continue;
-        const auto& store = w.islands()[city->island.v]->city(city->city)->stock;
+        const auto* destination = w.islands()[city->island.v]->city(city->city);
+        REQUIRE(destination != nullptr);
+        const auto& store = destination->stock;
+        REQUIRE(hold.goods < store.stock.size());
         const auto old_stock = store.stock[hold.goods];
         const auto room = store.capacity > old_stock ? store.capacity - old_stock : 0;
         const auto expected = std::min<std::uint64_t>(hold.amount_88, room);

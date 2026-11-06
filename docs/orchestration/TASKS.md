@@ -1453,6 +1453,15 @@ Read the packet from fetched main; independent package approvals release later
 packages. The old SCRIPT2 packet below is historical, not a new assignment.
 <!-- END MAP-INTEGRATE-1 DISPATCH -->
 
+**Windows update, 2026-11-07 (Claude Code orchestrator): W4-MAIN-2 is READY / RELEASED.** Read the
+[S, A–E packet](tasks/w4-main-2.md). It starts right after the W4-SETTLEMENT-1 review fixes, with no stop in between:
+- **A:** main's 18 out-of-date real-file tests, as `task/MAIN-REALFILES-1`;
+- **B:** the Windows lane on main 134, as `task/W4-main-2`, with one authorized merge;
+- **C:** one WSL ASan gate and the Windows host gates at that head;
+- **D:** the Load adapter and the live two-island recipe.
+
+The old-base W7 rerun is replaced by C. Every part ends REVIEW PENDING; the orchestrator reviews the next morning.
+
 **Windows update, 2026-11-06 (orchestrator):** WSL Ubuntu now runs from E: (`E:\wsl\Ubuntu`), and its old
 build trees are deleted. Rerun W4-SETTLEMENT-1's W7 WSL ASan gate; its first build is a full rebuild. The new WSL disk
 rules are under W4-OPENING-CONTROLS-FLAKE step 0.

@@ -5,7 +5,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-07, by the Claude Code orchestrator: W4-SETTLEMENT-1 reviewed, changes requested; 18
-real-file test failures found on `main`. Before that: 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted;
+real-file test failures found on `main`; W4-MAIN-2 released to the Windows executor. Before that: 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted;
 gameplay assignments unchanged).
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
@@ -56,13 +56,20 @@ mirror still requires the owner/Windows sync after main publication.
     - Code findings: one clang-format blocker; `wait turns` still races; the inspection line can show the wrong building;
       the gate script exits 0 on failed lanes and keeps its logs inside the tested worktree.
     - `picture_matrix_contract` passes in all five lanes.
-  - **Now:** fix review items 1–8, then rerun W7 once with the logs kept outside the gate worktree.
-  - **Then:** the owner's playtest card.
+  - **Now:** fix review items 1–8.
+  - **Then, with no stop: [W4-MAIN-2](tasks/w4-main-2.md),** released 2026-11-07. Its parts:
+    - **A:** repair main's 18 out-of-date real-file tests (`task/MAIN-REALFILES-1`).
+    - **B:** bring the Windows lane onto main 134 (`task/W4-main-2`).
+    - **C:** one W7 and the Windows host gates at that head. This replaces the old-base W7 rerun.
+    - **D:** the Load adapter and the live two-island recipe (`task/W4-expand-live-1`).
+
+    Every part ends REVIEW PENDING, for the orchestrator's review the next morning.
+  - **After that:** the owner's playtest cards.
 - **Found by this review, on `main` (not this package):** 18 real-file tests fail at `96775da4`. Hosted CI can't see
   them because it has no game files.
   - The strict scene loader (`f7c31ed8`) refuses `Single_01.sze`; only 11 of the 50 original scenes still load.
   - The construction-eligibility check (`d2be23aa`) stage-locks the buildings the legal workload chooses.
-  - The tests are out of date; a separate main repair is proposed.
+  - The tests are out of date. W4-MAIN-2 part A repairs them on a branch, and the orchestrator merges it after review.
 - **Branch:** `task/W4-settlement-1`, head `384df19d` (pushed).
   - It is based on `task/W4-opening-2-main`: `main` `3b74201f` plus the reviewed W4-OPENING-CONTROLS-FLAKE delta.
 - **Also open:**
@@ -130,8 +137,8 @@ Its later work is not accepted merely because expansion is complete.
 - **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).
 - **The opening playtest** in the live window (W4-OPENING-1, accepted 2026-11-05).
 - **W4-SETTLEMENT-1's playtest card,** once review item 3 (the inspection line) is fixed.
-- **Who repairs main's 18 out-of-date real-file tests** (the W4-SETTLEMENT-1 review): the Windows lane, which alone
-  runs both the game-file and the GPU tests, or the Codex orchestrator.
+- **Whether the developer tool may place buildings of later stages** than the start allows. Main's eligibility rule
+  refuses them, as the original does. W4-MAIN-2 adds no "unlock all" switch without the owner's word.
 - **Optional:** overriding the River Q5 floor of 0.45 for `D_256x256_0045_5B` (W4-MAIN-1 review D1).
 - **Optional:** whether the enhanced water is lit from the top left again (OQ-026).
 

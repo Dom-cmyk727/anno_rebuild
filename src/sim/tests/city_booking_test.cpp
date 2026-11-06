@@ -682,3 +682,73 @@ TEST_CASE("city booking: full u32 elapsed domain and exact word alias through pu
     CHECK(city(alias, kCity0).accounts.stamp == 0);
     CHECK(money(alias) == initial); // intentional original word-age alias, no catch-up
 }
+
+TEST_CASE("city booking: city and player upkeep book together without sharing costs or remainder") {
+    for (bool city_enabled : {false, true}) {
+        CAPTURE(city_enabled);
+        sim::SimConfig cfg;
+        cfg.city_ring_div = 1;
+        auto t = priced(cfg);
+        auto rules = enabled();
+        rules.city_booking = city_enabled;
+        auto w = make_world(t, scenario(t), rules, {}, cfg);
+        auto* player = sim::WorldTestAccess::players(w).find(sim::PlayerId{0});
+        REQUIRE(player != nullptr);
+        player->money = 1000;
+        player->upkeep_a = 14;
+        player->upkeep_b = 0;
+        player->upkeep_rem = 1;
+        REQUIRE(city(w, kCity0).accounts.civil_cost == (city_enabled ? 28 : 0));
+        REQUIRE(cfg.economy.period == 2000);
+        REQUIRE(cfg.upkeep_period == 2000);
+        REQUIRE(cfg.upkeep_slices == 15);
+
+        w.advance(3998);
+        REQUIRE_FALSE(w.faulted());
+        CHECK(money(w) == 1000);
+        CHECK(player->upkeep_rem == 1);
+        CHECK(player->upkeep_stamp == 0);
+        w.advance(2);
+        REQUIRE_FALSE(w.faulted());
+        CHECK(w.clock().tick() == 2000);
+        // City28/15 =1; player(14+1)/15 =1. Each accounting owner charges once.
+        CHECK(money(w) == (city_enabled ? 998 : 999));
+        CHECK(player->upkeep_a == 14);
+        CHECK(player->upkeep_b == 0);
+        CHECK(player->upkeep_rem == 0);
+        CHECK(player->upkeep_stamp == 2000);
+        const auto ledger = bookings(w);
+        REQUIRE(ledger.size() == (city_enabled ? 2 : 0));
+        if (city_enabled) {
+            CHECK(ledger[0].owner == sim::PlayerId{0});
+            CHECK(ledger[0].income == 0);
+            CHECK(ledger[0].upkeep == 1);
+            CHECK(ledger[0].money_before == 1000);
+            CHECK(ledger[0].money_after == 999); // player upkeep follows city booking
+        }
+        const auto paid = money(w);
+        w.advance(0);
+        CHECK(money(w) == paid);
+        CHECK(player->upkeep_rem == 0);
+        CHECK(bookings(w).empty());
+
+        auto loaded = sim::World::load(w.save(), t.registry);
+        REQUIRE(loaded);
+        w.advance(4000);
+        loaded.value().advance(4000);
+        REQUIRE_FALSE(w.faulted());
+        CHECK(w.save() == loaded.value().save());
+        CHECK(w.last_output().events == loaded.value().last_output().events);
+        // City discards its fraction; only the player's14 survives as a remainder.
+        CHECK(money(w) == (city_enabled ? 997 : 999));
+        CHECK(player->upkeep_rem == 14);
+        w.advance(4000);
+        REQUIRE_FALSE(w.faulted());
+        CHECK(money(w) == (city_enabled ? 995 : 998));
+        CHECK(player->upkeep_rem == 13);
+        CHECK(player->upkeep_a == 14);
+        CHECK(player->upkeep_b == 0);
+        CHECK(city(w, kCity0).accounts.civil_cost == (city_enabled ? 28 : 0));
+        CHECK(w.check_invariants().empty());
+    }
+}

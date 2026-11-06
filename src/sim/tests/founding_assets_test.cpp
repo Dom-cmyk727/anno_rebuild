@@ -4167,7 +4167,7 @@ TEST_CASE("expansion E1: unchanged candidate route docks forest and finite budge
     rs.rules.save_billed_goods = true;
     REQUIRE_FALSE(rs.rules.house_updates);
     auto made = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
-    REQUIRE_MESSAGE(made.ok(), made.ok() ? "" : made.error());
+    REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string{} : made.error()));
     const sim::World pristine = std::move(made).value();
     REQUIRE(sl::expedition_baseline_problem(pristine).empty());
     REQUIRE(pristine.rules().city_booking);

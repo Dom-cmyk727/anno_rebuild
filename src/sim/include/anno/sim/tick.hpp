@@ -44,8 +44,8 @@ enum class NotEvaluatedReason : std::uint8_t;
 /// MAP-POP-LIVE-1 L4 (docs/sim/population-live.md section 19): a typed fault of the live House
 /// update (P-1/P-3: fail loudly). `house` names the House operation that could not be performed
 /// (HouseFault::NotEvaluated carries the kernel's `reason`); `resident` is a ResidentFault of a
-/// choice, bill or add. Exactly one of the two is non-zero. The world merges it in issue order;
-/// the first one stops the world (World::fault()).
+/// choice, bill or add. Exactly one of house, resident or accounting is non-zero. The world merges
+/// it in issue order; the first one stops the world (World::fault()).
 struct FaultRecord {
     HouseFault house{};
     NotEvaluatedReason reason{};
@@ -372,6 +372,8 @@ struct SimEvent {
 /// Filled by an island tick or a serial-phase seam, merged by the world (§5.3). Merge
 /// order inside one buffer: spawns, house_deliveries, releases, money, goods_moves, billed_deltas,
 /// reserves, deliveries, store_deltas, tile_edits, events, ui; each vector in order.
+/// Opt-in city-booking barriers consume call-time money/bill prefixes between
+/// those effects and preflight against the actual shared treasury at merge.
 /// A figure moved by its carrier (MAP-NAV-2): a ship's crew (children, grandchildren) is written
 /// from the ship's position by the world after the ship's visit, never by the ship's own call.
 struct FigureMove {

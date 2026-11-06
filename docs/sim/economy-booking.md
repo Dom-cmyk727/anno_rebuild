@@ -1070,3 +1070,87 @@ actually re-executes both CLI arms. `B5/receipt.json` preserves all artifacts,
 source/config/binary hashes before later builds. Reviewer report and raw-derived
 inventory retained `/private/tmp/econ-book1-b5-review.md` and
 `/private/tmp/econ-book1-b5-primary.json`. B6 is released; B7 remains required.
+
+## B6 bounded scaling and Windows consumer contract — candidate
+
+The synthetic measurement explicitly presets pending bills, uses original-default
+roles with data-sized15/31/63 consumer rows and1/4/8 populated cities, and imports
+0/64/256 unrelated inert buildings plus0/32/128 idle figures. A separate series
+holds1 city/15 rows fixed while increasing unrelated objects. Shared smallest
+control yields5 unique legal fixtures,3 samples each. Every fixture first passes
+World::create/invariants, nonempty bills, positive actual scheduler income and
+nonzero upkeep. The only producer per city is suspended to keep this a bounded
+booking workload; no claim of real production is attached to these synthetic
+bills. The real arm is B5, with no grants or bill writes.
+
+Deterministic observations count15/124/504 booked rows for the growing C/G series
+and15/15/15 for fixed C/G with unrelated objects; one producer selector inspects1
+line regardless of world size. These count configured booking rows and selector
+lines, not every CPU instruction. Normal World::advance still visits its scheduled
+buildings/figures; total world wall time therefore includes that baseline work.
+The code's added booking work resolves configured goods then calculates them in
+two linear passes per due city. Cost updates read the changed payload/owner and
+two history buckets, without a world-building repair scan. Only whole-city
+cleanup scans that city's remaining buildings. Direct source/caller review is
+part of the no-global-scan proof; a row counter alone cannot detect an arbitrary
+extra hidden scan. B3 already proves wider climate/tax/id dimensions and an
+independent data-defined producer/service without a C++ id-list change.
+
+Debug exploration01 passes1 case/251 assertions. Raw Debug timings are exploratory,
+not Release claims. A fixed-original15-row scheduler mutant retains the legal
+15-row production control but must fail the31/63 row-count/income assertions;
+`B6/fixed15-*` and `mutant-driver.log` preserve statuses. Source is byte-restored
+and rebuilt before acceptance. First compiler attempt's explicit-ID initializer
+errors are retained; no compile failure is counted as a mutant kill.
+
+Release uses a separate `build/econ-release`, -O3 -DNDEBUG, AppleClang21/CMake3.31.10/
+Ninja, no GPU/viewer, same bench_picture-only warning exception. Measurements
+separate5000 pure calculations from100 complete public advances,3 raw samples per
+fixture, no machine-specific latency assertions. Source/config/binary/sample
+manifest and process peak RSS are required before closing B6. Host observation:
+Mac17,6 arm64,18 logical CPUs,48GiB,~1.5TiB free; no competing executor build/test
+was observed (the recorded own mutant build was still completing). Admission
+remains enabled; four build jobs/one CTest, serialized own expensive gates. Current
+host conditions are re-recorded at Release measurement. Windows/Linux/large
+multiplayer/late-game timings are NOT_RUN.
+
+Windows-facing consumer delta (candidate133, not adoption authorization):
+
+- Native state133/schema `ECONBK1\0` (exact bytes45 43 4f 4e 42 4b 31 00,
+  little-endian value00314b424e4f4345), PRNG5, replay4, command wire1, save container1.
+  Actual132 save/log archives refuse at the version boundary. Regenerate trajectories
+  when adopting this candidate; never relabel published132 in place. Orchestrator
+  owns eventual combined identity and target-host adoption.
+- `Rules::city_booking` is separately hashed/defaultfalse. House updates remain
+  separately defaultfalse; supported real town explicitly enables both. Booking
+  requires saved billed goods. Session configuration/rules are serializable;
+  no new live toggle, tax UI, debug money mutator or unversioned mod hook is added.
+- Goods metadata resolves data-sized climate prices and tax surcharge columns
+  against sealed role names/count. WorldSettings.prop10 is the existing selector,
+  widenedu32; Island.climate remains the island selector. Missing price metadata
+  is explicit constructor-zero pricing. Invalid role/dimension/final-price/unknown
+  financial records name the invalid field and refuse transactionally.
+- CityAccounts persists word stamp plus fiveu64 histories (sales, trade sales,
+  trade purchases, civil/military costs). Native load keeps history exactly;
+  normal original insertion reconstructs costs once. BuildingType.statistic_kind
+  supports city buckets1/2; the26 audited original class getters all return1,
+  including military-looking buildings, without mirroring into Player upkeep. u32 bills retain the verified
+  direct-fault/queued-saturation policy. Original HEAD statistics use checked wide
+  import semantics. House/research history is deliberate, not repaired on every visit.
+- `SimEventKind::CityBooking` appends an optional typed ledger: CityRef, owner,
+  income/upkeep/rows, before/after signed money, AccountingFault. This output is
+  observational, not authoritative state or a second money effect. Existing
+  account/money/bill queries supply future UI observability. Consumers should
+  handle the appended event kind and `Reject::CityAccounting`; command refusals
+  are intentionally coarser than pure AccountingFault reasons. A failed whole-city
+  cleanup can follow a completed named demolition, so inspect World::fault too.
+- A booking failure is sticky/fail-closed: money/bills/stats/stamp of that attempt
+  stay unchanged, earlier independent work stays committed, native faulted reload
+  remains stopped. Retry from an unfaulted cut with a legal correcting command;
+  no clear-fault API. Typed reasons distinguish product/sum/rounding, gross credit,
+  debit, cost sum, decay/sales, dimensions/owner/city/type/financial history failures.
+  Player upkeep/remainder/saturation and negative-balance support remain separate.
+- Standard C++20 portable integer checks; no __int128, new OS API, draw site or wire
+  command. MSVC build/UI integration and a live Windows economy remain NOT_RUN.
+  Renderer/viewer, cloth/hunting/mining bodies, ownership commands, mod SDK and
+  economic balance/profitability are outside this packet.

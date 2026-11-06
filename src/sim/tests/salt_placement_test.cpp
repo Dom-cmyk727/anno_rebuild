@@ -1937,10 +1937,11 @@ int first_event_step(Event event) {
 } // namespace
 
 TEST_CASE("salt timing X4: a demolition on the step of a load an unload and an arrival") {
+    if (!load_original()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
     // LOAD: a carrier lifts ore from the mine in step k; the mine is demolished just before it
     {
         const int k = first_event_step([](const Terms2& a, const Terms2& b) { return b.ore_loaded > a.ore_loaded; });
-        if (k < 0) { MESSAGE("skipping: no event / ANNO1503_GAME_DIR not set"); return; }
+        REQUIRE(k > 0);
         XChain with = chain_at(k - 1), without = chain_at(k - 1);
         const Terms2 w0 = terms2(with);
         step_chain(*with.c, 1);
@@ -1960,7 +1961,7 @@ TEST_CASE("salt timing X4: a demolition on the step of a load an unload and an a
     // UNLOAD: a cart unloads SALZ into the store in step k; both markets are demolished just before it
     {
         const int k = first_event_step([](const Terms2& a, const Terms2& b) { return b.unloaded > a.unloaded; });
-        if (k < 0) { MESSAGE("skipping: no event"); return; }
+        REQUIRE(k > 0);
         XChain with = chain_at(k - 1), without = chain_at(k - 1);
         const Terms2 w0 = terms2(with);
         step_chain(*with.c, 1);
@@ -1981,7 +1982,7 @@ TEST_CASE("salt timing X4: a demolition on the step of a load an unload and an a
     // ARRIVAL: the carrier reaches the saltworks with ore in step k; the saltworks is demolished just before it
     {
         const int k = first_event_step([](const Terms2& a, const Terms2& b) { return a.ore_cargo > 0 && b.ore_cargo < a.ore_cargo; });
-        if (k < 0) { MESSAGE("skipping: no event"); return; }
+        REQUIRE(k > 0);
         XChain with = chain_at(k - 1), without = chain_at(k - 1);
         const Terms2 w0 = terms2(with);
         step_chain(*with.c, 1);

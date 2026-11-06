@@ -211,3 +211,69 @@ those to0. Modern native saved bills remain the accepted adaptation and cannot
 be lost when booking is enabled. Exact HEAD versus HEAD2 and save branches will
 be included in the remaining B1 lifecycle/import cross-check, not inferred from
 this partial range alone.
+
+### B1a remaining load/source cross-check
+
+Original INSEL INFO branch100897a6..10089802 recognizes INFO, clears its12-byte
+scratch at stack2c/30/34, reads the payload, takes its first byte at100897e4 and
+stores island+c0 at100897ee. This closes the direct INFO[0] cross-check; prefix
+selection governs links, ordinary stored islands use INFO[0] itself. Original
+world setter accepts any byte; modern tax validation0..2 is a stronger boundary,
+not an original validation guarantee. Existing scenario parser stores those same
+source fields, and validates numeric climate against configured tables.
+
+The complete city Load1002e170..1002ebaf HEAD branch stores only sales+60c from
+saved[28] (1002e30e..1002e352); HEAD2 also restores trade sales/purchases from38/3c.
+Neither restores the booking stamp+a or pending bill words (original scratch).
+Cost1/2 are not restored from these headers: building creation/load reconstructs
+them. The exact modern policy must preserve all authoritative native booking
+state instead of reapplying original quantization or dropping pending income.
+
+### Executor B1b primary lifecycle facts (contract review input)
+
+Type cost getter is AnnoGame1000a5a0: selector2 at1000a5b4..c4 zero-extends the
+word[type+21c+2*state]. Existing running_cost[0/1] matches the source PROD3 words.
+Creation1002518b..100251f1 asks the building property slot+c4(8e) for its active
+selector, then calls type+cc(2,selector), building+90 for statistic kind, and adds
+to the city+70. Removal100255e4..10025645 repeats that selector/getter sequence
+and subtracts city+74 before destruction. Repeated remove must not reach this
+subtraction after the slot is already gone.
+
+The raw vtable audit (cache/econ-book1/B1/stat-getters.json) covers the named
+production, service, market, house, plain and military classes. All inspected
+building+90 entries resolve10025400, `mov eax,1; ret`. Do not infer kind2 merely
+from a military production/list category. Kind2 is an existing separate city
+statistics bucket, not evidence that each military class actually returns2.
+
+Manual switches: Workshop100684c0..d9 uses its old switched_on byte and requested
+new byte. Dual10069050..10069130 and SmallFarm1006fbd0..1006fc77 compute old
+OR(line switches) and new OR(changed line,other line), normalized0/1, before
+calling10072a60. Its equal-old/new guard returns before accounting; otherwise
+it subtracts old cost then adds new cost to the building's statistic kind. A
+second line switch that keeps OR=1 therefore changes no running-cost total.
+The13 direct callers of10072a60 are retained in direct-call-xrefs.json; production
+blocked-flag notifications are distinct from this manual selector. Current
+SetProductionLineCmd supports Workshop/Farm/Mine/WeaponsWorkshop/SmallFarm;
+current MarketStall switches are not modelled (SupplierModel flags default-on),
+so no new stall switch command is implied. Stall's original property8e at
+10070310 returns whether an enabled line has a nonzero output good. Base/service/
+house property8e is100253f0, constant1; inactive merely because no resident stock
+or output is available must not be invented for those classes.
+
+**House replacement needs a distinct rule, not an assumed helper call.** Upgrade
+1002cbe0..1002cdbd and downgrade1002cdd0..1002cf52 detach/attach the type and adjust
+residents/counts. They call1002c790 (redraw/placement function, ends1002c82d), not
+the adjacent general replacement function1002c830. That latter function *does*
+subtract old cost and add new cost at1002c881..1002c8f5. House attachment75b10/
+75b70 forwards type/city cases to732d0/73340; those only replace/clear pointers
+and type flags. SetGroup76b90 has no city cost call. Therefore the inspected
+house upgrade/downgrade path does not itself replace city running-cost totals.
+This remains under independent primary review before a modern contract uses it.
+
+A direct Anlagen inventory found81 PIONIER/SIEDLER/BUERGER/KAUFLEUTE/ARISTOKRATEN
+entries;80 have costs0/0, one (3979 PIONIER)10/20. Hash remains
+b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75. Do not
+incorrectly claim every original house has zero costs or silently repair a
+historical contribution when a modded replacement changes costs. Native cost
+reconstruction versus authoritative history must be decided with this actual
+path, not a scan-of-current-types assumption. No engine implementation yet.

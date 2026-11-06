@@ -1762,10 +1762,13 @@ void Viewer::update_title() {
         }
         title +=
             " — " + dev_title(*snap, *dev_, knowledge_->check(*dev_, snap.get()), latest, note);
-        if (snap->inspection) {
-            title += " — " + snap->inspection->kind;
-            if (!snap->inspection->status.empty()) {
-                title += " " + snap->inspection->status;
+        // Against the hover read just now (dev_->hover()), not the one `inspection` answered: a
+        // hover that has moved since, or landed on empty ground, must not show the old building's
+        // line (W4-SETTLEMENT-1 W7 review, finding 3).
+        if (const BuildingInspection* insp = live_inspection(*snap, dev_on, dev_->hover())) {
+            title += " — " + insp->kind;
+            if (!insp->status.empty()) {
+                title += " " + insp->status;
             }
         }
     }
@@ -1870,14 +1873,20 @@ void Viewer::script_tick() {
     // The developer inspection UI's facts (W4-SETTLEMENT-1 W5): available in any session, not
     // only an opening one — Proof B (an existing-town session with no ship-start opening) needs
     // these to assert production/worker activity, which opening_facts() below never reports.
-    if (st.snapshot && st.snapshot->inspection) {
-        const BuildingInspection& insp = *st.snapshot->inspection;
-        st.facts["inspection.kind"] = insp.kind;
-        st.facts["inspection.status"] = insp.status;
-        st.facts["inspection.type"] = std::to_string(insp.type.v);
-        st.facts["inspection.prodtype"] = std::to_string(insp.prodtype);
-        st.facts["inspection.tile.x"] = std::to_string(insp.tile.x);
-        st.facts["inspection.tile.y"] = std::to_string(insp.tile.y);
+    // Against the live hover, not just whatever `inspection` last answered (W4-SETTLEMENT-1 W7
+    // review, finding 3): while paused no new turn publishes to retract a stale answer once the
+    // hover moves, lands on empty ground, or the tool is switched off.
+    if (st.snapshot != nullptr) {
+        if (const BuildingInspection* insp =
+                live_inspection(*st.snapshot, dev_ != nullptr && dev_->enabled(),
+                                dev_ != nullptr ? dev_->hover() : std::nullopt)) {
+            st.facts["inspection.kind"] = insp->kind;
+            st.facts["inspection.status"] = insp->status;
+            st.facts["inspection.type"] = std::to_string(insp->type.v);
+            st.facts["inspection.prodtype"] = std::to_string(insp->prodtype);
+            st.facts["inspection.tile.x"] = std::to_string(insp->tile.x);
+            st.facts["inspection.tile.y"] = std::to_string(insp->tile.y);
+        }
     }
     if (opening_ != nullptr) {
         for (auto& [key, value] : opening_facts()) {

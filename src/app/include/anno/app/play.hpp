@@ -181,6 +181,17 @@ struct PlayFeedback {
 [[nodiscard]] std::uint64_t facts_turn_for(const PlaySnapshot* opening_snapshot,
                                             const PlaySnapshot* live_snapshot);
 
+/// `snapshot.inspection` when it is still live, nullptr once it is stale (W4-SETTLEMENT-1 W7
+/// review, finding 3): the dev tool must be enabled and its tile must be the one currently
+/// hovered. `inspection` answers the tile `request_inspect` was last given, one turn behind, and
+/// while paused no new turn publishes to retract it (PlayRunner::note_behind just republishes the
+/// same answer) — so a hover that has since moved to another building, to empty ground, or a dev
+/// tool that was switched off must be caught here, against the *current* hover, not by waiting
+/// for the sim to catch up.
+[[nodiscard]] const BuildingInspection* live_inspection(const PlaySnapshot& snapshot,
+                                                         bool dev_enabled,
+                                                         std::optional<sim::TileXY> hover);
+
 /// What one turn did, for the window trace (round ec, B2; docs/app/window-trace.md): the commands
 /// it applied, the refusals among them (from the turn's results, round ee: the reasons in command
 /// order), and the batch it pushed. `published` is read just before the batch enters the mailbox,

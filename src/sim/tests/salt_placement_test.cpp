@@ -1119,6 +1119,9 @@ Terms terms_of(Chain& c) {
     t.u_store = I(t.salz_store) - I(c.salz_store0) - I(t.salz_unloaded) + I(t.taken);
     t.u_buy = I(t.bought) - I(t.taken);
     t.u_deliver = I(t.bought) - I(t.delivered) - I(t.res_lost) - I(t.res_cargo);
+    // u_house: the merge's own per-delivery closure (the stock a delivery raised equals what it was
+    // meant to raise). It does NOT see a direct write into a house's stock between deliveries: house
+    // stock also falls by consumption and moves with upgrades, which this ledger does not model.
     t.u_house = I(get(st.residents.stock_primary_by_goods, kSalz) + get(st.residents.stock_replay_by_goods, kSalz)) -
                 I(get(st.residents.stock_expected_by_goods, kSalz));
     return t;
@@ -1163,6 +1166,16 @@ TEST_CASE("salt chain X3: the real arm delivers salt to households and every led
     // receipt beyond the baseline: more SALZ left the store for households than the preload held
     CHECK(t.taken > c->salz_store0);
     CHECK(t.delivered > 0);
+    // WHO lifted the ore: the saltworks' own carriers (home = the saltworks), not a market cart
+    std::uint64_t by_works = 0, by_others = 0;
+    for (const auto& [key, n] : c->stats.loaded_by_home) {
+        if (key.first != c->mine) continue;
+        (key.second == c->works ? by_works : by_others) += n;
+    }
+    MESSAGE("ore lifted from the new mine: by the saltworks' carriers " << by_works << ", by any other home " << by_others);
+    CHECK(by_works == t.ore_loaded);
+    CHECK(by_works > 0);
+    CHECK(by_others == 0);
     // and the new mine is the only producer: the imported mine stayed inert
     const sim::Building* imported = find_type(c->sw.w, 1203, c->mine);
     REQUIRE(imported != nullptr);
@@ -1207,9 +1220,11 @@ TEST_CASE("salt chain X3: road and carrier reach differ across the legal sites a
         std::uint8_t rot;
         bool connects;
     };
-    // sampled from the 356 legal sites (docs 18.1) by distance from the saltworks (351,363): the four
-    // within 10 tiles reach it (its carrier's search radius is 16), the two beyond 15 tiles produce
-    // ore but no carrier ever lifts it
+    // sampled from the 356 legal sites (docs 18.1), nearest to farthest by the Euclidean tile distance
+    // from the saltworks' origin: the four within 10 tiles are lifted, the two beyond 15 tiles are
+    // not. The saltworks type's action radius is 16 and its carrier searches the SearchArea disc
+    // around the footprint; radius and road connectivity are NOT separated by this test (a far site
+    // may fail either), it pins only the measured outcome.
     for (const Site s : {Site{352, 360, 1, true}, Site{357, 363, 0, true}, Site{358, 365, 0, true},
                          Site{359, 369, 1, true}, Site{358, 377, 0, false}, Site{365, 381, 3, false}}) {
         auto c = start_chain(Arm::NoNewMine, true);
@@ -1283,16 +1298,36 @@ TEST_CASE("salt chain X3: with the preloads in place the new mine adds ore") {
     CHECK(r.ore_loaded > 0);
     CHECK(r.ore_store > b.ore_store);
     CHECK(b.ore_loaded == 0);
-    // PRNG: the mine, the saltworks and the carriers add no draw site. The only draws that differ are
-    // the households' own (HouseWalkerTarget, HouseVariant), which depend on the state the extra
-    // salt changes; every other site agrees exactly.
-    auto strip = [](std::map<sim::DrawSite, std::uint64_t> m) {
-        m.erase(sim::DrawSite::HouseWalkerTarget);
-        m.erase(sim::DrawSite::HouseVariant);
-        return m;
-    };
-    CHECK(strip(real->draws) == strip(base->draws));
-    CHECK(real->draws.at(sim::DrawSite::FarmWorkerDispatch) == base->draws.at(sim::DrawSite::FarmWorkerDispatch));
+}
+
+TEST_CASE("salt chain X3: a payment-matched control has the same draws at every step as the real arm") {
+    // The construction PAYMENT (gold 700, HOLZ 15 t, WERKZEUG 5 t) changes city stock and gold, and
+    // with live households that alone moves the households' own draws (HouseWalkerTarget,
+    // HouseVariant) from step 2,052 of the run: the producer-removed arm (mine built and paid, then
+    // demolished before it works) is the payment-matched control. Against it the real arm, which
+    // also produces and delivers salt, has the same PRNG cursor and the same draws of every site at
+    // every step: the mine, the saltworks and the carriers add no draw. Which household mechanism
+    // consumes HOLZ or WERKZEUG is NOT established here.
+    auto real = start_chain(Arm::Real, false);
+    auto paid = start_chain(Arm::ProducerRemoved, false);
+    auto none = start_chain(Arm::NoNewMine, false);
+    if (!real || !paid || !none) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    step_chain(*real, 4000);
+    step_chain(*paid, 4000);
+    step_chain(*none, 4000);
+    CHECK(terms_of(*real).works_made > 0);
+    REQUIRE(real->cursors.size() == paid->cursors.size());
+    CHECK(real->cursors == paid->cursors);
+    CHECK(real->draws == paid->draws);
+    // the payment is the cause: with no payment at all the households' draws differ
+    CHECK(none->cursors != paid->cursors);
+    std::size_t first = 0;
+    while (first < none->cursors.size() && none->cursors[first] == paid->cursors[first]) ++first;
+    MESSAGE("no-payment arm diverges from the paid arm at step " << first);
+    CHECK(first < 4000);
 }
 
 TEST_CASE("salt chain X3: with the households not live the mine leaves the PRNG cursor equal at every step") {

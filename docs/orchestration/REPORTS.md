@@ -13860,3 +13860,65 @@ indefinitely.
 rule, this branch (`task/W4-settlement-1`) is pushed to `origin` with this report. Ordinary push
 only; `main` and other lanes' branches are untouched.
 
+**Correction (owner, 2026-11-06): `gatecheck2` above is not valid evidence for `743ccf9c` — it
+silently built the live worktree, not the clean checkout; `picture_matrix_contract` is OPEN, not
+cleared.** Two things stated as settled above were wrong:
+
+1. *`gatecheck2`'s build-failure list came from the live executor worktree, not the clean
+   `-gatecheck` checkout, due to a real bug in `tools/test/wsl_gate.sh`.* The shared build dir
+   `$HOME/anno-build/wsl-gate` still held `CMakeCache.txt` left over from the earlier, invalid
+   `w7app1` run against the *live* worktree (`/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1`).
+   The script's old configure gate was only `if [ ! -f "$B/CMakeCache.txt" ]` — cache present, for
+   *any* source, means "skip configure" — so `gatecheck2` never configured against the intended
+   `-gatecheck` checkout at all; it relinked the leftover live-worktree object tree. Confirmed from
+   that run's own `wsl-gatecheck2-configure.log` not existing (no "configure rc=" line was ever
+   written) and from `wsl-gatecheck2-build.log`, where every compiled path is under
+   `/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1/`, not `...-gatecheck/`, with only 94 build
+   steps run — not a real `all`-target build of the clean tree. So the three pre-existing
+   `-Werror` breaks that run reported are still real and still verified verbatim on `origin/main`
+   (`049b0270`, unchanged above) — that evidence stands — but they were demonstrated against the
+   *live worktree's* source tree, not against `743ccf9c` specifically, so `gatecheck2`'s `BLOCKED`
+   verdict is **not acceptance evidence for `743ccf9c`** and is superseded, pending a real rerun.
+
+2. **Fix, in `tools/test/wsl_gate.sh`:** the configure gate now compares the build dir's own
+   recorded source (`CMAKE_HOME_DIRECTORY:INTERNAL=` from `$B/CMakeCache.txt`) against the
+   worktree actually being tested (`$W`), via `realpath`, before trusting an existing cache; any
+   mismatch wipes `$B` and reconfigures fresh. The gate's provenance file (`$S`) also now records
+   the build dir's actual configured source, read back from `CMakeCache.txt` itself after
+   configure, not just echoed from `$W`, so a future run can be audited the same way this bug was
+   caught. **Demonstrated, not just reasoned about:** a scratch build dir was seeded with
+   `CMAKE_HOME_DIRECTORY:INTERNAL=/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1` (the exact
+   live-worktree path that caused the real bug), then the fixed script was run against the
+   `-gatecheck` checkout (`743ccf9c`) with that scratch dir as `--build-dir`. Observed in the
+   run's own log: `stale build dir: ... was configured for source
+   '/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1' but this run tests
+   '/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1-gatecheck'; wiping ... and reconfiguring`,
+   followed by `configure rc=0`, followed by `build dir source (from CMakeCache.txt)
+   /mnt/e/anno1503-worktrees/anno1503-W4-settlement-1-gatecheck` — correctly matching `$W`, not the
+   stale entry. The run was capped at 150s (`timeout -s TERM 150`) and did not run the real build
+   or test lanes to completion — this demonstrates only the detect/wipe/reconfigure/provenance fix
+   itself, not a new W7 result. The scratch build dir was deleted manually afterward (the run's own
+   `EXIT` trap did not fire, since `timeout`'s `SIGTERM` killed the process without running it —
+   an artifact of this ad hoc demo harness, not of the production gate path, which still exits
+   normally on every real pass/fail/invalid branch as already verified earlier in this package).
+
+3. **`picture_matrix_contract` is OPEN, not cleared — correcting the "no evidence of being
+   broken" claim above.** That claim rested on reading `main.cpp`'s `fail(2, ...)` logic, which is
+   not evidence of the actual binary's behaviour. The only two real observations remain exactly
+   what they were: `exit 127` from the gate's own (contaminated, per point 1's mechanism — a stale
+   build) run, and `exit 0` from a separate out-of-band probe; the test expects `exit 2`. Neither
+   matches, and neither has been validated against a correctly-configured, clean build. This case
+   has **not yet been tested validly** and remains open; only a real gate run through the now-fixed
+   script, on a clean checkout, will actually test it.
+
+**Status now:** per the owner's instruction, no further gate run is attempted in this entry.
+Main's own C++ CI has been red since `944cec89`, and this package's tested base `3b74201f` is red
+too (confirmed above); the Codex orchestrator owns fixing `main`, not this package, and the sim
+lane is explicitly not to be patched here. This package now waits: once `main` is green, adopt it
+the reviewed way (compare histories, port only what's missing — not a blind merge), then rerun W7
+through the fixed `tools/test/wsl_gate.sh` on a fresh clean checkout with a genuinely fresh build
+folder, running every lane including sim, and only then remove the `-gatecheck` diagnostic
+worktree (this package's own, not another executor's — safe to delete once that final run is
+done, not before). Independent review of this package's diff is still **not claimed here** —
+left for the owner once W7 has a valid result, as instructed.
+

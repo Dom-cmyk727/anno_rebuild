@@ -150,6 +150,24 @@ fi
 echo "start $(date -Is)" >> "$S"
 uptime >> "$S"; free -m | sed -n 2p >> "$S"
 
+# A shared build dir (WSL disk rules above) can be left over from a *different* worktree's run if
+# that run was killed or raced before cleanup ran (this is exactly how gatecheck2 silently built
+# the live executor worktree instead of the intended clean checkout on 2026-11-06: $B/CMakeCache.txt
+# still pointed at the live worktree, so the "if cache missing, configure" check below skipped
+# configure entirely and the stale tree's object files got relinked against $W's sources). Detect
+# that by comparing the cache's own recorded source directory to $W, not just whether a cache file
+# exists at all, and wipe+reconfigure on any mismatch.
+if [ -f "$B/CMakeCache.txt" ]; then
+  CACHED_HOME=$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$B/CMakeCache.txt")
+  REQ_HOME=$(realpath "$W" 2>/dev/null || printf '%s' "$W")
+  CACHED_HOME_RESOLVED=$(realpath "$CACHED_HOME" 2>/dev/null || printf '%s' "$CACHED_HOME")
+  if [ "$CACHED_HOME_RESOLVED" != "$REQ_HOME" ]; then
+    echo "stale build dir: $B was configured for source '$CACHED_HOME' but this run tests '$W'; wiping $B and reconfiguring" >> "$S"
+    rm -rf "$B"
+    mkdir -p "$B"
+  fi
+fi
+
 if [ ! -f "$B/CMakeCache.txt" ]; then
   cmake -S "$W" -B "$B" -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=/usr/bin/g++-13 \
     -DSDL_UNIX_CONSOLE_BUILD=ON -DANNO_SANITIZE=ON -DANNO_BUILD_VIEWER=ON -DANNO_BUILD_GPU=ON -DANNO_WARNINGS_AS_ERRORS=ON \
@@ -157,6 +175,10 @@ if [ ! -f "$B/CMakeCache.txt" ]; then
     -DFETCHCONTENT_SOURCE_DIR_WGPU_NATIVE="$OLD/wgpu_native-src" > "$G/wsl-$TAG-configure.log" 2>&1
   echo "configure rc=$? $(date -Is)" >> "$S"
 fi
+# Provenance: record the source directory this build tree is actually configured against, read
+# back from CMake's own cache rather than just echoing $W, so a future run can be audited for the
+# same mismatch this fix was written to catch.
+echo "build dir source (from CMakeCache.txt) $(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$B/CMakeCache.txt")" >> "$S"
 BUILD_START=$(date +%s)
 cmake --build "$B" -j 12 > "$G/wsl-$TAG-build.log" 2>&1; RC=$?
 echo "build rc=$RC elapsed=$(( $(date +%s) - BUILD_START ))s $(date -Is)" >> "$S"

@@ -10,6 +10,7 @@
 // (60, 10). Player 0's ship S (type 9510 of synthetic::make_cargo_types: BEWOHNTYPE 113, four cargo
 // holds of 50 t) is at tile (10, 10) with four empty holds. City 0's store holds what a test says.
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -1599,4 +1600,110 @@ TEST_CASE("load sailing: a segment started after the load has the new factor, th
     }
     CHECK(ship(loaded, 2).parent == sim::FigureId{1});
     CHECK(loaded.check_invariants().empty());
+}
+
+TEST_CASE("expansion cargo boundary: closer rival never overrides named owner and stale target") {
+    // Declared synthetic geometry, independent of the blocked genuine voyage. Rival's footprint
+    // starts one tile from the ship, own warehouse five tiles away; both are in cargo range.
+    Setup s;
+    s.stock[kWood] = 3 * kT + 192;
+    s.stock1[kWood] = 9 * kT;
+    s.rival_x = 11;
+    s.owner = [](int x, int y) { return x >= 11 && x < 15 && y >= 10 && y < 14 ? 1U : 0U; };
+    sim::World w = make(s);
+    const auto own = bid(w, 0, 15, 10), rival = bid(w, 1, 11, 10);
+    const auto rival_stock = city(w, 1).stock.stock;
+    const auto start = totals(w);
+    expect_refused(w, 0, cmd(1, rival, 0, kWood, 1), sim::Reject::NotCityOwner);
+    load_ok(w, 0, cmd(1, own, 0, kWood, 2), 2 * kT, 0);
+    CHECK(city(w, 0).stock.stock[kWood] == kT + 192);
+    CHECK(city(w, 1).stock.stock == rival_stock);
+    expect_refused(w, 0, ucmd(1, rival, 0, kWood, 1), sim::Reject::NotCityOwner);
+    unload_ok(w, 0, ucmd(1, own, 0, kWood, 1), kT);
+    CHECK(ship(w).holds[0] == sim::ShipHold{kWood, kT});
+    CHECK(city(w, 0).stock.stock[kWood] == 2 * kT + 192);
+    CHECK(city(w, 1).stock.stock == rival_stock);
+    CHECK(totals(w) == start);
+
+    // The requests were prepared while selection succeeded. Demolition through the supported
+    // public API invalidates that exact identity; closer rival cannot be substituted at apply.
+    const auto pending_load = cmd(1, own, 0, kWood, 1);
+    const auto pending_unload = ucmd(1, own, 0, kWood, 1);
+    sim::DemolishCmd demolition;
+    demolition.city = sim::CityRef{sim::IslandId{0}, sim::CityNo{0}};
+    demolition.tiles = {{15, 10}};
+    REQUIRE(send(w, 0, demolition).r.ok());
+    REQUIRE(w.building_at(demolition.city, 15, 10) == nullptr);
+    expect_refused(w, 0, pending_load, sim::Reject::NoBuildingAtTile);
+    expect_refused(w, 0, pending_unload, sim::Reject::NoBuildingAtTile);
+    CHECK(city(w, 1).stock.stock == rival_stock);
+    CHECK(w.check_invariants().empty());
+}
+
+TEST_CASE("expansion cargo scale: named transfers stay local with unrelated legal content") {
+    // Measurement fixtures, not original-map voyages. Configuration sizes are test inputs;
+    // production cargo applies explicit IDs without adding a selection/world scan.
+    using Clock = std::chrono::steady_clock;
+    for (const std::uint32_t n : {1U, 16U, 64U}) {
+        Setup s;
+        s.stock[kWood] = 4 * kT + 192;
+        s.stock1[kWood] = 9 * kT;
+        s.owner = [](int x, int y) { return x >= 60 && x < 64 && y >= 10 && y < 14 ? 1U : 0U; };
+        auto spec = spec_of(s);
+        spec.settings.world_width = spec.settings.world_height = 512;
+        for (std::uint32_t i = 0; i < n; ++i) {
+            spec.islands[0].cities[0].buildings.push_back({.type = kKontor,
+                                                           .x = 22 + static_cast<int>(i % 12) * 4,
+                                                           .y = 20 + static_cast<int>(i / 12) * 4});
+            const int x = 200 + static_cast<int>(i % 8) * 24;
+            const int y = 100 + static_cast<int>(i / 8) * 24;
+            auto island = syn::plain_island(i + 1, x, y, 16, 16);
+            island.owner_runs = {{0, 256}};
+            auto c = syn::plain_city(0, 0);
+            c.stock = std::vector<std::uint32_t>(s.goods_count, 0);
+            c.stock[kWood] = i + 1;
+            c.buildings.push_back({.type = kKontor, .x = x + 4, .y = y + 4});
+            island.cities.push_back(std::move(c));
+            spec.islands.push_back(std::move(island));
+        }
+        auto made = sim::World::create(spec, s.types, s.cfg, s.rules);
+        REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string() : made.error()));
+        auto w = std::move(made).value();
+        REQUIRE(w.check_invariants().empty());
+        const auto own = bid(w, 0, 15, 10);
+        const auto before = snap(w);
+        const auto conserved = totals(w);
+        const sim::Command load{sim::PlayerId{0}, cmd(1, own, 0, kWood, 1)};
+        const sim::Command unload{sim::PlayerId{0}, ucmd(1, own, 0, kWood, 1)};
+        for (int sample = 0; sample < 16; ++sample) {
+            const auto a = Clock::now();
+            const auto loaded = w.apply(load);
+            const auto b = Clock::now();
+            REQUIRE(loaded.ok());
+            REQUIRE(loaded.records.size() == 1);
+            CHECK(loaded.records[0].transferred_88 == kT);
+            CHECK(city(w, 0).stock.stock[kWood] == 3 * kT + 192);
+            CHECK(ship(w).holds[0] == sim::ShipHold{kWood, kT});
+            const auto c = Clock::now();
+            const auto unloaded = w.apply(unload);
+            const auto d = Clock::now();
+            REQUIRE(unloaded.ok());
+            REQUIRE(unloaded.records.size() == 1);
+            CHECK(unloaded.records[0].transferred_88 == kT);
+            CHECK(city(w, 0).stock.stock[kWood] == 4 * kT + 192);
+            CHECK(ship(w).holds[0] == sim::ShipHold{});
+            const auto after = snap(w);
+            CHECK(after.stocks == before.stocks); // every remote city and closer/rival stock
+            CHECK(after.money == before.money);
+            CHECK(after.cursor == before.cursor);
+            CHECK(totals(w) == conserved);
+            MESSAGE("cargo_scale extra_islands="
+                    << n << " target_buildings=" << n + 1 << " sample=" << sample << " load_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count()
+                    << " unload_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(d - c).count());
+            (void)w.drain_events();
+        }
+        CHECK(w.check_invariants().empty());
+    }
 }

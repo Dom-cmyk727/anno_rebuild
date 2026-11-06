@@ -298,3 +298,39 @@ Do not silently amend published133, guess a shared next number, or disguise the
 missing15 as an inactive warehouse. E2 remains unapproved; E3/E5 genuine accounting
 acceptance depends on the correction. Independent cargo/isolation/scale work can
 continue while the compatibility decision is obtained.
+
+### Independent work while the founding compatibility decision is pending
+
+The isolated original-data publicFound reproducer at clean e1369d7a is a terminal
+FAIL:1 selected/0 executed passes/1 failed,56 of60 assertions pass; no empty,
+skips, incomplete or sanitizer diagnostics. The default-off legal control retains
+0accounts and29650gold. Enabled133 actually retains0 instead of15 and remains
+29650 instead of29649 after its first booking. Both actual native snapshots are
+preserved without repair in E2/founding-repro-01. The six separately required
+contracts each pass1/1. Receipts canonical-debug-02-receipt.json and
+canonical-founding-repro-01-receipt.json pin the raw failures/artifacts; neither
+is superseded by a runtime correction yet.
+
+The short `expansion cargo boundary: closer rival never overrides named owner
+and stale target` fixture is deliberately synthetic. Ship10,10, rival footprint
+11,10..14,13 and own footprint15,10..18,13 distinguish closer geometry from named
+ownership. Hand ledger: own wood960→448 after512load→704 after256unload;
+ship0→512→256; rival2304 stays2304. PublicDemolish invalidates previously prepared
+Load/Unload IDs, both must refuse NoBuildingAtTile with byte-identical state.
+Existing short cargo predicate/fraction/data fixtures cover the other E4/E6
+refusal/partial/alternate-definition seams. This releases no dependent genuine
+voyage acceptance; review and raw focused gate remain pending.
+
+Independent E6 measurements use short labelled synthetic legal fixtures, with
+no timing threshold or production counter added. Cargo fixtures use1/16/64 extra
+islands and2/17/65 target-city warehouses,16 paired one-ton loads/unloads each.
+Each pair restores all cities' stocks, ship holds, money and PRNG; rival and remote
+balances are checked individually. Timed spans contain World::apply only. Static
+caller review must verify direct island/stable-ID map resolution, bounded cargo
+hold selection and the configured digital-disc outline; timings alone cannot
+prove asymptotic locality or count map comparisons. Route fixtures are128/256/512
+all-water squares with progressively longer legal diagonals,8 repeated queries
+each, deterministic coarse/fine pops and working bytes compared separately from
+index-build/query nanoseconds. A fine-budget1 counterexample must refuse with no
+partial route while the legal default query executes. These are local API cost
+measurements, not late-game acceptance or an original-map geometry substitute.

@@ -1088,8 +1088,8 @@ and15/15/15 for fixed C/G with unrelated objects; one producer selector inspects
 line regardless of world size. These count configured booking rows and selector
 lines, not every CPU instruction. Normal World::advance still visits its scheduled
 buildings/figures; total world wall time therefore includes that baseline work.
-The code's added booking work resolves configured goods then calculates them in
-two linear passes per due city. Cost updates read the changed payload/owner and
+The code's added booking work has three linear loops per successful due city:
+gather configured goods, calculate their products, then clear the booked bills. Cost updates read the changed payload/owner and
 two history buckets, without a world-building repair scan. Only whole-city
 cleanup scans that city's remaining buildings. Direct source/caller review is
 part of the no-global-scan proof; a row counter alone cannot detect an arbitrary
@@ -1154,3 +1154,37 @@ Windows-facing consumer delta (candidate133, not adoption authorization):
   command. MSVC build/UI integration and a live Windows economy remain NOT_RUN.
   Renderer/viewer, cloth/hunting/mining bodies, ownership commands, mod SDK and
   economic balance/profitability are outside this packet.
+
+
+### B6 measured local result and review precision
+
+Frozen c7880a64 Release gate selected1/executed1, failed/empty/skipped/incomplete/
+sanitizer0, GATE_END0, six required invocations separately1/1. Raw log SHA256
+`74dea1d57982680fa790c838e3d7d110afecfcb75b1ad6a0fccad6d01cd6867b`.
+`B6/release-samples.tsv` contains15 samples, three per legal fixture. Medians:
+
+| Cities | Goods | Unrelated buildings / figures | Booked rows | Pure5000 ms | World100 ms |
+|---:|---:|---:|---:|---:|---:|
+|1|15|0 / 0|15|0.052084|1.093167|
+|4|31|64 / 32|124|0.090167|1.388166|
+|8|63|256 / 128|504|0.183625|1.647791|
+|1|15|64 / 32|15|0.053167|1.330291|
+|1|15|256 / 128|15|0.053125|1.487167|
+
+Whole-world values include the existing scheduler/object work. No measured latency
+threshold or general scale target is claimed. Single additional same-binary
+process over all five fixtures measured peak RSS9,682,944 bytes=9.234375MiB under
+Mac `/usr/bin/time -l` (1 case/251 assertions,0.03s process real); this is aggregate
+process peak, not per-city memory. Its separate samples/raw RSS are
+`B6/release-rss-samples.tsv` / `release-rss.log`. Host manifest `release-host.txt`
+observes no competing build/test at measurement, same18logical/48GiB/~1.5TiB free.
+`B6/receipt.json` independently validates15 rows, all checksums/work counts, sample
+ordinals, medians and11 source/config/executable/tool/evidence hashes.
+
+`/root/econ_b0_review` independently derived C×G counts, C×(G−1) initial balance
+increase and pure checksums5,000,070,000 /5,000,150,000 /5,000,310,000; verified the
+fixed15 mutant and all raw sample/receipt/RSS identities. No P1/P2. Its one wording
+correction is applied above: successful booking gathers, calculates AND clears in
+three linear loops, not an implication of two total loops. This is documentation
+precision only; no runtime or measurement input changed and no gate is restarted.
+Final B6 approval follows this docs-only precision commit. B7 remains required.

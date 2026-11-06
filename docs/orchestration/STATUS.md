@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-06, by the Codex orchestrator (MAIN-CI-1 repair ownership; gameplay lanes unchanged); Windows lane and the `main` CI note by the Claude Code orchestrator, 13:30.
+**Last updated:** 2026-11-06, by the Codex orchestrator (MAIN-CI-1 repair ownership; gameplay lanes unchanged); Windows lane and the CI note by the Claude Code orchestrator, 14:10.
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -38,18 +38,8 @@ exposed two self-referencing farm fixtures depending on optional NRVO; a
 no-elision ASan probe reproduces both lifetime defects. Their fixture-only
 repair is under verification. This is not closure.
 
-**`main`'s C++ CI is red** on all five build jobs (MSVC, GCC, GCC release, Clang ASan, macOS Clang). It has been red
-since `944cec89` (2026-11-05 22:38, the consolidated baseline); the last green run was `cafa74d5`. On `e0bb6be7`:
-- `src/sim/tests/integration_identity_test.cpp:27`: `std::filesystem::path` is used without `<filesystem>` (MSVC, GCC
-  and Clang);
-- `src/sim/src/script_runtime.cpp:146`: `-Werror=null-dereference` (GCC release);
-- macOS: `economy_loop_fresh_process`, `economy_loop_changed_command_fresh_process`, `script2_synthetic_fresh_process`
-  and `script2_original_fresh_process` fail.
-
-A WSL GCC 13 build with `-Werror` also stops in `small_farm_worker_test.cpp` (`std::function` without `<functional>`,
-`-Wrange-loop-construct`), `unit_import_test.cpp:414/423` (`-Wrange-loop-construct`) and `scenario_test.cpp`
-(`-Wsign-conversion`). That build compiled the Windows executor's live worktree, not a clean checkout, so treat this list
-as a lead. Every task branch based on `main` since `944cec89` inherits these failures.
+**CI at `92e4817b`:** all ten jobs pass, the first green run since `944cec89` (red from 2026-11-05 22:38). Closing
+MAIN-CI-1 and publishing the intake pin are the Codex orchestrator's.
 
 ### Windows executor
 
@@ -57,17 +47,18 @@ as a lead. Every task branch based on `main` since `944cec89` inherits these fai
   proven in the real window.
   - The owner dispatched it in chat on 2026-11-06. It is not on the board yet.
   - **Done:** W2–W5, with the MSVC regression gate green.
-  - **Now:** the W7 WSL ASan/UBSan gate is **BLOCKED** by the red `main` above; the branch's base `3b74201f` is red
-    on CI too.
+  - **Now:** the W7 WSL ASan/UBSan gate is **BLOCKED** until the branch adopts the MAIN-CI-1 intake pin; its base
+    `3b74201f` is red on CI.
     - WSL now runs from E:, and the gate script follows the new WSL disk rules (`6b327759`).
     - The first full run (`w7scoped`, 08:51) failed in every lane on the required `picture_matrix_contract`
       ("aggregate of a missing trace: exit 127, expected 2"). The cause is not yet found.
     - The app-lane rerun `w7app1` was voided and stopped.
     - The rerun `gatecheck2` was meant to use a clean checkout at `743ccf9c`. It reused a CMake cache that the voided
-      run had left, so it built the live worktree. It is not evidence of the clean head. The gate script needs a
-      fix: it must reconfigure when the cache belongs to another source folder.
+      run had left, so it built the live worktree. It is not evidence of the clean head. The gate script now
+      reconfigures when the cache belongs to another source folder (`2f2b45ac`).
+    - `picture_matrix_contract` stays open until a valid run tests it.
   - **Then:** the review and the owner's playtest card.
-- **Branch:** `task/W4-settlement-1`, head `f1dc0baf` (pushed).
+- **Branch:** `task/W4-settlement-1`, head `2f2b45ac` (pushed).
   - It is based on `task/W4-opening-2-main`: `main` `3b74201f` plus the reviewed W4-OPENING-CONTROLS-FLAKE delta.
 - **Also open:**
   - `task/W4-opening-2` (`3fd68746`): W4-OPENING-CONTROLS-FLAKE steps 0–3, on the older base `88968580`. It was adopted

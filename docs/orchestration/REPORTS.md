@@ -13444,7 +13444,7 @@ Current-owned branch/evidence and completedECON467373d2/MAP5ef163a6 preserved.
 ## MAP-EXPAND-1 — full local candidate gates (2026-11-06)
 
 Sourceca257614be0068840a9af4cb58f1abd9ffd6a9fb, ownedtask/MAP-EXPAND-1-main.
-E0–E6 independently approved; E7 affectedDebug75/75 and combinedASAN/UBSAN78/78
+E0–E7 independently approved; affectedDebug75/75 and combinedASAN/UBSAN78/78
 pass with seven required invocations separately1/1 and all other categories0.
 Real unchanged lan5-ship-a: same original ship/crew, two genuine founded islands,
 two completed new-wood freight cycles, freight-funded1310, exact money/goods
@@ -13458,8 +13458,9 @@ Runtime remains accepted coordinated134/ECONBK1, strictold133 refusal, defaults
 unchanged. Accepted portable7ba07750 and CLIcompanionf406374d already on main;
 no repeated gameplay merge, first-Mac135 intake or UI changes. Existing ECON and
 MAP-INTEGRATE branches/evidence remain intact. The exact old71af boundedreport
-is preserved verbatim. Fresh final report review remains pending; no main merge
-or push. Ordinary owned-branch publication is authorized after reviewed closeout.
+is preserved verbatim. Fresh final reviewer expand_boundary_review APPROVES sourceca257614 / report
+0a1cc073, no blocking P1/P2. This closing record is documentation only. No main
+merge or main push; ordinary owned-branch publication is authorized.
 
 [Consolidated handoff](reviews/2026-11-06-map-expand1.md),
 [consumer card](../testing/manual-expansion.md). Windows Load adapter/liveplaytest,

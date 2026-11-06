@@ -592,10 +592,11 @@ source/evidence, preserved failures and platform limits.
 
 ## Local candidate checkpoint — MAP-EXPAND-1 (2026-11-06)
 
-The second Mac's exactc5c7007f successor has independently approved E0–E6 and
+The second Mac's exactc5c7007f successor has independently approved E0–E7 and
 current-source gates atca257614: affectedDebug75/75, combinedASAN/UBSAN78/78,
 seven required contracts separately per gate, all other categories0. Fresh final
-integration review of the consolidated report remains pending. Two genuine
+integration reviewer expand_boundary_review APPROVES sourceca257614 / report
+0a1cc073 with no blocking finding. Two genuine
 founded islands, two freight cycles from real new wood, paid receiving build,
 five full native suffixes and honest/causally changed fresh replay are proved.
 Coordinated134/ECONBK1 preserves founding history and strictly refuses old133;

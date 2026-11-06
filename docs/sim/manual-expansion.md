@@ -1,6 +1,9 @@
 # MAP-EXPAND-1: second-island settlement and manual resupply
 
-## Current candidate — frozen gates passed, final review pending
+## Current candidate — E0–E7 independently approved
+
+Fresh final review APPROVES sourceca257614 / handoff0a1cc073, with no blocking
+P1/P2. This final closeout changes documentation only.
 
 Current tested source is ca257614be0068840a9af4cb58f1abd9ffd6a9fb on the owned
 task/MAP-EXPAND-1-main branch. State134/ECONBK1/PRNG5/replay4/command1/native1
@@ -20,7 +23,7 @@ No original resource, position, cargo loadout or permission was injected.
 | E4 | APPROVED4fa38e69, actual second cycle from further production | expand_e2_review |
 | E5 | APPROVED6c6e09cf, five full suffixes and causal fresh replay | expand_e0_review |
 | E6 | APPROVEDca257614, consumer card and bounded multisize measurements | expand_e2_review |
-| E7 | Gates PASS atca257614; fresh final report review pending | expand_boundary_review |
+| E7 | APPROVEDca257614 / handoff0a1cc073, Debug75/ASAN78 and fresh integration review | expand_boundary_review |
 
 Current affected Debug75/75 and combinedASAN/UBSAN78/78 pass, seven required
 contracts separately1/1 per gate, all other outcome categories0. CombinedSAN

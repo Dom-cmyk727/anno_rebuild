@@ -1711,7 +1711,8 @@ Windows control_run(bool live = true) {
 ///  - Households live: HouseWalkerTarget, HouseVariant and FarmWorkerDispatch follow economy state (any
 ///    small perturbation, even a payment-matched instant rebuild, moves them); the other sites are equal.
 template <class Interrupt, class Restore>
-void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore restore, bool quiet_worlds = true) {
+void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore restore, bool quiet_worlds = true,
+                     bool instant_exact = true) {
     const Windows control = control_run(true);
     // the low-stock setup is applied alike in every arm (it is the baseline the comparison stands on)
     CHECK(live_run.start_salz == 0);
@@ -1733,8 +1734,21 @@ void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore resto
     CHECK(instant.start_salz == 0);
     CHECK(instant.start_ore == 0);
     REQUIRE(instant.cursors.size() == quiet_control.cursors.size());
-    CHECK(instant.cursors.back() == quiet_control.cursors.back()); // the same number of draws overall
-    CHECK(instant.draws == quiet_control.draws);                     // at every site
+    if (instant_exact) {
+        CHECK(instant.cursors.back() == quiet_control.cursors.back()); // the same number of draws overall
+        CHECK(instant.draws == quiet_control.draws);                     // at every site
+    } else {
+        // a link whose demolition or rebuild is not a no-op for the rest of the economy (the markets cannot be
+        // rebuilt at all; a rebuilt saltworks has a new id and moves the existing state-following sites by a
+        // draw): only the sites that do not follow economy state must be equal
+        auto strip3 = [](std::map<sim::DrawSite, std::uint64_t> m) {
+            m.erase(sim::DrawSite::HouseWalkerTarget);
+            m.erase(sim::DrawSite::HouseVariant);
+            m.erase(sim::DrawSite::FarmWorkerDispatch);
+            return m;
+        };
+        CHECK(strip3(instant.draws) == strip3(quiet_control.draws));
+    }
     const Windows quiet = run_interruption("quiet", interrupt, restore, false, false, false);
     CHECK(quiet.start_salz == 0);
     CHECK(quiet.start_ore == 0);
@@ -1819,7 +1833,7 @@ TEST_CASE("salt interruption X4: the markets that carry the salt demolished and 
     CHECK(all_zero(w.p2, 4, true, true, true, true, true));
     // and there is no recovery without the restorable link
     CHECK(all_zero(w.p3, 0, true, true, true, true, true));
-    draws_unchanged(w, interrupt, restore);
+    draws_unchanged(w, interrupt, restore, true, false);
 }
 
 TEST_CASE("salt interruption X4: the saltworks demolished and rebuilt") {
@@ -1831,7 +1845,7 @@ TEST_CASE("salt interruption X4: the saltworks demolished and rebuilt") {
     CHECK(all_zero(w.p2, 0, true, false, false, false, false));
     CHECK(all_zero(w.p2, 4, true, true, true, true, true));
     CHECK(all_positive(w.p3, 3, true, true, true, true, true));
-    draws_unchanged(w, interrupt, restore);
+    draws_unchanged(w, interrupt, restore, true, false);
 }
 
 TEST_CASE("salt interruption X4: the stalls demolished and rebuilt") {

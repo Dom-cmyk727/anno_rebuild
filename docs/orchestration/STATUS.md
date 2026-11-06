@@ -4,7 +4,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted; gameplay assignments unchanged). Windows job details below retain the Claude Code orchestrator’s 14:10 checkpoint, including its `2f2b45ac` cache fix.
+**Last updated:** 2026-11-07, by the Claude Code orchestrator: W4-SETTLEMENT-1 reviewed, changes requested; 18
+real-file test failures found on `main`. Before that: 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted;
+gameplay assignments unchanged).
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -48,20 +50,20 @@ mirror still requires the owner/Windows sync after main publication.
 - **Now:** **W4-SETTLEMENT-1.** A developer inspection UI for live building, production and household state, built and
   proven in the real window.
   - The owner dispatched it in chat on 2026-11-06. It is not on the board yet.
-  - **Done:** W2–W5, with the MSVC regression gate green.
-  - **Now:** the W7 WSL ASan/UBSan gate awaits repair intake. Its inherited-main CI
-    prerequisite is cleared by MAIN-CI-1; take the portable repairs at the next
-    checkpoint, preserving this lane’s identity. Its own findings below remain open.
-    - WSL now runs from E:, and the gate script follows the new WSL disk rules (`6b327759`).
-    - The first full run (`w7scoped`, 08:51) failed in every lane on the required `picture_matrix_contract`
-      ("aggregate of a missing trace: exit 127, expected 2"). The cause is not yet found.
-    - The app-lane rerun `w7app1` was voided and stopped.
-    - The rerun `gatecheck2` was meant to use a clean checkout at `743ccf9c`. It reused a CMake cache that the voided
-      run had left, so it built the live worktree. It is not evidence of the clean head. The gate script now
-      reconfigures when the cache belongs to another source folder (`2f2b45ac`).
-    - `picture_matrix_contract` stays open until a valid run tests it.
-  - **Then:** the review and the owner's playtest card.
-- **Branch:** `task/W4-settlement-1`, head `2f2b45ac` (pushed).
+  - **Done:** W2–W5; the MAIN-CI-1 intake (`b7be2a1d`, accepted); a complete W7 run (`w7final2`).
+  - **Reviewed 2026-11-07: CHANGES REQUESTED** ([review](reviews/2026-11-07-w4-settlement-1-w7.md)).
+    - The W7 run's raw logs were deleted with its gate worktree. Three lanes fail and three sim tests never ran.
+    - Code findings: one clang-format blocker; `wait turns` still races; the inspection line can show the wrong building;
+      the gate script exits 0 on failed lanes and keeps its logs inside the tested worktree.
+    - `picture_matrix_contract` passes in all five lanes.
+  - **Now:** fix review items 1–8, then rerun W7 once with the logs kept outside the gate worktree.
+  - **Then:** the owner's playtest card.
+- **Found by this review, on `main` (not this package):** 18 real-file tests fail at `96775da4`. Hosted CI can't see
+  them because it has no game files.
+  - The strict scene loader (`f7c31ed8`) refuses `Single_01.sze`; only 11 of the 50 original scenes still load.
+  - The construction-eligibility check (`d2be23aa`) stage-locks the buildings the legal workload chooses.
+  - The tests are out of date; a separate main repair is proposed.
+- **Branch:** `task/W4-settlement-1`, head `384df19d` (pushed).
   - It is based on `task/W4-opening-2-main`: `main` `3b74201f` plus the reviewed W4-OPENING-CONTROLS-FLAKE delta.
 - **Also open:**
   - `task/W4-opening-2` (`3fd68746`): W4-OPENING-CONTROLS-FLAKE steps 0–3, on the older base `88968580`. It was adopted
@@ -127,7 +129,9 @@ Its later work is not accepted merely because expansion is complete.
 
 - **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).
 - **The opening playtest** in the live window (W4-OPENING-1, accepted 2026-11-05).
-- **W4-SETTLEMENT-1's playtest card,** once W7 is back.
+- **W4-SETTLEMENT-1's playtest card,** once review item 3 (the inspection line) is fixed.
+- **Who repairs main's 18 out-of-date real-file tests** (the W4-SETTLEMENT-1 review): the Windows lane, which alone
+  runs both the game-file and the GPU tests, or the Codex orchestrator.
 - **Optional:** overriding the River Q5 floor of 0.45 for `D_256x256_0045_5B` (W4-MAIN-1 review D1).
 - **Optional:** whether the enhanced water is lit from the top left again (OQ-026).
 

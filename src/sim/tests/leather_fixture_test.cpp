@@ -3,6 +3,8 @@
 // hides are a labelled stock written into the city store by the test; everything after the
 // store is the ordinary engine (a tannery built by a public BuildCmd, its carrier, the store, a
 // cart to the 1314 stall, the households). Kept out of every real-file ledger.
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -506,4 +508,117 @@ TEST_CASE(
     CHECK(la.u_hides == 0);
     CHECK(la.u_made == 0);
     CHECK(la.u_loaded == 0);
+}
+
+TEST_CASE("synthetic mechanics fixture: Release scale against unrelated content (opt-in measure)") {
+    // OPT-IN: runs only with ANNO_SIM_SUPPLY_SCALE set. Wall time is measured here only and NEVER
+    // asserted. The active chain (labelled hides, tannery, stall, households of player 0) runs
+    // for 100 000 ticks while player 2's town gets K more sheep farms (Farm tick, grazing) and K
+    // more tanneries (Workshop tick, idle) by its own public BuildCmds. Setup time (world load, the
+    // builds) and run time are separated; per-tick cost is run time over ticks. No multiplayer
+    // claim: one process, one thread, one world.
+    if (std::getenv("ANNO_SIM_SUPPLY_SCALE") == nullptr) {
+        MESSAGE("skipping: set ANNO_SIM_SUPPLY_SCALE=1 to run the Release samples");
+        return;
+    }
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    using Clock = std::chrono::steady_clock;
+    for (const int k : {0, 8, 16, 32}) {
+        const auto t0 = Clock::now();
+        auto A = start_leather(*o, kHides, true, true);
+        Cloth& c = *A->t;
+        sim::City* rival = nullptr;
+        sim::Island* rival_isl = nullptr;
+        for (auto& isl : sim::WorldTestAccess::islands(c.w)) {
+            if (isl && isl->index.v == kIsland) {
+                for (auto& ci : isl->cities) {
+                    if (ci && ci->owner.v == kOwner) {
+                        rival_isl = &*isl;
+                        rival = &*ci;
+                    }
+                }
+            }
+        }
+        REQUIRE(rival != nullptr);
+        sim::TypeId farm_type;
+        for (const sim::BuildingType& t : o->types->types()) {
+            if (t.cls == sim::RuntimeClass::Farm && t.has_prod && !t.output_goods.empty() &&
+                t.output_goods[0] == kWolle && !t.input_goods.empty() &&
+                t.input_goods[0] == kGras) {
+                farm_type = t.id;
+            }
+        }
+        REQUIRE(farm_type.v != 0);
+        sim::TileXY centre{0, 0};
+        for (auto& l : rival->index.lists) {
+            for (auto& b : l.slots) {
+                if (b && centre.x == 0) {
+                    centre = {b->x, b->y};
+                }
+            }
+        }
+        int built_farms = 0, built_tanneries = 0;
+        for (int round = 0; round < 2; ++round) {
+            const sim::TypeId type = round == 0 ? farm_type : A->tannery_type;
+            int& built = round == 0 ? built_farms : built_tanneries;
+            for (int r = 1; r <= 40 && built < k; ++r) {
+                for (int dy = -r; dy <= r && built < k; ++dy) {
+                    for (int dx = -r; dx <= r && built < k; ++dx) {
+                        if (std::max(std::abs(dx), std::abs(dy)) != r) {
+                            continue;
+                        }
+                        sim::Command cm;
+                        cm.issuer = rival->owner;
+                        cm.body = sim::BuildCmd{
+                            sim::CityRef{rival_isl->index, rival->number},
+                            {sim::PlacementWire{type, centre.x + dx, centre.y + dy, 0, 0, 0}}};
+                        if (c.w.apply(cm).ok()) {
+                            ++built;
+                        }
+                    }
+                }
+            }
+        }
+        const auto t1 = Clock::now();
+        std::uint64_t buildings = 0;
+        for (auto& isl : sim::WorldTestAccess::islands(c.w)) {
+            if (isl) {
+                for (auto& ci : isl->cities) {
+                    if (ci) {
+                        for (auto& l : ci->index.lists) {
+                            for (auto& b : l.slots) {
+                                buildings += b ? 1U : 0U;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        std::uint64_t ticks = 0;
+        const std::uint64_t start_tick = c.w.clock().tick();
+        while (c.w.clock().tick() < start_tick + kEnd) {
+            c.w.advance(100);
+            REQUIRE_FALSE(c.w.faulted());
+        }
+        ticks = c.w.clock().tick() - start_tick;
+        const auto t2 = Clock::now();
+        const LeatherLedger l = leather_ledger(*A);
+        CHECK(l.u_hides == 0);
+        CHECK(l.u_made == 0);
+        CHECK(l.u_loaded == 0);
+        const double setup_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        const double run_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
+        std::printf("SCALE k=%d farms_built=%d tanneries_built=%d buildings=%llu setup_ms=%.1f "
+                    "run_ms=%.1f ticks=%llu us_per_tick=%.2f made=%llu taken=%llu store=%llu\n",
+                    k, built_farms, built_tanneries, static_cast<unsigned long long>(buildings),
+                    setup_ms, run_ms, static_cast<unsigned long long>(ticks),
+                    run_ms * 1000.0 / static_cast<double>(ticks),
+                    static_cast<unsigned long long>(l.leather_made),
+                    static_cast<unsigned long long>(l.leather_taken),
+                    static_cast<unsigned long long>(l.leather_store));
+    }
 }

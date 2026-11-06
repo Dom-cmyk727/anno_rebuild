@@ -4421,8 +4421,7 @@ void publish(const char* name, const std::vector<std::uint8_t>& bytes) {
 
 } // namespace expansion_test
 
-TEST_CASE(
-    "expansion E2: actual sailing zero-source production export and public no-production control") {
+TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -4630,6 +4629,110 @@ TEST_CASE(
             << std::get<sim::Farm>(w.find_building(forest)->payload).out << " cart_active "
             << expansion_test::cart_wood(w, warehouse, wood) << " observed_cuts " << observed_cuts
             << " growth " << observed_growth);
+    // E3: continue this exact real ship/holds and world; no copied planning position enters it.
+    expansion_test::sail(run, recipe.destination);
+    const auto source_stock = command_test::city(w, ref).stock.stock;
+    const auto source_bills = command_test::city(w, ref).billed;
+    const auto account_tuple = [](const sim::CityAccounts& a) {
+        return std::tuple{a.stamp,           a.sales,      a.trade_sales,
+                          a.trade_purchases, a.civil_cost, a.military_cost};
+    };
+    const auto source_accounts = account_tuple(command_test::city(w, ref).accounts);
+    auto held = ship_of(w, 1).holds;
+    const auto second_found = run.apply(found_command(recipe.destination), 350);
+    REQUIRE(second_found.ok());
+    const auto destination_wh = second_found.records.at(0).building;
+    const auto destination_ref = expansion_test::city_of_warehouse(w, destination_wh);
+    REQUIRE(destination_ref.island != ref.island);
+    REQUIRE(destination_wh != warehouse);
+    CHECK(command_test::city(w, destination_ref).owner == sim::PlayerId{0});
+    CHECK(command_test::city(w, ref).owner == sim::PlayerId{0});
+    held[0].amount_88 -= 12 * 256;
+    held[2].amount_88 -= 5 * 256;
+    REQUIRE(ship_of(w, 1).holds == held);
+    const auto* destination_building = w.find_building(destination_wh);
+    REQUIRE(destination_building != nullptr);
+    CHECK(destination_building->type == sim::TypeId{1302});
+    CHECK(destination_building->x == 455);
+    CHECK(destination_building->y == 352);
+    CHECK(destination_building->byte0f == 0x30); // original accepted coast max&f0, ship-founding§4
+    const auto& destination_island = *w.islands()[destination_ref.island.v];
+    for (std::int32_t y = 352; y < 356; ++y)
+        for (std::int32_t x = 455; x < 459; ++x) {
+            const auto tile = destination_island.tile_index(x, y);
+            REQUIRE(tile != sim::kNoSlot);
+            CHECK(destination_island.tiles.owner(tile) == destination_ref.city.v);
+            CHECK(destination_island.tiles.object(tile) == 1302);
+            CHECK(destination_island.tiles.item_height(tile) == 0x30);
+            const auto* at = w.building_at(destination_ref, x, y);
+            REQUIRE(at != nullptr);
+            CHECK(at->id == destination_wh);
+        }
+    REQUIRE(command_test::city(w, destination_ref).accounts.civil_cost == 15);
+    REQUIRE(expansion_test::stock(w, destination_ref, wood) == 0);
+    const auto tool_freight = run.apply(
+        {sim::PlayerId{0}, sim::UnloadCmd{sim::FigureId{1}, destination_wh, 2, tools, 1}});
+    REQUIRE(tool_freight.ok());
+    REQUIRE(tool_freight.records.at(0).transferred_88 == 256);
+    held[2].amount_88 -= 256;
+    REQUIRE(ship_of(w, 1).holds == held);
+    REQUIRE(expansion_test::stock(w, destination_ref, tools) == 256);
+    const auto receiver = command_test::build(
+        0, destination_ref,
+        {command_test::at(sim::TypeId{1310}, recipe.receiver.x, recipe.receiver.y)});
+    const auto before_wood = w.save();
+    REQUIRE(run.apply(receiver).status == sim::Reject::CannotAfford);
+    REQUIRE(w.save() == before_wood);
+    const auto freight = run.apply(
+        {sim::PlayerId{0}, sim::UnloadCmd{sim::FigureId{1}, destination_wh, 0, wood, tons}});
+    REQUIRE(freight.ok());
+    REQUIRE(freight.records.at(0).transferred_88 == transferred);
+    held[0].amount_88 -= transferred;
+    REQUIRE(ship_of(w, 1).holds == held);
+    REQUIRE(expansion_test::stock(w, destination_ref, wood) == transferred);
+    const auto level = window_level(destination_island, *w.types().find(sim::TypeId{1310}),
+                                    recipe.receiver.x, recipe.receiver.y);
+    REQUIRE(level.has_value());
+    const auto received_building = run.apply(receiver, 50);
+    REQUIRE(received_building.ok());
+    const auto* placed = w.find_building(received_building.records.at(0).building);
+    REQUIRE(placed != nullptr);
+    CHECK(placed->byte0f == *level);
+    CHECK(destination_island.tiles.item_height(
+              destination_island.tile_index(recipe.receiver.x, recipe.receiver.y)) == *level);
+    CHECK(expansion_test::stock(w, destination_ref, wood) == transferred - 256);
+    CHECK(expansion_test::stock(w, destination_ref, tools) == 0);
+    CHECK(command_test::city(w, destination_ref).accounts.civil_cost == 20);
+    CHECK(command_test::city(w, ref).stock.stock == source_stock);
+    CHECK(command_test::city(w, ref).billed == source_bills);
+    CHECK(account_tuple(command_test::city(w, ref).accounts) == source_accounts);
+    auto end_holds = initial_holds;
+    end_holds[0].amount_88 -= 24 * 256;
+    end_holds[2].amount_88 -= 13 * 256;
+    CHECK(ship_of(w, 1).holds == end_holds);
+    expansion_test::source_ledger(w, stats, forest, warehouse, ref, wood, transferred);
+    for (const auto& actor : w.figures().list.slots)
+        if (actor && actor->home.valid()) {
+            CHECK(actor->owner == sim::PlayerId{0});
+            CHECK(actor->home ==
+                  warehouse); // only source owns any worker/carrier in this freight proof
+        }
+    for (const auto& [owner, cash] : initial_money)
+        CHECK(expansion_test::balances(w).at(owner) ==
+              cash - static_cast<std::int64_t>(run.construction[owner] + run.upkeep[owner]) +
+                  static_cast<std::int64_t>(run.income[owner]));
+    run.checkpoint();
+    const auto e3_log = sim::write_log(rec.log());
+    REQUIRE(e3_log.ok());
+    expansion_test::publish("e3-genuine.log", e3_log.value());
+    expansion_test::publish("receiving-city.save", w.save());
+    REQUIRE(w.check_invariants().empty());
+    MESSAGE("EXPANSION_E3 tick " << w.clock().tick() << " source " << ref.island.v << ","
+                                 << ref.city.v << " destination " << destination_ref.island.v << ","
+                                 << destination_ref.city.v << " freight " << transferred
+                                 << " receiver_height " << static_cast<unsigned>(*level) << " gold "
+                                 << gold_of(w, 0) << " construction " << run.construction[0]
+                                 << " upkeep " << run.upkeep[0]);
     w.set_transport_stats(nullptr);
 }
 

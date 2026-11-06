@@ -485,3 +485,18 @@ then exactly1first upkeep. The portable commit has no E1/E2 helper/voyage/manual
 history dependency; REPORTS gives the exact first-Mac intake. No defaultflip,
 mainmerge or push. E2's old failures remain failures; a current134 genuine gate
 is required before claiming E2 or proceeding with its dependent actual voyage.
+
+### E2 revalidation approved; E3 actual receiving proof
+
+E2 clean15b220b3 is independently APPROVED:1/1,8559asserts,32.01s,6required
+invocations separately1/1/allothercategories0. Actual134 source6cuts1536raw=
+1440consumed+96raw;45×14=630wood=182farmout+448warehouse;448=256export+192residue.
+Treasury30000−350−150−100−19=29381. Public off control27→19 and StockShort pass.
+E3 extends this exact world/ship through real second arrival/Found and paid1310:
+original coast byte48/4×4 footprint ownership, distinct island/city, exact second
+12wood/5tools and1tool unload, missingwood Build refusal byte-identical, produced
+freight unload and same paidBuild. Source stock/bills/accounts and workerhomes
+remain isolated across destination commands. Hand end holds26wood/10food/37tools/
+30tools; total construction1000gold, actual upkeep reconciled by allowners.
+Receiverheight comes from an independent raw terrain window, not placementhelper.
+E3 review/gate pending; no E4 repeat/native/full replay claim is implied.

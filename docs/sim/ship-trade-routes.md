@@ -126,5 +126,13 @@ measurement and review before the long gate. A deadline never supplies success.
 Release measurements use independent active-route/stop/unrelated-world sizes,
 raw samples and deterministic work counts; no late-game claim.
 
-R0 cheap gate and independent review are pending. R1 research is in progress.
+R0 APPROVED at ea7da855 by /root/expand_e0_review. Canonical baseline01 passes
+6/6 in0.09s; seven required invocations separately1/1; all failed/empty/skipped/
+incomplete/sanitizer categories0. Actual472 original files and unchanged manifest
+rehashed successfully. RawSHA256
+9c99210159ee16321fdd78033cf34a02093a9587684aead84c43ce9da7ccf2df.
+Host observations, exact source/binary/inventory/cache identities and input receipt
+are retained under cache/route1/R0. Review is retained under cache/route1/reviews.
+R1 original research/contract/reference is released; runtime remains gated on its
+independent approval.
 No runtime route state, behavior, schema or identity change is implemented here.

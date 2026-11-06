@@ -13522,3 +13522,17 @@ continues independently. Mirror sync remains with owner/Windows orchestrator.
 [Acceptance](reviews/2026-11-06-map-expand1-acceptance.md),
 [receipts](evidence/map-expand1-acceptance/receipts.json),
 [consumer card](../testing/manual-expansion.md).
+
+
+## MAP-ROUTE-1 R0 — adopted accepted base (2026-11-06)
+
+Ownedtask/MAP-ROUTE-1-main starts exactaccepted e0bb6be7, dispatch049b0270 /
+TASKSblob2c27c486. Completed expansiona4617184 and all prior branches/evidence
+preserved; movingmain not merged. R0 plan/host/input/baseline independently
+APPROVED at ea7da855 by expand_e0_review. CanonicalcheapDebug6/6, seven required
+contracts separately1/1, all other outcome categories0. All472 original inputs and
+manifest match accepted inventory. Raw/source/binary/inventory/cache receipts in
+cache/route1/R0. [Plan](../sim/ship-trade-routes.md). Route-only136 reserved,
+not salt135; current runtime still134. R1 original contract/reference is released
+and in progress; no runtime/schema change yet. Ordinary ownedbranch checkpoint
+publication follows owner rules; no main push, other-lane intake or UI change.

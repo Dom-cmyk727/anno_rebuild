@@ -682,7 +682,7 @@ money proof remains independent of that historical canary.
 
 | Requirement | Positive proof | Counterexample | Review |
 |---|---|---|---|
-| Genuine automatic freight | original manifest/loadout/sites; public source/destination founding and forester20roads; after Assign only Advance/observe through two positive512raw exports/receipts | inherited26t hold baseline is retained, first-load totalmade<1024 requires later new production | pending |
+| Genuine automatic freight | original manifest/loadout/sites; public source/destination founding and forester20roads; after Assign only Advance/observe through two positive768raw exports/receipts | inherited26t hold baseline is retained, first-load totalmade<1024 requires later new production | pending |
 | Complete ledgers | every advance closes tree/raw/farm/cart/source/export and all city/hold goods; all-owner money, city bills and zero income/trade/billed terms | no unexplained goods or money residual; same1310 Build refuses before and succeeds after | pending |
 | Controls | pre-workers world publicly Off forever; same bounded setup/route suffix yields zero source export/new production; inherited deliveries explicitly unqualified | separate real loaded-sailing Suspend/Resume/Cancel branch, no main interval commands | pending |
 | Reachable continuations | five R1-reviewed actual public cuts, each full remaining Advance/command/events/draws/actor/city/native suffix | no artificial partial transaction, source initial leg labelled possibly degenerate | pending R6 |
@@ -721,3 +721,42 @@ construction,13t tools and original food/sites/loadout are unchanged. No rule,
 resource, position, permission or identity change authorizes this recipe.
 The current R5 positive/control/table quantities use768/1536/29t; earlier2t
 proposal/failed evidence remains historical. Full revised canary is pending.
+
+### R5 reviewed unchanged-original automatic freight
+
+Independent `/root/expand_e2_review` APPROVE at tested
+`007d595e3f3841824548a859b70d89843a0fc66c`; only current acceptance-table512→768
+wording changed after the gate. Canonical03:1selected/1executed pass,69742
+assertions, five required contracts separately, all other categories0,162.47s.
+RawSHA `13b6d86c1e1a9ad16357062ac0143d3a779eb9f4d4b531644e5151fea04111f2`.
+All18 source/config/binary/log/artifact hashes frozen in R5/receipt-03.json;
+472 original input bytes plus manifest rehashed after execution, unchanged.
+
+Actual first collection39 setup advances;290 subsequent automatic advances.
+Source loads768 at239000 and334500, destination receives768 at287000 and382500.
+First end-load made1120 minus768 leaves352made wood, so the second768 export
+requires at least416 NEW MADE WOOD (Q8 units), not raw BAUM input. Per-advance
+nonnegative source/raw/farm/cart ledgers prove this causal deficit. Final3892
+made =1536export+2048source+308farmout, active woodcart0.36cuts credit9216raw
+BAUM=8896consumed+320farmraw, observed growth9; no raw/cart loss.
+
+Two foundings/801/20roads/1310 cost1000g,24t inherited founding wood plus1t
+produced receiver wood and13t tools. Human hold order26wood/10food/37tools/30tools;
+destination1280raw wood, tools0. Owner0 money30000−1000−(149source+106receiver
+city upkeep)=28745. Other four players keep30000 and their original ordered
+cargo. Per-owner/goods initial inventories plus actual sinks/production reconcile
+after every advance; all military/income/trade/billed unexplained terms zero.
+No-production sourceexport0 but inheriteddelivery1536; qualified productive
+cycles0 explicitly challenges the inherited-cargo false positive. Separate public
+Suspend/Resume/Cancel branch delivers768 and preserves baseline without repair.
+
+Reviewer independently decoded the genuine790-entry recording:765Advances,
+14Commands,11checkpoints. Assign entry490, first causal checkpoint491, three
+prior checkpoints; sole subsequent command is receiving Build788 after the
+two-cycle checkpoint787. Legal changed assignment29→28 differs at exactly one
+command byte. Five native cuts complete289/288/287/192/191 suffix advances plus
+the same Build and finish byte-identical at hash14057710047970295345. This is
+current native proof; fresh CLI replay/Release scale/SAN remain R6/R7.
+Review note `cache/route1/reviews/r5.md`; preserved failures/probes remain scoped
+to their original pins. No defaults, salt135, original resources or app changed.
+R6 released.

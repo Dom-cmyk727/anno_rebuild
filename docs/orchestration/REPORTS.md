@@ -13608,3 +13608,20 @@ other0;98unchanged passes reused explicitly. Diagnostic-only second attempt
 retained. Historical economy133 pins remain stale/unaccepted for136, not copied
 from main134. Exact receipts/review in route1/ci-intake and route1/reviews.
 R5 released; automatic original proof still pending.
+
+
+### MAP-ROUTE-1 R5 — original automatic production freight approved
+
+Tested007d595e, independent `/root/expand_e2_review` APPROVE; current table
+wording corrected afterward. Canonical1/1 (69742assertions), five required
+separately, allother0,162.47s; exact18hashreceipt and472unchanged input checks.
+Two3t automatic source/debit→receiver/credit cycles preserve inherited26t; first
+made1120 minusfirst768 leaves352, proving second768 requires≥416newmadewood.
+Original first2t premise failed faithfully; measured public collection plus29/3
+recipe fixes setup only, no gameplay/resource/identity change. Both failed full
+pilots and all short probes preserved. Human30000−1000construction−255cityupkeep
+=28745; otherowners unchanged, allgoods/city/raw/cart/tree terms close. Same1310
+Build refuses before and succeeds after; dest1280rawwood remains. NoProdexport0
+and inheriteddelivery1536 are explicitly unproductive. Five full native suffixes
+match,790entry genuine/one-byte legalchanged logs recorded. Fresh CLI/Release/
+SAN stillpending; R6 released. Route-only136 remains based134 withoutsalt135.

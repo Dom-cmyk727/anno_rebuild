@@ -3,7 +3,8 @@
   "decision": "acbe5a244271cbe80e2d6f68ff939556c51d804b GAMEPLAY-IDENTITY-134-135; X1 contract approved at 0d52feee",
   "generation": {
     "parent": "ba15315470ca5fc84db4ce3efa6ccf9ac927e28e",
-    "scope": "generation not acceptance"
+    "scope": "generation not acceptance",
+    "note": "refreshed against the files on disk at the commit that follows the allocation review (the scenario corpus was rewritten after the first provenance was written)"
   },
   "older_files_unchanged_sha256": {
     "econbook1/current133/README.md": "eb8250ddaf89a9746241332c24bba60253acbac24eb64e267881c0be30848e7d",
@@ -52,6 +53,6 @@
     "m2_found.log": "2d325b2d708933711b9a79e4a82af45723e644fddd3d65ed4b6646260177898f",
     "m2_found_wrong.log": "a75d82cc4871021079ac00496d2ea7697d3219353bb23ed2abffaedfb3fe8d35",
     "populated_fields.txt": "a1bd243e2bb45a1db5bc1167a9433e38c8b2dd34252416204ba4b72e95b034e6",
-    "scenario_corpus.txt": "6bd468b5238c0f906ffc89dda9ce70bb19f03380c92e31b5b1cd4882a600fe67"
+    "scenario_corpus.txt": "824a713389b9eec7bf9cd2b169510a3e53f3bcea59b13fa1a687aec9f148c0d9"
   }
 }

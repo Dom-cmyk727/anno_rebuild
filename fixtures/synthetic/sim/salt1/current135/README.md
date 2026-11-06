@@ -16,3 +16,6 @@ comes from `tools/integration_stream_ref.py --write` (header bytes `870000004543
 The registry digest of a type with a table is pinned by `tools/highmap_digest_ref.py` (independent) in
 `types_test.cpp`. `provenance.json` pins the sha256 of every file here and of the older files kept unchanged.
 Generation is not acceptance; the focused canonical gate follows.
+
+**Not run for this identity (stated, not implied):** the full simulation suite, a Release build, ASan/UBSan at 135,
+Windows and Linux builds; only the focused Debug gate named in docs/sim/salt-extraction.md section 16 ran.

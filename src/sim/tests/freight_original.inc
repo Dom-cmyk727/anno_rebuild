@@ -33,9 +33,27 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
     const auto recipe = expansion_test::selected_recipe();
     const auto wood = *rs.types->goods_by_name("HOLZ");
     const auto tools = *rs.types->goods_by_name("WERKZEUG");
-    const auto food = *rs.types->goods_by_name("NAHRUNG");
     const auto initial_holds = ship_of(w, 1).holds;
     const auto initial_money = expansion_test::balances(w);
+    const auto cargo_city_totals = [](const sim::World& world) {
+        std::map<std::pair<std::uint32_t, sim::GoodsId>, std::uint64_t> result;
+        for (const auto& figure : world.figures().list.slots)
+            if (figure)
+                for (const auto& hold : figure->holds)
+                    if (hold.amount_88)
+                        result[{figure->owner.v, hold.goods}] += hold.amount_88;
+        for (const auto& island : world.islands())
+            if (island)
+                for (const auto& city : island->cities)
+                    if (city)
+                        for (std::size_t g = 0; g < city->stock.stock.size(); ++g)
+                            if (city->stock.stock[g])
+                                result[{city->owner.v, static_cast<sim::GoodsId>(g)}] +=
+                                    city->stock.stock[g];
+        return result;
+    };
+    const auto initial_goods = cargo_city_totals(w);
+    const auto wood_key = std::pair{0U, wood}, tools_key = std::pair{0U, tools};
     auto recording = sim::Recorder::start(w);
     REQUIRE(recording.ok());
     auto rec = std::move(recording).value();
@@ -109,17 +127,12 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
             before = now;
         }
         REQUIRE(observed_cuts == stats.forestry.cuts);
-        std::map<sim::GoodsId, std::uint64_t> held_and_stored;
-        for (const auto& f : w.figures().list.slots)
-            if (f)
-                for (const auto& h : f->holds)
-                    held_and_stored[h.goods] += h.amount_88;
+        auto held_and_stored = cargo_city_totals(w);
         for (const auto& island : w.islands())
             if (island)
                 for (const auto& city : island->cities)
                     if (city) {
-                        for (std::size_t g = 0; g < city->stock.stock.size(); ++g)
-                            held_and_stored[static_cast<sim::GoodsId>(g)] += city->stock.stock[g];
+                        REQUIRE(city->accounts.military_cost == 0);
                         REQUIRE(std::all_of(city->billed.begin(), city->billed.end(),
                                             [](auto x) { return x == 0; }));
                         REQUIRE(city->accounts.sales == 0);
@@ -127,13 +140,16 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
                         REQUIRE(city->accounts.trade_purchases == 0);
                     }
         const auto& farm = std::get<sim::Farm>(w.find_building(forest)->payload);
-        held_and_stored[wood] += farm.out + expansion_test::cart_wood(w, source_wh, wood);
-        REQUIRE(held_and_stored[wood] == 50 * 256 + made_wood() - wood_spent);
-        REQUIRE(held_and_stored[tools] == 80 * 256 - tools_spent);
-        REQUIRE(held_and_stored[food] == 10 * 256);
-        for (const auto& [g, amount] : held_and_stored)
-            if (g != wood && g != tools && g != food)
-                REQUIRE(amount == 0);
+        held_and_stored[wood_key] += farm.out + expansion_test::cart_wood(w, source_wh, wood);
+        auto expected_goods = initial_goods;
+        expected_goods[wood_key] += made_wood();
+        REQUIRE(expected_goods[wood_key] >= wood_spent);
+        expected_goods[wood_key] -= wood_spent;
+        REQUIRE(expected_goods[tools_key] >= tools_spent);
+        expected_goods[tools_key] -= tools_spent;
+        std::erase_if(held_and_stored, [](const auto& row) { return row.second == 0; });
+        std::erase_if(expected_goods, [](const auto& row) { return row.second == 0; });
+        REQUIRE(held_and_stored == expected_goods);
         if (destination)
             REQUIRE(expansion_test::stock(w, *destination, wood) ==
                     received - (wood_spent == 25 * 256 ? 256 : 0));
@@ -186,7 +202,9 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
         sim::SetProductionLineCmd{{recipe.forest.site.x, recipe.forest.site.y}, wood, false}};
     auto on = off;
     std::get<sim::SetProductionLineCmd>(on.body).on = true;
+    REQUIRE(command_test::city(w, source).accounts.civil_cost == 27);
     REQUIRE(run.apply(off, 0, source).ok());
+    REQUIRE(command_test::city(w, source).accounts.civil_cost == 19);
     expansion_test::sail(run, recipe.destination);
     const auto second_found = run.apply(found_command(recipe.destination), 350);
     REQUIRE(second_found.ok());
@@ -207,6 +225,7 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
     expansion_test::sail(run, recipe.source);
     REQUIRE(aboard_of(ship_of(w, 1).holds, wood) == 26 * 256);
     REQUIRE(run.apply(on, 0, source).ok());
+    REQUIRE(command_test::city(w, source).accounts.civil_cost == 27);
     const auto pre_assign = w.save();
     const auto assign_entry = rec.log().entries.size();
     sim::AssignFreightRouteCmd route{sim::FigureId{1},

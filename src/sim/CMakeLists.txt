@@ -105,7 +105,7 @@ if(ANNO_BUILD_TESTS)
   add_test(NAME expansion_voyage_changed_command_fresh_process
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
                    "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/expansion-voyage/expansion-changed-command.log"
-                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 10/11.*DIVERGED at entry [0-9]+"
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 10/11.*DIVERGED at entry 460"
                    -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
   set_tests_properties(expansion_voyage_fresh_process expansion_voyage_changed_command_fresh_process
                        PROPERTIES FIXTURES_REQUIRED expansion_voyage_record

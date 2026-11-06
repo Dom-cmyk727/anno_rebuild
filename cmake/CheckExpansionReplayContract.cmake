@@ -5,7 +5,7 @@ string(RANDOM LENGTH 16 ALPHABET 0123456789abcdef unique)
 set(root "${TEST_ROOT}/expansion-replay-contract-${unique}")
 file(MAKE_DIRECTORY "${root}")
 set(marker "${root}/executed.txt")
-file(WRITE "${root}/child.cmake" "file(WRITE \"${marker}\" \"executed\")\nmessage(STATUS \"legal replay\")\n")
+file(WRITE "${root}/child.cmake" "file(WRITE \"${marker}\" \"executed\")\nmessage(STATUS \"legal replay\")\nmessage(WARNING \"retained-child-diagnostic\")\n")
 function(probe game expected_rc expected_output)
   execute_process(COMMAND "${CMAKE_COMMAND}" -E env "ANNO1503_GAME_DIR=${game}"
                   "${CMAKE_COMMAND}" "-DPROG=${CMAKE_COMMAND}"
@@ -20,7 +20,7 @@ if(NOT result STREQUAL "0" OR NOT output MATCHES "skipping: ANNO1503_GAME_DIR no
   message(FATAL_ERROR "asset absence did not skip without executing: ${result} ${output}")
 endif()
 probe("declared-fixture" 0 "legal replay")
-if(NOT result STREQUAL "0" OR NOT EXISTS "${marker}")
+if(NOT result STREQUAL "0" OR NOT EXISTS "${marker}" OR NOT output MATCHES "retained-child-diagnostic")
   message(FATAL_ERROR "legal child did not execute successfully: ${result} ${output}")
 endif()
 probe("declared-fixture" 0 "wrong output")

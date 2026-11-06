@@ -585,3 +585,24 @@ checkpoints. Timeout900s is predeclared for the Debug pilot: measured E445.88s p
 from this measurement before launch. New consumer tests explicitly inherit UBSAN
 halt/stacktrace in sanitizer builds. Optional prior-E4 final-native comparison is
 enabled in this operator gate to establish observational transparency.
+
+### E5 strong Debug prototype retained; bounded instrumentation refinement
+
+Clean0ef1298a passes4/4,7required invocations separately1/1/allothercategories0.
+Producer30366asserts/764.30s; freshhonest33.74s andchanged30.65s, total798.07s.
+Fivefullsuffixes cover283/263/188/188/94advances and10/9/8/5/3commands; allend at
+265000/commonhash16681454075628500547 and canonicalbytes equal approvedE4.
+All20receipt hashes, includingactualCLIchild672140a2…, independently verified;
+E5 Debug prototype APPROVED. This valid gate is preserved, not aborted/restarted.
+
+Measured per-entry whole-map hashing dominates764s; accepted narrowASAN136.11/
+Debug42.07 ratio3.23 predicts>2400s, so extending that instrumentation to SAN900s
+would be unjustified. Read-only reviewer explicitly permits a separately frozen
+refinement: follow EVERY suffixaction; exact clock/player/figure/city bytes plus
+outcomes/events/ordered sitecounts/rawcursor perentry, FULL canonicalworldbytes at
+all recorded checkpoints aftereachcut and final. Transient whole-tile-map equality
+between checkpoints is no longer claimed. No elapsedtime, command or gameplay
+change. New compact final ledger exposes tree/raw/output/cart/allowner/stamp terms.
+Wrapper now retains actualchildstdout/stderr so checkpoint counts, exact entry460
+and sanitizer output remain visible; its public contract checks diagnosticretention.
+Current refined Debug proof precedes the current combinedSAN deadline declaration.

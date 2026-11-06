@@ -5,3 +5,6 @@ if("$ENV{ANNO1503_GAME_DIR}" STREQUAL "")
   return()
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/RunToolExpectError.cmake")
+# Keep actual child stdout AND stderr in the canonical raw log, including checkpoint counts
+# and sanitizer diagnostics even when the expected divergence exit code is1.
+message(STATUS "${all}")

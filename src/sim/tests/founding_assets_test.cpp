@@ -47,6 +47,7 @@
 #include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_step.hpp>
 #include <anno/sim/site_checks.hpp>
+#include <anno/sim/state_fields.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/terrain_view.hpp>
 #include <anno/sim/transport.hpp>
@@ -4291,6 +4292,29 @@ auto city_view(const sim::City& c) {
                       c.accounts.trade_sales, c.accounts.trade_purchases,
                       c.accounts.civil_cost,  c.accounts.military_cost};
 }
+// Exact small scopes at each entry; complete tile/timer/world bytes remain checked at every
+// applicable recording checkpoint and final. This avoids hashing every island tile every visit.
+std::vector<std::uint8_t> actor_city_bytes(const sim::World& world) {
+    sim::WriteArchive out;
+    sim::fields(out, world.clock());
+    sim::fields(out, world.players());
+    sim::fields(out, world.figures());
+    out.u64(world.islands().size());
+    const sim::CityStream context{world.rules().save_billed_goods, world.config().warehouse_goods};
+    for (const auto& island : world.islands()) {
+        out.boolean(island.has_value());
+        if (!island)
+            continue;
+        out.u32(island->index.v);
+        out.u64(island->cities.size());
+        for (const auto& city : island->cities) {
+            out.boolean(city.has_value());
+            if (city)
+                sim::fields(out, *city, context);
+        }
+    }
+    return out.take();
+}
 struct NativeFollower {
     std::string label;
     sim::World world;
@@ -4338,6 +4362,7 @@ struct Run {
                 CHECK(city_view(command_test::city(world, ref)) == view);
         events = world.drain_events();
         REQUIRE_FALSE(world.faulted());
+        const auto expected_live = actor_city_bytes(world);
         for (auto& native : natives) {
             const auto resumed = native.world.apply(command);
             REQUIRE(resumed.status == answer.status);
@@ -4350,7 +4375,7 @@ struct Run {
             }
             CHECK(native.world.drain_events() == events);
             CHECK(native.world.rng().cursor() == world.rng().cursor());
-            CHECK(native.world.state_hash() == world.state_hash());
+            CHECK(actor_city_bytes(native.world) == expected_live);
             ++native.commands;
         }
         return answer;
@@ -4404,6 +4429,7 @@ struct Run {
         CHECK(balances(world) == money);
         for (const auto& d : world.last_output().draws)
             draws[static_cast<std::size_t>(d.site)] += d.count;
+        const auto expected_live = actor_city_bytes(world);
         for (auto& native : natives) {
             native.world.advance(ms);
             REQUIRE_FALSE(native.world.faulted());
@@ -4418,7 +4444,7 @@ struct Run {
                 native.draws[static_cast<std::size_t>(a[k].site)] += a[k].count;
             }
             CHECK(native.world.rng().cursor() == world.rng().cursor());
-            CHECK(native.world.state_hash() == world.state_hash());
+            CHECK(actor_city_bytes(native.world) == expected_live);
             ++native.advances;
         }
         ++advances;
@@ -5023,6 +5049,34 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
         evidence << "draw=" << sim::draw_site_name(static_cast<sim::DrawSite>(i))
                  << " advance_count=" << run.draws[i] << "\n";
     evidence << "direct_CityName=2 (one cursor draw per successful Found, between advances)\n";
+    const auto& end_farm = std::get<sim::Farm>(w.find_building(forest)->payload);
+    std::uint64_t active_raw = 0;
+    for (const auto& actor : w.figures().list.slots)
+        if (actor && !actor->expiry_stamp && actor->home == forest && actor->harvest)
+            active_raw += actor->cargo_88;
+    evidence << "cuts=" << observed_cuts << " growth=" << observed_growth
+             << " raw_credited=" << stats.forestry.raw_credited_88
+             << " raw_delivered=" << stats.forestry.raw_delivered_88 << " active_raw=" << active_raw
+             << " consumed=" << stats.forestry.farms.at(forest).consumed_88
+             << " farm_raw=" << end_farm.raw << " made=" << stats.forestry.farms.at(forest).made_88
+             << " farm_out=" << end_farm.out
+             << " active_wood_cart=" << expansion_test::cart_wood(w, warehouse, wood)
+             << " source_stock=" << expansion_test::stock(w, ref, wood)
+             << " exported=" << exported_total
+             << " destination_stock=" << expansion_test::stock(w, destination_ref, wood) << "\n";
+    for (const auto& [owner, cash] : initial_money)
+        evidence << "owner=" << owner << " start=" << cash
+                 << " construction=" << run.construction[owner]
+                 << " resident_income=" << run.income[owner] << " city_upkeep=" << run.upkeep[owner]
+                 << " player_upkeep=0 final=" << expansion_test::balances(w).at(owner)
+                 << " residual=0\n";
+    for (const auto city_ref : {ref, destination_ref}) {
+        const auto& city = command_test::city(w, city_ref);
+        evidence << "city=" << city_ref.island.v << "," << city_ref.city.v
+                 << " stamp=" << city.accounts.stamp << " civil=" << city.accounts.civil_cost
+                 << " military=" << city.accounts.military_cost
+                 << " upkeep=" << run.city_upkeep.at(city_ref) << "\n";
+    }
     const auto text = evidence.str();
     expansion_test::publish("continuation.txt",
                             std::vector<std::uint8_t>(text.begin(), text.end()));

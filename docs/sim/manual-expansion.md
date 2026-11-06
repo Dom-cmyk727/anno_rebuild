@@ -414,3 +414,11 @@ survey is established by this freight itinerary. House updates and economy stay
 independently default-off. Nav uses bounded original-style coarse/fine queries,
 acceptance radius/density stamps; it does not prove physical ship collision,
 congestion avoidance/replanning, automated routes, network MP or late-game cost.
+
+Gate04 at5a9be8ef stopped during compilation before selected execution: doctest
+requires parentheses around a compound && assertion. Gate05 corrects only that
+test expression. Both failed compile attempts remain failures with no executed
+selection. Cargo timing has48pairs/96commands; route timing has24queries and
+only1index-build sample peredge (repeated in each row, not8independent builds).
+Typed Load outcomes already expose transferred_88 through the generic runner;
+Windows owns the missing gesture and text-session parse/write adapters.

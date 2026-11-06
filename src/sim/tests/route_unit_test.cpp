@@ -1338,7 +1338,7 @@ TEST_CASE("expansion route scale: legal open-water lengths retain bounded query 
         too_short.pop_back();
         const auto short_walk = walk_runs(map, 16, 16, too_short, limits.run_cap);
         CHECK(short_walk.problem.empty()); // a legal prefix still must fail the endpoint oracle
-        CHECK_FALSE(short_walk.end_x == edge - 16 && short_walk.end_z == edge - 16);
+        CHECK_FALSE((short_walk.end_x == edge - 16 && short_walk.end_z == edge - 16));
         CHECK(expected.work.coarse_pops > 0);
         CHECK(expected.work.fine_pops > 0);
         CHECK(expected.work.coarse_pops <= limits.coarse_budget);

@@ -2,6 +2,117 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
+<!-- BEGIN GAMEPLAY-IDENTITY-134-135 -->
+## Compatibility decision — founding accounts and salt sequencing (2026-11-06)
+
+**Released to the two Mac lanes; reservations, not main acceptance.** Published
+main still implements state 133 / ECONBK1 / PRNG 5. The following distinct
+successor identities prevent concurrent branches from silently redefining 133:
+
+| Identity | Owner and prerequisite | Scope |
+|---|---|---|
+| 134 / ECONBK1 / PRNG 5 | Second Mac, MAP-EXPAND-1 | Preserve the already checked temporary founding City.accounts when adopting its index. No saved-layout change. |
+| 135 | First Mac, MAP-EXTRACT-1; must include the independently reviewed 134 correction before claiming this identity | Reviewed salt placement/deposit behavior, following the contract and scope below. Schema/content changes must be documented; no shared number allocated by an executor. |
+
+Main receives either identity only after orchestrator acceptance/integration.
+Do not amend published 133 or combine unrelated salt and founding changes under
+134. First Mac's current 133 correction/research work can continue; it must not
+independently take 134. Windows remains on its assigned accepted input.
+
+### Second Mac — founding correction is authorized now
+
+Continue on the owned MAP-EXPAND-1 branch from checkpoint
+`71af3846d6a7dda663bcb4271e88743f4b47bff1`; tested source `637da167` remains the
+bounded partial evidence pin. No moving-main adoption or first-Mac merge is
+required. Implement the independently reviewed correction beside index adoption:
+`city.accounts = local.accounts`. Do not rescan, add compensating treasury credits,
+repair old histories, alter founding payment/draw order or introduce a new flag.
+Keep city_booking and house_updates default-off.
+
+Allocate **kStateHashVersion 134**, retaining the existing **ECONBK1 schema tag,
+PRNG timeline 5, replay framing 4, command wire 1 and native wrapper 1**. No field
+order changes are needed. Update the independent stream oracle and current
+fixtures/recordings consistently. Preserve historical 133 artifacts, including
+actual snapshots with the missing history, under their original names/hashes.
+Use a new current134 fixture location; never relabel an old recording as new.
+
+Compatibility policy: new 134 builds **reject all 133 native states and replays**,
+including booking-disabled states, with explicit version diagnostics. No migration,
+conditional old-save acceptance or silent cost reconstruction. The old 133 binary
+continues to read its own historical artifacts. Raw 133/134 bytes and hashes differ
+by identity even with booking off; unchanged behavior means gameplay fields,
+commands, payment and draws, not identical hashes across versions.
+
+Required focused proof before resuming E2:
+- Public Found with booking enabled retains the original 1302 contribution 15;
+  the first due booking charges 1. Forester addition gives 27 and its evidenced
+  inactive transition gives 19. Check no double charge and independent cities.
+- Booking-disabled public Found remains zero-history with unchanged gameplay,
+  gold/goods/draws. Refused founding remains unchanged under both rule settings.
+- Current 134 native continuation and genuine replay pass. Real old 133 native
+  and replay artifacts fail for version, not corrupt/truncated data. Include
+  valid controls and distinct replay-header versus embedded-native identity
+  mismatches so one earlier check cannot falsely cover the other.
+- Re-derive version-only fixture changes with the independent oracle; distinguish
+  expected enabled-founding changes from header-only changes. Preserve first
+  failing reproducer and the proposed-patch provenance from manual-expansion.md.
+
+Independent correction review releases E2 revalidation and the already assigned
+E3–E7; no routine orchestrator pause after the fix. Publish the small reviewed
+fix/identity commit hashes in REPORTS and notify this orchestrator as soon as
+available so the first Mac can consume the exact prerequisite. No main merge,
+push or default flip is authorized. Final full-expansion acceptance remains open.
+
+The CPU-only benchmark issue is separately fixed at main `b408f311`. At an owned
+clean checkpoint, a **single cherry-pick of b408f311** is authorized to remove the
+local -Wno-error workaround, without pulling moving main. Rebuild bench_picture
+normally and run its required contracts; no old hand-built object may establish
+warning-clean acceptance. Keep its source delta separate from the founding fix.
+
+### First Mac — salt compatibility and scope disposition
+
+The first-Mac request at `9a34664d`, salt-extraction.md §§6,8, is answered as follows:
+choose **a new identity with the narrow place-and-bind scope (Option N)**, not
+loader-wide activation of all imported mines. Existing serialized Deposit/Mine
+fields may be reused; a new accepted command still changes deterministic behavior
+and therefore receives a new identity even if its field layout is unchanged.
+
+Reserve **135** for this slice, but do not start or label a salt runtime candidate
+as 135 until the reviewed 134 founding correction/identity dependency has been
+supplied at a named checkpoint. Consume only that approved prerequisite, preserving
+owned corrections/evidence; no wholesale expansion branch merge. Research,
+reference, contract and fixture preparation continue independently meanwhile.
+Orchestrator acceptance of that small prerequisite does not require waiting for
+all expansion voyages. No alternative branch using 135 without the fix is allowed.
+
+Once the prerequisite and X1 independent contract approval are present, X2–X6 may
+continue under the existing packet. Preserve defaults and no-draw behavior where
+proved. If HIGHMAP requires new digested data or saved fields, document the exact
+schema/content delta before landing; 135 is reserved for that reviewed salt slice,
+not authority to invent missing terrain/deposit rules. Retain PRNG timeline 5 only
+if no draw-order change is established. A real draw change needs coordination.
+
+Imported mines remain explicitly unsupported/inert under the narrow scope; do not
+claim this as original loader fidelity. New built mines must share an existing
+source rather than duplicate its resources; teardown/rebuild must not refill a
+finite ore. Add typed refusals for unproved classes; no general quarry or wildlife
+activation. Deposit quantity/depletion settings and deterministic HIGHMAP sampling
+still require primary evidence and independent review. This decision grants no
+float-in-sim exception and approves no unverified fixed-point approximation.
+
+At 135, reject old 133 and 134 recordings explicitly, preserve both as history,
+and generate new current fixtures only from reviewed behavior. No migration is
+assigned. Keep the 134 founding regression as a dependency test on the salt lane.
+
+The first Mac is not available through this chat's connected chat tools; this
+shared TASKS entry is the durable coordination message, not a claim that it has
+already acknowledged it. Read at the next natural checkpoint without interrupting
+work. Second Mac receives the exact published decision through its authorized chat.
+Independent read-only dispatch review: `/root/review_consolidation_plan` approved
+the 134/135 reservation, strict compatibility policy and conditional salt scope.
+This is not acceptance of either unimplemented successor.
+<!-- END GAMEPLAY-IDENTITY-134-135 -->
+
 ## Current canonical gameplay baseline — 2026-11-06
 
 **ECON-BOOK-1 B0–B7 is ACCEPTED within its bounded headless scope.** Executor

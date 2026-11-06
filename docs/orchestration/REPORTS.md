@@ -13578,3 +13578,145 @@ Not pushed, not merged. No commits beyond what `task/W4-opening-2-main` already
 had. No household/economy default was touched, UI.2 was not started, no new
 simulation mechanics were added, and no completeness claim is made.
 
+## W4-SETTLEMENT-1 — W2-W5: developer inspection UI, built and proven in the real window — 2026-11-06 — status: W2-W5 DONE, W6 N/A (see below), W7 self-reviewed only
+
+Continuation of the entry above, same branch/worktree, authorized directly by the owner to proceed
+past the W1→W2 blocker reported there ("Yes go" on both the TASKS.md-absence question and the
+proceed-into-W2-W7 question). Commit `59201fb1` on `task/W4-settlement-1`.
+
+**What this is:** `PlayRunner::request_inspect(TileXY)` / `PlaySnapshot::inspection`
+(`src/app/include/anno/app/play.hpp`, `src/app/src/play.cpp`): the window asks, once per frame the
+hovered tile changes, what building is at a tile; the sim thread answers it inside `publish()` —
+same thread, same lock pattern (`inspect_mu_`/`inspect_tile_`) as the existing founding-preview
+probe (`probe_mu_`/`probe_`) — and the answer (`BuildingInspection`: the payload's runtime class
+name and a one-line summary of its production.hpp fields: output/raw/input stock, activity,
+workers/animals/carriers out, status code, household residents and need stock) travels inside the
+*same* `PlaySnapshot` the rest of the window already reads, once per published turn. This is the
+exact discipline W4-OPENING-CONTROLS-FLAKE's `facts_turn` fix established (one coherent read per
+turn, never a fresh query racing a frame-gated one) — reused here for a different fact, not
+reinvented. Shown in the window title when the dev tool is on (`viewer.cpp::update_title`);
+exposed as `DevScript` facts (`inspection.kind`, `.status`, `.type`, `.prodtype`, `.tile.x/y`) in
+**any** session, opening or not — `opening_facts()` only ever populated facts for an opening
+session, so Proof B below (no opening) needed this fixed to even see the facts at all.
+
+**Presentation-only, confirmed by diff, not by assertion:** `git diff --stat` for this commit
+touches only `src/app/{include/anno/app/play.hpp,src/play.cpp,src/viewer.cpp,CMakeLists.txt}` and
+one new test script. No `src/sim` file. Every field `BuildingInspection` reads is already-public,
+already-serialized `Payload` data (`Building::payload`, a `std::variant` of the nine classes
+`building.hpp` already defines), reached through `World::building_at` and `TypeRegistry::find` —
+both pre-existing, already-const accessors. Nothing new is computed, stored, or serialized in the
+sim; the inspection line is read-only and formatted entirely in `src/app`.
+
+**Self-review (no second agent available — a fork cannot spawn one; this is my own second pass
+over the diff, not an independent reviewer; flagged honestly, not claimed as one):**
+Found and fixed three real formatting bugs before any of them shipped:
+1. `Workshop::activity` and `SmallFarm::activity`/`figures_out` were wrongly run through the
+   8.8-fixed-point tons formatter (`join_tons`) — they are plain counters/averages per
+   `production.hpp`'s own field comments, not goods amounts. Fixed to print plain numbers.
+2. `House::stock` was likewise wrongly shown as tons; it is the house population satisfaction
+   value (`trunc(Menge*s*residents*128/1536)`, `docs/re/population.md` §2, confirmed against
+   `scenario_formats_test.cpp`'s own hand-derived vectors), not an 8.8 goods amount. Fixed.
+3. `payload_kind_name`'s `if constexpr` chain ended in a bare `else { return "Inn"; }` — if a
+   tenth `Payload` alternative were ever added, every branch would silently fail to match and this
+   would mislabel it as "Inn". Added `static_assert(std::is_same_v<T, sim::Inn>, ...)` so that
+   failure mode becomes a compile error instead of a wrong label.
+All three were caught by re-deriving each field's unit from `production.hpp`'s own comments and
+`scenario_formats_test.cpp`'s existing hand-derived vectors, not by a test failing (none of the
+test scripts happened to build a type that would have shown the wrong unit visibly, except by
+coincidence the fixed House test's stock values were all zero either way). **This is exactly the
+kind of defect an actually-independent reviewer exists to catch; none has looked at this diff.**
+
+**Proof A (ship arrives, founds, unloads, loads — the opening loop):** not rebuilt, confirmed as
+directed. `ctest -R '^viewer_wiring_opening_controls$|^opening_session_replay$'`:
+both PASS natively (9.76s, 131.47s). `opening_session_replay` is the project's own existing
+end-to-end proof (launch, select, sail ~550 tiles, save; resume, refused foundings, the real
+founding, every hold unloaded, a full store, two ordinary buildings, the ledger, replayed from both
+recordings in fresh processes) — it already covers Proof A in full; nothing new was added for it.
+
+**Proof B (existing-town settlement activity, household state live in the real window):**
+`tools/test/viewer_wiring/settlement_activity.script`, registered as CTest
+`viewer_wiring_settlement_activity` (`src/app/CMakeLists.txt`). Builds a pioneer house (type 501 —
+the id `population_progression_test.cpp` and the existing `opening_resume.script` already use) on
+the lan5 developer island through the real dev tool (`key b`, `select 501`, `click`), waits 5
+turns, hovers the built tile, and asserts `inspection.kind == House` and
+`inspection.status contains residents=5` — real simulation data (every freshly-created House has
+`residents_64 = 5*64` per `building.hpp`'s own comment), read live through the new mechanism, not
+injected. PASS, 4.46-4.56s across three runs (manual iteration + the registered CTest run).
+
+**Proof B's honest limit — tried and found genuinely blocked, not swept under:** the directive
+asked for "settlement activity", which I read as *active production*, not just a standing
+building. I tried two further building types at the identical tile:
+- Type 809 (UNIVERSAL small farm): after 30 turns, `out`/`raw`/`activity`/`figures_out` all stayed
+  zero, `status_code=1` (`Status::MissingInput`) — no crop field anywhere near this exact tile on
+  lan5's NORD island template. The small farm needs real nearby GRAS/KARTOFFEL field objects
+  (`gameplay-next-chain.md`'s own data table); none happen to sit next to this build spot.
+- Type 1001 (HANDWERK workshop, consumes warehouse stock — the developer start's city stock is
+  already 190t of *every* goods, `sim_load/fixed_map.hpp`'s `DeveloperResources`, so a missing
+  crop field should not have blocked it): still `in=0.00t`, `carriers_out=0`, `blocked` after 30
+  turns — no cart ever dispatched, almost certainly because nothing road-connects this tile to the
+  Kontor (no road was built to it; this package built only the one target building, per its own
+  "legal building placement" scope, not a connected supply chain).
+Both results are the inspection UI correctly reporting real, unfavorable simulation truth, not a
+defect in it. Getting a genuinely *producing* building observed live would need either a
+road-connected build (this package's own `DevTool`/`drag` already supports roads — not attempted,
+out of time for this pass) or a scenario fixture with pre-placed crop fields (none available to
+`--play` without original-scenario research this package did not do). **`gameplay-next-chain.md`
+itself still lists MAP-TOWN-1 ("Establish one reproducible legal build order... Exit: one
+supported opening reaches a functioning settler town") as QUEUED / NOT RELEASED** — so a complete,
+observed, producing legal chain from a dev/ship start is not yet an accepted capability anywhere in
+this project, on any platform; this pass could not and does not claim to have solved that. Proof B
+as delivered demonstrates the inspection UI is correct and live (household state), not that a full
+economy is observable yet.
+
+**Regression (MSVC, native, with the real game files via a local untracked junction, removed again
+before the WSL gate below):** `ctest --preset msvc -j 8 -R
+'^anno_app_tests\.|^anno_app_input_tests\.|^viewer_wiring_|^opening_session_replay$'`:
+262/267 passed (98%), 255.45s. The same 5 failures already reported on `task/W4-opening-2-main`
+above, same test names, same concrete values (`CHECK( seen >= 62 )` still gets `4`) — confirmed
+unchanged, not newly caused by this package; still not this package's scope to fix.
+
+**W6 (RTX 4090 performance):** not applicable in the sense the directive asked, not NOT_RUN for
+the blocked-lane reason either — this package's diff never touches rendering, the GPU compositor,
+or any draw call; `bench_frame`'s existing RTX 4090 measurements (`docs/perf/README.md`) measure
+exactly that path and would not move, because nothing on it changed. The actual new per-turn cost
+is `inspect_building()` inside `PlayRunner::publish()` (sim thread): one `World::building_at` call
+(an existing O(log n)-ish lookup already used elsewhere in the same function) plus formatting at
+most ~10 numbers into a string, gated behind `if (inspect_tile)` so it costs nothing when the dev
+tool is off or nothing is hovered. This was not formally profiled (no existing fact exposes
+`PlaySnapshot::p95_us` to a script, and adding one felt like scope creep for a cost this bounded by
+inspection) — flagged honestly as reasoned-from-code, not measured, unlike the rest of this report.
+
+**W7 (frozen gates, independent review, playtest card):** gates — MSVC regression above is green
+net of the pre-existing five. The WSL ASan/UBSan gate was launched
+(`tools/test/wsl_gate.sh`, tag `settle3`, after removing the local game-files junction a first
+attempt's dirty-checkout refusal correctly caught — `?? game`, an untracked convenience junction,
+not a real source change) and was still running in the background when this entry was written;
+its result was not available in time for this entry and is not claimed here. Independent review —
+**not done**: see the self-review note above; a fork cannot spawn a second agent, so the "nested
+review" the directive asked for did not happen. This diff needs a genuinely independent pass before
+it should be called accepted, same as `task/W4-opening-2-main`'s entry above ("Reviewers: none
+yet").
+
+### Owner playtest card — the developer inspection UI
+
+**What's new:** hovering the developer building tool's cursor over a building now shows what it is
+actually doing, in the window's title bar, read live from the simulation.
+
+**Try it:**
+1. `anno1503.exe --play data\maps\lan5.txt --game-dir game\app`
+2. Press `B` (turns on the developer building tool — unchanged from before).
+3. Press `N` / `P` to cycle to a building type; left-click a legal tile to build it.
+4. Move the mouse to hover that same building (don't click again). The title bar gains a line:
+   - a house: `House residents=5 stock=0,0,0,0,0,0`
+   - a small farm away from any field: `SmallFarm out=0.00t,0.00t raw=0.00t,0.00t activity=0,0
+     figures_out=0,0,0,0,0 status_code=1 blocked` (`status_code=1` = missing raw material — real,
+     not a bug; see Proof B above)
+   - a workshop with no road to the warehouse: similar, `in=0.00t ... blocked`
+5. Hover away (or over empty ground): the line disappears.
+6. Wait a while and hover the same building again: the numbers reflect whatever actually changed.
+
+**What it is not yet:** not a dedicated panel (it rides the existing title-bar line); shows nothing
+extra for a building class whose simulation tick is not ported (`Inert`); does not itself fix
+anything blocked — building or road-connecting that building is still the player's job, same as
+before this package.
+

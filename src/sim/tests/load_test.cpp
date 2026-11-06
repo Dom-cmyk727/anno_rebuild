@@ -10,6 +10,7 @@
 // (60, 10). Player 0's ship S (type 9510 of synthetic::make_cargo_types: BEWOHNTYPE 113, four cargo
 // holds of 50 t) is at tile (10, 10) with four empty holds. City 0's store holds what a test says.
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -26,6 +27,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/command.hpp>
+#include <anno/sim/hash_tree.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/ship_cargo.hpp>
@@ -35,6 +37,7 @@
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "cargo_transfer_oracle.hpp"
 #include "evidence_out.hpp"
 #include "golden.hpp"
 #include "island_helpers.hpp"
@@ -1599,4 +1602,250 @@ TEST_CASE("load sailing: a segment started after the load has the new factor, th
     }
     CHECK(ship(loaded, 2).parent == sim::FigureId{1});
     CHECK(loaded.check_invariants().empty());
+}
+
+TEST_CASE("expansion cargo boundary: closer rival never overrides named owner and stale target") {
+    // Declared synthetic geometry, independent of the blocked genuine voyage. Rival's footprint
+    // starts one tile from the ship, own warehouse five tiles away; both are in cargo range.
+    Setup s;
+    s.stock[kWood] = 3 * kT + 192;
+    s.stock1[kWood] = 9 * kT;
+    s.rival_x = 11;
+    s.owner = [](int x, int y) { return x >= 11 && x < 15 && y >= 10 && y < 14 ? 1U : 0U; };
+    sim::World w = make(s);
+    const auto own = bid(w, 0, 15, 10), rival = bid(w, 1, 11, 10);
+    const auto rival_stock = city(w, 1).stock.stock;
+    const auto start = totals(w);
+    expect_refused(w, 0, cmd(1, rival, 0, kWood, 1), sim::Reject::NotCityOwner);
+    load_ok(w, 0, cmd(1, own, 0, kWood, 2), 2 * kT, 0);
+    CHECK(city(w, 0).stock.stock[kWood] == kT + 192);
+    CHECK(city(w, 1).stock.stock == rival_stock);
+    expect_refused(w, 0, ucmd(1, rival, 0, kWood, 1), sim::Reject::NotCityOwner);
+    unload_ok(w, 0, ucmd(1, own, 0, kWood, 1), kT);
+    CHECK(ship(w).holds[0] == sim::ShipHold{kWood, kT});
+    CHECK(city(w, 0).stock.stock[kWood] == 2 * kT + 192);
+    CHECK(city(w, 1).stock.stock == rival_stock);
+    CHECK(totals(w) == start);
+
+    // The requests were prepared while selection succeeded. Demolition through the supported
+    // public API invalidates that exact identity; closer rival cannot be substituted at apply.
+    const auto pending_load = cmd(1, own, 0, kWood, 1);
+    const auto pending_unload = ucmd(1, own, 0, kWood, 1);
+    sim::DemolishCmd demolition;
+    demolition.city = sim::CityRef{sim::IslandId{0}, sim::CityNo{0}};
+    demolition.tiles = {{15, 10}};
+    REQUIRE(send(w, 0, demolition).r.ok());
+    REQUIRE(w.building_at(demolition.city, 15, 10) == nullptr);
+    expect_refused(w, 0, pending_load, sim::Reject::NoBuildingAtTile);
+    expect_refused(w, 0, pending_unload, sim::Reject::NoBuildingAtTile);
+    CHECK(city(w, 1).stock.stock == rival_stock);
+    CHECK(w.check_invariants().empty());
+}
+
+TEST_CASE("expansion cargo scale: named transfers stay local with unrelated legal content") {
+    // Measurement fixtures, not original-map voyages. Configuration sizes are test inputs;
+    // production cargo applies explicit IDs without adding a selection/world scan.
+    using Clock = std::chrono::steady_clock;
+    for (const std::uint32_t n : {1U, 16U, 64U}) {
+        Setup s;
+        s.stock[kWood] = 4 * kT + 192;
+        s.stock1[kWood] = 9 * kT;
+        s.owner = [](int x, int y) { return x >= 60 && x < 64 && y >= 10 && y < 14 ? 1U : 0U; };
+        auto spec = spec_of(s);
+        spec.settings.world_width = spec.settings.world_height = 512;
+        for (std::uint32_t i = 0; i < n; ++i) {
+            spec.islands[0].cities[0].buildings.push_back({.type = kKontor,
+                                                           .x = 22 + static_cast<int>(i % 14) * 4,
+                                                           .y = 20 + static_cast<int>(i / 14) * 4});
+            const int x = 200 + static_cast<int>(i % 8) * 24;
+            const int y = 100 + static_cast<int>(i / 8) * 24;
+            auto island = syn::plain_island(i + 1, x, y, 16, 16);
+            island.owner_runs = {{0, 256}};
+            auto c = syn::plain_city(0, 0);
+            c.stock = std::vector<std::uint32_t>(s.goods_count, 0);
+            c.stock.value()[kWood] = i + 1;
+            c.buildings.push_back({.type = kKontor, .x = x + 4, .y = y + 4});
+            island.cities.push_back(std::move(c));
+            spec.islands.push_back(std::move(island));
+        }
+        auto made = sim::World::create(spec, s.types, s.cfg, s.rules);
+        REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string() : made.error()));
+        auto w = std::move(made).value();
+        REQUIRE(w.check_invariants().empty());
+        const auto own = bid(w, 0, 15, 10);
+        const auto before = snap(w);
+        const auto conserved = totals(w);
+        // Existing public stable-ID resolution and opt-in state diagnostics, measured separately
+        // from cargo application. Resolution is not ownership authorization or spatial selection.
+        // This deliberately full-world diagnostic is never inserted into a production command.
+        const auto rival_id = bid(w, 1, 60, 10);
+        const auto unchanged_bytes = w.save();
+        const auto unchanged_hash = w.state_hash();
+        std::size_t live_islands = 0, live_cities = 0, live_buildings = 0, live_figures = 0;
+        std::uint64_t tiles = 0;
+        for (const auto& island : w.islands()) {
+            if (!island)
+                continue;
+            ++live_islands;
+            for (const auto& c : island->cities) {
+                if (!c)
+                    continue;
+                ++live_cities;
+                for (const auto& list : c->index.lists)
+                    for (const auto& building : list.slots)
+                        live_buildings += building.has_value();
+            }
+        }
+        for (const auto& actor : w.figures().list.slots)
+            live_figures += actor.has_value();
+        for (const auto& island : spec.islands)
+            tiles += static_cast<std::uint64_t>(island.w) * island.h;
+        REQUIRE(live_islands == n + 1);
+        REQUIRE(live_cities == n + 2);
+        REQUIRE(live_buildings == 2 * n + 2);
+        REQUIRE(live_figures == 1);
+        REQUIRE(tiles == 3200 + 256 * n);
+        for (int sample = 0; sample < 16; ++sample) {
+            std::size_t hits = 0, misses = 0;
+            const auto a = Clock::now();
+            for (int repeat = 0; repeat < 64; ++repeat) {
+                const auto* own_target = w.find_building(own);
+                const auto* rival_target = w.find_building(rival_id);
+                hits += own_target != nullptr && own_target->id == own;
+                hits += rival_target != nullptr && rival_target->id == rival_id;
+                misses += w.find_building(sim::BuildingId{}) == nullptr;
+            }
+            const auto b = Clock::now();
+            REQUIRE(hits == 128);
+            REQUIRE(misses == 64);
+            MESSAGE("target_resolution extra_islands="
+                    << n << " sample=" << sample << " queries=192 hits=" << hits
+                    << " misses=" << misses << " batch_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count());
+        }
+        const auto node_count = [](const auto& self, const sim::HashNode& node) -> std::size_t {
+            std::size_t count = 1;
+            for (const auto& child : node.children)
+                count += self(self, child);
+            return count;
+        };
+        sim::HashTree baseline_tree;
+        REQUIRE(w.state_hash(baseline_tree, 8) == unchanged_hash);
+        for (int sample = 0; sample < 8; ++sample) {
+            sim::HashTree tree;
+            const auto a = Clock::now();
+            const auto hash = w.state_hash(tree, 8);
+            const auto b = Clock::now();
+            REQUIRE(hash == unchanged_hash);
+            REQUIRE(tree.root.hash == hash);
+            CHECK(sim::diff_trees(baseline_tree, tree).empty());
+            const auto nodes = node_count(node_count, tree.root);
+            CHECK(nodes == node_count(node_count, baseline_tree.root));
+            MESSAGE("state_diagnostic extra_islands="
+                    << n << " sample=" << sample << " depth=8 islands=" << live_islands
+                    << " cities=" << live_cities << " buildings=" << live_buildings << " figures="
+                    << live_figures << " tiles=" << tiles << " nodes=" << nodes << " hash_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count());
+        }
+        // Isolated diagnostic mutant only: a different city's stock must name that exact scope.
+        auto changed = w;
+        --sim::WorldTestAccess::islands(changed)[0]->cities[1]->stock.stock[kWood];
+        sim::HashTree changed_tree;
+        CHECK(changed.state_hash(changed_tree, 8) != unchanged_hash);
+        CHECK(sim::diff_trees(baseline_tree, changed_tree) ==
+              "world/islands/island[0]/cities/city[1]");
+        CHECK(w.save() == unchanged_bytes);
+        const sim::Command load{sim::PlayerId{0}, cmd(1, own, 0, kWood, 1)};
+        const sim::Command unload{sim::PlayerId{0}, ucmd(1, own, 0, kWood, 1)};
+        for (int sample = 0; sample < 16; ++sample) {
+            const auto a = Clock::now();
+            const auto loaded = w.apply(load);
+            const auto b = Clock::now();
+            REQUIRE(loaded.ok());
+            REQUIRE(loaded.records.size() == 1);
+            CHECK(loaded.records[0].transferred_88 == kT);
+            CHECK(city(w, 0).stock.stock[kWood] == 3 * kT + 192);
+            CHECK(ship(w).holds[0] == sim::ShipHold{kWood, kT});
+            const auto c = Clock::now();
+            const auto unloaded = w.apply(unload);
+            const auto d = Clock::now();
+            REQUIRE(unloaded.ok());
+            REQUIRE(unloaded.records.size() == 1);
+            CHECK(unloaded.records[0].transferred_88 == kT);
+            CHECK(city(w, 0).stock.stock[kWood] == 4 * kT + 192);
+            CHECK(ship(w).holds[0] == sim::ShipHold{});
+            const auto after = snap(w);
+            CHECK(after.stocks == before.stocks); // every remote city and closer/rival stock
+            CHECK(after.money == before.money);
+            CHECK(after.cursor == before.cursor);
+            CHECK(totals(w) == conserved);
+            MESSAGE("cargo_scale extra_islands="
+                    << n << " target_buildings=" << n + 1 << " sample=" << sample << " load_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count()
+                    << " unload_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(d - c).count());
+            (void)w.drain_events();
+        }
+        CHECK(w.check_invariants().empty());
+    }
+}
+
+TEST_CASE("expansion cargo oracle: legal transfer rejects wrong debit credit-only duplicate and "
+          "stale effects") {
+    Setup s;
+    s.stock[kWood] = 4 * kT + 192;
+    s.stock1[kWood] = 9 * kT;
+    auto before = make(s);
+    const auto own = bid(before, 0, 15, 10);
+    const auto request = cmd(1, own, 0, kWood, 2);
+    const sim::CityRef ref{sim::IslandId{0}, sim::CityNo{0}};
+    const auto restore = [&](const sim::World& w) {
+        auto loaded = sim::World::load(w.save(), s.types);
+        REQUIRE(loaded.ok());
+        return std::move(loaded).value();
+    };
+    const auto difference = [&](const sim::World& input, const sim::World& output) {
+        return cargo_oracle::load_effect(input, output, sim::PlayerId{0}, request, ref, 0, 512);
+    };
+    auto legal = restore(before);
+    load_ok(legal, 0, request, 512, 0);
+    CHECK(difference(before, legal) == cargo_oracle::Difference::None);
+    CHECK(city(legal, 0).stock.stock[kWood] == 704);
+    CHECK(city(legal, 1).stock.stock[kWood] == 2304);
+
+    auto wrong = restore(before);
+    auto& rival = *sim::WorldTestAccess::islands(wrong)[0]->cities[1];
+    rival.stock.stock[kWood] -= 512;
+    sim::find_figure(sim::WorldTestAccess::figures(wrong), sim::FigureId{1})->holds[0] = {kWood,
+                                                                                          512};
+    CHECK(totals(wrong) == totals(before)); // a global conservation check alone misses wrongcity
+    CHECK(difference(before, wrong) == cargo_oracle::Difference::State);
+
+    auto credit_only = restore(before);
+    sim::find_figure(sim::WorldTestAccess::figures(credit_only), sim::FigureId{1})->holds[0] = {
+        kWood, 512};
+    CHECK_FALSE(totals(credit_only) == totals(before));
+    CHECK(difference(before, credit_only) == cargo_oracle::Difference::State);
+
+    auto duplicate = restore(legal);
+    load_ok(duplicate, 0, request, 512, 0); // explicitly submitted repeats ARE legal and conserved
+    CHECK(totals(duplicate) == totals(before));
+    CHECK(difference(before, duplicate) ==
+          cargo_oracle::Difference::State); // one recorded request !=two effects
+
+    auto stale = restore(before);
+    sim::DemolishCmd demolition;
+    demolition.city = ref;
+    demolition.tiles = {{15, 10}};
+    REQUIRE(send(stale, 0, demolition).r.ok());
+    const auto stale_bytes = stale.save();
+    expect_refused(stale, 0, request, sim::Reject::NoBuildingAtTile);
+    CHECK(stale.save() == stale_bytes);
+    auto accepted_stale = restore(stale);
+    sim::find_figure(sim::WorldTestAccess::figures(accepted_stale), sim::FigureId{1})->holds[0] = {
+        kWood, 512};
+    CHECK(difference(stale, accepted_stale) == cargo_oracle::Difference::Target);
+    CHECK(before.check_invariants().empty());
+    CHECK(legal.check_invariants().empty());
+    CHECK(duplicate.check_invariants().empty());
 }

@@ -4,6 +4,7 @@
 // comparison while still walking a legal route), the work / memory limits with valid controls, and
 // determinism across worker threads.
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -1309,4 +1310,59 @@ TEST_CASE("route partial cells: a world that is not a multiple of 8 treats the t
     // The start tile itself may lie in the partial column.
     CHECK(sim::plan_route(ie, tile_query(69, 49, 69, 49), sim::RouteLimits{}, costs).status ==
           sim::RouteStatus::Arrived);
+}
+
+TEST_CASE("expansion route scale: legal open-water lengths retain bounded query work") {
+    using Clock = std::chrono::steady_clock;
+    const sim::RouteLimits limits;
+    const auto costs = sim::RouteCostTable::original();
+    for (const int edge : {128, 256, 512}) {
+        const sim::TileMapSource map(edge, edge);
+        const auto build_start = Clock::now();
+        const sim::CoastIndex index(map, {});
+        const auto build_end = Clock::now();
+        const auto q = tile_query(16, 16, edge - 16, edge - 16);
+        const auto expected = sim::plan_route(index, q, limits, costs);
+        REQUIRE(expected.status == sim::RouteStatus::Planned);
+        REQUIRE_FALSE(expected.runs.empty());
+        const auto walked = walk_runs(map, 16, 16, expected.runs, limits.run_cap);
+        REQUIRE_MESSAGE(walked.problem.empty(), walked.problem);
+        CHECK(walked.end_x == expected.end_x);
+        CHECK(walked.end_z == expected.end_z);
+        CHECK(walked.end_x == edge - 16);
+        CHECK(walked.end_z == edge - 16);
+        // A single legal step changes either axis by at most one tile. The hand-derived
+        // Chebyshev lower bound is96/224/480, without asserting shortest-path behavior.
+        CHECK(total_run_steps(expected.runs) >= static_cast<std::uint64_t>(edge - 32));
+        auto too_short = expected.runs;
+        too_short.pop_back();
+        const auto short_walk = walk_runs(map, 16, 16, too_short, limits.run_cap);
+        CHECK(short_walk.problem.empty()); // a legal prefix still must fail the endpoint oracle
+        CHECK_FALSE((short_walk.end_x == edge - 16 && short_walk.end_z == edge - 16));
+        CHECK(expected.work.coarse_pops > 0);
+        CHECK(expected.work.fine_pops > 0);
+        CHECK(expected.work.coarse_pops <= limits.coarse_budget);
+        CHECK(expected.work.fine_pops <= limits.fine_budget);
+        CHECK(expected.work.bytes_high <= limits.memory_bytes);
+        for (int sample = 0; sample < 8; ++sample) {
+            const auto a = Clock::now();
+            const auto result = sim::plan_route(index, q, limits, costs);
+            const auto b = Clock::now();
+            CHECK(result == expected); // counters, endpoint and exact route are deterministic
+            MESSAGE("route_scale edge="
+                    << edge << " sample=" << sample << " coarse_pops=" << result.work.coarse_pops
+                    << " fine_pops=" << result.work.fine_pops
+                    << " bytes_high=" << result.work.bytes_high << " index_build_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(build_end - build_start)
+                           .count()
+                    << " query_ns="
+                    << std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count());
+        }
+        auto restricted = limits;
+        restricted.fine_budget = 1;
+        const auto refused = sim::plan_route(index, q, restricted, costs);
+        CHECK(refused.status == sim::RouteStatus::BudgetExceeded);
+        CHECK(refused.exceeded == sim::RouteLimit::FinePops);
+        CHECK(refused.runs.empty());
+    }
 }

@@ -1,0 +1,7 @@
+# One actual voyage producer supplies both fresh-process consumers; the native followers live
+# inside that same run. Do not run a second producer for each consumer.
+set_tests_properties("anno_sim_tests.expansion voyage: genuine founding production and manual resupply"
+                     PROPERTIES FIXTURES_SETUP expansion_voyage_record
+                                PROCESSORS 4
+                                TIMEOUT 900
+                                ENVIRONMENT "@expansion_environment@")

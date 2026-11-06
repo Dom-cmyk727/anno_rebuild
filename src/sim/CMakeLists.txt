@@ -82,6 +82,41 @@ if(ANNO_BUILD_TESTS)
                        PROPERTIES FIXTURES_REQUIRED econbook_loop_record)
 
 
+  # MAP-EXPAND E5: one original-data voyage plus five full native suffixes supplies both CLI arms.
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/expansion-voyage")
+  set(expansion_environment "ANNO_EXPAND_OUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/expansion-voyage")
+  if(ANNO_SANITIZE AND NOT MSVC)
+    list(APPEND expansion_environment "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+  endif()
+  configure_file(${PROJECT_SOURCE_DIR}/cmake/ExpansionVoyageProperties.cmake.in
+                 ${CMAKE_CURRENT_BINARY_DIR}/expansion_voyage_properties.cmake @ONLY)
+  set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+               "${CMAKE_CURRENT_BINARY_DIR}/expansion_voyage_properties.cmake")
+  add_test(NAME expansion_replay_asset_contract
+           COMMAND ${CMAKE_COMMAND}
+                   -DWRAPPER=${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake
+                   -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}
+                   -P ${PROJECT_SOURCE_DIR}/cmake/CheckExpansionReplayContract.cmake)
+  add_test(NAME expansion_voyage_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/expansion-voyage/expansion.log"
+                   -DEXPECT_RC=0 "-DEXPECT=checkpoints 13/13.*reproduced: every checkpoint matched"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
+  add_test(NAME expansion_voyage_changed_command_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/expansion-voyage/expansion-changed-command.log"
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 10/11.*DIVERGED at entry 460"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
+  set_tests_properties(expansion_voyage_fresh_process expansion_voyage_changed_command_fresh_process
+                       PROPERTIES FIXTURES_REQUIRED expansion_voyage_record
+                                  TIMEOUT 900
+                                  SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
+
+  if(ANNO_SANITIZE AND NOT MSVC)
+    set_tests_properties(expansion_voyage_fresh_process expansion_voyage_changed_command_fresh_process
+                         PROPERTIES ENVIRONMENT "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+  endif()
+
   # tools/lint_sim.py: the mechanical part of the determinism rules (no
   # unordered containers, float, clock, rand, mutable globals ...; docs/sim/
   # state.md §14.6), and its own self-test. Named anno_sim_tests_* so that

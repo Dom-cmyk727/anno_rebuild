@@ -595,3 +595,19 @@ shortage and paid recovery reconcile with native/replay proof; this is not a
 balanced ship-founded opening or live Windows acceptance. See the
 [consolidated handoff](orchestration/reviews/2026-11-06-econ-book1.md) for exact
 source/evidence, preserved failures and platform limits.
+
+
+## Local candidate checkpoint — MAP-EXPAND-1 (2026-11-06)
+
+The second Mac's exactc5c7007f successor has independently approved E0–E7 and
+current-source gates atca257614: affectedDebug75/75, combinedASAN/UBSAN78/78,
+seven required contracts separately per gate, all other categories0. Fresh final
+integration reviewer expand_boundary_review APPROVES sourceca257614 / report
+0a1cc073 with no blocking finding. Two genuine
+founded islands, two freight cycles from real new wood, paid receiving build,
+five full native suffixes and honest/causally changed fresh replay are proved.
+Coordinated134/ECONBK1 preserves founding history and strictly refuses old133;
+no default flip or moving-main merge. See the
+[consolidated handoff](orchestration/reviews/2026-11-06-map-expand1.md) and
+[consumer card](testing/manual-expansion.md). Windows Load adapters/live playtest
+and target-host/MP/late-game/balanced-town acceptance remain separate.

@@ -36,8 +36,8 @@ TEST_CASE("SCRIPT2 native header and empty runtime have hand written bytes") {
     WriteArchive header;
     StateHeader h;
     fields(header, h);
-    // Candidate stream134 / ECONBK1, independently written little-endian bytes.
-    const std::vector<std::uint8_t> expected_header{134,  0,    0,    0, 0x45, 0x43, 0x4f, 0x4e,
+    // Route-only stream136 / ECONBK1, independently written little-endian bytes.
+    const std::vector<std::uint8_t> expected_header{136,  0,    0,    0, 0x45, 0x43, 0x4f, 0x4e,
                                                     0x42, 0x4b, 0x31, 0, 5,    0,    0,    0};
     CHECK(header.data() == expected_header);
     ReadArchive legal(expected_header);
@@ -45,6 +45,13 @@ TEST_CASE("SCRIPT2 native header and empty runtime have hand written bytes") {
     fields(legal, accepted);
     REQUIRE_FALSE(legal.failed());
     CHECK(legal.remaining() == 0);
+    auto old134 = expected_header;
+    old134[0] = 134;
+    ReadArchive legacy(old134);
+    StateHeader refused;
+    fields(legacy, refused);
+    REQUIRE(legacy.failed());
+    CHECK(legacy.error().find("state stream version") != std::string::npos);
     auto wrong = expected_header;
     wrong[4] ^= 1;
     ReadArchive reader(wrong);

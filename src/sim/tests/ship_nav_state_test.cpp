@@ -714,7 +714,7 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
     // checksummed save with only the number changed and re-sealed, and the 122 message names 122).
     island_test::check_unsupported_versions(
         bytes, types, {116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 127});
-    CHECK(sim::kStateHashVersion == 134);
+    CHECK(sim::kStateHashVersion == 135);
 }
 
 TEST_CASE("nav motion: make_nav_motion is the documented idle state at any position") {

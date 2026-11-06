@@ -269,6 +269,8 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/early_needs_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/early_needs_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/early_needs_vectors.txt)
+    add_test(NAME highmap_digest_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/highmap_digest_ref.py --check)
     add_test(NAME mine_terrain_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/mine_terrain_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_terrain_vectors.txt)

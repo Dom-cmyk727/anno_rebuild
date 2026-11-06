@@ -328,6 +328,12 @@ struct BuildingType {
     std::vector<std::uint8_t> head_raw;
     /// The ENTRANCE points in file order (empty when the entry has none: P 595 of 921).
     std::vector<EntrancePoint> entrances;
+    /// Stream 135 (docs/sim/salt-extraction.md section 11-13): the HIGHMAP table of a class-0x3000
+    /// (mine / quarry) type, 2*height rows x 2*width columns of bytes, row-major (the original's
+    /// type +0x234, AnnoGame 0x10008a80). Empty for every other type and for a class-0x3000 type
+    /// whose record is absent or not exactly 4*width*height bytes (then the type's placement stays
+    /// Unsupported). Digested only when non-empty, so a registry without a table keeps its digest.
+    std::vector<std::uint8_t> highmap;
     /// T33.2 input only, unhashed until T33.4: 3 u32 WALKMASK rows per tile row
     /// (AnnoGame 0x1000990d..0x1000996f).
     std::vector<std::uint32_t> walk_mask;

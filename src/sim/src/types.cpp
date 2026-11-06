@@ -217,6 +217,14 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
             t.entrances.push_back(p);
         }
     }
+    // HIGHMAP (AnnoGame type +0x234): kept for class 0x3000 only, and only when it is exactly the
+    // 2h x 2w table of the footprint; any other record is left out (the type stays Unsupported).
+    if ((t.flags_word & 0x7000U) == 0x3000U) {
+        if (const auto hm = e.record("HIGHMAP");
+            hm && hm->size() == std::size_t{4} * t.width * t.height) {
+            t.highmap.assign(hm->begin(), hm->end());
+        }
+    }
     const std::string research = e.record_str("FORSCHTYPE").value_or("");
     const auto research_id = research_by_name(research);
     if (!research_id) {
@@ -326,7 +334,7 @@ static_assert(field_count<ProductionType>() == 18,
 // digest_type skips both, preserving every existing digest byte. (cls is hashed.)
 static_assert(field_count<PermissionFacts>() == 3, "permission facts need digest coverage");
 static_assert(field_count<BuildRequirement>() == 2, "construction facts need digest coverage");
-static_assert(field_count<BuildingType>() == 27,
+static_assert(field_count<BuildingType>() == 28,
               "a BuildingType member needs a line in digest_type (walk_class derived; walk_mask "
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
@@ -393,6 +401,11 @@ template <class A> void digest_type(A& a, const BuildingType& t) {
     digest_production(a, t.prod);
     if (t.special_successor) {
         a.boolean(true); // C3: only a declared type adds the byte, so no other digest moves
+    }
+    if (!t.highmap.empty()) {
+        // Stream 135: only a type with a table adds it (count, then the bytes), after every field
+        // above, so no other digest moves.
+        ar::seq(a, t.highmap, 1, [&](const std::uint8_t& b) { a.u8(b); });
     }
 }
 

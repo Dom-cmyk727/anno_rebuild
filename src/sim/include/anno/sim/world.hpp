@@ -160,7 +160,10 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // selector, price registry facts and data-sized tax roles. ECONBK1, no new PRNG site.
 // Stream134: retain prepared founding accounts; unchanged fields/tag/timeline.
 // Explicit compatibility decision acbe5a24, old133 is refused even with booking off.
-inline constexpr std::uint32_t kStateHashVersion = 134;
+// Stream135: player-built salt mine (docs/sim/salt-extraction.md): class-0x3000 placement and
+// deposit binding, BuildingType::highmap in the registry digest. Same ECONBK1 tag, PRNG timeline 5
+// (no draw-order change), same field order; 133 and 134 saves and recordings are refused.
+inline constexpr std::uint32_t kStateHashVersion = 135;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

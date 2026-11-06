@@ -13331,3 +13331,37 @@ Debug63/63, ASan1388/1388. These overlapping results are not summed or relabelle
 Canonical state133/ECONBK1 is adopted; booking and houses remain default-off.
 The first Mac and Windows keep their in-progress pins until a checkpoint.
 [Full acceptance and limitations](reviews/2026-11-06-econ-book1-acceptance.md).
+
+
+## MAP-EXPAND-1 — 2026-11-06 — BOUNDED CHECKPOINT, ACCEPTANCE OPEN
+
+Owned task/MAP-EXPAND-1-main starts at exactc5c7007f, preserving completed ECON
+467373d2/MAP5ef163a6 and evidence. E0/E1 independently approved. Genuine E2 actual
+source sailing/harvest/export prefix exposes a real production founding defect:
+create_building prepares1302's active15 cost in local.accounts, but Founding
+adopts only local.index into a fresh zero-account City. Sourcecivil12 should27;
+expectations are not weakened. Causal publicFound reproe1369d7a has56/60 assertions
+pass, exact4enabled failures, legal default-offcontrol passes. Both actual133
+native histories remain preserved without repair. E2 NOT APPROVED.
+
+One-line proposed copy of prepared accounts is independently source-reviewed
+sound but remains ignored/unlanded: it changes booking-enabled trajectories and
+requires the packet's explicit orchestrator/first-Mac compatibility disposition.
+No silent133 change, guessed next identity, defaultflip, runtimepatch, merge/push,
+UI/first-Mac/asset/coordinator edit occurred. Coordination question is pending.
+
+Independent bounded E4/E6 ownership/stale/partial/alternate-definition/local-scale
+subset is APPROVED637da167. Corrected scoped Debugcargo1/1 androute1/1 retain the
+prior16selected/15pass/1invalid-fixture failure. Current-source shortASAN16/16 has
+0failed/empty/skipped/incomplete/SAN,6required invocations separate1/1. These are
+not combined into a fictitious uniform Debuggate or full voyage acceptance.
+Full E3/E5 and actualrepeat/fullE4/E6/E7 remain NOT_RUN/OPEN: two real founded
+islands/two freight cycles, exact full ledger,fivecuts,fresh replay and combined
+sanitizer voyage are not yet established. Windows typedLoad exists; its live
+mode/textrecording adapter remains Windows-owned.
+
+[Consolidated bounded handoff](reviews/2026-11-06-map-expand1.md) has exactsource/
+commands/config/inputs/rawSHA/receipts, reviewed primary facts, feasible copied
+itinerary/budget, actual failure, concrete patch and precise continuation. Fresh
+boundary review is pending on this document; it cannot waive full acceptance.
+All own gate sessions are terminal; no owned expansion job remains.

@@ -31,13 +31,13 @@ a balanced town, original-runtime ship collision fidelity or network multiplayer
 | Package / requirement | Positive proof | Distinguishing negative / legal control | Evidence / independent reviewer |
 |---|---|---|---|
 |E0 adoption and plan|clean exact successor, preserved ECON/evidence, host/admission/tools and cheap canonical contracts|moving main not adopted; first PATH failure retained; completed preflight not counted as voyage|E0/adoption.json,host.json, canonical-debug-01.log; expand_e0_review APPROVEDbe8d163b|
-|E1 physically feasible itinerary and budget|same owner can found on distinct islands; actual route endpoints and cargo docks; reachable forester/road; complete input hashes and finite bill|geometry witness alone cannot pass; unsupported stage/source/road/dock refusal recorded; disposable planning cannot mutate pristine real world|bounded planning diagnostics, raw HEAD/LOGIC derivation and budget; review PENDING|
-|E2 source produces export|zero initial/imported source wood, real cuts/raw/output/cart receipt, exact LoadCmd debit=credit and residual|public switch off immediately after construction before any advance prevents workers/production; same source request is StockShort|per-home raw/output/in-flight/store ledger, unfaulted separate native fork; review PENDING|
-|E3 second founding and construction|same actual ship arrives, second island/city/owner/footprint/height; exact founding and unload costs; paid receiving building|with declared tools already transferred but wood missing, BuildCmd refuses unchanged; same command succeeds after freight unload|public outcomes, per-city/per-hold stock and gold snapshots; review PENDING|
-|E4 repeat and adversarial ownership|two completed source-load/destination-unload cycles with further production; independent homes/stocks|wrong owner, absent/demolished target, out-of-range, shortage, holds full/mismatch, partial/repeat and closer rival explicit-ID controls|short labelled synthetic companions plus real repeat; no transport cache privilege; review PENDING|
-|E5 economy/native/replay|all owners' money decomposes exactly, each city's independent stamp/cost/bill,5 native cuts, genuine fresh-process replay|accepted legal changed transfer diverges after matching prior checkpoints; isolated wrong-debit/credit-only/repeat/stale-target mutants fail intended assertions while controls execute|reuse accepted bac3 simultaneous city/player upkeep; own actual itinerary and fresh CLI; review PENDING|
-|E6 reusable consumer recipe and bounded cost|typed public commands, exact selected targets/ranges/results; several legal sizes, operation counts and separate timing samples; alternate supported data|no full-world cargo scan introduced; different goods/warehouse/owner fixtures; bounds/refusals retained rather than force success|headless recipe Windows can consume; no window code; review PENDING|
-|E7 frozen closeout|relevant Debug and ASan/UBSan, at least1 current-source combined multi-island sanitizer voyage, exact selection/contracts, fresh independent integration review|first failures remain failures; missing/empty/skip/incomplete/sanitizer and malformed evidence cannot become a pass|one reviewed handoff+REPORTS, exact receipts/hashes, clean committed local candidate and no owned jobs; fresh reviewer PENDING|
+|E1 physically feasible itinerary and budget|same owner can found on distinct islands; actual route endpoints and cargo docks; reachable forester/road; complete input hashes and finite bill|geometry witness alone cannot pass; unsupported stage/source/road/dock refusal recorded; disposable planning cannot mutate pristine real world|E1 canonical04 and raw bill/input receipts; expand_e0_review APPROVEDfcc71179|
+|E2 source produces export|zero initial/imported source wood, real cuts/raw/output/cart receipt, exact LoadCmd debit=credit and residual|public switch off immediately after construction before any advance prevents workers/production; same source request is StockShort|genuine02 FAIL435f12d1 missing founding15; NOT APPROVED; causalrepro APPROVEDe1369d7a|
+|E3 second founding and construction|same actual ship arrives, second island/city/owner/footprint/height; exact founding and unload costs; paid receiving building|with declared tools already transferred but wood missing, BuildCmd refuses unchanged; same command succeeds after freight unload|genuine E3 NOT_RUN; only E1 copied planning proof|
+|E4 repeat and adversarial ownership|two completed source-load/destination-unload cycles with further production; independent homes/stocks|wrong owner, absent/demolished target, out-of-range, shortage, holds full/mismatch, partial/repeat and closer rival explicit-ID controls|bounded companions APPROVED637da167; real repeat NOT_RUN, fullE4 OPEN|
+|E5 economy/native/replay|all owners' money decomposes exactly, each city's independent stamp/cost/bill,5 native cuts, genuine fresh-process replay|accepted legal changed transfer diverges after matching prior checkpoints; isolated wrong-debit/credit-only/repeat/stale-target mutants fail intended assertions while controls execute|accepted bac3 control reusable; genuine two-city/native/replay E5 NOT_RUN|
+|E6 reusable consumer recipe and bounded cost|typed public commands, exact selected targets/ranges/results; several legal sizes, operation counts and separate timing samples; alternate supported data|no full-world cargo scan introduced; different goods/warehouse/owner fixtures; bounds/refusals retained rather than force success|bounded API/scale/consumer subset APPROVED637da167; full executed recipe OPEN|
+|E7 frozen closeout|relevant Debug and ASan/UBSan, at least1 current-source combined multi-island sanitizer voyage, exact selection/contracts, fresh independent integration review|first failures remain failures; missing/empty/skip/incomplete/sanitizer and malformed evidence cannot become a pass|short ASAN16/16 only; combined sailing NOT_RUN; fresh bounded review pending; fullE7 OPEN|
 
 Each approval releases dependent work without routine orchestrator pauses. E1
 must establish starting-state, cargo, docking and material prerequisites before
@@ -422,3 +422,15 @@ selection. Cargo timing has48pairs/96commands; route timing has24queries and
 only1index-build sample peredge (repeated in each row, not8independent builds).
 Typed Load outcomes already expose transferred_88 through the generic runner;
 Windows owns the missing gesture and text-session parse/write adapters.
+
+### Bounded checkpoint, not full MAP-EXPAND acceptance
+
+At tested637da167 the current-source short ASan/UBSan gate passes16/16, all
+failed/empty/skipped/incomplete/SAN categories0; six required invocations separately
+pass1/1. Actual compile includes address/undefined/float-cast-overflow sanitizers.
+This closes only the independent cargo/route subset after Debug review; it does
+not replace current-source combined two-island sailing. E0/E1 approved, E2 NOT
+APPROVED due founding history loss, E3–E7 full acceptance remains open. No runtime
+fix or identity change landed. Complete per-run counts, first failures, hashes,
+source pins and remaining dependency are in the
+[bounded handoff](../orchestration/reviews/2026-11-06-map-expand1.md).

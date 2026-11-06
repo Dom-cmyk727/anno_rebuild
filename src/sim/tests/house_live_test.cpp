@@ -1760,3 +1760,40 @@ TEST_CASE("house live P-14: end of ladder and a declared special successor are n
         CHECK(draws_at(w, sim::DrawSite::HouseVariant) == 0);
     }
 }
+
+TEST_CASE("city booking: an earlier actual house fault suppresses due booking") {
+    const auto types = registry();
+    for (bool mismatch : {false, true}) {
+        Rig r = make_rig();
+        r.place(kP, 110, 110, make_house(kP, 512, 640, {2000, 500}));
+        sim::Rules rules;
+        rules.house_updates = true;
+        rules.city_booking = true;
+        auto made = sim::World::create(r.spec, types, syn::population_config(), rules);
+        REQUIRE(made);
+        auto w = std::move(made).value();
+        city0(w).stock.stock[kTools] = 1000;
+        city0(w).stock.stock[kWood] = 2000;
+        city0(w).billed[kFood] = 12;
+        if (mismatch)
+            city0(w).index.house_counts[0] = 0; // labelled broken derived index
+        const auto money = w.players().find(sim::PlayerId{0})->money;
+        w.advance(6000); // first House gate and booking both due at tick3000
+        if (mismatch) {
+            REQUIRE(w.faulted());
+            CHECK(w.fault().find("house fault count_mismatch") != std::string::npos);
+            CHECK(city0(w).billed[kFood] == 12);
+            CHECK(city0(w).accounts.stamp == 0);
+            CHECK(w.players().find(sim::PlayerId{0})->money == money);
+            CHECK(std::none_of(w.last_output().events.begin(), w.last_output().events.end(),
+                               [](const auto& e) { return e.booking.has_value(); }));
+        } else {
+            REQUIRE_FALSE(w.faulted());
+            CHECK(at(w, 110, 110)->type != kP);
+            CHECK(city0(w).accounts.stamp == 3000);
+            CHECK(city0(w).billed[kFood] == 0);
+            CHECK(std::any_of(w.last_output().events.begin(), w.last_output().events.end(),
+                              [](const auto& e) { return e.booking.has_value(); }));
+        }
+    }
+}

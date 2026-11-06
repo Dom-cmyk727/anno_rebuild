@@ -604,3 +604,81 @@ TEST_CASE("city booking: equal-valued selectors still subtract history and scrip
     CHECK(bookings(f).empty());
     CHECK(f.save() != before); // sticky fault is state
 }
+
+TEST_CASE("city booking: atomic build preflights aggregate costs before any record mutation") {
+    auto t = priced();
+    auto rules = enabled();
+    rules.build_atomic = true;
+    const auto command = build(0, kCity0, {at(t.weaver, 125, 110), at(t.weaver, 127, 110)});
+    auto good = make_world(t, scenario(t), rules);
+    const auto cash = money(good);
+    REQUIRE(good.apply(command).ok());
+    CHECK(city(good, kCity0).accounts.civil_cost == 84);
+    CHECK(money(good) == cash - 600);
+    CHECK(good.building_at(kCity0, 125, 110) != nullptr);
+    CHECK(good.building_at(kCity0, 127, 110) != nullptr);
+    auto bad = make_world(t, scenario(t), rules);
+    city_mut(bad, kCity0).accounts.civil_cost = std::numeric_limits<std::uint64_t>::max() - 40;
+    const auto before = bad.save();
+    const auto rng = bad.rng().cursor();
+    const auto ids = bad.islands()[0]->next_serial;
+    auto refused = bad.apply(command);
+    CHECK(refused.status == sim::Reject::AtomicAbort);
+    REQUIRE(refused.records.size() == 2);
+    CHECK(refused.records[0].status == sim::Reject::AtomicAbort);
+    CHECK(refused.records[1].status == sim::Reject::CityAccounting);
+    CHECK(bad.save() == before);
+    CHECK(bad.rng().cursor() == rng);
+    CHECK(bad.islands()[0]->next_serial == ids);
+    CHECK(bad.building_at(kCity0, 125, 110) == nullptr);
+    CHECK(bad.building_at(kCity0, 127, 110) == nullptr);
+    // Default non-atomic drag behavior remains record-by-record, including costs.
+    rules.build_atomic = false;
+    auto partial = make_world(t, scenario(t), rules);
+    city_mut(partial, kCity0).accounts.civil_cost = std::numeric_limits<std::uint64_t>::max() - 40;
+    const auto r = partial.apply(command);
+    REQUIRE(r.ok());
+    CHECK(r.records[0].status == sim::Reject::None);
+    CHECK(r.records[1].status == sim::Reject::CityAccounting);
+    CHECK(city(partial, kCity0).accounts.civil_cost ==
+          std::numeric_limits<std::uint64_t>::max() - 12);
+}
+
+TEST_CASE("city booking: full u32 elapsed domain and exact word alias through public advance") {
+    auto t = priced();
+    auto w = make_world(t, scenario(t), enabled());
+    city_mut(w, kCity0).billed[26] = 7;
+    w.advance(std::numeric_limits<std::uint32_t>::max());
+    REQUIRE_FALSE(w.faulted());
+    CHECK(w.clock().ms == 4294967295ULL);
+    CHECK(w.clock().tick() == 2147483647ULL);
+    CHECK(city(w, kCity0).accounts.stamp == 65535);
+    CHECK(city(w, kCity0).billed[26] == 0);
+    CHECK(bookings(w).size() == 2);
+    city_mut(w, kCity0).billed[26] = 2;
+    const auto cash = money(w);
+    auto loaded = sim::World::load(w.save(), t.registry);
+    REQUIRE(loaded);
+    loaded.value().advance(1);
+    w.advance(1);
+    CHECK(loaded.value().save() == w.save());
+    CHECK(w.clock().tick() == 2147483648ULL);
+    CHECK(bookings(w).empty());
+    CHECK(city(w, kCity0).billed[26] == 2);
+    CHECK(money(w) == cash);
+    w.advance(3998);
+    REQUIRE_FALSE(w.faulted());
+    CHECK(city(w, kCity0).billed[26] == 0);
+    CHECK(city(w, kCity0).accounts.stamp == 1999);
+    CHECK(money(w) == cash + 1);
+    auto alias = make_world(t, scenario(t), enabled());
+    city_mut(alias, kCity0).billed[26] = 3;
+    const auto initial = money(alias);
+    alias.advance(131072);
+    REQUIRE_FALSE(alias.faulted());
+    CHECK(alias.clock().tick() == 65536);
+    CHECK(bookings(alias).empty());
+    CHECK(city(alias, kCity0).billed[26] == 3);
+    CHECK(city(alias, kCity0).accounts.stamp == 0);
+    CHECK(money(alias) == initial); // intentional original word-age alias, no catch-up
+}

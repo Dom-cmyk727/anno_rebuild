@@ -257,6 +257,7 @@ bool tile_has_building(const Island& is, std::uint64_t idx) {
 /// The scratch budget of the atomic dry run (Rules::build_atomic, D8, §8.2 item 5): what
 /// the records before the current one would take if they were placed.
 struct Budget {
+    CityAccounts accounts; // simulated financial history of accepted records
     /// Gold of the earlier records.
     std::int64_t money = 0;
     /// Goods of the earlier records, by goods number.
@@ -282,6 +283,7 @@ struct Checked {
     bool free = false;
     /// A tile object (a land road): no building record, no serial (MAP-ROAD-1).
     bool tile_object = false;
+    std::optional<CityAccounts> accounts_after;
 };
 
 /// The island tile indices of a footprint that lies on the island.
@@ -486,6 +488,23 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         out.status = h;
         return out;
     }
+    if (env.rules.city_booking && !out.tile_object) {
+        Building prototype;
+        prototype.payload =
+            make_payload(*type, env.types.class_info(type->cls), env.cfg, env.types);
+        const auto cost = building_cost(env.types, *type, prototype, &owner);
+        if (!cost) {
+            out.status = Reject::CityAccounting;
+            return out;
+        }
+        const auto next = change_city_cost(budget != nullptr ? budget->accounts : city.accounts,
+                                           cost.value(), true);
+        if (!next) {
+            out.status = Reject::CityAccounting;
+            return out;
+        }
+        out.accounts_after = next.value();
+    }
     out.type = type;
     out.rec = rec;
     return out;
@@ -493,6 +512,8 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
 
 /// Adds a validated record to the dry run's budget.
 void spend(Budget& budget, const Island& is, const Checked& c) {
+    if (c.accounts_after)
+        budget.accounts = *c.accounts_after;
     if (!c.free) {
         budget.money += std::int64_t{c.type->cost_gold};
         for (const CostEntry& cost : c.type->cost_goods) {
@@ -579,6 +600,7 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
     // AtomicAbort, the failing ones their own reason.
     if (env.rules.build_atomic) {
         Budget budget;
+        budget.accounts = city.accounts;
         bool all_pass = true;
         for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
             const Checked chk = check_record(env, is, city, *owner, cmd.placements[i], &budget);

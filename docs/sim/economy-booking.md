@@ -876,3 +876,42 @@ disk remain ample. The bench_picture-only ancillary warning exception from B2 is
 unchanged; sim/formats/replay retain warnings as errors. This package adds no new
 state bytes after B3, so current default-off133 fixtures must remain exact. Full
 relevant integration and the original economic loop remain B5/B7, not claimed here.
+
+### B4 first frozen gates and independent correction
+
+Frozen `d55df98d` Debug and ASan/UBSan each selected30/executed30, all other
+outcome categories and sanitizer lines0, GATE_END status0. Raw
+`B4/canonical-debug-01.log` SHA256
+`ac1d4591c8a3e3597baa4c1032e6b5a55787f6fb0f681bf6edea67f73081b669`,
+`B4/canonical-asan-01.log` SHA256
+`162f0d888a33c08347aca4cc976edc4e9a4c6d0e196bdfcb2884bf537241966e`.
+Six required invocations (including mandatory picture) each1/1 are separate.
+Source/build/binary hashes are in `B4/receipt-d55.json`; no source changed during
+either gate. These results do not override the review finding below.
+
+`/root/econ_b0_review` found a P2 interaction: build_atomic's dry run lacked
+aggregate city-cost scratch. Two active28 placements against historyMAX-40 could
+place/debit the first before the second failed. The correction adds checked
+financial history to the existing per-command Budget and carries it forward only
+for successful building records; roads remain contribution-free. The same
+make_payload selector and owner facts are used before live creation. Existing
+Place-seam caveats remain unchanged; no new generic transaction mechanism.
+The legal two-record arm builds/debits twice. The late-overflow arm aborts both
+records and preserves complete native state, money/materials, IDs, PRNG and tiles.
+The default non-atomic arm still accepts the first and refuses the second.
+Running that regression against d55 apply.cpp (all other corrected tests retained)
+passes the nonempty legal control and fails the unchanged-native assertion;
+`B4/mutants/atomic-*` and `atomic-negative-driver.log` preserve it. Corrected source
+was restored and rebuilt.
+
+Two requested coverage details were added without changing runtime rules:
+World::advance(UINT32_MAX) followed by saved odd-ms surplus/+1 and a further1999
+ticks; exact65536-tick word alias retains bills (intentional original gate, no
+catch-up). A genuine House count_mismatch fault precedes due booking at tick3000;
+the same legal stocked house upgrades and books when its derived count is valid.
+The first attempt incorrectly expected a resident billing fault in the House
+phase; its retained `engine-correction-01.log` failed that assumption because
+purchases happen later in the figure phase. The actual House-fault control fixes
+the test setup; no phase was moved to make it pass. Corrected exploration02:
+15/15 cases,956 assertions. Independent re-review and focused correction gates
+remain pending at this paragraph's commit.

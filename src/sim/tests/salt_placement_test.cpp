@@ -1365,3 +1365,867 @@ TEST_CASE("salt chain X3: the ledger catches a direct salt credit and a direct o
     CHECK(t.u_store == 2 * 256);
     CHECK(t.u_ore == -3 * 256);
 }
+
+
+// ---- X4: interruption, restoration, lifetime and timing boundaries --------------------------------
+
+namespace {
+
+struct XChain {
+    std::unique_ptr<Chain> c;
+    std::vector<sim::BuildingId> mines, works;
+    struct Hist {
+        std::uint64_t mine_out = 0, works_in = 0, works_out = 0;
+    } hist;
+};
+
+/// Low-stock setup (labelled fixture edit): no preloaded ore AND no preloaded SALZ in the store, so
+/// the households can only buy what the renewed chain delivers.
+XChain start_x(bool mine, bool live_houses = true) {
+    XChain x;
+    x.c = start_chain(mine ? Arm::Real : Arm::NoNewMine, true, live_houses);
+    if (!x.c) return x;
+    sim::World& w = x.c->sw.w;
+    sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->stock.stock[kSalz] = 0;
+    x.c->salz_store0 = 0;
+    REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+    if (mine) x.mines.push_back(x.c->mine);
+    x.works.push_back(x.c->works);
+    return x;
+}
+
+const sim::Building* building_on(const sim::World& w, std::int32_t x, std::int32_t y) {
+    return isle(w).building_at(w.config().layout, kSaltCity.city, x, y);
+}
+
+/// Demolishes the buildings on `tiles`; what the removed mines and saltworks still held is history.
+void demolish_x(XChain& x, const std::vector<std::pair<std::int32_t, std::int32_t>>& tiles) {
+    sim::World& w = x.c->sw.w;
+    sim::DemolishCmd dem;
+    dem.city = kSaltCity;
+    for (const auto& [tx, ty] : tiles) {
+        dem.tiles.push_back({tx, ty});
+        const sim::Building* b = building_on(w, tx, ty);
+        if (b == nullptr) continue;
+        if (const auto* m = std::get_if<sim::Mine>(&b->payload)) x.hist.mine_out += m->out;
+        if (const auto* ws = std::get_if<sim::Workshop>(&b->payload)) {
+            x.hist.works_in += ws->in.at(0);
+            x.hist.works_out += ws->out.at(0);
+        }
+    }
+    const sim::ApplyResult r = w.apply(sim::Command{kSaltPlayer, dem});
+    REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
+}
+
+sim::BuildingId build_x(XChain& x, std::uint32_t type, std::int32_t px, std::int32_t py, std::uint8_t rot) {
+    const sim::ApplyResult r = x.c->sw.w.apply(
+        build_cmd({sim::PlacementWire{sim::TypeId{type}, px, py, rot, 0, 0}}));
+    REQUIRE_MESSAGE(r.ok(), "build " << type << " at " << px << "," << py << ": " << sim::reject_name(r.status));
+    const sim::BuildingId id = r.records.at(0).building;
+    if (type == 1203) x.mines.push_back(id);
+    if (type == 1022) x.works.push_back(id);
+    return id;
+}
+
+struct Terms2 {
+    std::uint64_t mine_made = 0, mine_out = 0, ore_loaded = 0, works_made = 0, works_out = 0, works_in = 0,
+                  consumed = 0, salz_loaded = 0, ore_cargo = 0, salz_cargo = 0, unloaded = 0, salz_lost = 0, ore_lost = 0,
+                  bought = 0, taken = 0, delivered = 0, res_lost = 0, res_cargo = 0, salz_store = 0, ore_store = 0;
+    std::int64_t u_mine = 0, u_ore = 0, u_made = 0, u_salz_out = 0, u_store = 0, u_buy = 0, u_deliver = 0;
+};
+
+Terms2 terms2(XChain& x) {
+    Terms2 t;
+    Chain& c = *x.c;
+    sim::World& w = c.sw.w;
+    const sim::TransportStats& st = c.stats;
+    const auto get = [](const auto& m, const auto& k) -> std::uint64_t {
+        const auto it = m.find(k);
+        return it == m.end() ? 0U : it->second;
+    };
+    const sim::City& city = city_of(w);
+    for (const sim::BuildingId id : x.mines) {
+        t.mine_made += get(st.forestry.mine_made_88, id);
+        t.ore_loaded += get(st.loaded_from, id);
+        if (const sim::Building* m = w.find_building(id)) t.mine_out += std::get<sim::Mine>(m->payload).out;
+    }
+    for (const sim::BuildingId id : x.works) {
+        t.salz_loaded += get(st.loaded_from, id);
+        if (const sim::Building* b = w.find_building(id)) {
+            const auto& ws = std::get<sim::Workshop>(b->payload);
+            t.works_in += ws.in.at(0);
+            t.works_out += ws.out.at(0);
+        }
+        if (const auto it = st.forestry.workshops.find(id); it != st.forestry.workshops.end()) {
+            t.consumed += it->second.consumed_88.at(0);
+            t.works_made += it->second.made_88.at(0);
+        }
+    }
+    for (const auto& f : w.figures().list.slots) {
+        if (!f || f->expiry_stamp.has_value() || f->owner != city.owner) continue;
+        if (f->cargo_goods == kSalzstein && !f->resident) t.ore_cargo += f->cargo_88;
+        if (f->cargo_goods == kSalz && !f->resident) t.salz_cargo += f->cargo_88;
+        if (f->resident)
+            for (const sim::ResidentCargo& rc : f->resident->cargo)
+                if (rc.goods == kSalz) t.res_cargo += rc.amount_88;
+    }
+    t.unloaded = get(st.unload_offered, kSalz);
+    t.salz_lost = get(st.cart_lost, kSalz);
+    t.ore_lost = get(st.cart_lost, kSalzstein);
+    t.salz_store = city.stock.stock[kSalz];
+    t.ore_store = city.stock.stock[kSalzstein];
+    t.bought = get(st.residents.bought_by_goods, kSalz);
+    t.taken = get(st.residents.merged_taken_by_city, std::make_pair(kSaltCity, kSalz));
+    t.delivered = get(st.residents.delivered_by_goods, kSalz);
+    t.res_lost = get(st.residents.lost_by_goods, kSalz);
+    const auto I = [](std::uint64_t v) { return static_cast<std::int64_t>(v); };
+    t.u_mine = I(t.mine_made) - I(t.mine_out) - I(t.ore_loaded) - I(x.hist.mine_out);
+    t.u_ore = I(t.ore_loaded) - I(t.ore_cargo) - I(t.ore_lost) -
+              (I(t.works_in) + I(x.hist.works_in) - I(c.works_in0) + I(t.consumed)) - (I(t.ore_store) - I(c.ore_store0));
+    t.u_made = I(t.works_made) - I(t.works_out) - I(x.hist.works_out) - I(t.salz_loaded);
+    t.u_salz_out = I(t.salz_loaded) - I(t.salz_cargo) - I(t.unloaded) - I(t.salz_lost);
+    t.u_store = I(t.salz_store) - I(c.salz_store0) - I(t.unloaded) + I(t.taken);
+    t.u_buy = I(t.bought) - I(t.taken);
+    t.u_deliver = I(t.bought) - I(t.delivered) - I(t.res_lost) - I(t.res_cargo);
+    return t;
+}
+
+void closed2(const Terms2& t, const char* label) {
+    INFO("ledger " << label);
+    CHECK(t.u_mine == 0);
+    CHECK(t.u_ore == 0);
+    CHECK(t.u_made == 0);
+    CHECK(t.u_salz_out == 0);
+    CHECK(t.u_store == 0);
+    CHECK(t.u_buy == 0);
+    CHECK(t.u_deliver == 0);
+}
+
+/// Validate, save, load: the same bytes and hash, and the loaded world continues like the original.
+void validate_and_reload(XChain& x, const char* label) {
+    INFO("terminal path " << label);
+    sim::World& w = x.c->sw.w;
+    CHECK(w.check_invariants().empty());
+    const auto bytes = w.save();
+    auto loaded = sim::World::load(bytes, x.c->sw.types, {});
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    CHECK(loaded.value().save() == bytes);
+    CHECK(loaded.value().state_hash() == w.state_hash());
+    CHECK(loaded.value().check_invariants().empty());
+    // the deposit table survives and every Mine::deposit index is valid
+    for (const auto& l : city_of(loaded.value()).index.lists)
+        for (const auto& b : l.slots)
+            if (const auto* m = b ? std::get_if<sim::Mine>(&b->payload) : nullptr)
+                if (m->deposit) CHECK(*m->deposit < isle(loaded.value()).deposits.size());
+}
+
+struct Snap {
+    std::uint64_t works_made = 0, mine_made = 0, unloaded = 0, taken = 0, delivered = 0, ore_loaded = 0;
+};
+Snap snap(XChain& x) {
+    const Terms2 t = terms2(x);
+    return {t.works_made, t.mine_made, t.unloaded, t.taken, t.delivered, t.ore_loaded};
+}
+Snap diff(const Snap& a, const Snap& b) {
+    return {b.works_made - a.works_made, b.mine_made - a.mine_made, b.unloaded - a.unloaded,
+            b.taken - a.taken, b.delivered - a.delivered, b.ore_loaded - a.ore_loaded};
+}
+
+} // namespace
+
+
+namespace {
+
+struct Placed {
+    std::uint32_t type;
+    std::int32_t x, y;
+    std::uint8_t rot;
+};
+
+struct Windows {
+    std::vector<Snap> p1, p2, p3; // 500-step windows
+    std::map<sim::DrawSite, std::uint64_t> draws;
+    std::vector<std::uint64_t> cursors;
+};
+
+/// The chain, interrupted and restored: phase 1 (2,000 steps) establishes it from the low-stock
+/// setup, phase 2 (3,000) runs interrupted, phase 3 (3,000) runs restored; the ledger must close at
+/// the end of every phase.
+template <class Interrupt, class Restore>
+Windows run_interruption(const char* name, Interrupt interrupt, Restore restore, bool print, bool instant = false, bool live = true) {
+    Windows out;
+    auto x = start_x(true, live);
+    if (!x.c) return out;
+    const auto phase = [&](std::vector<Snap>& v, int windows, const char* label) {
+        for (int i = 0; i < windows; ++i) {
+            const Snap a = snap(x);
+            step_chain(*x.c, 500);
+            v.push_back(diff(a, snap(x)));
+        }
+        closed2(terms2(x), label);
+        CHECK(x.c->sw.w.check_invariants().empty());
+    };
+    phase(out.p1, 2, "P1");
+    interrupt(x);
+    if (instant) restore(x);
+    phase(out.p2, 8, "P2");
+    if (!instant) restore(x);
+    phase(out.p3, 6, "P3");
+    validate_and_reload(x, name);
+    out.draws = x.c->draws;
+    out.cursors = x.c->cursors;
+    if (print) {
+        const auto show = [&](const char* ph, const std::vector<Snap>& v) {
+            for (std::size_t i = 0; i < v.size(); ++i)
+                std::cout << name << " " << ph << i << ": works_made " << v[i].works_made << " mine_made " << v[i].mine_made
+                          << " unloaded " << v[i].unloaded << " taken " << v[i].taken << " delivered " << v[i].delivered << "\n";
+        };
+        show("P1.", out.p1); show("P2.", out.p2); show("P3.", out.p3);
+    }
+    return out;
+}
+
+std::vector<Placed> placed_of(const sim::World& w, std::uint32_t type) {
+    std::vector<Placed> v;
+    for (const auto& l : city_of(w).index.lists)
+        for (const auto& b : l.slots)
+            if (b && b->type.v == type) v.push_back({type, b->x, b->y, b->rotation});
+    return v;
+}
+
+} // namespace
+
+
+namespace {
+
+const std::vector<std::pair<std::int32_t, std::int32_t>> kMarketTiles = {{346, 346}, {346, 371}};
+
+bool all_zero(const std::vector<Snap>& v, std::size_t from, bool works, bool mine, bool unloaded, bool taken, bool delivered) {
+    for (std::size_t i = from; i < v.size(); ++i) {
+        if ((works && v[i].works_made) || (mine && v[i].mine_made) || (unloaded && v[i].unloaded) ||
+            (taken && v[i].taken) || (delivered && v[i].delivered))
+            return false;
+    }
+    return true;
+}
+bool all_positive(const std::vector<Snap>& v, std::size_t from, bool works, bool mine, bool unloaded, bool taken, bool delivered) {
+    for (std::size_t i = from; i < v.size(); ++i) {
+        if ((works && !v[i].works_made) || (mine && !v[i].mine_made) || (unloaded && !v[i].unloaded) ||
+            (taken && !v[i].taken) || (delivered && !v[i].delivered))
+            return false;
+    }
+    return true;
+}
+
+/// The uninterrupted control of the same length.
+Windows control_run(bool live = true) {
+    return run_interruption("control", [](XChain&) {}, [](XChain&) {}, false, false, live);
+}
+
+/// PRNG discipline.
+///  - Households NOT live, interruption and restoration at the SAME instant (demolish and rebuild with
+///    no time between): the draws of every site and the final cursor equal the uninterrupted control (the
+///    new buildings have new ids, so WHEN within the run a draw falls may shift, not how many fall). The
+///    demolitions, the rebuilds, their payments and the chain draw nothing.
+///  - Households NOT live, the link down for 4,000 steps: only FarmWorkerDispatch may differ. It is an
+///    existing site drawn once per eligible farm dispatch attempt; the farms share the markets' carts with
+///    the salt chain, so an idle chain frees carts for the farms and their eligibility moves. No new site
+///    appears and no other site changes.
+///  - Households live: HouseWalkerTarget, HouseVariant and FarmWorkerDispatch follow economy state (any
+///    small perturbation, even a payment-matched instant rebuild, moves them); the other sites are equal.
+template <class Interrupt, class Restore>
+void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore restore, bool quiet_worlds = true) {
+    const Windows control = control_run(true);
+    const auto stable = {sim::DrawSite::HouseWalkerTarget, sim::DrawSite::HouseVariant, sim::DrawSite::FarmWorkerDispatch};
+    const auto minus_sites = [](std::map<sim::DrawSite, std::uint64_t> m, std::initializer_list<sim::DrawSite> sites) {
+        for (const sim::DrawSite site : sites) m.erase(site);
+        return m;
+    };
+    CHECK(minus_sites(live_run.draws, stable) == minus_sites(control.draws, stable));
+    for (const auto& [site, n] : live_run.draws) CHECK(control.draws.count(site) == 1U);
+    if (!quiet_worlds) return;
+    const Windows quiet_control = control_run(false);
+    const Windows instant = run_interruption("quiet-instant", interrupt, restore, false, true, false);
+    REQUIRE(instant.cursors.size() == quiet_control.cursors.size());
+    CHECK(instant.cursors.back() == quiet_control.cursors.back()); // the same number of draws overall
+    CHECK(instant.draws == quiet_control.draws);                     // at every site
+    const Windows quiet = run_interruption("quiet", interrupt, restore, false, false, false);
+    auto minus = [](std::map<sim::DrawSite, std::uint64_t> m, std::initializer_list<sim::DrawSite> sites) {
+        for (const sim::DrawSite site : sites) m.erase(site);
+        return m;
+    };
+    CHECK(minus(quiet.draws, {sim::DrawSite::FarmWorkerDispatch}) ==
+          minus(quiet_control.draws, {sim::DrawSite::FarmWorkerDispatch}));
+    for (const auto& [site, n] : quiet.draws) CHECK(quiet_control.draws.count(site) == 1U);
+}
+
+} // namespace
+
+TEST_CASE("salt interruption X4: the mine demolished and rebuilt") {
+    const Windows w = run_interruption("mine", [](XChain& x) { demolish_x(x, {{kMineX, kMineY}}); },
+                                       [](XChain& x) { build_x(x, 1203, kMineX, kMineY, 0); }, false);
+    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    CHECK(all_positive(w.p1, 1, true, true, true, true, true));
+    // drained: the ore in the saltworks runs out, then nothing is made, unloaded, bought or delivered
+    CHECK(all_zero(w.p2, 4, true, true, true, true, true));
+    // renewed: production, receipts, purchases and deliveries all return
+    CHECK(all_positive(w.p3, 3, true, true, true, true, true));
+    draws_unchanged(w, [](XChain& x) { demolish_x(x, {{kMineX, kMineY}}); },
+                    [](XChain& x) { build_x(x, 1203, kMineX, kMineY, 0); });
+}
+
+TEST_CASE("salt interruption X4: the road cut and rebuilt") {
+    std::vector<std::pair<std::pair<int, int>, std::uint32_t>> tiles;
+    const auto interrupt = [&](XChain& x) {
+        const auto& L = isle(x.c->sw.w).tiles;
+        std::vector<std::pair<std::int32_t, std::int32_t>> t;
+        tiles.clear();
+        for (int y = 350; y <= 366; ++y)
+            for (int xx = 350; xx <= 355; ++xx) {
+                const auto id = L.object(L.index_of(xx, y));
+                const auto* ty = id ? x.c->sw.types->find(sim::TypeId{id}) : nullptr;
+                if (ty && sim::is_land_road(*ty)) {
+                    tiles.push_back({{xx, y}, id});
+                    t.push_back({xx, y});
+                }
+            }
+        REQUIRE(t.size() == 22);
+        demolish_x(x, t);
+    };
+    const auto restore = [&](XChain& x) {
+        for (const auto& [xy, id] : tiles) {
+            const sim::ApplyResult r = x.c->sw.w.apply(
+                build_cmd({sim::PlacementWire{sim::TypeId{id}, xy.first, xy.second, 0, 0, 0}}));
+            CHECK_MESSAGE(r.ok(), "road " << xy.first << "," << xy.second << ": " << sim::reject_name(r.status));
+        }
+    };
+    const Windows w = run_interruption("road", interrupt, restore, false);
+    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    CHECK(all_zero(w.p2, 4, true, true, true, true, true));
+    CHECK(all_positive(w.p3, 3, true, true, true, true, true));
+    // the quiet (households not live) worlds are skipped here: some road pieces are stage-locked there
+    // (ConstructionDenied) because the stage mask only rises with live households
+    draws_unchanged(w, interrupt, restore, false);
+}
+
+TEST_CASE("salt interruption X4: the markets that carry the salt demolished and not restorable") {
+    std::vector<Placed> markets;
+    sim::Reject rebuild = sim::Reject::None;
+    const Windows w = run_interruption(
+        "markets",
+        [&](XChain& x) {
+            for (const Placed& p : placed_of(x.c->sw.w, 1305))
+                if ((p.x == 346 && p.y == 346) || (p.x == 346 && p.y == 371)) markets.push_back(p);
+            REQUIRE(markets.size() == 2);
+            demolish_x(x, kMarketTiles);
+        },
+        [&](XChain& x) {
+            // the market type is not buildable for the player (permission): the link cannot be restored
+            rebuild = x.c->sw.w.apply(build_cmd({sim::PlacementWire{sim::TypeId{1305}, markets[0].x, markets[0].y, markets[0].rot, 0, 0}})).status;
+        },
+        false);
+    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    CHECK(rebuild == sim::Reject::ConstructionDenied);
+    // no cart lifts the SALZ any more: the saltworks fills up and stops, nothing reaches the store
+    CHECK(all_zero(w.p2, 1, false, false, true, false, false));
+    CHECK(all_zero(w.p2, 2, true, false, true, true, true));
+    CHECK(all_zero(w.p2, 4, true, true, true, true, true));
+    // and there is no recovery without the restorable link
+    CHECK(all_zero(w.p3, 0, true, true, true, true, true));
+}
+
+TEST_CASE("salt interruption X4: the stalls demolished and rebuilt") {
+    std::vector<Placed> stalls;
+    const auto interrupt = [&](XChain& x) {
+        stalls = placed_of(x.c->sw.w, 1310);
+        REQUIRE(stalls.size() == 4);
+        std::vector<std::pair<std::int32_t, std::int32_t>> t;
+        for (const Placed& p : stalls) t.push_back({p.x, p.y});
+        demolish_x(x, t);
+    };
+    const auto restore = [&](XChain& x) { for (const Placed& p : stalls) build_x(x, 1310, p.x, p.y, p.rot); };
+    const Windows w = run_interruption("stalls", interrupt, restore, false);
+    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    // production and receipts go on (the store fills), the households buy and receive nothing
+    CHECK(all_positive(w.p2, 1, true, true, true, false, false));
+    CHECK(all_zero(w.p2, 1, false, false, false, true, true));
+    CHECK(all_positive(w.p3, 0, true, true, true, true, true));
+    draws_unchanged(w, interrupt, restore);
+}
+
+
+// ---- X4: lifetime boundaries (cargo in flight, shared deposit) --------------------------------
+
+namespace {
+
+std::uint64_t in_flight(XChain& x, sim::BuildingId home, sim::GoodsId g) {
+    std::uint64_t n = 0;
+    for (const auto& f : x.c->sw.w.figures().list.slots)
+        if (f && !f->expiry_stamp.has_value() && !f->resident && f->home == home && f->cargo_goods == g) n += f->cargo_88;
+    return n;
+}
+
+template <class Pred>
+int step_until(XChain& x, int limit, Pred pred) {
+    for (int i = 1; i <= limit; ++i) {
+        step_chain(*x.c, 1);
+        if (pred()) return i;
+    }
+    return -1;
+}
+
+} // namespace
+
+TEST_CASE("salt lifetime X4: cargo in flight when its home is demolished is history") {
+    // (a) the saltworks demolished while its carrier holds ore
+    {
+        auto x = start_x(true);
+        if (!x.c) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+        const sim::BuildingId works = x.works[0];
+        REQUIRE(step_until(x, 3000, [&] { return in_flight(x, works, kSalzstein) > 0; }) > 0);
+        const std::uint64_t premise = in_flight(x, works, kSalzstein);
+        const std::uint64_t lost0 = terms2(x).ore_lost;
+        demolish_x(x, {{kWorksX, kWorksY}});
+        step_chain(*x.c, 400);
+        const Terms2 t = terms2(x);
+        CHECK(in_flight(x, works, kSalzstein) == 0);
+        CHECK(t.ore_lost - lost0 == premise);
+        closed2(t, "works demolished with ore in the carrier's hands");
+        validate_and_reload(x, "works with cargo");
+    }
+    // (b) both markets demolished while their carts hold SALZ
+    {
+        auto x = start_x(true);
+        const auto* a = building_on(x.c->sw.w, 346, 346);
+        const auto* b = building_on(x.c->sw.w, 346, 371);
+        REQUIRE(a != nullptr);
+        REQUIRE(b != nullptr);
+        const sim::BuildingId ia = a->id, ib = b->id;
+        REQUIRE(step_until(x, 4000, [&] { return in_flight(x, ia, kSalz) + in_flight(x, ib, kSalz) > 0; }) > 0);
+        const std::uint64_t premise = in_flight(x, ia, kSalz) + in_flight(x, ib, kSalz);
+        const std::uint64_t lost0 = terms2(x).salz_lost;
+        demolish_x(x, kMarketTiles);
+        step_chain(*x.c, 600);
+        const Terms2 t = terms2(x);
+        CHECK(in_flight(x, ia, kSalz) + in_flight(x, ib, kSalz) == 0);
+        CHECK(t.salz_lost - lost0 == premise);
+        closed2(t, "markets demolished with SALZ in the carts");
+        validate_and_reload(x, "markets with cargo");
+    }
+    // (c) the MINE demolished while the saltworks' carrier holds its ore: the cargo is delivered, nothing is lost
+    {
+        auto x = start_x(true);
+        const sim::BuildingId works = x.works[0];
+        REQUIRE(step_until(x, 3000, [&] { return in_flight(x, works, kSalzstein) > 0; }) > 0);
+        const std::uint64_t lost0 = terms2(x).ore_lost;
+        demolish_x(x, {{kMineX, kMineY}});
+        step_chain(*x.c, 400);
+        const Terms2 t = terms2(x);
+        CHECK(t.ore_lost == lost0);
+        closed2(t, "mine demolished with ore in the carrier's hands");
+        validate_and_reload(x, "mine with cargo");
+    }
+}
+
+TEST_CASE("salt lifetime X4: one deposit shared by two mines survives the demolition of one") {
+    auto x = start_x(false);
+    if (!x.c) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    const sim::BuildingId a = build_x(x, 1203, kMineX, kMineY, 0);
+    const sim::BuildingId b = build_x(x, 1203, 356, 359, 0);
+    REQUIRE(isle(x.c->sw.w).deposits.size() == 1);
+    sim::WorldTestAccess::islands(x.c->sw.w)[1]->deposits[0].remaining = 321;
+    step_chain(*x.c, 300);
+    demolish_x(x, {{kMineX, kMineY}});
+    CHECK(x.c->sw.w.find_building(a) == nullptr);
+    const auto* mb = std::get_if<sim::Mine>(&x.c->sw.w.find_building(b)->payload);
+    REQUIRE(mb != nullptr);
+    CHECK(mb->deposit == std::optional<std::size_t>{0}); // still bound to the shared deposit
+    step_chain(*x.c, 1500);
+    CHECK(terms2(x).mine_made > 0);
+    CHECK(isle(x.c->sw.w).deposits.size() == 1);
+    CHECK(isle(x.c->sw.w).deposits[0].remaining == 321); // deep and flagged: worked, never refilled, never used up
+    // the other one demolished too, then a rebuild: the deposit is the same object, not refilled
+    demolish_x(x, {{356, 359}});
+    step_chain(*x.c, 100);
+    const sim::BuildingId c = build_x(x, 1203, kMineX, kMineY, 0);
+    CHECK(std::get<sim::Mine>(x.c->sw.w.find_building(c)->payload).deposit == std::optional<std::size_t>{0});
+    CHECK(isle(x.c->sw.w).deposits.size() == 1);
+    CHECK(isle(x.c->sw.w).deposits[0].remaining == 321);
+    step_chain(*x.c, 500);
+    closed2(terms2(x), "shared deposit");
+    validate_and_reload(x, "shared deposit");
+}
+
+// ---- X4: timed-transition edges ------------------------------------------------------------------
+
+TEST_CASE("salt timing X4: zero and smallest positive elapsed times") {
+    // One tick is 2 ms. advance(game_ms) runs every subsystem once per call (docs/sim/state.md 5.3:
+    // the original adds 0 and still runs them), so the state depends on how the elapsed time is
+    // sliced into calls; a recording therefore holds the slice of every advance. What must hold for
+    // every slicing: the clock and the chain's observable flow equal, no fault, the ledger closed,
+    // and the same slicing reproduces the same state (and cursor) byte for byte. The PRNG cursor
+    // itself follows the number of calls (the existing per-call draw sites), so it is compared only
+    // between equal slicings.
+    auto a = start_x(true), b = start_x(true), c = start_x(true), c2 = start_x(true);
+    if (!a.c) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    for (XChain* x : {&a, &b, &c, &c2}) step_chain(*x->c, 300);
+    const auto tick0 = a.c->sw.w.clock().tick();
+    const std::uint64_t cursor0 = a.c->sw.w.rng().cursor();
+    a.c->sw.w.advance(0); // zero elapsed time: no tick, a valid world; the subsystems still run
+    REQUIRE_MESSAGE(!a.c->sw.w.faulted(), a.c->sw.w.fault());
+    CHECK(a.c->sw.w.clock().tick() == tick0);
+    // ... and draw where they draw per call: only the households' and the farm workers' own sites,
+    // never anything of the mine, the saltworks or the carriers
+    std::set<sim::DrawSite> zero_sites;
+    for (const sim::DrawRecord& r : a.c->sw.w.last_output().draws) zero_sites.insert(r.site);
+    for (const sim::DrawSite site : zero_sites)
+        CHECK((site == sim::DrawSite::HouseWalkerTarget || site == sim::DrawSite::HouseVariant ||
+               site == sim::DrawSite::FarmWorkerDispatch));
+    MESSAGE("advance(0) drew " << (a.c->sw.w.rng().cursor() - cursor0) << " values at " << zero_sites.size() << " sites");
+    CHECK(a.c->sw.w.check_invariants().empty());
+    // the same 100 x 100 ms cut three ways (a had its extra zero-time advance above, which is part of its slicing)
+    for (int i = 0; i < 100; ++i) a.c->sw.w.advance(100);
+    for (int i = 0; i < 10000; ++i) b.c->sw.w.advance(1);
+    const auto mix = [](XChain& x) {
+        for (int i = 0; i < 100; ++i) {
+            x.c->sw.w.advance(0);
+            x.c->sw.w.advance(1);
+            x.c->sw.w.advance(99);
+        }
+    };
+    mix(c);
+    mix(c2);
+    for (XChain* x : {&a, &b, &c, &c2}) {
+        REQUIRE_MESSAGE(!x->c->sw.w.faulted(), x->c->sw.w.fault());
+        CHECK(x->c->sw.w.check_invariants().empty());
+        closed2(terms2(*x), "sliced");
+    }
+    CHECK(a.c->sw.w.clock().tick() == b.c->sw.w.clock().tick());
+    CHECK(a.c->sw.w.clock().tick() == c.c->sw.w.clock().tick());
+    const Terms2 ta = terms2(a), tb = terms2(b), tc = terms2(c);
+    CHECK(ta.works_made == tb.works_made);
+    CHECK(ta.works_made == tc.works_made);
+    CHECK(ta.unloaded == tb.unloaded);
+    CHECK(ta.taken == tc.taken);
+    // the same slicing is reproduced exactly
+    CHECK(c.c->sw.w.state_hash() == c2.c->sw.w.state_hash());
+    CHECK(c.c->sw.w.save() == c2.c->sw.w.save());
+    CHECK(c.c->sw.w.rng().cursor() == c2.c->sw.w.rng().cursor());
+}
+
+namespace {
+
+/// A chain advanced k steps (deterministic: the same construction gives the same world).
+XChain chain_at(int k) {
+    XChain x = start_x(true);
+    if (x.c) step_chain(*x.c, k);
+    return x;
+}
+
+template <class Event>
+int first_event_step(Event event) {
+    XChain x = start_x(true);
+    if (!x.c) return -1;
+    for (int i = 1; i <= 6000; ++i) {
+        const Terms2 before = terms2(x);
+        step_chain(*x.c, 1);
+        if (event(before, terms2(x))) return i;
+    }
+    return -1;
+}
+
+} // namespace
+
+TEST_CASE("salt timing X4: a demolition on the step of a load an unload and an arrival") {
+    // LOAD: a carrier lifts ore from the mine in step k; the mine is demolished just before it
+    {
+        const int k = first_event_step([](const Terms2& a, const Terms2& b) { return b.ore_loaded > a.ore_loaded; });
+        if (k < 0) { MESSAGE("skipping: no event / ANNO1503_GAME_DIR not set"); return; }
+        XChain with = chain_at(k - 1), without = chain_at(k - 1);
+        const Terms2 w0 = terms2(with);
+        step_chain(*with.c, 1);
+        CHECK(terms2(with).ore_loaded > w0.ore_loaded); // the load happens
+        const Terms2 b0 = terms2(without);
+        demolish_x(without, {{kMineX, kMineY}});
+        step_chain(*without.c, 1);
+        const Terms2 b1 = terms2(without);
+        CHECK(b1.ore_loaded == b0.ore_loaded); // no load from a mine that is gone, no double credit
+        closed2(b1, "demolished on the load step");
+        step_chain(*with.c, 400);
+        step_chain(*without.c, 400);
+        closed2(terms2(with), "load step, kept");
+        closed2(terms2(without), "load step, demolished");
+        validate_and_reload(without, "load step");
+    }
+    // UNLOAD: a cart unloads SALZ into the store in step k; both markets are demolished just before it
+    {
+        const int k = first_event_step([](const Terms2& a, const Terms2& b) { return b.unloaded > a.unloaded; });
+        if (k < 0) { MESSAGE("skipping: no event"); return; }
+        XChain with = chain_at(k - 1), without = chain_at(k - 1);
+        const Terms2 w0 = terms2(with);
+        step_chain(*with.c, 1);
+        CHECK(terms2(with).unloaded > w0.unloaded);
+        const Terms2 b0 = terms2(without);
+        const sim::BuildingId ia = building_on(without.c->sw.w, 346, 346)->id, ib = building_on(without.c->sw.w, 346, 371)->id;
+        const std::uint64_t premise = in_flight(without, ia, kSalz) + in_flight(without, ib, kSalz);
+        demolish_x(without, kMarketTiles);
+        step_chain(*without.c, 1);
+        CHECK(terms2(without).unloaded == b0.unloaded);
+        step_chain(*without.c, 600);
+        const Terms2 b1 = terms2(without);
+        CHECK(b1.unloaded == b0.unloaded);
+        CHECK(b1.salz_lost - b0.salz_lost == premise); // history, exactly once
+        closed2(b1, "demolished on the unload step");
+        validate_and_reload(without, "unload step");
+    }
+    // ARRIVAL: the carrier reaches the saltworks with ore in step k; the saltworks is demolished just before it
+    {
+        const int k = first_event_step([](const Terms2& a, const Terms2& b) { return a.ore_cargo > 0 && b.ore_cargo < a.ore_cargo; });
+        if (k < 0) { MESSAGE("skipping: no event"); return; }
+        XChain with = chain_at(k - 1), without = chain_at(k - 1);
+        const Terms2 w0 = terms2(with);
+        step_chain(*with.c, 1);
+        CHECK(terms2(with).ore_cargo < w0.ore_cargo);
+        const Terms2 b0 = terms2(without);
+        const sim::BuildingId works = without.works[0];
+        const std::uint64_t premise = in_flight(without, works, kSalzstein);
+        REQUIRE(premise > 0);
+        demolish_x(without, {{kWorksX, kWorksY}});
+        step_chain(*without.c, 400);
+        const Terms2 b1 = terms2(without);
+        CHECK(b1.ore_lost - b0.ore_lost == premise);
+        closed2(b1, "demolished on the arrival step");
+        validate_and_reload(without, "arrival step");
+    }
+}
+
+// ---- X4: two owners on one island ------------------------------------------------------------------
+
+namespace {
+
+struct Rival {
+    SaltWorld sw;
+    sim::PlayerId player;
+    sim::CityRef city;
+};
+
+/// The pilot with a SECOND city on island 1 for another player: its territory is two rectangles cut
+/// out of the pilot city's tiles (labelled fixture edit of the scenario spec, not a game command).
+std::optional<Rival> rival_world(bool with_rival) {
+    auto o = load_original();
+    if (!o) return std::nullopt;
+    auto resolved = anno::sim_load::load_scenario_with_links(
+        anno::test::read_file(o->dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze"), o->templates, *o->types,
+        o->cfg, {}, original_component::actor_free_units());
+    REQUIRE(resolved);
+    auto component = original_component::import_only(resolved.value().loaded.spec, o->types, o->cfg);
+    REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+    sim::ScenarioSpec spec = component.value().spec;
+    Rival r{SaltWorld{}, sim::PlayerId{0}, sim::CityRef{sim::IslandId{1}, sim::CityNo{1}}};
+    if (with_rival) {
+        sim::ScenarioSpec::IslandSpec* isl = nullptr;
+        for (auto& i : spec.islands) if (i.slot.v == 1) isl = &i;
+        REQUIRE(isl != nullptr);
+        const sim::ScenarioSpec::PlayerSpec* p8 = nullptr;
+        for (const auto& p : spec.players) if (p.id == kSaltPlayer) p8 = &p;
+        REQUIRE(p8 != nullptr);
+        // a player with no city on this island: the first free slot above 8
+        std::set<std::uint32_t> used;
+        for (const auto& c : isl->cities) used.insert(c.owner.v);
+        std::uint32_t rid = 9;
+        while (used.count(rid) != 0) ++rid;
+        sim::ScenarioSpec::PlayerSpec* rp = nullptr;
+        for (auto& p : spec.players) if (p.id.v == rid) rp = &p;
+        if (rp == nullptr) {
+            spec.players.push_back(*p8);
+            rp = &spec.players.back();
+            rp->id = sim::PlayerId{rid};
+            rp->relations.clear();
+            rp->discovery.clear();
+        } else {
+            rp->permissions = p8->permissions;
+            rp->flags = p8->flags;
+        }
+        rp->money = 100000;
+        r.player = sim::PlayerId{rid};
+        sim::ScenarioSpec::CitySpec c1 = isl->cities.at(0);
+        c1.no = sim::CityNo{1};
+        c1.owner = r.player;
+        c1.buildings.clear();
+        isl->cities.push_back(c1);
+        // decode the owner runs, cut the rectangles, encode again
+        std::vector<std::uint32_t> own;
+        own.reserve(std::size_t{isl->w} * isl->h);
+        for (const auto& [owner, len] : isl->owner_runs) own.insert(own.end(), len, owner);
+        own.resize(std::size_t{isl->w} * isl->h, o->cfg.neutral_owner);
+        const auto cut = [&](int xa, int xb, int ya, int yb) {
+            for (int y = ya; y <= yb; ++y)
+                for (int x = xa; x <= xb; ++x) {
+                    auto& t = own[std::size_t(y - isl->y0) * isl->w + std::size_t(x - isl->x0)];
+                    if (t == 0) t = 1;
+                }
+        };
+        cut(340, 349, 352, 366); // west of the trunk road: room for a rival saltworks beside it
+        cut(356, 362, 357, 366); // east of our saltworks: room for a rival mine in reach of the same ore
+        isl->owner_runs.clear();
+        for (std::size_t i = 0; i < own.size();) {
+            std::size_t j = i;
+            while (j < own.size() && own[j] == own[i]) ++j;
+            isl->owner_runs.push_back({own[i], static_cast<std::uint32_t>(j - i)});
+            i = j;
+        }
+    }
+    sim::Rules rules;
+    rules.house_updates = true;
+    auto created = sim::World::create(spec, o->types, o->cfg, rules);
+    REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
+    sim::World world = std::move(created).value();
+    if (world.script().state.context == sim::ScriptContext::Pending) REQUIRE(world.initialize_scripts().empty());
+    for (int i = 0; i < 3; ++i) world.advance(kStepMs);
+    r.sw = SaltWorld{std::move(world), o->types};
+    return r;
+}
+
+} // namespace
+
+
+namespace {
+
+struct TwoOwners {
+    XChain x;                                   // our chain (city 0, player 8)
+    sim::BuildingId rival_mine, rival_works;    // city 1, player 9
+    sim::PlayerId rival;
+    bool has_rival = false;
+};
+
+/// Our pilot chain (mine at (359,369) rotation 1, 10 tiles from the saltworks) beside, when asked, a
+/// rival city whose mine at (356,361) is CLOSER to our saltworks than ours and whose own saltworks
+/// stands beside the same trunk road.
+std::optional<TwoOwners> two_owners(bool with_rival, bool build_rival = true, bool rival_mine_on = true, bool rival_works_on = true) {
+    auto r = rival_world(with_rival);
+    if (!r) return std::nullopt;
+    TwoOwners t;
+    t.has_rival = with_rival;
+    t.rival = r->player;
+    t.x.c = std::make_unique<Chain>(Chain{std::move(r->sw), {}, {}, {}, 0, 0, 0, {}, {}});
+    Chain& c = *t.x.c;
+    sim::World& w = c.sw.w;
+    sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->stock.stock[kSalzstein] = 0;
+    sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->stock.stock[kSalz] = 0;
+    c.works = find_type(w, 1022)->id;
+    c.works_in0 = std::get<sim::Workshop>(find_type(w, 1022)->payload).in.at(0);
+    w.set_transport_stats(&c.stats);
+    c.salz_store0 = 0;
+    c.ore_store0 = 0;
+    t.x.works.push_back(c.works);
+    if (with_rival && build_rival) {
+        const auto place = [&](std::uint32_t type, int xa, int xb, int ya, int yb) -> sim::BuildingId {
+            for (int y = ya; y <= yb; ++y)
+                for (int x = xa; x <= xb; ++x) {
+                    const auto res = w.apply(sim::Command{r->player, sim::BuildCmd{r->city, {sim::PlacementWire{sim::TypeId{type}, x, y, 0, 0, 0}}}});
+                    if (res.ok()) return res.records.at(0).building;
+                }
+            return {};
+        };
+        if (rival_mine_on) t.rival_mine = place(1203, 356, 360, 361, 363);
+        if (rival_works_on) t.rival_works = place(1022, 340, 346, 352, 364);
+    }
+    c.mine = build_x(t.x, 1203, 359, 369, 1);
+    return t;
+}
+
+sim::CityNo city_no_of(const sim::World& w, sim::BuildingId id) {
+    const auto it = isle(w).cache.by_id.find(id);
+    return it == isle(w).cache.by_id.end() ? sim::CityNo{0xffffU} : it->second.city.city;
+}
+
+} // namespace
+
+TEST_CASE("salt isolation X4: two owners credit their own city and never lift across") {
+    auto two = two_owners(true);
+    auto solo = two_owners(false);
+    auto cut_only = two_owners(true, false); // the rival city and territory exist, but it builds nothing
+    auto unbound = two_owners(true, true, true, false); // the rival's mine only, its source cut: a building that produces nothing
+    auto gone = two_owners(true); // the rival's buildings, demolished at once
+    if (!two || !solo || !cut_only || !unbound || !gone) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    REQUIRE(two->rival_mine.valid());
+    REQUIRE(two->rival_works.valid());
+    for (auto& l : sim::WorldTestAccess::islands(unbound->x.c->sw.w)[1]->city(sim::CityNo{1})->index.lists)
+        for (auto& b : l.slots)
+            if (b && b->id == unbound->rival_mine) std::get<sim::Mine>(b->payload).deposit.reset();
+    {
+        sim::DemolishCmd dem;
+        dem.city = sim::CityRef{sim::IslandId{1}, sim::CityNo{1}};
+        dem.tiles = {{356, 361}, {340, 354}};
+        REQUIRE(gone->x.c->sw.w.apply(sim::Command{gone->rival, dem}).ok());
+    }
+    for (TwoOwners* t : {&*two, &*solo, &*cut_only, &*unbound, &*gone}) step_chain(*t->x.c, 3000);
+    sim::World& w = two->x.c->sw.w;
+    // the rival's mine works (in reach of the shared ore, closer to our saltworks than ours is) ...
+    const auto& rm = std::get<sim::Mine>(w.find_building(two->rival_mine)->payload);
+    CHECK(rm.deposit.has_value());
+    CHECK(two->x.c->stats.forestry.mine_made_88[two->rival_mine] > 0);
+    // ... and no load in the whole run crosses cities: the lifting figure's home and the source are in one city
+    std::size_t resolved = 0;
+    for (const auto& [key, n] : two->x.c->stats.loaded_by_home) {
+        const sim::CityNo a = city_no_of(w, key.first), b = city_no_of(w, key.second);
+        if (a.v == 0xffffU || b.v == 0xffffU) continue; // a building of another island
+        ++resolved;
+        CHECK_MESSAGE(a == b, "load of " << n << " from city " << a.v << " by a figure of city " << b.v);
+    }
+    CHECK(resolved > 0);
+    // our saltworks never lifted the rival's ore; the rival's ore stays in its mine
+    CHECK(two->x.c->stats.loaded_by_home[{two->rival_mine, two->x.c->works}] == 0U);
+    CHECK(two->x.c->stats.loaded_by_home[{two->x.mines[0], two->rival_works}] == 0U);
+    // single-owner control: our ledger closes in both worlds and the rival changed none of OUR flows
+    const Terms2 a = terms2(two->x), b = terms2(solo->x), c = terms2(cut_only->x), u = terms2(unbound->x), g = terms2(gone->x);
+    closed2(a, "two owners");
+    closed2(b, "single owner");
+    closed2(c, "rival territory only");
+    closed2(u, "rival mine, source cut");
+    closed2(g, "rival buildings demolished");
+    CHECK(a.ore_loaded > 0);
+    CHECK(b.ore_loaded > 0);
+    // The rival's ACTIVITY changes none of our flows: with its mine producing, bound to the shared deposit
+    // and its saltworks standing, our flows equal those with the same mine standing idle (source cut, no
+    // saltworks), exactly; and with its buildings demolished they equal the world with no rival buildings.
+    // What a standing rival mine does change is OCCUPANCY: a building on the shared land moves our carriers'
+    // routes a little (a.ore_loaded differs from c.ore_loaded), which is not a transfer between owners.
+    for (const Terms2* x : {&u, &c}) {
+        const Terms2& ref = x == &u ? a : g;
+        CHECK(ref.ore_loaded == x->ore_loaded);
+        CHECK(ref.works_made == x->works_made);
+        CHECK(ref.unloaded == x->unloaded);
+        CHECK(ref.taken == x->taken);
+        CHECK(ref.delivered == x->delivered);
+    }
+    MESSAGE("our ore_loaded: two owners " << a.ore_loaded << ", rival territory only " << c.ore_loaded << ", single owner " << b.ore_loaded);
+    // both mines bind the one deposit of the shared ore: ore is an island object (as in the original), the
+    // OUTPUT stores, lifts and credits are per city
+    CHECK(isle(w).deposits.size() == 1);
+    CHECK(w.check_invariants().empty());
+}
+
+
+TEST_CASE("salt interruption X4: the Kontor is not a link of the chain") {
+    // The warehouse (Kontor 1306) is far from the salt chain; the city store is the CITY's, reached by the
+    // markets' carts at unload and by the stalls at purchase, not through the Kontor building. Demolishing it
+    // leaves production, receipts, purchases and deliveries going (ledger closed, save/load valid).
+    sim::Reject st = sim::Reject::Unsupported;
+    const Windows w = run_interruption(
+        "kontor",
+        [&](XChain& x) {
+            sim::DemolishCmd dem;
+            dem.city = kSaltCity;
+            dem.tiles = {{268, 293}};
+            REQUIRE(building_on(x.c->sw.w, 268, 293) != nullptr);
+            REQUIRE(building_on(x.c->sw.w, 268, 293)->type.v == 1306);
+            st = x.c->sw.w.apply(sim::Command{kSaltPlayer, dem}).status;
+        },
+        [](XChain&) {}, false);
+    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    CHECK(st == sim::Reject::None);
+    CHECK(all_positive(w.p2, 1, true, true, true, true, true));
+    CHECK(all_positive(w.p3, 0, true, true, true, true, true));
+}
+

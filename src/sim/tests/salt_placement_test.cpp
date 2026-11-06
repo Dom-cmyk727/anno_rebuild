@@ -181,7 +181,7 @@ TEST_CASE("mountain helper: every terrain vector of the hand-derived file (integ
     CHECK(n == 40);
 }
 
-TEST_CASE("mountain placement: the vectors through placement_rule (lo from the window, step 7)") {
+TEST_CASE("mountain placement: the vectors through placement_rule with lo from the window") {
     const std::vector<Vec> vs = read_vectors();
     std::size_t through = 0, place_vectors = 0;
     for (const Vec& v : vs) {
@@ -377,7 +377,7 @@ void read_coverage(std::vector<CovType>& types, std::vector<CovCase>& cases) {
 
 } // namespace
 
-TEST_CASE("mountain coverage: the hand-derived vectors through placement_rule (separate predicate)") {
+TEST_CASE("mountain coverage: the hand-derived vectors through placement_rule as a separate predicate") {
     std::vector<CovType> ctypes;
     std::vector<CovCase> cases;
     read_coverage(ctypes, cases);
@@ -535,7 +535,7 @@ void refusal_row(const sim::World& base, const sim::PlacementWire& bad, sim::Rej
 
 } // namespace
 
-TEST_CASE("salt mine: the legal site, its payment, and the deposit bound at placement") {
+TEST_CASE("salt mine: the legal site with its payment and the deposit bound at placement") {
     auto s = salt_world(true);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -577,7 +577,7 @@ TEST_CASE("salt mine: the legal site, its payment, and the deposit bound at plac
     CHECK(w.check_invariants().empty());
 }
 
-TEST_CASE("salt mine: the refusal matrix, each row with a legal neighbour") {
+TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
     auto s = salt_world(true);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -694,7 +694,7 @@ TEST_CASE("salt mine: the COVERAGE row, a separate predicate with its legal neig
     CHECK(attempt(arrange({{354, 359}, {354, 361}})) == sim::Reject::None);
 }
 
-TEST_CASE("salt mine: policy A, no ore in reach is accepted, paid, unbound and idle") {
+TEST_CASE("salt mine: policy A accepts and pays a mine with no ore in reach and leaves it idle") {
     auto s = salt_world(true);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -717,7 +717,7 @@ TEST_CASE("salt mine: policy A, no ore in reach is accepted, paid, unbound and i
     CHECK(isle(w).deposits.empty());
 }
 
-TEST_CASE("salt mine: shared deposit, no refill by teardown and rebuild, reload keeps it") {
+TEST_CASE("salt mine: shared deposit and no refill by teardown rebuild or reload") {
     auto s = salt_world(true);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -756,7 +756,7 @@ TEST_CASE("salt mine: shared deposit, no refill by teardown and rebuild, reload 
     CHECK(w.check_invariants().empty());
 }
 
-TEST_CASE("salt mine: the atomic dry run equals the live apply, a refused batch binds nothing") {
+TEST_CASE("salt mine: the atomic dry run equals the live apply and a refused batch binds nothing") {
     auto atomic = salt_world(true, true);
     auto plain = salt_world(true, false);
     if (!atomic || !plain) {

@@ -16,14 +16,17 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -52,6 +55,7 @@
 #include <anno/sim_load/ship_start.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "cargo_transfer_oracle.hpp"
 #include "command_helpers.hpp"
 #include "evidence_out.hpp"
 #include "world_access.hpp"
@@ -4280,6 +4284,19 @@ std::map<std::uint32_t, std::int64_t> balances(const sim::World& w) {
     return result;
 }
 
+void publish(const char*, const std::vector<std::uint8_t>&);
+auto city_view(const sim::City& c) {
+    return std::tuple{c.stock.stock,          c.billed,
+                      c.accounts.stamp,       c.accounts.sales,
+                      c.accounts.trade_sales, c.accounts.trade_purchases,
+                      c.accounts.civil_cost,  c.accounts.military_cost};
+}
+struct NativeFollower {
+    std::string label;
+    sim::World world;
+    std::array<std::uint64_t, sim::kDrawSiteCount> initial_draws{}, draws{};
+    std::uint64_t advances = 0, commands = 0;
+};
 struct Run {
     sim::World& world;
     sim::Recorder& recorder;
@@ -4287,24 +4304,72 @@ struct Run {
     std::map<sim::CityRef, std::uint64_t> city_upkeep;
     std::vector<sim::SimEvent> events;
     std::uint64_t advances = 0;
+    std::vector<NativeFollower> natives{};
+    std::array<std::uint64_t, sim::kDrawSiteCount> draws{};
+    std::function<void()> source_check{};
 
     sim::ApplyResult apply(const sim::Command& command, std::uint64_t expected_gold = 0) {
         auto money = balances(world);
+        using View = decltype(city_view(std::declval<const sim::City&>()));
+        std::map<sim::CityRef, View> cities;
+        for (const auto& island : world.islands())
+            if (island)
+                for (const auto& city : island->cities)
+                    if (city)
+                        cities.emplace(sim::CityRef{island->index, city->number}, city_view(*city));
+        std::optional<sim::CityRef> target;
+        if (const auto* b = std::get_if<sim::BuildCmd>(&command.body))
+            target = b->city;
+        if (const auto* l = std::get_if<sim::LoadCmd>(&command.body))
+            target = city_of_warehouse(world, l->warehouse);
+        if (const auto* u = std::get_if<sim::UnloadCmd>(&command.body))
+            target = city_of_warehouse(world, u->warehouse);
+        const auto cursor = world.rng().cursor();
         auto answer = recorder.submit(command);
         if (answer.ok()) {
             money.at(command.issuer.v) -= static_cast<std::int64_t>(expected_gold);
             construction[command.issuer.v] += expected_gold;
+            if (std::holds_alternative<sim::FoundCmd>(command.body))
+                CHECK(world.rng().cursor() == (cursor + 1) % world.rng().size());
         }
         CHECK(balances(world) == money);
+        for (const auto& [ref, view] : cities)
+            if (!answer.ok() || !target || *target != ref)
+                CHECK(city_view(command_test::city(world, ref)) == view);
         events = world.drain_events();
         REQUIRE_FALSE(world.faulted());
+        for (auto& native : natives) {
+            const auto resumed = native.world.apply(command);
+            REQUIRE(resumed.status == answer.status);
+            REQUIRE(resumed.records.size() == answer.records.size());
+            for (std::size_t k = 0; k < answer.records.size(); ++k) {
+                CHECK(resumed.records[k].status == answer.records[k].status);
+                CHECK(resumed.records[k].building == answer.records[k].building);
+                CHECK(resumed.records[k].transferred_88 == answer.records[k].transferred_88);
+                CHECK(resumed.records[k].tile_object == answer.records[k].tile_object);
+            }
+            CHECK(native.world.drain_events() == events);
+            CHECK(native.world.rng().cursor() == world.rng().cursor());
+            CHECK(native.world.state_hash() == world.state_hash());
+            ++native.commands;
+        }
         return answer;
     }
     void advance(std::uint32_t ms = 1000) {
+        // This recipe uses1000ms:500ticks exceeds the default50tick city-ring sweep, so every
+        // present city is visited. This is a test-driver partition, not an engine restriction.
+        REQUIRE(ms == 1000);
+        REQUIRE(world.config().city_ring_div == 50);
+        std::map<sim::CityRef, std::uint16_t> old_stamps;
+        for (const auto& island : world.islands())
+            if (island)
+                for (const auto& city : island->cities)
+                    if (city)
+                        old_stamps.emplace(sim::CityRef{island->index, city->number},
+                                           city->accounts.stamp);
         auto money = balances(world);
         for (const auto& player : world.players().slots)
             if (player) {
-                // Explicit separate player-upkeep contribution, not an omitted term.
                 REQUIRE(player->upkeep_a == 0);
                 REQUIRE(player->upkeep_b == 0);
                 REQUIRE(player->upkeep_rem == 0);
@@ -4312,7 +4377,11 @@ struct Run {
         recorder.advance(ms);
         events = world.drain_events();
         REQUIRE_FALSE(world.faulted());
-        std::set<sim::CityRef> booked;
+        std::set<sim::CityRef> due, booked;
+        for (const auto& [ref, stamp] : old_stamps)
+            if (static_cast<std::uint16_t>(world.clock().tick() - stamp) >=
+                world.config().economy.period)
+                due.insert(ref);
         for (const auto& event : events)
             if (event.booking) {
                 const auto& b = *event.booking;
@@ -4321,7 +4390,7 @@ struct Run {
                 const auto& city = command_test::city(world, b.city);
                 REQUIRE(city.owner == b.owner);
                 REQUIRE(b.money_before == money.at(b.owner.v));
-                REQUIRE(b.income == 0); // this freight settlement contains no households
+                REQUIRE(b.income == 0);
                 REQUIRE(b.upkeep == (city.accounts.civil_cost + city.accounts.military_cost) / 15);
                 money.at(b.owner.v) += static_cast<std::int64_t>(b.income);
                 money.at(b.owner.v) -= static_cast<std::int64_t>(b.upkeep);
@@ -4329,14 +4398,62 @@ struct Run {
                 income[b.owner.v] += b.income;
                 upkeep[b.owner.v] += b.upkeep;
                 city_upkeep[b.city] += b.upkeep;
+                CHECK(city.accounts.stamp == static_cast<std::uint16_t>(world.clock().tick()));
             }
-        CHECK(balances(world) == money); // each owner, each actual advance, zero residual
+        REQUIRE(booked == due); // independently catches omitted/double/merged same-owner charges
+        CHECK(balances(world) == money);
+        for (const auto& d : world.last_output().draws)
+            draws[static_cast<std::size_t>(d.site)] += d.count;
+        for (auto& native : natives) {
+            native.world.advance(ms);
+            REQUIRE_FALSE(native.world.faulted());
+            CHECK(native.world.drain_events() == events);
+            CHECK(native.world.last_output().events == world.last_output().events);
+            const auto& a = native.world.last_output().draws;
+            const auto& b = world.last_output().draws;
+            REQUIRE(a.size() == b.size());
+            for (std::size_t k = 0; k < a.size(); ++k) {
+                CHECK(a[k].site == b[k].site);
+                CHECK(a[k].count == b[k].count);
+                native.draws[static_cast<std::size_t>(a[k].site)] += a[k].count;
+            }
+            CHECK(native.world.rng().cursor() == world.rng().cursor());
+            CHECK(native.world.state_hash() == world.state_hash());
+            ++native.advances;
+        }
         ++advances;
+        if (source_check)
+            source_check();
     }
-    void checkpoint() { recorder.checkpoint(); }
+    void checkpoint() {
+        recorder.checkpoint();
+        const auto bytes = world.save();
+        for (const auto& native : natives) {
+            CHECK(native.world.save() == bytes);
+            for (std::size_t k = 0; k < draws.size(); ++k)
+                CHECK(native.draws[k] == draws[k] - native.initial_draws[k]);
+        }
+    }
+    void native_cut(const std::string& label, std::shared_ptr<const sim::TypeRegistry> types) {
+        REQUIRE(natives.size() <
+                5); // exactly five packet cuts; test-only finite proof, no engine cap
+        if (natives.empty())
+            natives.reserve(5); // keep resumed worlds at stable addresses
+        const auto bytes = world.save();
+        publish(("cut-" + label + ".save").c_str(), bytes);
+        auto loaded = sim::World::load(bytes, std::move(types));
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string{} : loaded.error()));
+        loaded.value().set_transport_stats(nullptr);
+        (void)loaded.value().drain_events();
+        CHECK(loaded.value().save() == bytes);
+        natives.push_back(NativeFollower{label, std::move(loaded).value(), draws});
+        checkpoint();
+        MESSAGE("EXPANSION_NATIVE_CUT " << label << " tick " << world.clock().tick() << " entries "
+                                        << recorder.log().entries.size());
+    }
 };
 
-void sail(Run& run, const SailLeg& leg) {
+void sail(Run& run, const SailLeg& leg, std::shared_ptr<const sim::TypeRegistry> mid_types = {}) {
     REQUIRE(run.apply(sail_command(leg)).ok());
     const auto order = ship_of(run.world, leg.ship).nav->order->order_id;
     bool arrived = false;
@@ -4363,6 +4480,10 @@ void sail(Run& run, const SailLeg& leg) {
         }
         REQUIRE(ship_of(run.world, 2).pos == ship.pos);
         REQUIRE(ship_of(run.world, 3).pos == ship_of(run.world, 2).pos);
+        if (mid_types && n == 19) {
+            REQUIRE_FALSE(arrived);
+            run.native_cut("02-mid-voyage", mid_types);
+        }
     }
     REQUIRE_MESSAGE(arrived, "reviewed per-leg work cap exhausted before actual arrival");
     CHECK((ship_of(run.world, leg.ship).pos.x >> 8) == leg.goal_x);
@@ -4531,10 +4652,14 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     REQUIRE(stats.forestry.cuts > 0);
     const auto tons = available / 256;
     const auto aboard_before = aboard_of(ship_of(w, 1).holds, wood);
-    const auto load =
-        run.apply({sim::PlayerId{0}, sim::LoadCmd{sim::FigureId{1}, warehouse, 0, wood, tons}});
+    auto first_load_before = w;
+    first_load_before.set_transport_stats(nullptr);
+    const sim::LoadCmd first_request{sim::FigureId{1}, warehouse, 0, wood, tons};
+    const auto load = run.apply({sim::PlayerId{0}, first_request});
     REQUIRE(load.ok());
     const std::uint64_t transferred = std::uint64_t{tons} * 256;
+    REQUIRE(cargo_oracle::load_effect(first_load_before, w, sim::PlayerId{0}, first_request, ref, 0,
+                                      transferred) == cargo_oracle::Difference::None);
     REQUIRE(load.records.at(0).transferred_88 == transferred);
     REQUIRE(aboard_of(ship_of(w, 1).holds, wood) ==
             aboard_before + static_cast<std::int64_t>(transferred));
@@ -4634,15 +4759,26 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     const auto first_pipeline = std::uint64_t{expansion_test::stock(w, ref, wood)} +
                                 std::get<sim::Farm>(w.find_building(forest)->payload).out +
                                 expansion_test::cart_wood(w, warehouse, wood);
-    // E3: continue this exact real ship/holds and world; no copied planning position enters it.
-    expansion_test::sail(run, recipe.destination);
-    const auto source_stock = command_test::city(w, ref).stock.stock;
-    const auto source_bills = command_test::city(w, ref).billed;
-    const auto account_tuple = [](const sim::CityAccounts& a) {
-        return std::tuple{a.stamp,           a.sales,      a.trade_sales,
-                          a.trade_purchases, a.civil_cost, a.military_cost};
+    std::uint64_t exported_total = transferred;
+    run.source_check = [&] {
+        for (auto& [xy, before] : objects) {
+            const auto& island = *w.islands()[ref.island.v];
+            const auto now = island.tiles.object(island.tile_index(xy.first, xy.second));
+            if (now == before)
+                continue;
+            if (now + 1 == before && sim::harvest_cuttable(w.types(), before))
+                ++observed_cuts;
+            else if (now == before + 1 && w.types().find_growing(before) != nullptr)
+                ++observed_growth;
+            else
+                FAIL("unexplained source-tree object transition during voyage");
+            before = now;
+        }
+        REQUIRE(stats.forestry.cuts == observed_cuts);
+        expansion_test::source_ledger(w, ref, warehouse, forest, wood, stats, exported_total);
     };
-    const auto source_accounts = account_tuple(command_test::city(w, ref).accounts);
+    run.native_cut("01-loaded-outbound", rs.types);
+    expansion_test::sail(run, recipe.destination, rs.types);
     auto held = ship_of(w, 1).holds;
     const auto second_found = run.apply(found_command(recipe.destination), 350);
     REQUIRE(second_found.ok());
@@ -4676,6 +4812,7 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
         }
     REQUIRE(command_test::city(w, destination_ref).accounts.civil_cost == 15);
     REQUIRE(expansion_test::stock(w, destination_ref, wood) == 0);
+    run.native_cut("03-immediately-second-founded", rs.types);
     const auto tool_freight = run.apply(
         {sim::PlayerId{0}, sim::UnloadCmd{sim::FigureId{1}, destination_wh, 2, tools, 1}});
     REQUIRE(tool_freight.ok());
@@ -4696,6 +4833,7 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     held[0].amount_88 -= transferred;
     REQUIRE(ship_of(w, 1).holds == held);
     REQUIRE(expansion_test::stock(w, destination_ref, wood) == transferred);
+    run.native_cut("04-after-complete-first-unload", rs.types);
     const auto level = window_level(destination_island, *w.types().find(sim::TypeId{1310}),
                                     recipe.receiver.x, recipe.receiver.y);
     REQUIRE(level.has_value());
@@ -4709,9 +4847,6 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     CHECK(expansion_test::stock(w, destination_ref, wood) == transferred - 256);
     CHECK(expansion_test::stock(w, destination_ref, tools) == 0);
     CHECK(command_test::city(w, destination_ref).accounts.civil_cost == 20);
-    CHECK(command_test::city(w, ref).stock.stock == source_stock);
-    CHECK(command_test::city(w, ref).billed == source_bills);
-    CHECK(account_tuple(command_test::city(w, ref).accounts) == source_accounts);
     auto end_holds = initial_holds;
     end_holds[0].amount_88 -= 24 * 256;
     end_holds[2].amount_88 -= 13 * 256;
@@ -4757,10 +4892,27 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     REQUIRE(expansion_test::stock(w, ref, wood) >= second_quantity);
     const auto source_before_second_load = expansion_test::stock(w, ref, wood);
     const auto destination_before_second = command_test::city(w, destination_ref).stock.stock;
-    const auto second_loaded = run.apply(
-        {sim::PlayerId{0}, sim::LoadCmd{sim::FigureId{1}, warehouse, 0, wood, second_tons}});
+    run.native_cut("05-return-before-second-export", rs.types);
+    auto second_load_before = w;
+    second_load_before.set_transport_stats(nullptr);
+    const sim::LoadCmd second_request{sim::FigureId{1}, warehouse, 0, wood, second_tons};
+    const auto changed_entry = rec.log().entries.size();
+    const auto second_loaded = run.apply({sim::PlayerId{0}, second_request});
     REQUIRE(second_loaded.ok());
     REQUIRE(second_loaded.records.at(0).transferred_88 == second_quantity);
+    REQUIRE(cargo_oracle::load_effect(second_load_before, w, sim::PlayerId{0}, second_request, ref,
+                                      0, second_quantity) == cargo_oracle::Difference::None);
+    exported_total += second_quantity;
+    REQUIRE(second_tons > 1);
+    auto legal_changed = second_load_before;
+    legal_changed.set_transport_stats(nullptr);
+    auto changed_request = second_request;
+    --changed_request.tons;
+    const auto changed_answer = legal_changed.apply({sim::PlayerId{0}, changed_request});
+    REQUIRE(changed_answer.ok());
+    REQUIRE(changed_answer.records.at(0).transferred_88 ==
+            std::uint64_t{changed_request.tons} * 256);
+    REQUIRE(legal_changed.state_hash() != w.state_hash());
     auto second_held = end_holds;
     second_held[0].amount_88 += second_quantity;
     CHECK(ship_of(w, 1).holds == second_held);
@@ -4812,6 +4964,78 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
                                  << " upkeep " << run.upkeep[0] << " source_upkeep "
                                  << run.city_upkeep.at(ref) << " destination_upkeep "
                                  << run.city_upkeep.at(destination_ref));
+    REQUIRE(run.natives.size() == 5);
+    const auto& honest = rec.log();
+    auto changed = honest;
+    REQUIRE(changed.entries.at(changed_entry).commands.size() == 1);
+    auto* changed_load =
+        std::get_if<sim::LoadCmd>(&changed.entries[changed_entry].commands[0].body);
+    REQUIRE(changed_load != nullptr);
+    REQUIRE(changed_load->tons == second_tons);
+    --changed_load->tons;
+    for (std::size_t i = 0; i < changed_entry; ++i)
+        CHECK(changed.entries[i] == honest.entries[i]);
+    REQUIRE(honest.entries.at(changed_entry + 1).kind == sim::ReplayEntry::Kind::Checkpoint);
+    const auto normal_bytes = sim::write_log(honest);
+    const auto changed_bytes = sim::write_log(changed);
+    REQUIRE(normal_bytes.ok());
+    REQUIRE(changed_bytes.ok());
+    expansion_test::publish("expansion.log", normal_bytes.value());
+    expansion_test::publish("expansion-changed-command.log", changed_bytes.value());
+    std::size_t checkpoints = 0, prior = 0;
+    for (std::size_t i = 0; i < honest.entries.size(); ++i)
+        if (honest.entries[i].kind == sim::ReplayEntry::Kind::Checkpoint) {
+            ++checkpoints;
+            if (i < changed_entry)
+                ++prior;
+        }
+    REQUIRE(checkpoints == 13);
+    REQUIRE(prior == 10);
+    CHECK(run.city_upkeep.at(ref) == 90);
+    CHECK(run.city_upkeep.at(destination_ref) == 47);
+    CHECK(gold_of(w, 0) == 28863);
+    for (const auto& island : w.islands())
+        if (island)
+            for (const auto& city : island->cities)
+                if (city) {
+                    CHECK(city->accounts.sales == 0);
+                    CHECK(city->accounts.trade_sales == 0);
+                    CHECK(city->accounts.trade_purchases == 0);
+                    CHECK(std::all_of(city->billed.begin(), city->billed.end(),
+                                      [](auto value) { return value == 0; }));
+                }
+    std::ostringstream evidence;
+    evidence << "state=134 schema=ECONBK1 PRNG=5 replay=4 command=1 save=1\n"
+             << "tick=" << w.clock().tick() << " entries=" << honest.entries.size()
+             << " checkpoints=" << checkpoints << " changed_load_entry=" << changed_entry
+             << " changed_checkpoint=" << changed_entry + 1
+             << " matched_prior_checkpoints=" << prior << " load_tons=" << second_tons
+             << " changed_tons=" << changed_request.tons << "\n";
+    for (const auto& native : run.natives) {
+        REQUIRE(native.advances > 0);
+        REQUIRE(native.commands > 0);
+        CHECK(native.world.save() == w.save());
+        evidence << "native=" << native.label << " suffix_advances=" << native.advances
+                 << " suffix_commands=" << native.commands
+                 << " final_hash=" << native.world.state_hash() << "\n";
+    }
+    for (std::size_t i = 0; i < run.draws.size(); ++i)
+        evidence << "draw=" << sim::draw_site_name(static_cast<sim::DrawSite>(i))
+                 << " advance_count=" << run.draws[i] << "\n";
+    evidence << "direct_CityName=2 (one cursor draw per successful Found, between advances)\n";
+    const auto text = evidence.str();
+    expansion_test::publish("continuation.txt",
+                            std::vector<std::uint8_t>(text.begin(), text.end()));
+    if (const char* expected = std::getenv("ANNO_EXPAND_E4_EXPECTED_FINAL")) {
+        const auto bytes = read_all(expected);
+        REQUIRE_FALSE(bytes.empty());
+        CHECK(w.save() == bytes);
+        MESSAGE("EXPANSION_E4 trajectory byte-identical under full native monitoring");
+    }
+    MESSAGE("EXPANSION_E5 checkpoints " << checkpoints << " changed_entry " << changed_entry
+                                        << " divergence_checkpoint " << changed_entry + 1
+                                        << " matched_prior " << prior << " native_full_suffixes "
+                                        << run.natives.size());
     w.set_transport_stats(nullptr);
 }
 

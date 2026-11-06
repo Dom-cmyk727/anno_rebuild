@@ -36,6 +36,7 @@
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "cargo_transfer_oracle.hpp"
 #include "evidence_out.hpp"
 #include "golden.hpp"
 #include "island_helpers.hpp"
@@ -1706,4 +1707,64 @@ TEST_CASE("expansion cargo scale: named transfers stay local with unrelated lega
         }
         CHECK(w.check_invariants().empty());
     }
+}
+
+TEST_CASE("expansion cargo oracle: legal transfer rejects wrong debit credit-only duplicate and "
+          "stale effects") {
+    Setup s;
+    s.stock[kWood] = 4 * kT + 192;
+    s.stock1[kWood] = 9 * kT;
+    auto before = make(s);
+    const auto own = bid(before, 0, 15, 10);
+    const auto request = cmd(1, own, 0, kWood, 2);
+    const sim::CityRef ref{sim::IslandId{0}, sim::CityNo{0}};
+    const auto restore = [&](const sim::World& w) {
+        auto loaded = sim::World::load(w.save(), s.types);
+        REQUIRE(loaded.ok());
+        return std::move(loaded).value();
+    };
+    const auto difference = [&](const sim::World& input, const sim::World& output) {
+        return cargo_oracle::load_effect(input, output, sim::PlayerId{0}, request, ref, 0, 512);
+    };
+    auto legal = restore(before);
+    load_ok(legal, 0, request, 512, 0);
+    CHECK(difference(before, legal) == cargo_oracle::Difference::None);
+    CHECK(city(legal, 0).stock.stock[kWood] == 704);
+    CHECK(city(legal, 1).stock.stock[kWood] == 2304);
+
+    auto wrong = restore(before);
+    auto& rival = *sim::WorldTestAccess::islands(wrong)[0]->cities[1];
+    rival.stock.stock[kWood] -= 512;
+    sim::find_figure(sim::WorldTestAccess::figures(wrong), sim::FigureId{1})->holds[0] = {kWood,
+                                                                                          512};
+    CHECK(totals(wrong) == totals(before)); // a global conservation check alone misses wrongcity
+    CHECK(difference(before, wrong) == cargo_oracle::Difference::State);
+
+    auto credit_only = restore(before);
+    sim::find_figure(sim::WorldTestAccess::figures(credit_only), sim::FigureId{1})->holds[0] = {
+        kWood, 512};
+    CHECK_FALSE(totals(credit_only) == totals(before));
+    CHECK(difference(before, credit_only) == cargo_oracle::Difference::State);
+
+    auto duplicate = restore(legal);
+    load_ok(duplicate, 0, request, 512, 0); // explicitly submitted repeats ARE legal and conserved
+    CHECK(totals(duplicate) == totals(before));
+    CHECK(difference(before, duplicate) ==
+          cargo_oracle::Difference::State); // one recorded request !=two effects
+
+    auto stale = restore(before);
+    sim::DemolishCmd demolition;
+    demolition.city = ref;
+    demolition.tiles = {{15, 10}};
+    REQUIRE(send(stale, 0, demolition).r.ok());
+    const auto stale_bytes = stale.save();
+    expect_refused(stale, 0, request, sim::Reject::NoBuildingAtTile);
+    CHECK(stale.save() == stale_bytes);
+    auto accepted_stale = restore(stale);
+    sim::find_figure(sim::WorldTestAccess::figures(accepted_stale), sim::FigureId{1})->holds[0] = {
+        kWood, 512};
+    CHECK(difference(stale, accepted_stale) == cargo_oracle::Difference::Target);
+    CHECK(before.check_invariants().empty());
+    CHECK(legal.check_invariants().empty());
+    CHECK(duplicate.check_invariants().empty());
 }

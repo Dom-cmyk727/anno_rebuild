@@ -542,3 +542,29 @@ main15/15 evidence by byte-identical runtime/oracle/fixtures, keeping E5combined
 coverage required. The user explicitly authorizes ordinary ownedtaskbranchpushes
 under owner426bf964; portable7ba branch is already pushed, originalECON/MAPbranches
 remain preserved. No force/main push or GitLabmirror operation is assigned here.
+
+### E5 acceptance plan before implementation
+
+Five native cuts will become persistent independent followers of the genuine
+world: loadedoutbound, mid-voyage, immediately secondFound before firstbooking,
+after firstfreightUnload, and return before secondexport. Each resumed native
+follows EVERY remaining publiccommand/advance to the final two-cycle state,
+comparing outcomes, hostevents, per-site advance draws, raw cursor, per-step state
+hash and fullbytes at checkpoints. No extra elapsedtime/stock write is introduced;
+only recording checkpoints are added. Existing E4 physicaltrajectory is retained.
+
+Money oracle additionally derives the set of due cities from pre-step stamps,
+current tick/period and the recipe's1000ms visits (every city slot visited under
+50tick city-ring period), catching missing or duplicate same-owner charges.
+Per-command snapshots check all nontarget cities' stocks/bills/accounts even
+while nativefollowers perform fullsuffixes. Separate playerupkeep remains an
+explicit zero term, with accepted bac3 nonzero simultaneous control reused.
+
+Fresh normal and changed-command consumers use existing CLI/fixture plumbing.
+Change only secondLoad2→1ton: prove publicacceptance from its exact nativeprestate;
+all prior logentries unchanged, first10checkpoints match then checkpoint11diverges.
+Honest expected13/13. Four labelled synthetic restored-copy mutants challenge
+one shared exact-transfer oracle: rivaldebit (globaltotalstillconserved), credit-
+only, an unlogged duplicateeffect (public repeats themselves remainlegal), and
+staleaccepted after publicDemolish. Legal controls mustexecute. No mutation of
+active production source or the genuine world is permitted. Review/gates pending.

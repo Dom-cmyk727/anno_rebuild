@@ -24,3 +24,15 @@ Run `python3 -I tools/freight_ref.py check` or `selftest` with the vector path.
 `tools/freight_ref_test.py` tests the public CLI, including empty/malformed input
 and wrong expectations. Neither program executes a simulation or copies an
 expected answer into the computation.
+
+The partial-progress native witness is arithmetically reachable: LoadTarget5t,
+matching holds0/2 initially256/0 raw, emptyhold1, capacity1024, source512. Candidate0
+requests3t from its768raw room, transfers512 from available stock and leaves512
+remaining toward1280target; candidate_next1. The cached initial matching total
+is256, not current total768. The separate Wait record has321ticks left and0credit.
+
+Cargo inputs explicitly supply hold_count_a. Extra vector entries are preserved
+but excluded from matching totals/candidates/resolver. Lifecycle includes the
+separate NeedLeg visit, matching/stale failures, idempotent controls and failed
+manual commands. Control clocks distinguish active pre-suspend time from paused
+time. Native Wait may legitimately retain credit after Suspend/Resume accrual.

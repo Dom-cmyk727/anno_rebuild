@@ -107,8 +107,9 @@ AnnoGame type vtable10021d10+64→1000fd10 reads `[type+2c+4*index]`. Index1 is+
 loader101f4..10211 takes positive LOGIC[4], else1.0. Original1502 first8 LOGIC
 bytes are `0000c0400000803f`: the delay is1.0. All12 original SHIP records have
 the same1.0 value. The nominal delay is500ticks at rate0.01 and time scale0.2.
-Original f32 arithmetic is not exactly integer500: a single500tick call leaves
-about2.235e-8 positive residue. Existing FigureType.load_ticks already imports
+With the documented x87≥53-bit product model, a single500tick call leaves about
+2.235e-8 positive residue. A24-bit product may round differently; OQ195's DDraw
+control-word effects remain unobserved. Existing FigureType.load_ticks imports
 round(500*positive_LOGIC4_or1); reuse500 as the declared integer adaptation.
 
 Original428d0 carries movement and delay surplus across segment boundaries in

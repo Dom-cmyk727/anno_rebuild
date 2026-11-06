@@ -44,12 +44,12 @@ def normalize(actions):
     return result
 
 
-def load_hold(holds, goods, capacity, preferred):
+def load_hold(holds, goods, capacity, preferred, limit):
     room = lambda h: max(0, capacity - h[1])
     if holds[preferred][0] == goods and room(holds[preferred]) >= TON:
         return preferred
     chosen, best = None, 0
-    for i, h in enumerate(holds):
+    for i, h in enumerate(holds[:limit]):
         if h == [0, 0]:
             if chosen is None:
                 chosen = i
@@ -59,7 +59,7 @@ def load_hold(holds, goods, capacity, preferred):
 
 
 def cargo(inp):
-    exact(inp, ("actions", "holds", "hold_capacity", "stock", "store_capacity"))
+    exact(inp, ("actions", "holds", "hold_count_a", "hold_capacity", "stock", "store_capacity"))
     actions = normalize(inp["actions"])
     capacity = integer(inp["hold_capacity"], 1, (1 << 32) - 1)
     store_capacity = integer(inp["store_capacity"], 0, (1 << 32) - 1)
@@ -70,6 +70,7 @@ def cargo(inp):
         if type(hold) is not list or len(hold) != 2:
             raise ValueError("hold shape")
         holds.append([integer(hold[0], 0, (1 << 32) - 1), integer(hold[1])])
+    limit = min(integer(inp["hold_count_a"], 0, (1 << 32) - 1), len(holds))
     stock = {}
     for key, value in inp["stock"].items():
         if not key.isdecimal() or str(int(key)) != key:
@@ -81,23 +82,23 @@ def cargo(inp):
         key = str(g)
         if key not in stock:
             raise ValueError("unsupported fixture goods")
-        matching = [i for i, h in enumerate(holds) if h[0] == g]
+        matching = [i for i, h in enumerate(holds[:limit]) if h[0] == g]
         aboard = sum(holds[i][1] for i in matching)
         if aboard > U64:
             raise ValueError("aboard overflow")
         requested = action["tons"] * TON
         remaining = max(0, requested - aboard) if direction == 0 else requested
         candidates = ([i for i in matching if holds[i][1] < capacity] +
-                      [i for i, h in enumerate(holds) if h == [0, 0]]) if direction == 0 else matching
+                      [i for i, h in enumerate(holds[:limit]) if h == [0, 0]]) if direction == 0 else matching
         for selected in candidates:
             if remaining == 0:
                 break
             bound = max(0, capacity - holds[selected][1]) if direction == 0 else holds[selected][1]
-            tons = min(remaining, bound) // TON
+            tons = min(min(remaining, bound) // TON, (1 << 32) - 1)
             if tons == 0:
                 effects.append([ai, selected, 0, 0, "whole_ton_zero"])
                 break
-            actual_hold = load_hold(holds, g, capacity, selected) if direction == 0 else selected
+            actual_hold = load_hold(holds, g, capacity, selected, limit) if direction == 0 else selected
             if direction == 0:
                 available = stock[key] // TON * TON
                 if available == 0 or actual_hold is None:
@@ -154,42 +155,106 @@ def progress(inp):
     stops = integer(inp["stops"], 1, (1 << 32) - 1)
     generation, next_order = 0, 0
     state = None
-    trace = []
+    trace, results = [], []
     for event in inp["events"]:
         if type(event) is not list or not event:
             raise ValueError("event shape")
         op = event[0]
+        answer = "accepted"
         if op == "assign" and len(event) == 1:
             generation += 1
-            next_order += 1
-            state = [0, "sailing", next_order, 0]
+            state = [0, "pending", 0, 0]
+        elif op == "visit" and len(event) == 1:
+            if state and state[1] == "pending":
+                next_order += 1
+                state[1], state[2] = "sailing", next_order
+            else:
+                answer = "ignored"
         elif op == "arrive" and len(event) == 3:
             rev, order = integer(event[1]), integer(event[2])
             if state and state[1] == "sailing" and rev == generation and order == state[2]:
                 state[1], state[2] = "wait", 0
+            else:
+                answer = "ignored"
+        elif op == "fail" and len(event) == 3:
+            rev, order = integer(event[1]), integer(event[2])
+            if state and state[1] == "sailing" and rev == generation and order == state[2]:
+                state[1], state[2] = "failed-leg", 0
+            else:
+                answer = "ignored"
+        elif op == "fail_action" and len(event) == 2:
+            if state and state[1] == "wait" and integer(event[1]) == generation:
+                state[1] = "failed-wait"
+            else:
+                answer = "ignored"
         elif op == "complete" and len(event) == 1:
             if state and state[1] == "wait":
                 state[0] += 1
                 if state[0] == stops:
                     state[0] = 0
                     state[3] += 1
-                next_order += 1
-                state[1], state[2] = "sailing", next_order
+                state[1], state[2] = "pending", 0
+            else:
+                answer = "ignored"
         elif op == "suspend" and len(event) == 1:
-            if state and not state[1].startswith("paused-"):
+            if state is None:
+                answer = "BadValue"
+            elif not state[1].startswith(("paused-", "failed-")):
                 state[1] = "paused-" + state[1]
                 state[2] = 0
         elif op == "resume" and len(event) == 1:
-            if state and state[1].startswith("paused-"):
+            if state is None:
+                answer = "BadValue"
+            elif state[1] == "failed-leg":
+                state[1], state[2] = "pending", 0
+            elif state[1] == "failed-wait":
+                state[1] = "wait"
+            elif state[1].startswith("paused-"):
                 state[1] = state[1][7:]
                 if state[1] == "sailing":
-                    next_order += 1
-                    state[2] = next_order
+                    state[1], state[2] = "pending", 0
         elif op in ("cancel", "manual") and len(event) == 1:
             state = None
+        elif op == "manual_fail" and len(event) == 1:
+            answer = "rejected"
         else:
             raise ValueError("unknown or malformed event")
         trace.append({"generation": generation, "state": copy.deepcopy(state)})
+        results.append(answer)
+    return {"trace": trace, "results": results}
+
+
+def control_clock(inp):
+    """One reachable wait clock, including pre-suspend active credit and paused time."""
+    exact(inp, ("wait", "events"))
+    remaining = integer(inp["wait"], 0, (1 << 32) - 1)
+    last, latest, credit, paused, trace = 0, 0, 0, False, []
+    for event in inp["events"]:
+        if type(event) is not list or len(event) != 2:
+            raise ValueError("clock event shape")
+        op, now = event[0], integer(event[1])
+        if now < latest:
+            raise ValueError("clock went backwards")
+        latest = now
+        if op == "suspend":
+            if not paused:
+                credit += now - last
+                paused, last = True, now
+        elif op == "resume":
+            if paused:
+                paused, last = False, now
+        elif op == "visit":
+            if not paused:
+                credit += now - last
+                last = now
+                spent = min(credit, remaining)
+                remaining -= spent
+                credit -= spent
+        else:
+            raise ValueError("unknown clock event")
+        if credit > U64:
+            raise ValueError("credit overflow")
+        trace.append([remaining, credit, last, paused])
     return {"trace": trace}
 
 
@@ -264,10 +329,11 @@ def evaluate(case):
     exact(case, ("name", "kind", "input", "expect"))
     if type(case["name"]) is not str or not case["name"]:
         raise ValueError("nonempty name required")
-    if case["kind"] not in ("cargo", "delays", "progress", "wire", "assign_wire", "native"):
+    if case["kind"] not in ("cargo", "delays", "progress", "control_clock", "wire", "assign_wire", "native"):
         raise ValueError("unknown vector kind")
     return {"cargo": cargo, "delays": delays, "progress": progress, "wire": wire,
-            "assign_wire": assign_wire, "native": native}[case["kind"]](case["input"])
+            "control_clock": control_clock, "assign_wire": assign_wire,
+            "native": native}[case["kind"]](case["input"])
 
 
 def unique_object(pairs):

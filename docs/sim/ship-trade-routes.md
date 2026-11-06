@@ -204,6 +204,40 @@ This also prevents a saved in-progress hold scan from surviving a manual mutatio
 of the ship's holds. Original manual cargo did not itself cancel automation;
 this explicit takeover policy is modern control ownership, not original parity.
 
+Control outcomes (after known-owned-navigating-ship checks):
+
+| Current state | Suspend | Resume | Cancel |
+|---|---|---|---|
+| No assignment | BadValue, unchanged | BadValue, unchanged | success, unchanged; do not stop unrelated manual motion |
+| Running | accrue active stop-clock credit, freeze; Sailing becomes NeedLeg and pending token clears | idempotent success, no clock reset | normal stop and remove definition |
+| Suspended | idempotent success, no additional clock credit | revalidate, preserve cursor/credit, set last_tick=now; interrupted leg is NeedLeg | normal stop and remove definition |
+| Failed | idempotent success, already stopped; retain failure | revalidate then retry exact preserved non-navigation stage; failed leg is NeedLeg | normal stop and remove definition |
+
+Suspend/Cancel remain usable on a navigation-blocked ship. They reuse trusted
+stop operations after ownership/nav validation; Resume/Assign still refuse a
+blocked ship. If the live target remains invalid, Resume refuses without changing
+the paused/failed record. Clear the old reason only after accepted Resume.
+Counter exhaustion at CompleteStop retries no cargo; Cancel/Reassign can replace
+that route. A rebuilt warehouse requires explicit reassignment to its new ID.
+
+For Wait/Scan/Transfer/CompleteStop, first Suspend accrues checked `now-last_tick`
+into saved credit WITHOUT automatic actions, then stamps now and pauses. Failed
+action validation likewise retains already accrued active credit. Repeated
+Suspend and running Resume are true state/clock no-ops. Resume preserves credit
+but stamps now, excluding paused time. NeedLeg/Sailing have no stop-wait credit;
+unvisited motion follows existing Stop semantics without retroactive integration.
+Failed navigation canonicalizes to NeedLeg and clears both pending order fields.
+Other failures preserve their exact Wait/Scan/Transfer/CompleteStop progress.
+
+Same-tick ordering is the existing serial ingress: run_turn applies authenticated
+commands in recorded order BEFORE advance. Successful takeover/reassignment wins
+before the figure visit. Commands applied after advance cannot undo a committed
+transfer. Existing AI/seam commands obey their actual serial scheduler position.
+There is no public interleave between transfer commit and cursor advancement.
+The reference distinguishes failed manual input from successful takeover, and
+stale failure from matching failure. NeedLeg issuance is an explicit visit event,
+not a hidden Move at assignment acceptance.
+
 ### Visits, time, transfers and progress
 
 The figure registry retains its existing serial visit order. A ship with no
@@ -252,6 +286,18 @@ fractional candidate that blocks a later empty hold (ORIGINAL caller rule).
 Otherwise call accepted ShipCargo::load/unload, using this candidate as the
 preferred/named hold and the stable warehouse. Loading may redirect according
 to the shared resolver; it is not a second arithmetic/hold-selection path.
+ADAPTATION: cap a per-call request at U32_MAX tons before converting to the
+existing command's width. This cannot reduce an actual unload because city free
+space is at most U32_MAX RAW units; load is already bounded by u32 hold capacity.
+Never narrow a u64 grouped request by wrapping it. A wide-target fixture pins this.
+Only the first min(hold_count_a,holds.size()) entries count or receive a transfer;
+extra/B holds do not participate. Repeated load fallback queries may use a DERIVED
+local hold-selection index with exact parity to the shared preferred/maximum-
+room-lowest-tie/first-empty rule. Build it incrementally during Scan and rebuild
+on native load, outside the hot path. A narrow resolved-hold entry to the SAME
+live validation/transfer commit may avoid a repeated linear resolver for every
+hold; public manual behavior and failure order require parity controls. This
+index is not authoritative serialized state and cannot authorize any transfer.
 Actual transfer reduces remaining. Advance the saved candidate cursor exactly
 once with that committed effect before another visit can run. All fallible
 validation precedes stock writes in the shared primitive.
@@ -308,6 +354,11 @@ after legitimate demolition is a valid pending/Failed definition, not a repaired
 reference: native load cannot require every future target still to exist.
 Prepared candidates must be valid hold indices and match the stage's invariants;
 no serialized city/building/figure pointer or derived whole-world index is added.
+Native readers bound stop/action counts by the existing ClientRecord framing's
+maximum representable counts BEFORE allocation, and candidate vectors by the
+already-read hold count. World rule limits then validate the complete state.
+This prevents a short hostile count from amplifying allocations; those absolute
+limits follow the unchanged u16 framing, not a hidden two-stop engine maximum.
 Suspended Sailing becomes NeedLeg on stop so it owns no phantom navigation order.
 
 F075 wire payload: u64 ship,u32 stop_count; each stop warehouseu64,dockxi32,
@@ -366,7 +417,7 @@ five reviewed reachable save cuts supplement the uninterrupted interval.
 
 `tools/freight_ref.py` computes grouped target/request transfers with caller
 quantization/shared safe resolver, isolated wait/surplus/work-quota transitions,
-generation/order lifecycle and independent native/wire bytes. The33 synthetic
+generation/order lifecycle and independent native/wire bytes. The40 synthetic
 JSONL answers are hand-derived; the implementation never reads expect to compute
 an answer. This is a transition/transfer/schema oracle, not a navigation oracle
 or runtime controller. Actual path/authority/range validation stays with public
@@ -381,3 +432,42 @@ superseding focusedcheck02 and selftest pass. The public CLI contract executes
 empty/truncated/malformed/duplicate input, booleans/floats/out-of-domain amounts,
 quantity sum overflow and missing file/unknown command. Canonical R1 reference
 gate and complete independent primary/schema review are still pending.
+
+R1 focused refinements before C++: wide per-call request caps at U32_MAX without
+changing an actual u32-capacity store transfer. The partial native byte witness
+now uses LoadTarget5t=1280raw, initial matching256raw (hold0=256,hold2=0 with the
+same goods,hold1 empty), capacity1024 and source512. First candidate requests
+3t from room768 but available stock512 yields actual512; remaining is512, current
+hold0 is768, candidate_next1 and matching_raw256. This is a reachable partial
+effect, not target3t below a claimed1024 already aboard. A separate wait witness
+has321ticks remaining and zero credit, independently covering the partial-delay
+field. That35-vector refinement passed directcheck/CLI23; the later40-vector source
+requires canonical02.
+Canonical01 at731d8c98 passed1/1 plus eight separate required invocations and
+zero other categories; it remains evidence for its original33-vector source.
+
+R1 review refinements now also define the full control table, Failed-stage
+canonicalization, same-tick ingress and pre-suspend active-credit policy. The
+reference has40 hand-derived vectors: cargo explicitly names hold_count_a and
+ignores extra/B holds; lifecycle has deferred NeedLeg visit issuance, matching/
+stale failure, repeated controls, failed-manual no-op and successful takeover.
+Control-clock vectors accrue50 active ticks atSuspend150, exclude paused time
+throughResume1000, then finish at1350; repeated Suspend/running Resume do not
+reset the service clock. An already partly spent wait CAN carry positive credit
+after Suspend accrual/Resume; native validation must not forbid that legal state.
+Firstcheck's extra absent-byte literal, initial partial-witness mismatch and the
+wide per-call/prefix/control refinements remain documented rather than relabelled.
+
+Logical optional FreightState may use a route-specific owning deep-copy slot,
+so unrelated actors pay only an empty pointer/counter, not an inline route-vector
+buffer. No pointer is serialized or used to identify targets, and World copies
+must own independent mutable progress. This is an in-memory representation only;
+the reviewed generation+presence+present-state bytes above do not change. Derived
+hold indexes likewise never enter the saved schema; native load rebuilds them.
+
+Actual accepted134 G2 native was extracted UNMODIFIED from current134/g2.log into
+fixtures/synthetic/sim/freight/legacy134/g2.save,115278bytes, SHA256
+aad758490b57f78e06a895f90a1e9384ef87b4c55ce614130dd376cdabe33a37.
+Its pinned old134 CLI reader reproduces6/6 checkpoints at tick20000. Provenance
+and old-reader hash are retained; this is a valid old-refusal control, never a
+136 schema oracle. No135 compatibility proof is fabricated.

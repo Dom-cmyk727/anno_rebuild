@@ -1,0 +1,11 @@
+{
+  "purpose": "actual accepted134 input, unmodified native extracted from original valid replay; version refusal only, not an independent136 oracle",
+  "source_replay": "fixtures/synthetic/sim/expand1/current134/g2.log",
+  "source_replay_sha256": "388ea242cc7ceb593e667de9448cfc0d50a8e968a18b791d8635b934a991be3a",
+  "native_offset": 351,
+  "native_bytes": 115278,
+  "native_sha256": "aad758490b57f78e06a895f90a1e9384ef87b4c55ce614130dd376cdabe33a37",
+  "old_reader": "cache/route1/R1/old134-binary/anno-sim-replay",
+  "old_reader_sha256": "7683fcce264efc49604e836d34d4b6ab89be301f370106b40c4ff0c27aff295c",
+  "reader_provenance": "R0 baseline built ea7da855, R1 changes only tools/docs/CMake so CLI unchanged; old source identity134"
+}

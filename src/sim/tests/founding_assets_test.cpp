@@ -4535,8 +4535,15 @@ TEST_CASE(
     REQUIRE(load.ok());
     const std::uint64_t transferred = std::uint64_t{tons} * 256;
     REQUIRE(load.records.at(0).transferred_88 == transferred);
-    REQUIRE(aboard_of(ship_of(w, 1).holds, wood) == aboard_before + transferred);
+    REQUIRE(aboard_of(ship_of(w, 1).holds, wood) ==
+            aboard_before + static_cast<std::int64_t>(transferred));
     REQUIRE(expansion_test::stock(w, ref, wood) == available % 256);
+    auto expected_holds = initial_holds;
+    expected_holds.at(0).amount_88 = 12800 - 3072 + transferred;
+    expected_holds.at(2).amount_88 = 12800 - 1280 - 512;
+    REQUIRE(ship_of(w, 1).holds == expected_holds); // full ordered holds, food and duplicate tools
+    REQUIRE(aboard_of(ship_of(w, 1).holds, wood) >= 3072);        // second founding reserve
+    REQUIRE(aboard_of(ship_of(w, 1).holds, tools) >= 1280 + 256); // founding plus receiver
     expansion_test::source_ledger(w, ref, warehouse, forest, wood, stats, transferred);
     run.checkpoint();
 
@@ -4546,14 +4553,46 @@ TEST_CASE(
     REQUIRE(loaded.ok());
     auto control = std::move(loaded).value();
     REQUIRE(control.save() == preproduction);
+    const auto control_money_before = expansion_test::balances(control);
+    REQUIRE(command_test::city(control, ref).accounts.civil_cost == 27);
+    REQUIRE(command_test::city(control, ref).accounts.military_cost == 0);
     const auto off = control.apply(
         {sim::PlayerId{0},
          sim::SetProductionLineCmd{{recipe.forest.site.x, recipe.forest.site.y}, wood, false}});
     REQUIRE(off.ok());
+    REQUIRE(expansion_test::balances(control) == control_money_before);
+    REQUIRE(command_test::city(control, ref).accounts.civil_cost == 19); // 15 + off801(4)
+    REQUIRE(command_test::city(control, ref).accounts.military_cost == 0);
+    std::uint64_t control_upkeep = 0;
+    (void)control.drain_events();
     for (std::uint32_t n = 0; n < calls; ++n) {
+        auto money = expansion_test::balances(control);
+        for (const auto& player : control.players().slots)
+            if (player) {
+                REQUIRE(player->upkeep_a == 0);
+                REQUIRE(player->upkeep_b == 0);
+                REQUIRE(player->upkeep_rem == 0);
+            }
         control.advance(1000);
         REQUIRE_FALSE(control.faulted());
+        for (const auto& event : control.drain_events())
+            if (event.booking) {
+                const auto& b = *event.booking;
+                REQUIRE(b.fault == sim::AccountingFault::None);
+                REQUIRE(b.city == ref);
+                REQUIRE(b.owner == sim::PlayerId{0});
+                REQUIRE(b.income == 0);
+                REQUIRE(b.upkeep == 1); // floor19/15, main floor27/15 also1
+                REQUIRE(b.money_before == money.at(0));
+                money.at(0) -= 1;
+                REQUIRE(b.money_after == money.at(0));
+                control_upkeep += b.upkeep;
+            }
+        REQUIRE(expansion_test::balances(control) == money);
     }
+    REQUIRE(control_upkeep > 0);
+    REQUIRE(control_upkeep == run.city_upkeep.at(ref));
+    REQUIRE(expansion_test::balances(control) == expansion_test::balances(w));
     REQUIRE(expansion_test::stock(control, ref, wood) == 0);
     const auto& stopped = std::get<sim::Farm>(control.find_building(forest)->payload);
     REQUIRE(stopped.raw == 0);

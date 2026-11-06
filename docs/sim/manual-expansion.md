@@ -254,3 +254,17 @@ never relocates actors or writes stocks/permissions/stages. Measured E1 work and
 prior same-map sailing calibrate a predeclared900s Debug pilot deadline. Later
 native/full-replay and second-island stages extend this same public-command
 recipe; E2 is not full E3–E7 acceptance.
+
+### E2 frozen source and focused pre-execution corrections
+
+E2 source c6c273c2's first gate failed at compile before any selected execution:
+signed aggregate-hold helper plus unsigned transferred amount under Werror. A
+bounded explicit i64 conversion fixes the test arithmetic. The independent E2
+reviewer also requested full ordered hold assertions and explicit accounting for
+the public-off control's legitimate history change. Full holds now retain original
+food and duplicate tool order, with second-founding/receiver reserves checked.
+The control switch leaves money unchanged and changes city civil27→19 (15+4),
+military0, without a player-cost change. Both floor27/15 and19/15 charge1 per
+booking; every control step reconciles all owners, zero player buckets/remainder,
+booking amount/order and the resulting equal cash despite different cost history.
+The first build failure is retained; no gameplay result is claimed from it.

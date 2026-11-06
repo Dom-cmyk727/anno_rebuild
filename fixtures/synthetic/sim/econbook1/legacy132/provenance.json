@@ -1,0 +1,19 @@
+{
+  "source": "b62047ee9c9bd79bb0583bb8927715c0eb2a7b15",
+  "published_fixture_pin": "3b74201f8a5eafedcb8cd928bc52e191b3b5908c",
+  "published_path": "fixtures/synthetic/sim/consolidated132/g2.log",
+  "provenance": "Published synthetic G2; initial native save extracted byte-for-byte, never relabelled",
+  "identity": {
+    "state": 132,
+    "schema_hex": "53494d494e543100",
+    "prng": 5,
+    "replay": 4,
+    "wire": 1
+  },
+  "control": "cache/econ-book1/B3/actual132-control-01.log; canonical fresh-process G2 6/6 checkpoints",
+  "log_sha256": "d263ccc01eadf8e87e82f2d511a79ddf88e86a021d07fc40b08795cbfed6e0be",
+  "save_sha256": "0df167d4cc54cec5b5f8cd89232984e949633502c3381fa95a71158d4f735c6d",
+  "save_offset": 351,
+  "save_bytes": 115117,
+  "exe_sha256": "e083ac0e0109c00894bbebb6d94532f09320f5903e327d1ae335470237d5cf1b"
+}

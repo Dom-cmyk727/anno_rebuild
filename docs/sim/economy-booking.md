@@ -7,7 +7,7 @@ That packet supersedes the historical research-only ownership, old base and
 pre-132 identity guidance below. Engine work follows independent contract review;
 this note does not declare the remaining lifecycle/policy research complete.
 
-Current execution: B0–B2 independently approved; B3 facts/state candidate on
+Current execution: B0–B3 independently approved; B4 production integration on
 `task/ECON-BOOK-1-main`, initially pinned to
 `3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; production booking/lifecycle wiring NOT_STARTED.
 The second Mac owns B0–B7 under the dispatch above. Historical research/ownership
@@ -303,7 +303,7 @@ The existing arithmetic research is approved only within its original-wrap model
 | B1c checked policy | Signed domains, exact ordinary arithmetic, word stamps, sum-before-rounding, gross credit then debit, negative money, explicit atomic booking fault | Final net fits but gross credit overflows; no reset/stats/stamp/debit on failure | APPROVED4f644fc8 by `/root/econ_b0_review` after comparison-domain/fault corrections |
 | B1d order | Actual island/city/effect/figure/player sequence; same- and cross-island owner preflight | Two cities each individually fit but second combined credit overflows; earlier house/script fault blocks booking; save_billed_goods=false cannot lose income | APPROVED4f644fc8; actual-boundary engine proofs remain B4 |
 | B2 independent references | Hand-pinned checked versus original-wrap vectors, lifecycle/order/width and smallest-positive/zero/partitioned timing | Width/order/double-charge/reset-before-fault mutants fail intended assertions; CLI empty/bad expected/incomplete refused | APPROVEDb62047ee by `/root/econ_b0_review`, canonical03 selected2/executed2, required3 invocations separate |
-| B3 facts/state/identity | Data-sized prices/roles; minimal authoritative stamp/stats/cost state;133/ECONBK1 populated byte oracle and native round-trip | Actual132 save/log refuses intended boundary; invalid dimensions/signed prices/unknown climate transactional; alternate generic types/roles | Independently reviewed parser/state/reference/compatibility required |
+| B3 facts/state/identity | Data-sized prices/roles; minimal authoritative stamp/stats/cost state;133/ECONBK1 populated byte oracle and native round-trip | Actual132 save/log refuses intended boundary; invalid dimensions/signed prices/unknown climate transactional; alternate generic types/roles | APPROVEDb7908bef by `/root/econ_b1_primary_review`; canonical correction02 selected69/passed69/others0, required7 invocations separate; first211 gate retained206/5 |
 | B4 production/lifecycle | Opt-in scheduler booking exactly once, full supported lifecycle, owner split and negative-balance continuation | Real last-city merge overflow leaves its money/bills/stats/stamp unchanged, queued prior effects accounted; default-off132 semantic controls | Focused Debug/ASAN, accounting mutants, independent engine review required |
 | B5 actual loop | Cheap original Tutorial path, new goods reach several households, bills/income/upkeep exact, public shortage/recovery, owner/city isolation | No starting-stock-as-production or grant in real arm; explicit component versus strict loader refusal; legal altered command diverges causally | Native cuts and genuine fresh replay artifacts; independent real-ledger review required |
 | B6 scaling/consumer | Three nonempty legal sizes, city/goods operation counts and modest Release samples, unrelated objects do not add global scans | Fixture legality/positive bookings first; no latency threshold or multiplayer performance claim | Host/raw manifests and Windows data/events/refusal/config contract required |
@@ -807,4 +807,9 @@ Reviewer independently packed the42-byte accounts/129-byte economy records,
 rejected swapped cost bytes with a recomputed digest after a legal control, and
 re-derived all50 raw SZE rows. No other P1/P2 was found in inspected B3 facts,
 state/native/default-off code. A correction gate and focused re-review are
-pending; the206 unaffected passes keep their originalb244a45c provenance.
+complete: `/root/econ_b1_primary_review` APPROVED cleanb7908bef1edce1e0ad4b8d61bc1d6a04dff2fa21.
+Correction gate02 selected69/passed69/all other outcomes0, status0; six explicit
+required contracts plus compulsory picture each passed1/1 separately. Log SHA
+c17ba4329a300de90e871742a016539c987b2cfef9c083d44b1325d49f7e5762.
+The206 unaffected passes keep their originalb244a45c provenance. B4 is released;
+this approval does not claim production booking or the real loop is complete.

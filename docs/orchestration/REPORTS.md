@@ -13736,6 +13736,80 @@ NOT_RUN — the true result is whatever that run concludes with, not guessed her
 review of this package's diff is still **not done** (unchanged from above: a fork cannot spawn a
 second reviewing agent).
 
+**W7 correction — the `w7app1` run was invalid; redone on a clean checkout (owner, 2026-11-06):**
+the owner reviewed the `w7app1` background run above and ruled it out as acceptance evidence: it
+ran outside `tools/test/wsl_gate.sh` (no autocrlf override) and its own provenance recorded 1,147
+modified files, i.e. it built from a dirty, non-canonical tree. It was killed without being used
+as evidence of anything (PIDs 309/440072 and the four worker test processes they had spawned).
+
+Two manual, out-of-band invocations of the real `bench_picture --aggregate <missing file>` against
+leftover binaries from that invalid run gave two different, both-wrong results — `exit 127` (the
+first `wsl-w7scoped` gate attempt) and `exit 0` (a direct probe of the `w7app1` binary) — against
+an expected `2`. Neither is a code defect: both binaries came from dirty/stale builds that do not
+reliably correspond to this branch's committed `main.cpp` (which calls `fail(2, ...)` →
+`std::exit(2)` on an unreadable trace; read directly, that logic is correct). Once a genuinely
+clean build was done (below), this case was never reached, for a different and real reason — see
+next paragraph. So `picture_matrix_contract` carries **no evidence of being broken**; the earlier
+127/0 readings are attributed to the invalid build environment, not to the test or the binary.
+
+A new worktree was added at this branch's exact tested head, `743ccf9c608925761dbafac62616901f3b3fc60e`
+(`git worktree add E:\anno1503-worktrees\anno1503-W4-settlement-1-gatecheck 743ccf9c...`, detached,
+confirmed `git status --porcelain` empty before the gate ran), specifically so the gate would not
+run in the live, repeatedly-edited executor worktree. `tools/test/wsl_gate.sh` was then run once,
+unmodified, directly against it (tag `gatecheck2`):
+
+```
+source head 743ccf9c608925761dbafac62616901f3b3fc60e dirty (autocrlf=true view) 0
+build rc=1 elapsed=13s
+VERDICT: INVALID build failed, nothing tested
+```
+
+(The raw, non-autocrlf dirty count the provenance line also records, 1148, is the same
+line-ending-normalization artifact the gate script's own autocrlf override exists to neutralize —
+not a real change; the autocrlf view it actually gates on reads 0.)
+
+**Root cause of the build failure:** `cmake --build` (unscoped — it builds the default `all`
+target, by this script's own design, before any lane runs) fails compiling `anno_sim_tests`,
+independent of anything this package touched:
+- `src/sim/tests/unit_import_test.cpp:414` and `:423` — `-Werror=range-loop-construct` (`for (const
+  auto [ratio, hp] : ratios)` copies a `pair` the loop could bind by reference).
+- `src/sim/tests/scenario_test.cpp:1082-1083` — `-Werror=sign-conversion` (`isolated += ... ? 1 :
+  0;` into a `std::size_t` accumulator).
+- `src/sim/tests/small_farm_worker_test.cpp:344-346` — an ambiguous overload of
+  `sim::make_small_farm(...)` against a lambda with no viable conversion.
+
+Full build log: `cache/gates/wsl-gatecheck2-build.log`. This is the same six-file
+MAP-NEEDS-2/MAP-INTEGRATE-1 break already flagged earlier in this package's own W0/W1 report (not
+newly discovered), now shown with the owner-required side-by-side evidence rather than just
+asserted: fetching `origin/main` (`049b02707471b531e3a8d10aabcd46035634128f`, 2026-11-06 12:40
+UTC+1) and reading the same files there shows the identical lines, verbatim —
+`unit_import_test.cpp`'s two `for (const auto [ratio/raw, hp] : ...)` loops, `scenario_test.cpp`'s
+`isolated += component.value().isolated ? 1 : 0; / supported += ... ? 0 : 1;` (there at lines
+1140-1141, shifted but unchanged), and every one of `small_farm_worker_test.cpp`'s eight
+`sim::make_small_farm(registry(3 * 256)->find(kSmallFarm)->prod)` call sites. This branch did not
+introduce, touch, or worsen any of the three files. The break predates this package and sits on
+`main` right now.
+
+**Consequence for W7:** because the build is unscoped, this single pre-existing break blocks the
+*entire* gate, not just a `sim` lane — **every lane (app/sim/formats/render/tsupport) is BLOCKED**,
+elapsed 13s (the build step; no lane reached `ctest`). `picture_matrix_contract` was not
+re-exercised by this run for the same reason: the build never got that far. The gate's own
+`EXIT` trap ran on this failure path too (confirmed: `$HOME/anno-build/wsl-gate` no longer exists
+after the run) — the disk rule holds even on a build failure.
+
+This package cannot produce a valid W7 WSL gate result without either (a) MAP-NEEDS-2/
+MAP-INTEGRATE-1 fixing those three files upstream, out of this package's lane, or (b) the owner
+accepting a scoped/targeted build as valid evidence (not done here, since the canonical gate
+script intentionally builds `all`). Recorded here as **BLOCKED**, not NOT_RUN and not a guessed
+PASS/FAIL, with the evidence above. Independent review of this package's diff is still **not
+done** (unchanged: a fork cannot spawn a second reviewing agent) and is explicitly left for the
+owner, as instructed — not claimed here.
+
+The diagnostic worktree `E:\anno1503-worktrees\anno1503-W4-settlement-1-gatecheck` (detached at
+`743ccf9c`) was left in place rather than deleted, per the standing no-worktree-deletion
+constraint; it holds no uncommitted work of its own and can be removed by whoever next prunes
+worktrees.
+
 **Push (owner rule, 2026-11-06):** per the new "push your own task branch at every checkpoint"
 rule, this branch (`task/W4-settlement-1`) is pushed to `origin` with this report. Ordinary push
 only; `main` and other lanes' branches are untouched.

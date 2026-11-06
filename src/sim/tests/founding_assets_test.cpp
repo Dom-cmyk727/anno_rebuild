@@ -4489,9 +4489,34 @@ TEST_CASE(
     sim::TransportStats stats;
     w.set_transport_stats(&stats);
     const auto production_start = w.clock().tick();
+    const auto square =
+        sim::search_area(*w.find_building(forest), *rs.types->find(sim::TypeId{801})).square();
+    std::map<std::pair<std::int32_t, std::int32_t>, std::uint32_t> objects;
+    const auto& source_island = *w.islands()[ref.island.v];
+    for (std::int32_t y = square.y0; y < square.y0 + static_cast<std::int32_t>(square.h); ++y)
+        for (std::int32_t x = square.x0; x < square.x0 + static_cast<std::int32_t>(square.w); ++x) {
+            const auto tile = source_island.tile_index(x, y);
+            if (tile != sim::kNoSlot)
+                objects[{x, y}] = source_island.tiles.object(tile);
+        }
+    std::uint64_t observed_cuts = 0, observed_growth = 0;
     std::uint32_t calls = 0;
     for (; calls < 400; ++calls) {
         run.advance();
+        for (auto& [xy, before] : objects) {
+            const auto& island = *w.islands()[ref.island.v];
+            const auto now = island.tiles.object(island.tile_index(xy.first, xy.second));
+            if (now == before)
+                continue;
+            if (now + 1 == before && sim::harvest_cuttable(w.types(), before))
+                ++observed_cuts;
+            else if (now == before + 1 && w.types().find_growing(before) != nullptr)
+                ++observed_growth;
+            else
+                FAIL("unexplained source tree/object transition");
+            before = now;
+        }
+        REQUIRE(observed_cuts == stats.forestry.cuts);
         expansion_test::source_ledger(w, ref, warehouse, forest, wood, stats, 0);
         const auto available = expansion_test::stock(w, ref, wood);
         if (available >= 256 && available % 256 != 0) {
@@ -4549,12 +4574,20 @@ TEST_CASE(
     REQUIRE(bytes.ok());
     expansion_test::publish("genuine.log", bytes.value());
     expansion_test::publish("source-export.save", w.save());
-    MESSAGE("EXPANSION_E2 tick " << w.clock().tick() << " production_ticks "
-                                 << w.clock().tick() - production_start << " roads " << road->size()
-                                 << " cuts " << stats.forestry.cuts << " receipt " << available
-                                 << " export " << transferred << " residue "
-                                 << expansion_test::stock(w, ref, wood) << " gold " << gold_of(w, 0)
-                                 << " spent " << run.construction[0] << " upkeep " << run.upkeep[0]
-                                 << " no_production " << sim::reject_name(no_export.status));
+    MESSAGE("EXPANSION_E2 tick "
+            << w.clock().tick() << " production_ticks " << w.clock().tick() - production_start
+            << " roads " << road->size() << " cuts " << stats.forestry.cuts << " receipt "
+            << available << " export " << transferred << " residue "
+            << expansion_test::stock(w, ref, wood) << " gold " << gold_of(w, 0) << " spent "
+            << run.construction[0] << " upkeep " << run.upkeep[0] << " no_production "
+            << sim::reject_name(no_export.status) << " raw_credited "
+            << stats.forestry.raw_credited_88 << " raw_delivered "
+            << stats.forestry.raw_delivered_88 << " consumed "
+            << stats.forestry.farms.at(forest).consumed_88 << " made "
+            << stats.forestry.farms.at(forest).made_88 << " farm_raw "
+            << std::get<sim::Farm>(w.find_building(forest)->payload).raw << " farm_out "
+            << std::get<sim::Farm>(w.find_building(forest)->payload).out << " cart_active "
+            << expansion_test::cart_wood(w, warehouse, wood) << " observed_cuts " << observed_cuts
+            << " growth " << observed_growth);
     w.set_transport_stats(nullptr);
 }

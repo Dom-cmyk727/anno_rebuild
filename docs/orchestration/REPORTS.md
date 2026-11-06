@@ -13963,3 +13963,72 @@ work) left in place rather than deleted, pending explicit authorization like the
 `-gatecheck` worktree.
 
 Tested head: `b7be2a1d`. Pushed next.
+
+## W4-SETTLEMENT-1 — W7 WSL ASan/UBSan gate, valid run (2026-11-06)
+
+**First valid, complete W7 gate run for this package.** Every earlier attempt either failed before
+completing (`w7scoped`: every lane blocked on `picture_matrix_contract`), was voided
+(`w7app1`: ran outside `tools/test/wsl_gate.sh`, no autocrlf override, 1,147 modified files), or
+built the wrong source (`gatecheck2`: a stale `CMakeCache.txt` left by `w7app1` made the script skip
+configure and build the live worktree instead of the clean checkout).
+
+**Setup**: removed the old `-gatecheck` worktree (built from `743ccf9c`, obsolete), added a fresh
+detached worktree at this package's adopted-repair head `71d32509`, cleared
+`$HOME/anno-build/wsl-gate` explicitly, and found a genuinely stale `wsl-gate.run.lock` directory
+(timestamped 09:32, 6+ hours old, no live holder) left over from an earlier aborted attempt — this
+predates `run_selected.py`'s lock acquisition happening before its own `try/finally`, so an abrupt
+kill (the kind the now-fixed `wsl.exe`-backgrounding bug caused) can orphan it; removed it by hand
+before this run since no process held it. Ran `tools/test/wsl_gate.sh` exactly once, in the
+foreground of a single `wsl.exe` invocation (never backgrounded inside the WSL call, per the
+earlier hang's root cause), all 5 default lanes including sim, tag `w7final2`.
+
+**Provenance**: tested head `71d32509339f830ecc6563a09d0a64b214ab6875`; dirty (autocrlf=true view)
+= **0**; build dir source (read back from `CMakeCache.txt`) = the `-gatecheck` worktree, matching
+the tested head. Build rc=0, 211s. Build tree confirmed deleted at the end (`$HOME/anno-build/` is
+empty after the run).
+
+**`picture_matrix_contract` is RESOLVED: PASS in all 5 lanes** (`ok: empty cases file (exit 2)`),
+from the binary's actual observed behaviour on a genuinely clean, correctly-configured build. The
+two earlier conflicting readings (exit 127, exit 0) are confirmed to have been artifacts of the
+contaminated `w7app1`/`gatecheck2` builds, not a real defect.
+
+**Lane results:**
+| Lane | Verdict | Selected/Executed | Failed | Elapsed |
+|---|---|---:|---:|---:|
+| app | FAIL | 270/263 | 5 | 7966s |
+| sim | FAIL | 1416/1409 | 3 | 6403s |
+| formats | PASS | 93/93 | 0 | 1110s |
+| render | FAIL | 185/184 | 1 | 2095s |
+| tsupport | PASS | 89/85 (4 opt-in skip) | 0 | 249s |
+
+**App lane's 5 failures are the same pre-existing app-level failures already proven present before
+this intake** (identical test names and failure text to the MSVC regression-gate findings below):
+`play: a turn with no commands publishes no building changes`, `developer resources: a Build too
+expensive...`, both `legal workload...` cases, and `founding sites, real files...`. Not caused by
+this package.
+
+**Sim lane's 3 failures are memory-budget-coordinator refusals, not code defects.** Each threw
+`[anno-test memory] refused estimate=1073741824 reason=wait deadline` after hitting the
+coordinator's 1800s admit deadline during a period of real memory contention from concurrently
+running multi-thousand-second corpus tests (`population A original-data components...`, both
+`scenario corpus original-data components...` cases, each individually 3800-4300s). Evidence this
+is scheduling, not memory exhaustion: each lane summary reports `0 bad_alloc items, 0 retries`, and
+free memory recovered to 11-13 GiB shortly after. `wait deadline` refusals are not covered by
+`ANNO_TEST_BAD_ALLOC_RETRIES` (that only catches actual `std::bad_alloc`), so there is no automatic
+retry; a rerun of just these three (not attempted here, per "run it once") would likely pass under
+less contention.
+
+**Render lane's 1 failure is new** and not something this package touched (no `src/render` file is
+part of this intake): `a flow build that fails leaves the legacy look, final, built once (game
+files)` — `CHECK( rebuilt == 0 )` observed `1 == 0` (one unexpected rebuild). This is the first time
+a complete WSL ASan gate has ever finished for this package, so there is no prior clean/dirty
+baseline to compare against; flagging for the owner/orchestrator rather than investigating further
+(out of scope here, and `river_flow_corpus_test.cpp` is untouched by MAIN-CI-1 or this package).
+
+**Diagnostic worktrees removed** (`anno1503-W4-settlement-1-gatecheck`, `anno1503-W4-settlement-1-msvccheck`):
+both were this executor's own, their runs are fully documented above and in the prior entry, no
+uncommitted work in either.
+
+**Independent review: not claimed here** — pending the owner, as instructed.
+
+Tested head: `71d32509`. Pushing next, then stopping.

@@ -1037,3 +1037,16 @@ selection requires a nonempty cargo collection and at least one named slot with
 positive amount, rather than merely a goods ID. This makes the cut a purchased,
 loaded return trip. No production state or replay trajectory changes; native probe
 outputs may legitimately select a later trip. This finding is fixed before ASAN.
+
+
+B5 corrected Debug02 atf508fc2d also selected6/executed6, all other categories0,
+GATE_END0. `B5/receipt-f508.json` preserves its identities. Reviewer independently
+re-derived all765 ledger rows and each owner's totals, plus the354 civil-cost
+sum and original rebuild budget from raw source. A final reporting correction
+separates target alcohol units1014 from global booked29 units2024 (NPC town1010).
+The217 marginal-income observation is already target-only. Final source now
+tracks/asserts a positive target unit count explicitly and labels both scopes.
+This only changes observations/assertions, not engine state. Debug03 reruns the
+changed producer; earlier fresh-process passes are reusable only with equal
+record hashes. ASAN runs the whole6-test slice at this final source, with its
+positive-cargo cut and native actor-preservation assertions.

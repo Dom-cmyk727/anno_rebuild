@@ -150,7 +150,7 @@ struct Audit {
     std::map<sim::GoodsId, std::uint64_t> initial_pending, booked_bills;
     std::map<std::uint32_t, std::uint64_t> income, upkeep;
     std::uint64_t count = 0, positive = 0, target_income = 0, target_upkeep = 0,
-                  target_alcohol_income = 0;
+                  target_alcohol_income = 0, target_alcohol_units = 0;
     std::ostringstream rows;
     explicit Audit(const sim::World& w) {
         rows << "tick\tisland\tcity\towner\tnumerator\tincome\tupkeep\tbefore\tafter\tpriced_"
@@ -226,6 +226,7 @@ struct Audit {
                 if (b.city == town) {
                     target_income += gross;
                     target_upkeep += charge;
+                    target_alcohol_units += bills[29];
                     target_alcohol_income += gross - (numerator - alcohol_numerator + 128) / 256;
                 }
                 rows << event.tick << '\t' << b.city.island.v << '\t' << b.city.city.v << '\t'
@@ -488,6 +489,7 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
     CHECK(audit.target_income > 0);
     CHECK(audit.target_alcohol_income > 0);
     CHECK(audit.booked_bills[29] > 0);
+    CHECK(audit.target_alcohol_units > 0);
     for (const auto& [id, facts] : original_actors) {
         const auto* f = sim::find_figure(w.figures(), id);
         REQUIRE(f);
@@ -531,7 +533,8 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
             << "bookings=" << audit.count << " positive=" << audit.positive
             << " target_income=" << audit.target_income << " target_upkeep=" << audit.target_upkeep
             << " target_alcohol_marginal_income=" << audit.target_alcohol_income
-            << " booked_alcohol_units=" << audit.booked_bills[29]
+            << " target_booked_alcohol_units=" << audit.target_alcohol_units
+            << " global_booked_alcohol_units=" << audit.booked_bills[29]
             << "\nfirst_sold=" << sold_at_removal << " final_sold=" << sold(stats, inn)
             << " no-rebuild_additional_sold=" << sold(control_stats, inn)
             << " recovered_households=" << homes.recovered.size()

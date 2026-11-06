@@ -41,13 +41,15 @@ def figure_bytes(f):
     id_, speed, cap, layer, load, bew, rng, hull = f[:8]
     nav = f[8] if len(f) > 8 else None
     route = f[9] if len(f) > 9 else 0
+    ware = f[10] if len(f) > 10 else ''   # stream 135: the ware of an ore symbol (tagged, only when set)
     present = hull is not None
     return (struct.pack('<7I', id_, speed, cap, layer, load, bew, rng)
             + struct.pack('<B', 1 if present else 0)
             + struct.pack('<q', hull if present else 0)
             + struct.pack('<B', 1 if nav is not None else 0)
             + struct.pack('<7I', *(nav if nav is not None else (0,) * 7))
-            + struct.pack('<I', route))
+            + struct.pack('<I', route)
+            + ((struct.pack('<B', 1) + struct.pack('<Q', len(ware)) + ware.encode()) if ware else b''))
 
 
 def digest(figures):
@@ -95,6 +97,9 @@ CASES = [
     # stream 126: the route (figure 102's MAEHER = 42 = 0x2a, and one value more)
     ('route_maeher', [(102, 33554, 256, 2, 6500, 0, 1792, None, None, 42)]),
     ('route_changed', [(102, 33554, 256, 2, 6500, 0, 1792, None, None, 43)]),
+    # stream 135: an ore symbol's ware (figure 1562 = SALZSTEIN) and a different ware
+    ('ware_salz', [(1562, 33554, 256, 2, 6500, 145, 1792, None, None, 0, 'SALZSTEIN')]),
+    ('ware_gold', [(1562, 33554, 256, 2, 6500, 145, 1792, None, None, 0, 'GOLD')]),
     ('two_ascending', [(391, 0x0400, 0, 2, 0, 113, 4096, -27487789056), BASE]),
     ('three_ascending', [(391, 0x0400, 0, 2, 0, 113, 4096, -27487789056),
                          (717, 0x0200, 0, 1, 0, 97, 1792, None), BASE]),
@@ -112,7 +117,8 @@ def render():
             base = ' '.join('-' if v is None else str(v) for v in f[:8])
             nav = (' nav ' + ' '.join(str(v) for v in f[8])) if len(f) > 8 and f[8] is not None else ''
             route = (' route %d' % f[9]) if len(f) > 9 and f[9] else ''
-            out.append('fig ' + base + nav + route)
+            ware = (' ware %s' % f[10]) if len(f) > 10 and f[10] else ''
+            out.append('fig ' + base + nav + route + ware)
     return '\n'.join(out) + '\n'
 
 

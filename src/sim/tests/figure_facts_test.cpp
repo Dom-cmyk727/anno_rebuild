@@ -254,6 +254,8 @@ std::vector<DigestCase> read_vectors() {
                     ls >> n.speed_q32 >> n.turn_step_q32 >> n.max_hp >> n.hold_count_a >>
                         n.hold_count_b >> n.nav_class >> n.stamp_radius_88;
                     f.nav = n;
+                } else if (tail_tag == "ware") {
+                    ls >> f.ware; // stream 135
                 } else {
                     REQUIRE(tail_tag == "route"); // stream 126
                     ls >> f.route;
@@ -269,7 +271,7 @@ std::vector<DigestCase> read_vectors() {
 
 TEST_CASE("figure digest: the registry identity of figure facts equals the independent reference") {
     const std::vector<DigestCase> cases = read_vectors();
-    REQUIRE(cases.size() == 25); // tools/figure_digest_ref.py CASES (two route cases, stream 126)
+    REQUIRE(cases.size() == 27); // tools/figure_digest_ref.py CASES (two route cases, stream 126; two ware cases, stream 135)
     std::vector<std::uint64_t> seen;
     for (const DigestCase& c : cases) {
         INFO("case " << c.name);
@@ -360,6 +362,6 @@ TEST_CASE("ore objects: the discovery-set wire bytes, derived by hand") {
 }
 
 // An eleventh FigureType member must reach the digest, the reference and its vectors.
-static_assert(sim::field_count<sim::FigureType>() == 10,
+static_assert(sim::field_count<sim::FigureType>() == 11,
               "a FigureType member needs a line in digest_registry, figure_digest_ref.py and the "
               "vectors");

@@ -21,6 +21,7 @@
 #include <anno/sim/config.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/production.hpp>
 #include <anno/sim/reject.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/types.hpp>
@@ -68,8 +69,17 @@ struct PlacementParams {
     std::uint32_t ordinary_class = 0x0004;
     /// ... and the bit the rule does not read (0x80; seen in the shipped words 0x0084 and 0x0004).
     std::uint32_t ignored_flag_bits = 0x0080;
-    /// The flag bit whose coverage test is not decoded: always Unsupported (0x1007c955-0x1007cb3d).
+    /// The flag bit that selects the coverage test (0x1007c955-0x1007cb3d, docs/sim/salt-extraction.md
+    /// section 18); implemented for the mountain class only, every other type with the bit stays Unsupported.
     std::uint32_t coverage_flag = 0x10;
+    /// log2 of the coverage chunk edge: the original's 8 x 8 world-aligned chunks (and its 2 x 2 mark
+    /// array, so a footprint above one chunk edge is Unsupported). The original's value is the default; a
+    /// footprint of at most one chunk edge touches at most 2 x 2 chunks for any edge, so the rule's mark array
+    /// stays 2 x 2.
+    std::uint32_t coverage_chunk_shift = 3;
+    /// Stream 135: the class bits (flag word & 0x7000) of the mountain class (mines, quarries; AnnoGame
+    /// 0x100091a1). Only a deep MINE type with its HIGHMAP table is placeable; see classify().
+    std::uint32_t mountain_class = 0x3000;
     /// MAP-ROAD-CLOSE-1: the enhanced road choices (Rules::road_require_land_level and
     /// Rules::road_preserve_nonroad_pieces), false = the original predicates. The world passes its
     /// Rules values; a direct caller states them.

@@ -339,7 +339,7 @@ static_assert(field_count<BuildingType>() == 28,
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
-static_assert(field_count<FigureType>() == 10, "a FigureType member needs a line in the digest");
+static_assert(field_count<FigureType>() == 11, "a FigureType member needs a line in the digest");
 static_assert(field_count<GoodsInfo>() == 5, "a GoodsInfo member needs a line in the digest");
 static_assert(field_count<GoodsPrices>() == 2, "prices need digest coverage");
 static_assert(field_count<ClassInfo>() == 4, "a ClassInfo member needs a line in the digest");
@@ -454,6 +454,10 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(nf.nav_class);
         a.u32(nf.stamp_radius_88);
         a.u32(f.route); // stream 126
+        if (!f.ware.empty()) {
+            a.boolean(true); // stream 135: only an ore symbol with a ware adds it, tagged
+            a.str(f.ware);
+        }
     });
     // The group table (P1, stream 115): u64 count, then per group the slot, the two
     // flags, Wohnmax, the needs (u64 count; goods id, forced flag, Menge) and the
@@ -622,6 +626,12 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
             if (!n.empty() && *name == n) {
                 t.bewohntype = number;
             }
+        }
+    }
+    // Stream 135: the ware of an ore symbol (the deposit's goods).
+    if (t.bewohntype == 145) {
+        if (const auto w = e.record_str("WARE")) {
+            t.ware = *w;
         }
     }
     // MAP-ECON-1 E2 (stream 126): the ROUTETYPE index (loader 0x1000fe00, branch 0x10010029-

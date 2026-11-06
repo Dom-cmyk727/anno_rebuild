@@ -19,6 +19,7 @@
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/founding.hpp>
+#include <anno/sim/mine_source.hpp>
 #include <anno/sim/placement.hpp>
 #include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_orders.hpp>
@@ -575,6 +576,12 @@ RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checke
     }
     Building& b = *city.index.lists[key.value().list].slots[key.value().slot];
     r.building = b.id;
+    // Stream 135: a mine placed by a command binds the shared deposit of an ore in reach (policy A:
+    // none in reach = an unbound, idle mine). Here and not in create_building, which the scenario
+    // loader shares: imported mines keep no deposit. This overrides the find_deposit of creation.
+    if (auto* mine = std::get_if<Mine>(&b.payload)) {
+        mine->deposit = bind_mine_deposit(is, env.types, b, *c.type, mine->deep);
+    }
     run_building_seam(env, env.seams.on_placed, is, city, b);
     return r;
 }

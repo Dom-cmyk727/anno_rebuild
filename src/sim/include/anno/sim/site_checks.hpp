@@ -17,6 +17,7 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 #include <optional>
 
 #include <anno/sim/building.hpp>
@@ -241,5 +242,22 @@ template <class HeightAt>
 /// wrong-sized column, or a window outside x0..x0+W / y0..y0+H).
 [[nodiscard]] TerrainVerdict coast_height_check(const VertexGrid& grid, const BuildingType& type,
                                                 std::uint8_t rotation, Origin origin);
+
+
+/// The class-0x3000 (mine / quarry) terrain helper, AnnoGame 0x10008a80 (docs/sim/salt-extraction.md
+/// section 11; reference tools/mine_terrain_ref.py, proved equal to the original bytes over 100,000
+/// helper cases and 35.6M exhaustive sampler evaluations; hand-derived vectors
+/// fixtures/synthetic/sim/mine_terrain_vectors.txt). Integer only: no float, no approximation.
+///   w, h       the type's footprint (type bytes 6, 7), not rotated;
+///   highmap    the 2h x 2w table, row-major (exactly 4*w*h bytes, else false);
+///   rotation   0..3;
+///   window     the vertex heights of the rotated footprint window, row-major, stride
+///              (rotated width + 1), rows rotated height + 1;
+///   offset     the window's `lo` (only its low byte is used).
+/// A cell refuses when table <= floor(interpolated height / 1) - offset (signed). True = accepted.
+[[nodiscard]] bool mountain_helper_accepts(std::uint32_t w, std::uint32_t h,
+                                           std::span<const std::uint8_t> highmap,
+                                           std::uint8_t rotation,
+                                           std::span<const std::uint8_t> window, std::uint32_t offset);
 
 } // namespace anno::sim::site

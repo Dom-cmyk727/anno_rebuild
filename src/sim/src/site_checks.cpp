@@ -178,4 +178,69 @@ TerrainVerdict coast_height_check(const VertexGrid& grid, const BuildingType& ty
                              });
 }
 
+bool mountain_helper_accepts(std::uint32_t w, std::uint32_t h, std::span<const std::uint8_t> highmap,
+                             std::uint8_t rotation, std::span<const std::uint8_t> window,
+                             std::uint32_t offset) {
+    if (rotation > 3 || w == 0 || h == 0 || highmap.size() != std::size_t{4} * w * h) {
+        return false;
+    }
+    const bool odd = (rotation & 1U) != 0;
+    const std::int64_t ww = odd ? h : w, hh = odd ? w : h;
+    const std::int64_t stride = ww + 1;
+    if (window.size() != static_cast<std::size_t>(stride * (hh + 1))) {
+        return false;
+    }
+    const std::int64_t rows = 2 * std::int64_t{h}, cols = 2 * std::int64_t{w};
+    const std::int64_t off = offset & 0xffU;
+    for (std::int64_t r = 0; r < rows; ++r) {
+        for (std::int64_t c = 0; c < cols; ++c) {
+            // sample point in quarter tiles (docs section 11)
+            std::int64_t X = 0, Z = 0;
+            switch (rotation) {
+            case 0:
+                X = 1 + 2 * c;
+                Z = 1 + 2 * r;
+                break;
+            case 1:
+                X = 1 + 2 * r;
+                Z = 4 * std::int64_t{w} - 1 - 2 * c;
+                break;
+            case 2:
+                X = 4 * std::int64_t{w} - 1 - 2 * c;
+                Z = 4 * std::int64_t{h} - 1 - 2 * r;
+                break;
+            default:
+                X = 4 * std::int64_t{h} - 1 - 2 * r;
+                Z = 1 + 2 * c;
+                break;
+            }
+            const std::int64_t x = X / 4, z = Z / 4;
+            if (X <= 0 || Z <= 0 || x + 1 > ww || z + 1 > hh) {
+                return false; // outside the window: cannot happen for a valid footprint
+            }
+            const auto at = [&](std::int64_t vx, std::int64_t vz) -> std::int64_t {
+                return window[static_cast<std::size_t>(vz * stride + vx)];
+            };
+            const std::int64_t a = at(x, z), b = at(x + 1, z), cc = at(x, z + 1),
+                               d = at(x + 1, z + 1);
+            std::int64_t x4 = 0; // 4 x the interpolated height, an exact integer
+            if (X % 4 == 1 && Z % 4 == 1) {
+                x4 = 2 * a + b + cc;
+            } else if (X % 4 == 3 && Z % 4 == 3) {
+                x4 = 2 * d + b + cc;
+            } else if (X % 4 == 1) {
+                x4 = b + 3 * cc;
+            } else {
+                x4 = 3 * b + cc;
+            }
+            const std::int64_t table = highmap[static_cast<std::size_t>(r * cols + c)];
+            if (table <= x4 / 4 - off) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+
 } // namespace anno::sim::site

@@ -4,7 +4,8 @@
   "generation": {
     "parent": "ba15315470ca5fc84db4ce3efa6ccf9ac927e28e",
     "scope": "generation not acceptance",
-    "note": "refreshed against the files on disk at the commit that follows the allocation review (the scenario corpus was rewritten after the first provenance was written)"
+    "note": "refreshed against the files on disk at the commit that follows the allocation review (the scenario corpus was rewritten after the first provenance was written)",
+    "amendment": "FigureType::ware joined the registry digest (docs/sim/salt-extraction.md 19.1): goldens.txt (13 K3/SUPPLY lines) and the create_hash column of scenario_corpus.txt were regenerated; run columns unchanged; the econbook1/loop_checkpoints.txt hashes were re-pinned"
   },
   "older_files_unchanged_sha256": {
     "econbook1/current133/README.md": "eb8250ddaf89a9746241332c24bba60253acbac24eb64e267881c0be30848e7d",
@@ -49,10 +50,10 @@
     "g4.log": "637d7f90f43f27b3fb304edce4f276a1643c76a4cb01d59c5eb79d6e3f59307f",
     "g5.log": "85e543befd6fe3edf7b9a32646c22a4e4c3093e7e28a52352518e63199c0b97b",
     "g6.log": "b18aee54287518deb7867ea7b7b4e109305add0013bfae4d8516f4396b805908",
-    "goldens.txt": "8402029be8e146d40b6f74d7ffde1d7c05e2fe2b64fc26fe9148cf66a1dc7d9b",
+    "goldens.txt": "fe5f81da2e9c3473163b608facaeb8f1e8c1a75c18bd450d9a60791c864f2b41",
     "m2_found.log": "2d325b2d708933711b9a79e4a82af45723e644fddd3d65ed4b6646260177898f",
     "m2_found_wrong.log": "a75d82cc4871021079ac00496d2ea7697d3219353bb23ed2abffaedfb3fe8d35",
     "populated_fields.txt": "a1bd243e2bb45a1db5bc1167a9433e38c8b2dd34252416204ba4b72e95b034e6",
-    "scenario_corpus.txt": "824a713389b9eec7bf9cd2b169510a3e53f3bcea59b13fa1a687aec9f148c0d9"
+    "scenario_corpus.txt": "9f7fe981dc15d1b77b44486d0237420da7188ec888633da42200d18562001caf"
   }
 }

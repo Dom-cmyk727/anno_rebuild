@@ -13810,6 +13810,52 @@ The diagnostic worktree `E:\anno1503-worktrees\anno1503-W4-settlement-1-gatechec
 constraint; it holds no uncommitted work of its own and can be removed by whoever next prunes
 worktrees.
 
+**Root cause of the earlier stuck wait-loop (tag `gatecheck1`, superseded by `gatecheck2` above),
+owner-requested follow-up:** reproduced directly, not guessed. Two distinct, real bugs, not one:
+
+1. *The launcher silently died.* `gatecheck1` was started as
+   `wsl.exe -d Ubuntu -- bash -lc "cd /mnt/... && nohup bash tools/test/wsl_gate.sh ... > log 2>&1 &
+   echo STARTED_PID=\$!"`. Reproduced in isolation: a `sleep`/`touch` job backgrounded this same way
+   gets a real PID and shows `jobs -l` status `Running` right up until the invoking `bash -lc`
+   process returns — but its deferred file-write never happens; the child is gone by the time it
+   was due to run. `nohup`, `setsid`, `disown`, and closing stdin were each tried and each still
+   lost the child (all reproduced). Conclusion: a backgrounded WSL child does not outlive the
+   single `wsl.exe` invocation that launched it *from this tool*, no matter which Linux-side
+   detachment is used — the whole invocation's process tree is torn down as a unit once that
+   invocation's own foreground command returns. `nohup bash ... &` inside a one-shot `wsl.exe --
+   bash -lc "..."` call is therefore not a valid way to start a long-running WSL job from here.
+   This, not any path-mangling, is why `gatecheck1` produced zero files: the real gate process
+   never got past its first few lines.
+2. *The wait loop couldn't tell and had no cap.* The follow-up `until [ -f "$S" ] ...; do sleep 20;
+   done` loop polled only for a result file to appear, with no check that anything was still alive
+   to produce it, and no wall-clock limit of its own — it relied entirely on the tool's `timeout`
+   parameter, which is not enforced the same way under `run_in_background: true`. Against a
+   condition that could structurally never become true (point 1), it spun for 1h40m until a human
+   caught it, instead of failing within minutes.
+
+A separate, real bug was also found and reproduced while investigating, worth recording so no
+other executor hits it: Git Bash/MSYS, invoking a non-MSYS binary like `wsl.exe` from this host,
+silently rewrites a **standalone** argument that looks like an absolute POSIX path into a Windows
+path from *Git Bash's own* mount table before `wsl.exe` ever sees it — e.g. `wsl.exe -d Ubuntu --
+cat /tmp/foo.txt` arrives as `cat 'C:/Users/.../AppData/Local/Temp/foo.txt'`, a path on the Windows
+side, not WSL's `/tmp`. This reproduces for `/tmp/...` the same way the already-known
+`/mnt/...`-doubled-slash gotcha does, but only when the path is its own argv token; a path
+*embedded inside* one larger quoted `bash -lc "..."` string (confirmed by direct test) is not
+rewritten. It did not cause either bug above (both failures used embedded, not standalone, paths),
+but is a live trap for a future bare `wsl.exe ... -- <cmd> /tmp/x` or `/mnt/x` call; double the
+leading slash (`//tmp/x`, `//mnt/e/x`) or keep the path embedded inside one `bash -lc "..."` string
+to avoid it.
+
+**Fix applied going forward (this package and this entry's own gate run already used it):** don't
+background inside the WSL invocation at all. Run the real command in the *foreground* of a single
+`wsl.exe -d Ubuntu -- bash -lc "<command, no trailing &>"` call, and let this tool's own
+`run_in_background: true` (or its automatic promotion to background on timeout) track and keep it
+alive — that path is what actually survived and produced `gatecheck2`'s real result above. For any
+future wait on something this tool isn't already tracking, the loop must check the thing's own
+liveness each iteration (e.g. `kill -0 "$PID"`), not just poll for an output file, and must carry
+its own hard iteration/wall-clock cap so a dead target is reported within minutes, not spun on
+indefinitely.
+
 **Push (owner rule, 2026-11-06):** per the new "push your own task branch at every checkpoint"
 rule, this branch (`task/W4-settlement-1`) is pushed to `origin` with this report. Ordinary push
 only; `main` and other lanes' branches are untouched.

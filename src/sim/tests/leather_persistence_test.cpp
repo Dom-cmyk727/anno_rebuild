@@ -501,7 +501,7 @@ TEST_CASE("synthetic mechanics fixture: scoped in-flight predicates and ledgers 
          kHaeute, std::nullopt},
         {"target owner at a rival home", mine, rival_home, sim::kJobWorkshopCarrier, kHaeute,
          std::nullopt},
-        {"target tannery carrier with the wrong job", mine, L->tannery, 0x2e, kHaeute,
+        {"target tannery carrier with the wrong job (own chain)", mine, L->tannery, 0x2e, kHaeute,
          std::nullopt},
         {"rival cart with leather", rival_owner, rival_home, sim::kJobMarketCart, kLeder,
          std::nullopt},
@@ -516,6 +516,12 @@ TEST_CASE("synthetic mechanics fixture: scoped in-flight predicates and ledgers 
          empty},
         {"target resident with another goods", mine, house, sim::kJobResidentCode, 0,
          sim::ResidentCargo{kStoffe, 256}},
+        // target owner and target city, but the wrong HOME building: the home-is-the-tannery term
+        // (worker) and the home-is-a-house term (resident) are what reject these
+        {"target carrier with hides homed at a target house (own chain)", mine, house,
+         sim::kJobWorkshopCarrier, kHaeute, std::nullopt},
+        {"target resident with loaded leather homed at the tannery, not a house", mine, L->tannery,
+         sim::kJobResidentCode, 0, loaded},
     };
     for (const Wrong& w : wrongs) {
         inject(c, w.owner, w.home, w.job, w.goods, w.goods == 0 ? 0U : 256U, w.rc);
@@ -526,7 +532,7 @@ TEST_CASE("synthetic mechanics fixture: scoped in-flight predicates and ledgers 
         // target-owner figure homed at the target tannery with the wrong job still holds hides
         // that belong to the chain), and nothing of any other scope
         const LeatherLedger l = leather_ledger(*L);
-        const bool own_chain_cargo = std::string(w.name).find("wrong job") != std::string::npos;
+        const bool own_chain_cargo = std::string(w.name).find("(own chain)") != std::string::npos;
         CHECK_MESSAGE(l.hide_cargo == (own_chain_cargo ? 256U : 0U), std::string(w.name));
         CHECK_MESSAGE(l.leather_cart == 0, std::string(w.name));
         remove_figures(c);

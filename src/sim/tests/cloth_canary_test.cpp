@@ -324,6 +324,10 @@ TEST_CASE("cloth canary: a rival's loaded figures never enter the target chain's
     inject(c, rival_owner, rival_home, sim::kJobMarketCart, kStoffe, 512);
     inject(c, rival_owner, rival_home, sim::kJobWorkshopCarrier, kWolle, 512);
     inject(c, rival_owner, c.weaver, sim::kJobWorkshopCarrier, kWolle, 512);
+    // the target OWNER but a building of ANOTHER CITY as home (exercises the home-city term), and a
+    // building of another city for the cart too
+    inject(c, c.city->owner, rival_home, sim::kJobWorkshopCarrier, kWolle, 512);
+    inject(c, c.city->owner, rival_home, sim::kJobMarketCart, kStoffe, 512);
     const Ledger l1 = ledger_of(c, 0);
     CHECK(l1.cloth_cart == l0.cloth_cart);
     CHECK(l1.wool_cargo == l0.wool_cargo);

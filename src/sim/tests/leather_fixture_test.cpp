@@ -227,20 +227,26 @@ struct OtherTown {
     std::int64_t money = 0;
 };
 
+/// The one town of `island`. The scene has exactly one city on islands 3 and 4 (city number 0,
+/// owner from the city); this is ASSERTED (a second city on the island fails the REQUIRE instead of
+/// being silently merged), so the island-keyed lookup is a precise CityRef lookup here.
 OtherTown other_town(Cloth& c, std::uint32_t island) {
     OtherTown t;
+    std::size_t cities = 0;
     for (auto& isl : sim::WorldTestAccess::islands(c.w)) {
         if (!isl || isl->index.v != island) {
             continue;
         }
         for (auto& ci : isl->cities) {
             if (ci) {
+                ++cities;
+                REQUIRE(ci->number.v == 0);
                 t.stock.assign(ci->stock.stock.begin(), ci->stock.stock.end());
                 t.money = c.w.players().find(ci->owner)->money;
             }
         }
     }
-    REQUIRE_FALSE(t.stock.empty());
+    REQUIRE(cities == 1);
     return t;
 }
 

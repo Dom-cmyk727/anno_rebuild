@@ -37,7 +37,7 @@ a balanced town, original-runtime ship collision fidelity or network multiplayer
 |E4 repeat and adversarial ownership|two completed source-load/destination-unload cycles with further production; independent homes/stocks|wrong owner, absent/demolished target, out-of-range, shortage, holds full/mismatch, partial/repeat and closer rival explicit-ID controls|bounded companions APPROVED637da167; real repeat NOT_RUN, fullE4 OPEN|
 |E5 economy/native/replay|all owners' money decomposes exactly, each city's independent stamp/cost/bill,5 native cuts, genuine fresh-process replay|accepted legal changed transfer diverges after matching prior checkpoints; isolated wrong-debit/credit-only/repeat/stale-target mutants fail intended assertions while controls execute|accepted bac3 control reusable; genuine two-city/native/replay E5 NOT_RUN|
 |E6 reusable consumer recipe and bounded cost|typed public commands, exact selected targets/ranges/results; several legal sizes, operation counts and separate timing samples; alternate supported data|no full-world cargo scan introduced; different goods/warehouse/owner fixtures; bounds/refusals retained rather than force success|bounded API/scale/consumer subset APPROVED637da167; full executed recipe OPEN|
-|E7 frozen closeout|relevant Debug and ASan/UBSan, at least1 current-source combined multi-island sanitizer voyage, exact selection/contracts, fresh independent integration review|first failures remain failures; missing/empty/skip/incomplete/sanitizer and malformed evidence cannot become a pass|short ASAN16/16 only; combined sailing NOT_RUN; fresh bounded review pending; fullE7 OPEN|
+|E7 frozen closeout|relevant Debug and ASan/UBSan, at least1 current-source combined multi-island sanitizer voyage, exact selection/contracts, fresh independent integration review|first failures remain failures; missing/empty/skip/incomplete/sanitizer and malformed evidence cannot become a pass|short ASAN16/16 only; combined sailing NOT_RUN; fresh bounded checkpoint APPROVED16c34df6; fullE7 OPEN|
 
 Each approval releases dependent work without routine orchestrator pauses. E1
 must establish starting-state, cargo, docking and material prerequisites before
@@ -434,3 +434,8 @@ APPROVED due founding history loss, E3–E7 full acceptance remains open. No run
 fix or identity change landed. Complete per-run counts, first failures, hashes,
 source pins and remaining dependency are in the
 [bounded handoff](../orchestration/reviews/2026-11-06-map-expand1.md).
+
+Fresh /root/expand_boundary_review APPROVED the bounded checkpoint atdocs16c34df6 /
+tested637da167 after correcting tested-versus-docs delta wording, auditing14raw
+hashes/6receipts and actual sanitizer flags. This closes checkpoint reporting
+only: fullMAP-EXPAND E0–E7 acceptance remains open.

@@ -13363,5 +13363,10 @@ mode/textrecording adapter remains Windows-owned.
 [Consolidated bounded handoff](reviews/2026-11-06-map-expand1.md) has exactsource/
 commands/config/inputs/rawSHA/receipts, reviewed primary facts, feasible copied
 itinerary/budget, actual failure, concrete patch and precise continuation. Fresh
-boundary review is pending on this document; it cannot waive full acceptance.
+boundary review by /root/expand_boundary_review APPROVED documentation16c34df6 /
+tested637da167 as a bounded partial/dependency checkpoint, after the sole docs
+finding was corrected. All14 rawhash rows/6 independent receipts and sanitizer
+instrumentation were independently checked; no remaining checkpoint P1/P2. This
+does not waive full acceptance. Final documentation-only record retains the
+unresolved compatibility decision and all genuine voyage limits.
 All own gate sessions are terminal; no owned expansion job remains.

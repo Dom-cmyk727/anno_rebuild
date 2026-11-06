@@ -51,7 +51,7 @@ TEST_CASE("SCRIPT2 native header and empty runtime have hand written bytes") {
     StateHeader refused;
     fields(legacy, refused);
     REQUIRE(legacy.failed());
-    CHECK(legacy.error().find("state stream version") != std::string::npos);
+    CHECK(legacy.error().find("state hash version") != std::string::npos);
     auto wrong = expected_header;
     wrong[4] ^= 1;
     ReadArchive reader(wrong);

@@ -3829,30 +3829,19 @@ TEST_CASE("bootstrap prefix: unchanged ship sails founds unloads builds then exp
     CHECK(gold() == 29250 - static_cast<std::int64_t>(5 * plan->road.size()));
     CHECK(stock(42) == 34 * 256);
     CHECK(stock(41) == 46 * 256);
-    // No stage injection: the content query refuses salt at stage1C. The public command below
-    // reaches structural Unsupported before permission checks; wiring is enforced elsewhere.
+    // No stage injection: the content query refuses salt at stage1C. Stream 135: the mountain class is
+    // placeable now, so the public salt command no longer ends in a structural Unsupported; the
+    // permission refusal (the stage lock) is what stops it, before any state change.
     CHECK(eligible(1203).status == sim::BuildEligibilityStatus::StageLocked);
-    bool salt_unsupported = false;
-    const auto& island = *w.islands()[ref->island.v];
-    for (std::int32_t y = island.tiles.y0();
-         y < island.tiles.y0() + static_cast<std::int32_t>(island.tiles.height()) &&
-         !salt_unsupported;
-         ++y) {
-        for (std::int32_t x = island.tiles.x0();
-             x < island.tiles.x0() + static_cast<std::int32_t>(island.tiles.width()); ++x) {
-            const auto cmd = ct::build(0, *ref, {ct::at(sim::TypeId{1203}, x, y)});
-            sim::World trial = w;
-            if (trial.apply(cmd).status != sim::Reject::Unsupported)
-                continue;
-            const auto before = w.save();
-            const auto r = d.apply(cmd);
-            CHECK(r.status == sim::Reject::Unsupported);
-            CHECK(w.save() == before);
-            salt_unsupported = true;
-            break;
-        }
+    {
+        const auto cmd = ct::build(0, *ref, {ct::at(sim::TypeId{1203}, plan->site.x, plan->site.y)});
+        const auto before = w.save();
+        const auto r = d.apply(cmd);
+        MESSAGE("salt command at the forester site: " << sim::reject_name(r.status));
+        CHECK_FALSE(r.ok());
+        CHECK(r.status != sim::Reject::Unsupported);
+        CHECK(w.save() == before);
     }
-    REQUIRE(salt_unsupported);
     d.checkpoint();
     REQUIRE(w.check_invariants().empty());
     MESSAGE("BOOTSTRAP_STOP road_tiles="
@@ -3860,7 +3849,7 @@ TEST_CASE("bootstrap prefix: unchanged ship sails founds unloads builds then exp
             << " tools_city_88=" << stock(41)
             << " tools_ship_88=" << aboard_of(ship_of(w, 1).holds, 41) << " food_88=" << stock(26)
             << " farm_raw=0,0 farm_output=0,0 next_supply=MAP-SUPPLY-1 salt_query=StageLocked "
-               "salt_command=Unsupported hash="
+               "salt_command=StageLockedRefusal hash="
             << w.state_hash());
     auto bytes = sim::write_log(rec.log());
     REQUIRE(bytes.ok());

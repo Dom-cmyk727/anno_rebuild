@@ -60,9 +60,11 @@ class Type:
 class Island:
     """x0, y0, W, H in tiles; vertex(vx, vy) in world tile coordinates; object(x, y) the tile's object id."""
 
-    def __init__(self, x0, y0, W, H, vertex, obj):
+    def __init__(self, x0, y0, W, H, vertex, obj, anchor=None):
         self.x0, self.y0, self.W, self.H = x0, y0, W, H
         self.vertex, self.obj = vertex, obj
+        # tile byte 3 bit 7 (the anchor bit, ship-founding.md 12.1); 0 everywhere unless given
+        self.anchor = anchor if anchor is not None else (lambda x, y: 0)
 
 
 def trunc4(s):
@@ -136,6 +138,30 @@ def height_analysis(t, rot, V, flags):
     return res
 
 
+def coverage_ok(isl, reg, x, y, fw, fh):
+    """The per-chunk coverage test of the island function (AnnoWelt 0x1007c955-0x1007cb3d; docs/sim/salt-extraction.md
+    section 17). It runs when the OR of the type's flag word and the caller flags has bit 0x10. A footprint tile MARKS its
+    world-aligned 8 x 8 chunk unless it carries an existing object whose type has flag 0x10 AND whose anchor bit
+    (tile byte 3 bit 7) is set (0x1007c9e2-0x1007ca25: id 0, a type without 0x10, or a clear anchor all mark). Every chunk
+    the footprint touches ((y+h+7)>>3 - y>>3 rows by (x+w+7)>>3 - x>>3 columns, mark array stride 2) must be marked.
+    Domain: footprints up to 8 x 8 (the original's mark array holds 2 x 2 chunks)."""
+    assert fw <= 8 and fh <= 8
+    x0c, y0c = x >> 3, y >> 3
+    marks = [0, 0, 0, 0]
+    for dy in range(fh):
+        for dx in range(fw):
+            o = isl.obj(x + dx, y + dy)
+            kept = False
+            if o != 0:
+                e = reg[o]
+                kept = bool(e.flags & 0x10) and bool(isl.anchor(x + dx, y + dy))
+            if not kept:
+                marks[((x + dx) >> 3) - x0c + 2 * (((y + dy) >> 3) - y0c)] |= 1
+    rows = ((y + fh + 7) >> 3) - y0c
+    cols = ((x + fw + 7) >> 3) - x0c
+    return all(marks[r * 2 + c] for r in range(rows) for c in range(cols))
+
+
 def compat(p, e, flags):
     """Type slot +0x6c (0x10008920): p = placed type (this), e = existing object's type. 1 or 0."""
     if e.flags & 0x20:
@@ -186,7 +212,8 @@ def place(isl, reg, tid, x, y, rot, flags, rec8_in=0):
                 if compat(t, e, flags) == 0:
                     return REJECT, 'OCCUPIED', rec8_in
         if flags & 0x10:
-            return UNSUPPORTED, 'flag 0x10: per-chunk coverage test (0x1007c955-0x1007cb3d) not decoded', rec8_in
+            if not coverage_ok(isl, reg, x, y, fw, fh):
+                return REJECT, 'COVERAGE', rec8_in
     rec8 = rec8_in
     if not flags & F_FLAGS_NO_CLASS_CHECK:
         try:
@@ -241,7 +268,10 @@ def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0, road_floor=True, ro
         return v, why, b
     if t is not None:
         name, sup = terrain_class(t.flags)
-        if not sup:
+        # stream 135: the mountain class is supported for a MINE (PRODTYPE 3) that carries its exact 2h x 2w table
+        mountain = (t.flags & 0x7000 == 0x3000 and t.flags <= 0xFFFF and t.prodtype == 3 and t.flags & 3 != 1
+                    and t.highmap is not None and len(t.highmap) == 4 * t.w * t.h)
+        if not sup and not mountain:
             return UNSUPPORTED, 'terrain class not supported for BuildCmd: ' + name, rec8_in
     return place(isl, reg, tid, x, y, rot, flags, rec8_in)
 
@@ -285,8 +315,10 @@ def parse_vectors(text):
         k = w[0]
         if k == 'type':                               # type <id> <w> <h> <prodtype> <flags hex> <replaceable>
             reg[int(w[1])] = Type(int(w[2]), int(w[3]), int(w[4]), int(w[5], 16), bool(int(w[6])))
+            if len(w) > 7:                            # optional: the HIGHMAP table as hex (stream 135, class 0x3000)
+                reg[int(w[1])].highmap = bytes.fromhex(w[7])
         elif k == 'case':
-            cur = dict(name=w[1], line=ln, island=None, rows={}, objs={}, place=None, expect=None, original=None)
+            cur = dict(name=w[1], line=ln, island=None, rows={}, objs={}, anchors=set(), place=None, expect=None, original=None)
             cases.append(cur)
         elif k == 'island':                           # island <x0> <y0> <W> <H>
             cur['island'] = tuple(int(v) for v in w[1:5])
@@ -294,6 +326,8 @@ def parse_vectors(text):
             cur['rows'][int(w[1])] = bytes.fromhex(w[2])
         elif k == 'obj':                              # obj <x> <y> <type id>
             cur['objs'][(int(w[1]), int(w[2]))] = int(w[3])
+        elif k == 'anchor':                           # anchor <x> <y>: the tile's byte 3 bit 7 is set (stream 135)
+            cur['anchors'].add((int(w[1]), int(w[2])))
         elif k == 'place':                            # place <type> <x> <y> <rot> <flags hex> <rec8>
             cur['place'] = (int(w[1]), int(w[2]), int(w[3]), int(w[4]), int(w[5], 16), int(w[6]))
         elif k == 'expect':                           # expect accept <byte> | reject <REASON> | unsupported
@@ -316,7 +350,8 @@ def case_island(c):
         if r is None or not (0 <= vx - x0 < len(r)):
             return 0
         return r[vx - x0]
-    return Island(x0, y0, W, H, vertex, lambda tx, ty: c['objs'].get((tx, ty), 0))
+    return Island(x0, y0, W, H, vertex, lambda tx, ty: c['objs'].get((tx, ty), 0),
+                  lambda tx, ty: 1 if (tx, ty) in c['anchors'] else 0)
 
 
 def run_case(reg, c, road_floor=True, road_preserve=True):

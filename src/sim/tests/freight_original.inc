@@ -380,6 +380,9 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
             if (i < assign_entry)
                 ++prior;
         }
+    REQUIRE(checkpoints == 11);
+    REQUIRE(prior == 3);
+    REQUIRE(assign_entry == 490);
     std::ostringstream evidence;
     evidence << "state=136 based=134 no_salt135 schema=ECONBK1 PRNG=5 replay=4 command=1 save=1\n"
              << "tick=" << w.clock().tick() << " entries=" << rec.log().entries.size()

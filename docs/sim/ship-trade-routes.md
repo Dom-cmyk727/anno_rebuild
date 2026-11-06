@@ -760,3 +760,37 @@ current native proof; fresh CLI replay/Release scale/SAN remain R6/R7.
 Review note `cache/route1/reviews/r5.md`; preserved failures/probes remain scoped
 to their original pins. No defaults, salt135, original resources or app changed.
 R6 released.
+
+### R6 acceptance before registered replay/Release measurements
+
+| Requirement | Positive proof | Counterexample | Review |
+|---|---|---|---|
+| Full continuations | five actual public cuts, complete suffix events/draws/actors/cities/terrain/final bytes | partial/suspended/other clocks remain R2–R4 controls; no artificial atomic split | R5 approved native result; R6 review pending |
+| Fresh replay | single genuine producer plus two correctly dependent fresh CLI consumers; honest11/11 | legal29→28 assignment accepts separately and diverges at491 after3matched prior checkpoints; exact exit/stdout/stderr and artifacts | pending |
+| Short Release scale | seven samples vary1/8/64active,2/8/128stops,0/512/8192unrelated figures plus0/256/2048buildings | same8route8stop FreightWork must remain equal across unrelated sizes; actual positive effects/stop progress | pending |
+| Consumer contract | typed commands, stable IDs, actual observations, control/manual takeover and136/no135 identity | no UI implementation or arrival/cycle-as-delivery claim; preserve manual card | pending |
+
+Scale uses100 warmup +200 measured1000ms full-scheduler advances per sample;
+colocated owned stops LoadTarget1/Unload1 isolate freight progress, not original
+sailing performance. Prints all nine freight counters and separate existing NAV
+counts,1400 individual advance timings and setup/assignment/warmup times. Wall
+timings are measured, never pass thresholds; no existing navigation scan is
+claimed solved. All public limits remain configurable, independent of test sizes.
+
+Final real producer timeout1200s is declared before SAN: current Debug162.47s,
+prior same-host expansion Debug159.27s/SAN504.80s (ratio3.17) predicts515s;1200s
+provides2.3x headroom for contention/current instrumentation. Original finite
+work bounds remain; no failed deadline is silently extended. One registered
+producer generates each gate's native/recording artifacts for both children,
+not a producer per child. R5 historical recording remains unchanged evidence.
+
+Scale fixture investigation preserved `R6/direct-scale-debug-0{1,2}.log`:64ships
+on one exact dock may be displaced by existing navigation stamp/goal-radius
+behavior and then correctly fail cargo OutOfRange. No collision/goal/range
+rule was weakened. The short cost workload instead gives each independent ship
+a named warehouse/dock16tiles from the next, while sharing the same city store;
+its own stops remain colocated. This isolates active-route/stop-list cargo work
+from that pre-existing crowded-dock NAV behavior, which remains outside scope.
+R4's two-ship named-store contention and real R5 sailing remain separate proof.
+For128stops the short window requires positive stop progress/effects, not a full
+128stop wrap; bounded whole cycles are established by the separate real canary.

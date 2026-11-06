@@ -573,3 +573,15 @@ E5 cheap01 at18b30fdf failed during compilation before any selected execution:
 a nested final-evidence byte vector shadowed the earlier recording bytes under
 Werror. Rename only that local; retain the first failed build. No runtime change
 or failed gameplay expectation is hidden by this preparation correction.
+
+Cheap E5 controls at5a2aba70 pass2/2 in0.15s (cargo195asserts and asset-wrapper
+contract);7required invocations separate, all other outcome categories0. Reviewer
+source/cheap-control approval permits the full voyage gate. The current combined
+gate selects both fresh consumers plus accepted simultaneous city/player-upkeep
+control; CTest adds the single producer by fixture, no duplicate voyage perconsumer.
+The13honest/first10changed-checkpoint expectations are derived from E4's8 plus5cut
+checkpoints. Timeout900s is predeclared for the Debug pilot: measured E445.88s plus
+5boundedfullsuffixes and serialization; current ASAN deadline will be justified
+from this measurement before launch. New consumer tests explicitly inherit UBSAN
+halt/stacktrace in sanitizer builds. Optional prior-E4 final-native comparison is
+enabled in this operator gate to establish observational transparency.

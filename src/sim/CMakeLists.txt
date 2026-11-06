@@ -112,6 +112,11 @@ if(ANNO_BUILD_TESTS)
                                   TIMEOUT 900
                                   SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 
+  if(ANNO_SANITIZE AND NOT MSVC)
+    set_tests_properties(expansion_voyage_fresh_process expansion_voyage_changed_command_fresh_process
+                         PROPERTIES ENVIRONMENT "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+  endif()
+
   # tools/lint_sim.py: the mechanical part of the determinism rules (no
   # unordered containers, float, clock, rand, mutable globals ...; docs/sim/
   # state.md §14.6), and its own self-test. Named anno_sim_tests_* so that

@@ -1,0 +1,9 @@
+# Engine recording, complete normal Tutorial input, state133 ECONBK1; not an independent arithmetic oracle.
+# entry tick hash
+39 1950 147fba06b53dd0b3
+41 2000 38ea3935efab0c2b
+3002 150000 c2553811991a2976
+3804 190000 3a06a3ea0094a25d
+5405 270000 5eaa80ec21a2a7cc
+6207 310000 fa07f6eb62c5ce37
+10208 510000 e6ec7f43d6eeab61

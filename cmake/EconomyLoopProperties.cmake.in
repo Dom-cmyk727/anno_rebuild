@@ -1,0 +1,5 @@
+# Loaded by CTest after discovery. CTest's property reader has no APPEND;
+# configure the sanitizer environment explicitly alongside the output path.
+set_tests_properties("anno_sim_tests.economy loop: complete Tutorial production sales upkeep shortage paid recovery and native cuts"
+                     PROPERTIES FIXTURES_SETUP econbook_loop_record
+                                ENVIRONMENT "@econ_loop_environment@")

@@ -929,3 +929,86 @@ ASAN02 SHA256 `0e619055e79c79d312f04e9076db834ff369e5166cdc872cca9db6ed56c20d48`
 retained `/private/tmp/econ-book1-b4-review.md`. The d55 gates remain evidence for
 the original source only. B5 is automatically released; its original economic
 loop and B7 final interactions are still required.
+
+## B5 complete original Tutorial economic loop — candidate
+
+The prerequisites were proved before the long run. Normal
+`Tutorial/02Trade01.sze` import now succeeds with all3 original actors and the
+complete supported original script; the canary uses that normal path, with no
+actor projection, source edit or scenario permission bypass. The first cheap
+probe wrongly assumed the older component fixture was still necessary and failed
+that assumption. A retained second setup error left the explicit projection
+argument in the helper; the corrected prerequisites04 pass33 assertions. Compiler
+and zero-case exploratory attempts are retained, never acceptance. The separate
+existing strict-refusal/component test for Single_24 remains a regression only.
+
+Target: original island7/city1/owner0,13 homes; climate5/tax0; food17408 is inherited,
+alcohol in the potato farm's raw/output, city warehouse and Inn all0. Treasury50000,
+tools17920, wood14336 can pay a genuine rebuild (250 gold,512 tools,1024 wood).
+Initial civil history354/military0, original farm809 costs8/20, Inn1335 costs0/20,
+stall1310 costs0/5. No grant, bill write, teleport, goods/price/cost override or
+free-build flag participates in this real arm. Synthetic B4 boundary setups remain
+separately labelled. The original actor importer and native records are retained.
+
+Exploratory complete loop01 passes one case/62594 assertions. The farm produces
+alcohol from its own original potatoes, which reaches at least3 originally empty
+households. At150000 ticks the farm is demolished by the owner. The supply drains:
+Inn sales stay312 through270000. At270000 a normal paid BuildCmd rebuilds809 on the
+original footprint, checking available budget and exact gold/tools/wood debits.
+A native-forked control never rebuilds. To510000, the recovered run sells1014
+versus0 additional sales in the no-rebuild control;6 households receive during
+recovery versus0. Newly made alcohol is conserved as farm output+warehouse+Inn+
+sold+living cargo; starting alcohol on that producer path is0. The large food
+store is explicitly inherited and not counted as newly required production.
+
+Every booking computes its expected ordinary-domain numerator from the pre-visit
+bills and original climate/tax price rows, divides after +128, checks historical
+cost sum/15, gross credit/debit and three statistic values independently of the
+engine helper. Every owner's balance reconciles on every advance, not merely at
+end. Booked bills+pending bills equal actual purchase billing diagnostics by goods;
+returns/native retry do not create extra income. Command-time unrelated city
+bill/cost state and rival treasuries remain unchanged. Other cities' legitimate
+booking activity continues and has its own exact ledger. B4 supplies the focused
+synthetic two-owner production boundary proof as a complement.
+
+| Owner | Start | Earned income | City upkeep | Construction | Final | Residual |
+|---|---:|---:|---:|---:|---:|---:|
+| 0 |50000|1020|5805|250|44965|0|
+| 1 |10000|791|0|0|10791|0|
+| 2 |100000|1068|3825|0|97243|0|
+| 31 |10000|0|0|0|10000|0|
+
+765 bookings,183 positive. Owner0 loses5035 overall: this is an operating economic
+loop, not profitability or a balanced opening. Target upkeep changes23→22 after
+removal and22→23 after rebuild. Decisive recorded target row tick18000:
+price50×bill286=14300; floor((14300+128)/256)=56; upkeep354/15=23;
+49816+56-23=49849. Owner1's first row tick10000 is50×47=2350;
+floor((2350+128)/256)=9, upkeep0,10000→10009. These rows and all others are retained
+in `B5/exploration01/ledger.tsv`; no copied expected answer drives the engine.
+
+Five native cuts compare complete continuation state, events and per-site draws:
+before/after booking, during an actual purchased resident trip, after removal and
+after paid rebuild. Host event history is drained before comparing continuation
+(the host queue is not native state). Seven new full-town checkpoint hashes are
+explicit engine recording fixtures in `econbook1/loop_checkpoints.txt`, not an
+independent fidelity oracle. Original actors and positions/resources are imported
+normally; no movement/setup override is used to create a supply route.
+
+Fresh-process exploration: genuine record10209 entries,7/7 checkpoints through
+510000, exit0 (15.86s Debug); changed legal demolition names the owner's other
+farm259,352, same valid framing/identity,3/4 checkpoints then divergence at entry3804
+(tick190000), exit1 (10.08s). The corrected test proves that altered public command
+is accepted at the actual150000 cut. The earlier three checkpoints match. Raw
+`B5/fresh-{genuine,changed}-exploration-01.log` and original1.2MiB records are retained;
+original-derived saves/logs stay ignored, not committed. Canonical replay tests
+use the existing status+output helper and its mandatory contract, ordered after
+one producer run through CTest fixtures. No new generic evidence framework.
+
+Focused B5 gates use900s/case, enabled admission,1 CTest/four build jobs and required
+assets. Debug measured fresh-process cost15.86/10.08s and B4 sanitizer ratio about3
+justify this bounded timeout; the unsupported old1800s script case is unrelated.
+ASAN environment is retained explicitly in the CTest property include. First
+property-inventory attempt used unsupported CTest set_property(APPEND); it is
+retained as a failed inventory, corrected to set_tests_properties with explicit
+environment. The successful inventory pins producer/consumer fixture ordering.
+Independent B5 review, canonical gates and final B7 remain pending.

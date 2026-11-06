@@ -4710,12 +4710,12 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     end_holds[0].amount_88 -= 24 * 256;
     end_holds[2].amount_88 -= 13 * 256;
     CHECK(ship_of(w, 1).holds == end_holds);
-    expansion_test::source_ledger(w, stats, forest, warehouse, ref, wood, transferred);
+    expansion_test::source_ledger(w, ref, warehouse, forest, wood, stats, transferred);
     for (const auto& actor : w.figures().list.slots)
         if (actor && actor->home.valid()) {
             CHECK(actor->owner == sim::PlayerId{0});
-            CHECK(actor->home ==
-                  warehouse); // only source owns any worker/carrier in this freight proof
+            CHECK((actor->home == warehouse ||
+                   actor->home == forest)); // source carrier/harvester homes
         }
     for (const auto& [owner, cash] : initial_money)
         CHECK(expansion_test::balances(w).at(owner) ==

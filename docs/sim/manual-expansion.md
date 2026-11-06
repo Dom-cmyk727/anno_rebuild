@@ -500,3 +500,8 @@ remain isolated across destination commands. Hand end holds26wood/10food/37tools
 30tools; total construction1000gold, actual upkeep reconciled by allowners.
 Receiverheight comes from an independent raw terrain window, not placementhelper.
 E3 review/gate pending; no E4 repeat/native/full replay claim is implied.
+
+E3 gate01 at1ca653b7 is a failed build, no selected execution: the appended
+source-ledger call used the wrong argument order. Correct it to the existing
+helper signature and allow both sourceforest harvester homes and sourcewarehouse
+cart homes. Neither correction changes production code or expected balances.

@@ -81,7 +81,7 @@ def records():
     goods+=u64(25)+b''.join(pack('3BI',*row) for row in current.CLASSES)+u64(0)*3
     names=(b'POLAR',b'TUNDRA',b'NORD',b'PRAERIE',b'DSCHUNGEL',b'STEPPE',b'WUESTE',b'CUSTOM')
     economy=u64(8)+b''.join(text(n) for n in names)+u32(4)+u32(2000)
-    return {'header':(u32(133)+b'ECONBK1\0'+u32(5),None),
+    return {'header':(u32(134)+b'ECONBK1\0'+u32(5),None),
             'player':(old.player_bytes(old.new_player(0))+u64(2)+pack('4I',70001,0,90001,255),None),
             'figures':(raw,fnv(hierarchical)), 'script':(script(),None),
             'accounts':(u16(65000)+pack('5Q',0x0102030405060708,105,210,4294967313,28),None),
@@ -93,7 +93,7 @@ def fixture():
         for name,(data,digest) in records().items())
 
 class Contracts(unittest.TestCase):
-    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8500000045434f4e424b310005000000')
+    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8600000045434f4e424b310005000000')
     def test_sparse_registry_has_four_actors(self):
         self.assertEqual(len(records()['figures'][0]),20+40+200+133+129+150+10)
         self.assertNotEqual(records()['figures'][1],fnv(records()['figures'][0]))
@@ -108,7 +108,7 @@ class Contracts(unittest.TestCase):
             command=[sys.executable,'-I',str(Path(__file__).resolve()),'--fixture',str(path)]
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,0);self.assertIn('7 populated combined scopes agree',result.stdout)
-            path.write_text(fixture().replace('85000000','84000000',1))
+            path.write_text(fixture().replace('86000000','85000000',1))
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
             path.unlink();result=subprocess.run(command,capture_output=True,text=True)
@@ -139,7 +139,7 @@ class Contracts(unittest.TestCase):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
     if a.self_test:return 0 if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)).wasSuccessful() else 1
-    path=a.fixture or ROOT/'fixtures/synthetic/sim/econbook1/current133/populated_fields.txt'
+    path=a.fixture or ROOT/'fixtures/synthetic/sim/expand1/current134/populated_fields.txt'
     if a.write:path.write_text(fixture());return 0
     try: actual=path.read_text()
     except OSError as error: print('fixture unavailable: '+str(error));return 1

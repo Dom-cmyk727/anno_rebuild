@@ -158,7 +158,9 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // No extra fields or draw sites; changed trajectories require a distinct identity.
 // Stream133: opt-in checked city booking, authoritative accounts, inert financial
 // selector, price registry facts and data-sized tax roles. ECONBK1, no new PRNG site.
-inline constexpr std::uint32_t kStateHashVersion = 133;
+// Stream134: retain prepared founding accounts; unchanged fields/tag/timeline.
+// Explicit compatibility decision acbe5a24, old133 is refused even with booking off.
+inline constexpr std::uint32_t kStateHashVersion = 134;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

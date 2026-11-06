@@ -463,6 +463,7 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
     const auto index_stamp = city.index.stamp; // set by the city commit (BuildingIndex::stamp)
     city.index = std::move(local.index);
     city.index.stamp = index_stamp;
+    city.accounts = local.accounts; // Preserve the already checked founding contribution.
     // Registration: the mask, the island\'s players present.
     city.player_mask = mask;
     for (const PlayerId a : audience) {

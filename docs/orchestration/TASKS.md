@@ -21,6 +21,206 @@ consume this baseline only at their next coordinated checkpoint. Do not reset,
 rebase or merge another executor's current work to obtain this update. Windows/
 Linux target-host, GPU/window and multiplayer-scale acceptance remain open.
 
+<!-- BEGIN MAP-NEEDS-CLOSE-EXTRACT-1 -->
+## First Mac — close MAP-NEEDS-2, then MAP-EXTRACT-1 (2026-11-06)
+
+**Released:** C0–C2 corrections, followed by X0–X6 salt extraction within the
+conditions below. Independent package approvals release dependent work without
+routine orchestrator pauses. Hunting remains PARTIAL and outside this packet.
+Second Mac owns MAP-EXPAND-1; Windows owns the live settlement window.
+
+Read the [orchestrator review](reviews/2026-11-06-map-needs2-orchestrator.md).
+`5df34b38` is a preserved candidate, not accepted main. The cloth component and
+labelled-hide leather mechanics have useful runtime evidence; the scoped test
+corrections and clean integration still need proof. No new wildlife policy is
+implied by closing those slices. Do not port the fauna sweep or change world draws
+as a side task. Retain hunting as an explicit separate lifecycle/identity contract.
+
+### Read before work
+
+- AGENTS.md, CLAUDE.md, PLAN §§0.1–0.3, the permanent evidence contract and testing
+  README; this packet supersedes the historical MAP-NEEDS assignment.
+- The review above, candidate REPORTS entry, early-needs.md §§12–16, re/hunter.md;
+  cloth_town.hpp, cloth_canary_test.cpp, leather_town.hpp,
+  leather_fixture_test.cpp, leather_persistence_test.cpp and tutorial_town.hpp.
+- Current ECON acceptance and state133 contract, production and original placement
+  evidence: docs/sim/{state,production,ship-placement,road-placement}.md,
+  docs/re/{production,ui-and-placement,ship-placement,road-placement}.md,
+  docs/sim/{ship-start-bootstrap,economy-booking}.md and open-questions.md.
+- Locate Mine, deposits, placement classification, atomic dry-run overlay,
+  BuildCmd payment/permissions, carrier collection and household supply through
+  current callers with rg. Read the corresponding tests and Python references.
+  Original data and binaries are read-only; follow precise primary evidence
+  links rather than trusting old notes about an unread placement branch.
+
+### C0 — preserve and adopt current main safely
+
+Preserve task/MAP-2-needs2-main at `5df34b38` and the old state-130 branch/evidence. Fetch
+origin. Create task/MAP-EXTRACT-1-main in your own clean checkout from the published
+main commit containing this dispatch and bench fix b408f311. Record that exact
+starting commit. The baseline is state 133 / ECONBK1 / PRNG 5; do not revert it to 132.
+A local merge of your completed `5df34b38` candidate into that successor is authorized;
+resolve only its integration conflicts, retaining all main CMake registrations,
+ECON changes, current instructions and both reports. No main merge, force push,
+reset of old branches or changes to another worktree. Inspect any intervening
+accepted main code before adopting a newer tip.
+
+Detect current host resources/contention and use calibrated jobs/admission. Do
+not stop another executor's work. Use explicit source/build paths and normal CMake
+builds, including bench_picture; no hand-compiled objects or warning overrides.
+
+### C1 — close the specific review findings
+
+1. Scope leather in-flight predicates to the intended owner, city, home and job;
+   a carrier must belong to the tannery chain, delivery to the target collection
+   chain, and a resident to the target houses with positive leather cargo.
+   Derive any corrected cut timestamps from those predicates, not old constants.
+2. Scope cloth recovery's cart/wool-cargo sums to the target chain, accounting for
+   old/replacement weavers and legitimate demolition loss. Audit related helpers
+   for island-only assumptions; assert them or use precise city/home membership.
+3. Add small positive/negative controls: rival loaded figures cannot satisfy a cut
+   or change a target ledger; an empty resident cannot satisfy a loaded cut;
+   an actual target loaded figure can. Prefer existing fixture states and helpers
+   to duplicating long production runs. Restore one wrong-scope implementation
+   in an isolated copy and show the intended assertion fails with its control green.
+4. Rename/disclose the actor-free original-data component projection; preserve
+   the existing fixture and its useful proof. No new full-scenario campaign.
+5. Delete the unsupported no-per-visit-scan conclusion from the scale note. Keep
+   recorded timings, actual sizes and one-run limitations exactly as measured.
+
+Independent review must inspect the predicates and caller identities, not just
+passing ledger totals. Correct and re-review blocking findings.
+
+### C2 — bounded integration proof, then continue
+
+Keep old state-132 recordings immutable. Regenerate only current identity-dependent hash
+pins/logs after proving unchanged numerical production, payment, lifecycle and
+household results, except explicitly explained corrections to scoped observations.
+Do not bless a changed behavioral count as a version-only update.
+
+Freeze and run corrected cloth/leather/persistence tests and relevant existing
+references in Debug and ASan/UBSan through the canonical gate with explicit build
+targets and required contracts. Verify genuine, changed-legal-command, changed-
+checkpoint and refused-command fresh-process replays at this source; automate
+artifact producer ordering where practical, otherwise retain exact manual receipts.
+A warning-clean benchmark build and picture_matrix_contract are mandatory.
+Reuse unaffected broad gates with their actual pins. No full 1600-case campaign
+merely to close these local corrections. Report C0–C2 independently approved as
+cloth/component and synthetic leather mechanics closure, hunting still PARTIAL.
+This approval releases X0–X6; do not merge into main or push yourself.
+
+### X0 — salt dependency inventory and compatibility plan
+
+Start from parsed shipped data: salt mine, any required processor, carrier, stall,
+consumer stage, source/deposit representation, legal terrain, costs and permissions.
+Identify what existing Mine and transport code already implements. Choose one real
+scenario with the necessary natural source and reachable consumers. Ship-start
+self-sufficiency is not required; disclose imported buildings, stock and actors.
+Separate preloaded salt from newly extracted/processed/delivered salt.
+
+Make a compact acceptance table for X1–X6: evidence, positive control, distinguishing
+wrong interpretation, expected result, reviewer. Record known Unsupported classes.
+Determine compatibility before changing runtime: reuse state 133 only if saved
+layout and deterministic semantics remain compatible under the project contract.
+Changes to accepted-command outcomes, saved state, content digest or PRNG behavior
+need a recorded integration identity decision with the orchestrator before landing.
+Do not silently amend 133 or allocate a shared version. Continue independent
+research/reference/fixture work while any such decision is pending.
+
+### X1 — independently reviewed extraction/placement contract
+
+Trace only necessary mountain/coverage/deposit arms and relevant creation/removal
+callers. Establish source matching, bounds, orientation, height, ownership,
+replacement/occupancy, permissions, payment, source consumption/renewal, capacity,
+collection and failure cleanup. Evidence must distinguish imported mine state from
+what a new BuildCmd must initialize. Do not infer resource renewal from names.
+
+Write the contract and hand-derived vectors before C++. An independent read-only
+reviewer checks original bytes/data, masks/widths/units/rounding and the smallest
+counterexamples. Preserve original rules, explicit approved adaptations and unknowns
+separately. An unread decisive predicate is remaining research, not permission to
+invent a permissive placement rule. Contract approval releases only the evidenced
+salt slice; new gameplay-policy choices still require the orchestrator.
+
+### X2 — minimum reusable placement and initialization
+
+Implement only missing behavior needed for player-built salt extraction. Use
+parsed type/deposit facts and existing typed interfaces, not a salt-id whitelist.
+Preserve ordinary/coastal/road behavior, command authorization and server-derived
+height. Failed placement/payment leaves the world unchanged. If atomic BuildCmd
+is supported, its dry run and live application must agree on latest tile/source
+state in command order. Create, load and rebuild must initialize equivalent valid
+mine/source state; an imported working mine alone cannot prove player construction.
+
+Use small tests for a legal source, wrong/missing source, terrain/rotation/bounds,
+occupied/replaced footprint, rival ownership, unavailable permission, insufficient
+funds and repeated placement. Pair each refusal with a legal neighbor/control.
+Independent review and focused re-review before using the new path in X3.
+
+### X3 — extraction, processing and actual delivery
+
+Connect existing production/transport pieces; add only missing evidenced seams.
+Prove new source output reaches the required processing step (if any), warehouse,
+stall and actual household consumers. Maintain source/raw/output/in-flight/stock/
+purchase ledgers for the chosen owner and town with zero unexplained residuals.
+No direct salt credit or test-only production grant may satisfy the real arm.
+Account separately for declared scenario starting inventories.
+
+A source-disabled or producer-removed control must distinguish new production
+from preloaded stock. Prove public-command construction with original costs and
+terrain; if the chosen original town lacks a legal site or permission, investigate
+another bounded candidate, never inject permissions or cheapen the bill. Treat
+finite deposits honestly; do not add renewal just to make repeated production pass.
+
+### X4 — interruption, isolation and lifetime boundaries
+
+Cover exhausted/missing source if supported by the original contract, full output
+or warehouse, blocked route, competing consumers, in-flight producer/home removal,
+repeated end/removal and rebuild recovery. Preserve exactly-once debit/credit and
+release of claims/counters. Check valid native state immediately after interrupted
+jobs, not only after a later cleanup tick. Use positive rival activity and precise
+home/city ownership in all observations. An alternate supported data-defined type
+or goods mapping must reuse the seam without an engine id special case.
+For any changed timed transition, test the smallest supported positive interval,
+zero elapsed time, partitioned delays with surplus, and native continuation of
+partial progress; do not rely only on the typical scheduler interval.
+
+### X5 — continuation, replay and bounded performance
+
+Save/reload at extraction, carried output and consumer-delivery boundaries with
+actual target-chain state asserted. Compare uninterrupted outcomes, resource/money
+ledgers and PRNG draws. Fresh-process replay must reproduce the genuine recording;
+a changed legal command must diverge causally after matching earlier checkpoints.
+Preserve format-version rejection controls separately from gameplay assertions.
+
+Measure source lookup and active producer work with operation counts and a modest
+multi-city fixture; retain timings/sample counts and host contention. Do not claim
+large multiplayer scalability from a small case, and do not rewrite unrelated
+scheduler/search systems. Expose read-only facts Windows will need, without editing
+its UI or implementing a second command language. Name unproved iron/quarry cases.
+
+### X6 — frozen verification, final review and stop
+
+Run cheap controls and one pilot before the expensive real chain. Each package
+gets a read-only reviewer distinct from its implementer (reviewer reuse across
+packages is allowed); a fresh final reviewer checks the combined
+path, scoped ledgers, identities, source/command provenance, reuse and claims.
+Review corrections locally, not through repeated broad campaigns. Freeze source,
+use canonical Debug and affected ASan gates with original assets and exact selected
+inventories, and include current-source sanitizer coverage of the new extraction
+and delivery path. Keep initial failures, actual skips and NOT_RUN target hosts.
+Never mutate source during a gate or suppress warnings to manufacture a pass.
+
+Commit separate closeout and extraction units with review records, evidence hashes,
+consumer delta and REPORTS entry. Stop at a clean local candidate, no owned jobs,
+no main merge/push/default flip. A genuine unresolved contract or identity decision
+is a precise partial handoff after independent work is finished; no fabricated
+hunting, balanced-economy, complete mining or full-scenario acceptance.
+Dispatch independently approved by `/root/review_consolidation_plan`; its timing
+and reviewer-reuse clarifications are incorporated. This approves the assignment,
+not the unexecuted correction or salt results.
+<!-- END MAP-NEEDS-CLOSE-EXTRACT-1 -->
+
 <!-- BEGIN MAP-EXPAND-1-MAIN -->
 ## Second Mac — MAP-EXPAND-1: second-island settlement and manual resupply (2026-11-06)
 

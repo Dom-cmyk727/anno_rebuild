@@ -227,3 +227,30 @@ script-free and this plan builds no households. Construction900+5R with R20 give
 1000; total conservative spending<=5402 leaves>=24598of30000gold. Actual money,
 player remainders and any other legitimate effects still must be reconciled in
 E5, independently per owner; the bound is not a measured economic ledger.
+
+### E1 final approval and release
+
+`/root/expand_e0_review` APPROVED
+fcc7117919d2f9d119dda1a30cb591849d911b83 after the focused corrections. Canonical04
+passes1/1 with339assertions,6 prerequisite invocations each1/1, all other outcome
+categories0. Selected18.68s; inner planning9492.91ms. Raw SHA256
+652aa0d5d9f8e288c362cdb498b50f4db2c01f5ddcdda8868b819ec2a54c8cf8.
+All5 receipt hashes and472 content hashes independently match. Both compile-only
+failures (01 diagnostic parentheses,03 concrete transport-state access) remain
+failed builds with no selected execution, not gameplay failures or successes.
+
+Observed pipeline P0=374, second target512, minimum new wood needed138; additional
+production490 gives warehouse654 in22000ticks, exact512load/residual142. Repeat
+post-construction/post-production route reaches destination452,349. E1 is a
+bounded copy-based prerequisite proof. The genuine first voyage advances the
+world before founding, so E2 revalidates source/road, actual trees and quantities;
+it does not inherit planning's37500tick/448receipt assumptions.
+
+E2 will run one recorded genuine prefix (untouched ship start→actual arrival→
+public founding/tool-only unload/forester/roads→real delivery/load), plus an
+unfaulted separate pre-production native fork switched off before any advance.
+All freight quantities are derived from the actual first receipt. The main run
+never relocates actors or writes stocks/permissions/stages. Measured E1 work and
+prior same-map sailing calibrate a predeclared900s Debug pilot deadline. Later
+native/full-replay and second-island stages extend this same public-command
+recipe; E2 is not full E3–E7 acceptance.

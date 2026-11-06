@@ -653,8 +653,18 @@ subtraction might cancel; no arithmetic-policy expansion is hidden here.
 The equal-cost counterexample creates workshop20, house10, replaces house cost30
 without historical recomputation, removes house30 leaving0, then switches the
 workshop20→20: checked subtraction must refuse and preserve its old switch.
-Current local corrections:91 vectors,10 Python contract methods,12 model mutants.
-Focused frozen canonical successor gate and correction review pending.
+Corrected frozen pinb62047ee:91 vectors,10 Python contract methods,12 model
+mutants. `/root/econ_b0_review` independently challenged signed Preis-1+Bonus2,
+the equal-cost history underflow and float88.0 expected; all now distinguish the
+right result. Focused review found no remaining P1/P2 and approved B2's bounded
+reference scope; real production proofs remain B3–B5.
+`cache/econ-book1/B2/canonical-debug-03.log` selected2/executed2 with all other
+outcome counts0; three required invocations each1/1 pass separately. Log SHA
+`a16d7695d3ab4f1de457632cc8eeb0f07dd4574ff251eaabc91cf916c3c37f0e`, inventory SHA
+`1c5fb4df31331e5d583fd7cfe0ad7c07dd0370997048e9117a916579741752b1`.
+The own `receipt.json` records reference/fixture/config/hook/ancillary executable
+hashes as well as first failure and corrected gate identities. No rerun is needed
+for this documentation-only approval record. B2 releases B3 automatically.
 
 New own `build/econ-debug` avoids modifying the
 preserved MAP-INTEGRATE-1 builds. Its read-only doctest dependency was copied

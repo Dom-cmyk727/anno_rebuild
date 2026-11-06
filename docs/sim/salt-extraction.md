@@ -24,7 +24,7 @@ Other types with output SALZSTEIN/SALZ or input SALZSTEIN/SALZ: none. The other 
 3. **Mine creation by command (T).** `create_building` attaches the Mine payload and calls `find_deposit` over `island.deposits`; with gap 1 closed it would pick the ore. Whether `BuildCmd` of a Mine is otherwise complete (payment, permission, claim of the footprint) follows the ordinary path (T: cloth/leather builds) but is untested for class `0x3096`.
 
 ## 4. Candidate scenarios (P; survey of every `Scenes/**/*.sze` island holding a SALZSTEIN ore object)
-Survey (probe, not committed): 54 city/island rows over 25 scenarios. Candidates with consumers (houses), stalls and **no salt chain and zero salt stock** (so every later SALZ unit is attributable):
+Survey (probe, not committed; the exact row count was not tallied): every city on every island holding a SALZSTEIN ore, across the shipped scenarios. Candidates with consumers (houses), stalls and **no salt chain and zero salt stock** (so every later SALZ unit is attributable):
 
 | scenario / island / city owner | houses | stalls | markets | mines | saltworks | SALZ / SALZSTEIN stock | ore objects (x,y,t) |
 |---|---|---|---|---|---|---|---|

@@ -11,6 +11,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -39,15 +40,21 @@ struct Pasture {
     std::shared_ptr<const sim::TypeRegistry> types;
     sim::World w;
     sim::TransportStats stats;
+
+    Pasture(std::shared_ptr<const sim::TypeRegistry> registry, sim::World world)
+        : types(std::move(registry)), w(std::move(world)) {
+        w.set_transport_stats(&stats);
+    }
+    // World observes this object's stats; optional NRVO must not decide its lifetime.
+    Pasture(const Pasture&) = delete;
+    Pasture(Pasture&&) = delete;
 };
 
 Pasture make(const std::function<void(Rig&)>& fill) {
     Rig r = make_rig();
     fill(r);
     auto types = registry(3 * 256);
-    Pasture p{types, create(r, types), {}};
-    p.w.set_transport_stats(&p.stats);
-    return p;
+    return Pasture{types, create(r, types)};
 }
 
 const sim::SmallFarm& farm_of(const sim::World& w, std::size_t island = 0,
@@ -115,6 +122,11 @@ void grass_ring(Rig& r, std::initializer_list<std::pair<int, int>> tiles) {
 
 } // namespace
 
+TEST_CASE("small farm animals: fixture statistics belong to the returned object") {
+    Pasture p = make([](Rig&) {});
+    CHECK(p.w.transport_stats() == &p.stats);
+}
+
 TEST_CASE("small farm animals: grass is grazed, credited to raw 1 and made into NAHRUNG, counters "
           "released") {
     // The farm (3 x 3 at (110,110), radius 3, window 108..114) with five ripe grass fields outside
@@ -125,6 +137,7 @@ TEST_CASE("small farm animals: grass is grazed, credited to raw 1 and made into 
         r.place(kSmallFarm, 110, 110,
                 sim::make_small_farm(registry(3 * 256)->find(kSmallFarm)->prod));
     });
+    REQUIRE(p.w.transport_stats() == &p.stats);
     std::set<std::uint32_t> kinds;
     std::uint32_t max_out = 0;
     for (int i = 0; i < 40000;
@@ -546,8 +559,7 @@ TEST_CASE("small farm animals: a small-farm type without input goods 1 sends no 
     grass_ring(r, {{113, 111}, {113, 112}});
     r.place(sim::TypeId{9333}, 110, 110,
             sim::make_small_farm(types->find(sim::TypeId{9333})->prod));
-    Pasture p{types, create(r, types), {}};
-    p.w.set_transport_stats(&p.stats);
+    Pasture p{types, create(r, types)};
     std::uint32_t draws = 0;
     for (int i = 0; i < 3000; ++i) {
         p.w.advance(10);

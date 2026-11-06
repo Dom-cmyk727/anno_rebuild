@@ -9,6 +9,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -33,6 +34,14 @@ struct Farmland {
     std::shared_ptr<const sim::TypeRegistry> types;
     sim::World w;
     sim::TransportStats stats;
+
+    Farmland(std::shared_ptr<const sim::TypeRegistry> registry, sim::World world)
+        : types(std::move(registry)), w(std::move(world)) {
+        w.set_transport_stats(&stats);
+    }
+    // World observes this object's stats; optional NRVO must not decide its lifetime.
+    Farmland(const Farmland&) = delete;
+    Farmland(Farmland&&) = delete;
 };
 
 Farmland make(const std::function<void(Rig&)>& fill) {
@@ -40,9 +49,7 @@ Farmland make(const std::function<void(Rig&)>& fill) {
     fill(r);
     auto types =
         registry(3 * 256); // the shipped small-farm worker carries 3 t (LOGIC byte 0x11 = 3)
-    Farmland f{types, create(r, types), {}};
-    f.w.set_transport_stats(&f.stats);
-    return f;
+    return Farmland{types, create(r, types)};
 }
 
 const sim::SmallFarm& farm(const sim::World& w, std::size_t island, std::uint32_t serial) {
@@ -94,6 +101,11 @@ void reload_agrees(Farmland& f) {
 
 } // namespace
 
+TEST_CASE("small farm worker: fixture statistics belong to the returned object") {
+    Farmland f = make([](Rig&) {});
+    CHECK(f.w.transport_stats() == &f.stats);
+}
+
 TEST_CASE("small farm worker: three ripe fields are cut, credited to raw 0 and consumed, the "
           "counter is released") {
     // The farm at (110,110) (3 x 3) has radius 3: the window x 108..114, y 108..114. Three GETREIDE
@@ -106,6 +118,7 @@ TEST_CASE("small farm worker: three ripe fields are cut, credited to raw 0 and c
         r.place(kSmallFarm, 110, 110,
                 sim::make_small_farm(registry(3 * 256)->find(kSmallFarm)->prod));
     });
+    REQUIRE(f.w.transport_stats() == &f.stats);
     std::uint32_t steps = 0;
     for (int i = 0; i < 12000; ++i) { // 120 000 ms = 60 000 ticks: 120 gate steps of 500 ticks
         f.w.advance(10);

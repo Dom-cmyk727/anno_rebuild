@@ -30,6 +30,7 @@
 
 #include <anno/formats/ship_manifest.hpp>
 #include <anno/sim/build_availability.hpp>
+#include <anno/sim/city_booking.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/harvest.hpp>
@@ -4629,4 +4630,66 @@ TEST_CASE(
             << expansion_test::cart_wood(w, warehouse, wood) << " observed_cuts " << observed_cuts
             << " growth " << observed_growth);
     w.set_transport_stats(nullptr);
+}
+
+TEST_CASE("expansion founding accounting: public founding retains prepared warehouse history") {
+    // Isolated original-data founding component: the fixture ship is relocated
+    // here only. This is the short causal reproducer, not the genuine voyage.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto original = real_start(*dir);
+    for (const bool enabled : {false, true}) {
+        INFO("booking " << enabled);
+        auto rules = original.rules;
+        rules.city_booking = enabled;
+        rules.save_billed_goods = true;
+        auto made = sl::load_ship_start(original.manifest, *dir, original.types, {}, rules);
+        REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string{} : made.error()));
+        auto w = std::move(made).value();
+        const auto leg = expansion_test::selected_recipe().source;
+        sim::WorldTestAccess::relocate(w, sim::FigureId{1},
+                                       {leg.goal_x * 256 + 128, leg.goal_y * 256 + 128});
+        const auto answer = w.apply(found_command(leg));
+        REQUIRE(answer.ok());
+        const auto wh = answer.records.at(0).building;
+        const auto ref = expansion_test::city_of_warehouse(w, wh);
+        const auto* building = w.find_building(wh);
+        REQUIRE(building != nullptr);
+        REQUIRE(std::holds_alternative<sim::Market>(building->payload));
+        const auto* type = w.types().find(building->type);
+        REQUIRE(type != nullptr);
+        REQUIRE(type->running_cost == std::vector<std::uint32_t>{0, 15});
+        const auto cost =
+            sim::building_cost(w.types(), *type, *building, w.players().find(sim::PlayerId{0}));
+        REQUIRE(cost.ok());
+        REQUIRE(cost.value().active);
+        REQUIRE(cost.value().kind == 1);
+        REQUIRE(cost.value().amount == 15); // independent raw1302/constantMarket selector
+        const auto& city = command_test::city(w, ref);
+        CHECK(city.accounts.civil_cost == (enabled ? 15 : 0));
+        CHECK(city.accounts.military_cost == 0);
+        CHECK(w.players().find(sim::PlayerId{0})->upkeep_a == 0);
+        CHECK(w.players().find(sim::PlayerId{0})->upkeep_b == 0);
+        CHECK(gold_of(w, 0) == 29650);
+        expansion_test::publish(enabled ? "actual133-enabled-founded.save"
+                                        : "actual133-default-off-founded.save",
+                                w.save());
+        const auto native = sim::World::load(w.save(), original.types);
+        REQUIRE(native.ok());
+        CHECK(native.value().save() == w.save()); // native preserves history, never repairs it
+        w.advance(4000); // 2000ticks: one due city booking, no other payable upkeep
+        CHECK(gold_of(w, 0) == (enabled ? 29649 : 29650));
+        std::uint64_t charges = 0;
+        for (const auto& event : w.drain_events())
+            if (event.booking) {
+                CHECK(event.booking->city == ref);
+                CHECK(event.booking->income == 0);
+                CHECK(event.booking->upkeep == 1);
+                charges += event.booking->upkeep;
+            }
+        CHECK(charges == (enabled ? 1 : 0));
+    }
 }

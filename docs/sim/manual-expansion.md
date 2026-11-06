@@ -268,3 +268,33 @@ military0, without a player-cost change. Both floor27/15 and19/15 charge1 per
 booking; every control step reconciles all owners, zero player buckets/remainder,
 booking amount/order and the resulting equal cash despite different cost history.
 The first build failure is retained; no gameplay result is claimed from it.
+
+### Genuine E2 failure: founding drops prepared financial history
+
+Canonical E2-02 at435f12d1 is FAIL1selected/0passes/1failed, with no empty, skips,
+incomplete or sanitizer lines. Actual sailing reaches dock257,134 in86000ticks.
+7120 assertions pass before the pre-production native control observes civil12
+instead of27. No expectation is weakened: original1302 Market is constant-active
+and running_cost[1]=15, while801 adds12. The real defect is the founding
+transaction: create_building prepares the warehouse/index AND adds15 to temporary
+local.accounts; CityCreation::commit makes the committed city with0accounts;
+Founding::apply adopts local.index only, dropping local.accounts. Later forest
+build contributes12, exposing the missing15. Native load preserves this already
+wrong authoritative history; it must not silently rebuild/repair it.
+
+The short `expansion founding accounting: public founding retains prepared
+warehouse history` case isolates the publicFound call with originaldata and a
+clearly labelled relocated fixture, no genuine-voyage claim. Default-off is its
+legal control; enabled founding should retain15 and charge1 at2000ticks. The
+proposed one-line runtime correction is retained ONLY as ignored
+`E2/proposed-founding-history.patch`: adopt local.accounts beside local.index.
+It reuses validated prepared history without scanning/recomputing, preserves
+registration/name/PRNG/payment and default-off trajectories, but changes booking-
+enabled founded states/recordings. No runtime fix is landed yet.
+
+Per the packet, an explicit compatibility disposition coordinated with the
+orchestrator/firstMac is required before landing this deterministic correction.
+Do not silently amend published133, guess a shared next number, or disguise the
+missing15 as an inactive warehouse. E2 remains unapproved; E3/E5 genuine accounting
+acceptance depends on the correction. Independent cargo/isolation/scale work can
+continue while the compatibility decision is obtained.

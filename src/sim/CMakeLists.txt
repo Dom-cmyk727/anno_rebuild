@@ -15,7 +15,7 @@ target_compile_features(anno_sim PUBLIC cxx_std_20)
 anno_target_defaults(anno_sim SANITIZE_NO_RECOVER)
 
 if(ANNO_BUILD_TESTS)
-  add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/economy_facts_test.cpp tests/city_booking_test.cpp tests/economy_loop_test.cpp tests/economy_scale_test.cpp tests/freight_state_test.cpp tests/freight_visit_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/integration_gameplay_test.cpp tests/production_test.cpp
+  add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/economy_facts_test.cpp tests/city_booking_test.cpp tests/economy_loop_test.cpp tests/economy_scale_test.cpp tests/freight_state_test.cpp tests/freight_visit_test.cpp tests/freight_lifecycle_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/integration_gameplay_test.cpp tests/production_test.cpp
                  tests/archive_test.cpp tests/slot_list_test.cpp tests/scheduler_blocks_test.cpp
                  tests/container_probe_test.cpp tests/config_test.cpp tests/types_test.cpp
                  tests/player_test.cpp tests/tile_hash_test.cpp tests/island_state_test.cpp

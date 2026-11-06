@@ -10,6 +10,7 @@ namespace anno::sim {
 class World;
 struct TickContext;
 struct Effects;
+struct SimEvent;
 enum class FreightSignal : std::uint8_t;
 struct FreightRoutes {
     static ApplyResult assign(World&, const Command&, const AssignFreightRouteCmd&,
@@ -20,6 +21,7 @@ struct FreightRoutes {
     static std::string validate(const World&);
     static void visit(World&, const TickContext&, Figure&, Effects&, std::uint32_t& plans_started);
     static void rebuild_indexes(World&);
+    static bool matches_navigation(const Figure&, const SimEvent&);
     static void manual_takeover(World&, FigureId, const InAdvance* = nullptr);
 
   private:

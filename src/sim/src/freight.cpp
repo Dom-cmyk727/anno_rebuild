@@ -493,6 +493,15 @@ void FreightRoutes::rebuild_indexes(World& w) {
         index.scanned = limit;
     }
 }
+bool FreightRoutes::matches_navigation(const Figure& ship, const SimEvent& event) {
+    if (!ship.freight.has_value())
+        return false;
+    const auto& route = *ship.freight;
+    return route.status == FreightStatus::Running && route.phase == FreightPhase::Sailing &&
+           event.figure == ship.id && event.order_id == route.expected_order_id &&
+           route.order_generation == ship.freight_generation &&
+           (event.kind == SimEventKind::ShipArrived || event.kind == SimEventKind::ShipRouteFailed);
+}
 void FreightRoutes::visit(World& w, const TickContext& ctx, Figure& ship, Effects& fx,
                           std::uint32_t& plans_started) {
     auto& work = w.freight_work_;
@@ -528,9 +537,7 @@ void FreightRoutes::visit(World& w, const TickContext& ctx, Figure& ship, Effect
         std::optional<SimEvent> completed;
         for (std::size_t i = begin; i < fx.ui.size(); ++i) {
             const auto& e = fx.ui[i];
-            if (e.figure == ship.id && e.order_id == r.expected_order_id &&
-                r.order_generation == ship.freight_generation &&
-                (e.kind == SimEventKind::ShipArrived || e.kind == SimEventKind::ShipRouteFailed)) {
+            if (matches_navigation(ship, e)) {
                 completed = e;
                 break;
             }

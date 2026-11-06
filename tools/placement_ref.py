@@ -615,7 +615,26 @@ def main(argv):
     if cmd == 'selftest':
         return 0 if selftest() else 1
     if cmd == 'check':
-        return 0 if check_vectors(argv[2] if len(argv) > 2 else DEFAULT_VECTORS) else 1
+        # check [FILE] [--min N]: exit 0 all agree, 1 a mismatch, 2 an unusable file (missing, empty, malformed, fewer than N cases)
+        args = argv[2:]
+        minimum = 1
+        if '--min' in args:
+            i = args.index('--min')
+            minimum = int(args[i + 1])
+            del args[i:i + 2]
+        path = args[0] if args else DEFAULT_VECTORS
+        try:
+            reg, cases = parse_vectors(open(path).read())
+            for c in cases:
+                if c['island'] is None or c['place'] is None or c['expect'] is None or c['place'][0] not in reg:
+                    raise ValueError('case %s (line %d) is incomplete' % (c['name'], c['line']))
+        except (OSError, ValueError, IndexError, KeyError) as ex:
+            print('placement check: unusable vector file %s: %s' % (path, ex), file=sys.stderr)
+            return 2
+        if len(cases) < minimum:
+            print('placement check: %d cases in %s, at least %d required' % (len(cases), path, minimum), file=sys.stderr)
+            return 2
+        return 0 if check_vectors(path) else 1
     if cmd in ('classify', 'corpus', 'roads'):
         gd = argv[2] if len(argv) > 2 else os.environ.get('ANNO1503_GAME_DIR')
         if not gd:

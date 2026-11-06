@@ -196,7 +196,11 @@ if(ANNO_BUILD_TESTS)
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/placement_vectors.txt)
     add_test(NAME mine_coverage_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py check
-                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_coverage_vectors.txt)
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_coverage_vectors.txt --min 30)
+    add_test(NAME placement_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/placement_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_coverage_vectors.txt --min-vectors 30)
     add_test(NAME placement_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py selftest)
     add_test(NAME cargo_reference_agrees

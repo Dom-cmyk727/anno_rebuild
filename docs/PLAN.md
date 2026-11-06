@@ -1,5 +1,12 @@
 # ANNO 1503 Rebuild — Implementation Plan
 
+**Manual expansion checkpoint, 2026-11-06:** MAP-EXPAND-1 E0–E7 is accepted on
+main within its headless scope: two founded islands, two produced-wood freight
+cycles, paid receiving construction, exact accounts, five native continuations
+and fresh replay. Identity134 and defaults are unchanged. Target-host/live UI,
+multiplayer scale and a balanced town are not established.
+[Acceptance and consumer handoff](orchestration/reviews/2026-11-06-map-expand1-acceptance.md).
+
 **Founding checkpoint, 2026-11-06:** the reviewed accounts-adoption correction is
 integrated under state134/ECONBK1/PRNG5. Focused Debug and ASan/UBSan each pass15/15,
 including current replay CLI consumers and strict old133 refusal. No migration,

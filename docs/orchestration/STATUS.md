@@ -24,7 +24,9 @@ not edit it; their reports go into `REPORTS.md` on their task branch.
 ## Current work
 
 Canonical identity on `main`: **state134 / ECONBK1 / PRNG5 / replay4 / command1**.
-The [founding-account prerequisite](reviews/2026-11-06-founding134-acceptance.md) is accepted; full expansion remains open.
+The [founding prerequisite](reviews/2026-11-06-founding134-acceptance.md) and
+[headless manual expansion](reviews/2026-11-06-map-expand1-acceptance.md) are accepted.
+Live-window and target-host acceptance are separate.
 
 ### Windows executor
 
@@ -71,25 +73,24 @@ The [founding-account prerequisite](reviews/2026-11-06-founding134-acceptance.md
 
 ### Second Mac executor
 
-- **Now:** **MAP-EXPAND-1, E5 continuation/replay work and remaining closeout.**
-  - The narrow134 founding prerequisite is accepted on main: `7ba07750` plus
-    `f406374d`, focused Debug15/15 and ASan15/15.
-  - Latest observed committed checkpoint: **`bdb77ec7`**. Its report records
-    independent E4 approval at `4fa38e69`: two actual freight cycles completed;
-    E5 released. This is executor evidence, not final orchestrator acceptance.
-  - CLI companion `f406374d` is adopted locally as `46ec410a`.
-  - Full continuation/fresh-process replay, combined voyage sanitizer execution
-    and E7 acceptance remain open in that checkpoint.
-- **Branch:** `task/MAP-EXPAND-1-main`, from assignment `c5c7007f` (runtime baseline
-  `303b3faf`). Historical `71af3846` / tested `637da167` remain partial evidence;
-  they no longer describe the latest work.
-- **Already finished:** ECON-BOOK-1, accepted on main; no new production class,
-  automatic trade route, combat or UI is assigned to expansion.
-- **Publication:** ordinary push of the owned task branch at every checkpoint and
-  report. Never force or push main; existing merge/rebase/other-lane boundaries remain.
+- **Completed and accepted on main:** **MAP-EXPAND-1 E0–E7**, local headless scope.
+  Two founded islands, two new-wood freight cycles, receiving construction,
+  exact ledgers, five full native continuations and honest/changed fresh replay.
+- **Branch:** `task/MAP-EXPAND-1-main`, published checkpoint `a4617184`;
+  tested source `ca257614`. Main integration source `2e2ce074` preserves current134.
+- **Verification:** executor Debug75/75 and combined ASan78/78 (seven required
+  contracts separately each); new main build and short controls4/4. Long evidence
+  is reused by exact dependency, not represented as another main voyage run.
+- **Now:** stopped at the completed package, ready for the next assignment.
+  No follow-on gameplay scope is released yet. First Mac's salt work is separate.
+- **Windows handoff:** [manual expansion consumer card](../testing/manual-expansion.md).
+  Load UI/text wiring and a live playtest remain Windows work after its current
+  checkpoint; no automatic new dispatch or W7 interruption is implied.
+- **Publication:** ordinary owned task-branch pushes at checkpoints; never force
+  or push main. Existing merge/rebase/other-lane boundaries remain.
 
-These are observed committed checkpoints, not live job status or confirmation that
-those task heads are already on GitHub. Executors may be working beyond them.
+The first Mac section records its last observed checkpoint, not live job state.
+Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on the owner
 

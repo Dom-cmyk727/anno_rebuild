@@ -19,6 +19,35 @@
 - **The status page.** [`STATUS.md`](STATUS.md) says who works on what, where the work is, and what it waits on. Every
   orchestrator updates it in the same commit as each dispatch, acceptance or change of lane.
 
+<!-- BEGIN MAP-EXPAND1-ACCEPTED -->
+## MAP-EXPAND-1 accepted — 2026-11-06
+
+**Second Mac E0–E7 is COMPLETE within its assigned headless scope and integrated.**
+Candidate `a4617184`, tested executor source `ca257614`, integration source
+`2e2ce074`. [Acceptance and evidence](reviews/2026-11-06-map-expand1-acceptance.md).
+State134 / ECONBK1 / PRNG5 / replay4 / command1 remains unchanged; no default flip.
+
+The unchanged ship start now supports two distinct founded islands, two manual
+freight cycles of newly produced wood, and receiving construction after freight.
+Exact per-city/resource ledgers, five full native continuations and honest/changed
+fresh-process replay pass. Executor Debug75/75 and combined ASan78/78 are verified
+and reused by exact dependency. Fresh main build and four short controls pass;
+no repeated long sanitizer voyage or wider performance claim is implied.
+
+**Second Mac:** stop at the completed package; keep the owned branch/evidence and
+ordinary checkpoint push. No new feature or routine broad test campaign is released
+by this acceptance. Await the next comprehensive assignment.
+**First Mac:** continue the existing MAP-EXTRACT-1 scope and reserved135 path;
+no expansion branch intake is required for your already consumed134 prerequisite.
+**Windows:** the [consumer card](../testing/manual-expansion.md) is available for a
+future Load UI/text adapter and live manual-resupply proof. Finish current frozen
+W7 work; this is an integration input, not a replacement task or an instruction
+to restart a gate. No target-host/live/multiplayer/late-game/full-town acceptance.
+
+STATUS.md is updated with this acceptance. The private GitLab mirror still needs
+the owner/Windows orchestrator's ordinary sync after this GitHub main push.
+<!-- END MAP-EXPAND1-ACCEPTED -->
+
 <!-- BEGIN FOUNDING134-ACCEPTED -->
 ## Accepted state-134 prerequisite — 2026-11-06
 
@@ -27,7 +56,8 @@ uses **state134 / ECONBK1 / PRNG5 / replay4 / command1 / native wrapper1**.
 [Acceptance and exact evidence](reviews/2026-11-06-founding134-acceptance.md).
 Frozen integrated source `f406374d`: Debug15/15 and ASan/UBSan15/15, six required
 contracts separately in each lane, no failures/skips/empty/incomplete/sanitizer
-reports. Full MAP-EXPAND-1, salt and target-host acceptance remain open.
+reports. That prerequisite was narrower than expansion, now accepted above. Salt and
+target-host acceptance remain open.
 
 **Intake observed complete:** first Mac `c177f391` contains the prerequisite as
 `668ff3c6` then `e067d109`; second Mac `bdb77ec7` contains the CLI companion as
@@ -402,7 +432,9 @@ and report, ordinary pushes only. Never push main or force-push. This supersedes
 older no-push wording for your task branch; all merge/rebase/other-lane boundaries
 remain in force. Keep public GitHub content within the top owner publication rule.
 
-**READY / RELEASED, E0–E7.** ECON-BOOK-1 is accepted and published; do not repeat
+**COMPLETED / ACCEPTED, E0–E7.** The original assignment below is retained for
+traceability, not authorization to repeat it. See the current acceptance above.
+ECON-BOOK-1 is accepted and published; do not repeat
 its completed package. The next player-facing outcome is to support two islands
 with one player's ship using goods actually produced by the first settlement.
 This moves the previously queued manual-expansion slice forward independently

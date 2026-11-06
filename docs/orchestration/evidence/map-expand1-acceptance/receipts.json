@@ -1,0 +1,143 @@
+{
+  "upstream_debug": {
+    "receipt_sha256": "ca760de9fbd3416da67c6c93d57376a9a4c8dfba93a03aed21b160096b6b6f44",
+    "raw_receipt_path": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/cache/expand1/E7/affected-debug-01-receipt.json",
+    "source": {
+      "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1",
+      "head": "ca257614be0068840a9af4cb58f1abd9ffd6a9fb",
+      "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "",
+      "untracked": {}
+    },
+    "terminal": {
+      "status": 0,
+      "ctest_rc": 0
+    },
+    "outcomes": [
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=75 executed=75 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+    ],
+    "scope": "75 affected short Debug cases including E6 target resolution/diagnostic at3sizes",
+    "hashes": {
+      "cache/expand1/E7/affected-debug-01.log": "e08f6ff52a5227a1c596deef59cde08087e680f2a8635fff3b66f620988177c8",
+      "cache/expand1/E7/affected-debug-01.log.inventory.json": "bcd538dcd198221baebadb58ca023b27376bf1ca269d9fec0ecca702af63e1dc",
+      "cache/expand1/E6/current-diagnostic-measurements.json": "24abde67e2c3c3b1c3a8b90b6bdddbe05d52a45b9e8910988adcc4d47bfb1dab",
+      "build/expand-debug/src/tools/sim_replay/anno-sim-replay": "672140a2889a1f2214b67b9ddc95189a644e980126a38c7045662b4783c755be",
+      "build/expand-debug/src/sim/anno_sim_tests": "d39e3066c1719a6e1771b33935d07ce41b0cc89e5466d25cf2dfa0861fea6ae7",
+      "build/expand-debug/CMakeCache.txt": "e2349f01ada7cc755c471247846f9026ca3cd4c9a59159bd49550546d7b409a3"
+    }
+  },
+  "upstream_asan": {
+    "receipt_sha256": "0e3b502e3ba8c17b545f3367a3e848e885feba1253f92afcedb7680c681245fc",
+    "raw_receipt_path": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/cache/expand1/E7/combined-asan-01-receipt.json",
+    "source": {
+      "root": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1",
+      "head": "ca257614be0068840a9af4cb58f1abd9ffd6a9fb",
+      "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "",
+      "untracked": {}
+    },
+    "terminal": {
+      "status": 0,
+      "ctest_rc": 0
+    },
+    "outcomes": [
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "selected=78 executed=78 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+    ],
+    "scope": "current-source combined actualtwoisland path+5nativefollowers+2freshchildren+75affected cases; all15artifacts byteidentical refinedDebug02",
+    "hashes": {
+      "cache/expand1/E7/combined-asan-01.log": "d8e976c4d079b33d8642534715f9f2876af15753cf0cd9939e5429d943df8ece",
+      "cache/expand1/E7/combined-asan-01.log.inventory.json": "b6cfae7612a82a65fbf6be372ccef563f98b6c467860a9cd4da2e5258c85b818",
+      "cache/expand1/E7/asan-01/continuation.txt": "48d88bcff34b1a9b6d45071219a672adbfaa013caf90ef2023c69bab2c9cce55",
+      "cache/expand1/E7/asan-01/cut-01-loaded-outbound.save": "54a5cf4ecb6bc01af8e0a0a6fa4a2d9f06484347ddb41410ed30b556d6f56119",
+      "cache/expand1/E7/asan-01/cut-02-mid-voyage.save": "1d3e3e416c32988a19433939a06cc50fecbdd50d68140d4d5a9b3a2a32e3e076",
+      "cache/expand1/E7/asan-01/cut-03-immediately-second-founded.save": "96cc9e5b7645c57fd2c66d5be1d09583f40d5048270632a01b85a3968fd086bc",
+      "cache/expand1/E7/asan-01/cut-04-after-complete-first-unload.save": "8d7c7a0d02b21f4ef19eb026250c3a75b1b14f29328ddc63c61e6ffbcf722b5e",
+      "cache/expand1/E7/asan-01/cut-05-return-before-second-export.save": "4a6fdf92aabe7d7e1accfe8fb20413ef67527705d3ee39128e4ed40a7adca699",
+      "cache/expand1/E7/asan-01/e3-genuine.log": "26629f56ef9509aff91050643e169a0e14c47361863a5c447e16c551d21afcb2",
+      "cache/expand1/E7/asan-01/e4-genuine.log": "57625f3a5c693ed0aae7c3751dff3e6984c8a9de55e3c3e05c6b89828885aaa3",
+      "cache/expand1/E7/asan-01/expansion-changed-command.log": "5ec284aca321535425f41bc7a94448eafa2d8bd97808ae4c04621ed039730dd5",
+      "cache/expand1/E7/asan-01/expansion.log": "57625f3a5c693ed0aae7c3751dff3e6984c8a9de55e3c3e05c6b89828885aaa3",
+      "cache/expand1/E7/asan-01/genuine.log": "627758040e7a91fe9616a0d359cd20fd41f86c4ff60733e9ca45578e4040dba2",
+      "cache/expand1/E7/asan-01/pre-production.save": "d505ed9575cd8f5966736ed3590f197302f15ef726c45f5405f0a39cf39f3cae",
+      "cache/expand1/E7/asan-01/receiving-city.save": "8a514cb62501aa74c9d3ad403e429204923a6e185b66e2579f551a1650b58ad4",
+      "cache/expand1/E7/asan-01/source-export.save": "54a5cf4ecb6bc01af8e0a0a6fa4a2d9f06484347ddb41410ed30b556d6f56119",
+      "cache/expand1/E7/asan-01/two-cycles.save": "63f75bd979c496765dc79489a33373b8048d6223b967f94b9f9b399030db697d",
+      "build/expand-asan/src/tools/sim_replay/anno-sim-replay": "94daacc96cb5ed075587b03e383bdacdf919ee709091545718f6d01b6f38c909",
+      "build/expand-asan/src/sim/anno_sim_tests": "73955498e639851cdd7722ce15f6f196332e26e967f737826f5d71cfc646f406",
+      "build/expand-asan/CMakeCache.txt": "ed665f42c4d08f5e674535aeb10a8d033aec576892c12b89857abc0b01b7c00b"
+    }
+  },
+  "integration_debug": {
+    "source": {
+      "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+      "head": "2e2ce074bdfe7e6753c2666f0d93de06005e3098",
+      "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "",
+      "untracked": {}
+    },
+    "argv": [
+      "tools/test/run_selected.py",
+      "--source-root",
+      "/Users/dom/Dev/anno1503-worktrees/anno1503",
+      "--build-dir",
+      "/Users/dom/Dev/anno1503-worktrees/anno1503/build/consolidation-debug",
+      "--target",
+      "economy_checks",
+      "--select",
+      "^anno_sim_tests[.]expansion (cargo (boundary|scale|oracle)|route scale):",
+      "--jobs",
+      "2",
+      "--timeout",
+      "900",
+      "--asset-policy",
+      "required",
+      "--require-test",
+      "expansion_replay_asset_contract",
+      "--require-test",
+      "cargo_reference_selftest",
+      "--require-test",
+      "bootstrap_budget_contract",
+      "--require-test",
+      "integration_stream_reference_contract",
+      "--require-test",
+      "booking_checked_reference_contract",
+      "--require-test",
+      "anno_sim_replay_check_contract",
+      "--log",
+      "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/expand1-orchestrator/short-debug.log"
+    ],
+    "log_path": "cache/expand1-orchestrator/short-debug.log",
+    "sha256": "d802fdd49a03b6284a4e8eb4a37de6853c4a54eb8f4ee0d4198a64b7f3e397f5",
+    "outcomes": [
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+    ],
+    "ctest_fixture_inventory_sha256": "3c715540c83e01362bbfca2b619f98af9f1e1bb3cea7d7e90ed82917b1acf046"
+  },
+  "reuse": {
+    "production_identity_fixtures_and_oracles": "byte-identical to a4617184 and tested ca257614",
+    "integration_test_difference": "one explicit existing island_helpers.hpp include retained from portable main founding test; no behavior change",
+    "expensive_voyage_rerun_on_main": false,
+    "integration_source": "2e2ce074bdfe7e6753c2666f0d93de06005e3098"
+  }
+}

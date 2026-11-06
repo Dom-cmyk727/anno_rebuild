@@ -13491,3 +13491,34 @@ merge or main push; ordinary owned-branch publication is authorized.
 [consumer card](../testing/manual-expansion.md). Windows Load adapter/liveplaytest,
 Linux/Windows target gates, GPU/original-runtime/MP/late-game and full town remain
 NOT_RUN/outside this Mac task. No owned build/test remains running.
+
+
+## MAP-EXPAND-1 — 2026-11-06 — orchestrator ACCEPTED, headless scope
+
+Integrated published candidate a4617184 (tested ca257614) at2e2ce074, retaining
+main's owner/status/mirror instructions and both report histories. Runtime,
+identity134, fixtures and oracles remain the accepted founding prerequisite;
+this intake adds tests, replay wrappers and the reproducible consumer card.
+
+Independent read-only reviewers /root/review_consolidation_plan and
+/root/review_econ_evidence verified the meaningful voyage/ledger/native/replay
+controls and raw receipts: Debug75/75, combined ASan78/78, seven separate required
+contracts each; no other outcome categories. All26 current receipt hashes and
+15 cross-lane output equivalences checked. No blocking P1/P2 remained.
+
+Fresh canonical main economy_checks build and four short controls pass at clean
+2e2ce074, with seven required contracts separately. CTest inventory confirms one
+producer and two dependent consumers. Expensive voyage/SAN evidence is reused by
+exact source dependency; it is not a new main long-run claim. Only the existing
+explicit island_helpers.hpp include differs in the merged voyage test TU.
+
+The public-command two-island/two-cycle result, 28863 final gold, scoped ledgers,
+five native suffixes and13/13 honest replay versus changed Load divergence at460
+are accepted within the defined headless slice. Windows Load UI/text adapter,
+live playtest, target compilers, original runtime, multiplayer and full-town scale
+remain open. Second Mac stops awaiting its next assignment; first Mac salt scope
+continues independently. Mirror sync remains with owner/Windows orchestrator.
+
+[Acceptance](reviews/2026-11-06-map-expand1-acceptance.md),
+[receipts](evidence/map-expand1-acceptance/receipts.json),
+[consumer card](../testing/manual-expansion.md).

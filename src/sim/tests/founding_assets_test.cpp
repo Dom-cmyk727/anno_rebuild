@@ -4642,6 +4642,23 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         return;
     }
     const auto original = real_start(*dir);
+    const auto city_of_warehouse = [](const sim::World& world, sim::BuildingId id) {
+        const auto island = sim::island_of(id);
+        REQUIRE(island.valid());
+        REQUIRE(island.v < world.islands().size());
+        REQUIRE(world.islands()[island.v].has_value());
+        const auto& by_id = world.islands()[island.v]->cache.by_id;
+        const auto found = by_id.find(id);
+        REQUIRE(found != by_id.end());
+        return found->second.city;
+    };
+    const auto publish = [](const char* name, const std::vector<std::uint8_t>& bytes) {
+        if (const char* output = std::getenv("ANNO_EXPAND_OUT_DIR"); output && *output) {
+            const auto path = std::filesystem::path(output) / name;
+            const auto error = export_log_if_requested(path.string().c_str(), bytes);
+            REQUIRE_MESSAGE(error.empty(), error);
+        }
+    };
     for (const bool enabled : {false, true}) {
         INFO("booking " << enabled);
         auto rules = original.rules;
@@ -4650,7 +4667,10 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         auto made = sl::load_ship_start(original.manifest, *dir, original.types, {}, rules);
         REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string{} : made.error()));
         auto w = std::move(made).value();
-        const auto recipe = expansion_test::selected_recipe();
+        struct Recipe {
+            SailLeg source, destination;
+        };
+        const Recipe recipe{{0, 1, {0, 255, 138}, 257, 134}, {0, 1, {1, 456, 353}, 452, 349}};
         const auto leg = recipe.source;
         sim::WorldTestAccess::relocate(w, sim::FigureId{1},
                                        {leg.goal_x * 256 + 128, leg.goal_y * 256 + 128});
@@ -4669,7 +4689,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         REQUIRE(answer.ok());
         rec.checkpoint();
         const auto wh = answer.records.at(0).building;
-        const auto ref = expansion_test::city_of_warehouse(w, wh);
+        const auto ref = city_of_warehouse(w, wh);
         const auto* building = w.find_building(wh);
         REQUIRE(building != nullptr);
         REQUIRE(std::holds_alternative<sim::Market>(building->payload));
@@ -4693,9 +4713,8 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         CHECK(ship_of(w, 1).holds == expected_holds);
         CHECK(w.rng().cursor() == (cursor + 1) % w.rng().size()); // one original city-name draw
         const auto cut = w.save();
-        expansion_test::publish(enabled ? "current134-enabled-founded.save"
-                                        : "current134-default-off-founded.save",
-                                cut);
+        publish(enabled ? "current134-enabled-founded.save" : "current134-default-off-founded.save",
+                cut);
         auto native = sim::World::load(cut, original.types);
         REQUIRE(native.ok());
         CHECK(native.value().save() == cut);
@@ -4778,8 +4797,8 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         REQUIRE(replayed.ok());
         REQUIRE(replayed.value().reproduced());
         CHECK(fresh.value().save() == w.save());
-        expansion_test::publish(
-            enabled ? "current134-enabled-found.log" : "current134-off-found.log", bytes.value());
+        publish(enabled ? "current134-enabled-found.log" : "current134-off-found.log",
+                bytes.value());
         const auto gold = gold_of(w, 0);
         w.advance(0);
         CHECK(gold_of(w, 0) == gold);
@@ -4802,7 +4821,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
             {recipe.destination.goal_x * 256 + 128, recipe.destination.goal_y * 256 + 128});
         const auto second = w.apply(found_command(recipe.destination));
         REQUIRE(second.ok());
-        const auto other = expansion_test::city_of_warehouse(w, second.records.at(0).building);
+        const auto other = city_of_warehouse(w, second.records.at(0).building);
         REQUIRE(other.island != ref.island);
         CHECK(command_test::city(w, other).accounts.civil_cost == (enabled ? 15 : 0));
         CHECK(command_test::city(w, ref).accounts.civil_cost == (enabled ? 19 : 0));

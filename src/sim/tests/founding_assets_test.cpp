@@ -4782,8 +4782,9 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
     CHECK(command_test::city(w, ref).stock.stock == source_before_second_unload);
     expansion_test::source_ledger(w, ref, warehouse, forest, wood, stats,
                                   transferred + second_quantity);
+    REQUIRE(aboard_of(ship_of(w, 1).holds, wood) >= 0);
     CHECK(std::uint64_t{12800} + stats.forestry.farms.at(forest).made_88 - 25 * 256 ==
-          std::uint64_t{aboard_of(ship_of(w, 1).holds, wood)} +
+          static_cast<std::uint64_t>(aboard_of(ship_of(w, 1).holds, wood)) +
               expansion_test::stock(w, ref, wood) +
               expansion_test::stock(w, destination_ref, wood) +
               std::get<sim::Farm>(w.find_building(forest)->payload).out +

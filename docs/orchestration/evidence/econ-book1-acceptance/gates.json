@@ -1,0 +1,134 @@
+[
+  {
+    "path": "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/econ-book1-orchestrator/debug.log",
+    "sha256": "d9e57508654adac83e0a2bf946570da4c803dfa074367d5ce1448d22ed5000e5",
+    "provenance": {
+      "workflow": {
+        "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "head": "bac3eb37b1281347f7784a884712dd92bf73da5d",
+        "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "",
+        "untracked": {}
+      },
+      "source_before": {
+        "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "head": "bac3eb37b1281347f7784a884712dd92bf73da5d",
+        "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "",
+        "untracked": {}
+      },
+      "started_unix": 1793941198.5176399,
+      "argv": [
+        "tools/test/run_selected.py",
+        "--source-root",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "--build-dir",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/build/consolidation-debug",
+        "--target",
+        "all",
+        "--select",
+        "^anno_sim_tests\\.city booking:",
+        "--require-test",
+        "booking_checked_reference_contract",
+        "--require-test",
+        "booking_checked_reference_agrees",
+        "--require-test",
+        "integration_stream_reference_agrees",
+        "--jobs",
+        "2",
+        "--timeout",
+        "600",
+        "--asset-policy",
+        "required",
+        "--log",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/econ-book1-orchestrator/debug.log"
+      ],
+      "asset_policy": "required",
+      "allowed_skips": [],
+      "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+      "configuration": "",
+      "jobs": 2,
+      "cmake_cache_sha256": "4da41db8fd79244e4ebd6a80f400fbfbca10ad755f2c03d2e42887c55a862398",
+      "gate_outputs": [
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/econ-book1-orchestrator/debug.log",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/econ-book1-orchestrator/debug.log.inventory.json"
+      ]
+    },
+    "counts": [
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=16 executed=16 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+    ],
+    "terminal": [
+      "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+    ]
+  },
+  {
+    "path": "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/econ-book1-orchestrator/asan.log",
+    "sha256": "ca48a5f1802fc3b510908931391e93a5c2544e1170d15faa1213eb0eb73a5a9f",
+    "provenance": {
+      "workflow": {
+        "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "head": "bac3eb37b1281347f7784a884712dd92bf73da5d",
+        "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "",
+        "untracked": {}
+      },
+      "source_before": {
+        "root": "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "head": "bac3eb37b1281347f7784a884712dd92bf73da5d",
+        "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "",
+        "untracked": {}
+      },
+      "started_unix": 1793941352.821054,
+      "argv": [
+        "tools/test/run_selected.py",
+        "--source-root",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503",
+        "--build-dir",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/build/consolidation-asan",
+        "--target",
+        "all",
+        "--select",
+        "^anno_sim_tests\\.city booking:",
+        "--require-test",
+        "booking_checked_reference_contract",
+        "--require-test",
+        "booking_checked_reference_agrees",
+        "--require-test",
+        "integration_stream_reference_agrees",
+        "--jobs",
+        "2",
+        "--timeout",
+        "600",
+        "--asset-policy",
+        "required",
+        "--log",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/econ-book1-orchestrator/asan.log"
+      ],
+      "asset_policy": "required",
+      "allowed_skips": [],
+      "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+      "configuration": "",
+      "jobs": 2,
+      "cmake_cache_sha256": "874d994e6e5ad1a2b7ced870dee13740af6db2f22192a4c938820fe8113740cd",
+      "gate_outputs": [
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/econ-book1-orchestrator/asan.log",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/cache/econ-book1-orchestrator/asan.log.inventory.json"
+      ]
+    },
+    "counts": [
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "COUNTS: selected=16 executed=16 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0"
+    ],
+    "terminal": [
+      "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+    ]
+  }
+]

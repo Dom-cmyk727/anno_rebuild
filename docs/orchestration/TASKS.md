@@ -2,7 +2,28 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
+## Current canonical gameplay baseline — 2026-11-06
+
+**ECON-BOOK-1 B0–B7 is ACCEPTED within its bounded headless scope.** Executor
+candidate `467373d2` (tested runtime `03bb4a5c`) is integrated unchanged; the
+orchestrator's test-only `bac3eb37` closes the simultaneous nonzero city/player
+upkeep control and passes16/16 in both Debug and ASan/UBSan. See the
+[acceptance record](reviews/2026-11-06-econ-book1-acceptance.md) and
+[executor handoff](reviews/2026-11-06-econ-book1.md).
+
+Canonical identity is now **state133 / ECONBK1 / PRNG5 / replay4 / command1**.
+City booking and house updates remain independently default-off. Previous132
+recordings remain historical and incompatible; no automatic migration is claimed.
+The old ECON assignment below is completed, not authorization to repeat it.
+Second Mac stops at this completed package; no follow-on implementation is
+released here. First Mac and Windows finish their frozen packages normally and
+consume this baseline only at their next coordinated checkpoint. Do not reset,
+rebase or merge another executor's current work to obtain this update. Windows/
+Linux target-host, GPU/window and multiplayer-scale acceptance remain open.
+
 ## Canonical main consolidation — 2026-11-05
+
+**Historical predecessor checkpoint; the 2026-11-06 baseline above supersedes its identity.**
 
 The owner authorized consolidating completed streams into **main** and pushing
 GitHub. The integrated code pin is `7b57ebd9`; see the
@@ -32,7 +53,7 @@ They do not override the new canonical identity for subsequent integration.
 <!-- BEGIN ECON-BOOK-1-MAIN -->
 ## Second Mac — ECON-BOOK-1: earned income and building upkeep (2026-11-06)
 
-**READY / RELEASED, B0–B7, one final orchestrator handoff.** This transfers the
+**COMPLETE / ACCEPTED, B0–B7. The assignment below is retained as history.** This transfers the
 unfinished ECON-BOOK-1 research and implementation from the orchestrator to the
 second Mac executor. It supersedes the old research-only ownership and completed
 MAP-INTEGRATE-1 assignment. The first Mac retains MAP-NEEDS-2; Windows retains

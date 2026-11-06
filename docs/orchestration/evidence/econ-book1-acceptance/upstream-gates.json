@@ -1,0 +1,20 @@
+[
+  {
+    "path": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/cache/econ-book1/B7/canonical-debug-02.log",
+    "sha256": "0523ba3f83034c0d2376a2e658c17977df9e4f51f7163d06845453cb2b5087b4",
+    "selected_counts": "COUNTS: selected=1390 executed=1384 failed=6 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "terminal": "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+  },
+  {
+    "path": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/cache/econ-book1/B7/canonical-debug-03-fixture-correction.log",
+    "sha256": "2eba34438e3d42d589814391587a3d2ca9d605cf355545c8eb8cea1a436a6519",
+    "selected_counts": "COUNTS: selected=63 executed=63 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "terminal": "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+  },
+  {
+    "path": "/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/cache/econ-book1/B7/canonical-asan-01.log",
+    "sha256": "363787d9821f06f67cab7bf7ed94ee6598f0ade0212782413cdb8db2f0b306cd",
+    "selected_counts": "COUNTS: selected=1388 executed=1388 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "terminal": "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+  }
+]

@@ -13315,3 +13315,19 @@ fresh review APPROVED03bb4a5c; the documentation-only closeout records its expli
 authorization to replace pending verdicts and commit. All owned gate sessions
 ended; no owned build/test process remains and shared coordinators are untouched.
 Old MAP branch/evidence remain intact; no next package is started.
+
+
+## ECON-BOOK-1 orchestrator acceptance — 2026-11-06
+
+Accepted candidate467373d2 / runtime03bb4a5c after three scoped independent
+reviews. No production P1/P2 found. The missing simultaneous city28/player14+
+remainder1 control was added in test-onlybac3eb37, independently reviewed and
+executed through the canonical gates: Debug16/16 and ASan/UBSan16/16, zero failed,
+empty, skipped, incomplete or sanitizer reports. All consumers compiled in both
+configurations; no actual GPU/window run is claimed.
+
+Executor evidence remains attributed: broad Debug1384passes/6fail, corrected
+Debug63/63, ASan1388/1388. These overlapping results are not summed or relabelled.
+Canonical state133/ECONBK1 is adopted; booking and houses remain default-off.
+The first Mac and Windows keep their in-progress pins until a checkpoint.
+[Full acceptance and limitations](reviews/2026-11-06-econ-book1-acceptance.md).

@@ -1,5 +1,12 @@
 # ANNO 1503 Rebuild — Implementation Plan
 
+**Gameplay checkpoint, 2026-11-06:** ECON-BOOK-1 is accepted on main under
+state133/ECONBK1, with independently default-off city booking and house updates.
+Original-data production, resident income, upkeep and paid recovery are proved;
+profitability, a balanced ship-founded town and target-host acceptance are not.
+[Acceptance, regression correction and exact evidence](orchestration/reviews/2026-11-06-econ-book1-acceptance.md).
+The dated132 consolidation paragraph below describes the predecessor baseline.
+
 **Consolidation checkpoint, 2026-11-05:** completed work streams are combined on
 main at code `7b57ebd9` (state 132 / SIMINT1 / timeline 5). Read the
 [consolidation review](orchestration/reviews/2026-11-05-consolidation.md) and

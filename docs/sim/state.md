@@ -3,19 +3,20 @@
 **Published consolidated baseline (2026-11-05): state 132, schema SIMINT1, PRNG
 timeline 5, replay framing 4, command wire 1.** See the
 [main consolidation record](../orchestration/reviews/2026-11-05-consolidation.md)
-and `src/sim/include/anno/sim/world.hpp`. Current fixtures are under
+and `src/sim/include/anno/sim/world.hpp`. Its historical fixtures are under
 `fixtures/synthetic/sim/consolidated132/`; earlier identities and their dated
 implementation notes below are historical. Parallel stream-130 layouts and the
 combined stream-131 predecessor are refused, not silently reinterpreted.
 
-**ECON-BOOK-1 branch candidate (2026-11-06): state133 / ECONBK1, PRNG5,
-replay4, command1, save1.** This is not authorization for other executors to adopt
-133; the orchestrator owns combined publication. The exact schema bytes are
-`45 43 4f 4e 42 4b 31 00`, u64LE `0x00314b424e4f4345`. Candidate fixtures live
+**Current canonical identity (2026-11-06): state133 / ECONBK1, PRNG5,
+replay4, command1, save1.** ECON-BOOK-1 is accepted and published by the
+orchestrator; running executor packages retain their frozen inputs until their
+next coordinated checkpoint. See the [acceptance record](../orchestration/reviews/2026-11-06-econ-book1-acceptance.md). The exact schema bytes are
+`45 43 4f 4e 42 4b 31 00`, u64LE `0x00314b424e4f4345`. Current fixtures live
 under `fixtures/synthetic/sim/econbook1/current133`; published132 remains intact.
 Actual132 log/native save controls have provenance under `econbook1/legacy132`.
 
-Candidate133 appends `EconomyConfig` after SimConfig.house_type_stride:
+Stream133 appends `EconomyConfig` after SimConfig.house_type_stride:
 count-prefixed climate-name strings, u32 tax_count, u32 period (defaults seven
 original names,3,2000). Rules appends bool city_booking=false, independently of
 house_updates=false; booking requires save_billed_goods=true. Settings.prop10

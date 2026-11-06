@@ -1,0 +1,446 @@
+{
+  "package": "MAIN-CI-1",
+  "code_head": "92e4817bcb99720ed11b0dbb728b39b225b3df7e",
+  "reviewer": "/root/review_ci_failures",
+  "local_gates": [
+    {
+      "local_file": "cache/main-ci1/focused-debug.log",
+      "sha256": "20d3a5d4dddca7162edef07bee9f68d9ba26eca7683b9ca62f662a2c78baefb5",
+      "source": "5b3876183ab904eb4318d7d4b1fb4fe13194b85e",
+      "source_status": "",
+      "asset_policy": "required",
+      "counts": "COUNTS: selected=9 executed=9 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "script2_fresh_process_contract",
+        "expansion_replay_asset_contract",
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "48d04579e9ce803cd0bbc4a4c9e65b10138b174c46148d658da612906cb5259c"
+    },
+    {
+      "local_file": "cache/main-ci1/focused-asan.log",
+      "sha256": "61d0f24b69b621c1db82922a5770f1616ed5cdde87442adedb0fae8e32bcf044",
+      "source": "5b3876183ab904eb4318d7d4b1fb4fe13194b85e",
+      "source_status": "",
+      "asset_policy": "required",
+      "counts": "COUNTS: selected=9 executed=9 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "script2_fresh_process_contract",
+        "expansion_replay_asset_contract",
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "883d4d0f18339e86d4f63a7d46ac5d3c78b419ae39aed31010d4422edb118b4c"
+    },
+    {
+      "local_file": "cache/main-ci1/no-assets-debug.log",
+      "sha256": "aab7b0f5c2a8eb77c877d5b455a1b19f107d579591636a2e2d86957dc0347545",
+      "source": "5b3876183ab904eb4318d7d4b1fb4fe13194b85e",
+      "source_status": "",
+      "asset_policy": "unavailable",
+      "counts": "COUNTS: selected=5 executed=0 failed=0 empty=0 skipped=5 (required-asset=5 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 8, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "script2_fresh_process_contract",
+        "expansion_replay_asset_contract",
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "c37c93850d177aaf9d7a7d6f0cc24fe35955367e4cd6f79e638c29281bc1317a"
+    },
+    {
+      "local_file": "cache/main-ci1/no-assets-controls-debug.log",
+      "sha256": "3bded810f89f2ac3493cff6dd693c900887bd4f627a786ddee812dd462f96cba",
+      "source": "5b3876183ab904eb4318d7d4b1fb4fe13194b85e",
+      "source_status": "",
+      "asset_policy": "unavailable",
+      "counts": "COUNTS: selected=6 executed=1 failed=0 empty=0 skipped=5 (required-asset=5 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "expansion_replay_asset_contract",
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "ae88cdeac7c95fecb79b988d2e53963d285f166bb66ca20a70be787b48dcfc03"
+    },
+    {
+      "local_file": "cache/main-ci1/assets-debug.log",
+      "sha256": "c468c92d04f2ddee467ec542ca063e9852edc6bebc331902be6bed6fb751317c",
+      "source": "5b3876183ab904eb4318d7d4b1fb4fe13194b85e",
+      "source_status": "",
+      "asset_policy": "required",
+      "counts": "COUNTS: selected=5 executed=2 failed=3 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 1, \"ctest_rc\": 8}",
+      "required_contracts": [
+        "script2_fresh_process_contract",
+        "expansion_replay_asset_contract",
+        "anno_sim_replay_check_contract",
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "c37c93850d177aaf9d7a7d6f0cc24fe35955367e4cd6f79e638c29281bc1317a"
+    },
+    {
+      "local_file": "cache/main-ci1/repair2-debug.log",
+      "sha256": "87631afefca988d8e8149b466e85b2c475aa40b49c4dba1e962d237c2d650151",
+      "source": "056fc12691fb50c3e3189f805c87c1cf985e7fd8",
+      "source_status": "",
+      "asset_policy": "required",
+      "counts": "COUNTS: selected=99 executed=99 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "script2_fresh_process_contract",
+        "expansion_replay_asset_contract",
+        "anno_sim_replay_check_contract",
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "1de0fec1449ec9f6e19c2c58689618651341524d7e4331dd3053199daa64a54b"
+    },
+    {
+      "local_file": "cache/main-ci1/repair2-asan.log",
+      "sha256": "69ce70249a7e678ac1351a7248cefe62d580ab509acff1fabaf60b93c4a28dbd",
+      "source": "056fc12691fb50c3e3189f805c87c1cf985e7fd8",
+      "source_status": "",
+      "asset_policy": "required",
+      "counts": "COUNTS: selected=94 executed=94 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "script2_fresh_process_contract",
+        "expansion_replay_asset_contract",
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "6ee3b661692296317e98bd21b1dd6cdf87345347549960aa7d349b1fc3904b7a"
+    },
+    {
+      "local_file": "cache/main-ci1/pin-debug.log",
+      "sha256": "8620047db06db1f3dc3802c05cfa72656e75ad648f91c1f3afaaec7edf1322e3",
+      "source": "3f7e64d994a2e71669bfd25765ac8705e00f6b74",
+      "source_status": "",
+      "asset_policy": "required",
+      "counts": "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "f365f890b739c416fefff006de7a046c77ab35ea2c5d477e7f7d26a94e26afb8"
+    },
+    {
+      "local_file": "cache/main-ci1/pin-asan.log",
+      "sha256": "dfafc0413da6115b3df116fc3866b3c5169229b09ca44732e2a97ca73f05965a",
+      "source": "3f7e64d994a2e71669bfd25765ac8705e00f6b74",
+      "source_status": "",
+      "asset_policy": "required",
+      "counts": "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "295772dc836f4db2a733d30ed9e683bc2c3afd2a6de9608c0688740efc2f50e1"
+    },
+    {
+      "local_file": "cache/main-ci1/farm-debug.log",
+      "sha256": "4e3f1b8229bcceb5a8de92c26041496da1828b096dc61da75c30ab4c0108b32e",
+      "source": "92e4817bcb99720ed11b0dbb728b39b225b3df7e",
+      "source_status": "",
+      "asset_policy": "required",
+      "counts": "COUNTS: selected=15 executed=15 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "af955caae76f0eb42885d4a7afd4ab5101b4f5fbfb5b56deecbd03c4f22a4158"
+    },
+    {
+      "local_file": "cache/main-ci1/farm-asan.log",
+      "sha256": "be267851e36016e3786bf8218cebc5baa6cdbe0b263e8a6dd064c2894d73c9dc",
+      "source": "92e4817bcb99720ed11b0dbb728b39b225b3df7e",
+      "source_status": "",
+      "asset_policy": "required",
+      "counts": "COUNTS: selected=15 executed=15 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "required_contracts": [
+        "picture_matrix_contract"
+      ],
+      "inventory_sha256": "4f284a801c7c3229c2c52488782a9b4f0530050ae86be0a6b676a53eef99f007"
+    }
+  ],
+  "compiler_and_attribution": [
+    {
+      "local_file": "cache/main-ci1/replay-before.log",
+      "sha256": "35a87a287dd3c9c9593d3dc74cc70ed9052c7469593887e4e3df452a64b0ea79"
+    },
+    {
+      "local_file": "cache/main-ci1/gcc-before.log",
+      "sha256": "b02181fe920443c00211c96f370820e1d4ff7cbc532bb15d086b17978ca38218"
+    },
+    {
+      "local_file": "cache/main-ci1/gcc-sweep.log",
+      "sha256": "09b2e3f3e98f5ab7afdc5f83a5bf89128db18578e8482687c1284a7d28e929ea"
+    },
+    {
+      "local_file": "cache/main-ci1/gcc-retry.log",
+      "sha256": "30c27495bdcd3aa27fb25c6dd58b12765204db3bb0801fb1d0b606edb28098c3"
+    },
+    {
+      "local_file": "cache/main-ci1/gcc-all-changed.sh",
+      "sha256": "5e191a36617ff82a9873e9ad1c6f2366f41b7f9273f55b697b85e48699f8da20"
+    },
+    {
+      "local_file": "cache/main-ci1/gcc-retry.sh",
+      "sha256": "0a2edf67b0e6f0f553497673df2c6a595423941393cee7a5b0aa9c9ad3b21370"
+    },
+    {
+      "local_file": "cache/main-ci1/gcc-final-fixtures.log",
+      "sha256": "166576e6d8c5efa5225a03e53e06a226991c7ef242667d78c6452dd0bb058a10"
+    },
+    {
+      "local_file": "cache/main-ci1/gcc-final-fixtures.sh",
+      "sha256": "a07f07eff51b4db187d13e36603578b167dfa85acbf0db2a10bbb032b0b14eaf"
+    },
+    {
+      "local_file": "cache/main-ci1/changed-cpp.txt",
+      "sha256": "2b22a41a625c5cbf74f83676bd841d88f8ae48c1e82e1c4ab1fdb622005899c1"
+    },
+    {
+      "local_file": "cache/main-ci1/attribute-economy.py",
+      "sha256": "5b12a22fca9ad8c914988117dea97044e53de085bf46d1bc9933a53e5df3418a"
+    },
+    {
+      "local_file": "cache/main-ci1/economy-identity-attribution.json",
+      "sha256": "e9ea5997a6c090bd6cd1968707ea30a41c4792edaa13215496df05bb956a37a5"
+    },
+    {
+      "local_file": "cache/main-ci1/pin-before.log",
+      "sha256": "79367ee3fc9c1488173564d1e969cc97da911389c91aa08513d462ae6ca7f9d5"
+    },
+    {
+      "local_file": "cache/main-ci1/pin-after.log",
+      "sha256": "586333ab97ab33c607b5e46c2c1a9dff0417857e9c2c6d448057b6d1b1152796"
+    },
+    {
+      "local_file": "cache/main-ci1/ci-asan-test.log",
+      "sha256": "312cc5771e37934d1bab77aa693e69791e95343525d10b2a68719a2fb0babd31"
+    },
+    {
+      "local_file": "cache/main-ci1/ci-asan-test.log.inventory.json",
+      "sha256": "c002e041ad639b5da0991a1a9720181fab7a4c02c70291a34a676e0cdbcc4256"
+    },
+    {
+      "local_file": "cache/main-ci1/ci-msvc-test.log",
+      "sha256": "2937ae04be748e1408acd7259a0aba52b79ffe789ba8191801be3bff42ba7c6d"
+    },
+    {
+      "local_file": "cache/main-ci1/ci-msvc-test.log.inventory.json",
+      "sha256": "98bdce3b9b53d293d82e9b52c6e5c7a95546321a53f20e2b0a6c0610b453b299"
+    },
+    {
+      "local_file": "cache/main-ci1/no-elide.py",
+      "sha256": "cf64cb0fda8ece3b5a925be5f20071441d55087519c3a5a05f3242b036658c65"
+    },
+    {
+      "local_file": "cache/main-ci1/no-elide-before/worker-run.log",
+      "sha256": "7025d8a3e40789e622d436535f9a61ad7786b76f257401b1c21e1fb1a1013059"
+    },
+    {
+      "local_file": "cache/main-ci1/no-elide-before/animal-run.log",
+      "sha256": "40e32e452129fc6af264240d428cdf2df2d84024bd6811fa1bc286c68cc2719f"
+    },
+    {
+      "local_file": "cache/main-ci1/no-elide-guarded/all-farm-cases.log",
+      "sha256": "c0c423699716fa52c31f6dd77ddc65be4645689cef839b9a699d6b5160938957"
+    }
+  ],
+  "economy_header_attribution": [
+    {
+      "entry": 39,
+      "tick": 1950,
+      "old133": "147fba06b53dd0b3",
+      "current134": "c0b3d42814790157",
+      "header_only": true,
+      "nonheader_mutant_rejected": true
+    },
+    {
+      "entry": 41,
+      "tick": 2000,
+      "old133": "38ea3935efab0c2b",
+      "current134": "709de7de76036e97",
+      "header_only": true,
+      "nonheader_mutant_rejected": true
+    },
+    {
+      "entry": 3002,
+      "tick": 150000,
+      "old133": "c2553811991a2976",
+      "current134": "1a8a2dfaf261864a",
+      "header_only": true,
+      "nonheader_mutant_rejected": true
+    },
+    {
+      "entry": 3804,
+      "tick": 190000,
+      "old133": "3a06a3ea0094a25d",
+      "current134": "d4da4ddbccacafd9",
+      "header_only": true,
+      "nonheader_mutant_rejected": true
+    },
+    {
+      "entry": 5405,
+      "tick": 270000,
+      "old133": "5eaa80ec21a2a7cc",
+      "current134": "f1518f252c69e590",
+      "header_only": true,
+      "nonheader_mutant_rejected": true
+    },
+    {
+      "entry": 6207,
+      "tick": 310000,
+      "old133": "fa07f6eb62c5ce37",
+      "current134": "62b34e76003f7f3b",
+      "header_only": true,
+      "nonheader_mutant_rejected": true
+    },
+    {
+      "entry": 10208,
+      "tick": 510000,
+      "old133": "e6ec7f43d6eeab61",
+      "current134": "e2ea0760cdc0d8c5",
+      "header_only": true,
+      "nonheader_mutant_rejected": true
+    }
+  ],
+  "ci": {
+    "run_id": 42224003123,
+    "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123",
+    "jobs_api_sha256": "9af69fc7da727838bdf9d59949c63c6f796336121ac92daf57c9fb350b5e6cbf",
+    "jobs": [
+      {
+        "name": "lint",
+        "id": 127912760661,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912760661"
+      },
+      {
+        "name": "build-macos",
+        "id": 127912760997,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912760997"
+      },
+      {
+        "name": "cpp (windows-msvc)",
+        "id": 127912761012,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912761012"
+      },
+      {
+        "name": "test (ubuntu-latest)",
+        "id": 127912761042,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912761042"
+      },
+      {
+        "name": "cpp-format",
+        "id": 127912761075,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912761075"
+      },
+      {
+        "name": "test (windows-latest)",
+        "id": 127912761085,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912761085"
+      },
+      {
+        "name": "cpp (linux-clang-asan)",
+        "id": 127912761117,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912761117"
+      },
+      {
+        "name": "cpp (macos-clang)",
+        "id": 127912761231,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912761231"
+      },
+      {
+        "name": "cpp (linux-gcc)",
+        "id": 127912761242,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912761242"
+      },
+      {
+        "name": "cpp (linux-gcc-release)",
+        "id": 127912761491,
+        "conclusion": "success",
+        "url": "https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123/job/127912761491"
+      }
+    ]
+  },
+  "ci_gates": [
+    {
+      "name": "test-evidence-windows-msvc",
+      "artifact_id": 13507400945,
+      "source": "92e4817bcb99720ed11b0dbb728b39b225b3df7e",
+      "asset_policy": "unavailable",
+      "allowed_skips": [
+        "gpu"
+      ],
+      "counts": "COUNTS: selected=2205 executed=1943 failed=0 empty=0 skipped=262 (required-asset=251 platform=6 opt-in=5 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "log_sha256": "f61a6ddea3ef48318bcd85f846c01b2cf7416ff7296f766f115555514289bd3b",
+      "inventory_sha256": "0daa16fb58bd421aebc377c4899afc0ccb7b6bbb2f5f85cdb007223349134453"
+    },
+    {
+      "name": "test-evidence-macos-clang",
+      "artifact_id": 13506295644,
+      "source": "92e4817bcb99720ed11b0dbb728b39b225b3df7e",
+      "asset_policy": "unavailable",
+      "allowed_skips": [
+        "gpu"
+      ],
+      "counts": "COUNTS: selected=2342 executed=2047 failed=0 empty=0 skipped=295 (required-asset=282 platform=4 opt-in=9 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "log_sha256": "b4a3df4f8cd35a88a3358eff1af7a187f9b440cc2fe85fe10a27ad5d9f063011",
+      "inventory_sha256": "71f0b9a400a376519f878e84223411f044dd63439ee5cb87330155b3392ca807"
+    },
+    {
+      "name": "test-evidence-linux-gcc",
+      "artifact_id": 13505985685,
+      "source": "92e4817bcb99720ed11b0dbb728b39b225b3df7e",
+      "asset_policy": "unavailable",
+      "allowed_skips": [],
+      "counts": "COUNTS: selected=2336 executed=2043 failed=0 empty=0 skipped=293 (required-asset=282 platform=2 opt-in=9 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "log_sha256": "0a5ca0e9168a94983c001f618521635e460e19c457e6a9595b951b4c516225aa",
+      "inventory_sha256": "948e60cce51ad38d5e0f1a1364a3fe71ce10f574c72597575decb25eaf99fe11"
+    },
+    {
+      "name": "test-evidence-linux-gcc-release",
+      "artifact_id": 13505183784,
+      "source": "92e4817bcb99720ed11b0dbb728b39b225b3df7e",
+      "asset_policy": "unavailable",
+      "allowed_skips": [
+        "gpu"
+      ],
+      "counts": "COUNTS: selected=2336 executed=2043 failed=0 empty=0 skipped=293 (required-asset=282 platform=2 opt-in=9 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "log_sha256": "54198a6d16a66636d75550ea264f053d9ea09bd0be61512da4fa6a46cdd1b1b8",
+      "inventory_sha256": "37059bb265e4551fe843b3d78f9a3af2c8b88fe02ce5f091668e75bcc5a00e00"
+    },
+    {
+      "name": "test-evidence-linux-clang-asan",
+      "artifact_id": 13505174257,
+      "source": "92e4817bcb99720ed11b0dbb728b39b225b3df7e",
+      "asset_policy": "unavailable",
+      "allowed_skips": [
+        "gpu"
+      ],
+      "counts": "COUNTS: selected=2337 executed=2044 failed=0 empty=0 skipped=293 (required-asset=282 platform=2 opt-in=9 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+      "verdict": "GATE_END {\"status\": 0, \"ctest_rc\": 0}",
+      "log_sha256": "10b5f5a2ed43211b444e12779a4f637c384bdc9a27df3e1a186b124f92e6d2b5",
+      "inventory_sha256": "1fc2716f9c848f079e1bd89402f8c0e2e96e9f473cad6eeb05251f130572c52d"
+    }
+  ],
+  "closeout_review": {
+    "reviewer": "/root/review_ci_failures",
+    "verdict": "APPROVED",
+    "scope": "All ten exact-head jobs; five C++ artifact hashes, inventories and terminal counts; source-specific local evidence and lane intake boundaries."
+  }
+}

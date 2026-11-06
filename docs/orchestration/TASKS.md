@@ -20,21 +20,35 @@
   orchestrator updates it in the same commit as each dispatch, acceptance or change of lane.
 
 <!-- BEGIN MAIN-CI-1 -->
-## MAIN-CI-1 — repair canonical main before consolidation (2026-11-06)
+## MAIN-CI-1 — CLOSED: canonical main CI repaired (2026-11-06)
 
-**Owner priority; orchestrator owns this separate repair package.** All ten CI
-jobs must pass on the repaired main source before another gameplay consolidation.
-The missing standard headers, GCC warning errors and four asset-bound replay
-failures are not waived by local Mac gates. Fix newly exposed failures too;
-retain warnings-as-errors, test meaning and all first failures. No gameplay-rule,
-identity, default, coordinator or unrelated tooling redesign is released.
+**All ten CI jobs pass at `92e4817bcb99720ed11b0dbb728b39b225b3df7e`.**
+[Run and acceptance evidence](reviews/2026-11-06-main-ci1.md). The owner-required
+CI hold before the next consolidation is satisfied. No other gameplay package
+is merged or newly accepted by this repair. State134 / ECONBK1 / PRNG5 / replay4 /
+command1 and feature defaults are unchanged.
 
-Codex orchestrator reproduces, fixes, independently reviews, pushes ordinary
-main repair commits and verifies the complete GitHub matrix. STATUS changes in
-the same commits. Windows W7 remains blocked on this prerequisite. Mac executors
-may continue independent current work, preserving running jobs; do not re-run
-known failing inherited gates or merge moving main. Exact repair intake pins and
-portability notes follow verified closure. Task-branch pushes remain authorized.
+Repair sequence: `5b387618` (portable builds and truthful replay prerequisites),
+`056fc126` (remaining GCC test warnings and attributed134 economy pins),
+`3f7e64d9` (metadata-test port isolation), `92e4817b` (farm fixture lifetimes).
+Independent read-only review approved each correction and its focused evidence.
+The final hosted MSVC, GCC, GCC Release, Linux Clang ASan and macOS Clang gates
+all pass, alongside cpp-format and the four Rust jobs.
+
+**Intake at the next clean, owned checkpoint:** read the acceptance's intake
+section and use the lane's authorized integration procedure. Preserve running
+jobs, task history, ongoing work and reserved identities. Do not reset/rebase or
+merge a moving main automatically. Compiler/test-lifetime/prerequisite fixes are
+portable; the `056fc126` economy134 fixture and its test-path change are specific
+to134. A133 Windows baseline keeps its valid133 expectations; Mac135/136 lanes
+retain their own identities and attribute any changed hashes. Do not blindly
+cherry-pick the whole repair range over lane-specific identity or board files.
+
+Windows W7's inherited-main CI prerequisite is cleared; its own source-cache
+and picture-contract findings remain Windows-owned until checked. This is not
+W7 or live-window acceptance. Mac lanes continue their existing assignments.
+Task-branch pushes remain authorized. The owner/Windows orchestrator mirrors
+main to private GitLab with the existing ordinary-push sync script.
 <!-- END MAIN-CI-1 -->
 
 <!-- BEGIN MAP-ROUTE-1 -->

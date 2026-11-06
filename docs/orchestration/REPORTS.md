@@ -13522,3 +13522,32 @@ continues independently. Mirror sync remains with owner/Windows orchestrator.
 [Acceptance](reviews/2026-11-06-map-expand1-acceptance.md),
 [receipts](evidence/map-expand1-acceptance/receipts.json),
 [consumer card](../testing/manual-expansion.md).
+
+
+## MAIN-CI-1 — 2026-11-06 — ACCEPTED
+
+Canonical main repaired independently of gameplay consolidation. Final tested code
+`92e4817bcb99720ed11b0dbb728b39b225b3df7e`; all ten GitHub jobs pass in
+[run 42224003123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42224003123).
+[Full acceptance and lane intake](reviews/2026-11-06-main-ci1.md),
+[compact evidence receipts](evidence/main-ci1/receipts.json).
+
+Fixes: explicit headers and portable warning-clean tests; checked script commit
+target lifetime; truthful asset prerequisites for four replay consumers; seven
+state134 economy pins independently attributed to the header version only; a
+metadata-test fixed-port dependency; two farm test fixtures with dangling stats
+pointers when NRVO is absent. No gameplay identity/default or production
+coordinator change. The old failures and controlled reproductions are preserved.
+
+Local affected Debug 99/99 and ASan 94/94 at 056fc126; subsequent clean-source
+metadata gates 1/1 each at 3f7e64d9 and farm gates 15/15 each at 92e4817b. Contracts
+are separate. Disabled-elision ASan reproduces both old fixture defects and the
+corrected 15-case/53,040-assertion run passes. Independent reviewer
+`/root/review_ci_failures` approved the corrections and inspected their evidence.
+The hosted matrix uses declared unavailable-assets skips; local original-file
+execution is distinct. The closeout commit changes docs only.
+
+The consolidation CI hold is satisfied. Windows W7’s own contract/cache findings
+remain its lane’s responsibility; its inherited-main prerequisite is cleared.
+Keep133/135/136 lane identities when adopting portable fixes. GitLab sync is
+left to the owner/Windows orchestrator with the key.

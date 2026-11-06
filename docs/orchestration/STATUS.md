@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-06, by the Codex orchestrator (MAIN-CI-1 repair ownership; gameplay lanes unchanged); Windows lane and the `main` CI note by the Claude Code orchestrator, 13:30.
+**Last updated:** 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted; gameplay assignments unchanged). Windows job details below retain the Claude Code orchestrator’s 13:30 checkpoint.
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -28,28 +28,20 @@ The [founding prerequisite](reviews/2026-11-06-founding134-acceptance.md) and
 [headless manual expansion](reviews/2026-11-06-map-expand1-acceptance.md) are accepted.
 Live-window and target-host acceptance are separate.
 
-**MAIN-CI-1 is active, owned by the Codex orchestrator.** No further consolidation
-until all ten jobs pass at the repaired main source. Gameplay research may
-continue; a repair intake pin will follow closure. Repairs `5b387618` and
-`056fc126` clear GCC/macOS and local asset-present gates. The full Linux ASan
-run exposed a fixed-port metadata-test collision (no sanitizer diagnostic);
-its narrow test-only repair is published at `3f7e64d9`. MSVC subsequently
-exposed two self-referencing farm fixtures depending on optional NRVO; a
-no-elision ASan probe reproduces both lifetime defects. Their fixture-only
-repair is under verification. This is not closure.
+**MAIN-CI-1 is CLOSED.** All ten GitHub CI jobs pass at repair source
+`92e4817b`: all five C++ platform/configuration jobs, cpp-format and four Rust
+jobs. [Acceptance, failures, exact counts and intake notes](reviews/2026-11-06-main-ci1.md).
+The previous red-main condition since `944cec89` is repaired; the owner’s CI hold
+before consolidation is satisfied. No further gameplay has been consolidated.
 
-**`main`'s C++ CI is red** on all five build jobs (MSVC, GCC, GCC release, Clang ASan, macOS Clang). It has been red
-since `944cec89` (2026-11-05 22:38, the consolidated baseline); the last green run was `cafa74d5`. On `e0bb6be7`:
-- `src/sim/tests/integration_identity_test.cpp:27`: `std::filesystem::path` is used without `<filesystem>` (MSVC, GCC
-  and Clang);
-- `src/sim/src/script_runtime.cpp:146`: `-Werror=null-dereference` (GCC release);
-- macOS: `economy_loop_fresh_process`, `economy_loop_changed_command_fresh_process`, `script2_synthetic_fresh_process`
-  and `script2_original_fresh_process` fail.
+Compiler portability, asset-bound replay prerequisites, independently attributed
+state134 economy pins, a metadata-test port collision and two dangling test-fixture
+statistics pointers were corrected. No gameplay identity/default or production
+coordinator change. The final source is independently reviewed and published.
 
-A WSL GCC 13 build with `-Werror` also stops in `small_farm_worker_test.cpp` (`std::function` without `<functional>`,
-`-Wrange-loop-construct`), `unit_import_test.cpp:414/423` (`-Wrange-loop-construct`) and `scenario_test.cpp`
-(`-Wsign-conversion`). That build compiled the Windows executor's live worktree, not a clean checkout, so treat this list
-as a lead. Every task branch based on `main` since `944cec89` inherits these failures.
+Consumers adopt the portable repairs only at an owned checkpoint; do not overwrite
+lane-specific133/135/136 identities with main134 test pins. The private GitLab
+mirror still requires the owner/Windows sync after main publication.
 
 ### Windows executor
 
@@ -57,8 +49,9 @@ as a lead. Every task branch based on `main` since `944cec89` inherits these fai
   proven in the real window.
   - The owner dispatched it in chat on 2026-11-06. It is not on the board yet.
   - **Done:** W2–W5, with the MSVC regression gate green.
-  - **Now:** the W7 WSL ASan/UBSan gate is **BLOCKED** by the red `main` above; the branch's base `3b74201f` is red
-    on CI too.
+  - **Now:** the W7 WSL ASan/UBSan gate remains **OPEN**. Its inherited-main CI
+    prerequisite is cleared by MAIN-CI-1; take the portable repairs at the next
+    checkpoint, preserving this lane’s identity. Its own findings below remain open.
     - WSL now runs from E:, and the gate script follows the new WSL disk rules (`6b327759`).
     - The first full run (`w7scoped`, 08:51) failed in every lane on the required `picture_matrix_contract`
       ("aggregate of a missing trace: exit 127, expected 2"). The cause is not yet found.

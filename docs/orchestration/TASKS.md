@@ -2,6 +2,18 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
+**Owner rules, 2026-11-06 (a co-developer joins; every lane):**
+- **Push your task branch.** Every executor pushes its own task branch to `origin` at each checkpoint and with each
+  report.
+  - Use an ordinary push. Never force, and never push `main`.
+  - For the executor's own task branch, this replaces "no push" in the Mac dispatches. The rules on merges, rebases and
+    other lanes' branches are unchanged.
+- **The GitLab mirror.** The co-developer works from the private GitLab mirror (`gitlab.com/fuitable/open1503`). The
+  Claude Code orchestrator on the Windows PC mirrors every GitHub branch there with `tools/orch/sync_gitlab.py` after
+  each push to `main`.
+- **The status page.** [`STATUS.md`](STATUS.md) says who works on what, where the work is, and what it waits on. Every
+  orchestrator updates it in the same commit as each dispatch, acceptance or change of lane.
+
 <!-- BEGIN GAMEPLAY-IDENTITY-134-135 -->
 ## Compatibility decision — founding accounts and salt sequencing (2026-11-06)
 

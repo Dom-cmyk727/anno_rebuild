@@ -19,6 +19,28 @@
 - **The status page.** [`STATUS.md`](STATUS.md) says who works on what, where the work is, and what it waits on. Every
   orchestrator updates it in the same commit as each dispatch, acceptance or change of lane.
 
+**Owner rule, 2026-11-07 (every orchestrator): main is healthy only once its game-file tests have run on the Windows
+PC.**
+- **Why.** Hosted CI has no original game files and skips every test that needs them, so ten green CI jobs say nothing
+  about those tests. On 2026-11-05, 18 such tests broke on `main` unseen. The
+  [W4-SETTLEMENT-1 review](reviews/2026-11-07-w4-settlement-1-w7.md) has the details.
+- **What must run.** After every push that changes code or tests on `main`, run the whole MSVC suite on the owner's
+  Windows PC, at that exact commit and in a clean checkout of it:
+  - `ctest --preset msvc` with `ANNO1503_GAME_DIR` set to the original files;
+  - the GPU tests on the RTX 4090 included.
+
+  Name every failure with its test name and assertion. Attribute each to a commit. Give each one an owner and a repair.
+- **Until then,** that commit's status is "CI green, game-file run pending". No acceptance, review or STATUS line may
+  call that `main` healthy, green or accepted without qualification. A Mac run with the game files counts for its own
+  lane, but it doesn't replace this run.
+- **Who runs it.** The orchestrator that pushes to `main` adds "game-file run at `<commit>`" to STATUS's waiting list.
+  The Claude Code orchestrator runs it on the Windows PC, or dispatches it to the Windows executor. It records the
+  commit, the counts and every failure in the package's acceptance review, or in its own review note. Docs-only pushes
+  need no run.
+- **Next consolidation.** A new consolidation on `main` doesn't start while the previous code commit's game-file run is
+  still pending, unless the owner says so. A run with known, named failures that already have an assigned repair does
+  not block it.
+
 <!-- BEGIN MAIN-CI-1 -->
 ## MAIN-CI-1 — CLOSED: canonical main CI repaired (2026-11-06)
 

@@ -5,8 +5,8 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-07, by the Claude Code orchestrator: W4-SETTLEMENT-1 reviewed, changes requested; 18
-real-file test failures found on `main`; W4-MAIN-2 released to the Windows executor. Before that: 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted;
-gameplay assignments unchanged).
+real-file test failures found on `main`; W4-MAIN-2 released to the Windows executor; new owner rule on game-file runs
+for `main`. Before that: 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted; gameplay assignments unchanged).
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -35,6 +35,15 @@ Live-window and target-host acceptance are separate.
 jobs. [Acceptance, failures, exact counts and intake notes](reviews/2026-11-06-main-ci1.md).
 The previous red-main condition since `944cec89` is repaired; the owner’s CI hold
 before consolidation is satisfied. No further gameplay has been consolidated.
+
+**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is not yet healthy.** That rule counts `main` as
+healthy only once its game-file tests have run on the Windows PC. The run found 18 failures, reproduced at `96775da4`.
+- **What fails:** out-of-date tests after the strict scene loader (`f7c31ed8`) and the construction-eligibility check
+  (`d2be23aa`).
+- **The repair:** assigned to the Windows lane, W4-MAIN-2 part A, which also runs the full game-file suite at
+  `dbb22306` first.
+
+Every later code push to `main` needs its own game-file run on the Windows PC.
 
 Compiler portability, asset-bound replay prerequisites, independently attributed
 state134 economy pins, a metadata-test port collision and two dangling test-fixture

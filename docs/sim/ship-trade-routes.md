@@ -136,3 +136,248 @@ are retained under cache/route1/R0. Review is retained under cache/route1/review
 R1 original research/contract/reference is released; runtime remains gated on its
 independent approval.
 No runtime route state, behavior, schema or identity change is implemented here.
+
+## R1 execution contract — review candidate, before C++
+
+Primary predicates, original group/order/quantity and nominal delay are in
+[the original research](../re/ship-trade-routes.md). ORIGINAL below means those
+instructions/data; ADAPTATION means this authenticated, stable-ID headless model.
+No claim includes the original editor, import, float timing or physical collision.
+
+### Definition, normalization, public control and authority
+
+Append two Body alternatives, preserving all twelve existing alternatives:
+`AssignFreightRouteCmd` then `ControlFreightRouteCmd`. Reserve currently unused
+native tags F075 and F076 respectively. Wire version1 stays because native136
+and replay4's explicit state/schema identity reject earlier peers before their
+commands execute; new native tags cannot be encoded as LegacyRawCmd.
+
+Public assignment: ship FigureId plus an ordered vector of stops. Each stop has
+stable warehouse BuildingId, exact i32 Q24.8 dock point x/y and ordered actions.
+An action is `{direction u8:0LoadTarget/1UnloadAmount, goods u32, tons u64}`.
+Goods/warehouse roles use the existing registry/CargoRules, not canary IDs.
+Load tons is the desired total aboard of this goods; Unload tons is the amount
+to remove. Each amount and checked sum must fit u64 raw (tons≤U64_MAX/256).
+Zero is a legal no-effect action, including its delay. Stops may have no actions.
+
+Normalize a stop once at assignment in O(actions log distinct-keys): for each
+`(direction,goods)` combine all amounts into its first occurrence and replace
+later occurrences' amounts by zero. Preserve every action's position, direction
+and goods, so every entry still incurs its delay. This reproduces the kind10
+block grouping and first-occurrence effect without a per-tick quadratic scan.
+Every typed stop represents a separate movement/action block, including repeated
+warehouses; no grouping crosses stops. Query returns this idempotent canonical
+definition; the command recording retains the input definition. Native load
+requires canonical duplicate entries to have zero quantities.
+
+Validation before any write: known authenticated issuer; figure exists, is owned,
+is a navigating eligible cargo ship with no parent and no blocked navigation
+state; nonempty stop list within configured stop/total-action limits; all dock
+points inside the world; all action kinds/quantities/goods valid; every named
+warehouse exists, is eligible and belongs to issuer; generation increment fits.
+Input byte counts and sums are checked before allocation/arithmetic. Stop range
+is an execution-time requirement, not a demand that a distant assigner already
+be docked. No validation searches for a replacement or nearer warehouse.
+Failed assignment/control leaves all native bytes, money, goods and draws intact.
+
+Assignment increments a per-figure u64 generation, stops its current navigation
+through the existing stop primitive and installs the new definition at stop0.
+The generation survives cancellation. A replacement never reuses an old pending
+order identity. Exhausted generation refuses SerialExhausted atomically.
+
+Control body: owned ship plus enum Suspend0, Resume1, Cancel2. Suspend freezes
+the current wait/work cursor, drops a pending navigation order through normal
+stop semantics and records that the same leg must be reissued. Resume resets
+the service clock to now (paused time never catches up), clears a recoverable
+failure and retries the preserved stage or reissues the interrupted leg. Cancel
+stops navigation and removes assignment while preserving the generation counter.
+Unknown route/control enum/state gives a typed refusal. Resume revalidates live
+ship/target authority; it does not repair a missing stable warehouse reference.
+
+ADAPTATION: successful manual Move, Stop, Found, Load or Unload takes over that
+ship and removes its automatic assignment. Existing manual cargo semantics stay
+otherwise unchanged: a transfer does not additionally stop an in-flight segment;
+any remaining order becomes ordinary manual motion until Move/Stop replaces it.
+Failed manual commands do not cancel anything. Internal automatic cargo/movement
+calls the existing primitives directly, not this manual takeover ingress.
+This also prevents a saved in-progress hold scan from surviving a manual mutation
+of the ship's holds. Original manual cargo did not itself cancel automation;
+this explicit takeover policy is modern control ownership, not original parity.
+
+### Visits, time, transfers and progress
+
+The figure registry retains its existing serial visit order. A ship with no
+route follows exactly its existing mover. Route work is additional only for an
+assigned visited ship. Existing ShipMover navigation, planning quotas, arrival
+events, crew merge and PRNG behavior are reused; no background controller or
+additional random draw is introduced.
+
+Phases: NeedLeg→Sailing→Wait→Scan→Transfer→(next action Wait or CompleteStop)→
+NeedLeg. Status Running/Suspended/Failed is separate from the progress phase.
+NeedLeg validates the stable target and issues existing Move to the explicit
+dock. Transfer is forbidden until the same ship's current generation AND expected
+order ID produce ShipArrived. A route failure stops recoverably; duplicate/stale
+arrival/failure cannot advance or transfer. Each action revalidates live target,
+owner, role and BOTH cargo range predicates. Arrival alone never grants range.
+
+ADAPTATION: accepted modern ShipArrived is observed at a simulation visit stamp.
+The first wait starts there with zero credit; no original sub-visit arrival or
+float surplus is reconstructed. Each later visit adds actual elapsed integer
+ticks to checked saved credit. Wait uses existing FigureType.load_ticks (500 for
+original1502) and spends only available credit. Delay0 expires without waiting;
+zero elapsed contributes zero. Wait surplus flows through subsequent actions
+and their waits at this SAME stop, including normalized duplicate zero entries.
+Unspent credit and partial wait survive deterministic work quotas and native load.
+Already-started instantaneous work may resume at zero elapsed; a positive delay
+never expires without credited time. Suspended/failed time is never credited.
+
+Issuing the next Move is an explicit forward-only deferred movement boundary:
+the next leg begins at current clock time, as with accepted Move commands. End
+the old stop's wait credit there. Do not backdate sailing or carry that old
+credit into a future destination's wait. This is deliberately different from
+original428d0's fractional movement→wait→next-node loop. Isolated delay tests
+cover500 versus499+1, zero, two waits with surplus, quota continuation and this
+new-Move boundary. No whole-world advance-partition invariance is claimed.
+
+After each action's wait, Scan visits the first min(hold_count_a,holds.size())
+hold indices with one deterministic work unit each. It records the matching
+raw total and candidate index vectors: matching (nonfull for load, all for
+unload), then empty for load, each ascending. Checked sum overflow fails before
+cargo. Loading remaining=max(0,normalized_tons*256−matching_total); unloading
+remaining=normalized_tons*256. Candidate state is saved, not a pointer/stock plan.
+
+For each candidate form request_tons=floor(min(remaining,selected-room-or-held)/256)
+using wide checked integers. Zero request ends this action, including a first
+fractional candidate that blocks a later empty hold (ORIGINAL caller rule).
+Otherwise call accepted ShipCargo::load/unload, using this candidate as the
+preferred/named hold and the stable warehouse. Loading may redirect according
+to the shared resolver; it is not a second arithmetic/hold-selection path.
+Actual transfer reduces remaining. Advance the saved candidate cursor exactly
+once with that committed effect before another visit can run. All fallible
+validation precedes stock writes in the shared primitive.
+
+Resource refusals (short stock, full store/holds, mismatched/empty candidate) or
+zero actual quantity end the action and continue after the next action's wait;
+partial positive transfer continues to the next prepared candidate if any.
+No wait-until-full/retry-until-stock behavior is invented. Structural, ownership,
+range, disabled-ship and navigation errors enter recoverable Failed with the
+original reason; they never silently retarget. Resume/reassignment is public.
+The original shared arithmetic's destruction/wrap quirks stay replaced by the
+accepted safe conservation rules.
+
+CompleteStop advances the stop cursor and wraps; completed_cycles counts route
+wraps, including unproductive ones. It does NOT certify newly produced/delivered
+goods. Transfer observations must have positive actual quantities to prove cargo;
+the integration ledger must additionally establish production provenance.
+Counter exhaustion fails without wrapping or repeating a committed transfer.
+At most work_per_visit primitive steps execute: one phase transition, scanned
+hold, candidate transfer or stop completion per unit. Colocated/zero/refused
+definitions therefore cannot busy-loop. Existing navigation query budgets remain.
+
+### Frozen schema proposal and compatibility tests
+
+New rules appended after Rules.city_booking: `FreightRules` with three u32 fields
+`max_stops=1024, max_actions=2048, work_per_visit=64`. Limits bound hostile public
+definitions and per-visit continuation, not the two-stop recipe; they are config
+and part of the rules digest. Defaults fit the existing u16 ClientRecord payload
+(head12 +1024*20 +2048*13=47116 bytes). Larger configured definitions still must
+fit that existing framing; changing framing is a separate future decision.
+
+Append to Figure AFTER resident: u64 freight_generation(default0), optional
+FreightState (presence byte). No existing field/variant order changes. New present
+state fields in this exact order:
+
+| Field | Width / encoding |
+|---|---|
+| stops | u64 count; each warehouse u64,dockx i32,docky i32,actions countu64; each directionu8,goodsu32,canonical_tonsu64 |
+| status,phase | u8 each; Running0/Suspended1/Failed2; NeedLeg0/Sailing1/Wait2/Scan3/Transfer4/CompleteStop5 |
+| stop_index,action_index | u32 each |
+| expected_order_id,order_generation | u64 each; zero except current Sailing; both match live assignment/order |
+| last_tick,credit_ticks | u64 each; last≤world tick,credit≤last, overflow checked |
+| wait_remaining | u32, partial integer duration |
+| scan_next | u32, scanned hold prefix length |
+| matching_raw,remaining_raw | u64 each, checked |
+| matching_holds,empty_holds | u64 count then u32 indices, ascending/disjoint/in-domain |
+| candidate_next | u32 over matching then empty candidate vectors |
+| completed_cycles | u64, never wraps |
+| last_reject,nav_failure | u16 existing Reject value, u8 existing NavFailReason value |
+
+Native validation rejects enum/count/arithmetic/cursor/clock impossibilities,
+noncanonical quantities and mismatched pending order/generation. A missing target
+after legitimate demolition is a valid pending/Failed definition, not a repaired
+reference: native load cannot require every future target still to exist.
+Prepared candidates must be valid hold indices and match the stage's invariants;
+no serialized city/building/figure pointer or derived whole-world index is added.
+Suspended Sailing becomes NeedLeg on stop so it owns no phantom navigation order.
+
+F075 wire payload: u64 ship,u32 stop_count; each stop warehouseu64,dockxi32,
+dockyi32,u32 action_count; actions directionu8,goodsu32,tonsu64. F076 payload:
+u64 ship,u8 control. Exact-length framing, unknown enum, hostile/truncated counts,
+trailing bytes, zero-stop and overflow vectors must refuse before state mutation.
+New public observations carry ship/generation/order/stop/action/warehouse/goods,
+actual direction/quantity and reason for pending/arrived/transferred/skipped/
+paused/failed/cycle events. Observations are host output, never control authority.
+Only the fields above affect future simulation and must be explicitly serialized.
+
+State136 / ECONBK1 / PRNG5 / replay4 / command1 / wrapper1 is route-only, with no
+salt135. Preserve actual134 artifacts and validate them with the pinned old
+reader before new refusal tests. New136 rejects134 native and replay identities,
+and independent nested replay/native mismatches. No135 check without a real
+artifact. Independent stream reference and hand-written present route bytes must
+cover every nonempty progress field, not just absence/default encoding.
+No-route old semantic fields/draws must match134 after projecting out explicit
+new rules/empty-generation/absence bytes and identity, with each changed scope
+explained. Old134 fixtures remain unchanged; new136 fixtures get honest producer
+provenance and independent schema expectations. No silent historical rewrites.
+
+### Real canary cut and finite starting budget
+
+The R5 pilot will preserve original cargo, positions and map. Proposed legal
+setup: accepted source founding/tools/801/20roads and first448raw receipt, but no
+manual source wood Load. Publicly switch production off after that receipt, sail
+to destination, found/unload1t tools and show1310 CannotAfford, then manually
+return to source. This pause bounds already-made wood while making both cities.
+Resume production publicly BEFORE assignment. Hold0 retains26t inherited wood;
+source contains only produced wood, expected total630raw before resumed output.
+Assign source LoadTarget28t / destination UnloadAmount2t, allowing actual positive
+source2t to fund each2t delivery while the26t baseline remains aboard.
+
+At first automatic load record all previously made wood (warehouse, producer out,
+active carts; no double-counted reservation/raw). Require that remaining made
+pipeline is strictly below the second512raw export, and that further genuine
+production supplies the deficit. Confirm this feasible cut with one bounded
+pilot before the long campaign. After assignment only Advance/observe until two
+positive source-load/destination-unload cycles; no per-stop external commands.
+Then issue the same receiving Build1310, costing50g/1wood/1tool. Total normal
+construction remains1000g,24t inherited founding wood,13t inherited tools and1t
+produced receiving wood; all upkeep and holds are measured, not prewritten.
+
+No-production control begins before workers/raw/output, uses public Off and never
+reenables production. Under the original skip-on-zero policy it may still unload
+inherited cargo; a wrap or receiving stock alone must therefore NOT certify
+productive freight. It must have zero source wood export/new production and zero
+qualified productive cycles. Main proof requires matching positive source debits,
+destination credits, unchanged inherited hold baseline and complete goods ledger.
+This explicitly challenges the inherited-cargo false positive instead of adding
+an unsupported wait-until-full rule. A separate public suspend/resume branch and
+five reviewed reachable save cuts supplement the uninterrupted interval.
+
+### R1 independent-reference evidence, before runtime
+
+`tools/freight_ref.py` computes grouped target/request transfers with caller
+quantization/shared safe resolver, isolated wait/surplus/work-quota transitions,
+generation/order lifecycle and independent native/wire bytes. The33 synthetic
+JSONL answers are hand-derived; the implementation never reads expect to compute
+an answer. This is a transition/transfer/schema oracle, not a navigation oracle
+or runtime controller. Actual path/authority/range validation stays with public
+C++ scheduler tests. Native byte vectors separately cover a pending sailing order
+and a suspended partial candidate cursor; absence retains generation in9bytes.
+
+First direct reference check correctly rejected an incorrectly hand-written
+absence literal with an extra zero byte. The nine-byte generation+presence
+answer was corrected; first failure remains R1/reference-first-check.log,
+superseding focusedcheck02 and selftest pass. The public CLI contract executes
+23 positive/negative probes, including changed legal input, wrong expectation,
+empty/truncated/malformed/duplicate input, booleans/floats/out-of-domain amounts,
+quantity sum overflow and missing file/unknown command. Canonical R1 reference
+gate and complete independent primary/schema review are still pending.

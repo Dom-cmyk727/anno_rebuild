@@ -13435,3 +13435,40 @@ originals; this is the evidence being adopted, not new work performed here):
   reproduction run under the pre-fix binaries, then three ~95-98 min acceptance reruns under the
   fixed binaries - the MSVC/unit-test/native checks were each under a minute).
 
+
+## W4-OPENING-2 — consolidated-main adoption gates — 2026-11-06 — status: FINISHED
+
+Branch `task/W4-opening-2-main` at `8137b415`, from `origin/main` `3b74201f`.
+
+- **Native MSVC** (`cmake --preset msvc`, `cmake --build --preset msvc`): builds
+  `anno1503.exe`, `anno_app_tests.exe`, `anno_app_input_tests.exe` and most other
+  targets clean. `anno_sim_tests` FAILS to build — pre-existing C2664 errors in
+  `src/sim/tests/small_farm_worker_test.cpp` (MAP-NEEDS-2 territory, untouched by
+  this delta or by `task/W4-opening-2`), same root file as the GCC break below.
+  `anno_app_input_tests` dev-script unit tests: 8/8 cases, 280/280 assertions,
+  PASS (matches `task/W4-opening-2`'s result exactly). `viewer_wiring_opening_controls`
+  run standalone via ctest with `ANNO1503_GAME_DIR` set: PASS, 10.03s.
+- **WSL ASan/UBSan gate** (`tools/test/wsl_gate.sh`): origin/main `3b74201f` does
+  NOT build under this gate's GCC 13 `-Werror` flags. First break:
+  `src/sim/tests/integration_identity_test.cpp` missing `#include <filesystem>`
+  — fixed here (`8137b415`, one line, zero behavior change, disclosed separately
+  from the ported delta; MSVC's transitive includes hid it, GCC 13 does not).
+  Beyond that fix, a full keep-going build (`ninja -k 0`) surfaces at least 12
+  further pre-existing `-Werror` violations across 6 files, none touched by
+  this delta or by `task/W4-opening-2`, all in other executors' owned test code:
+  `scenario_test.cpp` (2x sign-conversion), `script2_canary_test.cpp`,
+  `small_farm_animal_test.cpp` (2x), `small_farm_worker_test.cpp` (missing
+  `#include <functional>` cascading into 7 more errors — the same file MSVC
+  also rejects, above), `unit_import_test.cpp` (2x) — all range-loop-construct
+  or missing-include breaks. **The WSL ASan/UBSan gate could not be completed
+  for this package: consolidated main's current tip does not build under it,
+  independent of anything ported here.** This is reported as a blocking finding
+  about main's health, not fixed here — these files belong to MAP-NEEDS-2 and
+  MAP-INTEGRATE-1's owners, not this package.
+- **RTX 4090 / GPU-adapter checks:** NOT_RUN. No cheap existing GPU-adapter smoke
+  test is wired into this gate path independent of the full WSL/GPU-lane build,
+  and that lane is blocked by the same pre-existing break above.
+- **Identity:** confirmed unaffected — no `src/sim`, serialization, PRNG or
+  replay file in the ported delta; the one disclosed out-of-scope fix
+  (`8137b415`) is a test-only missing-include, not a behavior change.
+

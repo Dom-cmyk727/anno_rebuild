@@ -16,6 +16,8 @@
 
 #include <cstdint>
 #include <map>
+#include <string>
+#include <vector>
 
 #include <anno/sim/building.hpp>
 #include <anno/sim/config.hpp>
@@ -80,6 +82,11 @@ struct PlacementParams {
     /// Stream 135: the class bits (flag word & 0x7000) of the mountain class (mines, quarries; AnnoGame
     /// 0x100091a1). Only a deep MINE type with its HIGHMAP table is placeable; see classify().
     std::uint32_t mountain_class = 0x3000;
+    /// The output wares of the mountain-class mines this build places (docs/sim/salt-extraction.md
+    /// sections 13 and 15: the extraction slice is salt only, no iron production). Another deep mine
+    /// (gold, gems, deep iron) stays typed Unsupported until its ware is proved and listed here by data;
+    /// the default is the proved ware.
+    std::vector<std::string> mountain_wares = {"SALZSTEIN"};
     /// MAP-ROAD-CLOSE-1: the enhanced road choices (Rules::road_require_land_level and
     /// Rules::road_preserve_nonroad_pieces), false = the original predicates. The world passes its
     /// Rules values; a direct caller states them.

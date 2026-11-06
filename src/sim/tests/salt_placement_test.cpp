@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -592,30 +593,43 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
     refusal_row(base, mine_at(373, 340), sim::Reject::TileNotOwned, mine_at(353, 359));
     // bounds: x beyond the island; neighbour inside
     refusal_row(base, mine_at(590, 359), sim::Reject::OutOfIsland, mine_at(353, 359));
-    // classes the evidence does not cover keep the typed refusal, on the otherwise legal site
-    for (const sim::BuildingType& t : s->types->types()) {
-        const bool mountain = (t.flags_word & 0x7000U) == 0x3000U;
-        if (!mountain || t.id == kSaltMine) {
-            continue;
-        }
-        const bool deep_mine = t.cls == sim::RuntimeClass::Mine && t.has_prod &&
-                               sim::mine_is_deep(t.prod, t.research_id);
-        if (deep_mine) {
-            continue; // another deep mine would be placeable (permission aside)
-        }
-        sim::World w = base;
-        const auto before = w.save();
-        const sim::ApplyResult r = w.apply(build_cmd({sim::PlacementWire{t.id, 353, 359, 0, 0, 0}}));
-        CHECK_MESSAGE(!r.ok(), "type " << t.id.v);
-        CHECK_MESSAGE(r.status != sim::Reject::None, "type " << t.id.v);
-        CHECK(w.save() == before);
-    }
+    // every other mountain-class type (quarries, shallow iron, and the deep gold, gems and iron mines)
+    // keeps the typed refusal: exactly Unsupported on a free footprint the owner rule passes (the class
+    // gate precedes the permission step, so the eligibility gate cannot mask it)
     {
-        // the quarry 1201 is Unsupported when its permission is not the reason
-        sim::World w = base;
-        const sim::ApplyResult r = w.apply(build_cmd({sim::PlacementWire{sim::TypeId{1201}, 353, 359, 0, 0, 0}}));
-        const bool typed = r.status == sim::Reject::Unsupported || r.status == sim::Reject::ConstructionDenied;
-        CHECK_MESSAGE(typed, sim::reject_name(r.status));
+        std::set<std::uint32_t> deep_other;
+        std::size_t checked = 0;
+        for (const sim::BuildingType& t : s->types->types()) {
+            if ((t.flags_word & 0x7000U) != 0x3000U || t.id == kSaltMine) {
+                continue;
+            }
+            if (t.cls == sim::RuntimeClass::Mine && t.has_prod && sim::mine_is_deep(t.prod, t.research_id) &&
+                t.highmap.size() == std::size_t{4} * t.width * t.height) {
+                deep_other.insert(t.id.v);
+            }
+            std::optional<sim::Reject> got;
+            for (std::int32_t y = 352; y < 372 && !got; ++y) {
+                for (std::int32_t x = 345; x < 362 && !got; ++x) {
+                    sim::World w = base;
+                    const auto before = w.save();
+                    const sim::ApplyResult r =
+                        w.apply(build_cmd({sim::PlacementWire{t.id, x, y, 0, 0, 0}}));
+                    if (r.status == sim::Reject::TileNotOwned || r.status == sim::Reject::OutOfIsland ||
+                        r.status == sim::Reject::Occupied) {
+                        continue;
+                    }
+                    got = r.status;
+                    CHECK(w.save() == before);
+                }
+            }
+            REQUIRE_MESSAGE(got.has_value(), "type " << t.id.v);
+            CHECK_MESSAGE(*got == sim::Reject::Unsupported,
+                          "type " << t.id.v << ": " << sim::reject_name(*got));
+            ++checked;
+        }
+        CHECK(checked == 11);
+        // the deep non-salt mines of the registry: gold 1206 and 1212, gems 1214, deep iron 1216 and 1217
+        CHECK(deep_other == std::set<std::uint32_t>{1206, 1212, 1214, 1216, 1217});
     }
     // permission: a type the town is not yet allowed to build is refused by the permission check,
     // not by the placement rule; the mine (Allowed) on the same site is the legal neighbour
@@ -635,6 +649,9 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
         const sim::ApplyResult r = w.apply(build_cmd({sim::PlacementWire{locked->id, 353, 359, 0, 0, 0}}));
         CHECK_MESSAGE(r.status == sim::Reject::ConstructionDenied, "stage-locked type " << locked->id.v << ": " << sim::reject_name(r.status));
         CHECK(w.save() == before);
+        // the legal neighbour: the allowed mine on the same site
+        sim::World n = base;
+        CHECK(n.apply(build_cmd({mine_at(353, 359)})).ok());
     }
     // payment: no gold
     {
@@ -644,6 +661,9 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
         const sim::ApplyResult r = w.apply(build_cmd({mine_at(353, 359)}));
         CHECK(r.status == sim::Reject::CannotAfford);
         CHECK(w.save() == before);
+        // the legal neighbour: the same command with the gold restored
+        sim::WorldTestAccess::players(w).find(kSaltPlayer)->money = gold(base);
+        CHECK(w.apply(build_cmd({mine_at(353, 359)})).ok());
     }
 }
 
@@ -815,4 +835,136 @@ TEST_CASE("salt mine: a standing mine adds no PRNG draw over the same world with
         REQUIRE_MESSAGE(!without->w.faulted(), without->w.fault());
     }
     CHECK(with->w.rng().cursor() == without->w.rng().cursor());
+}
+
+// ---- the supported-ware allowlist and the typed Unsupported branches of the coverage rule -----
+
+namespace {
+
+/// A flat all-0x30 island of w x h tiles at origin (x0, y0), with the registry holding one rock.
+struct FlatIsland {
+    sim::Island is;
+    std::shared_ptr<const sim::TypeRegistry> reg;
+};
+FlatIsland flat_island(std::int32_t x0, std::int32_t y0, std::uint32_t w, std::uint32_t h) {
+    FlatIsland f;
+    REQUIRE(f.is.tiles.reset(x0, y0, w, h, 8));
+    f.is.terrain = sim::make_terrain(std::vector<std::uint8_t>(std::size_t{w} * h, 0x30), {}, {});
+    sim::TypeRegistry::Builder b;
+    sim::BuildingType rock;
+    rock.id = sim::TypeId{29};
+    rock.prodtype = 322;
+    rock.cls = sim::RuntimeClass::Plain;
+    rock.flags_word = 0x12;
+    b.add(rock);
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    f.reg = built.value();
+    return f;
+}
+sim::BuildingType table_mine(std::uint32_t w, std::uint32_t h, const char* ware) {
+    sim::BuildingType t;
+    t.id = sim::TypeId{1203};
+    t.prodtype = 3;
+    t.cls = sim::RuntimeClass::Mine;
+    t.width = w;
+    t.height = h;
+    t.flags_word = 0x3096;
+    t.has_prod = true;
+    t.prod.prodtype = "MINE";
+    t.prod.kind = sim::BuildingClass::Mine;
+    t.prod.outputs = {ware};
+    t.highmap.assign(std::size_t{4} * w * h, 0xff);
+    return t;
+}
+sim::Reject rule(const FlatIsland& f, const sim::BuildingType& t, std::int32_t x, std::int32_t y,
+                 const sim::PlacementParams& p = {}) {
+    sim::PlacementRecord rec;
+    rec.type = t.id;
+    rec.x = x;
+    rec.y = y;
+    return sim::placement_rule(f.is, *f.reg, t, rec, p).reject;
+}
+
+} // namespace
+
+TEST_CASE("mountain placement: only the listed wares are placed and the list is data") {
+    auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const FlatIsland f = flat_island(0, 0, 40, 40);
+    // salt: the legal control
+    CHECK(rule(f, *o->types->find(sim::TypeId{1203}), 4, 4) == sim::Reject::None);
+    // the five deep mines of other wares: Unsupported by default on a site the rule would accept
+    // with their ware listed
+    for (const std::uint32_t id : {1206U, 1212U, 1214U, 1216U, 1217U}) {
+        const sim::BuildingType& t = *o->types->find(sim::TypeId{id});
+        INFO("type " << id << " ware " << t.prod.outputs.at(0));
+        CHECK(rule(f, t, 4, 4) == sim::Reject::Unsupported);
+        sim::PlacementParams listed;
+        listed.mountain_wares = {t.prod.outputs.at(0)};
+        CHECK(rule(f, t, 4, 4, listed) == sim::Reject::None);
+        // and listing another ware does not unlock it
+        sim::PlacementParams other;
+        other.mountain_wares = {"SALZSTEIN"};
+        CHECK(rule(f, t, 4, 4, other) == sim::Reject::Unsupported);
+    }
+    // an empty list places nothing, salt included
+    sim::PlacementParams none;
+    none.mountain_wares.clear();
+    CHECK(rule(f, *o->types->find(sim::TypeId{1203}), 4, 4, none) == sim::Reject::Unsupported);
+}
+
+TEST_CASE("mountain coverage: the typed Unsupported branches and the chunk edge as data") {
+    const FlatIsland f = flat_island(0, 0, 40, 40);
+    // footprints above one chunk edge (8): Unsupported, 8 x 8 is the largest accepted
+    CHECK(rule(f, table_mine(8, 8, "SALZSTEIN"), 4, 4) == sim::Reject::None);
+    CHECK(rule(f, table_mine(9, 3, "SALZSTEIN"), 4, 4) == sim::Reject::Unsupported);
+    CHECK(rule(f, table_mine(3, 9, "SALZSTEIN"), 4, 4) == sim::Reject::Unsupported);
+    // a chunk edge of 16 (shift 4) accepts them
+    sim::PlacementParams wide;
+    wide.coverage_chunk_shift = 4;
+    CHECK(rule(f, table_mine(9, 3, "SALZSTEIN"), 4, 4, wide) == sim::Reject::None);
+    CHECK(rule(f, table_mine(3, 9, "SALZSTEIN"), 4, 4, wide) == sim::Reject::None);
+    // a negative world coordinate: Unsupported; the same footprint at a non-negative origin is accepted
+    const FlatIsland neg = flat_island(-8, -8, 40, 40);
+    CHECK(rule(neg, table_mine(3, 4, "SALZSTEIN"), -2, 2) == sim::Reject::Unsupported);
+    CHECK(rule(neg, table_mine(3, 4, "SALZSTEIN"), 2, 2) == sim::Reject::None);
+    // an object of the dry run's overlay on the footprint: Unsupported; elsewhere it is ignored
+    const sim::BuildingType mine = table_mine(3, 4, "SALZSTEIN");
+    const auto idx = [&](std::int32_t x, std::int32_t y) {
+        return static_cast<std::uint64_t>(y) * 40U + static_cast<std::uint64_t>(x);
+    };
+    std::map<std::uint64_t, sim::TypeId> overlay{{idx(5, 5), sim::TypeId{29}}};
+    sim::PlacementParams with_overlay;
+    with_overlay.object_overlay = &overlay;
+    CHECK(rule(f, mine, 4, 4, with_overlay) == sim::Reject::Unsupported);
+    CHECK(rule(f, mine, 20, 20, with_overlay) == sim::Reject::None);
+    CHECK(rule(f, mine, 4, 4) == sim::Reject::None);
+}
+
+TEST_CASE("salt mine: a standing mine produces and adds no PRNG draw at any step") {
+    auto with = salt_world(true);
+    auto without = salt_world(true);
+    if (!with || !without) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // two mines bound to the same ore, so that both work the deposit
+    const auto a = with->w.apply(build_cmd({mine_at(353, 359), mine_at(356, 359)}));
+    REQUIRE(a.ok());
+    std::uint32_t produced = 0;
+    for (int i = 0; i < 600; ++i) {
+        with->w.advance(kStepMs);
+        without->w.advance(kStepMs);
+        REQUIRE_MESSAGE(!with->w.faulted(), with->w.fault());
+        REQUIRE(with->w.rng().cursor() == without->w.rng().cursor());
+        produced = 0;
+        for (const auto& r : a.records) {
+            produced += std::get<sim::Mine>(with->w.find_building(r.building)->payload).out;
+        }
+    }
+    CHECK(produced > 0);
 }

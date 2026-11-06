@@ -31,7 +31,10 @@ Class classify(const BuildingType& t, const PlacementParams& p) {
     // predicate, docs/sim/salt-extraction.md section 18) is implemented in coverage_rule.
     if ((t.flags_word & 0x7000U) == p.mountain_class && t.cls == RuntimeClass::Mine && t.has_prod &&
         mine_is_deep(t.prod, t.research_id) &&
-        t.highmap.size() == std::size_t{4} * t.width * t.height && (t.flags_word & 3U) != 1U) {
+        t.highmap.size() == std::size_t{4} * t.width * t.height && (t.flags_word & 3U) != 1U &&
+        !t.prod.outputs.empty() &&
+        std::find(p.mountain_wares.begin(), p.mountain_wares.end(), t.prod.outputs[0]) !=
+            p.mountain_wares.end()) {
         return Class::Mountain;
     }
     // Every other type with the coverage bit stays Unsupported (the test is evidenced for the mountain

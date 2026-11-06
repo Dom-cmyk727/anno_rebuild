@@ -1822,6 +1822,11 @@ void Viewer::script_tick() {
         st.latest = std::move(read.latest);
     }
     st.visibility = command_visibility(st.latest);
+    // Set alongside st.facts below (opening_facts() reads opening_snapshot_, refreshed only once
+    // per drawn frame in draw()/opening_refresh(), never here): this is the turn opening_snapshot_
+    // belongs to, not the live one above, so `wait turns` cannot resolve ahead of what the facts
+    // it gates (`expect fact ...`) can actually show (W4-OPENING-CONTROLS-FLAKE).
+    st.facts_turn = st.snapshot ? st.snapshot->turn : 0;
     st.tool = dev_;
     st.knowledge = knowledge_ ? &*knowledge_ : nullptr;
     if (chunk_hold_) {
@@ -1869,7 +1874,27 @@ void Viewer::script_tick() {
                              static_cast<float>(box->cy / density)};
         };
     }
+    // W4-OPENING-CONTROLS-FLAKE step 1: an opt-in trace (no cost unless set) of the two readings a
+    // scripted "wait turns" + "expect fact tracked..." pair can race between: `st.snapshot` is a
+    // fresh feedback() read taken every call, but the facts built above from opening_snapshot_
+    // (opening_facts()) are only as new as the last drawn frame (opening_refresh(), draw()-only).
+    // Under frame-rate collapse the live turn can run far ahead of the frame-gated one.
+    const char* trace_env = std::getenv("ANNO_DEV_SCRIPT_TRACE");
+    const std::uint64_t trace_live_turn = st.snapshot ? st.snapshot->turn : 0;
+    const std::uint64_t trace_opening_turn = opening_snapshot_ ? opening_snapshot_->turn : 0;
     DevScriptAction act = script_->step(st);
+    if (trace_env != nullptr) {
+        std::fprintf(stderr,
+                     "[dev-script-trace] drawn_frames=%llu live_turn=%llu opening_turn=%llu "
+                     "gap=%lld tracked.1.state=%s log=%s\n",
+                     static_cast<unsigned long long>(drawn_frames_),
+                     static_cast<unsigned long long>(trace_live_turn),
+                     static_cast<unsigned long long>(trace_opening_turn),
+                     static_cast<long long>(trace_live_turn) - static_cast<long long>(trace_opening_turn),
+                     st.facts.count("tracked.1.state") != 0 ? st.facts.at("tracked.1.state").c_str()
+                                                             : "<none>",
+                     script_->log().empty() ? "" : script_->log().back().c_str());
+    }
     if (act.look_world) {
         const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
         const auto [sx, sy] = render::corner_point(act.look_world->first, act.look_world->second,

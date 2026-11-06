@@ -430,15 +430,19 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             if (!wait_ms_) {
                 wait_ms_ = st.now_ms;
                 wait_frames_ = st.frames;
-                wait_turn_ = st.snapshot ? st.snapshot->turn : 0;
+                wait_turn_ = st.facts_turn;
             }
             bool over = false;
             const std::string& what = s.args[0];
             if (what == "frames" && s.args.size() == 2 && arg(1)) {
                 over = st.frames >= *wait_frames_ + static_cast<std::uint64_t>(*arg(1));
             } else if (what == "turns" && s.args.size() == 2 && arg(1)) {
-                over = st.snapshot &&
-                       st.snapshot->turn >= *wait_turn_ + static_cast<std::uint64_t>(*arg(1));
+                // Gated on facts_turn, not st.snapshot->turn: a fact-reading step right after this
+                // wait (as `opening_controls.script` does, `key h` then `wait turns 3` then
+                // `expect fact tracked.1.state == stopped`) must see the turn this wait reports as
+                // reached, not a live turn the facts have not caught up to yet (the race this
+                // field exists to close; see DevScriptState::facts_turn).
+                over = st.facts_turn >= *wait_turn_ + static_cast<std::uint64_t>(*arg(1));
             } else if (what == "ms" && s.args.size() == 2 && arg(1)) {
                 over = st.now_ms >= *wait_ms_ + static_cast<double>(*arg(1));
             } else if (what == "outcome") {

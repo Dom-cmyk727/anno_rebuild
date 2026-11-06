@@ -171,6 +171,13 @@ struct DevScriptState {
     std::string title;
     /// The opening's named facts (see `wait fact`); empty in a session without an opening.
     std::map<std::string, std::string> facts;
+    /// The turn `facts` reflects (W4-OPENING-CONTROLS-FLAKE): in an opening session, facts are
+    /// built from a snapshot taken once per drawn frame, which can run behind `snapshot->turn`
+    /// (read fresh every call) under a slow or contended frame cadence. `wait turns N` baselines
+    /// and checks against this turn, not `snapshot->turn`, so it cannot report "N turns later" as
+    /// true before a frame exists whose facts actually show it. Equal to `snapshot->turn` in a
+    /// session without an opening (facts is then always empty, so this has no effect there).
+    std::uint64_t facts_turn = 0;
     /// The window point of ship `id`'s drawn centre in the last frame, if it is drawn.
     std::function<std::optional<std::pair<float, float>>(std::uint64_t)> ship_point;
 };

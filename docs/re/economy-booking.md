@@ -304,3 +304,23 @@ has no separate implemented completion body. A newly unlocked line can therefore
 change the selector but leave old cost totals, just like house replacement.
 Native continuation must retain that historical total, not recompute it. Checked
 removal/disable underflow is a typed safeguard, not permission to rescan/repair.
+
+### B1 financial-only inert selector addendum
+
+Original getters/loads for financial activation, independently decoded again by
+`/root/econ_b1_primary_review`: Hunter vtablec82a0+c4=6a5f0 ORs bytes28/29;
+ctor6a9c0 writes0101 at6a9ec. Load6a700 reads a zero-filled14-byte own-length
+record and sends byte1 bits0/1 to its switches. Base Dual(c8150) constructor693c0
+writes0101 at693fd and load69140 uses the same financial mask. Those original
+own-length writes are unsafe above14, so no trusted modern selector is invented
+for that domain. Castle(c8c0c) uses Farm loader6ef70 exactly10/byte1&1 and
+constructor6f1b0 inherits the enabled default. Whaler(c9418) ctor746a0 explicitly
+sets byte22=1; load741a0 version1 reads a10-byte inner prefix after the version,
+whose switch is innerbyte1 (outerbyte2). Only a complete>=11-byte version1 prefix
+is accepted for that minimal modern fact; non1 retains the original default.
+
+Stall(c8fe0) ctor70730 writes0101 at70741. Getter70310 requires enabled line and
+nonzero type output. Load70490 accepts length exactly1 (not version1), using
+byte0 bits0/1; other lengths leave flags alone. A type with both outputs UNUSED
+therefore has constructor aggregate0, not an unconditional active default.
+These reads authorize finance metadata only, not the unread production bodies.

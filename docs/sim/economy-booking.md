@@ -534,3 +534,41 @@ follows the established effect merge, so final world money may differ even
 though the failed booking contributes no mutation. Diagnose those ledger terms
 separately. The request's fault-prefix barrier is necessary alongside its money/
 bill barriers. None of these controls requires a new command or live tax UI.
+
+#### B1 financial-only selectors for currently inert payloads
+
+Early real-loop prerequisite inventory found original type805/JAGDHAUS on
+Tutorial island7. Its production body remains unported; refusing to inspect its
+financial switch would leave upkeep guessed. Minimal accounting activation
+metadata on an Inert payload is allowed here; it does not implement hunting,
+Whaler production, supplier flags/purchasing or a new line command. Existing
+UndecodedBuildingRecord/body limitations remain visible. The type's existing
+output roles determine the Stall aggregate; no literal building ids are needed.
+
+Independent primary audit `/root/econ_b1_primary_review` established these
+constructor/load financial facts (original addresses are in its bounded read
+record and RE addendum):
+
+| Class with unrepresented manual state | No class record / constructor | Supported financial record |
+|---|---|---|
+| Hunter, base DualWorkshop | Both flags1 => aggregate1 | Nonempty length<=14, zero-filled14-byte scratch: (byte1&3)!=0; >14 is an unsafe original write and remains Unsupported for booking |
+| Castle | Inherited Farm switch1 | Exactly10 bytes: byte1&1; other lengths are skipped by original, so default1 |
+| Whaler | Switch1 | Version!=1 retains default; version1 requires at least11 bytes for verified prefix, outer byte2&1; truncated version1 is Unsupported for booking |
+| MarketStall | Both flags1, aggregate OR(flag_i AND output_i!=0) | Exactly1 byte: flags from byte0 bits0/1 with the same nonzero-output test; other lengths leave constructor flags |
+
+Store only the required financial activation fact/knownness on otherwise inert
+payloads and persist it under133. Unknown unsafe/truncated financial input must
+not become a free/active fallback: booking-enabled validation names and refuses
+it. Booking-off retains the existing warned/unmodelled-body behavior and does not
+start production or add financial mutations. Current supported line commands
+still return Unsupported for these inert payloads; a future body owner must
+reconcile the financial field with its actual state before a combined identity.
+
+Core B1a/b primary review APPROVED4f644fc8 after correcting Weapons eligibility,
+empty source tax no-op and import widths. B1c/d review by `/root/econ_b0_review`
+APPROVED the same pin after correcting saved fault semantics, fault-prefix order
+and signed-original agreement bounds. The same primary reviewer independently
+approved the additive financial selector facts/length boundaries above. No
+unresolved rule for the first slice is hidden in a default. B2 may implement the
+reviewed independent models; engine implementation still waits on B2 and B3's
+own schema/facts proofs. No routine orchestrator pause is required.

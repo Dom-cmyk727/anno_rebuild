@@ -141,6 +141,15 @@ inline std::unique_ptr<Cloth> start_cloth(const Original& o, bool build_stall,
         }
     }
     REQUIRE(c->city != nullptr);
+    // The scene has exactly ONE city on island 7 (asserted): on this island "building of the
+    // island" and "building of the target city" coincide, so an island-only home test cannot be
+    // told from the city test here (an equivalent mutant, see early-needs.md section 19). The city
+    // term is exercised against OTHER islands' cities, which these fixtures do have.
+    std::size_t cities_on_island = 0;
+    for (const auto& ci : c->isl->cities) {
+        cities_on_island += ci ? 1U : 0U;
+    }
+    REQUIRE(cities_on_island == 1);
     c->ref = sim::CityRef{c->isl->index, c->city->number};
     const auto& T = *o.types;
     std::vector<sim::TileXY> demolish;

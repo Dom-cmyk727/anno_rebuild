@@ -151,6 +151,9 @@ struct ForestryStats {
         std::uint64_t consumed_88[2] = {0, 0}, made_88[2] = {0, 0};
     };
     std::map<BuildingId, SmallFarmLedger> small_farms;
+    /// MAP-EXTRACT-1 X3: per mine, the output its production steps made (diagnostic ledger only:
+    /// what carriers load and what stays in `out` are other terms).
+    std::map<BuildingId, std::uint64_t> mine_made_88;
 };
 
 /// MAP-POP-LIVE-1 L2: a diagnostic tally of the resident (house walker) jobs; measurement and test

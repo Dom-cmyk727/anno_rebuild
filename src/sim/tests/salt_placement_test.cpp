@@ -25,6 +25,7 @@
 #include <anno/sim/production.hpp>
 #include <anno/sim/site_checks.hpp>
 #include <anno/sim/terrain_view.hpp>
+#include <anno/sim/transport.hpp>
 #include <anno/sim/world.hpp>
 #include <anno/test/game_dir.hpp>
 
@@ -483,7 +484,7 @@ struct SaltWorld {
     std::shared_ptr<const sim::TypeRegistry> types;
 };
 
-std::optional<SaltWorld> salt_world(bool started, bool atomic = false) {
+std::optional<SaltWorld> salt_world(bool started, bool atomic = false, bool live_houses = false) {
     auto o = load_original();
     if (!o) {
         return std::nullopt;
@@ -496,6 +497,7 @@ std::optional<SaltWorld> salt_world(bool started, bool atomic = false) {
     REQUIRE_MESSAGE(component, (component ? "" : component.error()));
     sim::Rules rules;
     rules.build_atomic = atomic;
+    rules.house_updates = live_houses;
     auto created = sim::World::create(component.value().spec, o->types, o->cfg, rules);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
     sim::World world = std::move(created).value();
@@ -967,4 +969,364 @@ TEST_CASE("salt mine: a standing mine produces and adds no PRNG draw at any step
         }
     }
     CHECK(produced > 0);
+}
+
+
+// ---- X3: the whole chain mine -> carrier -> saltworks -> carrier -> store -> stall -> households --
+// (docs/sim/salt-extraction.md section 20). Real arm and counterfactual arms on endless02 island 1,
+// city 0 of player 8, with scoped ledgers whose unexplained terms must be zero.
+
+namespace {
+
+constexpr sim::GoodsId kSalzstein = 3; // SALZ is tutorial_town::kSalz = 28
+constexpr std::int32_t kMineX = 353, kMineY = 359;   // a legal site (docs 18.1), beside the imported saltworks
+constexpr std::int32_t kWorksX = 351, kWorksY = 363; // the imported saltworks 1022
+
+enum class Arm { Real, NoNewMine, SourceDisabled, ProducerRemoved, SaltworksRemoved };
+
+struct Chain {
+    SaltWorld sw;
+    sim::TransportStats stats;
+    sim::BuildingId mine, works;
+    std::uint32_t works_in0 = 0;
+    std::uint64_t salz_store0 = 0, ore_store0 = 0;
+    std::map<sim::DrawSite, std::uint64_t> draws;
+    std::vector<std::uint64_t> cursors;
+};
+
+const sim::City& city_of(const sim::World& w) { return *isle(w).city(kSaltCity.city); }
+const sim::Building* find_type(const sim::World& w, std::uint32_t type, sim::BuildingId skip = {}) {
+    for (const auto& l : city_of(w).index.lists)
+        for (const auto& b : l.slots)
+            if (b && b->type.v == type && !(skip.valid() && b->id == skip)) return &*b;
+    return nullptr;
+}
+
+/// zero_ore: the labelled setup step "no preloaded SALZSTEIN in the store" (a named fixture edit
+/// applied to every arm of that family, not a game command), so the ore baseline is exactly zero.
+std::unique_ptr<Chain> start_chain(Arm arm, bool zero_ore, bool live_houses = true) {
+    auto sw = salt_world(true, false, live_houses);
+    if (!sw) return nullptr;
+    auto c = std::make_unique<Chain>(Chain{std::move(*sw), {}, {}, {}, 0, 0, 0, {}, {}});
+    sim::World& w = c->sw.w;
+    if (zero_ore) {
+        sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->stock.stock[kSalzstein] = 0;
+        REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+    }
+    c->works = find_type(w, 1022)->id;
+    const sim::Workshop& ws = std::get<sim::Workshop>(find_type(w, 1022)->payload);
+    c->works_in0 = ws.in.at(0);
+    if (arm == Arm::SaltworksRemoved) {
+        sim::DemolishCmd dem;
+        dem.city = kSaltCity;
+        dem.tiles = {{kWorksX, kWorksY}};
+        REQUIRE(w.apply(sim::Command{kSaltPlayer, dem}).ok());
+        REQUIRE(find_type(w, 1022) == nullptr);
+    }
+    w.set_transport_stats(&c->stats);
+    c->salz_store0 = city_of(w).stock.stock[kSalz];
+    c->ore_store0 = city_of(w).stock.stock[kSalzstein];
+    if (arm != Arm::NoNewMine) {
+        const sim::ApplyResult r = w.apply(build_cmd({mine_at(kMineX, kMineY)}));
+        REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
+        c->mine = r.records.at(0).building;
+        if (arm == Arm::SourceDisabled) {
+            // the source switched off: the built, paid mine is unbound (its deposit link removed)
+            for (auto& l : sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->index.lists)
+                for (auto& b : l.slots)
+                    if (b && b->id == c->mine) std::get<sim::Mine>(b->payload).deposit.reset();
+        }
+        if (arm == Arm::ProducerRemoved) {
+            sim::DemolishCmd dem;
+            dem.city = kSaltCity;
+            dem.tiles = {{kMineX, kMineY}};
+            REQUIRE(w.apply(sim::Command{kSaltPlayer, dem}).ok());
+            REQUIRE(w.find_building(c->mine) == nullptr);
+        }
+    }
+    return c;
+}
+
+void step_chain(Chain& c, int n) {
+    for (int i = 0; i < n; ++i) {
+        c.sw.w.advance(kStepMs);
+        REQUIRE_MESSAGE(!c.sw.w.faulted(), c.sw.w.fault());
+        for (const sim::DrawRecord& r : c.sw.w.last_output().draws) c.draws[r.site] += r.count;
+        c.cursors.push_back(c.sw.w.rng().cursor());
+    }
+}
+
+struct Terms {
+    std::uint64_t mine_made = 0, mine_out = 0, ore_loaded = 0, ore_cargo = 0, works_in = 0, works_consumed = 0,
+                  works_made = 0, works_out = 0, salz_loaded = 0, salz_cargo = 0, salz_unloaded = 0, salz_lost = 0,
+                  ore_lost = 0, bought = 0, taken = 0, delivered = 0, res_lost = 0, res_cargo = 0, salz_store = 0,
+                  ore_store = 0;
+    std::int64_t u_mine = 0, u_ore = 0, u_made = 0, u_salz_out = 0, u_store = 0, u_buy = 0, u_deliver = 0,
+                 u_house = 0;
+};
+
+Terms terms_of(Chain& c) {
+    Terms t;
+    sim::World& w = c.sw.w;
+    const sim::TransportStats& st = c.stats;
+    const auto get = [](const auto& m, const auto& k) -> std::uint64_t {
+        const auto it = m.find(k);
+        return it == m.end() ? 0U : it->second;
+    };
+    const sim::City& city = city_of(w);
+    if (c.mine.valid()) {
+        t.mine_made = get(st.forestry.mine_made_88, c.mine);
+        t.ore_loaded = get(st.loaded_from, c.mine);
+        if (const sim::Building* m = w.find_building(c.mine)) t.mine_out = std::get<sim::Mine>(m->payload).out;
+    }
+    const sim::Building* works = w.find_building(c.works);
+    if (works != nullptr) {
+        const sim::Workshop& ws = std::get<sim::Workshop>(works->payload);
+        t.works_in = ws.in.at(0);
+        t.works_out = ws.out.at(0);
+        t.salz_loaded = get(st.loaded_from, c.works);
+    }
+    if (const auto it = st.forestry.workshops.find(c.works); it != st.forestry.workshops.end()) {
+        t.works_consumed = it->second.consumed_88.at(0);
+        t.works_made = it->second.made_88.at(0);
+    }
+    for (const auto& f : w.figures().list.slots) {
+        if (!f || f->expiry_stamp.has_value() || f->owner != city.owner) continue;
+        if (f->cargo_goods == kSalzstein && !f->resident) t.ore_cargo += f->cargo_88;
+        if (f->cargo_goods == kSalz && !f->resident) t.salz_cargo += f->cargo_88;
+        if (f->resident)
+            for (const sim::ResidentCargo& rc : f->resident->cargo)
+                if (rc.goods == kSalz) t.res_cargo += rc.amount_88;
+    }
+    t.salz_unloaded = get(st.unload_offered, kSalz);
+    t.salz_lost = get(st.cart_lost, kSalz);
+    t.ore_lost = get(st.cart_lost, kSalzstein);
+    t.salz_store = city.stock.stock[kSalz];
+    t.ore_store = city.stock.stock[kSalzstein];
+    t.bought = get(st.residents.bought_by_goods, kSalz);
+    t.taken = get(st.residents.merged_taken_by_city, std::make_pair(kSaltCity, kSalz));
+    t.delivered = get(st.residents.delivered_by_goods, kSalz);
+    t.res_lost = get(st.residents.lost_by_goods, kSalz);
+    const auto I = [](std::uint64_t v) { return static_cast<std::int64_t>(v); };
+    // ore: made = still in the mine + loaded; loaded = in the carriers' hands + into the saltworks
+    // (input now - input at start + consumed) + into the store (change) + lost
+    t.u_mine = I(t.mine_made) - I(t.mine_out) - I(t.ore_loaded);
+    t.u_ore = I(t.ore_loaded) - I(t.ore_cargo) - I(t.ore_lost) -
+              (I(t.works_in) - I(c.works_in0) + I(t.works_consumed)) - (I(t.ore_store) - I(c.ore_store0));
+    // SALZ: made = out + loaded; loaded = in the carts' hands + unloaded into the store + lost
+    t.u_made = I(t.works_made) - I(t.works_out) - I(t.salz_loaded);
+    t.u_salz_out = I(t.salz_loaded) - I(t.salz_cargo) - I(t.salz_unloaded) - I(t.salz_lost);
+    t.u_store = I(t.salz_store) - I(c.salz_store0) - I(t.salz_unloaded) + I(t.taken);
+    t.u_buy = I(t.bought) - I(t.taken);
+    t.u_deliver = I(t.bought) - I(t.delivered) - I(t.res_lost) - I(t.res_cargo);
+    t.u_house = I(get(st.residents.stock_primary_by_goods, kSalz) + get(st.residents.stock_replay_by_goods, kSalz)) -
+                I(get(st.residents.stock_expected_by_goods, kSalz));
+    return t;
+}
+
+void require_closed(const Terms& t, const char* label) {
+    INFO("ledger " << label);
+    CHECK(t.u_mine == 0);
+    CHECK(t.u_ore == 0);
+    CHECK(t.u_made == 0);
+    CHECK(t.u_salz_out == 0);
+    CHECK(t.u_store == 0);
+    CHECK(t.u_buy == 0);
+    CHECK(t.u_deliver == 0);
+    CHECK(t.u_house == 0);
+}
+
+} // namespace
+
+TEST_CASE("salt chain X3: the real arm delivers salt to households and every ledger term closes") {
+    auto c = start_chain(Arm::Real, true);
+    if (!c) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // baseline: the preloaded SALZ is 20 t, the ore store is empty by the labelled setup step
+    CHECK(c->salz_store0 == 20U * sim::kTon);
+    CHECK(c->ore_store0 == 0);
+    for (int block = 0; block < 7; ++block) {
+        step_chain(*c, 1000);
+        require_closed(terms_of(*c), "real, every 1000 steps");
+    }
+    const Terms t = terms_of(*c);
+    MESSAGE("real: mine_made " << t.mine_made << " ore_loaded " << t.ore_loaded << " works_made " << t.works_made
+            << " salz_unloaded " << t.salz_unloaded << " taken " << t.taken << " delivered " << t.delivered);
+    // production beyond the baseline
+    CHECK(t.mine_made > 0);
+    CHECK(t.ore_loaded > 0);       // the saltworks' carrier lifted ore from the new mine
+    CHECK(t.works_consumed > 0);   // the saltworks used it (no other ore existed)
+    CHECK(t.works_made > 0);
+    CHECK(t.salz_unloaded > 0);    // SALZ reached the store by the stall's cart
+    // receipt beyond the baseline: more SALZ left the store for households than the preload held
+    CHECK(t.taken > c->salz_store0);
+    CHECK(t.delivered > 0);
+    // and the new mine is the only producer: the imported mine stayed inert
+    const sim::Building* imported = find_type(c->sw.w, 1203, c->mine);
+    REQUIRE(imported != nullptr);
+    CHECK(std::get<sim::Mine>(imported->payload).out == 0);
+    CHECK(c->stats.forestry.mine_made_88[imported->id] == 0U);
+    CHECK(c->stats.residents.faults == 0);
+    CHECK(c->sw.w.check_invariants().empty());
+}
+
+TEST_CASE("salt chain X3: the counterfactual arms produce no new salt and the baseline only") {
+    for (const Arm arm : {Arm::NoNewMine, Arm::SourceDisabled, Arm::ProducerRemoved, Arm::SaltworksRemoved}) {
+        auto c = start_chain(arm, true);
+        if (!c) {
+            MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+            return;
+        }
+        INFO("arm " << static_cast<int>(arm));
+        for (int block = 0; block < 7; ++block) {
+            step_chain(*c, 1000);
+            require_closed(terms_of(*c), "counterfactual");
+        }
+        const Terms t = terms_of(*c);
+        CHECK(t.works_made == 0);
+        CHECK(t.salz_unloaded == 0);
+        CHECK(t.ore_loaded == 0);
+        // every unit that reached a household came out of the preloaded 20 t
+        CHECK(t.taken <= c->salz_store0);
+        CHECK(t.taken > 0); // the baseline stock is really consumed (the households are live)
+        if (arm == Arm::SaltworksRemoved) {
+            // the mine works and its ore stays in the mine: no carrier, no chain without the processor
+            CHECK(t.mine_made > 0);
+            CHECK(t.mine_out == t.mine_made);
+        } else {
+            CHECK(t.mine_made == 0);
+        }
+    }
+}
+
+TEST_CASE("salt chain X3: road and carrier reach differ across the legal sites and the near ones connect") {
+    struct Site {
+        std::int32_t x, y;
+        std::uint8_t rot;
+        bool connects;
+    };
+    // sampled from the 356 legal sites (docs 18.1) by distance from the saltworks (351,363): the four
+    // within 10 tiles reach it (its carrier's search radius is 16), the two beyond 15 tiles produce
+    // ore but no carrier ever lifts it
+    for (const Site s : {Site{352, 360, 1, true}, Site{357, 363, 0, true}, Site{358, 365, 0, true},
+                         Site{359, 369, 1, true}, Site{358, 377, 0, false}, Site{365, 381, 3, false}}) {
+        auto c = start_chain(Arm::NoNewMine, true);
+        if (!c) {
+            MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+            return;
+        }
+        INFO("site " << s.x << "," << s.y << " rot " << int(s.rot));
+        const sim::ApplyResult r = c->sw.w.apply(build_cmd({mine_at(s.x, s.y, s.rot)}));
+        REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
+        c->mine = r.records.at(0).building;
+        step_chain(*c, 1500);
+        const Terms t = terms_of(*c);
+        require_closed(t, "reach");
+        CHECK(t.mine_made > 0);
+        CHECK((t.ore_loaded > 0) == s.connects);
+        CHECK((t.works_made > 0) == s.connects);
+    }
+}
+
+TEST_CASE("salt chain X3: the pilot households are stage 0 and that stage needs salt") {
+    auto sw = salt_world(true, false, true);
+    if (!sw) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::set<std::uint32_t> groups;
+    const sim::City& city = city_of(sw->w);
+    for (const auto& l : city.index.lists)
+        for (const auto& b : l.slots)
+            if (b && std::holds_alternative<sim::House>(b->payload))
+                groups.insert(*sim::house_group(sw->w.config(), sw->types->find(b->type)->prodtype));
+    // the town's 82 houses are all group 0 (types 501..509): the other stages are NOT exercised here
+    CHECK(groups == std::set<std::uint32_t>{0});
+    for (std::uint32_t g = 0; g < 5; ++g) {
+        const auto view = sw->types->population_view(g, sw->w.config());
+        REQUIRE(view.ok());
+        const auto it = std::find_if(view.value().group->needs.begin(), view.value().group->needs.end(),
+                                     [](const sim::HouseNeed& n) { return n.ware == kSalz; });
+        const bool has = it != view.value().group->needs.end();
+        MESSAGE("group " << g << ": " << (has ? "SALZ need, force " + std::to_string(it->force) + ", menge " +
+                                                    std::to_string(it->menge)
+                                              : std::string("no SALZ need")));
+        // the registry: stages 0..3 need salt (menge 8, 8, 10, 10; forced from stage 1), stage 4 does not
+        CHECK(has == (g < 4));
+        if (has) {
+            CHECK(it->menge == (g < 2 ? 8U : 10U));
+            CHECK(it->force == (g > 0)); // forced from stage 1 up
+        }
+    }
+}
+
+TEST_CASE("salt chain X3: with the preloads in place the new mine adds ore") {
+    auto real = start_chain(Arm::Real, false);
+    auto base = start_chain(Arm::NoNewMine, false);
+    if (!real || !base) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // the baselines are the original's preloads: 20 t SALZ and 50 t SALZSTEIN, kept apart
+    CHECK(real->salz_store0 == 20U * sim::kTon);
+    CHECK(real->ore_store0 == 50U * sim::kTon);
+    for (int block = 0; block < 4; ++block) {
+        step_chain(*real, 1000);
+        step_chain(*base, 1000);
+        require_closed(terms_of(*real), "real with preloads");
+        require_closed(terms_of(*base), "base with preloads");
+    }
+    const Terms r = terms_of(*real), b = terms_of(*base);
+    // the new mine's ore reached the saltworks beside the preload, and the preload was used less
+    CHECK(r.ore_loaded > 0);
+    CHECK(r.ore_store > b.ore_store);
+    CHECK(b.ore_loaded == 0);
+    // PRNG: the mine, the saltworks and the carriers add no draw site. The only draws that differ are
+    // the households' own (HouseWalkerTarget, HouseVariant), which depend on the state the extra
+    // salt changes; every other site agrees exactly.
+    auto strip = [](std::map<sim::DrawSite, std::uint64_t> m) {
+        m.erase(sim::DrawSite::HouseWalkerTarget);
+        m.erase(sim::DrawSite::HouseVariant);
+        return m;
+    };
+    CHECK(strip(real->draws) == strip(base->draws));
+    CHECK(real->draws.at(sim::DrawSite::FarmWorkerDispatch) == base->draws.at(sim::DrawSite::FarmWorkerDispatch));
+}
+
+TEST_CASE("salt chain X3: with the households not live the mine leaves the PRNG cursor equal at every step") {
+    auto real = start_chain(Arm::Real, false, false);
+    auto base = start_chain(Arm::NoNewMine, false, false);
+    if (!real || !base) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    step_chain(*real, 3000);
+    step_chain(*base, 3000);
+    CHECK(terms_of(*real).mine_made > 0);
+    CHECK(terms_of(*real).works_made > 0);
+    CHECK(real->cursors == base->cursors);
+    CHECK(real->draws == base->draws);
+}
+
+TEST_CASE("salt chain X3: the ledger catches a direct salt credit and a direct ore credit") {
+    auto c = start_chain(Arm::Real, true);
+    if (!c) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    step_chain(*c, 500);
+    require_closed(terms_of(*c), "before the credits");
+    // a NAMED negative control, not a game command: 2 t of SALZ written into the store, and 3 t of ore
+    // written into the saltworks' input
+    sim::City& city = *sim::WorldTestAccess::islands(c->sw.w)[1]->city(kSaltCity.city);
+    city.stock.stock[kSalz] += 2U * sim::kTon;
+    for (auto& l : city.index.lists)
+        for (auto& b : l.slots)
+            if (b && b->id == c->works) std::get<sim::Workshop>(b->payload).in.at(0) += 3U * sim::kTon;
+    step_chain(*c, 1);
+    const Terms t = terms_of(*c);
+    CHECK(t.u_store == 2 * 256);
+    CHECK(t.u_ore == -3 * 256);
 }

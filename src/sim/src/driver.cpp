@@ -363,8 +363,13 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         // The island's deposits in index order (Mine::deposit is an index into them),
         // the footprint by rotation (D 0x1006ddf0) and world setting 14 bit 1, the
         // add-on edition (OQ-035 a, D 0x10063686).
+        const std::uint32_t mine_out_before = m->out;
         r = mine_step(*m, type->prod, ctx.t, island.deposits, mine_area(b, *type),
                       ctx.settings.depletes());
+        if (ctx.transport_stats != nullptr && r.stepped) {
+            // MAP-EXTRACT-1 X3 ledger (diagnostic, never state): what this step made.
+            ctx.transport_stats->forestry.mine_made_88[b.id] += m->out - mine_out_before;
+        }
         break;
     }
     case TickKind::Market: {

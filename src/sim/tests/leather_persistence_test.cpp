@@ -26,30 +26,37 @@ std::string hex64(std::uint64_t v) {
     return o.str();
 }
 
-/// The named in-flight states of the chain, found on the live world.
+/// The named in-flight states of the TARGET chain, found on the live world. Every figure
+/// predicate is scoped (C1): alive, owner = the target city's owner, home in the target city, and
+/// the job/home the state names; cargo amounts must be positive. A rival's or another city's
+/// loaded figure, a figure of the right goods with the wrong home or job, and an empty resident
+/// satisfy nothing.
 struct Flight {
-    bool worker = false;    // a carrier on its way with hides
+    bool worker = false;    // a carrier OF THE TANNERY carrying hides
     bool processor = false; // the tannery holds a full batch AND finished leather
-    bool delivery = false;  // leather on a figure (a cart) towards the stall
-    bool resident = false;  // a household walker carrying leather
+    bool delivery = false;  // leather on a carrier of the tannery or a market cart of the town
+    bool resident = false;  // a walker of a target house carrying a positive leather amount
 };
 
 Flight flight_of(const Leather& L) {
     const Cloth& c = *L.t;
     Flight f;
     for (const auto& s : c.w.figures().list.slots) {
-        if (!s || s->expiry_stamp.has_value()) {
+        if (!s || !in_chain(c, *s)) {
             continue;
         }
-        if (s->cargo_goods == kHaeute && s->cargo_88 > 0) {
+        if (s->job == sim::kJobWorkshopCarrier && s->home == L.tannery &&
+            s->cargo_goods == kHaeute && s->cargo_88 > 0 && !s->resident.has_value()) {
             f.worker = true;
         }
-        if (s->cargo_goods == kLeder && s->cargo_88 > 0 && !s->resident.has_value()) {
+        if (!s->resident.has_value() && s->cargo_goods == kLeder && s->cargo_88 > 0 &&
+            ((s->job == sim::kJobWorkshopCarrier && s->home == L.tannery) ||
+             s->job == sim::kJobMarketCart)) {
             f.delivery = true;
         }
-        if (s->resident.has_value()) {
+        if (s->resident.has_value() && c.houses.count(s->home) != 0) {
             for (const sim::ResidentCargo& rc : s->resident->cargo) {
-                if (rc.goods == kLeder) {
+                if (rc.goods == kLeder && rc.amount_88 > 0) {
                     f.resident = true;
                 }
             }
@@ -126,7 +133,7 @@ TEST_CASE("synthetic mechanics fixture: reload at in-flight states equals the un
     CHECK(ref.first["worker"] == 61); // measured steps of 50 ticks at stream 130
     CHECK(ref.first["processor"] == 90);
     CHECK(ref.first["delivery"] == 494);
-    CHECK(ref.first["resident"] == 508);
+    CHECK(ref.first["resident"] == 666); // scoped to the target houses (was 508: a rival walker)
     CHECK(ref.final_hash == 0x5b667895ce4c5ba5ULL); // equals the main run's hash at 100 000 ticks
     for (const char* k : {"worker", "processor", "delivery", "resident"}) {
         std::cerr << "PIN flight " << k << " first step "
@@ -437,4 +444,127 @@ TEST_CASE("synthetic mechanics fixture: refused commands change nothing and repl
     CHECK(final_with ==
           0x792094782f0f2fbaULL); // equals checkpoint 5 of the log above (600 advances)
     std::cerr << "PIN refused final hash " << hex64(final_with) << "\n";
+}
+
+TEST_CASE("synthetic mechanics fixture: scoped in-flight predicates and ledgers (controls)") {
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto L = start_leather(*o, kHides, true, true);
+    Cloth& c = *L->t;
+    const sim::PlayerId mine = c.city->owner;
+    const sim::PlayerId rival_owner{kOwner};
+    // a building of the rival's town (island 3, owner 2) and a house of the target town
+    sim::BuildingId rival_home;
+    for (auto& isl : sim::WorldTestAccess::islands(c.w)) {
+        if (isl && isl->index.v == kIsland) {
+            for (auto& ci : isl->cities) {
+                if (ci && ci->owner == rival_owner) {
+                    for (auto& l : ci->index.lists) {
+                        for (auto& b : l.slots) {
+                            if (b && !rival_home.valid()) {
+                                rival_home = b->id;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    REQUIRE(rival_home.valid());
+    REQUIRE_FALSE(c.houses.empty());
+    const sim::BuildingId house = c.houses.begin()->first;
+    const auto none = [&] {
+        const Flight f = flight_of(*L);
+        const LeatherLedger l = leather_ledger(*L);
+        return !f.worker && !f.delivery && !f.resident && l.hide_cargo == 0 && l.leather_cart == 0;
+    };
+    // the world at tick 0 holds no figure: no state is satisfied
+    CHECK(none());
+    // NEGATIVE controls, loaded with the right goods and amount but the wrong scope. Each is
+    // checked alone, so one satisfying predicate cannot hide behind another.
+    const sim::ResidentCargo loaded{kLeder, 256}, empty{kLeder, 0};
+    struct Wrong {
+        const char* name;
+        sim::PlayerId owner;
+        sim::BuildingId home;
+        std::uint32_t job;
+        sim::GoodsId goods;
+        std::optional<sim::ResidentCargo> rc;
+    };
+    const std::vector<Wrong> wrongs{
+        {"rival carrier with hides", rival_owner, rival_home, sim::kJobWorkshopCarrier, kHaeute,
+         std::nullopt},
+        {"rival owner at the target tannery", rival_owner, L->tannery, sim::kJobWorkshopCarrier,
+         kHaeute, std::nullopt},
+        {"target owner at a rival home", mine, rival_home, sim::kJobWorkshopCarrier, kHaeute,
+         std::nullopt},
+        {"target tannery carrier with the wrong job", mine, L->tannery, 0x2e, kHaeute,
+         std::nullopt},
+        {"rival cart with leather", rival_owner, rival_home, sim::kJobMarketCart, kLeder,
+         std::nullopt},
+        {"rival carrier with leather", rival_owner, rival_home, sim::kJobWorkshopCarrier, kLeder,
+         std::nullopt},
+        {"target-owner cart homed in the rival town", mine, rival_home, sim::kJobMarketCart, kLeder,
+         std::nullopt},
+        {"rival resident with loaded leather", rival_owner, rival_home, sim::kJobResidentCode, 0,
+         loaded},
+        {"rival owner at a target house", rival_owner, house, sim::kJobResidentCode, 0, loaded},
+        {"target resident with an EMPTY leather cargo", mine, house, sim::kJobResidentCode, 0,
+         empty},
+        {"target resident with another goods", mine, house, sim::kJobResidentCode, 0,
+         sim::ResidentCargo{kStoffe, 256}},
+    };
+    for (const Wrong& w : wrongs) {
+        inject(c, w.owner, w.home, w.job, w.goods, w.goods == 0 ? 0U : 256U, w.rc);
+        const Flight f = flight_of(*L);
+        // no in-flight STATE is satisfied by any wrong-scope figure
+        CHECK_MESSAGE((!f.worker && !f.delivery && !f.resident), std::string(w.name));
+        // the TARGET LEDGER counts cargo of its own chain whatever the job (the one case below: a
+        // target-owner figure homed at the target tannery with the wrong job still holds hides
+        // that belong to the chain), and nothing of any other scope
+        const LeatherLedger l = leather_ledger(*L);
+        const bool own_chain_cargo = std::string(w.name).find("wrong job") != std::string::npos;
+        CHECK_MESSAGE(l.hide_cargo == (own_chain_cargo ? 256U : 0U), std::string(w.name));
+        CHECK_MESSAGE(l.leather_cart == 0, std::string(w.name));
+        remove_figures(c);
+    }
+    // POSITIVE controls: the actual target figures satisfy exactly their own state and enter the
+    // target ledger
+    inject(c, mine, L->tannery, sim::kJobWorkshopCarrier, kHaeute, 256);
+    {
+        const Flight f = flight_of(*L);
+        CHECK(f.worker);
+        CHECK_FALSE(f.delivery);
+        CHECK_FALSE(f.resident);
+        CHECK(leather_ledger(*L).hide_cargo == 256);
+    }
+    remove_figures(c);
+    inject(c, mine, L->tannery, sim::kJobWorkshopCarrier, kLeder, 256);
+    {
+        const Flight f = flight_of(*L);
+        CHECK(f.delivery);
+        CHECK_FALSE(f.worker);
+        CHECK(leather_ledger(*L).leather_cart == 256);
+    }
+    remove_figures(c);
+    inject(c, mine, house, sim::kJobResidentCode, 0, 0, loaded);
+    {
+        const Flight f = flight_of(*L);
+        CHECK(f.resident);
+        CHECK_FALSE(f.worker);
+        CHECK_FALSE(f.delivery);
+    }
+    remove_figures(c);
+    // a rival's loaded figure does not change the target ledger either
+    const LeatherLedger before = leather_ledger(*L);
+    inject(c, rival_owner, rival_home, sim::kJobWorkshopCarrier, kHaeute, 256);
+    inject(c, rival_owner, rival_home, sim::kJobMarketCart, kLeder, 256);
+    const LeatherLedger after = leather_ledger(*L);
+    CHECK(after.hide_cargo == before.hide_cargo);
+    CHECK(after.leather_cart == before.leather_cart);
+    CHECK(after.u_hides == before.u_hides);
+    CHECK(after.u_loaded == before.u_loaded);
 }

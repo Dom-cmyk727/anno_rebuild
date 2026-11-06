@@ -1,12 +1,15 @@
 // MAP-NEEDS-2 N3: sheep -> wool -> cloth -> a 1314 stall -> households on ORIGINAL data
 // (docs/sim/early-needs.md sections 5, 7, 12). The slice: Tutorial/02Trade01.sze, island 7, city 1
-// of player 0 (the SUPPLY-1 town). IMPORTED original producers (found by their goods, not by id):
-// the two sheep farms (output WOLLE), the weaver (WOLLE -> STOFFE), the market halls, the food
-// stall and 13 houses. The cloth stall is built by a PUBLIC BuildCmd of the stall type found by its
-// goods (output STOFFE). WOLLE, STOFFE, LEDER and TIERHAEUTE are 0 in the store at tick 0
-// (asserted); no figures exist at tick 0 (asserted). Rules::house_updates is on in the test world
-// only. Every counter is scoped to this town's buildings; the other cloth town of the scenario
-// (island 3, STOFFE 7680 and its own stall) is outside every sum.
+// of player 0 (the SUPPLY-1 town) in the ORIGINAL-DATA COMPONENT PROJECTION (tutorial_world(): the
+// scenario is loaded with original_component::actor_free_units(), so its units, actors and script
+// program are OMITTED; the buildings, terrain, stocks and players are the original data). IMPORTED
+// original producers (found by their goods, not by id): the two sheep farms (output WOLLE), the
+// weaver (WOLLE -> STOFFE), the market halls, the food stall and 13 houses. The cloth stall is
+// built by a PUBLIC BuildCmd of the stall type found by its goods (output STOFFE). WOLLE, STOFFE,
+// LEDER and TIERHAEUTE are 0 in the store at tick 0 (asserted); no figures exist at tick 0
+// (asserted). Rules::house_updates is on in the test world only. Every counter is scoped to this
+// town's buildings; the other cloth town of the scenario (island 3, STOFFE 7680 and its own stall)
+// is outside every sum.
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -40,8 +43,8 @@ using namespace cloth_town;
 
 } // namespace
 
-TEST_CASE("cloth canary: the unmodified original, zero-start: new wool becomes new cloth and "
-          "households buy it") {
+TEST_CASE("cloth canary: original-data component projection, zero-start: new wool becomes new "
+          "cloth and households buy it") {
     const auto o = load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -213,8 +216,7 @@ TEST_CASE(
     // carriers end with their home)
     std::uint64_t carrier_wool_lost = 0;
     for (const auto& f : c.w.figures().list.slots) {
-        if (f && !f->expiry_stamp.has_value() && f->home == old_weaver &&
-            f->cargo_goods == kWolle) {
+        if (f && in_chain(c, *f) && f->home == old_weaver && f->cargo_goods == kWolle) {
             carrier_wool_lost += f->cargo_88;
         }
     }
@@ -267,12 +269,13 @@ TEST_CASE(
     const sim::Workshop& nw = std::get<sim::Workshop>(c.isl->find_building(new_weaver)->payload);
     std::uint64_t cart = 0, wool_cargo = 0;
     for (const auto& s : c.w.figures().list.slots) {
-        if (s && !s->expiry_stamp.has_value() && s->job == sim::kJobMarketCart &&
-            s->cargo_goods == kStoffe) {
+        // the target chain only: owner and home in the target city (the carts of the stall's
+        // market, the carriers of the old/replacement weaver while their home is alive)
+        if (s && in_chain(c, *s) && s->job == sim::kJobMarketCart && s->cargo_goods == kStoffe) {
             cart += s->cargo_88;
         }
-        if (s && !s->expiry_stamp.has_value() && s->job == sim::kJobWorkshopCarrier &&
-            s->cargo_goods == kWolle) {
+        if (s && in_chain(c, *s) && s->job == sim::kJobWorkshopCarrier &&
+            s->cargo_goods == kWolle && (s->home == old_weaver || s->home == new_weaver)) {
             wool_cargo += s->cargo_88;
         }
     }
@@ -287,4 +290,50 @@ TEST_CASE(
               << wl.at(new_weaver).made_88[0] << " taken3 " << taken(c) << " store3 "
               << c.city->stock.stock[kStoffe] << " old_out_lost " << old_out_lost << " old_in_lost "
               << old_in_lost << " carrier_wool_lost " << carrier_wool_lost << "\n";
+}
+
+TEST_CASE("cloth canary: a rival's loaded figures never enter the target chain's ledger") {
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto A = start_cloth(*o, true, 0, true);
+    Cloth& c = *A;
+    const sim::PlayerId rival_owner{kOwner};
+    sim::BuildingId rival_home;
+    for (auto& isl : sim::WorldTestAccess::islands(c.w)) {
+        if (isl && isl->index.v == kIsland) {
+            for (auto& ci : isl->cities) {
+                if (!ci) {
+                    continue;
+                }
+                for (auto& l : ci->index.lists) {
+                    for (auto& b : l.slots) {
+                        if (b && !rival_home.valid()) {
+                            rival_home = b->id;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    REQUIRE(rival_home.valid());
+    const Ledger l0 = ledger_of(c, 0);
+    // a rival's loaded cart, wool carrier and cloth carrier: not ours
+    inject(c, rival_owner, rival_home, sim::kJobMarketCart, kStoffe, 512);
+    inject(c, rival_owner, rival_home, sim::kJobWorkshopCarrier, kWolle, 512);
+    inject(c, rival_owner, c.weaver, sim::kJobWorkshopCarrier, kWolle, 512);
+    const Ledger l1 = ledger_of(c, 0);
+    CHECK(l1.cloth_cart == l0.cloth_cart);
+    CHECK(l1.wool_cargo == l0.wool_cargo);
+    CHECK(l1.u_wool == l0.u_wool);
+    CHECK(l1.u_cloth == l0.u_cloth);
+    remove_figures(c);
+    // the target's own loaded figures are counted
+    inject(c, c.city->owner, c.weaver, sim::kJobWorkshopCarrier, kWolle, 512);
+    inject(c, c.city->owner, c.weaver, sim::kJobMarketCart, kStoffe, 256);
+    const Ledger l2 = ledger_of(c, 0);
+    CHECK(l2.wool_cargo == l0.wool_cargo + 512);
+    CHECK(l2.cloth_cart == l0.cloth_cart + 256);
 }

@@ -188,7 +188,7 @@ inline LeatherLedger leather_ledger(const Leather& L) {
         if (!s || s->expiry_stamp.has_value()) {
             continue;
         }
-        const bool ours = s->home.valid() && c.isl->find_building(s->home) != nullptr;
+        const bool ours = in_chain(c, *s);
         if (s->cargo_goods == kHaeute && ours) {
             l.hide_cargo += s->cargo_88;
         }
@@ -199,6 +199,8 @@ inline LeatherLedger leather_ledger(const Leather& L) {
     l.hide_store = c.city->stock.stock[kHaeute];
     l.leather_store = c.city->stock.stock[kLeder];
     l.leather_taken = taken_of(c, kLeder);
+    // cart_lost is keyed by goods only (world-wide): a zero here is a world-wide zero, which
+    // implies zero for the target chain; a non-zero would need the rival's activity excluded first
     l.cart_lost = c.stats.cart_lost.count(kLeder) ? c.stats.cart_lost.at(kLeder) : 0U;
     // hides: the labelled stock is all there is: store + tannery input + in carriers' hands +
     // consumed = the labelled stock

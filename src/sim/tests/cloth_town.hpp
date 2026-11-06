@@ -68,6 +68,28 @@ struct Cloth {
     Cloth& operator=(const Cloth&) = delete;
 };
 
+/// Scope helpers (MAP-NEEDS-CLOSE-EXTRACT-1 C1). A building belongs to the TARGET CHAIN when it
+/// is in the target CITY (the exact CityRef's building index, not merely on the island), and a
+/// figure belongs to it when it is alive, its owner is the target city's owner and its home is a
+/// building of that city. Everything that sums or selects figures goes through these.
+inline bool in_city(const Cloth& c, sim::BuildingId id) {
+    if (!id.valid()) {
+        return false;
+    }
+    for (const auto& l : c.city->index.lists) {
+        for (const auto& b : l.slots) {
+            if (b && b->id == id) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+inline bool in_chain(const Cloth& c, const sim::Figure& f) {
+    return !f.expiry_stamp.has_value() && f.owner == c.city->owner && in_city(c, f.home);
+}
+
 /// The payment of a build: the owner's gold and the city's store of every cost good before, then
 /// the exact debit after.
 inline PaySnap pay_snap(const Cloth& c, const sim::BuildingType& t) {
@@ -354,9 +376,9 @@ inline Ledger ledger_of(const Cloth& c, std::uint64_t cloth_store0) {
         if (!s || s->expiry_stamp.has_value()) {
             continue;
         }
-        const bool ours = s->home.valid() && c.isl->find_building(s->home) != nullptr;
-        // a cart's home is a market of this island; every figure of this island's town is counted
-        // by its home's island
+        // a cart's home is a market of the target city, a carrier's its workshop or farm: the
+        // exact city and owner, not "somewhere on the island"
+        const bool ours = in_chain(c, *s);
         if (s->cargo_goods == kWolle && ours && s->job != 0x2a && s->job != 0x2e) {
             l.wool_cargo += s->cargo_88;
         }
@@ -370,6 +392,7 @@ inline Ledger ledger_of(const Cloth& c, std::uint64_t cloth_store0) {
     l.wool_store = c.city->stock.stock[kWolle];
     l.cloth_store = c.city->stock.stock[kStoffe];
     l.cloth_taken = taken(c);
+    // cart_lost is keyed by goods only (world-wide), see leather_town.hpp
     l.cart_lost = c.stats.cart_lost.count(kStoffe) ? c.stats.cart_lost.at(kStoffe) : 0U;
     // credited raw of this town's farms = consumed + in the farms + in the animals' hands (+ lost =
     // 0 asserted below)
@@ -423,6 +446,43 @@ inline std::uint64_t grass_in_hands(const Cloth& c) {
         }
     }
     return n;
+}
+
+/// Injects one figure into the world for a scope control (a NAMED test setup, not a game
+/// command): the control worlds hold no figure at tick 0, so every figure in them is one of ours.
+inline sim::FigureId inject(Cloth& c, sim::PlayerId owner, sim::BuildingId home, std::uint32_t job,
+                            sim::GoodsId goods, std::uint32_t amount,
+                            std::optional<sim::ResidentCargo> resident_cargo = std::nullopt) {
+    static std::uint32_t next = 4000000; // far above any id the short runs of these controls use
+    sim::Figure f;
+    f.id = sim::FigureId{next++};
+    f.owner = owner;
+    f.home = home;
+    f.job = job;
+    f.cargo_goods = goods;
+    f.cargo_88 = amount;
+    if (resident_cargo.has_value()) {
+        sim::ResidentState rs;
+        rs.cargo.push_back(*resident_cargo);
+        f.resident = rs;
+    }
+    const sim::FigureId id = f.id;
+    const sim::Slot slot = sim::add_figure(sim::WorldTestAccess::figures(c.w), std::move(f),
+                                           c.w.config(), c.w.rules());
+    REQUIRE(slot != sim::kNoSlot);
+    return id;
+}
+
+inline void remove_figures(Cloth& c) {
+    std::vector<sim::FigureId> ids;
+    for (const auto& s : c.w.figures().list.slots) {
+        if (s) {
+            ids.push_back(s->id);
+        }
+    }
+    for (const sim::FigureId id : ids) {
+        (void)sim::remove_figure(sim::WorldTestAccess::figures(c.w), id);
+    }
 }
 
 } // namespace cloth_town

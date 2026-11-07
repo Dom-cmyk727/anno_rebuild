@@ -585,10 +585,10 @@ TEST_CASE("dev script: expect fact's value can hold a space, like title/title-la
     // pin an exact token boundary and had to settle for a loose `contains` that also matches a
     // longer value sharing the same prefix (settlement_activity.script's "residents=5" matching
     // "residents=50").
-    app::DevScript s = app::DevScript::parse(
-                           "expect fact a == one two three\nexpect fact a contains one two\n"
-                           "quit\n")
-                           .value();
+    app::DevScript s =
+        app::DevScript::parse("expect fact a == one two three\nexpect fact a contains one two\n"
+                              "quit\n")
+            .value();
     app::DevScriptState st;
     st.facts["a"] = "one two three";
     const app::DevScriptAction act = s.step(st);

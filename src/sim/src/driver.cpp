@@ -376,17 +376,18 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         } relook{island, ctx.types, b, *type, m->deep};
         const MineRelookup relookup{
             [](void* p) -> std::optional<std::size_t> {
-                const Relook& r = *static_cast<const Relook*>(p);
-                if (const auto bound = bind_mine_deposit(r.island, r.types, r.b, r.type, r.deep)) {
+                const Relook& rl = *static_cast<const Relook*>(p);
+                if (const auto bound =
+                        bind_mine_deposit(rl.island, rl.types, rl.b, rl.type, rl.deep)) {
                     return bound;
                 }
                 // No ore object in reach. A world whose deposits carry no ore object (a synthetic
                 // fixture) keeps the earlier search among its deposits; on original data every
                 // deposit comes from an ore object, so this finds nothing the lookup missed.
-                return find_deposit(r.island.deposits,
-                                    r.type.prod.outputs.empty() ? std::string()
-                                                                : r.type.prod.outputs[0],
-                                    r.deep, mine_area(r.b, r.type));
+                return find_deposit(rl.island.deposits,
+                                    rl.type.prod.outputs.empty() ? std::string()
+                                                                 : rl.type.prod.outputs[0],
+                                    rl.deep, mine_area(rl.b, rl.type));
             },
             &relook};
         r = mine_step(*m, type->prod, ctx.t, island.deposits, mine_area(b, *type),

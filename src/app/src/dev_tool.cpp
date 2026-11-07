@@ -160,6 +160,20 @@ void DevTool::forward(DevEvent::Kind kind, sim::TileXY tile, std::vector<sim::Co
     }
 }
 
+bool DevTool::arm(sim::TypeId type) {
+    if (!setup_.city) {
+        message_ = "no city yet: found one first (F with a ship selected), then B";
+        return false;
+    }
+    if (!input_.arm(type)) {
+        message_ = "type " + std::to_string(type.v) + " is not in the tool's cycle list";
+        return false;
+    }
+    enabled_ = true;
+    message_.clear();
+    return true;
+}
+
 void DevTool::retarget(sim::CityRef city, TileRect island) {
     // A new DevInput starts at the first type: keep the type and the rotation the player chose.
     const std::optional<sim::TypeId> kept = input_.selected();

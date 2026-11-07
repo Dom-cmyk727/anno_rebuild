@@ -989,3 +989,56 @@ TEST_CASE("play: live_inspection hides a stale answer once the hover moves, land
     PlaySnapshot empty;
     CHECK(live_inspection(empty, true, TileXY{10, 20}) == nullptr);
 }
+
+TEST_CASE("play: the snapshot's eligibility is every registry type with the sim's own "
+          "construction_eligibility verdict, published once per turn (UI.2 C2)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path path =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    anno::app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true;
+    // Loaded twice (play_test.cpp's own established pattern, e.g. "runner turns match run_turn"
+    // above): one World moves into the runner, the other stays to call
+    // World::construction_eligibility directly, as the cross-check this new published field must
+    // agree with exactly.
+    auto for_runner = anno::app::load_play(*dir, path, fixed);
+    auto for_direct = anno::app::load_play(*dir, path, fixed);
+    REQUIRE(for_runner.ok());
+    REQUIRE(for_direct.ok());
+    anno::sim::World& direct_world = for_direct.value().world;
+    const std::size_t type_count = direct_world.types().types().size();
+    REQUIRE(type_count > 0);
+
+    const anno::sim::PlayerId developer = anno::app::developer_player();
+    anno::app::PlayRunner runner(std::move(for_runner.value().world));
+    runner.run_n(1);
+    // The same single turn, run directly, so `direct_world` is at the exact turn the published
+    // snapshot is (not turn 0): eligibility can depend on player/stage state a turn might change.
+    anno::sim::Turn turn;
+    turn.index = 0;
+    turn.step_ms = runner.step_ms();
+    anno::sim::run_turn(direct_world, nullptr, turn, anno::sim::Timing{}.mp_steps_per_turn);
+    const auto snap = runner.snapshot();
+    REQUIRE(snap->eligibility != nullptr);
+    REQUIRE(snap->eligibility->size() == type_count);
+
+    std::optional<std::uint32_t> previous_id;
+    std::size_t agree = 0;
+    for (const auto& [id, allowed] : *snap->eligibility) {
+        // Ascending by id (world_.types().types() is build()-sorted; the published copy keeps
+        // that order rather than reordering it).
+        if (previous_id) {
+            CHECK(id.v > *previous_id);
+        }
+        previous_id = id.v;
+        const bool direct = direct_world.construction_eligibility(developer, id).allowed();
+        agree += (allowed == direct) ? 1 : 0;
+    }
+    // Every entry agrees with calling the sim directly for the same (player, type): the
+    // published field is the sim's own answer, not a derived or stale copy of it.
+    CHECK(agree == type_count);
+}

@@ -924,6 +924,18 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
                 next->inspection = std::make_shared<const BuildingInspection>(std::move(*found));
             }
         }
+        // UI.2 C2: the construction menu's lock display reads this, never
+        // World::construction_eligibility directly (that World belongs to this thread, not the
+        // window's) and never data/ui/construction.txt's recorded state (RE evidence about the
+        // original, not a live rule). A pure read (rule 0.2): no state, stream, hash or draw
+        // changes.
+        auto elig = std::make_shared<std::vector<std::pair<sim::TypeId, bool>>>();
+        elig->reserve(world_.types().types().size());
+        for (const sim::BuildingType& t : world_.types().types()) {
+            elig->emplace_back(t.id,
+                               world_.construction_eligibility(local_player_, t.id).allowed());
+        }
+        next->eligibility = std::move(elig);
     }
     for (const CommandOutcome& o : ran) {
         if (o.state == CommandOutcome::State::Refused) {

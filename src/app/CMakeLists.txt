@@ -5,6 +5,7 @@ add_library(anno_app_core
   src/building_delta.cpp
   src/command_outcome.cpp
   src/commands_file.cpp
+  src/construction_menu.cpp
   src/dev_feedback.cpp
   src/dev_session.cpp
   src/dev_input.cpp
@@ -83,7 +84,8 @@ if(ANNO_BUILD_TESTS)
     tests/picture_trace_test.cpp tests/window_trace_test.cpp tests/command_outcome_test.cpp
     tests/visibility_test.cpp tests/dev_occupancy_test.cpp tests/dev_visibility_test.cpp
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
-    tests/ui_layout_test.cpp tests/ui_construction_eligibility_test.cpp)
+    tests/ui_layout_test.cpp tests/ui_construction_eligibility_test.cpp
+    tests/construction_menu_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"

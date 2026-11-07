@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <anno/app/building_delta.hpp>
@@ -160,6 +161,15 @@ struct PlaySnapshot {
     /// against a newer World); null when nothing was requested or the tile holds no building of
     /// the developer's city.
     std::shared_ptr<const BuildingInspection> inspection;
+    /// `World::construction_eligibility(local player, type).allowed()` for every type the
+    /// registry defines, ascending by id (UI.2 C2: the sim's own lock authority is the one and
+    /// only source the construction menu's lock display reads — never a copy of it, and never
+    /// `data/ui/construction.txt`'s recorded state, which is RE evidence about the original, not
+    /// a live rule). A pure read with no state, stream, hash or draw effect (rule 0.2); computed
+    /// and published here, once per turn, rather than let the window thread call
+    /// `World::construction_eligibility` directly against the sim thread's own `World` (a race).
+    /// Null when the player has no city yet, matching `money`/`goods` above.
+    std::shared_ptr<const std::vector<std::pair<sim::TypeId, bool>>> eligibility;
 };
 
 /// What the window reads for the developer tool's feedback (round ee review, R1): a snapshot and

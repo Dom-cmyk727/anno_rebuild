@@ -576,3 +576,55 @@ TEST_CASE("dev script: the log opens with the identity of the whole parsed scrip
     CHECK(log[2] == "ran line 2: note frames");
     CHECK(log[3] == "ran line 3: quit");
 }
+
+TEST_CASE("dev script: expect fact's value can hold a space, like title/title-lacks "
+          "(W4-SETTLEMENT-1 W7 review, finding 9)" *
+          doctest::test_suite("dev_script")) {
+    // Before this fix, a fact value with a space parsed into more than 4 args for "expect fact",
+    // which no case in step()'s dispatch matches ("unknown expectation") — so a script could not
+    // pin an exact token boundary and had to settle for a loose `contains` that also matches a
+    // longer value sharing the same prefix (settlement_activity.script's "residents=5" matching
+    // "residents=50").
+    app::DevScript s = app::DevScript::parse(
+                           "expect fact a == one two three\nexpect fact a contains one two\n"
+                           "quit\n")
+                           .value();
+    app::DevScriptState st;
+    st.facts["a"] = "one two three";
+    const app::DevScriptAction act = s.step(st);
+    CHECK(act.quit);
+    CHECK_FALSE(s.failed());
+    const auto& log = s.log();
+    REQUIRE(log.size() == 4);
+    // The joined value is logged back exactly as it was written, not collapsed to one word.
+    CHECK(log[1] == "ran line 1: expect fact a == one two three");
+    CHECK(log[2] == "ran line 2: expect fact a contains one two");
+    CHECK(log[3] == "ran line 3: quit");
+
+    // The bug this closes: a single-word value accidentally matches a longer one sharing its
+    // prefix. "residents=5" is itself a substring of "residents=50 ...", so a loose check wrongly
+    // passes against the wrong count.
+    app::DevScript loose =
+        app::DevScript::parse("expect fact a contains residents=5\nquit\n").value();
+    app::DevScriptState loose_st;
+    loose_st.facts["a"] = "residents=50 stock=0";
+    CHECK(loose.step(loose_st).quit); // wrongly passes: this is the bug, not the fix
+    CHECK_FALSE(loose.failed());
+
+    // Pinning the token boundary through the space this fix now allows ("residents=5 stock=")
+    // tells the two counts apart: "residents=50 stock=0" does not contain that exact text.
+    app::DevScript pinned =
+        app::DevScript::parse("expect fact a contains residents=5 stock=\nquit\n").value();
+    app::DevScriptState pinned_st;
+    pinned_st.facts["a"] = "residents=50 stock=0";
+    CHECK_FALSE(pinned.step(pinned_st).quit);
+    CHECK(pinned.failed());
+
+    // The same pinned check correctly accepts the real residents=5 case.
+    app::DevScript pinned_ok =
+        app::DevScript::parse("expect fact a contains residents=5 stock=\nquit\n").value();
+    app::DevScriptState pinned_ok_st;
+    pinned_ok_st.facts["a"] = "residents=5 stock=0,0,0,0,0,0";
+    CHECK(pinned_ok.step(pinned_ok_st).quit);
+    CHECK_FALSE(pinned_ok.failed());
+}

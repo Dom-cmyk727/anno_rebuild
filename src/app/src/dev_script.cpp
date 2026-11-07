@@ -344,6 +344,19 @@ formats::Result<DevScript, std::string> DevScript::parse(std::string_view text) 
             }
             s.args = {s.args[0], rest};
         }
+        if (s.verb == "expect" && s.args.size() >= 4 && s.args[0] == "fact") {
+            // Same pattern as title/title-lacks above: a fact's value can itself contain a space
+            // (DescribePayload's status lines join several "key=value" pairs with one), and
+            // `contains` without it can accidentally match a longer number sharing the same
+            // prefix ("residents=5" also matching "residents=50" — W4-SETTLEMENT-1 W7 review,
+            // finding 9). Join everything after the operator into one value, so a script can pin
+            // the token boundary (`contains residents=5 stock=`) instead of just a substring.
+            std::string rest;
+            for (std::size_t i = 3; i < s.args.size(); ++i) {
+                rest += (i > 3 ? " " : "") + s.args[i];
+            }
+            s.args = {s.args[0], s.args[1], s.args[2], rest};
+        }
         const int n = arity(s.verb);
         const auto have = static_cast<int>(s.args.size());
         if (n == -100 || (n >= 0 && have != n) || (n < 0 && have < -n)) {

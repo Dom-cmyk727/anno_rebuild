@@ -19,6 +19,18 @@ click 1156 516
 wait outcome
 wait turns 5
 expect fact inspection.kind == House
-expect fact inspection.status contains residents=5
+# "contains residents=5" alone also matches "residents=50"; House's status (play.cpp's
+# DescribePayload) always follows the residents count with " stock=", so matching through that
+# token pins the digit count exactly (W4-SETTLEMENT-1 W7 review, finding 9).
+expect fact inspection.status contains residents=5 stock=
 expect fact inspection.type == 501
+# Negative step (finding 3/9): pausing stops new turns from publishing, so this is the one case
+# that actually exercises live_inspection's hover check rather than the sim naturally catching up.
+# Hovering empty ground at the same zoom (confirmed building-free by probing the real map) must
+# clear the line at once, not keep showing the house from before the hover moved.
+key space
+wait frames 1
+click 1130 516
+wait frames 1
+expect fact inspection.kind != House
 quit

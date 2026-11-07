@@ -152,6 +152,18 @@ if(ANNO_BUILD_TESTS)
         set_tests_properties(viewer_wiring_${case} PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       endforeach()
+      # W4-EXPAND-LIVE-1 D4: the developer Load adapter (key L) driven in the real window, after the
+      # same full voyage and real founding as opening_sail.script/opening_resume.script use (not a
+      # short one: the proven founding coast is 550 tiles out). TIMEOUT follows opening_session_replay's
+      # budget for this same voyage, not viewer_wiring's 600 s default.
+      add_test(NAME viewer_wiring_expand_live_load
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> expand_live_load
+                --app-arg --ship-start
+                --app-arg ${PROJECT_SOURCE_DIR}/data/maps/candidates/ship-start-v2/lan5-ship-a.json
+                --app-arg --seat --app-arg 0 --app-arg --speed --app-arg 200)
+      set_tests_properties(viewer_wiring_expand_live_load PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 1200 PROCESSORS 4)
       add_test(NAME opening_session_replay
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/opening_session.py
                 $<TARGET_FILE:anno1503>)

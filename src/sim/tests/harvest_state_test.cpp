@@ -714,14 +714,21 @@ TEST_CASE("harvest state: hand-written bytes of a populated job and an ordered o
     sim::WriteArchive with;
     fields(with, std::as_const(fig));
     Bytes expect = without.data();
-    // The harvest presence byte is followed by the resident presence byte (stream 128, absent).
-    REQUIRE(expect.size() >= 2);
+    // The harvest presence byte is followed by the resident presence byte (stream 128, absent),
+    // then, since route-only136, u64 freight_generation 0 and the freight presence byte 0
+    // (docs/sim/state.md "Route-only136").
+    const Bytes freight_tail(8 + 1, 0x00);
+    REQUIRE(expect.size() >= 2 + freight_tail.size());
+    REQUIRE(Bytes(expect.end() - static_cast<std::ptrdiff_t>(freight_tail.size()), expect.end()) ==
+            freight_tail);
+    expect.resize(expect.size() - freight_tail.size());
     REQUIRE(expect.back() == 0x00);
     REQUIRE(expect[expect.size() - 2] == 0x00);
     expect.pop_back();
     expect.back() = 0x01;
     expect.insert(expect.end(), job.begin(), job.end());
     expect.push_back(0x00); // resident absent
+    expect.insert(expect.end(), freight_tail.begin(), freight_tail.end());
     CHECK(with.data() == expect);
 
     // Island::claims (enhanced owners): u64 count, then per entry i32 x, i32 y, u64 worker id, in

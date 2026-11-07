@@ -905,7 +905,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16) ==
-          std::vector<std::uint8_t>{134, 0, 0, 0, 0x45, 0x43, 0x4f, 0x4e, 0x42, 0x4b, 0x31, 0, 5, 0,
+          std::vector<std::uint8_t>{136, 0, 0, 0, 0x45, 0x43, 0x4f, 0x4e, 0x42, 0x4b, 0x31, 0, 5, 0,
                                     0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8

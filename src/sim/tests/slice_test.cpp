@@ -2367,6 +2367,8 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
         figs.u8(0);                    // nav absent (stream 122)
         figs.u8(0);                    // harvest absent (stream 126)
         figs.u8(0);                    // resident absent (stream 128)
+        figs.u64(0);                   // freight_generation (route-only136)
+        figs.u8(0);                    // freight absent (route-only136)
     };
     figure(1, 11, 0, bid(0, 1).v, 7);
     figure(2, 22, 1, bid(0, 2).v, 0);
@@ -2383,9 +2385,10 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     // crew_slot and the hold count: 18 bytes; 111 until stream 120 added the 4-byte state word),
     // then 92 bytes into slot 1) is reported with the scope path of that slot.
     const std::size_t stamp_at =
-        figures_at + 20 + 118 +
+        figures_at + 20 + 127 +
         92; // slot 0: 115 bytes until stream 122 (nav presence), 116 until 126 (harvest presence),
-            // 117 until 128 (resident presence); slot 0 is 118 bytes now
+            // 117 until 128 (resident presence), 118 until route-only136 (u64 freight_generation
+            // and the freight presence byte); slot 0 is 127 bytes now
     REQUIRE(bytes[stamp_at] == 0);
     std::vector<std::uint8_t> bad = bytes;
     bad[stamp_at] = 2;

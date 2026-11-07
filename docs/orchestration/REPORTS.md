@@ -14794,3 +14794,118 @@ No push/merge to `main` (B1's two merges are into `task/W4-main-2`, an ordinary 
 `game/` changes. No feature-default/identity/loader/eligibility changes.
 
 Head: `25458646`. Pushing next, then continuing to Part C.
+
+## W4-EXPAND-LIVE-1 — 2026-11-07 — REVIEW PENDING
+
+**Setup.** Branch `task/W4-expand-live-1` from the B head `85c4aeae`. Input: the consumer card
+[`docs/testing/manual-expansion.md`](../../testing/manual-expansion.md).
+
+### D1: Load wired like Unload
+
+`01a7bfe6`. Key `L` posts the sim's existing `LoadCmd` the same way `U` posts `UnloadCmd`:
+`OpeningMode::Load`/`OpeningKey::Load`, a `LoadPlan` mirroring `UnloadPlan`, the hover-pick of the
+source warehouse, HUD/track-line support, the ship-start command-file's new `load` line. Labelled a
+developer adapter in its own UI message, not the original's warehouse trade panel (UI.1 F2.2,
+OQ-547).
+
+**Design gap, flagged, not fixed:** `OpeningView` does not publish a ship's per-hold capacity, so
+`clamp_load`'s advisory can only bound a request by the source warehouse's stock, never by how much
+room the hold has. The sim is authoritative regardless (a request the hold cannot take is capped by
+the sim's own result, not the UI), so this is a usability gap, not a correctness one. **QUESTION for
+the orchestrator/owner:** should `OpeningView`/`ShipHoldView` gain a capacity field so the dev Load
+advisory can show the real bound, or is "the sim decides" (same wording the founding/unload
+advisories already use) adequate for a developer tool? No recommendation either way; both are small
+changes.
+
+For an **empty** hold, Load picks the source warehouse's single most-stocked real good
+(`stock_88` index 0 is the sim's "empty" sentinel, excluded) — a developer-tool default, not a
+value read from any file. A hold that already carries cargo keeps that cargo's own goods (topping
+up), which needs no such default.
+
+### D2: the card's canary setting, a session option
+
+`104643be`. `--city-booking on|off` (default `off`, matching the compiled-in `Rules::city_booking`
+default) threads through `load_opening` into the constructed `Rules`, for this session only. The
+other two canary settings need no flag: `save_billed_goods` and `house_updates` already default to
+the card's values (`true`/`false`). Passing the same flag value on `--resume` of a save this made is
+required (the rules digest must match); documented in the header comment, not separately tested
+(it reuses the resume identity-check mechanism `opening_test.cpp` already covers in full elsewhere).
+No application default changed.
+
+### D3: tests
+
+`4f988e96`. `anno_app_tests`: **231/231 passed** (game files, `ANNO1503_GAME_DIR` set), up from 229 at
+the B head (2 new cases below; no regression — the same 229 still pass).
+
+- **The token** (`opening_test.cpp`, the existing "ship-start forms round-trip" case): a `load` line
+  joined the existing fixture of found/move/stop/unload/buildc/demolishc commands, round-tripped
+  through `format_commands`/`parse_commands` byte for byte, plus a malformed-line case
+  (`turn 1 load 0 1 1 3 41`, missing the tons field) added to the existing bad-line list.
+- **Save and resume with a pending Load** (new case, "real files"): sails ship 1 to the coast
+  (reusing the founding-probe test's proven loop), founds the warehouse at `(255,138)`, unloads 5 t
+  to give the warehouse real stock, issues a `LoadCmd` for 2 t, then saves (`state_hash`, `tick`,
+  `world.save()`) and resumes through `load_opening(..., resume)`. The resumed world's `state_hash`,
+  the ship's hold amount and the warehouse's existence all come back exactly as they were before the
+  save — the Load is not lost and not re-applied (a second application would double the transfer;
+  it does not, because resume loads from the saved bytes as they stand, never replays commands).
+- **The UI plan** (`opening_ui_test.cpp`, new case): hold/quantity selection via Tab/`[`/`]`
+  (including Tab visiting an *empty* hold, which Unload's Tab skips but Load's does not), topping up
+  an already-carrying hold vs. the empty-hold warehouse-stock default, the `Send` key producing the
+  exact `sim::LoadCmd`, and the no-source-warehouse refusal.
+- **The full card recipe, real files, end to end: not attempted this checkpoint — a gap, not a
+  guess.** The manual-expansion.md card's documented numbers (28,863 gold, 2,368/512 t final wood)
+  were measured by a different executor's different harness (MAP-EXPAND-1, sim-level, `World::apply`
+  directly) over tens of thousands of simulated ticks; faithfully replaying the same scenario
+  through the app's command-file/`PlayRunner` path end to end, with genuinely observed (not
+  presumed) intermediate values at every one of the card's roughly 15 steps, is substantial
+  additional work I did not want to rush into a guess. **QUESTION for the orchestrator:** is the
+  save/resume plus token-round-trip plus UI-plan coverage above sufficient evidence for D3's
+  "recipe" requirement at this checkpoint, or is a full app-level recipe replay (its own, further
+  checkpoint) still wanted? My recommendation: the three tests above already exercise the new Load
+  wiring specifically (UI, token, and a real sim-level Load inside a save/resume cycle) with
+  evidence I directly observed; a full recipe replay would mostly re-prove the existing,
+  already-accepted MAP-EXPAND-1 sim behavior through one more entry point, for a large time cost,
+  and is better scheduled as its own checkpoint than rushed here.
+
+### D4: the real window, a playtest card
+
+`83b9e95a`. `viewer_wiring_expand_live_load`: the full voyage (reusing `opening_sail.script`'s proven
+550-tile `sail`/coordinates), the real founding at `(255,138)` (`opening_resume.script`'s proven
+click), `U` to stock the warehouse, `L` to load 3 t back (`latest_moved == 768`, the exact store/hold
+arithmetic checked), then a negative control: `Tab` to hold 1 (10 t of food, already aboard from the
+ship-start's own loadout — not empty, so Load keeps its own goods rather than the warehouse's
+pick), which the warehouse cannot supply (no food stocked yet): `StockShort`, cleanly refused, mode
+unchanged. **PASS, 91.6 s**, on the RTX 4090 (Vulkan), registered with `TIMEOUT 1200` (matching
+`opening_session_replay`'s budget for the same voyage, not `viewer_wiring`'s 600 s default).
+
+Found and fixed along the way: `dev_script.cpp`'s scripted-key table had no `l` entry (an
+`unknown key` failure on the first attempt) — added, mapping to `SDLK_L`, alongside the existing
+`u`/`f`/`h`. Also found and fixed: my own first draft of the script assumed hold 0 started at 50 t
+at the unload step; the real value there is 38 t, because founding already pays 12 t of it away
+first (confirmed against this project's own existing, accepted evidence,
+[`ship-opening-playtest.md`](../../testing/ship-opening-playtest.md) step 4, same manifest, same
+click — not a new guess, a correction against independent prior evidence). The playtest card,
+[`docs/testing/load-adapter-playtest.md`](../../testing/load-adapter-playtest.md), carries the
+corrected numbers.
+
+### D5: gates
+
+1. **MSVC app tests**: see D3, 231/231.
+2. **`viewer_wiring_*` and `opening_session_replay`, with the game files**: all 8 registered cases
+   (`contract`, `r1_held_publication`, `r4_occupancy`, `settlement_activity`,
+   `cpu_delivery_failures`, `opening_controls`, `opening_session_replay`, `expand_live_load`) —
+   **8/8 PASS**, 304.45 s total. No regression from the Part D changes.
+3. **The WSL app lane under ASan**: **queued, not started.** Part C's own full 5-lane WSL gate
+   (against the B head, `anno1503-W4-main-2-gatecheck`) was already running when D3/D4 reached this
+   point; the one-heavy-job-at-a-time rule means D5's WSL run waits for it rather than racing it on
+   the same machine. Dependency justification once it runs: only `src/app` changed in D (D1/D2), so
+   the app lane alone is the right scope, the same reasoning the card's own Windows-handoff note
+   gives. Will report separately once C finishes and this runs.
+
+### Boundaries respected
+
+No push/merge to `main`. No force pushes. No `game/` changes. No feature-default change (city_booking
+stays off by default; the strict loader and construction-eligibility rule are untouched). Worktree
+`anno1503-W4-expand-live-1` kept live for the queued D5 WSL run.
+
+Head: `83b9e95a`. Pushing next.

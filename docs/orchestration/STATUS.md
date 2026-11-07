@@ -4,9 +4,11 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-07, by the Claude Code orchestrator: W4-SETTLEMENT-1 reviewed, changes requested; 18
-real-file test failures found on `main`; W4-MAIN-2 released to the Windows executor; new owner rule on game-file runs
-for `main`. Before that: 2026-11-06, by the Codex orchestrator (MAIN-CI-1 accepted; gameplay assignments unchanged).
+**Last updated:** 2026-11-07 afternoon, by the Claude Code orchestrator: the first Mac's faithful mine default recorded
+(`task/MAP-EXTRACT-1-x2` at `bd725d4e`, REVIEW PENDING); the Windows lane's W4-MAIN-2 checkpoints recorded. Earlier on
+2026-11-07: W4-SETTLEMENT-1 reviewed, changes requested; 18 real-file test failures found on `main`; W4-MAIN-2 released
+to the Windows executor; new owner rule on game-file runs for `main`. Before that: 2026-11-06, by the Codex
+orchestrator (MAIN-CI-1 accepted; gameplay assignments unchanged).
 
 **Who updates it:** every orchestrator, in the same commit as each dispatch, acceptance or change of lane. Executors do
 not edit it; their reports go into `REPORTS.md` on their task branch.
@@ -65,14 +67,17 @@ mirror still requires the owner/Windows sync after main publication.
     - Code findings: one clang-format blocker; `wait turns` still races; the inspection line can show the wrong building;
       the gate script exits 0 on failed lanes and keeps its logs inside the tested worktree.
     - `picture_matrix_contract` passes in all five lanes.
-  - **Now:** fix review items 1–8.
-  - **Then, with no stop: [W4-MAIN-2](tasks/w4-main-2.md),** released 2026-11-07. Its parts:
-    - **A:** repair main's 18 out-of-date real-file tests (`task/MAIN-REALFILES-1`).
-    - **B:** bring the Windows lane onto main 134 (`task/W4-main-2`).
-    - **C:** one W7 and the Windows host gates at that head. This replaces the old-base W7 rerun.
-    - **D:** the Load adapter and the live two-island recipe (`task/W4-expand-live-1`).
+  - **[W4-MAIN-2](tasks/w4-main-2.md),** released 2026-11-07. Its parts and the last observed checkpoints
+    (2026-11-07, 13:40):
+    - **S:** the W7 review fixes, `task/W4-settlement-1` at `8532c450`. REVIEW PENDING.
+    - **A:** repair main's 18 out-of-date real-file tests, `task/MAIN-REALFILES-1` at `8175df79`. REVIEW PENDING.
+    - **B:** the Windows lane on main 134, `task/W4-main-2` at `85c4aeae` (merges A and S). REVIEW PENDING.
+    - **C:** one W7 and the Windows host gates at the B head. Its five-lane WSL gate was running at the last check;
+      no result is recorded yet.
+    - **D:** the Load adapter and the live two-island recipe, `task/W4-expand-live-1` at `9fd9c216`. REVIEW PENDING;
+      its WSL app lane waits for C's gate.
 
-    Every part ends REVIEW PENDING, for the orchestrator's review the next morning.
+    The orchestrator reviews every part before anything reaches `main`.
   - **After that:** the owner's playtest cards.
 - **Found by this review, on `main` (not this package):** 18 real-file tests fail at `96775da4`. Hosted CI can't see
   them because it has no game files.
@@ -81,7 +86,7 @@ mirror still requires the owner/Windows sync after main publication.
   - The tests are out of date. **Owner decision, 2026-11-07:** the Windows lane repairs them in W4-MAIN-2 part A, on
     a branch the orchestrator merges after review. No other lane starts a parallel repair.
   - Play mode refuses 39 of the 50 original scenes; view mode (`--view`) still opens them.
-- **Branch:** `task/W4-settlement-1`, head `384df19d` (pushed).
+- **Branch:** `task/W4-settlement-1`, head `8532c450` (pushed; the reviewed W7 head was `384df19d`).
   - It is based on `task/W4-opening-2-main`: `main` `3b74201f` plus the reviewed W4-OPENING-CONTROLS-FLAKE delta.
 - **Also open:**
   - `task/W4-opening-2` (`3fd68746`): W4-OPENING-CONTROLS-FLAKE steps 0–3, on the older base `88968580`. It was adopted
@@ -93,20 +98,45 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### First Mac executor
 
-- **Now:** **MAP-EXTRACT-1: salt contract and implementation preparation.**
-  C0–C2 NEEDS corrections are reported complete locally, with review notes at
-  `7b480584`; this is not a new orchestrator acceptance of that whole candidate.
-  - Accepted state134 intake is present: `668ff3c6` (portable founding fix) and
-    `e067d109` (current replay CLI registrations).
-  - Latest observed committed checkpoint: **`c177f391`**, re-pinning NEEDS hashes
-    at134 with unchanged reported numerical behavior and fresh replay results.
-  - X1/X2 preparation is committed. Runtime salt work remains conditional on the
-    required independent contract approval; no completed salt result is claimed.
+- **Now:** **MAP-EXTRACT-1, salt extraction, with the faithful mine default. Candidate complete; REVIEW PENDING.** Last
+  observed checkpoint: 2026-11-07, 13:33.
+  - **The faithful default** replaces policy B; the owner decided it on 2026-11-07.
+    - A mine at a legal site with no ore of its ware in reach is accepted, charged and created unbound. It stays idle
+      and never searches again.
+    - A mine built or rebuilt where ore is in reach binds it.
+    - `Reject::NoDepositInReach` stays reserved and is never produced.
+    - A read-only query, `mine_site_deposit_in_reach`, lets a host warn the player before sending the command.
+    - Commits: code `c03589d7`, review P3s `e90eabb3`.
+  - **Orchestrator spot-check** of the original `AnnoWelt.dll` (read-only, 2026-11-07). Two of the three cited byte
+    claims are independently confirmed:
+    - the attach at `0x1006e299` overwrites the deposit lookup's return value before returning;
+    - the mine step `0x1006def0` jumps past its search at `0x1006df59` when the mine's deposit field (+0x24) is empty.
+
+    The third, that the placement predicate `0x1007c790` reads no ore, was not re-checked.
+  - **Executor gates on `e90eabb3`:**
+    - Debug canonical: 1,694 selected, 1,688 executed, 0 failed, 6 opt-in skips;
+    - focused ASan: 52 selected, 51 executed, 0 failed;
+    - GCC 13.3 compile of the touched test, in an arm64 container.
+  - **CI:** run 42368776369 at `9a094b05` passed all ten jobs (checked). Run 42373041769 on the head was still running
+    at the last check.
+  - **A CI failure the report leaves out.** Run 42360315619 at `fa100f8f`, a docs-only commit, failed in
+    `linux-gcc-release` on `anno_test_support_tests.V3: the predecessor journal states ...`, at `budget_f5_test.cpp:998`:
+    `JOURNAL-REFUSED` was expected, and six assertions failed.
+    - The same code passed at `5939efc7` and `9a094b05`. The test comes from `main`, not from this package.
+    - Probable cause: the coordinator test ports lie inside Linux's ephemeral range. The unmerged fix is
+      `claude/dreamy-brahmagupta-10bjax` (`e5d0b877`). This is not proven, because the test does not log the message
+      it received.
+  - **NOT_RUN:** MSVC and native Windows/Linux with the original files, Release, the full sanitizer campaign, GOG
+    versus History Edition.
+  - **Open in the original:** what loading a save does to an unbound mine; whether the AI uses the lookup before
+    placing; the quarry questions; the discovery-mask getter.
   - Hunting remains PARTIAL and outside this packet.
-- **Branch:** `task/MAP-EXTRACT-1-main`. Earlier NEEDS candidate `5df34b38` remains
-  preserved on `task/MAP-2-needs2-main`; owned corrections are not merged into main.
-- **Identity:** current intake134; **135 reserved for salt**. The founding dependency
-  is consumed, not still waiting to be supplied.
+- **Next:** acceptance review and the state135 consolidation into `main`. After that push, the game-file run on the
+  Windows PC (owner rule).
+- **Branch:** `task/MAP-EXTRACT-1-x2`, head `bd725d4e`, clean tree. It contains `task/MAP-EXTRACT-1-main`
+  (`3d9dbafe`) and the earlier NEEDS candidate `5df34b38` (`task/MAP-2-needs2-main`). None of these is merged into
+  `main`.
+- **Identity:** state135 (`kStateHashVersion = 135`). The faithful default changes no state field, stream or hash.
 - **Publication:** ordinary push of the owned task branch at every checkpoint and
   report. Never force or push main; existing merge/rebase/other-lane boundaries remain.
 

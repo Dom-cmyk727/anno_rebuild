@@ -4,8 +4,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-07 evening, by the Claude Code orchestrator: two owner-dispatched research notes checked and
-merged (`docs/re/mine-deposit-followups.md`, `docs/re/complogic-ai-behavior.md`); the mine note answers the first Mac's
+**Last updated:** 2026-11-07 evening, by the Claude Code orchestrator: MAP-EXTRACT-2 released to the first Mac at the
+owner's request ([packet](tasks/map-extract-2.md)); two owner-dispatched research notes checked and merged
+(`docs/re/mine-deposit-followups.md`, `docs/re/complogic-ai-behavior.md`); the mine note answers the first Mac's
 open save-load question. Earlier that afternoon: W4-MAIN-2 parts S, A, B and D reviewed; part
 A (main's 18 real-file tests) merged into `main` as `5e7b13c6`, game-file run pending; the first Mac's faithful mine
 default recorded (`task/MAP-EXTRACT-1-x2`, REVIEW PENDING). Earlier on
@@ -107,8 +108,17 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### First Mac executor
 
-- **Now:** **MAP-EXTRACT-1, salt extraction, with the faithful mine default. Candidate complete; REVIEW PENDING.** Last
-  observed checkpoint: 2026-11-07, 13:33.
+- **Now: [MAP-EXTRACT-2](tasks/map-extract-2.md), released 2026-11-07 by the Claude Code orchestrator at the owner's
+  request.** It runs on the new branch `task/MAP-EXTRACT-2`, from `2f32437a`.
+  - **A:** the mine's lifecycle in the original: the save-load finding re-checked, load order, the ore object's
+    getter, the owner question on rebinding at load. Docs and tests only; identity stays 135.
+  - **T:** the tools chain (iron mine, charcoal burner, smelter, toolsmith) up to tools spent on a later building.
+  - **Q:** the quarry: research and contract first, then bricks and marble if the contract closes.
+  - **G:** gold and gems, inventory only.
+  - **E:** the final gate and review, then stop.
+  - **Identity 137** is reserved for T and Q. It builds on 135 and does not include the second Mac's 136.
+- **Before that: MAP-EXTRACT-1, salt extraction, with the faithful mine default. Candidate complete; REVIEW
+  PENDING.** The executor's last checkpoint: 2026-11-07, `2f32437a`; it reported the lane idle that evening.
   - **The faithful default** replaces policy B; the owner decided it on 2026-11-07.
     - A mine at a legal site with no ore of its ware in reach is accepted, charged and created unbound. It stays idle
       and never searches again.
@@ -140,21 +150,17 @@ mirror still requires the owner/Windows sync after main publication.
   - **Answered in the original since then (research note, checked by the orchestrator, on `main`):**
     [`docs/re/mine-deposit-followups.md`](../re/mine-deposit-followups.md).
     - The original never saves a mine's deposit binding; its 10-byte mine record has no such field.
-    - Each construction, at placement and at load alike, runs the deposit lookup again. The mine step repeats it while
-      the mine is bound.
+    - Each construction, at placement and at load alike, runs the deposit lookup again. The mine step repeats it when
+      its bound deposit is spent or comes up short.
     - So a reloaded mine binds whatever the lookup finds at load. The branch keeps the saved binding, and an unbound
       mine stays unbound across a reload.
     - Still open: the loader's chunk order, and what the lookup filters on.
   - **Still open in the original:** whether the AI uses the lookup before placing; the quarry questions; the
     discovery-mask getter.
   - Hunting remains PARTIAL and outside this packet.
-- **Next (proposed, not yet dispatched):**
-  1. The lane checks the note's save-load finding independently and folds it into OQ-552/553/554 and §22 on its
-     branch.
-  2. If the finding holds, it sends the resume behaviour as a QUESTION for the owner: no code before the owner
-     decides.
-  3. Then acceptance review and the state135 consolidation into `main`, then the game-file run on the Windows PC
-     (owner rule).
+- **Next for MAP-EXTRACT-1 (separate from the new packet):** the acceptance review and the state135 consolidation into
+  `main`, then the game-file run on the Windows PC (owner rule). Changes that review asks for go onto
+  `task/MAP-EXTRACT-1-x2` first, then merge into `task/MAP-EXTRACT-2`.
 - **Branch:** `task/MAP-EXTRACT-1-x2`, head `2f32437a` (a docs-only closeout after `bd725d4e`), clean tree; the lane
   is idle. It contains `task/MAP-EXTRACT-1-main`
   (`3d9dbafe`) and the earlier NEEDS candidate `5df34b38` (`task/MAP-2-needs2-main`). None of these is merged into

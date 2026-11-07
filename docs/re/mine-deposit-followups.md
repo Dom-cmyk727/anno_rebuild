@@ -204,13 +204,18 @@ tables). **Verified:**
   lookup has no exit before its store at `0x1006dea8`, so each call replaces
   `+0x24` with what the deposit find returns, possibly nothing. The mine step
   `0x1006def0` jumps past its work while `+0x24` is empty
-  (`0x1006df59`–`0x1006df5e`) and calls the lookup again while it is set
-  (`0x1006dfb4`).
+  (`0x1006df59`–`0x1006df5e`). While it is set, the step calls the lookup
+  again (`0x1006dfb4`) only when the bound deposit is spent or its take
+  comes up short (the tests at `0x1006df9a`–`0x1006dfb2`, as
+  `docs/sim/salt-extraction.md` §22.0 on the first Mac's branch states;
+  corrected the same day, the first version of this bullet said "while it
+  is set").
 
 So in the original a mine's binding is what the last lookup found: at
-construction (placement and load alike) and on every step while it is
-bound. Once a lookup finds nothing, the mine stays unbound until it is
-constructed again, and loading a save constructs it again.
+construction (placement and load alike), and again whenever a bound
+deposit is spent or comes up short. Once a lookup finds nothing, the mine
+stays unbound until it is constructed again, and loading a save
+constructs it again.
 
 **Q4 table entries, verified:** `0x100c7588` and `0x100c761c` both hold
 `0x10063490`.

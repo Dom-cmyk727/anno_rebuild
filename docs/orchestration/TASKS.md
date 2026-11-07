@@ -1475,6 +1475,17 @@ Read the packet from fetched main; independent package approvals release later
 packages. The old SCRIPT2 packet below is historical, not a new assignment.
 <!-- END MAP-INTEGRATE-1 DISPATCH -->
 
+**First Mac update, 2026-11-07 (Claude Code orchestrator, at the owner's request): MAP-EXTRACT-2 is READY / RELEASED.**
+Read the [A, T, Q, G, E packet](tasks/map-extract-2.md). It starts at once, on the new branch `task/MAP-EXTRACT-2`
+from `2f32437a`; MAP-EXTRACT-1 stays REVIEW PENDING on `task/MAP-EXTRACT-1-x2`. The parts:
+- **A:** the mine's lifecycle in the original; docs and tests only, at 135;
+- **T:** the tools chain, from iron ore to tools spent on a later building;
+- **Q:** the quarry: research and contract first, then bricks and marble;
+- **G:** gold and gems, inventory only;
+- **E:** the final gate and review, then stop.
+
+Identity 137 is reserved for T and Q: it builds on 135 and does not include the second Mac's 136.
+
 **Windows update, 2026-11-07 (Claude Code orchestrator): W4-MAIN-2 is READY / RELEASED.** Read the
 [S, A–E packet](tasks/w4-main-2.md). It starts right after the W4-SETTLEMENT-1 review fixes, with no stop in between:
 - **A:** main's 18 out-of-date real-file tests, as `task/MAIN-REALFILES-1`;

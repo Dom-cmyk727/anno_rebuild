@@ -1983,7 +1983,7 @@ the first one held (the F3 pin case, which needs no second start, already uses 0
 through `ports::fixed()`, a `consteval` check that does not compile outside the band; computed
 ports (`base + index`) are checked where the harness starts a coordinator. The case
 "budget ports: this host's ephemeral range does not reach the fixed test ports" reads the
-host's range (Linux, macOS; Windows reports the documented default and does not query it) and
+host's range (Linux, macOS; on Windows it is not read, see below) and
 fails with an explanation on a host configured into the band. On Windows the range is not
 read and the case reports a platform skip; `netsh int ipv4 show dynamicport tcp` and `netsh int
 ipv4 show excludedportrange protocol=tcp` must be checked by hand before Windows acceptance.

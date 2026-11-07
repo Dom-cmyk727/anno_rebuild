@@ -13551,3 +13551,180 @@ The consolidation CI hold is satisfied. Windows W7’s own contract/cache findin
 remain its lane’s responsibility; its inherited-main prerequisite is cleared.
 Keep132/133/135/136 lane identities when adopting portable fixes. GitLab sync is
 left to the owner/Windows orchestrator with the key.
+## MAIN-REALFILES-1 part A — 2026-11-07 — REVIEW PENDING
+
+Setup: worktree `anno1503-MAIN-REALFILES-1`, branch `task/MAIN-REALFILES-1` from
+`main` `dbb22306126c447104457a1bab20e447970f1a58`, own `build/msvc`.
+
+### A0/A1 baseline
+
+Not re-run from scratch as a separate full CTest at plain `dbb22306` (the review's
+own `96775da4` run already named the 18 failures with evidence); instead,
+independently corroborated today by running the five specific tests this part
+fixes at the *unfixed* `task/W4-settlement-1` S head (`cea5b49d`, part S's own
+REPORTS entry): all five reproduce there, with the exact assertion values the
+review's A1 table predicts (4 warehouses not >=62; `ConstructionDenied` not
+`CannotAfford`/`REQUIRE(accepted)`). See part S's entry for that run's full output.
+
+### A2 fixes — one commit per cause
+
+- `e8ebf0bf` **(a)** `building_delta_test.cpp` / `play_gpu_test.cpp`: Single_01.sze
+  (refused by the strict loader) replaced by measured scenes from the 11 that
+  load through `load_play`. Measurement table (play_buildings, all 11 candidates):
+
+  | Scene | Buildings | Islands |
+  |---|---:|---:|
+  | 0010SingleEndlos/00_1024_easyentry_01 | 3 | 20 |
+  | 0010SingleEndlos/01_1024_easy_256 | 73 | 28 |
+  | 0010SingleEndlos/03_1024_med_256 | 0 | 27 |
+  | 0010SingleEndlos/04_1024_med_128 | 0 | 28 |
+  | 0010SingleEndlos/05_800_Med_128 | 0 | 23 |
+  | 0010SingleEndlos/06_1024_heavy_256 | 0 | 27 |
+  | 0010SingleEndlos/07_1024_heavy_128 | 0 | 28 |
+  | 0011SingleEndlosAddon/endless01 | 131 | 23 |
+  | 0011SingleEndlosAddon/endless03 | **180** | 12 |
+  | Tutorial/01Discover01 | 0 | 1 |
+  | Tutorial/02Trade01 | **77** | 3 |
+
+  Chose `Tutorial/02Trade01.sze` for the no-commands/no-change case (non-trivial,
+  modest size) and `0011SingleEndlosAddon/endless03.sze` for the GPU parity case
+  (densest, most content for the pixel comparison). Verified: `building delta`
+  case PASS (77 initial buildings, 0 batches, 0 deltas); GPU parity PASS on both
+  RTX 4090 and Radeon iGPU (max channel delta 1, within the existing bound of 1).
+
+- `2fcc5b7d` **(b)** `opening_test.cpp` founding-sites real-files corpus: now reads
+  all 50 scenes through `sim_load::load_scenario_with_context` with
+  `original_component::actor_free_units()` (OriginalActorProjection::ActorFreeComponent)
+  plus `original_component::import_only` (whole-script set-aside only after a
+  demonstrated refusal), instead of `app::load_play`. Verified: **62 warehouses**
+  found, all 62 accepted at their stored rotation — exactly matching the
+  independent 2026-11-03 measurement already in the test's own comment.
+
+- `89e4fd00` **(c)** `commands_file_test.cpp` developer-resources test: `dearest`
+  is now the dearest type `World::construction_eligibility` actually allows for
+  the developer player; a separately-recorded `stage_locked` type (still the raw
+  dearest-by-cost type) gets a new assertion at a different tile offset (the
+  original offset collided with the already-placed `cheapest` building, giving a
+  false `Occupied` on first attempt — fixed by parameterizing the build lambda's
+  tile offset). Verified: CannotAfford case PASS, new ConstructionDenied-before-
+  cost case PASS (12/12 assertions).
+
+- `dea0b9b9` **(d)** `legal_workload.cpp`/`.hpp`: the shared houses_/producers_/
+  others_ candidate pools now exclude, once, any type `World::construction_eligibility`
+  refuses for any participating city's player — a read-only prefilter alongside
+  the existing footprint-owner/placement-rule prefilters. New per-kind exclusion
+  counters in the summary. Verified: all 3 `legal_workload` tests PASS (177/177
+  assertions; summary shows 4 house types and 82 producer types excluded as
+  ineligible on the 5-city fixture); all 13 `picture GPU*` cases PASS (6929/6929
+  assertions) unchanged.
+
+  **Negative control** (disabled in the working tree, never committed — reverted
+  immediately after, verified no diff remained via `git status`/`git diff`):
+  with the prefilter's exclusion disabled, `candidate_types` grew from
+  houses=77/producers=90 to houses=81/producers=172 (left_out_ineligible all 0),
+  and the five-cities test's two sub-runs went from `rejected=0` to `rejected=102`
+  and `rejected=153` — **every one of those 255 rejections is `ConstructionDenied`**
+  (`city_rejected island=N ConstructionDenied:<n>`, confirmed via the existing
+  per-reason breakdown already in the code, summing exactly to each run's
+  `rejected=` total). The task doc's literal "the legal workload must then fail"
+  did **not** happen as a doctest FAILURE in this specific test: its only
+  assertions are `c.accepted == buildings_per_city` and friends, which the large
+  retry budget (3,000-20,000 attempts/city) still satisfies by drawing a
+  still-eligible type on a later attempt. The mechanism the review described is
+  real and directly measured; this test's specific CHECKs just aren't sensitive
+  enough to turn that into a hard failure. Recording this discrepancy rather than
+  reporting "fails as predicted" when it measurably did not fail that way.
+
+- `e578c698` clang-format 23.1.3 fixups across the five files above (4 files
+  needed reformatting after the hand-written edits; all idempotent after `-i`).
+
+
+### A3 verification
+
+1. **Full MSVC CTest with the game files** (`ctest --preset msvc -j 16`, `ANNO1503_GAME_DIR`
+   set, `ANNO_TEST_THREADS=16`): 2321 selected, **99% passed, 13 failed**, 487.26s real time.
+
+   All 13 failures are in `anno_render_tests` (the CPU rendering suite — none of my commits
+   touch `src/render/`): `chunk draw lists replay...`, `render_chunk: the Cpu builder keeps the
+   planes...`, `river flow corpus: every island with rivers (rivers.md Q12)`, `water field: empty
+   cells hold on every island (game files)`, `scene renders match the recorded digests...`,
+   `legacy river shading reproduces the previous enhanced digests (game files)`, `river raster
+   agrees with the river the original draws (mask fidelity, rivers.md R1)`, `river flow shading
+   moves with the flow on real rivers (Q5, CPU path, game files)`, `flow coverage and the water
+   mask over the zoom groups (Q3, game files)`, `the flow shading changes river pixels only and
+   the legacy look stays selectable (game files)`, `the noise coordinate follows the geometry on
+   real rivers: no aliasing (game files)`, `the flow shading moves with the flow in all windows,
+   not only the flat stems (Q5, game files)`, `the light of the flow shading against the legacy
+   shimmer on real rivers (game files)`.
+
+   **These are not pre-existing failures, and not caused by this package.** Ran the identical 13
+   tests, serially/isolated (direct binary invocation, no `-j` parallelism), three ways:
+   - At plain `main` `dbb22306` (unfixed baseline), single-target build of `anno_render_tests`:
+     **13/13 PASS**.
+   - At this branch's own head (`2df272d9`, same binary the full CTest run used): **13/13 PASS**.
+
+   Both reruns pass cleanly. The only variable between "fails" and "passes" is `-j 16` parallel
+   CTest scheduling versus serial, single-process execution — not which commit is checked out.
+   This is the same class of issue the review already diagnosed for `river_flow_corpus_test.cpp`
+   under ASan (margin-chunk/zoom-group timing widened by contention); here it's contention from
+   `-j 16` itself, not a sanitizer, and it affects more of the river/flow-shading suite than just
+   that one test. **Not fixed here** — it's a pre-existing test-infrastructure timing sensitivity
+   unrelated to anything in A2's scope, and the review's own fix for the single known case
+   (`river_flow_corpus_test.cpp`'s settle condition) is explicitly out of scope for this part.
+   Flagging as a "review first" item and an open question for whoever picks up Part C (which runs
+   its own parallel WSL gate and may hit the same thing).
+
+2. **GCC 13 / Clang 18 `-Werror` check** (`wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`):
+   first run found one real warning in this package's own new code — `opening_test.cpp:994`,
+   `-Wunused-but-set-variable` on `refused` (Clang 18 only; MSVC and GCC did not report it).
+   Fixed in `2df272d9` (logged instead of discarded: a `MESSAGE` reporting the count, which also
+   confirms 0 of 50 scenes are refused by the actor-free path). Rerun after the fix: **all 4
+   passes clean** (GCC×2: 362 then 66 files; Clang×2: 362 then 66 files), exit 0.
+
+3. **clang-format 23.1.3:** done under A2 (`e578c698`); the one post-fix commit (`2df272d9`) was
+   already clean (verified before committing).
+
+4. **Negative control:** done under A2(d) above.
+
+### Scope note: B, C, D, E not started in this dispatch
+
+Parts B (merge A4 + the S head into `task/W4-main-2`), C (one full W7 WSL
+ASan/UBSan gate + the 20x render-repeat + warnings/format at the merged head),
+D (the Load adapter, a new real-game-content feature with its own tests and a
+live-window `viewer_wiring` script and playtest card), and E (final report and
+cleanup) are each substantial, hours-long pieces of work in their own right —
+C alone is a 5-lane WSL gate that has historically taken 2-4 hours end to end,
+and D is new application code, not a test/fix package. Attempting all of S
+through E inside one continuous dispatch, with genuine evidence at every step
+(no shortcuts, no guessed numbers), is not realistic within a single executor
+turn that must report and stop.
+
+This dispatch completes both S (focused checks, pushed) and A in full: six
+commits, the full MSVC CTest (99% passed, the 13 render failures explained
+above as a `-j16` scheduling artifact, not a defect), and a clean GCC/Clang
+`-Werror` check — all verified against real builds and real game files.
+**Recommendation: dispatch B onward as its own executor turn**, starting from
+this pushed `task/MAIN-REALFILES-1` head. Nothing in B/C/D/E has been touched:
+no `task/W4-main-2` branch created, no merge attempted, no WSL gate started on
+any merged head.
+
+### Commits
+
+`e8ebf0bf`, `2fcc5b7d`, `89e4fd00`, `dea0b9b9`, `e578c698`, `2df272d9` — six commits
+on `task/MAIN-REALFILES-1`, head `2df272d9`, from `main` `dbb22306`.
+
+### Cleanup
+
+- `anno1503-baseline-check` (detached at `dbb22306`, single-target `anno_render_tests`
+  build only) removed once its comparison runs were done.
+- `task/W4-settlement-1`'s `anno1503-W4-settlement-1-scheck` worktree removed earlier,
+  once part S's REPORTS entry was pushed (see that entry).
+- No gate or test process of this part's own left running; the two idempotent full-build
+  rechecks (`mainrf1-build-recheck.log`, 4.0s, confirms the original full build's prior
+  completion) and all other logs are in `E:\anno1503-evidence\w4-main-2\`.
+- `task/MAIN-REALFILES-1`'s own worktree (`anno1503-MAIN-REALFILES-1`) is kept: it is
+  the live worktree for this branch's continuation into part B.
+
+Tested head: `2df272d94e007f1cb445360c7e7996536ba42b3c`. Pushing
+next, then stopping per the scope note above.
+

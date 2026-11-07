@@ -258,23 +258,41 @@ TEST_CASE("developer resources: a Build too expensive for the start is refused w
     REQUIRE(on.has_value());
     const auto origin = developer_origin(*off);
     REQUIRE(origin.has_value());
+    // The review (2026-11-07, MAIN-REALFILES-1 A2(c)): the plain dearest-by-cost
+    // type is stage-locked for the developer start, so the build below was
+    // refused as ConstructionDenied, not CannotAfford as the test's name claims.
+    // `dearest` is now the dearest type construction_eligibility actually allows;
+    // `stage_locked` is a separately-recorded ineligible type, used below to pin
+    // the eligibility check running before any cost check.
     std::optional<std::uint32_t> dearest;
     std::int64_t dearest_gold = -1;
+    std::optional<std::uint32_t> stage_locked;
     for (std::uint32_t id = 1; id <= 0xFFFFu; ++id) {
         if (!anno::app::anlage_is_building(*off, static_cast<std::uint16_t>(id))) {
             continue;
         }
         const anno::sim::BuildingType* type = off->types().find(anno::sim::TypeId{id});
-        if (type != nullptr && static_cast<std::int64_t>(type->cost_gold) > dearest_gold) {
+        if (type == nullptr) {
+            continue;
+        }
+        const auto eligibility =
+            off->construction_eligibility(anno::app::developer_player(), anno::sim::TypeId{id});
+        if (!stage_locked.has_value() &&
+            eligibility.status == anno::sim::BuildEligibilityStatus::StageLocked) {
+            stage_locked = id;
+        }
+        if (eligibility.allowed() && static_cast<std::int64_t>(type->cost_gold) > dearest_gold) {
             dearest = id;
             dearest_gold = static_cast<std::int64_t>(type->cost_gold);
         }
     }
     REQUIRE(dearest.has_value());
+    REQUIRE(stage_locked.has_value());
     const auto cheapest = first_building_type(*on);
     REQUIRE(cheapest.has_value());
 
-    const auto build = [&](anno::sim::World& world, std::uint32_t type) {
+    const auto build = [&](anno::sim::World& world, std::uint32_t type,
+                           std::uint16_t tile_offset = 4) {
         anno::sim::Command cmd;
         cmd.issuer = anno::app::developer_player();
         anno::sim::BuildCmd body;
@@ -294,8 +312,8 @@ TEST_CASE("developer resources: a Build too expensive for the start is refused w
         REQUIRE(found);
         anno::sim::PlacementWire placement;
         placement.type = anno::sim::TypeId{type};
-        placement.x = origin->x + 4;
-        placement.y = origin->y + 4;
+        placement.x = origin->x + tile_offset;
+        placement.y = origin->y + tile_offset;
         placement.rotation = 0;
         body.placements.push_back(placement);
         cmd.body = std::move(body);
@@ -303,7 +321,14 @@ TEST_CASE("developer resources: a Build too expensive for the start is refused w
     };
     const anno::sim::ApplyResult refused = build(*off, *dearest);
     CHECK_MESSAGE(refused.status == anno::sim::Reject::CannotAfford,
-                  "without resources the dearest build is refused as too expensive");
+                  "without resources the dearest eligible build is refused as too expensive");
     const anno::sim::ApplyResult accepted = build(*on, *cheapest);
     CHECK_MESSAGE(accepted.ok(), "with resources the cheapest build is affordable");
+
+    // A stage-locked type is refused before any cost check runs at all, even with
+    // every resource granted (`on`): ConstructionDenied, never CannotAfford. A
+    // different tile offset than `accepted`'s, so this does not fail as Occupied.
+    const anno::sim::ApplyResult denied = build(*on, *stage_locked, 6);
+    CHECK_MESSAGE(denied.status == anno::sim::Reject::ConstructionDenied,
+                  "a stage-locked build is refused before any cost check, even with resources");
 }

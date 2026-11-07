@@ -181,6 +181,13 @@ class LegalWorkload {
     std::uint32_t road_type_ = 0;
     /// Placeable types left out because their Anlagen entry has no sprite set (they draw nothing).
     std::size_t undrawn_types_ = 0;
+    /// Placeable, drawn types left out of houses_/producers_/others_ because
+    /// World::construction_eligibility refuses them (StageLocked or otherwise not Allowed) for at
+    /// least one participating city's player: the sim's own read-only eligibility rule, applied
+    /// once to the shared candidate pools rather than per placement attempt (review 2026-11-07,
+    /// MAIN-REALFILES-1 A2(d)).
+    std::size_t houses_excluded_ineligible_ = 0, producers_excluded_ineligible_ = 0,
+                others_excluded_ineligible_ = 0;
     std::uint32_t kontor_type_ = 1302;
     std::uint64_t map_digest_ = 0;
     std::uint64_t roads_issued_ = 0;

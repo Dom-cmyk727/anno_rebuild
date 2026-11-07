@@ -226,6 +226,8 @@ LegalWorkload::build(const std::filesystem::path& game_dir, const std::filesyste
             ++w->undrawn_types_;
             continue;
         }
+        std::vector<std::uint32_t>* pool = nullptr;
+        std::size_t* excluded_ineligible = nullptr;
         switch (t.cls) {
         case sim::RuntimeClass::Shipyard:
         case sim::RuntimeClass::Whaler:
@@ -233,12 +235,34 @@ LegalWorkload::build(const std::filesystem::path& game_dir, const std::filesyste
         case sim::RuntimeClass::Quarry:
             continue;
         case sim::RuntimeClass::House:
-            w->houses_.push_back(t.id.v);
+            pool = &w->houses_;
+            excluded_ineligible = &w->houses_excluded_ineligible_;
             break;
         default:
-            (t.has_prod ? w->producers_ : w->others_).push_back(t.id.v);
+            if (t.has_prod) {
+                pool = &w->producers_;
+                excluded_ineligible = &w->producers_excluded_ineligible_;
+            } else {
+                pool = &w->others_;
+                excluded_ineligible = &w->others_excluded_ineligible_;
+            }
             break;
         }
+        // The sim's own eligibility rule, read-only, applied once to the shared pool: a type
+        // every participating city's player may not build (StageLocked or otherwise refused) is
+        // never drawn as a candidate, for any of them (review 2026-11-07, MAIN-REALFILES-1 A2(d)).
+        bool eligible_for_every_city = true;
+        for (const LegalCity& city : w->cities_) {
+            if (!world.construction_eligibility(sim::PlayerId{city.player}, t.id).allowed()) {
+                eligible_for_every_city = false;
+                break;
+            }
+        }
+        if (!eligible_for_every_city) {
+            ++*excluded_ineligible;
+            continue;
+        }
+        pool->push_back(t.id.v);
     }
     if (w->houses_.empty() || w->producers_.empty()) {
         return std::string("legal workload: the registry has no house or producer type to place");
@@ -593,7 +617,10 @@ std::string LegalWorkload::manifest() const {
       << " state_hash=" << state_hash() << std::dec << "\n";
     o << "kontor_type=" << kontor_type_ << " road_type=" << road_type_
       << " candidate_types houses=" << houses_.size() << " producers=" << producers_.size()
-      << " others=" << others_.size() << " left_out_without_sprite=" << undrawn_types_ << "\n";
+      << " others=" << others_.size() << " left_out_without_sprite=" << undrawn_types_
+      << " left_out_ineligible houses=" << houses_excluded_ineligible_
+      << " producers=" << producers_excluded_ineligible_
+      << " others=" << others_excluded_ineligible_ << "\n";
     o << "turns=" << turn_ << "\n";
     std::size_t total = 0, issued = 0, rejected = 0;
     for (const LegalCity& c : cities_) {

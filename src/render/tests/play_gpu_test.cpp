@@ -84,7 +84,12 @@ static void play_gpu_matches_cpu(const char* adapter_name) {
     MESSAGE("adapter " << ctx.value().name);
     CHECK(ctx.value().name.find(adapter_name) != std::string::npos);
 
-    const auto file = *dir / "Scenes" / "0200Single" / "Single_01.sze";
+    // Single_01.sze is refused by the strict play-mode loader (review 2026-11-07,
+    // MAIN-REALFILES-1 A2(a)). endless03.sze is one of the 11 original files that
+    // load through load_play, measured at 180 buildings across 12 islands — the
+    // densest of the 11, chosen so the largest placement in layout[2] below has
+    // real building content for the CPU-vs-GPU comparison.
+    const auto file = *dir / "Scenes" / "0011SingleEndlosAddon" / "endless03.sze";
     auto play = anno::app::load_play(*dir, file);
     REQUIRE(play);
     const auto buildings = anno::app::play_buildings(play.value().world);
@@ -127,7 +132,7 @@ static void play_gpu_matches_cpu(const char* adapter_name) {
     const int delta = channel_delta(cpu_px, gpu_px);
     CHECK(delta <= 1);
     CHECK(made.value()->errors() == 0);
-    MESSAGE("Single_01 group 2 " << kW << "x" << kH << " max channel delta " << delta << " on "
+    MESSAGE("endless03 group 2 " << kW << "x" << kH << " max channel delta " << delta << " on "
                                  << ctx.value().name);
 }
 

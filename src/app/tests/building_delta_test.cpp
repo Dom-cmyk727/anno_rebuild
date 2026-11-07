@@ -82,13 +82,19 @@ TEST_CASE("play: a turn with no commands publishes no building changes") {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const fs::path file = *dir / "Scenes" / "0200Single" / "Single_01.sze";
+    // Single_01.sze is refused by the strict play-mode loader (review 2026-11-07,
+    // review item 1 of MAIN-REALFILES-1 A2(a)). Tutorial/02Trade01.sze is one of
+    // the 11 original files that load through load_play, measured (A2) at 77
+    // buildings across 3 islands, so this "no commands, no change" claim is about
+    // an initial city that actually has buildings, not an empty one.
+    const fs::path file = *dir / "Scenes" / "Tutorial" / "02Trade01.sze";
     if (!fs::exists(file)) {
-        MESSAGE("skipping: Single_01.sze is not in this game directory");
+        MESSAGE("skipping: 02Trade01.sze is not in this game directory");
         return;
     }
     auto opened = anno::app::load_play(*dir, file);
     REQUIRE(opened);
+    const auto initial_buildings = anno::app::play_buildings(opened.value().world);
     anno::app::PlayRunner runner(std::move(opened.value().world));
     runner.run_n(50);
     const auto batches = runner.take_building_batches();
@@ -96,8 +102,11 @@ TEST_CASE("play: a turn with no commands publishes no building changes") {
     for (const auto& batch : batches) {
         deltas += batch->deltas.size();
     }
-    MESSAGE("Single_01, 50 turns, no commands: " << batches.size() << " batches, " << deltas
-                                                 << " deltas");
+    MESSAGE("02Trade01, " << initial_buildings.size()
+                          << " initial buildings, 50 turns, no "
+                             "commands: "
+                          << batches.size() << " batches, " << deltas << " deltas");
+    CHECK(initial_buildings.size() > 0);
     CHECK(deltas == 0);
     CHECK(runner.take_building_batches().empty());
 }

@@ -40,7 +40,11 @@
 #include <anno/sim/ship_step.hpp>
 #include <anno/sim/site_checks.hpp>
 #include <anno/sim/terrain_view.hpp>
+#include <anno/sim_load/original_registry.hpp>
+#include <anno/sim_load/scenario_load.hpp>
 #include <anno/test/game_dir.hpp>
+
+#include "../../sim/tests/original_component.hpp"
 
 namespace app = anno::app;
 namespace render = anno::render;
@@ -974,17 +978,53 @@ TEST_CASE(
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
+    // Play mode's strict loader (load_play) refuses most of the original scenario
+    // files (the strict actor import and whole-script compile it requires are not
+    // what every original file satisfies). This test is about the files' own
+    // warehouse placements, not about play loading, so it reads scenes through the
+    // sim tests' explicit, test-only actor-free path (original_component.hpp)
+    // instead: actor records are kept as unprojected warnings rather than refused,
+    // and an unsupported whole script is set aside only once the normal creation
+    // path has actually demonstrated its refusal (original_component::import_only).
+    const auto registry =
+        anno::sim_load::load_original_registry(*dir, anno::sim_load::FigureEntries::Required);
+    REQUIRE(registry.types);
+    const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
+    const sim::SimConfig cfg;
+    std::size_t refused = 0;
     std::map<std::string, std::size_t> tally;
     std::size_t seen = 0, as_stored = 0;
     for (const auto& entry : std::filesystem::recursive_directory_iterator(*dir / "Scenes")) {
         if (entry.path().extension() != ".sze" || seen > 400) {
             continue;
         }
-        auto play = app::load_play(*dir, entry.path());
-        if (!play.ok()) {
+        std::ifstream in(entry.path(), std::ios::binary);
+        if (!in) {
             continue;
         }
-        const sim::World& world = play.value().world;
+        const std::vector<std::uint8_t> buf{std::istreambuf_iterator<char>(in), {}};
+        auto resolved = anno::sim_load::load_scenario_with_context(
+            buf, entry.path(), *dir, templates, *registry.types, cfg, sim::Rules{},
+            original_component::actor_free_units());
+        if (!resolved) {
+            ++refused;
+            MESSAGE(entry.path().filename().string() << ": refused: " << resolved.error());
+            continue;
+        }
+        auto prepared =
+            original_component::import_only(resolved.value().loaded.spec, registry.types, cfg);
+        if (!prepared) {
+            ++refused;
+            MESSAGE(entry.path().filename().string() << ": refused: " << prepared.error());
+            continue;
+        }
+        auto created = sim::World::create(prepared.value().spec, registry.types, cfg);
+        if (!created) {
+            ++refused;
+            MESSAGE(entry.path().filename().string() << ": refused: " << created.error());
+            continue;
+        }
+        const sim::World& world = created.value();
         for (const auto& isl : world.islands()) {
             if (!isl || !isl->terrain) {
                 continue;
@@ -1029,6 +1069,7 @@ TEST_CASE(
     }
     MESSAGE(seen << " warehouses 1302 (coast rule at rotations 0123 from the stored origin): "
                  << s);
+    MESSAGE(refused << " scene(s) still refused through the actor-free path");
     CHECK(seen >= 62);
     CHECK(as_stored == seen);
 }

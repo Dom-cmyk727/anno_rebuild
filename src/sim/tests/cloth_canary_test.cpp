@@ -31,6 +31,7 @@
 
 #include "cloth_town.hpp"
 #include "island7_town.hpp"
+#include "test_must.hpp"
 #include "tutorial_town.hpp"
 #include "world_access.hpp"
 
@@ -266,7 +267,8 @@ TEST_CASE(
     }
     made += wl.at(new_weaver).made_88[0];
     consumed += wl.at(new_weaver).consumed_88[0];
-    const sim::Workshop& nw = std::get<sim::Workshop>(c.isl->find_building(new_weaver)->payload);
+    const sim::Workshop& nw =
+        std::get<sim::Workshop>(test_must::must(c.isl->find_building(new_weaver))->payload);
     std::uint64_t cart = 0, wool_cargo = 0;
     for (const auto& s : c.w.figures().list.slots) {
         // the target chain only: owner and home in the target city (the carts of the stall's

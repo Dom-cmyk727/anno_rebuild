@@ -33,6 +33,7 @@
 #include <anno/test/game_dir.hpp>
 
 #include "original_component.hpp"
+#include "test_must.hpp"
 #include "tutorial_town.hpp"
 #include "world_access.hpp"
 
@@ -534,7 +535,7 @@ const sim::Island& isle(const sim::World& w) {
     return *w.islands()[1];
 }
 std::int64_t gold(const sim::World& w) {
-    return w.players().find(kSaltPlayer)->money;
+    return test_must::must(w.players().find(kSaltPlayer))->money;
 }
 
 /// A refusal changes nothing (the saved state is byte-identical), then the legal neighbour is
@@ -679,13 +680,13 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
     // payment: no gold
     {
         sim::World w = base;
-        sim::WorldTestAccess::players(w).find(kSaltPlayer)->money = 0;
+        test_must::must(sim::WorldTestAccess::players(w).find(kSaltPlayer))->money = 0;
         const auto before = w.save();
         const sim::ApplyResult r = w.apply(build_cmd({mine_at(353, 359)}));
         CHECK(r.status == sim::Reject::CannotAfford);
         CHECK(w.save() == before);
         // the legal neighbour: the same command with the gold restored
-        sim::WorldTestAccess::players(w).find(kSaltPlayer)->money = gold(base);
+        test_must::must(sim::WorldTestAccess::players(w).find(kSaltPlayer))->money = gold(base);
         CHECK(w.apply(build_cmd({mine_at(353, 359)})).ok());
     }
 }
@@ -779,7 +780,7 @@ TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before an
     // nothing changed
     for (SaltWorld* sw : {&*live, &*dry}) {
         sim::World w = sw->w;
-        sim::WorldTestAccess::players(w).find(kSaltPlayer)->money = 0;
+        test_must::must(sim::WorldTestAccess::players(w).find(kSaltPlayer))->money = 0;
         const auto before = w.save();
         const sim::ApplyResult res = w.apply(build_cmd({mine_at(335, 340)}));
         REQUIRE(res.records.size() >= 1);
@@ -797,8 +798,8 @@ TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before an
         sim::World w = sw->w;
         const sim::ApplyResult res = w.apply(build_cmd({mine_at(353, 359)}));
         REQUIRE_MESSAGE(res.ok(), sim::reject_name(res.status));
-        const auto* m =
-            std::get_if<sim::Mine>(&w.find_building(res.records.at(0).building)->payload);
+        const auto* m = std::get_if<sim::Mine>(
+            &test_must::must(w.find_building(res.records.at(0).building))->payload);
         REQUIRE(m != nullptr);
         CHECK(m->deposit.has_value());
         CHECK(isle(w).deposits.size() == 1);
@@ -818,7 +819,7 @@ TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before an
     }
     // the imported mine stays inert and unchanged
     const sim::Building* imported = nullptr;
-    for (const auto& l : isle(live->w).city(kSaltCity.city)->index.lists)
+    for (const auto& l : test_must::must(isle(live->w).city(kSaltCity.city))->index.lists)
         for (const auto& b : l.slots)
             if (b && b->type.v == 1203)
                 imported = &*b;
@@ -841,8 +842,9 @@ TEST_CASE("salt mine: salt never depletes while the edition setting depletes") {
         s->w.advance(kStepMs);
         REQUIRE_MESSAGE(!s->w.faulted(), s->w.fault());
         out_seen = std::max<std::uint64_t>(
-            out_seen,
-            std::get<sim::Mine>(s->w.find_building(r.records.at(0).building)->payload).out);
+            out_seen, std::get<sim::Mine>(
+                          test_must::must(s->w.find_building(r.records.at(0).building))->payload)
+                          .out);
     }
     CHECK(out_seen > 0); // it really produced
     REQUIRE(isle(s->w).deposits.size() == 1);
@@ -863,8 +865,8 @@ TEST_CASE("salt mine: shared deposit and no refill by teardown rebuild or reload
     const sim::ApplyResult b = w.apply(build_cmd({mine_at(356, 359)}));
     REQUIRE_MESSAGE(b.ok(), sim::reject_name(b.status));
     REQUIRE(isle(w).deposits.size() == 1);
-    CHECK(std::get<sim::Mine>(w.find_building(b.records.at(0).building)->payload).deposit ==
-          std::optional<std::size_t>{0});
+    CHECK(std::get<sim::Mine>(test_must::must(w.find_building(b.records.at(0).building))->payload)
+              .deposit == std::optional<std::size_t>{0});
     // the ore has been worked down: teardown and rebuild never refill it
     sim::WorldTestAccess::islands(w)[1]->deposits[0].remaining = 123;
     sim::DemolishCmd dem;
@@ -876,8 +878,9 @@ TEST_CASE("salt mine: shared deposit and no refill by teardown rebuild or reload
     REQUIRE_MESSAGE(again.ok(), sim::reject_name(again.status));
     REQUIRE(isle(w).deposits.size() == 1);
     CHECK(isle(w).deposits[0].remaining == 123);
-    CHECK(std::get<sim::Mine>(w.find_building(again.records.at(0).building)->payload).deposit ==
-          std::optional<std::size_t>{0});
+    CHECK(
+        std::get<sim::Mine>(test_must::must(w.find_building(again.records.at(0).building))->payload)
+            .deposit == std::optional<std::size_t>{0});
     // save / load: the same bytes and the same hash, the deposit persists
     const auto bytes = w.save();
     auto loaded = sim::World::load(bytes, s->types, {});
@@ -1077,7 +1080,9 @@ TEST_CASE("salt mine: a standing mine produces and adds no PRNG draw at any step
         REQUIRE(with->w.rng().cursor() == without->w.rng().cursor());
         produced = 0;
         for (const auto& r : a.records) {
-            produced += std::get<sim::Mine>(with->w.find_building(r.building)->payload).out;
+            produced +=
+                std::get<sim::Mine>(test_must::must(with->w.find_building(r.building))->payload)
+                    .out;
         }
     }
     CHECK(produced > 0);
@@ -1126,11 +1131,12 @@ std::unique_ptr<Chain> start_chain(Arm arm, bool zero_ore, bool live_houses = tr
     auto c = std::make_unique<Chain>(Chain{std::move(*sw), {}, {}, {}, 0, 0, 0, {}, {}});
     sim::World& w = c->sw.w;
     if (zero_ore) {
-        sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->stock.stock[kSalzstein] = 0;
+        test_must::must(sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city))
+            ->stock.stock[kSalzstein] = 0;
         REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
     }
-    c->works = find_type(w, 1022)->id;
-    const sim::Workshop& ws = std::get<sim::Workshop>(find_type(w, 1022)->payload);
+    c->works = test_must::must(find_type(w, 1022))->id;
+    const sim::Workshop& ws = std::get<sim::Workshop>(test_must::must(find_type(w, 1022))->payload);
     c->works_in0 = ws.in.at(0);
     if (arm == Arm::SaltworksRemoved) {
         sim::DemolishCmd dem;
@@ -1148,7 +1154,9 @@ std::unique_ptr<Chain> start_chain(Arm arm, bool zero_ore, bool live_houses = tr
         c->mine = r.records.at(0).building;
         if (arm == Arm::SourceDisabled) {
             // the source switched off: the built, paid mine is unbound (its deposit link removed)
-            for (auto& l : sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->index.lists)
+            for (auto& l :
+                 test_must::must(sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city))
+                     ->index.lists)
                 for (auto& b : l.slots)
                     if (b && b->id == c->mine)
                         std::get<sim::Mine>(b->payload).deposit.reset();
@@ -1390,8 +1398,8 @@ TEST_CASE("salt chain X3: the pilot households are stage 0 and that stage needs 
     for (const auto& l : city.index.lists)
         for (const auto& b : l.slots)
             if (b && std::holds_alternative<sim::House>(b->payload))
-                groups.insert(
-                    *sim::house_group(sw->w.config(), sw->types->find(b->type)->prodtype));
+                groups.insert(*sim::house_group(
+                    sw->w.config(), test_must::must(sw->types->find(b->type))->prodtype));
     // the town's 82 houses are all group 0 (types 501..509): the other stages are NOT exercised
     // here
     CHECK(groups == std::set<std::uint32_t>{0});
@@ -1530,7 +1538,8 @@ XChain start_x(bool mine, bool live_houses = true) {
     if (!x.c)
         return x;
     sim::World& w = x.c->sw.w;
-    sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->stock.stock[kSalz] = 0;
+    test_must::must(sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city))->stock.stock[kSalz] =
+        0;
     x.c->salz_store0 = 0;
     REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
     if (mine)
@@ -2112,7 +2121,7 @@ TEST_CASE("salt lifetime X4: one deposit shared by two mines survives the demoli
     step_chain(*x.c, 300);
     demolish_x(x, {{kMineX, kMineY}});
     CHECK(x.c->sw.w.find_building(a) == nullptr);
-    const auto* mb = std::get_if<sim::Mine>(&x.c->sw.w.find_building(b)->payload);
+    const auto* mb = std::get_if<sim::Mine>(&test_must::must(x.c->sw.w.find_building(b))->payload);
     REQUIRE(mb != nullptr);
     CHECK(mb->deposit == std::optional<std::size_t>{0}); // still bound to the shared deposit
     step_chain(*x.c, 1500);
@@ -2124,7 +2133,7 @@ TEST_CASE("salt lifetime X4: one deposit shared by two mines survives the demoli
     demolish_x(x, {{356, 359}});
     step_chain(*x.c, 100);
     const sim::BuildingId c = build_x(x, 1203, kMineX, kMineY, 0);
-    CHECK(std::get<sim::Mine>(x.c->sw.w.find_building(c)->payload).deposit ==
+    CHECK(std::get<sim::Mine>(test_must::must(x.c->sw.w.find_building(c))->payload).deposit ==
           std::optional<std::size_t>{0});
     CHECK(isle(x.c->sw.w).deposits.size() == 1);
     CHECK(isle(x.c->sw.w).deposits[0].remaining == 321);
@@ -2428,10 +2437,12 @@ std::optional<TwoOwners> two_owners(bool with_rival, bool build_rival = true,
     t.x.c = std::make_unique<Chain>(Chain{std::move(r->sw), {}, {}, {}, 0, 0, 0, {}, {}});
     Chain& c = *t.x.c;
     sim::World& w = c.sw.w;
-    sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->stock.stock[kSalzstein] = 0;
-    sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->stock.stock[kSalz] = 0;
-    c.works = find_type(w, 1022)->id;
-    c.works_in0 = std::get<sim::Workshop>(find_type(w, 1022)->payload).in.at(0);
+    test_must::must(sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city))
+        ->stock.stock[kSalzstein] = 0;
+    test_must::must(sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city))->stock.stock[kSalz] =
+        0;
+    c.works = test_must::must(find_type(w, 1022))->id;
+    c.works_in0 = std::get<sim::Workshop>(test_must::must(find_type(w, 1022))->payload).in.at(0);
     w.set_transport_stats(&c.stats);
     c.salz_store0 = 0;
     c.ore_store0 = 0;
@@ -2529,7 +2540,8 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
     REQUIRE(two->rival_mine.valid());
     REQUIRE(two->rival_works.valid());
     for (auto& l :
-         sim::WorldTestAccess::islands(unbound->x.c->sw.w)[1]->city(sim::CityNo{1})->index.lists)
+         test_must::must(sim::WorldTestAccess::islands(unbound->x.c->sw.w)[1]->city(sim::CityNo{1}))
+             ->index.lists)
         for (auto& b : l.slots)
             if (b && b->id == unbound->rival_mine)
                 std::get<sim::Mine>(b->payload).deposit.reset();
@@ -2545,7 +2557,8 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
         step_chain(*t->x.c, 3000);
     sim::World& w = two->x.c->sw.w;
     // the rival's mine works (in reach of the shared ore, closer to our saltworks than ours is) ...
-    const auto& rm = std::get<sim::Mine>(w.find_building(two->rival_mine)->payload);
+    const auto& rm =
+        std::get<sim::Mine>(test_must::must(w.find_building(two->rival_mine))->payload);
     CHECK(rm.deposit.has_value());
     CHECK(two->x.c->stats.forestry.mine_made_88[two->rival_mine] > 0);
     // ... and no load in the whole run crosses cities: the lifting figure's home and the source are
@@ -2747,7 +2760,7 @@ TEST_CASE("salt X5: the mine facts against known state, read-only") {
     REQUIRE(g->produced_88.has_value());
     CHECK(*g->produced_88 > 0);
     CHECK(*g->produced_88 == stats.forestry.mine_made_88.at(mine));
-    CHECK(g->output_88 == std::get<sim::Mine>(w.find_building(mine)->payload).out);
+    CHECK(g->output_88 == std::get<sim::Mine>(test_must::must(w.find_building(mine))->payload).out);
     CHECK(g->remaining_88 == 512000U); // deep, flagged: worked, not drawn down
     const auto mid = w.save();
     static_cast<void>(sim::mine_facts(w, mine));
@@ -2755,7 +2768,7 @@ TEST_CASE("salt X5: the mine facts against known state, read-only") {
     // the imported mine is unbound and idle; a non-mine and an unknown id answer nothing
     const sim::Building* imported = nullptr;
     const sim::Building* works = nullptr;
-    for (const auto& l : isle(w).city(kSaltCity.city)->index.lists)
+    for (const auto& l : test_must::must(isle(w).city(kSaltCity.city))->index.lists)
         for (const auto& b : l.slots) {
             if (b && b->type.v == 1203 && b->id != mine)
                 imported = &*b;
@@ -2786,7 +2799,7 @@ TEST_CASE("salt X5: the depletes fact follows the extraction rule for every comb
     const sim::BuildingId id = r.records.at(0).building;
     sim::Island& is = *sim::WorldTestAccess::islands(w)[1];
     sim::Mine* m = nullptr;
-    for (auto& l : is.city(kSaltCity.city)->index.lists)
+    for (auto& l : test_must::must(is.city(kSaltCity.city))->index.lists)
         for (auto& b : l.slots)
             if (b && b->id == id)
                 m = &std::get<sim::Mine>(b->payload);

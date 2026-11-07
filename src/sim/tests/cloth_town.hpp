@@ -22,6 +22,7 @@
 #include <anno/sim/world.hpp>
 
 #include "island7_town.hpp"
+#include "test_must.hpp"
 #include "tutorial_town.hpp"
 #include "world_access.hpp"
 
@@ -94,7 +95,7 @@ inline bool in_chain(const Cloth& c, const sim::Figure& f) {
 /// the exact debit after.
 inline PaySnap pay_snap(const Cloth& c, const sim::BuildingType& t) {
     PaySnap p;
-    p.money = c.w.players().find(c.city->owner)->money;
+    p.money = test_must::must(c.w.players().find(c.city->owner))->money;
     for (const sim::CostEntry& e : t.cost_goods) {
         p.store.push_back(c.city->stock.stock[e.goods]);
         p.spent.push_back(c.city->build_goods[e.goods - c.w.config().build_goods_first].spent);
@@ -196,12 +197,14 @@ inline std::unique_ptr<Cloth> start_cloth(const Original& o, bool build_stall,
     }
     CHECK(living == 0);
     for (const sim::BuildingId id : c->sheep) {
-        const sim::Farm& f = std::get<sim::Farm>(c->isl->find_building(id)->payload);
+        const sim::Farm& f =
+            std::get<sim::Farm>(test_must::must(c->isl->find_building(id))->payload);
         c->farm_raw0 += f.raw;
         c->farm_out0 += f.out;
     }
     {
-        const sim::Workshop& w = std::get<sim::Workshop>(c->isl->find_building(c->weaver)->payload);
+        const sim::Workshop& w =
+            std::get<sim::Workshop>(test_must::must(c->isl->find_building(c->weaver))->payload);
         c->weaver_in0 = w.in[0];
         c->weaver_out0 = w.out[0];
     }
@@ -216,7 +219,7 @@ inline std::unique_ptr<Cloth> start_cloth(const Original& o, bool build_stall,
         for (auto& l : c->city->index.lists) {
             for (auto& b : l.slots) {
                 if (b && T.find(b->type) != nullptr &&
-                    T.find(b->type)->cls == sim::RuntimeClass::MarketStall) {
+                    test_must::must(T.find(b->type))->cls == sim::RuntimeClass::MarketStall) {
                     centre = {b->x, b->y};
                 }
             }

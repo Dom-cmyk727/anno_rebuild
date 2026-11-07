@@ -8,6 +8,7 @@
 #pragma once
 
 #include "cloth_town.hpp"
+#include "test_must.hpp"
 
 namespace leather_town {
 
@@ -70,7 +71,8 @@ inline std::uint64_t house_leather(sim::World& w, const sim::TypeRegistry& types
                     if (h == nullptr) {
                         continue;
                     }
-                    const auto g = sim::house_group(w.config(), types.find(b->type)->prodtype);
+                    const auto g = sim::house_group(w.config(),
+                                                    test_must::must(types.find(b->type))->prodtype);
                     const auto view = types.population_view(*g, w.config());
                     sum += h->stock[view.value().derived->lookup[kLeder]];
                 }

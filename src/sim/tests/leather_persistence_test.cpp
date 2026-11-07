@@ -11,6 +11,7 @@
 
 #include "evidence_out.hpp"
 #include "leather_town.hpp"
+#include "test_must.hpp"
 
 namespace {
 
@@ -377,7 +378,7 @@ TEST_CASE("synthetic mechanics fixture: refused commands change nothing and repl
         Cloth& c = *L->t;
         run_to(c, 5000);
         const std::uint64_t h0 = c.w.state_hash();
-        const std::int64_t money0 = c.w.players().find(c.city->owner)->money;
+        const std::int64_t money0 = test_must::must(c.w.players().find(c.city->owner))->money;
         // the tannery's own site is taken
         auto occ = c.w.apply(
             cmd(c, sim::BuildCmd{c.ref, {sim::PlacementWire{L->tannery_type, 279, 350, 0, 0, 0}}}));
@@ -393,7 +394,7 @@ TEST_CASE("synthetic mechanics fixture: refused commands change nothing and repl
             c, sim::BuildCmd{c.ref, {sim::PlacementWire{sim::TypeId{60000}, 270, 360, 0, 0, 0}}}));
         CHECK(unk.status == sim::Reject::UnknownType);
         CHECK(c.w.state_hash() == h0);
-        CHECK(c.w.players().find(c.city->owner)->money == money0);
+        CHECK(test_must::must(c.w.players().find(c.city->owner))->money == money0);
     }
     // recorded: the same run with and without a refused command in the middle ends in the same
     // state; the refused command is IN the log (it was issued), and the replay refuses it again

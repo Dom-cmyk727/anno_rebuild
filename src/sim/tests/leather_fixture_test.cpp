@@ -17,6 +17,7 @@
 
 #include "evidence_out.hpp"
 #include "leather_town.hpp"
+#include "test_must.hpp"
 
 namespace {
 
@@ -242,7 +243,7 @@ OtherTown other_town(Cloth& c, std::uint32_t island) {
                 ++cities;
                 REQUIRE(ci->number.v == 0);
                 t.stock.assign(ci->stock.stock.begin(), ci->stock.stock.end());
-                t.money = c.w.players().find(ci->owner)->money;
+                t.money = test_must::must(c.w.players().find(ci->owner))->money;
             }
         }
     }

@@ -28,8 +28,8 @@ test, fixed), `05-new-once-j4*` (the repeat-stability causes, fixed), the first 
 - doctest was Ubuntu `doctest-dev` 2.4.11 through `FETCHCONTENT_SOURCE_DIR_DOCTEST` (the
   pinned 2.4.12 archive could not be downloaded here); `doctest.cmake` from that package. The
   repository pin is unchanged.
-- clang-format 18.1.3 was used locally; the reviewer ran 23.1.3 `--dry-run --Werror` on the
-  pre-review files (clean). The review-fix edits were checked with 18.1.3 only.
+- clang-format 18.1.3 was used locally; the reviewer ran the CI version 23.1.3 `--dry-run
+  --Werror` on every changed C++ file before and after the review fixes (clean).
 - Windows and macOS were not built or run (MSVC's handling of `consteval` calling a
   declared-only function is unverified). The Windows range and excluded port ranges are not
   read; check `netsh int ipv4 show dynamicport tcp` and `show excludedportrange protocol=tcp`
@@ -50,3 +50,7 @@ case compared constants, so it now reports a platform skip; (4) the Windows-only
 owner" case now uses the file-client port, and the WSL case is documented as exempt. Accepted
 as residual and documented: Windows and WSL use the same F3-F5 ports, and the environment is
 read on every connect.
+
+Re-review of 0104011 (same reviewer): findings 1-4 fixed; one stale sentence in the spec section
+(Windows "reports the documented default") corrected afterwards. Nit accepted: a Linux host
+without `/proc/sys/net/ipv4/ip_local_port_range` fails the host case by design.

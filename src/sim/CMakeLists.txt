@@ -75,14 +75,15 @@ if(ANNO_BUILD_TESTS)
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
                    "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/economy-loop/economy.log"
                    -DEXPECT_RC=0 "-DEXPECT=checkpoints 7/7.*reproduced: every checkpoint matched"
-                   -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
   add_test(NAME economy_loop_changed_command_fresh_process
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
                    "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/economy-loop/economy-changed-command.log"
                    -DEXPECT_RC=1 "-DEXPECT=checkpoints 3/4.*DIVERGED at entry 3804"
-                   -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
   set_tests_properties(economy_loop_fresh_process economy_loop_changed_command_fresh_process
-                       PROPERTIES FIXTURES_REQUIRED econbook_loop_record)
+                       PROPERTIES FIXTURES_REQUIRED econbook_loop_record
+                                  SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 
   # MAP-EXTRACT-1 X5: the salt chain recorded and replayed by anno-sim-replay in a fresh process. Each CTest records
   # its own log first (cmake/RunSaltReplay.cmake runs the recording case with ANNO_SALT_OUT_DIR), so it has no

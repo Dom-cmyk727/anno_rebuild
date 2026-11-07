@@ -14206,3 +14206,54 @@ Both diagnostic worktrees (`anno1503-W4-settlement-1-fix1`, `anno1503-W4-settlem
 removed once their findings were fully documented above, no uncommitted work in either.
 
 Tested head: `d091a70ddc2a0d8f27aedccbfd51d3020e66fa5f`. Pushing next, then stopping.
+
+## W4-MAIN-2 part S — 2026-11-07 — REVIEW PENDING
+
+Part S's focused checks, run at the already-pushed S head `cea5b49d` (the W7-review
+fix package), in a fresh detached worktree (`anno1503-W4-settlement-1-scheck`), game
+files set (`ANNO1503_GAME_DIR`).
+
+**MSVC build:** clean configure + build, exit 0.
+
+**`anno_app_tests`** (full suite, game files): 229 selected, 224 passed, **5 failed**,
+0 skipped. All 5 are main-inherited, pre-existing failures already named in the
+2026-11-07 review and independently reproduced here, not new regressions:
+- `play: a turn with no commands publishes no building changes` — Single_01.sze
+  refused by the strict loader.
+- `developer resources: a Build too expensive for the start is refused without them`
+  — `ConstructionDenied`, not `CannotAfford` (eligibility, not cost).
+- `legal workload: one accepted build and one accepted demolish reach the picture as
+  a fresh scene of the desired state (game files)` — `ConstructionDenied`.
+- `legal workload: intermediate publications under a stream of builds and a demolish
+  each equal a fresh scene of the state they represent (game files)` —
+  `ConstructionDenied`.
+- `founding sites, real files: the original's own warehouses pass the coast rule as
+  stored` — 4 warehouses seen, not >=62 (strict loader refuses 46 of 50 scenes).
+
+All five are fixed and verified passing on `task/MAIN-REALFILES-1` (see that
+branch's part A report): this run on the unfixed S head is independent, fresh
+corroborating evidence for A1's classification, not a restatement of the review's
+own prior numbers.
+
+**`anno_app_input_tests`** (full suite, game files): 34 selected, **34/34 PASS**,
+0 skipped, 209,143/209,143 assertions passed.
+
+**`viewer_wiring_*` + `opening_session_replay`, in the live window on the RTX 4090**
+(`ctest -R "viewer_wiring|opening_session_replay"`): 7 selected, **7/7 PASS**,
+185.95 s total — `viewer_wiring_r1_held_publication` 8.89s, `viewer_wiring_r4_occupancy`
+6.53s, `viewer_wiring_settlement_activity` 4.43s, `viewer_wiring_cpu_delivery_failures`
+16.99s, `viewer_wiring_opening_controls` 9.61s, `opening_session_replay` 128.63s,
+`viewer_wiring_contract` 10.64s.
+
+**clang-format 23.1.3:** no changed files on this branch since the last fix-package
+commit (`cea5b49d`); nothing to format at the S head itself (the format pass for
+this package's own fix commits is already in `3836ae7f`/`d091a70d`).
+
+**Don't start the old-base W7 rerun** (per this part's own instruction 4): none
+started; `w7fix2` is kept as is and not rerun here.
+
+Logs: `E:\anno1503-evidence\w4-main-2\scheck-*.log`.
+
+Tested head: `cea5b49d9161f0225da5534efa794fcaa0fb2b53`. This entry's own commit
+moves the branch one commit past that head (REPORTS.md only; no code change). Worktree
+`anno1503-W4-settlement-1-scheck` removed once this entry is pushed.

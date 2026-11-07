@@ -431,7 +431,7 @@ UiResult OpeningUi::click_left(double px, double py, const ScreenProjection* fra
             }
         }
         message_ = (mode_ == OpeningMode::Load ? "click one of your warehouses to choose it as the "
-                                                  "source, or Enter for the nearest"
+                                                 "source, or Enter for the nearest"
                                                : "click one of your warehouses to choose it, or "
                                                  "Enter for the nearest");
         return out;
@@ -559,8 +559,9 @@ std::optional<OpeningUi::LoadPlan> OpeningUi::load_plan(const UiFeed& feed) cons
         // advisory can only bound the move by the source's stock, not by the ship's own capacity.
         const std::uint64_t move = std::min<std::uint64_t>(std::uint64_t{plan.tons} * 256, stock);
         plan.advisory = std::string(in_range ? "in range" : "OUT OF RANGE (sail closer)") +
-                        "; would move up to " + tons_text(move) + " t of " + goods_name(plan.goods) +
-                        " from store " + tons_text(stock) + " t (ship room unknown to this advisory)";
+                        "; would move up to " + tons_text(move) + " t of " +
+                        goods_name(plan.goods) + " from store " + tons_text(stock) +
+                        " t (ship room unknown to this advisory)";
     }
     return plan;
 }
@@ -745,9 +746,8 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
         }
         if (mode_ == OpeningMode::Load) {
             out.taken = true;
-            const ShipView* ship = feed.view == nullptr || !selected_
-                                       ? nullptr
-                                       : feed.view->ship(*selected_);
+            const ShipView* ship =
+                feed.view == nullptr || !selected_ ? nullptr : feed.view->ship(*selected_);
             if (ship == nullptr || ship->holds.empty()) {
                 return out;
             }
@@ -845,7 +845,8 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
             t.hold_before_88 = ship->holds[plan->hold].amount_88;
             pending_submit_.clear();
             pending_submit_.push_back(t);
-            message_ = "load sent: " + std::to_string(plan->tons) + " t of " + goods_name(plan->goods);
+            message_ =
+                "load sent: " + std::to_string(plan->tons) + " t of " + goods_name(plan->goods);
             return out;
         }
         if (mode_ != OpeningMode::Unload) {
@@ -1020,10 +1021,10 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
     // latest command's state, the advisory and the pointer; then gold, the ship, the stores (a
     // caption of a 1280 px window shows about 150 characters, the rest is cut off).
     std::string gold_s, ship_s, city_s, adv_s, cmd_s, ptr_s;
-    const char* mode = mode_ == OpeningMode::Found     ? "FOUND"
-                       : mode_ == OpeningMode::Unload  ? "UNLOAD"
-                       : mode_ == OpeningMode::Load    ? "LOAD"
-                                                       : "select";
+    const char* mode = mode_ == OpeningMode::Found    ? "FOUND"
+                       : mode_ == OpeningMode::Unload ? "UNLOAD"
+                       : mode_ == OpeningMode::Load   ? "LOAD"
+                                                      : "select";
     const std::string mode_s = std::string("mode ") + mode;
     const OpeningView* view = feed.view;
     if (view != nullptr) {

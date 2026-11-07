@@ -92,11 +92,9 @@ OpeningSetup make_opening_setup(const sim::World& world,
     return s;
 }
 
-formats::Result<OpeningLoad, std::string> load_opening(const fs::path& game_dir,
-                                                       const fs::path& manifest_path,
-                                                       std::uint32_t seat,
-                                                       const std::optional<fs::path>& resume,
-                                                       bool city_booking) {
+formats::Result<OpeningLoad, std::string>
+load_opening(const fs::path& game_dir, const fs::path& manifest_path, std::uint32_t seat,
+             const std::optional<fs::path>& resume, bool city_booking) {
     const std::string where = to_utf8(manifest_path) + ": ";
     auto bytes = read_file(manifest_path);
     if (!bytes) {

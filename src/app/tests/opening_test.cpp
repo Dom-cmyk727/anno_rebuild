@@ -979,8 +979,10 @@ TEST_CASE("opening, real files: a session saved right after an applied Load resu
     found.click_x = 255;
     found.click_y = 138;
     const auto [fw, fh] = sim::footprint(*bt, 0);
-    found.placement.x = std::max<std::int32_t>(0, found.click_x - (static_cast<std::int32_t>(fw) - 1) / 2);
-    found.placement.y = std::max<std::int32_t>(0, found.click_y - (static_cast<std::int32_t>(fh) - 1) / 2);
+    found.placement.x =
+        std::max<std::int32_t>(0, found.click_x - (static_cast<std::int32_t>(fw) - 1) / 2);
+    found.placement.y =
+        std::max<std::int32_t>(0, found.click_y - (static_cast<std::int32_t>(fh) - 1) / 2);
     const sim::ApplyResult founded = world.apply(sim::Command{sim::PlayerId{0}, found});
     REQUIRE_MESSAGE(founded.ok(), sim::reject_name(founded.status));
     const sim::BuildingId warehouse = founded.records.at(0).building;
@@ -1024,7 +1026,8 @@ TEST_CASE("opening, real files: a session saved right after an applied Load resu
         sim::find_figure(world.figures(), sim::FigureId{1})->holds.front().amount_88;
 
     // Save right after the Load is applied, then resume: the identity checks, the hash, the ship's
-    // hold and the warehouse's stock must all come back exactly as they were, not reapplied or lost.
+    // hold and the warehouse's stock must all come back exactly as they were, not reapplied or
+    // lost.
     app::OpeningSave save;
     save.identity = load.identity;
     save.tick = world.clock().tick();
@@ -1036,8 +1039,8 @@ TEST_CASE("opening, real files: a session saved right after an applied Load resu
     auto resumed = app::load_opening(*dir, manifest_path(), 0, file);
     REQUIRE_MESSAGE(resumed.ok(), (resumed.ok() ? std::string() : resumed.error()));
     CHECK(resumed.value().play.world.state_hash() == world.state_hash());
-    const sim::Figure* resumed_ship = sim::find_figure(resumed.value().play.world.figures(),
-                                                       sim::FigureId{1});
+    const sim::Figure* resumed_ship =
+        sim::find_figure(resumed.value().play.world.figures(), sim::FigureId{1});
     REQUIRE(resumed_ship != nullptr);
     CHECK(resumed_ship->holds.front().amount_88 == ship_hold_after_load);
     const sim::Building* resumed_warehouse = resumed.value().play.world.find_building(warehouse);

@@ -1332,8 +1332,8 @@ bool Viewer::opening_handle(const SDL_Event& e) {
             // A held key does nothing twice; a held Esc after a cancel must not quit either.
             return *key == OpeningKey::Escape || ui.mode() != OpeningMode::Select;
         }
-        if (tool_on && (*key == OpeningKey::Found || *key == OpeningKey::Unload ||
-                        *key == OpeningKey::Load)) {
+        if (tool_on &&
+            (*key == OpeningKey::Found || *key == OpeningKey::Unload || *key == OpeningKey::Load)) {
             return false; // the building tool owns the pointer: B turns it off first
         }
         const UiResult r = ui.key(*key, shift, feed);
@@ -1402,10 +1402,10 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
     }
     f["gold"] = std::to_string(v.gold);
     f["cities"] = std::to_string(v.cities.size());
-    f["mode"] = ui.mode() == OpeningMode::Found     ? "found"
-                : ui.mode() == OpeningMode::Unload  ? "unload"
-                : ui.mode() == OpeningMode::Load    ? "load"
-                                                     : "select";
+    f["mode"] = ui.mode() == OpeningMode::Found    ? "found"
+                : ui.mode() == OpeningMode::Unload ? "unload"
+                : ui.mode() == OpeningMode::Load   ? "load"
+                                                   : "select";
     f["selected"] = ui.selected() ? std::to_string(ui.selected()->v) : "none";
     {
         std::optional<std::uint32_t> tons;

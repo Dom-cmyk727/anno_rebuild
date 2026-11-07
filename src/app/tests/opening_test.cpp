@@ -936,8 +936,9 @@ TEST_CASE("founding probe, real files: the preview's answer is what the sim does
     CHECK(vetoed <= 4);
 }
 
-TEST_CASE("opening, real files: a session saved with a pending Load resumes to the same ship and "
-          "warehouse state (W4-EXPAND-LIVE-1 D3)") {
+TEST_CASE("opening, real files: a session saved right after an applied Load resumes to the same "
+          "ship and warehouse state, not reapplied (W4-EXPAND-LIVE-1 D3, W4-MAIN-2 review D "
+          "finding 2)") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -1001,23 +1002,29 @@ TEST_CASE("opening, real files: a session saved with a pending Load resumes to t
     REQUIRE_MESSAGE(unloaded.ok(), sim::reject_name(unloaded.status));
     REQUIRE(unloaded.records.at(0).transferred_88 > 0);
 
-    // The pending Load: take some of that same stock back aboard.
-    sim::LoadCmd pending_load;
-    pending_load.ship = sim::FigureId{1};
-    pending_load.warehouse = warehouse;
-    pending_load.hold = 0;
-    pending_load.goods = stocked_goods;
-    pending_load.tons = 2;
-    const sim::ApplyResult loaded_result = world.apply(sim::Command{sim::PlayerId{0}, pending_load});
+    // Apply a Load: take some of that same stock back aboard. This command is fully applied to
+    // `world` before the save below — there is no mechanism in this app layer for a command to be
+    // "submitted but not yet applied" across a save/resume boundary (commands apply synchronously;
+    // OpeningSave/load_opening round-trip only already-applied World state). This test therefore
+    // proves "a session saved right after an applied Load resumes correctly, without the Load being
+    // lost or reapplied" — not a true submitted-but-unapplied pending command. See the W4-MAIN-2
+    // review's D finding 2, and OQ-560 for whether a genuinely async pending-command concept is
+    // wanted here at all.
+    sim::LoadCmd load_cmd;
+    load_cmd.ship = sim::FigureId{1};
+    load_cmd.warehouse = warehouse;
+    load_cmd.hold = 0;
+    load_cmd.goods = stocked_goods;
+    load_cmd.tons = 2;
+    const sim::ApplyResult loaded_result = world.apply(sim::Command{sim::PlayerId{0}, load_cmd});
     REQUIRE_MESSAGE(loaded_result.ok(), sim::reject_name(loaded_result.status));
     const std::uint64_t moved_88 = loaded_result.records.at(0).transferred_88;
     REQUIRE(moved_88 > 0);
     const std::uint64_t ship_hold_after_load =
         sim::find_figure(world.figures(), sim::FigureId{1})->holds.front().amount_88;
 
-    // Save right after the Load (it is the session's latest, still-pending command when the save
-    // happens), then resume: the identity checks, the hash, the ship's hold and the warehouse's
-    // stock must all come back exactly as they were, not reapplied or lost.
+    // Save right after the Load is applied, then resume: the identity checks, the hash, the ship's
+    // hold and the warehouse's stock must all come back exactly as they were, not reapplied or lost.
     app::OpeningSave save;
     save.identity = load.identity;
     save.tick = world.clock().tick();

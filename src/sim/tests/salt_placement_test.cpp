@@ -2631,6 +2631,12 @@ void continuation_at(const char* boundary, At at) {
     CHECK(re.rng().cursor() == w.rng().cursor());
     CHECK(re.save() == w.save());
     CHECK(re.check_invariants().empty());
+    // positive control: a reload that runs ONE step fewer does differ, so the comparison above can tell
+    auto shorter = sim::World::load(bytes, x.c->sw.types, {});
+    REQUIRE(shorter.ok());
+    for (int i = 0; i < 799; ++i) shorter.value().advance(kStepMs);
+    CHECK(shorter.value().state_hash() != w.state_hash());
+    CHECK(shorter.value().save() != w.save());
 }
 
 } // namespace

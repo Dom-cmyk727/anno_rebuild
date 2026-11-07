@@ -41,8 +41,9 @@ struct MineFacts {
     bool deep = false;
     /// The mine's output store now, 8.8 tons.
     std::uint32_t output_88 = 0;
-    /// Everything the production steps made, 8.8 tons, from the diagnostic ledger of the installed
-    /// TransportStats sink; nullopt without a sink. NOT saved state: the Mine keeps no production total
+    /// What the production steps made SINCE THE SINK WAS INSTALLED, 8.8 tons (not since the mine was built:
+    /// a sink installed later, or a world loaded from a save, starts at 0), from the diagnostic ledger of the
+    /// installed TransportStats sink; nullopt without a sink. NOT saved state: the Mine keeps no production total
     /// (adding one would change the 135 identity).
     std::optional<std::uint64_t> produced_88;
     MineState state = MineState::Unbound;

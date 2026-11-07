@@ -55,6 +55,9 @@ std::optional<SDL_Keycode> keycode(const std::string& name) {
     if (name == "u") {
         return SDLK_U;
     }
+    if (name == "l") {
+        return SDLK_L; // the developer Load adapter, W4-EXPAND-LIVE-1 D1
+    }
     if (name == "h") {
         return SDLK_H;
     }

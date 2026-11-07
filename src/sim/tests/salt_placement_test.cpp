@@ -42,6 +42,26 @@ namespace sim = anno::sim;
 using namespace tutorial_town;
 
 namespace {
+/// A registry that holds ore evidence (an ore symbol figure type: BEWOHNTYPE 145 with a WARE) for
+/// each named ware and no building types: the mountain class places a mine of a ware only when the
+/// registry has such evidence (stream 137, docs/sim/iron-tools.md T1.3).
+std::shared_ptr<const sim::TypeRegistry> evidence_registry(const std::vector<std::string>& wares) {
+    sim::TypeRegistry::Builder b;
+    std::uint32_t id = 1560;
+    for (const std::string& w : wares) {
+        sim::FigureType ft;
+        ft.id = id++;
+        ft.bewohntype = 145;
+        ft.ware = w;
+        b.figure_type(ft);
+    }
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    return built.value();
+}
+} // namespace
+
+namespace {
 
 // ---- layer 1: the vector file ------------------------------------------------------------
 
@@ -226,7 +246,7 @@ TEST_CASE("mountain placement: the vectors through placement_rule with lo from t
         }
         INFO("vector " << v.name);
         const sim::PlacementResult r =
-            sim::placement_rule(is, *sim::TypeRegistry::empty(), t, rec, params);
+            sim::placement_rule(is, *evidence_registry({"SALZSTEIN"}), t, rec, params);
         if (v.expect == "accept") {
             CHECK(r.reject == sim::Reject::None);
         } else {
@@ -251,12 +271,14 @@ TEST_CASE("mountain placement: types the class does not cover stay Unsupported")
     const sim::Island is = island_for(v);
     sim::PlacementRecord rec;
     rec.type = sim::TypeId{1203};
-    const sim::TypeRegistry& reg = *sim::TypeRegistry::empty();
+    const auto evidence = evidence_registry({"SALZSTEIN", "GOLD"});
+    const sim::TypeRegistry& reg = *evidence;
     // the legal control
     sim::BuildingType t = mine_type(v);
     CHECK(sim::placement_rule(is, reg, t, rec).reject == sim::Reject::None);
-    // no table, a table of the wrong length, a quarry class, a shallow iron mine, no production
-    // data
+    // no table, a table of the wrong length, a quarry class, a ware without ore evidence in the
+    // registry, a ware this build does not place (gold: evidence present, still Unsupported), no
+    // production data
     sim::BuildingType no_table = t;
     no_table.highmap.clear();
     CHECK(sim::placement_rule(is, reg, no_table, rec).reject == sim::Reject::Unsupported);
@@ -268,7 +290,14 @@ TEST_CASE("mountain placement: types the class does not cover stay Unsupported")
     CHECK(sim::placement_rule(is, reg, quarry, rec).reject == sim::Reject::Unsupported);
     sim::BuildingType iron = t;
     iron.prod.outputs = {"EISENERZ"};
+    // iron ore is a supported ware but the registry (salt and gold evidence only) holds none
     CHECK(sim::placement_rule(is, reg, iron, rec).reject == sim::Reject::Unsupported);
+    sim::BuildingType gold = t;
+    gold.prod.outputs = {"GOLD"};
+    CHECK(sim::placement_rule(is, reg, gold, rec).reject == sim::Reject::Unsupported);
+    // no evidence at all for the control's own ware
+    CHECK(sim::placement_rule(is, *evidence_registry({"EISENERZ"}), t, rec).reject ==
+          sim::Reject::Unsupported);
     sim::BuildingType bare = t;
     bare.has_prod = false;
     CHECK(sim::placement_rule(is, reg, bare, rec).reject == sim::Reject::Unsupported);
@@ -402,6 +431,13 @@ TEST_CASE(
         t.height = ct.h;
         t.flags_word = ct.flags;
         b.add(t);
+    }
+    {
+        sim::FigureType ft; // the placed salt-like mine needs ore evidence (stream 137)
+        ft.id = 1562;
+        ft.bewohntype = 145;
+        ft.ware = "SALZSTEIN";
+        b.figure_type(ft);
     }
     auto built = b.build();
     REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
@@ -654,8 +690,15 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
                 }
             }
             REQUIRE_MESSAGE(got.has_value(), "type " << t.id.v);
-            CHECK_MESSAGE(*got == sim::Reject::Unsupported,
-                          "type " << t.id.v << ": " << sim::reject_name(*got));
+            // stream 137: an iron mine (shallow 1205/1210, deep 1216/1217) passes the placement
+            // rule and meets the permission step instead (stage 2C is not reached at the start,
+            // research 57 is not held): ConstructionDenied; quarries, gold and gems stay
+            // Unsupported
+            const bool iron_mine = t.cls == sim::RuntimeClass::Mine && t.has_prod &&
+                                   !t.prod.outputs.empty() && t.prod.outputs[0] == "EISENERZ";
+            CHECK_MESSAGE(
+                *got == (iron_mine ? sim::Reject::ConstructionDenied : sim::Reject::Unsupported),
+                "type " << t.id.v << ": " << sim::reject_name(*got));
             ++checked;
         }
         CHECK(checked == 11);
@@ -1125,6 +1168,15 @@ FlatIsland flat_island(std::int32_t x0, std::int32_t y0, std::uint32_t w, std::u
     rock.cls = sim::RuntimeClass::Plain;
     rock.flags_word = 0x12;
     b.add(rock);
+    // ore evidence for every ware the tests place or refuse (stream 137)
+    std::uint32_t fid = 1560;
+    for (const char* ware : {"SALZSTEIN", "EISENERZ", "GOLD", "EDELSTEINE"}) {
+        sim::FigureType ft;
+        ft.id = fid++;
+        ft.bewohntype = 145;
+        ft.ware = ware;
+        b.figure_type(ft);
+    }
     auto built = b.build();
     REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
     f.reg = built.value();
@@ -1163,11 +1215,16 @@ TEST_CASE("mountain placement: only the listed wares are placed and the list is 
         return;
     }
     const FlatIsland f = flat_island(0, 0, 40, 40);
-    // salt: the legal control
-    CHECK(rule(f, *test_must::must(o->types->find(sim::TypeId{1203})), 4, 4) == sim::Reject::None);
-    // the five deep mines of other wares: Unsupported by default on a site the rule would accept
-    // with their ware listed
-    for (const std::uint32_t id : {1206U, 1212U, 1214U, 1216U, 1217U}) {
+    // salt and iron (deep and shallow alike): placed by default on a site the rule accepts; no id
+    // list: the rule selects by class, table, ware and the registry's ore evidence
+    for (const std::uint32_t id : {1203U, 1205U, 1210U, 1216U, 1217U}) {
+        const sim::BuildingType& t = *test_must::must(o->types->find(sim::TypeId{id}));
+        INFO("type " << id << " ware " << t.prod.outputs.at(0));
+        CHECK(rule(f, t, 4, 4) == sim::Reject::None);
+    }
+    // gold and gems: typed Unsupported by default on a site the rule would accept with their ware
+    // listed (the registry holds their ore symbols, so the list alone decides)
+    for (const std::uint32_t id : {1206U, 1212U, 1214U}) {
         const sim::BuildingType& t = *test_must::must(o->types->find(sim::TypeId{id}));
         INFO("type " << id << " ware " << t.prod.outputs.at(0));
         CHECK(rule(f, t, 4, 4) == sim::Reject::Unsupported);
@@ -1179,11 +1236,13 @@ TEST_CASE("mountain placement: only the listed wares are placed and the list is 
         other.mountain_wares = {"SALZSTEIN"};
         CHECK(rule(f, t, 4, 4, other) == sim::Reject::Unsupported);
     }
-    // an empty list places nothing, salt included
+    // an empty list places nothing, salt and iron included
     sim::PlacementParams none;
     none.mountain_wares.clear();
-    CHECK(rule(f, *test_must::must(o->types->find(sim::TypeId{1203})), 4, 4, none) ==
-          sim::Reject::Unsupported);
+    for (const std::uint32_t id : {1203U, 1205U}) {
+        CHECK(rule(f, *test_must::must(o->types->find(sim::TypeId{id})), 4, 4, none) ==
+              sim::Reject::Unsupported);
+    }
 }
 
 TEST_CASE("mountain coverage: the typed Unsupported branches and the chunk edge as data") {

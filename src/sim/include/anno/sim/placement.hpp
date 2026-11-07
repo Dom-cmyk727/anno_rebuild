@@ -81,14 +81,16 @@ struct PlacementParams {
     /// the rule's mark array stays 2 x 2.
     std::uint32_t coverage_chunk_shift = 3;
     /// Stream 135: the class bits (flag word & 0x7000) of the mountain class (mines, quarries;
-    /// AnnoGame 0x100091a1). Only a deep MINE type with its HIGHMAP table is placeable; see
-    /// classify().
+    /// AnnoGame 0x100091a1). Only a MINE type with its HIGHMAP table, a supported ware and ore
+    /// evidence in the registry is placeable (stream 137: deep or shallow); see classify().
     std::uint32_t mountain_class = 0x3000;
-    /// The output wares of the mountain-class mines this build places (docs/sim/salt-extraction.md
-    /// sections 13 and 15: the extraction slice is salt only, no iron production). Another deep
-    /// mine (gold, gems, deep iron) stays typed Unsupported until its ware is proved and listed
-    /// here by data; the default is the proved ware.
-    std::vector<std::string> mountain_wares = {"SALZSTEIN"};
+    /// The output wares of the mountain-class mines this build places (docs/sim/iron-tools.md
+    /// T1.3): salt (stream 135) and iron ore (stream 137), the wares whose chains are proved. A
+    /// mine of another ware (gold, gems) stays typed Unsupported; a ware is added here by data once
+    /// its chain is proved. Goods NAMES, not type ids: any mine type of the class with that ware
+    /// places, provided the registry holds ore evidence for it (an ore symbol figure type of that
+    /// WARE).
+    std::vector<std::string> mountain_wares = {"SALZSTEIN", "EISENERZ"};
     /// MAP-ROAD-CLOSE-1: the enhanced road choices (Rules::road_require_land_level and
     /// Rules::road_preserve_nonroad_pieces), false = the original predicates. The world passes its
     /// Rules values; a direct caller states them.

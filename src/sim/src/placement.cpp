@@ -19,22 +19,39 @@ std::uint32_t group_of(std::uint32_t prodtype) {
 
 enum class Class : std::uint8_t { Ordinary, Coast, Road, Mountain, Other };
 
-Class classify(const BuildingType& t, const PlacementParams& p) {
+/// Whether the registry holds ore evidence for `ware`: a figure type that is an ore symbol
+/// (BEWOHNTYPE 145) of that WARE (stream 135 FigureType::ware, AnnoWelt deposit class +0x84). The
+/// mountain class places a mine of a ware only when the data can supply its deposits (stream 137,
+/// docs/sim/iron-tools.md T1.3); a registry without figure types has no evidence.
+bool has_ore_evidence(const TypeRegistry& types, const std::string& ware) {
+    for (const FigureType& ft : types.figure_types()) {
+        if (ft.bewohntype == 145 && ft.ware == ware) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Class classify(const BuildingType& t, const PlacementParams& p, const TypeRegistry& types) {
     // The original's flag word is HEAD u16 +0x1c; a wider word is not evidenced (Other).
     if (t.flags_word > 0xffffU) {
         return Class::Other;
     }
-    // Stream 135: the mountain class (flag word & 0x7000 == 0x3000) is placeable only for a deep
-    // MINE type that carries its HIGHMAP table (exactly 2h x 2w bytes); every other type of the
-    // class (quarries, shallow iron mines, a type without a table) stays Unsupported. The shipped
-    // mines carry flag bit 0x10, so this branch precedes the gate below: their coverage test (a
-    // second predicate, docs/sim/salt-extraction.md section 18) is implemented in coverage_rule.
+    // Streams 135 and 137: the mountain class (flag word & 0x7000 == 0x3000) is placeable for a
+    // MINE type that carries its HIGHMAP table (exactly 2h x 2w bytes), whose first output ware is
+    // one this build supports (PlacementParams::mountain_wares: salt and iron; gold and gems stay
+    // Unsupported) AND for which the registry has ore evidence (has_ore_evidence). Deep or shallow
+    // does not matter here: the stage and research gates are the construction-eligibility rules,
+    // and mine_is_deep only decides how much of a deposit the mine may use. Quarries and a type
+    // without a table stay Unsupported. The shipped mines carry flag bit 0x10, so this branch
+    // precedes the gate below: their coverage test (a second predicate,
+    // docs/sim/salt-extraction.md section 18) is implemented in coverage_rule.
     if ((t.flags_word & 0x7000U) == p.mountain_class && t.cls == RuntimeClass::Mine && t.has_prod &&
-        mine_is_deep(t.prod, t.research_id) &&
         t.highmap.size() == std::size_t{4} * t.width * t.height && (t.flags_word & 3U) != 1U &&
         !t.prod.outputs.empty() &&
         std::find(p.mountain_wares.begin(), p.mountain_wares.end(), t.prod.outputs[0]) !=
-            p.mountain_wares.end()) {
+            p.mountain_wares.end() &&
+        has_ore_evidence(types, t.prod.outputs[0])) {
         return Class::Mountain;
     }
     // Every other type with the coverage bit stays Unsupported (the test is evidenced for the
@@ -206,7 +223,7 @@ PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
     // R3 class gate first, as the oracle's engine_place: no flag word outside the two evidenced
     // classes, no rotation above 3 (uninitialised footprint bytes in the original) and no empty
     // footprint ever gets a default answer.
-    const Class cls = classify(effective, params);
+    const Class cls = classify(effective, params, types);
     const auto [fw, fh] = footprint(effective, rec.rotation);
     if (cls == Class::Other || rec.rotation > 3 || fw == 0 || fh == 0) {
         return kUnsupported;

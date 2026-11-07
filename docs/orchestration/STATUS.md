@@ -4,8 +4,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-07 afternoon, by the Claude Code orchestrator: the first Mac's faithful mine default recorded
-(`task/MAP-EXTRACT-1-x2` at `bd725d4e`, REVIEW PENDING); the Windows lane's W4-MAIN-2 checkpoints recorded. Earlier on
+**Last updated:** 2026-11-07 afternoon, by the Claude Code orchestrator: W4-MAIN-2 parts S, A, B and D reviewed; part
+A (main's 18 real-file tests) merged into `main` as `5e7b13c6`, game-file run pending; the first Mac's faithful mine
+default recorded (`task/MAP-EXTRACT-1-x2`, REVIEW PENDING). Earlier on
 2026-11-07: W4-SETTLEMENT-1 reviewed, changes requested; 18 real-file test failures found on `main`; W4-MAIN-2 released
 to the Windows executor; new owner rule on game-file runs for `main`. Before that: 2026-11-06, by the Codex
 orchestrator (MAIN-CI-1 accepted; gameplay assignments unchanged).
@@ -38,12 +39,15 @@ jobs. [Acceptance, failures, exact counts and intake notes](reviews/2026-11-06-m
 The previous red-main condition since `944cec89` is repaired; the owner’s CI hold
 before consolidation is satisfied. No further gameplay has been consolidated.
 
-**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is not yet healthy.** That rule counts `main` as
-healthy only once its game-file tests have run on the Windows PC. The run found 18 failures, reproduced at `96775da4`.
-- **What fails:** out-of-date tests after the strict scene loader (`f7c31ed8`) and the construction-eligibility check
-  (`d2be23aa`).
-- **The repair:** assigned to the Windows lane, W4-MAIN-2 part A, which also runs the full game-file suite at
-  `dbb22306` first.
+**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is "CI green, game-file run pending" at
+`5e7b13c6`.** That rule counts `main` as healthy only once its game-file tests have run on the Windows PC.
+- **What failed:** 18 out-of-date real-file tests, reproduced at `96775da4`. They broke after the strict scene loader
+  (`f7c31ed8`) and the construction-eligibility check (`d2be23aa`).
+- **The repair:** W4-MAIN-2 part A (`task/MAIN-REALFILES-1`). It was [reviewed and accepted](reviews/2026-11-07-w4-main-2.md)
+  and merged into `main` as `5e7b13c6` on 2026-11-07. On its own branch all 18 pass in the full MSVC run with the game
+  files.
+- **Still to do:** the owner-rule run at `5e7b13c6` itself. It runs once the Windows lane's WSL gate has freed the PC.
+  A full run with `-j 16` hits memory refusals on this PC; see the review.
 
 Every later code push to `main` needs its own game-file run on the Windows PC.
 
@@ -67,25 +71,28 @@ mirror still requires the owner/Windows sync after main publication.
     - Code findings: one clang-format blocker; `wait turns` still races; the inspection line can show the wrong building;
       the gate script exits 0 on failed lanes and keeps its logs inside the tested worktree.
     - `picture_matrix_contract` passes in all five lanes.
-  - **[W4-MAIN-2](tasks/w4-main-2.md),** released 2026-11-07. Its parts and the last observed checkpoints
-    (2026-11-07, 13:40):
-    - **S:** the W7 review fixes, `task/W4-settlement-1` at `8532c450`. REVIEW PENDING.
-    - **A:** repair main's 18 out-of-date real-file tests, `task/MAIN-REALFILES-1` at `8175df79`. REVIEW PENDING.
-    - **B:** the Windows lane on main 134, `task/W4-main-2` at `85c4aeae` (merges A and S). REVIEW PENDING.
-    - **C:** one W7 and the Windows host gates at the B head. Its five-lane WSL gate was running at the last check;
-      no result is recorded yet.
-    - **D:** the Load adapter and the live two-island recipe, `task/W4-expand-live-1` at `9fd9c216`. REVIEW PENDING;
-      its WSL app lane waits for C's gate.
-
-    The orchestrator reviews every part before anything reaches `main`.
+  - **[W4-MAIN-2](tasks/w4-main-2.md),** released 2026-11-07. Its parts are
+    [reviewed](reviews/2026-11-07-w4-main-2.md), except C, which is still running:
+    - **S:** the W7 review fixes, `task/W4-settlement-1` at `8532c450`.
+      - Findings 1–8 are fixed and finding 9 partly.
+      - Two small follow-ups: the negative step should hover instead of click; formatter tests for
+        `inspect_building`.
+      - The report wrongly says the WSL gate runs the heavy tests.
+    - **A:** main's 18 real-file tests, `task/MAIN-REALFILES-1` at `8175df79`. **Accepted, merged into `main` as
+      `5e7b13c6`.** Its report gives a wrong cause for 13 render refusals; correction requested.
+    - **B:** the Windows lane on main 134, `task/W4-main-2` at `85c4aeae`.
+      - The merge is correct. Its MSVC run has 4 memory refusals and the known `F4 (N4)` cold-cache defect.
+      - Acceptance waits for C.
+    - **C:** the WSL gate `w4main2c1` at the B head. At 15:10: app, sim and formats PASS with no sanitizer reports;
+      the render lane was running. C2–C4 are not reported yet.
+    - **D:** the Load adapter, `task/W4-expand-live-1` at `9fd9c216`. **Changes requested.**
+      - The pushed head lacks the scripted `l` key that its own window test needs. It sits uncommitted in the
+        worktree, so the reported passes ran on a dirty tree.
+      - The "pending Load" test applies the Load before saving.
+      - The card's recipe replay is still wanted, as its own checkpoint.
   - **After that:** the owner's playtest cards.
-- **Found by this review, on `main` (not this package):** 18 real-file tests fail at `96775da4`. Hosted CI can't see
-  them because it has no game files.
-  - The strict scene loader (`f7c31ed8`) refuses `Single_01.sze`; only 11 of the 50 original scenes still load.
-  - The construction-eligibility check (`d2be23aa`) stage-locks the buildings the legal workload chooses.
-  - The tests are out of date. **Owner decision, 2026-11-07:** the Windows lane repairs them in W4-MAIN-2 part A, on
-    a branch the orchestrator merges after review. No other lane starts a parallel repair.
-  - Play mode refuses 39 of the 50 original scenes; view mode (`--view`) still opens them.
+- **Found by the W7 review, on `main`:** 18 real-file tests failed at `96775da4`; repaired by part A, merged as
+  `5e7b13c6`. Play mode still refuses 39 of the 50 original scenes; view mode (`--view`) still opens them.
 - **Branch:** `task/W4-settlement-1`, head `8532c450` (pushed; the reviewed W7 head was `384df19d`).
   - It is based on `task/W4-opening-2-main`: `main` `3b74201f` plus the reviewed W4-OPENING-CONTROLS-FLAKE delta.
 - **Also open:**
@@ -117,9 +124,9 @@ mirror still requires the owner/Windows sync after main publication.
     - Debug canonical: 1,694 selected, 1,688 executed, 0 failed, 6 opt-in skips;
     - focused ASan: 52 selected, 51 executed, 0 failed;
     - GCC 13.3 compile of the touched test, in an arm64 container.
-  - **CI:** run 42368776369 at `9a094b05` passed all ten jobs (checked). Run 42373041769 on the head was still running
-    at the last check.
-  - **A CI failure the report leaves out.** Run 42360315619 at `fa100f8f`, a docs-only commit, failed in
+  - **CI:** run 42368776369 at `9a094b05` and run 42373041769 at `bd725d4e` passed all ten jobs each (checked).
+  - **A CI failure, now recorded in the branch's REPORTS (`2f32437a`).** Run 42360315619 at `fa100f8f`, a docs-only
+    commit, failed in
     `linux-gcc-release` on `anno_test_support_tests.V3: the predecessor journal states ...`, at `budget_f5_test.cpp:998`:
     `JOURNAL-REFUSED` was expected, and six assertions failed.
     - The same code passed at `5939efc7` and `9a094b05`. The test comes from `main`, not from this package.
@@ -133,7 +140,8 @@ mirror still requires the owner/Windows sync after main publication.
   - Hunting remains PARTIAL and outside this packet.
 - **Next:** acceptance review and the state135 consolidation into `main`. After that push, the game-file run on the
   Windows PC (owner rule).
-- **Branch:** `task/MAP-EXTRACT-1-x2`, head `bd725d4e`, clean tree. It contains `task/MAP-EXTRACT-1-main`
+- **Branch:** `task/MAP-EXTRACT-1-x2`, head `2f32437a` (a docs-only closeout after `bd725d4e`), clean tree; the lane
+  is idle. It contains `task/MAP-EXTRACT-1-main`
   (`3d9dbafe`) and the earlier NEEDS candidate `5df34b38` (`task/MAP-2-needs2-main`). None of these is merged into
   `main`.
 - **Identity:** state135 (`kStateHashVersion = 135`). The faithful default changes no state field, stream or hash.
@@ -172,6 +180,11 @@ mirror still requires the owner/Windows sync after main publication.
 
 The first Mac section records its last observed checkpoint, not live job state.
 Its later work is not accepted merely because expansion is complete.
+
+## Waiting on a run
+
+- **The game-file run at `5e7b13c6`** (owner rule): the full MSVC suite with the game files and the RTX 4090. The
+  Claude Code orchestrator runs it on the Windows PC once the Windows lane's WSL gate has finished.
 
 ## Waiting on the owner
 

@@ -159,7 +159,7 @@ inline std::unique_ptr<Cloth> start_cloth(const Original& o, bool build_stall,
             if (!b) {
                 continue;
             }
-            const sim::BuildingType* t = T.find(b->type);
+            const sim::BuildingType* t = test_must::must(T.find(b->type));
             if (t == nullptr || !t->has_prod || t->input_goods.empty() || t->output_goods.empty()) {
                 continue;
             }
@@ -225,7 +225,7 @@ inline std::unique_ptr<Cloth> start_cloth(const Original& o, bool build_stall,
             }
         }
         bool done = false;
-        c->pay_before = pay_snap(*c, *T.find(c->stall_type));
+        c->pay_before = pay_snap(*c, *test_must::must(T.find(c->stall_type)));
         for (int r = 1; r <= 8 && !done; ++r) {
             for (int dy = -r; dy <= r && !done; ++dy) {
                 for (int dx = -r; dx <= r && !done; ++dx) {
@@ -244,7 +244,7 @@ inline std::unique_ptr<Cloth> start_cloth(const Original& o, bool build_stall,
             }
         }
         REQUIRE(done);
-        c->pay_after = pay_snap(*c, *T.find(c->stall_type));
+        c->pay_after = pay_snap(*c, *test_must::must(T.find(c->stall_type)));
     }
     if (stoffe_store != 0) {
         c->city->stock.stock[kStoffe] =
@@ -273,7 +273,7 @@ inline std::unique_ptr<Cloth> start_cloth(const Original& o, bool build_stall,
         if (b == nullptr) {
             continue; // demolished in the control arms
         }
-        const sim::SearchArea a = sim::search_area(*b, *T.find(b->type));
+        const sim::SearchArea a = sim::search_area(*b, *test_must::must(T.find(b->type)));
         const sim::TileRect sq = a.square();
         for (int y = sq.y0; y < sq.y0 + static_cast<int>(sq.h); ++y) {
             for (int x = sq.x0; x < sq.x0 + static_cast<int>(sq.w); ++x) {

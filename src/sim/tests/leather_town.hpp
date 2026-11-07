@@ -108,7 +108,7 @@ inline std::unique_ptr<Leather> start_leather(const Original& o, std::uint32_t h
     if (tannery) {
         // the site: the nearest accepted site in rings around the demolished weaver (279,350)
         const sim::TileXY centre{279, 350};
-        L->pay_before = pay_snap(c, *T.find(L->tannery_type));
+        L->pay_before = pay_snap(c, *test_must::must(T.find(L->tannery_type)));
         bool done = false;
         for (int r = 0; r <= 10 && !done; ++r) {
             for (int dy = -r; dy <= r && !done; ++dy) {
@@ -128,7 +128,7 @@ inline std::unique_ptr<Leather> start_leather(const Original& o, std::uint32_t h
             }
         }
         REQUIRE(done);
-        L->pay_after = pay_snap(c, *T.find(L->tannery_type));
+        L->pay_after = pay_snap(c, *test_must::must(T.find(L->tannery_type)));
         const sim::Building* b = c.isl->building_at(c.w.config().layout, c.city->number,
                                                     L->tannery_at->x, L->tannery_at->y);
         REQUIRE(b != nullptr);
@@ -141,9 +141,9 @@ inline std::unique_ptr<Leather> start_leather(const Original& o, std::uint32_t h
     }
     // the households' watcher follows LEDER instead of STOFFE
     for (auto& [id, hw] : c.houses) {
-        const sim::Building* b = c.isl->find_building(id);
+        const sim::Building* b = test_must::must(c.isl->find_building(id));
         const auto* h = std::get_if<sim::House>(&b->payload);
-        const sim::BuildingType* t = T.find(b->type);
+        const sim::BuildingType* t = test_must::must(T.find(b->type));
         const auto g = sim::house_group(c.w.config(), t->prodtype);
         REQUIRE(g.has_value());
         const auto view = T.population_view(*g, c.w.config());

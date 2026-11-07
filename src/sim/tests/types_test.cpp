@@ -1925,6 +1925,7 @@ TEST_CASE("registry builds all 921 entries of Anlagen.dat") {
     // Old direct-build identity855fce5ed63c1090 is preserved at the accepted base.
     // PRM1 independently derived from HEAD and Game research-name pointers:
     // 827rows,22151bytes,SHA256053df2ab...d5fc9, extends b62eba128fce9259.
+    // moved from 0x986b10f94d3725b4 by BuildingType::highmap alone (registry has no figures)
     CHECK(r.digest() == 0xf0c98731e34fca02ULL);
     // The growing items (ROHSTWACHS / ROHSTDUERR): grain field 712 and forest 104.
     CHECK(r.find_growing(712) == r.find(sim::TypeId{712}));

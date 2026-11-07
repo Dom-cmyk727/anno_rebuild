@@ -60,7 +60,7 @@ TEST_CASE("cloth canary: original-data component projection, zero-start: new woo
     REQUIRE(c.stall_at.has_value());
     CHECK(c.stall_at->x == 306);
     CHECK(c.stall_at->y == 339);
-    check_paid(c, *o->types->find(c.stall_type), *c.pay_before, *c.pay_after);
+    check_paid(c, *test_must::must(o->types->find(c.stall_type)), *c.pay_before, *c.pay_after);
     std::cerr << "PIN start farm raw " << c.farm_raw0 << " out " << c.farm_out0 << " weaver in "
               << c.weaver_in0 << " out " << c.weaver_out0 << "\n";
     constexpr std::uint64_t kEnd = 300000;
@@ -239,11 +239,12 @@ TEST_CASE(
     const std::uint64_t taken_gap = taken(c);
     // the restoration: a paid public command at the same site
     CHECK_FALSE(c.w.rules().free_build_cheat);
-    const PaySnap pay0 = pay_snap(c, *o->types->find(wtype));
+    const PaySnap pay0 = pay_snap(c, *test_must::must(o->types->find(wtype)));
     const auto res =
         c.w.apply(cmd(c, sim::BuildCmd{c.ref, {sim::PlacementWire{wtype, at.x, at.y, rot, 0, 0}}}));
     REQUIRE_MESSAGE(res.ok(), std::string(sim::reject_name(res.status)));
-    check_paid(c, *o->types->find(wtype), pay0, pay_snap(c, *o->types->find(wtype)));
+    check_paid(c, *test_must::must(o->types->find(wtype)), pay0,
+               pay_snap(c, *test_must::must(o->types->find(wtype))));
     const sim::Building* nb = c.isl->building_at(c.w.config().layout, c.city->number, at.x, at.y);
     REQUIRE(nb != nullptr);
     const sim::BuildingId new_weaver = nb->id;

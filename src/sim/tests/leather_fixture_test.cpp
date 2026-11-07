@@ -79,14 +79,14 @@ TEST_CASE("synthetic mechanics fixture: labelled hides become leather and househ
     }
     auto L = start_leather(*o, kHides, true, true);
     Cloth& c = *L->t;
-    const sim::BuildingType& tt = *o->types->find(L->tannery_type);
+    const sim::BuildingType& tt = *test_must::must(o->types->find(L->tannery_type));
     // setup (asserted): a public BuildCmd of the stall and of the tannery, both PAID; the hide
     // stock is the only labelled thing; the zero-start guard of a real-file proof refuses it
     REQUIRE(c.stall_at.has_value());
     REQUIRE(L->tannery_at.has_value());
     CHECK(L->tannery_at->x == 279);
     CHECK(L->tannery_at->y == 350);
-    check_paid(c, *o->types->find(c.stall_type), *c.pay_before, *c.pay_after);
+    check_paid(c, *test_must::must(o->types->find(c.stall_type)), *c.pay_before, *c.pay_after);
     check_paid(c, tt, *L->pay_before, *L->pay_after);
     CHECK_FALSE(chain_goods_zero(*c.city));
     CHECK(c.city->stock.stock[kHaeute] == kHides);

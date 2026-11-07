@@ -66,7 +66,7 @@ Flight flight_of(const Leather& L) {
     const sim::Building* tb = c.isl->find_building(L.tannery);
     if (tb != nullptr) {
         const sim::Workshop& w = std::get<sim::Workshop>(tb->payload);
-        const sim::BuildingType& t = *c.w.types().find(tb->type);
+        const sim::BuildingType& t = *test_must::must(c.w.types().find(tb->type));
         f.processor = w.in[0] >= t.prod.input_per_step[0] && w.out[0] > 0;
     }
     return f;

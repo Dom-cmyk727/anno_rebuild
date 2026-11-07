@@ -564,7 +564,7 @@ TEST_CASE("salt mine: the legal site with its payment and the deposit bound at p
     sim::World& w = s->w;
     REQUIRE(w.construction_eligibility(kSaltPlayer, kSaltMine).allowed());
     CHECK(isle(w).deposits.empty()); // the loader makes none: imported mines stay inert
-    const sim::BuildingType& ty = *s->types->find(kSaltMine);
+    const sim::BuildingType& ty = *test_must::must(s->types->find(kSaltMine));
     const std::int64_t gold0 = gold(w);
     const std::size_t cursor0 = w.rng().cursor();
     const sim::City& city = *isle(w).city(kSaltCity.city);
@@ -1012,11 +1012,11 @@ TEST_CASE("mountain placement: only the listed wares are placed and the list is 
     }
     const FlatIsland f = flat_island(0, 0, 40, 40);
     // salt: the legal control
-    CHECK(rule(f, *o->types->find(sim::TypeId{1203}), 4, 4) == sim::Reject::None);
+    CHECK(rule(f, *test_must::must(o->types->find(sim::TypeId{1203})), 4, 4) == sim::Reject::None);
     // the five deep mines of other wares: Unsupported by default on a site the rule would accept
     // with their ware listed
     for (const std::uint32_t id : {1206U, 1212U, 1214U, 1216U, 1217U}) {
-        const sim::BuildingType& t = *o->types->find(sim::TypeId{id});
+        const sim::BuildingType& t = *test_must::must(o->types->find(sim::TypeId{id}));
         INFO("type " << id << " ware " << t.prod.outputs.at(0));
         CHECK(rule(f, t, 4, 4) == sim::Reject::Unsupported);
         sim::PlacementParams listed;
@@ -1030,7 +1030,8 @@ TEST_CASE("mountain placement: only the listed wares are placed and the list is 
     // an empty list places nothing, salt included
     sim::PlacementParams none;
     none.mountain_wares.clear();
-    CHECK(rule(f, *o->types->find(sim::TypeId{1203}), 4, 4, none) == sim::Reject::Unsupported);
+    CHECK(rule(f, *test_must::must(o->types->find(sim::TypeId{1203})), 4, 4, none) ==
+          sim::Reject::Unsupported);
 }
 
 TEST_CASE("mountain coverage: the typed Unsupported branches and the chunk edge as data") {
@@ -3038,7 +3039,7 @@ TEST_CASE("salt X5: the lookup visits the ore objects of its island once and not
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const sim::BuildingType& mine = *o->types->find(sim::TypeId{1203});
+    const sim::BuildingType& mine = *test_must::must(o->types->find(sim::TypeId{1203}));
     const sim::MineArea area{200, 200, 3, 4};
     std::vector<sim::OreLookupStats> series;
     for (const std::size_t k : {10U, 100U, 1000U, 10000U}) {
@@ -3120,7 +3121,7 @@ TEST_CASE("salt X5: lookup timing sample (opt-in measure)") {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const sim::BuildingType& mine = *o->types->find(sim::TypeId{1203});
+    const sim::BuildingType& mine = *test_must::must(o->types->find(sim::TypeId{1203}));
     const sim::MineArea area{200, 200, 3, 4};
     for (const std::size_t k : {100U, 1000U, 10000U, 100000U}) {
         OreIsland oi = ore_island(k, 5, 25);

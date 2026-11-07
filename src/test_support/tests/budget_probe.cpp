@@ -197,6 +197,11 @@ int silent_listener(std::uint16_t port) {
     if (fd < 0) {
         return 1;
     }
+    // As the coordinator (coord_server.cpp listen_on): the connections of the previous run's
+    // coordinator on this port linger in TIME_WAIT for 60 s and would refuse the bind, so a
+    // repeated case failed at once. Linux still lets only one socket listen on the port.
+    int reuse = 1;
+    ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 #endif
     sockaddr_in address{};
     address.sin_family = AF_INET;

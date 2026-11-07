@@ -10,6 +10,7 @@
 #include <anno/sim/driver.hpp>
 #include <anno/sim/house_tick.hpp>
 #include <anno/sim/inn.hpp>
+#include <anno/sim/mine_source.hpp>
 #include <anno/sim/transport.hpp>
 
 namespace anno::sim {
@@ -364,8 +365,32 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         // the footprint by rotation (D 0x1006ddf0) and world setting 14 bit 1, the
         // add-on edition (OQ-035 a, D 0x10063686).
         const std::uint32_t mine_out_before = m->out;
+        // Stream 137: the re-lookup of a spent or short deposit searches every ore object of the
+        // island (D 0x100787c0) and materialises the deposit it binds, like the attach lookup.
+        struct Relook {
+            Island& island;
+            const TypeRegistry& types;
+            const Building& b;
+            const BuildingType& type;
+            bool deep;
+        } relook{island, ctx.types, b, *type, m->deep};
+        const MineRelookup relookup{
+            [](void* p) -> std::optional<std::size_t> {
+                const Relook& r = *static_cast<const Relook*>(p);
+                if (const auto bound = bind_mine_deposit(r.island, r.types, r.b, r.type, r.deep)) {
+                    return bound;
+                }
+                // No ore object in reach. A world whose deposits carry no ore object (a synthetic
+                // fixture) keeps the earlier search among its deposits; on original data every
+                // deposit comes from an ore object, so this finds nothing the lookup missed.
+                return find_deposit(r.island.deposits,
+                                    r.type.prod.outputs.empty() ? std::string()
+                                                                : r.type.prod.outputs[0],
+                                    r.deep, mine_area(r.b, r.type));
+            },
+            &relook};
         r = mine_step(*m, type->prod, ctx.t, island.deposits, mine_area(b, *type),
-                      ctx.settings.depletes());
+                      ctx.settings.depletes(), &relookup);
         if (ctx.transport_stats != nullptr && r.stepped) {
             // MAP-EXTRACT-1 X3 ledger (diagnostic, never state): what this step made.
             ctx.transport_stats->forestry.mine_made_88[b.id] += m->out - mine_out_before;

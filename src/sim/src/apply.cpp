@@ -581,11 +581,14 @@ RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checke
     }
     Building& b = *city.index.lists[key.value().list].slots[key.value().slot];
     r.building = b.id;
-    // Stream 135: a mine placed by a command binds the shared deposit of an ore in reach, or stays
-    // unbound (Mine::deposit empty, idle, never searching again: the original's attach calls its
-    // lookup once and discards the result, docs/sim/salt-extraction.md section 22). Here and not in
-    // create_building, which the scenario loader shares: imported mines keep no deposit. This
-    // overrides the find_deposit of creation.
+    // Streams 135 and 137: a mine placed by a command runs the attach lookup once, like the
+    // original's attach (AnnoWelt 0x1006e299 calls 0x1006ddf0, which stores the best ore object, or
+    // none, in the mine and whose return value is discarded). The best ore in reach is bound,
+    // materialising its shared deposit if no mine has bound it yet; with none in reach the mine
+    // stays unbound and idle (Mine::deposit empty). Only a bound mine searches again, from its
+    // production step when the deposit is spent or short (mine_step, the driver's relookup).
+    // Here and not in create_building, which the scenario loader shares: imported mines keep
+    // their loader binding (create.cpp). This overrides the find_deposit of creation.
     if (auto* mine = std::get_if<Mine>(&b.payload)) {
         mine->deposit = bind_mine_deposit(
             is, env.types, b, *c.type, mine->deep,

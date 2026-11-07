@@ -14,9 +14,11 @@ class World;
 
 /// What a mine is doing, derived from fields the Mine already has (no state is added).
 enum class MineState : std::uint8_t {
-    /// No deposit is bound: an imported mine (the loader makes no deposits). A command-placed mine
-    /// is
-    /// never in this state (policy B refuses it).
+    /// No deposit is bound: an imported mine (the loader makes no deposits), or a command-placed
+    /// mine that found no ore in reach (accepted, charged, idle; the original's blocked state,
+    /// status 1: its step reports the missing input and never searches again, 0x1006e178).
+    /// Mine::blocked
+    /// is set once it has stepped.
     Unbound,
     /// Switched off by its owner.
     SwitchedOff,
@@ -53,5 +55,16 @@ struct MineFacts {
 
 /// The facts of the mine `id`, or nullopt when `id` is not a building of the world or not a mine.
 [[nodiscard]] std::optional<MineFacts> mine_facts(const World& world, BuildingId id);
+
+/// Whether a mine of `type` placed at (x, y) with `rotation` would find an ore object of its ware
+/// in reach (the original's attach-time lookup, find_ore_in_reach). READ-ONLY and a host-side
+/// WARNING only: the sim does NOT refuse such a placement (the original has no deposit test there,
+/// owner decision 2026-11-07), so a host or UI may call this before it issues a BuildCmd to tell
+/// the player. Not part of any command, hash or save. Nullopt when `type` is not a mine class with
+/// an output ware, or (x, y) lies on no island. The city is not needed: the lookup reads the
+/// island's ore objects only (ownership is the placement rule's business, not the lookup's).
+[[nodiscard]] std::optional<bool> mine_site_deposit_in_reach(const World& world, TypeId type,
+                                                             std::int32_t x, std::int32_t y,
+                                                             std::uint8_t rotation);
 
 } // namespace anno::sim

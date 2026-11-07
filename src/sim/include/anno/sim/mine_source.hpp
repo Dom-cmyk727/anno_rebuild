@@ -35,18 +35,22 @@ struct DepositInit {
 /// `deposit_remaining(deep)` of the prospective deposit (an existing deposit at the ore's tile
 /// counts with its CURRENT remaining), the first in ore_objects order on a tie (a stand-in: the
 /// original's query order is unread; no effect for salt). nullopt when none lies in reach or `t`
-/// has no output ware. Read-only. ADAPTATION (policy B): this runtime lookup is our placement rule
-/// for a mine, not a proven copy of the original's placement predicate (unread); discovery is not
-/// consulted.
+/// has no output ware. Read-only. ORIGINAL (re-verified 2026-11-07 from AnnoWelt 0x100787c0): the
+/// reach is the object rectangle grown by 7 tiles with the circle half-widths {7,7,7,6,6,5,4,2} by
+/// row distance (a distance above 7 is out), the ware match, and a later object replaces the best
+/// only when its remaining amount is strictly larger. Discovery is not consulted (OQ-553: the
+/// original's lookup does not read the discovery mask). The original runs this lookup once, when
+/// the city is attached to a new mine (0x1006e299), and again only from the production step when a
+/// bound deposit is spent or short (0x1006dfb4).
 [[nodiscard]] std::optional<std::size_t>
 find_ore_in_reach(const Island& island, const TypeRegistry& types, const BuildingType& t,
                   const MineArea& area, bool deep, OreLookupStats* stats = nullptr);
 
 /// Binds the mine `b` (type `t`, payload Mine) to the ore found by find_ore_in_reach: appends the
-/// deposit if the ore has none yet and returns its index. Policy B: a BuildCmd refuses a mine with
-/// no ore in reach before any charge (Reject::NoDepositInReach), so for a command-placed mine the
-/// result is always set; nullopt is returned (never reached from a command) when nothing is in
-/// reach. Sets nothing: the caller stores the result in Mine::deposit.
+/// deposit if the ore has none yet and returns its index. Nullopt when nothing is in reach: the
+/// mine then stays unbound and idle (the original discards the result of its attach-time lookup and
+/// the production step never searches without a bound deposit, 0x1006def0 to 0x1006e178). Sets
+/// nothing: the caller stores the result in Mine::deposit.
 [[nodiscard]] std::optional<std::size_t>
 bind_mine_deposit(Island& island, const TypeRegistry& types, const Building& b,
                   const BuildingType& t, bool deep, OreLookupStats* stats = nullptr);

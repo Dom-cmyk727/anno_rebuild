@@ -15,6 +15,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -534,6 +535,16 @@ sim::PlacementWire mine_at(std::int32_t x, std::int32_t y, std::uint8_t rot = 0)
 const sim::Island& isle(const sim::World& w) {
     return *w.islands()[1];
 }
+const sim::City& city_of(const sim::World& w) {
+    return *test_must::must(isle(w).city(kSaltCity.city));
+}
+const sim::Building* find_type(const sim::World& w, std::uint32_t type, sim::BuildingId skip = {}) {
+    for (const auto& l : city_of(w).index.lists)
+        for (const auto& b : l.slots)
+            if (b && b->type.v == type && !(skip.valid() && b->id == skip))
+                return &*b;
+    return nullptr;
+}
 std::int64_t gold(const sim::World& w) {
     return test_must::must(w.players().find(kSaltPlayer))->money;
 }
@@ -741,16 +752,40 @@ TEST_CASE("salt mine: the COVERAGE row, a separate predicate with its legal neig
     CHECK(attempt(arrange({{354, 359}, {354, 361}})) == sim::Reject::None);
 }
 
-TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before any payment") {
-    // ADAPTATION (docs/sim/salt-extraction.md section 22): the radius-7 lookup is our placement
-    // rule, not a proven copy of the original's predicate; discovery is not consulted. Each refusal
-    // leaves the saved state byte-identical (no payment, no serial, no building, no deposit) and
-    // the dry run (build_atomic) answers the same as the live apply.
+TEST_CASE("salt mine: the faithful default accepts, charges and creates a mine with no deposit in "
+          "reach, unbound and idle") {
+    // Owner decision 2026-11-07 (docs/sim/salt-extraction.md section 22): the original has no
+    // deposit test at mine placement, so a mine at a legal site with no ore in reach is accepted,
+    // charged like any other, and created unbound; it stays idle and never searches again. These
+    // three sites were REFUSED under policy B; the legal neighbour (353,359) is the control.
     auto live = salt_world(true, false);
     auto dry = salt_world(true, true);
     if (!live || !dry) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
+    }
+    const sim::BuildingType& ty = *test_must::must(live->types->find(kSaltMine));
+    // the control: the price of the legal neighbour, the goods taken and the deposit bound
+    std::int64_t price_gold = 0;
+    std::map<sim::GoodsId, std::uint32_t> price_goods;
+    {
+        sim::World w = live->w;
+        const sim::City& city = *test_must::must(isle(w).city(kSaltCity.city));
+        std::map<sim::GoodsId, std::uint32_t> stock0;
+        for (const sim::CostEntry& e : ty.cost_goods)
+            stock0[e.goods] = city.stock.stock[e.goods];
+        const std::int64_t gold0 = gold(w);
+        REQUIRE(sim::mine_site_deposit_in_reach(w, kSaltMine, 353, 359, 0) ==
+                std::optional<bool>{true});
+        const sim::ApplyResult r = w.apply(build_cmd({mine_at(353, 359)}));
+        REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
+        price_gold = gold0 - gold(w);
+        for (const sim::CostEntry& e : ty.cost_goods)
+            price_goods[e.goods] = stock0[e.goods] - city.stock.stock[e.goods];
+        CHECK(price_gold == static_cast<std::int64_t>(ty.cost_gold));
+        CHECK(
+            std::get<sim::Mine>(test_must::must(w.find_building(r.records.at(0).building))->payload)
+                .deposit == std::optional<std::size_t>{0});
     }
     struct Row {
         std::int32_t x, y;
@@ -760,69 +795,156 @@ TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before an
                         Row{366, 353, "only a deposit of another ware in reach (wrong mineral)"},
                         Row{352, 359, "a salt deposit just outside the reach"}}) {
         INFO(r.what << " at " << r.x << "," << r.y);
+        // the read-only warning query says what the sim will not refuse
+        CHECK(sim::mine_site_deposit_in_reach(live->w, kSaltMine, r.x, r.y, 0) ==
+              std::optional<bool>{false});
+        std::tuple<std::int64_t, std::size_t, std::size_t> sig_live;
         for (SaltWorld* sw : {&*live, &*dry}) {
             sim::World w = sw->w;
-            const auto before = w.save();
+            const sim::City& city = *test_must::must(isle(w).city(kSaltCity.city));
+            std::map<sim::GoodsId, std::uint32_t> stock0;
+            for (const sim::CostEntry& e : ty.cost_goods)
+                stock0[e.goods] = city.stock.stock[e.goods];
             const std::int64_t gold0 = gold(w);
+            const std::size_t cursor0 = w.rng().cursor();
             const sim::ApplyResult res = w.apply(build_cmd({mine_at(r.x, r.y)}));
-            // the atomic command reports AtomicAbort as a whole, with the same per-record reason
-            CHECK(res.status ==
-                  (sw == &*dry ? sim::Reject::AtomicAbort : sim::Reject::NoDepositInReach));
-            REQUIRE(res.records.size() >= 1);
-            CHECK(res.records[0].status == sim::Reject::NoDepositInReach);
-            CHECK(gold(w) == gold0);
-            CHECK(w.save() == before);
-            CHECK(isle(w).deposits.empty());
+            REQUIRE_MESSAGE(res.ok(), sim::reject_name(res.status)); // the atomic dry run agrees
+            CHECK(gold0 - gold(w) == price_gold);                    // the same price
+            for (const sim::CostEntry& e : ty.cost_goods)
+                CHECK(stock0[e.goods] - city.stock.stock[e.goods] == price_goods[e.goods]);
+            CHECK(w.rng().cursor() == cursor0); // no draw at the command
+            CHECK(isle(w).deposits.empty());    // nothing bound, nothing created
+            const sim::Building* b = test_must::must(w.find_building(res.records.at(0).building));
+            const auto* mine = std::get_if<sim::Mine>(&b->payload);
+            REQUIRE(mine != nullptr);
+            CHECK_FALSE(mine->deposit.has_value());
+            CHECK(mine->out == 0);
+            CHECK(w.check_invariants().empty());
+            // the atomic dry run and the live apply leave the same state (the saved bytes differ
+            // only in the Rules byte build_atomic)
+            const std::tuple<std::int64_t, std::size_t, std::size_t> sig{
+                gold(w), w.islands()[1]->cache.by_id.size(), isle(w).deposits.size()};
+            if (sw == &*live)
+                sig_live = sig;
+            else
+                CHECK(sig == sig_live);
         }
     }
-    // refusal order: a site that is BOTH unaffordable and without a deposit answers
-    // NoDepositInReach (the check precedes the affordability test), with no charge, no serial and
-    // nothing changed
+    // idle for 4,000 steps, through a save / load round trip, and the chain gets no ore from it
+    {
+        sim::World w = live->w;
+        sim::TransportStats stats;
+        w.set_transport_stats(&stats);
+        const sim::ApplyResult res = w.apply(build_cmd({mine_at(335, 340)}));
+        REQUIRE(res.ok());
+        const sim::BuildingId id = res.records.at(0).building;
+        auto idle_for = [&](sim::World& world, int steps) {
+            for (int i = 0; i < steps; ++i) {
+                world.advance(kStepMs);
+                REQUIRE_MESSAGE(!world.faulted(), world.fault());
+            }
+            const auto f = sim::mine_facts(world, id);
+            REQUIRE(f.has_value());
+            CHECK(f->state == sim::MineState::Unbound);
+            CHECK_FALSE(f->bound);
+            CHECK(f->output_88 == 0);
+            const auto& m = std::get<sim::Mine>(test_must::must(world.find_building(id))->payload);
+            CHECK(m.blocked); // the original's blocked state (status 1), set once it has stepped
+            CHECK(isle(world).deposits.empty());
+            // no carrier ever lifted ore from it and it made none (a diagnostic ledger of the sink)
+            const auto lifted = stats.loaded_from.find(id);
+            CHECK((lifted == stats.loaded_from.end() || lifted->second == 0));
+            CHECK(f->produced_88.value_or(0) == 0);
+        };
+        idle_for(w, 2000);
+        const auto bytes = w.save();
+        auto loaded = sim::World::load(bytes, live->types, {});
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+        CHECK(loaded.value().save() == bytes);
+        CHECK(loaded.value().state_hash() == w.state_hash());
+        idle_for(loaded.value(), 2000);
+        idle_for(w, 2000);
+        CHECK(loaded.value().state_hash() == w.state_hash()); // the reloaded run continues alike
+        // ore appears in reach later (a test edit of the island, not a game event): the standing
+        // mine does NOT rebind (the original's production step never searches without a bound
+        // deposit) ...
+        sim::Island& isl = *sim::WorldTestAccess::islands(w)[1];
+        REQUIRE_FALSE(isl.ore_objects.empty());
+        sim::OreObject extra;
+        for (const sim::OreObject& o : isl.ore_objects)
+            if (o.x == 357 && o.y == 369)
+                extra = o;
+        REQUIRE(extra.type != 0);
+        extra.x = 337;
+        extra.y = 342;
+        isl.ore_objects.push_back(extra);
+        REQUIRE(sim::mine_site_deposit_in_reach(w, kSaltMine, 335, 340, 0) ==
+                std::optional<bool>{true});
+        idle_for(w, 2000);
+        // ... while a NEW mine is a new attach and finds it: demolish and rebuild the same site
+        sim::DemolishCmd dem;
+        dem.city = kSaltCity;
+        dem.tiles = {{335, 340}};
+        REQUIRE(w.apply(sim::Command{kSaltPlayer, dem}).ok());
+        const sim::ApplyResult again = w.apply(build_cmd({mine_at(335, 340)}));
+        REQUIRE(again.ok());
+        CHECK(std::get<sim::Mine>(
+                  test_must::must(w.find_building(again.records.at(0).building))->payload)
+                  .deposit.has_value());
+    }
+    // no ore anywhere new: the demolished and rebuilt mine at the same site is unbound again
+    {
+        sim::World w = live->w;
+        REQUIRE(w.apply(build_cmd({mine_at(335, 340)})).ok());
+        sim::DemolishCmd dem;
+        dem.city = kSaltCity;
+        dem.tiles = {{335, 340}};
+        REQUIRE(w.apply(sim::Command{kSaltPlayer, dem}).ok());
+        const sim::ApplyResult again = w.apply(build_cmd({mine_at(335, 340)}));
+        REQUIRE(again.ok());
+        CHECK_FALSE(std::get<sim::Mine>(
+                        test_must::must(w.find_building(again.records.at(0).building))->payload)
+                        .deposit.has_value());
+        CHECK(isle(w).deposits.empty());
+    }
+    // refusal order: unaffordable and without a deposit answers CannotAfford, nothing changed
     for (SaltWorld* sw : {&*live, &*dry}) {
         sim::World w = sw->w;
         test_must::must(sim::WorldTestAccess::players(w).find(kSaltPlayer))->money = 0;
         const auto before = w.save();
         const sim::ApplyResult res = w.apply(build_cmd({mine_at(335, 340)}));
         REQUIRE(res.records.size() >= 1);
-        CHECK(res.records[0].status == sim::Reject::NoDepositInReach);
-        CHECK(w.save() == before);
-        // while a site with a deposit and no gold is the affordability refusal
-        const sim::ApplyResult poor = w.apply(build_cmd({mine_at(353, 359)}));
-        REQUIRE(poor.records.size() >= 1);
-        CHECK(poor.records[0].status == sim::Reject::CannotAfford);
+        CHECK(res.records[0].status == sim::Reject::CannotAfford);
         CHECK(w.save() == before);
     }
-    // the neighbour just inside the reach builds, and the mine it makes is bound: a mine made by a
-    // command never exists without a deposit
-    for (SaltWorld* sw : {&*live, &*dry}) {
-        sim::World w = sw->w;
-        const sim::ApplyResult res = w.apply(build_cmd({mine_at(353, 359)}));
-        REQUIRE_MESSAGE(res.ok(), sim::reject_name(res.status));
-        const auto* m = std::get_if<sim::Mine>(
-            &test_must::must(w.find_building(res.records.at(0).building))->payload);
-        REQUIRE(m != nullptr);
-        CHECK(m->deposit.has_value());
-        CHECK(isle(w).deposits.size() == 1);
-    }
-    // a refusal inside a batch: the whole atomic command changes nothing; the plain world keeps the
-    // first record and refuses the second, and no mine of either is unbound
+    // a batch of a bound and an unbound mine: both are accepted, one deposit exists
     {
         sim::World a = dry->w, p = live->w;
-        const auto before = a.save();
         const sim::Command mixed = build_cmd({mine_at(353, 359), mine_at(335, 340)});
-        CHECK_FALSE(a.apply(mixed).ok());
-        CHECK(a.save() == before);
+        REQUIRE(a.apply(mixed).ok());
         const sim::ApplyResult pr = p.apply(mixed);
         REQUIRE(pr.records.size() == 2);
         CHECK(pr.records[0].status == sim::Reject::None);
-        CHECK(pr.records[1].status == sim::Reject::NoDepositInReach);
+        CHECK(pr.records[1].status == sim::Reject::None);
+        CHECK(gold(a) == gold(p));
+        CHECK(a.islands()[1]->cache.by_id.size() == p.islands()[1]->cache.by_id.size());
+        CHECK(isle(a).deposits.size() == 1);
+        CHECK(isle(p).deposits.size() == 1);
     }
+    // a site the placement rule still refuses stays refused, byte-identical (terrain)
+    for (SaltWorld* sw : {&*live, &*dry}) {
+        sim::World w = sw->w;
+        const auto before = w.save();
+        const sim::ApplyResult res = w.apply(build_cmd({mine_at(364, 363)}));
+        REQUIRE(res.records.size() >= 1);
+        CHECK(res.records[0].status == sim::Reject::TerrainRefused);
+        CHECK(w.save() == before);
+    }
+    // the query is read-only and total: no mine type, no island
+    CHECK_FALSE(sim::mine_site_deposit_in_reach(live->w, sim::TypeId{1}, 353, 359, 0).has_value());
+    CHECK_FALSE(sim::mine_site_deposit_in_reach(live->w, kSaltMine, -5, -5, 0).has_value());
     // the imported mine stays inert and unchanged
-    const sim::Building* imported = nullptr;
-    for (const auto& l : test_must::must(isle(live->w).city(kSaltCity.city))->index.lists)
-        for (const auto& b : l.slots)
-            if (b && b->type.v == 1203)
-                imported = &*b;
+    const sim::Building* imported = find_type(live->w, 1203);
     REQUIRE(imported != nullptr);
     CHECK_FALSE(std::get<sim::Mine>(imported->payload).deposit.has_value());
 }
@@ -1111,17 +1233,6 @@ struct Chain {
     std::map<sim::DrawSite, std::uint64_t> draws;
     std::vector<std::uint64_t> cursors;
 };
-
-const sim::City& city_of(const sim::World& w) {
-    return *test_must::must(isle(w).city(kSaltCity.city));
-}
-const sim::Building* find_type(const sim::World& w, std::uint32_t type, sim::BuildingId skip = {}) {
-    for (const auto& l : city_of(w).index.lists)
-        for (const auto& b : l.slots)
-            if (b && b->type.v == type && !(skip.valid() && b->id == skip))
-                return &*b;
-    return nullptr;
-}
 
 /// zero_ore: the labelled setup step "no preloaded SALZSTEIN in the store" (a named fixture edit
 /// applied to every arm of that family, not a game command), so the ore baseline is exactly zero.
@@ -2681,12 +2792,11 @@ TEST_CASE("salt interruption X4: the Kontor is not a link of the chain") {
     CHECK(quiet_control.start_salz == 0);
 }
 
-TEST_CASE("salt mine: a refused mine command is logged and the log reproduces") {
-    // Reject::NoDepositInReach is appended at the end of the enum. A Reject is a host-facing
-    // answer: it is in no command wire form, no replay log, no saved state and no hash (a log holds
-    // the commands and the checkpoint hashes), so the append needs no format or stream version
-    // change. This test records a refused command between accepted ones, writes and reads the log,
-    // and replays it from the initial save.
+TEST_CASE("salt mine: an unbound mine command is logged and the log reproduces") {
+    // The faithful default accepts a mine with no deposit in reach (it is created unbound and
+    // idle). This test records that command between others, writes and reads the log, and replays
+    // it from the initial save. Reject::NoDepositInReach stays in the enum as a reserved value (a
+    // Reject is in no wire form, log, save or hash).
     auto s = salt_world(true, false, true);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -2695,10 +2805,9 @@ TEST_CASE("salt mine: a refused mine command is logged and the log reproduces") 
     auto started = sim::Recorder::start(s->w);
     REQUIRE_MESSAGE(started.ok(), (started.ok() ? std::string() : started.error()));
     sim::Recorder rec = std::move(started).value();
-    const auto before = s->w.save();
-    const sim::ApplyResult refused = rec.submit(build_cmd({mine_at(335, 340)}));
-    CHECK(refused.status == sim::Reject::NoDepositInReach);
-    CHECK(s->w.save() == before); // nothing changed; the command is nevertheless in the log
+    const sim::ApplyResult unbound = rec.submit(build_cmd({mine_at(335, 340)}));
+    REQUIRE_MESSAGE(unbound.ok(), sim::reject_name(unbound.status));
+    CHECK(isle(s->w).deposits.empty());
     rec.advance(100);
     REQUIRE(rec.submit(build_cmd({mine_at(353, 359)})).ok());
     for (int i = 0; i < 20; ++i)
@@ -3097,18 +3206,18 @@ TEST_CASE("salt X5: the cost of a command's lookup does not depend on cities or 
     for (TwoOwners* t : {&*solo, &*cut, &*both}) {
         const sim::OreLookupStats& st = t->x.c->stats.ore_lookup;
         INFO("cities " << (t == &*solo ? 1 : 2) << ", ore lookups " << st.lookups);
-        REQUIRE(st.lookups >= 2); // our command: the check and the bind (the rival's add two more)
+        REQUIRE(st.lookups >= 1); // our command: the bind only (the rival's adds one more)
         CHECK(st.ore_objects_examined == st.lookups * isle(t->x.c->sw.w).ore_objects.size());
         CHECK(st.in_reach <= st.ore_objects_examined);
         lookups_seen += st.lookups;
     }
-    CHECK(solo->x.c->stats.ore_lookup.lookups == 2);
-    CHECK(cut->x.c->stats.ore_lookup.lookups == 2);
-    CHECK(both->x.c->stats.ore_lookup.lookups == 4);
+    CHECK(solo->x.c->stats.ore_lookup.lookups == 1);
+    CHECK(cut->x.c->stats.ore_lookup.lookups == 1);
+    CHECK(both->x.c->stats.ore_lookup.lookups == 2);
     // our own command's lookups: identical counts in every world
-    CHECK(solo->x.c->stats.ore_lookup.ore_objects_examined / 2 ==
-          both->x.c->stats.ore_lookup.ore_objects_examined / 4);
-    CHECK(lookups_seen == 8);
+    CHECK(solo->x.c->stats.ore_lookup.ore_objects_examined ==
+          both->x.c->stats.ore_lookup.ore_objects_examined / 2);
+    CHECK(lookups_seen == 4);
 }
 
 TEST_CASE("salt X5: lookup timing sample (opt-in measure)") {

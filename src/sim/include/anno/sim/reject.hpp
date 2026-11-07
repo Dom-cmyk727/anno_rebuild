@@ -108,10 +108,11 @@ enum class Reject : std::uint16_t {
     ConstructionDenied,
     CityAccounting,
     // MAP-EXTRACT-1 (policy B, docs/sim/salt-extraction.md section 22), appended in order.
-    /// BuildCmd of a mine: no ore object of its output ware lies in the mine's reach (an
-    /// ADAPTATION: the radius-7 runtime lookup of the production step, not a proven copy of the
-    /// original's placement predicate, which is unread). Refused before any charge, serial or world
-    /// change. Discovery by a scout is not read and is not a reason.
+    /// RESERVED, never produced by the sim. Policy B (refuse a mine with no ore in reach) was
+    /// replaced by the faithful default on 2026-11-07: the original has no deposit test at mine
+    /// placement, so such a mine is accepted, charged and created unbound. The value stays so the
+    /// numbering of this append-only enum does not move; a host that wants the warning calls
+    /// mine_site_deposit_in_reach (mine_facts.hpp) before it issues the command.
     NoDepositInReach
 };
 
@@ -242,7 +243,7 @@ struct ApplyResult {
         return "CityAccounting";
     case Reject::HouseDomain:
         return "HouseDomain";
-    case Reject::NoDepositInReach:
+    case Reject::NoDepositInReach: // reserved, never produced (policy B replaced)
         return "NoDepositInReach";
     }
     return "?";

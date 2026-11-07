@@ -1,6 +1,8 @@
 #include <variant>
 
+#include <anno/sim/building.hpp>
 #include <anno/sim/mine_facts.hpp>
+#include <anno/sim/mine_source.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/world.hpp>
@@ -47,6 +49,23 @@ std::optional<MineFacts> mine_facts(const World& world, BuildingId id) {
         f.state = MineState::Working;
     }
     return f;
+}
+
+std::optional<bool> mine_site_deposit_in_reach(const World& world, TypeId type, std::int32_t x,
+                                               std::int32_t y, std::uint8_t rotation) {
+    const BuildingType* t = world.types().find(type);
+    if (t == nullptr || t->cls != RuntimeClass::Mine || !t->has_prod || t->prod.outputs.empty()) {
+        return std::nullopt;
+    }
+    const Island* island = world.island_at(x, y);
+    if (island == nullptr) {
+        return std::nullopt;
+    }
+    const auto [w, h] = footprint(*t, rotation);
+    const MineArea area{x, y, w, h};
+    return find_ore_in_reach(*island, world.types(), *t, area,
+                             mine_is_deep(t->prod, t->research_id))
+        .has_value();
 }
 
 } // namespace anno::sim

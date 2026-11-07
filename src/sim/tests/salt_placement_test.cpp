@@ -787,6 +787,18 @@ TEST_CASE("salt mine: the faithful default accepts, charges and creates a mine w
             std::get<sim::Mine>(test_must::must(w.find_building(r.records.at(0).building))->payload)
                 .deposit == std::optional<std::size_t>{0});
     }
+    // what differs between the atomic (dry run) world and the plain one (MEASURED): same size, ONE
+    // differing byte outside the last eight bytes (the Rules::build_atomic byte), and the final
+    // eight bytes (a trailing field not decoded here; by position and size the stream's closing
+    // digest, which depends on the rules)
+    {
+        const auto a = dry->w.save(), b = live->w.save();
+        REQUIRE(a.size() == b.size());
+        std::size_t outside = 0;
+        for (std::size_t i = 0; i + 8 < a.size(); ++i)
+            outside += a[i] != b[i] ? 1U : 0U;
+        CHECK(outside == 1);
+    }
     struct Row {
         std::int32_t x, y;
         const char* what;
@@ -830,15 +842,32 @@ TEST_CASE("salt mine: the faithful default accepts, charges and creates a mine w
                 CHECK(sig == sig_live);
         }
     }
-    // idle for 4,000 steps, through a save / load round trip, and the chain gets no ore from it
+    // POSITIVE CONTROL for the lift ledger below: a BOUND mine at the legal site, in the same
+    // stats-sink setup and the same number of steps, registers lifts and production
     {
         sim::World w = live->w;
         sim::TransportStats stats;
         w.set_transport_stats(&stats);
+        const sim::ApplyResult res = w.apply(build_cmd({mine_at(353, 359)}));
+        REQUIRE(res.ok());
+        for (int i = 0; i < 4000; ++i)
+            w.advance(kStepMs);
+        const auto lifted = stats.loaded_from.find(res.records.at(0).building);
+        REQUIRE(lifted != stats.loaded_from.end());
+        CHECK(lifted->second > 0);
+        const auto f = sim::mine_facts(w, res.records.at(0).building);
+        REQUIRE(f.has_value());
+        CHECK(f->produced_88.value_or(0) > 0);
+    }
+    // idle for 4,000 steps, through a save / load round trip, and the chain gets no ore from it
+    {
+        sim::World w = live->w;
+        sim::TransportStats stats, stats_loaded;
+        w.set_transport_stats(&stats);
         const sim::ApplyResult res = w.apply(build_cmd({mine_at(335, 340)}));
         REQUIRE(res.ok());
         const sim::BuildingId id = res.records.at(0).building;
-        auto idle_for = [&](sim::World& world, int steps) {
+        auto idle_for = [&](sim::World& world, sim::TransportStats& st, int steps) {
             for (int i = 0; i < steps; ++i) {
                 world.advance(kStepMs);
                 REQUIRE_MESSAGE(!world.faulted(), world.fault());
@@ -852,18 +881,19 @@ TEST_CASE("salt mine: the faithful default accepts, charges and creates a mine w
             CHECK(m.blocked); // the original's blocked state (status 1), set once it has stepped
             CHECK(isle(world).deposits.empty());
             // no carrier ever lifted ore from it and it made none (a diagnostic ledger of the sink)
-            const auto lifted = stats.loaded_from.find(id);
-            CHECK((lifted == stats.loaded_from.end() || lifted->second == 0));
+            const auto lifted = st.loaded_from.find(id);
+            CHECK((lifted == st.loaded_from.end() || lifted->second == 0));
             CHECK(f->produced_88.value_or(0) == 0);
         };
-        idle_for(w, 2000);
+        idle_for(w, stats, 2000);
         const auto bytes = w.save();
         auto loaded = sim::World::load(bytes, live->types, {});
         REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
         CHECK(loaded.value().save() == bytes);
         CHECK(loaded.value().state_hash() == w.state_hash());
-        idle_for(loaded.value(), 2000);
-        idle_for(w, 2000);
+        loaded.value().set_transport_stats(&stats_loaded); // its own sink: the arm is not vacuous
+        idle_for(loaded.value(), stats_loaded, 2000);
+        idle_for(w, stats, 2000);
         CHECK(loaded.value().state_hash() == w.state_hash()); // the reloaded run continues alike
         // ore appears in reach later (a test edit of the island, not a game event): the standing
         // mine does NOT rebind (the original's production step never searches without a bound
@@ -880,7 +910,7 @@ TEST_CASE("salt mine: the faithful default accepts, charges and creates a mine w
         isl.ore_objects.push_back(extra);
         REQUIRE(sim::mine_site_deposit_in_reach(w, kSaltMine, 335, 340, 0) ==
                 std::optional<bool>{true});
-        idle_for(w, 2000);
+        idle_for(w, stats, 2000);
         // ... while a NEW mine is a new attach and finds it: demolish and rebuild the same site
         sim::DemolishCmd dem;
         dem.city = kSaltCity;

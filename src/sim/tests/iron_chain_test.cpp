@@ -20,6 +20,7 @@
 #include <anno/sim/placement.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/transport.hpp>
+#include <anno/sim/walk_search.hpp>
 #include <anno/sim/world.hpp>
 
 #include "iron_pilot.hpp"
@@ -222,7 +223,8 @@ TEST_CASE("iron chain: toolsmith site scan (opt-in measure)") {
     }
 }
 
-TEST_CASE("iron chain: the imported toolsmith receives no EISEN and its carrier's cargo is lost") {
+TEST_CASE("iron chain: the imported toolsmith now receives EISEN and makes WERKZEUG (goal sub-cell "
+          "end)") {
     auto s = make(true, false, 1000);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -246,38 +248,29 @@ TEST_CASE("iron chain: the imported toolsmith receives no EISEN and its carrier'
     REQUIRE(smith != nullptr);
     const auto& ws = std::get<sim::Workshop>(smith->payload);
     const auto ledger = stats.forestry.workshops.find(smith->id);
-    // the smelter makes EISEN and the toolsmith's carrier lifts it ...
+    // T3.2 (stream 137): the walk ends on the goal sub-cell, so the return search starts from the
+    // door sub-cell and finds the toolsmith: its carrier delivers, the input fills and is used,
+    // WERKZEUG is made and a market cart unloads it into the city store, and nothing is lost
     const auto lifted = stats.loaded_by_home.find({smelter->id, smith->id});
     REQUIRE(lifted != stats.loaded_by_home.end());
     CHECK(lifted->second > 0);
-    // ... but none of it reaches the toolsmith: the input stays empty, nothing is made, and every
-    // lifted raw is counted lost (the figure ends without an unload)
-    CHECK(ws.in.at(0) == 0);
     REQUIRE(ledger != stats.forestry.workshops.end());
-    CHECK(ledger->second.consumed_88.at(0) == 0);
-    CHECK(ledger->second.made_88.at(0) == 0);
-    CHECK(stats.cart_lost[kEisen] == lifted->second);
-    // the cause, measured: the return path is searched inside the toolsmith's own search area
-    // (D 0x10057ae0, path_home), and the smelter lies outside its disc
+    CHECK(ledger->second.consumed_88.at(0) > 0); // EISEN used
+    CHECK(ledger->second.made_88.at(0) > 0);     // WERKZEUG made
+    CHECK(ws.in.at(0) + ledger->second.consumed_88.at(0) > 0);
+    CHECK(stats.cart_lost[kEisen] == 0);
+    CHECK(stats.unload_offered[kWerkzeug] > 0);
     const sim::BuildingType& ty = *test_must::must(s->types->find(smith->type));
-    const sim::SearchArea area = sim::search_area(*smith, ty);
-    std::size_t tiles_in = 0;
     const sim::BuildingType& sty = *test_must::must(s->types->find(smelter->type));
-    const auto [sw_, sh_] = sim::footprint(sty, smelter->rotation);
-    for (std::int32_t dy = 0; dy < static_cast<std::int32_t>(sh_); ++dy) {
-        for (std::int32_t dx = 0; dx < static_cast<std::int32_t>(sw_); ++dx) {
-            tiles_in += area.contains(smelter->x + dx, smelter->y + dy) ? 1U : 0U;
-        }
-    }
-    MESSAGE("toolsmith centre " << area.cx0 << "," << area.cy0 << " radius " << area.radius
-                                << " smelter tiles " << smelter->x << "," << smelter->y << " "
-                                << sw_ << "x" << sh_ << " inside the disc: " << tiles_in);
-    // the cause, measured. The forward walk ends on the CENTRE of the smelter's door tile (the
+    const sim::FigureType& carrier = *test_must::must(s->types->find_figure_type(203));
+    // the root cause stays pinned (characterisation): a return search started from the CENTRE
+    // sub-cell of the smelter's door tile (where the sim's walks used to end) is dead, started
+    // from the door point itself (the sub-cell the forward search aimed at) it finds the toolsmith
+    // [old note follows] The forward walk ends on the CENTRE of the smelter's door tile (the
     // sim's route is tile centres, docs/re/transport.md; the original's goal is the door's
     // sub-cell), and the return search starts from that centre sub-cell, which the walk cells mark
     // dead; started from the door point itself (entrance_position, the sub-cell the forward search
     // aimed at) the same search finds the toolsmith
-    const sim::FigureType& carrier = *test_must::must(s->types->find_figure_type(203));
     const sim::FixedPos door = sim::entrance_position(*smelter, sty, 0);
     const sim::FixedPos centre{(door.x / 256) * 256 + 128, (door.y / 256) * 256 + 128};
     MESSAGE("smelter door point " << door.x << "," << door.y << " tile centre " << centre.x << ","
@@ -344,6 +337,39 @@ TEST_CASE("iron chain: trace of the imported toolsmith's carrier (opt-in measure
             }
         }
     }
+}
+
+TEST_CASE("transport: a walk ends on the centre of the goal sub-cell (T3.2)") {
+    // the rule: tile + (2 col + 1) / 6 per axis in Q24.8, rounded to the nearest 1/256
+    const sim::TileXY tile{5, 7};
+    const std::int32_t offsets[3] = {43, 128, 213}; // 256/6, 768/6, 1280/6
+    for (std::uint32_t col = 0; col < 3; ++col) {
+        for (std::uint32_t row = 0; row < 3; ++row) {
+            const sim::FixedPos p = sim::subcell_centre(tile, col, row);
+            CHECK(p.x == 5 * 256 + offsets[col]);
+            CHECK(p.y == 7 * 256 + offsets[row]);
+        }
+    }
+    CHECK(sim::subcell_centre(tile, 1, 1) ==
+          sim::tile_centre(tile)); // the middle sub-cell is the centre
+    // start_walk: with an end the last waypoint is the sub-cell centre; without, the tile centre
+    const std::vector<sim::TileXY> path{{3, 7}, {4, 7}, {5, 7}};
+    const sim::FixedPos start{3 * 256 + 100, 7 * 256 + 100};
+    std::vector<sim::FixedPos> route;
+    std::uint32_t next = 0, along = 0;
+    sim::start_walk(start, path, sim::WalkRef{route, next, along});
+    REQUIRE(route.size() == 3);
+    CHECK(route.back() == sim::tile_centre(tile));
+    const sim::WalkPoint end{tile, 2, 0};
+    sim::start_walk(start, path, sim::WalkRef{route, next, along}, &end);
+    REQUIRE(route.size() == 3);
+    CHECK(route.back() == sim::subcell_centre(tile, 2, 0));
+    CHECK(route[1] == sim::tile_centre(sim::TileXY{4, 7})); // the inner waypoints stay tile centres
+    // and the walk really arrives there
+    sim::FixedPos pos = start;
+    const auto rest = sim::walk_ticks(pos, sim::WalkRef{route, next, along}, 100000000ULL, 1000);
+    CHECK(rest.has_value());
+    CHECK(pos == sim::subcell_centre(tile, 2, 0));
 }
 
 } // namespace

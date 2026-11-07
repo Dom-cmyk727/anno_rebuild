@@ -37,7 +37,7 @@ TEST_CASE("SCRIPT2 native header and empty runtime have hand written bytes") {
     StateHeader h;
     fields(header, h);
     // Candidate stream135 / ECONBK1, independently written little-endian bytes.
-    const std::vector<std::uint8_t> expected_header{135,  0,    0,    0, 0x45, 0x43, 0x4f, 0x4e,
+    const std::vector<std::uint8_t> expected_header{137,  0,    0,    0, 0x45, 0x43, 0x4f, 0x4e,
                                                     0x42, 0x4b, 0x31, 0, 5,    0,    0,    0};
     CHECK(header.data() == expected_header);
     ReadArchive legal(expected_header);
@@ -121,7 +121,7 @@ TEST_CASE("SCRIPT1 repaired checksum version and same version schema refusals ar
     auto refused = World::load(old, TypeRegistry::empty());
     REQUIRE_FALSE(refused);
     CHECK(refused.error() ==
-          "save: state stream version 128 is not supported (this build reads 135)");
+          "save: state stream version 128 is not supported (this build reads 137)");
     auto foreign = bytes;
     foreign[12] ^= 1;
     rechecksum(foreign);

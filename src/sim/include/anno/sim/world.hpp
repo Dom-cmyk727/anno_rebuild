@@ -163,7 +163,12 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // Stream135: player-built salt mine (docs/sim/salt-extraction.md): class-0x3000 placement and
 // deposit binding, BuildingType::highmap in the registry digest. Same ECONBK1 tag, PRNG timeline 5
 // (no draw-order change), same field order; 133 and 134 saves and recordings are refused.
-inline constexpr std::uint32_t kStateHashVersion = 135;
+// Stream137 (MAP-EXTRACT-2 part T, docs/sim/iron-tools.md T1.5): iron mines place (the salt-only
+// mountain ware default becomes a data-driven rule) and a mine step's re-lookup searches every ore
+// object and materialises the deposit it binds. Same ECONBK1 tag, PRNG timeline 5 (no draw-order
+// change), same field order, no new saved field; 133, 134 and 135 saves and recordings are
+// refused. 136 belongs to the route lane and is not part of this identity.
+inline constexpr std::uint32_t kStateHashVersion = 137;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

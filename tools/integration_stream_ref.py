@@ -81,7 +81,7 @@ def records():
     goods+=u64(25)+b''.join(pack('3BI',*row) for row in current.CLASSES)+u64(0)*3
     names=(b'POLAR',b'TUNDRA',b'NORD',b'PRAERIE',b'DSCHUNGEL',b'STEPPE',b'WUESTE',b'CUSTOM')
     economy=u64(8)+b''.join(text(n) for n in names)+u32(4)+u32(2000)
-    return {'header':(u32(135)+b'ECONBK1\0'+u32(5),None),
+    return {'header':(u32(137)+b'ECONBK1\0'+u32(5),None),
             'player':(old.player_bytes(old.new_player(0))+u64(2)+pack('4I',70001,0,90001,255),None),
             'figures':(raw,fnv(hierarchical)), 'script':(script(),None),
             'accounts':(u16(65000)+pack('5Q',0x0102030405060708,105,210,4294967313,28),None),
@@ -139,7 +139,7 @@ class Contracts(unittest.TestCase):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
     if a.self_test:return 0 if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)).wasSuccessful() else 1
-    path=a.fixture or ROOT/'fixtures/synthetic/sim/salt1/current135/populated_fields.txt'
+    path=a.fixture or ROOT/'fixtures/synthetic/sim/iron2/current137/populated_fields.txt'
     if a.write:path.write_text(fixture());return 0
     try: actual=path.read_text()
     except OSError as error: print('fixture unavailable: '+str(error));return 1

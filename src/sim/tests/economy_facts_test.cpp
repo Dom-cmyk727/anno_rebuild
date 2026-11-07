@@ -214,7 +214,7 @@ TEST_CASE("economy facts: actual132 archives refuse before registry or money mut
     const auto path = std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "econbook1" / "legacy132";
     const auto old = sim::World::load(read(path / "g2.save"), t.registry);
     REQUIRE_FALSE(old);
-    CHECK(old.error() == "save: state stream version 132 is not supported (this build reads 135)");
+    CHECK(old.error() == "save: state stream version 132 is not supported (this build reads 137)");
     const auto log = sim::read_log(read(path / "g2.log"));
     REQUIRE_FALSE(log);
     CHECK(log.error() == "stream (byte 24): replay state stream version differs from this build's");

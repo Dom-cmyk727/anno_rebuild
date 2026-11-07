@@ -617,7 +617,7 @@ TEST_CASE("state_hash relational properties") {
     // timers_monopoly).
     CHECK(sim::World().state_hash() ==
           0x2d31af754be8fa05ULL); // ECONBK1 empty_world; independent sim_stream.py
-    CHECK(sim::kStateHashVersion == 135);
+    CHECK(sim::kStateHashVersion == 137);
     CHECK(sim::kPrngTimelineVersion == 5);
 }
 
@@ -905,7 +905,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16) ==
-          std::vector<std::uint8_t>{135, 0, 0, 0, 0x45, 0x43, 0x4f, 0x4e, 0x42, 0x4b, 0x31, 0, 5, 0,
+          std::vector<std::uint8_t>{137, 0, 0, 0, 0x45, 0x43, 0x4f, 0x4e, 0x42, 0x4b, 0x31, 0, 5, 0,
                                     0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8

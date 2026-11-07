@@ -14707,3 +14707,90 @@ on `task/MAIN-REALFILES-1`, head `2df272d9`, from `main` `dbb22306`.
 Tested head: `2df272d94e007f1cb445360c7e7996536ba42b3c`. Pushing
 next, then stopping per the scope note above.
 
+
+## W4-MAIN-2 part B — 2026-11-07 — REVIEW PENDING
+
+**Setup.** New worktree `anno1503-W4-main-2`, branch `task/W4-main-2` from `main` `dbb22306` (not the
+current `origin/main` tip `50387a2a`: the packet pins `dbb22306` explicitly, and `w4-main-2.md` itself
+is identical whether read at `dbb22306126c4...` via its later-released commit or at the current tip —
+confirmed by diff).
+
+### B1: two merges, by hash
+
+1. `origin/task/MAIN-REALFILES-1` (A4 head `8175df79`): fast-forward, as expected. 7 files, +308/-17.
+2. `origin/task/W4-settlement-1` (S head `8532c450`): one conflict, in `docs/orchestration/REPORTS.md`
+   only, as the packet predicted. All other files auto-merged clean, including the MAIN-CI-1 intake
+   hunks and `founding_assets_test.cpp`'s one-line message change.
+
+   **Conflict resolution.** The two branches' `REPORTS.md` histories diverged from a common point well
+   before `dbb22306` (`git merge-base origin/task/W4-settlement-1 dbb22306` = `3b74201f`, an older
+   commit — `task/W4-settlement-1` was not rebased onto `dbb22306`). Both sides had independently
+   appended entries since `3b74201f`: 10 headers unique to each side, none overlapping in content. I
+   kept all 20, reordered by each entry's own stated date: the OTHER (W4-settlement-1) side's
+   2026-11-05/06 entries first (in their existing internal order), then the HEAD (MAIN-REALFILES-1)
+   side's 2026-11-06 entries (in their existing internal order), then the two sides' 2026-11-07 tails
+   in the packet's own stated task order (S's "W7 review changes-requested" and "W4-MAIN-2 part S"
+   before A's "MAIN-REALFILES-1 part A" — S is explicitly sequenced before A in the packet). No entry
+   content was altered or dropped; verified by header count (20 before and after) and a line-count
+   sanity check (14709 lines both before resolving and after — the conflict markers themselves are the
+   only lines removed). One pre-existing formatting quirk (no blank line between the end of the
+   "MAIN-CI-1 — 2026-11-06 — ACCEPTED" entry and the next header) was already present in the source
+   `MAIN-REALFILES-1` branch before my edit and is unchanged by it — not introduced here, not fixed
+   here (out of scope for a conflict resolution). Merge commit `25458646`.
+
+### B2: merged tree
+
+`git diff dbb22306 HEAD --stat`: 20 files, all under `docs/`, `src/app/`, `src/render/tests/`,
+`src/sim/tests/`, `tools/test/` — exactly the W4 app/tools/docs delta plus Part A, per the packet's
+expectation. Nothing under `fixtures/`. No state/identity/replay/command-version pin touched (none of
+those files appear in the diff at all).
+
+Identity: `integration identity: actual predecessor saves and logs refuse at intended boundary` passed
+(0.15s) in the B3 CTest run below — state134/ECONBK1/PRNG5/replay4/command1 unchanged.
+
+### B3: MSVC gate
+
+1. **MSVC build**: clean (`cmake --preset msvc`, `cmake --build --preset msvc`). Note: this build (and
+   its earlier A-branch sibling) ends its log after the root `CMakeLists.txt` custom-rule line with no
+   explicit trailing exit marker — a cosmetic logging gap in this build's final step, not a build
+   failure; confirmed genuinely successful both times by an idempotent incremental rebuild returning
+   exit 0 near-instantly (nothing left to rebuild). Worth knowing for future executors so this isn't
+   mistaken for the stuck-background bug again.
+
+2. **Full CTest with the game files** (`ctest --preset msvc -j 16`, `ANNO1503_GAME_DIR` set,
+   `ANNO_TEST_THREADS=16`): **2325 selected, 99% passed, 5 failed**, 804.56s real time.
+
+   Compared with A3's 13 failures (all in `anno_render_tests`, all attributed to `-j16`
+   memory-contention admission-control refusals under heavy concurrent load, none touching Part A's
+   own commits): **no new failure.** All 5 of B3's failures are a subset of already-documented,
+   already-attributed issues:
+   - `chunk draw lists replay to the objects and base planes of Scene::render, every chunk (game
+     files)` — `[anno-test memory] refused estimate=1073741824 reason=low-memory`. In A3's 13.
+   - `render_chunk: the Cpu builder keeps the planes, GpuList keeps the list (game files)` — same
+     admission-refusal class. In A3's 13.
+   - `water field: empty cells hold on every island (game files)` — same class. In A3's 13.
+   - `river flow corpus: every island with rivers (rivers.md Q12)` — in A3's 13; this is the exact
+     pre-existing render-timing issue the 2026-11-07 W7 review already diagnosed and assigned to Part
+     C2 (margin-ring/zoom-group race between `take_done` and `submit`). Not touched here, per the
+     packet's own instruction that C2 owns this fix.
+   - `anno_test_support_tests.F4 (N4): a descriptor the coordinator holds without close-on-exec does
+     not reach its meter child` — separately documented earlier in this file (line ~7850) as a known
+     once-off flake under `-j8`/parallel contention, unrelated to any code in this branch.
+
+   Fewer failures than A3 (5 vs 13) is consistent with less concurrent resource contention during this
+   specific run (no other heavy job ran at the same time, per the one-heavy-job-at-a-time rule), not a
+   fix or a regression.
+
+3. **`viewer_wiring_*` and `opening_session_replay`, live window, RTX 4090** (all ran as part of the
+   CTest run above, under the `gpu` label): `viewer_wiring_contract`, `viewer_wiring_r1_held_publication`,
+   `viewer_wiring_r4_occupancy`, `viewer_wiring_settlement_activity`, `viewer_wiring_opening_controls`,
+   `viewer_wiring_cpu_delivery_failures`, `opening_session_replay` — **7/7 PASS**.
+
+### Boundaries respected
+
+No push/merge to `main` (B1's two merges are into `task/W4-main-2`, an ordinary task branch, not
+`main` — the packet's "exactly one merge is authorized, in B1" refers to this task-branch merge, not a
+`main` merge; the orchestrator merges into `main` separately, after review). No force pushes. No
+`game/` changes. No feature-default/identity/loader/eligibility changes.
+
+Head: `25458646`. Pushing next, then continuing to Part C.

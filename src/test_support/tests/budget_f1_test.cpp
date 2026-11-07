@@ -348,6 +348,7 @@ TEST_CASE("cancelling a waiter does not release the bytes it is waiting on" *
 #if defined(_WIN32)
 TEST_CASE("a killed owner lets a memory waiter and a cpu waiter continue" *
           doctest::test_suite("budget")) {
+    const anno::test::ports::FileClientPort port; // the probes inherit it
     _putenv("ANNO_TEST_CPU_BUDGET=1");
     const auto exe = probe_executable();
     REQUIRE(std::filesystem::exists(exe));

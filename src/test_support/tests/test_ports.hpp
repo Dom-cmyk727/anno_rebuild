@@ -37,8 +37,11 @@ namespace anno::test::ports {
 
 /// Every fixed port a coordinator regression binds or connects to lies in this band. The
 /// files divide it: F2 27700-27760, F3 27810-27817, F4 27820-27826, F5 27850-27925, and the
-/// file-client cases of budget_test and F1 27632 (kFileClientPort). A host whose ephemeral range
-/// reaches into the band is reported by the case "budget ports: ..." in budget_ports_test.cpp.
+/// file-client cases of budget_test and F1 27632 (kFileClientPort). Exempt: the Windows-only F1
+/// case "a live Windows owner is not reclaimed by a WSL client" deliberately uses the shared WSL
+/// coordinator (production port 47631); it runs only on a Windows host with WSL. A host whose
+/// ephemeral range reaches into the band is reported by the case "budget ports: ..." in
+/// budget_ports_test.cpp.
 constexpr std::uint16_t kBandFirst = 27600;
 constexpr std::uint16_t kBandLast = 27999;
 
@@ -77,8 +80,7 @@ inline std::optional<Range> parse_linux_range(const std::string& text) {
 }
 
 /// This host's ephemeral range for outgoing TCP connections, and where it came from. Linux and
-/// macOS read the kernel's setting. Windows reports the documented default: its configured range
-/// is not read here (`netsh int ipv4 show dynamicport tcp` shows it).
+/// macOS read the kernel's setting; Windows and other hosts return nullopt (not read).
 inline std::optional<Range> host_ephemeral_range(std::string& source) {
 #if defined(__linux__)
     source = "/proc/sys/net/ipv4/ip_local_port_range";
@@ -103,8 +105,11 @@ inline std::optional<Range> host_ephemeral_range(std::string& source) {
     }
     return Range{static_cast<std::uint16_t>(first), static_cast<std::uint16_t>(last)};
 #elif defined(_WIN32)
-    source = "Windows default dynamic range (not read from the host)";
-    return Range{49152, 65535};
+    // The configured range is not read here; returning the documented default 49152-65535 would
+    // only compare constants. `netsh int ipv4 show dynamicport tcp` and `... show
+    // excludedportrange protocol=tcp` show the host's settings.
+    source = "not read on Windows";
+    return std::nullopt;
 #else
     source = "unknown host";
     return std::nullopt;

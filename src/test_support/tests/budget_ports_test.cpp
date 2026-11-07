@@ -67,20 +67,21 @@ TEST_CASE("budget ports: the Linux range text is read as two ascending ports" *
 
 TEST_CASE("budget ports: this host's ephemeral range does not reach the fixed test ports" *
           doctest::test_suite("budget")) {
+#if defined(_WIN32)
+    // Not read on Windows: comparing the documented default would only compare constants.
+    MESSAGE("skipping: the ephemeral port range is not read on Windows (netsh int ipv4 show "
+            "dynamicport tcp, show excludedportrange protocol=tcp)");
+#else
     std::string source;
     const auto range = ports::host_ephemeral_range(source);
     INFO("ephemeral range source: " << source);
-#if defined(__linux__) || defined(__APPLE__)
+    // Linux and macOS read it; other hosts are not targets (docs/PLAN.md) and fail here.
     REQUIRE_MESSAGE(range.has_value(), "the host's ephemeral port range could not be read");
-#endif
-    if (!range) {
-        MESSAGE("no ephemeral range known for this host; nothing to compare");
-        return;
-    }
     INFO("ephemeral range " << range->first << ".." << range->last << ", fixed test ports "
                             << ports::kBandFirst << ".." << ports::kBandLast);
     CHECK_MESSAGE(band_outside(*range),
                   "this host hands out the coordinator regressions' fixed ports to outgoing "
                   "connections: their coordinators can fail with BIND-FAILED under ctest -j. "
                   "Move the band in test_ports.hpp or narrow the host's range.");
+#endif
 }

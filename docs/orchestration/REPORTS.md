@@ -8084,3 +8084,155 @@ Inline; Wine passes 3 and 4; no subagents. Lanes 1, 3, 4 not touched. No merge, 
 5. **F1 "four portraits" were `STATUSBAR_EINWOHNER` + three `STATUSBAR_ROSHTOFFE`.** Id 53 at (401, 733) mean 4.74; goods 46/48/51 at 547/587/627. `STATUSBAR_ICON` 3 is fire.
 6. **Tolerance 0.08, not 0.12.** Correct max 0.0480, wrong-category 0.1968. Channel 48 kept.
 7. **Pause parchment at screen centre (222, 191).** Button (286, 500) mean 11.61 is the clean bind; parchment mean 27.2 from the ACCESS dark field. `Pause.tex` has 0 textures.
+
+## UI.1.F2 — F2.1 closure — 2026-11-07 — status: REVIEW PENDING
+
+Branch `task/UI-1-F2-ui-remaining` at `750eace0` (worktree fast-forwarded from the owner's local
+`a2619e29`, no local changes lost: the identical uncommitted `docs/testing/checklist.md` copy was
+byte-for-byte what `750eace0` already carries). This checkpoint closes F2.1's remaining list
+against the F2.1 progress report (`a2619e29`) and the UI.1.F2 board block.
+
+### F1 — the four remaining F2.1 items, checked one by one
+
+1. **Info panel's cost and upkeep icons.** Upkeep (`B_Betriebskosten` id 1, (815, 674) 40 x 37,
+   mean 12.76) is already bound (`data/ui/hud.txt` `betriebskosten`, `method sprite-sad`) -- no
+   gap. The gold-coin cost icon (`B_Baukosten` id 1, 32 x 29) is not: an exhaustive grey-key SAD
+   search of the whole panel (x 800-1010, y 300-730) against nine info-panel shots of different
+   building types found no position better than mean SAD ~120 in any of them (the sprite itself
+   decodes cleanly: 925/928 opaque pixels, 792 non-grey -- not a decode failure). This independently
+   reproduces, rather than newly discovers, the symptom section 2.5 already flagged ("Opaque SAD on
+   the panel is >100 because those sprites carry a grey fill"); `baukosten` staying at
+   `method inc-size` (name/size checked, not pixel-positioned) is confirmed the deliberate, correct
+   choice, not an oversight. New: OQ-561.
+2. **Pressed frames.** Already resolved for the frame index at OQ-544 (`add esi, 2`:
+   idle = ACCESS, pressed = ACCESS+1; cell gadgets use three frames). Pixel capture is not possible
+   with the current Wine agent: `drag`/`click` each send one atomic `xdotool` sequence
+   (mousemove, sleep, mousedown, ..., mouseup) over a single X connection with no way to interleave
+   an external screenshot call mid-gesture; a genuine capture needs a new agent-side command that
+   splits mousedown from mouseup (not added this pass -- a scoped follow-up, not a blocker: OQ-544
+   already states this limitation honestly, and the disassembly evidence for the frame index stands
+   on its own).
+3. **Selected-house panel's origin.** Already bound: `house_portrait` (`Pioniere.tex` id 1, 100 x
+   108, (812, 355), shot `f15_selected_house`) and `pionier_bk` (`VIEWINFOPIONIERMAIN_BK` id 974,
+   245 x 467, (783, 252), shot `f15_selected_house`), both `method sprite-sad` in
+   `data/ui/hud.txt`. No gap found.
+4. **Remaining masks for unbound graphics.** `data/ui/masks.txt` has no mask whose reason is
+   "unbound" -- every mask is `isometric-world`, `live-minimap`, `live-digits` (x5),
+   `viewbautab-clip` (a real rendering clip, not a missing bind) or `live-banner-text`. The only
+   `method inc-size` (existence/size-only) entries left in `hud.txt` are `karteplus_access`,
+   `karte_nordung` and `wohnhaus_platte` (documented-rejected alternative candidates, decisions 2-4
+   and 7 above -- correctly left unblitted, not unbound graphics), `fenster_statusbar` (still-open
+   OQ-536, a genuinely undetermined alternative), `option_background` (options menu, F2.2/out of
+   this scope) and `baukosten` (item 1 above, now OQ-561). None is a mask hiding a graphic that
+   should be drawn and isn't.
+
+### F2 -- element table (build-test surface, bound / open)
+
+| Element | Graphic | Pos / size | Method | Status |
+|---|---|---|---|---|
+| Status bar | STATUSBAR 0 | (0,733) 746x35 | sprite-sad | bound |
+| Gold | STATUSBAR_GELDSYMBOL 52 | (0,733) 33x35 | sprite-sad | bound |
+| BAUMAT tools/wood/bricks/marble | STATUSBAR_BAUMAT 36-39 | (132/192/252/312,735) 30x30 | sprite-sad | bound |
+| Residents | STATUSBAR_EINWOHNER 53 | (401,733) 38x35 | sprite-sad | bound |
+| ROSHTOFFE x3 | STATUSBAR_ROSHTOFFE 46/48/51 | (547/587/627,735) 30x30 | sprite-sad | bound |
+| `?` icon | STATUSBAR_FRAGEZEICHEN 1 | (746,733) 34x35 | sprite-sad | bound |
+| Minimap frame | WELTKARTE 2 | (779,0) 245x248 | sprite-sad | bound |
+| Right chrome panel | MAINUNTERGRUND 4 | (779,244) 245x524 | sprite-sad / atlas-right | bound |
+| MAINTAB construction/military/help/options | MAINTAB 8/13/10/11 | (779-962,181) 61x63 | sprite-sad | bound |
+| Zoom plus/minus | KARTEPLUS 44/46 | (959/982,7/19) 19x21 | sprite-sad | bound |
+| Lupe | LUPE 7 | (805,132) 42x45 | sprite-sad | bound |
+| Compass w/e | KARTEPLUS 48/50 | (965/986,140) 19x31 | sprite-sad | bound |
+| Category column (8 cells) | VIEWBAUTAB 16,18,...30 | (779,click_y-23) 42x46 | view-dll | bound |
+| Banner | PLANKEGROSS 1019 | (783,252) 241x48 | sprite-sad | bound |
+| Pickaxe | ABRISSICON 659/660 | (970,710) 53x53 | sprite-sad | bound |
+| Unlocked-cell icons (148 cells) | THUMBNAIL* + 3x record_index | grid 808,305 step 52, sprite 50 | sprite-sad | bound |
+| NO_KLICK (locked cells) | NO_KLICK 56 | (860,305) 50x50 | sprite-sad | bound |
+| Info panel background | INFOUNTERGRUND 33 | (804,302) 220x466 | sprite-sad | bound |
+| Rotate left/right | INFOROTPFEIL 34/36 | (808/987,451) 33x38 | sprite-sad | bound |
+| Cancel-X | INFOEXIT 38 | (984,725) 33x38 | sprite-sad | bound |
+| Upkeep icon | B_Betriebskosten 1 | (815,674) 40x37 | sprite-sad | bound |
+| Gold cost icon | B_Baukosten 1 | 32x29, no position | inc-size | open -- OQ-561 |
+| Cost-row materials | STATUSBAR_BAUMAT 36-39 (reused) | same as status bar | sprite-sad | bound (status-bar binding; in-panel instance not separately pixel-pinned) |
+| Pause parchment / button | MESSAGEBOX_BK 1512 / MESSAGEBOX_BUTTONS 1513 | (222,191) 579x386 / (286,500) 244x67 | sprite-sad | bound |
+| Options exit | OPTION_EXIT 1492 | (927,660) 92x100 | sprite-sad | bound |
+| Rating background | STATISTIK_UNTERGRUND 1509 | (0,0) 1024x768 | sprite-sad | bound |
+| Selected-house plate | VIEWINFOPIONIERMAIN_BK 974 | (783,252) 245x467 | sprite-sad | bound |
+| Selected-house portrait | Pioniere.tex 1 | (812,355) 100x108 | sprite-sad | bound |
+| KARTEPLUS 40 (rejected alt) | -- | 19x21 | inc-size | open -- documented-rejected, not drawn |
+| KARTE_NORDUNG (rejected alt) | -- | 256x133 | inc-size | open -- documented-rejected, not drawn |
+| WOHNHAUS_PLATTE 883 (rejected alt) | -- | 244x469 | inc-size | open -- documented-rejected, not drawn |
+| fenster.inc STATUSBAR (rejected alt) | -- | 780x43 | inc-size | open -- OQ-536, genuinely undetermined |
+| OPTION_BACKGROUND 1475 | -- | 245x467 | inc-size | open -- options menu, F2.2 scope |
+| Pressed-frame pixel proof | -- | -- | disassembly only | open -- OQ-544, agent limitation (item 2 above) |
+
+### Screen table (reachable in-game, Citizen start)
+
+| # | Screen | Status | Shot |
+|---|---|---|---|
+| 1 | HUD idle | captured | hud_idle_running |
+| 2 | Settlement / Kontor panel | captured | r2_hud_kontor, f15_kontor |
+| 3 | Construction menu, 8 categories | captured | r2_construction_* |
+| 4 | Building info / placement | captured | r2_info_* / r2_place_* |
+| 5 | Demolish | captured | r2_demolish |
+| 6 | Help / info mode | captured (chrome only) | r2_tab_help, f15_help_tab |
+| 7 | Military tab | captured | r2_tab_military |
+| 8 | Options tab (in-panel) | captured (chrome only) | r2_options, f15_options_tab |
+| 9 | Player list | captured | r2_player_menu, f15_player_menu |
+| 10 | Pause overlay | captured | f15_pause |
+| 11-14 | Options load/save/music/speech | captured (chrome) | f15_options_y{360,410,460,510} |
+| 15 | Ship list | captured | f15_ship_list |
+| 16 | City list | captured | f15_city_list |
+| 17 | Rating | captured | f15_rating |
+| 18 | Selected house | captured | f15_selected_house |
+| 19 | Deselected right panel | captured | f15_ship_guess_0 |
+| -- | Kontor trade sliders | open -- OQ-547 | F2.2 |
+| -- | Help page on a building | open -- OQ-548 | F2.2 |
+| -- | Options statistics / quit confirm | open -- OQ-549 | F2.2 |
+| -- | Diplomacy / messages | open -- needs a second player | F2.2 |
+| -- | Options resolutions at other modes | open -- OQ-535, owner desktop only | F2.3 |
+
+F2.2 (the reachable screens above, in full) is explicitly optional idle-time work for the end of
+this packet (E), per the dispatch; not attempted this checkpoint.
+
+### F3 -- owner checklist
+
+Confirmed: `750eace0`'s `docs/testing/checklist.md` entry already carries the OQ-535 predictions
+for all four remaining modes (800x600, 1152x864, 1280x960, 1280x1024), each with a predicted
+ToolGfx set, status-bar graphic/position, right-chrome width/x and construction origin. No
+change needed.
+
+### F4 -- gates
+
+- `python -I tools/ui_layout.py self-test`: ok, checks=28.
+- `check-files --root .`: ok.
+- `validate --layout data/ui --game-dir <game/app>`: ok.
+- `compare` idle HUD vs hud_idle_running: fraction 0.0207, pass (matches the F2.1 progress
+  report exactly).
+- `compare` all eight construction categories vs their r2_construction_* shots: coastal
+  0.0455, farms 0.0170, military 0.0307, mines 0.0361, ornamental 0.0164, public 0.0189, roads
+  0.0480, workshops 0.0304 -- all pass (worst, roads, matches the documented 0.08 tolerance's
+  measured ceiling).
+- Negative controls (negative_control_results): public-mock-vs-roads-shot fraction 0.1968,
+  one-cell-shift 0.1901, missing-pickaxe pick_fraction 0.9833 -- all three correctly
+  fail the 0.08 threshold.
+- No `src/` change. No original pixels, strings or shots committed (`cache/orig/ui-1/` stays
+  git-ignored; new finding evidence above states coordinates/means only).
+
+### Decisions and reasoning
+
+1. **`baukosten` stays unpositioned (OQ-561), not forced to a guessed coordinate.** An exhaustive
+   search across nine shots of different building types found no position under mean SAD 120,
+   consistent with the already-documented "those sprites carry a grey fill" finding. Stating a
+   guessed position as fact would violate the evidence rule; `inc-size` plus the new OQ is the
+   honest state.
+2. **Pressed-frame pixel capture is left open, not worked around with a new agent primitive.**
+   Splitting the Wine agent's atomic drag/click gesture into separate mousedown/mouseup RPCs is a
+   real, boundedly-small change, but it is shared RE infrastructure outside this packet's own
+   scope; OQ-544 already states the limitation and the disassembly evidence it rests on, so it is
+   recorded as a scoped follow-up rather than rushed in here.
+3. **F2.2 is not started.** The dispatch explicitly makes it optional idle-time work for E, and R
+   onward does not wait on it.
+
+### Next
+
+R onward does not wait for this report's review, per the dispatch. Pushing next.

@@ -107,22 +107,6 @@ prerequisite skip; 7 empty doctest child; 8 no test outcomes; 9 incomplete or
 contradictory evidence. A zero selection is refused before execution as workflow
 failure. Initial failures and corrected reruns stay separate.
 
-## Coordinator ports on Linux and WSL
-
-The budget coordinator and its tests listen on fixed ports 47631..47920. On Linux
-(and WSL) these lie inside the kernel's ephemeral range (32768-60999), so under
-`ctest -j` an outgoing connection of another test can hold one of them as its local
-port; the coordinator then prints `BIND-FAILED <port>` and a different coordinator
-case fails each run. CI reserves the range before testing; do the same on a Linux
-or WSL test host (until reboot):
-
-    sudo sysctl -w net.ipv4.ip_local_reserved_ports=47600-47999
-
-Reproduced on 2026-11-07 by narrowing the ephemeral range onto the F3 ports while
-25 client connections were held: F3 (D1) failed with `BIND-FAILED 47810` and
-`47814`; with the reservation the clients got 48000+ and the cases passed. macOS
-and Windows hand out 49152-65535 and are not affected.
-
 ## Workflow maintenance
 
 The verdict reader and its initial 14 contracts were adapted from MAP commit

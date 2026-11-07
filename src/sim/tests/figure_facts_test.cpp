@@ -271,7 +271,8 @@ std::vector<DigestCase> read_vectors() {
 
 TEST_CASE("figure digest: the registry identity of figure facts equals the independent reference") {
     const std::vector<DigestCase> cases = read_vectors();
-    REQUIRE(cases.size() == 27); // tools/figure_digest_ref.py CASES (two route cases, stream 126; two ware cases, stream 135)
+    REQUIRE(cases.size() == 27); // tools/figure_digest_ref.py CASES (two route cases, stream 126;
+                                 // two ware cases, stream 135)
     std::vector<std::uint64_t> seen;
     for (const DigestCase& c : cases) {
         INFO("case " << c.name);

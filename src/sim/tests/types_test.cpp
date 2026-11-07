@@ -1718,7 +1718,7 @@ TEST_CASE("registry digest changes with every field") {
         {"range_88", [](auto& f) { f.range_88 += 1; }},
         {"hull_half_88", [](auto& f) { f.hull_half_88 = f.hull_half_88.value_or(0) + 1; }},
         {"hull_half_88 present zero", [](auto& f) { f.hull_half_88 = 0; }},
-        {"route", [](auto& f) { f.route += 1; }}, // stream 126 (MAP-ECON-1 E2)
+        {"route", [](auto& f) { f.route += 1; }},        // stream 126 (MAP-ECON-1 E2)
         {"ware", [](auto& f) { f.ware = "SALZSTEIN"; }}, // stream 135 (ore symbols)
         {"ware other", [](auto& f) { f.ware = "GOLD"; }},
     };

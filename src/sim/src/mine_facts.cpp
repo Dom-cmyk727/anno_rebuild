@@ -1,7 +1,6 @@
-#include <anno/sim/mine_facts.hpp>
-
 #include <variant>
 
+#include <anno/sim/mine_facts.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/world.hpp>

@@ -854,7 +854,8 @@ void load(Job& j) {
     tr.reserved_88 = 0; // cargo +0x20 takes the reservation
     if (j.ctx.transport_stats != nullptr && target != nullptr && take > 0) {
         j.ctx.transport_stats->loaded_from[target->id] += take; // E4 ledger (diagnostic)
-        j.ctx.transport_stats->loaded_by_home[{target->id, j.fig.home}] += take; // X3: who lifted it
+        j.ctx.transport_stats->loaded_by_home[{target->id, j.fig.home}] +=
+            take; // X3: who lifted it
     }
 }
 

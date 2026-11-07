@@ -178,9 +178,9 @@ TerrainVerdict coast_height_check(const VertexGrid& grid, const BuildingType& ty
                              });
 }
 
-bool mountain_helper_accepts(std::uint32_t w, std::uint32_t h, std::span<const std::uint8_t> highmap,
-                             std::uint8_t rotation, std::span<const std::uint8_t> window,
-                             std::uint32_t offset) {
+bool mountain_helper_accepts(std::uint32_t w, std::uint32_t h,
+                             std::span<const std::uint8_t> highmap, std::uint8_t rotation,
+                             std::span<const std::uint8_t> window, std::uint32_t offset) {
     if (rotation > 3 || w == 0 || h == 0 || highmap.size() != std::size_t{4} * w * h) {
         return false;
     }
@@ -241,6 +241,5 @@ bool mountain_helper_accepts(std::uint32_t w, std::uint32_t h, std::span<const s
     }
     return true;
 }
-
 
 } // namespace anno::sim::site

@@ -24,11 +24,11 @@ Class classify(const BuildingType& t, const PlacementParams& p) {
     if (t.flags_word > 0xffffU) {
         return Class::Other;
     }
-    // Stream 135: the mountain class (flag word & 0x7000 == 0x3000) is placeable only for a deep MINE
-    // type that carries its HIGHMAP table (exactly 2h x 2w bytes); every other type of the class
-    // (quarries, shallow iron mines, a type without a table) stays Unsupported. The shipped mines
-    // carry flag bit 0x10, so this branch precedes the gate below: their coverage test (a second
-    // predicate, docs/sim/salt-extraction.md section 18) is implemented in coverage_rule.
+    // Stream 135: the mountain class (flag word & 0x7000 == 0x3000) is placeable only for a deep
+    // MINE type that carries its HIGHMAP table (exactly 2h x 2w bytes); every other type of the
+    // class (quarries, shallow iron mines, a type without a table) stays Unsupported. The shipped
+    // mines carry flag bit 0x10, so this branch precedes the gate below: their coverage test (a
+    // second predicate, docs/sim/salt-extraction.md section 18) is implemented in coverage_rule.
     if ((t.flags_word & 0x7000U) == p.mountain_class && t.cls == RuntimeClass::Mine && t.has_prod &&
         mine_is_deep(t.prod, t.research_id) &&
         t.highmap.size() == std::size_t{4} * t.width * t.height && (t.flags_word & 3U) != 1U &&
@@ -37,8 +37,8 @@ Class classify(const BuildingType& t, const PlacementParams& p) {
             p.mountain_wares.end()) {
         return Class::Mountain;
     }
-    // Every other type with the coverage bit stays Unsupported (the test is evidenced for the mountain
-    // class only).
+    // Every other type with the coverage bit stays Unsupported (the test is evidenced for the
+    // mountain class only).
     if ((t.flags_word & p.coverage_flag) != 0) {
         return Class::Other;
     }
@@ -125,15 +125,16 @@ PlacementResult road_window(const VertexGrid& grid, const BuildingType& t,
 }
 
 /// The island function's per-chunk COVERAGE test (AnnoWelt 0x1007c955-0x1007cb3d; docs/sim/
-/// salt-extraction.md section 18; reference placement_ref.py coverage_ok, proved equal to the original
-/// bytes by placement_emulate.py over 40,000 random cases and 31 hand-derived vectors). It runs for a
-/// type whose flag word has bit 0x10. A footprint tile is KEPT when it carries an existing object whose
-/// type has bit 0x10 AND whose tile anchor bit (TileLayer::foot_anchor, tile byte 3 bit 7) is set; every
-/// other tile marks its world-aligned chunk; every chunk the footprint touches needs a mark.
-/// Typed Unsupported (never a default answer) for what the evidence does not cover: a footprint wider
-/// or taller than the chunk (the original's mark array is 2 x 2 chunks), a negative world coordinate
-/// (the original's `cdq; and 7` rounding differs there), an existing id the registry does not know,
-/// and an object of the dry run's overlay on the footprint (its anchor bit is not modelled).
+/// salt-extraction.md section 18; reference placement_ref.py coverage_ok, proved equal to the
+/// original bytes by placement_emulate.py over 40,000 random cases and 31 hand-derived vectors). It
+/// runs for a type whose flag word has bit 0x10. A footprint tile is KEPT when it carries an
+/// existing object whose type has bit 0x10 AND whose tile anchor bit (TileLayer::foot_anchor, tile
+/// byte 3 bit 7) is set; every other tile marks its world-aligned chunk; every chunk the footprint
+/// touches needs a mark. Typed Unsupported (never a default answer) for what the evidence does not
+/// cover: a footprint wider or taller than the chunk (the original's mark array is 2 x 2 chunks), a
+/// negative world coordinate (the original's `cdq; and 7` rounding differs there), an existing id
+/// the registry does not know, and an object of the dry run's overlay on the footprint (its anchor
+/// bit is not modelled).
 PlacementResult coverage_rule(const Island& island, const TypeRegistry& types,
                               const PlacementRecord& rec, std::int64_t fw, std::int64_t fh,
                               const PlacementParams& params) {
@@ -145,8 +146,10 @@ PlacementResult coverage_rule(const Island& island, const TypeRegistry& types,
     const TileLayer& tiles = island.tiles;
     const std::int64_t cx0 = std::int64_t{rec.x} >> params.coverage_chunk_shift;
     const std::int64_t cy0 = std::int64_t{rec.y} >> params.coverage_chunk_shift;
-    const std::int64_t cols = ((std::int64_t{rec.x} + fw + edge - 1) >> params.coverage_chunk_shift) - cx0;
-    const std::int64_t rows = ((std::int64_t{rec.y} + fh + edge - 1) >> params.coverage_chunk_shift) - cy0;
+    const std::int64_t cols =
+        ((std::int64_t{rec.x} + fw + edge - 1) >> params.coverage_chunk_shift) - cx0;
+    const std::int64_t rows =
+        ((std::int64_t{rec.y} + fh + edge - 1) >> params.coverage_chunk_shift) - cy0;
     // at most 2 x 2 chunks for a footprint of at most one chunk edge
     std::array<bool, 4> marked{};
     for (std::int64_t dy = 0; dy < fh; ++dy) {
@@ -155,7 +158,8 @@ PlacementResult coverage_rule(const Island& island, const TypeRegistry& types,
             const std::int64_t ly = rec.y - std::int64_t{tiles.y0()} + dy;
             const std::uint64_t local =
                 static_cast<std::uint64_t>(ly) * tiles.width() + static_cast<std::uint64_t>(lx);
-            if (params.object_overlay != nullptr && params.object_overlay->find(local) != params.object_overlay->end()) {
+            if (params.object_overlay != nullptr &&
+                params.object_overlay->find(local) != params.object_overlay->end()) {
                 return kUnsupported;
             }
             bool kept = false;
@@ -164,11 +168,14 @@ PlacementResult coverage_rule(const Island& island, const TypeRegistry& types,
                 if (existing == nullptr) {
                     return kUnsupported;
                 }
-                kept = (existing->flags_word & params.coverage_flag) != 0 && tiles.foot_anchor(local) != 0;
+                kept = (existing->flags_word & params.coverage_flag) != 0 &&
+                       tiles.foot_anchor(local) != 0;
             }
             if (!kept) {
-                const std::int64_t cx = ((std::int64_t{rec.x} + dx) >> params.coverage_chunk_shift) - cx0;
-                const std::int64_t cy = ((std::int64_t{rec.y} + dy) >> params.coverage_chunk_shift) - cy0;
+                const std::int64_t cx =
+                    ((std::int64_t{rec.x} + dx) >> params.coverage_chunk_shift) - cx0;
+                const std::int64_t cy =
+                    ((std::int64_t{rec.y} + dy) >> params.coverage_chunk_shift) - cy0;
                 marked[static_cast<std::size_t>(cx + 2 * cy)] = true;
             }
         }

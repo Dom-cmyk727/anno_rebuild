@@ -1,5 +1,4 @@
 #include <anno/sim/mine_source.hpp>
-
 #include <anno/sim/production.hpp>
 
 namespace anno::sim {
@@ -71,8 +70,8 @@ std::optional<std::size_t> find_ore_in_reach(const Island& island, const TypeReg
 }
 
 std::optional<std::size_t> bind_mine_deposit(Island& island, const TypeRegistry& types,
-                                             const Building& b, const BuildingType& t,
-                                             bool deep, OreLookupStats* stats) {
+                                             const Building& b, const BuildingType& t, bool deep,
+                                             OreLookupStats* stats) {
     const std::optional<std::size_t> best_ore =
         find_ore_in_reach(island, types, t, mine_area(b, t), deep, stats);
     if (!best_ore) {

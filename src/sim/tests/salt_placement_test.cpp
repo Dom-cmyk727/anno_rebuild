@@ -3,8 +3,8 @@
 // engine; layer 2 builds in the original endless02 island 1 (owner 8) through PUBLIC commands.
 // Needs ANNO1503_GAME_DIR for layer 2.
 #include <algorithm>
-#include <chrono>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -24,8 +24,8 @@
 #include <anno/sim/mine_facts.hpp>
 #include <anno/sim/mine_source.hpp>
 #include <anno/sim/placement.hpp>
-#include <anno/sim/replay.hpp>
 #include <anno/sim/production.hpp>
+#include <anno/sim/replay.hpp>
 #include <anno/sim/site_checks.hpp>
 #include <anno/sim/terrain_view.hpp>
 #include <anno/sim/transport.hpp>
@@ -134,7 +134,8 @@ std::vector<std::uint8_t> flat(const Vec& v) {
     return w;
 }
 
-/// A salt-mine-like type for the engine: footprint w x h, the table of the vector, flag word 0x3096.
+/// A salt-mine-like type for the engine: footprint w x h, the table of the vector, flag word
+/// 0x3096.
 sim::BuildingType mine_type(const Vec& v) {
     sim::BuildingType t;
     t.id = sim::TypeId{1203};
@@ -151,8 +152,8 @@ sim::BuildingType mine_type(const Vec& v) {
     return t;
 }
 
-/// An island holding exactly the vector's vertex window at its origin (one extra tile row and column
-/// so the window's last row/column are real vertices, not the zero boundary).
+/// An island holding exactly the vector's vertex window at its origin (one extra tile row and
+/// column so the window's last row/column are real vertices, not the zero boundary).
 sim::Island island_for(const Vec& v) {
     const std::uint32_t ww = v.rot % 2 == 0 ? v.w : v.h, hh = v.rot % 2 == 0 ? v.h : v.w;
     sim::Island is;
@@ -177,9 +178,8 @@ TEST_CASE("mountain helper: every terrain vector of the hand-derived file (integ
             continue;
         }
         INFO("vector " << v.name);
-        const bool got = sim::site::mountain_helper_accepts(v.w, v.h, v.table,
-                                                            static_cast<std::uint8_t>(v.rot),
-                                                            flat(v), v.off);
+        const bool got = sim::site::mountain_helper_accepts(
+            v.w, v.h, v.table, static_cast<std::uint8_t>(v.rot), flat(v), v.off);
         CHECK(got == (v.expect == "accept"));
         ++n;
     }
@@ -253,7 +253,8 @@ TEST_CASE("mountain placement: types the class does not cover stay Unsupported")
     // the legal control
     sim::BuildingType t = mine_type(v);
     CHECK(sim::placement_rule(is, reg, t, rec).reject == sim::Reject::None);
-    // no table, a table of the wrong length, a quarry class, a shallow iron mine, no production data
+    // no table, a table of the wrong length, a quarry class, a shallow iron mine, no production
+    // data
     sim::BuildingType no_table = t;
     no_table.highmap.clear();
     CHECK(sim::placement_rule(is, reg, no_table, rec).reject == sim::Reject::Unsupported);
@@ -269,8 +270,8 @@ TEST_CASE("mountain placement: types the class does not cover stay Unsupported")
     sim::BuildingType bare = t;
     bare.has_prod = false;
     CHECK(sim::placement_rule(is, reg, bare, rec).reject == sim::Reject::Unsupported);
-    // the coverage bit is evidenced for the mountain class only: an ordinary-land type with it stays
-    // Unsupported (the island of this test is flat and empty, so the class gate decides)
+    // the coverage bit is evidenced for the mountain class only: an ordinary-land type with it
+    // stays Unsupported (the island of this test is flat and empty, so the class gate decides)
     sim::BuildingType coverage = t;
     coverage.flags_word = 0x0094;
     coverage.highmap.clear();
@@ -323,7 +324,8 @@ std::vector<std::uint8_t> hex_bytes(const std::string& h) {
 }
 
 void read_coverage(std::vector<CovType>& types, std::vector<CovCase>& cases) {
-    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "mine_coverage_vectors.txt");
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" /
+                     "mine_coverage_vectors.txt");
     REQUIRE_MESSAGE(in.good(), "mine_coverage_vectors.txt not found");
     std::string line;
     while (std::getline(in, line)) {
@@ -382,7 +384,8 @@ void read_coverage(std::vector<CovType>& types, std::vector<CovCase>& cases) {
 
 } // namespace
 
-TEST_CASE("mountain coverage: the hand-derived vectors through placement_rule as a separate predicate") {
+TEST_CASE(
+    "mountain coverage: the hand-derived vectors through placement_rule as a separate predicate") {
     std::vector<CovType> ctypes;
     std::vector<CovCase> cases;
     read_coverage(ctypes, cases);
@@ -406,11 +409,12 @@ TEST_CASE("mountain coverage: the hand-derived vectors through placement_rule as
         const auto tt = std::find_if(ctypes.begin(), ctypes.end(),
                                      [&](const CovType& t) { return t.id == c.tid; });
         REQUIRE(tt != ctypes.end());
-        // Only what the sim can express: the salt-like mine (class 0x3000 with its exact table) with no
-        // caller flags beyond 0x2000000 (no sim analogue; every other bit of the original's argument,
-        // the apply, skip and caller-0x10 flags, has no counterpart in a command's placement).
-        if ((tt->flags & 0x7000U) != 0x3000U || tt->table.size() != std::size_t{4} * tt->w * tt->h ||
-            (c.flags & ~0x2000000U) != 0) {
+        // Only what the sim can express: the salt-like mine (class 0x3000 with its exact table)
+        // with no caller flags beyond 0x2000000 (no sim analogue; every other bit of the original's
+        // argument, the apply, skip and caller-0x10 flags, has no counterpart in a command's
+        // placement).
+        if ((tt->flags & 0x7000U) != 0x3000U ||
+            tt->table.size() != std::size_t{4} * tt->w * tt->h || (c.flags & ~0x2000000U) != 0) {
             ++skipped;
             continue;
         }
@@ -436,7 +440,8 @@ TEST_CASE("mountain coverage: the hand-derived vectors through placement_rule as
         }
         is.terrain = sim::make_terrain(std::move(height), {}, {});
         const auto idx = [&](std::int32_t x, std::int32_t y) {
-            return static_cast<std::uint64_t>(y - c.y0) * c.W + static_cast<std::uint64_t>(x - c.x0);
+            return static_cast<std::uint64_t>(y - c.y0) * c.W +
+                   static_cast<std::uint64_t>(x - c.x0);
         };
         for (const auto& o : c.objs) {
             is.tiles.set_object(idx(o[0], o[1]), static_cast<std::uint32_t>(o[2]));
@@ -464,7 +469,8 @@ TEST_CASE("mountain coverage: the hand-derived vectors through placement_rule as
         }
         ++ran;
     }
-    // 31 vectors: the caller-flag pair, the apply-flag case and the 0x400000 case cannot be expressed
+    // 31 vectors: the caller-flag pair, the apply-flag case and the 0x400000 case cannot be
+    // expressed
     CHECK(skipped == 4);
     CHECK(ran == cases.size() - skipped);
     CHECK(coverage_refusals >= 10);
@@ -472,8 +478,9 @@ TEST_CASE("mountain coverage: the hand-derived vectors through placement_rule as
 }
 
 // ---- layer 2: the original endless02 island 1, player 8 (city 0), through PUBLIC commands ------
-// Site coordinates were chosen with the independent oracle (tools/placement_ref.py over an export of the
-// island, docs/sim/salt-extraction.md 18.1); the C++ rule decides here, the tests pin the agreement.
+// Site coordinates were chosen with the independent oracle (tools/placement_ref.py over an export
+// of the island, docs/sim/salt-extraction.md 18.1); the C++ rule decides here, the tests pin the
+// agreement.
 
 namespace {
 
@@ -496,7 +503,8 @@ std::optional<SaltWorld> salt_world(bool started, bool atomic = false, bool live
         anno::test::read_file(o->dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze"),
         o->templates, *o->types, o->cfg, {}, original_component::actor_free_units());
     REQUIRE(resolved);
-    auto component = original_component::import_only(resolved.value().loaded.spec, o->types, o->cfg);
+    auto component =
+        original_component::import_only(resolved.value().loaded.spec, o->types, o->cfg);
     REQUIRE_MESSAGE(component, (component ? "" : component.error()));
     sim::Rules rules;
     rules.build_atomic = atomic;
@@ -522,17 +530,22 @@ sim::Command build_cmd(std::vector<sim::PlacementWire> p) {
 sim::PlacementWire mine_at(std::int32_t x, std::int32_t y, std::uint8_t rot = 0) {
     return sim::PlacementWire{kSaltMine, x, y, rot, 0, 0};
 }
-const sim::Island& isle(const sim::World& w) { return *w.islands()[1]; }
-std::int64_t gold(const sim::World& w) { return w.players().find(kSaltPlayer)->money; }
+const sim::Island& isle(const sim::World& w) {
+    return *w.islands()[1];
+}
+std::int64_t gold(const sim::World& w) {
+    return w.players().find(kSaltPlayer)->money;
+}
 
-/// A refusal changes nothing (the saved state is byte-identical), then the legal neighbour is accepted.
+/// A refusal changes nothing (the saved state is byte-identical), then the legal neighbour is
+/// accepted.
 void refusal_row(const sim::World& base, const sim::PlacementWire& bad, sim::Reject want,
                  const sim::PlacementWire& good) {
     sim::World w = base;
     const auto before = w.save();
     const sim::ApplyResult r = w.apply(build_cmd({bad}));
-    CHECK_MESSAGE(r.status == want, "got " << sim::reject_name(r.status) << " wanted "
-                                           << sim::reject_name(want));
+    CHECK_MESSAGE(r.status == want,
+                  "got " << sim::reject_name(r.status) << " wanted " << sim::reject_name(want));
     CHECK(w.save() == before);
     sim::World n = base;
     const sim::ApplyResult ok = n.apply(build_cmd({good}));
@@ -598,9 +611,9 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
     refusal_row(base, mine_at(373, 340), sim::Reject::TileNotOwned, mine_at(353, 359));
     // bounds: x beyond the island; neighbour inside
     refusal_row(base, mine_at(590, 359), sim::Reject::OutOfIsland, mine_at(353, 359));
-    // every other mountain-class type (quarries, shallow iron, and the deep gold, gems and iron mines)
-    // keeps the typed refusal: exactly Unsupported on a free footprint the owner rule passes (the class
-    // gate precedes the permission step, so the eligibility gate cannot mask it)
+    // every other mountain-class type (quarries, shallow iron, and the deep gold, gems and iron
+    // mines) keeps the typed refusal: exactly Unsupported on a free footprint the owner rule passes
+    // (the class gate precedes the permission step, so the eligibility gate cannot mask it)
     {
         std::set<std::uint32_t> deep_other;
         std::size_t checked = 0;
@@ -608,7 +621,8 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
             if ((t.flags_word & 0x7000U) != 0x3000U || t.id == kSaltMine) {
                 continue;
             }
-            if (t.cls == sim::RuntimeClass::Mine && t.has_prod && sim::mine_is_deep(t.prod, t.research_id) &&
+            if (t.cls == sim::RuntimeClass::Mine && t.has_prod &&
+                sim::mine_is_deep(t.prod, t.research_id) &&
                 t.highmap.size() == std::size_t{4} * t.width * t.height) {
                 deep_other.insert(t.id.v);
             }
@@ -619,8 +633,8 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
                     const auto before = w.save();
                     const sim::ApplyResult r =
                         w.apply(build_cmd({sim::PlacementWire{t.id, x, y, 0, 0, 0}}));
-                    if (r.status == sim::Reject::TileNotOwned || r.status == sim::Reject::OutOfIsland ||
-                        r.status == sim::Reject::Occupied) {
+                    if (r.status == sim::Reject::TileNotOwned ||
+                        r.status == sim::Reject::OutOfIsland || r.status == sim::Reject::Occupied) {
                         continue;
                     }
                     got = r.status;
@@ -633,7 +647,8 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
             ++checked;
         }
         CHECK(checked == 11);
-        // the deep non-salt mines of the registry: gold 1206 and 1212, gems 1214, deep iron 1216 and 1217
+        // the deep non-salt mines of the registry: gold 1206 and 1212, gems 1214, deep iron 1216
+        // and 1217
         CHECK(deep_other == std::set<std::uint32_t>{1206, 1212, 1214, 1216, 1217});
     }
     // permission: a type the town is not yet allowed to build is refused by the permission check,
@@ -641,7 +656,8 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
     {
         const sim::BuildingType* locked = nullptr;
         for (const sim::BuildingType& t : s->types->types()) {
-            if (t.cls != sim::RuntimeClass::Mine && !base.construction_eligibility(kSaltPlayer, t.id).allowed() &&
+            if (t.cls != sim::RuntimeClass::Mine &&
+                !base.construction_eligibility(kSaltPlayer, t.id).allowed() &&
                 base.construction_eligibility(kSaltPlayer, t.id).status ==
                     sim::BuildEligibilityStatus::StageLocked) {
                 locked = &t;
@@ -651,8 +667,10 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
         REQUIRE(locked != nullptr);
         sim::World w = base;
         const auto before = w.save();
-        const sim::ApplyResult r = w.apply(build_cmd({sim::PlacementWire{locked->id, 353, 359, 0, 0, 0}}));
-        CHECK_MESSAGE(r.status == sim::Reject::ConstructionDenied, "stage-locked type " << locked->id.v << ": " << sim::reject_name(r.status));
+        const sim::ApplyResult r =
+            w.apply(build_cmd({sim::PlacementWire{locked->id, 353, 359, 0, 0, 0}}));
+        CHECK_MESSAGE(r.status == sim::Reject::ConstructionDenied,
+                      "stage-locked type " << locked->id.v << ": " << sim::reject_name(r.status));
         CHECK(w.save() == before);
         // the legal neighbour: the allowed mine on the same site
         sim::World n = base;
@@ -678,14 +696,15 @@ TEST_CASE("salt mine: the COVERAGE row, a separate predicate with its legal neig
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    // a rock type of the coverage group (flag 0x10, group 0x141), compatible with the mine's occupancy
+    // a rock type of the coverage group (flag 0x10, group 0x141), compatible with the mine's
+    // occupancy
     const sim::BuildingType* rock = s->types->find(sim::TypeId{29});
     REQUIRE(rock != nullptr);
     REQUIRE((rock->flags_word & 0x10U) != 0);
     REQUIRE(rock->width == 1);
     REQUIRE(rock->height == 1);
-    // footprint x 353..355, y 359..362: the world chunk rows split at y = 360, so row y = 359 is one chunk
-    // (3 tiles) and rows 360..362 the other (9 tiles)
+    // footprint x 353..355, y 359..362: the world chunk rows split at y = 360, so row y = 359 is
+    // one chunk (3 tiles) and rows 360..362 the other (9 tiles)
     const auto arrange = [&](const std::vector<std::array<std::int32_t, 2>>& clear) {
         sim::World w = s->w;
         sim::Island& is = *sim::WorldTestAccess::islands(w)[1];
@@ -711,19 +730,21 @@ TEST_CASE("salt mine: the COVERAGE row, a separate predicate with its legal neig
     };
     // every tile kept: refused, although terrain and ownership are fine
     CHECK(attempt(arrange({})) == sim::Reject::TerrainRefused);
-    // an anchor clear only in the 9-tile chunk: the 3-tile chunk (y = 359) stays unmarked -> refused
+    // an anchor clear only in the 9-tile chunk: the 3-tile chunk (y = 359) stays unmarked ->
+    // refused
     CHECK(attempt(arrange({{354, 361}})) == sim::Reject::TerrainRefused);
     // and only in the 3-tile chunk: the other stays unmarked -> refused
     CHECK(attempt(arrange({{354, 359}})) == sim::Reject::TerrainRefused);
-    // one clear anchor in EACH chunk: both are marked -> accepted over the rocks (the legal neighbour)
+    // one clear anchor in EACH chunk: both are marked -> accepted over the rocks (the legal
+    // neighbour)
     CHECK(attempt(arrange({{354, 359}, {354, 361}})) == sim::Reject::None);
 }
 
 TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before any payment") {
-    // ADAPTATION (docs/sim/salt-extraction.md section 22): the radius-7 lookup is our placement rule, not a
-    // proven copy of the original's predicate; discovery is not consulted. Each refusal leaves the saved state
-    // byte-identical (no payment, no serial, no building, no deposit) and the dry run (build_atomic) answers
-    // the same as the live apply.
+    // ADAPTATION (docs/sim/salt-extraction.md section 22): the radius-7 lookup is our placement
+    // rule, not a proven copy of the original's predicate; discovery is not consulted. Each refusal
+    // leaves the saved state byte-identical (no payment, no serial, no building, no deposit) and
+    // the dry run (build_atomic) answers the same as the live apply.
     auto live = salt_world(true, false);
     auto dry = salt_world(true, true);
     if (!live || !dry) {
@@ -744,7 +765,8 @@ TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before an
             const std::int64_t gold0 = gold(w);
             const sim::ApplyResult res = w.apply(build_cmd({mine_at(r.x, r.y)}));
             // the atomic command reports AtomicAbort as a whole, with the same per-record reason
-            CHECK(res.status == (sw == &*dry ? sim::Reject::AtomicAbort : sim::Reject::NoDepositInReach));
+            CHECK(res.status ==
+                  (sw == &*dry ? sim::Reject::AtomicAbort : sim::Reject::NoDepositInReach));
             REQUIRE(res.records.size() >= 1);
             CHECK(res.records[0].status == sim::Reject::NoDepositInReach);
             CHECK(gold(w) == gold0);
@@ -752,8 +774,9 @@ TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before an
             CHECK(isle(w).deposits.empty());
         }
     }
-    // refusal order: a site that is BOTH unaffordable and without a deposit answers NoDepositInReach (the check
-    // precedes the affordability test), with no charge, no serial and nothing changed
+    // refusal order: a site that is BOTH unaffordable and without a deposit answers
+    // NoDepositInReach (the check precedes the affordability test), with no charge, no serial and
+    // nothing changed
     for (SaltWorld* sw : {&*live, &*dry}) {
         sim::World w = sw->w;
         sim::WorldTestAccess::players(w).find(kSaltPlayer)->money = 0;
@@ -768,19 +791,20 @@ TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before an
         CHECK(poor.records[0].status == sim::Reject::CannotAfford);
         CHECK(w.save() == before);
     }
-    // the neighbour just inside the reach builds, and the mine it makes is bound: a mine made by a command
-    // never exists without a deposit
+    // the neighbour just inside the reach builds, and the mine it makes is bound: a mine made by a
+    // command never exists without a deposit
     for (SaltWorld* sw : {&*live, &*dry}) {
         sim::World w = sw->w;
         const sim::ApplyResult res = w.apply(build_cmd({mine_at(353, 359)}));
         REQUIRE_MESSAGE(res.ok(), sim::reject_name(res.status));
-        const auto* m = std::get_if<sim::Mine>(&w.find_building(res.records.at(0).building)->payload);
+        const auto* m =
+            std::get_if<sim::Mine>(&w.find_building(res.records.at(0).building)->payload);
         REQUIRE(m != nullptr);
         CHECK(m->deposit.has_value());
         CHECK(isle(w).deposits.size() == 1);
     }
-    // a refusal inside a batch: the whole atomic command changes nothing; the plain world keeps the first
-    // record and refuses the second, and no mine of either is unbound
+    // a refusal inside a batch: the whole atomic command changes nothing; the plain world keeps the
+    // first record and refuses the second, and no mine of either is unbound
     {
         sim::World a = dry->w, p = live->w;
         const auto before = a.save();
@@ -796,7 +820,8 @@ TEST_CASE("salt mine: policy B refuses a mine with no deposit in reach before an
     const sim::Building* imported = nullptr;
     for (const auto& l : isle(live->w).city(kSaltCity.city)->index.lists)
         for (const auto& b : l.slots)
-            if (b && b->type.v == 1203) imported = &*b;
+            if (b && b->type.v == 1203)
+                imported = &*b;
     REQUIRE(imported != nullptr);
     CHECK_FALSE(std::get<sim::Mine>(imported->payload).deposit.has_value());
 }
@@ -807,14 +832,17 @@ TEST_CASE("salt mine: salt never depletes while the edition setting depletes") {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    REQUIRE(sim::WorldTestAccess::settings(s->w).depletes()); // the add-on edition (prop14 bit 1): the setting that depletes
+    REQUIRE(sim::WorldTestAccess::settings(s->w)
+                .depletes()); // the add-on edition (prop14 bit 1): the setting that depletes
     const sim::ApplyResult r = s->w.apply(build_cmd({mine_at(353, 359)}));
     REQUIRE(r.ok());
     std::uint64_t out_seen = 0;
     for (int i = 0; i < 3000; ++i) {
         s->w.advance(kStepMs);
         REQUIRE_MESSAGE(!s->w.faulted(), s->w.fault());
-        out_seen = std::max<std::uint64_t>(out_seen, std::get<sim::Mine>(s->w.find_building(r.records.at(0).building)->payload).out);
+        out_seen = std::max<std::uint64_t>(
+            out_seen,
+            std::get<sim::Mine>(s->w.find_building(r.records.at(0).building)->payload).out);
     }
     CHECK(out_seen > 0); // it really produced
     REQUIRE(isle(s->w).deposits.size() == 1);
@@ -1013,7 +1041,8 @@ TEST_CASE("mountain coverage: the typed Unsupported branches and the chunk edge 
     wide.coverage_chunk_shift = 4;
     CHECK(rule(f, table_mine(9, 3, "SALZSTEIN"), 4, 4, wide) == sim::Reject::None);
     CHECK(rule(f, table_mine(3, 9, "SALZSTEIN"), 4, 4, wide) == sim::Reject::None);
-    // a negative world coordinate: Unsupported; the same footprint at a non-negative origin is accepted
+    // a negative world coordinate: Unsupported; the same footprint at a non-negative origin is
+    // accepted
     const FlatIsland neg = flat_island(-8, -8, 40, 40);
     CHECK(rule(neg, table_mine(3, 4, "SALZSTEIN"), -2, 2) == sim::Reject::Unsupported);
     CHECK(rule(neg, table_mine(3, 4, "SALZSTEIN"), 2, 2) == sim::Reject::None);
@@ -1054,15 +1083,15 @@ TEST_CASE("salt mine: a standing mine produces and adds no PRNG draw at any step
     CHECK(produced > 0);
 }
 
-
-// ---- X3: the whole chain mine -> carrier -> saltworks -> carrier -> store -> stall -> households --
-// (docs/sim/salt-extraction.md section 20). Real arm and counterfactual arms on endless02 island 1,
-// city 0 of player 8, with scoped ledgers whose unexplained terms must be zero.
+// ---- X3: the whole chain mine -> carrier -> saltworks -> carrier -> store -> stall -> households
+// -- (docs/sim/salt-extraction.md section 20). Real arm and counterfactual arms on endless02 island
+// 1, city 0 of player 8, with scoped ledgers whose unexplained terms must be zero.
 
 namespace {
 
 constexpr sim::GoodsId kSalzstein = 3; // SALZ is tutorial_town::kSalz = 28
-constexpr std::int32_t kMineX = 353, kMineY = 359;   // a legal site (docs 18.1), beside the imported saltworks
+constexpr std::int32_t kMineX = 353,
+                       kMineY = 359; // a legal site (docs 18.1), beside the imported saltworks
 constexpr std::int32_t kWorksX = 351, kWorksY = 363; // the imported saltworks 1022
 
 enum class Arm { Real, NoNewMine, SourceDisabled, ProducerRemoved, SaltworksRemoved };
@@ -1077,11 +1106,14 @@ struct Chain {
     std::vector<std::uint64_t> cursors;
 };
 
-const sim::City& city_of(const sim::World& w) { return *isle(w).city(kSaltCity.city); }
+const sim::City& city_of(const sim::World& w) {
+    return *isle(w).city(kSaltCity.city);
+}
 const sim::Building* find_type(const sim::World& w, std::uint32_t type, sim::BuildingId skip = {}) {
     for (const auto& l : city_of(w).index.lists)
         for (const auto& b : l.slots)
-            if (b && b->type.v == type && !(skip.valid() && b->id == skip)) return &*b;
+            if (b && b->type.v == type && !(skip.valid() && b->id == skip))
+                return &*b;
     return nullptr;
 }
 
@@ -1089,7 +1121,8 @@ const sim::Building* find_type(const sim::World& w, std::uint32_t type, sim::Bui
 /// applied to every arm of that family, not a game command), so the ore baseline is exactly zero.
 std::unique_ptr<Chain> start_chain(Arm arm, bool zero_ore, bool live_houses = true) {
     auto sw = salt_world(true, false, live_houses);
-    if (!sw) return nullptr;
+    if (!sw)
+        return nullptr;
     auto c = std::make_unique<Chain>(Chain{std::move(*sw), {}, {}, {}, 0, 0, 0, {}, {}});
     sim::World& w = c->sw.w;
     if (zero_ore) {
@@ -1117,7 +1150,8 @@ std::unique_ptr<Chain> start_chain(Arm arm, bool zero_ore, bool live_houses = tr
             // the source switched off: the built, paid mine is unbound (its deposit link removed)
             for (auto& l : sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->index.lists)
                 for (auto& b : l.slots)
-                    if (b && b->id == c->mine) std::get<sim::Mine>(b->payload).deposit.reset();
+                    if (b && b->id == c->mine)
+                        std::get<sim::Mine>(b->payload).deposit.reset();
         }
         if (arm == Arm::ProducerRemoved) {
             sim::DemolishCmd dem;
@@ -1134,18 +1168,20 @@ void step_chain(Chain& c, int n) {
     for (int i = 0; i < n; ++i) {
         c.sw.w.advance(kStepMs);
         REQUIRE_MESSAGE(!c.sw.w.faulted(), c.sw.w.fault());
-        for (const sim::DrawRecord& r : c.sw.w.last_output().draws) c.draws[r.site] += r.count;
+        for (const sim::DrawRecord& r : c.sw.w.last_output().draws)
+            c.draws[r.site] += r.count;
         c.cursors.push_back(c.sw.w.rng().cursor());
     }
 }
 
 struct Terms {
-    std::uint64_t mine_made = 0, mine_out = 0, ore_loaded = 0, ore_cargo = 0, works_in = 0, works_consumed = 0,
-                  works_made = 0, works_out = 0, salz_loaded = 0, salz_cargo = 0, salz_unloaded = 0, salz_lost = 0,
-                  ore_lost = 0, bought = 0, taken = 0, delivered = 0, res_lost = 0, res_cargo = 0, salz_store = 0,
+    std::uint64_t mine_made = 0, mine_out = 0, ore_loaded = 0, ore_cargo = 0, works_in = 0,
+                  works_consumed = 0, works_made = 0, works_out = 0, salz_loaded = 0,
+                  salz_cargo = 0, salz_unloaded = 0, salz_lost = 0, ore_lost = 0, bought = 0,
+                  taken = 0, delivered = 0, res_lost = 0, res_cargo = 0, salz_store = 0,
                   ore_store = 0;
-    std::int64_t u_mine = 0, u_ore = 0, u_made = 0, u_salz_out = 0, u_store = 0, u_buy = 0, u_deliver = 0,
-                 u_house = 0;
+    std::int64_t u_mine = 0, u_ore = 0, u_made = 0, u_salz_out = 0, u_store = 0, u_buy = 0,
+                 u_deliver = 0, u_house = 0;
 };
 
 Terms terms_of(Chain& c) {
@@ -1160,7 +1196,8 @@ Terms terms_of(Chain& c) {
     if (c.mine.valid()) {
         t.mine_made = get(st.forestry.mine_made_88, c.mine);
         t.ore_loaded = get(st.loaded_from, c.mine);
-        if (const sim::Building* m = w.find_building(c.mine)) t.mine_out = std::get<sim::Mine>(m->payload).out;
+        if (const sim::Building* m = w.find_building(c.mine))
+            t.mine_out = std::get<sim::Mine>(m->payload).out;
     }
     const sim::Building* works = w.find_building(c.works);
     if (works != nullptr) {
@@ -1174,12 +1211,16 @@ Terms terms_of(Chain& c) {
         t.works_made = it->second.made_88.at(0);
     }
     for (const auto& f : w.figures().list.slots) {
-        if (!f || f->expiry_stamp.has_value() || f->owner != city.owner) continue;
-        if (f->cargo_goods == kSalzstein && !f->resident) t.ore_cargo += f->cargo_88;
-        if (f->cargo_goods == kSalz && !f->resident) t.salz_cargo += f->cargo_88;
+        if (!f || f->expiry_stamp.has_value() || f->owner != city.owner)
+            continue;
+        if (f->cargo_goods == kSalzstein && !f->resident)
+            t.ore_cargo += f->cargo_88;
+        if (f->cargo_goods == kSalz && !f->resident)
+            t.salz_cargo += f->cargo_88;
         if (f->resident)
             for (const sim::ResidentCargo& rc : f->resident->cargo)
-                if (rc.goods == kSalz) t.res_cargo += rc.amount_88;
+                if (rc.goods == kSalz)
+                    t.res_cargo += rc.amount_88;
     }
     t.salz_unloaded = get(st.unload_offered, kSalz);
     t.salz_lost = get(st.cart_lost, kSalz);
@@ -1195,7 +1236,8 @@ Terms terms_of(Chain& c) {
     // (input now - input at start + consumed) + into the store (change) + lost
     t.u_mine = I(t.mine_made) - I(t.mine_out) - I(t.ore_loaded);
     t.u_ore = I(t.ore_loaded) - I(t.ore_cargo) - I(t.ore_lost) -
-              (I(t.works_in) - I(c.works_in0) + I(t.works_consumed)) - (I(t.ore_store) - I(c.ore_store0));
+              (I(t.works_in) - I(c.works_in0) + I(t.works_consumed)) -
+              (I(t.ore_store) - I(c.ore_store0));
     // SALZ: made = out + loaded; loaded = in the carts' hands + unloaded into the store + lost
     t.u_made = I(t.works_made) - I(t.works_out) - I(t.salz_loaded);
     t.u_salz_out = I(t.salz_loaded) - I(t.salz_cargo) - I(t.salz_unloaded) - I(t.salz_lost);
@@ -1203,9 +1245,11 @@ Terms terms_of(Chain& c) {
     t.u_buy = I(t.bought) - I(t.taken);
     t.u_deliver = I(t.bought) - I(t.delivered) - I(t.res_lost) - I(t.res_cargo);
     // u_house: the merge's own per-delivery closure (the stock a delivery raised equals what it was
-    // meant to raise). It does NOT see a direct write into a house's stock between deliveries: house
-    // stock also falls by consumption and moves with upgrades, which this ledger does not model.
-    t.u_house = I(get(st.residents.stock_primary_by_goods, kSalz) + get(st.residents.stock_replay_by_goods, kSalz)) -
+    // meant to raise). It does NOT see a direct write into a house's stock between deliveries:
+    // house stock also falls by consumption and moves with upgrades, which this ledger does not
+    // model.
+    t.u_house = I(get(st.residents.stock_primary_by_goods, kSalz) +
+                  get(st.residents.stock_replay_by_goods, kSalz)) -
                 I(get(st.residents.stock_expected_by_goods, kSalz));
     return t;
 }
@@ -1238,24 +1282,27 @@ TEST_CASE("salt chain X3: the real arm delivers salt to households and every led
         require_closed(terms_of(*c), "real, every 1000 steps");
     }
     const Terms t = terms_of(*c);
-    MESSAGE("real: mine_made " << t.mine_made << " ore_loaded " << t.ore_loaded << " works_made " << t.works_made
-            << " salz_unloaded " << t.salz_unloaded << " taken " << t.taken << " delivered " << t.delivered);
+    MESSAGE("real: mine_made " << t.mine_made << " ore_loaded " << t.ore_loaded << " works_made "
+                               << t.works_made << " salz_unloaded " << t.salz_unloaded << " taken "
+                               << t.taken << " delivered " << t.delivered);
     // production beyond the baseline
     CHECK(t.mine_made > 0);
-    CHECK(t.ore_loaded > 0);       // the saltworks' carrier lifted ore from the new mine
-    CHECK(t.works_consumed > 0);   // the saltworks used it (no other ore existed)
+    CHECK(t.ore_loaded > 0);     // the saltworks' carrier lifted ore from the new mine
+    CHECK(t.works_consumed > 0); // the saltworks used it (no other ore existed)
     CHECK(t.works_made > 0);
-    CHECK(t.salz_unloaded > 0);    // SALZ reached the store by the stall's cart
+    CHECK(t.salz_unloaded > 0); // SALZ reached the store by the stall's cart
     // receipt beyond the baseline: more SALZ left the store for households than the preload held
     CHECK(t.taken > c->salz_store0);
     CHECK(t.delivered > 0);
     // WHO lifted the ore: the saltworks' own carriers (home = the saltworks), not a market cart
     std::uint64_t by_works = 0, by_others = 0;
     for (const auto& [key, n] : c->stats.loaded_by_home) {
-        if (key.first != c->mine) continue;
+        if (key.first != c->mine)
+            continue;
         (key.second == c->works ? by_works : by_others) += n;
     }
-    MESSAGE("ore lifted from the new mine: by the saltworks' carriers " << by_works << ", by any other home " << by_others);
+    MESSAGE("ore lifted from the new mine: by the saltworks' carriers "
+            << by_works << ", by any other home " << by_others);
     CHECK(by_works == t.ore_loaded);
     CHECK(by_works > 0);
     CHECK(by_others == 0);
@@ -1269,7 +1316,8 @@ TEST_CASE("salt chain X3: the real arm delivers salt to households and every led
 }
 
 TEST_CASE("salt chain X3: the counterfactual arms produce no new salt and the baseline only") {
-    for (const Arm arm : {Arm::NoNewMine, Arm::SourceDisabled, Arm::ProducerRemoved, Arm::SaltworksRemoved}) {
+    for (const Arm arm :
+         {Arm::NoNewMine, Arm::SourceDisabled, Arm::ProducerRemoved, Arm::SaltworksRemoved}) {
         auto c = start_chain(arm, true);
         if (!c) {
             MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -1288,7 +1336,8 @@ TEST_CASE("salt chain X3: the counterfactual arms produce no new salt and the ba
         CHECK(t.taken <= c->salz_store0);
         CHECK(t.taken > 0); // the baseline stock is really consumed (the households are live)
         if (arm == Arm::SaltworksRemoved) {
-            // the mine works and its ore stays in the mine: no carrier, no chain without the processor
+            // the mine works and its ore stays in the mine: no carrier, no chain without the
+            // processor
             CHECK(t.mine_made > 0);
             CHECK(t.mine_out == t.mine_made);
         } else {
@@ -1297,19 +1346,21 @@ TEST_CASE("salt chain X3: the counterfactual arms produce no new salt and the ba
     }
 }
 
-TEST_CASE("salt chain X3: road and carrier reach differ across the legal sites and the near ones connect") {
+TEST_CASE("salt chain X3: road and carrier reach differ across the legal sites and the near ones "
+          "connect") {
     struct Site {
         std::int32_t x, y;
         std::uint8_t rot;
         bool connects;
     };
-    // sampled from the 356 legal sites (docs 18.1), nearest to farthest by the Euclidean tile distance
-    // from the saltworks' origin: the four within 10 tiles are lifted, the two beyond 15 tiles are
-    // not. The saltworks type's action radius is 16 and its carrier searches the SearchArea disc
-    // around the footprint; radius and road connectivity are NOT separated by this test (a far site
-    // may fail either), it pins only the measured outcome.
-    for (const Site s : {Site{352, 360, 1, true}, Site{357, 363, 0, true}, Site{358, 365, 0, true},
-                         Site{359, 369, 1, true}, Site{358, 377, 0, false}, Site{365, 381, 3, false}}) {
+    // sampled from the 356 legal sites (docs 18.1), nearest to farthest by the Euclidean tile
+    // distance from the saltworks' origin: the four within 10 tiles are lifted, the two beyond 15
+    // tiles are not. The saltworks type's action radius is 16 and its carrier searches the
+    // SearchArea disc around the footprint; radius and road connectivity are NOT separated by this
+    // test (a far site may fail either), it pins only the measured outcome.
+    for (const Site s :
+         {Site{352, 360, 1, true}, Site{357, 363, 0, true}, Site{358, 365, 0, true},
+          Site{359, 369, 1, true}, Site{358, 377, 0, false}, Site{365, 381, 3, false}}) {
         auto c = start_chain(Arm::NoNewMine, true);
         if (!c) {
             MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -1339,19 +1390,24 @@ TEST_CASE("salt chain X3: the pilot households are stage 0 and that stage needs 
     for (const auto& l : city.index.lists)
         for (const auto& b : l.slots)
             if (b && std::holds_alternative<sim::House>(b->payload))
-                groups.insert(*sim::house_group(sw->w.config(), sw->types->find(b->type)->prodtype));
-    // the town's 82 houses are all group 0 (types 501..509): the other stages are NOT exercised here
+                groups.insert(
+                    *sim::house_group(sw->w.config(), sw->types->find(b->type)->prodtype));
+    // the town's 82 houses are all group 0 (types 501..509): the other stages are NOT exercised
+    // here
     CHECK(groups == std::set<std::uint32_t>{0});
     for (std::uint32_t g = 0; g < 5; ++g) {
         const auto view = sw->types->population_view(g, sw->w.config());
         REQUIRE(view.ok());
-        const auto it = std::find_if(view.value().group->needs.begin(), view.value().group->needs.end(),
-                                     [](const sim::HouseNeed& n) { return n.ware == kSalz; });
+        const auto it =
+            std::find_if(view.value().group->needs.begin(), view.value().group->needs.end(),
+                         [](const sim::HouseNeed& n) { return n.ware == kSalz; });
         const bool has = it != view.value().group->needs.end();
-        MESSAGE("group " << g << ": " << (has ? "SALZ need, force " + std::to_string(it->force) + ", menge " +
-                                                    std::to_string(it->menge)
-                                              : std::string("no SALZ need")));
-        // the registry: stages 0..3 need salt (menge 8, 8, 10, 10; forced from stage 1), stage 4 does not
+        MESSAGE("group " << g << ": "
+                         << (has ? "SALZ need, force " + std::to_string(it->force) + ", menge " +
+                                       std::to_string(it->menge)
+                                 : std::string("no SALZ need")));
+        // the registry: stages 0..3 need salt (menge 8, 8, 10, 10; forced from stage 1), stage 4
+        // does not
         CHECK(has == (g < 4));
         if (has) {
             CHECK(it->menge == (g < 2 ? 8U : 10U));
@@ -1383,7 +1439,8 @@ TEST_CASE("salt chain X3: with the preloads in place the new mine adds ore") {
     CHECK(b.ore_loaded == 0);
 }
 
-TEST_CASE("salt chain X3: a payment-matched control has the same draws at every step as the real arm") {
+TEST_CASE(
+    "salt chain X3: a payment-matched control has the same draws at every step as the real arm") {
     // The construction PAYMENT (gold 700, HOLZ 15 t, WERKZEUG 5 t) changes city stock and gold, and
     // with live households that alone moves the households' own draws (HouseWalkerTarget,
     // HouseVariant) from step 2,052 of the run: the producer-removed arm (mine built and paid, then
@@ -1408,12 +1465,14 @@ TEST_CASE("salt chain X3: a payment-matched control has the same draws at every 
     // the payment is the cause: with no payment at all the households' draws differ
     CHECK(none->cursors != paid->cursors);
     std::size_t first = 0;
-    while (first < none->cursors.size() && none->cursors[first] == paid->cursors[first]) ++first;
+    while (first < none->cursors.size() && none->cursors[first] == paid->cursors[first])
+        ++first;
     MESSAGE("no-payment arm diverges from the paid arm at step " << first);
     CHECK(first < 4000);
 }
 
-TEST_CASE("salt chain X3: with the households not live the mine leaves the PRNG cursor equal at every step") {
+TEST_CASE("salt chain X3: with the households not live the mine leaves the PRNG cursor equal at "
+          "every step") {
     auto real = start_chain(Arm::Real, false, false);
     auto base = start_chain(Arm::NoNewMine, false, false);
     if (!real || !base) {
@@ -1436,21 +1495,22 @@ TEST_CASE("salt chain X3: the ledger catches a direct salt credit and a direct o
     }
     step_chain(*c, 500);
     require_closed(terms_of(*c), "before the credits");
-    // a NAMED negative control, not a game command: 2 t of SALZ written into the store, and 3 t of ore
-    // written into the saltworks' input
+    // a NAMED negative control, not a game command: 2 t of SALZ written into the store, and 3 t of
+    // ore written into the saltworks' input
     sim::City& city = *sim::WorldTestAccess::islands(c->sw.w)[1]->city(kSaltCity.city);
     city.stock.stock[kSalz] += 2U * sim::kTon;
     for (auto& l : city.index.lists)
         for (auto& b : l.slots)
-            if (b && b->id == c->works) std::get<sim::Workshop>(b->payload).in.at(0) += 3U * sim::kTon;
+            if (b && b->id == c->works)
+                std::get<sim::Workshop>(b->payload).in.at(0) += 3U * sim::kTon;
     step_chain(*c, 1);
     const Terms t = terms_of(*c);
     CHECK(t.u_store == 2 * 256);
     CHECK(t.u_ore == -3 * 256);
 }
 
-
-// ---- X4: interruption, restoration, lifetime and timing boundaries --------------------------------
+// ---- X4: interruption, restoration, lifetime and timing boundaries
+// --------------------------------
 
 namespace {
 
@@ -1467,12 +1527,14 @@ struct XChain {
 XChain start_x(bool mine, bool live_houses = true) {
     XChain x;
     x.c = start_chain(mine ? Arm::Real : Arm::NoNewMine, true, live_houses);
-    if (!x.c) return x;
+    if (!x.c)
+        return x;
     sim::World& w = x.c->sw.w;
     sim::WorldTestAccess::islands(w)[1]->city(kSaltCity.city)->stock.stock[kSalz] = 0;
     x.c->salz_store0 = 0;
     REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
-    if (mine) x.mines.push_back(x.c->mine);
+    if (mine)
+        x.mines.push_back(x.c->mine);
     x.works.push_back(x.c->works);
     return x;
 }
@@ -1489,8 +1551,10 @@ void demolish_x(XChain& x, const std::vector<std::pair<std::int32_t, std::int32_
     for (const auto& [tx, ty] : tiles) {
         dem.tiles.push_back({tx, ty});
         const sim::Building* b = building_on(w, tx, ty);
-        if (b == nullptr) continue;
-        if (const auto* m = std::get_if<sim::Mine>(&b->payload)) x.hist.mine_out += m->out;
+        if (b == nullptr)
+            continue;
+        if (const auto* m = std::get_if<sim::Mine>(&b->payload))
+            x.hist.mine_out += m->out;
         if (const auto* ws = std::get_if<sim::Workshop>(&b->payload)) {
             x.hist.works_in += ws->in.at(0);
             x.hist.works_out += ws->out.at(0);
@@ -1500,21 +1564,27 @@ void demolish_x(XChain& x, const std::vector<std::pair<std::int32_t, std::int32_
     REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
 }
 
-sim::BuildingId build_x(XChain& x, std::uint32_t type, std::int32_t px, std::int32_t py, std::uint8_t rot) {
-    const sim::ApplyResult r = x.c->sw.w.apply(
-        build_cmd({sim::PlacementWire{sim::TypeId{type}, px, py, rot, 0, 0}}));
-    REQUIRE_MESSAGE(r.ok(), "build " << type << " at " << px << "," << py << ": " << sim::reject_name(r.status));
+sim::BuildingId build_x(XChain& x, std::uint32_t type, std::int32_t px, std::int32_t py,
+                        std::uint8_t rot) {
+    const sim::ApplyResult r =
+        x.c->sw.w.apply(build_cmd({sim::PlacementWire{sim::TypeId{type}, px, py, rot, 0, 0}}));
+    REQUIRE_MESSAGE(r.ok(), "build " << type << " at " << px << "," << py << ": "
+                                     << sim::reject_name(r.status));
     const sim::BuildingId id = r.records.at(0).building;
-    if (type == 1203) x.mines.push_back(id);
-    if (type == 1022) x.works.push_back(id);
+    if (type == 1203)
+        x.mines.push_back(id);
+    if (type == 1022)
+        x.works.push_back(id);
     return id;
 }
 
 struct Terms2 {
-    std::uint64_t mine_made = 0, mine_out = 0, ore_loaded = 0, works_made = 0, works_out = 0, works_in = 0,
-                  consumed = 0, salz_loaded = 0, ore_cargo = 0, salz_cargo = 0, unloaded = 0, salz_lost = 0, ore_lost = 0,
-                  bought = 0, taken = 0, delivered = 0, res_lost = 0, res_cargo = 0, salz_store = 0, ore_store = 0;
-    std::int64_t u_mine = 0, u_ore = 0, u_made = 0, u_salz_out = 0, u_store = 0, u_buy = 0, u_deliver = 0;
+    std::uint64_t mine_made = 0, mine_out = 0, ore_loaded = 0, works_made = 0, works_out = 0,
+                  works_in = 0, consumed = 0, salz_loaded = 0, ore_cargo = 0, salz_cargo = 0,
+                  unloaded = 0, salz_lost = 0, ore_lost = 0, bought = 0, taken = 0, delivered = 0,
+                  res_lost = 0, res_cargo = 0, salz_store = 0, ore_store = 0;
+    std::int64_t u_mine = 0, u_ore = 0, u_made = 0, u_salz_out = 0, u_store = 0, u_buy = 0,
+                 u_deliver = 0;
 };
 
 Terms2 terms2(XChain& x) {
@@ -1530,7 +1600,8 @@ Terms2 terms2(XChain& x) {
     for (const sim::BuildingId id : x.mines) {
         t.mine_made += get(st.forestry.mine_made_88, id);
         t.ore_loaded += get(st.loaded_from, id);
-        if (const sim::Building* m = w.find_building(id)) t.mine_out += std::get<sim::Mine>(m->payload).out;
+        if (const sim::Building* m = w.find_building(id))
+            t.mine_out += std::get<sim::Mine>(m->payload).out;
     }
     for (const sim::BuildingId id : x.works) {
         t.salz_loaded += get(st.loaded_from, id);
@@ -1545,12 +1616,16 @@ Terms2 terms2(XChain& x) {
         }
     }
     for (const auto& f : w.figures().list.slots) {
-        if (!f || f->expiry_stamp.has_value() || f->owner != city.owner) continue;
-        if (f->cargo_goods == kSalzstein && !f->resident) t.ore_cargo += f->cargo_88;
-        if (f->cargo_goods == kSalz && !f->resident) t.salz_cargo += f->cargo_88;
+        if (!f || f->expiry_stamp.has_value() || f->owner != city.owner)
+            continue;
+        if (f->cargo_goods == kSalzstein && !f->resident)
+            t.ore_cargo += f->cargo_88;
+        if (f->cargo_goods == kSalz && !f->resident)
+            t.salz_cargo += f->cargo_88;
         if (f->resident)
             for (const sim::ResidentCargo& rc : f->resident->cargo)
-                if (rc.goods == kSalz) t.res_cargo += rc.amount_88;
+                if (rc.goods == kSalz)
+                    t.res_cargo += rc.amount_88;
     }
     t.unloaded = get(st.unload_offered, kSalz);
     t.salz_lost = get(st.cart_lost, kSalz);
@@ -1564,7 +1639,8 @@ Terms2 terms2(XChain& x) {
     const auto I = [](std::uint64_t v) { return static_cast<std::int64_t>(v); };
     t.u_mine = I(t.mine_made) - I(t.mine_out) - I(t.ore_loaded) - I(x.hist.mine_out);
     t.u_ore = I(t.ore_loaded) - I(t.ore_cargo) - I(t.ore_lost) -
-              (I(t.works_in) + I(x.hist.works_in) - I(c.works_in0) + I(t.consumed)) - (I(t.ore_store) - I(c.ore_store0));
+              (I(t.works_in) + I(x.hist.works_in) - I(c.works_in0) + I(t.consumed)) -
+              (I(t.ore_store) - I(c.ore_store0));
     t.u_made = I(t.works_made) - I(t.works_out) - I(x.hist.works_out) - I(t.salz_loaded);
     t.u_salz_out = I(t.salz_loaded) - I(t.salz_cargo) - I(t.unloaded) - I(t.salz_lost);
     t.u_store = I(t.salz_store) - I(c.salz_store0) - I(t.unloaded) + I(t.taken);
@@ -1600,11 +1676,13 @@ void validate_and_reload(XChain& x, const char* label) {
     for (const auto& l : city_of(loaded.value()).index.lists)
         for (const auto& b : l.slots)
             if (const auto* m = b ? std::get_if<sim::Mine>(&b->payload) : nullptr)
-                if (m->deposit) CHECK(*m->deposit < isle(loaded.value()).deposits.size());
+                if (m->deposit)
+                    CHECK(*m->deposit < isle(loaded.value()).deposits.size());
 }
 
 struct Snap {
-    std::uint64_t works_made = 0, mine_made = 0, unloaded = 0, taken = 0, delivered = 0, ore_loaded = 0;
+    std::uint64_t works_made = 0, mine_made = 0, unloaded = 0, taken = 0, delivered = 0,
+                  ore_loaded = 0;
 };
 Snap snap(XChain& x) {
     const Terms2 t = terms2(x);
@@ -1612,11 +1690,10 @@ Snap snap(XChain& x) {
 }
 Snap diff(const Snap& a, const Snap& b) {
     return {b.works_made - a.works_made, b.mine_made - a.mine_made, b.unloaded - a.unloaded,
-            b.taken - a.taken, b.delivered - a.delivered, b.ore_loaded - a.ore_loaded};
+            b.taken - a.taken,           b.delivered - a.delivered, b.ore_loaded - a.ore_loaded};
 }
 
 } // namespace
-
 
 namespace {
 
@@ -1630,18 +1707,21 @@ struct Windows {
     std::vector<Snap> p1, p2, p3; // 500-step windows
     std::map<sim::DrawSite, std::uint64_t> draws;
     std::vector<std::uint64_t> cursors;
-    std::uint64_t start_salz = ~0ULL, start_ore = ~0ULL; // the store at the start of the run (the low-stock setup)
+    std::uint64_t start_salz = ~0ULL,
+                  start_ore = ~0ULL; // the store at the start of the run (the low-stock setup)
 };
 
 /// The chain, interrupted and restored: phase 1 (1,000 steps) establishes it from the low-stock
 /// setup, phase 2 (4,000) runs interrupted, phase 3 (3,000) runs restored; native state, ledger and
-/// save/load are checked at once after the cut and after the restoration, and again at every phase end; the ledger must close at
-/// the end of every phase.
+/// save/load are checked at once after the cut and after the restoration, and again at every phase
+/// end; the ledger must close at the end of every phase.
 template <class Interrupt, class Restore>
-Windows run_interruption(const char* name, Interrupt interrupt, Restore restore, bool print, bool instant = false, bool live = true) {
+Windows run_interruption(const char* name, Interrupt interrupt, Restore restore, bool print,
+                         bool instant = false, bool live = true) {
     Windows out;
     auto x = start_x(true, live);
-    if (!x.c) return out;
+    if (!x.c)
+        return out;
     out.start_salz = city_of(x.c->sw.w).stock.stock[kSalz];
     out.start_ore = city_of(x.c->sw.w).stock.stock[kSalzstein];
     const auto phase = [&](std::vector<Snap>& v, int windows, const char* label) {
@@ -1662,9 +1742,11 @@ Windows run_interruption(const char* name, Interrupt interrupt, Restore restore,
     phase(out.p1, 2, "P1");
     interrupt(x);
     immediately("at the cut");
-    if (instant) restore(x);
+    if (instant)
+        restore(x);
     phase(out.p2, 8, "P2");
-    if (!instant) restore(x);
+    if (!instant)
+        restore(x);
     immediately("at the restoration");
     phase(out.p3, 6, "P3");
     validate_and_reload(x, name);
@@ -1673,10 +1755,13 @@ Windows run_interruption(const char* name, Interrupt interrupt, Restore restore,
     if (print) {
         const auto show = [&](const char* ph, const std::vector<Snap>& v) {
             for (std::size_t i = 0; i < v.size(); ++i)
-                std::cout << name << " " << ph << i << ": works_made " << v[i].works_made << " mine_made " << v[i].mine_made
-                          << " unloaded " << v[i].unloaded << " taken " << v[i].taken << " delivered " << v[i].delivered << "\n";
+                std::cout << name << " " << ph << i << ": works_made " << v[i].works_made
+                          << " mine_made " << v[i].mine_made << " unloaded " << v[i].unloaded
+                          << " taken " << v[i].taken << " delivered " << v[i].delivered << "\n";
         };
-        show("P1.", out.p1); show("P2.", out.p2); show("P3.", out.p3);
+        show("P1.", out.p1);
+        show("P2.", out.p2);
+        show("P3.", out.p3);
     }
     return out;
 }
@@ -1685,18 +1770,19 @@ std::vector<Placed> placed_of(const sim::World& w, std::uint32_t type) {
     std::vector<Placed> v;
     for (const auto& l : city_of(w).index.lists)
         for (const auto& b : l.slots)
-            if (b && b->type.v == type) v.push_back({type, b->x, b->y, b->rotation});
+            if (b && b->type.v == type)
+                v.push_back({type, b->x, b->y, b->rotation});
     return v;
 }
 
 } // namespace
 
-
 namespace {
 
 const std::vector<std::pair<std::int32_t, std::int32_t>> kMarketTiles = {{346, 346}, {346, 371}};
 
-bool all_zero(const std::vector<Snap>& v, std::size_t from, bool works, bool mine, bool unloaded, bool taken, bool delivered) {
+bool all_zero(const std::vector<Snap>& v, std::size_t from, bool works, bool mine, bool unloaded,
+              bool taken, bool delivered) {
     for (std::size_t i = from; i < v.size(); ++i) {
         if ((works && v[i].works_made) || (mine && v[i].mine_made) || (unloaded && v[i].unloaded) ||
             (taken && v[i].taken) || (delivered && v[i].delivered))
@@ -1704,10 +1790,12 @@ bool all_zero(const std::vector<Snap>& v, std::size_t from, bool works, bool min
     }
     return true;
 }
-bool all_positive(const std::vector<Snap>& v, std::size_t from, bool works, bool mine, bool unloaded, bool taken, bool delivered) {
+bool all_positive(const std::vector<Snap>& v, std::size_t from, bool works, bool mine,
+                  bool unloaded, bool taken, bool delivered) {
     for (std::size_t i = from; i < v.size(); ++i) {
-        if ((works && !v[i].works_made) || (mine && !v[i].mine_made) || (unloaded && !v[i].unloaded) ||
-            (taken && !v[i].taken) || (delivered && !v[i].delivered))
+        if ((works && !v[i].works_made) || (mine && !v[i].mine_made) ||
+            (unloaded && !v[i].unloaded) || (taken && !v[i].taken) ||
+            (delivered && !v[i].delivered))
             return false;
     }
     return true;
@@ -1719,47 +1807,60 @@ Windows control_run(bool live = true) {
 }
 
 /// PRNG discipline.
-///  - Households NOT live, interruption and restoration at the SAME instant (demolish and rebuild with
-///    no time between): the draws of every site and the final cursor equal the uninterrupted control (the
-///    new buildings have new ids, so WHEN within the run a draw falls may shift, not how many fall). The
-///    demolitions, the rebuilds, their payments and the chain draw nothing.
-///  - Households NOT live, the link down for 4,000 steps: only FarmWorkerDispatch may differ. It is an
-///    existing site drawn once per eligible farm dispatch attempt; the farms share the markets' carts with
-///    the salt chain, so an idle chain frees carts for the farms and their eligibility moves. No new site
-///    appears and no other site changes.
-///  - Households live: HouseWalkerTarget, HouseVariant and FarmWorkerDispatch follow economy state (any
-///    small perturbation, even a payment-matched instant rebuild, moves them); the other sites are equal.
+///  - Households NOT live, interruption and restoration at the SAME instant (demolish and rebuild
+///  with
+///    no time between): the draws of every site and the final cursor equal the uninterrupted
+///    control (the new buildings have new ids, so WHEN within the run a draw falls may shift, not
+///    how many fall). The demolitions, the rebuilds, their payments and the chain draw nothing.
+///  - Households NOT live, the link down for 4,000 steps: only FarmWorkerDispatch may differ. It is
+///  an
+///    existing site drawn once per eligible farm dispatch attempt; the farms share the markets'
+///    carts with the salt chain, so an idle chain frees carts for the farms and their eligibility
+///    moves. No new site appears and no other site changes.
+///  - Households live: HouseWalkerTarget, HouseVariant and FarmWorkerDispatch follow economy state
+///  (any
+///    small perturbation, even a payment-matched instant rebuild, moves them); the other sites are
+///    equal.
 template <class Interrupt, class Restore>
-void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore restore, bool quiet_worlds = true,
-                     bool instant_exact = true) {
+void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore restore,
+                     bool quiet_worlds = true, bool instant_exact = true) {
     const Windows control = control_run(true);
-    // the low-stock setup is applied alike in every arm (it is the baseline the comparison stands on)
+    // the low-stock setup is applied alike in every arm (it is the baseline the comparison stands
+    // on)
     CHECK(live_run.start_salz == 0);
     CHECK(live_run.start_ore == 0);
     CHECK(control.start_salz == 0);
     CHECK(control.start_ore == 0);
-    const auto stable = {sim::DrawSite::HouseWalkerTarget, sim::DrawSite::HouseVariant, sim::DrawSite::FarmWorkerDispatch};
-    const auto minus_sites = [](std::map<sim::DrawSite, std::uint64_t> m, std::initializer_list<sim::DrawSite> sites) {
-        for (const sim::DrawSite site : sites) m.erase(site);
+    const auto stable = {sim::DrawSite::HouseWalkerTarget, sim::DrawSite::HouseVariant,
+                         sim::DrawSite::FarmWorkerDispatch};
+    const auto minus_sites = [](std::map<sim::DrawSite, std::uint64_t> m,
+                                std::initializer_list<sim::DrawSite> sites) {
+        for (const sim::DrawSite site : sites)
+            m.erase(site);
         return m;
     };
     CHECK(minus_sites(live_run.draws, stable) == minus_sites(control.draws, stable));
-    for (const auto& [site, n] : live_run.draws) CHECK(control.draws.count(site) == 1U);
-    if (!quiet_worlds) return;
+    for (const auto& [site, n] : live_run.draws)
+        CHECK(control.draws.count(site) == 1U);
+    if (!quiet_worlds)
+        return;
     const Windows quiet_control = control_run(false);
-    const Windows instant = run_interruption("quiet-instant", interrupt, restore, false, true, false);
+    const Windows instant =
+        run_interruption("quiet-instant", interrupt, restore, false, true, false);
     CHECK(quiet_control.start_salz == 0);
     CHECK(quiet_control.start_ore == 0);
     CHECK(instant.start_salz == 0);
     CHECK(instant.start_ore == 0);
     REQUIRE(instant.cursors.size() == quiet_control.cursors.size());
     if (instant_exact) {
-        CHECK(instant.cursors.back() == quiet_control.cursors.back()); // the same number of draws overall
-        CHECK(instant.draws == quiet_control.draws);                     // at every site
+        CHECK(instant.cursors.back() ==
+              quiet_control.cursors.back());         // the same number of draws overall
+        CHECK(instant.draws == quiet_control.draws); // at every site
     } else {
-        // a link whose demolition or rebuild is not a no-op for the rest of the economy (the markets cannot be
-        // rebuilt at all; a rebuilt saltworks has a new id and moves the existing state-following sites by a
-        // draw): only the sites that do not follow economy state must be equal
+        // a link whose demolition or rebuild is not a no-op for the rest of the economy (the
+        // markets cannot be rebuilt at all; a rebuilt saltworks has a new id and moves the existing
+        // state-following sites by a draw): only the sites that do not follow economy state must be
+        // equal
         auto strip3 = [](std::map<sim::DrawSite, std::uint64_t> m) {
             m.erase(sim::DrawSite::HouseWalkerTarget);
             m.erase(sim::DrawSite::HouseVariant);
@@ -1771,28 +1872,37 @@ void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore resto
     const Windows quiet = run_interruption("quiet", interrupt, restore, false, false, false);
     CHECK(quiet.start_salz == 0);
     CHECK(quiet.start_ore == 0);
-    auto minus = [](std::map<sim::DrawSite, std::uint64_t> m, std::initializer_list<sim::DrawSite> sites) {
-        for (const sim::DrawSite site : sites) m.erase(site);
+    auto minus = [](std::map<sim::DrawSite, std::uint64_t> m,
+                    std::initializer_list<sim::DrawSite> sites) {
+        for (const sim::DrawSite site : sites)
+            m.erase(site);
         return m;
     };
     CHECK(minus(quiet.draws, {sim::DrawSite::FarmWorkerDispatch}) ==
           minus(quiet_control.draws, {sim::DrawSite::FarmWorkerDispatch}));
-    for (const auto& [site, n] : quiet.draws) CHECK(quiet_control.draws.count(site) == 1U);
+    for (const auto& [site, n] : quiet.draws)
+        CHECK(quiet_control.draws.count(site) == 1U);
 }
 
 } // namespace
 
 TEST_CASE("salt interruption X4: the mine demolished and rebuilt") {
-    const Windows w = run_interruption("mine", [](XChain& x) { demolish_x(x, {{kMineX, kMineY}}); },
-                                       [](XChain& x) { build_x(x, 1203, kMineX, kMineY, 0); }, false);
-    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    const Windows w = run_interruption(
+        "mine", [](XChain& x) { demolish_x(x, {{kMineX, kMineY}}); },
+        [](XChain& x) { build_x(x, 1203, kMineX, kMineY, 0); }, false);
+    if (w.p1.empty()) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
     CHECK(all_positive(w.p1, 1, true, true, true, true, true));
-    // drained: the ore in the saltworks runs out, then nothing is made, unloaded, bought or delivered
+    // drained: the ore in the saltworks runs out, then nothing is made, unloaded, bought or
+    // delivered
     CHECK(all_zero(w.p2, 4, true, true, true, true, true));
     // renewed: production, receipts, purchases and deliveries all return
     CHECK(all_positive(w.p3, 3, true, true, true, true, true));
-    draws_unchanged(w, [](XChain& x) { demolish_x(x, {{kMineX, kMineY}}); },
-                    [](XChain& x) { build_x(x, 1203, kMineX, kMineY, 0); });
+    draws_unchanged(
+        w, [](XChain& x) { demolish_x(x, {{kMineX, kMineY}}); },
+        [](XChain& x) { build_x(x, 1203, kMineX, kMineY, 0); });
 }
 
 TEST_CASE("salt interruption X4: the road cut and rebuilt") {
@@ -1817,15 +1927,19 @@ TEST_CASE("salt interruption X4: the road cut and rebuilt") {
         for (const auto& [xy, id] : tiles) {
             const sim::ApplyResult r = x.c->sw.w.apply(
                 build_cmd({sim::PlacementWire{sim::TypeId{id}, xy.first, xy.second, 0, 0, 0}}));
-            CHECK_MESSAGE(r.ok(), "road " << xy.first << "," << xy.second << ": " << sim::reject_name(r.status));
+            CHECK_MESSAGE(r.ok(), "road " << xy.first << "," << xy.second << ": "
+                                          << sim::reject_name(r.status));
         }
     };
     const Windows w = run_interruption("road", interrupt, restore, false);
-    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    if (w.p1.empty()) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
     CHECK(all_zero(w.p2, 4, true, true, true, true, true));
     CHECK(all_positive(w.p3, 3, true, true, true, true, true));
-    // the quiet (households not live) worlds are skipped here: some road pieces are stage-locked there
-    // (ConstructionDenied) because the stage mask only rises with live households
+    // the quiet (households not live) worlds are skipped here: some road pieces are stage-locked
+    // there (ConstructionDenied) because the stage mask only rises with live households
     draws_unchanged(w, interrupt, restore, false);
 }
 
@@ -1835,16 +1949,23 @@ TEST_CASE("salt interruption X4: the markets that carry the salt demolished and 
     const auto interrupt = [&](XChain& x) {
         markets.clear();
         for (const Placed& p : placed_of(x.c->sw.w, 1305))
-            if ((p.x == 346 && p.y == 346) || (p.x == 346 && p.y == 371)) markets.push_back(p);
+            if ((p.x == 346 && p.y == 346) || (p.x == 346 && p.y == 371))
+                markets.push_back(p);
         REQUIRE(markets.size() == 2);
         demolish_x(x, kMarketTiles);
     };
     const auto restore = [&](XChain& x) {
         // the market type is not buildable for the player (permission): the link cannot be restored
-        rebuild = x.c->sw.w.apply(build_cmd({sim::PlacementWire{sim::TypeId{1305}, markets[0].x, markets[0].y, markets[0].rot, 0, 0}})).status;
+        rebuild = x.c->sw.w
+                      .apply(build_cmd({sim::PlacementWire{sim::TypeId{1305}, markets[0].x,
+                                                           markets[0].y, markets[0].rot, 0, 0}}))
+                      .status;
     };
     const Windows w = run_interruption("markets", interrupt, restore, false);
-    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    if (w.p1.empty()) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
     CHECK(rebuild == sim::Reject::ConstructionDenied);
     // no cart lifts the SALZ any more: the saltworks fills up and stops, nothing reaches the store
     CHECK(all_zero(w.p2, 1, false, false, true, false, false));
@@ -1859,8 +1980,12 @@ TEST_CASE("salt interruption X4: the saltworks demolished and rebuilt") {
     const auto interrupt = [](XChain& x) { demolish_x(x, {{kWorksX, kWorksY}}); };
     const auto restore = [](XChain& x) { build_x(x, 1022, kWorksX, kWorksY, 0); };
     const Windows w = run_interruption("saltworks", interrupt, restore, false);
-    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
-    // the mine goes on until its output is full and then stops; no ore is processed, no salt arrives
+    if (w.p1.empty()) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // the mine goes on until its output is full and then stops; no ore is processed, no salt
+    // arrives
     CHECK(all_zero(w.p2, 0, true, false, false, false, false));
     CHECK(all_zero(w.p2, 4, true, true, true, true, true));
     CHECK(all_positive(w.p3, 3, true, true, true, true, true));
@@ -1873,19 +1998,25 @@ TEST_CASE("salt interruption X4: the stalls demolished and rebuilt") {
         stalls = placed_of(x.c->sw.w, 1310);
         REQUIRE(stalls.size() == 4);
         std::vector<std::pair<std::int32_t, std::int32_t>> t;
-        for (const Placed& p : stalls) t.push_back({p.x, p.y});
+        for (const Placed& p : stalls)
+            t.push_back({p.x, p.y});
         demolish_x(x, t);
     };
-    const auto restore = [&](XChain& x) { for (const Placed& p : stalls) build_x(x, 1310, p.x, p.y, p.rot); };
+    const auto restore = [&](XChain& x) {
+        for (const Placed& p : stalls)
+            build_x(x, 1310, p.x, p.y, p.rot);
+    };
     const Windows w = run_interruption("stalls", interrupt, restore, false);
-    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    if (w.p1.empty()) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
     // production and receipts go on (the store fills), the households buy and receive nothing
     CHECK(all_positive(w.p2, 1, true, true, true, false, false));
     CHECK(all_zero(w.p2, 1, false, false, false, true, true));
     CHECK(all_positive(w.p3, 0, true, true, true, true, true));
     draws_unchanged(w, interrupt, restore);
 }
-
 
 // ---- X4: lifetime boundaries (cargo in flight, shared deposit) --------------------------------
 
@@ -1894,15 +2025,17 @@ namespace {
 std::uint64_t in_flight(XChain& x, sim::BuildingId home, sim::GoodsId g) {
     std::uint64_t n = 0;
     for (const auto& f : x.c->sw.w.figures().list.slots)
-        if (f && !f->expiry_stamp.has_value() && !f->resident && f->home == home && f->cargo_goods == g) n += f->cargo_88;
+        if (f && !f->expiry_stamp.has_value() && !f->resident && f->home == home &&
+            f->cargo_goods == g)
+            n += f->cargo_88;
     return n;
 }
 
-template <class Pred>
-int step_until(XChain& x, int limit, Pred pred) {
+template <class Pred> int step_until(XChain& x, int limit, Pred pred) {
     for (int i = 1; i <= limit; ++i) {
         step_chain(*x.c, 1);
-        if (pred()) return i;
+        if (pred())
+            return i;
     }
     return -1;
 }
@@ -1913,7 +2046,10 @@ TEST_CASE("salt lifetime X4: cargo in flight when its home is demolished is hist
     // (a) the saltworks demolished while its carrier holds ore
     {
         auto x = start_x(true);
-        if (!x.c) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+        if (!x.c) {
+            MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+            return;
+        }
         const sim::BuildingId works = x.works[0];
         REQUIRE(step_until(x, 3000, [&] { return in_flight(x, works, kSalzstein) > 0; }) > 0);
         const std::uint64_t premise = in_flight(x, works, kSalzstein);
@@ -1934,7 +2070,9 @@ TEST_CASE("salt lifetime X4: cargo in flight when its home is demolished is hist
         REQUIRE(a != nullptr);
         REQUIRE(b != nullptr);
         const sim::BuildingId ia = a->id, ib = b->id;
-        REQUIRE(step_until(x, 4000, [&] { return in_flight(x, ia, kSalz) + in_flight(x, ib, kSalz) > 0; }) > 0);
+        REQUIRE(step_until(x, 4000, [&] {
+                    return in_flight(x, ia, kSalz) + in_flight(x, ib, kSalz) > 0;
+                }) > 0);
         const std::uint64_t premise = in_flight(x, ia, kSalz) + in_flight(x, ib, kSalz);
         const std::uint64_t lost0 = terms2(x).salz_lost;
         demolish_x(x, kMarketTiles);
@@ -1945,7 +2083,8 @@ TEST_CASE("salt lifetime X4: cargo in flight when its home is demolished is hist
         closed2(t, "markets demolished with SALZ in the carts");
         validate_and_reload(x, "markets with cargo");
     }
-    // (c) the MINE demolished while the saltworks' carrier holds its ore: the cargo is delivered, nothing is lost
+    // (c) the MINE demolished while the saltworks' carrier holds its ore: the cargo is delivered,
+    // nothing is lost
     {
         auto x = start_x(true);
         const sim::BuildingId works = x.works[0];
@@ -1962,7 +2101,10 @@ TEST_CASE("salt lifetime X4: cargo in flight when its home is demolished is hist
 
 TEST_CASE("salt lifetime X4: one deposit shared by two mines survives the demolition of one") {
     auto x = start_x(false);
-    if (!x.c) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    if (!x.c) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
     const sim::BuildingId a = build_x(x, 1203, kMineX, kMineY, 0);
     const sim::BuildingId b = build_x(x, 1203, 356, 359, 0);
     REQUIRE(isle(x.c->sw.w).deposits.size() == 1);
@@ -1976,12 +2118,14 @@ TEST_CASE("salt lifetime X4: one deposit shared by two mines survives the demoli
     step_chain(*x.c, 1500);
     CHECK(terms2(x).mine_made > 0);
     CHECK(isle(x.c->sw.w).deposits.size() == 1);
-    CHECK(isle(x.c->sw.w).deposits[0].remaining == 321); // deep and flagged: worked, never refilled, never used up
+    CHECK(isle(x.c->sw.w).deposits[0].remaining ==
+          321); // deep and flagged: worked, never refilled, never used up
     // the other one demolished too, then a rebuild: the deposit is the same object, not refilled
     demolish_x(x, {{356, 359}});
     step_chain(*x.c, 100);
     const sim::BuildingId c = build_x(x, 1203, kMineX, kMineY, 0);
-    CHECK(std::get<sim::Mine>(x.c->sw.w.find_building(c)->payload).deposit == std::optional<std::size_t>{0});
+    CHECK(std::get<sim::Mine>(x.c->sw.w.find_building(c)->payload).deposit ==
+          std::optional<std::size_t>{0});
     CHECK(isle(x.c->sw.w).deposits.size() == 1);
     CHECK(isle(x.c->sw.w).deposits[0].remaining == 321);
     step_chain(*x.c, 500);
@@ -1989,7 +2133,8 @@ TEST_CASE("salt lifetime X4: one deposit shared by two mines survives the demoli
     validate_and_reload(x, "shared deposit");
 }
 
-// ---- X4: timed-transition edges ------------------------------------------------------------------
+// ---- X4: timed-transition edges
+// ------------------------------------------------------------------
 
 TEST_CASE("salt timing X4: zero and smallest positive elapsed times") {
     // One tick is 2 ms. advance(game_ms) runs every subsystem once per call (docs/sim/state.md 5.3:
@@ -2000,8 +2145,12 @@ TEST_CASE("salt timing X4: zero and smallest positive elapsed times") {
     // itself follows the number of calls (the existing per-call draw sites), so it is compared only
     // between equal slicings.
     auto a = start_x(true), b = start_x(true), c = start_x(true), c2 = start_x(true);
-    if (!a.c) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
-    for (XChain* x : {&a, &b, &c, &c2}) step_chain(*x->c, 300);
+    if (!a.c) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    for (XChain* x : {&a, &b, &c, &c2})
+        step_chain(*x->c, 300);
     const auto tick0 = a.c->sw.w.clock().tick();
     const std::uint64_t cursor0 = a.c->sw.w.rng().cursor();
     a.c->sw.w.advance(0); // zero elapsed time: no tick, a valid world; the subsystems still run
@@ -2010,15 +2159,20 @@ TEST_CASE("salt timing X4: zero and smallest positive elapsed times") {
     // ... and draw where they draw per call: only the households' and the farm workers' own sites,
     // never anything of the mine, the saltworks or the carriers
     std::set<sim::DrawSite> zero_sites;
-    for (const sim::DrawRecord& r : a.c->sw.w.last_output().draws) zero_sites.insert(r.site);
+    for (const sim::DrawRecord& r : a.c->sw.w.last_output().draws)
+        zero_sites.insert(r.site);
     for (const sim::DrawSite site : zero_sites)
         CHECK((site == sim::DrawSite::HouseWalkerTarget || site == sim::DrawSite::HouseVariant ||
                site == sim::DrawSite::FarmWorkerDispatch));
-    MESSAGE("advance(0) drew " << (a.c->sw.w.rng().cursor() - cursor0) << " values at " << zero_sites.size() << " sites");
+    MESSAGE("advance(0) drew " << (a.c->sw.w.rng().cursor() - cursor0) << " values at "
+                               << zero_sites.size() << " sites");
     CHECK(a.c->sw.w.check_invariants().empty());
-    // the same 100 x 100 ms cut three ways (a had its extra zero-time advance above, which is part of its slicing)
-    for (int i = 0; i < 100; ++i) a.c->sw.w.advance(100);
-    for (int i = 0; i < 10000; ++i) b.c->sw.w.advance(1);
+    // the same 100 x 100 ms cut three ways (a had its extra zero-time advance above, which is part
+    // of its slicing)
+    for (int i = 0; i < 100; ++i)
+        a.c->sw.w.advance(100);
+    for (int i = 0; i < 10000; ++i)
+        b.c->sw.w.advance(1);
     const auto mix = [](XChain& x) {
         for (int i = 0; i < 100; ++i) {
             x.c->sw.w.advance(0);
@@ -2051,18 +2205,20 @@ namespace {
 /// A chain advanced k steps (deterministic: the same construction gives the same world).
 XChain chain_at(int k) {
     XChain x = start_x(true);
-    if (x.c) step_chain(*x.c, k);
+    if (x.c)
+        step_chain(*x.c, k);
     return x;
 }
 
-template <class Event>
-int first_event_step(Event event) {
+template <class Event> int first_event_step(Event event) {
     XChain x = start_x(true);
-    if (!x.c) return -1;
+    if (!x.c)
+        return -1;
     for (int i = 1; i <= 6000; ++i) {
         const Terms2 before = terms2(x);
         step_chain(*x.c, 1);
-        if (event(before, terms2(x))) return i;
+        if (event(before, terms2(x)))
+            return i;
     }
     return -1;
 }
@@ -2070,10 +2226,14 @@ int first_event_step(Event event) {
 } // namespace
 
 TEST_CASE("salt timing X4: a demolition on the step of a load an unload and an arrival") {
-    if (!load_original()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    if (!load_original()) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
     // LOAD: a carrier lifts ore from the mine in step k; the mine is demolished just before it
     {
-        const int k = first_event_step([](const Terms2& a, const Terms2& b) { return b.ore_loaded > a.ore_loaded; });
+        const int k = first_event_step(
+            [](const Terms2& a, const Terms2& b) { return b.ore_loaded > a.ore_loaded; });
         REQUIRE(k > 0);
         XChain with = chain_at(k - 1), without = chain_at(k - 1);
         const Terms2 w0 = terms2(with);
@@ -2091,16 +2251,19 @@ TEST_CASE("salt timing X4: a demolition on the step of a load an unload and an a
         closed2(terms2(without), "load step, demolished");
         validate_and_reload(without, "load step");
     }
-    // UNLOAD: a cart unloads SALZ into the store in step k; both markets are demolished just before it
+    // UNLOAD: a cart unloads SALZ into the store in step k; both markets are demolished just before
+    // it
     {
-        const int k = first_event_step([](const Terms2& a, const Terms2& b) { return b.unloaded > a.unloaded; });
+        const int k = first_event_step(
+            [](const Terms2& a, const Terms2& b) { return b.unloaded > a.unloaded; });
         REQUIRE(k > 0);
         XChain with = chain_at(k - 1), without = chain_at(k - 1);
         const Terms2 w0 = terms2(with);
         step_chain(*with.c, 1);
         CHECK(terms2(with).unloaded > w0.unloaded);
         const Terms2 b0 = terms2(without);
-        const sim::BuildingId ia = building_on(without.c->sw.w, 346, 346)->id, ib = building_on(without.c->sw.w, 346, 371)->id;
+        const sim::BuildingId ia = building_on(without.c->sw.w, 346, 346)->id,
+                              ib = building_on(without.c->sw.w, 346, 371)->id;
         const std::uint64_t premise = in_flight(without, ia, kSalz) + in_flight(without, ib, kSalz);
         demolish_x(without, kMarketTiles);
         step_chain(*without.c, 1);
@@ -2112,9 +2275,12 @@ TEST_CASE("salt timing X4: a demolition on the step of a load an unload and an a
         closed2(b1, "demolished on the unload step");
         validate_and_reload(without, "unload step");
     }
-    // ARRIVAL: the carrier reaches the saltworks with ore in step k; the saltworks is demolished just before it
+    // ARRIVAL: the carrier reaches the saltworks with ore in step k; the saltworks is demolished
+    // just before it
     {
-        const int k = first_event_step([](const Terms2& a, const Terms2& b) { return a.ore_cargo > 0 && b.ore_cargo < a.ore_cargo; });
+        const int k = first_event_step([](const Terms2& a, const Terms2& b) {
+            return a.ore_cargo > 0 && b.ore_cargo < a.ore_cargo;
+        });
         REQUIRE(k > 0);
         XChain with = chain_at(k - 1), without = chain_at(k - 1);
         const Terms2 w0 = terms2(with);
@@ -2133,7 +2299,8 @@ TEST_CASE("salt timing X4: a demolition on the step of a load an unload and an a
     }
 }
 
-// ---- X4: two owners on one island ------------------------------------------------------------------
+// ---- X4: two owners on one island
+// ------------------------------------------------------------------
 
 namespace {
 
@@ -2147,29 +2314,39 @@ struct Rival {
 /// out of the pilot city's tiles (labelled fixture edit of the scenario spec, not a game command).
 std::optional<Rival> rival_world(bool with_rival) {
     auto o = load_original();
-    if (!o) return std::nullopt;
+    if (!o)
+        return std::nullopt;
     auto resolved = anno::sim_load::load_scenario_with_links(
-        anno::test::read_file(o->dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze"), o->templates, *o->types,
-        o->cfg, {}, original_component::actor_free_units());
+        anno::test::read_file(o->dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze"),
+        o->templates, *o->types, o->cfg, {}, original_component::actor_free_units());
     REQUIRE(resolved);
-    auto component = original_component::import_only(resolved.value().loaded.spec, o->types, o->cfg);
+    auto component =
+        original_component::import_only(resolved.value().loaded.spec, o->types, o->cfg);
     REQUIRE_MESSAGE(component, (component ? "" : component.error()));
     sim::ScenarioSpec spec = component.value().spec;
     Rival r{SaltWorld{}, sim::PlayerId{0}, sim::CityRef{sim::IslandId{1}, sim::CityNo{1}}};
     if (with_rival) {
         sim::ScenarioSpec::IslandSpec* isl = nullptr;
-        for (auto& i : spec.islands) if (i.slot.v == 1) isl = &i;
+        for (auto& i : spec.islands)
+            if (i.slot.v == 1)
+                isl = &i;
         REQUIRE(isl != nullptr);
         const sim::ScenarioSpec::PlayerSpec* p8 = nullptr;
-        for (const auto& p : spec.players) if (p.id == kSaltPlayer) p8 = &p;
+        for (const auto& p : spec.players)
+            if (p.id == kSaltPlayer)
+                p8 = &p;
         REQUIRE(p8 != nullptr);
         // a player with no city on this island: the first free slot above 8
         std::set<std::uint32_t> used;
-        for (const auto& c : isl->cities) used.insert(c.owner.v);
+        for (const auto& c : isl->cities)
+            used.insert(c.owner.v);
         std::uint32_t rid = 9;
-        while (used.count(rid) != 0) ++rid;
+        while (used.count(rid) != 0)
+            ++rid;
         sim::ScenarioSpec::PlayerSpec* rp = nullptr;
-        for (auto& p : spec.players) if (p.id.v == rid) rp = &p;
+        for (auto& p : spec.players)
+            if (p.id.v == rid)
+                rp = &p;
         if (rp == nullptr) {
             spec.players.push_back(*p8);
             rp = &spec.players.back();
@@ -2190,21 +2367,25 @@ std::optional<Rival> rival_world(bool with_rival) {
         // decode the owner runs, cut the rectangles, encode again
         std::vector<std::uint32_t> own;
         own.reserve(std::size_t{isl->w} * isl->h);
-        for (const auto& [owner, len] : isl->owner_runs) own.insert(own.end(), len, owner);
+        for (const auto& [owner, len] : isl->owner_runs)
+            own.insert(own.end(), len, owner);
         own.resize(std::size_t{isl->w} * isl->h, o->cfg.neutral_owner);
         const auto cut = [&](int xa, int xb, int ya, int yb) {
             for (int y = ya; y <= yb; ++y)
                 for (int x = xa; x <= xb; ++x) {
                     auto& t = own[std::size_t(y - isl->y0) * isl->w + std::size_t(x - isl->x0)];
-                    if (t == 0) t = 1;
+                    if (t == 0)
+                        t = 1;
                 }
         };
         cut(340, 349, 352, 366); // west of the trunk road: room for a rival saltworks beside it
-        cut(356, 362, 357, 366); // east of our saltworks: room for a rival mine in reach of the same ore
+        cut(356, 362, 357,
+            366); // east of our saltworks: room for a rival mine in reach of the same ore
         isl->owner_runs.clear();
         for (std::size_t i = 0; i < own.size();) {
             std::size_t j = i;
-            while (j < own.size() && own[j] == own[i]) ++j;
+            while (j < own.size() && own[j] == own[i])
+                ++j;
             isl->owner_runs.push_back({own[i], static_cast<std::uint32_t>(j - i)});
             i = j;
         }
@@ -2214,30 +2395,33 @@ std::optional<Rival> rival_world(bool with_rival) {
     auto created = sim::World::create(spec, o->types, o->cfg, rules);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
     sim::World world = std::move(created).value();
-    if (world.script().state.context == sim::ScriptContext::Pending) REQUIRE(world.initialize_scripts().empty());
-    for (int i = 0; i < 3; ++i) world.advance(kStepMs);
+    if (world.script().state.context == sim::ScriptContext::Pending)
+        REQUIRE(world.initialize_scripts().empty());
+    for (int i = 0; i < 3; ++i)
+        world.advance(kStepMs);
     r.sw = SaltWorld{std::move(world), o->types};
     return r;
 }
 
 } // namespace
 
-
 namespace {
 
 struct TwoOwners {
-    XChain x;                                   // our chain (city 0, player 8)
-    sim::BuildingId rival_mine, rival_works;    // city 1, player 9
+    XChain x;                                // our chain (city 0, player 8)
+    sim::BuildingId rival_mine, rival_works; // city 1, player 9
     sim::PlayerId rival;
     bool has_rival = false;
 };
 
-/// Our pilot chain (mine at (359,369) rotation 1, 10 tiles from the saltworks) beside, when asked, a
-/// rival city whose mine at (356,361) is CLOSER to our saltworks than ours and whose own saltworks
-/// stands beside the same trunk road.
-std::optional<TwoOwners> two_owners(bool with_rival, bool build_rival = true, bool rival_mine_on = true, bool rival_works_on = true) {
+/// Our pilot chain (mine at (359,369) rotation 1, 10 tiles from the saltworks) beside, when asked,
+/// a rival city whose mine at (356,361) is CLOSER to our saltworks than ours and whose own
+/// saltworks stands beside the same trunk road.
+std::optional<TwoOwners> two_owners(bool with_rival, bool build_rival = true,
+                                    bool rival_mine_on = true, bool rival_works_on = true) {
     auto r = rival_world(with_rival);
-    if (!r) return std::nullopt;
+    if (!r)
+        return std::nullopt;
     TwoOwners t;
     t.has_rival = with_rival;
     t.rival = r->player;
@@ -2253,16 +2437,24 @@ std::optional<TwoOwners> two_owners(bool with_rival, bool build_rival = true, bo
     c.ore_store0 = 0;
     t.x.works.push_back(c.works);
     if (with_rival && build_rival) {
-        const auto place = [&](std::uint32_t type, int xa, int xb, int ya, int yb) -> sim::BuildingId {
+        const auto place = [&](std::uint32_t type, int xa, int xb, int ya,
+                               int yb) -> sim::BuildingId {
             for (int y = ya; y <= yb; ++y)
                 for (int x = xa; x <= xb; ++x) {
-                    const auto res = w.apply(sim::Command{r->player, sim::BuildCmd{r->city, {sim::PlacementWire{sim::TypeId{type}, x, y, 0, 0, 0}}}});
-                    if (res.ok()) return res.records.at(0).building;
+                    const auto res = w.apply(sim::Command{
+                        r->player,
+                        sim::BuildCmd{r->city,
+                                      {sim::PlacementWire{sim::TypeId{type}, x, y, 0, 0, 0}}}});
+                    if (res.ok())
+                        return res.records.at(0).building;
                 }
             return {};
         };
-        if (rival_mine_on) t.rival_mine = place(1203, 356, 360, 361, 363);
-        if (rival_works_on) t.rival_works = place(1022, 346, 346, 352, 364); // x 346..349: beside the trunk road at x = 350
+        if (rival_mine_on)
+            t.rival_mine = place(1203, 356, 360, 361, 363);
+        if (rival_works_on)
+            t.rival_works =
+                place(1022, 346, 346, 352, 364); // x 346..349: beside the trunk road at x = 350
     }
     c.mine = build_x(t.x, 1203, 359, 369, 1);
     return t;
@@ -2280,8 +2472,8 @@ namespace {
 /// The rival city's own chain ledger (mine -> saltworks; it has no market, so its SALZ stays in its
 /// saltworks): the same terms as ours, scoped to the rival's buildings and figures.
 struct RivalTerms {
-    std::uint64_t mine_made = 0, mine_out = 0, ore_loaded = 0, works_in = 0, works_consumed = 0, works_made = 0,
-                  works_out = 0, salz_loaded = 0, ore_cargo = 0;
+    std::uint64_t mine_made = 0, mine_out = 0, ore_loaded = 0, works_in = 0, works_consumed = 0,
+                  works_made = 0, works_out = 0, salz_loaded = 0, ore_cargo = 0;
     std::int64_t u_mine = 0, u_ore = 0, u_made = 0;
 };
 
@@ -2295,19 +2487,22 @@ RivalTerms rival_terms(TwoOwners& t) {
     };
     r.mine_made = get(st.forestry.mine_made_88, t.rival_mine);
     r.ore_loaded = get(st.loaded_from, t.rival_mine);
-    if (const sim::Building* m = w.find_building(t.rival_mine)) r.mine_out = std::get<sim::Mine>(m->payload).out;
+    if (const sim::Building* m = w.find_building(t.rival_mine))
+        r.mine_out = std::get<sim::Mine>(m->payload).out;
     if (const sim::Building* b = w.find_building(t.rival_works)) {
         const auto& ws = std::get<sim::Workshop>(b->payload);
         r.works_in = ws.in.at(0);
         r.works_out = ws.out.at(0);
     }
-    if (const auto it = st.forestry.workshops.find(t.rival_works); it != st.forestry.workshops.end()) {
+    if (const auto it = st.forestry.workshops.find(t.rival_works);
+        it != st.forestry.workshops.end()) {
         r.works_consumed = it->second.consumed_88.at(0);
         r.works_made = it->second.made_88.at(0);
     }
     r.salz_loaded = get(st.loaded_from, t.rival_works);
     for (const auto& f : w.figures().list.slots)
-        if (f && !f->expiry_stamp.has_value() && f->owner == t.rival && f->cargo_goods == kSalzstein && !f->resident)
+        if (f && !f->expiry_stamp.has_value() && f->owner == t.rival &&
+            f->cargo_goods == kSalzstein && !f->resident)
             r.ore_cargo += f->cargo_88;
     const auto I = [](std::uint64_t v) { return static_cast<std::int64_t>(v); };
     r.u_mine = I(r.mine_made) - I(r.mine_out) - I(r.ore_loaded);
@@ -2321,15 +2516,23 @@ RivalTerms rival_terms(TwoOwners& t) {
 TEST_CASE("salt isolation X4: two owners credit their own city and never lift across") {
     auto two = two_owners(true);
     auto solo = two_owners(false);
-    auto cut_only = two_owners(true, false); // the rival city and territory exist, but it builds nothing
-    auto unbound = two_owners(true, true, true, false); // the rival's mine only, its source cut: a building that produces nothing
+    auto cut_only =
+        two_owners(true, false); // the rival city and territory exist, but it builds nothing
+    auto unbound = two_owners(
+        true, true, true,
+        false); // the rival's mine only, its source cut: a building that produces nothing
     auto gone = two_owners(true); // the rival's buildings, demolished at once
-    if (!two || !solo || !cut_only || !unbound || !gone) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    if (!two || !solo || !cut_only || !unbound || !gone) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
     REQUIRE(two->rival_mine.valid());
     REQUIRE(two->rival_works.valid());
-    for (auto& l : sim::WorldTestAccess::islands(unbound->x.c->sw.w)[1]->city(sim::CityNo{1})->index.lists)
+    for (auto& l :
+         sim::WorldTestAccess::islands(unbound->x.c->sw.w)[1]->city(sim::CityNo{1})->index.lists)
         for (auto& b : l.slots)
-            if (b && b->id == unbound->rival_mine) std::get<sim::Mine>(b->payload).deposit.reset();
+            if (b && b->id == unbound->rival_mine)
+                std::get<sim::Mine>(b->payload).deposit.reset();
     {
         sim::DemolishCmd dem;
         dem.city = sim::CityRef{sim::IslandId{1}, sim::CityNo{1}};
@@ -2338,23 +2541,28 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
         dem.tiles = {{356, 361}, {rw->x, rw->y}};
         REQUIRE(gone->x.c->sw.w.apply(sim::Command{gone->rival, dem}).ok());
     }
-    for (TwoOwners* t : {&*two, &*solo, &*cut_only, &*unbound, &*gone}) step_chain(*t->x.c, 3000);
+    for (TwoOwners* t : {&*two, &*solo, &*cut_only, &*unbound, &*gone})
+        step_chain(*t->x.c, 3000);
     sim::World& w = two->x.c->sw.w;
     // the rival's mine works (in reach of the shared ore, closer to our saltworks than ours is) ...
     const auto& rm = std::get<sim::Mine>(w.find_building(two->rival_mine)->payload);
     CHECK(rm.deposit.has_value());
     CHECK(two->x.c->stats.forestry.mine_made_88[two->rival_mine] > 0);
-    // ... and no load in the whole run crosses cities: the lifting figure's home and the source are in one city
+    // ... and no load in the whole run crosses cities: the lifting figure's home and the source are
+    // in one city
     std::size_t resolved = 0;
     for (const auto& [key, n] : two->x.c->stats.loaded_by_home) {
         const sim::CityNo a = city_no_of(w, key.first), b = city_no_of(w, key.second);
-        if (a.v == 0xffffU || b.v == 0xffffU) continue; // a building of another island
+        if (a.v == 0xffffU || b.v == 0xffffU)
+            continue; // a building of another island
         ++resolved;
-        CHECK_MESSAGE(a == b, "load of " << n << " from city " << a.v << " by a figure of city " << b.v);
+        CHECK_MESSAGE(a == b,
+                      "load of " << n << " from city " << a.v << " by a figure of city " << b.v);
     }
     CHECK(resolved > 0);
-    // positive control: the rival's own chain runs (its saltworks, beside the same trunk road, lifts its own mine's
-    // ore and makes salt) and ITS ledger closes, so the cross-owner zeros below are not vacuous
+    // positive control: the rival's own chain runs (its saltworks, beside the same trunk road,
+    // lifts its own mine's ore and makes salt) and ITS ledger closes, so the cross-owner zeros
+    // below are not vacuous
     CHECK(two->x.c->stats.loaded_by_home[{two->rival_mine, two->rival_works}] > 0U);
     {
         const RivalTerms rt = rival_terms(*two);
@@ -2363,13 +2571,16 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
         CHECK(rt.u_ore == 0);
         CHECK(rt.u_made == 0);
     }
-    // our saltworks never lifted the rival's ore (this zero discriminates: the city-filter mutant makes it positive);
-    // the rival's saltworks never lifted ours (this zero is a CONSISTENCY check only: under the mutant the rival
-    // saltworks still prefers its nearer own mine, so the value does not change)
+    // our saltworks never lifted the rival's ore (this zero discriminates: the city-filter mutant
+    // makes it positive); the rival's saltworks never lifted ours (this zero is a CONSISTENCY check
+    // only: under the mutant the rival saltworks still prefers its nearer own mine, so the value
+    // does not change)
     CHECK(two->x.c->stats.loaded_by_home[{two->rival_mine, two->x.c->works}] == 0U);
     CHECK(two->x.c->stats.loaded_by_home[{two->x.mines[0], two->rival_works}] == 0U);
-    // single-owner control: our ledger closes in both worlds and the rival changed none of OUR flows
-    const Terms2 a = terms2(two->x), b = terms2(solo->x), c = terms2(cut_only->x), u = terms2(unbound->x), g = terms2(gone->x);
+    // single-owner control: our ledger closes in both worlds and the rival changed none of OUR
+    // flows
+    const Terms2 a = terms2(two->x), b = terms2(solo->x), c = terms2(cut_only->x),
+                 u = terms2(unbound->x), g = terms2(gone->x);
     closed2(a, "two owners");
     closed2(b, "single owner");
     closed2(c, "rival territory only");
@@ -2377,11 +2588,12 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
     closed2(g, "rival buildings demolished");
     CHECK(a.ore_loaded > 0);
     CHECK(b.ore_loaded > 0);
-    // The rival's ACTIVITY changes none of our flows: with its mine producing, bound to the shared deposit
-    // and its saltworks standing, our flows equal those with the same mine standing idle (source cut, no
-    // saltworks), exactly; and with its buildings demolished they equal the world with no rival buildings.
-    // What a standing rival mine does change is OCCUPANCY: a building on the shared land moves our carriers'
-    // routes a little (a.ore_loaded differs from c.ore_loaded), which is not a transfer between owners.
+    // The rival's ACTIVITY changes none of our flows: with its mine producing, bound to the shared
+    // deposit and its saltworks standing, our flows equal those with the same mine standing idle
+    // (source cut, no saltworks), exactly; and with its buildings demolished they equal the world
+    // with no rival buildings. What a standing rival mine does change is OCCUPANCY: a building on
+    // the shared land moves our carriers' routes a little (a.ore_loaded differs from c.ore_loaded),
+    // which is not a transfer between owners.
     for (const Terms2* x : {&u, &c}) {
         const Terms2& ref = x == &u ? a : g;
         CHECK(ref.ore_loaded == x->ore_loaded);
@@ -2390,19 +2602,19 @@ TEST_CASE("salt isolation X4: two owners credit their own city and never lift ac
         CHECK(ref.taken == x->taken);
         CHECK(ref.delivered == x->delivered);
     }
-    MESSAGE("our ore_loaded: two owners " << a.ore_loaded << ", rival territory only " << c.ore_loaded << ", single owner " << b.ore_loaded);
-    // both mines bind the one deposit of the shared ore: ore is an island object (as in the original), the
-    // OUTPUT stores, lifts and credits are per city
+    MESSAGE("our ore_loaded: two owners " << a.ore_loaded << ", rival territory only "
+                                          << c.ore_loaded << ", single owner " << b.ore_loaded);
+    // both mines bind the one deposit of the shared ore: ore is an island object (as in the
+    // original), the OUTPUT stores, lifts and credits are per city
     CHECK(isle(w).deposits.size() == 1);
     CHECK(w.check_invariants().empty());
 }
 
-
 TEST_CASE("salt interruption X4: the Kontor is not a link of the chain") {
-    // The warehouse (Kontor 1306) is far from the salt chain; the city store is the CITY's, reached by the
-    // markets' carts at unload and by the stalls at purchase, not through the Kontor building. Demolishing it
-    // leaves production, receipts, purchases and deliveries going (ledger closed, save/load valid), and the
-    // salt chain's flows stay positive in every window.
+    // The warehouse (Kontor 1306) is far from the salt chain; the city store is the CITY's, reached
+    // by the markets' carts at unload and by the stalls at purchase, not through the Kontor
+    // building. Demolishing it leaves production, receipts, purchases and deliveries going (ledger
+    // closed, save/load valid), and the salt chain's flows stay positive in every window.
     sim::Reject st = sim::Reject::Unsupported;
     const auto interrupt = [&](XChain& x) {
         sim::DemolishCmd dem;
@@ -2414,25 +2626,32 @@ TEST_CASE("salt interruption X4: the Kontor is not a link of the chain") {
     };
     const auto restore = [](XChain&) {};
     const Windows w = run_interruption("kontor", interrupt, restore, false);
-    if (w.p1.empty()) { MESSAGE("skipping: ANNO1503_GAME_DIR not set"); return; }
+    if (w.p1.empty()) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
     CHECK(st == sim::Reject::None);
     CHECK(all_positive(w.p2, 1, true, true, true, true, true));
     CHECK(all_positive(w.p3, 0, true, true, true, true, true));
     const Windows control = control_run();
     const auto same = [](const std::vector<Snap>& a, const std::vector<Snap>& b) {
-        if (a.size() != b.size()) return false;
+        if (a.size() != b.size())
+            return false;
         for (std::size_t i = 0; i < a.size(); ++i)
-            if (a[i].works_made != b[i].works_made || a[i].mine_made != b[i].mine_made || a[i].unloaded != b[i].unloaded ||
-                a[i].taken != b[i].taken || a[i].delivered != b[i].delivered)
+            if (a[i].works_made != b[i].works_made || a[i].mine_made != b[i].mine_made ||
+                a[i].unloaded != b[i].unloaded || a[i].taken != b[i].taken ||
+                a[i].delivered != b[i].delivered)
                 return false;
         return true;
     };
-    // before the cut the two runs are identical; after it the flows stay positive but are NOT byte-equal to the
-    // control (the Kontor's carts serve other producers of the city, so its removal shifts timing elsewhere:
-    // the chain's windows move by a few units, the claim is only that no window of the salt chain stops)
+    // before the cut the two runs are identical; after it the flows stay positive but are NOT
+    // byte-equal to the control (the Kontor's carts serve other producers of the city, so its
+    // removal shifts timing elsewhere: the chain's windows move by a few units, the claim is only
+    // that no window of the salt chain stops)
     CHECK(same(w.p1, control.p1));
-    // PRNG: only the existing state-following sites may differ (the Kontor's removal is not a no-op for the
-    // rest of the economy, unlike the instant demolish-and-rebuild of the chain's own links)
+    // PRNG: only the existing state-following sites may differ (the Kontor's removal is not a no-op
+    // for the rest of the economy, unlike the instant demolish-and-rebuild of the chain's own
+    // links)
     const Windows quiet = run_interruption("kontor-quiet", interrupt, restore, false, false, false);
     const Windows quiet_control = control_run(false);
     const auto minus3 = [](std::map<sim::DrawSite, std::uint64_t> m) {
@@ -2448,10 +2667,11 @@ TEST_CASE("salt interruption X4: the Kontor is not a link of the chain") {
 }
 
 TEST_CASE("salt mine: a refused mine command is logged and the log reproduces") {
-    // Reject::NoDepositInReach is appended at the end of the enum. A Reject is a host-facing answer: it is
-    // in no command wire form, no replay log, no saved state and no hash (a log holds the commands and the
-    // checkpoint hashes), so the append needs no format or stream version change. This test records a
-    // refused command between accepted ones, writes and reads the log, and replays it from the initial save.
+    // Reject::NoDepositInReach is appended at the end of the enum. A Reject is a host-facing
+    // answer: it is in no command wire form, no replay log, no saved state and no hash (a log holds
+    // the commands and the checkpoint hashes), so the append needs no format or stream version
+    // change. This test records a refused command between accepted ones, writes and reads the log,
+    // and replays it from the initial save.
     auto s = salt_world(true, false, true);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -2466,7 +2686,8 @@ TEST_CASE("salt mine: a refused mine command is logged and the log reproduces") 
     CHECK(s->w.save() == before); // nothing changed; the command is nevertheless in the log
     rec.advance(100);
     REQUIRE(rec.submit(build_cmd({mine_at(353, 359)})).ok());
-    for (int i = 0; i < 20; ++i) rec.advance(100);
+    for (int i = 0; i < 20; ++i)
+        rec.advance(100);
     rec.checkpoint();
     const auto bytes = sim::write_log(rec.log());
     REQUIRE_MESSAGE(bytes.ok(), (bytes.ok() ? std::string() : bytes.error()));
@@ -2481,8 +2702,8 @@ TEST_CASE("salt mine: a refused mine command is logged and the log reproduces") 
     CHECK(fresh.value().save() == s->w.save());
 }
 
-
-// ---- X5: read-only facts, continuation, fresh-process replay, bounded lookup cost -------------------------
+// ---- X5: read-only facts, continuation, fresh-process replay, bounded lookup cost
+// -------------------------
 
 TEST_CASE("salt X5: the mine facts against known state, read-only") {
     auto s = salt_world(true, false, true);
@@ -2495,10 +2716,10 @@ TEST_CASE("salt X5: the mine facts against known state, read-only") {
     const sim::ApplyResult r = w.apply(build_cmd({mine_at(353, 359)}));
     REQUIRE(r.ok());
     const sim::BuildingId mine = r.records.at(0).building;
-    // The expected values are independent of the code under test: the ore at (357,369) with 2,000 t is the OCCUR
-    // object read from endless02 (cache/close-extract/endless02_i1.txt line "R 1562 357 369 2000"), the load rule
-    // amount<<8 raised to 2,000 t = 512,000 in 8.8 units with the flag set is OQ-035 b/c
-    // (fixtures/synthetic/sim/mine_terrain_vectors.txt deposit vectors).
+    // The expected values are independent of the code under test: the ore at (357,369) with 2,000 t
+    // is the OCCUR object read from endless02 (cache/close-extract/endless02_i1.txt line "R 1562
+    // 357 369 2000"), the load rule amount<<8 raised to 2,000 t = 512,000 in 8.8 units with the
+    // flag set is OQ-035 b/c (fixtures/synthetic/sim/mine_terrain_vectors.txt deposit vectors).
     const auto before = w.save();
     const auto f = sim::mine_facts(w, mine);
     REQUIRE(f.has_value());
@@ -2509,15 +2730,18 @@ TEST_CASE("salt X5: the mine facts against known state, read-only") {
     CHECK(f->remaining_88 == 512000U);
     CHECK(f->reserve);
     CHECK(f->deep);
-    CHECK_FALSE(f->depletes); // a salt mine is deep: even in the add-on edition (setting on) it never uses the deposit up
+    CHECK_FALSE(f->depletes); // a salt mine is deep: even in the add-on edition (setting on) it
+                              // never uses the deposit up
     CHECK(sim::WorldTestAccess::settings(w).depletes());
     CHECK(f->state == sim::MineState::Working);
     CHECK(f->output_88 == 0);
     CHECK_FALSE(f->produced_88.has_value()); // no diagnostic sink installed
-    CHECK(w.save() == before); // reading changed nothing, byte for byte
-    // with a sink the produced total appears and equals the ledger; the output store equals the Mine's
+    CHECK(w.save() == before);               // reading changed nothing, byte for byte
+    // with a sink the produced total appears and equals the ledger; the output store equals the
+    // Mine's
     w.set_transport_stats(&stats);
-    for (int i = 0; i < 400; ++i) w.advance(kStepMs);
+    for (int i = 0; i < 400; ++i)
+        w.advance(kStepMs);
     const auto g = sim::mine_facts(w, mine);
     REQUIRE(g.has_value());
     REQUIRE(g->produced_88.has_value());
@@ -2533,8 +2757,10 @@ TEST_CASE("salt X5: the mine facts against known state, read-only") {
     const sim::Building* works = nullptr;
     for (const auto& l : isle(w).city(kSaltCity.city)->index.lists)
         for (const auto& b : l.slots) {
-            if (b && b->type.v == 1203 && b->id != mine) imported = &*b;
-            if (b && b->type.v == 1022) works = &*b;
+            if (b && b->type.v == 1203 && b->id != mine)
+                imported = &*b;
+            if (b && b->type.v == 1022)
+                works = &*b;
         }
     REQUIRE(imported != nullptr);
     REQUIRE(works != nullptr);
@@ -2562,14 +2788,16 @@ TEST_CASE("salt X5: the depletes fact follows the extraction rule for every comb
     sim::Mine* m = nullptr;
     for (auto& l : is.city(kSaltCity.city)->index.lists)
         for (auto& b : l.slots)
-            if (b && b->id == id) m = &std::get<sim::Mine>(b->payload);
+            if (b && b->id == id)
+                m = &std::get<sim::Mine>(b->payload);
     REQUIRE(m != nullptr);
     // hand-written truth table (reserve, deep, setting) -> depletes (docs/re/production.md 4.4)
     struct Row {
         bool reserve, deep, setting, want;
     };
-    for (const Row row : {Row{true, true, true, false}, Row{true, true, false, false}, Row{true, false, true, true},
-                          Row{true, false, false, false}, Row{false, true, true, true}, Row{false, true, false, false},
+    for (const Row row : {Row{true, true, true, false}, Row{true, true, false, false},
+                          Row{true, false, true, true}, Row{true, false, false, false},
+                          Row{false, true, true, true}, Row{false, true, false, false},
                           Row{false, false, true, true}, Row{false, false, false, false}}) {
         is.deposits[0].reserve = row.reserve;
         is.deposits[0].remaining = 2000U * sim::kTon; // above the 1,600 t reserve floor
@@ -2579,7 +2807,8 @@ TEST_CASE("salt X5: the depletes fact follows the extraction rule for every comb
         const auto f = sim::mine_facts(w, id);
         REQUIRE(f.has_value());
         CHECK(f->depletes == row.want);
-        // and the extraction code agrees: the deposit really goes down exactly when the fact says so
+        // and the extraction code agrees: the deposit really goes down exactly when the fact says
+        // so
         sim::Deposit probe = is.deposits[0];
         const std::uint32_t got = sim::deposit_extract(probe, 100U, row.deep, row.setting);
         CHECK(got <= 100U);
@@ -2600,11 +2829,10 @@ TEST_CASE("salt X5: the depletes fact follows the extraction rule for every comb
 
 namespace {
 
-/// Saves at the first step where `at` holds, loads that save into a second world and continues both for 800
-/// steps: the bytes, the hash and the PRNG cursor must stay equal (no stats sink in the loaded world: the
-/// sink is diagnostic and does not decide anything).
-template <class At>
-void continuation_at(const char* boundary, At at) {
+/// Saves at the first step where `at` holds, loads that save into a second world and continues both
+/// for 800 steps: the bytes, the hash and the PRNG cursor must stay equal (no stats sink in the
+/// loaded world: the sink is diagnostic and does not decide anything).
+template <class At> void continuation_at(const char* boundary, At at) {
     XChain x = start_x(true);
     if (!x.c) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -2631,10 +2859,12 @@ void continuation_at(const char* boundary, At at) {
     CHECK(re.rng().cursor() == w.rng().cursor());
     CHECK(re.save() == w.save());
     CHECK(re.check_invariants().empty());
-    // positive control: a reload that runs ONE step fewer does differ, so the comparison above can tell
+    // positive control: a reload that runs ONE step fewer does differ, so the comparison above can
+    // tell
     auto shorter = sim::World::load(bytes, x.c->sw.types, {});
     REQUIRE(shorter.ok());
-    for (int i = 0; i < 799; ++i) shorter.value().advance(kStepMs);
+    for (int i = 0; i < 799; ++i)
+        shorter.value().advance(kStepMs);
     CHECK(shorter.value().state_hash() != w.state_hash());
     CHECK(shorter.value().save() != w.save());
 }
@@ -2654,22 +2884,27 @@ TEST_CASE("salt X5: a reload at each boundary of the chain continues like the un
         });
     }
     // the saltworks carrier with ore in its hands
-    continuation_at("saltworks carrier holds ore", [&](XChain& x) { return in_flight(x, x.works[0], kSalzstein) > 0; });
+    continuation_at("saltworks carrier holds ore",
+                    [&](XChain& x) { return in_flight(x, x.works[0], kSalzstein) > 0; });
     // a market cart (the stall's side of the chain) with SALZ in its hands
     continuation_at("market cart holds SALZ", [&](XChain& x) {
         const sim::Building* a = building_on(x.c->sw.w, 346, 346);
         const sim::Building* b = building_on(x.c->sw.w, 346, 371);
-        return a != nullptr && b != nullptr && in_flight(x, a->id, kSalz) + in_flight(x, b->id, kSalz) > 0;
+        return a != nullptr && b != nullptr &&
+               in_flight(x, a->id, kSalz) + in_flight(x, b->id, kSalz) > 0;
     });
     // a household walker with SALZ in its hands
-    continuation_at("household walker holds SALZ", [&](XChain& x) { return terms2(x).res_cargo > 0; });
+    continuation_at("household walker holds SALZ",
+                    [&](XChain& x) { return terms2(x).res_cargo > 0; });
 }
 
 TEST_CASE("salt X5: the chain recorded for the fresh-process replay and its changed command") {
-    // A real session: the mine is built by a public command, the chain runs 1,500 steps with a checkpoint every
-    // 50. The same log is replayed in-process here; with ANNO_SALT_OUT_DIR set the log and a changed-command
-    // twin (the mine placed at (356,359) instead of (353,359)) are also written for the fresh-process CTests
-    // (anno-sim-replay in a child process, cmake/SaltChainProperties.cmake.in).
+    // A real session: the mine is built by a public command, the chain runs 1,500 steps with a
+    // checkpoint every
+    // 50. The same log is replayed in-process here; with ANNO_SALT_OUT_DIR set the log and a
+    // changed-command twin (the mine placed at (356,359) instead of (353,359)) are also written for
+    // the fresh-process CTests (anno-sim-replay in a child process,
+    // cmake/SaltChainProperties.cmake.in).
     auto s = salt_world(true, false, true);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -2682,7 +2917,8 @@ TEST_CASE("salt X5: the chain recorded for the fresh-process replay and its chan
     rec.advance(100);
     rec.checkpoint();
     for (int block = 0; block < 30; ++block) {
-        for (int i = 0; i < 50; ++i) rec.advance(100);
+        for (int i = 0; i < 50; ++i)
+            rec.advance(100);
         rec.checkpoint();
     }
     REQUIRE(s->w.check_invariants().empty());
@@ -2693,7 +2929,8 @@ TEST_CASE("salt X5: the chain recorded for the fresh-process replay and its chan
             command_entry = i;
             std::get<sim::BuildCmd>(changed.entries[i].commands[0].body).placements.at(0).x = 356;
         }
-        if (changed.entries[i].kind == sim::ReplayEntry::Kind::Checkpoint && first_checkpoint == 0) first_checkpoint = i;
+        if (changed.entries[i].kind == sim::ReplayEntry::Kind::Checkpoint && first_checkpoint == 0)
+            first_checkpoint = i;
     }
     REQUIRE(first_checkpoint > command_entry);
     const auto good_bytes = sim::write_log(rec.log());
@@ -2725,20 +2962,24 @@ TEST_CASE("salt X5: the chain recorded for the fresh-process replay and its chan
         const auto write = [&](const char* name, const std::vector<std::uint8_t>& bytes) {
             std::ofstream f(out / name, std::ios::binary);
             REQUIRE(f.good());
-            f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            f.write(reinterpret_cast<const char*>(bytes.data()),
+                    static_cast<std::streamsize>(bytes.size()));
         };
         write("salt-chain.log", good_bytes.value());
         write("salt-chain-changed-command.log", bad_bytes.value());
     }
 }
 
-// ---- X5: bounded cost of the reach lookup and the bind -----------------------------------------------
+// ---- X5: bounded cost of the reach lookup and the bind
+// -----------------------------------------------
 
 namespace {
 
-/// An independent copy of the reach table (docs/re/production.md 4.4: rows 0..7 beyond the footprint have
-/// half-widths 7, 7, 7, 6, 6, 5, 4, 2), written from the document, not from the code under test.
-bool reach_ref(std::int32_t ax, std::int32_t ay, std::int32_t w, std::int32_t h, std::int32_t ox, std::int32_t oy) {
+/// An independent copy of the reach table (docs/re/production.md 4.4: rows 0..7 beyond the
+/// footprint have half-widths 7, 7, 7, 6, 6, 5, 4, 2), written from the document, not from the code
+/// under test.
+bool reach_ref(std::int32_t ax, std::int32_t ay, std::int32_t w, std::int32_t h, std::int32_t ox,
+               std::int32_t oy) {
     static const int half[8] = {7, 7, 7, 6, 6, 5, 4, 2};
     int dy = oy < ay ? ay - oy : (oy > ay + h - 1 ? oy - (ay + h - 1) : 0);
     int dx = ox < ax ? ax - ox : (ox > ax + w - 1 ? ox - (ax + w - 1) : 0);
@@ -2750,8 +2991,9 @@ struct OreIsland {
     std::size_t in_reach_expected = 0;
 };
 
-/// A bare island of 400 x 400 tiles with `k` ore objects of the salt ore symbol 1562, `near` of them inside
-/// the reach of a 3 x 4 mine at (200,200) and the rest far away on a grid, and `deposits` unrelated deposits.
+/// A bare island of 400 x 400 tiles with `k` ore objects of the salt ore symbol 1562, `near` of
+/// them inside the reach of a 3 x 4 mine at (200,200) and the rest far away on a grid, and
+/// `deposits` unrelated deposits.
 OreIsland ore_island(std::size_t k, std::size_t near_count, std::size_t deposits) {
     OreIsland o;
     REQUIRE(o.is.tiles.reset(0, 0, 400, 400, 8));
@@ -2770,7 +3012,8 @@ OreIsland ore_island(std::size_t k, std::size_t near_count, std::size_t deposits
         o.in_reach_expected += reach_ref(200, 200, 3, 4, ob.x, ob.y) ? 1U : 0U;
     }
     for (std::size_t d = 0; d < deposits; ++d)
-        o.is.deposits.push_back(sim::Deposit{"EISENERZ", 300 + static_cast<std::int32_t>(d % 90), 300 + static_cast<std::int32_t>(d / 90), 1000U, true});
+        o.is.deposits.push_back(sim::Deposit{"EISENERZ", 300 + static_cast<std::int32_t>(d % 90),
+                                             300 + static_cast<std::int32_t>(d / 90), 1000U, true});
     return o;
 }
 
@@ -2794,10 +3037,11 @@ TEST_CASE("salt X5: the lookup visits the ore objects of its island once and not
         INFO("ore objects " << k);
         CHECK(found.has_value());
         CHECK(st.lookups == 1);
-        CHECK(st.ore_objects_examined == k);                  // linear in the island's ore objects, exactly
-        CHECK(st.in_reach == oi.in_reach_expected);           // equals the independent count
-        CHECK(st.ware_matches == oi.in_reach_expected);       // all of them are salt
-        CHECK(st.deposits_examined == oi.in_reach_expected * deposits); // per in-reach ore, the island's deposit table
+        CHECK(st.ore_objects_examined == k);        // linear in the island's ore objects, exactly
+        CHECK(st.in_reach == oi.in_reach_expected); // equals the independent count
+        CHECK(st.ware_matches == oi.in_reach_expected); // all of them are salt
+        CHECK(st.deposits_examined ==
+              oi.in_reach_expected * deposits); // per in-reach ore, the island's deposit table
         series.push_back(st);
     }
     // what does NOT grow with the number of ore objects: the in-reach work
@@ -2823,9 +3067,10 @@ TEST_CASE("salt X5: the lookup visits the ore objects of its island once and not
 }
 
 TEST_CASE("salt X5: the cost of a command's lookup does not depend on cities or other mines") {
-    // the same BuildCmd of our mine in three worlds: the pilot alone, the pilot with a second city, and the pilot
-    // with a second city holding a mine and a saltworks. Per lookup the ore objects visited equal the island's
-    // ore objects in every world; the number of cities and mines changes nothing.
+    // the same BuildCmd of our mine in three worlds: the pilot alone, the pilot with a second city,
+    // and the pilot with a second city holding a mine and a saltworks. Per lookup the ore objects
+    // visited equal the island's ore objects in every world; the number of cities and mines changes
+    // nothing.
     auto solo = two_owners(false);
     auto cut = two_owners(true, false);
     auto both = two_owners(true);
@@ -2846,7 +3091,8 @@ TEST_CASE("salt X5: the cost of a command's lookup does not depend on cities or 
     CHECK(cut->x.c->stats.ore_lookup.lookups == 2);
     CHECK(both->x.c->stats.ore_lookup.lookups == 4);
     // our own command's lookups: identical counts in every world
-    CHECK(solo->x.c->stats.ore_lookup.ore_objects_examined / 2 == both->x.c->stats.ore_lookup.ore_objects_examined / 4);
+    CHECK(solo->x.c->stats.ore_lookup.ore_objects_examined / 2 ==
+          both->x.c->stats.ore_lookup.ore_objects_examined / 4);
     CHECK(lookups_seen == 8);
 }
 
@@ -2869,9 +3115,14 @@ TEST_CASE("salt X5: lookup timing sample (opt-in measure)") {
         const int reps = static_cast<int>(2000000 / k) + 10;
         const auto t0 = std::chrono::steady_clock::now();
         std::size_t sink = 0;
-        for (int r = 0; r < reps; ++r) sink += sim::find_ore_in_reach(oi.is, *o->types, mine, area, true, &st).value_or(0);
-        const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / reps;
-        std::cout << "PERF ore_objects " << k << " reps " << reps << " us_per_lookup " << us << " examined_per_lookup "
-                  << st.ore_objects_examined / st.lookups << " sink " << sink << "\n";
+        for (int r = 0; r < reps; ++r)
+            sink += sim::find_ore_in_reach(oi.is, *o->types, mine, area, true, &st).value_or(0);
+        const double us =
+            std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0)
+                .count() /
+            reps;
+        std::cout << "PERF ore_objects " << k << " reps " << reps << " us_per_lookup " << us
+                  << " examined_per_lookup " << st.ore_objects_examined / st.lookups << " sink "
+                  << sink << "\n";
     }
 }

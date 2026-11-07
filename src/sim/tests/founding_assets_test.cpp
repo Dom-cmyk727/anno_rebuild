@@ -27,8 +27,8 @@
 #include <doctest/doctest.h>
 
 #include <anno/formats/ship_manifest.hpp>
-#include <anno/sim/city_booking.hpp>
 #include <anno/sim/build_availability.hpp>
+#include <anno/sim/city_booking.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/harvest.hpp>
@@ -3829,12 +3829,13 @@ TEST_CASE("bootstrap prefix: unchanged ship sails founds unloads builds then exp
     CHECK(gold() == 29250 - static_cast<std::int64_t>(5 * plan->road.size()));
     CHECK(stock(42) == 34 * 256);
     CHECK(stock(41) == 46 * 256);
-    // No stage injection: the content query refuses salt at stage1C. Stream 135: the mountain class is
-    // placeable now, so the public salt command no longer ends in a structural Unsupported; the
+    // No stage injection: the content query refuses salt at stage1C. Stream 135: the mountain class
+    // is placeable now, so the public salt command no longer ends in a structural Unsupported; the
     // permission refusal (the stage lock) is what stops it, before any state change.
     CHECK(eligible(1203).status == sim::BuildEligibilityStatus::StageLocked);
     {
-        // a site the mine's placement rule accepts and the town owns, so the permission step is reached
+        // a site the mine's placement rule accepts and the town owns, so the permission step is
+        // reached
         const sim::BuildingType& salt = *w.types().find(sim::TypeId{1203});
         const sim::Building& wh = *w.find_building(warehouse);
         bool reached = false;

@@ -235,9 +235,10 @@ struct FigureType {
     /// 0x1000fae0 returns it). A farm-family building sends its worker with this job (AnnoWelt
     /// 0x1006ea90, docs/re/forestry.md 2.1, 2.2); 0 = no ROUTETYPE or UNUSED. 102's MAEHER = 0x2a.
     std::uint32_t route = 0;
-    /// Stream 135: the WARE record of an ore symbol (BEWOHNTYPE ERZSYMBOL, 145), the goods name of the
-    /// deposit the object is (AnnoWelt deposit class, `+0x84` = the object type's ware, docs/re/
-    /// production.md 4.4). Empty for every other figure type; digested only when set (tagged).
+    /// Stream 135: the WARE record of an ore symbol (BEWOHNTYPE ERZSYMBOL, 145), the goods name of
+    /// the deposit the object is (AnnoWelt deposit class, `+0x84` = the object type's ware,
+    /// docs/re/ production.md 4.4). Empty for every other figure type; digested only when set
+    /// (tagged).
     std::string ware = {};
 };
 

@@ -291,7 +291,8 @@ TEST_CASE("developer resources: a Build too expensive for the start is refused w
     const auto cheapest = first_building_type(*on);
     REQUIRE(cheapest.has_value());
 
-    const auto build = [&](anno::sim::World& world, std::uint32_t type, std::uint16_t tile_offset = 4) {
+    const auto build = [&](anno::sim::World& world, std::uint32_t type,
+                           std::uint16_t tile_offset = 4) {
         anno::sim::Command cmd;
         cmd.issuer = anno::app::developer_player();
         anno::sim::BuildCmd body;

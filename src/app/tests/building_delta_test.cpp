@@ -102,8 +102,10 @@ TEST_CASE("play: a turn with no commands publishes no building changes") {
     for (const auto& batch : batches) {
         deltas += batch->deltas.size();
     }
-    MESSAGE("02Trade01, " << initial_buildings.size() << " initial buildings, 50 turns, no "
-                          "commands: " << batches.size() << " batches, " << deltas << " deltas");
+    MESSAGE("02Trade01, " << initial_buildings.size()
+                          << " initial buildings, 50 turns, no "
+                             "commands: "
+                          << batches.size() << " batches, " << deltas << " deltas");
     CHECK(initial_buildings.size() > 0);
     CHECK(deltas == 0);
     CHECK(runner.take_building_batches().empty());

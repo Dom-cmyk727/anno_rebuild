@@ -1011,8 +1011,8 @@ TEST_CASE(
             MESSAGE(entry.path().filename().string() << ": refused: " << resolved.error());
             continue;
         }
-        auto prepared = original_component::import_only(resolved.value().loaded.spec,
-                                                         registry.types, cfg);
+        auto prepared =
+            original_component::import_only(resolved.value().loaded.spec, registry.types, cfg);
         if (!prepared) {
             ++refused;
             MESSAGE(entry.path().filename().string() << ": refused: " << prepared.error());

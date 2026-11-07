@@ -619,8 +619,8 @@ std::string LegalWorkload::manifest() const {
       << " candidate_types houses=" << houses_.size() << " producers=" << producers_.size()
       << " others=" << others_.size() << " left_out_without_sprite=" << undrawn_types_
       << " left_out_ineligible houses=" << houses_excluded_ineligible_
-      << " producers=" << producers_excluded_ineligible_ << " others="
-      << others_excluded_ineligible_ << "\n";
+      << " producers=" << producers_excluded_ineligible_
+      << " others=" << others_excluded_ineligible_ << "\n";
     o << "turns=" << turn_ << "\n";
     std::size_t total = 0, issued = 0, rejected = 0;
     for (const LegalCity& c : cities_) {

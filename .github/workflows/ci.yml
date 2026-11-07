@@ -97,6 +97,16 @@ jobs:
         run: sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools
       - if: runner.os == 'macOS'
         run: brew install ninja
+      - if: runner.os == 'Linux'
+        name: reserve the test coordinator ports
+        # The budget coordinator and its tests listen on fixed ports 47631..47920, inside Linux's
+        # ephemeral range (32768-60999): any outgoing connection of a parallel test could be given
+        # one of them as its local port, and the coordinator then fails to bind (BIND-FAILED, a
+        # different F3/F4/S3/H3/V3 case each run). Reserved ports are never handed out as
+        # ephemeral ports. macOS and Windows use 49152-65535 and are not affected.
+        run: |
+          sudo sysctl -w net.ipv4.ip_local_reserved_ports=47600-47999
+          cat /proc/sys/net/ipv4/ip_local_reserved_ports
       - name: evidence preflight before configure and build
         shell: bash
         run: |

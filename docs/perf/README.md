@@ -1960,3 +1960,56 @@ use a zero count as an independent safety verdict. `journal_report_contract`
 checks the public command, owner identities, read-only behavior, widths, releases
 and malformed inputs. The distinguishing missing-final-newline mutant preserves
 the legal open-promise control and fails the truncated-release assertion.
+
+## Coordinator ports — regression ports below the ephemeral ranges (2026-11-07)
+
+**Problem.** The coordinator regressions bound fixed ports in 47600–47999 (F2 47700/47750+,
+F3 47810–47817, F4 47820–47826, F5 47850–47925) and the file-client cases of `budget_test.cpp`
+and F1 used the default local port 47632. Linux hands out 32768–60999
+(`/proc/sys/net/ipv4/ip_local_port_range`) as local ports of outgoing connections, so under
+`ctest -j` one case's client socket could sit on another case's port and that coordinator
+printed `BIND-FAILED` (CI run 41985663081, linux-gcc, the two F3 handover cases). It is a live
+socket on the port, not TIME_WAIT: `SO_REUSEADDR` cannot help. Reproduced directly: a
+kernel-assigned client port blocks `anno_budget_coord` on that port while the client is
+connected or half-closed (ESTABLISHED, FIN_WAIT2), and a TIME_WAIT left by the peer does not.
+
+**Choice.** Every fixed regression port moved down by 20000 into the band **27600–27999**
+(`src/test_support/tests/test_ports.hpp`), below the default dynamic ranges of all three hosts:
+Linux 32768–60999, Windows 49152–65535 (`netsh int ipv4 show dynamicport tcp`), macOS
+49152–65535 (`sysctl net.inet.ip.portrange.first/last`). The file-client cases use 27632
+(`ports::FileClientPort`). Port 0 (the OS picks) was rejected for these cases: handover, crash
+recovery, step-aside and client-spawned successors all need a second coordinator on the port
+the first one held (the F3 pin case, which needs no second start, already uses 0). Literals go
+through `ports::fixed()`, a `consteval` check that does not compile outside the band; computed
+ports (`base + index`) are checked where the harness starts a coordinator. The case
+"budget ports: this host's ephemeral range does not reach the fixed test ports" reads the
+host's range (Linux, macOS; Windows reports the documented default and does not query it) and
+fails with an explanation on a host configured into the band. Port numbers in the sections
+above are historical (now 20000 lower); `lsof -iTCP:27600-27999` replaces `47810-47899`.
+
+**Production ports unchanged** (owner decision 2026-11-07): the shared coordinator stays on
+47631 and the local default on 47632 (`coord_wire.hpp`). Every client finds the shared
+coordinator by that number, so moving it would run two budgets side by side on one host until
+every tree had merged. The residual risk stays: an outgoing connection that happens to hold
+47631 delays a client's coordinator start until it closes (the client retries; it does not
+fail at once). `kCompatVersion` is unchanged: neither the wire nor any reservation, journal or
+recovery semantics changed. Windows can also exclude port ranges for Hyper-V/WSL
+(`netsh int ipv4 show excludedportrange tcp`); an exclusion over 27600–27999 would show as
+`BIND-FAILED` too and is not checked.
+
+**Repeat stability.** Two other causes made `ctest --repeat` fail independently of ephemeral
+ports and were fixed in the same package: the F3 handover and crash-handover cases now step
+the coordinator their requester started aside (`step_aside`, moved from F5 into
+`budget_proc_harness.hpp`) instead of leaving it on the port for its 30 s idle exit, and the
+probe's `silent` listener sets `SO_REUSEADDR` like the coordinator, because the previous run's
+coordinator leaves server-side TIME_WAIT connections on that port for 60 s.
+
+**Evidence** (`docs/orchestration/evidence/coord-ports-1/`): the old tree under a narrowed
+ephemeral range 47500–48499 (`--repeat until-fail:3`) failed 8 of 89 entries: four
+`BIND-FAILED` (47813, 47814, 47860, 47884), F3 silent on the TIME_WAIT bind, F4 N3 with "speaks
+another protocol" (consistent with a client connecting to itself on a free port inside the
+range; not traced), V3 and V4 on a coordinator first line the case does not print. This tree
+passed `ctest -j 4 --repeat until-fail:20` for the 92 entries of `anno_test_support_tests`
+under the same range and under the default range: 86 executed and passed 20 times each, 6 skip
+on Linux (F3 D2 and F4 N4 need the Windows/WSL meter; T5, H7, V1, V2 are opt-in). Windows and
+macOS were not run for this package.

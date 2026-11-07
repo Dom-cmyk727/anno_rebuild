@@ -1,0 +1,8 @@
+ip_local_port_range: ['32768', '60999']
+A: client local port (kernel-assigned) 42976; sockets: 57259->42976 ESTABLISHED | 42976->57259 ESTABLISHED
+   after client closed first: 57259->42976 CLOSE_WAIT | 42976->57259 FIN_WAIT2
+B: client local port 57934; peer closed first, then client: 35021->57934 TIME_WAIT
+A connected              -> BIND-FAILED 42976
+A client closed first    -> BIND-FAILED 42976
+B peer closed first      -> LISTENING 57934
+RESULT reproduced: a live kernel-assigned client socket blocks the bind

@@ -13449,3 +13449,5 @@ Branch `task/MAP-EXTRACT-1-x2`, frozen source `a1b38b3a` (everything after it is
 ## MAP-EXTRACT-2 (first Mac executor), started 2026-11-07
 
 **START.** Packet `docs/orchestration/tasks/map-extract-2.md` and `docs/re/mine-deposit-followups.md` read from `origin/main` d03e6fca. Branch `task/MAP-EXTRACT-2` created from `2f32437a` (the MAP-EXTRACT-1 REVIEW PENDING head; `task/MAP-EXTRACT-1-x2` is untouched). Identity base 135; 137 is reserved for parts T and Q; part A changes no behaviour. Host: 18 cores, 48 GiB, load about 2.4; jobs sized at 4 build jobs and 2 test processes. Order A, T, Q, G, E; QUESTIONs are written here and work continues.
+
+**PACKET CORRECTION noted (main 877ffa25).** Part T now pilots the early wood path: smelter 1017 (EISENERZ + HOLZ → EISEN) and toolsmith 1019 (EISEN + HOLZ → WERKZEUG), both stage 2C. The charcoal route (1035, 1034; stages 3D/3F) is in scope only if T0 shows the pilot can legally reach those stages; otherwise it stays inventory with a typed status. Second inputs and stages come from `docs/orchestration/gameplay-next-chain.md` bundle 5, and I re-derive them from `Anlagen.dat` in T0. Part A is unaffected.

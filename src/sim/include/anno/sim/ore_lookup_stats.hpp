@@ -19,6 +19,10 @@ struct OreLookupStats {
     std::uint64_t in_reach = 0;          ///< of them inside the reach table
     std::uint64_t ware_matches = 0;      ///< of those: an ore symbol of the mine's ware
     std::uint64_t deposits_examined = 0; ///< deposit-table entries compared (lookup and bind)
+    /// A mine step's re-lookup found no ore object in reach and fell back to the earlier search
+    /// among Island::deposits (driver.cpp). Zero on every original scene: every deposit there comes
+    /// from an ore object (docs/sim/iron-tools.md T2); only a synthetic world can raise it.
+    std::uint64_t relookup_fallbacks = 0;
 };
 
 } // namespace anno::sim

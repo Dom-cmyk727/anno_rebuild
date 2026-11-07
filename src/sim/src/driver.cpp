@@ -373,13 +373,20 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
             const Building& b;
             const BuildingType& type;
             bool deep;
-        } relook{island, ctx.types, b, *type, m->deep};
+            OreLookupStats* stats;
+        } relook{
+            island,  ctx.types,
+            b,       *type,
+            m->deep, ctx.transport_stats != nullptr ? &ctx.transport_stats->ore_lookup : nullptr};
         const MineRelookup relookup{
             [](void* p) -> std::optional<std::size_t> {
                 const Relook& rl = *static_cast<const Relook*>(p);
                 if (const auto bound =
                         bind_mine_deposit(rl.island, rl.types, rl.b, rl.type, rl.deep)) {
                     return bound;
+                }
+                if (rl.stats != nullptr) {
+                    ++rl.stats->relookup_fallbacks; // diagnostic only; bind's own counters stay out
                 }
                 // No ore object in reach. A world whose deposits carry no ore object (a synthetic
                 // fixture) keeps the earlier search among its deposits; on original data every

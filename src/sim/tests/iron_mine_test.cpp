@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -154,6 +155,66 @@ TEST_CASE("iron mine: D4 exhaustion of a shallow deposit and the short step and 
         REQUIRE(r.made[0] == 21);
     }
     CHECK(notices == 0);
+}
+
+struct CountingRelook {
+    int calls = 0;
+    std::size_t result = 1;
+};
+std::optional<std::size_t> counting_relook(void* p) {
+    auto& c = *static_cast<CountingRelook*>(p);
+    ++c.calls;
+    return c.result;
+}
+
+TEST_CASE("iron mine: D5 a take that exactly equals what is left re-looks up and one that leaves "
+          "something does not") {
+    const sim::ProductionType t = shallow_iron();
+    const sim::MineArea a{10, 10, 3, 4};
+    // remaining visible == rate (21): the step takes all of it (want >= remaining) and must look
+    // up again: a second deposit with plenty is available
+    {
+        std::vector<sim::Deposit> ds = {{"EISENERZ", 11, 11, sim::kDepositReserve + 21, true},
+                                        {"EISENERZ", 12, 12, sim::kDepositReserve + 102400, true}};
+        sim::Mine m;
+        m.deep = false;
+        m.deposit = 0;
+        CountingRelook c;
+        const sim::MineRelookup relook{&counting_relook, &c};
+        const sim::StepResult r = sim::mine_step(m, t, 500, ds, a, true, &relook);
+        CHECK(r.made[0] == 21);
+        CHECK(c.calls == 1);
+        CHECK(m.deposit == std::optional<std::size_t>{1});
+        CHECK(r.notice == 0); // the new deposit holds ore: no notice
+    }
+    // the control: one raw more than the rate is left (22): a full step that leaves something,
+    // no look-up
+    {
+        std::vector<sim::Deposit> ds = {{"EISENERZ", 11, 11, sim::kDepositReserve + 22, true},
+                                        {"EISENERZ", 12, 12, sim::kDepositReserve + 102400, true}};
+        sim::Mine m;
+        m.deep = false;
+        m.deposit = 0;
+        CountingRelook c;
+        const sim::MineRelookup relook{&counting_relook, &c};
+        const sim::StepResult r = sim::mine_step(m, t, 500, ds, a, true, &relook);
+        CHECK(r.made[0] == 21);
+        CHECK(c.calls == 0);
+        CHECK(m.deposit == std::optional<std::size_t>{0});
+    }
+    // and a short step (4 left) looks up once
+    {
+        std::vector<sim::Deposit> ds = {{"EISENERZ", 11, 11, sim::kDepositReserve + 4, true},
+                                        {"EISENERZ", 12, 12, sim::kDepositReserve + 102400, true}};
+        sim::Mine m;
+        m.deep = false;
+        m.deposit = 0;
+        CountingRelook c;
+        const sim::MineRelookup relook{&counting_relook, &c};
+        static_cast<void>(sim::mine_step(m, t, 500, ds, a, true, &relook));
+        CHECK(c.calls == 1);
+        CHECK(m.deposit == std::optional<std::size_t>{1});
+    }
 }
 
 // ---- layer 2: the original endless02 island 1, owner 8 (city 0), through PUBLIC commands --------
@@ -570,6 +631,172 @@ TEST_CASE("iron mine: the add-on pilot lowers a shallow deposit by what the mine
     REQUIRE(isle(w).deposits.size() == 1);
     CHECK(isle(w).deposits[0].remaining == worked);
     CHECK(mine_of(w, again.records.at(0).building).deposit == std::optional<std::size_t>{0});
+}
+
+TEST_CASE("iron mine: the re-lookup picks an existing larger candidate and not the first one") {
+    auto s = iron_world(true, false, 1000);
+    if (!s) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    sim::World w = s->w;
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    // mine 1 reaches both ores and binds (375,353); mine 2 reaches only (379,361) and binds it, so
+    // both deposits exist before the step under test
+    const sim::ApplyResult r1 = w.apply(build_cmd(1205, kSiteBoth, kSiteBothy));
+    const sim::ApplyResult r2 = w.apply(build_cmd(1205, 370, 361));
+    REQUIRE_MESSAGE(r1.ok(), sim::reject_name(r1.status));
+    REQUIRE_MESSAGE(r2.ok(), sim::reject_name(r2.status));
+    const sim::BuildingId id1 = r1.records.at(0).building;
+    REQUIRE(isle(w).deposits.size() == 2);
+    REQUIRE(mine_of(w, id1).deposit == std::optional<std::size_t>{0});
+    CHECK(isle(w).deposits[0].x == 375);
+    CHECK(isle(w).deposits[1].x == 379);
+    // the first ore is nearly spent; the second, a LATER candidate, holds more
+    sim::WorldTestAccess::islands(w)[1]->deposits[0].remaining = sim::kDepositReserve + 4;
+    sim::WorldTestAccess::islands(w)[1]->deposits[1].remaining = sim::kDepositReserve + 50000;
+    for (int i = 0; i < 400 && mine_of(w, id1).deposit == std::optional<std::size_t>{0}; ++i) {
+        w.advance(kAdvanceMs);
+    }
+    CHECK(mine_of(w, id1).deposit == std::optional<std::size_t>{1}); // not the first candidate
+    CHECK(isle(w).deposits.size() == 2);                             // nothing was appended
+    CHECK(stats.ore_lookup.relookup_fallbacks == 0);
+}
+
+TEST_CASE("iron mine: the re-lookup weighs the visible amount by deep or shallow") {
+    auto s = iron_world(true, false, 1000);
+    if (!s) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    sim::World w = s->w;
+    sim::Island& isl = *sim::WorldTestAccess::islands(w)[1];
+    // (375,353) flagged 600,000 raw: a shallow mine sees 190,400, a deep one 600,000;
+    // (379,361) unflagged 300,000 raw: both see 300,000
+    isl.deposits.clear();
+    isl.deposits.push_back({"EISENERZ", 375, 353, 600000, true});
+    isl.deposits.push_back({"EISENERZ", 379, 361, 300000, false});
+    const sim::BuildingType& ty = *test_must::must(s->types->find(sim::TypeId{1205}));
+    const sim::MineArea area{kSiteBoth, kSiteBothy, 3, 4};
+    const auto shallow = sim::find_ore_in_reach(isl, *s->types, ty, area, false);
+    const auto deep = sim::find_ore_in_reach(isl, *s->types, ty, area, true);
+    REQUIRE(shallow.has_value());
+    REQUIRE(deep.has_value());
+    CHECK(isl.ore_objects.at(*shallow).x == 379); // 300,000 beats 190,400
+    CHECK(isl.ore_objects.at(*deep).x == 375);    // 600,000 beats 300,000
+}
+
+TEST_CASE("iron mine: the relookup fallback to the deposits fires only without ore objects") {
+    auto s = iron_world(true, false, 1000);
+    if (!s) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    sim::World w = s->w;
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    const sim::ApplyResult r = w.apply(build_cmd(1205, kSiteA, kSiteAy));
+    REQUIRE(r.ok());
+    const sim::BuildingId id = r.records.at(0).building;
+    sim::WorldTestAccess::islands(w)[1]->deposits[0].remaining = sim::kDepositReserve + 4;
+    // control: with the ore objects present the fallback never fires
+    {
+        sim::World c = w;
+        sim::TransportStats cs;
+        c.set_transport_stats(&cs);
+        for (int i = 0; i < 100; ++i) {
+            c.advance(kAdvanceMs);
+        }
+        CHECK(cs.ore_lookup.relookup_fallbacks == 0);
+    }
+    // positive control of the counter: a world whose deposit has no ore object behind it
+    sim::WorldTestAccess::islands(w)[1]->ore_objects.clear();
+    for (int i = 0; i < 100; ++i) {
+        w.advance(kAdvanceMs);
+    }
+    CHECK(stats.ore_lookup.relookup_fallbacks >= 1);
+    CHECK(mine_of(w, id).deposit == std::optional<std::size_t>{0}); // the fallback kept the deposit
+}
+
+TEST_CASE("iron mine: no fallback on the original scenes (opt-in corpus)") {
+    const char* on = std::getenv("ANNO_IRON_CORPUS");
+    if (on == nullptr || *on == '\0') {
+        MESSAGE("skipping: set ANNO_IRON_CORPUS=1 to run every original scene 300 advances");
+        return;
+    }
+    auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::vector<std::filesystem::path> files;
+    for (const auto& e : std::filesystem::recursive_directory_iterator(o->dir / "Scenes")) {
+        if (e.is_regular_file() && e.path().extension() == ".sze") {
+            files.push_back(e.path());
+        }
+    }
+    std::sort(files.begin(), files.end());
+    std::size_t loaded = 0, mines = 0, bound = 0, steps_with_sink = 0;
+    std::uint64_t fallbacks = 0;
+    std::vector<std::string> failed;
+    for (const auto& f : files) {
+        auto resolved = anno::sim_load::load_scenario_with_links(
+            anno::test::read_file(f), o->templates, *o->types, o->cfg, {},
+            original_component::actor_free_units());
+        if (!resolved) {
+            failed.push_back(f.filename().string());
+            continue;
+        }
+        auto component =
+            original_component::import_only(resolved.value().loaded.spec, o->types, o->cfg);
+        if (!component) {
+            failed.push_back(f.filename().string());
+            continue;
+        }
+        auto created = sim::World::create(component.value().spec, o->types, o->cfg);
+        if (!created.ok()) {
+            failed.push_back(f.filename().string());
+            continue;
+        }
+        sim::World world = std::move(created).value();
+        if (world.script().state.context == sim::ScriptContext::Pending) {
+            static_cast<void>(world.initialize_scripts());
+        }
+        sim::TransportStats stats;
+        world.set_transport_stats(&stats);
+        for (int i = 0; i < 300; ++i) {
+            world.advance(kAdvanceMs);
+            ++steps_with_sink;
+        }
+        ++loaded;
+        fallbacks += stats.ore_lookup.relookup_fallbacks;
+        for (const auto& island : world.islands()) {
+            if (!island) {
+                continue;
+            }
+            for (const auto& city : island->cities) {
+                if (!city) {
+                    continue;
+                }
+                for (const auto& l : city->index.lists) {
+                    for (const auto& b : l.slots) {
+                        if (b) {
+                            if (const auto* m = std::get_if<sim::Mine>(&b->payload)) {
+                                ++mines;
+                                bound += m->deposit.has_value() ? 1U : 0U;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    MESSAGE("scenes " << files.size() << " loaded " << loaded << " (failed to load: "
+                      << failed.size() << ") advances " << steps_with_sink << " mines " << mines
+                      << " bound " << bound << " relookup fallbacks " << fallbacks);
+    CHECK(loaded > 0);
+    CHECK(fallbacks == 0);
 }
 
 } // namespace

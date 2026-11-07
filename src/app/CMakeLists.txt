@@ -184,13 +184,19 @@ if(ANNO_BUILD_TESTS)
         # viewer_wiring_expand_live_load's own comment above says its TIMEOUT already follows
         # opening_session_replay's budget for the same voyage (550 tiles out, one real founding);
         # under ASan it hit exactly the failure mode opening_session_replay's own fix above
-        # documents: viewer_wiring.py's internal ANNO_VIEWER_WIRING_WATCHDOG_S subprocess timeout
-        # (default 300 s) fires long before the outer CTest TIMEOUT does ("the window did not end
-        # within 300 s (watchdog)", W4-MAIN-2 D5 WSL-ASan rerun, 2026-11-07 -- this case was never
-        # run under ASan until that rerun added it to the lane's selection regex, so this gap was
-        # never previously observed). Scale it the same 5x as opening_session_replay.
+        # documents, in two steps found by reading the actual failure (never guessed): first,
+        # viewer_wiring.py's own ANNO_VIEWER_WIRING_WATCHDOG_S subprocess timeout (default 300 s)
+        # fired before the outer CTest TIMEOUT could ("the window did not end within 300 s
+        # (watchdog)"); once that was scaled, the run (390 s) still failed, this time with "window
+        # exit 1" although script.log showed every reached line passing -- because the app's own
+        # ANNO_VIEW_QUIT_S force-quit (default 240 s, main.cpp: status=1 when
+        # `!script->done()`) fired before the script reached its last lines (the negative-control
+        # refusal checks and the final `quit`), so the window closed mid-script, not after it.
+        # This case was never run under ASan until the D5 WSL-ASan rerun (2026-11-07) added it to
+        # the lane's selection regex, so neither gap was previously observed. Scale both the same
+        # 5x as opening_session_replay.
         set_tests_properties(viewer_wiring_expand_live_load PROPERTIES
-          TIMEOUT 5400 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500")
+          TIMEOUT 5400 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500;ANNO_VIEW_QUIT_S=1200")
       endif()
     endif()
   endif()

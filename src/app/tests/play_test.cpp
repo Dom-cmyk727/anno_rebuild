@@ -965,8 +965,11 @@ TEST_CASE("play: live_inspection hides a stale answer once the hover moves, land
     using anno::sim::TileXY;
 
     PlaySnapshot snap;
-    snap.inspection = std::make_shared<const BuildingInspection>(
-        BuildingInspection{.tile = TileXY{10, 20}, .kind = "Farm", .status = "out=1.00t"});
+    BuildingInspection insp;
+    insp.tile = TileXY{10, 20};
+    insp.kind = "Farm";
+    insp.status = "out=1.00t";
+    snap.inspection = std::make_shared<const BuildingInspection>(insp);
 
     // The tile request_inspect last answered is still the one hovered: show it.
     CHECK(live_inspection(snap, true, TileXY{10, 20}) != nullptr);

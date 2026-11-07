@@ -109,7 +109,7 @@ std::optional<std::size_t> same_deposit(void*) {
     return std::size_t{0};
 }
 
-TEST_CASE("iron mine: D4 exhaustion of a shallow deposit, the short step and the one notice") {
+TEST_CASE("iron mine: D4 exhaustion of a shallow deposit and the short step and the one notice") {
     const sim::ProductionType t = shallow_iron();
     const sim::MineArea a{10, 10, 3, 4};
     std::vector<sim::Deposit> ds = {{"EISENERZ", 11, 11, sim::kDepositReserve + 102400, true}};
@@ -274,7 +274,7 @@ find_site(const sim::World& base, std::uint32_t type, sim::Reject want) {
 }
 
 TEST_CASE("iron mine: a shallow iron mine places on a legal site and a deep one needs its "
-          "research; gold and gems get a typed refusal") {
+          "research and gold and gems get a typed refusal") {
     auto s = iron_world(true, false, 1000);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -365,7 +365,7 @@ TEST_CASE("iron mine: a shallow iron mine places on a legal site and a deep one 
     }
 }
 
-TEST_CASE("iron mine: a stage-locked 1205 is refused next to the eligible control, and the dry run "
+TEST_CASE("iron mine: a stage-locked 1205 is refused next to the eligible control and the dry run "
           "equals the live apply") {
     auto locked = iron_world(false, false, 3);
     auto live = iron_world(true, false, 1000);
@@ -475,8 +475,9 @@ TEST_CASE("iron mine: a short deposit rebinds to an ore no mine has bound and ma
     }
 }
 
-TEST_CASE("iron mine: with only the spent ore in reach the mine keeps it, raises the notice once, "
-          "idles and never recovers") {
+TEST_CASE(
+    "iron mine: with only the spent ore in reach the mine keeps it and raises the notice once and "
+    "idles and never recovers") {
     auto s = iron_world(true, false, 1000);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -537,7 +538,7 @@ TEST_CASE("iron mine: with only the spent ore in reach the mine keeps it, raises
     }
 }
 
-TEST_CASE("iron mine: the add-on pilot lowers a shallow deposit by what the mine made, and a "
+TEST_CASE("iron mine: the add-on pilot lowers a shallow deposit by what the mine made and a "
           "rebuild does not refill it") {
     auto s = iron_world(true, false, 1000);
     if (!s) {

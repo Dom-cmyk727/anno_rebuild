@@ -13,6 +13,8 @@
 
 #include <anno/test/budget.hpp>
 
+#include "test_ports.hpp"
+
 namespace {
 
 std::atomic<std::uint64_t> g_free{0};
@@ -313,6 +315,7 @@ TEST_CASE("two threads of one file client both reserve" * doctest::test_suite("b
     // The file lock is per process. Both threads share one handle; without an
     // in-process mutex the second LockFileEx waits forever.
     reset(100);
+    const anno::test::ports::FileClientPort port;
     std::random_device device;
     const auto path = std::filesystem::temp_directory_path() /
                       ("anno1503-budget-threads-" + std::to_string(device()));
@@ -344,6 +347,7 @@ TEST_CASE("two threads of one file client both reserve" * doctest::test_suite("b
 
 TEST_CASE("two file clients cannot reserve the same free bytes" * doctest::test_suite("budget")) {
     reset(100);
+    const anno::test::ports::FileClientPort port;
     std::random_device device;
     const auto path =
         std::filesystem::temp_directory_path() / ("anno1503-budget-" + std::to_string(device()));

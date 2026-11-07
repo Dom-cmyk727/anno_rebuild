@@ -47,15 +47,16 @@ using anno::test::child::set_env;
 using anno::test::child::sibling;
 using namespace std::chrono_literals;
 
-// Ports of this file: 47810–47817 (the F2 file uses 47700–47760).
-constexpr std::uint16_t kPortAccept = 47810;   // (a) two compatible builds
-constexpr std::uint16_t kPortIncompat = 47811; // (b) incompatible version, deadline
-constexpr std::uint16_t kPortCancel = 47812;   // (b) exact build, cancellation
-constexpr std::uint16_t kPortDrain = 47813;    // (c) graceful drain and handover
-constexpr std::uint16_t kPortCrash = 47814;    // (c) crash handover
-constexpr std::uint16_t kPortMeter = 47815;    // (d) real meter child in WSL
-constexpr std::uint16_t kPortSilentOk = 47816; // silent, then served
-constexpr std::uint16_t kPortSilent = 47817;   // silent, deadline
+// Ports of this file: 27810–27817 (the F2 file uses 27700–27760); below every default ephemeral
+// port range, see test_ports.hpp.
+constexpr std::uint16_t kPortAccept = ports::fixed(27810);   // (a) two compatible builds
+constexpr std::uint16_t kPortIncompat = ports::fixed(27811); // (b) incompatible version, deadline
+constexpr std::uint16_t kPortCancel = ports::fixed(27812);   // (b) exact build, cancellation
+constexpr std::uint16_t kPortDrain = ports::fixed(27813);    // (c) graceful drain and handover
+constexpr std::uint16_t kPortCrash = ports::fixed(27814);    // (c) crash handover
+constexpr std::uint16_t kPortMeter = ports::fixed(27815);    // (d) real meter child in WSL
+constexpr std::uint16_t kPortSilentOk = ports::fixed(27816); // silent, then served
+constexpr std::uint16_t kPortSilent = ports::fixed(27817);   // silent, deadline
 // The metadata-only pin has no connecting client or restart. Let the OS bind a
 // free port so an unrelated listener or ephemeral connection cannot break it.
 constexpr std::uint16_t kPortPin = 0;
@@ -260,7 +261,10 @@ TEST_CASE("F3 (D1, handover): a drained busy coordinator steps aside and the req
     const auto holds = open_hold_bytes(journal);
     CHECK(contains_value(holds, 80));
     CHECK_FALSE(contains_value(holds, 50));
-    requester.send("q\n");
+    // The requester's coordinator would hold the port until its 30 s idle exit, and a repeat of
+    // this case (ctest --repeat) could not start its own coordinator there: step it aside.
+    quit_and_wait(requester);
+    step_aside(kPortDrain, client_vars(kPortDrain, "f3-d", "5"), budget_path);
 }
 
 TEST_CASE("F3 (D1, crash handover): a journaled promise of a live owner is still counted by the "
@@ -322,7 +326,10 @@ TEST_CASE("F3 (D1, crash handover): a journaled promise of a live owner is still
     const std::string result = want(requester, "RESULT", 60000ms, &seen);
     INFO("requester output: " << seen);
     CHECK(has(result, "RESULT 1"));
-    requester.send("q\n");
+    // As in the handover case: the successor the requester started steps aside once idle.
+    quit_and_wait(requester);
+    REQUIRE(eventually([&] { return !holder.running(); }, 10000ms));
+    step_aside(kPortCrash, client_vars(kPortCrash, "f3-e", "5"), budget_path);
 }
 
 TEST_CASE("F3 (D2): coordinator death with the real meter child: no inherited descriptor, the port "

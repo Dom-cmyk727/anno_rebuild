@@ -31,6 +31,8 @@
 #include <unistd.h>
 #endif
 
+#include "test_ports.hpp"
+
 namespace {
 
 std::atomic<std::uint64_t> g_free{100};
@@ -274,6 +276,7 @@ TEST_CASE("unknown free memory does not admit the request" * doctest::test_suite
 }
 
 TEST_CASE("a timed recheck does not admit until the budget fits" * doctest::test_suite("budget")) {
+    const anno::test::ports::FileClientPort port;
     g_free = 50;
     g_private = 0;
     const auto path = work_file("recheck.bin");
@@ -307,6 +310,7 @@ TEST_CASE("a timed recheck does not admit until the budget fits" * doctest::test
 
 TEST_CASE("cancelling a waiter does not release the bytes it is waiting on" *
           doctest::test_suite("budget")) {
+    const anno::test::ports::FileClientPort port;
     g_free = 100;
     g_private = 0;
     g_f1_waits = 0;

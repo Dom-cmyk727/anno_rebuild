@@ -55,10 +55,11 @@ finds exactly two virtual calls made directly on the object: `call dword ptr
 For the `Mine` vtable these slots resolve (direct `.rdata` read) to `+0x7c =
 0x1006e310` (Mine-specific) and `+0x78 = 0x10071c80` (shared/base-class).
 Both were re-disassembled in full:
-- `0x1006e310` only writes `word` values to `[esi+0x18]` and `[esi+0x1c]`
-  (the same two fields the constructor zeroes) — a position/rotation setter,
-  consistent with the earlier pass's characterization of the Mine-specific
-  override cluster. No write to `[esi+0x24]` or any offset near it.
+- `0x1006e310` is the mine's own save-record reader (corrected by the
+  orchestrator check below; this pass first read it as a position/rotation
+  setter). It reads 10 bytes through the stream's slot `+0x4` and sets
+  `[esi+0x18]`, the `+0x20` flag (through the mine's slot `+0xc8`) and
+  `[esi+0x1c]`. No write to `[esi+0x24]` or any offset near it.
 - `0x10071c80` is a pure getter: it reads fields from `this` (`+6`, `+8`,
   `+0xc`, plus two virtual calls through `this+0x14`'s vtable slots `+0x50`
   and `+0x54`) and writes them into the *caller's* out-parameter buffer; it
@@ -82,6 +83,12 @@ a saved pointer. Our sim instead keeps the saved bound index (or its absence)
 across a reload and never re-runs the lookup. This is a real behavioral
 difference between the two, stated here as a finding, not a recommendation —
 whether or how to change the sim to match is not this note's call.
+
+**Limits on this implication, from the orchestrator check below.** The
+lookup runs only in the attach call whose argument is a kind-`0x1400`
+object. Its result at load also depends on the island's ore objects already
+existing when the building records are read; the loader's chunk order was
+not checked (**open**).
 
 ## Q2 — AI ore check (FuncB)
 
@@ -154,7 +161,64 @@ Re-checked directly in this pass (PE header `Machine` field and
 (architecture mismatch)** — HE's main module is a from-scratch x86-64
 recompilation, not a binary-compatible build, so none of the above addresses
 or instruction bytes transfer to it. `AnnoWeltAddOn.dll`, however, is still
-32-bit x86 (2019, a different, later 32-bit build than GOG's 2006 one) —
-**open**, not compared in this pass, and worth flagging explicitly as the one
-HE binary that might actually be comparable to GOG 2.0.0.5 by the same
-capstone/pefile technique used here, for a future pass.
+32-bit x86 (2019) — **open**, not compared in this pass, and worth flagging
+explicitly as the one HE binary that might actually be comparable to GOG
+2.0.0.5 by the same capstone/pefile technique used here, for a future pass.
+The GOG 2.0.0.5 install has no `AnnoWeltAddOn.dll`, so which GOG module it
+corresponds to is part of that open question.
+
+## Orchestrator check, 2026-11-07
+
+The Claude Code orchestrator re-read the Q1 chain in GOG `AnnoWelt.dll`
+(read-only: objdump in Intel syntax and a PE section reader for the function
+tables). **Verified:**
+
+- **The factory tail.** `mov eax,[ebp]` at `0x10024659`, `mov ecx,ebp` at
+  `0x1002465d` and `call [eax+0x28]` at `0x1002465f` (argument `[esp+0x28]`);
+  then `call [edx+0x28]` at `0x100246be` (argument `[edi+0x54]`). No branch
+  lies between them. Every case of the factory's class switch jumps to
+  `0x1002463a` or `0x10024647` and so reaches this tail, the mine case
+  (constructor call `0x10024497`, jump `0x1002449c`) included.
+- **The mine's function table `0x100c8990`:** `+0x28` = `0x1006e270`
+  (attach), `+0x78` = `0x10071c80`, `+0x7c` = `0x1006e310` (record reader),
+  `+0x80` = `0x1006e380` (record writer).
+- **Attach runs the lookup only for a kind-`0x1400` argument.** `0x1006e270`
+  asks its argument for its kind (the argument's slot `+0x14`). For `0x1400`
+  it calls the base attach `0x100732d0` and then the lookup `0x1006ddf0`
+  (`0x1006e299`). For `0x700` it sets the mine's `+0x21` flag and calls only
+  the base attach; for any other kind it calls only the base attach. The
+  base attach stores a kind-`0x1400` argument at `this+0x10`.
+- **The call that counts comes after the position is set.** The lookup reads
+  the mine's `+0x6`/`+0x8` and the low two bits of `+0xc`. The first
+  slot-`+0x28` call comes before the factory sets the position (`[edx+0x50]`
+  at `0x1002467c`, from the record's words at `+0x2`/`+0x4`); the second
+  comes after it. Which of the two arguments is the kind-`0x1400` object at
+  run time is not shown statically: the reading that `[edi+0x54]` is the city
+  stays **one pass**.
+- **The original never saves the binding.** The record writer `0x1006e380`
+  writes 10 bytes holding `+0x18`, the `+0x20` flag and `+0x1c`; the reader
+  `0x1006e310` reads the same 10 bytes. Neither touches `+0x24`. In the mine
+  class code (`0x1006dd00`–`0x1006e500`) the only writers of `+0x24` are the
+  constructor (`0x1006e478`, zero) and the lookup (`0x1006dea8`).
+- **Every lookup overwrites the binding, and the step repeats it.** The
+  lookup has no exit before its store at `0x1006dea8`, so each call replaces
+  `+0x24` with what the deposit find returns, possibly nothing. The mine step
+  `0x1006def0` jumps past its work while `+0x24` is empty
+  (`0x1006df59`–`0x1006df5e`) and calls the lookup again while it is set
+  (`0x1006dfb4`).
+
+So in the original a mine's binding is what the last lookup found: at
+construction (placement and load alike) and on every step while it is
+bound. Once a lookup finds nothing, the mine stays unbound until it is
+constructed again, and loading a save constructs it again.
+
+**Q4 table entries, verified:** `0x100c7588` and `0x100c761c` both hold
+`0x10063490`.
+
+**Still open after this check:**
+1. The loader's chunk order: do the island's ore objects exist when the
+   mine records are read?
+2. What the deposit find filters on (remaining amount, the discovery mask),
+   which decides whether a lookup at load can find ore that the lookup at
+   placement did not (Q4).
+3. Which run-time object is the kind-`0x1400` argument.

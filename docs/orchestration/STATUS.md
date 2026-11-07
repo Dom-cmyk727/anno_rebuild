@@ -4,7 +4,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-07 afternoon, by the Claude Code orchestrator: W4-MAIN-2 parts S, A, B and D reviewed; part
+**Last updated:** 2026-11-07 evening, by the Claude Code orchestrator: two owner-dispatched research notes checked and
+merged (`docs/re/mine-deposit-followups.md`, `docs/re/complogic-ai-behavior.md`); the mine note answers the first Mac's
+open save-load question. Earlier that afternoon: W4-MAIN-2 parts S, A, B and D reviewed; part
 A (main's 18 real-file tests) merged into `main` as `5e7b13c6`, game-file run pending; the first Mac's faithful mine
 default recorded (`task/MAP-EXTRACT-1-x2`, REVIEW PENDING). Earlier on
 2026-11-07: W4-SETTLEMENT-1 reviewed, changes requested; 18 real-file test failures found on `main`; W4-MAIN-2 released
@@ -135,11 +137,24 @@ mirror still requires the owner/Windows sync after main publication.
       it received.
   - **NOT_RUN:** MSVC and native Windows/Linux with the original files, Release, the full sanitizer campaign, GOG
     versus History Edition.
-  - **Open in the original:** what loading a save does to an unbound mine; whether the AI uses the lookup before
-    placing; the quarry questions; the discovery-mask getter.
+  - **Answered in the original since then (research note, checked by the orchestrator, on `main`):**
+    [`docs/re/mine-deposit-followups.md`](../re/mine-deposit-followups.md).
+    - The original never saves a mine's deposit binding; its 10-byte mine record has no such field.
+    - Each construction, at placement and at load alike, runs the deposit lookup again. The mine step repeats it while
+      the mine is bound.
+    - So a reloaded mine binds whatever the lookup finds at load. The branch keeps the saved binding, and an unbound
+      mine stays unbound across a reload.
+    - Still open: the loader's chunk order, and what the lookup filters on.
+  - **Still open in the original:** whether the AI uses the lookup before placing; the quarry questions; the
+    discovery-mask getter.
   - Hunting remains PARTIAL and outside this packet.
-- **Next:** acceptance review and the state135 consolidation into `main`. After that push, the game-file run on the
-  Windows PC (owner rule).
+- **Next (proposed, not yet dispatched):**
+  1. The lane checks the note's save-load finding independently and folds it into OQ-552/553/554 and §22 on its
+     branch.
+  2. If the finding holds, it sends the resume behaviour as a QUESTION for the owner: no code before the owner
+     decides.
+  3. Then acceptance review and the state135 consolidation into `main`, then the game-file run on the Windows PC
+     (owner rule).
 - **Branch:** `task/MAP-EXTRACT-1-x2`, head `2f32437a` (a docs-only closeout after `bd725d4e`), clean tree; the lane
   is idle. It contains `task/MAP-EXTRACT-1-main`
   (`3d9dbafe`) and the earlier NEEDS candidate `5df34b38` (`task/MAP-2-needs2-main`). None of these is merged into

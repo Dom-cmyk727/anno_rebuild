@@ -1,4 +1,4 @@
-# `CompLogic.dll` AI behaviour and the HE RTTI cross-reference (2026-11-08)
+# `CompLogic.dll` AI behaviour and the HE RTTI cross-reference (2026-11-07)
 
 Read-only research write-up. Continues [`complogic.md`](complogic.md) (the
 authoritative, address-numbered inventory of `CompLogic.dll`/
@@ -37,8 +37,9 @@ are compiled for x86-64 (PE32+, machine `0x8664`, timestamps 2020-08-05),
 against GOG 2.0.0.5's 32-bit x86 (2006). The sibling mine-deposit follow-up
 independently re-confirmed this PE-header fact directly (**verified** there)
 and additionally found that **`AnnoWeltAddOn.dll` in the HE install is still
-32-bit x86** (`0x14c`, 2019-09-27, size 1,698,744 — a different, later 32-bit
-build than GOG's 2006 one, not yet compared to it). That is a real, concrete
+32-bit x86** (`0x14c`, 2019-09-27, size 1,698,744, not yet compared with any
+GOG module; the GOG 2.0.0.5 install has no file of that name, so which GOG
+module it corresponds to is part of the question). That is a real, concrete
 lead for a future pass: it may be the one HE binary actually comparable to
 GOG 2.0.0.5 by the same capstone/pefile byte-level technique used throughout
 this project, rather than needing an independent x64 analysis. Not pursued
@@ -424,3 +425,22 @@ Cross-referencing §8 directly (not editing it):
 9. Disassemble `CBewertung`'s located vtable slot and trace its callers —
    it was only name-matched against the mine-placement research's "FuncA"
    hypothesis, not confirmed.
+
+## Orchestrator check, 2026-11-07
+
+The Claude Code orchestrator spot-checked three claims, read-only; the rest of
+this note keeps its own tags.
+
+- **HE's CompLogic modules are x86-64 and carry RTTI; GOG's carry none.**
+  Verified: HE `CompLogic.dll` and `CompLogicClassic.dll` are `pei-x86-64`
+  (objdump). The `.?AV` type-name prefix occurs 21 times in HE
+  `CompLogic.dll`, 20 times in HE `CompLogicClassic.dll` (one fewer, as
+  Part A's Classic diff says) and 0 times in either GOG module.
+- **The pirate `TYP` table.** Verified: `0x10054710` jumps through the table
+  at `0x10054784`. Entries 0 and 6 store 35000/30000 into `+0xaf0`/`+0xaf4`
+  (`0x10054726`), 1 and 5 store 40000/30000 (`0x10054754`), 2 and 4 store
+  45000/35000 (`0x1005473d`), 3 and 7 store 50000/40000 (`0x1005476b`). This
+  matches the table in Part B. That the scenario key `KAMPFTYP` feeds this
+  `TYP` stays **one pass**.
+- **The date in the title** was corrected from 2026-11-08 to the day of the
+  pass, 2026-11-07.

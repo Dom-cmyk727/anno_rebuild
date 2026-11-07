@@ -820,6 +820,14 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
                 message_ = "no load: the quantity is zero";
                 return out;
             }
+            if (plan->goods == 0) {
+                // The hold is empty and the source warehouse has no stock of any real good
+                // (goods index 0 is the sim's "empty" sentinel): there is nothing to load. Refuse
+                // here with the UI's own message instead of sending a LoadCmd for the sentinel
+                // (W4-MAIN-2 review D finding 4).
+                message_ = "no load: the warehouse has no stock to load";
+                return out;
+            }
             sim::LoadCmd cmd;
             cmd.ship = ship->id;
             cmd.warehouse = plan->warehouse;

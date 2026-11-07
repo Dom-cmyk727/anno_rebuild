@@ -586,6 +586,35 @@ TEST_CASE("controls: loading (developer adapter) asks for a hold, source and qua
     CHECK(f.ui.message().find("no warehouse") != std::string::npos);
 }
 
+TEST_CASE("controls: loading an empty hold from a warehouse with no stock at all is refused, not "
+          "sent as the sentinel good (W4-MAIN-2 review D finding 4)") {
+    Fixture f;
+    f.view.ships[0].holds = {{0, 0}}; // the only hold is empty
+    app::CityView city;
+    city.ref = sim::CityRef{sim::IslandId{0}, sim::CityNo{0}};
+    city.owner = sim::PlayerId{0};
+    city.name = "Fairbenks";
+    app::WarehouseView wh;
+    wh.id = sim::BuildingId{(std::uint64_t{0} << 32) + 1};
+    wh.type = sim::TypeId{1302};
+    wh.tile = sim::TileXY{8, 8};
+    wh.w = 4;
+    wh.h = 4;
+    city.warehouse = wh;
+    city.stock_88.assign(64, 0); // every real good is at 0: nothing to load
+    city.capacity_88 = 200 * 256;
+    f.view.cities = {city};
+    f.click(app::PointerButton::Left, 100, 100);
+    f.key(app::OpeningKey::Load);
+    REQUIRE(f.ui.mode() == app::OpeningMode::Load);
+    const auto plan = f.ui.load_plan(f.feed());
+    REQUIRE(plan.has_value());
+    CHECK(plan->goods == 0); // the empty sentinel: no real good resolved
+    const auto r = f.key(app::OpeningKey::Send);
+    CHECK(r.commands.empty());
+    CHECK(f.ui.message().find("no stock") != std::string::npos);
+}
+
 TEST_CASE("controls: a vanished ship drops the selection and the mode, modes exclude each other") {
     Fixture f;
     f.click(app::PointerButton::Left, 100, 100);

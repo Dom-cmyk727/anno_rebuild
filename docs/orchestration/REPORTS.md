@@ -15317,3 +15317,100 @@ completion. No sim or `src/sim` change in this checkpoint (rule 0.2).
 
 Continue into C4's small `DevInput` extension (arming an arbitrary `TypeId`) and the first HUD
 element draws, pushing at the next real checkpoint. H/C/M/V/K/E remain open; this is not a stop.
+
+## W4-UI-2 — H1/C1 CPU reference path, exact pixel match — 2026-11-07 — status: IN PROGRESS
+
+Continuing from the previous checkpoint. This one delivers H1/C1's CPU reference composition
+(ADR 0004's "Rendering" promise: a CPU path checked pixel by pixel against the oracle) and, along
+the way, finds and fixes a real crash in the first engine code ever to decode a HUD/construction
+chrome texture. Still not a claim that H or C is finished — see "What's still open" below.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`33b1d15e`**, pushed (on top of `bf3a2f79`). Worktree:
+  `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **`anno::app::compose_screen`** (`src/app/include/anno/app/ui_mock.hpp`,
+   `src/app/src/ui_mock.cpp`): a line-by-line C++ mirror of the UI.1 Python oracle's
+   `tools/ui_layout.py compose_screen` — the same nine screens (`hud_idle` and the eight
+   `construction_<category>` names), the same element blit order, the same tab-frame id overrides
+   per screen kind, the same construction-cell icon (`thumb_tex + 3*(row*4+col)`) and lock
+   (`NO_KLICK`) logic, reading real `.tex` files through the existing
+   `formats::tex::TexFile`/`assets::to_rgba` decoders (the same ones the GPU sprite atlas already
+   uses for buildings and units, `gpu.cpp` `pack_image`). Not an independent design: a divergence
+   from the oracle here would be a bug to fix, not a second opinion to reconcile.
+2. **`anno_ui_mock`** (`src/app/src/ui_mock_main.cpp`): a small CLI (`--layout --screen --game-dir
+   --out`) that calls `compose_screen` and writes the result with the project's existing
+   `anno::app::write_png`.
+3. **New CTest `ui_mock_matches_oracle`** (`tools/test/ui_mock_compare.py`): for each of the nine
+   screens, runs the Python oracle's own `compose_screen` and the new `anno_ui_mock` binary against
+   the same `data/ui/` layout and the same real game files, then diffs the two images pixel by
+   pixel (an exact-match check, stronger than the 0.08 fuzzy sprite-SAD tolerance the original's
+   own screenshots need — this comparison has no live content, digits or water to tolerate).
+   **Result: every one of the nine screens matches the oracle exactly — 0 of 786 432 pixels differ,
+   on `hud_idle` and all eight construction categories.** Confirmed twice (once under `ctest -R
+   ui_mock_matches_oracle`, once invoked directly).
+4. **A real bug, found and fixed, not routed around.** The first run segfaulted (exit
+   3221225477 = `STATUS_ACCESS_VIOLATION`) inside `assets::to_rgba` the moment it tried to decode
+   `fenster.tex` id 2 (`WELTKARTE`, the minimap frame) — the very first HUD/construction chrome
+   texture any engine code has ever decoded (`docs/re/ui.md`'s own status line: UI.1 was
+   "Reverse-engineering and specification only; no engine code" until this checkpoint).
+   - **Root-caused, not guessed at or retried into silence**: added targeted `fprintf` tracing,
+     narrowed the crash to inside `assets::to_rgba` itself (confirmed `anno-dump tex` on the same
+     file/id decodes cleanly via `Texture::decode()` alone, ruling out the decoder); then recognised
+     that `formats::tex::Texture::body` / `Palette::entries` are `Bytes` — `std::span<const
+     uint8_t>`, **non-owning** — views into the buffer `TexFile::parse` was called with. My
+     `TexCache::file_of` read the file into a *local* `std::vector<uint8_t>` that went out of scope
+     the moment the function returned, leaving every span inside the cached, returned `TexFile`
+     dangling. `to_rgba`'s palette-RGB read through `Palette::entries` was the first place anything
+     actually dereferenced one of those dangling spans.
+   - **Fixed** by keeping the raw byte buffer alive alongside the parsed `TexFile` (a new
+     `LoadedTex{bytes, file}` pair, both owned by the same cache entry) — `std::vector`'s move
+     doesn't relocate its heap buffer, so moving the already-read bytes into the cache entry after
+     parsing keeps every span inside the parsed structure valid.
+   - **Documented the footgun at its source** (`src/formats/include/anno/formats/bytes.hpp`, the
+     `Bytes` alias itself) so the next caller of this project-wide zero-copy-parsing convention
+     doesn't repeat it.
+5. **Full regression + gates, after the fix**: `anno_app_tests.exe` with the real game files,
+   **237/237 test cases, 60 388/60 388 assertions**; `tools/ui_layout.py self-test` (28 checks),
+   `check-files --root .`, `validate --layout data/ui --game-dir <game/app>` — all `ok`;
+   `clang-format` 23.1.3 clean on every new/changed file; **the WSL gate's warnings check**
+   (`tools/check_unix_warnings.sh`, GCC 13 and Clang 18, with and without `ANNO_VIEWER_GPU`, 367 and
+   71 files respectively) — **all four passes clean**.
+
+### What H/C still need (unchanged scope, now with a working CPU path underneath)
+
+- **H2-H4 / C2-C6 remain**: reading live gold/residents/build-goods from the published snapshot
+  into the composed frame (today `compose_screen` draws the *idle* chrome only, with the fixed
+  tab-frame overrides the oracle itself uses — no live numbers yet); the GPU path (today only the
+  CPU path exists — R1's "a GPU path and a CPU reference path, compared pixel by pixel" still needs
+  its first half); wiring this composition into the live window (`viewer.cpp`) instead of a
+  standalone CLI; input (arming a cell, placement preview, rotation/cancel, `BuildCmd`/`DemolishCmd`
+  through `DevTool`/`DevInput`, which today can only cycle a fixed type list by index — still not
+  made); anchoring at other window sizes (H3, waits on R3/F3); the three negative controls on the
+  real pixel-test harness (H4 — this checkpoint's exact-match test has no mutation cases yet,
+  unlike the oracle's own `negative_control_results`).
+- **M, V, K, E**: unchanged from the previous checkpoint — all still open, all still depend on more
+  of H/C existing first.
+
+### Decisions and reasoning
+
+1. **The CPU path is built, and proven, before the GPU path.** ADR 0004 names both; building the
+   GPU path against an unverified CPU path would risk checking one guess against another. The CPU
+   path is now independently proven correct (exact match against the oracle), so the GPU path's own
+   pixel test (H4) has something trustworthy to compare against once it exists.
+2. **The crash was root-caused to a specific, named bug in new code, not attributed to the toolchain
+   or "flakiness."** Per the project's standing evidence discipline: a crash gets isolated with
+   real tracing and a specific fix, or it gets reported as unresolved — never patched over by
+   retrying or by avoiding the code path that triggers it.
+3. **The lifetime fix is documented where future callers will actually see it** (at `Bytes`'s own
+   definition), not only in this report, since the same mistake is available to any future caller of
+   the same zero-copy parsing convention.
+
+### Next
+
+C4's `DevInput` extension (arming an arbitrary `TypeId` by construction-menu cell, not just cycling
+the fixed developer-tool list) and wiring `compose_screen`'s draws into the live window. H/C/M/V/K/E
+remain open; continuing, not stopping.

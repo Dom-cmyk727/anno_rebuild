@@ -218,3 +218,39 @@ TEST_CASE("salt identity135: real133 and real134 archives refuse, each with its 
     CHECK(sim::World::load(n133, f.types.registry).error() !=
           sim::World::load(n134, f.types.registry).error());
 }
+
+TEST_CASE("iron identity137: real133, real134 and real135 archives refuse, each with its own "
+          "diagnostic") {
+    // MAP-EXTRACT-2 part T allocates 137 (136 belongs to the route lane). The 135 native is the
+    // counted blob of the committed 135 g2 recording, extracted unchanged (legacy135/g2.save).
+    const auto f = script_test::make();
+    const auto bytes_of = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE_MESSAGE(in.good(), path.string());
+        return std::vector<std::uint8_t>{std::istreambuf_iterator<char>(in), {}};
+    };
+    const auto base = std::filesystem::path(ANNO_FIXTURES_DIR) / "sim";
+    const auto n133 = bytes_of(base / "expand1/legacy133/g2.save");
+    const auto n134 = bytes_of(base / "salt1/legacy134/g2.save");
+    const auto n135 = bytes_of(base / "salt1/legacy135/g2.save");
+    for (const auto& [bytes, version] :
+         {std::pair{&n133, 133}, std::pair{&n134, 134}, std::pair{&n135, 135}}) {
+        const auto refused = sim::World::load(*bytes, f.types.registry);
+        REQUIRE_FALSE(refused.ok());
+        CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
+                                     " is not supported (this build reads 137)");
+    }
+    // the recordings of the three predecessors: the replay header carries the identity
+    for (const char* rel : {"econbook1/current133/g2.log", "expand1/current134/g2.log",
+                            "salt1/current135/g2.log"}) {
+        const auto decoded = sim::read_log(bytes_of(base / rel));
+        REQUIRE_FALSE(decoded.ok());
+        CHECK(decoded.error() ==
+              "stream (byte 24): replay state stream version differs from this build's");
+    }
+    // the diagnostics differ (a 135 native is not reported as 134 or 133)
+    CHECK(sim::World::load(n135, f.types.registry).error() !=
+          sim::World::load(n134, f.types.registry).error());
+    // the current 137 recording decodes
+    CHECK(sim::read_log(bytes_of(base / "iron2/current137/g2.log")).ok());
+}

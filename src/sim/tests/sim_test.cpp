@@ -616,7 +616,7 @@ TEST_CASE("state_hash relational properties") {
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
     CHECK(sim::World().state_hash() ==
-          0x2d31af754be8fa05ULL); // ECONBK1 empty_world; independent sim_stream.py
+          0xe461d5eb0bf947b3ULL); // ECONBK1 empty_world; independent sim_stream.py
     CHECK(sim::kStateHashVersion == 137);
     CHECK(sim::kPrngTimelineVersion == 5);
 }

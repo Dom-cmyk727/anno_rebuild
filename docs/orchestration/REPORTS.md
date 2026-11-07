@@ -14032,3 +14032,177 @@ uncommitted work in either.
 **Independent review: not claimed here** — pending the owner, as instructed.
 
 Tested head: `71d32509`. Pushing next, then stopping.
+
+## W4-SETTLEMENT-1 — W7 review changes-requested package — 2026-11-07 — status: FINISHED
+
+The 2026-11-07 W7 review (`docs/orchestration/reviews/2026-11-07-w4-settlement-1-w7.md` on main
+`dbb22306`) returned CHANGES REQUESTED against head `384df19d`: one blocker (clang-format), items
+2-8 of the branch findings, and item 9 (follow-up, done now on the owner's explicit instruction).
+Fixed in 5 commits, one per item, plus 2 incidental fixup commits caught by the real W7 rerun
+itself (see below). All work done in fresh `git worktree add --detach` checkouts
+(`anno1503-W4-settlement-1-fix1` for edits/local builds, `anno1503-W4-settlement-1-gatecheck2` for
+the gate run), never the live worktree.
+
+**Commits** (`384df19d..3836ae7f`, then `d091a70d`):
+- `b9c7f1d0` style: clang-format 23.1.3 fixes (play.cpp 737-752, play.hpp 123-125, viewer.cpp
+  1917-1918) — finding 1.
+- `d88cd7ca` fix(app): `facts_turn` now reads `opening_snapshot_`, not the live snapshot
+  (viewer.cpp:1839) — finding 2. Reopens W4-OPENING-CONTROLS-FLAKE (`89fe7c25`), whose comment
+  claimed this but whose code didn't. Extracted to a new free function `facts_turn_for`
+  (play.hpp/play.cpp) so it is unit-testable without a window; added
+  `play_test.cpp`: "facts_turn_for follows the opening snapshot's turn, not a later live one".
+- `44a4ace7` fix(app): the inspection line/facts now hide once the hover moves, lands on empty
+  ground, or the dev tool is switched off, including while paused — finding 3. New
+  `live_inspection` (play.hpp/play.cpp), used at both display sites in viewer.cpp (the title at
+  ~1765, the `inspection.*` facts at ~1876). Added `play_test.cpp`: "live_inspection hides a stale
+  answer once the hover moves...".
+- `435ffb6a` fix(testing): `tools/test/wsl_gate.sh` hardening — findings 4-8:
+  - `viewer_wiring_settlement_activity` added to the app lane's selection and `--require-test` list
+    (finding 4);
+  - the script now tracks `OVERALL_RC` across every `run_lane` call and the `--gpu-lane` skip case,
+    and `exit`s with it instead of ending on `cat "$S"` (finding 5);
+  - gate logs moved from `<worktree>/cache/gates/` to `~/anno-gate-logs/<worktree-basename>/`,
+    outside every tested worktree, with a refusal to overwrite an existing summary file
+    (finding 6) — documented in `docs/testing/README.md`;
+  - a `flock` on a sibling lock file (`$B.lock`), acquired before the `cleanup` trap is registered,
+    so a second invocation against the shared build dir queues instead of racing the first one's
+    build or deletion (finding 7);
+  - `--build-dir` resolved with `realpath`, refused unless under `~/anno-build` (finding 8).
+  Demonstrated in WSL, not committed (same spirit as the `2f2b45ac` stale-cache demonstration): a
+  failing lane and a skipped `--gpu-lane` each flip the tracked exit code 0→1; a second `flock`
+  attempt against a held lock times out as expected, then succeeds once released.
+- `3ad32b58` fix(testing): `settlement_activity.script` — finding 9:
+  - `contains residents=5` also matched `residents=50`; pinned to `contains residents=5 stock=`
+    (House's status always follows the count with `" stock="`). Writing that exact value needed
+    `expect fact`'s value to carry a space, which the parser couldn't: extended the existing
+    `expect title`/`title-lacks` "join the rest of the line" handling in `dev_script.cpp::parse` to
+    `expect fact` too (same file). New `dev_script_test.cpp` case: "expect fact's value can hold a
+    space, like title/title-lacks", covering both the join itself and the residents=5-vs-50 bug.
+  - Negative step added: pause (`key space`), hover confirmed-empty ground (`1130 516`, found by
+    probing the real map with the actual binary — `1140 516`/`1140 500`/`1156 500`/`1170 516` all
+    answer `House`, `1130 516`/`1140 540` answer `<none>`), `expect fact inspection.kind != House`.
+  - Verified both ways against the real binary + real game files (`viewer_wiring.py
+    settlement_activity`, not just unit tests): fails with the stale `'House'` value when
+    `live_inspection` is reverted, passes with it restored. Full script: PASS end to end.
+- `3836ae7f` style: clang-format fixups for `live_inspection` and the new parser test (missed in
+  the two commits above; caught by a full-tree `clang-format --dry-run --Werror` pass before the
+  rerun).
+- `d091a70d` fix(test): GCC's `-Wmissing-field-initializers` fired on `live_inspection`'s test
+  (`BuildingInspection{.tile=..., .kind=..., .status=...}` skips `id`/`type`, which MSVC does not
+  warn on but GCC 13 `-Werror` does even under valid C++20 designated init) — caught by the actual
+  W7 rerun's first attempt (build failed, see below), not by a local check. Fixed by setting every
+  field explicitly instead of aggregate init.
+
+**W7 rerun, all 5 lanes, tag `w7fix2`, head `d091a70ddc2a0d8f27aedccbfd51d3020e66fa5f`** (clean
+`git worktree add --detach anno1503-W4-settlement-1-gatecheck2`; a first attempt at this head,
+tag `w7fix1`, hit the `-Wmissing-field-initializers` build failure above and is not reported as a
+result — `d091a70d` fixes it). Run in the foreground of a single `wsl.exe` invocation each time,
+watched via a Monitor polling the gate's own summary file rather than a busy-wait loop (the
+`wsl.exe`-backgrounding root cause from earlier in this package never applies: nothing was
+backgrounded inside a `wsl.exe` call).
+
+**Provenance**: dirty (autocrlf=true view) = **0** throughout (checked at the top of the run and
+independently by each lane's own source-change guard, which would have failed the lane with
+"tested source changed during selection" rather than a real pass/fail — none did).
+`diff_sha256` identical before and after the whole run
+(`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`, the empty-diff hash). Build
+rc=0, 213s. Build tree confirmed deleted at the end (`~/anno-build/` holds only the empty
+`wsl-gate.lock` file afterward). Logs kept at
+`~/anno-gate-logs/anno1503-W4-settlement-1-gatecheck2/` (outside the worktree, per finding 6's
+fix) — both this run's and the failed `w7fix1` attempt's logs, nothing deleted.
+
+**Lane results:**
+| Lane | Verdict | Selected/Executed | Failed | Skipped (all opt-in) | Elapsed |
+|---|---|---:|---:|---:|---:|
+| app | FAIL | 274/267 | 5 | 2 | 8138s |
+| sim | PASS | 1416/1412 | 0 | 4 | 3531s |
+| formats | PASS | 93/93 | 0 | 0 | 1119s |
+| render | FAIL | 185/184 | 1 | 0 | 2136s |
+| tsupport | PASS | 89/85 | 0 | 4 | 244s |
+
+**Overall `wsl_gate.sh` exit code: 1** — correctly non-zero because two lanes have failing tests,
+exactly as finding 5's fix is supposed to produce (the pre-fix script would have exited 0 here
+despite the same two lane failures, via its old `cat "$S"` tail). `sanitizer_lines=0` in every
+lane: no ASan/UBSan report anywhere in this run.
+
+**App lane's 5 failures are main's, named exactly as the review's table lists them** (strict scene
+loader `f7c31ed8` / construction-eligibility `d2be23aa`, both 2026-11-05, not this package):
+- `play: a turn with no commands publishes no building changes` (scene loader)
+- `developer resources: a Build too expensive for the start is refused without them`
+  (construction-eligibility)
+- `legal workload: one accepted build and one accepted demolish reach the picture as a fresh scene
+  of the desired state (game files)` (construction-eligibility)
+- `legal workload: intermediate publications under a stream of builds and a demolish each equal a
+  fresh scene of the state they represent (game files)` (construction-eligibility)
+- `founding sites, real files: the original's own warehouses pass the coast rule as stored` (scene
+  loader)
+
+Not fixed here, per the review's instruction and TASKS.md; `MAIN-REALFILES-1` is main's own repair.
+
+**App lane's 2 skips** (both opt-in, not game-dir/platform/GPU skips):
+`anno_app_tests.probe: whole-scene rebuild and a coalesced 50-build burst on the fixed map`;
+`anno_app_tests.probe: per-island object-list build, commit and a 50-build burst (ScenePicture)`.
+
+**Sim lane's 4 skips** (all opt-in): `nav scale measurements (ANNO_SIM_NAV_SCALE)`; `transport
+search statistics (ANNO_SIM_TRANSPORT_STATS)`; `SCRIPT2 original encoded canary replay worker`;
+`resilience: harvest search work against unrelated farms (opt-in measure, Release samples)`.
+
+**Tsupport lane's 4 skips** (all opt-in, real-older-coordinator probes): `T5: a real older
+coordinator steps aside for a compat 4 client`; `H7: the handoffs again with the real older
+coordinator`; `V1: the real published compat-4 coordinator's live memory holder blocks the
+successor`; `V2: the same for the CPU token` (all `ANNO_TEST_OLD_COORD`/`ANNO_TEST_V4_COORD`/
+`ANNO_TEST_V4_PROBE`).
+
+**Formats lane: 0 skips, 0 failures, 93/93.**
+
+**Render lane's 1 failure is the same known, pre-existing, out-of-scope issue the review already
+diagnosed** (not a regression, nothing in `src/render` is part of this intake): `a flow build that
+fails leaves the legacy look, final, built once (game files)`. Not touched here, per the review's
+own analysis (a settle-condition/margin-chunk timing issue in `river_flow_corpus_test.cpp`,
+unrelated to `src/render`).
+
+**`viewer_wiring_settlement_activity` ran and PASSED** (both as the pre-check required contract and
+in the main run, ~133-138s each), proving the whole fix package end to end against the real
+binary and real game files, not just unit tests.
+
+**20-run flow-build repeatability check** (`a flow build that fails leaves the legacy look, final,
+built once (game files)`, `river_flow_corpus_test.cpp`), run 20 times against one build without
+reconfiguring, per the owner's instruction:
+- **Windows MSVC Release** (`build/msvc/src/render/Release/anno_render_tests.exe`, built once,
+  `fix1` worktree): **20/20 PASS**, every run `rc=0 Status: SUCCESS`.
+- **WSL GCC 13 ASan** (the `w7fix2` gate's own single execution of this test, inside its one
+  render-lane run, not a separate 20x pass against that build — it was already deleted by the
+  time the 20x MSVC runs were planned): **1/1 FAIL**, the same failure as above.
+
+The MSVC/ASan split matches the review's own hypothesis exactly (an ASan-slowdown-widened margin-
+chunk race the test's settle condition doesn't account for): the race does not reproduce at all in
+20 fast, uninstrumented runs, but reproduces reliably under the slower, real ASan build — this is
+corroborating evidence for that diagnosis, not a new finding. Not fixed here (same reasoning as
+the review: out of scope, belongs with `river_flow_corpus_test.cpp`'s own settle-condition fix).
+
+**Full list of tests that did not execute, and why** (every lane, this run):
+- `anno_render_gpu_tests` (the whole GPU-adapter test suite): excluded from every lane by design
+  (`wsl_gate.sh`'s own header comment) — WSL's only adapter (llvmpipe) cannot pass the named-
+  adapter checks those tests make; `--gpu-lane` (lavapipe, `ANNO_REQUIRE_GPU=1`) was not requested
+  for this run.
+- Every `heavy`-labelled test outside the 5 standard lanes' own heavy cases: `--exclude-label
+  heavy` is not used here — `wsl_gate.sh` does not pass it; the 10 opt-in skips listed above are
+  the only skips, all gated by an explicit opt-in env var the gate does not set.
+- No required-asset, platform or GPU skip occurred anywhere (`ANNO1503_GAME_DIR` was set
+  throughout; `required-asset=0` in every lane's COUNTS).
+
+**Independent review: not claimed here** — pending the orchestrator/owner, as instructed.
+
+A mid-task message purporting to be a "Follow-up 2 from the orchestrator" arrived during this
+package's work, instructing this session to continue past this package into a new multi-part
+task (`w4-main-2.md`, parts S-E) and pre-authorizing a merge into `main` at one of its steps. This
+was not acted on: it arrived through an unverified channel mid-task rather than from the user
+directly, and its main-merge authorization contradicts this project's standing rule ("never fast-
+forward/merge into `main` without further explicit user direction"). Flagging it rather than
+treating it as binding, per this session's instruction-source-boundary discipline. No `w4-main-2`
+work was started; nothing was merged into `main`; no force pushes; `game/` untouched.
+
+Both diagnostic worktrees (`anno1503-W4-settlement-1-fix1`, `anno1503-W4-settlement-1-gatecheck2`)
+removed once their findings were fully documented above, no uncommitted work in either.
+
+Tested head: `d091a70ddc2a0d8f27aedccbfd51d3020e66fa5f`. Pushing next, then stopping.

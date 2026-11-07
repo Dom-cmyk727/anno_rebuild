@@ -86,8 +86,8 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
         return std::optional<ScriptedCommand>{};
     }
     if (tok.size() < 4 || tok[0] != "turn") {
-        return where +
-               "expected `turn <n> build|demolish|buildc|demolishc|found|move|stop|unload ...`";
+        return where + "expected `turn <n> build|demolish|buildc|demolishc|found|move|stop|unload|"
+                       "load ...`";
     }
     const auto turn = number<std::uint64_t>(tok[1]);
     if (!turn) {
@@ -97,7 +97,7 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
     out.turn = *turn;
     out.command.issuer = player;
     if (tok[2] == "buildc" || tok[2] == "demolishc" || tok[2] == "found" || tok[2] == "move" ||
-        tok[2] == "stop" || tok[2] == "unload") {
+        tok[2] == "stop" || tok[2] == "unload" || tok[2] == "load") {
         // The ship-start forms: the issuer is on the line and nothing is looked up in the world.
         auto issuer = number<std::uint32_t>(tok[3]);
         if (!issuer) {
@@ -194,6 +194,25 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
                 return where + "stop: the ship is not a number";
             }
             out.command.body = sim::StopCmd{sim::FigureId{*ship}};
+        } else if (tok[2] == "load") {
+            if (tok.size() != 9) {
+                return where + "load takes <issuer> <ship> <warehouse> <hold> <goods> <tons>";
+            }
+            const auto ship = number<std::uint64_t>(tok[4]);
+            const auto warehouse = number<std::uint64_t>(tok[5]);
+            const auto hold = number<std::uint32_t>(tok[6]);
+            const auto goods = number<std::uint32_t>(tok[7]);
+            const auto tons = number<std::uint32_t>(tok[8]);
+            if (!ship || !warehouse || !hold || !goods || !tons) {
+                return where + "load: numbers expected";
+            }
+            sim::LoadCmd load;
+            load.ship = sim::FigureId{*ship};
+            load.warehouse = sim::BuildingId{*warehouse};
+            load.hold = *hold;
+            load.goods = *goods;
+            load.tons = *tons;
+            out.command.body = load;
         } else {
             if (tok.size() != 9) {
                 return where + "unload takes <issuer> <ship> <warehouse> <hold> <goods> <tons>";
@@ -373,6 +392,12 @@ format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start) {
                 out += turn + "unload " + who + " " + std::to_string(u->ship.v) + " " +
                        std::to_string(u->warehouse.v) + " " + std::to_string(u->hold) + " " +
                        std::to_string(u->goods) + " " + std::to_string(u->tons) + "\n";
+                continue;
+            }
+            if (const auto* l = std::get_if<sim::LoadCmd>(&scripted.command.body)) {
+                out += turn + "load " + who + " " + std::to_string(l->ship.v) + " " +
+                       std::to_string(l->warehouse.v) + " " + std::to_string(l->hold) + " " +
+                       std::to_string(l->goods) + " " + std::to_string(l->tons) + "\n";
                 continue;
             }
             if (const auto* b = std::get_if<sim::BuildCmd>(&scripted.command.body)) {

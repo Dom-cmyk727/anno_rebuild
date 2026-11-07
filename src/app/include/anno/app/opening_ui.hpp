@@ -77,6 +77,8 @@ class ScreenProjection {
 enum class OpeningKey : std::uint8_t {
     Found,      ///< F
     Unload,     ///< U
+    Load,       ///< L. A developer adapter (no original warehouse-trade panel, OQ-547): posts the
+                ///< sim's existing LoadCmd the same way Unload posts UnloadCmd.
     Halt,       ///< H
     Rotate,     ///< T or , (in the founding mode: the cursor's turn on, kFoundingCursorRotation)
     RotateBack, ///< . (in the founding mode: the cursor's turn back)
@@ -88,7 +90,7 @@ enum class OpeningKey : std::uint8_t {
     Escape,     ///< Esc
 };
 
-enum class OpeningMode : std::uint8_t { Select, Found, Unload };
+enum class OpeningMode : std::uint8_t { Select, Found, Unload, Load };
 
 /// The founding cursor's turn before the player turns it. The warehouse turns to the coast by
 /// itself (owner 2026-11-03, from the original): the sim tries the four rotations from the
@@ -170,7 +172,7 @@ enum class TrackState : std::uint8_t {
 
 [[nodiscard]] const char* track_state_name(TrackState s);
 
-enum class TrackKind : std::uint8_t { Move, Stop, Found, Unload };
+enum class TrackKind : std::uint8_t { Move, Stop, Found, Unload, Load };
 
 struct Tracked {
     CommandId receipt;
@@ -178,10 +180,10 @@ struct Tracked {
     sim::FigureId ship;
     std::int32_t target_x_q8 = 0, target_y_q8 = 0; ///< Move
     sim::TileXY click;                             ///< Found
-    sim::BuildingId warehouse;                     ///< Unload
-    std::uint32_t hold = 0, tons = 0;              ///< Unload
-    sim::GoodsId goods = 0;                        ///< Unload
-    std::uint64_t hold_before_88 = 0;              ///< Unload: the hold when it was sent
+    sim::BuildingId warehouse;                     ///< Unload, Load
+    std::uint32_t hold = 0, tons = 0;              ///< Unload, Load
+    sim::GoodsId goods = 0;                        ///< Unload, Load
+    std::uint64_t hold_before_88 = 0;              ///< Unload, Load: the hold when it was sent
     std::uint64_t submitted_tick = 0;
 };
 
@@ -232,6 +234,14 @@ class OpeningUi {
         std::string advisory;
     };
     [[nodiscard]] std::optional<UnloadPlan> unload_plan(const UiFeed& feed) const;
+    /// The selected hold, quantity and source of the load mode (developer adapter, OQ-547).
+    struct LoadPlan {
+        std::uint32_t hold = 0, tons = 0;
+        sim::GoodsId goods = 0;
+        sim::BuildingId warehouse;
+        std::string advisory;
+    };
+    [[nodiscard]] std::optional<LoadPlan> load_plan(const UiFeed& feed) const;
     /// The HUD line (the window title's lead): the mode, the last message, the latest command's own
     /// state, the unload / founding advisory and the pointer first (a caption shows about 150
     /// characters), then gold, the selected ship with its cargo and the stores.
@@ -267,6 +277,7 @@ class OpeningUi {
     [[nodiscard]] std::optional<sim::BuildingId> default_target(const ShipView& ship,
                                                                 const OpeningView& view) const;
     void clamp_unload(const ShipView& ship);
+    void clamp_load(const ShipView& ship);
     [[nodiscard]] std::string goods_name(sim::GoodsId g) const;
     void add_tracked(Tracked t);
 
@@ -287,6 +298,8 @@ class OpeningUi {
     std::uint8_t found_rotation_ = kFoundingCursorRotation;
     std::uint32_t unload_hold_ = 0, unload_tons_ = 0;
     std::optional<sim::BuildingId> unload_target_;
+    std::uint32_t load_hold_ = 0, load_tons_ = 1;
+    std::optional<sim::BuildingId> load_source_;
     std::string message_;
     std::vector<Tracked> tracked_;
     std::vector<Tracked> pending_submit_;

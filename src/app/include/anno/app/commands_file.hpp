@@ -47,8 +47,9 @@ struct FormatError {
 /// exist when the file is read): `turn N buildc <issuer> <island> <city> <type> <x> <y> <rot> ...`,
 /// `demolishc <issuer> <island> <city> <x> <y> ...`, `found <issuer> <ship> <type> <rot> <x> <y>
 /// <click x> <click y>`, `move <issuer> <ship> <target x Q24.8> <target y Q24.8>`, `stop <issuer>
-/// <ship>` and `unload <issuer> <ship> <warehouse> <hold> <goods> <tons>`. parse_commands reads
-/// these lines whatever the mode; the older forms are unchanged.
+/// <ship>`, `unload <issuer> <ship> <warehouse> <hold> <goods> <tons>` and `load <issuer> <ship>
+/// <warehouse> <hold> <goods> <tons>` (W4-EXPAND-LIVE-1 D1, the developer Load adapter).
+/// parse_commands reads these lines whatever the mode; the older forms are unchanged.
 [[nodiscard]] formats::Result<std::string, FormatError>
 format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start = false);
 

@@ -28,6 +28,7 @@ add_library(anno_app_core
   src/ship_motion.cpp
   src/still.cpp
   src/ui_layout.cpp
+  src/ui_mock.cpp
   src/visibility.cpp
   src/window_trace.cpp
 )
@@ -46,6 +47,14 @@ if(MINGW)
   target_link_options(anno1503 PRIVATE -municode)
 endif()
 anno_target_defaults(anno1503)
+
+# anno_ui_mock: the CPU reference composition of a HUD/construction screen, as a PNG
+# (tools/test/ui_mock_compare.py diffs it against the UI.1 Python oracle's own mock). No SDL/GPU
+# dependency - window-independent, like anno_app_core itself.
+add_executable(anno_ui_mock src/ui_mock_main.cpp)
+target_link_libraries(anno_ui_mock PRIVATE anno_app_core)
+anno_target_defaults(anno_ui_mock)
+
 if(ANNO_BUILD_VIEWER)
   # The play window's SDL mapping for the developer tool (round ee, B3): the window and its tests
   # link the same code.
@@ -82,6 +91,13 @@ if(ANNO_BUILD_TESTS)
   anno_target_defaults(anno_app_tests)
   anno_stage_budget_coord(anno_app_tests)
   anno_add_doctest(anno_app_tests)
+  # W4-UI-2 H4/C4: the shipped CPU reference composition (anno_ui_mock) checked pixel by pixel
+  # against the UI.1 Python oracle's own mock, for all nine named screens. Needs the original game
+  # files and Pillow; skips (77) without either (tools/test/ui_mock_compare.py).
+  add_test(NAME ui_mock_matches_oracle
+    COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_mock_compare.py
+            $<TARGET_FILE:anno_ui_mock>)
+  set_tests_properties(ui_mock_matches_oracle PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
   # The two full-corpus cases (every scenario file, every assertion) are "heavy" (the suite name in
   # play_test.cpp); in a sanitizer build they also get an 8000 s per-test timeout, set after the cases
   # are discovered (AnnoAppSanitizerTimeouts.cmake; docs/testing/README.md).

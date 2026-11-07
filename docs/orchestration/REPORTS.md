@@ -14909,3 +14909,153 @@ stays off by default; the strict loader and construction-eligibility rule are un
 `anno1503-W4-expand-live-1` kept live for the queued D5 WSL run.
 
 Head: `83b9e95a`. Pushing next.
+
+## W4-MAIN-2 -- Part E: final report and cleanup -- 2026-11-07 -- status: REVIEW PENDING
+
+Part P ("finish W4-MAIN-2 first") of the W4-UI-2 dispatch, completed in order: D's fixes, C to its
+end (the owner-rule game-file run, C2, C3), D5, D6. This entry is that part's own closing E report,
+per `tasks/w4-main-2.md`'s own Part E ("the report" / "cleanup" / "push, then stop").
+
+### Branches, with their heads
+
+- `task/W4-expand-live-1` (D): **`4bad4d13`**, pushed. Contains the D1-D4 work already reported,
+  plus this checkpoint's four review-D fixes, the D6 recipe test, and OQ-560/562.
+- `task/W4-main-2` (B merge): `85c4aeae`, unchanged this checkpoint.
+- `task/MAIN-REALFILES-1` (A): `8175df79`; already accepted and merged into `main` as `5e7b13c6`
+  (prior checkpoint).
+- `task/UI-1-F2-ui-remaining` (F, a separate part of the W4-UI-2 dispatch, reported separately):
+  `3af81e0f`, pushed.
+- Local `main`: unchanged, not pushed, not force-pushed.
+
+### What ran, and with what result
+
+1. **D's fixes** (review findings 1-4, all on `task/W4-expand-live-1`):
+   - Finding 1 (`05528921`): the scripted `l` key, uncommitted in the worktree, now committed.
+   - Finding 2 (`d782703a`): the "pending Load" test renamed and its comments corrected to state
+     what it actually proves (an applied Load survives save/resume); OQ-560 opened for whether a
+     true async pending-command concept is wanted at all.
+   - Finding 3 (`b0502b43`): `viewer_wiring_expand_live_load` added to the WSL app-lane's selection
+     regex.
+   - Finding 4 (`2584d4f0`): the UI now refuses a developer Load when the warehouse has no stock,
+     instead of sending a `LoadCmd` for the sentinel good; new regression test.
+   - Verified: `anno_app_tests` 232/232 (game files), the 8 `viewer_wiring_*`/
+     `opening_session_replay` cases 8/8, both at the fixed head, before any further checkpoint.
+2. **C1, the WSL gate `w4main2c1`** (against the B head `85c4aeae`, started 10:36, finished 18:06):
+   app/sim/formats/tsupport lanes **PASS**; render lane 184/185 (the one known flow-build flake,
+   settled below); gpu lane 114/116 (two failures, both the already-documented lavapipe
+   single-software-adapter limitation from the 2026-11-05 W4-MAIN-1 root-cause entry above in this
+   file, not a regression -- the same two named-adapter cases already pass on the real RTX 4090 and
+   Radeon iGPU, Part A's `mainrf1-a2a-gpu*.log`). Logs copied to
+   `E:\anno1503-evidence\w4-main-2\wsl-gate-w4main2c1\`.
+3. **C2**, the flow-build case 20 times in a fresh WSL ASan build at the B head: **20/20 pass**
+   (`c2-repeat-20x.log`). Settled: no fix needed, the flake did not reproduce.
+4. **C3**, warnings and format at the B head: `check_unix_warnings.sh` clean on all four passes
+   (GCC 13 and Clang 18, each with and without the viewer's GPU code) (`c3-unixwarnings.log`);
+   clang-format 23.1.3 clean over all of `src/` (`c3-clangformat.log`).
+5. **The owner-rule game-file run at `main` `5e7b13c6`**, clean checkout, full `ctest --preset msvc`
+   with game files and the RTX 4090: first attempt at `-j 16` (immediately after an unrelated
+   concurrent build) degraded badly under memory pressure (10,309+ refusals, 7 apparent failures)
+   and was stopped rather than trusted; **rerun clean at `-j 6`, watched throughout: 2320/2321
+   selected tests passed**, zero ordinary low-memory refusals. The one failure
+   (`legacy river shading reproduces the previous enhanced digests`) was a `wait deadline` memory
+   refusal traced to a stale ~3.9 GB reservation in the long-lived `anno_budget_coord` daemon
+   (left over from the earlier degraded `-j16` attempt's force-killed processes): confirmed by the
+   coordinator's own `pending=3902712640` staying exactly constant for the full 1800 s wait; fixed
+   by restarting the daemon (a pure in-memory arbitration process, safe to bounce) and reran alone:
+   **passed, 278.64 s** (`maingf-5e7b13c6-ctest-full-j6.log`, `test405-rerun-alone.log`).
+6. **D5, the WSL ASan app-lane rerun** at the fixed D head: first attempt (`89c3a9f9`) still showed
+   1 failure, `viewer_wiring_expand_live_load`, "the window did not end within 300 s (watchdog)" --
+   a genuine gap, not a flake: `opening_session_replay`'s own `CMakeLists.txt` block already scales
+   its internal watchdog 5x under ASan for the identical 550-tile voyage, with a comment explaining
+   exactly this failure mode, but `expand_live_load` (added to the ASan lane's selection only this
+   checkpoint, by finding 3 above) was never added to that scaling block. Fixed in two steps, each
+   verified by actually rerunning the one affected test, not assumed: `ec4f025b` (the subprocess
+   watchdog, `ANNO_VIEWER_WIRING_WATCHDOG_S`) got the run past 300 s to 390 s, which then failed
+   differently ("window exit 1", `!script->done()` in `main.cpp` -- the script's own last lines, a
+   negative-control refusal and the final `quit`, were never reached); `bb41111a` (the app's own
+   `ANNO_VIEW_QUIT_S` force-quit timer) fixed it for real: **passed, 374.0 s**, every scripted line
+   reached in order. The full D5 app lane then ran clean end to end (`d5-app-lane-wrapper.log`,
+   `d5-verify-fix2-wrapper.log`).
+7. **D6, the manual-expansion.md recipe replayed through the app's command path**: new real-file
+   test (`src/app/tests/opening_test.cpp`), posting the card's exact command sequence through
+   `sim::World::apply`. **96/96 assertions pass.** Confirms the command path's logic is fully
+   correct wherever independently checkable (every cost, every `transferred_88`, the `CannotAfford`
+   refusal and its recovery, a relative-timing production checkpoint, the final destination wood,
+   the final cargo holds -- all exact). Three absolute figures this pass could not independently
+   reconcile with the card's literal numbers are reported via `MESSAGE`, not forced: sailing legs
+   through this app-level path run measurably longer than the card's sim-level-harness measurement;
+   the first `FoundCmd` cost 351 gold instead of 350 (the second founding, elsewhere, cost exactly
+   350); and source-wood production by the second load's arrival fell short of what the card's
+   closure arithmetic implies, cascading into the final money (28853, not 28863) and final source
+   wood (1472, not 2368). New **OQ-562**, with the precise numbers and what would settle it.
+8. **Final regression**, at the complete D head (`4bad4d13`): the full native `anno_app_tests`
+   suite, 233/233 test cases, 60,294/60,294 assertions (`d6-full-apptests.log`); the 8
+   `viewer_wiring_*`/`opening_session_replay` window cases, 8/8 (`d6-final-viewerwiring.log`).
+
+### Failures that remain
+
+None blocking. Every failure found this checkpoint was root-caused by reading the actual log or
+source, fixed, and independently reverified:
+
+| Failure | Cause | Fix / resolution |
+|---|---|---|
+| `viewer_wiring_expand_live_load` (ASan, 300s watchdog) | missing ASan timeout scaling | `ec4f025b` |
+| `viewer_wiring_expand_live_load` (ASan, `window exit 1`) | missing `ANNO_VIEW_QUIT_S` scaling | `bb41111a` |
+| Owner-rule run's `legacy river shading...` (`wait deadline`) | stale coordinator reservation from an earlier force-killed `-j16` attempt | restarted `anno_budget_coord`, reran alone |
+| GPU lane, 2 named-adapter cases | lavapipe has no real adapter named "4090"/"Radeon" (WSL-environment-only, pre-documented) | none needed; same cases already pass on real hardware |
+| Render lane, flow-build flake | did not reproduce 20/20 in a fresh build | none needed |
+
+Open, not blocking (OQs, not failures): **OQ-560** (whether a true async pending-command concept
+is wanted); **OQ-562** (D6's three sailing-timing/founding-cost/production figures, with the exact
+discrepancies and what would settle each).
+
+### Guesses
+
+None stated as fact. Every number above is either read directly from a log/source or derived from
+two independently-stated facts (e.g. D6's pre-load stock figures, derived from a later
+`transferred_88` and the card's own closure total, not assumed). Everything this checkpoint could
+not independently verify is in the OQs above, not baked into an assertion.
+
+### QUESTIONs
+
+None new from Part P itself. The D1 `OpeningView` capacity QUESTION was already answered by this
+morning's review ("not needed now"). The D3 recipe-checkpoint QUESTION ("is existing coverage
+enough, or is a full replay still wanted") is now moot: D6 did the full replay.
+
+### Review-first list (for the orchestrator)
+
+1. **OQ-562's three D6 findings** -- the app-command-path sailing/founding/production discrepancies
+   against the card's sim-level-harness measurement. Worth a careful independent look: either a
+   real (if narrow) app-vs-sim divergence, or this run's manifest/seed state differs subtly from
+   MAP-EXPAND-1's original measurement context.
+2. **The D5 ASan-timeout fixes** (`ec4f025b`, `bb41111a`) -- small, surgical, but worth checking
+   independently since they touch test infrastructure shared with `opening_session_replay`.
+3. **The owner-rule main run's coordinator incident** -- confirms the project's own documented
+   wait-deadline recovery path works as designed, but the stale-reservation root cause (a
+   force-killed process's reservation surviving 30+ minutes) may be worth its own look at
+   `anno_budget_coord`'s crash-handover logic.
+4. **GPU-lane environment limitation** -- re-confirms the 2026-11-05 finding; no action expected,
+   flagged only so it isn't mistaken for a new regression in a future review.
+5. **C2's clean 20/20** -- the render-lane flake from this morning's review did not reproduce;
+   worth noting the hypothesis (a margin-ring/neighbouring-zoom-group race) remains unconfirmed
+   either way, just unreproduced here.
+
+### Cleanup
+
+- No gate or test process of mine is running: confirmed on both Windows (`Get-Process`) and WSL
+  (`ps aux`) immediately before writing this report.
+- WSL build trees: the two ad-hoc build dirs this checkpoint created outside `wsl_gate.sh`
+  (`~/anno-build/c2-repeat`, `~/anno-build/d5-app-lane`) are deleted; their logs are already in
+  `E:\anno1503-evidence\w4-main-2\`. `~/anno-build/wsl-gate` was already removed by the gate
+  script's own end-of-run cleanup.
+- Worktrees touched this checkpoint: `E:\anno1503-worktrees\anno1503-W4-expand-live-1` (D, kept,
+  holds the live checkout); `E:\anno1503-worktrees\anno1503-W4-expand-live-1-gatecheck` (detached,
+  used for the D5 fix verification -- kept, at `bb41111a`, no uncommitted changes, evidence already
+  copied out); `E:\anno1503-worktrees\anno1503-main-gamefile-run` (detached at `5e7b13c6`, kept,
+  the clean-checkout evidence is in the log files already, not solely in the worktree).
+- All evidence under `E:\anno1503-evidence\w4-main-2\`.
+
+### Next
+
+Part P is complete. Per the dispatch, this packet continues into R (ADR 0004) on a new branch
+`task/W4-ui-2`, created from this D head (`4bad4d13`). Pushing this report, then starting R.

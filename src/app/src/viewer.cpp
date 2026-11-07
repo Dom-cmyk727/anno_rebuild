@@ -1747,6 +1747,10 @@ void Viewer::update_title() {
         const PlayFeedback read = play_->runner().feedback(latest_receipt_);
         const std::optional<CommandOutcome>& latest = read.latest;
         const auto& snap = read.snapshot;
+        // The developer inspection UI (W4-SETTLEMENT-1 W4): ask for the hovered tile's building
+        // now, shown from `snap->inspection` next time (same one-turn-lag pattern as the founding
+        // probe below — this frame's title still reads what the previous request answered).
+        play_->runner().request_inspect(dev_->hover());
         // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
         std::string note = pointer_frame_ && pointer_frame_->scene
                                ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
@@ -1758,6 +1762,15 @@ void Viewer::update_title() {
         }
         title +=
             " — " + dev_title(*snap, *dev_, knowledge_->check(*dev_, snap.get()), latest, note);
+        // Against the hover read just now (dev_->hover()), not the one `inspection` answered: a
+        // hover that has moved since, or landed on empty ground, must not show the old building's
+        // line (W4-SETTLEMENT-1 W7 review, finding 3).
+        if (const BuildingInspection* insp = live_inspection(*snap, dev_on, dev_->hover())) {
+            title += " — " + insp->kind;
+            if (!insp->status.empty()) {
+                title += " " + insp->status;
+            }
+        }
     }
     if (fps_) {
         char buf[64];
@@ -1822,6 +1835,13 @@ void Viewer::script_tick() {
         st.latest = std::move(read.latest);
     }
     st.visibility = command_visibility(st.latest);
+    // Set alongside st.facts below (opening_facts() reads opening_snapshot_, refreshed only once
+    // per drawn frame in draw()/opening_refresh(), never here): this is the turn opening_snapshot_
+    // belongs to, not the live one above, so `wait turns` cannot resolve ahead of what the facts
+    // it gates (`expect fact ...`) can actually show (W4-OPENING-CONTROLS-FLAKE). In a session
+    // without an opening, opening_snapshot_ is null and facts_turn_for falls back to the live
+    // turn, as dev_script.hpp documents; the inspection.* facts below are built from that read.
+    st.facts_turn = facts_turn_for(opening_snapshot_.get(), st.snapshot.get());
     st.tool = dev_;
     st.knowledge = knowledge_ ? &*knowledge_ : nullptr;
     if (chunk_hold_) {
@@ -1850,8 +1870,28 @@ void Viewer::script_tick() {
     if (const char* t = SDL_GetWindowTitle(window_); t != nullptr) {
         st.title = t;
     }
+    // The developer inspection UI's facts (W4-SETTLEMENT-1 W5): available in any session, not
+    // only an opening one — Proof B (an existing-town session with no ship-start opening) needs
+    // these to assert production/worker activity, which opening_facts() below never reports.
+    // Against the live hover, not just whatever `inspection` last answered (W4-SETTLEMENT-1 W7
+    // review, finding 3): while paused no new turn publishes to retract a stale answer once the
+    // hover moves, lands on empty ground, or the tool is switched off.
+    if (st.snapshot != nullptr) {
+        if (const BuildingInspection* insp =
+                live_inspection(*st.snapshot, dev_ != nullptr && dev_->enabled(),
+                                dev_ != nullptr ? dev_->hover() : std::nullopt)) {
+            st.facts["inspection.kind"] = insp->kind;
+            st.facts["inspection.status"] = insp->status;
+            st.facts["inspection.type"] = std::to_string(insp->type.v);
+            st.facts["inspection.prodtype"] = std::to_string(insp->prodtype);
+            st.facts["inspection.tile.x"] = std::to_string(insp->tile.x);
+            st.facts["inspection.tile.y"] = std::to_string(insp->tile.y);
+        }
+    }
     if (opening_ != nullptr) {
-        st.facts = opening_facts();
+        for (auto& [key, value] : opening_facts()) {
+            st.facts[key] = std::move(value);
+        }
         st.ship_point = [this](std::uint64_t id) -> std::optional<std::pair<float, float>> {
             if (!opening_snapshot_ || !opening_snapshot_->opening || !pointer_frame_) {
                 return std::nullopt;
@@ -1869,7 +1909,28 @@ void Viewer::script_tick() {
                              static_cast<float>(box->cy / density)};
         };
     }
+    // W4-OPENING-CONTROLS-FLAKE step 1: an opt-in trace (no cost unless set) of the two readings a
+    // scripted "wait turns" + "expect fact tracked..." pair can race between: `st.snapshot` is a
+    // fresh feedback() read taken every call, but the facts built above from opening_snapshot_
+    // (opening_facts()) are only as new as the last drawn frame (opening_refresh(), draw()-only).
+    // Under frame-rate collapse the live turn can run far ahead of the frame-gated one.
+    const char* trace_env = std::getenv("ANNO_DEV_SCRIPT_TRACE");
+    const std::uint64_t trace_live_turn = st.snapshot ? st.snapshot->turn : 0;
+    const std::uint64_t trace_opening_turn = opening_snapshot_ ? opening_snapshot_->turn : 0;
     DevScriptAction act = script_->step(st);
+    if (trace_env != nullptr) {
+        std::fprintf(stderr,
+                     "[dev-script-trace] drawn_frames=%llu live_turn=%llu opening_turn=%llu "
+                     "gap=%lld tracked.1.state=%s log=%s\n",
+                     static_cast<unsigned long long>(drawn_frames_),
+                     static_cast<unsigned long long>(trace_live_turn),
+                     static_cast<unsigned long long>(trace_opening_turn),
+                     static_cast<long long>(trace_live_turn) -
+                         static_cast<long long>(trace_opening_turn),
+                     st.facts.count("tracked.1.state") != 0 ? st.facts.at("tracked.1.state").c_str()
+                                                            : "<none>",
+                     script_->log().empty() ? "" : script_->log().back().c_str());
+    }
     if (act.look_world) {
         const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
         const auto [sx, sy] = render::corner_point(act.look_world->first, act.look_world->second,

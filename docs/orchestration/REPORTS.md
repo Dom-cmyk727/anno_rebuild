@@ -13278,6 +13278,761 @@ delta is documentation/evidence only. Preserve canonical132 on reconciliation.
 No moving-main rerun or Windows pin change is requested.
 
 
+## W4-OPENING-2 — adoption of consolidated main — 2026-11-06 — status: FINISHED
+
+Ported `task/W4-opening-2`'s W4-OPENING-CONTROLS-FLAKE delta (steps 0-3, its full
+WSL-flake package) onto consolidated `main` at `origin/main` `3b74201f` (code
+pin `7b57ebd9`, doc-acceptance `5f6092b4`, consolidation baseline `944cec89`;
+all four pins confirmed ancestors by `git merge-base --is-ancestor`), per the
+owner's adoption-at-checkpoint instruction. New branch `task/W4-opening-2-main`,
+worktree `E:\anno1503-worktrees\anno1503-W4-opening-2-main`. The original
+`task/W4-opening-2` branch/worktree is untouched and preserved at `3fd68746`.
+
+- Ported commits (5 unique to `task/W4-opening-2` since merge-base `88968580`):
+  `6380f9f1` (wsl_gate.sh) and `49ea97a3` (the viewer.cpp/dev_script fix) applied
+  by clean cherry-pick — those files were untouched by main's 419 intervening
+  commits; `49ea97a3`'s ported diff verified byte-identical to the original
+  commit's code diff. `729e842a` (the skip-message wording + its verdict-test
+  contract edit) required hand reconciliation: main independently restructured
+  the surrounding founding_assets_test.cpp function
+  (`original_component::import_only`) and added two unrelated skip-message
+  exemptions to ctest_verdict_test.py (resident/house-kernel, commits
+  `eefac615`/`4d5734f1`) in the same functions; the wording change itself
+  applied identically, hand-reapplied around both upstream changes rather than
+  cherry-picked (a raw 3-way apply of the verdict-test file incorrectly dropped
+  main's exemptions — caught and reverted before committing). `c2f04116` and
+  `3fd68746` (REPORTS.md entries) are this entry and the one below.
+- Identity: no `src/sim`, serialization, PRNG or replay file touched by any
+  ported commit — confirmed by diff, not assumed. state132/SIMINT1/PRNG5/
+  replay-frame4/command-wire1 unaffected; this delta is app/viewer/test-harness
+  only.
+- Gates: see the entry immediately below for the successor branch's build/test
+  results.
+
+
+Carried verbatim from `task/W4-opening-2` for the record (unchanged from the
+originals; this is the evidence being adopted, not new work performed here):
+
+## W4-OPENING-2 — W4-OPENING-CONTROLS-FLAKE step 0 — 2026-11-05 — status: FINISHED
+
+- Branch: `task/W4-opening-2` at `729e842a`; input `main` `88968580`; worktree:
+  `E:\anno1503-worktrees\anno1503-W4-opening-2`.
+- Built:
+  - `tools/test/wsl_gate.sh` (new, committed; `6380f9f1`): the one canonical WSL (Ubuntu, GCC 13)
+    ASan+UBSan viewer-enabled gate script, replacing the historical pattern of a fresh, gitignored
+    `cache/` script per gate. Carries forward the autocrlf override and the Windows-worktree
+    `.git`-pointer-file-to-`/mnt/<drive>` translation (both proven in earlier ad-hoc scripts, now
+    generalized instead of hardcoded to one worktree), refuses to run on a dirty autocrlf-view
+    checkout, never runs `anno_render_gpu_tests` in the default (ASan) lanes, supports an explicit
+    `--gpu-lane` opt-in (lavapipe + `ANNO_REQUIRE_GPU=1`), and records each lane's elapsed time in
+    its `$S` summary file. Documented in `docs/testing/README.md`'s new "The WSL ASan/UBSan gate"
+    section.
+  - `src/app/tests/founding_assets_test.cpp:639` (`729e842a`): reworded the skip `MESSAGE` so its
+    leading string literal alone (before the stream-concatenated file path) is a self-describing,
+    already-recognized required-asset phrase ("...scenario file is not in this game directory:"),
+    instead of the bare, unclassifiable `"skipping: "`.
+  - `tools/test/ctest_verdict_test.py` (`729e842a`): added the new phrasing to
+    `test_every_existing_missing_asset_phrasing_fails`'s `forms`; removed the now-unused bare
+    `"skipping: "` entry from `test_every_skip_phrasing_in_the_sources_has_a_known_class`'s
+    `allowed_other` set (confirmed via `grep -rn '"skipping: "' src` that no other site produces
+    that exact literal).
+- Gates:
+  - `python -I tools/test/ctest_verdict_test.py`: 25/25.
+  - `python -I tools/test/workflow_test.py`: 21/21.
+  - Native MSVC build of `anno_sim_tests` (`cmake --build build/msvc --preset msvc --target
+    anno_sim_tests -j 16`): clean; targeted case run (`-tc="*DISCO on the shipped scenes*"`): 1
+    passed, 6 assertions.
+  - Full WSL ASan/UBSan gate via the committed script against this same worktree/commit
+    (`wsl -d Ubuntu -- bash tools/test/wsl_gate.sh /mnt/e/anno1503-worktrees/anno1503-W4-opening-2
+    --tag o2b`), summary `cache/gates/wsl-o2b.txt` (gitignored, evidence kept in this entry):
+    - source head `729e842a`; dirty (raw, no autocrlf override) 979; dirty (autocrlf=true view)
+      **0** — the "clean checkout counts 0 dirty files" check the task asked for, confirmed.
+    - `app` lane: selected=268 executed=266 failed=0 skipped=2 (opt-in=2, everything else 0)
+      VERDICT: PASS, elapsed 7998s.
+    - `sim` lane: selected=1029 executed=1027 failed=0 skipped=2 (opt-in=2) VERDICT: PASS, elapsed
+      1650s.
+    - `formats` lane: selected=92 executed=92 failed=0 skipped=0 VERDICT: PASS, elapsed 1102s.
+    - `render` lane (non-GPU `anno_render_tests` only): selected=185 executed=185 failed=0
+      skipped=0 VERDICT: PASS, elapsed 2334s.
+    - `tsupport` lane: selected=66 executed=66 failed=0 skipped=0 VERDICT: PASS, elapsed 239s.
+    - `anno_render_gpu_tests` did not run in any of the above (grep of the summary file confirms
+      no `gpu lane` line, since `--gpu-lane` was not passed) — the task's "no GPU-adapter suite in
+      the ASan lane" requirement, confirmed by omission.
+- Evidence: `cache/gates/wsl-o2b.txt` and the per-lane `.log`/`.out` files under
+  `cache/gates/` in the worktree (gitignored, not pushed; paths recorded here per the evidence
+  contract).
+- Reviewers: none yet — independent read-only package review for this step is still open.
+- Left open / questions for the orchestrator or owner: W4-OPENING-CONTROLS-FLAKE steps 1-4 (the
+  flake's actual root-cause trace and fix) are next, on this same branch. Independent review of
+  step 0 has not happened yet; not pushed beyond the local branch as of this entry.
+- Time spent / subagents used: single session, no subagents; two build/test cycles (MSVC native,
+  WSL ASan full gate ~2h45m wall clock dominated by the `app`/`render` lanes).
+
+## W4-OPENING-2 — W4-OPENING-CONTROLS-FLAKE steps 1-3 (root-cause and fix) — 2026-11-06 — status: FINISHED
+
+- Branch: `task/W4-opening-2` at `49ea97a3`; worktree: `E:\anno1503-worktrees\anno1503-W4-opening-2`.
+- Built (`49ea97a3`, one commit):
+  - `src/app/include/anno/app/dev_script.hpp`: added `DevScriptState::facts_turn` - the turn
+    `facts` reflects, distinct from the live `snapshot->turn` read fresh every call.
+  - `src/app/src/dev_script.cpp`: `wait turns N` now baselines and checks `facts_turn` instead of
+    `st.snapshot->turn`.
+  - `src/app/src/viewer.cpp`, `Viewer::script_tick()`: sets `st.facts_turn` to the turn
+    `opening_snapshot_` belongs to (equal to the live turn in a session without an opening, so no
+    behavior change there); added an opt-in diagnostic trace (`ANNO_DEV_SCRIPT_TRACE`, zero cost
+    unless set) logging, per call: `drawn_frames`, the live turn, the frame-gated
+    (`opening_snapshot_`) turn, their gap, `tracked.1.state`, and the script's last log line.
+- Mechanism, measured not reasoned (step 1): the trace was run directly against a real WSL ASan
+  `-j4` batch (not synthetic all-core `yes` busy loops - those stall the sim thread equally and
+  never open a gap, confirmed by a 290s contended run that stayed at gap 0-1 throughout; the real
+  flake needs the asymmetric contention of actual sibling ASan test processes). In
+  `cache/gates/wsl-o2trace-app.out`'s run (`/tmp/viewer_wiring_opening_controls_ulv46vgs/run.stderr.txt`,
+  not kept, paths recorded here), the live/frame-gated turn gap reached 3 at `drawn_frames=33/35`
+  (startup contention) elsewhere in the same 268-test `-j4` batch, while `opening_controls`'s own
+  `key h` / `wait turns 3` window (script lines 69-72) only reached gap 1 that run - PASS that
+  time, consistent with this task's own 2-of-3 history (`wsl-w18` FAIL, `wsl-w19` PASS, `wsl-w20`
+  FAIL): the race is real and reaches the exact margin (3) needed to flip the assertion, just not
+  on every run. This directly confirms the mechanism TASKS.md described as a hypothesis: `wait
+  turns 3`'s baseline/check (fresh `PlayFeedback::feedback()` every `script_tick()` call) can run
+  ahead of `opening_facts()`'s own `tracked.1.state` (built from `opening_snapshot_`, refreshed
+  only once per drawn frame in `draw()`/`opening_refresh()`, never in `script_tick()` itself).
+- Fix (step 2): close the gap at its source rather than add slack - `wait turns N` now reads the
+  same turn source the subsequent `expect fact ...` step will read (`facts_turn`), so it cannot
+  report "N turns later" as true before a frame exists whose facts show it. Not `ANNO_SANITIZE`-
+  scoped (unlike `3a2da9b9`'s deadline fix): the race is a real correctness gap in `wait turns`'
+  semantics for an opening session at any frame rate, just unreachably rare without contention: the
+  fix applies to every build.
+- Gates:
+  - `anno_app_input_tests -tc="dev script:*"` (native WSL build, ASan): 8/8 passed, 280/280
+    assertions, 25 skipped (pre-existing, unrelated) - no regression from the `DevScriptState`
+    field addition or the baseline-source change.
+  - Acceptance (step 3), same rebuilt WSL ASan binaries, no rebuild between runs, full `-j4` batch
+    each time (`^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.|^viewer_wiring_
+    (contract|r1_held_publication|r4_occupancy|cpu_delivery_failures|opening_controls)$|^opening_
+    session_replay$`, `--require-test` on the three contracts, matching `wsl-w18/19/20`'s own
+    methodology):
+    - r1: `cache/gates/wsl-fix-r1-app.log`, VERDICT PASS, 268 selected/266 executed/0 failed/2
+      opt-in skipped; `opening_controls` 178.86s standalone, 173.60s in the full batch.
+    - r2: `cache/gates/wsl-fix-r2-app.log`, VERDICT PASS, same counts; `opening_controls` 175.48s
+      standalone, 179.17s in the full batch.
+    - r3: `cache/gates/wsl-fix-r3-app.log`, VERDICT PASS, same counts; `opening_controls` 175.89s
+      standalone, 179.74s in the full batch.
+    - Three consecutive clean reruns, meeting this task's own bar (a single clean pass, as
+      `wsl-w19` showed, is explicitly not enough per this task's history).
+- Evidence: `cache/gates/wsl-o2trace-app.{out,log}` (the step-1 trace run, pre-fix binaries),
+  `cache/gates/wsl-fix-r{1,2,3}-app.{out,log}` (the step-3 acceptance reruns, post-fix binaries);
+  all gitignored, in the worktree, paths recorded here per the evidence contract. The per-test
+  session's own stderr capture (`/tmp/viewer_wiring_opening_controls_*/run.stderr.txt` inside WSL)
+  held the actual trace lines quoted above; not preserved past the session.
+- Reviewers: none yet - independent read-only package review for steps 1-3 is still open.
+- Left open / questions for the orchestrator or owner: step 4's first carry-forward (a turn-based
+  completion signal in place of a wall-clock deadline) was not needed here, since the fix is a
+  turn-source correction, not a deadline; still worth a look only if a *different* opening_controls-
+  style flake turns up elsewhere. Step 4's second carry-forward
+  (`coast_turned`/`deposit_turned` PRODTYPE list, `a315b51a`) is untouched, not in this fix's scope.
+  Not pushed; independent review has not happened for steps 1-3, same as step 0.
+- Time spent / subagents used: one fork (background investigation + fix), no further subagents;
+  roughly 4 real-time hours end to end, almost all of it WSL ASan `-j4` wall clock (one ~95 min
+  reproduction run under the pre-fix binaries, then three ~95-98 min acceptance reruns under the
+  fixed binaries - the MSVC/unit-test/native checks were each under a minute).
+
+
+## W4-OPENING-2 — consolidated-main adoption gates — 2026-11-06 — status: FINISHED
+
+Branch `task/W4-opening-2-main` at `8137b415`, from `origin/main` `3b74201f`.
+
+- **Native MSVC** (`cmake --preset msvc`, `cmake --build --preset msvc`): builds
+  `anno1503.exe`, `anno_app_tests.exe`, `anno_app_input_tests.exe` and most other
+  targets clean. `anno_sim_tests` FAILS to build — pre-existing C2664 errors in
+  `src/sim/tests/small_farm_worker_test.cpp` (MAP-NEEDS-2 territory, untouched by
+  this delta or by `task/W4-opening-2`), same root file as the GCC break below.
+  `anno_app_input_tests` dev-script unit tests: 8/8 cases, 280/280 assertions,
+  PASS (matches `task/W4-opening-2`'s result exactly). `viewer_wiring_opening_controls`
+  run standalone via ctest with `ANNO1503_GAME_DIR` set: PASS, 10.03s.
+- **WSL ASan/UBSan gate** (`tools/test/wsl_gate.sh`): origin/main `3b74201f` does
+  NOT build under this gate's GCC 13 `-Werror` flags. First break:
+  `src/sim/tests/integration_identity_test.cpp` missing `#include <filesystem>`
+  — fixed here (`8137b415`, one line, zero behavior change, disclosed separately
+  from the ported delta; MSVC's transitive includes hid it, GCC 13 does not).
+  Beyond that fix, a full keep-going build (`ninja -k 0`) surfaces at least 12
+  further pre-existing `-Werror` violations across 6 files, none touched by
+  this delta or by `task/W4-opening-2`, all in other executors' owned test code:
+  `scenario_test.cpp` (2x sign-conversion), `script2_canary_test.cpp`,
+  `small_farm_animal_test.cpp` (2x), `small_farm_worker_test.cpp` (missing
+  `#include <functional>` cascading into 7 more errors — the same file MSVC
+  also rejects, above), `unit_import_test.cpp` (2x) — all range-loop-construct
+  or missing-include breaks. **The WSL ASan/UBSan gate could not be completed
+  for this package: consolidated main's current tip does not build under it,
+  independent of anything ported here.** This is reported as a blocking finding
+  about main's health, not fixed here — these files belong to MAP-NEEDS-2 and
+  MAP-INTEGRATE-1's owners, not this package.
+- **RTX 4090 / GPU-adapter checks:** NOT_RUN. No cheap existing GPU-adapter smoke
+  test is wired into this gate path independent of the full WSL/GPU-lane build,
+  and that lane is blocked by the same pre-existing break above.
+- **Identity:** confirmed unaffected — no `src/sim`, serialization, PRNG or
+  replay file in the ported delta; the one disclosed out-of-scope fix
+  (`8137b415`) is a test-only missing-include, not a behavior change.
+
+## W4-SETTLEMENT-1 — W0 baseline, capability table and build/test validation — 2026-11-06 — status: BLOCKED (reports partial completion; see blocker below)
+
+**Not in `docs/orchestration/TASKS.md`:** this package was dispatched directly by
+the owner in chat, not yet published to the task board. Flagged to the owner
+before starting; owner said proceed.
+
+Branch `task/W4-settlement-1` at `11e3c687` (no new commits past this point —
+the branch is unmodified; only a local, untracked NTFS junction `game -> ../../anno1503/game`
+was added to this worktree so tests needing `ANNO1503_GAME_DIR` could run — not
+committed, git-ignored by `game/` already, affects only this worktree).
+
+**Honest base description (W0 steps 1-3):** this branch is **not** "`origin/main`
+plus a fresh port done in this package" — it is the tip of `task/W4-opening-2-main`
+(the previous package), which is itself `origin/main` `3b74201f` (all four named
+pins — doc baseline `944cec89`, doc-acceptance `5f6092b4`, integrated code
+`7b57ebd9`, ECON-BOOK publication `3b74201f` — reconfirmed ancestors, re-fetched
+twice during this package, origin/main unchanged both times) with the already-
+ported, already-reviewed W4-OPENING-CONTROLS-FLAKE delta applied. That already
+satisfies W0's "consolidated baseline + completed/reviewed Windows delta" intent
+in one step; starting a second, separate port would have just repeated it.
+`git worktree list` was checked for other unmerged Windows-owned work relevant to
+this package (`W4-1`, `W4-3`, `W4-depth-1`, `W4-main-1`, `W4-opening-1`, `W4-gate`,
+`W4-h1exp`, `W4-preproj`): `task/W4-3-live-buildings` is confirmed already merged
+into `origin/main` (`git merge-base --is-ancestor task/W4-3-live-buildings
+origin/main` succeeds) — its building-sprite/live-picture work is already present
+on this base, not something to port again. Nothing else inspected looked both
+unmerged and in-scope; nothing further was ported.
+
+**Identity:** unchanged — state 132 / SIMINT1 / PRNG timeline 5 / replay frame 4 /
+command wire 1. State 133 / ECONBK1 remains reserved for the second Mac. No
+`src/sim` file was touched in this package (no commits were made at all beyond
+the inherited ones above).
+
+### Capability table (W0 deliverable)
+
+Built from reading `docs/orchestration/gameplay-next-chain.md` (2026-11-05/06,
+the orchestrator's own evidence-led gap inventory) and surveying
+`src/sim/include/anno/sim/{production,building,city,world}.hpp`,
+`src/render/include/anno/render/frame_table.hpp`, `src/render/src/scene.cpp`,
+`src/app/src/{viewer,scene_picture,legal_workload}.cpp` and
+`src/app/include/anno/app/dev_tool.hpp` on this exact base commit — not from
+memory or from what other packages claim elsewhere.
+
+| Capability | Status on this base | Evidence |
+|---|---|---|
+| Ship selection/sailing/founding/unloading/loading | **Accepted on main** | W4-OPENING-1/2's `opening.cpp`/`opening_session.cpp`/`opening_view.cpp`, `DevScript` `key h`/`wait turns` idiom, `viewer_wiring_opening_controls` passes standalone (10.03s, this package) |
+| Legal building placement, rotation, demolish | **Accepted on main** | `src/app/include/anno/app/dev_tool.hpp` (`DevTool`, explicitly "a test tool... not UI.2"), `legal_workload.cpp`/`.hpp`, `dev_tool_test.cpp`/`dev_feedback_test.cpp` suites (mostly pass; see failures below) |
+| Live building sprites reaching the picture | **Accepted on main** | `task/W4-3-live-buildings` merged (confirmed above); `render::FrameTable` has `FrameKind::Building`/`intern_building`; `scene.cpp` (2377 lines), `scene_picture.cpp` (1051 lines) |
+| Small-farm food/alcohol production, real workers/animals, several households, shortage/recovery | **Accepted on main, within MAP-SUPPLY-1's reviewed scope** | `gameplay-next-chain.md` lines 31-34: "Accepted within the scope of the SUPPLY/CLOSE review; ship-founded alcohol feasibility and balanced economies remain open" |
+| Cloth (sheep/wool), leather (hunter) production | **Unavailable — explicitly out of this package's boundary** | `gameplay-next-chain.md` lines 90-92: "Leather is not already renewable... Hunter is TickKind::None / Inert"; first-Mac-owned, queued (MAP-NEEDS-2), not to be implemented here per the user's own boundary |
+| Salt extraction | **Unavailable — explicitly out of this package's boundary** | `gameplay-next-chain.md` line 55, 93-95 (quarry/mine stub ticks); first-Mac-owned (MAP-EXTRACT-1, queued, not released) |
+| Resident-income booking, building upkeep | **Unavailable — explicitly out of this package's boundary** | ECON-BOOK-1 (second Mac) is "READY/RELEASED, B0-B7" per `TASKS.md` but mid-implementation, not yet merged to `origin/main`'s tip (`3b74201f` is the *publication* commit, not a completed-B7 merge) |
+| Session-only-enabled household population behavior | **Partially accepted** | small-farm household state exists per MAP-SUPPLY-1's scope above; general `house_updates`/population progression defaults remain false project-wide (CLAUDE.md, `gameplay-next-chain.md` line 41) and must stay false by default |
+| Save/resume, deterministic headless replay | **Accepted on main** | `anno_app_input_tests.dev session: the replay agrees with a recorded run...` test exists and, under this run, PASSED with real game files |
+| Developer inspection UI for building/production/household state | **Unavailable, not yet built** | No dev-overlay/inspection surface beyond `dev_tool_status()`'s one-line window-title string (`dev_tool.hpp` line 166) and `DevScript`'s scripted `expect fact` assertions was found; this is genuinely new work, not already present |
+
+### W1 — target-platform validation
+
+- `cmake --preset msvc` configures clean; `cmake --build --preset msvc --target
+  anno1503` builds `anno1503.exe` clean (confirmed twice, background and
+  foreground). `anno_app_tests.exe`/`anno_app_input_tests.exe` also build clean
+  once requested as explicit targets (they are not part of the default build set
+  — note for whoever next configures this preset from scratch).
+- `anno_sim_tests` **fails to build** — same pre-existing `small_farm_worker_test.cpp`
+  MSVC break already reported on `task/W4-opening-2-main` above; not touched here,
+  not this package's territory (MAP-NEEDS-2).
+- A junction `game -> ../../anno1503/game` was added to this worktree (original
+  game files are not copied per worktree; this one had none). With it,
+  `ANNO1503_GAME_DIR` set, ran `ctest --preset msvc -j 8 -R
+  '^anno_app_tests\.|^anno_app_input_tests\.'`: **255/260 passed (98%)**, 204.78s
+  real. Five failures, none touching any file this package or `task/W4-opening-2-main`
+  changed (the branch has zero new commits of its own beyond the inherited ones):
+  - `anno_app_tests.play: a turn with no commands publishes no building changes`
+  - `anno_app_tests.developer resources: a Build too expensive for the start is refused without them`
+  - `anno_app_tests.legal workload: one accepted build and one accepted demolish reach the picture as a fresh scene of the desired state (game files)`
+  - `anno_app_tests.legal workload: intermediate publications under a stream of builds and a demolish each equal a fresh scene of the state they represent (game files)`
+  - `anno_app_tests.founding sites, real files: the original's own warehouses pass the coast rule as stored` — concretely, `CHECK( seen >= 62 )` got `4`, i.e. the test found only 4 of an expected 62 stored warehouse-1302 coast-rule rotations in this worktree's game files.
+  Not investigated further (out of this package's scope to fix); reported as-is.
+  No independent review of this list has been done — flagged for the orchestrator
+  or a dedicated reviewer, not claimed as triaged.
+- RTX 4090 / GPU-adapter: NOT_RUN, same blocked WSL/GPU lane as `task/W4-opening-2-main`
+  above (the gate hasn't been re-tried here; no reason to expect a different result
+  since nothing changed on that lane).
+
+### Blocker — stopping here, W2-W7 not attempted
+
+W0 (baseline + capability table, done above) and W1 (target build/run validation,
+done above) are the parts of this package genuinely completed with real evidence
+in this pass. **W2 through W7 — new rendering/dev-UI wiring for live production/
+worker/household observability, two real-window proofs, RTX 4090 performance
+measurement, and a final independently-reviewed candidate with an owner playtest
+card — were not attempted.** This is a deliberate stop at a genuine blocker, not
+a skipped step: that scope is substantial new engineering (a developer inspection
+UI does not exist yet per the capability table above; it would need to be designed
+and built, then proven against whatever MAP-SUPPLY-1's small-farm chain actually
+exposes, which this pass did not have the room to verify at the `src/sim` call-site
+level, only at the header-existence level). Completing it with the same evidence
+standard as W0/W1 above (built, run, and checked — not asserted) needs a dedicated
+pass with its own time budget, not a continuation squeezed into this report.
+Nothing was fabricated to meet the stopping criteria; the stopping criteria were
+not reached.
+
+Not pushed, not merged. No commits beyond what `task/W4-opening-2-main` already
+had. No household/economy default was touched, UI.2 was not started, no new
+simulation mechanics were added, and no completeness claim is made.
+
+## W4-SETTLEMENT-1 — W2-W5: developer inspection UI, built and proven in the real window — 2026-11-06 — status: W2-W5 DONE, W6 N/A (see below), W7 self-reviewed only
+
+Continuation of the entry above, same branch/worktree, authorized directly by the owner to proceed
+past the W1→W2 blocker reported there ("Yes go" on both the TASKS.md-absence question and the
+proceed-into-W2-W7 question). Commit `59201fb1` on `task/W4-settlement-1`.
+
+**What this is:** `PlayRunner::request_inspect(TileXY)` / `PlaySnapshot::inspection`
+(`src/app/include/anno/app/play.hpp`, `src/app/src/play.cpp`): the window asks, once per frame the
+hovered tile changes, what building is at a tile; the sim thread answers it inside `publish()` —
+same thread, same lock pattern (`inspect_mu_`/`inspect_tile_`) as the existing founding-preview
+probe (`probe_mu_`/`probe_`) — and the answer (`BuildingInspection`: the payload's runtime class
+name and a one-line summary of its production.hpp fields: output/raw/input stock, activity,
+workers/animals/carriers out, status code, household residents and need stock) travels inside the
+*same* `PlaySnapshot` the rest of the window already reads, once per published turn. This is the
+exact discipline W4-OPENING-CONTROLS-FLAKE's `facts_turn` fix established (one coherent read per
+turn, never a fresh query racing a frame-gated one) — reused here for a different fact, not
+reinvented. Shown in the window title when the dev tool is on (`viewer.cpp::update_title`);
+exposed as `DevScript` facts (`inspection.kind`, `.status`, `.type`, `.prodtype`, `.tile.x/y`) in
+**any** session, opening or not — `opening_facts()` only ever populated facts for an opening
+session, so Proof B below (no opening) needed this fixed to even see the facts at all.
+
+**Presentation-only, confirmed by diff, not by assertion:** `git diff --stat` for this commit
+touches only `src/app/{include/anno/app/play.hpp,src/play.cpp,src/viewer.cpp,CMakeLists.txt}` and
+one new test script. No `src/sim` file. Every field `BuildingInspection` reads is already-public,
+already-serialized `Payload` data (`Building::payload`, a `std::variant` of the nine classes
+`building.hpp` already defines), reached through `World::building_at` and `TypeRegistry::find` —
+both pre-existing, already-const accessors. Nothing new is computed, stored, or serialized in the
+sim; the inspection line is read-only and formatted entirely in `src/app`.
+
+**Self-review (no second agent available — a fork cannot spawn one; this is my own second pass
+over the diff, not an independent reviewer; flagged honestly, not claimed as one):**
+Found and fixed three real formatting bugs before any of them shipped:
+1. `Workshop::activity` and `SmallFarm::activity`/`figures_out` were wrongly run through the
+   8.8-fixed-point tons formatter (`join_tons`) — they are plain counters/averages per
+   `production.hpp`'s own field comments, not goods amounts. Fixed to print plain numbers.
+2. `House::stock` was likewise wrongly shown as tons; it is the house population satisfaction
+   value (`trunc(Menge*s*residents*128/1536)`, `docs/re/population.md` §2, confirmed against
+   `scenario_formats_test.cpp`'s own hand-derived vectors), not an 8.8 goods amount. Fixed.
+3. `payload_kind_name`'s `if constexpr` chain ended in a bare `else { return "Inn"; }` — if a
+   tenth `Payload` alternative were ever added, every branch would silently fail to match and this
+   would mislabel it as "Inn". Added `static_assert(std::is_same_v<T, sim::Inn>, ...)` so that
+   failure mode becomes a compile error instead of a wrong label.
+All three were caught by re-deriving each field's unit from `production.hpp`'s own comments and
+`scenario_formats_test.cpp`'s existing hand-derived vectors, not by a test failing (none of the
+test scripts happened to build a type that would have shown the wrong unit visibly, except by
+coincidence the fixed House test's stock values were all zero either way). **This is exactly the
+kind of defect an actually-independent reviewer exists to catch; none has looked at this diff.**
+
+**Proof A (ship arrives, founds, unloads, loads — the opening loop):** not rebuilt, confirmed as
+directed. `ctest -R '^viewer_wiring_opening_controls$|^opening_session_replay$'`:
+both PASS natively (9.76s, 131.47s). `opening_session_replay` is the project's own existing
+end-to-end proof (launch, select, sail ~550 tiles, save; resume, refused foundings, the real
+founding, every hold unloaded, a full store, two ordinary buildings, the ledger, replayed from both
+recordings in fresh processes) — it already covers Proof A in full; nothing new was added for it.
+
+**Proof B (existing-town settlement activity, household state live in the real window):**
+`tools/test/viewer_wiring/settlement_activity.script`, registered as CTest
+`viewer_wiring_settlement_activity` (`src/app/CMakeLists.txt`). Builds a pioneer house (type 501 —
+the id `population_progression_test.cpp` and the existing `opening_resume.script` already use) on
+the lan5 developer island through the real dev tool (`key b`, `select 501`, `click`), waits 5
+turns, hovers the built tile, and asserts `inspection.kind == House` and
+`inspection.status contains residents=5` — real simulation data (every freshly-created House has
+`residents_64 = 5*64` per `building.hpp`'s own comment), read live through the new mechanism, not
+injected. PASS, 4.46-4.56s across three runs (manual iteration + the registered CTest run).
+
+**Proof B's honest limit — tried and found genuinely blocked, not swept under:** the directive
+asked for "settlement activity", which I read as *active production*, not just a standing
+building. I tried two further building types at the identical tile:
+- Type 809 (UNIVERSAL small farm): after 30 turns, `out`/`raw`/`activity`/`figures_out` all stayed
+  zero, `status_code=1` (`Status::MissingInput`) — no crop field anywhere near this exact tile on
+  lan5's NORD island template. The small farm needs real nearby GRAS/KARTOFFEL field objects
+  (`gameplay-next-chain.md`'s own data table); none happen to sit next to this build spot.
+- Type 1001 (HANDWERK workshop, consumes warehouse stock — the developer start's city stock is
+  already 190t of *every* goods, `sim_load/fixed_map.hpp`'s `DeveloperResources`, so a missing
+  crop field should not have blocked it): still `in=0.00t`, `carriers_out=0`, `blocked` after 30
+  turns — no cart ever dispatched, almost certainly because nothing road-connects this tile to the
+  Kontor (no road was built to it; this package built only the one target building, per its own
+  "legal building placement" scope, not a connected supply chain).
+Both results are the inspection UI correctly reporting real, unfavorable simulation truth, not a
+defect in it. Getting a genuinely *producing* building observed live would need either a
+road-connected build (this package's own `DevTool`/`drag` already supports roads — not attempted,
+out of time for this pass) or a scenario fixture with pre-placed crop fields (none available to
+`--play` without original-scenario research this package did not do). **`gameplay-next-chain.md`
+itself still lists MAP-TOWN-1 ("Establish one reproducible legal build order... Exit: one
+supported opening reaches a functioning settler town") as QUEUED / NOT RELEASED** — so a complete,
+observed, producing legal chain from a dev/ship start is not yet an accepted capability anywhere in
+this project, on any platform; this pass could not and does not claim to have solved that. Proof B
+as delivered demonstrates the inspection UI is correct and live (household state), not that a full
+economy is observable yet.
+
+**Regression (MSVC, native, with the real game files via a local untracked junction, removed again
+before the WSL gate below):** `ctest --preset msvc -j 8 -R
+'^anno_app_tests\.|^anno_app_input_tests\.|^viewer_wiring_|^opening_session_replay$'`:
+262/267 passed (98%), 255.45s. The same 5 failures already reported on `task/W4-opening-2-main`
+above, same test names, same concrete values (`CHECK( seen >= 62 )` still gets `4`) — confirmed
+unchanged, not newly caused by this package; still not this package's scope to fix.
+
+**W6 (RTX 4090 performance):** not applicable in the sense the directive asked, not NOT_RUN for
+the blocked-lane reason either — this package's diff never touches rendering, the GPU compositor,
+or any draw call; `bench_frame`'s existing RTX 4090 measurements (`docs/perf/README.md`) measure
+exactly that path and would not move, because nothing on it changed. The actual new per-turn cost
+is `inspect_building()` inside `PlayRunner::publish()` (sim thread): one `World::building_at` call
+(an existing O(log n)-ish lookup already used elsewhere in the same function) plus formatting at
+most ~10 numbers into a string, gated behind `if (inspect_tile)` so it costs nothing when the dev
+tool is off or nothing is hovered. This was not formally profiled (no existing fact exposes
+`PlaySnapshot::p95_us` to a script, and adding one felt like scope creep for a cost this bounded by
+inspection) — flagged honestly as reasoned-from-code, not measured, unlike the rest of this report.
+
+**W7 (frozen gates, independent review, playtest card):** gates — MSVC regression above is green
+net of the pre-existing five. The WSL ASan/UBSan gate was launched
+(`tools/test/wsl_gate.sh`, tag `settle3`, after removing the local game-files junction a first
+attempt's dirty-checkout refusal correctly caught — `?? game`, an untracked convenience junction,
+not a real source change) and was still running in the background when this entry was written;
+its result was not available in time for this entry and is not claimed here. Independent review —
+**not done**: see the self-review note above; a fork cannot spawn a second agent, so the "nested
+review" the directive asked for did not happen. This diff needs a genuinely independent pass before
+it should be called accepted, same as `task/W4-opening-2-main`'s entry above ("Reviewers: none
+yet").
+
+### Owner playtest card — the developer inspection UI
+
+**What's new:** hovering the developer building tool's cursor over a building now shows what it is
+actually doing, in the window's title bar, read live from the simulation.
+
+**Try it:**
+1. `anno1503.exe --play data\maps\lan5.txt --game-dir game\app`
+2. Press `B` (turns on the developer building tool — unchanged from before).
+3. Press `N` / `P` to cycle to a building type; left-click a legal tile to build it.
+4. Move the mouse to hover that same building (don't click again). The title bar gains a line:
+   - a house: `House residents=5 stock=0,0,0,0,0,0`
+   - a small farm away from any field: `SmallFarm out=0.00t,0.00t raw=0.00t,0.00t activity=0,0
+     figures_out=0,0,0,0,0 status_code=1 blocked` (`status_code=1` = missing raw material — real,
+     not a bug; see Proof B above)
+   - a workshop with no road to the warehouse: similar, `in=0.00t ... blocked`
+5. Hover away (or over empty ground): the line disappears.
+6. Wait a while and hover the same building again: the numbers reflect whatever actually changed.
+
+**What it is not yet:** not a dedicated panel (it rides the existing title-bar line); shows nothing
+extra for a building class whose simulation tick is not ported (`Inert`); does not itself fix
+anything blocked — building or road-connecting that building is still the player's job, same as
+before this package.
+
+**W7 WSL gate rerun — status update (disk-fix rerun, tag `w7app1`):** after the owner moved WSL's
+Ubuntu disk to `E:\wsl\Ubuntu` and freed C:, `tools/test/wsl_gate.sh` was rerun following the new
+disk rules (shared build dir `$HOME/anno-build/wsl-gate`, EXIT-trap cleanup, `--min-free-gib`
+floor, deps moved to `$HOME/anno-deps`; fix committed `6b327759`, spot-verified: floor refusal,
+trap-on-exit, and `--keep-build` all independently confirmed). The full gate still cannot finish:
+`anno_sim_tests` hits the same pre-existing, out-of-scope `-Werror` breaks already flagged above
+(MAP-NEEDS-2/MAP-INTEGRATE-1 territory, six test files, unrelated to this package). A scoped manual
+rerun of the remaining lanes (app/formats/render/tsupport, `anno_sim_tests` excluded, `bench_frame`
+rebuilt as a dependency of `picture_matrix_contract`) was launched under tag `w7app1`. At the time
+of this entry it is **still running, not yet concluded**: 28/271 selected tests passed, 0 failed,
+0 timed out so far (log: `cache/gates/wsl-w7app1-app.log`); E: has 843G free and the run shows no
+sign of the earlier disk exhaustion. This is reported as **IN PROGRESS**, not PASS and not
+NOT_RUN — the true result is whatever that run concludes with, not guessed here. Independent
+review of this package's diff is still **not done** (unchanged from above: a fork cannot spawn a
+second reviewing agent).
+
+**W7 correction — the `w7app1` run was invalid; redone on a clean checkout (owner, 2026-11-06):**
+the owner reviewed the `w7app1` background run above and ruled it out as acceptance evidence: it
+ran outside `tools/test/wsl_gate.sh` (no autocrlf override) and its own provenance recorded 1,147
+modified files, i.e. it built from a dirty, non-canonical tree. It was killed without being used
+as evidence of anything (PIDs 309/440072 and the four worker test processes they had spawned).
+
+Two manual, out-of-band invocations of the real `bench_picture --aggregate <missing file>` against
+leftover binaries from that invalid run gave two different, both-wrong results — `exit 127` (the
+first `wsl-w7scoped` gate attempt) and `exit 0` (a direct probe of the `w7app1` binary) — against
+an expected `2`. Neither is a code defect: both binaries came from dirty/stale builds that do not
+reliably correspond to this branch's committed `main.cpp` (which calls `fail(2, ...)` →
+`std::exit(2)` on an unreadable trace; read directly, that logic is correct). Once a genuinely
+clean build was done (below), this case was never reached, for a different and real reason — see
+next paragraph. So `picture_matrix_contract` carries **no evidence of being broken**; the earlier
+127/0 readings are attributed to the invalid build environment, not to the test or the binary.
+
+A new worktree was added at this branch's exact tested head, `743ccf9c608925761dbafac62616901f3b3fc60e`
+(`git worktree add E:\anno1503-worktrees\anno1503-W4-settlement-1-gatecheck 743ccf9c...`, detached,
+confirmed `git status --porcelain` empty before the gate ran), specifically so the gate would not
+run in the live, repeatedly-edited executor worktree. `tools/test/wsl_gate.sh` was then run once,
+unmodified, directly against it (tag `gatecheck2`):
+
+```
+source head 743ccf9c608925761dbafac62616901f3b3fc60e dirty (autocrlf=true view) 0
+build rc=1 elapsed=13s
+VERDICT: INVALID build failed, nothing tested
+```
+
+(The raw, non-autocrlf dirty count the provenance line also records, 1148, is the same
+line-ending-normalization artifact the gate script's own autocrlf override exists to neutralize —
+not a real change; the autocrlf view it actually gates on reads 0.)
+
+**Root cause of the build failure:** `cmake --build` (unscoped — it builds the default `all`
+target, by this script's own design, before any lane runs) fails compiling `anno_sim_tests`,
+independent of anything this package touched:
+- `src/sim/tests/unit_import_test.cpp:414` and `:423` — `-Werror=range-loop-construct` (`for (const
+  auto [ratio, hp] : ratios)` copies a `pair` the loop could bind by reference).
+- `src/sim/tests/scenario_test.cpp:1082-1083` — `-Werror=sign-conversion` (`isolated += ... ? 1 :
+  0;` into a `std::size_t` accumulator).
+- `src/sim/tests/small_farm_worker_test.cpp:344-346` — an ambiguous overload of
+  `sim::make_small_farm(...)` against a lambda with no viable conversion.
+
+Full build log: `cache/gates/wsl-gatecheck2-build.log`. This is the same six-file
+MAP-NEEDS-2/MAP-INTEGRATE-1 break already flagged earlier in this package's own W0/W1 report (not
+newly discovered), now shown with the owner-required side-by-side evidence rather than just
+asserted: fetching `origin/main` (`049b02707471b531e3a8d10aabcd46035634128f`, 2026-11-06 12:40
+UTC+1) and reading the same files there shows the identical lines, verbatim —
+`unit_import_test.cpp`'s two `for (const auto [ratio/raw, hp] : ...)` loops, `scenario_test.cpp`'s
+`isolated += component.value().isolated ? 1 : 0; / supported += ... ? 0 : 1;` (there at lines
+1140-1141, shifted but unchanged), and every one of `small_farm_worker_test.cpp`'s eight
+`sim::make_small_farm(registry(3 * 256)->find(kSmallFarm)->prod)` call sites. This branch did not
+introduce, touch, or worsen any of the three files. The break predates this package and sits on
+`main` right now.
+
+**Consequence for W7:** because the build is unscoped, this single pre-existing break blocks the
+*entire* gate, not just a `sim` lane — **every lane (app/sim/formats/render/tsupport) is BLOCKED**,
+elapsed 13s (the build step; no lane reached `ctest`). `picture_matrix_contract` was not
+re-exercised by this run for the same reason: the build never got that far. The gate's own
+`EXIT` trap ran on this failure path too (confirmed: `$HOME/anno-build/wsl-gate` no longer exists
+after the run) — the disk rule holds even on a build failure.
+
+This package cannot produce a valid W7 WSL gate result without either (a) MAP-NEEDS-2/
+MAP-INTEGRATE-1 fixing those three files upstream, out of this package's lane, or (b) the owner
+accepting a scoped/targeted build as valid evidence (not done here, since the canonical gate
+script intentionally builds `all`). Recorded here as **BLOCKED**, not NOT_RUN and not a guessed
+PASS/FAIL, with the evidence above. Independent review of this package's diff is still **not
+done** (unchanged: a fork cannot spawn a second reviewing agent) and is explicitly left for the
+owner, as instructed — not claimed here.
+
+The diagnostic worktree `E:\anno1503-worktrees\anno1503-W4-settlement-1-gatecheck` (detached at
+`743ccf9c`) was left in place rather than deleted, per the standing no-worktree-deletion
+constraint; it holds no uncommitted work of its own and can be removed by whoever next prunes
+worktrees.
+
+**Root cause of the earlier stuck wait-loop (tag `gatecheck1`, superseded by `gatecheck2` above),
+owner-requested follow-up:** reproduced directly, not guessed. Two distinct, real bugs, not one:
+
+1. *The launcher silently died.* `gatecheck1` was started as
+   `wsl.exe -d Ubuntu -- bash -lc "cd /mnt/... && nohup bash tools/test/wsl_gate.sh ... > log 2>&1 &
+   echo STARTED_PID=\$!"`. Reproduced in isolation: a `sleep`/`touch` job backgrounded this same way
+   gets a real PID and shows `jobs -l` status `Running` right up until the invoking `bash -lc`
+   process returns — but its deferred file-write never happens; the child is gone by the time it
+   was due to run. `nohup`, `setsid`, `disown`, and closing stdin were each tried and each still
+   lost the child (all reproduced). Conclusion: a backgrounded WSL child does not outlive the
+   single `wsl.exe` invocation that launched it *from this tool*, no matter which Linux-side
+   detachment is used — the whole invocation's process tree is torn down as a unit once that
+   invocation's own foreground command returns. `nohup bash ... &` inside a one-shot `wsl.exe --
+   bash -lc "..."` call is therefore not a valid way to start a long-running WSL job from here.
+   This, not any path-mangling, is why `gatecheck1` produced zero files: the real gate process
+   never got past its first few lines.
+2. *The wait loop couldn't tell and had no cap.* The follow-up `until [ -f "$S" ] ...; do sleep 20;
+   done` loop polled only for a result file to appear, with no check that anything was still alive
+   to produce it, and no wall-clock limit of its own — it relied entirely on the tool's `timeout`
+   parameter, which is not enforced the same way under `run_in_background: true`. Against a
+   condition that could structurally never become true (point 1), it spun for 1h40m until a human
+   caught it, instead of failing within minutes.
+
+A separate, real bug was also found and reproduced while investigating, worth recording so no
+other executor hits it: Git Bash/MSYS, invoking a non-MSYS binary like `wsl.exe` from this host,
+silently rewrites a **standalone** argument that looks like an absolute POSIX path into a Windows
+path from *Git Bash's own* mount table before `wsl.exe` ever sees it — e.g. `wsl.exe -d Ubuntu --
+cat /tmp/foo.txt` arrives as `cat 'C:/Users/.../AppData/Local/Temp/foo.txt'`, a path on the Windows
+side, not WSL's `/tmp`. This reproduces for `/tmp/...` the same way the already-known
+`/mnt/...`-doubled-slash gotcha does, but only when the path is its own argv token; a path
+*embedded inside* one larger quoted `bash -lc "..."` string (confirmed by direct test) is not
+rewritten. It did not cause either bug above (both failures used embedded, not standalone, paths),
+but is a live trap for a future bare `wsl.exe ... -- <cmd> /tmp/x` or `/mnt/x` call; double the
+leading slash (`//tmp/x`, `//mnt/e/x`) or keep the path embedded inside one `bash -lc "..."` string
+to avoid it.
+
+**Fix applied going forward (this package and this entry's own gate run already used it):** don't
+background inside the WSL invocation at all. Run the real command in the *foreground* of a single
+`wsl.exe -d Ubuntu -- bash -lc "<command, no trailing &>"` call, and let this tool's own
+`run_in_background: true` (or its automatic promotion to background on timeout) track and keep it
+alive — that path is what actually survived and produced `gatecheck2`'s real result above. For any
+future wait on something this tool isn't already tracking, the loop must check the thing's own
+liveness each iteration (e.g. `kill -0 "$PID"`), not just poll for an output file, and must carry
+its own hard iteration/wall-clock cap so a dead target is reported within minutes, not spun on
+indefinitely.
+
+**Push (owner rule, 2026-11-06):** per the new "push your own task branch at every checkpoint"
+rule, this branch (`task/W4-settlement-1`) is pushed to `origin` with this report. Ordinary push
+only; `main` and other lanes' branches are untouched.
+
+**Correction (owner, 2026-11-06): `gatecheck2` above is not valid evidence for `743ccf9c` — it
+silently built the live worktree, not the clean checkout; `picture_matrix_contract` is OPEN, not
+cleared.** Two things stated as settled above were wrong:
+
+1. *`gatecheck2`'s build-failure list came from the live executor worktree, not the clean
+   `-gatecheck` checkout, due to a real bug in `tools/test/wsl_gate.sh`.* The shared build dir
+   `$HOME/anno-build/wsl-gate` still held `CMakeCache.txt` left over from the earlier, invalid
+   `w7app1` run against the *live* worktree (`/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1`).
+   The script's old configure gate was only `if [ ! -f "$B/CMakeCache.txt" ]` — cache present, for
+   *any* source, means "skip configure" — so `gatecheck2` never configured against the intended
+   `-gatecheck` checkout at all; it relinked the leftover live-worktree object tree. Confirmed from
+   that run's own `wsl-gatecheck2-configure.log` not existing (no "configure rc=" line was ever
+   written) and from `wsl-gatecheck2-build.log`, where every compiled path is under
+   `/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1/`, not `...-gatecheck/`, with only 94 build
+   steps run — not a real `all`-target build of the clean tree. So the three pre-existing
+   `-Werror` breaks that run reported are still real and still verified verbatim on `origin/main`
+   (`049b0270`, unchanged above) — that evidence stands — but they were demonstrated against the
+   *live worktree's* source tree, not against `743ccf9c` specifically, so `gatecheck2`'s `BLOCKED`
+   verdict is **not acceptance evidence for `743ccf9c`** and is superseded, pending a real rerun.
+
+2. **Fix, in `tools/test/wsl_gate.sh`:** the configure gate now compares the build dir's own
+   recorded source (`CMAKE_HOME_DIRECTORY:INTERNAL=` from `$B/CMakeCache.txt`) against the
+   worktree actually being tested (`$W`), via `realpath`, before trusting an existing cache; any
+   mismatch wipes `$B` and reconfigures fresh. The gate's provenance file (`$S`) also now records
+   the build dir's actual configured source, read back from `CMakeCache.txt` itself after
+   configure, not just echoed from `$W`, so a future run can be audited the same way this bug was
+   caught. **Demonstrated, not just reasoned about:** a scratch build dir was seeded with
+   `CMAKE_HOME_DIRECTORY:INTERNAL=/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1` (the exact
+   live-worktree path that caused the real bug), then the fixed script was run against the
+   `-gatecheck` checkout (`743ccf9c`) with that scratch dir as `--build-dir`. Observed in the
+   run's own log: `stale build dir: ... was configured for source
+   '/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1' but this run tests
+   '/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1-gatecheck'; wiping ... and reconfiguring`,
+   followed by `configure rc=0`, followed by `build dir source (from CMakeCache.txt)
+   /mnt/e/anno1503-worktrees/anno1503-W4-settlement-1-gatecheck` — correctly matching `$W`, not the
+   stale entry. The run was capped at 150s (`timeout -s TERM 150`) and did not run the real build
+   or test lanes to completion — this demonstrates only the detect/wipe/reconfigure/provenance fix
+   itself, not a new W7 result. The scratch build dir was deleted manually afterward (the run's own
+   `EXIT` trap did not fire, since `timeout`'s `SIGTERM` killed the process without running it —
+   an artifact of this ad hoc demo harness, not of the production gate path, which still exits
+   normally on every real pass/fail/invalid branch as already verified earlier in this package).
+
+3. **`picture_matrix_contract` is OPEN, not cleared — correcting the "no evidence of being
+   broken" claim above.** That claim rested on reading `main.cpp`'s `fail(2, ...)` logic, which is
+   not evidence of the actual binary's behaviour. The only two real observations remain exactly
+   what they were: `exit 127` from the gate's own (contaminated, per point 1's mechanism — a stale
+   build) run, and `exit 0` from a separate out-of-band probe; the test expects `exit 2`. Neither
+   matches, and neither has been validated against a correctly-configured, clean build. This case
+   has **not yet been tested validly** and remains open; only a real gate run through the now-fixed
+   script, on a clean checkout, will actually test it.
+
+**Status now:** per the owner's instruction, no further gate run is attempted in this entry.
+Main's own C++ CI has been red since `944cec89`, and this package's tested base `3b74201f` is red
+too (confirmed above); the Codex orchestrator owns fixing `main`, not this package, and the sim
+lane is explicitly not to be patched here. This package now waits: once `main` is green, adopt it
+the reviewed way (compare histories, port only what's missing — not a blind merge), then rerun W7
+through the fixed `tools/test/wsl_gate.sh` on a fresh clean checkout with a genuinely fresh build
+folder, running every lane including sim, and only then remove the `-gatecheck` diagnostic
+worktree (this package's own, not another executor's — safe to delete once that final run is
+done, not before). Independent review of this package's diff is still **not claimed here** —
+left for the owner once W7 has a valid result, as instructed.
+
+
+## W4-SETTLEMENT-1 — MAIN-CI-1 intake + MSVC regression gate (2026-11-06)
+
+**MAIN-CI-1 intake adopted at `b7be2a1d`**, hand-adapted (not a merge/cherry-pick) per
+`docs/orchestration/TASKS.md`'s MAIN-CI-1 section and
+`docs/orchestration/reviews/2026-11-06-main-ci1.md`. Taken onto this state132 base: the
+`script_runtime.cpp` target-lifetime fix; GCC-warning fixes (missing includes, structured-binding
+copies, checked nullable lookups) in `build_terrain_test.cpp`, `integration_gameplay_test.cpp`,
+`scenario_test.cpp`, `script2_canary_test.cpp`, `script_build_test.cpp`, `script_scale_test.cpp`,
+`small_farm_animal_test.cpp`, `small_farm_worker_test.cpp`, `unit_import_test.cpp`; both
+farm-fixture lifetime fixes (prvalue elision instead of optional NRVO, pointer-identity asserts);
+the SCRIPT2 CLI prerequisite/contract fix in `tools/script_canary2.py`; the port0 metadata-test fix
+in `budget_f3_test.cpp`; and, in `src/sim/CMakeLists.txt`, the `SKIP_REGULAR_EXPRESSION` property
+for this branch's two existing SCRIPT2 fresh-process tests. **Omitted as not applicable to
+state132**: the economy134 checkpoint fixture, the `economy_loop_*` CMake hunk, and
+`city_booking_test.cpp`/`economy_loop_test.cpp` (none of the latter two exist on this branch).
+`integration_identity_test.cpp`'s `<filesystem>` include was already present (`8137b415`).
+MSVC build: exit 0.
+
+**MSVC regression gate (`ctest --preset msvc -j 16`, `ANNO1503_GAME_DIR=E:\anno1503\game\app`):
+2262/2280 passed (99%), 18 failed.** Rerunning the 18 serially (`-j 1`, by test number) reproduced
+all 18 identically, ruling out `-j16` resource contention.
+
+**Evidence the 18 failures are pre-existing, not caused by this intake**: built a separate detached
+worktree (`anno1503-W4-settlement-1-msvccheck`) at the unmodified pre-intake head `2f2b45ac` and ran
+the same 18 tests the same way. Result: **0/18 passed, byte-for-byte identical failure messages and
+near-identical timings** (e.g. test 613 "founding sites, real files": `CHECK( seen >= 62 )` with
+`4 >= 62` on both; test 594 "legal workload": `REQUIRE( edits.back().accepted )` with `logged:
+ConstructionDenied` on both; all 13 GPU-labelled tests fail identically on both the RTX 4090 and the
+Radeon iGPU adapters on both commits). This intake's one production change
+(`script_runtime.cpp`) is not implicated — the failures predate it and are identical with or
+without it. Root cause not yet diagnosed (candidates: a host/driver/game-dir environment change
+since W2-W5's gate was last run green, or a real pre-existing regression on this branch); out of
+scope for this repair-intake package. Flagging for the owner/orchestrator rather than
+investigating further here.
+
+Diagnostic worktree `anno1503-W4-settlement-1-msvccheck` (detached at `2f2b45ac`, no uncommitted
+work) left in place rather than deleted, pending explicit authorization like the earlier
+`-gatecheck` worktree.
+
+Tested head: `b7be2a1d`. Pushed next.
+
+## W4-SETTLEMENT-1 — W7 WSL ASan/UBSan gate, valid run (2026-11-06)
+
+**First valid, complete W7 gate run for this package.** Every earlier attempt either failed before
+completing (`w7scoped`: every lane blocked on `picture_matrix_contract`), was voided
+(`w7app1`: ran outside `tools/test/wsl_gate.sh`, no autocrlf override, 1,147 modified files), or
+built the wrong source (`gatecheck2`: a stale `CMakeCache.txt` left by `w7app1` made the script skip
+configure and build the live worktree instead of the clean checkout).
+
+**Setup**: removed the old `-gatecheck` worktree (built from `743ccf9c`, obsolete), added a fresh
+detached worktree at this package's adopted-repair head `71d32509`, cleared
+`$HOME/anno-build/wsl-gate` explicitly, and found a genuinely stale `wsl-gate.run.lock` directory
+(timestamped 09:32, 6+ hours old, no live holder) left over from an earlier aborted attempt — this
+predates `run_selected.py`'s lock acquisition happening before its own `try/finally`, so an abrupt
+kill (the kind the now-fixed `wsl.exe`-backgrounding bug caused) can orphan it; removed it by hand
+before this run since no process held it. Ran `tools/test/wsl_gate.sh` exactly once, in the
+foreground of a single `wsl.exe` invocation (never backgrounded inside the WSL call, per the
+earlier hang's root cause), all 5 default lanes including sim, tag `w7final2`.
+
+**Provenance**: tested head `71d32509339f830ecc6563a09d0a64b214ab6875`; dirty (autocrlf=true view)
+= **0**; build dir source (read back from `CMakeCache.txt`) = the `-gatecheck` worktree, matching
+the tested head. Build rc=0, 211s. Build tree confirmed deleted at the end (`$HOME/anno-build/` is
+empty after the run).
+
+**`picture_matrix_contract` is RESOLVED: PASS in all 5 lanes** (`ok: empty cases file (exit 2)`),
+from the binary's actual observed behaviour on a genuinely clean, correctly-configured build. The
+two earlier conflicting readings (exit 127, exit 0) are confirmed to have been artifacts of the
+contaminated `w7app1`/`gatecheck2` builds, not a real defect.
+
+**Lane results:**
+| Lane | Verdict | Selected/Executed | Failed | Elapsed |
+|---|---|---:|---:|---:|
+| app | FAIL | 270/263 | 5 | 7966s |
+| sim | FAIL | 1416/1409 | 3 | 6403s |
+| formats | PASS | 93/93 | 0 | 1110s |
+| render | FAIL | 185/184 | 1 | 2095s |
+| tsupport | PASS | 89/85 (4 opt-in skip) | 0 | 249s |
+
+**App lane's 5 failures are the same pre-existing app-level failures already proven present before
+this intake** (identical test names and failure text to the MSVC regression-gate findings below):
+`play: a turn with no commands publishes no building changes`, `developer resources: a Build too
+expensive...`, both `legal workload...` cases, and `founding sites, real files...`. Not caused by
+this package.
+
+**Sim lane's 3 failures are memory-budget-coordinator refusals, not code defects.** Each threw
+`[anno-test memory] refused estimate=1073741824 reason=wait deadline` after hitting the
+coordinator's 1800s admit deadline during a period of real memory contention from concurrently
+running multi-thousand-second corpus tests (`population A original-data components...`, both
+`scenario corpus original-data components...` cases, each individually 3800-4300s). Evidence this
+is scheduling, not memory exhaustion: each lane summary reports `0 bad_alloc items, 0 retries`, and
+free memory recovered to 11-13 GiB shortly after. `wait deadline` refusals are not covered by
+`ANNO_TEST_BAD_ALLOC_RETRIES` (that only catches actual `std::bad_alloc`), so there is no automatic
+retry; a rerun of just these three (not attempted here, per "run it once") would likely pass under
+less contention.
+
+**Render lane's 1 failure is new** and not something this package touched (no `src/render` file is
+part of this intake): `a flow build that fails leaves the legacy look, final, built once (game
+files)` — `CHECK( rebuilt == 0 )` observed `1 == 0` (one unexpected rebuild). This is the first time
+a complete WSL ASan gate has ever finished for this package, so there is no prior clean/dirty
+baseline to compare against; flagging for the owner/orchestrator rather than investigating further
+(out of scope here, and `river_flow_corpus_test.cpp` is untouched by MAIN-CI-1 or this package).
+
+**Diagnostic worktrees removed** (`anno1503-W4-settlement-1-gatecheck`, `anno1503-W4-settlement-1-msvccheck`):
+both were this executor's own, their runs are fully documented above and in the prior entry, no
+uncommitted work in either.
+
+**Independent review: not claimed here** — pending the owner, as instructed.
+
+Tested head: `71d32509`. Pushing next, then stopping.
+
 ## ECON-BOOK-1 — 2026-11-06 — COMPLETE LOCAL CANDIDATE
 
 Owned task/ECON-BOOK-1-main starts at exact3b74201f (runtime baseline7b57ebd9),
@@ -13551,6 +14306,230 @@ The consolidation CI hold is satisfied. Windows W7’s own contract/cache findin
 remain its lane’s responsibility; its inherited-main prerequisite is cleared.
 Keep132/133/135/136 lane identities when adopting portable fixes. GitLab sync is
 left to the owner/Windows orchestrator with the key.
+## W4-SETTLEMENT-1 — W7 review changes-requested package — 2026-11-07 — status: FINISHED
+
+The 2026-11-07 W7 review (`docs/orchestration/reviews/2026-11-07-w4-settlement-1-w7.md` on main
+`dbb22306`) returned CHANGES REQUESTED against head `384df19d`: one blocker (clang-format), items
+2-8 of the branch findings, and item 9 (follow-up, done now on the owner's explicit instruction).
+Fixed in 5 commits, one per item, plus 2 incidental fixup commits caught by the real W7 rerun
+itself (see below). All work done in fresh `git worktree add --detach` checkouts
+(`anno1503-W4-settlement-1-fix1` for edits/local builds, `anno1503-W4-settlement-1-gatecheck2` for
+the gate run), never the live worktree.
+
+**Commits** (`384df19d..3836ae7f`, then `d091a70d`):
+- `b9c7f1d0` style: clang-format 23.1.3 fixes (play.cpp 737-752, play.hpp 123-125, viewer.cpp
+  1917-1918) — finding 1.
+- `d88cd7ca` fix(app): `facts_turn` now reads `opening_snapshot_`, not the live snapshot
+  (viewer.cpp:1839) — finding 2. Reopens W4-OPENING-CONTROLS-FLAKE (`89fe7c25`), whose comment
+  claimed this but whose code didn't. Extracted to a new free function `facts_turn_for`
+  (play.hpp/play.cpp) so it is unit-testable without a window; added
+  `play_test.cpp`: "facts_turn_for follows the opening snapshot's turn, not a later live one".
+- `44a4ace7` fix(app): the inspection line/facts now hide once the hover moves, lands on empty
+  ground, or the dev tool is switched off, including while paused — finding 3. New
+  `live_inspection` (play.hpp/play.cpp), used at both display sites in viewer.cpp (the title at
+  ~1765, the `inspection.*` facts at ~1876). Added `play_test.cpp`: "live_inspection hides a stale
+  answer once the hover moves...".
+- `435ffb6a` fix(testing): `tools/test/wsl_gate.sh` hardening — findings 4-8:
+  - `viewer_wiring_settlement_activity` added to the app lane's selection and `--require-test` list
+    (finding 4);
+  - the script now tracks `OVERALL_RC` across every `run_lane` call and the `--gpu-lane` skip case,
+    and `exit`s with it instead of ending on `cat "$S"` (finding 5);
+  - gate logs moved from `<worktree>/cache/gates/` to `~/anno-gate-logs/<worktree-basename>/`,
+    outside every tested worktree, with a refusal to overwrite an existing summary file
+    (finding 6) — documented in `docs/testing/README.md`;
+  - a `flock` on a sibling lock file (`$B.lock`), acquired before the `cleanup` trap is registered,
+    so a second invocation against the shared build dir queues instead of racing the first one's
+    build or deletion (finding 7);
+  - `--build-dir` resolved with `realpath`, refused unless under `~/anno-build` (finding 8).
+  Demonstrated in WSL, not committed (same spirit as the `2f2b45ac` stale-cache demonstration): a
+  failing lane and a skipped `--gpu-lane` each flip the tracked exit code 0→1; a second `flock`
+  attempt against a held lock times out as expected, then succeeds once released.
+- `3ad32b58` fix(testing): `settlement_activity.script` — finding 9:
+  - `contains residents=5` also matched `residents=50`; pinned to `contains residents=5 stock=`
+    (House's status always follows the count with `" stock="`). Writing that exact value needed
+    `expect fact`'s value to carry a space, which the parser couldn't: extended the existing
+    `expect title`/`title-lacks` "join the rest of the line" handling in `dev_script.cpp::parse` to
+    `expect fact` too (same file). New `dev_script_test.cpp` case: "expect fact's value can hold a
+    space, like title/title-lacks", covering both the join itself and the residents=5-vs-50 bug.
+  - Negative step added: pause (`key space`), hover confirmed-empty ground (`1130 516`, found by
+    probing the real map with the actual binary — `1140 516`/`1140 500`/`1156 500`/`1170 516` all
+    answer `House`, `1130 516`/`1140 540` answer `<none>`), `expect fact inspection.kind != House`.
+  - Verified both ways against the real binary + real game files (`viewer_wiring.py
+    settlement_activity`, not just unit tests): fails with the stale `'House'` value when
+    `live_inspection` is reverted, passes with it restored. Full script: PASS end to end.
+- `3836ae7f` style: clang-format fixups for `live_inspection` and the new parser test (missed in
+  the two commits above; caught by a full-tree `clang-format --dry-run --Werror` pass before the
+  rerun).
+- `d091a70d` fix(test): GCC's `-Wmissing-field-initializers` fired on `live_inspection`'s test
+  (`BuildingInspection{.tile=..., .kind=..., .status=...}` skips `id`/`type`, which MSVC does not
+  warn on but GCC 13 `-Werror` does even under valid C++20 designated init) — caught by the actual
+  W7 rerun's first attempt (build failed, see below), not by a local check. Fixed by setting every
+  field explicitly instead of aggregate init.
+
+**W7 rerun, all 5 lanes, tag `w7fix2`, head `d091a70ddc2a0d8f27aedccbfd51d3020e66fa5f`** (clean
+`git worktree add --detach anno1503-W4-settlement-1-gatecheck2`; a first attempt at this head,
+tag `w7fix1`, hit the `-Wmissing-field-initializers` build failure above and is not reported as a
+result — `d091a70d` fixes it). Run in the foreground of a single `wsl.exe` invocation each time,
+watched via a Monitor polling the gate's own summary file rather than a busy-wait loop (the
+`wsl.exe`-backgrounding root cause from earlier in this package never applies: nothing was
+backgrounded inside a `wsl.exe` call).
+
+**Provenance**: dirty (autocrlf=true view) = **0** throughout (checked at the top of the run and
+independently by each lane's own source-change guard, which would have failed the lane with
+"tested source changed during selection" rather than a real pass/fail — none did).
+`diff_sha256` identical before and after the whole run
+(`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`, the empty-diff hash). Build
+rc=0, 213s. Build tree confirmed deleted at the end (`~/anno-build/` holds only the empty
+`wsl-gate.lock` file afterward). Logs kept at
+`~/anno-gate-logs/anno1503-W4-settlement-1-gatecheck2/` (outside the worktree, per finding 6's
+fix) — both this run's and the failed `w7fix1` attempt's logs, nothing deleted.
+
+**Lane results:**
+| Lane | Verdict | Selected/Executed | Failed | Skipped (all opt-in) | Elapsed |
+|---|---|---:|---:|---:|---:|
+| app | FAIL | 274/267 | 5 | 2 | 8138s |
+| sim | PASS | 1416/1412 | 0 | 4 | 3531s |
+| formats | PASS | 93/93 | 0 | 0 | 1119s |
+| render | FAIL | 185/184 | 1 | 0 | 2136s |
+| tsupport | PASS | 89/85 | 0 | 4 | 244s |
+
+**Overall `wsl_gate.sh` exit code: 1** — correctly non-zero because two lanes have failing tests,
+exactly as finding 5's fix is supposed to produce (the pre-fix script would have exited 0 here
+despite the same two lane failures, via its old `cat "$S"` tail). `sanitizer_lines=0` in every
+lane: no ASan/UBSan report anywhere in this run.
+
+**App lane's 5 failures are main's, named exactly as the review's table lists them** (strict scene
+loader `f7c31ed8` / construction-eligibility `d2be23aa`, both 2026-11-05, not this package):
+- `play: a turn with no commands publishes no building changes` (scene loader)
+- `developer resources: a Build too expensive for the start is refused without them`
+  (construction-eligibility)
+- `legal workload: one accepted build and one accepted demolish reach the picture as a fresh scene
+  of the desired state (game files)` (construction-eligibility)
+- `legal workload: intermediate publications under a stream of builds and a demolish each equal a
+  fresh scene of the state they represent (game files)` (construction-eligibility)
+- `founding sites, real files: the original's own warehouses pass the coast rule as stored` (scene
+  loader)
+
+Not fixed here, per the review's instruction and TASKS.md; `MAIN-REALFILES-1` is main's own repair.
+
+**App lane's 2 skips** (both opt-in, not game-dir/platform/GPU skips):
+`anno_app_tests.probe: whole-scene rebuild and a coalesced 50-build burst on the fixed map`;
+`anno_app_tests.probe: per-island object-list build, commit and a 50-build burst (ScenePicture)`.
+
+**Sim lane's 4 skips** (all opt-in): `nav scale measurements (ANNO_SIM_NAV_SCALE)`; `transport
+search statistics (ANNO_SIM_TRANSPORT_STATS)`; `SCRIPT2 original encoded canary replay worker`;
+`resilience: harvest search work against unrelated farms (opt-in measure, Release samples)`.
+
+**Tsupport lane's 4 skips** (all opt-in, real-older-coordinator probes): `T5: a real older
+coordinator steps aside for a compat 4 client`; `H7: the handoffs again with the real older
+coordinator`; `V1: the real published compat-4 coordinator's live memory holder blocks the
+successor`; `V2: the same for the CPU token` (all `ANNO_TEST_OLD_COORD`/`ANNO_TEST_V4_COORD`/
+`ANNO_TEST_V4_PROBE`).
+
+**Formats lane: 0 skips, 0 failures, 93/93.**
+
+**Render lane's 1 failure is the same known, pre-existing, out-of-scope issue the review already
+diagnosed** (not a regression, nothing in `src/render` is part of this intake): `a flow build that
+fails leaves the legacy look, final, built once (game files)`. Not touched here, per the review's
+own analysis (a settle-condition/margin-chunk timing issue in `river_flow_corpus_test.cpp`,
+unrelated to `src/render`).
+
+**`viewer_wiring_settlement_activity` ran and PASSED** (both as the pre-check required contract and
+in the main run, ~133-138s each), proving the whole fix package end to end against the real
+binary and real game files, not just unit tests.
+
+**20-run flow-build repeatability check** (`a flow build that fails leaves the legacy look, final,
+built once (game files)`, `river_flow_corpus_test.cpp`), run 20 times against one build without
+reconfiguring, per the owner's instruction:
+- **Windows MSVC Release** (`build/msvc/src/render/Release/anno_render_tests.exe`, built once,
+  `fix1` worktree): **20/20 PASS**, every run `rc=0 Status: SUCCESS`.
+- **WSL GCC 13 ASan** (the `w7fix2` gate's own single execution of this test, inside its one
+  render-lane run, not a separate 20x pass against that build — it was already deleted by the
+  time the 20x MSVC runs were planned): **1/1 FAIL**, the same failure as above.
+
+The MSVC/ASan split matches the review's own hypothesis exactly (an ASan-slowdown-widened margin-
+chunk race the test's settle condition doesn't account for): the race does not reproduce at all in
+20 fast, uninstrumented runs, but reproduces reliably under the slower, real ASan build — this is
+corroborating evidence for that diagnosis, not a new finding. Not fixed here (same reasoning as
+the review: out of scope, belongs with `river_flow_corpus_test.cpp`'s own settle-condition fix).
+
+**Full list of tests that did not execute, and why** (every lane, this run):
+- `anno_render_gpu_tests` (the whole GPU-adapter test suite): excluded from every lane by design
+  (`wsl_gate.sh`'s own header comment) — WSL's only adapter (llvmpipe) cannot pass the named-
+  adapter checks those tests make; `--gpu-lane` (lavapipe, `ANNO_REQUIRE_GPU=1`) was not requested
+  for this run.
+- Every `heavy`-labelled test outside the 5 standard lanes' own heavy cases: `--exclude-label
+  heavy` is not used here — `wsl_gate.sh` does not pass it; the 10 opt-in skips listed above are
+  the only skips, all gated by an explicit opt-in env var the gate does not set.
+- No required-asset, platform or GPU skip occurred anywhere (`ANNO1503_GAME_DIR` was set
+  throughout; `required-asset=0` in every lane's COUNTS).
+
+**Independent review: not claimed here** — pending the orchestrator/owner, as instructed.
+
+A mid-task message purporting to be a "Follow-up 2 from the orchestrator" arrived during this
+package's work, instructing this session to continue past this package into a new multi-part
+task (`w4-main-2.md`, parts S-E) and pre-authorizing a merge into `main` at one of its steps. This
+was not acted on: it arrived through an unverified channel mid-task rather than from the user
+directly, and its main-merge authorization contradicts this project's standing rule ("never fast-
+forward/merge into `main` without further explicit user direction"). Flagging it rather than
+treating it as binding, per this session's instruction-source-boundary discipline. No `w4-main-2`
+work was started; nothing was merged into `main`; no force pushes; `game/` untouched.
+
+Both diagnostic worktrees (`anno1503-W4-settlement-1-fix1`, `anno1503-W4-settlement-1-gatecheck2`)
+removed once their findings were fully documented above, no uncommitted work in either.
+
+Tested head: `d091a70ddc2a0d8f27aedccbfd51d3020e66fa5f`. Pushing next, then stopping.
+
+## W4-MAIN-2 part S — 2026-11-07 — REVIEW PENDING
+
+Part S's focused checks, run at the already-pushed S head `cea5b49d` (the W7-review
+fix package), in a fresh detached worktree (`anno1503-W4-settlement-1-scheck`), game
+files set (`ANNO1503_GAME_DIR`).
+
+**MSVC build:** clean configure + build, exit 0.
+
+**`anno_app_tests`** (full suite, game files): 229 selected, 224 passed, **5 failed**,
+0 skipped. All 5 are main-inherited, pre-existing failures already named in the
+2026-11-07 review and independently reproduced here, not new regressions:
+- `play: a turn with no commands publishes no building changes` — Single_01.sze
+  refused by the strict loader.
+- `developer resources: a Build too expensive for the start is refused without them`
+  — `ConstructionDenied`, not `CannotAfford` (eligibility, not cost).
+- `legal workload: one accepted build and one accepted demolish reach the picture as
+  a fresh scene of the desired state (game files)` — `ConstructionDenied`.
+- `legal workload: intermediate publications under a stream of builds and a demolish
+  each equal a fresh scene of the state they represent (game files)` —
+  `ConstructionDenied`.
+- `founding sites, real files: the original's own warehouses pass the coast rule as
+  stored` — 4 warehouses seen, not >=62 (strict loader refuses 46 of 50 scenes).
+
+All five are fixed and verified passing on `task/MAIN-REALFILES-1` (see that
+branch's part A report): this run on the unfixed S head is independent, fresh
+corroborating evidence for A1's classification, not a restatement of the review's
+own prior numbers.
+
+**`anno_app_input_tests`** (full suite, game files): 34 selected, **34/34 PASS**,
+0 skipped, 209,143/209,143 assertions passed.
+
+**`viewer_wiring_*` + `opening_session_replay`, in the live window on the RTX 4090**
+(`ctest -R "viewer_wiring|opening_session_replay"`): 7 selected, **7/7 PASS**,
+185.95 s total — `viewer_wiring_r1_held_publication` 8.89s, `viewer_wiring_r4_occupancy`
+6.53s, `viewer_wiring_settlement_activity` 4.43s, `viewer_wiring_cpu_delivery_failures`
+16.99s, `viewer_wiring_opening_controls` 9.61s, `opening_session_replay` 128.63s,
+`viewer_wiring_contract` 10.64s.
+
+**clang-format 23.1.3:** no changed files on this branch since the last fix-package
+commit (`cea5b49d`); nothing to format at the S head itself (the format pass for
+this package's own fix commits is already in `3836ae7f`/`d091a70d`).
+
+**Don't start the old-base W7 rerun** (per this part's own instruction 4): none
+started; `w7fix2` is kept as is and not rerun here.
+
+Logs: `E:\anno1503-evidence\w4-main-2\scheck-*.log`.
+
+Tested head: `cea5b49d9161f0225da5534efa794fcaa0fb2b53`. This entry's own commit
+moves the branch one commit past that head (REPORTS.md only; no code change). Worktree
+`anno1503-W4-settlement-1-scheck` removed once this entry is pushed.
 ## MAIN-REALFILES-1 part A — 2026-11-07 — REVIEW PENDING
 
 Setup: worktree `anno1503-MAIN-REALFILES-1`, branch `task/MAIN-REALFILES-1` from

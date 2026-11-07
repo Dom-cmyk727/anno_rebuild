@@ -1,0 +1,36 @@
+# W4-SETTLEMENT-1 W5 Proof B: existing-town settlement activity observable through the real
+# developer inspection UI. Builds a pioneer house (type 501, the id population_progression_test.cpp
+# and opening_resume.script already use) through the real dev tool on the lan5 developer island,
+# then reads the developer inspection UI's facts for the hovered tile and confirms they show real,
+# live household state (residents, need stock) read straight from the sim's Payload, not a static
+# placeholder. Launch: --play data/maps/lan5.txt (the default).
+#
+# This script intentionally stops at household state, not active production: building a producing
+# workshop or farm at this exact spot was tried and found blocked (MissingInput: no road-connected
+# warehouse delivery and no adjacent crop field at this tile) — the legal supply chain (roads, field
+# adjacency) that would unblock it is MAP-TOWN-1/MAP-NEEDS-2 territory (queued, not released;
+# docs/orchestration/gameplay-next-chain.md), not this package's presentation-layer scope.
+look 1140 516
+key b
+select 501
+rotate 0
+wait frames 60
+click 1156 516
+wait outcome
+wait turns 5
+expect fact inspection.kind == House
+# "contains residents=5" alone also matches "residents=50"; House's status (play.cpp's
+# DescribePayload) always follows the residents count with " stock=", so matching through that
+# token pins the digit count exactly (W4-SETTLEMENT-1 W7 review, finding 9).
+expect fact inspection.status contains residents=5 stock=
+expect fact inspection.type == 501
+# Negative step (finding 3/9): pausing stops new turns from publishing, so this is the one case
+# that actually exercises live_inspection's hover check rather than the sim naturally catching up.
+# Hovering empty ground at the same zoom (confirmed building-free by probing the real map) must
+# clear the line at once, not keep showing the house from before the hover moved.
+key space
+wait frames 1
+click 1130 516
+wait frames 1
+expect fact inspection.kind != House
+quit

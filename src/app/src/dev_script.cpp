@@ -344,6 +344,19 @@ formats::Result<DevScript, std::string> DevScript::parse(std::string_view text) 
             }
             s.args = {s.args[0], rest};
         }
+        if (s.verb == "expect" && s.args.size() >= 4 && s.args[0] == "fact") {
+            // Same pattern as title/title-lacks above: a fact's value can itself contain a space
+            // (DescribePayload's status lines join several "key=value" pairs with one), and
+            // `contains` without it can accidentally match a longer number sharing the same
+            // prefix ("residents=5" also matching "residents=50" — W4-SETTLEMENT-1 W7 review,
+            // finding 9). Join everything after the operator into one value, so a script can pin
+            // the token boundary (`contains residents=5 stock=`) instead of just a substring.
+            std::string rest;
+            for (std::size_t i = 3; i < s.args.size(); ++i) {
+                rest += (i > 3 ? " " : "") + s.args[i];
+            }
+            s.args = {s.args[0], s.args[1], s.args[2], rest};
+        }
         const int n = arity(s.verb);
         const auto have = static_cast<int>(s.args.size());
         if (n == -100 || (n >= 0 && have != n) || (n < 0 && have < -n)) {
@@ -430,15 +443,19 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             if (!wait_ms_) {
                 wait_ms_ = st.now_ms;
                 wait_frames_ = st.frames;
-                wait_turn_ = st.snapshot ? st.snapshot->turn : 0;
+                wait_turn_ = st.facts_turn;
             }
             bool over = false;
             const std::string& what = s.args[0];
             if (what == "frames" && s.args.size() == 2 && arg(1)) {
                 over = st.frames >= *wait_frames_ + static_cast<std::uint64_t>(*arg(1));
             } else if (what == "turns" && s.args.size() == 2 && arg(1)) {
-                over = st.snapshot &&
-                       st.snapshot->turn >= *wait_turn_ + static_cast<std::uint64_t>(*arg(1));
+                // Gated on facts_turn, not st.snapshot->turn: a fact-reading step right after this
+                // wait (as `opening_controls.script` does, `key h` then `wait turns 3` then
+                // `expect fact tracked.1.state == stopped`) must see the turn this wait reports as
+                // reached, not a live turn the facts have not caught up to yet (the race this
+                // field exists to close; see DevScriptState::facts_turn).
+                over = st.facts_turn >= *wait_turn_ + static_cast<std::uint64_t>(*arg(1));
             } else if (what == "ms" && s.args.size() == 2 && arg(1)) {
                 over = st.now_ms >= *wait_ms_ + static_cast<double>(*arg(1));
             } else if (what == "outcome") {

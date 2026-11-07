@@ -928,3 +928,64 @@ TEST_CASE("play component: turn cost on the heavy endless scenario") {
     CHECK(runner.step_ms() == 10);
     CHECK(runner.snapshot()->tick > 0);
 }
+
+TEST_CASE("play: facts_turn_for follows the opening snapshot's turn, not a later live one "
+          "(W4-OPENING-CONTROLS-FLAKE)") {
+    using anno::app::facts_turn_for;
+    using anno::app::PlaySnapshot;
+
+    PlaySnapshot opening;
+    opening.turn = 5;
+    PlaySnapshot live;
+    live.turn = 9; // a fresh feedback() read taken after `opening` was drawn, still ahead of it.
+
+    // The case the original fix claimed to cover but did not: the two turns differ, and
+    // facts_turn_for must report the opening snapshot's turn, never the later live one, so a
+    // scripted `wait turns` cannot resolve ahead of the facts it gates.
+    CHECK(facts_turn_for(&opening, &live) == 5);
+    CHECK(facts_turn_for(&opening, &live) != live.turn);
+
+    // Equal turns are not evidence either way; cover the common case too.
+    live.turn = opening.turn;
+    CHECK(facts_turn_for(&opening, &live) == opening.turn);
+
+    // A session without an opening (Proof B, W4-SETTLEMENT-1): falls back to the live turn, since
+    // facts is always empty there and has nothing to race against.
+    CHECK(facts_turn_for(nullptr, &live) == live.turn);
+
+    // Neither snapshot exists yet (before the first drawn frame): 0, not a crash.
+    CHECK(facts_turn_for(nullptr, nullptr) == 0);
+}
+
+TEST_CASE("play: live_inspection hides a stale answer once the hover moves, lands on empty "
+          "ground, or the dev tool goes off (W4-SETTLEMENT-1 W7 review, finding 3)") {
+    using anno::app::BuildingInspection;
+    using anno::app::live_inspection;
+    using anno::app::PlaySnapshot;
+    using anno::sim::TileXY;
+
+    PlaySnapshot snap;
+    BuildingInspection insp;
+    insp.tile = TileXY{10, 20};
+    insp.kind = "Farm";
+    insp.status = "out=1.00t";
+    snap.inspection = std::make_shared<const BuildingInspection>(insp);
+
+    // The tile request_inspect last answered is still the one hovered: show it.
+    CHECK(live_inspection(snap, true, TileXY{10, 20}) != nullptr);
+
+    // The hover has moved to a different building since: the one-turn-old answer is stale.
+    CHECK(live_inspection(snap, true, TileXY{11, 20}) == nullptr);
+
+    // The hover has moved to empty ground (no tile at all): also stale, not "no change".
+    CHECK(live_inspection(snap, true, std::nullopt) == nullptr);
+
+    // The dev tool was switched off: hidden regardless of what the stale snapshot still answers
+    // for the tile that happens to still be hovered (PlayRunner::note_behind carries it forward
+    // while paused; nothing upstream clears it on its own).
+    CHECK(live_inspection(snap, false, TileXY{10, 20}) == nullptr);
+
+    // No building was ever inspected, or the tool was never on for this snapshot: never a crash.
+    PlaySnapshot empty;
+    CHECK(live_inspection(empty, true, TileXY{10, 20}) == nullptr);
+}

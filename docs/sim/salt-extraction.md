@@ -359,3 +359,60 @@ Runner revisions `run_selected.py` `0569b804`, `ctest_verdict.py` `3afbe42a`. Se
 - The canonical gate invocation requires `salt_chain_fresh_process` and `salt_chain_changed_command_fresh_process` by exact name (`--require-test`); a gate that does not select them is not accepted for X5.
 - The comment in `script_runtime.cpp` (from the MAIN-CI-1 repair) that no supported handler changes the player-table slot storage during a script transaction is an **assertion, not proven** here; the checked reference is safe only while that holds.
 - **Gate-runner finding (X6):** the first canonical attempt with `--require-test salt_chain_fresh_process` failed, `x6_debug_gate.log`: the runner's required-contract run pulled in the CTest fixture setup case and flagged it as an unexpected test ("INVALID: unexpected or unnamed test"). The two salt CTests were therefore made self-contained (each records its own log, no fixture) in the commit that follows; the failed attempt is kept.
+
+## 24. MAP-EXTRACT-2 part A: the mine's lifecycle in the original (2026-11-07; docs only, identity stays 135)
+
+Independent re-check of `docs/re/mine-deposit-followups.md` (main d03e6fca) in GOG 2.0.0.5 `AnnoWelt.dll`, capstone/pefile, read-only, by a reader other than the note's author. Raw notes: `cache/close-extract/partA_findings.md` (git-ignored). Marks: **confirmed** / **differs**.
+
+### 24.1 Point by point (A1)
+
+| Point | Result | Evidence |
+|---|---|---|
+| Mine table `0x100c8990`: `+0x28` attach `0x1006e270`, `+0x7c` reader `0x1006e310`, `+0x80` writer `0x1006e380`; 10 bytes (`+0x18`, the `+0x20` flag, `+0x1c`); neither touches `+0x24` | confirmed | The reader sets the `+0x20` flag through the virtual setter `+0xc8` (`0x1006e3d0`), not directly (detail the note missed). Constructor `0x1006e460` sets `+0x21` = 1 and `+0x24` = 0. |
+| Attach runs the lookup only for kind `0x1400` | confirmed, one gap | `0x1006e299` calls `0x1006ddf0` after the base attach `0x100732d0`. For kind `0x700` there is no lookup, but `+0x21` is not simply "set": the argument's slot `+0xac(0)` is called; if it returns 1, `+0x21` = (argument slot `+0xec` == `0x39`), else `+0x21` = 1 (`0x1006e2b1`–`0x1006e2da`). This is the deep/shallow rule. The base attach stores a `0x1400` argument at `this+0x10`, a `0x700` argument at `this+0x14`. |
+| Factory `0x10024010` calls slot `+0x28` twice (`0x1002465f`, `0x100246be`); every class-switch case reaches the tail; loader `0x100264a0` calls it at `0x100265b7` | confirmed | All 28 case targets of tables `0x1002521c` / `0x1002528c` reach `0x1002463a` or `0x10024647`; the default case (`ja 0x10024612`, `0x10024083`) also does. The mine case calls its constructor at `0x10024497`. |
+| Lookup stores `+0x24` at `0x1006dea8` on every call, an empty result included | confirmed | No earlier exit. It returns 1 only if a deposit is found and its `+0x88(flag)` is nonzero. |
+| Step re-looks-up (`0x1006dfb4`) only when the bound deposit is spent or short | **differs in detail** | The call fires when take < want and remaining != 0, **and** when take != 0 and want >= remaining (exactly equal included). Take == 0 goes to the idle path. With `+0x24` empty the step jumps to `0x1006e178`: it is not "skip the work" but a scheduled idle (`0x10072ed0(…, 0x7530)`, bit 3 of `+0xc` set once, city notify slot `+0x168`). This matches section 22.0 and our `mine_step`. |
+
+### 24.2 The load order (A2)
+
+- The caller `0x1002eadb` is the `PROD` branch of the city's slot `+0x54` = `0x1002e170`, a chunk-stream loop (tags in code order: HEAD, HEAD2, STAT2, ID, ID2, ID3, WARE, BAUMAT, VK, EK, PROD, VOLK, STST2, STAT). The `PROD` branch calls the loader `0x100264a0`.
+- The class I earlier called "Island" (table `0x100c2f40`, kind `0x1400`, size `0x30ec`) is the **city**, read from a `STAEDTE` chunk by a World object embedded in the island map Y (kind `0x1300`) at `Y+0x38`. `[city+0x1c]` is Y.
+- Ore objects are not created by that loop. Y's chunk reader `0x10089130` (the derived class overrides it with `0x100946c0`, which falls back to it) handles, by name and in file order: `BERGWERK2` (`0x10089d37`), `OCCUR` (`0x10089714`, which calls `[Y+0x28]` slot `+0x18` = `0x10095eb0`, vtable `0x100caf34`) and `STAEDTE` (`0x10089c45` → `0x10089c97` → World reader `0x10096a60`, one ENTRY per city, city created at `0x100967e0`, `[city+0x54]` called at `0x10096bd8`). Y's init (`0x1008c22f`–`0x1008c28f`) creates all its containers empty before any chunk is read.
+- So **file tag order decides whether OCCUR is read before the cities**. Scenario files checked (`single39.sze`; Single_01/05/06/08 by chunk names): OCCUR is present and there is **no STAEDTE chunk**, so the city PROD loader is not reached from them; what creates scenario mines is unread (candidate: the `PROD2` handler `0x1008957d`). Savegame: no save file exists on this machine, the Y writer (`0x10089d80`) writes BERGWERK2, OCCUR, ANBAU, DISCOVER, KONTORID, LOCKED, PROD2, DUERRE, NAME and **not** STAEDTE; where saved cities live is **unread**. Order for saves: **undetermined (U)**.
+- If OCCUR came after PROD (inferred from code, not run): the container is empty, the loader's query at `0x10026621` returns 0, the finder returns 0, `+0x24` = 0, and the mine idles forever.
+
+### 24.3 The ore object (A3)
+
+- Class id `0x91`: constructor `0x100637a0` (size `0x34`), table `0x100c7508` (class `0x92`: `0x100c759c`). Constructor fields: `+0x28` = `0x7d000` (2000 t in 8.8), `+0x2c` = 0 (discovery mask), `+0x30` = 1 (reserve flag).
+- Slots: `+0x64` reader `0x100634e0`, `+0x80` `0x10063490`, `+0x84` `0x10063640`, `+0x88` `0x10063650`, `+0x8c` `0x10063670`. Both `0x100c7588` and `0x100c761c` hold `0x10063490`.
+- `+0x88` (remaining) returns `[+0x28]`, minus `0x64000` (400 t) when `+0x30` != 0 and the flag argument's bit 0 is clear. `+0x8c` (take): if flag bit 0 is set, or world option (slot `+0x74`, argument `0xe`) bit 1 is clear, it returns the request with no depletion; otherwise it clamps so `+0x28` never drops below `0x64000` when `+0x30` != 0, else to what remains. **Neither reads `+0x2c`.** `+0x2c` is read by `+0x80` (`0x10063490`, the dead stub's player-bit test) and the class-`0x92` sibling `0x100638c0`, written by the reader at `0x10063551`.
+- Ore record reader `0x100634e0`: reads 8 bytes only when the record size is 8 (others skipped, `0x100635ad`); word 0 gives `+0x28` = u16 << 8 (`0x1006351f`–`0x10063528`), the dword gives `+0x2c`; then slot `+0x84`: for an in-range type with `+0x30` != 0 and `+0x28` < `0x64000` it resets `+0x28` to `0x7d000` (`0x10063538`–`0x10063554`); type `0x84` is clamped to `0x7d0` above `0x61a8` and rounded up to a multiple of 1000. **The reserve flag `+0x30` is neither read nor written** (it stays 1 from the constructor); the writer `0x100635d0` writes `[+0x28] >> 8` plus the mask (forced 0 when its argument has `0x20000`). Relevance to OQ-035 b/c: nothing in the ore object clears `+0x30`; who does remains open.
+- Finder `0x100787c0`: four arguments (position, ore type byte T from the type descriptor's slot `+0xac(0)`, flag = mine `+0x21` != 0, deposit list D). D is the OCCUR object reached through Y slot `+0x118`, not the `0x100c9b10` container. It queries D slot `+8` over pos ±7 with class mask 1 (class `0x91` only), keeps candidates whose slot `+0x84` == T inside the radius table, picks the largest `+0x88(flag)`. **It filters on neither remaining > 0 nor the discovery mask**: a spent deposit is returned if it is the only candidate; the caller reports 0 but still keeps the pointer in `+0x24`. OQ-553's caveat 2 is closed.
+
+### 24.4 The attach arguments (A4)
+
+- Kind `0x1400`: `mov eax,0x1400` at `0x1002f3c0` in the city table `0x100c2f40`; the city's constructor is `0x1002f990`, `Place()` is its slot `+0xac` = `0x100279a0`.
+- The factory's `this` is the sub-object at city `+0x144` (`lea ecx,[esi+0x144]` at `0x10027c46`, `lea ecx,[ebp+0x144]` at `0x1002ead5`). The city constructor stores `[ebp+0x198]` = itself at `0x1002fa84` (0x198 = 0x144 + 0x54), so the **second** attach argument (`[edi+0x54]` at `0x100246b5`) is the city: it triggers the lookup, after the position (`0x1002467c`) and rotation (`0x1002468a`) are set.
+- The **first** argument (`[esp+0x28]`, stored at `0x1002406e`) is a kind-`0x700` object: city → slot `+0x18` (the map object Y) → `+0x18` → `+0x18` → slot `+0x70`(record word 0). It is a building-type descriptor (AnnoGame `0x1000a650`, tables `0x1002185c`, `0x10021a88`, `0x10021bbc`; slots `+0x5c`, `+0xac` byte table, `+0xec` byte); the role name is inferred from slots, not proven. Its slot `+0x5c` drives the class switch.
+
+### 24.5 Our sim against this (A5)
+
+| Question | Our sim | Verdict |
+|---|---|---|
+| Resume of a bound mine | The saved index is kept (`island.cpp:516` validates it, `create.cpp:223` too); no lookup runs on load. | differs from the original (it looks up again at construction) |
+| Resume of an unbound mine | Stays unbound; never searched. | equal in result today, because the ore set does not change between save and load; the original may differ (24.2: order unread) |
+| Re-lookup in the step | `mine_step` (`production.cpp:779`) calls `find_deposit` over `island.deposits`. | **differs**: that list holds only deposits some mine has bound or imported (`mine_source.cpp:72`–`94` appends on bind). The original searches every ore object of the island. A shallow iron mine cannot switch to a second ore that no mine has bound. Part T must close this (137). |
+| Step with the lookup finding nothing | `m.deposit` = nullopt, then `MissingInput` every step. | equal in effect to `0x1006e178` (idle) |
+| Step finding a spent deposit as best | `found` false, the pointer kept, `MissingInput`. | equal (24.3: the pointer is kept) |
+| Equal/short trigger | `short_step || (got != 0 && rate >= left)` | equal to the corrected trigger in 24.1 |
+| "Never searches again" across save/reload | Holds in our sim (index saved). In the original, load constructs the mine again, so the unbound state is re-derived. | differs by design (A6) |
+| Imported mines | `create.cpp:305`–`307` binds through `find_deposit` over the materialised list; command mines bind through `bind_mine_deposit` (`apply.cpp:590`). | two code paths with the same intent; T2 should unify them |
+
+### 24.6 A6, the owner question: rebinding at load
+
+See the QUESTION in `docs/orchestration/REPORTS.md` (MAP-EXTRACT-2, part A). Recommendation (B): keep the saved deposit as a documented deviation, because making a reload re-run a lookup makes `reload == uninterrupted` false and desyncs a late joiner who loads a snapshot against peers that never reloaded.
+
+### 24.7 AI question: parked
+
+The AI is out of the MVP (`docs/plan/lan-mvp.md` M2). Starting point for whoever resumes it: `CompLogic.dll` FuncB `0x10030230` (documented call site `0x100302a5`), callers `0x10010f2d`, `0x10030472`, `0x100336e9`. Unread.

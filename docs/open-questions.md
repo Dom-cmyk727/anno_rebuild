@@ -2334,8 +2334,13 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
 - **The AI:** `CompLogic.dll 0x1002352a` and `0x100302a5` call the same deposit container slot and test the result, but they sit in functions (around `0x10023480` and `0x10030238`) that first fetch an existing object and return early if it is null, then return a number: they look like evaluators of an existing mine. Their use before placement is **unread (U)**; no claim is made that the AI checks for a deposit before it places a mine.
 - **Also UI-only and unidentified:** `AnnoFrame 0x10044f90` (reached from the cursor) calls island slot `+0x118` (the `+0x28` object container) over the footprint rectangle and queries each result; what it checks is unknown. Next to the `+0x64` overlay check above.
 
+<!-- OQ-553 caveat 2 closed in section 24.3 of docs/sim/salt-extraction.md: ore slots +0x88 and +0x8c and the finder do not read +0x2c. -->
 ## OQ-553: Discovery of a deposit: does an undiscovered deposit refuse the placement or only stop production? (2026-11-06; SETTLED for code paths 2026-11-07)
 - **Settled for code paths.** The deposit lookup `0x100787c0` does not read the discovery mask (`ore object +0x2c`): it matches by goods, reach and remaining amount only. The mask is read by the reveal / claim loops and the draw gate `0x10063490` (a dead stub); mining needs no mask. The "must be discovered first" sentence of the help text is not enforced by any path read. Policy: the sim does not consult discovery (unchanged). History Edition not available here (NOT_RUN). Caveat: this rests on one DLL set (GOG) and on the lookup code itself not reading the mask; that the object's +0x88 getter ignores the mask is unverified, and the reveal / claim / stub statements are from the research agent only.
+
+## OQ-555: Load order of ore objects against mine records, and the saved-city location (MAP-EXTRACT-2 part A, 2026-11-07; OPEN)
+- **Known** (`docs/sim/salt-extraction.md` section 24.2): ore objects (`OCCUR`) and cities (`STAEDTE`, whose `PROD` chunk holds the mine records) are both read by Y's chunk reader `0x10089130`, in file order. The checked scenarios have OCCUR and no STAEDTE; the Y writer does not write STAEDTE.
+- **Open (U):** where saved cities live, the savegame chunk order, and what creates scenario mines (candidate: the `PROD2` handler `0x1008957d`). If OCCUR came after PROD, every mine would load unbound and idle. No save file exists on this machine to test.
 
 ## OQ-554: The quarry's "any mountain" rule (2026-11-06; PARTLY SETTLED 2026-11-07)
 - **Settled:** quarries share the class-0x3000 placement path with the mines (their own HIGHMAP table in the type record) and no deposit lookup runs at placement.

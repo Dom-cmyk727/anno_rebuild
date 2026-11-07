@@ -15414,3 +15414,107 @@ chrome texture. Still not a claim that H or C is finished — see "What's still 
 C4's `DevInput` extension (arming an arbitrary `TypeId` by construction-menu cell, not just cycling
 the fixed developer-tool list) and wiring `compose_screen`'s draws into the live window. H/C/M/V/K/E
 remain open; continuing, not stopping.
+
+## W4-UI-2 — C4/C5 wiring: arm(), published eligibility, ConstructionMenu — 2026-11-07 — status: IN PROGRESS
+
+Continuing from the H1/C1 checkpoint. This one delivers the pieces C4/C5 needed and flagged as
+missing there: a way to arm an arbitrary construction-menu cell's type (not just cycle the
+developer tool's fixed list), a safe way for the window thread to read the sim's own lock
+verdict, and the click-resolution logic that turns a construction-menu click into one of those.
+Still not a claim that C is finished — see "What's still open" below.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`acf8898c`**, pushed (on top of `ad367010`). Worktree:
+  `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **`DevInput::arm(TypeId)` / `DevTool::arm(TypeId)`** (C4): arms a type directly, by id, with
+   the exact side effects (none beyond the selection itself) that `NextType`/`PrevType` already
+   have — rotation, demolish mode and a press in progress all survive an `arm()` exactly as a
+   cycle step leaves them. `DevTool::arm` additionally requires a city (else a message naming why,
+   matching the existing `Toggle` behaviour) and turns the tool on. False, no change, when the
+   type is not in `setup().types`. New tests in `input_test.cpp` (DevInput alone, a synthetic
+   three-type registry) and `dev_tool_test.cpp` (DevTool, the file's own `setup()`/`scene()`
+   fixture, a full press-release through the window's own picking math proving the armed type
+   actually reaches a `BuildCmd`).
+2. **`PlaySnapshot::eligibility`** (C2): every registry type's id paired with
+   `World::construction_eligibility(local player, id).allowed()`, ascending by id, published once
+   per turn in the same block that already publishes `money`/`goods`. This is the "new read-only
+   sim query... the eligibility of every type for one player in one call" rule 0.2 names
+   explicitly — computed and published on the sim thread, so the window thread never touches the
+   sim's own `World` directly (a cross-thread race the existing `request_inspect`/`inspection`
+   pattern already avoids the same way; this follows it). New test in `play_test.cpp`: loads the
+   real lan5 scenario twice (one `World` into a `PlayRunner`, one run directly the same single
+   turn with `sim::run_turn`), then checks every one of the published entries agrees exactly with
+   calling `construction_eligibility` directly on the independently-run `World` — not a sample,
+   every entry (921 types on this registry). Ascending-id order checked too.
+3. **`ConstructionMenu`** (C1/C2/C4/C5, `src/app/include/anno/app/construction_menu.hpp`): resolves
+   a click in HUD-reference pixels into `None` / `SwitchCategory` / `Empty` / `Locked` / `Arm` /
+   `ToggleDemolish` / `Cancel`, reading only `data/ui/`'s own rectangles (the category column's
+   band, the grid's origin/stride/sprite size including its gutter, the HUD's `abrissicon`/
+   `infoexit` rectangles) and the caller's published `eligibility` — never
+   `data/ui/construction.txt`'s own `state` field, which is RE evidence about the original, not a
+   live rule (a `Locked` cell with no matching `eligibility` entry, or a null `eligibility`,
+   resolves `Locked`, never guessed open).
+   - **A real design issue, found by a test, not shipped unnoticed**: the pickaxe's measured
+     rectangle ((970,710) 53x53) and the cancel-X's ((984,725) 33x38) overlap in pixels. The first
+     version of this class checked both unconditionally and a test click at (989,730) resolved
+     `ToggleDemolish` when the test expected `Cancel` — not a flaky test, a genuine ambiguity the
+     rectangles alone cannot resolve. Re-read `docs/re/ui.md` section 2.4's own text ("[cancel-X
+     is] on the info/placement panel only; not on the category grid") to confirm the two panels
+     are never shown together, then added a `placement_open` flag so the state, not pixel
+     guesswork, decides which rectangle applies on the overlap. Both states verified by the test
+     (same click point, both outcomes, by state).
+4. **Full regression + gates**: `anno_app_tests` **242/242** (**61 380/61 380** assertions, real
+   game files, twice — once before, once after the `clang-format` pass, to catch a diff that
+   somehow changed behaviour); `anno_app_input_tests` **35/35** (**209 161/209 161** assertions,
+   real game files); `clang-format` 23.1.3 clean on every changed/new file; **the WSL gate's
+   warnings check** (GCC 13 and Clang 18, with and without `ANNO_VIEWER_GPU`, 369 and 73 files
+   respectively) — all four passes clean.
+5. **A build-infrastructure repeat, same root cause as last checkpoint, handled the same way.**
+   Rebuilding `anno_app_tests` while an earlier, still-running `anno_app_tests.exe` (a legitimate,
+   long regression run I had started myself, not a stray) still held the output file open failed
+   with `LNK1104` twice. Checked the process was genuinely still working (`Get-Process`'s `CPU`
+   time climbing, `Responding: True`) before concluding it was not hung; a `Stop-Process` attempt
+   on it (before confirming this) was refused by the Auto Mode classifier
+   ("Interfere With Workloads") — correctly, since it was real, wanted work, not a stray. Waited
+   for it to exit on its own, then rebuilt; both runs' results (before and after) are reported
+   above.
+
+### What C still needs (unchanged scope, now with arming + a lock-read path underneath)
+
+- **C1, C3, C6**: the actual category-column/grid/banner/info-panel drawing (today `ConstructionMenu`
+  only resolves clicks; it draws nothing — H1/C1's `compose_screen` draws the idle chrome only,
+  with no live grid state yet); the info panel's cost/upkeep display from the registry; the
+  explicit "the UI never grants gold or goods, never bypasses a refusal" checks.
+  `ConstructionMenu` is not yet wired into the live window (`viewer.cpp`'s SDL event routing) —
+  it is a tested, standalone click-resolution class today, not a visible menu.
+- **H2-H4**: unchanged from the previous checkpoint (live snapshot values into the drawn frame,
+  the GPU path, anchoring at other window sizes, the pixel-test negative controls).
+- **M, V, K, E**: unchanged — all still open, all still depend on more of H/C existing first.
+
+### Decisions and reasoning
+
+1. **The pickaxe/cancel-X overlap is resolved by UI state, not by picking whichever rectangle is
+   "more specific" or arbitrarily prioritising one.** Both readings are real UI elements with real
+   measured rectangles; preferring one over the other by convention (e.g. "smaller rectangle
+   wins") would be a guess dressed up as a tie-break rule. `docs/re/ui.md`'s own text already
+   settles it (the two panels are mutually exclusive), so the fix reads from evidence already in
+   hand rather than inventing a new rule.
+2. **Eligibility is read once per turn on the sim thread, not on demand on the window thread.**
+   `World` belongs to the sim thread; the window thread's only standing way to read sim-computed,
+   per-tile state is `request_inspect`/`inspection`'s request-then-publish pattern. Eligibility
+   needs no "request" step (it does not depend on a changing target the way inspection depends on
+   a hovered tile), so it publishes unconditionally alongside `money`/`goods` whenever the
+   developer has a city — simpler than copying the request/response machinery for a case that does
+   not need it.
+3. **The second `LNK1104` was treated as what it was (a legitimate competing process), not force-
+   cleared.** Per the standing rule from the previous main-branch run: a blocked `Stop-Process` is
+   reported and waited out, not routed around through another tool.
+
+### Next
+
+Wiring `ConstructionMenu` and `compose_screen` into the live window (`viewer.cpp`), and C3's
+cost/upkeep display from the registry. H/C/M/V/K/E remain open; continuing, not stopping.

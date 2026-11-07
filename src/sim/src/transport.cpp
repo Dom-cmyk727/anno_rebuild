@@ -605,6 +605,10 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
     choice.building = candidates[*best].b->id;
     choice.goods = best_goods;
     choice.path = found.route;
+    if (found.selected) {
+        choice.end_col = found.selected->point.col;
+        choice.end_row = found.selected->point.row;
+    }
     if (choice.path.empty()) {
         if (stats != nullptr) {
             ++stats->unreached;
@@ -619,7 +623,7 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
 
 std::optional<std::vector<TileXY>> path_home(const Island& island, const TypeRegistry& types,
                                              const Building& home, const BuildingType& home_type,
-                                             FixedPos from, std::uint32_t layer) {
+                                             FixedPos from, std::uint32_t layer, WalkPoint* end) {
     const SearchArea area = search_area(home, home_type);
     const auto& tables = types.walk_tables();
     if (!tables) {
@@ -634,6 +638,9 @@ std::optional<std::vector<TileXY>> path_home(const Island& island, const TypeReg
     if (!found.complete || !found.selected || found.route.empty()) {
         return std::nullopt;
     }
+    if (end != nullptr) {
+        *end = found.selected->point;
+    }
     return found.route;
 }
 
@@ -641,9 +648,9 @@ namespace {
 
 /// The route of a walk: the figure's spot, then the centres of the path's tiles after
 /// the first (the path starts on the figure's own or its home's tile).
-void set_route(Figure& fig, const std::vector<TileXY>& path) {
+void set_route(Figure& fig, const std::vector<TileXY>& path, const WalkPoint& end) {
     TransportState& tr = fig.transport;
-    start_walk(fig.pos, path, WalkRef{tr.route, tr.next, tr.along});
+    start_walk(fig.pos, path, WalkRef{tr.route, tr.next, tr.along}, &end);
 }
 
 /// Walks `ticks` along the route at `speed` (2^-24 tile per tick); the ticks left after
@@ -678,7 +685,16 @@ bool tile_in_footprint(const Building& b, const BuildingType& type, std::int32_t
     return in_footprint(b, type, x, y);
 }
 
-void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w) {
+FixedPos subcell_centre(TileXY t, std::uint32_t col, std::uint32_t row) {
+    const auto offset = [](std::uint32_t c) {
+        return static_cast<std::int32_t>(((2 * c + 1) * 256 + 3) /
+                                         6); // (2c+1)/6 tile, nearest 1/256
+    };
+    return FixedPos{clamp32(std::int64_t{t.x} * 256 + offset(col)),
+                    clamp32(std::int64_t{t.y} * 256 + offset(row))};
+}
+
+void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w, const WalkPoint* end) {
     w.route.clear();
     w.route.push_back(pos);
     for (std::size_t i = 0; i < path.size(); ++i) {
@@ -686,6 +702,9 @@ void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w) {
             continue; // the start tile: the walk starts from the figure's spot
         }
         w.route.push_back(centre(path[i]));
+    }
+    if (end != nullptr && !path.empty() && w.route.size() >= 2) {
+        w.route.back() = subcell_centre(path.back(), end->col, end->row);
     }
     w.next = 1;
     w.along = 0;
@@ -759,14 +778,15 @@ void start_home(Job& j) {
         return; // no walk: the arrival follows in the same call
     }
     const Island* island = j.world.island(island_of(j.home->id));
+    WalkPoint end;
     const auto path = island != nullptr ? path_home(*island, j.ctx.types, *j.home, *j.home_type,
-                                                    j.fig.pos, j.layer)
+                                                    j.fig.pos, j.layer, &end)
                                         : std::nullopt;
     if (!path) {
         tr.step = TransportStep::Done; // figure slot +0xcc found no path (0x10057bb1)
         return;
     }
-    set_route(j.fig, *path);
+    set_route(j.fig, *path, end);
 }
 
 /// The source's city (for a market source: its stock; for a producer: unused).
@@ -809,7 +829,8 @@ void start_source(Job& j) {
     j.fig.cargo_goods = choice->goods;
     tr.reserved_88 = reserved;
     tr.target = target->id;
-    set_route(j.fig, choice->path);
+    set_route(j.fig, choice->path,
+              WalkPoint{choice->path.back(), choice->end_col, choice->end_row});
     tr.step = TransportStep::ToSource;
 }
 

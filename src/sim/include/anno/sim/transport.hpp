@@ -113,6 +113,9 @@ struct SourceChoice {
     BuildingId building;
     GoodsId goods = 0;
     std::vector<TileXY> path;
+    /// The goal sub-cell the search selected (an entrance point of the source, on the path's last
+    /// tile): the walk ends THERE (subcell_centre), docs/sim/iron-tools.md T3.2.
+    std::uint32_t end_col = 1, end_row = 1;
 };
 
 /// MAP-ECON-1 E3/E4: a diagnostic tally of the harvest workers and their farms (measurement and
@@ -385,10 +388,12 @@ choose_source(const SerialWorld& world, const TypeRegistry& types, std::uint32_t
               std::uint32_t capacity_88, std::uint32_t layer, TransportStats* stats = nullptr);
 
 /// The decoded tile path from the Q24.8 position `from` to the first reached entrance
-/// of `home` inside its area (step C's walk, D 0x10057ae0 / callback 0x10054240).
+/// of `home` inside its area (step C's walk, D 0x10057ae0 / callback 0x10054240). `end`, when
+/// given, receives the goal sub-cell the search selected (the entrance sub-cell the walk ends on).
 [[nodiscard]] std::optional<std::vector<TileXY>>
 path_home(const Island& island, const TypeRegistry& types, const Building& home,
-          const BuildingType& home_type, FixedPos from, std::uint32_t layer);
+          const BuildingType& home_type, FixedPos from, std::uint32_t layer,
+          WalkPoint* end = nullptr);
 
 // ---- shared walk helpers (the transport body's own, exported for the harvest body, MAP-ECON-1 E3)
 
@@ -414,7 +419,19 @@ struct WalkRef {
 };
 /// Starts a walk from `pos` along the decoded tile path: the figure's spot, then the centres of the
 /// path's tiles after the first (the path starts on the figure's own tile).
-void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w);
+///
+/// MAP-EXTRACT-2 T3.2 (stream 137): when `end` (the goal sub-cell the search selected) is given,
+/// the walk ends on that sub-cell's centre instead of the last tile's centre, as the original's
+/// does (the pairs of the finer route run to the goal sub-cell, 0x10005890; the figure stands there
+/// until step C, whose return search starts from the sub-cell holding the figure, 0x1003acc0). The
+/// original's float drift at a figure tick stride of 1 is NOT modelled: the walk ends exactly on
+/// the sub-cell centre.
+void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w,
+                const WalkPoint* end = nullptr);
+/// The centre of sub-cell (col, row) of `tile` in Q24.8: tile + (2 col + 1) / 6 per axis, rounded
+/// to the nearest 1/256 (col and row are 0 to 2; the tile centre is sub-cell (1, 1) up to
+/// rounding).
+[[nodiscard]] FixedPos subcell_centre(TileXY tile, std::uint32_t col, std::uint32_t row);
 /// Walks `ticks` at `speed` (2^-24 tile per tick), moving `pos`; the ticks left after the arrival
 /// (the route is then cleared), nullopt while the walk goes on. A figure without speed never
 /// arrives.

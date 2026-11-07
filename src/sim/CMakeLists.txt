@@ -84,31 +84,30 @@ if(ANNO_BUILD_TESTS)
   set_tests_properties(economy_loop_fresh_process economy_loop_changed_command_fresh_process
                        PROPERTIES FIXTURES_REQUIRED econbook_loop_record)
 
-  # MAP-EXTRACT-1 X5: the salt chain recorded once; the log and its changed-command twin are replayed by
-  # anno-sim-replay in a fresh process. Both skip explicitly without the original files.
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/salt-chain")
-  set(salt_chain_environment "ANNO_SALT_OUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/salt-chain")
-  if(ANNO_SANITIZE AND NOT MSVC)
-    list(APPEND salt_chain_environment "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
-  endif()
-  configure_file(${PROJECT_SOURCE_DIR}/cmake/SaltChainProperties.cmake.in
-                 ${CMAKE_CURRENT_BINARY_DIR}/salt_chain_properties.cmake @ONLY)
-  set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
-               "${CMAKE_CURRENT_BINARY_DIR}/salt_chain_properties.cmake")
+  # MAP-EXTRACT-1 X5: the salt chain recorded and replayed by anno-sim-replay in a fresh process. Each CTest records
+  # its own log first (cmake/RunSaltReplay.cmake runs the recording case with ANNO_SALT_OUT_DIR), so it has no
+  # fixture dependency and can be a required contract of the canonical gate by exact name. Both skip explicitly
+  # without the original files.
+  foreach(salt_arm IN ITEMS fresh_process changed_command_fresh_process)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/salt-chain-${salt_arm}")
+  endforeach()
+  set(salt_record_case "salt X5: the chain recorded for the fresh-process replay and its changed command")
   add_test(NAME salt_chain_fresh_process
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
-                   "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/salt-chain/salt-chain.log"
+                   -DRECORDER=$<TARGET_FILE:anno_sim_tests> "-DCASE=${salt_record_case}"
+                   -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/salt-chain-fresh_process
+                   -DLOG=salt-chain.log
                    -DEXPECT_RC=0 "-DEXPECT=checkpoints 31/31.*reproduced: every checkpoint matched"
                    -P ${PROJECT_SOURCE_DIR}/cmake/RunSaltReplay.cmake)
   add_test(NAME salt_chain_changed_command_fresh_process
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
-                   "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/salt-chain/salt-chain-changed-command.log"
+                   -DRECORDER=$<TARGET_FILE:anno_sim_tests> "-DCASE=${salt_record_case}"
+                   -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/salt-chain-changed_command_fresh_process
+                   -DLOG=salt-chain-changed-command.log
                    -DEXPECT_RC=1 "-DEXPECT=checkpoints 0/1.*DIVERGED at entry 2"
                    -P ${PROJECT_SOURCE_DIR}/cmake/RunSaltReplay.cmake)
   set_tests_properties(salt_chain_fresh_process salt_chain_changed_command_fresh_process
-                       PROPERTIES FIXTURES_REQUIRED salt_chain_record
-                                  SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
-
+                       PROPERTIES SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 
   # tools/lint_sim.py: the mechanical part of the determinism rules (no
   # unordered containers, float, clock, rand, mutable globals ...; docs/sim/

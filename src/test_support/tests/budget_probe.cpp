@@ -198,6 +198,17 @@ int silent_listener(std::uint16_t port) {
         return 1;
     }
 #endif
+#if defined(_WIN32)
+    // The same socket options as the coordinator's listener (coord_server.cpp): exclusive on
+    // Windows; on POSIX a bind while closed connections of an earlier run still linger on the
+    // port (without it, running the case again within a minute failed to bind).
+    int exclusive = 1;
+    ::setsockopt(fd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&exclusive),
+                 sizeof(exclusive));
+#else
+    int reuse = 1;
+    ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#endif
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons(port);

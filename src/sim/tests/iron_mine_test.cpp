@@ -421,8 +421,8 @@ TEST_CASE("iron mine: a stage-locked 1205 is refused next to the eligible contro
     }
 }
 
-TEST_CASE("iron mine: a spent or short deposit rebinds to an ore no mine has bound, else idles "
-          "and never recovers") {
+TEST_CASE("iron mine: a short deposit rebinds to an ore no mine has bound and materialises its "
+          "deposit") {
     auto s = iron_world(true, false, 1000);
     if (!s) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -472,6 +472,15 @@ TEST_CASE("iron mine: a spent or short deposit rebinds to an ore no mine has bou
         CHECK((before - isle(w).deposits[1].remaining) % 21U == 0);
         CHECK(isle(w).deposits[0].remaining == sim::kDepositReserve); // untouched since
         CHECK(w.check_invariants().empty());
+    }
+}
+
+TEST_CASE("iron mine: with only the spent ore in reach the mine keeps it, raises the notice once, "
+          "idles and never recovers") {
+    auto s = iron_world(true, false, 1000);
+    if (!s) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
     }
     // ---- control: only the ore (375,353) in reach: the short step keeps the spent deposit, raises
     // the notice 0x15B exactly once, the mine idles, makes nothing more, and a new ore appearing

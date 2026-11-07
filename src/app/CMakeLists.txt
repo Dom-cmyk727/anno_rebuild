@@ -181,6 +181,16 @@ if(ANNO_BUILD_TESTS)
         # 240 s there).
         set_tests_properties(opening_session_replay PROPERTIES
           TIMEOUT 5400 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500;ANNO_VIEW_QUIT_S=1200")
+        # viewer_wiring_expand_live_load's own comment above says its TIMEOUT already follows
+        # opening_session_replay's budget for the same voyage (550 tiles out, one real founding);
+        # under ASan it hit exactly the failure mode opening_session_replay's own fix above
+        # documents: viewer_wiring.py's internal ANNO_VIEWER_WIRING_WATCHDOG_S subprocess timeout
+        # (default 300 s) fires long before the outer CTest TIMEOUT does ("the window did not end
+        # within 300 s (watchdog)", W4-MAIN-2 D5 WSL-ASan rerun, 2026-11-07 -- this case was never
+        # run under ASan until that rerun added it to the lane's selection regex, so this gap was
+        # never previously observed). Scale it the same 5x as opening_session_replay.
+        set_tests_properties(viewer_wiring_expand_live_load PROPERTIES
+          TIMEOUT 5400 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500")
       endif()
     endif()
   endif()

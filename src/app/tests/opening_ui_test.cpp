@@ -530,6 +530,62 @@ TEST_CASE("controls: unloading asks for one hold and a quantity, from the stable
     CHECK(f.ui.message().find("no warehouse") != std::string::npos);
 }
 
+TEST_CASE("controls: loading (developer adapter) asks for a hold, source and quantity") {
+    Fixture f;
+    f.view.ships[0].holds = {{42, 12800}, {0, 0}}; // hold 0: 50 t of goods 42; hold 1: empty
+    app::CityView city;
+    city.ref = sim::CityRef{sim::IslandId{0}, sim::CityNo{0}};
+    city.owner = sim::PlayerId{0};
+    city.name = "Fairbenks";
+    app::WarehouseView wh;
+    wh.id = sim::BuildingId{(std::uint64_t{0} << 32) + 1};
+    wh.type = sim::TypeId{1302};
+    wh.tile = sim::TileXY{8, 8};
+    wh.w = 4;
+    wh.h = 4;
+    city.warehouse = wh;
+    city.stock_88.assign(64, 0);
+    city.stock_88[41] = 100 * 256; // the warehouse's most-stocked real good (index 0 is the sim's
+                                   // "empty" sentinel, never a candidate)
+    city.stock_88[26] = 5 * 256;
+    city.capacity_88 = 200 * 256;
+    f.view.cities = {city};
+    f.click(app::PointerButton::Left, 100, 100);
+    f.key(app::OpeningKey::Load);
+    REQUIRE(f.ui.mode() == app::OpeningMode::Load);
+    auto plan = f.ui.load_plan(f.feed());
+    REQUIRE(plan.has_value());
+    CHECK(plan->hold == 0);
+    CHECK(plan->goods == 42); // hold 0 already carries 42: topping up, not the warehouse's pick
+    CHECK(plan->tons == 1);
+    CHECK(plan->warehouse == wh.id);
+    CHECK(plan->advisory.find("in range") != std::string::npos);
+    f.key(app::OpeningKey::QtyUp, true); // +10
+    CHECK(f.ui.load_plan(f.feed())->tons == 11);
+    // Tab visits every hold, including the empty one (there is nothing to skip: Load can fill any
+    // hold, unlike Unload which only visits holds that already carry something).
+    f.key(app::OpeningKey::NextHold);
+    plan = f.ui.load_plan(f.feed());
+    CHECK(plan->hold == 1);
+    CHECK(plan->goods == 41); // the empty hold: the warehouse's most-stocked real good, not 26
+    CHECK(plan->tons == 11);  // the quantity itself is not reset by changing hold
+    const auto r = f.key(app::OpeningKey::Send);
+    REQUIRE(r.commands.size() == 1);
+    const auto* load = std::get_if<sim::LoadCmd>(&r.commands[0].body);
+    REQUIRE(load != nullptr);
+    CHECK(load->ship.v == 1);
+    CHECK(load->warehouse == wh.id);
+    CHECK(load->hold == 1);
+    CHECK(load->goods == 41);
+    CHECK(load->tons == 11);
+    // Nothing is sent without a source warehouse.
+    f.view.cities.clear();
+    f.ui.on_view(f.feed());
+    const auto none = f.key(app::OpeningKey::Send);
+    CHECK(none.commands.empty());
+    CHECK(f.ui.message().find("no warehouse") != std::string::npos);
+}
+
 TEST_CASE("controls: a vanished ship drops the selection and the mode, modes exclude each other") {
     Fixture f;
     f.click(app::PointerButton::Left, 100, 100);

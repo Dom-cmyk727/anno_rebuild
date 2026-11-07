@@ -157,6 +157,13 @@ TEST_CASE(
     unload.goods = 41;
     unload.tons = 30;
     in.push_back({11, Command{sim::PlayerId{0}, unload}});
+    sim::LoadCmd load;
+    load.ship = sim::FigureId{1};
+    load.warehouse = sim::BuildingId{4294967297ULL};
+    load.hold = 0;
+    load.goods = 42;
+    load.tons = 2;
+    in.push_back({12, Command{sim::PlayerId{0}, load}});
     sim::BuildCmd build;
     build.city = sim::CityRef{sim::IslandId{0}, sim::CityNo{0}};
     build.placements.push_back(sim::PlacementWire{sim::TypeId{1001}, 251, 137, 0, 0, 0});
@@ -171,6 +178,7 @@ TEST_CASE(
                           "turn 9 move 2 7 79980 170105\n"
                           "turn 10 stop 2 7\n"
                           "turn 11 unload 0 1 1 3 41 30\n"
+                          "turn 12 load 0 1 4294967297 0 42 2\n"
                           "turn 14 buildc 0 0 0 1001 251 137 0\n"
                           "turn 15 demolishc 0 0 0 251 137 252 137\n");
     // Parsing needs no world for these lines: the world argument is not consulted.
@@ -193,8 +201,8 @@ TEST_CASE(
     // Malformed lines name themselves.
     for (const char* bad :
          {"turn 1 found 0 1 1302 1 254 137 255\n", "turn 1 move 0 1 5\n",
-          "turn 1 unload 0 1 1 3 41\n", "turn 1 stop x 1\n", "turn 1 buildc 0 0 0 1001 251 137\n",
-          "turn 1 found 0 1 1302 4 1 2 3 4\n"}) {
+          "turn 1 unload 0 1 1 3 41\n", "turn 1 load 0 1 1 3 41\n", "turn 1 stop x 1\n",
+          "turn 1 buildc 0 0 0 1001 251 137\n", "turn 1 found 0 1 1302 4 1 2 3 4\n"}) {
         CAPTURE(bad);
         CHECK_FALSE(app::parse_commands(bad, world, sim::PlayerId{0}).ok());
     }
@@ -926,6 +934,110 @@ TEST_CASE("founding probe, real files: the preview's answer is what the sim does
     CHECK(accepted > 0);
     CHECK(agree == clicks);
     CHECK(vetoed <= 4);
+}
+
+TEST_CASE("opening, real files: a session saved with a pending Load resumes to the same ship and "
+          "warehouse state (W4-EXPAND-LIVE-1 D3)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = app::load_opening(*dir, manifest_path(), 0);
+    REQUIRE(loaded.ok());
+    app::OpeningLoad& load = loaded.value();
+    sim::World world = std::move(load.play.world);
+    const sim::TypeId type = load.setup.founding_types.front();
+    const sim::BuildingType* bt = world.types().find(type);
+    REQUIRE(bt != nullptr);
+
+    // Sail ship 1 to the coast of the real founding (opening_resume.script), then found there.
+    const sim::Timing timing;
+    sim::Turn turn;
+    turn.step_ms = 10;
+    turn.commands.push_back(sim::Command{
+        sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, 257 * 256 + 128, 134 * 256 + 128}});
+    sim::run_turn(world, nullptr, turn, timing.mp_steps_per_turn);
+    for (int k = 0; k < 3000; ++k) {
+        const sim::Figure* ship = sim::find_figure(world.figures(), sim::FigureId{1});
+        REQUIRE(ship != nullptr);
+        if (ship->pos.x / 256 == 257 && ship->pos.y / 256 == 134) {
+            break;
+        }
+        sim::Turn idle;
+        idle.index = static_cast<std::uint64_t>(k + 1);
+        idle.step_ms = 10;
+        sim::run_turn(world, nullptr, idle, timing.mp_steps_per_turn);
+    }
+    REQUIRE(sim::find_figure(world.figures(), sim::FigureId{1})->pos.x / 256 == 257);
+
+    sim::FoundCmd found;
+    found.ship = sim::FigureId{1};
+    found.placement.type = type;
+    found.placement.rotation = 0;
+    found.click_x = 255;
+    found.click_y = 138;
+    const auto [fw, fh] = sim::footprint(*bt, 0);
+    found.placement.x = std::max<std::int32_t>(0, found.click_x - (static_cast<std::int32_t>(fw) - 1) / 2);
+    found.placement.y = std::max<std::int32_t>(0, found.click_y - (static_cast<std::int32_t>(fh) - 1) / 2);
+    const sim::ApplyResult founded = world.apply(sim::Command{sim::PlayerId{0}, found});
+    REQUIRE_MESSAGE(founded.ok(), sim::reject_name(founded.status));
+    const sim::BuildingId warehouse = founded.records.at(0).building;
+    REQUIRE(warehouse.valid());
+
+    // Unload some of the ship's own starting cargo into the fresh warehouse, so there is real
+    // stock for the pending Load to draw from.
+    const sim::Figure* ship_before_unload = sim::find_figure(world.figures(), sim::FigureId{1});
+    REQUIRE(ship_before_unload != nullptr);
+    REQUIRE_FALSE(ship_before_unload->holds.empty());
+    const sim::GoodsId stocked_goods = ship_before_unload->holds.front().goods;
+    sim::UnloadCmd unload;
+    unload.ship = sim::FigureId{1};
+    unload.warehouse = warehouse;
+    unload.hold = 0;
+    unload.goods = stocked_goods;
+    unload.tons = 5;
+    const sim::ApplyResult unloaded = world.apply(sim::Command{sim::PlayerId{0}, unload});
+    REQUIRE_MESSAGE(unloaded.ok(), sim::reject_name(unloaded.status));
+    REQUIRE(unloaded.records.at(0).transferred_88 > 0);
+
+    // The pending Load: take some of that same stock back aboard.
+    sim::LoadCmd pending_load;
+    pending_load.ship = sim::FigureId{1};
+    pending_load.warehouse = warehouse;
+    pending_load.hold = 0;
+    pending_load.goods = stocked_goods;
+    pending_load.tons = 2;
+    const sim::ApplyResult loaded_result = world.apply(sim::Command{sim::PlayerId{0}, pending_load});
+    REQUIRE_MESSAGE(loaded_result.ok(), sim::reject_name(loaded_result.status));
+    const std::uint64_t moved_88 = loaded_result.records.at(0).transferred_88;
+    REQUIRE(moved_88 > 0);
+    const std::uint64_t ship_hold_after_load =
+        sim::find_figure(world.figures(), sim::FigureId{1})->holds.front().amount_88;
+
+    // Save right after the Load (it is the session's latest, still-pending command when the save
+    // happens), then resume: the identity checks, the hash, the ship's hold and the warehouse's
+    // stock must all come back exactly as they were, not reapplied or lost.
+    app::OpeningSave save;
+    save.identity = load.identity;
+    save.tick = world.clock().tick();
+    save.state_hash = world.state_hash();
+    save.world = world.save();
+    const fs::path sdir = scratch("resume-pending-load");
+    const fs::path file = sdir / "s.sav";
+    REQUIRE(app::OpeningSaver::write_file(file, app::format_opening_save(save)).empty());
+    auto resumed = app::load_opening(*dir, manifest_path(), 0, file);
+    REQUIRE_MESSAGE(resumed.ok(), (resumed.ok() ? std::string() : resumed.error()));
+    CHECK(resumed.value().play.world.state_hash() == world.state_hash());
+    const sim::Figure* resumed_ship = sim::find_figure(resumed.value().play.world.figures(),
+                                                       sim::FigureId{1});
+    REQUIRE(resumed_ship != nullptr);
+    CHECK(resumed_ship->holds.front().amount_88 == ship_hold_after_load);
+    const sim::Building* resumed_warehouse = resumed.value().play.world.find_building(warehouse);
+    REQUIRE(resumed_warehouse != nullptr);
+    // The Load is not reapplied on resume: the world loads from its saved bytes as they stand, so
+    // a second, accidental application would double the transfer. It does not.
+    CHECK(resumed.value().play.world.state_hash() == world.state_hash());
 }
 
 // Owner playtest 2026-11-03, round 6: the viewer kept derived levels of at most 96 chunks built,

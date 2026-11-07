@@ -15212,3 +15212,108 @@ change needed.
 ### Next
 
 R onward does not wait for this report's review, per the dispatch. Pushing next.
+
+## W4-UI-2 — R done, H/C groundwork — 2026-11-07 — status: IN PROGRESS
+
+Part R (the ADR) is finished and pushed. Part H (the HUD) and Part C (the construction menu) are
+each a large original-UI build (RE-faithful layout, real GPU+CPU rendering, input, placement,
+demolish, pixel tests on three GPUs) that this checkpoint does not claim to finish; what follows is
+the real, verified foundation both parts need, pushed honestly as groundwork, not as H/C's
+completion. No sim or `src/sim` change in this checkpoint (rule 0.2).
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`b39a10d4`**, pushed (on top of `4ef75d37`, R's ADR commit, on top of
+  `af811aba`, the F merge). Worktree: `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **R1-R3** (`docs/adr/0004-ui-toolkit.md`, commit `4ef75d37`): the ADR, status Proposed, covering
+   every R1 subsection (Widgets, Input routing, Text, Atlases, Rendering, The command boundary,
+   Testing) from `docs/re/ui.md` section 5's anchoring rules and the existing GPU atlas
+   architecture (`docs/render/gpu-chunks.md`), plus R2 and R3 as owner QUESTIONs with a
+   recommendation and a switch-gated default each, per rule 0.3.
+2. **The `data/ui/` layout parser** (`src/app/include/anno/app/ui_layout.hpp`,
+   `src/app/src/ui_layout.cpp`, commit `b39a10d4`): reads `hud.txt` and `construction.txt` into
+   typed records (`UiElement`, `UiClick`, `ConstructionCategory`, `ConstructionCell`,
+   `ConstructionGrid`, `ConstructionDemolish`) per `data/ui/README.md`'s grammar, including the
+   `-` = absent convention and the one line (`click category_column_x 782`) that is a single
+   coordinate, not a rectangle centre. This is R1's "no coordinate lives in code" made real: H and
+   C's eventual draw/input code reads this parser's output, not a literal in `src/`.
+   - New test `ui_layout_test.cpp`: parses the actual checked-in `data/ui/hud.txt` and
+     `construction.txt` (no game files needed — these are the project's own derived-fact files),
+     checks specific fields against `docs/re/ui.md` (statusbar rect, tab frame ids/hotkey, baumat
+     segment, the `inc-size`/view-dll elements with no measured position, the grid's 4x8 click
+     centres, all 8 categories, the 148-cell count, the 15 unlocked / 133 locked split, the
+     `category_column_x` single-coordinate click), and three deliberately malformed inputs (missing
+     version line, a non-integer `pos`, an unknown line kind, a bad `state` value) each produce a
+     line-numbered error. **90/90 assertions pass.**
+3. **C2, the sim-eligibility-vs-original-lock-rule comparison**
+   (`src/app/tests/ui_construction_eligibility_test.cpp`, commit `b39a10d4`): loads the real game
+   files' registry through the existing ship-start opening path (`app::load_opening`, the same real
+   `World` + seat-0 `PlayerId` every other real-file app test uses), then for each of the parsed
+   layout's 148 cells calls `world.construction_eligibility(local, TypeId{cell.id}).allowed()` and
+   compares it against `construction.txt`'s recorded `unlocked`/`locked` state (the original's
+   `INFRAMIN`/View.dll-table RE evidence, `docs/re/ui.md` section 3.2). **Result: 0 of 148 cells
+   disagree** (every `MESSAGE`/`INFO` line printed with `--success`: `"0 of 148 cells disagree with
+   construction.txt's recorded state (agree: 148)"`). No OQ needed — the sim's own stage-lock
+   authority, computed independently from `Anlagen.dat` at load time, already matches the
+   original's recorded lock state exactly for every non-empty cell at the Citizen start. This
+   satisfies C2's instruction to compare, over all 148 cells, and report every difference; there
+   were none to report.
+4. **Full regression check**: `anno_app_tests.exe` with the real game files
+   (`E:\anno1503\game\app`), rebuilt clean after this checkpoint's changes: **237/237 test cases,
+   60388/60388 assertions pass.** `clang-format` 23.1.3 (pip --target, per the project's own local-
+   check recipe) clean on every new file after one `-i` pass (the diff was whitespace/wrapping
+   only, no behaviour change; re-verified with a rebuild + rerun of the new cases after
+   reformatting).
+5. **A build-infrastructure near-miss, caught and fixed, not swept under a retry.** This worktree
+   had no `build/` yet; the first `cmake --build` invocation's `-- /m` MSBuild flag was mis-parsed
+   by Git Bash's path conversion (became `/m M:/`) and failed outright (MSB1008) — fixed by using
+   `--parallel` instead of a raw MSBuild flag. Separately, an early incremental rebuild (triggered
+   by one test-file edit) failed with `LNK1136` ("invalid or corrupted file") on `scene.obj`: traced
+   to a redundant second `cmake --build` invocation I had started by mistake over the first one
+   (both writing into the same `build/msvc` tree concurrently) — stopped the duplicate
+   (`TaskStop`), confirmed `scene.obj` was a literal 0-byte file (`find ... -size 0`), deleted that
+   one corrupted object (a build artifact, not a tracked file), and rebuilt clean. No other
+   zero-byte objects were found. Recorded here per the project's own "memory refusals mean the test
+   did not run, never attribute to flakiness without verification" discipline — this was verified
+   to its root cause (a concurrent-write race I introduced), not guessed at or waved off as a fluke.
+
+### What H/C still need (not started, or not finished, this checkpoint)
+
+- **H1-H4**: drawing the HUD elements through the real `.tex`/`.inc`/`.zei` decoders into the live
+  GPU-compositor atlas and a CPU reference path; reading gold/residents/build-goods from the
+  published snapshot (H2, with `docs/re/ui.md` section 2.3's "which city" rule); anchoring at other
+  window sizes (H3, waits on R3's scale and F3's OQ-535 capture); the oracle pixel tests on CPU, the
+  4090 and the Radeon iGPU with the three negative controls (H4).
+- **C1, C3-C6**: the actual category-column/grid/banner/info-panel drawing; cost/upkeep display
+  from the registry; arming a cell, the read-only placement preview, rotation/cancel keys, a click
+  sending `BuildCmd` through the same path `DevTool`/`DevInput` already use (today `DevInput` only
+  cycles a fixed type list by index — C4 needs a way to arm an arbitrary `TypeId` by construction-
+  menu cell, which is a small, non-sim app-layer addition, not yet made); the pickaxe's
+  `DemolishCmd`; the refusal display.
+- **M, V, K**: the placeholder-screen table, the full proof suite (a DevScript session through the
+  real window, its replay, the consumer-boundary test, pixel/mutation/performance checks), and the
+  owner's playtest card all depend on H/C existing in the window first.
+- **E**: the final gate (independent review, the full `ctest --preset msvc` with game files and
+  both GPUs, the WSL gate, CI on the pushed head) is this packet's own close and has not started.
+
+### Decisions and reasoning
+
+1. **Groundwork is reported as groundwork, not dressed up as "H/C done."** The dispatch's own
+   evidence policy (CLAUDE.md, the evidence contract) distinguishes a truthful partial state from a
+   claimed completion; this entry's status is `IN PROGRESS`, not `REVIEW PENDING`, because nothing
+   here is yet a reviewable, finished part of the packet.
+2. **C2's clean result is still reported in full, not skipped because "nothing to report."** The
+   dispatch asks to "report every cell where they differ, as an OQ with its evidence" — reporting
+   that there were zero, with the exact count and the method, is the honest completion of that
+   instruction, not a reason to omit the check from this report.
+3. **The corrupted-object incident is named with its root cause** (a self-inflicted concurrent
+   build, not a flaky toolchain), per the project's standing rule that a memory/build infrastructure
+   failure is reported as what it actually was, never attributed to flakiness without verification.
+
+### Next
+
+Continue into C4's small `DevInput` extension (arming an arbitrary `TypeId`) and the first HUD
+element draws, pushing at the next real checkpoint. H/C/M/V/K/E remain open; this is not a stop.

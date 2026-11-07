@@ -1069,6 +1069,7 @@ TEST_CASE(
     }
     MESSAGE(seen << " warehouses 1302 (coast rule at rotations 0123 from the stored origin): "
                  << s);
+    MESSAGE(refused << " scene(s) still refused through the actor-free path");
     CHECK(seen >= 62);
     CHECK(as_stored == seen);
 }

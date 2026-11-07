@@ -567,7 +567,7 @@ TEST_CASE("salt mine: the legal site with its payment and the deposit bound at p
     const sim::BuildingType& ty = *test_must::must(s->types->find(kSaltMine));
     const std::int64_t gold0 = gold(w);
     const std::size_t cursor0 = w.rng().cursor();
-    const sim::City& city = *isle(w).city(kSaltCity.city);
+    const sim::City& city = *test_must::must(isle(w).city(kSaltCity.city));
     std::map<sim::GoodsId, std::uint32_t> stock0;
     for (const sim::CostEntry& e : ty.cost_goods) {
         stock0[e.goods] = city.stock.stock[e.goods];
@@ -1113,7 +1113,7 @@ struct Chain {
 };
 
 const sim::City& city_of(const sim::World& w) {
-    return *isle(w).city(kSaltCity.city);
+    return *test_must::must(isle(w).city(kSaltCity.city));
 }
 const sim::Building* find_type(const sim::World& w, std::uint32_t type, sim::BuildingId skip = {}) {
     for (const auto& l : city_of(w).index.lists)
@@ -1506,7 +1506,8 @@ TEST_CASE("salt chain X3: the ledger catches a direct salt credit and a direct o
     require_closed(terms_of(*c), "before the credits");
     // a NAMED negative control, not a game command: 2 t of SALZ written into the store, and 3 t of
     // ore written into the saltworks' input
-    sim::City& city = *sim::WorldTestAccess::islands(c->sw.w)[1]->city(kSaltCity.city);
+    sim::City& city =
+        *test_must::must(sim::WorldTestAccess::islands(c->sw.w)[1]->city(kSaltCity.city));
     city.stock.stock[kSalz] += 2U * sim::kTon;
     for (auto& l : city.index.lists)
         for (auto& b : l.slots)

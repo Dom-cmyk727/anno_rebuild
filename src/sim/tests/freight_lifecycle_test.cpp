@@ -45,20 +45,21 @@ void running(const sim::World& w, sim::FigureId id = ft::ship_id) {
     REQUIRE_MESSAGE(r->status == S::Running, sim::reject_name(r->last_reject));
 }
 void to_wait(sim::World& w) {
-    for (unsigned i = 0; i < 30 && w.freight_route(ft::ship_id)->phase != P::Wait; ++i) {
+    for (unsigned i = 0; i < 30 && ft::live_route(w, ft::ship_id).phase != P::Wait; ++i) {
         w.advance(1000);
         running(w);
     }
-    REQUIRE(w.freight_route(ft::ship_id)->phase == P::Wait);
+    REQUIRE(ft::live_route(w, ft::ship_id).phase == P::Wait);
 }
 void to_cycle(sim::World& w, std::uint64_t cycles = 1) {
     const auto total = balances(w);
-    for (unsigned i = 0; i < 1000 && w.freight_route(ft::ship_id)->completed_cycles < cycles; ++i) {
+    for (unsigned i = 0; i < 1000 && ft::live_route(w, ft::ship_id).completed_cycles < cycles;
+         ++i) {
         w.advance(1000);
         running(w);
         CHECK(balances(w) == total);
     }
-    REQUIRE(w.freight_route(ft::ship_id)->completed_cycles >= cycles);
+    REQUIRE(ft::live_route(w, ft::ship_id).completed_cycles >= cycles);
 }
 void control(sim::World& w, C c) {
     REQUIRE(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, c}).ok());
@@ -69,8 +70,8 @@ TEST_CASE("freight lifecycle: arrival authority public replacement and stale rev
     REQUIRE(ft::apply(w, single(w, {{D::LoadTarget, 42, 1}})).ok());
     w.advance(2);
     running(w);
-    REQUIRE(w.freight_route(ft::ship_id)->phase == P::Sailing);
-    const auto first = w.freight_route(ft::ship_id)->expected_order_id;
+    REQUIRE(ft::live_route(w, ft::ship_id).phase == P::Sailing);
+    const auto first = ft::live_route(w, ft::ship_id).expected_order_id;
     sim::SimEvent stale;
     stale.kind = sim::SimEventKind::ShipArrived;
     stale.figure = ft::ship_id;
@@ -86,7 +87,7 @@ TEST_CASE("freight lifecycle: arrival authority public replacement and stale rev
             if (e.kind == sim::SimEventKind::ShipArrived && e.order_id == first)
                 arrived = true;
         if (!arrived)
-            CHECK(w.freight_route(ft::ship_id)->phase == P::Sailing);
+            CHECK(ft::live_route(w, ft::ship_id).phase == P::Sailing);
         CHECK(ft::ship(w).holds[0].amount_88 == 0);
     }
     REQUIRE(ft::apply(w, single(w, {{D::LoadTarget, 42, 2}})).ok());
@@ -109,7 +110,7 @@ TEST_CASE("freight lifecycle: arrival authority public replacement and stale rev
     CHECK_FALSE(sim::FreightRoutes::matches_navigation(ft::ship(w), current));
     for (unsigned i = 0; i < 3; ++i)
         w.advance(1000);
-    CHECK(w.freight_route(ft::ship_id)->phase == P::NeedLeg);
+    CHECK(ft::live_route(w, ft::ship_id).phase == P::NeedLeg);
     CHECK(ft::ship(w).holds[0].amount_88 == 0);
     control(w, C::Resume);
     to_cycle(w);
@@ -127,26 +128,26 @@ TEST_CASE("freight lifecycle: pause resume native continuation and cancel after 
     setup.stock = {{42, 1024}};
     auto w = ft::make_with(setup);
     REQUIRE(ft::apply(w, single(w, {{D::LoadTarget, 42, 5}})).ok());
-    for (unsigned i = 0; i < 80 && w.freight_route(ft::ship_id)->candidate_next != 1; ++i) {
+    for (unsigned i = 0; i < 80 && ft::live_route(w, ft::ship_id).candidate_next != 1; ++i) {
         w.advance(1000);
         running(w);
     }
-    REQUIRE(w.freight_route(ft::ship_id)->phase == P::Transfer);
-    REQUIRE(w.freight_route(ft::ship_id)->candidate_next == 1);
+    REQUIRE(ft::live_route(w, ft::ship_id).phase == P::Transfer);
+    REQUIRE(ft::live_route(w, ft::ship_id).candidate_next == 1);
     REQUIRE(ft::ship(w).holds[0].amount_88 == 1024);
     const auto after = balances(w);
     const auto source = stock(w);
     control(w, C::Suspend);
-    const auto cursor = w.freight_route(ft::ship_id)->candidate_next;
-    const auto credit = w.freight_route(ft::ship_id)->credit_ticks;
+    const auto cursor = ft::live_route(w, ft::ship_id).candidate_next;
+    const auto credit = ft::live_route(w, ft::ship_id).credit_ticks;
     for (unsigned i = 0; i < 5; ++i)
         w.advance(1000);
     CHECK(balances(w) == after);
     CHECK(stock(w) == source);
-    CHECK(w.freight_route(ft::ship_id)->candidate_next == cursor);
+    CHECK(ft::live_route(w, ft::ship_id).candidate_next == cursor);
     auto native = sim::World::load(w.save(), ft::registry(false, 1024, 3));
     REQUIRE(native);
-    CHECK(native.value().freight_route(ft::ship_id)->candidate_next == 1); // lost-cursor fault
+    CHECK(ft::live_route(native.value(), ft::ship_id).candidate_next == 1); // lost-cursor fault
     auto cancelled = w;
     control(cancelled, C::Cancel);
     for (unsigned i = 0; i < 3; ++i)
@@ -165,17 +166,17 @@ TEST_CASE("freight lifecycle: pause resume native continuation and cancel after 
     CHECK(balances(replaced) == after);
     control(w, C::Resume);
     control(native.value(), C::Resume);
-    CHECK(w.freight_route(ft::ship_id)->credit_ticks == credit);
+    CHECK(ft::live_route(w, ft::ship_id).credit_ticks == credit);
     (void)w.drain_events();
     (void)native.value().drain_events();
-    for (unsigned i = 0; i < 30 && w.freight_route(ft::ship_id)->completed_cycles == 0; ++i) {
+    for (unsigned i = 0; i < 30 && ft::live_route(w, ft::ship_id).completed_cycles == 0; ++i) {
         w.advance(0);
         native.value().advance(0);
         CHECK(w.save() == native.value().save());
         CHECK(w.drain_events() == native.value().drain_events());
         CHECK(balances(w) == after);
     }
-    REQUIRE(w.freight_route(ft::ship_id)->completed_cycles == 1);
+    REQUIRE(ft::live_route(w, ft::ship_id).completed_cycles == 1);
     CHECK(stock(w) == 0);
     CHECK(ft::ship(w).holds == std::vector<sim::ShipHold>{{42, 1024}, {0, 0}, {42, 256}});
     control(w, C::Cancel);
@@ -232,9 +233,9 @@ TEST_CASE("freight conservation: two ships and two owners contend in declared fi
     REQUIRE(ft::apply(w, first).ok());
     REQUIRE(ft::apply(w, second).ok());
     REQUIRE(ft::apply(w, other, 1).ok());
-    for (unsigned i = 0; i < 100 && (w.freight_route(ft::ship_id)->completed_cycles == 0 ||
-                                     w.freight_route(sim::FigureId{2})->completed_cycles == 0 ||
-                                     w.freight_route(sim::FigureId{3})->completed_cycles == 0);
+    for (unsigned i = 0; i < 100 && (ft::live_route(w, ft::ship_id).completed_cycles == 0 ||
+                                     ft::live_route(w, sim::FigureId{2}).completed_cycles == 0 ||
+                                     ft::live_route(w, sim::FigureId{3}).completed_cycles == 0);
          ++i) {
         w.advance(1000);
         CHECK(balances(w) == total);
@@ -242,9 +243,9 @@ TEST_CASE("freight conservation: two ships and two owners contend in declared fi
         running(w, sim::FigureId{2});
         running(w, sim::FigureId{3});
     }
-    REQUIRE(w.freight_route(ft::ship_id)->completed_cycles >= 1);
-    REQUIRE(w.freight_route(sim::FigureId{2})->completed_cycles >= 1);
-    REQUIRE(w.freight_route(sim::FigureId{3})->completed_cycles >= 1);
+    REQUIRE(ft::live_route(w, ft::ship_id).completed_cycles >= 1);
+    REQUIRE(ft::live_route(w, sim::FigureId{2}).completed_cycles >= 1);
+    REQUIRE(ft::live_route(w, sim::FigureId{3}).completed_cycles >= 1);
     CHECK(ft::ship(w).holds[0].amount_88 == 512);
     CHECK(ft::ship(w, sim::FigureId{2}).holds[0].amount_88 == 0);
     CHECK(stock(w) == 0);
@@ -262,7 +263,7 @@ TEST_CASE("freight recovery: shortage skips and a public cargo refill feeds a la
     REQUIRE(ft::apply(w, single(w, {{D::LoadTarget, 42, 2}})).ok());
     to_cycle(w);
     CHECK(ft::ship(w).holds[0].amount_88 == 0);
-    const auto cycles = w.freight_route(ft::ship_id)->completed_cycles;
+    const auto cycles = ft::live_route(w, ft::ship_id).completed_cycles;
     REQUIRE(ft::apply(w, sim::UnloadCmd{sim::FigureId{2}, ft::warehouse(w), 0, 42, 1}).ok());
     CHECK(balances(w) == total);
     for (unsigned i = 0; i < 50 && ft::ship(w).holds[0].amount_88 == 0; ++i) {
@@ -273,7 +274,7 @@ TEST_CASE("freight recovery: shortage skips and a public cargo refill feeds a la
     CHECK(ft::ship(w).holds[0].amount_88 == 256);
     CHECK(stock(w) == 0);
     CHECK(ft::ship(w, sim::FigureId{2}).holds[0].amount_88 == 256);
-    CHECK(w.freight_route(ft::ship_id)->completed_cycles >= cycles);
+    CHECK(ft::live_route(w, ft::ship_id).completed_cycles >= cycles);
 }
 TEST_CASE("freight failure: unreachable leg recovery uses reassignment and blocked cleanup stays "
           "public") {
@@ -286,7 +287,7 @@ TEST_CASE("freight failure: unreachable leg recovery uses reassignment and block
     bad.stops[0].dock_y_q8 = 410 * 256;
     REQUIRE(ft::apply(w, bad).ok());
     bool nav_failure = false;
-    for (unsigned i = 0; i < 50 && w.freight_route(ft::ship_id)->status == S::Running; ++i) {
+    for (unsigned i = 0; i < 50 && ft::live_route(w, ft::ship_id).status == S::Running; ++i) {
         w.advance(1000);
         for (const auto& e : w.drain_events())
             if (e.kind == sim::SimEventKind::ShipRouteFailed)
@@ -294,21 +295,21 @@ TEST_CASE("freight failure: unreachable leg recovery uses reassignment and block
         CHECK(balances(w) == total);
     }
     REQUIRE(nav_failure);
-    CHECK(w.freight_route(ft::ship_id)->status == S::Failed);
-    CHECK(w.freight_route(ft::ship_id)->phase == P::NeedLeg);
-    CHECK(w.freight_route(ft::ship_id)->nav_failure ==
+    CHECK(ft::live_route(w, ft::ship_id).status == S::Failed);
+    CHECK(ft::live_route(w, ft::ship_id).phase == P::NeedLeg);
+    CHECK(ft::live_route(w, ft::ship_id).nav_failure ==
           static_cast<std::uint8_t>(sim::NavFailReason::Unreachable));
-    CHECK(w.freight_route(ft::ship_id)->expected_order_id == 0);
+    CHECK(ft::live_route(w, ft::ship_id).expected_order_id == 0);
     REQUIRE(ft::apply(w, single(w, {{D::LoadTarget, 42, 1}})).ok());
     to_cycle(w);
     CHECK(ft::ship(w).holds[0].amount_88 == 256);
     REQUIRE(ft::apply(w, single(w, {{D::LoadTarget, 42, 2}})).ok());
     w.advance(1000);
-    REQUIRE(w.freight_route(ft::ship_id)->phase == P::Sailing);
+    REQUIRE(ft::live_route(w, ft::ship_id).phase == P::Sailing);
     ft::ship(w).state_word = 2; // simulated engine disability, not repaired for recovery
-    for (unsigned i = 0; i < 5 && w.freight_route(ft::ship_id)->status == S::Running; ++i)
+    for (unsigned i = 0; i < 5 && ft::live_route(w, ft::ship_id).status == S::Running; ++i)
         w.advance(1000);
-    REQUIRE(w.freight_route(ft::ship_id)->status == S::Failed);
+    REQUIRE(ft::live_route(w, ft::ship_id).status == S::Failed);
     const auto before = w.save();
     CHECK(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, C::Resume}).status ==
           sim::Reject::ShipDisabled);
@@ -330,8 +331,8 @@ TEST_CASE("freight lifecycle: missing rebuilt target needs a new stable assignme
     const sim::CityRef city{sim::IslandId{0}, sim::CityNo{0}};
     REQUIRE(ft::apply(w, sim::DemolishCmd{city, {{100, 108}}}).ok());
     w.advance(1000);
-    REQUIRE(w.freight_route(ft::ship_id)->status == S::Failed);
-    CHECK(w.freight_route(ft::ship_id)->last_reject == sim::Reject::NoBuildingAtTile);
+    REQUIRE(ft::live_route(w, ft::ship_id).status == S::Failed);
+    CHECK(ft::live_route(w, ft::ship_id).last_reject == sim::Reject::NoBuildingAtTile);
     const auto unchanged = w.save();
     CHECK(ft::apply(w, sim::ControlFreightRouteCmd{ft::ship_id, C::Resume}).status ==
           sim::Reject::NoBuildingAtTile);
@@ -411,11 +412,11 @@ TEST_CASE(
     "freight limits: exhausted cycle counter retries no cargo and public replacement recovers") {
     auto w = ft::make(1, false, 1);
     REQUIRE(ft::apply(w, single(w, {{D::LoadTarget, 42, 1}})).ok());
-    for (unsigned i = 0; i < 80 && w.freight_route(ft::ship_id)->phase != P::CompleteStop; ++i) {
+    for (unsigned i = 0; i < 80 && ft::live_route(w, ft::ship_id).phase != P::CompleteStop; ++i) {
         w.advance(1000);
         running(w);
     }
-    REQUIRE(w.freight_route(ft::ship_id)->phase == P::CompleteStop);
+    REQUIRE(ft::live_route(w, ft::ship_id).phase == P::CompleteStop);
     REQUIRE(ft::ship(w).holds[0].amount_88 == 256);
     ft::ship(w).freight->completed_cycles = UINT64_MAX;
     auto valid = sim::World::load(w.save(), ft::registry());
@@ -423,11 +424,11 @@ TEST_CASE(
     const auto total = balances(w);
     const auto source = stock(w);
     w.advance(0);
-    REQUIRE(w.freight_route(ft::ship_id)->status == S::Failed);
-    CHECK(w.freight_route(ft::ship_id)->last_reject == sim::Reject::SerialExhausted);
+    REQUIRE(ft::live_route(w, ft::ship_id).status == S::Failed);
+    CHECK(ft::live_route(w, ft::ship_id).last_reject == sim::Reject::SerialExhausted);
     control(w, C::Resume);
     w.advance(0);
-    CHECK(w.freight_route(ft::ship_id)->status == S::Failed);
+    CHECK(ft::live_route(w, ft::ship_id).status == S::Failed);
     CHECK(stock(w) == source);
     CHECK(balances(w) == total);
     CHECK(ft::ship(w).holds[0].amount_88 == 256);
@@ -444,7 +445,7 @@ TEST_CASE("freight lifecycle: attached crew follows automatic sailing and public
     bool interrupted = false, moved = false;
     const auto total = balances(w);
     const auto initial = ft::ship(w).pos;
-    for (unsigned i = 0; i < 1000 && w.freight_route(ft::ship_id)->completed_cycles == 0; ++i) {
+    for (unsigned i = 0; i < 1000 && ft::live_route(w, ft::ship_id).completed_cycles == 0; ++i) {
         w.advance(1000);
         running(w);
         moved = moved || ft::ship(w).pos != initial;
@@ -470,7 +471,7 @@ TEST_CASE("freight lifecycle: attached crew follows automatic sailing and public
     }
     REQUIRE(moved);
     REQUIRE(interrupted);
-    REQUIRE(w.freight_route(ft::ship_id)->completed_cycles == 1);
+    REQUIRE(ft::live_route(w, ft::ship_id).completed_cycles == 1);
     CHECK(stock(w, 1) == 512);
     CHECK(balances(w) == total);
 }
@@ -480,17 +481,17 @@ TEST_CASE("freight lifecycle: arrival and between-action waits pause resume canc
     auto w = ft::make(1, false, 8);
     REQUIRE(ft::apply(w, single(w, {{D::LoadTarget, 42, 1}, {D::UnloadAmount, 42, 1}})).ok());
     to_wait(w);
-    REQUIRE(w.freight_route(ft::ship_id)->action_index == 0);
+    REQUIRE(ft::live_route(w, ft::ship_id).action_index == 0);
     control(w, C::Suspend);
     for (unsigned i = 0; i < 3; ++i)
         w.advance(1000);
     CHECK(ft::ship(w).holds[0].amount_88 == 0);
-    CHECK(w.freight_route(ft::ship_id)->wait_remaining == 500);
+    CHECK(ft::live_route(w, ft::ship_id).wait_remaining == 500);
     control(w, C::Resume);
     w.advance(1000);
     running(w);
-    REQUIRE(w.freight_route(ft::ship_id)->phase == P::Wait);
-    REQUIRE(w.freight_route(ft::ship_id)->action_index == 1);
+    REQUIRE(ft::live_route(w, ft::ship_id).phase == P::Wait);
+    REQUIRE(ft::live_route(w, ft::ship_id).action_index == 1);
     REQUIRE(ft::ship(w).holds[0].amount_88 == 256);
     control(w, C::Suspend);
     const auto total = balances(w);

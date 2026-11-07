@@ -189,4 +189,11 @@ inline sim::Figure& ship(sim::World& w, sim::FigureId id = ship_id) {
     REQUIRE(f != nullptr);
     return *f;
 }
+// The ship's freight route, which must exist: REQUIRE it, then use it, so that a missing route
+// fails the case with a message and GCC -O3 -Werror=null-dereference sees a checked pointer.
+inline const sim::FreightState& live_route(const sim::World& w, sim::FigureId id = ship_id) {
+    const sim::FreightState* r = w.freight_route(id);
+    REQUIRE(r != nullptr);
+    return *r;
+}
 } // namespace freight_test

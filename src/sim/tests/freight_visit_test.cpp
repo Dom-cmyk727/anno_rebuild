@@ -101,7 +101,7 @@ TEST_CASE("freight visits: nineteen independent target grouping rounding and hol
         REQUIRE(ft::apply(w, route).ok());
         std::vector<std::pair<std::uint32_t, std::uint64_t>> effects;
         unsigned calls = 0;
-        while (w.freight_route(ft::ship_id)->completed_cycles == 0 && calls++ < 100) {
+        while (ft::live_route(w, ft::ship_id).completed_cycles == 0 && calls++ < 100) {
             w.advance(1000);
             healthy(w);
             for (const auto& event : w.drain_events())
@@ -112,7 +112,7 @@ TEST_CASE("freight visits: nineteen independent target grouping rounding and hol
         CHECK(ft::ship(w).holds == holds(member(expected, "holds")));
         for (const auto& [key, value] : member(expected, "stock").members)
             CHECK(stock(w, 0, static_cast<sim::GoodsId>(std::stoul(key))) == num(value));
-        CHECK(w.freight_route(ft::ship_id)->stops[0].actions ==
+        CHECK(ft::live_route(w, ft::ship_id).stops[0].actions ==
               actions(member(expected, "actions")));
         std::vector<std::pair<std::uint32_t, std::uint64_t>> wanted;
         for (const auto& effect : member(expected, "effects").items)
@@ -132,17 +132,17 @@ TEST_CASE("freight timing: actual arrival zero smallest split surplus and quota 
     wait_at_source(w);
     REQUIRE(w.figures().list.slots.size() == 1);
     const auto t = w.clock().tick();
-    CHECK(w.freight_route(ft::ship_id)->wait_remaining == 500);
+    CHECK(ft::live_route(w, ft::ship_id).wait_remaining == 500);
     auto whole = w;
     w.advance(0);
     CHECK(w.clock().tick() == t);
-    CHECK(w.freight_route(ft::ship_id)->wait_remaining == 500);
+    CHECK(ft::live_route(w, ft::ship_id).wait_remaining == 500);
     w.advance(1);
-    CHECK(w.freight_route(ft::ship_id)->wait_remaining == 500);
+    CHECK(ft::live_route(w, ft::ship_id).wait_remaining == 500);
     w.advance(1);
-    CHECK(w.freight_route(ft::ship_id)->wait_remaining == 499);
+    CHECK(ft::live_route(w, ft::ship_id).wait_remaining == 499);
     w.advance(996);
-    CHECK(w.freight_route(ft::ship_id)->wait_remaining == 1);
+    CHECK(ft::live_route(w, ft::ship_id).wait_remaining == 1);
     CHECK(ft::ship(w).holds[0].amount_88 == 0);
     w.advance(2);
     whole.advance(1000);
@@ -182,11 +182,11 @@ TEST_CASE("freight sailing: automatic matching arrivals deliver twice and remote
     const auto before = stock(w, 0, 42);
     REQUIRE(ft::apply(w, ft::route(w)).ok());
     CHECK_FALSE(ft::ship(w).nav->order);
-    CHECK(w.freight_route(ft::ship_id)->phase == sim::FreightPhase::NeedLeg);
+    CHECK(ft::live_route(w, ft::ship_id).phase == sim::FreightPhase::NeedLeg);
     std::uint64_t loads = 0, unloads = 0;
     unsigned arrivals = 0;
     bool moved = false;
-    for (unsigned i = 0; i < 1000 && w.freight_route(ft::ship_id)->completed_cycles < 2; ++i) {
+    for (unsigned i = 0; i < 1000 && ft::live_route(w, ft::ship_id).completed_cycles < 2; ++i) {
         const auto pos = ft::ship(w).pos;
         w.advance(1000);
         healthy(w);
@@ -202,7 +202,7 @@ TEST_CASE("freight sailing: automatic matching arrivals deliver twice and remote
             }
         }
     }
-    REQUIRE(w.freight_route(ft::ship_id)->completed_cycles == 2);
+    REQUIRE(ft::live_route(w, ft::ship_id).completed_cycles == 2);
     CHECK(moved);
     CHECK(arrivals >= 4);
     CHECK(loads == 1024);
@@ -218,10 +218,10 @@ TEST_CASE("freight sailing: automatic matching arrivals deliver twice and remote
     bool sailed = false;
     const auto original_pos = ft::ship(far).pos;
     for (unsigned i = 0;
-         i < 500 && far.freight_route(ft::ship_id)->status == sim::FreightStatus::Running; ++i) {
+         i < 500 && ft::live_route(far, ft::ship_id).status == sim::FreightStatus::Running; ++i) {
         far.advance(1000);
         sailed = sailed || ft::ship(far).pos != original_pos;
-        if (far.freight_route(ft::ship_id)->phase == sim::FreightPhase::Sailing)
+        if (ft::live_route(far, ft::ship_id).phase == sim::FreightPhase::Sailing)
             CHECK(ft::ship(far).holds[0].amount_88 == 0);
     }
     const auto* failed = far.freight_route(ft::ship_id);
@@ -243,7 +243,7 @@ TEST_CASE("freight continuation: public partial effect reload completes exact re
     setup.stock = {{91, 1024}};
     auto w = ft::make_with(setup);
     REQUIRE(ft::apply(w, single(w, {{sim::FreightDirection::LoadTarget, 91, 5}})).ok());
-    for (unsigned i = 0; i < 80 && w.freight_route(ft::ship_id)->candidate_next != 1; ++i) {
+    for (unsigned i = 0; i < 80 && ft::live_route(w, ft::ship_id).candidate_next != 1; ++i) {
         w.advance(1000);
         healthy(w);
     }
@@ -258,7 +258,7 @@ TEST_CASE("freight continuation: public partial effect reload completes exact re
     REQUIRE(native);
     CHECK(native.value().freight_work().cold_scans == 3);
     unsigned steps = 0;
-    while (w.freight_route(ft::ship_id)->completed_cycles == 0 && steps++ < 80) {
+    while (ft::live_route(w, ft::ship_id).completed_cycles == 0 && steps++ < 80) {
         w.advance(2);
         native.value().advance(2);
         healthy(w);
@@ -284,7 +284,7 @@ TEST_CASE("freight work: colocated empty and resource-refused routes cannot spin
             healthy(w);
             const auto& work = w.freight_work();
             CHECK(work.steps <= work.visits * 3);
-            CHECK(w.freight_route(ft::ship_id)->completed_cycles <= work.visits);
+            CHECK(ft::live_route(w, ft::ship_id).completed_cycles <= work.visits);
         }
         CHECK(stock(w, 0, 42) == 20 * 256);
         CHECK(ft::ship(w).holds[0].amount_88 == 0);
@@ -316,7 +316,7 @@ TEST_CASE("freight ingress: same-tick cancellation replacement and refused manua
     REQUIRE(sim::run_turn(replaced, nullptr, turn, 1, &results).empty());
     CHECK(results[0].ok());
     CHECK(ft::ship(replaced).freight_generation == old_generation + 1);
-    CHECK(replaced.freight_route(ft::ship_id)->phase == sim::FreightPhase::Sailing);
+    CHECK(ft::live_route(replaced, ft::ship_id).phase == sim::FreightPhase::Sailing);
     CHECK(ft::ship(replaced).holds[0].amount_88 == 0); // old due action did not execute
     auto refused = start;
     turn.commands = {{sim::PlayerId{0}, sim::MoveCmd{ft::ship_id, -1, 0}}};
@@ -343,14 +343,14 @@ TEST_CASE(
     auto w = ft::make_with(setup);
     REQUIRE(ft::apply(w, single(w, {{sim::FreightDirection::LoadTarget, 42, 12}})).ok());
     std::vector<std::uint64_t> amounts;
-    for (unsigned i = 0; i < 30 && w.freight_route(ft::ship_id)->completed_cycles == 0; ++i) {
+    for (unsigned i = 0; i < 30 && ft::live_route(w, ft::ship_id).completed_cycles == 0; ++i) {
         w.advance(1000);
         healthy(w);
         for (const auto& e : w.drain_events())
             if (e.freight && e.freight->signal == sim::FreightSignal::Transferred)
                 amounts.push_back(e.freight->amount_88);
     }
-    REQUIRE(w.freight_route(ft::ship_id)->completed_cycles == 1);
+    REQUIRE(ft::live_route(w, ft::ship_id).completed_cycles == 1);
     CHECK(amounts == std::vector<std::uint64_t>{256, 256, 44});
     CHECK(ft::ship(w).holds == std::vector<sim::ShipHold>{{42, 1024}, {42, 980}, {0, 0}});
     CHECK(stock(w, 0, 42) == 3540);
@@ -368,10 +368,10 @@ TEST_CASE("freight buffers: partial scan copies and native loads retain bounded 
     wait_at_source(w);
     w.advance(1000);
     healthy(w);
-    REQUIRE(w.freight_route(ft::ship_id)->phase == sim::FreightPhase::Scan);
+    REQUIRE(ft::live_route(w, ft::ship_id).phase == sim::FreightPhase::Scan);
     for (unsigned i = 0; i < 17; ++i)
         w.advance(0);
-    REQUIRE(w.freight_route(ft::ship_id)->scan_next == 17);
+    REQUIRE(ft::live_route(w, ft::ship_id).scan_next == 17);
     auto copy = w;
     auto native = sim::World::load(w.save(), ft::registry(false, 1024, count));
     REQUIRE(native);
@@ -386,7 +386,7 @@ TEST_CASE("freight buffers: partial scan copies and native loads retain bounded 
         (void)world->drain_events();
     }
     unsigned steps = 0;
-    while (w.freight_route(ft::ship_id)->completed_cycles == 0 && steps++ < 200) {
+    while (ft::live_route(w, ft::ship_id).completed_cycles == 0 && steps++ < 200) {
         w.advance(0);
         copy.advance(0);
         native.value().advance(0);

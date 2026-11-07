@@ -241,8 +241,8 @@ TEST_CASE("iron identity137: real133, real134 and real135 archives refuse, each 
                                      " is not supported (this build reads 137)");
     }
     // the recordings of the three predecessors: the replay header carries the identity
-    for (const char* rel : {"econbook1/current133/g2.log", "expand1/current134/g2.log",
-                            "salt1/current135/g2.log"}) {
+    for (const char* rel :
+         {"econbook1/current133/g2.log", "expand1/current134/g2.log", "salt1/current135/g2.log"}) {
         const auto decoded = sim::read_log(bytes_of(base / rel));
         REQUIRE_FALSE(decoded.ok());
         CHECK(decoded.error() ==

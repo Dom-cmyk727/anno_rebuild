@@ -1,0 +1,283 @@
+diff --git a/src/test_support/tests/budget_f1_test.cpp b/src/test_support/tests/budget_f1_test.cpp
+index 3759ba6..071dc33 100644
+--- a/src/test_support/tests/budget_f1_test.cpp
++++ b/src/test_support/tests/budget_f1_test.cpp
+@@ -348,6 +348,7 @@ TEST_CASE("cancelling a waiter does not release the bytes it is waiting on" *
+ #if defined(_WIN32)
+ TEST_CASE("a killed owner lets a memory waiter and a cpu waiter continue" *
+           doctest::test_suite("budget")) {
++    const anno::test::ports::FileClientPort port; // the probes inherit it
+     _putenv("ANNO_TEST_CPU_BUDGET=1");
+     const auto exe = probe_executable();
+     REQUIRE(std::filesystem::exists(exe));
+diff --git a/src/test_support/tests/budget_f2_test.cpp b/src/test_support/tests/budget_f2_test.cpp
+index e5979a5..f818cf4 100644
+--- a/src/test_support/tests/budget_f2_test.cpp
++++ b/src/test_support/tests/budget_f2_test.cpp
+@@ -84,9 +84,9 @@ std::uint16_t port_for(int index) {
+     // Windows and WSL cases run side by side on one host: separate bases. Below the ephemeral
+     // ranges (test_ports.hpp).
+ #if defined(_WIN32)
+-    constexpr std::uint16_t base = anno::test::ports::fixed(27700);
++    constexpr std::uint16_t base = anno::test::ports::fixed(47700);
+ #else
+-    constexpr std::uint16_t base = anno::test::ports::fixed(27750);
++    constexpr std::uint16_t base = anno::test::ports::fixed(47750);
+ #endif
+     const auto port = static_cast<std::uint16_t>(base + index);
+     anno::test::ports::require_test_port(port);
+diff --git a/src/test_support/tests/budget_f3_test.cpp b/src/test_support/tests/budget_f3_test.cpp
+index 2375bd7..223037f 100644
+--- a/src/test_support/tests/budget_f3_test.cpp
++++ b/src/test_support/tests/budget_f3_test.cpp
+@@ -47,16 +47,16 @@ using anno::test::child::set_env;
+ using anno::test::child::sibling;
+ using namespace std::chrono_literals;
+ 
+-// Ports of this file: 27810–27817 (the F2 file uses 27700–27760); below every default ephemeral
++// Ports of this file: 47810–47817 (the F2 file uses 47700–47760); below every default ephemeral
+ // port range, see test_ports.hpp.
+-constexpr std::uint16_t kPortAccept = ports::fixed(27810);   // (a) two compatible builds
+-constexpr std::uint16_t kPortIncompat = ports::fixed(27811); // (b) incompatible version, deadline
+-constexpr std::uint16_t kPortCancel = ports::fixed(27812);   // (b) exact build, cancellation
+-constexpr std::uint16_t kPortDrain = ports::fixed(27813);    // (c) graceful drain and handover
+-constexpr std::uint16_t kPortCrash = ports::fixed(27814);    // (c) crash handover
+-constexpr std::uint16_t kPortMeter = ports::fixed(27815);    // (d) real meter child in WSL
+-constexpr std::uint16_t kPortSilentOk = ports::fixed(27816); // silent, then served
+-constexpr std::uint16_t kPortSilent = ports::fixed(27817);   // silent, deadline
++constexpr std::uint16_t kPortAccept = ports::fixed(47810);   // (a) two compatible builds
++constexpr std::uint16_t kPortIncompat = ports::fixed(47811); // (b) incompatible version, deadline
++constexpr std::uint16_t kPortCancel = ports::fixed(47812);   // (b) exact build, cancellation
++constexpr std::uint16_t kPortDrain = ports::fixed(47813);    // (c) graceful drain and handover
++constexpr std::uint16_t kPortCrash = ports::fixed(47814);    // (c) crash handover
++constexpr std::uint16_t kPortMeter = ports::fixed(47815);    // (d) real meter child in WSL
++constexpr std::uint16_t kPortSilentOk = ports::fixed(47816); // silent, then served
++constexpr std::uint16_t kPortSilent = ports::fixed(47817);   // silent, deadline
+ // The metadata-only pin has no connecting client or restart. Let the OS bind a
+ // free port so an unrelated listener or ephemeral connection cannot break it.
+ constexpr std::uint16_t kPortPin = 0;
+diff --git a/src/test_support/tests/budget_f4_test.cpp b/src/test_support/tests/budget_f4_test.cpp
+index 647a758..3162e2f 100644
+--- a/src/test_support/tests/budget_f4_test.cpp
++++ b/src/test_support/tests/budget_f4_test.cpp
+@@ -7,7 +7,7 @@
+ //       client-spawn closefrom) is observed on its own.
+ //
+ // Helpers are the F3 process harness (budget_proc_harness.hpp), unchanged.
+-// Ports 27820–27839; journals under temp_directory_path()/anno1503-f4.
++// Ports 47820–47839; journals under temp_directory_path()/anno1503-f4.
+ #include <atomic>
+ #include <chrono>
+ #include <cstdint>
+@@ -34,16 +34,16 @@ namespace {
+ using anno::test::child::Child;
+ using namespace std::chrono_literals;
+ 
+-constexpr std::uint16_t kPortOrphanReuse = ports::fixed(27820); // E1, orphan kept
+-constexpr std::uint16_t kPortLiveHold = ports::fixed(27821);    // E1, live hold kept
+-constexpr std::uint16_t kPortCancelAll = ports::fixed(27822);   // E2
+-constexpr std::uint16_t kPortRawHello = ports::fixed(27823);    // N2, server exact-build
+-constexpr std::uint16_t kPortCloexec = ports::fixed(27824);     // N3, sockets CLOEXEC
+-constexpr std::uint16_t kPortMeterLeak = ports::fixed(27825);   // N4, meter closefrom
++constexpr std::uint16_t kPortOrphanReuse = ports::fixed(47820); // E1, orphan kept
++constexpr std::uint16_t kPortLiveHold = ports::fixed(47821);    // E1, live hold kept
++constexpr std::uint16_t kPortCancelAll = ports::fixed(47822);   // E2
++constexpr std::uint16_t kPortRawHello = ports::fixed(47823);    // N2, server exact-build
++constexpr std::uint16_t kPortCloexec = ports::fixed(47824);     // N3, sockets CLOEXEC
++constexpr std::uint16_t kPortMeterLeak = ports::fixed(47825);   // N4, meter closefrom
+ // Used only in the Linux branch below; unused on macOS/Windows, where that branch
+ // is compiled out.
+ [[maybe_unused]] constexpr std::uint16_t kPortClientLeak =
+-    ports::fixed(27826); // N4b, client spawn closefrom
++    ports::fixed(47826); // N4b, client spawn closefrom
+ 
+ std::filesystem::path f4_dir() {
+     const auto dir = std::filesystem::temp_directory_path() / "anno1503-f4";
+diff --git a/src/test_support/tests/budget_f5_test.cpp b/src/test_support/tests/budget_f5_test.cpp
+index 55aa81c..f48fdbe 100644
+--- a/src/test_support/tests/budget_f5_test.cpp
++++ b/src/test_support/tests/budget_f5_test.cpp
+@@ -15,7 +15,7 @@
+ //   O5 (Darwin): records of the earlier Darwin coordinator (namespace 2, microsecond stamp) are
+ //       judged by Darwin; this process's own namespace is 3.
+ //
+-// Every case has its own port (27850..27859), a journal under temp_directory_path()/anno1503-f5,
++// Every case has its own port (47850..47859), a journal under temp_directory_path()/anno1503-f5,
+ // bounded waits, and owns each child it starts: Child stops its process in the destructor, and
+ // no process is found by name.
+ #include <chrono>
+@@ -51,15 +51,15 @@ using anno::test::child::Child;
+ using namespace std::chrono_literals;
+ namespace wire = anno::test::wire;
+ 
+-constexpr std::uint16_t kPortLive = ports::fixed(27850);
+-constexpr std::uint16_t kPortReused = ports::fixed(27851);
+-constexpr std::uint16_t kPortUnattributed = ports::fixed(27852);
+-constexpr std::uint16_t kPortCpu = ports::fixed(27853);
+-[[maybe_unused]] constexpr std::uint16_t kPortLegacy = ports::fixed(27854);
+-[[maybe_unused]] constexpr std::uint16_t kPortSpace = ports::fixed(27855);
+-constexpr std::uint16_t kPortStreams = ports::fixed(27856);
+-constexpr std::uint16_t kPortForeground = ports::fixed(27857);
+-constexpr std::uint16_t kPortPipeline = ports::fixed(27858);
++constexpr std::uint16_t kPortLive = ports::fixed(47850);
++constexpr std::uint16_t kPortReused = ports::fixed(47851);
++constexpr std::uint16_t kPortUnattributed = ports::fixed(47852);
++constexpr std::uint16_t kPortCpu = ports::fixed(47853);
++[[maybe_unused]] constexpr std::uint16_t kPortLegacy = ports::fixed(47854);
++[[maybe_unused]] constexpr std::uint16_t kPortSpace = ports::fixed(47855);
++constexpr std::uint16_t kPortStreams = ports::fixed(47856);
++constexpr std::uint16_t kPortForeground = ports::fixed(47857);
++constexpr std::uint16_t kPortPipeline = ports::fixed(47858);
+ /// A namespace no coordinator knows.
+ constexpr std::uint32_t kForeignNs = 99;
+ 
+@@ -434,14 +434,14 @@ TEST_CASE("S3: a captured pipeline ends without waiting for the coordinator's id
+ //       --compat-version 3: it models the handshake and the journal name, not the older recovery
+ //       code. The mixed-binary evidence is tools/test/mixed_coordinator_check.sh.
+ //
+-// Ports 27860..27869.
++// Ports 47860..47869.
+ #if !defined(_WIN32)
+ namespace {
+ 
+-constexpr std::uint16_t kPortT1Idle = ports::fixed(27860);
+-constexpr std::uint16_t kPortT1Busy = ports::fixed(27861);
+-constexpr std::uint16_t kPortT2 = ports::fixed(27862);
+-constexpr std::uint16_t kPortT5 = ports::fixed(27867);
++constexpr std::uint16_t kPortT1Idle = ports::fixed(47860);
++constexpr std::uint16_t kPortT1Busy = ports::fixed(47861);
++constexpr std::uint16_t kPortT2 = ports::fixed(47862);
++constexpr std::uint16_t kPortT5 = ports::fixed(47867);
+ 
+ /// A private HOME so the default journals of a coordinator that is started without --journal land
+ /// in a directory of this case.
+@@ -587,16 +587,16 @@ TEST_CASE(
+ //       returns and releases after the holder exits
+ //   H6  an owner the host cannot attribute stays protected through the handoffs
+ // "v3" is this build started with --compat-version 3 (modeled) or, in the (real) cases, the older
+-// binary named by ANNO_TEST_OLD_COORD (opt-in). Ports 27880..27895.
++// binary named by ANNO_TEST_OLD_COORD (opt-in). Ports 47880..47895.
+ #if !defined(_WIN32)
+ namespace {
+ 
+-constexpr std::uint16_t kPortH1 = ports::fixed(27880);
+-constexpr std::uint16_t kPortH2 = ports::fixed(27881);
+-constexpr std::uint16_t kPortH3 = ports::fixed(27882);
+-constexpr std::uint16_t kPortH4 = ports::fixed(27883);
+-constexpr std::uint16_t kPortH5 = ports::fixed(27884);
+-constexpr std::uint16_t kPortH6 = ports::fixed(27885);
++constexpr std::uint16_t kPortH1 = ports::fixed(47880);
++constexpr std::uint16_t kPortH2 = ports::fixed(47881);
++constexpr std::uint16_t kPortH3 = ports::fixed(47882);
++constexpr std::uint16_t kPortH4 = ports::fixed(47883);
++constexpr std::uint16_t kPortH5 = ports::fixed(47884);
++constexpr std::uint16_t kPortH6 = ports::fixed(47885);
+ 
+ enum class Kind { Memory, Cpu };
+ 
+@@ -851,14 +851,14 @@ TEST_CASE("H7: the handoffs again with the real older coordinator (opt-in ANNO_T
+ //   V3    the journal-state matrix (absent, empty, released, open memory, open CPU, dead owner,
+ //         unknown owner, unreadable, malformed, truncated, both journals present, repeated starts).
+ //   V4    a predecessor journal of another port does not block.
+-// Ports 27900..27925, a private HOME per case.
++// Ports 47900..47925, a private HOME per case.
+ #if !defined(_WIN32)
+ namespace {
+ 
+-constexpr std::uint16_t kPortV1 = ports::fixed(27900);
+-constexpr std::uint16_t kPortV2 = ports::fixed(27901);
+-constexpr std::uint16_t kPortV3 = ports::fixed(27902); // + case index, up to 27919
+-constexpr std::uint16_t kPortV4 = ports::fixed(27920);
++constexpr std::uint16_t kPortV1 = ports::fixed(47900);
++constexpr std::uint16_t kPortV2 = ports::fixed(47901);
++constexpr std::uint16_t kPortV3 = ports::fixed(47902); // + case index, up to 47919
++constexpr std::uint16_t kPortV4 = ports::fixed(47920);
+ 
+ void put(const std::filesystem::path& path, const std::string& bytes) {
+     std::filesystem::create_directories(path.parent_path());
+diff --git a/src/test_support/tests/budget_ports_test.cpp b/src/test_support/tests/budget_ports_test.cpp
+index a1e2389..980c08e 100644
+--- a/src/test_support/tests/budget_ports_test.cpp
++++ b/src/test_support/tests/budget_ports_test.cpp
+@@ -67,6 +67,11 @@ TEST_CASE("budget ports: the Linux range text is read as two ascending ports" *
+ 
+ TEST_CASE("budget ports: this host's ephemeral range does not reach the fixed test ports" *
+           doctest::test_suite("budget")) {
++#if defined(_WIN32)
++    // Not read on Windows: comparing the documented default would only compare constants.
++    MESSAGE("skipping: the ephemeral port range is not read on Windows (netsh int ipv4 show "
++            "dynamicport tcp, show excludedportrange protocol=tcp)");
++#else
+     std::string source;
+     const auto range = ports::host_ephemeral_range(source);
+     INFO("ephemeral range source: " << source);
+@@ -74,7 +79,7 @@ TEST_CASE("budget ports: this host's ephemeral range does not reach the fixed te
+     REQUIRE_MESSAGE(range.has_value(), "the host's ephemeral port range could not be read");
+ #endif
+     if (!range) {
+-        MESSAGE("no ephemeral range known for this host; nothing to compare");
++        MESSAGE("skipping: no ephemeral port range is known for this host");
+         return;
+     }
+     INFO("ephemeral range " << range->first << ".." << range->last << ", fixed test ports "
+@@ -83,4 +88,5 @@ TEST_CASE("budget ports: this host's ephemeral range does not reach the fixed te
+                   "this host hands out the coordinator regressions' fixed ports to outgoing "
+                   "connections: their coordinators can fail with BIND-FAILED under ctest -j. "
+                   "Move the band in test_ports.hpp or narrow the host's range.");
++#endif
+ }
+diff --git a/src/test_support/tests/test_ports.hpp b/src/test_support/tests/test_ports.hpp
+index c1d8121..48e9dec 100644
+--- a/src/test_support/tests/test_ports.hpp
++++ b/src/test_support/tests/test_ports.hpp
+@@ -36,11 +36,13 @@
+ namespace anno::test::ports {
+ 
+ /// Every fixed port a coordinator regression binds or connects to lies in this band. The
+-/// files divide it: F2 27700-27760, F3 27810-27817, F4 27820-27826, F5 27850-27925, and the
+-/// file-client cases of budget_test and F1 27632 (kFileClientPort). A host whose ephemeral range
++/// files divide it: F2 47700-47760, F3 47810-47817, F4 47820-47826, F5 47850-47925, and the
++/// file-client cases of budget_test and F1 47632 (kFileClientPort). Exempt: the Windows-only F1
++/// case "a live Windows owner is not reclaimed by a WSL client" deliberately uses the shared WSL
++/// coordinator (production port 47631); it runs only on a Windows host with WSL. A host whose ephemeral range
+ /// reaches into the band is reported by the case "budget ports: ..." in budget_ports_test.cpp.
+-constexpr std::uint16_t kBandFirst = 27600;
+-constexpr std::uint16_t kBandLast = 27999;
++constexpr std::uint16_t kBandFirst = 47600;
++constexpr std::uint16_t kBandLast = 47999;
+ 
+ struct Range {
+     std::uint16_t first = 0;
+@@ -77,8 +79,7 @@ inline std::optional<Range> parse_linux_range(const std::string& text) {
+ }
+ 
+ /// This host's ephemeral range for outgoing TCP connections, and where it came from. Linux and
+-/// macOS read the kernel's setting. Windows reports the documented default: its configured range
+-/// is not read here (`netsh int ipv4 show dynamicport tcp` shows it).
++/// macOS read the kernel's setting; Windows and other hosts return nullopt (not read).
+ inline std::optional<Range> host_ephemeral_range(std::string& source) {
+ #if defined(__linux__)
+     source = "/proc/sys/net/ipv4/ip_local_port_range";
+@@ -103,8 +104,11 @@ inline std::optional<Range> host_ephemeral_range(std::string& source) {
+     }
+     return Range{static_cast<std::uint16_t>(first), static_cast<std::uint16_t>(last)};
+ #elif defined(_WIN32)
+-    source = "Windows default dynamic range (not read from the host)";
+-    return Range{49152, 65535};
++    // The configured range is not read here; returning the documented default 49152-65535 would
++    // only compare constants. `netsh int ipv4 show dynamicport tcp` and `... show
++    // excludedportrange protocol=tcp` show the host's settings.
++    source = "not read on Windows";
++    return std::nullopt;
+ #else
+     source = "unknown host";
+     return std::nullopt;
+@@ -135,7 +139,7 @@ inline void require_test_port(std::uint16_t port) {
+ /// The port of the local coordinator that the file-client cases (budget_test.cpp, the portable
+ /// F1 cases) start through their client. Without it they use the default local port 47632
+ /// (coord_wire.hpp kLocalPort), which lies in Linux's ephemeral range.
+-constexpr std::uint16_t kFileClientPort = fixed(27632);
++constexpr std::uint16_t kFileClientPort = fixed(47632);
+ 
+ /// For one case: this process's clients use a local coordinator on kFileClientPort. Restores
+ /// the previous values of both variables afterwards.

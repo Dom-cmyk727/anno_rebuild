@@ -1984,8 +1984,15 @@ through `ports::fixed()`, a `consteval` check that does not compile outside the 
 ports (`base + index`) are checked where the harness starts a coordinator. The case
 "budget ports: this host's ephemeral range does not reach the fixed test ports" reads the
 host's range (Linux, macOS; Windows reports the documented default and does not query it) and
-fails with an explanation on a host configured into the band. Port numbers in the sections
-above are historical (now 20000 lower); `lsof -iTCP:27600-27999` replaces `47810-47899`.
+fails with an explanation on a host configured into the band. On Windows the range is not
+read and the case reports a platform skip; `netsh int ipv4 show dynamicport tcp` and `netsh int
+ipv4 show excludedportrange protocol=tcp` must be checked by hand before Windows acceptance.
+Regression ports 47700–47999 named in the sections above are historical (now 20000 lower;
+`lsof -iTCP:27600-27999` replaces `47810-47899`). The production ports 47631 and 47632 in the
+runbooks above are unchanged, and so are the arguments of the manual `run_legacy_ab.ps1` run.
+Exempt: the Windows-only F1 case "a live Windows owner is not reclaimed by a WSL client" uses
+the shared WSL coordinator (47631) on purpose. F3–F5 and 27632 use the same ports on Windows and
+in WSL (only F2 separates them), as before this change.
 
 **Production ports unchanged** (owner decision 2026-11-07): the shared coordinator stays on
 47631 and the local default on 47632 (`coord_wire.hpp`). Every client finds the shared
@@ -2004,12 +2011,16 @@ the coordinator their requester started aside (`step_aside`, moved from F5 into
 probe's `silent` listener sets `SO_REUSEADDR` like the coordinator, because the previous run's
 coordinator leaves server-side TIME_WAIT connections on that port for 60 s.
 
-**Evidence** (`docs/orchestration/evidence/coord-ports-1/`): the old tree under a narrowed
-ephemeral range 47500–48499 (`--repeat until-fail:3`) failed 8 of 89 entries: four
-`BIND-FAILED` (47813, 47814, 47860, 47884), F3 silent on the TIME_WAIT bind, F4 N3 with "speaks
-another protocol" (consistent with a client connecting to itself on a free port inside the
-range; not traced), V3 and V4 on a coordinator first line the case does not print. This tree
-passed `ctest -j 4 --repeat until-fail:20` for the 92 entries of `anno_test_support_tests`
-under the same range and under the default range: 86 executed and passed 20 times each, 6 skip
-on Linux (F3 D2 and F4 N4 need the Windows/WSL meter; T5, H7, V1, V2 are opt-in). Windows and
-macOS were not run for this package.
+**Evidence** (`docs/orchestration/evidence/coord-ports-1/`). The control that changes only the
+ports: this tree with every regression port moved back up by 20000 (old numbers, cleanup fixes
+kept), ephemeral range narrowed to 47500–48499, `-j 4 --repeat until-fail:20`, failed 18 of 89
+entries, 10 of them with `BIND-FAILED` (47810, 47812, 47820, 47822, 47850, 47852, 47860, 47862,
+47880, 47882), the file-client cases on 47632 among the rest. This tree, same range and
+command: 0 of 92 failed, no `BIND-FAILED`. The narrowed range stresses the old band only; the new
+band's own guarantee is the range comparison above. The earlier old-tree run under the same
+range (`--repeat until-fail:3`, 8 of 89 failed) mixes both causes: F3 handover, crash handover,
+F3 silent and T1 failed on their second repetition after a pass (the repeat causes), H5
+(`BIND-FAILED 47884`), F4 N3 ("speaks another protocol", not traced), V3 and V4 on their first.
+At the default range this tree passed `ctest -j 4 --repeat until-fail:20`: 86 entries executed
+and passed 20 times each, 6 skip on Linux (F3 D2 and F4 N4 need the Windows/WSL meter; T5, H7,
+V1, V2 are opt-in). Windows and macOS were not run for this package.

@@ -93,7 +93,7 @@ def fixture():
         for name,(data,digest) in records().items())
 
 class Contracts(unittest.TestCase):
-    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8700000045434f4e424b310005000000')
+    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8900000045434f4e424b310005000000')
     def test_sparse_registry_has_four_actors(self):
         self.assertEqual(len(records()['figures'][0]),20+40+200+133+129+150+10)
         self.assertNotEqual(records()['figures'][1],fnv(records()['figures'][0]))
@@ -108,7 +108,7 @@ class Contracts(unittest.TestCase):
             command=[sys.executable,'-I',str(Path(__file__).resolve()),'--fixture',str(path)]
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,0);self.assertIn('7 populated combined scopes agree',result.stdout)
-            path.write_text(fixture().replace('87000000','86000000',1))
+            path.write_text(fixture().replace('89000000','88000000',1))
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
             path.unlink();result=subprocess.run(command,capture_output=True,text=True)

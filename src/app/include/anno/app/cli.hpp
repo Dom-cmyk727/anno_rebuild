@@ -19,7 +19,7 @@ namespace anno::app {
 
 inline constexpr const char* kUsage =
     "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> | --ship-start <manifest.json> "
-    "--seat <n> [--resume <save>] [--game-dir <dir>] [--speed "
+    "--seat <n> [--resume <save>] [--city-booking on|off] [--game-dir <dir>] [--speed "
     "50|100|200] [--group "
     "<n>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
@@ -117,6 +117,11 @@ struct Args {
     bool ship_start = false;
     std::optional<std::uint32_t> seat;
     std::optional<std::filesystem::path> resume;
+    /// --ship-start --city-booking on: the opt-in ECON-BOOK-1 checked city sales/upkeep
+    /// (sim::Rules::city_booking) for this session only, never the compiled-in default (false). A
+    /// developer/session option for W4-EXPAND-LIVE-1's manual-expansion card, not a changed
+    /// default.
+    bool city_booking = false;
     /// Multiplayer rate: fixed real-time cadence, variable game ms per step.
     unsigned play_speed = 100;
     /// --play --commands <file>: scripted Build and Demolish lines (game-shell.md).

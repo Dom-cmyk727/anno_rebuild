@@ -307,8 +307,8 @@ int run(const std::vector<std::string>& raw) {
     }
     if (args->play) {
         if (args->ship_start) {
-            auto started =
-                anno::app::load_opening(dir.value(), args->file, *args->seat, args->resume);
+            auto started = anno::app::load_opening(dir.value(), args->file, *args->seat,
+                                                   args->resume, args->city_booking);
             if (!started) {
                 std::fprintf(stderr, "%s\n", started.error().c_str());
                 return 1;

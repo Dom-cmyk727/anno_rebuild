@@ -88,6 +88,14 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             out.seat = *seat;
         } else if (a == "--resume") {
             out.resume = utf8_path(v);
+        } else if (a == "--city-booking") {
+            if (v == "on") {
+                out.city_booking = true;
+            } else if (v == "off") {
+                out.city_booking = false;
+            } else {
+                return std::nullopt;
+            }
         } else if (a == "--speed") {
             const auto speed = number<unsigned>(v);
             if (!speed || (*speed != 50 && *speed != 100 && *speed != 200)) {

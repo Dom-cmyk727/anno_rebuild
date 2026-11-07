@@ -2503,7 +2503,7 @@ TEST_CASE("salt X5: the mine facts against known state, read-only") {
     const auto f = sim::mine_facts(w, mine);
     REQUIRE(f.has_value());
     CHECK(f->bound);
-    CHECK(f->deposit_index == std::optional<std::size_t>{0});
+    CHECK(f->deposit_index == std::optional<std::uint64_t>{0});
     CHECK(f->ore_x == 357);
     CHECK(f->ore_y == 369);
     CHECK(f->remaining_88 == 512000U);

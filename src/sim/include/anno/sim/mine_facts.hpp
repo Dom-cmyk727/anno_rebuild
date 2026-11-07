@@ -27,7 +27,7 @@ enum class MineState : std::uint8_t {
 struct MineFacts {
     bool bound = false;
     /// Mine::deposit: the index into Island::deposits.
-    std::optional<std::size_t> deposit_index;
+    std::optional<std::uint64_t> deposit_index;
     /// The tile of the ore object the deposit was made from (absolute world tile).
     std::int32_t ore_x = 0, ore_y = 0;
     /// Remaining amount in 8.8 tons (/ 256 = tons) and the reserve flag of the deposit.

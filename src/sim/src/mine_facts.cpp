@@ -30,7 +30,7 @@ std::optional<MineFacts> mine_facts(const World& world, BuildingId id) {
         *m->deposit < islands[island]->deposits.size()) {
         const Deposit& d = islands[island]->deposits[*m->deposit];
         f.bound = true;
-        f.deposit_index = m->deposit;
+        f.deposit_index = static_cast<std::uint64_t>(*m->deposit);
         f.ore_x = d.x;
         f.ore_y = d.y;
         f.remaining_88 = d.remaining;

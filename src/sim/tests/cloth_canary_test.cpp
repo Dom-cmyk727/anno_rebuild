@@ -113,23 +113,23 @@ TEST_CASE("cloth canary: original-data component projection, zero-start: new woo
     CHECK(pioneers_rose == 8); // every house that held no cloth got some from the new supply
     CHECK(others_rose == 1);
     CHECK(houses_reached(c) == 9);
-    CHECK(c.first_cloth_store_tick == 99750);
-    CHECK(l.wool_made == 3187);
-    CHECK(l.weaver_consumed == 2761);
-    CHECK(l.weaver_made == 1506);
-    CHECK(l.weaver_out == 72);
-    CHECK(l.cloth_loaded == 1434);
-    CHECK(l.cloth_store == 348);
-    CHECK(l.cloth_taken == 1086);
+    CHECK(c.first_cloth_store_tick == 98800);
+    CHECK(l.wool_made == 3203);
+    CHECK(l.weaver_consumed == 2749);
+    CHECK(l.weaver_made == 1500);
+    CHECK(l.weaver_out == 234);
+    CHECK(l.cloth_loaded == 1266);
+    CHECK(l.cloth_store == 230);
+    CHECK(l.cloth_taken == 1036);
     CHECK(grass_lost == 0);
-    CHECK(g.cut_events == 188);
+    CHECK(g.cut_events == 189);
     CHECK(g.tiles_cut == 35);
     // Renewal: every cut tile grew back, after 43,950 to 49,400 ticks (measured over 156 regrowths;
     // the nominal `S << k` flips of P/2 = 30,000 ticks are stretched by the chunk visits,
     // docs/re/production.md 4.3). The pool lasts through repeated cycles of the same 35 tiles
     // inside this run; no claim beyond 300,000 ticks.
-    CHECK(g.n == 156);
-    CHECK(g.min == 43950);
+    CHECK(g.n == 158);
+    CHECK(g.min == 43900);
     CHECK(g.max == 49400);
 }
 
@@ -169,9 +169,9 @@ TEST_CASE(
     // difference
     CHECK(taken(*B) > kS0);
     CHECK(taken(*B) > taken(*C));
-    CHECK(taken(*B) == 1017); // measured pins: 505 units bought beyond the labelled stock
-    CHECK(taken(*B) - taken(*C) == 505);
-    CHECK(B->city->stock.stock[kStoffe] == 210);
+    CHECK(taken(*B) == 1006); // measured pins: 505 units bought beyond the labelled stock
+    CHECK(taken(*B) - taken(*C) == 494);
+    CHECK(B->city->stock.stock[kStoffe] == 240);
     CHECK(houses_reached(*C) == 6);
     const Ledger lb = ledger_of(*B, kS0);
     CHECK(lb.u_farm == 0);
@@ -228,12 +228,12 @@ TEST_CASE(
     // nothing more
     CHECK(c.stats.forestry.workshops.at(old_weaver).made_88 == old_ledger.made_88);
     CHECK(old_ledger.made_88[0] ==
-          895); // measured pins of this run (zero-start, 200,000 ticks before the demolition)
-    CHECK(taken1 == 744);
-    CHECK(store1 == 151);
-    CHECK(old_out_lost == 0);
-    CHECK(old_in_lost == 4);
-    CHECK(carrier_wool_lost == 342);
+          902); // measured pins of this run (zero-start, 200,000 ticks before the demolition)
+    CHECK(taken1 == 716);
+    CHECK(store1 == 0);
+    CHECK(old_out_lost == 186);
+    CHECK(old_in_lost == 332);
+    CHECK(carrier_wool_lost == 0);
     CHECK(taken(c) == taken1 + store1); // 895: the remaining store is sold, nothing new comes in
     CHECK(c.city->stock.stock[kStoffe] == 0);
     const std::uint64_t taken_gap = taken(c);
@@ -252,9 +252,9 @@ TEST_CASE(
     CHECK(c.w.check_invariants() == "");
     const auto& wl = c.stats.forestry.workshops;
     REQUIRE(wl.count(new_weaver) == 1);
-    CHECK(wl.at(new_weaver).made_88[0] == 984); // production resumed (measured)
-    CHECK(taken(c) == 1433);
-    CHECK(c.city->stock.stock[kStoffe] == 236);
+    CHECK(wl.at(new_weaver).made_88[0] == 986); // production resumed (measured)
+    CHECK(taken(c) == 1377);
+    CHECK(c.city->stock.stock[kStoffe] == 231);
     CHECK(taken(c) > taken_gap); // households buy new cloth again
     CHECK(c.city->stock.stock[kStoffe] > 0);
     // the reconciliation across both weavers: what went with the demolished building is the

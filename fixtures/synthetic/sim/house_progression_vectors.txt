@@ -16,6 +16,8 @@ grp S num=1 needs=26:37:1,27:12:1,33:20:1,28:8:1,30:16:0,31:16:0,76:20:1,82:41:1
 upcheck K3-57500 tavern=76 e=670 stock=1815,868,868,388,968,2156 cur=P next=S nah=-2*4,-1*4,0*6,1*2,2*5 bed=-2*3,-1*3,0*3,1*2,2*10 inf=-2*3,-1*3,0*5,1*2,2*8 => result=1 food=112 mean=121 infra=120 f=1 b=2 i=2
 upcheck K3-no-inn tavern=76 e=670 stock=1815,868,868,388,0,2156 cur=P next=S nah=-2*4,-1*4,0*6,1*2,2*5 bed=-2*3,-1*3,0*3,1*2,2*10 inf=-2*3,-1*3,0*5,1*2,2*8 => result=0 food=112 mean=89 infra=0 f=1 b=2 i=-2
 upcheck K3-short-food tavern=76 e=670 stock=1500,868,868,388,968,2156 cur=P next=S nah=-2*4,-1*4,0*6,1*2,2*5 bed=-2*3,-1*3,0*3,1*2,2*10 inf=-2*3,-1*3,0*5,1*2,2*8 => result=0 food=92 mean=121 infra=120 f=0 b=2 i=2
-# K3-draw: the variant draw of the upgrade 501 -> 520: HEAD[11] of type 520 gives count 7, step 1; the draw 21313 (a u16)
-# gives idx = 21313 mod 7 = 5 (21313 = 7 * 3044 + 5) and the type 520 + 5 * 1 = 525.
-variant K3-draw count=7 step=1 base=520 r=21313 => draw=1 idx=5 type=525
+# K3-draw: the variant draw of the upgrade 501 -> 520: HEAD[11] of type 520 gives count 7, step 1; the draw 2111 (a u16)
+# gives idx = 2111 mod 7 = 4 (2111 = 7 * 301 + 4) and the type 520 + 4 * 1 = 524. (Stream 137, T3.2: the
+# walks end on the goal sub-cell, trip timing shifts and so does the draw count before this tick; the
+# draw was 21313 -> idx 5 -> type 525 at 135.)
+variant K3-draw count=7 step=1 base=520 r=2111 => draw=1 idx=4 type=524

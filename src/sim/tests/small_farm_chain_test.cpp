@@ -178,8 +178,8 @@ TEST_CASE("supply chain K4/S4: the Tutorial island-7 town, farms -> carriers and
     CHECK(static_cast<std::int64_t>(c.city->stock.stock[kFood]) - static_cast<std::int64_t>(N0) ==
           static_cast<std::int64_t>(food_loaded_only) - static_cast<std::int64_t>(food_in_flight) -
               static_cast<std::int64_t>(stall_taken));
-    CHECK(stall_taken == 757);
-    CHECK(c.city->stock.stock[kFood] == 17585);
+    CHECK(stall_taken == 755);
+    CHECK(c.city->stock.stock[kFood] == 17572);
     CHECK(stall_taken > 0);
     CHECK(fs.raw_lost_88 == 0);
     CHECK(c.w.check_invariants() == "");
@@ -201,9 +201,9 @@ TEST_CASE("supply chain K4/S4: the Tutorial island-7 town, farms -> carriers and
                                       << " potatoes used+held " << potatoes_used_total
                                       << " (initial ripe stock " << 256U * ripe0 << ") Inn sold "
                                       << c.stats.residents.inn_taken_by_building.at(c.inn));
-    CHECK(ripe_min == 7);
-    CHECK(ripe_up == 43);
-    CHECK(potatoes_in_hand == 24576);
+    CHECK(ripe_min == 6);
+    CHECK(ripe_up == 37);
+    CHECK(potatoes_in_hand == 25344);
     CHECK(ripe_up > 0); // a young field became ripe again: the growth cycle ran
     CHECK(
         potatoes_in_hand >

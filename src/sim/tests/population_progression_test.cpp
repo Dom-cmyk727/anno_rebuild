@@ -396,10 +396,10 @@ TEST_CASE(
     // the variant draw: idx = r mod count, type = base + idx * step, one draw
     const sim::VariantFacts vf = sim::house_variant_facts(*ladder.next);
     REQUIRE(r.variant_drawn);
-    CHECK(r.variant_draw == 21313);
+    CHECK(r.variant_draw == 2111);
     CHECK(r.variant_index == sim::house_variant_index(vf, r.variant_draw));
     CHECK(r.to.v == ladder.next->id.v + r.variant_index * vf.step);
-    CHECK(r.to.v == 525);
+    CHECK(r.to.v == 524);
     CHECK(vf.count > 0);
     // type, group, population, tile identity
     CHECK(after.type == r.to);
@@ -938,7 +938,7 @@ TEST_CASE("progression K3 persistence: save and reload at the cuts of the real r
             } else if (name == "just before the upgrade") {
                 CHECK(snap(A).type == kPioneer);
             } else if (name == "just after the upgrade") {
-                CHECK(snap(A).type.v == 525);
+                CHECK(snap(A).type.v == 524);
             } else if (name == "just before the unlock") {
                 CHECK(A.town.city->stage_mask == 0);
             } else if (name == "just after the unlock") {
@@ -979,7 +979,7 @@ TEST_CASE("progression K3 persistence: save and reload at the cuts of the real r
     }
     CHECK(next_cut == cuts.size());
     CHECK(compared == cuts.size());
-    CHECK(snap(A).type.v == 525);
+    CHECK(snap(A).type.v == 524);
     CHECK(A.world.check_invariants() == "");
 }
 
@@ -1032,7 +1032,7 @@ TEST_CASE("progression K3 replay: the recorded run replays from bytes, and a cha
             rec.checkpoint();
             const auto* house = t.island->building_at(w.config().layout, t.city->number, kX, kY);
             REQUIRE(house != nullptr);
-            CHECK(house->type.v == (next_cp < 3 ? 501 : 525));
+            CHECK(house->type.v == (next_cp < 3 ? 501 : 524));
             CHECK(t.city->stage_mask == (next_cp == 0 ? 0 : 0xff));
             CHECK(w.players().find(t.city->owner)->flags == (next_cp == 0 ? 0x7 : 0xff));
             if (next_cp == 0) {
@@ -1094,7 +1094,7 @@ TEST_CASE("progression K3 replay: the recorded run replays from bytes, and a cha
         const sim::Building* hb =
             ft.island->building_at(fresh.value().config().layout, ft.city->number, kX, kY);
         REQUIRE(hb != nullptr);
-        CHECK(hb->type.v == 525);
+        CHECK(hb->type.v == 524);
         CHECK(ft.city->stage_mask == 0xff);
     }
     // 2. the relevant command changed: a stand instead of the house at the same site. The first

@@ -142,18 +142,18 @@ TEST_CASE("synthetic mechanics fixture: labelled hides become leather and househ
     // 28 + 1309 loaded; 1309 loaded = 0 + 504 + 805; 2292 * 7 = 1337 * 12)
     CHECK(in_step == 12);
     CHECK(out_step == 7);
-    CHECK(first_store == 26250);
+    CHECK(first_store == 26000);
     CHECK(l.hide_store == 5120);
-    CHECK(l.hide_in == 780);
-    CHECK(l.hide_consumed == 2292);
-    CHECK(l.leather_made == 1337);
-    CHECK(l.leather_out == 28);
+    CHECK(l.hide_in == 768);
+    CHECK(l.hide_consumed == 2304);
+    CHECK(l.leather_made == 1344);
+    CHECK(l.leather_out == 35);
     CHECK(l.leather_loaded == 1309);
     CHECK(l.leather_cart == 0);
-    CHECK(l.leather_store == 504);
-    CHECK(l.leather_taken == 805);
+    CHECK(l.leather_store == 555);
+    CHECK(l.leather_taken == 754);
     CHECK(houses_reached(c) == 8);
-    CHECK(c.w.state_hash() == 0xcf4833775b99e05bULL);
+    CHECK(c.w.state_hash() == 0x3ebd3a97f117062cULL);
     std::cerr << "PIN main first_store " << first_store << " hides_store " << l.hide_store << " in "
               << l.hide_in << " consumed " << l.hide_consumed << " made " << l.leather_made
               << " out " << l.leather_out << " loaded " << l.leather_loaded << " cart "
@@ -180,8 +180,8 @@ TEST_CASE("synthetic mechanics fixture: controls name each cause") {
               << "hide_store " << no_tannery.hide_store << " made " << no_tannery.made
               << " | no_stall made " << no_stall.made << " store " << no_stall.store << " taken "
               << no_stall.taken << " houses " << no_stall.houses << "\n";
-    CHECK(main_arm.made == 784); // measured at 60 000 ticks
-    CHECK(main_arm.taken == 574);
+    CHECK(main_arm.made == 791); // measured at 60 000 ticks
+    CHECK(main_arm.taken == 581);
     CHECK(main_arm.houses == 4);
     CHECK(no_hides.made == 0);
     CHECK(no_hides.store == 0);
@@ -196,7 +196,7 @@ TEST_CASE("synthetic mechanics fixture: controls name each cause") {
     CHECK(no_tannery.houses == 0);
     CHECK(no_stall.made ==
           main_arm.made);         // the stall changes who holds the leather, not the recipe
-    CHECK(no_stall.store == 574); // without a stall the same leather stays in the store
+    CHECK(no_stall.store == 581); // without a stall the same leather stays in the store
     CHECK(no_stall.taken == 0);
     CHECK(no_stall.houses == 0);
 }
@@ -381,7 +381,7 @@ TEST_CASE("synthetic mechanics fixture: three owners, three towns, shared stream
     CHECK(categories["ids"] == 1);
     CHECK(categories["figures"] > 0);
     CHECK(categories["other-island tiles"] == 1); // island 3's grass tiles (measured)
-    CHECK(categories["other-island building"] == 11);
+    CHECK(categories["other-island building"] == 10);
     // (4) arm Z: with the other towns' farms gone their dispatch draws leave the shared stream (the
     // cursor differs); the recipe-bound total (leather made) is the same, the split between store,
     // output and carts is not (measured)
@@ -391,15 +391,15 @@ TEST_CASE("synthetic mechanics fixture: three owners, three towns, shared stream
               << houses_reached(cx) << " | Z made " << lz.leather_made << " taken "
               << lz.leather_taken << " store " << lz.leather_store << " houses "
               << houses_reached(cz) << "\n";
-    CHECK(cx.w.rng().cursor() == 1968);
-    CHECK(cz.w.rng().cursor() == 1881);
-    CHECK(cy.w.rng().cursor() == 2040);
-    CHECK(lx.leather_made == 1337);
-    CHECK(lx.leather_taken == 805);
-    CHECK(lx.leather_store == 504);
-    CHECK(lz.leather_made == 1337);
-    CHECK(lz.leather_taken == 805);
-    CHECK(lz.leather_store == 441); // the split between store and cart moved with the stream
+    CHECK(cx.w.rng().cursor() == 1969);
+    CHECK(cz.w.rng().cursor() == 1880);
+    CHECK(cy.w.rng().cursor() == 2030);
+    CHECK(lx.leather_made == 1344);
+    CHECK(lx.leather_taken == 754);
+    CHECK(lx.leather_store == 555);
+    CHECK(lz.leather_made == 1344);
+    CHECK(lz.leather_taken == 754);
+    CHECK(lz.leather_store == 555); // the split between store and cart moved with the stream
     CHECK(houses_reached(cz) == 8);
     // the demolished towns: their farms are gone and no fixture good reached them
     const OtherTown bz = other_town(cz, 3), cz4 = other_town(cz, 4);

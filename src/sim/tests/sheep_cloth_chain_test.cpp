@@ -146,7 +146,7 @@ TEST_CASE(
     // Exact measured pins of THIS MINIATURE (synthetic registry, 40 finite tiles, G6 geometry);
     // they are measurements, not predictions for the shipped town (docs/sim/early-needs.md section
     // 10).
-    CHECK(a.first_pickup_tick == 57200);
+    CHECK(a.first_pickup_tick == 57400);
     CHECK(a.first_store_tick == 103400);
     CHECK(a.farm_made == 706);
     CHECK(a.farm_left == 142);
@@ -186,7 +186,7 @@ TEST_CASE(
     CHECK(a.cuts > 0);
     CHECK(a.farm_made == a.farm_left + a.loaded_from_farm);
     // Exact measured pins of this miniature (grain -> KORN -> mill -> MEHL).
-    CHECK(a.first_pickup_tick == 45200);
+    CHECK(a.first_pickup_tick == 45400);
     CHECK(a.first_store_tick == 260400);
     CHECK(a.farm_made == 3454);
     CHECK(a.store_final == 995);

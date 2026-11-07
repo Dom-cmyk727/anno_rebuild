@@ -2111,9 +2111,13 @@ TEST_CASE("salt interruption X4: the mine demolished and rebuilt") {
     CHECK(all_zero(w.p2, 4, true, true, true, true, true));
     // renewed: production, receipts, purchases and deliveries all return
     CHECK(all_positive(w.p3, 3, true, true, true, true, true));
+    // Stream 137 (T3.2): with walks ending on the goal sub-cell the rebuilt mine's new id moves the
+    // FarmWorkerDispatch count by 12 draws (8578 against 8566) although the instant rebuild draws
+    // nothing itself; like the saltworks case, only the sites that do not follow economy state are
+    // required equal (the exact all-sites equality held at 135).
     draws_unchanged(
         w, [](XChain& x) { demolish_x(x, {{kMineX, kMineY}}); },
-        [](XChain& x) { build_x(x, 1203, kMineX, kMineY, 0); });
+        [](XChain& x) { build_x(x, 1203, kMineX, kMineY, 0); }, true, false);
 }
 
 TEST_CASE("salt interruption X4: the road cut and rebuilt") {
@@ -2147,7 +2151,9 @@ TEST_CASE("salt interruption X4: the road cut and rebuilt") {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    CHECK(all_zero(w.p2, 4, true, true, true, true, true));
+    // the flows settle after the fifth window of the cut (four before the goal sub-cell ends, T3.2:
+    // the ore in the mine's store and the carriers' trips drain one window longer)
+    CHECK(all_zero(w.p2, 5, true, true, true, true, true));
     CHECK(all_positive(w.p3, 3, true, true, true, true, true));
     // the quiet (households not live) worlds are skipped here: some road pieces are stage-locked
     // there (ConstructionDenied) because the stage mask only rises with live households

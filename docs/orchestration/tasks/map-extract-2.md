@@ -183,10 +183,17 @@ the first input and output of each type. Derive every input, rate and class agai
 | Types | PRODTYPE | Input → output |
 |---|---|---|
 | 1205, 1210, 1216, 1217 | `MINE` (flag word `0x3096`) | → EISENERZ |
-| 1035 | `HANDWERK` | HOLZ → HOLZKOHLE |
-| 1017, 1034 | `HANDWERK` | EISENERZ → EISEN (check for a second input, such as HOLZKOHLE) |
-| 1019 | `HANDWERK` | EISEN → WERKZEUG |
+| 1017 | `HANDWERK` | EISENERZ + HOLZ → EISEN (stage 2C: the early, wood-fired smelter) |
+| 1019 | `HANDWERK` | EISEN + HOLZ → WERKZEUG (stage 2C) |
+| 1035 | `HANDWERK` | HOLZ → HOLZKOHLE (stage 3D: the later charcoal route) |
+| 1034 | `HANDWERK` | EISENERZ + HOLZKOHLE → EISEN (stage 3F) |
 | 3206 | `STEINMETZ` | STEINE → EISEN (unexplained: identify it) |
+
+The second inputs and the stages (`INFRAMIN`) come from the board's
+[gameplay inventory](../gameplay-next-chain.md), bundle 5 ("MAP-INDUSTRY-1"), which this part implements. **The pilot
+uses the early wood path, 1017 and 1019.** The charcoal route (1035, 1034) is in scope only if T0 shows the pilot
+can legally reach stages 3D and 3F; otherwise it stays inventory with a typed status. "Charcoal" below applies only
+to that route.
 
 **Other consumers of these goods,** which matter for ledger scoping:
 - 1037 and 3214 (EISEN → SCHWERT);
@@ -222,7 +229,8 @@ the first input and output of each type. Derive every input, rate and class agai
   - deep against shallow, and depletion under each edition setting.
 - **The step on a spent or short deposit,** and on exhaustion: rebinding to other ore in reach, or idling with the
   notice.
-- **The smelter's inputs and rates,** and the charcoal burner's wood use.
+- **The smelters' and the toolsmith's inputs and rates,** including the wood they burn; the charcoal burner's only if
+  its route is in scope.
 - **How WERKZEUG reaches the city store.**
 
 Everything comes per type, from the data, with no list of ids. An independent review follows, then corrections and a
@@ -245,20 +253,21 @@ re-review.
 
 **T3. The real chain on the pilot:**
 - **Construction:** built by public commands at the original's costs.
-- **The goods flow:** new iron ore → (charcoal) → EISEN → WERKZEUG into the city store. A later `BuildCmd` of a building
-  that costs tools then spends them.
-- **Ledgers scoped to the owner and city:** source, raw, in flight, store and spent, with no unexplained remainder.
+- **The goods flow:** new iron ore and wood → EISEN (1017) → with wood, WERKZEUG (1019) into the city store. A later
+  `BuildCmd` of a building that costs tools then spends them.
+- **Ledgers scoped to the owner and city:** ore, wood, iron, in flight, store and spent, with no unexplained
+  remainder. Wood is shared with construction and other workshops, so scope it to these buildings' takes.
 - **Controls:**
   - the source disabled (no mine): the store does not rise;
   - the smelter removed;
-  - no charcoal: the smelter stalls;
+  - no wood for the smelter: it stalls, and the toolsmith with it;
   - the preloaded stock kept apart.
 
 **T4. Interruption and lifetime:**
 - **Cases:**
   - a shallow deposit exhausted in the depleting setting: rebinding to a second ore, or idle with the notice;
   - full stores;
-  - missing charcoal;
+  - missing wood (and missing charcoal, if that route is in scope);
   - a producer or carrier removed while goods are in flight;
   - a rebuild.
 - **What must hold:**

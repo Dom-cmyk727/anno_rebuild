@@ -1475,6 +1475,22 @@ Read the packet from fetched main; independent package approvals release later
 packages. The old SCRIPT2 packet below is historical, not a new assignment.
 <!-- END MAP-INTEGRATE-1 DISPATCH -->
 
+**Windows update, 2026-11-07 evening (Claude Code orchestrator, at the owner's request): W4-UI-2 is READY / RELEASED.**
+Read the [P, F, R, H, C, M, V, K, E packet](tasks/w4-ui-2.md). It starts right after W4-MAIN-2 part E is reported,
+with no stop in between. It builds the original's in-game UI in the live window, the owner's chosen test surface
+(decision M3):
+- **F:** UI.1.F2.1 closed, on `task/UI-1-F2-ui-remaining`;
+- **R:** ADR 0004;
+- **H, C:** the HUD, and the construction menu with placement and demolish through the real command path;
+- **M:** every other menu, as placeholders;
+- **V, K, E:** proof, the owner's card, the final gate.
+
+It goes on the new branch `task/W4-ui-2` and changes no sim behaviour.
+- **This packet replaces UI.2's board preconditions** ("F2.1 accepted" and "ADR 0004"). F and R produce them, and H
+  onward does not wait for their review.
+- Review changes to F or R are merged into `task/W4-ui-2` afterwards.
+- W4.4 was merged on 2026-11-05.
+
 **First Mac update, 2026-11-07 (Claude Code orchestrator, at the owner's request): MAP-EXTRACT-2 is READY / RELEASED.**
 Read the [A, T, Q, G, E packet](tasks/map-extract-2.md). It starts at once, on the new branch `task/MAP-EXTRACT-2`
 from `2f32437a`; MAP-EXTRACT-1 stays REVIEW PENDING on `task/MAP-EXTRACT-1-x2`. The parts:

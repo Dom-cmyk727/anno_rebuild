@@ -4,8 +4,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-07 evening, by the Claude Code orchestrator: MAP-EXTRACT-2 released to the first Mac at the
-owner's request ([packet](tasks/map-extract-2.md)); two owner-dispatched research notes checked and merged
+**Last updated:** 2026-11-07 evening, by the Claude Code orchestrator: W4-UI-2 released to the Windows executor and
+MAP-EXTRACT-2 to the first Mac, both at the owner's request ([UI packet](tasks/w4-ui-2.md),
+[mine packet](tasks/map-extract-2.md)); two owner-dispatched research notes checked and merged
 (`docs/re/mine-deposit-followups.md`, `docs/re/complogic-ai-behavior.md`); the mine note answers the first Mac's
 open save-load question. Earlier that afternoon: W4-MAIN-2 parts S, A, B and D reviewed; part
 A (main's 18 real-file tests) merged into `main` as `5e7b13c6`, game-file run pending; the first Mac's faithful mine
@@ -93,7 +94,20 @@ mirror still requires the owner/Windows sync after main publication.
         worktree, so the reported passes ran on a dirty tree.
       - The "pending Load" test applies the Load before saving.
       - The card's recipe replay is still wanted, as its own checkpoint.
-  - **After that:** the owner's playtest cards.
+  - **C1 at 17:24:**
+    - the CPU render lane ended FAIL on the known `flow build ... built once` case, 184 of 185 executed;
+    - the lavapipe GPU lane had run for about two hours and was still running.
+  - **Then, with no stop: [W4-UI-2](tasks/w4-ui-2.md),** released 2026-11-07 by the Claude Code orchestrator at the
+    owner's request. It builds the original's in-game UI in the live window, the owner's chosen test surface
+    (decision M3):
+    - **F:** UI.1.F2.1 closed, the graphics of the build-test surface;
+    - **R:** ADR 0004, with owner questions on the default surface and the UI scale;
+    - **H, C:** the HUD, and the construction menu with placement and demolish through the real command path;
+    - **M:** every other menu, as placeholders;
+    - **V, K, E:** proof, a playtest card, the final gate.
+
+    It changes no sim behaviour.
+  - **After that:** the owner's playtest cards, the new UI card among them.
 - **Found by the W7 review, on `main`:** 18 real-file tests failed at `96775da4`; repaired by part A, merged as
   `5e7b13c6`. Play mode still refuses 39 of the 50 original scenes; view mode (`--view`) still opens them.
 - **Branch:** `task/W4-settlement-1`, head `8532c450` (pushed; the reviewed W7 head was `384df19d`).

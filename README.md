@@ -1,4 +1,4 @@
-# ANNO 1503 rebuild
+# OPEN1503
 
 A clean-room reimplementation of ANNO 1503 (Max Design / Sunflowers, 2002) for Windows and Linux, written in C++20 (the first version was in Rust and stays as the reference until the C++ port catches up; [ADR 0001](docs/adr/0001-cpp20.md)): faithful to the original where it matters, improved where it helps (see `docs/PLAN.md`). It needs your own copy of the original game files; none are included here.
 

@@ -254,7 +254,7 @@ run_lane() {
 }
 
 cd "$W"
-run_lane app '^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.|^viewer_wiring_(contract|r1_held_publication|r4_occupancy|cpu_delivery_failures|opening_controls|settlement_activity)$|^opening_session_replay$' 4 \
+run_lane app '^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.|^viewer_wiring_(contract|r1_held_publication|r4_occupancy|cpu_delivery_failures|opening_controls|settlement_activity|expand_live_load)$|^opening_session_replay$' 4 \
   --require-test viewer_wiring_contract --require-test viewer_wiring_opening_controls \
   --require-test viewer_wiring_settlement_activity --require-test opening_session_replay
 run_lane sim '^anno_sim_tests\.' 4

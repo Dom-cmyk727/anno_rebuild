@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -64,6 +65,23 @@ struct UiMockSpec {
 /// {Construction, "public"}); nullopt for any other name.
 [[nodiscard]] std::optional<UiMockSpec> parse_screen_name(const std::string& screen);
 
+/// The live numbers `draw_live_screen_xrgb` draws over the HUD/construction chrome (H2), already
+/// in their displayed units: `gold` a plain count (`PlaySnapshot::money`), `tools`/`wood`/
+/// `bricks`/`marble` whole tons (the city's 8.8-fixed-point stock, shifted down by `kTon`'s 8
+/// bits - production.hpp). This keeps `sim::TypeRegistry`/goods-identity resolution (by name,
+/// "WERKZEUG"/"HOLZ"/"ZIEGEL"/"MAMOR") in the caller (Viewer), which already owns the registry
+/// through its developer tool; ui_mock.cpp only formats and draws. nullopt draws nothing for
+/// that counter (no city yet, matching `PlaySnapshot::eligibility`'s own null convention).
+/// `tools`/`wood`/`bricks`/`marble` are drawn only on a construction screen - OQ-538 (resolved):
+/// the idle HUD bar never shows them, only the gold counter.
+/// Residents (`STATUSBAR_EINWOHNER`) are not in this struct yet: nothing in the engine computes a
+/// city's total population today (deferred, not a font gap - flagged in the W4-UI-2 checkpoint
+/// that added this struct, not guessed here).
+struct HudCounters {
+    std::optional<std::int64_t> gold;
+    std::optional<std::uint32_t> tools, wood, bricks, marble;
+};
+
 /// Composes `screen` at the layout's resolution into an RGBA canvas (alpha always 255; the oracle
 /// it mirrors discards alpha on output). Reads `.tex` files from `game_dir` through the existing
 /// `anno::formats::tex`/`anno::assets::to_rgba` decoders. An error names the screen, the missing
@@ -85,14 +103,15 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// rule) - so what the player sees always agrees with what a click there would do (C2's
 /// authority). Opaque source pixels overwrite; transparent ones are skipped (the oracle's own
 /// `blit_rgba` semantic - never alpha-blended, since HUD/menu chrome never shows the game world
-/// through it). `cache` persists the decoded `.tex` files across calls (ADR 0004 "Atlases": no
-/// re-decode per frame) - the caller owns one instance for the whole session (constructed once,
-/// with the real `game_dir`) and passes it to every call. An error names the screen, the missing
-/// file, or the parse failure; nothing is drawn on one.
-[[nodiscard]] std::string
-draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
-                      const ConstructionLayout& construction, const UiMockSpec& screen,
-                      UiTexCache& cache,
-                      const std::vector<std::pair<sim::TypeId, bool>>* eligibility);
+/// through it). `cache` persists the decoded `.tex` files and fonts across calls (ADR 0004
+/// "Atlases": no re-decode per frame) - the caller owns one instance for the whole session
+/// (constructed once, with the real `game_dir`) and passes it to every call. `counters` draws the
+/// live gold/goods numbers (H2; see HudCounters's own doc comment) - a counter whose value is
+/// nullopt is skipped. An error names the screen, the missing file, or the parse failure; nothing
+/// is drawn on one.
+[[nodiscard]] std::string draw_live_screen_xrgb(
+    std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
+    const ConstructionLayout& construction, const UiMockSpec& screen, UiTexCache& cache,
+    const std::vector<std::pair<sim::TypeId, bool>>* eligibility, const HudCounters& counters = {});
 
 } // namespace anno::app

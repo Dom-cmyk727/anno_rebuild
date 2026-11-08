@@ -72,9 +72,13 @@ def grid_rects(con, category):
     return out
 
 
-def compare(oracle, live, rects, width, height):
-    """Only where `oracle` painted something opaque (not its all-black background): the live
-    capture must match exactly there. Returns (bad, checked, first_diff, bad_by_name)."""
+def compare(oracle, live, rects, width, height, masked):
+    """Only where `oracle` painted something opaque (not its all-black background) AND the pixel
+    is not in `masked` (data/ui/masks.txt's own live-content rectangles - the gold/goods digits
+    this checkpoint started drawing live sit inside the "statusbar" element's own rectangle, which
+    the oracle paints as opaque chrome; masks.txt is the project's own established exclusion for
+    exactly this, docs/re/ui.md's "Masks" paragraph, not a new rule invented for this script): the
+    live capture must match exactly there. Returns (bad, checked, first_diff, bad_by_name)."""
     o, l = oracle.load(), live.load()
     bad = checked = 0
     first = None
@@ -83,6 +87,8 @@ def compare(oracle, live, rects, width, height):
         el_bad = 0
         for y in range(max(0, y0), min(height, y0 + h)):
             for x in range(max(0, x0), min(width, x0 + w)):
+                if (x, y) in masked:
+                    continue
                 a = o[x, y]
                 if a == (0, 0, 0):
                     continue
@@ -124,6 +130,7 @@ def main(argv):
     hud = ui_layout.parse_hud(str(layout_dir / "hud.txt"))
     con = ui_layout.parse_construction(str(layout_dir / "construction.txt"))
     width, height = hud["resolution"]
+    masked = ui_layout.load_mask_set(str(layout_dir))
 
     with tempfile.TemporaryDirectory(prefix="anno_live_screen_") as session:
         session_dir = Path(session) / "session"  # must not exist yet (main.cpp's own check)
@@ -153,7 +160,7 @@ def main(argv):
             if live.size != (width, height):
                 failures.append(f"{screen}: captured size {live.size} != {(width, height)}")
                 continue
-            bad, checked, first, bad_by_name = compare(oracle, live, rects, width, height)
+            bad, checked, first, bad_by_name = compare(oracle, live, rects, width, height, masked)
             if bad:
                 x, y, a, b = first[1], first[2], first[3], first[4]
                 failures.append(

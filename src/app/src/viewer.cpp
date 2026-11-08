@@ -25,6 +25,7 @@
 #include <anno/app/window_capture.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/sim/production.hpp>
 #ifdef ANNO_VIEWER_GPU
 #include <anno/render/gpu.hpp>
 
@@ -341,6 +342,13 @@ class Viewer {
         }
         if (construction_menu_ != nullptr) {
             construction_tex_cache_.emplace(construction_game_dir_);
+            if (dev_ != nullptr && dev_->setup().registry) {
+                const auto& registry = *dev_->setup().registry;
+                goods_tools_ = registry.goods_by_name("WERKZEUG");
+                goods_wood_ = registry.goods_by_name("HOLZ");
+                goods_bricks_ = registry.goods_by_name("ZIEGEL");
+                goods_marble_ = registry.goods_by_name("MAMOR");
+            }
         }
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
@@ -523,11 +531,17 @@ class Viewer {
     /// overlap - ConstructionMenu::click's own doc comment).
     ConstructionMenu* construction_menu_ = nullptr;
     std::filesystem::path construction_game_dir_;
-    /// Persists decoded `.tex` files across frames (ADR 0004 "Atlases": no re-decode per frame -
-    /// the first H1/C1 slice built one fresh every call, re-reading every HUD/menu texture off
-    /// disk each frame; this is the fix). Constructed once, in the constructor body, only when
-    /// construction_menu_ is set (needs construction_game_dir_, itself conditional).
+    /// Persists decoded `.tex` files and fonts across frames (ADR 0004 "Atlases": no re-decode
+    /// per frame - the first H1/C1 slice built one fresh every call, re-reading every HUD/menu
+    /// texture off disk each frame; this is the fix). Constructed once, in the constructor body,
+    /// only when construction_menu_ is set (needs construction_game_dir_, itself conditional).
     std::optional<UiTexCache> construction_tex_cache_;
+    /// H2: the four build-material goods, resolved by name once (registry lookup, never a
+    /// hardcoded number - synthetic.cpp's own "never hardcode the goods number" convention) so
+    /// draw_cpu's HudCounters can read the right slot of PlaySnapshot::goods every frame. Null
+    /// when construction_menu_ is null, or when dev_'s registry lacks one of the four names
+    /// (never happens for the real game files; HudCounters then just stays nullopt for it).
+    std::optional<sim::GoodsId> goods_tools_, goods_wood_, goods_bricks_, goods_marble_;
     bool construction_menu_open_ = false;
     std::string construction_open_category_;
     bool construction_placement_open_ = false;
@@ -2567,9 +2581,27 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
                                                                      construction_open_category_}
                                                         : UiMockSpec{UiMockScreen::Hud, ""};
         const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+        // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own
+        // member comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment)
+        // - sim::kTon (production.hpp) is the 256 that separates the whole-ton bits from the
+        // fractional ones; a display counter only ever needs the whole tons.
+        // eligibility is null exactly when there is no city yet (its own doc comment says so,
+        // "matching money/goods above") - money/goods themselves are plain fields (0, not
+        // nullopt) in that case, so eligibility's nullness is the real "has a city" signal.
+        const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
+        auto whole_tons = [&](std::optional<sim::GoodsId> id) -> std::optional<std::uint32_t> {
+            if (!has_city || !id || *id >= snapshot->goods.size())
+                return std::nullopt;
+            return snapshot->goods[*id] / sim::kTon;
+        };
+        const HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money)
+                                            : std::nullopt,
+                                   whole_tons(goods_tools_), whole_tons(goods_wood_),
+                                   whole_tons(goods_bricks_), whole_tons(goods_marble_)};
         static_cast<void>(draw_live_screen_xrgb(
             buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
-            spec, *construction_tex_cache_, snapshot ? snapshot->eligibility.get() : nullptr));
+            spec, *construction_tex_cache_, snapshot ? snapshot->eligibility.get() : nullptr,
+            counters));
         construction_ui_ms = since_ms(ui_start, Clock::now());
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),

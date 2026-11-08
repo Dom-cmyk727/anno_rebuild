@@ -4,7 +4,9 @@
 #include <map>
 
 #include <anno/app/ui_mock.hpp>
+#include <anno/assets/text.hpp>
 #include <anno/formats/tex.hpp>
+#include <anno/formats/zei.hpp>
 
 namespace anno::app {
 
@@ -28,11 +30,20 @@ struct LoadedTex {
     formats::tex::TexFile file;
 };
 
-/// Caches a parsed `.tex` file (bytes and all, see LoadedTex), mirroring `tools/ui_layout.py`'s
-/// `_tex_bank`/`_TEX_CACHE` (several elements of the same screen share a file, e.g. every
-/// `fenster.tex` id). `compose_screen` and the standalone `anno_ui_mock` tool each construct one
-/// locally for the lifetime of a single call/process; `UiTexCache` (ui_mock.hpp) wraps the same
-/// class as `Impl` so `draw_live_screen_xrgb`'s live-window caller can keep one across frames.
+/// A parsed `.zei` font plus the raw bytes it was parsed from - the same non-owning-`Bytes`
+/// lifetime rule as LoadedTex above (`formats::zei::Glyph::data` spans into this buffer).
+struct LoadedFont {
+    std::vector<std::uint8_t> bytes;
+    formats::zei::CharSet charset;
+};
+
+/// Caches a parsed `.tex` file (bytes and all, see LoadedTex) and a parsed `.zei` font (see
+/// LoadedFont), mirroring `tools/ui_layout.py`'s `_tex_bank`/`_TEX_CACHE` (several elements of the
+/// same screen share a file, e.g. every `fenster.tex` id). `compose_screen` and the standalone
+/// `anno_ui_mock` tool each construct one locally for the lifetime of a single call/process;
+/// `UiTexCache` (ui_mock.hpp) wraps the same class as `Impl` so `draw_live_screen_xrgb`'s
+/// live-window caller can keep one across frames (ADR 0004 "Atlases": no re-decode per frame,
+/// textures and fonts alike).
 class TexCache {
   public:
     explicit TexCache(std::filesystem::path game_dir) : game_dir_(std::move(game_dir)) {}
@@ -52,6 +63,30 @@ class TexCache {
             }
         }
         return std::nullopt;
+    }
+
+    /// The parsed font at `rel_path` (game-dir-relative), or nullptr when the file is missing or
+    /// does not parse as a `.zei` CHARSET.
+    const formats::zei::CharSet* font(const std::string& rel_path) {
+        const auto it = fonts_.find(rel_path);
+        if (it != fonts_.end())
+            return it->second ? &it->second->charset : nullptr;
+        std::filesystem::path p = rel_path;
+        p.make_preferred();
+        auto bytes = read_binary(game_dir_ / p);
+        if (!bytes) {
+            fonts_.emplace(rel_path, std::nullopt);
+            return nullptr;
+        }
+        auto parsed = formats::zei::CharSet::parse(*bytes);
+        if (!parsed.ok()) {
+            fonts_.emplace(rel_path, std::nullopt);
+            return nullptr;
+        }
+        const auto emplaced =
+            fonts_.emplace(rel_path, LoadedFont{std::move(*bytes), std::move(parsed).value()})
+                .first;
+        return &emplaced->second->charset;
     }
 
   private:
@@ -78,6 +113,7 @@ class TexCache {
 
     std::filesystem::path game_dir_;
     std::map<std::string, std::optional<LoadedTex>> files_;
+    std::map<std::string, std::optional<LoadedFont>> fonts_;
 };
 
 /// `tools/ui_layout.py blit_rgba`: skips transparent source pixels, clips to the canvas, writes
@@ -132,6 +168,51 @@ void blit_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const assets::Rgba& spr
             dst[drow + static_cast<std::size_t>(dx)] = (r << 16) | (g << 8) | b;
         }
     }
+}
+
+/// Like `blit_xrgb`, but alpha-blends instead of overwriting: `assets::render_text`'s glyph
+/// pixels carry a real per-pixel alpha (the level-to-alpha mapping, anno/assets/text.hpp), unlike
+/// chrome sprites' binary opaque-or-transparent pixels, so a straight overwrite would draw a hard
+/// box around every glyph instead of letting it blend into whatever is already drawn under it
+/// (the status bar's own graphic).
+void blit_xrgb_alpha(std::uint32_t* dst, int dst_w, int dst_h, const assets::Rgba& sprite, int x,
+                     int y) {
+    for (int sy = 0; sy < sprite.height; ++sy) {
+        const int dy = y + sy;
+        if (dy < 0 || dy >= dst_h)
+            continue;
+        const std::size_t srow = static_cast<std::size_t>(sy) * sprite.width * 4;
+        const std::size_t drow = static_cast<std::size_t>(dy) * static_cast<std::size_t>(dst_w);
+        for (int sx = 0; sx < sprite.width; ++sx) {
+            const std::size_t so = srow + static_cast<std::size_t>(sx) * 4;
+            const unsigned alpha = sprite.pixels[so + 3];
+            if (alpha == 0)
+                continue;
+            const int dx = x + sx;
+            if (dx < 0 || dx >= dst_w)
+                continue;
+            const std::uint32_t existing = dst[drow + static_cast<std::size_t>(dx)];
+            const unsigned dr = (existing >> 16) & 0xFF, dg = (existing >> 8) & 0xFF,
+                           db = existing & 0xFF;
+            const unsigned sr = sprite.pixels[so], sg = sprite.pixels[so + 1],
+                           sb = sprite.pixels[so + 2];
+            const unsigned r = (sr * alpha + dr * (255 - alpha)) / 255;
+            const unsigned g = (sg * alpha + dg * (255 - alpha)) / 255;
+            const unsigned b = (sb * alpha + db * (255 - alpha)) / 255;
+            dst[drow + static_cast<std::size_t>(dx)] = (r << 16) | (g << 8) | b;
+        }
+    }
+}
+
+/// Renders `text` in `font` (assets::render_text) and blends it onto the live buffer at (x, y)
+/// with `style`'s colour/alpha, top-left anchored - a no-op when `font` is null (the file was
+/// missing or failed to parse) or `text` is empty.
+void draw_text_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const formats::zei::CharSet* font,
+                    const std::string& text, int x, int y, const assets::TextStyle& style = {}) {
+    if (font == nullptr || text.empty())
+        return;
+    const assets::Rgba image = assets::render_text(*font, text, style);
+    blit_xrgb_alpha(dst, dst_w, dst_h, image, x, y);
 }
 
 /// Whether `type` is allowed per `eligibility` (ascending by id; nullptr or no entry: false -
@@ -265,12 +346,20 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
 std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
                                   const ConstructionLayout& construction, const UiMockSpec& screen,
                                   UiTexCache& cache_wrapper,
-                                  const std::vector<std::pair<sim::TypeId, bool>>* eligibility) {
+                                  const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+                                  const HudCounters& counters) {
     if (dst == nullptr || dst_w != hud.resolution_w || dst_h != hud.resolution_h)
         return "draw_live_screen_xrgb: destination size does not match the layout's resolution";
 
     UiTexCache::Impl& cache = cache_wrapper.impl();
     const bool is_construction = screen.kind == UiMockScreen::Construction;
+    // H2: the HUD digit font. MainSmall's digit glyphs (code 0x30-0x39) are byte-identical to
+    // MainMedium's and HelpNormal's (checked by hand against the real .zei files, W4-UI-2
+    // checkpoint that added this - same underlying konvertchars-built font at this size), so
+    // which of the three names "the" original draws here does not change a single rendered
+    // pixel; MainSmall is picked only because its name best fits a compact status-bar readout.
+    // Null (missing/unparseable file) silently draws nothing - `draw_text_xrgb`'s own contract.
+    const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
 
     // Mirrors compose_screen's own blit_el exactly (ADR 0004 R1: a divergence here is a bug, not
     // a second design); the only difference from compose_screen below is the lock source.
@@ -300,11 +389,45 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     }
     blit_el("statusbar");
     blit_el("gold");
+    // H2: the gold counter, shown on both the idle HUD and the construction screen (OQ-538's own
+    // evidence: "On hud_idle_running the bar shows gold"). Position: data/ui/masks.txt
+    // `gold_digits` (34, 733) 96 x 35 - the same sprite-sad measurement the chrome rectangles
+    // above were measured by; nothing drew into it until this checkpoint, so it stayed a mask.
+    // Left-aligned at the rectangle's own left edge, vertically centred in its 35 px band by the
+    // font's measured digit height (MainSmall '0' is 25 px tall, zei.md); plain decimal digits,
+    // no thousands separator (no RE evidence for one). The colour/alpha mapping of the font's
+    // three levels is a flagged default, not an RE fact - OQ-031.
+    if (counters.gold) {
+        draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.gold), 34,
+                       733 + (35 - 25) / 2);
+    }
     if (is_construction) {
         blit_el("baumat_tools");
         blit_el("baumat_wood");
         blit_el("baumat_bricks");
         blit_el("baumat_marble");
+        // H2: the four build-material counters - construction-screen only (OQ-538, resolved:
+        // "tools/wood/bricks digits are absent" from the idle HUD). Positions: data/ui/masks.txt
+        // baumat_{tools,wood,bricks,marble}_d, each 28 x 35 at y 733, x 162/222/282/342, in that
+        // order (OQ-538's own segment order). Values are the caller's (whole tons, already
+        // converted from the city's 8.8-fixed-point stock by goods identity - HudCounters's own
+        // doc comment); this function only formats and draws.
+        if (counters.tools) {
+            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.tools), 162,
+                           733 + (35 - 25) / 2);
+        }
+        if (counters.wood) {
+            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.wood), 222,
+                           733 + (35 - 25) / 2);
+        }
+        if (counters.bricks) {
+            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.bricks), 282,
+                           733 + (35 - 25) / 2);
+        }
+        if (counters.marble) {
+            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.marble), 342,
+                           733 + (35 - 25) / 2);
+        }
     }
     blit_el("fragezeichen");
     blit_el("rosh_46");

@@ -45,7 +45,19 @@ GLYPH code=<code> width=<width> length=<bytes> image=<w>x<h> hash=<FNV-1a 64 of 
 ## Open fields
 - `size_a`, `size_b`, the three levels, the name-field bytes of the `Scape` fonts — OQ-031.
 
+## Rendering (W4-UI-2 H2)
+`anno::assets::render_text` (`src/assets/include/anno/assets/text.hpp`) decodes a string's glyphs
+and composes them left to right by each glyph's own `width` as advance, painting the three levels
+as alpha steps of one configurable colour (`TextStyle`) — a flagged legibility default, not an RE
+rule (OQ-031 is still open). Checked by hand against the real files during this checkpoint:
+`ToolGfx/MainSmall.zei`, `ToolGfx/MainMedium.zei` and `ToolGfx/HelpNormal.zei` decode
+byte-identical digit glyphs (codes `0x30`–`0x39`; same FNV-1a hash per code) — the three names are
+the same underlying `konvertchars`-built font at this size, so which of them "the" original draws
+HUD/menu digits with does not change a single rendered pixel. The live window's gold/goods
+counters (`draw_live_screen_xrgb`, `ui_mock.cpp`) use `MainSmall`.
+
 ## Tests
 - Unit: `crates/formats/src/zei.rs` (parse, decode, round trip, widening only for pixels).
 - Corpus: `crates/formats/tests/zei_corpus.rs` (all 11: byte-identical round trip, header values, 224 glyphs, rows per font, levels 1–3, no pixel past the width, re-encoding count).
 - Reference tool output: `anno_dump_matches_zei_py_corpus`, `anno_dump_matches_zei_py_synthetic`.
+- `render_text`: `src/assets/tests/text_test.cpp` (synthetic glyphs — advance, canvas size, transparency, colour/alpha; no game files needed).

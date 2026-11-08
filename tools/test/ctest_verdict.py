@@ -47,7 +47,8 @@ REQUIRED = re.compile(r"ANNO1503_GAME_DIR (is )?not set|\bno game files\b|"
                       r"is not in this game directory", re.I)
 OPT_IN = re.compile(r"\bset ANNO_[A-Z0-9_]+=")
 PLATFORM = re.compile(r"WSL \(Ubuntu\) is not available|\bon Windows\b|POSIX shell|"
-                      r"runs only from WSL|which only Linux has", re.I)
+                      r"runs only from WSL|which only Linux has|"
+                      r"\bWindows[- ]only\b|\bneeds? Windows\b", re.I)
 SKIP_WORD = re.compile(r"skipp(ing|ed)\b", re.I)
 PRIORITY = ["required-asset", "opt-in", "platform", "gpu", "other"]
 

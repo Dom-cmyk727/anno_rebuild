@@ -88,7 +88,12 @@ class Contract(unittest.TestCase):
                      # budget_f4_test.cpp (N4b, macOS branch): same package, classed "other"
                      # on macos-clang CI.
                      "skipping: the descriptor check reads /proc/<pid>/fd, which only Linux "
-                     "has"]:
+                     "has",
+                     # live_screen_compare.py: classed "other" on linux-gcc/linux-gcc-release/
+                     # linux-clang-asan/macos-clang CI (W4-UI-2, 2026-11-08) until this
+                     # phrasing was recognized.
+                     "skipping: the screenshot step is Windows-only (viewer.cpp)",
+                     "skipping: the native Windows capture needs Windows"]:
             code, out = one([text])
             self.assertEqual(code, 0, text)
             self.assertIn("platform=1", self.counts(out), text)

@@ -15808,3 +15808,142 @@ C1's costs, H2-H4's numbers) vs. category-switching's screenshot (cheap, closes 
 M's placeholder table (pure documentation, no engine risk). Leaning toward fonts next since it
 unblocks the largest remaining surface, but flagging for the coordinator rather than deciding
 unilaterally given how much downstream work waits on it.
+
+## W4-UI-2 — bitmap-font rendering lands, wired to the HUD gold/goods counters — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction: do font rendering next (the structurally important blocker - neither
+H2's gold/residents/goods numbers nor C3's costs are visible without it), then category-switching,
+then M. This entry is fonts: the renderer itself, plus H2's gold and build-material counters,
+which turned out to have real, usable evidence (not guessed) once checked.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`d79a914c`**, not yet pushed. Worktree: `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **Scoping first, before writing anything** - `.zei` already has a complete spec
+   (`docs/formats/zei.md`, "partial" only on OQ-031) and a working C++ parser
+   (`src/formats/include/anno/formats/zei.hpp`/`.cpp`, already ported, untouched by this
+   checkpoint); nothing needed porting. What *was* missing, checked before coding: (a) a level
+   decode -> pixel-colour mapping anywhere in the engine (none existed - no text had ever been
+   drawn); (b) whether the UI.1 Python oracle draws any text at all (it does not -
+   `data/ui/masks.txt` exists specifically because digits are masked *out* of the F2.1 pixel
+   compare, so there is no oracle to check a renderer's *placement* against, only its own
+   mechanism); (c) real evidence for where/what to draw for H2's specific counters.
+2. **`anno::assets::render_text`** (`src/assets/include/anno/assets/text.hpp`/`.cpp`, new, mirrors
+   `to_rgba`'s own module placement): decodes a string's glyphs (`formats::zei::Glyph::decode`,
+   untouched) and composes them left to right by each glyph's own `width` as advance, into a
+   tightly-bound RGBA canvas. The three glyph levels are painted as alpha steps of one
+   configurable colour (`TextStyle`, default white) - a flagged legibility default, **not an RE
+   fact**: OQ-031 ("how the game draws the three pixel levels") stays open; nothing in the new
+   code states a colour choice as the original's own rule. Unit-tested against hand-built
+   synthetic glyphs (the same RLE grammar `docs/formats/tex.md`'s `BSH_RGB` already documents, not
+   a real `.zei` file - the real glyph *shapes* are already proven by `zei.cpp`'s own corpus test;
+   this proves composition: advance, canvas size, transparency, colour/alpha) -
+   `src/assets/tests/text_test.cpp`, 4 cases, 51 assertions, all passing.
+3. **Font identity, checked rather than guessed:** dumped digit glyphs (codes `0x30`-`0x39`) of
+   every one of the 11 real `.zei` files via `tools/zei.py dump` and compared their FNV-1a hashes.
+   `ToolGfx/MainSmall.zei`, `ToolGfx/MainMedium.zei` and `ToolGfx/HelpNormal.zei` decode
+   byte-identical digit glyphs - the same underlying `konvertchars`-built font at this size, so
+   which of the three "is" the original's HUD font does not change a single rendered pixel.
+   Recorded in `docs/formats/zei.md`'s new "Rendering" section. `ToolGfx` naming (vs.
+   `Textures/Scape*`, which `docs/re/ui.md` 0.3 already notes is "in-world/view icons, not the HUD
+   chrome") is the reason `MainSmall` and not a `Scape*` font was picked for the HUD.
+4. **Goods identity, checked rather than guessed:** `PlaySnapshot::goods` is the city's raw
+   `CityStock::stock`, indexed by the original's own goods number (`AnnoGame.dll` 0x10013be0,
+   `src/sim/src/goods_table.cpp`'s own table) - not a separate HUD-specific enumeration. Read the
+   table by hand: index 41 `WERKZEUG` (tools), 42 `HOLZ` (wood), 43 `ZIEGEL` (bricks), 44 `MAMOR`
+   (marble) - matching `synthetic.cpp`'s own comment ("Ascending goods order WERKZEUG 0x29, HOLZ
+   0x2a, ZIEGEL 0x2b") and OQ-538's resolved segment order (tools, wood, bricks, marble)
+   independently. `Viewer`'s constructor now resolves these four by name
+   (`registry->goods_by_name`, never a hardcoded number - the same convention `synthetic.cpp`/the
+   command tests already use) once, alongside `construction_tex_cache_`.
+5. **Wired into `draw_live_screen_xrgb`** (`ui_mock.cpp`): a new `HudCounters` parameter (plain
+   already-converted values - gold as-is, goods shifted from 8.8 fixed point to whole tons by
+   `sim::kTon` - so `ui_mock.cpp` stays free of sim/registry concerns, matching its existing
+   dependency boundary). Gold is drawn on both the idle HUD and the construction screen (OQ-538's
+   own evidence: "the bar shows gold" on `hud_idle_running`); the four material counters only on
+   the construction screen (same OQ: "tools/wood/bricks digits are absent" from idle). Positions:
+   `data/ui/masks.txt`'s own `gold_digits` (34, 733) 96 x 35 and `baumat_{tools,wood,bricks,
+   marble}_d` (28 x 35 each, x 162/222/282/342, y 733) - real sprite-sad-measured rectangles, the
+   same evidence the chrome elements themselves were measured by; nothing drew into them until
+   now, which is why they stayed masks. A new `blit_xrgb_alpha` (real alpha blending, unlike the
+   chrome sprites' opaque-or-transparent `blit_xrgb`) blends glyph pixels into whatever is already
+   drawn under them (the status bar's own graphic).
+6. **`UiTexCache` now also caches fonts** (`TexCache::font`, same read-once-cache-forever pattern
+   as `TexCache::decode` for textures): no new per-frame decode cost from this checkpoint (ADR
+   0004 "Atlases" stays met).
+7. **Visual check** (no automated oracle exists for this, so a human-inspectable capture is the
+   verification - the project's own established pattern for cases without one, "owner tests
+   through the original UI"): a scripted session at the Citizen-start developer resources
+   (10,000,000 gold; 190 tons each material) was screenshotted and the status-bar region cropped
+   for inspection. Gold reads "10000000" next to the coin icon; the construction screen reads
+   "190" next to each of the four material icons (tools/wood/bricks/marble), all legible, none
+   clipped or overlapping the icon boxes.
+8. **A real regression the digits caused, found and fixed before trusting any result:**
+   `live_screen_matches_oracle` failed once real pixels existed inside the `gold_digits` rectangle
+   - it sits *inside* the `statusbar` element's own compared rectangle, which the oracle paints as
+   opaque chrome, and the comparison script had never subtracted `data/ui/masks.txt`'s own
+   exclusions (only `tools/ui_layout.py compare`, a different, older comparison path, already
+   did). Fixed by having `live_screen_compare.py` load and subtract the same mask set
+   (`ui_layout.load_mask_set`) - the project's own established exclusion, not a new rule invented
+   for this script.
+9. **Regression:** `anno_assets`/`anno_app_core` rebuilt clean (0 warnings) before anything else;
+   then `anno1503`, `anno_ui_mock`, `anno_app_tests`, `anno_app_input_tests` rebuilt clean.
+   `ui_mock_matches_oracle`, `live_screen_matches_oracle`, `viewer_wiring_construction_menu_arm`,
+   the C2 148-cell eligibility test, the play-snapshot-eligibility test, both `ConstructionMenu`
+   tests and `anno_assets_tests` (14 cases incl. the 4 new ones, 383 assertions with real game
+   files) all pass. `clang-format` 23.1.3 applied clean (one real fix needed first - see below).
+   WSL gate (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on/off): one real `-Werror=sign-
+   conversion` caught (`text_test.cpp`, an `int` loop index into a `size_t`-indexed vector; MSVC
+   never flags it), fixed, re-ran clean on all four lanes.
+
+### What is deliberately not in this checkpoint
+
+- **Residents (`STATUSBAR_EINWOHNER`).** Checked and confirmed: nothing anywhere in the engine
+  computes a city's total population today (no `PlaySnapshot` field, no aggregation helper over a
+  city's houses/residents). This is a separate, larger gap than fonts - a new sim-side
+  aggregation plus a new snapshot field, not a rendering question - so it is named here rather
+  than quietly built under the "fonts" banner or quietly skipped without a note.
+- **C3's cost display, and C1/C6's info panel generally.** The construction-menu info panel's own
+  chrome/positioning has not been drawn in the live window at all yet (separate from fonts - a
+  drawing-location question for the panel itself, which no mask or F-numbered measurement in
+  `docs/re/ui.md` currently pins down the way the HUD bar's digit rectangles are pinned). Fonts
+  alone do not unblock C3; the panel needs its own drawing slice first. Flagging this scope
+  reality now rather than letting "fonts landed" be mistaken for "C3 is unblocked."
+- **Digit alignment/baseline precision** - OQ-564 (new): the measured rectangles are real evidence
+  (sprite-sad, the same method as every other HUD element), but *where inside them* the original
+  starts the text was never recorded by that method (it is an exclusion rectangle, not a text
+  layout). Left-aligned, vertically centred by the font's own glyph height is a reasoned default,
+  checked only by eye against a live capture, not against a real screenshot with a known value.
+
+### Decisions and reasoning
+
+1. **Checked the oracle situation before writing a renderer.** `data/ui/masks.txt`'s own existence
+   (digits are masked *out* of the F2.1 compare) was the first thing read, specifically because
+   writing a renderer and then discovering there is nothing to pixel-check it against would have
+   been a bad surprise mid-task, not after. There being no oracle changed the verification plan
+   (a human-inspectable screenshot, not an automated pixel-exact test) but not the decision to
+   build the renderer - CLAUDE.md's oracle-first rule is about not inventing a second disagreeing
+   design, not about refusing to build anything an oracle does not yet cover.
+2. **Font/goods identity were resolved by direct inspection, not left as guesses, because the
+   evidence was one lookup away.** The coordinator's framing treated fonts as mostly a rendering-
+   mechanism problem; the *placement* questions (which font, which goods index) looked like they
+   would need new RE work, but turned out to already have answers sitting in files this project
+   had already parsed (`goods_table.cpp`'s own comment, OQ-538's resolved segment order, the real
+   `.zei` files' own hashes). Spending twenty minutes confirming this before writing a single
+   `HudCounters` field was cheaper than shipping a hardcoded guess and finding out later it was
+   goods index 43 instead of 41.
+3. **What was NOT resolvable the same way - OQ-031's colour, OQ-564's alignment, residents' missing
+   aggregation - stayed flagged, not guessed past.** The difference between "one grep away" and
+   "needs a new screenshot or a new sim-side feature" is exactly the line CLAUDE.md draws between
+   evidence and a guess; this checkpoint tried to find every case of the former before accepting
+   the latter, rather than treating "it's about fonts" as licence to wing the rest.
+
+### Next
+
+Pushing with this entry. Category-switching's own screenshot proof is next per the coordinator's
+order, then M's placeholder table. Two real follow-ups surfaced by this checkpoint and not yet
+assigned anywhere: a population/residents aggregation (new sim-side work, not UI), and C1/C6's
+info-panel drawing slice (needed before C3's costs mean anything, independent of fonts).

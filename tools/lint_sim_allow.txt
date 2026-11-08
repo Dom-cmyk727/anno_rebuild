@@ -153,3 +153,6 @@ src/sim/include/anno/sim/figure.hpp:inline constexpr std::uint16_t kAnimalSearch
 
 src/sim/include/anno/sim/script_runtime.hpp:ScriptLimits limits =  # default arguments of prepare_script declaration; no variable or global state (lint parser false positive)
 src/sim/src/city_booking.cpp:constexpr std::uint64_t kBias  # exact 2^63 offset orders the complete i64 money domain without signed overflow; a type-width arithmetic fact, not a game count or configurable capacity (ECON-BOOK-1 B1c/B4)
+src/sim/include/anno/sim/mason.hpp:inline constexpr std::uint32_t kMasonMask  # the BuildingIndex list mask of the mason's collector query, `push 8` (D AnnoWelt 0x10059ccf); a fact of the original
+src/sim/include/anno/sim/mason.hpp:inline constexpr std::uint32_t kQuarryStock88  # a quarry's constant stock answer, 1 t in 8.8 (D AnnoWelt 0x100708a0 `mov eax, 0x100`)
+src/sim/include/anno/sim/mason.hpp:inline constexpr std::uint32_t kMasonTripCredit88  # cargo credit of a mason trip, 1 t in 8.8 (D AnnoWelt 0x10055462)

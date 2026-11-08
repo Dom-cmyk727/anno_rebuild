@@ -140,8 +140,8 @@ inline std::size_t claimants(const Fix& fx) {
     return workers_in(fx, sim::HarvestStep::ToTree) + workers_in(fx, sim::HarvestStep::Cut);
 }
 
-inline const std::vector<bool>& claims_of(const sim::World& w, sim::BuildingId q) {
-    static const std::vector<bool> none;
+inline const std::vector<std::uint8_t>& claims_of(const sim::World& w, sim::BuildingId q) {
+    static const std::vector<std::uint8_t> none;
     const sim::Building* b = building(w, q);
     const auto* qp = b != nullptr ? std::get_if<sim::Quarry>(&b->payload) : nullptr;
     return qp != nullptr ? qp->claims : none;

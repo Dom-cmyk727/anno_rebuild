@@ -62,7 +62,7 @@ struct Quarry {
     bool suspended = false;
     StatusTracker status;
     std::optional<bool> financial_active = true;
-    std::vector<bool> claims;
+    std::vector<std::uint8_t> claims; // 0 / 1 per entrance (not vector<bool>: lint_sim)
 };
 
 /// The state of an Inn (D vtable 0x100c96d8): the Inert prefix plus the tavern stock (+0x18;

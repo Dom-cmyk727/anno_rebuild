@@ -104,7 +104,7 @@ Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimCo
         // DECIDED Q-A: no claims at creation; one flag per entrance of the type.
         Quarry q;
         q.financial_active = inert_financial_active(type);
-        q.claims.assign(type.entrances.size(), false);
+        q.claims.assign(type.entrances.size(), std::uint8_t{0});
         return q;
     }
     case PayloadTag::Inert:

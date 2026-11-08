@@ -56,8 +56,7 @@ TEST_CASE("iron interruption: probe (opt-in measure)") {
         return;
     }
     // (1) does a carrier lift from the mine that reaches both ores?
-    for (const std::pair<int, int> site :
-         {std::pair{371, 354}, std::pair{371, 355}, std::pair{370, 356}}) {
+    for (const auto& site : {std::pair{371, 354}, std::pair{371, 355}, std::pair{370, 356}}) {
         auto c = start_chain(Arm::Real, false, site);
         if (!c) {
             MESSAGE("skipping: ANNO1503_GAME_DIR not set");

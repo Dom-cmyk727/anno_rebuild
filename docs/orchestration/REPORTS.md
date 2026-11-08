@@ -15981,3 +15981,48 @@ not a reason for a second parallel test file.
 ### Next
 
 M's placeholder-screen table, per the coordinator's order.
+
+## W4-UI-2 — M: the screen-tree table, bound vs. placeholder — 2026-11-08 — status: IN PROGRESS
+
+Last of the coordinator's three sequenced items (fonts, category-switching, M). Pure
+documentation/status work, checked against the live engine rather than written from memory of
+what earlier checkpoints claimed.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`783a0ada`**, not yet pushed.
+
+### What ran, and with what result
+
+Added a new section to `docs/adr/0004-ui-toolkit.md` (filling in its own deferred "which screens
+exist and what each placeholder means" line) covering all 19 in-game screens `docs/re/ui.md`
+section 1 names. Checked, not recalled: grepped `viewer.cpp`'s actual key/click handling before
+writing a single row. Findings:
+- Only **HUD idle** and the **construction menu** (8 categories) are bound (drawn live, real
+  data).
+- **Building info/placement** and **demolish** are partial: the menu's own clicks already reach
+  real engine state (`Arm`/`DevTool::arm`, `ToggleDemolish`), but no panel chrome exists to draw
+  anything on.
+- Every other screen (Kontor, help, military tab, options [+4 subpages], player/ship/city list,
+  pause, rating, selected/deselected panels) has **no handler at all** - not even a stub.
+- **Two real key collisions**, found while checking rather than assumed: the viewer's own
+  developer controls already bind **S** (pan), **Q** (quit) and **D** (pan) - the same three keys
+  the original uses for the ship list, rating and the player list. A future screen for any of
+  these needs its own key or the same B/Esc state-based resolution the construction menu already
+  uses, not a silent override.
+
+### Decisions and reasoning
+
+Split "waits on" into sim-side gaps (an aggregate the engine genuinely does not compute yet -
+OQ-563's upkeep, a rating screen's statistics) from UI-side ones (routing/chrome not built yet,
+with the sim data already sitting there, e.g. Kontor's trade lists) - conflating the two in a
+single "blocked" column would have pointed whoever picks up screen 2 or 17 at the wrong kind of
+work.
+
+### Next
+
+The coordinator's three-item sequence (fonts, category-switching, M) is now complete; all three
+pushed with this entry. Flagging for the coordinator's own call on what comes next: the two
+follow-ups named in the fonts checkpoint (a population/residents aggregation; C1/C6's info-panel
+drawing slice, now also the clear next step per this table's own row 4) are the largest unblocked
+pieces, but V/K/E (the dispatch's own remaining parts) are also still fully open.

@@ -159,6 +159,38 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_construction_menu_arm PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-UI-2 V1: the full interaction proof - every category tab, a locked cell (no command),
+      # an armed placement that actually builds, and a demolish of what was just built.
+      add_test(NAME viewer_wiring_construction_full_proof
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> construction_full_proof
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_construction_full_proof PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-UI-2 V1: an unaffordable placement - ANNO_DEV_GOODS_TONS=0 (main.cpp's own override,
+      # added for exactly this) leaves type 501's wood cost unpayable; the refusal is the ordinary
+      # BuildCmd path's CannotAfford, not a construction-menu-specific check (arming never looks
+      # at cost - ConstructionMenu::click's own doc comment).
+      add_test(NAME viewer_wiring_construction_unaffordable
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> construction_unaffordable
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_construction_unaffordable PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOODS_TONS=0")
+      # W4-UI-2 V2: construction_full_proof's own recording (commands.txt/hashes.txt), replayed
+      # headlessly in a fresh process (main.cpp's --commands/--replay-hashes, no window, no SDL -
+      # opening_session.py's own mechanism, applied to the fixed-map/construction-menu session).
+      # A negative control (the recorded build's type changed) must disagree at a checkpoint.
+      add_test(NAME construction_session_replay
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/construction_session_replay.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(construction_session_replay PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # W4-UI-2 H1/C1 second slice: the live window's own drawing (draw_cpu ->
       # draw_live_screen_xrgb), checked pixel by pixel against the UI.1 oracle (tools/test/
       # ui_mock_compare.py already checks the standalone anno_ui_mock composer; this checks the

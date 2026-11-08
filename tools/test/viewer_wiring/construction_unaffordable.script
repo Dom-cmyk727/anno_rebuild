@@ -1,0 +1,17 @@
+# W4-UI-2 V1: an unaffordable placement. Arming never checks affordability (ConstructionMenu::
+# click's own doc comment); the refusal comes from the ordinary BuildCmd path once placed, the
+# same as any other consumer of it. Run with ANNO_DEV_GOODS_TONS=0 so type 501 (public (0,0),
+# cost "wood 3", data/ui/construction.txt) cannot be paid for; the tile (1156, 516) is the same
+# proven-free one construction_full_proof.script and settlement_activity.script use.
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+click 1156 516
+wait outcome
+expect outcome Refused CannotAfford
+quit

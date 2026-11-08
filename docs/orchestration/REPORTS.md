@@ -16026,3 +16026,63 @@ pushed with this entry. Flagging for the coordinator's own call on what comes ne
 follow-ups named in the fonts checkpoint (a population/residents aggregation; C1/C6's info-panel
 drawing slice, now also the clear next step per this table's own row 4) are the largest unblocked
 pieces, but V/K/E (the dispatch's own remaining parts) are also still fully open.
+
+## W4-UI-2 — the HUD's residents counter: World::city_population — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction: add the population/residents aggregation as a new read-only sim query
+(rule 0.2's own pre-authorized pattern, the same one `PlaySnapshot::eligibility` already used) -
+strictly additive, no new state/stream/hash/draw change, the exact query named here.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`e9be4cb7`**, not yet pushed.
+
+### What ran, and with what result
+
+**The exact query added:** `World::city_population(CityRef) const -> std::optional<std::int64_t>`
+(declared `src/sim/include/anno/sim/world.hpp`, defined `src/sim/src/house_transition.cpp`
+alongside the function it wraps). It resolves `city` the same way `building_at` already does
+(nullopt for an invalid island id or an empty city slot) and otherwise returns
+`residents_at_or_above(config_, *types_, *city, 0)` - an **existing** function
+(`house_transition.hpp`, already used internally by the stage pass) that sums every house's
+residents across every group. No new aggregation math was written; this is a thin CityRef-
+resolving wrapper over state the sim already derives every tick, read, not computed, by the
+query.
+
+1. **Unit test** (`house_transition_test.cpp`): one assertion added to an existing fixture
+   checking `city_population` agrees with the `residents_at_or_above` call the test already made
+   in the same scenario (8 residents); a new standalone case for the nullopt path (an island id
+   and a city number that do not resolve).
+2. **Published through `PlaySnapshot::population`** (`play.hpp`/`play.cpp`), in the same `if
+   (developer_city_)` block that already publishes `money`/`goods`/`eligibility`, computed on the
+   sim thread for the identical cross-thread-race reason those already are.
+3. **Wired into H2** (`HudCounters::residents`, `draw_live_screen_xrgb`): drawn construction-
+   screen only, matching `STATUSBAR_EINWOHNER`'s own documented visibility (docs/re/ui.md 2.1:
+   "absent from pass-2 idle" - the icon, and now its digits, follow the same rule), at the
+   already-measured `einwohner_digits` rectangle (439, 733) 108 x 35 (`data/ui/masks.txt`).
+4. **Cross-check test** (`play_test.cpp`, the same loaded-twice pattern eligibility's own test
+   uses): the published `PlaySnapshot::population` agrees exactly with calling
+   `World::city_population` directly on an independently-run `World` for the same turn. Passes.
+5. **Visual check:** a fresh screenshot of the fixed-map test fixture's status bar shows "0" at
+   the measured rectangle - correct, not a bug: this fixture's developer city has just been
+   founded with no houses placed yet, so zero residents is the right answer, and the digit itself
+   renders legibly in the right place.
+6. **Regression:** the full `house_transition`/`population` test subset (50 cases, 46061
+   assertions, real game files) still passes - nothing about this addition touched existing
+   behaviour. `ui_mock_matches_oracle`, `live_screen_matches_oracle`,
+   `viewer_wiring_construction_menu_arm` and both `play_test.cpp` snapshot tests (eligibility,
+   population) all pass. `clang-format` clean; WSL gate (GCC 13 + Clang 18, `-O3 -Werror`,
+   viewer+GPU on/off) all four lanes clean.
+
+### Decisions and reasoning
+
+Checked for an existing aggregate before writing one: `residents_at_or_above` already existed,
+already summed exactly what H2 needed (every group, i.e. `group=0`), and was already proven
+correct by the house-transition/population test suite. Writing a second, parallel summation over
+`city.index.lists` would have duplicated logic the stage pass already trusts, for no reason;
+wrapping the existing function for a `CityRef` is the smaller, safer change, and keeps there being
+exactly one place that knows how to sum a city's residents.
+
+### Next
+
+C1/C6's info-panel drawing slice, per the coordinator's explicit instruction, next.

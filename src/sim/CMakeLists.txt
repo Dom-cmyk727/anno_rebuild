@@ -110,6 +110,29 @@ if(ANNO_BUILD_TESTS)
   set_tests_properties(salt_chain_fresh_process salt_chain_changed_command_fresh_process
                        PROPERTIES SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 
+  # MAP-EXTRACT-2 T5: the iron chain recorded and replayed by anno-sim-replay in a fresh process (the same pattern as the
+  # salt chain above; cmake/RunIronReplay.cmake). Both skip explicitly without the original files.
+  foreach(iron_arm IN ITEMS fresh_process changed_command_fresh_process)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/iron-chain-${iron_arm}")
+  endforeach()
+  set(iron_record_case "iron continuation: the chain recorded for the fresh-process replay and its changed command")
+  add_test(NAME iron_chain_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   -DRECORDER=$<TARGET_FILE:anno_sim_tests> "-DCASE=${iron_record_case}"
+                   -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/iron-chain-fresh_process
+                   -DLOG=iron-chain.log
+                   -DEXPECT_RC=0 "-DEXPECT=checkpoints 31/31.*reproduced: every checkpoint matched"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunIronReplay.cmake)
+  add_test(NAME iron_chain_changed_command_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   -DRECORDER=$<TARGET_FILE:anno_sim_tests> "-DCASE=${iron_record_case}"
+                   -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/iron-chain-changed_command_fresh_process
+                   -DLOG=iron-chain-changed-command.log
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 0/1.*DIVERGED at entry 2"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunIronReplay.cmake)
+  set_tests_properties(iron_chain_fresh_process iron_chain_changed_command_fresh_process
+                       PROPERTIES SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
+
   # tools/lint_sim.py: the mechanical part of the determinism rules (no
   # unordered containers, float, clock, rand, mutable globals ...; docs/sim/
   # state.md §14.6), and its own self-test. Named anno_sim_tests_* so that

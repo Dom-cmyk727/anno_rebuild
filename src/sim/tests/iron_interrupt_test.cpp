@@ -382,4 +382,235 @@ TEST_CASE("iron interruption: the same slicing reproduces the state exactly and 
     CHECK(tb.smith_made * 100 <= ta.smith_made * 115);
 }
 
+// ---- T5: continuation, fresh-process replay and cost
+// ----------------------------------------------
+
+/// Reload at the boundary where `at` first holds: the saved bytes load, equal the original, and
+/// both worlds then run 800 advances to the same state, cursor and bytes (and a reload that runs
+/// one advance fewer differs, so the comparison can tell).
+template <class At> void continuation_at(const char* boundary, At at) {
+    auto c = start_chain(Arm::Real, false);
+    if (!c) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    INFO("boundary: " << boundary);
+    const int k = step_until(*c, 5000, [&] { return at(*c); });
+    REQUIRE_MESSAGE(k > 0, "the boundary state was never reached");
+    sim::World& w = c->pilot.w;
+    const auto bytes = w.save();
+    auto loaded = sim::World::load(bytes, c->pilot.types, {});
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    sim::World& re = loaded.value();
+    CHECK(re.check_invariants().empty());
+    CHECK(re.save() == bytes);
+    CHECK(re.state_hash() == w.state_hash());
+    for (int i = 0; i < 800; ++i) {
+        w.advance(kAdvanceMs);
+        re.advance(kAdvanceMs);
+        const bool faulted = w.faulted() || re.faulted();
+        REQUIRE_MESSAGE(!faulted, w.fault());
+    }
+    CHECK(re.state_hash() == w.state_hash());
+    CHECK(re.rng().cursor() == w.rng().cursor());
+    CHECK(re.save() == w.save());
+    CHECK(re.check_invariants().empty());
+    auto shorter = sim::World::load(bytes, c->pilot.types, {});
+    REQUIRE(shorter.ok());
+    for (int i = 0; i < 799; ++i)
+        shorter.value().advance(kAdvanceMs);
+    CHECK(shorter.value().state_hash() != w.state_hash());
+    CHECK(shorter.value().save() != w.save());
+}
+
+std::uint64_t counter(const std::map<sim::BuildingId, std::uint64_t>& m, sim::BuildingId k) {
+    const auto it = m.find(k);
+    return it == m.end() ? 0U : it->second;
+}
+
+TEST_CASE("iron continuation: a reload at extraction smelting delivery and a spent deposit equals "
+          "the uninterrupted run") {
+    // extraction: the step in which a carrier lifts ore from the new mine
+    {
+        std::uint64_t seen = 0;
+        continuation_at("extraction (a carrier lifts from the mine)", [&](Chain& c) {
+            const std::uint64_t now = counter(c.stats.loaded_from, c.mine);
+            const bool hit = now > seen;
+            seen = now;
+            return hit;
+        });
+    }
+    // the smelter's carrier with ore in its hands
+    continuation_at("the smelter carrier holds ore", [&](Chain& c) {
+        std::uint64_t ore = 0, eisen = 0, tools = 0;
+        homed_hands(c.pilot.w, c.smelter, ore, eisen, tools);
+        return ore > 0;
+    });
+    // smelting: the step in which the smelter makes EISEN
+    {
+        std::uint64_t seen = 0;
+        continuation_at("smelting (the smelter makes EISEN)", [&](Chain& c) {
+            const Terms t = terms_of(c);
+            const bool hit = t.smelter_made > seen;
+            seen = t.smelter_made;
+            return hit;
+        });
+    }
+    // the toolsmith's carrier with EISEN in its hands
+    continuation_at("the toolsmith carrier holds EISEN",
+                    [&](Chain& c) { return homed_eisen(c, c.smith) > 0; });
+    // delivery: a market cart unloads WERKZEUG into the store
+    {
+        std::uint64_t seen = 0;
+        continuation_at("delivery (a cart unloads WERKZEUG)", [&](Chain& c) {
+            const std::uint64_t now = terms_of(c).tools_unloaded;
+            const bool hit = now > seen;
+            seen = now;
+            return hit;
+        });
+    }
+    // a spent deposit: the visible amount reaches 0 (the notice has just been raised)
+    {
+        bool edited = false;
+        continuation_at("a spent deposit", [&](Chain& c) {
+            if (!edited) {
+                leave_visible(c, 2100);
+                edited = true;
+                return false;
+            }
+            const auto dep = mine_state(c).deposit;
+            return dep.has_value() &&
+                   sim::deposit_remaining(isle(c.pilot.w).deposits.at(*dep), false) == 0;
+        });
+    }
+}
+
+TEST_CASE("iron continuation: the chain recorded for the fresh-process replay and its changed "
+          "command") {
+    // A real session on the pilot: the mine built by a public command, the chain runs 1,500
+    // advances with a checkpoint every 50. The log is replayed in-process here; with
+    // ANNO_IRON_OUT_DIR set it and a twin with the mine at (367,353) instead of (366,353) are
+    // written for the fresh-process CTests (anno-sim-replay in a child process).
+    auto p = make(true, false, 1000);
+    if (!p) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto started = sim::Recorder::start(p->w);
+    REQUIRE_MESSAGE(started.ok(), (started.ok() ? std::string() : started.error()));
+    sim::Recorder rec = std::move(started).value();
+    REQUIRE(rec.submit(build_cmd(1205, 366, 353)).ok());
+    rec.advance(100);
+    rec.checkpoint();
+    for (int block = 0; block < 30; ++block) {
+        for (int i = 0; i < 50; ++i)
+            rec.advance(100);
+        rec.checkpoint();
+    }
+    REQUIRE(p->w.check_invariants().empty());
+    sim::ReplayLog changed = rec.log();
+    std::size_t command_entry = 0, first_checkpoint = 0;
+    for (std::size_t i = 0; i < changed.entries.size(); ++i) {
+        if (changed.entries[i].kind == sim::ReplayEntry::Kind::Commands && command_entry == 0) {
+            command_entry = i;
+            std::get<sim::BuildCmd>(changed.entries[i].commands[0].body).placements.at(0).x = 367;
+        }
+        if (changed.entries[i].kind == sim::ReplayEntry::Kind::Checkpoint && first_checkpoint == 0)
+            first_checkpoint = i;
+    }
+    REQUIRE(first_checkpoint > command_entry);
+    const auto good_bytes = sim::write_log(rec.log());
+    const auto bad_bytes = sim::write_log(changed);
+    REQUIRE(good_bytes.ok());
+    REQUIRE(bad_bytes.ok());
+    {
+        auto fresh = sim::World::load(rec.log().initial_save, p->types, {});
+        REQUIRE(fresh.ok());
+        auto out = sim::replay(fresh.value(), rec.log());
+        REQUIRE(out.ok());
+        CHECK(out.value().checkpoints_total == 31);
+        CHECK(out.value().checkpoints_matched == 31);
+        CHECK(out.value().reproduced());
+    }
+    {
+        auto fresh = sim::World::load(changed.initial_save, p->types, {});
+        REQUIRE(fresh.ok());
+        auto out = sim::replay(fresh.value(), changed);
+        REQUIRE(out.ok());
+        REQUIRE(out.value().diverged_entry.has_value());
+        CHECK(*out.value().diverged_entry == first_checkpoint);
+        CHECK(out.value().checkpoints_matched == 0);
+    }
+    // the byte form round-trips
+    {
+        auto read = sim::read_log(good_bytes.value());
+        REQUIRE(read.ok());
+        CHECK(read.value() == rec.log());
+    }
+    if (const char* dir = std::getenv("ANNO_IRON_OUT_DIR"); dir != nullptr && *dir != '\0') {
+        const std::filesystem::path d(dir);
+        std::filesystem::create_directories(d);
+        const auto write = [&](const char* name, const std::vector<std::uint8_t>& b) {
+            std::ofstream f(d / name, std::ios::binary);
+            f.write(reinterpret_cast<const char*>(b.data()),
+                    static_cast<std::streamsize>(b.size()));
+            REQUIRE(f.good());
+        };
+        write("iron-chain.log", good_bytes.value());
+        write("iron-chain-changed-command.log", bad_bytes.value());
+        MESSAGE("wrote the iron chain logs: command entry "
+                << command_entry << ", first checkpoint entry " << first_checkpoint);
+    }
+}
+
+TEST_CASE("iron continuation: the chain adds bounded work to an advance") {
+    auto real = start_chain(Arm::Real, false);
+    auto base = start_chain(Arm::NoMine, false);
+    if (!real || !base) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto searches = [](const Chain& c) {
+        const sim::TransportStats& s = c.stats;
+        return s.no_candidate + s.unreached + s.no_goal_reached + s.low_score + s.found +
+               s.incomplete;
+    };
+    std::size_t cities = 0, buildings = 0;
+    for (const auto& island : real->pilot.w.islands())
+        if (island)
+            for (const auto& city : island->cities)
+                if (city) {
+                    ++cities;
+                    for (const auto& l : city->index.lists)
+                        for (const auto& b : l.slots)
+                            buildings += b ? 1U : 0U;
+                }
+    constexpr int kAdvances = 3000;
+    const auto time_it = [&](Chain& c) {
+        const auto t0 = std::chrono::steady_clock::now();
+        step_chain(c, kAdvances);
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+            .count();
+    };
+    const double ms_real = time_it(*real);
+    const double ms_base = time_it(*base);
+    const std::uint64_t s_real = searches(*real), s_base = searches(*base);
+    MESSAGE("cost over " << kAdvances << " advances in a world of " << cities << " cities and "
+                         << buildings << " buildings: source searches real " << s_real
+                         << " baseline " << s_base << "; wall " << ms_real << " ms against "
+                         << ms_base << " ms (" << ms_real / kAdvances << " and "
+                         << ms_base / kAdvances << " ms per advance)");
+    // The bound: the chain's added source searches are the trips of its two carriers and the extra
+    // cart (at most one search per trip, a trip taking tens of advances), so they are small against
+    // the whole world's searches; asserted as at most 1.5 x the baseline's plus a constant. A
+    // MEASUREMENT of this fixture (deterministic counts), not a derived constant. Wall time is only
+    // reported (it depends on the host).
+    CHECK(s_real <= s_base + s_base / 2 + 200);
+    // A running mine does not re-scan: the sink was installed after the bind, and no deposit was
+    // spent, so no lookup and no fallback ran in the measured window.
+    CHECK(real->stats.ore_lookup.lookups == 0);
+    CHECK(real->stats.ore_lookup.relookup_fallbacks == 0);
+    CHECK(base->stats.ore_lookup.lookups == 0);
+}
+
 } // namespace

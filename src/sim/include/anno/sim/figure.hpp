@@ -106,9 +106,16 @@ inline constexpr std::uint32_t kHarvestStartDelay = 5;
 [[nodiscard]] constexpr bool animal_job(std::uint32_t job) {
     return job == 0x2e;
 }
-/// The jobs whose figures may carry a HarvestState (harvest or animal).
+/// The stonemason's worker job (0x2c = ROUTETYPE STEINMETZ, 44; D job factory 0x1003b0e0 case
+/// 0x1003b1f6): step A finds a source (a quarry) by the collector mask 8, step B waits at it and
+/// adds 1 t to the cargo, step C walks home and credits the home's raw store. It uses the harvest
+/// job's state (`HarvestState`) and is run by `mason_tick` (docs/sim/quarry-bricks.md).
+[[nodiscard]] constexpr bool mason_job(std::uint32_t job) {
+    return job == 0x2c;
+}
+/// The jobs whose figures may carry a HarvestState (harvest, animal or mason).
 [[nodiscard]] constexpr bool harvest_state_job(std::uint32_t job) {
-    return harvest_job(job) || animal_job(job);
+    return harvest_job(job) || animal_job(job) || mason_job(job);
 }
 /// What the engine does with the figure a Farm-tick home sends, by the figure type's ROUTETYPE (the
 /// job). MAP-NEEDS-2 N2: the farm family sends the type's route as the job (D 0x1006ee27); the job
@@ -117,13 +124,16 @@ inline constexpr std::uint32_t kHarvestStartDelay = 5;
 /// shares the animal case in the original but is not implemented: such a send is REFUSED explicitly
 /// (no figure, no counter, counted in ForestryStats::unsupported_routes), never left as an inert
 /// figure. Every other route keeps its meaning (no harvest state).
-enum class FarmFigureRoute : std::uint8_t { Other, Worker, Animal, Unsupported };
+enum class FarmFigureRoute : std::uint8_t { Other, Worker, Animal, Unsupported, Mason };
 [[nodiscard]] constexpr FarmFigureRoute farm_figure_route(std::uint32_t job) {
     if (harvest_job(job)) {
         return FarmFigureRoute::Worker;
     }
     if (animal_job(job)) {
         return FarmFigureRoute::Animal;
+    }
+    if (mason_job(job)) {
+        return FarmFigureRoute::Mason;
     }
     return job == 0x2d ? FarmFigureRoute::Unsupported : FarmFigureRoute::Other;
 }
@@ -150,6 +160,11 @@ struct HarvestState {
     std::vector<FixedPos> route;
     std::uint32_t next = 0;
     std::uint32_t along = 0;
+    /// The mason job (0x2c) only (docs/sim/quarry-bricks.md Q3.1): the sub-cell (0..2, 0..2) of the
+    /// entrance the step-A search selected, with `target` the tile. Saved for job 0x2c figures
+    /// only; 0 and not saved for the harvest and animal jobs.
+    std::uint8_t goal_col = 0;
+    std::uint8_t goal_row = 0;
     friend bool operator==(const HarvestState&, const HarvestState&) = default;
 };
 

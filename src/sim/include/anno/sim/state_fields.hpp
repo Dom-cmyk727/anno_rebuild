@@ -657,6 +657,19 @@ template <class A, Same<Inert> S> void fields(A& a, S& s) {
     ar::opt(a, s.financial_active, [&](auto& active) { a.boolean(active); });
 }
 
+static_assert(field_count<Quarry>() == 6, "a Quarry member needs a line in fields(Quarry)");
+
+/// MAP-EXTRACT-2 Q3 (docs/sim/quarry-bricks.md Q3.1): the Inert prefix, then the claim set (u64
+/// count = the type's entrance count, one 0/1 byte per entrance).
+template <class A, Same<Quarry> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    a.boolean(s.blocked);
+    a.boolean(s.suspended);
+    fields(a, s.status);
+    ar::opt(a, s.financial_active, [&](auto& active) { a.boolean(active); });
+    ar::bools(a, s.claims);
+}
+
 static_assert(field_count<Inn>() == 7, "an Inn member needs a line in fields(Inn)");
 
 template <class A, Same<Inn> S> void fields(A& a, S& s) {
@@ -785,8 +798,8 @@ static_assert(field_count<Building>() == 9, "a Building member needs a line in f
 
 /// The u8 tag of each Payload alternative in the stream: the PayloadTag values
 /// (Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5, Market 6,
-/// House 7, Inn 8), append-only.
-inline constexpr std::array<std::uint8_t, 9> kPayloadTags = {
+/// House 7, Inn 8, Quarry 9), append-only.
+inline constexpr std::array<std::uint8_t, 10> kPayloadTags = {
     static_cast<std::uint8_t>(PayloadTag::Inert),
     static_cast<std::uint8_t>(PayloadTag::Workshop),
     static_cast<std::uint8_t>(PayloadTag::WeaponsWorkshop),
@@ -795,7 +808,8 @@ inline constexpr std::array<std::uint8_t, 9> kPayloadTags = {
     static_cast<std::uint8_t>(PayloadTag::Mine),
     static_cast<std::uint8_t>(PayloadTag::Market),
     static_cast<std::uint8_t>(PayloadTag::House),
-    static_cast<std::uint8_t>(PayloadTag::Inn)};
+    static_cast<std::uint8_t>(PayloadTag::Inn),
+    static_cast<std::uint8_t>(PayloadTag::Quarry)};
 
 template <class A, Same<Building> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -1172,7 +1186,7 @@ template <class A, Same<NavMotion> S> void fields(A& a, S& s) {
 
 template <> struct EnumInfo<HarvestStep> : ContiguousEnum<5> {};
 
-static_assert(field_count<HarvestState>() == 7,
+static_assert(field_count<HarvestState>() == 9,
               "a HarvestState member needs a line in fields(HarvestState)");
 
 /// MAP-ECON-1 E2 (stream 126, docs/sim/forestry.md 2): u8 step, u32 start_delay, u32 wait, i32
@@ -1245,9 +1259,17 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.parent.v);
     ar::opt(a, s.crew_slot, [&](auto& v) { a.u32(v); });
     ar::seq(a, s.holds, 12, [&](auto& hold) { fields(a, hold); });
-    a.u32(s.state_word);                                    // stream 120
-    ar::opt(a, s.nav, [&](auto& m) { fields(a, m); });      // stream 122
-    ar::opt(a, s.harvest, [&](auto& h) { fields(a, h); });  // stream 126
+    a.u32(s.state_word);                               // stream 120
+    ar::opt(a, s.nav, [&](auto& m) { fields(a, m); }); // stream 122
+    ar::opt(a, s.harvest, [&](auto& h) {
+        fields(a, h); // stream 126
+        if (mason_job(s.job)) {
+            // MAP-EXTRACT-2 Q3 (docs/sim/quarry-bricks.md Q3.1): the selected entrance's sub-cell,
+            // for the mason job only, so every other harvest figure keeps its bytes.
+            a.u8(h.goal_col);
+            a.u8(h.goal_row);
+        }
+    });
     ar::opt(a, s.resident, [&](auto& r) { fields(a, r); }); // stream 128
 }
 

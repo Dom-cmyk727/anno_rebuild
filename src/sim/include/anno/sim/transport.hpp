@@ -158,6 +158,14 @@ struct ForestryStats {
     /// MAP-EXTRACT-1 X3: per mine, the output its production steps made (diagnostic ledger only:
     /// what carriers load and what stays in `out` are other terms).
     std::map<BuildingId, std::uint64_t> mine_made_88;
+    /// MAP-EXTRACT-2 Q3: per quarry (or other source), the cargo mason trips lifted from it, and
+    /// the claim writes the mason job issued (diagnostic ledger only).
+    std::map<BuildingId, std::uint64_t> quarry_lifted_88;
+    /// Per mason home: what its workers delivered to its raw store and what ended with them.
+    std::map<BuildingId, std::uint64_t> mason_delivered_88, mason_lost_88;
+    /// Per mason home: step A searches and the ones that found nothing.
+    std::map<BuildingId, std::uint64_t> mason_searches, mason_searches_failed;
+    std::uint64_t quarry_claims_set = 0, quarry_claims_cleared = 0;
 };
 
 /// MAP-POP-LIVE-1 L2: a diagnostic tally of the resident (house walker) jobs; measurement and test

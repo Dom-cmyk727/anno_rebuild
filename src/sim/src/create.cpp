@@ -100,7 +100,7 @@ bool has_status_time(const Payload& payload, RuntimeClass cls) {
     // A market (T24) keeps the Inert rule it had as an unported class: no evidence
     // that its Create writes the status time.
     return (!std::holds_alternative<Inert>(payload) && !std::holds_alternative<Market>(payload) &&
-            !std::holds_alternative<Inn>(payload)) ||
+            !std::holds_alternative<Inn>(payload) && !std::holds_alternative<Quarry>(payload)) ||
            cls == RuntimeClass::DualWorkshop;
 }
 

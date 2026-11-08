@@ -558,7 +558,8 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
                 s.job = ft != nullptr ? ft->route : 0;
                 s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
                 s.harvest = (farm_figure_route(s.job) == FarmFigureRoute::Worker ||
-                             farm_figure_route(s.job) == FarmFigureRoute::Animal) &&
+                             farm_figure_route(s.job) == FarmFigureRoute::Animal ||
+                             farm_figure_route(s.job) == FarmFigureRoute::Mason) &&
                             std::holds_alternative<Farm>(b.payload);
             }
             if (std::holds_alternative<SmallFarm>(b.payload)) {

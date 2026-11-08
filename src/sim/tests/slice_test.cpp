@@ -2775,7 +2775,7 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
     static_assert(sim::field_count<sim::Figure>() == 22);
     static_assert(sim::field_count<sim::ResidentState>() == 7);
     static_assert(sim::field_count<sim::ResidentCargo>() == 2);
-    static_assert(sim::field_count<sim::HarvestState>() == 7);
+    static_assert(sim::field_count<sim::HarvestState>() == 9);
     static_assert(sim::field_count<sim::TransportState>() == 7);
     static_assert(sim::field_count<sim::ShipHold>() == 2);
     // The 18 members, the position being two scalars, the transport state seven fields and

@@ -91,6 +91,9 @@ struct PlacementParams {
     /// places, provided the registry holds ore evidence for it (an ore symbol figure type of that
     /// WARE).
     std::vector<std::string> mountain_wares = {"SALZSTEIN", "EISENERZ"};
+    /// Part Q (stream 137): quarry types of the mountain class place too (their table, no ware).
+    /// False restores the typed Unsupported answer (OQ-554's earlier state).
+    bool quarries = true;
     /// MAP-ROAD-CLOSE-1: the enhanced road choices (Rules::road_require_land_level and
     /// Rules::road_preserve_nonroad_pieces), false = the original predicates. The world passes its
     /// Rules values; a direct caller states them.

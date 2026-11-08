@@ -92,6 +92,13 @@ Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimCo
     }
     case PayloadTag::Inn:
         return Inn{};
+    case PayloadTag::Quarry: {
+        // DECIDED Q-A: no claims at creation; one flag per entrance of the type.
+        Quarry q;
+        q.financial_active = inert_financial_active(type);
+        q.claims.assign(type.entrances.size(), false);
+        return q;
+    }
     case PayloadTag::Inert:
         break;
     }
@@ -122,6 +129,8 @@ const char* payload_name(std::size_t index) {
         return "House";
     case 8:
         return "Inn";
+    case 9:
+        return "Quarry";
     default:
         return "?";
     }
@@ -204,6 +213,10 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
         // maximum; slots beyond it stay while a walker occupies them.
         if (h->walkers.size() < r.walkers.size()) {
             return sizes("walkers", h->walkers.size(), r.walkers.size());
+        }
+    } else if (const auto* q = std::get_if<Quarry>(&payload)) {
+        if (q->claims.size() != type.entrances.size()) {
+            return sizes("claims", q->claims.size(), type.entrances.size());
         }
     } else if (const auto* inn = std::get_if<Inn>(&payload)) {
         // MAP-POP-CLOSE-2 K1: the original's u16 fields (+0x18, +0x1a), held in u32.

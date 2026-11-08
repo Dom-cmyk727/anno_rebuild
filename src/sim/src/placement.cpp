@@ -54,6 +54,15 @@ Class classify(const BuildingType& t, const PlacementParams& p, const TypeRegist
         has_ore_evidence(types, t.prod.outputs[0])) {
         return Class::Mountain;
     }
+    // Part Q (docs/sim/quarry-bricks.md F5, Q3.1): a QUARRY type of the class (PRODTYPE 13, the
+    // Quarry runtime class) with its own HIGHMAP table places by the same rule. It needs no ware,
+    // no ore evidence and no deposit: the building has no run-time terrain or ore read at all (the
+    // table differs from the mine's in two bytes, 0xff for 0x20, and that is the whole difference).
+    if ((t.flags_word & 0x7000U) == p.mountain_class && t.cls == RuntimeClass::Quarry &&
+        p.quarries && t.highmap.size() == std::size_t{4} * t.width * t.height &&
+        (t.flags_word & 3U) != 1U) {
+        return Class::Mountain;
+    }
     // Every other type with the coverage bit stays Unsupported (the test is evidenced for the
     // mountain class only).
     if ((t.flags_word & p.coverage_flag) != 0) {

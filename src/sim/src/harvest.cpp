@@ -10,6 +10,7 @@
 
 #include <anno/sim/driver.hpp>
 #include <anno/sim/harvest.hpp>
+#include <anno/sim/mason.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/walk_search.hpp>
@@ -316,6 +317,9 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
         return false;
     }
     const std::uint32_t t = ctx.t;
+    if (mason_job(fig.job)) {
+        return mason_tick(ctx, world, fig); // job 0x2c shares the state, not the body
+    }
     HarvestState& h = *fig.harvest;
     if (fig.expiry_stamp.has_value()) {
         fig.stamp = static_cast<std::uint16_t>(t); // ended, waiting for phase C

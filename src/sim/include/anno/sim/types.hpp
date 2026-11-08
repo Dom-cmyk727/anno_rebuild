@@ -97,7 +97,9 @@ enum class PayloadTag : std::uint8_t {
     /// The residents and the stocks of a house (docs/sim/state.md §4.7c, P1).
     House = 7,
     /// The tavern stock and statistic of an Inn (MAP-POP-CLOSE-1 C2, stream 128).
-    Inn = 8
+    Inn = 8,
+    /// The claim set of a quarry (MAP-EXTRACT-2 part Q, docs/sim/quarry-bricks.md Q3.1).
+    Quarry = 9
 };
 
 struct ClassInfo {

@@ -169,7 +169,7 @@ std::string World::harvest_problem() const {
                 return where + ".target: (" + std::to_string(h.target.x) + ", " +
                        std::to_string(h.target.y) + ") is not a tile of the home's island";
             }
-            if (!f.expiry_stamp.has_value()) {
+            if (!f.expiry_stamp.has_value() && !mason_job(f.job)) {
                 targeting[{island_of(f.home), h.target}].push_back(f.id);
             }
         }
@@ -218,6 +218,45 @@ std::string World::harvest_problem() const {
                 return p + ": the claim bit of tile (" + std::to_string(xy.x) + ", " +
                        std::to_string(xy.y) + ") has no owner entry (a stray claim)";
             }
+        }
+    }
+    // Q3 (docs/sim/quarry-bricks.md Q3.1): a quarry's claim set holds a flag only for a mason
+    // worker that walks to it or waits at it, so the set flags of an island never exceed the live
+    // mason workers in those steps (a quarry replaced under a worker leaves fewer flags, never
+    // more).
+    for (std::size_t i = 0; i < islands_.size(); ++i) {
+        if (!islands_[i].has_value()) {
+            continue;
+        }
+        std::uint64_t workers = 0;
+        for (const auto& slot : figures_.list.slots) {
+            if (slot.has_value() && slot->harvest.has_value() && mason_job(slot->job) &&
+                !slot->expiry_stamp.has_value() && slot->home.valid() &&
+                island_of(slot->home).v == i &&
+                (slot->harvest->step == HarvestStep::ToTree ||
+                 slot->harvest->step == HarvestStep::Cut)) {
+                ++workers;
+            }
+        }
+        std::uint64_t flags = 0;
+        for (const auto& city : islands_[i]->cities) {
+            if (!city.has_value()) {
+                continue;
+            }
+            for (const auto& list : city->index.lists) {
+                for (const auto& slot : list.slots) {
+                    if (const auto* q =
+                            slot.has_value() ? std::get_if<Quarry>(&slot->payload) : nullptr) {
+                        flags += static_cast<std::uint64_t>(
+                            std::count(q->claims.begin(), q->claims.end(), true));
+                    }
+                }
+            }
+        }
+        if (flags > workers) {
+            return "islands[" + std::to_string(i) + "]: " + std::to_string(flags) +
+                   " quarry claim flags are set, but only " + std::to_string(workers) +
+                   " mason workers walk to or wait at a quarry";
         }
     }
     return {};
@@ -282,7 +321,9 @@ std::string World::check_invariants() const {
                     for (const auto& slot : list.slots)
                         if (slot)
                             if (const auto* inert = std::get_if<Inert>(&slot->payload);
-                                inert && !inert->financial_active.has_value())
+                                (inert && !inert->financial_active.has_value()) ||
+                                (std::holds_alternative<Quarry>(slot->payload) &&
+                                 !std::get<Quarry>(slot->payload).financial_active.has_value()))
                                 return p + ".cities[" + std::to_string(c) + "].buildings[" +
                                        std::to_string(slot->id.v) +
                                        "].financial_active: unsupported original financial record";

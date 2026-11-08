@@ -287,7 +287,13 @@ TEST_CASE("mountain placement: types the class does not cover stay Unsupported")
     CHECK(sim::placement_rule(is, reg, short_table, rec).reject == sim::Reject::Unsupported);
     sim::BuildingType quarry = t;
     quarry.cls = sim::RuntimeClass::Quarry;
-    CHECK(sim::placement_rule(is, reg, quarry, rec).reject == sim::Reject::Unsupported);
+    // part Q (stream 137): a quarry type places by its own table (docs/sim/quarry-bricks.md F5); the
+    // data switch PlacementParams::quarries restores the earlier typed answer
+    CHECK(sim::placement_rule(is, reg, quarry, rec).reject == sim::Reject::None);
+    sim::PlacementParams no_quarries;
+    no_quarries.quarries = false;
+    CHECK(sim::placement_rule(is, reg, quarry, rec, no_quarries).reject ==
+          sim::Reject::Unsupported);
     sim::BuildingType iron = t;
     iron.prod.outputs = {"EISENERZ"};
     // iron ore is a supported ware but the registry (salt and gold evidence only) holds none

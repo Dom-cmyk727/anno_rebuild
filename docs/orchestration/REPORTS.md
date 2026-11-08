@@ -16138,3 +16138,64 @@ useful to whoever resolves OQ-561 next than one that looks complete by accident.
 
 The coordinator's own next instruction: continue toward V's proof suite, by this session's
 judgement on sequencing.
+
+## W4-UI-2 — V3 (the command boundary) and V5 (mutation checks) — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction: continue straight through V (not pausing at checkpoints) - window
+session, replay, consumer-boundary test, pixel tests across CPU/4090/iGPU with negative controls,
+mutation checks, bench_frame numbers, in whatever order makes sense, checkpointing as each piece
+lands. This entry: V3 and V5, the two pieces ADR 0004 already states a precise test spec for.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`91126896`**, not yet pushed.
+
+### What ran, and with what result
+
+**V3** (ADR 0004's own words: "a test that opening, browsing and closing every menu without
+issuing a command leaves the state hash unchanged"): two identically-loaded `World`s; one has
+`ConstructionMenu::click` exercised against it exhaustively - every one of the 8 category tabs,
+then every one of that category's grid cells (locked and unlocked alike) - with every result
+dropped (no `DevTool::arm`, no `post_command`); the other is touched by nothing. Both then run 10
+turns; `state_hash()` must agree. It does (`play_test.cpp`, 171 assertions). This also holds
+structurally, not just empirically: `ConstructionMenu::click`'s signature takes no `World`
+reference at all, so there is nothing for it to mutate - the test is the executable form of that
+fact.
+
+**V5** (ADR 0004's own four-item list): each mutation was applied by hand, confirmed to fail an
+existing test, then reverted - no mutation code is kept in the tree.
+
+| Mutation | Change | Caught by |
+|---|---|---|
+| A wrong cell type | `ui_layout.cpp`'s cell `id` +1 | `live_screen_matches_oracle` (the grid's lock-state pixels disagree with the oracle - **not** `ui_mock_matches_oracle`, since `compose_screen` never reads `cell.id` to draw, only the live sim-eligibility path does; a real, useful distinction between the two pixel tests, not a gap) |
+| An accepted click on a locked cell | `construction_menu.cpp` always resolves `Arm` | the existing "click resolves a category tab..." test (3 assertions, `Locked` expected, `Arm` returned) |
+| A click that sends no command | `viewer.cpp`'s `Arm` case does nothing | `viewer_wiring_construction_menu_arm` (the title never shows "build 501") |
+| A wrong displayed cost | `construction_menu.cpp`'s `cell_info` adds 1 to `cost_gold` | the existing "cell_info reads cost live..." test (251 != 250) |
+
+All four land on a DIFFERENT existing test - no single test is carrying the whole V5 burden, and
+no new test had to be written to catch any of them; the suite already built across H/C/C2
+checkpoints was already sensitive to all four classes.
+
+**Also added:** `ANNO_DEV_GOLD`/`ANNO_DEV_GOODS_TONS` env overrides (`main.cpp`), wiring up the
+"developer test resources ... values configurable" decision (round dr) that was recorded but
+never exposed - a scripted session can now start with a precise, deterministic affordability edge
+(e.g. `ANNO_DEV_GOLD=0`) without touching the generous defaults every other fixed-map session
+relies on. Verified by hand: a session started with both env vars at 0 shows "money 0" in the
+title. Needed for the "unaffordable" click in the still-pending comprehensive window session.
+
+clang-format clean; WSL gate (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on/off) all four lanes
+clean, run on the reverted tree (after every mutation above, not during).
+
+### Decisions and reasoning
+
+Verified each V5 mutation against the REAL built binaries (rebuilding `anno1503`/`anno_app_tests`
+with the mutation applied each time), not just reasoned about which test "should" catch it - the
+cell-type mutation's split result (caught by one pixel test, not the other) would have been easy
+to get wrong by reasoning alone, and is itself useful evidence about what each pixel test actually
+checks.
+
+### Next
+
+The comprehensive window session (every category, placement, demolish, a locked-cell click, the
+now-possible unaffordable click, per the coordinator's list), then the fresh-process replay, then
+multi-renderer pixel checks (CPU/4090/iGPU) with negative controls, then bench_frame numbers.

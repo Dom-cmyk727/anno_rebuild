@@ -67,9 +67,17 @@ std::size_t house_need_count(const BuildingType& type, const SimConfig& cfg,
     return groups[*group].needs.size();
 }
 
+PayloadTag payload_tag_of(const BuildingType& type, const ClassInfo& cls) {
+    // Part Q: a quarry keeps the claim set of DECIDED Q-A. The class table (and so the registry
+    // digest) is unchanged, the Quarry class still names Inert there: the claim set is a fact of
+    // the runtime class, not of the table's tick/payload pairing.
+    return type.cls == RuntimeClass::Quarry && cls.payload == PayloadTag::Inert ? PayloadTag::Quarry
+                                                                                : cls.payload;
+}
+
 Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimConfig& cfg,
                      const TypeRegistry& types) {
-    switch (cls.payload) {
+    switch (payload_tag_of(type, cls)) {
     case PayloadTag::Workshop:
         return make_workshop(type.prod);
     case PayloadTag::WeaponsWorkshop:
@@ -145,7 +153,7 @@ std::string sizes(const char* what, std::size_t have, std::size_t want) {
 
 std::string payload_problem(const Payload& payload, const BuildingType& type, const ClassInfo& cls,
                             const SimConfig& cfg, const TypeRegistry& types) {
-    const std::size_t want = static_cast<std::size_t>(cls.payload);
+    const std::size_t want = static_cast<std::size_t>(payload_tag_of(type, cls));
     if (payload.index() != want) {
         return std::string("holds ") + payload_name(payload.index()) + ", the class needs " +
                payload_name(want);

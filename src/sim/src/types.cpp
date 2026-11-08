@@ -819,9 +819,7 @@ std::string check_consistency(std::span<const BuildingType> types,
                    ", the table is indexed by class";
         }
         const auto payload = payload_for_tick(c.tick);
-        // A class without a tick may hold the Quarry payload (the claim set) or the Inert one.
-        const bool quarry_row = c.tick == TickKind::None && c.payload == PayloadTag::Quarry;
-        if (!quarry_row && (!payload || *payload != c.payload)) {
+        if (!payload || *payload != c.payload) {
             return row + "tick " + std::to_string(static_cast<unsigned>(c.tick)) + " and payload " +
                    std::to_string(static_cast<unsigned>(c.payload)) + " disagree";
         }
@@ -1007,7 +1005,7 @@ std::vector<ClassInfo> original_class_table() {
         {C::FurTrapper, T::FurTrapper, P::Farm, 500},                      // 0x1006e5d0
         {C::Mine, T::Mine, P::Mine, 500},                                  // 0x1006def0
         {C::SmallFarm, T::SmallFarm, P::SmallFarm, 500},                   // 0x1006f660
-        {C::Quarry, T::None, P::Quarry, 0},                                // stub 0x10001030
+        {C::Quarry, T::None, P::Inert, 0},                                 // stub 0x10001030
         {C::Hunter, T::None, P::Inert, 500},                               // 0x10069f5d
         {C::Whaler, T::None, P::Inert, 500},                               // 0x10073737
         {C::Shipyard, T::None, P::Inert, 500},                             // 0x10074ea1

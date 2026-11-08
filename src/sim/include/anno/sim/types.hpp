@@ -99,7 +99,8 @@ enum class PayloadTag : std::uint8_t {
     /// The tavern stock and statistic of an Inn (MAP-POP-CLOSE-1 C2, stream 128).
     Inn = 8,
     /// The claim set of a quarry (MAP-EXTRACT-2 part Q, docs/sim/quarry-bricks.md Q3.1).
-    Quarry = 9
+    Quarry =
+        9 // no class table row names it: payload_tag_of (building.hpp) gives it to the Quarry class
 };
 
 struct ClassInfo {

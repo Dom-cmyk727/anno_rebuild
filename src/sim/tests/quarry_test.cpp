@@ -690,6 +690,46 @@ TEST_CASE("quarry claims Q-A3: a quarry replaced under a waiting worker is looke
     require_closed(terms_of(*f), "replaced quarry");
 }
 
+TEST_CASE("quarry claims Q-A4: the shared end path clears the claim of a worker it ends") {
+    auto f = start({kQuarryB}, {kMasonB1});
+    if (!f) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    sim::World& w = f->pilot.w;
+    for (const sim::HarvestStep at : {sim::HarvestStep::ToTree, sim::HarvestStep::Cut}) {
+        sim::World c = w;
+        auto run = std::make_unique<Fix>(World{std::move(c), f->pilot.types});
+        run->masons = f->masons;
+        run->quarries = f->quarries;
+        run->pilot.w.set_transport_stats(&run->stats);
+        const int k = step_until(*run, 4000, [&] { return workers_in(*run, at) > 0; });
+        REQUIRE_MESSAGE(k > 0, "no worker reached step " << int(at));
+        sim::Figure* fig = nullptr;
+        for (auto& slot : sim::WorldTestAccess::figures(run->pilot.w).list.slots)
+            if (slot && slot->harvest.has_value() && sim::mason_job(slot->job) &&
+                !slot->expiry_stamp.has_value())
+                fig = &*slot;
+        REQUIRE(fig != nullptr);
+        const sim::TileXY tile = fig->harvest->target;
+        const std::uint8_t col = fig->harvest->goal_col, row = fig->harvest->goal_row;
+        sim::Effects fx;
+        CHECK(sim::end_figure(*fig, static_cast<std::uint32_t>(run->pilot.w.clock().tick()), fx));
+        // the end path asks the merge to clear exactly the flag the worker holds
+        REQUIRE(fx.quarry_claims.size() == 1);
+        CHECK(!fx.quarry_claims[0].set);
+        CHECK(fx.quarry_claims[0].tile == tile);
+        CHECK(fx.quarry_claims[0].col == col);
+        CHECK(fx.quarry_claims[0].row == row);
+        CHECK(fig->harvest->step == sim::HarvestStep::Done);
+        // a worker that is not walking or waiting holds nothing: ending it asks for no write
+        sim::Effects none;
+        static_cast<void>(
+            sim::end_figure(*fig, static_cast<std::uint32_t>(run->pilot.w.clock().tick()), none));
+        CHECK(none.quarry_claims.empty());
+    }
+}
+
 // ---- Q-7: save and reload mid-trip equal the uninterrupted run ------------------------------
 
 template <class At>

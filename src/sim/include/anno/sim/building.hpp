@@ -231,6 +231,12 @@ struct TileBox {
 [[nodiscard]] std::optional<std::uint32_t> house_group(const SimConfig& cfg,
                                                        std::uint32_t prodtype);
 
+/// The payload alternative a building of `type` must hold: the class's PayloadTag, except that a
+/// Quarry-class type with the Inert pairing of the class table holds the Quarry payload (the claim
+/// set, docs/sim/quarry-bricks.md Q3.1), which leaves the class table and the registry digest
+/// unchanged.
+[[nodiscard]] PayloadTag payload_tag_of(const BuildingType& type, const ClassInfo& cls);
+
 /// The runtime payload of a new building of `type` (§7.3 step 2: every bit zero,
 /// F2): the make_* constructor of its class, sized from the type and the config
 /// (the small farm's counters come from SimConfig::small_farm_animals), Inert for

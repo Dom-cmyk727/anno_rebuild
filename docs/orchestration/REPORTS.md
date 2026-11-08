@@ -15947,3 +15947,37 @@ Pushing with this entry. Category-switching's own screenshot proof is next per t
 order, then M's placeholder table. Two real follow-ups surfaced by this checkpoint and not yet
 assigned anywhere: a population/residents aggregation (new sim-side work, not UI), and C1/C6's
 info-panel drawing slice (needed before C3's costs mean anything, independent of fonts).
+
+## W4-UI-2 — category-switching's own screenshot proof — 2026-11-08 — status: IN PROGRESS
+
+Per the coordinator's sequencing (fonts, verified above, then this, then M). `category_at`/
+`SwitchCategory` were already unit-tested, but only "public" had ever been screenshotted live -
+every earlier H1/C1/H2 checkpoint's visual evidence happened to use the menu's default-open
+category, never a real click through `ConstructionMenu::click`'s `SwitchCategory` branch.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`7c0ffab3`**, not yet pushed.
+
+### What ran, and with what result
+
+`construction_menu_draw_check.script` (the script `live_screen_matches_oracle` already runs) now
+clicks the category column at `(782, 373)` - `category_column_x` (`data/ui/hud.txt`) and
+`construction.txt`'s own `roads` category `y 373` - right after the public screenshot, and takes
+a third screenshot (`construction_roads_live`). `live_screen_compare.py` checks it against the
+oracle's own `construction_roads` composition the same way it already checks `construction_public`
+(same rect set, this category's own grid cells). Result: pixel-exact, same as public - the live
+category switch (a real click resolved through `ConstructionMenu::click`, not a test-only shortcut)
+draws the correct category's chrome, thumbnails and lock state. This also re-exercises H2's gold/
+material digits under a second category for free (same masked-comparison pass covers them).
+
+### Decisions and reasoning
+
+Reused the existing script/test pair rather than adding a new one: the two categories differ only
+in which grid cells and banner are drawn, which `rects_for`/`grid_rects` already parameterize by
+category name, so extending the existing check is the direct fix for "only public was proven,"
+not a reason for a second parallel test file.
+
+### Next
+
+M's placeholder-screen table, per the coordinator's order.

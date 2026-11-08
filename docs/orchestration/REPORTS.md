@@ -16199,3 +16199,59 @@ checks.
 The comprehensive window session (every category, placement, demolish, a locked-cell click, the
 now-possible unaffordable click, per the coordinator's list), then the fresh-process replay, then
 multi-renderer pixel checks (CPU/4090/iGPU) with negative controls, then bench_frame numbers.
+
+## W4-UI-2 — V1 (the full window-session proof) and V2 (its fresh-process replay) — 2026-11-08 — status: IN PROGRESS
+
+Per the coordinator's own list: window session, then replay, next.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`56739c08`**, not yet pushed.
+
+### What ran, and with what result
+
+**V1** (`construction_full_proof.script`, registered as `viewer_wiring_construction_full_proof`):
+through the real window, `key b` then every one of the 8 category tabs (`category_column_x` 782,
+each category's own `y` from `construction.txt`); back on "public", a click on a **locked** cell
+(`(1,0)`, id 580, `construction.txt`'s own `state locked`) - the title never shows it armed,
+confirming no command was sent; a click on an **unlocked** cell (`(0,0)`, id 501) arms it, then a
+world click on the same tile `settlement_activity.script` already proves free builds it
+(`outcome Applied`); then a demolish of that same building.
+
+The demolish step needed a real fix, found by reading the actual failure, not by guessing the
+gesture: the first attempt got `Refused (Occupied)` - a successful build never resets
+`construction_placement_open_` (nothing in the world-click path does), so the pickaxe rectangle's
+**first** click after building still resolves `Cancel` (the placement panel was still "open" by
+that flag), not `ToggleDemolish`; the tool was still armed with 501 and tried to rebuild the same
+now-occupied tile. Fixed by clicking the same spot twice - the first closes the panel, the second
+(now `placement_open` is false) actually toggles demolish mode.
+
+**Also V1:** `construction_unaffordable.script` (a separate small session, registered as
+`viewer_wiring_construction_unaffordable`), using the new `ANNO_DEV_GOLD`/`ANNO_DEV_GOODS_TONS`
+env overrides added last checkpoint: with goods at 0, type 501's "wood 3" cost cannot be paid, and
+placing it refuses `CannotAfford` - the ordinary `BuildCmd` path, confirming arming never checks
+cost (`ConstructionMenu::click`'s own doc comment already said so; this is the live proof of it).
+
+**V2** (`construction_session_replay.py`, registered as `construction_session_replay`):
+`construction_full_proof`'s own recording (`commands.txt`/`hashes.txt`, written by any
+`ANNO_DEV_SESSION`, not just the ship-start flow) replayed headlessly in a fresh process
+(`--commands`/`--replay-hashes`, `main.cpp`'s `replay_hashes` - no window, no SDL at all,
+`opening_session.py`'s own mechanism, applied here for the first time to a fixed-map/
+construction-menu session). Agrees exactly: "3 checkpoints agree (turns 0..15), 2 outcomes
+agree". A **negative control** (the same recording with the build command's type changed, 501 ->
+502) correctly disagrees at the first affected checkpoint - the mechanism is live, not a
+tautology that would pass regardless of content.
+
+Full targeted regression (13 cases, real game files) passes.
+
+### Decisions and reasoning
+
+Ran V1's script and read its actual failure before writing anything about the demolish gesture:
+the first guess (pickaxe click immediately after building) was wrong, and the fix came from the
+literal `Refused (Occupied)` message, not from re-reasoning about what "should" happen. This
+matches the dispatch's own evidence discipline one level down from file/RE evidence: the live
+window's own refusal messages are evidence too, and are cheaper to check than to assume past.
+
+### Next
+
+Multi-renderer pixel checks (CPU/4090/iGPU) with negative controls, then bench_frame numbers.

@@ -482,9 +482,9 @@ TEST_CASE("iron chain: the real arm closes every ledger and delivers WERKZEUG to
     CHECK(ratio < 1.25);
     // wood is a shared drain: the chain's own takes are reported (smelter and toolsmith input plus
     // use), the store's HOLZ is the same in both arms at the end (the foresters refill it)
-    MESSAGE("wood taken by the chain: smelter " << t.wood_smelter - real->store_holz0 * 0
-                                                << " toolsmith " << t.wood_smith << " store real "
-                                                << t.holz_store << " store base " << b.holz_store);
+    MESSAGE("wood taken by the chain: smelter " << t.wood_smelter << " toolsmith " << t.wood_smith
+                                                << " store real " << t.holz_store << " store base "
+                                                << b.holz_store);
     CHECK(t.wood_smelter > b.wood_smelter); // the smelter really burned wood the baseline did not
 }
 

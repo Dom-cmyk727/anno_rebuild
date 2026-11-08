@@ -23,6 +23,7 @@
 #include <anno/sim/world.hpp>
 
 #include "iron_pilot.hpp"
+#include "test_must.hpp"
 #include "world_access.hpp"
 
 namespace quarry_fix {
@@ -72,7 +73,7 @@ inline std::unique_ptr<Fix> start(const std::vector<Site>& quarries,
     sim::World& w = f->pilot.w;
     if (extra_flags != 0) {
         // labelled setup: stage bits the pilot's owner has not reached (the marble stage 13)
-        sim::WorldTestAccess::players(w).find(kPlayer)->flags |= extra_flags;
+        test_must::must(sim::WorldTestAccess::players(w).find(kPlayer))->flags |= extra_flags;
     }
     if (isolate) {
         sim::DemolishCmd dem;

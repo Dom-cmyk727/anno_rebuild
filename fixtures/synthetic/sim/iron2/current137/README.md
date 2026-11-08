@@ -13,3 +13,11 @@ nothing was relabelled. The numeric content of the 135 fixtures is unchanged: on
 hashes moved (the non-hash assertions of every test pass unchanged). The goldens of G0/G1/S5/S6 agree with
 the independent `tools/sim_stream.py --check`; the others are generated evidence. `populated_fields.txt` comes
 from `tools/integration_stream_ref.py --write`. Generation is not acceptance.
+
+## Q3 addendum (MAP-EXTRACT-2 part Q, 2026-11-08)
+
+The quarry claim set (payload tag 9) and the mason worker's goal sub-cell are two further saved fields inside
+the same identity 137 (`docs/sim/quarry-bricks.md` Q3.1). The class table and the registry digest are
+unchanged, so only worlds with a quarry or a job-0x2c figure move: `scenario_corpus.txt` was regenerated once
+(`ANNO_UPDATE_GOLDEN=1`, test `scenario corpus original-data components: every .sze loads, creates and runs five
+minutes`); the goldens, logs and loop checkpoints of the other worlds are byte-identical.

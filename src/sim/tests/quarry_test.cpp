@@ -165,7 +165,7 @@ TEST_CASE("quarry placement: a BuildCmd creates a quarry with no claims and no d
     // bit
     sim::World m = w;
     CHECK(m.apply(build_cmd(1218, 361, 357)).status == sim::Reject::ConstructionDenied);
-    sim::WorldTestAccess::players(m).find(kPlayer)->flags |= (1U << 13);
+    test_must::must(sim::WorldTestAccess::players(m).find(kPlayer))->flags |= (1U << 13);
     CHECK(m.apply(build_cmd(1218, 361, 357)).status == sim::Reject::None);
 }
 
@@ -407,8 +407,11 @@ TEST_CASE("quarry job Q-4: a mason demolished on its way loses the cargo exactly
         for (const sim::Figure* fig : workers(*f))
             in_hands += fig->cargo_88;
         const sim::Building* mb = building(w, f->masons[0]);
-        f->retired.raw += std::get<sim::Farm>(mb->payload).raw;
-        f->retired.out += std::get<sim::Farm>(mb->payload).out;
+        REQUIRE(mb != nullptr);
+        const auto* farm = std::get_if<sim::Farm>(&mb->payload);
+        REQUIRE(farm != nullptr);
+        f->retired.raw += farm->raw;
+        f->retired.out += farm->out;
         sim::DemolishCmd dem;
         dem.city = kCity;
         dem.tiles = {{mb->x, mb->y}};
@@ -471,13 +474,14 @@ TEST_CASE("quarry brick proof Q-5 Q-8: stone becomes bricks in the store, spent 
     // (type 1013, a workshop: gold 300, WERKZEUG 5 t, HOLZ 6 t, ZIEGEL 1 t; stage 12, opened by the
     // labelled setup of the stage bit so that the only missing good is the bricks)
     constexpr std::uint32_t kBrickBuilding = 1013;
-    sim::WorldTestAccess::players(w).find(kPlayer)->flags |= (1U << 12);
+    test_must::must(sim::WorldTestAccess::players(w).find(kPlayer))->flags |= (1U << 12);
     std::optional<std::pair<std::int32_t, std::int32_t>> site;
     for (std::int32_t y = 338; y <= 366 && !site; ++y)
         for (std::int32_t x = 356; x <= 388 && !site; ++x) {
             // the refusal reason must be the bricks, not a bad tile: a rich copy accepts it
             sim::World rich = w;
-            sim::WorldTestAccess::islands(rich)[1]->city(kCity.city)->stock.stock[kZiegel] = 10000;
+            test_must::must(sim::WorldTestAccess::islands(rich)[1]->city(kCity.city))
+                ->stock.stock[kZiegel] = 10000;
             if (rich.apply(build_cmd(kBrickBuilding, x, y)).status == sim::Reject::None)
                 site = {x, y};
         }
@@ -509,7 +513,8 @@ TEST_CASE("quarry brick proof Q-5 Q-8: stone becomes bricks in the store, spent 
     // the baseline kept apart: the same world without a quarry never raises the store
     auto base = start({}, {});
     REQUIRE(base);
-    sim::WorldTestAccess::islands(base->pilot.w)[1]->city(kCity.city)->stock.stock[kZiegel] = 0;
+    test_must::must(sim::WorldTestAccess::islands(base->pilot.w)[1]->city(kCity.city))
+        ->stock.stock[kZiegel] = 0;
     base->bricks0 = 0;
     step(*base, 1500 + k);
     CHECK(city_of(base->pilot.w).stock.stock[kZiegel] == 0);

@@ -150,6 +150,12 @@ def main(argv):
             ("construction_public",
              session_dir / "construction_public_live.png",
              rects_for(hud, HUD_NAMES + CONSTRUCTION_EXTRA_NAMES) + grid_rects(con, "public")),
+            # Category-switching's own screenshot proof (W4-UI-2): a second category's grid draws
+            # correctly too, not only the menu's default-open "public" - the script's click_px
+            # exercises ConstructionMenu::click's SwitchCategory path for real, live.
+            ("construction_roads",
+             session_dir / "construction_roads_live.png",
+             rects_for(hud, HUD_NAMES + CONSTRUCTION_EXTRA_NAMES) + grid_rects(con, "roads")),
         ]
         for screen, png, rects in checks:
             if not png.is_file():

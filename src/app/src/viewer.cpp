@@ -339,6 +339,9 @@ class Viewer {
             knowledge_.emplace(dev_->setup());
             attach_occupancy(*play_, *knowledge_, *dev_); // follows the takes; ensure() seeds
         }
+        if (construction_menu_ != nullptr) {
+            construction_tex_cache_.emplace(construction_game_dir_);
+        }
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
         const auto b = *scene->bounds(group);
@@ -520,6 +523,11 @@ class Viewer {
     /// overlap - ConstructionMenu::click's own doc comment).
     ConstructionMenu* construction_menu_ = nullptr;
     std::filesystem::path construction_game_dir_;
+    /// Persists decoded `.tex` files across frames (ADR 0004 "Atlases": no re-decode per frame -
+    /// the first H1/C1 slice built one fresh every call, re-reading every HUD/menu texture off
+    /// disk each frame; this is the fix). Constructed once, in the constructor body, only when
+    /// construction_menu_ is set (needs construction_game_dir_, itself conditional).
+    std::optional<UiTexCache> construction_tex_cache_;
     bool construction_menu_open_ = false;
     std::string construction_open_category_;
     bool construction_placement_open_ = false;
@@ -2546,28 +2554,37 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
             blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
         }
     }
+    double construction_ui_ms = 0.0;
     if (construction_menu_ != nullptr && w == 1024 && h == 768) {
         // H1/C1, second slice: the menu's own chrome, drawn over the world (ADR 0004 R1's
-        // "Rendering" - the CPU path; the GPU path is later work). Decoded fresh every frame (no
-        // persistent cache yet, V6); only while the window is at the UI's 1024 x 768 reference
-        // (R3's scale is still open).
+        // "Rendering" - the CPU path; the GPU path is later work), only while the window is at
+        // the UI's 1024 x 768 reference (R3's scale is still open). construction_tex_cache_
+        // persists decoded textures across frames (ADR 0004 "Atlases"; see its own comment).
+        // Timed on its own (not folded into "render other") so the cache's effect is measurable
+        // per CLAUDE.md's "measure every performance change".
+        const auto ui_start = Clock::now();
         const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
                                                                      construction_open_category_}
                                                         : UiMockSpec{UiMockScreen::Hud, ""};
         const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
         static_cast<void>(draw_live_screen_xrgb(
             buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
-            spec, construction_game_dir_, snapshot ? snapshot->eligibility.get() : nullptr));
+            spec, *construction_tex_cache_, snapshot ? snapshot->eligibility.get() : nullptr));
+        construction_ui_ms = since_ms(ui_start, Clock::now());
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),
                                    levels().tile_h(group_), gen, w, h);
     const auto rendered = Clock::now();
-    const double known = s.chunks_ms + s.ground_ms + s.water_objects_ms + s.sea_ms + s.objects_ms;
+    const double known = s.chunks_ms + s.ground_ms + s.water_objects_ms + s.sea_ms + s.objects_ms +
+                         construction_ui_ms;
     steps_.push_back({"chunks", s.chunks_ms});
     steps_.push_back({"ground", s.ground_ms});
     steps_.push_back({"water objects", s.water_objects_ms});
     steps_.push_back({"sea", s.sea_ms});
     steps_.push_back({"objects", s.objects_ms});
+    if (construction_menu_ != nullptr) {
+        steps_.push_back({"construction ui", construction_ui_ms});
+    }
     steps_.push_back({"render other", std::max(0.0, since_ms(render_start, rendered) - known)});
     // The delivery chain: texture update, render submission, present. The frame counts as delivered
     // only if every call succeeded (SDL3 returns bool); after a failed stage the later ones are not

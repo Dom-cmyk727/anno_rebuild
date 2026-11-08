@@ -28,9 +28,11 @@ struct LoadedTex {
     formats::tex::TexFile file;
 };
 
-/// Caches a parsed `.tex` file (bytes and all, see LoadedTex) for the lifetime of one
-/// compose_screen call, mirroring `tools/ui_layout.py`'s `_tex_bank`/`_TEX_CACHE` (several
-/// elements of the same screen share a file, e.g. every `fenster.tex` id).
+/// Caches a parsed `.tex` file (bytes and all, see LoadedTex), mirroring `tools/ui_layout.py`'s
+/// `_tex_bank`/`_TEX_CACHE` (several elements of the same screen share a file, e.g. every
+/// `fenster.tex` id). `compose_screen` and the standalone `anno_ui_mock` tool each construct one
+/// locally for the lifetime of a single call/process; `UiTexCache` (ui_mock.hpp) wraps the same
+/// class as `Impl` so `draw_live_screen_xrgb`'s live-window caller can keep one across frames.
 class TexCache {
   public:
     explicit TexCache(std::filesystem::path game_dir) : game_dir_(std::move(game_dir)) {}
@@ -145,6 +147,16 @@ bool live_allowed(const std::vector<std::pair<sim::TypeId, bool>>* eligibility, 
 
 } // namespace
 
+struct UiTexCache::Impl : TexCache {
+    using TexCache::TexCache;
+};
+
+UiTexCache::UiTexCache(std::filesystem::path game_dir)
+    : impl_(std::make_unique<Impl>(std::move(game_dir))) {}
+UiTexCache::~UiTexCache() = default;
+UiTexCache::UiTexCache(UiTexCache&&) noexcept = default;
+UiTexCache& UiTexCache::operator=(UiTexCache&&) noexcept = default;
+
 std::optional<UiMockSpec> parse_screen_name(const std::string& screen) {
     if (screen == "hud_idle")
         return UiMockSpec{UiMockScreen::Hud, ""};
@@ -252,12 +264,12 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
 
 std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
                                   const ConstructionLayout& construction, const UiMockSpec& screen,
-                                  const std::filesystem::path& game_dir,
+                                  UiTexCache& cache_wrapper,
                                   const std::vector<std::pair<sim::TypeId, bool>>* eligibility) {
     if (dst == nullptr || dst_w != hud.resolution_w || dst_h != hud.resolution_h)
         return "draw_live_screen_xrgb: destination size does not match the layout's resolution";
 
-    TexCache cache(game_dir);
+    UiTexCache::Impl& cache = cache_wrapper.impl();
     const bool is_construction = screen.kind == UiMockScreen::Construction;
 
     // Mirrors compose_screen's own blit_el exactly (ADR 0004 R1: a divergence here is a bug, not

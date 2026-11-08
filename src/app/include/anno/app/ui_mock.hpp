@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,6 +19,33 @@
 #include <anno/sim/ids.hpp>
 
 namespace anno::app {
+
+/// Caches every `.tex` file `draw_live_screen_xrgb` has decoded so far, across frames (ADR 0004
+/// "Atlases": "textures are uploaded once... no upload per frame" - the first H1/C1 drawing slice
+/// did not meet this, re-reading and re-decoding from disk on every single frame; this is the
+/// fix). The window owns one for the whole session (constructed once alongside the construction
+/// menu) and passes it to every `draw_live_screen_xrgb` call; `compose_screen` and the standalone
+/// `anno_ui_mock` tool keep their own short-lived cache (one mock is one process, so there is
+/// nothing to persist across). Opaque (pimpl): the `.tex`/`TexFile` decode details stay in
+/// ui_mock.cpp, not this header.
+class UiTexCache {
+  public:
+    explicit UiTexCache(std::filesystem::path game_dir);
+    ~UiTexCache();
+    UiTexCache(UiTexCache&&) noexcept;
+    UiTexCache& operator=(UiTexCache&&) noexcept;
+    UiTexCache(const UiTexCache&) = delete;
+    UiTexCache& operator=(const UiTexCache&) = delete;
+
+    struct Impl;
+    /// For ui_mock.cpp's own use (`draw_live_screen_xrgb`'s implementation) - not part of this
+    /// class's public contract, but `Impl` stays opaque to every other translation unit, so there
+    /// is nothing for outside code to do with it.
+    Impl& impl() { return *impl_; }
+
+  private:
+    std::unique_ptr<Impl> impl_;
+};
 
 /// Which chrome the construction tab frames show: `kHud` draws the idle HUD's frames
 /// (construction 8, military 13 selected); `kConstruction` draws a construction-menu category's
@@ -57,12 +85,14 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// rule) - so what the player sees always agrees with what a click there would do (C2's
 /// authority). Opaque source pixels overwrite; transparent ones are skipped (the oracle's own
 /// `blit_rgba` semantic - never alpha-blended, since HUD/menu chrome never shows the game world
-/// through it). An error names the screen, the missing file, or the parse failure; nothing is
-/// drawn on one.
+/// through it). `cache` persists the decoded `.tex` files across calls (ADR 0004 "Atlases": no
+/// re-decode per frame) - the caller owns one instance for the whole session (constructed once,
+/// with the real `game_dir`) and passes it to every call. An error names the screen, the missing
+/// file, or the parse failure; nothing is drawn on one.
 [[nodiscard]] std::string
 draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
                       const ConstructionLayout& construction, const UiMockSpec& screen,
-                      const std::filesystem::path& game_dir,
+                      UiTexCache& cache,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility);
 
 } // namespace anno::app

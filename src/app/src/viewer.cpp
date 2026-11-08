@@ -2604,7 +2604,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         static_cast<void>(draw_live_screen_xrgb(
             buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
             spec, *construction_tex_cache_, snapshot ? snapshot->eligibility.get() : nullptr,
-            counters));
+            counters, construction_placement_open_));
         construction_ui_ms = since_ms(ui_start, Clock::now());
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),

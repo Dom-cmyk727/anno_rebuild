@@ -108,11 +108,26 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// "Atlases": no re-decode per frame) - the caller owns one instance for the whole session
 /// (constructed once, with the real `game_dir`) and passes it to every call. `counters` draws the
 /// live gold/goods numbers (H2; see HudCounters's own doc comment) - a counter whose value is
-/// nullopt is skipped. An error names the screen, the missing file, or the parse failure; nothing
-/// is drawn on one.
-[[nodiscard]] std::string draw_live_screen_xrgb(
-    std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
-    const ConstructionLayout& construction, const UiMockSpec& screen, UiTexCache& cache,
-    const std::vector<std::pair<sim::TypeId, bool>>* eligibility, const HudCounters& counters = {});
+/// nullopt is skipped.
+///
+/// `placement_open` (C1/C6, the building info/placement panel): on a construction screen, the
+/// grid and the info panel are never shown together (ConstructionMenu::click's own pickaxe/
+/// cancel-X overlap note - the two panels occupy the same screen region, `data/ui/hud.txt`'s
+/// `info_panel` rectangle (804, 302) 220 x 466 overlapping `construction.txt`'s own grid origin/
+/// extent). `false` draws the grid and the pickaxe (`abrissicon`) as before; `true` draws the
+/// info panel's chrome instead - its background (`info_panel`), close button (`infoexit`, the
+/// same rectangle the pickaxe shares) and rotate arrows (`rotate_left`/`rotate_right`), every one
+/// of them a real sprite-sad-measured position (`data/ui/hud.txt`, shot `r2_info_pioneer_house`).
+/// The panel's own cost row and name are deliberately NOT drawn: no RE evidence yet pins their
+/// pixel position (OQ-561, the gold-cost icon's own exhaustive SAD search found none above mean
+/// ~120 anywhere in the panel) - this draws only the chrome evidence already supports.
+///
+/// An error names the screen, the missing file, or the parse failure; nothing is drawn on one.
+[[nodiscard]] std::string
+draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
+                      const ConstructionLayout& construction, const UiMockSpec& screen,
+                      UiTexCache& cache,
+                      const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+                      const HudCounters& counters = {}, bool placement_open = false);
 
 } // namespace anno::app

@@ -347,7 +347,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                                   const ConstructionLayout& construction, const UiMockSpec& screen,
                                   UiTexCache& cache_wrapper,
                                   const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                                  const HudCounters& counters) {
+                                  const HudCounters& counters, bool placement_open) {
     if (dst == nullptr || dst_w != hud.resolution_w || dst_h != hud.resolution_h)
         return "draw_live_screen_xrgb: destination size does not match the layout's resolution";
 
@@ -453,36 +453,51 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
 
     if (is_construction) {
         blit_el("plankegross");
-        blit_el("abrissicon", 659);
+        if (placement_open) {
+            // C1/C6: the building info/placement panel, drawn instead of the grid - the two
+            // occupy the same screen region (this function's own doc comment) and
+            // ConstructionMenu::click already resolves the pickaxe/cancel-X overlap by this same
+            // flag, so the drawing follows the same split. Every element here is a real
+            // sprite-sad-measured position (data/ui/hud.txt, shot r2_info_pioneer_house); the
+            // panel's own cost row and name are not drawn - OQ-561, no position evidence exists.
+            blit_el("info_panel");
+            blit_el("infoexit");
+            blit_el("rotate_left");
+            blit_el("rotate_right");
+            blit_el("betriebskosten");
+        } else {
+            blit_el("abrissicon", 659);
 
-        const int ox = construction.grid.origin_x;
-        const int oy = construction.grid.origin_y;
-        const int stride = construction.grid.cell_px;
-        const auto* cat = construction.category(screen.category);
-        const int thumb = cat ? cat->thumb_tex : 0;
+            const int ox = construction.grid.origin_x;
+            const int oy = construction.grid.origin_y;
+            const int stride = construction.grid.cell_px;
+            const auto* cat = construction.category(screen.category);
+            const int thumb = cat ? cat->thumb_tex : 0;
 
-        const UiElement* lock_el = hud.element("no_klick");
-        const int lock_id = lock_el && lock_el->tex_id ? *lock_el->tex_id : 56;
-        const std::string lock_file =
-            (lock_el && !lock_el->file.empty()) ? lock_el->file : "toolgfx/fenster.tex";
-        const auto lock_sprite = cache.decode(lock_file, lock_id);
+            const UiElement* lock_el = hud.element("no_klick");
+            const int lock_id = lock_el && lock_el->tex_id ? *lock_el->tex_id : 56;
+            const std::string lock_file =
+                (lock_el && !lock_el->file.empty()) ? lock_el->file : "toolgfx/fenster.tex";
+            const auto lock_sprite = cache.decode(lock_file, lock_id);
 
-        for (const auto& cell : construction.cells) {
-            if (cell.category != screen.category)
-                continue;
-            const int x = ox + cell.col * stride;
-            const int y = oy + cell.row * stride;
-            // C2: the sim's live eligibility is the lock authority, never the cell's own static
-            // `unlocked` field (compose_screen's oracle-matching behaviour keeps that field,
-            // since its job is to match the *original's* fixed Citizen-start screenshot).
-            const bool allowed = live_allowed(eligibility, sim::TypeId{cell.id});
-            if (allowed && thumb != 0) {
-                const auto icon = cache.decode("toolgfx/fenster.tex",
-                                               cell_icon_tex_id(thumb, cell.col, cell.row));
-                if (icon)
-                    blit_xrgb(dst, dst_w, dst_h, *icon, x, y);
-            } else if (!allowed && lock_sprite) {
-                blit_xrgb(dst, dst_w, dst_h, *lock_sprite, x, y);
+            for (const auto& cell : construction.cells) {
+                if (cell.category != screen.category)
+                    continue;
+                const int x = ox + cell.col * stride;
+                const int y = oy + cell.row * stride;
+                // C2: the sim's live eligibility is the lock authority, never the cell's own
+                // static `unlocked` field (compose_screen's oracle-matching behaviour keeps that
+                // field, since its job is to match the *original's* fixed Citizen-start
+                // screenshot).
+                const bool allowed = live_allowed(eligibility, sim::TypeId{cell.id});
+                if (allowed && thumb != 0) {
+                    const auto icon = cache.decode("toolgfx/fenster.tex",
+                                                   cell_icon_tex_id(thumb, cell.col, cell.row));
+                    if (icon)
+                        blit_xrgb(dst, dst_w, dst_h, *icon, x, y);
+                } else if (!allowed && lock_sprite) {
+                    blit_xrgb(dst, dst_w, dst_h, *lock_sprite, x, y);
+                }
             }
         }
     }

@@ -14,4 +14,9 @@ screenshot construction_public_live
 click_px 782 373
 wait frames 5
 screenshot construction_roads_live
+click_px 782 325
+wait frames 5
+click_px 833 330
+wait frames 5
+screenshot construction_placement_live
 quit

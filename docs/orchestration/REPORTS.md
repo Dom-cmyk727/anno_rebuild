@@ -15619,3 +15619,111 @@ arms a type and places it through the ordinary command path.
 The category column (switching among the eight categories) and an open/close key (behind R2's
 switch), then H1/C1's actual drawing wired into the same live window. H/C/M/V/K/E remain open;
 continuing, not stopping.
+
+## W4-UI-2 — open/close key, and the HUD/menu actually draw live — 2026-11-07/08 — status: IN PROGRESS
+
+Two checkpoints folded into one entry (the first small, the second the packet's first visible
+pixel). The menu now has its own B/Esc key (resolving the two real collisions this checkpoint's
+own test found), and - the headline - the HUD and construction-menu chrome now actually draw in
+the live window, verified pixel-exact against the oracle through a real captured screenshot, not
+just through commands and titles as every earlier C4 checkpoint was.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`d734ad3d`**, pushed (through `b4ac19a8`). Worktree:
+  `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **The menu's own open/close key** (`b4ac19a8`): `data/ui/construction.txt`'s `open_key B` /
+   `leave_key ESC`, added to `construction_handle`, resolving two real collisions by state rather
+   than a permanent winner - B opens the menu only while it is not already open (the developer
+   tool's own B-toggle stays reachable otherwise, per ADR 0004 R1's "the developer tool keeps its
+   own key"); Esc closes the menu only while it is open (consumed before the window's own
+   Esc-quits-the-app binding). Removed the previous checkpoint's "always open on public"
+   simplification now that a real key exists. `construction_menu_arm.script` extended with a real
+   `key b` open, a `key esc` close (checking the session does not quit), and a closed-menu click
+   that now correctly falls through.
+2. **The chrome actually draws** (`d734ad3d`, H1/C1 second slice): `draw_live_screen_xrgb`
+   (`ui_mock.hpp`/`.cpp`) blits the exact element sequence `compose_screen` already proved exact
+   against the oracle, but onto the live CPU frame buffer (`viewer.cpp`'s `buffer_`, the same
+   0x00RRGGBB-per-`uint32_t` packing `blend_preview` already uses) instead of a fresh canvas -
+   called from `draw_cpu` every frame the window is at the UI's 1024 x 768 reference, drawing the
+   idle HUD when the menu is closed, or the open category's full grid when it is open. The one
+   deliberate divergence from the oracle: a construction cell's drawn lock state reads the sim's
+   **live published eligibility**, never the cell's own static `unlocked` field — `construction.txt`
+   is RE evidence about the *original*, not a live rule a mod could change, so C2's authority over
+   what a click does also governs what is drawn.
+3. **Verified pixel-exact through the real window** (not the standalone `anno_ui_mock` tool
+   `ui_mock_matches_oracle` already checks): new CTest `live_screen_matches_oracle`
+   (`tools/test/live_screen_compare.py`) drives the real `anno1503.exe` with the real game files,
+   captures the window's own screenshot (`viewer.cpp`'s existing Windows capture path), and
+   compares it against the Python oracle — **only where the oracle painted something opaque** (its
+   canvas is black everywhere else, which the live window correctly shows the rendered game world
+   instead; comparing the *whole* frame would wrongly fail almost everywhere, since the oracle was
+   built to check a standalone PNG against nothing, never against a world background). **Result:
+   0 of 223 218 opaque pixels differ for the idle HUD; 0 of 314 969 for the public construction
+   category, including all 32 grid cells' lock/unlock icons.**
+   - **A methodology bug caught and fixed before it could produce a false pass or a false fail.**
+     The first manual check (comparing the *whole* 1024 x 768 canvas) reported 786 430 of 786 432
+     pixels "different" — not a real defect: the oracle's background is black everywhere nothing
+     was drawn, while the live capture correctly shows the game world there. Re-derived the right
+     comparison (opaque-oracle-pixels only) before concluding anything, rather than trusting the
+     first number.
+   - A second mistake, caught the same way: the first attempt at this comparison hard-coded a
+     Git-Bash-style game-file path (`/e/anno1503/...`) inside a Python `-c` one-liner, which native
+     Windows Python does not resolve the way Git-Bash's own MSYS argument rewriting does for
+     command-line arguments — every texture decode silently failed, leaving the oracle's canvas
+     black everywhere (a false "0 checked" result, not a false pass, but still not evidence of
+     anything). Fixed by using the real Windows-style path; re-ran and got the genuine 0-diff
+     result above.
+4. **A known, named, unoptimized gap, not a silent one.** `draw_live_screen_xrgb` re-reads and
+   re-decodes every needed `.tex` file from disk on every single frame the chrome is drawn (no
+   persistent cache across frames yet) — the frame-timing log's own "render other" step jumped
+   from about 1 ms to 40-80 ms once this started running. ADR 0004's "Atlases" section ("textures
+   are uploaded once... no upload per frame") is not yet met by this slice; V6's performance work
+   is where that gets fixed.
+5. **Full regression + gates**: `anno_app_tests` **243/243** (**61 403/61 403** assertions, real
+   game files); `anno_app_input_tests` **35/35** (**209 161/209 161** assertions); **all 10**
+   `viewer_wiring`/`ui_mock_matches_oracle`/`live_screen_matches_oracle` CTest cases pass;
+   `clang-format` 23.1.3 clean; **the WSL gate** — all four passes clean.
+
+### What H/C still need
+
+- **C1, C6**: the info panel (cost/upkeep display — no font/`.zei` rendering exists anywhere in
+  this project yet, so no *numbers* are drawn, only sprites); the explicit "never grants
+  gold/goods, never bypasses a refusal" checks against the live window.
+- **Category switching's own visual proof**: `category_at`/`SwitchCategory` were already proven
+  by unit test (the previous-previous checkpoint); switching categories *in the live window* and
+  confirming the new category's grid draws correctly has not been screenshotted yet (only
+  "public" has).
+- **H2-H4**: live snapshot values (gold/residents/goods numbers — same font blocker as C1's costs);
+  the GPU path (this slice is CPU-only, `draw_gpu` untouched); anchoring at other window sizes
+  (still gated to exactly 1024 x 768, R3 unresolved); the pixel-test negative controls (a wrong
+  element, a shift, a missing element must each fail — not yet built for the live path, only for
+  the standalone `anno_ui_mock` tool via `tools/ui_layout.py`'s own `negative_control_results`).
+- **M, V, K, E**: unchanged — all still open.
+
+### Decisions and reasoning
+
+1. **The drawn lock state reads live eligibility, not `compose_screen`'s static field — a real,
+   deliberate divergence from the oracle, not a bug to reconcile.** `compose_screen` exists to
+   match the *original's own fixed Citizen-start screenshot* exactly; the live window exists to
+   match *this engine's own sim*. The two happen to agree for every one of the 148 cells at a
+   fresh Citizen start (C2, verified separately), so the pixel-exact test above does not actually
+   distinguish them yet — this is named explicitly so a future change to the sim's eligibility
+   rule is not mistaken for a drawing regression when the two diverge.
+2. **A whole-frame comparison was abandoned, not loosened with a tolerance, once it was understood
+   why it failed.** Reaching for a fuzzy threshold to make a failing comparison pass would have
+   hidden the real methodology error (comparing against a background the live capture was never
+   going to match) rather than fixing it; the opaque-oracle-only mask is the correct fix, confirmed
+   by reaching an honest 0-diff result once applied, not by lowering a bar until something passed.
+3. **The per-frame re-decode is shipped, not blocked on, but named precisely.** A first slice that
+   proves the pixels are right is worth landing before the performance work that makes it fast;
+   hiding the cost (or guessing a number for it without measuring) would not be.
+
+### Next
+
+Font/`.zei` rendering (needed before any number - costs, gold, residents - can be drawn at all),
+the category column's own visual proof, and M's placeholder-screen table. H/C/M/V/K/E remain
+open; continuing, not stopping.

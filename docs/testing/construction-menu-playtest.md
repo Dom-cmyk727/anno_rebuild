@@ -15,12 +15,12 @@ construction surface in `--play`.
 ## Launch
 
 ```
-anno1503.exe --play data\maps\lan5.txt --construction-menu on --layout data\ui --renderer cpu --game-dir <game folder>
+anno1503.exe --play data\maps\lan5.txt --construction-menu on --layout data\ui --game-dir <game folder>
 ```
 
-`--renderer cpu` is not optional for this playtest: the menu/HUD overlay only draws on the CPU
-path today (see "Known limits"), and `--renderer`'s own default is `auto`, which picks the GPU on
-this machine - launch without it and the menu would appear to not exist at all.
+`--renderer` can be left at its default (`auto`, which picks the GPU on this machine) or set to
+`cpu`/`gpu` explicitly: the HUD/menu/panel overlay now draws on both paths (see "Known limits" -
+this was fixed after this card was first written; it used to require `--renderer cpu`).
 `--construction-menu on` requires `--play`; `--layout` defaults to `data/ui` and rarely needs
 setting. The window starts at generous developer test resources (10,000,000 gold, 190 tons each
 of tools/wood/bricks/marble) unless overridden (`ANNO_DEV_GOLD`/`ANNO_DEV_GOODS_TONS` env vars -
@@ -65,10 +65,14 @@ status bar's own measured slots.
 
 ## Known limits (say so rather than guess)
 
-- **GPU rendering: none of this draws.** The HUD/menu/panel overlay is CPU-renderer only today;
-  `--renderer gpu` (or the default `auto`, which picks GPU on this machine) draws the world but
-  no UI chrome at all - this is why the launch command above pins `--renderer cpu`. Verified, not
-  assumed: a live GPU screenshot showed 100% of the oracle's opaque pixels missing.
+- **GPU rendering: fixed, now draws.** Earlier builds on this branch had this overlay on the CPU
+  path only (`--renderer gpu`/the default `auto` drew the world but no UI chrome at all - a live
+  GPU screenshot showed 100% of the oracle's opaque pixels missing). That gap is closed: the GPU
+  compositor now blends the same overlay via a full-screen pass (`gpu.wgsl`'s `ui_overlay_fs`).
+  Verified, not assumed: `live_screen_compare.py --renderer gpu` on the RTX 4090 measures 28 of
+  ~200,000+ checked pixels differing (fraction ~0.0001-0.0002), within the project's own F2.1
+  tolerance (channel <= 48, fraction <= 0.08) - all at sprite-corner pixels, none in digit/grid
+  content.
 - **The info/placement panel shows no numbers or name.** The cost row and the building's name
   have no confirmed pixel position in the original (OQ-561 - an exhaustive search found none);
   rather than guess one, this build draws the panel's frame, arrows and the upkeep icon's own

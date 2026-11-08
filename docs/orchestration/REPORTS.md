@@ -16777,3 +16777,57 @@ unrelated diff and a clean rerun does not establish that yet.
 
 Independent review (dispatched separately by the coordinator) and this entry's own sign-off.
 Status stays REVIEW PENDING until the coordinator folds that review's findings in.
+
+## W4-UI-2 — QUESTION: a recurring coordinator crash-handover flake in CI — 2026-11-08
+
+**Not accepted as a one-off this time.** The same `anno_test_support_tests` coordinator
+restart/handover family failed in CI twice today, on two different, unrelated, docs-only commits
+of this branch:
+
+- **`a87310d6`** (the Part E factual report, docs-only diff): `cpp (linux-gcc-release)` failed,
+  four cases - `F3 (D1, crash handover)`, `F3 (D1, silent)`, `O1`, `O3`. Diagnosed at the time as a
+  transient CI-runner timing flake (the same four cases had passed clean on an earlier commit of
+  this same branch, run `128622306864`); rerunning only that job passed clean, and all ten jobs
+  were green on that head (run `42486342203`).
+- **`90134c6f`** (this review's own R2-heading fix, docs-only diff): `cpp (linux-gcc)` failed, one
+  case this time - `F3 (D1, crash handover): a journaled promise of a live owner is still counted
+  by the successor until the owner exits`
+  (`COUNTS: selected=2370 executed=2062 failed=1 ... VERDICT: FAIL`). Rerunning only that job -
+  [in progress / result below].
+
+**Both failures are in the exact same sub-family** (`F3 (D1, ...)`, the coordinator
+crash/drain-handover tests in `budget_f3_test.cpp`), and both triggering commits touch nothing but
+`.md` files - no C++ changed, no coordinator code, no test code, no build config. That two
+different, unrelated docs-only pushes each independently hit this same narrow test family, on two
+different Linux CI jobs, is itself evidence this is environment/timing, not a product defect in
+W4-UI-2 - but "probably timing" twice today without a bound is exactly the pattern this packet's
+own evidence-contract rules say not to wave through a second time.
+
+**Prior art in this project for this exact failure shape**: `docs/orchestration/REPORTS.md` (the
+T10c/coordinator round, line ~11154) already documents three failures in this identical sub-family
+(`F3 (D1, handover / crash handover / silent)`) attributed to `BIND-FAILED` on ports 47813/47814 -
+"the Debug run's test-started coordinators still held the ports, they idle out after 30s" - a
+concurrent-CI-job port-timing issue, not a coordinator logic defect. Today's two failures are
+consistent with the same general class (startup/handover races under CI's own concurrent-job
+timing), though not confirmed to be the identical port-collision mechanism - I have not reproduced
+either failure locally, only read the CI log lines above.
+
+**QUESTION for the owner**: what closes this, so a third occurrence doesn't get re-litigated from
+scratch again either?
+- **(a) Root-cause it properly** - reproduce locally (or in a dedicated CI job) under realistic
+  concurrent load, find the actual race (plausibly the same port-bind-timeout family as the T10c
+  precedent, but confirm rather than assume), and fix it.
+- **(b) An explicit acceptance bound**: N consecutive clean CI runs of the full
+  `anno_test_support_tests` suite (not just the one case that happened to fail) on `linux-gcc` and
+  `linux-gcc-release`, logged with their run ids, before this flake family is treated as "known and
+  harmless" rather than "investigate every time."
+
+**My recommendation**: (b) with **N = 5**, as the practical near-term bound - it's cheap (these are
+already-running CI jobs, not new work) and gives a concrete, falsifiable condition rather than an
+open-ended "probably fine." But (a) is the real fix if this keeps recurring at this rate (twice in
+one day), and I'd treat three or more occurrences in a week as past the point where (b) alone is
+the right answer - that pattern should trigger (a) regardless of where the N-count stands.
+
+Not blocking the merge decision below by itself (both occurrences are on docs-only commits, not on
+`b3d8793d`'s product-code diff, and both cleared on a job-level rerun) - but tracked here, by name,
+so it isn't quietly re-diagnosed as "probably a flake" a third time without this history.

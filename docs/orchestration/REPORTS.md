@@ -16563,3 +16563,198 @@ files and GPU tests on both the 4090 and the Radeon iGPU, the WSL gate's lanes, 
 the whole branch, `tools/check_unix_warnings.sh`, CI on the pushed head's all ten jobs), then draft
 the REPORTS.md E-section's factual content with status left as REVIEW PENDING, per the
 coordinator's instruction.
+
+## W4-UI-2 — Part E: final gates run, factual report — 2026-11-08 — status: REVIEW PENDING
+
+Per the coordinator's instruction: the mechanical final-gate work below is done; this entry's
+factual sections (verdict per part, element/screen tables, R3's recommendation, decisions,
+evidence paths) are drafted. **The independent-review section is intentionally not written here**
+- the coordinator is dispatching a separate, fresh reviewer and will fold their findings in before
+this goes further. Status stays REVIEW PENDING until that happens.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: head `b3d8793d` (pushed to `origin` and `gitlab`). All ten CI jobs green on this
+  head (run `42449679918`, confirmed below).
+- A separate, detached-HEAD worktree at the same commit, `E:\anno1503-worktrees\anno1503-W4-ui-2-wslgate`,
+  was created only to run the WSL ASan/UBSan gate (which refuses to run inside a live executor
+  worktree) and left in place afterward, matching this project's existing `-gatecheck` worktree
+  convention (`anno1503-W4-main-2-gatecheck`, `anno1503-W4-expand-live-1-gatecheck`, `anno1503-W4-gate`).
+
+### Verdict per part
+
+| Part | What it covers | Verdict |
+|---|---|---|
+| P | Finish W4-MAIN-2 first (the dispatch's own prerequisite) | Done, before this visible session |
+| F | (font/format groundwork preceding R) | Done, before this visible session |
+| R | ADR 0004 itself (`docs/adr/0004-ui-toolkit.md`) | Done; amended twice this entry's own round (the GPU-mechanism paragraph and the `src/sim` claim, both per the independent review) |
+| H | The HUD bar: gold always shown, four build-material counters + residents on construction screens only (H2) | Done; `ui_mock_matches_oracle`/`live_screen_matches_oracle` exact on both renderers' checked pixels |
+| C | The construction menu: category switch, grid, lock state from live eligibility, arm/build/demolish, the info/placement panel's chrome (C1-C6) | Done; the panel-click gating bug the independent review found is fixed (see the round immediately above this entry) |
+| M | The screen-tree table: all 19 in-game screens classified Bound/Partial/Placeholder | Done (`docs/adr/0004-ui-toolkit.md` "Screen tree: bound vs. placeholder (W4-UI-2 M)") |
+| V | The proof suite: window session (V1), fresh-process replay (V2), the command boundary (V3), multi-renderer pixel checks (V4), mutation checks (V5), `bench_frame` numbers (V6) | Done, all six; V4's CPU-exact/GPU-within-tolerance split reconfirmed clean in this entry's own gate run |
+| K | The owner playtest card | Done; corrected today (independent review finding #4) now that GPU rendering is fixed |
+| E | This entry: the mechanical final gate + factual report | Mechanical work done below; independent review and final sign-off pending |
+
+### Element/screen tables
+
+The authoritative table is `docs/adr/0004-ui-toolkit.md`'s own "Screen tree: bound vs. placeholder
+(W4-UI-2 M)" section (19 rows: HUD idle and the construction menu "Bound"; building info/placement
+and demolish "Partial"; the remaining 15 screens "Placeholder" - Kontor, help/military/options
+tabs, player/ship/city lists, pause, the rating screen, and the two real key collisions on
+`S`/`Q`/`D`), not restated here to avoid a second copy drifting from the first. The HUD element
+table (which `data/ui/hud.txt`/`masks.txt` element is bound to which draw call) is this round's
+own `ui_mock.cpp` source plus `data/ui/hud.txt`/`masks.txt` themselves, now the single source for
+every digit/chrome position per the independent review's fix (#2 above) - there is no separate
+table to keep in sync with those files any more.
+
+### R3 (the UI scale at 1440p/4K): recommendation
+
+`docs/adr/0004-ui-toolkit.md`'s own QUESTION R3 already carries a provisional recommendation
+(the fractional scale factor), written before H ever rendered a frame and explicitly conditioned
+on screenshots H3 would attach later. Having now built and screenshotted the real HUD/menu at the
+reference 1024 x 768 (H2/C1-C6, this session's many checkpoints), **nothing found changes that
+recommendation** - but it remains unimplemented and untested at any size other than exactly
+1024 x 768 (confirmed again in this entry's own V1/V4 runs: the menu only responds at that exact
+drawable size). Recommendation to whoever picks up R3's implementation: keep the fractional-factor
+default, read from one configuration value as R1 already specifies, and attach 1440p/4K
+screenshots of the real (not mocked) HUD/menu once that implementation lands, rather than deciding
+from the 1024 x 768 screenshots this package has.
+
+I could not find a separately-numbered "R2" QUESTION in the current `docs/adr/0004-ui-toolkit.md`
+or elsewhere in `docs/` - only R3 is a formally headed open question in this ADR. If the original
+dispatch packet named a distinct R2 (e.g. the construction menu's default surface in `--play`),
+that text is not in a committed file I could locate from this worktree; flagging this as a
+QUESTION for the coordinator rather than inventing a recommendation for a question I cannot
+confirm the wording of.
+
+### The mechanical final gate (this entry's own work)
+
+**1. Full `ctest --preset msvc` with game files, RTX 4090.** Via the canonical evidence-contract
+gate (`tools/test/run_selected.py --asset-policy required`, matching this host having
+`ANNO1503_GAME_DIR` set): `selected=2355 executed=2344 failed=0 empty=0 skipped=11 (platform=2
+opt-in=6 other=3) incomplete=0 sanitizer_lines=0`. Every skip, named with its reason:
+- **2 platform** (`anno_test_support_tests`, two Linux/POSIX-only coordinator-descriptor probes:
+  "a descriptor the client holds without close-on-exec does not reach the coordinator it spawns",
+  "a captured pipeline ends without waiting for the coordinator's idle exit") - correctly
+  Windows-skip, nothing to run here.
+- **6 opt-in** (an environment switch not set in this run, by design): `SCRIPT2 original encoded
+  canary replay worker`; `resilience: harvest search work against unrelated farms (opt-in measure,
+  Release samples)`; `nav scale measurements (ANNO_SIM_NAV_SCALE)`; `transport search statistics
+  (ANNO_SIM_TRANSPORT_STATS)`; `probe: whole-scene rebuild and a coalesced 50-build burst on the
+  fixed map`; `probe: per-island object-list build, commit and a 50-build burst (ScenePicture)`.
+- **3 "other"** - all three are `ship_start_load_test.cpp`'s own `"skipping the symlink rows: Dem
+  Client fehlt ein erforderliches Recht"` (German: this account lacks the privilege to create a
+  symlink) - a Windows account-privilege limitation, not a gap in this package, and already a
+  named, accepted exception in `ctest_verdict_test.py`'s own contract test (`allowed_other`'s
+  `"skipping the symlink rows: "` entry) for exactly this reason. The gate's default policy does
+  not auto-allow "other" (by design, every use needs an explicit, justified `--allow-skip other`
+  from whoever runs it); named and justified here rather than silently passed with the flag.
+  Unrelated to W4-UI-2 - `ship_start_load_test.cpp` is ship-founding code, not touched this
+  package.
+- A first attempt at this same full run showed 14 unrelated tests (river/flow rendering,
+  `chunk_draws_corpus_test.cpp`, two `scenario_test.cpp` population/corpus cases) failing with
+  `[anno-test memory] refused estimate=1073741824 reason=low-memory stop` - traced to the WSL
+  ASan/UBSan gate's VM (`vmmemWSL`, ~10.7 GB) running concurrently on the same host and starving
+  the memory-budget coordinator's headroom, not a product defect. Re-run in isolation, after the
+  WSL gate finished and freed that memory, all 14 passed cleanly - the number this entry reports
+  above. Evidence: `C:\Users\altin\AppData\Local\Temp\gate_full_4090.log` (the clean canonical-gate
+  log) and the two raw `ctest -V` logs behind the contended/clean comparison, kept locally on this
+  host (not committed - they are run-local evidence, same as every other gate log this project
+  produces).
+- `anno_render_gpu_tests` (116 cases, the RTX 4090, included in the 2344 executed): all pass,
+  folded into the count above.
+
+**2. GPU tests on the Radeon iGPU.** `ANNO_REQUIRE_GPU=1 ANNO_GPU_ADAPTER=1 ctest --preset msvc -L
+gpu` (the method `docs/testing/gpu-tests.md` documents): **116/116 pass**, including `play: GPU
+matches the CPU path on one scene, on the Radeon iGPU` by name.
+
+**3. The WSL gate** (`tools/test/wsl_gate.sh`, run against the separate detached worktree above,
+`--gpu-lane`, tag `w4ui2parte`): app/sim/formats/tsupport lanes **PASS** (`selected=293
+executed=291 skipped=2 opt-in` / `selected=1452 executed=1448 skipped=4 opt-in` / `selected=97
+executed=97` / `selected=89 executed=85 skipped=4 opt-in` - all clean). Two lanes show a failure,
+neither caused by this package:
+- **render lane, 1 failure**: `a flow build that fails leaves the legacy look, final, built once
+  (game files)` - the exact flaky settle-condition test the independent reviewer of
+  W4-SETTLEMENT-1's own W7 gate already diagnosed and named
+  (`docs/orchestration/reviews/2026-11-07-w4-settlement-1-w7.md`: `FrameRenderer::update_chunks`
+  counts margin-ring chunks the test's 60-frame "nothing rebuilds" loop does not account for; a
+  repeated run settles it). No file under `src/render` in this branch's diff differs from that
+  review's own finding.
+- **gpu lane (lavapipe), 2 failures**: `play: GPU matches the CPU path on one scene` and the same
+  test `on the Radeon iGPU` - two of the same review's named "18 real-file test failures [that]
+  belong to main" (`f7c31ed8`'s strict scene loader, confirmed to reproduce at main `96775da4`
+  with the same messages, assigned to a separate task, W4-MAIN-2 part A, per the owner's
+  2026-11-07 decision in `docs/orchestration/TASKS.md`). Confirmed on this branch: both
+  `f7c31ed8` and `d2be23aa` (the construction-eligibility stage lock, the review's other named
+  cause) are ancestors of this branch's head, so it inherits them from `main` exactly as every
+  other current branch does; nothing in W4-UI-2's own diff touches scene loading or construction
+  eligibility's stage-lock logic.
+
+**4. `clang-format` 23.1.3 over the whole branch.** Installed fresh via `pip install --target
+<scratch dir> clang-format==23.1.3` (this checkout had no cached binary). Dry-run over every
+`.cpp`/`.hpp` file this branch changes versus `origin/main` (48 files, `git diff --name-only
+origin/main...HEAD`): clean, zero violations.
+
+**5. `tools/check_unix_warnings.sh`.** All four lanes clean: GCC 13.3.0 and Clang 18.1.3, each with
+the viewer+GPU compiled in (371 files) and without (73 files).
+
+**6. CI on the pushed head, all ten jobs.** Run `42449679918` (the independent-review-fixes
+commit): `cpp-format`, `cpp (linux-gcc)`, `cpp (macos-clang)`, `test (ubuntu-latest)`,
+`build-macos`, `cpp (linux-gcc-release)`, `cpp (windows-msvc)`, `test (windows-latest)`, `lint`,
+`cpp (linux-clang-asan)` - **all ten green.** The prior four pushes on this branch had shown
+`failure` in every non-Windows `cpp` matrix job: root-caused (not assumed) to
+`ctest_verdict.py`'s `PLATFORM` regex not recognizing `live_screen_matches_oracle`'s own
+"skipping: the screenshot step is Windows-only (viewer.cpp)" message, classing it "other" and
+failing the gate's default policy on every job except `windows-msvc` (where that test actually
+runs, never skips) - the same shape as the W4-MAIN-1 incident `ctest_verdict_test.py` already
+documents for two other phrasings. Fixed by extending `PLATFORM` to recognize `Windows[- ]only`/
+`needs? Windows` phrasings and adding the regression case, pushed separately before the
+independent-review fixes (commit `86d2fe0c`); confirmed green on the next run (`42448750944`)
+before the independent-review-fixes commit was even pushed.
+
+### Decisions and reasoning
+
+1. **Did not accept the first full-ctest run's 14 failures at face value.** Every one printed
+   `[anno-test memory] refused ... reason=low-memory stop`, not an assertion failure - a different
+   shape from a real defect. Checked the host's own concurrent load (`vmmemWSL` ~10.7 GB, the WSL
+   gate running at the same time) before concluding anything about the product, then re-ran in
+   isolation rather than reporting a false positive or quietly omitting the first run's numbers.
+2. **Cross-checked against a clean `main` build rather than reasoning from git ancestry alone**,
+   for the first run's 14 names, before attributing them to contention - evidence over inference,
+   per CLAUDE.md's own rule, even though the git-ancestry argument (both suspect root-cause commits
+   are ancestors of this branch) already pointed the same way.
+3. **Named the three Windows-symlink "other" skips individually with their German error text and
+   the existing contract-test precedent that already accepts this exact phrasing**, rather than
+   passing `--allow-skip other` silently or, worse, leaving the gate at its failing exit code
+   unexplained. The coordinator's instruction was explicit: "don't gloss over any skip."
+4. **Did not re-litigate the WSL gate's two pre-existing failures.** Both are already independently
+   diagnosed and attributed in a committed review (the flaky settle condition; the two `f7c31ed8`-
+   caused cases, assigned elsewhere as "main's repair... does not belong in this package"). Re-
+   deriving the same conclusion from scratch here would have been redundant evidence-gathering
+   against an already-settled, already-reviewed fact; citing it is not the same as skipping
+   verification - the citation itself was checked against this branch (the ancestry check, #2
+   above) before relying on it.
+5. **Left the independent-review section entirely unwritten**, per the coordinator's explicit
+   instruction, rather than drafting even a placeholder claiming self-review - the whole point of
+   dispatching a fresh, context-free reviewer is that this session cannot be its own check.
+
+### Evidence paths
+
+- `docs/adr/0004-ui-toolkit.md` (R, M, R3, the two corrections from the independent review).
+- `docs/testing/construction-menu-playtest.md` (K, corrected for the GPU fix).
+- `docs/orchestration/REPORTS.md` (every checkpoint entry cited above, this file, by heading).
+- `docs/orchestration/reviews/2026-11-07-w4-settlement-1-w7.md` (the two pre-existing WSL-gate
+  failures' own prior diagnosis).
+- `docs/orchestration/TASKS.md` (the owner's 2026-11-07 assignment of main's 18 real-file test
+  repairs elsewhere).
+- CI run `42449679918` (all ten jobs); CI run `42448750944` (the gate-classifier fix alone, green).
+- `tools/test/ctest_verdict.py`/`ctest_verdict_test.py` (the gate-classifier fix and its
+  regression case).
+- Local, uncommitted run evidence on this host: `C:\Users\altin\AppData\Local\Temp\gate_full_4090.log`
+  (the clean canonical full-suite gate log); the WSL gate's own summary and per-lane logs under
+  `~/anno-gate-logs/anno1503-W4-ui-2-wslgate/` inside WSL Ubuntu.
+
+### Next
+
+Independent review (dispatched separately by the coordinator) and this entry's own sign-off.
+Status stays REVIEW PENDING until the coordinator folds that review's findings in.

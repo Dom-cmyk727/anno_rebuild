@@ -86,16 +86,29 @@ browsing and closing every menu without issuing a command leaves the state hash 
 
 ## Rendering
 
-**A GPU path and a CPU reference path, compared pixel by pixel** (CLAUDE.md's own rule): the GPU
-path blits atlas-resident UI textures with the existing straight-alpha sprite instance draw
-(`gpu.wgsl`'s `sprite_vs`/`sprite_fs`); the CPU path decodes and blits the same elements in plain
-C++ (closely related to, but not the same code as, `tools/ui_layout.py`'s own Python
+**A GPU path and a CPU reference path, compared pixel by pixel** (CLAUDE.md's own rule). This ADR
+first planned the GPU path as a reuse of the existing straight-alpha sprite instance draw
+(`gpu.wgsl`'s `sprite_vs`/`sprite_fs`) — wrong once implemented (W4-UI-2, 2026-11-08): that path is
+structurally tied to `render::SpriteDraw`'s world-tile-projected sprite records, which cannot carry
+`.tex`/`.zei` UI content or fixed screen-space positions. The GPU path actually implemented
+composes the same live state into a transparent RGBA canvas on the CPU
+(`anno::app::draw_live_screen_rgba`, `ui_mock.hpp`/`.cpp`) and blends it over the already-rendered
+frame with a full-screen pass that reuses the existing resample/zoom post-process's vertex stage
+(`gpu.wgsl`'s `scale_vs`, new `ui_overlay_fs`). `draw_live_screen_rgba` is a separate function from
+the CPU path's own `draw_live_screen_xrgb` — not shared code — but over the same data/ui/ layouts,
+live eligibility/counters and digit-rectangle lookups; the two are not independent implementations
+of those details, so the real safety net against them drifting apart is each path's own pixel
+comparison against the UI.1 oracle (`ui_mock_matches_oracle`, `live_screen_matches_oracle
+--renderer gpu`), not independence. The CPU path itself decodes and blits the same elements in
+plain C++ (closely related to, but not the same code as, `tools/ui_layout.py`'s own Python
 `compose_screen`/`blit_rgba`, which is the **oracle**, not the shipped CPU path — the shipped CPU
 renderer is new C++ in `src/render`/`src/app`, checked *against* the oracle, same as every other
-CPU-vs-GPU-vs-oracle triple this project already keeps). Exact match is the target (as the world's
-existing `over`/atlas-texel contract already achieves, §5(c) of `gpu-chunks.md`): UI sprites are
-not blended against moving water or ships, so there is no float-rounding source to tolerate in the
-first place.
+CPU-vs-GPU-vs-oracle triple this project already keeps). Exact match is the target on the CPU path;
+the GPU path is checked within this project's own established F2.1 tolerance (channel ≤ 48,
+fraction ≤ 0.08) rather than exact match, since the full-screen blend pass's own float sampling
+(not present in the CPU path at all) is a real, if tiny, source of per-pixel difference — measured
+at 28 of ~200,000+ checked pixels (fraction ~0.0001–0.0002), all at sprite-corner pixels, none in
+digit/grid content.
 
 ## Testing
 
@@ -180,5 +193,9 @@ redesign.
 
 - **The construction menu's lock authority** (the sim's `construction_eligibility`, unchanged by
   this ADR — C2).
-- **Any new sim behaviour.** This ADR adds no `src/sim` change; a UI.2 screen that needs one stops
-  and asks, per the dispatch's rule 0.2.
+- **Any new sim behaviour.** This ADR adds no `src/sim` *behaviour* change; a UI.2 screen that
+  needs one stops and asks, per the dispatch's rule 0.2. It does add one new read-only sim query
+  (`World::city_population`, wrapping the existing `residents_at_or_above` the stage pass already
+  uses, for the HUD's residents counter) — explicitly allowed by rule 0.2 itself ("a new read-only
+  sim query is allowed if it changes no state, stream, hash or draw"), not an exception to this
+  bullet's own rule against new behaviour.

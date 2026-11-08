@@ -105,6 +105,28 @@ struct ConstructionDemolish {
     std::string access;
 };
 
+/// One `mask` line of masks.txt (docs/re/ui.md's pixel-comparison exclusions): a sprite-sad-
+/// measured rectangle and why it is excluded from the oracle comparison (`reason`, evidence only -
+/// never read for drawing logic itself). The live-digit masks (`gold_digits`,
+/// `baumat_{tools,wood,bricks,marble}_d`, `einwohner_digits`) are the only real measured rectangle
+/// for where the HUD's live numbers belong (H2) - draw_live_screen_xrgb/_rgba read them from here
+/// rather than carrying their own copy of the coordinates (ADR 0004 R1's "no coordinate lives in
+/// code", the same rule category_at() follows for hud.txt's `viewbautab_0`).
+struct UiMask {
+    std::string name;
+    int pos_x = 0, pos_y = 0;
+    unsigned size_w = 0, size_h = 0;
+    std::string reason;
+};
+
+struct MaskLayout {
+    int resolution_w = 0, resolution_h = 0;
+    std::vector<UiMask> masks;
+
+    /// nullptr when no mask of that name exists.
+    [[nodiscard]] const UiMask* mask(const std::string& name) const;
+};
+
 struct ConstructionLayout {
     int resolution_w = 0, resolution_h = 0;
     std::optional<char> open_key;
@@ -127,12 +149,16 @@ struct ConstructionLayout {
 /// Parses construction.txt's text (`anno1503-ui-construction 1`).
 [[nodiscard]] formats::Result<ConstructionLayout, std::string>
 parse_construction_layout(const std::string& text);
+/// Parses masks.txt's text (`anno1503-ui-masks 1`).
+[[nodiscard]] formats::Result<MaskLayout, std::string> parse_mask_layout(const std::string& text);
 
-/// Reads `path` and parses it as hud.txt / construction.txt. An error also names the file when it
-/// cannot be read.
+/// Reads `path` and parses it as hud.txt / construction.txt / masks.txt. An error also names the
+/// file when it cannot be read.
 [[nodiscard]] formats::Result<HudLayout, std::string>
 load_hud_layout(const std::filesystem::path& path);
 [[nodiscard]] formats::Result<ConstructionLayout, std::string>
 load_construction_layout(const std::filesystem::path& path);
+[[nodiscard]] formats::Result<MaskLayout, std::string>
+load_mask_layout(const std::filesystem::path& path);
 
 } // namespace anno::app

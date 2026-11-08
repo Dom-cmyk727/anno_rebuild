@@ -399,8 +399,8 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
 }
 
 std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
-                                  const ConstructionLayout& construction, const UiMockSpec& screen,
-                                  UiTexCache& cache_wrapper,
+                                  const ConstructionLayout& construction, const MaskLayout& masks,
+                                  const UiMockSpec& screen, UiTexCache& cache_wrapper,
                                   const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                                   const HudCounters& counters, bool placement_open) {
     if (dst == nullptr || dst_w != hud.resolution_w || dst_h != hud.resolution_h)
@@ -444,17 +444,31 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     }
     blit_el("statusbar");
     blit_el("gold");
-    // H2: the gold counter, shown on both the idle HUD and the construction screen (OQ-538's own
-    // evidence: "On hud_idle_running the bar shows gold"). Position: data/ui/masks.txt
-    // `gold_digits` (34, 733) 96 x 35 - the same sprite-sad measurement the chrome rectangles
-    // above were measured by; nothing drew into it until this checkpoint, so it stayed a mask.
-    // Left-aligned at the rectangle's own left edge, vertically centred in its 35 px band by the
-    // font's measured digit height (MainSmall '0' is 25 px tall, zei.md); plain decimal digits,
-    // no thousands separator (no RE evidence for one). The colour/alpha mapping of the font's
-    // three levels is a flagged default, not an RE fact - OQ-031.
+    // H2: the digit font's measured glyph height (MainSmall '0' is 25 px tall, zei.md) and each
+    // counter's own masks.txt rectangle (ADR 0004 R1: "no coordinate lives in code" - the same
+    // rule category_at() follows for hud.txt's `viewbautab_0`). Left-aligned at the rectangle's
+    // own left edge, vertically centred in its band by the glyph height; plain decimal digits, no
+    // thousands separator (no RE evidence for one). A counter whose named mask is missing draws
+    // nothing for it, never a guessed position. The colour/alpha mapping of the font's three
+    // levels is a flagged default, not an RE fact - OQ-031.
+    constexpr int kDigitGlyphH = 25;
+    const auto digit_origin =
+        [&masks](const std::string& mask_name) -> std::optional<std::pair<int, int>> {
+        const UiMask* m = masks.mask(mask_name);
+        if (m == nullptr)
+            return std::nullopt;
+        return std::make_pair(m->pos_x,
+                              m->pos_y + (static_cast<int>(m->size_h) - kDigitGlyphH) / 2);
+    };
+    // The gold counter, shown on both the idle HUD and the construction screen (OQ-538's own
+    // evidence: "On hud_idle_running the bar shows gold"). data/ui/masks.txt `gold_digits` - the
+    // same sprite-sad measurement the chrome rectangles above were measured by; nothing drew into
+    // it until this checkpoint, so it stayed a mask.
     if (counters.gold) {
-        draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.gold), 34,
-                       733 + (35 - 25) / 2);
+        if (const auto pos = digit_origin("gold_digits")) {
+            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.gold),
+                           pos->first, pos->second);
+        }
     }
     if (is_construction) {
         blit_el("baumat_tools");
@@ -462,26 +476,34 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         blit_el("baumat_bricks");
         blit_el("baumat_marble");
         // H2: the four build-material counters - construction-screen only (OQ-538, resolved:
-        // "tools/wood/bricks digits are absent" from the idle HUD). Positions: data/ui/masks.txt
-        // baumat_{tools,wood,bricks,marble}_d, each 28 x 35 at y 733, x 162/222/282/342, in that
-        // order (OQ-538's own segment order). Values are the caller's (whole tons, already
-        // converted from the city's 8.8-fixed-point stock by goods identity - HudCounters's own
-        // doc comment); this function only formats and draws.
+        // "tools/wood/bricks digits are absent" from the idle HUD). masks.txt
+        // baumat_{tools,wood,bricks,marble}_d, in that order (OQ-538's own segment order). Values
+        // are the caller's (whole tons, already converted from the city's 8.8-fixed-point stock
+        // by goods identity - HudCounters's own doc comment); this function only formats and
+        // draws.
         if (counters.tools) {
-            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.tools), 162,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("baumat_tools_d")) {
+                draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.tools),
+                               pos->first, pos->second);
+            }
         }
         if (counters.wood) {
-            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.wood), 222,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("baumat_wood_d")) {
+                draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.wood),
+                               pos->first, pos->second);
+            }
         }
         if (counters.bricks) {
-            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.bricks), 282,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("baumat_bricks_d")) {
+                draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.bricks),
+                               pos->first, pos->second);
+            }
         }
         if (counters.marble) {
-            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.marble), 342,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("baumat_marble_d")) {
+                draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.marble),
+                               pos->first, pos->second);
+            }
         }
     }
     blit_el("fragezeichen");
@@ -491,13 +513,15 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     if (is_construction) {
         blit_el("einwohner");
         // H2: the residents counter - construction-screen only, same as the icon itself
-        // (docs/re/ui.md 2.1: `STATUSBAR_EINWOHNER` is "absent from pass-2 idle"). Position:
-        // data/ui/masks.txt `einwohner_digits` (439, 733) 108 x 35 - a real measured rectangle;
-        // what format the original draws inside it (a plain count vs. e.g. a ratio) is open -
-        // OQ-564 already covers "alignment within a measured rectangle is not itself evidence".
+        // (docs/re/ui.md 2.1: `STATUSBAR_EINWOHNER` is "absent from pass-2 idle"). masks.txt
+        // `einwohner_digits` - a real measured rectangle; what format the original draws inside
+        // it (a plain count vs. e.g. a ratio) is open - OQ-564 already covers "alignment within a
+        // measured rectangle is not itself evidence".
         if (counters.residents) {
-            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.residents), 439,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("einwohner_digits")) {
+                draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.residents),
+                               pos->first, pos->second);
+            }
         }
     }
     blit_el("zoom_plus");
@@ -562,21 +586,22 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
 
 formats::Result<assets::Rgba, std::string>
 draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayout& construction,
-                      const UiMockSpec& screen, UiTexCache& cache_wrapper,
+                      const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache_wrapper,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters, bool placement_open) {
     if (w != hud.resolution_w || h != hud.resolution_h)
         return std::string(
             "draw_live_screen_rgba: destination size does not match the layout's resolution");
 
-    // R1, the GPU path (ADR 0004 "Rendering"): the same live state draw_live_screen_xrgb composes
-    // into the CPU buffer, composed here instead into a canvas that starts fully transparent (so
-    // it can be uploaded as one texture and alpha-blended *over* the GPU-rendered frame as a
-    // single full-screen quad - viewer.cpp's draw_gpu, the "ui overlay" pass). Independently
-    // written against the same data/ui/ layouts and the same live eligibility/counters, not
-    // sharing code with draw_live_screen_xrgb - this project's own CPU-vs-GPU-vs-oracle
-    // convention (ADR 0004's own words), cross-checked by a pixel test against the same oracle
-    // draw_live_screen_xrgb already is.
+    // The GPU path's CPU-side half: the same live state draw_live_screen_xrgb composes into the
+    // CPU buffer, composed here instead into a canvas that starts fully transparent (so it can be
+    // uploaded as one texture and blended *over* the GPU-rendered frame by a full-screen pass -
+    // gpu.wgsl's `ui_overlay_fs`, viewer.cpp's draw_gpu). A separate function from
+    // draw_live_screen_xrgb, not shared code, but over the same data/ui/ layouts and the same
+    // live eligibility/counters/digit-rectangle lookups - the real safety net against the two
+    // drifting apart is each path's own pixel comparison against the UI.1 oracle
+    // (ui_mock_matches_oracle / live_screen_matches_oracle --renderer gpu), not independent
+    // implementation of the digit literals.
     UiTexCache::Impl& cache = cache_wrapper.impl();
     const bool is_construction = screen.kind == UiMockScreen::Construction;
     const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
@@ -612,8 +637,22 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
     }
     blit_el("statusbar");
     blit_el("gold");
+    // H2: masks.txt's own measured rectangles (ADR 0004 R1 - see draw_live_screen_xrgb's own
+    // comment on digit_origin, mirrored here).
+    constexpr int kDigitGlyphH = 25;
+    const auto digit_origin =
+        [&masks](const std::string& mask_name) -> std::optional<std::pair<int, int>> {
+        const UiMask* m = masks.mask(mask_name);
+        if (m == nullptr)
+            return std::nullopt;
+        return std::make_pair(m->pos_x,
+                              m->pos_y + (static_cast<int>(m->size_h) - kDigitGlyphH) / 2);
+    };
     if (counters.gold) {
-        draw_text_rgba(canvas, digit_font, std::to_string(*counters.gold), 34, 733 + (35 - 25) / 2);
+        if (const auto pos = digit_origin("gold_digits")) {
+            draw_text_rgba(canvas, digit_font, std::to_string(*counters.gold), pos->first,
+                           pos->second);
+        }
     }
     if (is_construction) {
         blit_el("baumat_tools");
@@ -621,20 +660,28 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
         blit_el("baumat_bricks");
         blit_el("baumat_marble");
         if (counters.tools) {
-            draw_text_rgba(canvas, digit_font, std::to_string(*counters.tools), 162,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("baumat_tools_d")) {
+                draw_text_rgba(canvas, digit_font, std::to_string(*counters.tools), pos->first,
+                               pos->second);
+            }
         }
         if (counters.wood) {
-            draw_text_rgba(canvas, digit_font, std::to_string(*counters.wood), 222,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("baumat_wood_d")) {
+                draw_text_rgba(canvas, digit_font, std::to_string(*counters.wood), pos->first,
+                               pos->second);
+            }
         }
         if (counters.bricks) {
-            draw_text_rgba(canvas, digit_font, std::to_string(*counters.bricks), 282,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("baumat_bricks_d")) {
+                draw_text_rgba(canvas, digit_font, std::to_string(*counters.bricks), pos->first,
+                               pos->second);
+            }
         }
         if (counters.marble) {
-            draw_text_rgba(canvas, digit_font, std::to_string(*counters.marble), 342,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("baumat_marble_d")) {
+                draw_text_rgba(canvas, digit_font, std::to_string(*counters.marble), pos->first,
+                               pos->second);
+            }
         }
     }
     blit_el("fragezeichen");
@@ -644,8 +691,10 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
     if (is_construction) {
         blit_el("einwohner");
         if (counters.residents) {
-            draw_text_rgba(canvas, digit_font, std::to_string(*counters.residents), 439,
-                           733 + (35 - 25) / 2);
+            if (const auto pos = digit_origin("einwohner_digits")) {
+                draw_text_rgba(canvas, digit_font, std::to_string(*counters.residents), pos->first,
+                               pos->second);
+            }
         }
     }
     blit_el("zoom_plus");

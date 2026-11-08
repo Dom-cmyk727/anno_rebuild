@@ -104,6 +104,14 @@ const ConstructionCategory* ConstructionLayout::category(const std::string& name
     return nullptr;
 }
 
+const UiMask* MaskLayout::mask(const std::string& name) const {
+    for (const auto& m : masks) {
+        if (m.name == name)
+            return &m;
+    }
+    return nullptr;
+}
+
 const ConstructionCell* ConstructionLayout::cell(const std::string& cat, int col, int row) const {
     for (const auto& c : cells) {
         if (c.category == cat && c.col == col && c.row == row)
@@ -499,6 +507,71 @@ parse_construction_layout(const std::string& text) {
     return out;
 }
 
+formats::Result<MaskLayout, std::string> parse_mask_layout(const std::string& text) {
+    MaskLayout out;
+    bool saw_version = false;
+    for (auto& [line_no, tok] : split_lines(text)) {
+        if (!tok.more())
+            continue;
+        const std::string kind = tok.take();
+        if (!saw_version) {
+            if (kind != "anno1503-ui-masks")
+                return fail(line_no, "expected version line 'anno1503-ui-masks 1'");
+            saw_version = true;
+            continue;
+        }
+        if (kind == "resolution") {
+            if (tok.words.size() < tok.next + 2)
+                return fail(line_no, "resolution: missing width/height");
+            const auto w = to_int(tok.take());
+            const auto h = to_int(tok.take());
+            if (!w || !h)
+                return fail(line_no, "resolution: not integers");
+            out.resolution_w = *w;
+            out.resolution_h = *h;
+        } else if (kind == "mask") {
+            if (!tok.more())
+                return fail(line_no, "mask: missing name");
+            UiMask m;
+            m.name = tok.take();
+            while (tok.more()) {
+                const std::string key = tok.take();
+                if (key == "pos") {
+                    if (tok.words.size() < tok.next + 2)
+                        return fail(line_no, "pos: missing x/y");
+                    const auto x = to_int(tok.take());
+                    const auto y = to_int(tok.take());
+                    if (!x || !y)
+                        return fail(line_no, "pos: not integers");
+                    m.pos_x = *x;
+                    m.pos_y = *y;
+                } else if (key == "size") {
+                    if (tok.words.size() < tok.next + 2)
+                        return fail(line_no, "size: missing w/h");
+                    const auto w = to_int(tok.take());
+                    const auto h = to_int(tok.take());
+                    if (!w || *w < 0 || !h || *h < 0)
+                        return fail(line_no, "size: not non-negative integers");
+                    m.size_w = static_cast<unsigned>(*w);
+                    m.size_h = static_cast<unsigned>(*h);
+                } else if (key == "reason") {
+                    if (!tok.more())
+                        return fail(line_no, "reason: missing value");
+                    m.reason = opt_str(tok.take());
+                } else {
+                    return fail(line_no, "mask: unknown key '" + key + "'");
+                }
+            }
+            out.masks.push_back(std::move(m));
+        } else {
+            return fail(line_no, "unknown line kind '" + kind + "'");
+        }
+    }
+    if (!saw_version)
+        return std::string("empty file: missing version line");
+    return out;
+}
+
 namespace {
 std::optional<std::string> read_file(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
@@ -523,6 +596,13 @@ load_construction_layout(const std::filesystem::path& path) {
     if (!text)
         return "cannot read " + path.string();
     return parse_construction_layout(*text);
+}
+
+formats::Result<MaskLayout, std::string> load_mask_layout(const std::filesystem::path& path) {
+    const auto text = read_file(path);
+    if (!text)
+        return "cannot read " + path.string();
+    return parse_mask_layout(*text);
 }
 
 } // namespace anno::app

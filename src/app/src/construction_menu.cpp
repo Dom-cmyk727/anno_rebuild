@@ -9,15 +9,22 @@ bool ConstructionMenu::inside(double px, double py, int x, int y, unsigned w, un
 }
 
 std::optional<std::string> ConstructionMenu::category_at(double px, double py) const {
-    // The column itself (ADR 0004 R1; docs/re/ui.md section 2.1/2.4): x = right chrome + the
-    // VIEWBAUTAB gadget's own left edge. The gadget is 42 px wide from x=779 (docs/re/ui.md
-    // section 2.4's "(779, click_y-23) 42 x 46"); the column x does not vary by category.
-    constexpr double kColumnX = 779.0, kColumnW = 42.0, kHalfHeight = 23.0;
-    if (px < kColumnX || px >= kColumnX + kColumnW) {
+    // The column itself (ADR 0004 R1; docs/re/ui.md section 2.1/2.4): data/ui/hud.txt's own
+    // measured `viewbautab_0` rectangle ((779, 302) 42 x 46), not `click category_column_x`
+    // (that field is a click point for driving the Wine runner, not a rectangle - the same
+    // distinction the pickaxe/cancel-X comments below draw for their own hud.txt fields). The
+    // column x and height do not vary by category; only each tab's own `y` (construction.txt)
+    // does.
+    const auto* tab = hud_->element("viewbautab_0");
+    if (tab == nullptr || !tab->has_pos || !tab->has_size) {
+        return std::nullopt; // No measured rectangle: never guess one.
+    }
+    const double column_x = tab->pos_x, column_w = tab->size_w, half_height = tab->size_h / 2.0;
+    if (px < column_x || px >= column_x + column_w) {
         return std::nullopt;
     }
     for (const auto& cat : construction_->categories) {
-        if (py >= cat.y - kHalfHeight && py < cat.y + kHalfHeight) {
+        if (py >= cat.y - half_height && py < cat.y + half_height) {
             return cat.name;
         }
     }
@@ -73,6 +80,11 @@ ConstructionMenu::click(double px, double py, const std::string& open_category, 
             result.kind = ConstructionClickKind::Cancel;
             return result;
         }
+        // The info/placement panel (data/ui/hud.txt's `info_panel`, (804,302) 220x466) covers the
+        // grid's own extent while it is open; nothing else on it (rotate arrows, the cost/upkeep
+        // chrome) is wired to a command yet, so any other click here is a no-op, not a fall-through
+        // into cell_at() against grid coordinates the panel is drawn over instead of the grid.
+        return result; // None: the panel is open and this was not infoexit
     } else {
         // The pickaxe (ABRISSICON): data/ui/hud.txt's own measured rectangle (docs/re/ui.md
         // section 2.4: (970, 710) 53 x 53), not construction.txt's `demolish` click centre (that

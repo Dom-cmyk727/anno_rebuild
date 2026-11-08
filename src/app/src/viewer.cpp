@@ -333,6 +333,7 @@ class Viewer {
                                                                  : nullptr),
           construction_game_dir_(construction_menu_ != nullptr ? hooks->construction_game_dir
                                                                : std::filesystem::path{}),
+          construction_masks_(construction_menu_ != nullptr ? hooks->construction_masks : nullptr),
           script_(dev_ != nullptr ? hooks->script : nullptr),
           hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr),
           opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr) {
@@ -531,6 +532,10 @@ class Viewer {
     /// overlap - ConstructionMenu::click's own doc comment).
     ConstructionMenu* construction_menu_ = nullptr;
     std::filesystem::path construction_game_dir_;
+    /// data/ui/masks.txt (ViewerHooks::construction_masks): the H2 live-digit counters' own
+    /// measured rectangles, read by draw_live_screen_xrgb/_rgba. Null exactly when
+    /// construction_menu_ is null.
+    MaskLayout* construction_masks_ = nullptr;
     /// Persists decoded `.tex` files and fonts across frames (ADR 0004 "Atlases": no re-decode
     /// per frame - the first H1/C1 slice built one fresh every call, re-reading every HUD/menu
     /// texture off disk each frame; this is the fix). Constructed once, in the constructor body,
@@ -2453,9 +2458,9 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         const auto in = construction_hud_inputs();
         auto drawn = draw_live_screen_rgba(
             static_cast<int>(w), static_cast<int>(h), construction_menu_->hud(),
-            construction_menu_->construction(), in.spec, *construction_tex_cache_,
-            in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
-            construction_placement_open_);
+            construction_menu_->construction(), *construction_masks_, in.spec,
+            *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
+            in.counters, construction_placement_open_);
         if (drawn.ok()) {
             ui_overlay_image = std::move(drawn).value();
         }
@@ -2636,7 +2641,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         const auto in = construction_hud_inputs();
         static_cast<void>(draw_live_screen_xrgb(
             buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
-            in.spec, *construction_tex_cache_,
+            *construction_masks_, in.spec, *construction_tex_cache_,
             in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
             construction_placement_open_));
         construction_ui_ms = since_ms(ui_start, Clock::now());

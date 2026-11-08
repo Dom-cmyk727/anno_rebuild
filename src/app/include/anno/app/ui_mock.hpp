@@ -123,25 +123,31 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// ~120 anywhere in the panel) - this draws only the chrome evidence already supports.
 ///
 /// An error names the screen, the missing file, or the parse failure; nothing is drawn on one.
+/// `masks` is data/ui/masks.txt (the H2 live-digit counters' own measured rectangles -
+/// `gold_digits`/`baumat_{tools,wood,bricks,marble}_d`/`einwohner_digits`; a counter whose named
+/// mask is missing from `masks` draws nothing for it, never a guessed position).
 [[nodiscard]] std::string
 draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
-                      const ConstructionLayout& construction, const UiMockSpec& screen,
-                      UiTexCache& cache,
+                      const ConstructionLayout& construction, const MaskLayout& masks,
+                      const UiMockSpec& screen, UiTexCache& cache,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters = {}, bool placement_open = false);
 
 /// `draw_live_screen_xrgb`'s own state and arguments, composed instead into a fresh RGBA canvas
-/// that starts fully transparent (every byte 0, not the oracle's own alpha-255 convention) -
-/// R1's GPU path (ADR 0004 "Rendering": "the GPU path blits atlas-resident UI textures..."; this
-/// is the CPU-side half of that - the caller uploads the result as one texture and alpha-blends
-/// it over the GPU-rendered frame with a single full-screen quad, `draw_gpu`'s own "ui overlay"
-/// pass). Independently written against the same inputs (not sharing code with
-/// `draw_live_screen_xrgb`), per this project's CPU-vs-GPU-vs-oracle convention; a pixel
-/// divergence between the two is exactly what a dedicated test checks for. `w`/`h` must equal
-/// `hud`'s own resolution, same exact-size guard as the XRGB path (R3 is still open).
+/// that starts fully transparent (every byte 0, not the oracle's own alpha-255 convention) - the
+/// GPU path's CPU-side half: the caller uploads the result as one texture and blends it over the
+/// GPU-rendered frame with a full-screen pass (`gpu.wgsl`'s `ui_overlay_fs`, not the sprite-atlas
+/// path ADR 0004's "Rendering" section first guessed - `.tex`/`.zei` content and fixed
+/// screen-space positions do not fit `render::SpriteDraw`'s world-tile-anchored contract).
+/// Written as a separate function from `draw_live_screen_xrgb`, not shared code, but over the
+/// same hud.txt/construction.txt/masks.txt element sequence and (since the earlier W4-UI-2 fix
+/// this doc comment used to describe as independent) the same digit-rectangle lookups - the real
+/// safety net against the two drifting apart is each path's own pixel comparison against the
+/// UI.1 oracle, not independent implementation of the digit literals. `w`/`h` must equal `hud`'s
+/// own resolution, same exact-size guard as the XRGB path (R3 is still open).
 [[nodiscard]] formats::Result<assets::Rgba, std::string>
 draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayout& construction,
-                      const UiMockSpec& screen, UiTexCache& cache,
+                      const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters = {}, bool placement_open = false);
 

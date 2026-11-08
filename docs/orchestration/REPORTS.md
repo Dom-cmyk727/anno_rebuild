@@ -16455,3 +16455,111 @@ mirroring the CPU path's own, and the upload+draw wiring in `draw_gpu` - confine
 
 Back to E: the dispatch's own final gate, now that the done criterion the coordinator named is
 actually met (CPU exact, GPU within tolerance) rather than carried forward as an open item.
+
+## W4-UI-2 — independent review: CHANGES REQUESTED, fixed — 2026-11-08 — status: IN PROGRESS
+
+The coordinator's dispatched fresh, context-free reviewer came back CHANGES REQUESTED, not
+APPROVE, with findings verified by reading the actual code, not nitpicks. The reviewer explicitly
+ran no build/tests themselves (cold read only) - the mechanisms and wiring were independently
+checked; this checkpoint's own numeric claims (pixel-diff counts, assertion counts) are re-verified
+here, not by them.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: head after this checkpoint (pushed with the CI-gate fix and the owner
+  playtest-card update that preceded it in this same session).
+
+### What was found, and fixed
+
+1. **Real untested bug, `ConstructionMenu::click()`** (`construction_menu.cpp`): the grid-cell
+   resolution path was not gated on `!placement_open` - a click on the open info/placement panel
+   away from `infoexit` fell through into `cell_at()`/`construction_->cell()` unconditionally,
+   silently re-arming whatever type happened to sit at that grid coordinate under the panel, even
+   though the panel visibly covers the grid's whole extent. No existing test exercised this (the
+   only `placement_open=true` case was the `infoexit`/pickaxe-overlap point). **Fixed**: `click()`
+   now returns `None` for any panel click that is not `infoexit`, before ever reaching
+   `cell_at()`. **Test added**: `construction_menu_test.cpp` - the same point that resolves `Arm`
+   with the menu open (`placement_open` false) now resolves `None` with the panel open instead.
+2. **Two ADR-0004-R1 "no coordinate lives in code" violations**: `category_at()` hardcoded
+   `kColumnX=779.0, kColumnW=42.0, kHalfHeight=23.0` instead of reading hud.txt's own
+   `viewbautab_0` rectangle; `ui_mock.cpp` hardcoded the six live-digit rectangles (`gold_digits`,
+   `baumat_{tools,wood,bricks,marble}_d`, `einwohner_digits`) in both `draw_live_screen_xrgb` and
+   `draw_live_screen_rgba` instead of reading data/ui/masks.txt, which nothing in this branch (or
+   `src/app` at all) had a parser for. **Fixed**: `category_at()` now reads `viewbautab_0` through
+   `hud_->element()`. A new `MaskLayout`/`UiMask` type and `parse_mask_layout`/`load_mask_layout`
+   were added to `ui_layout.hpp`/`.cpp` (mirroring `HudLayout`'s own shape and error conventions);
+   both draw functions take a new `const MaskLayout& masks` parameter and look up each counter's
+   rectangle by name through a small `digit_origin` lambda, never a coordinate literal. Wired
+   through `ViewerHooks::construction_masks` (viewer.hpp/.cpp) and loaded in `main.cpp` alongside
+   `hud.txt`/`construction.txt`. A counter whose named mask is missing draws nothing for it, same
+   "never guess" convention as a missing hud.txt element.
+3. **Overstated claim, "independently written, not sharing code with"**: true that the two draw
+   functions are separate code (not a shared helper), false that they didn't share the same
+   hardcoded digit literals - they did, verified by the reviewer reading both. Corrected in three
+   places (`ui_mock.hpp`'s doc comments, `ui_mock.cpp`'s own comments, `docs/adr/0004-ui-toolkit.md`'s
+   "Rendering" section, which also still described the GPU path by its first, since-superseded
+   sprite-atlas guess): the real safety net is each path's own separate pixel comparison against
+   the UI.1 oracle, not independent implementation. The masks.txt fix above also removes the
+   specific literal duplication the reviewer pointed at - both paths now read the same single
+   source of truth instead of each hardcoding a copy.
+4. **Urgent: the owner playtest card was stale** - already fixed earlier in this same session
+   (before this review landed), in its own commit: `docs/testing/construction-menu-playtest.md`
+   still said GPU rendering draws nothing and pinned `--renderer cpu`, never updated after the GPU
+   fix two checkpoints earlier. Updated to the current, measured state.
+5. **ADR 0004 said "this ADR adds no `src/sim` change"**: true of *behaviour*, false of the ADR's
+   own text as written - `World::city_population` (the population query, rule 0.2) is a `src/sim`
+   change, just an explicitly-allowed read-only one. Amended to say so.
+6. **H2's digit counters have no automated pixel-oracle check** (masks.txt excludes their own
+   rectangles from the oracle comparison by design - that is what a mask *is*): already stated in
+   this checkpoint's own H2 entry; restated here so it is not lost in this round's summary.
+
+### What ran, and with what result
+
+- `anno_app_tests.exe` (no game files): 246/246 test cases, 32767/32767 assertions, including the
+  new `construction_menu_test.cpp` case and the two new `ui_layout_test.cpp` mask-layout cases.
+- With `ANNO1503_GAME_DIR` (the real game files, this PC): `ui_mock_matches_oracle` (9 screens,
+  exact pixel match, unchanged after the masks.txt refactor - confirms it is truly the same
+  positions, not a near-miss that happened to average out), `live_screen_matches_oracle` (CPU,
+  exact on every checked opaque-oracle pixel), `live_screen_compare.py --renderer gpu` (28 of
+  ~200,000+ checked pixels differ, same sprite-corner pattern as the prior checkpoint - the
+  construction_menu.cpp/ui_mock.cpp changes did not move the GPU residual), and all of
+  `viewer_wiring_construction_menu_arm`/`_full_proof`/`_unaffordable`/`construction_session_replay`
+  (the build-then-demolish gesture through the real window still resolves correctly with the new
+  `!placement_open` gate - the fix only closes a path nothing in these scripts exercised, since
+  none of them click the panel away from `infoexit`).
+- `clang-format` 23.1.3 (installed fresh via `pip --target`, since this checkout had no cached
+  binary): dry-run flagged six spots across `ui_mock.cpp`/`viewer.cpp`/`main.cpp`/
+  `ui_layout_test.cpp`; applied in place; re-run clean; rebuilt and re-ran the tests above
+  afterward to confirm the reformatting changed no behaviour.
+
+### Decisions and reasoning
+
+1. **Gated the whole panel, not just the specific grid-cell path the reviewer named.** The fix
+   returns `None` for any panel click that is not `infoexit`, not only one that would otherwise
+   have resolved through `cell_at()`. The panel's own rotate arrows/cost-row chrome are not wired
+   to any command yet either, so there is nothing else a click there should do - a narrower fix
+   that only special-cased `cell_at()` would still be correct today but would quietly need
+   revisiting the same gating question again the next time something is added under the panel.
+2. **Bundled the mask lookup as a parameter, not inside `ConstructionMenu`.** `ConstructionMenu`'s
+   own doc comment scopes it to click *resolution*; masks.txt is a drawing-position concern
+   (`ui_mock.cpp`), unrelated to what a click resolves to. Threading `MaskLayout` through
+   `ViewerHooks`/`main.cpp` alongside `hud.txt`/`construction.txt`, the same way, keeps that
+   separation instead of growing `ConstructionMenu`'s responsibility to cover rendering too.
+3. **Did not merge `draw_live_screen_xrgb`/`_rgba` into shared code**, even though the reviewer's
+   finding was exactly that they shared literals. The literals are now gone (both read masks.txt),
+   which was the actual defect; keeping them as separate functions is this project's own
+   CPU-vs-GPU-vs-oracle convention (ADR 0004's own words, restated accurately this time) and the
+   coordinator's instruction was to correct the claim, not to redesign the pairing.
+4. **Corrected the ADR's GPU-mechanism paragraph in place rather than only fixing the
+   "independently written" phrase**, since it still described the first, since-superseded
+   sprite-atlas guess as current fact three checkpoints after the real mechanism (the full-screen
+   blend pass) was implemented and verified. Leaving it would have let a future reader rebuild the
+   same wrong assumption the coordinator's own GPU-gap instruction already corrected once.
+
+### Next
+
+Back to E: run the dispatch's own mechanical final-gate work (full `ctest --preset msvc` with game
+files and GPU tests on both the 4090 and the Radeon iGPU, the WSL gate's lanes, clang-format over
+the whole branch, `tools/check_unix_warnings.sh`, CI on the pushed head's all ten jobs), then draft
+the REPORTS.md E-section's factual content with status left as REVIEW PENDING, per the
+coordinator's instruction.

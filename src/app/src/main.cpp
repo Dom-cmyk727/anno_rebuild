@@ -451,6 +451,7 @@ int run(const std::vector<std::string>& raw) {
     // layouts it reads outlive it (and it outlives the window, like `dev`).
     std::optional<anno::app::HudLayout> construction_hud;
     std::optional<anno::app::ConstructionLayout> construction_layout;
+    std::optional<anno::app::MaskLayout> construction_masks;
     std::optional<anno::app::ConstructionMenu> construction_menu;
     // A scripted session (ANNO_DEV_SCRIPT=<file>) and its record (ANNO_DEV_SESSION=<new dir>),
     // round ee E3: --play only.
@@ -543,17 +544,21 @@ int run(const std::vector<std::string>& raw) {
             auto hud_loaded = anno::app::load_hud_layout(layout_dir / "hud.txt");
             auto construction_loaded =
                 anno::app::load_construction_layout(layout_dir / "construction.txt");
-            if (!hud_loaded.ok() || !construction_loaded.ok()) {
+            auto masks_loaded = anno::app::load_mask_layout(layout_dir / "masks.txt");
+            if (!hud_loaded.ok() || !construction_loaded.ok() || !masks_loaded.ok()) {
                 std::fprintf(stderr, "--construction-menu: %s\n",
-                             !hud_loaded.ok() ? hud_loaded.error().c_str()
-                                              : construction_loaded.error().c_str());
+                             !hud_loaded.ok()            ? hud_loaded.error().c_str()
+                             : !construction_loaded.ok() ? construction_loaded.error().c_str()
+                                                         : masks_loaded.error().c_str());
                 return 1;
             }
             construction_hud.emplace(std::move(hud_loaded).value());
             construction_layout.emplace(std::move(construction_loaded).value());
+            construction_masks.emplace(std::move(masks_loaded).value());
             construction_menu.emplace(*construction_hud, *construction_layout);
             hooks.construction_menu = &*construction_menu;
             hooks.construction_game_dir = dir.value();
+            hooks.construction_masks = &*construction_masks;
         }
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_record_hashes(!session_dir.empty());

@@ -160,6 +160,18 @@ TEST_CASE("construction menu: click resolves a category tab, then, with a catego
         const auto r = menu.click(984.0 + 5.0, 725.0 + 5.0, "public", false, nullptr);
         CHECK(r.kind == app::ConstructionClickKind::ToggleDemolish);
     }
+    // The info/placement panel covers the grid's own extent while it is open (data/ui/hud.txt
+    // "info_panel", (804, 302) 220 x 466). A click on it away from infoexit must be a no-op, not
+    // a fall-through into cell_at() against grid coordinates the panel is drawn over: the same
+    // point that resolves Arm with the menu open (placement_open false) must resolve None with
+    // the panel open instead, never silently re-arming a different type.
+    {
+        const std::vector<std::pair<anno::sim::TypeId, bool>> elig{
+            {anno::sim::TypeId{locked_cell->id}, true}};
+        const auto r =
+            menu.click(static_cast<double>(lx), static_cast<double>(ly), "public", true, &elig);
+        CHECK(r.kind == app::ConstructionClickKind::None);
+    }
     // Outside every tracked rectangle: None.
     {
         const auto r = menu.click(10.0, 10.0, "public", false, nullptr);

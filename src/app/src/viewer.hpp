@@ -77,6 +77,10 @@ struct ViewerHooks {
     /// `UiTexCache` (ADR 0004 "Atlases": textures decode once, never per frame). Unused when
     /// `construction_menu` is null.
     std::filesystem::path construction_game_dir;
+    /// data/ui/masks.txt (the H2 live-digit counters' own measured rectangles), loaded alongside
+    /// `construction_menu`'s own hud.txt/construction.txt. The caller owns it. Unused when
+    /// `construction_menu` is null.
+    MaskLayout* construction_masks = nullptr;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

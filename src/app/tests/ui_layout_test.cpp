@@ -142,6 +142,45 @@ TEST_CASE("construction layout: parses the real data/ui/construction.txt") {
     CHECK(c.cells.size() - unlocked_count == 133);
 }
 
+TEST_CASE("mask layout: parses the real data/ui/masks.txt, including the live-digit rectangles "
+          "draw_live_screen_xrgb/_rgba read (H2)") {
+    const auto loaded = anno::app::load_mask_layout(data_ui_dir() / "masks.txt");
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    const auto& m = loaded.value();
+    CHECK(m.resolution_w == 1024);
+    CHECK(m.resolution_h == 768);
+
+    const auto* gold = m.mask("gold_digits");
+    REQUIRE(gold != nullptr);
+    CHECK(gold->pos_x == 34);
+    CHECK(gold->pos_y == 733);
+    CHECK(gold->size_w == 96);
+    CHECK(gold->size_h == 35);
+    CHECK(gold->reason == "live-digits");
+
+    const auto* tools = m.mask("baumat_tools_d");
+    REQUIRE(tools != nullptr);
+    CHECK(tools->pos_x == 162);
+    const auto* wood = m.mask("baumat_wood_d");
+    REQUIRE(wood != nullptr);
+    CHECK(wood->pos_x == 222);
+    const auto* bricks = m.mask("baumat_bricks_d");
+    REQUIRE(bricks != nullptr);
+    CHECK(bricks->pos_x == 282);
+    const auto* marble = m.mask("baumat_marble_d");
+    REQUIRE(marble != nullptr);
+    CHECK(marble->pos_x == 342);
+
+    const auto* residents = m.mask("einwohner_digits");
+    REQUIRE(residents != nullptr);
+    CHECK(residents->pos_x == 439);
+    CHECK(residents->pos_y == 733);
+    CHECK(residents->size_w == 108);
+    CHECK(residents->size_h == 35);
+
+    CHECK(m.mask("no such mask") == nullptr);
+}
+
 TEST_CASE("ui layout: parse errors name the line and what was wrong") {
     const auto no_version = anno::app::parse_hud_layout("resolution 1024 768\n");
     REQUIRE_FALSE(no_version.ok());
@@ -162,4 +201,10 @@ TEST_CASE("ui layout: parse errors name the line and what was wrong") {
         "anno1503-ui-construction 1\ncell public 0 0 id 501 state maybe\n");
     REQUIRE_FALSE(bad_state.ok());
     CHECK(bad_state.error().find("state") != std::string::npos);
+
+    const auto bad_mask =
+        anno::app::parse_mask_layout("anno1503-ui-masks 1\nmask gold_digits pos 34 size 96 35\n");
+    REQUIRE_FALSE(bad_mask.ok());
+    CHECK(bad_mask.error().find("line 2") != std::string::npos);
+    CHECK(bad_mask.error().find("pos") != std::string::npos);
 }

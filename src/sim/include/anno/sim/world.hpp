@@ -256,6 +256,12 @@ class World {
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
     [[nodiscard]] BuildEligibility construction_eligibility(PlayerId, TypeId) const;
+    /// `city`'s total population: every house's residents, every group
+    /// (`residents_at_or_above(..., group=0)`, house_transition.hpp - the stage pass's own
+    /// aggregate; this is a thin read-only wrapper over it, no new sim logic). nullopt when
+    /// `city` does not resolve to a real city (an invalid island id, or an empty city slot) -
+    /// the same nullability `building_at` already uses for an unresolved `CityRef`.
+    [[nodiscard]] std::optional<std::int64_t> city_population(CityRef city) const;
     [[nodiscard]] const ScriptRuntime& script() const { return script_; }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
     /// The counters of the ids assigned in the serial merge (figures, event sequence

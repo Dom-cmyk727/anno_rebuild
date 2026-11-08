@@ -433,8 +433,18 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     blit_el("rosh_46");
     blit_el("rosh_48");
     blit_el("rosh_51");
-    if (is_construction)
+    if (is_construction) {
         blit_el("einwohner");
+        // H2: the residents counter - construction-screen only, same as the icon itself
+        // (docs/re/ui.md 2.1: `STATUSBAR_EINWOHNER` is "absent from pass-2 idle"). Position:
+        // data/ui/masks.txt `einwohner_digits` (439, 733) 108 x 35 - a real measured rectangle;
+        // what format the original draws inside it (a plain count vs. e.g. a ratio) is open -
+        // OQ-564 already covers "alignment within a measured rectangle is not itself evidence".
+        if (counters.residents) {
+            draw_text_xrgb(dst, dst_w, dst_h, digit_font, std::to_string(*counters.residents), 439,
+                           733 + (35 - 25) / 2);
+        }
+    }
     blit_el("zoom_plus");
     blit_el("zoom_minus");
     blit_el("lupe");

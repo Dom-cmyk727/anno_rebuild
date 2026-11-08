@@ -4,9 +4,11 @@
 
 #include <anno/sim/create.hpp>
 #include <anno/sim/house_transition.hpp>
+#include <anno/sim/island.hpp>
 #include <anno/sim/resident.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/walk_cells.hpp>
+#include <anno/sim/world.hpp>
 
 namespace anno::sim {
 
@@ -609,6 +611,15 @@ std::vector<std::int64_t> residents_at_or_above_all(const SimConfig& cfg, const 
         per_group[g - 2] += per_group[g - 1]; // suffix sums: "this group and all higher ones"
     }
     return per_group;
+}
+
+std::optional<std::int64_t> World::city_population(CityRef city) const {
+    if (!city.island.valid() || city.island.v >= islands_.size() || !islands_[city.island.v])
+        return std::nullopt;
+    const City* c = islands_[city.island.v]->city(city.city);
+    if (c == nullptr)
+        return std::nullopt;
+    return residents_at_or_above(config_, *types_, *c, 0);
 }
 
 HouseOutcome upgrade_house(const HouseEnv& env, Island& island, const BuildingKey& key) {

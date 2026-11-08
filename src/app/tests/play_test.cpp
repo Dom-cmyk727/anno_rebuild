@@ -1042,3 +1042,50 @@ TEST_CASE("play: the snapshot's eligibility is every registry type with the sim'
     // published field is the sim's own answer, not a derived or stale copy of it.
     CHECK(agree == type_count);
 }
+
+TEST_CASE("play: the snapshot's population is World::city_population of the developer's city, "
+          "published once per turn (W4-UI-2 H2)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path path =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    anno::app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true;
+    // Same loaded-twice pattern as the eligibility test above: one World moves into the runner,
+    // the other stays to call World::city_population directly, the cross-check the published
+    // field must agree with exactly.
+    auto for_runner = anno::app::load_play(*dir, path, fixed);
+    auto for_direct = anno::app::load_play(*dir, path, fixed);
+    REQUIRE(for_runner.ok());
+    REQUIRE(for_direct.ok());
+    anno::sim::World& direct_world = for_direct.value().world;
+
+    anno::app::PlayRunner runner(std::move(for_runner.value().world));
+    runner.run_n(1);
+    anno::sim::Turn turn;
+    turn.index = 0;
+    turn.step_ms = runner.step_ms();
+    anno::sim::run_turn(direct_world, nullptr, turn, anno::sim::Timing{}.mp_steps_per_turn);
+    const auto snap = runner.snapshot();
+    REQUIRE(snap->eligibility != nullptr); // has a city (same null convention as population)
+    REQUIRE(snap->population.has_value());
+
+    // The developer's first city, found the same way PlayRunner's own constructor finds it.
+    std::optional<anno::sim::CityRef> developer_city;
+    for (std::size_t i = 0; i < direct_world.islands().size() && !developer_city; ++i) {
+        const auto& island = direct_world.islands()[i];
+        if (!island)
+            continue;
+        for (const auto& city : island->cities) {
+            if (city && city->owner == anno::app::developer_player()) {
+                developer_city = anno::sim::CityRef{island->index, city->number};
+                break;
+            }
+        }
+    }
+    REQUIRE(developer_city.has_value());
+    CHECK(snap->population == direct_world.city_population(*developer_city));
+}

@@ -2596,8 +2596,11 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         };
         const HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money)
                                             : std::nullopt,
-                                   whole_tons(goods_tools_), whole_tons(goods_wood_),
-                                   whole_tons(goods_bricks_), whole_tons(goods_marble_)};
+                                   whole_tons(goods_tools_),
+                                   whole_tons(goods_wood_),
+                                   whole_tons(goods_bricks_),
+                                   whole_tons(goods_marble_),
+                                   has_city ? snapshot->population : std::nullopt};
         static_cast<void>(draw_live_screen_xrgb(
             buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
             spec, *construction_tex_cache_, snapshot ? snapshot->eligibility.get() : nullptr,

@@ -936,6 +936,12 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
                                world_.construction_eligibility(local_player_, t.id).allowed());
         }
         next->eligibility = std::move(elig);
+        // H2 (the HUD's residents counter): World::city_population, a new read-only sim query
+        // (rule 0.2 - no state, stream, hash or draw change; residents_at_or_above's own
+        // existing aggregate, house_transition.hpp, wrapped for a CityRef). Same cross-thread-
+        // avoidance reason as eligibility above: computed here, on the sim thread, never read
+        // from the window's own copy of World.
+        next->population = world_.city_population(*developer_city_);
     }
     for (const CommandOutcome& o : ran) {
         if (o.state == CommandOutcome::State::Refused) {

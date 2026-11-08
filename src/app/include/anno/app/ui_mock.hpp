@@ -73,13 +73,14 @@ struct UiMockSpec {
 /// through its developer tool; ui_mock.cpp only formats and draws. nullopt draws nothing for
 /// that counter (no city yet, matching `PlaySnapshot::eligibility`'s own null convention).
 /// `tools`/`wood`/`bricks`/`marble` are drawn only on a construction screen - OQ-538 (resolved):
-/// the idle HUD bar never shows them, only the gold counter.
-/// Residents (`STATUSBAR_EINWOHNER`) are not in this struct yet: nothing in the engine computes a
-/// city's total population today (deferred, not a font gap - flagged in the W4-UI-2 checkpoint
-/// that added this struct, not guessed here).
+/// the idle HUD bar never shows them, only the gold counter. `residents` (the city's total
+/// population, `PlaySnapshot::population`/`World::city_population`) is drawn only on a
+/// construction screen too - docs/re/ui.md 2.1's own note on `STATUSBAR_EINWOHNER`: "absent from
+/// pass-2 idle", same visibility as the materials.
 struct HudCounters {
     std::optional<std::int64_t> gold;
     std::optional<std::uint32_t> tools, wood, bricks, marble;
+    std::optional<std::int64_t> residents;
 };
 
 /// Composes `screen` at the layout's resolution into an RGBA canvas (alpha always 255; the oracle

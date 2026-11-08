@@ -170,6 +170,11 @@ struct PlaySnapshot {
     /// `World::construction_eligibility` directly against the sim thread's own `World` (a race).
     /// Null when the player has no city yet, matching `money`/`goods` above.
     std::shared_ptr<const std::vector<std::pair<sim::TypeId, bool>>> eligibility;
+    /// `World::city_population(developer_city_)` (H2: the HUD's residents counter), taken in the
+    /// same turn as this snapshot. A new read-only sim query (rule 0.2: no state, stream, hash or
+    /// draw change - it wraps `residents_at_or_above`'s own existing aggregate for a `CityRef`).
+    /// nullopt when the player has no city yet, matching `money`/`goods`/`eligibility` above.
+    std::optional<std::int64_t> population;
 };
 
 /// What the window reads for the developer tool's feedback (round ee review, R1): a snapshot and

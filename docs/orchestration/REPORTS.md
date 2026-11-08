@@ -15727,3 +15727,84 @@ just through commands and titles as every earlier C4 checkpoint was.
 Font/`.zei` rendering (needed before any number - costs, gold, residents - can be drawn at all),
 the category column's own visual proof, and M's placeholder-screen table. H/C/M/V/K/E remain
 open; continuing, not stopping.
+
+## W4-UI-2 — the per-frame texture-decode cost is gone, measured — 2026-11-08 — status: IN PROGRESS
+
+Picked up the coordinator's own first-listed option (an atlas/cache for the per-frame `.tex`
+decode cost the previous checkpoint flagged, ADR 0004's "Atlases: textures are uploaded once ...
+no upload per frame") ahead of fonts, category-switching's screenshot, or H2-H4's snapshot values
+- cheapest fix, already named as a known gap, and a real regression risk the longer it sat.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`60c1e722`**, not yet pushed. Worktree: `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **`UiTexCache`** (`ui_mock.hpp`/`.cpp`): a pimpl wrapping the same `TexCache` decode logic
+   `draw_live_screen_xrgb` used to build fresh on every call. `Viewer` now owns one instance,
+   constructed once (in its constructor, alongside `construction_menu_`, from
+   `construction_game_dir_`) for the whole session, and passes it by reference into
+   `draw_live_screen_xrgb` every frame instead of the raw `game_dir` path. `compose_screen` and
+   the standalone `anno_ui_mock` tool are unchanged - each still builds its own short-lived
+   `TexCache` locally, correctly, since one mock run is one process with nothing to persist
+   across.
+2. **Measured, not assumed** (CLAUDE.md "measure every performance change"): added a dedicated
+   `"construction ui"` step in `draw_cpu()` (previously folded anonymously into `"render other"`,
+   which also covers other per-frame work) and ran two scripted sessions
+   (`ANNO_DEV_SCRIPT`, `--construction-menu on`, real game files, 1024 x 768) that open the menu
+   and hold it open for several seconds. Two independent runs agree: the **first** frame after
+   opening pays **~67-70 ms** (every HUD/menu `.tex` file the screen needs, decoded cold from
+   disk); **every frame after that costs ~2-5 ms** (steady state - blitting ~15 chrome elements
+   and 148 grid cells, no more disk I/O or decode). That is a ~15-30x drop, and it is exactly the
+   previous checkpoint's own flagged gap (a ~40-80 ms "render other" jump, present on *every*
+   frame before this fix, now present only once per menu-open).
+3. **Regression** (`ANNO1503_GAME_DIR` set to the real install, MSVC release): `anno_app_core`
+   rebuilt clean (0 warnings) before anything else was touched; then `anno1503`, `anno_ui_mock`,
+   `anno_app_tests`, `anno_app_input_tests` all rebuilt clean. `ui_mock_matches_oracle`,
+   `live_screen_matches_oracle`, `viewer_wiring_construction_menu_arm`, the C2 148-cell
+   eligibility test, the play-snapshot-eligibility test and the `ConstructionMenu::click` test all
+   still pass - the cache changes *how* a texture is fetched, never *what* gets decoded or drawn,
+   and the pixel-exact tests confirm that held.
+4. **`clang-format` 23.1.3**: applied to the four touched files, no reformatting beyond the
+   edits themselves. **WSL gate** (`check_unix_warnings.sh`, GCC 13 and Clang 18, `-O3 -Werror`,
+   viewer+GPU on and off): all four lanes clean.
+
+### What H/C still need
+
+Unchanged from the previous checkpoint: font/`.zei` rendering (blocks C1's cost display and
+H2-H4's snapshot numbers), category-switching's own screenshot proof, the GPU draw path
+(`draw_gpu` still untouched - this cache lives on `Viewer`, reachable from there too, but not yet
+wired in since there is nothing for it to feed yet), anchoring at window sizes other than exactly
+1024 x 768 (R3 still open), and the live path's pixel-test negative controls.
+
+### Decisions and reasoning
+
+1. **The cache lives on `Viewer`, not as a function-local static or a global.** A static would
+   have worked for a single-window process too, but would have been wrong for any future second
+   window/session in the same process and is exactly the kind of "global mutable state" CLAUDE.md
+   rules out for `sim` and asks to be deliberate about elsewhere; `Viewer` already owns the
+   construction menu's other per-session state (`construction_menu_open_`,
+   `construction_tex_cache_`'s neighbours), so this is one more member with the same lifetime, not
+   a new pattern.
+2. **A public-but-undocumented `impl()` accessor, not a `friend` declaration.** The first draft
+   used a `friend` forward-declaration of `draw_live_screen_xrgb` inside `UiTexCache`, which
+   requires the friend's signature to match exactly everywhere it is declared - a second place for
+   the same signature to go stale. `Impl` stays forward-declared (opaque) in the header either
+   way, so a public accessor returning `Impl&` gives `ui_mock.cpp` what it needs without a second
+   signature to keep in sync, at no actual loss of encapsulation (nothing outside `ui_mock.cpp`
+   can do anything with an incomplete `Impl`).
+3. **Measured on a real scripted session, not inferred from the diff.** The previous checkpoint
+   named a *range* (~40-80 ms) read off an ordinary play session's own hitch logging, not a
+   controlled measurement of this specific code path; this checkpoint adds a named step and reruns
+   under the same real-game-files conditions so the before/after comparison is to the same
+   quantity, not two different ones.
+
+### Next
+
+Not yet pushed (holding to push with this entry together, same as every other checkpoint).
+Sequencing choice for the next checkpoint is open again: fonts (blocks the most downstream work -
+C1's costs, H2-H4's numbers) vs. category-switching's screenshot (cheap, closes a known gap) vs.
+M's placeholder table (pure documentation, no engine risk). Leaning toward fonts next since it
+unblocks the largest remaining surface, but flagging for the coordinator rather than deciding
+unilaterally given how much downstream work waits on it.

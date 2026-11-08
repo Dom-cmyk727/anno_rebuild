@@ -16361,3 +16361,97 @@ give, not a cleaned-up version of it.
 
 E: the dispatch's own final gate (independent review, the full gates, a verdict-per-part report,
 status REVIEW PENDING) - the dispatch's own designated stopping point.
+
+## W4-UI-2 — the GPU path gap: found, diagnosed, fixed — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction, addressed before anything else: "GPU confirmed to draw nothing at all"
+was flagged almost in passing in the V4 checkpoint; the coordinator correctly named this a
+blocking gap against the packet's own done criterion ("the HUD and the menu match the UI.1
+oracle within its tolerance, on the CPU and GPU paths"), not a side observation, and asked for a
+plain why/bounded-or-structural answer before anything else, fixing it now if bounded.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`7d65bea3`**, not yet pushed.
+
+### Why it drew nothing, and whether it was bounded
+
+`draw_gpu()` never called `draw_live_screen_xrgb` (or anything like it) at all - not wired in and
+failing, simply never attempted. The sprite-atlas/instance-draw path the world's own objects use
+(`SpriteDraw`, `atlas_place`, already proven by the dev-tool's placement-preview overlay) is
+structurally tied to `formats::figuren::Frame` and world-tile-projected screen anchors - it
+cannot represent `.tex`/`.zei`-sourced UI textures or fixed-screen positions without new,
+materially bigger infrastructure. The actual reusable mechanism was different: the compositor
+already has a full-screen-triangle blit pass (`scale_vs`/`scale_fs`, the resample/zoom
+post-process). That made the fix bounded - one new GPU texture, one new simple alpha-blend
+fragment shader reusing the existing vertex stage, one new CPU-side RGBA composer function
+mirroring the CPU path's own, and the upload+draw wiring in `draw_gpu` - confined to
+`src/render` + `src/app`, no new asset format, no sim change. Implemented now, not deferred.
+
+### What ran, and with what result
+
+1. **`anno::app::draw_live_screen_rgba`** (`ui_mock.hpp`/`.cpp`): the same live state
+   `draw_live_screen_xrgb` composes, into a canvas that starts fully transparent (every byte 0)
+   instead of blitting into the live XRGB buffer - independently written against the same
+   inputs, this project's own CPU-vs-GPU-vs-oracle convention, not shared code with the XRGB
+   path. `blit_rgba_over` does the compositing: a straight overwrite for opaque chrome, a proper
+   Porter-Duff "over" for a glyph's own partial alpha.
+2. **`GpuFrame::render`** (`gpu.hpp`/`gpu.cpp`) gains a trailing `const assets::Rgba* ui_overlay`
+   parameter, default `nullptr` - every existing caller (`bench_frame`'s several call sites)
+   unaffected. When set, uploads it to a lazily-created `RGBA8Unorm` texture and draws one
+   full-screen alpha-blended quad over the whole frame, last of all (after the resample pass too,
+   so it always lands on the exact presented pixels) - `gpu.wgsl`'s new `ui_overlay_fs`, reusing
+   `scale_vs`'s existing full-screen-triangle vertex stage, no new vertex buffer.
+3. **`viewer.cpp`**: `draw_gpu` composes the overlay the same way `draw_cpu` does -
+   `Viewer::construction_hud_inputs`, a new shared private helper factored out of `draw_cpu`'s
+   own `HudCounters`/eligibility construction (the "has a city yet" logic now lives in exactly
+   one place, read by both draw paths, not duplicated a third time).
+4. **Verified on the real hardware the gap was found on** (RTX 4090): screenshotted and visually
+   checked first (the menu, HUD counters and info panel all draw correctly - gold "10000000",
+   materials "190" each, the grid, the lock icons, all present and legible), then measured
+   against the same oracle `live_screen_compare.py` already checks the CPU path with. CPU stays
+   bit-exact (unchanged). GPU: within the project's own established F2.1 tolerance
+   (`tools/ui_layout.py`'s own `COMPARE_CHANNEL` 48, `COMPARE_BAD_FRACTION` 0.08) rather than
+   bit-exact - 28 of roughly 200,000+ checked pixels differ by up to 12 per channel (well under
+   the 48 allowed), all at sprite corner pixels (`mainuntergrund`/`statusbar`/`gold`'s own edges,
+   e.g. (1023, 761) - the literal last pixel of `mainuntergrund`'s own rectangle), not scattered
+   and not in any new content: every gold/goods/residents digit and the whole grid are bit-exact.
+   `live_screen_compare.py` gained a `--renderer cpu|gpu` flag to make this repeatable.
+5. **GPU needs a real, visible window** - confirmed by hand, not assumed: `--renderer gpu` under
+   `SDL_VIDEODRIVER=dummy` exits "no Win32 window handle" rather than falling back. This matches
+   `viewer_wiring.py`'s own pre-existing `--gpu` flag (added for earlier GPU performance work),
+   which has never been wired into a registered CTest case for the same reason. The GPU check
+   above is a manual/interactive-desktop verification, like `bench_frame`, not something CI's
+   headless environment can run; only `--renderer cpu` (unchanged) is registered as a CTest case.
+6. **Regression:** `anno_app_tests`, `ui_mock_matches_oracle`, `live_screen_matches_oracle` and
+   every construction-menu CTest case (13, CPU path, real game files) still pass.
+   `anno_render_gpu_tests` (116 cases, 2,443,020 assertions, the real RTX 4090) passes - nothing
+   about the existing sprite/resample/chunk GPU pipeline regressed. `clang-format` clean (one real
+   Clang-only `-Werror=sign-conversion` caught in `blit_rgba_over` - a loop index needing
+   `size_t`, not `int`; MSVC and GCC never flagged it, fixed before it reached the WSL gate a
+   second time). WSL gate (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on/off) all four lanes
+   clean.
+
+### Decisions and reasoning
+
+1. **Checked the coordinator's own guess (reuse the sprite-atlas path) against the actual code
+   before building anything**, rather than assuming it was right because it was the first
+   plausible mechanism named. It turned out not to fit (world-tile-anchored, Figuren-frame-typed);
+   finding the real reusable mechanism (the resample pass's full-screen-triangle shader) first
+   avoided building something on the wrong foundation and having to redo it.
+2. **An independent RGBA composer, not a refactor of the XRGB one into something both paths
+   share.** This project's own CPU-vs-GPU-vs-oracle convention (ADR 0004's own words) treats
+   agreement between independently-written paths as the proof, not shared code as the
+   guarantee - matching every other triple already in this codebase, and making the eventual
+   pixel test meaningful (it would catch a real divergence, not pass automatically because both
+   paths literally run the same function).
+3. **The 28-pixel corner residual is named exactly, not rounded off to "exact" or hidden as
+   "still open."** It is comfortably inside the project's own already-established tolerance
+   rule, at pixels that are not part of this checkpoint's new content; reporting the real number
+   (28 of 200,000+, max difference 12 of an allowed 48) is more defensible than claiming bit-exact
+   parity the measurement does not actually show.
+
+### Next
+
+Back to E: the dispatch's own final gate, now that the done criterion the coordinator named is
+actually met (CPU exact, GPU within tolerance) rather than carried forward as an open item.

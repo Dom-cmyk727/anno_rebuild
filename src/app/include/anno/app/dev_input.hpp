@@ -73,6 +73,13 @@ class DevInput {
 
     [[nodiscard]] std::optional<sim::TypeId> selected() const;
     [[nodiscard]] const sim::BuildingType* selected_type() const;
+    /// Arms `type` directly (UI.2 C4, the construction menu's cell click): the same effect on
+    /// `selected()` as cycling to it with NextType/PrevType enough times, but by id, in one call.
+    /// Leaves rotation, demolish mode and a press in progress exactly as NextType/PrevType do
+    /// (no extra side effect this event does not already have). False, no change, when `type` is
+    /// not one of the constructor's `types` (the tool's cycle list) - the menu then knows to show
+    /// the cell as not armable rather than silently arming nothing.
+    bool arm(sim::TypeId type);
     [[nodiscard]] std::uint8_t rotation() const { return rotation_; }
     [[nodiscard]] bool demolish_mode() const { return demolish_; }
     /// The last refusal or hint for the player ("" when none); cleared by the next event.

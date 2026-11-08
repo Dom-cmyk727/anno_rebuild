@@ -658,6 +658,58 @@ TEST_CASE("dev tool: a drag longer than one record is refused before its path is
     CHECK(tool.message().find("no city") != std::string::npos);
 }
 
+TEST_CASE("dev tool: arm selects a type directly, by id, and turns the tool on, without a "
+          "Next/PrevType cycle" *
+          doctest::test_suite("dev_tool")) {
+    // UI.2 C4: a construction-menu cell click arms the clicked cell's type, not the developer
+    // tool's own cycle. arm() is the app-layer hook that makes that possible while sending its
+    // command through the exact same path (DevInput::handle, then the sim) as the cycled flow.
+    app::DevTool tool(setup());
+    CHECK_FALSE(tool.enabled());
+    CHECK(tool.input().selected() == kPlain); // starts at the cycle's first type
+
+    CHECK(tool.arm(kRoad));
+    CHECK(tool.enabled());
+    CHECK(tool.input().selected() == kRoad);
+    CHECK(tool.message().empty());
+
+    // Arming a type outside setup().types fails, with a message, and changes nothing selected.
+    const sim::TypeId unknown{9999};
+    CHECK_FALSE(tool.arm(unknown));
+    CHECK(tool.input().selected() == kRoad);
+    CHECK(tool.message().find("9999") != std::string::npos);
+
+    // arm() through a click+release still sends BuildCmd through the ordinary DevTool path (the
+    // same built-group-0 window geometry and target tile the first test case in this file proves
+    // picks correctly).
+    const sim::TileXY t{kX0 + 3, kY0 + 4};
+    const Window win{scene(),
+                     (t.y - t.x) * 84.0 / 2.0 - 230.3,
+                     (t.x + t.y) * 42.0 / 2.0 + 170.7,
+                     0,
+                     84,
+                     42,
+                     1600,
+                     1000};
+    const app::PointerFrame frame = win.frame();
+    const auto at = win.point_at(t.x, t.y);
+    const auto press = tool.handle({app::ToolInput::Kind::Press, at.first, at.second}, &frame);
+    CHECK(press.empty());
+    const auto release = tool.handle({app::ToolInput::Kind::Release, at.first, at.second}, &frame);
+    REQUIRE(release.size() == 1);
+    const auto& build = std::get<sim::BuildCmd>(release.front().body);
+    REQUIRE(build.placements.size() == 1);
+    CHECK(build.placements.front().type == kRoad);
+
+    // No city yet: arm() fails and names why, nothing else changes.
+    app::DevToolSetup none = setup();
+    none.city.reset();
+    app::DevTool off(none);
+    CHECK_FALSE(off.arm(kPlain));
+    CHECK_FALSE(off.enabled());
+    CHECK(off.message().find("no city") != std::string::npos);
+}
+
 TEST_CASE("opening keys: `,` turns the founding cursor on and `.` back, as the original's" *
           doctest::test_suite("dev_tool")) {
     // Wine runner 2026-11-04 (W4-OPENING-1-CLOSE): the original's Kontor cursor byte +0x46 went

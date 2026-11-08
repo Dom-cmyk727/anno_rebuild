@@ -21,9 +21,11 @@
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/ship_motion.hpp>
+#include <anno/app/ui_mock.hpp>
 #include <anno/app/window_capture.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/sim/production.hpp>
 #ifdef ANNO_VIEWER_GPU
 #include <anno/render/gpu.hpp>
 
@@ -327,12 +329,27 @@ class Viewer {
           frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks),
           trace_(hooks != nullptr ? hooks->trace : nullptr),
           dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr),
+          construction_menu_(hooks != nullptr && play != nullptr ? hooks->construction_menu
+                                                                 : nullptr),
+          construction_game_dir_(construction_menu_ != nullptr ? hooks->construction_game_dir
+                                                               : std::filesystem::path{}),
+          construction_masks_(construction_menu_ != nullptr ? hooks->construction_masks : nullptr),
           script_(dev_ != nullptr ? hooks->script : nullptr),
           hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr),
           opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr) {
         if (dev_ != nullptr) {
             knowledge_.emplace(dev_->setup());
             attach_occupancy(*play_, *knowledge_, *dev_); // follows the takes; ensure() seeds
+        }
+        if (construction_menu_ != nullptr) {
+            construction_tex_cache_.emplace(construction_game_dir_);
+            if (dev_ != nullptr && dev_->setup().registry) {
+                const auto& registry = *dev_->setup().registry;
+                goods_tools_ = registry.goods_by_name("WERKZEUG");
+                goods_wood_ = registry.goods_by_name("HOLZ");
+                goods_bricks_ = registry.goods_by_name("ZIEGEL");
+                goods_marble_ = registry.goods_by_name("MAMOR");
+            }
         }
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
@@ -505,6 +522,50 @@ class Viewer {
     std::optional<PointerFrame> pointer_frame_;
     std::optional<PlacementKnowledge> knowledge_;
     std::optional<CommandId> latest_receipt_;
+    /// The construction menu (ViewerHooks::construction_menu; --construction-menu on, W4-UI-2
+    /// C4): whether the menu screen itself is showing (data/ui/construction.txt's own `open_key
+    /// B` / `leave_key ESC`, checked ahead of the developer tool's own B-toggle and the window's
+    /// Esc-quits-the-app binding - a real collision on both keys, resolved by state: B/Esc are
+    /// the menu's own while it is open or being opened, the developer tool's and the window's
+    /// otherwise), the open category (set to "public" on open; empty while closed), and whether a
+    /// cell is currently armed (the placement panel is "showing", for the pickaxe/cancel-X
+    /// overlap - ConstructionMenu::click's own doc comment).
+    ConstructionMenu* construction_menu_ = nullptr;
+    std::filesystem::path construction_game_dir_;
+    /// data/ui/masks.txt (ViewerHooks::construction_masks): the H2 live-digit counters' own
+    /// measured rectangles, read by draw_live_screen_xrgb/_rgba. Null exactly when
+    /// construction_menu_ is null.
+    MaskLayout* construction_masks_ = nullptr;
+    /// Persists decoded `.tex` files and fonts across frames (ADR 0004 "Atlases": no re-decode
+    /// per frame - the first H1/C1 slice built one fresh every call, re-reading every HUD/menu
+    /// texture off disk each frame; this is the fix). Constructed once, in the constructor body,
+    /// only when construction_menu_ is set (needs construction_game_dir_, itself conditional).
+    std::optional<UiTexCache> construction_tex_cache_;
+    /// H2: the four build-material goods, resolved by name once (registry lookup, never a
+    /// hardcoded number - synthetic.cpp's own "never hardcode the goods number" convention) so
+    /// draw_cpu's HudCounters can read the right slot of PlaySnapshot::goods every frame. Null
+    /// when construction_menu_ is null, or when dev_'s registry lacks one of the four names
+    /// (never happens for the real game files; HudCounters then just stays nullopt for it).
+    std::optional<sim::GoodsId> goods_tools_, goods_wood_, goods_bricks_, goods_marble_;
+    bool construction_menu_open_ = false;
+    std::string construction_open_category_;
+    bool construction_placement_open_ = false;
+    /// The construction menu's share of handle(), checked before dev_ (ADR 0004 R1): returns
+    /// whether the event was taken. Only resolves clicks while the window's drawable size is
+    /// exactly 1024 x 768 (R3's scale is still open; a mismatched size leaves every click to
+    /// fall through unchanged, never a guessed scale).
+    bool construction_handle(const SDL_Event& e);
+    /// H2's `HudCounters` and the construction screen's `UiMockSpec`/eligibility, read from the
+    /// current snapshot - shared by draw_cpu and draw_gpu so the "has a city yet"/goods-unit
+    /// logic lives in exactly one place. `eligibility` outlives the call (it is the snapshot's
+    /// own `shared_ptr`'s pointee, kept alive by `snapshot` below); callers only read it within
+    /// the same draw call, matching `draw_cpu`'s own existing contract.
+    struct ConstructionHudInputs {
+        UiMockSpec spec;
+        HudCounters counters;
+        std::shared_ptr<const PlaySnapshot> snapshot;
+    };
+    [[nodiscard]] ConstructionHudInputs construction_hud_inputs() const;
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
     DevScript* script_ = nullptr;
     PublicationHold* hold_ = nullptr;
@@ -1016,6 +1077,14 @@ void Viewer::handle(const SDL_Event& e) {
         update_title();
         return;
     }
+    if (construction_menu_ != nullptr && construction_handle(e)) {
+        // The construction menu first (ADR 0004 R1: "SDL3 events go to the UI first, then to the
+        // world"). Only a genuine hit on one of its own rectangles returns true; everything else
+        // (including every click on the map) falls through to dev_ unchanged.
+        update_title();
+        dirty_ = true;
+        return;
+    }
     if (dev_ != nullptr) {
         // The developer tool first (sdl_input.hpp: B toggles it; with it on, the left button,
         // N, P, T, X and Esc with something to cancel are its). The frame is the one drawn, so
@@ -1303,6 +1372,84 @@ void Viewer::opening_apply(const UiResult& result) {
     dirty_ = true;
 }
 
+bool Viewer::construction_handle(const SDL_Event& e) {
+    if (e.type == SDL_EVENT_KEY_DOWN) {
+        // data/ui/construction.txt: `open_key B`, `leave_key ESC`. Both collide with an existing
+        // binding (the developer tool's own B-toggle; the window's Esc-quits-the-app) - resolved
+        // by state, not by picking a winner once and for all: B is the menu's own key only to
+        // open it (closed -> open; already open, a category click or ESC is how it's used, so B
+        // while open is left to the developer tool, consistent with ADR 0004 R1 "the developer
+        // tool keeps its own key"); Esc is the menu's only while it is open (closes it, consuming
+        // the event before the window's own Esc-quits binding sees it).
+        if (e.key.key == SDLK_B && !construction_menu_open_) {
+            construction_menu_open_ = true;
+            construction_open_category_ = "public";
+            construction_placement_open_ = false;
+            return true;
+        }
+        if ((e.key.key == SDLK_ESCAPE) && construction_menu_open_) {
+            construction_menu_open_ = false;
+            construction_open_category_.clear();
+            construction_placement_open_ = false;
+            return true;
+        }
+        return false;
+    }
+    if (e.type != SDL_EVENT_MOUSE_BUTTON_DOWN || e.button.button != SDL_BUTTON_LEFT) {
+        return false; // only a left click resolves against the menu; everything else is dev_'s
+    }
+    if (!construction_menu_open_) {
+        return false; // the menu screen is not showing: every click is the map's/dev_'s
+    }
+    const auto [dw, dh] = view_size();
+    if (dw != 1024 || dh != 768) {
+        return false; // R3 (the UI scale at other sizes) is still open: never a guessed scale
+    }
+    if (play_ == nullptr) {
+        return false;
+    }
+    const float density = SDL_GetWindowPixelDensity(window_);
+    const double px = static_cast<double>(e.button.x) * static_cast<double>(density);
+    const double py = static_cast<double>(e.button.y) * static_cast<double>(density);
+    const auto snapshot = play_->runner().snapshot();
+    const auto result =
+        construction_menu_->click(px, py, construction_open_category_, construction_placement_open_,
+                                  snapshot ? snapshot->eligibility.get() : nullptr);
+    switch (result.kind) {
+    case ConstructionClickKind::None:
+        return false;
+    case ConstructionClickKind::SwitchCategory:
+        construction_open_category_ = result.category;
+        return true;
+    case ConstructionClickKind::Empty:
+    case ConstructionClickKind::Locked:
+        return true;
+    case ConstructionClickKind::Arm:
+        if (dev_ != nullptr && dev_->arm(result.type)) {
+            construction_placement_open_ = true;
+        }
+        return true;
+    case ConstructionClickKind::ToggleDemolish:
+        if (dev_ != nullptr) {
+            for (sim::Command& c : dev_->handle({ToolInput::Kind::ToggleDemolish, 0, 0},
+                                                pointer_frame_ ? &*pointer_frame_ : nullptr)) {
+                latest_receipt_ = play_->runner().post_command(std::move(c));
+            }
+        }
+        return true;
+    case ConstructionClickKind::Cancel:
+        if (dev_ != nullptr) {
+            for (sim::Command& c : dev_->handle({ToolInput::Kind::Cancel, 0, 0},
+                                                pointer_frame_ ? &*pointer_frame_ : nullptr)) {
+                latest_receipt_ = play_->runner().post_command(std::move(c));
+            }
+        }
+        construction_placement_open_ = false;
+        return true;
+    }
+    return false;
+}
+
 bool Viewer::opening_handle(const SDL_Event& e) {
     OpeningUi& ui = *opening_->ui;
     const float density = SDL_GetWindowPixelDensity(window_);
@@ -1332,7 +1479,8 @@ bool Viewer::opening_handle(const SDL_Event& e) {
             // A held key does nothing twice; a held Esc after a cancel must not quit either.
             return *key == OpeningKey::Escape || ui.mode() != OpeningMode::Select;
         }
-        if (tool_on && (*key == OpeningKey::Found || *key == OpeningKey::Unload)) {
+        if (tool_on &&
+            (*key == OpeningKey::Found || *key == OpeningKey::Unload || *key == OpeningKey::Load)) {
             return false; // the building tool owns the pointer: B turns it off first
         }
         const UiResult r = ui.key(*key, shift, feed);
@@ -1403,12 +1551,21 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
     f["cities"] = std::to_string(v.cities.size());
     f["mode"] = ui.mode() == OpeningMode::Found    ? "found"
                 : ui.mode() == OpeningMode::Unload ? "unload"
+                : ui.mode() == OpeningMode::Load   ? "load"
                                                    : "select";
     f["selected"] = ui.selected() ? std::to_string(ui.selected()->v) : "none";
     {
-        const auto plan =
-            ui.mode() == OpeningMode::Unload ? ui.unload_plan(opening_feed()) : std::nullopt;
-        f["request"] = plan ? std::to_string(plan->tons) : "none";
+        std::optional<std::uint32_t> tons;
+        if (ui.mode() == OpeningMode::Unload) {
+            if (const auto plan = ui.unload_plan(opening_feed())) {
+                tons = plan->tons;
+            }
+        } else if (ui.mode() == OpeningMode::Load) {
+            if (const auto plan = ui.load_plan(opening_feed())) {
+                tons = plan->tons;
+            }
+        }
+        f["request"] = tons ? std::to_string(*tons) : "none";
     }
     {
         const auto fp =
@@ -1747,6 +1904,10 @@ void Viewer::update_title() {
         const PlayFeedback read = play_->runner().feedback(latest_receipt_);
         const std::optional<CommandOutcome>& latest = read.latest;
         const auto& snap = read.snapshot;
+        // The developer inspection UI (W4-SETTLEMENT-1 W4): ask for the hovered tile's building
+        // now, shown from `snap->inspection` next time (same one-turn-lag pattern as the founding
+        // probe below — this frame's title still reads what the previous request answered).
+        play_->runner().request_inspect(dev_->hover());
         // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
         std::string note = pointer_frame_ && pointer_frame_->scene
                                ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
@@ -1758,6 +1919,15 @@ void Viewer::update_title() {
         }
         title +=
             " — " + dev_title(*snap, *dev_, knowledge_->check(*dev_, snap.get()), latest, note);
+        // Against the hover read just now (dev_->hover()), not the one `inspection` answered: a
+        // hover that has moved since, or landed on empty ground, must not show the old building's
+        // line (W4-SETTLEMENT-1 W7 review, finding 3).
+        if (const BuildingInspection* insp = live_inspection(*snap, dev_on, dev_->hover())) {
+            title += " — " + insp->kind;
+            if (!insp->status.empty()) {
+                title += " " + insp->status;
+            }
+        }
     }
     if (fps_) {
         char buf[64];
@@ -1822,6 +1992,13 @@ void Viewer::script_tick() {
         st.latest = std::move(read.latest);
     }
     st.visibility = command_visibility(st.latest);
+    // Set alongside st.facts below (opening_facts() reads opening_snapshot_, refreshed only once
+    // per drawn frame in draw()/opening_refresh(), never here): this is the turn opening_snapshot_
+    // belongs to, not the live one above, so `wait turns` cannot resolve ahead of what the facts
+    // it gates (`expect fact ...`) can actually show (W4-OPENING-CONTROLS-FLAKE). In a session
+    // without an opening, opening_snapshot_ is null and facts_turn_for falls back to the live
+    // turn, as dev_script.hpp documents; the inspection.* facts below are built from that read.
+    st.facts_turn = facts_turn_for(opening_snapshot_.get(), st.snapshot.get());
     st.tool = dev_;
     st.knowledge = knowledge_ ? &*knowledge_ : nullptr;
     if (chunk_hold_) {
@@ -1850,8 +2027,28 @@ void Viewer::script_tick() {
     if (const char* t = SDL_GetWindowTitle(window_); t != nullptr) {
         st.title = t;
     }
+    // The developer inspection UI's facts (W4-SETTLEMENT-1 W5): available in any session, not
+    // only an opening one — Proof B (an existing-town session with no ship-start opening) needs
+    // these to assert production/worker activity, which opening_facts() below never reports.
+    // Against the live hover, not just whatever `inspection` last answered (W4-SETTLEMENT-1 W7
+    // review, finding 3): while paused no new turn publishes to retract a stale answer once the
+    // hover moves, lands on empty ground, or the tool is switched off.
+    if (st.snapshot != nullptr) {
+        if (const BuildingInspection* insp =
+                live_inspection(*st.snapshot, dev_ != nullptr && dev_->enabled(),
+                                dev_ != nullptr ? dev_->hover() : std::nullopt)) {
+            st.facts["inspection.kind"] = insp->kind;
+            st.facts["inspection.status"] = insp->status;
+            st.facts["inspection.type"] = std::to_string(insp->type.v);
+            st.facts["inspection.prodtype"] = std::to_string(insp->prodtype);
+            st.facts["inspection.tile.x"] = std::to_string(insp->tile.x);
+            st.facts["inspection.tile.y"] = std::to_string(insp->tile.y);
+        }
+    }
     if (opening_ != nullptr) {
-        st.facts = opening_facts();
+        for (auto& [key, value] : opening_facts()) {
+            st.facts[key] = std::move(value);
+        }
         st.ship_point = [this](std::uint64_t id) -> std::optional<std::pair<float, float>> {
             if (!opening_snapshot_ || !opening_snapshot_->opening || !pointer_frame_) {
                 return std::nullopt;
@@ -1869,7 +2066,28 @@ void Viewer::script_tick() {
                              static_cast<float>(box->cy / density)};
         };
     }
+    // W4-OPENING-CONTROLS-FLAKE step 1: an opt-in trace (no cost unless set) of the two readings a
+    // scripted "wait turns" + "expect fact tracked..." pair can race between: `st.snapshot` is a
+    // fresh feedback() read taken every call, but the facts built above from opening_snapshot_
+    // (opening_facts()) are only as new as the last drawn frame (opening_refresh(), draw()-only).
+    // Under frame-rate collapse the live turn can run far ahead of the frame-gated one.
+    const char* trace_env = std::getenv("ANNO_DEV_SCRIPT_TRACE");
+    const std::uint64_t trace_live_turn = st.snapshot ? st.snapshot->turn : 0;
+    const std::uint64_t trace_opening_turn = opening_snapshot_ ? opening_snapshot_->turn : 0;
     DevScriptAction act = script_->step(st);
+    if (trace_env != nullptr) {
+        std::fprintf(stderr,
+                     "[dev-script-trace] drawn_frames=%llu live_turn=%llu opening_turn=%llu "
+                     "gap=%lld tracked.1.state=%s log=%s\n",
+                     static_cast<unsigned long long>(drawn_frames_),
+                     static_cast<unsigned long long>(trace_live_turn),
+                     static_cast<unsigned long long>(trace_opening_turn),
+                     static_cast<long long>(trace_live_turn) -
+                         static_cast<long long>(trace_opening_turn),
+                     st.facts.count("tracked.1.state") != 0 ? st.facts.at("tracked.1.state").c_str()
+                                                            : "<none>",
+                     script_->log().empty() ? "" : script_->log().back().c_str());
+    }
     if (act.look_world) {
         const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
         const auto [sx, sy] = render::corner_point(act.look_world->first, act.look_world->second,
@@ -2230,8 +2448,26 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     // The ships stir the simulated waves (enhanced water): a bow wave and a wake.
     g.frame->set_wakes(opening_ != nullptr ? motion_.wakes(wall_seconds(), wave_centre_)
                                            : std::vector<render::fluid::ShipWake>{});
-    const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
-                                   resample, overlay, live_units_);
+    // ADR 0004 R1, the GPU path: the same HUD/construction-menu overlay draw_cpu composes into
+    // its own buffer, composed here instead into a transparent-background RGBA image
+    // (ui_mock.hpp's draw_live_screen_rgba) and alpha-blended over the whole frame by the
+    // compositor's own "ui overlay" pass (gpu.cpp/gpu.wgsl) - drawn only at the same exact
+    // 1024 x 768 the CPU path requires (R3 still open).
+    std::optional<assets::Rgba> ui_overlay_image;
+    if (construction_menu_ != nullptr && w == 1024 && h == 768) {
+        const auto in = construction_hud_inputs();
+        auto drawn = draw_live_screen_rgba(
+            static_cast<int>(w), static_cast<int>(h), construction_menu_->hud(),
+            construction_menu_->construction(), *construction_masks_, in.spec,
+            *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
+            in.counters, construction_placement_open_);
+        if (drawn.ok()) {
+            ui_overlay_image = std::move(drawn).value();
+        }
+    }
+    const auto s =
+        g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample,
+                        overlay, live_units_, ui_overlay_image ? &*ui_overlay_image : nullptr);
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
     if (s.wave_simulation) {
@@ -2320,6 +2556,33 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
 }
 #endif
 
+Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
+    const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
+                                                                 construction_open_category_}
+                                                    : UiMockSpec{UiMockScreen::Hud, ""};
+    const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+    // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own member
+    // comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment) - sim::kTon
+    // (production.hpp) is the 256 that separates the whole-ton bits from the fractional ones; a
+    // display counter only ever needs the whole tons. eligibility is null exactly when there is
+    // no city yet (its own doc comment says so, "matching money/goods above") - money/goods
+    // themselves are plain fields (0, not nullopt) in that case, so eligibility's nullness is the
+    // real "has a city" signal.
+    const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
+    auto whole_tons = [&](std::optional<sim::GoodsId> id) -> std::optional<std::uint32_t> {
+        if (!has_city || !id || *id >= snapshot->goods.size())
+            return std::nullopt;
+        return snapshot->goods[*id] / sim::kTon;
+    };
+    HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money) : std::nullopt,
+                         whole_tons(goods_tools_),
+                         whole_tons(goods_wood_),
+                         whole_tons(goods_bricks_),
+                         whole_tons(goods_marble_),
+                         has_city ? snapshot->population : std::nullopt};
+    return {spec, std::move(counters), snapshot};
+}
+
 void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view) {
     const int w = view.w, h = view.h;
     if (texture_ == nullptr || tex_w_ != w || tex_h_ != h) {
@@ -2366,15 +2629,36 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
             blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
         }
     }
+    double construction_ui_ms = 0.0;
+    if (construction_menu_ != nullptr && w == 1024 && h == 768) {
+        // H1/C1, second slice: the menu's own chrome, drawn over the world (ADR 0004 R1's
+        // "Rendering" - the CPU path; the GPU path is later work), only while the window is at
+        // the UI's 1024 x 768 reference (R3's scale is still open). construction_tex_cache_
+        // persists decoded textures across frames (ADR 0004 "Atlases"; see its own comment).
+        // Timed on its own (not folded into "render other") so the cache's effect is measurable
+        // per CLAUDE.md's "measure every performance change".
+        const auto ui_start = Clock::now();
+        const auto in = construction_hud_inputs();
+        static_cast<void>(draw_live_screen_xrgb(
+            buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
+            *construction_masks_, in.spec, *construction_tex_cache_,
+            in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
+            construction_placement_open_));
+        construction_ui_ms = since_ms(ui_start, Clock::now());
+    }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),
                                    levels().tile_h(group_), gen, w, h);
     const auto rendered = Clock::now();
-    const double known = s.chunks_ms + s.ground_ms + s.water_objects_ms + s.sea_ms + s.objects_ms;
+    const double known = s.chunks_ms + s.ground_ms + s.water_objects_ms + s.sea_ms + s.objects_ms +
+                         construction_ui_ms;
     steps_.push_back({"chunks", s.chunks_ms});
     steps_.push_back({"ground", s.ground_ms});
     steps_.push_back({"water objects", s.water_objects_ms});
     steps_.push_back({"sea", s.sea_ms});
     steps_.push_back({"objects", s.objects_ms});
+    if (construction_menu_ != nullptr) {
+        steps_.push_back({"construction ui", construction_ui_ms});
+    }
     steps_.push_back({"render other", std::max(0.0, since_ms(render_start, rendered) - known)});
     // The delivery chain: texture update, render submission, present. The frame counts as delivered
     // only if every call succeeded (SDL3 returns bool); after a failed stage the later ones are not

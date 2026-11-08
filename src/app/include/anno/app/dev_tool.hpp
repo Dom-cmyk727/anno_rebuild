@@ -119,6 +119,10 @@ class DevTool {
     [[nodiscard]] std::optional<sim::TileXY> pick(const PointerFrame& frame, double px, double py,
                                                   std::string* why = nullptr) const;
     [[nodiscard]] bool enabled() const { return enabled_; }
+    /// Arms `type` directly and turns the tool on (UI.2 C4: a construction-menu cell click, not a
+    /// developer Next/PrevType cycle). False, nothing changed (message() names why), when there
+    /// is no city yet or `type` is not in setup().types.
+    bool arm(sim::TypeId type);
     /// Something Esc would cancel: a press in progress or the demolish mode.
     [[nodiscard]] bool has_pending() const {
         return enabled_ && (input_.pressed() || input_.demolish_mode());

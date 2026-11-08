@@ -562,6 +562,9 @@ TEST_CASE("house transition: upgrade 9501 -> variant of 9520, every number hand-
     CHECK(city0(w).index.house_counts == std::vector<std::uint32_t>{1, 0});
     CHECK(sim::residents_at_or_above(w.config(), *types, city0(w), 0) == 8);
     CHECK(sim::residents_at_or_above(w.config(), *types, city0(w), 1) == 0);
+    // World::city_population (H2 read-only query, rule 0.2) is residents_at_or_above(..., 0):
+    // every group's residents, the same total the line above already checked.
+    CHECK(w.city_population(sim::CityRef{sim::IslandId{0}, sim::CityNo{0}}) == 8);
 
     // The order: at the moment of the variant draw the materials are spent but the type, E and the
     // stock are still the old ones (variant BEFORE SetGroup).
@@ -606,6 +609,13 @@ TEST_CASE("house transition: upgrade 9501 -> variant of 9520, every number hand-
     CHECK(city0(w).build_goods[0].spent == 512);
     CHECK(city0(w).build_goods[1].spent == 1024);
     CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("World::city_population: nullopt for a CityRef that does not resolve to a real city") {
+    const auto types = registry();
+    sim::World w = create(upgrade_rig(), types);
+    CHECK(w.city_population(sim::CityRef{sim::IslandId{99}, sim::CityNo{0}}) == std::nullopt);
+    CHECK(w.city_population(sim::CityRef{sim::IslandId{0}, sim::CityNo{99}}) == std::nullopt);
 }
 
 TEST_CASE("house transition: the materials gate, one unit short or reserved changes nothing") {

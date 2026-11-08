@@ -1177,6 +1177,18 @@ fn scale_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     return scale_texel(vec2<i32>(floor(src)));
 }
 
+// ---- UI overlay (ADR 0004 R1, the GPU path): one straight-alpha RGBA image, exactly the
+// target's own size, alpha-blended over the whole frame as a single full-screen quad - the GPU
+// counterpart of app::draw_live_screen_rgba. Reuses scale_vs's own full-screen triangle; its own
+// pipeline's group 3 holds only the texture (no uniform - a straight 1:1 pixel sample, never
+// resampled, matching the CPU path's own exact-size gate, R3 still open).
+@group(3) @binding(0) var ui_overlay_src: texture_2d<f32>;
+
+@fragment
+fn ui_overlay_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    return textureLoad(ui_overlay_src, vec2<i32>(i32(pos.x), i32(pos.y)), 0);
+}
+
 // ---- Derived zoom levels: the 2x reduction of a chunk (chunk_reduce.hpp) ----
 // One draw per source chunk, scissored to its quadrant of the destination
 // chunk; the chunk bind group (group 1) is the source's. Integer arithmetic

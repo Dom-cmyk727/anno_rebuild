@@ -11,6 +11,10 @@
 //                         the cheapest of the tool's types that costs gold (not a road)
 //   rotate R              press T until the rotation is R
 //   click X Y             move to, press and release over the drawn centre of tile (X, Y)
+//   click_px X Y          move to, press and release at the raw drawable pixel (X, Y) (UI.2 C4:
+//                         construction_handle's own coordinate space, data/ui/'s 1024 x 768
+//                         reference - not a world tile; `click`'s window_point projection does
+//                         not apply)
 //   drag X0 Y0 X1 Y1      press over (X0, Y0), move in steps to (X1, Y1), release
 //   pan DX DY             a right-button drag by (DX, DY) window points from the window centre
 //   wheel N               N wheel notches at the window centre (positive: closer)
@@ -171,6 +175,13 @@ struct DevScriptState {
     std::string title;
     /// The opening's named facts (see `wait fact`); empty in a session without an opening.
     std::map<std::string, std::string> facts;
+    /// The turn `facts` reflects (W4-OPENING-CONTROLS-FLAKE): in an opening session, facts are
+    /// built from a snapshot taken once per drawn frame, which can run behind `snapshot->turn`
+    /// (read fresh every call) under a slow or contended frame cadence. `wait turns N` baselines
+    /// and checks against this turn, not `snapshot->turn`, so it cannot report "N turns later" as
+    /// true before a frame exists whose facts actually show it. Equal to `snapshot->turn` in a
+    /// session without an opening (facts is then always empty, so this has no effect there).
+    std::uint64_t facts_turn = 0;
     /// The window point of ship `id`'s drawn centre in the last frame, if it is drawn.
     std::function<std::optional<std::pair<float, float>>(std::uint64_t)> ship_point;
 };

@@ -318,6 +318,22 @@ TEST_CASE("command line") {
     // UTF-8 paths round-trip.
     const std::string umlaut = "Insel_\xc3\xa4.scp";
     CHECK(anno::app::to_utf8(anno::app::utf8_path(umlaut)) == umlaut);
+
+    // --construction-menu (W4-UI-2 C4): --play only, on|off, --layout only with it on.
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--construction-menu", "on"})); // needs --play
+    const auto cm = parse_args({"--play", "x.scp", "--construction-menu", "on"});
+    REQUIRE(cm.has_value());
+    CHECK(cm->construction_menu);
+    CHECK_FALSE(cm->layout.has_value());
+    const auto cm_layout =
+        parse_args({"--play", "x.scp", "--construction-menu", "on", "--layout", "data/ui"});
+    REQUIRE(cm_layout.has_value());
+    CHECK(cm_layout->layout == anno::app::utf8_path("data/ui"));
+    CHECK_FALSE(parse_args({"--play", "x.scp", "--construction-menu", "maybe"}));
+    CHECK_FALSE(parse_args({"--play", "x.scp", "--layout", "data/ui"})); // meaningless alone
+    const auto cm_off = parse_args({"--play", "x.scp", "--construction-menu", "off"});
+    REQUIRE(cm_off.has_value());
+    CHECK_FALSE(cm_off->construction_menu);
 }
 
 TEST_CASE("zoom over derived levels: the range follows the last level and the minimum tile") {

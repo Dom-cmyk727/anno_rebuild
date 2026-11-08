@@ -16,6 +16,7 @@
 #include <anno/app/opening.hpp>
 #include <anno/app/play.hpp>
 #include <anno/formats/fixed_map.hpp>
+#include <anno/sim/building.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/game_setup.hpp>
 #include <anno/sim/placement.hpp>
@@ -688,6 +689,155 @@ bool PlayRunner::request_capture(std::function<void(WorldCapture)> done) {
     return true;
 }
 
+namespace {
+
+// 8.8 fixed-point goods/output amount as tons, two decimals (W4-SETTLEMENT-1 W4: this package's
+// own display convention for the developer inspection UI; no existing one to match, play.hpp's
+// `PlaySnapshot::goods` comment just calls it "8.8 tons").
+std::string tons(std::uint32_t raw_8_8) {
+    const std::uint32_t whole = raw_8_8 / 256;
+    const std::uint32_t frac = ((raw_8_8 % 256) * 100) / 256;
+    return std::to_string(whole) + "." + (frac < 10 ? "0" : "") + std::to_string(frac) + "t";
+}
+
+std::string join_tons(const std::vector<std::uint32_t>& amounts) {
+    std::string out;
+    for (std::size_t i = 0; i < amounts.size(); ++i) {
+        out += (i == 0 ? "" : ",") + tons(amounts[i]);
+    }
+    return out;
+}
+
+// One line per payload kind, the fields a developer watching production/worker activity cares
+// about (output/raw/input stock, activity, workers/animals/carriers out). Inert payloads (every
+// class without a ported tick) get no line: there is nothing live to show.
+struct DescribePayload {
+    std::string operator()(const sim::Inert&) const { return ""; }
+    std::string operator()(const sim::Workshop& w) const {
+        std::string activity;
+        for (std::size_t i = 0; i < w.activity.size(); ++i) {
+            activity += (i == 0 ? "" : ",") + std::to_string(w.activity[i]);
+        }
+        return "out=" + join_tons(w.out) + " in=" + join_tons(w.in) + " activity=" + activity +
+               " carriers_out=" + std::to_string(w.carriers_out) +
+               (w.suspended ? " suspended" : "") + (w.blocked ? " blocked" : "");
+    }
+    std::string operator()(const sim::WeaponsWorkshop& w) const {
+        std::string activity;
+        for (std::size_t i = 0; i < w.activity.size(); ++i) {
+            activity += (i == 0 ? "" : ",") + std::to_string(w.activity[i]);
+        }
+        return "out=" + join_tons(w.out) + " in=" + join_tons(w.in) + " activity=" + activity +
+               " carriers_out=" + std::to_string(w.carriers_out) +
+               (w.suspended ? " suspended" : "") + (w.blocked ? " blocked" : "");
+    }
+    std::string operator()(const sim::Farm& f) const {
+        return "out=" + tons(f.out) + " raw=" + tons(f.raw) +
+               " activity=" + std::to_string(f.activity) +
+               " workers_out=" + std::to_string(f.workers_out) + (f.suspended ? " suspended" : "") +
+               (f.blocked ? " blocked" : "");
+    }
+    std::string operator()(const sim::SmallFarm& f) const {
+        // activity and figures_out are plain counters (a u16 average, a per-line/animal-kind
+        // headcount), not 8.8 goods amounts — only out/raw are tons (production.hpp comments).
+        std::string activity, figures;
+        for (std::size_t i = 0; i < f.activity.size(); ++i) {
+            activity += (i == 0 ? "" : ",") + std::to_string(f.activity[i]);
+        }
+        for (std::size_t i = 0; i < f.figures_out.size(); ++i) {
+            figures += (i == 0 ? "" : ",") + std::to_string(f.figures_out[i]);
+        }
+        return "out=" + join_tons(f.out) + " raw=" + join_tons(f.raw) + " activity=" + activity +
+               " figures_out=" + figures +
+               " status_code=" + std::to_string(static_cast<int>(f.status.code)) +
+               (f.suspended ? " suspended" : "") + (f.blocked ? " blocked" : "");
+    }
+    std::string operator()(const sim::Mine& m) const {
+        return "out=" + tons(m.out) + " activity=" + std::to_string(m.activity) +
+               " deposit=" + (m.deposit ? std::to_string(*m.deposit) : "none") +
+               (m.blocked ? " blocked" : "");
+    }
+    std::string operator()(const sim::Market&) const { return "(no stock of its own; see city)"; }
+    std::string operator()(const sim::House& h) const {
+        // h.stock is the house population formula's satisfaction value (trunc(Menge*s*residents*
+        // 128/1536), docs/re/population.md §2), not an 8.8 goods amount: plain numbers, no "t".
+        std::string stock;
+        for (std::size_t i = 0; i < h.stock.size(); ++i) {
+            stock += (i == 0 ? "" : ",") + std::to_string(h.stock[i]);
+        }
+        return "residents=" + std::to_string(h.residents_64 / 64) + " stock=" + stock;
+    }
+    std::string operator()(const sim::Inn& i) const {
+        return "tavern=" + std::to_string(i.tavern) + " taken=" + std::to_string(i.taken) +
+               " carriers_out=" + std::to_string(i.carriers_out);
+    }
+};
+
+std::string payload_kind_name(const sim::Payload& payload) {
+    return std::visit(
+        [](const auto& p) -> std::string {
+            using T = std::decay_t<decltype(p)>;
+            if constexpr (std::is_same_v<T, sim::Inert>) {
+                return "Inert";
+            } else if constexpr (std::is_same_v<T, sim::Workshop>) {
+                return "Workshop";
+            } else if constexpr (std::is_same_v<T, sim::WeaponsWorkshop>) {
+                return "WeaponsWorkshop";
+            } else if constexpr (std::is_same_v<T, sim::Farm>) {
+                return "Farm";
+            } else if constexpr (std::is_same_v<T, sim::SmallFarm>) {
+                return "SmallFarm";
+            } else if constexpr (std::is_same_v<T, sim::Mine>) {
+                return "Mine";
+            } else if constexpr (std::is_same_v<T, sim::Market>) {
+                return "Market";
+            } else if constexpr (std::is_same_v<T, sim::House>) {
+                return "House";
+            } else {
+                static_assert(std::is_same_v<T, sim::Inn>,
+                              "a Payload alternative without a name here (building.hpp changed)");
+                return "Inn";
+            }
+        },
+        payload);
+}
+
+} // namespace
+
+std::optional<BuildingInspection> inspect_building(const sim::World& world, sim::CityRef city,
+                                                   sim::TileXY tile) {
+    const sim::Building* b = world.building_at(city, tile.x, tile.y);
+    if (b == nullptr) {
+        return std::nullopt;
+    }
+    BuildingInspection out;
+    out.tile = tile;
+    out.id = b->id;
+    out.type = b->type;
+    if (const sim::BuildingType* t = world.types().find(b->type)) {
+        out.prodtype = t->prodtype;
+    }
+    out.kind = payload_kind_name(b->payload);
+    out.status = std::visit(DescribePayload{}, b->payload);
+    return out;
+}
+
+std::uint64_t facts_turn_for(const PlaySnapshot* opening_snapshot,
+                             const PlaySnapshot* live_snapshot) {
+    if (opening_snapshot != nullptr) {
+        return opening_snapshot->turn;
+    }
+    return live_snapshot != nullptr ? live_snapshot->turn : 0;
+}
+
+const BuildingInspection* live_inspection(const PlaySnapshot& snapshot, bool dev_enabled,
+                                          std::optional<sim::TileXY> hover) {
+    if (!dev_enabled || !snapshot.inspection || !hover || snapshot.inspection->tile != *hover) {
+        return nullptr;
+    }
+    return snapshot.inspection.get();
+}
+
 std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
     std::vector<SceneBuilding> cur = play_buildings(world_);
     sort_buildings(cur);
@@ -764,6 +914,34 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             island->cities[developer_city_->city.v]) {
             next->goods = island->cities[developer_city_->city.v]->stock.stock;
         }
+        std::optional<sim::TileXY> inspect_tile;
+        {
+            const std::lock_guard lock(inspect_mu_);
+            inspect_tile = inspect_tile_;
+        }
+        if (inspect_tile) {
+            if (auto found = inspect_building(world_, *developer_city_, *inspect_tile)) {
+                next->inspection = std::make_shared<const BuildingInspection>(std::move(*found));
+            }
+        }
+        // UI.2 C2: the construction menu's lock display reads this, never
+        // World::construction_eligibility directly (that World belongs to this thread, not the
+        // window's) and never data/ui/construction.txt's recorded state (RE evidence about the
+        // original, not a live rule). A pure read (rule 0.2): no state, stream, hash or draw
+        // changes.
+        auto elig = std::make_shared<std::vector<std::pair<sim::TypeId, bool>>>();
+        elig->reserve(world_.types().types().size());
+        for (const sim::BuildingType& t : world_.types().types()) {
+            elig->emplace_back(t.id,
+                               world_.construction_eligibility(local_player_, t.id).allowed());
+        }
+        next->eligibility = std::move(elig);
+        // H2 (the HUD's residents counter): World::city_population, a new read-only sim query
+        // (rule 0.2 - no state, stream, hash or draw change; residents_at_or_above's own
+        // existing aggregate, house_transition.hpp, wrapped for a CityRef). Same cross-thread-
+        // avoidance reason as eligibility above: computed here, on the sim thread, never read
+        // from the window's own copy of World.
+        next->population = world_.city_population(*developer_city_);
     }
     for (const CommandOutcome& o : ran) {
         if (o.state == CommandOutcome::State::Refused) {

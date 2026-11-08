@@ -92,10 +92,9 @@ OpeningSetup make_opening_setup(const sim::World& world,
     return s;
 }
 
-formats::Result<OpeningLoad, std::string> load_opening(const fs::path& game_dir,
-                                                       const fs::path& manifest_path,
-                                                       std::uint32_t seat,
-                                                       const std::optional<fs::path>& resume) {
+formats::Result<OpeningLoad, std::string>
+load_opening(const fs::path& game_dir, const fs::path& manifest_path, std::uint32_t seat,
+             const std::optional<fs::path>& resume, bool city_booking) {
     const std::string where = to_utf8(manifest_path) + ": ";
     auto bytes = read_file(manifest_path);
     if (!bytes) {
@@ -122,6 +121,10 @@ formats::Result<OpeningLoad, std::string> load_opening(const fs::path& game_dir,
         return where + "city names: " + names.error();
     }
     rules.city_names = names.value();
+    // --city-booking on: the opt-in ECON-BOOK-1 checked city sales/upkeep for this session only
+    // (D2, OQ-pending). save_billed_goods stays its default (already true, required by it) and
+    // house_updates stays its default (already false): neither is given an override flag here.
+    rules.city_booking = city_booking;
 
     OpeningLoad out;
     out.manifest_bytes = *bytes;

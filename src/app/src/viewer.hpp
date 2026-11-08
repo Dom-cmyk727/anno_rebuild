@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -14,6 +15,7 @@
 
 #include <anno/app/building_delta.hpp>
 #include <anno/app/cli.hpp>
+#include <anno/app/construction_menu.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/opening_ui.hpp>
@@ -66,6 +68,19 @@ struct ViewerHooks {
     /// runner by the caller before it starts). Null leaves `hold publication` out: the script
     /// then fails at that step. The caller owns it.
     PublicationHold* hold = nullptr;
+    /// The construction menu's click resolution (construction_menu.hpp; --construction-menu on,
+    /// W4-UI-2 C4 first slice): checked before `dev` (ADR 0004 R1's "UI first, then world"). Only
+    /// active while the window's drawable size is exactly 1024 x 768 (R3's scale is still open;
+    /// no guessed scaling). The caller owns it and the data/ui/ layouts it was built from.
+    ConstructionMenu* construction_menu = nullptr;
+    /// The original game's folder; read once, when the window constructs its own persistent
+    /// `UiTexCache` (ADR 0004 "Atlases": textures decode once, never per frame). Unused when
+    /// `construction_menu` is null.
+    std::filesystem::path construction_game_dir;
+    /// data/ui/masks.txt (the H2 live-digit counters' own measured rectangles), loaded alongside
+    /// `construction_menu`'s own hud.txt/construction.txt. The caller owns it. Unused when
+    /// `construction_menu` is null.
+    MaskLayout* construction_masks = nullptr;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

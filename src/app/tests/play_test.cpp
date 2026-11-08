@@ -18,7 +18,9 @@
 #include <doctest/doctest.h>
 
 #include <anno/app/cli.hpp>
+#include <anno/app/construction_menu.hpp>
 #include <anno/app/play.hpp>
+#include <anno/app/ui_layout.hpp>
 #include <anno/formats/fixed_map.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/sim/clock.hpp>
@@ -927,4 +929,250 @@ TEST_CASE("play component: turn cost on the heavy endless scenario") {
                      << at(99, 100) << " max " << ms.back());
     CHECK(runner.step_ms() == 10);
     CHECK(runner.snapshot()->tick > 0);
+}
+
+TEST_CASE("play: facts_turn_for follows the opening snapshot's turn, not a later live one "
+          "(W4-OPENING-CONTROLS-FLAKE)") {
+    using anno::app::facts_turn_for;
+    using anno::app::PlaySnapshot;
+
+    PlaySnapshot opening;
+    opening.turn = 5;
+    PlaySnapshot live;
+    live.turn = 9; // a fresh feedback() read taken after `opening` was drawn, still ahead of it.
+
+    // The case the original fix claimed to cover but did not: the two turns differ, and
+    // facts_turn_for must report the opening snapshot's turn, never the later live one, so a
+    // scripted `wait turns` cannot resolve ahead of the facts it gates.
+    CHECK(facts_turn_for(&opening, &live) == 5);
+    CHECK(facts_turn_for(&opening, &live) != live.turn);
+
+    // Equal turns are not evidence either way; cover the common case too.
+    live.turn = opening.turn;
+    CHECK(facts_turn_for(&opening, &live) == opening.turn);
+
+    // A session without an opening (Proof B, W4-SETTLEMENT-1): falls back to the live turn, since
+    // facts is always empty there and has nothing to race against.
+    CHECK(facts_turn_for(nullptr, &live) == live.turn);
+
+    // Neither snapshot exists yet (before the first drawn frame): 0, not a crash.
+    CHECK(facts_turn_for(nullptr, nullptr) == 0);
+}
+
+TEST_CASE("play: live_inspection hides a stale answer once the hover moves, lands on empty "
+          "ground, or the dev tool goes off (W4-SETTLEMENT-1 W7 review, finding 3)") {
+    using anno::app::BuildingInspection;
+    using anno::app::live_inspection;
+    using anno::app::PlaySnapshot;
+    using anno::sim::TileXY;
+
+    PlaySnapshot snap;
+    BuildingInspection insp;
+    insp.tile = TileXY{10, 20};
+    insp.kind = "Farm";
+    insp.status = "out=1.00t";
+    snap.inspection = std::make_shared<const BuildingInspection>(insp);
+
+    // The tile request_inspect last answered is still the one hovered: show it.
+    CHECK(live_inspection(snap, true, TileXY{10, 20}) != nullptr);
+
+    // The hover has moved to a different building since: the one-turn-old answer is stale.
+    CHECK(live_inspection(snap, true, TileXY{11, 20}) == nullptr);
+
+    // The hover has moved to empty ground (no tile at all): also stale, not "no change".
+    CHECK(live_inspection(snap, true, std::nullopt) == nullptr);
+
+    // The dev tool was switched off: hidden regardless of what the stale snapshot still answers
+    // for the tile that happens to still be hovered (PlayRunner::note_behind carries it forward
+    // while paused; nothing upstream clears it on its own).
+    CHECK(live_inspection(snap, false, TileXY{10, 20}) == nullptr);
+
+    // No building was ever inspected, or the tool was never on for this snapshot: never a crash.
+    PlaySnapshot empty;
+    CHECK(live_inspection(empty, true, TileXY{10, 20}) == nullptr);
+}
+
+TEST_CASE("play: the snapshot's eligibility is every registry type with the sim's own "
+          "construction_eligibility verdict, published once per turn (UI.2 C2)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path path =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    anno::app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true;
+    // Loaded twice (play_test.cpp's own established pattern, e.g. "runner turns match run_turn"
+    // above): one World moves into the runner, the other stays to call
+    // World::construction_eligibility directly, as the cross-check this new published field must
+    // agree with exactly.
+    auto for_runner = anno::app::load_play(*dir, path, fixed);
+    auto for_direct = anno::app::load_play(*dir, path, fixed);
+    REQUIRE(for_runner.ok());
+    REQUIRE(for_direct.ok());
+    anno::sim::World& direct_world = for_direct.value().world;
+    const std::size_t type_count = direct_world.types().types().size();
+    REQUIRE(type_count > 0);
+
+    const anno::sim::PlayerId developer = anno::app::developer_player();
+    anno::app::PlayRunner runner(std::move(for_runner.value().world));
+    runner.run_n(1);
+    // The same single turn, run directly, so `direct_world` is at the exact turn the published
+    // snapshot is (not turn 0): eligibility can depend on player/stage state a turn might change.
+    anno::sim::Turn turn;
+    turn.index = 0;
+    turn.step_ms = runner.step_ms();
+    anno::sim::run_turn(direct_world, nullptr, turn, anno::sim::Timing{}.mp_steps_per_turn);
+    const auto snap = runner.snapshot();
+    REQUIRE(snap->eligibility != nullptr);
+    REQUIRE(snap->eligibility->size() == type_count);
+
+    std::optional<std::uint32_t> previous_id;
+    std::size_t agree = 0;
+    for (const auto& [id, allowed] : *snap->eligibility) {
+        // Ascending by id (world_.types().types() is build()-sorted; the published copy keeps
+        // that order rather than reordering it).
+        if (previous_id) {
+            CHECK(id.v > *previous_id);
+        }
+        previous_id = id.v;
+        const bool direct = direct_world.construction_eligibility(developer, id).allowed();
+        agree += (allowed == direct) ? 1 : 0;
+    }
+    // Every entry agrees with calling the sim directly for the same (player, type): the
+    // published field is the sim's own answer, not a derived or stale copy of it.
+    CHECK(agree == type_count);
+}
+
+TEST_CASE("play: the snapshot's population is World::city_population of the developer's city, "
+          "published once per turn (W4-UI-2 H2)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path path =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    anno::app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true;
+    // Same loaded-twice pattern as the eligibility test above: one World moves into the runner,
+    // the other stays to call World::city_population directly, the cross-check the published
+    // field must agree with exactly.
+    auto for_runner = anno::app::load_play(*dir, path, fixed);
+    auto for_direct = anno::app::load_play(*dir, path, fixed);
+    REQUIRE(for_runner.ok());
+    REQUIRE(for_direct.ok());
+    anno::sim::World& direct_world = for_direct.value().world;
+
+    anno::app::PlayRunner runner(std::move(for_runner.value().world));
+    runner.run_n(1);
+    anno::sim::Turn turn;
+    turn.index = 0;
+    turn.step_ms = runner.step_ms();
+    anno::sim::run_turn(direct_world, nullptr, turn, anno::sim::Timing{}.mp_steps_per_turn);
+    const auto snap = runner.snapshot();
+    REQUIRE(snap->eligibility != nullptr); // has a city (same null convention as population)
+    REQUIRE(snap->population.has_value());
+
+    // The developer's first city, found the same way PlayRunner's own constructor finds it.
+    std::optional<anno::sim::CityRef> developer_city;
+    for (std::size_t i = 0; i < direct_world.islands().size() && !developer_city; ++i) {
+        const auto& island = direct_world.islands()[i];
+        if (!island)
+            continue;
+        for (const auto& city : island->cities) {
+            if (city && city->owner == anno::app::developer_player()) {
+                developer_city = anno::sim::CityRef{island->index, city->number};
+                break;
+            }
+        }
+    }
+    REQUIRE(developer_city.has_value());
+    CHECK(snap->population == direct_world.city_population(*developer_city));
+}
+
+TEST_CASE("UI.2 V3 (the command boundary): opening, browsing and closing every menu's category "
+          "and every one of its cells, without issuing a single command, leaves the state hash "
+          "unchanged") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path path =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    anno::app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true;
+
+    // Two independently loaded, otherwise identical Worlds: `browsed` is the one ConstructionMenu
+    // reads from below; `control` is never touched by anything in this test. If the menu is
+    // truly a pure consumer (ADR 0004's own "The command boundary": "no widget holds a reference
+    // into World"), ticking both the same number of turns must leave them bit-identical.
+    auto for_browsed = anno::app::load_play(*dir, path, fixed);
+    auto for_control = anno::app::load_play(*dir, path, fixed);
+    REQUIRE(for_browsed.ok());
+    REQUIRE(for_control.ok());
+    anno::sim::World browsed = std::move(for_browsed.value().world);
+    anno::sim::World control = std::move(for_control.value().world);
+    REQUIRE(browsed.state_hash() == control.state_hash());
+
+    const fs::path data_ui = fs::path(ANNO_REPO_DIR) / "data" / "ui";
+    const auto hud = anno::app::load_hud_layout(data_ui / "hud.txt");
+    const auto con = anno::app::load_construction_layout(data_ui / "construction.txt");
+    REQUIRE(hud.ok());
+    REQUIRE(con.ok());
+    const anno::app::ConstructionMenu menu(hud.value(), con.value());
+    int category_column_x = 0;
+    for (const auto& c : hud.value().clicks) {
+        if (c.name == "category_column_x") {
+            category_column_x = c.pos_x;
+        }
+    }
+    REQUIRE(category_column_x != 0);
+
+    // The developer player's eligibility, the same shape PlaySnapshot::eligibility publishes,
+    // built directly against `browsed` since there is no live window/runner in this test.
+    const anno::sim::PlayerId developer = anno::app::developer_player();
+    std::vector<std::pair<anno::sim::TypeId, bool>> eligibility;
+    eligibility.reserve(browsed.types().types().size());
+    for (const auto& t : browsed.types().types()) {
+        eligibility.emplace_back(t.id, browsed.construction_eligibility(developer, t.id).allowed());
+    }
+
+    // Open the menu (B), every category tab in turn, every one of that category's grid cells
+    // (locked and unlocked alike - an Arm result is resolved and then deliberately dropped,
+    // never given to DevTool::arm or post_command, exactly what V3 means by "browsing ... without
+    // issuing a command"), then close it (Esc). Nothing here reads or writes `browsed` itself -
+    // only `menu`, `hud`, `con` and the `eligibility` snapshot taken above.
+    static constexpr std::array<const char*, 8> kCategories = {
+        "public", "roads", "farms", "workshops", "coastal", "mines", "military", "ornamental"};
+    std::string open_category = "public";
+    for (const char* category : kCategories) {
+        const auto* cat = con.value().category(category);
+        REQUIRE(cat != nullptr);
+        const auto switched =
+            menu.click(category_column_x, cat->y, open_category, false, &eligibility);
+        CHECK(switched.kind == anno::app::ConstructionClickKind::SwitchCategory);
+        open_category = switched.category;
+        for (const auto& cell : con.value().cells) {
+            if (cell.category != open_category)
+                continue;
+            const auto centre = con.value().grid.click_centre(cell.col, cell.row);
+            REQUIRE(centre.has_value());
+            static_cast<void>(
+                menu.click(centre->first, centre->second, open_category, false, &eligibility));
+            // Deliberately not acted on, whatever it resolved to (V3's whole point).
+        }
+    }
+
+    // Two Worlds that started identical, run the same number of turns: one had its own
+    // ConstructionMenu exercised exhaustively (and never once issued a command from it); the
+    // other had nothing done to it at all. If the menu ever mutated sim state - a stray pointer
+    // into World, a hidden side effect - this is where it would show up as a hash mismatch.
+    anno::app::PlayRunner browsed_runner(std::move(browsed));
+    anno::app::PlayRunner control_runner(std::move(control));
+    browsed_runner.run_n(10);
+    control_runner.run_n(10);
+    CHECK(browsed_runner.state_hash() == control_runner.state_hash());
 }

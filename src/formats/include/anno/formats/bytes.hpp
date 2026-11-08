@@ -9,6 +9,11 @@
 
 namespace anno::formats {
 
+/// Non-owning: a `Bytes` field of a parsed struct (e.g. `tex::Texture::body`,
+/// `tex::Palette::entries`) is a view *into the buffer `parse()` was called with*, not a copy. The
+/// caller must keep that buffer alive for at least as long as the parsed struct (W4-UI-2 H1: a
+/// cache that stored only the parsed `TexFile`, letting the `std::vector<uint8_t>` it was parsed
+/// from go out of scope, left every such span dangling - a real crash, not a hypothetical one).
 using Bytes = std::span<const std::uint8_t>;
 using ByteBuffer = std::vector<std::uint8_t>;
 

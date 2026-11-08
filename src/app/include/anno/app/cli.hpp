@@ -19,7 +19,7 @@ namespace anno::app {
 
 inline constexpr const char* kUsage =
     "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> | --ship-start <manifest.json> "
-    "--seat <n> [--resume <save>] [--game-dir <dir>] [--speed "
+    "--seat <n> [--resume <save>] [--city-booking on|off] [--game-dir <dir>] [--speed "
     "50|100|200] [--group "
     "<n>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
@@ -28,7 +28,8 @@ inline constexpr const char* kUsage =
     "<n>] "
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
     "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>] "
-    "[--commands <file> [--replay-hashes <file>]] (--play)\n"
+    "[--commands <file> [--replay-hashes <file>]] [--construction-menu on|off [--layout <dir>]] "
+    "(--play)\n"
     "(--group 0-2: the built zoom levels; 3 and up: derived levels, --png only, bounded by "
     "--max-derived-levels)\n"
     "(--png only: [--zoom-factor <scale>] [--resample nearest|bilinear|box|area], the picture "
@@ -117,6 +118,11 @@ struct Args {
     bool ship_start = false;
     std::optional<std::uint32_t> seat;
     std::optional<std::filesystem::path> resume;
+    /// --ship-start --city-booking on: the opt-in ECON-BOOK-1 checked city sales/upkeep
+    /// (sim::Rules::city_booking) for this session only, never the compiled-in default (false). A
+    /// developer/session option for W4-EXPAND-LIVE-1's manual-expansion card, not a changed
+    /// default.
+    bool city_booking = false;
     /// Multiplayer rate: fixed real-time cadence, variable game ms per step.
     unsigned play_speed = 100;
     /// --play --commands <file>: scripted Build and Demolish lines (game-shell.md).
@@ -165,6 +171,15 @@ struct Args {
     /// 2 saves memory (docs/perf/README.md, T1e), 0 is a plain ring.
     std::size_t lookahead_chunks = 3;
     ZoomOptions zoom;
+    /// --construction-menu on|off (--play only; W4-UI-2 C4, first slice): routes clicks through
+    /// ConstructionMenu before the developer tool, with the grid defaulting open on the
+    /// "public" category (no open/close key yet - R2/R3's switch and the category column are
+    /// later work). Needs `--layout` (default "data/ui", the project's own checked-in directory,
+    /// resolved against the current working directory) at the window's reference resolution
+    /// (1024 x 768); a window of a different size leaves the menu inactive rather than guess a
+    /// scale (OQ: R3 is still open).
+    bool construction_menu = false;
+    std::optional<std::filesystem::path> layout;
 };
 
 /// Parses option/value pairs; nullopt for anything invalid (print kUsage,

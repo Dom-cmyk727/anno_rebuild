@@ -202,6 +202,47 @@ TEST_CASE("picker: a synthetic event sequence gives the expected commands") {
     CHECK(plain_build.placements.front().type == *plain);
 }
 
+TEST_CASE("picker: arm selects a type directly, by id, without cycling (UI.2 C4)") {
+    sim::TypeRegistry::Builder b;
+    sim::BuildingType a, c, d;
+    a.id = sim::TypeId{10};
+    c.id = sim::TypeId{20};
+    d.id = sim::TypeId{30};
+    b.add(a).add(c).add(d);
+    const auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    const sim::CityRef city{sim::IslandId{0}, sim::CityNo{0}};
+    anno::app::DevInput input(built.value(), {a.id, c.id, d.id}, city,
+                              anno::app::developer_player());
+
+    CHECK(input.selected() == a.id); // starts at the cycle's first type
+
+    CHECK(input.arm(d.id));
+    CHECK(input.selected() == d.id);
+
+    // Arming a type outside the cycle list fails, with no change.
+    CHECK_FALSE(input.arm(sim::TypeId{999}));
+    CHECK(input.selected() == d.id);
+
+    // arm() has no side effect NextType/PrevType do not already have: rotation and demolish mode
+    // (set here through ordinary events) survive an arm() exactly as a cycle step would leave
+    // them.
+    using K = anno::app::DevEvent::Kind;
+    anno::app::DevEvent rotate;
+    rotate.kind = K::Rotate;
+    static_cast<void>(input.handle(rotate));
+    CHECK(input.rotation() == 1);
+    anno::app::DevEvent toggle;
+    toggle.kind = K::ToggleDemolish;
+    static_cast<void>(input.handle(toggle));
+    CHECK(input.demolish_mode());
+
+    CHECK(input.arm(a.id));
+    CHECK(input.selected() == a.id);
+    CHECK(input.rotation() == 1);
+    CHECK(input.demolish_mode());
+}
+
 TEST_CASE("replay: a recorded session replays through --commands to the same state hash") {
     const auto dir = anno::test::game_dir();
     if (!dir) {

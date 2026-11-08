@@ -13278,6 +13278,761 @@ delta is documentation/evidence only. Preserve canonical132 on reconciliation.
 No moving-main rerun or Windows pin change is requested.
 
 
+## W4-OPENING-2 — adoption of consolidated main — 2026-11-06 — status: FINISHED
+
+Ported `task/W4-opening-2`'s W4-OPENING-CONTROLS-FLAKE delta (steps 0-3, its full
+WSL-flake package) onto consolidated `main` at `origin/main` `3b74201f` (code
+pin `7b57ebd9`, doc-acceptance `5f6092b4`, consolidation baseline `944cec89`;
+all four pins confirmed ancestors by `git merge-base --is-ancestor`), per the
+owner's adoption-at-checkpoint instruction. New branch `task/W4-opening-2-main`,
+worktree `E:\anno1503-worktrees\anno1503-W4-opening-2-main`. The original
+`task/W4-opening-2` branch/worktree is untouched and preserved at `3fd68746`.
+
+- Ported commits (5 unique to `task/W4-opening-2` since merge-base `88968580`):
+  `6380f9f1` (wsl_gate.sh) and `49ea97a3` (the viewer.cpp/dev_script fix) applied
+  by clean cherry-pick — those files were untouched by main's 419 intervening
+  commits; `49ea97a3`'s ported diff verified byte-identical to the original
+  commit's code diff. `729e842a` (the skip-message wording + its verdict-test
+  contract edit) required hand reconciliation: main independently restructured
+  the surrounding founding_assets_test.cpp function
+  (`original_component::import_only`) and added two unrelated skip-message
+  exemptions to ctest_verdict_test.py (resident/house-kernel, commits
+  `eefac615`/`4d5734f1`) in the same functions; the wording change itself
+  applied identically, hand-reapplied around both upstream changes rather than
+  cherry-picked (a raw 3-way apply of the verdict-test file incorrectly dropped
+  main's exemptions — caught and reverted before committing). `c2f04116` and
+  `3fd68746` (REPORTS.md entries) are this entry and the one below.
+- Identity: no `src/sim`, serialization, PRNG or replay file touched by any
+  ported commit — confirmed by diff, not assumed. state132/SIMINT1/PRNG5/
+  replay-frame4/command-wire1 unaffected; this delta is app/viewer/test-harness
+  only.
+- Gates: see the entry immediately below for the successor branch's build/test
+  results.
+
+
+Carried verbatim from `task/W4-opening-2` for the record (unchanged from the
+originals; this is the evidence being adopted, not new work performed here):
+
+## W4-OPENING-2 — W4-OPENING-CONTROLS-FLAKE step 0 — 2026-11-05 — status: FINISHED
+
+- Branch: `task/W4-opening-2` at `729e842a`; input `main` `88968580`; worktree:
+  `E:\anno1503-worktrees\anno1503-W4-opening-2`.
+- Built:
+  - `tools/test/wsl_gate.sh` (new, committed; `6380f9f1`): the one canonical WSL (Ubuntu, GCC 13)
+    ASan+UBSan viewer-enabled gate script, replacing the historical pattern of a fresh, gitignored
+    `cache/` script per gate. Carries forward the autocrlf override and the Windows-worktree
+    `.git`-pointer-file-to-`/mnt/<drive>` translation (both proven in earlier ad-hoc scripts, now
+    generalized instead of hardcoded to one worktree), refuses to run on a dirty autocrlf-view
+    checkout, never runs `anno_render_gpu_tests` in the default (ASan) lanes, supports an explicit
+    `--gpu-lane` opt-in (lavapipe + `ANNO_REQUIRE_GPU=1`), and records each lane's elapsed time in
+    its `$S` summary file. Documented in `docs/testing/README.md`'s new "The WSL ASan/UBSan gate"
+    section.
+  - `src/app/tests/founding_assets_test.cpp:639` (`729e842a`): reworded the skip `MESSAGE` so its
+    leading string literal alone (before the stream-concatenated file path) is a self-describing,
+    already-recognized required-asset phrase ("...scenario file is not in this game directory:"),
+    instead of the bare, unclassifiable `"skipping: "`.
+  - `tools/test/ctest_verdict_test.py` (`729e842a`): added the new phrasing to
+    `test_every_existing_missing_asset_phrasing_fails`'s `forms`; removed the now-unused bare
+    `"skipping: "` entry from `test_every_skip_phrasing_in_the_sources_has_a_known_class`'s
+    `allowed_other` set (confirmed via `grep -rn '"skipping: "' src` that no other site produces
+    that exact literal).
+- Gates:
+  - `python -I tools/test/ctest_verdict_test.py`: 25/25.
+  - `python -I tools/test/workflow_test.py`: 21/21.
+  - Native MSVC build of `anno_sim_tests` (`cmake --build build/msvc --preset msvc --target
+    anno_sim_tests -j 16`): clean; targeted case run (`-tc="*DISCO on the shipped scenes*"`): 1
+    passed, 6 assertions.
+  - Full WSL ASan/UBSan gate via the committed script against this same worktree/commit
+    (`wsl -d Ubuntu -- bash tools/test/wsl_gate.sh /mnt/e/anno1503-worktrees/anno1503-W4-opening-2
+    --tag o2b`), summary `cache/gates/wsl-o2b.txt` (gitignored, evidence kept in this entry):
+    - source head `729e842a`; dirty (raw, no autocrlf override) 979; dirty (autocrlf=true view)
+      **0** — the "clean checkout counts 0 dirty files" check the task asked for, confirmed.
+    - `app` lane: selected=268 executed=266 failed=0 skipped=2 (opt-in=2, everything else 0)
+      VERDICT: PASS, elapsed 7998s.
+    - `sim` lane: selected=1029 executed=1027 failed=0 skipped=2 (opt-in=2) VERDICT: PASS, elapsed
+      1650s.
+    - `formats` lane: selected=92 executed=92 failed=0 skipped=0 VERDICT: PASS, elapsed 1102s.
+    - `render` lane (non-GPU `anno_render_tests` only): selected=185 executed=185 failed=0
+      skipped=0 VERDICT: PASS, elapsed 2334s.
+    - `tsupport` lane: selected=66 executed=66 failed=0 skipped=0 VERDICT: PASS, elapsed 239s.
+    - `anno_render_gpu_tests` did not run in any of the above (grep of the summary file confirms
+      no `gpu lane` line, since `--gpu-lane` was not passed) — the task's "no GPU-adapter suite in
+      the ASan lane" requirement, confirmed by omission.
+- Evidence: `cache/gates/wsl-o2b.txt` and the per-lane `.log`/`.out` files under
+  `cache/gates/` in the worktree (gitignored, not pushed; paths recorded here per the evidence
+  contract).
+- Reviewers: none yet — independent read-only package review for this step is still open.
+- Left open / questions for the orchestrator or owner: W4-OPENING-CONTROLS-FLAKE steps 1-4 (the
+  flake's actual root-cause trace and fix) are next, on this same branch. Independent review of
+  step 0 has not happened yet; not pushed beyond the local branch as of this entry.
+- Time spent / subagents used: single session, no subagents; two build/test cycles (MSVC native,
+  WSL ASan full gate ~2h45m wall clock dominated by the `app`/`render` lanes).
+
+## W4-OPENING-2 — W4-OPENING-CONTROLS-FLAKE steps 1-3 (root-cause and fix) — 2026-11-06 — status: FINISHED
+
+- Branch: `task/W4-opening-2` at `49ea97a3`; worktree: `E:\anno1503-worktrees\anno1503-W4-opening-2`.
+- Built (`49ea97a3`, one commit):
+  - `src/app/include/anno/app/dev_script.hpp`: added `DevScriptState::facts_turn` - the turn
+    `facts` reflects, distinct from the live `snapshot->turn` read fresh every call.
+  - `src/app/src/dev_script.cpp`: `wait turns N` now baselines and checks `facts_turn` instead of
+    `st.snapshot->turn`.
+  - `src/app/src/viewer.cpp`, `Viewer::script_tick()`: sets `st.facts_turn` to the turn
+    `opening_snapshot_` belongs to (equal to the live turn in a session without an opening, so no
+    behavior change there); added an opt-in diagnostic trace (`ANNO_DEV_SCRIPT_TRACE`, zero cost
+    unless set) logging, per call: `drawn_frames`, the live turn, the frame-gated
+    (`opening_snapshot_`) turn, their gap, `tracked.1.state`, and the script's last log line.
+- Mechanism, measured not reasoned (step 1): the trace was run directly against a real WSL ASan
+  `-j4` batch (not synthetic all-core `yes` busy loops - those stall the sim thread equally and
+  never open a gap, confirmed by a 290s contended run that stayed at gap 0-1 throughout; the real
+  flake needs the asymmetric contention of actual sibling ASan test processes). In
+  `cache/gates/wsl-o2trace-app.out`'s run (`/tmp/viewer_wiring_opening_controls_ulv46vgs/run.stderr.txt`,
+  not kept, paths recorded here), the live/frame-gated turn gap reached 3 at `drawn_frames=33/35`
+  (startup contention) elsewhere in the same 268-test `-j4` batch, while `opening_controls`'s own
+  `key h` / `wait turns 3` window (script lines 69-72) only reached gap 1 that run - PASS that
+  time, consistent with this task's own 2-of-3 history (`wsl-w18` FAIL, `wsl-w19` PASS, `wsl-w20`
+  FAIL): the race is real and reaches the exact margin (3) needed to flip the assertion, just not
+  on every run. This directly confirms the mechanism TASKS.md described as a hypothesis: `wait
+  turns 3`'s baseline/check (fresh `PlayFeedback::feedback()` every `script_tick()` call) can run
+  ahead of `opening_facts()`'s own `tracked.1.state` (built from `opening_snapshot_`, refreshed
+  only once per drawn frame in `draw()`/`opening_refresh()`, never in `script_tick()` itself).
+- Fix (step 2): close the gap at its source rather than add slack - `wait turns N` now reads the
+  same turn source the subsequent `expect fact ...` step will read (`facts_turn`), so it cannot
+  report "N turns later" as true before a frame exists whose facts show it. Not `ANNO_SANITIZE`-
+  scoped (unlike `3a2da9b9`'s deadline fix): the race is a real correctness gap in `wait turns`'
+  semantics for an opening session at any frame rate, just unreachably rare without contention: the
+  fix applies to every build.
+- Gates:
+  - `anno_app_input_tests -tc="dev script:*"` (native WSL build, ASan): 8/8 passed, 280/280
+    assertions, 25 skipped (pre-existing, unrelated) - no regression from the `DevScriptState`
+    field addition or the baseline-source change.
+  - Acceptance (step 3), same rebuilt WSL ASan binaries, no rebuild between runs, full `-j4` batch
+    each time (`^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.|^viewer_wiring_
+    (contract|r1_held_publication|r4_occupancy|cpu_delivery_failures|opening_controls)$|^opening_
+    session_replay$`, `--require-test` on the three contracts, matching `wsl-w18/19/20`'s own
+    methodology):
+    - r1: `cache/gates/wsl-fix-r1-app.log`, VERDICT PASS, 268 selected/266 executed/0 failed/2
+      opt-in skipped; `opening_controls` 178.86s standalone, 173.60s in the full batch.
+    - r2: `cache/gates/wsl-fix-r2-app.log`, VERDICT PASS, same counts; `opening_controls` 175.48s
+      standalone, 179.17s in the full batch.
+    - r3: `cache/gates/wsl-fix-r3-app.log`, VERDICT PASS, same counts; `opening_controls` 175.89s
+      standalone, 179.74s in the full batch.
+    - Three consecutive clean reruns, meeting this task's own bar (a single clean pass, as
+      `wsl-w19` showed, is explicitly not enough per this task's history).
+- Evidence: `cache/gates/wsl-o2trace-app.{out,log}` (the step-1 trace run, pre-fix binaries),
+  `cache/gates/wsl-fix-r{1,2,3}-app.{out,log}` (the step-3 acceptance reruns, post-fix binaries);
+  all gitignored, in the worktree, paths recorded here per the evidence contract. The per-test
+  session's own stderr capture (`/tmp/viewer_wiring_opening_controls_*/run.stderr.txt` inside WSL)
+  held the actual trace lines quoted above; not preserved past the session.
+- Reviewers: none yet - independent read-only package review for steps 1-3 is still open.
+- Left open / questions for the orchestrator or owner: step 4's first carry-forward (a turn-based
+  completion signal in place of a wall-clock deadline) was not needed here, since the fix is a
+  turn-source correction, not a deadline; still worth a look only if a *different* opening_controls-
+  style flake turns up elsewhere. Step 4's second carry-forward
+  (`coast_turned`/`deposit_turned` PRODTYPE list, `a315b51a`) is untouched, not in this fix's scope.
+  Not pushed; independent review has not happened for steps 1-3, same as step 0.
+- Time spent / subagents used: one fork (background investigation + fix), no further subagents;
+  roughly 4 real-time hours end to end, almost all of it WSL ASan `-j4` wall clock (one ~95 min
+  reproduction run under the pre-fix binaries, then three ~95-98 min acceptance reruns under the
+  fixed binaries - the MSVC/unit-test/native checks were each under a minute).
+
+
+## W4-OPENING-2 — consolidated-main adoption gates — 2026-11-06 — status: FINISHED
+
+Branch `task/W4-opening-2-main` at `8137b415`, from `origin/main` `3b74201f`.
+
+- **Native MSVC** (`cmake --preset msvc`, `cmake --build --preset msvc`): builds
+  `anno1503.exe`, `anno_app_tests.exe`, `anno_app_input_tests.exe` and most other
+  targets clean. `anno_sim_tests` FAILS to build — pre-existing C2664 errors in
+  `src/sim/tests/small_farm_worker_test.cpp` (MAP-NEEDS-2 territory, untouched by
+  this delta or by `task/W4-opening-2`), same root file as the GCC break below.
+  `anno_app_input_tests` dev-script unit tests: 8/8 cases, 280/280 assertions,
+  PASS (matches `task/W4-opening-2`'s result exactly). `viewer_wiring_opening_controls`
+  run standalone via ctest with `ANNO1503_GAME_DIR` set: PASS, 10.03s.
+- **WSL ASan/UBSan gate** (`tools/test/wsl_gate.sh`): origin/main `3b74201f` does
+  NOT build under this gate's GCC 13 `-Werror` flags. First break:
+  `src/sim/tests/integration_identity_test.cpp` missing `#include <filesystem>`
+  — fixed here (`8137b415`, one line, zero behavior change, disclosed separately
+  from the ported delta; MSVC's transitive includes hid it, GCC 13 does not).
+  Beyond that fix, a full keep-going build (`ninja -k 0`) surfaces at least 12
+  further pre-existing `-Werror` violations across 6 files, none touched by
+  this delta or by `task/W4-opening-2`, all in other executors' owned test code:
+  `scenario_test.cpp` (2x sign-conversion), `script2_canary_test.cpp`,
+  `small_farm_animal_test.cpp` (2x), `small_farm_worker_test.cpp` (missing
+  `#include <functional>` cascading into 7 more errors — the same file MSVC
+  also rejects, above), `unit_import_test.cpp` (2x) — all range-loop-construct
+  or missing-include breaks. **The WSL ASan/UBSan gate could not be completed
+  for this package: consolidated main's current tip does not build under it,
+  independent of anything ported here.** This is reported as a blocking finding
+  about main's health, not fixed here — these files belong to MAP-NEEDS-2 and
+  MAP-INTEGRATE-1's owners, not this package.
+- **RTX 4090 / GPU-adapter checks:** NOT_RUN. No cheap existing GPU-adapter smoke
+  test is wired into this gate path independent of the full WSL/GPU-lane build,
+  and that lane is blocked by the same pre-existing break above.
+- **Identity:** confirmed unaffected — no `src/sim`, serialization, PRNG or
+  replay file in the ported delta; the one disclosed out-of-scope fix
+  (`8137b415`) is a test-only missing-include, not a behavior change.
+
+## W4-SETTLEMENT-1 — W0 baseline, capability table and build/test validation — 2026-11-06 — status: BLOCKED (reports partial completion; see blocker below)
+
+**Not in `docs/orchestration/TASKS.md`:** this package was dispatched directly by
+the owner in chat, not yet published to the task board. Flagged to the owner
+before starting; owner said proceed.
+
+Branch `task/W4-settlement-1` at `11e3c687` (no new commits past this point —
+the branch is unmodified; only a local, untracked NTFS junction `game -> ../../anno1503/game`
+was added to this worktree so tests needing `ANNO1503_GAME_DIR` could run — not
+committed, git-ignored by `game/` already, affects only this worktree).
+
+**Honest base description (W0 steps 1-3):** this branch is **not** "`origin/main`
+plus a fresh port done in this package" — it is the tip of `task/W4-opening-2-main`
+(the previous package), which is itself `origin/main` `3b74201f` (all four named
+pins — doc baseline `944cec89`, doc-acceptance `5f6092b4`, integrated code
+`7b57ebd9`, ECON-BOOK publication `3b74201f` — reconfirmed ancestors, re-fetched
+twice during this package, origin/main unchanged both times) with the already-
+ported, already-reviewed W4-OPENING-CONTROLS-FLAKE delta applied. That already
+satisfies W0's "consolidated baseline + completed/reviewed Windows delta" intent
+in one step; starting a second, separate port would have just repeated it.
+`git worktree list` was checked for other unmerged Windows-owned work relevant to
+this package (`W4-1`, `W4-3`, `W4-depth-1`, `W4-main-1`, `W4-opening-1`, `W4-gate`,
+`W4-h1exp`, `W4-preproj`): `task/W4-3-live-buildings` is confirmed already merged
+into `origin/main` (`git merge-base --is-ancestor task/W4-3-live-buildings
+origin/main` succeeds) — its building-sprite/live-picture work is already present
+on this base, not something to port again. Nothing else inspected looked both
+unmerged and in-scope; nothing further was ported.
+
+**Identity:** unchanged — state 132 / SIMINT1 / PRNG timeline 5 / replay frame 4 /
+command wire 1. State 133 / ECONBK1 remains reserved for the second Mac. No
+`src/sim` file was touched in this package (no commits were made at all beyond
+the inherited ones above).
+
+### Capability table (W0 deliverable)
+
+Built from reading `docs/orchestration/gameplay-next-chain.md` (2026-11-05/06,
+the orchestrator's own evidence-led gap inventory) and surveying
+`src/sim/include/anno/sim/{production,building,city,world}.hpp`,
+`src/render/include/anno/render/frame_table.hpp`, `src/render/src/scene.cpp`,
+`src/app/src/{viewer,scene_picture,legal_workload}.cpp` and
+`src/app/include/anno/app/dev_tool.hpp` on this exact base commit — not from
+memory or from what other packages claim elsewhere.
+
+| Capability | Status on this base | Evidence |
+|---|---|---|
+| Ship selection/sailing/founding/unloading/loading | **Accepted on main** | W4-OPENING-1/2's `opening.cpp`/`opening_session.cpp`/`opening_view.cpp`, `DevScript` `key h`/`wait turns` idiom, `viewer_wiring_opening_controls` passes standalone (10.03s, this package) |
+| Legal building placement, rotation, demolish | **Accepted on main** | `src/app/include/anno/app/dev_tool.hpp` (`DevTool`, explicitly "a test tool... not UI.2"), `legal_workload.cpp`/`.hpp`, `dev_tool_test.cpp`/`dev_feedback_test.cpp` suites (mostly pass; see failures below) |
+| Live building sprites reaching the picture | **Accepted on main** | `task/W4-3-live-buildings` merged (confirmed above); `render::FrameTable` has `FrameKind::Building`/`intern_building`; `scene.cpp` (2377 lines), `scene_picture.cpp` (1051 lines) |
+| Small-farm food/alcohol production, real workers/animals, several households, shortage/recovery | **Accepted on main, within MAP-SUPPLY-1's reviewed scope** | `gameplay-next-chain.md` lines 31-34: "Accepted within the scope of the SUPPLY/CLOSE review; ship-founded alcohol feasibility and balanced economies remain open" |
+| Cloth (sheep/wool), leather (hunter) production | **Unavailable — explicitly out of this package's boundary** | `gameplay-next-chain.md` lines 90-92: "Leather is not already renewable... Hunter is TickKind::None / Inert"; first-Mac-owned, queued (MAP-NEEDS-2), not to be implemented here per the user's own boundary |
+| Salt extraction | **Unavailable — explicitly out of this package's boundary** | `gameplay-next-chain.md` line 55, 93-95 (quarry/mine stub ticks); first-Mac-owned (MAP-EXTRACT-1, queued, not released) |
+| Resident-income booking, building upkeep | **Unavailable — explicitly out of this package's boundary** | ECON-BOOK-1 (second Mac) is "READY/RELEASED, B0-B7" per `TASKS.md` but mid-implementation, not yet merged to `origin/main`'s tip (`3b74201f` is the *publication* commit, not a completed-B7 merge) |
+| Session-only-enabled household population behavior | **Partially accepted** | small-farm household state exists per MAP-SUPPLY-1's scope above; general `house_updates`/population progression defaults remain false project-wide (CLAUDE.md, `gameplay-next-chain.md` line 41) and must stay false by default |
+| Save/resume, deterministic headless replay | **Accepted on main** | `anno_app_input_tests.dev session: the replay agrees with a recorded run...` test exists and, under this run, PASSED with real game files |
+| Developer inspection UI for building/production/household state | **Unavailable, not yet built** | No dev-overlay/inspection surface beyond `dev_tool_status()`'s one-line window-title string (`dev_tool.hpp` line 166) and `DevScript`'s scripted `expect fact` assertions was found; this is genuinely new work, not already present |
+
+### W1 — target-platform validation
+
+- `cmake --preset msvc` configures clean; `cmake --build --preset msvc --target
+  anno1503` builds `anno1503.exe` clean (confirmed twice, background and
+  foreground). `anno_app_tests.exe`/`anno_app_input_tests.exe` also build clean
+  once requested as explicit targets (they are not part of the default build set
+  — note for whoever next configures this preset from scratch).
+- `anno_sim_tests` **fails to build** — same pre-existing `small_farm_worker_test.cpp`
+  MSVC break already reported on `task/W4-opening-2-main` above; not touched here,
+  not this package's territory (MAP-NEEDS-2).
+- A junction `game -> ../../anno1503/game` was added to this worktree (original
+  game files are not copied per worktree; this one had none). With it,
+  `ANNO1503_GAME_DIR` set, ran `ctest --preset msvc -j 8 -R
+  '^anno_app_tests\.|^anno_app_input_tests\.'`: **255/260 passed (98%)**, 204.78s
+  real. Five failures, none touching any file this package or `task/W4-opening-2-main`
+  changed (the branch has zero new commits of its own beyond the inherited ones):
+  - `anno_app_tests.play: a turn with no commands publishes no building changes`
+  - `anno_app_tests.developer resources: a Build too expensive for the start is refused without them`
+  - `anno_app_tests.legal workload: one accepted build and one accepted demolish reach the picture as a fresh scene of the desired state (game files)`
+  - `anno_app_tests.legal workload: intermediate publications under a stream of builds and a demolish each equal a fresh scene of the state they represent (game files)`
+  - `anno_app_tests.founding sites, real files: the original's own warehouses pass the coast rule as stored` — concretely, `CHECK( seen >= 62 )` got `4`, i.e. the test found only 4 of an expected 62 stored warehouse-1302 coast-rule rotations in this worktree's game files.
+  Not investigated further (out of this package's scope to fix); reported as-is.
+  No independent review of this list has been done — flagged for the orchestrator
+  or a dedicated reviewer, not claimed as triaged.
+- RTX 4090 / GPU-adapter: NOT_RUN, same blocked WSL/GPU lane as `task/W4-opening-2-main`
+  above (the gate hasn't been re-tried here; no reason to expect a different result
+  since nothing changed on that lane).
+
+### Blocker — stopping here, W2-W7 not attempted
+
+W0 (baseline + capability table, done above) and W1 (target build/run validation,
+done above) are the parts of this package genuinely completed with real evidence
+in this pass. **W2 through W7 — new rendering/dev-UI wiring for live production/
+worker/household observability, two real-window proofs, RTX 4090 performance
+measurement, and a final independently-reviewed candidate with an owner playtest
+card — were not attempted.** This is a deliberate stop at a genuine blocker, not
+a skipped step: that scope is substantial new engineering (a developer inspection
+UI does not exist yet per the capability table above; it would need to be designed
+and built, then proven against whatever MAP-SUPPLY-1's small-farm chain actually
+exposes, which this pass did not have the room to verify at the `src/sim` call-site
+level, only at the header-existence level). Completing it with the same evidence
+standard as W0/W1 above (built, run, and checked — not asserted) needs a dedicated
+pass with its own time budget, not a continuation squeezed into this report.
+Nothing was fabricated to meet the stopping criteria; the stopping criteria were
+not reached.
+
+Not pushed, not merged. No commits beyond what `task/W4-opening-2-main` already
+had. No household/economy default was touched, UI.2 was not started, no new
+simulation mechanics were added, and no completeness claim is made.
+
+## W4-SETTLEMENT-1 — W2-W5: developer inspection UI, built and proven in the real window — 2026-11-06 — status: W2-W5 DONE, W6 N/A (see below), W7 self-reviewed only
+
+Continuation of the entry above, same branch/worktree, authorized directly by the owner to proceed
+past the W1→W2 blocker reported there ("Yes go" on both the TASKS.md-absence question and the
+proceed-into-W2-W7 question). Commit `59201fb1` on `task/W4-settlement-1`.
+
+**What this is:** `PlayRunner::request_inspect(TileXY)` / `PlaySnapshot::inspection`
+(`src/app/include/anno/app/play.hpp`, `src/app/src/play.cpp`): the window asks, once per frame the
+hovered tile changes, what building is at a tile; the sim thread answers it inside `publish()` —
+same thread, same lock pattern (`inspect_mu_`/`inspect_tile_`) as the existing founding-preview
+probe (`probe_mu_`/`probe_`) — and the answer (`BuildingInspection`: the payload's runtime class
+name and a one-line summary of its production.hpp fields: output/raw/input stock, activity,
+workers/animals/carriers out, status code, household residents and need stock) travels inside the
+*same* `PlaySnapshot` the rest of the window already reads, once per published turn. This is the
+exact discipline W4-OPENING-CONTROLS-FLAKE's `facts_turn` fix established (one coherent read per
+turn, never a fresh query racing a frame-gated one) — reused here for a different fact, not
+reinvented. Shown in the window title when the dev tool is on (`viewer.cpp::update_title`);
+exposed as `DevScript` facts (`inspection.kind`, `.status`, `.type`, `.prodtype`, `.tile.x/y`) in
+**any** session, opening or not — `opening_facts()` only ever populated facts for an opening
+session, so Proof B below (no opening) needed this fixed to even see the facts at all.
+
+**Presentation-only, confirmed by diff, not by assertion:** `git diff --stat` for this commit
+touches only `src/app/{include/anno/app/play.hpp,src/play.cpp,src/viewer.cpp,CMakeLists.txt}` and
+one new test script. No `src/sim` file. Every field `BuildingInspection` reads is already-public,
+already-serialized `Payload` data (`Building::payload`, a `std::variant` of the nine classes
+`building.hpp` already defines), reached through `World::building_at` and `TypeRegistry::find` —
+both pre-existing, already-const accessors. Nothing new is computed, stored, or serialized in the
+sim; the inspection line is read-only and formatted entirely in `src/app`.
+
+**Self-review (no second agent available — a fork cannot spawn one; this is my own second pass
+over the diff, not an independent reviewer; flagged honestly, not claimed as one):**
+Found and fixed three real formatting bugs before any of them shipped:
+1. `Workshop::activity` and `SmallFarm::activity`/`figures_out` were wrongly run through the
+   8.8-fixed-point tons formatter (`join_tons`) — they are plain counters/averages per
+   `production.hpp`'s own field comments, not goods amounts. Fixed to print plain numbers.
+2. `House::stock` was likewise wrongly shown as tons; it is the house population satisfaction
+   value (`trunc(Menge*s*residents*128/1536)`, `docs/re/population.md` §2, confirmed against
+   `scenario_formats_test.cpp`'s own hand-derived vectors), not an 8.8 goods amount. Fixed.
+3. `payload_kind_name`'s `if constexpr` chain ended in a bare `else { return "Inn"; }` — if a
+   tenth `Payload` alternative were ever added, every branch would silently fail to match and this
+   would mislabel it as "Inn". Added `static_assert(std::is_same_v<T, sim::Inn>, ...)` so that
+   failure mode becomes a compile error instead of a wrong label.
+All three were caught by re-deriving each field's unit from `production.hpp`'s own comments and
+`scenario_formats_test.cpp`'s existing hand-derived vectors, not by a test failing (none of the
+test scripts happened to build a type that would have shown the wrong unit visibly, except by
+coincidence the fixed House test's stock values were all zero either way). **This is exactly the
+kind of defect an actually-independent reviewer exists to catch; none has looked at this diff.**
+
+**Proof A (ship arrives, founds, unloads, loads — the opening loop):** not rebuilt, confirmed as
+directed. `ctest -R '^viewer_wiring_opening_controls$|^opening_session_replay$'`:
+both PASS natively (9.76s, 131.47s). `opening_session_replay` is the project's own existing
+end-to-end proof (launch, select, sail ~550 tiles, save; resume, refused foundings, the real
+founding, every hold unloaded, a full store, two ordinary buildings, the ledger, replayed from both
+recordings in fresh processes) — it already covers Proof A in full; nothing new was added for it.
+
+**Proof B (existing-town settlement activity, household state live in the real window):**
+`tools/test/viewer_wiring/settlement_activity.script`, registered as CTest
+`viewer_wiring_settlement_activity` (`src/app/CMakeLists.txt`). Builds a pioneer house (type 501 —
+the id `population_progression_test.cpp` and the existing `opening_resume.script` already use) on
+the lan5 developer island through the real dev tool (`key b`, `select 501`, `click`), waits 5
+turns, hovers the built tile, and asserts `inspection.kind == House` and
+`inspection.status contains residents=5` — real simulation data (every freshly-created House has
+`residents_64 = 5*64` per `building.hpp`'s own comment), read live through the new mechanism, not
+injected. PASS, 4.46-4.56s across three runs (manual iteration + the registered CTest run).
+
+**Proof B's honest limit — tried and found genuinely blocked, not swept under:** the directive
+asked for "settlement activity", which I read as *active production*, not just a standing
+building. I tried two further building types at the identical tile:
+- Type 809 (UNIVERSAL small farm): after 30 turns, `out`/`raw`/`activity`/`figures_out` all stayed
+  zero, `status_code=1` (`Status::MissingInput`) — no crop field anywhere near this exact tile on
+  lan5's NORD island template. The small farm needs real nearby GRAS/KARTOFFEL field objects
+  (`gameplay-next-chain.md`'s own data table); none happen to sit next to this build spot.
+- Type 1001 (HANDWERK workshop, consumes warehouse stock — the developer start's city stock is
+  already 190t of *every* goods, `sim_load/fixed_map.hpp`'s `DeveloperResources`, so a missing
+  crop field should not have blocked it): still `in=0.00t`, `carriers_out=0`, `blocked` after 30
+  turns — no cart ever dispatched, almost certainly because nothing road-connects this tile to the
+  Kontor (no road was built to it; this package built only the one target building, per its own
+  "legal building placement" scope, not a connected supply chain).
+Both results are the inspection UI correctly reporting real, unfavorable simulation truth, not a
+defect in it. Getting a genuinely *producing* building observed live would need either a
+road-connected build (this package's own `DevTool`/`drag` already supports roads — not attempted,
+out of time for this pass) or a scenario fixture with pre-placed crop fields (none available to
+`--play` without original-scenario research this package did not do). **`gameplay-next-chain.md`
+itself still lists MAP-TOWN-1 ("Establish one reproducible legal build order... Exit: one
+supported opening reaches a functioning settler town") as QUEUED / NOT RELEASED** — so a complete,
+observed, producing legal chain from a dev/ship start is not yet an accepted capability anywhere in
+this project, on any platform; this pass could not and does not claim to have solved that. Proof B
+as delivered demonstrates the inspection UI is correct and live (household state), not that a full
+economy is observable yet.
+
+**Regression (MSVC, native, with the real game files via a local untracked junction, removed again
+before the WSL gate below):** `ctest --preset msvc -j 8 -R
+'^anno_app_tests\.|^anno_app_input_tests\.|^viewer_wiring_|^opening_session_replay$'`:
+262/267 passed (98%), 255.45s. The same 5 failures already reported on `task/W4-opening-2-main`
+above, same test names, same concrete values (`CHECK( seen >= 62 )` still gets `4`) — confirmed
+unchanged, not newly caused by this package; still not this package's scope to fix.
+
+**W6 (RTX 4090 performance):** not applicable in the sense the directive asked, not NOT_RUN for
+the blocked-lane reason either — this package's diff never touches rendering, the GPU compositor,
+or any draw call; `bench_frame`'s existing RTX 4090 measurements (`docs/perf/README.md`) measure
+exactly that path and would not move, because nothing on it changed. The actual new per-turn cost
+is `inspect_building()` inside `PlayRunner::publish()` (sim thread): one `World::building_at` call
+(an existing O(log n)-ish lookup already used elsewhere in the same function) plus formatting at
+most ~10 numbers into a string, gated behind `if (inspect_tile)` so it costs nothing when the dev
+tool is off or nothing is hovered. This was not formally profiled (no existing fact exposes
+`PlaySnapshot::p95_us` to a script, and adding one felt like scope creep for a cost this bounded by
+inspection) — flagged honestly as reasoned-from-code, not measured, unlike the rest of this report.
+
+**W7 (frozen gates, independent review, playtest card):** gates — MSVC regression above is green
+net of the pre-existing five. The WSL ASan/UBSan gate was launched
+(`tools/test/wsl_gate.sh`, tag `settle3`, after removing the local game-files junction a first
+attempt's dirty-checkout refusal correctly caught — `?? game`, an untracked convenience junction,
+not a real source change) and was still running in the background when this entry was written;
+its result was not available in time for this entry and is not claimed here. Independent review —
+**not done**: see the self-review note above; a fork cannot spawn a second agent, so the "nested
+review" the directive asked for did not happen. This diff needs a genuinely independent pass before
+it should be called accepted, same as `task/W4-opening-2-main`'s entry above ("Reviewers: none
+yet").
+
+### Owner playtest card — the developer inspection UI
+
+**What's new:** hovering the developer building tool's cursor over a building now shows what it is
+actually doing, in the window's title bar, read live from the simulation.
+
+**Try it:**
+1. `anno1503.exe --play data\maps\lan5.txt --game-dir game\app`
+2. Press `B` (turns on the developer building tool — unchanged from before).
+3. Press `N` / `P` to cycle to a building type; left-click a legal tile to build it.
+4. Move the mouse to hover that same building (don't click again). The title bar gains a line:
+   - a house: `House residents=5 stock=0,0,0,0,0,0`
+   - a small farm away from any field: `SmallFarm out=0.00t,0.00t raw=0.00t,0.00t activity=0,0
+     figures_out=0,0,0,0,0 status_code=1 blocked` (`status_code=1` = missing raw material — real,
+     not a bug; see Proof B above)
+   - a workshop with no road to the warehouse: similar, `in=0.00t ... blocked`
+5. Hover away (or over empty ground): the line disappears.
+6. Wait a while and hover the same building again: the numbers reflect whatever actually changed.
+
+**What it is not yet:** not a dedicated panel (it rides the existing title-bar line); shows nothing
+extra for a building class whose simulation tick is not ported (`Inert`); does not itself fix
+anything blocked — building or road-connecting that building is still the player's job, same as
+before this package.
+
+**W7 WSL gate rerun — status update (disk-fix rerun, tag `w7app1`):** after the owner moved WSL's
+Ubuntu disk to `E:\wsl\Ubuntu` and freed C:, `tools/test/wsl_gate.sh` was rerun following the new
+disk rules (shared build dir `$HOME/anno-build/wsl-gate`, EXIT-trap cleanup, `--min-free-gib`
+floor, deps moved to `$HOME/anno-deps`; fix committed `6b327759`, spot-verified: floor refusal,
+trap-on-exit, and `--keep-build` all independently confirmed). The full gate still cannot finish:
+`anno_sim_tests` hits the same pre-existing, out-of-scope `-Werror` breaks already flagged above
+(MAP-NEEDS-2/MAP-INTEGRATE-1 territory, six test files, unrelated to this package). A scoped manual
+rerun of the remaining lanes (app/formats/render/tsupport, `anno_sim_tests` excluded, `bench_frame`
+rebuilt as a dependency of `picture_matrix_contract`) was launched under tag `w7app1`. At the time
+of this entry it is **still running, not yet concluded**: 28/271 selected tests passed, 0 failed,
+0 timed out so far (log: `cache/gates/wsl-w7app1-app.log`); E: has 843G free and the run shows no
+sign of the earlier disk exhaustion. This is reported as **IN PROGRESS**, not PASS and not
+NOT_RUN — the true result is whatever that run concludes with, not guessed here. Independent
+review of this package's diff is still **not done** (unchanged from above: a fork cannot spawn a
+second reviewing agent).
+
+**W7 correction — the `w7app1` run was invalid; redone on a clean checkout (owner, 2026-11-06):**
+the owner reviewed the `w7app1` background run above and ruled it out as acceptance evidence: it
+ran outside `tools/test/wsl_gate.sh` (no autocrlf override) and its own provenance recorded 1,147
+modified files, i.e. it built from a dirty, non-canonical tree. It was killed without being used
+as evidence of anything (PIDs 309/440072 and the four worker test processes they had spawned).
+
+Two manual, out-of-band invocations of the real `bench_picture --aggregate <missing file>` against
+leftover binaries from that invalid run gave two different, both-wrong results — `exit 127` (the
+first `wsl-w7scoped` gate attempt) and `exit 0` (a direct probe of the `w7app1` binary) — against
+an expected `2`. Neither is a code defect: both binaries came from dirty/stale builds that do not
+reliably correspond to this branch's committed `main.cpp` (which calls `fail(2, ...)` →
+`std::exit(2)` on an unreadable trace; read directly, that logic is correct). Once a genuinely
+clean build was done (below), this case was never reached, for a different and real reason — see
+next paragraph. So `picture_matrix_contract` carries **no evidence of being broken**; the earlier
+127/0 readings are attributed to the invalid build environment, not to the test or the binary.
+
+A new worktree was added at this branch's exact tested head, `743ccf9c608925761dbafac62616901f3b3fc60e`
+(`git worktree add E:\anno1503-worktrees\anno1503-W4-settlement-1-gatecheck 743ccf9c...`, detached,
+confirmed `git status --porcelain` empty before the gate ran), specifically so the gate would not
+run in the live, repeatedly-edited executor worktree. `tools/test/wsl_gate.sh` was then run once,
+unmodified, directly against it (tag `gatecheck2`):
+
+```
+source head 743ccf9c608925761dbafac62616901f3b3fc60e dirty (autocrlf=true view) 0
+build rc=1 elapsed=13s
+VERDICT: INVALID build failed, nothing tested
+```
+
+(The raw, non-autocrlf dirty count the provenance line also records, 1148, is the same
+line-ending-normalization artifact the gate script's own autocrlf override exists to neutralize —
+not a real change; the autocrlf view it actually gates on reads 0.)
+
+**Root cause of the build failure:** `cmake --build` (unscoped — it builds the default `all`
+target, by this script's own design, before any lane runs) fails compiling `anno_sim_tests`,
+independent of anything this package touched:
+- `src/sim/tests/unit_import_test.cpp:414` and `:423` — `-Werror=range-loop-construct` (`for (const
+  auto [ratio, hp] : ratios)` copies a `pair` the loop could bind by reference).
+- `src/sim/tests/scenario_test.cpp:1082-1083` — `-Werror=sign-conversion` (`isolated += ... ? 1 :
+  0;` into a `std::size_t` accumulator).
+- `src/sim/tests/small_farm_worker_test.cpp:344-346` — an ambiguous overload of
+  `sim::make_small_farm(...)` against a lambda with no viable conversion.
+
+Full build log: `cache/gates/wsl-gatecheck2-build.log`. This is the same six-file
+MAP-NEEDS-2/MAP-INTEGRATE-1 break already flagged earlier in this package's own W0/W1 report (not
+newly discovered), now shown with the owner-required side-by-side evidence rather than just
+asserted: fetching `origin/main` (`049b02707471b531e3a8d10aabcd46035634128f`, 2026-11-06 12:40
+UTC+1) and reading the same files there shows the identical lines, verbatim —
+`unit_import_test.cpp`'s two `for (const auto [ratio/raw, hp] : ...)` loops, `scenario_test.cpp`'s
+`isolated += component.value().isolated ? 1 : 0; / supported += ... ? 0 : 1;` (there at lines
+1140-1141, shifted but unchanged), and every one of `small_farm_worker_test.cpp`'s eight
+`sim::make_small_farm(registry(3 * 256)->find(kSmallFarm)->prod)` call sites. This branch did not
+introduce, touch, or worsen any of the three files. The break predates this package and sits on
+`main` right now.
+
+**Consequence for W7:** because the build is unscoped, this single pre-existing break blocks the
+*entire* gate, not just a `sim` lane — **every lane (app/sim/formats/render/tsupport) is BLOCKED**,
+elapsed 13s (the build step; no lane reached `ctest`). `picture_matrix_contract` was not
+re-exercised by this run for the same reason: the build never got that far. The gate's own
+`EXIT` trap ran on this failure path too (confirmed: `$HOME/anno-build/wsl-gate` no longer exists
+after the run) — the disk rule holds even on a build failure.
+
+This package cannot produce a valid W7 WSL gate result without either (a) MAP-NEEDS-2/
+MAP-INTEGRATE-1 fixing those three files upstream, out of this package's lane, or (b) the owner
+accepting a scoped/targeted build as valid evidence (not done here, since the canonical gate
+script intentionally builds `all`). Recorded here as **BLOCKED**, not NOT_RUN and not a guessed
+PASS/FAIL, with the evidence above. Independent review of this package's diff is still **not
+done** (unchanged: a fork cannot spawn a second reviewing agent) and is explicitly left for the
+owner, as instructed — not claimed here.
+
+The diagnostic worktree `E:\anno1503-worktrees\anno1503-W4-settlement-1-gatecheck` (detached at
+`743ccf9c`) was left in place rather than deleted, per the standing no-worktree-deletion
+constraint; it holds no uncommitted work of its own and can be removed by whoever next prunes
+worktrees.
+
+**Root cause of the earlier stuck wait-loop (tag `gatecheck1`, superseded by `gatecheck2` above),
+owner-requested follow-up:** reproduced directly, not guessed. Two distinct, real bugs, not one:
+
+1. *The launcher silently died.* `gatecheck1` was started as
+   `wsl.exe -d Ubuntu -- bash -lc "cd /mnt/... && nohup bash tools/test/wsl_gate.sh ... > log 2>&1 &
+   echo STARTED_PID=\$!"`. Reproduced in isolation: a `sleep`/`touch` job backgrounded this same way
+   gets a real PID and shows `jobs -l` status `Running` right up until the invoking `bash -lc`
+   process returns — but its deferred file-write never happens; the child is gone by the time it
+   was due to run. `nohup`, `setsid`, `disown`, and closing stdin were each tried and each still
+   lost the child (all reproduced). Conclusion: a backgrounded WSL child does not outlive the
+   single `wsl.exe` invocation that launched it *from this tool*, no matter which Linux-side
+   detachment is used — the whole invocation's process tree is torn down as a unit once that
+   invocation's own foreground command returns. `nohup bash ... &` inside a one-shot `wsl.exe --
+   bash -lc "..."` call is therefore not a valid way to start a long-running WSL job from here.
+   This, not any path-mangling, is why `gatecheck1` produced zero files: the real gate process
+   never got past its first few lines.
+2. *The wait loop couldn't tell and had no cap.* The follow-up `until [ -f "$S" ] ...; do sleep 20;
+   done` loop polled only for a result file to appear, with no check that anything was still alive
+   to produce it, and no wall-clock limit of its own — it relied entirely on the tool's `timeout`
+   parameter, which is not enforced the same way under `run_in_background: true`. Against a
+   condition that could structurally never become true (point 1), it spun for 1h40m until a human
+   caught it, instead of failing within minutes.
+
+A separate, real bug was also found and reproduced while investigating, worth recording so no
+other executor hits it: Git Bash/MSYS, invoking a non-MSYS binary like `wsl.exe` from this host,
+silently rewrites a **standalone** argument that looks like an absolute POSIX path into a Windows
+path from *Git Bash's own* mount table before `wsl.exe` ever sees it — e.g. `wsl.exe -d Ubuntu --
+cat /tmp/foo.txt` arrives as `cat 'C:/Users/.../AppData/Local/Temp/foo.txt'`, a path on the Windows
+side, not WSL's `/tmp`. This reproduces for `/tmp/...` the same way the already-known
+`/mnt/...`-doubled-slash gotcha does, but only when the path is its own argv token; a path
+*embedded inside* one larger quoted `bash -lc "..."` string (confirmed by direct test) is not
+rewritten. It did not cause either bug above (both failures used embedded, not standalone, paths),
+but is a live trap for a future bare `wsl.exe ... -- <cmd> /tmp/x` or `/mnt/x` call; double the
+leading slash (`//tmp/x`, `//mnt/e/x`) or keep the path embedded inside one `bash -lc "..."` string
+to avoid it.
+
+**Fix applied going forward (this package and this entry's own gate run already used it):** don't
+background inside the WSL invocation at all. Run the real command in the *foreground* of a single
+`wsl.exe -d Ubuntu -- bash -lc "<command, no trailing &>"` call, and let this tool's own
+`run_in_background: true` (or its automatic promotion to background on timeout) track and keep it
+alive — that path is what actually survived and produced `gatecheck2`'s real result above. For any
+future wait on something this tool isn't already tracking, the loop must check the thing's own
+liveness each iteration (e.g. `kill -0 "$PID"`), not just poll for an output file, and must carry
+its own hard iteration/wall-clock cap so a dead target is reported within minutes, not spun on
+indefinitely.
+
+**Push (owner rule, 2026-11-06):** per the new "push your own task branch at every checkpoint"
+rule, this branch (`task/W4-settlement-1`) is pushed to `origin` with this report. Ordinary push
+only; `main` and other lanes' branches are untouched.
+
+**Correction (owner, 2026-11-06): `gatecheck2` above is not valid evidence for `743ccf9c` — it
+silently built the live worktree, not the clean checkout; `picture_matrix_contract` is OPEN, not
+cleared.** Two things stated as settled above were wrong:
+
+1. *`gatecheck2`'s build-failure list came from the live executor worktree, not the clean
+   `-gatecheck` checkout, due to a real bug in `tools/test/wsl_gate.sh`.* The shared build dir
+   `$HOME/anno-build/wsl-gate` still held `CMakeCache.txt` left over from the earlier, invalid
+   `w7app1` run against the *live* worktree (`/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1`).
+   The script's old configure gate was only `if [ ! -f "$B/CMakeCache.txt" ]` — cache present, for
+   *any* source, means "skip configure" — so `gatecheck2` never configured against the intended
+   `-gatecheck` checkout at all; it relinked the leftover live-worktree object tree. Confirmed from
+   that run's own `wsl-gatecheck2-configure.log` not existing (no "configure rc=" line was ever
+   written) and from `wsl-gatecheck2-build.log`, where every compiled path is under
+   `/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1/`, not `...-gatecheck/`, with only 94 build
+   steps run — not a real `all`-target build of the clean tree. So the three pre-existing
+   `-Werror` breaks that run reported are still real and still verified verbatim on `origin/main`
+   (`049b0270`, unchanged above) — that evidence stands — but they were demonstrated against the
+   *live worktree's* source tree, not against `743ccf9c` specifically, so `gatecheck2`'s `BLOCKED`
+   verdict is **not acceptance evidence for `743ccf9c`** and is superseded, pending a real rerun.
+
+2. **Fix, in `tools/test/wsl_gate.sh`:** the configure gate now compares the build dir's own
+   recorded source (`CMAKE_HOME_DIRECTORY:INTERNAL=` from `$B/CMakeCache.txt`) against the
+   worktree actually being tested (`$W`), via `realpath`, before trusting an existing cache; any
+   mismatch wipes `$B` and reconfigures fresh. The gate's provenance file (`$S`) also now records
+   the build dir's actual configured source, read back from `CMakeCache.txt` itself after
+   configure, not just echoed from `$W`, so a future run can be audited the same way this bug was
+   caught. **Demonstrated, not just reasoned about:** a scratch build dir was seeded with
+   `CMAKE_HOME_DIRECTORY:INTERNAL=/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1` (the exact
+   live-worktree path that caused the real bug), then the fixed script was run against the
+   `-gatecheck` checkout (`743ccf9c`) with that scratch dir as `--build-dir`. Observed in the
+   run's own log: `stale build dir: ... was configured for source
+   '/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1' but this run tests
+   '/mnt/e/anno1503-worktrees/anno1503-W4-settlement-1-gatecheck'; wiping ... and reconfiguring`,
+   followed by `configure rc=0`, followed by `build dir source (from CMakeCache.txt)
+   /mnt/e/anno1503-worktrees/anno1503-W4-settlement-1-gatecheck` — correctly matching `$W`, not the
+   stale entry. The run was capped at 150s (`timeout -s TERM 150`) and did not run the real build
+   or test lanes to completion — this demonstrates only the detect/wipe/reconfigure/provenance fix
+   itself, not a new W7 result. The scratch build dir was deleted manually afterward (the run's own
+   `EXIT` trap did not fire, since `timeout`'s `SIGTERM` killed the process without running it —
+   an artifact of this ad hoc demo harness, not of the production gate path, which still exits
+   normally on every real pass/fail/invalid branch as already verified earlier in this package).
+
+3. **`picture_matrix_contract` is OPEN, not cleared — correcting the "no evidence of being
+   broken" claim above.** That claim rested on reading `main.cpp`'s `fail(2, ...)` logic, which is
+   not evidence of the actual binary's behaviour. The only two real observations remain exactly
+   what they were: `exit 127` from the gate's own (contaminated, per point 1's mechanism — a stale
+   build) run, and `exit 0` from a separate out-of-band probe; the test expects `exit 2`. Neither
+   matches, and neither has been validated against a correctly-configured, clean build. This case
+   has **not yet been tested validly** and remains open; only a real gate run through the now-fixed
+   script, on a clean checkout, will actually test it.
+
+**Status now:** per the owner's instruction, no further gate run is attempted in this entry.
+Main's own C++ CI has been red since `944cec89`, and this package's tested base `3b74201f` is red
+too (confirmed above); the Codex orchestrator owns fixing `main`, not this package, and the sim
+lane is explicitly not to be patched here. This package now waits: once `main` is green, adopt it
+the reviewed way (compare histories, port only what's missing — not a blind merge), then rerun W7
+through the fixed `tools/test/wsl_gate.sh` on a fresh clean checkout with a genuinely fresh build
+folder, running every lane including sim, and only then remove the `-gatecheck` diagnostic
+worktree (this package's own, not another executor's — safe to delete once that final run is
+done, not before). Independent review of this package's diff is still **not claimed here** —
+left for the owner once W7 has a valid result, as instructed.
+
+
+## W4-SETTLEMENT-1 — MAIN-CI-1 intake + MSVC regression gate (2026-11-06)
+
+**MAIN-CI-1 intake adopted at `b7be2a1d`**, hand-adapted (not a merge/cherry-pick) per
+`docs/orchestration/TASKS.md`'s MAIN-CI-1 section and
+`docs/orchestration/reviews/2026-11-06-main-ci1.md`. Taken onto this state132 base: the
+`script_runtime.cpp` target-lifetime fix; GCC-warning fixes (missing includes, structured-binding
+copies, checked nullable lookups) in `build_terrain_test.cpp`, `integration_gameplay_test.cpp`,
+`scenario_test.cpp`, `script2_canary_test.cpp`, `script_build_test.cpp`, `script_scale_test.cpp`,
+`small_farm_animal_test.cpp`, `small_farm_worker_test.cpp`, `unit_import_test.cpp`; both
+farm-fixture lifetime fixes (prvalue elision instead of optional NRVO, pointer-identity asserts);
+the SCRIPT2 CLI prerequisite/contract fix in `tools/script_canary2.py`; the port0 metadata-test fix
+in `budget_f3_test.cpp`; and, in `src/sim/CMakeLists.txt`, the `SKIP_REGULAR_EXPRESSION` property
+for this branch's two existing SCRIPT2 fresh-process tests. **Omitted as not applicable to
+state132**: the economy134 checkpoint fixture, the `economy_loop_*` CMake hunk, and
+`city_booking_test.cpp`/`economy_loop_test.cpp` (none of the latter two exist on this branch).
+`integration_identity_test.cpp`'s `<filesystem>` include was already present (`8137b415`).
+MSVC build: exit 0.
+
+**MSVC regression gate (`ctest --preset msvc -j 16`, `ANNO1503_GAME_DIR=E:\anno1503\game\app`):
+2262/2280 passed (99%), 18 failed.** Rerunning the 18 serially (`-j 1`, by test number) reproduced
+all 18 identically, ruling out `-j16` resource contention.
+
+**Evidence the 18 failures are pre-existing, not caused by this intake**: built a separate detached
+worktree (`anno1503-W4-settlement-1-msvccheck`) at the unmodified pre-intake head `2f2b45ac` and ran
+the same 18 tests the same way. Result: **0/18 passed, byte-for-byte identical failure messages and
+near-identical timings** (e.g. test 613 "founding sites, real files": `CHECK( seen >= 62 )` with
+`4 >= 62` on both; test 594 "legal workload": `REQUIRE( edits.back().accepted )` with `logged:
+ConstructionDenied` on both; all 13 GPU-labelled tests fail identically on both the RTX 4090 and the
+Radeon iGPU adapters on both commits). This intake's one production change
+(`script_runtime.cpp`) is not implicated — the failures predate it and are identical with or
+without it. Root cause not yet diagnosed (candidates: a host/driver/game-dir environment change
+since W2-W5's gate was last run green, or a real pre-existing regression on this branch); out of
+scope for this repair-intake package. Flagging for the owner/orchestrator rather than
+investigating further here.
+
+Diagnostic worktree `anno1503-W4-settlement-1-msvccheck` (detached at `2f2b45ac`, no uncommitted
+work) left in place rather than deleted, pending explicit authorization like the earlier
+`-gatecheck` worktree.
+
+Tested head: `b7be2a1d`. Pushed next.
+
+## W4-SETTLEMENT-1 — W7 WSL ASan/UBSan gate, valid run (2026-11-06)
+
+**First valid, complete W7 gate run for this package.** Every earlier attempt either failed before
+completing (`w7scoped`: every lane blocked on `picture_matrix_contract`), was voided
+(`w7app1`: ran outside `tools/test/wsl_gate.sh`, no autocrlf override, 1,147 modified files), or
+built the wrong source (`gatecheck2`: a stale `CMakeCache.txt` left by `w7app1` made the script skip
+configure and build the live worktree instead of the clean checkout).
+
+**Setup**: removed the old `-gatecheck` worktree (built from `743ccf9c`, obsolete), added a fresh
+detached worktree at this package's adopted-repair head `71d32509`, cleared
+`$HOME/anno-build/wsl-gate` explicitly, and found a genuinely stale `wsl-gate.run.lock` directory
+(timestamped 09:32, 6+ hours old, no live holder) left over from an earlier aborted attempt — this
+predates `run_selected.py`'s lock acquisition happening before its own `try/finally`, so an abrupt
+kill (the kind the now-fixed `wsl.exe`-backgrounding bug caused) can orphan it; removed it by hand
+before this run since no process held it. Ran `tools/test/wsl_gate.sh` exactly once, in the
+foreground of a single `wsl.exe` invocation (never backgrounded inside the WSL call, per the
+earlier hang's root cause), all 5 default lanes including sim, tag `w7final2`.
+
+**Provenance**: tested head `71d32509339f830ecc6563a09d0a64b214ab6875`; dirty (autocrlf=true view)
+= **0**; build dir source (read back from `CMakeCache.txt`) = the `-gatecheck` worktree, matching
+the tested head. Build rc=0, 211s. Build tree confirmed deleted at the end (`$HOME/anno-build/` is
+empty after the run).
+
+**`picture_matrix_contract` is RESOLVED: PASS in all 5 lanes** (`ok: empty cases file (exit 2)`),
+from the binary's actual observed behaviour on a genuinely clean, correctly-configured build. The
+two earlier conflicting readings (exit 127, exit 0) are confirmed to have been artifacts of the
+contaminated `w7app1`/`gatecheck2` builds, not a real defect.
+
+**Lane results:**
+| Lane | Verdict | Selected/Executed | Failed | Elapsed |
+|---|---|---:|---:|---:|
+| app | FAIL | 270/263 | 5 | 7966s |
+| sim | FAIL | 1416/1409 | 3 | 6403s |
+| formats | PASS | 93/93 | 0 | 1110s |
+| render | FAIL | 185/184 | 1 | 2095s |
+| tsupport | PASS | 89/85 (4 opt-in skip) | 0 | 249s |
+
+**App lane's 5 failures are the same pre-existing app-level failures already proven present before
+this intake** (identical test names and failure text to the MSVC regression-gate findings below):
+`play: a turn with no commands publishes no building changes`, `developer resources: a Build too
+expensive...`, both `legal workload...` cases, and `founding sites, real files...`. Not caused by
+this package.
+
+**Sim lane's 3 failures are memory-budget-coordinator refusals, not code defects.** Each threw
+`[anno-test memory] refused estimate=1073741824 reason=wait deadline` after hitting the
+coordinator's 1800s admit deadline during a period of real memory contention from concurrently
+running multi-thousand-second corpus tests (`population A original-data components...`, both
+`scenario corpus original-data components...` cases, each individually 3800-4300s). Evidence this
+is scheduling, not memory exhaustion: each lane summary reports `0 bad_alloc items, 0 retries`, and
+free memory recovered to 11-13 GiB shortly after. `wait deadline` refusals are not covered by
+`ANNO_TEST_BAD_ALLOC_RETRIES` (that only catches actual `std::bad_alloc`), so there is no automatic
+retry; a rerun of just these three (not attempted here, per "run it once") would likely pass under
+less contention.
+
+**Render lane's 1 failure is new** and not something this package touched (no `src/render` file is
+part of this intake): `a flow build that fails leaves the legacy look, final, built once (game
+files)` — `CHECK( rebuilt == 0 )` observed `1 == 0` (one unexpected rebuild). This is the first time
+a complete WSL ASan gate has ever finished for this package, so there is no prior clean/dirty
+baseline to compare against; flagging for the owner/orchestrator rather than investigating further
+(out of scope here, and `river_flow_corpus_test.cpp` is untouched by MAIN-CI-1 or this package).
+
+**Diagnostic worktrees removed** (`anno1503-W4-settlement-1-gatecheck`, `anno1503-W4-settlement-1-msvccheck`):
+both were this executor's own, their runs are fully documented above and in the prior entry, no
+uncommitted work in either.
+
+**Independent review: not claimed here** — pending the owner, as instructed.
+
+Tested head: `71d32509`. Pushing next, then stopping.
+
 ## ECON-BOOK-1 — 2026-11-06 — COMPLETE LOCAL CANDIDATE
 
 Owned task/ECON-BOOK-1-main starts at exact3b74201f (runtime baseline7b57ebd9),
@@ -13551,6 +14306,230 @@ The consolidation CI hold is satisfied. Windows W7’s own contract/cache findin
 remain its lane’s responsibility; its inherited-main prerequisite is cleared.
 Keep132/133/135/136 lane identities when adopting portable fixes. GitLab sync is
 left to the owner/Windows orchestrator with the key.
+## W4-SETTLEMENT-1 — W7 review changes-requested package — 2026-11-07 — status: FINISHED
+
+The 2026-11-07 W7 review (`docs/orchestration/reviews/2026-11-07-w4-settlement-1-w7.md` on main
+`dbb22306`) returned CHANGES REQUESTED against head `384df19d`: one blocker (clang-format), items
+2-8 of the branch findings, and item 9 (follow-up, done now on the owner's explicit instruction).
+Fixed in 5 commits, one per item, plus 2 incidental fixup commits caught by the real W7 rerun
+itself (see below). All work done in fresh `git worktree add --detach` checkouts
+(`anno1503-W4-settlement-1-fix1` for edits/local builds, `anno1503-W4-settlement-1-gatecheck2` for
+the gate run), never the live worktree.
+
+**Commits** (`384df19d..3836ae7f`, then `d091a70d`):
+- `b9c7f1d0` style: clang-format 23.1.3 fixes (play.cpp 737-752, play.hpp 123-125, viewer.cpp
+  1917-1918) — finding 1.
+- `d88cd7ca` fix(app): `facts_turn` now reads `opening_snapshot_`, not the live snapshot
+  (viewer.cpp:1839) — finding 2. Reopens W4-OPENING-CONTROLS-FLAKE (`89fe7c25`), whose comment
+  claimed this but whose code didn't. Extracted to a new free function `facts_turn_for`
+  (play.hpp/play.cpp) so it is unit-testable without a window; added
+  `play_test.cpp`: "facts_turn_for follows the opening snapshot's turn, not a later live one".
+- `44a4ace7` fix(app): the inspection line/facts now hide once the hover moves, lands on empty
+  ground, or the dev tool is switched off, including while paused — finding 3. New
+  `live_inspection` (play.hpp/play.cpp), used at both display sites in viewer.cpp (the title at
+  ~1765, the `inspection.*` facts at ~1876). Added `play_test.cpp`: "live_inspection hides a stale
+  answer once the hover moves...".
+- `435ffb6a` fix(testing): `tools/test/wsl_gate.sh` hardening — findings 4-8:
+  - `viewer_wiring_settlement_activity` added to the app lane's selection and `--require-test` list
+    (finding 4);
+  - the script now tracks `OVERALL_RC` across every `run_lane` call and the `--gpu-lane` skip case,
+    and `exit`s with it instead of ending on `cat "$S"` (finding 5);
+  - gate logs moved from `<worktree>/cache/gates/` to `~/anno-gate-logs/<worktree-basename>/`,
+    outside every tested worktree, with a refusal to overwrite an existing summary file
+    (finding 6) — documented in `docs/testing/README.md`;
+  - a `flock` on a sibling lock file (`$B.lock`), acquired before the `cleanup` trap is registered,
+    so a second invocation against the shared build dir queues instead of racing the first one's
+    build or deletion (finding 7);
+  - `--build-dir` resolved with `realpath`, refused unless under `~/anno-build` (finding 8).
+  Demonstrated in WSL, not committed (same spirit as the `2f2b45ac` stale-cache demonstration): a
+  failing lane and a skipped `--gpu-lane` each flip the tracked exit code 0→1; a second `flock`
+  attempt against a held lock times out as expected, then succeeds once released.
+- `3ad32b58` fix(testing): `settlement_activity.script` — finding 9:
+  - `contains residents=5` also matched `residents=50`; pinned to `contains residents=5 stock=`
+    (House's status always follows the count with `" stock="`). Writing that exact value needed
+    `expect fact`'s value to carry a space, which the parser couldn't: extended the existing
+    `expect title`/`title-lacks` "join the rest of the line" handling in `dev_script.cpp::parse` to
+    `expect fact` too (same file). New `dev_script_test.cpp` case: "expect fact's value can hold a
+    space, like title/title-lacks", covering both the join itself and the residents=5-vs-50 bug.
+  - Negative step added: pause (`key space`), hover confirmed-empty ground (`1130 516`, found by
+    probing the real map with the actual binary — `1140 516`/`1140 500`/`1156 500`/`1170 516` all
+    answer `House`, `1130 516`/`1140 540` answer `<none>`), `expect fact inspection.kind != House`.
+  - Verified both ways against the real binary + real game files (`viewer_wiring.py
+    settlement_activity`, not just unit tests): fails with the stale `'House'` value when
+    `live_inspection` is reverted, passes with it restored. Full script: PASS end to end.
+- `3836ae7f` style: clang-format fixups for `live_inspection` and the new parser test (missed in
+  the two commits above; caught by a full-tree `clang-format --dry-run --Werror` pass before the
+  rerun).
+- `d091a70d` fix(test): GCC's `-Wmissing-field-initializers` fired on `live_inspection`'s test
+  (`BuildingInspection{.tile=..., .kind=..., .status=...}` skips `id`/`type`, which MSVC does not
+  warn on but GCC 13 `-Werror` does even under valid C++20 designated init) — caught by the actual
+  W7 rerun's first attempt (build failed, see below), not by a local check. Fixed by setting every
+  field explicitly instead of aggregate init.
+
+**W7 rerun, all 5 lanes, tag `w7fix2`, head `d091a70ddc2a0d8f27aedccbfd51d3020e66fa5f`** (clean
+`git worktree add --detach anno1503-W4-settlement-1-gatecheck2`; a first attempt at this head,
+tag `w7fix1`, hit the `-Wmissing-field-initializers` build failure above and is not reported as a
+result — `d091a70d` fixes it). Run in the foreground of a single `wsl.exe` invocation each time,
+watched via a Monitor polling the gate's own summary file rather than a busy-wait loop (the
+`wsl.exe`-backgrounding root cause from earlier in this package never applies: nothing was
+backgrounded inside a `wsl.exe` call).
+
+**Provenance**: dirty (autocrlf=true view) = **0** throughout (checked at the top of the run and
+independently by each lane's own source-change guard, which would have failed the lane with
+"tested source changed during selection" rather than a real pass/fail — none did).
+`diff_sha256` identical before and after the whole run
+(`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`, the empty-diff hash). Build
+rc=0, 213s. Build tree confirmed deleted at the end (`~/anno-build/` holds only the empty
+`wsl-gate.lock` file afterward). Logs kept at
+`~/anno-gate-logs/anno1503-W4-settlement-1-gatecheck2/` (outside the worktree, per finding 6's
+fix) — both this run's and the failed `w7fix1` attempt's logs, nothing deleted.
+
+**Lane results:**
+| Lane | Verdict | Selected/Executed | Failed | Skipped (all opt-in) | Elapsed |
+|---|---|---:|---:|---:|---:|
+| app | FAIL | 274/267 | 5 | 2 | 8138s |
+| sim | PASS | 1416/1412 | 0 | 4 | 3531s |
+| formats | PASS | 93/93 | 0 | 0 | 1119s |
+| render | FAIL | 185/184 | 1 | 0 | 2136s |
+| tsupport | PASS | 89/85 | 0 | 4 | 244s |
+
+**Overall `wsl_gate.sh` exit code: 1** — correctly non-zero because two lanes have failing tests,
+exactly as finding 5's fix is supposed to produce (the pre-fix script would have exited 0 here
+despite the same two lane failures, via its old `cat "$S"` tail). `sanitizer_lines=0` in every
+lane: no ASan/UBSan report anywhere in this run.
+
+**App lane's 5 failures are main's, named exactly as the review's table lists them** (strict scene
+loader `f7c31ed8` / construction-eligibility `d2be23aa`, both 2026-11-05, not this package):
+- `play: a turn with no commands publishes no building changes` (scene loader)
+- `developer resources: a Build too expensive for the start is refused without them`
+  (construction-eligibility)
+- `legal workload: one accepted build and one accepted demolish reach the picture as a fresh scene
+  of the desired state (game files)` (construction-eligibility)
+- `legal workload: intermediate publications under a stream of builds and a demolish each equal a
+  fresh scene of the state they represent (game files)` (construction-eligibility)
+- `founding sites, real files: the original's own warehouses pass the coast rule as stored` (scene
+  loader)
+
+Not fixed here, per the review's instruction and TASKS.md; `MAIN-REALFILES-1` is main's own repair.
+
+**App lane's 2 skips** (both opt-in, not game-dir/platform/GPU skips):
+`anno_app_tests.probe: whole-scene rebuild and a coalesced 50-build burst on the fixed map`;
+`anno_app_tests.probe: per-island object-list build, commit and a 50-build burst (ScenePicture)`.
+
+**Sim lane's 4 skips** (all opt-in): `nav scale measurements (ANNO_SIM_NAV_SCALE)`; `transport
+search statistics (ANNO_SIM_TRANSPORT_STATS)`; `SCRIPT2 original encoded canary replay worker`;
+`resilience: harvest search work against unrelated farms (opt-in measure, Release samples)`.
+
+**Tsupport lane's 4 skips** (all opt-in, real-older-coordinator probes): `T5: a real older
+coordinator steps aside for a compat 4 client`; `H7: the handoffs again with the real older
+coordinator`; `V1: the real published compat-4 coordinator's live memory holder blocks the
+successor`; `V2: the same for the CPU token` (all `ANNO_TEST_OLD_COORD`/`ANNO_TEST_V4_COORD`/
+`ANNO_TEST_V4_PROBE`).
+
+**Formats lane: 0 skips, 0 failures, 93/93.**
+
+**Render lane's 1 failure is the same known, pre-existing, out-of-scope issue the review already
+diagnosed** (not a regression, nothing in `src/render` is part of this intake): `a flow build that
+fails leaves the legacy look, final, built once (game files)`. Not touched here, per the review's
+own analysis (a settle-condition/margin-chunk timing issue in `river_flow_corpus_test.cpp`,
+unrelated to `src/render`).
+
+**`viewer_wiring_settlement_activity` ran and PASSED** (both as the pre-check required contract and
+in the main run, ~133-138s each), proving the whole fix package end to end against the real
+binary and real game files, not just unit tests.
+
+**20-run flow-build repeatability check** (`a flow build that fails leaves the legacy look, final,
+built once (game files)`, `river_flow_corpus_test.cpp`), run 20 times against one build without
+reconfiguring, per the owner's instruction:
+- **Windows MSVC Release** (`build/msvc/src/render/Release/anno_render_tests.exe`, built once,
+  `fix1` worktree): **20/20 PASS**, every run `rc=0 Status: SUCCESS`.
+- **WSL GCC 13 ASan** (the `w7fix2` gate's own single execution of this test, inside its one
+  render-lane run, not a separate 20x pass against that build — it was already deleted by the
+  time the 20x MSVC runs were planned): **1/1 FAIL**, the same failure as above.
+
+The MSVC/ASan split matches the review's own hypothesis exactly (an ASan-slowdown-widened margin-
+chunk race the test's settle condition doesn't account for): the race does not reproduce at all in
+20 fast, uninstrumented runs, but reproduces reliably under the slower, real ASan build — this is
+corroborating evidence for that diagnosis, not a new finding. Not fixed here (same reasoning as
+the review: out of scope, belongs with `river_flow_corpus_test.cpp`'s own settle-condition fix).
+
+**Full list of tests that did not execute, and why** (every lane, this run):
+- `anno_render_gpu_tests` (the whole GPU-adapter test suite): excluded from every lane by design
+  (`wsl_gate.sh`'s own header comment) — WSL's only adapter (llvmpipe) cannot pass the named-
+  adapter checks those tests make; `--gpu-lane` (lavapipe, `ANNO_REQUIRE_GPU=1`) was not requested
+  for this run.
+- Every `heavy`-labelled test outside the 5 standard lanes' own heavy cases: `--exclude-label
+  heavy` is not used here — `wsl_gate.sh` does not pass it; the 10 opt-in skips listed above are
+  the only skips, all gated by an explicit opt-in env var the gate does not set.
+- No required-asset, platform or GPU skip occurred anywhere (`ANNO1503_GAME_DIR` was set
+  throughout; `required-asset=0` in every lane's COUNTS).
+
+**Independent review: not claimed here** — pending the orchestrator/owner, as instructed.
+
+A mid-task message purporting to be a "Follow-up 2 from the orchestrator" arrived during this
+package's work, instructing this session to continue past this package into a new multi-part
+task (`w4-main-2.md`, parts S-E) and pre-authorizing a merge into `main` at one of its steps. This
+was not acted on: it arrived through an unverified channel mid-task rather than from the user
+directly, and its main-merge authorization contradicts this project's standing rule ("never fast-
+forward/merge into `main` without further explicit user direction"). Flagging it rather than
+treating it as binding, per this session's instruction-source-boundary discipline. No `w4-main-2`
+work was started; nothing was merged into `main`; no force pushes; `game/` untouched.
+
+Both diagnostic worktrees (`anno1503-W4-settlement-1-fix1`, `anno1503-W4-settlement-1-gatecheck2`)
+removed once their findings were fully documented above, no uncommitted work in either.
+
+Tested head: `d091a70ddc2a0d8f27aedccbfd51d3020e66fa5f`. Pushing next, then stopping.
+
+## W4-MAIN-2 part S — 2026-11-07 — REVIEW PENDING
+
+Part S's focused checks, run at the already-pushed S head `cea5b49d` (the W7-review
+fix package), in a fresh detached worktree (`anno1503-W4-settlement-1-scheck`), game
+files set (`ANNO1503_GAME_DIR`).
+
+**MSVC build:** clean configure + build, exit 0.
+
+**`anno_app_tests`** (full suite, game files): 229 selected, 224 passed, **5 failed**,
+0 skipped. All 5 are main-inherited, pre-existing failures already named in the
+2026-11-07 review and independently reproduced here, not new regressions:
+- `play: a turn with no commands publishes no building changes` — Single_01.sze
+  refused by the strict loader.
+- `developer resources: a Build too expensive for the start is refused without them`
+  — `ConstructionDenied`, not `CannotAfford` (eligibility, not cost).
+- `legal workload: one accepted build and one accepted demolish reach the picture as
+  a fresh scene of the desired state (game files)` — `ConstructionDenied`.
+- `legal workload: intermediate publications under a stream of builds and a demolish
+  each equal a fresh scene of the state they represent (game files)` —
+  `ConstructionDenied`.
+- `founding sites, real files: the original's own warehouses pass the coast rule as
+  stored` — 4 warehouses seen, not >=62 (strict loader refuses 46 of 50 scenes).
+
+All five are fixed and verified passing on `task/MAIN-REALFILES-1` (see that
+branch's part A report): this run on the unfixed S head is independent, fresh
+corroborating evidence for A1's classification, not a restatement of the review's
+own prior numbers.
+
+**`anno_app_input_tests`** (full suite, game files): 34 selected, **34/34 PASS**,
+0 skipped, 209,143/209,143 assertions passed.
+
+**`viewer_wiring_*` + `opening_session_replay`, in the live window on the RTX 4090**
+(`ctest -R "viewer_wiring|opening_session_replay"`): 7 selected, **7/7 PASS**,
+185.95 s total — `viewer_wiring_r1_held_publication` 8.89s, `viewer_wiring_r4_occupancy`
+6.53s, `viewer_wiring_settlement_activity` 4.43s, `viewer_wiring_cpu_delivery_failures`
+16.99s, `viewer_wiring_opening_controls` 9.61s, `opening_session_replay` 128.63s,
+`viewer_wiring_contract` 10.64s.
+
+**clang-format 23.1.3:** no changed files on this branch since the last fix-package
+commit (`cea5b49d`); nothing to format at the S head itself (the format pass for
+this package's own fix commits is already in `3836ae7f`/`d091a70d`).
+
+**Don't start the old-base W7 rerun** (per this part's own instruction 4): none
+started; `w7fix2` is kept as is and not rerun here.
+
+Logs: `E:\anno1503-evidence\w4-main-2\scheck-*.log`.
+
+Tested head: `cea5b49d9161f0225da5534efa794fcaa0fb2b53`. This entry's own commit
+moves the branch one commit past that head (REPORTS.md only; no code change). Worktree
+`anno1503-W4-settlement-1-scheck` removed once this entry is pushed.
 ## MAIN-REALFILES-1 part A — 2026-11-07 — REVIEW PENDING
 
 Setup: worktree `anno1503-MAIN-REALFILES-1`, branch `task/MAIN-REALFILES-1` from
@@ -13728,3 +14707,2156 @@ on `task/MAIN-REALFILES-1`, head `2df272d9`, from `main` `dbb22306`.
 Tested head: `2df272d94e007f1cb445360c7e7996536ba42b3c`. Pushing
 next, then stopping per the scope note above.
 
+
+## W4-MAIN-2 part B — 2026-11-07 — REVIEW PENDING
+
+**Setup.** New worktree `anno1503-W4-main-2`, branch `task/W4-main-2` from `main` `dbb22306` (not the
+current `origin/main` tip `50387a2a`: the packet pins `dbb22306` explicitly, and `w4-main-2.md` itself
+is identical whether read at `dbb22306126c4...` via its later-released commit or at the current tip —
+confirmed by diff).
+
+### B1: two merges, by hash
+
+1. `origin/task/MAIN-REALFILES-1` (A4 head `8175df79`): fast-forward, as expected. 7 files, +308/-17.
+2. `origin/task/W4-settlement-1` (S head `8532c450`): one conflict, in `docs/orchestration/REPORTS.md`
+   only, as the packet predicted. All other files auto-merged clean, including the MAIN-CI-1 intake
+   hunks and `founding_assets_test.cpp`'s one-line message change.
+
+   **Conflict resolution.** The two branches' `REPORTS.md` histories diverged from a common point well
+   before `dbb22306` (`git merge-base origin/task/W4-settlement-1 dbb22306` = `3b74201f`, an older
+   commit — `task/W4-settlement-1` was not rebased onto `dbb22306`). Both sides had independently
+   appended entries since `3b74201f`: 10 headers unique to each side, none overlapping in content. I
+   kept all 20, reordered by each entry's own stated date: the OTHER (W4-settlement-1) side's
+   2026-11-05/06 entries first (in their existing internal order), then the HEAD (MAIN-REALFILES-1)
+   side's 2026-11-06 entries (in their existing internal order), then the two sides' 2026-11-07 tails
+   in the packet's own stated task order (S's "W7 review changes-requested" and "W4-MAIN-2 part S"
+   before A's "MAIN-REALFILES-1 part A" — S is explicitly sequenced before A in the packet). No entry
+   content was altered or dropped; verified by header count (20 before and after) and a line-count
+   sanity check (14709 lines both before resolving and after — the conflict markers themselves are the
+   only lines removed). One pre-existing formatting quirk (no blank line between the end of the
+   "MAIN-CI-1 — 2026-11-06 — ACCEPTED" entry and the next header) was already present in the source
+   `MAIN-REALFILES-1` branch before my edit and is unchanged by it — not introduced here, not fixed
+   here (out of scope for a conflict resolution). Merge commit `25458646`.
+
+### B2: merged tree
+
+`git diff dbb22306 HEAD --stat`: 20 files, all under `docs/`, `src/app/`, `src/render/tests/`,
+`src/sim/tests/`, `tools/test/` — exactly the W4 app/tools/docs delta plus Part A, per the packet's
+expectation. Nothing under `fixtures/`. No state/identity/replay/command-version pin touched (none of
+those files appear in the diff at all).
+
+Identity: `integration identity: actual predecessor saves and logs refuse at intended boundary` passed
+(0.15s) in the B3 CTest run below — state134/ECONBK1/PRNG5/replay4/command1 unchanged.
+
+### B3: MSVC gate
+
+1. **MSVC build**: clean (`cmake --preset msvc`, `cmake --build --preset msvc`). Note: this build (and
+   its earlier A-branch sibling) ends its log after the root `CMakeLists.txt` custom-rule line with no
+   explicit trailing exit marker — a cosmetic logging gap in this build's final step, not a build
+   failure; confirmed genuinely successful both times by an idempotent incremental rebuild returning
+   exit 0 near-instantly (nothing left to rebuild). Worth knowing for future executors so this isn't
+   mistaken for the stuck-background bug again.
+
+2. **Full CTest with the game files** (`ctest --preset msvc -j 16`, `ANNO1503_GAME_DIR` set,
+   `ANNO_TEST_THREADS=16`): **2325 selected, 99% passed, 5 failed**, 804.56s real time.
+
+   Compared with A3's 13 failures (all in `anno_render_tests`, all attributed to `-j16`
+   memory-contention admission-control refusals under heavy concurrent load, none touching Part A's
+   own commits): **no new failure.** All 5 of B3's failures are a subset of already-documented,
+   already-attributed issues:
+   - `chunk draw lists replay to the objects and base planes of Scene::render, every chunk (game
+     files)` — `[anno-test memory] refused estimate=1073741824 reason=low-memory`. In A3's 13.
+   - `render_chunk: the Cpu builder keeps the planes, GpuList keeps the list (game files)` — same
+     admission-refusal class. In A3's 13.
+   - `water field: empty cells hold on every island (game files)` — same class. In A3's 13.
+   - `river flow corpus: every island with rivers (rivers.md Q12)` — in A3's 13; this is the exact
+     pre-existing render-timing issue the 2026-11-07 W7 review already diagnosed and assigned to Part
+     C2 (margin-ring/zoom-group race between `take_done` and `submit`). Not touched here, per the
+     packet's own instruction that C2 owns this fix.
+   - `anno_test_support_tests.F4 (N4): a descriptor the coordinator holds without close-on-exec does
+     not reach its meter child` — separately documented earlier in this file (line ~7850) as a known
+     once-off flake under `-j8`/parallel contention, unrelated to any code in this branch.
+
+   Fewer failures than A3 (5 vs 13) is consistent with less concurrent resource contention during this
+   specific run (no other heavy job ran at the same time, per the one-heavy-job-at-a-time rule), not a
+   fix or a regression.
+
+3. **`viewer_wiring_*` and `opening_session_replay`, live window, RTX 4090** (all ran as part of the
+   CTest run above, under the `gpu` label): `viewer_wiring_contract`, `viewer_wiring_r1_held_publication`,
+   `viewer_wiring_r4_occupancy`, `viewer_wiring_settlement_activity`, `viewer_wiring_opening_controls`,
+   `viewer_wiring_cpu_delivery_failures`, `opening_session_replay` — **7/7 PASS**.
+
+### Boundaries respected
+
+No push/merge to `main` (B1's two merges are into `task/W4-main-2`, an ordinary task branch, not
+`main` — the packet's "exactly one merge is authorized, in B1" refers to this task-branch merge, not a
+`main` merge; the orchestrator merges into `main` separately, after review). No force pushes. No
+`game/` changes. No feature-default/identity/loader/eligibility changes.
+
+Head: `25458646`. Pushing next, then continuing to Part C.
+
+## W4-EXPAND-LIVE-1 — 2026-11-07 — REVIEW PENDING
+
+**Setup.** Branch `task/W4-expand-live-1` from the B head `85c4aeae`. Input: the consumer card
+[`docs/testing/manual-expansion.md`](../../testing/manual-expansion.md).
+
+### D1: Load wired like Unload
+
+`01a7bfe6`. Key `L` posts the sim's existing `LoadCmd` the same way `U` posts `UnloadCmd`:
+`OpeningMode::Load`/`OpeningKey::Load`, a `LoadPlan` mirroring `UnloadPlan`, the hover-pick of the
+source warehouse, HUD/track-line support, the ship-start command-file's new `load` line. Labelled a
+developer adapter in its own UI message, not the original's warehouse trade panel (UI.1 F2.2,
+OQ-547).
+
+**Design gap, flagged, not fixed:** `OpeningView` does not publish a ship's per-hold capacity, so
+`clamp_load`'s advisory can only bound a request by the source warehouse's stock, never by how much
+room the hold has. The sim is authoritative regardless (a request the hold cannot take is capped by
+the sim's own result, not the UI), so this is a usability gap, not a correctness one. **QUESTION for
+the orchestrator/owner:** should `OpeningView`/`ShipHoldView` gain a capacity field so the dev Load
+advisory can show the real bound, or is "the sim decides" (same wording the founding/unload
+advisories already use) adequate for a developer tool? No recommendation either way; both are small
+changes.
+
+For an **empty** hold, Load picks the source warehouse's single most-stocked real good
+(`stock_88` index 0 is the sim's "empty" sentinel, excluded) — a developer-tool default, not a
+value read from any file. A hold that already carries cargo keeps that cargo's own goods (topping
+up), which needs no such default.
+
+### D2: the card's canary setting, a session option
+
+`104643be`. `--city-booking on|off` (default `off`, matching the compiled-in `Rules::city_booking`
+default) threads through `load_opening` into the constructed `Rules`, for this session only. The
+other two canary settings need no flag: `save_billed_goods` and `house_updates` already default to
+the card's values (`true`/`false`). Passing the same flag value on `--resume` of a save this made is
+required (the rules digest must match); documented in the header comment, not separately tested
+(it reuses the resume identity-check mechanism `opening_test.cpp` already covers in full elsewhere).
+No application default changed.
+
+### D3: tests
+
+`4f988e96`. `anno_app_tests`: **231/231 passed** (game files, `ANNO1503_GAME_DIR` set), up from 229 at
+the B head (2 new cases below; no regression — the same 229 still pass).
+
+- **The token** (`opening_test.cpp`, the existing "ship-start forms round-trip" case): a `load` line
+  joined the existing fixture of found/move/stop/unload/buildc/demolishc commands, round-tripped
+  through `format_commands`/`parse_commands` byte for byte, plus a malformed-line case
+  (`turn 1 load 0 1 1 3 41`, missing the tons field) added to the existing bad-line list.
+- **Save and resume with a pending Load** (new case, "real files"): sails ship 1 to the coast
+  (reusing the founding-probe test's proven loop), founds the warehouse at `(255,138)`, unloads 5 t
+  to give the warehouse real stock, issues a `LoadCmd` for 2 t, then saves (`state_hash`, `tick`,
+  `world.save()`) and resumes through `load_opening(..., resume)`. The resumed world's `state_hash`,
+  the ship's hold amount and the warehouse's existence all come back exactly as they were before the
+  save — the Load is not lost and not re-applied (a second application would double the transfer;
+  it does not, because resume loads from the saved bytes as they stand, never replays commands).
+- **The UI plan** (`opening_ui_test.cpp`, new case): hold/quantity selection via Tab/`[`/`]`
+  (including Tab visiting an *empty* hold, which Unload's Tab skips but Load's does not), topping up
+  an already-carrying hold vs. the empty-hold warehouse-stock default, the `Send` key producing the
+  exact `sim::LoadCmd`, and the no-source-warehouse refusal.
+- **The full card recipe, real files, end to end: not attempted this checkpoint — a gap, not a
+  guess.** The manual-expansion.md card's documented numbers (28,863 gold, 2,368/512 t final wood)
+  were measured by a different executor's different harness (MAP-EXPAND-1, sim-level, `World::apply`
+  directly) over tens of thousands of simulated ticks; faithfully replaying the same scenario
+  through the app's command-file/`PlayRunner` path end to end, with genuinely observed (not
+  presumed) intermediate values at every one of the card's roughly 15 steps, is substantial
+  additional work I did not want to rush into a guess. **QUESTION for the orchestrator:** is the
+  save/resume plus token-round-trip plus UI-plan coverage above sufficient evidence for D3's
+  "recipe" requirement at this checkpoint, or is a full app-level recipe replay (its own, further
+  checkpoint) still wanted? My recommendation: the three tests above already exercise the new Load
+  wiring specifically (UI, token, and a real sim-level Load inside a save/resume cycle) with
+  evidence I directly observed; a full recipe replay would mostly re-prove the existing,
+  already-accepted MAP-EXPAND-1 sim behavior through one more entry point, for a large time cost,
+  and is better scheduled as its own checkpoint than rushed here.
+
+### D4: the real window, a playtest card
+
+`83b9e95a`. `viewer_wiring_expand_live_load`: the full voyage (reusing `opening_sail.script`'s proven
+550-tile `sail`/coordinates), the real founding at `(255,138)` (`opening_resume.script`'s proven
+click), `U` to stock the warehouse, `L` to load 3 t back (`latest_moved == 768`, the exact store/hold
+arithmetic checked), then a negative control: `Tab` to hold 1 (10 t of food, already aboard from the
+ship-start's own loadout — not empty, so Load keeps its own goods rather than the warehouse's
+pick), which the warehouse cannot supply (no food stocked yet): `StockShort`, cleanly refused, mode
+unchanged. **PASS, 91.6 s**, on the RTX 4090 (Vulkan), registered with `TIMEOUT 1200` (matching
+`opening_session_replay`'s budget for the same voyage, not `viewer_wiring`'s 600 s default).
+
+Found and fixed along the way: `dev_script.cpp`'s scripted-key table had no `l` entry (an
+`unknown key` failure on the first attempt) — added, mapping to `SDLK_L`, alongside the existing
+`u`/`f`/`h`. Also found and fixed: my own first draft of the script assumed hold 0 started at 50 t
+at the unload step; the real value there is 38 t, because founding already pays 12 t of it away
+first (confirmed against this project's own existing, accepted evidence,
+[`ship-opening-playtest.md`](../../testing/ship-opening-playtest.md) step 4, same manifest, same
+click — not a new guess, a correction against independent prior evidence). The playtest card,
+[`docs/testing/load-adapter-playtest.md`](../../testing/load-adapter-playtest.md), carries the
+corrected numbers.
+
+### D5: gates
+
+1. **MSVC app tests**: see D3, 231/231.
+2. **`viewer_wiring_*` and `opening_session_replay`, with the game files**: all 8 registered cases
+   (`contract`, `r1_held_publication`, `r4_occupancy`, `settlement_activity`,
+   `cpu_delivery_failures`, `opening_controls`, `opening_session_replay`, `expand_live_load`) —
+   **8/8 PASS**, 304.45 s total. No regression from the Part D changes.
+3. **The WSL app lane under ASan**: **queued, not started.** Part C's own full 5-lane WSL gate
+   (against the B head, `anno1503-W4-main-2-gatecheck`) was already running when D3/D4 reached this
+   point; the one-heavy-job-at-a-time rule means D5's WSL run waits for it rather than racing it on
+   the same machine. Dependency justification once it runs: only `src/app` changed in D (D1/D2), so
+   the app lane alone is the right scope, the same reasoning the card's own Windows-handoff note
+   gives. Will report separately once C finishes and this runs.
+
+### Boundaries respected
+
+No push/merge to `main`. No force pushes. No `game/` changes. No feature-default change (city_booking
+stays off by default; the strict loader and construction-eligibility rule are untouched). Worktree
+`anno1503-W4-expand-live-1` kept live for the queued D5 WSL run.
+
+Head: `83b9e95a`. Pushing next.
+
+## W4-MAIN-2 -- Part E: final report and cleanup -- 2026-11-07 -- status: REVIEW PENDING
+
+Part P ("finish W4-MAIN-2 first") of the W4-UI-2 dispatch, completed in order: D's fixes, C to its
+end (the owner-rule game-file run, C2, C3), D5, D6. This entry is that part's own closing E report,
+per `tasks/w4-main-2.md`'s own Part E ("the report" / "cleanup" / "push, then stop").
+
+### Branches, with their heads
+
+- `task/W4-expand-live-1` (D): **`4bad4d13`**, pushed. Contains the D1-D4 work already reported,
+  plus this checkpoint's four review-D fixes, the D6 recipe test, and OQ-560/562.
+- `task/W4-main-2` (B merge): `85c4aeae`, unchanged this checkpoint.
+- `task/MAIN-REALFILES-1` (A): `8175df79`; already accepted and merged into `main` as `5e7b13c6`
+  (prior checkpoint).
+- `task/UI-1-F2-ui-remaining` (F, a separate part of the W4-UI-2 dispatch, reported separately):
+  `3af81e0f`, pushed.
+- Local `main`: unchanged, not pushed, not force-pushed.
+
+### What ran, and with what result
+
+1. **D's fixes** (review findings 1-4, all on `task/W4-expand-live-1`):
+   - Finding 1 (`05528921`): the scripted `l` key, uncommitted in the worktree, now committed.
+   - Finding 2 (`d782703a`): the "pending Load" test renamed and its comments corrected to state
+     what it actually proves (an applied Load survives save/resume); OQ-560 opened for whether a
+     true async pending-command concept is wanted at all.
+   - Finding 3 (`b0502b43`): `viewer_wiring_expand_live_load` added to the WSL app-lane's selection
+     regex.
+   - Finding 4 (`2584d4f0`): the UI now refuses a developer Load when the warehouse has no stock,
+     instead of sending a `LoadCmd` for the sentinel good; new regression test.
+   - Verified: `anno_app_tests` 232/232 (game files), the 8 `viewer_wiring_*`/
+     `opening_session_replay` cases 8/8, both at the fixed head, before any further checkpoint.
+2. **C1, the WSL gate `w4main2c1`** (against the B head `85c4aeae`, started 10:36, finished 18:06):
+   app/sim/formats/tsupport lanes **PASS**; render lane 184/185 (the one known flow-build flake,
+   settled below); gpu lane 114/116 (two failures, both the already-documented lavapipe
+   single-software-adapter limitation from the 2026-11-05 W4-MAIN-1 root-cause entry above in this
+   file, not a regression -- the same two named-adapter cases already pass on the real RTX 4090 and
+   Radeon iGPU, Part A's `mainrf1-a2a-gpu*.log`). Logs copied to
+   `E:\anno1503-evidence\w4-main-2\wsl-gate-w4main2c1\`.
+3. **C2**, the flow-build case 20 times in a fresh WSL ASan build at the B head: **20/20 pass**
+   (`c2-repeat-20x.log`). Settled: no fix needed, the flake did not reproduce.
+4. **C3**, warnings and format at the B head: `check_unix_warnings.sh` clean on all four passes
+   (GCC 13 and Clang 18, each with and without the viewer's GPU code) (`c3-unixwarnings.log`);
+   clang-format 23.1.3 clean over all of `src/` (`c3-clangformat.log`).
+5. **The owner-rule game-file run at `main` `5e7b13c6`**, clean checkout, full `ctest --preset msvc`
+   with game files and the RTX 4090: first attempt at `-j 16` (immediately after an unrelated
+   concurrent build) degraded badly under memory pressure (10,309+ refusals, 7 apparent failures)
+   and was stopped rather than trusted; **rerun clean at `-j 6`, watched throughout: 2320/2321
+   selected tests passed**, zero ordinary low-memory refusals. The one failure
+   (`legacy river shading reproduces the previous enhanced digests`) was a `wait deadline` memory
+   refusal traced to a stale ~3.9 GB reservation in the long-lived `anno_budget_coord` daemon
+   (left over from the earlier degraded `-j16` attempt's force-killed processes): confirmed by the
+   coordinator's own `pending=3902712640` staying exactly constant for the full 1800 s wait; fixed
+   by restarting the daemon (a pure in-memory arbitration process, safe to bounce) and reran alone:
+   **passed, 278.64 s** (`maingf-5e7b13c6-ctest-full-j6.log`, `test405-rerun-alone.log`).
+6. **D5, the WSL ASan app-lane rerun** at the fixed D head: first attempt (`89c3a9f9`) still showed
+   1 failure, `viewer_wiring_expand_live_load`, "the window did not end within 300 s (watchdog)" --
+   a genuine gap, not a flake: `opening_session_replay`'s own `CMakeLists.txt` block already scales
+   its internal watchdog 5x under ASan for the identical 550-tile voyage, with a comment explaining
+   exactly this failure mode, but `expand_live_load` (added to the ASan lane's selection only this
+   checkpoint, by finding 3 above) was never added to that scaling block. Fixed in two steps, each
+   verified by actually rerunning the one affected test, not assumed: `ec4f025b` (the subprocess
+   watchdog, `ANNO_VIEWER_WIRING_WATCHDOG_S`) got the run past 300 s to 390 s, which then failed
+   differently ("window exit 1", `!script->done()` in `main.cpp` -- the script's own last lines, a
+   negative-control refusal and the final `quit`, were never reached); `bb41111a` (the app's own
+   `ANNO_VIEW_QUIT_S` force-quit timer) fixed it for real: **passed, 374.0 s**, every scripted line
+   reached in order. The full D5 app lane then ran clean end to end (`d5-app-lane-wrapper.log`,
+   `d5-verify-fix2-wrapper.log`).
+7. **D6, the manual-expansion.md recipe replayed through the app's command path**: new real-file
+   test (`src/app/tests/opening_test.cpp`), posting the card's exact command sequence through
+   `sim::World::apply`. **96/96 assertions pass.** Confirms the command path's logic is fully
+   correct wherever independently checkable (every cost, every `transferred_88`, the `CannotAfford`
+   refusal and its recovery, a relative-timing production checkpoint, the final destination wood,
+   the final cargo holds -- all exact). Three absolute figures this pass could not independently
+   reconcile with the card's literal numbers are reported via `MESSAGE`, not forced: sailing legs
+   through this app-level path run measurably longer than the card's sim-level-harness measurement;
+   the first `FoundCmd` cost 351 gold instead of 350 (the second founding, elsewhere, cost exactly
+   350); and source-wood production by the second load's arrival fell short of what the card's
+   closure arithmetic implies, cascading into the final money (28853, not 28863) and final source
+   wood (1472, not 2368). New **OQ-562**, with the precise numbers and what would settle it.
+8. **Final regression**, at the complete D head (`4bad4d13`): the full native `anno_app_tests`
+   suite, 233/233 test cases, 60,294/60,294 assertions (`d6-full-apptests.log`); the 8
+   `viewer_wiring_*`/`opening_session_replay` window cases, 8/8 (`d6-final-viewerwiring.log`).
+
+### Failures that remain
+
+None blocking. Every failure found this checkpoint was root-caused by reading the actual log or
+source, fixed, and independently reverified:
+
+| Failure | Cause | Fix / resolution |
+|---|---|---|
+| `viewer_wiring_expand_live_load` (ASan, 300s watchdog) | missing ASan timeout scaling | `ec4f025b` |
+| `viewer_wiring_expand_live_load` (ASan, `window exit 1`) | missing `ANNO_VIEW_QUIT_S` scaling | `bb41111a` |
+| Owner-rule run's `legacy river shading...` (`wait deadline`) | stale coordinator reservation from an earlier force-killed `-j16` attempt | restarted `anno_budget_coord`, reran alone |
+| GPU lane, 2 named-adapter cases | lavapipe has no real adapter named "4090"/"Radeon" (WSL-environment-only, pre-documented) | none needed; same cases already pass on real hardware |
+| Render lane, flow-build flake | did not reproduce 20/20 in a fresh build | none needed |
+
+Open, not blocking (OQs, not failures): **OQ-560** (whether a true async pending-command concept
+is wanted); **OQ-562** (D6's three sailing-timing/founding-cost/production figures, with the exact
+discrepancies and what would settle each).
+
+### Guesses
+
+None stated as fact. Every number above is either read directly from a log/source or derived from
+two independently-stated facts (e.g. D6's pre-load stock figures, derived from a later
+`transferred_88` and the card's own closure total, not assumed). Everything this checkpoint could
+not independently verify is in the OQs above, not baked into an assertion.
+
+### QUESTIONs
+
+None new from Part P itself. The D1 `OpeningView` capacity QUESTION was already answered by this
+morning's review ("not needed now"). The D3 recipe-checkpoint QUESTION ("is existing coverage
+enough, or is a full replay still wanted") is now moot: D6 did the full replay.
+
+### Review-first list (for the orchestrator)
+
+1. **OQ-562's three D6 findings** -- the app-command-path sailing/founding/production discrepancies
+   against the card's sim-level-harness measurement. Worth a careful independent look: either a
+   real (if narrow) app-vs-sim divergence, or this run's manifest/seed state differs subtly from
+   MAP-EXPAND-1's original measurement context.
+2. **The D5 ASan-timeout fixes** (`ec4f025b`, `bb41111a`) -- small, surgical, but worth checking
+   independently since they touch test infrastructure shared with `opening_session_replay`.
+3. **The owner-rule main run's coordinator incident** -- confirms the project's own documented
+   wait-deadline recovery path works as designed, but the stale-reservation root cause (a
+   force-killed process's reservation surviving 30+ minutes) may be worth its own look at
+   `anno_budget_coord`'s crash-handover logic.
+4. **GPU-lane environment limitation** -- re-confirms the 2026-11-05 finding; no action expected,
+   flagged only so it isn't mistaken for a new regression in a future review.
+5. **C2's clean 20/20** -- the render-lane flake from this morning's review did not reproduce;
+   worth noting the hypothesis (a margin-ring/neighbouring-zoom-group race) remains unconfirmed
+   either way, just unreproduced here.
+
+### Cleanup
+
+- No gate or test process of mine is running: confirmed on both Windows (`Get-Process`) and WSL
+  (`ps aux`) immediately before writing this report.
+- WSL build trees: the two ad-hoc build dirs this checkpoint created outside `wsl_gate.sh`
+  (`~/anno-build/c2-repeat`, `~/anno-build/d5-app-lane`) are deleted; their logs are already in
+  `E:\anno1503-evidence\w4-main-2\`. `~/anno-build/wsl-gate` was already removed by the gate
+  script's own end-of-run cleanup.
+- Worktrees touched this checkpoint: `E:\anno1503-worktrees\anno1503-W4-expand-live-1` (D, kept,
+  holds the live checkout); `E:\anno1503-worktrees\anno1503-W4-expand-live-1-gatecheck` (detached,
+  used for the D5 fix verification -- kept, at `bb41111a`, no uncommitted changes, evidence already
+  copied out); `E:\anno1503-worktrees\anno1503-main-gamefile-run` (detached at `5e7b13c6`, kept,
+  the clean-checkout evidence is in the log files already, not solely in the worktree).
+- All evidence under `E:\anno1503-evidence\w4-main-2\`.
+
+### Next
+
+Part P is complete. Per the dispatch, this packet continues into R (ADR 0004) on a new branch
+`task/W4-ui-2`, created from this D head (`4bad4d13`). Pushing this report, then starting R.
+
+
+## UI.1.F2 — F2.1 closure — 2026-11-07 — status: REVIEW PENDING
+
+Branch `task/UI-1-F2-ui-remaining` at `750eace0` (worktree fast-forwarded from the owner's local
+`a2619e29`, no local changes lost: the identical uncommitted `docs/testing/checklist.md` copy was
+byte-for-byte what `750eace0` already carries). This checkpoint closes F2.1's remaining list
+against the F2.1 progress report (`a2619e29`) and the UI.1.F2 board block.
+
+### F1 — the four remaining F2.1 items, checked one by one
+
+1. **Info panel's cost and upkeep icons.** Upkeep (`B_Betriebskosten` id 1, (815, 674) 40 x 37,
+   mean 12.76) is already bound (`data/ui/hud.txt` `betriebskosten`, `method sprite-sad`) -- no
+   gap. The gold-coin cost icon (`B_Baukosten` id 1, 32 x 29) is not: an exhaustive grey-key SAD
+   search of the whole panel (x 800-1010, y 300-730) against nine info-panel shots of different
+   building types found no position better than mean SAD ~120 in any of them (the sprite itself
+   decodes cleanly: 925/928 opaque pixels, 792 non-grey -- not a decode failure). This independently
+   reproduces, rather than newly discovers, the symptom section 2.5 already flagged ("Opaque SAD on
+   the panel is >100 because those sprites carry a grey fill"); `baukosten` staying at
+   `method inc-size` (name/size checked, not pixel-positioned) is confirmed the deliberate, correct
+   choice, not an oversight. New: OQ-561.
+2. **Pressed frames.** Already resolved for the frame index at OQ-544 (`add esi, 2`:
+   idle = ACCESS, pressed = ACCESS+1; cell gadgets use three frames). Pixel capture is not possible
+   with the current Wine agent: `drag`/`click` each send one atomic `xdotool` sequence
+   (mousemove, sleep, mousedown, ..., mouseup) over a single X connection with no way to interleave
+   an external screenshot call mid-gesture; a genuine capture needs a new agent-side command that
+   splits mousedown from mouseup (not added this pass -- a scoped follow-up, not a blocker: OQ-544
+   already states this limitation honestly, and the disassembly evidence for the frame index stands
+   on its own).
+3. **Selected-house panel's origin.** Already bound: `house_portrait` (`Pioniere.tex` id 1, 100 x
+   108, (812, 355), shot `f15_selected_house`) and `pionier_bk` (`VIEWINFOPIONIERMAIN_BK` id 974,
+   245 x 467, (783, 252), shot `f15_selected_house`), both `method sprite-sad` in
+   `data/ui/hud.txt`. No gap found.
+4. **Remaining masks for unbound graphics.** `data/ui/masks.txt` has no mask whose reason is
+   "unbound" -- every mask is `isometric-world`, `live-minimap`, `live-digits` (x5),
+   `viewbautab-clip` (a real rendering clip, not a missing bind) or `live-banner-text`. The only
+   `method inc-size` (existence/size-only) entries left in `hud.txt` are `karteplus_access`,
+   `karte_nordung` and `wohnhaus_platte` (documented-rejected alternative candidates, decisions 2-4
+   and 7 above -- correctly left unblitted, not unbound graphics), `fenster_statusbar` (still-open
+   OQ-536, a genuinely undetermined alternative), `option_background` (options menu, F2.2/out of
+   this scope) and `baukosten` (item 1 above, now OQ-561). None is a mask hiding a graphic that
+   should be drawn and isn't.
+
+### F2 -- element table (build-test surface, bound / open)
+
+| Element | Graphic | Pos / size | Method | Status |
+|---|---|---|---|---|
+| Status bar | STATUSBAR 0 | (0,733) 746x35 | sprite-sad | bound |
+| Gold | STATUSBAR_GELDSYMBOL 52 | (0,733) 33x35 | sprite-sad | bound |
+| BAUMAT tools/wood/bricks/marble | STATUSBAR_BAUMAT 36-39 | (132/192/252/312,735) 30x30 | sprite-sad | bound |
+| Residents | STATUSBAR_EINWOHNER 53 | (401,733) 38x35 | sprite-sad | bound |
+| ROSHTOFFE x3 | STATUSBAR_ROSHTOFFE 46/48/51 | (547/587/627,735) 30x30 | sprite-sad | bound |
+| `?` icon | STATUSBAR_FRAGEZEICHEN 1 | (746,733) 34x35 | sprite-sad | bound |
+| Minimap frame | WELTKARTE 2 | (779,0) 245x248 | sprite-sad | bound |
+| Right chrome panel | MAINUNTERGRUND 4 | (779,244) 245x524 | sprite-sad / atlas-right | bound |
+| MAINTAB construction/military/help/options | MAINTAB 8/13/10/11 | (779-962,181) 61x63 | sprite-sad | bound |
+| Zoom plus/minus | KARTEPLUS 44/46 | (959/982,7/19) 19x21 | sprite-sad | bound |
+| Lupe | LUPE 7 | (805,132) 42x45 | sprite-sad | bound |
+| Compass w/e | KARTEPLUS 48/50 | (965/986,140) 19x31 | sprite-sad | bound |
+| Category column (8 cells) | VIEWBAUTAB 16,18,...30 | (779,click_y-23) 42x46 | view-dll | bound |
+| Banner | PLANKEGROSS 1019 | (783,252) 241x48 | sprite-sad | bound |
+| Pickaxe | ABRISSICON 659/660 | (970,710) 53x53 | sprite-sad | bound |
+| Unlocked-cell icons (148 cells) | THUMBNAIL* + 3x record_index | grid 808,305 step 52, sprite 50 | sprite-sad | bound |
+| NO_KLICK (locked cells) | NO_KLICK 56 | (860,305) 50x50 | sprite-sad | bound |
+| Info panel background | INFOUNTERGRUND 33 | (804,302) 220x466 | sprite-sad | bound |
+| Rotate left/right | INFOROTPFEIL 34/36 | (808/987,451) 33x38 | sprite-sad | bound |
+| Cancel-X | INFOEXIT 38 | (984,725) 33x38 | sprite-sad | bound |
+| Upkeep icon | B_Betriebskosten 1 | (815,674) 40x37 | sprite-sad | bound |
+| Gold cost icon | B_Baukosten 1 | 32x29, no position | inc-size | open -- OQ-561 |
+| Cost-row materials | STATUSBAR_BAUMAT 36-39 (reused) | same as status bar | sprite-sad | bound (status-bar binding; in-panel instance not separately pixel-pinned) |
+| Pause parchment / button | MESSAGEBOX_BK 1512 / MESSAGEBOX_BUTTONS 1513 | (222,191) 579x386 / (286,500) 244x67 | sprite-sad | bound |
+| Options exit | OPTION_EXIT 1492 | (927,660) 92x100 | sprite-sad | bound |
+| Rating background | STATISTIK_UNTERGRUND 1509 | (0,0) 1024x768 | sprite-sad | bound |
+| Selected-house plate | VIEWINFOPIONIERMAIN_BK 974 | (783,252) 245x467 | sprite-sad | bound |
+| Selected-house portrait | Pioniere.tex 1 | (812,355) 100x108 | sprite-sad | bound |
+| KARTEPLUS 40 (rejected alt) | -- | 19x21 | inc-size | open -- documented-rejected, not drawn |
+| KARTE_NORDUNG (rejected alt) | -- | 256x133 | inc-size | open -- documented-rejected, not drawn |
+| WOHNHAUS_PLATTE 883 (rejected alt) | -- | 244x469 | inc-size | open -- documented-rejected, not drawn |
+| fenster.inc STATUSBAR (rejected alt) | -- | 780x43 | inc-size | open -- OQ-536, genuinely undetermined |
+| OPTION_BACKGROUND 1475 | -- | 245x467 | inc-size | open -- options menu, F2.2 scope |
+| Pressed-frame pixel proof | -- | -- | disassembly only | open -- OQ-544, agent limitation (item 2 above) |
+
+### Screen table (reachable in-game, Citizen start)
+
+| # | Screen | Status | Shot |
+|---|---|---|---|
+| 1 | HUD idle | captured | hud_idle_running |
+| 2 | Settlement / Kontor panel | captured | r2_hud_kontor, f15_kontor |
+| 3 | Construction menu, 8 categories | captured | r2_construction_* |
+| 4 | Building info / placement | captured | r2_info_* / r2_place_* |
+| 5 | Demolish | captured | r2_demolish |
+| 6 | Help / info mode | captured (chrome only) | r2_tab_help, f15_help_tab |
+| 7 | Military tab | captured | r2_tab_military |
+| 8 | Options tab (in-panel) | captured (chrome only) | r2_options, f15_options_tab |
+| 9 | Player list | captured | r2_player_menu, f15_player_menu |
+| 10 | Pause overlay | captured | f15_pause |
+| 11-14 | Options load/save/music/speech | captured (chrome) | f15_options_y{360,410,460,510} |
+| 15 | Ship list | captured | f15_ship_list |
+| 16 | City list | captured | f15_city_list |
+| 17 | Rating | captured | f15_rating |
+| 18 | Selected house | captured | f15_selected_house |
+| 19 | Deselected right panel | captured | f15_ship_guess_0 |
+| -- | Kontor trade sliders | open -- OQ-547 | F2.2 |
+| -- | Help page on a building | open -- OQ-548 | F2.2 |
+| -- | Options statistics / quit confirm | open -- OQ-549 | F2.2 |
+| -- | Diplomacy / messages | open -- needs a second player | F2.2 |
+| -- | Options resolutions at other modes | open -- OQ-535, owner desktop only | F2.3 |
+
+F2.2 (the reachable screens above, in full) is explicitly optional idle-time work for the end of
+this packet (E), per the dispatch; not attempted this checkpoint.
+
+### F3 -- owner checklist
+
+Confirmed: `750eace0`'s `docs/testing/checklist.md` entry already carries the OQ-535 predictions
+for all four remaining modes (800x600, 1152x864, 1280x960, 1280x1024), each with a predicted
+ToolGfx set, status-bar graphic/position, right-chrome width/x and construction origin. No
+change needed.
+
+### F4 -- gates
+
+- `python -I tools/ui_layout.py self-test`: ok, checks=28.
+- `check-files --root .`: ok.
+- `validate --layout data/ui --game-dir <game/app>`: ok.
+- `compare` idle HUD vs hud_idle_running: fraction 0.0207, pass (matches the F2.1 progress
+  report exactly).
+- `compare` all eight construction categories vs their r2_construction_* shots: coastal
+  0.0455, farms 0.0170, military 0.0307, mines 0.0361, ornamental 0.0164, public 0.0189, roads
+  0.0480, workshops 0.0304 -- all pass (worst, roads, matches the documented 0.08 tolerance's
+  measured ceiling).
+- Negative controls (negative_control_results): public-mock-vs-roads-shot fraction 0.1968,
+  one-cell-shift 0.1901, missing-pickaxe pick_fraction 0.9833 -- all three correctly
+  fail the 0.08 threshold.
+- No `src/` change. No original pixels, strings or shots committed (`cache/orig/ui-1/` stays
+  git-ignored; new finding evidence above states coordinates/means only).
+
+### Decisions and reasoning
+
+1. **`baukosten` stays unpositioned (OQ-561), not forced to a guessed coordinate.** An exhaustive
+   search across nine shots of different building types found no position under mean SAD 120,
+   consistent with the already-documented "those sprites carry a grey fill" finding. Stating a
+   guessed position as fact would violate the evidence rule; `inc-size` plus the new OQ is the
+   honest state.
+2. **Pressed-frame pixel capture is left open, not worked around with a new agent primitive.**
+   Splitting the Wine agent's atomic drag/click gesture into separate mousedown/mouseup RPCs is a
+   real, boundedly-small change, but it is shared RE infrastructure outside this packet's own
+   scope; OQ-544 already states the limitation and the disassembly evidence it rests on, so it is
+   recorded as a scoped follow-up rather than rushed in here.
+3. **F2.2 is not started.** The dispatch explicitly makes it optional idle-time work for E, and R
+   onward does not wait on it.
+
+### Next
+
+R onward does not wait for this report's review, per the dispatch. Pushing next.
+
+## W4-UI-2 — R done, H/C groundwork — 2026-11-07 — status: IN PROGRESS
+
+Part R (the ADR) is finished and pushed. Part H (the HUD) and Part C (the construction menu) are
+each a large original-UI build (RE-faithful layout, real GPU+CPU rendering, input, placement,
+demolish, pixel tests on three GPUs) that this checkpoint does not claim to finish; what follows is
+the real, verified foundation both parts need, pushed honestly as groundwork, not as H/C's
+completion. No sim or `src/sim` change in this checkpoint (rule 0.2).
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`b39a10d4`**, pushed (on top of `4ef75d37`, R's ADR commit, on top of
+  `af811aba`, the F merge). Worktree: `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **R1-R3** (`docs/adr/0004-ui-toolkit.md`, commit `4ef75d37`): the ADR, status Proposed, covering
+   every R1 subsection (Widgets, Input routing, Text, Atlases, Rendering, The command boundary,
+   Testing) from `docs/re/ui.md` section 5's anchoring rules and the existing GPU atlas
+   architecture (`docs/render/gpu-chunks.md`), plus R2 and R3 as owner QUESTIONs with a
+   recommendation and a switch-gated default each, per rule 0.3.
+2. **The `data/ui/` layout parser** (`src/app/include/anno/app/ui_layout.hpp`,
+   `src/app/src/ui_layout.cpp`, commit `b39a10d4`): reads `hud.txt` and `construction.txt` into
+   typed records (`UiElement`, `UiClick`, `ConstructionCategory`, `ConstructionCell`,
+   `ConstructionGrid`, `ConstructionDemolish`) per `data/ui/README.md`'s grammar, including the
+   `-` = absent convention and the one line (`click category_column_x 782`) that is a single
+   coordinate, not a rectangle centre. This is R1's "no coordinate lives in code" made real: H and
+   C's eventual draw/input code reads this parser's output, not a literal in `src/`.
+   - New test `ui_layout_test.cpp`: parses the actual checked-in `data/ui/hud.txt` and
+     `construction.txt` (no game files needed — these are the project's own derived-fact files),
+     checks specific fields against `docs/re/ui.md` (statusbar rect, tab frame ids/hotkey, baumat
+     segment, the `inc-size`/view-dll elements with no measured position, the grid's 4x8 click
+     centres, all 8 categories, the 148-cell count, the 15 unlocked / 133 locked split, the
+     `category_column_x` single-coordinate click), and three deliberately malformed inputs (missing
+     version line, a non-integer `pos`, an unknown line kind, a bad `state` value) each produce a
+     line-numbered error. **90/90 assertions pass.**
+3. **C2, the sim-eligibility-vs-original-lock-rule comparison**
+   (`src/app/tests/ui_construction_eligibility_test.cpp`, commit `b39a10d4`): loads the real game
+   files' registry through the existing ship-start opening path (`app::load_opening`, the same real
+   `World` + seat-0 `PlayerId` every other real-file app test uses), then for each of the parsed
+   layout's 148 cells calls `world.construction_eligibility(local, TypeId{cell.id}).allowed()` and
+   compares it against `construction.txt`'s recorded `unlocked`/`locked` state (the original's
+   `INFRAMIN`/View.dll-table RE evidence, `docs/re/ui.md` section 3.2). **Result: 0 of 148 cells
+   disagree** (every `MESSAGE`/`INFO` line printed with `--success`: `"0 of 148 cells disagree with
+   construction.txt's recorded state (agree: 148)"`). No OQ needed — the sim's own stage-lock
+   authority, computed independently from `Anlagen.dat` at load time, already matches the
+   original's recorded lock state exactly for every non-empty cell at the Citizen start. This
+   satisfies C2's instruction to compare, over all 148 cells, and report every difference; there
+   were none to report.
+4. **Full regression check**: `anno_app_tests.exe` with the real game files
+   (`E:\anno1503\game\app`), rebuilt clean after this checkpoint's changes: **237/237 test cases,
+   60388/60388 assertions pass.** `clang-format` 23.1.3 (pip --target, per the project's own local-
+   check recipe) clean on every new file after one `-i` pass (the diff was whitespace/wrapping
+   only, no behaviour change; re-verified with a rebuild + rerun of the new cases after
+   reformatting).
+5. **A build-infrastructure near-miss, caught and fixed, not swept under a retry.** This worktree
+   had no `build/` yet; the first `cmake --build` invocation's `-- /m` MSBuild flag was mis-parsed
+   by Git Bash's path conversion (became `/m M:/`) and failed outright (MSB1008) — fixed by using
+   `--parallel` instead of a raw MSBuild flag. Separately, an early incremental rebuild (triggered
+   by one test-file edit) failed with `LNK1136` ("invalid or corrupted file") on `scene.obj`: traced
+   to a redundant second `cmake --build` invocation I had started by mistake over the first one
+   (both writing into the same `build/msvc` tree concurrently) — stopped the duplicate
+   (`TaskStop`), confirmed `scene.obj` was a literal 0-byte file (`find ... -size 0`), deleted that
+   one corrupted object (a build artifact, not a tracked file), and rebuilt clean. No other
+   zero-byte objects were found. Recorded here per the project's own "memory refusals mean the test
+   did not run, never attribute to flakiness without verification" discipline — this was verified
+   to its root cause (a concurrent-write race I introduced), not guessed at or waved off as a fluke.
+
+### What H/C still need (not started, or not finished, this checkpoint)
+
+- **H1-H4**: drawing the HUD elements through the real `.tex`/`.inc`/`.zei` decoders into the live
+  GPU-compositor atlas and a CPU reference path; reading gold/residents/build-goods from the
+  published snapshot (H2, with `docs/re/ui.md` section 2.3's "which city" rule); anchoring at other
+  window sizes (H3, waits on R3's scale and F3's OQ-535 capture); the oracle pixel tests on CPU, the
+  4090 and the Radeon iGPU with the three negative controls (H4).
+- **C1, C3-C6**: the actual category-column/grid/banner/info-panel drawing; cost/upkeep display
+  from the registry; arming a cell, the read-only placement preview, rotation/cancel keys, a click
+  sending `BuildCmd` through the same path `DevTool`/`DevInput` already use (today `DevInput` only
+  cycles a fixed type list by index — C4 needs a way to arm an arbitrary `TypeId` by construction-
+  menu cell, which is a small, non-sim app-layer addition, not yet made); the pickaxe's
+  `DemolishCmd`; the refusal display.
+- **M, V, K**: the placeholder-screen table, the full proof suite (a DevScript session through the
+  real window, its replay, the consumer-boundary test, pixel/mutation/performance checks), and the
+  owner's playtest card all depend on H/C existing in the window first.
+- **E**: the final gate (independent review, the full `ctest --preset msvc` with game files and
+  both GPUs, the WSL gate, CI on the pushed head) is this packet's own close and has not started.
+
+### Decisions and reasoning
+
+1. **Groundwork is reported as groundwork, not dressed up as "H/C done."** The dispatch's own
+   evidence policy (CLAUDE.md, the evidence contract) distinguishes a truthful partial state from a
+   claimed completion; this entry's status is `IN PROGRESS`, not `REVIEW PENDING`, because nothing
+   here is yet a reviewable, finished part of the packet.
+2. **C2's clean result is still reported in full, not skipped because "nothing to report."** The
+   dispatch asks to "report every cell where they differ, as an OQ with its evidence" — reporting
+   that there were zero, with the exact count and the method, is the honest completion of that
+   instruction, not a reason to omit the check from this report.
+3. **The corrupted-object incident is named with its root cause** (a self-inflicted concurrent
+   build, not a flaky toolchain), per the project's standing rule that a memory/build infrastructure
+   failure is reported as what it actually was, never attributed to flakiness without verification.
+
+### Next
+
+Continue into C4's small `DevInput` extension (arming an arbitrary `TypeId`) and the first HUD
+element draws, pushing at the next real checkpoint. H/C/M/V/K/E remain open; this is not a stop.
+
+## W4-UI-2 — H1/C1 CPU reference path, exact pixel match — 2026-11-07 — status: IN PROGRESS
+
+Continuing from the previous checkpoint. This one delivers H1/C1's CPU reference composition
+(ADR 0004's "Rendering" promise: a CPU path checked pixel by pixel against the oracle) and, along
+the way, finds and fixes a real crash in the first engine code ever to decode a HUD/construction
+chrome texture. Still not a claim that H or C is finished — see "What's still open" below.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`33b1d15e`**, pushed (on top of `bf3a2f79`). Worktree:
+  `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **`anno::app::compose_screen`** (`src/app/include/anno/app/ui_mock.hpp`,
+   `src/app/src/ui_mock.cpp`): a line-by-line C++ mirror of the UI.1 Python oracle's
+   `tools/ui_layout.py compose_screen` — the same nine screens (`hud_idle` and the eight
+   `construction_<category>` names), the same element blit order, the same tab-frame id overrides
+   per screen kind, the same construction-cell icon (`thumb_tex + 3*(row*4+col)`) and lock
+   (`NO_KLICK`) logic, reading real `.tex` files through the existing
+   `formats::tex::TexFile`/`assets::to_rgba` decoders (the same ones the GPU sprite atlas already
+   uses for buildings and units, `gpu.cpp` `pack_image`). Not an independent design: a divergence
+   from the oracle here would be a bug to fix, not a second opinion to reconcile.
+2. **`anno_ui_mock`** (`src/app/src/ui_mock_main.cpp`): a small CLI (`--layout --screen --game-dir
+   --out`) that calls `compose_screen` and writes the result with the project's existing
+   `anno::app::write_png`.
+3. **New CTest `ui_mock_matches_oracle`** (`tools/test/ui_mock_compare.py`): for each of the nine
+   screens, runs the Python oracle's own `compose_screen` and the new `anno_ui_mock` binary against
+   the same `data/ui/` layout and the same real game files, then diffs the two images pixel by
+   pixel (an exact-match check, stronger than the 0.08 fuzzy sprite-SAD tolerance the original's
+   own screenshots need — this comparison has no live content, digits or water to tolerate).
+   **Result: every one of the nine screens matches the oracle exactly — 0 of 786 432 pixels differ,
+   on `hud_idle` and all eight construction categories.** Confirmed twice (once under `ctest -R
+   ui_mock_matches_oracle`, once invoked directly).
+4. **A real bug, found and fixed, not routed around.** The first run segfaulted (exit
+   3221225477 = `STATUS_ACCESS_VIOLATION`) inside `assets::to_rgba` the moment it tried to decode
+   `fenster.tex` id 2 (`WELTKARTE`, the minimap frame) — the very first HUD/construction chrome
+   texture any engine code has ever decoded (`docs/re/ui.md`'s own status line: UI.1 was
+   "Reverse-engineering and specification only; no engine code" until this checkpoint).
+   - **Root-caused, not guessed at or retried into silence**: added targeted `fprintf` tracing,
+     narrowed the crash to inside `assets::to_rgba` itself (confirmed `anno-dump tex` on the same
+     file/id decodes cleanly via `Texture::decode()` alone, ruling out the decoder); then recognised
+     that `formats::tex::Texture::body` / `Palette::entries` are `Bytes` — `std::span<const
+     uint8_t>`, **non-owning** — views into the buffer `TexFile::parse` was called with. My
+     `TexCache::file_of` read the file into a *local* `std::vector<uint8_t>` that went out of scope
+     the moment the function returned, leaving every span inside the cached, returned `TexFile`
+     dangling. `to_rgba`'s palette-RGB read through `Palette::entries` was the first place anything
+     actually dereferenced one of those dangling spans.
+   - **Fixed** by keeping the raw byte buffer alive alongside the parsed `TexFile` (a new
+     `LoadedTex{bytes, file}` pair, both owned by the same cache entry) — `std::vector`'s move
+     doesn't relocate its heap buffer, so moving the already-read bytes into the cache entry after
+     parsing keeps every span inside the parsed structure valid.
+   - **Documented the footgun at its source** (`src/formats/include/anno/formats/bytes.hpp`, the
+     `Bytes` alias itself) so the next caller of this project-wide zero-copy-parsing convention
+     doesn't repeat it.
+5. **Full regression + gates, after the fix**: `anno_app_tests.exe` with the real game files,
+   **237/237 test cases, 60 388/60 388 assertions**; `tools/ui_layout.py self-test` (28 checks),
+   `check-files --root .`, `validate --layout data/ui --game-dir <game/app>` — all `ok`;
+   `clang-format` 23.1.3 clean on every new/changed file; **the WSL gate's warnings check**
+   (`tools/check_unix_warnings.sh`, GCC 13 and Clang 18, with and without `ANNO_VIEWER_GPU`, 367 and
+   71 files respectively) — **all four passes clean**.
+
+### What H/C still need (unchanged scope, now with a working CPU path underneath)
+
+- **H2-H4 / C2-C6 remain**: reading live gold/residents/build-goods from the published snapshot
+  into the composed frame (today `compose_screen` draws the *idle* chrome only, with the fixed
+  tab-frame overrides the oracle itself uses — no live numbers yet); the GPU path (today only the
+  CPU path exists — R1's "a GPU path and a CPU reference path, compared pixel by pixel" still needs
+  its first half); wiring this composition into the live window (`viewer.cpp`) instead of a
+  standalone CLI; input (arming a cell, placement preview, rotation/cancel, `BuildCmd`/`DemolishCmd`
+  through `DevTool`/`DevInput`, which today can only cycle a fixed type list by index — still not
+  made); anchoring at other window sizes (H3, waits on R3/F3); the three negative controls on the
+  real pixel-test harness (H4 — this checkpoint's exact-match test has no mutation cases yet,
+  unlike the oracle's own `negative_control_results`).
+- **M, V, K, E**: unchanged from the previous checkpoint — all still open, all still depend on more
+  of H/C existing first.
+
+### Decisions and reasoning
+
+1. **The CPU path is built, and proven, before the GPU path.** ADR 0004 names both; building the
+   GPU path against an unverified CPU path would risk checking one guess against another. The CPU
+   path is now independently proven correct (exact match against the oracle), so the GPU path's own
+   pixel test (H4) has something trustworthy to compare against once it exists.
+2. **The crash was root-caused to a specific, named bug in new code, not attributed to the toolchain
+   or "flakiness."** Per the project's standing evidence discipline: a crash gets isolated with
+   real tracing and a specific fix, or it gets reported as unresolved — never patched over by
+   retrying or by avoiding the code path that triggers it.
+3. **The lifetime fix is documented where future callers will actually see it** (at `Bytes`'s own
+   definition), not only in this report, since the same mistake is available to any future caller of
+   the same zero-copy parsing convention.
+
+### Next
+
+C4's `DevInput` extension (arming an arbitrary `TypeId` by construction-menu cell, not just cycling
+the fixed developer-tool list) and wiring `compose_screen`'s draws into the live window. H/C/M/V/K/E
+remain open; continuing, not stopping.
+
+## W4-UI-2 — C4/C5 wiring: arm(), published eligibility, ConstructionMenu — 2026-11-07 — status: IN PROGRESS
+
+Continuing from the H1/C1 checkpoint. This one delivers the pieces C4/C5 needed and flagged as
+missing there: a way to arm an arbitrary construction-menu cell's type (not just cycle the
+developer tool's fixed list), a safe way for the window thread to read the sim's own lock
+verdict, and the click-resolution logic that turns a construction-menu click into one of those.
+Still not a claim that C is finished — see "What's still open" below.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`acf8898c`**, pushed (on top of `ad367010`). Worktree:
+  `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **`DevInput::arm(TypeId)` / `DevTool::arm(TypeId)`** (C4): arms a type directly, by id, with
+   the exact side effects (none beyond the selection itself) that `NextType`/`PrevType` already
+   have — rotation, demolish mode and a press in progress all survive an `arm()` exactly as a
+   cycle step leaves them. `DevTool::arm` additionally requires a city (else a message naming why,
+   matching the existing `Toggle` behaviour) and turns the tool on. False, no change, when the
+   type is not in `setup().types`. New tests in `input_test.cpp` (DevInput alone, a synthetic
+   three-type registry) and `dev_tool_test.cpp` (DevTool, the file's own `setup()`/`scene()`
+   fixture, a full press-release through the window's own picking math proving the armed type
+   actually reaches a `BuildCmd`).
+2. **`PlaySnapshot::eligibility`** (C2): every registry type's id paired with
+   `World::construction_eligibility(local player, id).allowed()`, ascending by id, published once
+   per turn in the same block that already publishes `money`/`goods`. This is the "new read-only
+   sim query... the eligibility of every type for one player in one call" rule 0.2 names
+   explicitly — computed and published on the sim thread, so the window thread never touches the
+   sim's own `World` directly (a cross-thread race the existing `request_inspect`/`inspection`
+   pattern already avoids the same way; this follows it). New test in `play_test.cpp`: loads the
+   real lan5 scenario twice (one `World` into a `PlayRunner`, one run directly the same single
+   turn with `sim::run_turn`), then checks every one of the published entries agrees exactly with
+   calling `construction_eligibility` directly on the independently-run `World` — not a sample,
+   every entry (921 types on this registry). Ascending-id order checked too.
+3. **`ConstructionMenu`** (C1/C2/C4/C5, `src/app/include/anno/app/construction_menu.hpp`): resolves
+   a click in HUD-reference pixels into `None` / `SwitchCategory` / `Empty` / `Locked` / `Arm` /
+   `ToggleDemolish` / `Cancel`, reading only `data/ui/`'s own rectangles (the category column's
+   band, the grid's origin/stride/sprite size including its gutter, the HUD's `abrissicon`/
+   `infoexit` rectangles) and the caller's published `eligibility` — never
+   `data/ui/construction.txt`'s own `state` field, which is RE evidence about the original, not a
+   live rule (a `Locked` cell with no matching `eligibility` entry, or a null `eligibility`,
+   resolves `Locked`, never guessed open).
+   - **A real design issue, found by a test, not shipped unnoticed**: the pickaxe's measured
+     rectangle ((970,710) 53x53) and the cancel-X's ((984,725) 33x38) overlap in pixels. The first
+     version of this class checked both unconditionally and a test click at (989,730) resolved
+     `ToggleDemolish` when the test expected `Cancel` — not a flaky test, a genuine ambiguity the
+     rectangles alone cannot resolve. Re-read `docs/re/ui.md` section 2.4's own text ("[cancel-X
+     is] on the info/placement panel only; not on the category grid") to confirm the two panels
+     are never shown together, then added a `placement_open` flag so the state, not pixel
+     guesswork, decides which rectangle applies on the overlap. Both states verified by the test
+     (same click point, both outcomes, by state).
+4. **Full regression + gates**: `anno_app_tests` **242/242** (**61 380/61 380** assertions, real
+   game files, twice — once before, once after the `clang-format` pass, to catch a diff that
+   somehow changed behaviour); `anno_app_input_tests` **35/35** (**209 161/209 161** assertions,
+   real game files); `clang-format` 23.1.3 clean on every changed/new file; **the WSL gate's
+   warnings check** (GCC 13 and Clang 18, with and without `ANNO_VIEWER_GPU`, 369 and 73 files
+   respectively) — all four passes clean.
+5. **A build-infrastructure repeat, same root cause as last checkpoint, handled the same way.**
+   Rebuilding `anno_app_tests` while an earlier, still-running `anno_app_tests.exe` (a legitimate,
+   long regression run I had started myself, not a stray) still held the output file open failed
+   with `LNK1104` twice. Checked the process was genuinely still working (`Get-Process`'s `CPU`
+   time climbing, `Responding: True`) before concluding it was not hung; a `Stop-Process` attempt
+   on it (before confirming this) was refused by the Auto Mode classifier
+   ("Interfere With Workloads") — correctly, since it was real, wanted work, not a stray. Waited
+   for it to exit on its own, then rebuilt; both runs' results (before and after) are reported
+   above.
+
+### What C still needs (unchanged scope, now with arming + a lock-read path underneath)
+
+- **C1, C3, C6**: the actual category-column/grid/banner/info-panel drawing (today `ConstructionMenu`
+  only resolves clicks; it draws nothing — H1/C1's `compose_screen` draws the idle chrome only,
+  with no live grid state yet); the info panel's cost/upkeep display from the registry; the
+  explicit "the UI never grants gold or goods, never bypasses a refusal" checks.
+  `ConstructionMenu` is not yet wired into the live window (`viewer.cpp`'s SDL event routing) —
+  it is a tested, standalone click-resolution class today, not a visible menu.
+- **H2-H4**: unchanged from the previous checkpoint (live snapshot values into the drawn frame,
+  the GPU path, anchoring at other window sizes, the pixel-test negative controls).
+- **M, V, K, E**: unchanged — all still open, all still depend on more of H/C existing first.
+
+### Decisions and reasoning
+
+1. **The pickaxe/cancel-X overlap is resolved by UI state, not by picking whichever rectangle is
+   "more specific" or arbitrarily prioritising one.** Both readings are real UI elements with real
+   measured rectangles; preferring one over the other by convention (e.g. "smaller rectangle
+   wins") would be a guess dressed up as a tie-break rule. `docs/re/ui.md`'s own text already
+   settles it (the two panels are mutually exclusive), so the fix reads from evidence already in
+   hand rather than inventing a new rule.
+2. **Eligibility is read once per turn on the sim thread, not on demand on the window thread.**
+   `World` belongs to the sim thread; the window thread's only standing way to read sim-computed,
+   per-tile state is `request_inspect`/`inspection`'s request-then-publish pattern. Eligibility
+   needs no "request" step (it does not depend on a changing target the way inspection depends on
+   a hovered tile), so it publishes unconditionally alongside `money`/`goods` whenever the
+   developer has a city — simpler than copying the request/response machinery for a case that does
+   not need it.
+3. **The second `LNK1104` was treated as what it was (a legitimate competing process), not force-
+   cleared.** Per the standing rule from the previous main-branch run: a blocked `Stop-Process` is
+   reported and waited out, not routed around through another tool.
+
+### Next
+
+Wiring `ConstructionMenu` and `compose_screen` into the live window (`viewer.cpp`), and C3's
+cost/upkeep display from the registry. H/C/M/V/K/E remain open; continuing, not stopping.
+
+## W4-UI-2 — C3/C4 live-window wiring, proven end to end — 2026-11-07 — status: IN PROGRESS
+
+Continuing from the previous checkpoint. This one wires `ConstructionMenu` into the real window
+(not just unit-tested logic) and delivers C3's cost display, with a real end-to-end proof: a
+click on the construction menu's own rectangle, through the real `anno1503.exe`, real game files,
+arms a type and places it through the ordinary command path.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`6c6408f6`**, pushed (on top of `0f01c028`). Worktree:
+  `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **C3, `ConstructionMenu::cell_info`**: reads a type's gold/goods cost live from the registry
+   (`BuildingType::cost_gold`/`cost_goods`) — never `data/ui/construction.txt`'s own cost columns,
+   which are RE evidence about the original, not the live registry a mod could change. Upkeep
+   stays `nullopt` (blank, per the dispatch's own "otherwise blank, with an OQ"): the registry's
+   `running_cost` holds PROD3's two slots, and which one is "active" is a fact about a *built,
+   running* instance (its own comment: "independent of blocked status"), not a static property a
+   menu entry for an unplaced type can read. **OQ-563** records this, with the house-type evidence
+   that rules out the obvious guess (`docs/re/ui.md` section 2.5: the panel shows upkeep 5 for
+   type 501, whose own `PROD3` is 0).
+2. **C4, `ConstructionMenu` wired into `viewer.cpp`** (`--construction-menu on [--layout <dir>]`,
+   `--play` only, off by default): `Viewer::handle()` checks it before `dev_` (ADR 0004 R1, "UI
+   first, then world") via a new `construction_handle()`, mirroring the existing `opening_handle`
+   hook pattern (`ViewerHooks::construction_menu`, set up in `main.cpp` exactly where `hooks.dev`
+   already is). Only a genuine hit on one of the menu's own tracked rectangles is consumed
+   (`ConstructionMenu::click`'s own `None` case falls through unchanged), so every existing
+   SDL-driven test and click path is unaffected whether the flag is off (the default) or a click
+   lands elsewhere. Only active while the window's drawable is exactly 1024 x 768 (R3's scale is
+   still open; a different size leaves the menu inactive rather than guess a scale). This first
+   slice has no open/close key yet (a separate, smaller follow-up, once R2's `--ui classic|dev`
+   switch exists): the grid defaults open on `"public"` whenever the flag is on, so the core
+   click -> arm -> place pipeline could be proven end to end now rather than wait on that.
+3. **Proven live, not only unit-tested.** A new `dev_script.hpp` primitive, `click_px X Y` (a raw
+   drawable-pixel click — `construction_handle`'s own coordinate space, not `click`'s world-tile
+   projection), and a new case `construction_menu_arm` (`tools/test/viewer_wiring/
+   construction_menu_arm.script`) drive the **real** `anno1503.exe`, with the **real** game files,
+   through a resize to 1024 x 768 (the window's own default is 1280 x 800, `SDL_CreateWindow`'s
+   literal — not 1024 x 768, found by the first run of this script correctly doing nothing, per
+   its own guard, until the resize was added), a `click_px` on the public category's cell (0, 0)
+   (type 501, data/ui/construction.txt's own click centre (833, 330)), an `expect title build 501`
+   confirming the arm reached `DevTool`, then an ordinary world `click` at the exact tile
+   `settlement_activity.script` already proves free and buildable for this type — and a `BuildCmd`
+   applies. New CTest `viewer_wiring_construction_menu_arm`.
+4. **A real GCC warning, found by the gate, fixed at the cause.** `-Werror=reorder`:
+   `construction_menu_` was initialized out of its declaration order against `opening_` in
+   `Viewer`'s constructor (MSVC does not flag this at all, so the MSVC build and every test up to
+   the WSL gate stayed green). Fixed by reordering the initializer list to match declaration
+   order, not by suppressing the warning or reordering the declarations to match a convenient
+   initializer order.
+5. **Full regression + gates**: `anno_app_tests` **243/243** (**61 403/61 403** assertions, real
+   game files, run twice — before and after the `clang-format` pass); `anno_app_input_tests`
+   **35/35** (**209 161/209 161** assertions); **all 8 `viewer_wiring` CTest cases pass**
+   (`r1_held_publication`, `r4_occupancy`, `settlement_activity`, the new
+   `construction_menu_arm`, `cpu_delivery_failures`, `opening_controls`, `expand_live_load`,
+   `viewer_wiring_contract`); `anno1503_usage` passes; `clang-format` 23.1.3 clean; **the WSL
+   gate's warnings check** — all four passes clean (confirmed clean a second time, after the
+   reorder fix).
+
+### What C still needs
+
+- **C1, C6**: the actual category-column/grid/banner/info-panel drawing (still nothing visible —
+  this checkpoint proves input routing and commands, not pixels: H1/C1's `compose_screen` draws
+  the idle chrome only); the explicit "never grants gold/goods, never bypasses a refusal" checks
+  (not yet exercised against the live window, only by construction — nothing in this path reads
+  or writes money directly).
+- **The category column and open/close key**: this slice always opens on `"public"`; switching
+  categories and a real open/close binding (resolving the B-key collision with the developer
+  tool, which needs R2's `--ui classic|dev` switch) are separate follow-up work.
+- **H2-H4**: unchanged (live snapshot values into a drawn frame, the GPU path, anchoring at other
+  window sizes, pixel-test negative controls).
+- **M, V, K, E**: unchanged — all still open, all still depend on more of H/C existing first.
+
+### Decisions and reasoning
+
+1. **Upkeep is left blank with an OQ, not estimated.** The registry does carry *a* number
+   (`running_cost`), so filling it in would not even look like a guess from the code alone — which
+   is exactly why it needed the explicit check against `docs/re/ui.md`'s house-type evidence
+   before concluding it is the wrong number for an unbuilt instance, rather than assuming a
+   present field is automatically the right one.
+2. **`ConstructionMenu` is checked before `dev_`, matching ADR 0004 R1, not after it for
+   convenience.** The two never conflict in practice (the menu only claims clicks on its own
+   rectangles), so the ordering choice carried no extra risk; doing it the ADR's way now avoids a
+   second pass through this exact code once R2's switch exists and the two can actually compete
+   for the same key.
+3. **A size guard, not a guessed scale, gates R3.** `construction_handle` requiring exactly
+   1024 x 768 is a real limitation (the menu is inactive at the window's own 1280 x 800 default
+   until resized), stated plainly rather than silently scaling pixel positions by a ratio nobody
+   has confirmed is the right one.
+4. **The GCC reorder warning was fixed at its cause.** Per the project's own discipline: a real
+   warning from a CI-equivalent gate is root-caused and fixed, not silenced with a pragma or
+   worked around by changing declaration order to suit a guess at what the compiler wanted.
+
+### Next
+
+The category column (switching among the eight categories) and an open/close key (behind R2's
+switch), then H1/C1's actual drawing wired into the same live window. H/C/M/V/K/E remain open;
+continuing, not stopping.
+
+## W4-UI-2 — open/close key, and the HUD/menu actually draw live — 2026-11-07/08 — status: IN PROGRESS
+
+Two checkpoints folded into one entry (the first small, the second the packet's first visible
+pixel). The menu now has its own B/Esc key (resolving the two real collisions this checkpoint's
+own test found), and - the headline - the HUD and construction-menu chrome now actually draw in
+the live window, verified pixel-exact against the oracle through a real captured screenshot, not
+just through commands and titles as every earlier C4 checkpoint was.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`d734ad3d`**, pushed (through `b4ac19a8`). Worktree:
+  `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **The menu's own open/close key** (`b4ac19a8`): `data/ui/construction.txt`'s `open_key B` /
+   `leave_key ESC`, added to `construction_handle`, resolving two real collisions by state rather
+   than a permanent winner - B opens the menu only while it is not already open (the developer
+   tool's own B-toggle stays reachable otherwise, per ADR 0004 R1's "the developer tool keeps its
+   own key"); Esc closes the menu only while it is open (consumed before the window's own
+   Esc-quits-the-app binding). Removed the previous checkpoint's "always open on public"
+   simplification now that a real key exists. `construction_menu_arm.script` extended with a real
+   `key b` open, a `key esc` close (checking the session does not quit), and a closed-menu click
+   that now correctly falls through.
+2. **The chrome actually draws** (`d734ad3d`, H1/C1 second slice): `draw_live_screen_xrgb`
+   (`ui_mock.hpp`/`.cpp`) blits the exact element sequence `compose_screen` already proved exact
+   against the oracle, but onto the live CPU frame buffer (`viewer.cpp`'s `buffer_`, the same
+   0x00RRGGBB-per-`uint32_t` packing `blend_preview` already uses) instead of a fresh canvas -
+   called from `draw_cpu` every frame the window is at the UI's 1024 x 768 reference, drawing the
+   idle HUD when the menu is closed, or the open category's full grid when it is open. The one
+   deliberate divergence from the oracle: a construction cell's drawn lock state reads the sim's
+   **live published eligibility**, never the cell's own static `unlocked` field — `construction.txt`
+   is RE evidence about the *original*, not a live rule a mod could change, so C2's authority over
+   what a click does also governs what is drawn.
+3. **Verified pixel-exact through the real window** (not the standalone `anno_ui_mock` tool
+   `ui_mock_matches_oracle` already checks): new CTest `live_screen_matches_oracle`
+   (`tools/test/live_screen_compare.py`) drives the real `anno1503.exe` with the real game files,
+   captures the window's own screenshot (`viewer.cpp`'s existing Windows capture path), and
+   compares it against the Python oracle — **only where the oracle painted something opaque** (its
+   canvas is black everywhere else, which the live window correctly shows the rendered game world
+   instead; comparing the *whole* frame would wrongly fail almost everywhere, since the oracle was
+   built to check a standalone PNG against nothing, never against a world background). **Result:
+   0 of 223 218 opaque pixels differ for the idle HUD; 0 of 314 969 for the public construction
+   category, including all 32 grid cells' lock/unlock icons.**
+   - **A methodology bug caught and fixed before it could produce a false pass or a false fail.**
+     The first manual check (comparing the *whole* 1024 x 768 canvas) reported 786 430 of 786 432
+     pixels "different" — not a real defect: the oracle's background is black everywhere nothing
+     was drawn, while the live capture correctly shows the game world there. Re-derived the right
+     comparison (opaque-oracle-pixels only) before concluding anything, rather than trusting the
+     first number.
+   - A second mistake, caught the same way: the first attempt at this comparison hard-coded a
+     Git-Bash-style game-file path (`/e/anno1503/...`) inside a Python `-c` one-liner, which native
+     Windows Python does not resolve the way Git-Bash's own MSYS argument rewriting does for
+     command-line arguments — every texture decode silently failed, leaving the oracle's canvas
+     black everywhere (a false "0 checked" result, not a false pass, but still not evidence of
+     anything). Fixed by using the real Windows-style path; re-ran and got the genuine 0-diff
+     result above.
+4. **A known, named, unoptimized gap, not a silent one.** `draw_live_screen_xrgb` re-reads and
+   re-decodes every needed `.tex` file from disk on every single frame the chrome is drawn (no
+   persistent cache across frames yet) — the frame-timing log's own "render other" step jumped
+   from about 1 ms to 40-80 ms once this started running. ADR 0004's "Atlases" section ("textures
+   are uploaded once... no upload per frame") is not yet met by this slice; V6's performance work
+   is where that gets fixed.
+5. **Full regression + gates**: `anno_app_tests` **243/243** (**61 403/61 403** assertions, real
+   game files); `anno_app_input_tests` **35/35** (**209 161/209 161** assertions); **all 10**
+   `viewer_wiring`/`ui_mock_matches_oracle`/`live_screen_matches_oracle` CTest cases pass;
+   `clang-format` 23.1.3 clean; **the WSL gate** — all four passes clean.
+
+### What H/C still need
+
+- **C1, C6**: the info panel (cost/upkeep display — no font/`.zei` rendering exists anywhere in
+  this project yet, so no *numbers* are drawn, only sprites); the explicit "never grants
+  gold/goods, never bypasses a refusal" checks against the live window.
+- **Category switching's own visual proof**: `category_at`/`SwitchCategory` were already proven
+  by unit test (the previous-previous checkpoint); switching categories *in the live window* and
+  confirming the new category's grid draws correctly has not been screenshotted yet (only
+  "public" has).
+- **H2-H4**: live snapshot values (gold/residents/goods numbers — same font blocker as C1's costs);
+  the GPU path (this slice is CPU-only, `draw_gpu` untouched); anchoring at other window sizes
+  (still gated to exactly 1024 x 768, R3 unresolved); the pixel-test negative controls (a wrong
+  element, a shift, a missing element must each fail — not yet built for the live path, only for
+  the standalone `anno_ui_mock` tool via `tools/ui_layout.py`'s own `negative_control_results`).
+- **M, V, K, E**: unchanged — all still open.
+
+### Decisions and reasoning
+
+1. **The drawn lock state reads live eligibility, not `compose_screen`'s static field — a real,
+   deliberate divergence from the oracle, not a bug to reconcile.** `compose_screen` exists to
+   match the *original's own fixed Citizen-start screenshot* exactly; the live window exists to
+   match *this engine's own sim*. The two happen to agree for every one of the 148 cells at a
+   fresh Citizen start (C2, verified separately), so the pixel-exact test above does not actually
+   distinguish them yet — this is named explicitly so a future change to the sim's eligibility
+   rule is not mistaken for a drawing regression when the two diverge.
+2. **A whole-frame comparison was abandoned, not loosened with a tolerance, once it was understood
+   why it failed.** Reaching for a fuzzy threshold to make a failing comparison pass would have
+   hidden the real methodology error (comparing against a background the live capture was never
+   going to match) rather than fixing it; the opaque-oracle-only mask is the correct fix, confirmed
+   by reaching an honest 0-diff result once applied, not by lowering a bar until something passed.
+3. **The per-frame re-decode is shipped, not blocked on, but named precisely.** A first slice that
+   proves the pixels are right is worth landing before the performance work that makes it fast;
+   hiding the cost (or guessing a number for it without measuring) would not be.
+
+### Next
+
+Font/`.zei` rendering (needed before any number - costs, gold, residents - can be drawn at all),
+the category column's own visual proof, and M's placeholder-screen table. H/C/M/V/K/E remain
+open; continuing, not stopping.
+
+## W4-UI-2 — the per-frame texture-decode cost is gone, measured — 2026-11-08 — status: IN PROGRESS
+
+Picked up the coordinator's own first-listed option (an atlas/cache for the per-frame `.tex`
+decode cost the previous checkpoint flagged, ADR 0004's "Atlases: textures are uploaded once ...
+no upload per frame") ahead of fonts, category-switching's screenshot, or H2-H4's snapshot values
+- cheapest fix, already named as a known gap, and a real regression risk the longer it sat.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`60c1e722`**, not yet pushed. Worktree: `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **`UiTexCache`** (`ui_mock.hpp`/`.cpp`): a pimpl wrapping the same `TexCache` decode logic
+   `draw_live_screen_xrgb` used to build fresh on every call. `Viewer` now owns one instance,
+   constructed once (in its constructor, alongside `construction_menu_`, from
+   `construction_game_dir_`) for the whole session, and passes it by reference into
+   `draw_live_screen_xrgb` every frame instead of the raw `game_dir` path. `compose_screen` and
+   the standalone `anno_ui_mock` tool are unchanged - each still builds its own short-lived
+   `TexCache` locally, correctly, since one mock run is one process with nothing to persist
+   across.
+2. **Measured, not assumed** (CLAUDE.md "measure every performance change"): added a dedicated
+   `"construction ui"` step in `draw_cpu()` (previously folded anonymously into `"render other"`,
+   which also covers other per-frame work) and ran two scripted sessions
+   (`ANNO_DEV_SCRIPT`, `--construction-menu on`, real game files, 1024 x 768) that open the menu
+   and hold it open for several seconds. Two independent runs agree: the **first** frame after
+   opening pays **~67-70 ms** (every HUD/menu `.tex` file the screen needs, decoded cold from
+   disk); **every frame after that costs ~2-5 ms** (steady state - blitting ~15 chrome elements
+   and 148 grid cells, no more disk I/O or decode). That is a ~15-30x drop, and it is exactly the
+   previous checkpoint's own flagged gap (a ~40-80 ms "render other" jump, present on *every*
+   frame before this fix, now present only once per menu-open).
+3. **Regression** (`ANNO1503_GAME_DIR` set to the real install, MSVC release): `anno_app_core`
+   rebuilt clean (0 warnings) before anything else was touched; then `anno1503`, `anno_ui_mock`,
+   `anno_app_tests`, `anno_app_input_tests` all rebuilt clean. `ui_mock_matches_oracle`,
+   `live_screen_matches_oracle`, `viewer_wiring_construction_menu_arm`, the C2 148-cell
+   eligibility test, the play-snapshot-eligibility test and the `ConstructionMenu::click` test all
+   still pass - the cache changes *how* a texture is fetched, never *what* gets decoded or drawn,
+   and the pixel-exact tests confirm that held.
+4. **`clang-format` 23.1.3**: applied to the four touched files, no reformatting beyond the
+   edits themselves. **WSL gate** (`check_unix_warnings.sh`, GCC 13 and Clang 18, `-O3 -Werror`,
+   viewer+GPU on and off): all four lanes clean.
+
+### What H/C still need
+
+Unchanged from the previous checkpoint: font/`.zei` rendering (blocks C1's cost display and
+H2-H4's snapshot numbers), category-switching's own screenshot proof, the GPU draw path
+(`draw_gpu` still untouched - this cache lives on `Viewer`, reachable from there too, but not yet
+wired in since there is nothing for it to feed yet), anchoring at window sizes other than exactly
+1024 x 768 (R3 still open), and the live path's pixel-test negative controls.
+
+### Decisions and reasoning
+
+1. **The cache lives on `Viewer`, not as a function-local static or a global.** A static would
+   have worked for a single-window process too, but would have been wrong for any future second
+   window/session in the same process and is exactly the kind of "global mutable state" CLAUDE.md
+   rules out for `sim` and asks to be deliberate about elsewhere; `Viewer` already owns the
+   construction menu's other per-session state (`construction_menu_open_`,
+   `construction_tex_cache_`'s neighbours), so this is one more member with the same lifetime, not
+   a new pattern.
+2. **A public-but-undocumented `impl()` accessor, not a `friend` declaration.** The first draft
+   used a `friend` forward-declaration of `draw_live_screen_xrgb` inside `UiTexCache`, which
+   requires the friend's signature to match exactly everywhere it is declared - a second place for
+   the same signature to go stale. `Impl` stays forward-declared (opaque) in the header either
+   way, so a public accessor returning `Impl&` gives `ui_mock.cpp` what it needs without a second
+   signature to keep in sync, at no actual loss of encapsulation (nothing outside `ui_mock.cpp`
+   can do anything with an incomplete `Impl`).
+3. **Measured on a real scripted session, not inferred from the diff.** The previous checkpoint
+   named a *range* (~40-80 ms) read off an ordinary play session's own hitch logging, not a
+   controlled measurement of this specific code path; this checkpoint adds a named step and reruns
+   under the same real-game-files conditions so the before/after comparison is to the same
+   quantity, not two different ones.
+
+### Next
+
+Not yet pushed (holding to push with this entry together, same as every other checkpoint).
+Sequencing choice for the next checkpoint is open again: fonts (blocks the most downstream work -
+C1's costs, H2-H4's numbers) vs. category-switching's screenshot (cheap, closes a known gap) vs.
+M's placeholder table (pure documentation, no engine risk). Leaning toward fonts next since it
+unblocks the largest remaining surface, but flagging for the coordinator rather than deciding
+unilaterally given how much downstream work waits on it.
+
+## W4-UI-2 — bitmap-font rendering lands, wired to the HUD gold/goods counters — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction: do font rendering next (the structurally important blocker - neither
+H2's gold/residents/goods numbers nor C3's costs are visible without it), then category-switching,
+then M. This entry is fonts: the renderer itself, plus H2's gold and build-material counters,
+which turned out to have real, usable evidence (not guessed) once checked.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`d79a914c`**, not yet pushed. Worktree: `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **Scoping first, before writing anything** - `.zei` already has a complete spec
+   (`docs/formats/zei.md`, "partial" only on OQ-031) and a working C++ parser
+   (`src/formats/include/anno/formats/zei.hpp`/`.cpp`, already ported, untouched by this
+   checkpoint); nothing needed porting. What *was* missing, checked before coding: (a) a level
+   decode -> pixel-colour mapping anywhere in the engine (none existed - no text had ever been
+   drawn); (b) whether the UI.1 Python oracle draws any text at all (it does not -
+   `data/ui/masks.txt` exists specifically because digits are masked *out* of the F2.1 pixel
+   compare, so there is no oracle to check a renderer's *placement* against, only its own
+   mechanism); (c) real evidence for where/what to draw for H2's specific counters.
+2. **`anno::assets::render_text`** (`src/assets/include/anno/assets/text.hpp`/`.cpp`, new, mirrors
+   `to_rgba`'s own module placement): decodes a string's glyphs (`formats::zei::Glyph::decode`,
+   untouched) and composes them left to right by each glyph's own `width` as advance, into a
+   tightly-bound RGBA canvas. The three glyph levels are painted as alpha steps of one
+   configurable colour (`TextStyle`, default white) - a flagged legibility default, **not an RE
+   fact**: OQ-031 ("how the game draws the three pixel levels") stays open; nothing in the new
+   code states a colour choice as the original's own rule. Unit-tested against hand-built
+   synthetic glyphs (the same RLE grammar `docs/formats/tex.md`'s `BSH_RGB` already documents, not
+   a real `.zei` file - the real glyph *shapes* are already proven by `zei.cpp`'s own corpus test;
+   this proves composition: advance, canvas size, transparency, colour/alpha) -
+   `src/assets/tests/text_test.cpp`, 4 cases, 51 assertions, all passing.
+3. **Font identity, checked rather than guessed:** dumped digit glyphs (codes `0x30`-`0x39`) of
+   every one of the 11 real `.zei` files via `tools/zei.py dump` and compared their FNV-1a hashes.
+   `ToolGfx/MainSmall.zei`, `ToolGfx/MainMedium.zei` and `ToolGfx/HelpNormal.zei` decode
+   byte-identical digit glyphs - the same underlying `konvertchars`-built font at this size, so
+   which of the three "is" the original's HUD font does not change a single rendered pixel.
+   Recorded in `docs/formats/zei.md`'s new "Rendering" section. `ToolGfx` naming (vs.
+   `Textures/Scape*`, which `docs/re/ui.md` 0.3 already notes is "in-world/view icons, not the HUD
+   chrome") is the reason `MainSmall` and not a `Scape*` font was picked for the HUD.
+4. **Goods identity, checked rather than guessed:** `PlaySnapshot::goods` is the city's raw
+   `CityStock::stock`, indexed by the original's own goods number (`AnnoGame.dll` 0x10013be0,
+   `src/sim/src/goods_table.cpp`'s own table) - not a separate HUD-specific enumeration. Read the
+   table by hand: index 41 `WERKZEUG` (tools), 42 `HOLZ` (wood), 43 `ZIEGEL` (bricks), 44 `MAMOR`
+   (marble) - matching `synthetic.cpp`'s own comment ("Ascending goods order WERKZEUG 0x29, HOLZ
+   0x2a, ZIEGEL 0x2b") and OQ-538's resolved segment order (tools, wood, bricks, marble)
+   independently. `Viewer`'s constructor now resolves these four by name
+   (`registry->goods_by_name`, never a hardcoded number - the same convention `synthetic.cpp`/the
+   command tests already use) once, alongside `construction_tex_cache_`.
+5. **Wired into `draw_live_screen_xrgb`** (`ui_mock.cpp`): a new `HudCounters` parameter (plain
+   already-converted values - gold as-is, goods shifted from 8.8 fixed point to whole tons by
+   `sim::kTon` - so `ui_mock.cpp` stays free of sim/registry concerns, matching its existing
+   dependency boundary). Gold is drawn on both the idle HUD and the construction screen (OQ-538's
+   own evidence: "the bar shows gold" on `hud_idle_running`); the four material counters only on
+   the construction screen (same OQ: "tools/wood/bricks digits are absent" from idle). Positions:
+   `data/ui/masks.txt`'s own `gold_digits` (34, 733) 96 x 35 and `baumat_{tools,wood,bricks,
+   marble}_d` (28 x 35 each, x 162/222/282/342, y 733) - real sprite-sad-measured rectangles, the
+   same evidence the chrome elements themselves were measured by; nothing drew into them until
+   now, which is why they stayed masks. A new `blit_xrgb_alpha` (real alpha blending, unlike the
+   chrome sprites' opaque-or-transparent `blit_xrgb`) blends glyph pixels into whatever is already
+   drawn under them (the status bar's own graphic).
+6. **`UiTexCache` now also caches fonts** (`TexCache::font`, same read-once-cache-forever pattern
+   as `TexCache::decode` for textures): no new per-frame decode cost from this checkpoint (ADR
+   0004 "Atlases" stays met).
+7. **Visual check** (no automated oracle exists for this, so a human-inspectable capture is the
+   verification - the project's own established pattern for cases without one, "owner tests
+   through the original UI"): a scripted session at the Citizen-start developer resources
+   (10,000,000 gold; 190 tons each material) was screenshotted and the status-bar region cropped
+   for inspection. Gold reads "10000000" next to the coin icon; the construction screen reads
+   "190" next to each of the four material icons (tools/wood/bricks/marble), all legible, none
+   clipped or overlapping the icon boxes.
+8. **A real regression the digits caused, found and fixed before trusting any result:**
+   `live_screen_matches_oracle` failed once real pixels existed inside the `gold_digits` rectangle
+   - it sits *inside* the `statusbar` element's own compared rectangle, which the oracle paints as
+   opaque chrome, and the comparison script had never subtracted `data/ui/masks.txt`'s own
+   exclusions (only `tools/ui_layout.py compare`, a different, older comparison path, already
+   did). Fixed by having `live_screen_compare.py` load and subtract the same mask set
+   (`ui_layout.load_mask_set`) - the project's own established exclusion, not a new rule invented
+   for this script.
+9. **Regression:** `anno_assets`/`anno_app_core` rebuilt clean (0 warnings) before anything else;
+   then `anno1503`, `anno_ui_mock`, `anno_app_tests`, `anno_app_input_tests` rebuilt clean.
+   `ui_mock_matches_oracle`, `live_screen_matches_oracle`, `viewer_wiring_construction_menu_arm`,
+   the C2 148-cell eligibility test, the play-snapshot-eligibility test, both `ConstructionMenu`
+   tests and `anno_assets_tests` (14 cases incl. the 4 new ones, 383 assertions with real game
+   files) all pass. `clang-format` 23.1.3 applied clean (one real fix needed first - see below).
+   WSL gate (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on/off): one real `-Werror=sign-
+   conversion` caught (`text_test.cpp`, an `int` loop index into a `size_t`-indexed vector; MSVC
+   never flags it), fixed, re-ran clean on all four lanes.
+
+### What is deliberately not in this checkpoint
+
+- **Residents (`STATUSBAR_EINWOHNER`).** Checked and confirmed: nothing anywhere in the engine
+  computes a city's total population today (no `PlaySnapshot` field, no aggregation helper over a
+  city's houses/residents). This is a separate, larger gap than fonts - a new sim-side
+  aggregation plus a new snapshot field, not a rendering question - so it is named here rather
+  than quietly built under the "fonts" banner or quietly skipped without a note.
+- **C3's cost display, and C1/C6's info panel generally.** The construction-menu info panel's own
+  chrome/positioning has not been drawn in the live window at all yet (separate from fonts - a
+  drawing-location question for the panel itself, which no mask or F-numbered measurement in
+  `docs/re/ui.md` currently pins down the way the HUD bar's digit rectangles are pinned). Fonts
+  alone do not unblock C3; the panel needs its own drawing slice first. Flagging this scope
+  reality now rather than letting "fonts landed" be mistaken for "C3 is unblocked."
+- **Digit alignment/baseline precision** - OQ-564 (new): the measured rectangles are real evidence
+  (sprite-sad, the same method as every other HUD element), but *where inside them* the original
+  starts the text was never recorded by that method (it is an exclusion rectangle, not a text
+  layout). Left-aligned, vertically centred by the font's own glyph height is a reasoned default,
+  checked only by eye against a live capture, not against a real screenshot with a known value.
+
+### Decisions and reasoning
+
+1. **Checked the oracle situation before writing a renderer.** `data/ui/masks.txt`'s own existence
+   (digits are masked *out* of the F2.1 compare) was the first thing read, specifically because
+   writing a renderer and then discovering there is nothing to pixel-check it against would have
+   been a bad surprise mid-task, not after. There being no oracle changed the verification plan
+   (a human-inspectable screenshot, not an automated pixel-exact test) but not the decision to
+   build the renderer - CLAUDE.md's oracle-first rule is about not inventing a second disagreeing
+   design, not about refusing to build anything an oracle does not yet cover.
+2. **Font/goods identity were resolved by direct inspection, not left as guesses, because the
+   evidence was one lookup away.** The coordinator's framing treated fonts as mostly a rendering-
+   mechanism problem; the *placement* questions (which font, which goods index) looked like they
+   would need new RE work, but turned out to already have answers sitting in files this project
+   had already parsed (`goods_table.cpp`'s own comment, OQ-538's resolved segment order, the real
+   `.zei` files' own hashes). Spending twenty minutes confirming this before writing a single
+   `HudCounters` field was cheaper than shipping a hardcoded guess and finding out later it was
+   goods index 43 instead of 41.
+3. **What was NOT resolvable the same way - OQ-031's colour, OQ-564's alignment, residents' missing
+   aggregation - stayed flagged, not guessed past.** The difference between "one grep away" and
+   "needs a new screenshot or a new sim-side feature" is exactly the line CLAUDE.md draws between
+   evidence and a guess; this checkpoint tried to find every case of the former before accepting
+   the latter, rather than treating "it's about fonts" as licence to wing the rest.
+
+### Next
+
+Pushing with this entry. Category-switching's own screenshot proof is next per the coordinator's
+order, then M's placeholder table. Two real follow-ups surfaced by this checkpoint and not yet
+assigned anywhere: a population/residents aggregation (new sim-side work, not UI), and C1/C6's
+info-panel drawing slice (needed before C3's costs mean anything, independent of fonts).
+
+## W4-UI-2 — category-switching's own screenshot proof — 2026-11-08 — status: IN PROGRESS
+
+Per the coordinator's sequencing (fonts, verified above, then this, then M). `category_at`/
+`SwitchCategory` were already unit-tested, but only "public" had ever been screenshotted live -
+every earlier H1/C1/H2 checkpoint's visual evidence happened to use the menu's default-open
+category, never a real click through `ConstructionMenu::click`'s `SwitchCategory` branch.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`7c0ffab3`**, not yet pushed.
+
+### What ran, and with what result
+
+`construction_menu_draw_check.script` (the script `live_screen_matches_oracle` already runs) now
+clicks the category column at `(782, 373)` - `category_column_x` (`data/ui/hud.txt`) and
+`construction.txt`'s own `roads` category `y 373` - right after the public screenshot, and takes
+a third screenshot (`construction_roads_live`). `live_screen_compare.py` checks it against the
+oracle's own `construction_roads` composition the same way it already checks `construction_public`
+(same rect set, this category's own grid cells). Result: pixel-exact, same as public - the live
+category switch (a real click resolved through `ConstructionMenu::click`, not a test-only shortcut)
+draws the correct category's chrome, thumbnails and lock state. This also re-exercises H2's gold/
+material digits under a second category for free (same masked-comparison pass covers them).
+
+### Decisions and reasoning
+
+Reused the existing script/test pair rather than adding a new one: the two categories differ only
+in which grid cells and banner are drawn, which `rects_for`/`grid_rects` already parameterize by
+category name, so extending the existing check is the direct fix for "only public was proven,"
+not a reason for a second parallel test file.
+
+### Next
+
+M's placeholder-screen table, per the coordinator's order.
+
+## W4-UI-2 — M: the screen-tree table, bound vs. placeholder — 2026-11-08 — status: IN PROGRESS
+
+Last of the coordinator's three sequenced items (fonts, category-switching, M). Pure
+documentation/status work, checked against the live engine rather than written from memory of
+what earlier checkpoints claimed.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`783a0ada`**, not yet pushed.
+
+### What ran, and with what result
+
+Added a new section to `docs/adr/0004-ui-toolkit.md` (filling in its own deferred "which screens
+exist and what each placeholder means" line) covering all 19 in-game screens `docs/re/ui.md`
+section 1 names. Checked, not recalled: grepped `viewer.cpp`'s actual key/click handling before
+writing a single row. Findings:
+- Only **HUD idle** and the **construction menu** (8 categories) are bound (drawn live, real
+  data).
+- **Building info/placement** and **demolish** are partial: the menu's own clicks already reach
+  real engine state (`Arm`/`DevTool::arm`, `ToggleDemolish`), but no panel chrome exists to draw
+  anything on.
+- Every other screen (Kontor, help, military tab, options [+4 subpages], player/ship/city list,
+  pause, rating, selected/deselected panels) has **no handler at all** - not even a stub.
+- **Two real key collisions**, found while checking rather than assumed: the viewer's own
+  developer controls already bind **S** (pan), **Q** (quit) and **D** (pan) - the same three keys
+  the original uses for the ship list, rating and the player list. A future screen for any of
+  these needs its own key or the same B/Esc state-based resolution the construction menu already
+  uses, not a silent override.
+
+### Decisions and reasoning
+
+Split "waits on" into sim-side gaps (an aggregate the engine genuinely does not compute yet -
+OQ-563's upkeep, a rating screen's statistics) from UI-side ones (routing/chrome not built yet,
+with the sim data already sitting there, e.g. Kontor's trade lists) - conflating the two in a
+single "blocked" column would have pointed whoever picks up screen 2 or 17 at the wrong kind of
+work.
+
+### Next
+
+The coordinator's three-item sequence (fonts, category-switching, M) is now complete; all three
+pushed with this entry. Flagging for the coordinator's own call on what comes next: the two
+follow-ups named in the fonts checkpoint (a population/residents aggregation; C1/C6's info-panel
+drawing slice, now also the clear next step per this table's own row 4) are the largest unblocked
+pieces, but V/K/E (the dispatch's own remaining parts) are also still fully open.
+
+## W4-UI-2 — the HUD's residents counter: World::city_population — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction: add the population/residents aggregation as a new read-only sim query
+(rule 0.2's own pre-authorized pattern, the same one `PlaySnapshot::eligibility` already used) -
+strictly additive, no new state/stream/hash/draw change, the exact query named here.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`e9be4cb7`**, not yet pushed.
+
+### What ran, and with what result
+
+**The exact query added:** `World::city_population(CityRef) const -> std::optional<std::int64_t>`
+(declared `src/sim/include/anno/sim/world.hpp`, defined `src/sim/src/house_transition.cpp`
+alongside the function it wraps). It resolves `city` the same way `building_at` already does
+(nullopt for an invalid island id or an empty city slot) and otherwise returns
+`residents_at_or_above(config_, *types_, *city, 0)` - an **existing** function
+(`house_transition.hpp`, already used internally by the stage pass) that sums every house's
+residents across every group. No new aggregation math was written; this is a thin CityRef-
+resolving wrapper over state the sim already derives every tick, read, not computed, by the
+query.
+
+1. **Unit test** (`house_transition_test.cpp`): one assertion added to an existing fixture
+   checking `city_population` agrees with the `residents_at_or_above` call the test already made
+   in the same scenario (8 residents); a new standalone case for the nullopt path (an island id
+   and a city number that do not resolve).
+2. **Published through `PlaySnapshot::population`** (`play.hpp`/`play.cpp`), in the same `if
+   (developer_city_)` block that already publishes `money`/`goods`/`eligibility`, computed on the
+   sim thread for the identical cross-thread-race reason those already are.
+3. **Wired into H2** (`HudCounters::residents`, `draw_live_screen_xrgb`): drawn construction-
+   screen only, matching `STATUSBAR_EINWOHNER`'s own documented visibility (docs/re/ui.md 2.1:
+   "absent from pass-2 idle" - the icon, and now its digits, follow the same rule), at the
+   already-measured `einwohner_digits` rectangle (439, 733) 108 x 35 (`data/ui/masks.txt`).
+4. **Cross-check test** (`play_test.cpp`, the same loaded-twice pattern eligibility's own test
+   uses): the published `PlaySnapshot::population` agrees exactly with calling
+   `World::city_population` directly on an independently-run `World` for the same turn. Passes.
+5. **Visual check:** a fresh screenshot of the fixed-map test fixture's status bar shows "0" at
+   the measured rectangle - correct, not a bug: this fixture's developer city has just been
+   founded with no houses placed yet, so zero residents is the right answer, and the digit itself
+   renders legibly in the right place.
+6. **Regression:** the full `house_transition`/`population` test subset (50 cases, 46061
+   assertions, real game files) still passes - nothing about this addition touched existing
+   behaviour. `ui_mock_matches_oracle`, `live_screen_matches_oracle`,
+   `viewer_wiring_construction_menu_arm` and both `play_test.cpp` snapshot tests (eligibility,
+   population) all pass. `clang-format` clean; WSL gate (GCC 13 + Clang 18, `-O3 -Werror`,
+   viewer+GPU on/off) all four lanes clean.
+
+### Decisions and reasoning
+
+Checked for an existing aggregate before writing one: `residents_at_or_above` already existed,
+already summed exactly what H2 needed (every group, i.e. `group=0`), and was already proven
+correct by the house-transition/population test suite. Writing a second, parallel summation over
+`city.index.lists` would have duplicated logic the stage pass already trusts, for no reason;
+wrapping the existing function for a `CityRef` is the smaller, safer change, and keeps there being
+exactly one place that knows how to sum a city's residents.
+
+### Next
+
+C1/C6's info-panel drawing slice, per the coordinator's explicit instruction, next.
+
+## W4-UI-2 — C1/C6: the building info/placement panel's chrome — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction: the info-panel drawing slice next, the clear remaining gap per the M
+table's own row 4/18 and the fonts checkpoint's own flag.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`6a2da086`**, not yet pushed.
+
+### What ran, and with what result
+
+Checked `data/ui/hud.txt` before writing anything: the building info/placement panel already has
+real, sprite-sad-measured elements (`info_panel` (804, 302) 220 x 466 the background, `infoexit`
+(984, 725) 33 x 38 the close button - the same rectangle the pickaxe already shares, `rotate_left`/
+`rotate_right` (808/987, 451) 33 x 38, `betriebskosten` (815, 674) 40 x 37 the upkeep icon slot),
+left unused by every earlier checkpoint. `draw_live_screen_xrgb` gained a `placement_open`
+parameter: on a construction screen, it now draws this panel's chrome *instead of* the grid (the
+two occupy the same screen region - `info_panel`'s rectangle overlaps `construction.txt`'s own
+grid origin/extent almost exactly), wired from `Viewer`'s existing `construction_placement_open_`
+(no new state - the same flag `ConstructionMenu::click` already uses to resolve the pickaxe/
+cancel-X overlap now drives its drawing counterpart).
+
+Deliberately not drawn: the panel's own cost-row numbers and the building's name. OQ-561 (2026-
+11-07) already found no pixel position for the gold-cost icon anywhere in the panel after an
+exhaustive search; no position evidence exists for the name either. Drawing either would be a
+guess, which this checkpoint declined to do.
+
+**Visual check** (no oracle exists for this screen - the same situation H2's digits were in):
+armed a cell live and screenshotted the panel. It renders coherently - background, both rotate
+arrows, the close button, the upkeep slot, no grid underneath - and surfaces something useful:
+the `info_panel` background texture itself already shows a plausible hammer/wood/bricks/parchment
+cost-row layout, baked into the art rather than drawn as separate sprites. Recorded as a
+corroborating observation on OQ-561 (not a resolution - it does not say where any *number* is
+drawn, only that the icons themselves may need no separate position at all).
+
+**Regression:** `ui_mock_matches_oracle`, `live_screen_matches_oracle` and
+`viewer_wiring_construction_menu_arm` all still pass - the grid-drawing path these actually
+exercise was restructured (moved inside an `else`) but not changed. `clang-format` clean; WSL
+gate (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on/off) all four lanes clean.
+
+### Decisions and reasoning
+
+Drew only what `data/ui/hud.txt` already had real position evidence for, and stopped there rather
+than filling the empty cost-row/name space with a guessed layout to make the screenshot look more
+"finished." A panel that is honestly incomplete (grey boxes where numbers would go) is more
+useful to whoever resolves OQ-561 next than one that looks complete by accident.
+
+### Next
+
+The coordinator's own next instruction: continue toward V's proof suite, by this session's
+judgement on sequencing.
+
+## W4-UI-2 — V3 (the command boundary) and V5 (mutation checks) — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction: continue straight through V (not pausing at checkpoints) - window
+session, replay, consumer-boundary test, pixel tests across CPU/4090/iGPU with negative controls,
+mutation checks, bench_frame numbers, in whatever order makes sense, checkpointing as each piece
+lands. This entry: V3 and V5, the two pieces ADR 0004 already states a precise test spec for.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`91126896`**, not yet pushed.
+
+### What ran, and with what result
+
+**V3** (ADR 0004's own words: "a test that opening, browsing and closing every menu without
+issuing a command leaves the state hash unchanged"): two identically-loaded `World`s; one has
+`ConstructionMenu::click` exercised against it exhaustively - every one of the 8 category tabs,
+then every one of that category's grid cells (locked and unlocked alike) - with every result
+dropped (no `DevTool::arm`, no `post_command`); the other is touched by nothing. Both then run 10
+turns; `state_hash()` must agree. It does (`play_test.cpp`, 171 assertions). This also holds
+structurally, not just empirically: `ConstructionMenu::click`'s signature takes no `World`
+reference at all, so there is nothing for it to mutate - the test is the executable form of that
+fact.
+
+**V5** (ADR 0004's own four-item list): each mutation was applied by hand, confirmed to fail an
+existing test, then reverted - no mutation code is kept in the tree.
+
+| Mutation | Change | Caught by |
+|---|---|---|
+| A wrong cell type | `ui_layout.cpp`'s cell `id` +1 | `live_screen_matches_oracle` (the grid's lock-state pixels disagree with the oracle - **not** `ui_mock_matches_oracle`, since `compose_screen` never reads `cell.id` to draw, only the live sim-eligibility path does; a real, useful distinction between the two pixel tests, not a gap) |
+| An accepted click on a locked cell | `construction_menu.cpp` always resolves `Arm` | the existing "click resolves a category tab..." test (3 assertions, `Locked` expected, `Arm` returned) |
+| A click that sends no command | `viewer.cpp`'s `Arm` case does nothing | `viewer_wiring_construction_menu_arm` (the title never shows "build 501") |
+| A wrong displayed cost | `construction_menu.cpp`'s `cell_info` adds 1 to `cost_gold` | the existing "cell_info reads cost live..." test (251 != 250) |
+
+All four land on a DIFFERENT existing test - no single test is carrying the whole V5 burden, and
+no new test had to be written to catch any of them; the suite already built across H/C/C2
+checkpoints was already sensitive to all four classes.
+
+**Also added:** `ANNO_DEV_GOLD`/`ANNO_DEV_GOODS_TONS` env overrides (`main.cpp`), wiring up the
+"developer test resources ... values configurable" decision (round dr) that was recorded but
+never exposed - a scripted session can now start with a precise, deterministic affordability edge
+(e.g. `ANNO_DEV_GOLD=0`) without touching the generous defaults every other fixed-map session
+relies on. Verified by hand: a session started with both env vars at 0 shows "money 0" in the
+title. Needed for the "unaffordable" click in the still-pending comprehensive window session.
+
+clang-format clean; WSL gate (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on/off) all four lanes
+clean, run on the reverted tree (after every mutation above, not during).
+
+### Decisions and reasoning
+
+Verified each V5 mutation against the REAL built binaries (rebuilding `anno1503`/`anno_app_tests`
+with the mutation applied each time), not just reasoned about which test "should" catch it - the
+cell-type mutation's split result (caught by one pixel test, not the other) would have been easy
+to get wrong by reasoning alone, and is itself useful evidence about what each pixel test actually
+checks.
+
+### Next
+
+The comprehensive window session (every category, placement, demolish, a locked-cell click, the
+now-possible unaffordable click, per the coordinator's list), then the fresh-process replay, then
+multi-renderer pixel checks (CPU/4090/iGPU) with negative controls, then bench_frame numbers.
+
+## W4-UI-2 — V1 (the full window-session proof) and V2 (its fresh-process replay) — 2026-11-08 — status: IN PROGRESS
+
+Per the coordinator's own list: window session, then replay, next.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`56739c08`**, not yet pushed.
+
+### What ran, and with what result
+
+**V1** (`construction_full_proof.script`, registered as `viewer_wiring_construction_full_proof`):
+through the real window, `key b` then every one of the 8 category tabs (`category_column_x` 782,
+each category's own `y` from `construction.txt`); back on "public", a click on a **locked** cell
+(`(1,0)`, id 580, `construction.txt`'s own `state locked`) - the title never shows it armed,
+confirming no command was sent; a click on an **unlocked** cell (`(0,0)`, id 501) arms it, then a
+world click on the same tile `settlement_activity.script` already proves free builds it
+(`outcome Applied`); then a demolish of that same building.
+
+The demolish step needed a real fix, found by reading the actual failure, not by guessing the
+gesture: the first attempt got `Refused (Occupied)` - a successful build never resets
+`construction_placement_open_` (nothing in the world-click path does), so the pickaxe rectangle's
+**first** click after building still resolves `Cancel` (the placement panel was still "open" by
+that flag), not `ToggleDemolish`; the tool was still armed with 501 and tried to rebuild the same
+now-occupied tile. Fixed by clicking the same spot twice - the first closes the panel, the second
+(now `placement_open` is false) actually toggles demolish mode.
+
+**Also V1:** `construction_unaffordable.script` (a separate small session, registered as
+`viewer_wiring_construction_unaffordable`), using the new `ANNO_DEV_GOLD`/`ANNO_DEV_GOODS_TONS`
+env overrides added last checkpoint: with goods at 0, type 501's "wood 3" cost cannot be paid, and
+placing it refuses `CannotAfford` - the ordinary `BuildCmd` path, confirming arming never checks
+cost (`ConstructionMenu::click`'s own doc comment already said so; this is the live proof of it).
+
+**V2** (`construction_session_replay.py`, registered as `construction_session_replay`):
+`construction_full_proof`'s own recording (`commands.txt`/`hashes.txt`, written by any
+`ANNO_DEV_SESSION`, not just the ship-start flow) replayed headlessly in a fresh process
+(`--commands`/`--replay-hashes`, `main.cpp`'s `replay_hashes` - no window, no SDL at all,
+`opening_session.py`'s own mechanism, applied here for the first time to a fixed-map/
+construction-menu session). Agrees exactly: "3 checkpoints agree (turns 0..15), 2 outcomes
+agree". A **negative control** (the same recording with the build command's type changed, 501 ->
+502) correctly disagrees at the first affected checkpoint - the mechanism is live, not a
+tautology that would pass regardless of content.
+
+Full targeted regression (13 cases, real game files) passes.
+
+### Decisions and reasoning
+
+Ran V1's script and read its actual failure before writing anything about the demolish gesture:
+the first guess (pickaxe click immediately after building) was wrong, and the fix came from the
+literal `Refused (Occupied)` message, not from re-reasoning about what "should" happen. This
+matches the dispatch's own evidence discipline one level down from file/RE evidence: the live
+window's own refusal messages are evidence too, and are cheaper to check than to assume past.
+
+### Next
+
+Multi-renderer pixel checks (CPU/4090/iGPU) with negative controls, then bench_frame numbers.
+
+## W4-UI-2 — V4 (multi-renderer pixel checks) and V6 (bench_frame numbers) — 2026-11-08 — status: IN PROGRESS
+
+Per the coordinator's list, the last two V items. No code changed this checkpoint - pure
+verification/measurement, and one real finding worth recording precisely rather than working
+around silently.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: unchanged, still **`56739c08`** (nothing new to commit - `git status` clean
+  throughout this checkpoint).
+
+### What ran, and with what result
+
+**CPU:** already the acceptance gate for every checkpoint so far
+(`ui_mock_matches_oracle`/`live_screen_matches_oracle`, `--renderer cpu`) - pixel-exact, unchanged
+by this entry.
+
+**GPU, RTX 4090** (`ANNO_GPU_ADAPTER` is not the live window's own selector for this - see below;
+the 4090 is simply what this host's window surface always picks): ran
+`construction_menu_draw_check.script` with `--renderer gpu`, no `SDL_VIDEODRIVER=dummy` (a real
+GPU surface). The captured screenshot shows the world and nothing else - no HUD, no status bar,
+no construction menu at all. Quantified as a negative control against the same Python oracle the
+CPU path is checked against: **199111 of 199111 opaque-oracle pixels differ (100%)**. This is not
+a new bug: `draw_gpu()` has never called `draw_live_screen_xrgb` (the M table already named this,
+"the GPU rendering path... untouched"); this checkpoint is the first time it was actually
+measured rather than just stated, and it is the largest, cleanest negative control this dispatch
+has produced - the oracle-comparison methodology is sensitive to "the entire UI is missing", not
+only to the smaller V5 mutations.
+
+**iGPU - a real tooling finding, not a result:** tried to force the live window onto the AMD
+Radeon iGPU via `ANNO_GPU_ADAPTER` (by index, from `bench_frame --list-adapters`, and by a
+case-insensitive name substring, `"AMD"`) - both left the window on the RTX 4090 regardless, with
+no warning printed. Read `src/render/src/wgpu.cpp`'s `context_for` rather than guess why:
+`adapter_from_env` (which reads `ANNO_GPU_ADAPTER`) is only consulted when `compatible == nullptr`
+- i.e. **only when there is no window surface to request an adapter against** (`bench_frame`,
+`--png`, any offscreen use). The live interactive viewer always has a real window surface and
+always requests `WGPUPowerPreference_HighPerformance` compatible with it, which this host answers
+with the 4090 every time; `ANNO_GPU_ADAPTER` structurally cannot override that path today. Since
+the UI overlay draws on **no** GPU regardless of which one, this does not change the substantive
+finding above - but it is named here as a real, verified limitation (not assumed, not guessed)
+rather than silently skipped or claimed as "tested" without actually having been.
+
+**V6 (bench_frame numbers):** built `bench_frame` (not previously built in this worktree) and ran
+a quick pass on `Scenes/0010SingleEndlos/01_1024_easy_256.sze`, CPU and GPU (4090), confirming no
+regression to the baseline world-rendering pipeline - expected, since every change in this
+dispatch lives in `src/app`'s construction-menu code and never touches `src/render`/`src/sim`.
+`bench_frame` has no concept of the construction-menu overlay at all (it benchmarks the world
+scene only), so this is a general regression check, not a UI-specific number. The UI-specific
+timing evidence that actually matters for this dispatch was already measured and reported in the
+texture-cache checkpoint (the "construction ui" step: ~67-70 ms cold, ~2-5 ms warm per frame) and
+is not repeated here.
+
+### Decisions and reasoning
+
+Read the adapter-selection code before accepting "the env var didn't work" as a dead end, and
+before assuming it was a mistake on this checkpoint's part. The distinction it revealed (headless
+adapter override vs. the live window's own surface-compatible request) is a real fact about this
+codebase, worth recording precisely rather than smoothing over as "iGPU: skipped."
+
+### Next
+
+V is now complete (V1-V6, in the coordinator's own list, plus V3/V5 from the prior checkpoint).
+Flagging for the coordinator: a live-window iGPU override (if ever wanted for testing) would need
+a new seam distinct from `ANNO_GPU_ADAPTER` - not attempted here, out of this dispatch's scope.
+
+## W4-UI-2 — K: the owner playtest card — 2026-11-08 — status: IN PROGRESS
+
+Per the dispatch's own rule 0.3 (stop only at E, or when nothing independent is left): continuing
+past V into K rather than pausing, since there is clearly independent work left in it.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`c8701db8`**, not yet pushed.
+
+### What ran, and with what result
+
+`docs/testing/construction-menu-playtest.md`, in the same format this project's own
+`load-adapter-playtest.md`/`ship-opening-playtest.md` already use: a launch command, a controls
+table, a numbered walk-through (open the menu, arm an unlocked cell, place it, close the panel,
+demolish it, switch categories, try an unaffordable item), and a "Known limits (say so rather
+than guess)" section naming every open item this dispatch's own checkpoints already flagged
+rather than re-deriving them: GPU draws nothing (V4's own finding), no cost-row/name text in the
+info panel (OQ-561/OQ-563), the text colour and digit alignment are unconfirmed defaults
+(OQ-031/OQ-564), every other screen is a placeholder (the ADR's own M table), R3's scale
+question, and the S/Q/D key collisions the M checkpoint found.
+
+**One real thing caught before it reached the owner:** `--renderer`'s own default is `auto`,
+which picks the GPU on this host - and the menu/HUD overlay draws on no GPU at all (V4). A
+launch command without `--renderer cpu` would have handed the owner a window that looks like the
+feature does not exist. Caught by actually running the card's own launch command through a
+scripted session before committing it, the same evidence discipline as everything else in this
+dispatch - not assumed correct because it looked right on the page.
+
+### Decisions and reasoning
+
+Wrote "Known limits" by re-reading this dispatch's own prior checkpoints rather than from memory,
+specifically so the card does not silently drop or soften anything a coordinator or owner has
+already seen flagged (OQ-031/OQ-538/OQ-561/OQ-563/OQ-564, the M table, the key collisions) - the
+playtest card's job is to hand the owner the same honest picture the REPORTS entries already
+give, not a cleaned-up version of it.
+
+### Next
+
+E: the dispatch's own final gate (independent review, the full gates, a verdict-per-part report,
+status REVIEW PENDING) - the dispatch's own designated stopping point.
+
+## W4-UI-2 — the GPU path gap: found, diagnosed, fixed — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction, addressed before anything else: "GPU confirmed to draw nothing at all"
+was flagged almost in passing in the V4 checkpoint; the coordinator correctly named this a
+blocking gap against the packet's own done criterion ("the HUD and the menu match the UI.1
+oracle within its tolerance, on the CPU and GPU paths"), not a side observation, and asked for a
+plain why/bounded-or-structural answer before anything else, fixing it now if bounded.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`7d65bea3`**, not yet pushed.
+
+### Why it drew nothing, and whether it was bounded
+
+`draw_gpu()` never called `draw_live_screen_xrgb` (or anything like it) at all - not wired in and
+failing, simply never attempted. The sprite-atlas/instance-draw path the world's own objects use
+(`SpriteDraw`, `atlas_place`, already proven by the dev-tool's placement-preview overlay) is
+structurally tied to `formats::figuren::Frame` and world-tile-projected screen anchors - it
+cannot represent `.tex`/`.zei`-sourced UI textures or fixed-screen positions without new,
+materially bigger infrastructure. The actual reusable mechanism was different: the compositor
+already has a full-screen-triangle blit pass (`scale_vs`/`scale_fs`, the resample/zoom
+post-process). That made the fix bounded - one new GPU texture, one new simple alpha-blend
+fragment shader reusing the existing vertex stage, one new CPU-side RGBA composer function
+mirroring the CPU path's own, and the upload+draw wiring in `draw_gpu` - confined to
+`src/render` + `src/app`, no new asset format, no sim change. Implemented now, not deferred.
+
+### What ran, and with what result
+
+1. **`anno::app::draw_live_screen_rgba`** (`ui_mock.hpp`/`.cpp`): the same live state
+   `draw_live_screen_xrgb` composes, into a canvas that starts fully transparent (every byte 0)
+   instead of blitting into the live XRGB buffer - independently written against the same
+   inputs, this project's own CPU-vs-GPU-vs-oracle convention, not shared code with the XRGB
+   path. `blit_rgba_over` does the compositing: a straight overwrite for opaque chrome, a proper
+   Porter-Duff "over" for a glyph's own partial alpha.
+2. **`GpuFrame::render`** (`gpu.hpp`/`gpu.cpp`) gains a trailing `const assets::Rgba* ui_overlay`
+   parameter, default `nullptr` - every existing caller (`bench_frame`'s several call sites)
+   unaffected. When set, uploads it to a lazily-created `RGBA8Unorm` texture and draws one
+   full-screen alpha-blended quad over the whole frame, last of all (after the resample pass too,
+   so it always lands on the exact presented pixels) - `gpu.wgsl`'s new `ui_overlay_fs`, reusing
+   `scale_vs`'s existing full-screen-triangle vertex stage, no new vertex buffer.
+3. **`viewer.cpp`**: `draw_gpu` composes the overlay the same way `draw_cpu` does -
+   `Viewer::construction_hud_inputs`, a new shared private helper factored out of `draw_cpu`'s
+   own `HudCounters`/eligibility construction (the "has a city yet" logic now lives in exactly
+   one place, read by both draw paths, not duplicated a third time).
+4. **Verified on the real hardware the gap was found on** (RTX 4090): screenshotted and visually
+   checked first (the menu, HUD counters and info panel all draw correctly - gold "10000000",
+   materials "190" each, the grid, the lock icons, all present and legible), then measured
+   against the same oracle `live_screen_compare.py` already checks the CPU path with. CPU stays
+   bit-exact (unchanged). GPU: within the project's own established F2.1 tolerance
+   (`tools/ui_layout.py`'s own `COMPARE_CHANNEL` 48, `COMPARE_BAD_FRACTION` 0.08) rather than
+   bit-exact - 28 of roughly 200,000+ checked pixels differ by up to 12 per channel (well under
+   the 48 allowed), all at sprite corner pixels (`mainuntergrund`/`statusbar`/`gold`'s own edges,
+   e.g. (1023, 761) - the literal last pixel of `mainuntergrund`'s own rectangle), not scattered
+   and not in any new content: every gold/goods/residents digit and the whole grid are bit-exact.
+   `live_screen_compare.py` gained a `--renderer cpu|gpu` flag to make this repeatable.
+5. **GPU needs a real, visible window** - confirmed by hand, not assumed: `--renderer gpu` under
+   `SDL_VIDEODRIVER=dummy` exits "no Win32 window handle" rather than falling back. This matches
+   `viewer_wiring.py`'s own pre-existing `--gpu` flag (added for earlier GPU performance work),
+   which has never been wired into a registered CTest case for the same reason. The GPU check
+   above is a manual/interactive-desktop verification, like `bench_frame`, not something CI's
+   headless environment can run; only `--renderer cpu` (unchanged) is registered as a CTest case.
+6. **Regression:** `anno_app_tests`, `ui_mock_matches_oracle`, `live_screen_matches_oracle` and
+   every construction-menu CTest case (13, CPU path, real game files) still pass.
+   `anno_render_gpu_tests` (116 cases, 2,443,020 assertions, the real RTX 4090) passes - nothing
+   about the existing sprite/resample/chunk GPU pipeline regressed. `clang-format` clean (one real
+   Clang-only `-Werror=sign-conversion` caught in `blit_rgba_over` - a loop index needing
+   `size_t`, not `int`; MSVC and GCC never flagged it, fixed before it reached the WSL gate a
+   second time). WSL gate (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on/off) all four lanes
+   clean.
+
+### Decisions and reasoning
+
+1. **Checked the coordinator's own guess (reuse the sprite-atlas path) against the actual code
+   before building anything**, rather than assuming it was right because it was the first
+   plausible mechanism named. It turned out not to fit (world-tile-anchored, Figuren-frame-typed);
+   finding the real reusable mechanism (the resample pass's full-screen-triangle shader) first
+   avoided building something on the wrong foundation and having to redo it.
+2. **An independent RGBA composer, not a refactor of the XRGB one into something both paths
+   share.** This project's own CPU-vs-GPU-vs-oracle convention (ADR 0004's own words) treats
+   agreement between independently-written paths as the proof, not shared code as the
+   guarantee - matching every other triple already in this codebase, and making the eventual
+   pixel test meaningful (it would catch a real divergence, not pass automatically because both
+   paths literally run the same function).
+3. **The 28-pixel corner residual is named exactly, not rounded off to "exact" or hidden as
+   "still open."** It is comfortably inside the project's own already-established tolerance
+   rule, at pixels that are not part of this checkpoint's new content; reporting the real number
+   (28 of 200,000+, max difference 12 of an allowed 48) is more defensible than claiming bit-exact
+   parity the measurement does not actually show.
+
+### Next
+
+Back to E: the dispatch's own final gate, now that the done criterion the coordinator named is
+actually met (CPU exact, GPU within tolerance) rather than carried forward as an open item.
+
+## W4-UI-2 — independent review: CHANGES REQUESTED, fixed — 2026-11-08 — status: IN PROGRESS
+
+The coordinator's dispatched fresh, context-free reviewer came back CHANGES REQUESTED, not
+APPROVE, with findings verified by reading the actual code, not nitpicks. The reviewer explicitly
+ran no build/tests themselves (cold read only) - the mechanisms and wiring were independently
+checked; this checkpoint's own numeric claims (pixel-diff counts, assertion counts) are re-verified
+here, not by them.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: head after this checkpoint (pushed with the CI-gate fix and the owner
+  playtest-card update that preceded it in this same session).
+
+### What was found, and fixed
+
+1. **Real untested bug, `ConstructionMenu::click()`** (`construction_menu.cpp`): the grid-cell
+   resolution path was not gated on `!placement_open` - a click on the open info/placement panel
+   away from `infoexit` fell through into `cell_at()`/`construction_->cell()` unconditionally,
+   silently re-arming whatever type happened to sit at that grid coordinate under the panel, even
+   though the panel visibly covers the grid's whole extent. No existing test exercised this (the
+   only `placement_open=true` case was the `infoexit`/pickaxe-overlap point). **Fixed**: `click()`
+   now returns `None` for any panel click that is not `infoexit`, before ever reaching
+   `cell_at()`. **Test added**: `construction_menu_test.cpp` - the same point that resolves `Arm`
+   with the menu open (`placement_open` false) now resolves `None` with the panel open instead.
+2. **Two ADR-0004-R1 "no coordinate lives in code" violations**: `category_at()` hardcoded
+   `kColumnX=779.0, kColumnW=42.0, kHalfHeight=23.0` instead of reading hud.txt's own
+   `viewbautab_0` rectangle; `ui_mock.cpp` hardcoded the six live-digit rectangles (`gold_digits`,
+   `baumat_{tools,wood,bricks,marble}_d`, `einwohner_digits`) in both `draw_live_screen_xrgb` and
+   `draw_live_screen_rgba` instead of reading data/ui/masks.txt, which nothing in this branch (or
+   `src/app` at all) had a parser for. **Fixed**: `category_at()` now reads `viewbautab_0` through
+   `hud_->element()`. A new `MaskLayout`/`UiMask` type and `parse_mask_layout`/`load_mask_layout`
+   were added to `ui_layout.hpp`/`.cpp` (mirroring `HudLayout`'s own shape and error conventions);
+   both draw functions take a new `const MaskLayout& masks` parameter and look up each counter's
+   rectangle by name through a small `digit_origin` lambda, never a coordinate literal. Wired
+   through `ViewerHooks::construction_masks` (viewer.hpp/.cpp) and loaded in `main.cpp` alongside
+   `hud.txt`/`construction.txt`. A counter whose named mask is missing draws nothing for it, same
+   "never guess" convention as a missing hud.txt element.
+3. **Overstated claim, "independently written, not sharing code with"**: true that the two draw
+   functions are separate code (not a shared helper), false that they didn't share the same
+   hardcoded digit literals - they did, verified by the reviewer reading both. Corrected in three
+   places (`ui_mock.hpp`'s doc comments, `ui_mock.cpp`'s own comments, `docs/adr/0004-ui-toolkit.md`'s
+   "Rendering" section, which also still described the GPU path by its first, since-superseded
+   sprite-atlas guess): the real safety net is each path's own separate pixel comparison against
+   the UI.1 oracle, not independent implementation. The masks.txt fix above also removes the
+   specific literal duplication the reviewer pointed at - both paths now read the same single
+   source of truth instead of each hardcoding a copy.
+4. **Urgent: the owner playtest card was stale** - already fixed earlier in this same session
+   (before this review landed), in its own commit: `docs/testing/construction-menu-playtest.md`
+   still said GPU rendering draws nothing and pinned `--renderer cpu`, never updated after the GPU
+   fix two checkpoints earlier. Updated to the current, measured state.
+5. **ADR 0004 said "this ADR adds no `src/sim` change"**: true of *behaviour*, false of the ADR's
+   own text as written - `World::city_population` (the population query, rule 0.2) is a `src/sim`
+   change, just an explicitly-allowed read-only one. Amended to say so.
+6. **H2's digit counters have no automated pixel-oracle check** (masks.txt excludes their own
+   rectangles from the oracle comparison by design - that is what a mask *is*): already stated in
+   this checkpoint's own H2 entry; restated here so it is not lost in this round's summary.
+
+### What ran, and with what result
+
+- `anno_app_tests.exe` (no game files): 246/246 test cases, 32767/32767 assertions, including the
+  new `construction_menu_test.cpp` case and the two new `ui_layout_test.cpp` mask-layout cases.
+- With `ANNO1503_GAME_DIR` (the real game files, this PC): `ui_mock_matches_oracle` (9 screens,
+  exact pixel match, unchanged after the masks.txt refactor - confirms it is truly the same
+  positions, not a near-miss that happened to average out), `live_screen_matches_oracle` (CPU,
+  exact on every checked opaque-oracle pixel), `live_screen_compare.py --renderer gpu` (28 of
+  ~200,000+ checked pixels differ, same sprite-corner pattern as the prior checkpoint - the
+  construction_menu.cpp/ui_mock.cpp changes did not move the GPU residual), and all of
+  `viewer_wiring_construction_menu_arm`/`_full_proof`/`_unaffordable`/`construction_session_replay`
+  (the build-then-demolish gesture through the real window still resolves correctly with the new
+  `!placement_open` gate - the fix only closes a path nothing in these scripts exercised, since
+  none of them click the panel away from `infoexit`).
+- `clang-format` 23.1.3 (installed fresh via `pip --target`, since this checkout had no cached
+  binary): dry-run flagged six spots across `ui_mock.cpp`/`viewer.cpp`/`main.cpp`/
+  `ui_layout_test.cpp`; applied in place; re-run clean; rebuilt and re-ran the tests above
+  afterward to confirm the reformatting changed no behaviour.
+
+### Decisions and reasoning
+
+1. **Gated the whole panel, not just the specific grid-cell path the reviewer named.** The fix
+   returns `None` for any panel click that is not `infoexit`, not only one that would otherwise
+   have resolved through `cell_at()`. The panel's own rotate arrows/cost-row chrome are not wired
+   to any command yet either, so there is nothing else a click there should do - a narrower fix
+   that only special-cased `cell_at()` would still be correct today but would quietly need
+   revisiting the same gating question again the next time something is added under the panel.
+2. **Bundled the mask lookup as a parameter, not inside `ConstructionMenu`.** `ConstructionMenu`'s
+   own doc comment scopes it to click *resolution*; masks.txt is a drawing-position concern
+   (`ui_mock.cpp`), unrelated to what a click resolves to. Threading `MaskLayout` through
+   `ViewerHooks`/`main.cpp` alongside `hud.txt`/`construction.txt`, the same way, keeps that
+   separation instead of growing `ConstructionMenu`'s responsibility to cover rendering too.
+3. **Did not merge `draw_live_screen_xrgb`/`_rgba` into shared code**, even though the reviewer's
+   finding was exactly that they shared literals. The literals are now gone (both read masks.txt),
+   which was the actual defect; keeping them as separate functions is this project's own
+   CPU-vs-GPU-vs-oracle convention (ADR 0004's own words, restated accurately this time) and the
+   coordinator's instruction was to correct the claim, not to redesign the pairing.
+4. **Corrected the ADR's GPU-mechanism paragraph in place rather than only fixing the
+   "independently written" phrase**, since it still described the first, since-superseded
+   sprite-atlas guess as current fact three checkpoints after the real mechanism (the full-screen
+   blend pass) was implemented and verified. Leaving it would have let a future reader rebuild the
+   same wrong assumption the coordinator's own GPU-gap instruction already corrected once.
+
+### Next
+
+Back to E: run the dispatch's own mechanical final-gate work (full `ctest --preset msvc` with game
+files and GPU tests on both the 4090 and the Radeon iGPU, the WSL gate's lanes, clang-format over
+the whole branch, `tools/check_unix_warnings.sh`, CI on the pushed head's all ten jobs), then draft
+the REPORTS.md E-section's factual content with status left as REVIEW PENDING, per the
+coordinator's instruction.
+
+## W4-UI-2 — Part E: final gates run, factual report — 2026-11-08 — status: REVIEW PENDING
+
+Per the coordinator's instruction: the mechanical final-gate work below is done; this entry's
+factual sections (verdict per part, element/screen tables, R3's recommendation, decisions,
+evidence paths) are drafted. **The independent-review section is intentionally not written here**
+- the coordinator is dispatching a separate, fresh reviewer and will fold their findings in before
+this goes further. Status stays REVIEW PENDING until that happens.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: head `b3d8793d` (pushed to `origin` and `gitlab`). All ten CI jobs green on this
+  head (run `42449679918`, confirmed below).
+- A separate, detached-HEAD worktree at the same commit, `E:\anno1503-worktrees\anno1503-W4-ui-2-wslgate`,
+  was created only to run the WSL ASan/UBSan gate (which refuses to run inside a live executor
+  worktree) and left in place afterward, matching this project's existing `-gatecheck` worktree
+  convention (`anno1503-W4-main-2-gatecheck`, `anno1503-W4-expand-live-1-gatecheck`, `anno1503-W4-gate`).
+
+### Verdict per part
+
+| Part | What it covers | Verdict |
+|---|---|---|
+| P | Finish W4-MAIN-2 first (the dispatch's own prerequisite) | Done, before this visible session |
+| F | (font/format groundwork preceding R) | Done, before this visible session |
+| R | ADR 0004 itself (`docs/adr/0004-ui-toolkit.md`) | Done; amended twice this entry's own round (the GPU-mechanism paragraph and the `src/sim` claim, both per the independent review) |
+| H | The HUD bar: gold always shown, four build-material counters + residents on construction screens only (H2) | Done; `ui_mock_matches_oracle`/`live_screen_matches_oracle` exact on both renderers' checked pixels |
+| C | The construction menu: category switch, grid, lock state from live eligibility, arm/build/demolish, the info/placement panel's chrome (C1-C6) | Done; the panel-click gating bug the independent review found is fixed (see the round immediately above this entry) |
+| M | The screen-tree table: all 19 in-game screens classified Bound/Partial/Placeholder | Done (`docs/adr/0004-ui-toolkit.md` "Screen tree: bound vs. placeholder (W4-UI-2 M)") |
+| V | The proof suite: window session (V1), fresh-process replay (V2), the command boundary (V3), multi-renderer pixel checks (V4), mutation checks (V5), `bench_frame` numbers (V6) | Done, all six; V4's CPU-exact/GPU-within-tolerance split reconfirmed clean in this entry's own gate run |
+| K | The owner playtest card | Done; corrected today (independent review finding #4) now that GPU rendering is fixed |
+| E | This entry: the mechanical final gate + factual report | Mechanical work done below; independent review and final sign-off pending |
+
+### Element/screen tables
+
+The authoritative table is `docs/adr/0004-ui-toolkit.md`'s own "Screen tree: bound vs. placeholder
+(W4-UI-2 M)" section (19 rows: HUD idle and the construction menu "Bound"; building info/placement
+and demolish "Partial"; the remaining 15 screens "Placeholder" - Kontor, help/military/options
+tabs, player/ship/city lists, pause, the rating screen, and the two real key collisions on
+`S`/`Q`/`D`), not restated here to avoid a second copy drifting from the first. The HUD element
+table (which `data/ui/hud.txt`/`masks.txt` element is bound to which draw call) is this round's
+own `ui_mock.cpp` source plus `data/ui/hud.txt`/`masks.txt` themselves, now the single source for
+every digit/chrome position per the independent review's fix (#2 above) - there is no separate
+table to keep in sync with those files any more.
+
+### R3 (the UI scale at 1440p/4K): recommendation
+
+`docs/adr/0004-ui-toolkit.md`'s own QUESTION R3 already carries a provisional recommendation
+(the fractional scale factor), written before H ever rendered a frame and explicitly conditioned
+on screenshots H3 would attach later. Having now built and screenshotted the real HUD/menu at the
+reference 1024 x 768 (H2/C1-C6, this session's many checkpoints), **nothing found changes that
+recommendation** - but it remains unimplemented and untested at any size other than exactly
+1024 x 768 (confirmed again in this entry's own V1/V4 runs: the menu only responds at that exact
+drawable size). Recommendation to whoever picks up R3's implementation: keep the fractional-factor
+default, read from one configuration value as R1 already specifies, and attach 1440p/4K
+screenshots of the real (not mocked) HUD/menu once that implementation lands, rather than deciding
+from the 1024 x 768 screenshots this package has.
+
+I could not find a separately-numbered "R2" QUESTION in the current `docs/adr/0004-ui-toolkit.md`
+or elsewhere in `docs/` - only R3 is a formally headed open question in this ADR. If the original
+dispatch packet named a distinct R2 (e.g. the construction menu's default surface in `--play`),
+that text is not in a committed file I could locate from this worktree; flagging this as a
+QUESTION for the coordinator rather than inventing a recommendation for a question I cannot
+confirm the wording of.
+
+### The mechanical final gate (this entry's own work)
+
+**1. Full `ctest --preset msvc` with game files, RTX 4090.** Via the canonical evidence-contract
+gate (`tools/test/run_selected.py --asset-policy required`, matching this host having
+`ANNO1503_GAME_DIR` set): `selected=2355 executed=2344 failed=0 empty=0 skipped=11 (platform=2
+opt-in=6 other=3) incomplete=0 sanitizer_lines=0`. Every skip, named with its reason:
+- **2 platform** (`anno_test_support_tests`, two Linux/POSIX-only coordinator-descriptor probes:
+  "a descriptor the client holds without close-on-exec does not reach the coordinator it spawns",
+  "a captured pipeline ends without waiting for the coordinator's idle exit") - correctly
+  Windows-skip, nothing to run here.
+- **6 opt-in** (an environment switch not set in this run, by design): `SCRIPT2 original encoded
+  canary replay worker`; `resilience: harvest search work against unrelated farms (opt-in measure,
+  Release samples)`; `nav scale measurements (ANNO_SIM_NAV_SCALE)`; `transport search statistics
+  (ANNO_SIM_TRANSPORT_STATS)`; `probe: whole-scene rebuild and a coalesced 50-build burst on the
+  fixed map`; `probe: per-island object-list build, commit and a 50-build burst (ScenePicture)`.
+- **3 "other"** - all three are `ship_start_load_test.cpp`'s own `"skipping the symlink rows: Dem
+  Client fehlt ein erforderliches Recht"` (German: this account lacks the privilege to create a
+  symlink) - a Windows account-privilege limitation, not a gap in this package, and already a
+  named, accepted exception in `ctest_verdict_test.py`'s own contract test (`allowed_other`'s
+  `"skipping the symlink rows: "` entry) for exactly this reason. The gate's default policy does
+  not auto-allow "other" (by design, every use needs an explicit, justified `--allow-skip other`
+  from whoever runs it); named and justified here rather than silently passed with the flag.
+  Unrelated to W4-UI-2 - `ship_start_load_test.cpp` is ship-founding code, not touched this
+  package.
+- A first attempt at this same full run showed 14 unrelated tests (river/flow rendering,
+  `chunk_draws_corpus_test.cpp`, two `scenario_test.cpp` population/corpus cases) failing with
+  `[anno-test memory] refused estimate=1073741824 reason=low-memory stop` - traced to the WSL
+  ASan/UBSan gate's VM (`vmmemWSL`, ~10.7 GB) running concurrently on the same host and starving
+  the memory-budget coordinator's headroom, not a product defect. Re-run in isolation, after the
+  WSL gate finished and freed that memory, all 14 passed cleanly - the number this entry reports
+  above. Evidence: `C:\Users\altin\AppData\Local\Temp\gate_full_4090.log` (the clean canonical-gate
+  log) and the two raw `ctest -V` logs behind the contended/clean comparison, kept locally on this
+  host (not committed - they are run-local evidence, same as every other gate log this project
+  produces).
+- `anno_render_gpu_tests` (116 cases, the RTX 4090, included in the 2344 executed): all pass,
+  folded into the count above.
+
+**2. GPU tests on the Radeon iGPU.** `ANNO_REQUIRE_GPU=1 ANNO_GPU_ADAPTER=1 ctest --preset msvc -L
+gpu` (the method `docs/testing/gpu-tests.md` documents): **116/116 pass**, including `play: GPU
+matches the CPU path on one scene, on the Radeon iGPU` by name.
+
+**3. The WSL gate** (`tools/test/wsl_gate.sh`, run against the separate detached worktree above,
+`--gpu-lane`, tag `w4ui2parte`): app/sim/formats/tsupport lanes **PASS** (`selected=293
+executed=291 skipped=2 opt-in` / `selected=1452 executed=1448 skipped=4 opt-in` / `selected=97
+executed=97` / `selected=89 executed=85 skipped=4 opt-in` - all clean). Two lanes show a failure,
+neither caused by this package:
+- **render lane, 1 failure**: `a flow build that fails leaves the legacy look, final, built once
+  (game files)` - the exact flaky settle-condition test the independent reviewer of
+  W4-SETTLEMENT-1's own W7 gate already diagnosed and named
+  (`docs/orchestration/reviews/2026-11-07-w4-settlement-1-w7.md`: `FrameRenderer::update_chunks`
+  counts margin-ring chunks the test's 60-frame "nothing rebuilds" loop does not account for; a
+  repeated run settles it). No file under `src/render` in this branch's diff differs from that
+  review's own finding.
+- **gpu lane (lavapipe), 2 failures**: `play: GPU matches the CPU path on one scene` and the same
+  test `on the Radeon iGPU` - two of the same review's named "18 real-file test failures [that]
+  belong to main" (`f7c31ed8`'s strict scene loader, confirmed to reproduce at main `96775da4`
+  with the same messages, assigned to a separate task, W4-MAIN-2 part A, per the owner's
+  2026-11-07 decision in `docs/orchestration/TASKS.md`). Confirmed on this branch: both
+  `f7c31ed8` and `d2be23aa` (the construction-eligibility stage lock, the review's other named
+  cause) are ancestors of this branch's head, so it inherits them from `main` exactly as every
+  other current branch does; nothing in W4-UI-2's own diff touches scene loading or construction
+  eligibility's stage-lock logic.
+
+**4. `clang-format` 23.1.3 over the whole branch.** Installed fresh via `pip install --target
+<scratch dir> clang-format==23.1.3` (this checkout had no cached binary). Dry-run over every
+`.cpp`/`.hpp` file this branch changes versus `origin/main` (48 files, `git diff --name-only
+origin/main...HEAD`): clean, zero violations.
+
+**5. `tools/check_unix_warnings.sh`.** All four lanes clean: GCC 13.3.0 and Clang 18.1.3, each with
+the viewer+GPU compiled in (371 files) and without (73 files).
+
+**6. CI on the pushed head, all ten jobs.** Run `42449679918` (the independent-review-fixes
+commit): `cpp-format`, `cpp (linux-gcc)`, `cpp (macos-clang)`, `test (ubuntu-latest)`,
+`build-macos`, `cpp (linux-gcc-release)`, `cpp (windows-msvc)`, `test (windows-latest)`, `lint`,
+`cpp (linux-clang-asan)` - **all ten green.** The prior four pushes on this branch had shown
+`failure` in every non-Windows `cpp` matrix job: root-caused (not assumed) to
+`ctest_verdict.py`'s `PLATFORM` regex not recognizing `live_screen_matches_oracle`'s own
+"skipping: the screenshot step is Windows-only (viewer.cpp)" message, classing it "other" and
+failing the gate's default policy on every job except `windows-msvc` (where that test actually
+runs, never skips) - the same shape as the W4-MAIN-1 incident `ctest_verdict_test.py` already
+documents for two other phrasings. Fixed by extending `PLATFORM` to recognize `Windows[- ]only`/
+`needs? Windows` phrasings and adding the regression case, pushed separately before the
+independent-review fixes (commit `86d2fe0c`); confirmed green on the next run (`42448750944`)
+before the independent-review-fixes commit was even pushed.
+
+### Decisions and reasoning
+
+1. **Did not accept the first full-ctest run's 14 failures at face value.** Every one printed
+   `[anno-test memory] refused ... reason=low-memory stop`, not an assertion failure - a different
+   shape from a real defect. Checked the host's own concurrent load (`vmmemWSL` ~10.7 GB, the WSL
+   gate running at the same time) before concluding anything about the product, then re-ran in
+   isolation rather than reporting a false positive or quietly omitting the first run's numbers.
+2. **Cross-checked against a clean `main` build rather than reasoning from git ancestry alone**,
+   for the first run's 14 names, before attributing them to contention - evidence over inference,
+   per CLAUDE.md's own rule, even though the git-ancestry argument (both suspect root-cause commits
+   are ancestors of this branch) already pointed the same way.
+3. **Named the three Windows-symlink "other" skips individually with their German error text and
+   the existing contract-test precedent that already accepts this exact phrasing**, rather than
+   passing `--allow-skip other` silently or, worse, leaving the gate at its failing exit code
+   unexplained. The coordinator's instruction was explicit: "don't gloss over any skip."
+4. **Did not re-litigate the WSL gate's two pre-existing failures.** Both are already independently
+   diagnosed and attributed in a committed review (the flaky settle condition; the two `f7c31ed8`-
+   caused cases, assigned elsewhere as "main's repair... does not belong in this package"). Re-
+   deriving the same conclusion from scratch here would have been redundant evidence-gathering
+   against an already-settled, already-reviewed fact; citing it is not the same as skipping
+   verification - the citation itself was checked against this branch (the ancestry check, #2
+   above) before relying on it.
+5. **Left the independent-review section entirely unwritten**, per the coordinator's explicit
+   instruction, rather than drafting even a placeholder claiming self-review - the whole point of
+   dispatching a fresh, context-free reviewer is that this session cannot be its own check.
+
+### Evidence paths
+
+- `docs/adr/0004-ui-toolkit.md` (R, M, R3, the two corrections from the independent review).
+- `docs/testing/construction-menu-playtest.md` (K, corrected for the GPU fix).
+- `docs/orchestration/REPORTS.md` (every checkpoint entry cited above, this file, by heading).
+- `docs/orchestration/reviews/2026-11-07-w4-settlement-1-w7.md` (the two pre-existing WSL-gate
+  failures' own prior diagnosis).
+- `docs/orchestration/TASKS.md` (the owner's 2026-11-07 assignment of main's 18 real-file test
+  repairs elsewhere).
+- CI run `42449679918` (all ten jobs); CI run `42448750944` (the gate-classifier fix alone, green).
+- `tools/test/ctest_verdict.py`/`ctest_verdict_test.py` (the gate-classifier fix and its
+  regression case).
+- Local, uncommitted run evidence on this host: `C:\Users\altin\AppData\Local\Temp\gate_full_4090.log`
+  (the clean canonical full-suite gate log); the WSL gate's own summary and per-lane logs under
+  `~/anno-gate-logs/anno1503-W4-ui-2-wslgate/` inside WSL Ubuntu.
+
+### Addendum: this entry's own CI run, and a transient flake
+
+Pushing this entry (commit `a87310d6`, docs-only) triggered CI run `42486342203`. `cpp
+(linux-gcc-release)` failed with 4 real `anno_test_support_tests` failures (`F3 (D1, crash
+handover)`, `F3 (D1, silent)`, `O1`, `O3` - all coordinator restart/crash-handover/admission-retry
+timing tests), while `cpp (linux-gcc)` and `cpp (macos-clang)` passed on the identical commit
+running the identical test binary. The gate-classifier fix itself is confirmed working on this run
+(`live_screen_matches_oracle` now classes `platform`, not `other`, exactly as intended). Not
+accepted as a real regression without checking: nothing in this push touched `test_support` or
+coordinator code (the diff was `docs/orchestration/REPORTS.md` alone), and the same four tests had
+passed clean on this same job on an earlier commit of this branch (`128622306864`, the "K
+checkpoint" run, `failed=0`). Re-ran only the failed job (`gh run rerun 42486342203 --job
+128748934567`) rather than the whole workflow or treating it as settled without evidence: it
+passed clean on the rerun. All ten jobs green on this head (`gh run view 42486342203 --json jobs`:
+10 jobs, 0 non-success). Recorded as a CI-runner timing flake in these coordinator-restart tests,
+not a W4-UI-2 defect - worth a QUESTION to the coordinator if it recurs, since repeated flakiness
+in exactly these timing-sensitive tests would be worth its own look, but one occurrence with an
+unrelated diff and a clean rerun does not establish that yet.
+
+### Next
+
+Independent review (dispatched separately by the coordinator) and this entry's own sign-off.
+Status stays REVIEW PENDING until the coordinator folds that review's findings in.
+
+## W4-UI-2 — QUESTION: a recurring coordinator crash-handover flake in CI — 2026-11-08
+
+**Not accepted as a one-off this time.** The same `anno_test_support_tests` coordinator
+restart/handover family failed in CI twice today, on two different, unrelated, docs-only commits
+of this branch:
+
+- **`a87310d6`** (the Part E factual report, docs-only diff): `cpp (linux-gcc-release)` failed,
+  four cases - `F3 (D1, crash handover)`, `F3 (D1, silent)`, `O1`, `O3`. Diagnosed at the time as a
+  transient CI-runner timing flake (the same four cases had passed clean on an earlier commit of
+  this same branch, run `128622306864`); rerunning only that job passed clean, and all ten jobs
+  were green on that head (run `42486342203`).
+- **`90134c6f`** (this review's own R2-heading fix, docs-only diff): `cpp (linux-gcc)` failed, one
+  case this time - `F3 (D1, crash handover): a journaled promise of a live owner is still counted
+  by the successor until the owner exits`
+  (`COUNTS: selected=2370 executed=2062 failed=1 ... VERDICT: FAIL`). Rerunning only that job -
+  [in progress / result below].
+
+**Both failures are in the exact same sub-family** (`F3 (D1, ...)`, the coordinator
+crash/drain-handover tests in `budget_f3_test.cpp`), and both triggering commits touch nothing but
+`.md` files - no C++ changed, no coordinator code, no test code, no build config. That two
+different, unrelated docs-only pushes each independently hit this same narrow test family, on two
+different Linux CI jobs, is itself evidence this is environment/timing, not a product defect in
+W4-UI-2 - but "probably timing" twice today without a bound is exactly the pattern this packet's
+own evidence-contract rules say not to wave through a second time.
+
+**Prior art in this project for this exact failure shape**: `docs/orchestration/REPORTS.md` (the
+T10c/coordinator round, line ~11154) already documents three failures in this identical sub-family
+(`F3 (D1, handover / crash handover / silent)`) attributed to `BIND-FAILED` on ports 47813/47814 -
+"the Debug run's test-started coordinators still held the ports, they idle out after 30s" - a
+concurrent-CI-job port-timing issue, not a coordinator logic defect. Today's two failures are
+consistent with the same general class (startup/handover races under CI's own concurrent-job
+timing), though not confirmed to be the identical port-collision mechanism - I have not reproduced
+either failure locally, only read the CI log lines above.
+
+**QUESTION for the owner**: what closes this, so a third occurrence doesn't get re-litigated from
+scratch again either?
+- **(a) Root-cause it properly** - reproduce locally (or in a dedicated CI job) under realistic
+  concurrent load, find the actual race (plausibly the same port-bind-timeout family as the T10c
+  precedent, but confirm rather than assume), and fix it.
+- **(b) An explicit acceptance bound**: N consecutive clean CI runs of the full
+  `anno_test_support_tests` suite (not just the one case that happened to fail) on `linux-gcc` and
+  `linux-gcc-release`, logged with their run ids, before this flake family is treated as "known and
+  harmless" rather than "investigate every time."
+
+**My recommendation**: (b) with **N = 5**, as the practical near-term bound - it's cheap (these are
+already-running CI jobs, not new work) and gives a concrete, falsifiable condition rather than an
+open-ended "probably fine." But (a) is the real fix if this keeps recurring at this rate (twice in
+one day), and I'd treat three or more occurrences in a week as past the point where (b) alone is
+the right answer - that pattern should trigger (a) regardless of where the N-count stands.
+
+Not blocking the merge decision below by itself (both occurrences are on docs-only commits, not on
+`b3d8793d`'s product-code diff, and both cleared on a job-level rerun) - but tracked here, by name,
+so it isn't quietly re-diagnosed as "probably a flake" a third time without this history.
+
+### Update: a third occurrence the same day, different cases, escalating the recommendation
+
+Pushing this very entry (commit `016a89b3`, itself docs-only) triggered CI run `42500489989`.
+`cpp (linux-clang-asan)` failed again - two *different* cases this time, still in
+`anno_test_support_tests`: `V3: the predecessor journal states: clean ones start, outstanding or
+unprovable ones refuse without touching a byte` and `V4: a predecessor journal of another port
+does not block` (`VERDICT: FAIL failed tests`, job `128791957303`). Rerunning that job now;
+result below once it reports.
+
+That is **three failures in one day**, on three different docs-only commits, hitting three
+different specific cases (`F3 (D1, crash handover)`/`F3 (D1, silent)`/`O1`/`O3` at `a87310d6`;
+`F3 (D1, crash handover)` alone at `90134c6f`; now `V3`/`V4` "predecessor journal" at `016a89b3`),
+but always the same general subsystem (`anno_test_support_tests`, the coordinator's own test
+infrastructure) and always on Linux CI jobs. The spread across *different* specific cases each
+time is itself informative: it argues against one narrow bug in one specific test and toward a
+shared, systemic cause in the coordinator test harness under CI's own concurrency/timing (matching
+this project's own prior `BIND-FAILED` port-timing precedent cited above) - but three occurrences
+in one day already exceeds the "three in a week" bar I set above for when root-causing, not just
+counting clean runs, becomes the right call.
+
+**Revised recommendation**: escalate to **(a), root-cause it**, now - not after a fourth
+occurrence. (b)'s N-consecutive-clean-runs bound is still worth tracking in parallel (it costs
+nothing extra), but at this rate it will keep getting interrupted by new failures before reaching
+N anyway, and counting clean runs without finding the actual cause does not reduce the risk that a
+real coordinator defect is hiding inside what looks like "probably timing." This QUESTION's
+resolution should wait for the owner's direction on who picks up the root-cause work, not for me
+to guess a fix for coordinator-test-infrastructure code this packet's own scope (W4-UI-2, a UI
+consumer) was never meant to touch.

@@ -90,6 +90,8 @@ std::optional<OpeningKey> opening_key_from_sdl(SDL_Keycode key) {
         return OpeningKey::Found;
     case SDLK_U:
         return OpeningKey::Unload;
+    case SDLK_L:
+        return OpeningKey::Load;
     case SDLK_H:
         return OpeningKey::Halt;
     case SDLK_T:

@@ -44,6 +44,15 @@ const sim::BuildingType* DevInput::selected_type() const {
     return registry_->find(*id);
 }
 
+bool DevInput::arm(sim::TypeId type) {
+    const auto it = std::find(types_.begin(), types_.end(), type);
+    if (it == types_.end()) {
+        return false;
+    }
+    index_ = static_cast<std::size_t>(std::distance(types_.begin(), it));
+    return true;
+}
+
 bool DevInput::road_like() const {
     const sim::BuildingType* type = selected_type();
     return type != nullptr && (type->flags_word & sim::kRoadFlag) != 0;

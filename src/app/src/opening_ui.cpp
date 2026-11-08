@@ -86,6 +86,7 @@ bool OpeningUi::has_pending() const {
 void OpeningUi::leave_modes() {
     mode_ = OpeningMode::Select;
     unload_target_.reset();
+    load_source_.reset();
     hover_tile_.reset();
 }
 
@@ -410,7 +411,7 @@ UiResult OpeningUi::click_left(double px, double py, const ScreenProjection* fra
         hover_tile_.reset();
         return out;
     }
-    if (mode_ == OpeningMode::Unload) {
+    if (mode_ == OpeningMode::Unload || mode_ == OpeningMode::Load) {
         const auto p = frame->pick(px, py);
         if (p && feed.view != nullptr) {
             for (const CityView& c : feed.view->cities) {
@@ -418,13 +419,21 @@ UiResult OpeningUi::click_left(double px, double py, const ScreenProjection* fra
                     p->tile.y >= c.warehouse->tile.y &&
                     p->tile.x < c.warehouse->tile.x + static_cast<std::int64_t>(c.warehouse->w) &&
                     p->tile.y < c.warehouse->tile.y + static_cast<std::int64_t>(c.warehouse->h)) {
-                    unload_target_ = c.warehouse->id;
-                    message_ = "unload target: your warehouse in " + c.name;
+                    if (mode_ == OpeningMode::Load) {
+                        load_source_ = c.warehouse->id;
+                        message_ = "load source: your warehouse in " + c.name;
+                    } else {
+                        unload_target_ = c.warehouse->id;
+                        message_ = "unload target: your warehouse in " + c.name;
+                    }
                     return out;
                 }
             }
         }
-        message_ = "click one of your warehouses to choose it, or Enter for the nearest";
+        message_ = (mode_ == OpeningMode::Load ? "click one of your warehouses to choose it as the "
+                                                 "source, or Enter for the nearest"
+                                               : "click one of your warehouses to choose it, or "
+                                                 "Enter for the nearest");
         return out;
     }
     // Select mode.
@@ -477,6 +486,84 @@ void OpeningUi::clamp_unload(const ShipView& ship) {
         1, std::min<std::uint64_t>(whole + ((ship.holds[unload_hold_].amount_88 % 256) != 0),
                                    0xFFFFFFFFu)));
     unload_tons_ = std::clamp<std::uint32_t>(unload_tons_, 1, most);
+}
+
+void OpeningUi::clamp_load(const ShipView& ship) {
+    if (ship.holds.empty()) {
+        load_hold_ = 0;
+        load_tons_ = 1;
+        return;
+    }
+    if (load_hold_ >= ship.holds.size()) {
+        load_hold_ = 0;
+    }
+    load_tons_ = std::max<std::uint32_t>(load_tons_, 1);
+}
+
+std::optional<OpeningUi::LoadPlan> OpeningUi::load_plan(const UiFeed& feed) const {
+    if (feed.view == nullptr || !selected_) {
+        return std::nullopt;
+    }
+    const ShipView* ship = feed.view->ship(*selected_);
+    if (ship == nullptr || ship->holds.empty() || load_hold_ >= ship->holds.size()) {
+        return std::nullopt;
+    }
+    LoadPlan plan;
+    plan.hold = load_hold_;
+    plan.tons = load_tons_;
+    std::optional<sim::BuildingId> source = load_source_;
+    if (source) {
+        bool present = false;
+        for (const CityView& c : feed.view->cities) {
+            present = present || (c.warehouse && c.warehouse->id == *source);
+        }
+        if (!present) {
+            source.reset();
+        }
+    }
+    if (!source) {
+        source = default_target(*ship, *feed.view);
+    }
+    if (!source) {
+        plan.advisory = "you have no warehouse yet (found one first)";
+        return plan;
+    }
+    plan.warehouse = *source;
+    // The hold's own goods, if it already carries any (topping up); else the source warehouse's
+    // most-stocked real goods (stock_88[0] is the sim's "empty" sentinel, never a real good).
+    plan.goods = ship->holds[load_hold_].goods;
+    if (ship->holds[load_hold_].amount_88 == 0) {
+        plan.goods = 0;
+        for (const CityView& c : feed.view->cities) {
+            if (!c.warehouse || c.warehouse->id != *source) {
+                continue;
+            }
+            std::uint32_t best = 0;
+            for (std::size_t g = 1; g < c.stock_88.size(); ++g) {
+                if (c.stock_88[g] > best) {
+                    best = c.stock_88[g];
+                    plan.goods = static_cast<sim::GoodsId>(g);
+                }
+            }
+        }
+    }
+    for (const CityView& c : feed.view->cities) {
+        if (!c.warehouse || c.warehouse->id != *source) {
+            continue;
+        }
+        const bool in_range = sim::ShipCargo::footprint_in_range(
+            tile_of(ship->pos.x), tile_of(ship->pos.y), c.warehouse->tile.x, c.warehouse->tile.y,
+            c.warehouse->w, c.warehouse->h, setup_.cargo);
+        const std::uint64_t stock = plan.goods < c.stock_88.size() ? c.stock_88[plan.goods] : 0;
+        // The ship's free room per hold is not in OpeningView (OQ, flagged in the D1 report): this
+        // advisory can only bound the move by the source's stock, not by the ship's own capacity.
+        const std::uint64_t move = std::min<std::uint64_t>(std::uint64_t{plan.tons} * 256, stock);
+        plan.advisory = std::string(in_range ? "in range" : "OUT OF RANGE (sail closer)") +
+                        "; would move up to " + tons_text(move) + " t of " +
+                        goods_name(plan.goods) + " from store " + tons_text(stock) +
+                        " t (ship room unknown to this advisory)";
+    }
+    return plan;
 }
 
 std::optional<OpeningUi::UnloadPlan> OpeningUi::unload_plan(const UiFeed& feed) const {
@@ -615,6 +702,28 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
         message_ = "unloading: Tab hold, [ ] quantity, Enter sends";
         return out;
     }
+    case OpeningKey::Load: {
+        out.taken = true;
+        if (mode_ == OpeningMode::Load) {
+            leave_modes();
+            message_ = "loading cancelled";
+            return out;
+        }
+        std::string why;
+        const ShipView* ship = own_selected(feed, why);
+        if (ship == nullptr) {
+            message_ = "no loading: " + why;
+            return out;
+        }
+        leave_modes();
+        mode_ = OpeningMode::Load;
+        load_hold_ = 0;
+        load_tons_ = 1;
+        clamp_load(*ship);
+        message_ = "loading (developer adapter, not the original's trade panel): Tab hold, [ ] "
+                   "quantity, Enter sends";
+        return out;
+    }
     case OpeningKey::Rotate:
     case OpeningKey::RotateBack:
         if (mode_ != OpeningMode::Found) {
@@ -633,6 +742,17 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
             found_type_ = setup_.founding_types.empty()
                               ? 0
                               : (found_type_ + 1) % setup_.founding_types.size();
+            return out;
+        }
+        if (mode_ == OpeningMode::Load) {
+            out.taken = true;
+            const ShipView* ship =
+                feed.view == nullptr || !selected_ ? nullptr : feed.view->ship(*selected_);
+            if (ship == nullptr || ship->holds.empty()) {
+                return out;
+            }
+            load_hold_ = static_cast<std::uint32_t>((load_hold_ + 1) % ship->holds.size());
+            clamp_load(*ship);
             return out;
         }
         if (mode_ != OpeningMode::Unload || feed.view == nullptr || !selected_) {
@@ -657,7 +777,10 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
     }
     case OpeningKey::QtyDown:
     case OpeningKey::QtyUp: {
-        if (mode_ != OpeningMode::Unload || feed.view == nullptr || !selected_) {
+        if (mode_ != OpeningMode::Unload && mode_ != OpeningMode::Load) {
+            return out;
+        }
+        if (feed.view == nullptr || !selected_) {
             return out;
         }
         out.taken = true;
@@ -666,15 +789,66 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
             return out;
         }
         const std::uint32_t step = shift ? 10 : 1;
+        std::uint32_t& tons = mode_ == OpeningMode::Load ? load_tons_ : unload_tons_;
         if (key == OpeningKey::QtyUp) {
-            unload_tons_ += step;
+            tons += step;
         } else {
-            unload_tons_ = unload_tons_ > step ? unload_tons_ - step : 1;
+            tons = tons > step ? tons - step : 1;
         }
-        clamp_unload(*ship);
+        if (mode_ == OpeningMode::Load) {
+            clamp_load(*ship);
+        } else {
+            clamp_unload(*ship);
+        }
         return out;
     }
     case OpeningKey::Send: {
+        if (mode_ == OpeningMode::Load) {
+            out.taken = true;
+            std::string why;
+            const ShipView* ship = own_selected(feed, why);
+            if (ship == nullptr) {
+                message_ = "no load: " + why;
+                return out;
+            }
+            const auto plan = load_plan(feed);
+            if (!plan || !plan->warehouse.valid()) {
+                message_ = "no load: " + (plan ? plan->advisory : std::string("no ship selected"));
+                return out;
+            }
+            if (plan->tons == 0) {
+                message_ = "no load: the quantity is zero";
+                return out;
+            }
+            if (plan->goods == 0) {
+                // The hold is empty and the source warehouse has no stock of any real good
+                // (goods index 0 is the sim's "empty" sentinel): there is nothing to load. Refuse
+                // here with the UI's own message instead of sending a LoadCmd for the sentinel
+                // (W4-MAIN-2 review D finding 4).
+                message_ = "no load: the warehouse has no stock to load";
+                return out;
+            }
+            sim::LoadCmd cmd;
+            cmd.ship = ship->id;
+            cmd.warehouse = plan->warehouse;
+            cmd.hold = plan->hold;
+            cmd.goods = plan->goods;
+            cmd.tons = plan->tons;
+            out.commands.push_back(sim::Command{setup_.local, cmd});
+            Tracked t;
+            t.kind = TrackKind::Load;
+            t.ship = ship->id;
+            t.warehouse = plan->warehouse;
+            t.hold = plan->hold;
+            t.tons = plan->tons;
+            t.goods = plan->goods;
+            t.hold_before_88 = ship->holds[plan->hold].amount_88;
+            pending_submit_.clear();
+            pending_submit_.push_back(t);
+            message_ =
+                "load sent: " + std::to_string(plan->tons) + " t of " + goods_name(plan->goods);
+            return out;
+        }
         if (mode_ != OpeningMode::Unload) {
             return out;
         }
@@ -849,6 +1023,7 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
     std::string gold_s, ship_s, city_s, adv_s, cmd_s, ptr_s;
     const char* mode = mode_ == OpeningMode::Found    ? "FOUND"
                        : mode_ == OpeningMode::Unload ? "UNLOAD"
+                       : mode_ == OpeningMode::Load   ? "LOAD"
                                                       : "select";
     const std::string mode_s = std::string("mode ") + mode;
     const OpeningView* view = feed.view;
@@ -898,6 +1073,12 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
                     " request " + std::to_string(plan->tons) + " t: " + plan->advisory;
         }
     }
+    if (mode_ == OpeningMode::Load) {
+        if (const auto plan = load_plan(feed)) {
+            adv_s = "hold [" + std::to_string(plan->hold) + "] " + goods_name(plan->goods) +
+                    " request " + std::to_string(plan->tons) + " t: " + plan->advisory;
+        }
+    }
     if (mode_ == OpeningMode::Found) {
         if (const auto p = found_preview(feed)) {
             const sim::BuildingType* bt =
@@ -932,6 +1113,9 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
         case TrackKind::Unload:
             s = "unload #" + std::to_string(t.receipt.n);
             break;
+        case TrackKind::Load:
+            s = "load #" + std::to_string(t.receipt.n);
+            break;
         }
         const TrackState st = state_of(t, feed);
         s += std::string(": ") + track_state_name(st);
@@ -947,7 +1131,8 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
                     s += std::string(" (") + (e->reason < 4 ? names[e->reason] : "?") + ")";
                 }
             }
-            if (t.kind == TrackKind::Unload && out.state == CommandOutcome::State::Applied) {
+            if ((t.kind == TrackKind::Unload || t.kind == TrackKind::Load) &&
+                out.state == CommandOutcome::State::Applied) {
                 s += ": moved " + tons_text(out.transferred_88) + " t of " +
                      std::to_string(t.tons) + " requested" +
                      (out.transferred_88 < std::uint64_t{t.tons} * 256 ? " (limited)" : "");

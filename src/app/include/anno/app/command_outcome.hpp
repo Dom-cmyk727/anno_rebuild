@@ -57,8 +57,8 @@ struct CommandOutcome {
     std::vector<sim::Reject> records;
     /// What an accepted ship command produced (W4-OPENING-1), read from the sim's own result at the
     /// turn that ran it: the id of the order a MoveCmd created (never reused), the amount an
-    /// UnloadCmd moved in 1/256 ton, and the building a FoundCmd created. Not set for any other
-    /// outcome (and never inferred from a later snapshot).
+    /// UnloadCmd or LoadCmd moved in 1/256 ton, and the building a FoundCmd created. Not set for
+    /// any other outcome (and never inferred from a later snapshot).
     std::optional<std::uint64_t> order_id;
     std::uint64_t transferred_88 = 0;
     sim::BuildingId created;

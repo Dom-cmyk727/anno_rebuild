@@ -1,0 +1,76 @@
+# W4-EXPAND-LIVE-1 D4: the developer Load adapter (key L; not the original's warehouse trade panel,
+# UI.1 F2.2, OQ-547) driven in the real window on the RTX 4090. Sails to the coast, founds the
+# warehouse through the real founding tool (opening_resume.script's proven click), unloads one hold
+# so the warehouse holds real stock, then loads some of it back aboard and confirms the fact line
+# and the ship's hold change by the actual transfer, not the raw request. Launch:
+#   --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200
+wait frames 20
+wait fact cities == 0 within 60000
+expect fact gold == 30000
+pick-ship 1
+expect fact selected == 1
+lookw 257 134
+wait frames 20
+sail 257 134
+wait fact latest == arrived within 600000
+wait turns 3
+expect fact ship.1.x == 257
+expect fact ship.1.y == 134
+# The real founding (opening_resume.script's proven click: the sim accepts this rotation).
+lookw 255 138
+wait frames 20
+key f
+hover-land 255 138
+wait frames 10
+wait fact found.coast == yes within 5000
+wait fact found.sim == None within 5000
+screenshot 1-founding-preview
+click-land 255 138
+wait fact latest == accepted within 10000
+expect fact cities == 1
+screenshot 2-founded
+# Stock the warehouse: unload all of hold 0. Hold 0 starts at 50 t of goods 42 (wood), but founding
+# already paid 12 t of it away (ship-opening-playtest.md step 3), so 38 t is what is left to unload
+# here (ship-opening-playtest.md step 4 confirms the same 38 t for this exact manifest and click).
+key u
+expect fact mode == unload
+wait fact request == 38 within 5000
+key enter
+wait fact latest == accepted within 10000
+expect fact store.42 == 9728
+expect fact ship.1.hold0 == 0
+screenshot 3-stocked
+# Load mode: a developer adapter. The default request is 1 t; [ ] and +/- move it the same as
+# Unload's.
+key l
+expect fact mode == load
+wait fact request == 1 within 5000
+key plus
+key plus
+wait fact request == 3 within 5000
+key enter
+wait fact tracked >= 3 within 10000
+wait fact latest == accepted within 10000
+# 3 t requested, moved exactly 3 t (the warehouse holds 38 t, far more than enough).
+expect fact latest_moved == 768
+expect fact ship.1.hold0 == 768
+expect fact store.42 == 8960
+screenshot 4-loaded
+# Tab visits every hold, not only an empty one: hold 1 already carries 10 t of food (the
+# ship-start's original loadout), so Load keeps that hold's own goods (food) rather than switching
+# to the warehouse's most-stocked good. The warehouse has no food yet (only the wood just unloaded
+# and the tools founding paid in): the sim correctly refuses this one, cleanly, not a UI guess.
+key tab
+wait fact request == 3 within 5000
+key enter
+wait fact tracked >= 4 within 10000
+wait fact latest == refused within 10000
+expect fact latest_reason == StockShort
+expect fact ship.1.hold1 == 2560
+screenshot 5-load-refused-no-stock
+# A refusal does not leave the mode (same as Unload's): still in Load. Esc cancels it, sending
+# nothing.
+expect fact mode == load
+key esc
+expect fact mode == select
+quit

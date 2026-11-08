@@ -64,6 +64,11 @@ class Contract(unittest.TestCase):
             "skipping: no endless scenario",
             "skipping: 06_1024_heavy_256.sze is not in this game directory",
             "skipping: Single_01.sze is not in this game directory",
+            # W4-OPENING-CONTROLS-FLAKE step 0: founding_assets_test.cpp:639's message was
+            # restructured so its leading literal alone (before the stream-concatenated file
+            # path) names the missing-asset phrase, instead of being the bare, unclassifiable
+            # "skipping: ".
+            "skipping: scenario file is not in this game directory: ",
         ]
         for text in forms:
             code, out = one([text])
@@ -83,7 +88,12 @@ class Contract(unittest.TestCase):
                      # budget_f4_test.cpp (N4b, macOS branch): same package, classed "other"
                      # on macos-clang CI.
                      "skipping: the descriptor check reads /proc/<pid>/fd, which only Linux "
-                     "has"]:
+                     "has",
+                     # live_screen_compare.py: classed "other" on linux-gcc/linux-gcc-release/
+                     # linux-clang-asan/macos-clang CI (W4-UI-2, 2026-11-08) until this
+                     # phrasing was recognized.
+                     "skipping: the screenshot step is Windows-only (viewer.cpp)",
+                     "skipping: the native Windows capture needs Windows"]:
             code, out = one([text])
             self.assertEqual(code, 0, text)
             self.assertIn("platform=1", self.counts(out), text)
@@ -224,11 +234,6 @@ class Contract(unittest.TestCase):
             # creation) inside an otherwise-executed test; only that row is excluded, the rest
             # of the test still runs.
             "skipping the symlink rows: ",
-            # founding_assets_test.cpp:639: the literal prefix of "skipping: " << file.string()
-            # << " not present" - a stream-concatenated message this static scan cannot classify
-            # past its prefix. At runtime it names a missing scenario file, the same class as the
-            # required-asset messages above; not reclassified here (flagged, W4-MAIN-1 round R1).
-            "skipping: ",
         }
         root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src")
         literal = re.compile(r'"((?:skipping|skipped)[^"]*)"')

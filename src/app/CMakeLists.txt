@@ -5,6 +5,7 @@ add_library(anno_app_core
   src/building_delta.cpp
   src/command_outcome.cpp
   src/commands_file.cpp
+  src/construction_menu.cpp
   src/dev_feedback.cpp
   src/dev_session.cpp
   src/dev_input.cpp
@@ -27,6 +28,8 @@ add_library(anno_app_core
   src/ship_layer.cpp
   src/ship_motion.cpp
   src/still.cpp
+  src/ui_layout.cpp
+  src/ui_mock.cpp
   src/visibility.cpp
   src/window_trace.cpp
 )
@@ -45,6 +48,14 @@ if(MINGW)
   target_link_options(anno1503 PRIVATE -municode)
 endif()
 anno_target_defaults(anno1503)
+
+# anno_ui_mock: the CPU reference composition of a HUD/construction screen, as a PNG
+# (tools/test/ui_mock_compare.py diffs it against the UI.1 Python oracle's own mock). No SDL/GPU
+# dependency - window-independent, like anno_app_core itself.
+add_executable(anno_ui_mock src/ui_mock_main.cpp)
+target_link_libraries(anno_ui_mock PRIVATE anno_app_core)
+anno_target_defaults(anno_ui_mock)
+
 if(ANNO_BUILD_VIEWER)
   # The play window's SDL mapping for the developer tool (round ee, B3): the window and its tests
   # link the same code.
@@ -72,7 +83,9 @@ if(ANNO_BUILD_TESTS)
     tests/credit_test.cpp tests/picture_check_test.cpp tests/legal_workload_test.cpp
     tests/picture_trace_test.cpp tests/window_trace_test.cpp tests/command_outcome_test.cpp
     tests/visibility_test.cpp tests/dev_occupancy_test.cpp tests/dev_visibility_test.cpp
-    tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp)
+    tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
+    tests/ui_layout_test.cpp tests/ui_construction_eligibility_test.cpp
+    tests/construction_menu_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -80,6 +93,13 @@ if(ANNO_BUILD_TESTS)
   anno_target_defaults(anno_app_tests)
   anno_stage_budget_coord(anno_app_tests)
   anno_add_doctest(anno_app_tests)
+  # W4-UI-2 H4/C4: the shipped CPU reference composition (anno_ui_mock) checked pixel by pixel
+  # against the UI.1 Python oracle's own mock, for all nine named screens. Needs the original game
+  # files and Pillow; skips (77) without either (tools/test/ui_mock_compare.py).
+  add_test(NAME ui_mock_matches_oracle
+    COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_mock_compare.py
+            $<TARGET_FILE:anno_ui_mock>)
+  set_tests_properties(ui_mock_matches_oracle PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
   # The two full-corpus cases (every scenario file, every assertion) are "heavy" (the suite name in
   # play_test.cpp); in a sanitizer build they also get an 8000 s per-test timeout, set after the cases
   # are discovered (AnnoAppSanitizerTimeouts.cmake; docs/testing/README.md).
@@ -120,6 +140,68 @@ if(ANNO_BUILD_TESTS)
         set_tests_properties(viewer_wiring_${case} PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       endforeach()
+      # W4-SETTLEMENT-1 W5 Proof B: the developer inspection UI (PlayRunner::request_inspect,
+      # PlaySnapshot::inspection) reports real, live building/household state through the real
+      # window, built through the legal dev-tool placement path on the lan5 developer island.
+      add_test(NAME viewer_wiring_settlement_activity
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> settlement_activity)
+      set_tests_properties(viewer_wiring_settlement_activity PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-UI-2 C4: a construction-menu grid click (not the developer tool's own cycle) arms a
+      # type through DevTool::arm and places it through the ordinary command path, on the same
+      # lan5 tile/type settlement_activity.script already proves free and buildable.
+      add_test(NAME viewer_wiring_construction_menu_arm
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> construction_menu_arm
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_construction_menu_arm PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-UI-2 V1: the full interaction proof - every category tab, a locked cell (no command),
+      # an armed placement that actually builds, and a demolish of what was just built.
+      add_test(NAME viewer_wiring_construction_full_proof
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> construction_full_proof
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_construction_full_proof PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-UI-2 V1: an unaffordable placement - ANNO_DEV_GOODS_TONS=0 (main.cpp's own override,
+      # added for exactly this) leaves type 501's wood cost unpayable; the refusal is the ordinary
+      # BuildCmd path's CannotAfford, not a construction-menu-specific check (arming never looks
+      # at cost - ConstructionMenu::click's own doc comment).
+      add_test(NAME viewer_wiring_construction_unaffordable
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> construction_unaffordable
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_construction_unaffordable PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOODS_TONS=0")
+      # W4-UI-2 V2: construction_full_proof's own recording (commands.txt/hashes.txt), replayed
+      # headlessly in a fresh process (main.cpp's --commands/--replay-hashes, no window, no SDL -
+      # opening_session.py's own mechanism, applied to the fixed-map/construction-menu session).
+      # A negative control (the recorded build's type changed) must disagree at a checkpoint.
+      add_test(NAME construction_session_replay
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/construction_session_replay.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(construction_session_replay PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-UI-2 H1/C1 second slice: the live window's own drawing (draw_cpu ->
+      # draw_live_screen_xrgb), checked pixel by pixel against the UI.1 oracle (tools/test/
+      # ui_mock_compare.py already checks the standalone anno_ui_mock composer; this checks the
+      # real window instead), through a real captured screenshot (reads ANNO1503_GAME_DIR itself
+      # at run time, like ui_mock_compare.py; Windows only - the screenshot step's own platform
+      # limit).
+      add_test(NAME live_screen_matches_oracle
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/live_screen_compare.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(live_screen_matches_oracle PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
       # F2 (W4-WIN-FINAL): the CPU window settles a change only after the frame was delivered through
       # SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent; each stage is made to fail in turn.
       add_test(NAME viewer_wiring_cpu_delivery_failures
@@ -144,6 +226,18 @@ if(ANNO_BUILD_TESTS)
         set_tests_properties(viewer_wiring_${case} PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       endforeach()
+      # W4-EXPAND-LIVE-1 D4: the developer Load adapter (key L) driven in the real window, after the
+      # same full voyage and real founding as opening_sail.script/opening_resume.script use (not a
+      # short one: the proven founding coast is 550 tiles out). TIMEOUT follows opening_session_replay's
+      # budget for this same voyage, not viewer_wiring's 600 s default.
+      add_test(NAME viewer_wiring_expand_live_load
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> expand_live_load
+                --app-arg --ship-start
+                --app-arg ${PROJECT_SOURCE_DIR}/data/maps/candidates/ship-start-v2/lan5-ship-a.json
+                --app-arg --seat --app-arg 0 --app-arg --speed --app-arg 200)
+      set_tests_properties(viewer_wiring_expand_live_load PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 1200 PROCESSORS 4)
       add_test(NAME opening_session_replay
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/opening_session.py
                 $<TARGET_FILE:anno1503>)
@@ -160,6 +254,22 @@ if(ANNO_BUILD_TESTS)
         # hang is still caught by name. Not loosened for the normal build (viewer_wiring.py's default stays
         # 240 s there).
         set_tests_properties(opening_session_replay PROPERTIES
+          TIMEOUT 5400 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500;ANNO_VIEW_QUIT_S=1200")
+        # viewer_wiring_expand_live_load's own comment above says its TIMEOUT already follows
+        # opening_session_replay's budget for the same voyage (550 tiles out, one real founding);
+        # under ASan it hit exactly the failure mode opening_session_replay's own fix above
+        # documents, in two steps found by reading the actual failure (never guessed): first,
+        # viewer_wiring.py's own ANNO_VIEWER_WIRING_WATCHDOG_S subprocess timeout (default 300 s)
+        # fired before the outer CTest TIMEOUT could ("the window did not end within 300 s
+        # (watchdog)"); once that was scaled, the run (390 s) still failed, this time with "window
+        # exit 1" although script.log showed every reached line passing -- because the app's own
+        # ANNO_VIEW_QUIT_S force-quit (default 240 s, main.cpp: status=1 when
+        # `!script->done()`) fired before the script reached its last lines (the negative-control
+        # refusal checks and the final `quit`), so the window closed mid-script, not after it.
+        # This case was never run under ASan until the D5 WSL-ASan rerun (2026-11-07) added it to
+        # the lane's selection regex, so neither gap was previously observed. Scale both the same
+        # 5x as opening_session_replay.
+        set_tests_properties(viewer_wiring_expand_live_load PROPERTIES
           TIMEOUT 5400 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500;ANNO_VIEW_QUIT_S=1200")
       endif()
     endif()

@@ -1,0 +1,65 @@
+# W4-UI-2 V1: the construction menu's full interaction proof through the real window - every
+# category tab, a locked cell (no command sent), an armed placement that actually builds, and a
+# demolish of what was just built. Positions are data/ui/hud.txt's category_column_x (782) and
+# construction.txt's own category y / grid_click_x / grid_click_y values, not guessed; the world
+# tile (1156, 516) is the same one settlement_activity.script already proves free and buildable
+# for type 501.
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+
+# Every one of the 8 category tabs switches (construction.txt's own y per category).
+click_px 782 325
+wait frames 2
+expect title-lacks build
+click_px 782 373
+wait frames 2
+click_px 782 418
+wait frames 2
+click_px 782 463
+wait frames 2
+click_px 782 508
+wait frames 2
+click_px 782 553
+wait frames 2
+click_px 782 598
+wait frames 2
+click_px 782 643
+wait frames 2
+
+# Back to "public" (y 325), a locked cell (public (1,0), id 580, construction.txt "state locked"):
+# no command is sent - the title must never show it armed.
+click_px 782 325
+wait frames 2
+click_px 885 330
+wait frames 2
+expect title-lacks build 580
+
+# An unlocked cell (public (0,0), id 501): arm it, then place it on the proven-free tile.
+click_px 833 330
+wait frames 5
+expect title build 501
+click 1156 516
+wait outcome
+expect outcome Applied
+checkpoint built
+
+# Demolish mode: the placement panel is still open after the build (nothing in the world-click
+# path closes it), so the pickaxe rectangle still resolves Cancel at first click (closing the
+# panel, construction_placement_open_ -> false) - a second click at the same spot now resolves
+# ToggleDemolish (DevInput's own demolish_ flag, independent of the armed type Cancel never
+# clears). Then the just-built house itself.
+click_px 996 736
+wait frames 2
+click_px 996 736
+wait frames 5
+click 1156 516
+wait outcome
+expect outcome Applied
+checkpoint demolished
+
+key esc
+wait frames 5
+quit

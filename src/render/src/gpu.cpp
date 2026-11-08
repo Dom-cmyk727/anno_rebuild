@@ -333,6 +333,16 @@ struct GpuFrame::Impl {
     PipelineLayout scale_pl;
     RenderPipeline scale_pipe;
     Buffer scale_uniform;
+    /// The UI overlay pass (ADR 0004 R1, gpu.wgsl's own comment above ui_overlay_fs): its own
+    /// pipeline (reusing scale_vs) and the texture the caller's RGBA image is uploaded into every
+    /// call that has one. Created lazily, at the caller's own fixed size (never resized smaller -
+    /// this draws at exactly that size or not at all, so there is nothing to shrink for).
+    BindGroupLayout ui_overlay_layout;
+    PipelineLayout ui_overlay_pl;
+    RenderPipeline ui_overlay_pipe;
+    Texture ui_overlay_tex;
+    TextureView ui_overlay_view;
+    std::uint32_t ui_overlay_w = 0, ui_overlay_h = 0;
     /// The reduction of four chunks into one of a derived zoom level (reduce_fs
     /// in gpu.wgsl): group 3 holds one uniform slot per quadrant, bound with a
     /// dynamic offset.
@@ -2838,6 +2848,16 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         pd.bindGroupLayoutCount = scl.size();
         pd.bindGroupLayouts = scl.data();
         m.scale_pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(d, &pd));
+        // The UI overlay pass (group 3 of the module, its own layout - gpu.wgsl's own comment):
+        // one texture, no uniform.
+        m.ui_overlay_layout =
+            layout(d, "ui_overlay", {texture_entry(0, kFloat, WGPUTextureViewDimension_2D)});
+        const std::array uol = {m.empty_layout.get(), m.empty_layout.get(), m.empty_layout.get(),
+                                m.ui_overlay_layout.get()};
+        pd.label = sv("ui_overlay");
+        pd.bindGroupLayoutCount = uol.size();
+        pd.bindGroupLayouts = uol.data();
+        m.ui_overlay_pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(d, &pd));
         // The reduction (group 3 binding 2 of the module): a dynamic-offset
         // uniform, one slot per quadrant; the source chunk is group 1.
         WGPUBindGroupLayoutEntry re = uniform_entry(2);
@@ -2887,6 +2907,10 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         m.pipeline("sprite", m.sprite_pl.get(), "sprite_vs", "sprite_fs", &vbl, 1, format, &alpha);
     m.scale_pipe =
         m.pipeline("scale", m.scale_pl.get(), "scale_vs", "scale_fs", nullptr, 0, format, nullptr);
+    // Alpha-blended (the CPU path's own straight-alpha convention, gpu.wgsl's ui_overlay_fs):
+    // reuses scale_vs's full-screen triangle, never clears, draws over whatever is already there.
+    m.ui_overlay_pipe = m.pipeline("ui overlay", m.ui_overlay_pl.get(), "scale_vs", "ui_overlay_fs",
+                                   nullptr, 0, format, &alpha);
     {
         // Four render targets (ground, objects, field, terrain), no blending.
         const std::array formats = {WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_RGBA8Unorm,
@@ -3059,16 +3083,16 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const std::shared_ptr<const Sce
                           Rect view, std::size_t group, std::uint64_t time_ms, WaterStyle style,
                           WGPUTextureView target, const Resample* resample,
                           std::span<const SpriteDraw> overlay,
-                          std::span<const UnitSprite> live_units) {
+                          std::span<const UnitSprite> live_units, const assets::Rgba* ui_overlay) {
     impl_->frame_scene = scene;
     return render(frames, *scene, view, group, time_ms, style, target, resample, overlay,
-                  live_units);
+                  live_units, ui_overlay);
 }
 
 GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                           std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
                           const Resample* resample, std::span<const SpriteDraw> overlay,
-                          std::span<const UnitSprite> live_units) {
+                          std::span<const UnitSprite> live_units, const assets::Rgba* ui_overlay) {
     Impl& m = *impl_;
     // Nothing of the scene stays referenced once the frame is recorded and submitted: the frame
     // table pointer and the owning handle (if any) are dropped on every way out. Uploads copy the
@@ -3530,6 +3554,41 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 2, m.empty_bind.get(), 0, nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 3, scale_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderDraw(p, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(p);
+        wgpuRenderPassEncoderRelease(p);
+    }
+    if (ui_overlay != nullptr && ui_overlay->width > 0 && ui_overlay->height > 0) {
+        // ADR 0004 R1: drawn last of all (after the resample pass too, so it always lands on the
+        // exact pixels `target` will present, whether or not this frame resampled), one
+        // full-screen alpha-blended quad sampling a texture uploaded fresh this call. Recreated
+        // only when the size actually changes (always 1024 x 768 today, the same exact-size gate
+        // the CPU path uses - R3 still open).
+        const auto uw = static_cast<std::uint32_t>(ui_overlay->width);
+        const auto uh = static_cast<std::uint32_t>(ui_overlay->height);
+        if (!m.ui_overlay_tex || m.ui_overlay_w != uw || m.ui_overlay_h != uh) {
+            m.ui_overlay_tex =
+                make_texture(m.dev(), "ui overlay", WGPUTextureFormat_RGBA8Unorm, uw, uh, 1,
+                             WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
+            m.ui_overlay_view = make_view(m.ui_overlay_tex.get(), false);
+            m.ui_overlay_w = uw;
+            m.ui_overlay_h = uh;
+        }
+        write_layer(m.queue(), m.ui_overlay_tex.get(), 0, 0, 0, uw, uh, 4,
+                    ui_overlay->pixels.data(), ui_overlay->pixels.size());
+        const std::array entries = {view_entry(0, m.ui_overlay_view.get())};
+        WGPUBindGroupDescriptor bd = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        bd.label = sv("ui_overlay");
+        bd.layout = m.ui_overlay_layout.get();
+        bd.entryCount = entries.size();
+        bd.entries = entries.data();
+        const BindGroup ui_bind(wgpuDeviceCreateBindGroup(m.dev(), &bd));
+        WGPURenderPassEncoder p = begin(enc.get(), target, clear, nullptr, true); // load, not clear
+        wgpuRenderPassEncoderSetPipeline(p, m.ui_overlay_pipe.get());
+        wgpuRenderPassEncoderSetBindGroup(p, 0, m.empty_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(p, 2, m.empty_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(p, 3, ui_bind.get(), 0, nullptr);
         wgpuRenderPassEncoderDraw(p, 3, 1, 0, 0);
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);

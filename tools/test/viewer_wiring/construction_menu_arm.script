@@ -1,0 +1,33 @@
+# W4-UI-2 C4: a click on the construction menu's public category, cell (0, 0) (data/ui/
+# construction.txt's grid click centre (833, 330); type 501, the pioneer house) arms that type
+# through ConstructionMenu/DevTool::arm - not the developer tool's own Next/PrevType cycle - then
+# a click at the exact tile settlement_activity.script already proves free and buildable for this
+# same type on lan5's developer island places it through the ordinary DevTool command path.
+# Launch (viewer_wiring.py's own --app-arg list for this case):
+#   --play data/maps/lan5.txt --construction-menu on --layout data/ui
+# The window's default drawable is 1280 x 800 (viewer.cpp's SDL_CreateWindow), not data/ui/'s
+# 1024 x 768 reference; construction_handle only resolves clicks at that exact size (R3 is still
+# open), so this script resizes first. `key b` opens the menu itself (data/ui/construction.txt's
+# own `open_key B`) - a real collision with the developer tool's own B-toggle, resolved by state
+# (construction_handle claims B only while the menu is not yet open).
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+click 1156 516
+wait outcome
+expect outcome Applied
+# ESC is the menu's own key while it is open (data/ui/construction.txt's `leave_key ESC`): it
+# closes the menu, not the window (the window's own Esc-quits-the-app binding would end the
+# session here, which `quit` below would then never reach - proving the collision resolves to
+# the menu, not the window, is the point of this step).
+key esc
+wait frames 5
+# The menu is closed now: the same grid pixel does nothing (falls through; no further command).
+click_px 833 330
+wait frames 5
+quit

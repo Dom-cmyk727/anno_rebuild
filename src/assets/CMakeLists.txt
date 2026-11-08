@@ -4,6 +4,7 @@ add_library(anno_assets
   src/building.cpp
   src/figure.cpp
   src/island.cpp
+  src/text.cpp
   src/texture.cpp
   src/unit.cpp
 )
@@ -17,6 +18,7 @@ if(ANNO_BUILD_TESTS)
     tests/main.cpp
     tests/assets_test.cpp
     tests/assets_corpus_test.cpp
+    tests/text_test.cpp
   )
   target_link_libraries(anno_assets_tests PRIVATE anno_assets anno_test_support doctest::doctest)
   # Our own synthetic files (fixtures/synthetic, shared with the Python references).

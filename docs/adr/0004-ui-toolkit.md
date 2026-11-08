@@ -107,7 +107,39 @@ regression in the real renderer is caught the same way a wrong `data/ui/` fact w
 mutation checks (a wrong cell type, an accepted click on a locked cell, a click that sends no
 command, a wrong displayed cost) must each fail a test, per the dispatch.
 
-## QUESTION R2: the default surface in `--play`
+## Screen tree: bound vs. placeholder (W4-UI-2 M)
+
+Every screen `docs/re/ui.md` section 1's "In-game" table names (19, from a running Citizen-start
+endless game), checked against what `--construction-menu on` actually wires up today, not
+guessed: "bound" means a real click/key reaches real engine state and draws something live;
+"placeholder" means the screen has no handler and no chrome at all yet; "partial" sits between
+the two. The "waits on" column separates a true sim-side gap (a feature or aggregate the engine
+does not compute yet) from a UI-side one (input routing and chrome this project has not built
+yet, with the sim data already available) - conflating the two would misdirect whoever picks up
+the next slice.
+
+| # | Screen | Status | What's live now | Waits on |
+|---|---|---|---|---|
+| 1 | HUD idle | **Bound** | Chrome (`draw_live_screen_xrgb`) and the gold counter (H2), live, every frame | - |
+| 2 | Settlement / Kontor panel | Placeholder | Nothing (no click target for "Kontor" exists in `construction_handle` or anywhere else) | UI: a click-routing seam for a non-menu panel. Sim: trade sliders would read `City::trade_lists` (already modelled) once a panel exists |
+| 3 | Construction menu, 8 categories | **Bound** | `ConstructionMenu` + `draw_live_screen_xrgb`, all 8 categories (the draw path does not special-case which one); 2 of 8 screenshot-proven pixel-exact against the oracle (public, roads) | - |
+| 4 | Building info / placement | Partial | A grid click resolves through `ConstructionMenu::click` to `Arm`/`DevTool::arm` (selects the type; the actual `BuildCmd` is the existing dev-tool path's own next click, on the world tile); `cell_info` already computes cost live from the registry (C3's own data path). No panel chrome, no cost/upkeep numbers are drawn - the panel itself has no screen rectangle in the live window yet | UI: the panel's own drawing slice (C1/C6, independent of fonts - fonts only draw numbers once there is a panel to draw them on). Sim: OQ-563 (an unbuilt type's upkeep has no live source) |
+| 5 | Demolish | Partial | The pickaxe/cancel-X click resolves `ToggleDemolish` through `ConstructionMenu::click` and a real `DemolishCmd`-path `ToolInput` | UI: a distinct demolish-mode chrome/cursor (none drawn; today it is state with no visual) |
+| 6 | Help / info mode | Placeholder | Nothing | UI only: a tab click handler and its own chrome; no sim gap is known |
+| 7 | Military tab (= key D's panel) | Placeholder | Nothing | UI only (same panel as 9, same D collision) |
+| 8 | Options tab | Placeholder | Nothing | UI only; client-side settings, no sim data needed |
+| 9 | Player list (key D) | Placeholder | Nothing - **another real key collision**: D is already bound to pan right | UI: same collision pattern as 15/17 |
+| 10 | Pause overlay (key P) | Placeholder | Nothing (the viewer's own developer controls do not bind P, so the key is free; the original's parchment-over-map chrome is not drawn) | UI only |
+| 11-14 | Options load/save/music/speech | Placeholder | Nothing | UI only; load/save touch the existing save/load path, not a new sim feature |
+| 15 | Ship list (key S) | Placeholder | Nothing - **a real key collision**: the viewer's own developer controls already bind S to pan | UI: needs its own key or a scheme that resolves the collision (mirrors the B/Esc precedent H1 already set for the construction menu) |
+| 16 | City list (key C) | Placeholder | Nothing | UI only |
+| 17 | Rating (key Q, full frame) | Placeholder | Nothing - **a real key collision**: the viewer's own developer controls already bind Q to quit | UI: same collision pattern as 15. Sim: whatever statistics the rating screen shows would need their own aggregation, not yet checked for existing equivalents |
+| 18 | Selected house | Placeholder | Nothing (the same gap as 4 - this is the info panel for an already-built instance) | Same as 4 |
+| 19 | Deselected right panel | Placeholder | Nothing | UI only; an empty-panel default, no sim feature needed |
+
+Pre-game menus (main menu, singleplayer setup, `tools/orig/menus.json`) are out of this table:
+`docs/re/ui.md` section 1 itself marks them "not the owner in-game test surface", and `--play`
+starts past them - this ADR's whole scope is the in-game UI reachable from a running session.
 
 - **(a) The original UI on, with the developer tool on its key — recommended.** It is the owner's
   chosen test surface (M3 decision, 2026-10-30, `docs/plan/lan-mvp.md` §1); every future
@@ -146,7 +178,6 @@ redesign.
 
 ## What this does not decide
 
-- **Which screens exist and what each placeholder means** (M).
 - **The construction menu's lock authority** (the sim's `construction_eligibility`, unchanged by
   this ADR — C2).
 - **Any new sim behaviour.** This ADR adds no `src/sim` change; a UI.2 screen that needs one stops

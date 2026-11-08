@@ -440,6 +440,14 @@ TEST_CASE("iron continuation: a reload at extraction smelting delivery and a spe
             return hit;
         });
     }
+    // a carrier walking to the mine with a reservation on it (the mine's claim is saved state)
+    continuation_at("a carrier walks to the mine holding a reservation", [&](Chain& c) {
+        for (const auto& f : c.pilot.w.figures().list.slots)
+            if (f && !f->expiry_stamp && f->home == c.smelter &&
+                f->transport.step == sim::TransportStep::ToSource && f->transport.reserved_88 > 0)
+                return mine_state(c).reserved > 0;
+        return false;
+    });
     // the smelter's carrier with ore in its hands
     continuation_at("the smelter carrier holds ore", [&](Chain& c) {
         std::uint64_t ore = 0, eisen = 0, tools = 0;

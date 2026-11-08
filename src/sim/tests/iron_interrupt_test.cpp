@@ -387,12 +387,13 @@ TEST_CASE("iron interruption: the same slicing reproduces the state exactly and 
 /// Reload at the boundary where `at` first holds: the saved bytes load, equal the original, and
 /// both worlds then run 800 advances to the same state, cursor and bytes (and a reload that runs
 /// one advance fewer differs, so the comparison can tell).
-template <class At> void continuation_at(const char* boundary, At at) {
+template <class At, class Setup> void continuation_with(const char* boundary, Setup setup, At at) {
     auto c = start_chain(Arm::Real, false);
     if (!c) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
+    setup(*c);
     INFO("boundary: " << boundary);
     const int k = step_until(*c, 5000, [&] { return at(*c); });
     REQUIRE_MESSAGE(k > 0, "the boundary state was never reached");
@@ -420,6 +421,10 @@ template <class At> void continuation_at(const char* boundary, At at) {
         shorter.value().advance(kAdvanceMs);
     CHECK(shorter.value().state_hash() != w.state_hash());
     CHECK(shorter.value().save() != w.save());
+}
+
+template <class At> void continuation_at(const char* boundary, At at) {
+    continuation_with(boundary, [](Chain&) {}, at);
 }
 
 std::uint64_t counter(const std::map<sim::BuildingId, std::uint64_t>& m, sim::BuildingId k) {
@@ -490,6 +495,35 @@ TEST_CASE("iron continuation: a reload at extraction smelting delivery and a spe
                    sim::deposit_remaining(isle(c.pilot.w).deposits.at(*dep), false) == 0;
         });
     }
+}
+
+TEST_CASE("iron continuation: two carriers hold reservations on one mine at the reload boundary") {
+    // T5 review P2-1: `Mine::reserved` is not derivable from one carrier's `reserved_88`; with a
+    // second smelter two carriers reserve on the same mine, and the sum is saved state. The
+    // boundary is the first step at which two distinct carriers each hold a claim on it.
+    const auto setup = [](Chain& c) {
+        const sim::ApplyResult r = c.pilot.w.apply(build_cmd(1017, 360, 340, 0));
+        REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
+        c.smelters.push_back(r.records.at(0).building);
+    };
+    std::uint64_t claim_sum = 0;
+    continuation_with("two carriers reserve on the one mine", setup, [&](Chain& c) {
+        std::uint64_t sum = 0;
+        int holders = 0;
+        for (const auto& f : c.pilot.w.figures().list.slots)
+            if (f && !f->expiry_stamp && f->transport.step == sim::TransportStep::ToSource &&
+                f->transport.target == c.mine && f->transport.reserved_88 > 0) {
+                sum += f->transport.reserved_88;
+                ++holders;
+            }
+        claim_sum = sum;
+        if (holders < 2)
+            return false;
+        // the mine's own total is the sum of the two claims (so it is not one carrier's value)
+        CHECK(mine_state(c).reserved == sum);
+        return true;
+    });
+    CHECK(claim_sum > 0);
 }
 
 TEST_CASE("iron continuation: the chain recorded for the fresh-process replay and its changed "

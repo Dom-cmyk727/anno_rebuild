@@ -159,6 +159,17 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_construction_menu_arm PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-UI-2 H1/C1 second slice: the live window's own drawing (draw_cpu ->
+      # draw_live_screen_xrgb), checked pixel by pixel against the UI.1 oracle (tools/test/
+      # ui_mock_compare.py already checks the standalone anno_ui_mock composer; this checks the
+      # real window instead), through a real captured screenshot (reads ANNO1503_GAME_DIR itself
+      # at run time, like ui_mock_compare.py; Windows only - the screenshot step's own platform
+      # limit).
+      add_test(NAME live_screen_matches_oracle
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/live_screen_compare.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(live_screen_matches_oracle PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
       # F2 (W4-WIN-FINAL): the CPU window settles a change only after the frame was delivered through
       # SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent; each stage is made to fail in turn.
       add_test(NAME viewer_wiring_cpu_delivery_failures

@@ -540,6 +540,7 @@ int run(const std::vector<std::string>& raw) {
             construction_layout.emplace(std::move(construction_loaded).value());
             construction_menu.emplace(*construction_hud, *construction_layout);
             hooks.construction_menu = &*construction_menu;
+            hooks.construction_game_dir = dir.value();
         }
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_record_hashes(!session_dir.empty());

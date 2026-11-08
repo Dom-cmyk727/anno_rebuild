@@ -9,10 +9,13 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <anno/app/ui_layout.hpp>
 #include <anno/assets/texture.hpp>
 #include <anno/formats/result.hpp>
+#include <anno/sim/ids.hpp>
 
 namespace anno::app {
 
@@ -40,5 +43,26 @@ struct UiMockSpec {
 [[nodiscard]] formats::Result<assets::Rgba, std::string>
 compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
                const UiMockSpec& screen, const std::filesystem::path& game_dir);
+
+/// Draws `screen` directly onto a live window-space XRGB buffer (SDL_PIXELFORMAT_XRGB8888: one
+/// `std::uint32_t` 0x00RRGGBB per pixel, row-major, `dst_w` x `dst_h`, viewer.cpp's `buffer_`/
+/// `blend_preview`'s own convention) instead of a fresh canvas - the live window's draw path
+/// (W4-UI-2 H1/C1, second slice: the first slice, `compose_screen`, only ever wrote a standalone
+/// PNG). `dst_w`/`dst_h` must equal `hud`'s own resolution (the caller already enforces the
+/// exact-size guard before calling this; R3's scale is still open, so this never resamples).
+/// Mirrors `compose_screen`'s element sequence exactly (docs/re/ui.md section 2.8), except: a
+/// construction cell's drawn lock state reads `eligibility` (ascending by id, as
+/// `World::types().types()` orders them; `PlaySnapshot::eligibility`'s own contract) when given,
+/// never the cell's own static `unlocked` field (RE evidence about the original, not a live
+/// rule) - so what the player sees always agrees with what a click there would do (C2's
+/// authority). Opaque source pixels overwrite; transparent ones are skipped (the oracle's own
+/// `blit_rgba` semantic - never alpha-blended, since HUD/menu chrome never shows the game world
+/// through it). An error names the screen, the missing file, or the parse failure; nothing is
+/// drawn on one.
+[[nodiscard]] std::string
+draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
+                      const ConstructionLayout& construction, const UiMockSpec& screen,
+                      const std::filesystem::path& game_dir,
+                      const std::vector<std::pair<sim::TypeId, bool>>* eligibility);
 
 } // namespace anno::app

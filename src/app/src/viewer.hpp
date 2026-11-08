@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -72,6 +73,10 @@ struct ViewerHooks {
     /// active while the window's drawable size is exactly 1024 x 768 (R3's scale is still open;
     /// no guessed scaling). The caller owns it and the data/ui/ layouts it was built from.
     ConstructionMenu* construction_menu = nullptr;
+    /// The original game's folder, read again every frame the menu's chrome is drawn (H1/C1
+    /// `draw_live_screen_xrgb`'s own `.tex` decode - no persistent GPU-style cache yet; V6's
+    /// performance work is later). Unused when `construction_menu` is null.
+    std::filesystem::path construction_game_dir;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

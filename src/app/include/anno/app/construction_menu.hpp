@@ -74,6 +74,11 @@ class ConstructionMenu {
     ConstructionMenu(const HudLayout& hud, const ConstructionLayout& construction)
         : hud_(&hud), construction_(&construction) {}
 
+    /// The layouts this menu was built from (the live window's draw path reads these too, to
+    /// compose the same screens `click` resolves against - ui_mock.hpp's `draw_live_screen_xrgb`).
+    [[nodiscard]] const HudLayout& hud() const { return *hud_; }
+    [[nodiscard]] const ConstructionLayout& construction() const { return *construction_; }
+
     /// The category-column tab at (`px`,`py`), or nullopt outside every tab's band. A tab's band
     /// is its `y` field +/- half the column gadget's 46 px height (docs/re/ui.md section 2.4:
     /// "category_column (779, click_y-23) 42 x 46" - `y` is that rectangle's vertical centre).

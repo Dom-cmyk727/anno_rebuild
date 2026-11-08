@@ -21,6 +21,7 @@
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/ship_motion.hpp>
+#include <anno/app/ui_mock.hpp>
 #include <anno/app/window_capture.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
@@ -329,6 +330,8 @@ class Viewer {
           dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr),
           construction_menu_(hooks != nullptr && play != nullptr ? hooks->construction_menu
                                                                  : nullptr),
+          construction_game_dir_(construction_menu_ != nullptr ? hooks->construction_game_dir
+                                                               : std::filesystem::path{}),
           script_(dev_ != nullptr ? hooks->script : nullptr),
           hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr),
           opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr) {
@@ -516,6 +519,7 @@ class Viewer {
     /// cell is currently armed (the placement panel is "showing", for the pickaxe/cancel-X
     /// overlap - ConstructionMenu::click's own doc comment).
     ConstructionMenu* construction_menu_ = nullptr;
+    std::filesystem::path construction_game_dir_;
     bool construction_menu_open_ = false;
     std::string construction_open_category_;
     bool construction_placement_open_ = false;
@@ -2541,6 +2545,19 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
             blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
         }
+    }
+    if (construction_menu_ != nullptr && w == 1024 && h == 768) {
+        // H1/C1, second slice: the menu's own chrome, drawn over the world (ADR 0004 R1's
+        // "Rendering" - the CPU path; the GPU path is later work). Decoded fresh every frame (no
+        // persistent cache yet, V6); only while the window is at the UI's 1024 x 768 reference
+        // (R3's scale is still open).
+        const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
+                                                                     construction_open_category_}
+                                                        : UiMockSpec{UiMockScreen::Hud, ""};
+        const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+        static_cast<void>(draw_live_screen_xrgb(
+            buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
+            spec, construction_game_dir_, snapshot ? snapshot->eligibility.get() : nullptr));
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),
                                    levels().tile_h(group_), gen, w, h);

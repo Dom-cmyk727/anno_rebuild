@@ -1,0 +1,11 @@
+# Manual verification only (not a registered CTest case): captures the live window's drawn HUD
+# and construction-menu chrome for a pixel-exact diff against the oracle (tools/ui_layout.py
+# compose_screen), the same way ui_mock_compare.py already checks the standalone CPU composer.
+resize 1024 768
+wait frames 5
+look 1140 516
+screenshot hud_idle_live
+key b
+wait frames 5
+screenshot construction_public_live
+quit

@@ -154,6 +154,8 @@ Pre-game menus (main menu, singleplayer setup, `tools/orig/menus.json`) are out 
 `docs/re/ui.md` section 1 itself marks them "not the owner in-game test surface", and `--play`
 starts past them - this ADR's whole scope is the in-game UI reachable from a running session.
 
+## QUESTION R2: the default surface in `--play`
+
 - **(a) The original UI on, with the developer tool on its key — recommended.** It is the owner's
   chosen test surface (M3 decision, 2026-10-30, `docs/plan/lan-mvp.md` §1); every future
   build/demolish playtest should exercise the real path by default, not a developer-only one.

@@ -16320,3 +16320,44 @@ codebase, worth recording precisely rather than smoothing over as "iGPU: skipped
 V is now complete (V1-V6, in the coordinator's own list, plus V3/V5 from the prior checkpoint).
 Flagging for the coordinator: a live-window iGPU override (if ever wanted for testing) would need
 a new seam distinct from `ANNO_GPU_ADAPTER` - not attempted here, out of this dispatch's scope.
+
+## W4-UI-2 — K: the owner playtest card — 2026-11-08 — status: IN PROGRESS
+
+Per the dispatch's own rule 0.3 (stop only at E, or when nothing independent is left): continuing
+past V into K rather than pausing, since there is clearly independent work left in it.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`c8701db8`**, not yet pushed.
+
+### What ran, and with what result
+
+`docs/testing/construction-menu-playtest.md`, in the same format this project's own
+`load-adapter-playtest.md`/`ship-opening-playtest.md` already use: a launch command, a controls
+table, a numbered walk-through (open the menu, arm an unlocked cell, place it, close the panel,
+demolish it, switch categories, try an unaffordable item), and a "Known limits (say so rather
+than guess)" section naming every open item this dispatch's own checkpoints already flagged
+rather than re-deriving them: GPU draws nothing (V4's own finding), no cost-row/name text in the
+info panel (OQ-561/OQ-563), the text colour and digit alignment are unconfirmed defaults
+(OQ-031/OQ-564), every other screen is a placeholder (the ADR's own M table), R3's scale
+question, and the S/Q/D key collisions the M checkpoint found.
+
+**One real thing caught before it reached the owner:** `--renderer`'s own default is `auto`,
+which picks the GPU on this host - and the menu/HUD overlay draws on no GPU at all (V4). A
+launch command without `--renderer cpu` would have handed the owner a window that looks like the
+feature does not exist. Caught by actually running the card's own launch command through a
+scripted session before committing it, the same evidence discipline as everything else in this
+dispatch - not assumed correct because it looked right on the page.
+
+### Decisions and reasoning
+
+Wrote "Known limits" by re-reading this dispatch's own prior checkpoints rather than from memory,
+specifically so the card does not silently drop or soften anything a coordinator or owner has
+already seen flagged (OQ-031/OQ-538/OQ-561/OQ-563/OQ-564, the M table, the key collisions) - the
+playtest card's job is to hand the owner the same honest picture the REPORTS entries already
+give, not a cleaned-up version of it.
+
+### Next
+
+E: the dispatch's own final gate (independent review, the full gates, a verdict-per-part report,
+status REVIEW PENDING) - the dispatch's own designated stopping point.

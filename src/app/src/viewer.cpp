@@ -508,11 +508,15 @@ class Viewer {
     std::optional<PlacementKnowledge> knowledge_;
     std::optional<CommandId> latest_receipt_;
     /// The construction menu (ViewerHooks::construction_menu; --construction-menu on, W4-UI-2
-    /// C4 first slice): its own open category (empty = none armed yet; this first slice has no
-    /// open/close key, so the grid is treated as open on "public" whenever the menu is active -
-    /// see construction_handle) and whether a cell is currently armed (the placement panel is
-    /// "showing", for the pickaxe/cancel-X overlap - ConstructionMenu::click's own doc comment).
+    /// C4): whether the menu screen itself is showing (data/ui/construction.txt's own `open_key
+    /// B` / `leave_key ESC`, checked ahead of the developer tool's own B-toggle and the window's
+    /// Esc-quits-the-app binding - a real collision on both keys, resolved by state: B/Esc are
+    /// the menu's own while it is open or being opened, the developer tool's and the window's
+    /// otherwise), the open category (set to "public" on open; empty while closed), and whether a
+    /// cell is currently armed (the placement panel is "showing", for the pickaxe/cancel-X
+    /// overlap - ConstructionMenu::click's own doc comment).
     ConstructionMenu* construction_menu_ = nullptr;
+    bool construction_menu_open_ = false;
     std::string construction_open_category_;
     bool construction_placement_open_ = false;
     /// The construction menu's share of handle(), checked before dev_ (ADR 0004 R1): returns
@@ -1327,8 +1331,33 @@ void Viewer::opening_apply(const UiResult& result) {
 }
 
 bool Viewer::construction_handle(const SDL_Event& e) {
+    if (e.type == SDL_EVENT_KEY_DOWN) {
+        // data/ui/construction.txt: `open_key B`, `leave_key ESC`. Both collide with an existing
+        // binding (the developer tool's own B-toggle; the window's Esc-quits-the-app) - resolved
+        // by state, not by picking a winner once and for all: B is the menu's own key only to
+        // open it (closed -> open; already open, a category click or ESC is how it's used, so B
+        // while open is left to the developer tool, consistent with ADR 0004 R1 "the developer
+        // tool keeps its own key"); Esc is the menu's only while it is open (closes it, consuming
+        // the event before the window's own Esc-quits binding sees it).
+        if (e.key.key == SDLK_B && !construction_menu_open_) {
+            construction_menu_open_ = true;
+            construction_open_category_ = "public";
+            construction_placement_open_ = false;
+            return true;
+        }
+        if ((e.key.key == SDLK_ESCAPE) && construction_menu_open_) {
+            construction_menu_open_ = false;
+            construction_open_category_.clear();
+            construction_placement_open_ = false;
+            return true;
+        }
+        return false;
+    }
     if (e.type != SDL_EVENT_MOUSE_BUTTON_DOWN || e.button.button != SDL_BUTTON_LEFT) {
         return false; // only a left click resolves against the menu; everything else is dev_'s
+    }
+    if (!construction_menu_open_) {
+        return false; // the menu screen is not showing: every click is the map's/dev_'s
     }
     const auto [dw, dh] = view_size();
     if (dw != 1024 || dh != 768) {
@@ -1340,12 +1369,6 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     const float density = SDL_GetWindowPixelDensity(window_);
     const double px = static_cast<double>(e.button.x) * static_cast<double>(density);
     const double py = static_cast<double>(e.button.y) * static_cast<double>(density);
-    // This first slice has no open/close key yet (R2/R3's switch is separate follow-up work): the
-    // grid is always open on "public" while --construction-menu is on, so the pipeline from a
-    // grid click through DevTool::arm to a world BuildCmd can be proven end to end.
-    if (construction_open_category_.empty()) {
-        construction_open_category_ = "public";
-    }
     const auto snapshot = play_->runner().snapshot();
     const auto result =
         construction_menu_->click(px, py, construction_open_category_, construction_placement_open_,

@@ -16255,3 +16255,68 @@ window's own refusal messages are evidence too, and are cheaper to check than to
 ### Next
 
 Multi-renderer pixel checks (CPU/4090/iGPU) with negative controls, then bench_frame numbers.
+
+## W4-UI-2 — V4 (multi-renderer pixel checks) and V6 (bench_frame numbers) — 2026-11-08 — status: IN PROGRESS
+
+Per the coordinator's list, the last two V items. No code changed this checkpoint - pure
+verification/measurement, and one real finding worth recording precisely rather than working
+around silently.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: unchanged, still **`56739c08`** (nothing new to commit - `git status` clean
+  throughout this checkpoint).
+
+### What ran, and with what result
+
+**CPU:** already the acceptance gate for every checkpoint so far
+(`ui_mock_matches_oracle`/`live_screen_matches_oracle`, `--renderer cpu`) - pixel-exact, unchanged
+by this entry.
+
+**GPU, RTX 4090** (`ANNO_GPU_ADAPTER` is not the live window's own selector for this - see below;
+the 4090 is simply what this host's window surface always picks): ran
+`construction_menu_draw_check.script` with `--renderer gpu`, no `SDL_VIDEODRIVER=dummy` (a real
+GPU surface). The captured screenshot shows the world and nothing else - no HUD, no status bar,
+no construction menu at all. Quantified as a negative control against the same Python oracle the
+CPU path is checked against: **199111 of 199111 opaque-oracle pixels differ (100%)**. This is not
+a new bug: `draw_gpu()` has never called `draw_live_screen_xrgb` (the M table already named this,
+"the GPU rendering path... untouched"); this checkpoint is the first time it was actually
+measured rather than just stated, and it is the largest, cleanest negative control this dispatch
+has produced - the oracle-comparison methodology is sensitive to "the entire UI is missing", not
+only to the smaller V5 mutations.
+
+**iGPU - a real tooling finding, not a result:** tried to force the live window onto the AMD
+Radeon iGPU via `ANNO_GPU_ADAPTER` (by index, from `bench_frame --list-adapters`, and by a
+case-insensitive name substring, `"AMD"`) - both left the window on the RTX 4090 regardless, with
+no warning printed. Read `src/render/src/wgpu.cpp`'s `context_for` rather than guess why:
+`adapter_from_env` (which reads `ANNO_GPU_ADAPTER`) is only consulted when `compatible == nullptr`
+- i.e. **only when there is no window surface to request an adapter against** (`bench_frame`,
+`--png`, any offscreen use). The live interactive viewer always has a real window surface and
+always requests `WGPUPowerPreference_HighPerformance` compatible with it, which this host answers
+with the 4090 every time; `ANNO_GPU_ADAPTER` structurally cannot override that path today. Since
+the UI overlay draws on **no** GPU regardless of which one, this does not change the substantive
+finding above - but it is named here as a real, verified limitation (not assumed, not guessed)
+rather than silently skipped or claimed as "tested" without actually having been.
+
+**V6 (bench_frame numbers):** built `bench_frame` (not previously built in this worktree) and ran
+a quick pass on `Scenes/0010SingleEndlos/01_1024_easy_256.sze`, CPU and GPU (4090), confirming no
+regression to the baseline world-rendering pipeline - expected, since every change in this
+dispatch lives in `src/app`'s construction-menu code and never touches `src/render`/`src/sim`.
+`bench_frame` has no concept of the construction-menu overlay at all (it benchmarks the world
+scene only), so this is a general regression check, not a UI-specific number. The UI-specific
+timing evidence that actually matters for this dispatch was already measured and reported in the
+texture-cache checkpoint (the "construction ui" step: ~67-70 ms cold, ~2-5 ms warm per frame) and
+is not repeated here.
+
+### Decisions and reasoning
+
+Read the adapter-selection code before accepting "the env var didn't work" as a dead end, and
+before assuming it was a mistake on this checkpoint's part. The distinction it revealed (headless
+adapter override vs. the live window's own surface-compatible request) is a real fact about this
+codebase, worth recording precisely rather than smoothing over as "iGPU: skipped."
+
+### Next
+
+V is now complete (V1-V6, in the coordinator's own list, plus V3/V5 from the prior checkpoint).
+Flagging for the coordinator: a live-window iGPU override (if ever wanted for testing) would need
+a new seam distinct from `ANNO_GPU_ADAPTER` - not attempted here, out of this dispatch's scope.

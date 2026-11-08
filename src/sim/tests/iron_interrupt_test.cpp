@@ -195,7 +195,10 @@ TEST_CASE("iron interruption: missing wood stalls the smelter and the toolsmith 
     };
     set_wood(0, 0);
     REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
-    step_chain(*c, 1000); // the stocks in the pipeline drain
+    // the goods already in the pipeline drain (a carrier already on its way with 3 t of wood, EISEN
+    // in the input); with the market carts of the imported brick works busy too, that takes about
+    // 1,100 advances here (measured), so 1,500 are run before the stall is asserted
+    step_chain(*c, 1500);
     require_closed(terms_of(*c), "draining");
     const Terms a = terms_of(*c);
     step_chain(*c, 1000);

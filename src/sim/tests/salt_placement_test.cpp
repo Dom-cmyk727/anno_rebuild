@@ -287,8 +287,8 @@ TEST_CASE("mountain placement: types the class does not cover stay Unsupported")
     CHECK(sim::placement_rule(is, reg, short_table, rec).reject == sim::Reject::Unsupported);
     sim::BuildingType quarry = t;
     quarry.cls = sim::RuntimeClass::Quarry;
-    // part Q (stream 137): a quarry type places by its own table (docs/sim/quarry-bricks.md F5); the
-    // data switch PlacementParams::quarries restores the earlier typed answer
+    // part Q (stream 137): a quarry type places by its own table (docs/sim/quarry-bricks.md F5);
+    // the data switch PlacementParams::quarries restores the earlier typed answer
     CHECK(sim::placement_rule(is, reg, quarry, rec).reject == sim::Reject::None);
     sim::PlacementParams no_quarries;
     no_quarries.quarries = false;
@@ -698,13 +698,15 @@ TEST_CASE("salt mine: the refusal matrix with a legal neighbour per row") {
             REQUIRE_MESSAGE(got.has_value(), "type " << t.id.v);
             // stream 137: an iron mine (shallow 1205/1210, deep 1216/1217) passes the placement
             // rule and meets the permission step instead (stage 2C is not reached at the start,
-            // research 57 is not held): ConstructionDenied; quarries, gold and gems stay
-            // Unsupported
+            // research 57 is not held): ConstructionDenied; part Q (stream 137): the quarries
+            // pass the placement rule too (their own table) and meet the same step; gold and gems
+            // stay Unsupported
             const bool iron_mine = t.cls == sim::RuntimeClass::Mine && t.has_prod &&
                                    !t.prod.outputs.empty() && t.prod.outputs[0] == "EISENERZ";
-            CHECK_MESSAGE(
-                *got == (iron_mine ? sim::Reject::ConstructionDenied : sim::Reject::Unsupported),
-                "type " << t.id.v << ": " << sim::reject_name(*got));
+            const bool quarry = t.cls == sim::RuntimeClass::Quarry;
+            CHECK_MESSAGE(*got == (iron_mine || quarry ? sim::Reject::ConstructionDenied
+                                                       : sim::Reject::Unsupported),
+                          "type " << t.id.v << ": " << sim::reject_name(*got));
             ++checked;
         }
         CHECK(checked == 11);
@@ -2086,6 +2088,10 @@ void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore resto
             m.erase(sim::DrawSite::HouseWalkerTarget);
             m.erase(sim::DrawSite::HouseVariant);
             m.erase(sim::DrawSite::FarmWorkerDispatch);
+            // part Q (stream 137): the add-on 7.5 minute event's second draw happens only when the
+            // first one is a multiple of 10, so it follows the PRNG stream's position, which the
+            // mason workers' dispatch draws (FarmWorkerDispatch) shift between two arms
+            m.erase(sim::DrawSite::Event750Island);
             return m;
         };
         CHECK(strip3(instant.draws) == strip3(quiet_control.draws));
@@ -2099,10 +2105,12 @@ void draws_unchanged(const Windows& live_run, Interrupt interrupt, Restore resto
             m.erase(site);
         return m;
     };
-    CHECK(minus(quiet.draws, {sim::DrawSite::FarmWorkerDispatch}) ==
-          minus(quiet_control.draws, {sim::DrawSite::FarmWorkerDispatch}));
+    // Event750Island: conditional on the first 7.5 minute draw (see strip3 above)
+    CHECK(minus(quiet.draws, {sim::DrawSite::FarmWorkerDispatch, sim::DrawSite::Event750Island}) ==
+          minus(quiet_control.draws,
+                {sim::DrawSite::FarmWorkerDispatch, sim::DrawSite::Event750Island}));
     for (const auto& [site, n] : quiet.draws)
-        CHECK(quiet_control.draws.count(site) == 1U);
+        CHECK((site == sim::DrawSite::Event750Island || quiet_control.draws.count(site) == 1U));
 }
 
 } // namespace
@@ -2893,6 +2901,7 @@ TEST_CASE("salt interruption X4: the Kontor is not a link of the chain") {
         m.erase(sim::DrawSite::HouseWalkerTarget);
         m.erase(sim::DrawSite::HouseVariant);
         m.erase(sim::DrawSite::FarmWorkerDispatch);
+        m.erase(sim::DrawSite::Event750Island); // conditional on the stream position (strip3)
         return m;
     };
     CHECK(minus3(quiet.draws) == minus3(quiet_control.draws));

@@ -597,27 +597,27 @@ TEST_CASE("population original-data mechanism canary: S01_01_01 live run, ledger
     CHECK(r.main_res.lost_88 == 0); // nothing is lost any more: every walker finds its way home
     CHECK(r.main_total.visits == 18784);
     CHECK(r.main_total.kernel_taken == 2629);
-    CHECK(r.main_total.spawn_draws == 1965);
-    CHECK(r.main_total.spawn_requests == 1965);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 1965); // draws by site = counter
+    CHECK(r.main_total.spawn_draws == 1966);
+    CHECK(r.main_total.spawn_requests == 1966);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 1966); // draws by site = counter
     CHECK(r.watch.draws.count(sim::DrawSite::HouseVariant) == 0);      // no upgrade or downgrade
-    CHECK(r.main_res.searches == 1955);
-    CHECK(r.main_res.searches_failed == 1745);
+    CHECK(r.main_res.searches == 1956);
+    CHECK(r.main_res.searches_failed == 1746);
     CHECK(r.main_res.arrivals == 192);
     CHECK(r.main_res.purchases == 138);
-    CHECK(r.main_res.bought_88 == 4339); // the city store the stalls gave up
-    CHECK(r.main_res.deliveries == 134);
-    CHECK(r.main_res.delivered_88 == 7809);
+    CHECK(r.main_res.bought_88 == 4340); // the city store the stalls gave up
+    CHECK(r.main_res.deliveries == 135);
+    CHECK(r.main_res.delivered_88 == 7859);
     CHECK(r.main_res.no_path_home == 0); // the resident-specific home path (section 20.2)
     // P-15 (C3): every reversed route passed the forward replay; 8 needed the endpoint adapter
     // (leaving the stand / entering the home), none was refused (measured, S01_01_01).
     CHECK(r.main_res.reverse_rejected == 0);
     CHECK(r.main_res.endpoint_adapted == 8);
     CHECK(r.main_total.rect_queries == r.main_res.searches);
-    CHECK(r.main_total.candidates_scored == 5682);
-    CHECK(r.main_total.candidates_accepted == 690);
-    CHECK(r.main_total.walk_searches == 477);
-    CHECK(r.main_total.walk_expansions == 369689);
+    CHECK(r.main_total.candidates_scored == 5684);
+    CHECK(r.main_total.candidates_accepted == 692);
+    CHECK(r.main_total.walk_searches == 479);
+    CHECK(r.main_total.walk_expansions == 371287);
     CHECK(r.main_total.upgrade_scores == 0); // no house reached its cap
     // the ledger (closed by the drain; the equations are checked in run_canary): the stall goods
     // came out of the city store and the public goods did not
@@ -690,23 +690,23 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     CHECK(r.main_res.faults == 0);
     CHECK(r.main_res.lost_88 == 0);
     CHECK(r.main_res.reverse_rejected == 0);   // P-15 (C3): no reversed route refused by the replay
-    CHECK(r.main_res.endpoint_adapted == 142); // accepted with the endpoint adapter (measured)
-    CHECK(r.main_total.spawn_draws == 2283);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2283);
-    CHECK(r.main_res.searches == 2283);
-    CHECK(r.main_res.purchases == 618);
-    CHECK(r.main_res.bought_88 == 36284);
+    CHECK(r.main_res.endpoint_adapted == 140); // accepted with the endpoint adapter (measured)
+    CHECK(r.main_total.spawn_draws == 2293);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2293);
+    CHECK(r.main_res.searches == 2293);
+    CHECK(r.main_res.purchases == 610);
+    CHECK(r.main_res.bought_88 == 34364);
     CHECK(r.main_res.deliveries == 556);
-    CHECK(r.main_res.delivered_88 == 104766);
-    CHECK(r.main_total.candidates_scored == 21039);
-    CHECK(r.main_total.walk_expansions == 1734537);
+    CHECK(r.main_res.delivered_88 == 104878);
+    CHECK(r.main_total.candidates_scored == 21110);
+    CHECK(r.main_total.walk_expansions == 1742810);
     CHECK(r.main_total.upgrade_scores > 0); // caps were crossed; no house was eligible to upgrade
     CHECK(r.up == 1);                       // K2: the one upgrade below
     CHECK(r.refused == 0);
-    CHECK(r.down == 15);
-    CHECK(r.main_transitions == 11);
+    CHECK(r.down == 13);
+    CHECK(r.main_transitions == 9);
     // a downgrade draws exactly one HouseVariant each
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseVariant) == 11);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseVariant) == 9);
     // K2: the first REAL pioneer -> settler upgrade of an original scenario. With the goal cells
     // carrying their key nibble (OQ-463) the isolated-cell stands (1314 leather and cloth, ...) are
     // reachable, the Inn supplies the tavern, the chapel the church need, and PIONIER house 509
@@ -735,7 +735,7 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     CHECK(up_it->counter_new_before == 520); // 528 - the house's 8 (derived, diagnostic only)
     CHECK(up_it->counter_new_after == 528);
     CHECK(up_it->variant_drawn);
-    CHECK(up_it->variant_draw == 32678);
+    CHECK(up_it->variant_draw == 18230);
     CHECK(up_it->variant_index == 2);
     // the exact material debit of type 520, read from the registry (not hardcoded): the type's cost
     // entries, nothing else
@@ -762,7 +762,7 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     CHECK(t.building.v == 219043332203ULL);
     CHECK(t.tick == 90250);
     CHECK(t.from.v == 560);
-    CHECK(t.to.v == 546);
+    CHECK(t.to.v == 545);
     CHECK(t.old_group == 3);
     CHECK(t.new_group == 2);
     CHECK(t.residents_before == 1358);
@@ -784,8 +784,8 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
           1675); // 1670 - (20 - 21): SetGroup took the house from 1358 to 1320
     CHECK(t.counter_new_after == 1674);
     CHECK(t.variant_drawn);
-    CHECK(t.variant_draw == 19558);
-    CHECK(t.variant_index == 6);
+    CHECK(t.variant_draw == 30877);
+    CHECK(t.variant_index == 5);
     CHECK(std::all_of(t.spent_by_good.begin(), t.spent_by_good.end(),
                       [](std::int64_t v) { return v == 0; })); // a downgrade spends nothing
     for (const auto& tr : trs) {

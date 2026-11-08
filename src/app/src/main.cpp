@@ -317,7 +317,20 @@ int run(const std::vector<std::string>& raw) {
             opening = std::move(started).value();
             play = std::move(opening->play);
         } else {
-            auto opened = anno::app::load_play(dir.value(), args->file);
+            // Developer test resources are "values configurable" by design (round dr, TASKS.md):
+            // an env-var override (the project's own ANNO_* test-knob convention, main.cpp's
+            // other getenv calls) for scripted sessions that need a specific, deterministic
+            // affordability edge (V1's "unaffordable" click) without touching the generous
+            // defaults every other fixed-map session relies on.
+            anno::app::FixedPlayOptions fixed_options;
+            if (const char* g = std::getenv("ANNO_DEV_GOLD"); g != nullptr && *g != 0) {
+                fixed_options.gold = std::strtoll(g, nullptr, 10);
+            }
+            if (const char* gt = std::getenv("ANNO_DEV_GOODS_TONS"); gt != nullptr && *gt != 0) {
+                fixed_options.goods_tons =
+                    static_cast<std::uint32_t>(std::strtoul(gt, nullptr, 10));
+            }
+            auto opened = anno::app::load_play(dir.value(), args->file, fixed_options);
             if (!opened) {
                 std::fprintf(stderr, "%s: %s\n", name.c_str(), opened.error().c_str());
                 return 1;

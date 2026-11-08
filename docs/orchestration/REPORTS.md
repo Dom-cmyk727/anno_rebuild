@@ -16831,3 +16831,32 @@ the right answer - that pattern should trigger (a) regardless of where the N-cou
 Not blocking the merge decision below by itself (both occurrences are on docs-only commits, not on
 `b3d8793d`'s product-code diff, and both cleared on a job-level rerun) - but tracked here, by name,
 so it isn't quietly re-diagnosed as "probably a flake" a third time without this history.
+
+### Update: a third occurrence the same day, different cases, escalating the recommendation
+
+Pushing this very entry (commit `016a89b3`, itself docs-only) triggered CI run `42500489989`.
+`cpp (linux-clang-asan)` failed again - two *different* cases this time, still in
+`anno_test_support_tests`: `V3: the predecessor journal states: clean ones start, outstanding or
+unprovable ones refuse without touching a byte` and `V4: a predecessor journal of another port
+does not block` (`VERDICT: FAIL failed tests`, job `128791957303`). Rerunning that job now;
+result below once it reports.
+
+That is **three failures in one day**, on three different docs-only commits, hitting three
+different specific cases (`F3 (D1, crash handover)`/`F3 (D1, silent)`/`O1`/`O3` at `a87310d6`;
+`F3 (D1, crash handover)` alone at `90134c6f`; now `V3`/`V4` "predecessor journal" at `016a89b3`),
+but always the same general subsystem (`anno_test_support_tests`, the coordinator's own test
+infrastructure) and always on Linux CI jobs. The spread across *different* specific cases each
+time is itself informative: it argues against one narrow bug in one specific test and toward a
+shared, systemic cause in the coordinator test harness under CI's own concurrency/timing (matching
+this project's own prior `BIND-FAILED` port-timing precedent cited above) - but three occurrences
+in one day already exceeds the "three in a week" bar I set above for when root-causing, not just
+counting clean runs, becomes the right call.
+
+**Revised recommendation**: escalate to **(a), root-cause it**, now - not after a fourth
+occurrence. (b)'s N-consecutive-clean-runs bound is still worth tracking in parallel (it costs
+nothing extra), but at this rate it will keep getting interrupted by new failures before reaching
+N anyway, and counting clean runs without finding the actual cause does not reduce the risk that a
+real coordinator defect is hiding inside what looks like "probably timing." This QUESTION's
+resolution should wait for the owner's direction on who picks up the root-cause work, not for me
+to guess a fix for coordinator-test-infrastructure code this packet's own scope (W4-UI-2, a UI
+consumer) was never meant to touch.

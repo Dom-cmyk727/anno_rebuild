@@ -33,11 +33,19 @@ std::optional<std::int64_t> mason_candidate_score(std::int32_t priority, std::in
     return std::int64_t{priority} + stock * 3 * 64 / capacity;
 }
 
-namespace {
-
-GoodsId goods_at(const std::vector<GoodsId>& v, std::size_t i) {
-    return i < v.size() ? v[i] : GoodsId{0};
+std::int64_t mason_candidate_stock(const Building& b, const BuildingType& type, GoodsId wanted,
+                                   const City* city) {
+    return std::holds_alternative<Quarry>(b.payload) || type.cls == RuntimeClass::Quarry
+               ? std::int64_t{kQuarryStock88}
+               : available(b, type, wanted, city);
 }
+
+bool mason_output_matches(const BuildingType& type, GoodsId wanted) {
+    return (!type.output_goods.empty() && type.output_goods[0] == wanted) ||
+           (type.output_goods.size() > 1 && type.output_goods[1] == wanted);
+}
+
+namespace {
 
 /// The building at a world tile through the mask-8 lists of any city of the island (D 0x100543b0:
 /// the island's point lookup), or nullptr.
@@ -160,14 +168,11 @@ struct Body {
             }
             // The output must be the mason's input (line 0 or 1; the "ALL" output 0x8e is a
             // market's and markets are outside the mask-8 list).
-            if (goods_at(t->output_goods, 0) != wanted && goods_at(t->output_goods, 1) != wanted) {
+            if (!mason_output_matches(*t, wanted)) {
                 continue;
             }
-            const std::int64_t stock =
-                std::holds_alternative<Quarry>(b->payload) || t->cls == RuntimeClass::Quarry
-                    ? std::int64_t{kQuarryStock88}
-                    : available(*b, *t, wanted, city);
-            if (stock < std::int64_t{kQuarryStock88}) {
+            const std::int64_t stock = mason_candidate_stock(*b, *t, wanted, city);
+            if (!mason_stock_qualifies(stock)) {
                 continue;
             }
             const std::int64_t cap =

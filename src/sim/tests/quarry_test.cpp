@@ -735,6 +735,197 @@ TEST_CASE("quarry claims Q-A4: the shared end path clears the claim of a worker 
     }
 }
 
+// ---- review P2: the invariants fire, the radius binds, the pure source rules
+// ---------------------
+
+template <class P> P* payload_of(sim::World& w, sim::BuildingId id) {
+    for (auto& city : sim::WorldTestAccess::islands(w)[1]->cities)
+        if (city)
+            for (auto& list : city->index.lists)
+                for (auto& slot : list.slots)
+                    if (slot && slot->id == id)
+                        return std::get_if<P>(&slot->payload);
+    return nullptr;
+}
+
+TEST_CASE("quarry invariants: a corrupted claim set is refused, in the world and on load") {
+    // The pilot's island holds other players' masons whose workers legitimately walk or wait. The
+    // legal control is the world as it is; for the corrupted copies below those workers are moved
+    // to the return walk and every quarry's flags are cleared (labelled edits), so that no worker
+    // holds a claim and any set flag is a violation.
+    auto f = start({kQuarryA}, {});
+    if (!f) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    step(*f, 400);
+    sim::World& w = f->pilot.w;
+    CHECK(w.check_invariants().empty()); // the legal control
+    // (a) a set flag with no mason worker walking to or waiting at a quarry
+    {
+        sim::World c = w;
+        for (auto& fig : sim::WorldTestAccess::figures(c).list.slots)
+            if (fig && fig->harvest.has_value() && sim::mason_job(fig->job) &&
+                !fig->expiry_stamp.has_value()) {
+                fig->harvest->step = sim::HarvestStep::ToHome;
+                fig->harvest->wait = 0;
+            }
+        for (auto& is : sim::WorldTestAccess::islands(c))
+            if (is)
+                for (auto& city : is->cities)
+                    if (city)
+                        for (auto& list : city->index.lists)
+                            for (auto& slot : list.slots)
+                                if (auto* qq =
+                                        slot ? std::get_if<sim::Quarry>(&slot->payload) : nullptr)
+                                    std::fill(qq->claims.begin(), qq->claims.end(), false);
+        CHECK(c.check_invariants().empty()); // still legal with no flag set
+        sim::Quarry* q = payload_of<sim::Quarry>(c, f->quarries[0]);
+        REQUIRE(q != nullptr);
+        REQUIRE(q->claims.size() == 2);
+        q->claims[0] = true;
+        const std::string problem = c.check_invariants();
+        INFO("problem: " << problem);
+        CHECK(problem.find("quarry claim flags are set") != std::string::npos);
+    }
+    // (b) a claim set of the wrong length (one flag too many)
+    {
+        sim::World c = w;
+        sim::Quarry* q = payload_of<sim::Quarry>(c, f->quarries[0]);
+        REQUIRE(q != nullptr);
+        q->claims.push_back(false);
+        const std::string problem = c.check_invariants();
+        CHECK(problem.find("claims has 3 entries, the type needs 2") != std::string::npos);
+        // (c) the same save is refused on load
+        const auto bytes = c.save();
+        auto loaded = sim::World::load(bytes, f->pilot.types, {});
+        CHECK(!loaded.ok());
+        if (!loaded.ok()) {
+            CHECK(loaded.error().find("claims has 3 entries") != std::string::npos);
+        }
+    }
+    // the legal save loads
+    CHECK(sim::World::load(w.save(), f->pilot.types, {}).ok());
+}
+
+TEST_CASE("quarry radius: a quarry beyond the mason's radius 12 is not used, moved inside it is") {
+    auto f = start({}, {kMasonA});
+    if (!f) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    sim::World& w = f->pilot.w;
+    // the mason (358,350) stands 3x3: centre (359,351), radius 12, search square x 347 .. 371 and
+    // y 339 .. 363; a quarry (3 x 4) whose footprint does not overlap it is out of reach
+    std::optional<std::pair<std::int32_t, std::int32_t>> out;
+    for (std::int32_t x = 340; x <= 392 && !out; ++x)
+        for (std::int32_t y = 330; y <= 380 && !out; ++y) {
+            const bool overlaps = x <= 371 && x + 2 >= 347 && y <= 363 && y + 3 >= 339;
+            if (overlaps)
+                continue;
+            sim::World c = w;
+            if (c.apply(build_cmd(1201, x, y)).ok())
+                out = {x, y};
+        }
+    MESSAGE("out-of-reach quarry at " << out->first << "," << out->second);
+    REQUIRE(out.has_value());
+    const sim::ApplyResult far = w.apply(build_cmd(1201, out->first, out->second));
+    REQUIRE(far.ok());
+    f->quarries.push_back(far.records.at(0).building);
+    step(*f, 1500);
+    const sim::BuildingId m = f->masons[0];
+    CHECK(terms_of(*f).lifted == 0);
+    CHECK(f->stats.forestry.mason_searches[m] > 0);
+    CHECK(f->stats.forestry.mason_searches_failed[m] == f->stats.forestry.mason_searches[m]);
+    // moved inside the radius (demolish, rebuild at the standard site): it serves
+    sim::DemolishCmd dem;
+    dem.city = kCity;
+    dem.tiles = {{out->first, out->second}};
+    REQUIRE(w.apply(sim::Command{kPlayer, dem}).ok());
+    const sim::ApplyResult near = w.apply(build_cmd(kQuarryA.type, kQuarryA.x, kQuarryA.y));
+    REQUIRE(near.ok());
+    f->quarries.push_back(near.records.at(0).building);
+    step(*f, 1500);
+    CHECK(terms_of(*f).lifted > 0);
+    require_closed(terms_of(*f), "radius");
+}
+
+TEST_CASE(
+    "mason rules: the source rules of the search, pure (output good, stock, non-quarry source)") {
+    auto f = start({kQuarryA}, {kMasonA});
+    if (!f) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    sim::World& w = f->pilot.w;
+    const sim::TypeRegistry& types = w.types();
+    const sim::Building* quarry = building(w, f->quarries[0]);
+    const sim::BuildingType* qt = types.find(quarry->type);
+    const sim::City& city = city_of(w);
+    // a quarry answers 256 raw for any goods, forever
+    for (const sim::GoodsId g : {kStein, kMarmorstein, sim::GoodsId{42}})
+        CHECK(sim::mason_candidate_stock(*quarry, *qt, g, &city) == 256);
+    // the output good must be the mason's input (STEINE for 1201, MARMORSTEIN for 1218)
+    CHECK(sim::mason_output_matches(*qt, kStein));
+    CHECK(!sim::mason_output_matches(*qt, kMarmorstein));
+    CHECK(!sim::mason_output_matches(*qt, kZiegel));
+    CHECK(sim::mason_output_matches(*types.find(sim::TypeId{1218}), kMarmorstein));
+    // a non-quarry source (a forester, output HOLZ) counts its real stock: 255 raw does not
+    // qualify, 256 does (no such source exists for STEINE in the shipped data, so the search cannot
+    // reach this rule in play; the pure rule is the evidence)
+    const sim::Building* forester = find_type(w, 801);
+    REQUIRE(forester != nullptr);
+    sim::Building fb = *forester;
+    const sim::BuildingType* ft = types.find(fb.type);
+    REQUIRE(ft != nullptr);
+    auto* farm = std::get_if<sim::Farm>(&fb.payload);
+    REQUIRE(farm != nullptr);
+    farm->reserved = 0;
+    farm->out = 255;
+    CHECK(sim::mason_candidate_stock(fb, *ft, 42, &city) == 255);
+    CHECK(!sim::mason_stock_qualifies(sim::mason_candidate_stock(fb, *ft, 42, &city)));
+    farm->out = 256;
+    CHECK(sim::mason_stock_qualifies(sim::mason_candidate_stock(fb, *ft, 42, &city)));
+    farm->reserved = 100; // the real stock is the output minus the reservation
+    CHECK(!sim::mason_stock_qualifies(sim::mason_candidate_stock(fb, *ft, 42, &city)));
+}
+
+TEST_CASE("quarry job: the need gate inside the search sends a worker home empty-handed") {
+    // Unreachable in play (the farm dispatches only when raw/need <= 8, raw <= 188; the gate closes
+    // at 1,260), so the labelled edit raises the mason's raw store after a worker was sent.
+    for (const std::uint32_t raw : {1300U, 100U}) {
+        auto f = start({kQuarryA}, {kMasonA});
+        if (!f) {
+            MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+            return;
+        }
+        sim::World& w = f->pilot.w;
+        const sim::BuildingId m = f->masons[0];
+        const int k = step_until(*f, 2000, [&] {
+            for (const sim::Figure* fig : workers(*f))
+                if (fig->harvest->step == sim::HarvestStep::Start && fig->harvest->start_delay > 0)
+                    return true;
+            return false;
+        });
+        REQUIRE(k > 0);
+        auto* farm = payload_of<sim::Farm>(w, m);
+        REQUIRE(farm != nullptr);
+        const std::uint64_t before = f->stats.forestry.mason_searches[m];
+        farm->raw = raw;
+        step(*f, 3);
+        INFO("raw " << raw);
+        CHECK(f->stats.forestry.mason_searches[m] > before); // the worker searched
+        if (raw >= 1260) {
+            CHECK(f->stats.forestry.mason_searches_failed[m] ==
+                  f->stats.forestry.mason_searches[m]); // no candidate: the gate is closed
+            CHECK(terms_of(*f).lifted == 0);
+        } else {
+            step(*f, 400);
+            CHECK(terms_of(*f).lifted > 0); // the legal control: below the gate it goes
+        }
+    }
+}
+
 // ---- Q-7: save and reload mid-trip equal the uninterrupted run ------------------------------
 
 template <class At>

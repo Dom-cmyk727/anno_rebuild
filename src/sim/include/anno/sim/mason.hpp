@@ -37,6 +37,19 @@ inline constexpr std::uint32_t kMasonTripCredit88 = 0x100;
 [[nodiscard]] std::optional<std::int64_t>
 mason_candidate_score(std::int32_t priority, std::int64_t stock, std::int64_t capacity);
 
+/// The stock a mason search credits to a candidate for `wanted` (D slot +0xa4): a quarry answers 256
+/// raw for any goods, forever; any other building its real stock (`available`).
+[[nodiscard]] std::int64_t mason_candidate_stock(const Building& b, const BuildingType& type,
+                                                 GoodsId wanted, const City* city);
+
+/// Whether a candidate stock qualifies (D 0x100728f0: `stock >= 0x100`, one ton).
+[[nodiscard]] constexpr bool mason_stock_qualifies(std::int64_t stock) {
+    return stock >= std::int64_t{kQuarryStock88};
+}
+
+/// Whether a candidate's output good (line 0 or 1) is the mason's input good `wanted`.
+[[nodiscard]] bool mason_output_matches(const BuildingType& type, GoodsId wanted);
+
 /// One call of the mason body on `fig` (a job-0x2c figure with `harvest`). Returns false, changing
 /// nothing, for a figure whose type the registry does not know.
 bool mason_tick(const TickContext& ctx, SerialWorld& world, Figure& fig);

@@ -166,3 +166,33 @@ TEST_CASE("construction menu: click resolves a category tab, then, with a catego
         CHECK(r.kind == app::ConstructionClickKind::None);
     }
 }
+
+TEST_CASE("construction menu: cell_info reads cost live from the registry, never guesses "
+          "upkeep (UI.2 C3, OQ-563)") {
+    anno::sim::TypeRegistry::Builder b;
+    anno::sim::BuildingType priced;
+    priced.id = anno::sim::TypeId{501};
+    priced.cost_gold = 250;
+    priced.cost_goods = {{41, 300}, {42, 700}}; // tools, wood (8.8 fixed-point, as the registry
+                                                // stores every cost amount)
+    b.add(priced);
+    const auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+
+    const auto known = app::ConstructionMenu::cell_info(anno::sim::TypeId{501}, *built.value());
+    CHECK(known.known);
+    CHECK(known.cost_gold == 250);
+    REQUIRE(known.cost_goods.size() == 2);
+    CHECK(known.cost_goods[0].goods == 41);
+    CHECK(known.cost_goods[0].amount_88 == 300);
+    CHECK(known.cost_goods[1].goods == 42);
+    CHECK(known.cost_goods[1].amount_88 == 700);
+    // Never guessed: no published source exists yet for an unbuilt instance's upkeep (OQ-563).
+    CHECK_FALSE(known.upkeep.has_value());
+
+    const auto unknown = app::ConstructionMenu::cell_info(anno::sim::TypeId{9999}, *built.value());
+    CHECK_FALSE(unknown.known);
+    CHECK(unknown.cost_gold == 0);
+    CHECK(unknown.cost_goods.empty());
+    CHECK_FALSE(unknown.upkeep.has_value());
+}

@@ -62,6 +62,7 @@
 #include <anno/app/scene_picture.hpp>
 #include <anno/app/ship_layer.hpp>
 #include <anno/app/still.hpp>
+#include <anno/app/ui_layout.hpp>
 #include <anno/app/window_trace.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
@@ -433,6 +434,11 @@ int run(const std::vector<std::string>& raw) {
     // The developer building tool (round ee; B in the window): its setup is read from the world
     // before the runner takes it.
     std::optional<anno::app::DevTool> dev;
+    // The construction menu (--construction-menu on; W4-UI-2 C4 first slice): the data/ui/
+    // layouts it reads outlive it (and it outlives the window, like `dev`).
+    std::optional<anno::app::HudLayout> construction_hud;
+    std::optional<anno::app::ConstructionLayout> construction_layout;
+    std::optional<anno::app::ConstructionMenu> construction_menu;
     // A scripted session (ANNO_DEV_SCRIPT=<file>) and its record (ANNO_DEV_SESSION=<new dir>),
     // round ee E3: --play only.
     std::optional<anno::app::DevScript> script;
@@ -519,6 +525,22 @@ int run(const std::vector<std::string>& raw) {
                                                          ? anno::sim::PlayerId{opening->setup.local}
                                                          : anno::app::developer_player()));
         hooks.dev = &*dev;
+        if (args->construction_menu) {
+            const fs::path layout_dir = args->layout.value_or(fs::path("data/ui"));
+            auto hud_loaded = anno::app::load_hud_layout(layout_dir / "hud.txt");
+            auto construction_loaded =
+                anno::app::load_construction_layout(layout_dir / "construction.txt");
+            if (!hud_loaded.ok() || !construction_loaded.ok()) {
+                std::fprintf(stderr, "--construction-menu: %s\n",
+                             !hud_loaded.ok() ? hud_loaded.error().c_str()
+                                              : construction_loaded.error().c_str());
+                return 1;
+            }
+            construction_hud.emplace(std::move(hud_loaded).value());
+            construction_layout.emplace(std::move(construction_loaded).value());
+            construction_menu.emplace(*construction_hud, *construction_layout);
+            hooks.construction_menu = &*construction_menu;
+        }
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_record_hashes(!session_dir.empty());
         if (opening) {

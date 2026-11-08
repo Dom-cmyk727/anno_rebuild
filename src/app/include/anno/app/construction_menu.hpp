@@ -15,6 +15,7 @@
 
 #include <anno/app/ui_layout.hpp>
 #include <anno/sim/ids.hpp>
+#include <anno/sim/types.hpp>
 
 namespace anno::app {
 
@@ -43,6 +44,26 @@ struct ConstructionClickResult {
     /// Set for SwitchCategory, Locked and Arm.
     std::string category;
     sim::TypeId type;
+};
+
+/// The info panel's cost row (C3): the gold and build-goods costs, read live from the registry
+/// (`BuildingType::cost_gold`/`cost_goods`, HEAD bytes 3-6 and the gold cost - never
+/// `data/ui/construction.txt`'s own cost fields, which are RE evidence about the original's
+/// panel, not the live registry a mod could change).
+struct ConstructionCellInfo {
+    sim::TypeId type;
+    /// False when `type` is not in the registry at all (a malformed cell/registry pairing): the
+    /// cost fields are then meaningless and left at their defaults.
+    bool known = false;
+    std::uint32_t cost_gold = 0;
+    /// Ascending goods order, non-zero amounts only (BuildingType::cost_goods's own contract).
+    std::vector<sim::CostEntry> cost_goods;
+    /// Upkeep: nullopt (the panel should show blank, not a guessed number) until a published
+    /// source exists. C3 reads "the upkeep, where the snapshot carries it; otherwise blank, with
+    /// an OQ" - PlaySnapshot does not yet carry a per-type upkeep figure (OQ-563: the registry's
+    /// own `running_cost` has two PROD3 slots whose "active" selection is per *instance*, not a
+    /// static per-type fact a menu entry for an unbuilt placement can read before one exists).
+    std::optional<std::uint32_t> upkeep;
 };
 
 class ConstructionMenu {
@@ -78,6 +99,11 @@ class ConstructionMenu {
     [[nodiscard]] ConstructionClickResult
     click(double px, double py, const std::string& open_category, bool placement_open,
           const std::vector<std::pair<sim::TypeId, bool>>* eligibility) const;
+
+    /// The info panel's cost row for `type` (C3), read from `registry` (the live source, not
+    /// `data/ui/construction.txt`'s RE snapshot of it).
+    [[nodiscard]] static ConstructionCellInfo cell_info(sim::TypeId type,
+                                                        const sim::TypeRegistry& registry);
 
   private:
     [[nodiscard]] static bool inside(double px, double py, int x, int y, unsigned w, unsigned h);

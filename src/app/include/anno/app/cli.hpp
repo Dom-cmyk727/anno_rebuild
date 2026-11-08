@@ -28,7 +28,8 @@ inline constexpr const char* kUsage =
     "<n>] "
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
     "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>] "
-    "[--commands <file> [--replay-hashes <file>]] (--play)\n"
+    "[--commands <file> [--replay-hashes <file>]] [--construction-menu on|off [--layout <dir>]] "
+    "(--play)\n"
     "(--group 0-2: the built zoom levels; 3 and up: derived levels, --png only, bounded by "
     "--max-derived-levels)\n"
     "(--png only: [--zoom-factor <scale>] [--resample nearest|bilinear|box|area], the picture "
@@ -170,6 +171,15 @@ struct Args {
     /// 2 saves memory (docs/perf/README.md, T1e), 0 is a plain ring.
     std::size_t lookahead_chunks = 3;
     ZoomOptions zoom;
+    /// --construction-menu on|off (--play only; W4-UI-2 C4, first slice): routes clicks through
+    /// ConstructionMenu before the developer tool, with the grid defaulting open on the
+    /// "public" category (no open/close key yet - R2/R3's switch and the category column are
+    /// later work). Needs `--layout` (default "data/ui", the project's own checked-in directory,
+    /// resolved against the current working directory) at the window's reference resolution
+    /// (1024 x 768); a window of a different size leaves the menu inactive rather than guess a
+    /// scale (OQ: R3 is still open).
+    bool construction_menu = false;
+    std::optional<std::filesystem::path> layout;
 };
 
 /// Parses option/value pairs; nullopt for anything invalid (print kUsage,

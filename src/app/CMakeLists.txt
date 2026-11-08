@@ -148,6 +148,17 @@ if(ANNO_BUILD_TESTS)
                 $<TARGET_FILE:anno1503> settlement_activity)
       set_tests_properties(viewer_wiring_settlement_activity PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-UI-2 C4: a construction-menu grid click (not the developer tool's own cycle) arms a
+      # type through DevTool::arm and places it through the ordinary command path, on the same
+      # lan5 tile/type settlement_activity.script already proves free and buildable.
+      add_test(NAME viewer_wiring_construction_menu_arm
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> construction_menu_arm
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_construction_menu_arm PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # F2 (W4-WIN-FINAL): the CPU window settles a change only after the frame was delivered through
       # SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent; each stage is made to fail in turn.
       add_test(NAME viewer_wiring_cpu_delivery_failures

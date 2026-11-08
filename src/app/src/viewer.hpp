@@ -14,6 +14,7 @@
 
 #include <anno/app/building_delta.hpp>
 #include <anno/app/cli.hpp>
+#include <anno/app/construction_menu.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/opening_ui.hpp>
@@ -66,6 +67,11 @@ struct ViewerHooks {
     /// runner by the caller before it starts). Null leaves `hold publication` out: the script
     /// then fails at that step. The caller owns it.
     PublicationHold* hold = nullptr;
+    /// The construction menu's click resolution (construction_menu.hpp; --construction-menu on,
+    /// W4-UI-2 C4 first slice): checked before `dev` (ADR 0004 R1's "UI first, then world"). Only
+    /// active while the window's drawable size is exactly 1024 x 768 (R3's scale is still open;
+    /// no guessed scaling). The caller owns it and the data/ui/ layouts it was built from.
+    ConstructionMenu* construction_menu = nullptr;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

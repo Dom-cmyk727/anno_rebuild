@@ -247,7 +247,7 @@ int arity(const std::string& verb) {
     if (verb == "note") {
         return -1;
     }
-    if (verb == "click") {
+    if (verb == "click" || verb == "click_px") {
         return 2;
     }
     if (verb == "local") {
@@ -573,6 +573,19 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                     SDL_BUTTON_LMASK);
             }
             push_button(act.events, *b, SDL_BUTTON_LEFT, false);
+        } else if (s.verb == "click_px") {
+            // UI.2 C4: a raw drawable-pixel click (construction_handle's own coordinate space,
+            // data/ui/'s 1024 x 768 reference), not a world tile - `click`'s window_point
+            // projection does not apply here.
+            const auto x = arg(0), y = arg(1);
+            if (!x || !y) {
+                fail(s, "not a pixel position");
+                break;
+            }
+            const std::pair<float, float> at{static_cast<float>(*x), static_cast<float>(*y)};
+            push_motion(act.events, at, 0);
+            push_button(act.events, at, SDL_BUTTON_LEFT, true);
+            push_button(act.events, at, SDL_BUTTON_LEFT, false);
         } else if (s.verb == "lookw") {
             const auto t = tile_arg(0);
             if (!t) {

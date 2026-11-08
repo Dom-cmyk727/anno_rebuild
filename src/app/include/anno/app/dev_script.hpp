@@ -11,6 +11,10 @@
 //                         the cheapest of the tool's types that costs gold (not a road)
 //   rotate R              press T until the rotation is R
 //   click X Y             move to, press and release over the drawn centre of tile (X, Y)
+//   click_px X Y          move to, press and release at the raw drawable pixel (X, Y) (UI.2 C4:
+//                         construction_handle's own coordinate space, data/ui/'s 1024 x 768
+//                         reference - not a world tile; `click`'s window_point projection does
+//                         not apply)
 //   drag X0 Y0 X1 Y1      press over (X0, Y0), move in steps to (X1, Y1), release
 //   pan DX DY             a right-button drag by (DX, DY) window points from the window centre
 //   wheel N               N wheel notches at the window centre (positive: closer)

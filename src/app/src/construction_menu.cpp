@@ -112,4 +112,19 @@ ConstructionMenu::click(double px, double py, const std::string& open_category, 
     return result;
 }
 
+ConstructionCellInfo ConstructionMenu::cell_info(sim::TypeId type,
+                                                 const sim::TypeRegistry& registry) {
+    ConstructionCellInfo info;
+    info.type = type;
+    const sim::BuildingType* found = registry.find(type);
+    if (found == nullptr) {
+        return info; // known stays false; the caller shows "unknown type", not a guessed cost
+    }
+    info.known = true;
+    info.cost_gold = found->cost_gold;
+    info.cost_goods = found->cost_goods;
+    // info.upkeep stays nullopt: OQ-563, see the header comment.
+    return info;
+}
+
 } // namespace anno::app

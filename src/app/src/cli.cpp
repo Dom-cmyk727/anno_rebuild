@@ -102,6 +102,16 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
                 return std::nullopt;
             }
             out.play_speed = *speed;
+        } else if (a == "--construction-menu") {
+            if (v == "on") {
+                out.construction_menu = true;
+            } else if (v == "off") {
+                out.construction_menu = false;
+            } else {
+                return std::nullopt;
+            }
+        } else if (a == "--layout") {
+            out.layout = utf8_path(v);
         } else if (a == "--commands") {
             out.commands = utf8_path(v);
         } else if (a == "--replay-hashes") {
@@ -271,6 +281,12 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
     // The resampling options belong to the headless picture.
     if (!out.png && (out.zoom_factor != 1.0 || out.resample)) {
         return std::nullopt;
+    }
+    if (out.construction_menu && !out.play) {
+        return std::nullopt;
+    }
+    if (out.layout && !out.construction_menu) {
+        return std::nullopt; // --layout means nothing without --construction-menu on
     }
     return out;
 }

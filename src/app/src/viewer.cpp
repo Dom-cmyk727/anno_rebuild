@@ -327,6 +327,8 @@ class Viewer {
           frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks),
           trace_(hooks != nullptr ? hooks->trace : nullptr),
           dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr),
+          construction_menu_(hooks != nullptr && play != nullptr ? hooks->construction_menu
+                                                                 : nullptr),
           script_(dev_ != nullptr ? hooks->script : nullptr),
           hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr),
           opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr) {
@@ -505,6 +507,19 @@ class Viewer {
     std::optional<PointerFrame> pointer_frame_;
     std::optional<PlacementKnowledge> knowledge_;
     std::optional<CommandId> latest_receipt_;
+    /// The construction menu (ViewerHooks::construction_menu; --construction-menu on, W4-UI-2
+    /// C4 first slice): its own open category (empty = none armed yet; this first slice has no
+    /// open/close key, so the grid is treated as open on "public" whenever the menu is active -
+    /// see construction_handle) and whether a cell is currently armed (the placement panel is
+    /// "showing", for the pickaxe/cancel-X overlap - ConstructionMenu::click's own doc comment).
+    ConstructionMenu* construction_menu_ = nullptr;
+    std::string construction_open_category_;
+    bool construction_placement_open_ = false;
+    /// The construction menu's share of handle(), checked before dev_ (ADR 0004 R1): returns
+    /// whether the event was taken. Only resolves clicks while the window's drawable size is
+    /// exactly 1024 x 768 (R3's scale is still open; a mismatched size leaves every click to
+    /// fall through unchanged, never a guessed scale).
+    bool construction_handle(const SDL_Event& e);
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
     DevScript* script_ = nullptr;
     PublicationHold* hold_ = nullptr;
@@ -1016,6 +1031,14 @@ void Viewer::handle(const SDL_Event& e) {
         update_title();
         return;
     }
+    if (construction_menu_ != nullptr && construction_handle(e)) {
+        // The construction menu first (ADR 0004 R1: "SDL3 events go to the UI first, then to the
+        // world"). Only a genuine hit on one of its own rectangles returns true; everything else
+        // (including every click on the map) falls through to dev_ unchanged.
+        update_title();
+        dirty_ = true;
+        return;
+    }
     if (dev_ != nullptr) {
         // The developer tool first (sdl_input.hpp: B toggles it; with it on, the left button,
         // N, P, T, X and Esc with something to cancel are its). The frame is the one drawn, so
@@ -1301,6 +1324,65 @@ void Viewer::opening_apply(const UiResult& result) {
     }
     update_title();
     dirty_ = true;
+}
+
+bool Viewer::construction_handle(const SDL_Event& e) {
+    if (e.type != SDL_EVENT_MOUSE_BUTTON_DOWN || e.button.button != SDL_BUTTON_LEFT) {
+        return false; // only a left click resolves against the menu; everything else is dev_'s
+    }
+    const auto [dw, dh] = view_size();
+    if (dw != 1024 || dh != 768) {
+        return false; // R3 (the UI scale at other sizes) is still open: never a guessed scale
+    }
+    if (play_ == nullptr) {
+        return false;
+    }
+    const float density = SDL_GetWindowPixelDensity(window_);
+    const double px = static_cast<double>(e.button.x) * static_cast<double>(density);
+    const double py = static_cast<double>(e.button.y) * static_cast<double>(density);
+    // This first slice has no open/close key yet (R2/R3's switch is separate follow-up work): the
+    // grid is always open on "public" while --construction-menu is on, so the pipeline from a
+    // grid click through DevTool::arm to a world BuildCmd can be proven end to end.
+    if (construction_open_category_.empty()) {
+        construction_open_category_ = "public";
+    }
+    const auto snapshot = play_->runner().snapshot();
+    const auto result =
+        construction_menu_->click(px, py, construction_open_category_, construction_placement_open_,
+                                  snapshot ? snapshot->eligibility.get() : nullptr);
+    switch (result.kind) {
+    case ConstructionClickKind::None:
+        return false;
+    case ConstructionClickKind::SwitchCategory:
+        construction_open_category_ = result.category;
+        return true;
+    case ConstructionClickKind::Empty:
+    case ConstructionClickKind::Locked:
+        return true;
+    case ConstructionClickKind::Arm:
+        if (dev_ != nullptr && dev_->arm(result.type)) {
+            construction_placement_open_ = true;
+        }
+        return true;
+    case ConstructionClickKind::ToggleDemolish:
+        if (dev_ != nullptr) {
+            for (sim::Command& c : dev_->handle({ToolInput::Kind::ToggleDemolish, 0, 0},
+                                                pointer_frame_ ? &*pointer_frame_ : nullptr)) {
+                latest_receipt_ = play_->runner().post_command(std::move(c));
+            }
+        }
+        return true;
+    case ConstructionClickKind::Cancel:
+        if (dev_ != nullptr) {
+            for (sim::Command& c : dev_->handle({ToolInput::Kind::Cancel, 0, 0},
+                                                pointer_frame_ ? &*pointer_frame_ : nullptr)) {
+                latest_receipt_ = play_->runner().post_command(std::move(c));
+            }
+        }
+        construction_placement_open_ = false;
+        return true;
+    }
+    return false;
 }
 
 bool Viewer::opening_handle(const SDL_Event& e) {

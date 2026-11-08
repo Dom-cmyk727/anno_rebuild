@@ -16754,6 +16754,25 @@ before the independent-review-fixes commit was even pushed.
   (the clean canonical full-suite gate log); the WSL gate's own summary and per-lane logs under
   `~/anno-gate-logs/anno1503-W4-ui-2-wslgate/` inside WSL Ubuntu.
 
+### Addendum: this entry's own CI run, and a transient flake
+
+Pushing this entry (commit `a87310d6`, docs-only) triggered CI run `42486342203`. `cpp
+(linux-gcc-release)` failed with 4 real `anno_test_support_tests` failures (`F3 (D1, crash
+handover)`, `F3 (D1, silent)`, `O1`, `O3` - all coordinator restart/crash-handover/admission-retry
+timing tests), while `cpp (linux-gcc)` and `cpp (macos-clang)` passed on the identical commit
+running the identical test binary. The gate-classifier fix itself is confirmed working on this run
+(`live_screen_matches_oracle` now classes `platform`, not `other`, exactly as intended). Not
+accepted as a real regression without checking: nothing in this push touched `test_support` or
+coordinator code (the diff was `docs/orchestration/REPORTS.md` alone), and the same four tests had
+passed clean on this same job on an earlier commit of this branch (`128622306864`, the "K
+checkpoint" run, `failed=0`). Re-ran only the failed job (`gh run rerun 42486342203 --job
+128748934567`) rather than the whole workflow or treating it as settled without evidence: it
+passed clean on the rerun. All ten jobs green on this head (`gh run view 42486342203 --json jobs`:
+10 jobs, 0 non-success). Recorded as a CI-runner timing flake in these coordinator-restart tests,
+not a W4-UI-2 defect - worth a QUESTION to the coordinator if it recurs, since repeated flakiness
+in exactly these timing-sensitive tests would be worth its own look, but one occurrence with an
+unrelated diff and a clean rerun does not establish that yet.
+
 ### Next
 
 Independent review (dispatched separately by the coordinator) and this entry's own sign-off.

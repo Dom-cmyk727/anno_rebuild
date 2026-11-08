@@ -15518,3 +15518,104 @@ Still not a claim that C is finished — see "What's still open" below.
 
 Wiring `ConstructionMenu` and `compose_screen` into the live window (`viewer.cpp`), and C3's
 cost/upkeep display from the registry. H/C/M/V/K/E remain open; continuing, not stopping.
+
+## W4-UI-2 — C3/C4 live-window wiring, proven end to end — 2026-11-07 — status: IN PROGRESS
+
+Continuing from the previous checkpoint. This one wires `ConstructionMenu` into the real window
+(not just unit-tested logic) and delivers C3's cost display, with a real end-to-end proof: a
+click on the construction menu's own rectangle, through the real `anno1503.exe`, real game files,
+arms a type and places it through the ordinary command path.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`6c6408f6`**, pushed (on top of `0f01c028`). Worktree:
+  `E:\anno1503-worktrees\anno1503-W4-ui-2`.
+
+### What ran, and with what result
+
+1. **C3, `ConstructionMenu::cell_info`**: reads a type's gold/goods cost live from the registry
+   (`BuildingType::cost_gold`/`cost_goods`) — never `data/ui/construction.txt`'s own cost columns,
+   which are RE evidence about the original, not the live registry a mod could change. Upkeep
+   stays `nullopt` (blank, per the dispatch's own "otherwise blank, with an OQ"): the registry's
+   `running_cost` holds PROD3's two slots, and which one is "active" is a fact about a *built,
+   running* instance (its own comment: "independent of blocked status"), not a static property a
+   menu entry for an unplaced type can read. **OQ-563** records this, with the house-type evidence
+   that rules out the obvious guess (`docs/re/ui.md` section 2.5: the panel shows upkeep 5 for
+   type 501, whose own `PROD3` is 0).
+2. **C4, `ConstructionMenu` wired into `viewer.cpp`** (`--construction-menu on [--layout <dir>]`,
+   `--play` only, off by default): `Viewer::handle()` checks it before `dev_` (ADR 0004 R1, "UI
+   first, then world") via a new `construction_handle()`, mirroring the existing `opening_handle`
+   hook pattern (`ViewerHooks::construction_menu`, set up in `main.cpp` exactly where `hooks.dev`
+   already is). Only a genuine hit on one of the menu's own tracked rectangles is consumed
+   (`ConstructionMenu::click`'s own `None` case falls through unchanged), so every existing
+   SDL-driven test and click path is unaffected whether the flag is off (the default) or a click
+   lands elsewhere. Only active while the window's drawable is exactly 1024 x 768 (R3's scale is
+   still open; a different size leaves the menu inactive rather than guess a scale). This first
+   slice has no open/close key yet (a separate, smaller follow-up, once R2's `--ui classic|dev`
+   switch exists): the grid defaults open on `"public"` whenever the flag is on, so the core
+   click -> arm -> place pipeline could be proven end to end now rather than wait on that.
+3. **Proven live, not only unit-tested.** A new `dev_script.hpp` primitive, `click_px X Y` (a raw
+   drawable-pixel click — `construction_handle`'s own coordinate space, not `click`'s world-tile
+   projection), and a new case `construction_menu_arm` (`tools/test/viewer_wiring/
+   construction_menu_arm.script`) drive the **real** `anno1503.exe`, with the **real** game files,
+   through a resize to 1024 x 768 (the window's own default is 1280 x 800, `SDL_CreateWindow`'s
+   literal — not 1024 x 768, found by the first run of this script correctly doing nothing, per
+   its own guard, until the resize was added), a `click_px` on the public category's cell (0, 0)
+   (type 501, data/ui/construction.txt's own click centre (833, 330)), an `expect title build 501`
+   confirming the arm reached `DevTool`, then an ordinary world `click` at the exact tile
+   `settlement_activity.script` already proves free and buildable for this type — and a `BuildCmd`
+   applies. New CTest `viewer_wiring_construction_menu_arm`.
+4. **A real GCC warning, found by the gate, fixed at the cause.** `-Werror=reorder`:
+   `construction_menu_` was initialized out of its declaration order against `opening_` in
+   `Viewer`'s constructor (MSVC does not flag this at all, so the MSVC build and every test up to
+   the WSL gate stayed green). Fixed by reordering the initializer list to match declaration
+   order, not by suppressing the warning or reordering the declarations to match a convenient
+   initializer order.
+5. **Full regression + gates**: `anno_app_tests` **243/243** (**61 403/61 403** assertions, real
+   game files, run twice — before and after the `clang-format` pass); `anno_app_input_tests`
+   **35/35** (**209 161/209 161** assertions); **all 8 `viewer_wiring` CTest cases pass**
+   (`r1_held_publication`, `r4_occupancy`, `settlement_activity`, the new
+   `construction_menu_arm`, `cpu_delivery_failures`, `opening_controls`, `expand_live_load`,
+   `viewer_wiring_contract`); `anno1503_usage` passes; `clang-format` 23.1.3 clean; **the WSL
+   gate's warnings check** — all four passes clean (confirmed clean a second time, after the
+   reorder fix).
+
+### What C still needs
+
+- **C1, C6**: the actual category-column/grid/banner/info-panel drawing (still nothing visible —
+  this checkpoint proves input routing and commands, not pixels: H1/C1's `compose_screen` draws
+  the idle chrome only); the explicit "never grants gold/goods, never bypasses a refusal" checks
+  (not yet exercised against the live window, only by construction — nothing in this path reads
+  or writes money directly).
+- **The category column and open/close key**: this slice always opens on `"public"`; switching
+  categories and a real open/close binding (resolving the B-key collision with the developer
+  tool, which needs R2's `--ui classic|dev` switch) are separate follow-up work.
+- **H2-H4**: unchanged (live snapshot values into a drawn frame, the GPU path, anchoring at other
+  window sizes, pixel-test negative controls).
+- **M, V, K, E**: unchanged — all still open, all still depend on more of H/C existing first.
+
+### Decisions and reasoning
+
+1. **Upkeep is left blank with an OQ, not estimated.** The registry does carry *a* number
+   (`running_cost`), so filling it in would not even look like a guess from the code alone — which
+   is exactly why it needed the explicit check against `docs/re/ui.md`'s house-type evidence
+   before concluding it is the wrong number for an unbuilt instance, rather than assuming a
+   present field is automatically the right one.
+2. **`ConstructionMenu` is checked before `dev_`, matching ADR 0004 R1, not after it for
+   convenience.** The two never conflict in practice (the menu only claims clicks on its own
+   rectangles), so the ordering choice carried no extra risk; doing it the ADR's way now avoids a
+   second pass through this exact code once R2's switch exists and the two can actually compete
+   for the same key.
+3. **A size guard, not a guessed scale, gates R3.** `construction_handle` requiring exactly
+   1024 x 768 is a real limitation (the menu is inactive at the window's own 1280 x 800 default
+   until resized), stated plainly rather than silently scaling pixel positions by a ratio nobody
+   has confirmed is the right one.
+4. **The GCC reorder warning was fixed at its cause.** Per the project's own discipline: a real
+   warning from a CI-equivalent gate is root-caused and fixed, not silenced with a pragma or
+   worked around by changing declaration order to suit a guess at what the compiler wanted.
+
+### Next
+
+The category column (switching among the eight categories) and an open/close key (behind R2's
+switch), then H1/C1's actual drawing wired into the same live window. H/C/M/V/K/E remain open;
+continuing, not stopping.

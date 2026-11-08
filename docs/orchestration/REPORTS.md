@@ -16086,3 +16086,55 @@ exactly one place that knows how to sum a city's residents.
 ### Next
 
 C1/C6's info-panel drawing slice, per the coordinator's explicit instruction, next.
+
+## W4-UI-2 — C1/C6: the building info/placement panel's chrome — 2026-11-08 — status: IN PROGRESS
+
+Coordinator instruction: the info-panel drawing slice next, the clear remaining gap per the M
+table's own row 4/18 and the fonts checkpoint's own flag.
+
+### Branch, with its head
+
+- `task/W4-ui-2`: **`6a2da086`**, not yet pushed.
+
+### What ran, and with what result
+
+Checked `data/ui/hud.txt` before writing anything: the building info/placement panel already has
+real, sprite-sad-measured elements (`info_panel` (804, 302) 220 x 466 the background, `infoexit`
+(984, 725) 33 x 38 the close button - the same rectangle the pickaxe already shares, `rotate_left`/
+`rotate_right` (808/987, 451) 33 x 38, `betriebskosten` (815, 674) 40 x 37 the upkeep icon slot),
+left unused by every earlier checkpoint. `draw_live_screen_xrgb` gained a `placement_open`
+parameter: on a construction screen, it now draws this panel's chrome *instead of* the grid (the
+two occupy the same screen region - `info_panel`'s rectangle overlaps `construction.txt`'s own
+grid origin/extent almost exactly), wired from `Viewer`'s existing `construction_placement_open_`
+(no new state - the same flag `ConstructionMenu::click` already uses to resolve the pickaxe/
+cancel-X overlap now drives its drawing counterpart).
+
+Deliberately not drawn: the panel's own cost-row numbers and the building's name. OQ-561 (2026-
+11-07) already found no pixel position for the gold-cost icon anywhere in the panel after an
+exhaustive search; no position evidence exists for the name either. Drawing either would be a
+guess, which this checkpoint declined to do.
+
+**Visual check** (no oracle exists for this screen - the same situation H2's digits were in):
+armed a cell live and screenshotted the panel. It renders coherently - background, both rotate
+arrows, the close button, the upkeep slot, no grid underneath - and surfaces something useful:
+the `info_panel` background texture itself already shows a plausible hammer/wood/bricks/parchment
+cost-row layout, baked into the art rather than drawn as separate sprites. Recorded as a
+corroborating observation on OQ-561 (not a resolution - it does not say where any *number* is
+drawn, only that the icons themselves may need no separate position at all).
+
+**Regression:** `ui_mock_matches_oracle`, `live_screen_matches_oracle` and
+`viewer_wiring_construction_menu_arm` all still pass - the grid-drawing path these actually
+exercise was restructured (moved inside an `else`) but not changed. `clang-format` clean; WSL
+gate (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on/off) all four lanes clean.
+
+### Decisions and reasoning
+
+Drew only what `data/ui/hud.txt` already had real position evidence for, and stopped there rather
+than filling the empty cost-row/name space with a guessed layout to make the screenshot look more
+"finished." A panel that is honestly incomplete (grey boxes where numbers would go) is more
+useful to whoever resolves OQ-561 next than one that looks complete by accident.
+
+### Next
+
+The coordinator's own next instruction: continue toward V's proof suite, by this session's
+judgement on sequencing.

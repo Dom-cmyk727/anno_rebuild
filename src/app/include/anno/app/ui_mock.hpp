@@ -130,4 +130,19 @@ draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout&
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters = {}, bool placement_open = false);
 
+/// `draw_live_screen_xrgb`'s own state and arguments, composed instead into a fresh RGBA canvas
+/// that starts fully transparent (every byte 0, not the oracle's own alpha-255 convention) -
+/// R1's GPU path (ADR 0004 "Rendering": "the GPU path blits atlas-resident UI textures..."; this
+/// is the CPU-side half of that - the caller uploads the result as one texture and alpha-blends
+/// it over the GPU-rendered frame with a single full-screen quad, `draw_gpu`'s own "ui overlay"
+/// pass). Independently written against the same inputs (not sharing code with
+/// `draw_live_screen_xrgb`), per this project's CPU-vs-GPU-vs-oracle convention; a pixel
+/// divergence between the two is exactly what a dedicated test checks for. `w`/`h` must equal
+/// `hud`'s own resolution, same exact-size guard as the XRGB path (R3 is still open).
+[[nodiscard]] formats::Result<assets::Rgba, std::string>
+draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayout& construction,
+                      const UiMockSpec& screen, UiTexCache& cache,
+                      const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+                      const HudCounters& counters = {}, bool placement_open = false);
+
 } // namespace anno::app

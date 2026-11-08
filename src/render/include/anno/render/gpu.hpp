@@ -30,6 +30,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/assets/texture.hpp>
 #include <anno/render/chunk_reduce.hpp>
 #include <anno/render/fluid.hpp>
 #include <anno/render/frame.hpp>
@@ -504,11 +505,16 @@ class GpuFrame {
     /// (W4-OPENING-1: ships that move every turn) are drawn as the scene's own units are, after all
     /// objects and in the same painter's order among them (x + y), but are not part of the scene:
     /// handing a new list each frame changes no chunk and no scene generation. They are packed even
-    /// when the chunks hold the scene's ships.
+    /// when the chunks hold the scene's ships. `ui_overlay` (ADR 0004 R1, the GPU path): a
+    /// straight-alpha RGBA image, exactly `target`'s own size, drawn last of all (after `overlay`)
+    /// as one full-screen alpha-blended quad - the GPU-side counterpart of
+    /// `app::draw_live_screen_rgba`. Uploaded fresh every call (the caller decides how often it
+    /// actually changes); null draws nothing extra.
     GpuStats render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                     std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
                     const Resample* resample = nullptr, std::span<const SpriteDraw> overlay = {},
-                    std::span<const UnitSprite> live_units = {});
+                    std::span<const UnitSprite> live_units = {},
+                    const assets::Rgba* ui_overlay = nullptr);
     /// render for a scene generation that may be released while work started by the frame is
     /// still running (the play picture's generations; docs/app/gpu-handoff.md). The chunk jobs
     /// the frame plans and the wave simulation's background preparation (GpuLimits::
@@ -519,7 +525,8 @@ class GpuFrame {
                     std::size_t group, std::uint64_t time_ms, WaterStyle style,
                     WGPUTextureView target, const Resample* resample = nullptr,
                     std::span<const SpriteDraw> overlay = {},
-                    std::span<const UnitSprite> live_units = {});
+                    std::span<const UnitSprite> live_units = {},
+                    const assets::Rgba* ui_overlay = nullptr);
 
     /// The compositor's copy of chunk `key` (round eb; docs/app/gpu-handoff.md, boundary 6). A
     /// CPU chunk that is cached and fresh is CPU-ready; it is GPU-usable once `serial` equals its

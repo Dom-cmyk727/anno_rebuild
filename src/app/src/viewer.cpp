@@ -550,6 +550,17 @@ class Viewer {
     /// exactly 1024 x 768 (R3's scale is still open; a mismatched size leaves every click to
     /// fall through unchanged, never a guessed scale).
     bool construction_handle(const SDL_Event& e);
+    /// H2's `HudCounters` and the construction screen's `UiMockSpec`/eligibility, read from the
+    /// current snapshot - shared by draw_cpu and draw_gpu so the "has a city yet"/goods-unit
+    /// logic lives in exactly one place. `eligibility` outlives the call (it is the snapshot's
+    /// own `shared_ptr`'s pointee, kept alive by `snapshot` below); callers only read it within
+    /// the same draw call, matching `draw_cpu`'s own existing contract.
+    struct ConstructionHudInputs {
+        UiMockSpec spec;
+        HudCounters counters;
+        std::shared_ptr<const PlaySnapshot> snapshot;
+    };
+    [[nodiscard]] ConstructionHudInputs construction_hud_inputs() const;
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
     DevScript* script_ = nullptr;
     PublicationHold* hold_ = nullptr;
@@ -2432,8 +2443,26 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     // The ships stir the simulated waves (enhanced water): a bow wave and a wake.
     g.frame->set_wakes(opening_ != nullptr ? motion_.wakes(wall_seconds(), wave_centre_)
                                            : std::vector<render::fluid::ShipWake>{});
-    const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
-                                   resample, overlay, live_units_);
+    // ADR 0004 R1, the GPU path: the same HUD/construction-menu overlay draw_cpu composes into
+    // its own buffer, composed here instead into a transparent-background RGBA image
+    // (ui_mock.hpp's draw_live_screen_rgba) and alpha-blended over the whole frame by the
+    // compositor's own "ui overlay" pass (gpu.cpp/gpu.wgsl) - drawn only at the same exact
+    // 1024 x 768 the CPU path requires (R3 still open).
+    std::optional<assets::Rgba> ui_overlay_image;
+    if (construction_menu_ != nullptr && w == 1024 && h == 768) {
+        const auto in = construction_hud_inputs();
+        auto drawn = draw_live_screen_rgba(
+            static_cast<int>(w), static_cast<int>(h), construction_menu_->hud(),
+            construction_menu_->construction(), in.spec, *construction_tex_cache_,
+            in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
+            construction_placement_open_);
+        if (drawn.ok()) {
+            ui_overlay_image = std::move(drawn).value();
+        }
+    }
+    const auto s =
+        g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample,
+                        overlay, live_units_, ui_overlay_image ? &*ui_overlay_image : nullptr);
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
     if (s.wave_simulation) {
@@ -2522,6 +2551,33 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
 }
 #endif
 
+Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
+    const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
+                                                                 construction_open_category_}
+                                                    : UiMockSpec{UiMockScreen::Hud, ""};
+    const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+    // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own member
+    // comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment) - sim::kTon
+    // (production.hpp) is the 256 that separates the whole-ton bits from the fractional ones; a
+    // display counter only ever needs the whole tons. eligibility is null exactly when there is
+    // no city yet (its own doc comment says so, "matching money/goods above") - money/goods
+    // themselves are plain fields (0, not nullopt) in that case, so eligibility's nullness is the
+    // real "has a city" signal.
+    const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
+    auto whole_tons = [&](std::optional<sim::GoodsId> id) -> std::optional<std::uint32_t> {
+        if (!has_city || !id || *id >= snapshot->goods.size())
+            return std::nullopt;
+        return snapshot->goods[*id] / sim::kTon;
+    };
+    HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money) : std::nullopt,
+                         whole_tons(goods_tools_),
+                         whole_tons(goods_wood_),
+                         whole_tons(goods_bricks_),
+                         whole_tons(goods_marble_),
+                         has_city ? snapshot->population : std::nullopt};
+    return {spec, std::move(counters), snapshot};
+}
+
 void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view) {
     const int w = view.w, h = view.h;
     if (texture_ == nullptr || tex_w_ != w || tex_h_ != h) {
@@ -2577,34 +2633,12 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         // Timed on its own (not folded into "render other") so the cache's effect is measurable
         // per CLAUDE.md's "measure every performance change".
         const auto ui_start = Clock::now();
-        const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
-                                                                     construction_open_category_}
-                                                        : UiMockSpec{UiMockScreen::Hud, ""};
-        const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
-        // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own
-        // member comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment)
-        // - sim::kTon (production.hpp) is the 256 that separates the whole-ton bits from the
-        // fractional ones; a display counter only ever needs the whole tons.
-        // eligibility is null exactly when there is no city yet (its own doc comment says so,
-        // "matching money/goods above") - money/goods themselves are plain fields (0, not
-        // nullopt) in that case, so eligibility's nullness is the real "has a city" signal.
-        const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
-        auto whole_tons = [&](std::optional<sim::GoodsId> id) -> std::optional<std::uint32_t> {
-            if (!has_city || !id || *id >= snapshot->goods.size())
-                return std::nullopt;
-            return snapshot->goods[*id] / sim::kTon;
-        };
-        const HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money)
-                                            : std::nullopt,
-                                   whole_tons(goods_tools_),
-                                   whole_tons(goods_wood_),
-                                   whole_tons(goods_bricks_),
-                                   whole_tons(goods_marble_),
-                                   has_city ? snapshot->population : std::nullopt};
+        const auto in = construction_hud_inputs();
         static_cast<void>(draw_live_screen_xrgb(
             buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
-            spec, *construction_tex_cache_, snapshot ? snapshot->eligibility.get() : nullptr,
-            counters, construction_placement_open_));
+            in.spec, *construction_tex_cache_,
+            in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
+            construction_placement_open_));
         construction_ui_ms = since_ms(ui_start, Clock::now());
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),

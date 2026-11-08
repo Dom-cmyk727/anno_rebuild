@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """live_screen_compare.py: the construction menu's live-window drawing (W4-UI-2 H1/C1 second
-slice, viewer.cpp's draw_cpu -> draw_live_screen_xrgb) checked against the UI.1 Python oracle's
-own mock (tools/ui_layout.py compose_screen), through the real anno1503.exe window - not the
-standalone anno_ui_mock CLI tools/test/ui_mock_compare.py already checks.
+slice, viewer.cpp's draw_cpu -> draw_live_screen_xrgb, and draw_gpu -> draw_live_screen_rgba)
+checked against the UI.1 Python oracle's own mock (tools/ui_layout.py compose_screen), through
+the real anno1503.exe window - not the standalone anno_ui_mock CLI tools/test/ui_mock_compare.py
+already checks.
 
-    python -I tools/test/live_screen_compare.py <anno1503 executable>
+    python -I tools/test/live_screen_compare.py <anno1503 executable> [--renderer cpu|gpu]
 
 The live window also draws the real game world under/around the UI chrome, which the oracle's own
 canvas (all black outside a drawn element) never represents - so this is not a whole-frame exact
@@ -16,6 +17,18 @@ construction grid, drawn-state uses the sim's live construction_eligibility, not
 construction.txt's own recorded state (C2) - a fresh Citizen start matches both (verified
 separately, 2026-11-07's C2 check, 0 of 148 mismatches), so the two still agree pixel for pixel
 here.
+
+`--renderer cpu` (the default) requires an exact match (ADR 0004 "Rendering": no float-rounding
+source for UI sprites on that path, and this checkpoint's own measurement bears that out - 0 of
+N). `--renderer gpu` uses the project's own established F2.1 tolerance instead
+(tools/ui_layout.py's COMPARE_CHANNEL=48 per channel, COMPARE_BAD_FRACTION=0.08 of the checked
+pixels) rather than bit-exact equality: a live GPU run found 54 of roughly 200,000+ checked pixels
+differing by 9-12 per channel, all at mainuntergrund's own bottom-right corner pixel (1023, 761) -
+a pre-existing CPU-vs-GPU world-render edge difference the UI chrome's own corner pixel is not
+fully opaque at, not something the UI overlay composition itself gets wrong (every other checked
+pixel, including every gold/goods/residents digit and the whole grid, is bit-exact). Comfortably
+inside the tolerance (max diff 12 of 48; 54 of 200,000+ is far under the 8% fraction) - this is the
+packet's own "within its tolerance" criterion, not a loosened bar invented for this script.
 
 Needs the original game files, Pillow (PIL) and a capture that only exists on Windows (viewer.cpp
 screenshot step: __WIN32__); skips (exit 77) otherwise.
@@ -72,13 +85,16 @@ def grid_rects(con, category):
     return out
 
 
-def compare(oracle, live, rects, width, height, masked):
+def compare(oracle, live, rects, width, height, masked, channel_tolerance=0):
     """Only where `oracle` painted something opaque (not its all-black background) AND the pixel
     is not in `masked` (data/ui/masks.txt's own live-content rectangles - the gold/goods digits
     this checkpoint started drawing live sit inside the "statusbar" element's own rectangle, which
     the oracle paints as opaque chrome; masks.txt is the project's own established exclusion for
     exactly this, docs/re/ui.md's "Masks" paragraph, not a new rule invented for this script): the
-    live capture must match exactly there. Returns (bad, checked, first_diff, bad_by_name)."""
+    live capture must match within `channel_tolerance` per RGB channel (0: exact, the CPU
+    renderer's own target; a positive value: the F2.1 convention, tools/ui_layout.py's own
+    COMPARE_CHANNEL, for the GPU renderer's own allowed tolerance). Returns (bad, checked,
+    first_diff, bad_by_name)."""
     o, l = oracle.load(), live.load()
     bad = checked = 0
     first = None
@@ -94,7 +110,7 @@ def compare(oracle, live, rects, width, height, masked):
                     continue
                 checked += 1
                 b = l[x, y]
-                if a != b:
+                if max(abs(a[c] - b[c]) for c in range(3)) > channel_tolerance:
                     bad += 1
                     el_bad += 1
                     if first is None:
@@ -105,10 +121,18 @@ def compare(oracle, live, rects, width, height, masked):
 
 
 def main(argv):
-    if len(argv) != 1:
+    renderer = "cpu"
+    pos = []
+    it = iter(argv)
+    for a in it:
+        if a == "--renderer":
+            renderer = next(it, "")
+        else:
+            pos.append(a)
+    if len(pos) != 1 or renderer not in ("cpu", "gpu"):
         print(__doc__)
         return 2
-    (exe,) = argv
+    (exe,) = pos
     if os.name != "nt":
         print("skipping: the screenshot step is Windows-only (viewer.cpp)")
         return 77
@@ -132,13 +156,24 @@ def main(argv):
     width, height = hud["resolution"]
     masked = ui_layout.load_mask_set(str(layout_dir))
 
+    # GPU needs a real, visible window (a Win32 surface to request a compatible adapter against -
+    # confirmed by hand: --renderer gpu under SDL_VIDEODRIVER=dummy exits "no Win32 window
+    # handle", never falling back silently). This matches viewer_wiring.py's own established
+    # --gpu flag (unused by any registered CTest case so far, for exactly this reason): a GPU
+    # check here is a manual/interactive-desktop verification, like bench_frame, not something
+    # CI's headless environment can run. --renderer cpu (the default) keeps the dummy driver and
+    # is the only mode registered as a CTest case.
     with tempfile.TemporaryDirectory(prefix="anno_live_screen_") as session:
         session_dir = Path(session) / "session"  # must not exist yet (main.cpp's own check)
         env = dict(os.environ, ANNO_DEV_SCRIPT=str(SCRIPT), ANNO_DEV_SESSION=str(session_dir),
-                  ANNO_VIEW_QUIT_S="30", SDL_VIDEODRIVER="dummy")
+                  ANNO_VIEW_QUIT_S="30")
+        if renderer == "cpu":
+            env["SDL_VIDEODRIVER"] = "dummy"
+        else:
+            env.pop("SDL_VIDEODRIVER", None)
         proc = subprocess.run(
             [exe, "--play", str(HERE / "data" / "maps" / "lan5.txt"), "--game-dir", game_dir,
-             "--construction-menu", "on", "--layout", str(layout_dir), "--renderer", "cpu"],
+             "--construction-menu", "on", "--layout", str(layout_dir), "--renderer", renderer],
             env=env, capture_output=True, text=True, timeout=120, check=False)
         if proc.returncode != 0:
             print(f"anno1503 exited {proc.returncode}\nstderr:\n{proc.stderr}")
@@ -166,12 +201,23 @@ def main(argv):
             if live.size != (width, height):
                 failures.append(f"{screen}: captured size {live.size} != {(width, height)}")
                 continue
-            bad, checked, first, bad_by_name = compare(oracle, live, rects, width, height, masked)
-            if bad:
+            # F2.1's own convention (tools/ui_layout.py COMPARE_CHANNEL/COMPARE_BAD_FRACTION):
+            # the GPU renderer is allowed up to channel_tolerance per channel and up to 8% of the
+            # checked pixels bad; the CPU renderer's own target stays bit-exact (tolerance 0).
+            channel_tolerance = 48 if renderer == "gpu" else 0
+            bad, checked, first, bad_by_name = compare(oracle, live, rects, width, height, masked,
+                                                       channel_tolerance)
+            bad_fraction = (bad / checked) if checked else 0.0
+            if bad and (renderer == "cpu" or bad_fraction > 0.08):
                 x, y, a, b = first[1], first[2], first[3], first[4]
                 failures.append(
-                    f"{screen}: {bad} of {checked} opaque-oracle pixels differ; first at "
-                    f"{first[0]} ({x},{y}): oracle={a} live={b}; elements: {bad_by_name}")
+                    f"{screen}: {bad} of {checked} opaque-oracle pixels differ (fraction "
+                    f"{bad_fraction:.4f}); first at {first[0]} ({x},{y}): oracle={a} live={b}; "
+                    f"elements: {bad_by_name}")
+            elif bad:
+                print(f"{screen}: {bad} of {checked} pixels outside tolerance "
+                     f"(fraction {bad_fraction:.4f}, within the 0.08 F2.1 bound); elements: "
+                     f"{bad_by_name}")
             else:
                 print(f"{screen}: exact match on {checked} opaque-oracle pixels")
 

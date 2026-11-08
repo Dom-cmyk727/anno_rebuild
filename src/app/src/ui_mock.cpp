@@ -140,6 +140,51 @@ void blit(assets::Rgba& dst, const assets::Rgba& sprite, int x, int y) {
     }
 }
 
+/// Like `blit`, but onto a canvas that starts fully transparent (every byte 0) and must track its
+/// own alpha correctly rather than rely on the destination already being opaque everywhere (the
+/// GPU overlay texture, R1's GPU path - the canvas is composited *over* the live GPU frame by the
+/// shader, so a pixel this function never touches must read back alpha 0, not a stray opaque
+/// black). A source pixel skips at alpha 0 (unchanged from `blit`); at alpha 255 it is a straight
+/// overwrite (chrome sprites are always fully opaque or fully transparent, never partial); a
+/// partial alpha (a glyph's own anti-aliased edge, `assets::render_text`) composites with the
+/// standard Porter-Duff "over" against whatever (if anything) is already there, so two adjacent
+/// partially-transparent writes blend correctly instead of one silently overwriting the other.
+void blit_rgba_over(assets::Rgba& dst, const assets::Rgba& sprite, int x, int y) {
+    for (int sy = 0; sy < sprite.height; ++sy) {
+        const int dy = y + sy;
+        if (dy < 0 || dy >= dst.height)
+            continue;
+        const std::size_t srow = static_cast<std::size_t>(sy) * sprite.width * 4;
+        const std::size_t drow = static_cast<std::size_t>(dy) * dst.width * 4;
+        for (int sx = 0; sx < sprite.width; ++sx) {
+            const std::size_t so = srow + static_cast<std::size_t>(sx) * 4;
+            const unsigned sa = sprite.pixels[so + 3];
+            if (sa == 0)
+                continue;
+            const int dx = x + sx;
+            if (dx < 0 || dx >= dst.width)
+                continue;
+            const std::size_t d = drow + static_cast<std::size_t>(dx) * 4;
+            const unsigned da = dst.pixels[d + 3];
+            if (sa == 255 || da == 0) {
+                dst.pixels[d] = sprite.pixels[so];
+                dst.pixels[d + 1] = sprite.pixels[so + 1];
+                dst.pixels[d + 2] = sprite.pixels[so + 2];
+                dst.pixels[d + 3] = static_cast<std::uint8_t>(sa);
+                continue;
+            }
+            const unsigned out_a = sa + da * (255 - sa) / 255;
+            for (std::size_t c = 0; c < 3; ++c) {
+                const unsigned v =
+                    (sprite.pixels[so + c] * sa + dst.pixels[d + c] * da * (255 - sa) / 255) /
+                    std::max(out_a, 1U);
+                dst.pixels[d + c] = static_cast<std::uint8_t>(v);
+            }
+            dst.pixels[d + 3] = static_cast<std::uint8_t>(out_a);
+        }
+    }
+}
+
 /// `cell_icon_tex_id` (tools/ui_layout.py): record index i = row*4+col, three consecutive
 /// textures per record (idle, hover, pressed; docs/re/ui.md section 2.4).
 int cell_icon_tex_id(int thumb_tex, int col, int row) {
@@ -213,6 +258,16 @@ void draw_text_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const formats::zei
         return;
     const assets::Rgba image = assets::render_text(*font, text, style);
     blit_xrgb_alpha(dst, dst_w, dst_h, image, x, y);
+}
+
+/// `draw_text_xrgb`'s own contract, onto the R1 GPU-overlay canvas (`blit_rgba_over`) instead of
+/// the live XRGB buffer.
+void draw_text_rgba(assets::Rgba& dst, const formats::zei::CharSet* font, const std::string& text,
+                    int x, int y, const assets::TextStyle& style = {}) {
+    if (font == nullptr || text.empty())
+        return;
+    const assets::Rgba image = assets::render_text(*font, text, style);
+    blit_rgba_over(dst, image, x, y);
 }
 
 /// Whether `type` is allowed per `eligibility` (ascending by id; nullptr or no entry: false -
@@ -503,6 +558,144 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     }
 
     return "";
+}
+
+formats::Result<assets::Rgba, std::string>
+draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayout& construction,
+                      const UiMockSpec& screen, UiTexCache& cache_wrapper,
+                      const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+                      const HudCounters& counters, bool placement_open) {
+    if (w != hud.resolution_w || h != hud.resolution_h)
+        return std::string(
+            "draw_live_screen_rgba: destination size does not match the layout's resolution");
+
+    // R1, the GPU path (ADR 0004 "Rendering"): the same live state draw_live_screen_xrgb composes
+    // into the CPU buffer, composed here instead into a canvas that starts fully transparent (so
+    // it can be uploaded as one texture and alpha-blended *over* the GPU-rendered frame as a
+    // single full-screen quad - viewer.cpp's draw_gpu, the "ui overlay" pass). Independently
+    // written against the same data/ui/ layouts and the same live eligibility/counters, not
+    // sharing code with draw_live_screen_xrgb - this project's own CPU-vs-GPU-vs-oracle
+    // convention (ADR 0004's own words), cross-checked by a pixel test against the same oracle
+    // draw_live_screen_xrgb already is.
+    UiTexCache::Impl& cache = cache_wrapper.impl();
+    const bool is_construction = screen.kind == UiMockScreen::Construction;
+    const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
+
+    assets::Rgba canvas;
+    canvas.width = static_cast<std::uint16_t>(w);
+    canvas.height = static_cast<std::uint16_t>(h);
+    canvas.pixels.assign(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4, 0);
+
+    auto blit_el = [&](const std::string& name, std::optional<int> tex_id_override = std::nullopt) {
+        const UiElement* el = hud.element(name);
+        if (!el || !el->has_pos || el->file.empty())
+            return;
+        const int tid = tex_id_override.value_or(el->tex_id.value_or(0));
+        const auto sprite = cache.decode(el->file, tid);
+        if (!sprite)
+            return;
+        blit_rgba_over(canvas, *sprite, el->pos_x, el->pos_y);
+    };
+
+    blit_el("weltkarte");
+    blit_el("mainuntergrund");
+    if (!is_construction) {
+        blit_el("tab_construction", 8);
+        blit_el("tab_military", 13);
+        blit_el("tab_help", 10);
+        blit_el("tab_options", 11);
+    } else {
+        blit_el("tab_construction", 12);
+        blit_el("tab_military", 9);
+        blit_el("tab_help", 10);
+        blit_el("tab_options", 11);
+    }
+    blit_el("statusbar");
+    blit_el("gold");
+    if (counters.gold) {
+        draw_text_rgba(canvas, digit_font, std::to_string(*counters.gold), 34, 733 + (35 - 25) / 2);
+    }
+    if (is_construction) {
+        blit_el("baumat_tools");
+        blit_el("baumat_wood");
+        blit_el("baumat_bricks");
+        blit_el("baumat_marble");
+        if (counters.tools) {
+            draw_text_rgba(canvas, digit_font, std::to_string(*counters.tools), 162,
+                           733 + (35 - 25) / 2);
+        }
+        if (counters.wood) {
+            draw_text_rgba(canvas, digit_font, std::to_string(*counters.wood), 222,
+                           733 + (35 - 25) / 2);
+        }
+        if (counters.bricks) {
+            draw_text_rgba(canvas, digit_font, std::to_string(*counters.bricks), 282,
+                           733 + (35 - 25) / 2);
+        }
+        if (counters.marble) {
+            draw_text_rgba(canvas, digit_font, std::to_string(*counters.marble), 342,
+                           733 + (35 - 25) / 2);
+        }
+    }
+    blit_el("fragezeichen");
+    blit_el("rosh_46");
+    blit_el("rosh_48");
+    blit_el("rosh_51");
+    if (is_construction) {
+        blit_el("einwohner");
+        if (counters.residents) {
+            draw_text_rgba(canvas, digit_font, std::to_string(*counters.residents), 439,
+                           733 + (35 - 25) / 2);
+        }
+    }
+    blit_el("zoom_plus");
+    blit_el("zoom_minus");
+    blit_el("lupe");
+    blit_el("compass_w");
+    blit_el("compass_e");
+
+    if (is_construction) {
+        blit_el("plankegross");
+        if (placement_open) {
+            blit_el("info_panel");
+            blit_el("infoexit");
+            blit_el("rotate_left");
+            blit_el("rotate_right");
+            blit_el("betriebskosten");
+        } else {
+            blit_el("abrissicon", 659);
+
+            const int ox = construction.grid.origin_x;
+            const int oy = construction.grid.origin_y;
+            const int stride = construction.grid.cell_px;
+            const auto* cat = construction.category(screen.category);
+            const int thumb = cat ? cat->thumb_tex : 0;
+
+            const UiElement* lock_el = hud.element("no_klick");
+            const int lock_id = lock_el && lock_el->tex_id ? *lock_el->tex_id : 56;
+            const std::string lock_file =
+                (lock_el && !lock_el->file.empty()) ? lock_el->file : "toolgfx/fenster.tex";
+            const auto lock_sprite = cache.decode(lock_file, lock_id);
+
+            for (const auto& cell : construction.cells) {
+                if (cell.category != screen.category)
+                    continue;
+                const int x = ox + cell.col * stride;
+                const int y = oy + cell.row * stride;
+                const bool allowed = live_allowed(eligibility, sim::TypeId{cell.id});
+                if (allowed && thumb != 0) {
+                    const auto icon = cache.decode("toolgfx/fenster.tex",
+                                                   cell_icon_tex_id(thumb, cell.col, cell.row));
+                    if (icon)
+                        blit_rgba_over(canvas, *icon, x, y);
+                } else if (!allowed && lock_sprite) {
+                    blit_rgba_over(canvas, *lock_sprite, x, y);
+                }
+            }
+        }
+    }
+
+    return canvas;
 }
 
 } // namespace anno::app

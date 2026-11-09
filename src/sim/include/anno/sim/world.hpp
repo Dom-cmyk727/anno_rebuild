@@ -166,8 +166,12 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // Stream137 (MAP-EXTRACT-2 part T, docs/sim/iron-tools.md T1.5): iron mines place (the salt-only
 // mountain ware default becomes a data-driven rule) and a mine step's re-lookup searches every ore
 // object and materialises the deposit it binds. Same ECONBK1 tag, PRNG timeline 5 (no draw-order
-// change), same field order, no new saved field; 133, 134 and 135 saves and recordings are
-// refused. 136 belongs to the route lane and is not part of this identity.
+// change); 133, 134 and 135 saves and recordings are refused. 136 belongs to the route lane and is
+// not part of this identity. Later work inside the same identity 137 (no new number) DID add two
+// saved fields: the Quarry payload (tag 9, a claim flag per entrance) and the mason worker's goal
+// sub-cell bytes (HarvestState goal_col/goal_row, job 0x2c only); see docs/sim/quarry-bricks.md
+// Q3.1. The resident home walk (T3-Q2, docs/sim/population-live.md 27) changed behaviour, no
+// layout.
 inline constexpr std::uint32_t kStateHashVersion = 137;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.

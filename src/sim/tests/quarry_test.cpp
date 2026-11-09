@@ -748,6 +748,37 @@ template <class P> P* payload_of(sim::World& w, sim::BuildingId id) {
     return nullptr;
 }
 
+TEST_CASE("quarry registry: only the quarries output STEINE or MARMORSTEIN (the MS2 guard)") {
+    auto p = make(false, false, 0);
+    if (!p) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sim::TypeRegistry& types = p->w.types();
+    std::set<sim::GoodsId> stones;
+    for (sim::GoodsId g = 0; g < 0x8f; ++g) {
+        const sim::GoodsInfo* gi = types.goods(g);
+        if (gi != nullptr && (gi->name == "STEINE" || gi->name == "MAMORSTEIN"))
+            stones.insert(g);
+    }
+    REQUIRE(stones.size() == 2);
+    std::size_t quarries = 0;
+    for (const sim::BuildingType& t : types.types()) {
+        bool outputs_stone = false;
+        for (const sim::GoodsId g : t.output_goods)
+            outputs_stone = outputs_stone || stones.contains(g);
+        INFO("type " << t.id.v << " class " << int(t.cls));
+        if (outputs_stone) {
+            CHECK(t.cls == sim::RuntimeClass::Quarry);
+            ++quarries;
+        }
+    }
+    // 1201, 1208 (STEINE), 1218, 1220 (MAMORSTEIN): if a non-quarry source of stone ever appears in
+    // the data, the non-quarry source path of the mason search (mutant MS2) becomes reachable and
+    // needs a play-level test
+    CHECK(quarries == 4);
+}
+
 TEST_CASE("quarry invariants: a corrupted claim set is refused, in the world and on load") {
     // The pilot's island holds other players' masons whose workers legitimately walk or wait. The
     // legal control is the world as it is; for the corrupted copies below those workers are moved

@@ -182,12 +182,11 @@ struct ResidentStats {
     std::uint64_t delivered_88 = 0;       ///< their amounts
     std::uint64_t deliveries_refused = 0; ///< merge side: a stock overflow, nothing changed
     std::uint64_t lost_88 = 0;            ///< cargo of residents that ended without a delivery
-    std::uint64_t no_path_home = 0;       ///< step C found no path home (the job ends, cargo kept)
-    std::uint64_t reverse_rejected = 0;   ///< C3 P-15: reverse routes the forward replay refused
-    std::uint64_t endpoint_adapted =
-        0; ///< C3 P-15: reverse routes accepted only by the endpoint adapter
-    std::uint64_t forward_used = 0; ///< C3 P-15: routes supplied by the shared forward search
-    std::uint64_t home_gone = 0;    ///< the home was gone or lost the walker's slot
+    std::uint64_t no_path_home = 0;       ///< step C found no path home (the job ends, cargo lost)
+    std::uint64_t home_walks = 0;         ///< T3-Q2: forward searches for a walk home (step C)
+    /// T3-Q2: how often entrance index i of a home was the goal the search reached first.
+    std::map<std::uint32_t, std::uint64_t> home_entrance;
+    std::uint64_t home_gone = 0; ///< the home was gone or lost the walker's slot
     /// The per-goods ledger of the whole live chain (MAP-POP-LIVE-1 L5; same rules, diagnostic).
     /// Job side, at the purchase: the cargo amounts the suppliers returned, the city store they
     /// took (a stall takes it, a public building only bills), and the billed deltas (the REQUESTED

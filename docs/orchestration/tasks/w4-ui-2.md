@@ -1,7 +1,8 @@
 # W4-UI-2: the original's HUD and construction menu in the live window
 
-**READY / RELEASED 2026-11-07. Owner: the Windows executor. The Claude Code orchestrator wrote this packet at the
-owner's request.** It starts right after W4-MAIN-2 part E is reported, with no stop in between.
+**DONE: accepted and merged into `main` as `96de6bca` on 2026-11-09
+([review](../reviews/2026-11-08-w4-ui-2-merge.md)).** READY / RELEASED 2026-11-07. Owner: the Windows executor. The
+Claude Code orchestrator wrote this packet at the owner's request. It starts right after W4-MAIN-2 part E is reported, with no stop in between.
 
 Work through the parts in order: **P → F → R → H → C → M → V → K → E**. Re-read this packet and your latest REPORTS
 entries after any context compaction, before you continue.

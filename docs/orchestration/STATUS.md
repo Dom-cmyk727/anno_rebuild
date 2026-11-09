@@ -4,7 +4,11 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-07 evening, by the Claude Code orchestrator: W4-UI-2 released to the Windows executor and
+**Last updated:** 2026-11-09 morning, by the Claude Code orchestrator: **W4-UI-2 accepted and merged into `main` as
+`96de6bca`**. The game-file run at `96de6bca`, made before the push, passed: 2,344 executed, 0 failed, 11 classified
+skips. The overdue game-file run at `5e7b13c6` is recorded. A coordinator follow-up is proposed for the CI flakes and
+two stalls on this PC ([review](reviews/2026-11-08-w4-ui-2-merge.md)). Before that, 2026-11-07 evening: W4-UI-2
+released to the Windows executor and
 MAP-EXTRACT-2 to the first Mac, both at the owner's request ([UI packet](tasks/w4-ui-2.md),
 [mine packet](tasks/map-extract-2.md)); two owner-dispatched research notes checked and merged
 (`docs/re/mine-deposit-followups.md`, `docs/re/complogic-ai-behavior.md`); the mine note answers the first Mac's
@@ -43,15 +47,18 @@ jobs. [Acceptance, failures, exact counts and intake notes](reviews/2026-11-06-m
 The previous red-main condition since `944cec89` is repaired; the owner’s CI hold
 before consolidation is satisfied. No further gameplay has been consolidated.
 
-**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is "CI green, game-file run pending" at
-`5e7b13c6`.** That rule counts `main` as healthy only once its game-file tests have run on the Windows PC.
-- **What failed:** 18 out-of-date real-file tests, reproduced at `96775da4`. They broke after the strict scene loader
-  (`f7c31ed8`) and the construction-eligibility check (`d2be23aa`).
-- **The repair:** W4-MAIN-2 part A (`task/MAIN-REALFILES-1`). It was [reviewed and accepted](reviews/2026-11-07-w4-main-2.md)
-  and merged into `main` as `5e7b13c6` on 2026-11-07. On its own branch all 18 pass in the full MSVC run with the game
-  files.
-- **Still to do:** the owner-rule run at `5e7b13c6` itself. It runs once the Windows lane's WSL gate has freed the PC.
-  A full run with `-j 16` hits memory refusals on this PC; see the review.
+**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is healthy at `96de6bca`:** its game-file run
+passed on the Windows PC before the push ([review](reviews/2026-11-08-w4-ui-2-merge.md) §3).
+- **Counts:** 2,355 selected; 2,344 executed and passed, 9 of them on a one-at-a-time rerun after memory refusals; 0
+  failed. Skips: 6 opt-in, 2 platform, 3 symlink rows without the Windows privilege; 0 required-asset.
+- **The run before it:** `5e7b13c6`, the 18 real-file repairs of W4-MAIN-2 part A. It ran on 2026-11-07 but was
+  recorded only now (review §1): 2,320 of 2,321 passed. The one memory refusal passed alone.
+- **How to run it on this PC:**
+  - Run it as a detached process. Claude Code's background-task memory limit stops it otherwise.
+  - Close large applications first.
+  - Watch for coordinator stalls, and rerun any refused item one at a time.
+
+  Review §3 has the details.
 
 Every later code push to `main` needs its own game-file run on the Windows PC.
 
@@ -97,9 +104,12 @@ mirror still requires the owner/Windows sync after main publication.
   - **C1 at 17:24:**
     - the CPU render lane ended FAIL on the known `flow build ... built once` case, 184 of 185 executed;
     - the lavapipe GPU lane had run for about two hours and was still running.
-  - **Then, with no stop: [W4-UI-2](tasks/w4-ui-2.md),** released 2026-11-07 by the Claude Code orchestrator at the
-    owner's request. It builds the original's in-game UI in the live window, the owner's chosen test surface
-    (decision M3):
+  - **[W4-UI-2](tasks/w4-ui-2.md): DONE, accepted and merged into `main` as `96de6bca` on 2026-11-09**
+    ([review](reviews/2026-11-08-w4-ui-2-merge.md)).
+    - The independent review requested changes; they were fixed in `b3d8793d`, and the focused re-review approved them.
+    - CI passed 10/10 at `d470825f`. The game-file run at the merge commit passed.
+    - It was released 2026-11-07 by the Claude Code orchestrator at the owner's request. It builds the original's
+      in-game UI in the live window, the owner's chosen test surface (decision M3):
     - **F:** UI.1.F2.1 closed, the graphics of the build-test surface;
     - **R:** ADR 0004, with owner questions on the default surface and the UI scale;
     - **H, C:** the HUD, and the construction menu with placement and demolish through the real command path;
@@ -218,11 +228,16 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on a run
 
-- **The game-file run at `5e7b13c6`** (owner rule): the full MSVC suite with the game files and the RTX 4090. The
-  Claude Code orchestrator runs it on the Windows PC once the Windows lane's WSL gate has finished.
+- None. `5e7b13c6` and `96de6bca` are run and recorded ([review](reviews/2026-11-08-w4-ui-2-merge.md)).
 
 ## Waiting on the owner
 
+- **The W4-UI-2 playtest card** (part K): the HUD and construction menu in the live window, on `main` from
+  `96de6bca`.
+- **ADR 0004 questions R2 and R3:** the default surface (`--ui classic|dev`) and the UI scale.
+- **Who owns the coordinator follow-up** ([review](reviews/2026-11-08-w4-ui-2-merge.md) §4). It covers four CI flakes
+  in `anno_test_support_tests` on 2026-11-08 and two stalls of the game-file run on this PC. Proposed: the Windows
+  executor, to root-cause and fix it, then 5 consecutive clean CI runs.
 - **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).
 - **The opening playtest** in the live window (W4-OPENING-1, accepted 2026-11-05).
 - **W4-SETTLEMENT-1's playtest card,** once review item 3 (the inspection line) is fixed.

@@ -1475,6 +1475,14 @@ Read the packet from fetched main; independent package approvals release later
 packages. The old SCRIPT2 packet below is historical, not a new assignment.
 <!-- END MAP-INTEGRATE-1 DISPATCH -->
 
+**Windows update, 2026-11-09 (Claude Code orchestrator): W4-UI-2 is DONE, accepted and merged into `main` as
+`96de6bca`.** The game-file run at the merge commit passed before the push
+([review](reviews/2026-11-08-w4-ui-2-merge.md)). Next for the Windows executor:
+- the owner's playtest cards, the UI card among them;
+- the coordinator follow-up (review §4), if the owner assigns it.
+
+No new package is released by this note.
+
 **Windows update, 2026-11-07 evening (Claude Code orchestrator, at the owner's request): W4-UI-2 is READY / RELEASED.**
 Read the [P, F, R, H, C, M, V, K, E packet](tasks/w4-ui-2.md). It starts right after W4-MAIN-2 part E is reported,
 with no stop in between. It builds the original's in-game UI in the live window, the owner's chosen test surface

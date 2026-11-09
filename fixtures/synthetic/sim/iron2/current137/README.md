@@ -1,8 +1,7 @@
 # MAP-EXTRACT-2 current137 fixtures
 
 Identity 137 / ECONBK1 / PRNG timeline 5 / replay 4 / command wire 1 / save 1 (MAP-EXTRACT-2 part T,
-`docs/sim/iron-tools.md` T1.5). 136 belongs to the route lane and is not part of this identity. Fields,
-field order, the tag and the draw sites are unchanged from 135; the stream moves because accepted-command
+`docs/sim/iron-tools.md` T1.5). 136 belongs to the route lane and is not part of this identity. The tag, the PRNG timeline and the draw sites are unchanged from 135, and the field order is unchanged except for the two fields added inside 137 by part Q (the `Quarry` payload, tag 9, and `HarvestState::goal_col/goal_row` for job 0x2c; see `docs/sim/quarry-bricks.md` Q3.1 and the addendum below); the stream moves because accepted-command
 outcomes change (iron mines place; a mine step's re-lookup binds an ore no mine has bound yet, T2). The
 registry digest is unchanged. All 133, 134 and 135 native states and recordings are refused with their own
 diagnostic; `econbook1/current133`, `expand1/current134`, `salt1/current135` and the extracted natives

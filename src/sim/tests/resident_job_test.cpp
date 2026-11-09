@@ -65,6 +65,8 @@ constexpr sim::TypeId kInn{
 
 constexpr sim::TypeId kHouseTwo{
     9519}; // T3-Q2: a house with TWO entrances, left (0,1) and right (2,1)
+constexpr sim::TypeId kHouseEdge{
+    9521}; // T3-Q2: a 1 x 1 house whose one entrance is the sub-cell (0,1)
 constexpr sim::TypeId kHouseLeft{9520}; // the same with the left entrance only (the control)
 
 constexpr sim::GoodsId kFood = 26;
@@ -198,6 +200,9 @@ std::shared_ptr<const sim::TypeRegistry> registry(bool second_need = false, bool
         two.height = 1;
         two.entrances = {{3, 3}, {9, 3}};
         b.add(two);
+        sim::BuildingType edge = house_type(kHouseEdge, true);
+        edge.entrances = {{1, 3}}; // sixths: the left-middle sub-cell (0,1), not the tile centre
+        b.add(edge);
         sim::BuildingType left = house_type(kHouseLeft, true);
         left.width = 2;
         left.height = 1;
@@ -1810,6 +1815,19 @@ TEST_CASE("resident job T3-Q2: the walk home ends on the centre of the entrance 
     until(hw->w, [&] { return ended(hw->w, hw->id); });
     CHECK(house_of(hw->w).stock[0] == 151 * 16); // delivered
     CHECK(hw->stats.residents.no_path_home == 0);
+    // an entrance that is NOT the tile centre: the walk ends on that sub-cell's centre (0,1), a
+    // sixth of a tile left of the middle, not on the tile centre
+    Rig edge = make_rig();
+    edge.place(kHouseEdge, 110, 110, fresh_house());
+    edge.place(kStall, 114, 110);
+    auto ew = walker_at_home_walk(edge, types);
+    const sim::Figure* ef = sim::find_figure(ew->w.figures(), ew->id);
+    REQUIRE(ef != nullptr);
+    REQUIRE(ef->resident.has_value());
+    REQUIRE(ef->resident->step == sim::ResidentStep::ToHome);
+    const sim::FixedPos edge_end = sim::subcell_centre(sim::TileXY{110, 110}, 0, 1);
+    CHECK(ef->resident->route.back() == edge_end);
+    CHECK(edge_end != sim::tile_centre(sim::TileXY{110, 110}));
 }
 
 TEST_CASE("resident job T3-Q2: a house with two entrances is entered by the first one reached") {

@@ -153,7 +153,7 @@ TEST_CASE("synthetic mechanics fixture: labelled hides become leather and househ
     CHECK(l.leather_store == 555);
     CHECK(l.leather_taken == 754);
     CHECK(houses_reached(c) == 8);
-    CHECK(c.w.state_hash() == 0x3ebd3a97f117062cULL);
+    CHECK(c.w.state_hash() == 0x88e222c6b5447300ULL);
     std::cerr << "PIN main first_store " << first_store << " hides_store " << l.hide_store << " in "
               << l.hide_in << " consumed " << l.hide_consumed << " made " << l.leather_made
               << " out " << l.leather_out << " loaded " << l.leather_loaded << " cart "
@@ -381,7 +381,7 @@ TEST_CASE("synthetic mechanics fixture: three owners, three towns, shared stream
     CHECK(categories["ids"] == 1);
     CHECK(categories["figures"] > 0);
     CHECK(categories["other-island tiles"] == 1); // island 3's grass tiles (measured)
-    CHECK(categories["other-island building"] == 10);
+    CHECK(categories["other-island building"] == 11);
     // (4) arm Z: with the other towns' farms gone their dispatch draws leave the shared stream (the
     // cursor differs); the recipe-bound total (leather made) is the same, the split between store,
     // output and carts is not (measured)
@@ -391,9 +391,9 @@ TEST_CASE("synthetic mechanics fixture: three owners, three towns, shared stream
               << houses_reached(cx) << " | Z made " << lz.leather_made << " taken "
               << lz.leather_taken << " store " << lz.leather_store << " houses "
               << houses_reached(cz) << "\n";
-    CHECK(cx.w.rng().cursor() == 1969);
-    CHECK(cz.w.rng().cursor() == 1880);
-    CHECK(cy.w.rng().cursor() == 2030);
+    CHECK(cx.w.rng().cursor() == 1971);
+    CHECK(cz.w.rng().cursor() == 1882);
+    CHECK(cy.w.rng().cursor() == 2036);
     CHECK(lx.leather_made == 1344);
     CHECK(lx.leather_taken == 754);
     CHECK(lx.leather_store == 555);

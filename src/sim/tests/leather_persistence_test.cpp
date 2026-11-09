@@ -135,7 +135,7 @@ TEST_CASE("synthetic mechanics fixture: reload at in-flight states equals the un
     CHECK(ref.first["processor"] == 82);
     CHECK(ref.first["delivery"] == 486);
     CHECK(ref.first["resident"] == 666); // scoped to the target houses (was 508: a rival walker)
-    CHECK(ref.final_hash == 0x3ebd3a97f117062cULL); // equals the main run's hash at 100 000 ticks
+    CHECK(ref.final_hash == 0x88e222c6b5447300ULL); // equals the main run's hash at 100 000 ticks
     for (const char* k : {"worker", "processor", "delivery", "resident"}) {
         std::cerr << "PIN flight " << k << " first step "
                   << (ref.first.count(k) != 0 ? ref.first[k] : 0) << "\n";
@@ -230,9 +230,10 @@ TEST_CASE("synthetic mechanics fixture: recorded log replays, a changed legal co
     }
     REQUIRE(cp_entries.size() == 9);
     constexpr std::array<std::uint64_t, 9> kPinned{
-        0x9c2b0f64137d0068ULL, 0x9e6b3c1d6604ef3dULL, 0x688f0140787617f9ULL,
-        0xa40cee4c0f314f98ULL, 0xc32d614c4b6b19dbULL, 0x41e608a301f610faULL,
-        0x3deb174fc945dc0bULL, 0xf652216fb34e4fc7ULL, 0xedd956ee55937a30ULL};
+
+        0x9c2b0f64137d0068ULL, 0xd3bd05ae6e4ebb41ULL, 0xd016907f706f02ebULL,
+        0x3a6c929b5e9fa795ULL, 0xffa3908cef447cb0ULL, 0x33c367e43dc80a02ULL,
+        0x9bc22d1ae0b2e045ULL, 0x99f0fab4299125d1ULL, 0x142242e1264f1f78ULL};
     for (std::size_t i = 0; i < cp_hashes.size(); ++i) {
         CHECK_MESSAGE(cp_hashes[i] == kPinned[i], "checkpoint " << i << " " << hex64(cp_hashes[i]));
         std::cerr << "PIN log checkpoint " << i << " entry " << cp_entries[i] << " hash "
@@ -443,7 +444,7 @@ TEST_CASE("synthetic mechanics fixture: refused commands change nothing and repl
     CHECK(outcome.value().reproduced());
     CHECK(fresh.value().state_hash() == final_with);
     CHECK(final_with ==
-          0x41e608a301f610faULL); // equals checkpoint 5 of the log above (600 advances)
+          0x33c367e43dc80a02ULL); // equals checkpoint 5 of the log above (600 advances)
     std::cerr << "PIN refused final hash " << hex64(final_with) << "\n";
 }
 

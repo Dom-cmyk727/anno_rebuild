@@ -1,23 +1,23 @@
 # House progression vectors (MAP-POP-CLOSE-2 K3). The groups and tables are the shipped PIONIER (0) and SIEDLER (1)
 # rows of Data/BGruppen.dat as the registry reads them (Menge, Force, the cur-group lookup incl. the tavern alias 83 -> 5),
-# the state is what the engine held at the deciding tick of the first upgrade in the Tutorial town (tick 57500, house at
-# (226,251); MAP-NEEDS-2 N2: it was tick 55000 / E 668 before the sheep animals ended and released their counters, which
-# adds FarmWorkerDispatch draws and shifts every later draw; docs/sim/early-needs.md section 10). population_progression_test.cpp rebuilds the two `grp` lines and the K3-57500 input from the registry and
+# the state is what the engine held at the deciding tick of the first upgrade in the Tutorial town (tick 60000, house at
+# (226,251); T3-Q2: it was tick 57500 / E 670 before the residents walked home like the carriers, and tick 55000 / E 668 before
+# the sheep animals ended and released their counters; docs/sim/early-needs.md section 10, docs/sim/population-live.md 27). population_progression_test.cpp rebuilds the two `grp` lines and the K3-60000 input from the registry and
 # the engine's record and asserts they equal this file; the expected part was computed by tools/house_transition_ref.py
 # and by hand (docs/sim/population-live.md section 25):
-#   food  = 1815*1536 / (670*37) = 112           (E=670, slot 0, the NEXT group's Menge0 = 37; 2787840 / 24790 = 112.45)
-#   goods = LEDER 868*1536/(670*16)=124, STOFFE 124, SALZ 388*1536/(670*8)=111, tavern 968 -> cap 128;
-#           mean = (124+124+111+128)/4 = 121      (487 / 4 = 121.75; the tavern need joins the goods mean)
-#   infra = min(160, tavern 128, KAPELLE 2156*1536/(670*41)=120) = 120   (3311616 / 27470 = 120.55)
-#   f = nah[(112+4)>>3 = 14] = 1, b = bed[(121+4)>>3 = 15] = 2, i = inf[(120+4)>>3 = 15] = 2: all > 0 -> upgrade.
-# K3-no-inn: the tavern slot empty (no Inn service): infra 0 -> inf[0] = -2 -> refused (mean (124+124+111+0)/4 = 89). K3-short-food: food 1500*1536/(670*37) = 92 -> nah[12] = 0.
+#   food  = 1800*1536 / (672*37) = 111           (E=672, slot 0, the NEXT group's Menge0 = 37; 2764800 / 24864 = 111.2)
+#   goods = LEDER 861*1536/(672*16)=123, STOFFE 123, SALZ 384*1536/(672*8)=109, tavern 968 -> cap 128;
+#           mean = (123+123+109+128)/4 = 120      (483 / 4 = 120.75; the tavern need joins the goods mean)
+#   infra = min(160, tavern 128, KAPELLE 2139*1536/(672*41)=119) = 119   (3285504 / 27552 = 119.25)
+#   f = nah[(111+4)>>3 = 14] = 1, b = bed[(120+4)>>3 = 15] = 2, i = inf[(119+4)>>3 = 15] = 2: all > 0 -> upgrade.
+# K3-no-inn: the tavern slot empty (no Inn service): infra 0 -> inf[0] = -2 -> refused (mean (123+123+109+0)/4 = 88). K3-short-food: food 1500*1536/(672*37) = 92 -> nah[12] = 0.
 grp P num=0 needs=26:41:1,27:16:1,33:16:0,28:8:0,76:16:0,82:41:0 lookup=27:1,33:2,28:3,76:4,82:5,83:5 goods_end=4 infra_end=6
 grp S num=1 needs=26:37:1,27:12:1,33:20:1,28:8:1,30:16:0,31:16:0,76:20:1,82:41:1,80:20:0,83:41:0 lookup=27:1,33:2,28:3,30:4,31:5,76:6,82:7,80:8,83:9 goods_end=6 infra_end=10
-upcheck K3-57500 tavern=76 e=670 stock=1815,868,868,388,968,2156 cur=P next=S nah=-2*4,-1*4,0*6,1*2,2*5 bed=-2*3,-1*3,0*3,1*2,2*10 inf=-2*3,-1*3,0*5,1*2,2*8 => result=1 food=112 mean=121 infra=120 f=1 b=2 i=2
-upcheck K3-no-inn tavern=76 e=670 stock=1815,868,868,388,0,2156 cur=P next=S nah=-2*4,-1*4,0*6,1*2,2*5 bed=-2*3,-1*3,0*3,1*2,2*10 inf=-2*3,-1*3,0*5,1*2,2*8 => result=0 food=112 mean=89 infra=0 f=1 b=2 i=-2
-upcheck K3-short-food tavern=76 e=670 stock=1500,868,868,388,968,2156 cur=P next=S nah=-2*4,-1*4,0*6,1*2,2*5 bed=-2*3,-1*3,0*3,1*2,2*10 inf=-2*3,-1*3,0*5,1*2,2*8 => result=0 food=92 mean=121 infra=120 f=0 b=2 i=2
-# K3-draw: the variant draw of the upgrade 501 -> 520: HEAD[11] of type 520 gives count 7, step 1; the draw 2111 (a u16)
-# gives idx = 2111 mod 7 = 4 (2111 = 7 * 301 + 4) and the type 520 + 4 * 1 = 524. (Stream 137, T3.2: the
+upcheck K3-60000 tavern=76 e=672 stock=1800,861,861,384,968,2139 cur=P next=S nah=-2*4,-1*4,0*6,1*2,2*5 bed=-2*3,-1*3,0*3,1*2,2*10 inf=-2*3,-1*3,0*5,1*2,2*8 => result=1 food=111 mean=120 infra=119 f=1 b=2 i=2
+upcheck K3-no-inn tavern=76 e=672 stock=1800,861,861,384,0,2139 cur=P next=S nah=-2*4,-1*4,0*6,1*2,2*5 bed=-2*3,-1*3,0*3,1*2,2*10 inf=-2*3,-1*3,0*5,1*2,2*8 => result=0 food=111 mean=88 infra=0 f=1 b=2 i=-2
+upcheck K3-short-food tavern=76 e=672 stock=1500,861,861,384,968,2139 cur=P next=S nah=-2*4,-1*4,0*6,1*2,2*5 bed=-2*3,-1*3,0*3,1*2,2*10 inf=-2*3,-1*3,0*5,1*2,2*8 => result=0 food=92 mean=120 infra=119 f=0 b=2 i=2
+# K3-draw: the variant draw of the upgrade 501 -> 520: HEAD[11] of type 520 gives count 7, step 1; the draw 2661 (a u16)
+# gives idx = 2661 mod 7 = 1 (2661 = 7 * 380 + 1) and the type 520 + 1 * 1 = 521. (Stream 137, T3.2: the
 # walks end on the goal sub-cell, trip timing shifts and so does the draw count before this tick; the
-# draw was 21313 -> idx 5 -> type 525 at 135.)
-variant K3-draw count=7 step=1 base=520 r=2111 => draw=1 idx=4 type=524
+# draw was 21313 -> idx 5 -> type 525 at 135, 2111 -> idx 4 -> 524 before T3-Q2.)
+variant K3-draw count=7 step=1 base=520 r=2661 => draw=1 idx=1 type=521

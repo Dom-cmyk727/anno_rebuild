@@ -610,7 +610,7 @@ TEST_CASE("population original-data mechanism canary: S01_01_01 live run, ledger
     CHECK(r.main_res.delivered_88 == 7846);
     CHECK(r.main_res.no_path_home == 0); // the resident-specific home path (section 20.2)
     // T3-Q2: the walk home is the carriers' forward search (docs/sim/population-live.md 27)
-    CHECK(r.main_res.home_walks == 193); 
+    CHECK(r.main_res.home_walks == 193);
     CHECK(r.main_total.rect_queries == r.main_res.searches);
     CHECK(r.main_total.candidates_scored == 5649);
     CHECK(r.main_total.candidates_accepted == 690);
@@ -687,7 +687,7 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     }
     CHECK(r.main_res.faults == 0);
     CHECK(r.main_res.lost_88 == 0);
-    CHECK(r.main_res.home_walks == 1036); 
+    CHECK(r.main_res.home_walks == 1036);
     CHECK(r.main_total.spawn_draws == 2279);
     CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2279);
     CHECK(r.main_res.searches == 2279);
@@ -759,7 +759,7 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     CHECK(t.building.v == 219043332203ULL);
     CHECK(t.tick == 90250);
     CHECK(t.from.v == 560);
-    CHECK(t.to.v == 545);
+    CHECK(t.to.v == 541);
     CHECK(t.old_group == 3);
     CHECK(t.new_group == 2);
     CHECK(t.residents_before == 1358);
@@ -775,14 +775,14 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     CHECK(t.houses_old_after == 53);
     CHECK(t.houses_new_before == 0);
     CHECK(t.houses_new_after == 1);
-    CHECK(t.counter_old_before == 1675);
-    CHECK(t.counter_old_after == 1654);
+    CHECK(t.counter_old_before == 1669);
+    CHECK(t.counter_old_after == 1648);
     CHECK(t.counter_new_before ==
-          1675); // 1670 - (20 - 21): SetGroup took the house from 1358 to 1320
-    CHECK(t.counter_new_after == 1674);
+          1669); // 1670 - (20 - 21): SetGroup took the house from 1358 to 1320
+    CHECK(t.counter_new_after == 1668);
     CHECK(t.variant_drawn);
-    CHECK(t.variant_draw == 30877);
-    CHECK(t.variant_index == 5);
+    CHECK(t.variant_draw == 25705);
+    CHECK(t.variant_index == 1);
     CHECK(std::all_of(t.spent_by_good.begin(), t.spent_by_good.end(),
                       [](std::int64_t v) { return v == 0; })); // a downgrade spends nothing
     for (const auto& tr : trs) {

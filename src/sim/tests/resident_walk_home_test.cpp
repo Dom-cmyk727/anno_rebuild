@@ -41,10 +41,10 @@ TEST_CASE("resident walk home: cost measure on the 7-city fixture (opt-in)") {
     std::cerr << "RESIDENT-COST advances " << kAdvances << " wall_ms " << ms << " ms_per_advance "
               << ms / kAdvances << " stand_searches " << r.searches << " stand_failed "
               << r.searches_failed << " arrivals " << r.arrivals << " deliveries " << r.deliveries
-              << " delivered_88 " << r.delivered_88 << " lost_88 " << r.lost_88 << " no_path_home "
-              << r.no_path_home << " stand_walk_searches " << tot.walk_searches
-              << " stand_walk_expansions " << tot.walk_expansions << " state_hash " << std::hex
-              << p->w.state_hash() << std::dec << "\n";
+              << " delivered_88 " << r.delivered_88 << " lost_88 " << r.lost_88 << " home_walks "
+              << r.home_walks << " no_path_home " << r.no_path_home << " stand_walk_searches "
+              << tot.walk_searches << " stand_walk_expansions " << tot.walk_expansions
+              << " state_hash " << std::hex << p->w.state_hash() << std::dec << "\n";
 }
 
 } // namespace

@@ -117,10 +117,10 @@ TEST_CASE("cloth canary: original-data component projection, zero-start: new woo
     CHECK(l.wool_made == 3203);
     CHECK(l.weaver_consumed == 2749);
     CHECK(l.weaver_made == 1500);
-    CHECK(l.weaver_out == 234);
-    CHECK(l.cloth_loaded == 1266);
-    CHECK(l.cloth_store == 230);
-    CHECK(l.cloth_taken == 1036);
+    CHECK(l.weaver_out == 90);
+    CHECK(l.cloth_loaded == 1410);
+    CHECK(l.cloth_store == 400);
+    CHECK(l.cloth_taken == 1010);
     CHECK(grass_lost == 0);
     CHECK(g.cut_events == 189);
     CHECK(g.tiles_cut == 35);
@@ -169,9 +169,9 @@ TEST_CASE(
     // difference
     CHECK(taken(*B) > kS0);
     CHECK(taken(*B) > taken(*C));
-    CHECK(taken(*B) == 1006); // measured pins: 505 units bought beyond the labelled stock
-    CHECK(taken(*B) - taken(*C) == 494);
-    CHECK(B->city->stock.stock[kStoffe] == 240);
+    CHECK(taken(*B) == 1005); // measured pins: 505 units bought beyond the labelled stock
+    CHECK(taken(*B) - taken(*C) == 493);
+    CHECK(B->city->stock.stock[kStoffe] == 223);
     CHECK(houses_reached(*C) == 6);
     const Ledger lb = ledger_of(*B, kS0);
     CHECK(lb.u_farm == 0);
@@ -229,9 +229,9 @@ TEST_CASE(
     CHECK(c.stats.forestry.workshops.at(old_weaver).made_88 == old_ledger.made_88);
     CHECK(old_ledger.made_88[0] ==
           902); // measured pins of this run (zero-start, 200,000 ticks before the demolition)
-    CHECK(taken1 == 716);
+    CHECK(taken1 == 752);
     CHECK(store1 == 0);
-    CHECK(old_out_lost == 186);
+    CHECK(old_out_lost == 150);
     CHECK(old_in_lost == 332);
     CHECK(carrier_wool_lost == 0);
     CHECK(taken(c) == taken1 + store1); // 895: the remaining store is sold, nothing new comes in
@@ -253,8 +253,8 @@ TEST_CASE(
     const auto& wl = c.stats.forestry.workshops;
     REQUIRE(wl.count(new_weaver) == 1);
     CHECK(wl.at(new_weaver).made_88[0] == 986); // production resumed (measured)
-    CHECK(taken(c) == 1377);
-    CHECK(c.city->stock.stock[kStoffe] == 231);
+    CHECK(taken(c) == 1356);
+    CHECK(c.city->stock.stock[kStoffe] == 152);
     CHECK(taken(c) > taken_gap); // households buy new cloth again
     CHECK(c.city->stock.stock[kStoffe] > 0);
     // the reconciliation across both weavers: what went with the demolished building is the

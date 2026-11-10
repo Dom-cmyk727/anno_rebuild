@@ -1,7 +1,7 @@
 # ECON-BOOK-1: resident sales and building upkeep
 
 **Dispatch update, 2026-11-06:** research and engine completion are assigned to the
-second Mac by `docs/orchestration/TASKS.md`, section
+second Mac by `docs/orchestration/TASKS.md` (since 2026-11-10 in `docs/orchestration/HISTORY-2.md`), section
 “Second Mac — ECON-BOOK-1: earned income and building upkeep”, packages B0–B7.
 That packet supersedes the historical research-only ownership, old base and
 pre-132 identity guidance below. Engine work follows independent contract review;

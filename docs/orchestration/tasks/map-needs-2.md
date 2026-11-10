@@ -38,7 +38,7 @@ that research or depend on the withdrawn conclusion in this package.
 
 1. Your checkout's `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`; the current main
    `docs/testing/evidence-contract.md` and `docs/testing/README.md`; this packet
-   and its dispatch in main's `docs/orchestration/TASKS.md`.
+   and its dispatch in main's `docs/orchestration/TASKS.md` (since 2026-11-10 in `HISTORY-2.md`).
 2. Your branch's `docs/sim/small-farm-supply.md` §§1–15 and main's
    `docs/orchestration/reviews/2026-11-05-map-supply1-close.md`,
    `docs/sim/forestry.md`, and the related open questions, especially OQ-491

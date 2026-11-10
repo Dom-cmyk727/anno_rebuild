@@ -398,7 +398,7 @@ Acceptance M4: 4 headless peers with 150 ms simulated latency and 2 % loss stay 
 `88968580b7128ef3b8d1cbdc708e68493f8f707f` (`4f56e800` merges `task/W4-opening-1` H `3a2da9b9`; then round R1). This is the first merge
 since 2026-10-30, and it brings the Mac pin `0c401c8d`. Review: `docs/orchestration/reviews/2026-11-05-w4-main1.md`.
 CI is 10/10 on the head (run `42031477838`). UI.2's "W4.4 merged" condition is met. Next on Windows: W4-OPENING-2 and
-W4-DEPTH-1-CLOSE (`docs/orchestration/TASKS.md`).
+W4-DEPTH-1-CLOSE (`docs/orchestration/TASKS.md`; since 2026-11-10 in `docs/orchestration/HISTORY-2.md`).
 **Executor update, 2026-11-05 — MAP-UNIT-IMPORT-1 / SCRIPT2 F2:** normal endless01
 loading now imports its complete five-actor closure with original slots, health,
 parents, holds and position. The unchanged full script reaches a real ship-area
@@ -412,6 +412,8 @@ other lanes remain untouched; no merge or push.
 
 
 **Historical status 2026-10-26 (round bj; superseded by round bq below):** **T33 is done** (T33.1–T33.4 merged locally, T33.4 as `acd45cd`; GitHub is suspended, so `main` is unpushed). The market cart and the workshop carrier find sources by the original's decoded walk rule, and every tile stores the original's walk code and mask (stream 112). Open: OQ-200 (water), OQ-170 (coast), OQ-201 (cleared footprint, narrowed), OQ-203..205 (tile-record bits). T33.5 stage 1 (the original's tile record, `transport.md` §3.4.17) merged as `d30d20b` (round bk); OQ-202 answered: growth leaves the walk record as placement wrote it. Live lane: T33.5 stage 2 (the tile layer as the original's record, the main executor); T30b.5–7 (the Wine validation, the orchestrator); P1 (population, from `state.md` §4.7c).
+
+**Board slimming (2026-11-10, owner request):** `docs/orchestration/TASKS.md` 975 KB → 62 KB and `REPORTS.md` 2.1 MB → 435 KB. Closed history moved verbatim to `docs/orchestration/HISTORY-2.md` and `REPORTS-1.md`; the board's new first section lists what moved, what of it is still open, and the owner decisions the moved text records. Dispatches are packet files in `docs/orchestration/tasks/`; `main` is protected and lands through `tools/orch/land.py`.
 
 **Orchestration tooling (2026-10-28, round ct):** the live board `docs/orchestration/TASKS.md` keeps only current rounds and open tasks (786 lines, down from 2 946). History is in `docs/orchestration/HISTORY.md`, moved verbatim. Each executor assignment comes as one packet (`tools/orch/packet.py`: instructions plus verbatim board excerpts) with one start check (`tools/orch/preflight.py`); board §1 item 13.
 

@@ -85,7 +85,7 @@ if(ANNO_BUILD_TESTS)
     tests/visibility_test.cpp tests/dev_occupancy_test.cpp tests/dev_visibility_test.cpp
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
     tests/ui_layout_test.cpp tests/ui_construction_eligibility_test.cpp
-    tests/construction_menu_test.cpp)
+    tests/construction_menu_test.cpp tests/inspect_building_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -201,6 +201,14 @@ if(ANNO_BUILD_TESTS)
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/live_screen_compare.py
                 $<TARGET_FILE:anno1503>)
       set_tests_properties(live_screen_matches_oracle PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # W4-NEXT-1 part U rows 5/10 (orchestrator review finding 6, 2026-11-10): the pickaxe's
+      # active frame and the pause overlay, neither of which compose_screen models - see
+      # ui_dynamic_draw_check.py's own doc comment for how the oracle is built for them.
+      add_test(NAME ui_dynamic_draw_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_dynamic_draw_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(ui_dynamic_draw_check PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
       # F2 (W4-WIN-FINAL): the CPU window settles a change only after the frame was delivered through
       # SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent; each stage is made to fail in turn.

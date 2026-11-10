@@ -50,6 +50,15 @@ element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK
 element option_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 method sprite-sad shot r2_options
 element rating_bg pos 0 0 size 1024 768 file toolgfx/fenster.tex access STATISTIK_UNTERGRUND tex_id 1509 method sprite-sad shot f15_rating
 element pionier_bk pos 783 252 size 245 467 file toolgfx/fenster.tex access VIEWINFOPIONIERMAIN_BK tex_id 974 method sprite-sad shot f15_selected_house
+# Row 19 (ADR 0004 screen table): the deselected right panel. Same file and size as
+# mainuntergrund (fenster.inc ACCESS table, docs/re/ui.md line 46/485-486: MAINUNTERGRUND id 4
+# and MAX_PIC id 5 are both 245 x 524), drawn in the same slot (docs/re/ui.md 9.8, "the right
+# panel is MAX_PIC id 5 245 x 524" after ESC from Kontor or a miss-click) - so its position is
+# mainuntergrund's own measured one (779, 244), not a separate, unmeasured guess. No shot has
+# this specific texture isolated behind an opaque key yet (it is the castle-illustration content
+# of f15_ship_guess_0 as a whole, not sprite-sad verified on its own); method inc-size, not
+# sprite-sad, until that measurement exists (an OQ, not a guess presented as fact).
+element max_pic pos 779 244 size 245 524 file toolgfx/fenster.tex access MAX_PIC tex_id 5 method inc-size
 element option_background size 245 467 file toolgfx/fenster.tex access OPTION_BACKGROUND tex_id 1475 method inc-size
 element fenster_statusbar size 780 43 file toolgfx/fenster.tex access STATUSBAR method inc-size
 click tab_construction pos 809 212

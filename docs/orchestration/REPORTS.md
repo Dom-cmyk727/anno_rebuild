@@ -5312,3 +5312,481 @@ which they are, by `gh run view`, not by local reasoning).
 - The macOS `deaf`-test SIGPIPE fix's own repeated-run proof (`ctest -R deaf --repeat
   until-fail:50`) was never run on an actual macOS/Linux host from this PC - only confirmed via
   one clean hosted-CI run on macOS. Worth a repeat run if this ever flakes again.
+
+## W4-NEXT-1 — Part S, finding 1 (correction): wsl_gate.sh does exclude heavy tests — 2026-11-10 — status: DONE
+
+**Correcting** the S report's "Full list of tests that did not execute, and why"
+(REPORTS.md:14461-14463, the entry "W4-SETTLEMENT-1 — W7 WSL ASan/UBSan gate..." and its
+follow-ups): it stated `--exclude-label heavy` "is not used here — `wsl_gate.sh` does not pass
+it". That is false. Verified against `tools/test/wsl_gate.sh` on `task/W4-ui-3` at `bd760031`:
+`run_lane()` (line ~243-247) passes `--exclude-label heavy` to `run_selected.py` for every call
+site — `app`, `sim`, `formats`, `render`, `tsupport` (lines 257-264) — and the GPU lane does too
+(line 277). This was already true before part S (the review: "It does: `run_lane` passes it to
+every lane, and did before S"), so the error is in the S report's prose, not in a regression
+introduced by S.
+
+**Consequence:** every `heavy`-labelled test was **NOT_RUN** under ASan/UBSan in the W7 gate
+runs this report describes (`w7fix2` and the "C" run referenced there), not executed as the
+original report implied. The old entry is left as written (append-only; this is the correction
+required instead of an edit). Any acceptance table or disposition that relied on the old
+report's "no additional skips beyond the 10 opt-in ones" line should read it as **incomplete**:
+it omitted the `heavy`-labelled tests (about 10 in the render lane per the review's count, plus
+any heavy cases in the other four lanes) as a distinct NOT_RUN category, separate from the 10
+opt-in skips it did count.
+
+### Decisions and reasoning
+- Did not re-run the W7/C gates to produce a corrected count of exactly how many `heavy`-labelled
+  cases were skipped in those specific historical runs — that evidence no longer exists in a form
+  this correction can recover (the runs are over; their logs, where kept, already show the
+  skip through their own CTest output, which this entry does not re-derive). The correction's job
+  is to state the true *mechanism* (the flag is passed, so heavy tests are always excluded here)
+  so no later reader trusts the old report's "not used" claim; a future gate run naturally
+  reports its own heavy-test NOT_RUN count correctly once it uses this same `wsl_gate.sh`.
+
+## W4-NEXT-1 — Part S: the three W4-SETTLEMENT-1 review items — 2026-11-10 — status: DONE
+
+**Acceptance table.**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Disposition |
+|---|---|---|---|---|
+| The negative step in `settlement_activity.script` tests a hover, not a click | script changed to `look 1130 516`; the step still exists and still asserts `inspection.kind != House` | the original `click` queued a Build at the dev tool's armed type — this is exactly the defect being fixed, not a new control | `tools/test/viewer_wiring/settlement_activity.script` | fixed |
+| `inspect_building`'s formatters are covered for workshop, farm, small farm, mine, inn | `inspect_building_test.cpp`: 5 hand-derived expected status lines, each built from `play.cpp`'s own `tons()`/`join_tons()` formula by hand, not copied from a run | the 6th case queries a tile with no building and requires `std::nullopt` | `src/app/tests/inspect_building_test.cpp`; local MSVC Debug run, 6/6 cases, 28/28 assertions | fixed |
+| The S report's `wsl_gate.sh`/`--exclude-label heavy` claim is correct | read `tools/test/wsl_gate.sh`'s `run_lane()`, confirmed it passes the flag to every lane | — (a factual/code-reading check, no test to fail) | REPORTS.md correction entry above; `tools/test/wsl_gate.sh` lines ~243-277 | corrected |
+
+**Full suite after the fixes:** `anno_app_tests` 252/252 cases, 32,795/32,795 assertions, 0
+failed (local MSVC Debug, this PC; `ANNO1503_GAME_DIR` not set this pass, so the one real-file
+case is a classified skip, not a pass/fail).
+
+**Settlement playtest card:** none existed in `docs/testing/` yet (the "confirm it matches"
+instruction assumed one; checked, there wasn't one). Wrote
+`docs/testing/settlement-inspection-playtest.md` from the current `viewer.cpp`/`play.cpp` code
+(the title-bar segment, the `Space` pause key — not `P`, which is still unbound; ADR 0004 row 10
+is Part U's job, not this one's), not from memory or the script's own comments alone. **Ready
+for the owner.**
+
+### Decisions and reasoning
+- Used the sim's own `BuildingSpec::payload` field (set directly, no factory needed for Mine/Inn
+  since neither has vector fields to size) rather than running ticks or going through the dev
+  tool's command path: this is a pure formatter test, and the direct-payload route lets every
+  expected line be computed by hand from exact, chosen inputs instead of depending on production
+  math this packet does not need to also exercise.
+- Set every `*_out`/`carriers_out`/`figures_out` field to 0 rather than a nonzero hand-picked
+  value: `World::create`'s own invariant check rejects a nonzero figure-reference counter with
+  no actual figure in the scenario (`payload_problem`), correctly — these counters mean "figures
+  currently doing this," not a free display field, and the test found that boundary rather than
+  working around it with a fabricated figure.
+- Wrote the playtest card now, in this part, rather than leaving it to part E: the packet's own
+  instruction places "confirm... ready for the owner" inside part S, and the card only needed
+  the fix this part already made (finding 3/the hover fix) to be accurate.
+
+## W4-NEXT-1 — Part U: the S/Q/D key collision QUESTION, plus a correction to ADR 0004's row 10 — 2026-11-10 — status: DONE
+
+**QUESTION, as the packet asked, with the recommendation implemented.**
+
+ADR 0004's screen table names three real collisions between the window's own developer
+controls and keys an original screen would want: **S** (ship list, row 15) collides with pan
+down; **Q** (rating, row 17) collides with quit; **D** (player list, row 9) collides with pan
+right. All three destination screens are still placeholders (out of this packet's scope by its
+own row list - "rows 6-9 and 15-17 stay placeholders").
+
+**Options considered:**
+- (a) Leave the collision: S/Q/D keep their current pan/quit meaning always, and the original
+  screens, once built, get different keys. Simplest, but breaks faithfulness to the original's
+  own key choices for no reason other than avoiding a change to working code.
+- (b) **Reserve S/Q/D for their original meaning, under a surface switch, doing nothing until
+  the destination screen exists — recommended, implemented.** Arrow keys (and A/W, already
+  dual-bound) keep panning available in both surfaces; Escape always quits. No functionality is
+  lost in `--ui classic` today (the reserved keys do nothing, same as before any screen used
+  them), and the original's own key choices are free to take over the moment rows 9/15/17 are
+  built, with no further key-scheme decision needed then.
+- (c) A third, independent key for Dev's pan/quit (e.g. arrow-keys-only, freeing every letter).
+  Changes more than the collision requires; arrow keys are already redundant with A/W/S/D today,
+  so removing S/Q/D's *letter* shortcuts in Classic loses nothing arrow keys don't already cover.
+
+**Implemented:** a new `--ui classic|dev` flag (`cli.hpp`/`cli.cpp`; it did not exist before this
+packet, although ADR 0004 R2 described it as already "implemented behind" it - that description
+was aspirational, not a fact about the code at the time). Default `Classic`. `viewer.cpp`'s key
+handler checks `hooks_->ui`: in `Classic`, S/Q/D are no-ops; in `Dev`, they keep today's
+pan/quit meaning. `ViewerHooks::ui` threads it from `main.cpp`'s parsed `Args` through to the
+window. New test, `app_test.cpp` "command line": the flag's default, both values, rejection of
+an invalid value, and that (unlike `--construction-menu`) it is accepted without `--play`.
+
+**Correction to ADR 0004's row 10.** While implementing this, `src/app/src/sdl_input.cpp` was
+read for every key the developer tool itself binds (needed to be sure S/Q/D's dev-tool-side
+bindings, if any, were accounted for). It binds **P** to `PrevType` (cycle the armed type
+backward) whenever the tool is `enabled()` - and ADR 0004's row 10 states "the viewer's own
+developer controls do not bind P, so the key is free." That is false as the code stands now:
+P is bound, conditionally (only while the developer tool is toggled on via B), which is exactly
+the state a build/demolish playtest is in most of the time. This is a real collision ADR 0004's
+own table does not list, between **P** (pause, row 10) and the developer tool's `PrevType`. It
+is not fixed in this entry - row 10's own pause work is a separate, not-yet-released slice of
+part U - but the ADR's claim is now known wrong and should not be relied on. Recorded here
+rather than silently edited into the ADR (it is not this packet's own document to rewrite
+without the orchestrator's review, same as any other "I don't own this doc" boundary).
+
+### Decisions and reasoning
+- Picked (b) over (a)/(c): it is the only option that is both faithful (the original's own keys
+  go to the original's own screens, with no remapping needed later) and zero-cost today (nothing
+  the project currently does with S/Q/D is lost, since arrow keys already duplicate every one of
+  them).
+- Did not implement rows 9/15/17 themselves to "use" the reserved keys: the packet's own row list
+  stops at row 2 and explicitly keeps 6-9/15-17 as placeholders; reserving the keys is all this
+  QUESTION asked for.
+- Did not change pause's own key (Space) to P, despite finding P's collision: that is row 10's
+  own scope (not yet started in this pass), and conflating the two risks a half-finished change
+  to a screen this entry is not otherwise touching.
+- Did not edit ADR 0004 directly: it is a dispatched design document from an earlier packet, and
+  this packet's own scope (§0.2) does not list it; the correction belongs here, in the executor's
+  report, for the orchestrator to fold in.
+
+## W4-NEXT-1 — Part U: row 2 evidence gap logged; row 18 scope found far larger than wiring — 2026-11-10 — status: QUESTION
+
+**Row 2 (Kontor panel):** no code/data change. `docs/re/ui.md` section 9.1 ruled out the one
+texture id it tried for this panel's background (`INFOUNTERGRUND` id 33, best SAD mean 78.7) and
+found no replacement; `data/ui/hud.txt`/`construction.txt` have zero `kontor` entries. Logged
+**OQ-567**: a plausible but *unverified* lead (`FREMDERKONTOR_UNTERGRUND` id 1511, 245 x 468 -
+within a pixel of row 18's own right-panel plate size - never tried against `r2_hud_kontor`), and
+the resolution path (a fresh Wine capture + SAD measurement). Not drawn; not guessed.
+
+**Row 18 (selected house/building):** found the remaining RE evidence is thinner than the packet
+briefing suggested, and - more importantly - that the *mechanism* this row needs does not exist
+anywhere in `src/app` yet, which changes the shape of this task from "wire existing evidence" (the
+pattern rows 19/5/10 and the key QUESTION all fit) to "design and build a small input subsystem".
+
+Evidence actually on file (`docs/re/ui.md` 9.7, `data/ui/hud.txt`): only two elements are
+sprite-sad measured for this specific screen - `pionier_bk` (`VIEWINFOPIONIERMAIN_BK` id 974,
+245 x 467 at (783, 252)) and `house_portrait` (`Pioniere.tex` id 1, 100 x 108 at (812, 355)). The
+doc note itself says the shot also shows "need icons" and a tab (`VIEWINFOPIONIER_TAB` id 975,
+42 x 46) but neither was individually SAD-positioned - drawing them would be a guess, same class
+of gap as OQ-561 (the construction info panel's cost icon) and OQ-563/564. The row 18 exit/rotate
+affordances the packet summary assumed were reusable (`infoexit`, `rotate_left`/`rotate_right`)
+are measured against a *different* plate - the construction menu's own placement info panel
+(`info_panel`, `VIEWINFOPIONIERMAIN_BK`'s sibling `INFOUNTERGRUND` id 33, origin (804, 302),
+220 x 466) - not `pionier_bk`'s origin (783, 252), 245 x 467. The two plates differ in both origin
+(21 px in x, 50 px in y) and size, so those pixel positions do not carry over; using them for row
+18 without a fresh measurement against `f15_selected_house` would be exactly the kind of silent
+guess this project's evidence rule forbids.
+
+Mechanism gap: `grep`ing `src/app/src/*.cpp` for mouse-button handling, screen-to-tile mapping, or
+a "building at this tile" query wired to input found none. The viewer today only drags (pan) and
+wheels (zoom) the mouse; every existing interaction with a building - placement, demolish, type
+cycling - goes through `DevTool`/`DevInput`'s keyboard-only interface, never a click. "Click the
+house to select it" (the row's own acceptance line) is therefore not a wiring task on top of
+existing infrastructure; it is a new feature: a screen-to-world tile mapping, a sim-side query for
+"what, if anything, occupies this tile" (whatever `World::create_building`'s own collision check
+already uses - not yet confirmed), a selection state the viewer holds, and disambiguating ESC
+(which this pass just made unconditionally quit the app, for the key-collision QUESTION above)
+from "deselect" once something is selected - a problem row 19's own evidence note raises too
+("ESC from Kontor" deselects there, but ESC right now always quits).
+
+**QUESTION for the owner/orchestrator:** row 18, as specified, is architecture-sized work (a new
+click-to-tile-to-selection subsystem plus the ESC-vs-quit disambiguation), not a same-pattern
+wiring task like the other W4-NEXT-1 Part U rows. Options:
+  (a) scope row 18 down to what the two measured elements support - draw `pionier_bk` +
+      `house_portrait` behind a new flag (mirroring `paused`/`demolish_mode`'s own pattern in
+      `draw_live_screen_xrgb`/`draw_live_screen_rgba`) wired to a dev-tool debug key as a stand-in
+      trigger (documented as a stand-in, not the eventual real click), so the chrome ships now and
+      the real input subsystem is a separate follow-up task;
+  (b) treat row 18 as its own follow-up task/packet (click-routing + selection state + ESC
+      disambiguation design, reviewed before implementation, per this project's "owner picks the
+      default" rule for anything that can change the game's feel - input handling is exactly that
+      kind of change) and report Part U done through row 10 plus the key QUESTION, with rows 2 and
+      18 both logged as open (OQ-567 and this entry) rather than built;
+  (c) build the full subsystem now without further check-in, accepting the risk of an
+      under-reviewed first cut of real mouse input.
+  **Recommendation: (b).** Rows 19/5/10/the key QUESTION fit this pass's own "wire existing,
+  evidence-backed chrome, stop and ask when evidence or scope runs out" pattern; row 18's missing
+  piece is not evidence, it is unbuilt input architecture, and building it unreviewed risks the
+  same kind of silent design choice (how clicks map to tiles, how selection interacts with pan/
+  drag, what ESC means once something is selected) this packet's own rules say should go to the
+  owner, not be guessed by the executor mid-task.
+
+Continuing to Part C's CI/game-file gates (the wall-clock-bound remainder of this packet) rather
+than starting row 18's subsystem unreviewed.
+
+### Decisions and reasoning
+- Did not draw row 18's two measured elements speculatively gated on a made-up key: decided this
+  is still a step toward option (c) (build input handling unreviewed) wrapped in a flag, not
+  genuinely safer than not building it - the packet's own quality bar (DoD item 5, independent
+  review before "complete") would not consider a selection screen with no selection mechanism a
+  real deliverable either way.
+- Did not reuse `info_panel`/`infoexit`/`rotate_left`/`rotate_right`'s existing measured positions
+  for row 18: confirmed by comparing origins/sizes in `data/ui/hud.txt` that they belong to a
+  different plate (the construction menu's placement info panel, not the selected-house panel) -
+  reusing them would be a guess dressed as evidence reuse.
+- Logged OQ-567 for row 2 rather than guessing `FREMDERKONTOR_UNTERGRUND`'s position: its size
+  match to row 18's plate is suggestive, not a measurement; `docs/re/ui.md` 9.1 already shows one
+  guess-by-similarity (`INFOUNTERGRUND`) for this same panel was wrong.
+  own report, for the orchestrator to fold back into the ADR at the next review.
+
+## W4-NEXT-1 — Part S+U: independent review — 2026-11-10 — status: DONE
+
+A fresh, independent agent (no context from this task's own work) reviewed this branch's full
+diff (`5fbc547e..8b172760` at review time) read-only, per the evidence contract's independent-
+review requirement before reporting a part complete. Checked: `demolish_mode`/`paused` flag
+threading symmetry across `draw_live_screen_xrgb`/`draw_live_screen_rgba`, that `compose_screen`
+(the oracle path) stays untouched, no double-draw risk from `paused`'s trailing blit, the
+`classic`/`UiSurface` key-handling split in `viewer.cpp` for correctness and dead branches,
+`inspect_building_test.cpp`'s expected strings against `play.cpp`'s real `DescribePayload`
+formatter (not an assumed format), the `settlement_activity.script` hover-vs-click fix, and this
+file's own Part S/Part U entries against the diff.
+
+**Verdict: ACCEPT.** No correctness bugs. One nit found and fixed in the same pass: a stale
+comment in `inspect_building_test.cpp` claimed `carriers_out=1` while the assertion (correctly)
+checks `carriers_out=0` - cosmetic only, the assertion itself was never wrong. Fixed in `08bce9be`.
+
+### Decisions and reasoning
+- Used a fresh agent with no prior context on this task, not a self-review: the evidence
+  contract's "independent" requirement means someone who did not write the code checks it, and
+  reusing this session's own context would not satisfy that.
+- Fixed the one nit immediately rather than deferring it to a follow-up: it was a one-line,
+  zero-risk comment correction, not worth a separate review cycle.
+
+## W4-NEXT-1 — Part U, finding 8 (correction): row 18's QUESTION was wrong about mouse handling — 2026-11-10 — status: DONE
+
+The orchestrator's interim review ([review](../reviews/2026-11-10-w4-next-1-interim.md), finding
+8) caught a wrong factual claim in the row 18 QUESTION entry two above this one: "grep'ing
+`src/app/src/*.cpp` for mouse-button handling, screen-to-tile mapping, or a 'building at this
+tile' query wired to input found none" and "the viewer today only drags (pan) and wheels (zoom)
+the mouse." **False, checked now:** `viewer.cpp`'s `construction_handle` handles
+`SDL_EVENT_MOUSE_BUTTON_DOWN` for the construction menu's own grid; `dev_tool_step` (called from
+the mouse-button branch around line 1091-1100) feeds the developer tool's own click handling;
+the ship-opening UI selects by click too (around line 1508, `SDL_EVENT_MOUSE_BUTTON_DOWN/UP`);
+`render::picking.hpp`'s `pick_geometry_of` and the viewer's own `PointerFrame` already map a
+screen point to a tile; and `live_inspection`/`request_inspect` (lines 1932/1947/2060,
+W4-SETTLEMENT-1) already names the building under the pointer through the developer tool's own
+hover. All of this was confirmed by reading the cited lines directly, not just restating the
+review's own claim.
+
+**The recommendation stands; the reasoning for it changes.** Option (b) - row 18 as its own
+reviewed follow-up task, not built unreviewed mid-task - is still right, per the review's own
+confirmation: not because the mechanism is missing (it is not), but because *selection state*
+(what "a building is selected" means for the viewer to hold) and *what Escape does once
+something is selected* (today it unconditionally quits, per this same pass's key-collision fix)
+are owner-facing design choices this project's own rules route to the owner, not something to
+decide mid-task by picking one wiring among several already-existing click paths. This is now
+`W4-NEXT-2` part K, per the orchestrator's own packet for it.
+
+### Decisions and reasoning
+- Corrected via a new append-only entry rather than editing the original QUESTION's text in
+  place: REPORTS.md's own convention (every other correction in this file, including Part S
+  finding 1, did the same) keeps the record of what was actually said and when, rather than
+  quietly rewriting history.
+- Verified every one of the review's four cited mechanisms by reading the actual lines before
+  writing this correction, rather than trusting the review's own claim the same way the original,
+  wrong entry trusted an incomplete grep - the irony of re-making the same mistake while
+  correcting it would be its own finding.
+
+## W4-NEXT-1 — Part U, finding 6: rows 5 and 10 now have their own oracle/bench_frame checks — 2026-11-10 — status: DONE
+
+The orchestrator's interim review (finding 6) correctly found that rows 5 (the pickaxe's active
+frame) and 10 (the pause overlay) had chrome but none of the per-screen checks the packet
+requires: CPU drawing against the UI.1 oracle with a deliberately wrong input, GPU, and
+`bench_frame`. Added.
+
+**New CTest case `ui_dynamic_draw_check`** (`tools/test/ui_dynamic_draw_check.py` +
+`tools/test/viewer_wiring/ui_dynamic_draw_check.script`), the same pattern
+`live_screen_matches_oracle` already uses for the other screens. `compose_screen` has no concept
+of either dynamic flag (it always draws the pickaxe's idle frame and never draws the pause
+overlay at all), so the "oracle" compared against here is `compose_screen`'s own static base plus
+one more `blit_rgba` of the exact sprite `ui_mock.cpp` also draws on top - the same decoded
+texture files and measured `data/ui/hud.txt` positions, not a second description of the chrome.
+**Deliberately wrong input, both rows:** for row 5, the *other* frame (id 659, idle, instead of
+660); for row 10, the oracle's unmodified base with no overlay blitted at all. Both are compared
+against the same live capture and must be rejected - proving the check is sensitive to the thing
+it is supposed to verify.
+
+**A real bug in the script, caught by that same wrong-input control - not guessed, not missed.**
+The first version of the script opened the construction menu with one `key b` and expected `key
+x` to toggle demolish mode; it ran with no error and captured a screenshot, but the comparison
+failed *both* ways (the correct expected input mismatched, and - the signal that something was
+actually wrong, not just imprecise - the deliberately wrong input was NOT rejected). Read
+`viewer.cpp`'s `construction_handle` directly rather than guess why: with `--construction-menu
+on`, the first B (menu closed) is consumed opening the menu and never reaches the developer
+tool's own B-toggle; only a *second* B (menu already open) falls through to enable the tool, which
+X (`ToggleDemolish`) needs. Fixed the script to press B twice before X. A second, smaller issue
+the same debugging pass found: `toggle_pause()` marks the window dirty exactly once, so a `wait
+frames 5` after pausing hung until `ANNO_VIEW_QUIT_S` force-quit (the scene stops animating once
+paused) - changed to `wait frames 1`.
+
+**Result:** `ui_dynamic_draw_check` passes - `construction_demolish`: exact match on 2,809 opaque
+pixels, wrong-input control correctly rejected (663 of 2,809 differ); `hud_paused`: exact match on
+219,172 opaque pixels, wrong-input control correctly rejected (5,650 of 8,492 differ). CPU only
+(`--renderer cpu`, the registered CTest mode, matching `live_screen_compare.py`'s own established
+bar); GPU is the same documented manual/interactive-only check every other screen's GPU path is,
+for the same reason (needs a real window surface).
+
+**`bench_frame`:** ran the CPU matrix on `Scenes/0010SingleEndlos/01_1024_easy_256.sze` (no crash,
+30+ frames per config across both zoom groups and water styles) - a general regression check,
+not a UI-specific number, matching W4-UI-2's own V6 precedent exactly (`bench_frame` has no
+concept of the construction-menu/HUD overlay; neither row's code touches `src/render`/`src/sim`).
+The actual row-specific timing evidence is the "construction ui" frame-step line this same test
+session's own stderr already printed: ~52-57 ms on the first frame after the menu opens (texture
+decode, matching the existing cold/warm pattern ADR 0004 "Atlases" already documents), ~2 ms on
+every frame after - no different in kind from the existing construction-menu overlay's own
+already-measured cost (W4-UI-2's own "~67-70 ms cold, ~2-5 ms warm" texture-cache checkpoint);
+rows 5/10 add no new texture file, so this is expected, not a new cost.
+
+anno_app_tests: 253/253 cases, 61,647/61,647 assertions.
+
+### Decisions and reasoning
+- Duplicated a small `compare()` function in the new script rather than importing
+  `live_screen_compare.py`'s own: that script's function is tied to its own screens/rects; a
+  shared helper would couple two scripts this packet did not ask to merge, for one function.
+- Did not try to make `bench_frame` itself UI-aware to get a true before/after number: that is a
+  `bench_frame` feature gap, out of this packet's scope, and the existing "construction ui" frame
+  step timing already measures the real cost precisely.
+- Fixed the B-double-press and pause-wait script bugs immediately rather than reporting rows 5/10
+  as blocked: both were script-authoring mistakes this pass made and caught with its own
+  negative control, not evidence gaps - exactly what the control exists to catch.
+
+## W4-NEXT-1 — Part E: the canonical gate found a real defect in Part S's own fix, from before this packet — 2026-11-10 — status: DONE (corrected)
+
+Running the packet's canonical `tools/test/run_selected.py` gate for part E (which needs
+`ANNO1503_GAME_DIR` and so actually executes the game-file-gated tests hosted CI always skips)
+found `ui_mock_matches_oracle` failing to launch (`anno_ui_mock` had never been built in this
+worktree's build tree - fixed by building it; not a code defect) and, more seriously,
+**`viewer_wiring_settlement_activity` genuinely failing** - the first time anyone has actually run
+this exact test since Part S's own `a9628bd0` fix landed (CI always skips it for lacking game
+files; the independent review of Part S read the script's text, which is reasonable for a review
+but is not the same as running it).
+
+**Root cause, confirmed by reading `dev_script.cpp`/`viewer.cpp` directly and by instrumenting
+the failure with extra `expect fact inspection.tile.x` probes, not guessed:** Part S's own fix
+(see that entry above) changed the negative-control step from `click 1130 516` to `look 1130
+516`, on the claim (in the comment it wrote) that `look` is "the script language's plain
+pointer-move verb... it sets the hover tile without synthesizing a mouse button event." **That
+claim was wrong.** `look` moves the *camera* to centre the given tile
+(`viewer.cpp`'s `act.look` handling sets `cam_x_`/`cam_y_`); it never touches the developer
+tool's own `hover_`, which only changes on a real `SDL_EVENT_MOUSE_MOTION`. So the negative
+control's own `look 1130 516` step never hovered anywhere at all - `dev_->hover()` stayed at the
+tile the earlier `click 1156 516` set, forever. `inspection.kind` stayed `"House"` not because
+the hover-clear logic (`play.cpp`'s `live_inspection`, itself correct: `snapshot.inspection->tile
+!= *hover` clears it, independent of pause) was broken, but because the test's own replacement
+step for "move the hover without clicking" silently did nothing. The negative control could never
+have failed, whatever regressed - it was not testing what its own comment, and Part S's
+acceptance, claimed it was testing.
+
+**Confirmed directly**, not inferred: added temporary `expect fact inspection.tile.x` probes
+after the step. With `look 1130 516`, `inspection.tile.x` read the stale `1156` (the house's own
+tile) forever, never moving. Swapped to `hover-land 1130 516` (`dev_script.cpp`'s actual
+no-button pointer-move verb - it calls `push_motion` with no matching `push_button`, unlike
+`click`/`click_px`/`sail`, and already takes a tile argument the same way `click` does) and
+`inspection.tile.x` immediately read `<none>` (correctly cleared) instead. The full negative
+control, fixed, now passes: `viewer_wiring_settlement_activity` - PASS, `inspection.kind != House`
+holds after the hover moves while paused, exactly what Part S intended to prove.
+
+**Fixed in `tools/test/viewer_wiring/settlement_activity.script`**: the one line, plus a
+correction note replacing the wrong comment (kept, not deleted, per the append-only correction
+convention - but a script file is not itself append-only text the way REPORTS.md is, so the
+correction is written as a comment explaining what changed and why, directly where the original
+wrong claim was).
+
+**This is not a Part U or Part C regression - it is a previously unverified defect in Part S's
+own acceptance, surfaced only because this packet's part E ran the canonical game-file gate for
+the first time since that fix landed.** Flagging plainly: Part S's REPORTS entry and the
+independent review that accepted it were both working from the script's text and reasoning about
+it, not an actual execution - which this evidence-contract-mandated gate exists precisely to
+catch. Re-verified with the actual registered CTest cases (not just the debug probes):
+`ui_mock_matches_oracle` and `viewer_wiring_settlement_activity` both PASS.
+
+### Decisions and reasoning
+- Did not stop at "the test fails, investigate later": a failing acceptance-gate case for a test
+  this packet's own earlier part claimed was proven is exactly the kind of finding part E's gate
+  exists to surface before declaring the packet done, not something to defer to W4-NEXT-2.
+- Verified the root cause with direct, repeatable evidence (the `inspection.tile.x` probe showing
+  `1156` vs `<none>`) rather than reading `look`'s code once and asserting a theory: the first
+  theory tried (pause-related staleness) was plausible-sounding and wrong, confirmed wrong by
+  testing the same step with pausing removed entirely and finding the identical stuck value -
+  check, don't guess, applies to debugging a found defect as much as to writing new code.
+- Corrected the script's comment in place rather than only noting the fix in REPORTS.md: the
+  wrong comment is exactly the kind of "silent guess stated as fact" this project's evidence rule
+  forbids, and a future reader of just the script (not this report) deserves the correct
+  explanation at the point where the wrong one was.
+
+## W4-NEXT-1 — final report, this branch (`task/W4-ui-3`) — 2026-11-10 — status: DONE
+
+Closing report for this packet's parts P, S, U and E, from this branch. Part C's own closing
+report is on `task/W4-coord-1`. Written after the orchestrator's interim review
+([review](../reviews/2026-11-10-w4-next-1-interim.md)) and all of its findings for this branch
+were addressed and re-verified - locally and on hosted CI, not just by reasoning about the diff.
+
+### Part S: DONE, as accepted
+
+All three W4-SETTLEMENT-1 review items closed: the hover-vs-click script bug, the missing
+`inspect_building` formatter tests (6 cases, hand-derived, a no-building negative control), and
+the `wsl_gate.sh` false-claim correction. `docs/testing/settlement-inspection-playtest.md` ready
+for the owner.
+
+### Part U: honest final scope - two rows done, three explicitly not
+
+| Row | What | Status |
+|---|---|---|
+| 5 | Demolish mode's pickaxe active frame (659→660) | **DONE** - drawn, CPU-oracle-checked with a deliberately wrong input the check rejects, `bench_frame` regression-checked (`ui_dynamic_draw_check`) |
+| 10 | Pause overlay (parchment + button) | **DONE** - same checks as row 5 |
+| 19 | Deselected right panel (`MAX_PIC`) | **NOT DONE** - only a `data/ui/hud.txt` entry; nothing drawn. `MAX_PIC`'s real trigger/persistence is unresolved: **OQ-565** |
+| 2 | Kontor panel (read-only) | **NOT DONE** - no measured background position exists for this panel at all (the one texture id tried was ruled out): **OQ-567** |
+| 18 | Selected house/building panel | **NOT DONE** - real click-to-tile picking exists (corrected from this entry's own earlier wrong claim that it didn't, orchestrator review finding 8), but *selection state* and *what Escape means once something is selected* are owner-facing design choices; scoped to **`W4-NEXT-2` part K**, not built unreviewed |
+
+**Also done:** the S/Q/D key-collision QUESTION, implemented (new `--ui classic|dev`, default
+Classic) - including a real bug the orchestrator's review caught (`--view` lost its developer
+keys entirely; fixed with a tested pure function, `cli.hpp::classic_key_surface`) and a
+correction to ADR 0004 row 10's wrong claim that key P is free.
+
+### Canonical gate (part E)
+
+- `anno_app_tests`: `tools/test/run_selected.py --select '^anno_app_tests\.'` -
+  **selected=253 executed=251 failed=0 skipped=2 (opt-in)**. `VERDICT: PASS`.
+  (`cache/w4-next-1/gates/ui3-01.log`)
+- UI/viewer_wiring suite (`ui_dynamic_draw_check`, `live_screen_matches_oracle`,
+  `ui_mock_matches_oracle`, every `viewer_wiring_*`, `construction_session_replay`,
+  `opening_session_replay`): **selected=15 executed=15 failed=0 skipped=0**. `VERDICT: PASS`,
+  clean (a first attempt was contaminated by a concurrent commit to this worktree and correctly
+  rejected by the gate's own integrity check; re-run with the tree untouched).
+  (`cache/w4-next-1/gates/ui3-04.log`)
+- `anno_app_tests` direct run: 253/253 cases, 61,647/61,647 assertions.
+
+**A real, previously-undetected defect was found and fixed by this gate**, not by this packet's
+own new work: `viewer_wiring_settlement_activity`'s negative control (from Part S's own earlier
+fix, `a9628bd0`) used `look`, believing it a pointer-move verb; it actually pans the camera and
+never touches the developer tool's hover state, so the control could never have failed. Nobody
+had run this exact test with real game files since that fix landed - CI always skips it, and the
+independent review that accepted Part S read the script's text, not its behaviour. Fixed to
+`hover-land`, confirmed directly (an `inspection.tile.x` probe went from a permanently stale value
+to correctly clearing), and now genuinely passes.
+
+### Independent review
+
+A fresh agent with no context on this task reviewed the flag threading, the key-handling split,
+the new formatter tests against the real `DescribePayload` output, and the script fix, read-only:
+**ACCEPT** - no correctness bugs; one cosmetic comment nit, fixed in the same pass.
+
+### CI, final heads
+
+| Commit | Run id | Content | Result |
+|---|---|---|---|
+| `08bce9be` | 42853454656 | review nit fix | green |
+| `c8cfd41a` | 42853534399 | independent review entry | 3 Linux jobs green; `cpp (linux-gcc-release)` failed on the pre-existing coordinator flake (this branch lacks the C-2 fix) - not a regression |
+| `d163f806` | 42866827783 | `--view` key fix, row 5/10 checks, row 18 correction | **fully green, including `windows-msvc`** |
+| `deef348a` | 42876770510 | `settlement_activity.script` fix | `windows-msvc`/macOS/format/lint/ubuntu/`linux-gcc`/`linux-clang-asan` all green; `cpp (linux-gcc-release)` failed on the same pre-existing coordinator flake (S1/S3/H5/V3/V4 - the C-1/C-2 pattern, absent the fix that lives on `task/W4-coord-1`) |
+
+### Part E gates on this branch
+
+- `clang-format` (23.1.3): clean on every touched file.
+- WSL `check_unix_warnings.sh` (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on and off): clean,
+  372 and 74 files respectively.
+- Mirrors (`gitlab`, `share`) synced to this branch's head (as of `c8cfd41a`; the three commits
+  after it are not yet re-synced - a final sync is owed before this branch is considered merge-
+  ready).
+
+### Open items for `W4-NEXT-2`
+
+- Row 18 (selection state + the meaning of Escape, part K) - correctly scoped as its own reviewed
+  task, not a wiring gap.
+- Row 2 (Kontor panel evidence, OQ-567) and row 19 (`MAX_PIC`'s trigger, OQ-565) need fresh
+  Wine/native captures before anything is drawn.
+- OQ-566 (demolish mode's OS cursor and land highlight) - not implemented, no cursor-swap
+  precedent exists in this project yet.
+- This branch's own coordinator flakiness (the `cpp (linux-gcc-release)` failures above) resolves
+  itself once this branch merges with or rebases onto the C-2 fix on `task/W4-coord-1` - not a
+  defect to chase on this branch in isolation.

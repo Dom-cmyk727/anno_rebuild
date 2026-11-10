@@ -2367,3 +2367,89 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
 - **Question:** `data/ui/masks.txt`'s `gold_digits` (34, 733) 96 x 35 and the four `baumat_*_d` rectangles, each 28 x 35 at y 733, were measured as *exclusion* rectangles for the F2.1 pixel compare (sprite-sad over real screenshots, the same method the project's other HUD rectangles were measured by) - they bound where the original draws live digits, but F2.1's own method (masking what it cannot model) never recorded *where inside that rectangle* the original actually starts the text, nor its baseline. `draw_live_screen_xrgb` (`ui_mock.cpp`) draws left-aligned at the rectangle's own left edge, vertically centred by the font's own glyph height (25 px in a 35 px band) - a reasoned default (the rectangle is itself real evidence; the alignment inside it is not), not confirmed against a real screenshot.
 - **What we know:** a live capture of the Citizen-start developer resources (10,000,000 gold; 190 tons each of tools/wood/bricks/marble) renders legibly inside every measured rectangle with this default, with no visible clipping (checked by hand, W4-UI-2 H2 checkpoint). This is a plausibility check, not a position proof: no original screenshot with a *known* digit value has been pixel-compared against this draw yet.
 - **How to resolve:** a Wine-runner screenshot of the original at a known gold/goods value (matching this project's established evidence-capture method, `docs/re/ui.md` section 1.3's own shot process), sprite-sad-compared against this rendering the same way the chrome rectangles themselves were measured; or disassembly of the panel's text-draw call (parallel to OQ-031's own resolution path).
+
+## OQ-565: MAX_PIC's exact trigger and whether it persists, vs. the ordinary idle default (W4-NEXT-1 part U, 2026-11-10)
+- **Status:** open.
+- **Area:** UI / rendering.
+- **Question:** ADR 0004's screen table (row 19, "Deselected right panel") and `docs/re/ui.md` section
+  9.8 both describe `MAX_PIC` (fenster.inc id 5, 245 x 524, the same size/file/slot as
+  `MAINUNTERGRUND` id 4) as what the right panel shows "after ESC from Kontor, or a miss-click" -
+  a *transition*-triggered state, not the general default. But `docs/re/ui.md` line 659 also
+  says "Default new-game idle is the settlement view with military tab frame 13, not `MAX_PIC`",
+  and line 138's own measurement cites `MAINUNTERGRUND`'s sprite-sad match specifically on the
+  `hud_idle_running` shot - the ordinary running-idle screenshot shows `MAINUNTERGRUND`, not
+  `MAX_PIC`. So "nothing selected" is not one state with one picture: plain idle (never opened
+  anything) shows `MAINUNTERGRUND`; having just closed a panel (Kontor) or missed a click shows
+  `MAX_PIC`. Two things are unresolved: (a) what exactly counts as a "miss-click" (any click that
+  resolves to nothing - empty ground, water, UI chrome - or only a click that was aimed at a
+  specific target class, e.g. a ship, and missed, as `f15_ship_guess_0..3`'s own description
+  suggests)? (b) does `MAX_PIC` persist indefinitely once shown (until another panel opens), or
+  is it itself transient (reverting to `MAINUNTERGRUND` after some condition - a frame, a
+  timeout, the next render where nothing is still selected)? Without both answers, "draw MAX_PIC
+  whenever nothing is selected" (the literal, simplest reading of row 19's one-line summary)
+  would be a guess that contradicts the `hud_idle_running` evidence already on file.
+- **What we know:** the asset entry itself is unambiguous and added (`data/ui/hud.txt`
+  `max_pic`, pos 779 244 size 245 524, `toolgfx/fenster.tex` tex_id 5 - the same measured
+  position as `mainuntergrund`, since both are the same size in the same fenster.inc slot). No
+  draw-path or input-routing code reads it yet; `draw_live_screen_xrgb`/`draw_live_screen_rgba`
+  (`ui_mock.cpp`) still only draw `mainuntergrund` unconditionally whenever the construction menu
+  is closed, which is correct for the plain-idle case and simply incomplete for the
+  miss-click/post-Kontor case, not wrong for either case on its own.
+- **How to resolve:** either RE evidence (disassembly of the deselect/ESC/miss-click handler
+  that would show what state it sets and for how long) or a fresh, targeted Wine-runner capture
+  sequence specifically isolating a miss-click's *next* frame and the frame after some idle time,
+  the same capture method `docs/re/ui.md` section 1.3 already uses. Until then, part U's row 19
+  stops at the data-layer entry; no `UiMockScreen`/live-window state or draw call is added on a
+  guessed trigger.
+
+## OQ-566: Demolish mode's OS cursor and land highlight are not drawn yet (W4-NEXT-1 part U row 5, 2026-11-10)
+- **Status:** open (scoped follow-up, not a defect in what row 5 did fix).
+- **Area:** UI / rendering.
+- **Question:** `docs/re/ui.md` line 213/430 records two more pieces of demolish-mode chrome
+  beyond the pickaxe icon's own active frame (660, now wired - see this entry's own commit):
+  the mouse cursor becomes `tCursorAbriss`/`Abreissen_Gebaeude.tex` (73 x 65), confirmed to be a
+  hardware/OS cursor overlay, not a blit into the frame ("that cursor did not SAD-match a 200x200
+  corner of r2_demolish, mean 171"); and the land tile under the cursor is highlighted
+  yellow-green ("r2_demolish shows a yellow-green tile"). Neither is implemented: this project
+  has no existing cursor-swap mechanism anywhere (`SDL_SetCursor`/`SDL_Cursor` do not appear in
+  `src/app/src/*.cpp`) and no tile-highlight overlay precedent (checked `viewer.cpp`,
+  `render/src/*.cpp`).
+- **What we know:** the texture (`Abreissen_Gebaeude.tex`) and cursor class name are on record;
+  decoding it as a cursor needs the same `.tex`-to-RGBA path `ui_mock.cpp`'s `TexCache` already
+  uses, then an SDL `SDL_CreateColorCursor`/`SDL_SetCursor` call (SDL3, matching this project's
+  own SDL3 dependency) - a new, small piece of platform code, not yet written or verified
+  pixel-for-pixel against a captured cursor image. The land highlight's exact tint, extent (one
+  tile vs. a footprint) and whether it follows demolish-mode's own hover tile or the dev tool's
+  existing hover state are not pinned down from the one-line doc note alone.
+- **How to resolve:** a fresh Wine/native capture of demolish mode active over a known tile,
+  isolating the cursor image (SAD against `Abreissen_Gebaeude.tex`'s own decoded RGBA) and the
+  highlighted tile's RGB value (sampled against the terrain's own known colour at that tile, to
+  get the tint as a delta, not a guessed colour); or disassembly of the demolish-mode draw path
+  for the highlight's exact rule. Until then this is explicitly NOT drawn, not silently assumed
+  equivalent to the existing placement-preview highlight (which this project does have, for a
+  different mode, with a different, unverified-here tint).
+
+## OQ-567: Kontor panel (row 2) has no measured background position/texture id (W4-NEXT-1 part U row 2, 2026-11-10)
+- **Status:** open (blocks row 2's CPU/GPU draw; this entry replaces a guess).
+- **Area:** UI / RE evidence.
+- **Question:** `docs/re/ui.md` section 9.1 records clicking the Kontor (`f15_kontor`/`r2_hud_kontor`)
+  and the text families it shows, but explicitly found no background match: "`INFOUNTERGRUND` id
+  33 does not SAD-match this panel (best mean 78.7)" - i.e. the one texture id tried for this
+  panel's plate was ruled out, and no replacement was found. Unlike row 18 (`VIEWINFOPIONIERMAIN_BK`
+  id 974 at (783, 252), `WOHNHAUS_PLATTE` id 883 at (779, 244) - both measured, section 9.7), row 2
+  has zero measured sprite-sad position for its own plate, nameplate, or goods column - only bare
+  `inc.txt` ACCESS names (`VIEWINFOSTADTTAB`, `VIEWINFOSTADTAUSBAUSTOP`, no position/size recorded
+  for either) and the ruled-out id 33. `data/ui/hud.txt`/`construction.txt` have no `kontor`
+  entries at all.
+- **What we know:** a plausible but unverified lead: `inc.txt` has `FREMDERKONTOR_UNTERGRUND` id
+  1511, 245 x 468 (`inc.txt:2278`) - a size within one pixel of row 18's own right-panel plate
+  (`VIEWINFOPIONIERMAIN_BK`, 245 x 467) - which would fit the same right-panel slot and was never
+  tried against `r2_hud_kontor`/`f15_kontor` in the section 9.1 pass. "Foreign Kontor" in its name
+  is also a plausible non-match (a different player's Kontor panel, not the player's own) -
+  nothing here distinguishes the two without a measurement. The panel's live data (stock levels,
+  buy/sell flags) is already sim-side (`SetTradeFlagCmd`/`SetTradeSlotCmd`, line 595), so row 2 is
+  blocked only on the chrome, not on data plumbing.
+- **How to resolve:** a fresh Wine/native capture of `r2_hud_kontor`, SAD-measuring id 1511 (and,
+  if that misses, a broader sprite-sad search as `UI.1.F2.1` ran for `B_Baukosten`) against the
+  right-panel region; until then row 2 draws no chrome - see `docs/orchestration/REPORTS.md`'s
+  Part U entry for this packet's own disposition (data-only, not a guessed layout).

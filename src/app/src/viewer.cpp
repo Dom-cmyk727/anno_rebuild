@@ -1157,26 +1157,48 @@ void Viewer::handle(const SDL_Event& e) {
     case SDL_EVENT_KEY_DOWN: {
         const auto [w, h] = view_size();
         const double dx = w / 4.0, dy = h / 4.0;
+        // ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION: in the Classic surface
+        // (the default), S/Q/D are reserved for the original screens they would open once those
+        // screens exist (rows 15 ship list, 17 rating, 9 player list - all still placeholders,
+        // out of this packet's scope) rather than keep doubling as pan/quit; only Dev keeps that
+        // meaning. Arrow keys (and A/W) pan in both surfaces; Escape always quits. `--view`
+        // (hooks_ == nullptr) is not `--play` and keeps its developer keys regardless of
+        // `--ui` - see cli.hpp's classic_key_surface doc comment (orchestrator review finding
+        // 1, 2026-11-10: this used to treat every --view window as Classic too).
+        const bool classic = classic_key_surface(
+            hooks_ != nullptr, hooks_ != nullptr ? hooks_->ui : UiSurface::Classic);
         switch (e.key.key) {
         case SDLK_ESCAPE:
-        case SDLK_Q:
             running_ = false;
+            break;
+        case SDLK_Q:
+            if (!classic) {
+                running_ = false;
+            }
             break;
         case SDLK_LEFT:
         case SDLK_A:
             pan(-dx, 0);
             break;
         case SDLK_RIGHT:
-        case SDLK_D:
             pan(dx, 0);
+            break;
+        case SDLK_D:
+            if (!classic) {
+                pan(dx, 0);
+            }
             break;
         case SDLK_UP:
         case SDLK_W:
             pan(0, -dy);
             break;
         case SDLK_DOWN:
-        case SDLK_S:
             pan(0, dy);
+            break;
+        case SDLK_S:
+            if (!classic) {
+                pan(0, dy);
+            }
             break;
         case SDLK_SPACE:
             toggle_pause();
@@ -2460,7 +2482,8 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             static_cast<int>(w), static_cast<int>(h), construction_menu_->hud(),
             construction_menu_->construction(), *construction_masks_, in.spec,
             *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
-            in.counters, construction_placement_open_);
+            in.counters, construction_placement_open_,
+            dev_ != nullptr && dev_->input().demolish_mode(), paused_at_.has_value());
         if (drawn.ok()) {
             ui_overlay_image = std::move(drawn).value();
         }
@@ -2643,7 +2666,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
             buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
             *construction_masks_, in.spec, *construction_tex_cache_,
             in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
-            construction_placement_open_));
+            construction_placement_open_, dev_ != nullptr && dev_->input().demolish_mode(),
+            paused_at_.has_value()));
         construction_ui_ms = since_ms(ui_start, Clock::now());
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),

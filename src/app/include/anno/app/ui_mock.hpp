@@ -126,12 +126,27 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// `masks` is data/ui/masks.txt (the H2 live-digit counters' own measured rectangles -
 /// `gold_digits`/`baumat_{tools,wood,bricks,marble}_d`/`einwohner_digits`; a counter whose named
 /// mask is missing from `masks` draws nothing for it, never a guessed position).
+/// `demolish_mode` (ADR 0004 row 5, C5's own `ToggleDemolish`): swaps the pickaxe
+/// (`abrissicon`) from its idle frame (tex_id 659) to its active one (660) - the only chrome
+/// difference `docs/re/ui.md` records between the grid's idle and demolishing state (line 192:
+/// "id 659... mean 6.7 on r2_construction_public; id 660... mean 6.3 on r2_demolish (active)").
+/// Ignored while `placement_open` is true (the pickaxe is not drawn then at all - the info
+/// panel's own close button, `infoexit`, shares its rectangle instead). Demolish mode's other
+/// original chrome - the OS cursor swap to `tCursorAbriss`/`Abreissen_Gebaeude.tex` and the
+/// yellow-green land highlight under it - is not drawn by this function; see OQ-566.
+///
+/// `paused` (ADR 0004 row 10): draws the parchment (`pause_parchment`) and its button
+/// (`pause_button`) last, over everything else this function draws - "parchment over the map,
+/// HUD chrome stays" (docs/re/ui.md line 643). The sim clock itself stops/resumes through the
+/// existing path (`Viewer::toggle_pause`/`ViewerHooks::on_pause`); this flag only draws the
+/// chrome for a state the caller already has.
 [[nodiscard]] std::string
 draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
                       const ConstructionLayout& construction, const MaskLayout& masks,
                       const UiMockSpec& screen, UiTexCache& cache,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                      const HudCounters& counters = {}, bool placement_open = false);
+                      const HudCounters& counters = {}, bool placement_open = false,
+                      bool demolish_mode = false, bool paused = false);
 
 /// `draw_live_screen_xrgb`'s own state and arguments, composed instead into a fresh RGBA canvas
 /// that starts fully transparent (every byte 0, not the oracle's own alpha-255 convention) - the
@@ -149,6 +164,7 @@ draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout&
 draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayout& construction,
                       const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                      const HudCounters& counters = {}, bool placement_open = false);
+                      const HudCounters& counters = {}, bool placement_open = false,
+                      bool demolish_mode = false, bool paused = false);
 
 } // namespace anno::app

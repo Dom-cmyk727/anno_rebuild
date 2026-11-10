@@ -152,7 +152,8 @@ TEST_CASE("quarry placement: a BuildCmd creates a quarry with no claims and no d
         const auto* q = std::get_if<sim::Quarry>(&b->payload);
         REQUIRE(q != nullptr);
         CHECK(q->claims.size() == (s.type == 1201 ? 2U : 1U)); // one flag per entrance
-        CHECK(std::count(q->claims.begin(), q->claims.end(), true) == 0);
+        CHECK(
+            std::all_of(q->claims.begin(), q->claims.end(), [](std::uint8_t f) { return f == 0; }));
         CHECK(gold(c) == gold0 - 300);
         CHECK(c.check_invariants().empty());
     }

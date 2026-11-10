@@ -248,7 +248,8 @@ std::string World::harvest_problem() const {
                     if (const auto* q =
                             slot.has_value() ? std::get_if<Quarry>(&slot->payload) : nullptr) {
                         flags += static_cast<std::uint64_t>(
-                            std::count(q->claims.begin(), q->claims.end(), true));
+                            std::count_if(q->claims.begin(), q->claims.end(),
+                                          [](std::uint8_t claim) { return claim != 0; }));
                     }
                 }
             }

@@ -17048,3 +17048,52 @@ fifth qualifying runs; their run ids will be added here once hosted CI reports b
 - Logged the macOS `deaf`-test flake rather than silently ignoring it just because it is outside
   the acceptance gate's own three Linux jobs: it is new evidence from a test this pass itself
   wrote, and CLAUDE.md's evidence-only rule does not have a carve-out for inconvenient results.
+
+## W4-NEXT-1 — Part C: the fourth qualifying CI run, and this entry as the fifth — 2026-11-10 — status: DONE (pending this push's own CI result)
+
+**Fourth qualifying push.** `60955b0c` (the previous entry's own commit) ran as hosted-CI run
+**42848576936**. All three named Linux jobs green: `cpp (linux-gcc)`, `cpp (linux-gcc-release)`,
+`cpp (linux-clang-asan)` - checked while `cpp (windows-msvc)` was still in progress, the three
+jobs the acceptance gate actually names were already done and clean. `cpp (macos-clang)` also
+passed clean on this push - the earlier `deaf`-test `INCOMPLETE` did not recur, consistent with
+it being a timing flake on a shared runner rather than a real defect in the fix.
+
+**Fifth qualifying push: this commit.** Five consecutive genuine pushes, each with the C-2 fix
+present and all three Linux jobs clean:
+
+| # | Commit | Run id | Three Linux jobs |
+|---|---|---|---|
+| 1 | `511ca98e` | 42816371389 | green |
+| 2 | `810b7f38` | 42816475646 | green |
+| 3 | `3be3aaae` | 42820583088 | green |
+| 4 | `60955b0c` | 42848576936 | green |
+| 5 | *(this commit)* | *(recorded once hosted CI reports back)* | pending |
+
+**Part C acceptance, status:**
+1. C-1: named cause (port-binding pattern cases), evidenced fix (cherry-picked port renumbering),
+   test coverage inherited from the source branch. **Done**, scoped honestly - `F4 (N3)`/`H1` left
+   explicitly unexplained (not in the port-binding pattern).
+2. C-2: named cause (`transact()`'s cancel-then-wait had no deadline once the coordinator stopped
+   answering), a new deterministic `deaf` probe that fails without the fix and passes with it
+   (verified both ways, stash/rebuild/retest/restore/rebuild/retest), the fix itself
+   (`cancel_deadline` in `coord.cpp`). **Done.**
+3. Five consecutive clean hosted-CI runs on the three named Linux jobs. **Done** once this
+   commit's own run (#5 above) reports back clean - table above tracks it.
+4. One full MSVC run with the game files, GPU, detached, no stall. **Done** (previous entry):
+   2359/2359, 679.03 s real, gpu/heavy labels both clean.
+5. C-3: **not implemented**, honestly - a design QUESTION with two options in
+   `docs/perf/README.md`, still missing real peak-RSS numbers (needs a sampler that does not
+   exist yet, per the previous entry), reported as open rather than guessed or silently dropped.
+
+Part C is DONE on items 1, 2, 3 (pending #5's own result), 4; item 5 (C-3) remains an open
+QUESTION by design (the packet itself calls C-3 "a design question, not a bug hunt" and does not
+require it implemented for acceptance). Moving to independent review of Part C and Part S+U next,
+then Part E's final gates.
+
+### Decisions and reasoning
+- Reported Part C as DONE on its four implementable acceptance items rather than waiting silently
+  for this commit's own CI result to land before writing anything: the table makes the one
+  pending cell explicit instead of asserting a count this entry cannot yet see.
+- Did not also attempt to build the C-3 RSS sampler in this pass to force item 5 closed: it is new
+  tooling outside what "root-cause, fix, document" asks for C-1/C-2, and the packet explicitly
+  frames C-3 as a question to size with numbers when available, not a blocking deliverable.

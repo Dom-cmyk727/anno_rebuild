@@ -17204,3 +17204,81 @@ invocation on this build tree happened after it) before copying, so this is the 
 evidence, not a later, smaller one mistaken for it. Copied to
 `cache/w4-next-1/coord-gamefile-run/LastTest.log` (8,921,985 bytes) and `ctest-output.log`
 (964,616 bytes).
+
+## W4-NEXT-1 — final report, this branch (`task/W4-coord-1`) — 2026-11-10 — status: DONE
+
+Closing report for this packet's part C, from this branch. Part S/U/E's own work lives on
+`task/W4-ui-3`; its own final report is there. Written after the orchestrator's interim review
+([review](../reviews/2026-11-10-w4-next-1-interim.md)) and all of its findings for this branch
+were addressed and re-verified (not just locally - on hosted CI).
+
+### Part C acceptance, final
+
+1. **C-1 (port-binding CI flakes): DONE.** Cherry-picked the already-evidenced port renumbering
+   (`209cb2ba`/`a7c2c40f`/`232a16fd`/`022de74f`) into the reserved band (`test_ports.hpp`,
+   27600-27999). `F4 (N3)` and `H1` explicitly left unexplained - not in the port-binding pattern
+   the proven cases share.
+2. **C-2 (a client's wait has no bound once its deadline fires): DONE.** Root cause and fix in
+   `coord.cpp::transact()` (`cancel_deadline`); a new deterministic `deaf` probe
+   (`budget_probe.cpp`) proves it both ways (fails without the fix, passes with it). The probe
+   itself had a real bug (SIGPIPE on macOS, orchestrator review finding 2) - fixed by calling
+   `startup_sockets()`, confirmed by CI (`cpp (macos-clang)` green on `ee504b75`, run
+   `42863102776`).
+   - **C-2's link to the one recorded real stall stays UNPROVEN**, honestly: the stall snapshot
+     (`cache/main-gamefile-96de6bca/stall2-snapshot.txt`) shows a balanced journal and the client
+     only 22 minutes into a 3,600 s admission bound - before `transact()` would even send a
+     cancel. The fix is a verified mitigation for the class of hang it targets, not shown to be
+     what this specific historical stall needed. Full analysis in `docs/perf/README.md`.
+3. **Five consecutive clean hosted-CI runs on the three named Linux jobs: DONE.** Reruns do not
+   count (missed on first read, corrected mid-packet). Five genuine pushes, each green on
+   `cpp (linux-gcc)`/`cpp (linux-gcc-release)`/`cpp (linux-clang-asan)`:
+   | # | Commit | Run id |
+   |---|---|---|
+   | 1 | `511ca98e` | 42816371389 |
+   | 2 | `810b7f38` | 42816475646 |
+   | 3 | `3be3aaae` | 42820583088 |
+   | 4 | `60955b0c` | 42848576936 |
+   | 5 | `30986aac` | 42852934257 |
+
+   Three further pushes with real fixes, all fully green including `cpp (macos-clang)`
+   (confirming the SIGPIPE fix, not just reasoning about it):
+   | Commit | Run id | Content |
+   |---|---|---|
+   | `ee504b75` | 42863102776 | SIGPIPE fix, C-2/stall analysis, H1 message logging |
+   | `2321ca35` | 42866978698 | evidence-log preservation (finding 9) |
+4. **Full MSVC + game-file run, detached, GPU: DONE.** `2,359/2,359` passed, 679.03 s real, `gpu`
+   label 350.44 s*proc (116 tests), `heavy` label 4462.79 s*proc (13 tests), no stall. Logs
+   preserved in `cache/w4-next-1/coord-gamefile-run/` (the build tree's own copy is overwritten by
+   later runs).
+5. **C-3 (no-reservation large tests' peak RSS): NOT MEASURED, by design.** Still an open
+   QUESTION with two options in `docs/perf/README.md` - needs a per-process memory sampler that
+   does not exist yet; a clean gate run's own `[anno-test memory]` log only covers *reserved*
+   tests, the opposite of what C-3 needs. Assigned to `W4-NEXT-2` part M.
+
+### Canonical gate (part E)
+
+`tools/test/run_selected.py --build-dir build/msvc --config Release --select
+'^anno_test_support_tests\.'`: **selected=79 executed=76 failed=0 skipped=3 (platform)**.
+`VERDICT: PASS`. Log: `cache/w4-next-1/gates/coord-01.log`.
+
+### Independent review
+
+A fresh agent with no context on this task reviewed the C-2 fix, the new `deaf` probe, and the
+port renumbering, read-only: **ACCEPT WITH CONCERNS** (no correctness bugs; the deadline logic is
+race-free and the new test genuinely exercises the fix; two concerns, both fixed - a stale port-
+range comment, and a request that this executor's own CI-run claims be independently checkable,
+which they are, by `gh run view`, not by local reasoning).
+
+### Part E gates on this branch
+
+- `clang-format` (23.1.3): clean on every touched file.
+- WSL `check_unix_warnings.sh` (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on and off): clean,
+  372 and 73 files respectively.
+- Mirrors (`gitlab`, `share`) synced to this branch's final head.
+
+### Open items for `W4-NEXT-2`
+
+- C-3's real numbers (part M).
+- The macOS `deaf`-test SIGPIPE fix's own repeated-run proof (`ctest -R deaf --repeat
+  until-fail:50`) was never run on an actual macOS/Linux host from this PC - only confirmed via
+  one clean hosted-CI run on macOS. Worth a repeat run if this ever flakes again.

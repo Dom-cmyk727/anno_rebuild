@@ -2111,3 +2111,11 @@ would violate the evidence contract. This is an open QUESTION, not an implemente
   behaviour for every client, not just the identified large tests.
 
 Until a real run's numbers answer this, do not add a reservation sized by guesswork.
+
+**Update, 2026-11-10 (Part C full MSVC run):** a clean full gate run now exists (2359/2359 passed,
+`build/msvc/Testing/Temporary/LastTest.log`), but it does not answer this QUESTION either - the
+`[anno-test memory]` admit/end lines it writes are only for tests that *request* a reservation,
+which is the opposite set from the unreserved large cases C-3 is about. Getting real peak-RSS
+numbers for those still needs a per-process memory sampler wrapped around ctest item execution,
+which does not exist yet; that is new tooling, not something this run's own log already contains.
+"No gate run was available" is no longer the blocker - "no sampler for the unreserved cases" is.

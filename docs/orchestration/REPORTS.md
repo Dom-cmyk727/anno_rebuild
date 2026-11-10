@@ -16994,3 +16994,57 @@ real numbers**, per the evidence contract.
   scheduled as their own step once C's code-level fix is itself stable and pushed, matching the
   packet's own "C's acceptance" being explicitly listed separately from "the cause is named and
   fixed."
+
+## W4-NEXT-1 — Part C: the full MSVC game-file run (done), and a correction to the CI-run count — 2026-11-10 — status: IN PROGRESS
+
+**The game-file acceptance item is done.** `cmake --preset msvc && cmake --build --preset msvc`,
+then (owner's go-ahead to run now, given alongside) `ANNO1503_GAME_DIR=E:\anno1503\game\app
+ANNO_TEST_THREADS=16 ANNO_GPU_ADAPTER=4090 ctest --preset msvc -j 16`, detached, on this worktree's
+own fresh build tree (`build/msvc`), with the C-2 fix (`19c94567` et al.) present. Result:
+**100% tests passed, 2359/2359**, including the `gpu` label (116 tests, 350.44 sec*proc) and
+`heavy` label (13 tests, 4462.79 sec*proc); total real time 679.03 s. No stall, no refusal to
+explain - the run completed cleanly start to finish. `anno_test_support_tests` itself (158 of the
+2359 selected names) had zero failures in this run.
+
+**C-3's numbers still cannot be filled in from this run.** The coordinator's own
+`[anno-test memory]` log (`build/msvc/Testing/Temporary/LastTest.log`, 39283 lines this run) only
+records admits/ends for tests that *do* request a reservation - exactly the opposite of what C-3
+needs (the unreserved large cases' own peak working set). There is no existing per-process RSS
+sampler wrapping ctest item execution, so "peak working set per CTest item" for the unreserved
+cases is not a grep away; building that sampler is new tooling, not a measurement this run already
+produced. C-3 stays an open QUESTION with options (a)/(b) in `docs/perf/README.md`, now noted
+there as still unmeasured for the stated reason (not "no gate run was available" any more - a
+clean one now exists, but it doesn't carry the data shape C-3 needs).
+
+**Correction: CI reruns do not count toward the five.** The packet says so explicitly ("Five
+consecutive full CI runs... A job-level rerun does not count as one of the five") - missed on
+first read. Re-auditing the branch's actual hosted-CI history (`gh run list`, genuine pushes
+only, no `gh run rerun`): with the C-2 fix present, there are three qualifying pushes so far, each
+with all three Linux jobs (`cpp (linux-gcc)`, `cpp (linux-gcc-release)`, `cpp (linux-clang-asan)`)
+green:
+- `511ca98e` (merge recovering the Part P report) - run **42816371389**
+- `810b7f38` (Part C REPORTS entry) - run **42816475646**
+- `3be3aaae` (clang-format fix) - run **42820583088**
+
+(Two earlier pushes also ran clean on the three Linux jobs, `42813750367` for `f9f87e21` and one
+before it, but both predate the C-2 fix landing on this branch - they tested the branch *before*
+`19c94567`, so they do not evidence the fix and are not counted here.)
+
+A `gh run rerun` of `42820583088` was triggered before this correction was found; it came back
+*flaky* on an unrelated job (`cpp (macos-clang)` reported `INCOMPLETE` on the new deaf-coordinator
+test, `F3 (D1, deaf)`) - not one of the three Linux jobs the acceptance gate names, and not a
+counted run either way now that reruns are known not to count. Logged as its own finding below,
+not folded into the Linux-job count.
+
+This commit and the two that follow it (the next genuine pushes) are intended to be the fourth and
+fifth qualifying runs; their run ids will be added here once hosted CI reports back.
+
+### Decisions and reasoning
+- Did not invent peak-RSS numbers for C-3 from the admit/end log just because a gate run now
+  exists: those lines cover reserved tests, and C-3 is about the *unreserved* ones - using the
+  wrong data to answer the right question would be worse than leaving it open.
+- Did not count `f9f87e21`/its predecessor toward the five: they ran before the fix commit this
+  packet is trying to prove, so a clean result there says nothing about the fix's own stability.
+- Logged the macOS `deaf`-test flake rather than silently ignoring it just because it is outside
+  the acceptance gate's own three Linux jobs: it is new evidence from a test this pass itself
+  wrote, and CLAUDE.md's evidence-only rule does not have a carve-out for inconvenient results.

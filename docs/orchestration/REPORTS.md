@@ -17125,3 +17125,26 @@ than starting row 18's subsystem unreviewed.
   match to row 18's plate is suggestive, not a measurement; `docs/re/ui.md` 9.1 already shows one
   guess-by-similarity (`INFOUNTERGRUND`) for this same panel was wrong.
   own report, for the orchestrator to fold back into the ADR at the next review.
+
+## W4-NEXT-1 — Part S+U: independent review — 2026-11-10 — status: DONE
+
+A fresh, independent agent (no context from this task's own work) reviewed this branch's full
+diff (`5fbc547e..8b172760` at review time) read-only, per the evidence contract's independent-
+review requirement before reporting a part complete. Checked: `demolish_mode`/`paused` flag
+threading symmetry across `draw_live_screen_xrgb`/`draw_live_screen_rgba`, that `compose_screen`
+(the oracle path) stays untouched, no double-draw risk from `paused`'s trailing blit, the
+`classic`/`UiSurface` key-handling split in `viewer.cpp` for correctness and dead branches,
+`inspect_building_test.cpp`'s expected strings against `play.cpp`'s real `DescribePayload`
+formatter (not an assumed format), the `settlement_activity.script` hover-vs-click fix, and this
+file's own Part S/Part U entries against the diff.
+
+**Verdict: ACCEPT.** No correctness bugs. One nit found and fixed in the same pass: a stale
+comment in `inspect_building_test.cpp` claimed `carriers_out=1` while the assertion (correctly)
+checks `carriers_out=0` - cosmetic only, the assertion itself was never wrong. Fixed in `08bce9be`.
+
+### Decisions and reasoning
+- Used a fresh agent with no prior context on this task, not a self-review: the evidence
+  contract's "independent" requirement means someone who did not write the code checks it, and
+  reusing this session's own context would not satisfy that.
+- Fixed the one nit immediately rather than deferring it to a follow-up: it was a one-line,
+  zero-risk comment correction, not worth a separate review cycle.

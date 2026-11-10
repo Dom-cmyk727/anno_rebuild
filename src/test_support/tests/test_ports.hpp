@@ -36,7 +36,7 @@
 namespace anno::test::ports {
 
 /// Every fixed port a coordinator regression binds or connects to lies in this band. The
-/// files divide it: F2 27700-27760, F3 27810-27817, F4 27820-27826, F5 27850-27925, and the
+/// files divide it: F2 27700-27760, F3 27810-27818, F4 27820-27826, F5 27850-27925, and the
 /// file-client cases of budget_test and F1 27632 (kFileClientPort). Exempt: the Windows-only F1
 /// case "a live Windows owner is not reclaimed by a WSL client" deliberately uses the shared WSL
 /// coordinator (production port 47631); it runs only on a Windows host with WSL. A host whose

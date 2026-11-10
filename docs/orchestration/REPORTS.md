@@ -17097,3 +17097,36 @@ then Part E's final gates.
 - Did not also attempt to build the C-3 RSS sampler in this pass to force item 5 closed: it is new
   tooling outside what "root-cause, fix, document" asks for C-1/C-2, and the packet explicitly
   frames C-3 as a question to size with numbers when available, not a blocking deliverable.
+
+## W4-NEXT-1 — Part C: independent review — 2026-11-10 — status: DONE
+
+A fresh, independent agent (no context from this task's own work) reviewed this branch's full
+diff read-only, per the evidence contract's independent-review requirement. Checked: the
+`cancel_deadline` mechanism in `coord.cpp::transact()` for races/lost-wakeups/false positives
+under normal timing, whether the new `deaf` probe test genuinely exercises the fix (not a
+tautology - confirmed it spins up a real second process speaking the real wire protocol), the
+port-renumbering cherry-picks for collisions across `test_ports.hpp`/`budget_f1-f5_test.cpp`, and
+this file's own Part C narrative against the diff and commit hashes.
+
+**Verdict: ACCEPT WITH CONCERNS.** No correctness bugs in the fix itself - the deadline logic is
+race-free (re-evaluated fresh every loop iteration, no cross-call state leakage), not prone to
+false positives (the liveness bound is generous relative to a real cancel-ack round trip), and the
+new test is a genuine regression test, not a tautology. Two concerns, both addressed:
+1. A stale port-range comment (`test_ports.hpp` line 39 said "F3 27810-27817"; the new
+   `kPortDeaf=27818` extends F3 to 27818, without colliding with F4's own 27820 start). Fixed in
+   this commit.
+2. The reviewer could not independently verify the hosted-CI run ids / "5 qualifying pushes" claim
+   from local repo state alone (no `gh`/CI access from that review context) - flagged as needing
+   confirmation from whoever does have CI access. This executor does have `gh` access and has
+   been tracking the run ids directly against `gh run list`/`gh run view` output throughout this
+   part (see the acceptance table two entries up); the concern is about the review's own blind
+   spot, not a gap in what was actually checked for item 3.
+
+### Decisions and reasoning
+- Fixed the stale comment immediately in the same commit as this entry: one-line, zero-risk,
+  not worth a separate review cycle.
+- Did not re-litigate item 3's run ids just because the independent reviewer flagged an
+  unavoidable gap in its own access: the ids were already pulled live from `gh run view` by this
+  executor, not asserted from memory, which is exactly the independent verification the reviewer
+  is asking for - it is just a different kind of independence (a different data source: the CI
+  API) than a second reader of the diff can provide on their own.

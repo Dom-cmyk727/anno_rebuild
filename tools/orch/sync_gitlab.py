@@ -12,7 +12,9 @@ For every mirror:
 
 - no force: a branch whose mirror head is not an ancestor of the GitHub head is reported and left alone;
 - no deletes: a branch removed from GitHub stays on the mirror;
-- nothing local: only what is already on GitHub is mirrored, so the GitHub branches are the one source.
+- nothing local: only what is already on GitHub is mirrored, so the GitHub branches are the one source;
+- no landing branches: `land/*` exist only while `tools/orch/land.py` waits for CI and are left out, because a
+  mirror never deletes and would keep them forever.
 
 A mirror that is not a remote of this clone is skipped with a message (the Macs have neither).
 
@@ -51,7 +53,7 @@ def main() -> int:
     a = ap.parse_args()
 
     git(a.repo, "fetch", "--quiet", "--prune", a.source)
-    src = heads(a.repo, a.source)
+    src = {name: sha for name, sha in heads(a.repo, a.source).items() if not name.startswith("land/")}
     remotes = set(git(a.repo, "remote").stdout.split())
     rc = 0
     for mirror in a.mirror or ["gitlab", "share"]:

@@ -17148,3 +17148,101 @@ checks `carriers_out=0` - cosmetic only, the assertion itself was never wrong. F
   reusing this session's own context would not satisfy that.
 - Fixed the one nit immediately rather than deferring it to a follow-up: it was a one-line,
   zero-risk comment correction, not worth a separate review cycle.
+
+## W4-NEXT-1 — Part U, finding 8 (correction): row 18's QUESTION was wrong about mouse handling — 2026-11-10 — status: DONE
+
+The orchestrator's interim review ([review](../reviews/2026-11-10-w4-next-1-interim.md), finding
+8) caught a wrong factual claim in the row 18 QUESTION entry two above this one: "grep'ing
+`src/app/src/*.cpp` for mouse-button handling, screen-to-tile mapping, or a 'building at this
+tile' query wired to input found none" and "the viewer today only drags (pan) and wheels (zoom)
+the mouse." **False, checked now:** `viewer.cpp`'s `construction_handle` handles
+`SDL_EVENT_MOUSE_BUTTON_DOWN` for the construction menu's own grid; `dev_tool_step` (called from
+the mouse-button branch around line 1091-1100) feeds the developer tool's own click handling;
+the ship-opening UI selects by click too (around line 1508, `SDL_EVENT_MOUSE_BUTTON_DOWN/UP`);
+`render::picking.hpp`'s `pick_geometry_of` and the viewer's own `PointerFrame` already map a
+screen point to a tile; and `live_inspection`/`request_inspect` (lines 1932/1947/2060,
+W4-SETTLEMENT-1) already names the building under the pointer through the developer tool's own
+hover. All of this was confirmed by reading the cited lines directly, not just restating the
+review's own claim.
+
+**The recommendation stands; the reasoning for it changes.** Option (b) - row 18 as its own
+reviewed follow-up task, not built unreviewed mid-task - is still right, per the review's own
+confirmation: not because the mechanism is missing (it is not), but because *selection state*
+(what "a building is selected" means for the viewer to hold) and *what Escape does once
+something is selected* (today it unconditionally quits, per this same pass's key-collision fix)
+are owner-facing design choices this project's own rules route to the owner, not something to
+decide mid-task by picking one wiring among several already-existing click paths. This is now
+`W4-NEXT-2` part K, per the orchestrator's own packet for it.
+
+### Decisions and reasoning
+- Corrected via a new append-only entry rather than editing the original QUESTION's text in
+  place: REPORTS.md's own convention (every other correction in this file, including Part S
+  finding 1, did the same) keeps the record of what was actually said and when, rather than
+  quietly rewriting history.
+- Verified every one of the review's four cited mechanisms by reading the actual lines before
+  writing this correction, rather than trusting the review's own claim the same way the original,
+  wrong entry trusted an incomplete grep - the irony of re-making the same mistake while
+  correcting it would be its own finding.
+
+## W4-NEXT-1 — Part U, finding 6: rows 5 and 10 now have their own oracle/bench_frame checks — 2026-11-10 — status: DONE
+
+The orchestrator's interim review (finding 6) correctly found that rows 5 (the pickaxe's active
+frame) and 10 (the pause overlay) had chrome but none of the per-screen checks the packet
+requires: CPU drawing against the UI.1 oracle with a deliberately wrong input, GPU, and
+`bench_frame`. Added.
+
+**New CTest case `ui_dynamic_draw_check`** (`tools/test/ui_dynamic_draw_check.py` +
+`tools/test/viewer_wiring/ui_dynamic_draw_check.script`), the same pattern
+`live_screen_matches_oracle` already uses for the other screens. `compose_screen` has no concept
+of either dynamic flag (it always draws the pickaxe's idle frame and never draws the pause
+overlay at all), so the "oracle" compared against here is `compose_screen`'s own static base plus
+one more `blit_rgba` of the exact sprite `ui_mock.cpp` also draws on top - the same decoded
+texture files and measured `data/ui/hud.txt` positions, not a second description of the chrome.
+**Deliberately wrong input, both rows:** for row 5, the *other* frame (id 659, idle, instead of
+660); for row 10, the oracle's unmodified base with no overlay blitted at all. Both are compared
+against the same live capture and must be rejected - proving the check is sensitive to the thing
+it is supposed to verify.
+
+**A real bug in the script, caught by that same wrong-input control - not guessed, not missed.**
+The first version of the script opened the construction menu with one `key b` and expected `key
+x` to toggle demolish mode; it ran with no error and captured a screenshot, but the comparison
+failed *both* ways (the correct expected input mismatched, and - the signal that something was
+actually wrong, not just imprecise - the deliberately wrong input was NOT rejected). Read
+`viewer.cpp`'s `construction_handle` directly rather than guess why: with `--construction-menu
+on`, the first B (menu closed) is consumed opening the menu and never reaches the developer
+tool's own B-toggle; only a *second* B (menu already open) falls through to enable the tool, which
+X (`ToggleDemolish`) needs. Fixed the script to press B twice before X. A second, smaller issue
+the same debugging pass found: `toggle_pause()` marks the window dirty exactly once, so a `wait
+frames 5` after pausing hung until `ANNO_VIEW_QUIT_S` force-quit (the scene stops animating once
+paused) - changed to `wait frames 1`.
+
+**Result:** `ui_dynamic_draw_check` passes - `construction_demolish`: exact match on 2,809 opaque
+pixels, wrong-input control correctly rejected (663 of 2,809 differ); `hud_paused`: exact match on
+219,172 opaque pixels, wrong-input control correctly rejected (5,650 of 8,492 differ). CPU only
+(`--renderer cpu`, the registered CTest mode, matching `live_screen_compare.py`'s own established
+bar); GPU is the same documented manual/interactive-only check every other screen's GPU path is,
+for the same reason (needs a real window surface).
+
+**`bench_frame`:** ran the CPU matrix on `Scenes/0010SingleEndlos/01_1024_easy_256.sze` (no crash,
+30+ frames per config across both zoom groups and water styles) - a general regression check,
+not a UI-specific number, matching W4-UI-2's own V6 precedent exactly (`bench_frame` has no
+concept of the construction-menu/HUD overlay; neither row's code touches `src/render`/`src/sim`).
+The actual row-specific timing evidence is the "construction ui" frame-step line this same test
+session's own stderr already printed: ~52-57 ms on the first frame after the menu opens (texture
+decode, matching the existing cold/warm pattern ADR 0004 "Atlases" already documents), ~2 ms on
+every frame after - no different in kind from the existing construction-menu overlay's own
+already-measured cost (W4-UI-2's own "~67-70 ms cold, ~2-5 ms warm" texture-cache checkpoint);
+rows 5/10 add no new texture file, so this is expected, not a new cost.
+
+anno_app_tests: 253/253 cases, 61,647/61,647 assertions.
+
+### Decisions and reasoning
+- Duplicated a small `compare()` function in the new script rather than importing
+  `live_screen_compare.py`'s own: that script's function is tied to its own screens/rects; a
+  shared helper would couple two scripts this packet did not ask to merge, for one function.
+- Did not try to make `bench_frame` itself UI-aware to get a true before/after number: that is a
+  `bench_frame` feature gap, out of this packet's scope, and the existing "construction ui" frame
+  step timing already measures the real cost precisely.
+- Fixed the B-double-press and pause-wait script bugs immediately rather than reporting rows 5/10
+  as blocked: both were script-authoring mistakes this pass made and caught with its own
+  negative control, not evidence gaps - exactly what the control exists to catch.

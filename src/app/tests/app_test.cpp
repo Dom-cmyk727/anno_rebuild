@@ -336,8 +336,11 @@ TEST_CASE("command line") {
     CHECK_FALSE(cm_off->construction_menu);
 
     // --ui classic|dev (ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION): default
-    // Classic, parsed independently of --play (unlike --construction-menu, nothing about the
-    // S/Q/D key scheme is meaningless on --view - a window either surface can open).
+    // Classic, parsed independently of --play (unlike --construction-menu). Parsing it on
+    // --view is accepted, not an error, but it has no live effect there - a --view window
+    // never installs ViewerHooks (run_viewer's own doc comment), so there is no `ui` field for
+    // the key handler to read; see classic_key_surface's own test below (orchestrator review
+    // finding 1, 2026-11-10: a --view window used to lose its S/Q/D keys regardless of --ui).
     const auto ui_default = parse_args({"--play", "x.scp"});
     REQUIRE(ui_default.has_value());
     CHECK(ui_default->ui == anno::app::UiSurface::Classic);
@@ -350,6 +353,21 @@ TEST_CASE("command line") {
     CHECK_FALSE(parse_args({"--play", "x.scp", "--ui", "both"}));
     CHECK(parse_args(
         {"--view", "x.scp", "--ui", "dev"})); // not --play-only, unlike --construction-menu
+}
+
+TEST_CASE("classic_key_surface: only a --play window with Classic hooks restricts S/Q/D") {
+    using anno::app::classic_key_surface;
+    using anno::app::UiSurface;
+    // --view (no play hooks at all): keeps its developer keys under either --ui value - this
+    // is the case the window got wrong before the orchestrator's 2026-11-10 review (it treated
+    // `hooks == nullptr` as "assume Classic" instead of "Classic cannot apply here"). A naive
+    // `!has_play_hooks || ui == Classic` reading - the pre-fix shape - returns true for both
+    // lines below; this case fails against that shape and passes against the real fix.
+    CHECK_FALSE(classic_key_surface(false, UiSurface::Classic));
+    CHECK_FALSE(classic_key_surface(false, UiSurface::Dev));
+    // --play, the surface --ui actually names.
+    CHECK(classic_key_surface(true, UiSurface::Classic));
+    CHECK_FALSE(classic_key_surface(true, UiSurface::Dev));
 }
 
 TEST_CASE("zoom over derived levels: the range follows the last level and the minimum tile") {

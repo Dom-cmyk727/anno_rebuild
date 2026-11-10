@@ -1161,8 +1161,12 @@ void Viewer::handle(const SDL_Event& e) {
         // (the default), S/Q/D are reserved for the original screens they would open once those
         // screens exist (rows 15 ship list, 17 rating, 9 player list - all still placeholders,
         // out of this packet's scope) rather than keep doubling as pan/quit; only Dev keeps that
-        // meaning. Arrow keys (and A/W) pan in both surfaces; Escape always quits.
-        const bool classic = hooks_ == nullptr || hooks_->ui == UiSurface::Classic;
+        // meaning. Arrow keys (and A/W) pan in both surfaces; Escape always quits. `--view`
+        // (hooks_ == nullptr) is not `--play` and keeps its developer keys regardless of
+        // `--ui` - see cli.hpp's classic_key_surface doc comment (orchestrator review finding
+        // 1, 2026-11-10: this used to treat every --view window as Classic too).
+        const bool classic = classic_key_surface(
+            hooks_ != nullptr, hooks_ != nullptr ? hooks_->ui : UiSurface::Classic);
         switch (e.key.key) {
         case SDLK_ESCAPE:
             running_ = false;

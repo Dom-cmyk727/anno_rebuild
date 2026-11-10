@@ -83,6 +83,19 @@ enum class Renderer { Auto, Gpu, Cpu };
 /// developer scheme unchanged. Default `Classic` (the owner's chosen test surface, decision M3).
 enum class UiSurface { Classic, Dev };
 
+/// Whether the Classic key restriction (S/Q/D do nothing, see `UiSurface`'s own comment) applies
+/// to a window. `has_play_hooks` is whether the window is `--play` with `ViewerHooks` installed
+/// (viewer.hpp's own doc comment: `hooks` is null for `--view`) - a `--view` window is not
+/// `--play` and never reads `ui` at all, so it keeps its developer keys regardless of what `--ui`
+/// parsed to. A free function taking plain values, not `ViewerHooks*` (which lives in the
+/// SDL-only viewer.hpp), so it is testable from `app_test.cpp` without linking SDL (orchestrator
+/// review finding 1, 2026-11-10: the window used to treat every `--view` window as Classic too,
+/// because it checked `hooks == nullptr` as if that meant "assume Classic" instead of "Classic
+/// does not apply here").
+[[nodiscard]] constexpr bool classic_key_surface(bool has_play_hooks, UiSurface ui) {
+    return has_play_hooks && ui == UiSurface::Classic;
+}
+
 /// How the wheel zooms (docs/render/iso.md "Continuous zoom"). Stepped is the
 /// original: three zoom groups, one step per wheel notch. Continuous scales the
 /// picture smoothly (GPU renderer; the CPU renderer stays stepped). Continuous

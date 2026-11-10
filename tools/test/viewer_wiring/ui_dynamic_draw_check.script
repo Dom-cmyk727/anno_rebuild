@@ -1,0 +1,34 @@
+# W4-NEXT-1 part U rows 5 and 10 (orchestrator review finding 6, 2026-11-10): captures the live
+# window's own drawing for demolish mode (the pickaxe's active frame) and the pause overlay, for
+# ui_dynamic_draw_check.py's pixel comparison against the UI.1 oracle - construction_menu_draw_
+# check.script's own idle/public/roads captures never turn either flag on.
+#
+# B is overloaded under --construction-menu on (viewer.cpp's construction_handle, ADR 0004 R1):
+# the first B (menu closed) opens the construction menu and is consumed there, never reaching the
+# developer tool's own B-toggle; only the SECOND B (menu already open) falls through to enable
+# the tool, which X (ToggleDemolish) needs (sdl_input.cpp: every tool key but B returns nullopt
+# while the tool is disabled). One B alone looked like it worked (no error) but left X a no-op,
+# so the first version of this script silently captured the idle pickaxe and compared against
+# itself - caught only by this script's own deliberately-wrong-input control failing to be
+# rejected (both sides were the same idle sprite).
+resize 1024 768
+wait frames 5
+key b
+wait frames 5
+key b
+wait frames 5
+key x
+wait frames 5
+screenshot construction_demolish_live
+key x
+key esc
+wait frames 5
+# toggle_pause() marks the window dirty once (viewer.cpp) but the scene then stops animating,
+# so no further frames redraw on their own - "wait frames 5" here would hang until
+# ANNO_VIEW_QUIT_S force-quits; the one triggered redraw is already enough to show the overlay.
+key space
+wait frames 1
+screenshot hud_paused_live
+key space
+wait frames 1
+quit

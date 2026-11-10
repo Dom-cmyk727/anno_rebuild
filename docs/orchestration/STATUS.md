@@ -4,7 +4,16 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-10 evening, by the Claude Code orchestrator:
+**Last updated:** 2026-11-10 late evening, by the Claude Code orchestrator:
+- **W4-NEXT-1 ACCEPTED and merged into `main`** as `fc126fbe` (part C) and `2c4dc295` (parts S, U, E)
+  ([acceptance review](reviews/2026-11-10-w4-next-1-acceptance.md)). All nine interim findings are dispositioned.
+  - **Fixed:** the `--view` key regression and the macOS SIGPIPE.
+  - **Reported, not proven:** C-2's link to the recorded stall stays UNPROVEN.
+  - **Five findings, none blocking.** The main one: the GPU pixel check for rows 5 and 10 was not run; W4-NEXT-2
+    part P runs it.
+  - **`main` at `2c4dc295` is healthy:** CI green, 12 of 12 jobs. Game-file run: 2,355 executed and passed, 0
+    failed, 12 classified skips.
+- **W4-NEXT-2 starts now** ([packet](tasks/w4-next-2.md)), from `main` at `2c4dc295` or later.
 - **The board is slimmed (owner request):** `TASKS.md` 975 KB → 63 KB and `REPORTS.md` 2.1 MB → 435 KB. Closed
   history moved verbatim to [`HISTORY-2.md`](HISTORY-2.md) and [`REPORTS-1.md`](REPORTS-1.md); `TASKS.md` says what
   moved, what of it is still open, and which owner decisions the moved text records.
@@ -12,13 +21,10 @@ says who is doing what, where the work is, and what it waits on.
 - **`main` is protected (owner decision):** GitHub accepts a push to `main` only for a commit on which the CI job
   `gate` passed; no force push or deletion, admins included. Land with `python -I tools/orch/land.py` (owner rule in
   [`TASKS.md`](TASKS.md), top). Docs-only changes pass `gate` in about a minute.
-- **W4-NEXT-1 interim review: CHANGES REQUESTED** for parts C and U ([review](reviews/2026-11-10-w4-next-1-interim.md)).
-  Part C's game-file run passed (2,347 executed, 0 failed, 12 classified skips). Two blockers: `--view` lost its S, D
-  and Q keys, and the new `F3 (D1, deaf)` test dies with SIGPIPE on macOS. C-2's link to the recorded stall is not
-  shown yet.
-- **W4-NEXT-2 released** to the Windows executor, to start after W4-NEXT-1's part E ([packet](tasks/w4-next-2.md)):
-  the selected-building panel, captures for the missing UI evidence, test memory (C-3), and the co-developer's shared
-  test list measured in our sim and in the original.
+- **Earlier that evening:** the W4-NEXT-1 interim review requested changes
+  ([review](reviews/2026-11-10-w4-next-1-interim.md)), and W4-NEXT-2 was released: the selected-building panel,
+  captures for the missing UI evidence, test memory (C-3), and the co-developer's shared test list measured in our sim
+  and in the original.
 - **MAP-EXTRACT-2:** the first Mac's run was interrupted at `ce14b264`. Its two red CI causes are fixed on
   `fix/MAP-EXTRACT-2-ci` (`a5a3bca3`, CI 10/10). Its game-file run failed 19: the 18 real-file tests `main` repaired
   in `5e7b13c6` (not on that branch), and the known `F4 (N4)` cold-cache defect. Consolidation into `main` waits for
@@ -75,9 +81,11 @@ jobs. [Acceptance, failures, exact counts and intake notes](reviews/2026-11-06-m
 The previous red-main condition since `944cec89` is repaired; the owner’s CI hold
 before consolidation is satisfied. No further gameplay has been consolidated.
 
-**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is healthy at `96de6bca`:** its game-file run
-passed on the Windows PC before the push ([review](reviews/2026-11-08-w4-ui-2-merge.md) §3).
-- **Counts:** 2,355 selected; 2,344 executed and passed, 9 of them on a one-at-a-time rerun after memory refusals; 0
+**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is healthy at `2c4dc295`** (the W4-NEXT-1 merge):
+its game-file run passed on the Windows PC before the push: 2,367 selected, 2,355 executed and passed, 0 failed, 12
+classified skips, 800 s, no stall ([acceptance review](reviews/2026-11-10-w4-next-1-acceptance.md)). The
+docs-only commits after it need no run.
+- **The run before it, at `96de6bca`** ([review](reviews/2026-11-08-w4-ui-2-merge.md) §3): 2,355 selected; 2,344 executed and passed, 9 of them on a one-at-a-time rerun after memory refusals; 0
   failed. Skips: 6 opt-in, 2 platform, 3 symlink rows without the Windows privilege; 0 required-asset.
 - **The run before it:** `5e7b13c6`, the 18 real-file repairs of W4-MAIN-2 part A. It ran on 2026-11-07 but was
   recorded only now (review §1): 2,320 of 2,321 passed. The one memory refusal passed alone.
@@ -101,13 +109,19 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Windows executor
 
-- **Now: [W4-NEXT-1](tasks/w4-next-1.md), released 2026-11-10** by the owner acting as orchestrator, base
-  `origin/main` `bd760031`. Parts P → C → S → U → E: the test-coordinator root cause and fix (part C, taking the
-  proposed follow-up below), the three W4-SETTLEMENT-1 review items left (part S), and the next in-game UI screens
-  (part U). Supersedes the standalone W4-SETTLEMENT-1 line below, which it closes out in part S.
-  - **Interim review, 2026-11-10 evening: CHANGES REQUESTED** ([review](reviews/2026-11-10-w4-next-1-interim.md)).
-    Heads `task/W4-coord-1` `60955b0c`, `task/W4-ui-3` `8b172760`. Nine findings to fix before part E.
-  - **Next: [W4-NEXT-2](tasks/w4-next-2.md), released 2026-11-10,** to start after W4-NEXT-1's part E.
+- **Now: [W4-NEXT-2](tasks/w4-next-2.md),** from `main` at `2c4dc295`. Parts P → K → W → M → X → E:
+  - **P:** preflight, plus the GPU pixel check that W4-NEXT-1 left NOT_RUN;
+  - **K:** row 18, select a building;
+  - **W:** captures in the original for OQ-565/566/567, then rows 19 and 2;
+  - **M:** C-3 test memory;
+  - **X:** the co-developer's shared test list.
+- **Done: [W4-NEXT-1](tasks/w4-next-1.md), ACCEPTED 2026-11-10 and merged** as `fc126fbe` (`task/W4-coord-1`
+  `2cf6f4c2`, part C) and `2c4dc295` (`task/W4-ui-3` `c7ad492f`, parts S, U, E)
+  ([acceptance](reviews/2026-11-10-w4-next-1-acceptance.md), [interim](reviews/2026-11-10-w4-next-1-interim.md)).
+  - **Part C:** the coordinator's port flakes and the bound on the client's wait.
+  - **Part S:** the three W4-SETTLEMENT-1 items, which close out W4-SETTLEMENT-1 below. Its playtest card is
+    `docs/testing/settlement-inspection-playtest.md`.
+  - **Part U:** rows 5 and 10, and `--ui classic|dev`.
 - **Before that:** **W4-SETTLEMENT-1.** A developer inspection UI for live building, production and household state, built and
   proven in the real window.
   - The owner dispatched it in chat on 2026-11-06. It is not on the board yet.
@@ -270,7 +284,11 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on a run
 
-- None. `5e7b13c6` and `96de6bca` are run and recorded ([review](reviews/2026-11-08-w4-ui-2-merge.md)).
+- None. **`2c4dc295` (the W4-NEXT-1 merge) is healthy:** CI green, and its game-file run passed before the push
+  ([acceptance review](reviews/2026-11-10-w4-next-1-acceptance.md)).
+  - **Counts:** 2,367 selected; 2,355 executed and passed; 0 failed. Skips: 6 opt-in, 3 platform, 3 symlink rows;
+    0 required-asset.
+  - **Earlier runs:** `5e7b13c6` and `96de6bca` are recorded in the [W4-UI-2 merge review](reviews/2026-11-08-w4-ui-2-merge.md).
 
 ## Waiting on the owner
 

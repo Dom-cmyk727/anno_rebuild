@@ -99,5 +99,35 @@ class GateOf(unittest.TestCase):
                     self.assertEqual(land.gate_of("o/r", SHA)[0], want)
 
 
+class ChangedPaths(unittest.TestCase):
+    """The --allow-ci-change guard sees every .github/ path, also one git would quote (review, 2026-11-10)."""
+
+    def test_non_ascii_workflow_path_is_seen(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            def git(*args: str) -> str:
+                return subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                                      capture_output=True, text=True, check=True).stdout.strip()
+            git("init", "-q")
+            (Path(d) / "a.txt").write_text("a\n", encoding="utf-8")
+            git("add", "a.txt")
+            git("commit", "-q", "-m", "base")
+            base = git("rev-parse", "HEAD")
+            wf_dir = Path(d) / ".github" / "workflows"
+            wf_dir.mkdir(parents=True)
+            (wf_dir / "ü.yml").write_text("on: push\n", encoding="utf-8")
+            (Path(d) / "docs").mkdir()
+            (Path(d) / "docs" / "n.md").write_text("n\n", encoding="utf-8")
+            git("add", ".")
+            git("commit", "-q", "-m", "ci")
+            head = git("rev-parse", "HEAD")
+            paths = land.changed_paths(d, base, head)
+            self.assertIn(".github/workflows/ü.yml", paths)
+            self.assertIn("docs/n.md", paths)
+            # The quoted form the guard used to read: the bug this test pins.
+            quoted = git("-c", "core.quotePath=true", "diff", "--name-only", base, head).splitlines()
+            self.assertTrue(any(p.startswith('".github/') for p in quoted))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -43,7 +43,8 @@ MAX_API_ERRORS = 5
 
 
 def run(*cmd: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(list(cmd), capture_output=True, text=True, check=check)
+    # git and gh write UTF-8; Windows' default code page would garble a non-ASCII path.
+    return subprocess.run(list(cmd), capture_output=True, encoding="utf-8", errors="replace", check=check)
 
 
 def counts(check_run: dict, sha: str) -> bool:
@@ -96,6 +97,12 @@ def gate_of(slug: str, sha: str) -> tuple[str, dict | None]:
     return gate_state(check_runs, sha)
 
 
+def changed_paths(repo: str, base: str, sha: str) -> list[str]:
+    """Every path changed from `base` to `sha`, unquoted (-z: git would quote a non-ASCII path otherwise)."""
+    out = run("git", "-C", repo, "diff", "--name-only", "--no-renames", "-z", base, sha).stdout
+    return [p for p in out.split("\0") if p]
+
+
 def ci_runs_exist(slug: str, sha: str) -> bool:
     runs = api(f"repos/{slug}/actions/runs?head_sha={sha}&event=push&per_page=100").get("workflow_runs", [])
     return any(r.get("path") == WORKFLOW for r in runs)
@@ -124,8 +131,7 @@ def main() -> int:
     if git("merge-base", "--is-ancestor", main_sha, sha, check=False).returncode != 0:
         print(f"REFUSED: {sha[:8]} does not descend from origin/main {main_sha[:8]}; merge or rebase onto it first")
         return 1
-    ci_files = [f for f in git("diff", "--name-only", "--no-renames", main_sha, sha).stdout.splitlines()
-                if f.startswith(".github/")]
+    ci_files = [f for f in changed_paths(a.repo, main_sha, sha) if f.startswith(".github/")]
     if ci_files and not a.allow_ci_change:
         print(f"REFUSED: {sha[:8]} changes CI ({', '.join(ci_files)}). The commit defines its own gate: review those "
               "changes, then land with --allow-ci-change")

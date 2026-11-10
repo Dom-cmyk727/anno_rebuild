@@ -17,6 +17,9 @@
 //               until q/end of input
 //   silent      listen on the TCP port given as <path> (a number) and accept
 //               and hold connections; print "SILENT 1"; exit on q/end of input
+//   deaf        listen on the TCP port given as <path>; serve the hello handshake, then never
+//               answer a reservation or its cancel, while still sending unrelated frames so the
+//               connection looks alive (W4-NEXT-1 C-2); print "DEAF 1"; exit on q/end of input
 //   reqwait2    two threads reserve on the same budget; print "WAITING" once
 //               from on_wait; a line "c" cancels once. Each thread prints
 //               "RESULT <t> <0|1> reason=<r>" with t 1 or 2
@@ -192,6 +195,11 @@ int silent_listener(std::uint16_t port) {
     if (fd == INVALID_SOCKET) {
         return 1;
     }
+    // As the coordinator (coord_server.cpp listen_on): exclusive, so a repeated run does not
+    // silently share the port with a lingering listener from the previous run.
+    int exclusive = 1;
+    ::setsockopt(fd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&exclusive),
+                 sizeof(exclusive));
 #else
     const int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (fd < 0) {
@@ -247,6 +255,101 @@ int silent_listener(std::uint16_t port) {
     return 0; // the exit closes the listener and every held connection
 }
 
+/// A coordinator stand-in for C-2 (W4-NEXT-1 part C): it serves the hello handshake normally, so
+/// the client is Served, then never answers a reservation or its cancel. It still keeps sending
+/// unrelated frames (the same thing the real coordinator's periodic traffic, and a host-meter
+/// kStSample/kStRefresh exchange, does): each one refreshes the client's last_rx and so keeps
+/// coord.cpp's silent_too_long() from tripping, without resolving the pending request. Before the
+/// coord.cpp fix this hangs the client past ANNO_TEST_ADMIT_WAIT_S; after it, transact() gives up
+/// locally once the cancel goes unanswered for one more liveness period.
+int deaf_listener(std::uint16_t port) {
+    using namespace anno::test::wire;
+#if defined(_WIN32)
+    WSADATA data{};
+    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) {
+        return 1;
+    }
+    const SOCKET raw = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (raw == INVALID_SOCKET) {
+        return 1;
+    }
+    int exclusive = 1;
+    ::setsockopt(raw, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&exclusive),
+                 sizeof(exclusive));
+#else
+    const int raw = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (raw < 0) {
+        return 1;
+    }
+    int reuse = 1;
+    ::setsockopt(raw, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#endif
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(0x7f000001u);
+    if (::bind(raw, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
+        ::listen(raw, 8) != 0) {
+#if defined(_WIN32)
+        ::closesocket(raw);
+#else
+        ::close(raw);
+#endif
+        return 1;
+    }
+    const Native listen_fd = static_cast<Native>(raw);
+    std::cout << "DEAF 1" << std::endl;
+    std::thread acceptor([listen_fd] {
+        const Native fd = accept_socket(listen_fd);
+        if (fd == kInvalid) {
+            return;
+        }
+        set_nodelay(fd);
+        Frame hello;
+        set_recv_timeout(fd, 10000);
+        if (recv_reply(fd, hello) != Recv::Frame) {
+            close_fd(fd);
+            return;
+        }
+        Frame reply;
+        fill_header(reply, kStOk, frame_budget(hello), /*token*/ 1, frame_req(hello));
+        put64(reply.bytes, 32, 0);              // build: unchecked unless the client asks exact
+        put64(reply.bytes, 40, 0);              // incarnation
+        put64(reply.bytes, 48, frame_f(hello));  // compat: echo the client's own request
+        put64(reply.bytes, 56, 0);              // this_pid: not checked by the client
+        if (!send_all(fd, reply)) {
+            close_fd(fd);
+            return;
+        }
+        // Drain whatever the client sends (reserve, cancel, ping) without ever answering any of
+        // it, but keep the connection looking alive: every reader period, send one frame with an
+        // unmatched req so last_rx advances while nothing is ever admitted or refused.
+        std::thread drain([fd] {
+            Frame incoming;
+            for (;;) {
+                set_recv_timeout(fd, 50);
+                const Recv got = recv_reply(fd, incoming);
+                if (got == Recv::Closed) {
+                    return;
+                }
+                // Timeout and Frame (including Foreign) both mean: keep draining.
+            }
+        });
+        drain.detach();
+        for (;;) {
+            Frame keepalive;
+            fill_header(keepalive, kStOk, 0, 1, /*req*/ 0);
+            if (!send_all(fd, keepalive)) {
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    });
+    acceptor.detach();
+    serve([](char) {});
+    return 0; // the exit closes the listener and its connection
+}
+
 int run(int argc, char** argv) {
     if (argc < 2) {
         return 2;
@@ -280,6 +383,12 @@ int run(int argc, char** argv) {
             return 2;
         }
         return silent_listener(static_cast<std::uint16_t>(std::stoul(argv[2])));
+    }
+    if (mode == "deaf") {
+        if (argc < 3) {
+            return 2;
+        }
+        return deaf_listener(static_cast<std::uint16_t>(std::stoul(argv[2])));
     }
     if (mode == "rawhello") {
         if (argc < 6) {

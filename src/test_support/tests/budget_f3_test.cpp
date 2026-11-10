@@ -57,6 +57,7 @@ constexpr std::uint16_t kPortCrash = ports::fixed(27814);    // (c) crash handov
 constexpr std::uint16_t kPortMeter = ports::fixed(27815);    // (d) real meter child in WSL
 constexpr std::uint16_t kPortSilentOk = ports::fixed(27816); // silent, then served
 constexpr std::uint16_t kPortSilent = ports::fixed(27817);   // silent, deadline
+constexpr std::uint16_t kPortDeaf = ports::fixed(27818); // W4-NEXT-1 C-2, deaf coordinator
 // The metadata-only pin has no connecting client or restart. Let the OS bind a
 // free port so an unrelated listener or ephemeral connection cannot break it.
 constexpr std::uint16_t kPortPin = 0;
@@ -515,6 +516,39 @@ TEST_CASE("F3 (D1, silent): a coordinator that never answers ends at the admissi
     CHECK(has(result, "not ready"));
     CHECK_FALSE(has(result, "speaks another protocol"));
     silent.send("q\n");
+}
+
+TEST_CASE("F3 (D1, deaf): a coordinator that serves hello but never resolves the request or its "
+          "cancel still ends at a bounded deadline" *
+          doctest::test_suite("budget")) {
+    // W4-NEXT-1 C-2: a fake coordinator that is Served (answers hello) but never answers the
+    // client's reservation or its cancel, while still sending unrelated frames that refresh
+    // last_rx (the same thing a host-meter kStSample/kStRefresh exchange would do). Before the
+    // coord.cpp fix this hangs the client past ANNO_TEST_ADMIT_WAIT_S forever (bounded here only
+    // by the test's own `want` deadline, so a regression fails this case instead of hanging the
+    // suite); after it, transact() gives up locally once the cancel goes unanswered for one more
+    // liveness period, and the reservation is refused with "wait deadline, no server reply".
+    Child deaf = probe({"deaf", std::to_string(kPortDeaf)});
+    std::string seen;
+    const std::string deaf_line = want(deaf, "DEAF", 10000ms, &seen);
+    INFO("deaf output: " << seen);
+    REQUIRE(has(deaf_line, "DEAF 1"));
+    const auto budget_path = (f3_dir() / "i.budget").string();
+    Child client;
+    {
+        // A 2 s admission bound; the deaf coordinator's keepalive (every 100 ms) would hold the
+        // connection open past it forever without the fix.
+        Env env(client_vars(kPortDeaf, "f3-i-deaf", "2"));
+        Env liveness({{"ANNO_TEST_BUDGET_LIVENESS_MS", "300"}});
+        client = probe({"reqwait", budget_path, "30"});
+    }
+    seen.clear();
+    const std::string result = want(client, "RESULT", 20000ms, &seen);
+    INFO("client output: " << seen);
+    REQUIRE(has(result, "RESULT 0"));
+    CHECK(has(result, "wait deadline"));
+    client.send("q\n");
+    quit_and_wait(deaf);
 }
 
 TEST_CASE(

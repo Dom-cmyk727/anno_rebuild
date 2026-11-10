@@ -81,7 +81,8 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
   queue (the T-series and the LAN endless lane, 2026-10-20 to 10-29).
 - **Still open among the moved dispatches,** as `STATUS.md` records them: W4-DEPTH-1-CLOSE (waits on the owner's
   depth check), W4-SHORE-2 (queued, not released), W4-MAIN-2 (part D changes requested;
-  [packet](tasks/w4-main-2.md)) and MAP-EXTRACT-2 ([packet](tasks/map-extract-2.md)). Every moved heading keeps its
+  [packet](tasks/w4-main-2.md)), MAP-EXTRACT-2 ([packet](tasks/map-extract-2.md)) and W4-OPENING-2 (STATUS lists
+  `task/W4-opening-2`; its adoption `task/W4-opening-2-main` is already in `main`). Every moved heading keeps its
   last recorded status: one marked READY or CURRENT there is not cancelled, and may be stale.
 - **Owner decisions recorded in the moved text.** They stay in force unless a later rule replaces them; the full text
   is in `HISTORY-2.md`:
@@ -90,13 +91,18 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
   - 2026-10-29, round dk and the LAN MVP note in §3: the LAN MVP is one fixed map for five players, no computer
     players (round dk's other decision, a single orchestrator, was replaced later). Round dl: the map is
     original-like and fair by measure, not rotated copies.
-  - 2026-10-30, round dr: generous developer test resources (a developer option, values configurable); the owner tests
-    building and demolishing through the original's in-game UI.
+  - 2026-10-30, round dr: generous developer test resources (a developer option: default on for the developer start in
+    `--play`, off for original scenarios, values configurable); the owner tests building and demolishing through the
+    original's in-game UI.
   - 2026-11-02: implement ship unloading after placement (MAP-CARGO-1); wire ship selection, sailing, founding and
     unloading into the live window for the owner's own test (W4-OPENING-1).
   - 2026-11-03: the headless harvesting, wood production and warehouse delivery loop is authorized; the owner's
     report of the floating Kontor and road, the origin of W4-DEPTH-1.
-  - 2026-11-04: the Windows sequence, "Yes and merge", with `main` as its own package (W4-MAIN-1).
+  - 2026-11-04: the Windows sequence, "Yes and merge", with `main` as its own package (W4-MAIN-1). The water level:
+    `kShoreHeight = 26.5` is W4-DEPTH-1's default ("Keep 26.5 in package"); the `--shore 16.5` picture stays as its
+    own pinned pass. `docs/render/iso.md` and `open-questions.md` on `main` still say 16.5.
+  - 2026-11-06: the WSL disk rules (W4-OPENING-CONTROLS-FLAKE step 0): Ubuntu's image lives on `E:`; gate builds go
+    under `/mnt/e` or into one reused folder, never one per worktree, and the script deletes its own build tree.
   - C5 (MAP-FOUND-3, reviewed 2026-11-01): five ship-start players begin at peace, with shared visibility and without
     alliances.
   - 2026-11-07: the Windows lane repairs main's 18 real-file test failures (W4-MAIN-2 part A).

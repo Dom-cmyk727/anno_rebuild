@@ -5,7 +5,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-10 evening, by the Claude Code orchestrator:
-- **The board is slimmed (owner request):** `TASKS.md` 975 KB → 60 KB and `REPORTS.md` 2.1 MB → 435 KB. Closed
+- **The board is slimmed (owner request):** `TASKS.md` 975 KB → 63 KB and `REPORTS.md` 2.1 MB → 435 KB. Closed
   history moved verbatim to [`HISTORY-2.md`](HISTORY-2.md) and [`REPORTS-1.md`](REPORTS-1.md); `TASKS.md` says what
   moved, what of it is still open, and which owner decisions the moved text records.
   Executors still append their reports at the bottom of `REPORTS.md`.

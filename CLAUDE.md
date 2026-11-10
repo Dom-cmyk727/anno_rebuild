@@ -1,6 +1,6 @@
 # ANNO 1503 Rebuild — project rules for Claude Code
 
-Read `docs/PLAN.md` before doing anything. It holds the phased plan, acceptance criteria and the current status. If you are the **executor session**, also read at the start of every task your task packet in `docs/orchestration/tasks/` and `docs/orchestration/TASKS.md` (its owner rules and §1 protocol, and its section saying what moved to the board's history; the orchestrator session updates both), and report at the bottom of `docs/orchestration/REPORTS.md`. `docs/research/` holds the evidence gathered so far (community landscape, game-file analysis). Update `docs/PLAN.md` status when a milestone is reached.
+Read `docs/PLAN.md` before doing anything. It holds the phased plan, acceptance criteria and the current status. If you are the **executor session**, also read at the start of every task your task packet in `docs/orchestration/tasks/`, if you have one, and `docs/orchestration/TASKS.md`: its owner rules, §1 protocol, the open dispatches still on it (your lane's may live only there), and its section saying what moved to the board's history. The orchestrator session updates both. Report at the bottom of `docs/orchestration/REPORTS.md`. `docs/research/` holds the evidence gathered so far (community landscape, game-file analysis). Update `docs/PLAN.md` status when a milestone is reached.
 
 **Mandatory test/evidence policy (owner, 2026-10-31):** read
 [`docs/testing/evidence-contract.md`](docs/testing/evidence-contract.md) at task start

@@ -17310,3 +17310,90 @@ catch. Re-verified with the actual registered CTest cases (not just the debug pr
   wrong comment is exactly the kind of "silent guess stated as fact" this project's evidence rule
   forbids, and a future reader of just the script (not this report) deserves the correct
   explanation at the point where the wrong one was.
+
+## W4-NEXT-1 — final report, this branch (`task/W4-ui-3`) — 2026-11-10 — status: DONE
+
+Closing report for this packet's parts P, S, U and E, from this branch. Part C's own closing
+report is on `task/W4-coord-1`. Written after the orchestrator's interim review
+([review](../reviews/2026-11-10-w4-next-1-interim.md)) and all of its findings for this branch
+were addressed and re-verified - locally and on hosted CI, not just by reasoning about the diff.
+
+### Part S: DONE, as accepted
+
+All three W4-SETTLEMENT-1 review items closed: the hover-vs-click script bug, the missing
+`inspect_building` formatter tests (6 cases, hand-derived, a no-building negative control), and
+the `wsl_gate.sh` false-claim correction. `docs/testing/settlement-inspection-playtest.md` ready
+for the owner.
+
+### Part U: honest final scope - two rows done, three explicitly not
+
+| Row | What | Status |
+|---|---|---|
+| 5 | Demolish mode's pickaxe active frame (659→660) | **DONE** - drawn, CPU-oracle-checked with a deliberately wrong input the check rejects, `bench_frame` regression-checked (`ui_dynamic_draw_check`) |
+| 10 | Pause overlay (parchment + button) | **DONE** - same checks as row 5 |
+| 19 | Deselected right panel (`MAX_PIC`) | **NOT DONE** - only a `data/ui/hud.txt` entry; nothing drawn. `MAX_PIC`'s real trigger/persistence is unresolved: **OQ-565** |
+| 2 | Kontor panel (read-only) | **NOT DONE** - no measured background position exists for this panel at all (the one texture id tried was ruled out): **OQ-567** |
+| 18 | Selected house/building panel | **NOT DONE** - real click-to-tile picking exists (corrected from this entry's own earlier wrong claim that it didn't, orchestrator review finding 8), but *selection state* and *what Escape means once something is selected* are owner-facing design choices; scoped to **`W4-NEXT-2` part K**, not built unreviewed |
+
+**Also done:** the S/Q/D key-collision QUESTION, implemented (new `--ui classic|dev`, default
+Classic) - including a real bug the orchestrator's review caught (`--view` lost its developer
+keys entirely; fixed with a tested pure function, `cli.hpp::classic_key_surface`) and a
+correction to ADR 0004 row 10's wrong claim that key P is free.
+
+### Canonical gate (part E)
+
+- `anno_app_tests`: `tools/test/run_selected.py --select '^anno_app_tests\.'` -
+  **selected=253 executed=251 failed=0 skipped=2 (opt-in)**. `VERDICT: PASS`.
+  (`cache/w4-next-1/gates/ui3-01.log`)
+- UI/viewer_wiring suite (`ui_dynamic_draw_check`, `live_screen_matches_oracle`,
+  `ui_mock_matches_oracle`, every `viewer_wiring_*`, `construction_session_replay`,
+  `opening_session_replay`): **selected=15 executed=15 failed=0 skipped=0**. `VERDICT: PASS`,
+  clean (a first attempt was contaminated by a concurrent commit to this worktree and correctly
+  rejected by the gate's own integrity check; re-run with the tree untouched).
+  (`cache/w4-next-1/gates/ui3-04.log`)
+- `anno_app_tests` direct run: 253/253 cases, 61,647/61,647 assertions.
+
+**A real, previously-undetected defect was found and fixed by this gate**, not by this packet's
+own new work: `viewer_wiring_settlement_activity`'s negative control (from Part S's own earlier
+fix, `a9628bd0`) used `look`, believing it a pointer-move verb; it actually pans the camera and
+never touches the developer tool's hover state, so the control could never have failed. Nobody
+had run this exact test with real game files since that fix landed - CI always skips it, and the
+independent review that accepted Part S read the script's text, not its behaviour. Fixed to
+`hover-land`, confirmed directly (an `inspection.tile.x` probe went from a permanently stale value
+to correctly clearing), and now genuinely passes.
+
+### Independent review
+
+A fresh agent with no context on this task reviewed the flag threading, the key-handling split,
+the new formatter tests against the real `DescribePayload` output, and the script fix, read-only:
+**ACCEPT** - no correctness bugs; one cosmetic comment nit, fixed in the same pass.
+
+### CI, final heads
+
+| Commit | Run id | Content | Result |
+|---|---|---|---|
+| `08bce9be` | 42853454656 | review nit fix | green |
+| `c8cfd41a` | 42853534399 | independent review entry | 3 Linux jobs green; `cpp (linux-gcc-release)` failed on the pre-existing coordinator flake (this branch lacks the C-2 fix) - not a regression |
+| `d163f806` | 42866827783 | `--view` key fix, row 5/10 checks, row 18 correction | **fully green, including `windows-msvc`** |
+| `deef348a` | 42876770510 | `settlement_activity.script` fix | `windows-msvc`/macOS/format/lint/ubuntu/`linux-gcc`/`linux-clang-asan` all green; `cpp (linux-gcc-release)` failed on the same pre-existing coordinator flake (S1/S3/H5/V3/V4 - the C-1/C-2 pattern, absent the fix that lives on `task/W4-coord-1`) |
+
+### Part E gates on this branch
+
+- `clang-format` (23.1.3): clean on every touched file.
+- WSL `check_unix_warnings.sh` (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on and off): clean,
+  372 and 74 files respectively.
+- Mirrors (`gitlab`, `share`) synced to this branch's head (as of `c8cfd41a`; the three commits
+  after it are not yet re-synced - a final sync is owed before this branch is considered merge-
+  ready).
+
+### Open items for `W4-NEXT-2`
+
+- Row 18 (selection state + the meaning of Escape, part K) - correctly scoped as its own reviewed
+  task, not a wiring gap.
+- Row 2 (Kontor panel evidence, OQ-567) and row 19 (`MAX_PIC`'s trigger, OQ-565) need fresh
+  Wine/native captures before anything is drawn.
+- OQ-566 (demolish mode's OS cursor and land highlight) - not implemented, no cursor-swap
+  precedent exists in this project yet.
+- This branch's own coordinator flakiness (the `cpp (linux-gcc-release)` failures above) resolves
+  itself once this branch merges with or rebases onto the C-2 fix on `task/W4-coord-1` - not a
+  defect to chase on this branch in isolation.

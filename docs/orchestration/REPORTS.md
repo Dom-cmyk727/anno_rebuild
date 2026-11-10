@@ -17191,3 +17191,16 @@ seen` and `refused()` passes one, logging it via `INFO` before its `CHECK_FALSE`
 - Extended `asks()`'s signature with a default-null out-parameter rather than changing every call
   site: `H6`/`H8` keep compiling unchanged, and only `refused()` (used by H1 and others named in
   the review) gained the logging.
+
+## W4-NEXT-1 — Part C, finding 9: the game-file run's logs, copied into `cache\w4-next-1\` — 2026-11-10 — status: DONE
+
+The review's finding 9, second half: the packet asks for evidence under the worktree's
+git-ignored `cache\w4-next-1\`, but the full MSVC game-file run's logs were left only in
+`build/msvc/Testing/` - the next `ctest` run on this build tree overwrites `LastTest.log`/
+`ctest-output.log` in place (`docs/testing/evidence-contract.md`'s own warning, CLAUDE.md's
+"copy them before re-running when a test failed; or pass `-O <file>`"). Checked the build tree's
+own timestamp (16:38, matching the original run's own finish time, not a later rerun - no `ctest`
+invocation on this build tree happened after it) before copying, so this is the real run's own
+evidence, not a later, smaller one mistaken for it. Copied to
+`cache/w4-next-1/coord-gamefile-run/LastTest.log` (8,921,985 bytes) and `ctest-output.log`
+(964,616 bytes).

@@ -389,12 +389,13 @@ TEST_CASE("iron interruption: the same slicing reproduces the state exactly and 
 
 /// Reload at the boundary where `at` first holds: the saved bytes load, equal the original, and
 /// both worlds then run 800 advances to the same state, cursor and bytes (and a reload that runs
-/// one advance fewer differs, so the comparison can tell).
-template <class At, class Setup> void continuation_with(const char* boundary, Setup setup, At at) {
+/// one advance fewer differs, so the comparison can tell). Returns false when it skipped for want
+/// of the game files, so a caller asserts on what `at` collected only when the chain ran.
+template <class At, class Setup> bool continuation_with(const char* boundary, Setup setup, At at) {
     auto c = start_chain(Arm::Real, false);
     if (!c) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
-        return;
+        return false;
     }
     setup(*c);
     INFO("boundary: " << boundary);
@@ -424,10 +425,11 @@ template <class At, class Setup> void continuation_with(const char* boundary, Se
         shorter.value().advance(kAdvanceMs);
     CHECK(shorter.value().state_hash() != w.state_hash());
     CHECK(shorter.value().save() != w.save());
+    return true;
 }
 
 template <class At> void continuation_at(const char* boundary, At at) {
-    continuation_with(boundary, [](Chain&) {}, at);
+    (void)continuation_with(boundary, [](Chain&) {}, at);
 }
 
 std::uint64_t counter(const std::map<sim::BuildingId, std::uint64_t>& m, sim::BuildingId k) {
@@ -510,7 +512,8 @@ TEST_CASE("iron continuation: two carriers hold reservations on one mine at the 
         c.smelters.push_back(r.records.at(0).building);
     };
     std::uint64_t claim_sum = 0;
-    continuation_with("two carriers reserve on the one mine", setup, [&](Chain& c) {
+    bool ran = false;
+    ran = continuation_with("two carriers reserve on the one mine", setup, [&](Chain& c) {
         std::uint64_t sum = 0;
         int holders = 0;
         for (const auto& f : c.pilot.w.figures().list.slots)
@@ -526,7 +529,9 @@ TEST_CASE("iron continuation: two carriers hold reservations on one mine at the 
         CHECK(mine_state(c).reserved == sum);
         return true;
     });
-    CHECK(claim_sum > 0);
+    if (ran) {
+        CHECK(claim_sum > 0);
+    }
 }
 
 TEST_CASE("iron continuation: the chain recorded for the fresh-process replay and its changed "

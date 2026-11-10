@@ -4,7 +4,22 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-10, by the owner acting as orchestrator: **W4-NEXT-1 released to the Windows executor**
+**Last updated:** 2026-11-10 evening, by the Claude Code orchestrator:
+- **W4-NEXT-1 interim review: CHANGES REQUESTED** for parts C and U ([review](reviews/2026-11-10-w4-next-1-interim.md)).
+  Part C's game-file run passed (2,347 executed, 0 failed, 12 classified skips). Two blockers: `--view` lost its S, D
+  and Q keys, and the new `F3 (D1, deaf)` test dies with SIGPIPE on macOS. C-2's link to the recorded stall is not
+  shown yet.
+- **W4-NEXT-2 released** to the Windows executor, to start after W4-NEXT-1's part E ([packet](tasks/w4-next-2.md)):
+  the selected-building panel, captures for the missing UI evidence, test memory (C-3), and the co-developer's shared
+  test list measured in our sim and in the original.
+- **MAP-EXTRACT-2:** the first Mac's run was interrupted at `ce14b264`. Its two red CI causes are fixed on
+  `fix/MAP-EXTRACT-2-ci` (`a5a3bca3`, CI 10/10). Its game-file run failed 19: the 18 real-file tests `main` repaired
+  in `5e7b13c6` (not on that branch), and the known `F4 (N4)` cold-cache defect. Consolidation into `main` waits for
+  the owner's decisions on A6 and OQ-556.
+- **The co-developer's share is now also a git mirror:** `E:\open1503-share\to-codev\anno1503.git`, every GitHub
+  branch, updated by `tools/orch/sync_gitlab.py` with the GitLab mirror after every push.
+
+Earlier on 2026-11-10, by the owner acting as orchestrator: **W4-NEXT-1 released to the Windows executor**
 ([packet](tasks/w4-next-1.md)), base `origin/main` `bd760031`. It takes the proposed coordinator follow-up (CI
 flakes and two stalls on this PC, [review](reviews/2026-11-08-w4-ui-2-merge.md)) as part C, closes the three
 W4-SETTLEMENT-1 review items left as part S, and builds the next in-game UI screens (ADR 0004 rows 19, 18, 5, 10,
@@ -83,6 +98,9 @@ mirror still requires the owner/Windows sync after main publication.
   `origin/main` `bd760031`. Parts P → C → S → U → E: the test-coordinator root cause and fix (part C, taking the
   proposed follow-up below), the three W4-SETTLEMENT-1 review items left (part S), and the next in-game UI screens
   (part U). Supersedes the standalone W4-SETTLEMENT-1 line below, which it closes out in part S.
+  - **Interim review, 2026-11-10 evening: CHANGES REQUESTED** ([review](reviews/2026-11-10-w4-next-1-interim.md)).
+    Heads `task/W4-coord-1` `60955b0c`, `task/W4-ui-3` `8b172760`. Nine findings to fix before part E.
+  - **Next: [W4-NEXT-2](tasks/w4-next-2.md), released 2026-11-10,** to start after W4-NEXT-1's part E.
 - **Before that:** **W4-SETTLEMENT-1.** A developer inspection UI for live building, production and household state, built and
   proven in the real window.
   - The owner dispatched it in chat on 2026-11-06. It is not on the board yet.
@@ -142,7 +160,14 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### First Mac executor
 
-- **Now: [MAP-EXTRACT-2](tasks/map-extract-2.md), released 2026-11-07 by the Claude Code orchestrator at the owner's
+- **2026-11-10: the run was interrupted at `ce14b264`; the Claude Code orchestrator owns the consolidation.** All
+  parts were reported, with a final review ACCEPT with conditions. Its CI was red for two reasons: an iron test that
+  asserted after its own skip, and an MSVC C4805 warning. Both are fixed on `fix/MAP-EXTRACT-2-ci` (`a5a3bca3`; CI run
+  42804157700 passed 10/10). Its game-file run on this PC: 2,402 executed and passed, 19 failed (the 18 real-file tests
+  `main` repaired in `5e7b13c6`, and the known `F4 (N4)` cold-cache defect, which passed alone). Still open: the owner's
+  decisions A6 (rebind a mine at load) and OQ-556; an independent review of the T5 fix; the merge with `main`, which
+  renumbers state 137.
+- **[MAP-EXTRACT-2](tasks/map-extract-2.md), released 2026-11-07 by the Claude Code orchestrator at the owner's
   request.** It runs on the new branch `task/MAP-EXTRACT-2`, from `2f32437a`.
   - **A:** the mine's lifecycle in the original: the save-load finding re-checked, load order, the ore object's
     getter, the owner question on rebinding at load. Docs and tests only; identity stays 135.

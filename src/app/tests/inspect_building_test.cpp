@@ -136,7 +136,8 @@ TEST_CASE("inspect_building: workshop, hand-derived status line") {
     const auto found = app::inspect_building(rig.world, kCity, kWorkshop);
     REQUIRE(found.has_value());
     CHECK(found->kind == "Workshop");
-    // out=3*256/256=3.00t, in=2.00t, activity=7, carriers_out=1, not suspended, not blocked.
+    // out=3*256/256=3.00t, in=2.00t, activity=7, carriers_out=0 (left at the rig's default -
+    // a nonzero figure-reference counter with no real figure in the scenario fails World::create).
     CHECK(found->status == "out=3.00t in=2.00t activity=7 carriers_out=0");
 }
 

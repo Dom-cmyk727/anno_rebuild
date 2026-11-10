@@ -134,11 +134,19 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// panel's own close button, `infoexit`, shares its rectangle instead). Demolish mode's other
 /// original chrome - the OS cursor swap to `tCursorAbriss`/`Abreissen_Gebaeude.tex` and the
 /// yellow-green land highlight under it - is not drawn by this function; see OQ-566.
-[[nodiscard]] std::string draw_live_screen_xrgb(
-    std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
-    const ConstructionLayout& construction, const MaskLayout& masks, const UiMockSpec& screen,
-    UiTexCache& cache, const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-    const HudCounters& counters = {}, bool placement_open = false, bool demolish_mode = false);
+///
+/// `paused` (ADR 0004 row 10): draws the parchment (`pause_parchment`) and its button
+/// (`pause_button`) last, over everything else this function draws - "parchment over the map,
+/// HUD chrome stays" (docs/re/ui.md line 643). The sim clock itself stops/resumes through the
+/// existing path (`Viewer::toggle_pause`/`ViewerHooks::on_pause`); this flag only draws the
+/// chrome for a state the caller already has.
+[[nodiscard]] std::string
+draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
+                      const ConstructionLayout& construction, const MaskLayout& masks,
+                      const UiMockSpec& screen, UiTexCache& cache,
+                      const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+                      const HudCounters& counters = {}, bool placement_open = false,
+                      bool demolish_mode = false, bool paused = false);
 
 /// `draw_live_screen_xrgb`'s own state and arguments, composed instead into a fresh RGBA canvas
 /// that starts fully transparent (every byte 0, not the oracle's own alpha-255 convention) - the
@@ -157,6 +165,6 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters = {}, bool placement_open = false,
-                      bool demolish_mode = false);
+                      bool demolish_mode = false, bool paused = false);
 
 } // namespace anno::app

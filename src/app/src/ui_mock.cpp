@@ -403,7 +403,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                                   const UiMockSpec& screen, UiTexCache& cache_wrapper,
                                   const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                                   const HudCounters& counters, bool placement_open,
-                                  bool demolish_mode) {
+                                  bool demolish_mode, bool paused) {
     if (dst == nullptr || dst_w != hud.resolution_w || dst_h != hud.resolution_h)
         return "draw_live_screen_xrgb: destination size does not match the layout's resolution";
 
@@ -583,6 +583,14 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         }
     }
 
+    // ADR 0004 row 10: "parchment over the map, HUD chrome stays" (docs/re/ui.md line 643).
+    // Drawn last, after every HUD/menu element above, so it sits over the map but never hides
+    // the chrome already blitted this frame.
+    if (paused) {
+        blit_el("pause_parchment");
+        blit_el("pause_button");
+    }
+
     return "";
 }
 
@@ -590,7 +598,8 @@ formats::Result<assets::Rgba, std::string>
 draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayout& construction,
                       const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache_wrapper,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                      const HudCounters& counters, bool placement_open, bool demolish_mode) {
+                      const HudCounters& counters, bool placement_open, bool demolish_mode,
+                      bool paused) {
     if (w != hud.resolution_w || h != hud.resolution_h)
         return std::string(
             "draw_live_screen_rgba: destination size does not match the layout's resolution");
@@ -745,6 +754,13 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                 }
             }
         }
+    }
+
+    // ADR 0004 row 10: "parchment over the map, HUD chrome stays" (docs/re/ui.md line 643);
+    // drawn last, same reasoning as draw_live_screen_xrgb's own copy of this comment.
+    if (paused) {
+        blit_el("pause_parchment");
+        blit_el("pause_button");
     }
 
     return canvas;

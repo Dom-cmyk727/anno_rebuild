@@ -41,6 +41,19 @@ PC.**
   still pending, unless the owner says so. A run with known, named failures that already have an assigned repair does
   not block it.
 
+**Owner rule, 2026-11-10 (every orchestrator): `main` is protected on GitHub.**
+- **What GitHub enforces.** A push to `main` is accepted only for a commit on which the CI job `gate` already passed.
+  No force push, no deletion. The rule binds admins too, so it binds every session that pushes as the owner's account.
+- **What `gate` means.** Every CI job passed. For a change that touches only `docs/` and root `*.md` files, the build
+  jobs are skipped and `gate` passes in about a minute. Any other change runs the full matrix, about 30 minutes.
+- **How to land.** Commit on top of `origin/main`, then `python -I tools/orch/land.py --rev <commit> --name <topic>`.
+  It pushes the commit to `land/<topic>`, waits for `gate`, pushes `main`, deletes the landing branch and runs
+  `sync_gitlab.py`. A failed `gate` stops there: re-run the failed jobs (`gh run rerun <id> --failed`) or fix, then
+  run it again. A plain `git push origin main` is refused.
+- **What it does not change.** Executors still never push `main`. The game-file run after a code push (rule above)
+  is still required: hosted CI has no game files, so `gate` cannot replace it. Only the owner can lift the protection
+  (GitHub settings, Branches).
+
 <!-- BEGIN MAIN-CI-1 -->
 ## MAIN-CI-1 — CLOSED: canonical main CI repaired (2026-11-06)
 

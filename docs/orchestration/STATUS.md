@@ -5,6 +5,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-10 evening, by the Claude Code orchestrator:
+- **`main` is protected (owner decision):** GitHub accepts a push to `main` only for a commit on which the CI job
+  `gate` passed; no force push or deletion, admins included. Land with `python -I tools/orch/land.py` (owner rule in
+  [`TASKS.md`](TASKS.md), top). Docs-only changes pass `gate` in about a minute.
 - **W4-NEXT-1 interim review: CHANGES REQUESTED** for parts C and U ([review](reviews/2026-11-10-w4-next-1-interim.md)).
   Part C's game-file run passed (2,347 executed, 0 failed, 12 classified skips). Two blockers: `--view` lost its S, D
   and Q keys, and the new `F3 (D1, deaf)` test dies with SIGPIPE on macOS. C-2's link to the recorded stall is not
@@ -289,7 +292,8 @@ Its later work is not accepted merely because expansion is complete.
     decision. No original files, decoded assets, listings or credentials may be published there.
 - **Task branches:** every executor pushes its own task branch at each checkpoint (owner rule, 2026-11-06). The branch
   names are the ones above.
-- **`main`** is the canonical, reviewed state, and CI runs on every push to it.
+- **`main`** is the canonical, reviewed state. It is protected: only a commit on which the CI job `gate` passed can be
+  pushed to it, with `tools/orch/land.py`.
 - **[`TASKS.md`](TASKS.md):**
   - the top dispatch is the newest;
   - each task's section holds its full instructions;
@@ -303,7 +307,9 @@ Its later work is not accepted merely because expansion is complete.
 
 The owner reports the formerly stale private GitLab mirror is now current.
 After each new main push and task-branch checkpoint, the owner or Windows Claude
-Code orchestrator runs `python -I tools/orch/sync_gitlab.py` and verifies heads.
+Code orchestrator runs `python -I tools/orch/sync_gitlab.py` and verifies heads
+(`tools/orch/land.py` runs it after landing on `main`; landing branches
+`land/*` are not mirrored).
 Only ordinary pushes are allowed, never force or deletion. Another host may run
 it if its `gitlab` remote has working SSH access. This Mac's earlier read-only
 probe failed host-key verification; no trust setting was changed. A GitHub push

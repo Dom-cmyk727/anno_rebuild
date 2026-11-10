@@ -16860,3 +16860,62 @@ real coordinator defect is hiding inside what looks like "probably timing." This
 resolution should wait for the owner's direction on who picks up the root-cause work, not for me
 to guess a fix for coordinator-test-infrastructure code this packet's own scope (W4-UI-2, a UI
 consumer) was never meant to touch.
+
+## W4-NEXT-1 — Part P: preflight — 2026-11-10 — status: DONE
+
+**Base.** `origin/main` is `bd760031`, exactly (not a descendant past it); it is an ancestor of itself
+trivially, confirmed with `git merge-base --is-ancestor bd760031 origin/main`. No STATUS.md top-dispatch
+change since this packet was drafted, other than the release commit below.
+
+**Packet release.** The packet was found DRAFT, NOT RELEASED, and not named in `STATUS.md` (it existed only as
+an untracked local file). The owner, asked directly, chose to treat it as released now. Done, acting as
+orchestrator for this one step:
+- `docs/orchestration/tasks/w4-next-1.md`: DRAFT line replaced with a RELEASED line, dated 2026-11-10.
+- `docs/orchestration/STATUS.md`: top dispatch entry added; the Windows-executor section's "Now" line
+  points at this packet (the old W4-SETTLEMENT-1 "Now" line kept as "Before that", since part S closes it
+  out); the "Waiting on the owner" coordinator-follow-up line rewritten from "proposed" to "assigned, W4-NEXT-1
+  part C".
+- Committed on `main` locally as `14ff3eb8`. **`git push origin main` was refused by the Claude Code
+  permission classifier** ("judged this action dangerous", no further reason given). The commit is local
+  only; `origin/main` is unchanged at `bd760031`. This needs the owner's own push, or a retry with the
+  owner present, before any other session reads `STATUS.md` from `origin` and sees the dispatch.
+
+**Worktrees and branches**, both from `bd760031`, both `git status` empty immediately after creation:
+- `task/W4-coord-1` → `E:\anno1503-worktrees\anno1503-W4-coord-1` (part C).
+- `task/W4-ui-3` → `E:\anno1503-worktrees\anno1503-W4-ui-3` (parts S and U).
+
+**Required reading**, all done: this packet; `docs/testing/evidence-contract.md`; review
+`2026-11-08-w4-ui-2-merge.md` §3–§4 (the two stalls, the four CI flakes, the two observations on C-2/C-3);
+review `2026-11-07-w4-main-2.md` part S (the three items, with findings 1–8 already fixed); ADR 0004's screen
+table (rows 2, 4, 5, 9, 10, 15, 17, 18, 19 and the three key collisions) and QUESTIONs R2/R3; `docs/perf/README.md`'s
+coordinator sections (T10c F2/F3, MAP-2 repairs 1-4 on compat versions and journal handling).
+
+**Host state, recorded 2026-11-10:**
+- Free physical memory: ~9.65 GB of 31.1 GB (`FreePhysicalMemory`/`TotalVisibleMemorySize` from
+  `Win32_OperatingSystem`). This is below the 13 GB the review's own 2026-11-08 run needed after closing
+  background apps — **not clear to start a second heavy job right now.**
+- **A full MSVC test run is already active** in `E:\anno1503-worktrees\anno1503-MAP-EXTRACT-2-ci`: `ctest
+  --preset msvc -j 8 --timeout 5400` (pid 35492, started 13:03:23), with MSBuild and `anno_render_tests`
+  instances alive underneath it. That worktree, and `task/MAP-EXTRACT-2`/`fix/MAP-EXTRACT-2-ci`, are the ones
+  this packet (§0.1) says explicitly to leave alone — the orchestrator's own MAP-EXTRACT-2 CI consolidation.
+  **Not stopped, not touched.**
+- One memory coordinator is up on port 47631, with two established client connections (the run above);
+  consistent with `netstat`. Not stopped (it has live clients — the rule in §0.3 and the evidence contract).
+- WSL distro state not separately queried this pass (the running job is Windows-native MSVC, not WSL); will
+  check before any WSL gate run in part C.
+
+**Decision for the rest of this packet.** Given the active job and low free memory, I will not start a
+competing build or test run until it finishes or memory recovers. Part C's code-reading and root-cause
+analysis (reading `coord.cpp`, `coord_server.cpp`, `budget.cpp`, `budget_coord.cpp`, `memory.cpp`, the two
+referenced unmerged branches, and the CI logs already on file) does not need a local build or the coordinator,
+so that work starts now; anything needing `ctest`/CI waits for host capacity.
+
+### Decisions and reasoning
+- Treated the packet as released on the owner's explicit instruction, rather than silently proceeding or
+  silently stopping — the gap (DRAFT, unnamed in STATUS.md) was real and is now recorded, not just patched over.
+- Left `origin/main` untouched after the push refusal rather than retrying with a different tool or forcing it;
+  flagged it instead, per the "don't work around a permission denial" rule.
+- Did not stop the `anno1503-MAP-EXTRACT-2-ci` job or the coordinator serving it, even though it currently
+  occupies the memory headroom this packet's own gates will need, because the packet explicitly reserves that
+  worktree/branch for the orchestrator and the evidence contract forbids stopping a coordinator with live
+  clients.

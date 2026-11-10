@@ -100,7 +100,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     report of the floating Kontor and road, the origin of W4-DEPTH-1.
   - 2026-11-04: the Windows sequence, "Yes and merge", with `main` as its own package (W4-MAIN-1). The water level:
     `kShoreHeight = 26.5` is W4-DEPTH-1's default ("Keep 26.5 in package"); the `--shore 16.5` picture stays as its
-    own pinned pass. `docs/render/iso.md` and `open-questions.md` on `main` still say 16.5.
+    own pinned pass. It lives on unmerged `task/W4-depth-1`; `main`'s code and docs stay at 16.5 until that merges.
   - 2026-11-06: the WSL disk rules (W4-OPENING-CONTROLS-FLAKE step 0): Ubuntu's image lives on `E:`; gate builds go
     under `/mnt/e` or into one reused folder, never one per worktree, and the script deletes its own build tree.
   - C5 (MAP-FOUND-3, reviewed 2026-11-01): five ship-start players begin at peace, with shared visibility and without

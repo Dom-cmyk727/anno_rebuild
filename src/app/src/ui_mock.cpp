@@ -402,7 +402,8 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                                   const ConstructionLayout& construction, const MaskLayout& masks,
                                   const UiMockSpec& screen, UiTexCache& cache_wrapper,
                                   const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                                  const HudCounters& counters, bool placement_open) {
+                                  const HudCounters& counters, bool placement_open,
+                                  bool demolish_mode) {
     if (dst == nullptr || dst_w != hud.resolution_w || dst_h != hud.resolution_h)
         return "draw_live_screen_xrgb: destination size does not match the layout's resolution";
 
@@ -545,7 +546,8 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
             blit_el("rotate_right");
             blit_el("betriebskosten");
         } else {
-            blit_el("abrissicon", 659);
+            // ADR 0004 row 5: 660 while demolishing, 659 otherwise (docs/re/ui.md line 192).
+            blit_el("abrissicon", demolish_mode ? 660 : 659);
 
             const int ox = construction.grid.origin_x;
             const int oy = construction.grid.origin_y;
@@ -588,7 +590,7 @@ formats::Result<assets::Rgba, std::string>
 draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayout& construction,
                       const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache_wrapper,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                      const HudCounters& counters, bool placement_open) {
+                      const HudCounters& counters, bool placement_open, bool demolish_mode) {
     if (w != hud.resolution_w || h != hud.resolution_h)
         return std::string(
             "draw_live_screen_rgba: destination size does not match the layout's resolution");
@@ -712,7 +714,8 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
             blit_el("rotate_right");
             blit_el("betriebskosten");
         } else {
-            blit_el("abrissicon", 659);
+            // ADR 0004 row 5: 660 while demolishing, 659 otherwise (docs/re/ui.md line 192).
+            blit_el("abrissicon", demolish_mode ? 660 : 659);
 
             const int ox = construction.grid.origin_x;
             const int oy = construction.grid.origin_y;

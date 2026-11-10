@@ -2401,3 +2401,30 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   the same capture method `docs/re/ui.md` section 1.3 already uses. Until then, part U's row 19
   stops at the data-layer entry; no `UiMockScreen`/live-window state or draw call is added on a
   guessed trigger.
+
+## OQ-566: Demolish mode's OS cursor and land highlight are not drawn yet (W4-NEXT-1 part U row 5, 2026-11-10)
+- **Status:** open (scoped follow-up, not a defect in what row 5 did fix).
+- **Area:** UI / rendering.
+- **Question:** `docs/re/ui.md` line 213/430 records two more pieces of demolish-mode chrome
+  beyond the pickaxe icon's own active frame (660, now wired - see this entry's own commit):
+  the mouse cursor becomes `tCursorAbriss`/`Abreissen_Gebaeude.tex` (73 x 65), confirmed to be a
+  hardware/OS cursor overlay, not a blit into the frame ("that cursor did not SAD-match a 200x200
+  corner of r2_demolish, mean 171"); and the land tile under the cursor is highlighted
+  yellow-green ("r2_demolish shows a yellow-green tile"). Neither is implemented: this project
+  has no existing cursor-swap mechanism anywhere (`SDL_SetCursor`/`SDL_Cursor` do not appear in
+  `src/app/src/*.cpp`) and no tile-highlight overlay precedent (checked `viewer.cpp`,
+  `render/src/*.cpp`).
+- **What we know:** the texture (`Abreissen_Gebaeude.tex`) and cursor class name are on record;
+  decoding it as a cursor needs the same `.tex`-to-RGBA path `ui_mock.cpp`'s `TexCache` already
+  uses, then an SDL `SDL_CreateColorCursor`/`SDL_SetCursor` call (SDL3, matching this project's
+  own SDL3 dependency) - a new, small piece of platform code, not yet written or verified
+  pixel-for-pixel against a captured cursor image. The land highlight's exact tint, extent (one
+  tile vs. a footprint) and whether it follows demolish-mode's own hover tile or the dev tool's
+  existing hover state are not pinned down from the one-line doc note alone.
+- **How to resolve:** a fresh Wine/native capture of demolish mode active over a known tile,
+  isolating the cursor image (SAD against `Abreissen_Gebaeude.tex`'s own decoded RGBA) and the
+  highlighted tile's RGB value (sampled against the terrain's own known colour at that tile, to
+  get the tint as a delta, not a guessed colour); or disassembly of the demolish-mode draw path
+  for the highlight's exact rule. Until then this is explicitly NOT drawn, not silently assumed
+  equivalent to the existing placement-preview highlight (which this project does have, for a
+  different mode, with a different, unverified-here tint).

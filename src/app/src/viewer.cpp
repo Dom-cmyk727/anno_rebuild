@@ -2460,7 +2460,8 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             static_cast<int>(w), static_cast<int>(h), construction_menu_->hud(),
             construction_menu_->construction(), *construction_masks_, in.spec,
             *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
-            in.counters, construction_placement_open_);
+            in.counters, construction_placement_open_,
+            dev_ != nullptr && dev_->input().demolish_mode());
         if (drawn.ok()) {
             ui_overlay_image = std::move(drawn).value();
         }
@@ -2643,7 +2644,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
             buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
             *construction_masks_, in.spec, *construction_tex_cache_,
             in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
-            construction_placement_open_));
+            construction_placement_open_, dev_ != nullptr && dev_->input().demolish_mode()));
         construction_ui_ms = since_ms(ui_start, Clock::now());
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),

@@ -16949,3 +16949,39 @@ opt-in skips it did count.
   is to state the true *mechanism* (the flag is passed, so heavy tests are always excluded here)
   so no later reader trusts the old report's "not used" claim; a future gate run naturally
   reports its own heavy-test NOT_RUN count correctly once it uses this same `wsl_gate.sh`.
+
+## W4-NEXT-1 — Part S: the three W4-SETTLEMENT-1 review items — 2026-11-10 — status: DONE
+
+**Acceptance table.**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Disposition |
+|---|---|---|---|---|
+| The negative step in `settlement_activity.script` tests a hover, not a click | script changed to `look 1130 516`; the step still exists and still asserts `inspection.kind != House` | the original `click` queued a Build at the dev tool's armed type — this is exactly the defect being fixed, not a new control | `tools/test/viewer_wiring/settlement_activity.script` | fixed |
+| `inspect_building`'s formatters are covered for workshop, farm, small farm, mine, inn | `inspect_building_test.cpp`: 5 hand-derived expected status lines, each built from `play.cpp`'s own `tons()`/`join_tons()` formula by hand, not copied from a run | the 6th case queries a tile with no building and requires `std::nullopt` | `src/app/tests/inspect_building_test.cpp`; local MSVC Debug run, 6/6 cases, 28/28 assertions | fixed |
+| The S report's `wsl_gate.sh`/`--exclude-label heavy` claim is correct | read `tools/test/wsl_gate.sh`'s `run_lane()`, confirmed it passes the flag to every lane | — (a factual/code-reading check, no test to fail) | REPORTS.md correction entry above; `tools/test/wsl_gate.sh` lines ~243-277 | corrected |
+
+**Full suite after the fixes:** `anno_app_tests` 252/252 cases, 32,795/32,795 assertions, 0
+failed (local MSVC Debug, this PC; `ANNO1503_GAME_DIR` not set this pass, so the one real-file
+case is a classified skip, not a pass/fail).
+
+**Settlement playtest card:** none existed in `docs/testing/` yet (the "confirm it matches"
+instruction assumed one; checked, there wasn't one). Wrote
+`docs/testing/settlement-inspection-playtest.md` from the current `viewer.cpp`/`play.cpp` code
+(the title-bar segment, the `Space` pause key — not `P`, which is still unbound; ADR 0004 row 10
+is Part U's job, not this one's), not from memory or the script's own comments alone. **Ready
+for the owner.**
+
+### Decisions and reasoning
+- Used the sim's own `BuildingSpec::payload` field (set directly, no factory needed for Mine/Inn
+  since neither has vector fields to size) rather than running ticks or going through the dev
+  tool's command path: this is a pure formatter test, and the direct-payload route lets every
+  expected line be computed by hand from exact, chosen inputs instead of depending on production
+  math this packet does not need to also exercise.
+- Set every `*_out`/`carriers_out`/`figures_out` field to 0 rather than a nonzero hand-picked
+  value: `World::create`'s own invariant check rejects a nonzero figure-reference counter with
+  no actual figure in the scenario (`payload_problem`), correctly — these counters mean "figures
+  currently doing this," not a free display field, and the test found that boundary rather than
+  working around it with a fabricated figure.
+- Wrote the playtest card now, in this part, rather than leaving it to part E: the packet's own
+  instruction places "confirm... ready for the owner" inside part S, and the card only needed
+  the fix this part already made (finding 3/the hover fix) to be accurate.

@@ -42,14 +42,21 @@ PC.**
   not block it.
 
 **Owner rule, 2026-11-10 (every orchestrator): `main` is protected on GitHub.**
-- **What GitHub enforces.** A push to `main` is accepted only for a commit on which the CI job `gate` already passed.
-  No force push, no deletion. The rule binds admins too, so it binds every session that pushes as the owner's account.
+- **What GitHub enforces.** A push to `main` is accepted only for a commit on which a check named `gate` from
+  GitHub Actions already passed. No force push, no deletion. A pull request must be up to date with `main` before it
+  can be merged. The rule binds admins too, so it binds every session that pushes as the owner's account.
 - **What `gate` means.** Every CI job passed. For a change that touches only `docs/` and root `*.md` files, the build
-  jobs are skipped and `gate` passes in about a minute. Any other change runs the full matrix, about 30 minutes.
-- **How to land.** Commit on top of `origin/main`, then `python -I tools/orch/land.py --rev <commit> --name <topic>`.
-  It pushes the commit to `land/<topic>`, waits for `gate`, pushes `main`, deletes the landing branch and runs
-  `sync_gitlab.py`. A failed `gate` stops there: re-run the failed jobs (`gh run rerun <id> --failed`) or fix, then
-  run it again. A plain `git push origin main` is refused.
+  jobs are skipped and `gate` passes in about a minute. Any other change, compared as a whole against `main`, runs
+  the full matrix, about 30 minutes; so does a path Windows cannot check out.
+- **How to land: only with `land.py`, never with GitHub's merge button.** Commit on top of `origin/main`, then
+  `python -I tools/orch/land.py --rev <commit> --name <topic>`. It pushes the commit to `land/<topic>`, waits for
+  `gate`, pushes `main`, deletes the landing branch and runs `sync_gitlab.py`. GitHub's own check is weaker than
+  `land.py`'s: `land.py` counts only a `gate` that `ci.yml` ran for a push of that exact commit.
+- **A change to `.github/` needs `--allow-ci-change`.** The commit being checked defines its own `gate`, so first
+  review its workflow changes for anything that weakens the gate (a job left out of `gate`, `continue-on-error`, a
+  step that writes check runs).
+- **A failed `gate`** stops `land.py` with the run's link. Re-run the failed jobs (`gh run rerun <id> --failed`) and
+  run `land.py` again: it waits for the re-run. Or fix and land the new commit.
 - **What it does not change.** Executors still never push `main`. The game-file run after a code push (rule above)
   is still required: hosted CI has no game files, so `gate` cannot replace it. Only the owner can lift the protection
   (GitHub settings, Branches).

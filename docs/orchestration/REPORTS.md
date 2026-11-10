@@ -17246,3 +17246,67 @@ anno_app_tests: 253/253 cases, 61,647/61,647 assertions.
 - Fixed the B-double-press and pause-wait script bugs immediately rather than reporting rows 5/10
   as blocked: both were script-authoring mistakes this pass made and caught with its own
   negative control, not evidence gaps - exactly what the control exists to catch.
+
+## W4-NEXT-1 — Part E: the canonical gate found a real defect in Part S's own fix, from before this packet — 2026-11-10 — status: DONE (corrected)
+
+Running the packet's canonical `tools/test/run_selected.py` gate for part E (which needs
+`ANNO1503_GAME_DIR` and so actually executes the game-file-gated tests hosted CI always skips)
+found `ui_mock_matches_oracle` failing to launch (`anno_ui_mock` had never been built in this
+worktree's build tree - fixed by building it; not a code defect) and, more seriously,
+**`viewer_wiring_settlement_activity` genuinely failing** - the first time anyone has actually run
+this exact test since Part S's own `a9628bd0` fix landed (CI always skips it for lacking game
+files; the independent review of Part S read the script's text, which is reasonable for a review
+but is not the same as running it).
+
+**Root cause, confirmed by reading `dev_script.cpp`/`viewer.cpp` directly and by instrumenting
+the failure with extra `expect fact inspection.tile.x` probes, not guessed:** Part S's own fix
+(see that entry above) changed the negative-control step from `click 1130 516` to `look 1130
+516`, on the claim (in the comment it wrote) that `look` is "the script language's plain
+pointer-move verb... it sets the hover tile without synthesizing a mouse button event." **That
+claim was wrong.** `look` moves the *camera* to centre the given tile
+(`viewer.cpp`'s `act.look` handling sets `cam_x_`/`cam_y_`); it never touches the developer
+tool's own `hover_`, which only changes on a real `SDL_EVENT_MOUSE_MOTION`. So the negative
+control's own `look 1130 516` step never hovered anywhere at all - `dev_->hover()` stayed at the
+tile the earlier `click 1156 516` set, forever. `inspection.kind` stayed `"House"` not because
+the hover-clear logic (`play.cpp`'s `live_inspection`, itself correct: `snapshot.inspection->tile
+!= *hover` clears it, independent of pause) was broken, but because the test's own replacement
+step for "move the hover without clicking" silently did nothing. The negative control could never
+have failed, whatever regressed - it was not testing what its own comment, and Part S's
+acceptance, claimed it was testing.
+
+**Confirmed directly**, not inferred: added temporary `expect fact inspection.tile.x` probes
+after the step. With `look 1130 516`, `inspection.tile.x` read the stale `1156` (the house's own
+tile) forever, never moving. Swapped to `hover-land 1130 516` (`dev_script.cpp`'s actual
+no-button pointer-move verb - it calls `push_motion` with no matching `push_button`, unlike
+`click`/`click_px`/`sail`, and already takes a tile argument the same way `click` does) and
+`inspection.tile.x` immediately read `<none>` (correctly cleared) instead. The full negative
+control, fixed, now passes: `viewer_wiring_settlement_activity` - PASS, `inspection.kind != House`
+holds after the hover moves while paused, exactly what Part S intended to prove.
+
+**Fixed in `tools/test/viewer_wiring/settlement_activity.script`**: the one line, plus a
+correction note replacing the wrong comment (kept, not deleted, per the append-only correction
+convention - but a script file is not itself append-only text the way REPORTS.md is, so the
+correction is written as a comment explaining what changed and why, directly where the original
+wrong claim was).
+
+**This is not a Part U or Part C regression - it is a previously unverified defect in Part S's
+own acceptance, surfaced only because this packet's part E ran the canonical game-file gate for
+the first time since that fix landed.** Flagging plainly: Part S's REPORTS entry and the
+independent review that accepted it were both working from the script's text and reasoning about
+it, not an actual execution - which this evidence-contract-mandated gate exists precisely to
+catch. Re-verified with the actual registered CTest cases (not just the debug probes):
+`ui_mock_matches_oracle` and `viewer_wiring_settlement_activity` both PASS.
+
+### Decisions and reasoning
+- Did not stop at "the test fails, investigate later": a failing acceptance-gate case for a test
+  this packet's own earlier part claimed was proven is exactly the kind of finding part E's gate
+  exists to surface before declaring the packet done, not something to defer to W4-NEXT-2.
+- Verified the root cause with direct, repeatable evidence (the `inspection.tile.x` probe showing
+  `1156` vs `<none>`) rather than reading `look`'s code once and asserting a theory: the first
+  theory tried (pause-related staleness) was plausible-sounding and wrong, confirmed wrong by
+  testing the same step with pausing removed entirely and finding the identical stuck value -
+  check, don't guess, applies to debugging a found defect as much as to writing new code.
+- Corrected the script's comment in place rather than only noting the fix in REPORTS.md: the
+  wrong comment is exactly the kind of "silent guess stated as fact" this project's evidence rule
+  forbids, and a future reader of just the script (not this report) deserves the correct
+  explanation at the point where the wrong one was.

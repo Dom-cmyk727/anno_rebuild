@@ -5,6 +5,10 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-10 evening, by the Claude Code orchestrator:
+- **The board is slimmed (owner request):** `TASKS.md` 975 KB → 60 KB and `REPORTS.md` 2.1 MB → 435 KB. Closed
+  history moved verbatim to [`HISTORY-2.md`](HISTORY-2.md) and [`REPORTS-1.md`](REPORTS-1.md); `TASKS.md` says what
+  moved, what of it is still open, and which owner decisions the moved text records.
+  Executors still append their reports at the bottom of `REPORTS.md`.
 - **`main` is protected (owner decision):** GitHub accepts a push to `main` only for a commit on which the CI job
   `gate` passed; no force push or deletion, admins included. Land with `python -I tools/orch/land.py` (owner rule in
   [`TASKS.md`](TASKS.md), top). Docs-only changes pass `gate` in about a minute.
@@ -294,12 +298,12 @@ Its later work is not accepted merely because expansion is complete.
   names are the ones above.
 - **`main`** is the canonical, reviewed state. It is protected: only a commit on which the CI job `gate` passed can be
   pushed to it, with `tools/orch/land.py`.
-- **[`TASKS.md`](TASKS.md):**
-  - the top dispatch is the newest;
-  - each task's section holds its full instructions;
-  - "Other lane dispatches" holds the per-lane notes.
+- **[`TASKS.md`](TASKS.md):** the owner rules, the open dispatches that live on the board, §1 (the protocol) and a
+  section saying what moved out. New dispatches are packet files in [`tasks/`](tasks/).
 - **[`REPORTS.md`](REPORTS.md):** the executors' reports, newest at the end. Reports still on a task branch appear here
   when that branch is merged.
+- **[`HISTORY.md`](HISTORY.md), [`HISTORY-2.md`](HISTORY-2.md) and [`REPORTS-1.md`](REPORTS-1.md):** the board's
+  closed history (2026-10-28 and 2026-11-10) and the older reports, moved out verbatim.
 - **[`reviews/`](reviews/):** one file per orchestrator review or acceptance.
 - **[`docs/PLAN.md`](../PLAN.md):** milestones and status; §7 holds the latest status notes.
 

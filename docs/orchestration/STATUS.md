@@ -4,7 +4,13 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-09 morning, by the Claude Code orchestrator: **W4-UI-2 accepted and merged into `main` as
+**Last updated:** 2026-11-10, by the owner acting as orchestrator: **W4-NEXT-1 released to the Windows executor**
+([packet](tasks/w4-next-1.md)), base `origin/main` `bd760031`. It takes the proposed coordinator follow-up (CI
+flakes and two stalls on this PC, [review](reviews/2026-11-08-w4-ui-2-merge.md)) as part C, closes the three
+W4-SETTLEMENT-1 review items left as part S, and builds the next in-game UI screens (ADR 0004 rows 19, 18, 5, 10,
+2, plus the S/Q/D key-collision QUESTION) as part U. Branches: `task/W4-coord-1` (C), `task/W4-ui-3` (S, U).
+
+Before that, 2026-11-09 morning, by the Claude Code orchestrator: **W4-UI-2 accepted and merged into `main` as
 `96de6bca`**. The game-file run at `96de6bca`, made before the push, passed: 2,344 executed, 0 failed, 11 classified
 skips. The overdue game-file run at `5e7b13c6` is recorded. A coordinator follow-up is proposed for the CI flakes and
 two stalls on this PC ([review](reviews/2026-11-08-w4-ui-2-merge.md)). Before that, 2026-11-07 evening: W4-UI-2
@@ -73,7 +79,11 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Windows executor
 
-- **Now:** **W4-SETTLEMENT-1.** A developer inspection UI for live building, production and household state, built and
+- **Now: [W4-NEXT-1](tasks/w4-next-1.md), released 2026-11-10** by the owner acting as orchestrator, base
+  `origin/main` `bd760031`. Parts P → C → S → U → E: the test-coordinator root cause and fix (part C, taking the
+  proposed follow-up below), the three W4-SETTLEMENT-1 review items left (part S), and the next in-game UI screens
+  (part U). Supersedes the standalone W4-SETTLEMENT-1 line below, which it closes out in part S.
+- **Before that:** **W4-SETTLEMENT-1.** A developer inspection UI for live building, production and household state, built and
   proven in the real window.
   - The owner dispatched it in chat on 2026-11-06. It is not on the board yet.
   - **Done:** W2–W5; the MAIN-CI-1 intake (`b7be2a1d`, accepted); a complete W7 run (`w7final2`).
@@ -235,9 +245,8 @@ Its later work is not accepted merely because expansion is complete.
 - **The W4-UI-2 playtest card** (part K): the HUD and construction menu in the live window, on `main` from
   `96de6bca`.
 - **ADR 0004 questions R2 and R3:** the default surface (`--ui classic|dev`) and the UI scale.
-- **Who owns the coordinator follow-up** ([review](reviews/2026-11-08-w4-ui-2-merge.md) §4). It covers four CI flakes
-  in `anno_test_support_tests` on 2026-11-08 and two stalls of the game-file run on this PC. Proposed: the Windows
-  executor, to root-cause and fix it, then 5 consecutive clean CI runs.
+- **The coordinator follow-up** ([review](reviews/2026-11-08-w4-ui-2-merge.md) §4) is assigned: W4-NEXT-1 part C,
+  to the Windows executor, root cause and fix, then 5 consecutive clean CI runs.
 - **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).
 - **The opening playtest** in the live window (W4-OPENING-1, accepted 2026-11-05).
 - **W4-SETTLEMENT-1's playtest card,** once review item 3 (the inspection line) is fixed.

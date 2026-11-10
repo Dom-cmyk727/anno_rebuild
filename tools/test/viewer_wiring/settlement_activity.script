@@ -24,13 +24,18 @@ expect fact inspection.kind == House
 # token pins the digit count exactly (W4-SETTLEMENT-1 W7 review, finding 9).
 expect fact inspection.status contains residents=5 stock=
 expect fact inspection.type == 501
-# Negative step (finding 3/9): pausing stops new turns from publishing, so this is the one case
-# that actually exercises live_inspection's hover check rather than the sim naturally catching up.
-# Hovering empty ground at the same zoom (confirmed building-free by probing the real map) must
-# clear the line at once, not keep showing the house from before the hover moved.
+# Negative step (finding 3/9, W4-MAIN-2 part S finding 2): pausing stops new turns from
+# publishing, so this is the one case that actually exercises live_inspection's hover check
+# rather than the sim naturally catching up. Hovering empty ground at the same zoom (confirmed
+# building-free by probing the real map) must clear the line at once, not keep showing the house
+# from before the hover moved. This must be a hover, not a click: the developer building tool is
+# still on with type 501 selected (the `select 501` above), so a `click` here would queue a Build
+# at this tile instead of testing the inspection line. `look` is the script language's plain
+# pointer-move verb (used for the first hover above too) - it sets the hover tile without
+# synthesizing a mouse button event.
 key space
 wait frames 1
-click 1130 516
+look 1130 516
 wait frames 1
 expect fact inspection.kind != House
 quit

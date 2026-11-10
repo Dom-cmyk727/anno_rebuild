@@ -16919,3 +16919,33 @@ so that work starts now; anything needing `ctest`/CI waits for host capacity.
   occupies the memory headroom this packet's own gates will need, because the packet explicitly reserves that
   worktree/branch for the orchestrator and the evidence contract forbids stopping a coordinator with live
   clients.
+
+## W4-NEXT-1 — Part S, finding 1 (correction): wsl_gate.sh does exclude heavy tests — 2026-11-10 — status: DONE
+
+**Correcting** the S report's "Full list of tests that did not execute, and why"
+(REPORTS.md:14461-14463, the entry "W4-SETTLEMENT-1 — W7 WSL ASan/UBSan gate..." and its
+follow-ups): it stated `--exclude-label heavy` "is not used here — `wsl_gate.sh` does not pass
+it". That is false. Verified against `tools/test/wsl_gate.sh` on `task/W4-ui-3` at `bd760031`:
+`run_lane()` (line ~243-247) passes `--exclude-label heavy` to `run_selected.py` for every call
+site — `app`, `sim`, `formats`, `render`, `tsupport` (lines 257-264) — and the GPU lane does too
+(line 277). This was already true before part S (the review: "It does: `run_lane` passes it to
+every lane, and did before S"), so the error is in the S report's prose, not in a regression
+introduced by S.
+
+**Consequence:** every `heavy`-labelled test was **NOT_RUN** under ASan/UBSan in the W7 gate
+runs this report describes (`w7fix2` and the "C" run referenced there), not executed as the
+original report implied. The old entry is left as written (append-only; this is the correction
+required instead of an edit). Any acceptance table or disposition that relied on the old
+report's "no additional skips beyond the 10 opt-in ones" line should read it as **incomplete**:
+it omitted the `heavy`-labelled tests (about 10 in the render lane per the review's count, plus
+any heavy cases in the other four lanes) as a distinct NOT_RUN category, separate from the 10
+opt-in skips it did count.
+
+### Decisions and reasoning
+- Did not re-run the W7/C gates to produce a corrected count of exactly how many `heavy`-labelled
+  cases were skipped in those specific historical runs — that evidence no longer exists in a form
+  this correction can recover (the runs are over; their logs, where kept, already show the
+  skip through their own CTest output, which this entry does not re-derive). The correction's job
+  is to state the true *mechanism* (the flag is passed, so heavy tests are always excluded here)
+  so no later reader trusts the old report's "not used" claim; a future gate run naturally
+  reports its own heavy-test NOT_RUN count correctly once it uses this same `wsl_gate.sh`.

@@ -65,8 +65,8 @@ sim::ScenarioSpec::BuildingSpec place(sim::TypeId type, std::int32_t x, std::int
     return b;
 }
 
-constexpr sim::TileXY kWorkshop{110, 110}, kFarm{112, 110}, kSmallFarm{114, 110},
-    kMine{116, 110}, kInn{118, 110}, kEmpty{120, 110};
+constexpr sim::TileXY kWorkshop{110, 110}, kFarm{112, 110}, kSmallFarm{114, 110}, kMine{116, 110},
+    kInn{118, 110}, kEmpty{120, 110};
 
 struct Rig {
     Types types;

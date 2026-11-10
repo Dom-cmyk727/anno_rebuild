@@ -315,7 +315,7 @@ int deaf_listener(std::uint16_t port) {
         fill_header(reply, kStOk, frame_budget(hello), /*token*/ 1, frame_req(hello));
         put64(reply.bytes, 32, 0);              // build: unchecked unless the client asks exact
         put64(reply.bytes, 40, 0);              // incarnation
-        put64(reply.bytes, 48, frame_f(hello));  // compat: echo the client's own request
+        put64(reply.bytes, 48, frame_f(hello)); // compat: echo the client's own request
         put64(reply.bytes, 56, 0);              // this_pid: not checked by the client
         if (!send_all(fd, reply)) {
             close_fd(fd);

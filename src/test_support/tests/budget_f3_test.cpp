@@ -57,7 +57,7 @@ constexpr std::uint16_t kPortCrash = ports::fixed(27814);    // (c) crash handov
 constexpr std::uint16_t kPortMeter = ports::fixed(27815);    // (d) real meter child in WSL
 constexpr std::uint16_t kPortSilentOk = ports::fixed(27816); // silent, then served
 constexpr std::uint16_t kPortSilent = ports::fixed(27817);   // silent, deadline
-constexpr std::uint16_t kPortDeaf = ports::fixed(27818); // W4-NEXT-1 C-2, deaf coordinator
+constexpr std::uint16_t kPortDeaf = ports::fixed(27818);     // W4-NEXT-1 C-2, deaf coordinator
 // The metadata-only pin has no connecting client or restart. Let the OS bind a
 // free port so an unrelated listener or ephemeral connection cannot break it.
 constexpr std::uint16_t kPortPin = 0;

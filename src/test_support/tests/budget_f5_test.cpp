@@ -15,7 +15,7 @@
 //   O5 (Darwin): records of the earlier Darwin coordinator (namespace 2, microsecond stamp) are
 //       judged by Darwin; this process's own namespace is 3.
 //
-// Every case has its own port (47850..47859), a journal under temp_directory_path()/anno1503-f5,
+// Every case has its own port (27850..27859), a journal under temp_directory_path()/anno1503-f5,
 // bounded waits, and owns each child it starts: Child stops its process in the destructor, and
 // no process is found by name.
 #include <chrono>
@@ -51,15 +51,15 @@ using anno::test::child::Child;
 using namespace std::chrono_literals;
 namespace wire = anno::test::wire;
 
-constexpr std::uint16_t kPortLive = 47850;
-constexpr std::uint16_t kPortReused = 47851;
-constexpr std::uint16_t kPortUnattributed = 47852;
-constexpr std::uint16_t kPortCpu = 47853;
-[[maybe_unused]] constexpr std::uint16_t kPortLegacy = 47854;
-[[maybe_unused]] constexpr std::uint16_t kPortSpace = 47855;
-constexpr std::uint16_t kPortStreams = 47856;
-constexpr std::uint16_t kPortForeground = 47857;
-constexpr std::uint16_t kPortPipeline = 47858;
+constexpr std::uint16_t kPortLive = ports::fixed(27850);
+constexpr std::uint16_t kPortReused = ports::fixed(27851);
+constexpr std::uint16_t kPortUnattributed = ports::fixed(27852);
+constexpr std::uint16_t kPortCpu = ports::fixed(27853);
+[[maybe_unused]] constexpr std::uint16_t kPortLegacy = ports::fixed(27854);
+[[maybe_unused]] constexpr std::uint16_t kPortSpace = ports::fixed(27855);
+constexpr std::uint16_t kPortStreams = ports::fixed(27856);
+constexpr std::uint16_t kPortForeground = ports::fixed(27857);
+constexpr std::uint16_t kPortPipeline = ports::fixed(27858);
 /// A namespace no coordinator knows.
 constexpr std::uint32_t kForeignNs = 99;
 
@@ -337,46 +337,6 @@ TEST_CASE(
     h.coord.stop();
 }
 
-namespace {
-
-/// Whether something accepts a connection on 127.0.0.1:`port` (a bare connect, closed at once).
-bool listening(std::uint16_t port) {
-    const wire::Native fd = wire::open_socket();
-    if (fd == wire::kInvalid) {
-        return false;
-    }
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(port);
-    address.sin_addr.s_addr = htonl(0x7f000001u);
-#if defined(_WIN32)
-    const bool up = ::connect(static_cast<SOCKET>(fd), reinterpret_cast<sockaddr*>(&address),
-                              sizeof(address)) == 0;
-#else
-    const bool up = ::connect(static_cast<int>(fd), reinterpret_cast<sockaddr*>(&address),
-                              sizeof(address)) == 0;
-#endif
-    wire::close_fd(fd);
-    return up;
-}
-
-/// Asks the idle coordinator on `port` to step aside, the documented handover: a client that
-/// speaks another compatibility version is refused and an idle coordinator then exits. The
-/// coordinator is found by its port, never by name.
-void step_aside(std::uint16_t port, const Vars& vars, const std::string& budget_path) {
-    Vars other = vars;
-    other.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "99");
-    other.emplace_back("ANNO_TEST_BUDGET_SPAWN", "0");
-    {
-        Env env(other);
-        Child refused = probe({"try", budget_path, "1"});
-        refused.line(5000ms);
-    }
-    REQUIRE(eventually([&] { return !listening(port); }, 15000ms));
-}
-
-} // namespace
-
 TEST_CASE("S1: a client that starts the coordinator and exits leaves its stdout at EOF" *
           doctest::test_suite("budget")) {
     const auto journal = f5_dir() / "s1.journal";
@@ -474,14 +434,14 @@ TEST_CASE("S3: a captured pipeline ends without waiting for the coordinator's id
 //       --compat-version 3: it models the handshake and the journal name, not the older recovery
 //       code. The mixed-binary evidence is tools/test/mixed_coordinator_check.sh.
 //
-// Ports 47860..47869.
+// Ports 27860..27869.
 #if !defined(_WIN32)
 namespace {
 
-constexpr std::uint16_t kPortT1Idle = 47860;
-constexpr std::uint16_t kPortT1Busy = 47861;
-constexpr std::uint16_t kPortT2 = 47862;
-constexpr std::uint16_t kPortT5 = 47867;
+constexpr std::uint16_t kPortT1Idle = ports::fixed(27860);
+constexpr std::uint16_t kPortT1Busy = ports::fixed(27861);
+constexpr std::uint16_t kPortT2 = ports::fixed(27862);
+constexpr std::uint16_t kPortT5 = ports::fixed(27867);
 
 /// A private HOME so the default journals of a coordinator that is started without --journal land
 /// in a directory of this case.
@@ -503,6 +463,7 @@ struct Home {
 /// `compat` models an older version.
 Child start_default(std::uint16_t port, const Home& home, std::optional<std::uint64_t> compat,
                     std::string& listening) {
+    ports::require_test_port(port);
     const auto exe = sibling("anno_budget_coord");
     REQUIRE(std::filesystem::exists(exe));
     std::vector<std::string> args = {std::to_string(port), "local"};
@@ -626,16 +587,16 @@ TEST_CASE(
 //       returns and releases after the holder exits
 //   H6  an owner the host cannot attribute stays protected through the handoffs
 // "v3" is this build started with --compat-version 3 (modeled) or, in the (real) cases, the older
-// binary named by ANNO_TEST_OLD_COORD (opt-in). Ports 47880..47889.
+// binary named by ANNO_TEST_OLD_COORD (opt-in). Ports 27880..27895.
 #if !defined(_WIN32)
 namespace {
 
-constexpr std::uint16_t kPortH1 = 47880;
-constexpr std::uint16_t kPortH2 = 47881;
-constexpr std::uint16_t kPortH3 = 47882;
-constexpr std::uint16_t kPortH4 = 47883;
-constexpr std::uint16_t kPortH5 = 47884;
-constexpr std::uint16_t kPortH6 = 47885;
+constexpr std::uint16_t kPortH1 = ports::fixed(27880);
+constexpr std::uint16_t kPortH2 = ports::fixed(27881);
+constexpr std::uint16_t kPortH3 = ports::fixed(27882);
+constexpr std::uint16_t kPortH4 = ports::fixed(27883);
+constexpr std::uint16_t kPortH5 = ports::fixed(27884);
+constexpr std::uint16_t kPortH6 = ports::fixed(27885);
 
 enum class Kind { Memory, Cpu };
 
@@ -684,8 +645,10 @@ struct Handoff {
         REQUIRE(has(want(holder, "READY", 15000ms, &seen), "READY 1"));
     }
     /// One request of 80 bytes (or the second CPU token) from a client of the given version.
-    /// True when it was admitted at once.
-    bool asks(bool v3_client) {
+    /// True when it was admitted at once. `seen`, when given, collects the child's own output
+    /// (orchestrator review finding 4, 2026-11-10: a failure here used to show only the derived
+    /// bool, not the message that produced it - `refused()` logs this before its own CHECK).
+    bool asks(bool v3_client, std::string* seen = nullptr) {
         Vars use = vars;
         if (v3_client) {
             use.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "3");
@@ -693,10 +656,14 @@ struct Handoff {
         Env env(use);
         if (kind == Kind::Memory) {
             Child check = probe({"try", budget_path, "80"});
-            return has(want(check, "claim=", 15000ms), "claim=1");
+            return has(want(check, "claim=", 15000ms, seen), "claim=1");
         }
         Child waiter = probe({"cpu-waiter", budget_path, "1"});
-        return has(waiter.line(2500ms), "ADMITTED 1");
+        const std::string line = waiter.line(2500ms);
+        if (seen != nullptr) {
+            *seen = line;
+        }
+        return has(line, "ADMITTED 1");
     }
     bool admitted_after_exit(bool v3_client) {
         holder.stop();
@@ -720,7 +687,10 @@ struct Handoff {
 void refused(Handoff& h, bool v3_client, const char* where) {
     INFO("after " << std::string(where) << ", a request of the " << (v3_client ? "v3" : "v4")
                   << " client must not be admitted beside the live holder");
-    CHECK_FALSE(h.asks(v3_client));
+    std::string seen;
+    const bool admitted = h.asks(v3_client, &seen);
+    INFO("message received: " << seen);
+    CHECK_FALSE(admitted);
 }
 
 void run_h1(Kind kind, std::uint16_t port, const char* name, const char* old) {
@@ -890,14 +860,14 @@ TEST_CASE("H7: the handoffs again with the real older coordinator (opt-in ANNO_T
 //   V3    the journal-state matrix (absent, empty, released, open memory, open CPU, dead owner,
 //         unknown owner, unreadable, malformed, truncated, both journals present, repeated starts).
 //   V4    a predecessor journal of another port does not block.
-// Ports 47900..47919, a private HOME per case.
+// Ports 27900..27925, a private HOME per case.
 #if !defined(_WIN32)
 namespace {
 
-constexpr std::uint16_t kPortV1 = 47900;
-constexpr std::uint16_t kPortV2 = 47901;
-constexpr std::uint16_t kPortV3 = 47902; // + case index, up to 47919
-constexpr std::uint16_t kPortV4 = 47920;
+constexpr std::uint16_t kPortV1 = ports::fixed(27900);
+constexpr std::uint16_t kPortV2 = ports::fixed(27901);
+constexpr std::uint16_t kPortV3 = ports::fixed(27902); // + case index, up to 27919
+constexpr std::uint16_t kPortV4 = ports::fixed(27920);
 
 void put(const std::filesystem::path& path, const std::string& bytes) {
     std::filesystem::create_directories(path.parent_path());
@@ -947,6 +917,7 @@ struct Start {
 /// Starts the coordinator of this build on the home's default journal and returns whatever its
 /// first line is (LISTENING, JOURNAL-REFUSED, ...); no requirement on it.
 Start start_unchecked(std::uint16_t port, const Home& home) {
+    ports::require_test_port(port);
     const auto exe = sibling("anno_budget_coord");
     REQUIRE(std::filesystem::exists(exe));
     Env env(home.vars());

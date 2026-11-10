@@ -4890,3 +4890,425 @@ real coordinator defect is hiding inside what looks like "probably timing." This
 resolution should wait for the owner's direction on who picks up the root-cause work, not for me
 to guess a fix for coordinator-test-infrastructure code this packet's own scope (W4-UI-2, a UI
 consumer) was never meant to touch.
+
+## W4-NEXT-1 — Part P: preflight — 2026-11-10 — status: DONE
+
+**Base.** `origin/main` is `bd760031`, exactly (not a descendant past it); it is an ancestor of itself
+trivially, confirmed with `git merge-base --is-ancestor bd760031 origin/main`. No STATUS.md top-dispatch
+change since this packet was drafted, other than the release commit below.
+
+**Packet release.** The packet was found DRAFT, NOT RELEASED, and not named in `STATUS.md` (it existed only as
+an untracked local file). The owner, asked directly, chose to treat it as released now. Done, acting as
+orchestrator for this one step:
+- `docs/orchestration/tasks/w4-next-1.md`: DRAFT line replaced with a RELEASED line, dated 2026-11-10.
+- `docs/orchestration/STATUS.md`: top dispatch entry added; the Windows-executor section's "Now" line
+  points at this packet (the old W4-SETTLEMENT-1 "Now" line kept as "Before that", since part S closes it
+  out); the "Waiting on the owner" coordinator-follow-up line rewritten from "proposed" to "assigned, W4-NEXT-1
+  part C".
+- Committed on `main` locally as `14ff3eb8`. **`git push origin main` was refused by the Claude Code
+  permission classifier** ("judged this action dangerous", no further reason given). The commit is local
+  only; `origin/main` is unchanged at `bd760031`. This needs the owner's own push, or a retry with the
+  owner present, before any other session reads `STATUS.md` from `origin` and sees the dispatch.
+
+**Worktrees and branches**, both from `bd760031`, both `git status` empty immediately after creation:
+- `task/W4-coord-1` → `E:\anno1503-worktrees\anno1503-W4-coord-1` (part C).
+- `task/W4-ui-3` → `E:\anno1503-worktrees\anno1503-W4-ui-3` (parts S and U).
+
+**Required reading**, all done: this packet; `docs/testing/evidence-contract.md`; review
+`2026-11-08-w4-ui-2-merge.md` §3–§4 (the two stalls, the four CI flakes, the two observations on C-2/C-3);
+review `2026-11-07-w4-main-2.md` part S (the three items, with findings 1–8 already fixed); ADR 0004's screen
+table (rows 2, 4, 5, 9, 10, 15, 17, 18, 19 and the three key collisions) and QUESTIONs R2/R3; `docs/perf/README.md`'s
+coordinator sections (T10c F2/F3, MAP-2 repairs 1-4 on compat versions and journal handling).
+
+**Host state, recorded 2026-11-10:**
+- Free physical memory: ~9.65 GB of 31.1 GB (`FreePhysicalMemory`/`TotalVisibleMemorySize` from
+  `Win32_OperatingSystem`). This is below the 13 GB the review's own 2026-11-08 run needed after closing
+  background apps — **not clear to start a second heavy job right now.**
+- **A full MSVC test run is already active** in `E:\anno1503-worktrees\anno1503-MAP-EXTRACT-2-ci`: `ctest
+  --preset msvc -j 8 --timeout 5400` (pid 35492, started 13:03:23), with MSBuild and `anno_render_tests`
+  instances alive underneath it. That worktree, and `task/MAP-EXTRACT-2`/`fix/MAP-EXTRACT-2-ci`, are the ones
+  this packet (§0.1) says explicitly to leave alone — the orchestrator's own MAP-EXTRACT-2 CI consolidation.
+  **Not stopped, not touched.**
+- One memory coordinator is up on port 47631, with two established client connections (the run above);
+  consistent with `netstat`. Not stopped (it has live clients — the rule in §0.3 and the evidence contract).
+- WSL distro state not separately queried this pass (the running job is Windows-native MSVC, not WSL); will
+  check before any WSL gate run in part C.
+
+**Decision for the rest of this packet.** Given the active job and low free memory, I will not start a
+competing build or test run until it finishes or memory recovers. Part C's code-reading and root-cause
+analysis (reading `coord.cpp`, `coord_server.cpp`, `budget.cpp`, `budget_coord.cpp`, `memory.cpp`, the two
+referenced unmerged branches, and the CI logs already on file) does not need a local build or the coordinator,
+so that work starts now; anything needing `ctest`/CI waits for host capacity.
+
+### Decisions and reasoning
+- Treated the packet as released on the owner's explicit instruction, rather than silently proceeding or
+  silently stopping — the gap (DRAFT, unnamed in STATUS.md) was real and is now recorded, not just patched over.
+- Left `origin/main` untouched after the push refusal rather than retrying with a different tool or forcing it;
+  flagged it instead, per the "don't work around a permission denial" rule.
+- Did not stop the `anno1503-MAP-EXTRACT-2-ci` job or the coordinator serving it, even though it currently
+  occupies the memory headroom this packet's own gates will need, because the packet explicitly reserves that
+  worktree/branch for the orchestrator and the evidence contract forbids stopping a coordinator with live
+  clients.
+
+## W4-NEXT-1 — Part C: coordinator root cause and fix — 2026-11-10 — status: IN PROGRESS
+
+**C-1 (CI flakes in `anno_test_support_tests`).** Cause: fixed test ports 47600-47999 sit inside
+Linux's default ephemeral range (32768-60999); under `ctest -j` another case's outgoing client
+socket can hold one of them, and the affected coordinator prints `BIND-FAILED`. This was already
+proven, not assumed: an unmerged branch (`origin/claude/dreamy-brahmagupta-10bjax`, commits
+`e5d0b877`/`85b8a761`/`0104011e`/`6f7faaa2`) moved every fixed port down to 27600-27999, below
+all three hosts' default ranges, with its own evidence package (`docs/orchestration/evidence/coord-ports-1/`,
+18 captured runs including a before/after ephemeral-range-narrowing stress test: 18 of 89 failed
+with `BIND-FAILED` on the old ports, 0 of 92 on the new ones). A sibling attempt,
+`ci-fix-map-route-1`, reserved the ports at the CI level instead and reproduced the same failures,
+but was reverted once the owner chose the test-binary-level fix. I cherry-picked the four
+`dreamy-brahmagupta` commits onto `task/W4-coord-1` (clean application; `src/test_support` had
+not diverged from that branch's base). This explains `F3 (D1, crash handover)`, `F3 (D1, silent)`,
+`F3 (D1, exact build)`, `O1`, `O3`, `V3`, `V4` from the review's table. `F4 (N3)` and `H1` are
+**not** claimed as explained by this fix (neither case binds a port in the way the explained
+cases do); left open, see docs/perf/README.md "W4-NEXT-1 part C disposition of the port fix".
+Also fixed, found while reviewing the Windows side: the probe's `silent` listener had
+`SO_REUSEADDR` on POSIX (already fixed, `e5d0b877`) but nothing on Windows; added
+`SO_EXCLUSIVEADDRUSE` to match `coord_server.cpp` exactly.
+
+**C-2 (coordinator-client hang past `ANNO_TEST_ADMIT_WAIT_S`).** Cause, read and confirmed in
+`coord.cpp::transact()`: once the admission deadline fires, a cancel is sent, but the loop then
+waits unboundedly for *some* reply, exiting only via `silent_too_long()` — which any frame resets,
+including an unrelated host-meter query/answer on the same connection. A coordinator stuck
+resolving this one request (the review's hypothesis: blocked in its own host-meter read) can
+answer other traffic forever while never resolving the request, so the client never gives up.
+**Fix:** `transact()` now bounds the wait for the cancel's own resolution to one more liveness
+period past the deadline, then gives up locally (`reason = "wait deadline, no server reply"`).
+**New regression test**, `budget_f3_test.cpp` "F3 (D1, deaf)", against a new probe mode `deaf`
+(serves hello, never resolves a reservation or its cancel, sends unrelated keepalives). Verified
+both ways on this host: with the `coord.cpp` change stashed and both `anno_budget_probe.exe` and
+`anno_test_support_tests.exe` rebuilt, the case **fails** (`REQUIRE( has(result, "RESULT 0") )`
+is false — the client never prints a result inside the test's 20 s bound, i.e. it genuinely
+hangs); restored and rebuilt, it **passes**, 8/8 assertions. Full `anno_test_support_tests`
+suite after the fix: **79/79 cases, 749/749 assertions, 0 failed** (local MSVC Debug build,
+`build\msvc`, this PC).
+
+**C-3 (no-reservation large tests).** Design QUESTION, not implemented — no gate run was active
+to measure real peak RSS (part P found one already running elsewhere and part C deliberately did
+not compete with it; by the time it finished, running one just to get numbers for this would have
+meant starting a full gate mid-part-C, which is step E's job, not C's). Recommendation: (a) a
+reservation sized from the next real `LastTest.log`'s peak-RSS numbers, matching the render-corpus
+pattern already in `docs/perf/README.md` (T10c F2); (b) a host-level floor, broader but needs its
+own tuning. Written up with both options in `docs/perf/README.md`; **no reservation added without
+real numbers**, per the evidence contract.
+
+**Not yet done — the two CI/host-scale acceptance items:**
+- Five consecutive full hosted-CI runs on `task/W4-coord-1` with `anno_test_support_tests` clean
+  on all three Linux jobs. Needs the branch pushed (done, `511ca98e`) and CI to actually run and
+  be watched across five pushes/reruns; not attempted in this pass.
+- One full MSVC run with the game files, `ANNO_GPU_ADAPTER=4090`, detached, with no stall and
+  every refusal explained. Not run in this pass (focused, local, non-game-file builds/tests only,
+  per the host-discipline rule while this worktree's own build tree was being created fresh).
+
+### Decisions and reasoning
+- Adopted (cherry-picked) the already-evidenced port fix rather than re-deriving or
+  re-measuring it from scratch: its evidence package already satisfies "a cause named with
+  evidence" and "the fix holds" for the port-sensitive cases, and re-running the same stress
+  test would reproduce, not add to, that evidence.
+- Did **not** claim `F4 (N3)` and `H1` are explained by the port fix just because they are in the
+  review's C-1 list: on inspection neither is a port-binding case in the pattern the proven cases
+  share, so claiming it fixed would be an unverified assertion of fidelity the evidence contract
+  forbids. Left open explicitly instead.
+- Chose to prove C-2 with a new deterministic fake-coordinator probe mode rather than trying to
+  reproduce the real coordinator's host-meter stall directly: the real stall needs a specific,
+  hard-to-force server-side blocking condition; the probe isolates the *client-side consequence*
+  (an unbounded wait given a connection that looks alive) precisely and repeatably, and the fix
+  addresses exactly that consequence regardless of why the server is stuck.
+- Did not start the CI-run or game-file-run acceptance items in this pass: they are long-running,
+  host-wide activities (five CI round-trips; a detached full MSVC suite with the GPU) better
+  scheduled as their own step once C's code-level fix is itself stable and pushed, matching the
+  packet's own "C's acceptance" being explicitly listed separately from "the cause is named and
+  fixed."
+
+## W4-NEXT-1 — Part C: the full MSVC game-file run (done), and a correction to the CI-run count — 2026-11-10 — status: IN PROGRESS
+
+**The game-file acceptance item is done.** `cmake --preset msvc && cmake --build --preset msvc`,
+then (owner's go-ahead to run now, given alongside) `ANNO1503_GAME_DIR=E:\anno1503\game\app
+ANNO_TEST_THREADS=16 ANNO_GPU_ADAPTER=4090 ctest --preset msvc -j 16`, detached, on this worktree's
+own fresh build tree (`build/msvc`), with the C-2 fix (`19c94567` et al.) present. Result:
+**100% tests passed, 2359/2359**, including the `gpu` label (116 tests, 350.44 sec*proc) and
+`heavy` label (13 tests, 4462.79 sec*proc); total real time 679.03 s. No stall, no refusal to
+explain - the run completed cleanly start to finish. `anno_test_support_tests` itself (158 of the
+2359 selected names) had zero failures in this run.
+
+**C-3's numbers still cannot be filled in from this run.** The coordinator's own
+`[anno-test memory]` log (`build/msvc/Testing/Temporary/LastTest.log`, 39283 lines this run) only
+records admits/ends for tests that *do* request a reservation - exactly the opposite of what C-3
+needs (the unreserved large cases' own peak working set). There is no existing per-process RSS
+sampler wrapping ctest item execution, so "peak working set per CTest item" for the unreserved
+cases is not a grep away; building that sampler is new tooling, not a measurement this run already
+produced. C-3 stays an open QUESTION with options (a)/(b) in `docs/perf/README.md`, now noted
+there as still unmeasured for the stated reason (not "no gate run was available" any more - a
+clean one now exists, but it doesn't carry the data shape C-3 needs).
+
+**Correction: CI reruns do not count toward the five.** The packet says so explicitly ("Five
+consecutive full CI runs... A job-level rerun does not count as one of the five") - missed on
+first read. Re-auditing the branch's actual hosted-CI history (`gh run list`, genuine pushes
+only, no `gh run rerun`): with the C-2 fix present, there are three qualifying pushes so far, each
+with all three Linux jobs (`cpp (linux-gcc)`, `cpp (linux-gcc-release)`, `cpp (linux-clang-asan)`)
+green:
+- `511ca98e` (merge recovering the Part P report) - run **42816371389**
+- `810b7f38` (Part C REPORTS entry) - run **42816475646**
+- `3be3aaae` (clang-format fix) - run **42820583088**
+
+(Two earlier pushes also ran clean on the three Linux jobs, `42813750367` for `f9f87e21` and one
+before it, but both predate the C-2 fix landing on this branch - they tested the branch *before*
+`19c94567`, so they do not evidence the fix and are not counted here.)
+
+A `gh run rerun` of `42820583088` was triggered before this correction was found; it came back
+*flaky* on an unrelated job (`cpp (macos-clang)` reported `INCOMPLETE` on the new deaf-coordinator
+test, `F3 (D1, deaf)`) - not one of the three Linux jobs the acceptance gate names, and not a
+counted run either way now that reruns are known not to count. Logged as its own finding below,
+not folded into the Linux-job count.
+
+This commit and the two that follow it (the next genuine pushes) are intended to be the fourth and
+fifth qualifying runs; their run ids will be added here once hosted CI reports back.
+
+### Decisions and reasoning
+- Did not invent peak-RSS numbers for C-3 from the admit/end log just because a gate run now
+  exists: those lines cover reserved tests, and C-3 is about the *unreserved* ones - using the
+  wrong data to answer the right question would be worse than leaving it open.
+- Did not count `f9f87e21`/its predecessor toward the five: they ran before the fix commit this
+  packet is trying to prove, so a clean result there says nothing about the fix's own stability.
+- Logged the macOS `deaf`-test flake rather than silently ignoring it just because it is outside
+  the acceptance gate's own three Linux jobs: it is new evidence from a test this pass itself
+  wrote, and CLAUDE.md's evidence-only rule does not have a carve-out for inconvenient results.
+
+## W4-NEXT-1 — Part C: the fourth qualifying CI run, and this entry as the fifth — 2026-11-10 — status: DONE (pending this push's own CI result)
+
+**Fourth qualifying push.** `60955b0c` (the previous entry's own commit) ran as hosted-CI run
+**42848576936**. All three named Linux jobs green: `cpp (linux-gcc)`, `cpp (linux-gcc-release)`,
+`cpp (linux-clang-asan)` - checked while `cpp (windows-msvc)` was still in progress, the three
+jobs the acceptance gate actually names were already done and clean. `cpp (macos-clang)` also
+passed clean on this push - the earlier `deaf`-test `INCOMPLETE` did not recur, consistent with
+it being a timing flake on a shared runner rather than a real defect in the fix.
+
+**Fifth qualifying push: this commit.** Five consecutive genuine pushes, each with the C-2 fix
+present and all three Linux jobs clean:
+
+| # | Commit | Run id | Three Linux jobs |
+|---|---|---|---|
+| 1 | `511ca98e` | 42816371389 | green |
+| 2 | `810b7f38` | 42816475646 | green |
+| 3 | `3be3aaae` | 42820583088 | green |
+| 4 | `60955b0c` | 42848576936 | green |
+| 5 | *(this commit)* | *(recorded once hosted CI reports back)* | pending |
+
+**Part C acceptance, status:**
+1. C-1: named cause (port-binding pattern cases), evidenced fix (cherry-picked port renumbering),
+   test coverage inherited from the source branch. **Done**, scoped honestly - `F4 (N3)`/`H1` left
+   explicitly unexplained (not in the port-binding pattern).
+2. C-2: named cause (`transact()`'s cancel-then-wait had no deadline once the coordinator stopped
+   answering), a new deterministic `deaf` probe that fails without the fix and passes with it
+   (verified both ways, stash/rebuild/retest/restore/rebuild/retest), the fix itself
+   (`cancel_deadline` in `coord.cpp`). **Done.**
+3. Five consecutive clean hosted-CI runs on the three named Linux jobs. **Done** once this
+   commit's own run (#5 above) reports back clean - table above tracks it.
+4. One full MSVC run with the game files, GPU, detached, no stall. **Done** (previous entry):
+   2359/2359, 679.03 s real, gpu/heavy labels both clean.
+5. C-3: **not implemented**, honestly - a design QUESTION with two options in
+   `docs/perf/README.md`, still missing real peak-RSS numbers (needs a sampler that does not
+   exist yet, per the previous entry), reported as open rather than guessed or silently dropped.
+
+Part C is DONE on items 1, 2, 3 (pending #5's own result), 4; item 5 (C-3) remains an open
+QUESTION by design (the packet itself calls C-3 "a design question, not a bug hunt" and does not
+require it implemented for acceptance). Moving to independent review of Part C and Part S+U next,
+then Part E's final gates.
+
+### Decisions and reasoning
+- Reported Part C as DONE on its four implementable acceptance items rather than waiting silently
+  for this commit's own CI result to land before writing anything: the table makes the one
+  pending cell explicit instead of asserting a count this entry cannot yet see.
+- Did not also attempt to build the C-3 RSS sampler in this pass to force item 5 closed: it is new
+  tooling outside what "root-cause, fix, document" asks for C-1/C-2, and the packet explicitly
+  frames C-3 as a question to size with numbers when available, not a blocking deliverable.
+
+## W4-NEXT-1 — Part C: independent review — 2026-11-10 — status: DONE
+
+A fresh, independent agent (no context from this task's own work) reviewed this branch's full
+diff read-only, per the evidence contract's independent-review requirement. Checked: the
+`cancel_deadline` mechanism in `coord.cpp::transact()` for races/lost-wakeups/false positives
+under normal timing, whether the new `deaf` probe test genuinely exercises the fix (not a
+tautology - confirmed it spins up a real second process speaking the real wire protocol), the
+port-renumbering cherry-picks for collisions across `test_ports.hpp`/`budget_f1-f5_test.cpp`, and
+this file's own Part C narrative against the diff and commit hashes.
+
+**Verdict: ACCEPT WITH CONCERNS.** No correctness bugs in the fix itself - the deadline logic is
+race-free (re-evaluated fresh every loop iteration, no cross-call state leakage), not prone to
+false positives (the liveness bound is generous relative to a real cancel-ack round trip), and the
+new test is a genuine regression test, not a tautology. Two concerns, both addressed:
+1. A stale port-range comment (`test_ports.hpp` line 39 said "F3 27810-27817"; the new
+   `kPortDeaf=27818` extends F3 to 27818, without colliding with F4's own 27820 start). Fixed in
+   this commit.
+2. The reviewer could not independently verify the hosted-CI run ids / "5 qualifying pushes" claim
+   from local repo state alone (no `gh`/CI access from that review context) - flagged as needing
+   confirmation from whoever does have CI access. This executor does have `gh` access and has
+   been tracking the run ids directly against `gh run list`/`gh run view` output throughout this
+   part (see the acceptance table two entries up); the concern is about the review's own blind
+   spot, not a gap in what was actually checked for item 3.
+
+### Decisions and reasoning
+- Fixed the stale comment immediately in the same commit as this entry: one-line, zero-risk,
+  not worth a separate review cycle.
+- Did not re-litigate item 3's run ids just because the independent reviewer flagged an
+  unavoidable gap in its own access: the ids were already pulled live from `gh run view` by this
+  executor, not asserted from memory, which is exactly the independent verification the reviewer
+  is asking for - it is just a different kind of independence (a different data source: the CI
+  API) than a second reader of the diff can provide on their own.
+
+## W4-NEXT-1 — Part C: the orchestrator's interim review, findings 2-4 — 2026-11-10 — status: IN PROGRESS
+
+The orchestrator's own interim review ([review](../reviews/2026-11-10-w4-next-1-interim.md)),
+read from evidence it classified and copied itself (the game-file run's log, CI artifacts, the
+recorded stall snapshot), found three more things to fix in Part C before part E. All three are
+addressed here.
+
+**Finding 2 (blocker): `F3 (D1, deaf)` died with SIGPIPE on macOS, not just flaked.** Root cause,
+confirmed by reading every other probe mode in `budget_probe.cpp`: `silent_listener` never writes
+to its accepted connections, so it was never exposed to this; `deaf_listener` writes repeatedly
+(a hello reply, then a keepalive every 100 ms) and the client closes its end once its own 2 s
+admission bound fires, so a later `send_all` there hits a closed peer. `send_all`'s `MSG_NOSIGNAL`
+(`coord_wire.hpp`) only suppresses the resulting signal on Linux - macOS does not support that
+flag - and nothing had put this process's `SIGPIPE` disposition to ignore (`startup_sockets()`
+does that for the coordinator/client paths; `deaf_listener` hand-rolls its own socket setup and
+never called it). Fix: call `startup_sockets()` at the top of `deaf_listener`, matching the real
+paths. Verified on this host (Windows, where SIGPIPE does not exist, so this only re-confirms no
+regression): `*deaf*` run 5/5 clean, full suite 79/79 cases, 751/751 assertions (two new
+assertions from finding 4 below). **Not verified on macOS** - no macOS host available here; the
+mechanism is understood and the fix matches the project's own existing pattern exactly, but the
+repeated-run proof the review suggested (`ctest -R deaf --repeat until-fail:50`) needs a POSIX
+host with SIGPIPE semantics, which this PC is not.
+
+**Finding 3: C-2's link to the recorded stall, analysed and reported UNPROVEN.** Read
+`cache/main-gamefile-96de6bca/stall2-snapshot.txt` and `coord-47631.journal.at-stall2` directly.
+The journal is balanced (`A 4195/R 4195`, `C 4194/D 4194` - no admitted-and-stuck reservation at
+the snapshot), and the snapshot is 22 minutes into a 3,600 s admission bound - before the point
+`transact()` would even send a cancel, let alone wait on the cancel's own reply. So this evidence
+does not show the client inside the phase C-2's `cancel_deadline` bound covers; it shows the
+client still in its ordinary, already-bounded wait while the host meter (also CPU-idle) stays
+stuck. Also answered the review's follow-up ("why would a frozen meter still produce frames"):
+the coordinator treats the meter as an ordinary client connection, not a blocking call on its own
+main loop, so a stuck meter only leaves `meter_epoch` stale (admission never becomes `ready`) while
+the event loop keeps sending the waiting client ordinary `kStWait` frames regardless - which is
+also why `silent_too_long()` never trips here. Full analysis in `docs/perf/README.md`'s C-2
+section. **Conclusion stays UNPROVEN**, as the review allowed: the fix is a verified mitigation
+for the class of hang it targets, not shown to be what this specific historical stall needed.
+
+**Finding 4: F4 (N3) and H1 now log the message they received.** `F4 (N3)` already did
+(`budget_f4_test.cpp` lines 379/383/395: `INFO` captures the spawn reason, the coordinator pid,
+and the full `/proc/<pid>/fd` listing before the two closing `CHECK`s). `H1` (via the shared
+`refused()` helper, `budget_f5_test.cpp`) did not: `asks()` discarded the child's own output, so
+a failure showed only the derived bool and a static scenario description, never the actual
+`claim=`/`ADMITTED` line that produced it. Fixed: `asks()` now takes an optional `std::string*
+seen` and `refused()` passes one, logging it via `INFO` before its `CHECK_FALSE`. Not touched:
+`H6`/`H8`'s own bare `CHECK_FALSE(h.asks(...))` calls, outside this finding's named scope
+(F4 (N3), H1).
+
+### Decisions and reasoning
+- Did not attempt to reproduce the macOS SIGPIPE directly on this host: SIGPIPE is POSIX-only and
+  this PC has no macOS access; fixed the confirmed mechanism (verified by reading every call site
+  that touches SIGPIPE/MSG_NOSIGNAL/startup_sockets in this codebase) rather than guess at a
+  second cause without being able to reproduce either the bug or its absence after the fix.
+- Reported finding 3 as UNPROVEN rather than stretching the journal evidence to fit C-2: the
+  journal's own balance and the 22-minute/3,600 s-bound arithmetic are concrete, checkable facts
+  that point away from the cancel-phase, not toward it - asserting a match the evidence does not
+  support would be worse than the gap the review already flagged.
+- Extended `asks()`'s signature with a default-null out-parameter rather than changing every call
+  site: `H6`/`H8` keep compiling unchanged, and only `refused()` (used by H1 and others named in
+  the review) gained the logging.
+
+## W4-NEXT-1 — Part C, finding 9: the game-file run's logs, copied into `cache\w4-next-1\` — 2026-11-10 — status: DONE
+
+The review's finding 9, second half: the packet asks for evidence under the worktree's
+git-ignored `cache\w4-next-1\`, but the full MSVC game-file run's logs were left only in
+`build/msvc/Testing/` - the next `ctest` run on this build tree overwrites `LastTest.log`/
+`ctest-output.log` in place (`docs/testing/evidence-contract.md`'s own warning, CLAUDE.md's
+"copy them before re-running when a test failed; or pass `-O <file>`"). Checked the build tree's
+own timestamp (16:38, matching the original run's own finish time, not a later rerun - no `ctest`
+invocation on this build tree happened after it) before copying, so this is the real run's own
+evidence, not a later, smaller one mistaken for it. Copied to
+`cache/w4-next-1/coord-gamefile-run/LastTest.log` (8,921,985 bytes) and `ctest-output.log`
+(964,616 bytes).
+
+## W4-NEXT-1 — final report, this branch (`task/W4-coord-1`) — 2026-11-10 — status: DONE
+
+Closing report for this packet's part C, from this branch. Part S/U/E's own work lives on
+`task/W4-ui-3`; its own final report is there. Written after the orchestrator's interim review
+([review](../reviews/2026-11-10-w4-next-1-interim.md)) and all of its findings for this branch
+were addressed and re-verified (not just locally - on hosted CI).
+
+### Part C acceptance, final
+
+1. **C-1 (port-binding CI flakes): DONE.** Cherry-picked the already-evidenced port renumbering
+   (`209cb2ba`/`a7c2c40f`/`232a16fd`/`022de74f`) into the reserved band (`test_ports.hpp`,
+   27600-27999). `F4 (N3)` and `H1` explicitly left unexplained - not in the port-binding pattern
+   the proven cases share.
+2. **C-2 (a client's wait has no bound once its deadline fires): DONE.** Root cause and fix in
+   `coord.cpp::transact()` (`cancel_deadline`); a new deterministic `deaf` probe
+   (`budget_probe.cpp`) proves it both ways (fails without the fix, passes with it). The probe
+   itself had a real bug (SIGPIPE on macOS, orchestrator review finding 2) - fixed by calling
+   `startup_sockets()`, confirmed by CI (`cpp (macos-clang)` green on `ee504b75`, run
+   `42863102776`).
+   - **C-2's link to the one recorded real stall stays UNPROVEN**, honestly: the stall snapshot
+     (`cache/main-gamefile-96de6bca/stall2-snapshot.txt`) shows a balanced journal and the client
+     only 22 minutes into a 3,600 s admission bound - before `transact()` would even send a
+     cancel. The fix is a verified mitigation for the class of hang it targets, not shown to be
+     what this specific historical stall needed. Full analysis in `docs/perf/README.md`.
+3. **Five consecutive clean hosted-CI runs on the three named Linux jobs: DONE.** Reruns do not
+   count (missed on first read, corrected mid-packet). Five genuine pushes, each green on
+   `cpp (linux-gcc)`/`cpp (linux-gcc-release)`/`cpp (linux-clang-asan)`:
+   | # | Commit | Run id |
+   |---|---|---|
+   | 1 | `511ca98e` | 42816371389 |
+   | 2 | `810b7f38` | 42816475646 |
+   | 3 | `3be3aaae` | 42820583088 |
+   | 4 | `60955b0c` | 42848576936 |
+   | 5 | `30986aac` | 42852934257 |
+
+   Three further pushes with real fixes, all fully green including `cpp (macos-clang)`
+   (confirming the SIGPIPE fix, not just reasoning about it):
+   | Commit | Run id | Content |
+   |---|---|---|
+   | `ee504b75` | 42863102776 | SIGPIPE fix, C-2/stall analysis, H1 message logging |
+   | `2321ca35` | 42866978698 | evidence-log preservation (finding 9) |
+4. **Full MSVC + game-file run, detached, GPU: DONE.** `2,359/2,359` passed, 679.03 s real, `gpu`
+   label 350.44 s*proc (116 tests), `heavy` label 4462.79 s*proc (13 tests), no stall. Logs
+   preserved in `cache/w4-next-1/coord-gamefile-run/` (the build tree's own copy is overwritten by
+   later runs).
+5. **C-3 (no-reservation large tests' peak RSS): NOT MEASURED, by design.** Still an open
+   QUESTION with two options in `docs/perf/README.md` - needs a per-process memory sampler that
+   does not exist yet; a clean gate run's own `[anno-test memory]` log only covers *reserved*
+   tests, the opposite of what C-3 needs. Assigned to `W4-NEXT-2` part M.
+
+### Canonical gate (part E)
+
+`tools/test/run_selected.py --build-dir build/msvc --config Release --select
+'^anno_test_support_tests\.'`: **selected=79 executed=76 failed=0 skipped=3 (platform)**.
+`VERDICT: PASS`. Log: `cache/w4-next-1/gates/coord-01.log`.
+
+### Independent review
+
+A fresh agent with no context on this task reviewed the C-2 fix, the new `deaf` probe, and the
+port renumbering, read-only: **ACCEPT WITH CONCERNS** (no correctness bugs; the deadline logic is
+race-free and the new test genuinely exercises the fix; two concerns, both fixed - a stale port-
+range comment, and a request that this executor's own CI-run claims be independently checkable,
+which they are, by `gh run view`, not by local reasoning).
+
+### Part E gates on this branch
+
+- `clang-format` (23.1.3): clean on every touched file.
+- WSL `check_unix_warnings.sh` (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on and off): clean,
+  372 and 73 files respectively.
+- Mirrors (`gitlab`, `share`) synced to this branch's final head.
+
+### Open items for `W4-NEXT-2`
+
+- C-3's real numbers (part M).
+- The macOS `deaf`-test SIGPIPE fix's own repeated-run proof (`ctest -R deaf --repeat
+  until-fail:50`) was never run on an actual macOS/Linux host from this PC - only confirmed via
+  one clean hosted-CI run on macOS. Worth a repeat run if this ever flakes again.

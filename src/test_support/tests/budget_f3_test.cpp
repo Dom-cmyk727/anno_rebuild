@@ -47,15 +47,17 @@ using anno::test::child::set_env;
 using anno::test::child::sibling;
 using namespace std::chrono_literals;
 
-// Ports of this file: 47810–47817 (the F2 file uses 47700–47760).
-constexpr std::uint16_t kPortAccept = 47810;   // (a) two compatible builds
-constexpr std::uint16_t kPortIncompat = 47811; // (b) incompatible version, deadline
-constexpr std::uint16_t kPortCancel = 47812;   // (b) exact build, cancellation
-constexpr std::uint16_t kPortDrain = 47813;    // (c) graceful drain and handover
-constexpr std::uint16_t kPortCrash = 47814;    // (c) crash handover
-constexpr std::uint16_t kPortMeter = 47815;    // (d) real meter child in WSL
-constexpr std::uint16_t kPortSilentOk = 47816; // silent, then served
-constexpr std::uint16_t kPortSilent = 47817;   // silent, deadline
+// Ports of this file: 27810–27817 (the F2 file uses 27700–27760); below every default ephemeral
+// port range, see test_ports.hpp.
+constexpr std::uint16_t kPortAccept = ports::fixed(27810);   // (a) two compatible builds
+constexpr std::uint16_t kPortIncompat = ports::fixed(27811); // (b) incompatible version, deadline
+constexpr std::uint16_t kPortCancel = ports::fixed(27812);   // (b) exact build, cancellation
+constexpr std::uint16_t kPortDrain = ports::fixed(27813);    // (c) graceful drain and handover
+constexpr std::uint16_t kPortCrash = ports::fixed(27814);    // (c) crash handover
+constexpr std::uint16_t kPortMeter = ports::fixed(27815);    // (d) real meter child in WSL
+constexpr std::uint16_t kPortSilentOk = ports::fixed(27816); // silent, then served
+constexpr std::uint16_t kPortSilent = ports::fixed(27817);   // silent, deadline
+constexpr std::uint16_t kPortDeaf = ports::fixed(27818);     // W4-NEXT-1 C-2, deaf coordinator
 // The metadata-only pin has no connecting client or restart. Let the OS bind a
 // free port so an unrelated listener or ephemeral connection cannot break it.
 constexpr std::uint16_t kPortPin = 0;
@@ -260,7 +262,10 @@ TEST_CASE("F3 (D1, handover): a drained busy coordinator steps aside and the req
     const auto holds = open_hold_bytes(journal);
     CHECK(contains_value(holds, 80));
     CHECK_FALSE(contains_value(holds, 50));
-    requester.send("q\n");
+    // The requester's coordinator would hold the port until its 30 s idle exit, and a repeat of
+    // this case (ctest --repeat) could not start its own coordinator there: step it aside.
+    quit_and_wait(requester);
+    step_aside(kPortDrain, client_vars(kPortDrain, "f3-d", "5"), budget_path);
 }
 
 TEST_CASE("F3 (D1, crash handover): a journaled promise of a live owner is still counted by the "
@@ -322,7 +327,10 @@ TEST_CASE("F3 (D1, crash handover): a journaled promise of a live owner is still
     const std::string result = want(requester, "RESULT", 60000ms, &seen);
     INFO("requester output: " << seen);
     CHECK(has(result, "RESULT 1"));
-    requester.send("q\n");
+    // As in the handover case: the successor the requester started steps aside once idle.
+    quit_and_wait(requester);
+    REQUIRE(eventually([&] { return !holder.running(); }, 10000ms));
+    step_aside(kPortCrash, client_vars(kPortCrash, "f3-e", "5"), budget_path);
 }
 
 TEST_CASE("F3 (D2): coordinator death with the real meter child: no inherited descriptor, the port "
@@ -508,6 +516,39 @@ TEST_CASE("F3 (D1, silent): a coordinator that never answers ends at the admissi
     CHECK(has(result, "not ready"));
     CHECK_FALSE(has(result, "speaks another protocol"));
     silent.send("q\n");
+}
+
+TEST_CASE("F3 (D1, deaf): a coordinator that serves hello but never resolves the request or its "
+          "cancel still ends at a bounded deadline" *
+          doctest::test_suite("budget")) {
+    // W4-NEXT-1 C-2: a fake coordinator that is Served (answers hello) but never answers the
+    // client's reservation or its cancel, while still sending unrelated frames that refresh
+    // last_rx (the same thing a host-meter kStSample/kStRefresh exchange would do). Before the
+    // coord.cpp fix this hangs the client past ANNO_TEST_ADMIT_WAIT_S forever (bounded here only
+    // by the test's own `want` deadline, so a regression fails this case instead of hanging the
+    // suite); after it, transact() gives up locally once the cancel goes unanswered for one more
+    // liveness period, and the reservation is refused with "wait deadline, no server reply".
+    Child deaf = probe({"deaf", std::to_string(kPortDeaf)});
+    std::string seen;
+    const std::string deaf_line = want(deaf, "DEAF", 10000ms, &seen);
+    INFO("deaf output: " << seen);
+    REQUIRE(has(deaf_line, "DEAF 1"));
+    const auto budget_path = (f3_dir() / "i.budget").string();
+    Child client;
+    {
+        // A 2 s admission bound; the deaf coordinator's keepalive (every 100 ms) would hold the
+        // connection open past it forever without the fix.
+        Env env(client_vars(kPortDeaf, "f3-i-deaf", "2"));
+        Env liveness({{"ANNO_TEST_BUDGET_LIVENESS_MS", "300"}});
+        client = probe({"reqwait", budget_path, "30"});
+    }
+    seen.clear();
+    const std::string result = want(client, "RESULT", 20000ms, &seen);
+    INFO("client output: " << seen);
+    REQUIRE(has(result, "RESULT 0"));
+    CHECK(has(result, "wait deadline"));
+    client.send("q\n");
+    quit_and_wait(deaf);
 }
 
 TEST_CASE(

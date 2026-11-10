@@ -23,6 +23,7 @@
 #include <anno/test/budget.hpp>
 
 #include "child_process.hpp"
+#include "test_ports.hpp"
 
 namespace {
 
@@ -80,11 +81,16 @@ std::uint16_t port_for(int index) {
             return static_cast<std::uint16_t>(std::stoul(fixed));
         }
     }
+    // Windows and WSL cases run side by side on one host: separate bases. Below the ephemeral
+    // ranges (test_ports.hpp).
 #if defined(_WIN32)
-    return static_cast<std::uint16_t>(47700 + index);
+    constexpr std::uint16_t base = anno::test::ports::fixed(27700);
 #else
-    return static_cast<std::uint16_t>(47750 + index);
+    constexpr std::uint16_t base = anno::test::ports::fixed(27750);
 #endif
+    const auto port = static_cast<std::uint16_t>(base + index);
+    anno::test::ports::require_test_port(port);
+    return port;
 }
 
 std::filesystem::path f2_dir() {

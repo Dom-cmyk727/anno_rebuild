@@ -664,6 +664,13 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
     Admit last;
     const auto start = std::chrono::steady_clock::now();
     const auto deadline = start + detail::admit_deadline();
+    // Once the deadline fires and the cancel is sent, this request must resolve (admitted,
+    // refused, or dead) within one more liveness period. Without this bound, an unrelated frame
+    // (a host-meter kStSample/kStRefresh query, answered on this same connection) refreshes
+    // session.last_rx and keeps silent_too_long() from ever tripping, so a coordinator stuck
+    // resolving *this* req (e.g. blocked reading its own host meter) is never given up on: the
+    // client waits past ANNO_TEST_ADMIT_WAIT_S forever instead of being refused.
+    auto cancel_deadline = std::chrono::steady_clock::time_point::max();
     auto next_note = start + std::chrono::seconds(30);
     const auto step = std::min(detail::recheck_period(), liveness() / 2);
     auto note_wait = [&] {
@@ -676,6 +683,21 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
         }
     };
     for (;;) {
+        if (deadline_hit && std::chrono::steady_clock::now() >= cancel_deadline) {
+            // The cancel was sent a full liveness period ago and this request still has not
+            // resolved, although the connection itself is alive (an unrelated frame, such as a
+            // host-meter query this client answered, kept resetting last_rx and so kept
+            // silent_too_long() from tripping). Give up on this request locally rather than
+            // waiting past the caller's bound forever.
+            cleanup();
+            if (session.log) {
+                session.log("[anno-test memory] deadline estimate=" + std::to_string(bytes) +
+                            " after " + seconds_text(std::chrono::steady_clock::now() - start) +
+                            " s; no reply to the cancel, giving up locally; last decision" +
+                            wait_text(last));
+            }
+            return finish_lost(bytes, true, "wait deadline, no server reply");
+        }
         Frame reply;
         const Got got = wait_frame(session, req, block ? step : liveness(), reply);
         if (got == Got::Dead) {
@@ -697,6 +719,7 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
                 // Bounded wait: withdraw the request. If the coordinator
                 // admitted it first, that admission is what comes back.
                 deadline_hit = true;
+                cancel_deadline = now + liveness();
                 Frame cancel;
                 put32(cancel.bytes, 4, kOpCancel);
                 put64(cancel.bytes, 32, req);

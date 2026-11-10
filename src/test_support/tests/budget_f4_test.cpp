@@ -7,7 +7,7 @@
 //       client-spawn closefrom) is observed on its own.
 //
 // Helpers are the F3 process harness (budget_proc_harness.hpp), unchanged.
-// Ports 47820–47839; journals under temp_directory_path()/anno1503-f4.
+// Ports 27820–27839; journals under temp_directory_path()/anno1503-f4.
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -34,15 +34,16 @@ namespace {
 using anno::test::child::Child;
 using namespace std::chrono_literals;
 
-constexpr std::uint16_t kPortOrphanReuse = 47820; // E1, orphan kept
-constexpr std::uint16_t kPortLiveHold = 47821;    // E1, live hold kept
-constexpr std::uint16_t kPortCancelAll = 47822;   // E2
-constexpr std::uint16_t kPortRawHello = 47823;    // N2, server exact-build
-constexpr std::uint16_t kPortCloexec = 47824;     // N3, sockets CLOEXEC
-constexpr std::uint16_t kPortMeterLeak = 47825;   // N4, meter closefrom
+constexpr std::uint16_t kPortOrphanReuse = ports::fixed(27820); // E1, orphan kept
+constexpr std::uint16_t kPortLiveHold = ports::fixed(27821);    // E1, live hold kept
+constexpr std::uint16_t kPortCancelAll = ports::fixed(27822);   // E2
+constexpr std::uint16_t kPortRawHello = ports::fixed(27823);    // N2, server exact-build
+constexpr std::uint16_t kPortCloexec = ports::fixed(27824);     // N3, sockets CLOEXEC
+constexpr std::uint16_t kPortMeterLeak = ports::fixed(27825);   // N4, meter closefrom
 // Used only in the Linux branch below; unused on macOS/Windows, where that branch
 // is compiled out.
-[[maybe_unused]] constexpr std::uint16_t kPortClientLeak = 47826; // N4b, client spawn closefrom
+[[maybe_unused]] constexpr std::uint16_t kPortClientLeak =
+    ports::fixed(27826); // N4b, client spawn closefrom
 
 std::filesystem::path f4_dir() {
     const auto dir = std::filesystem::temp_directory_path() / "anno1503-f4";

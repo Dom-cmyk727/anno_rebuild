@@ -1,0 +1,4 @@
+Passed | left: 27632  | anno_test_support_tests.a timed recheck does not admit until the budget fits
+Passed | left: 27813  | anno_test_support_tests.F3 (D1, handover): a drained busy coordinator steps aside and the requester's coordinator takes over
+Passed | left: 27814  | anno_test_support_tests.F3 (D1, crash handover): a journaled promise of a live owner is still counted by the successor until the owner exits
+Passed | left: 27632  | anno_test_support_tests.two threads of one file client both reserve

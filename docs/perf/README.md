@@ -1960,3 +1960,202 @@ use a zero count as an independent safety verdict. `journal_report_contract`
 checks the public command, owner identities, read-only behavior, widths, releases
 and malformed inputs. The distinguishing missing-final-newline mutant preserves
 the legal open-promise control and fails the truncated-release assertion.
+
+## Coordinator ports — regression ports below the ephemeral ranges (2026-11-07)
+
+**Problem.** The coordinator regressions bound fixed ports in 47600–47999 (F2 47700/47750+,
+F3 47810–47817, F4 47820–47826, F5 47850–47925) and the file-client cases of `budget_test.cpp`
+and F1 used the default local port 47632. Linux hands out 32768–60999
+(`/proc/sys/net/ipv4/ip_local_port_range`) as local ports of outgoing connections, so under
+`ctest -j` one case's client socket could sit on another case's port and that coordinator
+printed `BIND-FAILED` (CI run 41985663081, linux-gcc, the two F3 handover cases). It is a live
+socket on the port, not TIME_WAIT: `SO_REUSEADDR` cannot help. Reproduced directly: a
+kernel-assigned client port blocks `anno_budget_coord` on that port while the client is
+connected or half-closed (ESTABLISHED, FIN_WAIT2), and a TIME_WAIT left by the peer does not.
+
+**Choice.** Every fixed regression port moved down by 20000 into the band **27600–27999**
+(`src/test_support/tests/test_ports.hpp`), below the default dynamic ranges of all three hosts:
+Linux 32768–60999, Windows 49152–65535 (`netsh int ipv4 show dynamicport tcp`), macOS
+49152–65535 (`sysctl net.inet.ip.portrange.first/last`). The file-client cases use 27632
+(`ports::FileClientPort`). Port 0 (the OS picks) was rejected for these cases: handover, crash
+recovery, step-aside and client-spawned successors all need a second coordinator on the port
+the first one held (the F3 pin case, which needs no second start, already uses 0). Literals go
+through `ports::fixed()`, a `consteval` check that does not compile outside the band; computed
+ports (`base + index`) are checked where the harness starts a coordinator. The case
+"budget ports: this host's ephemeral range does not reach the fixed test ports" reads the
+host's range (Linux, macOS; on Windows it is not read, see below) and
+fails with an explanation on a host configured into the band. On Windows the range is not
+read and the case reports a platform skip; `netsh int ipv4 show dynamicport tcp` and `netsh int
+ipv4 show excludedportrange protocol=tcp` must be checked by hand before Windows acceptance.
+Regression ports 47700–47999 named in the sections above are historical (now 20000 lower;
+`lsof -iTCP:27600-27999` replaces `47810-47899`). The production ports 47631 and 47632 in the
+runbooks above are unchanged, and so are the arguments of the manual `run_legacy_ab.ps1` run.
+Exempt: the Windows-only F1 case "a live Windows owner is not reclaimed by a WSL client" uses
+the shared WSL coordinator (47631) on purpose. F3–F5 and 27632 use the same ports on Windows and
+in WSL (only F2 separates them), as before this change.
+
+**Production ports unchanged** (owner decision 2026-11-07): the shared coordinator stays on
+47631 and the local default on 47632 (`coord_wire.hpp`). Every client finds the shared
+coordinator by that number, so moving it would run two budgets side by side on one host until
+every tree had merged. The residual risk stays: an outgoing connection that happens to hold
+47631 delays a client's coordinator start until it closes (the client retries; it does not
+fail at once). `kCompatVersion` is unchanged: neither the wire nor any reservation, journal or
+recovery semantics changed. Windows can also exclude port ranges for Hyper-V/WSL
+(`netsh int ipv4 show excludedportrange tcp`); an exclusion over 27600–27999 would show as
+`BIND-FAILED` too and is not checked.
+
+**Repeat stability.** Two other causes made `ctest --repeat` fail independently of ephemeral
+ports and were fixed in the same package: the F3 handover and crash-handover cases now step
+the coordinator their requester started aside (`step_aside`, moved from F5 into
+`budget_proc_harness.hpp`) instead of leaving it on the port for its 30 s idle exit, and the
+probe's `silent` listener sets `SO_REUSEADDR` like the coordinator, because the previous run's
+coordinator leaves server-side TIME_WAIT connections on that port for 60 s.
+
+**Evidence** (`docs/orchestration/evidence/coord-ports-1/`). The control that changes only the
+ports: this tree with every regression port moved back up by 20000 (old numbers, cleanup fixes
+kept), ephemeral range narrowed to 47500–48499, `-j 4 --repeat until-fail:20`, failed 18 of 89
+entries, 10 of them with `BIND-FAILED` (47810, 47812, 47820, 47822, 47850, 47852, 47860, 47862,
+47880, 47882), the file-client cases on 47632 among the rest. This tree, same range and
+command: 0 of 92 failed, no `BIND-FAILED`. The narrowed range stresses the old band only; the new
+band's own guarantee is the range comparison above. The earlier old-tree run under the same
+range (`--repeat until-fail:3`, 8 of 89 failed) mixes both causes: F3 handover, crash handover,
+F3 silent and T1 failed on their second repetition after a pass (the repeat causes), H5
+(`BIND-FAILED 47884`), F4 N3 ("speaks another protocol", not traced), V3 and V4 on their first.
+At the default range this tree passed `ctest -j 4 --repeat until-fail:20`: 86 entries executed
+and passed 20 times each, 6 skip on Linux (F3 D2 and F4 N4 need the Windows/WSL meter; T5, H7,
+V1, V2 are opt-in). Windows and macOS were not run for this package.
+
+**W4-NEXT-1 part C disposition of the port fix.** This section's port move (`e5d0b877`,
+`85b8a761`, `0104011e`, `6f7faaa2`, unmerged on `origin/claude/dreamy-brahmagupta-10bjax`) was
+re-made onto `task/W4-coord-1` from `bd760031` (cherry-picked; `src/test_support` had not
+diverged since this branch's base, so it applied with no conflicts). It explains C-1 for every
+port-sensitive case named in the 2026-11-08 review table: `F3 (D1, crash handover)`,
+`F3 (D1, silent)`, `F3 (D1, exact build)`, `O1`, `O3`, `V3`, `V4`. A sibling attempt,
+`ci-fix-map-route-1` (`2dd2eb5e`, reserving the ports at the CI level with
+`sysctl net.ipv4.ip_local_reserved_ports`), reproduced the same `BIND-FAILED` family and fixed
+it the same way, but was reverted (`49ffcee6`) once the owner chose this test-binary-level fix
+instead (portable; no CI-only `sysctl`, no root). `F4 (N3)` ("speaks another protocol") and `H1`
+are not proven port-sensitive by this evidence alone — `F4 (N3)` is a real-meter/closefrom case
+and `H1` a pipeline case, neither binding a port that collides under `ctest -j` the way F3's
+handover/crash-handover/silent cases do — so they are left open rather than claimed fixed by
+this change; if either recurs on `task/W4-coord-1`'s CI runs (acceptance below), it needs its
+own cause.
+
+One more Windows-only gap closed here: the probe's `silent` listener set `SO_REUSEADDR` on
+POSIX (this section, "repeat stability") but nothing on Windows. `coord_server.cpp`'s own
+listener sets `SO_EXCLUSIVEADDRUSE` there; the probe now matches it. Without this, a repeated
+`ctest --repeat` of "F3 (D1, silent)" on Windows can fail to bind for the same reason the POSIX
+side was fixed for.
+
+## Coordinator C-2 — a client's wait has no bound once its deadline fires (2026-11-10)
+
+**Problem.** `coord.cpp::transact()` sends a `kOpCancel` once `detail::admit_deadline()` passes,
+but then keeps looping, waiting for *some* reply to the original request. The only exit besides
+that reply is `silent_too_long()`, which checks time since the connection's last received frame
+of *any* kind — and any frame restarts that clock, including a `kOpPing`'s connection staying
+alive, or (in the real coordinator) a `kStSample`/`kStRefresh` host-meter query/answer on the
+same socket. A coordinator that is Served (answered hello) but is itself stuck resolving this
+one request — the review's hypothesis for the two stalled game-file runs
+([2026-11-08-w4-ui-2-merge.md](../orchestration/reviews/2026-11-08-w4-ui-2-merge.md) §3-4),
+blocked in its own host-meter read, for instance — can keep the connection looking alive
+forever while never resolving the request, so the client waits past
+`ANNO_TEST_ADMIT_WAIT_S` with no bound.
+
+**Fix.** `transact()` now records `cancel_deadline = now + liveness()` when the cancel is sent,
+and checks it at the top of every loop iteration regardless of what kind of frame arrived. If
+the request still has not resolved (admitted, refused, or dead) by `cancel_deadline`, the client
+gives up locally: `reason = "wait deadline, no server reply"`. This adds one bounded wait (at
+most one more liveness period after the existing deadline) to the one case this is meant to
+catch, and changes nothing for every case that already resolves before `cancel_deadline`
+(including the existing "cancelled" diagnostic a few lines below, which still fires first when
+the coordinator does answer the cancel in time).
+
+**Regression test.** A new probe mode, `deaf` (`budget_probe.cpp`): it serves the hello
+handshake normally (so the client is Served, matching the real stuck-coordinator shape more
+closely than `silent`, which never answers hello at all), then never answers a reservation or
+its cancel, while still sending a keepalive frame with an unmatched request id every 100 ms —
+the same effect an unrelated host-meter exchange has on `last_rx`. The new case,
+`budget_f3_test.cpp` "F3 (D1, deaf)", sets a 2 s admission bound and a 300 ms liveness period and
+asserts the client's `RESULT` line arrives (bounded by the test's own 20 s `want()`, so a
+regression fails the case instead of hanging the suite) with `reason=wait deadline, no server
+reply`. Verified both ways on this host (MSVC, `anno_test_support_tests.exe --test-case="*deaf*"`
+rebuilding both the test binary and `anno_budget_probe.exe` each time): with the `coord.cpp`
+change stashed, the case fails (`REQUIRE( has(result, "RESULT 0") )` is false — the client never
+prints a result within the 20 s bound); restored, it passes, 8/8 assertions. The full
+`anno_test_support_tests` suite passed 79/79 cases, 749/749 assertions with the fix in place.
+
+**Not reproduced here:** the real coordinator actually blocking on its own host-meter read
+under load. The `deaf` probe demonstrates the *consequence* (an unbounded client wait given a
+connection that looks alive but never resolves) with a direct, deterministic cause, not that
+specific server-side blocking path; §3-4 of the review remains the only evidence for that half.
+
+**The recorded stall (`cache/main-gamefile-96de6bca/stall2-snapshot.txt`,
+`coord-47631.journal.at-stall2`) does not show the client inside the phase C-2 bounds, on the
+evidence available.** Orchestrator review finding 3, 2026-11-10, asked this to be shown or
+reported UNPROVEN.
+
+- The journal at the snapshot is balanced: `A 4195 / R 4195` (every memory hold admitted has a
+  matching release) and `C 4194 / D 4194` (every CPU claim has a matching release) - the snapshot
+  itself says so ("pid 32352 released everything"). An admitted-but-stuck reservation would show
+  as an `A` with no following `R`; there is none. So at the moment captured, pid 32352 holds no
+  budget reservation at all - whatever it is blocked on is not an admission the coordinator has
+  already granted and then gone silent about.
+- Both the stalled process (pid 32352, 27.83 s CPU, unchanged for the observed 30 s) and the
+  coordinator's own meter (PowerShell pid 65816, 8.31 s CPU, also unchanged for 30 s) are
+  genuinely idle, not spinning - consistent with the meter being stuck (the review's own §3-4
+  hypothesis for this run), not with the client busy-waiting.
+- The snapshot is **22 minutes into a 3,600 s (`ANNO_TEST_ADMIT_WAIT_S`) admission bound** for
+  this run. `transact()` only sends `kOpCancel` and starts the new `cancel_deadline` bound once
+  `detail::admit_deadline()` - the full 3,600 s - passes. At 22 minutes the client has not
+  reached that point yet, so it cannot yet be in the cancel-sent, waiting-for-the-cancel's-own-
+  reply phase this fix bounds; it is still in its *ordinary*, already-bounded wait loop.
+- Why a frozen meter process would still leave frames flowing (the review's own follow-up
+  question): the coordinator treats the PowerShell meter as an ordinary client connection
+  (`coord_server.cpp`'s `Meters`/`SClient::meter`), asked for readings over the same frame
+  protocol, not read with a blocking call on the coordinator's own main loop. A meter that stops
+  answering `kStRefresh` only leaves `meter_epoch` stale, so `admission_ready` (line ~1001,
+  `c.ready = ... m->meter_epoch == budget.epoch`) stays false for budgets on that domain forever
+  - but the coordinator's event loop keeps running regardless, and keeps sending the *waiting*
+  client ordinary `kStWait` frames (`coord_server.cpp` lines ~1149/1249/1422) each time it is next
+  considered, which is exactly why `silent_too_long()` never trips here: frames keep arriving,
+  they are just never the resolving one.
+
+**Conclusion: UNPROVEN that this specific recorded stall reached the phase C-2's bound covers.**
+The evidence is consistent with the client legitimately still inside its own 3,600 s bound while
+the host meter stays stuck (matching §3-4's hypothesis for *why* admission never resolves), not
+with it already having tried and failed to cancel. Had this same run been left running past the
+full 3,600 s, C-2's bound is the mechanism that would have recovered it instead of hanging
+forever - but this snapshot, taken at the 22-minute mark, is not itself evidence of that later
+moment. The fix stands on its own merits (a genuine, demonstrated hazard via the `deaf` probe);
+its link to this particular historical stall stays open.
+
+## Coordinator C-3 — no-reservation large tests (QUESTION, 2026-11-10)
+
+Large `anno_app_tests`/`anno_render_tests` cases that take no explicit memory reservation can
+drop host free memory below the coordinator's stop line while they run, so a *different*,
+reserving test is refused with `pending=0` (no outstanding reservation explains the refusal) —
+the review's third observation. No build/test run was active when this was investigated (part P
+found one already running in `anno1503-MAP-EXTRACT-2-ci` and part C deliberately avoided
+competing with it), so no real peak-RSS numbers exist yet to size a reservation; inventing them
+would violate the evidence contract. This is an open QUESTION, not an implemented remedy:
+
+- **(a) Add a conservative fixed reservation to every currently-unreserved large case**, sized
+  from real peak-RSS numbers in the next full `LastTest.log` (any gate run on this PC produces
+  one). Matches the pattern `docs/perf/README.md` T10c F2 already uses for the render-corpus
+  path. **Recommended**: cheap, consistent with existing practice, and does not need new
+  coordinator logic.
+- **(b) A host-level floor** that refuses *all* new admissions once free memory drops under a
+  fixed threshold, independent of any test's own reservation. Catches a case this packet's
+  authors did not anticipate too, but needs its own tuning pass to avoid false refusals under
+  ordinary contention (owner applications, another worktree's build), and changes coordinator
+  behaviour for every client, not just the identified large tests.
+
+Until a real run's numbers answer this, do not add a reservation sized by guesswork.
+
+**Update, 2026-11-10 (Part C full MSVC run):** a clean full gate run now exists (2359/2359 passed,
+`build/msvc/Testing/Temporary/LastTest.log`), but it does not answer this QUESTION either - the
+`[anno-test memory]` admit/end lines it writes are only for tests that *request* a reservation,
+which is the opposite set from the unreserved large cases C-3 is about. Getting real peak-RSS
+numbers for those still needs a per-process memory sampler wrapped around ctest item execution,
+which does not exist yet; that is new tooling, not something this run's own log already contains.
+"No gate run was available" is no longer the blocker - "no sampler for the unreserved cases" is.

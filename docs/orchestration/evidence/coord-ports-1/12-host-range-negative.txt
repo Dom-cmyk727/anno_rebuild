@@ -1,0 +1,9 @@
+range: 27000	28999
+TEST CASE:  budget ports: this host's ephemeral range does not reach the fixed test ports
+/home/user/anno_rebuild/src/test_support/tests/budget_ports_test.cpp:82: ERROR: CHECK( band_outside(*range) ) is NOT correct!
+  logged: ephemeral range source: /proc/sys/net/ipv4/ip_local_port_range
+          ephemeral range 27000..28999, fixed test ports 27600..27999
+[doctest] test cases: 1 | 0 passed | 1 failed | 91 skipped
+restored: 32768	60999
+[doctest] assertions: 29 | 29 passed | 0 failed |
+[doctest] Status: SUCCESS!

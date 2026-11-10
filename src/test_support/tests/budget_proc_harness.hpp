@@ -22,7 +22,9 @@
 
 #include <doctest/doctest.h>
 
+#include "../src/coord_wire.hpp"
 #include "child_process.hpp"
+#include "test_ports.hpp"
 
 namespace {
 
@@ -30,6 +32,7 @@ using anno::test::child::Child;
 using anno::test::child::set_env;
 using anno::test::child::sibling;
 using namespace std::chrono_literals;
+namespace ports = anno::test::ports;
 
 std::string hex16(std::uint64_t value) {
     char text[17];
@@ -67,6 +70,7 @@ class Env {
 /// budget name, fast rechecks, spawning off unless `spawn` is "1".
 Vars client_vars(std::uint16_t port, const char* budget_id, const char* admit_seconds,
                  const char* spawn = "0") {
+    ports::require_test_port(port);
     return {{"ANNO_TEST_BUDGET_COORD", "local"}, {"ANNO_TEST_BUDGET_PORT", std::to_string(port)},
             {"ANNO_TEST_BUDGET_ID", budget_id},  {"ANNO_TEST_BUDGET_RECHECK_MS", "100"},
             {"ANNO_TEST_BUDGET_SPAWN", spawn},   {"ANNO_TEST_ADMIT_WAIT_S", admit_seconds}};
@@ -83,6 +87,7 @@ void remove_file(const std::filesystem::path& path) {
 Child start_coordinator(std::uint16_t port, const std::filesystem::path& journal,
                         std::optional<std::uint64_t> build, std::optional<std::uint64_t> compat,
                         std::string& listening) {
+    ports::require_test_port(port);
     const auto exe = sibling("anno_budget_coord");
     REQUIRE(std::filesystem::exists(exe));
     std::vector<std::string> args = {std::to_string(port), "local", "--journal", journal.string()};
@@ -259,6 +264,44 @@ std::vector<std::uint64_t> open_hold_bytes(const std::filesystem::path& journal)
 
 bool contains_value(const std::vector<std::uint64_t>& values, std::uint64_t wanted) {
     return std::find(values.begin(), values.end(), wanted) != values.end();
+}
+
+/// Whether something accepts a connection on 127.0.0.1:`port` (a bare connect, closed at once).
+/// Moved from budget_f5_test.cpp so the F3 handover cases can clean up the same way.
+inline bool listening(std::uint16_t port) {
+    namespace wire = anno::test::wire;
+    const wire::Native fd = wire::open_socket();
+    if (fd == wire::kInvalid) {
+        return false;
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(0x7f000001u);
+#if defined(_WIN32)
+    const bool up = ::connect(static_cast<SOCKET>(fd), reinterpret_cast<sockaddr*>(&address),
+                              sizeof(address)) == 0;
+#else
+    const bool up = ::connect(static_cast<int>(fd), reinterpret_cast<sockaddr*>(&address),
+                              sizeof(address)) == 0;
+#endif
+    wire::close_fd(fd);
+    return up;
+}
+
+/// Asks the idle coordinator on `port` to step aside, the documented handover: a client that
+/// speaks another compatibility version is refused and an idle coordinator then exits. The
+/// coordinator is found by its port, never by name.
+inline void step_aside(std::uint16_t port, const Vars& vars, const std::string& budget_path) {
+    Vars other = vars;
+    other.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "99");
+    other.emplace_back("ANNO_TEST_BUDGET_SPAWN", "0");
+    {
+        Env env(other);
+        Child refused = probe({"try", budget_path, "1"});
+        refused.line(5000ms);
+    }
+    REQUIRE(eventually([&] { return !listening(port); }, 15000ms));
 }
 
 } // namespace

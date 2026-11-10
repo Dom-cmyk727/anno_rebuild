@@ -16919,3 +16919,78 @@ so that work starts now; anything needing `ctest`/CI waits for host capacity.
   occupies the memory headroom this packet's own gates will need, because the packet explicitly reserves that
   worktree/branch for the orchestrator and the evidence contract forbids stopping a coordinator with live
   clients.
+
+## W4-NEXT-1 — Part C: coordinator root cause and fix — 2026-11-10 — status: IN PROGRESS
+
+**C-1 (CI flakes in `anno_test_support_tests`).** Cause: fixed test ports 47600-47999 sit inside
+Linux's default ephemeral range (32768-60999); under `ctest -j` another case's outgoing client
+socket can hold one of them, and the affected coordinator prints `BIND-FAILED`. This was already
+proven, not assumed: an unmerged branch (`origin/claude/dreamy-brahmagupta-10bjax`, commits
+`e5d0b877`/`85b8a761`/`0104011e`/`6f7faaa2`) moved every fixed port down to 27600-27999, below
+all three hosts' default ranges, with its own evidence package (`docs/orchestration/evidence/coord-ports-1/`,
+18 captured runs including a before/after ephemeral-range-narrowing stress test: 18 of 89 failed
+with `BIND-FAILED` on the old ports, 0 of 92 on the new ones). A sibling attempt,
+`ci-fix-map-route-1`, reserved the ports at the CI level instead and reproduced the same failures,
+but was reverted once the owner chose the test-binary-level fix. I cherry-picked the four
+`dreamy-brahmagupta` commits onto `task/W4-coord-1` (clean application; `src/test_support` had
+not diverged from that branch's base). This explains `F3 (D1, crash handover)`, `F3 (D1, silent)`,
+`F3 (D1, exact build)`, `O1`, `O3`, `V3`, `V4` from the review's table. `F4 (N3)` and `H1` are
+**not** claimed as explained by this fix (neither case binds a port in the way the explained
+cases do); left open, see docs/perf/README.md "W4-NEXT-1 part C disposition of the port fix".
+Also fixed, found while reviewing the Windows side: the probe's `silent` listener had
+`SO_REUSEADDR` on POSIX (already fixed, `e5d0b877`) but nothing on Windows; added
+`SO_EXCLUSIVEADDRUSE` to match `coord_server.cpp` exactly.
+
+**C-2 (coordinator-client hang past `ANNO_TEST_ADMIT_WAIT_S`).** Cause, read and confirmed in
+`coord.cpp::transact()`: once the admission deadline fires, a cancel is sent, but the loop then
+waits unboundedly for *some* reply, exiting only via `silent_too_long()` — which any frame resets,
+including an unrelated host-meter query/answer on the same connection. A coordinator stuck
+resolving this one request (the review's hypothesis: blocked in its own host-meter read) can
+answer other traffic forever while never resolving the request, so the client never gives up.
+**Fix:** `transact()` now bounds the wait for the cancel's own resolution to one more liveness
+period past the deadline, then gives up locally (`reason = "wait deadline, no server reply"`).
+**New regression test**, `budget_f3_test.cpp` "F3 (D1, deaf)", against a new probe mode `deaf`
+(serves hello, never resolves a reservation or its cancel, sends unrelated keepalives). Verified
+both ways on this host: with the `coord.cpp` change stashed and both `anno_budget_probe.exe` and
+`anno_test_support_tests.exe` rebuilt, the case **fails** (`REQUIRE( has(result, "RESULT 0") )`
+is false — the client never prints a result inside the test's 20 s bound, i.e. it genuinely
+hangs); restored and rebuilt, it **passes**, 8/8 assertions. Full `anno_test_support_tests`
+suite after the fix: **79/79 cases, 749/749 assertions, 0 failed** (local MSVC Debug build,
+`build\msvc`, this PC).
+
+**C-3 (no-reservation large tests).** Design QUESTION, not implemented — no gate run was active
+to measure real peak RSS (part P found one already running elsewhere and part C deliberately did
+not compete with it; by the time it finished, running one just to get numbers for this would have
+meant starting a full gate mid-part-C, which is step E's job, not C's). Recommendation: (a) a
+reservation sized from the next real `LastTest.log`'s peak-RSS numbers, matching the render-corpus
+pattern already in `docs/perf/README.md` (T10c F2); (b) a host-level floor, broader but needs its
+own tuning. Written up with both options in `docs/perf/README.md`; **no reservation added without
+real numbers**, per the evidence contract.
+
+**Not yet done — the two CI/host-scale acceptance items:**
+- Five consecutive full hosted-CI runs on `task/W4-coord-1` with `anno_test_support_tests` clean
+  on all three Linux jobs. Needs the branch pushed (done, `511ca98e`) and CI to actually run and
+  be watched across five pushes/reruns; not attempted in this pass.
+- One full MSVC run with the game files, `ANNO_GPU_ADAPTER=4090`, detached, with no stall and
+  every refusal explained. Not run in this pass (focused, local, non-game-file builds/tests only,
+  per the host-discipline rule while this worktree's own build tree was being created fresh).
+
+### Decisions and reasoning
+- Adopted (cherry-picked) the already-evidenced port fix rather than re-deriving or
+  re-measuring it from scratch: its evidence package already satisfies "a cause named with
+  evidence" and "the fix holds" for the port-sensitive cases, and re-running the same stress
+  test would reproduce, not add to, that evidence.
+- Did **not** claim `F4 (N3)` and `H1` are explained by the port fix just because they are in the
+  review's C-1 list: on inspection neither is a port-binding case in the pattern the proven cases
+  share, so claiming it fixed would be an unverified assertion of fidelity the evidence contract
+  forbids. Left open explicitly instead.
+- Chose to prove C-2 with a new deterministic fake-coordinator probe mode rather than trying to
+  reproduce the real coordinator's host-meter stall directly: the real stall needs a specific,
+  hard-to-force server-side blocking condition; the probe isolates the *client-side consequence*
+  (an unbounded wait given a connection that looks alive) precisely and repeatably, and the fix
+  addresses exactly that consequence regardless of why the server is stuck.
+- Did not start the CI-run or game-file-run acceptance items in this pass: they are long-running,
+  host-wide activities (five CI round-trips; a detached full MSVC suite with the GPU) better
+  scheduled as their own step once C's code-level fix is itself stable and pushed, matching the
+  packet's own "C's acceptance" being explicitly listed separately from "the cause is named and
+  fixed."

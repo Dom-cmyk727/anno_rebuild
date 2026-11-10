@@ -2428,3 +2428,28 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   for the highlight's exact rule. Until then this is explicitly NOT drawn, not silently assumed
   equivalent to the existing placement-preview highlight (which this project does have, for a
   different mode, with a different, unverified-here tint).
+
+## OQ-567: Kontor panel (row 2) has no measured background position/texture id (W4-NEXT-1 part U row 2, 2026-11-10)
+- **Status:** open (blocks row 2's CPU/GPU draw; this entry replaces a guess).
+- **Area:** UI / RE evidence.
+- **Question:** `docs/re/ui.md` section 9.1 records clicking the Kontor (`f15_kontor`/`r2_hud_kontor`)
+  and the text families it shows, but explicitly found no background match: "`INFOUNTERGRUND` id
+  33 does not SAD-match this panel (best mean 78.7)" - i.e. the one texture id tried for this
+  panel's plate was ruled out, and no replacement was found. Unlike row 18 (`VIEWINFOPIONIERMAIN_BK`
+  id 974 at (783, 252), `WOHNHAUS_PLATTE` id 883 at (779, 244) - both measured, section 9.7), row 2
+  has zero measured sprite-sad position for its own plate, nameplate, or goods column - only bare
+  `inc.txt` ACCESS names (`VIEWINFOSTADTTAB`, `VIEWINFOSTADTAUSBAUSTOP`, no position/size recorded
+  for either) and the ruled-out id 33. `data/ui/hud.txt`/`construction.txt` have no `kontor`
+  entries at all.
+- **What we know:** a plausible but unverified lead: `inc.txt` has `FREMDERKONTOR_UNTERGRUND` id
+  1511, 245 x 468 (`inc.txt:2278`) - a size within one pixel of row 18's own right-panel plate
+  (`VIEWINFOPIONIERMAIN_BK`, 245 x 467) - which would fit the same right-panel slot and was never
+  tried against `r2_hud_kontor`/`f15_kontor` in the section 9.1 pass. "Foreign Kontor" in its name
+  is also a plausible non-match (a different player's Kontor panel, not the player's own) -
+  nothing here distinguishes the two without a measurement. The panel's live data (stock levels,
+  buy/sell flags) is already sim-side (`SetTradeFlagCmd`/`SetTradeSlotCmd`, line 595), so row 2 is
+  blocked only on the chrome, not on data plumbing.
+- **How to resolve:** a fresh Wine/native capture of `r2_hud_kontor`, SAD-measuring id 1511 (and,
+  if that misses, a broader sprite-sad search as `UI.1.F2.1` ran for `B_Baukosten`) against the
+  right-panel region; until then row 2 draws no chrome - see `docs/orchestration/REPORTS.md`'s
+  Part U entry for this packet's own disposition (data-only, not a guessed layout).

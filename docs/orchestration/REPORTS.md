@@ -17044,4 +17044,84 @@ without the orchestrator's review, same as any other "I don't own this doc" boun
   to a screen this entry is not otherwise touching.
 - Did not edit ADR 0004 directly: it is a dispatched design document from an earlier packet, and
   this packet's own scope (§0.2) does not list it; the correction belongs here, in the executor's
+  report, for the orchestrator to fold in.
+
+## W4-NEXT-1 — Part U: row 2 evidence gap logged; row 18 scope found far larger than wiring — 2026-11-10 — status: QUESTION
+
+**Row 2 (Kontor panel):** no code/data change. `docs/re/ui.md` section 9.1 ruled out the one
+texture id it tried for this panel's background (`INFOUNTERGRUND` id 33, best SAD mean 78.7) and
+found no replacement; `data/ui/hud.txt`/`construction.txt` have zero `kontor` entries. Logged
+**OQ-567**: a plausible but *unverified* lead (`FREMDERKONTOR_UNTERGRUND` id 1511, 245 x 468 -
+within a pixel of row 18's own right-panel plate size - never tried against `r2_hud_kontor`), and
+the resolution path (a fresh Wine capture + SAD measurement). Not drawn; not guessed.
+
+**Row 18 (selected house/building):** found the remaining RE evidence is thinner than the packet
+briefing suggested, and - more importantly - that the *mechanism* this row needs does not exist
+anywhere in `src/app` yet, which changes the shape of this task from "wire existing evidence" (the
+pattern rows 19/5/10 and the key QUESTION all fit) to "design and build a small input subsystem".
+
+Evidence actually on file (`docs/re/ui.md` 9.7, `data/ui/hud.txt`): only two elements are
+sprite-sad measured for this specific screen - `pionier_bk` (`VIEWINFOPIONIERMAIN_BK` id 974,
+245 x 467 at (783, 252)) and `house_portrait` (`Pioniere.tex` id 1, 100 x 108 at (812, 355)). The
+doc note itself says the shot also shows "need icons" and a tab (`VIEWINFOPIONIER_TAB` id 975,
+42 x 46) but neither was individually SAD-positioned - drawing them would be a guess, same class
+of gap as OQ-561 (the construction info panel's cost icon) and OQ-563/564. The row 18 exit/rotate
+affordances the packet summary assumed were reusable (`infoexit`, `rotate_left`/`rotate_right`)
+are measured against a *different* plate - the construction menu's own placement info panel
+(`info_panel`, `VIEWINFOPIONIERMAIN_BK`'s sibling `INFOUNTERGRUND` id 33, origin (804, 302),
+220 x 466) - not `pionier_bk`'s origin (783, 252), 245 x 467. The two plates differ in both origin
+(21 px in x, 50 px in y) and size, so those pixel positions do not carry over; using them for row
+18 without a fresh measurement against `f15_selected_house` would be exactly the kind of silent
+guess this project's evidence rule forbids.
+
+Mechanism gap: `grep`ing `src/app/src/*.cpp` for mouse-button handling, screen-to-tile mapping, or
+a "building at this tile" query wired to input found none. The viewer today only drags (pan) and
+wheels (zoom) the mouse; every existing interaction with a building - placement, demolish, type
+cycling - goes through `DevTool`/`DevInput`'s keyboard-only interface, never a click. "Click the
+house to select it" (the row's own acceptance line) is therefore not a wiring task on top of
+existing infrastructure; it is a new feature: a screen-to-world tile mapping, a sim-side query for
+"what, if anything, occupies this tile" (whatever `World::create_building`'s own collision check
+already uses - not yet confirmed), a selection state the viewer holds, and disambiguating ESC
+(which this pass just made unconditionally quit the app, for the key-collision QUESTION above)
+from "deselect" once something is selected - a problem row 19's own evidence note raises too
+("ESC from Kontor" deselects there, but ESC right now always quits).
+
+**QUESTION for the owner/orchestrator:** row 18, as specified, is architecture-sized work (a new
+click-to-tile-to-selection subsystem plus the ESC-vs-quit disambiguation), not a same-pattern
+wiring task like the other W4-NEXT-1 Part U rows. Options:
+  (a) scope row 18 down to what the two measured elements support - draw `pionier_bk` +
+      `house_portrait` behind a new flag (mirroring `paused`/`demolish_mode`'s own pattern in
+      `draw_live_screen_xrgb`/`draw_live_screen_rgba`) wired to a dev-tool debug key as a stand-in
+      trigger (documented as a stand-in, not the eventual real click), so the chrome ships now and
+      the real input subsystem is a separate follow-up task;
+  (b) treat row 18 as its own follow-up task/packet (click-routing + selection state + ESC
+      disambiguation design, reviewed before implementation, per this project's "owner picks the
+      default" rule for anything that can change the game's feel - input handling is exactly that
+      kind of change) and report Part U done through row 10 plus the key QUESTION, with rows 2 and
+      18 both logged as open (OQ-567 and this entry) rather than built;
+  (c) build the full subsystem now without further check-in, accepting the risk of an
+      under-reviewed first cut of real mouse input.
+  **Recommendation: (b).** Rows 19/5/10/the key QUESTION fit this pass's own "wire existing,
+  evidence-backed chrome, stop and ask when evidence or scope runs out" pattern; row 18's missing
+  piece is not evidence, it is unbuilt input architecture, and building it unreviewed risks the
+  same kind of silent design choice (how clicks map to tiles, how selection interacts with pan/
+  drag, what ESC means once something is selected) this packet's own rules say should go to the
+  owner, not be guessed by the executor mid-task.
+
+Continuing to Part C's CI/game-file gates (the wall-clock-bound remainder of this packet) rather
+than starting row 18's subsystem unreviewed.
+
+### Decisions and reasoning
+- Did not draw row 18's two measured elements speculatively gated on a made-up key: decided this
+  is still a step toward option (c) (build input handling unreviewed) wrapped in a flag, not
+  genuinely safer than not building it - the packet's own quality bar (DoD item 5, independent
+  review before "complete") would not consider a selection screen with no selection mechanism a
+  real deliverable either way.
+- Did not reuse `info_panel`/`infoexit`/`rotate_left`/`rotate_right`'s existing measured positions
+  for row 18: confirmed by comparing origins/sizes in `data/ui/hud.txt` that they belong to a
+  different plate (the construction menu's placement info panel, not the selected-house panel) -
+  reusing them would be a guess dressed as evidence reuse.
+- Logged OQ-567 for row 2 rather than guessing `FREMDERKONTOR_UNTERGRUND`'s position: its size
+  match to row 18's plate is suggestive, not a measurement; `docs/re/ui.md` 9.1 already shows one
+  guess-by-similarity (`INFOUNTERGRUND`) for this same panel was wrong.
   own report, for the orchestrator to fold back into the ADR at the next review.

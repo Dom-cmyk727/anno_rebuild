@@ -81,6 +81,12 @@ struct ViewerHooks {
     /// `construction_menu`'s own hud.txt/construction.txt. The caller owns it. Unused when
     /// `construction_menu` is null.
     MaskLayout* construction_masks = nullptr;
+    /// ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION: `Classic` (the default) reserves
+    /// the window's own S/Q/D keys (today: pan down, quit, pan right) for the original screens
+    /// they would open once those screens exist (ADR 0004 rows 15/17/9, still placeholders) -
+    /// so they do nothing in `Classic` rather than collide; `Dev` keeps the pan/quit meaning.
+    /// Arrow keys (and A/W for pan) are unaffected in both surfaces.
+    UiSurface ui = UiSurface::Classic;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

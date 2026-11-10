@@ -16985,3 +16985,63 @@ for the owner.**
 - Wrote the playtest card now, in this part, rather than leaving it to part E: the packet's own
   instruction places "confirm... ready for the owner" inside part S, and the card only needed
   the fix this part already made (finding 3/the hover fix) to be accurate.
+
+## W4-NEXT-1 — Part U: the S/Q/D key collision QUESTION, plus a correction to ADR 0004's row 10 — 2026-11-10 — status: DONE
+
+**QUESTION, as the packet asked, with the recommendation implemented.**
+
+ADR 0004's screen table names three real collisions between the window's own developer
+controls and keys an original screen would want: **S** (ship list, row 15) collides with pan
+down; **Q** (rating, row 17) collides with quit; **D** (player list, row 9) collides with pan
+right. All three destination screens are still placeholders (out of this packet's scope by its
+own row list - "rows 6-9 and 15-17 stay placeholders").
+
+**Options considered:**
+- (a) Leave the collision: S/Q/D keep their current pan/quit meaning always, and the original
+  screens, once built, get different keys. Simplest, but breaks faithfulness to the original's
+  own key choices for no reason other than avoiding a change to working code.
+- (b) **Reserve S/Q/D for their original meaning, under a surface switch, doing nothing until
+  the destination screen exists — recommended, implemented.** Arrow keys (and A/W, already
+  dual-bound) keep panning available in both surfaces; Escape always quits. No functionality is
+  lost in `--ui classic` today (the reserved keys do nothing, same as before any screen used
+  them), and the original's own key choices are free to take over the moment rows 9/15/17 are
+  built, with no further key-scheme decision needed then.
+- (c) A third, independent key for Dev's pan/quit (e.g. arrow-keys-only, freeing every letter).
+  Changes more than the collision requires; arrow keys are already redundant with A/W/S/D today,
+  so removing S/Q/D's *letter* shortcuts in Classic loses nothing arrow keys don't already cover.
+
+**Implemented:** a new `--ui classic|dev` flag (`cli.hpp`/`cli.cpp`; it did not exist before this
+packet, although ADR 0004 R2 described it as already "implemented behind" it - that description
+was aspirational, not a fact about the code at the time). Default `Classic`. `viewer.cpp`'s key
+handler checks `hooks_->ui`: in `Classic`, S/Q/D are no-ops; in `Dev`, they keep today's
+pan/quit meaning. `ViewerHooks::ui` threads it from `main.cpp`'s parsed `Args` through to the
+window. New test, `app_test.cpp` "command line": the flag's default, both values, rejection of
+an invalid value, and that (unlike `--construction-menu`) it is accepted without `--play`.
+
+**Correction to ADR 0004's row 10.** While implementing this, `src/app/src/sdl_input.cpp` was
+read for every key the developer tool itself binds (needed to be sure S/Q/D's dev-tool-side
+bindings, if any, were accounted for). It binds **P** to `PrevType` (cycle the armed type
+backward) whenever the tool is `enabled()` - and ADR 0004's row 10 states "the viewer's own
+developer controls do not bind P, so the key is free." That is false as the code stands now:
+P is bound, conditionally (only while the developer tool is toggled on via B), which is exactly
+the state a build/demolish playtest is in most of the time. This is a real collision ADR 0004's
+own table does not list, between **P** (pause, row 10) and the developer tool's `PrevType`. It
+is not fixed in this entry - row 10's own pause work is a separate, not-yet-released slice of
+part U - but the ADR's claim is now known wrong and should not be relied on. Recorded here
+rather than silently edited into the ADR (it is not this packet's own document to rewrite
+without the orchestrator's review, same as any other "I don't own this doc" boundary).
+
+### Decisions and reasoning
+- Picked (b) over (a)/(c): it is the only option that is both faithful (the original's own keys
+  go to the original's own screens, with no remapping needed later) and zero-cost today (nothing
+  the project currently does with S/Q/D is lost, since arrow keys already duplicate every one of
+  them).
+- Did not implement rows 9/15/17 themselves to "use" the reserved keys: the packet's own row list
+  stops at row 2 and explicitly keeps 6-9/15-17 as placeholders; reserving the keys is all this
+  QUESTION asked for.
+- Did not change pause's own key (Space) to P, despite finding P's collision: that is row 10's
+  own scope (not yet started in this pass), and conflating the two risks a half-finished change
+  to a screen this entry is not otherwise touching.
+- Did not edit ADR 0004 directly: it is a dispatched design document from an earlier packet, and
+  this packet's own scope (§0.2) does not list it; the correction belongs here, in the executor's
+  own report, for the orchestrator to fold back into the ADR at the next review.

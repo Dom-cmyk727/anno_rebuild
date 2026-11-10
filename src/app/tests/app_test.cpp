@@ -334,6 +334,22 @@ TEST_CASE("command line") {
     const auto cm_off = parse_args({"--play", "x.scp", "--construction-menu", "off"});
     REQUIRE(cm_off.has_value());
     CHECK_FALSE(cm_off->construction_menu);
+
+    // --ui classic|dev (ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION): default
+    // Classic, parsed independently of --play (unlike --construction-menu, nothing about the
+    // S/Q/D key scheme is meaningless on --view - a window either surface can open).
+    const auto ui_default = parse_args({"--play", "x.scp"});
+    REQUIRE(ui_default.has_value());
+    CHECK(ui_default->ui == anno::app::UiSurface::Classic);
+    const auto ui_dev = parse_args({"--play", "x.scp", "--ui", "dev"});
+    REQUIRE(ui_dev.has_value());
+    CHECK(ui_dev->ui == anno::app::UiSurface::Dev);
+    const auto ui_classic = parse_args({"--play", "x.scp", "--ui", "classic"});
+    REQUIRE(ui_classic.has_value());
+    CHECK(ui_classic->ui == anno::app::UiSurface::Classic);
+    CHECK_FALSE(parse_args({"--play", "x.scp", "--ui", "both"}));
+    CHECK(parse_args(
+        {"--view", "x.scp", "--ui", "dev"})); // not --play-only, unlike --construction-menu
 }
 
 TEST_CASE("zoom over derived levels: the range follows the last level and the minimum tile") {

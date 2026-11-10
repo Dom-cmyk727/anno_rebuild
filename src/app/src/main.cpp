@@ -442,6 +442,7 @@ int run(const std::vector<std::string>& raw) {
     std::unique_ptr<anno::app::OpeningSaver> saver;
     anno::app::OpeningHooks opening_hooks;
     anno::app::ViewerHooks hooks;
+    hooks.ui = args->ui;
     const anno::app::ViewerHooks* hooks_ptr = nullptr;
     std::unique_ptr<anno::app::PlayFollower> follow;
     // The developer building tool (round ee; B in the window): its setup is read from the world

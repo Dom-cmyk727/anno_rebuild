@@ -1157,26 +1157,44 @@ void Viewer::handle(const SDL_Event& e) {
     case SDL_EVENT_KEY_DOWN: {
         const auto [w, h] = view_size();
         const double dx = w / 4.0, dy = h / 4.0;
+        // ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION: in the Classic surface
+        // (the default), S/Q/D are reserved for the original screens they would open once those
+        // screens exist (rows 15 ship list, 17 rating, 9 player list - all still placeholders,
+        // out of this packet's scope) rather than keep doubling as pan/quit; only Dev keeps that
+        // meaning. Arrow keys (and A/W) pan in both surfaces; Escape always quits.
+        const bool classic = hooks_ == nullptr || hooks_->ui == UiSurface::Classic;
         switch (e.key.key) {
         case SDLK_ESCAPE:
-        case SDLK_Q:
             running_ = false;
+            break;
+        case SDLK_Q:
+            if (!classic) {
+                running_ = false;
+            }
             break;
         case SDLK_LEFT:
         case SDLK_A:
             pan(-dx, 0);
             break;
         case SDLK_RIGHT:
-        case SDLK_D:
             pan(dx, 0);
+            break;
+        case SDLK_D:
+            if (!classic) {
+                pan(dx, 0);
+            }
             break;
         case SDLK_UP:
         case SDLK_W:
             pan(0, -dy);
             break;
         case SDLK_DOWN:
-        case SDLK_S:
             pan(0, dy);
+            break;
+        case SDLK_S:
+            if (!classic) {
+                pan(0, dy);
+            }
             break;
         case SDLK_SPACE:
             toggle_pause();

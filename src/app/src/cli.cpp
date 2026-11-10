@@ -110,6 +110,14 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             } else {
                 return std::nullopt;
             }
+        } else if (a == "--ui") {
+            if (v == "classic") {
+                out.ui = UiSurface::Classic;
+            } else if (v == "dev") {
+                out.ui = UiSurface::Dev;
+            } else {
+                return std::nullopt;
+            }
         } else if (a == "--layout") {
             out.layout = utf8_path(v);
         } else if (a == "--commands") {

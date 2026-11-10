@@ -2024,3 +2024,90 @@ F3 silent and T1 failed on their second repetition after a pass (the repeat caus
 At the default range this tree passed `ctest -j 4 --repeat until-fail:20`: 86 entries executed
 and passed 20 times each, 6 skip on Linux (F3 D2 and F4 N4 need the Windows/WSL meter; T5, H7,
 V1, V2 are opt-in). Windows and macOS were not run for this package.
+
+**W4-NEXT-1 part C disposition of the port fix.** This section's port move (`e5d0b877`,
+`85b8a761`, `0104011e`, `6f7faaa2`, unmerged on `origin/claude/dreamy-brahmagupta-10bjax`) was
+re-made onto `task/W4-coord-1` from `bd760031` (cherry-picked; `src/test_support` had not
+diverged since this branch's base, so it applied with no conflicts). It explains C-1 for every
+port-sensitive case named in the 2026-11-08 review table: `F3 (D1, crash handover)`,
+`F3 (D1, silent)`, `F3 (D1, exact build)`, `O1`, `O3`, `V3`, `V4`. A sibling attempt,
+`ci-fix-map-route-1` (`2dd2eb5e`, reserving the ports at the CI level with
+`sysctl net.ipv4.ip_local_reserved_ports`), reproduced the same `BIND-FAILED` family and fixed
+it the same way, but was reverted (`49ffcee6`) once the owner chose this test-binary-level fix
+instead (portable; no CI-only `sysctl`, no root). `F4 (N3)` ("speaks another protocol") and `H1`
+are not proven port-sensitive by this evidence alone — `F4 (N3)` is a real-meter/closefrom case
+and `H1` a pipeline case, neither binding a port that collides under `ctest -j` the way F3's
+handover/crash-handover/silent cases do — so they are left open rather than claimed fixed by
+this change; if either recurs on `task/W4-coord-1`'s CI runs (acceptance below), it needs its
+own cause.
+
+One more Windows-only gap closed here: the probe's `silent` listener set `SO_REUSEADDR` on
+POSIX (this section, "repeat stability") but nothing on Windows. `coord_server.cpp`'s own
+listener sets `SO_EXCLUSIVEADDRUSE` there; the probe now matches it. Without this, a repeated
+`ctest --repeat` of "F3 (D1, silent)" on Windows can fail to bind for the same reason the POSIX
+side was fixed for.
+
+## Coordinator C-2 — a client's wait has no bound once its deadline fires (2026-11-10)
+
+**Problem.** `coord.cpp::transact()` sends a `kOpCancel` once `detail::admit_deadline()` passes,
+but then keeps looping, waiting for *some* reply to the original request. The only exit besides
+that reply is `silent_too_long()`, which checks time since the connection's last received frame
+of *any* kind — and any frame restarts that clock, including a `kOpPing`'s connection staying
+alive, or (in the real coordinator) a `kStSample`/`kStRefresh` host-meter query/answer on the
+same socket. A coordinator that is Served (answered hello) but is itself stuck resolving this
+one request — the review's hypothesis for the two stalled game-file runs
+([2026-11-08-w4-ui-2-merge.md](../orchestration/reviews/2026-11-08-w4-ui-2-merge.md) §3-4),
+blocked in its own host-meter read, for instance — can keep the connection looking alive
+forever while never resolving the request, so the client waits past
+`ANNO_TEST_ADMIT_WAIT_S` with no bound.
+
+**Fix.** `transact()` now records `cancel_deadline = now + liveness()` when the cancel is sent,
+and checks it at the top of every loop iteration regardless of what kind of frame arrived. If
+the request still has not resolved (admitted, refused, or dead) by `cancel_deadline`, the client
+gives up locally: `reason = "wait deadline, no server reply"`. This adds one bounded wait (at
+most one more liveness period after the existing deadline) to the one case this is meant to
+catch, and changes nothing for every case that already resolves before `cancel_deadline`
+(including the existing "cancelled" diagnostic a few lines below, which still fires first when
+the coordinator does answer the cancel in time).
+
+**Regression test.** A new probe mode, `deaf` (`budget_probe.cpp`): it serves the hello
+handshake normally (so the client is Served, matching the real stuck-coordinator shape more
+closely than `silent`, which never answers hello at all), then never answers a reservation or
+its cancel, while still sending a keepalive frame with an unmatched request id every 100 ms —
+the same effect an unrelated host-meter exchange has on `last_rx`. The new case,
+`budget_f3_test.cpp` "F3 (D1, deaf)", sets a 2 s admission bound and a 300 ms liveness period and
+asserts the client's `RESULT` line arrives (bounded by the test's own 20 s `want()`, so a
+regression fails the case instead of hanging the suite) with `reason=wait deadline, no server
+reply`. Verified both ways on this host (MSVC, `anno_test_support_tests.exe --test-case="*deaf*"`
+rebuilding both the test binary and `anno_budget_probe.exe` each time): with the `coord.cpp`
+change stashed, the case fails (`REQUIRE( has(result, "RESULT 0") )` is false — the client never
+prints a result within the 20 s bound); restored, it passes, 8/8 assertions. The full
+`anno_test_support_tests` suite passed 79/79 cases, 749/749 assertions with the fix in place.
+
+**Not reproduced here:** the real coordinator actually blocking on its own host-meter read
+under load. The `deaf` probe demonstrates the *consequence* (an unbounded client wait given a
+connection that looks alive but never resolves) with a direct, deterministic cause, not that
+specific server-side blocking path; §3-4 of the review remains the only evidence for that half.
+
+## Coordinator C-3 — no-reservation large tests (QUESTION, 2026-11-10)
+
+Large `anno_app_tests`/`anno_render_tests` cases that take no explicit memory reservation can
+drop host free memory below the coordinator's stop line while they run, so a *different*,
+reserving test is refused with `pending=0` (no outstanding reservation explains the refusal) —
+the review's third observation. No build/test run was active when this was investigated (part P
+found one already running in `anno1503-MAP-EXTRACT-2-ci` and part C deliberately avoided
+competing with it), so no real peak-RSS numbers exist yet to size a reservation; inventing them
+would violate the evidence contract. This is an open QUESTION, not an implemented remedy:
+
+- **(a) Add a conservative fixed reservation to every currently-unreserved large case**, sized
+  from real peak-RSS numbers in the next full `LastTest.log` (any gate run on this PC produces
+  one). Matches the pattern `docs/perf/README.md` T10c F2 already uses for the render-corpus
+  path. **Recommended**: cheap, consistent with existing practice, and does not need new
+  coordinator logic.
+- **(b) A host-level floor** that refuses *all* new admissions once free memory drops under a
+  fixed threshold, independent of any test's own reservation. Catches a case this packet's
+  authors did not anticipate too, but needs its own tuning pass to avoid false refusals under
+  ordinary contention (owner applications, another worktree's build), and changes coordinator
+  behaviour for every client, not just the identified large tests.
+
+Until a real run's numbers answer this, do not add a reservation sized by guesswork.

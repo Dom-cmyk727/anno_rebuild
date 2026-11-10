@@ -645,8 +645,10 @@ struct Handoff {
         REQUIRE(has(want(holder, "READY", 15000ms, &seen), "READY 1"));
     }
     /// One request of 80 bytes (or the second CPU token) from a client of the given version.
-    /// True when it was admitted at once.
-    bool asks(bool v3_client) {
+    /// True when it was admitted at once. `seen`, when given, collects the child's own output
+    /// (orchestrator review finding 4, 2026-11-10: a failure here used to show only the derived
+    /// bool, not the message that produced it - `refused()` logs this before its own CHECK).
+    bool asks(bool v3_client, std::string* seen = nullptr) {
         Vars use = vars;
         if (v3_client) {
             use.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "3");
@@ -654,10 +656,14 @@ struct Handoff {
         Env env(use);
         if (kind == Kind::Memory) {
             Child check = probe({"try", budget_path, "80"});
-            return has(want(check, "claim=", 15000ms), "claim=1");
+            return has(want(check, "claim=", 15000ms, seen), "claim=1");
         }
         Child waiter = probe({"cpu-waiter", budget_path, "1"});
-        return has(waiter.line(2500ms), "ADMITTED 1");
+        const std::string line = waiter.line(2500ms);
+        if (seen != nullptr) {
+            *seen = line;
+        }
+        return has(line, "ADMITTED 1");
     }
     bool admitted_after_exit(bool v3_client) {
         holder.stop();
@@ -681,7 +687,10 @@ struct Handoff {
 void refused(Handoff& h, bool v3_client, const char* where) {
     INFO("after " << std::string(where) << ", a request of the " << (v3_client ? "v3" : "v4")
                   << " client must not be admitted beside the live holder");
-    CHECK_FALSE(h.asks(v3_client));
+    std::string seen;
+    const bool admitted = h.asks(v3_client, &seen);
+    INFO("message received: " << seen);
+    CHECK_FALSE(admitted);
 }
 
 void run_h1(Kind kind, std::uint16_t port, const char* name, const char* old) {

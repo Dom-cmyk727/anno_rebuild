@@ -17130,3 +17130,64 @@ new test is a genuine regression test, not a tautology. Two concerns, both addre
   executor, not asserted from memory, which is exactly the independent verification the reviewer
   is asking for - it is just a different kind of independence (a different data source: the CI
   API) than a second reader of the diff can provide on their own.
+
+## W4-NEXT-1 — Part C: the orchestrator's interim review, findings 2-4 — 2026-11-10 — status: IN PROGRESS
+
+The orchestrator's own interim review ([review](../reviews/2026-11-10-w4-next-1-interim.md)),
+read from evidence it classified and copied itself (the game-file run's log, CI artifacts, the
+recorded stall snapshot), found three more things to fix in Part C before part E. All three are
+addressed here.
+
+**Finding 2 (blocker): `F3 (D1, deaf)` died with SIGPIPE on macOS, not just flaked.** Root cause,
+confirmed by reading every other probe mode in `budget_probe.cpp`: `silent_listener` never writes
+to its accepted connections, so it was never exposed to this; `deaf_listener` writes repeatedly
+(a hello reply, then a keepalive every 100 ms) and the client closes its end once its own 2 s
+admission bound fires, so a later `send_all` there hits a closed peer. `send_all`'s `MSG_NOSIGNAL`
+(`coord_wire.hpp`) only suppresses the resulting signal on Linux - macOS does not support that
+flag - and nothing had put this process's `SIGPIPE` disposition to ignore (`startup_sockets()`
+does that for the coordinator/client paths; `deaf_listener` hand-rolls its own socket setup and
+never called it). Fix: call `startup_sockets()` at the top of `deaf_listener`, matching the real
+paths. Verified on this host (Windows, where SIGPIPE does not exist, so this only re-confirms no
+regression): `*deaf*` run 5/5 clean, full suite 79/79 cases, 751/751 assertions (two new
+assertions from finding 4 below). **Not verified on macOS** - no macOS host available here; the
+mechanism is understood and the fix matches the project's own existing pattern exactly, but the
+repeated-run proof the review suggested (`ctest -R deaf --repeat until-fail:50`) needs a POSIX
+host with SIGPIPE semantics, which this PC is not.
+
+**Finding 3: C-2's link to the recorded stall, analysed and reported UNPROVEN.** Read
+`cache/main-gamefile-96de6bca/stall2-snapshot.txt` and `coord-47631.journal.at-stall2` directly.
+The journal is balanced (`A 4195/R 4195`, `C 4194/D 4194` - no admitted-and-stuck reservation at
+the snapshot), and the snapshot is 22 minutes into a 3,600 s admission bound - before the point
+`transact()` would even send a cancel, let alone wait on the cancel's own reply. So this evidence
+does not show the client inside the phase C-2's `cancel_deadline` bound covers; it shows the
+client still in its ordinary, already-bounded wait while the host meter (also CPU-idle) stays
+stuck. Also answered the review's follow-up ("why would a frozen meter still produce frames"):
+the coordinator treats the meter as an ordinary client connection, not a blocking call on its own
+main loop, so a stuck meter only leaves `meter_epoch` stale (admission never becomes `ready`) while
+the event loop keeps sending the waiting client ordinary `kStWait` frames regardless - which is
+also why `silent_too_long()` never trips here. Full analysis in `docs/perf/README.md`'s C-2
+section. **Conclusion stays UNPROVEN**, as the review allowed: the fix is a verified mitigation
+for the class of hang it targets, not shown to be what this specific historical stall needed.
+
+**Finding 4: F4 (N3) and H1 now log the message they received.** `F4 (N3)` already did
+(`budget_f4_test.cpp` lines 379/383/395: `INFO` captures the spawn reason, the coordinator pid,
+and the full `/proc/<pid>/fd` listing before the two closing `CHECK`s). `H1` (via the shared
+`refused()` helper, `budget_f5_test.cpp`) did not: `asks()` discarded the child's own output, so
+a failure showed only the derived bool and a static scenario description, never the actual
+`claim=`/`ADMITTED` line that produced it. Fixed: `asks()` now takes an optional `std::string*
+seen` and `refused()` passes one, logging it via `INFO` before its `CHECK_FALSE`. Not touched:
+`H6`/`H8`'s own bare `CHECK_FALSE(h.asks(...))` calls, outside this finding's named scope
+(F4 (N3), H1).
+
+### Decisions and reasoning
+- Did not attempt to reproduce the macOS SIGPIPE directly on this host: SIGPIPE is POSIX-only and
+  this PC has no macOS access; fixed the confirmed mechanism (verified by reading every call site
+  that touches SIGPIPE/MSG_NOSIGNAL/startup_sockets in this codebase) rather than guess at a
+  second cause without being able to reproduce either the bug or its absence after the fix.
+- Reported finding 3 as UNPROVEN rather than stretching the journal evidence to fit C-2: the
+  journal's own balance and the 22-minute/3,600 s-bound arithmetic are concrete, checkable facts
+  that point away from the cancel-phase, not toward it - asserting a match the evidence does not
+  support would be worse than the gap the review already flagged.
+- Extended `asks()`'s signature with a default-null out-parameter rather than changing every call
+  site: `H6`/`H8` keep compiling unchanged, and only `refused()` (used by H1 and others named in
+  the review) gained the logging.

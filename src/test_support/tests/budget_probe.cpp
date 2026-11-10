@@ -264,6 +264,19 @@ int silent_listener(std::uint16_t port) {
 /// locally once the cancel goes unanswered for one more liveness period.
 int deaf_listener(std::uint16_t port) {
     using namespace anno::test::wire;
+    // Orchestrator review finding 2, 2026-11-10: unlike silent_listener (which never writes to
+    // its accepted connections, so SIGPIPE never arose for it), this listener writes repeatedly
+    // (the hello reply, then a keepalive every 100 ms) and the client gives up and closes its end
+    // once its own admission bound fires - so a later send() here hits a closed peer. send_all's
+    // MSG_NOSIGNAL (coord_wire.hpp) only suppresses the signal on Linux; macOS does not support
+    // that flag, and nothing in this process had put SIGPIPE's disposition to ignore (the
+    // coordinator and client processes get that from startup_sockets(), which this hand-rolled
+    // listener never called) - so the default disposition (terminate) killed the whole process
+    // on macOS mid-write (run 42820583088, cpp (macos-clang), SIGPIPE at test #76, 2.54 s in,
+    // matching the 2 s admission bound plus the 0.3 s liveness period). Call it here too, exactly
+    // as the real coordinator/client paths do, so this process's sends degrade to a normal
+    // send_all failure (already handled below, `return;`) instead of a signal.
+    startup_sockets();
 #if defined(_WIN32)
     WSADATA data{};
     if (WSAStartup(MAKEWORD(2, 2), &data) != 0) {

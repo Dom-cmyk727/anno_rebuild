@@ -2089,6 +2089,46 @@ under load. The `deaf` probe demonstrates the *consequence* (an unbounded client
 connection that looks alive but never resolves) with a direct, deterministic cause, not that
 specific server-side blocking path; §3-4 of the review remains the only evidence for that half.
 
+**The recorded stall (`cache/main-gamefile-96de6bca/stall2-snapshot.txt`,
+`coord-47631.journal.at-stall2`) does not show the client inside the phase C-2 bounds, on the
+evidence available.** Orchestrator review finding 3, 2026-11-10, asked this to be shown or
+reported UNPROVEN.
+
+- The journal at the snapshot is balanced: `A 4195 / R 4195` (every memory hold admitted has a
+  matching release) and `C 4194 / D 4194` (every CPU claim has a matching release) - the snapshot
+  itself says so ("pid 32352 released everything"). An admitted-but-stuck reservation would show
+  as an `A` with no following `R`; there is none. So at the moment captured, pid 32352 holds no
+  budget reservation at all - whatever it is blocked on is not an admission the coordinator has
+  already granted and then gone silent about.
+- Both the stalled process (pid 32352, 27.83 s CPU, unchanged for the observed 30 s) and the
+  coordinator's own meter (PowerShell pid 65816, 8.31 s CPU, also unchanged for 30 s) are
+  genuinely idle, not spinning - consistent with the meter being stuck (the review's own §3-4
+  hypothesis for this run), not with the client busy-waiting.
+- The snapshot is **22 minutes into a 3,600 s (`ANNO_TEST_ADMIT_WAIT_S`) admission bound** for
+  this run. `transact()` only sends `kOpCancel` and starts the new `cancel_deadline` bound once
+  `detail::admit_deadline()` - the full 3,600 s - passes. At 22 minutes the client has not
+  reached that point yet, so it cannot yet be in the cancel-sent, waiting-for-the-cancel's-own-
+  reply phase this fix bounds; it is still in its *ordinary*, already-bounded wait loop.
+- Why a frozen meter process would still leave frames flowing (the review's own follow-up
+  question): the coordinator treats the PowerShell meter as an ordinary client connection
+  (`coord_server.cpp`'s `Meters`/`SClient::meter`), asked for readings over the same frame
+  protocol, not read with a blocking call on the coordinator's own main loop. A meter that stops
+  answering `kStRefresh` only leaves `meter_epoch` stale, so `admission_ready` (line ~1001,
+  `c.ready = ... m->meter_epoch == budget.epoch`) stays false for budgets on that domain forever
+  - but the coordinator's event loop keeps running regardless, and keeps sending the *waiting*
+  client ordinary `kStWait` frames (`coord_server.cpp` lines ~1149/1249/1422) each time it is next
+  considered, which is exactly why `silent_too_long()` never trips here: frames keep arriving,
+  they are just never the resolving one.
+
+**Conclusion: UNPROVEN that this specific recorded stall reached the phase C-2's bound covers.**
+The evidence is consistent with the client legitimately still inside its own 3,600 s bound while
+the host meter stays stuck (matching §3-4's hypothesis for *why* admission never resolves), not
+with it already having tried and failed to cancel. Had this same run been left running past the
+full 3,600 s, C-2's bound is the mechanism that would have recovered it instead of hanging
+forever - but this snapshot, taken at the 22-minute mark, is not itself evidence of that later
+moment. The fix stands on its own merits (a genuine, demonstrated hazard via the `deaf` probe);
+its link to this particular historical stall stays open.
+
 ## Coordinator C-3 — no-reservation large tests (QUESTION, 2026-11-10)
 
 Large `anno_app_tests`/`anno_render_tests` cases that take no explicit memory reservation can

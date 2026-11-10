@@ -9,7 +9,55 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  # What kind of change this run checks. A change that touches only docs/ or the
+  # Markdown files at the repository root (CLAUDE.md, README.md) builds and tests
+  # nothing: no build step, test or reference script reads those files (checked
+  # 2026-11-10). Everything else (src/, tools/, data/, fixtures/, .github/, ...)
+  # is code. Any doubt (no usable base, an empty diff, a git error) means code.
+  # Base: a pull request's base; for main, the commit before the push; for any
+  # other branch, its merge base with main, so a branch is always checked as a
+  # whole against main and a later docs-only commit cannot hide an earlier one.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: classify
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -uo pipefail
+          code=true
+          base=
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push)
+              if [ "$REF" = refs/heads/main ]; then base="$BEFORE"
+              else base=$(git merge-base origin/main HEAD 2>/dev/null || true); fi ;;
+          esac
+          # --no-renames: a file moved out of src/ into docs/ lists its old path too.
+          if [ -n "$base" ] && [ "$base" != 0000000000000000000000000000000000000000 ] \
+             && git cat-file -e "$base^{commit}" 2>/dev/null \
+             && git diff --name-only --no-renames "$base" HEAD > changed.txt \
+             && [ -s changed.txt ]; then
+            echo "files changed since $base: $(wc -l < changed.txt)"
+            head -n 100 changed.txt
+            if ! grep -qvE '^docs/|^[^/]+\.md$' changed.txt; then code=false; fi
+          else
+            echo "no usable base (event $EVENT, ref $REF, base '${base}'): a code change"
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +70,8 @@ jobs:
 
   test:
     # Game files are never available on CI; corpus tests skip themselves.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -35,6 +85,8 @@ jobs:
 
   build-macos:
     # macOS is a development host only: build check, no tests, no release.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +98,8 @@ jobs:
   # No game files on CI: corpus tests skip; tools/agree.py checks the
   # synthetic fixtures against the Python references.
   cpp:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -199,9 +253,41 @@ jobs:
           done
 
   cpp-format:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       # Pinned to the version used locally (formatting differs between versions).
       - run: pip install clang-format==23.1.3
       - run: find src -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror
+
+  # The one required check of main's branch protection (2026-11-10,
+  # docs/orchestration/STATUS.md "Landing on main"). It passes only when every
+  # job above succeeded, or, for a docs-only change, was skipped. It runs even
+  # after a failure or cancellation (always()), because GitHub counts a skipped
+  # required check as passed. Re-running failed jobs re-runs this one too.
+  gate:
+    name: gate
+    if: always()
+    needs: [changes, lint, test, build-macos, cpp, cpp-format]
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        env:
+          CODE: ${{ needs.changes.outputs.code }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "code change: '${CODE}'"
+          python3 -I -c 'import json, os; [print(k, v["result"]) for k, v in json.loads(os.environ["NEEDS"]).items()]' > results.txt
+          cat results.txt
+          fail=0
+          case "$CODE" in true|false) ;; *) echo "::error title=gate::no change classification"; fail=1 ;; esac
+          while read -r job result; do
+            if [ "$result" = success ]; then continue; fi
+            if [ "$job" != changes ] && [ "$result" = skipped ] && [ "$CODE" = false ]; then continue; fi
+            echo "::error title=gate::${job}: ${result}"
+            fail=1
+          done < results.txt
+          exit "$fail"

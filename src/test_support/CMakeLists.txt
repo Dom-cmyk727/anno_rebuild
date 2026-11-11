@@ -30,6 +30,22 @@ target_compile_definitions(anno_test_support PRIVATE ANNO_COORD_BUILD=0x${ANNO_C
 message(STATUS "Test budget coordinator build ${ANNO_COORD_BUILD_ID}")
 
 if(ANNO_BUILD_TESTS)
+  # Opt-in peak-memory launcher (ANNO_TEST_PEAK_MEMORY, C-3) and the helper of its contract test.
+  # Always built, so every CI platform compiles and tests it.
+  add_executable(anno_peak_launcher src/peak_launcher.cpp)
+  anno_target_defaults(anno_peak_launcher)
+  if(WIN32)
+    target_link_libraries(anno_peak_launcher PRIVATE psapi)
+  endif()
+  add_executable(anno_peak_alloc tests/peak_alloc.cpp)
+  anno_target_defaults(anno_peak_alloc)
+  add_test(NAME peak_launcher_contract
+           COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/peak_launcher_test.py
+                   $<TARGET_FILE:anno_peak_launcher> $<TARGET_FILE:anno_peak_alloc>)
+  add_test(NAME peak_report_contract
+           COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/peak_report.py --selftest)
+  set_tests_properties(peak_launcher_contract peak_report_contract PROPERTIES LABELS "workflow")
+
   add_executable(anno_budget_coord src/budget_coord.cpp)
   target_link_libraries(anno_budget_coord PRIVATE anno_test_support)
   anno_target_defaults(anno_budget_coord)

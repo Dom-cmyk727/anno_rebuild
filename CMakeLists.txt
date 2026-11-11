@@ -14,6 +14,15 @@ option(ANNO_BUILD_VIEWER "Build the windowed viewer (SDL3)" ON)
 option(ANNO_BUILD_GPU "Build the GPU renderer (wgpu-native, prebuilt)" ON)
 option(ANNO_SYSTEM_SDL "Use an installed SDL3 instead of the pinned source" OFF)
 option(ANNO_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer (GCC/Clang)" OFF)
+# Opt-in (C-3): every doctest case runs under anno_peak_launcher, which prints its peak memory
+# ("[anno-test peak] ..."). The default comes from the environment variable of the same name at
+# the first configure; off unless it is 1/ON. tools/test/peak_report.py tabulates a run's log.
+if(DEFINED ENV{ANNO_TEST_PEAK_MEMORY} AND "$ENV{ANNO_TEST_PEAK_MEMORY}")
+  set(anno_peak_default ON)
+else()
+  set(anno_peak_default OFF)
+endif()
+option(ANNO_TEST_PEAK_MEMORY "Run every doctest case under the peak-memory launcher" ${anno_peak_default})
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 include(AnnoWarnings)
@@ -99,6 +108,12 @@ if(ANNO_BUILD_TESTS)
     set(props ${ARG_PROPERTIES})
     if(ARG_UBSAN_HALT AND ANNO_SANITIZE AND NOT MSVC)
       list(PREPEND props ENVIRONMENT "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+    endif()
+    if(ANNO_TEST_PEAK_MEMORY)
+      # doctest's discovery runs the cases (and its listing) through the target's emulator.
+      set_property(TARGET ${target} PROPERTY CROSSCOMPILING_EMULATOR
+                   "$<TARGET_FILE:anno_peak_launcher>")
+      add_dependencies(${target} anno_peak_launcher)
     endif()
     set(heavy_labels heavy ${ARG_LABELS})
     if(ARG_LABELS)

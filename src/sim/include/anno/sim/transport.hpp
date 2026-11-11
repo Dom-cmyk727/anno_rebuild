@@ -28,6 +28,7 @@
 #include <anno/sim/figure.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/ore_lookup_stats.hpp>
 #include <anno/sim/tick.hpp>
 #include <anno/sim/types.hpp>
 
@@ -112,6 +113,9 @@ struct SourceChoice {
     BuildingId building;
     GoodsId goods = 0;
     std::vector<TileXY> path;
+    /// The goal sub-cell the search selected (an entrance point of the source, on the path's last
+    /// tile): the walk ends THERE (subcell_centre), docs/sim/iron-tools.md T3.2.
+    std::uint32_t end_col = 1, end_row = 1;
 };
 
 /// MAP-ECON-1 E3/E4: a diagnostic tally of the harvest workers and their farms (measurement and
@@ -140,12 +144,28 @@ struct ForestryStats {
         std::uint64_t consumed_88 = 0, made_88 = 0;
     };
     std::map<BuildingId, FarmLedger> farms;
+    /// MAP-NEEDS-2 N3: the same for a workshop, per input and per output line (diagnostic).
+    struct WorkshopLedger {
+        std::vector<std::uint64_t> consumed_88, made_88;
+    };
+    std::map<BuildingId, WorkshopLedger> workshops;
     /// MAP-SUPPLY-1 S4: the same for a small farm, per line (what each production step used of the
     /// raw stock and made of the output; credits and loads are other terms).
     struct SmallFarmLedger {
         std::uint64_t consumed_88[2] = {0, 0}, made_88[2] = {0, 0};
     };
     std::map<BuildingId, SmallFarmLedger> small_farms;
+    /// MAP-EXTRACT-1 X3: per mine, the output its production steps made (diagnostic ledger only:
+    /// what carriers load and what stays in `out` are other terms).
+    std::map<BuildingId, std::uint64_t> mine_made_88;
+    /// MAP-EXTRACT-2 Q3: per quarry (or other source), the cargo mason trips lifted from it, and
+    /// the claim writes the mason job issued (diagnostic ledger only).
+    std::map<BuildingId, std::uint64_t> quarry_lifted_88;
+    /// Per mason home: what its workers delivered to its raw store and what ended with them.
+    std::map<BuildingId, std::uint64_t> mason_delivered_88, mason_lost_88;
+    /// Per mason home: step A searches and the ones that found nothing.
+    std::map<BuildingId, std::uint64_t> mason_searches, mason_searches_failed;
+    std::uint64_t quarry_claims_set = 0, quarry_claims_cleared = 0;
 };
 
 /// MAP-POP-LIVE-1 L2: a diagnostic tally of the resident (house walker) jobs; measurement and test
@@ -162,12 +182,11 @@ struct ResidentStats {
     std::uint64_t delivered_88 = 0;       ///< their amounts
     std::uint64_t deliveries_refused = 0; ///< merge side: a stock overflow, nothing changed
     std::uint64_t lost_88 = 0;            ///< cargo of residents that ended without a delivery
-    std::uint64_t no_path_home = 0;       ///< step C found no path home (the job ends, cargo kept)
-    std::uint64_t reverse_rejected = 0;   ///< C3 P-15: reverse routes the forward replay refused
-    std::uint64_t endpoint_adapted =
-        0; ///< C3 P-15: reverse routes accepted only by the endpoint adapter
-    std::uint64_t forward_used = 0; ///< C3 P-15: routes supplied by the shared forward search
-    std::uint64_t home_gone = 0;    ///< the home was gone or lost the walker's slot
+    std::uint64_t no_path_home = 0;       ///< step C found no path home (the job ends, cargo lost)
+    std::uint64_t home_walks = 0;         ///< T3-Q2: forward searches for a walk home (step C)
+    /// T3-Q2: how often entrance index i of a home was the goal the search reached first.
+    std::map<std::uint32_t, std::uint64_t> home_entrance;
+    std::uint64_t home_gone = 0; ///< the home was gone or lost the walker's slot
     /// The per-goods ledger of the whole live chain (MAP-POP-LIVE-1 L5; same rules, diagnostic).
     /// Job side, at the purchase: the cargo amounts the suppliers returned, the city store they
     /// took (a stall takes it, a public building only bills), and the billed deltas (the REQUESTED
@@ -352,6 +371,12 @@ struct TransportStats {
     /// source building; what they offered at their unload into a market's city (before the city's
     /// capacity clip), and the cargo of those that ended without an unload, per goods.
     std::map<BuildingId, std::uint64_t> loaded_from;
+    /// MAP-EXTRACT-1 X5 (diagnostic): the operation counters of the mine source lookups the
+    /// commands made.
+    OreLookupStats ore_lookup;
+    /// MAP-EXTRACT-1 X3 (diagnostic): the same loads keyed by (source building, home of the lifting
+    /// figure), so a test can say WHICH figure lifted from a source.
+    std::map<std::pair<BuildingId, BuildingId>, std::uint64_t> loaded_by_home;
     std::map<GoodsId, std::uint64_t> unload_offered;
     std::map<GoodsId, std::uint64_t> cart_lost;
 };
@@ -370,10 +395,12 @@ choose_source(const SerialWorld& world, const TypeRegistry& types, std::uint32_t
               std::uint32_t capacity_88, std::uint32_t layer, TransportStats* stats = nullptr);
 
 /// The decoded tile path from the Q24.8 position `from` to the first reached entrance
-/// of `home` inside its area (step C's walk, D 0x10057ae0 / callback 0x10054240).
+/// of `home` inside its area (step C's walk, D 0x10057ae0 / callback 0x10054240). `end`, when
+/// given, receives the goal sub-cell the search selected (the entrance sub-cell the walk ends on).
 [[nodiscard]] std::optional<std::vector<TileXY>>
 path_home(const Island& island, const TypeRegistry& types, const Building& home,
-          const BuildingType& home_type, FixedPos from, std::uint32_t layer);
+          const BuildingType& home_type, FixedPos from, std::uint32_t layer,
+          WalkPoint* end = nullptr);
 
 // ---- shared walk helpers (the transport body's own, exported for the harvest body, MAP-ECON-1 E3)
 
@@ -399,7 +426,19 @@ struct WalkRef {
 };
 /// Starts a walk from `pos` along the decoded tile path: the figure's spot, then the centres of the
 /// path's tiles after the first (the path starts on the figure's own tile).
-void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w);
+///
+/// MAP-EXTRACT-2 T3.2 (stream 137): when `end` (the goal sub-cell the search selected) is given,
+/// the walk ends on that sub-cell's centre instead of the last tile's centre, as the original's
+/// does (the pairs of the finer route run to the goal sub-cell, 0x10005890; the figure stands there
+/// until step C, whose return search starts from the sub-cell holding the figure, 0x1003acc0). The
+/// original's float drift at a figure tick stride of 1 is NOT modelled: the walk ends exactly on
+/// the sub-cell centre.
+void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w,
+                const WalkPoint* end = nullptr);
+/// The centre of sub-cell (col, row) of `tile` in Q24.8: tile + (2 col + 1) / 6 per axis, rounded
+/// to the nearest 1/256 (col and row are 0 to 2; the tile centre is sub-cell (1, 1) up to
+/// rounding).
+[[nodiscard]] FixedPos subcell_centre(TileXY tile, std::uint32_t col, std::uint32_t row);
 /// Walks `ticks` at `speed` (2^-24 tile per tick), moving `pos`; the ticks left after the arrival
 /// (the route is then cleared), nullopt while the walk goes on. A figure without speed never
 /// arrives.

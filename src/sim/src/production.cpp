@@ -741,7 +741,8 @@ bool mine_is_deep(const ProductionType& type, std::uint32_t research_id) {
 }
 
 StepResult mine_step(Mine& m, const ProductionType& type, std::uint32_t t,
-                     std::vector<Deposit>& deposits, const MineArea& area, bool depletes) {
+                     std::vector<Deposit>& deposits, const MineArea& area, bool depletes,
+                     const MineRelookup* relookup) {
     StepResult r;
     if (!gate(m.last, t)) {
         return r;
@@ -776,7 +777,9 @@ StepResult mine_step(Mine& m, const ProductionType& type, std::uint32_t t,
     const bool short_step = got < rate && left != 0;
     if (short_step || (got != 0 && rate >= left)) {
         const std::string goods = type.outputs.empty() ? std::string() : type.outputs[0];
-        m.deposit = find_deposit(deposits, goods, m.deep, area);
+        m.deposit = relookup != nullptr && relookup->set()
+                        ? (*relookup)()
+                        : find_deposit(deposits, goods, m.deep, area);
         const bool found = m.deposit && deposit_remaining(deposits[*m.deposit], m.deep) != 0;
         if (!found && goods == "EISENERZ") {
             // 0x15b when the deposit found still has deep ore, else 0x19.

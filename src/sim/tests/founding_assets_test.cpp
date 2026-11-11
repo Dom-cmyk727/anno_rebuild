@@ -3837,30 +3837,32 @@ TEST_CASE("bootstrap prefix: unchanged ship sails founds unloads builds then exp
     CHECK(gold() == 29250 - static_cast<std::int64_t>(5 * plan->road.size()));
     CHECK(stock(42) == 34 * 256);
     CHECK(stock(41) == 46 * 256);
-    // No stage injection: the content query refuses salt at stage1C. The public command below
-    // reaches structural Unsupported before permission checks; wiring is enforced elsewhere.
+    // No stage injection: the content query refuses salt at stage1C. Stream 135: the mountain class
+    // is placeable now, so the public salt command no longer ends in a structural Unsupported; the
+    // permission refusal (the stage lock) is what stops it, before any state change.
     CHECK(eligible(1203).status == sim::BuildEligibilityStatus::StageLocked);
-    bool salt_unsupported = false;
-    const auto& island = *w.islands()[ref->island.v];
-    for (std::int32_t y = island.tiles.y0();
-         y < island.tiles.y0() + static_cast<std::int32_t>(island.tiles.height()) &&
-         !salt_unsupported;
-         ++y) {
-        for (std::int32_t x = island.tiles.x0();
-             x < island.tiles.x0() + static_cast<std::int32_t>(island.tiles.width()); ++x) {
-            const auto cmd = ct::build(0, *ref, {ct::at(sim::TypeId{1203}, x, y)});
+    {
+        // a site the mine's placement rule accepts and the town owns, so the permission step is
+        // reached
+        const sim::BuildingType& salt = *w.types().find(sim::TypeId{1203});
+        const sim::Building& wh = *w.find_building(warehouse);
+        bool reached = false;
+        for (const auto& site : legal_origins(*w.islands()[ref->island.v], w.types(), salt)) {
+            if (std::max(std::abs(site.x - wh.x), std::abs(site.y - wh.y)) > 16)
+                continue;
+            const auto cmd = ct::build(0, *ref, {ct::at(salt.id, site.x, site.y)});
             sim::World trial = w;
-            if (trial.apply(cmd).status != sim::Reject::Unsupported)
+            if (trial.apply(cmd).status != sim::Reject::ConstructionDenied)
                 continue;
             const auto before = w.save();
             const auto r = d.apply(cmd);
-            CHECK(r.status == sim::Reject::Unsupported);
+            CHECK(r.status == sim::Reject::ConstructionDenied);
             CHECK(w.save() == before);
-            salt_unsupported = true;
+            reached = true;
             break;
         }
+        REQUIRE(reached);
     }
-    REQUIRE(salt_unsupported);
     d.checkpoint();
     REQUIRE(w.check_invariants().empty());
     MESSAGE("BOOTSTRAP_STOP road_tiles="
@@ -3868,7 +3870,7 @@ TEST_CASE("bootstrap prefix: unchanged ship sails founds unloads builds then exp
             << " tools_city_88=" << stock(41)
             << " tools_ship_88=" << aboard_of(ship_of(w, 1).holds, 41) << " food_88=" << stock(26)
             << " farm_raw=0,0 farm_output=0,0 next_supply=MAP-SUPPLY-1 salt_query=StageLocked "
-               "salt_command=Unsupported hash="
+               "salt_command=ConstructionDenied hash="
             << w.state_hash());
     auto bytes = sim::write_log(rec.log());
     REQUIRE(bytes.ok());
@@ -5176,7 +5178,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         CHECK(ship_of(w, 1).holds == expected_holds);
         CHECK(w.rng().cursor() == (cursor + 1) % w.rng().size()); // one original city-name draw
         const auto cut = w.save();
-        publish(enabled ? "current136-enabled-founded.save" : "current136-default-off-founded.save",
+        publish(enabled ? "current137-enabled-founded.save" : "current137-default-off-founded.save",
                 cut);
         auto native = sim::World::load(cut, original.types);
         REQUIRE(native.ok());
@@ -5194,7 +5196,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
             const auto refused = sim::World::load(old, original.types);
             REQUIRE_FALSE(refused.ok());
             CHECK(refused.error() ==
-                  "save: state stream version 133 is not supported (this build reads 136)");
+                  "save: state stream version 133 is not supported (this build reads 137)");
             auto old_log =
                 rec.log(); // current outer identity: the embedded native is the sole mismatch
             old_log.initial_save = old;
@@ -5260,7 +5262,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         REQUIRE(replayed.ok());
         REQUIRE(replayed.value().reproduced());
         CHECK(fresh.value().save() == w.save());
-        publish(enabled ? "current136-enabled-found.log" : "current136-off-found.log",
+        publish(enabled ? "current137-enabled-found.log" : "current137-off-found.log",
                 bytes.value());
         const auto gold = gold_of(w, 0);
         w.advance(0);

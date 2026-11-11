@@ -425,6 +425,18 @@ struct TileEdit {
     FigureId actor;
 };
 
+/// MAP-EXTRACT-2 Q3 (docs/sim/quarry-bricks.md Q3.2 rule 1): one write of the mason job to a
+/// quarry's claim set, applied at the merge in issue order after the tile edits. The quarry is the
+/// building the mask-8 lookup finds at `tile` (never a remembered id); the flag is the entrance
+/// whose goal sub-cell is (col, row). No such building, no such entrance, or a building without a
+/// claim set: nothing happens.
+struct QuarryClaim {
+    IslandId island;
+    TileXY tile;
+    std::uint8_t col = 0, row = 0;
+    bool set = false;
+};
+
 struct Effects {
     std::vector<SpawnRequest> spawns;
     std::vector<ReleaseCounter> releases;
@@ -447,6 +459,8 @@ struct Effects {
     std::vector<DrawRecord> draws;
     /// MAP-ECON-1 E3: the harvest body's tile writes, in issue order.
     std::vector<TileEdit> tile_edits;
+    /// MAP-EXTRACT-2 Q3: the mason job's quarry claim writes, in issue order.
+    std::vector<QuarryClaim> quarry_claims;
     /// MAP-POP-LIVE-1 L2: the residents' deliveries to their houses, applied right after the spawns
     /// and before the releases.
     std::vector<HouseDelivery> house_deliveries;

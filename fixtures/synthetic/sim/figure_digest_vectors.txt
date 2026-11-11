@@ -71,6 +71,12 @@ fig 102 33554 256 2 6500 0 1792 - route 42
 case route_changed cea373c0241aab71
 fig 102 33554 256 2 6500 0 1792 - route 43
 
+case ware_salz c10b75c487f6644c
+fig 1562 33554 256 2 6500 145 1792 - ware SALZSTEIN
+
+case ware_gold 2522bfac401e1146
+fig 1562 33554 256 2 6500 145 1792 - ware GOLD
+
 case two_ascending d302d133bba9aafc
 fig 391 1024 0 2 0 113 4096 -27487789056
 fig 1502 1024 0 2 0 113 4096 397

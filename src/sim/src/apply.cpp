@@ -20,6 +20,7 @@
 #include <anno/sim/driver.hpp>
 #include <anno/sim/founding.hpp>
 #include <anno/sim/freight.hpp>
+#include <anno/sim/mine_source.hpp>
 #include <anno/sim/placement.hpp>
 #include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_orders.hpp>
@@ -84,6 +85,7 @@ bool switch_line(Payload& payload, std::size_t index, bool on) {
         }
         bool operator()(Inert&) const { return false; }
         bool operator()(Inn&) const { return false; }
+        bool operator()(Quarry&) const { return false; }
         bool operator()(Market&) const { return false; }
         bool operator()(House&) const { return false; }
     };
@@ -435,6 +437,11 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         out.status = Reject::NotResearched;
         return out;
     }
+    // No deposit test here: the original has none at mine placement (docs/sim/salt-extraction.md
+    // section 22: the island predicate reads no ore object; the production step binds). A mine at a
+    // legal site with no ore in reach is accepted, charged and created unbound (owner decision
+    // 2026-11-07, replacing policy B). A host that wants to warn first calls
+    // mine_site_deposit_in_reach (mine_facts.hpp), which is read-only.
     // The serial the creation takes (create_building refuses 0 and 0xffffffff). A tile object
     // takes none.
     const std::uint64_t serials_before = budget != nullptr ? budget->serials : 0;
@@ -576,6 +583,19 @@ RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checke
     }
     Building& b = *city.index.lists[key.value().list].slots[key.value().slot];
     r.building = b.id;
+    // Streams 135 and 137: a mine placed by a command runs the attach lookup once, like the
+    // original's attach (AnnoWelt 0x1006e299 calls 0x1006ddf0, which stores the best ore object, or
+    // none, in the mine and whose return value is discarded). The best ore in reach is bound,
+    // materialising its shared deposit if no mine has bound it yet; with none in reach the mine
+    // stays unbound and idle (Mine::deposit empty). Only a bound mine searches again, from its
+    // production step when the deposit is spent or short (mine_step, the driver's relookup).
+    // Here and not in create_building, which the scenario loader shares: imported mines keep
+    // their loader binding (create.cpp). This overrides the find_deposit of creation.
+    if (auto* mine = std::get_if<Mine>(&b.payload)) {
+        mine->deposit = bind_mine_deposit(
+            is, env.types, b, *c.type, mine->deep,
+            env.w.transport_stats() != nullptr ? &env.w.transport_stats()->ore_lookup : nullptr);
+    }
     run_building_seam(env, env.seams.on_placed, is, city, b);
     return r;
 }

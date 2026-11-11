@@ -97,7 +97,10 @@ enum class PayloadTag : std::uint8_t {
     /// The residents and the stocks of a house (docs/sim/state.md §4.7c, P1).
     House = 7,
     /// The tavern stock and statistic of an Inn (MAP-POP-CLOSE-1 C2, stream 128).
-    Inn = 8
+    Inn = 8,
+    /// The claim set of a quarry (MAP-EXTRACT-2 part Q, docs/sim/quarry-bricks.md Q3.1).
+    Quarry =
+        9 // no class table row names it: payload_tag_of (building.hpp) gives it to the Quarry class
 };
 
 struct ClassInfo {
@@ -235,6 +238,11 @@ struct FigureType {
     /// 0x1000fae0 returns it). A farm-family building sends its worker with this job (AnnoWelt
     /// 0x1006ea90, docs/re/forestry.md 2.1, 2.2); 0 = no ROUTETYPE or UNUSED. 102's MAEHER = 0x2a.
     std::uint32_t route = 0;
+    /// Stream 135: the WARE record of an ore symbol (BEWOHNTYPE ERZSYMBOL, 145), the goods name of
+    /// the deposit the object is (AnnoWelt deposit class, `+0x84` = the object type's ware,
+    /// docs/re/ production.md 4.4). Empty for every other figure type; digested only when set
+    /// (tagged).
+    std::string ware = {};
 };
 
 /// The ROUTETYPE number of a route name (AnnoGame 0x10024fb8, the loader's name lookup); 0 for an
@@ -328,6 +336,12 @@ struct BuildingType {
     std::vector<std::uint8_t> head_raw;
     /// The ENTRANCE points in file order (empty when the entry has none: P 595 of 921).
     std::vector<EntrancePoint> entrances;
+    /// Stream 135 (docs/sim/salt-extraction.md section 11-13): the HIGHMAP table of a class-0x3000
+    /// (mine / quarry) type, 2*height rows x 2*width columns of bytes, row-major (the original's
+    /// type +0x234, AnnoGame 0x10008a80). Empty for every other type and for a class-0x3000 type
+    /// whose record is absent or not exactly 4*width*height bytes (then the type's placement stays
+    /// Unsupported). Digested only when non-empty, so a registry without a table keeps its digest.
+    std::vector<std::uint8_t> highmap;
     /// T33.2 input only, unhashed until T33.4: 3 u32 WALKMASK rows per tile row
     /// (AnnoGame 0x1000990d..0x1000996f).
     std::vector<std::uint32_t> walk_mask;

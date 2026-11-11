@@ -288,7 +288,9 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
             rec.kontor_id = bs.kontor_id;
             if (rules.city_booking && bs.payload) {
                 const auto* inert = std::get_if<Inert>(&*bs.payload);
-                if (inert != nullptr && !inert->financial_active)
+                const auto* quarry = std::get_if<Quarry>(&*bs.payload);
+                if ((inert != nullptr && !inert->financial_active) ||
+                    (quarry != nullptr && !quarry->financial_active))
                     return idx_path("islands", island_index) + ".cities[" + std::to_string(k) +
                            "].buildings[" + std::to_string(b) +
                            "].financial_active: unsupported original financial record";

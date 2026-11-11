@@ -49,6 +49,7 @@ class Type:
 
     def __init__(self, w, h, prodtype, flags, replaceable=False):
         self.w, self.h, self.prodtype, self.flags = w, h, prodtype, flags & 0xFFFF
+        self.highmap = None                     # the HIGHMAP record bytes (type +0x234), class 0x3000 only
         self.replaceable = replaceable          # bit 8 of type word +0x14 = HEAD byte 0x2e bit 0 (slot +0xd0)
 
     @property
@@ -59,9 +60,11 @@ class Type:
 class Island:
     """x0, y0, W, H in tiles; vertex(vx, vy) in world tile coordinates; object(x, y) the tile's object id."""
 
-    def __init__(self, x0, y0, W, H, vertex, obj):
+    def __init__(self, x0, y0, W, H, vertex, obj, anchor=None):
         self.x0, self.y0, self.W, self.H = x0, y0, W, H
         self.vertex, self.obj = vertex, obj
+        # tile byte 3 bit 7 (the anchor bit, ship-founding.md 12.1); 0 everywhere unless given
+        self.anchor = anchor if anchor is not None else (lambda x, y: 0)
 
 
 def trunc4(s):
@@ -123,9 +126,41 @@ def height_analysis(t, rot, V, flags):
             if not coast_ok(t.w, t.h, rot, V, mx):
                 return -1
         elif cls == 0x3000:
-            raise Unsupported('class 0x3000: helper 0x10008a80 needs type +0x234 (HIGHMAP) and float helpers')
+            # helper 0x10008a80 (AnnoGame), proven equal to the original bytes by
+            # tools/mine_terrain_emulate.py; its fourth argument is the mode result `res` (esi)
+            if t.highmap is None or len(t.highmap) != 4 * t.w * t.h or res < 0:
+                raise Unsupported('class 0x3000 without a usable HIGHMAP table')
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -I drops the script directory
+            import mine_terrain_ref
+            heights = [[V(x, y) for x in range(fw + 1)] for y in range(fh + 1)]
+            if not mine_terrain_ref.accepts(t.w, t.h, list(t.highmap), heights, rot, res):
+                return -1
         # every other class value passes without a test (0x10009199 jne 0x100091c6)
     return res
+
+
+def coverage_ok(isl, reg, x, y, fw, fh):
+    """The per-chunk coverage test of the island function (AnnoWelt 0x1007c955-0x1007cb3d; docs/sim/salt-extraction.md
+    section 17). It runs when the OR of the type's flag word and the caller flags has bit 0x10. A footprint tile MARKS its
+    world-aligned 8 x 8 chunk unless it carries an existing object whose type has flag 0x10 AND whose anchor bit
+    (tile byte 3 bit 7) is set (0x1007c9e2-0x1007ca25: id 0, a type without 0x10, or a clear anchor all mark). Every chunk
+    the footprint touches ((y+h+7)>>3 - y>>3 rows by (x+w+7)>>3 - x>>3 columns, mark array stride 2) must be marked.
+    Domain: footprints up to 8 x 8 (the original's mark array holds 2 x 2 chunks)."""
+    assert fw <= 8 and fh <= 8
+    x0c, y0c = x >> 3, y >> 3
+    marks = [0, 0, 0, 0]
+    for dy in range(fh):
+        for dx in range(fw):
+            o = isl.obj(x + dx, y + dy)
+            kept = False
+            if o != 0:
+                e = reg[o]
+                kept = bool(e.flags & 0x10) and bool(isl.anchor(x + dx, y + dy))
+            if not kept:
+                marks[((x + dx) >> 3) - x0c + 2 * (((y + dy) >> 3) - y0c)] |= 1
+    rows = ((y + fh + 7) >> 3) - y0c
+    cols = ((x + fw + 7) >> 3) - x0c
+    return all(marks[r * 2 + c] for r in range(rows) for c in range(cols))
 
 
 def compat(p, e, flags):
@@ -178,7 +213,8 @@ def place(isl, reg, tid, x, y, rot, flags, rec8_in=0):
                 if compat(t, e, flags) == 0:
                     return REJECT, 'OCCUPIED', rec8_in
         if flags & 0x10:
-            return UNSUPPORTED, 'flag 0x10: per-chunk coverage test (0x1007c955-0x1007cb3d) not decoded', rec8_in
+            if not coverage_ok(isl, reg, x, y, fw, fh):
+                return REJECT, 'COVERAGE', rec8_in
     rec8 = rec8_in
     if not flags & F_FLAGS_NO_CLASS_CHECK:
         try:
@@ -233,7 +269,10 @@ def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0, road_floor=True, ro
         return v, why, b
     if t is not None:
         name, sup = terrain_class(t.flags)
-        if not sup:
+        # stream 135: the mountain class is supported for a MINE (PRODTYPE 3) that carries its exact 2h x 2w table
+        mountain = (t.flags & 0x7000 == 0x3000 and t.flags <= 0xFFFF and t.prodtype == 3 and t.flags & 3 != 1
+                    and t.highmap is not None and len(t.highmap) == 4 * t.w * t.h)
+        if not sup and not mountain:
             return UNSUPPORTED, 'terrain class not supported for BuildCmd: ' + name, rec8_in
     return place(isl, reg, tid, x, y, rot, flags, rec8_in)
 
@@ -277,8 +316,10 @@ def parse_vectors(text):
         k = w[0]
         if k == 'type':                               # type <id> <w> <h> <prodtype> <flags hex> <replaceable>
             reg[int(w[1])] = Type(int(w[2]), int(w[3]), int(w[4]), int(w[5], 16), bool(int(w[6])))
+            if len(w) > 7:                            # optional: the HIGHMAP table as hex (stream 135, class 0x3000)
+                reg[int(w[1])].highmap = bytes.fromhex(w[7])
         elif k == 'case':
-            cur = dict(name=w[1], line=ln, island=None, rows={}, objs={}, place=None, expect=None, original=None)
+            cur = dict(name=w[1], line=ln, island=None, rows={}, objs={}, anchors=set(), place=None, expect=None, original=None)
             cases.append(cur)
         elif k == 'island':                           # island <x0> <y0> <W> <H>
             cur['island'] = tuple(int(v) for v in w[1:5])
@@ -286,6 +327,8 @@ def parse_vectors(text):
             cur['rows'][int(w[1])] = bytes.fromhex(w[2])
         elif k == 'obj':                              # obj <x> <y> <type id>
             cur['objs'][(int(w[1]), int(w[2]))] = int(w[3])
+        elif k == 'anchor':                           # anchor <x> <y>: the tile's byte 3 bit 7 is set (stream 135)
+            cur['anchors'].add((int(w[1]), int(w[2])))
         elif k == 'place':                            # place <type> <x> <y> <rot> <flags hex> <rec8>
             cur['place'] = (int(w[1]), int(w[2]), int(w[3]), int(w[4]), int(w[5], 16), int(w[6]))
         elif k == 'expect':                           # expect accept <byte> | reject <REASON> | unsupported
@@ -308,7 +351,8 @@ def case_island(c):
         if r is None or not (0 <= vx - x0 < len(r)):
             return 0
         return r[vx - x0]
-    return Island(x0, y0, W, H, vertex, lambda tx, ty: c['objs'].get((tx, ty), 0))
+    return Island(x0, y0, W, H, vertex, lambda tx, ty: c['objs'].get((tx, ty), 0),
+                  lambda tx, ty: 1 if (tx, ty) in c['anchors'] else 0)
 
 
 def run_case(reg, c, road_floor=True, road_preserve=True):
@@ -437,6 +481,8 @@ def load_registry(game_dir):
         word14 = (head[0x2e] << 8) | (head[0x25] & 1)          # type word +0x14 (0x10009432-0x10009449)
         t = Type(head[0], head[1], PRODTYPE_NUMBERS[pt], struct.unpack_from('<H', head, 0x1c)[0], bool(word14 & 0x100))
         t.name = pt
+        if 'HIGHMAP' in rec:
+            t.highmap = rec['HIGHMAP']
         reg[e['id']] = t
     return reg
 
@@ -569,7 +615,26 @@ def main(argv):
     if cmd == 'selftest':
         return 0 if selftest() else 1
     if cmd == 'check':
-        return 0 if check_vectors(argv[2] if len(argv) > 2 else DEFAULT_VECTORS) else 1
+        # check [FILE] [--min N]: exit 0 all agree, 1 a mismatch, 2 an unusable file (missing, empty, malformed, fewer than N cases)
+        args = argv[2:]
+        minimum = 1
+        if '--min' in args:
+            i = args.index('--min')
+            minimum = int(args[i + 1])
+            del args[i:i + 2]
+        path = args[0] if args else DEFAULT_VECTORS
+        try:
+            reg, cases = parse_vectors(open(path).read())
+            for c in cases:
+                if c['island'] is None or c['place'] is None or c['expect'] is None or c['place'][0] not in reg:
+                    raise ValueError('case %s (line %d) is incomplete' % (c['name'], c['line']))
+        except (OSError, ValueError, IndexError, KeyError) as ex:
+            print('placement check: unusable vector file %s: %s' % (path, ex), file=sys.stderr)
+            return 2
+        if len(cases) < minimum:
+            print('placement check: %d cases in %s, at least %d required' % (len(cases), path, minimum), file=sys.stderr)
+            return 2
+        return 0 if check_vectors(path) else 1
     if cmd in ('classify', 'corpus', 'roads'):
         gd = argv[2] if len(argv) > 2 else os.environ.get('ANNO1503_GAME_DIR')
         if not gd:

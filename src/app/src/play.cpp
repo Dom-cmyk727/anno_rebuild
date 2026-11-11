@@ -757,6 +757,15 @@ struct DescribePayload {
                " deposit=" + (m.deposit ? std::to_string(*m.deposit) : "none") +
                (m.blocked ? " blocked" : "");
     }
+    std::string operator()(const sim::Quarry& q) const {
+        std::string claims;
+        for (std::size_t i = 0; i < q.claims.size(); ++i) {
+            claims += (i == 0 ? "" : ",") + std::to_string(q.claims[i]);
+        }
+        return "claims=" + claims +
+               " status_code=" + std::to_string(static_cast<int>(q.status.code)) +
+               (q.suspended ? " suspended" : "") + (q.blocked ? " blocked" : "");
+    }
     std::string operator()(const sim::Market&) const { return "(no stock of its own; see city)"; }
     std::string operator()(const sim::House& h) const {
         // h.stock is the house population formula's satisfaction value (trunc(Menge*s*residents*
@@ -789,6 +798,8 @@ std::string payload_kind_name(const sim::Payload& payload) {
                 return "SmallFarm";
             } else if constexpr (std::is_same_v<T, sim::Mine>) {
                 return "Mine";
+            } else if constexpr (std::is_same_v<T, sim::Quarry>) {
+                return "Quarry";
             } else if constexpr (std::is_same_v<T, sim::Market>) {
                 return "Market";
             } else if constexpr (std::is_same_v<T, sim::House>) {

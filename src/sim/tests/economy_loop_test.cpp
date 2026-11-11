@@ -366,6 +366,7 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
                                sim::BuildCmd{town, {{sim::TypeId{809}, 261, 344, 0, 0, 0}}}};
     bool trip_cut = false, removed = false, rebuilt = false, changed_command_legal = false;
     std::uint64_t sold_at_removal = 0;
+    std::uint64_t pipeline_at_removal = 0; // what the demolished farm had made and not yet sold
     sim::BuildingId new_farm;
     std::optional<sim::World> control;
     sim::TransportStats control_stats;
@@ -393,6 +394,12 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
         if (w.clock().tick() == 150000 && !removed) {
             sold_at_removal = sold(stats, inn);
             REQUIRE(sold_at_removal > 0);
+            // T3-Q2: the walkers' trips home changed, so at this tick some alcohol is still in the
+            // pipeline (the farm's store, the city store, the Inn, a cart); it is sold in the gap
+            // and nothing else is: the claim below is the conservation, not a quiet pipeline
+            pipeline_at_removal = std::get<sim::SmallFarm>(at(w, 261, 344).payload).out[0] +
+                                  city7(w).stock.stock[29] +
+                                  std::get<sim::Inn>(at(w, 301, 351).payload).tavern + cargo(w, 29);
             CHECK(homes.initially_empty_served.size() >= 3);
             const auto& made = stats.forestry.small_farms.at(original_farm);
             const auto& farm = std::get<sim::SmallFarm>(at(w, 261, 344).payload);
@@ -416,7 +423,7 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
             native_cut(w, *o, "after-removal");
         }
         if (w.clock().tick() == 270000 && !rebuilt) {
-            CHECK(sold(stats, inn) == sold_at_removal);
+            CHECK(sold(stats, inn) == sold_at_removal + pipeline_at_removal);
             CHECK(city7(w).stock.stock[29] == 0);
             CHECK(std::get<sim::Inn>(at(w, 301, 351).payload).tavern == 0);
             CHECK(cargo(w, 29) == 0);

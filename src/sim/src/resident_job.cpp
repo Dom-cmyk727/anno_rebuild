@@ -328,34 +328,6 @@ std::optional<StandChoice> choose_stand(const SerialWorld& world, const TickCont
 
 namespace {
 
-/// The reverse search of the L5 review P2-C fix, as a candidate only (MAP-POP-CLOSE-1 C3, P-15).
-/// The shared path_home searches FROM the walker TO the home's entrance subcell; a blocked entrance
-/// subcell is seeded as a start but never reached as a goal, and the walker's end point (the goal
-/// tile's centre subcell) can be enclosed, so on real maps it failed for a large share of walkers
-/// (S01_01_01: 78 of 201 arrivals). The way out already proved walkable: search FROM the home's
-/// entrance points TO the walker's subcell and reverse the route. The search is DIRECTED (the exits
-/// of a cell depend on the arrival direction and a constraint can clear one directed member), so
-/// the reversed route is only a candidate: resident_path_home replays it forward with route_legal.
-std::optional<std::vector<TileXY>>
-reverse_route_home(const Island& island, const TypeRegistry& types, const Building& home,
-                   const BuildingType& home_type, FixedPos from, std::uint32_t layer) {
-    const SearchArea area = search_area(home, home_type);
-    const auto& tables = types.walk_tables();
-    if (!tables) {
-        return std::nullopt;
-    }
-    WalkCells cells(island, types, *tables, area.square(), 4, area);
-    const std::vector<WalkPoint> starts = entrance_walk_points(home, home_type);
-    const std::vector<WalkPoint> goals{walk_point_of(from)};
-    const SearchResult found = search(cells, *tables, layer, starts, goals, [](const SearchVisit&) {
-        return SearchDecision{GoalAction::Stop, true};
-    });
-    if (!found.complete || !found.selected || found.route.empty()) {
-        return std::nullopt;
-    }
-    return std::vector<TileXY>(found.route.rbegin(), found.route.rend());
-}
-
 struct Body {
     const TickContext& ctx;
     SerialWorld& world;
@@ -396,24 +368,36 @@ struct Body {
         if (tile_in_footprint(*home, *home_type, tile_of_q8(fig.pos.x), tile_of_q8(fig.pos.y))) {
             return;
         }
+        // T3-Q2 (population-live.md 27): the carriers' walk home. A fresh forward search from the
+        // sub-cell that holds the figure, goals = the home's entrance points, the first goal popped
+        // wins, and the walk ends on the centre of that goal sub-cell (D 0x10057ae0, 0x10034df0).
         const Island* hi = world.island(island_of(home->id));
-        ResidentPathNote note;
-        const auto path = hi != nullptr ? resident_path_home(*hi, ctx.types, *home, *home_type,
-                                                             fig.pos, ft.layer, &note)
-                                        : std::nullopt;
+        WalkPoint end;
+        const auto path =
+            hi != nullptr ? path_home(*hi, ctx.types, *home, *home_type, fig.pos, ft.layer, &end)
+                          : std::nullopt;
         if (stats != nullptr) {
-            stats->reverse_rejected += note.reverse_rejected;
-            stats->endpoint_adapted += note.endpoint_adapted;
-            stats->forward_used += note.forward_used;
+            ++stats->home_walks;
         }
         if (!path) {
+            // The original: no route ends the job, the figure stands 7,500 ticks outside and is
+            // removed, the house is not credited and the goods stay lost (D 0x10053d20).
             if (stats != nullptr) {
                 ++stats->no_path_home;
             }
             finish(); // no path home (0x10057bb1)
             return;
         }
-        start_walk(fig.pos, *path, WalkRef{r.route, r.next, r.along});
+        if (stats != nullptr) {
+            const std::vector<WalkPoint> entrances = entrance_walk_points(*home, *home_type);
+            for (std::size_t i = 0; i < entrances.size(); ++i) {
+                if (entrances[i] == end) {
+                    ++stats->home_entrance[static_cast<std::uint32_t>(i)];
+                    break;
+                }
+            }
+        }
+        start_walk(fig.pos, *path, WalkRef{r.route, r.next, r.along}, &end);
     }
 
     /// Step B's arrival (D 0x10056480): the building of the stand lists on the walker's tile (none:
@@ -517,91 +501,6 @@ struct Body {
 
 } // namespace
 
-RouteCheck resident_route_legal(const Island& island, const TypeRegistry& types,
-                                const Building& home, const BuildingType& home_type, FixedPos from,
-                                std::uint32_t layer, std::span<const TileXY> route,
-                                bool endpoint_adapter) {
-    const SearchArea area = search_area(home, home_type);
-    const auto& tables = types.walk_tables();
-    if (!tables) {
-        RouteCheck c;
-        c.reason = "no walk tables";
-        return c;
-    }
-    WalkCells cells(island, types, *tables, area.square(), 4, area);
-    // The adapter is scoped (C3 review P3-1): the first step is exempt only when the walker's tile
-    // really holds a building (a stand it leaves), the last only when the route's last tile is an
-    // entrance tile of the home. A route that does not end on an entrance tile is never legal here.
-    bool leave_exempt = false;
-    if (endpoint_adapter && !route.empty()) {
-        const TileXY t = route.front();
-        if (const Slot idx = island.tile_index(t.x, t.y); idx != kNoSlot) {
-            const BuildingType* ty = types.find(TypeId{island.tiles.object(idx)});
-            leave_exempt = ty != nullptr && ty->walk_class == 2;
-        }
-    }
-    bool ends_at_entrance = false;
-    if (!route.empty()) {
-        for (const WalkPoint& p : entrance_walk_points(home, home_type)) {
-            ends_at_entrance = ends_at_entrance || p.tile == route.back();
-        }
-    }
-    RouteCheck out = route_legal(cells, *tables, layer, walk_point_of(from), route, leave_exempt,
-                                 endpoint_adapter && ends_at_entrance);
-    if (out.legal && !ends_at_entrance) {
-        out.legal = false;
-        out.bad_step = route.size();
-        out.reason = "the route does not end on an entrance tile of the home";
-    }
-    return out;
-}
-
-std::optional<std::vector<TileXY>> resident_path_home(const Island& island,
-                                                      const TypeRegistry& types,
-                                                      const Building& home,
-                                                      const BuildingType& home_type, FixedPos from,
-                                                      std::uint32_t layer, ResidentPathNote* note) {
-    // P-15 (population-live.md 21.6): the candidate is the reverse search; it is used only when the
-    // FORWARD replay accepts it (adjacent steps, the arrival-state moves, the edge keys and the
-    // layer's admission) and it ends on one of the home's entrance tiles. Otherwise the shared
-    // forward search (legal by construction) is tried; no route at all is nullopt.
-    const std::vector<WalkPoint> entrances = entrance_walk_points(home, home_type);
-    const auto ends_at_entrance = [&](const std::vector<TileXY>& route) {
-        return !route.empty() &&
-               std::any_of(entrances.begin(), entrances.end(),
-                           [&](const WalkPoint& p) { return p.tile == route.back(); });
-    };
-    if (auto reversed = reverse_route_home(island, types, home, home_type, from, layer)) {
-        const RouteCheck strict =
-            resident_route_legal(island, types, home, home_type, from, layer, *reversed, false);
-        if (strict.legal && ends_at_entrance(*reversed)) {
-            return reversed;
-        }
-        // The scoped endpoint adapter: every inner step must satisfy the forward rule; only leaving
-        // the stand and entering the home are exempt from it (see route_legal).
-        const RouteCheck adapted =
-            resident_route_legal(island, types, home, home_type, from, layer, *reversed, true);
-        if (adapted.legal && ends_at_entrance(*reversed)) {
-            if (note != nullptr) {
-                ++note->endpoint_adapted;
-            }
-            return reversed;
-        }
-        if (note != nullptr) {
-            ++note->reverse_rejected;
-        }
-    }
-    if (auto forward = path_home(island, types, home, home_type, from, layer)) {
-        if (ends_at_entrance(*forward)) {
-            if (note != nullptr) {
-                ++note->forward_used;
-            }
-            return forward;
-        }
-    }
-    return std::nullopt;
-}
-
 bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
     const FigureType* ft = ctx.types.find_figure_type(fig.kind);
     if (ft == nullptr || !fig.resident.has_value()) {
@@ -655,19 +554,10 @@ bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
                 break;
             }
             r.target = stand->building;
-            start_walk(fig.pos, stand->path, WalkRef{r.route, r.next, r.along});
-            // K2: the walk ends at the selected goal sub-cell, not the tile centre (see
-            // StandChoice). ADAPT / U: finer-route stage 0x100054ef..0x100055d5 unread; the
-            // sub-cell formula
-            // ((2c+1)*256+3)/6-128 is not tied to a read.
-            if (!stand->path.empty() && r.route.size() >= 2) {
-                const FixedPos tile = tile_centre(stand->path.back());
-                const auto sub = [](std::uint32_t c) {
-                    return static_cast<std::int32_t>(((2 * c + 1) * 256 + 3) / 6) - 128;
-                };
-                r.route.back() =
-                    FixedPos{tile.x + sub(stand->end_col), tile.y + sub(stand->end_row)};
-            }
+            // K2, now the shared rule (T3.2): the walk ends at the selected goal sub-cell.
+            const WalkPoint end{stand->path.empty() ? TileXY{} : stand->path.back(), stand->end_col,
+                                stand->end_row};
+            start_walk(fig.pos, stand->path, WalkRef{r.route, r.next, r.along}, &end);
             r.step = ResidentStep::ToStall;
             break;
         }

@@ -180,7 +180,7 @@ formats::Result<BuildingCost, AccountingFault> building_cost(const TypeRegistry&
                         return true;
                 }
                 return false;
-            } else if constexpr (std::is_same_v<T, Inert>) {
+            } else if constexpr (std::is_same_v<T, Inert> || std::is_same_v<T, Quarry>) {
                 if (!p.financial_active) {
                     fault = AccountingFault::FinancialState;
                     return false;

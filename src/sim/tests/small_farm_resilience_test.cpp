@@ -109,8 +109,16 @@ TEST_CASE("resilience: the alcohol path interrupted by demolishing the farm, dra
     step_to(c, T0);
     CHECK(r.w.state_hash() == c.w.state_hash());
     const std::uint64_t sold0 = sold(r), htav0 = house_tavern(r, *o);
+    // T3-Q2: the walkers' trips home changed, so alcohol is still in the pipeline at T0 (the farm's
+    // store, the city store, the Inn, a cart); it is sold in the gap, nothing else is
+    const std::uint64_t pipeline0 =
+        r.at(r.farm_potato) != nullptr
+            ? std::get<sim::SmallFarm>(r.at(r.farm_potato)->payload).out[0] +
+                  r.city->stock.stock[kAlcohol] + r.inn_state().tavern +
+                  cargo_in_flight(r, kAlcohol)
+            : 0;
     CHECK(sold0 == 312);
-    CHECK(htav0 == 13700);
+    CHECK(htav0 == 13493);
     sim::Command d;
     d.issuer = r.city->owner;
     d.body = sim::DemolishCmd{r.ref, {sim::TileXY{261, 344}}};
@@ -121,12 +129,12 @@ TEST_CASE("resilience: the alcohol path interrupted by demolishing the farm, dra
     step_to(r, T1);
     step_to(c, T1);
     CHECK(r.w.state_hash() == c.w.state_hash()); // both worlds are the same until the rebuild
-    CHECK(sold(r) == sold0);                     // nothing more was sold in the whole gap
+    CHECK(sold(r) == sold0 + pipeline0);         // only the pipeline was sold in the whole gap
     CHECK(r.inn_state().tavern == 0);            // the Inn is drained
     CHECK(cargo_in_flight(r, kAlcohol) == 0);
     CHECK(r.city->stock.stock[kAlcohol] == 0);
     CHECK(house_tavern(r, *o) < htav0);
-    CHECK(house_tavern(r, *o) == 8304);
+    CHECK(house_tavern(r, *o) == 11998);
     // ---- the restoration: a public command ----
     sim::Command b;
     b.issuer = r.city->owner;
@@ -176,12 +184,13 @@ TEST_CASE("resilience: the alcohol path interrupted by demolishing the farm, dra
     MESSAGE("recovered: sold " << sold_r << " (control " << sold_c << "), house tavern "
                                << house_tavern(r, *o) << " (control " << house_tavern(c, *o)
                                << "), houses that received " << houses_up.size());
-    CHECK(sold_c == sold0); // without the farm nothing is ever sold again
-    CHECK(sold_r > sold0);  // with it the Inn sells again: actual production and delivery
-    CHECK(sold_r == 1014);
+    CHECK(sold_c == sold0 + pipeline0); // without the farm only the pipeline is ever sold
+    CHECK(sold_r >
+          sold0 + pipeline0); // with it the Inn sells again: actual production and delivery
+    CHECK(sold_r == 1326);
     CHECK(house_tavern(r, *o) > house_tavern(c, *o));
-    CHECK(house_tavern(r, *o) == 11049);
-    CHECK(house_tavern(c, *o) == 2013);
+    CHECK(house_tavern(r, *o) == 12512);
+    CHECK(house_tavern(c, *o) == 3681);
     CHECK(houses_up.size() >=
           3); // at least three households received tavern goods after the rebuild
     CHECK(houses_up_control.empty()); // and without the rebuild none did
@@ -391,12 +400,12 @@ TEST_CASE("resilience: save and reload at the crop, grazing, production, cart an
     }
     // measured and pinned (the advance(100) schedule; a legitimate change of the models re-pins
     // them)
-    CHECK(at_tick.at(boundaries[0].first) == 800);
-    CHECK(at_tick.at(boundaries[1].first) == 1000);
-    CHECK(at_tick.at(boundaries[2].first) == 14100);
-    CHECK(at_tick.at(boundaries[3].first) == 8600);
+    CHECK(at_tick.at(boundaries[0].first) == 650);
+    CHECK(at_tick.at(boundaries[1].first) == 900);
+    CHECK(at_tick.at(boundaries[2].first) == 13550);
+    CHECK(at_tick.at(boundaries[3].first) == 8650);
     CHECK(at_tick.at(boundaries[4].first) == 8050);
-    CHECK(at_tick.at(boundaries[5].first) == 105700);
+    CHECK(at_tick.at(boundaries[5].first) == 90900);
     CHECK(c.w.check_invariants() == "");
 }
 

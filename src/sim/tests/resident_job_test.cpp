@@ -63,6 +63,12 @@ constexpr sim::TypeId kBlockStall{
 constexpr sim::TypeId kInn{
     9507}; // PRODTYPE 66 (public block), class Inn, WARE[0] = goods 26, input 27
 
+constexpr sim::TypeId kHouseTwo{
+    9519}; // T3-Q2: a house with TWO entrances, left (0,1) and right (2,1)
+constexpr sim::TypeId kHouseEdge{
+    9521}; // T3-Q2: a 1 x 1 house whose one entrance is the sub-cell (0,1)
+constexpr sim::TypeId kHouseLeft{9520}; // the same with the left entrance only (the control)
+
 constexpr sim::GoodsId kFood = 26;
 constexpr sim::GoodsId kOther = 27;
 
@@ -186,6 +192,22 @@ std::shared_ptr<const sim::TypeRegistry> registry(bool second_need = false, bool
         blockst.entrances = {{3, 5}}; // the bottom-middle sub-cell inside a fully blocked tile
         blockst.walk_mask = {7, 7, 7};
         b.add(blockst);
+    }
+    {
+        sim::BuildingType two = house_type(kHouseTwo, true);
+        // 2 x 1 tiles, entrances in sixths: the centre of the left tile and of the right tile
+        two.width = 2;
+        two.height = 1;
+        two.entrances = {{3, 3}, {9, 3}};
+        b.add(two);
+        sim::BuildingType edge = house_type(kHouseEdge, true);
+        edge.entrances = {{1, 3}}; // sixths: the left-middle sub-cell (0,1), not the tile centre
+        b.add(edge);
+        sim::BuildingType left = house_type(kHouseLeft, true);
+        left.width = 2;
+        left.height = 1;
+        left.entrances = {{3, 3}};
+        b.add(left);
     }
     {
         sim::BuildingType hx = house_type(kHouseCross, true);
@@ -1572,7 +1594,6 @@ namespace {
 struct HomeRoute {
     sim::World w;
     std::optional<std::vector<sim::TileXY>> route;
-    sim::ResidentPathNote note;
     std::vector<sim::TileXY> entrance_tiles;
     const sim::Building* home = nullptr;
     const sim::BuildingType* home_type = nullptr;
@@ -1584,15 +1605,17 @@ HomeRoute home_route(const std::function<void(Rig&)>& walls) {
     const auto types = registry();
     Rig r = standard_rig();
     walls(r);
-    HomeRoute out{create(r, types), std::nullopt, {}, {}, nullptr, nullptr};
+    HomeRoute out{create(r, types), std::nullopt, {}, nullptr, nullptr};
     out.home = at(out.w, 110, 110);
     out.home_type = out.w.types().find(out.home->type);
     for (const sim::WalkPoint& p : sim::entrance_walk_points(*out.home, *out.home_type)) {
         out.entrance_tiles.push_back(p.tile);
     }
     const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
-    out.route = sim::resident_path_home(*out.w.islands()[0], out.w.types(), *out.home,
-                                        *out.home_type, from, 0, &out.note);
+    // T3-Q2: the carriers' walk home, a forward search from the figure's sub-cell
+    sim::WalkPoint end;
+    out.route = sim::path_home(*out.w.islands()[0], out.w.types(), *out.home, *out.home_type, from,
+                               0, &end);
     return out;
 }
 
@@ -1611,17 +1634,12 @@ void expect_walk(const HomeRoute& h) {
 
 } // namespace
 
-TEST_CASE("resident job P-15: open ground, a legal directed route from the stand to the entrance") {
+TEST_CASE("resident job T3-Q2: open ground, a forward route from the stand to the entrance") {
     const HomeRoute h = home_route([](Rig&) {});
     expect_walk(h);
-    // The forward replay accepts it with the endpoint adapter; the walls are not on it.
-    CHECK(sim::resident_route_legal(*h.w.islands()[0], h.w.types(), *h.home, *h.home_type,
-                                    sim::tile_centre(sim::TileXY{114, 110}), 0, *h.route, true)
-              .legal);
-    CHECK(h.note.reverse_rejected == 0);
 }
 
-TEST_CASE("resident job P-15: a wall changes the route and never lies on it") {
+TEST_CASE("resident job T3-Q2: a wall changes the route and never lies on it") {
     const HomeRoute open = home_route([](Rig&) {});
     // A wall column across the straight line (x = 112, y 105..115) forces a detour.
     const HomeRoute detour = home_route([](Rig& r) {
@@ -1637,7 +1655,7 @@ TEST_CASE("resident job P-15: a wall changes the route and never lies on it") {
     }
 }
 
-TEST_CASE("resident job P-15: a walled-in stand has no route home (disconnected)") {
+TEST_CASE("resident job T3-Q2: a walled-in stand has no route home (disconnected)") {
     const HomeRoute h = home_route([](Rig& r) {
         for (int y = 108; y <= 112; ++y) {
             for (int x = 112; x <= 116; ++x) {
@@ -1648,67 +1666,6 @@ TEST_CASE("resident job P-15: a walled-in stand has no route home (disconnected)
         }
     });
     CHECK_FALSE(h.route.has_value());
-}
-
-TEST_CASE("resident job P-15: the forward replay refuses a jump, a wall step and a wrong start") {
-    const HomeRoute h = home_route([](Rig& r) { r.wall(112, 110); });
-    const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
-    const auto legal = [&](std::vector<sim::TileXY> route, bool adapter = true) {
-        return sim::resident_route_legal(*h.w.islands()[0], h.w.types(), *h.home, *h.home_type,
-                                         from, 0, route, adapter);
-    };
-    // A teleport: not a cardinal neighbour.
-    const sim::RouteCheck jump = legal({{114, 110}, {110, 110}});
-    CHECK_FALSE(jump.legal);
-    CHECK(jump.bad_step == 1);
-    // Through the wall at (112, 110): the inner step is refused by the layer's admission.
-    const sim::RouteCheck through =
-        legal({{114, 110}, {113, 110}, {112, 110}, {111, 110}, {110, 110}});
-    CHECK_FALSE(through.legal);
-    // A route that does not start on the walker's tile.
-    CHECK_FALSE(legal({{113, 110}, {112, 110}}).legal);
-    // The real route is accepted.
-    REQUIRE(h.route.has_value());
-    CHECK(legal(*h.route).legal);
-}
-
-TEST_CASE(
-    "resident job P-15: the endpoint adapter is scoped to a building start and an entrance end") {
-    // Stall at (114, 110), house (110, 110) with its entrance tile; walls at (112, 110) and (113,
-    // 112).
-    const HomeRoute h = home_route([](Rig& r) {
-        r.wall(112, 110);
-        r.wall(113, 112);
-    });
-    REQUIRE(h.route.has_value());
-    const sim::FixedPos stand = sim::tile_centre(sim::TileXY{114, 110});
-    const auto legal = [&](const sim::FixedPos from, std::vector<sim::TileXY> route, bool adapter) {
-        return sim::resident_route_legal(*h.w.islands()[0], h.w.types(), *h.home, *h.home_type,
-                                         from, 0, route, adapter);
-    };
-    // The real route is accepted with the adapter (the start tile holds the stall).
-    CHECK(legal(stand, *h.route, true).legal);
-    // A wrong END: a legal open-ground prefix that stops short of the entrance is refused whether
-    // or not the adapter is on (the route must end on an entrance tile of the home).
-    std::vector<sim::TileXY> shortened(h.route->begin(), h.route->end() - 1);
-    for (const bool adapter : {false, true}) {
-        const sim::RouteCheck c = legal(stand, shortened, adapter);
-        CHECK_FALSE(c.legal);
-        CHECK(c.reason.find("entrance") != std::string::npos);
-    }
-    // A wall as the LAST tile: it is no entrance tile, so the last step is not exempt (refused).
-    CHECK_FALSE(legal(stand, {{114, 110}, {113, 110}, {112, 110}}, true).legal);
-    // A wrong START with the adapter DISABLED (and enabled): the route must begin on the walker's
-    // tile.
-    for (const bool adapter : {false, true}) {
-        CHECK_FALSE(legal(stand, {{113, 110}, {112, 110}}, adapter).legal);
-    }
-    // The FIRST step out of a non-building tile is not exempt: a walker standing on open ground
-    // that is told to step into the wall at (113, 112) is refused with the adapter on.
-    const sim::FixedPos open_tile = sim::tile_centre(sim::TileXY{113, 111});
-    const sim::RouteCheck into_wall = legal(open_tile, {{113, 111}, {113, 112}}, true);
-    CHECK_FALSE(into_wall.legal);
-    CHECK(into_wall.bad_step == 1);
 }
 
 TEST_CASE("resident job K2: a stand whose tile maps to mapper 0 (the cross of 1314) is reached, "
@@ -1751,56 +1708,6 @@ TEST_CASE("resident job K2: a stand whose tile maps to mapper 0 (the cross of 13
     CHECK(w.check_invariants() == "");
 }
 
-TEST_CASE(
-    "resident job K2: the first step out of a stand keeps the side check and the layer admission") {
-    // Review P3 1 (CLOSE-1 section 6): the exempt first step used to skip BOTH checks for route[1],
-    // the ordinary tile outside the stand. Now only the arrival-state offer is skipped (the walker
-    // stands on a stand sub-cell whose keys do not describe where it may leave); the destination
-    // must still admit entry from the stand's side and the layer must admit its code.
-    const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
-    const auto check = [&](const std::function<void(Rig&)>& setup, std::vector<sim::TileXY> route) {
-        const HomeRoute h = home_route(setup);
-        return sim::resident_route_legal(*h.w.islands()[0], h.w.types(), *h.home, *h.home_type,
-                                         from, 0, route, true);
-    };
-    const std::vector<sim::TileXY> straight{
-        {114, 110}, {113, 110}, {112, 110}, {111, 110}, {110, 110}};
-    // Control: open ground, the whole straight route is accepted with the adapter.
-    CHECK(check([](Rig&) {}, straight).legal);
-    // A stall into a wall: refused AT the first step (before K2 only the second step refused it).
-    {
-        const sim::RouteCheck c = check([](Rig& r) { r.wall(113, 110); }, straight);
-        CHECK_FALSE(c.legal);
-        CHECK(c.bad_step == 1);
-        CHECK(c.reason.find("admit") !=
-              std::string::npos); // the wall is code 3, no layer admits it
-    }
-    // A tile next to the stand that refuses entry from the stand's side: (113,110) maps to 0x0111,
-    // which admits UP, DOWN and RIGHT steps but not the LEFT step the walker makes out of the
-    // stand.
-    {
-        const sim::RouteCheck c = check([](Rig& r) { r.wall(113, 110, kSideWall); }, straight);
-        CHECK_FALSE(c.legal);
-        CHECK(c.bad_step == 1);
-        CHECK(c.reason.find("entered from this side") != std::string::npos);
-    }
-    // The same tile entered from another side is fine: a route that leaves the stand upward and
-    // passes the side-wall tile later on is not refused for it (the control for the test above).
-    {
-        const sim::RouteCheck c = check(
-            [](Rig& r) { r.wall(113, 110, kSideWall); },
-            {{114, 110}, {114, 111}, {113, 111}, {112, 111}, {111, 111}, {110, 111}, {110, 110}});
-        CHECK(c.legal);
-    }
-    // A code the layer does not admit: refused at the first step by the admission.
-    {
-        const sim::RouteCheck c = check([](Rig& r) { r.wall(113, 110, kBadCode); }, straight);
-        CHECK_FALSE(c.legal);
-        CHECK(c.bad_step == 1);
-        CHECK(c.reason.find("admit") != std::string::npos);
-    }
-}
-
 TEST_CASE("resident job K2: the Inn and the chapel are endpoints of a legal way home") {
     // A house at (110,110) with a chapel at (114,110) and an Inn at (110,114): the way home from
     // each building is a legal directed route that ends on a house entrance tile, and a walker
@@ -1819,9 +1726,9 @@ TEST_CASE("resident job K2: the Inn and the chapel are endpoints of a legal way 
     const sim::BuildingType* home_type = w.types().find(home->type);
     for (const sim::TileXY start : {sim::TileXY{114, 110}, sim::TileXY{110, 114}}) {
         const sim::FixedPos from = sim::tile_centre(start);
-        sim::ResidentPathNote note;
+        sim::WalkPoint end;
         const auto route =
-            sim::resident_path_home(*w.islands()[0], w.types(), *home, *home_type, from, 0, &note);
+            sim::path_home(*w.islands()[0], w.types(), *home, *home_type, from, 0, &end);
         REQUIRE(route.has_value());
         CHECK(route->front() == start);
         bool ends_at_entrance = false;
@@ -1829,82 +1736,7 @@ TEST_CASE("resident job K2: the Inn and the chapel are endpoints of a legal way 
             ends_at_entrance = ends_at_entrance || p.tile == route->back();
         }
         CHECK(ends_at_entrance);
-        CHECK(sim::resident_route_legal(*w.islands()[0], w.types(), *home, *home_type, from, 0,
-                                        *route, true)
-                  .legal);
     }
-}
-
-TEST_CASE("resident job K2: the leave step admits by the direction's own key, in each of the four "
-          "directions") {
-    // The synthetic layer admits code 6 for a DOWN step only, 9 UP, 10 LEFT, 11 RIGHT. The walker
-    // leaves the stall at (114,110) one step in each direction onto such a tile: the matching tile
-    // is not refused at step 1 (a later step may be), the opposite one is.
-    const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
-    struct Case {
-        sim::TileXY next;
-        sim::TypeId matching, opposite;
-    };
-    // (code 7 is the start cell's own code, so no tile may admit by it; right is covered as the
-    // opposite of the left-only tile)
-    const Case cases[] = {
-        {{114, 111}, kDownOnly, kUpOnly},    // step DOWN
-        {{114, 109}, kUpOnly, kDownOnly},    // step UP
-        {{113, 110}, kLeftOnly, kDownOnly},  // step LEFT
-        {{115, 110}, kLeftOnly, kLeftOnly}}; // step RIGHT: a left-only tile refuses it
-    for (const Case& c : cases) {
-        const auto first_step = [&](sim::TypeId tile) {
-            const HomeRoute h = home_route([&](Rig& r) { r.wall(c.next.x, c.next.y, tile); });
-            return sim::resident_route_legal(*h.w.islands()[0], h.w.types(), *h.home, *h.home_type,
-                                             from, 0, std::vector<sim::TileXY>{{114, 110}, c.next},
-                                             true);
-        };
-        if (c.next.x != 115) { // the step RIGHT case has no matching tile
-            const sim::RouteCheck ok = first_step(c.matching);
-            CHECK((ok.legal || ok.bad_step != 1));
-        }
-        const sim::RouteCheck bad = first_step(c.opposite);
-        CHECK_FALSE(bad.legal);
-        CHECK(bad.bad_step == 1);
-        CHECK(bad.reason.find("admit") != std::string::npos);
-    }
-}
-
-TEST_CASE("resident job K2: the leave and enter exemptions are what lets a walker out of a blocked "
-          "stand tile and into a cross house") {
-    // A stand whose tile is fully blocked (mask 0x1ff, like the big public buildings' entrance
-    // tiles) at (114,110): a walker standing on its centre sub-cell has start keys 0 (every
-    // neighbour sub-cell is blocked), so the strict replay finds no move out at step 1; the scoped
-    // leave exemption accepts it because route[1] is an ordinary open tile. The house at (110,110)
-    // is a cross house: its entrance tile maps to 0, so the last step needs the enter exemption.
-    const auto types = registry();
-    Rig r = make_rig();
-    r.place(kHouseCross, 110, 110, fresh_house());
-    r.place(kBlockStall, 114, 110);
-    sim::World w = create(r, types);
-    const sim::Building* home = at(w, 110, 110);
-    const sim::BuildingType* home_type = w.types().find(home->type);
-    const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
-    const std::vector<sim::TileXY> route{
-        {114, 110}, {113, 110}, {112, 110}, {111, 110}, {110, 110}};
-    const sim::RouteCheck strict = sim::resident_route_legal(*w.islands()[0], w.types(), *home,
-                                                             *home_type, from, 0, route, false);
-    CHECK_FALSE(strict.legal);
-    CHECK(strict.bad_step == 1); // the arrival state of the walled-in centre offers no move
-    CHECK(sim::resident_route_legal(*w.islands()[0], w.types(), *home, *home_type, from, 0, route,
-                                    true)
-              .legal);
-    // The enter exemption is what the cross house needs: a walker starting on an OPEN tile whose
-    // route ends in it is refused at the last step with the adapter off, accepted with it on.
-    const sim::FixedPos open_from = sim::tile_centre(sim::TileXY{112, 110});
-    const std::vector<sim::TileXY> tail{{112, 110}, {111, 110}, {110, 110}};
-    const sim::RouteCheck no_adapter = sim::resident_route_legal(
-        *w.islands()[0], w.types(), *home, *home_type, open_from, 0, tail, false);
-    CHECK_FALSE(no_adapter.legal);
-    CHECK(no_adapter.bad_step == 2);
-    CHECK(sim::resident_route_legal(*w.islands()[0], w.types(), *home, *home_type, open_from, 0,
-                                    tail, true)
-              .legal);
 }
 
 TEST_CASE("resident job K2: the walker ends on the goal sub-cell the search selected") {
@@ -1935,5 +1767,205 @@ TEST_CASE("resident job K2: the walker ends on the goal sub-cell the search sele
         CHECK(((end.y - 110 * 256) * 3) / 256 == c.sub_y);
         until(w, [&] { return ended(w, id); });
         CHECK(house_of(w).stock[0] == 151 * 16); // and it came home
+    }
+}
+
+// ---- T3-Q2: the walk home is the carriers' (docs/sim/population-live.md 27) -----------------
+
+namespace {
+
+/// Runs one walker from the house at (110,110) until it walks home (step ToHome) and returns its id
+/// and the world; nullopt-free: the test fails if the walker never gets there.
+struct HomeWalk {
+    sim::World w;
+    sim::FigureId id;
+    sim::TransportStats stats;
+};
+
+std::unique_ptr<HomeWalk>
+walker_at_home_walk(const Rig& r, const std::shared_ptr<const sim::TypeRegistry>& types) {
+    auto hw = std::make_unique<HomeWalk>(HomeWalk{create(r, types), {}, {}});
+    city0(hw->w).stock.stock[kFood] = 5000;
+    hw->w.set_transport_stats(&hw->stats);
+    Sender sender;
+    hw->id = spawn_one(hw->w, sender);
+    until(hw->w, [&] {
+        return step_of(hw->w, hw->id) == sim::ResidentStep::ToHome || ended(hw->w, hw->id);
+    });
+    return hw;
+}
+
+} // namespace
+
+TEST_CASE("resident job T3-Q2: the walk home ends on the centre of the entrance sub-cell") {
+    const auto types = registry();
+    auto hw = walker_at_home_walk(standard_rig(), types);
+    const sim::Figure* f = sim::find_figure(hw->w.figures(), hw->id);
+    REQUIRE(f != nullptr);
+    REQUIRE(f->resident.has_value());
+    REQUIRE(f->resident->step == sim::ResidentStep::ToHome);
+    REQUIRE(f->resident->route.size() >= 2);
+    // the walk starts where the stand walk ended (the figure's own spot) ...
+    CHECK(f->resident->route.front() == f->pos);
+    // ... and ends on the centre of the house's one entrance sub-cell (1,1), not of the tile
+    const sim::FixedPos centre_sub = sim::subcell_centre(sim::TileXY{110, 110}, 1, 1);
+    CHECK(f->resident->route.back() == centre_sub);
+    CHECK(hw->stats.residents.home_walks == 1);
+    CHECK(hw->stats.residents.home_entrance[0] == 1);
+    until(hw->w, [&] { return ended(hw->w, hw->id); });
+    CHECK(house_of(hw->w).stock[0] == 151 * 16); // delivered
+    CHECK(hw->stats.residents.no_path_home == 0);
+    // an entrance that is NOT the tile centre: the walk ends on that sub-cell's centre (0,1), a
+    // sixth of a tile left of the middle, not on the tile centre
+    Rig edge = make_rig();
+    edge.place(kHouseEdge, 110, 110, fresh_house());
+    edge.place(kStall, 114, 110);
+    auto ew = walker_at_home_walk(edge, types);
+    const sim::Figure* ef = sim::find_figure(ew->w.figures(), ew->id);
+    REQUIRE(ef != nullptr);
+    REQUIRE(ef->resident.has_value());
+    REQUIRE(ef->resident->step == sim::ResidentStep::ToHome);
+    const sim::FixedPos edge_end = sim::subcell_centre(sim::TileXY{110, 110}, 0, 1);
+    CHECK(ef->resident->route.back() == edge_end);
+    CHECK(edge_end != sim::tile_centre(sim::TileXY{110, 110}));
+}
+
+TEST_CASE("resident job T3-Q2: a house with two entrances is entered by the first one reached") {
+    const auto types = registry();
+    // the stand is east of the house: the right entrance (2,1) is reached first
+    for (const bool two : {true, false}) {
+        Rig r = make_rig();
+        r.place(two ? kHouseTwo : kHouseLeft, 110, 110, fresh_house());
+        r.place(kStall, 114, 110);
+        auto hw = walker_at_home_walk(r, types);
+        const sim::Figure* f = sim::find_figure(hw->w.figures(), hw->id);
+        REQUIRE(f != nullptr);
+        REQUIRE(f->resident.has_value());
+        REQUIRE(f->resident->step == sim::ResidentStep::ToHome);
+        const sim::FixedPos end = f->resident->route.back();
+        INFO("two entrances: " << two);
+        if (two) {
+            CHECK(end == sim::subcell_centre(sim::TileXY{111, 110}, 1, 1)); // the right one
+            CHECK(hw->stats.residents.home_entrance[1] == 1);
+            CHECK(hw->stats.residents.home_entrance[0] == 0);
+        } else {
+            CHECK(end == sim::subcell_centre(sim::TileXY{110, 110}, 1, 1)); // the only one
+            CHECK(hw->stats.residents.home_entrance[0] == 1);
+        }
+        until(hw->w, [&] { return ended(hw->w, hw->id); });
+        CHECK(hw->stats.residents.no_path_home == 0);
+        CHECK(house_of(hw->w).stock[0] == 151 * 16);
+    }
+}
+
+TEST_CASE(
+    "resident job T3-Q2: a house the search cannot reach is the failure branch (7,500 ticks)") {
+    // The stand lies WEST of the house behind a belt of LEFT-only tiles (x 107 to 109 over the
+    // whole island height): the walker can leave westwards, the way back (eastwards) is closed.
+    // The carriers' search finds no route home: the job ends, the goods are lost, the house is not
+    // credited, and the figure stands 7,500 ticks before it is removed (D 0x10053d20).
+    const auto types = registry();
+    Rig r = make_rig();
+    r.place(kHouse, 110, 110, fresh_house());
+    r.place(kStall, 105, 110);
+    for (int y = 100; y < 132; ++y)
+        for (int x = 107; x <= 109; ++x)
+            r.wall(x, y, kLeftOnly);
+    sim::World w = create(r, types);
+    city0(w).stock.stock[kFood] = 5000;
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    Sender sender;
+    const sim::FigureId id = spawn_one(w, sender);
+    until(w, [&] { return ended(w, id); });
+    const sim::Figure* f = sim::find_figure(w.figures(), id);
+    REQUIRE(f != nullptr);
+    REQUIRE(f->expiry_stamp.has_value());
+    // the goods were taken at the stand and are lost; the house is not credited
+    CHECK(city0(w).stock.stock[kFood] < 5000);
+    CHECK(house_of(w).stock[0] == 0);
+    CHECK(stats.residents.no_path_home == 1);
+    CHECK(stats.residents.lost_88 > 0);
+    CHECK(stats.residents.deliveries == 0);
+    CHECK(f->resident->cargo[0].amount_88 > 0); // the cargo stays on the figure (history)
+    // the house's walker slot is free at once; the figure itself stands 7,500 ticks, then goes
+    CHECK(house_of(w).walkers[0] != id);
+    CHECK(house_of(w).walkers[1] != id);
+    w.advance(2 * 7000); // 7,000 ticks
+    CHECK(sim::find_figure(w.figures(), id) != nullptr);
+    w.advance(2 * 800); // 7,800 ticks after the end
+    CHECK(sim::find_figure(w.figures(), id) == nullptr);
+    CHECK(w.check_invariants() == "");
+    // the legal control: the same world without the belt delivers
+    Rig open = make_rig();
+    open.place(kHouse, 110, 110, fresh_house());
+    open.place(kStall, 105, 110);
+    sim::World ow = create(open, types);
+    city0(ow).stock.stock[kFood] = 5000;
+    sim::TransportStats ostats;
+    ow.set_transport_stats(&ostats);
+    Sender osender;
+    const sim::FigureId oid = spawn_one(ow, osender);
+    until(ow, [&] { return ended(ow, oid); });
+    CHECK(ostats.residents.no_path_home == 0);
+    CHECK(house_of(ow).stock[0] == 151 * 16);
+}
+
+TEST_CASE("resident job T3-Q2: a reload during the walk home equals the uninterrupted run") {
+    const auto types = registry();
+    auto hw = walker_at_home_walk(standard_rig(), types);
+    REQUIRE(step_of(hw->w, hw->id) == sim::ResidentStep::ToHome);
+    // mid-walk: a few ticks along the route
+    hw->w.advance(40);
+    REQUIRE(step_of(hw->w, hw->id) == sim::ResidentStep::ToHome);
+    const auto bytes = hw->w.save();
+    auto loaded = sim::World::load(bytes, types, {});
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    sim::World& re = loaded.value();
+    CHECK(re.save() == bytes);
+    CHECK(re.state_hash() == hw->w.state_hash());
+    for (int i = 0; i < 3000; ++i) {
+        hw->w.advance(2);
+        re.advance(2);
+    }
+    CHECK(re.state_hash() == hw->w.state_hash());
+    CHECK(re.rng().cursor() == hw->w.rng().cursor());
+    CHECK(re.save() == hw->w.save());
+    CHECK(house_of(re).stock[0] == 151 * 16); // and the walk finished and delivered
+    // a reload one advance short differs
+    auto shorter = sim::World::load(bytes, types, {});
+    REQUIRE(shorter.ok());
+    for (int i = 0; i < 2999; ++i)
+        shorter.value().advance(2);
+    CHECK(shorter.value().state_hash() != hw->w.state_hash());
+}
+
+TEST_CASE(
+    "resident job T3-Q2: the home walk is exactly the carriers' path_home, also where it fails") {
+    // the cross house (entrance tile maps to mapper 0) and the plain house: the resident's route
+    // at the start of step C is the route path_home gives from the figure's spot, or the walk does
+    // not exist (the failure branch) when path_home finds none
+    const auto types = registry();
+    for (const sim::TypeId house : {kHouse, kHouseTwo, kHouseCross}) {
+        Rig r = make_rig();
+        r.place(house, 110, 110, fresh_house());
+        r.place(kStall, 114, 110);
+        auto hw = walker_at_home_walk(r, types);
+        const sim::Figure* f = sim::find_figure(hw->w.figures(), hw->id);
+        REQUIRE(f != nullptr);
+        INFO("house type " << house.v);
+        const sim::Building* home = at(hw->w, 110, 110);
+        const sim::BuildingType* ht = hw->w.types().find(home->type);
+        if (f->resident->step == sim::ResidentStep::ToHome) {
+            sim::WalkPoint end;
+            const auto path = sim::path_home(*hw->w.islands()[0], hw->w.types(), *home, *ht,
+                                             f->resident->route.front(), 0, &end);
+            REQUIRE(path.has_value());
+            CHECK(f->resident->route.back() == sim::subcell_centre(end.tile, end.col, end.row));
+        } else {
+            // the failure branch: the carriers' search finds nothing from the stand either
+            CHECK(hw->stats.residents.no_path_home == 1);
+            CHECK(hw->stats.residents.deliveries == 0);
+        }
     }
 }

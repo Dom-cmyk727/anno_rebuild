@@ -467,7 +467,7 @@ Static. AnnoWelt. No game run. House tick `0x100763e3` calls house slot `+0x118`
 | Function | this | Why | Range |
 |---|---|---|---|
 | Base send `0x10072d20` | house (and every other building class that shares the slot) | house vtable `0x100c9958+0x118`; args job `0x35`, figure type, tick | `transport.md` §1.6 |
-| Job factory `0x1003b0e0` | figure slot `+0xa4` | `job − 0xd` through byte table `0x1003b480` / jump `0x1003b450`; job `0x35` → `0x1003b3cf` | alloc 0x50, ctor `0x1003b4e0` |
+| Job factory `0x10053e30` (CORRECTED 2026-11-08, T3-Q1b; an earlier version of this row named `0x1003b0e0`, the farm and mower factory) | the resident class's figure slot `+0xa4` (unit code `ZIVILIST` `0x21`, factory `0x1009a110` case 5, ctor `0x10054030`, table `0x100c6a98`) | builds job `0x35` inline: `new(0x50)`, base `0x1005d450`, steps A/B/C `0x100c4788` / `0x100c4760` / `0x100c4738`, job table `0x100c46e0` | alloc 0x50; behaviour unchanged by the correction |
 | Job `0x35` ctor `0x1003b4e0` | job | `ecx`; base `0x1005d450(this, this+0x34, this+0x40, this+0x4c)` | `0x1003b4e0`–`0x1003b516` |
 | Step A start `0x1005b170` | step A at job `+0x34`, vtable `0x100c4788` | ctor write; type 9 (`0x1005cae0`); figure = stack arg0, home = figure `+0x1c` | `0x1005b170`–`0x1005b3a3` (`ret 8`) |
 | Filter `0x1005b130` | context, not a method | pushed as the query callback at `0x1005b247`; `[ctx+0]` = house | `0x1005b130`–`0x1005b160` |

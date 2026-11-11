@@ -199,6 +199,13 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME placement_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py check
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/placement_vectors.txt)
+    add_test(NAME mine_coverage_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_coverage_vectors.txt --min 30)
+    add_test(NAME placement_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/placement_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_coverage_vectors.txt --min-vectors 30)
     add_test(NAME placement_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py selftest)
     add_test(NAME cargo_reference_agrees
@@ -274,6 +281,15 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/early_needs_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/early_needs_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/early_needs_vectors.txt)
+    add_test(NAME highmap_digest_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/highmap_digest_ref.py --check)
+    add_test(NAME mine_terrain_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/mine_terrain_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_terrain_vectors.txt)
+    add_test(NAME mine_terrain_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/mine_terrain_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/mine_terrain_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_terrain_vectors.txt)
     add_test(NAME hunter_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/hunter_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/hunter_vectors.txt)

@@ -498,7 +498,7 @@ enum class RuntimeClass : std::uint8_t {   // by PRODTYPE (D: byte table 0x10025
     Inn, PublicService, Doctor, School, Castle, FireBrigade, House, Tower, CannonTower,
     Count_   // number of classes (not a class): the class table has this many entries (S3)
 };
-enum class PayloadTag : std::uint8_t { Inert = 0, Workshop = 1, WeaponsWorkshop = 2, Farm = 3, SmallFarm = 4, Mine = 5, Market = 6, House = 7 };   // = the save tag of Building::payload; append-only
+enum class PayloadTag : std::uint8_t { Inert = 0, Workshop = 1, WeaponsWorkshop = 2, Farm = 3, SmallFarm = 4, Mine = 5, Market = 6, House = 7, Inn = 8, Quarry = 9 };   // = the save tag of Building::payload; append-only (Inn: stream 128; Quarry: stream 137, part Q)
 struct ClassInfo {
     RuntimeClass cls = RuntimeClass::Plain;
     TickKind tick = TickKind::None;
@@ -2688,7 +2688,6 @@ without advancing other subsystems. Existing bounded queue dropping/draining and
 replay observation affect no canonical state or PRNG. Ready load starts with an
 empty host queue. Actual audio/window consumption remains external.
 
-
 ## Route-only136 (MAP-ROUTE-1)
 
 State136 is the separately reserved route branch, based on accepted134/ECONBK1;
@@ -2702,3 +2701,9 @@ and pending generation/order. Commands append Body12/13, tagsF075/F076. No earli
 variant changes. New136 readers refuse real134 native/replay and nested identity
 mismatches; there is no migration or relabelling, nor a claimed135 artifact test.
 Current synthetic fixtures use freight/current136, preserving expand1/current134.
+
+**MAP-EXTRACT-2 part Q (stream 137, no new version number; `docs/sim/quarry-bricks.md` Q3.1).** Two saved fields join the 137 identity. (1) `PayloadTag::Quarry = 9`, the Payload alternative of a Quarry-class building (a fact of the runtime class, `payload_tag_of(type, class)`; the class table still pairs the class with `Inert`, so the registry digest is unchanged): `u16 last, bool blocked, bool suspended, StatusTracker status (u8 code, u8 icons, u16 time), optional<bool> financial_active (presence byte, bool), claims` where `claims` is `ar::bools` (u64 count = the type's entrance count, then one 0/1 byte per entrance). Invariants: the count equals the type's entrance count (building.cpp `payload_problem`), and per island the set flags never exceed the live mason workers (job 0x2c) in the walk or the wait (World::harvest_problem). (2) `HarvestState` of a figure whose `job` is 0x2c gets two trailing bytes `u8 goal_col, u8 goal_row` (the selected entrance's sub-cell, 0 to 2) after `u32 along`; the figures of the other harvest jobs are unchanged. The independent byte reference `tools/sim_stream.py` models neither (its transcribed worlds hold no quarry and no job-0x2c figure), so the stream of a quarry world has no independent oracle yet: the quarry payload and the goal bytes are covered by the C++ layout, round-trip and reload tests only. No draw site, rule or command-wire change.
+
+The I1 merge checkpoint contains both lineages but is not a current compatibility
+identity. MAP-INTEGRATE-2 I2 allocates 138 and replaces the current references;
+the 135, 136 and 137 descriptions above remain predecessor contracts.

@@ -217,6 +217,14 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
             t.entrances.push_back(p);
         }
     }
+    // HIGHMAP (AnnoGame type +0x234): kept for class 0x3000 only, and only when it is exactly the
+    // 2h x 2w table of the footprint; any other record is left out (the type stays Unsupported).
+    if ((t.flags_word & 0x7000U) == 0x3000U) {
+        if (const auto hm = e.record("HIGHMAP");
+            hm && hm->size() == std::size_t{4} * t.width * t.height) {
+            t.highmap.assign(hm->begin(), hm->end());
+        }
+    }
     const std::string research = e.record_str("FORSCHTYPE").value_or("");
     const auto research_id = research_by_name(research);
     if (!research_id) {
@@ -326,12 +334,12 @@ static_assert(field_count<ProductionType>() == 18,
 // digest_type skips both, preserving every existing digest byte. (cls is hashed.)
 static_assert(field_count<PermissionFacts>() == 3, "permission facts need digest coverage");
 static_assert(field_count<BuildRequirement>() == 2, "construction facts need digest coverage");
-static_assert(field_count<BuildingType>() == 27,
+static_assert(field_count<BuildingType>() == 28,
               "a BuildingType member needs a line in digest_type (walk_class derived; walk_mask "
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
-static_assert(field_count<FigureType>() == 10, "a FigureType member needs a line in the digest");
+static_assert(field_count<FigureType>() == 11, "a FigureType member needs a line in the digest");
 static_assert(field_count<GoodsInfo>() == 5, "a GoodsInfo member needs a line in the digest");
 static_assert(field_count<GoodsPrices>() == 2, "prices need digest coverage");
 static_assert(field_count<ClassInfo>() == 4, "a ClassInfo member needs a line in the digest");
@@ -394,6 +402,11 @@ template <class A> void digest_type(A& a, const BuildingType& t) {
     if (t.special_successor) {
         a.boolean(true); // C3: only a declared type adds the byte, so no other digest moves
     }
+    if (!t.highmap.empty()) {
+        // Stream 135: only a type with a table adds it (count, then the bytes), after every field
+        // above, so no other digest moves.
+        ar::seq(a, t.highmap, 1, [&](const std::uint8_t& b) { a.u8(b); });
+    }
 }
 
 std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
@@ -441,6 +454,10 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(nf.nav_class);
         a.u32(nf.stamp_radius_88);
         a.u32(f.route); // stream 126
+        if (!f.ware.empty()) {
+            a.boolean(true); // stream 135: only an ore symbol with a ware adds it, tagged
+            a.str(f.ware);
+        }
     });
     // The group table (P1, stream 115): u64 count, then per group the slot, the two
     // flags, Wohnmax, the needs (u64 count; goods id, forced flag, Menge) and the
@@ -611,6 +628,12 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
             }
         }
     }
+    // Stream 135: the ware of an ore symbol (the deposit's goods).
+    if (t.bewohntype == 145) {
+        if (const auto w = e.record_str("WARE")) {
+            t.ware = *w;
+        }
+    }
     // MAP-ECON-1 E2 (stream 126): the ROUTETYPE index (loader 0x1000fe00, branch 0x10010029-
     // 0x100100d9, store 0x100100cf). A name the original's table does not hold is a load error, as
     // an unknown PRODTYPE is (P: every shipped entry names a table entry, UNUSED or none).
@@ -669,7 +692,7 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
 std::optional<PayloadTag> payload_for_tick(TickKind tick) {
     switch (tick) {
     case TickKind::None:
-        return PayloadTag::Inert;
+        return PayloadTag::Inert; // check_consistency lets the Quarry row (tick None) differ
     case TickKind::Workshop:
         return PayloadTag::Workshop;
     case TickKind::WeaponsWorkshop:

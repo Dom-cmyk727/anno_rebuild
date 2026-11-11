@@ -48,6 +48,23 @@ struct Inert {
     std::optional<bool> financial_active = true;
 };
 
+/// The state of a quarry (MAP-EXTRACT-2 part Q, docs/sim/quarry-bricks.md Q3.1; D vtable
+/// 0x100c2614). The original's class is a stub with no tick and a writer that saves 0 bytes; the
+/// only state this engine keeps is the claim set of DECIDED Q-A: one flag per ENTRANCE of the type
+/// (the original's byte +0x18 holds one bit per entrance, 8 at most; here the count is the type's
+/// entrance count, no hardcoded 8). A flag is set at a mason worker's step-A choice and cleared at
+/// the end of its wait or at its abort; goal registration skips a flagged entrance. The members
+/// before `claims` are those of `Inert` in the same order (a quarry is Inert in every other
+/// respect).
+struct Quarry {
+    std::uint16_t last = 0;
+    bool blocked = false;
+    bool suspended = false;
+    StatusTracker status;
+    std::optional<bool> financial_active = true;
+    std::vector<std::uint8_t> claims; // 0 / 1 per entrance (not vector<bool>: lint_sim)
+};
+
 /// The state of an Inn (D vtable 0x100c96d8): the Inert prefix plus the tavern stock (+0x18;
 /// delivered by `+0xc0` = 0x100756d0, offered by `+0xa4` = 0x10075940, debited by the bill
 /// 0x100756e0), the taken statistic (+0x1a, raised by the bill, decayed by the tick) and the
@@ -96,8 +113,8 @@ struct House {
 
 /// Alternative order = the save tag order of PayloadTag (types.hpp), append-only.
 /// FurTrapper uses Farm; the class comes from the type.
-using Payload =
-    std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine, Market, House, Inn>;
+using Payload = std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine, Market, House,
+                             Inn, Quarry>;
 
 /// The byte +0x0e of a building (D: 0x86 in the base constructor, 0x82 for a
 /// house; property 0x2b sets it from a COMP chunk; meaning open, O-38).
@@ -213,6 +230,12 @@ struct TileBox {
 /// one or the group is not below SimConfig::house_groups.
 [[nodiscard]] std::optional<std::uint32_t> house_group(const SimConfig& cfg,
                                                        std::uint32_t prodtype);
+
+/// The payload alternative a building of `type` must hold: the class's PayloadTag, except that a
+/// Quarry-class type with the Inert pairing of the class table holds the Quarry payload (the claim
+/// set, docs/sim/quarry-bricks.md Q3.1), which leaves the class table and the registry digest
+/// unchanged.
+[[nodiscard]] PayloadTag payload_tag_of(const BuildingType& type, const ClassInfo& cls);
 
 /// The runtime payload of a new building of `type` (§7.3 step 2: every bit zero,
 /// F2): the make_* constructor of its class, sized from the type and the config

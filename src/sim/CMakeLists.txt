@@ -156,7 +156,7 @@ if(ANNO_BUILD_TESTS)
   add_test(NAME expansion_voyage_changed_command_fresh_process
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
                    "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/expansion-voyage/expansion-changed-command.log"
-                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 10/11.*DIVERGED at entry 460"
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 10/11.*DIVERGED at entry 458"
                    -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
   set_tests_properties(expansion_voyage_fresh_process expansion_voyage_changed_command_fresh_process
                        PROPERTIES FIXTURES_REQUIRED expansion_voyage_record
@@ -186,7 +186,7 @@ if(ANNO_BUILD_TESTS)
   add_test(NAME freight_voyage_changed_command_fresh_process
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
                    "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/automatic-freight/freight-changed-command.log"
-                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 3/4.*DIVERGED at entry 491"
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 3/4.*DIVERGED at entry 488"
                    -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
   set_tests_properties(freight_voyage_fresh_process freight_voyage_changed_command_fresh_process
                        PROPERTIES FIXTURES_REQUIRED freight_voyage_record

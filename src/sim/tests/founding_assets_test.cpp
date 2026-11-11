@@ -5022,9 +5022,13 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
         }
     REQUIRE(checkpoints == 13);
     REQUIRE(prior == 10);
-    CHECK(run.city_upkeep.at(ref) == 90);
+    // State 137's carrier-home endpoint correction completes the first source delivery two
+    // 500-tick advances earlier on the combined state-138 binary. The remainder of this proof is
+    // driven from that delivery, so it closes at tick 264000 rather than state 134's 265000: one
+    // source-city upkeep booking has not happened yet and the owner retains that one gold.
+    CHECK(run.city_upkeep.at(ref) == 89);
     CHECK(run.city_upkeep.at(destination_ref) == 47);
-    CHECK(gold_of(w, 0) == 28863);
+    CHECK(gold_of(w, 0) == 28864);
     for (const auto& island : w.islands())
         if (island)
             for (const auto& city : island->cities)
@@ -5036,7 +5040,7 @@ TEST_CASE("expansion voyage: genuine founding production and manual resupply") {
                                       [](auto value) { return value == 0; }));
                 }
     std::ostringstream evidence;
-    evidence << "state=134 schema=ECONBK1 PRNG=5 replay=4 command=1 save=1\n"
+    evidence << "state=138 combined=135+136+137 schema=ECONBK1 PRNG=5 replay=4 command=1 save=1\n"
              << "tick=" << w.clock().tick() << " entries=" << honest.entries.size()
              << " checkpoints=" << checkpoints << " changed_load_entry=" << changed_entry
              << " changed_checkpoint=" << changed_entry + 1

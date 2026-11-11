@@ -2401,6 +2401,33 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   the same capture method `docs/re/ui.md` section 1.3 already uses. Until then, part U's row 19
   stops at the data-layer entry; no `UiMockScreen`/live-window state or draw call is added on a
   guessed trigger.
+- **W4-NEXT-2 part W (2026-11-11), new captures and a partial answer to (a):** a fresh Wine-runner
+  session (`cache/orig/w4next2-ui-captures/`, a new Citizen game) tried every transition in turn
+  from the already-selected Kontor panel ("ANNOnymous", the default view at game start - a
+  player-summary panel, not literally `f15_kontor`, see OQ-567's own update below): **Escape alone
+  changed nothing** (`after_esc_from_kontor.png`, identical panel, confirmed twice - once from the
+  "ANNOnymous" panel, once from the "Plantau" settlement panel reached by clicking the Kontor
+  building itself); **a click on water changed nothing** either (`after_missclick_water.png`); but
+  **a click on ordinary forest/grass terrain (no building, not water) showed a different, generic
+  grey panel with no nameplate** (`missclick_forest.png`) - visually a castle/tower illustration,
+  matching the project's own existing note that this content "is the castle-illustration content
+  of `f15_ship_guess_0`" (OQ-567's predecessor text). This answers (a) more precisely than before:
+  the trigger is specifically a click that resolves to **no building and no water** (not Escape,
+  not a water click) - "miss-click" in the original note meant a land miss, not any click that
+  finds nothing. (b) (whether `MAX_PIC` is itself transient) is still untried.
+  - A sprite-sad attempt (ad hoc, not the project's documented tool) at `fenster.tex` id 5 against
+    `missclick_forest.png` gave best mean 58.7 at (779, 242) (stride-4 sampling, no grey-key, a
+    sliding search over x 765-795/y 230-260) - inside the same elevated range this project's own
+    `docs/re/ui.md` line 138 records for `MAINUNTERGRUND` itself under heavy foreground content
+    (mean 82 on `hud_idle_running`, "tabs sit on it"), so this is supportive, not conclusive,
+    evidence, and should not be read against the clean-overlay bar (<15) the method's own
+    definition states. A rigorous pass (the project's own stated sprite-sad definition, `docs/re/
+    ui.md` line 132: minimum mean on opaque pixels in a stated search box, no masking caveat
+    needed here since MAX_PIC's own box is not otherwise covered) is still owed; this update only
+    adds a strong visual match plus a supportive (not decisive) number.
+  - Shots kept under `cache/orig/w4next2-ui-captures/d91-20261111-100242/shots/` (not in git):
+    `initial_view.png`, `after_esc_from_kontor.png`, `after_missclick_water.png`,
+    `click_kontor_building.png`, `after_esc_from_settlement.png`, `missclick_forest.png`.
 
 ## OQ-566: Demolish mode's OS cursor and land highlight are not drawn yet (W4-NEXT-1 part U row 5, 2026-11-10)
 - **Status:** open (scoped follow-up, not a defect in what row 5 did fix).
@@ -2428,6 +2455,31 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   for the highlight's exact rule. Until then this is explicitly NOT drawn, not silently assumed
   equivalent to the existing placement-preview highlight (which this project does have, for a
   different mode, with a different, unverified-here tint).
+- **W4-NEXT-2 part W (2026-11-11): re-examined the existing `r2_demolish` shot** (`E:\anno1503-
+  worktrees\anno1503-UI-1\cache\orig\ui-1\shots\r2_demolish.png`) at higher zoom instead of
+  re-capturing (the shot already has demolish mode active over a tile):
+  - **The highlight is one tile, not a footprint** - confirmed visually (a single isometric
+    diamond, `cache/w4-next-2/demolish_highlight_crop.png`), and **a second, thinner yellow
+    diamond *outline*** sits within/near the filled highlight, not previously documented - either
+    a separate element (a precise hover-cell border distinct from the filled tint) or an artefact
+    of the fill's own edge; not resolved further here.
+  - **Approximate tint, from real pixel averages** (not a guess): the highlighted tile's average
+    RGB over a representative patch is (158, 199, 50); two clear, same-lighting-band normal-grass
+    patches in the same shot average (84, 125, 26) and (119, 158, 36) - a per-channel ratio of
+    roughly 1.6-1.9x. A rough alpha-blend fit (base·(1−a) + overlay·a) lands near a=0.35 with an
+    overlay close to (255, 255, 80) (yellow, not pure RGB yellow) - a starting point for
+    implementation, explicitly not a precise measurement (no paired before/after shot of the exact
+    same tile exists to isolate the tint from the terrain's own texture noise).
+  - **The OS cursor cannot be verified from this harness's screenshots at all, and this is now a
+    settled fact, not an open question of method:** `tools/orig/wine/agent.py`'s `screenshot`
+    (and `grab()`) calls `PIL.ImageGrab.grab(xdisplay=...)`, which reads the X11 drawable via
+    `XGetImage` - this never composites the X server's hardware cursor (that is drawn by the X
+    server/compositor at scan-out, not present in the window/root pixmap content `XGetImage`
+    reads). The earlier "cursor did not SAD-match a 200×200 corner, mean 171" finding is explained
+    by this: the cursor was never in the captured pixels at all, at any position, not just the one
+    corner tried. Verifying `Abreissen_Gebaeude.tex` as the actual cursor image needs a capture
+    method that composites the cursor (e.g. `XFixesGetCursorImage`, or a Windows-harness run with
+    an explicit cursor-capture step) - out of reach of the current Wine pipeline as built.
 
 ## OQ-567: Kontor panel (row 2) has no measured background position/texture id (W4-NEXT-1 part U row 2, 2026-11-10)
 - **Status:** open (blocks row 2's CPU/GPU draw; this entry replaces a guess).
@@ -2453,6 +2505,38 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   if that misses, a broader sprite-sad search as `UI.1.F2.1` ran for `B_Baukosten`) against the
   right-panel region; until then row 2 draws no chrome - see `docs/orchestration/REPORTS.md`'s
   Part U entry for this packet's own disposition (data-only, not a guessed layout).
+- **W4-NEXT-2 part W (2026-11-11): still open; two distinct panels found, neither matched, and the
+  id 1511 lead tried and not confirmed.** A fresh Citizen game's default view at game start shows
+  a player-summary panel (nameplate "ANNOnymous", the profile name; `initial_view.png`) that is
+  **not the same panel** as the one shown after clicking the Kontor building itself (nameplate the
+  settlement's own name, e.g. "Plantau", with more rows - stock/goods-style entries;
+  `click_kontor_building.png`). `docs/re/ui.md` section 9.1's `r2_hud_kontor`/`f15_kontor` likely
+  names the second (settlement) one, not the first - worth confirming when section 9.1 is next
+  revisited, since this changes which shot the plate search should target.
+  - Tried against `click_kontor_building.png` (ad hoc sprite-sad, not the project's documented
+    tool, stride-4/6, search box roughly x 750-830/y 210-290): `FREMDERKONTOR_UNTERGRUND` id 1511
+    best mean 91.2 (779/794, 241/258 depending on search width); also tried on the same shot and
+    similarly not a clean match: `STADT_BILANZ_BK` id 677 ("city balance", 245×468, 87.5),
+    `SPIELER_BILANZ_BK` id 1128 ("player balance", 245×468, tried against `initial_view.png`
+    instead since it fits that panel's own semantics, 79.9-86.8), `NIX_BK` id 1023 ("nothing
+    background", 245×465, ~81-86), `MAINUNTERGRUND` id 4 itself (245×524, 84.8). None stands out
+    as a clear winner.
+  - **A methodology caveat, found while sanity-checking this pass:** re-running the same ad hoc
+    search for the *already-confirmed* `VIEWINFOPIONIERMAIN_BK` id 974 against
+    `f15_selected_house.png` at its own documented position (783, 252) gave mean 96.2 here - far
+    above the committed `data/ui/hud.txt`/`docs/re/ui.md` figure of 17.8 for the same pair. The
+    difference is very likely that this ad hoc script does not mask out the live content drawn
+    over a plate (the portrait, text, icons) the way the project's established sprite-sad passes
+    evidently do (`docs/re/ui.md` line 132's own stated method - minimum mean on *opaque pixels of
+    the sprite itself*, which should already exclude the plate's own transparent corners, but not
+    content some *other* sprite later draws on top of it in the live shot). **None of this entry's
+    91.2/87.5/79.9-86.8/84.8 numbers should be read as a confident rule-out or a confirmation
+    against the stated <15 (clean) / 40-50 (atlas under light content) bar** - they are only
+    relative, suggestive evidence from an uncalibrated tool. A trustworthy measurement still needs
+    either the actual masked methodology behind the existing 17.8/82/etc. figures (not identified
+    in this pass), or a search box tight enough to avoid the overlaid banner/rows entirely.
+  - Shots kept under `cache/orig/w4next2-ui-captures/d91-20261111-100242/shots/` (not in git);
+    see OQ-565's update above for the full list.
 
 ## OQ-568: PlayRunner::one_turn() interrupted by stop() mid-delay drops the turn's queued commands (W4-NEXT-2 P, 2026-11-11)
 - **Status:** open (QUESTION, not changed; re-review of `3f3dd4d8` on the Windows host).

@@ -117,7 +117,9 @@ Rig make_rig() {
     inn.taken = 3;
 
     sim::Quarry quarry;
-    quarry.claims = {1};
+    quarry.claims = {0};
+    quarry.suspended = true;
+    quarry.blocked = true;
 
     sim::ScenarioSpec spec = syn::basic_scenario();
     spec.islands[0].cities[0].buildings = {
@@ -188,7 +190,7 @@ TEST_CASE("inspect_building: quarry, hand-derived status line") {
     const auto found = app::inspect_building(rig.world, kCity, kQuarry);
     REQUIRE(found.has_value());
     CHECK(found->kind == "Quarry");
-    CHECK(found->status == "claims=1 status_code=0");
+    CHECK(found->status == "claims=0 status_code=0 suspended blocked");
 }
 
 TEST_CASE("inspect_building: a tile with no building is the negative control") {

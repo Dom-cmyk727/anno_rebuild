@@ -4,7 +4,28 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-11, by the Claude Code orchestrator:
+**Last updated:** 2026-11-11 evening, by the Claude Code orchestrator:
+- **W4-NEXT-2's fix round F reviewed: changes requested again**
+  ([fix review](reviews/2026-11-11-w4-next-2-fix-review.md)).
+  - **Fixed:** the HUD click-through, the demolish test, the population tool (step 10, `house_updates` opt-in,
+    ordered checkpoints, invariants) and the C-3 table in git.
+  - **Not closed: the selected-house race (P1).** It is narrower, but the orchestrator's game-file gate of the merge
+    failed that test at `-j 16`. The code shows why: a refresh F1 added updates the selection without the window
+    title, so a fact and the title can disagree for one tick.
+  - **Smaller:**
+    - no REPORTS entries for F1–F4 and F7;
+    - an unjustified 30 s test bound;
+    - a HUD-click test step that can't fail reliably;
+    - one wrong sentence in ADR 0004;
+    - `population` exits 0 on a broken invariant.
+  - **Grey-key needs no owner answer.** The UI-1-F2 scripts define it, and with it the committed 17.8 measures 32.07,
+    so 17.8 is marked as not reproduced.
+  - **Fix round G** goes to the Windows executor by message (the packet's part G). Both branches then land together.
+  - **The orchestrator's run of the merge:** 2,390 selected, 2,376 passed, 1 failed (the race), 12 classified skips.
+    The 20× repeat of the three selected-house tests beside it passed 60 of 60, and the negative control failed at
+    its bound, as it must.
+
+Earlier on 2026-11-11, by the Claude Code orchestrator:
 - **W4-NEXT-2 reviewed: changes requested** ([review](reviews/2026-11-11-w4-next-2-review.md)).
   - **`task/W4-ui-4` is not accepted yet.** Its new selected-house window test races the sim (P1), and a click on the
     HUD selects the building behind it (P2).
@@ -138,14 +159,23 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: W4-NEXT-2's fix round, part F** ([packet](tasks/w4-next-2.md),
-  [review](reviews/2026-11-11-w4-next-2-review.md)). It continues `task/W4-ui-4` from `f1f772b4` and
-  `task/W4-shared-list-1` from `593cdd3f`:
-  - **F1–F3:** make the selected-house session wait on state; keep HUD clicks off the world; prove the
-    demolish-while-selected drop;
-  - **F5:** fix the population tool's step, rules and checkpoints, and re-measure OQ-571;
-  - **F6–F8:** part W's report with calibrated sprite-sad numbers, the C-3 table in git, one attempt at the original's
-    column;
+- **Now: W4-NEXT-2's fix round G** ([packet](tasks/w4-next-2.md), part G;
+  [fix review](reviews/2026-11-11-w4-next-2-fix-review.md)). It continues `task/W4-ui-4` from `2138773e` and
+  `task/W4-shared-list-1` from `e69b036d`:
+  - **G1:** the selection facts and the window title from one state (the remaining P1);
+  - **G2–G5:** a HUD-click step that can fail, the pixel check's bound, ADR 0004's sentence, `population`'s exit
+    code;
+  - **G6:** grey-key defined in `docs/re/ui.md`, the 17.8 marked as not reproduced, sprite-sad calibrated against
+    figures that reproduce;
+  - **G7, G8:** the next path for the original's column; the missing F entries;
+  - **G9:** review and gates.
+- **Finished: W4-NEXT-2's fix round, part F** (2026-11-11; heads `2138773e` and `e69b036d`), from `f1f772b4` and
+  `593cdd3f`:
+  - **F1–F3:** the selected-house session waits on state (the race narrowed, not closed); HUD clicks stay off the
+    world; the demolish-while-selected step uses `local demolish`;
+  - **F5:** the population tool's step, rules and checkpoints fixed; OQ-571 re-measured;
+  - **F6–F8:** part W's report (sprite-sad calibration not reached), the C-3 table in git, one attempt at the
+    original's column (still NOT_RUN);
   - **F9:** review and gates.
 - **Finished: W4-NEXT-2 parts P → K → W → M → X → E** (2026-11-11), from `main` at `2c4dc295`:
   - **P:** preflight, plus the GPU pixel check that W4-NEXT-1 left NOT_RUN;

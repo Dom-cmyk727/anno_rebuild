@@ -10,6 +10,10 @@ Re-read this packet and your latest REPORTS entries after any context compaction
 **FIX ROUND, 2026-11-11:** the orchestrator's review ([review](../reviews/2026-11-11-w4-next-2-review.md)) requests
 changes before the merge. Do part **F** at the end of this packet, then stop.
 
+**FIX ROUND G, 2026-11-11 (evening):** part F is done; the orchestrator's review of it
+([fix review](../reviews/2026-11-11-w4-next-2-fix-review.md)) requests changes: the selected-house race is narrowed,
+not closed. Do part **G** at the end of this packet, then stop.
+
 ## Continuation on the Windows PC (2026-11-11, owner instruction)
 
 A Linux session without the game files, the RTX 4090, Wine or `E:` started this packet on branch
@@ -278,3 +282,91 @@ finding.
      nothing else heavy on the PC.
    - **Report:** a final REPORTS entry with the heads, a table that gives each finding of the review its
      disposition, the counts, NOT_RUN items and QUESTIONs. Then stop.
+
+## G. Fix round after the review of part F (2026-11-11, evening)
+
+**Why.** The [fix review](../reviews/2026-11-11-w4-next-2-fix-review.md) accepts most of part F, but its P1 is not
+closed: the orchestrator's canonical gate failed `viewer_wiring_selected_house_draw_check` at `-j 16`, and the code
+shows why (finding 1). Read its findings table first: each step below names its finding.
+
+**Rules.** Everything in §0 applies.
+- **Branches.** Continue `task/W4-ui-4` from `2138773e` (G1–G4, G6, G8) and `task/W4-shared-list-1` from `e69b036d`
+  (G5, G7). Ordinary pushes only. You may merge `origin/main` into a branch; nothing else.
+- **No other heavy job on this PC** while a measuring or gate run is going. Exception: the repeat run of G1, which
+  runs beside a full suite on purpose.
+- **OQ-568 is the owner's.** Leave it as it is.
+- **A REPORTS entry for every step**, at the bottom of `docs/orchestration/REPORTS.md` on the branch it changes, with
+  a "Decisions and reasoning" list.
+
+**Steps.**
+1. **G1 — the selection facts and the window title come from one state (finding 1, P1, and finding 5).**
+   `script_tick` reads the title (`viewer.cpp` lines 2199–2201) before its own `selection_refresh()` (line 2230).
+   That refresh can select the House after the run loop's `update_title()` has already run, and nothing updates the
+   title afterwards.
+   - **Recommended:** remove the `selection_refresh()` call from `script_tick`. The `selection.*` facts then read
+     `selection_` as the run loop's own paths left it: the pending block, and `update_title()` on the runner's wake
+     event. That is the same state the title shows. F3's drop is then resolved by play's own trigger, which also
+     closes finding 5; the `within 5000` waits absorb the wake's latency.
+   - **If you keep a refresh there instead:** when it changes the selection, call `update_title()` and set `dirty_`,
+     and read `st.title` only after it. Say why in "Decisions and reasoning".
+   - **Proof by construction:** in the report, name the lines that show the title and every `selection.*` fact come
+     from the same state in every tick.
+   - **A test that forces the order, if the hooks allow it.** Read `dev_script.cpp`'s holds and `PlayRunner`'s pause:
+     can a session make the click's answer arrive between the loop's `update_title()` and `script_tick`? If so, add
+     that case to the script or a unit test. If not, say why.
+   - **Repeats:** `ctest -R selected_house --repeat until-fail:50` while the full game-file suite runs at `-j 16`.
+     Report the counts per test, keep both logs and give their sha256. The race hit about once in 120 runs, so the
+     repeats support the construction; they don't replace it.
+2. **G2 — the HUD-click step can fail without the fix (finding 4).** A scripted click is pushed as an SDL event at
+   the end of `script_tick` (`viewer.cpp` line 2360) and handled in the next pass. Without the fix, the click only
+   sets `pending`; the title changes only when the sim answers.
+   - Make the step check the click's routing, not the title. For example, a fact that counts the clicks
+     `selection_handle` passed on to `selection_step`, compared before and after the click with `wait frames 1`
+     between.
+   - **Prove it:** build once locally with the hit test disabled (not committed), run the session, and show that the
+     step fails. Put the output in the report.
+3. **G3 — the pixel check's bound (finding 3).** Set `ANNO_VIEW_QUIT_S` in `selected_house_pixel_check.py` to 240,
+   like `viewer_wiring.py`. Or measure the session's longest run time in G1's repeats and set a lower bound with a
+   stated margin. Keep the subprocess timeout and the CTest `TIMEOUT` above it.
+4. **G4 — ADR 0004's F4 note (finding 6).** `PlayRunner::request_inspect` only stores the tile (`play.hpp`). Correct
+   the sentence: the fix needs a request number that the request carries and the snapshot echoes back.
+5. **G5 — `population` fails on a broken invariant (finding 9).** Exit 1 when `check_invariants` reports a problem,
+   after printing it, and say so in the usage text. Branch `task/W4-shared-list-1`.
+6. **G6 — grey-key and the 17.8 (finding 7).** F6's owner QUESTION is withdrawn; the evidence answers it.
+   - **Define grey-key** in `docs/re/ui.md` §2, in the sprite-sad paragraph. Use the rule of
+     `E:\anno1503-worktrees\anno1503-UI-1-F2\cache\ui1_f22_bind.py`, `mean_sad` with `key_grey=True`:
+     - skip sprite pixels with alpha < 8;
+     - skip sprite pixels with |r−g| < 12 and |g−b| < 12;
+     - the mean of |dR| + |dG| + |dB| over the kept pixels, divided by 3.
+
+     That file is git-ignored, so copy the rule into the text, not the file.
+   - **Mark the 17.8 as not reproduced.** In `docs/re/ui.md` (the `f15_selected_house` paragraph) and in
+     `data/ui/hud.txt`'s comment: 32.07 measured on 2026-11-11 with that rule, on `f15_selected_house` and
+     `f22b_help_house`. Don't move any element.
+   - **Calibrate your method against figures that reproduce.** Use two committed opaque sprite-sad figures, on the
+     shot `docs/re/ui.md` names for them. For example zoom + (`fenster.tex` id 44 at (959, 7), mean 2.885 on
+     `hud_idle_running`) and compass west (id 48 at (965, 140), mean 3.088). Report what you get.
+     - If they reproduce, restate the OQ-565 and OQ-567 numbers as calibrated.
+     - If they don't, say so and leave the numbers marked uncalibrated.
+     - Close an OQ only on calibrated numbers.
+   - **Replace F6's QUESTION in OQ-567** with this evidence, in a new paragraph under it.
+7. **G7 — the next attempt at the original's column (finding 8).** Doc only, no Wine session in this round. In
+   `docs/testing/original-wine.md` §6, "Left for a follow-up", put first: the endless-game files
+   (`Scenes/0010SingleEndlos`) are the New Game list (`choose_game`'s Citizen to Marquess rows, which
+   `macros.new_game` already reaches). Then the first check: which `.sze` a row opens, read from the process (for
+   example Wine's `+file` debug channel, or `tools/orig/gamestate.py`), not guessed. Branch `task/W4-shared-list-1`.
+8. **G8 — the missing F entries (finding 2).** A new REPORTS entry on `task/W4-ui-4` that records F1, F2, F3, F4 and
+   F7 after the fact:
+   - what changed in each;
+   - where the evidence is (the F1 contention log with its sha256; the repeat counts and the negative control as far
+     as they are still known, and NOT_KEPT for what wasn't kept);
+   - F7's correction of part E's sentence.
+
+   Never edit an old entry.
+9. **G9 — review and gates.**
+   - **Review:** one independent read-only reviewer for the code of G1, G2 and G5. It runs the selected-house tests
+     and the population tests with the game files, or marks them NOT_RUN.
+   - **Gates on both heads:** part E's list again. Report the canonical gate's counts classified, from a run with
+     nothing else heavy on the PC, separate from G1's repeat run. Hosted CI green on both final heads.
+   - **Report:** a final REPORTS entry with the heads, a table that gives each finding of the fix review its
+     disposition, the counts, NOT_RUN items and QUESTIONs. Then stop, and message the orchestrator with both heads.

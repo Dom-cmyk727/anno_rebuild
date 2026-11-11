@@ -2191,6 +2191,44 @@ which does not exist yet; that is new tooling, not something this run's own log 
   test's outcome differs; wall time 86.6 s off, 87.8 s on (`-j 4`). No test reaches 1 GiB without
   the game files (largest 187 MiB); 2,107 tests carry a peak line, 123 (the Python and CMake
   contracts) do not. **This does not answer C-3**: the large cases are the game-file ones.
-- **NOT_RUN: the full MSVC game-file run with the launcher** (`ANNO1503_GAME_DIR`,
-  `ANNO_GPU_ADAPTER=4090`, detached) - it needs the owner's Windows PC. The remedy QUESTION above
-  stays open until that table exists; no reservation is added by guesswork.
+- **The full MSVC game-file run, done (2026-11-11, W4-NEXT-2 part M, the Windows PC):** a
+  dedicated build directory (`build/msvc-peak`, `ANNO_TEST_PEAK_MEMORY=1 cmake --preset msvc -B
+  build/msvc-peak`), then `ctest --test-dir build/msvc-peak -C Release -j 16` with
+  `ANNO1503_GAME_DIR` set and `ANNO_GPU_ADAPTER=0` (this host's RTX 4090), detached. First attempt:
+  14 `anno_render_tests` cases and one `anno_test_support_tests` case failed, every one of them
+  `[anno-test memory] refused ... reason=low-memory stop` (free memory genuinely exhausted by
+  concurrent work on this shared PC at the time, not a code defect) or a pre-existing WSL-side
+  flake (`F4 (N4)`'s meter child); all 15 passed cleanly on an isolated re-run once memory
+  recovered - this contention event is itself relevant C-3 evidence, not noise to discard. A second,
+  clean full run (2384 selected after a stray cross-branch test was corrected out - see below) gave
+  2383/2384 passing; the one failure (`selected_house_pixel_check`, W4-NEXT-2 K's own new pixel
+  check) also passed cleanly in isolation immediately after - the same contention pattern, this
+  time CPU/frame-timing rather than memory (a dev-script-driven window test's fixed `wait frames N`
+  steps assume reasonably-paced frame delivery, which 16-way parallel heavy GPU/render tests can
+  break). Log kept: `cache/w4-next-2/LastTest-full-run.log` (copied immediately after the run, per
+  this file's own "copy before re-running" rule - a first copy attempt was lost by re-running a
+  subset before copying; the second run was careful).
+  - **`tools/test/peak_report.py`'s table** (threshold 1024 MiB, `--jobs 8`): 2384 tests in the
+    log, 2246 with a peak line (138 Python/CMake contracts do not report one). **27 tests exceed
+    1 GiB; 18 of those take no reservation at all.** The single largest: `anno_app_tests.scene
+    picture: after a move the pixels equal a fresh scene, and only the marked keys rebuild` at
+    **8715 MiB, unreserved**. Two `anno_render_tests` river/scene-digest corpus cases reach ~4840
+    MiB each, both *already reserved* (6747/6527 MiB - over-reserved relative to their own peak,
+    which is conservative, not wrong). The **largest sum of unreserved peaks that could run at
+    once under `-j 8`** (upper bound; CTest's real schedule/order/RESOURCE_LOCKs not modelled):
+    **18281 MiB over 8 tests** - more than half this host's 32 GiB even before anything else on
+    the machine is counted, confirming the review's original concern with real numbers instead of
+    guesswork.
+  - **The remedy, answered:** option **(a)** from the QUESTION above - a conservative fixed
+    reservation on every currently-unreserved case above the threshold, sized from this table's own
+    peaks (the same pattern `docs/perf/README.md` T10c F2 already uses for the render-corpus path)
+    - remains recommended, now with real numbers to size each reservation from (the table above).
+    Implementing the 18 reservations is new coordinator-facing work (`wire::kCompatVersion` is not
+    touched by *adding* reservations to existing tests - only a change to reservation *semantics*
+    would bump it, per the QUESTION's own scope note) - left for the owner to schedule as its own
+    task; not done inside this measurement pass.
+  - A stray cross-branch artifact, corrected: `anno_sim_replay_population_endless_01` (a test that
+    belongs on `task/W4-shared-list-1`, this packet's part X, not here) was briefly registered on
+    this branch and failed once (`CMake Error: Not a file` - deleted mid-run while correcting the
+    branch placement, not a real defect); `build/msvc-peak` was reconfigured afterward and the test
+    no longer appears. The 2384-test counts above are post-correction.

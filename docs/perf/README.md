@@ -2159,3 +2159,38 @@ which is the opposite set from the unreserved large cases C-3 is about. Getting 
 numbers for those still needs a per-process memory sampler wrapped around ctest item execution,
 which does not exist yet; that is new tooling, not something this run's own log already contains.
 "No gate run was available" is no longer the blocker - "no sampler for the unreserved cases" is.
+
+**Update, W4-NEXT-2 part M (2026-11-11): the sampler exists; the C-3 numbers do not yet.**
+
+- **Launcher.** `anno_peak_launcher` (`src/test_support/src/peak_launcher.cpp`) runs one test
+  process, waits, and prints `[anno-test peak] peak_bytes=<n> source=<how> exit=<code>
+  wall_ms=<ms> test=<name>` to stderr. Linux: `ru_maxrss` from `wait4` (the test process or a
+  descendant it waited for; KiB on Linux, bytes on macOS). Windows: `PeakWorkingSetSize` of the
+  child's handle after it exited. Opt-in: the CMake option `ANNO_TEST_PEAK_MEMORY` (default OFF;
+  its default is taken from the environment variable of the same name at the first configure)
+  makes it every doctest target's `CROSSCOMPILING_EMULATOR`, which doctest's discovery runs each
+  case (and its listing) through. CMake 3.28's `TEST_LAUNCHER` does not exist and 3.29's would
+  not reach the cases a discovery include file adds, so the emulator property is the seam. It is
+  configure-time, not runtime: a runtime switch would put an extra process in every run of every
+  test. A build directory with it on: `ANNO_TEST_PEAK_MEMORY=1 cmake --preset ...` into its own
+  `-B` directory.
+- **Its contract** (`peak_launcher_contract`, `tools/test/peak_launcher_test.py`): a 256 MiB child
+  measures 255.6 MiB above a 0 MiB child (within 10 %); exit 0, exit 7 and an abort keep their
+  status, stdout byte-identical (arguments with spaces, quotes and backslashes), stderr identical
+  apart from the one appended line; a missing program is the launcher's own 125; median added
+  wall time 1.6 ms per process (Linux, this host). Three mutants each fail it: KiB reported as
+  bytes, the exit code dropped, a signal turned into an exit code.
+- **Tabulation.** `tools/test/peak_report.py <LastTest.log> --inventory <json> --jobs 8` lists
+  every test above 1 GiB with its peak and reservation (an `[anno-test memory] admit
+  estimate=<n>` line, n > 0) and the largest sum of unreserved peaks whose `PROCESSORS` fit in
+  `-j 8` (an upper bound: CTest's schedule and resource locks are not modelled). Selftest:
+  `peak_report_contract`.
+- **Linux run without the game files** (`cache/w4-next-2/`, this host: 4 CPUs, 15 GiB): the whole
+  suite with the launcher off and on gives the same classified counts (2,230 selected, 1,976
+  executed and passed, 0 failed, 254 skipped: 243 required-asset, 2 platform, 9 opt-in) and no
+  test's outcome differs; wall time 86.6 s off, 87.8 s on (`-j 4`). No test reaches 1 GiB without
+  the game files (largest 187 MiB); 2,107 tests carry a peak line, 123 (the Python and CMake
+  contracts) do not. **This does not answer C-3**: the large cases are the game-file ones.
+- **NOT_RUN: the full MSVC game-file run with the launcher** (`ANNO1503_GAME_DIR`,
+  `ANNO_GPU_ADAPTER=4090`, detached) - it needs the owner's Windows PC. The remedy QUESTION above
+  stays open until that table exists; no reservation is added by guesswork.

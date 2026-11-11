@@ -6766,3 +6766,87 @@ unreserved-sum breakdown, both reconciled against the log cited above.
   the packet's own G8 instruction explicitly allows "NOT_KEPT for what wasn't kept," and a
   freshly-run negative control under today's (G1-fixed) code would not be evidence of what F1 itself
   showed at the time - it would be new evidence belonging under G1, not a correction of F1's record.
+
+## W4-NEXT-2 — G1, the title and the selection facts now come from one state (finding 1, P1, and finding 5 of the 2026-11-11 fix review) — 2026-11-11 — status: FINISHED
+
+### The fix
+
+`script_tick()` (`src/app/src/viewer.cpp`) read `st.title` from `SDL_GetWindowTitle` at what is
+now lines 2199-2201, then F1's own fix called `selection_refresh()` again at (then) line 2230. If
+that refresh changed `selection_` (selecting the House, or clearing it), `selection.kind`/
+`selection.selected` could report the *new* state while `st.title` - set by whichever
+`update_title()` call last ran, strictly before this tick - still showed the *old* one. A script
+that waits on the fact and then checks the title can see the fact pass and the title check fail in
+the very same tick: exactly finding 1's own repro (`viewer_wiring_selected_house_draw_check`,
+script line 81, `-j 16`).
+
+**The fix (the packet's own recommendation): remove the `selection_refresh()` call from
+`script_tick()`.** The `selection.*` facts now read `selection_` exactly as it stands when
+`script_tick()` runs - the same member variable `update_title()` already used to compute the title
+it just set. Diff: `src/app/src/viewer.cpp`, the `script_tick()` facts block (removed one call,
+expanded the comment to the construction argument below).
+
+### Proof by construction
+
+`selection_` (a plain member, `SelectionState selection_;`, `viewer.cpp` line 562) is mutated in
+exactly two places:
+1. **`selection_handle()`** (line ~1559 after this round's own G2 addition), reached only while
+   this thread is handling one polled `SDL_Event` - either from the blocking wait
+   (`SDL_WaitEventTimeout`, main loop) or the subsequent `SDL_PollEvent` drain, both *before* the
+   pending-click block and `script_tick()` in the same loop pass (the loop body, lines ~989-1050).
+2. **`update_title()`'s own call to `selection_refresh()`** (line ~2029), reached only from the
+   pending-click block (`if (selection_.pending && running_) { ...; update_title(); }`, line
+   ~1038) or the wake-event case of `handle()` (`if (wake_event_ != 0 && e.type == wake_event_) {
+   dirty_ = true; update_title(); }`, line ~1108) - both themselves event-handling steps of this
+   same single thread's loop, both completed before `script_tick()` begins.
+
+`script_tick()` runs after all of the above in one loop pass and before `draw()`; nothing in it,
+before the facts block, touches `selection_`. So between `st.title`'s capture (from the window
+title `update_title()` last set) and the `selection.*` facts (read from `selection_` moments
+later, same call), nothing can have changed `selection_` - they describe the same state by
+construction, not by timing.
+
+**Could a session force the harmful order anyway?** The runner's wake listener
+(`play_->runner().set_wake_listener`, line ~959) pushes an `SDL_Event` from the runner's own
+background thread when the sim publishes - this can happen at any instant, including while
+`script_tick()` is executing. But `SDL_PushEvent` only *enqueues*; the event is not dequeued and
+acted on (`handle()`'s wake case, which is what would call `update_title()`) until the next loop
+pass's own event-polling step. Reviewed `dev_script.cpp`'s holds (`hold_`/`PublicationHold`,
+`chunk_hold_`) and `PlayRunner`'s pause (`PlayRunner::stop()`/`one_turn()`, `play.cpp`): both
+control *when the sim itself advances or publishes*, not when this window thread polls its own
+event queue - neither can make a pushed wake event get processed mid-`script_tick()`. **No test or
+script case was added to force this ordering: the single-threaded event loop's own structure rules
+it out**, independent of pause state, holds, or timing - removing the extra call closes the gap
+by construction, not by making it merely less likely.
+
+### Repeats
+
+`ctest -R "selected_house" --repeat until-fail:50`, run **beside** a full MSVC game-file suite at
+`ctest -C Release -j 16` (both concurrent, by the packet's own exception for this proof), nothing
+else heavy on the PC.
+
+| Test | Passed | Failed |
+|---|---|---|
+| `viewer_wiring_selected_house_draw_check` | 50 | 0 |
+| `selected_house_session_replay` | 50 | 0 |
+| `selected_house_pixel_check` | 50 | 0 |
+
+- Repeat log: `cache/w4-next-2/g1-repeat50-proof.log`, sha256 `53e89a07d413ed7ce9f69ee421e47dc607ca98331e5dcad7d63bd9642e7e189f`.
+- Concurrent full-suite log: `cache/w4-next-2/g1-full-suite-concurrent.log`, sha256 `262f67701edb7bf6ce2ea117ed5a5d7f728b65ca14b3357a1d8a54dce7a66af6`,
+  2385/2385 passed, 0 failures, wall time 831.93 s.
+
+As the packet itself says: the fix review's own data put the pre-G1 race at roughly 1 in 120 runs,
+so 50 (or even the full-suite run's own ~2,400 tests) repeats support the construction argument
+above; they do not replace it, and a clean run here is not claimed as proof on its own.
+
+### Decisions and reasoning
+
+- Took the packet's own recommended fix (remove the call) rather than the alternative (keep a
+  refresh but call `update_title()`/set `dirty_` and read `st.title` after it): the recommended fix
+  is simpler, removes a now-redundant call rather than adding more coupling between `script_tick()`
+  and `update_title()`, and the proof-by-construction argument it enables is strictly stronger than
+  "this path also calls `update_title()` so it should be fine" would have been.
+- Did not add a forcing test/script case, per the packet's own "if not, say why" allowance - the
+  single-threaded event loop's structure (argued above, with the file:line citations) rules the
+  harmful ordering out independent of any hold or pause state this packet's own scripting hooks can
+  reach.

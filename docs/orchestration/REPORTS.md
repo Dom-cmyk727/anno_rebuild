@@ -6990,3 +6990,25 @@ part F ([packet section G](tasks/w4-next-2.md)). Stop here.
   evidence, and the local canonical gate remains authoritative per this project's own convention.
 
 Stop here. Message the orchestrator with both heads.
+
+## W4-NEXT-2 — CI addendum 2, windows-msvc's artifact-upload step failed, the test gate itself passed — 2026-11-11 — status: FINISHED
+
+`task/W4-ui-4`'s head `e37f909f` (the G9 report, docs-only) CI run 43091869311: `cpp
+(windows-msvc)` shows job-level "failure", but its own `test` step logs `VERDICT: PASS` with
+`COUNTS: selected=2269 executed=1988 failed=0 ... incomplete=0` - the actual gate ran clean. The
+failing step is a later one, `preserve test evidence including failures`
+(`actions/upload-artifact@v4`), which failed after 5 retries with `Unexpected token '<',
+"<!DOCTYPE "... is not valid JSON` - GitHub's own artifact-upload API returned an HTML error page
+instead of JSON, a hosted-infrastructure issue, not a test or code defect. `cpp (macos-clang)` on
+this same run passed cleanly (the prior run's `F3 (D1, deaf)` flake did not recur), confirming
+that flake's own intermittency as expected.
+
+### Decisions and reasoning
+
+- Treated the job's "failure" status as the artifact step's own infrastructure error, not the test
+  gate's result, since the test step's own logged verdict is the authoritative signal this
+  project's own convention reads (`VERDICT: PASS`/`FAIL`), not GitHub's aggregate job status - a
+  distinction already established for the coordinator-flake addenda above.
+- Did not push again to retry the artifact upload: it is not evidence of anything about this
+  packet's own code, and the local canonical gate (already PASS, see G9's own entry) remains the
+  authoritative acceptance evidence regardless.

@@ -582,6 +582,11 @@ class Viewer {
         UiMockSpec spec;
         HudCounters counters;
         std::shared_ptr<const PlaySnapshot> snapshot;
+        /// ADR 0004 row 18 (W4-NEXT-2 K): a building is selected (SelectionState::selected) and
+        /// the current snapshot's inspection of that same building (matched by id, not just by
+        /// tile - a demolished-and-rebuilt tile must not pass this as the old building) answers
+        /// kind "House". draw_live_screen_xrgb/_rgba's own doc comment says what this draws.
+        bool selected_house = false;
     };
     [[nodiscard]] ConstructionHudInputs construction_hud_inputs() const;
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
@@ -2023,8 +2028,9 @@ void Viewer::update_title() {
     }
     selection_refresh();
     if (selection_.selected && play_ != nullptr) {
-        // Row 18's panel is not drawn yet (its elements are not all measured: W4-NEXT-2 K, step
-        // 2); the selection shows in the title, from the same snapshot answer.
+        // Row 18's panel draws only what is measured (pionier_bk/house_portrait/need_icon_0 for
+        // a House; construction_hud_inputs's own selected_house gate) - the title also shows the
+        // selection, from the same snapshot answer, for every kind and before a panel exists.
         const auto snap = play_->runner().snapshot();
         if (snap && snap->inspection && snap->inspection->id == selection_.selected->id) {
             title += " — selected " + snap->inspection->kind;
@@ -2608,7 +2614,8 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             construction_menu_->construction(), *construction_masks_, in.spec,
             *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
             in.counters, construction_placement_open_,
-            dev_ != nullptr && dev_->input().demolish_mode(), paused_at_.has_value());
+            dev_ != nullptr && dev_->input().demolish_mode(), paused_at_.has_value(),
+            in.selected_house);
         if (drawn.ok()) {
             ui_overlay_image = std::move(drawn).value();
         }
@@ -2728,7 +2735,14 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                          whole_tons(goods_bricks_),
                          whole_tons(goods_marble_),
                          has_city ? snapshot->population : std::nullopt};
-    return {spec, std::move(counters), snapshot};
+    // ADR 0004 row 18 (W4-NEXT-2 K): draw only once the sim's own answer for the selected
+    // building, not the click itself, confirms it is a house - selection.hpp's own doc comment
+    // ("the answer selects it... every later answer re-checks the building's id").
+    const bool selected_house = selection_.selected.has_value() && snapshot != nullptr &&
+                                snapshot->inspection != nullptr &&
+                                snapshot->inspection->id == selection_.selected->id &&
+                                snapshot->inspection->kind == "House";
+    return {spec, std::move(counters), snapshot, selected_house};
 }
 
 void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view) {
@@ -2792,7 +2806,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
             *construction_masks_, in.spec, *construction_tex_cache_,
             in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
             construction_placement_open_, dev_ != nullptr && dev_->input().demolish_mode(),
-            paused_at_.has_value()));
+            paused_at_.has_value(), in.selected_house));
         construction_ui_ms = since_ms(ui_start, Clock::now());
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),

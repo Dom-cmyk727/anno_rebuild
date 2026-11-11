@@ -140,13 +140,22 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// HUD chrome stays" (docs/re/ui.md line 643). The sim clock itself stops/resumes through the
 /// existing path (`Viewer::toggle_pause`/`ViewerHooks::on_pause`); this flag only draws the
 /// chrome for a state the caller already has.
+///
+/// `selected_house` (ADR 0004 row 18, W4-NEXT-2 K): draws the selected-house panel - its plate
+/// (`pionier_bk`), portrait (`house_portrait`) and the one measured need icon (`need_icon_0`) -
+/// only on the idle HUD (`screen.kind == Hud`; the construction menu and this panel never show
+/// together, same split as `placement_open`). The caller sets this only when a building is
+/// selected (`app::SelectionState::selected`) and the current snapshot's inspection of that same
+/// building answers `BuildingInspection::kind == "House"` - never a guess ahead of the sim's own
+/// answer. The row's other two need icons and its tab are not measured yet (OQ-569/OQ-570) and
+/// are not drawn; there is no close button to draw (OQ-570: none exists in the capture).
 [[nodiscard]] std::string
 draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
                       const ConstructionLayout& construction, const MaskLayout& masks,
                       const UiMockSpec& screen, UiTexCache& cache,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters = {}, bool placement_open = false,
-                      bool demolish_mode = false, bool paused = false);
+                      bool demolish_mode = false, bool paused = false, bool selected_house = false);
 
 /// `draw_live_screen_xrgb`'s own state and arguments, composed instead into a fresh RGBA canvas
 /// that starts fully transparent (every byte 0, not the oracle's own alpha-255 convention) - the
@@ -165,6 +174,6 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters = {}, bool placement_open = false,
-                      bool demolish_mode = false, bool paused = false);
+                      bool demolish_mode = false, bool paused = false, bool selected_house = false);
 
 } // namespace anno::app

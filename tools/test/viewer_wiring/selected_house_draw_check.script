@@ -1,0 +1,82 @@
+# W4-NEXT-2 K: row 18, selecting a built house. Builds one pioneer house (public (0,0), id 501,
+# construction_full_proof.script's own proven-free tile 1156,516), selects it, screenshots the
+# panel, deselects with Escape, builds a second house at a neighbouring tile, selects it, then
+# demolishes it while selected - selection.hpp's own "a building demolished meanwhile drops the
+# selection" exercised through the real window, not just the unit test.
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+click 1156 516
+wait outcome
+expect outcome Applied
+checkpoint built_first
+
+# Disarm the developer tool: while the menu is still open, a second B falls through to it
+# (construction_handle's own key comment - the first B only opens the menu) and DevTool::handle's
+# own Toggle flips `enabled_` false, since `arm()` had set it true (dev_tool.cpp). Cancel
+# (the pickaxe/X click) does NOT clear this - selection needs the tool fully off
+# (selection_active()'s own "!(dev_ enabled)"), not just the panel closed.
+key b
+wait frames 2
+key esc
+wait frames 5
+
+# Select the first house: construction menu closed, the developer tool disarmed, a click on its
+# tile falls to selection_handle.
+click 1156 516
+wait frames 5
+expect title selected House
+screenshot selected_house_live
+checkpoint selected_first
+
+# Escape deselects (K-1): the title drops "selected", the panel stops drawing.
+key esc
+wait frames 5
+expect title-lacks selected
+screenshot deselected_live
+checkpoint deselected
+
+# Build a second house clear of the first's 4x4 footprint (1156..1159), select it instead of the
+# first (only one selection at a time).
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+click 1164 516
+wait outcome
+expect outcome Applied
+checkpoint built_second
+key b
+wait frames 2
+key esc
+wait frames 5
+click 1164 516
+wait frames 5
+expect title selected House
+checkpoint selected_second
+
+# Demolish the selected building while it is selected: the menu reopens on the grid (not the
+# panel), but dev_ is still disarmed from the "key b" above, so one more B (now that the menu is
+# open) re-enables it (DevTool::handle's own Toggle) before the pickaxe's click can reach
+# ToggleDemolish at all (DevTool::handle returns early while `!enabled_`).
+key b
+wait frames 2
+key b
+wait frames 2
+click_px 996 736
+wait frames 2
+click 1164 516
+wait outcome
+expect outcome Applied
+expect title-lacks selected
+checkpoint demolished_while_selected
+
+key esc
+wait frames 5
+quit

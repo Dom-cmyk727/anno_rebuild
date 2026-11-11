@@ -192,6 +192,25 @@ if(ANNO_BUILD_TESTS)
                 $<TARGET_FILE:anno1503>)
       set_tests_properties(construction_session_replay PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-NEXT-2 K: row 18, selecting a built house through the real window - build, select,
+      # deselect (Escape), select another, demolish it while selected (selection.hpp's "a building
+      # demolished meanwhile drops the selection", exercised end to end, not just the unit test).
+      add_test(NAME viewer_wiring_selected_house_draw_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> selected_house_draw_check
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_selected_house_draw_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # The same recording, replayed headlessly in a fresh process (construction_session_replay's
+      # own mechanism; selection itself writes no sim state, so this checks only what the
+      # recording carries: the two builds and the demolish, by their state hashes).
+      add_test(NAME selected_house_session_replay
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/selected_house_session_replay.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(selected_house_session_replay PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # W4-UI-2 H1/C1 second slice: the live window's own drawing (draw_cpu ->
       # draw_live_screen_xrgb), checked pixel by pixel against the UI.1 oracle (tools/test/
       # ui_mock_compare.py already checks the standalone anno_ui_mock composer; this checks the

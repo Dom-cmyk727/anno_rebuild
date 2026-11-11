@@ -511,6 +511,7 @@ void PlayRunner::loop() {
                 // turn, so record it here or the title stays on the last turn.
                 note_behind();
             }
+            answer_inspection_while_paused();
             schedule_->sleep_for(poll);
             continue;
         }
@@ -891,18 +892,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         }
         has_city_.store(developer_city_.has_value());
     } else if (!developer_city_) {
-        for (std::size_t i = 0; i < world_.islands().size() && !developer_city_; ++i) {
-            const auto& island = world_.islands()[i];
-            if (!island) {
-                continue;
-            }
-            for (const std::optional<sim::City>& city : island->cities) {
-                if (city && city->owner == local_player_ && !developer_city_) {
-                    developer_city_ = sim::CityRef{island->index, city->number};
-                    has_city_.store(true);
-                }
-            }
-        }
+        find_local_city();
     }
     if (developer_city_) {
         if (const sim::Player* player = world_.players().find(local_player_)) {
@@ -914,16 +904,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             island->cities[developer_city_->city.v]) {
             next->goods = island->cities[developer_city_->city.v]->stock.stock;
         }
-        std::optional<sim::TileXY> inspect_tile;
-        {
-            const std::lock_guard lock(inspect_mu_);
-            inspect_tile = inspect_tile_;
-        }
-        if (inspect_tile) {
-            if (auto found = inspect_building(world_, *developer_city_, *inspect_tile)) {
-                next->inspection = std::make_shared<const BuildingInspection>(std::move(*found));
-            }
-        }
+        fill_inspection(*next);
         // UI.2 C2: the construction menu's lock display reads this, never
         // World::construction_eligibility directly (that World belongs to this thread, not the
         // window's) and never data/ui/construction.txt's recorded state (RE evidence about the
@@ -1101,6 +1082,62 @@ void PlayRunner::note_behind() {
     auto next = std::make_shared<PlaySnapshot>(*snapshot());
     next->behind_ms = behind_ms_;
     next->paused = paused_.load();
+    publish_snapshot(std::move(next));
+}
+
+void PlayRunner::fill_inspection(PlaySnapshot& next) {
+    next.inspection.reset();
+    next.inspected.reset();
+    if (!developer_city_) {
+        return;
+    }
+    std::optional<sim::TileXY> inspect_tile;
+    {
+        const std::lock_guard lock(inspect_mu_);
+        inspect_tile = inspect_tile_;
+    }
+    if (!inspect_tile) {
+        return;
+    }
+    next.inspected = inspect_tile;
+    if (auto found = inspect_building(world_, *developer_city_, *inspect_tile)) {
+        next.inspection = std::make_shared<const BuildingInspection>(std::move(*found));
+    }
+}
+
+void PlayRunner::find_local_city() {
+    for (std::size_t i = 0; i < world_.islands().size() && !developer_city_; ++i) {
+        const auto& island = world_.islands()[i];
+        if (!island) {
+            continue;
+        }
+        for (const std::optional<sim::City>& city : island->cities) {
+            if (city && city->owner == local_player_ && !developer_city_) {
+                developer_city_ = sim::CityRef{island->index, city->number};
+                has_city_.store(true);
+            }
+        }
+    }
+}
+
+void PlayRunner::answer_inspection_while_paused() {
+    if (!developer_city_) {
+        find_local_city(); // set_local_player before the first turn: the turn would look it up
+    }
+    if (!developer_city_) {
+        return; // nothing is ever answered without a city: no republish loop
+    }
+    std::optional<sim::TileXY> requested;
+    {
+        const std::lock_guard lock(inspect_mu_);
+        requested = inspect_tile_;
+    }
+    const auto current = snapshot();
+    if (!current || current->inspected == requested) {
+        return;
+    }
+    auto next = std::make_shared<PlaySnapshot>(*current);
+    fill_inspection(*next);
     publish_snapshot(std::move(next));
 }
 

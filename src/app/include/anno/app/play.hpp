@@ -161,6 +161,11 @@ struct PlaySnapshot {
     /// against a newer World); null when nothing was requested or the tile holds no building of
     /// the developer's city.
     std::shared_ptr<const BuildingInspection> inspection;
+    /// The tile `inspection` answers (the last requested one), set whenever a tile was requested
+    /// and the player has a city, even when no building stands there (then `inspection` is
+    /// null). The selection (selection.hpp) needs it to tell "answered: nothing there" from "not
+    /// answered yet" (W4-NEXT-2 K).
+    std::optional<sim::TileXY> inspected;
     /// `World::construction_eligibility(local player, type).allowed()` for every type the
     /// registry defines, ascending by id (UI.2 C2: the sim's own lock authority is the one and
     /// only source the construction menu's lock display reads — never a copy of it, and never
@@ -410,6 +415,14 @@ class PlayRunner {
     /// The buildings after the turn, diffed against the last list (sim thread).
     [[nodiscard]] std::shared_ptr<const BuildingBatch> building_batch(std::uint64_t turn);
     void note_behind();
+    /// While paused no turn publishes; a newly requested inspection tile is answered by
+    /// republishing the current snapshot with a fresh `inspection`/`inspected` (a read of the
+    /// World on this thread; no state, stream, hash or draw change). W4-NEXT-2 K.
+    void answer_inspection_while_paused();
+    /// Looks up the local player's first city when there is none yet (each turn does this).
+    void find_local_city();
+    /// Fills `inspection` and `inspected` from the requested tile.
+    void fill_inspection(PlaySnapshot& next);
     [[nodiscard]] std::uint64_t p95_locked() const;
 
     sim::World world_;

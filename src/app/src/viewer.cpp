@@ -20,6 +20,7 @@
 #include <anno/app/frame_projection.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
+#include <anno/app/selection.hpp>
 #include <anno/app/ship_motion.hpp>
 #include <anno/app/ui_mock.hpp>
 #include <anno/app/window_capture.hpp>
@@ -555,6 +556,21 @@ class Viewer {
     /// exactly 1024 x 768 (R3's scale is still open; a mismatched size leaves every click to
     /// fall through unchanged, never a guessed scale).
     bool construction_handle(const SDL_Event& e);
+    /// The selected building (ADR 0004 "Selection", W4-NEXT-2 K, row 18): viewer UI state only.
+    /// Active in `--play` with the classic surface, outside the ship-start opening, while the
+    /// developer/construction tool is off (a tool's click stays the tool's).
+    SelectionState selection_;
+    /// Where the left button went down (drawable pixels), to tell a click from a pan drag.
+    std::optional<std::pair<double, double>> select_press_;
+    /// The pointer's slop for a click, in drawable pixels (ADR 0004 "Selection", QUESTION K-2).
+    static constexpr double kClickSlop = 4.0;
+    [[nodiscard]] bool selection_active() const;
+    /// The selection's share of handle(): a left click (not a drag) in the world, or Escape.
+    /// Returns whether it took the event.
+    bool selection_handle(const SDL_Event& e);
+    /// Feeds the latest snapshot's inspection answer to the selection and asks for the tile it
+    /// needs next (update_title, which runs for every published snapshot).
+    void selection_refresh();
     /// H2's `HudCounters` and the construction screen's `UiMockSpec`/eligibility, read from the
     /// current snapshot - shared by draw_cpu and draw_gpu so the "has a city yet"/goods-unit
     /// logic lives in exactly one place. `eligibility` outlives the call (it is the snapshot's
@@ -1007,6 +1023,12 @@ std::string Viewer::run() {
             handle(e);
         }
         events_ms_ = std::chrono::duration<double, std::milli>(Clock::now() - events_start).count();
+        if (selection_.pending && running_) {
+            // A click waits for its inspection answer; a paused runner publishes it without a
+            // wake event, so look every pass of the loop (at most 100 ms apart) until it is in.
+            update_title();
+            dirty_ = true;
+        }
         script_tick();
         if (running_ && can_draw && (animating || dirty_)) {
             dirty_ = false;
@@ -1130,6 +1152,11 @@ void Viewer::handle(const SDL_Event& e) {
         }
     }
     if (opening_ != nullptr && opening_->ui != nullptr && opening_handle(e)) {
+        update_title();
+        dirty_ = true;
+        return;
+    }
+    if (selection_handle(e)) {
         update_title();
         dirty_ = true;
         return;
@@ -1470,6 +1497,75 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         return true;
     }
     return false;
+}
+
+bool Viewer::selection_active() const {
+    return play_ != nullptr && hooks_ != nullptr && hooks_->ui == UiSurface::Classic &&
+           opening_ == nullptr && !(dev_ != nullptr && dev_->enabled());
+}
+
+bool Viewer::selection_handle(const SDL_Event& e) {
+    if (!selection_active()) {
+        select_press_.reset();
+        return false;
+    }
+    const float density = SDL_GetWindowPixelDensity(window_);
+    const double d = density > 0.0F ? static_cast<double>(density) : 1.0;
+    SelectionEvent event;
+    if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) {
+        event.kind = SelectionEventKind::Escape;
+    } else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT) {
+        // The press still starts a pan (the window's own handling below); only the release
+        // decides whether it was a click.
+        select_press_ =
+            std::pair{static_cast<double>(e.button.x) * d, static_cast<double>(e.button.y) * d};
+        return false;
+    } else if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) {
+        const double px = static_cast<double>(e.button.x) * d;
+        const double py = static_cast<double>(e.button.y) * d;
+        const auto press = select_press_;
+        select_press_.reset();
+        if (!press || !is_click(px - press->first, py - press->second, kClickSlop)) {
+            return false; // a drag: the window's pan
+        }
+        event.kind = SelectionEventKind::Click;
+        event.mode = PointerMode::Select;
+        if (dev_ != nullptr && pointer_frame_) {
+            event.tile = dev_->pick(*pointer_frame_, px, py);
+        }
+    } else {
+        return false;
+    }
+    const SelectionStep step = selection_step(selection_, event);
+    selection_ = step.state;
+    play_->runner().request_inspect(step.inspect);
+    if (step.consumed && event.kind == SelectionEventKind::Click) {
+        drag_ = false; // the release ends the press's pan, as the window's own handling would
+    }
+    return step.consumed;
+}
+
+void Viewer::selection_refresh() {
+    if (!selection_active()) {
+        return; // the developer tool's hover owns the inspection request while it is on
+    }
+    const auto snap = play_->runner().snapshot();
+    if (snap) {
+        SelectionEvent answer;
+        answer.kind = SelectionEventKind::Answer;
+        answer.tile = snap->inspected;
+        if (snap->inspection && snap->inspected && snap->inspection->tile == *snap->inspected) {
+            answer.building = snap->inspection->id;
+        }
+        selection_ = selection_step(selection_, answer).state;
+    }
+    const SelectionStep keep = selection_step(selection_, SelectionEvent{
+                                                              SelectionEventKind::Answer,
+                                                              PointerMode::Select,
+                                                              std::nullopt,
+                                                              std::nullopt,
+                                                          });
+    play_->runner().request_inspect(keep.inspect);
 }
 
 bool Viewer::opening_handle(const SDL_Event& e) {
@@ -1907,6 +2003,18 @@ void Viewer::update_title() {
             lead += " | " + std::to_string(ships_missing_) + " ship(s) without sprites";
         }
         title = lead + " — " + title;
+    }
+    selection_refresh();
+    if (selection_.selected && play_ != nullptr) {
+        // Row 18's panel is not drawn yet (its elements are not all measured: W4-NEXT-2 K, step
+        // 2); the selection shows in the title, from the same snapshot answer.
+        const auto snap = play_->runner().snapshot();
+        if (snap && snap->inspection && snap->inspection->id == selection_.selected->id) {
+            title += " — selected " + snap->inspection->kind;
+            if (!snap->inspection->status.empty()) {
+                title += " " + snap->inspection->status;
+            }
+        }
     }
     if (hooks_ != nullptr && hooks_->title && !dev_on) {
         const std::string extra = hooks_->title();

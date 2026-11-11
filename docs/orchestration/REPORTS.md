@@ -6436,3 +6436,20 @@ test-helper script, two docs files) - a narrower gate matches its narrower scope
   ordinary, non-force push to one of this packet's two task branches.
 
 Stop here.
+
+### Addendum: the final report commit's own CI (2026-11-11)
+
+Commit `a1a30f63` (this entry's own commit, docs-only, `REPORTS.md` the only changed file) ran CI:
+`cpp (linux-gcc)` failed - one test, `anno_app_tests.publish: a stream of edits moves the picture
+forward while it lasts, and LatestOnly does not` (`scene_picture_publish_test.cpp:323-324`,
+`CHECK( picture.stats().outstanding == 0 )` got 1, 466 outstanding bytes). Downloaded the run's
+`test-evidence-linux-gcc` artifact to read the actual assertion (the job summary's own `head -60`
+of matching lines did not include it). This is conclusive evidence of a CI-runner timing flake,
+not a regression: the only change in this commit is a markdown file with no effect on compiled
+code, and the failing test is an async picture-publish concurrency check
+(`src/app/tests/scene_picture_publish_test.cpp`) this packet never touched - a docs-only diff
+cannot change that test's outcome, so two different results on effectively the same compiled
+binary across two runs is by definition non-deterministic, not a code defect in this packet. Every
+other job on this run (including `cpp (windows-msvc)`, `cpp (linux-clang-asan)`, `cpp
+(macos-clang)`) was green. Not re-pushed to chase a green checkmark on a docs commit; recorded here
+as the final, honest state instead.

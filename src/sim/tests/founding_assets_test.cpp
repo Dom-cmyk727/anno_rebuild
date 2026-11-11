@@ -4333,7 +4333,10 @@ struct Run {
     std::array<std::uint64_t, sim::kDrawSiteCount> draws{};
     std::function<void()> source_check{};
 
-    sim::ApplyResult apply(const sim::Command& command, std::uint64_t expected_gold = 0) {
+    std::function<void(const char*, const std::vector<std::uint8_t>&)> sink = publish;
+
+    sim::ApplyResult apply(const sim::Command& command, std::uint64_t expected_gold = 0,
+                           std::optional<sim::CityRef> target = {}) {
         auto money = balances(world);
         using View = decltype(city_view(std::declval<const sim::City&>()));
         std::map<sim::CityRef, View> cities;
@@ -4342,7 +4345,6 @@ struct Run {
                 for (const auto& city : island->cities)
                     if (city)
                         cities.emplace(sim::CityRef{island->index, city->number}, city_view(*city));
-        std::optional<sim::CityRef> target;
         if (const auto* b = std::get_if<sim::BuildCmd>(&command.body))
             target = b->city;
         if (const auto* l = std::get_if<sim::LoadCmd>(&command.body))
@@ -4467,7 +4469,7 @@ struct Run {
         if (natives.empty())
             natives.reserve(5); // keep resumed worlds at stable addresses
         const auto bytes = world.save();
-        publish(("cut-" + label + ".save").c_str(), bytes);
+        sink(("cut-" + label + ".save").c_str(), bytes);
         auto loaded = sim::World::load(bytes, std::move(types));
         REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string{} : loaded.error()));
         loaded.value().set_transport_stats(nullptr);
@@ -5174,7 +5176,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         CHECK(ship_of(w, 1).holds == expected_holds);
         CHECK(w.rng().cursor() == (cursor + 1) % w.rng().size()); // one original city-name draw
         const auto cut = w.save();
-        publish(enabled ? "current134-enabled-founded.save" : "current134-default-off-founded.save",
+        publish(enabled ? "current136-enabled-founded.save" : "current136-default-off-founded.save",
                 cut);
         auto native = sim::World::load(cut, original.types);
         REQUIRE(native.ok());
@@ -5192,7 +5194,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
             const auto refused = sim::World::load(old, original.types);
             REQUIRE_FALSE(refused.ok());
             CHECK(refused.error() ==
-                  "save: state stream version 133 is not supported (this build reads 134)");
+                  "save: state stream version 133 is not supported (this build reads 136)");
             auto old_log =
                 rec.log(); // current outer identity: the embedded native is the sole mismatch
             old_log.initial_save = old;
@@ -5258,7 +5260,7 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         REQUIRE(replayed.ok());
         REQUIRE(replayed.value().reproduced());
         CHECK(fresh.value().save() == w.save());
-        publish(enabled ? "current134-enabled-found.log" : "current134-off-found.log",
+        publish(enabled ? "current136-enabled-found.log" : "current136-off-found.log",
                 bytes.value());
         const auto gold = gold_of(w, 0);
         w.advance(0);
@@ -5303,3 +5305,5 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
         CHECK(w.check_invariants().empty());
     }
 }
+
+#include "freight_original.inc"

@@ -140,6 +140,11 @@ if(ANNO_BUILD_TESTS)
   # required above, so this is always true; kept so the reference tests stay visually grouped
   # under their own guard rather than restructured during the merge.
   if(Python3_FOUND)
+    add_test(NAME freight_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/freight_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/freight/contract_vectors.jsonl)
+    add_test(NAME freight_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/freight_ref_test.py)
     add_test(NAME figure_digest_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/figure_digest_ref.py --check
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/figure_digest_vectors.txt)

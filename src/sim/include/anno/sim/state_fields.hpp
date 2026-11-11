@@ -320,7 +320,14 @@ template <class A, Same<CargoRules> S> void fields(A& a, S& s) {
     ar::seq(a, s.dock_half_widths, 4, [&](auto& x) { a.u32(x); });
 }
 
-static_assert(field_count<Rules>() == 32, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<FreightRules>() == 3);
+template <class A, Same<FreightRules> S> void fields(A& a, S& s) {
+    a.u32(s.max_stops);
+    a.u32(s.max_actions);
+    a.u32(s.work_per_visit);
+}
+
+static_assert(field_count<Rules>() == 33, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -357,6 +364,7 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.house_updates);                // stream 128
     a.boolean(s.save_billed_goods);            // stream 128
     a.boolean(s.city_booking);                 // stream133, default false
+    fields(a, s.freight);                      // route-only136, excludes salt135
 }
 
 // ---- settings scope
@@ -1220,7 +1228,82 @@ template <class A, Same<ResidentState> S> void fields(A& a, S& s) {
     ar::seq(a, s.cargo, 8, [&](auto& c) { fields(a, c); });
 }
 
-static_assert(field_count<Figure>() == 22, "a Figure member needs a line in fields(Figure)");
+template <> struct EnumInfo<FreightDirection> : ContiguousEnum<2> {};
+template <> struct EnumInfo<FreightStatus> : ContiguousEnum<3> {};
+template <> struct EnumInfo<FreightPhase> : ContiguousEnum<6> {};
+
+// Route-specific bounded sequence reader. The limits derive from the unchanged
+// command framing or the already-read hold count; never trust header counts to
+// multiply allocations. Every failed read latches the archive's first error.
+template <class A, class V, class F>
+void freight_seq(A& a, V& v, std::uint64_t min_bytes, std::uint64_t maximum, F&& fn) {
+    std::uint64_t n = v.size();
+    a.count(n, min_bytes);
+    if constexpr (A::kReading) {
+        v.clear();
+        if (!a.failed() && n > maximum)
+            a.fail("freight count exceeds representable domain");
+        for (std::uint64_t i = 0; i < n && !a.failed(); ++i) {
+            v.emplace_back();
+            fn(v.back());
+        }
+    } else {
+        for (auto& value : v)
+            fn(value);
+    }
+}
+static_assert(field_count<FreightAction>() == 3);
+template <class A, Same<FreightAction> S> void fields(A& a, S& s) {
+    a.enumv(s.direction);
+    a.u32(s.goods);
+    a.u64(s.tons);
+}
+static_assert(field_count<FreightState>() == 19);
+template <class A, Same<FreightState> S> void freight_fields(A& a, S& s, std::uint64_t hold_count) {
+    std::uint64_t action_total = 0;
+    freight_seq(a, s.stops, 24, (65535U - 12U) / 20U, [&](auto& stop) {
+        a.u64(stop.warehouse.v);
+        a.i32(stop.dock_x_q8);
+        a.i32(stop.dock_y_q8);
+        freight_seq(a, stop.actions, 13, (65535U - 32U) / 13U,
+                    [&](auto& action) { fields(a, action); });
+        action_total += stop.actions.size();
+        if constexpr (A::kReading) {
+            if (!a.failed() && 12 + s.stops.size() * 20 + action_total * 13 > 65535)
+                a.fail("freight definition exceeds command framing");
+        }
+    });
+    a.enumv(s.status);
+    a.enumv(s.phase);
+    a.u32(s.stop_index);
+    a.u32(s.action_index);
+    a.u64(s.expected_order_id);
+    a.u64(s.order_generation);
+    a.u64(s.last_tick);
+    a.u64(s.credit_ticks);
+    a.u32(s.wait_remaining);
+    a.u32(s.scan_next);
+    a.u64(s.matching_raw);
+    a.u64(s.remaining_raw);
+    freight_seq(a, s.matching_holds, 4, hold_count, [&](auto& i) { a.u32(i); });
+    freight_seq(a, s.empty_holds, 4, hold_count, [&](auto& i) { a.u32(i); });
+    a.u32(s.candidate_next);
+    a.u64(s.completed_cycles);
+    auto reject = static_cast<std::uint16_t>(s.last_reject);
+    a.u16(reject);
+    if constexpr (A::kReading) {
+        if (!a.failed() && reject > static_cast<std::uint16_t>(Reject::CityAccounting))
+            a.fail("freight reject enum out of range");
+        s.last_reject = static_cast<Reject>(reject);
+    }
+    a.u8(s.nav_failure);
+    if constexpr (A::kReading) {
+        if (!a.failed() && s.nav_failure > 3)
+            a.fail("freight navigation enum out of range");
+    }
+}
+
+static_assert(field_count<Figure>() == 24, "a Figure member needs a line in fields(Figure)");
 
 template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -1249,6 +1332,8 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     ar::opt(a, s.nav, [&](auto& m) { fields(a, m); });      // stream 122
     ar::opt(a, s.harvest, [&](auto& h) { fields(a, h); });  // stream 126
     ar::opt(a, s.resident, [&](auto& r) { fields(a, r); }); // stream 128
+    a.u64(s.freight_generation);
+    ar::opt(a, s.freight, [&](auto& r) { freight_fields(a, r, s.holds.size()); });
 }
 
 /// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64

@@ -2687,3 +2687,18 @@ wave events commit transactionally and publish after output reset; startup appen
 without advancing other subsystems. Existing bounded queue dropping/draining and
 replay observation affect no canonical state or PRNG. Ready load starts with an
 empty host queue. Actual audio/window consumption remains external.
+
+
+## Route-only136 (MAP-ROUTE-1)
+
+State136 is the separately reserved route branch, based on accepted134/ECONBK1;
+it does not contain first Mac salt135. PRNG5/replay4/command1/native1 remain.
+Later combined main requires a fresh identity decision, not max(135,136).
+[The reviewed route contract](ship-trade-routes.md) specifies the complete order:
+FreightRules three u32 after Rules.city_booking; Figure u64 generation plus
+presence/state after resident. All nineteen future-affecting route members are
+explicitly serialized and checked, including clock credit, scan/candidate cursor
+and pending generation/order. Commands append Body12/13, tagsF075/F076. No earlier
+variant changes. New136 readers refuse real134 native/replay and nested identity
+mismatches; there is no migration or relabelling, nor a claimed135 artifact test.
+Current synthetic fixtures use freight/current136, preserving expand1/current134.

@@ -5915,3 +5915,155 @@ passing runtime gate.
 - Treated every reviewer finding as actionable and obtained re-review at the corrected pin. No merge
   started while I0 review was pending; I0 approval now releases I1's exact `49ffcee6` then
   `a5a3bca3` merges.
+
+
+## MAP-ROUTE-1 R0 — adopted accepted base (2026-11-06)
+
+Ownedtask/MAP-ROUTE-1-main starts exactaccepted e0bb6be7, dispatch049b0270 /
+TASKSblob2c27c486. Completed expansiona4617184 and all prior branches/evidence
+preserved; movingmain not merged. R0 plan/host/input/baseline independently
+APPROVED at ea7da855 by expand_e0_review. CanonicalcheapDebug6/6, seven required
+contracts separately1/1, all other outcome categories0. All472 original inputs and
+manifest match accepted inventory. Raw/source/binary/inventory/cache receipts in
+cache/route1/R0. [Plan](../sim/ship-trade-routes.md). Route-only136 reserved,
+not salt135; current runtime still134. R1 original contract/reference is released
+and in progress; no runtime/schema change yet. Ordinary ownedbranch checkpoint
+publication follows owner rules; no main push, other-lane intake or UI change.
+
+
+## MAP-ROUTE-1 R1 — original contract and reference approved (2026-11-06)
+
+Tested source cc440c5150376fe5fda2d5230a2c06d423d447bd; independent reviewer
+/root/expand_e2_review approved the actual original bytes/callers, adapted clock,
+commands/schema and40 hand-derived vectors. Canonical02 1/1 plus eight separate
+prerequisites, CLI23; all other outcome categories0. Raw/receipt/first failures
+remain cache/route1/R1, review cache/route1/reviews. Actual unmodified134 native
+and pinned old-reader6/6 are preserved. R2 released; runtime still134 at this
+checkpoint. Reserved136 is route-only, excludes salt135 and moving main. No
+original-runtime or Windows/Linux gate claim; no src/app/other-worktree edits.
+
+
+## MAP-ROUTE-1 R2 — commands/native approved (2026-11-06)
+
+Independent expand_e0_review APPROVED f1dbf910; runtime/schema e1a1ddb1. Route-only
+136 excludes salt135. Typed append-only commands/query/control, complete explicit
+native state, validated counts/cursors, shared manual cargo validation, takeover
+and end cleanup. Six independent byte cases,25 future-field perturbations and
+six focused public/prepared-state cases. Canonical01 preservedFAIL103pass/3stale
+test assumptions; corrected canonical02 32/32 plus eight required separately,
+all other categories0;103 unaffected passes reused with identical runtime.
+Receipt/rawSHA42ab6ed1aef9739b75d67cdefff42c35c7934e740fabc052881fb7edfeaabffa.
+Actual old/new G2 no-route field/scopes/PRNG projection verified; current136
+recordings genuinely produced, all134 history preserved. R3 released; scheduler,
+real automatic proof, current sanitizer and final acceptance remain pending.
+
+
+## MAP-ROUTE-1 R3 — automatic visits approved (2026-11-06)
+
+Independent expand_e2_review APPROVED92264de4. Real serial visits now perform
+matching-order sailing, integer waits, bounded scan/transfer progress and shared
+safe cargo commits; host observations are separate from authority.19 independent
+cargo vectors run through production scheduler calls; short two-cycle sailing,
+range refusal, same-tick ingress and reachable partial native suffix controls.
+Review found hidden action-walk and node-set cleanup costs; fixed with current-
+goods checks and incrementally initialized reserved POD heap/buffers, preserving
+all136 bytes. Canonical02 18/18 plus eight required separately, all other0;
+prior115/115 at99d34ad7 retained/reused only for unchanged dependencies. Receipt
+rawSHA68aa9d7011003320b546e293c45db5132703fe04e284939cb3d4b25c3a6e17d6.
+R4 released. Original-data two cycles, final cuts/replay/scale and sanitizer
+acceptance are still pending. No salt135/main intake, original loadout edit or UI
+change. Route-only136 remains separately reserved from the future combined main.
+
+
+### MAP-ROUTE-1 R4 — approved lifecycle and adversarial checkpoint
+
+Source2a82870e, independent `/root/expand_e0_review` APPROVE. Canonical31/31
+plus eight required separately, all other categories0,2.18s; rawSHA
+cece2a472b7aa272a877355a38472116e40533ebba110563f8448af918ebb11b.
+Six legal controls then six intended assertion failures (arrival bypass, wrong
+warehouse, credit-only, duplicated quantity, stale order, lost reload cursor);
+per-mutant binary/source hashes in supplementalfaults02, final source restored
+and rebuilt,27/27 legal cases. Original gate receipt preserved before relink.
+Public lifecycle, authority, per-owner goods, stable rebuilding/end cleanup and
+Found/manual takeover reviewed. No original canary claim yet; R5 released.
+Retain route-only136/ECONBK1/PRNG5/replay4/command1/native1, no salt/default/UI
+intake. Read MAIN-CI-1 at fetched96775da4 withoutmerge; applicable portable
+repairs will be a separate adapted/reviewed commit, excluding134 fixture pins.
+
+
+### MAP-ROUTE-1 — portable CI repairs approved without identity integration
+
+Source052d7143, independent `/root/expand_e2_review` APPROVE.15 applicable
+portable files from d1a2e191..92e4817b, no moving-main merge or134 fixture/board/
+salt/default/UI intake. Canonical01 98passes/1stale header failure, preserved;
+header-only correction and explicit134 refusal canonical03 1/1+2 separate, all
+other0;98unchanged passes reused explicitly. Diagnostic-only second attempt
+retained. Historical economy133 pins remain stale/unaccepted for136, not copied
+from main134. Exact receipts/review in route1/ci-intake and route1/reviews.
+R5 released; automatic original proof still pending.
+
+
+### MAP-ROUTE-1 R5 — original automatic production freight approved
+
+Tested007d595e, independent `/root/expand_e2_review` APPROVE; current table
+wording corrected afterward. Canonical1/1 (69742assertions), five required
+separately, allother0,162.47s; exact18hashreceipt and472unchanged input checks.
+Two3t automatic source/debit→receiver/credit cycles preserve inherited26t; first
+made1120 minusfirst768 leaves352, proving second768 requires≥416newmadewood.
+Original first2t premise failed faithfully; measured public collection plus29/3
+recipe fixes setup only, no gameplay/resource/identity change. Both failed full
+pilots and all short probes preserved. Human30000−1000construction−255cityupkeep
+=28745; otherowners unchanged, allgoods/city/raw/cart/tree terms close. Same1310
+Build refuses before and succeeds after; dest1280rawwood remains. NoProdexport0
+and inheriteddelivery1536 are explicitly unproductive. Five full native suffixes
+match,790entry genuine/one-byte legalchanged logs recorded. Fresh CLI/Release/
+SAN stillpending; R6 released. Route-only136 remains based134 withoutsalt135.
+
+
+### MAP-ROUTE-1 R6 — approved replay, continuation, scale and consumer contract
+
+Independent `/root/expand_e0_review` APPROVE testedcode73eb40eb/docs7cdc4cbd.
+RegisteredDebug3/3+five contracts separately (oneproducer/twofreshchildren),
+Release1/1+five contracts, allother0. Honest11/11; legalchanged29→28 matches3/4
+and diverges491; singlebytecausality independentlydecoded. Fivefullnative
+suffixes/R5trajectoryreused byte-for-byte.11producerartifacts,16Debug/seven
+Release receipt hashes verified.7shortscale samples/1400timings, allninefreight
+workfields8/8 equal acrossunrelatedworldsizes. Whole-scheduler timing and64route
+NAVbackpressure explicitly not linear/equal-work latency or late-game proof.
+Consumer card docs/testing/automatic-freight.md preservesmanualcard and defines
+Windowsadapter only;noappchange. Preservedcrowded-dockOutOfRange and default
+synthetic512-bound failures; onlyfixturegeometry/dimensions corrected, noRules.
+R7released: freeze149focusedDebug/152SAN(withonecurrentoriginalproducer+twoCLI),
+eightcontracts separately, freshintegrationreview;1200sdeclared from measured
+Debug/SANratio. No completion/SANclaim yet. Route-only136/no135 unchanged.
+
+
+### MAP-ROUTE-1 R7 — final local gates complete; handoff review
+
+Finaltested6fd98db3; code/tests/refs/tools73eb40eb unchanged. Debug149/149 +8
+required; ASan/UBSan152/152 +8, allfailed/empty/skipped/incomplete/SANcounts0.
+Originalproducer537.05s/69745assertions; honest11/11 andlegalchanged3/4at491
+complete in120.63/88.52s; totalSANselection698.98s. Ten native/log/eventfiles
+equalDebug,472originalfilesunchanged, all18SANreceipt hashes verified byfresh
+`/root/expand_boundary_review`. RawSAN SHA
+a24ba60ef39446a4cf2f8f9daea17ebdc291f52b8fe80fa73f10d94e049067c7.
+Publishedcompactreceipts andconsolidatedreviewhandoffcommittedforfinalreview;
+remainingonlydocumentationapproval/push. Historic econ133loop NOT_RUNfollowup
+ownedbyorchestrator/nextidentityintegration; routeall-citymoneyproofcomplete.
+Real135artifact/Windows/Linux/originalruntime/liveUI/GPU NOT_RUN. Route-only136
+based134/no135 unchanged. Noownedjobs/sleepassertionremain,sharedcoordinator
+untouched; nopushmain/merge/reset/rebase/otherlanechanges.
+
+
+### MAP-ROUTE-1 final — R0–R7 local candidate approved
+
+Fresh `/root/expand_boundary_review` APPROVE: code/tests/refs/tools73eb40eb,
+tested6fd98db3, committedhandoff111cf6f2. No blockingP1/P2. Debug149/149 and
+SAN152/152 +eightrequiredseparately;exactpublishedreceiptobjects/18SANhashes/
+tenbinary-eventparity/original472files independentlyverified. Finaldocs-only
+recordconverts pendinghandoffreviewtoactualapproval, no code/test/ref/tool edits.
+Consolidatedhandoff docs/orchestration/reviews/2026-11-06-map-route1.md;consumer
+card docs/testing/automatic-freight.md. Remainroute-only136/based134/no135;
+Windows/Linux/originalruntime/UI/GPU andstalehistoricalecon133loop NOT_RUN with
+explicitowner/acceptance. Expansionbranch/evidencepreserved. Ordinaryownedbranch
+publicationauthorized;stopwithoutmainintegrationorotherexecutorwork.

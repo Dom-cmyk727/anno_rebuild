@@ -28,6 +28,7 @@
 
 #include <anno/sim/archive.hpp>
 #include <anno/sim/create.hpp>
+#include <anno/sim/freight.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/world.hpp>
@@ -310,6 +311,7 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
     if (!problem.empty()) {
         return "save: " + problem;
     }
+    FreightRoutes::rebuild_indexes(w);
     return w;
 }
 

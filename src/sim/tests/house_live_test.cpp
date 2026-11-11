@@ -1159,12 +1159,15 @@ TEST_CASE("house live F1: house updates with unsaved billed goods are refused at
     const std::vector<std::uint8_t> rb = rules_bytes(only_unsaved);
     const auto at = std::search(save.begin(), save.end(), rb.begin(), rb.end());
     REQUIRE(at != save.end());
-    // Independent stream133 tail: house_updates, save_billed_goods, city_booking.
-    REQUIRE(rb.size() >= 3);
-    REQUIRE(rb[rb.size() - 3] == 0);
-    REQUIRE(rb[rb.size() - 2] == 0);
-    REQUIRE(rb.back() == 0);
-    *(at + static_cast<std::ptrdiff_t>(rb.size()) - 3) = 1;
+    // Independent stream133 tail: house_updates, save_billed_goods, city_booking, followed since
+    // route-only136 by FreightRules, three u32 (12 bytes, docs/sim/state.md "Route-only136").
+    constexpr std::size_t kFreightRulesBytes = 12;
+    REQUIRE(rb.size() >= 3 + kFreightRulesBytes);
+    const std::size_t tail = rb.size() - kFreightRulesBytes;
+    REQUIRE(rb[tail - 3] == 0);
+    REQUIRE(rb[tail - 2] == 0);
+    REQUIRE(rb[tail - 1] == 0);
+    *(at + static_cast<std::ptrdiff_t>(tail) - 3) = 1;
     reseal_save(save);
     auto loaded = sim::World::load(save, types);
     REQUIRE_FALSE(loaded.ok());

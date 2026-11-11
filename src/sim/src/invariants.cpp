@@ -12,6 +12,7 @@
 #include <anno/sim/create.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/figure.hpp>
+#include <anno/sim/freight.hpp>
 #include <anno/sim/house_tick.hpp>
 #include <anno/sim/ship.hpp>
 #include <anno/sim/world.hpp>
@@ -328,6 +329,9 @@ std::string World::check_invariants() const {
     if (!problem.empty()) {
         return problem;
     }
+    problem = FreightRoutes::validate(*this);
+    if (!problem.empty())
+        return problem;
     problem = resident_problem();
     if (!problem.empty()) {
         return problem;

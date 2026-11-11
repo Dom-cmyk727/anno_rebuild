@@ -127,7 +127,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 134
+STATE_HASH_VERSION = 136
 PRNG_TIMELINE_VERSION = 5
 
 
@@ -343,7 +343,7 @@ def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT, road_level=False, road_pie
             + cargo_rules_bytes(cargo)  # cargo (124)
             + u8(1 if road_level else 0) + u8(1 if road_pieces else 0)  # road_require_land_level, road_preserve_nonroad_pieces (125)
             + u8(1 if hygiene else 0) + u8(1 if skip_uncuttable else 0)  # forestry_claim_hygiene, forestry_skip_uncuttable (126)
-            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0) + u8(1 if booking else 0))  # house_updates, save_billed_goods (128)
+            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0) + u8(1 if booking else 0) + u32(1024) + u32(2048) + u32(64))  # house_updates, save_billed_goods (128)
 
 
 def settings_bytes(width=0, height=0):
@@ -942,7 +942,7 @@ def values():
 
 def goldens():
     found = {}
-    path = ROOT / 'fixtures/synthetic/sim/expand1/current134/goldens.txt'
+    path = ROOT / 'fixtures/synthetic/sim/freight/current136/goldens.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         parts = line.split('#')[0].split()
         if len(parts) == 4:
@@ -954,7 +954,7 @@ def corpus_versions():
     """(kStateHashVersion, kPrngTimelineVersion) from the version header line of
     fixtures/synthetic/sim/scenario_corpus.txt (written by scenario_test.cpp; its create
     hashes move with both versions), or None when the file has none."""
-    path = ROOT / 'fixtures/synthetic/sim/expand1/current134/scenario_corpus.txt'
+    path = ROOT / 'fixtures/synthetic/sim/freight/current136/scenario_corpus.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+) schema=ECONBK1 component=import-only$', line.strip())
         if m:
@@ -1013,10 +1013,10 @@ def cargo_rules_fixture_text():
 
 
 CARGO_RULES_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
-                                   'synthetic', 'sim', 'cargo_rules_bytes.txt')
+                                   'synthetic', 'sim', 'freight', 'current136', 'cargo_rules_bytes.txt')
 
 HOLDS_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
-                             'synthetic', 'sim', 'ship_holds.txt')
+                             'synthetic', 'sim', 'freight', 'current136', 'ship_holds.txt')
 
 
 def main():

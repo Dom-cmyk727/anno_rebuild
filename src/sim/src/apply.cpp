@@ -19,6 +19,7 @@
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/founding.hpp>
+#include <anno/sim/freight.hpp>
 #include <anno/sim/placement.hpp>
 #include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_orders.hpp>
@@ -913,9 +914,26 @@ ApplyResult Commands::apply(World& w, const Command& command, const InAdvance* i
         result = ShipCargo::unload(w, command, *un, in_advance);
     } else if (const auto* ld = std::get_if<LoadCmd>(&command.body)) {
         result = ShipCargo::load(w, command, *ld, in_advance);
+    } else if (const auto* route = std::get_if<AssignFreightRouteCmd>(&command.body)) {
+        result = FreightRoutes::assign(w, command, *route, in_advance);
+    } else if (const auto* control = std::get_if<ControlFreightRouteCmd>(&command.body)) {
+        result = FreightRoutes::control(w, command, *control, in_advance);
     } else {
         // A legacy record is never executed (fail closed, §8.3).
         result.status = Reject::Unsupported;
+    }
+    if (result.ok()) {
+        // Internal auto operations bypass this public ingress. Only accepted
+        // manual control/cargo/founding commands take over the assignment.
+        std::visit(
+            [&](const auto& body) {
+                using T = std::decay_t<decltype(body)>;
+                if constexpr (std::is_same_v<T, MoveCmd> || std::is_same_v<T, StopCmd> ||
+                              std::is_same_v<T, LoadCmd> || std::is_same_v<T, UnloadCmd> ||
+                              std::is_same_v<T, FoundCmd>)
+                    FreightRoutes::manual_takeover(w, body.ship, in_advance);
+            },
+            command.body);
     }
     if (!result.ok()) {
         SimEvent e;

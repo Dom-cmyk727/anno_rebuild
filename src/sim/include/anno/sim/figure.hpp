@@ -26,6 +26,7 @@
 #include <vector>
 
 #include <anno/sim/config.hpp>
+#include <anno/sim/freight_state.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/resident.hpp>
 #include <anno/sim/slot_list.hpp>
@@ -336,6 +337,8 @@ struct Figure {
     /// MAP-POP-LIVE-1 L1 (stream 128): the resident job of a house walker (docs/sim/
     /// population-live.md section 3).
     std::optional<ResidentState> resident;
+    std::uint64_t freight_generation = 0;
+    FreightSlot freight;
 };
 
 /// D: the unit registry (world +0x114).

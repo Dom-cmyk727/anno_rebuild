@@ -230,6 +230,15 @@ if(ANNO_BUILD_TESTS)
                 $<TARGET_FILE:anno1503>)
       set_tests_properties(ui_dynamic_draw_check PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # W4-NEXT-2 K, independent-review finding 7 (2026-11-11): row 18's panel had no pixel-level
+      # check (only title text and command outcomes) - the same evidence gap ui_dynamic_draw_check
+      # closed for rows 5/10, now closed here the same way. See selected_house_pixel_check.py's
+      # own doc comment for how the oracle is built.
+      add_test(NAME selected_house_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/selected_house_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(selected_house_pixel_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
       # F2 (W4-WIN-FINAL): the CPU window settles a change only after the frame was delivered through
       # SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent; each stage is made to fail in turn.
       add_test(NAME viewer_wiring_cpu_delivery_failures

@@ -6293,3 +6293,124 @@ Nothing to change to compile (removed public names are resident-walk internals: 
 - A6 (owner), OQ-556 check, the five `anno_app_tests` (clear after the merge with main), the identity-number caveat, the two baseline edits, the T5 fix review (orchestrator). Next package suggestions: none started.
 
 - Final reviewer (part E, fresh, read-only, head ed7131fa): **ACCEPT** for MAP-EXTRACT-2 for merge consideration, on the condition that the merge with main and the identity re-numbering come first; no P1/P2. It re-ran 9 required contracts by exact name (9/9), 99 sim cases (99/99), clang-format 23.1.3 on 67 changed C++ files (clean) and the GCC 13.3 `-Werror` compile of the changed sources and five tests (clean, arm64 container; x86_64 NOT_RUN); the two gate logs were read, not re-run. P3s folded in above or fixed in this commit: the mutant-script sentence, the stale `main` note, `fixtures/synthetic/sim/iron2/current137/README.md` paragraph 1, `gold-gems.md` line references (ARISTOKRATEN SCHMUCK need is line 537 of `BGruppen.dat`, stall tick at `types.cpp:984`). Accepted caveats: the quarry payload and goal bytes have no independent byte oracle (`tools/sim_stream.py` does not model them; only C++ round trips and reload tests); the five `anno_app_tests` make the Debug gate verdict FAIL (attributed above, cleared by the merge with main); part G is an inventory only.
+
+## MAP-INTEGRATE-2 I1 — exact input merges — 2026-11-11 — status: DONE
+
+Merged only the packet-authorized frozen inputs, in order, without rebasing or taking moving main:
+
+- Route `49ffcee66f5bdb678e4e165112abacccd84e727a` entered through two-parent merge
+  `d91e4a7a79cb0752f75e75f4386db38d30a89d5b` (parents `24d64756`, `49ffcee6`).
+- Extract `a5a3bca35c781231ab8d52205a5a1117b4cce23f` entered through two-parent merge
+  `67272f109e77e5c9ea0cefee57389890d813e5aa` (parents `d91e4a7a`, `a5a3bca3`).
+- The invariant-valid Quarry inspection correction is
+  `3294c10d10aa79b0b021712098bd25ae50a6bdfc`. Both accepted heads and the task's
+  main base are ancestors. Each checkpoint was ordinarily pushed only to
+  `task/MAP-INTEGRATE-2`.
+
+The first merge built and its canonical focused gate passed at exact `d91e4a7a`: selected 45,
+executed 45, failed 0, empty 0, skipped 0, incomplete 0, sanitizer lines 0
+(`cache/map-integrate-2/I1/route-intermediate.log`, sha256
+`0ddde5e7e1067d82b47a3be565e78d84eb63e7b4b42d08849a351030b833efd7`). The second merge's
+full `dev` build completed all 675 Ninja edges with exit 0. It is intentionally only a compile
+checkpoint: the combined tree still names predecessor stream 137, so no native/replay result from
+that identity is accepted as combined compatibility evidence before I2 allocates 138.
+
+### Conflict decisions
+
+- `REPORTS.md` kept this branch's slim-main/S/P/I0 history, then appended byte-for-byte the Route
+  branch's 152-line suffix followed by Extract's 226-line suffix. `docs/open-questions.md` kept the
+  branch copy and appended Extract's exact 22-line suffix; OQ-552 through OQ-556 occur once and no
+  number was changed. Orchestrator-owned `TASKS.md`, `STATUS.md`, `HISTORY*` and `REPORTS-1.md`
+  remain main's versions.
+- `world.hpp` keeps main's `city_population`, Route's freight accessors/friend/state, and Extract's
+  mine/quarry state. The version is temporarily 137 with an explicit non-evidence checkpoint note;
+  it is not a relabelled 136 or a claimed combined identity.
+- `apply.cpp` keeps both `freight.hpp` and `mine_source.hpp`, Route command handling, Extract mine
+  binding, and an explicit non-switchable Quarry arm. Booking, creation, driver and invariant
+  callers retain both feature families.
+- Every conflicted version assertion in config/economy/replay/resident/script/navigation/ship/sim
+  tests temporarily follows Extract's 137. `golden.hpp`, integration stream helpers, replay CMake
+  registrations and Python reference tools likewise retain their real current137 meaning until I2
+  moves current behavior to current138; historical folders are not renamed.
+- The combined cargo fixture conflicts use Route's bytes because `CargoRules::freight` is present.
+  The Extract current137 corpus/goldens remain their own predecessor evidence. I2 independently
+  transcribes and regenerates the combined bytes rather than treating either side as an oracle.
+- `founding_assets_test.cpp` keeps main's repaired expansion proof and the Route voyage include;
+  its publication labels temporarily name 137. `integration_identity_test.cpp` retains Extract's
+  salt/iron predecessor refusals plus the auto-merged main/Route cases. The test-support budget
+  conflict keeps main's fixed ports.
+- `docs/sim/state.md` retains the separate Route-only136 and Extract137 contracts and adds only the
+  I1 checkpoint warning. No predecessor field order or tag was rewritten.
+- The required Windows-app seam is limited to `play.cpp` and `inspect_building_test.cpp`:
+  `DescribePayload` and `payload_kind_name` now handle Quarry; the hand-derived case declares one
+  entrance and a valid `{0}` claim vector, and exercises status, suspended and blocked output.
+- Two whitespace defects carried by the accepted Extract documentation were removed. No semantic
+  source or evidence text was altered by those two cleanups.
+
+### Retained responsibilities and their holding tests
+
+- **135 faithful mine default:** `salt mine: the faithful default accepts, charges and creates a
+  mine with no deposit in reach, unbound and idle` holds the idle/no-repeat-search behavior and the
+  read-only `mine_site_deposit_in_reach` control; `salt mine: an unbound mine command is logged and
+  the log reproduces` holds acceptance and proves reserved `Reject::NoDepositInReach` is not
+  produced; `salt mine: the legal site with its payment and the deposit bound at placement` plus
+  the mine-facts case hold imported mines unbound/inert.
+- **137 placement and extraction:** `mountain placement: types the class does not cover stay
+  Unsupported` holds gold/gem refusal; `iron mine: a stage-locked 1205 is refused next to the
+  eligible control and the dry run ...` holds `ConstructionDenied`; the re-lookup selection,
+  weighting and fallback cases in `iron_mine_test.cpp` hold the re-lookup rule. `transport: a walk
+  ends on the centre of the goal sub-cell (T3.2)`, the resident T3-Q2 entrance/failure/reload cases,
+  Quarry Q-A1..Q-A4 and the Quarry continuation/invariant cases hold the shared sub-cell end,
+  resident home failure, per-entrance claims and mason job `0x2c`. `iron mine: D4 exhaustion ...`
+  holds one notice `0x15B`. Save/hash equality around `mine_facts`, Quarry continuation and the
+  stats-sink comparisons keep diagnostic counters outside canonical state.
+- **136 freight:** `freight commands: live authority canonical grouping deep copies and atomic
+  refusals`, `freight lifecycle: pause resume native continuation and cancel after a partial
+  commit`, and `freight takeover: accepted public Move Load Unload take control and refusals do
+  not` hold assignment, suspend/cancel and manual takeover. `freight ingress: same-tick
+  cancellation replacement and refused manual commands precede ...` holds no-route/no-change
+  ingress. `freight lifecycle: arrival authority public replacement and stale revision predicate`
+  and the unreachable/missing-target recovery cases hold R4 authority recovery. `freight
+  conservation: two ships and two owners contend in declared figure order` and `freight fault
+  control: exact named warehouse debit and one-time target quantity` hold the ledgers. The command
+  cases compare RNG cursors, and the complete DrawSite inventory remains unchanged: freight adds no
+  draw.
+- **Main:** the full dev compile includes main's five repaired app callers; the merged tests keep
+  `city_population`, expansion/founding coverage and the repaired fixed budget ports. I2 and later
+  gates re-execute affected cases under the real combined identity.
+
+### Review and evidence
+
+The first canonical Quarry app gate exposed an author fixture error and is preserved, not erased:
+selected 7, executed 0, failed 7, empty 0, skipped 0, incomplete 0. The `{1}` claim had no live
+mason, so world creation correctly refused all seven cases
+(`quarry-app.log`, sha256 `79caaf5cf5a5612fe6c90fa7c1529f493370b6374b5288875a366a2fbae89fba`).
+After `3294c10d`, the superseding canonical gate passed: selected 7, executed 7, failed 0, empty 0,
+skipped 0, incomplete 0, sanitizer lines 0 (`quarry-app-corrected.log`, sha256
+`dc2983c3039d908b4c50d0ae7636402c51a01ef01d0ef2dcce19fc1184bca6c3`).
+
+Independent reviewer `/root/integrate2_i1_review` reviewed both merge commits, every conflict
+resolution and relevant callers, confirmed the two REPORTS suffixes and open-question suffix
+byte-for-byte, found the invalid claim fixture as a blocker, then re-reviewed exact corrected pin
+`3294c10d`: **APPROVED, no unresolved findings**. Its independent canonical Quarry case passed:
+selected 1, executed 1, failed 0, empty 0, skipped 0, incomplete 0, sanitizer lines 0
+(`quarry-review.log`, sha256 `50b4338b7dc321fe6337abf4db2a187ce3df754102a264a26b49c3e842193271`).
+All original-game-file tests are **NOT_RUN for I1**; the packet assigns the real Route voyage/scale
+and Extract real-data interaction proof to I4.
+
+### Decisions and reasoning
+
+- Preserved append-only predecessor contracts and deferred every current-identity rebaseline to
+  I2. A green build at a tree whose version constant still says 137 cannot prove combined
+  compatibility.
+- Resolved each subsystem as a semantic union rather than selecting one side wholesale. This is
+  why both includes, fields, visitors and test families remain, while current pins deliberately
+  stay temporary.
+- Kept the first failed canonical gate. It demonstrated the Quarry claim invariant was active and
+  caught a test that would otherwise have looked like coverage while never constructing a world.
+- Changed the test to one unclaimed slot instead of manufacturing a mason solely for a
+  presentation formatter. Suspended and blocked provide non-default output while `{0}` remains the
+  entrance-sized, invariant-valid claim state.
+- Did not run predecessor native/replay matrices after the second merge. I2 changes the identity,
+  independent oracle and current fixtures; running them now would create evidence that must be
+  discarded and could obscure a false-positive compatibility claim.

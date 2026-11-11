@@ -33,21 +33,35 @@ town-store-total proxy (every tracked good in every city's `CityStock`, summed a
 `kTon`) at t=0s, then advances to t=10s/30s/60s (500 ticks/game-second, a tick is 2 ms) and samples
 again. A load/create refusal is reported with its exact reason, not worked around.
 
+**F5 correction (2026-11-11 review, findings 3/4): re-measured at the play mode's own step, with
+`Rules::house_updates` tried both off and on.** The first pass above stepped 100 ms per
+`world.advance()` call; play mode at 100% speed steps 10 ms (`sim::multiplayer_step_ms(100)`,
+`sim_test.cpp:159`), and the island sweeps take that step as input, so "normal speed" was not what
+was measured. It also ran with the default `Rules::house_updates == false`, under which the House
+tick is an exact no-op by design (`config.hpp`'s own comment on the field) - so "no growth" there
+was expected by the rule in effect, not a finding about the engine. Both are now explicit tool
+options (`--step-ms`, default 10; `--house-updates`, off by default) and `cmd_population` now runs
+`check_invariants` at each checkpoint (printed `clean` below at every one), closing the gap the
+review found between this command and `cmd_scenario`'s own invariant check.
+
 | Scenario | Our sim |
 |---|---|
 | `Single_06` | **NOT_RUN: scenario create refused** - `script offset 828: unsupported action: QUESTLOG_SHOW` |
 | `Single_16` | **NOT_RUN: scenario load refused** - `players[3].SCHIFF[0].PRIVAT.CREW.ENTRY[0].PRIVAT.ESEL.TASK: unsupported unit record/state` |
-| `01_1024_easy_256` | **residents**: 230 (t=0s), 230 (t=10s), 230 (t=30s), 230 (t=60s) — flat, no growth in this window. **town_store_tons** (proxy, every good, not a single named one): 150 at every checkpoint — no change either. |
+| `01_1024_easy_256`, `--house-updates` off (default; the House tick is a no-op by rule) | **residents**: 230 at every checkpoint (t=0/10/30/60s) - flat, as this rule setting predicts. **town_store_tons**: 150 at every checkpoint - also flat (unlike `endless01.sze`'s own cross-check below, this scenario's non-house production does not move its store total either). `check_invariants`: clean at every checkpoint. |
+| `01_1024_easy_256`, `--house-updates` on | **residents**: 230 (t=0s), 230 (t=10s), 230 (t=30s), **332** (t=60s) - growth does happen, between the 30s and 60s checkpoints, once the rule is on. **town_store_tons**: 150, 150, **149**, **147** - a small, real decline. `check_invariants`: clean at every checkpoint. |
 | `S01_08_01` | **NOT_RUN: scenario load refused** - `players[3].SOLDAT[0]: unsupported actor kind/class/import facts 708 at offset 365132` |
 | `Single_24` | **NOT_RUN: scenario load refused** - `players[9].SOLDAT[0]: unsupported actor kind/class/import facts 704 at offset 471591` |
 
 Four of the five scenarios cannot run in this engine yet at all (each for a different,
 already-known-class reason: an unsupported script action, an unsupported unit/crew record, two
 unsupported soldier/actor import cases) - this is itself the evidence this row asks for, not a
-gap in this pass. Only `01_1024_easy_256` is measurable, and in our sim it shows **no change**
-over the first 60 game seconds where the co-developer's own numbers (his code, not the reference)
-show residents growing 230 -> 276 -> 322 and a workshops'-input-store change from the first
-10-second mark. This is a real, named difference - see §4.
+gap in this pass. Only `01_1024_easy_256` is measurable. With `house_updates` on, our sim *does*
+grow residents in this window (230 -> 332, between 30s and 60s) - closer in kind to the
+co-developer's own numbers (his code, not the reference: 230 -> 276 -> 322) than the first,
+uncorrected pass suggested, though the shape differs (his grows from the first 10-second mark;
+ours holds flat through 30s then jumps). With `house_updates` off (this engine's present default),
+residents stay flat the whole window. Both are recorded, neither diagnosed further - see §4.
 
 ## 3. The original (Wine runner)
 
@@ -64,13 +78,19 @@ pass of this same packet or a dedicated task; not guessed here.
 
 ## 4. Differences (OQs, not fixes)
 
-- **OQ-571 (new): `01_1024_easy_256` shows no resident growth and no store change over 60 game
-  seconds in our sim, where the co-developer's own code shows growth.** Status: open. This could be
-  a real population/production gap in our sim (worth investigating on its own), a difference in
-  what "60 game seconds, no player action" means between the two engines (e.g. whether the
-  scenario's own script runs any seeded/scripted event in that window), or neither engine matching
-  the original yet (the original's own number for this row is NOT_RUN - §3). Recorded as a
-  difference, not diagnosed or fixed here (the task's own instruction: measurement only).
+- **OQ-571 (updated by F6, 2026-11-11): `01_1024_easy_256`'s growth depends entirely on
+  `Rules::house_updates`, and even with it on the shape of growth still differs from the
+  co-developer's own numbers.** Status: open. With `house_updates` off (this engine's default),
+  residents and the town-store total are both flat over 60 game seconds - expected under that
+  rule, not a finding. With it **on**, residents do grow (230 -> 332) but only between the 30s and
+  60s checkpoints, not from the first 10-second mark as the co-developer's own code shows (230 ->
+  276 -> 322) - a real difference in *when* growth starts, not just *whether* it does. This could
+  be a real timing/threshold difference in our sim's house-growth logic (worth investigating on
+  its own), a difference in what "60 game seconds, no player action" means between the two engines
+  (e.g. whether the scenario's own script runs a seeded/scripted event in that window), or neither
+  engine matching the original yet (the original's own number for this row is still NOT_RUN - §3).
+  Recorded as a difference, not diagnosed or fixed here (the task's own instruction: measurement
+  only).
 - Four of five scenarios cannot be measured in our sim at all (§2) - each already has its own
   named unsupported-feature class; no new OQ needed per scenario, they are symptoms of already-known
   gaps (unsupported script actions, unit records, actor imports), not new findings.

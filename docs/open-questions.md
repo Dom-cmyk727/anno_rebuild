@@ -2454,7 +2454,7 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   right-panel region; until then row 2 draws no chrome - see `docs/orchestration/REPORTS.md`'s
   Part U entry for this packet's own disposition (data-only, not a guessed layout).
 
-## OQ-571: 01_1024_easy_256 shows no resident/store change over 60 game seconds in our sim (W4-NEXT-2 X, 2026-11-11)
+## OQ-571: 01_1024_easy_256's growth under our sim depends on Rules::house_updates, and its shape still differs from the co-developer's own numbers (W4-NEXT-2 X, 2026-11-11; corrected by F6, 2026-11-11)
 - **Status:** open.
 - **Area:** sim / population, production.
 - **Note:** this number continues from `task/W4-ui-4`'s OQ-568/569/570 in this packet; renumber at
@@ -2463,18 +2463,32 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   own code's numbers for `01_1024_easy_256` - the only one of the five shared scenarios that loads
   in our sim at all (the other four each refuse with their own already-known unsupported-feature
   reason): residents 230/230/276/322 and a town-store change from the 10-second mark. Our sim
-  (`anno-sim-replay population`, headless, no player action, normal speed, every town counted)
-  gives a flat 230 residents and an unchanged 150-ton store total at every one of the four
-  checkpoints (0/10/30/60 game seconds). Neither number is the reference (the original's own
+  (`anno-sim-replay population`, headless, no player action, every town counted), **re-measured at
+  the play mode's own step (10 ms, `sim::multiplayer_step_ms(100)`) after the 2026-11-11 review
+  found the first pass used 100 ms:**
+  - **`Rules::house_updates` off (this engine's default; the House tick is an exact no-op by
+    rule, `config.hpp`'s own comment):** residents flat at 230, store flat at 150 tons, at every
+    one of the four checkpoints (0/10/30/60s). Expected under this rule setting, not itself a
+    finding.
+  - **`Rules::house_updates` on:** residents 230/230/230/**332** - growth happens, but only
+    between the 30s and 60s checkpoints, not from the first 10-second mark as the co-developer's
+    own numbers show. Town store 150/150/149/147 - a small decline, not the rise his own numbers
+    show either.
+
+  Neither of our two readings, nor the co-developer's, is the reference (the original's own
   column is NOT_RUN - see the same doc, section 3), so this is a difference between two
-  reimplementations, not yet known to be a defect in either.
-- **What we know:** the scenario loads and runs clean (`check_invariants clean`, confirmed by
-  `cmd_scenario`/`cmd_population` both). The co-developer's own numbers are explicitly "what
-  Open1503 gives today... the thing to check, not the reference" (his own note), so a difference
-  does not by itself say which side (if either) matches the original.
+  reimplementations (now three readings, counting both rule settings), not yet known to be a
+  defect in any of them.
+- **What we know:** the scenario loads and runs clean (`check_invariants clean` at every
+  checkpoint, **now actually confirmed by `cmd_population` itself**, not just `cmd_scenario` - the
+  2026-11-11 review's finding 3 was that `cmd_population` never called it before this
+  correction). The co-developer's own numbers are explicitly "what Open1503 gives today... the
+  thing to check, not the reference" (his own note), so a difference does not by itself say which
+  side (if either) matches the original.
 - **How to resolve:** the original's own number for this row (the Wine-runner navigation to load
   a *named* scenario file, not the random "New game", is itself not found yet - see
   `shared-test-list.md` section 3); or RE/sim-side investigation of whether this scenario's 46
-  houses should show population growth in the first 60 seconds at all (a scenario-specific
-  script/seed effect, not necessarily a general population-tick gap). Not diagnosed or changed
-  here - measurement only, per this packet's own instruction for part X.
+  houses should show population growth in the first 60 seconds at all, and if so on what timing
+  (a scenario-specific script/seed effect, not necessarily a general population-tick gap; the
+  30s-to-60s jump under `house_updates` on is itself a lead for where to look). Not diagnosed or
+  changed here - measurement only, per this packet's own instruction for part X.

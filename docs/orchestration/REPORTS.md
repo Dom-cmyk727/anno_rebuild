@@ -6904,3 +6904,89 @@ of this same flake class ("its own follow-up after this package, not this packag
 - Did not push another commit to try to get a clean macOS run: the flake is already well-documented
   across three separate runs now, on three different commits, none of which touch the code it
   fails in - another push would only re-roll the same dice, not add evidence.
+
+## W4-NEXT-2 — G9, review and final gates (the 2026-11-11 fix round G) — 2026-11-11 — status: FINISHED
+
+Closes fix round G, raised by the [fix review](reviews/2026-11-11-w4-next-2-fix-review.md) against
+part F ([packet section G](tasks/w4-next-2.md)). Stop here.
+
+### Heads
+
+| Branch | Head | Carries |
+|---|---|---|
+| `task/W4-ui-4` | `406adc84` | G1-G4, G6, G8, G9, plus a CI-flake addendum |
+| `task/W4-shared-list-1` | `b2808533` | G5, G7 |
+
+### Review disposition, each finding of the fix review
+
+| # | Finding | Fix | Disposition |
+|---|---|---|---|
+| 1 | P1: the selected-house session still races the sim, inside `script_tick` | G1 | **FIXED.** `selection_refresh()` removed from `script_tick()`; the title and the `selection.*` facts now read the same `selection_` state by construction (no timing argument). Independently reviewed: ACCEPT, the construction argument verified correct by tracing the run loop and `script_tick()`'s own body; one imprecision in the report's own wording ("exactly two places") found and corrected in a follow-up entry, not affecting the fix. 50/50 repeats beside a 2385/2385 concurrent full-suite run; both logs kept with sha256. |
+| 2 | Process: no REPORTS entries for F1-F4/F7 | G8 | **FIXED.** A new entry records all five, with evidence (two logs now kept and hashed; the negative control marked NOT_KEPT, honestly). |
+| 3 | P3: the pixel check's 30s bound unjustified | G3 | **FIXED.** Raised to 240s (matching `viewer_wiring.py`), subprocess timeout to 260s, under the unchanged CTest TIMEOUT of 300. |
+| 4 | P3: the F2 script step can't fail reliably | G2 | **FIXED.** A `selection_clicks_` counter, incremented only where `selection_handle` calls `selection_step`, exposed as `selection.clicks`; the script notes it before the HUD click and asserts it unchanged after. Proven to fail without the fix (built locally with the hit test disabled, not committed). Independently reviewed: ACCEPT, the increment's placement verified against every early-return path of `selection_handle`. |
+| 5 | P3: the per-tick refresh exists only in scripted sessions | G1 | **FIXED** (a consequence of G1's own removal): `script_tick()` no longer calls `selection_refresh()` at all, so F3's demolish-while-selected session now depends on exactly the same trigger (the wake event via `update_title()`) that real gameplay does. |
+| 6 | Low: ADR 0004's F4 note misstates `request_inspect` | G4 | **FIXED.** Corrected: it only stores the tile under a mutex, no request number. |
+| 7 | Low: F6's "no artifact reproduces 17.8" incomplete; grey-key answerable from evidence | G6 | **FIXED.** Grey-key is now defined in `docs/re/ui.md` (desaturation key: skip alpha<8, skip \|R-G\|<12 and \|G-B\|<12, mean/3). Run with this rule, id 974 at (783,252) gives 32.07 on two independent shots - matching the fix review's own figure, not 17.8. Calibration against two *other* committed figures (zoom_plus, compass_w) also fails (0.962/1.029 vs 2.885/3.088), so the method itself is not shown trustworthy for a new measurement; OQ-565/567 stay uncalibrated per the review's own rule (an OQ closes only on a calibrated number). F6's owner QUESTION is withdrawn, as the review itself said to do. |
+| 8 | Low: F8 tried only the Campaign menu; the endless files are the New Game list | G7 | **FIXED (doc only).** `docs/testing/original-wine.md` §6 now puts first: the four endless-game scenarios are `choose_game`'s own Citizen-to-Marquess rows, already reached by `new_game()`; the first unchecked step (reading which `.sze` a row opens, from the process, not guessed) is named. No Wine session this round, per the packet's own rule. |
+| 9 | Low: `population` prints an invariant violation but exits 0 | G5 | **FIXED.** `cmd_population` now returns 1 if any checkpoint's `check_invariants()` is non-empty, after printing every checkpoint. Independently reviewed: ACCEPT, verified by reading the control flow (every return path reaches the check); the exit-1 branch itself was not exercised live (no broken-invariant scenario was available) - noted as a residual gap by the reviewer, not blocking. |
+| 10 | Note: F8's Wine session ran during the F1 contention run; extra load doesn't weaken a proof | - | Needs nothing, as the fix review itself said. |
+
+**Still open, unchanged by this round:** OQ-565, 566, 567 (open; G6 added calibration evidence, closed neither), OQ-568 (the owner's, untouched), OQ-569, 570, 571; the shared list's original column (still NOT_RUN, G7 redirects the next attempt); the C-3 reservations (the owner schedules them); the first review's finding 12 (the recurring CI flakes) - hit a third time this round, see the CI addendum below.
+
+### Gates
+
+- **clang-format 23.1.3**, both branches: clean throughout (no reformat needed this round beyond what G1/G2's own commit already applied).
+- **`task/W4-ui-4`'s canonical gate** (`tools/test/run_selected.py`, `build/msvc`, `ANNO1503_GAME_DIR` set, `ANNO_GPU_ADAPTER=0`, `--select "."`, `--asset-policy required`, `--allow-skip other`, `-j 16`, nothing else heavy on the PC, run separately from G1's own repeat-50 proof): **VERDICT: PASS.** Classified: **selected 2385, executed and passed 2373, failed 0, empty 0, skipped 12 (opt-in 6, platform 3, other 3), incomplete 0, sanitizer lines 0.** Log: `cache/w4-next-2/canonical-gate-g-round.log`.
+- **`task/W4-shared-list-1`'s gate** (docs/tools-only scope, matching part E's own narrower gate): `clang-format` clean on `src/tools/sim_replay/main.cpp`; `anno_sim_replay_*` (46 cases, unchanged count from part F - G5 touched no test count), `build/msvc`, `ANNO1503_GAME_DIR` set: **46/46 passed.**
+- **G1's own repeat-50 proof**, kept separate from the gate above, run concurrently with a full MSVC game-file suite (the packet's own exception): **50/50 passed** for all three `selected_house` tests; the concurrent suite itself **2385/2385 passed**. Both logs kept with sha256 - see G1's own REPORTS entry for the exact hashes.
+- **Hosted CI, final heads:**
+
+  | Branch | Commit | Run id | Result |
+  |---|---|---|---|
+  | `task/W4-ui-4` | `406adc84` | 43086586507 | green (reran clean on the same code after the CI-flake addendum commit, confirming intermittency) |
+  | `task/W4-shared-list-1` | `b2808533` | 43082553745 | green |
+
+  An earlier `task/W4-ui-4` head (`481a8b6a`, docs-only) hit the same recurring pre-existing
+  `anno_test_support_tests.F3 (D1, deaf)` coordinator-area flake the first review's own finding 12
+  already named (runs 42990604521, 43009381041, now 43082536481 - three occurrences across this
+  packet, on three different commits, none touching the code it fails in). Documented as a CI
+  addendum, not chased with further pushes; the local canonical gate above is the authoritative
+  acceptance evidence.
+
+### Review records
+
+- G1, G2, G5: independently reviewed by a fresh agent with no context from this session, read-only,
+  which rebuilt both worktrees and ran the real tests itself. Verdict: **ACCEPT on all three.** For
+  G1 specifically, the reviewer independently re-derived the proof-by-construction argument by
+  reading the run loop and `script_tick()`'s own body (not by trusting the REPORTS entry), and found
+  one imprecision in the entry's wording (corrected, not affecting the fix's correctness). Full
+  report kept in this session's own transcript.
+- G3, G4, G6, G7, G8 are documentation/test-infrastructure changes (a timeout bump, an ADR
+  correction, a grey-key definition plus a negative calibration result, a doc-only menu redirection,
+  a backfilled report); reviewed by re-checking each against the files and figures it cites, as part
+  F and earlier parts of this packet also did for doc-only changes.
+
+### Review-first list
+
+1. This entry's own disposition table and gates section.
+2. G1's own REPORTS entry (the construction argument) and its correction entry (the "exactly two
+   places" fix) - read both together.
+3. G6's new paragraph in OQ-567 and the corresponding `docs/re/ui.md`/`data/ui/hud.txt` updates -
+   the grey-key definition is now written down even though the 17.8 figure itself stays
+   unreproduced.
+4. The CI addendum on `task/W4-ui-4` - a third occurrence of the same pre-existing flake, not a new
+   finding, but worth the owner's awareness if it keeps recurring across packets.
+
+### Decisions and reasoning
+
+- Took the packet's own recommended fix for G1 (remove the call) over the alternative (keep a
+  refresh but synchronize the title read after it) - see G1's own entry for the full reasoning; the
+  removal is simpler and yields a strictly stronger correctness argument.
+- Corrected G1's own imprecise wording in a new entry rather than editing it, consistent with this
+  round's own explicit rule ("never edit an old entry; a correction is a new entry").
+- Did not chase the recurring CI flake with another push once a third occurrence confirmed the
+  pattern the first review already named - a fourth push would re-roll the same dice, not add
+  evidence, and the local canonical gate remains authoritative per this project's own convention.
+
+Stop here. Message the orchestrator with both heads.

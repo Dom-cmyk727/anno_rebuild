@@ -5790,3 +5790,192 @@ the new formatter tests against the real `DescribePayload` output, and the scrip
 - This branch's own coordinator flakiness (the `cpp (linux-gcc-release)` failures above) resolves
   itself once this branch merges with or rebases onto the C-2 fix on `task/W4-coord-1` - not a
   defect to chase on this branch in isolation.
+
+## W4-NEXT-2 — Part P: preflight, on a Linux cloud host instead of the Windows PC — 2026-11-11 — status: DONE (P5 NOT_RUN)
+
+**Host.** This run did not happen on `E:\anno1503`. It ran in a Claude Code cloud session: Linux
+x86_64 container, 4 CPUs, 15 GiB RAM, about 29 GB free disk, no GPU (`nvidia-smi` absent), no
+Windows, no WSL, no Wine, and **no game files** (`game/` does not exist). The coordinator was not
+running (no process on 47631), and no other job was running. The owner chose "do the
+Linux-doable subset" when asked (2026-11-11). Every step that needs the PC is NOT_RUN below.
+
+**Base.** `git fetch origin`: `origin/main` = `6b077529`, which contains the W4-NEXT-1 merge
+`2c4dc295` (checked with `git merge-base --is-ancestor`). W4-NEXT-1 is merged.
+
+**Branch.** This session may push only `claude/dreamy-brahmagupta-10bjax`, not the packet's
+`task/W4-ui-4`, `task/W4-mem-1` or `task/W4-shared-list-1`. So all parts share that one branch,
+restarted from `origin/main` at `6b077529`. Its earlier commits (the coordinator test ports) were
+already on `main` through `task/W4-coord-1`: content-identical, checked with `git diff` against
+`022de74f`. The restart was therefore a `--force-with-lease` push over merged history only.
+
+**Read:** the packet; the acceptance review (findings A-E); the interim review's finding 8;
+`docs/testing/evidence-contract.md`; ADR 0004 (screen table, R2, R3); `docs/re/ui.md` §7 and §9
+(the `f15_selected_house` recipe); the C-3 section of `docs/perf/README.md`.
+
+**NOT_RUN: OQ-565, OQ-566, OQ-567 and the co-developer's note.** The OQs were not read, because
+part W cannot run here. `E:\open1503-share\from-codev\OPEN1503-STATUS.md` is not reachable from
+this host.
+
+**P5, the GPU pixel check for rows 5 and 10: NOT_RUN.**
+- **Tried:** built `anno1503` (SDL3, CPU path, `SDL_UNIX_CONSOLE_BUILD`). `python3 -I
+  tools/test/ui_dynamic_draw_check.py build/viewer/src/app/anno1503 --renderer gpu` printed
+  `skipping: the screenshot step is Windows-only (viewer.cpp)` and exited 77.
+- **Missing:** Windows (the capture step), the game files, an RTX 4090 window, and the wgpu-native
+  headers. The GPU build fetches those from GitHub, and this session's proxy blocks the download.
+- Finding A stays open for the PC session. No mismatch was seen, because nothing ran.
+
+### Decisions and reasoning
+- **One branch for all parts.** The session can push only one branch. The commits are split by
+  concern, so the orchestrator can still land M and K separately.
+- **Local substitutions.** Ubuntu's `doctest-dev` 2.4.11 is used through
+  `FETCHCONTENT_SOURCE_DIR_DOCTEST`, because the pinned 2.4.12 archive is on GitHub and blocked
+  here. The repository pin is unchanged. clang-format 23.1.3 (the CI version) is installed from
+  PyPI into a scratch venv.
+
+## W4-NEXT-2 — Part K: row 18, select a building (selection done, panel not drawn) — 2026-11-11 — status: PARTIAL
+
+**Done, on this host:**
+- **Design** (step 1): ADR 0004 has a new section, "Selection".
+  - The selection is viewer UI state: a building id plus a map tile, so pan and zoom keep it.
+  - The mode table: what a left click and Escape mean in each mode.
+  - **QUESTIONs K-1 to K-4**, with recommendations: Escape deselects first (K-1); a click is a
+    press and release within 4 drawable pixels, a drag still pans (K-2); empty ground deselects
+    (K-3); foreign buildings are not selectable until a capture shows the original's panel (K-4).
+  - The recommendations are implemented behind the classic surface. `--ui dev`, `--view` and the
+    ship-start opening are unchanged.
+  - The original's own recipe for `f15_selected_house` ("ESC, click the house") is the only
+    evidence about the original. It is cited, and nothing beyond it is claimed.
+- **Decision function:** `app::selection_step` and `app::is_click` (`selection.hpp/.cpp`), pure
+  functions, 8 unit cases in `selection_test.cpp`:
+  - each tool mode keeps its click;
+  - Escape with and without a selection, and with a pending click;
+  - a click on empty ground, and off the map;
+  - a building demolished or replaced meanwhile;
+  - answers one turn behind, and answers for another tile;
+  - click against drag.
+- **Live path** (no sim change):
+  - The click asks the runner to inspect the tile (the developer inspection's own slot), and the
+    next snapshot answers.
+  - `PlaySnapshot::inspected` is new: the tile the answer is for, set even when no building stands
+    there. Without it, "nothing there" cannot be told from "not answered yet".
+  - `PlayRunner::answer_inspection_while_paused`: a pause publishes no turn, so a click would never
+    resolve. The runner now republishes with a fresh inspection when the requested tile changes
+    (on the sim thread; a read only).
+  - `find_local_city` is factored out of the turn's loop, so the paused path can look the city up
+    too.
+  - `viewer.cpp`: `selection_handle` runs after the construction menu, the developer tool and the
+    opening, so Escape reaches the menu first. While a click is pending, the event loop refreshes
+    the title, because a paused republish sends no wake.
+  - The selection shows in the window title: "selected <kind> <status>".
+- **Command boundary:** "selection through a paused runner" selects and deselects through a real
+  `PlayRunner` on a synthetic world. It checks:
+  - the state hash equals an untouched twin's;
+  - `outcomes_next` stays 1;
+  - the tick stays 0.
+
+  The negative control "the state-hash check can fail" runs one turn and sees the hash change.
+- **Mutation:** with `answer_inspection_while_paused()` removed from the pause loop, the paused
+  case fails at its first `REQUIRE`. The source was restored afterwards.
+
+**Results** (Linux, GCC 13 Debug, no game files):
+
+| Gate | Selected | Executed and passed | Failed | Skipped |
+|---|---|---|---|---|
+| `anno_app_tests` + `anno_app_input_tests`, viewer build (`k-viewer-app-02.log`) | 298 | 209 | 0 | 89 (87 required-asset, 2 opt-in) |
+
+The canonical gate says PASS. All 10 selection and paused-runner cases are among the passes.
+
+**NOT_RUN:**
+- **Step 2, measurement:** the tab (id 975), the need icons and the close button need the
+  `f15_selected_house` shot and the game files.
+- **Step 3, drawing:** no element was drawn; nothing beyond `pionier_bk` and `house_portrait` is
+  measured. The panel is not drawn on either path.
+- **Step 4's pixel parts:** CPU against GPU, the UI.1 oracle with a wrong input, and `bench_frame`
+  before and after.
+- **The scripted window session** (select, Escape, select another, demolish while selected) and
+  its replay: they need the game files and a window.
+
+### Decisions and reasoning
+- **The request goes through the runner.** The click asks the runner instead of reading the
+  `World`, as the developer inspection already does. The window thread never touches the sim
+  thread's `World`; the answer is one turn behind, and the pure function handles stale answers
+  explicitly.
+- **The answer names its tile.** Adding `inspected` to the snapshot was the smallest way to make
+  "empty ground" answerable. It is an app type, not sim state.
+- **Not drawn yet.** Drawing the two measured elements without the rest would show a half panel
+  that no capture supports. The packet says that an element which cannot be measured is not
+  drawn, so the title carries the selection until the PC session measures the rest.
+
+## W4-NEXT-2 — Part W: three captures in the original — 2026-11-11 — status: NOT_RUN
+
+Every step needs the original game under Wine with the AnnoHarness runner and the game files.
+This host has neither. OQ-565, OQ-566 and OQ-567 are unchanged and were not read for this entry.
+Rows 19 and 2 and demolish mode's cursor are not drawn. Nothing was captured or measured, and
+no claim is made about them.
+
+## W4-NEXT-2 — Part M: the C-3 sampler (built and tested); the C-3 numbers (NOT_RUN) — 2026-11-11 — status: PARTIAL
+
+**Done:**
+- **Launcher** `anno_peak_launcher`, opt-in through the CMake option `ANNO_TEST_PEAK_MEMORY`. Its
+  default is read from the environment variable of the same name at the first configure.
+  - **Linux/macOS:** `ru_maxrss` from `wait4`.
+  - **Windows:** `PeakWorkingSetSize` of the child's handle after it exits.
+  - Wired as the doctest targets' `CROSSCOMPILING_EMULATOR`, which doctest's discovery runs each
+    case through.
+- **Report tool** `tools/test/peak_report.py`: every test above a threshold, with its reservation,
+  and the largest sum of unreserved peaks whose `PROCESSORS` fit in `-j N`.
+- **Contracts:** `peak_launcher_contract` and `peak_report_contract`. Details are in
+  `docs/perf/README.md`, C-3 update.
+
+**Acceptance evidence:**
+- **A known allocation within 10 %:** a 256 MiB child measures 255.6 MiB above a 0 MiB child
+  (Linux).
+- **No result change, per process:** exit 0, exit 7 and an abort keep their status. Stdout is
+  byte-identical, including arguments with spaces, quotes and backslashes. Stderr is unchanged
+  apart from one appended line. A missing program gives 125.
+- **Mutants:** KiB-as-bytes, a dropped exit code and a signal turned into an exit code each fail
+  the contract.
+- **Own cost:** a median of 1.6 ms per process.
+- **No result change, whole suite** (Linux, no game files, `-j 4`): every test's CTest outcome is
+  equal with the launcher off and on. My parser matched 2,220 of the 2,230 names; the gate's
+  classified counts cover all of them.
+
+  | Run | Selected | Executed and passed | Failed | Skipped | Wall |
+  |---|---|---|---|---|---|
+  | Launcher off (`m-suite-off-02.log`) | 2,230 | 1,976 | 0 | 254 (243 required-asset, 2 platform, 9 opt-in) | 86.6 s |
+  | Launcher on (`m-suite-on-01.log`) | 2,230 | 1,976 | 0 | 254 (same classes) | 87.8 s |
+
+  The first off-run (`m-suite-off-01`) has the same counts, but its gate verdict is FAIL: "tested
+  source changed during selection", because I edited the ADR during it. It is kept, and run 02
+  replaces it.
+- **Table from this run** (`m-peak-report-linux-j8.txt`): no test reaches 1 GiB without the game
+  files. The largest is 187 MiB, "figure graph: validation is not quadratic...", and the bound
+  for unreserved tests under `-j 8` is 773 MiB. This is not the C-3 answer.
+
+**NOT_RUN:**
+- **Step 2,** the full MSVC game-file run with the launcher on the PC (detached, `-j 8`, the 4090).
+- **The Windows launcher at run time.** Its code is compiled and its contract run only by hosted
+  CI on `windows-msvc` (see part E); it is not run on a real Windows game-file suite.
+- **Step 3, the remedy QUESTION with numbers.** It needs step 2's table. Until then the earlier
+  C-3 QUESTION stands, and no reservation was added.
+
+### Decisions and reasoning
+- **Emulator property, not `TEST_LAUNCHER`.** CMake 3.28 has no `TEST_LAUNCHER`. 3.29's would not
+  reach the cases doctest's include files add, and those are all the large cases.
+- **Configure-time, not runtime.** A runtime environment switch would add a process to every test
+  run even when it is off, which changes timing. The configure-time option costs nothing when
+  off; turning it on means a build directory of its own.
+- **A Python contract, not a doctest case.** The launcher's job is the exit status and the
+  streams. Python's `subprocess` gives both, portably; the in-repo `Child` helper merges the
+  streams and has no exit code.
+
+## W4-NEXT-2 — Part X: the shared test list — 2026-11-11 — status: NOT_RUN
+
+- **Scenarios:** step 1 (path, size, SHA-256 of each scenario) needs the game files.
+- **Our sim:** step 2 needs them to load the scenarios.
+- **The original:** step 3 needs Wine and the harness.
+- **His values:** the co-developer's column is on `E:\open1503-share`, which this host cannot
+  reach.
+
+No cell is filled, and `docs/research/shared-test-list.md` was not written. An empty table with
+every cell NOT_RUN would add nothing the PC session needs.

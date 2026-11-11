@@ -6695,3 +6695,112 @@ game-file disposition: **APPROVED, no actionable findings**.
   dependencies. Test-only replay/trajectory corrections cannot change its production execution.
 - Preserved every failed gate under a distinct path. A later green run supersedes the stale
   expectation for acceptance but does not erase how the integration difference was discovered.
+
+## MAP-INTEGRATE-2 I5 — frozen Mac gates and CI candidate — 2026-11-11 — APPROVED
+
+The final reviewed source pin is `8832e6bf5518d0704b49bd8e14cfc66b650b5fc4`. The state remains
+138 and every gameplay default remains unchanged. No product source, archive layout, fixture,
+schema, rule or state identity changed during I5. The only late source correction is test-only:
+the authored cross-feature fixture now requires each expected building lookup before reading its
+id. GCC 13.3 correctly rejected the former nullable dereference; the successful fixture path is
+byte-for-byte the same, while a malformed fixture now produces a named test failure.
+
+### Frozen Debug evidence
+
+- The whole Debug suite with `ANNO1503_GAME_DIR`, on the pre-correction clean freeze `8edd9778`,
+  selected 2,441 / executed 2,403 / failed 9 / empty 0 / skipped 29
+  (`platform=6`, `opt-in=22`, `other=1`; every other skip class 0) / incomplete 0 / sanitizer
+  lines 0. `debug-full-assets.log`, SHA-256
+  `274485ba2e38d2c2ff36d195d85e6bbb1c3e0cf393054b9789b19fed597d1e21`. All nine failures were
+  stale identity-derived test expectations: state 136/137 labels, the old empty-world hash and
+  pre-138 leather hashes. There was no mechanics failure.
+- The nine expectations were replaced by the observed state-138 identities, without changing
+  production code. A clean-pin focused gate at `0a15040e` selected 11 / executed 11 / failed 0 /
+  empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0. `focused-late-fix-clean.log`, SHA-256
+  `543cb8fa154675848cb629e556c6caf0b4a84b79a090a4a60db51fcac7753233`.
+- The whole Debug suite without `ANNO1503_GAME_DIR`, rerun under host permission after the sandbox
+  refused the coordinator socket, selected 2,441 / executed 2,048 / failed 0 / empty 0 / skipped
+  393 (`required-asset=366`, `platform=6`, `opt-in=21`; every other skip class 0) / incomplete 0 /
+  sanitizer lines 0. `debug-full-no-assets-host.log`, SHA-256
+  `2d17ea8252a045e584ac606dd0af9d919e27097b642de410c3ada6e843241ac6`. The earlier sandbox
+  attempt is preserved as an aborted infrastructure attempt; it had already lost admission and
+  was not counted as a product run.
+
+### Sanitizer, compiler and compatibility evidence
+
+- The affected ASan/UBSan selection at clean pin `0a15040e` selected 323 / executed 309 / failed 3
+  / empty 0 / skipped 11 (`opt-in=11`; every other skip class 0) / incomplete 0 / sanitizer lines
+  0. `asan-affected.log`, SHA-256
+  `64c589567c98e30c2a573d6c62e3b03f84c4d14548ffbb7cb910b949e7d4ac4e`. Two failures were outer
+  timeouts after the sandbox denied `/bin/ps` and port 47631 to the two scenario-corpus cases; the
+  third named a missing `anno_sim_ubsan_probe` executable because that target had not been built.
+  The other 309 cases, including the long founding, freight, expansion, iron, salt, Quarry,
+  population, script, farm and replay paths, executed without sanitizer diagnostics.
+- After building the probe, the exact three failures were rerun against the unchanged source under
+  host permissions. The coordinator admitted the corpus batches, and the gate selected 3 /
+  executed 3 / failed 0 / empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0.
+  `asan-repair-host.log`, SHA-256
+  `c56d40d639bae016a0d33a6f6ec615fd5e8c2a3d0244efc8c87cc1045136e8a2`. This closes the affected
+  sanitizer selection; it is not a claim that all 2,441 tests ran under sanitizers.
+- GCC 13.3 arm64 in cached image `gcc:13.3` first found the nullable authored-fixture lookup.
+  `gcc13-arm64.log`, SHA-256
+  `62389bdf05d0e1e910a498b85055d0e9bddc0e735ea2a9fe5f9845d6a0788ed1`. After the reviewed guard,
+  the repository warning script was repeated in full: viewer/GPU-on compiled all 392 `.cpp`
+  files, and viewer/no-GPU compiled all 74 app `.cpp` files, with the CI warning flags,
+  `-O3 -DNDEBUG -Werror`; both were clean. `gcc13-arm64-final.log`, SHA-256
+  `357e16b7be0ab80cfe9478e29356aa0a74fd34af2c2336e8b0ba3a9dde880e64`. This is native arm64,
+  not CI's x86_64.
+- The late guard's canonical Debug gate selected 3 / executed 3 / failed 0 / empty 0 / skipped 0 /
+  incomplete 0 / sanitizer lines 0 (`gcc-fix-focused.log`, SHA-256
+  `6f9adbd8a9d430cf0ea1a75aa309401d0fd13bbed80282bb035b71e8c8cb89a1`). Its affected ASan/UBSan
+  gate has the same classified counts and zero sanitizer lines (`gcc-fix-asan.log`, SHA-256
+  `becb3458acf79c76c4fccb801b501cba45f21e697fb56d080d642f499aa889dd`).
+- The final native Apple Clang build is current and clean (`ninja: no work to do` after the late
+  translation unit had already rebuilt). `clang-build-final.log`, SHA-256
+  `c2ed93ffd93c840755c0e91392ae593b1b52de9b7aaf6c208123feaceb1dde2e`.
+- clang-format 23.1.3 is clean over all 105 changed C/C++ headers and sources, including the late
+  file. `git diff --check`, `tools/sim_stream.py --check`, ten combined identity scopes and all six
+  integration-reference self-tests are clean in `cheap-checks-clean.log`, SHA-256
+  `8dbd2c8d27d3a123960975580ac9500f2f2a7edcfa27e94f7e92538197c40547`. No `anno-dump` command
+  changed, so `tools/agree.py` is not applicable. The current and legacy stream references are
+  included in those checks.
+
+### Independent review and post-freeze main movement
+
+- Reviewer `/root/integrate2_i5_review` approved the identity/test correction at clean pin
+  `0a15040e`: no findings. Its canonical late-fix gate selected 11 / executed 11 / failed 0 /
+  empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0, plus the mandatory picture contract
+  1/1. `reviewer-late-fix.log`, SHA-256
+  `ef3a677ccc32c016d8c03bd70ddd201c6a10047a9fbe34543c46a5f61167c142`.
+- The same reviewer independently approved the GCC guard at `0a15040e` plus dirty-diff identity
+  `18801e258b305aa43cfd2fe9901239c5d606ce403d5fd0e8d92bd823d67dc909`: no findings. Its canonical
+  cross-feature gate selected 3 / executed 3 / failed 0 / empty 0 / skipped 0 / incomplete 0 /
+  sanitizer lines 0, plus the mandatory picture contract 1/1. `reviewer-gcc-fix.log`, SHA-256
+  `47a47487bfd1d0fcd4a76d5c88a1b789ea5086e055ea05ff6bda80b72c7cb451`. The reviewer confirmed
+  that all six lookups use the guard and that no fixture or product behavior was weakened.
+- After the freeze, `origin/main` moved from `03bf2b3c` to `088dcc63` through `3815dd76` and
+  `088dcc63`, two W4-NEXT-2 orchestration/review documentation commits. They touch only five
+  orchestration files. They were fetched and reported, not merged; the packet assigns any
+  integration decision to the orchestrator.
+
+### NOT_RUN and decisions
+
+MSVC with game files, Windows, x86_64, GPU execution and Wine are **NOT_RUN by packet design** on
+this Mac. The Clang 18 half of `check_unix_warnings.sh` is not present in the GCC container and is
+therefore NOT_RUN there; the native Apple Clang build is reported separately. CI is run after this
+I5 report is committed and pushed; every branch job, including `gate`, must be green before I5 is
+released.
+
+### Decisions and reasoning
+
+- Preserved every red and blocked log. A later focused green result closes a named stale
+  expectation, missing build target or sandbox admission failure; it does not erase the discovery.
+- Repaired the sanitizer matrix by rerunning exactly its three failed cases under host permission.
+  The 309 already executed cases were neither relabelled nor needlessly repeated.
+- Treated GCC's nullable dereference as a real test defect. The guard keeps the successful authored
+  world identical and makes a missing required building fail explicitly before undefined behavior.
+- Repeated the complete GCC script after the correction rather than accepting a one-file compile.
+  The 392-file pass is a strict superset of the packet's 74 changed `.cpp` files.
+- Did not merge moving `main` or reset the accepted evidence. Its post-freeze movement is docs-only
+  and belongs to the orchestrator's later integration decision.
+- Kept state 138, timeline 5, all gameplay defaults and every original fixture unchanged.

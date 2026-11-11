@@ -6850,3 +6850,33 @@ above; they do not replace it, and a clean run here is not claimed as proof on i
   single-threaded event loop's structure (argued above, with the file:line citations) rules the
   harmful ordering out independent of any hold or pause state this packet's own scripting hooks can
   reach.
+
+## W4-NEXT-2 — G1 correction, "exactly two places" was wrong (G9's own independent review) — 2026-11-11 — status: FINISHED
+
+G1's own REPORTS entry (above) claimed `update_title()`'s call to `selection_refresh()` is "reached
+only from the pending-click block ... or the wake-event case" - i.e. that `update_title()` itself
+has only two call sites. **That is false and is corrected here**, found by G9's independent
+reviewer, who read the code rather than trusting the claim: `update_title()` has at least 18 call
+sites in `viewer.cpp` (construction-menu clicks, the developer tool, the opening UI,
+`selection_handle()` itself, `follow_picture()` - called from inside `draw()` - and others), not
+two. `grep -n "update_title();" src/app/src/viewer.cpp | wc -l` on this head: 25 matches (the
+declaration, the definition, and 23 call sites).
+
+**The fix itself is unaffected - verified correct, by the reviewer and by re-reading it now.** The
+load-bearing claim was never "only two call sites exist"; it is "no call site of `update_title()`
+executes from *within* `script_tick()`'s own body." Every one of the 23 call sites runs from
+`handle()` (processing one polled SDL event) or from `draw()` (specifically `follow_picture()`,
+called at the top of `draw()`) - both of which complete, on this single thread, strictly before or
+after `script_tick()` in the same loop pass, never during it (`viewer.cpp`'s run loop, lines
+~989-1060: events → the pending-click block → `script_tick()` → `draw()`). `script_tick()`'s own
+body (read in full by the reviewer, lines ~2152-2467) contains no call to `update_title()` or
+`selection_refresh()` after G1's fix - that fact, not a count of two, is what makes the title and
+the facts agree.
+
+### Decisions and reasoning
+
+- Corrected the imprecise wording here rather than editing G1's own entry, per this packet's own
+  rule ("never edit an old entry; a correction is a new entry") - G1's entry is left exactly as
+  written, with this entry as the authoritative correction a later reader should also read.
+- Did not change the fix itself: the reviewer's own finding is explicitly that the *code* is
+  correct and only the *prose describing it* overstated how few places needed checking.

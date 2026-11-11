@@ -5864,3 +5864,54 @@ contracts and test-name check, and `workflow_test.py` executed 21 tests with zer
   executed-pass result would violate the evidence contract.
 - Kept A6 option B at this stage. The packet expressly assigns that disposition until an owner
   answer arrives before I5; changing it in P would be an unauthorized persistence decision.
+
+## MAP-INTEGRATE-2 I0 — state-138 contract — 2026-11-11 — status: DONE
+
+Before either authorized merge, froze the combined contract in
+`docs/sim/gameplay-integration.md` at documentation head `a5d1d0bd3cec1fc85428a6295b5ac3101d3f86d8`.
+The measured input inventory is Route 96 paths, Extract 183, shared 42, Route-only 54 and
+Extract-only 141. Merge-tree predicts 3 conflicts from current main to Route, 23 from current main
+to Extract and 23 between the two inputs. The contract maps all ten required interactions: saved
+state, commands, every payload caller, goods/cargo, shared walks, the complete unchanged draw
+timeline, Rules/registry digests, every current13x folder and consumer, later main changes and
+OQ-552–556.
+
+State 138 retains ECONBK1, replay frame 4, command wire 1 and PRNG timeline 5. Rules append the
+three freight u32 fields once. Building payload appends Quarry tag 9. A mason's two goal bytes stay
+conditional on job 0x2c, followed by resident state, freight generation and optional freight state.
+The structured refusal table keeps real native/replay 134, 135, 136 and 137 artifacts distinct and
+separates replay-header, embedded-native and damaged-envelope controls. Main's
+`econbook1/current133`, `econbook1/current134`, `expand1/current134`, plus the input 135/136/137
+folders remain historical inputs; current consumers move to a separately reviewed `current138`.
+
+Independent reviewer `/root/integrate2_i0_review` reviewed exact pin `a5d1d0bd`, independently
+re-measured the ranges/conflicts and inspected both inputs and current callers: **APPROVED**, no
+unresolved findings. Four findings were corrected before approval: the full DrawSite order replaced
+a mislabeled four-site observation subset; the goods row now distinguishes existing GoodsInfo from
+new chain reachability; main's current133/current134 folders and economy-loop consumer are explicit;
+and the refusal prose is now the packet-required table. Game-file tests: **NOT_RUN**; I0 accepts no
+runtime game-file proof. Canonical runtime counts are therefore selected=0 / executed=0 / failed=0 /
+empty=0 / skipped=0, classified as not selected for this pre-merge documentation package, not as a
+passing runtime gate.
+
+### Decisions and reasoning
+
+- Fixed the field order before resolving conflicts: the Route and Extract inputs each append at
+  different nested scopes, so preserving both append-only contracts is possible without reusing a
+  tag or moving an old field. The exact input `state_fields.hpp` implementations and their
+  `field_count` assertions are the primary evidence.
+- Kept command wire 1 and replay frame 4. Extract changes what existing Build can construct but adds
+  no body/tag; Route alone appends body alternatives 12/13 and F075/F076. A new envelope identity
+  would claim a format change that did not occur; native 138 is the correct discriminator.
+- Required an app Quarry visitor even though the packet's feature work is mainly sim-side. Main's
+  `DescribePayload`/`payload_kind_name` are exhaustive over `Building::Payload`; omitting Quarry
+  would be a concrete current-main caller defect, not an optional UI extension.
+- Kept PRNG timeline 5 after inspecting the complete DrawSite enum and both source diffs. Neither
+  feature adds or calls a draw; changed real-run counts may still arise from scheduling and walk
+  trajectories, so R5 and the affected Extract proofs must be remeasured rather than forced.
+- Preserved every 133–137 folder rather than renaming a predecessor. Current-identity tests,
+  `economy_loop_test`, scenario/golden helpers, stream tools and replay registrations all consume
+  behaviour, so all must explicitly move or rebaseline to reviewed 138 data.
+- Treated every reviewer finding as actionable and obtained re-review at the corrected pin. No merge
+  started while I0 review was pending; I0 approval now releases I1's exact `49ffcee6` then
+  `a5a3bca3` merges.

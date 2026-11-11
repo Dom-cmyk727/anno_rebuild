@@ -255,13 +255,11 @@ TEST_CASE("combined identity138: valid native and replay artifacts 134 through 1
         REQUIRE(magic == std::array<std::uint8_t, 4>{'A', '3', 'R', 'P'});
         REQUIRE(length <= r.remaining());
         const auto first = bytes.begin() + static_cast<std::ptrdiff_t>(r.position());
-        return std::vector<std::uint8_t>(first,
-                                         first + static_cast<std::ptrdiff_t>(length));
+        return std::vector<std::uint8_t>(first, first + static_cast<std::ptrdiff_t>(length));
     };
     const auto base = std::filesystem::path(ANNO_FIXTURES_DIR) / "sim";
-    const std::array replay_paths{
-        "expand1/current134/g2.log", "salt1/current135/g2.log",
-        "freight/current136/g2.log", "iron2/current137/g2.log"};
+    const std::array replay_paths{"expand1/current134/g2.log", "salt1/current135/g2.log",
+                                  "freight/current136/g2.log", "iron2/current137/g2.log"};
     std::vector<std::pair<unsigned, std::vector<std::uint8_t>>> natives;
     natives.emplace_back(134, bytes_of(base / "freight/legacy134/g2.save"));
     natives.emplace_back(135, bytes_of(base / "salt1/legacy135/g2.save"));

@@ -260,7 +260,7 @@ TEST_CASE("freight commands: live authority canonical grouping deep copies and a
     ft::ship(w).freight_generation = UINT64_MAX;
     refuse(route, sim::Reject::SerialExhausted);
 }
-TEST_CASE("freight native: corrupt continuation refuses and real134 cannot enter136") {
+TEST_CASE("freight native: corrupt continuation refuses and real134 cannot enter138") {
     auto w = ft::make();
     REQUIRE(ft::apply(w, ft::route(w)).ok());
     const auto check = [&](auto edit) {
@@ -289,7 +289,7 @@ TEST_CASE("freight native: corrupt continuation refuses and real134 cannot enter
     const auto refused = sim::World::load(old, ft::registry());
     REQUIRE_FALSE(refused);
     CHECK(refused.error() ==
-          "save: state stream version 134 is not supported (this build reads 136)");
+          "save: state stream version 134 is not supported (this build reads 138)");
     auto log = sim::read_log(bytes(base / "expand1/current134/g2.log"));
     REQUIRE_FALSE(log);
     CHECK(log.error() == "stream (byte 24): replay state stream version differs from this build's");

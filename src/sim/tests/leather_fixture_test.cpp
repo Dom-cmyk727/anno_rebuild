@@ -138,8 +138,8 @@ TEST_CASE("synthetic mechanics fixture: labelled hides become leather and househ
     CHECK(l.leather_taken > 0);
     CHECK(l.leather_taken <= l.leather_loaded);
     CHECK(houses_reached(c) > 0);
-    // measured pins at stream 130 (hand-checked: 5120 + 780 + 2292 = 8192 hides; 1337 made =
-    // 28 + 1309 loaded; 1309 loaded = 0 + 504 + 805; 2292 * 7 = 1337 * 12)
+    // measured pins at stream 138 (hand-checked: 5120 + 768 + 2304 = 8192 hides; 1344 made =
+    // 35 + 1309 loaded; 2304 * 7 = 1344 * 12)
     CHECK(in_step == 12);
     CHECK(out_step == 7);
     CHECK(first_store == 26000);
@@ -153,7 +153,7 @@ TEST_CASE("synthetic mechanics fixture: labelled hides become leather and househ
     CHECK(l.leather_store == 555);
     CHECK(l.leather_taken == 754);
     CHECK(houses_reached(c) == 8);
-    CHECK(c.w.state_hash() == 0x88e222c6b5447300ULL);
+    CHECK(c.w.state_hash() == 0x87619a7f52e615e7ULL);
     std::cerr << "PIN main first_store " << first_store << " hides_store " << l.hide_store << " in "
               << l.hide_in << " consumed " << l.hide_consumed << " made " << l.leather_made
               << " out " << l.leather_out << " loaded " << l.leather_loaded << " cart "

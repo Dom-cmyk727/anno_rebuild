@@ -42,8 +42,8 @@ template <class T> void compare(const char* name, const Expected& e, const T& va
     CAPTURE(std::string{name});
     CAPTURE(bytes.data().size());
     CAPTURE(e.bytes.size());
-    const auto mismatch = std::mismatch(bytes.data().begin(), bytes.data().end(), e.bytes.begin(),
-                                        e.bytes.end());
+    const auto mismatch =
+        std::mismatch(bytes.data().begin(), bytes.data().end(), e.bytes.begin(), e.bytes.end());
     CAPTURE(std::distance(bytes.data().begin(), mismatch.first));
     CHECK(bytes.data() == e.bytes);
     sim::HashArchive hash;
@@ -107,8 +107,7 @@ sim::Figure actor(std::uint64_t id, std::uint32_t kind, sim::FigureId parent = {
     return f;
 }
 } // namespace
-TEST_CASE(
-    "integration oracle: populated freight quarry mason and two-reserver mine scopes") {
+TEST_CASE("integration oracle: populated freight quarry mason and two-reserver mine scopes") {
     const auto e = expected();
     compare("header", e.at("header"), sim::StateHeader{});
     compare("accounts", e.at("accounts"),
@@ -147,8 +146,8 @@ TEST_CASE(
     ship.nav->seg = {sim::NavSegKind::Turn, 2, 92, 10, 500};
     ship.freight_generation = 4;
     auto& freight = ship.freight.emplace();
-    freight.stops = {{sim::BuildingId{77}, 2048, 2304,
-                      {{sim::FreightDirection::UnloadAmount, 9, 3}}}};
+    freight.stops = {
+        {sim::BuildingId{77}, 2048, 2304, {{sim::FreightDirection::UnloadAmount, 9, 3}}}};
     freight.phase = sim::FreightPhase::Sailing;
     freight.expected_order_id = 55;
     freight.order_generation = 4;

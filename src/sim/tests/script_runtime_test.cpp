@@ -36,8 +36,8 @@ TEST_CASE("SCRIPT2 native header and empty runtime have hand written bytes") {
     WriteArchive header;
     StateHeader h;
     fields(header, h);
-    // I1 merge checkpoint 137 / ECONBK1, independently written little-endian bytes.
-    const std::vector<std::uint8_t> expected_header{137,  0,    0,    0, 0x45, 0x43, 0x4f, 0x4e,
+    // I2 merge checkpoint 138 / ECONBK1, independently written little-endian bytes.
+    const std::vector<std::uint8_t> expected_header{138,  0,    0,    0, 0x45, 0x43, 0x4f, 0x4e,
                                                     0x42, 0x4b, 0x31, 0, 5,    0,    0,    0};
     CHECK(header.data() == expected_header);
     ReadArchive legal(expected_header);

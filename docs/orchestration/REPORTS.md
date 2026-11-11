@@ -5815,3 +5815,52 @@ the share. S step 5 will be revisited before E if the folder appears.
   ID in this public repository.
 - Classified the verification as NOT_RUN rather than a failure or a pass. There are no files or
   sync state to inspect at the specified path, so any count, size or hash verdict would be invented.
+
+## MAP-INTEGRATE-2 P — preflight — 2026-11-11 — status: DONE
+
+The owned branch starts from fetched `origin/main`
+`03bf2b3cf6a7779e559c6dd3669ee24cccccb2ae`; packet blob
+`2139d7b7bb4c61cb77de7ebf81b61afc4ecd9544`. Both frozen input commits exist.
+Re-measured merge bases:
+
+- `origin/main` ∧ `49ffcee6` = `e0bb6be7bd26dddd53d2f7e69ae29651fc5c49b9`;
+- `origin/main` ∧ `a5a3bca3` = `70d311cde090e4d34ccaa486861a58982fee31c8`;
+- `a5a3bca3` ∧ `49ffcee6` = `70d311cde090e4d34ccaa486861a58982fee31c8`.
+
+The named public CI inputs are complete and successful at their exact heads: run `42360092553`
+at `49ffcee66f5bdb678e4e165112abacccd84e727a` and run `42804157700` at
+`a5a3bca35c781231ab8d52205a5a1117b4cce23f`. `gh` is not installed; these fields were read from
+GitHub's public Actions API, as the packet's fallback permits.
+
+Mandatory reading completed from the fetched/current objects: `CLAUDE.md`, PLAN 0.1–0.3 and 7,
+the evidence contract and testing README, owner rules, MAP-ROUTE-1 and protocol §1, STATUS, the
+whole integration packet, each input's final report/spec/research/consumer/evidence records, state
+and stream contracts, and MAP-INTEGRATE-1's integration record. Input boundaries confirmed:
+route-only 136 is based on 134 and has F075/F076 plus route fields; 137 contains salt 135 plus iron,
+the Quarry payload/claims and mason goal bytes, but no route; neither published identity may be
+relabeled as 138.
+
+Host observation before the first build: Mac arm64, 18 logical/18 physical CPUs, 51,539,607,552
+bytes RAM, 1.6 TiB free, load 3.89/2.88/3.17. Syncthing and desktop applications were active, but
+there was no observed owned build/test campaign. Expensive lanes will remain serialized with four
+build/test jobs and admission control enabled. The licensed game files remain read-only at
+`/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/game/app` and will be
+supplied through `ANNO1503_GAME_DIR`; they are not copied into this worktree.
+
+Canonical cheap checks: the first preflight invocation failed before any build/test because the
+shell could not find `cmake`; this result is retained as an environment-path failure. With the
+documented Mac tool directory on `PATH`, `run_selected.py --preflight-only` passed its 25 verdict
+contracts and test-name check, and `workflow_test.py` executed 21 tests with zero failures.
+
+### Decisions and reasoning
+
+- Kept four-job concurrency. The host has 48 GiB but several interactive applications are active;
+  the prior calibrated Mac packages used four jobs, and no new measurement justifies increasing it.
+- Treated the missing `gh` binary as a tooling fact, not a reason to skip CI verification. The
+  packet explicitly authorizes the public API fallback, whose returned head SHA and conclusion tie
+  each result to the frozen input.
+- Preserved the first preflight failure. It did not execute a project test and was corrected by
+  selecting the repository's documented Mac tool environment; deleting or presenting it as an
+  executed-pass result would violate the evidence contract.
+- Kept A6 option B at this stage. The packet expressly assigns that disposition until an owner
+  answer arrives before I5; changing it in P would be an unauthorized persistence decision.

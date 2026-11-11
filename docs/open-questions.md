@@ -2488,3 +2488,51 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
     draining. Can combine with (a).
   - No option has been implemented; this entry only records the question per the W4-NEXT-2 packet's
     instruction not to change runner behaviour silently.
+
+## OQ-569: Row 18's need-icon row — only icon 0 measured, the per-good index formula is open (W4-NEXT-2 K, 2026-11-11)
+- **Status:** open (blocks drawing icons 1/2 of the need-icon row).
+- **Area:** UI / RE evidence, `data/ui/hud.txt`.
+- **Question:** `f15_selected_house` shows three 50x50 goods icons below the portrait (food,
+  leather, a third brown/wood good), the house's "needs". `WARENICONS_BEDARF` id 727 (`fenster.tex`,
+  `inc.txt` line 2110) sprite-sad matches the first one: mean 39.3 at (794, 480) - in this
+  project's established good-match range. The other two are the same size in the same row but no
+  second or third tex id was tried against them yet; `inc.txt` lists only one `WARENICONS_BEDARF`
+  id and one `_GREY` variant (741, for the unmet-need state - itself not verified against a shot
+  where a need is unmet), not a per-good array the way `construction.txt`'s
+  `cell_icon_tex_id = THUMBNAIL* + 3*record_index` formula gives the 148 unlocked-cell icons their
+  own ids. Whether the three need icons come from three separate, as-yet-unidentified ids, or from
+  one id selected by the house's configured need-goods list at a stride not yet found in `inc.txt`,
+  is unresolved.
+- **How to resolve:** a fresh Wine/native capture isolating each of the three icons (ideally a
+  scenario where the goods differ from `f15_selected_house`'s, to see which ids change), or
+  disassembly of the house-info panel's draw path for the need-icon-to-tex-id mapping. Until then
+  only `need_icon_0` (id 727) is in `data/ui/hud.txt`; icons 1 and 2 are not drawn.
+
+## OQ-570: Row 18's "tab" (VIEWINFOPIONIER_TAB, id 975) does not sprite-sad match its visible position; no close button exists in this capture (W4-NEXT-2 K, 2026-11-11)
+- **Status:** open (the tab is not drawn; the close button is resolved as "none exists here", not
+  open).
+- **Area:** UI / RE evidence, `data/ui/hud.txt`.
+- **Question (tab):** `VIEWINFOPIONIER_TAB` id 975 (`fenster.tex`, `inc.txt` line 2165, 42 x 46)
+  decodes to a grey/stone-carved "?" glyph in its own idle colouring (saved at
+  `cache/w4-next-2/tab975.png`). The live capture `f15_selected_house` shows the same "?" icon's
+  position (visually at about x=904-939, y=185-230, the third of four tab icons under the minimap)
+  rendered **gold/lit**, not grey - the currently-active info tab is apparently tinted or uses a
+  separate asset for its lit state. Sprite-sad against id 975 at that position gives mean 116.7
+  (worst tried: (911,186)) - far outside this project's established good-match range (contrast
+  `pionier_bk`'s 17.8, `need_icon_0`'s 39.3) - because colour, not position, is the mismatch.
+  `cache/w4-next-2/sad_search.py`'s full-row and full-column searches found no better position
+  either. No second "lit" tex id for this icon has been found in `inc.txt` yet.
+- **What we know:** the icon's *position* (that it is the third of the four top tabs, under the
+  minimap) is visually unambiguous from the shot; only the colour-state asset id is unresolved, so
+  this is not a guessed layout - sprite-sad cannot currently confirm the position because it
+  compares raw colour, not shape/alpha.
+- **Close button:** not found anywhere in `f15_selected_house` - the panel's visible chrome ends
+  at the need-icon row (y <~ 530); the region around `INFOEXIT` id 38's own measured position
+  (984, 725, for the *different* `r2_info_pioneer_house` screen) is bare terrain in this shot
+  (`cache/w4-next-2/infoexit_region.png`). Row 18's own panel has no dedicated close widget in
+  this capture; dismissal is Escape or a click elsewhere, which K-1/K-3 already decided and
+  implemented. This is a negative result, not an open question: no close-button element is added.
+- **How to resolve (tab only):** a fresh Wine/native capture with construction-menu docs' own
+  tab-highlight conventions in mind (`docs/re/ui.md` may already record a lit/gold variant id for
+  another tab in the same four-icon row - not checked yet), or disassembly of the tab-highlight
+  draw call. Until then the tab is not drawn.

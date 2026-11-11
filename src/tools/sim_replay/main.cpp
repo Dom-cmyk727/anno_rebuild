@@ -510,7 +510,8 @@ int cmd_population(const std::string& path, const std::vector<std::uint64_t>& se
               << std::dec << " house_updates=" << (world.rules().house_updates ? "on" : "off")
               << "\n";
 
-    auto sample = [&world](std::uint64_t at_seconds) {
+    bool any_problem = false;
+    auto sample = [&world, &any_problem](std::uint64_t at_seconds) {
         std::int64_t residents = 0;
         std::uint64_t store_8_8 = 0;
         for (std::size_t i = 0; i < world.islands().size(); ++i) {
@@ -533,8 +534,13 @@ int cmd_population(const std::string& path, const std::vector<std::uint64_t>& se
         }
         // F5: check_invariants at each checkpoint, printed - cmd_population did not call it
         // before this change, so OQ-571's "confirmed by cmd_scenario/cmd_population both" was
-        // not true of this command; it is now.
+        // not true of this command; it is now. G5 (finding 9 of the 2026-11-11 fix review): a
+        // problem is reported but exit stayed 0 - a broken invariant is itself the measurement
+        // this command exists to make reliable, so it now fails the run like any other tool here.
         const std::string problem = world.check_invariants();
+        if (!problem.empty()) {
+            any_problem = true;
+        }
         std::cout << "t=" << at_seconds << "s tick=" << world.clock().tick()
                   << " residents=" << residents << " town_store_tons=" << (store_8_8 / sim::kTon)
                   << " check_invariants=" << (problem.empty() ? std::string("clean") : problem)
@@ -556,7 +562,7 @@ int cmd_population(const std::string& path, const std::vector<std::uint64_t>& se
         }
         sample(s);
     }
-    return 0;
+    return any_problem ? 1 : 0;
 }
 
 /// One sample at the lower and upper middle, averaged, so an even count stays an
@@ -1292,7 +1298,8 @@ void usage() {
                  "  population <file.sze> [--seconds S,S,..] [--step-ms M] [--house-updates]\n"
                  "    (seconds strictly increasing, default 0,10,30,60; step-ms default 10, the\n"
                  "    play mode's own step at 100% speed; house-updates off by default, a\n"
-                 "    measurement setting, not a sim change; W4-NEXT-2 X)\n"
+                 "    measurement setting, not a sim change; exits 1 if check_invariants reports\n"
+                 "    a problem at any checkpoint, after printing it; W4-NEXT-2 X)\n"
                  "      residents and the town-store total (every city, every player), at each\n"
                  "      game-second checkpoint. A refused load/create is reported, not guessed.\n"
                  "  measure <file.sze|synthetic> [--ticks N] [--reps R]\n"

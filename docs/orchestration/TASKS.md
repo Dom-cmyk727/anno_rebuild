@@ -68,8 +68,8 @@ executor reports to [`REPORTS-1.md`](REPORTS-1.md), so an agent can read the liv
 Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026-10-28; where §1 points to
 `HISTORY.md`, look in `HISTORY-2.md` too.
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
-  [`tasks/`](tasks/): now [W4-NEXT-2](tasks/w4-next-2.md) part G, the second fix round after the orchestrator's
-  [fix review](reviews/2026-11-11-w4-next-2-fix-review.md) (Windows), and [MAP-INTEGRATE-2](tasks/map-integrate-2.md) (the
+  [`tasks/`](tasks/): now [W4-NEXT-2](tasks/w4-next-2.md) part H, a docs-only follow-up after the
+  [acceptance](reviews/2026-11-11-w4-next-2-acceptance.md) (Windows, after the landing), and [MAP-INTEGRATE-2](tasks/map-integrate-2.md) (the
   Mac, released 2026-11-11).
   - **MAP-INTEGRATE-2:** MAP-EXTRACT-1 (135), MAP-EXTRACT-2 (137) and MAP-ROUTE-1 (136) onto `main` under
     **state 138**, which is reserved for it. It also brings the shared folder to the Mac, OQ-556 from the original's

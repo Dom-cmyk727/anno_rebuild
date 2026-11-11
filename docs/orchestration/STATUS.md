@@ -4,7 +4,20 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-11 evening, by the Claude Code orchestrator:
+**Last updated:** 2026-11-11 night, by the Claude Code orchestrator:
+- **W4-NEXT-2 ACCEPTED after fix round G** ([acceptance](reviews/2026-11-11-w4-next-2-acceptance.md)).
+  - **Both branches land together** with the owner's OK: `task/W4-ui-4` `b483c4de` and `task/W4-shared-list-1`
+    `b2808533`, merged on `main` as `c944aff7`.
+  - **The race is closed by construction:** the window title and the selection facts now read one state, checked
+    against the code.
+  - **The orchestrator's game-file run of the merge** (RTX 4090): 2,390 selected, 2,378 passed, 0 failed, 12
+    classified skips. The three selected-house tests passed 60 of 60 beside it, and the negative control failed at
+    its bound, as it must.
+  - **Two Low docs findings**, fixed in part H after the landing:
+    - the plain sprite-sad figures do reproduce (they are per pixel), only the grey-key ones don't;
+    - three of the shared list's five scenarios are not endless games.
+
+Earlier that evening, by the Claude Code orchestrator:
 - **W4-NEXT-2's fix round F reviewed: changes requested again**
   ([fix review](reviews/2026-11-11-w4-next-2-fix-review.md)).
   - **Fixed:** the HUD click-through, the demolish test, the population tool (step 10, `house_updates` opt-in,
@@ -159,15 +172,19 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: W4-NEXT-2's fix round G** ([packet](tasks/w4-next-2.md), part G;
-  [fix review](reviews/2026-11-11-w4-next-2-fix-review.md)). It continues `task/W4-ui-4` from `2138773e` and
-  `task/W4-shared-list-1` from `e69b036d`:
-  - **G1:** the selection facts and the window title from one state (the remaining P1);
+- **Next: W4-NEXT-2 part H** ([packet](tasks/w4-next-2.md), part H), docs only, on a new branch
+  `task/W4-docs-h` once the landing is on `main`:
+  - **H1:** the two sprite-sad normalizations, G6's conclusions corrected, OQ-565/567's plain figures restated as
+    calibrated;
+  - **H2:** the shared list's scenario folders, and what the New Game list holds as the next attempt's first check;
+  - **H3:** report.
+- **Finished: W4-NEXT-2's fix round G** (2026-11-11; heads `b483c4de` and `b2808533`), from `2138773e` and
+  `e69b036d`, **accepted** ([acceptance](reviews/2026-11-11-w4-next-2-acceptance.md)):
+  - **G1:** the selection facts and the window title from one state (the P1 closed);
   - **G2–G5:** a HUD-click step that can fail, the pixel check's bound, ADR 0004's sentence, `population`'s exit
     code;
-  - **G6:** grey-key defined in `docs/re/ui.md`, the 17.8 marked as not reproduced, sprite-sad calibrated against
-    figures that reproduce;
-  - **G7, G8:** the next path for the original's column; the missing F entries;
+  - **G6:** grey-key defined (its calibration conclusion is part H's finding 1);
+  - **G7, G8:** the next path for the original's column (part H's finding 2); the missing F entries;
   - **G9:** review and gates.
 - **Finished: W4-NEXT-2's fix round, part F** (2026-11-11; heads `2138773e` and `e69b036d`), from `f1f772b4` and
   `593cdd3f`:

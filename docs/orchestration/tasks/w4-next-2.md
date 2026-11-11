@@ -14,6 +14,10 @@ changes before the merge. Do part **F** at the end of this packet, then stop.
 ([fix review](../reviews/2026-11-11-w4-next-2-fix-review.md)) requests changes: the selected-house race is narrowed,
 not closed. Do part **G** at the end of this packet, then stop.
 
+**ACCEPTED, 2026-11-11 (night):** part G is done, and both branches are accepted
+([acceptance](../reviews/2026-11-11-w4-next-2-acceptance.md)). They land with the owner's OK. After the landing, do
+part **H** at the end of this packet (docs only), then stop.
+
 ## Continuation on the Windows PC (2026-11-11, owner instruction)
 
 A Linux session without the game files, the RTX 4090, Wine or `E:` started this packet on branch
@@ -370,3 +374,51 @@ shows why (finding 1). Read its findings table first: each step below names its 
      nothing else heavy on the PC, separate from G1's repeat run. Hosted CI green on both final heads.
    - **Report:** a final REPORTS entry with the heads, a table that gives each finding of the fix review its
      disposition, the counts, NOT_RUN items and QUESTIONs. Then stop, and message the orchestrator with both heads.
+
+## H. Docs follow-up after the acceptance (2026-11-11, night)
+
+**Why.** The [acceptance](../reviews/2026-11-11-w4-next-2-acceptance.md) lands both branches, but two of part G's doc
+corrections are themselves wrong (findings 1 and 2). Read its findings table first. This part changes docs only.
+
+**Rules.** Everything in §0 applies.
+- **Branch.** A new branch `task/W4-docs-h` from `main` once the landing is on it (the merge of both branches, or
+  later). Start only after the orchestrator tells you the landing is on `main`. Ordinary pushes only.
+- **No code changes**, so no code gate. Hosted CI must be green on the final head; for a docs-only change that takes
+  about a minute.
+- **No Wine session** in this part.
+- **Never edit an old REPORTS entry.** Corrections are new text: a new paragraph in the doc, a new entry in REPORTS.
+
+**Steps.**
+1. **H1 — sprite-sad's two normalizations (finding 1).**
+   - **The plain method is per pixel.** In `docs/re/ui.md` §2, say that the plain sprite-sad mean is
+     |dR| + |dG| + |dB| over the kept pixels (alpha ≥ 8), *not* divided by 3. Measured that way, zoom + (`fenster.tex`
+     id 44 at (959, 7)) gives 2.885 and compass west (id 48 at (965, 140)) gives 3.088 on `hud_idle_running`: the
+     committed figures. Say also that grey-key, as `ui1_f22_bind.py` computes it, divides by 3, and give the unit
+     wherever this doc states a grey-key figure.
+   - **Correct G6's conclusions**, in new text in §9.7, in the `data/ui/hud.txt` comment and in a new paragraph in
+     OQ-567:
+     - the plain method is calibrated: 2 of 2 committed figures reproduce exactly;
+     - only the committed grey-key figures don't reproduce. 17.8 for id 974 at (783, 252) measures 32.07 per channel
+       (96.21 per pixel). The portrait's 34.2 (`ToolGfx/Pioniere.tex` id 1 at (812, 355)) measures 45.52 per channel
+       (136.56 per pixel). Both on `f15_selected_house`.
+   - **Restate the plain sprite-sad numbers that OQ-565 and OQ-567 cite** in the per-pixel unit, marked calibrated,
+     each with its shot and position. Grey-key numbers stay uncalibrated. If a calibrated number now decides an OQ,
+     say so in the report; closing it waits for the orchestrator's review.
+   - **Measure on the kept shots** in `E:\anno1503-worktrees\anno1503-UI-1-F2\cache\orig\ui-1\` (both copies of each
+     shot). Keep your script in `cache/`, and give its name and sha256 in the report.
+2. **H2 — the scenario folders (finding 2).** In `docs/testing/original-wine.md` §6, add a new paragraph under
+   G7's. It says:
+   - only `01_1024_easy_256` is an endless-game file (`Scenes/0010SingleEndlos`);
+   - `Single_06`, `Single_16` and `Single_24` are in `Scenes/0200Single`;
+   - `S01_08_01` is in `Scenes/0100Kampagne01`.
+
+   The next attempt's first check: what the New Game list holds beyond the five rows `tools/orig/menus.json` maps
+   (Citizen to Marquess); for example, whether the `0200Single` scenarios follow further down. Then which `.sze` a
+   row opens, read from the process. Correct the "four endless files" wherever part G wrote it.
+3. **H3 — report.** A REPORTS entry at the bottom of `docs/orchestration/REPORTS.md` on `task/W4-docs-h`:
+   - what changed;
+   - the measured figures and their script's sha256;
+   - the hosted CI run;
+   - a "Decisions and reasoning" list.
+
+   Then stop, and message the orchestrator with the head.

@@ -6880,3 +6880,27 @@ the facts agree.
   written, with this entry as the authoritative correction a later reader should also read.
 - Did not change the fix itself: the reviewer's own finding is explicitly that the *code* is
   correct and only the *prose describing it* overstated how few places needed checking.
+
+## W4-NEXT-2 — CI addendum, the recurring F3 (D1, deaf) flake hit again on `481a8b6a` — 2026-11-11 — status: FINISHED
+
+`task/W4-ui-4`'s final head (`481a8b6a`, a docs-only correction - G1's own code is unchanged since
+`0cb009a5`) failed hosted CI: `cpp (macos-clang)` (run 43082536481, job 130738636279) reports
+`INCOMPLETE: anno_test_support_tests.F3 (D1, deaf): a coordinator that serves hello but never
+resolves the request or its cancel still ends at a bounded deadline`, `VERDICT: FAIL incomplete or
+contradictory test evidence`. Every other job (`linux-gcc`, `linux-gcc-release`, `linux-clang-asan`,
+`windows-msvc`, `cpp-format`, `lint`, `build-macos`) passed.
+
+**This is the same recurring, pre-existing, environment-specific flake the first review's own
+finding 12 already named** (runs 42990604521 and 43009381041 on earlier commits of this same
+packet), now hit a third time, on a commit that touches only `docs/orchestration/REPORTS.md` - no
+code of any kind changed between the previous green run and this one. The failing test is in
+`anno_test_support_tests`'s coordinator area, which no commit in this fix round touches; the local
+canonical gate (this PC, `VERDICT: PASS`, see the G9 entry) is unaffected and remains the
+authoritative acceptance evidence, consistent with how the first and second reviews both disposed
+of this same flake class ("its own follow-up after this package, not this package's defect").
+
+### Decisions and reasoning
+
+- Did not push another commit to try to get a clean macOS run: the flake is already well-documented
+  across three separate runs now, on three different commits, none of which touch the code it
+  fails in - another push would only re-roll the same dice, not add evidence.

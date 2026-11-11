@@ -6305,3 +6305,134 @@ only because the ASan job failed.
   were reverted from this branch (`9d2ffec2`) and cherry-picked onto `task/W4-shared-list-1`
   instead, where they belong per this packet's own branch rule ("X: docs and tools only").
   `build/msvc-peak` was reconfigured afterward; the 2384-test counts above are post-correction.
+
+## W4-NEXT-2 — Part E, final gate and report (W4-ui-4 and W4-shared-list-1) — 2026-11-11 — status: FINISHED
+
+This closes W4-NEXT-2's continuation on the Windows PC (parts P, K, W, M on `task/W4-ui-4`; part X
+on `task/W4-shared-list-1`). Stop here; no further package started.
+
+### Heads
+
+| Branch | Head | Carries |
+|---|---|---|
+| `task/W4-ui-4` | `b5fda2a7` | P (re-review, OQ-568, `peak_launcher_contract`, P5 GPU check), K (measure, draw CPU+GPU, scripted session, replay, pixel check, independent review addressed), W (OQ-565/566/567 captures and findings), M (peak-memory build, full game-file run, C-3 table and QUESTION) |
+| `task/W4-shared-list-1` | `593cdd3f` | X (`sim_replay`'s `population` subcommand, `docs/research/shared-test-list.md`, OQ-571) |
+
+### Gates, `task/W4-ui-4`
+
+- `clang-format` 23.1.3 (installed via `pip install --target`, no system copy on this PC): clean
+  over the whole of `src/` (`find src -name '*.cpp' -o -name '*.hpp' | xargs clang-format
+  --dry-run --Werror`), not just the touched files.
+- `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: clean on all four configurations - GCC 13
+  and Clang 18, viewer+GPU on (377 files each) and off (76 files each).
+- **The canonical gate** (`tools/test/run_selected.py`, `build/msvc-peak` - the peak-memory
+  instrumented build this packet's own part M built, `ANNO1503_GAME_DIR` and
+  `ANNO_GPU_ADAPTER=0`, the RTX 4090, `--select "."`, `--asset-policy required`, `--allow-skip
+  other`): **VERDICT: PASS**. Classified: **selected 2384, executed and passed 2372, failed 0,
+  empty 0, skipped 12 (opt-in 6, platform 3, other 3), incomplete 0, sanitizer lines 0.** The
+  "other" class is a tool-classifier quirk, not a real skip: three `ship start` tests that
+  themselves report `Passed` (5/5 assertions) print an internal doctest `MESSAGE: skipping the
+  symlink rows: Dem Client fehlt ein erforderliches Recht` (this account lacks the Windows
+  privilege to create symlinks, Developer Mode not enabled) - `ctest_verdict.py`'s classifier
+  reads "skipping" in that message and counts the whole case as a prerequisite skip even though it
+  passed. Recorded here rather than silently allowed with no explanation; `--allow-skip other` is
+  the documented, explicit policy this gate's own contract asks for when a class is not auto-
+  allowed. Log: `cache/w4-next-2/canonical-gate2.log`.
+- **The full MSVC game-file run with the 4090, detached:** done as part M (its own REPORTS entry
+  above has the detail) - 2383/2384 passing after isolating one CPU-contention flake
+  (`selected_house_pixel_check`, confirmed clean alone), 2384/2384 after. Log:
+  `cache/w4-next-2/LastTest-full-run.log`.
+- **Hosted CI, every pushed head on this branch, run ids:**
+
+  | Commit | Run id | Result |
+  |---|---|---|
+  | `bf8793e1` (part P continued) | 42984762636 | `cpp (linux-gcc)` failed - pre-existing coordinator-area flake (a docs-only commit; same class of failure the project's own history already documents repeatedly for this job) |
+  | `baba3e97` (part P finished) | 42986214529 | `cpp (linux-gcc)` failed - same pre-existing flake class |
+  | `459b8174` (K measurement) | 42987534961 | green |
+  | `0f232698` (K draw) | 42990604521 | `cpp (macos-clang)` failed - `COUNTS: ... incomplete=1`, the one incomplete case being `F3 (D1, deaf)` (a bounded-deadline coordinator test); not reproduced locally, no code in this diff touches `test_support`'s coordinator, and a different job failed on the unrelated docs-only commit above - consistent with pre-existing CI-runner flakiness, not a regression |
+  | `9f7fbeb8` (K report) | 42990692245 | green |
+  | `b367ee00` (W captures) | 42993296151 | green |
+  | `67966699` (K pixel check) | 42993551795 | green |
+  | `81a398fe` (population subcommand, later reverted) | 42994332475 | green |
+  | `9d2ffec2` (revert) | 42994737331 | green |
+  | `58b1ef2d` (C-3 answered) | 42998960007 | green |
+  | `b5fda2a7` (M finished, this branch's final head) | 42999014698 | green |
+
+  The final head is green. Two earlier heads hit pre-existing, already-documented CI-infrastructure
+  flakes (the coordinator area on Linux, a bounded-deadline coordinator test on macOS); neither
+  recurred on later pushes of the same unrelated code, and this diff touches no coordinator code.
+
+### Gates, `task/W4-shared-list-1`
+
+Docs and tools only (`src/tools/sim_replay/main.cpp`'s own `population` subcommand, a new CMake
+test-helper script, two docs files) - a narrower gate matches its narrower scope:
+- `clang-format` clean on `src/tools/sim_replay/main.cpp`.
+- `anno_sim_replay_*` (44 cases, `build/msvc` on this branch, `ANNO1503_GAME_DIR` set): 44/44
+  passed, including the three new `population`-subcommand cases.
+- Hosted CI on both pushed heads: `ccc178c4` (run 42994661396) and `593cdd3f` (run 42994718694,
+  this branch's final head) both green.
+
+### Acceptance tables (per part, the detail is each part's own REPORTS entry above)
+
+| Part | Requirement | Evidence | Disposition |
+|---|---|---|---|
+| P | `peak_launcher_contract` executes and passes on Windows | this host, 0.49 s, PASS | PASS |
+| P | P5 GPU pixel check, rows 5/10 | exact match both rows, both wrong-input controls rejected | PASS |
+| K | Panel drawn only where measured, CPU=GPU, no oracle regression | pixel check, parity diff 0/78,400 px, 9/9 + 3/3 oracle screens unchanged | PASS |
+| K | Independent review | ACCEPT-WITH-FINDINGS (finding 7 fixed: committed pixel check added) | PASS |
+| W | Three OQs: resolved or named what was tried | all three updated with new, honest findings; none closed on a guess | Open, by design |
+| M | Peak-memory table and C-3 remedy | 27 tests > 1 GiB, 18 unreserved, 18281 MiB worst-case sum; option (a) recommended | PASS |
+| X | Shared test list, our sim vs. the co-developer's | 1/5 scenarios run (OQ-571 opened); 4/5 refuse with a named reason; original column NOT_RUN (navigation not found) | Open, by design |
+
+### NOT_RUN / still open
+
+- OQ-565 (part b, MAX_PIC persistence), OQ-566 (the cursor image itself - this harness's
+  screenshot method cannot capture it at all), OQ-567 (the Kontor/settlement panel's background
+  id) - all open, each with real new evidence this session added, none guessed shut.
+- OQ-568 (the `stop()` mid-delay command-drain question) - open, QUESTION only, no behaviour
+  changed.
+- OQ-571 (the `01_1024_easy_256` population/store difference) - open, measurement only.
+- The original-game column of the shared test list (part X, section 3) - NOT_RUN: the
+  scenario-file menu path was not found in this pass (only the random "New game" is documented).
+- The C-3 remedy itself (18 reservations to add) - QUESTION answered with numbers; not
+  implemented (new, separate work, left for the owner to schedule).
+
+### Review records
+
+- K's draw step: independent review by a fresh agent (2026-11-11), verdict ACCEPT-WITH-FINDINGS;
+  the one finding (no committed pixel check) fixed in the same package, not deferred.
+- Every other part (P, W, M, X) in this continuation was self-reviewed against raw logs/output,
+  not just printed verdicts (re-run in isolation where a result looked contention-affected, re-read
+  code for the stop()/cancel findings rather than guessed) - no second independent reviewer was
+  sought for these; noted as a residual gap, not silently waived, should the owner want one before
+  merge.
+
+### Review-first list (what a reviewer should read before anything else)
+
+1. This entry and part M's/K's own entries above (the acceptance tables and the two local run
+   logs they cite).
+2. OQ-568 (the `stop()` question) and OQ-571 (the population/store difference) - both QUESTIONs
+   the owner may want to weigh in on.
+3. The independent review's own report (K's draw step) and the fix it produced
+   (`selected_house_pixel_check.py`).
+4. `docs/perf/README.md`'s C-3 update, for the reservation remedy's numbers.
+
+### Decisions and reasoning
+
+- Kept K, M and W together on `task/W4-ui-4` and X alone on `task/W4-shared-list-1` per the
+  packet's own continuation instruction, even though a tool change for X (the `population`
+  subcommand) was first drafted on the wrong branch by mistake - corrected with a revert + cherry-
+  pick rather than left in place, because the packet's branch split is explicit and a reviewer
+  would otherwise find X's own tool on the wrong branch.
+- Did not force a sprite-sad "match" for OQ-567's candidates once a sanity check showed this
+  session's own ad hoc measurement script was not calibrated to the project's established bar (a
+  known-good match read back at 96.2 instead of the committed 17.8) - reporting an uncalibrated
+  number as a rule-out would have been worse than reporting no verdict at all.
+- Treated two resource-contention failure clusters (M's low-memory refusals, E's one CPU-timing
+  flake) as evidence to record and re-verify in isolation, not as noise to silently retry away -
+  consistent with the evidence contract's own rule that known failures remain failures, while
+  still distinguishing a real defect from a shared-host artifact.
+- Never pushed to `claude/dreamy-brahmagupta-10bjax` (frozen) or to `main`; every push was an
+  ordinary, non-force push to one of this packet's two task branches.
+
+Stop here.

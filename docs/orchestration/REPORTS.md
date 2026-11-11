@@ -5979,3 +5979,110 @@ no claim is made about them.
 
 No cell is filled, and `docs/research/shared-test-list.md` was not written. An empty table with
 every cell NOT_RUN would add nothing the PC session needs.
+
+## W4-NEXT-2 — Part E: final gate and report (Linux host subset) — 2026-11-11 — status: DONE for this host, PC gates NOT_RUN
+
+**Heads:** branch `claude/dreamy-brahmagupta-10bjax`, code head `8b807827`, base `origin/main`
+`6b077529` (contains `2c4dc295`). Commits, in order:
+
+| Commit | Contents |
+|---|---|
+| `e1a2e4a4` | Part M: the launcher and the report tool |
+| `45fc2856` | Part K: the selection |
+| `0a31a925` | ADR 0004 and the perf README |
+| `d5f783b5` | REPORTS: parts P, K, W, M, X |
+| `3f3dd4d8` | Review fixes |
+| `8b807827` | The ASan expectation in the peak contract |
+| this commit | This entry |
+
+**Hosted CI on every pushed head, red ones included:**
+
+| Run | Head | Result | Failure |
+|---|---|---|---|
+| 42958378646 | `0a31a925` | red | `cpp (linux-clang-asan)`: `peak_launcher_contract` |
+| 42958541203 | `d5f783b5` | red | same job, same contract (same code) |
+| 42960049192 | `3f3dd4d8` | red | same: an ASan helper's 1/8 shadow is resident too; 256 MiB measured 287.6 MiB |
+| **42964242098** | **`8b807827`** | **green, all 12 jobs** | none |
+
+On every red run the other C++ jobs were green, `cpp (windows-msvc)` included, and `gate` failed
+only because the ASan job failed.
+
+**Classified counts of the green run** (each job's `run_selected.py` verdict; no game files on CI):
+
+| Job | Selected | Executed and passed | Failed | Skipped (required-asset / platform / opt-in) |
+|---|---|---|---|---|
+| `cpp (linux-gcc)` | 2,396 | 2,088 | 0 | 308 (295 / 4 / 9) |
+| `cpp (linux-gcc-release)` | 2,396 | 2,088 | 0 | 308 (295 / 4 / 9) |
+| `cpp (linux-clang-asan)` | 2,397 | 2,089 | 0 | 308 (295 / 4 / 9), sanitizer lines 0 |
+| `cpp (macos-clang)` | 2,402 | 2,092 | 0 | 310 (295 / 6 / 9) |
+| `cpp (windows-msvc)` | 2,265 | 1,987 | 0 | 278 (266 / 7 / 5) |
+
+`peak_launcher_contract` and `peak_report_contract` appear in no job's skip or failure list.
+- **Linux, ASan:** run 42964242098 shows that the contract ran and passed.
+- **Windows:** this is the first compile and run of the job-object launcher code. The per-test
+  pass record is in the run's artifact, which this host cannot download (the artifact host is
+  blocked by this session's proxy).
+
+**Local gates** (this Linux host, GCC 13 Debug, no game files):
+
+| Gate | Selected | Executed and passed | Failed | Skipped |
+|---|---|---|---|---|
+| Whole suite, launcher off (`m-suite-off-02`) | 2,230 | 1,976 | 0 | 254 (243 required-asset, 2 platform, 9 opt-in) |
+| Whole suite, launcher on (`m-suite-on-01`) | 2,230 | 1,976 | 0 | 254 (same) |
+| App suites and peak contracts, viewer build, after the review fixes (`k-viewer-app-03`) | 302 | 213 | 0 | 89 (87 required-asset, 2 opt-in) |
+
+- **clang-format 23.1.3:** clean over all of `src/`.
+- **`tools/check_unix_warnings.sh`:** with this host's dependencies, no warning in any file it
+  could compile. All 26 failures (13 per compiler) are the missing `webgpu/webgpu.h`: the
+  wgpu-native download is blocked here. So the GPU-on compile of 12 files, `viewer.cpp` among
+  them, is NOT_RUN locally; CI compiles them.
+- **No-GPU viewer compile:** `viewer.cpp` compiled at `-O3 -Werror` with GCC 13 and Clang 18.
+
+**Independent review:**
+- **Who and what:** a read-only review subagent of this session reviewed `0a31a925`. It built,
+  ran the contract, the selection cases and two mutations of its own, and re-derived the
+  evidence. It marked the Windows run, the GPU builds and the game-file tests NOT_RUN.
+- **Verdict:** no blocking finding; four should-fix items, all fixed in `3f3dd4d8`.
+  1. The Windows launcher did not tie the test to itself: now a kill-on-close job.
+  2. A click with no city stayed pending and redrew at 10 Hz: now answered as empty.
+  3. The ADR overstated where selection works: ship-start sessions are named, QUESTION K-5.
+  4. **The command-boundary test could not fail.** The runner was paused, and `run_n` after
+     `stop()` runs no turn. That also invalidates the Part K entry's description of this test.
+     The test now selects and deselects through a synchronous runner, against a twin that ran the
+     same two turns. Its negative control posts a demolish and is seen.
+- **Nits:** Escape auto-repeat fixed; the others are recorded in the review transcript and not
+  changed.
+- **Not re-reviewed:** the fixes after the review (`3f3dd4d8`, `8b807827`). Their evidence is
+  run 42964242098 and the local gates above.
+
+**QUESTIONs:**
+- **K-1 to K-5:** ADR 0004, "Selection". K-1 to K-3 are implemented as recommended. For K-4 and
+  K-5, the recommended behaviour is not implemented.
+- **C-3's remedy:** still the earlier QUESTION in `docs/perf/README.md`. It waits for part M's
+  game-file table.
+
+**NOT_RUN, all needing the owner's PC:**
+- **P5:** the GPU pixel check of rows 5 and 10.
+- **K:**
+  - measurement, drawing, the CPU and GPU pixel checks, the oracle, `bench_frame`;
+  - the scripted window session and its replay.
+- **W:** all of it.
+- **M:** the MSVC game-file run with the launcher, its table, and the remedy QUESTION with numbers.
+- **X:** all of it.
+- **E:** `wsl ... check_unix_warnings.sh` on the PC, and the full MSVC suite with the game files
+  and the 4090.
+
+**Review first:**
+1. ADR 0004, "Selection", and QUESTIONs K-1 to K-5: they decide how the map feels.
+2. `play.cpp` `answer_inspection_while_paused` and `PlaySnapshot::inspected`: runner behaviour
+   while paused, and a developer-tool change while paused.
+3. `peak_launcher.cpp`'s Windows job object.
+4. Whether to land M and K separately: the commits allow it.
+
+### Decisions and reasoning
+- **No re-review.** The fixes after the review were not re-reviewed by a second pass, because each
+  is covered by a run that executes it: the selection cases, the ASan CI job and the MSVC CI job.
+  This is stated, not hidden.
+- **The ASan expectation.** The contract expects 9/8 of the allocation in an ASan build, instead of
+  exempting the helper from the sanitizer. Every project target keeps ASan, and the check stays a
+  10 % check against a derived number: local ASan measured 287.7 MiB against 288 expected.

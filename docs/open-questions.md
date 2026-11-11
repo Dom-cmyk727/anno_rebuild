@@ -2453,3 +2453,28 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   if that misses, a broader sprite-sad search as `UI.1.F2.1` ran for `B_Baukosten`) against the
   right-panel region; until then row 2 draws no chrome - see `docs/orchestration/REPORTS.md`'s
   Part U entry for this packet's own disposition (data-only, not a guessed layout).
+
+## OQ-571: 01_1024_easy_256 shows no resident/store change over 60 game seconds in our sim (W4-NEXT-2 X, 2026-11-11)
+- **Status:** open.
+- **Area:** sim / population, production.
+- **Note:** this number continues from `task/W4-ui-4`'s OQ-568/569/570 in this packet; renumber at
+  merge if the branches collide.
+- **Question:** the co-developer's shared test list (`docs/research/shared-test-list.md`) gives his
+  own code's numbers for `01_1024_easy_256` - the only one of the five shared scenarios that loads
+  in our sim at all (the other four each refuse with their own already-known unsupported-feature
+  reason): residents 230/230/276/322 and a town-store change from the 10-second mark. Our sim
+  (`anno-sim-replay population`, headless, no player action, normal speed, every town counted)
+  gives a flat 230 residents and an unchanged 150-ton store total at every one of the four
+  checkpoints (0/10/30/60 game seconds). Neither number is the reference (the original's own
+  column is NOT_RUN - see the same doc, section 3), so this is a difference between two
+  reimplementations, not yet known to be a defect in either.
+- **What we know:** the scenario loads and runs clean (`check_invariants clean`, confirmed by
+  `cmd_scenario`/`cmd_population` both). The co-developer's own numbers are explicitly "what
+  Open1503 gives today... the thing to check, not the reference" (his own note), so a difference
+  does not by itself say which side (if either) matches the original.
+- **How to resolve:** the original's own number for this row (the Wine-runner navigation to load
+  a *named* scenario file, not the random "New game", is itself not found yet - see
+  `shared-test-list.md` section 3); or RE/sim-side investigation of whether this scenario's 46
+  houses should show population growth in the first 60 seconds at all (a scenario-specific
+  script/seed effect, not necessarily a general population-tick gap). Not diagnosed or changed
+  here - measurement only, per this packet's own instruction for part X.

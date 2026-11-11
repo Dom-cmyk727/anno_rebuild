@@ -170,3 +170,98 @@ Final I6 APPROVED documentation0e10a303 / runtime-testcafc1a7c; all I0–I6
 packages are locally satisfied. Exact ledgers,
 compatibility, source/workflow hashes, preserved failures and future canonical132
 consumer delta are in the [consolidated handoff](../orchestration/reviews/2026-11-05-map-integrate1.md).
+
+# MAP-INTEGRATE-2 (state 138)
+
+Contract frozen before either authorized input merge, 2026-11-11. State 138 is
+the union of automatic freight, salt extraction, iron/tools and quarry/bricks on
+current main. It is not a new gameplay policy: all opt-in rules remain off by
+default, and the state number distinguishes the combined byte layout and
+behaviour from every input lineage.
+
+## Frozen inputs and inventory
+
+| Role | Exact commit | Base against current main | Published identity |
+|---|---|---|---|
+| Current main / branch parent | `03bf2b3cf6a7779e559c6dd3669ee24cccccb2ae` | — | 134 / ECONBK1 / PRNG 5 |
+| Automatic freight | `49ffcee66f5bdb678e4e165112abacccd84e727a` | `e0bb6be7bd26dddd53d2f7e69ae29651fc5c49b9` | route-only 136 / ECONBK1 / PRNG 5 |
+| Salt + iron/tools + quarry/bricks | `a5a3bca35c781231ab8d52205a5a1117b4cce23f` | `70d311cde090e4d34ccaa486861a58982fee31c8` | 137 / ECONBK1 / PRNG 5 |
+
+The input ranges contain 96 Route paths and 183 Extract paths: 54 Route-only,
+141 Extract-only and 42 shared. One-sided files remain in scope when a caller on
+the other side changed. At the frozen main, merge-tree predicts three conflicts
+for Route (`REPORTS.md`, `world.hpp`, `budget_f3_test.cpp`) and 23 for Extract:
+the reports and open questions; `world.hpp`; cargo/hold goldens; current-state,
+identity, replay and scenario tests; `budget_f3_test.cpp`; both independent
+stream tools; and current `sim_replay` registrations. Route against Extract has
+23 conflicts, centred on the same state/golden/test seams plus `apply.cpp`.
+These counts are an inventory, not permission to resolve a subsystem wholesale.
+
+## Interaction contract
+
+| Seam | Route 136 responsibility | Extract 135/137 responsibility | State-138 resolution |
+|---|---|---|---|
+| Saved state | Append `FreightRules { max_stops, max_actions, work_per_visit }` after `Rules::city_booking`; append a figure's `u64 freight_generation` and optional 19-field `FreightState` after resident state. The route holds its stops/actions, status/phase, cursors, order/generation, timing credit, bounded hold scans, remaining transfer, cycles and failure. | A mine's optional deposit binding is already inside its `Mine` payload. Append `Quarry` payload tag 9: the `Inert` prefix and a bool claim per entrance. For mason job `0x2c` only, append `HarvestState::goal_col` and `goal_row` after `along`; all other jobs retain their bytes. | Preserve both append orders. Rules end with the three freight u32s. Building payload keeps alternatives 0–8 byte-identical and appends Quarry as 9. Figure order is base fields, optional nav, optional harvest (plus the two mason-only bytes), optional resident, freight generation, optional freight. Every member has one `fields()` line and is covered by the corresponding `field_count` assertion. |
+| Commands | Append body alternatives 12/13 for assign/control and reserve wire tags F075/F076. Public Move/Stop/Load/Unload/Found takes over an assigned route after an accepted command. | Mine and quarry construction uses the existing `BuildCmd`, body alternative 0 and wire tag 0x64; eligibility/placement adds no command shape. | Keep command wire 1 and the complete body order through Load(11), Assign(12), Control(13). F075/F076 decode only their route bodies. The manual-takeover visitor visits `Command::Body`, not `Building::Payload`, so Quarry cannot reach it. Build retains 0x64 and gains no alias. |
+| Building payload visitors | Freight identifies warehouses by type/cargo destination and never exhaustively visits `Building::Payload`; its only `std::visit` is the command-body takeover above. | Quarry is a real payload alternative even though the class table remains `Inert`; sim creation, validation, line switching, state and invariants must handle it. | Union every sim visitor. Main's app visitor is also a required caller: add a `DescribePayload(Quarry)` overload and a `payload_kind_name` Quarry arm, held by one formatter test. Do not weaken a catch-all or relabel Quarry as Inert at runtime. |
+| Goods and cargo | A route validates `goods != 0`, the registry entry and warehouse stock bounds, then delegates transfers to the existing `ShipCargo` hold/city rules. It has no good-name allowlist. | Registry data adds salt, iron ore, iron, tools and bricks and the real chains that make/use them. Existing exact holds and cargo bounds remain authoritative. | All five goods can be route actions when present in the registry; capacity, same-good top-up, empty-hold selection, stock, ownership and conservation rules remain generic. Rebuild the current cargo and hold byte fixtures under 138; retain their payload cases exactly, changing only identity/rules suffix where appropriate. |
+| Walks and scheduling | A navigating assigned ship is dispatched through `FreightRoutes::visit` in the existing figure slot and performs bounded route work; production-backed R5 counts were pinned on the 136 world. | T3-Q1 makes transport, harvest and resident walking share exact selected sub-cell endpoints; T3-Q2 replaces the resident reverse adaptation with the original-style forward home search and retains its failure branch. Mason job `0x2c` shares HarvestState but uses its own body. | Use the 137 shared walk implementation and the 136 freight dispatch branch. Re-run R5 on 138. A moved wood-cycle count is acceptable only when the ledger attributes it to the shared walk/scheduling semantics; never copy the 136 count into a changed trajectory. |
+| Draws | Adds no draw site and consumes no draw: freight work is deterministic in figure/stop/action/hold order. | Salt, mine re-lookup, quarry/mason and the shared home walk add no draw site and consume no draw; changed house-walker totals in real runs are behavioural timing effects at existing sites. | PRNG timeline remains 5. The global site order remains `HouseWalkerTarget`, `HouseVariant`, `FarmWorkerDispatch`, `Event750Island`; freight, mine, quarry and mason add no site before, between or after them. Compare both per-site counts and cursor; explain trajectory-dependent totals rather than re-pin silently. |
+| Rules and registry digests | Freight is the sole new Rules member and its three fields enter the Rules digest once through the common field list. | `BuildingType::highmap` and ore figure `ware` are tagged registry-digest additions; Quarry's runtime payload does not alter the class-table digest. No new Rules member. | One Rules suffix, one registry transcription. Preserve the conditional highmap and figure-ware bytes exactly once. State 138 changes the header even when defaults make freight inactive; digest mismatches retain their own diagnostics. |
+| Goldens and pins | Owns `freight/current136`, Route state pins and current registrations; changes every `kStateHashVersion == 13x` expectation it touched. | Owns `salt1/current135` and `iron2/current137`; 137 changes scenario `producers_moved` and `warehouses_moved` via corrected type facts and movement, plus current registrations and state pins. | Preserve each input folder as historical/refusal evidence. Generate `current138`; move only current-behaviour `sim_replay` registrations to it. Recompute shared `cargo_rules_bytes.txt`, `ship_holds.txt` and `scenario_corpus.txt` from reviewed 138 behaviour, explaining every delta. Search the whole tree for 13x pins; no current134/135/136/137 path may masquerade as current. |
+| Main since the bases | Route predates later main changes. | Extract also predates part of current main. | Main wins as the platform, including the `5e7b13c6` real-file repairs, portable CI fixes, and the five repaired `anno_app_tests`. Conflict resolution must port both features into these callers rather than restore an input's older copy. Orchestration-owned TASKS/STATUS/HISTORY/REPORTS-1 remain main's. |
+| Open questions | Adds none. | Adds OQ-552, 553, 554, 555 and 556. | Current main ends this range at OQ-551 and intentionally has no 552–559 headings. Import the five numbered entries unchanged by number (including the source's 555-before-554 order if preserving text); do not renumber or invent 557–559. OQ-556 is answered separately in part R from original code, not guessed during merge. |
+
+### Identity and compatibility
+
+- The native stream is **138** with the existing `ECONBK1\0` schema, replay
+  frame 4, command wire 1 and PRNG timeline 5. There is no new envelope field,
+  script grammar or draw site; the native number changes because saved fields
+  and combined behaviour change.
+- Valid native states 134, 135, 136 and 137 all refuse with the native-version
+  diagnostic. Each control uses a valid outer save and has a neighbouring valid
+  populated 138 control. In particular, 135 now uses the retained Salt artifact;
+  it is not simulated by editing a 136 header.
+- Valid replay artifacts for 134, 135, 136 and 137 refuse with the replay's
+  state-stream diagnostic. A current replay header embedding an earlier native
+  state refuses at the embedded-native check. A wrong replay frame and a wrong
+  command wire remain separate controls. Corrupt checksum/framing is never
+  counted as a version refusal.
+- Rules, registry, script program, schema and PRNG timeline mismatches remain
+  distinct checks. A passing current header cannot cover them, and no 134–137
+  artifact is rewritten and called historical evidence.
+
+## Evidence plan
+
+The independent Python serializers transcribe the combined order and exercise a
+populated world containing: a route ship in flight with partial credit and hold
+scan cursors; a Quarry with a nontrivial entrance claim set and an active mason
+goal sub-cell; and a bound mine with two reservers. C++ round-trip/hash output is
+compared with that transcription and is not itself the oracle. `current138`
+goldens are generated only after the layout review and are accompanied by a
+file/old/new/cause table.
+
+Focused I2 evidence covers native state, replay, stream oracle, registry/rules
+digests, command codec, current registrations and all four real predecessor
+identities. I3 then proves the cross-feature authored fixture in Debug and ASan,
+including new-goods freight, mine demolition, the three-state reload cut,
+suspend/cancel and one replacement-verified mutant per seam. I4 re-runs affected
+accepted game-file proofs (Route R5/R6, salt, iron T3–T5, quarry Q3, T3-Q2,
+main's 18 real-file tests and the expansion/ship-start canaries). Game-file runs
+are classified selected/executed/failed/empty/skipped, and a reviewer either
+runs each accepted game-file test or records it NOT_RUN.
+
+## Decisive acceptance cases
+
+| Interaction | Legal control | Smallest counterexample |
+|---|---|---|
+| Combined field order | Populated 138 serializes identically in C++ and both independent Python transcriptions, then reloads byte-identically. | Omit freight generation, one Quarry claim, or mason goal byte: the oracle offset/hash and continuation differ. |
+| Command union | Existing Build mine/quarry and F075/F076 round-trip to their distinct body alternatives. | Swap F075/F076 or decode either as Build: exact body/type assertion fails. |
+| Payload visitors | Inspect a live Quarry and receive Quarry kind/status/claims; sim invariants accept its entrance-sized claim set. | Remove the app Quarry overload or sim case: formatter/visitor or invariant test fails rather than falling through as Inert. |
+| New-goods freight | Automatically carry chain-made tools or bricks between owned warehouses for two cycles with a closed goods ledger. | Unknown/out-of-range goods, foreign warehouse, mismatched/full hold or insufficient stock is refused without mutation. |
+| Shared walks | On 137's fixtures, transport/harvest/resident/mason finish at the selected sub-cell; a route-backed production run conserves goods. | Reintroduce tile-centre or reverse-home handling: endpoint/failure count or attributed R5 trajectory changes. |
+| Draw order | Active freight + quarry + mine leaves the four-site table/order intact; recorded per-site counts and cursor reproduce across reload. | Add a draw in any new visit/step: first differing site/cursor is reported. |
+| Digest union | Current Rules and registry load, and independently transcribed digests match. | Change one freight rule, highmap byte or ore-figure ware: the appropriate digest refuses for its own reason. |
+| Historical/current goldens | Every current registration names `current138`; explicit historical tests consume unmodified 134–137 artifacts. | A current registration naming `current136`/`current137`, or a rewritten predecessor, fails the path/provenance audit. |
+| Main preservation | Main's repaired real-file/app cases run on the union, including Quarry inspection. | Restore an input-era caller: the targeted main regression or app test fails. |
+| Open-question numbering | Headings 552–556 appear once with their Extract text; Route adds none. | Duplicate, renumber or occupy 557–559: the heading audit fails. |

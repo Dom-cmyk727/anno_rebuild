@@ -382,10 +382,11 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
         }
     REQUIRE(checkpoints == 11);
     REQUIRE(prior == 3);
-    // State 137's carrier-home endpoint correction reaches the source warehouse three 500-tick
-    // advances sooner than the isolated state-136 proof (72 initial advances instead of 75), so the
-    // combined state-138 recording assigns the route three entries earlier. Keep this exact: it is
-    // the continuation fixture's deterministic identity fingerprint, not a tolerance.
+    // State 137's carrier-home endpoint correction reaches the two source thresholds three 500-tick
+    // advances sooner in total than the isolated state-136 proof (73 rather than 75 initial advances,
+    // then 38 rather than 39 collection advances), so the combined state-138 recording assigns the
+    // route three entries earlier. Keep this exact: it is the continuation fixture's deterministic
+    // identity fingerprint, not a tolerance.
     REQUIRE(assign_entry == 487);
     std::ostringstream evidence;
     evidence << "state=138 combined=135+136+137 schema=ECONBK1 PRNG=5 replay=4 command=1 save=1\n"

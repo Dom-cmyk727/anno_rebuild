@@ -11,8 +11,8 @@
 
 #include <doctest/doctest.h>
 
-#include <anno/sim/freight.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/freight.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/transport.hpp>
@@ -138,8 +138,8 @@ Authored make_authored() {
     source.owner_runs = {{0, 64U * 32U}};
     syn::give_flat_terrain(source, 0x30);
     for (int x = 111; x <= 123; ++x)
-        source.objects.push_back({static_cast<std::uint32_t>((114 - 100) * 64 + (x - 100)),
-                                  kRoad.v, 0});
+        source.objects.push_back(
+            {static_cast<std::uint32_t>((114 - 100) * 64 + (x - 100)), kRoad.v, 0});
     source.objects.push_back(
         {static_cast<std::uint32_t>((113 - 100) * 64 + (111 - 100)), kRoad.v, 0});
     sim::ScenarioSpec::DepositSpec deposit;
@@ -161,8 +161,7 @@ Authored make_authored() {
         at(kMine, 111, 115, sim::Payload{mine}),
         at(kSmelter, 113, 115, sim::Payload{sim::make_workshop(types->find(kSmelter)->prod)}),
         at(kSmelter, 115, 115, sim::Payload{sim::make_workshop(types->find(kSmelter)->prod)}),
-        at(kToolsmith, 117, 115,
-           sim::Payload{sim::make_workshop(types->find(kToolsmith)->prod)}),
+        at(kToolsmith, 117, 115, sim::Payload{sim::make_workshop(types->find(kToolsmith)->prod)}),
         at(kQuarry, 121, 115, sim::Payload{quarry}),
         at(kMason, 123, 115, sim::Payload{sim::Farm{}}),
     };
@@ -300,10 +299,8 @@ sim::AssignFreightRouteCmd tool_route(const Authored& a) {
     REQUIRE(destination);
     using D = sim::FreightDirection;
     return {kShip,
-            {{source->id, 98 * 256 + 128, 110 * 256 + 128,
-              {{D::LoadTarget, a.tools, 2}}},
-             {destination->id, 248 * 256 + 128, 110 * 256 + 128,
-              {{D::UnloadAmount, a.tools, 2}}}}};
+            {{source->id, 98 * 256 + 128, 110 * 256 + 128, {{D::LoadTarget, a.tools, 2}}},
+             {destination->id, 248 * 256 + 128, 110 * 256 + 128, {{D::UnloadAmount, a.tools, 2}}}}};
 }
 
 } // namespace
@@ -314,24 +311,23 @@ TEST_CASE("integration authored cross-feature: mine tools freight quarry and exa
     a.world.set_transport_stats(&stats);
     const bool tools_ready =
         advance_until(a.world, 12000, 100, [&] { return stock(a.world, 0, a.tools) >= 512; });
-    INFO("ore " << stock(a.world, 0, a.ore) << " iron " << stock(a.world, 0, a.iron)
-                << " tools " << stock(a.world, 0, a.tools) << " mine-out "
+    INFO("ore " << stock(a.world, 0, a.ore) << " iron " << stock(a.world, 0, a.iron) << " tools "
+                << stock(a.world, 0, a.tools) << " mine-out "
                 << std::get<sim::Mine>(a.world.find_building(a.mine)->payload).out
                 << " smelter0-in/out "
                 << std::get<sim::Workshop>(a.world.find_building(a.smelters[0])->payload).in[0]
                 << "/" << output(a.world, a.smelters[0]) << " smelter1-in/out "
                 << std::get<sim::Workshop>(a.world.find_building(a.smelters[1])->payload).in[0]
                 << "/" << output(a.world, a.smelters[1]) << " smith-in/out "
-                << std::get<sim::Workshop>(a.world.find_building(a.toolsmith)->payload).in[0]
-                << "/" << output(a.world, a.toolsmith));
+                << std::get<sim::Workshop>(a.world.find_building(a.toolsmith)->payload).in[0] << "/"
+                << output(a.world, a.toolsmith));
     REQUIRE(tools_ready);
     REQUIRE(public_apply(a.world, tool_route(a)).ok());
     bool saw_route_cargo = false, saw_quarry_claim = false, saw_two_reservers = false;
     const bool boundary_ready = advance_until(a.world, 12000, 100, [&] {
         const auto* r = a.world.freight_route(kShip);
-        saw_route_cargo = saw_route_cargo ||
-                          (r && r->phase == sim::FreightPhase::Sailing &&
-                           holds(a.world, a.tools) > 0);
+        saw_route_cargo = saw_route_cargo || (r && r->phase == sim::FreightPhase::Sailing &&
+                                              holds(a.world, a.tools) > 0);
         saw_quarry_claim =
             saw_quarry_claim ||
             std::get<sim::Quarry>(a.world.find_building(a.quarry)->payload).claims[0] != 0;
@@ -342,17 +338,16 @@ TEST_CASE("integration authored cross-feature: mine tools freight quarry and exa
     });
     std::uint64_t reserved_at_end = 0;
     const auto* route_at_end = a.world.freight_route(kShip);
-    INFO("route-phase " << (route_at_end ? static_cast<int>(route_at_end->phase) : -1)
-                        << " cycles " << (route_at_end ? route_at_end->completed_cycles : 0)
-                        << " holds " << holds(a.world, a.tools) << " quarry-claim "
-                        << static_cast<unsigned>(
-                               std::get<sim::Quarry>(a.world.find_building(a.quarry)->payload)
-                                   .claims[0])
-                        << " mine-reservers " << mine_reservers(a, a.world, reserved_at_end)
-                        << " mine-reserved "
-                        << std::get<sim::Mine>(a.world.find_building(a.mine)->payload).reserved
-                        << "/" << reserved_at_end << " saw-route/claim/two " << saw_route_cargo
-                        << "/" << saw_quarry_claim << "/" << saw_two_reservers);
+    INFO("route-phase "
+         << (route_at_end ? static_cast<int>(route_at_end->phase) : -1) << " cycles "
+         << (route_at_end ? route_at_end->completed_cycles : 0) << " holds "
+         << holds(a.world, a.tools) << " quarry-claim "
+         << static_cast<unsigned>(
+                std::get<sim::Quarry>(a.world.find_building(a.quarry)->payload).claims[0])
+         << " mine-reservers " << mine_reservers(a, a.world, reserved_at_end) << " mine-reserved "
+         << std::get<sim::Mine>(a.world.find_building(a.mine)->payload).reserved << "/"
+         << reserved_at_end << " saw-route/claim/two " << saw_route_cargo << "/" << saw_quarry_claim
+         << "/" << saw_two_reservers);
     REQUIRE(boundary_ready);
 
     const auto boundary = a.world.save();
@@ -375,8 +370,8 @@ TEST_CASE("integration authored cross-feature: mine tools freight quarry and exa
 
     const auto made = stats.forestry.workshops[a.toolsmith].made_88.at(0);
     const auto in_transit = carried(a.world, a.tools) + holds(a.world, a.tools);
-    const auto in_stores = output(a.world, a.toolsmith) + stock(a.world, 0, a.tools) +
-                           stock(a.world, 1, a.tools);
+    const auto in_stores =
+        output(a.world, a.toolsmith) + stock(a.world, 0, a.tools) + stock(a.world, 1, a.tools);
     CHECK(made == in_transit + in_stores);
     CHECK(stats.forestry.mine_made_88[a.mine] > 0);
     CHECK(stats.loaded_by_home[{a.mine, a.smelters[0]}] +
@@ -430,15 +425,13 @@ TEST_CASE("integration authored cross-feature: suspend cancel returns manual shi
     REQUIRE(advance_until(a.world, 12000, 100, [&] { return live_boundary(a, a.world); }));
     const auto mine_out = std::get<sim::Mine>(a.world.find_building(a.mine)->payload).out;
     const auto bricks = farm_output(a.world, a.mason);
-    REQUIRE(public_apply(a.world,
-                         sim::ControlFreightRouteCmd{kShip, sim::FreightControl::Suspend})
+    REQUIRE(public_apply(a.world, sim::ControlFreightRouteCmd{kShip, sim::FreightControl::Suspend})
                 .ok());
     for (unsigned i = 0; i < 400; ++i)
         a.world.advance(100);
     CHECK((std::get<sim::Mine>(a.world.find_building(a.mine)->payload).out != mine_out ||
            farm_output(a.world, a.mason) != bricks));
-    REQUIRE(public_apply(a.world,
-                         sim::ControlFreightRouteCmd{kShip, sim::FreightControl::Cancel})
+    REQUIRE(public_apply(a.world, sim::ControlFreightRouteCmd{kShip, sim::FreightControl::Cancel})
                 .ok());
     CHECK(a.world.freight_route(kShip) == nullptr);
     REQUIRE(public_apply(a.world, sim::MoveCmd{kShip, 94 * 256, 110 * 256}).ok());

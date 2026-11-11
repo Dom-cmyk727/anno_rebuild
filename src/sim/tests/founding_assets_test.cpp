@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -5310,6 +5311,95 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
             CHECK(by_city.empty());
         CHECK(w.check_invariants().empty());
     }
+}
+
+TEST_CASE("progression gaps N: ship-start settlement for 300 game seconds (opt-in measure)") {
+    if (std::getenv("ANNO_PROGRESSION_GAPS") == nullptr) {
+        MESSAGE("skipping: opt-in measurement; set ANNO_PROGRESSION_GAPS=1");
+        return;
+    }
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto rs = real_start(*dir);
+    rs.rules.house_updates = true;
+    rs.rules.city_booking = true;
+    rs.rules.save_billed_goods = true;
+    auto made = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+    REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string{} : made.error()));
+    sim::World w = std::move(made).value();
+    REQUIRE(sl::expedition_baseline_problem(w).empty());
+    REQUIRE(w.rules().house_updates);
+    REQUIRE(w.rules().city_booking);
+
+    const auto recipe = expansion_test::selected_recipe();
+    const auto wood = *rs.types->goods_by_name("HOLZ");
+    const auto tools = *rs.types->goods_by_name("WERKZEUG");
+    auto recording = sim::Recorder::start(w);
+    REQUIRE(recording.ok());
+    sim::Recorder recorder = std::move(recording).value();
+    expansion_test::Run run{w, recorder, {}, {}, {}, {}, {}, 0};
+    expansion_test::sail(run, recipe.source);
+    const auto founded = run.apply(found_command(recipe.source), 350);
+    REQUIRE(founded.ok());
+    const sim::BuildingId warehouse = founded.records.at(0).building;
+    const sim::CityRef ref = expansion_test::city_of_warehouse(w, warehouse);
+    REQUIRE(run.apply({sim::PlayerId{0}, sim::UnloadCmd{sim::FigureId{1}, warehouse, 2, tools, 2}})
+                .ok());
+    const auto forest =
+        run.apply(command_test::build(0, ref,
+                                      {command_test::at(sim::TypeId{801}, recipe.forest.site.x,
+                                                        recipe.forest.site.y)}),
+                  150);
+    REQUIRE_MESSAGE(forest.ok(), sim::reject_name(forest.status));
+    const auto road =
+        road_path(w, ref, *rs.types->find(sim::TypeId{2520}), *w.find_building(warehouse),
+                  *rs.types->find(sim::TypeId{1302}), recipe.forest.site);
+    REQUIRE(road);
+    REQUIRE_FALSE(road->empty());
+    REQUIRE(run.apply(road_drag(0, ref, *road), 5 * road->size()).ok());
+
+    const sim::City& initial = command_test::city(w, ref);
+    std::vector<std::uint64_t> build_start(w.config().build_goods_count, 0);
+    for (std::size_t k = 0; k < build_start.size(); ++k)
+        build_start[k] = initial.stock.stock[w.config().build_goods_first + k];
+    constexpr std::uint64_t kAdvances = 300; // advance(1000 ms): 500 ticks, 300 s total
+    for (std::uint64_t n = 0; n < kAdvances; ++n) {
+        w.advance(1000);
+        REQUIRE_MESSAGE(!w.faulted(), w.fault());
+        (void)w.drain_events();
+    }
+    const sim::City& city = command_test::city(w, ref);
+    std::array<std::uint64_t, 5> houses{};
+    std::uint64_t house_total = 0;
+    for (const sim::BuildingList& list : city.index.lists)
+        for (const auto& building : list.slots) {
+            const auto* house = building ? std::get_if<sim::House>(&building->payload) : nullptr;
+            const sim::BuildingType* type = building ? w.types().find(building->type) : nullptr;
+            const auto group = type ? sim::house_group(w.config(), type->prodtype) : std::nullopt;
+            if (house != nullptr && group && *group < houses.size()) {
+                ++houses[*group];
+                ++house_total;
+            }
+        }
+    std::cout << "PROGRESSION town=ship_start ticks=" << w.clock().tick()
+              << " game_seconds=300 house_updates=" << w.rules().house_updates
+              << " city_booking=" << w.rules().city_booking << " cities=1"
+              << " houses=" << houses[0] << "," << houses[1] << "," << houses[2] << "," << houses[3]
+              << "," << houses[4] << " wood_88=" << city.stock.stock[wood]
+              << " tools_88=" << city.stock.stock[tools] << "\n";
+    for (std::size_t k = 0; k < build_start.size(); ++k) {
+        const sim::GoodsId goods = w.config().build_goods_first + static_cast<sim::GoodsId>(k);
+        const std::uint64_t end = city.stock.stock[goods];
+        std::cout << "PROGRESSION build_goods=" << goods
+                  << " name=" << w.types().goods_table()[goods].name
+                  << " start_88=" << build_start[k] << " end_88=" << end
+                  << " exhausted=" << (end == 0) << "\n";
+    }
+    CHECK(house_total == 0);
+    CHECK(w.check_invariants().empty());
 }
 
 #include "freight_original.inc"

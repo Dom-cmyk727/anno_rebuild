@@ -6861,3 +6861,115 @@ is clean.
 - Used a bounded real-data probe rather than treating a hand calculation as execution evidence.
 - Made no identity change because the original-code answer confirms the accepted state-138
   behavior.
+
+## MAP-INTEGRATE-2 N — measured state-138 progression gaps — 2026-11-12 — APPROVED
+
+Part N is measurement and research only. The source pin entering N is
+`7691daa0f0dd00e0906d228d45dd0b8ec6e3280c`; state remains 138 and every gameplay default remains
+unchanged. The only code changes are two opt-in test probes. No production behavior, archive,
+schema, rule default, fixture, scenario stock, permission, position or identity changed.
+
+The declared budget was **300 game-seconds = 150,000 ticks per town**, fixed before execution.
+`Rules::house_updates` and `Rules::city_booking` were on in each constructed test world and remain
+default-off. The three measured paths are the seven-city original `endless02`, the genuine public
+ship-start sail / `FoundCmd` / unload / forester / road settlement, and the advanced original
+`S01_07_01` town set. The complete findings and ranked next-packet outlines are in
+`docs/sim/progression-gaps.md`.
+
+### Acceptance table
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| Three original/public towns run for the declared time | 7-city `endless02`, ship-start settlement and 14-city `S01_07_01` each advance 150,000 ticks with both rules on | probes return as the named opt-in class when the environment flag is absent | author logs below; reviewer canonical gate executes both game-file test bodies | approved |
+| First failing upgrade predicate is ranked honestly | final-state projection evaluates food, goods, infrastructure, successor existence/materials and named successor class without invoking an upgrade | preserved successor-first projection incorrectly masks 126 score failures as `next_type`; corrected result reports zero first `next_type` failures | wrong-order and corrected hashes below; original `AnnoWelt.dll` `0x10075dd0`-`0x10075fc4`, `0x1002e000`, `0x1002c030`-`0x1002c08c`, `0x1002cbe0` | approved after correction |
+| Needs and producers come from original data | all five `BGruppen.dat` groups and every matching `Anlagen.dat` producer report force, amount, stage, research and inputs | a parsed producer is not labelled an implemented source; Hunter, Whaler, wildlife/fisher and trade boundaries stay explicit | raw registry output and original file hashes below | approved |
+| Build-goods and ship bootstrap are not overstated | city stores are recorded before/after; ship-start finishes with zero houses, zero city tools and 10.5 t city wood | remaining original ship cargo prevents the result being called an irreversible simulation deadlock | ship-start probe and accepted MAP-EXPAND public path | approved |
+| Ranking names original evidence and dependencies | every row cites the original file and address, size and dependencies; top three are goods, food and materials | successor policy, D8 trade, wildlife, fire/disasters and original-runtime observations remain separate, not guessed | `docs/sim/progression-gaps.md` sections 5-7 | approved |
+
+### Measurements and classified evidence
+
+Across 317 houses, 262 are at cap. First-failure counts are **goods 162, food 131, materials 18,
+infrastructure 6, next type 0**. `endless02` contains 108 Pioneers and 51 Settlers;
+`S01_07_01` contains 50 Pioneers, 3 Settlers, 64 Citizens and 41 Merchants. No Aristocrat house is
+present. No sampled house is eligible at the final instant. These are final-state cross-sections,
+not a claim that one correction upgrades every row.
+
+- Author original-town probe: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0, 7,604
+  assertions. `original-town-measurement-final.log`, SHA-256
+  `3e4732d5a8e22a698584dd642d794f59a216a7ce5d60379abcc4a2efd9eab0f1`.
+- Author ship-start probe: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0, 5,505
+  assertions. `ship-start-measurement-final.log`, SHA-256
+  `6a19508f9c4e45aec0145e9397a325e2ec2870e094aa9d62b0421bf50c0a86b4`.
+- Default-off probe: selected 2 / executed 0 / failed 0 / empty 0 / skipped 2
+  (`opt-in=2`; every other skip class 0). `default-opt-in-skip.log`, SHA-256
+  `56e7ce16684211b3e89d20f8f8c8e528e7da395293637deafeef7195df5fbecd`.
+- Existing original-data pure-kernel control: selected 1 / executed 1 / failed 0 / empty 0 /
+  skipped 0, 7,547 assertions and 1,082 calculations. `house-group-extract.log`, SHA-256
+  `57f3d318d434598e5c60b1e6116b24558e0e2b294ef88e43d4f9a8af572b9e1a`.
+- The preserved superseded successor-first run selected 2 / executed 2 / failed 0 / empty 0 /
+  skipped 0, but its oracle was rejected by review: it classified 126 houses as `next_type` before
+  their score predicates. `three-town-measurement.log`, SHA-256
+  `66334933eab6976e810fc7e29a176e7ad5caed2dd55ca4c82d2dd33669e1521c`.
+
+The original-town aggregate build stores do not exhaust a real build good. `endless02` ends with
+tools 49,302, wood 38,572, bricks 70,986 and marble 12,800 raw; `S01_07_01` ends with tools
+127,224, wood 180,118, bricks 113,213 and marble 22,528. The ship-start city ends with tools 0,
+wood 2,688, bricks 0 and marble 0 raw; additional original tools remain on its ship and require a
+public player unload/build sequence.
+
+The related `origin/task/W4-shared-list-1` population tool and report were read with `git show`,
+never merged. Its `01_1024_easy_256` run stays flat at 230 residents / 150 t through 60 seconds;
+the other four named rows are typed refusals. Its original Wine run is NOT_RUN.
+
+### Independent review
+
+Independent reviewer `/root/integrate2_n_review` approved the frozen tracked diff identity
+`7bbf3b291f44a80507a0718e41e6573bfcf3d28a99c1cd82511e211e8860b780` and untracked document
+SHA-256 `329978710add42c7cbdc4c79b2c005791f181dcc41fc16b910a09c3f33f4f9d8`
+with no remaining findings. It independently re-read all cited original addresses in GOG
+`AnnoWelt.dll` SHA-256 `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`
+and checked the arithmetic, per-group counts, source claims and W4 disposition.
+
+Its canonical gate executed the two game-file cases: selected 2 / executed 2 / failed 0 / empty 0 /
+skipped 0 / incomplete 0 / sanitizer lines 0, 13,109 assertions total. The mandatory
+`picture_matrix_contract` separately selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+incomplete 0. `/private/tmp/map-integrate-2-N-reviewer-gate-v2.log`, SHA-256
+`e763f0eec3cd4ed7b363ae938c6c008bd00492cbdbf50978768d339dce9bc4`; inventory SHA-256
+`64c9e0090a3a691a0477b5b0a7eca8cf797b8a58bdf156379913f7af6f6d24c0`; tested binary SHA-256
+`b2cf851f2ea57caf58c2ba15ade84ad7968de2f804862464c255afea4a4e6e89`.
+
+The reviewer's first workflow attempt failed before selection because CMake was absent from that
+shell's PATH: selected 0 / executed 0, workflow incomplete. It is preserved as infrastructure
+evidence, not product evidence: `/private/tmp/map-integrate-2-N-reviewer-gate.log`, SHA-256
+`47a3615354f329dc00487b10dbf3c5ad39d87c9a98cb2210174bf853dbba9fb4`. The corrected run used the
+packet's pinned toolchain path; no source changed between attempts.
+
+Original fixture hashes independently checked by review: `endless02`
+`734151588c5cd5854fc809c14fbd65cc7afa8050676690a87d5a2c42ae711f97`; `S01_07_01`
+`04f60b235f3137d83eb2078d1a727ca5e3c737d973f5a87a26c2ea6725e58d62`; `BGruppen.dat`
+`63e876fd3afedca214b3d9cc45f022f2c595f473839690e96f34e12ed7849e3b`; `Anlagen.dat`
+`b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`.
+
+### NOT_RUN and decisions
+
+Named-scenario execution in the running original, Windows/MSVC, Windows original game-file
+comparison, Wine, x86_64, GPU gameplay and sanitizer duplication are **NOT_RUN in N**. Hunter,
+Whaler, fisher route 0x2d, wildlife, D8 Venetians/trade, fire/disasters and special-successor runtime
+outcomes remain explicit dependencies. This packet implements none of them.
+
+### Decisions and reasoning
+
+- Corrected the evidence oracle after review instead of defending the initially larger successor
+  bucket. Original score predicates precede the city successor/material tail; the preserved wrong
+  run proves the correction distinguishes that plausible ordering error.
+- Ranked observed first failures only. A zero final `next_type` count does not certify every
+  successor; it says earlier predicates mask that compatibility boundary at this instant.
+- Distinguished original data inventory from executable support. The presence of an `Anlagen.dat`
+  producer does not create a wildlife source, a Whaler, a fisher route or a trade partner.
+- Kept the founded settlement result honest: its city-side tools are exhausted, but remaining ship
+  cargo makes manual resupply possible, so no automatic construction or replacement loadout is
+  proposed.
+- Reused W4 evidence by read-only branch inspection. No Windows code, moving main or unrelated
+  executor work was merged.
+- Limited changes to opt-in measurement and documentation. The next three proposed packets are
+  forced-goods attribution/closure, food attribution/closure and city-local upgrade materials.

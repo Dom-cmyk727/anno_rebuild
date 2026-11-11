@@ -4,6 +4,7 @@
 // This is not full campaign execution. No stocks or placements are added; normal production
 // and unchanged semantic ledgers remain the oracle (docs/sim/population-live.md section20).
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -1486,4 +1487,205 @@ TEST_CASE("population close C4: the stage unlock is scenario state, not caused b
     }
     CHECK(saw);
     CHECK(c.w.players().find(c.city->owner)->flags == 0x3);
+}
+
+// MAP-INTEGRATE-2 N: measurement only. This is deliberately opt-in: the canonical suite records
+// it as an opt-in skip, while the package run sets ANNO_PROGRESSION_GAPS=1. The 300 game-second
+// budget is declared in the packet report before the run. No state is patched and no goods are
+// granted. Each house is classified by the first UpgradeCheck predicate that fails at the final
+// measured state: scores first, then the successor/materials tail. This is a diagnostic projection,
+// not an attempted transition.
+namespace {
+
+constexpr std::array<const char*, 5> kProgressionGroups = {"Pioneers", "Settlers", "Citizens",
+                                                           "Merchants", "Aristocrats"};
+
+struct ProgressionCounts {
+    std::uint64_t houses = 0;
+    std::uint64_t at_cap = 0;
+    std::map<std::string, std::uint64_t> predicate;
+};
+
+std::string progression_predicate(const sim::World& w, const sim::City& city,
+                                  const sim::Building& building, const sim::House& house,
+                                  std::uint32_t group) {
+    const sim::BuildingType* type = w.types().find(building.type);
+    REQUIRE(type != nullptr);
+    if (group + 1 >= kProgressionGroups.size())
+        return "next_type";
+    const auto cur = w.types().population_view(group, w.config());
+    const auto next = w.types().population_view(group + 1, w.config());
+    REQUIRE(cur.ok());
+    REQUIRE(next.ok());
+    const sim::UpgradeScores scores =
+        sim::upgrade_scores(cur.value(), next.value(), house.e, house.stock);
+    REQUIRE(scores.fault == sim::HouseFault::None);
+    if (scores.f <= 0)
+        return "food";
+    if (scores.b <= 0)
+        return "goods";
+    if (scores.i <= 0)
+        return "infrastructure";
+    const sim::TypeLadder ladder = sim::house_type_ladder(w.config(), w.types(), *type);
+    if (ladder.next == nullptr)
+        return "next_type";
+    const std::vector<std::uint32_t> materials =
+        sim::house_material_amounts(w.config(), *ladder.next);
+    if (!sim::house_materials_available(w.config(), city, materials))
+        return "materials";
+    if (sim::house_successor(w.config(), w.types(), *type) != sim::HouseSuccessor::Ladder)
+        return "next_type";
+    return "eligible";
+}
+
+std::vector<std::uint64_t> progression_build_goods(const sim::World& w) {
+    std::vector<std::uint64_t> total(w.config().build_goods_count, 0);
+    for (const auto& island : w.islands())
+        if (island)
+            for (const auto& city : island->cities)
+                if (city)
+                    for (std::size_t k = 0; k < total.size(); ++k)
+                        total[k] += city->stock.stock[w.config().build_goods_first + k];
+    return total;
+}
+
+void progression_report(const char* name, const sim::World& w,
+                        const std::vector<std::uint64_t>& build_start) {
+    std::array<ProgressionCounts, 5> counts;
+    std::uint64_t cities = 0;
+    for (const auto& island : w.islands()) {
+        if (!island)
+            continue;
+        for (const auto& city : island->cities) {
+            if (!city)
+                continue;
+            ++cities;
+            for (const sim::BuildingList& list : city->index.lists) {
+                for (const auto& building : list.slots) {
+                    const auto* house =
+                        building ? std::get_if<sim::House>(&building->payload) : nullptr;
+                    const sim::BuildingType* type =
+                        building ? w.types().find(building->type) : nullptr;
+                    const auto group =
+                        type ? sim::house_group(w.config(), type->prodtype) : std::nullopt;
+                    if (house == nullptr || !group || *group >= counts.size())
+                        continue;
+                    ProgressionCounts& row = counts[*group];
+                    ++row.houses;
+                    const auto view = w.types().population_view(*group, w.config());
+                    REQUIRE(view.ok());
+                    row.at_cap += house->residents_64 == static_cast<std::int32_t>(
+                                                             view.value().group->wohnmax * 64)
+                                      ? 1U
+                                      : 0U;
+                    ++row.predicate[progression_predicate(w, *city, *building, *house, *group)];
+                }
+            }
+        }
+    }
+    std::cout << "PROGRESSION town=" << name << " ticks=" << w.clock().tick()
+              << " game_seconds=300 house_updates=" << w.rules().house_updates
+              << " city_booking=" << w.rules().city_booking << " cities=" << cities << "\n";
+    for (std::size_t g = 0; g < counts.size(); ++g) {
+        std::cout << "PROGRESSION group=" << g << " name=" << kProgressionGroups[g]
+                  << " houses=" << counts[g].houses << " at_cap=" << counts[g].at_cap
+                  << " predicates=";
+        if (counts[g].predicate.empty())
+            std::cout << "absent";
+        else
+            for (const auto& [predicate, n] : counts[g].predicate)
+                std::cout << predicate << ":" << n << ",";
+        std::cout << "\n";
+    }
+    const std::vector<std::uint64_t> build_end = progression_build_goods(w);
+    for (std::size_t k = 0; k < build_end.size(); ++k) {
+        const sim::GoodsId goods = w.config().build_goods_first + static_cast<sim::GoodsId>(k);
+        std::cout << "PROGRESSION build_goods=" << goods
+                  << " name=" << w.types().goods_table()[goods].name
+                  << " start_88=" << build_start[k] << " end_88=" << build_end[k]
+                  << " exhausted=" << (build_end[k] == 0) << "\n";
+    }
+}
+
+void progression_registry_report(const sim::World& w) {
+    std::set<sim::GoodsId> reported;
+    for (std::uint32_t g = 0; g < kProgressionGroups.size(); ++g) {
+        const auto view = w.types().population_view(g, w.config());
+        REQUIRE(view.ok());
+        for (const sim::HouseNeed& need : view.value().group->needs) {
+            std::cout << "PROGRESSION need_group=" << g << " group_name=" << kProgressionGroups[g]
+                      << " goods=" << need.ware
+                      << " name=" << w.types().goods_table()[need.ware].name
+                      << " force=" << need.force << " menge=" << need.menge
+                      << " bau_first=" << w.types().goods_table()[need.ware].bau_first << "\n";
+            if (!reported.insert(need.ware).second)
+                continue;
+            std::size_t producers = 0;
+            for (const sim::BuildingType& type : w.types().types()) {
+                if (std::find(type.output_goods.begin(), type.output_goods.end(), need.ware) ==
+                    type.output_goods.end())
+                    continue;
+                ++producers;
+                std::cout << "PROGRESSION producer_goods=" << need.ware
+                          << " producer_type=" << type.id.v
+                          << " class=" << static_cast<unsigned>(type.cls)
+                          << " tick=" << static_cast<unsigned>(w.types().class_info(type.cls).tick)
+                          << " stage=" << type.construction.stage
+                          << " research=" << type.research_id << " inputs=";
+                if (type.input_goods.empty())
+                    std::cout << "none";
+                else
+                    for (const sim::GoodsId input : type.input_goods)
+                        std::cout << input << ":" << w.types().goods_table()[input].name << ",";
+                std::cout << "\n";
+            }
+            std::cout << "PROGRESSION producer_count goods=" << need.ware << " count=" << producers
+                      << "\n";
+        }
+    }
+}
+
+} // namespace
+
+TEST_CASE("progression gaps N: endless02 and S01_07_01 for 300 game seconds (opt-in measure)") {
+    if (std::getenv("ANNO_PROGRESSION_GAPS") == nullptr) {
+        MESSAGE("skipping: opt-in measurement; set ANNO_PROGRESSION_GAPS=1");
+        return;
+    }
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    constexpr std::uint64_t kSteps = 3000; // advance(100 ms): 50 ticks, 300 s total
+    const std::array<std::pair<const char*, const char*>, 2> towns = {{
+        {"endless02", "0011SingleEndlosAddon/endless02.sze"},
+        {"S01_07_01", "0100Kampagne01/S01_07_01.sze"},
+    }};
+    bool registry_reported = false;
+    for (const auto& [name, file] : towns) {
+        const sim::ScenarioSpec spec = scenario_spec(*o, file);
+        sim::Rules rules;
+        rules.house_updates = true;
+        rules.city_booking = true;
+        auto created = sim::World::create(spec, o->types, o->cfg, rules);
+        REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
+        sim::World w = std::move(created).value();
+        if (w.script().state.context == sim::ScriptContext::Pending) {
+            REQUIRE(w.initialize_scripts().empty());
+        }
+        if (!registry_reported) {
+            progression_registry_report(w);
+            registry_reported = true;
+        }
+        const std::vector<std::uint64_t> build_start = progression_build_goods(w);
+        for (std::uint64_t step = 0; step < kSteps; ++step) {
+            w.advance(kStepMs);
+            REQUIRE_MESSAGE(!w.faulted(), w.fault());
+        }
+        progression_report(name, w, build_start);
+        CHECK(w.rules().house_updates);
+        CHECK(w.rules().city_booking);
+        CHECK(w.check_invariants().empty());
+    }
 }

@@ -5,6 +5,12 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-11, by the Claude Code orchestrator:
+- **W4-NEXT-2 reviewed: changes requested** ([review](reviews/2026-11-11-w4-next-2-review.md)).
+  - **`task/W4-ui-4` is not accepted yet.** Its new selected-house window test races the sim (P1), and a click on the
+    HUD selects the building behind it (P2).
+  - **`task/W4-shared-list-1` is accepted with findings,** to be fixed in the same round. The population tool ran
+    with `house_updates` off, so "no growth" was guaranteed (OQ-571), and it steps 100 ms where play mode steps 10.
+  - **Fix round F** goes to the Windows executor (the packet's part F). Both branches then land together.
 - **[MAP-INTEGRATE-2](tasks/map-integrate-2.md) released to the Mac executor** (owner request), in parallel with
   W4-NEXT-2 on Windows.
   - **What it does:** brings the three finished Mac packages onto `main` under one new identity, **state 138**:
@@ -132,7 +138,16 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [W4-NEXT-2](tasks/w4-next-2.md),** from `main` at `2c4dc295`. Parts P → K → W → M → X → E:
+- **Now: W4-NEXT-2's fix round, part F** ([packet](tasks/w4-next-2.md),
+  [review](reviews/2026-11-11-w4-next-2-review.md)). It continues `task/W4-ui-4` from `f1f772b4` and
+  `task/W4-shared-list-1` from `593cdd3f`:
+  - **F1–F3:** make the selected-house session wait on state; keep HUD clicks off the world; prove the
+    demolish-while-selected drop;
+  - **F5:** fix the population tool's step, rules and checkpoints, and re-measure OQ-571;
+  - **F6–F8:** part W's report with calibrated sprite-sad numbers, the C-3 table in git, one attempt at the original's
+    column;
+  - **F9:** review and gates.
+- **Finished: W4-NEXT-2 parts P → K → W → M → X → E** (2026-11-11), from `main` at `2c4dc295`:
   - **P:** preflight, plus the GPU pixel check that W4-NEXT-1 left NOT_RUN;
   - **K:** row 18, select a building;
   - **W:** captures in the original for OQ-565/566/567, then rows 19 and 2;
@@ -332,6 +347,11 @@ Its later work is not accepted merely because expansion is complete.
 
 - **On the Mac, accept this PC and the `open1503-share` offer** in Syncthing, as Receive Only (MAP-INTEGRATE-2
   part S, step 4).
+- **OQ-568:** may the play runner's `stop()` drop a command posted during an artificial turn delay? Only tests set
+  such a delay. The executor recommends (a), leave it; the orchestrator agrees and would add (c), document it in
+  `PlayRunner::stop()`.
+- **When to add the C-3 reservations:** 18 tests above 1 GiB take no memory reservation (W4-NEXT-2 part M). The
+  recommendation is a reservation sized from each test's measured peak, as a separate task.
 - **A6, rebind a mine at load** ([packet](tasks/map-extract-2.md) A6). The executor recommends B, keep the saved
   binding. MAP-INTEGRATE-2 keeps B until the owner answers.
 - **The W4-UI-2 playtest card** (part K): the HUD and construction menu in the live window, on `main` from

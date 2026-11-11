@@ -7,6 +7,9 @@ Sonnet 5.5 on the owner's Windows PC). **Start it now:** W4-NEXT-1 is accepted a
 Work the parts in order: **P → K → W → M → X → E**. Each part ends with a REPORTS entry and a push of its branch.
 Re-read this packet and your latest REPORTS entries after any context compaction.
 
+**FIX ROUND, 2026-11-11:** the orchestrator's review ([review](../reviews/2026-11-11-w4-next-2-review.md)) requests
+changes before the merge. Do part **F** at the end of this packet, then stop.
+
 ## Continuation on the Windows PC (2026-11-11, owner instruction)
 
 A Linux session without the game files, the RTX 4090, Wine or `E:` started this packet on branch
@@ -191,3 +194,87 @@ the canonical gate with `tools/test/run_selected.py`; the full MSVC suite with t
 logs kept; hosted CI green on the pushed heads with run ids. The final REPORTS entry: heads, acceptance tables, exact
 classified counts, every failure by name and assertion, NOT_RUN items, QUESTIONs, review records, a review-first list.
 Then stop. Don't start another package.
+
+## F. Fix round after the orchestrator's review (2026-11-11)
+
+**Why.** The [review](../reviews/2026-11-11-w4-next-2-review.md) found one P1 and several P2s. `task/W4-ui-4` is not
+accepted until they are fixed; `task/W4-shared-list-1` is accepted with findings, and its findings are fixed in the
+same round so both branches land together. Read the review's findings table first: each step below names its
+finding.
+
+**Rules.** Everything in §0 applies.
+- **Branches.** Continue `task/W4-ui-4` from `f1f772b4` (steps F1–F4, F6, F7) and `task/W4-shared-list-1` from
+  `593cdd3f` (F5, F8). Ordinary pushes only. You may merge `origin/main` into a branch; nothing else.
+- **No other heavy job on this PC** while a measuring or gate run is going (finding 11).
+- **One QUESTION is not yours to decide:** OQ-568 (the `stop()` drain). Leave it as it is.
+
+**Steps.**
+1. **F1 — the selected-house session waits on state, not frames (finding 1, P1).**
+   `tools/test/viewer_wiring/selected_house_draw_check.script` passes `wait frames 5` and then checks the title, so it
+   races the sim's inspection answer. The Windows capture also writes the previous frame's buffer.
+   - Replace every frame wait that guards a selection check or a panel screenshot with a wait on the selection
+     itself. The script language already has `wait fact <name> <op> <value> within <ms>`
+     (`src/app/src/dev_script.cpp`). If no fact exposes the selection, add one (for example `selection.id`,
+     `selection.kind`, `selection.pending`) where the window builds its facts.
+   - After the answer is in, make sure the screenshot shows a frame drawn after it. Read how the capture picks its
+     buffer (`viewer.cpp`, the screenshot path) and prove it, don't assume it.
+   - `selected_house_pixel_check.py` gives the script 30 s (`ANNO_VIEW_QUIT_S`); `viewer_wiring.py` gives it 240 s.
+     Use the same bound, or a lower one justified by a measured run time with a stated margin.
+   - **Proof:**
+     - `ctest -R "selected_house" --repeat until-fail:20` while the full game-file suite runs at `-j 16`: 0 failures.
+       Report the counts per test.
+     - The new wait can fail: a variant that clicks empty ground and waits for `selection.kind == House` must fail at
+       its bound (exit non-zero), not pass.
+2. **F2 — a click on the drawn HUD never selects the world behind it (finding 2, P2).** `selection.hpp` says a
+   selection click is "not on a UI rectangle", but `selection_handle` picks the tile under any pixel.
+   - Hit-test the drawn UI first: the right chrome and the panel elements as `data/ui/hud.txt` places them. A click
+     there is not a world click: no select, no deselect, no inspection request.
+   - **Tests:** the decision as a pure function with unit tests (a click on the need icon at (794, 480) with a house
+     selected; a click on the right chrome with nothing selected; a click on the map just left of x = 779). Add a
+     script step: with a house selected, click the need icon, and the selection stays.
+3. **F3 — the demolish-while-selected step proves the drop (finding 6).** In the script the developer tool is on at
+   the demolish, so `selection_refresh` returns early and the title passes for another reason. Make the session prove
+   that the demolished building's selection is gone (for example: turn the tool off, then wait on the selection
+   fact). If it cannot, correct the comment in `src/app/CMakeLists.txt`: only the unit test covers it.
+4. **F4 — an inspection answer is not tied to its request (finding 7).** Record this in ADR 0004's Selection section
+   as a known limitation, with the fix (a request number the snapshot echoes back). Implement it only if F1 needs it.
+5. **F5 — the population tool measures what play mode would (findings 3, 4, 5).** In `src/tools/sim_replay/main.cpp`:
+   - **The step.** Add `--step-ms`, default 10: the play mode's step at 100 % (`sim::multiplayer_step_ms(100)`,
+     `sim_test.cpp:159`). Today it steps 100 ms; the island sweeps depend on the step.
+   - **The checkpoints.** `--seconds` must be strictly increasing; otherwise exit 2 with a message. Add a test.
+   - **The rules.** Add an opt-in `--house-updates`: it sets the existing `Rules::house_updates`. This is a
+     measurement setting, not a sim change.
+   - **The output.** Print the step, the rules digest and `house_updates` once, before the samples.
+   - **The invariants.** Either run `check_invariants` at each checkpoint and print the result, or remove the claim
+     from OQ-571 that `cmd_population` confirmed them. It does not call `check_invariants` today.
+   - **Re-measure** `01_1024_easy_256` with step 10, `house_updates` off and on, at 0, 10, 30 and 60 s. Rewrite
+     OQ-571 and `docs/research/shared-test-list.md` §2 and §4 with both runs. State first that with `house_updates`
+     off the House tick is a no-op by design (`config.hpp`, the field's comment), so "no growth" is expected there.
+6. **F6 — part W's report and calibrated measurements (finding 8).** Part W has no REPORTS entry from this PC, and
+   its sprite-sad numbers came from an ad hoc script that you yourself flagged as uncalibrated.
+   - Write the missing part W entry: the capture plan for each OQ (scenario, steps, what each shot must show), the
+     shots, and the acceptance table.
+   - Re-measure with the project's method (`docs/re/ui.md` §2, "sprite-sad"), using `tools/ui_layout.py` where it
+     supports it. **Calibrate first:** reproduce `pionier_bk` id 974 at (783, 252), mean 17.8, on
+     `f15_selected_house`. Then measure the candidates you tried for OQ-565 and OQ-567, id 1511 included.
+   - Update the OQs with the calibrated numbers. Remove the uncalibrated ones, or mark each as uncalibrated.
+   - Draw nothing new unless an OQ closes; if one closes, apply part K step 4's checks.
+7. **F7 — the C-3 table in git (finding 9).** Put the per-test table (all 27 tests above 1 GiB: test, peak in MiB,
+   reservation or none) into `docs/perf/README.md`'s C-3 section, generated with `tools/test/peak_report.py` from the
+   kept log. Name the log and its sha256. Correct part E's sentence that the table was already there, in a new
+   REPORTS entry; never edit an old entry.
+8. **F8 — the original's column of the shared list: one bounded attempt (part X step 3).** The run says the
+   scenario menu was "not navigated in this pass", so it was never tried.
+   - In one Wine-harness session, with music and sounds off, try the original's menus for a shipped scenario:
+     `01_1024_easy_256` first (the one our sim runs; it sits in `Scenes/0010SingleEndlos`), then the other four.
+   - If one loads: read residents with `tools/orig/gamestate.py` `cities()` at 0, 10, 30 and 60 game seconds, and
+     state the precision.
+   - Document every path tried, as a new subsection of `docs/testing/original-wine.md`. A cell you still cannot fill
+     stays NOT_RUN, with what was tried.
+9. **F9 — review and gates.**
+   - **Review:** one independent read-only reviewer for the code of F1, F2, F3 and F5. It runs the selected-house
+     tests and the population tests with the game files, or marks them NOT_RUN (finding D's rule).
+   - **Gates on both heads:** part E's list again. Report the canonical gate's counts classified, from a run with
+     nothing else heavy on the PC.
+   - **Report:** a final REPORTS entry with the heads, a table that gives each finding of the review its
+     disposition, the counts, NOT_RUN items and QUESTIONs. Then stop.

@@ -8,7 +8,8 @@
 // Linux: ru_maxrss of the child from wait4 (KiB on Linux, bytes on macOS); it is the largest
 // resident set of the test process or of any descendant it waited for. Windows:
 // PeakWorkingSetSize of the child's handle after it exited (GetProcessMemoryInfo), the process
-// itself only. `test` is the value of a `--test-case=` argument when there is one (doctest's
+// itself only; a working set Windows trimmed can understate the commit (PeakPagefileUsage is not
+// reported). `test` is the value of a `--test-case=` argument when there is one (doctest's
 // discovered cases), else the program's file name.
 //
 // It changes no result: stdin, stdout and stderr are inherited, the exit code is the child's,
@@ -127,12 +128,38 @@ int wmain(int argc, wchar_t** wargv) {
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION info{};
     const auto start = std::chrono::steady_clock::now();
-    if (CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr,
-                       &startup, &info) == 0) {
+    // A CTest timeout kills the launcher; the test process must not outlive it (the Linux
+    // branch uses PR_SET_PDEATHSIG). The test process goes into a job that kills it when the
+    // launcher's last handle closes. SILENT_BREAKAWAY_OK keeps the processes the test starts
+    // (probes, the shared budget coordinator, which must outlive the test) out of the job, as on
+    // Linux only the test process itself is tied to the launcher.
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    if (job != nullptr) {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+        limits.BasicLimitInformation.LimitFlags =
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+        if (SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits,
+                                    sizeof(limits)) == 0) {
+            CloseHandle(job);
+            job = nullptr;
+        }
+    }
+    if (CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE, CREATE_SUSPENDED, nullptr,
+                       nullptr, &startup, &info) == 0) {
         std::fprintf(stderr, "anno_peak_launcher: cannot start %s (error %lu)\n", argv[1],
                      static_cast<unsigned long>(GetLastError()));
+        if (job != nullptr) {
+            CloseHandle(job);
+        }
         return kLaunchFailed;
     }
+    // Without a job (none could be made, or the launcher itself sits in a job that forbids
+    // nesting) the test still runs; it is only not killed with the launcher.
+    if (job != nullptr && AssignProcessToJobObject(job, info.hProcess) == 0) {
+        CloseHandle(job);
+        job = nullptr;
+    }
+    ResumeThread(info.hThread);
     CloseHandle(info.hThread);
     WaitForSingleObject(info.hProcess, INFINITE);
     const auto wall = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -147,6 +174,9 @@ int wmain(int argc, wchar_t** wargv) {
         peak = static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
     }
     CloseHandle(info.hProcess);
+    if (job != nullptr) {
+        CloseHandle(job); // the test process has exited: nothing left in the job to kill
+    }
     report(peak, "PeakWorkingSetSize", static_cast<long long>(code), static_cast<long long>(wall),
            test_name(argc, argv.data()));
     return static_cast<int>(code);

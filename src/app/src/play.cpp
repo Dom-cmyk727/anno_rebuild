@@ -894,6 +894,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     } else if (!developer_city_) {
         find_local_city();
     }
+    fill_inspection(*next); // also without a city: the requested tile is answered as empty
     if (developer_city_) {
         if (const sim::Player* player = world_.players().find(local_player_)) {
             next->money = player->money;
@@ -904,7 +905,6 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             island->cities[developer_city_->city.v]) {
             next->goods = island->cities[developer_city_->city.v]->stock.stock;
         }
-        fill_inspection(*next);
         // UI.2 C2: the construction menu's lock display reads this, never
         // World::construction_eligibility directly (that World belongs to this thread, not the
         // window's) and never data/ui/construction.txt's recorded state (RE evidence about the
@@ -1088,9 +1088,6 @@ void PlayRunner::note_behind() {
 void PlayRunner::fill_inspection(PlaySnapshot& next) {
     next.inspection.reset();
     next.inspected.reset();
-    if (!developer_city_) {
-        return;
-    }
     std::optional<sim::TileXY> inspect_tile;
     {
         const std::lock_guard lock(inspect_mu_);
@@ -1099,7 +1096,11 @@ void PlayRunner::fill_inspection(PlaySnapshot& next) {
     if (!inspect_tile) {
         return;
     }
+    // Answered even without a city (then never a building): a click must resolve, not wait.
     next.inspected = inspect_tile;
+    if (!developer_city_) {
+        return;
+    }
     if (auto found = inspect_building(world_, *developer_city_, *inspect_tile)) {
         next.inspection = std::make_shared<const BuildingInspection>(std::move(*found));
     }
@@ -1123,9 +1124,6 @@ void PlayRunner::find_local_city() {
 void PlayRunner::answer_inspection_while_paused() {
     if (!developer_city_) {
         find_local_city(); // set_local_player before the first turn: the turn would look it up
-    }
-    if (!developer_city_) {
-        return; // nothing is ever answered without a city: no republish loop
     }
     std::optional<sim::TileXY> requested;
     {

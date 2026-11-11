@@ -159,28 +159,35 @@ starts past them - this ADR's whole scope is the in-game UI reachable from a run
 **Where it lives.** Viewer UI state (`app::SelectionState`, `selection.hpp`), never sim state: a
 building id and the clicked map tile, never a screen position, so pan and zoom leave it as it
 is. Selecting posts no command; a test checks the state hash is unchanged
-(`inspect_building_test.cpp`, "selection through a paused runner").
+(`inspect_building_test.cpp`, "selecting and deselecting writes no sim state", with a negative
+control that posts a demolish and is seen).
 
 **How a click resolves.** The click asks the runner to inspect the tile under the pointer
 (`PlayRunner::request_inspect`, the developer inspection's own slot); the next published snapshot
 answers which of the player's buildings stands there (`PlaySnapshot::inspection`, and the new
 `PlaySnapshot::inspected`, the tile it answers even when nothing stands there). The answer selects
-that building, or deselects on empty ground. Every later answer for the selected tile re-checks
-the building's id, so a building demolished or replaced meanwhile drops the selection. A paused
-runner answers a new request by republishing (`answer_inspection_while_paused`), because a pause
-publishes no turn. While the developer tool is on, its hover keeps the inspection slot (unchanged).
+that building, or deselects on empty ground (also when the player has no city yet: the tile is
+answered as empty). Every later answer for the selected tile re-checks the building's id, so a
+building demolished or replaced meanwhile drops the selection. A paused runner answers a new
+request by republishing (`answer_inspection_while_paused`), because a pause publishes no turn.
+While the developer tool is on, its hover keeps the inspection slot, and a click still waiting
+for its answer is dropped. One change for the developer tool follows: a hover while paused is now
+answered by that republish, where before the old answer stayed (and `live_inspection` hid it).
 
 **What a left click means** (`selection_step`, unit-tested in `selection_test.cpp`):
 
 | Mode | Left click | Escape |
 |---|---|---|
 | Construction tool armed (Build) | the tool's (place); the selection stays | the menu's / the tool's, as today |
-| Demolish mode | the tool's (demolish); a demolished selected building drops the selection on the next answer | as today |
+| Demolish mode | the tool's (demolish); a demolished selected building drops the selection at the first answer after the tool is off again (while it is on, the hover owns the answers) | as today |
 | Developer tool on | the tool's | as today |
 | Otherwise (Select) | a click (press and release within 4 drawable pixels) selects the building under it, or deselects on empty ground or off the map; a drag still pans | with a selection or a pending click: deselect (consumed); without one: today's behaviour (quit) |
 
-Only with `--play --ui classic` and outside the ship-start opening; `--ui dev` and `--view` are
-unchanged. The construction menu keeps Escape while it is open (it sees the key first).
+Only with `--play --ui classic` in a session started **without** the ship-start opening (an
+existing-town scenario): a ship-start session has no selection at all yet, also after a city is
+founded, because its left clicks belong to the opening's ship selection for the whole session
+(QUESTION K-5). `--ui dev` and `--view` are unchanged. The construction menu keeps Escape while it
+is open (it sees the key first); a held Escape's auto-repeat after a deselect does not quit.
 
 **Evidence.** The original's own capture recipe for `f15_selected_house` (`docs/re/ui.md` §7 and §9:
 "place public (0,0) type 501, ESC, click the house") shows a left click on a built house selects
@@ -204,6 +211,11 @@ implemented**. (b) Keep the selection until Escape or another building is clicke
 (`inspect_building`), so a click on a foreign building deselects today. (a) Keep that until a
 capture shows what the original's panel shows for a foreign building - **recommended**. (b) Select
 foreign buildings too (needs a read-only query for another city).
+
+**QUESTION K-5: selection in a ship-start session.** (a) Once the player has a city, a click
+that hits no ship selects a building - **recommended**, not implemented: it needs the opening's
+click routing to hand unclaimed clicks on, which this run could not test without the game files.
+(b) Keep ship-start sessions without selection until the opening's UI is redesigned.
 
 **Not done in this host's run (W4-NEXT-2 K, steps 2-4).** The panel is not drawn: of the
 `f15_selected_house` elements only `pionier_bk` (id 974) and `house_portrait` are measured; the

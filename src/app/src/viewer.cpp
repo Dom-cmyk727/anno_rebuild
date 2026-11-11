@@ -562,6 +562,8 @@ class Viewer {
     SelectionState selection_;
     /// Where the left button went down (drawable pixels), to tell a click from a pan drag.
     std::optional<std::pair<double, double>> select_press_;
+    /// The held Escape key's first press deselected: its auto-repeats are swallowed too.
+    bool escape_held_ = false;
     /// The pointer's slop for a click, in drawable pixels (ADR 0004 "Selection", QUESTION K-2).
     static constexpr double kClickSlop = 4.0;
     [[nodiscard]] bool selection_active() const;
@@ -1026,8 +1028,12 @@ std::string Viewer::run() {
         if (selection_.pending && running_) {
             // A click waits for its inspection answer; a paused runner publishes it without a
             // wake event, so look every pass of the loop (at most 100 ms apart) until it is in.
+            // Redraw only when the answer changed the selection.
+            const SelectionState before = selection_;
             update_title();
-            dirty_ = true;
+            if (!(selection_ == before)) {
+                dirty_ = true;
+            }
         }
         script_tick();
         if (running_ && can_draw && (animating || dirty_)) {
@@ -1513,6 +1519,11 @@ bool Viewer::selection_handle(const SDL_Event& e) {
     const double d = density > 0.0F ? static_cast<double>(density) : 1.0;
     SelectionEvent event;
     if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) {
+        if (e.key.repeat) {
+            // A held Escape: its first press decided (QUESTION K-1, one press at a time); a
+            // repeat after a deselect must not quit.
+            return escape_held_;
+        }
         event.kind = SelectionEventKind::Escape;
     } else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT) {
         // The press still starts a pan (the window's own handling below); only the release
@@ -1539,6 +1550,9 @@ bool Viewer::selection_handle(const SDL_Event& e) {
     const SelectionStep step = selection_step(selection_, event);
     selection_ = step.state;
     play_->runner().request_inspect(step.inspect);
+    if (event.kind == SelectionEventKind::Escape) {
+        escape_held_ = step.consumed;
+    }
     if (step.consumed && event.kind == SelectionEventKind::Click) {
         drag_ = false; // the release ends the press's pan, as the window's own handling would
     }
@@ -1547,7 +1561,10 @@ bool Viewer::selection_handle(const SDL_Event& e) {
 
 void Viewer::selection_refresh() {
     if (!selection_active()) {
-        return; // the developer tool's hover owns the inspection request while it is on
+        // The developer tool's hover owns the inspection request while it is on; a click still
+        // waiting for an answer is dropped (its answer would be the hover's), the selection kept.
+        selection_.pending.reset();
+        return;
     }
     const auto snap = play_->runner().snapshot();
     if (snap) {

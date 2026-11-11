@@ -161,10 +161,10 @@ struct PlaySnapshot {
     /// against a newer World); null when nothing was requested or the tile holds no building of
     /// the developer's city.
     std::shared_ptr<const BuildingInspection> inspection;
-    /// The tile `inspection` answers (the last requested one), set whenever a tile was requested
-    /// and the player has a city, even when no building stands there (then `inspection` is
-    /// null). The selection (selection.hpp) needs it to tell "answered: nothing there" from "not
-    /// answered yet" (W4-NEXT-2 K).
+    /// The tile `inspection` answers (the last requested one), set whenever a tile was requested,
+    /// even when no building of the player's city stands there or the player has no city (then
+    /// `inspection` is null). The selection (selection.hpp) needs it to tell "answered: nothing
+    /// there" from "not answered yet" (W4-NEXT-2 K).
     std::optional<sim::TileXY> inspected;
     /// `World::construction_eligibility(local player, type).allowed()` for every type the
     /// registry defines, ascending by id (UI.2 C2: the sim's own lock authority is the one and

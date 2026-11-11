@@ -6502,3 +6502,83 @@ re-reviewed before I3 was released.
   skipped product test.
 - Kept gameplay defaults unchanged. State 138 records the semantic union; it does not enable
   booking, automatic freight or any other opt-in rule by default.
+
+## MAP-INTEGRATE-2 I3 — authored cross-feature runtime proof — 2026-11-11 — APPROVED
+
+The frozen implementation is `b00c8372b2e0bf85b79a34e59834c2ec1a64fb63`. It adds one explicitly
+authored two-island `ScenarioSpec`; it is not an original scenario and does not claim original-data
+coverage. Scenario construction supplies the initial actors, types and terrain. Every intervention
+after creation passes through the public command wire (`AssignFreightRouteCmd`, `DemolishCmd`,
+`ControlFreightRouteCmd` and `MoveCmd`), encoded, decoded and applied by the world.
+
+The fixture runs the real shallow-iron-mine, two-smelter, toolsmith, market-cart, quarry, mason and
+automatic-freight paths together. A tools route completes at least two distinct cargo-bearing
+automatic cycles. The toolsmith's cumulative production equals workshop output plus both city
+stocks plus live land cargo plus ship holds. The mine-to-smelter and smelter-to-toolsmith diagnostic
+edges are independently positive. The fixture then demolishes the mine while a tools ship is
+sailing loaded. It observes that load leave, observes a later nonempty sailing leg that could only
+have loaded at the source after demolition, and observes delivery of that exact fresh load before
+closing the tools ledger again. No old mine target retains a reservation and the world invariants
+remain clean.
+
+At one saved boundary all three integration states are live at once: the route ship is loaded and
+sailing, the quarry claim is set, and two live carriers reserve the mine with their sum equal to the
+mine's reserved field. Reload and uninterrupted execution are byte/hash/cursor equal after exactly
+800 advances of 10 ms; a 799-advance run differs. A separate case suspends freight and directly
+observes progress in mine production, quarry lifting, mason brick production, market-cart tool
+unloading and market-cart brick unloading while the route remains suspended. Public cancellation
+removes the freight state and public `MoveCmd` restores manual navigation.
+
+### Acceptance table
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| New-chain freight for at least two automatic cycles | Destination tools rise at two separate completed-cycle boundaries; no per-stop driver command exists | A cycle without a destination stock increase is not counted | `integration authored cross-feature: mine tools freight quarry and exact reload` | Approved |
+| Exact conservation and mine interruption | Production equals output + city stores + land cargo + holds before interruption and again after a fresh post-demolition load and delivery | Preloaded cargo must first become empty; only a later nonempty sailing leg qualifies as the post-demolition load | Same case; Debug/ASan/reviewer gates below | Approved after correction |
+| Populated reload boundary | Loaded sailing ship, quarry claim and two mine reservers coexist; save/load equals uninterrupted at 800 advances | The otherwise identical 799-advance run has a different state hash | Same case | Approved |
+| Suspend, cancel and manual return | Five independent land-chain counters advance while freight status stays `Suspended`; cancellation removes freight and `MoveCmd` installs a manual order | Progress of only one land subsystem is insufficient and was rejected by the first review | `integration authored cross-feature: suspend cancel returns manual ship control while land chains keep running` | Approved after correction |
+| Archive/state seam sensitivity | Legal populated control constructs, advances and reloads | Omitting freight state or the claim changes the canonical hash; replacing Quarry with Inert or Mine with Quarry trips the named invariant | `integration authored cross-feature: targeted seam omissions fail beside the legal combined control` | Approved |
+
+### Review and evidence
+
+- Final canonical Debug gate on `b00c8372`: selected 3 / executed 3 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0. `debug-reviewfix.log`, SHA-256
+  `d09d7abe211d990d0aa64cd22c3bd91a75ab70289ce0466f0b820f18308a1c59`.
+- Final focused ASan/UBSan gate on the same pin: selected 3 / executed 3 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0. `asan-reviewfix.log`, SHA-256
+  `838fd9eca14e034c582096ae4a26c77340215fe92a14920a35fb3fbfc92c5b35`.
+  This is an affected focused gate, not the whole sanitizer suite.
+- The first ASan attempt is preserved: `asan.log`, SHA-256
+  `0eea44ad08da7e2fb8cdc8e658ada956b2016c9c926628e53c981319f64154de`. The sim target built,
+  but the mandatory `picture_matrix_contract` failed before the selection because the command had
+  not built its `bench_picture` executable (missing helper, exit 127). Building that required target
+  in the same sanitizer tree made the contract and selected tests pass; the first corrected log is
+  `asan-corrected.log`, SHA-256
+  `ccb157eca26b9334be99bce6cafe77d7a19933d821075d12f93f1b4279a73967`.
+- `clang-format` 23.1.3 is clean for the new C++ file. Final Debug and ASan binaries have SHA-256
+  `e94458862e63e02529b56ab2147fce7e836075e725c1403e8b079bc098fc0057` and
+  `3505802df30498828abbfb90b5ff9079b0819905efc7cbd3858c3a36ee612c3e` respectively.
+- Independent reviewer `/root/integrate2_i3_review` first rejected the preloaded-only demolition
+  proof and the disjunctive land-progress assertion. Both were corrected in `b00c8372`. The reviewer
+  re-inspected the full package and ran an independent canonical Debug gate: selected 3 / executed
+  3 / failed 0 / empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0. **APPROVED, no unresolved
+  findings.** `reviewer-b00c8372.log`, SHA-256
+  `ded9cc2ba23a37cebed9541b6c2cc6439d9256830f043e3bff09cce21d616f49`.
+- Original game-file tests are **NOT_RUN / not applicable** to this explicitly authored I3 fixture.
+
+### Decisions and reasoning
+
+- Kept setup declarative and small. Slower authored land-worker facts lengthen reservations and
+  claims enough to make the required simultaneous state a deterministic checkpoint; they do not
+  alter production arithmetic, route rules or any shipped registry.
+- Counted cargo-bearing route cycles, not merely `completed_cycles`. A nominal empty cycle is not
+  evidence that the new goods travelled.
+- Distinguished unloading cargo already aboard from loading after mine removal. The empty-then-
+  nonempty observation and subsequent exact delivery are necessary to prove the route used
+  remaining source stock rather than coasting on the pre-demolition hold.
+- Used diagnostic `TransportStats` only as a test sink for production and land-delivery progress.
+  It remains outside canonical state, hash and save; canonical equality is tested independently.
+- Required each land subsystem to advance while freight is suspended. An `OR` between mine and
+  mason movement could pass with a stalled quarry or cart and was removed after review.
+- Left gameplay rules, state identity and original fixtures unchanged. I3 adds proof for the
+  already accepted 138 composition; it does not introduce a new simulation contract.

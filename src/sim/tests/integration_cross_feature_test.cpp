@@ -121,6 +121,13 @@ const sim::Building* building_type(const sim::World& w, unsigned island, sim::Ty
     return nullptr;
 }
 
+sim::BuildingId building_id(const sim::World& w, unsigned island, sim::TypeId type,
+                            unsigned ordinal = 0) {
+    const auto* building = building_type(w, island, type, ordinal);
+    REQUIRE(building != nullptr);
+    return building->id;
+}
+
 Authored make_authored() {
     auto types = authored_types();
     const auto goods = [&](const char* name) {
@@ -203,12 +210,11 @@ Authored make_authored() {
                  {},
                  {},
                  {}};
-    out.mine = building_type(out.world, 0, kMine)->id;
-    out.smelters = {building_type(out.world, 0, kSmelter, 0)->id,
-                    building_type(out.world, 0, kSmelter, 1)->id};
-    out.toolsmith = building_type(out.world, 0, kToolsmith)->id;
-    out.quarry = building_type(out.world, 0, kQuarry)->id;
-    out.mason = building_type(out.world, 0, kMason)->id;
+    out.mine = building_id(out.world, 0, kMine);
+    out.smelters = {building_id(out.world, 0, kSmelter, 0), building_id(out.world, 0, kSmelter, 1)};
+    out.toolsmith = building_id(out.world, 0, kToolsmith);
+    out.quarry = building_id(out.world, 0, kQuarry);
+    out.mason = building_id(out.world, 0, kMason);
     REQUIRE_MESSAGE(out.world.check_invariants().empty(), out.world.check_invariants());
     return out;
 }

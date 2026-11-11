@@ -5880,3 +5880,61 @@ on (start from the dialog's own resource IDs or try keyboard input, per the new 
 - Did not guess that "Nova Fora" corresponds to any of the five target scenarios - no scenario
   identity was read from memory (the screen never reached `in_game`), so nothing here should be
   taken as even weak evidence about which file, if any, that name belongs to.
+
+## W4-NEXT-2 — G5, population fails on a broken invariant (finding 9 of the 2026-11-11 fix review) — 2026-11-11 — status: FINISHED
+
+### What changed
+
+`cmd_population`'s `sample` lambda already printed `check_invariants`'s result at every checkpoint
+(F5); it never affected the exit code. A `bool any_problem` is now set when any checkpoint's
+`check_invariants()` returns non-empty, and `cmd_population` returns 1 instead of 0 if so, after
+every checkpoint has printed (a problem at an early checkpoint does not stop later ones from being
+measured and reported too). Usage text updated to document the exit code.
+
+### Tests
+
+- `ctest -R anno_sim_replay` (`build/msvc`, `ANNO1503_GAME_DIR` set): **46/46 passed**, including
+  `anno_sim_replay_population_endless_01` (clean invariants at every checkpoint, exit 0 unaffected).
+- Manual check: `anno-sim-replay.exe population 01_1024_easy_256.sze --seconds 0,10` → exit 0 (no
+  broken-invariant scenario was available to manufacture a genuine exit-1 case; the logic itself -
+  `any_problem ||`-free, a single flag set once and read once - was read back to confirm it cannot
+  under-report (every checkpoint's own `sample` call runs before the flag is read) or over-report
+  (it is never reset).
+- `clang-format` clean.
+
+### Decisions and reasoning
+
+- Kept sampling and printing every requested checkpoint even after a problem is found, rather than
+  stopping early - a broken invariant at t=10s is more useful to a reader alongside what happens at
+  t=30s/60s too, and the packet's own instruction only asked for the exit code, not early exit.
+
+---
+
+## W4-NEXT-2 — G7, the next attempt at the original's column (finding 8 of the 2026-11-11 fix review) — 2026-11-11 — status: FINISHED, doc only
+
+### What changed
+
+`docs/testing/original-wine.md` section 6's "Left for a follow-up" now puts first: the endless-game
+scenarios (`01_1024_easy_256` and the other `Scenes/0010SingleEndlos`/`0200Single` files, four of
+the five shared-test-list rows) are not a Campaign-menu problem - they are the **ordinary New Game
+list** (`choose_game`'s Citizen-to-Marquess rows, `tools/orig/menus.json`'s own `rows`), which
+`tools/orig/macros.py`'s `new_game()` already reaches today. F8's own attempt explored the
+Campaign/Mission picker instead, which is for the one `0100Kampagne01`-style mission
+(`S01_08_01`) among the five, not the other four. The first check for a follow-up session: whether
+a given New Game row always opens the same `.sze` file, read from the running process (Wine's
+`+file` debug channel or `tools/orig/gamestate.py`), not guessed from the row's label - that answer
+decides whether `01_1024_easy_256` was reachable through `new_game()` all along.
+
+No Wine session was run this round (the packet's own rule for G7); this is a re-reading of
+`tools/orig/menus.json` and the five scenario paths already on record in
+`docs/research/shared-test-list.md` section 1, not new captured evidence.
+
+### Decisions and reasoning
+
+- Did not guess which New Game row maps to which difficulty/scenario, or assume the mapping is
+  fixed at all (the game may pick a scenario file by some other rule, e.g. randomly within a
+  difficulty) - named the exact read-from-the-process methods (`+file`, `gamestate.py`) a follow-up
+  should use instead, consistent with this packet's own "check, don't guess" rule.
+- Left the existing Campaign/Mission picker follow-up note in place, renumbered second, rather than
+  removing it - it is still real, useful evidence for `S01_08_01` specifically, just not for the
+  four endless-game rows the first note now addresses.

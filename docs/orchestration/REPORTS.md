@@ -6804,3 +6804,60 @@ released.
 - Did not merge moving `main` or reset the accepted evidence. Its post-freeze movement is docs-only
   and belongs to the orchestrator's later integration decision.
 - Kept state 138, timeline 5, all gameplay defaults and every original fixture unchanged.
+
+## MAP-INTEGRATE-2 R — OQ-556 original-code verdict — 2026-11-12 — APPROVED
+
+OQ-556 is settled: the state-138 forward home search matches the original. This package changes
+documentation only; it changes no behavior, rule default, serialization, stream, fixture or state
+identity.
+
+Read-only disassembly of GOG `AnnoWelt.dll`, SHA-256
+`f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`, established the complete
+original path:
+
+- The start flood is `0x10003aa0`-`0x10003d81`. Each call seeds one selected, quantized sub-cell
+  at `0x10003b68`-`0x10003b98`, expands cardinally at `0x10003ba2`-`0x10003cb6`, and writes edge
+  keys at `0x10003cbc`-`0x10003d75`. The four admission masks are `0x2111@0x10006a81`,
+  `0x8444@0x10006c69`, `0x4888@0x10006dd0` and `0x1222@0x10006e8c`.
+- Goal setup is `0x10003f91`-`0x1000415f`, including the mark at
+  `0x10004065`-`0x10004070` and the key-helper call/store at
+  `0x10004137`-`0x1000414b`. The search pop loop `0x10004749`-`0x10004794` calls goal-test
+  `0x10003220`; dispatcher loop `0x10003708`-`0x1000373d` invokes the installed callback through
+  its indirect call at `0x10003737`.
+- Home entrances and the callback are installed at `0x10057ae0`-`0x10057bbe`; the installed
+  first-goal-stop callback is `0x10054240`. A no-path result takes the original failure branches
+  at `0x10053d20` and `0x10053f50`.
+
+Ghidra was **NOT_RUN** because neither Ghidra nor a Java runtime is installed on this Mac. The
+repository's `tools/disasm.py` fallback was used against the identified DLL, and the independent
+reviewer separately re-read the resulting instructions and address ranges.
+
+### Focused original-data proof
+
+The author probe loaded real `endless02` island 12, object 3110 at tile (322,770), walk code 4 and
+mask `0x139`. Classified counts: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0;
+assertions 16/16. It reproduces all nine start keys and proves that starts `(0,1)`, `(0,2)` and
+`(1,2)` reach no goal for all three affected homes, while all other six starts reach a goal.
+`oq556-probe-final.log`, SHA-256
+`fa43d8c60366f1554586a71b904a238ea24a0bf6c655ba370405ae0b699ff17b`.
+
+Independent reviewer `/root/integrate2_r_review` approved the final two-file docs diff with no
+remaining findings. Its independent real-data probe has classified counts selected 1 / executed 1
+/ failed 0 / empty 0 / skipped 0; assertions 16/16. `reviewer-final-probe.log`, SHA-256
+`e754c576f92dbfe66050a06aead9ea5b5ff2729d0fa12a5df2a90fab279aafcc`. Its probe binary SHA-256
+is `43b1ffed7d6477183072d02805f26513ec83a73b861706143a8af440919e60a4`; source SHA-256 is
+`9ed624313b00bf0f666424016521252cc1617b9e895af9abce3ecf8aff799eb9`. Other game-file tests are
+**NOT_RUN** by the reviewer; this accepted focused probe is the classified run. `git diff --check`
+is clean.
+
+### Decisions and reasoning
+
+- Kept the original forward-search failure instead of restoring the former reverse-route
+  workaround: the disassembly and real fixture prove the approximately 1.5% no-path result is
+  original behavior.
+- Distinguished the tile's blocked walk-mask bit from the returned edge-key nibble and the
+  goal-test dispatcher from its installed callback; those distinctions are necessary for the
+  address claims to be reproducible.
+- Used a bounded real-data probe rather than treating a hand calculation as execution evidence.
+- Made no identity change because the original-code answer confirms the accepted state-138
+  behavior.

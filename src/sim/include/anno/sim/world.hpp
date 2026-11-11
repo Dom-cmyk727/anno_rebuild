@@ -167,13 +167,20 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // mountain ware default becomes a data-driven rule) and a mine step's re-lookup searches every ore
 // object and materialises the deposit it binds. Same ECONBK1 tag, PRNG timeline 5 (no draw-order
 // change); 133, 134 and 135 saves and recordings are refused. Route-only136 is the other
-// predecessor now present in this I1 merge checkpoint; I2 allocates the combined identity.
+// predecessor.
 // Later work inside the Extract identity 137 (no new number) DID add two
 // saved fields: the Quarry payload (tag 9, a claim flag per entrance) and the mason worker's goal
 // sub-cell bytes (HarvestState goal_col/goal_row, job 0x2c only); see docs/sim/quarry-bricks.md
 // Q3.1. The resident home walk (T3-Q2, docs/sim/population-live.md 27) changed behaviour, no
 // layout.
-inline constexpr std::uint32_t kStateHashVersion = 137;
+// Stream138 (MAP-INTEGRATE-2): the exact union of route-only136 and Extract137. Rules append the
+// three FreightRules u32 values once; Figure appends freight_generation and optional FreightState
+// after the resident state, while a mason HarvestState retains its conditional goal_col/goal_row
+// before resident state. Building Payload tag 9 remains Quarry with its entrance-sized claim set;
+// Mine retains its optional deposit binding. The ECONBK1 schema, replay frame 4, command wire 1,
+// registry digest layout and PRNG timeline 5 are unchanged; no draw site or draw caller is added.
+// Valid 134, 135, 136 and 137 native states and recordings remain historical and are refused.
+inline constexpr std::uint32_t kStateHashVersion = 138;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

@@ -128,7 +128,7 @@ TEST_CASE("SCRIPT1 repaired checksum version and same version schema refusals ar
     auto refused = World::load(old, TypeRegistry::empty());
     REQUIRE_FALSE(refused);
     CHECK(refused.error() ==
-          "save: state stream version 128 is not supported (this build reads 137)");
+          "save: state stream version 128 is not supported (this build reads 138)");
     auto foreign = bytes;
     foreign[12] ^= 1;
     rechecksum(foreign);

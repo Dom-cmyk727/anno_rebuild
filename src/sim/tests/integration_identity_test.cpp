@@ -55,7 +55,7 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
         const auto refused = sim::World::load(bytes, f.types.registry);
         REQUIRE_FALSE(refused);
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
-                                     " is not supported (this build reads 137)");
+                                     " is not supported (this build reads 138)");
     }
     auto rec = sim::Recorder::start(f.world);
     REQUIRE(rec);
@@ -135,7 +135,7 @@ TEST_CASE("expansion identity: real133 archives and independent replay identity 
     const auto old_recording = bytes_of(base / "econbook1/current133/g2.log");
     const auto old = sim::World::load(old_native, f.types.registry);
     REQUIRE_FALSE(old.ok());
-    CHECK(old.error() == "save: state stream version 133 is not supported (this build reads 137)");
+    CHECK(old.error() == "save: state stream version 133 is not supported (this build reads 138)");
     const auto decoded = sim::read_log(old_recording);
     REQUIRE_FALSE(decoded.ok());
     CHECK(decoded.error() ==
@@ -205,7 +205,7 @@ TEST_CASE("salt identity135: real133 and real134 archives refuse, each with its 
         const auto refused = sim::World::load(*bytes, f.types.registry);
         REQUIRE_FALSE(refused.ok());
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
-                                     " is not supported (this build reads 137)");
+                                     " is not supported (this build reads 138)");
     }
     // actual predecessor recordings: the replay header carries the identity
     for (const char* rel : {"econbook1/current133/g2.log", "expand1/current134/g2.log"}) {
@@ -238,7 +238,7 @@ TEST_CASE("iron identity137: real133, real134 and real135 archives refuse, each 
         const auto refused = sim::World::load(*bytes, f.types.registry);
         REQUIRE_FALSE(refused.ok());
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
-                                     " is not supported (this build reads 137)");
+                                     " is not supported (this build reads 138)");
     }
     // the recordings of the three predecessors: the replay header carries the identity
     for (const char* rel :

@@ -2704,6 +2704,28 @@ Current synthetic fixtures use freight/current136, preserving expand1/current134
 
 **MAP-EXTRACT-2 part Q (stream 137, no new version number; `docs/sim/quarry-bricks.md` Q3.1).** Two saved fields join the 137 identity. (1) `PayloadTag::Quarry = 9`, the Payload alternative of a Quarry-class building (a fact of the runtime class, `payload_tag_of(type, class)`; the class table still pairs the class with `Inert`, so the registry digest is unchanged): `u16 last, bool blocked, bool suspended, StatusTracker status (u8 code, u8 icons, u16 time), optional<bool> financial_active (presence byte, bool), claims` where `claims` is `ar::bools` (u64 count = the type's entrance count, then one 0/1 byte per entrance). Invariants: the count equals the type's entrance count (building.cpp `payload_problem`), and per island the set flags never exceed the live mason workers (job 0x2c) in the walk or the wait (World::harvest_problem). (2) `HarvestState` of a figure whose `job` is 0x2c gets two trailing bytes `u8 goal_col, u8 goal_row` (the selected entrance's sub-cell, 0 to 2) after `u32 along`; the figures of the other harvest jobs are unchanged. The independent byte reference `tools/sim_stream.py` models neither (its transcribed worlds hold no quarry and no job-0x2c figure), so the stream of a quarry world has no independent oracle yet: the quarry payload and the goal bytes are covered by the C++ layout, round-trip and reload tests only. No draw site, rule or command-wire change.
 
-The I1 merge checkpoint contains both lineages but is not a current compatibility
-identity. MAP-INTEGRATE-2 I2 allocates 138 and replaces the current references;
-the 135, 136 and 137 descriptions above remain predecessor contracts.
+**MAP-INTEGRATE-2 state 138 (allocated in I2).** This is the exact union of the
+Route-only136 and Extract137 layouts above, not a relabel of either input. The
+schema stays `ECONBK1`, replay frame 4, command wire 1 and PRNG timeline 5.
+The ordered delta from main134 is:
+
+1. `Rules` ends with Route's three `u32` freight limits, once.
+2. `Building::Payload` alternatives 0 through 8 keep their bytes; tag 9 is
+   Extract's `Quarry`, including one claim byte per declared entrance. `Mine`
+   retains its optional deposit binding in its existing payload position.
+3. `Figure` keeps optional nav, then optional harvest. Only mason job `0x2c`
+   appends `u8 goal_col, u8 goal_row` inside the harvest body. Optional resident
+   follows; then Route appends `u64 freight_generation` and its optional
+   19-field `FreightState`.
+4. Route command bodies 12/13 and wire tags F075/F076 coexist with unchanged
+   Build body 0/tag 0x64. This changes neither command-wire version nor native
+   field order.
+5. The Rules digest sees the freight suffix exactly once. The registry digest
+   keeps Extract's tagged `BuildingType::highmap` and ore-figure `ware` bytes
+   exactly once. Quarry's runtime payload does not alter the class-table digest.
+6. The complete `DrawSite` enum and all callers are unchanged; no combined
+   feature consumes a new draw. Therefore the PRNG timeline remains 5.
+
+Valid native and replay identities 134, 135, 136 and 137 are predecessors and
+are refused; none is rewritten. Current fixtures and consumers move to a new
+`current138` family only after independent stream transcription and review.

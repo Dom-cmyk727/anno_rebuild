@@ -231,6 +231,21 @@ These counts are an inventory, not permission to resolve a subsystem wholesale.
   distinct checks. A passing current header cannot cover them, and no 134–137
   artifact is rewritten and called historical evidence.
 
+### I2 allocation record
+
+State 138 was allocated after both exact merge commits. The allocation itself
+adds no field beyond the frozen union: `Rules` has one three-u32 freight suffix;
+payload tag 9 is Quarry with its entrance-sized claim bytes; Mine keeps its
+deposit binding; a job-0x2c HarvestState conditionally carries goal column/row;
+and Figure then carries resident state, freight generation and optional freight
+state in that order. The schema remains ECONBK1, native frame 1, replay frame 4
+and command wire 1. The Rules digest includes the freight suffix once; the
+registry digest includes highmap and figure ware once; the class-table digest is
+unchanged. The complete DrawSite order in the interaction table is unchanged,
+there is no new draw caller, and PRNG timeline 5 is retained. This version-only
+allocation is what makes every valid 134–137 native/replay artifact historical;
+the current138 rebaseline is evidence for the union, never its definition.
+
 | Refusal control | Retained artifact source | Expected first check / diagnostic | Legal neighbour |
 |---|---|---|---|
 | Native 134 | main `expand1/current134` (and the separately attributed founding-134 receipts) | native stream version 134 is unsupported by 138 | populated native 138 with the same applicable base fields |

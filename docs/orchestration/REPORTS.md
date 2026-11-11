@@ -6414,3 +6414,91 @@ and Extract real-data interaction proof to I4.
 - Did not run predecessor native/replay matrices after the second merge. I2 changes the identity,
   independent oracle and current fixtures; running them now would create evidence that must be
   discarded and could obscure a false-positive compatibility claim.
+
+## MAP-INTEGRATE-2 I2 — combined state 138 and compatibility evidence — 2026-11-11 — APPROVED
+
+State 138 was allocated alone in `fa34d26c21632a826b0f5cdb143a7996731d7a79`, with the exact
+combined field, stream, digest and draw-order contract recorded in `docs/sim/state.md` and
+`docs/sim/gameplay-integration.md`. The generated current fixtures and first compatibility proof
+were frozen in `a7258588`; the complete shared-fixture change table was corrected in `745d0e34`;
+the final independently encoded encompassing populated archive is
+`acc05cbf48f4018a1a24817d053d69424c1b271e`. Every checkpoint was ordinarily pushed only to
+`task/MAP-INTEGRATE-2`.
+
+The current archive identity is state 138 / schema ECONBK1 / PRNG timeline 5 / replay 4 / command
+wire 1. Real valid 134, 135, 136 and 137 native states each refuse with their own version, and the
+four real replay headers refuse at the replay boundary. Current outer metadata with each valid old
+native reaches the distinct embedded-native refusal. A damaged old native reaches the checksum
+diagnostic first, so corruption cannot masquerade as compatibility evidence. Valid native and
+replay 138 controls sit beside those refusals and leave the target world unchanged.
+
+`tools/integration_stream_ref.py` now independently encodes one round-trippable encompassing
+archive containing the complete FigureRegistry, a complete Mine Building wrapper (id 77, payload
+tag 5, deposit 3), and a complete Quarry Building wrapper (id 88, payload tag 9, claims `{1,0}`).
+The same archive holds the sailing freight ship, its route target, the mason whose home is the
+quarry and the two 256-unit reservers whose targets and sum bind to the mine. The C++ compares the
+independent bytes and hierarchical root, reads and writes them byte-identically, and checks every
+relationship. Omitting the Quarry case, route state or restored claim each changes the encompassing
+archive. The separate scopes remain useful localization evidence, but are not the integration
+claim.
+
+All current replay registrations and current consumers point at
+`fixtures/synthetic/sim/integrate2/current138`. Remaining 133–137 paths under `src` and `tools` are
+explicit historical/refusal inputs. `README.md` in that directory gives file / complete old SHA-256
+/ complete new SHA-256 / cause for every changed current or shared fixture, including all Route136
+cargo recordings, the 137 scenario corpus and the shared CargoRules/ship-hold transcriptions.
+`provenance.json` verifies all 17 new/shared digests. Fifty of fifty scenario `create_hash` values
+changed; after replacing those identity fields and removing the version header, every physical,
+warning and movement column is equal to the accepted 137 corpus.
+
+### Review and evidence
+
+- Author focused state/oracle gate at final code: selected 4 / executed 4 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0 (`focused-state138-world.log`, SHA-256
+  `485a1fed5ad17f8d76a4f41ef65367c3364305e3fec7f2d6741160c3a69d6165`).
+- Author current-session gate: selected 11 / executed 11 / failed 0 / empty 0 / skipped 0 /
+  incomplete 0 / sanitizer lines 0 (`current138-sessions.log`, SHA-256
+  `0d4d7a2157530a2b7b792d7c0c991b8f1577a944952f7c86ce7aca74e2c7e6b5`). It includes G2–G6,
+  founding/load/unload mutants, the shared independent cargo/hold bytes and the real Tutorial
+  economy-loop checkpoint recording.
+- Original-data corpus regeneration with host socket permission: selected 1 / executed 1 / failed
+  0 / empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0
+  (`scenario-corpus-update-host.log`, SHA-256
+  `f6e7534c7e2d5978040dd54d4d5dca2a9e3144092e5b7f9025a2f1723fdc620e`). The coordinator admitted
+  all four workers. The earlier direct run waited 1,800 seconds and reported that no coordinator
+  could listen in the sandbox; it was aborted only after that infrastructure refusal. A canonical
+  sandbox attempt was also preserved and aborted after the unchanged journal and absent listener
+  proved the same socket blocker. Neither is counted as product execution.
+- Independent reviewer `/root/integrate2_i2_review`, exact final pin `acc05cbf`: **APPROVED, no
+  unresolved findings**. Its non-overlapping canonical gates total selected 15 / executed 15 /
+  failed 0 / empty 0 / skipped 0 / incomplete 0: `reviewer-corrected.log` SHA-256
+  `b4f6a0d07c5de5e9ae2fe6366b079c7a762cafcdbe483724b88bab04fa01016f` (4/4) and
+  `reviewer-corrected-replays.log` SHA-256
+  `0c9d1d0f2d1dda9c42f64e988d7656417b764d3b3149064900627e167ce50f30` (11/11). It verified all 17
+  provenance digests. Game-file tests were **NOT_RUN by the reviewer**; the author corpus/economy
+  results above remain author measurements and are not included in the reviewer count.
+
+The review first found that the change table omitted the two shared fixtures; `745d0e34` added their
+full old/new digests and causes. It then rejected nine disconnected scopes as insufficient for the
+packet's populated-world claim; `acc05cbf` added the independently encoded encompassing archive,
+relationship checks, byte-identical read/write and seam negatives. Both findings were fixed and
+re-reviewed before I3 was released.
+
+### Decisions and reasoning
+
+- Allocated 138 rather than relabelling either 136 or 137. Both predecessor layouts are real and
+  incompatible; the combined Rules suffix, Figure freight state, Mine reservation/deposit state,
+  Quarry tag 9/claims and mason goal coordinates must share one new identity.
+- Kept the PRNG timeline at 5 because the merge adds no draw site and changes no draw order. The
+  independent layout and populated archive prove state composition without inventing a PRNG bump.
+- Regenerated current sessions from reviewed behavior and kept every predecessor directory
+  immutable. A C++ hash is documented as a rebaseline; independently transcribed G0/G1/S5/S6,
+  complete Rules/holds and the encompassing populated archive are the byte/hash oracles.
+- Required a complete Building wrapper in the combined oracle. Comparing `Quarry` and `Mine`
+  payloads separately would not exercise payload tag 9 or prove that reserver/route/home ids name
+  the same serialized objects.
+- Preserved the first socket-blocked attempts and reran through the canonical workflow with host
+  permission. Admission failure is classified as infrastructure, never converted into a pass or a
+  skipped product test.
+- Kept gameplay defaults unchanged. State 138 records the semantic union; it does not enable
+  booking, automatic freight or any other opt-in rule by default.

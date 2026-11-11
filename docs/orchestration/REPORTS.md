@@ -6086,3 +6086,67 @@ only because the ASan job failed.
 - **The ASan expectation.** The contract expects 9/8 of the allocation in an ASan build, instead of
   exempting the helper from the sanitizer. Every project target keeps ASan, and the check stays a
   10 % check against a derived number: local ASan measured 287.7 MiB against 288 expected.
+
+## W4-NEXT-2 — Part P continued on the Windows PC — 2026-11-11 — status: QUESTION
+- Branch: `task/W4-ui-4` at base `15f01fa4` (carries K, M, W per the packet; X moved to
+  `task/W4-shared-list-1` from `origin/main` `a28005be`). Worktrees:
+  `E:\anno1503-worktrees\anno1503-W4-ui-4`, `E:\anno1503-worktrees\anno1503-W4-shared-list-1`.
+  This entry is a progress report on Part P, not a finished package — K/W/M/X/E remain.
+- **Host state recorded:** GPU `NVIDIA GeForce RTX 4090` + `AMD Radeon(TM) Graphics` present;
+  free memory ~16.4 GiB of 32.6 GiB; WSL distros `Ubuntu`, `docker-desktop`, `AnnoHarness`, all
+  `Stopped`; no listener on the coordinator's port 47631 (no coordinator running at preflight
+  time). `cmake --preset msvc` configured clean on `task/W4-ui-4` (22.5 s); the full build was
+  started detached and is still running as of this entry (last completed:
+  `anno_app_core.vcxproj`; `app`'s remaining sources and the test binaries are next).
+- **Independent re-review of `3f3dd4d8` and `8b807827`** (read-only, this host, against the
+  frozen diffs, not the author's summary):
+  - `peak_launcher.cpp`'s Windows job-object fix: the child is created `CREATE_SUSPENDED`, a job
+    with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK` is created and
+    assigned to it *before* `ResumeThread`, so the child cannot spawn or act before it is tied to
+    the job; `ResumeThread`/cleanup run unconditionally whether or not the job exists. No defect
+    found.
+  - `peak_alloc.cpp`/`peak_launcher_test.py`'s ASan shadow accounting: the helper reports its own
+    sanitizer build via both `__SANITIZE_ADDRESS__` and `__has_feature(address_sanitizer)`; the
+    test's expected delta becomes `256 * 9/8` MiB only when the helper actually says `build asan`.
+    Matches the stated CI failure (287.6 MiB measured vs. 256 MiB expected) and its fix. No defect
+    found.
+  - `inspect_building_test.cpp`'s rewritten command-boundary check: `select_and_deselect()` now
+    drives the runner with `run_n(1)` (synchronous, never `start()`ed), so every posted command is
+    actually drained by `one_turn()`; the positive case (`applied_commands().empty()`) and the
+    negative control (a demolish posted on the second click, `applied_commands().size() == 1` and
+    the hash differs from `two_turns_without_input()`) both genuinely exercise the thing they
+    claim to. No defect found; this is a real fix of the acceptance-review finding C pattern (a
+    negative control that could never fail).
+- **The `stop()` question (packet-required), answered with a QUESTION, not a silent change:**
+  recorded as **OQ-568** (`docs/open-questions.md`, this branch). Finding: `PlayRunner::one_turn()`
+  sleeps out `delay_ms_` in slices, checking `stop_` each slice, and returns *before* draining
+  `queue_.take()`/the script's commands when `stop_` fires mid-sleep — a command posted just before
+  a concurrent `stop()` can be silently lost rather than ever reaching a terminal status. Confirmed
+  `set_turn_delay()` has no production caller (`grep` across `src/app`): only `play_test.cpp` sets
+  a nonzero delay (40/1500/1000 ms), so ordinary `--play` is unaffected (`delay_ms_` stays 0). Three
+  options recorded in OQ-568 with (a) "leave as is, stop() is teardown" recommended; no runner
+  behaviour changed.
+- **Scenario evidence for Part X, step 1** (sizes/SHA-256 against our `game/app`, GOG build
+  `goggame-1438074791.info`, English, standalone):
+  - `Scenes/0200Single/Single_06.sze`: 488356 bytes,
+    `29767be35e21f5c59dfc4f9178ece33f342e482fa22380ea0bf74f5dc6ef5fed`
+  - `Scenes/0200Single/Single_16.sze`: 312356 bytes,
+    `78229c7c6b47d9c393a0bcab3aae52057b8088040c8374a80040bba8af7753ea`
+  - `Scenes/0010SingleEndlos/01_1024_easy_256.sze`: 53545 bytes,
+    `3e0d2c72e1ae87b76cc817f0aead7198b4f0509cb11a5246463e338ccf060e05`
+  - `Scenes/0100Kampagne01/S01_08_01.sze`: 407605 bytes,
+    `7f03b03cf9ba07ea184ef3093e46760d7385776a3702f007df86d3956bc0a133`
+  - `Scenes/0200Single/Single_24.sze`: 521724 bytes,
+    `861ad2066a1c26c53367f8538e328e6b00e467e4a00238265d9f20747661ffc4`
+  - All five present in our tree (not confirmed yet against the co-developer's hashes — his note
+    gives none for these five, only for `Data/Debug.dat` and the two `.zei` fonts). Not yet
+    compared to a second GOG install; this is our copy's own identity only.
+- **Not yet done (left open, this entry):** P5 (the GPU pixel check for rows 5/10, needs the MSVC
+  build to finish and a real window on the RTX 4090); proof that `peak_launcher_contract` executes
+  in an MSVC run (same blocker); parts K (measuring/drawing/tests), W (Wine captures for OQ-565/
+  566/567), M steps 2-3 (the game-file run and the table), X steps 2-4 (headless + Wine
+  measurement), and E. None of these started game-file or GPU work yet; this entry exists so the
+  re-review and the stop() QUESTION are on record before continuing.
+- Time spent / subagents used: no subagents; direct review and host checks only. MSVC build
+  running detached in the background, log kept at
+  `E:\anno1503-worktrees\anno1503-W4-ui-4\build_full.log`.

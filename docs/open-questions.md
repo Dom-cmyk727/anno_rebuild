@@ -2453,3 +2453,38 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   if that misses, a broader sprite-sad search as `UI.1.F2.1` ran for `B_Baukosten`) against the
   right-panel region; until then row 2 draws no chrome - see `docs/orchestration/REPORTS.md`'s
   Part U entry for this packet's own disposition (data-only, not a guessed layout).
+
+## OQ-568: PlayRunner::one_turn() interrupted by stop() mid-delay drops the turn's queued commands (W4-NEXT-2 P, 2026-11-11)
+- **Status:** open (QUESTION, not changed; re-review of `3f3dd4d8` on the Windows host).
+- **Area:** `src/app/src/play.cpp`, `PlayRunner::one_turn()`/`stop()`.
+- **Question:** `one_turn()` sleeps out `delay_ms_` in `poll`-sized slices, checking `stop_` each
+  slice, and returns immediately once `stop_` is set - *before* it drains `queue_.take()` (the
+  window's posted commands) or the script's commands for that turn index. A command posted while
+  `delay_ms_ > 0` and resolved by a concurrent `stop()` during that sleep therefore never becomes
+  part of any turn: it stays in the queue, which is destroyed with the runner, so its result is
+  silently "lost" rather than ever reaching `Applied`/`Rejected`. `set_turn_delay()` is called only
+  from tests (`play_test.cpp`, 40/1500/1000 ms; `grep` found no production caller, so `delay_ms_`
+  defaults to and stays 0 in ordinary play and in `--play`'s own wiring) - so this is reachable only
+  when a test or a future feature deliberately sets a nonzero delay and stop() races it mid-sleep.
+  The W4-NEXT-2 K/M review-fix commit (`3f3dd4d8`) worked around the same underlying gap in the
+  command-boundary test by switching it to `run_n()` (synchronous, bypassing `loop()`/`delay_ms_`
+  entirely) instead of fixing or documenting this path.
+- **What we know:** by itself this cannot regress ordinary single-process play (delay is always
+  0 there); it only matters to a caller that (a) sets an artificial delay and (b) needs every
+  posted command to reach a terminal, observable outcome before teardown - which might matter to
+  a future lockstep/resync path that reuses `PlayRunner` with deliberate latency injection.
+- **How to resolve, options:**
+  - **(a) Leave as is: stop() means "abandon in-flight work", intended.** A session that is
+    stopping does not owe outstanding posts a resolution; the artificial delay is a test knob, and
+    tests that need every command's outcome already avoid this by using `run_n()` directly (as
+    `3f3dd4d8` now does). **Recommended**: smallest, matches "stop() is teardown", and nothing in
+    `CommandQueue`'s own contract documents or tests a stronger guarantee today.
+  - **(b) Drain the queue once more after the delay loop exits on `stop_`,** before returning, so a
+    command posted before `stop()` still gets applied in the turn that was already underway. Changes
+    observable behaviour (a stopped runner can still mutate world state once more) - would need its
+    own test and a note in `play.hpp`'s contract comment.
+  - **(c) Document the gap explicitly** in `PlayRunner::stop()`'s doc comment and `CommandQueue`'s,
+    without changing behaviour, so a future caller of `set_turn_delay` knows not to rely on
+    draining. Can combine with (a).
+  - No option has been implemented; this entry only records the question per the W4-NEXT-2 packet's
+    instruction not to change runner behaviour silently.

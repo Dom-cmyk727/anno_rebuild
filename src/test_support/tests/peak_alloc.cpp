@@ -1,9 +1,9 @@
 // anno_peak_alloc <mebibytes> [exit-code|abort [echo-args...]]
 //
 // Helper of tools/test/peak_launcher_test.py: touches <mebibytes> MiB (every byte written, so
-// the pages are resident), prints "allocated <n> MiB", every further argument ("arg <i>: <text>",
-// to check that the launcher passes arguments unchanged) and one fixed line to stdout and one
-// to stderr, then exits with the given code (default 0) or aborts.
+// the pages are resident), prints "allocated <n> MiB ... build asan|plain", every further argument
+// ("arg <i>: <text>", to check that the launcher passes arguments unchanged) and one fixed line to
+// stdout and one to stderr, then exits with the given code (default 0) or aborts.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -13,6 +13,24 @@
 #if defined(_WIN32)
 #include <stdlib.h>
 #endif
+
+namespace {
+
+/// AddressSanitizer maps one shadow byte per 8 application bytes it touches, so the resident
+/// peak of an ASan build is 9/8 of the allocation: the contract expects that, not a plain one.
+#if defined(__SANITIZE_ADDRESS__)
+constexpr bool kAddressSanitizer = true;
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+constexpr bool kAddressSanitizer = true;
+#else
+constexpr bool kAddressSanitizer = false;
+#endif
+#else
+constexpr bool kAddressSanitizer = false;
+#endif
+
+} // namespace
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -28,7 +46,8 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < bytes; i += 4096) {
         sum += block[i];
     }
-    std::printf("allocated %lu MiB checksum %lu\n", mib, sum);
+    std::printf("allocated %lu MiB checksum %lu build %s\n", mib, sum,
+                kAddressSanitizer ? "asan" : "plain");
     for (int i = 3; i < argc; ++i) {
         std::printf("arg %d: [%s]\n", i, argv[i]);
     }

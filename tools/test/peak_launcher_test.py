@@ -4,7 +4,8 @@
     peak_launcher_test.py <anno_peak_launcher> <anno_peak_alloc>
 
 1. It reports a known allocation: the peak of a 256 MiB child minus the peak of a 0 MiB child
-   is within 10 % of 256 MiB.
+   is within 10 % of 256 MiB (of 288 MiB when the helper is an AddressSanitizer build: its
+   shadow memory, one byte per eight, is resident too).
 2. It changes no result: for an exit of 0, an exit of 7 and an abort, the launched run has the
    same exit status, byte-identical stdout (arguments with spaces, quotes and backslashes
    included) and the same stderr apart from exactly one appended "[anno-test peak]" line, whose
@@ -60,10 +61,13 @@ def main():
         if not ok:
             failures.append(what)
 
-    # 1. A known allocation.
+    # 1. A known allocation. An AddressSanitizer build of the helper also makes its shadow
+    # (1 byte per 8) resident: it says so, and the expected difference is then 9/8 of it.
     peaks = {}
+    asan = False
     for mib in (0, 256):
         done, _ = run([launcher, alloc, str(mib)])
+        asan = asan or b"build asan" in done.stdout
         _, lines = split_peak(done.stderr)
         check(done.returncode == 0 and len(lines) == 1 and lines[0] is not None,
               "%d MiB child: exit 0 and one well-formed peak line" % mib)
@@ -71,10 +75,13 @@ def main():
             peaks[mib] = int(lines[0].group(1))
     if len(peaks) == 2:
         delta = peaks[256] - peaks[0]
+        expected = 256 * MIB * (9 / 8 if asan else 1)
         print("peak 0 MiB child: %d bytes, 256 MiB child: %d bytes, difference %.1f MiB"
-              % (peaks[0], peaks[256], delta / MIB))
-        check(abs(delta - 256 * MIB) <= 0.10 * 256 * MIB,
-              "difference within 10 %% of 256 MiB (%.1f MiB)" % (delta / MIB))
+              " (helper build: %s, expected %.0f MiB)"
+              % (peaks[0], peaks[256], delta / MIB, "asan" if asan else "plain",
+                 expected / MIB))
+        check(abs(delta - expected) <= 0.10 * expected,
+              "difference within 10 %% of %.0f MiB (%.1f MiB)" % (expected / MIB, delta / MIB))
 
     # 2. No result change.
     echo = ["with space", 'with "quote"', "trailing\\", "back\\\\slash \\\"mix", ""]

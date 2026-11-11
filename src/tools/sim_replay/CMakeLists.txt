@@ -117,6 +117,18 @@ if(ANNO_BUILD_TESTS)
                    -P ${PROJECT_SOURCE_DIR}/cmake/RunScenarioTool.cmake)
   set_tests_properties(anno_sim_replay_scenario_endless_03_links PROPERTIES
                        SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
+  # W4-NEXT-2 X: residents/town-store checkpoints, measurement-only tool. Arg errors need no
+  # game files; the real run proves it on a playable scenario (endless01, already proven
+  # playable above).
+  anno_sim_replay_arg_test(population_seconds_not_a_number "population|x.sze|--seconds|abc"
+                           "bad --seconds value 'abc'")
+  anno_sim_replay_arg_test(population_no_file "population" "usage: anno-sim-replay")
+  add_test(NAME anno_sim_replay_population_endless_01
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   -DSCENE=0011SingleEndlosAddon/endless01.sze
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunPopulationTool.cmake)
+  set_tests_properties(anno_sim_replay_population_endless_01 PROPERTIES
+                       SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
   # T41: the measure line names every timed field. A synthetic scenario, R = 2,
   # no game files. --ticks 0 still creates the world and hashes it.
   anno_sim_replay_run_test(anno_sim_replay_measure_synthetic "measure|synthetic|--ticks|0|--reps|2" 0

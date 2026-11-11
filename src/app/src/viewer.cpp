@@ -560,6 +560,14 @@ class Viewer {
     /// Active in `--play` with the classic surface, outside the ship-start opening, while the
     /// developer/construction tool is off (a tool's click stays the tool's).
     SelectionState selection_;
+    /// W4-NEXT-2 G2 (finding 4 of the 2026-11-11 fix review): every call `selection_handle` makes
+    /// to `selection_step` (a world click or Escape, counted the same way; never a click consumed
+    /// earlier by the HUD hit test or by a tool). Exposed as the `selection.clicks` fact so a
+    /// script can prove a click was *routed into* selection_step, not merely that the title later
+    /// changed - a HUD click that fell through (the bug finding 4 describes) still only sets
+    /// `pending` today, so a title-only check can pass by the sim answering before the next check
+    /// even without the fix; this counter cannot move without the call happening.
+    std::uint64_t selection_clicks_ = 0;
     /// Where the left button went down (drawable pixels), to tell a click from a pan drag.
     std::optional<std::pair<double, double>> select_press_;
     /// The held Escape key's first press deselected: its auto-repeats are swallowed too.
@@ -1571,6 +1579,8 @@ bool Viewer::selection_handle(const SDL_Event& e) {
     } else {
         return false;
     }
+    ++selection_clicks_; // G2: counted here, not at the top of selection_handle - a HUD click or
+                         // a tool's click returns before this line and never increments it.
     const SelectionStep step = selection_step(selection_, event);
     selection_ = step.state;
     play_->runner().request_inspect(step.inspect);
@@ -2217,17 +2227,30 @@ void Viewer::script_tick() {
             st.facts["inspection.tile.y"] = std::to_string(insp->tile.y);
         }
     }
-    // Row 18's selection (W4-NEXT-2 F1, finding 1): a script that waits on a fixed frame count to
-    // know a click's selection resolved races the sim thread's inspection answer under load
-    // (`ctest -j 16`, the review's own repro); a script now waits on `selection.kind` instead.
-    // The run loop already re-runs selection_refresh() itself while a click is pending (line
-    // ~1033 above), but only then - a selected building demolished by something other than a
-    // pending click (F3's "local demolish", with no click of its own to make `pending` true)
-    // would otherwise wait on a wake event that may not have fired yet. Refreshing here too,
-    // every tick, costs one more idempotent read of the same published snapshot
-    // (`selection_refresh`'s own contract) and keeps these facts never older than the title
-    // update_title() would compute from the same state right now.
-    selection_refresh();
+    // Row 18's selection (W4-NEXT-2 F1/G1, finding 1 of the 2026-11-11 fix review): a script that
+    // waits on a fixed frame count to know a click's selection resolved races the sim thread's
+    // inspection answer under load (`ctest -j 16`, the first review's own repro); a script now
+    // waits on `selection.kind` instead. F1's own fix called `selection_refresh()` again here,
+    // every tick - but `st.title` above is read from the window title (`SDL_GetWindowTitle`,
+    // itself set by the *last call* to `update_title()`), and nothing re-reads it after this
+    // refresh. A refresh that selects the House here, between the run loop's own
+    // `update_title()` calls (the pending block, line ~1038, and the wake-event handler, the
+    // `handle()` case for `wake_event_`) and this tick's facts, makes `selection.kind` become
+    // "House" while `st.title` still shows the pre-selection text - exactly the gap the first
+    // review's fix for finding 1 (a frame-count race) reopened one layer down (fix review
+    // finding 1). No call here instead: `selection_` is a plain member, changed only by
+    // `selection_handle()` (while this same single thread handles a polled SDL event) and by
+    // `update_title()`'s own call to `selection_refresh()` (reached only from the pending block
+    // or the wake-event case, both also event-handling steps of this one thread's loop, both
+    // completed before `script_tick()` starts). Nothing between `st.title`'s capture above and
+    // the facts just below touches `selection_`, so they read the same state by construction -
+    // the same state the title already reflects, not a newer one `script_tick` itself computed.
+    // A wake event the runner's background thread pushes *while* this tick is running only
+    // enqueues (`SDL_PushEvent` is thread-safe); it is not dequeued and acted on until the next
+    // loop pass's own event-polling step, never mid-tick - so no ordering this packet's own
+    // dev-script holds or `PlayRunner`'s pause can arrange reaches between the title and these
+    // facts either; removing the extra call closes the gap structurally, not by timing.
+    st.facts["selection.clicks"] = std::to_string(selection_clicks_);
     st.facts["selection.pending"] = selection_.pending ? "1" : "0";
     st.facts["selection.selected"] = selection_.selected ? "1" : "0";
     st.facts["selection.kind"] = "";

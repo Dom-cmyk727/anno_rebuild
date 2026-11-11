@@ -4,15 +4,21 @@
 # demolishes it while selected - selection.hpp's own "a building demolished meanwhile drops the
 # selection" exercised through the real window, not just the unit test.
 #
-# F1 (2026-11-11 review, finding 1): every selection check below waits on the `selection.*` fact
-# viewer.cpp's script_tick() builds from the live selection state, never on a fixed frame count -
-# a fixed count races the sim thread's inspection answer under load (the review's own repro,
-# `ctest -j 16`). A screenshot that follows such a wait also gets one more `wait frames 1`: the
-# Windows capture (viewer.cpp's screenshot step) writes `buffer_`, the CPU path's own frame
-# buffer, which is only as new as the window's last draw() call; draw() runs after script_tick()
-# in the same loop pass (viewer.cpp's run loop), so a screenshot taken in the very tick the fact
-# resolves would still read the frame drawn *before* that resolution. One more frame closes that
-# gap (the next script_tick, after that pass's draw()) without weakening the wait itself.
+# F1/G1 (2026-11-11 and fix reviews, finding 1 both times): every selection check below waits on
+# the `selection.*` fact viewer.cpp's script_tick() builds from the live selection state, never on
+# a fixed frame count - a fixed count races the sim thread's inspection answer under load (the
+# first review's own repro, `ctest -j 16`). A screenshot that follows such a wait also gets one
+# more `wait frames 1`: the Windows capture (viewer.cpp's screenshot step) writes `buffer_`, the
+# CPU path's own frame buffer, which is only as new as the window's last draw() call; draw() runs
+# after script_tick() in the same loop pass (viewer.cpp's run loop), so a screenshot taken in the
+# very tick the fact resolves would still read the frame drawn *before* that resolution. One more
+# frame closes that gap (the next script_tick, after that pass's draw()) without weakening the
+# wait itself. G1's own fix: F1's facts called `selection_refresh()` again inside script_tick,
+# which could select the House *after* `st.title` was already captured from the window title and
+# before anything re-read it - the fix review's own repro of this exact script at `-j 16`. The
+# facts now read `selection_` exactly as the run loop's own `update_title()` calls (the pending
+# click loop, the wake-event handler) last left it, the same state the title reflects - see
+# viewer.cpp's own comment at the facts block for the construction argument.
 resize 1024 768
 wait frames 5
 look 1140 516
@@ -45,11 +51,18 @@ wait frames 1
 screenshot selected_house_live
 checkpoint selected_first
 
-# F2 (2026-11-11 review, finding 2): a click on the panel's own drawn UI - the need icon at
-# (794,480), well inside it at (810,495) - is not a world click (selection.hpp's own doc comment);
-# the selection must stay exactly as it is, with no new inspection request and no deselect.
+# F2/G2 (2026-11-11 and fix reviews, findings 2 and 4): a click on the panel's own drawn UI - the
+# need icon at (794,480), well inside it at (810,495) - is not a world click (selection.hpp's own
+# doc comment); the selection must stay exactly as it is, with no new inspection request and no
+# deselect. G2's own correction: checking only the title can pass even without the fix, since an
+# unfixed click only sets `pending` and the title does not change until the sim's slower-than-two-
+# frames answer arrives - exactly the gap that matters under load. `selection.clicks`
+# (viewer.cpp's own counter, incremented only where selection_handle calls selection_step) proves
+# the click was never routed there at all, which a title check alone cannot.
+note fact selection.clicks
 click_px 810 495
-wait frames 2
+wait frames 1
+expect fact selection.clicks same
 expect title selected House
 checkpoint ui_click_keeps_selection
 

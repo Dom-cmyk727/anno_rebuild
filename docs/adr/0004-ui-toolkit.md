@@ -194,6 +194,19 @@ is open (it sees the key first); a held Escape's auto-repeat after a deselect do
 it after ESC left the building tool. Nothing else about the original's selection rules
 (deselect, Escape, a drag, foreign buildings) has been captured; the rows below are QUESTIONs.
 
+**Known limitation: an inspection answer is not tied to its request (F4, finding 7 of the
+2026-11-11 review).** `PlaySnapshot::inspected`/`inspection` echo only the tile that was asked
+about, never a request number; `selection_refresh`'s own `Answer` event matches an incoming
+answer to `state.pending` by tile alone. Two requests for the *same* tile in quick succession (a
+click, then - before that answer is in - a second click elsewhere and back) can have the second
+request's answer resolve the first's `pending`, selecting whatever the first request's tile holds
+even though the player's pointer and intent have since moved on. The fix: a request number the
+snapshot echoes back (`PlayRunner::request_inspect` already hands out a fresh request each call;
+it would need to publish that number, and `SelectionEvent::Answer`/`selection_step` would check it
+against the request the current `pending` was made with, not just the tile). Not implemented here:
+F1's race (facts built from a stale frame count, not from an untagged answer) did not need it, and
+no capture or test in this packet exercises two in-flight requests for one tile.
+
 **QUESTION K-1: what Escape does with a selection.** (a) Deselect, and quit only without a
 selection - **recommended and implemented**: Escape stays the way out of every mode, one press at
 a time. (b) Keep Escape as quit always, deselect by clicking empty ground only. No capture of the
@@ -217,12 +230,16 @@ that hits no ship selects a building - **recommended**, not implemented: it need
 click routing to hand unclaimed clicks on, which this run could not test without the game files.
 (b) Keep ship-start sessions without selection until the opening's UI is redesigned.
 
-**Not done in this host's run (W4-NEXT-2 K, steps 2-4).** The panel is not drawn: of the
-`f15_selected_house` elements only `pionier_bk` (id 974) and `house_portrait` are measured; the
-tab (id 975), the need icons and the close button need `tools/ui_layout.py` against that shot and
-the game files, which this Linux host does not have. Until then the selection shows in the window
-title ("selected <kind> <status>", from the same snapshot answer). CPU/GPU pixel checks, the UI.1
-oracle and `bench_frame` before/after are NOT_RUN.
+**Done, continued on the Windows PC (W4-NEXT-2 K, steps 2-4).** The panel now draws on both the CPU
+and GPU paths, gated on a selected House (`draw_live_screen_xrgb`/`_rgba`'s `selected_house`
+parameter, `ui_mock.cpp`), from three measured `data/ui/hud.txt` elements against
+`f15_selected_house`: `pionier_bk` (id 974), `house_portrait`, and `need_icon_0` (id 727, the
+first of the panel's need icons). The tab (`VIEWINFOPIONIER_TAB` id 975), the panel's other need
+icons and its close button are still unmeasured (OQ-569, OQ-570): an element this packet cannot
+measure is not drawn, per step 2's own rule. CPU/GPU parity (0 of 78,400 pixels differ), the UI.1
+oracle (unchanged, 9 of 9 plus 3 of 3 live screens) and the pixel-level checks below (`selected_
+house_pixel_check.py`) are all executed and passing; `bench_frame` before/after is in that part's
+own REPORTS entry.
 
 ## QUESTION R2: the default surface in `--play`
 

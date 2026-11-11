@@ -2537,6 +2537,28 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
     in this pass), or a search box tight enough to avoid the overlaid banner/rows entirely.
   - Shots kept under `cache/orig/w4next2-ui-captures/d91-20261111-100242/shots/` (not in git);
     see OQ-565's update above for the full list.
+  - **F6 (2026-11-11), calibration attempted and not reached - the uncalibrated numbers above
+    stay marked as such, none promoted to calibrated.** Wrote a fresh script (not the ad hoc one
+    above) against the same `f15_selected_house.png` this packet already has
+    (`E:\anno1503-worktrees\anno1503-UI-1\cache\orig\ui-1\d91-20261030-132532\shots\
+    f15_selected_house.png`), decoding `VIEWINFOPIONIERMAIN_BK` id 974 from this PC's own
+    `toolgfx/fenster.tex` (245 x 467, matching `data/ui/hud.txt`) and comparing it to the shot at
+    its committed (783, 252): plain opaque-pixel mean **32.20** (112,547 px) - not 17.8. Excluding
+    the two sub-sprites this packet's own K step draws over the same plate
+    (`house_portrait`/`need_icon_0`'s rects) only moves it to **30.57** (99,247 px) - most of the
+    gap is not those two overlays. Several "grey-key" readings (excluding opaque pixels whose R/G/B
+    spread is within 5/10/15/20/30 of each other, i.e. desaturated/grey) barely move it either
+    (32.19 down to 31.89 at the widest threshold tried) - so "grey-key" is very likely not a
+    desaturation filter, and nothing in `tools/ui_layout.py` or `docs/re/ui.md` spells out what it
+    is instead. **Conclusion: "grey-key" is not calibratable from what is committed** - it is a
+    term this project's own docs use (`docs/re/ui.md` lines 155/174-176/206/251/655) but never
+    define in code or prose beyond the name itself, and no artifact on this PC reproduces 17.8 for
+    the one pair the review asked to calibrate against first. The id 1511/677/1128/1023/4 numbers
+    for this OQ therefore stay exactly as the previous update left them: uncalibrated, non-decisive,
+    not a rule-out of any candidate. **New QUESTION for the owner, since this blocks closing OQ-565
+    and OQ-567 on sprite-sad evidence at all:** what "grey-key" means precisely (a specific key
+    colour range, a per-sprite matte value read from the file, something else) - without that,
+    future attempts will keep landing in the same uncalibrated place this one did.
 
 ## OQ-568: PlayRunner::one_turn() interrupted by stop() mid-delay drops the turn's queued commands (W4-NEXT-2 P, 2026-11-11)
 - **Status:** open (QUESTION, not changed; re-review of `3f3dd4d8` on the Windows host).

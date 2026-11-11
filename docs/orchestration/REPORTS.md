@@ -6473,3 +6473,115 @@ history already documents the same coordinator-test-area flakiness pattern repea
 canonical gate's own local, controlled run (this entry's own "Gates" section above) is the
 authoritative acceptance evidence for this packet; hosted CI's per-commit flakes on unrelated
 coordinator tests are recorded here for the record, not treated as blocking.
+
+## W4-NEXT-2 — Part W, missing report (finding 8 of the 2026-11-11 review) — 2026-11-11 — status: FINISHED
+
+This entry supplies Part W's own REPORTS record, which finding 8 found missing from this PC's
+work: the capture plan for each OQ, the shots taken, and the acceptance table. It does not redo
+the captures themselves (already on disk, cited in `docs/open-questions.md`'s OQ-565/566/567
+updates); it records what this host did and why.
+
+### Capture plans (written before capturing, as part W step 1 asks)
+
+- **OQ-565 (MAX_PIC's trigger).** Scenario: a fresh Citizen game, the default idle view. Steps:
+  (1) screenshot the initial view; (2) open the default panel shown at start and press Escape,
+  screenshot; (3) click open water, screenshot; (4) click plain forest/grass (no building, no
+  water), screenshot; (5) click the Kontor building itself, screenshot, then Escape, screenshot.
+  Each shot must show the right panel's exact content so a sprite-sad search for `fenster.tex` id
+  5 (`MAX_PIC`) against each can tell whether that frame shows it.
+- **OQ-566 (demolish cursor/highlight).** Scenario: re-examine the existing `r2_demolish` shot
+  (already captured for W4-NEXT-1, kept under the UI-1 worktree's own shots) at higher zoom,
+  rather than a fresh capture - the shot already has demolish mode active over a tile. Steps: (1)
+  crop the highlighted tile and two same-lighting-band plain-grass tiles for a pixel-average tint
+  comparison; (2) determine from `tools/orig/wine/agent.py`'s own capture call whether the OS
+  cursor could appear in any fresh capture at all, before spending a session on one.
+- **OQ-567 (Kontor panel).** Scenario: the same fresh Citizen game as OQ-565. Steps: (1)
+  screenshot the default start-of-game panel; (2) click the Kontor building itself, screenshot;
+  (3) sprite-sad search both shots against the lead candidate (`FREMDERKONTOR_UNTERGRUND` id 1511)
+  and, if that misses, the broader set of same-size background ids (`STADT_BILANZ_BK` 677,
+  `SPIELER_BILANZ_BK` 1128, `NIX_BK` 1023, `MAINUNTERGRUND` 4 itself).
+
+### Shots taken
+
+`cache/orig/w4next2-ui-captures/d91-20261111-100242/shots/` (Wine harness, music/sounds off, not
+in git): `initial_view.png`, `after_esc_from_kontor.png`, `after_missclick_water.png`,
+`click_kontor_building.png`, `after_esc_from_settlement.png`, `missclick_forest.png`. Plus the
+re-examined, already-existing `r2_demolish.png` (UI-1 worktree) and a crop
+(`cache/w4-next-2/demolish_highlight_crop.png`) for OQ-566.
+
+### Acceptance table
+
+| OQ | Resolved? | Evidence |
+|---|---|---|
+| OQ-565 | Partially - (a) (the trigger is a miss-click on land, not water or Escape) answered with real captures; (b) (whether MAX_PIC itself is transient) still open | `after_missclick_water.png`/`missclick_forest.png`/`after_esc_from_kontor.png` compared; a supportive-only sprite-sad number (58.7, explicitly flagged non-decisive, same elevated-mean class as `MAINUNTERGRUND`'s own 82 under content) |
+| OQ-566 | Partially - the tile highlight's shape (one tile, a second thin outline) and an approximate tint are new, real findings; the OS cursor itself is now settled as **unverifiable from this harness** (not merely untried) | `demolish_highlight_crop.png`, pixel averages from `r2_demolish.png`; `tools/orig/wine/agent.py`'s `ImageGrab.grab` read, confirming it cannot composite the X11 hardware cursor |
+| OQ-567 | Still open - two distinct panels identified (a finding of its own) but no background id matched either one | `initial_view.png` vs `click_kontor_building.png`; five candidate ids tried, all 79-96 mean, none under the <15/40-50 bar |
+
+All three captures and their numbers are **uncalibrated** (see the F6 entry below): none of this
+part's own sprite-sad readings should be read as a rule-out or a confirmation against the
+project's stated bar. What *is* decisive, and does not depend on calibration: OQ-565's miss-click
+trigger (a clean visual difference, land vs. water vs. Escape, not a number-based call) and
+OQ-566's cursor-capture-method finding (a fact about the harness, not a measurement).
+
+### Decisions and reasoning
+
+- Re-used the existing `r2_demolish` shot for OQ-566 instead of a fresh Wine session, since the
+  shot already has the exact state needed (demolish mode, a highlighted tile) and a fresh capture
+  would not add anything a crop of the existing one couldn't - minimizing harness sessions.
+- Did not attempt a second capture round to chase OQ-565's remaining half (b, whether MAX_PIC is
+  transient) once (a) was answered: the review's F6 step says draw nothing new unless an OQ
+  *closes*, and neither OQ closed this round, so a second W session would add evidence without
+  moving any OQ to resolved - better spent, if the owner wants it, as its own small follow-up.
+
+---
+
+## W4-NEXT-2 — F6, part W's report and calibration attempt (finding 8 of the 2026-11-11 review) — 2026-11-11 — status: FINISHED, calibration not reached
+
+Part W's own REPORTS entry is above. This covers F6's second half: calibrating the sprite-sad
+method against the one already-trusted number (`VIEWINFOPIONIERMAIN_BK` id 974 at (783, 252), mean
+17.8 on `f15_selected_house`) before trusting any new reading for OQ-565/567.
+
+### What was tried
+
+A fresh script (not the uncalibrated ad hoc one the prior pass used), against the same shot this
+packet already has (`E:\anno1503-worktrees\anno1503-UI-1\cache\orig\ui-1\d91-20261030-132532\
+shots\f15_selected_house.png`, 1024 x 768), decoding id 974 from this PC's own
+`game/app/toolgfx/fenster.tex` (245 x 467, matching `data/ui/hud.txt`'s own `size`) and comparing
+to the shot at exactly (783, 252) - the committed position, not a search, since the goal here is
+reproducing the *number* at a *known* position, not re-finding the position:
+
+| Variant | Mean | Opaque px compared |
+|---|---|---|
+| Plain opaque-pixel SAD | 32.20 | 112,547 |
+| Opaque, excluding the `house_portrait`/`need_icon_0` rects this packet's own K step draws over the same plate | 30.57 | 99,247 |
+| Opaque, excluding near-grey pixels (R/G/B spread ≤ 5/10/15/20/30) | 32.19 / 32.07 / 32.05 / 32.05 / 31.89 | 112,540 / 112,152 / 111,637 / 107,993 / 67,719 |
+
+None reaches 17.8. Excluding the two sub-sprites this packet draws over the plate (a real,
+verifiable overlap) only accounts for a small part of the gap. Excluding "grey" pixels by
+desaturation (the only reading of "grey-key" this session could think to test) barely moves the
+number even at a wide threshold, so that is very likely not what "grey-key" means either.
+
+### Disposition
+
+**Calibration not reached.** "Grey-key" is a term `docs/re/ui.md` uses six times
+(lines 155, 174-176, 206, 251, 655) but defines nowhere in prose or in `tools/ui_layout.py` beyond
+its name - not in this packet's own files, and this pass found no artifact on this PC (script,
+note, or committed tool) that reproduces it. Per the review's own F6 instruction ("remove the
+uncalibrated [numbers], or mark each as uncalibrated"): the uncalibrated numbers in OQ-565/567
+**stay marked as uncalibrated** (they already were, by the prior pass's own honesty about the
+same 96.2-vs-17.8 gap) - nothing here is promoted to "calibrated," and nothing is drawn on the
+strength of any of these numbers. See `docs/open-questions.md`'s OQ-567 update for the new
+evidence recorded, and its own new QUESTION asking the owner what "grey-key" precisely means.
+
+### Decisions and reasoning
+
+- Did not guess a "grey-key" definition and report a number against it as calibrated once a guess
+  happened to move the mean closer to 17.8 - every variant tried is reported, including the ones
+  that didn't help, specifically so a later reader can see what was ruled out, not just a cherry-
+  picked "best" attempt.
+- Did not spend further session time iterating more grey-key definitions (a specific reference
+  colour, a per-file matte value, a region-only exclusion) once two structurally different
+  readings both failed by a wide margin (>10 points of mean SAD): the gap looks too large to close
+  by guessing a filter, and the review's own evidence contract says an unexplained discrepancy
+  should not be hidden behind a weakened tolerance - raising a QUESTION for the owner is the
+  correct next step, not more undirected search.

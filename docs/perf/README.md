@@ -2219,6 +2219,48 @@ which does not exist yet; that is new tooling, not something this run's own log 
     **18281 MiB over 8 tests** - more than half this host's 32 GiB even before anything else on
     the machine is counted, confirming the review's original concern with real numbers instead of
     guesswork.
+  - **F7 (finding 9 of the 2026-11-11 review): the per-test table itself, in git.** Part E's own
+    text said this table was "already here" - only the summary above was. The full table, from
+    `tools/test/peak_report.py cache/w4-next-2/LastTest-full-run.log --inventory
+    cache/w4-next-2/inventory.json --threshold-mib 1024 --jobs 8` against the kept log (sha256
+    `b14c59dee9ebaa2e5e3f0a82a44311eaf0ad7a1a21d4425d3b3057a2ef64225e`), all 27 tests above 1 GiB:
+
+    | Test | Peak (MiB) | Reserves (MiB) | Processors |
+    |---|---|---|---|
+    | `anno_app_tests.scene picture: after a move the pixels equal a fresh scene, and only the marked keys rebuild` | 8715 | no | 1 |
+    | `anno_render_tests.legacy river shading reproduces the previous enhanced digests (game files)` | 4840 | 6747 | 4 |
+    | `anno_render_tests.scene renders match the recorded digests (the Rust reference's, except the enhanced river lines)` | 4840 | 6527 | 4 |
+    | `anno_render_tests.river flow shading moves with the flow on real rivers (Q5, CPU path, game files)` | 2214 | 1024 | 4 |
+    | `anno_render_tests.the flow shading moves with the flow in all windows, not only the flat stems (Q5, game files)` | 2189 | 1024 | 4 |
+    | `anno_render_tests.flow coverage and the water mask over the zoom groups (Q3, game files)` | 1727 | 1024 | 4 |
+    | `anno_render_tests.the light of the flow shading against the legacy shimmer on real rivers (game files)` | 1714 | 1024 | 4 |
+    | `anno_render_tests.the noise coordinate follows the geometry on real rivers: no aliasing (game files)` | 1713 | 1024 | 4 |
+    | `anno_render_tests.the flow shading changes river pixels only and the legacy look stays selectable (game files)` | 1569 | 1024 | 4 |
+    | `anno_render_gpu_tests.picture GPU, constrained: leaving the view with uploads outstanding and returning ends on the fresh scene, and closing with uploads outstanding releases the chunks and the generations` | 1456 | no | 1 |
+    | `anno_app_tests.backing: a derived generation keeps reading its islands after the loaded scene is released (game files)` | 1397 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU, constrained: with stand-ins and dissolves a rebuilt chunk is swapped whole, a chunk that replaces its stand-in dissolves in, and both end on the fresh scene` | 1391 | no | 1 |
+    | `anno_app_tests.backing: queued chunk jobs read valid bytes after the base generation is released (game files)` | 1343 | no | 1 |
+    | `anno_app_tests.scene picture: every changed pixel lies in an invalidated key, at every zoom level` | 1332 | no | 1 |
+    | `anno_render_gpu_tests.GpuList derived chunks (reduce_quad) equal the CPU render_derived_chunk (game files)` | 1332 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU, constrained: an edit published while uploads are outstanding ends on the newest state, every chunk shown meanwhile is one whole state, and nothing replaced is retained` | 1314 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU, constrained: a visible chunk that reaches the GPU after the fade clock was stepped dissolves on a held clock forever, and ends on a clock that moves` | 1292 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU: a late completion of an older generation after a newer invalidation replaces nothing and clears no mark` | 1272 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU: an offscreen edit is fresh after the view returns, at its group and at a derived level` | 1258 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU: accepted builds and an accepted demolish keep the old chunks drawing, become ready only when every affected key is fresh, and then equal a fresh scene` | 1255 | no | 1 |
+    | `anno_render_tests.derived levels: a zoom-out sweep builds every chunk once while it stays cached (game files)` | 1188 | no | 4 |
+    | `anno_render_gpu_tests.the composed frame is identical with the Cpu and GpuList builders (game files)` | 1154 | no | 1 |
+    | `anno_render_gpu_tests.GPU frames at derived levels match the CPU path, objects standing in water included (game files)` | 1150 | no | 1 |
+    | `anno_app_tests.play: an id that does not fit PROD2 is refused` | 1128 | no | 1 |
+    | `anno_render_gpu_tests.GPU ships at derived levels: the reduced frame, close to the reduced chunks (game files)` | 1112 | no | 1 |
+    | `anno_render_tests.river raster agrees with the river the original draws (mask fidelity, rivers.md R1)` | 1094 | 1024 | 4 |
+    | `anno_render_gpu_tests.picture GPU, constrained: one upload per frame finishes a multi-chunk edit while paused, and the paused window idles only once every affected key is GPU-usable` | 1079 | no | 1 |
+
+    The largest sum of unreserved peaks that could run at once under `-j 8` (upper bound; CTest's
+    real schedule/order/RESOURCE_LOCKs not modelled), the same 18281 MiB over 8 tests as the
+    summary above: the scene-picture case (8715), both picture-GPU-constrained pairs (1456+1391,
+    1397+1343), the two further scene-picture/GpuList cases (1332 each) and the
+    uploads-outstanding case (1314).
+
   - **The remedy, answered:** option **(a)** from the QUESTION above - a conservative fixed
     reservation on every currently-unreserved case above the threshold, sized from this table's own
     peaks (the same pattern `docs/perf/README.md` T10c F2 already uses for the render-corpus path)

@@ -2559,6 +2559,25 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
     and OQ-567 on sprite-sad evidence at all:** what "grey-key" means precisely (a specific key
     colour range, a per-sprite matte value read from the file, something else) - without that,
     future attempts will keep landing in the same uncalibrated place this one did.
+  - **G6 (2026-11-11 fix review, finding 7): F6's QUESTION above is withdrawn - the fix review
+    answers it with evidence, not a guess.** Grey-key is a desaturation key after all, exactly as
+    F6's own 32.19-31.89 readings already suggested at a spread of 10-15: skip sprite pixels with
+    alpha < 8, skip sprite pixels with |R-G| < 12 **and** |G-B| < 12, mean the rest's |ΔR|+|ΔG|+|ΔB|
+    over 3 (the exact rule is now in `docs/re/ui.md` section 2, copied from a git-ignored reference
+    script the fix review cites, not committed itself). Run with this rule, id 974 at (783, 252)
+    gives **32.07** on both `f15_selected_house` and a second, independent shot
+    (`f22b_help_house`) - matching the fix review's own figure to the second decimal, so this
+    session's own implementation of the *rule* is faithful. **What still fails is the 17.8 itself:
+    no kept artifact on this PC reproduces it**, and a calibration check against two *other*
+    committed figures (plain sprite-sad, not grey-key: zoom_plus id 44 and compass_w id 48, both on
+    `hud_idle_running`) also fails - this session's method gives 0.962 and 1.029 against the
+    committed 2.885 and 3.088. The gap is therefore not specific to grey-key, to id 974, or to this
+    one shot; it is some broader difference between this measuring method and whatever produced the
+    committed figures (not identified here). Per the fix review's own instruction: an OQ closes only
+    on a calibrated number, and this method is not shown calibrated, so OQ-565/567's own candidate
+    numbers stay exactly as uncalibrated as before - this update supplies the grey-key
+    *definition* (now written down, closing F6's open QUESTION about what the term means) without
+    closing either OQ.
 
 ## OQ-568: PlayRunner::one_turn() interrupted by stop() mid-delay drops the turn's queued commands (W4-NEXT-2 P, 2026-11-11)
 - **Status:** open (QUESTION, not changed; re-review of `3f3dd4d8` on the Windows host).

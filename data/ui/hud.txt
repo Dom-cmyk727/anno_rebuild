@@ -50,11 +50,17 @@ element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK
 element option_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 method sprite-sad shot r2_options
 element rating_bg pos 0 0 size 1024 768 file toolgfx/fenster.tex access STATISTIK_UNTERGRUND tex_id 1509 method sprite-sad shot f15_rating
 element pionier_bk pos 783 252 size 245 467 file toolgfx/fenster.tex access VIEWINFOPIONIERMAIN_BK tex_id 974 method sprite-sad shot f15_selected_house
+# G6 (2026-11-11 fix review, finding 7): this plate's own grey-key mean was recorded here as 17.8;
+# that figure is not reproduced. The defined grey-key rule (docs/re/ui.md section 2) gives 32.07 on
+# this same (783, 252), on both f15_selected_house and a second shot (f22b_help_house); two
+# committed plain (non-grey-key) sprite-sad figures on hud_idle_running (zoom_plus, compass_w)
+# aren't reproduced either (0.962/1.029 vs the committed 2.885/3.088), so the gap is not specific
+# to this element or to grey-key. The position itself is unaffected - not moved.
 # Row 18's need-icon row (W4-NEXT-2 K): three 50x50 goods icons below the portrait. Only the
 # first (food/Nahrung) is measured: WARENICONS_BEDARF id 727 (fenster.inc; inc.txt line 2110),
 # best sprite-sad mean 39.3 at (794, 480) in f15_selected_house (cache/w4-next-2/sad_search.py,
-# full RGB SAD, stride 2, alpha>=128 pixels only - in the project's existing good-match range,
-# e.g. pionier_bk's 17.8). The other two (leather, wood) are visibly the same 50x50 size and row
+# full RGB SAD, stride 2, alpha>=128 pixels only - in the project's existing good-match range).
+# The other two (leather, wood) are visibly the same 50x50 size and row
 # in the same shot but their own tex ids (an offset within the WARENICONS_BEDARF family, by
 # analogy with construction.txt's cell_icon_tex_id formula) are not resolved - OQ-569. Not drawn
 # until resolved.

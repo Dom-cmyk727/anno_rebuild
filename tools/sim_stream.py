@@ -103,6 +103,12 @@ Stream 130 (task MAP-NEEDS-2 N2): 129 was unpublished but pinned by the SUPPLY-1
 site (timeline stays 5): a Farm figure of the animal route (job 0x2e) now grazes and ends, so sheep and pasture farms keep
 sending (more FarmWorkerDispatch draws); the version word moves every hash.
 
+Stream 138 (MAP-INTEGRATE-2) combines Route-only136 with Extract137. The empty/synthetic worlds
+transcribed here include Route's three trailing FreightRules u32 values; they contain no figure, so
+the Figure freight suffix and Extract's mason-only harvest bytes are exercised by the independent
+populated-scope oracle in integration_stream_ref.py. That oracle also covers Quarry tag-9 fields and
+a bound Mine whose reservation equals two carrier reservations. No draw site is added; timeline 5.
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -127,7 +133,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 137
+STATE_HASH_VERSION = 138
 PRNG_TIMELINE_VERSION = 5
 
 
@@ -343,7 +349,8 @@ def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT, road_level=False, road_pie
             + cargo_rules_bytes(cargo)  # cargo (124)
             + u8(1 if road_level else 0) + u8(1 if road_pieces else 0)  # road_require_land_level, road_preserve_nonroad_pieces (125)
             + u8(1 if hygiene else 0) + u8(1 if skip_uncuttable else 0)  # forestry_claim_hygiene, forestry_skip_uncuttable (126)
-            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0) + u8(1 if booking else 0) + u32(1024) + u32(2048) + u32(64))  # house_updates, save_billed_goods (128)
+            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0) + u8(1 if booking else 0)
+            + u32(1024) + u32(2048) + u32(64))  # house/save (128), booking (133), freight (138 union)
 
 
 def settings_bytes(width=0, height=0):
@@ -942,7 +949,7 @@ def values():
 
 def goldens():
     found = {}
-    path = ROOT / 'fixtures/synthetic/sim/iron2/current137/goldens.txt'
+    path = ROOT / 'fixtures/synthetic/sim/integrate2/current138/goldens.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         parts = line.split('#')[0].split()
         if len(parts) == 4:
@@ -954,7 +961,7 @@ def corpus_versions():
     """(kStateHashVersion, kPrngTimelineVersion) from the version header line of
     fixtures/synthetic/sim/scenario_corpus.txt (written by scenario_test.cpp; its create
     hashes move with both versions), or None when the file has none."""
-    path = ROOT / 'fixtures/synthetic/sim/iron2/current137/scenario_corpus.txt'
+    path = ROOT / 'fixtures/synthetic/sim/integrate2/current138/scenario_corpus.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+) schema=ECONBK1 component=import-only$', line.strip())
         if m:
@@ -1013,10 +1020,10 @@ def cargo_rules_fixture_text():
 
 
 CARGO_RULES_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
-                                   'synthetic', 'sim', 'freight', 'current136', 'cargo_rules_bytes.txt')
+                                   'synthetic', 'sim', 'cargo_rules_bytes.txt')
 
 HOLDS_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
-                             'synthetic', 'sim', 'freight', 'current136', 'ship_holds.txt')
+                             'synthetic', 'sim', 'ship_holds.txt')
 
 
 def main():

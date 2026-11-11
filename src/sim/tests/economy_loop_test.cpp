@@ -553,7 +553,7 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
     export_text("summary.txt", summary.str());
     MESSAGE(summary.str());
     std::ifstream pins(std::string(ANNO_FIXTURES_DIR) +
-                       "/sim/econbook1/current134/loop_checkpoints.txt");
+                       "/sim/integrate2/current138/loop_checkpoints.txt");
     REQUIRE(pins.good());
     std::vector<std::string> expected;
     for (std::string line; std::getline(pins, line);)

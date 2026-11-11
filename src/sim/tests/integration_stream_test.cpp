@@ -1,4 +1,5 @@
 // Independent populated field bytes and hierarchical digests, authored before comparing C++.
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -16,8 +17,8 @@ struct Expected {
     std::uint64_t hash;
 };
 std::map<std::string, Expected> expected() {
-    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "iron2" / "current137" /
-                     "populated_fields.txt");
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "integrate2" /
+                     "current138" / "populated_fields.txt");
     REQUIRE(in.good());
     std::map<std::string, Expected> out;
     std::string line;
@@ -32,12 +33,18 @@ std::map<std::string, Expected> expected() {
         for (std::size_t i = 0; i < hex.size(); i += 2)
             e.bytes.push_back(static_cast<std::uint8_t>(std::stoul(hex.substr(i, 2), nullptr, 16)));
     }
-    REQUIRE(out.size() == 7);
+    REQUIRE(out.size() == 9);
     return out;
 }
-template <class T> void compare(const Expected& e, const T& value) {
+template <class T> void compare(const char* name, const Expected& e, const T& value) {
     sim::WriteArchive bytes;
     sim::fields(bytes, value);
+    CAPTURE(std::string{name});
+    CAPTURE(bytes.data().size());
+    CAPTURE(e.bytes.size());
+    const auto mismatch = std::mismatch(bytes.data().begin(), bytes.data().end(), e.bytes.begin(),
+                                        e.bytes.end());
+    CAPTURE(std::distance(bytes.data().begin(), mismatch.first));
     CHECK(bytes.data() == e.bytes);
     sim::HashArchive hash;
     sim::fields(hash, value);
@@ -83,15 +90,15 @@ sim::Figure actor(std::uint64_t id, std::uint32_t kind, sim::FigureId parent = {
 }
 } // namespace
 TEST_CASE(
-    "integration oracle: populated script permission actor navigation holds and animal scopes") {
+    "integration oracle: populated freight quarry mason and two-reserver mine scopes") {
     const auto e = expected();
-    compare(e.at("header"), sim::StateHeader{});
-    compare(e.at("accounts"),
+    compare("header", e.at("header"), sim::StateHeader{});
+    compare("accounts", e.at("accounts"),
             sim::CityAccounts{65000, 0x0102030405060708ULL, 105, 210, 4294967313ULL, 28});
     auto economy = sim::EconomyConfig{};
     economy.climate_names.push_back("CUSTOM");
     economy.tax_count = 4;
-    compare(e.at("economy"), economy);
+    compare("economy", e.at("economy"), economy);
     sim::SimConfig config;
     config.economy = economy;
     std::vector<sim::GoodsInfo> priced{{"UNUSED"}, {"ALPHA"}, {"BETA"}};
@@ -110,17 +117,75 @@ TEST_CASE(
     p.research.state.resize(65);
     p.research.progress.resize(65);
     p.permissions = {{sim::TypeId{70001}, 0}, {sim::TypeId{90001}, 255}};
-    compare(e.at("player"), p);
+    compare("player", e.at("player"), p);
     sim::FigureRegistry registry;
     registry.list.slots.resize(40);
     registry.list.hint = 8;
     registry.list.cursor = 9;
     registry.stamp = 19;
-    registry.list.slots[37] = actor(1, 1503, {}, {}, false, true);
+    auto ship = actor(1, 1503, {}, {}, false, true);
+    ship.nav->order = sim::NavOrder{55, true, 2048, 2304};
+    ship.nav->ticket = 9;
+    ship.nav->seg = {sim::NavSegKind::Turn, 2, 92, 10, 500};
+    ship.freight_generation = 4;
+    auto& freight = ship.freight.emplace();
+    freight.stops = {{sim::BuildingId{77}, 2048, 2304,
+                      {{sim::FreightDirection::UnloadAmount, 9, 3}}}};
+    freight.phase = sim::FreightPhase::Sailing;
+    freight.expected_order_id = 55;
+    freight.order_generation = 4;
+    freight.last_tick = 1000;
+    freight.credit_ticks = 33;
+    freight.wait_remaining = 7;
+    freight.scan_next = 1;
+    freight.matching_raw = 512;
+    freight.remaining_raw = 256;
+    freight.matching_holds = {0};
+    freight.empty_holds = {1};
+    freight.candidate_next = 1;
+    freight.completed_cycles = 2;
+    registry.list.slots[37] = std::move(ship);
     registry.list.slots[2] = actor(2, 717, sim::FigureId{1}, 0);
     registry.list.slots[7] = actor(3, 718, sim::FigureId{2});
     registry.list.slots[8] = actor(4, 106, {}, {}, true);
-    compare(e.at("figures"), registry);
+    auto mason = actor(5, 400);
+    mason.home = sim::BuildingId{88};
+    mason.job = 0x2c;
+    mason.harvest = sim::HarvestState{};
+    mason.harvest->step = sim::HarvestStep::Cut;
+    mason.harvest->start_delay = 0;
+    mason.harvest->wait = 4321;
+    mason.harvest->target = {113, 111};
+    mason.harvest->goal_col = 2;
+    mason.harvest->goal_row = 1;
+    registry.list.slots[9] = std::move(mason);
+    for (std::size_t slot = 10; slot <= 11; ++slot) {
+        auto reserver = actor(slot - 4, 400);
+        reserver.job = 0x34;
+        reserver.transport.target = sim::BuildingId{77};
+        reserver.transport.reserved_88 = 256;
+        registry.list.slots[slot] = std::move(reserver);
+    }
+    compare("figures", e.at("figures"), registry);
+    sim::Mine mine;
+    mine.last = 12;
+    mine.switched_on = true;
+    mine.deep = false;
+    mine.out = 128;
+    mine.activity = 3;
+    mine.reserved = 512;
+    mine.deposit = 3;
+    mine.status = {sim::Status::MissingInput, 2, false, 9};
+    compare("mine", e.at("mine"), mine);
+    CHECK(registry.list.slots[10]->transport.reserved_88 +
+              registry.list.slots[11]->transport.reserved_88 ==
+          mine.reserved);
+    sim::Quarry quarry;
+    quarry.last = 22;
+    quarry.suspended = true;
+    quarry.status = {sim::Status::StorageFull, 3, false, 44};
+    quarry.claims = {1, 0};
+    compare("quarry", e.at("quarry"), quarry);
     sim::ScriptRuntime r;
     r.source = "[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n\"ME\" 0\n[SCRIPT_KERNEL]\n"
                "SET X = TRUE;\nSET Y = FALSE;\nSET Z = TRUE;\nINITBLOCK(){ MONEY_ADD(\"ME\",7); "
@@ -143,7 +208,7 @@ TEST_CASE(
     players.slots[0] = p;
     REQUIRE(sim::restore_script(r, *types.value(), players, sim::SimConfig{}).empty());
     REQUIRE(sim::validate_script(r, *types.value(), players, sim::SimConfig{}).empty());
-    compare(e.at("script"), r);
+    compare("script", e.at("script"), r);
     // Direct wrong readings fail the same oracle; a round-trip alone would miss these.
     registry.list.slots[8]->job = 0x2a;
     sim::WriteArchive wrong;

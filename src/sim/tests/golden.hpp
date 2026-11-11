@@ -34,7 +34,7 @@ struct Golden {
 };
 
 inline std::filesystem::path goldens_path() {
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "iron2" / "current137" /
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "integrate2" / "current138" /
            "goldens.txt";
 }
 
@@ -43,7 +43,7 @@ inline std::filesystem::path goldens_path() {
 inline std::filesystem::path current_replay_fixture_path(const char* name) {
     static_assert(sim::kStateHashVersion == 138,
                   "choose a new recording directory for a new identity");
-    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "iron2" / "current137" / name;
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "integrate2" / "current138" / name;
 }
 
 inline std::vector<Golden> read_goldens() {

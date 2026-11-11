@@ -2070,8 +2070,7 @@ std::vector<std::uint8_t> rules_stream(sim::Rules r) {
 TEST_CASE("cargo rules: the Rules bytes equal the independent Python transcription") {
     // fixtures/synthetic/sim/cargo_rules_bytes.txt is written by tools/sim_stream.py from the spec
     // alone (python3 -I tools/sim_stream.py --check also verifies that it is current).
-    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "freight" / "current136" /
-                     "cargo_rules_bytes.txt");
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "cargo_rules_bytes.txt");
     REQUIRE(in.good());
     std::map<std::string, std::string> want;
     for (std::string line; std::getline(in, line);) {

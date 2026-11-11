@@ -403,7 +403,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                                   const UiMockSpec& screen, UiTexCache& cache_wrapper,
                                   const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                                   const HudCounters& counters, bool placement_open,
-                                  bool demolish_mode, bool paused) {
+                                  bool demolish_mode, bool paused, bool selected_house) {
     if (dst == nullptr || dst_w != hud.resolution_w || dst_h != hud.resolution_h)
         return "draw_live_screen_xrgb: destination size does not match the layout's resolution";
 
@@ -583,6 +583,16 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         }
     }
 
+    // ADR 0004 row 18 (W4-NEXT-2 K): the selected-house panel, idle HUD only (never together
+    // with the construction menu - same split as placement_open above). Only what is sprite-sad
+    // measured is drawn: the plate, the portrait, and the row's first need icon (OQ-569/OQ-570
+    // cover the rest - not drawn).
+    if (!is_construction && selected_house) {
+        blit_el("pionier_bk");
+        blit_el("house_portrait");
+        blit_el("need_icon_0");
+    }
+
     // ADR 0004 row 10: "parchment over the map, HUD chrome stays" (docs/re/ui.md line 643).
     // Drawn last, after every HUD/menu element above, so it sits over the map but never hides
     // the chrome already blitted this frame.
@@ -599,7 +609,7 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache_wrapper,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters, bool placement_open, bool demolish_mode,
-                      bool paused) {
+                      bool paused, bool selected_house) {
     if (w != hud.resolution_w || h != hud.resolution_h)
         return std::string(
             "draw_live_screen_rgba: destination size does not match the layout's resolution");
@@ -754,6 +764,14 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                 }
             }
         }
+    }
+
+    // ADR 0004 row 18 (W4-NEXT-2 K): same split and same measured-only elements as
+    // draw_live_screen_xrgb's own copy of this block.
+    if (!is_construction && selected_house) {
+        blit_el("pionier_bk");
+        blit_el("house_portrait");
+        blit_el("need_icon_0");
     }
 
     // ADR 0004 row 10: "parchment over the map, HUD chrome stays" (docs/re/ui.md line 643);

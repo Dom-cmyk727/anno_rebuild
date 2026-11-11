@@ -54,6 +54,16 @@ struct HudLayout {
     [[nodiscard]] const UiElement* element(const std::string& name) const;
 };
 
+/// Whether (`px`,`py`) HUD-reference drawable pixels fall inside `hud`'s own "panel" rectangle
+/// (ADR 0004 "Selection", finding 2 of the 2026-11-11 review): the right-side chrome hud.txt
+/// places at (779,0) 245x733 (`MAINUNTERGRUND`, method `atlas-right`), which covers every element
+/// drawn within it (the tabs, the selected-building panel and its need icons, the close button).
+/// A pure geometry test, not a drawing decision: true whether or not that panel is currently
+/// shown, since the right chrome is drawn at every HUD-idle screen regardless (docs/re/ui.md,
+/// `hud_idle`). False when `hud` has no "panel" element at all (no HUD layout loaded, e.g. a
+/// window without --construction-menu): a click can never land on drawn UI that doesn't exist.
+[[nodiscard]] bool point_in_hud_panel(const HudLayout& hud, double px, double py);
+
 /// One `category` line of construction.txt (docs/re/ui.md section 3.1).
 struct ConstructionCategory {
     std::string name;

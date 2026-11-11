@@ -147,12 +147,102 @@ the next slice.
 | 15 | Ship list (key S) | Placeholder | Nothing - **a real key collision**: the viewer's own developer controls already bind S to pan | UI: needs its own key or a scheme that resolves the collision (mirrors the B/Esc precedent H1 already set for the construction menu) |
 | 16 | City list (key C) | Placeholder | Nothing | UI only |
 | 17 | Rating (key Q, full frame) | Placeholder | Nothing - **a real key collision**: the viewer's own developer controls already bind Q to quit | UI: same collision pattern as 15. Sim: whatever statistics the rating screen shows would need their own aggregation, not yet checked for existing equivalents |
-| 18 | Selected house | Placeholder | Nothing (the same gap as 4 - this is the info panel for an already-built instance) | Same as 4 |
+| 18 | Selected house | Partial | A left click selects a built building of the player's city and Escape deselects ("Selection" below); the selection shows in the title only, the panel is not drawn | UI: the panel's measurement (tab 975, need icons, close button) and drawing |
 | 19 | Deselected right panel | Placeholder | Nothing | UI only; an empty-panel default, no sim feature needed |
 
 Pre-game menus (main menu, singleplayer setup, `tools/orig/menus.json`) are out of this table:
 `docs/re/ui.md` section 1 itself marks them "not the owner in-game test surface", and `--play`
 starts past them - this ADR's whole scope is the in-game UI reachable from a running session.
+
+## Selection: clicking a built building (W4-NEXT-2 K, row 18)
+
+**Where it lives.** Viewer UI state (`app::SelectionState`, `selection.hpp`), never sim state: a
+building id and the clicked map tile, never a screen position, so pan and zoom leave it as it
+is. Selecting posts no command; a test checks the state hash is unchanged
+(`inspect_building_test.cpp`, "selecting and deselecting writes no sim state", with a negative
+control that posts a demolish and is seen).
+
+**How a click resolves.** The click asks the runner to inspect the tile under the pointer
+(`PlayRunner::request_inspect`, the developer inspection's own slot); the next published snapshot
+answers which of the player's buildings stands there (`PlaySnapshot::inspection`, and the new
+`PlaySnapshot::inspected`, the tile it answers even when nothing stands there). The answer selects
+that building, or deselects on empty ground (also when the player has no city yet: the tile is
+answered as empty). Every later answer for the selected tile re-checks the building's id, so a
+building demolished or replaced meanwhile drops the selection. A paused runner answers a new
+request by republishing (`answer_inspection_while_paused`), because a pause publishes no turn.
+While the developer tool is on, its hover keeps the inspection slot, and a click still waiting
+for its answer is dropped. One change for the developer tool follows: a hover while paused is now
+answered by that republish, where before the old answer stayed (and `live_inspection` hid it).
+
+**What a left click means** (`selection_step`, unit-tested in `selection_test.cpp`):
+
+| Mode | Left click | Escape |
+|---|---|---|
+| Construction tool armed (Build) | the tool's (place); the selection stays | the menu's / the tool's, as today |
+| Demolish mode | the tool's (demolish); a demolished selected building drops the selection at the first answer after the tool is off again (while it is on, the hover owns the answers) | as today |
+| Developer tool on | the tool's | as today |
+| Otherwise (Select) | a click (press and release within 4 drawable pixels) selects the building under it, or deselects on empty ground or off the map; a drag still pans | with a selection or a pending click: deselect (consumed); without one: today's behaviour (quit) |
+
+Only with `--play --ui classic` in a session started **without** the ship-start opening (an
+existing-town scenario): a ship-start session has no selection at all yet, also after a city is
+founded, because its left clicks belong to the opening's ship selection for the whole session
+(QUESTION K-5). `--ui dev` and `--view` are unchanged. The construction menu keeps Escape while it
+is open (it sees the key first); a held Escape's auto-repeat after a deselect does not quit.
+
+**Evidence.** The original's own capture recipe for `f15_selected_house` (`docs/re/ui.md` §7 and §9:
+"place public (0,0) type 501, ESC, click the house") shows a left click on a built house selects
+it after ESC left the building tool. Nothing else about the original's selection rules
+(deselect, Escape, a drag, foreign buildings) has been captured; the rows below are QUESTIONs.
+
+**Known limitation: an inspection answer is not tied to its request (F4, finding 7 of the
+2026-11-11 review; corrected by G4, finding 6 of the 2026-11-11 fix review).** `PlaySnapshot::
+inspected`/`inspection` echo only the tile that was asked about, never a request number;
+`selection_refresh`'s own `Answer` event matches an incoming answer to `state.pending` by tile
+alone. Two requests for the *same* tile in quick succession (a click, then - before that answer is
+in - a second click elsewhere and back) can have the second request's answer resolve the first's
+`pending`, selecting whatever the first request's tile holds even though the player's pointer and
+intent have since moved on. The fix: a request number the snapshot echoes back -
+`PlayRunner::request_inspect` (`play.hpp`) does not hand one out today; it only stores the tile
+under a mutex (`inspect_tile_`), with no counter or identity of any kind. The fix would need to add
+one (incremented per call, published in `PlaySnapshot`), and `SelectionEvent::Answer`/
+`selection_step` would check it against the request the current `pending` was made with, not just
+the tile. Not implemented here: F1's race (facts built from a stale frame count, not from an
+untagged answer) did not need it, and no capture or test in this packet exercises two in-flight
+requests for one tile.
+
+**QUESTION K-1: what Escape does with a selection.** (a) Deselect, and quit only without a
+selection - **recommended and implemented**: Escape stays the way out of every mode, one press at
+a time. (b) Keep Escape as quit always, deselect by clicking empty ground only. No capture of the
+original's Escape with a selection exists (W4-NEXT-2 W could take one).
+
+**QUESTION K-2: click or drag.** The left button already pans by dragging. (a) A press and
+release within 4 drawable pixels is a click (selects); farther is a drag (pans) - **recommended
+and implemented** (`Viewer::kClickSlop`). (b) Pan with the right button only and give the left
+button to selection alone (changes how the map feels today).
+
+**QUESTION K-3: a click on empty ground or water.** (a) Deselect - **recommended and
+implemented**. (b) Keep the selection until Escape or another building is clicked.
+
+**QUESTION K-4: other players' buildings.** The inspection answers only the player's own city
+(`inspect_building`), so a click on a foreign building deselects today. (a) Keep that until a
+capture shows what the original's panel shows for a foreign building - **recommended**. (b) Select
+foreign buildings too (needs a read-only query for another city).
+
+**QUESTION K-5: selection in a ship-start session.** (a) Once the player has a city, a click
+that hits no ship selects a building - **recommended**, not implemented: it needs the opening's
+click routing to hand unclaimed clicks on, which this run could not test without the game files.
+(b) Keep ship-start sessions without selection until the opening's UI is redesigned.
+
+**Done, continued on the Windows PC (W4-NEXT-2 K, steps 2-4).** The panel now draws on both the CPU
+and GPU paths, gated on a selected House (`draw_live_screen_xrgb`/`_rgba`'s `selected_house`
+parameter, `ui_mock.cpp`), from three measured `data/ui/hud.txt` elements against
+`f15_selected_house`: `pionier_bk` (id 974), `house_portrait`, and `need_icon_0` (id 727, the
+first of the panel's need icons). The tab (`VIEWINFOPIONIER_TAB` id 975), the panel's other need
+icons and its close button are still unmeasured (OQ-569, OQ-570): an element this packet cannot
+measure is not drawn, per step 2's own rule. CPU/GPU parity (0 of 78,400 pixels differ), the UI.1
+oracle (unchanged, 9 of 9 plus 3 of 3 live screens) and the pixel-level checks below (`selected_
+house_pixel_check.py`) are all executed and passing; `bench_frame` before/after is in that part's
+own REPORTS entry.
 
 ## QUESTION R2: the default surface in `--play`
 

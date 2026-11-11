@@ -131,6 +131,8 @@ The military tab and key **D** open the same player-list panel (`r2_tab_military
 
 Machine-readable copy: [`data/ui/hud.txt`](../../data/ui/hud.txt). Rectangles are **measured**, not `screens.json` fractions. Method **sprite-sad**: decode the named `.tex` id to RGBA and take the (x, y) of minimum mean absolute RGB error on opaque pixels, inside a stated search box, on a named shot. A match is kept when that mean is below 15 (clean overlay) or is the atlas under live content (minimap / status bar digits, mean 40–50).
 
+**Grey-key (G6, 2026-11-11 fix review, finding 7).** A second sprite-sad variant, used where the sprite itself carries a solid-grey fill the live shot does not reproduce pixel-for-pixel (a plate under live text/icons, not the plate's own edges): skip a sprite pixel with alpha < 8 (transparent, as the plain method already does); *also* skip a sprite pixel where |R−G| < 12 **and** |G−B| < 12 (a near-grey/desaturated fill pixel, kept out of the comparison instead of counted as error); the mean is |ΔR| + |ΔG| + |ΔB| over the kept pixels, divided by 3, same as the plain method otherwise. A "grey-key mean" figure in this document uses this rule; a plain "sprite-sad mean"/"opaque mean" figure does not.
+
 ### 2.1 Right chrome and tabs
 
 | Element | Pixel pos / size | Graphic | Frames / states | Method / shot | Click / hotkey |
@@ -652,7 +654,9 @@ Help tab selects `MAINTAB` frame 14 and shows an info-mode cursor (`r2_tab_help`
 
 ### 9.7 Selected house
 
-Place public (0,0) type 501, ESC, click the house: right panel with portrait and need icons (`f15_selected_house`). Portrait graphic is `ToolGfx/Pioniere.tex` id 1 100 x 108 at **(812, 355)** (grey-key mean 34.2; the live needs digits sit on the sprite). Panel plate: `VIEWINFOPIONIERMAIN_BK` id 974 245 x 467 at **(783, 252)**, grey-key mean **17.8**. `WOHNHAUS_PLATTE` id 883 244 x 469 is the other plate (opaque mean 32 at (779, 244); not the better origin). `TOOLTIP:WOHNHAUSINFO` 3 lines. `VIEWINFOPIONIER_TAB` id 975 42 x 46.
+Place public (0,0) type 501, ESC, click the house: right panel with portrait and need icons (`f15_selected_house`). Portrait graphic is `ToolGfx/Pioniere.tex` id 1 100 x 108 at **(812, 355)** (grey-key mean 34.2; the live needs digits sit on the sprite). Panel plate: `VIEWINFOPIONIERMAIN_BK` id 974 245 x 467 at **(783, 252)**. `WOHNHAUS_PLATTE` id 883 244 x 469 is the other plate (opaque mean 32 at (779, 244); not the better origin). `TOOLTIP:WOHNHAUSINFO` 3 lines. `VIEWINFOPIONIER_TAB` id 975 42 x 46.
+
+**G6 (2026-11-11 fix review, finding 7): the panel plate's own grey-key mean, 17.8, is not reproduced.** The defined grey-key rule above (§2), run on `f15_selected_house` at this same (783, 252), gives **32.07**, not 17.8 - the same figure on `f22b_help_house` (a second, independent shot of the same panel). Calibrated against two committed *plain* sprite-sad figures on `hud_idle_running` (zoom + id 44 at (959, 7), compass west id 48 at (965, 140)): this method gives 0.962 and 1.029, not the committed 2.885/3.088 either - so the gap is not specific to grey-key or to this one panel, and this session's own implementation is not shown trustworthy enough to use for a new measurement. No element here moves on either the 17.8 or the 32.07 figure; see OQ-567 for what this means for the open panel-id questions.
 
 ### 9.8 Deselect
 

@@ -1,0 +1,119 @@
+# W4-NEXT-2 K: row 18, selecting a built house. Builds one pioneer house (public (0,0), id 501,
+# construction_full_proof.script's own proven-free tile 1156,516), selects it, screenshots the
+# panel, deselects with Escape, builds a second house at a neighbouring tile, selects it, then
+# demolishes it while selected - selection.hpp's own "a building demolished meanwhile drops the
+# selection" exercised through the real window, not just the unit test.
+#
+# F1/G1 (2026-11-11 and fix reviews, finding 1 both times): every selection check below waits on
+# the `selection.*` fact viewer.cpp's script_tick() builds from the live selection state, never on
+# a fixed frame count - a fixed count races the sim thread's inspection answer under load (the
+# first review's own repro, `ctest -j 16`). A screenshot that follows such a wait also gets one
+# more `wait frames 1`: the Windows capture (viewer.cpp's screenshot step) writes `buffer_`, the
+# CPU path's own frame buffer, which is only as new as the window's last draw() call; draw() runs
+# after script_tick() in the same loop pass (viewer.cpp's run loop), so a screenshot taken in the
+# very tick the fact resolves would still read the frame drawn *before* that resolution. One more
+# frame closes that gap (the next script_tick, after that pass's draw()) without weakening the
+# wait itself. G1's own fix: F1's facts called `selection_refresh()` again inside script_tick,
+# which could select the House *after* `st.title` was already captured from the window title and
+# before anything re-read it - the fix review's own repro of this exact script at `-j 16`. The
+# facts now read `selection_` exactly as the run loop's own `update_title()` calls (the pending
+# click loop, the wake-event handler) last left it, the same state the title reflects - see
+# viewer.cpp's own comment at the facts block for the construction argument.
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+click 1156 516
+wait outcome
+expect outcome Applied
+checkpoint built_first
+
+# Disarm the developer tool: while the menu is still open, a second B falls through to it
+# (construction_handle's own key comment - the first B only opens the menu) and DevTool::handle's
+# own Toggle flips `enabled_` false, since `arm()` had set it true (dev_tool.cpp). Cancel
+# (the pickaxe/X click) does NOT clear this - selection needs the tool fully off
+# (selection_active()'s own "!(dev_ enabled)"), not just the panel closed.
+key b
+wait frames 2
+key esc
+wait frames 5
+
+# Select the first house: construction menu closed, the developer tool disarmed, a click on its
+# tile falls to selection_handle.
+click 1156 516
+wait fact selection.kind == House within 5000
+expect title selected House
+wait frames 1
+screenshot selected_house_live
+checkpoint selected_first
+
+# F2/G2 (2026-11-11 and fix reviews, findings 2 and 4): a click on the panel's own drawn UI - the
+# need icon at (794,480), well inside it at (810,495) - is not a world click (selection.hpp's own
+# doc comment); the selection must stay exactly as it is, with no new inspection request and no
+# deselect. G2's own correction: checking only the title can pass even without the fix, since an
+# unfixed click only sets `pending` and the title does not change until the sim's slower-than-two-
+# frames answer arrives - exactly the gap that matters under load. `selection.clicks`
+# (viewer.cpp's own counter, incremented only where selection_handle calls selection_step) proves
+# the click was never routed there at all, which a title check alone cannot.
+note fact selection.clicks
+click_px 810 495
+wait frames 1
+expect fact selection.clicks same
+expect title selected House
+checkpoint ui_click_keeps_selection
+
+# Escape deselects (K-1): the title drops "selected", the panel stops drawing.
+key esc
+wait fact selection.selected == 0 within 5000
+expect title-lacks selected
+wait frames 1
+screenshot deselected_live
+checkpoint deselected
+
+# Build a second house clear of the first's 4x4 footprint (1156..1159), select it instead of the
+# first (only one selection at a time).
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+click 1164 516
+wait outcome
+expect outcome Applied
+checkpoint built_second
+key b
+wait frames 2
+key esc
+wait frames 5
+click 1164 516
+wait fact selection.kind == House within 5000
+expect title selected House
+checkpoint selected_second
+
+# Demolish the selected building while it is selected, with the developer tool still fully off
+# (unchanged since the "key b"/"key esc" pair above - selection_active() still holds): a direct
+# world command (`local demolish`, dev_script.cpp's own verb, which posts the command straight to
+# the runner, bypassing dev_/the pickaxe entirely) so selection_refresh()'s own drop path (the
+# selected id re-checked against the next inspection answer for its tile) is what resolves this
+# title change, not DevTool's hover inspection. F3 (finding 6 of the 2026-11-11 review): the
+# earlier version re-armed the tool first to reach the pickaxe, so selection_refresh() returned
+# early (it drops `pending` and does nothing else while the tool is on) and this check passed for
+# an unrelated reason - the tool's own hover inspection going empty, not the selection's drop path.
+local demolish 1164 516
+wait outcome
+expect outcome Applied
+wait fact selection.selected == 0 within 5000
+expect title-lacks selected
+checkpoint demolished_while_selected
+
+# No trailing "key esc": unlike the pre-F3 version, the developer tool stays off from here to the
+# end (F3's whole point), so selection_active() stays true with nothing selected - Escape's own
+# table entry for that case ("without one: today's behaviour: quit") makes selection_handle return
+# unconsumed, and the window's own default Escape binding would quit *before* this `quit` step
+# ever ran, leaving DevScript::done() false and the window exiting 1 even though every check
+# above passed (viewer.cpp's run loop; main.cpp's own "script failed or didn't finish" check).
+quit

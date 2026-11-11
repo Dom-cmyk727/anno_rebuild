@@ -2159,3 +2159,118 @@ which is the opposite set from the unreserved large cases C-3 is about. Getting 
 numbers for those still needs a per-process memory sampler wrapped around ctest item execution,
 which does not exist yet; that is new tooling, not something this run's own log already contains.
 "No gate run was available" is no longer the blocker - "no sampler for the unreserved cases" is.
+
+**Update, W4-NEXT-2 part M (2026-11-11): the sampler exists; the C-3 numbers do not yet.**
+
+- **Launcher.** `anno_peak_launcher` (`src/test_support/src/peak_launcher.cpp`) runs one test
+  process, waits, and prints `[anno-test peak] peak_bytes=<n> source=<how> exit=<code>
+  wall_ms=<ms> test=<name>` to stderr. Linux: `ru_maxrss` from `wait4` (the test process or a
+  descendant it waited for; KiB on Linux, bytes on macOS). Windows: `PeakWorkingSetSize` of the
+  child's handle after it exited. Opt-in: the CMake option `ANNO_TEST_PEAK_MEMORY` (default OFF;
+  its default is taken from the environment variable of the same name at the first configure)
+  makes it every doctest target's `CROSSCOMPILING_EMULATOR`, which doctest's discovery runs each
+  case (and its listing) through. CMake 3.28's `TEST_LAUNCHER` does not exist and 3.29's would
+  not reach the cases a discovery include file adds, so the emulator property is the seam. It is
+  configure-time, not runtime: a runtime switch would put an extra process in every run of every
+  test. A build directory with it on: `ANNO_TEST_PEAK_MEMORY=1 cmake --preset ...` into its own
+  `-B` directory.
+- **Its contract** (`peak_launcher_contract`, `tools/test/peak_launcher_test.py`): a 256 MiB child
+  measures 255.6 MiB above a 0 MiB child (within 10 %); exit 0, exit 7 and an abort keep their
+  status, stdout byte-identical (arguments with spaces, quotes and backslashes), stderr identical
+  apart from the one appended line; a missing program is the launcher's own 125; median added
+  wall time 1.6 ms per process (Linux, this host). Three mutants each fail it: KiB reported as
+  bytes, the exit code dropped, a signal turned into an exit code.
+- **Tabulation.** `tools/test/peak_report.py <LastTest.log> --inventory <json> --jobs 8` lists
+  every test above 1 GiB with its peak and reservation (an `[anno-test memory] admit
+  estimate=<n>` line, n > 0) and the largest sum of unreserved peaks whose `PROCESSORS` fit in
+  `-j 8` (an upper bound: CTest's schedule and resource locks are not modelled). Selftest:
+  `peak_report_contract`.
+- **Linux run without the game files** (`cache/w4-next-2/`, this host: 4 CPUs, 15 GiB): the whole
+  suite with the launcher off and on gives the same classified counts (2,230 selected, 1,976
+  executed and passed, 0 failed, 254 skipped: 243 required-asset, 2 platform, 9 opt-in) and no
+  test's outcome differs; wall time 86.6 s off, 87.8 s on (`-j 4`). No test reaches 1 GiB without
+  the game files (largest 187 MiB); 2,107 tests carry a peak line, 123 (the Python and CMake
+  contracts) do not. **This does not answer C-3**: the large cases are the game-file ones.
+- **The full MSVC game-file run, done (2026-11-11, W4-NEXT-2 part M, the Windows PC):** a
+  dedicated build directory (`build/msvc-peak`, `ANNO_TEST_PEAK_MEMORY=1 cmake --preset msvc -B
+  build/msvc-peak`), then `ctest --test-dir build/msvc-peak -C Release -j 16` with
+  `ANNO1503_GAME_DIR` set and `ANNO_GPU_ADAPTER=0` (this host's RTX 4090), detached. First attempt:
+  14 `anno_render_tests` cases and one `anno_test_support_tests` case failed, every one of them
+  `[anno-test memory] refused ... reason=low-memory stop` (free memory genuinely exhausted by
+  concurrent work on this shared PC at the time, not a code defect) or a pre-existing WSL-side
+  flake (`F4 (N4)`'s meter child); all 15 passed cleanly on an isolated re-run once memory
+  recovered - this contention event is itself relevant C-3 evidence, not noise to discard. A second,
+  clean full run (2384 selected after a stray cross-branch test was corrected out - see below) gave
+  2383/2384 passing; the one failure (`selected_house_pixel_check`, W4-NEXT-2 K's own new pixel
+  check) also passed cleanly in isolation immediately after - the same contention pattern, this
+  time CPU/frame-timing rather than memory (a dev-script-driven window test's fixed `wait frames N`
+  steps assume reasonably-paced frame delivery, which 16-way parallel heavy GPU/render tests can
+  break). Log kept: `cache/w4-next-2/LastTest-full-run.log` (copied immediately after the run, per
+  this file's own "copy before re-running" rule - a first copy attempt was lost by re-running a
+  subset before copying; the second run was careful).
+  - **`tools/test/peak_report.py`'s table** (threshold 1024 MiB, `--jobs 8`): 2384 tests in the
+    log, 2246 with a peak line (138 Python/CMake contracts do not report one). **27 tests exceed
+    1 GiB; 18 of those take no reservation at all.** The single largest: `anno_app_tests.scene
+    picture: after a move the pixels equal a fresh scene, and only the marked keys rebuild` at
+    **8715 MiB, unreserved**. Two `anno_render_tests` river/scene-digest corpus cases reach ~4840
+    MiB each, both *already reserved* (6747/6527 MiB - over-reserved relative to their own peak,
+    which is conservative, not wrong). The **largest sum of unreserved peaks that could run at
+    once under `-j 8`** (upper bound; CTest's real schedule/order/RESOURCE_LOCKs not modelled):
+    **18281 MiB over 8 tests** - more than half this host's 32 GiB even before anything else on
+    the machine is counted, confirming the review's original concern with real numbers instead of
+    guesswork.
+  - **F7 (finding 9 of the 2026-11-11 review): the per-test table itself, in git.** Part E's own
+    text said this table was "already here" - only the summary above was. The full table, from
+    `tools/test/peak_report.py cache/w4-next-2/LastTest-full-run.log --inventory
+    cache/w4-next-2/inventory.json --threshold-mib 1024 --jobs 8` against the kept log (sha256
+    `b14c59dee9ebaa2e5e3f0a82a44311eaf0ad7a1a21d4425d3b3057a2ef64225e`), all 27 tests above 1 GiB:
+
+    | Test | Peak (MiB) | Reserves (MiB) | Processors |
+    |---|---|---|---|
+    | `anno_app_tests.scene picture: after a move the pixels equal a fresh scene, and only the marked keys rebuild` | 8715 | no | 1 |
+    | `anno_render_tests.legacy river shading reproduces the previous enhanced digests (game files)` | 4840 | 6747 | 4 |
+    | `anno_render_tests.scene renders match the recorded digests (the Rust reference's, except the enhanced river lines)` | 4840 | 6527 | 4 |
+    | `anno_render_tests.river flow shading moves with the flow on real rivers (Q5, CPU path, game files)` | 2214 | 1024 | 4 |
+    | `anno_render_tests.the flow shading moves with the flow in all windows, not only the flat stems (Q5, game files)` | 2189 | 1024 | 4 |
+    | `anno_render_tests.flow coverage and the water mask over the zoom groups (Q3, game files)` | 1727 | 1024 | 4 |
+    | `anno_render_tests.the light of the flow shading against the legacy shimmer on real rivers (game files)` | 1714 | 1024 | 4 |
+    | `anno_render_tests.the noise coordinate follows the geometry on real rivers: no aliasing (game files)` | 1713 | 1024 | 4 |
+    | `anno_render_tests.the flow shading changes river pixels only and the legacy look stays selectable (game files)` | 1569 | 1024 | 4 |
+    | `anno_render_gpu_tests.picture GPU, constrained: leaving the view with uploads outstanding and returning ends on the fresh scene, and closing with uploads outstanding releases the chunks and the generations` | 1456 | no | 1 |
+    | `anno_app_tests.backing: a derived generation keeps reading its islands after the loaded scene is released (game files)` | 1397 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU, constrained: with stand-ins and dissolves a rebuilt chunk is swapped whole, a chunk that replaces its stand-in dissolves in, and both end on the fresh scene` | 1391 | no | 1 |
+    | `anno_app_tests.backing: queued chunk jobs read valid bytes after the base generation is released (game files)` | 1343 | no | 1 |
+    | `anno_app_tests.scene picture: every changed pixel lies in an invalidated key, at every zoom level` | 1332 | no | 1 |
+    | `anno_render_gpu_tests.GpuList derived chunks (reduce_quad) equal the CPU render_derived_chunk (game files)` | 1332 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU, constrained: an edit published while uploads are outstanding ends on the newest state, every chunk shown meanwhile is one whole state, and nothing replaced is retained` | 1314 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU, constrained: a visible chunk that reaches the GPU after the fade clock was stepped dissolves on a held clock forever, and ends on a clock that moves` | 1292 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU: a late completion of an older generation after a newer invalidation replaces nothing and clears no mark` | 1272 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU: an offscreen edit is fresh after the view returns, at its group and at a derived level` | 1258 | no | 1 |
+    | `anno_render_gpu_tests.picture GPU: accepted builds and an accepted demolish keep the old chunks drawing, become ready only when every affected key is fresh, and then equal a fresh scene` | 1255 | no | 1 |
+    | `anno_render_tests.derived levels: a zoom-out sweep builds every chunk once while it stays cached (game files)` | 1188 | no | 4 |
+    | `anno_render_gpu_tests.the composed frame is identical with the Cpu and GpuList builders (game files)` | 1154 | no | 1 |
+    | `anno_render_gpu_tests.GPU frames at derived levels match the CPU path, objects standing in water included (game files)` | 1150 | no | 1 |
+    | `anno_app_tests.play: an id that does not fit PROD2 is refused` | 1128 | no | 1 |
+    | `anno_render_gpu_tests.GPU ships at derived levels: the reduced frame, close to the reduced chunks (game files)` | 1112 | no | 1 |
+    | `anno_render_tests.river raster agrees with the river the original draws (mask fidelity, rivers.md R1)` | 1094 | 1024 | 4 |
+    | `anno_render_gpu_tests.picture GPU, constrained: one upload per frame finishes a multi-chunk edit while paused, and the paused window idles only once every affected key is GPU-usable` | 1079 | no | 1 |
+
+    The largest sum of unreserved peaks that could run at once under `-j 8` (upper bound; CTest's
+    real schedule/order/RESOURCE_LOCKs not modelled), the same 18281 MiB over 8 tests as the
+    summary above: the scene-picture case (8715), both picture-GPU-constrained pairs (1456+1391,
+    1397+1343), the two further scene-picture/GpuList cases (1332 each) and the
+    uploads-outstanding case (1314).
+
+  - **The remedy, answered:** option **(a)** from the QUESTION above - a conservative fixed
+    reservation on every currently-unreserved case above the threshold, sized from this table's own
+    peaks (the same pattern `docs/perf/README.md` T10c F2 already uses for the render-corpus path)
+    - remains recommended, now with real numbers to size each reservation from (the table above).
+    Implementing the 18 reservations is new coordinator-facing work (`wire::kCompatVersion` is not
+    touched by *adding* reservations to existing tests - only a change to reservation *semantics*
+    would bump it, per the QUESTION's own scope note) - left for the owner to schedule as its own
+    task; not done inside this measurement pass.
+  - A stray cross-branch artifact, corrected: `anno_sim_replay_population_endless_01` (a test that
+    belongs on `task/W4-shared-list-1`, this packet's part X, not here) was briefly registered on
+    this branch and failed once (`CMake Error: Not a file` - deleted mid-run while correcting the
+    branch placement, not a real defect); `build/msvc-peak` was reconfigured afterward and the test
+    no longer appears. The 2384-test counts above are post-correction.

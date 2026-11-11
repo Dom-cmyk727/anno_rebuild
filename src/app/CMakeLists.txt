@@ -6,6 +6,7 @@ add_library(anno_app_core
   src/command_outcome.cpp
   src/commands_file.cpp
   src/construction_menu.cpp
+  src/selection.cpp
   src/dev_feedback.cpp
   src/dev_session.cpp
   src/dev_input.cpp
@@ -85,7 +86,7 @@ if(ANNO_BUILD_TESTS)
     tests/visibility_test.cpp tests/dev_occupancy_test.cpp tests/dev_visibility_test.cpp
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
     tests/ui_layout_test.cpp tests/ui_construction_eligibility_test.cpp
-    tests/construction_menu_test.cpp tests/inspect_building_test.cpp)
+    tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -191,6 +192,25 @@ if(ANNO_BUILD_TESTS)
                 $<TARGET_FILE:anno1503>)
       set_tests_properties(construction_session_replay PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-NEXT-2 K: row 18, selecting a built house through the real window - build, select,
+      # deselect (Escape), select another, demolish it while selected (selection.hpp's "a building
+      # demolished meanwhile drops the selection", exercised end to end, not just the unit test).
+      add_test(NAME viewer_wiring_selected_house_draw_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> selected_house_draw_check
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_selected_house_draw_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # The same recording, replayed headlessly in a fresh process (construction_session_replay's
+      # own mechanism; selection itself writes no sim state, so this checks only what the
+      # recording carries: the two builds and the demolish, by their state hashes).
+      add_test(NAME selected_house_session_replay
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/selected_house_session_replay.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(selected_house_session_replay PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # W4-UI-2 H1/C1 second slice: the live window's own drawing (draw_cpu ->
       # draw_live_screen_xrgb), checked pixel by pixel against the UI.1 oracle (tools/test/
       # ui_mock_compare.py already checks the standalone anno_ui_mock composer; this checks the
@@ -209,6 +229,15 @@ if(ANNO_BUILD_TESTS)
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_dynamic_draw_check.py
                 $<TARGET_FILE:anno1503>)
       set_tests_properties(ui_dynamic_draw_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # W4-NEXT-2 K, independent-review finding 7 (2026-11-11): row 18's panel had no pixel-level
+      # check (only title text and command outcomes) - the same evidence gap ui_dynamic_draw_check
+      # closed for rows 5/10, now closed here the same way. See selected_house_pixel_check.py's
+      # own doc comment for how the oracle is built.
+      add_test(NAME selected_house_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/selected_house_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(selected_house_pixel_check PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
       # F2 (W4-WIN-FINAL): the CPU window settles a change only after the frame was delivered through
       # SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent; each stage is made to fail in turn.

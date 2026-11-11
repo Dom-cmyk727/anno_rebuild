@@ -2401,6 +2401,33 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   the same capture method `docs/re/ui.md` section 1.3 already uses. Until then, part U's row 19
   stops at the data-layer entry; no `UiMockScreen`/live-window state or draw call is added on a
   guessed trigger.
+- **W4-NEXT-2 part W (2026-11-11), new captures and a partial answer to (a):** a fresh Wine-runner
+  session (`cache/orig/w4next2-ui-captures/`, a new Citizen game) tried every transition in turn
+  from the already-selected Kontor panel ("ANNOnymous", the default view at game start - a
+  player-summary panel, not literally `f15_kontor`, see OQ-567's own update below): **Escape alone
+  changed nothing** (`after_esc_from_kontor.png`, identical panel, confirmed twice - once from the
+  "ANNOnymous" panel, once from the "Plantau" settlement panel reached by clicking the Kontor
+  building itself); **a click on water changed nothing** either (`after_missclick_water.png`); but
+  **a click on ordinary forest/grass terrain (no building, not water) showed a different, generic
+  grey panel with no nameplate** (`missclick_forest.png`) - visually a castle/tower illustration,
+  matching the project's own existing note that this content "is the castle-illustration content
+  of `f15_ship_guess_0`" (OQ-567's predecessor text). This answers (a) more precisely than before:
+  the trigger is specifically a click that resolves to **no building and no water** (not Escape,
+  not a water click) - "miss-click" in the original note meant a land miss, not any click that
+  finds nothing. (b) (whether `MAX_PIC` is itself transient) is still untried.
+  - A sprite-sad attempt (ad hoc, not the project's documented tool) at `fenster.tex` id 5 against
+    `missclick_forest.png` gave best mean 58.7 at (779, 242) (stride-4 sampling, no grey-key, a
+    sliding search over x 765-795/y 230-260) - inside the same elevated range this project's own
+    `docs/re/ui.md` line 138 records for `MAINUNTERGRUND` itself under heavy foreground content
+    (mean 82 on `hud_idle_running`, "tabs sit on it"), so this is supportive, not conclusive,
+    evidence, and should not be read against the clean-overlay bar (<15) the method's own
+    definition states. A rigorous pass (the project's own stated sprite-sad definition, `docs/re/
+    ui.md` line 132: minimum mean on opaque pixels in a stated search box, no masking caveat
+    needed here since MAX_PIC's own box is not otherwise covered) is still owed; this update only
+    adds a strong visual match plus a supportive (not decisive) number.
+  - Shots kept under `cache/orig/w4next2-ui-captures/d91-20261111-100242/shots/` (not in git):
+    `initial_view.png`, `after_esc_from_kontor.png`, `after_missclick_water.png`,
+    `click_kontor_building.png`, `after_esc_from_settlement.png`, `missclick_forest.png`.
 
 ## OQ-566: Demolish mode's OS cursor and land highlight are not drawn yet (W4-NEXT-1 part U row 5, 2026-11-10)
 - **Status:** open (scoped follow-up, not a defect in what row 5 did fix).
@@ -2428,6 +2455,31 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   for the highlight's exact rule. Until then this is explicitly NOT drawn, not silently assumed
   equivalent to the existing placement-preview highlight (which this project does have, for a
   different mode, with a different, unverified-here tint).
+- **W4-NEXT-2 part W (2026-11-11): re-examined the existing `r2_demolish` shot** (`E:\anno1503-
+  worktrees\anno1503-UI-1\cache\orig\ui-1\shots\r2_demolish.png`) at higher zoom instead of
+  re-capturing (the shot already has demolish mode active over a tile):
+  - **The highlight is one tile, not a footprint** - confirmed visually (a single isometric
+    diamond, `cache/w4-next-2/demolish_highlight_crop.png`), and **a second, thinner yellow
+    diamond *outline*** sits within/near the filled highlight, not previously documented - either
+    a separate element (a precise hover-cell border distinct from the filled tint) or an artefact
+    of the fill's own edge; not resolved further here.
+  - **Approximate tint, from real pixel averages** (not a guess): the highlighted tile's average
+    RGB over a representative patch is (158, 199, 50); two clear, same-lighting-band normal-grass
+    patches in the same shot average (84, 125, 26) and (119, 158, 36) - a per-channel ratio of
+    roughly 1.6-1.9x. A rough alpha-blend fit (base·(1−a) + overlay·a) lands near a=0.35 with an
+    overlay close to (255, 255, 80) (yellow, not pure RGB yellow) - a starting point for
+    implementation, explicitly not a precise measurement (no paired before/after shot of the exact
+    same tile exists to isolate the tint from the terrain's own texture noise).
+  - **The OS cursor cannot be verified from this harness's screenshots at all, and this is now a
+    settled fact, not an open question of method:** `tools/orig/wine/agent.py`'s `screenshot`
+    (and `grab()`) calls `PIL.ImageGrab.grab(xdisplay=...)`, which reads the X11 drawable via
+    `XGetImage` - this never composites the X server's hardware cursor (that is drawn by the X
+    server/compositor at scan-out, not present in the window/root pixmap content `XGetImage`
+    reads). The earlier "cursor did not SAD-match a 200×200 corner, mean 171" finding is explained
+    by this: the cursor was never in the captured pixels at all, at any position, not just the one
+    corner tried. Verifying `Abreissen_Gebaeude.tex` as the actual cursor image needs a capture
+    method that composites the cursor (e.g. `XFixesGetCursorImage`, or a Windows-harness run with
+    an explicit cursor-capture step) - out of reach of the current Wine pipeline as built.
 
 ## OQ-567: Kontor panel (row 2) has no measured background position/texture id (W4-NEXT-1 part U row 2, 2026-11-10)
 - **Status:** open (blocks row 2's CPU/GPU draw; this entry replaces a guess).
@@ -2453,3 +2505,159 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   if that misses, a broader sprite-sad search as `UI.1.F2.1` ran for `B_Baukosten`) against the
   right-panel region; until then row 2 draws no chrome - see `docs/orchestration/REPORTS.md`'s
   Part U entry for this packet's own disposition (data-only, not a guessed layout).
+- **W4-NEXT-2 part W (2026-11-11): still open; two distinct panels found, neither matched, and the
+  id 1511 lead tried and not confirmed.** A fresh Citizen game's default view at game start shows
+  a player-summary panel (nameplate "ANNOnymous", the profile name; `initial_view.png`) that is
+  **not the same panel** as the one shown after clicking the Kontor building itself (nameplate the
+  settlement's own name, e.g. "Plantau", with more rows - stock/goods-style entries;
+  `click_kontor_building.png`). `docs/re/ui.md` section 9.1's `r2_hud_kontor`/`f15_kontor` likely
+  names the second (settlement) one, not the first - worth confirming when section 9.1 is next
+  revisited, since this changes which shot the plate search should target.
+  - Tried against `click_kontor_building.png` (ad hoc sprite-sad, not the project's documented
+    tool, stride-4/6, search box roughly x 750-830/y 210-290): `FREMDERKONTOR_UNTERGRUND` id 1511
+    best mean 91.2 (779/794, 241/258 depending on search width); also tried on the same shot and
+    similarly not a clean match: `STADT_BILANZ_BK` id 677 ("city balance", 245×468, 87.5),
+    `SPIELER_BILANZ_BK` id 1128 ("player balance", 245×468, tried against `initial_view.png`
+    instead since it fits that panel's own semantics, 79.9-86.8), `NIX_BK` id 1023 ("nothing
+    background", 245×465, ~81-86), `MAINUNTERGRUND` id 4 itself (245×524, 84.8). None stands out
+    as a clear winner.
+  - **A methodology caveat, found while sanity-checking this pass:** re-running the same ad hoc
+    search for the *already-confirmed* `VIEWINFOPIONIERMAIN_BK` id 974 against
+    `f15_selected_house.png` at its own documented position (783, 252) gave mean 96.2 here - far
+    above the committed `data/ui/hud.txt`/`docs/re/ui.md` figure of 17.8 for the same pair. The
+    difference is very likely that this ad hoc script does not mask out the live content drawn
+    over a plate (the portrait, text, icons) the way the project's established sprite-sad passes
+    evidently do (`docs/re/ui.md` line 132's own stated method - minimum mean on *opaque pixels of
+    the sprite itself*, which should already exclude the plate's own transparent corners, but not
+    content some *other* sprite later draws on top of it in the live shot). **None of this entry's
+    91.2/87.5/79.9-86.8/84.8 numbers should be read as a confident rule-out or a confirmation
+    against the stated <15 (clean) / 40-50 (atlas under light content) bar** - they are only
+    relative, suggestive evidence from an uncalibrated tool. A trustworthy measurement still needs
+    either the actual masked methodology behind the existing 17.8/82/etc. figures (not identified
+    in this pass), or a search box tight enough to avoid the overlaid banner/rows entirely.
+  - Shots kept under `cache/orig/w4next2-ui-captures/d91-20261111-100242/shots/` (not in git);
+    see OQ-565's update above for the full list.
+  - **F6 (2026-11-11), calibration attempted and not reached - the uncalibrated numbers above
+    stay marked as such, none promoted to calibrated.** Wrote a fresh script (not the ad hoc one
+    above) against the same `f15_selected_house.png` this packet already has
+    (`E:\anno1503-worktrees\anno1503-UI-1\cache\orig\ui-1\d91-20261030-132532\shots\
+    f15_selected_house.png`), decoding `VIEWINFOPIONIERMAIN_BK` id 974 from this PC's own
+    `toolgfx/fenster.tex` (245 x 467, matching `data/ui/hud.txt`) and comparing it to the shot at
+    its committed (783, 252): plain opaque-pixel mean **32.20** (112,547 px) - not 17.8. Excluding
+    the two sub-sprites this packet's own K step draws over the same plate
+    (`house_portrait`/`need_icon_0`'s rects) only moves it to **30.57** (99,247 px) - most of the
+    gap is not those two overlays. Several "grey-key" readings (excluding opaque pixels whose R/G/B
+    spread is within 5/10/15/20/30 of each other, i.e. desaturated/grey) barely move it either
+    (32.19 down to 31.89 at the widest threshold tried) - so "grey-key" is very likely not a
+    desaturation filter, and nothing in `tools/ui_layout.py` or `docs/re/ui.md` spells out what it
+    is instead. **Conclusion: "grey-key" is not calibratable from what is committed** - it is a
+    term this project's own docs use (`docs/re/ui.md` lines 155/174-176/206/251/655) but never
+    define in code or prose beyond the name itself, and no artifact on this PC reproduces 17.8 for
+    the one pair the review asked to calibrate against first. The id 1511/677/1128/1023/4 numbers
+    for this OQ therefore stay exactly as the previous update left them: uncalibrated, non-decisive,
+    not a rule-out of any candidate. **New QUESTION for the owner, since this blocks closing OQ-565
+    and OQ-567 on sprite-sad evidence at all:** what "grey-key" means precisely (a specific key
+    colour range, a per-sprite matte value read from the file, something else) - without that,
+    future attempts will keep landing in the same uncalibrated place this one did.
+  - **G6 (2026-11-11 fix review, finding 7): F6's QUESTION above is withdrawn - the fix review
+    answers it with evidence, not a guess.** Grey-key is a desaturation key after all, exactly as
+    F6's own 32.19-31.89 readings already suggested at a spread of 10-15: skip sprite pixels with
+    alpha < 8, skip sprite pixels with |R-G| < 12 **and** |G-B| < 12, mean the rest's |ΔR|+|ΔG|+|ΔB|
+    over 3 (the exact rule is now in `docs/re/ui.md` section 2, copied from a git-ignored reference
+    script the fix review cites, not committed itself). Run with this rule, id 974 at (783, 252)
+    gives **32.07** on both `f15_selected_house` and a second, independent shot
+    (`f22b_help_house`) - matching the fix review's own figure to the second decimal, so this
+    session's own implementation of the *rule* is faithful. **What still fails is the 17.8 itself:
+    no kept artifact on this PC reproduces it**, and a calibration check against two *other*
+    committed figures (plain sprite-sad, not grey-key: zoom_plus id 44 and compass_w id 48, both on
+    `hud_idle_running`) also fails - this session's method gives 0.962 and 1.029 against the
+    committed 2.885 and 3.088. The gap is therefore not specific to grey-key, to id 974, or to this
+    one shot; it is some broader difference between this measuring method and whatever produced the
+    committed figures (not identified here). Per the fix review's own instruction: an OQ closes only
+    on a calibrated number, and this method is not shown calibrated, so OQ-565/567's own candidate
+    numbers stay exactly as uncalibrated as before - this update supplies the grey-key
+    *definition* (now written down, closing F6's open QUESTION about what the term means) without
+    closing either OQ.
+
+## OQ-568: PlayRunner::one_turn() interrupted by stop() mid-delay drops the turn's queued commands (W4-NEXT-2 P, 2026-11-11)
+- **Status:** open (QUESTION, not changed; re-review of `3f3dd4d8` on the Windows host).
+- **Area:** `src/app/src/play.cpp`, `PlayRunner::one_turn()`/`stop()`.
+- **Question:** `one_turn()` sleeps out `delay_ms_` in `poll`-sized slices, checking `stop_` each
+  slice, and returns immediately once `stop_` is set - *before* it drains `queue_.take()` (the
+  window's posted commands) or the script's commands for that turn index. A command posted while
+  `delay_ms_ > 0` and resolved by a concurrent `stop()` during that sleep therefore never becomes
+  part of any turn: it stays in the queue, which is destroyed with the runner, so its result is
+  silently "lost" rather than ever reaching `Applied`/`Rejected`. `set_turn_delay()` is called only
+  from tests (`play_test.cpp`, 40/1500/1000 ms; `grep` found no production caller, so `delay_ms_`
+  defaults to and stays 0 in ordinary play and in `--play`'s own wiring) - so this is reachable only
+  when a test or a future feature deliberately sets a nonzero delay and stop() races it mid-sleep.
+  The W4-NEXT-2 K/M review-fix commit (`3f3dd4d8`) worked around the same underlying gap in the
+  command-boundary test by switching it to `run_n()` (synchronous, bypassing `loop()`/`delay_ms_`
+  entirely) instead of fixing or documenting this path.
+- **What we know:** by itself this cannot regress ordinary single-process play (delay is always
+  0 there); it only matters to a caller that (a) sets an artificial delay and (b) needs every
+  posted command to reach a terminal, observable outcome before teardown - which might matter to
+  a future lockstep/resync path that reuses `PlayRunner` with deliberate latency injection.
+- **How to resolve, options:**
+  - **(a) Leave as is: stop() means "abandon in-flight work", intended.** A session that is
+    stopping does not owe outstanding posts a resolution; the artificial delay is a test knob, and
+    tests that need every command's outcome already avoid this by using `run_n()` directly (as
+    `3f3dd4d8` now does). **Recommended**: smallest, matches "stop() is teardown", and nothing in
+    `CommandQueue`'s own contract documents or tests a stronger guarantee today.
+  - **(b) Drain the queue once more after the delay loop exits on `stop_`,** before returning, so a
+    command posted before `stop()` still gets applied in the turn that was already underway. Changes
+    observable behaviour (a stopped runner can still mutate world state once more) - would need its
+    own test and a note in `play.hpp`'s contract comment.
+  - **(c) Document the gap explicitly** in `PlayRunner::stop()`'s doc comment and `CommandQueue`'s,
+    without changing behaviour, so a future caller of `set_turn_delay` knows not to rely on
+    draining. Can combine with (a).
+  - No option has been implemented; this entry only records the question per the W4-NEXT-2 packet's
+    instruction not to change runner behaviour silently.
+
+## OQ-569: Row 18's need-icon row — only icon 0 measured, the per-good index formula is open (W4-NEXT-2 K, 2026-11-11)
+- **Status:** open (blocks drawing icons 1/2 of the need-icon row).
+- **Area:** UI / RE evidence, `data/ui/hud.txt`.
+- **Question:** `f15_selected_house` shows three 50x50 goods icons below the portrait (food,
+  leather, a third brown/wood good), the house's "needs". `WARENICONS_BEDARF` id 727 (`fenster.tex`,
+  `inc.txt` line 2110) sprite-sad matches the first one: mean 39.3 at (794, 480) - in this
+  project's established good-match range. The other two are the same size in the same row but no
+  second or third tex id was tried against them yet; `inc.txt` lists only one `WARENICONS_BEDARF`
+  id and one `_GREY` variant (741, for the unmet-need state - itself not verified against a shot
+  where a need is unmet), not a per-good array the way `construction.txt`'s
+  `cell_icon_tex_id = THUMBNAIL* + 3*record_index` formula gives the 148 unlocked-cell icons their
+  own ids. Whether the three need icons come from three separate, as-yet-unidentified ids, or from
+  one id selected by the house's configured need-goods list at a stride not yet found in `inc.txt`,
+  is unresolved.
+- **How to resolve:** a fresh Wine/native capture isolating each of the three icons (ideally a
+  scenario where the goods differ from `f15_selected_house`'s, to see which ids change), or
+  disassembly of the house-info panel's draw path for the need-icon-to-tex-id mapping. Until then
+  only `need_icon_0` (id 727) is in `data/ui/hud.txt`; icons 1 and 2 are not drawn.
+
+## OQ-570: Row 18's "tab" (VIEWINFOPIONIER_TAB, id 975) does not sprite-sad match its visible position; no close button exists in this capture (W4-NEXT-2 K, 2026-11-11)
+- **Status:** open (the tab is not drawn; the close button is resolved as "none exists here", not
+  open).
+- **Area:** UI / RE evidence, `data/ui/hud.txt`.
+- **Question (tab):** `VIEWINFOPIONIER_TAB` id 975 (`fenster.tex`, `inc.txt` line 2165, 42 x 46)
+  decodes to a grey/stone-carved "?" glyph in its own idle colouring (saved at
+  `cache/w4-next-2/tab975.png`). The live capture `f15_selected_house` shows the same "?" icon's
+  position (visually at about x=904-939, y=185-230, the third of four tab icons under the minimap)
+  rendered **gold/lit**, not grey - the currently-active info tab is apparently tinted or uses a
+  separate asset for its lit state. Sprite-sad against id 975 at that position gives mean 116.7
+  (worst tried: (911,186)) - far outside this project's established good-match range (contrast
+  `pionier_bk`'s 17.8, `need_icon_0`'s 39.3) - because colour, not position, is the mismatch.
+  `cache/w4-next-2/sad_search.py`'s full-row and full-column searches found no better position
+  either. No second "lit" tex id for this icon has been found in `inc.txt` yet.
+- **What we know:** the icon's *position* (that it is the third of the four top tabs, under the
+  minimap) is visually unambiguous from the shot; only the colour-state asset id is unresolved, so
+  this is not a guessed layout - sprite-sad cannot currently confirm the position because it
+  compares raw colour, not shape/alpha.
+- **Close button:** not found anywhere in `f15_selected_house` - the panel's visible chrome ends
+  at the need-icon row (y <~ 530); the region around `INFOEXIT` id 38's own measured position
+  (984, 725, for the *different* `r2_info_pioneer_house` screen) is bare terrain in this shot
+  (`cache/w4-next-2/infoexit_region.png`). Row 18's own panel has no dedicated close widget in
+  this capture; dismissal is Escape or a click elsewhere, which K-1/K-3 already decided and
+  implemented. This is a negative result, not an open question: no close-button element is added.
+- **How to resolve (tab only):** a fresh Wine/native capture with construction-menu docs' own
+  tab-highlight conventions in mind (`docs/re/ui.md` may already record a lit/gold variant id for
+  another tab in the same four-icon row - not checked yet), or disassembly of the tab-highlight
+  draw call. Until then the tab is not drawn.

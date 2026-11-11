@@ -70,6 +70,33 @@ TEST_CASE("hud layout: parses the real data/ui/hud.txt") {
     CHECK(found_click);
 }
 
+// W4-NEXT-2 F2 (finding 2 of the 2026-11-11 review): the decision selection_handle() needs to
+// never pick a world tile from behind the drawn HUD, as a pure function over the real hud.txt.
+TEST_CASE("point_in_hud_panel: the right chrome, not the map, by the real hud.txt") {
+    const auto loaded = anno::app::load_hud_layout(data_ui_dir() / "hud.txt");
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    const auto& hud = loaded.value();
+
+    // need_icon_0: pos 794 480 size 50 50 - the review's own repro, well inside the panel.
+    CHECK(anno::app::point_in_hud_panel(hud, 794.0, 480.0));
+    CHECK(anno::app::point_in_hud_panel(hud, 820.0, 500.0));
+    // The right chrome generally, with nothing of row 18 shown there (e.g. the zoom control).
+    CHECK(anno::app::point_in_hud_panel(hud, 965.0, 10.0));
+    // panel: pos 779 0 size 245 733 - its own four corners and one-past-the-edge pixels.
+    CHECK(anno::app::point_in_hud_panel(hud, 779.0, 0.0));
+    CHECK(anno::app::point_in_hud_panel(hud, 1023.0, 732.0));
+    CHECK_FALSE(anno::app::point_in_hud_panel(hud, 1024.0, 732.0));
+    CHECK_FALSE(anno::app::point_in_hud_panel(hud, 779.0, 733.0));
+    // The map, one pixel left of the panel's left edge, and the status bar below it (y >= 733,
+    // x < 779): neither is the drawn right chrome.
+    CHECK_FALSE(anno::app::point_in_hud_panel(hud, 778.0, 400.0));
+    CHECK_FALSE(anno::app::point_in_hud_panel(hud, 100.0, 750.0));
+
+    // No "panel" element at all (an empty layout, e.g. no --construction-menu): never true.
+    anno::app::HudLayout empty;
+    CHECK_FALSE(anno::app::point_in_hud_panel(empty, 794.0, 480.0));
+}
+
 TEST_CASE("construction layout: parses the real data/ui/construction.txt") {
     const auto loaded = anno::app::load_construction_layout(data_ui_dir() / "construction.txt");
     REQUIRE(loaded.ok());

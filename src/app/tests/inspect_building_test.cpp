@@ -4,14 +4,18 @@
 // frac = ((raw%256)*100)/256, two digits), not copied from a run, and every amount is an exact
 // multiple of kTon (256) so the fractional part is always "00" and cannot hide a rounding bug.
 // One negative control (a tile with no building) closes finding 2.
+#include <chrono>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
+#include <thread>
 #include <variant>
 
 #include <doctest/doctest.h>
 
 #include <anno/app/play.hpp>
+#include <anno/app/selection.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/production.hpp>
@@ -181,4 +185,154 @@ TEST_CASE("inspect_building: a tile with no building is the negative control") {
     Rig rig = make_rig();
     const auto found = app::inspect_building(rig.world, kCity, kEmpty);
     CHECK_FALSE(found.has_value());
+}
+
+namespace {
+
+bool eventually(const std::function<bool()>& done) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (!done()) {
+        if (std::chrono::steady_clock::now() >= end) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return true;
+}
+
+} // namespace
+
+TEST_CASE("selection through a paused runner: clicks resolve from the snapshot's inspection, "
+          "and selecting writes no sim state (W4-NEXT-2 K)") {
+    Rig rig = make_rig();
+    Rig twin = make_rig(); // the same world, never handed to a runner: the hash it must keep
+    const std::uint64_t before = twin.world.state_hash();
+    app::PlayRunner runner(std::move(rig.world));
+    runner.set_local_player(sim::PlayerId{0}); // basic_scenario's city 0 belongs to player 0
+    runner.set_paused(true);
+    runner.start();
+
+    // A click on the workshop: the paused runner answers it (no turn runs while paused).
+    app::SelectionState state;
+    auto step = app::selection_step(state, [] {
+        app::SelectionEvent e;
+        e.tile = kWorkshop;
+        return e;
+    }());
+    state = step.state;
+    runner.request_inspect(step.inspect);
+    REQUIRE(eventually([&] {
+        const auto snap = runner.snapshot();
+        return snap && snap->inspected == kWorkshop;
+    }));
+    auto snap = runner.snapshot();
+    REQUIRE(snap->inspection);
+    CHECK(snap->inspection->kind == "Workshop");
+    {
+        app::SelectionEvent e;
+        e.kind = app::SelectionEventKind::Answer;
+        e.tile = snap->inspected;
+        e.building = snap->inspection->id;
+        state = app::selection_step(state, e).state;
+    }
+    REQUIRE(state.selected);
+    CHECK(state.selected->id == snap->inspection->id);
+
+    // A click on empty ground: answered with the tile and no building, which deselects.
+    {
+        app::SelectionEvent e;
+        e.tile = kEmpty;
+        step = app::selection_step(state, e);
+        state = step.state;
+    }
+    runner.request_inspect(step.inspect);
+    REQUIRE(eventually([&] {
+        const auto s2 = runner.snapshot();
+        return s2 && s2->inspected == kEmpty;
+    }));
+    snap = runner.snapshot();
+    CHECK_FALSE(snap->inspection);
+    {
+        app::SelectionEvent e;
+        e.kind = app::SelectionEventKind::Answer;
+        e.tile = snap->inspected;
+        state = app::selection_step(state, e).state;
+    }
+    CHECK(state == app::SelectionState{});
+    CHECK(snap->tick == 0); // paused throughout: no turn ran
+
+    runner.stop();
+    CHECK(runner.state_hash() == before); // nothing ran; the command boundary is the next case
+}
+
+namespace {
+
+/// Click on the workshop, let the answer select it, click empty ground, let the answer deselect:
+/// through a runner driven synchronously (run_n, never started), so every turn really runs.
+/// With `demolish` the same flow also posts what a selection must never post.
+std::uint64_t select_and_deselect(app::PlayRunner& runner, bool demolish) {
+    runner.set_local_player(sim::PlayerId{0}); // basic_scenario's city 0 belongs to player 0
+    app::SelectionState state;
+    for (const sim::TileXY tile : {kWorkshop, kEmpty}) {
+        app::SelectionEvent click;
+        click.tile = tile;
+        const app::SelectionStep asked = app::selection_step(state, click);
+        runner.request_inspect(asked.inspect);
+        if (demolish && tile == kEmpty) {
+            sim::DemolishCmd cmd;
+            cmd.city = kCity;
+            cmd.tiles = {kWorkshop};
+            runner.post_command(sim::Command{sim::PlayerId{0}, cmd});
+        }
+        runner.run_n(1);
+        const auto snap = runner.snapshot();
+        app::SelectionEvent answer;
+        answer.kind = app::SelectionEventKind::Answer;
+        answer.tile = snap->inspected;
+        if (snap->inspection) {
+            answer.building = snap->inspection->id;
+        }
+        state = app::selection_step(asked.state, answer).state;
+        CHECK(state.selected.has_value() == (tile == kWorkshop));
+    }
+    return runner.state_hash();
+}
+
+std::uint64_t two_turns_without_input() {
+    Rig rig = make_rig();
+    app::PlayRunner runner(std::move(rig.world));
+    runner.run_n(2);
+    REQUIRE(runner.applied_commands().empty());
+    return runner.state_hash();
+}
+
+} // namespace
+
+TEST_CASE("selection: selecting and deselecting writes no sim state (command boundary, "
+          "W4-NEXT-2 K)") {
+    Rig rig = make_rig();
+    app::PlayRunner runner(std::move(rig.world));
+    const std::uint64_t selected = select_and_deselect(runner, false);
+    CHECK(runner.applied_commands().empty());     // the selection posted nothing
+    CHECK(selected == two_turns_without_input()); // and the two turns equal two idle turns
+}
+
+TEST_CASE("selection: the command-boundary check sees a posted command (negative control)") {
+    Rig rig = make_rig();
+    app::PlayRunner runner(std::move(rig.world));
+    const std::uint64_t with_command = select_and_deselect(runner, true);
+    CHECK(runner.applied_commands().size() == 1);
+    CHECK(with_command != two_turns_without_input()); // the demolish changed the world
+}
+
+TEST_CASE("selection through a runner: a tile is answered as empty when the player has no city") {
+    Rig rig = make_rig();
+    app::PlayRunner runner(std::move(rig.world));
+    runner.set_local_player(sim::PlayerId{42}); // owns no city
+    runner.request_inspect(kWorkshop);
+    runner.run_n(1);
+    const auto snap = runner.snapshot();
+    REQUIRE(snap);
+    CHECK(snap->inspected == kWorkshop); // answered, so a click resolves (deselects)
+    CHECK_FALSE(snap->inspection);
 }

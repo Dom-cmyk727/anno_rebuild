@@ -96,6 +96,15 @@ const UiElement* HudLayout::element(const std::string& name) const {
     return nullptr;
 }
 
+bool point_in_hud_panel(const HudLayout& hud, double px, double py) {
+    const UiElement* panel = hud.element("panel");
+    if (panel == nullptr || !panel->has_pos || !panel->has_size) {
+        return false;
+    }
+    return px >= panel->pos_x && px < panel->pos_x + static_cast<double>(panel->size_w) &&
+           py >= panel->pos_y && py < panel->pos_y + static_cast<double>(panel->size_h);
+}
+
 const ConstructionCategory* ConstructionLayout::category(const std::string& name) const {
     for (const auto& c : categories) {
         if (c.name == name)

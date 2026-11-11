@@ -129,8 +129,12 @@ def main(argv):
 
     with tempfile.TemporaryDirectory(prefix="anno_selected_house_pixel_") as session:
         session_dir = Path(session) / "session"
+        # G3 (2026-11-11 fix review, finding 3): 240, matching viewer_wiring.py's own bound, not
+        # the unjustified 30 F1 left in place - the script now waits on facts (`wait fact ...
+        # within 5000`), and a slow or contended run should get the same margin every other
+        # viewer_wiring-driven session gets, not a fifth of it.
         env = dict(os.environ, ANNO_DEV_SCRIPT=str(SCRIPT), ANNO_DEV_SESSION=str(session_dir),
-                  ANNO_VIEW_QUIT_S="30")
+                  ANNO_VIEW_QUIT_S="240")
         if renderer == "cpu":
             env["SDL_VIDEODRIVER"] = "dummy"
         else:
@@ -138,7 +142,7 @@ def main(argv):
         proc = subprocess.run(
             [exe, "--play", str(HERE / "data" / "maps" / "lan5.txt"), "--game-dir", game_dir,
              "--construction-menu", "on", "--layout", str(layout_dir), "--renderer", renderer],
-            env=env, capture_output=True, text=True, timeout=120, check=False)
+            env=env, capture_output=True, text=True, timeout=260, check=False)
         if proc.returncode != 0:
             print(f"anno1503 exited {proc.returncode}\nstderr:\n{proc.stderr}")
             return 1

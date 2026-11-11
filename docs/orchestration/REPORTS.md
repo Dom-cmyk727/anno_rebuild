@@ -6585,3 +6585,76 @@ evidence recorded, and its own new QUESTION asking the owner what "grey-key" pre
   by guessing a filter, and the review's own evidence contract says an unexplained discrepancy
   should not be hidden behind a weakened tolerance - raising a QUESTION for the owner is the
   correct next step, not more undirected search.
+
+## W4-NEXT-2 — F9, review and final gates (the 2026-11-11 fix round) — 2026-11-11 — status: FINISHED
+
+Closes the fix round the orchestrator's review requested ([review](reviews/2026-11-11-w4-next-2-review.md), [packet section F](tasks/w4-next-2.md)). Stop here.
+
+### Heads
+
+| Branch | Head | Carries |
+|---|---|---|
+| `task/W4-ui-4` | `05291e02` | F1-F4, F6, F7 (two commits: code/tests, then docs) |
+| `task/W4-shared-list-1` | `e69b036d` | F5, F8 (two commits: code/tests, then docs) |
+
+### Review disposition, each finding of the 2026-11-11 review
+
+| # | Finding | Fix | Reviewer's disposition |
+|---|---|---|---|
+| 1 | P1: the selected-house session races the sim | F1 | ACCEPT - mechanism (fact-driven wait, not a frame count) verified correct by reading the event flow; 3/3 gate tests plus 4 repeat runs at `-j 4` all passed in the reviewer's own run, 60/60 repeats at `-j 16` under full-suite contention in this packet's own proof |
+| 2 | P2: a click on the drawn HUD selects the world behind it | F2 | ACCEPT - `point_in_hud_panel` hand-checked against `data/ui/hud.txt`'s real `panel` line at all 9 boundary points; the bundled `drag_` reset confirmed necessary (not dead code) by tracing the event dispatch order |
+| 3 | P2: OQ-571's "no growth" is guaranteed by the rules it ran with | F5 | ACCEPT - `Rules::house_updates` confirmed threaded through, not dropped, by a manual run showing residents diverge with the flag on vs off |
+| 4 | P2: `population` steps 100 ms; play mode steps 10 ms | F5 | ACCEPT - `sim::multiplayer_step_ms(100) == 10` hand-confirmed at `sim_test.cpp:159`; the new `--step-ms` default matches it |
+| 5 | P3: `--seconds 60,10` prints `t=10s` at the 60s tick | F5 | ACCEPT - strict-ordering validation hand-tested (`10,0,30` → exit 2 with the documented message) |
+| 6 | P3: the demolish-while-selected step doesn't test the drop | F3 | ACCEPT - `local demolish` confirmed independent of `dev_->enabled()` by reading `viewer.cpp`'s own dispatch |
+| 7 | P3: an inspection answer is not tied to its request | F4 | Recorded as a known limitation in ADR 0004's Selection section, not implemented (F1 did not need it) - matches the review's own instruction |
+| 8 | Medium: part W's report/calibration | F6 | Part W's REPORTS entry supplied; calibration attempted and not reached (see that entry) - uncalibrated numbers stay marked as such, a new QUESTION raised for the owner |
+| 9 | Low: the C-3 table not in git | F7 | The full 27-row table is now in `docs/perf/README.md` |
+| 10 | Process: only K's draw step had independent review | F9 (this entry) | Closed - F1, F2, F3, F5 (the fix round's own code) all independently reviewed and tested this round |
+| 11 | Low: M's first run had contention | - | A rule for this round (no other heavy job during a measuring/gate run); observed throughout |
+| 12 | Follow-up: two CI flakes unrelated to this package | - | Unchanged disposition: a follow-up after this package, not this package's defect |
+
+Also: part X step 3 (the original's column) - F8 made the one bounded attempt the review asked for; still NOT_RUN, with new negative evidence (see F8's own entry and `docs/testing/original-wine.md` section 6). OQ-568 (the `stop()` question) was left exactly as it is, per the review's own instruction that it is not this round's to decide.
+
+### Gates
+
+- **clang-format 23.1.3**, both branches: clean (`src/app/src/viewer.cpp` needed one reformat, applied; `src/tools/sim_replay/main.cpp` clean as written).
+- **`task/W4-ui-4`'s canonical gate** (`tools/test/run_selected.py`, `build/msvc`, `ANNO1503_GAME_DIR` set, `ANNO_GPU_ADAPTER=0` - the RTX 4090, `--select "."`, `--asset-policy required`, `--allow-skip other`, `-j 16`): **VERDICT: PASS.** Classified: **selected 2385, executed and passed 2373, failed 0, empty 0, skipped 12 (opt-in 6, platform 3, other 3), incomplete 0, sanitizer lines 0.** The "other" class is the same documented classifier quirk from part E (three `ship start` tests that themselves pass but print an internal "skipping" message the classifier reads as a prerequisite skip). Log: `cache/w4-next-2/canonical-gate-f-round.log`.
+- **`task/W4-shared-list-1`'s gate** (docs/tools-only scope, matching part E's own narrower gate): `clang-format` clean on `src/tools/sim_replay/main.cpp`; `anno_sim_replay_*` (46 cases, up from 44 - two new F5 argument-validation tests), `build/msvc`, `ANNO1503_GAME_DIR` set: **46/46 passed.**
+- **A full MSVC game-file run with the fixed binary, detached, under real concurrent load** (this packet's own F1 contention proof doubled as this run): `ctest -C Release -j 16` with `ANNO1503_GAME_DIR` set, running at the same time as 20 repeats of the three `selected_house` tests (see F1's own report) - **2385/2385 passed, 0 failures**, wall time 2132.58 s. This is a stronger run than a quiet one: the selected-house tests it contains passed while the rest of the suite was actively contending for the machine, which is exactly the condition the P1 finding needs disproven.
+- **Hosted CI, final heads:**
+
+  | Branch | Commit | Run id | Result |
+  |---|---|---|---|
+  | `task/W4-ui-4` | `05291e02` | 43065140217 | green |
+  | `task/W4-shared-list-1` | `e69b036d` | 43065156973 | green |
+
+### NOT_RUN / still open
+
+- OQ-565 (MAX_PIC part b, whether it persists), OQ-566 (the cursor image itself), OQ-567 (the Kontor panel's background id) - all open; F6 added a calibration finding (grey-key is not reproducible from what's committed) and a new QUESTION, but did not close any of the three.
+- OQ-568 (the `stop()` drain) - open, the owner's QUESTION, untouched this round.
+- OQ-569/570 (the remaining need icons and the tab/close button) - open, unchanged this round.
+- OQ-571 - open; F5 narrowed it (the growth timing under `house_updates` on still differs from the co-developer's own numbers) but did not resolve it.
+- The shared test list's original-game column (part X section 3) - still NOT_RUN after F8's bounded attempt; see that entry and `docs/testing/original-wine.md` section 6 for what a follow-up should try next (keyboard input or the dialog's own resource IDs, not more coordinate guessing).
+- The C-3 remedy (18 reservations) - unchanged, still the owner's to schedule.
+- A new QUESTION (F6): what "grey-key" means precisely - needed before OQ-565/567 can be measured with confidence either way.
+
+### Review records
+
+- F1, F2 (and its bundled `drag_` fix), F3, F5: independently reviewed by a fresh agent with no context from this session, read-only, which built both worktrees itself and ran the actual tests (not just read the diffs) - verdict ACCEPT on all four, with hand-derived checks of the geometry, the step-ms constant, and the rules-threading. Full report kept in this session's own transcript.
+- F4, F6, F7, F8 are documentation-only changes (a known-limitation note, an honest non-result, a table copy, a bounded attempt's record); reviewed by re-reading them against the files they cite, not by a second independent reviewer - consistent with how part E and earlier parts of this packet treated doc-only changes.
+
+### Review-first list
+
+1. This entry's own disposition table and gates section.
+2. The independent reviewer's report on F1/F2/F3/F5 (kept in this session).
+3. `docs/testing/original-wine.md` section 6 (F8) and the new QUESTION in `docs/open-questions.md`'s OQ-567 update (F6) - both need the owner's attention before a follow-up pass.
+4. OQ-571's rewritten text (F5) - the growth-timing difference is new evidence worth the owner's eyes.
+
+### Decisions and reasoning
+
+- Used the F1 contention-proof run (a full `-j 16` suite running at the same time as 20 repeats of the `selected_house` tests) as this round's own full-game-file gate run too, rather than running a third, separate full suite - it is strictly stronger evidence (under real contention, not a quiet machine) for exactly the kind of race F1 fixes, and running a fourth multi-hour suite for the same question would have been waste, not rigor.
+- Did not attempt to close OQ-565/566/567 on this round's sprite-sad numbers once calibration failed (F6) - reporting an uncalibrated number as a rule-out or confirmation would have been worse than reporting no verdict, per the evidence contract's own rule against hiding an unexplained discrepancy behind a weakened tolerance.
+- Stopped F8 after one bounded attempt as the packet's own instruction asked, rather than escalating into RE of the dialog's resource ids inside this fix round - left as a named next step instead.
+
+Stop here. Don't start another package.

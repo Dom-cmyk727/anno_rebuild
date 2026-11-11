@@ -261,6 +261,22 @@ not in git).
   not guessed from the row's label. This is the first thing a follow-up session should check,
   before any more menu exploration - it may turn out `01_1024_easy_256` was reachable through
   `new_game()` all along, just never under its own name.
+  - **H2 (2026-11-11, docs follow-up after the acceptance, finding 2): correcting "the other four
+    endless-game files" above - only one of the five shared scenarios is actually an endless-game
+    file.** Checked against `game/app/Scenes/` directly (read-only): only `01_1024_easy_256.sze`
+    sits under `Scenes/0010SingleEndlos`, the endless-game folder. `Single_06.sze`, `Single_16.sze`
+    and `Single_24.sze` are in `Scenes/0200Single` (a different, non-endless scenario set), and
+    `S01_08_01.sze` is in `Scenes/0100Kampagne01` as already said above. So "the other four" was
+    wrong: three of the five are `0200Single` files, not endless ones, and whether `new_game()`'s
+    own New Game list reaches `0200Single` at all - as a further row below `choose_game`'s five
+    difficulty rows, or by some other path - is untested, not assumed. **The first check for the
+    next attempt is therefore broader than G7 said:** first, what the New Game list holds beyond
+    the five `choose_game` rows `tools/orig/menus.json` maps (whether `0200Single`'s scenarios
+    follow further down the same list, for instance); only then, for whichever row(s) turn out to
+    reach `01_1024_easy_256`/`Single_06`/`Single_16`/`Single_24`, which `.sze` each one opens, read
+    from the running process as G7 already said. Any earlier mention in this packet of "the other
+    four endless files" means these three `0200Single` scenarios plus `01_1024_easy_256`, not four
+    endless-game files - corrected here, not edited in place.
 - **Left for a follow-up, second:** for the Campaign/Mission picker this session did find (for
   the `0100Kampagne01`-style scenarios, not the endless ones above): add it to `screens_sig.json`
   (now that a real capture exists) and try keyboard-driven navigation (arrow keys, Enter) instead

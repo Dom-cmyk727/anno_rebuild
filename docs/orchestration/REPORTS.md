@@ -7159,3 +7159,96 @@ No Wine session was run this round (the packet's own rule for G7); this is a re-
 - Left the existing Campaign/Mission picker follow-up note in place, renumbered second, rather than
   removing it - it is still real, useful evidence for `S01_08_01` specifically, just not for the
   four endless-game rows the first note now addresses.
+
+## W4-NEXT-2 — H, docs follow-up after the acceptance (findings 1 and 2 of the 2026-11-11 acceptance review) — 2026-11-11 — status: FINISHED, doc only
+
+Closes part H ([packet](tasks/w4-next-2.md)), raised by the
+[acceptance review](reviews/2026-11-11-w4-next-2-acceptance.md) against part G's own doc corrections
+G6 and G7. Branch `task/W4-docs-h` from `main` `7babb1f2` (the merge landing both `task/W4-ui-4` and
+`task/W4-shared-list-1`). No code changed; no code gate; no Wine session.
+
+### H1 — sprite-sad's two normalizations (finding 1)
+
+G6's own calibration check divided every result by 3, which is correct for grey-key but wrong for
+the plain method: the plain sprite-sad mean (the "sprite-sad mean"/"opaque mean" figures through
+`docs/re/ui.md`, e.g. zoom + and compass west) is **per pixel** - |ΔR| + |ΔG| + |ΔB| over the kept
+pixels (alpha ≥ 8), summed, never divided by 3. Grey-key, as `ui1_f22_bind.py`'s own `mean_sad`
+computes it, does divide by 3 (a per-channel mean).
+
+Measured both ways on the kept shots in
+`E:\anno1503-worktrees\anno1503-UI-1-F2\cache\orig\ui-1\` (both copies of each shot: the plain
+`shots/` copy and the timestamped `d91-...` copy):
+
+| Figure | Element | Position | Shot | Measured | Committed | Reproduces? |
+|---|---|---|---|---|---|---|
+| Plain | zoom + (`fenster.tex` id 44) | (959, 7) | `hud_idle_running` (both copies) | **2.885** per pixel | 2.885 | **Yes - calibrated** |
+| Plain | compass west (`fenster.tex` id 48) | (965, 140) | `hud_idle_running` (both copies) | **3.088** per pixel | 3.088 | **Yes - calibrated** |
+| Grey-key | `VIEWINFOPIONIERMAIN_BK` (`fenster.tex` id 974) | (783, 252) | `f15_selected_house` (both copies) | **32.07** per channel (96.21 per pixel) | 17.8 | No - still uncalibrated |
+| Grey-key | portrait (`Pioniere.tex` id 1) | (812, 355) | `f15_selected_house` (both copies) | **45.52** per channel (136.56 per pixel) | 34.2 | No - still uncalibrated |
+
+So: the plain method is calibrated (2 of 2 committed figures reproduce exactly, on both kept copies
+of the shot); only the committed **grey-key** figures fail to reproduce. G6's conclusion ("the gap
+is not specific to grey-key") was an artefact of dividing the plain figures by 3 when they shouldn't
+be - corrected, not the measurement itself, which (once divided correctly) was already right.
+
+**Script:** `cache/h1-sprite-sad-measure.py`, sha256
+`150eff608fa1aacdc9fa82b25d1b1abbb9adf0562305a3d198cf7928346126e4`. Not committed (cache-only, per
+this project's own convention for one-off measurement scripts); decodes both `.tex` files with this
+project's own `tools/ui_layout.py:decode_tex_rgba`, reusing `ui1_f22_bind.py`'s own `mean_sad` logic
+(the fix review's own reference script) with the normalization made explicit via a `divide3` flag
+instead of hardcoded.
+
+**Docs changed:** `docs/re/ui.md` §2 (a new paragraph stating both units, after the existing grey-key
+definition) and §9.7 (a new paragraph correcting G6's conclusion, after G6's own paragraph);
+`data/ui/hud.txt`'s comment on `pionier_bk` (a new comment block, after G6's own); `docs/open-
+questions.md` OQ-567 (a new bullet under G6's own, restating the plain figures as calibrated and the
+grey-key ones as still open). No old paragraph or REPORTS entry edited - every correction is new
+text, per this part's own rule.
+
+**OQ disposition:** the plain-method figures cited by OQ-565/567 (zoom + and compass west) are now
+marked calibrated in `docs/re/ui.md` §2/§9.7, with shot and position, as this report states above.
+This does not close OQ-565 or OQ-567 themselves - neither question turns on the plain-method
+figures; both still wait on a grey-key number that reproduces (OQ-567, row 18's own plate) or on the
+Kontor panel's own position/texture id search (OQ-567's main question), neither resolved here.
+Closing either OQ waits for the orchestrator's review, as the packet's own rule says.
+
+### H2 — the scenario folders (finding 2)
+
+Checked `game/app/Scenes/` directly (read-only, this PC's own copy): only `01_1024_easy_256.sze`
+sits under `Scenes/0010SingleEndlos`, the endless-game folder. `Single_06.sze`, `Single_16.sze` and
+`Single_24.sze` are in `Scenes/0200Single` - a different, non-endless scenario set. `S01_08_01.sze`
+is in `Scenes/0100Kampagne01`, as the packet already said. So three of the five shared-test-list
+files are `0200Single` files, not endless ones; G7's "the other four endless-game files" was wrong.
+
+Added a new paragraph to `docs/testing/original-wine.md` §6, under G7's own, correcting this and
+widening the next attempt's first check: not just which `.sze` a New Game row opens, but first,
+whether the New Game list holds anything beyond the five `choose_game` rows `tools/orig/menus.json`
+maps - specifically whether `0200Single`'s scenarios follow further down the same list. Only once
+that is known does "which `.sze` a row opens, read from the process" (G7's own next step) apply to
+`Single_06`/`Single_16`/`Single_24` as well as `01_1024_easy_256`.
+
+Not corrected: the `docs/orchestration/REPORTS.md` entries for G7 (above) and the acceptance review
+itself, which this part's own rule keeps as a historical record, not editable in place - this entry
+is the correction of record for "the other four endless-game files" wherever this packet used it.
+
+### Hosted CI
+
+| Branch | Head | Run id | Result |
+|---|---|---|---|
+| `task/W4-docs-h` | *(filled in after push)* | *(filled in after push)* | *(filled in after push)* |
+
+### Decisions and reasoning
+
+- Reproduced G6's own reference script's `mean_sad` logic exactly (same alpha/grey-key thresholds),
+  adding only an explicit `divide3` parameter, rather than writing a new measurement method from
+  scratch - this isolates the one thing finding 1 says was wrong (which figures get divided by 3)
+  without risking a second, unrelated discrepancy from a differently-written script.
+- Measured both kept copies of each shot, not just one, so a reproduction (or a failure to
+  reproduce) isn't a one-shot artefact - all four figures gave identical results on both copies.
+- Left the grey-key figures (17.8, 34.2) uncalibrated rather than guessing a cause for the gap: this
+  part's own instructions ask only to correct the normalization error, not to re-open the "what does
+  the discrepancy mean" investigation finding 1 itself leaves alone.
+- Widened H2's "first check" beyond what the packet's own wording said (which `.sze` a row opens)
+  to include whether the New Game list holds `0200Single` rows at all - the packet's finding 2
+  explicitly raises that as unchecked, so a follow-up session needs both steps named, not just the
+  one G7 already named.

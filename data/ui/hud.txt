@@ -56,6 +56,12 @@ element pionier_bk pos 783 252 size 245 467 file toolgfx/fenster.tex access VIEW
 # committed plain (non-grey-key) sprite-sad figures on hud_idle_running (zoom_plus, compass_w)
 # aren't reproduced either (0.962/1.029 vs the committed 2.885/3.088), so the gap is not specific
 # to this element or to grey-key. The position itself is unaffected - not moved.
+# H1 (2026-11-11, docs follow-up after the acceptance, finding 1): G6's calibration check above
+# divided the plain zoom_plus/compass_w figures by 3, which is wrong - the plain method is per
+# pixel, never divided by 3 (grey-key alone divides by 3). Measured per pixel, zoom_plus and
+# compass_w give 2.885 and 3.088 on both kept hud_idle_running copies - exactly the committed
+# figures, so the plain method is calibrated and the gap IS specific to grey-key (and/or this
+# element): 32.07 per channel (96.21 per pixel), not 17.8, still not reproduced. Position unmoved.
 # Row 18's need-icon row (W4-NEXT-2 K): three 50x50 goods icons below the portrait. Only the
 # first (food/Nahrung) is measured: WARENICONS_BEDARF id 727 (fenster.inc; inc.txt line 2110),
 # best sprite-sad mean 39.3 at (794, 480) in f15_selected_house (cache/w4-next-2/sad_search.py,

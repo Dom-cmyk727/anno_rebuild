@@ -2578,6 +2578,26 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
     numbers stay exactly as uncalibrated as before - this update supplies the grey-key
     *definition* (now written down, closing F6's open QUESTION about what the term means) without
     closing either OQ.
+  - **H1 (2026-11-11, docs follow-up after the acceptance, finding 1): G6's calibration check
+    above divided the wrong figures by 3, and the corrected check closes nothing but does narrow
+    the gap.** The plain (non-grey-key) sprite-sad method is **per pixel** (|ΔR|+|ΔG|+|ΔB|, summed,
+    not divided by 3); grey-key alone divides by 3. G6's 0.962/1.029 were the committed 2.885/3.088
+    divided by 3 regardless, which only grey-key should be. Measured in the plain method's own
+    unit, on both kept copies of `hud_idle_running`
+    (`E:\anno1503-worktrees\anno1503-UI-1-F2\cache\orig\ui-1\shots\` and
+    `...\d91-20261030-112532\shots\`): zoom + (`fenster.tex` id 44 at (959, 7)) gives **2.885**,
+    compass west (id 48 at (965, 140)) gives **3.088** - both **calibrated**, reproducing the
+    committed figures exactly on both copies. So the plain sprite-sad method is trustworthy for a
+    new measurement after all; **the gap is specific to grey-key, to id 974, or to this one panel**
+    - not a general problem with this session's tooling, as G6 concluded. The grey-key figure
+    itself is unchanged and still **uncalibrated**: id 974 at (783, 252) measures 32.07 per channel
+    (96.21 per pixel), not the committed 17.8, on both kept copies of `f15_selected_house`; the
+    portrait (`Pioniere.tex` id 1 at (812, 355)) measures 45.52 per channel (136.56 per pixel), not
+    the committed 34.2, also on both copies. Script: `cache/h1-sprite-sad-measure.py` on
+    `task/W4-docs-h` (sha256 in this part's REPORTS entry). **This OQ stays open**: the id
+    1511/677/1128/1023/4 candidates for row 2's own plate are untouched by this correction, and the
+    row-18 grey-key figure (974, this entry's own subject) is still not reproduced by any kept
+    artifact - closing either waits for the orchestrator's review, per this part's own rule.
 
 ## OQ-568: PlayRunner::one_turn() interrupted by stop() mid-delay drops the turn's queued commands (W4-NEXT-2 P, 2026-11-11)
 - **Status:** open (QUESTION, not changed; re-review of `3f3dd4d8` on the Windows host).

@@ -18,6 +18,8 @@ identity used for comparison; it remains in its historical directory.
 
 | File | Old value | New value | Cause |
 |---|---|---|---|
+| shared `sim/cargo_rules_bytes.txt` | pre-combination `c42601aabc6a3eebfbd6ce1b042b9d9cad9e3bb30ce3fc8247296c167faf9919` | combined138 `c69fd643397c0936cdd4cbce742b042f5ca1cfe1d92efde81da54eaa6d661d4f` | The independently transcribed complete Rules rows append the three state-138 FreightRules fields; the CargoRules-only rows remain byte-identical. |
+| shared `sim/ship_holds.txt` | pre-combination `f5bf7180b537d97d98a2d51da878fa3fa9591e7608133200e4b8569a4679006a` | combined138 `382ec40b0d6fae4edac67931d35cc65e4541f5fafa1305d3e42d467eeb87dc77` | The independent hold encodings and FNV roots remain byte-identical; the fixture identity header moves from 134 to 138. |
 | `cargo_load.log` | route136 `9fec27373110213f287c366094071b8b0dab6d63ed0ec6e63850eca81918114c` | combined138 `d37215c69213ab419a99f7bf91b06c6ac513405f0feb34eb9ca6eb7e4dedef95` | Re-recorded route load under the 138 replay/native envelope and combined FreightRules identity. |
 | `cargo_load_wrong.log` | route136 `806d1175d62824f9f1d02269791cd12545aaf6bcc23a8dd27c52f09a9efce355` | combined138 `07ecfc91e33bbdc932e9d87a66766c525aeb603ebe57b07c30879dae7b569e17` | Mutant was re-derived from the new recording; the replacement is checked by the divergence test. |
 | `cargo_unload.log` | route136 `deebfc35efe613a43c6fc59c0a94099f6bfb404a1f6d1bf9926928e5a23cbd08` | combined138 `d376d5de9ad1c33c4ee85d58b914749fc2cc34e96a2858793a3ebbda19bd3ed3` | Re-recorded route unload under the 138 replay/native envelope and combined FreightRules identity. |
@@ -34,4 +36,5 @@ identity used for comparison; it remains in its historical directory.
 | `populated_fields.txt` | iron137 `9fdd8b498558e015b8236118a1281f9471cab3d9f3513af7681a4aef823561e2` | combined138 `37937f0c06b237a9654ab2c89e3a4bd78f3cd902dd55befa6990dc1755cd8add` | Independent oracle expanded to the required combined populated ship/quarry/mine world. |
 | `scenario_corpus.txt` | iron137 `191580d126f23befc76f1bafb7fbbdbbdd223ac6aea3c3f85445920f93d145d3` | combined138 `4462f95367ced3fbb9000ed209e6d0eafb5f4a0f1ee4ca9600d09d7db0a7e9d9` | All 50 creation hashes were regenerated at 138; all non-identity corpus columns are unchanged. |
 
-`provenance.json` records the generation commands and complete new-file digests.
+`provenance.json` records the generation commands, the complete new-file digests and both shared
+fixture digests.

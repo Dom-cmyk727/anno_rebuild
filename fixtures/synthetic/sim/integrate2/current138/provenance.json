@@ -30,5 +30,9 @@
     "m2_found_wrong.log": "ef37eade318836a297ab19fced41beaabc39206ae995c2d7bd6abaa36ece4099",
     "populated_fields.txt": "37937f0c06b237a9654ab2c89e3a4bd78f3cd902dd55befa6990dc1755cd8add",
     "scenario_corpus.txt": "4462f95367ced3fbb9000ed209e6d0eafb5f4a0f1ee4ca9600d09d7db0a7e9d9"
+  },
+  "shared_sha256": {
+    "fixtures/synthetic/sim/cargo_rules_bytes.txt": "c69fd643397c0936cdd4cbce742b042f5ca1cfe1d92efde81da54eaa6d661d4f",
+    "fixtures/synthetic/sim/ship_holds.txt": "382ec40b0d6fae4edac67931d35cc65e4541f5fafa1305d3e42d467eeb87dc77"
   }
 }

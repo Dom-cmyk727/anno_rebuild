@@ -109,6 +109,14 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Windows executor
 
+- **2026-11-11:** a Linux session started W4-NEXT-2 on `claude/dreamy-brahmagupta-10bjax`, head `15f01fa4`, CI green
+  at `8b807827`.
+  - **What it built:** K's selection logic (title bar only, no panel) and M's peak-memory launcher.
+  - **Left NOT_RUN:** everything that needs this PC.
+  - **Owner instruction:** the Windows executor continues on `task/W4-ui-4` from `15f01fa4`. See the packet's
+    "Continuation on the Windows PC".
+  - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`), but
+    GitLab and the share are diverged on that branch until the owner decides.
 - **Now: [W4-NEXT-2](tasks/w4-next-2.md),** from `main` at `2c4dc295`. Parts P → K → W → M → X → E:
   - **P:** preflight, plus the GPU pixel check that W4-NEXT-1 left NOT_RUN;
   - **K:** row 18, select a building;

@@ -7,6 +7,42 @@ Sonnet 5.5 on the owner's Windows PC). **Start it now:** W4-NEXT-1 is accepted a
 Work the parts in order: **P → K → W → M → X → E**. Each part ends with a REPORTS entry and a push of its branch.
 Re-read this packet and your latest REPORTS entries after any context compaction.
 
+## Continuation on the Windows PC (2026-11-11, owner instruction)
+
+A Linux session without the game files, the RTX 4090, Wine or `E:` started this packet on branch
+`claude/dreamy-brahmagupta-10bjax`. Its head is `15f01fa4`, and its code head `8b807827` passed CI run 42964242098
+(12/12 jobs). Its REPORTS entries say what it did and what it left NOT_RUN. **The owner wants everything that needs
+this PC done by you.**
+
+**What exists on that branch:**
+- **K:** a left click selects a built building, Escape deselects, a demolished building drops out
+  (`selection.hpp/.cpp`, `selection_test.cpp`, `viewer.cpp`, `play.cpp`). It also adds the ADR 0004 "Selection"
+  section with QUESTIONs K-1..K-5. K-1..K-3 are implemented as the recommendations; K-4 and K-5 are recommended but not
+  implemented. The selection shows in the window title only: no panel is drawn.
+- **M:** the opt-in launcher (`peak_launcher.cpp`, `peak_alloc.cpp`, `tools/test/peak_launcher_test.py`,
+  `peak_report.py`), checked without the game files only.
+- **Not started:** P5, K's measuring and drawing, W, M's game-file numbers, X, and the MSVC game-file suite.
+
+**How to continue:**
+1. **Branches.** Create `task/W4-ui-4` from `15f01fa4`. It carries K, M and W together, because the Linux session's
+   review-fix commit `3f3dd4d8` touches both K and M, so they land as one package. X stays on
+   `task/W4-shared-list-1` from `origin/main`. Never push to `claude/dreamy-brahmagupta-10bjax`; that branch is frozen.
+2. **Part P, redone on this host,** with these additions:
+   - **Re-review.** Get an independent re-review of `3f3dd4d8` and `8b807827`. They are the fixes after that session's
+     review and were checked only by CI.
+   - **Answer the `stop()` question.** That session found that after the paused runner's `stop()`, `one_turn` returns
+     before draining posted commands, so a queued demolish stayed `Queued`. State whether this is intended. If it may
+     be a defect, raise a QUESTION; don't change runner behaviour silently.
+   - **Show the peak contract runs on Windows.** Prove `peak_launcher_contract` executes in your MSVC run; the Linux
+     session could not read the Windows CI per-test record.
+   - **P5,** the GPU pixel check for rows 5 and 10, as written above.
+3. **K, W, M, X and E as written below,** from where that branch stands. K's measuring, drawing, pixel checks,
+   scripted session, replay and `bench_frame` are all still to do. For K-4 and K-5, keep the recommendation
+   unimplemented until the owner decides.
+4. **The force push.** That session force-pushed its own branch (with a lease). Nothing was lost: every old commit is
+   already on `main` by content. It still breaks the project rule, and it left the GitLab and share mirrors diverged on
+   that branch. The orchestrator handles the mirrors. You: ordinary pushes only.
+
 ## Why this packet
 
 1. **The owner's build-and-demolish playtest still hits blank panels.** Clicking a building shows nothing (ADR 0004

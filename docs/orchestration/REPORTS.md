@@ -6658,3 +6658,111 @@ Also: part X step 3 (the original's column) - F8 made the one bounded attempt th
 - Stopped F8 after one bounded attempt as the packet's own instruction asked, rather than escalating into RE of the dialog's resource ids inside this fix round - left as a named next step instead.
 
 Stop here. Don't start another package.
+
+## W4-NEXT-2 — G8, the missing F entries (finding 2 of the 2026-11-11 fix review) — 2026-11-11 — status: FINISHED
+
+Part F's own packet asked for a REPORTS entry per step; F1, F2, F3, F4 and F7 got none (F9's "F1's own
+report" pointed at nothing that exists). This entry supplies them after the fact, from the commits
+themselves (`08735643`, `05291e02`) and from this session's own history where a log was kept.
+**Per finding 1, F1's fix (the `selection_refresh()` call in `script_tick`) is itself superseded by
+G1 in this round** - this entry records what F1 did and the evidence it had at the time, not a
+claim that the mechanism still stands; G1's own entry above/below is the current state.
+
+### F1 — the selected-house session waits on state, not frames (commit `08735643`)
+
+**What changed:** `selected_house_draw_check.script`'s selection checks moved from `wait frames N`
+to `wait fact selection.kind == House within 5000` / `wait fact selection.selected == 0 within
+5000`; each screenshot that follows one gets `wait frames 1` more (`viewer.cpp`'s `draw()` runs
+after `script_tick()` in the same loop pass, so the extra frame is needed to read a buffer drawn
+after the fact resolves). `script_tick()` gained `selection.pending`/`selection.selected`/
+`selection.kind` facts, built by calling `selection_refresh()` again inside `script_tick` itself.
+
+**Evidence at the time:**
+- `ctest -R "selected_house" --repeat until-fail:20` **beside** a full MSVC game-file suite at
+  `-j 16` (both run concurrently, by design, per the packet's own exception for this proof):
+  **60/60 passed** (`viewer_wiring_selected_house_draw_check`, `selected_house_session_replay`,
+  `selected_house_pixel_check`, 20 repeats each). Log: `cache/w4-next-2/f1-repeat20-proof.log`,
+  sha256 `b37a73d1d55fd93540a1d81477660e80d3ab035f61a430ae0894821f30884c54`.
+- The concurrent full-suite run itself: **2385/2385 passed**, 0 failures, wall time 2132.58 s. Log:
+  `cache/w4-next-2/f1-full-suite-concurrent.log`, sha256
+  `c316204c8c10f94b13c8c396ffb81ff02a0124206113789418202b5bfeb251a1`.
+- **A negative control** (a variant clicking empty ground near the first house - tile 1162,517 -
+  instead of the house, with the same `wait fact selection.kind == House within 2000`): failed at
+  its bound as it must, `FAIL line 42 (wait): not over after 2000 ms (outcome #1 Applied turn 15,
+  visibility Visible, selection.kind is '')`. **NOT_KEPT**: this was run interactively, its own
+  output was read from the console, not redirected to a file under `cache/`; the text above is
+  quoted from that session's own record, not re-derived now.
+
+**Residual gap, now closed by G1:** the fix review's own acceptance run (`-j 16`, no concurrent
+repeat) failed `viewer_wiring_selected_house_draw_check` once (finding 1) - the race was narrowed
+by F1 (20/20 and 60/60 above), not eliminated; it hit in the orchestrator's run at roughly the rate
+its own repeat/gate ratio implies (about 1 in 120). G1's own entry fixes the root cause.
+
+### F2 — a click on the drawn HUD never selects the world behind it (commit `08735643`)
+
+**What changed:** `point_in_hud_panel(const HudLayout&, double, double)` (`ui_layout.hpp`/`.cpp`):
+a pure rectangle test against `hud.txt`'s own `panel` element (779, 0) 245 × 733. Wired into
+`selection_handle()`'s mouse-up branch: a click inside it returns `true` (consumed: no select, no
+deselect, no inspection request) before `dev_->pick` or `selection_step` are reached. In the same
+commit, a second, related bug was found and fixed: the HUD-consumed branch did not reset `drag_`,
+left `true` by the press, so the next pointer motion would pan the camera from a click the player
+saw do nothing; `drag_ = false` was added to the same branch.
+
+**Evidence:** `ui_layout_test.cpp`'s `point_in_hud_panel` test case (9 points: the need icon at
+(794, 480), the right chrome generally, all four corners and one-past-edge pixels of `panel`, the
+map just left of it, the status bar below it, and an empty layout with no `panel` element at all) -
+committed, still passing. The script's own `ui_click_keeps_selection` step (click the need icon
+with a house selected, assert the selection and title are unchanged) - committed, still passing.
+**G2 (this round) replaces this step's own check** (title-only, which finding 4 showed can pass
+without the fix under a slow answer) with a click-counter fact; see G2's own entry.
+
+### F3 — the demolish-while-selected step proves the drop (commit `08735643`)
+
+**What changed:** the script's demolish-while-selected step now posts `local demolish 1164 516`
+(`dev_script.cpp`'s own verb, straight to `play_->runner().post_command()`) with the developer
+tool left disarmed throughout, instead of re-arming the tool to reach the pickaxe. This makes
+`selection_refresh()`'s own drop path (the selected id re-checked against the next inspection
+answer) the thing that resolves the title change, not the tool's hover inspection - the earlier
+version's re-arm meant `selection_refresh()` returned early (it drops `pending` and does nothing
+else while the tool is on), so the check passed for an unrelated reason.
+
+**Evidence:** `viewer_wiring_selected_house_draw_check`'s own `demolished_while_selected`
+checkpoint, included in every run cited under F1 above (60/20/3 passes). **Qualified by finding 5**
+(fix review): the per-tick `selection_refresh()` F1 added to `script_tick` masked whether play's
+own trigger (the wake event, via `update_title()`) still does this job - G1 removes that call, so
+F3's session now genuinely depends on the wake-event path, as real gameplay does.
+
+### F4 — an inspection answer is not tied to its request, recorded as a known limitation (commit `05291e02`)
+
+**What changed:** ADR 0004's Selection section gained a "Known limitation" paragraph (finding 7 of
+the first review): two in-flight inspection requests for the same tile can have the second
+request's answer resolve the first's `pending`. Not implemented (F1 did not need it; no capture or
+test exercises two in-flight requests for one tile). **Corrected by G4** (finding 6 of the fix
+review): the paragraph's own claim that `PlayRunner::request_inspect` "already hands out a fresh
+request each call" was wrong - it only stores the tile under a mutex. See G4's own entry.
+
+**Evidence:** `docs/adr/0004-ui-toolkit.md`'s diff in commit `05291e02`, now further corrected in
+this round's own commit (G4).
+
+### F7 — the C-3 table, committed (commit `05291e02`)
+
+**What changed:** Part E's REPORTS entry said the full per-test C-3 table (every test above 1 GiB,
+its peak, its reservation) was already in `docs/perf/README.md`; only the summary was. F7 added all
+27 rows, generated with `tools/test/peak_report.py` against the kept log
+(`cache/w4-next-2/LastTest-full-run.log`, sha256
+`b14c59dee9ebaa2e5e3f0a82a44311eaf0ad7a1a21d4425d3b3057a2ef64225e` - named and kept since the
+original part M/F6 pass, unchanged by this entry).
+
+**Evidence:** `docs/perf/README.md`'s diff in commit `05291e02` - the 27-row table, the largest
+unreserved-sum breakdown, both reconciled against the log cited above.
+
+### Decisions and reasoning
+
+- Wrote this as one entry covering all five F-steps, not five separate entries, since the packet's
+  own instruction groups them as "the missing F entries" (G8, singular step) and each is a short,
+  already-decided record of a merged commit - five near-empty entries would be harder to read, not
+  more faithful to "one entry per step."
+- Marked the F1 negative control NOT_KEPT rather than re-running it now to manufacture a kept log:
+  the packet's own G8 instruction explicitly allows "NOT_KEPT for what wasn't kept," and a
+  freshly-run negative control under today's (G1-fixed) code would not be evidence of what F1 itself
+  showed at the time - it would be new evidence belonging under G1, not a correction of F1's record.

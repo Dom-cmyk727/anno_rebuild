@@ -468,7 +468,15 @@ int cmd_scenario(const std::string& path, std::uint64_t ticks, std::uint32_t ste
 /// stores (a separate row in the shared list) are not computed here: that needs iterating every
 /// workshop-kind building's own input stock, not just the city warehouse - left for a follow-up
 /// pass if the owner wants it, not guessed at.
-int cmd_population(const std::string& path, const std::vector<std::uint64_t>& seconds) {
+int cmd_population(const std::string& path, const std::vector<std::uint64_t>& seconds,
+                   std::uint32_t step_ms, bool house_updates) {
+    for (std::size_t i = 1; i < seconds.size(); ++i) {
+        if (seconds[i] <= seconds[i - 1]) {
+            std::cerr << "--seconds must be strictly increasing (got " << seconds[i - 1] << " then "
+                      << seconds[i] << ")\n";
+            return 2;
+        }
+    }
     std::ifstream in(path, std::ios::binary);
     if (!in) {
         std::cerr << "cannot read " << path << "\n";
@@ -478,21 +486,29 @@ int cmd_population(const std::string& path, const std::vector<std::uint64_t>& se
     const auto types = scenario_registry();
     const anno::sim_load::IslandTemplates templates = scenario_templates();
     const sim::SimConfig cfg;
+    sim::Rules rules;
+    rules.house_updates = house_updates; // F5: a measurement setting here, not a sim change
     auto resolved = anno::sim_load::load_scenario_with_context(
         buf, path, std::getenv("ANNO1503_GAME_DIR") ? std::getenv("ANNO1503_GAME_DIR") : "",
-        templates, *types, cfg, {});
+        templates, *types, cfg, rules);
     if (!resolved) {
         std::cout << "refused: " << resolved.error() << "\n";
         return 1;
     }
     const sim::LoadedScenario& loaded = resolved.value().loaded;
     const ThreadExecutor ex;
-    auto w = sim::World::create(loaded.spec, types, cfg, {}, {}, ex);
+    auto w = sim::World::create(loaded.spec, types, cfg, rules, {}, ex);
     if (!w) {
         std::cout << "create refused: " << w.error() << "\n";
         return 1;
     }
     sim::World world = std::move(w).value();
+    // F5 (2026-11-11 review, finding 3): house_updates off makes the House tick an exact no-op by
+    // design (config.hpp's own comment on the field) - printed once so "no growth" below is read
+    // as expected-under-this-setting, not as a finding about the engine on its own.
+    std::cout << "step_ms=" << step_ms << " rules_digest=" << std::hex << world.rules().digest()
+              << std::dec << " house_updates=" << (world.rules().house_updates ? "on" : "off")
+              << "\n";
 
     auto sample = [&world](std::uint64_t at_seconds) {
         std::int64_t residents = 0;
@@ -515,8 +531,13 @@ int cmd_population(const std::string& path, const std::vector<std::uint64_t>& se
                 }
             }
         }
+        // F5: check_invariants at each checkpoint, printed - cmd_population did not call it
+        // before this change, so OQ-571's "confirmed by cmd_scenario/cmd_population both" was
+        // not true of this command; it is now.
+        const std::string problem = world.check_invariants();
         std::cout << "t=" << at_seconds << "s tick=" << world.clock().tick()
                   << " residents=" << residents << " town_store_tons=" << (store_8_8 / sim::kTon)
+                  << " check_invariants=" << (problem.empty() ? std::string("clean") : problem)
                   << "\n";
     };
 
@@ -531,7 +552,7 @@ int cmd_population(const std::string& path, const std::vector<std::uint64_t>& se
         // loaded scenario's clock need not start at tick 0).
         const std::uint64_t target = start_tick + s * 500;
         while (world.clock().tick() < target) {
-            world.advance(100);
+            world.advance(step_ms);
         }
         sample(s);
     }
@@ -1268,7 +1289,10 @@ void usage() {
                  "  golden <log>\n"
                  "  scenario <file.sze> [--ticks N] [--step-ms M]   (the registry of "
                  "ANNO1503_GAME_DIR)\n"
-                 "  population <file.sze> [--seconds S,S,..]   (default 0,10,30,60; W4-NEXT-2 X)\n"
+                 "  population <file.sze> [--seconds S,S,..] [--step-ms M] [--house-updates]\n"
+                 "    (seconds strictly increasing, default 0,10,30,60; step-ms default 10, the\n"
+                 "    play mode's own step at 100% speed; house-updates off by default, a\n"
+                 "    measurement setting, not a sim change; W4-NEXT-2 X)\n"
                  "      residents and the town-store total (every city, every player), at each\n"
                  "      game-second checkpoint. A refused load/create is reported, not guessed.\n"
                  "  measure <file.sze|synthetic> [--ticks N] [--reps R]\n"
@@ -1369,6 +1393,10 @@ int main(int argc, char** argv) {
     }
     if (sub == "population" && args.size() >= 2) {
         std::vector<std::uint64_t> seconds = {0, 10, 30, 60};
+        // F5: 10, the play mode's own step at 100% speed (sim::multiplayer_step_ms(100),
+        // sim_test.cpp:159) - the default was 100, which is not what "normal speed" measures.
+        std::uint32_t step_ms = 10;
+        bool house_updates = false;
         for (std::size_t i = 2; i < args.size(); ++i) {
             if (args[i] == "--seconds" && i + 1 < args.size()) {
                 seconds.clear();
@@ -1389,12 +1417,23 @@ int main(int argc, char** argv) {
                     }
                     rest = rest.substr(comma + 1);
                 }
+            } else if (args[i] == "--step-ms" && i + 1 < args.size()) {
+                const auto v = parse_u64(args[++i]);
+                if (!v || *v == 0 || *v > std::numeric_limits<std::uint32_t>::max()) {
+                    std::cerr << "bad --step-ms value '" << args[i]
+                              << "': expected a decimal integer from 1 to 4294967295\n";
+                    usage();
+                    return 2;
+                }
+                step_ms = static_cast<std::uint32_t>(*v);
+            } else if (args[i] == "--house-updates") {
+                house_updates = true;
             } else {
                 usage();
                 return 2;
             }
         }
-        return cmd_population(args[1], seconds);
+        return cmd_population(args[1], seconds, step_ms, house_updates);
     }
     if (sub == "measure" && args.size() >= 2) {
         std::uint64_t ticks = 30000;

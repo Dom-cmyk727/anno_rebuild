@@ -122,6 +122,12 @@ if(ANNO_BUILD_TESTS)
   # playable above).
   anno_sim_replay_arg_test(population_seconds_not_a_number "population|x.sze|--seconds|abc"
                            "bad --seconds value 'abc'")
+  # F5 (2026-11-11 review, finding 5): --seconds must be strictly increasing, or exit 2 - no game
+  # files needed, this is argument validation before any scenario is touched.
+  anno_sim_replay_arg_test(population_seconds_not_increasing "population|x.sze|--seconds|10,0,30"
+                           "--seconds must be strictly increasing")
+  anno_sim_replay_arg_test(population_step_ms_zero "population|x.sze|--step-ms|0"
+                           "bad --step-ms value '0'")
   anno_sim_replay_arg_test(population_no_file "population" "usage: anno-sim-replay")
   add_test(NAME anno_sim_replay_population_endless_01
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>

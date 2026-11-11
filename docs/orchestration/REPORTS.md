@@ -6453,3 +6453,23 @@ binary across two runs is by definition non-deterministic, not a code defect in 
 other job on this run (including `cpp (windows-msvc)`, `cpp (linux-clang-asan)`, `cpp
 (macos-clang)`) was green. Not re-pushed to chase a green checkmark on a docs commit; recorded here
 as the final, honest state instead.
+
+### Addendum 2: confirmed recurring, pre-existing flake (2026-11-11)
+
+Commit `e7b78355` (also docs-only): `cpp (linux-gcc)` is now green (confirming the prior addendum's
+own read - the earlier failure there was transient), but `cpp (macos-clang)` failed with the exact
+same symptom `0f232698` (K's draw commit) hit earlier: `INCOMPLETE:
+anno_test_support_tests.F3 (D1, deaf): a coordinator that serves hello but never resolves the
+request or its cancel still ends at a bounded deadline` (`failed=0`, `incomplete=1` - the gate's
+own policy treats an incomplete bounded-deadline result as FAIL, correctly, since the evidence is
+ambiguous rather than a known-bad result). This is the same named test, the same job, on two
+different commits of this branch whose only common factor is "ran on GitHub's macOS runner" - no
+commit in between touches `test_support`'s coordinator code. Two independent CI jobs (`linux-gcc`
+once, `macos-clang` twice) each flaked on a different, unrelated pre-existing test while every
+other job (`windows-msvc`, `linux-gcc-release`, `linux-clang-asan`, `cpp-format`, `lint`, both
+`test` jobs, `build-macos`) stayed green across every push. Not chased further with more pushes:
+a shared CI runner's own timing/load is outside this package's scope, and this project's own
+history already documents the same coordinator-test-area flakiness pattern repeatedly. The
+canonical gate's own local, controlled run (this entry's own "Gates" section above) is the
+authoritative acceptance evidence for this packet; hosted CI's per-commit flakes on unrelated
+coordinator tests are recorded here for the record, not treated as blocking.

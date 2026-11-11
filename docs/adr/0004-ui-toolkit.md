@@ -195,17 +195,20 @@ it after ESC left the building tool. Nothing else about the original's selection
 (deselect, Escape, a drag, foreign buildings) has been captured; the rows below are QUESTIONs.
 
 **Known limitation: an inspection answer is not tied to its request (F4, finding 7 of the
-2026-11-11 review).** `PlaySnapshot::inspected`/`inspection` echo only the tile that was asked
-about, never a request number; `selection_refresh`'s own `Answer` event matches an incoming
-answer to `state.pending` by tile alone. Two requests for the *same* tile in quick succession (a
-click, then - before that answer is in - a second click elsewhere and back) can have the second
-request's answer resolve the first's `pending`, selecting whatever the first request's tile holds
-even though the player's pointer and intent have since moved on. The fix: a request number the
-snapshot echoes back (`PlayRunner::request_inspect` already hands out a fresh request each call;
-it would need to publish that number, and `SelectionEvent::Answer`/`selection_step` would check it
-against the request the current `pending` was made with, not just the tile). Not implemented here:
-F1's race (facts built from a stale frame count, not from an untagged answer) did not need it, and
-no capture or test in this packet exercises two in-flight requests for one tile.
+2026-11-11 review; corrected by G4, finding 6 of the 2026-11-11 fix review).** `PlaySnapshot::
+inspected`/`inspection` echo only the tile that was asked about, never a request number;
+`selection_refresh`'s own `Answer` event matches an incoming answer to `state.pending` by tile
+alone. Two requests for the *same* tile in quick succession (a click, then - before that answer is
+in - a second click elsewhere and back) can have the second request's answer resolve the first's
+`pending`, selecting whatever the first request's tile holds even though the player's pointer and
+intent have since moved on. The fix: a request number the snapshot echoes back -
+`PlayRunner::request_inspect` (`play.hpp`) does not hand one out today; it only stores the tile
+under a mutex (`inspect_tile_`), with no counter or identity of any kind. The fix would need to add
+one (incremented per call, published in `PlaySnapshot`), and `SelectionEvent::Answer`/
+`selection_step` would check it against the request the current `pending` was made with, not just
+the tile. Not implemented here: F1's race (facts built from a stale frame count, not from an
+untagged answer) did not need it, and no capture or test in this packet exercises two in-flight
+requests for one tile.
 
 **QUESTION K-1: what Escape does with a selection.** (a) Deselect, and quit only without a
 selection - **recommended and implemented**: Escape stays the way out of every mode, one press at

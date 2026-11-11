@@ -6185,3 +6185,80 @@ only because the ASan job failed.
   | stop() mid-delay command loss is understood, not silently changed | OQ-568 recorded with 3 options | n/a (QUESTION, no behaviour change) | `docs/open-questions.md` | QUESTION open |
   | `peak_launcher_contract` executes on MSVC | `ctest -C Release -R peak_launcher_contract -V` passed | would fail if the launcher/job-object fix regressed | this entry | PASS |
   | P5 GPU pixel check (rows 5, 10) | exact match on all opaque pixels, both rows | both wrong-input controls rejected (514/2809, 5279/8492 mismatches) | `cache/w4-next-2/p5-gpu-pixel-check.log` | PASS |
+
+## W4-NEXT-2 — K's panel drawn, CPU and GPU, on the Windows PC — 2026-11-11 — status: FINISHED
+- Branch: `task/W4-ui-4` at `0f232698`.
+- **Draw.** `draw_live_screen_xrgb`/`draw_live_screen_rgba` gain a `selected_house` parameter
+  (default false, so the 9-screen oracle comparison is untouched): when true and the screen is
+  the idle HUD (never with the construction menu), draws `pionier_bk`, `house_portrait`,
+  `need_icon_0` - the only three elements `data/ui/hud.txt` has a sprite-sad position for so far
+  (OQ-569: the row's other two need icons; OQ-570: the tab and the close-button question - still
+  not drawn). `Viewer::construction_hud_inputs` computes the flag from the live snapshot's own
+  answer (`selection_.selected` plus `snapshot->inspection->id` matching and `kind == "House"`),
+  never from the click itself - the sim's answer decides, not the UI.
+- **Scripted window session (acceptance requirement):**
+  `tools/test/viewer_wiring/selected_house_draw_check.script` - builds a pioneer house (public
+  (0,0), id 501, the proven-free tile `construction_full_proof.script` already uses, 1156,516),
+  selects it (screenshot), deselects with Escape (screenshot, panel gone), builds a second house
+  clear of the first's 4x4 footprint (1164,516), selects it instead, then demolishes it while
+  selected (selection.hpp's own "a building demolished meanwhile drops the selection", exercised
+  through the real window, not just the unit test: `expect title-lacks selected` after the
+  demolish outcome). Passes on both `--renderer cpu` (`viewer_wiring_selected_house_draw_check`,
+  now a CTest case) and `--renderer gpu` (manual, same reasoning as P5/rows 5-10: needs a real
+  window surface). A debugging note for later sessions: disarming the developer tool after a
+  construction-menu build needs a *second* B while the menu is still open (`DevTool::handle`'s
+  own `Toggle`) - `ConstructionClickKind::Cancel` (the pickaxe/X click) only closes the panel,
+  it does not clear the armed type (confirmed by reading `dev_tool.cpp`, not guessed); the first
+  attempt's clicks kept re-arming type 501 and every subsequent click re-triggered a build.
+- **Fresh-process replay:** `tools/test/selected_house_session_replay.py`
+  (`selected_house_session_replay` CTest case), the same mechanism
+  `construction_session_replay.py` already established for `construction_full_proof.script`.
+  Selection itself writes no sim state (already proven by the command-boundary tests), so this
+  checks only what the recording carries - the two builds and the demolish, by state hash:
+  "4 checkpoints agree (turns 0 .. 21), 3 outcomes agree". Negative control (the second build's
+  type mutated 501 -> 502) correctly disagrees: "turn 16 differs... (2 earlier checkpoints
+  agreed)".
+- **CPU vs GPU pixel parity:** the script's own `selected_house_live.png` capture compared
+  pixel-by-pixel between the two renderer runs over the whole panel region (779,240)-(1024,560):
+  0 of 78,400 pixels differ at a 32-channel tolerance.
+- **Oracle regression check:** `ui_mock_matches_oracle` (9/9 named screens, exact match) and
+  `live_screen_matches_oracle` (3/3 screens) both still pass unchanged - `selected_house` defaults
+  false, so none of the 9 oracle screens' own comparison is touched. P5's GPU pixel check (rows
+  5/10, the prior Part P entry) re-run after this change: unchanged, still exact matches with both
+  wrong-input controls correctly rejected.
+- **`bench_frame`:** ran the CPU/GPU quick matrix on `Scenes/0010SingleEndlos/01_1024_easy_256.sze`
+  (no crash; the matrix completed across both zoom groups, both water styles, both renderers) -
+  a general regression check, not UI-specific (matches W4-UI-2's own V6 precedent exactly: this
+  change lives entirely in `src/app`, never `src/render`/`src/sim`). The row-specific timing
+  evidence is the window's own "construction ui" frame-step line (`steps_`, `viewer.cpp`): ~63 ms
+  on the first frame the new textures (`pionier_bk`/`house_portrait`/`need_icon_0`) decode into
+  the cache, ~2-3 ms warm on every frame after - the same cold/warm pattern already documented for
+  rows 5/10 and the earlier construction-menu texture cache, not a new kind of cost.
+- **Full suite:** `anno_app_tests` with `ANNO1503_GAME_DIR` set: 265/265 executed and passed (0
+  failed, 0 skipped by class other than the two GPU-pixel-check cases already counted above as
+  manual). `clang-format` 23.1.3 (installed via `pip install --target`, no system copy on this
+  PC): clean on every touched file after one `-i` pass (two line-wrap violations in
+  `ui_mock.hpp`, fixed).
+- **Reviewer:** self-reviewed against the acceptance table below and the raw CTest/script logs
+  (not just printed verdicts); an independent read-only review is still owed before this package
+  is reported complete overall (the evidence contract's own requirement) - noted as a residual gap
+  for Part E's closeout, not waived.
+- Acceptance table:
+
+  | Requirement | Positive proof | Counterexample / negative control | Evidence | Disposition |
+  |---|---|---|---|---|
+  | Panel draws only measured elements, idle HUD only | `selected_house_live.png` shows plate+portrait+need icon | `deselected_live.png`: none of the three draw once deselected | script screenshots, this entry | PASS |
+  | Draw gated by the sim's own answer, not the click | `construction_hud_inputs`'s id+kind check | selecting a non-House kind would not set the flag (no such building in this map to exercise; the unit unit-level unit is the existing selection_test.cpp kind-independent tests) | code read, `viewer.cpp` | PASS (code-reviewed; no non-House building available in `lan5.txt` for an end-to-end negative capture) |
+  | Selection writes no sim state | `applied_commands().empty()` (prior Part P entry) + this session's replay agrees without the clicks at all | the demolish command alone changes the hash | `selected_house_session_replay` | PASS |
+  | A demolished-while-selected building drops the selection | `expect title-lacks selected` after the demolish outcome | mutated recording (502 instead of 501) diverges at the right turn | script log, replay negative control | PASS |
+  | CPU/GPU parity | 0/78,400 px differ (tolerance 32) | n/a (direct pixel diff, no synthetic wrong input needed for a parity check) | this entry | PASS |
+  | No regression to the 9-screen oracle or P5's rows 5/10 | both re-run green after this change | n/a | this entry | PASS |
+
+### Left open for later parts of this packet
+
+- OQ-569 (the need-icon row's other two icons) and OQ-570 (the tab's lit-state asset; confirmed no
+  close button exists in this capture) still block drawing the rest of row 18's chrome.
+- An independent read-only review of this diff (K's draw step) has not happened yet - due before
+  Part E's closeout.
+- Parts W (three Wine captures), M (game-file memory run), X (shared test list) and E (final gate)
+  have not started.

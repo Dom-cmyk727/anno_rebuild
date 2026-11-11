@@ -5790,3 +5790,28 @@ the new formatter tests against the real `DescribePayload` output, and the scrip
 - This branch's own coordinator flakiness (the `cpp (linux-gcc-release)` failures above) resolves
   itself once this branch merges with or rebases onto the C-2 fix on `task/W4-coord-1` - not a
   defect to chase on this branch in isolation.
+
+## MAP-INTEGRATE-2 S — shared-folder checkpoint — 2026-11-11 — status: WAITING ON OWNER, NON-BLOCKING
+
+Started `task/MAP-INTEGRATE-2` from fetched `origin/main`
+`03bf2b3cf6a7779e559c6dd3669ee24cccccb2ae`, in the new owned worktree required by the packet.
+The completed MAP-ROUTE-1 worktree remains clean at `a736361a`; no input branch or other executor's
+worktree was changed.
+
+The expected Mac folder `/Users/dom/open1503-share` is not present, so the owner has not yet made
+the accepted Receive Only folder available at the packet's required path. The packet makes S
+non-blocking: file listing, total-size accounting, sync-state verification and bundle-to-`SHARE-LOG.md`
+hash comparison are therefore **NOT_RUN (required external owner action)** at this checkpoint. No
+device ID, Syncthing configuration or share content was written to git, and nothing was written to
+the share. S step 5 will be revisited before E if the folder appears.
+
+### Decisions and reasoning
+
+- Continued to P instead of waiting. The packet explicitly says S runs alongside and blocks
+  nothing; the missing path is direct host evidence that the verification prerequisites are not
+  yet available.
+- Did not probe or publish Syncthing device identifiers. The PC-side share is already recorded as
+  complete, the remaining acceptance belongs to the owner, and the packet forbids putting a device
+  ID in this public repository.
+- Classified the verification as NOT_RUN rather than a failure or a pass. There are no files or
+  sync state to inspect at the specified path, so any count, size or hash verdict would be invented.

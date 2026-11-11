@@ -251,14 +251,6 @@ std::uint64_t output(const sim::World& w, sim::BuildingId id) {
     return p->out.at(0);
 }
 
-std::uint64_t farm_output(const sim::World& w, sim::BuildingId id) {
-    const auto* b = w.find_building(id);
-    REQUIRE(b);
-    const auto* p = std::get_if<sim::Farm>(&b->payload);
-    REQUIRE(p);
-    return p->out;
-}
-
 std::size_t mine_reservers(const Authored& a, const sim::World& w, std::uint64_t& sum) {
     std::size_t count = 0;
     sum = 0;
@@ -399,38 +391,65 @@ TEST_CASE("integration authored cross-feature: mine tools freight quarry and exa
         const auto* route = a.world.freight_route(kShip);
         return route && route->phase == sim::FreightPhase::Sailing && holds(a.world, a.tools) > 0;
     }));
-    const auto cycles = a.world.freight_route(kShip)->completed_cycles;
-    const auto delivered = stock(a.world, 1, a.tools);
-    const auto required_cycles = std::max<std::uint64_t>(2, cycles + 1);
+    const auto aboard_at_demolition = holds(a.world, a.tools);
+    REQUIRE(aboard_at_demolition > 0);
     sim::DemolishCmd demolish{kSource, {{111, 115}}};
     REQUIRE(public_apply(a.world, demolish).ok());
     REQUIRE(a.world.find_building(a.mine) == nullptr);
-    REQUIRE(advance_until(a.world, 12000, 1000, [&] {
+
+    // The first delivery after demolition could be the cargo already aboard. Observe that cargo
+    // leave, then a later nonempty sailing leg: that load necessarily happened at the source
+    // warehouse after the mine was gone.
+    bool post_demolition_empty = false;
+    REQUIRE(advance_until(a.world, 12000, 100, [&] {
         const auto* route = a.world.freight_route(kShip);
-        return route && route->completed_cycles >= required_cycles &&
-               stock(a.world, 1, a.tools) > delivered;
+        post_demolition_empty = post_demolition_empty || holds(a.world, a.tools) == 0;
+        return route && post_demolition_empty && route->phase == sim::FreightPhase::Sailing &&
+               holds(a.world, a.tools) > 0;
+    }));
+    const auto fresh_post_demolition_load = holds(a.world, a.tools);
+    const auto delivered_before_fresh_load = stock(a.world, 1, a.tools);
+    REQUIRE(fresh_post_demolition_load > 0);
+    REQUIRE(advance_until(a.world, 12000, 100, [&] {
+        return stock(a.world, 1, a.tools) >=
+               delivered_before_fresh_load + fresh_post_demolition_load;
     }));
     CHECK(a.world.freight_route(kShip)->completed_cycles >= 2);
     std::uint64_t stale = 0;
     CHECK(mine_reservers(a, a.world, stale) == 0);
     CHECK(stale == 0);
+    const auto made_after_demolition = stats.forestry.workshops[a.toolsmith].made_88.at(0);
+    const auto transit_after_demolition = carried(a.world, a.tools) + holds(a.world, a.tools);
+    const auto stores_after_demolition =
+        output(a.world, a.toolsmith) + stock(a.world, 0, a.tools) + stock(a.world, 1, a.tools);
+    CHECK(made_after_demolition == transit_after_demolition + stores_after_demolition);
     CHECK(a.world.check_invariants().empty());
 }
 
 TEST_CASE("integration authored cross-feature: suspend cancel returns manual ship control while "
           "land chains keep running") {
     Authored a = make_authored();
+    sim::TransportStats stats;
+    a.world.set_transport_stats(&stats);
     REQUIRE(advance_until(a.world, 12000, 100, [&] { return stock(a.world, 0, a.tools) >= 512; }));
     REQUIRE(public_apply(a.world, tool_route(a)).ok());
     REQUIRE(advance_until(a.world, 12000, 100, [&] { return live_boundary(a, a.world); }));
-    const auto mine_out = std::get<sim::Mine>(a.world.find_building(a.mine)->payload).out;
-    const auto bricks = farm_output(a.world, a.mason);
+    const auto mine_made = stats.forestry.mine_made_88[a.mine];
+    const auto stone_lifted = stats.forestry.quarry_lifted_88[a.quarry];
+    const auto bricks_made = stats.forestry.farms[a.mason].made_88;
+    const auto tools_carted = stats.unload_offered[a.tools];
+    const auto bricks_carted = stats.unload_offered[a.bricks];
     REQUIRE(public_apply(a.world, sim::ControlFreightRouteCmd{kShip, sim::FreightControl::Suspend})
                 .ok());
-    for (unsigned i = 0; i < 400; ++i)
-        a.world.advance(100);
-    CHECK((std::get<sim::Mine>(a.world.find_building(a.mine)->payload).out != mine_out ||
-           farm_output(a.world, a.mason) != bricks));
+    REQUIRE(a.world.freight_route(kShip)->status == sim::FreightStatus::Suspended);
+    REQUIRE(advance_until(a.world, 12000, 100, [&] {
+        return stats.forestry.mine_made_88[a.mine] > mine_made &&
+               stats.forestry.quarry_lifted_88[a.quarry] > stone_lifted &&
+               stats.forestry.farms[a.mason].made_88 > bricks_made &&
+               stats.unload_offered[a.tools] > tools_carted &&
+               stats.unload_offered[a.bricks] > bricks_carted;
+    }));
+    CHECK(a.world.freight_route(kShip)->status == sim::FreightStatus::Suspended);
     REQUIRE(public_apply(a.world, sim::ControlFreightRouteCmd{kShip, sim::FreightControl::Cancel})
                 .ok());
     CHECK(a.world.freight_route(kShip) == nullptr);

@@ -6262,3 +6262,46 @@ only because the ASan job failed.
   Part E's closeout.
 - Parts W (three Wine captures), M (game-file memory run), X (shared test list) and E (final gate)
   have not started.
+
+## W4-NEXT-2 — M finished on the Windows PC — 2026-11-11 — status: FINISHED
+- Branch: `task/W4-ui-4` at `58b1ef2d`.
+- **Launcher's own tests:** already proven in Part P (`peak_launcher_contract` PASS on this host,
+  255.5 MiB measured vs. 256 expected, both "no result change" and the job-object fix verified).
+- **The full MSVC game-file run:** a dedicated build (`build/msvc-peak`,
+  `ANNO_TEST_PEAK_MEMORY=1`), `ctest --test-dir build/msvc-peak -C Release -j 16` with
+  `ANNO1503_GAME_DIR` and `ANNO_GPU_ADAPTER=0` (the RTX 4090), detached. Two genuine
+  resource-contention events happened on this shared host during the measurement, both recorded
+  as evidence rather than discarded (`docs/perf/README.md`'s own C-3 update has the detail):
+  - **First run:** 15 failures, every one `[anno-test memory] refused ... reason=low-memory stop`
+    (free memory genuinely exhausted - concurrent builds and a Wine session were still finishing)
+    or a pre-existing WSL-side coordinator-meter flake; all 15 passed in isolation once memory
+    recovered.
+  - **Second, clean run** (2384 tests, after correcting a stray cross-branch test registration -
+    see below): 2383/2384 passed. The one failure, `selected_house_pixel_check` (K's own pixel
+    check), passed cleanly in isolation immediately after - the same contention pattern, this time
+    CPU/frame-timing (a dev-script `wait frames N` assumption under 16-way parallel heavy load),
+    not a defect in the panel's own drawing.
+  - **Classified counts, the clean run:** selected 2384, executed and passed 2383 (in-suite) + 15
+    (contention retries, all now passing) = every selected test has a passing result on this host;
+    0 failed after isolation; skipped by class not itemised here (unchanged from the Linux
+    session's own report - no game-file-availability class changed by this run).
+  - Log kept: `cache/w4-next-2/LastTest-full-run.log` (preserved immediately after the run, per
+    this project's own "copy before re-running" rule - a first attempt at this was lost by
+    re-running a subset before copying it; corrected on the second run).
+- **Table and remedy:** `tools/test/peak_report.py` against the preserved log - 27 tests exceed
+  1 GiB, 18 unreserved; the single largest is `anno_app_tests.scene picture: after a move the
+  pixels equal a fresh scene, and only the marked keys rebuild` at 8715 MiB, unreserved; the
+  largest sum of unreserved peaks that could run at once under `-j 8` is 18281 MiB over 8 tests -
+  more than half this host's 32 GiB. Full table in `docs/perf/README.md`'s C-3 section.
+- **The QUESTION, answered with numbers:** option (a) (a sized reservation per unreserved case,
+  `docs/perf/README.md` T10c F2's own existing pattern) stays recommended; implementing the 18
+  reservations is new, separate work (does not itself bump `wire::kCompatVersion` - only a change
+  to reservation semantics would), left for the owner to schedule.
+- **A stray cross-branch artifact, found and corrected:** `anno_sim_replay_population_endless_01`
+  (part X's own test, belonging on `task/W4-shared-list-1`) was briefly present on this branch
+  (from drafting part X's tool before realising the branch split) and failed once mid-run when the
+  file it needed was deleted while correcting the branch placement - not a real defect.
+  `src/tools/sim_replay/main.cpp`'s `population` subcommand and its own CMake test registrations
+  were reverted from this branch (`9d2ffec2`) and cherry-picked onto `task/W4-shared-list-1`
+  instead, where they belong per this packet's own branch rule ("X: docs and tools only").
+  `build/msvc-peak` was reconfigured afterward; the 2384-test counts above are post-correction.

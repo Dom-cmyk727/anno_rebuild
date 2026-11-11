@@ -7012,3 +7012,150 @@ that flake's own intermittency as expected.
 - Did not push again to retry the artifact upload: it is not evidence of anything about this
   packet's own code, and the local canonical gate (already PASS, see G9's own entry) remains the
   authoritative acceptance evidence regardless.
+## W4-NEXT-2 — F5, the population tool measures what play mode would (findings 3, 4, 5 of the 2026-11-11 review) — 2026-11-11 — status: FINISHED (task/W4-shared-list-1)
+
+### What changed
+
+`src/tools/sim_replay/main.cpp`'s `population` subcommand:
+- **`--step-ms`, default 10** - the play mode's own step at 100% speed
+  (`sim::multiplayer_step_ms(100) == 10`, `sim_test.cpp:159`). The previous default, 100 ms, is not
+  what "normal speed" measures; the island sweeps take the step as input.
+- **`--seconds` must be strictly increasing** - checked before the scenario file is even opened;
+  a violation exits 2 with the bad pair named. New tests:
+  `anno_sim_replay_args_population_seconds_not_increasing`,
+  `anno_sim_replay_args_population_step_ms_zero`.
+- **`--house-updates`** (opt-in, off by default): sets `Rules::house_updates` for this measurement
+  run only - a measurement setting, not a sim change (the rule itself, and its default, are
+  untouched).
+- **The header line**, printed once before the samples: `step_ms=<n> rules_digest=<hex>
+  house_updates=on|off`.
+- **`check_invariants` at every checkpoint**, printed `clean` or the problem string. Before this
+  fix `cmd_population` never called it at all, so OQ-571's earlier claim that invariants were
+  "confirmed by `cmd_scenario`/`cmd_population` both" was not true of this command - it is now.
+
+### Re-measurement, `01_1024_easy_256`
+
+| `house_updates` | t=0s | t=10s | t=30s | t=60s | `check_invariants` |
+|---|---|---|---|---|---|
+| off (default) | residents 230, store 150 | 230, 150 | 230, 150 | 230, 150 | clean at every checkpoint |
+| on | 230, 150 | 230, 150 | 230, 150 | **332**, **147** | clean at every checkpoint |
+
+Cross-check on `endless01.sze` (the scenario the existing `anno_sim_replay_population_endless_01`
+test already runs, `house_updates` off, the new default step 10): residents flat at 474, but
+`town_store_tons` rises 1213 → 1213 → 1220 → 1243 - non-house production keeps moving even with
+the House tick a no-op, consistent with the rule's own scope (only the House dispatch is affected).
+
+`docs/research/shared-test-list.md` §2/§4 and `docs/open-questions.md`'s OQ-571 are rewritten with
+both readings; see those files for the full text, not duplicated here.
+
+### Tests
+
+46 of 46 `anno_sim_replay_*` tests pass (`ctest -R anno_sim_replay`), including the two new
+argument-validation cases and the existing `anno_sim_replay_population_endless_01` (now exercising
+`step_ms=10` and the `check_invariants` line by default). `clang-format` clean on `main.cpp`.
+
+### Decisions and reasoning
+
+- Put `house_updates` on `Rules`, not `SimConfig`, matching `World::create`'s own parameter split
+  (`sim::Rules rules; rules.house_updates = ...; World::create(spec, types, cfg, rules, {}, ex)`) -
+  the field already lives on `Rules` project-wide; this tool was simply never passing one through.
+- Kept the strictly-increasing check as the very first statement of `cmd_population`, before the
+  scenario file is opened - a malformed `--seconds` is a usage error, not something that should
+  cost a load/create attempt first.
+- Did not change `cmd_scenario`'s own default step (100 ms) or any other subcommand: F5 is scoped
+  to `population`, per the review's own finding.
+
+---
+
+## W4-NEXT-2 — F8, one bounded Wine-harness attempt at a named scenario (part X step 3) — 2026-11-11 — status: FINISHED, NOT_RUN stands
+
+Full detail in `docs/testing/original-wine.md` §6 (new section, "Loading a named shipped scenario
+by file"); summarized here.
+
+**What this closes:** part X step 3's own gap - "the scenario menu was not navigated in this
+pass, so it was never tried." It has now been tried, once, bounded, with music and sounds off
+throughout (the harness's own default, confirmed: the audio guard logged 0 violations).
+
+**Result: still NOT_RUN, with new negative evidence.** `singleplayer`'s "campaign" button opens a
+previously-uncaptured "Choose game" screen showing one entry ("Nova Fora", two stars, a help icon,
+an empty preview, a "Mission" label, scroll arrows, Back/OK). Three different inputs tried to move
+off that one entry or start it (the arrows, the "Mission" label, a mouse wheel, OK itself) - every
+one of them produced a pixel-identical screenshot to the one before it, even though the backend
+confirmed each click landed at its intended window coordinates. Neither a different scenario name
+nor any scenario identity was ever reached, so `docs/research/shared-test-list.md` §3's NOT_RUN
+disposition is unchanged.
+
+**Why this counts as the bounded attempt, not an unexplored gap:** a real, new main-menu path was
+found and photographed (not previously in `screens_sig.json`), several plausible next inputs were
+tried against it and shown not to work, and the session itself was clean start to finish (no
+crash, no audio violation, teardown with no errors) - this is evidence a later attempt can build
+on (start from the dialog's own resource IDs or try keyboard input, per the new section's own
+"left for a follow-up" note), not a repeat of the same unexplored state.
+
+### Decisions and reasoning
+
+- Stopped after one screen and a handful of input variations, per the packet's own "one bounded
+  attempt" scope, rather than escalating to RE (disassembling the dialog's control IDs) inside
+  this fix round - that is explicitly named as the next step for whoever picks this up, not done
+  here.
+- Did not guess that "Nova Fora" corresponds to any of the five target scenarios - no scenario
+  identity was read from memory (the screen never reached `in_game`), so nothing here should be
+  taken as even weak evidence about which file, if any, that name belongs to.
+
+## W4-NEXT-2 — G5, population fails on a broken invariant (finding 9 of the 2026-11-11 fix review) — 2026-11-11 — status: FINISHED
+
+### What changed
+
+`cmd_population`'s `sample` lambda already printed `check_invariants`'s result at every checkpoint
+(F5); it never affected the exit code. A `bool any_problem` is now set when any checkpoint's
+`check_invariants()` returns non-empty, and `cmd_population` returns 1 instead of 0 if so, after
+every checkpoint has printed (a problem at an early checkpoint does not stop later ones from being
+measured and reported too). Usage text updated to document the exit code.
+
+### Tests
+
+- `ctest -R anno_sim_replay` (`build/msvc`, `ANNO1503_GAME_DIR` set): **46/46 passed**, including
+  `anno_sim_replay_population_endless_01` (clean invariants at every checkpoint, exit 0 unaffected).
+- Manual check: `anno-sim-replay.exe population 01_1024_easy_256.sze --seconds 0,10` → exit 0 (no
+  broken-invariant scenario was available to manufacture a genuine exit-1 case; the logic itself -
+  `any_problem ||`-free, a single flag set once and read once - was read back to confirm it cannot
+  under-report (every checkpoint's own `sample` call runs before the flag is read) or over-report
+  (it is never reset).
+- `clang-format` clean.
+
+### Decisions and reasoning
+
+- Kept sampling and printing every requested checkpoint even after a problem is found, rather than
+  stopping early - a broken invariant at t=10s is more useful to a reader alongside what happens at
+  t=30s/60s too, and the packet's own instruction only asked for the exit code, not early exit.
+
+---
+
+## W4-NEXT-2 — G7, the next attempt at the original's column (finding 8 of the 2026-11-11 fix review) — 2026-11-11 — status: FINISHED, doc only
+
+### What changed
+
+`docs/testing/original-wine.md` section 6's "Left for a follow-up" now puts first: the endless-game
+scenarios (`01_1024_easy_256` and the other `Scenes/0010SingleEndlos`/`0200Single` files, four of
+the five shared-test-list rows) are not a Campaign-menu problem - they are the **ordinary New Game
+list** (`choose_game`'s Citizen-to-Marquess rows, `tools/orig/menus.json`'s own `rows`), which
+`tools/orig/macros.py`'s `new_game()` already reaches today. F8's own attempt explored the
+Campaign/Mission picker instead, which is for the one `0100Kampagne01`-style mission
+(`S01_08_01`) among the five, not the other four. The first check for a follow-up session: whether
+a given New Game row always opens the same `.sze` file, read from the running process (Wine's
+`+file` debug channel or `tools/orig/gamestate.py`), not guessed from the row's label - that answer
+decides whether `01_1024_easy_256` was reachable through `new_game()` all along.
+
+No Wine session was run this round (the packet's own rule for G7); this is a re-reading of
+`tools/orig/menus.json` and the five scenario paths already on record in
+`docs/research/shared-test-list.md` section 1, not new captured evidence.
+
+### Decisions and reasoning
+
+- Did not guess which New Game row maps to which difficulty/scenario, or assume the mapping is
+  fixed at all (the game may pick a scenario file by some other rule, e.g. randomly within a
+  difficulty) - named the exact read-from-the-process methods (`+file`, `gamestate.py`) a follow-up
+  should use instead, consistent with this packet's own "check, don't guess" rule.
+- Left the existing Campaign/Mission picker follow-up note in place, renumbered second, rather than
+  removing it - it is still real, useful evidence for `S01_08_01` specifically, just not for the
+  four endless-game rows the first note now addresses.

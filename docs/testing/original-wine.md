@@ -211,7 +211,68 @@ Earlier attempts:
 - `t16-accept`: the game crashed at 4.45 game minutes (§2.6), and the crash dialog held the run. That run led to the crash detection and the dialog switch.
 - `t16-crashdiag`: a 12-minute diagnostic run that passed every criterion.
 
-## 6. Rules
+## 6. Loading a named shipped scenario by file (W4-NEXT-2 F8, 2026-11-11) - attempted, not reached
+
+**Goal:** find the main-menu path to load one of the shared test list's five named scenario files
+(`01_1024_easy_256` first, then `Single_06`/`Single_16`/`S01_08_01`/`Single_24`), not the random
+"New game" `new_game()` already reaches. One bounded Wine-harness session, music/sounds off
+(`tools/orig/live.py --session w4next2-f8`; output `cache/orig/w4next2-f8/d91-20261111-173951/`,
+not in git).
+
+**What was tried, in order:**
+1. `skip_intros` then `main_menu` → `singleplayer` (`nx=0.5, ny=0.385`): reached cleanly, matches
+   the existing `recognize()` signature exactly (`singleplayer` match mean 0.5).
+2. **`singleplayer`'s own "campaign" button** (`nx=0.5, ny=0.61`, in `menus.json` but with no
+   recognized-screen signature yet): this is new ground - W4-NEXT-1/2 never clicked it before.
+   It opens a screen not in `screens_sig.json` (`recognize()` returns `"unknown"`, every score
+   40-85, none matching) titled **"Choose game"** - the same title and stone-arch frame as the
+   ordinary New Game picker (`choose_game`), but showing one named entry, **"Nova Fora"**, two
+   star icons, a red "?" help icon, a black (empty) preview pane, a **"Mission"** label/button, and
+   up/down arrows beside the frame, with **Back**/**OK** below - a genuinely new, previously
+   uncaptured screen (screenshot: `shots/after_campaign_click.png`).
+3. **Tried to move off "Nova Fora" to another entry:** the up and down arrows (zoomed and
+   re-measured from the capture, `cache/w4-next-2/f8_arrows_zoom.png`, centres roughly
+   `nx=0.765, ny=0.725`/`0.758`), three clicks each way; the "Mission" label itself, twice; a mouse
+   wheel over the panel, twice. **None changed the screen at all** - every screenshot after every
+   one of these inputs is pixel-identical to `after_campaign_click.png` (not just visually: same
+   click coordinates were accepted by the backend, `{"x":...,"y":...}` echoed each time, so the
+   click reached the window; the game simply did not react). Clicking **OK** also produced no
+   change - the screen after `after_ok.png` is identical to before it, and `recognize()` still
+   returns `"unknown"` with the same scores, so starting "Nova Fora" was not reached either.
+- **Not resolved:** whether "Nova Fora" is the *only* entry this install's Campaign mode has (so
+  there is nothing to scroll to), whether the arrows/Mission button need a different input this
+  harness does not yet send (a held mouse-down, a keyboard key, a double-click), or whether "Nova
+  Fora" corresponds to any of the five target `.sze` files at all - no scenario identity was ever
+  read (the screen never changed into `in_game` for `tools/orig/gamestate.py` to check against).
+- **Session health:** clean throughout - overlay prepared, two intros skipped, `singleplayer`
+  recognized correctly, no crash, clean teardown (`"errors": []`, `"crashed": null`), the audio
+  guard un-violated (sounds/music off throughout), the only file the run wrote was the default
+  profile's `user.dat`.
+- **Left for a follow-up, first (G7, 2026-11-11 fix review, finding 8):** the five shared scenarios
+  are not a "Campaign"-menu problem at all. `01_1024_easy_256` and the other four endless-game
+  files all sit under `Scenes/0010SingleEndlos`/`0200Single` - the **ordinary New Game list**
+  `tools/orig/macros.py`'s own `new_game()` already reaches (`choose_game`'s Citizen-to-Marquess
+  rows, `tools/orig/menus.json`'s `rows`), not the Campaign/Mission picker this session's own
+  attempt explored (that picker is for `0100Kampagne01`-style missions like `S01_08_01`, a
+  different one of the five). **Not yet checked: whether a given row always opens the same `.sze`
+  file**, or picks one at random/by some other rule - this needs reading it from the running
+  process (Wine's own `+file` debug channel, `WINEDEBUG=+file`, which logs every file the game
+  opens; or `tools/orig/gamestate.py`, if a loaded scenario's identity is readable from memory),
+  not guessed from the row's label. This is the first thing a follow-up session should check,
+  before any more menu exploration - it may turn out `01_1024_easy_256` was reachable through
+  `new_game()` all along, just never under its own name.
+- **Left for a follow-up, second:** for the Campaign/Mission picker this session did find (for
+  the `0100Kampagne01`-style scenarios, not the endless ones above): add it to `screens_sig.json`
+  (now that a real capture exists) and try keyboard-driven navigation (arrow keys, Enter) instead
+  of more mouse-click guesses, or inspect `AnnoFrame.dll`'s menu strings/dialog resource for its
+  actual control IDs before trying coordinates again - blind coordinate guessing has now been
+  tried twice (`campaign`'s own click position included) without result.
+
+**Disposition:** `docs/research/shared-test-list.md` section 3 (the original's column) stays
+NOT_RUN. This attempt is recorded as real, substantive negative evidence - a genuinely new menu
+reached and photographed, several plausible inputs tried and ruled out - not an unexplored gap.
+
+## 7. Rules
 - The game copy stays inside the distro; nothing of the original goes into git. Signatures are hashes, menu data are coordinates, screenshots stay in `cache/`.
 - Memory is read-only. Memory writes stay an owner decision (OQ-T15-WRITE); in disposable copies they are a candidate for allowing.
 - What a run may change is its own disposable copy and prefix: the profile volumes and registry values such as `MULTIPLAYER`.

@@ -68,11 +68,22 @@ executor reports to [`REPORTS-1.md`](REPORTS-1.md), so an agent can read the liv
 Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026-10-28; where §1 points to
 `HISTORY.md`, look in `HISTORY-2.md` too.
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
-  [`tasks/`](tasks/): now W4-NEXT-1 and W4-NEXT-2 (Windows) and MAP-EXTRACT-2 (first Mac).
-- **What stays here:** the owner rules above; three open dispatches that exist only on this board (MAP-ROUTE-1 for the
-  second Mac; the compatibility decision on founding accounts and salt sequencing, 134/135; MAP-NEEDS-CLOSE-EXTRACT-1
-  for the first Mac, whose MAP-EXTRACT-1 review is pending); §1, the protocol for the executor; §4. Where they say
-  "accepted above", that section is now in `HISTORY-2.md`.
+  [`tasks/`](tasks/): now W4-NEXT-2 (Windows) and [MAP-INTEGRATE-2](tasks/map-integrate-2.md) (the Mac, released
+  2026-11-11).
+  - **MAP-INTEGRATE-2:** MAP-EXTRACT-1 (135), MAP-EXTRACT-2 (137) and MAP-ROUTE-1 (136) onto `main` under
+    **state 138**, which is reserved for it. It also brings the shared folder to the Mac, OQ-556 from the original's
+    code, and a measured list of what still stops a town.
+  - **The three Mac dispatches below are finished:** their final candidates are that packet's inputs. Their text
+    stays here as their record.
+- **What stays here:**
+  - the owner rules above;
+  - three dispatches that exist only on this board, finished since 2026-11-11 and taken over by MAP-INTEGRATE-2:
+    MAP-ROUTE-1 for the second Mac; the compatibility decision on founding accounts and salt sequencing, 134/135;
+    MAP-NEEDS-CLOSE-EXTRACT-1 for the first Mac;
+  - §1, the protocol for the executor;
+  - §4.
+
+  Where they say "accepted above", that section is now in `HISTORY-2.md`.
 - **What moved:** MAIN-CI-1 (closed); MAP-EXPAND-1 and the state-134 prerequisite (accepted); ECON-BOOK-1 and its
   baseline (accepted); the main consolidation of 2026-11-05; "Other lane dispatches and completed integration
   history", which holds the release notes of 2026-11-07 (W4-UI-2, MAP-EXTRACT-2, W4-MAIN-2), the MAP-SCRIPT-2 packet,
@@ -81,7 +92,8 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
   queue (the T-series and the LAN endless lane, 2026-10-20 to 10-29).
 - **Still open among the moved dispatches,** as `STATUS.md` records them: W4-DEPTH-1-CLOSE (waits on the owner's
   depth check), W4-SHORE-2 (queued, not released), W4-MAIN-2 (part D changes requested;
-  [packet](tasks/w4-main-2.md)), MAP-EXTRACT-2 ([packet](tasks/map-extract-2.md)) and W4-OPENING-2 (STATUS lists
+  [packet](tasks/w4-main-2.md)), MAP-EXTRACT-2 ([packet](tasks/map-extract-2.md); finished, an input of
+  MAP-INTEGRATE-2 since 2026-11-11) and W4-OPENING-2 (STATUS lists
   `task/W4-opening-2`; its adoption `task/W4-opening-2-main` is already in `main`). Every moved heading keeps its
   last recorded status: one marked READY or CURRENT there is not cancelled, and may be stale.
 - **Owner decisions recorded in the moved text.** They stay in force unless a later rule replaces them; the full text
@@ -111,6 +123,10 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
 
 <!-- BEGIN MAP-ROUTE-1 -->
 ## Second Mac — MAP-ROUTE-1: automatic freight between owned warehouses (2026-11-06)
+
+**FINISHED, 2026-11-11 note.** R0–R7 reached a final local candidate. Its CI-green head
+`claude/ci-fix-map-route-1` `49ffcee6` is an input of [MAP-INTEGRATE-2](tasks/map-integrate-2.md), which makes the
+combined identity decision this dispatch asks for: **state 138**.
 
 **RELEASED: R0–R7, one comprehensive headless gameplay bundle.** This is the
 second Mac executor's current assignment and supersedes the completed expansion
@@ -524,6 +540,10 @@ This is not acceptance of either unimplemented successor.
 
 <!-- BEGIN MAP-NEEDS-CLOSE-EXTRACT-1 -->
 ## First Mac — close MAP-NEEDS-2, then MAP-EXTRACT-1 (2026-11-06)
+
+**FINISHED, 2026-11-11 note.** MAP-EXTRACT-1 (`task/MAP-EXTRACT-1-x2` `2f32437a`) is contained in MAP-EXTRACT-2's
+CI-green head `fix/MAP-EXTRACT-2-ci` `a5a3bca3`. That head is an input of
+[MAP-INTEGRATE-2](tasks/map-integrate-2.md), state 138.
 
 **Checkpoint publication:** push your own task branch to origin at every checkpoint
 and report, ordinary pushes only. Never push main or force-push. This supersedes

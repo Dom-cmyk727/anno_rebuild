@@ -4,7 +4,20 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-10 late evening, by the Claude Code orchestrator:
+**Last updated:** 2026-11-11, by the Claude Code orchestrator:
+- **[MAP-INTEGRATE-2](tasks/map-integrate-2.md) released to the Mac executor** (owner request), in parallel with
+  W4-NEXT-2 on Windows.
+  - **What it does:** brings the three finished Mac packages onto `main` under one new identity, **state 138**:
+    salt (135), iron tools, quarry and bricks (137), and automatic freight (136).
+  - **Also:** the shared folder on the Mac (receive-only), OQ-556 from the original's code, and a measured list of
+    what still stops a town from progressing.
+  - **Branch:** `task/MAP-INTEGRATE-2` from `main`.
+  - **Afterwards, the orchestrator:** reviews it, runs the Windows game-file run, and lands it.
+- **MAP-EXTRACT-2's T5 fix ACCEPTED** by the orchestrator, as the owner had asked
+  ([review](reviews/2026-11-11-map-extract-2-t5-fix.md)). The two-reserver reload test executes with the game files
+  and catches the unsaved-field mutant: 2 of 4,296 assertions fail with the mutant, all pass without it.
+
+Before that, 2026-11-10 late evening, by the Claude Code orchestrator:
 - **W4-NEXT-1 ACCEPTED and merged into `main`** as `fc126fbe` (part C) and `2c4dc295` (parts S, U, E)
   ([acceptance review](reviews/2026-11-10-w4-next-1-acceptance.md)). All nine interim findings are dispositioned.
   - **Fixed:** the `--view` key regression and the macOS SIGPIPE.
@@ -62,11 +75,12 @@ not edit it; their reports go into `REPORTS.md` on their task branch.
 |---|---|
 | Owner | decides scope and "feeling" defaults, playtests, releases tasks |
 | Co-developer | works on the project directly (from 2026-11-06) |
-| Codex orchestrator | writes the board's top dispatch; runs the two Mac lanes and the main consolidations |
-| Claude Code orchestrator | reviews the Windows lane and moves `main` for it; host and infrastructure on the Windows PC |
+| Codex orchestrator | wrote the board's top dispatch, ran the two Mac lanes and the main consolidations; last on the board 2026-11-06 |
+| Claude Code orchestrator | reviews and lands every lane on `main` (the Mac lane too since 2026-11-07); host and infrastructure on the Windows PC |
 | Windows executor | Claude Code on the owner's Windows PC (RTX 4090): rendering, the live window, the opening |
-| First Mac executor | the MAP executor: gameplay in the headless sim (supply, needs, production chains) |
-| Second Mac executor | gameplay integration: scripting, economy, expansion |
+| Mac executor | from 2026-11-11 one session on the owner's Mac: MAP-INTEGRATE-2 |
+| First Mac executor | until 2026-11-10, the MAP executor: gameplay in the headless sim (supply, needs, production chains) |
+| Second Mac executor | until 2026-11-06, gameplay integration: scripting, economy, expansion, routes |
 
 ## Current work
 
@@ -188,6 +202,21 @@ mirror still requires the owner/Windows sync after main publication.
 - **Queued, not released:** W4-SHORE-2, the sea against its plane per pixel.
 - **Pushed:** all four branches, on 2026-11-06.
 
+### Mac executor (from 2026-11-11)
+
+- **Now: [MAP-INTEGRATE-2](tasks/map-integrate-2.md),** released 2026-11-11. Parts S → P → I0–I5 → R → N → E.
+  - **Inputs (frozen):**
+    - `fix/MAP-EXTRACT-2-ci` `a5a3bca3`: 135 plus 137, CI 10/10;
+    - `claude/ci-fix-map-route-1` `49ffcee6`: 136, CI green.
+  - **Branch:** `task/MAP-INTEGRATE-2` from `origin/main`.
+  - **Identity:** **state 138**, reserved. It refuses 134 to 137 explicitly. PRNG5, replay4, command1 and ECONBK1
+    stay only if the combination proves they may.
+  - **The shared folder:** the Mac joins `open1503-share` as **Receive Only**. The PC side is done (2026-11-11): the
+    device `Mac` is added and the folder is shared with it. Still to do: the owner accepts the PC and the folder on
+    the Mac.
+  - **Still the owner's:** A6 (rebind a mine at load). The combination keeps option B, as implemented.
+- The two sections below are the Mac lanes' record up to their final candidates.
+
 ### First Mac executor
 
 - **2026-11-10: the run was interrupted at `ce14b264`; the Claude Code orchestrator owns the consolidation.** All
@@ -301,6 +330,10 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on the owner
 
+- **On the Mac, accept this PC and the `open1503-share` offer** in Syncthing, as Receive Only (MAP-INTEGRATE-2
+  part S, step 4).
+- **A6, rebind a mine at load** ([packet](tasks/map-extract-2.md) A6). The executor recommends B, keep the saved
+  binding. MAP-INTEGRATE-2 keeps B until the owner answers.
 - **The W4-UI-2 playtest card** (part K): the HUD and construction menu in the live window, on `main` from
   `96de6bca`.
 - **ADR 0004 questions R2 and R3:** the default surface (`--ui classic|dev`) and the UI scale.

@@ -248,12 +248,25 @@ not in git).
   recognized correctly, no crash, clean teardown (`"errors": []`, `"crashed": null`), the audio
   guard un-violated (sounds/music off throughout), the only file the run wrote was the default
   profile's `user.dat`.
-- **Left for a follow-up:** add "campaign"/"choose_game_mission" as named screens in
-  `screens_sig.json` (now that a real capture of it exists) and try a keyboard-driven navigation
-  (arrow keys, Enter) instead of more mouse-click guesses, or inspect `AnnoFrame.dll`'s menu
-  strings/dialog resource for this screen's actual control IDs before trying coordinates again -
-  blind coordinate guessing has now been tried twice (`campaign`'s own click position included)
-  without result, so the next attempt should start from evidence, not another guess.
+- **Left for a follow-up, first (G7, 2026-11-11 fix review, finding 8):** the five shared scenarios
+  are not a "Campaign"-menu problem at all. `01_1024_easy_256` and the other four endless-game
+  files all sit under `Scenes/0010SingleEndlos`/`0200Single` - the **ordinary New Game list**
+  `tools/orig/macros.py`'s own `new_game()` already reaches (`choose_game`'s Citizen-to-Marquess
+  rows, `tools/orig/menus.json`'s `rows`), not the Campaign/Mission picker this session's own
+  attempt explored (that picker is for `0100Kampagne01`-style missions like `S01_08_01`, a
+  different one of the five). **Not yet checked: whether a given row always opens the same `.sze`
+  file**, or picks one at random/by some other rule - this needs reading it from the running
+  process (Wine's own `+file` debug channel, `WINEDEBUG=+file`, which logs every file the game
+  opens; or `tools/orig/gamestate.py`, if a loaded scenario's identity is readable from memory),
+  not guessed from the row's label. This is the first thing a follow-up session should check,
+  before any more menu exploration - it may turn out `01_1024_easy_256` was reachable through
+  `new_game()` all along, just never under its own name.
+- **Left for a follow-up, second:** for the Campaign/Mission picker this session did find (for
+  the `0100Kampagne01`-style scenarios, not the endless ones above): add it to `screens_sig.json`
+  (now that a real capture exists) and try keyboard-driven navigation (arrow keys, Enter) instead
+  of more mouse-click guesses, or inspect `AnnoFrame.dll`'s menu strings/dialog resource for its
+  actual control IDs before trying coordinates again - blind coordinate guessing has now been
+  tried twice (`campaign`'s own click position included) without result.
 
 **Disposition:** `docs/research/shared-test-list.md` section 3 (the original's column) stays
 NOT_RUN. This attempt is recorded as real, substantive negative evidence - a genuinely new menu

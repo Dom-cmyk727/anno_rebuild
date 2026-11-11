@@ -33,7 +33,7 @@ std::map<std::string, Expected> expected() {
         for (std::size_t i = 0; i < hex.size(); i += 2)
             e.bytes.push_back(static_cast<std::uint8_t>(std::stoul(hex.substr(i, 2), nullptr, 16)));
     }
-    REQUIRE(out.size() == 9);
+    REQUIRE(out.size() == 10);
     return out;
 }
 template <class T> void compare(const char* name, const Expected& e, const T& value) {
@@ -48,6 +48,24 @@ template <class T> void compare(const char* name, const Expected& e, const T& va
     CHECK(bytes.data() == e.bytes);
     sim::HashArchive hash;
     sim::fields(hash, value);
+    CHECK(hash.finish() == e.hash);
+}
+struct CombinedWorldScope {
+    sim::FigureRegistry figures;
+    sim::Building mine;
+    sim::Building quarry;
+};
+template <class A, class S> void combined_world_fields(A& a, S& s) {
+    a.scope("figures", [&] { sim::fields(a, s.figures); });
+    a.scope("mine_building", [&] { sim::fields(a, s.mine); });
+    a.scope("quarry_building", [&] { sim::fields(a, s.quarry); });
+}
+void compare_combined_world(const Expected& e, const CombinedWorldScope& value) {
+    sim::WriteArchive bytes;
+    combined_world_fields(bytes, value);
+    CHECK(bytes.data() == e.bytes);
+    sim::HashArchive hash;
+    combined_world_fields(hash, value);
     CHECK(hash.finish() == e.hash);
 }
 sim::Figure actor(std::uint64_t id, std::uint32_t kind, sim::FigureId parent = {},
@@ -186,6 +204,66 @@ TEST_CASE(
     quarry.status = {sim::Status::StorageFull, 3, false, 44};
     quarry.claims = {1, 0};
     compare("quarry", e.at("quarry"), quarry);
+    CombinedWorldScope combined;
+    combined.figures = registry;
+    combined.mine.id = sim::BuildingId{77};
+    combined.mine.type = sim::TypeId{70001};
+    combined.mine.x = 10;
+    combined.mine.y = 11;
+    combined.mine.payload = mine;
+    combined.quarry.id = sim::BuildingId{88};
+    combined.quarry.type = sim::TypeId{90001};
+    combined.quarry.x = 20;
+    combined.quarry.y = 21;
+    combined.quarry.payload = quarry;
+    compare_combined_world(e.at("world"), combined);
+
+    // One archive owns every relationship: read it, verify the links, and write it back exactly.
+    sim::WriteArchive encoded;
+    combined_world_fields(encoded, combined);
+    sim::ReadArchive reader(encoded.data());
+    CombinedWorldScope restored;
+    combined_world_fields(reader, restored);
+    REQUIRE_FALSE(reader.failed());
+    CHECK(reader.remaining() == 0);
+    sim::WriteArchive reencoded;
+    combined_world_fields(reencoded, restored);
+    CHECK(reencoded.data() == encoded.data());
+    REQUIRE(std::holds_alternative<sim::Mine>(restored.mine.payload));
+    REQUIRE(std::holds_alternative<sim::Quarry>(restored.quarry.payload));
+    const auto& restored_mine = std::get<sim::Mine>(restored.mine.payload);
+    const auto& restored_quarry = std::get<sim::Quarry>(restored.quarry.payload);
+    CHECK(restored.mine.id == sim::BuildingId{77});
+    CHECK(restored.quarry.id == sim::BuildingId{88});
+    CHECK(restored_mine.deposit == 3);
+    CHECK(restored_quarry.claims == std::vector<std::uint8_t>{1, 0});
+    REQUIRE(restored.figures.list.slots[37]->freight.has_value());
+    CHECK(restored.figures.list.slots[37]->freight->stops[0].warehouse == restored.mine.id);
+    CHECK(restored.figures.list.slots[9]->home == restored.quarry.id);
+    std::uint32_t restored_reservations = 0;
+    for (std::size_t slot : {10U, 11U}) {
+        REQUIRE(restored.figures.list.slots[slot].has_value());
+        CHECK(restored.figures.list.slots[slot]->transport.target == restored.mine.id);
+        restored_reservations += restored.figures.list.slots[slot]->transport.reserved_88;
+    }
+    CHECK(restored_reservations == restored_mine.reserved);
+
+    // Seam omissions are visible in the encompassing bytes, not hidden by isolated integers.
+    auto wrong_quarry = restored;
+    wrong_quarry.quarry.payload = sim::Inert{}; // omits payload tag 9 and the claim set
+    sim::WriteArchive without_quarry_case;
+    combined_world_fields(without_quarry_case, wrong_quarry);
+    CHECK(without_quarry_case.data() != e.at("world").bytes);
+    auto without_route = restored;
+    without_route.figures.list.slots[37]->freight.reset();
+    sim::WriteArchive without_freight_state;
+    combined_world_fields(without_freight_state, without_route);
+    CHECK(without_freight_state.data() != e.at("world").bytes);
+    auto without_claim = restored;
+    std::get<sim::Quarry>(without_claim.quarry.payload).claims[0] = 0;
+    sim::WriteArchive without_restored_claim;
+    combined_world_fields(without_restored_claim, without_claim);
+    CHECK(without_restored_claim.data() != e.at("world").bytes);
     sim::ScriptRuntime r;
     r.source = "[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n\"ME\" 0\n[SCRIPT_KERNEL]\n"
                "SET X = TRUE;\nSET Y = FALSE;\nSET Z = TRUE;\nINITBLOCK(){ MONEY_ADD(\"ME\",7); "

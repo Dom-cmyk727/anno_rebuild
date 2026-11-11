@@ -3,9 +3,11 @@
 
 The record combines native header, two raw permission rows, a sparse actor
 registry (ship37 -> crew2 -> donkey7, animal8), and a nontrivial script runtime.
-Each scope's expected bytes and hierarchical digest are independently encoded.
-It complements the independent whole-world scheduler goldens in sim_stream.py;
-this structural fixture is not an original scenario or a complete playable world.
+Each scope's expected bytes and hierarchical digest are independently encoded. The `world`
+record is the smallest encompassing serialized state used by this proof: one FigureRegistry and
+two complete Building wrappers. It keeps the freight ship, mason, quarry claims, bound mine and
+both reservers in one round-trippable archive without pretending to be an original scenario.
+It complements the independent whole-world scheduler goldens in sim_stream.py.
 """
 import argparse
 import importlib.util
@@ -77,6 +79,10 @@ def mine():
 def quarry():
     return u16(22)+bytes([0,1,2,3])+u16(44)+bytes([1,1])+u64(2)+bytes([1,0])
 
+def building(serial,kind,x,y,tag,payload):
+    # Complete Building wrapper: id, type, tile, rotation, byte0e/0f, kontor, payload tag + fields.
+    return u64(serial)+u32(kind)+pack('2i',x,y)+bytes([0,0x86,0])+u32(0)+u8(tag)+payload
+
 def records():
     spec=importlib.util.spec_from_file_location('published128',ROOT/'fixtures/synthetic/sim/integrate1/legacy/published128/tools/sim_stream.py')
     old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
@@ -101,12 +107,17 @@ def records():
     goods+=u64(25)+b''.join(pack('3BI',*row) for row in current.CLASSES)+u64(0)*3
     names=(b'POLAR',b'TUNDRA',b'NORD',b'PRAERIE',b'DSCHUNGEL',b'STEPPE',b'WUESTE',b'CUSTOM')
     economy=u64(8)+b''.join(text(n) for n in names)+u32(4)+u32(2000)
+    mine_building=building(77,70001,10,11,5,mine())
+    quarry_building=building(88,90001,20,21,9,quarry())
+    # The three top-level scopes contribute their child digests to the encompassing root.
+    world=raw+mine_building+quarry_building
+    world_hash=fnv(u64(fnv(hierarchical))+u64(fnv(mine_building))+u64(fnv(quarry_building)))
     return {'header':(u32(138)+b'ECONBK1\0'+u32(5),None),
             'player':(old.player_bytes(old.new_player(0))+u64(2)+pack('4I',70001,0,90001,255),None),
             'figures':(raw,fnv(hierarchical)), 'script':(script(),None),
             'accounts':(u16(65000)+pack('5Q',0x0102030405060708,105,210,4294967313,28),None),
             'economy':(economy,None),'goods_registry':(goods,None),
-            'mine':(mine(),None),'quarry':(quarry(),None)}
+            'mine':(mine(),None),'quarry':(quarry(),None),'world':(world,world_hash)}
 
 def fixture():
     return '# Independent ECONBK1 structural scopes: name hex hierarchical_fnv64\n'+''.join(
@@ -121,6 +132,8 @@ class Contracts(unittest.TestCase):
         self.assertIn(freight(),records()['figures'][0])
         self.assertEqual(records()['mine'][0][11:15],u32(512))
         self.assertTrue(records()['quarry'][0].endswith(bytes([1,0])))
+        self.assertIn(building(77,70001,10,11,5,mine()),records()['world'][0])
+        self.assertIn(building(88,90001,20,21,9,quarry()),records()['world'][0])
     def test_populated_accounts_literal_and_widened_cost(self):
         self.assertEqual(records()['accounts'][0].hex(),
             'e8fd08070605040302016900000000000000d20000000000000011000000010000001c00000000000000')
@@ -131,7 +144,7 @@ class Contracts(unittest.TestCase):
             path=Path(td)/'fields.txt';path.write_text(fixture())
             command=[sys.executable,'-I',str(Path(__file__).resolve()),'--fixture',str(path)]
             result=subprocess.run(command,capture_output=True,text=True)
-            self.assertEqual(result.returncode,0);self.assertIn('9 populated combined scopes agree',result.stdout)
+            self.assertEqual(result.returncode,0);self.assertIn('10 populated combined scopes agree',result.stdout)
             path.write_text(fixture().replace('8a000000','89000000',1))
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
@@ -159,6 +172,9 @@ class Contracts(unittest.TestCase):
         self.assertNotEqual(figure(2,717,1,0),figure(2,717,2,0))
         self.assertNotEqual(script(),script().replace(b'authored/joint',b'authored/other'))
         self.assertNotEqual(fnv(pack('4I',70001,0,90001,255)),fnv(pack('4I',70001,0,90001,1)))
+        right=building(88,90001,20,21,9,quarry())
+        self.assertNotEqual(right,building(88,90001,20,21,0,quarry())) # Quarry tag omitted
+        self.assertNotEqual(records()['world'][0],records()['world'][0].replace(right,right[:-2]+bytes([0,0]),1))
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
@@ -168,5 +184,5 @@ def main():
     try: actual=path.read_text()
     except OSError as error: print('fixture unavailable: '+str(error));return 1
     if actual!=fixture():print('combined oracle differs');return 1
-    print('9 populated combined scopes agree');return 0
+    print('10 populated combined scopes agree');return 0
 if __name__=='__main__':raise SystemExit(main())

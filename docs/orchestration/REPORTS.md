@@ -6582,3 +6582,116 @@ removes the freight state and public `MoveCmd` restores manual navigation.
   mason movement could pass with a stalled quarry or cart and was removed after review.
 - Left gameplay rules, state identity and original fixtures unchanged. I3 adds proof for the
   already accepted 138 composition; it does not introduce a new simulation contract.
+
+## MAP-INTEGRATE-2 I4 — combined real-data results — 2026-11-11 — APPROVED
+
+The reviewed correction is frozen at `7f6fad9fc3c3bf173be156ebbdd55fe18f97b372`. The combined
+binary keeps state 138 and every gameplay default. It changes no product code, archive layout,
+schema, rule or original fixture. It replaces four isolated-stream trajectory fingerprints with
+the exact combined-state results, keeps them strict rather than tolerant, and labels the two
+published evidence headers as state 138.
+
+The cause is the accepted state-137 carrier endpoint rule in `transport.cpp`: source and home walks
+preserve the selected goal sub-cell rather than ending at the last tile centre. On the original
+freight fixture the first source threshold now takes 73 rather than 75 advances and the later
+collection threshold 38 rather than 39, so route assignment moves from entry 490 to 487 and the
+changed-command divergence from 491 to 488. On the expansion fixture the first delivery is ready
+two 500-tick advances earlier; the driven trajectory closes at tick 264000 rather than 265000,
+before one source-city upkeep booking. Source upkeep is therefore 89 rather than 90, owner gold is
+28864 rather than 28863, and the changed-command divergence moves from entry 460 to 458. All goods,
+construction and city ledgers, checkpoint counts, native continuations, hashes and invariants stay
+under their existing exact checks.
+
+### Acceptance table
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| State-136 original automatic freight on the combined binary | Two cargo-bearing cycles, exact conservation/city accounts, 11/11 fresh-process checkpoints | A one-ton route change diverges after 3/4 checkpoints at exact entry 488 | `route-real-final.log` | Approved |
+| R6 continuation and bounded scale | Honest fresh-process replay reproduces; Release scale case executes | Changed-command replay must return the named divergence rather than reproduce | Route final plus `route-scale-release.log` | Approved |
+| State-137 iron, Quarry, resident walk and state-135 salt | Iron T3–T5, two-reserver reload, Q3 bricks, Quarry continuation, the 7-city resident measure and salt/mountain proofs execute on the combined binary | Seven explicitly opt-in probes remain classified skips; none is presented as corpus execution | `extract-real.log` | Approved; later changes have no production dependency |
+| Main's repaired 18 | All five non-GPU members execute with original files | The 2 play-GPU and 11 picture-GPU members are explicitly NOT_RUN on this Mac | `main-five-and-canaries.log` | Approved within Mac host boundary |
+| Expansion and ship-start canaries | Expansion producer plus honest/changed replays execute; ten other ship-start/expansion canaries execute | Changed expansion command diverges after 10/11 checkpoints at exact entry 458 | `main-canaries-real-corrected.log` and `main-five-and-canaries.log` | Approved |
+| Changed combined counts are explained, not forced | Exact earlier thresholds, ticks, ledgers and replay entries are pinned | Preserved stale expectations fail on the newly observed exact values before replacements pass | Four preserved route/expansion logs below | Approved |
+
+### Author evidence and preserved failures
+
+- Extract/iron/Quarry/resident/salt gate: selected 72 / executed 65 / failed 0 / empty 0 /
+  skipped 7 (`opt-in=7`, every other skip class 0) / incomplete 0 / sanitizer lines 0.
+  `extract-real.log`, SHA-256
+  `87324a479625e59aa7528d033d3a783a1f7441e1cb17bcad217b62b648fb954a`.
+  `ANNO_RESIDENT_MEASURE=1` made the required seven-city measure execute: 861 home walks, 13
+  no-path results. The seven skips are the named iron probes and salt timing sample, not required
+  proofs.
+- Final original-freight and replay gate: selected 3 / executed 3 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0. `route-real-final.log`, SHA-256
+  `8f6d39873120876b68cc1fca85af3e73d4cb58ee2b5e975ceffe2563f03b10de`.
+- Release bounded-scale gate: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+  incomplete 0 / sanitizer lines 0. `route-scale-release.log`, SHA-256
+  `006502a4e4c1a7fa2c18243dbebfb15a2b1ba591c332bdb6a98ee7799e43a63f`.
+- Corrected expansion producer and both replay arms: selected 3 / executed 3 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0. `main-canaries-real-corrected.log`, SHA-256
+  `0b5cafc66d1f8d332866329259e4582484fa237fe41ee9db89cba4b5c662cdc5`.
+- Exact five repaired non-GPU main cases plus ten remaining ship-start/expansion canaries:
+  selected 15 / executed 15 / failed 0 / empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0.
+  `main-five-and-canaries.log`, SHA-256
+  `5f0f9e3189f5a0e38d853802cbfdf336344b78989a09a68a2fd9398a213d26d4`.
+- The first state-138 freight run is preserved: selected 3 / executed 0 / failed 3 / empty 0 /
+  skipped 0 / incomplete 0. The producer reached 52,126 successful assertions and then reported
+  assignment entry 487 against stale 490; both dependent replays were not run. `route-real.log`,
+  SHA-256 `71ea8e8c6bc9493ef9c8a77e6eceea37f7da84f95cb57bc415f9dcf254653212`.
+- The first corrected freight run is also preserved: selected 3 / executed 2 / failed 1 / empty 0 /
+  skipped 0 / incomplete 0. The producer and honest replay passed; the negative replay alone still
+  expected stale entry 491 rather than observed 488. `route-real-corrected.log`, SHA-256
+  `2cb675c91820257922a57b201a9031ceb4db82eafecd1ad392c1930a4b106248`.
+- The first expansion run is preserved: selected 3 / executed 0 / failed 3 / empty 0 / skipped 0 /
+  incomplete 0. Its 30,255 successful assertions exposed only source upkeep 89 versus stale 90 and
+  gold 28864 versus stale 28863; both dependent replays were not run.
+  `main-canaries-real-final.log`, SHA-256
+  `b8b023fd49ffbbaf3548e1cc04c14515308dee400f46551af50eaeeed184fffe`.
+- One attempted overlap against `build/dev` was refused by the runner's existing lock before test
+  execution. The active freight gate retained ownership and finished normally; no lock was removed
+  and no product result is inferred from that workflow refusal.
+
+The long Extract gate is reused after the focused correction because the only later changed files
+are `src/sim/tests/freight_original.inc`, the expansion expectations in
+`founding_assets_test.cpp`, their replay strings in `src/sim/CMakeLists.txt`, and comment reflow.
+No iron, Quarry, salt, resident, production or transport dependency changed. `clang-format` 23.1.3
+and `git diff --check` are clean for the corrected files.
+
+### Independent review
+
+Independent reviewer `/root/integrate2_i3_review` reviewed exact clean pin `7f6fad9f` against I3
+closure `3a4eb2db`, the causal `transport.cpp` callers, all preserved/superseding raw logs and the
+game-file disposition: **APPROVED, no actionable findings**.
+
+- Its exact-pin freight/expansion/replay/ship-start gate: selected 7 / executed 7 / failed 0 /
+  empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0; mandatory
+  `picture_matrix_contract` separately executed 1/1. `reviewer-7f6fad9f.log`, SHA-256
+  `81a0733621c393c93a33d0d6c182ac3113025f162ec75b318c524790816d46ae`.
+- Its repaired-main control: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+  incomplete 0 / sanitizer lines 0; mandatory `picture_matrix_contract` separately executed 1/1.
+  `reviewer-main-real-7f6fad9f.log`, SHA-256
+  `4ab593c8e8108113c7f1637f7b8f789525480a0388ef541df11e89b6705feb15`.
+- Four original-data bodies ran independently: freight voyage, expansion voyage, the original-file
+  ship-start candidates and repaired-main no-command play. The reviewer also executed both honest
+  and both changed-command fresh-process replay entries. It did not duplicate the other four
+  repaired non-GPU main cases; those remain author evidence above.
+- The remaining 13 members of main's repaired-18 class (2 play GPU and 11 picture GPU), plus GPU,
+  Windows/MSVC, x86_64 and Wine generally, are **NOT_RUN by packet design** on this Mac. No asset
+  prerequisite skip is counted as execution.
+
+### Decisions and reasoning
+
+- Kept the combined results exact. A tolerance or removal of the entry/upkeep checks would have
+  hidden a deterministic semantic consequence of the accepted endpoint rule.
+- Explained the count changes through both threshold loops and the city booking boundary before
+  editing expectations. The preserved stale-pin failures and changed-command replay failures prove
+  each replacement applied and still distinguishes an altered command.
+- Ran the five actual non-GPU members of the repaired-18 class, identified from the accepted
+  W4-MAIN-2 packet, rather than treating every similarly named app test as a historical repair.
+- Kept the 13 GPU members NOT_RUN instead of accepting a skip or trying to redefine their coverage
+  on a host excluded by this packet.
+- Reused the long Extract result only after checking the complete later diff and naming its
+  dependencies. Test-only replay/trajectory corrections cannot change its production execution.
+- Preserved every failed gate under a distinct path. A later green run supersedes the stale
+  expectation for acceptance but does not erase how the integration difference was discovered.

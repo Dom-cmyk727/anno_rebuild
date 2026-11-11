@@ -1544,6 +1544,25 @@ bool Viewer::selection_handle(const SDL_Event& e) {
         if (!press || !is_click(px - press->first, py - press->second, kClickSlop)) {
             return false; // a drag: the window's pan
         }
+        if (construction_menu_ != nullptr) {
+            // Finding 2 of the 2026-11-11 review: a click on the drawn HUD (the right chrome, the
+            // selected-building panel and its need icons within it) is not a world click -
+            // `selection.hpp`'s own doc comment already says so, but nothing checked it, so
+            // `dev_->pick` picked the tile *behind* the panel instead. Only at the one drawable
+            // size hud.txt's own coordinates are for (R3's "no guessed scale", construction_
+            // handle's own rule above) - this hit test is pure geometry, but px/py outside that
+            // size aren't in hud.txt's reference frame at all.
+            const auto [dw, dh] = view_size();
+            if (dw == 1024 && dh == 768 && point_in_hud_panel(construction_menu_->hud(), px, py)) {
+                // The press (above) already set `drag_` true, same as any other left button
+                // down (the generic case further below, which would normally clear it on this
+                // same up event) - cleared here too, consumed or not, or the next motion event
+                // pans the camera from a click the player saw do nothing (round-ee's own rule for
+                // a consumed selection click, mirrored below for this one).
+                drag_ = false;
+                return true; // consumed: no select, no deselect, no inspection request
+            }
+        }
         event.kind = SelectionEventKind::Click;
         event.mode = PointerMode::Select;
         if (dev_ != nullptr && pointer_frame_) {
@@ -2197,6 +2216,24 @@ void Viewer::script_tick() {
             st.facts["inspection.tile.x"] = std::to_string(insp->tile.x);
             st.facts["inspection.tile.y"] = std::to_string(insp->tile.y);
         }
+    }
+    // Row 18's selection (W4-NEXT-2 F1, finding 1): a script that waits on a fixed frame count to
+    // know a click's selection resolved races the sim thread's inspection answer under load
+    // (`ctest -j 16`, the review's own repro); a script now waits on `selection.kind` instead.
+    // The run loop already re-runs selection_refresh() itself while a click is pending (line
+    // ~1033 above), but only then - a selected building demolished by something other than a
+    // pending click (F3's "local demolish", with no click of its own to make `pending` true)
+    // would otherwise wait on a wake event that may not have fired yet. Refreshing here too,
+    // every tick, costs one more idempotent read of the same published snapshot
+    // (`selection_refresh`'s own contract) and keeps these facts never older than the title
+    // update_title() would compute from the same state right now.
+    selection_refresh();
+    st.facts["selection.pending"] = selection_.pending ? "1" : "0";
+    st.facts["selection.selected"] = selection_.selected ? "1" : "0";
+    st.facts["selection.kind"] = "";
+    if (selection_.selected && st.snapshot != nullptr && st.snapshot->inspection != nullptr &&
+        st.snapshot->inspection->id == selection_.selected->id) {
+        st.facts["selection.kind"] = st.snapshot->inspection->kind;
     }
     if (opening_ != nullptr) {
         for (auto& [key, value] : opening_facts()) {

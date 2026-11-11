@@ -3,6 +3,16 @@
 # panel, deselects with Escape, builds a second house at a neighbouring tile, selects it, then
 # demolishes it while selected - selection.hpp's own "a building demolished meanwhile drops the
 # selection" exercised through the real window, not just the unit test.
+#
+# F1 (2026-11-11 review, finding 1): every selection check below waits on the `selection.*` fact
+# viewer.cpp's script_tick() builds from the live selection state, never on a fixed frame count -
+# a fixed count races the sim thread's inspection answer under load (the review's own repro,
+# `ctest -j 16`). A screenshot that follows such a wait also gets one more `wait frames 1`: the
+# Windows capture (viewer.cpp's screenshot step) writes `buffer_`, the CPU path's own frame
+# buffer, which is only as new as the window's last draw() call; draw() runs after script_tick()
+# in the same loop pass (viewer.cpp's run loop), so a screenshot taken in the very tick the fact
+# resolves would still read the frame drawn *before* that resolution. One more frame closes that
+# gap (the next script_tick, after that pass's draw()) without weakening the wait itself.
 resize 1024 768
 wait frames 5
 look 1140 516
@@ -29,15 +39,25 @@ wait frames 5
 # Select the first house: construction menu closed, the developer tool disarmed, a click on its
 # tile falls to selection_handle.
 click 1156 516
-wait frames 5
+wait fact selection.kind == House within 5000
 expect title selected House
+wait frames 1
 screenshot selected_house_live
 checkpoint selected_first
 
+# F2 (2026-11-11 review, finding 2): a click on the panel's own drawn UI - the need icon at
+# (794,480), well inside it at (810,495) - is not a world click (selection.hpp's own doc comment);
+# the selection must stay exactly as it is, with no new inspection request and no deselect.
+click_px 810 495
+wait frames 2
+expect title selected House
+checkpoint ui_click_keeps_selection
+
 # Escape deselects (K-1): the title drops "selected", the panel stops drawing.
 key esc
-wait frames 5
+wait fact selection.selected == 0 within 5000
 expect title-lacks selected
+wait frames 1
 screenshot deselected_live
 checkpoint deselected
 
@@ -57,26 +77,30 @@ wait frames 2
 key esc
 wait frames 5
 click 1164 516
-wait frames 5
+wait fact selection.kind == House within 5000
 expect title selected House
 checkpoint selected_second
 
-# Demolish the selected building while it is selected: the menu reopens on the grid (not the
-# panel), but dev_ is still disarmed from the "key b" above, so one more B (now that the menu is
-# open) re-enables it (DevTool::handle's own Toggle) before the pickaxe's click can reach
-# ToggleDemolish at all (DevTool::handle returns early while `!enabled_`).
-key b
-wait frames 2
-key b
-wait frames 2
-click_px 996 736
-wait frames 2
-click 1164 516
+# Demolish the selected building while it is selected, with the developer tool still fully off
+# (unchanged since the "key b"/"key esc" pair above - selection_active() still holds): a direct
+# world command (`local demolish`, dev_script.cpp's own verb, which posts the command straight to
+# the runner, bypassing dev_/the pickaxe entirely) so selection_refresh()'s own drop path (the
+# selected id re-checked against the next inspection answer for its tile) is what resolves this
+# title change, not DevTool's hover inspection. F3 (finding 6 of the 2026-11-11 review): the
+# earlier version re-armed the tool first to reach the pickaxe, so selection_refresh() returned
+# early (it drops `pending` and does nothing else while the tool is on) and this check passed for
+# an unrelated reason - the tool's own hover inspection going empty, not the selection's drop path.
+local demolish 1164 516
 wait outcome
 expect outcome Applied
+wait fact selection.selected == 0 within 5000
 expect title-lacks selected
 checkpoint demolished_while_selected
 
-key esc
-wait frames 5
+# No trailing "key esc": unlike the pre-F3 version, the developer tool stays off from here to the
+# end (F3's whole point), so selection_active() stays true with nothing selected - Escape's own
+# table entry for that case ("without one: today's behaviour: quit") makes selection_handle return
+# unconsumed, and the window's own default Escape binding would quit *before* this `quit` step
+# ever ran, leaving DevScript::done() false and the window exiting 1 even though every check
+# above passed (viewer.cpp's run loop; main.cpp's own "script failed or didn't finish" check).
 quit

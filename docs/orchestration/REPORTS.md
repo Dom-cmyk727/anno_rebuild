@@ -6150,3 +6150,38 @@ only because the ASan job failed.
 - Time spent / subagents used: no subagents; direct review and host checks only. MSVC build
   running detached in the background, log kept at
   `E:\anno1503-worktrees\anno1503-W4-ui-4\build_full.log`.
+
+## W4-NEXT-2 — Part P finished on the Windows PC — 2026-11-11 — status: FINISHED
+- Branch: `task/W4-ui-4` at `bf8793e1` plus this entry.
+- **MSVC build finished:** `cmake --build --preset msvc` (Release), exit 0, log kept at
+  `cache\w4-next-2\build_full.log` (copied from the worktree root before the next build reuses
+  it). `anno1503.exe`, `anno_peak_launcher.exe`/`anno_peak_alloc.exe` and the test binaries all
+  present under `build/msvc/*/Release/`.
+- **`peak_launcher_contract` proven to execute on Windows** (the Linux session could not read
+  this): `ctest -C Release -R peak_launcher_contract -V` on this build - `RESULT PASS (0
+  failure(s))`, 0.49 s. Measured locally: 0 MiB child 5341184 bytes, 256 MiB child 273301504
+  bytes, difference 255.5 MiB against 256 MiB expected (plain, non-ASan build) - within the 10 %
+  bound. All sub-checks (byte-identical stdout/stderr apart from the one peak line, exit codes
+  0/7/abort, `test=` naming, missing-program exit 125, launcher overhead < 2 s) passed.
+- **P5, the GPU pixel check for rows 5 and 10, run in a real window on the RTX 4090** (the
+  acceptance review's finding A, left NOT_RUN by W4-NEXT-1): `python -I
+  tools/test/ui_dynamic_draw_check.py <anno1503.exe> --renderer gpu` with `ANNO1503_GAME_DIR` set
+  to this host's GOG copy. Result: `construction_demolish: exact match on 2809 opaque pixels
+  (wrong-input control correctly rejected: 514 of 2809)`; `hud_paused: exact match on 219172
+  opaque pixels (wrong-input control correctly rejected: 5279 of 8492)`; exit 0. Both rows match
+  the GPU-rendered live capture pixel-for-pixel against the oracle (within the script's 48-channel
+  GPU tolerance), and both deliberately-wrong-input negative controls were correctly rejected (not
+  zero mismatches). Log kept at `cache\w4-next-2\p5-gpu-pixel-check.log`. No mismatch to diagnose;
+  part K can proceed.
+- **Reviewer:** self-reviewed against the script's own pass/fail criteria and the raw log (not
+  just its printed verdict); this is evidence collection, not new code, so no second reviewer was
+  sought for this step specifically — the independent re-review of `3f3dd4d8`/`8b807827` in the
+  prior entry stands as this package's review-first item.
+- Acceptance table for Part P:
+
+  | Requirement | Positive proof | Counterexample / negative control | Evidence | Disposition |
+  |---|---|---|---|---|
+  | `3f3dd4d8`/`8b807827` fix what they claim | read diff against stated CI failure/finding | n/a (static review) | prior entry | reviewed, no defect |
+  | stop() mid-delay command loss is understood, not silently changed | OQ-568 recorded with 3 options | n/a (QUESTION, no behaviour change) | `docs/open-questions.md` | QUESTION open |
+  | `peak_launcher_contract` executes on MSVC | `ctest -C Release -R peak_launcher_contract -V` passed | would fail if the launcher/job-object fix regressed | this entry | PASS |
+  | P5 GPU pixel check (rows 5, 10) | exact match on all opaque pixels, both rows | both wrong-input controls rejected (514/2809, 5279/8492 mismatches) | `cache/w4-next-2/p5-gpu-pixel-check.log` | PASS |

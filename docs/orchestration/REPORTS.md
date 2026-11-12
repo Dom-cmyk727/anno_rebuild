@@ -7334,7 +7334,7 @@ the "true boundary"/"inside box" characterizations for every search.
 
 | Branch | Head | Run id | Result |
 |---|---|---|---|
-| `task/W4-docs-h` | *(filled in after push)* | *(filled in after push)* | *(filled in after push)* |
+| `task/W4-docs-h` | `aee04720` | 43155260486 | green, all jobs including `gate` |
 
 ### Decisions and reasoning
 

@@ -7,8 +7,9 @@ says who is doing what, where the work is, and what it waits on.
 **Last updated:** 2026-11-12, later, by the Claude Code orchestrator:
 - **[GATE-1a](tasks/gate-1a.md) RELEASED** to the Windows executor with the owner's go: the WSL sanitizer gate and
   the `asan` preset at `-O1 -g`.
-- **[WILDLIFE-RE-1b](tasks/wildlife-re-1b.md) RELEASED** to the Mac executor with the owner's go: the animals' own
-  life. The wildlife reads are now four packets (1a–1d); the hunter's approach moved to 1c.
+- **[WILDLIFE-RE-1b](tasks/wildlife-re-1b.md) ACCEPTED** ([review](reviews/2026-11-12-wildlife-re-1b-review.md)),
+  `34d3fdce`, 28 minutes after release; every re-checked address matches. The animals' own life; OQ-578 (the
+  transitive draw closure) is the main open risk for the port. The wildlife reads are four packets (1a–1d).
 - **[WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) ACCEPTED** ([review](reviews/2026-11-12-wildlife-re-1a-review.md)),
   `a6c15797`, seven minutes after release; every re-checked address matches. The fauna sweep, the animal creation
   helper and the `HIRSCH` loader, documents only. **Owner decision:** wildlife is ported faithfully (option 1).
@@ -304,9 +305,10 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: [WILDLIFE-RE-1b](tasks/wildlife-re-1b.md)** (released 2026-11-12), on `task/WILDLIFE-RE-1b`: the animals'
-  own life (overridden slots, construction and attach draws, the spawn record's release, routes and jobs).
-  Documents only; OQ-578 to OQ-585 reserved.
+- **Now: free.** Next on this lane: WILDLIFE-RE-1c, released only with the owner's go.
+- **Finished: [WILDLIFE-RE-1b](tasks/wildlife-re-1b.md)** (2026-11-12; head `34d3fdce`), **accepted**
+  ([review](reviews/2026-11-12-wildlife-re-1b-review.md)): the animals' own life in `docs/re/wildlife.md` §4–7;
+  OQ-573 settled for the read paths, OQ-575 narrowed, OQ-578 to OQ-582 open.
 - **Finished: [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md)** (2026-11-12; head `a6c15797`), **accepted**
   ([review](reviews/2026-11-12-wildlife-re-1a-review.md)): the fauna sweep `0x10093480`, the creation helper
   `0x10092ca0` and the `HIRSCH` loader `0x100946c0` in the new `docs/re/wildlife.md`; OQ-572 to OQ-577 open.

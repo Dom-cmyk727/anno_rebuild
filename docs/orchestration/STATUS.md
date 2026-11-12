@@ -6,7 +6,10 @@ says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-12, later, by the Claude Code orchestrator:
 - **[GATE-1a](tasks/gate-1a.md) RELEASED** to the Windows executor with the owner's go: the WSL sanitizer gate and
-  the `asan` preset at `-O1 -g`. The Mac executor is free; nothing else is dispatched.
+  the `asan` preset at `-O1 -g`.
+- **[WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) RELEASED** to the Mac executor with the owner's go: the fauna sweep,
+  the animal creation helper and the `HIRSCH` loader, documents only. **Owner decision:** wildlife is ported
+  faithfully (option 1).
 - **MAP-INTEGRATE-2 landed on `main` as `fa9d8bbf`** ([review](reviews/2026-11-12-map-integrate-2-review.md)):
   salt, iron → tools, quarry → bricks and automatic freight as **state 138**, merged as `c75cddff`.
   - **The code is fit for `main`;** the 13 h 20 min it took were not worth it. The main causes were the packet's size
@@ -299,7 +302,9 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: free.** The next Mac packet comes from the queue on the board, one at a time.
+- **Now: [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md)** (released 2026-11-12), on `task/WILDLIFE-RE-1a`: the fauna
+  sweep `0x10093480`, the creation helper `0x10092ca0` and the `HIRSCH` loader `0x100946c0`, into a new
+  `docs/re/wildlife.md`. Documents only; OQ-572 to OQ-579 reserved.
 - **Finished: [MAP-INTEGRATE-2](tasks/map-integrate-2.md)** (2026-11-12; head `55ce7e71`), **accepted**
   ([review](reviews/2026-11-12-map-integrate-2-review.md)), 13 h 20 min. Released 2026-11-11, parts
   S → P → I0–I5 → R → N → E.
@@ -431,8 +436,8 @@ Its later work is not accepted merely because expansion is complete.
   its mechanism; merge within a day or two behind default-off flags; one tool regenerates pins; retire dated
   protocol text.
 - **Whether the window's living town is the default** (PLAY-LIVE-1a), and **ADR 0003** (blocks NET-0).
-- **Wildlife option 1** (the faithful port), to confirm when WILDLIFE-RE-1a is dispatched; predators in or out
-  after WILDLIFE-RE-1c.
+- **Predators in or out** of the first wildlife port, after WILDLIFE-RE-1c (option 1, the faithful port, is
+  confirmed).
 - **On the Mac, accept this PC and the `open1503-share` offer** in Syncthing, as Receive Only (MAP-INTEGRATE-2
   part S, step 4).
 - **OQ-568:** may the play runner's `stop()` drop a command posted during an artificial turn delay? Only tests set

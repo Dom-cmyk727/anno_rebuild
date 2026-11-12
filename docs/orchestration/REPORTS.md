@@ -6973,3 +6973,213 @@ outcomes remain explicit dependencies. This packet implements none of them.
   executor work was merged.
 - Limited changes to opt-in measurement and documentation. The next three proposed packets are
   forced-goods attribution/closure, food attribution/closure and city-local upgrade materials.
+
+## MAP-INTEGRATE-2 E — consolidated state-138 handoff — 2026-11-12 — APPROVED
+
+Candidate branch `task/MAP-INTEGRATE-2` enters E at
+`a25a254dc502574cba5124fcda68d54980fa0381`. The accepted base is
+`03bf2b3cf6a7779e559c6dd3669ee24cccccb2ae`. The candidate combines only the packet-authorized
+automatic-freight pin `49ffcee66f5bdb678e4e165112abacccd84e727a` and extraction pin
+`a5a3bca35c781231ab8d52205a5a1117b4cce23f`, in that order. It does not merge moving main, the
+first Mac's active work or any Windows branch.
+
+State is **138 / ECONBK1 / PRNG timeline 5 / replay frame 4 / command wire 1 / save frame 1**. All
+gameplay defaults remain unchanged. `docs/sim/windows-consumer-delta-138.md` is the combined public
+consumer card; `docs/sim/progression-gaps.md` is the evidence-ranked gameplay follow-up.
+
+### Pins and authorized merges
+
+| Role | Pin | Disposition |
+|---|---|---|
+| task base | `03bf2b3cf6a7779e559c6dd3669ee24cccccb2ae` | ancestor, never rewritten |
+| I0 contract | `24d64756987cf12ce9d3f19d05cc6c9f68779999` | state-138 contract before source merges |
+| route input | `49ffcee66f5bdb678e4e165112abacccd84e727a` | merged exactly by `d91e4a7a79cb0752f75e75f4386db38d30a89d5b` |
+| extraction input | `a5a3bca35c781231ab8d52205a5a1117b4cce23f` | merged exactly by `67272f109e77e5c9ea0cefee57389890d813e5aa` |
+| I2 state-138 compatibility | `a634c8028bfa9839e8f7f3ea8b2f9a16cce03a7b` | identity and fixture regeneration closed |
+| I3 combined authored proof | `3a4eb2dbc6852b4a655f42cac6b3d222d00e1e2f` | approved after causal-proof corrections |
+| I4 combined original data | `8edd9778113c3ece99ad1833c90e5e20b22b9586` | exact combined trajectories reviewed |
+| I5 frozen-gate report | `05448acae14e0dbe19b2a93f4d69de7eb0a264fc` | CI run 43114461654 green |
+| R original-code answer | `7691daa0f0dd00e0906d228d45dd0b8ec6e3280c` | OQ-556 settled |
+| N progression evidence | `a25a254dc502574cba5124fcda68d54980fa0381` | approved and pushed |
+
+After I5, fetched `origin/main` moved to `088dcc632ba33bed37286fb588798de4785841e1`
+through W4-NEXT-2 orchestration/review documentation. It remains unmerged by packet design; no
+production dependency or conflict resolution was silently adopted.
+
+### Conflict-decision table
+
+| Scope | Resolution | Holding evidence |
+|---|---|---|
+| `REPORTS.md` and open questions | retained this branch's main/S/P/I0 history, then appended the exact Route and Extract suffixes; OQ-552..556 occur once | independent I1 suffix comparison; R closes OQ-556 |
+| `world.hpp`, `state_fields.hpp`, figure/rules layout | semantic union: FreightRules once; Quarry tag 9 and mason goal bytes retained; freight generation/state appended after resident state; mine binding retained | I0 field map, I2 independent bytes/provenance, identity tests |
+| command/apply/driver/invariants | both freight command handling and extraction/mine/quarry paths retained; no switchable Quarry fallback | I1 caller review; I3 combined authored proof |
+| versioned tests, references and fixtures | temporary predecessor labels held through I1; I2 allocated 138 and regenerated current consumers while preserving every 133-137 folder | 17 provenance digests; 50/50 scenario physical columns unchanged after version-header removal |
+| combined cargo fixtures | Route bytes used because FreightRules are present; Extract 137 fixtures remain historical inputs | independent hand bytes and current138 session gate |
+| founding/expansion tests | retained repaired main expansion proof plus original freight voyage; exact state-138 trajectory expectations replaced only after stale values failed | I4 preserved failures and corrected replay gates |
+| app payload visitor | added explicit Quarry description/name and a valid one-entrance `{0}` claim fixture | corrected app gate 7/7; independent Quarry case 1/1 |
+| state documentation | kept separate route-only136 and extraction137 contracts, then added coordinated 138 instead of relabelling either predecessor | I0/I2 review |
+| accepted-doc whitespace | removed two whitespace defects only; no semantic input evidence was rewritten | `git diff --check`; I1 review |
+
+### Identity and refusal table
+
+| Input | State-138 answer | Executed proof |
+|---|---|---|
+| valid native/replay 134 | refuse with exact state-stream diagnostic | `combined identity138...134 through 137 refuse`; freight corrupt/native case |
+| valid native/replay 135 | refuse; salt remains historical evidence | combined identity case and salt identity controls |
+| route-only native/replay 136 | refuse; F075/F076 alone is not combined identity | combined identity case and independent predecessor bytes |
+| extraction-only native/replay 137 | refuse; Quarry/mine alone is not combined identity | combined identity case and current137 provenance |
+| valid combined 138 | accept; save/load, replay and fresh-process continuation exact | I2 current sessions, I3 populated reload, I4 replay canaries |
+| damaged frame/header/embedded native | refuse at the named envelope or embedded-state layer; no coercion | I2 structured refusal matrix and mutations |
+| unbound mine | accept, charge and create idle; `NoDepositInReach` remains reserved and is never produced | faithful salt placement/refusal controls |
+| stage/research-locked supported mine/quarry | `ConstructionDenied`; gold/gem mountain types stay `Unsupported` | salt refusal matrix, iron and Quarry placement controls |
+| freight missing/foreign/out-of-range target | atomic assignment refusal or recoverable Failed route status; state authority remains in the sim | freight command/lifecycle/recovery cases |
+| accepted manual Move/Stop/Found/Load/Unload | takes automatic control; refused manual command leaves route unchanged | freight takeover and founding takeover cases |
+
+### Verdict per packet part
+
+| Part | Verdict | Boundary |
+|---|---|---|
+| S | WAITING ON OWNER, non-blocking | `/Users/dom/open1503-share` remains absent at E; Receive Only, hashes and sync state NOT_RUN |
+| P | DONE | exact inputs, CI and host/preflight inventory verified |
+| I0 | APPROVED | combined field/refusal/fixture contract frozen before merge |
+| I1 | APPROVED | only the two authorized hash merges, all conflicts independently reviewed |
+| I2 | APPROVED | real state 138 allocated; fixtures/provenance/refusals regenerated |
+| I3 | APPROVED | mine/tools/freight/Quarry combined runtime and continuation proved |
+| I4 | APPROVED | original freight, extraction, expansion and repaired-main canaries run with exact explained changes |
+| I5 | APPROVED | Debug, focused sanitizers, GCC 13.3 arm64, native Clang and CI closed |
+| R | APPROVED | original forward home search confirmed; OQ-556 answered without behavior change |
+| N | APPROVED | three 300-second town paths measured; ranked goods/food/material gaps |
+| E | APPROVED | fresh integration review and canonical N-town rerun complete |
+
+### Classified gate evidence and artifact hashes
+
+- I1 Route intermediate: selected 45 / executed 45 / failed 0 / empty 0 / skipped 0 / incomplete 0,
+  `0ddde5e7e1067d82b47a3be565e78d84eb63e7b4b42d08849a351030b833efd7`.
+  Corrected Quarry app: 7 / 7 / 0 / 0 / 0 / 0,
+  `dc2983c3039d908b4c50d0ae7636402c51a01ef01d0ef2dcce19fc1184bca6c3`.
+- I2 focused state/oracle: 4 / 4 / 0 / 0 / 0 / 0,
+  `485a1fed5ad17f8d76a4f41ef65367c3364305e3fec7f2d6741160c3a69d6165`. Current sessions: 11 /
+  11 / 0 / 0 / 0 / 0, `0d4d7a2157530a2b7b792d7c0c991b8f1577a944952f7c86ce7aca74e2c7e6b5`.
+  Original corpus: 1 / 1 / 0 / 0 / 0 / 0,
+  `f6e7534c7e2d5978040dd54d4d5dca2a9e3144092e5b7f9025a2f1723fdc620e`.
+- I3 Debug: 3 / 3 / 0 / 0 / 0 / 0,
+  `d09d7abe211d990d0aa64cd22c3bd91a75ab70289ce0466f0b820f18308a1c59`; focused ASan/UBSan:
+  3 / 3 / 0 / 0 / 0 / 0, sanitizer lines 0,
+  `838fd9eca14e034c582096ae4a26c77340215fe92a14920a35fb3fbfc92c5b35`.
+- I4 extraction real-data: selected 72 / executed 65 / failed 0 / empty 0 / skipped 7
+  (`opt-in=7`) / incomplete 0, `87324a479625e59aa7528d033d3a783a1f7441e1cb17bcad217b62b648fb954a`.
+  Freight/replays: 3 / 3 / 0 / 0 / 0 / 0,
+  `8f6d39873120876b68cc1fca85af3e73d4cb58ee2b5e975ceffe2563f03b10de`. Release scale: 1 / 1 /
+  0 / 0 / 0 / 0, `006502a4e4c1a7fa2c18243dbebfb15a2b1ba591c332bdb6a98ee7799e43a63f`.
+  Expansion/replays: 3 / 3 / 0 / 0 / 0 / 0,
+  `0b5cafc66d1f8d332866329259e4582484fa237fe41ee9db89cba4b5c662cdc5`.
+- I5 full Debug with assets before identity-expectation correction: selected 2,441 / executed 2,403 /
+  failed 9 / empty 0 / skipped 29 (`platform=6`, `opt-in=22`, `other=1`) / incomplete 0,
+  `274485ba2e38d2c2ff36d195d85e6bbb1c3e0cf393054b9789b19fed597d1e21`; all nine were exact stale
+  identity expectations. Corrected focus: 11 / 11 / 0 / 0 / 0 / 0,
+  `543cb8fa154675848cb629e556c6caf0b4a84b79a090a4a60db51fcac7753233`.
+- I5 affected ASan/UBSan: selected 323 / executed 309 / failed 3 / empty 0 / skipped 11
+  (`opt-in=11`) / incomplete 0 / sanitizer lines 0,
+  `64c589567c98e30c2a573d6c62e3b03f84c4d14548ffbb7cb910b949e7d4ac4e`. The exact three
+  infrastructure failures reran 3 / 3 / 0 / 0 / 0 / 0, sanitizer lines 0,
+  `c56d40d639bae016a0d33a6f6ec615fd5e8c2a3d0244efc8c87cc1045136e8a2`.
+- I5 GCC 13.3 arm64 compiled 392 viewer/GPU-on translation units and 74 viewer/no-GPU app units
+  warning-clean, `357e16b7be0ab80cfe9478e29356aa0a74fd34af2c2336e8b0ba3a9dde880e64`.
+  GitHub Actions run 43114461654 passed every job at `05448aca`.
+- R author and reviewer original-data probes each selected 1 / executed 1 / failed 0 / empty 0 /
+  skipped 0, 16/16 assertions: `fa43d8c60366f1554586a71b904a238ea24a0bf6c655ba370405ae0b699ff17b`
+  and `e754c576f92dbfe66050a06aead9ea5b5ff2729d0fa12a5df2a90fab279aafcc`.
+- N author original towns: 1 / 1 / 0 / 0 / 0, 7,604 assertions,
+  `3e4732d5a8e22a698584dd642d794f59a216a7ce5d60379abcc4a2efd9eab0f1`; ship start: 1 / 1 / 0 /
+  0 / 0, 5,505 assertions, `6a19508f9c4e45aec0145e9397a325e2ec2870e094aa9d62b0421bf50c0a86b4`.
+  Reviewer canonical game-file gate: 2 / 2 / 0 / 0 / 0 / 0, plus picture contract 1/1,
+  `e763f0eec3cd4ed7b363ae938c6c008bd00492cbdbf50978768d339dce9bc4`.
+
+Every initial red or infrastructure-blocked run remains recorded in its part entry. A later green
+focused result supersedes only the named stale expectation, missing helper, sandbox admission or
+toolchain-PATH cause; it does not erase the failed evidence.
+
+### Reviewer ledger
+
+| Package | Independent reviewer | Verdict |
+|---|---|---|
+| I0 | `/root/integrate2_i0_review` | approved after four contract corrections |
+| I1 | `/root/integrate2_i1_review` | approved after invalid Quarry test fixture correction |
+| I2 | `/root/integrate2_i2_review` | approved after provenance and populated-scope corrections |
+| I3 | `/root/integrate2_i3_review` | approved after demolition-causality and land-progress corrections |
+| I4 | `/root/integrate2_i3_review` | approved exact combined trajectories and original-file tests |
+| I5 | `/root/integrate2_i5_review` | approved late identity pins and GCC fixture guard |
+| R | `/root/integrate2_r_review` | approved original address path and real-data probe |
+| N | `/root/integrate2_n_review` | approved after predicate-order/source-citation corrections |
+| E | `/root/integrate2_e_review` | approved after three executable test-title citations were corrected |
+
+### Final independent E review
+
+Fresh reviewer `/root/integrate2_e_review` independently inspected the complete merge ranges and
+two-parent topology, every conflict resolution, the state-layout union, commands/apply callers,
+identity/refusal table, I3/I4 runtime evidence, N's corrected oracle and every Windows consumer-card
+header/test citation. It independently re-read R's original address path against GOG
+`AnnoWelt.dll` SHA-256 `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
+Moving main `088dcc632ba33bed37286fb588798de4785841e1` is not an ancestor. **APPROVED, no remaining
+findings.**
+
+The first static pass found three P2 citation defects in the new Windows card: the prose named
+shortened behavior-equivalent titles instead of the exact registered Found/recovery test titles.
+They were corrected to `cancels it`, `stays public` and `ending clears route`; no behavior or other
+documentation changed. The reviewer rechecked the corrected card, SHA-256
+`f9e193853b66047e132d5ba509bab4cbbd8c6b4c44d7140a687a16a848a0e3ea`, and found no further issue.
+
+Its fresh canonical game-file gate executed `progression gaps N: endless02 and S01_07_01 for 300
+game seconds (opt-in measure)`: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+incomplete 0 / sanitizer lines 0; 7,604/7,604 assertions. The required
+`picture_matrix_contract` separately selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+incomplete 0 / sanitizer lines 0. `/private/tmp/map-integrate-2-E-review-N-town.log`, SHA-256
+`bbba70958d7b8764fa72707aa8c027da3059e5217a16917d0b8f5da3d45ec4f4`; inventory SHA-256
+`e384230ae236f732db2e9bc6581ec9c32e379f4d0a93054c93d101861613e1d6`; tested binary SHA-256
+`b2cf851f2ea57caf58c2ba15ade84ad7968de2f804862464c255afea4a4e6e89`. There was no initial gate
+failure.
+
+### NOT_RUN
+
+Windows/MSVC with the original game files, the Windows original-game comparison, live Windows
+window/input/GPU behavior, x86_64 local execution and Wine are NOT_RUN on this Mac. The 13 GPU
+members of main's repaired-18 class are NOT_RUN here. The full 2,441-case sanitizer suite is not
+claimed; I5 ran the affected 323-case selection and repaired its exact three infrastructure
+failures. Ghidra is NOT_RUN because Ghidra and Java are absent; R used the repository disassembler
+and independent address re-read. N did not run a named scenario in the original. No skipped asset
+case is presented as execution.
+
+Shared-folder S remains NOT_RUN: `/Users/dom/open1503-share` is absent at E. No device identifier,
+Syncthing configuration or share content was written to git, and no share was modified.
+
+### QUESTIONs
+
+- **QUESTION S-1 (owner action, non-blocking for candidate review):** after accepting
+  `open1503-share` as Receive Only on this Mac, should S verification occur before the orchestrator
+  lands state 138 or as a separate operations checkpoint? Recommendation: separate operations
+  checkpoint; the folder has no source/runtime dependency and the packet explicitly made S
+  non-blocking.
+
+No gameplay compatibility QUESTION remains in this packet. OQ-556 is answered. Wildlife/Hunter,
+Whaler/fisher, D8 trade and disasters/fire are dependencies for later progression packages, not
+authority to expand E.
+
+### Decisions and reasoning
+
+- Preserved the two-parent merge topology and exact supply pins. A squash, rebase or moving-main
+  merge would destroy the conflict and provenance evidence the packet asks the orchestrator to
+  review.
+- Allocated 138 only after the semantic union existed and regenerated current consumers from the
+  actual combined binary. Neither predecessor was relabelled.
+- Kept identity and refusal changes distinct from mechanics. Combined 138 refuses every 134-137
+  native/replay predecessor even when its feature subset would appear structurally readable.
+- Corrected exact combined trajectories only after the stale values failed and the accepted
+  endpoint rule explained every moved threshold, replay entry, upkeep and gold value.
+- Repaired real findings from every package review, then obtained re-review before dependent work.
+  No review approval was used to waive a product defect.
+- Reused long evidence only when the later diff was test/docs-only and the dependency was stated;
+  reran affected canonical cases after every source correction.
+- Kept R and N behavior-free. The original-code answer confirms the accepted route direction; the
+  town measurement proposes follow-up packets without silently adding gameplay.
+- Wrote the Windows card against public headers and executable tests, leaving live UI work and the
+  Windows game-file run to the orchestrator's required post-candidate sequence.

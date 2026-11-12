@@ -9113,11 +9113,13 @@ lane. `FAILED:` count is 0 in every lane of both gates.
 runs exactly once; `--skip-auto-contract` leaves the automatic contract out), run both in the
 `task/GATE-1b` worktree and in the clean checkout.
 
-CI: hosted run `43264518561` at `e9be274b`, every job green on the first push, `gate` included; no
-coordinator flake this time (`F3`/`C3` not seen, so no job rerun needed).
+CI: hosted run `43264518561` at `e9be274b` (the code change), every job green on the first push,
+`gate` included; no coordinator flake this time (`F3`/`C3` not seen, so no job rerun needed). The
+*second* push, `5209c496` (this REPORTS entry, docs-only), is blocked: see the addendum below.
 
 NOT_RUN: the flow-build test and the GPU platform skips (GATE-1c), the coordinator flakes
-(COORD-FLAKE-1), the MSVC game-file run (the orchestrator's).
+(COORD-FLAKE-1), the MSVC game-file run (the orchestrator's). `gate` on head `5209c496` (see
+addendum): blocked by a pre-existing, unrelated failure, not by this packet's own work.
 
 Decisions and reasoning:
 - Exclude already-run required names from the selection's own `-R`/`-E` rather than skip the
@@ -9129,4 +9131,28 @@ Decisions and reasoning:
 - `--skip-auto-contract` only suppresses the *automatic* UNIX addition; an explicit `--require-test
   picture_matrix_contract` still works and is still deduplicated, for a caller that wants it
   required without relying on the UNIX auto-detection.
-QUESTIONs: none requiring an owner decision; independent review is the orchestrator's.
+
+### CI addendum — `lint`/`gate` blocked by a pre-existing bug outside this packet's scope
+
+Head `5209c496`'s `lint` job failed `cargo clippy --workspace --all-targets -- -D warnings` with
+`error: duplicated attribute` at `crates/render/src/gpu.rs:1125`, a literal
+`#[allow(clippy::cast_precision_loss)]` stacked twice (lines 1124-1125) on the same `for` loop.
+Confirmed: `crates/render/src/gpu.rs` is byte-identical between `e9be274b` (lint: success) and
+`5209c496` (lint: failure) — `git diff e9be274b 5209c496` touches only `docs/orchestration/REPORTS.md`
+— and the duplicate line is in the checked-out file right now, so it is a real, reproducible defect,
+not a transient flake: two reruns of the failed jobs (`gh run rerun 43278668140 --failed`, twice)
+both failed identically. `git log -L` traces both lines to `f11b9789` ("enhanced water flows from
+rivers into the sea and meets objects"), 2026-10-18, long before GATE-1a/GATE-1b and unrelated to
+either packet's area (`tools/test/`, `docs/`). The puzzle is why `e9be274b`'s lint passed at all with
+the same source: `Swatinem/rust-cache`'s incremental cache most likely let that run skip re-emitting
+this crate's diagnostics as a false negative, since `crates/render` is unrelated to anything either
+commit touched. That false negative, not the two later failures, is the surprising result; the
+failures are `clippy` correctly catching a real, pre-existing issue. This is out of GATE-1b's scope
+(`crates/render`, a one-line Rust fix, not `tools/test/` or `docs/`) and is not the documented
+coordinator flake (`F3`/`C3`). Not fixed here; flagging for the orchestrator's or owner's call on
+who removes the duplicate line and whether the apparent incremental-cache false negative on
+`e9be274b` is itself worth a separate note.
+QUESTIONs: should this session remove the duplicate `#[allow(clippy::cast_precision_loss)]` at
+`crates/render/src/gpu.rs:1125` as a trivial one-line fix on `task/GATE-1b` (or a separate branch),
+or does that belong to another lane/the orchestrator? Otherwise none requiring an owner decision;
+independent review of the rest of this packet is the orchestrator's.

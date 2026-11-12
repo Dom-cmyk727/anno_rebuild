@@ -4,7 +4,16 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-11 night, by the Claude Code orchestrator:
+**Last updated:** 2026-11-12, by the Claude Code orchestrator:
+- **W4-NEXT-2 landed on `main` as `7babb1f2`** (the owner's OK; `gate` passed). Its code is the merge `c944aff7`,
+  whose game-file run passed before the push, so `main` is healthy at `7babb1f2`.
+- **W4-NEXT-2 part H reviewed: changes requested, small** ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)).
+  - **Holds:** every figure part H states reproduces, and the scenario folders are right.
+  - **Not done:** H1's restatement of the figures OQ-565 and OQ-567 cite. The orchestrator measured them with the
+    calibrated method: none decides an OQ, and every Kontor candidate's minimum lies on its search box's edge.
+  - **Round H4** finishes it on the same branch; then part H lands as one change.
+
+Earlier, 2026-11-11 night, by the Claude Code orchestrator:
 - **W4-NEXT-2 ACCEPTED after fix round G** ([acceptance](reviews/2026-11-11-w4-next-2-acceptance.md)).
   - **Both branches land together** with the owner's OK: `task/W4-ui-4` `b483c4de` and `task/W4-shared-list-1`
     `b2808533`, merged on `main` as `c944aff7`.
@@ -135,10 +144,12 @@ jobs. [Acceptance, failures, exact counts and intake notes](reviews/2026-11-06-m
 The previous red-main condition since `944cec89` is repaired; the owner’s CI hold
 before consolidation is satisfied. No further gameplay has been consolidated.
 
-**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is healthy at `2c4dc295`** (the W4-NEXT-1 merge):
-its game-file run passed on the Windows PC before the push: 2,367 selected, 2,355 executed and passed, 0 failed, 12
-classified skips, 800 s, no stall ([acceptance review](reviews/2026-11-10-w4-next-1-acceptance.md)). The
-docs-only commits after it need no run.
+**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is healthy at `7babb1f2`** (the W4-NEXT-2 landing):
+its code is the merge `c944aff7`, whose game-file run passed on the Windows PC before the push: 2,390 selected, 2,378
+executed and passed, 0 failed, 12 classified skips ([acceptance](reviews/2026-11-11-w4-next-2-acceptance.md)). The
+landing commit adds only docs. The docs-only commits after it need no run.
+- **The run before it, at `2c4dc295`** (the W4-NEXT-1 merge): 2,367 selected, 2,355 executed and passed, 0 failed, 12
+  classified skips, 800 s, no stall ([acceptance review](reviews/2026-11-10-w4-next-1-acceptance.md)).
 - **The run before it, at `96de6bca`** ([review](reviews/2026-11-08-w4-ui-2-merge.md) §3): 2,355 selected; 2,344 executed and passed, 9 of them on a one-at-a-time rerun after memory refusals; 0
   failed. Skips: 6 opt-in, 2 platform, 3 symlink rows without the Windows privilege; 0 required-asset.
 - **The run before it:** `5e7b13c6`, the 18 real-file repairs of W4-MAIN-2 part A. It ran on 2026-11-07 but was
@@ -172,10 +183,12 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Next: W4-NEXT-2 part H** ([packet](tasks/w4-next-2.md), part H), docs only, on a new branch
-  `task/W4-docs-h` once the landing is on `main`:
-  - **H1:** the two sprite-sad normalizations, G6's conclusions corrected, OQ-565/567's plain figures restated as
-    calibrated;
+- **Now: W4-NEXT-2 round H4** ([packet](tasks/w4-next-2.md), part H4), docs only, on `task/W4-docs-h`: OQ-565's and
+  OQ-567's figures measured with the calibrated method, F6's unit, two line-number references, an independent review,
+  a report.
+- **Finished: W4-NEXT-2 part H** (2026-11-11; head `48044b6d`), **changes requested, small**
+  ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)):
+  - **H1:** the two sprite-sad normalizations and G6's conclusions corrected; the OQs' own figures not restated;
   - **H2:** the shared list's scenario folders, and what the New Game list holds as the next attempt's first check;
   - **H3:** report.
 - **Finished: W4-NEXT-2's fix round G** (2026-11-11; heads `b483c4de` and `b2808533`), from `2138773e` and

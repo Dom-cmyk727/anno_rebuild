@@ -422,3 +422,37 @@ corrections are themselves wrong (findings 1 and 2). Read its findings table fir
    - a "Decisions and reasoning" list.
 
    Then stop, and message the orchestrator with the head.
+
+### H4. Finish H1 (2026-11-12, after the part H review)
+
+**Why.** The [part H review](../reviews/2026-11-12-w4-next-2-part-h-review.md) found H1's third step not done
+(finding 1), F6's figures still without a unit (finding 2) and two line-number references already wrong (finding 3).
+Read its findings and its table first. Docs only, on the same branch `task/W4-docs-h`, rules as for part H. Text
+part H added and that has not landed yet may be edited in place. Text already on `main` gets new text.
+
+**Steps.**
+1. **Measure the figures OQ-565 and OQ-567 cite** with the calibrated plain method: per pixel, alpha ≥ 8, every
+   pixel, no stride, a full search.
+   - These are 58.7 (id 5) and 82 (id 4 at (779, 244)) in OQ-565, and in OQ-567 78.7 (id 33) and the ad hoc 91.2,
+     87.5, 79.9–86.8, ~81–86, 84.8 and 96.2. Shots: the `w4next2` captures in
+     `E:\anno1503\cache\orig\w4next2-ui-captures\d91-20261111-100242\shots\` and the UI-1 shots in
+     `E:\anno1503-worktrees\anno1503-UI-1-F2\cache\orig\ui-1\shots\`.
+   - **Search boxes.** Start with the box the OQ text states. Where the best position lies on the box edge, widen the
+     box until it lies inside, keeping the sprite on screen. Report both results.
+   - Your own script in `cache/`. Give its name and sha256 in the report, and compare your figures with the review's
+     table. Report every difference.
+2. **Write them down as new bullets** in OQ-565 and OQ-567:
+   - each figure with its sprite, shot, position, box, unit and whether the minimum is inside the box;
+   - marked calibrated;
+   - the old figure it replaces, by value, without editing the old text.
+
+   If a figure now decides an OQ, say so in the report. Closing the OQ waits for the orchestrator's review.
+3. **F6's unit:** in OQ-567's new bullet, say that F6's 32.20 and 30.57 are per channel, plain, with no grey-key:
+   96.60 per pixel for 32.20. Measure 30.57's per-pixel value too.
+4. **Line numbers:** in part H's two new `docs/re/ui.md` paragraphs, name the table rows or sections instead of line
+   numbers ("line 155", "line 158", "line 659").
+5. **Independent review:** a fresh read-only agent reruns your step-1 script and checks the new bullets against its
+   output. Report its verdict.
+6. **Report:** a new REPORTS entry at the bottom. It covers the measured table, the script's sha256, the reviewer's
+   verdict, the hosted CI run and a "Decisions and reasoning" list. It also corrects part H's "OQ disposition"
+   paragraph as new text. Then stop, and message the orchestrator with the head.

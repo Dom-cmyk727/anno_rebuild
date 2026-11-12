@@ -62,9 +62,13 @@ static void play_gpu_matches_cpu(const char* adapter_name) {
             }
             names += adapter.name;
         }
-        if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
-            FAIL("no " << adapter_name << " (ANNO_REQUIRE_GPU is set): " << names);
-        }
+        // This test is pinned to one named adapter (the owner's RTX 4090 or Radeon iGPU), not
+        // the machine's default device: a host with a GPU under a different name (WSL's
+        // lavapipe, CI runners) is a missing *named* adapter, not a missing GPU, so it is a
+        // skip even under ANNO_REQUIRE_GPU (GATE-1c item 2). headless_context() below still
+        // fails loudly under ANNO_REQUIRE_GPU once the named adapter is confirmed present but a
+        // context cannot be opened for it: that is the "no GPU at all" case this requirement
+        // keeps.
         MESSAGE("skipping: no GPU device (no adapter named " << adapter_name << ", among: " << names
                                                              << ")");
         return;

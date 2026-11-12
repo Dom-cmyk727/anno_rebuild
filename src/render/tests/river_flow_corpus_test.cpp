@@ -1364,14 +1364,26 @@ TEST_CASE("a flow build that fails leaves the legacy look, final, built once (ga
         CHECK(c->flow.empty());
         CHECK_FALSE(c->flow_pending());
     }
-    // Nothing is rebuilt any more (a pending result would rebuild every chunk
-    // of the island over and over), and the build ran once.
-    std::size_t rebuilt = 0;
+    // Nothing in this test's own view is rebuilt any more (a pending result would rebuild it
+    // over and over), and the build ran once. update_chunks's own `built` return also counts
+    // its margin/neighbouring-group housekeeping chunks (margin_keys()/adjacent_keys()):
+    // those are outside this test's claim (its rendered picture, checked below, is only
+    // `view`'s own chunks) and, unlike the visible ones just confirmed settled above, are not
+    // required to have finished their own in-flight build or stale-rebuild by now, so counting
+    // them here flaked under load/-O0 (GATE-1c item 1: a margin or adjacent chunk still
+    // arriving after the loop above found every *visible* chunk settled). Track identity of
+    // this view's own cached chunks instead of the global built count.
+    std::map<std::pair<int, int>, const render::Chunk*> before_rebuild;
+    for (const auto& [cx, cy] : render::visible_chunks(view)) {
+        before_rebuild[{cx, cy}] = frames.chunk({group, cx, cy});
+    }
     for (int k = 0; k < 60; ++k) {
-        rebuilt += std::get<0>(frames.update_chunks(scene, view, group));
+        frames.update_chunks(scene, view, group);
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
-    CHECK(rebuilt == 0);
+    for (const auto& [cx, cy] : render::visible_chunks(view)) {
+        CHECK(frames.chunk({group, cx, cy}) == before_rebuild[{cx, cy}]);
+    }
     CHECK(calls.load() == 1);
     // The picture is the legacy look.
     std::vector<std::uint32_t> flow_px(static_cast<std::size_t>(view.w) *

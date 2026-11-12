@@ -8,8 +8,9 @@ says who is doing what, where the work is, and what it waits on.
 - **[GATE-1a](tasks/gate-1a.md) ACCEPTED** ([review](reviews/2026-11-12-gate-1a-review.md)): the WSL sanitizer gate
   at `-O1 -g` takes **1 h 32 min instead of 4.3–8 h**, with the same verdicts, and ended green. The two test-coordinator
   flakes (`F3` on macOS, `C3` on Windows) move up the queue as COORD-FLAKE-1.
-- **[WILDLIFE-RE-1d](tasks/wildlife-re-1d.md) RELEASED** to the Mac executor with the owner's go: the independent
-  wildlife reference with hand-derived vectors, the oracle for the later port.
+- **[WILDLIFE-RE-1d](tasks/wildlife-re-1d.md) ACCEPTED** ([review](reviews/2026-11-12-wildlife-re-1d-review.md)):
+  `tools/wildlife_ref.py`, 65 hand-derived vectors, 34 minutes after release. The wildlife reads 1a–1d are complete;
+  the port (WILDLIFE-1) waits for ADR 0006.
 - **[WILDLIFE-RE-1c](tasks/wildlife-re-1c.md) ACCEPTED** ([review](reviews/2026-11-12-wildlife-re-1c-review.md)),
   `1ee3f4d5`, 19 minutes after release. Predators chase, kill and eat other wildlife only; residents and soldiers
   are outside their search. The orchestrator recommends including them in the first port; the owner decides.
@@ -313,8 +314,9 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: [WILDLIFE-RE-1d](tasks/wildlife-re-1d.md)** (released 2026-11-12), on `task/WILDLIFE-RE-1d`:
-  `tools/wildlife_ref.py`, hand-derived vectors and a contract test, registered in CTest. OQ-587 to OQ-590 reserved.
+- **Now: free.** No Mac packet is released; the wildlife port waits for ADR 0006.
+- **Finished: [WILDLIFE-RE-1d](tasks/wildlife-re-1d.md)** (2026-11-12; head `ce2c8ff1`), **accepted**
+  ([review](reviews/2026-11-12-wildlife-re-1d-review.md)): the wildlife reference, its vectors and contract test.
 - **Finished: [WILDLIFE-RE-1c](tasks/wildlife-re-1c.md)** (2026-11-12; head `1ee3f4d5`), **accepted**
   ([review](reviews/2026-11-12-wildlife-re-1c-review.md)): the hunter's approach, the fur trapper and the predators
   in `docs/re/wildlife.md` §8–10; OQ-583 to OQ-586 open.

@@ -5,8 +5,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-12, later, by the Claude Code orchestrator:
-- **[GATE-1a](tasks/gate-1a.md) RELEASED** to the Windows executor with the owner's go: the WSL sanitizer gate and
-  the `asan` preset at `-O1 -g`.
+- **[GATE-1a](tasks/gate-1a.md) ACCEPTED** ([review](reviews/2026-11-12-gate-1a-review.md)): the WSL sanitizer gate
+  at `-O1 -g` takes **1 h 32 min instead of 4.3–8 h**, with the same verdicts, and ended green. The two test-coordinator
+  flakes (`F3` on macOS, `C3` on Windows) move up the queue as COORD-FLAKE-1.
 - **[WILDLIFE-RE-1d](tasks/wildlife-re-1d.md) RELEASED** to the Mac executor with the owner's go: the independent
   wildlife reference with hand-derived vectors, the oracle for the later port.
 - **[WILDLIFE-RE-1c](tasks/wildlife-re-1c.md) ACCEPTED** ([review](reviews/2026-11-12-wildlife-re-1c-review.md)),
@@ -213,8 +214,10 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [GATE-1a](tasks/gate-1a.md)** (released 2026-11-12), on `task/GATE-1a`: the WSL sanitizer gate and the
-  `asan` preset at `-O1 -g`, one full gate as proof against the recorded `w4ui2parte` gate.
+- **Now: free.** Next on this lane: GATE-1b, released only with the owner's go.
+- **Finished: [GATE-1a](tasks/gate-1a.md)** (2026-11-12; head `b0e9428e`), **accepted**
+  ([review](reviews/2026-11-12-gate-1a-review.md)): the WSL sanitizer gate and the `asan` preset at `-O1 -g`. A full
+  gate took 1 h 32 min (was 4.3–8 h), all lanes green.
 - **Finished: W4-NEXT-2 part H and round H4** (2026-11-12; head `1f1d3889`), **accepted**
   ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)):
   - **H1:** the two sprite-sad normalizations and G6's conclusions corrected;

@@ -88,8 +88,8 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
 `HISTORY.md`, look in `HISTORY-2.md` too.
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
   [`tasks/`](tasks/). [MAP-INTEGRATE-2](tasks/map-integrate-2.md) is accepted
-  ([review](reviews/2026-11-12-map-integrate-2-review.md)) and on `main` as state 138. Now: [GATE-1a](tasks/gate-1a.md)
-  (Windows). [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) and [WILDLIFE-RE-1b](tasks/wildlife-re-1b.md) and [WILDLIFE-RE-1c](tasks/wildlife-re-1c.md) are accepted; [WILDLIFE-RE-1d](tasks/wildlife-re-1d.md) (Mac) is released.
+  ([review](reviews/2026-11-12-map-integrate-2-review.md)) and on `main` as state 138. [GATE-1a](tasks/gate-1a.md) is accepted;
+  the Windows executor is free. [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) and [WILDLIFE-RE-1b](tasks/wildlife-re-1b.md) and [WILDLIFE-RE-1c](tasks/wildlife-re-1c.md) are accepted; [WILDLIFE-RE-1d](tasks/wildlife-re-1d.md) (Mac) is released.
   - **The queue, proposed 2026-11-12** by the orchestrator from the
     [project analysis](reviews/2026-11-12-project-analysis.md) (§2.2, §4.2, §6, §7, §8) and the
     [MAP-INTEGRATE-2 review](reviews/2026-11-12-map-integrate-2-review.md) §4. Every packet is released only with
@@ -99,7 +99,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     | Step | Who | Packet | Size |
     |---|---|---|---|
     | 0 | Orchestrator | Land MAP-INTEGRATE-2 with the analysis documents: **done**, `fa9d8bbf` | — |
-    | 1 | Windows executor | **[GATE-1a](tasks/gate-1a.md), RELEASED 2026-11-12:** the WSL sanitizer gate and the `asan` preset at `-O1 -g` (analysis §2.2 step 1, D1) | ~2–3 h |
+    | 1 | Windows executor | **[GATE-1a](tasks/gate-1a.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-gate-1a-review.md); a full gate now 1.5 h): the WSL sanitizer gate and the `asan` preset at `-O1 -g` (analysis §2.2 step 1, D1) | ~2–3 h |
     | 2 | Windows executor | **GATE-1b:** a required contract runs once; `picture_matrix_contract` in one lane; no local lavapipe lane by default (steps 2, 4; D2) | ~2 h |
     | 3 | Windows executor | **GATE-1c:** a gate can end green: the flow-build test's cause, then its fix; named-adapter GPU tests skip as platform (step 3; D3, D4) | ~2–3 h |
     | 4 | Windows executor | **PLAY-LIVE-1a:** a "living town" rules profile for `--play` and `--ship-start` behind one flag (D7); the default is the owner's | ~2–3 h |
@@ -110,7 +110,8 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     | 3′ | Mac executor | **[WILDLIFE-RE-1c](tasks/wildlife-re-1c.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1c-review.md)): the hunter's approach, the fur trapper, the wolf and predators (items 6–8) | ~3–4 h |
     | 4′ | Mac executor | **[WILDLIFE-RE-1d](tasks/wildlife-re-1d.md), RELEASED 2026-11-12:** `tools/wildlife_ref.py` with hand-derived vectors from 1a–1c's draw tables | ~3–4 h |
     | — | Orchestrator, beside | **ADR 0006:** a version per save section, lighter goldens, one tool that regenerates pins (MAP-INTEGRATE-2 review E1; analysis §3.2 item 5). The owner approves | — |
-    | Later | — | **COORD-F3-1** (D5, the `F3 (D1, deaf)` flake, cause first) and **TEST-MEM-1** (D6, reservations from measured peaks; seven low-memory refusals in the 2026-11-12 run) | ~2–3 h each |
+    | 3a | Windows executor | **COORD-FLAKE-1** (D5, moved up after GATE-1a): the coordinator tests `F3 (D1, deaf)` (macOS) and `C3` (Windows) flake in CI; cause first, no reruns as proof | ~2–3 h |
+    | Later | — | **TEST-MEM-1** (D6, reservations from measured peaks; seven low-memory refusals in the 2026-11-12 run) | ~2–3 h each |
     | Later | — | **PLAY-LIVE-1c** (draw figures), **NET-0** (after the owner decides ADR 0003), **TEST-FIXTURE-1** | — |
     | After ADR 0006 | — | **EDITION-2 with WILDLIFE-1** (one identity change for both), then freight through the effect queue (E2–E4) | — |
     | Parked | — | [SIM-LIMITS-1](tasks/sim-limits-1.md) (packet written), FIXTURES-TRIM-1, MAP-MATERIALS-1, MAP-FOOD-1, MAP-GOODS-1a–c: re-ranked after the wildlife port re-measures [`progression-gaps.md`](../sim/progression-gaps.md) | — |

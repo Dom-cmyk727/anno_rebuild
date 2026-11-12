@@ -5,6 +5,11 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-12, evening, by the Claude Code orchestrator:
+- **GATE-1b LANDED on `main`** as `96f7980c`, with the owner's OK: GATE-1b, the Rust 1.100 lint fix, its review and
+  the GATE-1c release. Hosted `lint` is green on `main` again. The first `gate` failed because GitHub never gave the two
+  macOS jobs a runner: they were abandoned after 15 minutes without running a step. A rerun of the failed jobs passed.
+  **`main` is healthy:** its code is `75a3c779`'s, whose game-file run passed all 2,535 executed tests
+  ([review](reviews/2026-11-12-gate-1b-review.md)).
 - **[GATE-1b](tasks/gate-1b.md) ACCEPTED** ([review](reviews/2026-11-12-gate-1b-review.md)): each required test runs
   once per gate; the default WSL gate's lanes take 4,190 s instead of 4,958 s, all green. Its landing candidate is
   `orch/land-gate-1b` and waits for the owner's OK.
@@ -227,7 +232,8 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [GATE-1c](tasks/gate-1c.md)** (released 2026-11-12, on top of `orch/land-gate-1b`), on `task/GATE-1c`:
+- **Now: [GATE-1c](tasks/gate-1c.md)** (released 2026-11-12, on top of `orch/land-gate-1b`, which is `main` at
+  `96f7980c` since its landing), on `task/GATE-1c`:
   the flow-build test's cause and fix, named-adapter GPU tests skip when their adapter is absent, and a `--select`
   that matches nothing fails again.
 - **Finished: [GATE-1b](tasks/gate-1b.md)** (2026-11-12; head `e63145e9`), **accepted**
@@ -463,13 +469,12 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on a run
 
-- None. **`main` is healthy at the MAP-INTEGRATE-2 landing** (its code is the game-file-tested merge `c75cddff`).
-  The counts and the earlier runs are under [Current work](#current-work).
+- None. **`main` is healthy at the GATE-1b landing `96f7980c`** (its code is the game-file-tested `75a3c779`, see the
+  [GATE-1b review](reviews/2026-11-12-gate-1b-review.md)). The counts and the earlier runs are under
+  [Current work](#current-work).
 
 ## Waiting on the owner
 
-- **Landing `orch/land-gate-1b`** (GATE-1b, the Rust 1.100 lint fix, the GATE-1c release). Until it lands, `gate`
-  fails for any other landing.
 - **The go for each next Mac packet** of the queue (board, "Current work"); the Windows lane has a standing go.
   ADR 0006 waits until the owner can read it.
 - **The rule changes the project analysis suggests** ([analysis](reviews/2026-11-12-project-analysis.md) §3.2,

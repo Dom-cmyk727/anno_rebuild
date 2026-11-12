@@ -7,6 +7,8 @@ says who is doing what, where the work is, and what it waits on.
 **Last updated:** 2026-11-12, later, by the Claude Code orchestrator:
 - **[GATE-1a](tasks/gate-1a.md) RELEASED** to the Windows executor with the owner's go: the WSL sanitizer gate and
   the `asan` preset at `-O1 -g`.
+- **[WILDLIFE-RE-1c](tasks/wildlife-re-1c.md) RELEASED** to the Mac executor with the owner's go: the hunter's
+  approach, the fur trapper, the wolf and predators (it answers whether predators can wait).
 - **[WILDLIFE-RE-1b](tasks/wildlife-re-1b.md) ACCEPTED** ([review](reviews/2026-11-12-wildlife-re-1b-review.md)),
   `34d3fdce`, 28 minutes after release; every re-checked address matches. The animals' own life; OQ-578 (the
   transitive draw closure) is the main open risk for the port. The wildlife reads are four packets (1a–1d).
@@ -305,7 +307,8 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: free.** Next on this lane: WILDLIFE-RE-1c, released only with the owner's go.
+- **Now: [WILDLIFE-RE-1c](tasks/wildlife-re-1c.md)** (released 2026-11-12), on `task/WILDLIFE-RE-1c`: the hunter's
+  approach, the fur trapper, the wolf and predators. Documents only; OQ-583 to OQ-590 reserved.
 - **Finished: [WILDLIFE-RE-1b](tasks/wildlife-re-1b.md)** (2026-11-12; head `34d3fdce`), **accepted**
   ([review](reviews/2026-11-12-wildlife-re-1b-review.md)): the animals' own life in `docs/re/wildlife.md` §4–7;
   OQ-573 settled for the read paths, OQ-575 narrowed, OQ-578 to OQ-582 open.

@@ -89,7 +89,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
   [`tasks/`](tasks/). [MAP-INTEGRATE-2](tasks/map-integrate-2.md) is accepted
   ([review](reviews/2026-11-12-map-integrate-2-review.md)) and on `main` as state 138. Now: [GATE-1a](tasks/gate-1a.md)
-  (Windows). [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) and [WILDLIFE-RE-1b](tasks/wildlife-re-1b.md) are accepted; the Mac executor is free.
+  (Windows). [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) and [WILDLIFE-RE-1b](tasks/wildlife-re-1b.md) are accepted; [WILDLIFE-RE-1c](tasks/wildlife-re-1c.md) (Mac) is released.
   - **The queue, proposed 2026-11-12** by the orchestrator from the
     [project analysis](reviews/2026-11-12-project-analysis.md) (§2.2, §4.2, §6, §7, §8) and the
     [MAP-INTEGRATE-2 review](reviews/2026-11-12-map-integrate-2-review.md) §4. Every packet is released only with
@@ -107,7 +107,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     | 6 | Windows executor | **EDITION-1a–e:** the game-source layer and its readers; the rule-set digest; the island manifest; figure type 375; `content-id` and the parity test (analysis §6, one packet each) | ~2–4 h each |
     | 1′ | Mac executor | **[WILDLIFE-RE-1a](tasks/wildlife-re-1a.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1a-review.md)): the fauna sweep, the creation helper, the `HIRSCH` loader (analysis §7.3 items 1–3). Documents only. The owner confirmed option 1, the faithful port | ~3–4 h |
     | 2′ | Mac executor | **[WILDLIFE-RE-1b](tasks/wildlife-re-1b.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1b-review.md)): the animals' own life: their classes' overridden slots, construction and attach draws (OQ-575), the spawn record's release (OQ-573), their routes and jobs (items 4–5) | ~3–4 h |
-    | 3′ | Mac executor | **WILDLIFE-RE-1c:** the hunter's approach, the fur trapper, the wolf and predators (items 6–8) | ~3–4 h |
+    | 3′ | Mac executor | **[WILDLIFE-RE-1c](tasks/wildlife-re-1c.md), RELEASED 2026-11-12:** the hunter's approach, the fur trapper, the wolf and predators (items 6–8) | ~3–4 h |
     | 4′ | Mac executor | **WILDLIFE-RE-1d:** `tools/wildlife_ref.py` with hand-derived vectors from 1a–1c's draw tables | ~2–3 h |
     | — | Orchestrator, beside | **ADR 0006:** a version per save section, lighter goldens, one tool that regenerates pins (MAP-INTEGRATE-2 review E1; analysis §3.2 item 5). The owner approves | — |
     | Later | — | **COORD-F3-1** (D5, the `F3 (D1, deaf)` flake, cause first) and **TEST-MEM-1** (D6, reservations from measured peaks; seven low-memory refusals in the 2026-11-12 run) | ~2–3 h each |

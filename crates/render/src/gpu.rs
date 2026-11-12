@@ -1122,7 +1122,6 @@ impl GpuFrame {
         }
         u.extend(u32::from(fw.is_some()).to_le_bytes());
         #[allow(clippy::cast_precision_loss)]
-        #[allow(clippy::cast_precision_loss)]
         for v in [cpt as f32, 0.0, 0.0, 0.0] {
             u.extend(v.to_le_bytes());
         }

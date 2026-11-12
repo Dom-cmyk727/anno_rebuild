@@ -88,20 +88,21 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
 `HISTORY.md`, look in `HISTORY-2.md` too.
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
   [`tasks/`](tasks/). [MAP-INTEGRATE-2](tasks/map-integrate-2.md) is accepted
-  ([review](reviews/2026-11-12-map-integrate-2-review.md)) and on `main` as state 138. [GATE-1a](tasks/gate-1a.md) is accepted;
-  [GATE-1b](tasks/gate-1b.md) (Windows) is released. The wildlife reads [1a](tasks/wildlife-re-1a.md) to [1d](tasks/wildlife-re-1d.md) are accepted; the Mac executor is free.
+  ([review](reviews/2026-11-12-map-integrate-2-review.md)) and on `main` as state 138. [GATE-1a](tasks/gate-1a.md) and
+  [GATE-1b](tasks/gate-1b.md) are accepted; [GATE-1c](tasks/gate-1c.md) (Windows) is released. The wildlife reads [1a](tasks/wildlife-re-1a.md) to [1d](tasks/wildlife-re-1d.md) are accepted; the Mac executor is free.
   - **The queue, proposed 2026-11-12** by the orchestrator from the
     [project analysis](reviews/2026-11-12-project-analysis.md) (§2.2, §4.2, §6, §7, §8) and the
     [MAP-INTEGRATE-2 review](reviews/2026-11-12-map-integrate-2-review.md) §4. Every packet is released only with
-    the owner's OK, one open packet per executor, under the owner rule of 2026-11-12 above. The analysis's larger
+    the owner's OK (for the Windows lane a standing go since later on 2026-11-12: the orchestrator releases
+    its next packet after each review; landings still need the owner's OK), one open packet per executor, under the owner rule of 2026-11-12 above. The analysis's larger
     packets are cut to that size here.
 
     | Step | Who | Packet | Size |
     |---|---|---|---|
     | 0 | Orchestrator | Land MAP-INTEGRATE-2 with the analysis documents: **done**, `fa9d8bbf` | — |
     | 1 | Windows executor | **[GATE-1a](tasks/gate-1a.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-gate-1a-review.md); a full gate now 1.5 h): the WSL sanitizer gate and the `asan` preset at `-O1 -g` (analysis §2.2 step 1, D1) | ~2–3 h |
-    | 2 | Windows executor | **[GATE-1b](tasks/gate-1b.md), RELEASED 2026-11-12:** a required contract runs once; `picture_matrix_contract` in one lane; no local lavapipe lane by default (steps 2, 4; D2) | ~2 h |
-    | 3 | Windows executor | **GATE-1c:** a gate can end green: the flow-build test's cause, then its fix; named-adapter GPU tests skip as platform (step 3; D3, D4) | ~2–3 h |
+    | 2 | Windows executor | **[GATE-1b](tasks/gate-1b.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-gate-1b-review.md)): a required contract runs once; `picture_matrix_contract` in one lane; no local lavapipe lane by default (steps 2, 4; D2) | ~2 h |
+    | 3 | Windows executor | **[GATE-1c](tasks/gate-1c.md), RELEASED 2026-11-12** (owner's standing go for the Windows lane): a gate can end green: the flow-build test's cause, then its fix; named-adapter GPU tests skip as platform; an empty `--select` fails again (step 3; D3, D4; GATE-1b review) | ~2–3 h |
     | 4 | Windows executor | **PLAY-LIVE-1a:** a "living town" rules profile for `--play` and `--ship-start` behind one flag (D7); the default is the owner's | ~2–3 h |
     | 5 | Windows executor | **PLAY-LIVE-1b:** draw the tile objects that change, roads first, after confirming D8 in the window | ~3 h |
     | 6 | Windows executor | **EDITION-1a–e:** the game-source layer and its readers; the rule-set digest; the island manifest; figure type 375; `content-id` and the parity test (analysis §6, one packet each) | ~2–4 h each |

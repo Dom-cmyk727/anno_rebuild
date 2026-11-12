@@ -89,7 +89,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
   [`tasks/`](tasks/). [MAP-INTEGRATE-2](tasks/map-integrate-2.md) is accepted
   ([review](reviews/2026-11-12-map-integrate-2-review.md)) and on `main` as state 138. Now: [GATE-1a](tasks/gate-1a.md)
-  (Windows) and [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) (Mac).
+  (Windows). [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) is accepted; the Mac executor is free.
   - **The queue, proposed 2026-11-12** by the orchestrator from the
     [project analysis](reviews/2026-11-12-project-analysis.md) (§2.2, §4.2, §6, §7, §8) and the
     [MAP-INTEGRATE-2 review](reviews/2026-11-12-map-integrate-2-review.md) §4. Every packet is released only with
@@ -105,7 +105,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     | 4 | Windows executor | **PLAY-LIVE-1a:** a "living town" rules profile for `--play` and `--ship-start` behind one flag (D7); the default is the owner's | ~2–3 h |
     | 5 | Windows executor | **PLAY-LIVE-1b:** draw the tile objects that change, roads first, after confirming D8 in the window | ~3 h |
     | 6 | Windows executor | **EDITION-1a–e:** the game-source layer and its readers; the rule-set digest; the island manifest; figure type 375; `content-id` and the parity test (analysis §6, one packet each) | ~2–4 h each |
-    | 1′ | Mac executor | **[WILDLIFE-RE-1a](tasks/wildlife-re-1a.md), RELEASED 2026-11-12:** the fauna sweep, the creation helper, the `HIRSCH` loader (analysis §7.3 items 1–3). Documents only. The owner confirmed option 1, the faithful port | ~3–4 h |
+    | 1′ | Mac executor | **[WILDLIFE-RE-1a](tasks/wildlife-re-1a.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1a-review.md)): the fauna sweep, the creation helper, the `HIRSCH` loader (analysis §7.3 items 1–3). Documents only. The owner confirmed option 1, the faithful port | ~3–4 h |
     | 2′ | Mac executor | **WILDLIFE-RE-1b:** the animal figures, their routes and jobs, the hunter's approach (items 4–6) | ~3–4 h |
     | 3′ | Mac executor | **WILDLIFE-RE-1c:** the trapper, predators, and `tools/wildlife_ref.py` with vectors (items 7–8) | ~3–4 h |
     | — | Orchestrator, beside | **ADR 0006:** a version per save section, lighter goldens, one tool that regenerates pins (MAP-INTEGRATE-2 review E1; analysis §3.2 item 5). The owner approves | — |

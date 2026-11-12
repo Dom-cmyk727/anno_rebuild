@@ -7,9 +7,9 @@ says who is doing what, where the work is, and what it waits on.
 **Last updated:** 2026-11-12, later, by the Claude Code orchestrator:
 - **[GATE-1a](tasks/gate-1a.md) RELEASED** to the Windows executor with the owner's go: the WSL sanitizer gate and
   the `asan` preset at `-O1 -g`.
-- **[WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) RELEASED** to the Mac executor with the owner's go: the fauna sweep,
-  the animal creation helper and the `HIRSCH` loader, documents only. **Owner decision:** wildlife is ported
-  faithfully (option 1).
+- **[WILDLIFE-RE-1a](tasks/wildlife-re-1a.md) ACCEPTED** ([review](reviews/2026-11-12-wildlife-re-1a-review.md)),
+  `a6c15797`, seven minutes after release; every re-checked address matches. The fauna sweep, the animal creation
+  helper and the `HIRSCH` loader, documents only. **Owner decision:** wildlife is ported faithfully (option 1).
 - **MAP-INTEGRATE-2 landed on `main` as `fa9d8bbf`** ([review](reviews/2026-11-12-map-integrate-2-review.md)):
   salt, iron → tools, quarry → bricks and automatic freight as **state 138**, merged as `c75cddff`.
   - **The code is fit for `main`;** the 13 h 20 min it took were not worth it. The main causes were the packet's size
@@ -302,9 +302,10 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md)** (released 2026-11-12), on `task/WILDLIFE-RE-1a`: the fauna
-  sweep `0x10093480`, the creation helper `0x10092ca0` and the `HIRSCH` loader `0x100946c0`, into a new
-  `docs/re/wildlife.md`. Documents only; OQ-572 to OQ-579 reserved.
+- **Now: free.** Next on this lane: WILDLIFE-RE-1b, released only with the owner's go.
+- **Finished: [WILDLIFE-RE-1a](tasks/wildlife-re-1a.md)** (2026-11-12; head `a6c15797`), **accepted**
+  ([review](reviews/2026-11-12-wildlife-re-1a-review.md)): the fauna sweep `0x10093480`, the creation helper
+  `0x10092ca0` and the `HIRSCH` loader `0x100946c0` in the new `docs/re/wildlife.md`; OQ-572 to OQ-577 open.
 - **Finished: [MAP-INTEGRATE-2](tasks/map-integrate-2.md)** (2026-11-12; head `55ce7e71`), **accepted**
   ([review](reviews/2026-11-12-map-integrate-2-review.md)), 13 h 20 min. Released 2026-11-11, parts
   S → P → I0–I5 → R → N → E.

@@ -7235,7 +7235,7 @@ is the correction of record for "the other four endless-game files" wherever thi
 
 | Branch | Head | Run id | Result |
 |---|---|---|---|
-| `task/W4-docs-h` | *(filled in after push)* | *(filled in after push)* | *(filled in after push)* |
+| `task/W4-docs-h` | `f99c7679` | 43123758319 | green, all jobs including `gate` |
 
 ### Decisions and reasoning
 

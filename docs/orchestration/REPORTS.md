@@ -8862,3 +8862,64 @@ Decisions and reasoning:
 - Kept cleanup and immediate deletion distinct rather than inventing id repair.
 - Recorded structural class labels separately from absent HE verification.
 QUESTIONs: OQ-578–582 delimit the remaining evidence; no identity decision needed.
+
+## WILDLIFE-RE-1c — approach, trapper, predators — 2026-11-12 — READY FOR REVIEW
+
+Base `e154fea5`; branch `task/WILDLIFE-RE-1c`, NEW managed worktree
+`/Users/dom/.codex/worktrees/wildlife-re-1c/anno1503`. Prior branches preserved.
+Documents only: [wildlife.md §§8–10](../re/wildlife.md#8-hunter-approach-and-the-resource-walk-class-label), open questions, this report.
+Reference: GOG AnnoWelt.dll 2.0.0.5, SHA-256
+`f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
+Used tools/disasm.py, direct table reads and parsed original content.
+
+Hunter read:
+- Route `0x1005c610`/`0x100c6f90`, steps `0x10057690`, `0x10054c90`/
+  `0x10054ce0`, `0x10056b10`, `0x10054760`/`0x100547e0`.
+- JAEGER table `0x100c4950`: +e8 `0x100354b0`, +d0 `0x100a3930`
+  (stub), +c8 `0x1003acc0`, +cc `0x10034df0`; absolute receiver stated.
+- World eligibility `0x100a6b70`, geometry `0x100a65e0`, path callback
+  `0x100575d0`, attack `0x10035570`, delayed hit `0x100adb80`.
+- Resource-walk structural label tJobWalkRohstWild at `0x100c6514`, start
+  `0x100594b0`, 9/10 slots shared with production resource table `0x100c44c0`.
+  This is the animal's feeding walk, distinct from the hunter pursuit step.
+Settled: current-position planning, firing recheck, finite local attempt bound,
+approach retry/home fallback; target phases differ, and no second cargo award
+while a removed target id stays absent. Home entrances are distinct path starts.
+
+Trapper read:
+- Factory `0x100241e4` installs `0x100c2bf0` on Plantage construction;
+  73/75 slots match `0x100c8ae0`, destructor wrappers reach the same body.
+- Full tick `0x1006e5d0`–`0x1006e944` versus `0x10069f40`–`0x1006a482`;
+  shared search `0x10071da0` and send `0x10072d20`, raw credit `0x1006ee70`.
+Settled: one output, activity255/256, five pointer slots but at most one hunt,
+raw/capacity/debit order, shared route13, no trapper-specific pursuit mode.
+P: type824 rate26/need25/cap1280; type805 rate43/need57 and two cap1024 stores.
+
+Predator facts for the owner (D/P): All seven RAUBTIER types use wolf class
+`0x100c68e0`; its explicit animal prey lists exclude residents and soldiers.
+It chases, damages and consumes those prey, affecting quarry and draws
+(`0x10052ee0`, `0x100531e0`, `0x10033030`); it does more than roam.
+This is the observed rule, not a recommendation about what to omit.
+Five overrides versus New: cancellation `0x100533a0`, boundary `0x100535d0`,
+fallback/start/completion `0x100532b0`/`0x100532e0`/`0x10053410`.
+Draw rows: wolf idle parity `0x100534bb`, walk %7 `0x100534e4`, inherited
+walk/idle rows; direct hunter/trapper tick and pursuit draws are absent.
+Type +b4 is a figure query, not a world draw. Transitive total is not certified.
+
+New OQs: 583 structural name confirmation; 584 id reuse; 585 zero-HP130;
+586 paused prey after interrupted attack31. OQ-587–590 unused.
+OQ-578 gets only a dated narrowing bullet; closing it remains out of scope.
+NOT_RUN: HE reading (DLL absent), Ghidra, running original, reference vectors,
+build/runtime tests, whaler. No reviewer subagents; orchestrator review pending.
+
+Gate: `git diff --check` PASS; links selected5/executed5/failed0/empty0/skipped0.
+Log `cache/wildlife-re-1c/docs-gate.log`; CI checked after the task-branch push,
+with exact terminal result/link in the handover. Runtime tests: selected0 /
+executed0 / failed0 / empty0 / skipped0 (assets/platform/opt-in/GPU/unknown all0),
+NOT_RUN by the docs-only packet. Derived reads remain in ignored cache.
+
+Decisions and reasoning:
+- Kept resource-walk labels separate from actual hunter pursuit receivers.
+- Used decoded state tables and prey-id data, not names, to identify predation.
+- Kept direct draws, indirect closure and unproved lifetime edges distinct.
+QUESTIONs: OQ-583–586; no gameplay/default/identity decision is requested here.

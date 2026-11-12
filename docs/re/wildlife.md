@@ -606,3 +606,364 @@ HE and running-original validation are NOT_RUN; independent address re-check is
 pending the orchestrator. No engine code, test, fixture, save identity or default
 rule is changed. The direct-site draw table must not be advertised as a complete
 lifecycle reference until OQ-578 is resolved.
+
+## 1c acceptance scope (2026-11-12)
+
+This extends the accepted 1a/1b reads above and [hunter.md](hunter.md), without
+editing the hunter contract. **D** denotes original instructions/table reads,
+**P** parsed original content, **U** an unsettled point. The reference remains
+GOG AnnoWelt.dll 2.0.0.5 with the hash above; AnnoGame addresses below name that
+module explicitly. HE re-reading, Ghidra and running-original experiments are
+NOT_RUN. Independent address review awaits the orchestrator.
+
+| Read | Positive evidence | Distinguishing control, hand-derived | Disposition |
+|---|---|---|---|
+| Approach and pursuit | route `0x1005c610`, figure table `0x100c4950`, target query `0x100a6b70` | target ending before shooting rejects pursuit; ending after shooting admits corpse walk | D, indirect closure retained in OQ-578 |
+| Trapper vs hunter | table `0x100c2bf0`, full tick `0x1006e5d0`–`0x1006e944` | activity 128 ages to 127 for trapper, 127 for hunter; activity 256 distinguishes 255 from 254 | D/P, no runtime parity claim |
+| Predator interaction | wolf table `0x100c68e0`, prey filter `0x100536b0`, attack `0x100531e0` | positive-HP prey dies at damage 170; zero-HP prey does not acquire ending bit from another nonpositive HP write | D/P; zero-HP reachability OQ-585 |
+| New draw rows | wolf completion jump table `0x100535a8` and direct call sites | walk completion uses %7; idle completion uses parity, unlike New's %5/parity choices | D direct sites; OQ-578 remains open by scope |
+
+## 8. Hunter approach and the resource-walk class label
+
+**D — receivers and selected figure implementation.** The route receiver is the
+primary `0x100c6f90` table at route base R. Its embedded step receivers are
+R+`0x10`, R+`0x20`, R+`0x28`, R+`0x30`, R+`0x38`, constructed at
+`0x1005c646`–`0x1005c6de`. Their fields below are relative to those step
+receivers, not to R. Figure kind 3 (JAEGER) selects factory case
+`0x1009a3d5`, constructor `0x1003b7c0` and primary table `0x100c4950` at
+figure base F (`0x1003b7df`). Therefore its movement calls use F directly.
+There is no `this+4` adjustment in these calls. Both buildings' original figure
+selection is 108/JAEGER (P: FigurenHeader.dat and Anlagen.dat PROD3; §9).
+
+**D/U — `tJobWalkRohstWild` location.** The structural GOG identification is
+10-slot table `0x100c6514`, start `0x100594b0`. Compared with the production
+resource-walk table `0x100c44c0` (start `0x10058ae0`), nine entries are identical;
+only start slot `+0xc` differs. Both have kind getter `0x1005a030` (7), completion
+`0x1005f710`, claim release `0x100545c0`, and the same property/serialization
+profile. Old animal factory `0x10050c70` installs this step in its HIRSCH route.
+The Wild start uses the animal's search rectangle and carried-goods discriminator;
+the Prod start uses the home building's footprint/radius and resource candidates
+(`0x100594b0`–`0x100595d5`, `0x10058ae0`–`0x10058c68`; §7).
+Thus this label denotes the animal's resource walk, **not** the first pursuit
+step of the hunter's job 13. The HE86 `0x10148c84` name/inheritance is a supplied
+label; a fresh cross-edition profile/name proof remains U (OQ-583). Other kind-7
+GOG tables also share these nine inherited slots, so table length alone would
+not prove that name.
+
+**D — the hunter route's five steps (`0x1005c610`–`0x1005c6f7`).**
+
+| Step receiver | Table / kind | Start; completion | Meaning established by the bodies |
+|---|---|---|---|
+| R+`0x10` | `0x100c7060` / 13 (`0x10057680`) | `0x10057690`; `0x1005f710` | target-range check and approach path |
+| R+`0x20` | `0x100c7038` / 21 (`0x10054c80`) | `0x10054c90`; `0x10054ce0` | recheck range and begin attack action |
+| R+`0x28` | `0x100c7010` / 5 (`0x10056b00`) | `0x10056b10`; `0x1005f710` | walk to an ending target |
+| R+`0x30` | `0x100c6fe8` / 11 (`0x10054750`) | `0x10054760`; `0x100547e0` | take the ending target and credit cargo |
+| R+`0x38` | `0x100c4640` | `0x10057ae0`; shared return handling | home path, already covered by the transport/hunter reads |
+
+**D — the four requested slots, selected table `0x100c4950`.**
+
+| Figure slot | GOG implementation | Meaning on this figure |
+|---|---|---|
+| `+0xe8` | `0x100354b0`–`0x10035540` | query target action eligibility; mode 2 resolves the supplied u16 target id through manager `+8`, then calls world `+0x190` with target, hunter position/type and an output vector |
+| `+0xd0` | `0x100a3930` | null implementation: returns 0, pops two arguments; do not call it continuous following on this class |
+| `+0xc8` | `0x1003acc0`–`0x1003aefb` | configure shared searcher around the worker's saved home footprint/radius, island and walking layer; use home entrances when inside its footprint, current position otherwise |
+| `+0xcc` | `0x10034df0`–`0x1003506a` | run searcher and convert its resulting path into linked motion descriptors; return 0 on failure, 1 on success/accepted proximity |
+
+**D — eligibility result (`0x100a6b70`–`0x100a6bd5`).** On in-game world table
+`0x100ccdd8`, `+0x190` returns 3 for a missing target, flags value 2 or 4, or
+a target type with zero maximum HP. Otherwise world `+0x16c`
+(`0x100a65e0`–`0x100a6af2`) tests the target against the proposed shooting
+position/type and returns boolean; `+0x190` maps that to **2 when usable, 0
+otherwise**. That geometry body computes range/height and, for moving targets
+with a projectile type, an intercept estimate with at most five iterations
+(`0x100a67f5`–`0x100a6946`). It has no direct world draw. Its remaining type,
+terrain and visibility callbacks are not silently certified by this observation
+(OQ-578). These results must not be replaced by an assumed “distance only” rule.
+
+**D — approach start (`0x10057690`–`0x1005781d`).** Query `+0xe8(2,&id,&v)`:
+2 succeeds immediately; -2 or 3 fails. Other results look up the target again
+and read its **current** x/z. Result 1 would call `+0xd0(&position,1)`, but the
+selected in-game world returns only 0/2/3 and that figure's `+0xd0` is a stub.
+For the search arm, attempt byte step+`0xe` >=3 refuses further planning.
+Otherwise configure `+0xc8`, add a goal around current target position with
+radius from hunter type `+0x68(0)`, install callback `0x100575d0`, and invoke
+`+0xcc(0,4,searcher)`. A successful search saves goal coordinates at step+4/+8
+and increments the attempt byte. Initial target setter `0x10057820` resets the
+byte to zero. This is a bound in that step, not a limit of three shots: the in-range success path precedes the counter
+check, and subsequent route steps can return here without planning another path.
+
+**D — path callback (`0x100575d0`–`0x10057676`).** For a candidate node, read
+its coordinates/height and call world `+0x16c` against the stored target and
+hunter type. If unusable, return 1 to continue. If usable, mark the candidate
+through searcher `+0x90`, optionally stop through `+0xb0`, and return 0.
+The callback's `+0xb0` receiver is the **searcher**, not the world generator.
+This plans a path to a usable attack position; it does not update a walking
+path continuously as the target moves. Searcher setup uses the home's rotated
+entrance positions when the worker is inside its saved home footprint
+(`0x1003ae3e`–`0x1003aed7`), and its current x/z otherwise
+(`0x1003aeda`–`0x1003aefb`); do not collapse both start sets into one point.
+
+**D — firing recheck and effect (`0x10054c90`–`0x10054d26`).** Re-run the
+mode-2 eligibility query at firing start. Only result 2 invokes figure
+`+0xec(2,&id,&v,0)` (`0x10035570`–`0x10035ae5`). This stops translation,
+sets an attack animation/time, and either creates the type-defined projectile
+and initializes its target/damage, or queues a delayed kind-1 target hit through
+world `+0xc4` (`0x10035780`–`0x1003595b`). Damage comes from figure `+0x188`
+(`0x10035550`), which calls type `+0x9c`; it is not an immediate cargo award.
+The queue is `0x100adef0`, processed by `0x100add90`; target-hit handler
+`0x100adb80` looks the u16 target id up again, rejects target flags `0xc6`,
+and applies the recorded damage through target `+0x9c`
+(`0x100adb9b`–`0x100adbee`). These bodies contain no direct world draw.
+Projectile/animation-type and remaining callback closure stay with OQ-578.
+
+**D — target changes and give-up boundary.** Route transition
+`0x1005c570`–`0x1005c5ff` advances the node and copies target id between
+kind 13/21/5 steps. It calls their completion but does not branch on that
+completion's boolean return. Generic start `0x1005b6c0` calls the route's
+fallback `0x1005c520` on start failure: kind 13 goes to home node R+`0x6c`
+(job at R+`0x38`); kind 21 or 5 goes to **approach node R+`0x3c`** (job at
+R+`0x10`); other failed steps clear continuation. These nodes must not be
+confused with the embedded job objects. Consequently:
+
+- **D, moves:** the path uses current target coordinates when planned; firing
+  checks again. If the moved target is no longer eligible at firing start,
+  that step fails and retries approach. Approach can plan again until its
+  successful-plan byte reaches3; a further out-of-range start then fails to
+  home. An already in-range result2 still succeeds before that cap
+  (`0x10057690`, `0x10054c90`, `0x1005c520`).
+- **D, dies:** an ending target rejects the initial approach/fire query, but
+  the later corpse-walk step specifically requires ending bit 2. It walks to
+  the target's current position, using the first-goal callback `0x10054240`
+  (`0x10056b10`–`0x10056bb1`). Thus death during the attack is different from
+  death before approach. A surviving target fails corpse-walk and retries
+  approach, allowing another attack rather than awarding cargo for a live animal.
+- **D, taken by another hunter:** a missing id makes corpse-walk/take start fail
+  and adds no cargo. Failed corpse-walk retries approach, whose missing-target
+  result3 then selects home; failed take clears this route continuation. Take
+  completion checks removal guard 4 before ending bit 2;
+  only a still-present ending victim is removed immediately and its type
+  capacity added (`0x10054760`–`0x10054878`). There is no reservation/claim
+  write in the target search or these approach/take bodies. Two hunters can
+  select the same live quarry; whichever removes it first prevents a second
+  award while the id stays absent. Id reuse is a separate gap, OQ-584.
+
+**D — arithmetic/content control.** Hunter figure 108's parsed damage is 50;
+ordinary prey 117 has HP 40, while fur quarry 126 has HP 80 (P: LOGIC u16
+`0x1c`/`0x1e`). The AnnoGame loader stores the corresponding damage/HP fields
+at `0x10010368`–`0x10010387`; getters are `0x1000fcf0`/`0x1000fce0`.
+Shared damage `0x10034ac0` subtracts damage before HP setter `0x100349c0`.
+Thus a full 50-damage hit can end 117 but leaves 126 at 30 HP. The route does
+not turn the latter into a corpse by calling the cargo step. This is a hand
+control, not an original-runtime assertion that every fired shot lands.
+
+## 9. Fur trapper: class, tick and shared pursuit
+
+**D — `tProdPelzJaeger` structural label, primary table `0x100c2bf0`.**
+Building factory `0x10024010` maps PRODTYPE 16 through byte map `0x1002528c`
+and jump table `0x1002521c` to `0x100241e4`: allocate `0x38`, call
+`0x1006f160` (Plantage constructor), then replace the primary table at
+`0x1002420e`. Therefore this receiver is building base B, not city+`0x144`
+(the factory receiver) and not a secondary interface. The base table is
+`0x100c8ae0`; 73 of 75 entries are identical. Differences are tick `+0x8c`
+(`0x1006ea90` -> `0x1006e5d0`) and deleting destructor `+0x110`
+(`0x1006f140` -> `0x100254e0`). The latter's body jumps via `0x10025590`
+to the same Plantage destructor `0x1006f0c0`, so it does not establish a
+different worker-removal rule. HE86 `0x10151480` is a supplied label; HE
+reading is NOT_RUN. This also agrees with [production.md §4.2a](production.md#42a-fur-trapper-pelzjaeger-824--0x1006e5d0-read-instruction-by-instruction-2026-10-18).
+
+**D — complete tick, `0x1006e5d0`–`0x1006e944`.** The fields are output u16
+B+`0x18`, reserved output `+0x1a`, raw `+0x1c`, activity `+0x1e`, on/off byte
+`+0x22`, and five worker pointers `+0x24`..`+0x34`. Carry credit `+0xc0`
+(`0x1006ee70`) adds to raw `+0x1c`; the hunter's corresponding method
+`0x1006a490` adds to its different raw field `+0x24`.
+
+| Rule | Trapper | Hunter | Evidence D |
+|---|---|---|---|
+| Time gate | wrapping u16 elapsed >=500; last +=500 once per call | same | `0x1006e5d8`–`0x1006e5f7`; `0x10069f4b`–`0x10069f6d` |
+| Disabled | one switch 0 returns before activity decay | both output switches 0 returns | `0x1006e5fb`; `0x10069f71` |
+| Activity | truncate(activity*255/256), u16 | each of two activities *127/128 | `0x1006e606`–`0x1006e61f`; `0x10069f83`–`0x10069fb3` |
+| Suspension | flags `0x10/0x20` return | same | `0x1006e623`–`0x1006e631`; `0x10069fb7` |
+| Worker gate | any of five pointers nonnull suppresses production and dispatch | single pointer `+0x2c` | `0x1006e637`–`0x1006e65f`, `0x1006e770`–`0x1006e788`; `0x10069fcb`, `0x1006a31b` |
+| Production | one output: truncate(rate0*ratio/128) | split rate0 between two outputs using byte `+0x2a` | `0x1006e6ba`–`0x1006e6e4`; `0x1006a060`–`0x1006a276` |
+| Capacity | type `+0xc0`, compare with output before adding | type property `0x44f` pair, then line gates | `0x1006e6a5`–`0x1006e6b4`; `0x1006a03a`–`0x1006a060` |
+| Raw debit | truncate(need0*ratio/128), only when output produced | once if either output produced | `0x1006e6e8`–`0x1006e6f8`; `0x1006a2e8`–`0x1006a306` |
+
+**D — ratio and dispatch.** With no worker, compute
+`ratio=min(128,trunc((raw<<7)/need0))`; below 64 reports missing-input status,
+otherwise test capacity before producing. Addition/debit/activity writes are
+u16; there is no post-add saturation to capacity. Full output or insufficient
+raw skips production but can still reach dispatch. Dispatch requires ratio<128,
+no occupied worker pointer and `trunc(384/rate0) >= trunc(raw/need0)` after
+any debit (`0x1006e659`–`0x1006e6f8`, `0x1006e767`–`0x1006e7c1`). The
+five storage slots do not authorize five simultaneous hunts: this tick suppresses
+another dispatch when **any** slot is set. Zero rate/need divisors have no guard
+in these bodies; the parsed types below provide nonzero values.
+
+**D/P — same job, different production.** Both call the exact search
+`0x10071da0(8)` (`0x1006e7cb`, `0x1006a36d`), which enumerates at most 512
+in-radius figures and selects the strictly nearest matching input goods,
+without a quarry state or ownership check in that search body
+(`0x10071da0`–`0x10071ed7`). Query ties retain the earlier enumerated figure.
+Both use building `+0x118=0x10072d20`, request route 13, set worker cargo
+goods to type input-0, and pass the quarry's u16 id to the first step
+(`0x1006e7d8`–`0x1006e853`, `0x1006a37e`–`0x1006a400`). Neither dispatch
+injects a hunter/trapper discriminator into route 13. The route's movement,
+attack, corpse checks and capacity award are therefore shared as in §8.
+
+**P/D — shipped values and distinguishing arithmetic.** Anlagen.dat entries
+805/824 both select figure 108 and maximum worker count 1 in PROD3. 805 uses
+FLEISCHTIER -> NAHRUNG/TIERHAEUTE, rate0=43, need0=57, capacities 1024/1024;
+824 uses PELZTIER -> PELZE, rate0=26, need0=25, capacity 1280. These are the
+existing original PROD3 conversions (AnnoGame `0x100095c7`–`0x10009717`;
+raw T0/I0 are 6/1.3359375 and 10/.9765625 respectively), confirmed by the
+parsed records. At ratio128 with room, trapper makes 26 for 25 raw; hunter
+split64 makes 21 of each for 57 raw. At trapper raw=13, ratio=66, so it makes
+13 and consumes12, leaving1; a naive “always debit25” rule differs. At activity
+256 the trapper decay yields255, hunter254. These are hand-derived controls,
+not newly executed reference vectors. Neither production/dispatch body contains
+a world-PRNG draw; type `+0xb4` in dispatch selects a figure, not randomness.
+
+## 10. Wolf and RAUBTIER predators
+
+**D/P — implementation selection.** AnnoGame's kind-name table `0x10024cb8`
+identifies kind 50 as RAUBTIER (49 HIRSCH, 51 HASE). AnnoWelt factory kind 50
+uses `0x1009a471` -> constructor `0x10053740`, installing primary wolf table
+`0x100c68e0` at F+0 (`0x1005377b`); this is an unadjusted figure receiver.
+It calls New's constructor first, sets behavior/configuration to 8, requested
+state27/current0, and adds another `0x200` carried quantity. Thus the two
+constructor additions give `0x400` before type attachment, not a replacement of
+New's quantity. In FigurenHeader.dat the RAUBTIER entries are 116,126,131,201,
+503,529,530. Their ROUTETYPE is HIRSCH for 116/126/201/503 and RAUBTIER for
+131/529/530, but **the class factory selects by kind**, not that route string.
+This is why the read applies to all seven, including fur-bearing predators.
+
+**D — complete override comparison, 104 entries each.** Other entries,
+including tick, movement, HP setter, damage and cleanup, are inherited unchanged
+from New (`0x100c66fc`). The state block is F+`0x84`, as in §7.
+
+| Offset | New | Wolf | Role read here |
+|---|---|---|---|
+| `+0x168` | `0x10051a90` | `0x100533a0` | cancellation |
+| `+0x18c` | `0x10001080` | `0x100535d0` | boundary hook before continuation |
+| `+0x194` | `0x100519d0` | `0x100532b0` | failed-start fallback |
+| `+0x198` | `0x100519f0` | `0x100532e0` | action start |
+| `+0x19c` | `0x10051b00` | `0x10053410` | completion/next-state selection |
+
+**D — decode the dispatch tables, not adjacent code order.** Start jump table
+`0x10053380` maps 25 -> `0x10032fa0` (corpse action), 27 -> inherited walk
+`0x10051480`, 28 -> inherited idle `0x100513e0`, 30 -> prey search
+`0x10052ee0`, 31 -> attack start `0x10053110`. States 26/29/default fall back.
+Fallback `0x100532b0` maps failed 27->28, 30->27, 31->30, else0.
+Completion jump table `0x100535a8` maps 25 -> corpse consumption
+`0x10033030` then27 on success; 30 -> distance check `0x10053080`, choosing31 if within
+0.4 else30; 31 -> damage `0x100531e0`, choosing25 when it returns success;
+27 -> modulo-7 draw; 28 -> parity draw. When the chosen next state is30 but
+carried quantity exceeds twice the truncated third of type capacity, replace
+it with27 (`0x10053546`–`0x10053581`). That override does not undo a draw.
+
+**D — prey search (`0x10052ee0`–`0x1005306f`).** Query manager
+`+0x14(x,z,type+0x68(4),mask8,buffer,256)`. Manager implementation
+`0x100983a0`–`0x100985aa` scans its spatial cells, requires distance² <=
+radius², excludes flags `0x0a`, and checks
+`mask & (1 << trunc((kind-1)/16))` (`0x10098513`–`0x1009854a`). Mask8
+therefore selects animal kinds49..64, excluding resident/soldier families.
+Among at most 256 returned entries, skip self and choose the strictly nearest
+candidate that passes `0x100536b0`; ties preserve query order. No ownership
+filter or random target selection is present in these bodies.
+
+**D/P — species filter (`0x100536b0`–`0x10053732`).** All predators admit the
+seven type ids in table `0x100c68d0`: **117,122,129,135,502,504,505**.
+For predator type ids **116,126,131,201,529** only, also admit the eleven
+entries of `0x100c68b8`: **118,119,128,130,120,123,127,132,137,141,501**.
+These are literal type-id comparisons, not goods tests or class-name tests.
+Parsed FigurenHeader.dat identifies all eighteen as HIRSCH; none is a resident
+or soldier. 503 and530 still use wolf code but get only the shorter prey list.
+Do not widen this original rule to every meat animal or infer “large” solely
+from a WARE name.
+
+**D — chase and attack.** Save the prey's u16 id at state+8; path toward its
+current position with goal radius .2 and callback `0x10052e70`, set speed
+parameter `+0xac` to3 via `0x10052180`, then use inherited `+0xcc`
+(`0x10052fbb`–`0x1005306f`). The callback selects a goal without a random
+choice. On completion, resolve the id and require current distance <=.4
+(`0x10053080`–`0x10053103`). Attack start re-resolves the prey; if living,
+sets its query/setter property4 to1, restores the predator speed multiplier to1,
+faces the prey, and waits .5 with action12 (`0x10053110`–`0x100531d0`). For
+New prey, property4 stops motion (`0x100524ae`–`0x1005250e`). Attack completion
+resolves the id again; if present and not ending, calls **prey `+0x9c` with
+predator type `+0x9c(0)`** then tests prey HP through `+0x98(3)`
+(`0x100531e0`–`0x10053250`). Positive remaining HP keeps the attack state;
+missing/ending/nonpositive HP advances to corpse state25. This is actual damage,
+not a pursuit animation with no simulation effect.
+
+**D/P — kills, consumption, and the zero-HP exception.** LOGIC damage/HP
+fields of the seven predators are respectively **170**, and 80 for116/126,
+40 for131/201/503/529/530. The eighteen allowed prey have HP0..100; type130
+has zero. Loader/getter evidence is AnnoGame `0x10010368`–`0x10010387`,
+`0x1000fcf0`/`0x1000fce0`; shared damage and HP transition are AnnoWelt
+`0x10034ac0`/`0x100349c0`. A 170-damage hit on positive-HP listed prey ends
+it and invokes its normal spawn cleanup (§6). For existing HP<=0 and proposed
+HP<=0, the HP setter returns without newly setting ending flags
+(`0x100349c8`–`0x100349d2`): zero-HP130 is not proof of another lethal hit
+or an edible corpse (OQ-585). Corpse start `0x10032fa0` rejects removal guard4;
+consumption `0x10033030` removes only an ending victim, then adds **0x100**
+quantity to the predator. It does not add the prey type's capacity as a hunter
+does. The saved home spawn is released by prey cleanup before its later removal.
+
+**D — cancellation and boundary hook.** `0x100533a0`–`0x10053408` clears the
+current/requested continuation as specified by its argument; state30 cancels
+through `0x10053260`, which clears property4 on a still-living saved prey.
+It does not select that release helper for state31, the attack state; interruption
+recovery of its paused prey is OQ-586.
+The hook `0x100535d0`–`0x100536ac` resets speed multiplier1 and queries up to
+256 nearby figures with mask `0xf9cf`. Its behavior8/count>=2 arm calls
+**`0x10001050`, a zero-returning stub**, not an attack routine. Its later
+`(flags & 0x4806)==0x800` arm calls shared `0x10034720` motion continuation.
+Neither arm directly damages a resident or soldier; neither directly draws.
+The inherited/shared callback closure is still OQ-578, and arbitrary external
+state/target forcing is not a proof about autonomous victim selection (OQ-581).
+
+**D/P — predator facts for the owner.** These predators autonomously chase,
+damage, kill and consume specified wildlife, changing quarry availability and
+the world draw sequence (`0x10052ee0`, `0x100531e0`, `0x10033030`,
+`0x100534bb`/`0x100534e4`). Their autonomous victim masks and id lists exclude
+residents and soldiers; the nearby-figure hook's apparent interaction call is a
+stub (`0x100535d0`, `0x10001050`). Omitting this behavior would therefore omit
+wildlife predation and its draws; this read makes no port-scope recommendation.
+
+### 1c world-draw rows for the later reference
+
+**D/U.** Add these to §1/§7; do not add New's completion rows on top of Wolf's
+replacement completion rows. All world draws below use `+0xb4=0x100a1740`.
+The hunter/trapper rows distinguish zero **direct** draws in the addressed
+bodies from an unproved transitive total. OQ-578 is expressly not closed here.
+
+| Position in processing | Draw address | Modulus/mask | Selects | Condition |
+|---|---|---|---|---|
+| Hunter approach, eligibility, candidate callback | none directly in `0x10057690`, `0x100354b0`, `0x100a6b70`, `0x100a65e0`, `0x100575d0` | none | target/path geometry | no random target or retry choice in these bodies; indirect closure U |
+| Hunter/trapper firing and taking | none directly in `0x10054c90`, `0x10035570`, `0x10054760`/`0x100547e0`, `0x100adb80` | none | attack/corpse effect | projectile/type/event callback closure U |
+| Hunter and trapper building tick/target selection | none directly in `0x10069f40`, `0x1006e5d0`, `0x10071da0` | none | strict nearest matching goods | type `+0xb4` is not a world draw |
+| Wolf completion of idle28 | `0x100534bb` | `&1` | even -> walk27; odd -> search30 | after inherited idle completion succeeds |
+| Wolf completion of walk27 | `0x100534e4` | `%7` | 0 -> idle28; 1..3 -> search30; 4..6 -> walk27 | after inherited walk completion succeeds |
+| Wolf walk candidates, in order 0/1/2 | inherited `0x10058382`, `0x100583b2` | radius32 then angle257/513 for each candidate | six candidate-vector draws | state27 starts; same attempt-byte rule as §7 |
+| Wolf idle start | inherited `0x10051441` | `%n`, animation variant count | idle variant | state28 starts, including failed-walk fallback; draws at n=1 |
+| Wolf behavior7 extension if externally configured | inherited `0x10051515`, then radius helper | `%6`; on remainder1 radius64 | double radii | not default behavior8; retain conditional row rather than inventing activation |
+| Wolf constructor, prey search, approach, damage and corpse consumption | none directly in `0x10053740`, `0x10052ee0`, `0x10053080`, `0x10053110`, `0x100531e0`, `0x10033030` | none | deterministic local choices | shared callbacks remain U, OQ-578 |
+
+**D — hand controls.** At `0x100534e4`, remainders0/1/3/4/6 yield states
+28/30/30/27/27; at `0x100534bb`, draws0/1 yield27/30. The carried-quantity
+override can change30 to27 **after** consuming that draw. A failed prey search
+falls to27 and therefore consumes the six inherited walk draws; if that walk
+also fails, idle28 consumes its variant draw in the same start chain
+(`0x100532b0`, `0x100532e0`). No standalone random draw is justified for
+selecting the nearest prey. Executable vectors remain 1d, NOT_RUN here.
+
+## 1c handover boundary
+
+OQ-583..586 in [open-questions.md](../open-questions.md) retain structural name
+confirmation, target-id reuse, the zero-HP prey edge and interrupted-attack
+recovery. OQ-587..590 are unused.
+The dated 1b boundary above remains historical; its unused OQ-583..585 range is
+now assigned. OQ-578 has a dated narrowing bullet, and remains open as the
+orchestrator's separately sized transitive audit. No code, test, fixture, default
+or state identity changes belong to this packet.

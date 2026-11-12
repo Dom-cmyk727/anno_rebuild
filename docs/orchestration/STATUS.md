@@ -153,10 +153,12 @@ jobs. [Acceptance, failures, exact counts and intake notes](reviews/2026-11-06-m
 The previous red-main condition since `944cec89` is repaired; the owner’s CI hold
 before consolidation is satisfied. No further gameplay has been consolidated.
 
-**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is healthy at `7babb1f2`** (the W4-NEXT-2 landing):
-its code is the merge `c944aff7`, whose game-file run passed on the Windows PC before the push: 2,390 selected, 2,378
-executed and passed, 0 failed, 12 classified skips ([acceptance](reviews/2026-11-11-w4-next-2-acceptance.md)). The
-landing commit adds only docs. The docs-only commits after it need no run.
+**By the owner rule of 2026-11-07 (TASKS.md, owner rules), `main` is healthy at the MAP-INTEGRATE-2 landing:** its
+code is the merge `c75cddff` (state 138), whose game-file run passed on the Windows PC before the push: 2,561
+selected, 2,528 executed and passed (7 after a one-at-a-time rerun of memory refusals), 0 failed, 26 classified skips
+([review](reviews/2026-11-12-map-integrate-2-review.md) §5). The landing commit adds only docs.
+- **The run before it, at `c944aff7`** (the W4-NEXT-2 merge, landed as `7babb1f2`): 2,390 selected, 2,378 executed
+  and passed, 0 failed, 12 classified skips ([acceptance](reviews/2026-11-11-w4-next-2-acceptance.md)).
 - **The run before it, at `2c4dc295`** (the W4-NEXT-1 merge): 2,367 selected, 2,355 executed and passed, 0 failed, 12
   classified skips, 800 s, no stall ([acceptance review](reviews/2026-11-10-w4-next-1-acceptance.md)).
 - **The run before it, at `96de6bca`** ([review](reviews/2026-11-08-w4-ui-2-merge.md) §3): 2,355 selected; 2,344 executed and passed, 9 of them on a one-at-a-time rerun after memory refusals; 0
@@ -409,9 +411,8 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on a run
 
-- None. **`main` is healthy at `7babb1f2`** (the W4-NEXT-2 landing; its code is the game-file-tested merge
-  `c944aff7`). The counts and the earlier runs are under [Current work](#current-work). Part H is docs only and needs
-  no run.
+- None. **`main` is healthy at the MAP-INTEGRATE-2 landing** (its code is the game-file-tested merge `c75cddff`).
+  The counts and the earlier runs are under [Current work](#current-work).
 
 ## Waiting on the owner
 

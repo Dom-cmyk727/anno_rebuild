@@ -129,9 +129,27 @@ The queue, one packet at a time (the board's "Current work" has it with its stat
 | 6 | Either executor | **MAP-GOODS-1a, 1b, 1c:** one supported chain per packet (tobacco, spices, silk cloth) in a real town, with a ledger | ~3–4 h each |
 | Later | — | Freight through the effect queue, arrival without `fx.ui`, the index rebuilt on mismatch (E2–E4), after ADR 0005 | M |
 
-## 5. Before landing
+## 5. The merge and its game-file run
 
-1. The orchestrator merges `55ce7e71` into current `main` outside the executor's worktree (two docs conflicts,
-   both appends) and runs the full MSVC game-file suite with the RTX 4090 (owner rule of 2026-11-07).
-2. The owner's OK, then `tools/orch/land.py`.
-3. The shared folder on the Mac (part S) stays an owner action; it does not block landing.
+**The merge.** `c75cddff` = `main` `3eef75a5` + `55ce7e71`, made outside the executor's worktree. Two textual
+conflicts, both appends, both sides kept: `docs/open-questions.md` (`main`'s OQ-565 to 569, then the branch's new
+OQ-552 to 556) and `docs/orchestration/REPORTS.md`. No source conflict.
+
+**The run** (owner rule of 2026-11-07): MSVC Release with the game files and the RTX 4090 (`ANNO_GPU_ADAPTER=4090`,
+`ANNO_TEST_THREADS=16`), at `c75cddff`, 09:03 to 09:17; coordinator build `208a2c085d5db934`, compatibility 4.
+- **The canonical gate**, `tools/test/run_selected.py --select "." --asset-policy required --allow-skip other
+  --jobs 16`: selected 2,561 / executed 2,528 / failed 7 / empty 0 / skipped 26 (opt-in 20, platform 3, other 3:
+  the three `ship start` rows) / required-asset 0 / incomplete 0. Log `cache/orch-map-integrate-2/canonical-gate.log`,
+  sha256 `054b7a4a46deec28e9487fe8166dc19c864f5f94b631de3a4b0a754be042a3f5`.
+- **All 7 failures were memory refusals,** not test results: each threw `[anno-test memory] refused ...
+  reason=low-memory stop` with 0.8–2 GiB free (five render corpus cases and two scenario-corpus cases). None ran.
+- **The 7, rerun one at a time** (`--jobs 1`, 17 GiB free), 09:18 to 09:24: selected 7 / executed 7 / failed 0 /
+  skipped 0. **VERDICT: PASS.** Log `cache/orch-map-integrate-2/rerun-refused.log`, sha256
+  `832a62f2130f3ee047eaee93828ae00052fd58dea88a887c3c2b74ccecb91778`.
+- **Together:** 2,528 of 2,528 executed tests pass; 0 failed.
+
+The 20 opt-in skips include the new opt-in measurements of the three input packages and part N; the previous run
+on `main` had 6.
+
+**Landing:** the owner's OK, then `tools/orch/land.py`. The shared folder on the Mac (part S) stays an owner action;
+it does not block landing.

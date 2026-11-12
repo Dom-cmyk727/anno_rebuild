@@ -9067,3 +9067,66 @@ Decisions and reasoning:
 - Preserve exact masks, truncation order and integer angle/radius selectors.
 - Stop at this reference and handoff; no default/state/gameplay changes.
 QUESTIONs: none requiring an owner decision; independent review is the orchestrator's.
+
+## GATE-1b — each required test runs once — 2026-11-12 — READY FOR REVIEW
+
+Base `origin/main` f5ac2382, branch `task/GATE-1b`, head `e9be274b`.
+
+What changed (project analysis §2.1/§2.2, finding D2): `tools/test/run_selected.py`'s main
+selection used to re-run every `--require-test` contract a second time (its own required-contract
+run already executed and verdicted it), and, on UNIX, re-ran the automatic
+`picture_matrix_contract` in every call. `selection()` now takes the already-run required names
+and excludes them from the selection's `-R`/`-E` filters; a selection left with nothing but
+already-run required contracts ends with an explicit `COUNTS: selected=0 ... VERDICT: PASS`
+instead of the old "selection contains no tests" failure. Added `--skip-auto-contract` so a caller
+that already ran the automatic contract in an earlier call against the same build does not add it
+again; `wsl_gate.sh` requires `picture_matrix_contract` in its `app` lane only and passes
+`--skip-auto-contract` in `sim`/`formats`/`render`/`tsupport` and the optional `--gpu-lane`.
+`docs/testing/README.md` documents the run-once behaviour and which of the three GPU-adapter-parity
+runs (hosted `linux-gcc` on lavapipe, the Windows game-file run on the real adapters, `--gpu-lane`
+for local debugging only) covers what.
+
+Run-once evidence (clean checkout `anno1503-GATE-1b-gatecheck`, head `e9be274b`): `picture_matrix_contract`
+now has exactly one `== required contract` line across all five lanes (app), versus one per lane
+(5) before. The app lane's four lane-specific required tests (`viewer_wiring_contract`,
+`viewer_wiring_opening_controls`, `viewer_wiring_settlement_activity`, `opening_session_replay`)
+each appear once as a `Start` line in the whole log, not twice; none reappears in the `== selection`
+section. `COUNTS` confirms it: app `selected=310` (GATE-1a: 314, −4, the four now-excluded required
+tests), `executed=308` (was 312, same −4); sim/formats/render/tsupport counts are unchanged
+(1609/97/185/93) since `picture_matrix_contract` never matched their own `-R` selects — only its
+once-per-lane required-contract execution went away.
+
+Lane table (seconds), gate1a (GATE-1a review, -O1 baseline) vs gate1b, same clean-checkout method,
+default lanes, no `--gpu-lane`: app 2156→1572 (−584s, mostly the no-longer-doubled
+`opening_session_replay`/viewer_wiring required tests); sim 1976→1867 (−109s); formats 225→165
+(−60s); render 505→548 (+43s, noise — removing one `picture_matrix_contract` run should only help;
+not investigated further, within normal single-sample variance); tsupport 96→38 (−58s). All five
+lanes: `rc=0`, `sanitizer_lines=0`, `VERDICT: PASS`.
+
+Verdict comparison, by test name (`Start` lines, both phases): app 315 common, 4 only in gate1a (the
+four required tests, now not double-started); sim 1609 common, 1 only in gate1a
+(`picture_matrix_contract`); formats 97 common, 1 only in gate1a (same); render 185 common, 1 only
+in gate1a (same); tsupport 93 common, 1 only in gate1a (same). No test appears only in gate1b in any
+lane. `FAILED:` count is 0 in every lane of both gates.
+
+`python -I tools/test/workflow_test.py`: 23 tests, `OK` (two new: a required-and-selected contract
+runs exactly once; `--skip-auto-contract` leaves the automatic contract out), run both in the
+`task/GATE-1b` worktree and in the clean checkout.
+
+CI: hosted run `43264518561` at `e9be274b`, every job green on the first push, `gate` included; no
+coordinator flake this time (`F3`/`C3` not seen, so no job rerun needed).
+
+NOT_RUN: the flow-build test and the GPU platform skips (GATE-1c), the coordinator flakes
+(COORD-FLAKE-1), the MSVC game-file run (the orchestrator's).
+
+Decisions and reasoning:
+- Exclude already-run required names from the selection's own `-R`/`-E` rather than skip the
+  selection's ctest invocation entirely, so a selection with both required and non-required tests
+  still runs its non-required members through one `ctest` call.
+- A fully-excluded selection gets a hand-built `COUNTS`/`VERDICT: PASS` pair in the same format
+  `ctest_verdict.verdict()` produces, rather than calling `verdict()` with an empty list (which
+  always fails with "zero selected tests" regardless of `require_execution`).
+- `--skip-auto-contract` only suppresses the *automatic* UNIX addition; an explicit `--require-test
+  picture_matrix_contract` still works and is still deduplicated, for a caller that wants it
+  required without relying on the UNIX auto-detection.
+QUESTIONs: none requiring an owner decision; independent review is the orchestrator's.

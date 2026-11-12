@@ -76,9 +76,21 @@ def ctest_base(args):
     return out
 
 
-def selection(args):
+def anchor(name):
+    """A CTest -R/-E regex matching exactly this test name, nothing else."""
+    return "^" + "".join("\\" + c if c in ".[](){}*+?^$|\\" else c for c in name) + "$"
+
+
+def selection(args, exclude_names=()):
+    """The -R/-E/-L/-LE CTest selection args, with any already-run required contracts (exclude_names)
+    kept out of this selection: their own run (see gate()) already produced their verdict row, and
+    the README says their outcome does not count in the selection's totals."""
     out = ["-R", args.select]
-    for option, value in [("-E", args.exclude), ("-L", args.label), ("-LE", args.exclude_label)]:
+    exclude = args.exclude
+    if exclude_names:
+        extra = "|".join(anchor(n) for n in exclude_names)
+        exclude = extra if not exclude else exclude + "|" + extra
+    for option, value in [("-E", exclude), ("-L", args.label), ("-LE", args.exclude_label)]:
         if value:
             out += [option, value]
     return out
@@ -139,17 +151,17 @@ def gate(args):
                 base = ctest_base(args)
                 all_tests = inventory(base, source)["tests"]
                 required = list(args.require_test)
-                # Evidence contract is compulsory whenever this branch provides it on UNIX.
-                if os.name != "nt" and (source / "src/tools/bench_picture/CMakeLists.txt").exists():
+                # Evidence contract is compulsory whenever this branch provides it on UNIX,
+                # unless this call has already run it (e.g. an earlier lane of the same gate).
+                if (not args.skip_auto_contract and os.name != "nt"
+                        and (source / "src/tools/bench_picture/CMakeLists.txt").exists()):
                     required.append("picture_matrix_contract")
+                required = list(dict.fromkeys(required))
                 names = {t["name"] for t in all_tests}
-                for name in dict.fromkeys(required):
+                for name in required:
                     if name not in names:
                         raise RuntimeError("missing required contract: " + name)
-                    # Exact-name lookup followed by a regex escaped for CTest, not Python's
-                    # broader escaping rules (spaces need no escape in a CMake regex).
-                    escaped = "".join("\\" + c if c in ".[](){}*+?^$|\\" else c for c in name)
-                    command = base + ["-R", "^" + escaped + "$", "--no-tests=error",
+                    command = base + ["-R", anchor(name), "--no-tests=error",
                                       "--timeout", str(args.timeout), "-V"]
                     log.write("== required contract " + name + "\n")
                     log.flush()
@@ -162,8 +174,11 @@ def gate(args):
                     log.write("\n".join(rows) + "\n")
                     if rc or code:
                         raise RuntimeError("required contract failed: " + name)
-                selected = inventory(base + selection(args), source)
-                if not selected["tests"]:
+                # Each required contract above already ran, with its own verdict row recorded;
+                # it is left out of the selection below so it does not run (and count) twice.
+                sel = selection(args, required)
+                selected = inventory(base + sel, source)
+                if not selected["tests"] and not required:
                     raise RuntimeError("selection contains no tests")
                 with inv.open("x") as f:
                     json.dump(selected, f, indent=2)
@@ -176,12 +191,23 @@ def gate(args):
                 record["source_tested"] = identity(source, outputs)
                 log.write("== tested identity " + json.dumps(record) + "\n")
                 log.write("== selection\n")
-                rc = run(base + selection(args) + ["--no-tests=error", "-V", "--timeout",
-                         str(args.timeout), "-j", str(args.jobs)], log, source)
                 allowed = {"platform", "opt-in", *args.allow_skip}
                 if args.asset_policy == "unavailable":
                     allowed.add("required-asset")
-                code, rows = verdict(args.log.read_text().splitlines(), selected["tests"], allowed, True)
+                if selected["tests"]:
+                    rc = run(base + sel + ["--no-tests=error", "-V", "--timeout",
+                             str(args.timeout), "-j", str(args.jobs)], log, source)
+                    code, rows = verdict(args.log.read_text().splitlines(), selected["tests"], allowed, True)
+                else:
+                    # Every selected test already ran above as a required contract: there is
+                    # nothing left to run, but the gate still needs a clear PASS, not the
+                    # "selection contains no tests" failure a genuinely empty call gets.
+                    rc = 0
+                    log.write("(every selected test already ran as a required contract above)\n")
+                    rows = ["COUNTS: selected=0 executed=0 failed=0 empty=0 skipped=0 (required-asset=0 "
+                            "platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+                            "VERDICT: PASS"]
+                    code = 0
                 if identity(source, outputs) != record["source_tested"]:
                     code = 9
                     rows.append("VERDICT: FAIL tested source changed during selection")
@@ -217,6 +243,10 @@ def main():
     parser.add_argument("--asset-policy", choices=["required", "unavailable"], default="required")
     parser.add_argument("--allow-skip", choices=["gpu", "other"], action="append", default=[])
     parser.add_argument("--require-test", action="append", default=[])
+    parser.add_argument("--skip-auto-contract", action="store_true",
+                         help="do not add picture_matrix_contract as a required test on UNIX "
+                              "(it is added automatically by default); for a caller that already "
+                              "ran it in an earlier call against the same build")
     parser.add_argument("--preflight-only", action="store_true")
     args = parser.parse_args()
     if args.jobs < 1 or args.timeout < 1:

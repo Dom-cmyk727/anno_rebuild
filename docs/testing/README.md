@@ -41,10 +41,18 @@ python3 -I tools/test/run_selected.py --build-dir build/dev \
 ```
 
 On UNIX, a checkout containing `src/tools/bench_picture/CMakeLists.txt` requires
-`picture_matrix_contract` automatically. Each required contract must be registered,
-executed and successful, with no skips. Its outcomes do not inflate the main
-selection's counts. This main branch does not yet contain W4's benchmark: its
-trace/table semantic fixes remain with that executor.
+`picture_matrix_contract` automatically, unless the call passes `--skip-auto-contract`
+(for a gate that already ran it in an earlier call against the same build, so it is
+required and run exactly once per gate, not once per lane: `tools/test/wsl_gate.sh`
+requires it only in its first lane and passes `--skip-auto-contract` in every later
+one). Each required contract must be registered, executed and successful, with no
+skips, and runs exactly once: a test that is both `--require-test`'d and matched by
+`--select` is left out of the main selection (its own required-contract run already
+produced its verdict row), so its outcome does not inflate, or appear twice in, the
+main selection's counts. A selection made only of such already-run required
+contracts still ends with a clear PASS, not a "selection contains no tests" failure.
+This main branch does not yet contain W4's benchmark: its trace/table semantic fixes
+remain with that executor.
 
 ## Safe adoption by existing worktrees
 
@@ -142,6 +150,17 @@ records each lane's elapsed time in its gate summary file. Pass `--gpu-lane` to
 additionally run the GPU-adapter suite on Mesa lavapipe with `ANNO_REQUIRE_GPU=1`
 (the same setup `docs/testing/gpu-tests.md` and CI's `linux-gcc` job use), as a
 separate, explicit lane, never folded into the ASan one.
+
+**Which run covers what (GATE-1b).** Three different runs each cover a different
+slice of GPU-adapter parity, and none of them is a substitute for another:
+hosted CI's `linux-gcc` job runs the GPU-adapter parity suite on Mesa lavapipe,
+without the original game files, on every push; the Windows game-file run (the
+orchestrator's MSVC pass with `ANNO1503_GAME_DIR` set) is the one that exercises
+the real adapters (the 4090 and the Radeon iGPU); `wsl_gate.sh --gpu-lane` runs
+the same suite on WSL's own lavapipe for local debugging only — useful when
+changing GPU-adapter code on this host, but it duplicates hosted CI's coverage
+rather than adding to it, so it is never required for a package gate and the
+default (omitting it) is the package gate's normal mode.
 
 **Where the logs live.** Every gate run's summary (`wsl-<tag>.txt`) and per-lane
 `.log`/`.out` pair land under `~/anno-gate-logs/<worktree-basename>/`, never inside

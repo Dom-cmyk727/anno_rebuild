@@ -8923,3 +8923,81 @@ Decisions and reasoning:
 - Used decoded state tables and prey-id data, not names, to identify predation.
 - Kept direct draws, indirect closure and unproved lifetime edges distinct.
 QUESTIONs: OQ-583–586; no gameplay/default/identity decision is requested here.
+
+## GATE-1a — the sanitizer gate at `-O1` — 2026-11-12 — READY FOR REVIEW
+
+**What changed.** `tools/test/wsl_gate.sh`'s `cmake -S ... -B ...` call now adds
+`-DCMAKE_CXX_FLAGS_DEBUG="-O1 -g"` (`CMAKE_BUILD_TYPE` stays `Debug`, assertions stay on). A cached build tree
+with a different `CMAKE_CXX_FLAGS_DEBUG` is detected from `CMakeCache.txt` and wiped/reconfigured, the same way
+as the existing stale-source check; both the source dir and the flags built with are now recorded in the gate's
+provenance file. `CMakePresets.json`'s `asan` preset gets the same `CMAKE_CXX_FLAGS_DEBUG`, so hosted CI's
+`linux-clang-asan` builds it too. `.github/` untouched. Branch `task/GATE-1a`, head `3170ab35`.
+
+**Gate lane table, `w4ui2parte` (2026-11-08, `-O0`) vs this gate (`gate1a`, `-O1 -g`), no `--gpu-lane`:**
+
+| Lane | `-O0` | `-O1 -g` | Factor |
+|---|---|---|---|
+| build | 469 s | 437 s | ~1.0x (GCC 13 here; see below) |
+| app | 8,410 s | 2,156 s | 3.9x |
+| sim | 4,856 s | 1,976 s | 2.5x |
+| formats | 1,133 s | 225 s | 5.0x |
+| render | 4,980 s | 505 s | 9.9x |
+| tsupport | 247 s | 96 s | 2.6x |
+| lane total | 19,626 s (5h27m) | 4,958 s (1h23m) | 4.0x |
+
+The lane totals mix old and new tests (sim gained 167, app 21, tsupport 4 since `w4ui2parte`; none removed except
+10 sim tests renamed/consolidated by MAP-INTEGRATE-2, unrelated to this packet), which dilutes the ratio below the
+project analysis's per-test figure. The two cited canary tests, run alone in both logs, reproduce it closely:
+`forester opening canary ...` 507.14 s to 92.90 s (5.46x); `sailed founding canary: two participants ...`
+499.46 s to 90.86 s (5.50x).
+
+**Verdict comparison, by test name.** formats and render keep the identical 98/186-name sets; app and tsupport
+keep every `w4ui2parte` name plus 21/4 new ones; sim keeps 1,443 of 1,453 (10 renamed since, e.g.
+`resident job K2/P-15` -> `resident job T3-Q2`, `expansion identity134` -> `expansion identity`) plus 167 new.
+Every common test's verdict is unchanged except one: `anno_render_tests.a flow build that fails leaves the
+legacy look, final, built once (game files)` — `FAIL` in `w4ui2parte` (and in every other recorded gate per the
+project analysis), `PASS` here. Not investigated further (GATE-1c owns it); reported as a difference, not
+claimed as a fix. `sanitizer_lines=0` in every lane.
+
+**Known failures.** The flow-build test passed this run (above). No `play: GPU matches the CPU path` case ran
+(no `--gpu-lane`, as instructed). No other failure.
+
+**Deadlines (Do item 4).** `opening_session_replay` 484.76 s and `viewer_wiring_expand_live_load` 131.73 s, both
+far under their sanitizer-scaled `TIMEOUT 5400`/`ANNO_VIEW_QUIT_S=1200` budgets; no test in this codebase asserts
+a minimum duration or otherwise depends on sanitizer slowness (checked by grep, nothing found). The deadlines
+hold with comfortable headroom now that they are faster, not tighter.
+
+**`-Werror`.** No new warning: the WSL gate's own GCC 13 build (rc=0) and hosted CI's Clang 18 build both built
+clean with `ANNO_WARNINGS_AS_ERRORS=ON`.
+
+**CI.** Run `43204641640` at `3170ab35`: all 12 jobs green, `gate` included. `linux-clang-asan`: build 26m46s
+(was 14m01s on `main` `fa9d8bbf`, run `43203264481`, at the unoptimised flags — `-O1` compiles slower under
+Clang) + test 3m52s (was 15m12s, 3.9x). Net job duration is about unchanged in CI; the win is for the WSL gate,
+whose build is cached across reruns so the test-lane speedup dominates.
+
+**NOT_RUN.** The MSVC game-file run (orchestrator, at the merge). The Mac presets (a later step). GATE-1b/1c's
+own changes. `--gpu-lane` (not asked for).
+
+**QUESTIONs.** None from this packet.
+
+**Decisions and reasoning.**
+- Detected a stale `CMAKE_CXX_FLAGS_DEBUG` the same way the script already detects a stale source dir (read the
+  cache, compare, wipe), rather than a second, differently-shaped check.
+- Ran the proof gate in a separate clean checkout (`anno1503-GATE-1a-gatecheck`, detached at the pushed head),
+  never this worktree, per the script's own usage note and `CLAUDE.md`'s merge-outside-worktree rule; removed it
+  after reading the results.
+- Reported the lane-total ratio alongside the two per-test ratios rather than only the flatter number, since the
+  lane composition changed since the baseline and a reader comparing to the project analysis's 5.5-5.9x needs to
+  know which one that figure matches.
+- Reported the flow-build test's flip to PASS as an observed difference, not a claimed fix; it is GATE-1c's.
+
+### CI addendum — coordinator flake on the docs-only report push
+
+Run `43218940794` (the report commit `35f577fe`, docs-only) failed on `cpp (windows-msvc)` / `gate`:
+`anno_test_support_tests.C3: a replacement coordinator does not admit against its predecessor's promises`
+(`budget_f2_test.cpp`), the same coordinator-admission flake family as the previously documented `F3 (D1, deaf)`
+flake, now hit on `windows-msvc` instead of `macos-clang`. Checked the job's own test-step log (not just the
+aggregate status): one failure, `COUNTS: ... failed=1 ... VERDICT: FAIL failed tests`, nothing else. The commit
+touches only `docs/orchestration/REPORTS.md`, nothing under `src/test_support`. `gh run rerun 43218940794 --failed`
+reran just the failed job: green on `cpp (windows-msvc)` and `gate`, confirming intermittency, not a regression.
+Head `35f577fe` is CI-green.

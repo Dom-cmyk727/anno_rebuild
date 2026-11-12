@@ -20,7 +20,7 @@
       "name": "asan",
       "displayName": "Debug with ASan + UBSan (GCC/Clang)",
       "inherits": "dev",
-      "cacheVariables": { "ANNO_SANITIZE": "ON" }
+      "cacheVariables": { "ANNO_SANITIZE": "ON", "CMAKE_CXX_FLAGS_DEBUG": "-O1 -g" }
     },
     {
       "name": "msvc",

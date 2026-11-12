@@ -8802,3 +8802,63 @@ Decisions and reasoning:
 
 QUESTIONs: OQ-572–577 above. No new owner scope or identity decision is requested
 here; the later port waits for the remaining reads and ADR 0006.
+
+## WILDLIFE-RE-1b — animals' own life — 2026-11-12 — READY FOR REVIEW
+
+Base `eeec2cd9`, branch `task/WILDLIFE-RE-1b`, new owned worktree
+`anno1503-worktrees/anno1503-WILDLIFE-RE-1b`. The 1a and integration
+branches/worktrees are preserved. Three documents only; no state/default change.
+Extended [wildlife.md](../re/wildlife.md) sections 4–7; retained 1a's evidence.
+Reference: GOG AnnoWelt.dll 2.0.0.5, SHA-256
+`f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
+Read with tools/disasm.py (Capstone/pefile), tables and hand arithmetic.
+- Complete animal-vs-Boden override inventory: `0x100c653c`, `0x100c66fc`,
+  sibling Zivilist `0x100c6a98`, base Boden `0x100c35a8`.
+- New tick/motion/control `0x10051750`, `0x10051cc0`, `0x100519d0`–
+  `0x10051c4b`; shared HP death `0x100349c0`; Old tick `0x10034760`.
+- Manager creation `0x10097250`, factory `0x1009a4a1`, constructor
+  `0x10052c10`, home property `0x10052aa0`, goods `0x1002ff40`, attach
+  `0x10035c10`; Old constructor/handlers read separately.
+- Release `0x1008bc80`–`0x1008bde5`, cleanup `0x10050d70`/`0x10052b40`,
+  immediate deletion `0x100974b0` and animal destructor paths.
+- Old HIRSCH factory `0x10050c10`, base route `0x1005e390`, route control
+  `0x1005e2b0`, stand search `0x100594b0`/`0x10051190`, candidate loops
+  `0x10058450`/`0x10051480`, random-vector helper `0x10058360`.
+
+Settled: kinds 49/51 select New; Old route jobs and New action states are
+separate models. Generic switch `0x1003b0e0` returns null for route 62.
+New state 27 walks, 28 idles: decoded jump tables distinguish start from
+completion (walk completion %5; idle/resource completion parity).
+A walk generates three candidates, radius then angle: six direct world draws,
+before path failure. Ordinary moduli are 32/257 or 32/513; behavior 7 adds
+%6 and can double radius modulus to 64. Idle draws even when modulus is 1.
+Cargo initialization adds quantity, not capacity. Ending flag 2 and guard 4
+are distinct; HP cleanup releases occupancy before deferred removal.
+
+OQ-573 dated append: cleanup clears occupied bit by home/category, retains id,
+and does not compare it. Immediate deletion bypasses cleanup; chunk movement
+itself does not release. OQ-579 retains normal-game bypass reachability.
+OQ-575 dated append: selected constructor/handlers have no additional direct
+draws; full transitive purity is not certified. OQ-578 retains actual runtime
+type binding plus shared search/resource/storage callbacks. The table expressly
+is NOT a complete transitive lifecycle certificate pending that closure.
+New OQ-580: Old reachability / structural class-name confirmation; OQ-581:
+external behavior/herd activation; OQ-582: exact x87 vector reproduction.
+OQ-583–585 unused. No guessed rule or zero-draw callback substitute is supplied.
+Gate: `git diff --check` passes; links selected 9 / executed 9 / failed 0 /
+empty 0 / skipped 0. Added relative targets and anchors resolve.
+Log: `cache/wildlife-re-1b/docs-gate.log`. Build/runtime tests selected 0 /
+executed 0 / failed 0 / empty 0 / skipped 0 (all skip classes 0); NOT_RUN,
+as this packet prescribes docs checks only. Hosted CI must be green on the
+pushed head; exact run and terminal result accompany the final handover.
+
+NOT_RUN: HE DLL reading, Ghidra, running-original experiment, executable vectors,
+engine/build/test gates, predator/trapper/hunter-approach reads. The latter reads
+and reference script stay in 1c/1d. Independent review awaits the orchestrator;
+no reviewer subagents were started. Address re-checks remain its review gate.
+Decisions and reasoning:
+- Decoded both state jump tables before assigning draw sites to state names.
+- Kept verified direct draws distinct from unresolved transitive callbacks.
+- Kept cleanup and immediate deletion distinct rather than inventing id repair.
+- Recorded structural class labels separately from absent HE verification.
+QUESTIONs: OQ-578–582 delimit the remaining evidence; no identity decision needed.

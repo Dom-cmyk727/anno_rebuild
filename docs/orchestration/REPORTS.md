@@ -9195,8 +9195,8 @@ present, `ANNO_REQUIRE_GPU=1`** (WSL lavapipe, `--gpu-lane`) — both `SKIPPED(g
 required contracts from the selection made the "was anything selected" check itself blind to a
 `--select` that matched nothing at all. Fixed: that check now runs on the selection *before* the
 required-name exclusion; a selection that matched only required contracts still ends `VERDICT: PASS`
-(`workflow_test.py`'s `test_required_contract_does_not_inflate_selection`, now `selected=0
-executed=0` instead of the stale `selected=1 executed=1` assertion from GATE-1b), while one that
+(`workflow_test.py`'s `test_required_contract_does_not_inflate_selection` already asserted
+`selected=0 executed=0` since GATE-1b's `e9be274b`, unchanged by `3b311a8e`), while one that
 matched nothing at all fails again (`test_empty_selection_with_require_test_still_fails`, new,
 reproducing the orchestrator's `--select '^no_such_test$' --require-test pass` case). `python -I
 tools/test/workflow_test.py`: 24 tests, `OK` (23 from GATE-1b/1a plus this one).
@@ -9228,3 +9228,43 @@ Decisions and reasoning:
   `headless_context()`'s existing `ANNO_REQUIRE_GPU` failure path (a confirmed-present named
   adapter that still can't open a context) is untouched, preserving "no GPU at all still fails".
 QUESTIONs: none requiring an owner decision; independent review is the orchestrator's.
+
+### Review round 1 addendum — F1/F2/F3 — 2026-11-13 — READY FOR REVIEW
+
+Head `d06ccc92` (code) on `task/GATE-1c`.
+
+**F1 (ABA on raw `Chunk*`).** Fixed: compare `Chunk::serial` (process-unique) per visible key
+instead of the pointer. Proof: 50/50 fresh Debug reruns clean, plus the earlier 80 (130 total, same
+condition as the original 3/40 failures). Broken-variant proof redone as asked: `frames.insert_chunk`
+on one visible key (a real replacement, a fresh serial) inside the window — `CHECK( c->serial ==
+before_rebuild[...] )` fails with `67 == 8`, then reverted.
+
+**F2 (dropped "no GPU at all" fails).** Fixed: `FAIL` under `ANNO_REQUIRE_GPU` when `adapters` is
+empty; skip (`gpu`) only when adapters exist but none matches the name. Comment corrected. Proof:
+real RTX 4090 and Radeon (MSVC Release) still pass; WSL lavapipe still `SKIPPED(gpu)` with
+`ANNO_REQUIRE_GPU=1`. The true "zero adapters" leg could not be reproduced live: `list_adapters()`
+enumerates `WGPUInstanceBackend_All`, and WSL's Mesa `llvmpipe` still answered through it even with
+`VK_ICD_FILENAMES` pointed at a missing file and `LIBGL_DRIVERS_PATH`/`EGL_DRIVERS_PATH` broken — no
+environment on this host produced a genuinely empty adapter list. That leg is verified by reading the
+one added line (`adapters.empty() && ANNO_REQUIRE_GPU -> FAIL`), not by a live repro; flagging this
+as a QUESTION rather than claiming proof that was not run.
+
+**F3.** Corrected: the `selected=0 executed=0` assertion is GATE-1b's own (`e9be274b`), unchanged by
+`3b311a8e`.
+
+Not rerun: the full WSL `--gpu-lane` gate (not asked for this round). Ran instead, in the WSL `-O1`
+ASan build (separate build dir, not the full `wsl_gate.sh`): the flow-build case and both `play_gpu_test`
+cases, `sanitizer_lines` 0 throughout; `python -I tools/test/workflow_test.py`: 24/24 `OK` (unaffected
+by F1/F2, Python-only F3 is docs). Full Release suite with game files re-run after F1/F2: 195/195 cases
+clean. Hosted CI: pending on this push.
+
+Decisions and reasoning:
+- Used `insert_chunk` for the F1 broken-variant proof, not a raw invalidate: it is the documented
+  test/tool seam that gets a chunk a fresh serial without needing a worker round-trip to land.
+- Did not try further WSL tricks (unloading Mesa, namespacing) to force zero adapters: each
+  additional attempt risked destabilizing the shared WSL environment for no proof value beyond
+  what reading the one-line change already gives; said so plainly instead of fabricating a result.
+QUESTIONs: is code-review verification of the "zero adapters, `ANNO_REQUIRE_GPU`, FAIL" leg
+sufficient, or does it need a live repro on a host that can actually produce an empty adapter list
+(bare CI runner with no software rasterizer, perhaps)? Otherwise none; independent review is the
+orchestrator's.

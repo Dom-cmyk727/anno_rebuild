@@ -2826,6 +2826,30 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
 - **Settled:** quarries share the class-0x3000 placement path with the mines (their own HIGHMAP table in the type record) and no deposit lookup runs at placement.
 - **Open:** how stone and marble reach the quarry worker (the quarry's production source); island slot `+0x64` / `0x1008b950` (the overlay-height check in the cursor); `AnnoFrame 0x10044f90` (cursor; island slot `+0x118`, the `+0x28` container, over the footprint; what it checks is unidentified); the caller of deposit slot `+0x80`. Quarries stay `Unsupported` in the sim.
 
+## OQ-572: Can wildlife candidate collisions exhaust the draw modulus? (WILDLIFE-RE-1a, 2026-11-12; OPEN)
+- **D:** `AnnoWelt.dll 0x1009366f` draws modulo remaining candidates; `0x100936c5` decrements that count before the category-0 collision lookup, and `0x100936e6` retries without an explicit zero check.
+- **U:** whether valid shipped chunk lists guarantee a free candidate before count reaches zero. Future port needs the content/list invariant or an explicit disposition, not a guessed retry. See [wildlife.md](re/wildlife.md).
+
+## OQ-573: Which animal path releases its occupied HIRSCH spawn record? (WILDLIFE-RE-1a, 2026-11-12; OPEN, 1b)
+- **D:** `AnnoWelt.dll 0x1009384f` stores the created figure id; `0x1009385c` sets spawn byte +8 bit 0x40. The sweep counts and retains occupied records without terrain reevaluation.
+- **U:** exact movement/death/removal callback that clears occupancy, and whether stale ids can leave permanent occupied records. Read with the animal classes in 1b; do not infer a global living-animal cap from this record count.
+
+## OQ-574: What happens when a wildlife cave has no entrance? (WILDLIFE-RE-1a, 2026-11-12; OPEN)
+- **D:** creation helper `AnnoWelt.dll 0x10092d1f`-`0x10092d21` skips position initialization when type slot +0x98 returns zero, then reaches species selection and creation.
+- **U:** whether original data guarantees an entrance for every admitted TIERHOEHLE or a caller prevents the case. No fallback coordinate is evidenced. Check content before implementing the later port's behavior.
+
+## OQ-575: Do animal creation and attach add transitive draws? (WILDLIFE-RE-1a, 2026-11-12; OPEN, 1b)
+- **D:** helper's direct draws are `AnnoWelt.dll 0x10092d8b` (non-cave position) and `0x10092e96` (species). Manager creation at `0x10092f5b`, property +0x2f at `0x10092fe2`, operation 0x45 at `0x10092ff9` and island attach at `0x10093002` invoke downstream figure behavior.
+- **U:** extra world draws or state effects in those animal constructors/handlers. The table in wildlife.md is a complete direct-call inventory for the three read paths, not a lifecycle total. Audit in 1b before reference vectors claim the total.
+
+## OQ-576: What player-facing mode controls loaded wildlife goods filtering? (WILDLIFE-RE-1a, 2026-11-12; OPEN)
+- **D:** HIRSCH loader `AnnoWelt.dll 0x100947d3`-`0x100947ef` queries world +0x10c(-1). Getter `0x100a3790` reads bit 0 at world +0x69cc. Set means replace entry goods by sentinel 0x00ff; clear preserves entry u16 +6.
+- **U:** the mode's named gameplay meaning and its initialization/writers. Retain the exact branch without labelling it a scenario/editor/multiplayer setting until those writers are read.
+
+## OQ-577: Unassigned HIRSCH entry/object bits and bytes (WILDLIFE-RE-1a, 2026-11-12; OPEN)
+- **D:** loader `AnnoWelt.dll 0x100946c0`-`0x10094873` consumes entry coordinates, entry byte 4 bit 0 and entry u16 +6. Its sixteen-byte allocation initializes category +0xa, packs position, clears occupancy, and writes timestamp/goods; it does not initialize byte +0xb or figure-id +0xc. Packed-position bit 7 is preserved.
+- **U:** meaning of entry byte 4's other bits, byte 5, object bit 7 and byte +0xb; initialization invariants outside these reads. Do not manufacture serialized fields from allocator leftovers. Resolve only when a consumer/writer is found.
+
 ## OQ-556: A hemmed-in stand whose start sub-cells are dead pockets for the forward walk home (MAP-EXTRACT-2 T3-Q2, 2026-11-09; SETTLED 2026-11-11)
 **Verdict: the sim matches the original.** Read-only disassembly of GOG `AnnoWelt.dll`, SHA-256 `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`, shows that each original start-flood call at `0x10003aa0`-`0x10003d81` seeds one selected, quantized sub-cell, including a selected cell whose own walk-mask bit is blocked (`0x10003b68`-`0x10003b98`), then expands cardinally at `0x10003ba2`-`0x10003cb6` and writes the edge keys at `0x10003cbc`-`0x10003d75`. The four cardinal admissions are `0x2111` at `0x10006a81`, `0x8444` at `0x10006c69`, `0x4888` at `0x10006dd0` and `0x1222` at `0x10006e8c`.
 

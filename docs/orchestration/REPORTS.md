@@ -8749,3 +8749,56 @@ authority to expand E.
   town measurement proposes follow-up packets without silently adding gameplay.
 - Wrote the Windows card against public headers and executable tests, leaving live UI work and the
   Windows game-file run to the orchestrator's required post-candidate sequence.
+
+## WILDLIFE-RE-1a — wildlife origins — 2026-11-12 — READY FOR REVIEW
+
+Base `8336d59f`, branch `task/WILDLIFE-RE-1a`; faithful-wildlife owner decision
+2026-11-12. Prior integration branch and evidence are preserved. Documents only.
+
+Added `docs/re/wildlife.md`, extending hunter.md without editing it. Read GOG
+AnnoWelt.dll (SHA-256 `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`):
+- Sweep `0x10093480`-`0x10093896`, habitat `0x10093030`-`0x10093472`,
+  density-table initializer `0x100938a0`-`0x10093963`.
+- Creation `0x10092ca0`-`0x10093013`, float constants and species table.
+- HIRSCH loader `0x100946c0`-`0x10094873`, object tables `0x100cac04`/
+  `0x100cac18`, intrusive list helpers and world getters.
+
+Settled: sixteen odd-offset habitat samples per chunk; neighbour score and
+property-7 threshold; desired spawn-record count; reuse, collision retries,
+candidate compaction and head insertion; wrapping timestamps and time/1000;
+species table indexed by climate and a draw; bounded sequential goods matching;
+four position offsets; cave entrance path; exact entry/object fields read here.
+Corrected the older outline: object +9 is a timestamp, not a type byte.
+The helper's island +0xa0 call computes height; world +0xa0 obtains the unit
+manager and its slot 0 creates the figure. Direct draws are tabulated in order:
+cell selection, optional non-cave position, species; loader timestamp jitter is
+a separate load-time draw. Downstream animal-class draws remain a named audit.
+
+Open points: OQ-572 candidate exhaustion; OQ-573 occupied-record release;
+OQ-574 cave without entrances; OQ-575 transitive creation/attach draws;
+OQ-576 loader mode's meaning; OQ-577 unused fields/bits. OQ-578–579 unused.
+Each stops at the known instructions and identifies the remaining read.
+
+Gate: `git diff --check`; relative Markdown links in the changed documents
+checked against existing targets. Results recorded in
+`cache/wildlife-re-1a/docs-gate.log`. Build/tests: selected 0 / executed 0 /
+failed 0 / empty 0 / skipped 0; NOT_RUN as required for this docs-only packet.
+Hosted CI is checked on the pushed head; its final verdict is supplied with
+the handover. Original instruction excerpts remain only under ignored cache/.
+
+NOT_RUN: Ghidra (no installation/working Java), HE86 (DLL unavailable), running
+original, animal tick/routes/jobs, hunter approach, trapper, predators, reference
+script and runtime gates. Used repository disasm.py with Capstone/pefile for the
+GOG read. Orchestrator address verification is pending; no reviewer subagents.
+
+Decisions and reasoning:
+- Kept direct draws distinct from transitive callbacks because reading the helper
+  cannot prove an animal constructor or attach handler consumes no draws.
+- Recorded packed bits, timestamp wrap and the original bounded search exactly;
+  no safe fallback or gameplay name was inferred for an unread edge.
+- Used the allocation sizes and category getter to distinguish the two tables;
+  similar table lengths alone do not identify tHirschObject.
+- Used only docs checks and hosted CI, following the packet's gate.
+
+QUESTIONs: OQ-572–577 above. No new owner scope or identity decision is requested
+here; the later port waits for the remaining reads and ADR 0006.

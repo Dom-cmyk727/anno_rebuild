@@ -12,8 +12,14 @@ says who is doing what, where the work is, and what it waits on.
   - **Owner decisions, 2026-11-12:** a manual ship command cancelling the automatic route is the original's
     behaviour (no switch); executor packets get smaller and run no reviewer subagents of their own
     ([`TASKS.md`](TASKS.md), "Owner rule, 2026-11-12").
-  - **Next:** one small packet at a time, first [SIM-LIMITS-1](tasks/sim-limits-1.md) for the Windows executor, when
-    the owner says go. The queue is on the board under "Current work".
+- **The owner's [project analysis](reviews/2026-11-12-project-analysis.md)** lands with it, with the
+  [GOG / History Edition comparison](../research/he-vs-gog-comparison.md) and
+  [ADR 0005](../adr/0005-edition-neutral-content.md) (the edition a player owns does not matter; accepted).
+  - **Its main finding:** the WSL sanitizer gate builds without optimisation and takes 4 to 8 hours; at `-O1` the
+    same tests run 5.5 to 5.9 times faster. The window never switches population on.
+  - **The queue is rebuilt around it** (board, "Current work"): the gate first (GATE-1a–c), then the living town in
+    the window (PLAY-LIVE-1), the edition layer (EDITION-1) on Windows, and the wildlife reads (WILDLIFE-RE-1) on the
+    Mac. **Nothing is dispatched** until the owner says go; one packet per executor at a time.
 - **W4-NEXT-2 part H landed on `main` as `3eef75a5`** (accepted after round H4,
   [part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)). Docs only; `main` stayed healthy.
 
@@ -416,6 +422,14 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on the owner
 
+- **The go for the rebuilt queue** (board, "Current work"), packet by packet, starting with GATE-1a.
+- **The rule changes the project analysis suggests** ([analysis](reviews/2026-11-12-project-analysis.md) §3.2,
+  items 1–6): one sanitizer gate per landing at the merge; the reviewer fixes wording itself; a flake is closed by
+  its mechanism; merge within a day or two behind default-off flags; one tool regenerates pins; retire dated
+  protocol text.
+- **Whether the window's living town is the default** (PLAY-LIVE-1a), and **ADR 0003** (blocks NET-0).
+- **Wildlife option 1** (the faithful port), to confirm when WILDLIFE-RE-1a is dispatched; predators in or out
+  after WILDLIFE-RE-1c.
 - **On the Mac, accept this PC and the `open1503-share` offer** in Syncthing, as Receive Only (MAP-INTEGRATE-2
   part S, step 4).
 - **OQ-568:** may the play runner's `stop()` drop a command posted during an artificial turn delay? Only tests set

@@ -116,18 +116,15 @@ now names the orchestrator's handover review as the independent review. In short
 - one REPORTS entry of at most about 60 lines;
 - no new state number until the save-format ADR is accepted.
 
-The queue, one packet at a time (the board's "Current work" has it with its status):
-
-| Step | Who | Packet | Size |
-|---|---|---|---|
-| 0 | Orchestrator | Land MAP-INTEGRATE-2 (§5) | — |
-| 1 | Windows executor | **SIM-LIMITS-1:** the freight save limits from one source (E5, part of E7) | ~2 h |
-| 2 | Windows executor | **FIXTURES-TRIM-1:** delete the fixture copies nothing reads (part of E1) | ~2 h |
-| 3 | Orchestrator, beside 1–2 | **ADR 0005:** a version per save section and lighter goldens (E1). The owner approves. | — |
-| 4 | Either executor | **MAP-MATERIALS-1:** why 18 houses can't pay for their upgrade. Measurement only. | ~2–3 h |
-| 5 | Either executor | **MAP-FOOD-1:** why 131 houses lack food (capacity, reach or source). Measurement only. | ~3 h |
-| 6 | Either executor | **MAP-GOODS-1a, 1b, 1c:** one supported chain per packet (tobacco, spices, silk cloth) in a real town, with a ledger | ~3–4 h each |
-| Later | — | Freight through the effect queue, arrival without `fx.ui`, the index rebuilt on mismatch (E2–E4), after ADR 0005 | M |
+This review's own first queue (SIM-LIMITS-1, FIXTURES-TRIM-1, a save-section ADR, then three town measurements) was
+replaced the same day by the queue on the board ("Current work"), which follows the owner's
+[project analysis](2026-11-12-project-analysis.md): the gate's build setting and the living town come first. The
+findings here map onto it as follows:
+- **E1:** ADR 0006 (a version per save section, one tool that regenerates pins), before any new state number.
+- **E2–E4:** freight through the effect queue, after ADR 0006.
+- **E5 and part of E7:** [SIM-LIMITS-1](../tasks/sim-limits-1.md), written and parked.
+- **The three town measurements** are re-ranked after the wildlife port re-measures
+  [`progression-gaps.md`](../../sim/progression-gaps.md).
 
 ## 5. The merge and its game-file run
 

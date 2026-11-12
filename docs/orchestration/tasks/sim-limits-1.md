@@ -1,7 +1,8 @@
 # SIM-LIMITS-1: the freight save limits from one source
 
-**Status:** written 2026-11-12, released when the owner says so. For **the Windows executor**. Step 1 of the queue
-on the board ([`TASKS.md`](../TASKS.md), "Current work").
+**Status:** written 2026-11-12, **parked** the same day: the project analysis put the gate and the living town first.
+For **the Windows executor** when it is released. The queue is on the board ([`TASKS.md`](../TASKS.md), "Current
+work").
 
 **Base:** `origin/main` after MAP-INTEGRATE-2 lands (state 138). Branch `task/SIM-LIMITS-1`. About 2 hours.
 

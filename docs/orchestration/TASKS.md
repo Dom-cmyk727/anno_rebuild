@@ -75,9 +75,10 @@ PC.**
   the orchestrator at the merge, unless the packet says otherwise.
 - **Report.** One REPORTS entry of about 60 lines at most: what changed, the gate commands with classified counts,
   NOT_RUN, Decisions and reasoning, QUESTIONs. Logs stay in `cache/`; cite the gate log, not every log.
-- **State numbers.** No packet allocates a new state number until ADR 0005 (a version per save section) is accepted.
-  A packet that would need one stops at that point with a QUESTION.
-- **One at a time.** The orchestrator dispatches the next packet after reviewing the last one.
+- **State numbers.** No packet allocates a new state number until ADR 0006 (a version per save section) is accepted.
+  A packet that would need one stops at that point with a QUESTION. (ADR 0005 is the edition decision.)
+- **One at a time.** At most one open packet per executor. The orchestrator dispatches the next packet after
+  reviewing the last one, and only with the owner's OK.
 
 ## What moved out of this board (2026-11-10)
 
@@ -88,21 +89,31 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
   [`tasks/`](tasks/). [MAP-INTEGRATE-2](tasks/map-integrate-2.md) is accepted
   ([review](reviews/2026-11-12-map-integrate-2-review.md)) and lands as state 138; both executors are free.
-  - **The queue (owner, 2026-11-12), one packet at a time, under the owner rule of 2026-11-12 above:**
+  - **The queue, proposed 2026-11-12** by the orchestrator from the
+    [project analysis](reviews/2026-11-12-project-analysis.md) (§2.2, §4.2, §6, §7, §8) and the
+    [MAP-INTEGRATE-2 review](reviews/2026-11-12-map-integrate-2-review.md) §4. Every packet is released only with
+    the owner's OK, one open packet per executor, under the owner rule of 2026-11-12 above. The analysis's larger
+    packets are cut to that size here.
 
     | Step | Who | Packet | Size |
     |---|---|---|---|
-    | 0 | Orchestrator | Land MAP-INTEGRATE-2 | — |
-    | 1 | Windows executor | [SIM-LIMITS-1](tasks/sim-limits-1.md): the freight save limits from one source | ~2 h |
-    | 2 | Windows executor | FIXTURES-TRIM-1: delete the fixture copies nothing reads | ~2 h |
-    | 3 | Orchestrator, beside 1–2 | ADR 0005: a version per save section and lighter goldens; the owner approves | — |
-    | 4 | Either executor | MAP-MATERIALS-1: why 18 houses can't pay for their upgrade (measurement only) | ~2–3 h |
-    | 5 | Either executor | MAP-FOOD-1: why 131 houses lack food (measurement only) | ~3 h |
-    | 6 | Either executor | MAP-GOODS-1a, 1b, 1c: one supported chain per packet (tobacco, spices, silk cloth) | ~3–4 h each |
-    | Later | — | Freight through the effect queue (review findings E2–E4), after ADR 0005 | M |
+    | 0 | Orchestrator | Land MAP-INTEGRATE-2 with the analysis documents | — |
+    | 1 | Windows executor | **GATE-1a:** the WSL sanitizer gate and the `asan` preset at `-O1 -g` (analysis §2.2 step 1, D1) | ~2–3 h |
+    | 2 | Windows executor | **GATE-1b:** a required contract runs once; `picture_matrix_contract` in one lane; no local lavapipe lane by default (steps 2, 4; D2) | ~2 h |
+    | 3 | Windows executor | **GATE-1c:** a gate can end green: the flow-build test's cause, then its fix; named-adapter GPU tests skip as platform (step 3; D3, D4) | ~2–3 h |
+    | 4 | Windows executor | **PLAY-LIVE-1a:** a "living town" rules profile for `--play` and `--ship-start` behind one flag (D7); the default is the owner's | ~2–3 h |
+    | 5 | Windows executor | **PLAY-LIVE-1b:** draw the tile objects that change, roads first, after confirming D8 in the window | ~3 h |
+    | 6 | Windows executor | **EDITION-1a–e:** the game-source layer and its readers; the rule-set digest; the island manifest; figure type 375; `content-id` and the parity test (analysis §6, one packet each) | ~2–4 h each |
+    | 1′ | Mac executor | **WILDLIFE-RE-1a:** the fauna sweep, the creation helper, the `HIRSCH` loader (analysis §7.3 items 1–3). Documents only. The owner confirms option 1 at dispatch | ~3–4 h |
+    | 2′ | Mac executor | **WILDLIFE-RE-1b:** the animal figures, their routes and jobs, the hunter's approach (items 4–6) | ~3–4 h |
+    | 3′ | Mac executor | **WILDLIFE-RE-1c:** the trapper, predators, and `tools/wildlife_ref.py` with vectors (items 7–8) | ~3–4 h |
+    | — | Orchestrator, beside | **ADR 0006:** a version per save section, lighter goldens, one tool that regenerates pins (MAP-INTEGRATE-2 review E1; analysis §3.2 item 5). The owner approves | — |
+    | Later | — | **COORD-F3-1** (D5, the `F3 (D1, deaf)` flake, cause first) and **TEST-MEM-1** (D6, reservations from measured peaks; seven low-memory refusals in the 2026-11-12 run) | ~2–3 h each |
+    | Later | — | **PLAY-LIVE-1c** (draw figures), **NET-0** (after the owner decides ADR 0003), **TEST-FIXTURE-1** | — |
+    | After ADR 0006 | — | **EDITION-2 with WILDLIFE-1** (one identity change for both), then freight through the effect queue (E2–E4) | — |
+    | Parked | — | [SIM-LIMITS-1](tasks/sim-limits-1.md) (packet written), FIXTURES-TRIM-1, MAP-MATERIALS-1, MAP-FOOD-1, MAP-GOODS-1a–c: re-ranked after the wildlife port re-measures [`progression-gaps.md`](../sim/progression-gaps.md) | — |
 
-    Steps 4–6 come from [`docs/sim/progression-gaps.md`](../sim/progression-gaps.md). Only step 1 has a packet; the
-    orchestrator writes each next one after reviewing the last.
+    The orchestrator writes each packet when it is next, after reviewing the last one.
   - **The three Mac dispatches below are finished** and landed through MAP-INTEGRATE-2. Their text stays here as
     their record.
 - **What stays here:**

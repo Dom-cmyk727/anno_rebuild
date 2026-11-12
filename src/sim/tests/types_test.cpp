@@ -1585,7 +1585,7 @@ TEST_CASE("registry digest changes with every field") {
     // stable" pins the synthetic digest 0x96fbf9c80cb07372 (stream 128: + the empty stage table),
     // unchanged by T27). T33.2 adds un-hashed walk_mask input; header/digest changes belong to
     // T33.4.
-    static_assert(sim::field_count<sim::BuildingType>() == 27);
+    static_assert(sim::field_count<sim::BuildingType>() == 28);
     static_assert(sim::field_count<sim::ProductionType>() == 18);
     sim::BuildingType base;
     base.id = sim::TypeId{10};
@@ -1660,6 +1660,9 @@ TEST_CASE("registry digest changes with every field") {
         {"entrances.x6", [](auto& t) { t.entrances[1].x6 += 1; }},
         {"entrances.y6", [](auto& t) { t.entrances[0].y6 += 1; }},
         {"entrances.count", [](auto& t) { t.entrances.pop_back(); }},
+        {"highmap", [](auto& t) { t.highmap = {1, 2, 3, 4}; }},
+        {"highmap.count", [](auto& t) { t.highmap = {1, 2, 3, 4, 5}; }},
+        {"highmap.byte", [](auto& t) { t.highmap = {1, 2, 3, 5}; }},
         {"has_prod", [](auto& t) { t.has_prod = false; }},
         {"prod.id", [](auto& t) { t.prod.id += 1; }},
         {"prod.prodtype", [](auto& t) { t.prod.prodtype = "PLANTAGE"; }},
@@ -1700,7 +1703,7 @@ TEST_CASE("registry digest changes with every field") {
     goods[9].name = "WOLLE2";
     CHECK(sim::TypeRegistry::digest_of({}, goods, class_table) != empty_digest);
     // The figure types (T24) too, field by field.
-    static_assert(sim::field_count<sim::FigureType>() == 10);
+    static_assert(sim::field_count<sim::FigureType>() == 11);
     const sim::FigureType fig{220, 53687, 1280, 3, 500};
     std::map<std::uint64_t, std::string> fseen;
     fseen[sim::TypeRegistry::digest_of({}, goods_table, class_table, {&fig, 1})] = "base";
@@ -1715,7 +1718,9 @@ TEST_CASE("registry digest changes with every field") {
         {"range_88", [](auto& f) { f.range_88 += 1; }},
         {"hull_half_88", [](auto& f) { f.hull_half_88 = f.hull_half_88.value_or(0) + 1; }},
         {"hull_half_88 present zero", [](auto& f) { f.hull_half_88 = 0; }},
-        {"route", [](auto& f) { f.route += 1; }}, // stream 126 (MAP-ECON-1 E2)
+        {"route", [](auto& f) { f.route += 1; }},        // stream 126 (MAP-ECON-1 E2)
+        {"ware", [](auto& f) { f.ware = "SALZSTEIN"; }}, // stream 135 (ore symbols)
+        {"ware other", [](auto& f) { f.ware = "GOLD"; }},
     };
     for (const auto& [name, mutate] : fmuts) {
         sim::FigureType f = fig;
@@ -1920,7 +1925,8 @@ TEST_CASE("registry builds all 921 entries of Anlagen.dat") {
     // Old direct-build identity855fce5ed63c1090 is preserved at the accepted base.
     // PRM1 independently derived from HEAD and Game research-name pointers:
     // 827rows,22151bytes,SHA256053df2ab...d5fc9, extends b62eba128fce9259.
-    CHECK(r.digest() == 0x986b10f94d3725b4ULL);
+    // moved from 0x986b10f94d3725b4 by BuildingType::highmap alone (registry has no figures)
+    CHECK(r.digest() == 0xf0c98731e34fca02ULL);
     // The growing items (ROHSTWACHS / ROHSTDUERR): grain field 712 and forest 104.
     CHECK(r.find_growing(712) == r.find(sim::TypeId{712}));
     CHECK(r.find_growing(712)->prod.growth_period == 15500);
@@ -1976,4 +1982,55 @@ TEST_CASE("registry digest: a populated stage table matches the independent tran
     // Swapped-field control: records with stage and group exchanged hash differently.
     CHECK(build({{0, 1, 0, 30}, {1, 4, 20, 25}, {2, 31, 7, 999}}) != v.at("populated"));
     CHECK(v.at("populated") != v.at("swapped"));
+}
+
+TEST_CASE("registry digest: a HIGHMAP table (stream 135) matches the independent transcription") {
+    // The type is the `base` of "registry digest changes with every field" (same fields, no table);
+    // the expected values are computed by tools/highmap_digest_ref.py, an independent Python
+    // transcription of digest_type, not by this engine.
+    sim::BuildingType t;
+    t.id = sim::TypeId{10};
+    t.prodtype = 1;
+    t.cls = sim::RuntimeClass::Workshop;
+    t.width = 2;
+    t.height = 3;
+    t.research_id = 4;
+    t.cost_gold = 5;
+    t.cost_goods = {{0x29, 256}};
+    t.max_hp = 6;
+    t.can_burn = 7;
+    t.action_radius = 8;
+    t.flags_word = 9;
+    t.rubble = 10;
+    t.service_mask = 11;
+    t.running_cost = {12, 13};
+    t.output_goods = {14};
+    t.input_goods = {15};
+    t.head_raw = {16, 17};
+    t.entrances = {{1, 3}, {5, 9}};
+    t.has_prod = true;
+    t.prod.id = 10;
+    t.prod.prodtype = "HANDWERK";
+    t.prod.kind = sim::BuildingClass::Workshop;
+    t.prod.outputs = {"STOFFE"};
+    t.prod.inputs = {"WOLLE"};
+    t.prod.capacity = {1, 2};
+    t.prod.output_per_step = {3, 4};
+    t.prod.input_per_step = {5, 6};
+    t.prod.time0_128 = 7;
+    t.prod.time1_128 = 8;
+    t.prod.max_figures = {9, 10, 11};
+    t.prod.figure_type_count = {12, 13, 14};
+    t.prod.figure_ids = {15, 16, 17, 18, 19, 20, 21, 22, 23};
+    t.prod.stages = 24;
+    t.prod.stage_shift = 25;
+    t.prod.growth_period = 26;
+    t.prod.display_rate0 = 27;
+    t.prod.display_rate1 = 28;
+    const auto goods = sim::original_goods();
+    const auto classes = sim::original_class_table();
+    // no table: the digest is the one a stream-134 build computed (nothing is added)
+    CHECK(sim::TypeRegistry::digest_of({&t, 1}, goods, classes) == 0x7adcb2c0d02b1a70ULL);
+    t.highmap = {1, 2, 3, 4};
+    CHECK(sim::TypeRegistry::digest_of({&t, 1}, goods, classes) == 0x4cbafff0a755efe4ULL);
 }

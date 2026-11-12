@@ -227,8 +227,16 @@ void finish_harvest(Figure& figure, Effects& fx) {
     if (h.step == HarvestStep::ToTree || h.step == HarvestStep::Cut) {
         // Only these steps hold a claim (Start has not selected, the cut arrival released it before
         // ToHome). Owner-conditional and hygiene-gated at the merge: never another worker's claim.
-        fx.tile_edits.push_back(
-            TileEdit{TileEdit::Kind::Release, island_of(figure.home), h.target, figure.id});
+        if (mason_job(figure.job)) {
+            // The mason's claim is a quarry entrance flag (Q-A): a worker ended on the shared end
+            // path while walking or waiting clears it too, so no claim outlives its worker
+            // (disclosed adaptation, docs/sim/quarry-bricks.md Q3.2 rule 1).
+            fx.quarry_claims.push_back(
+                QuarryClaim{island_of(figure.home), h.target, h.goal_col, h.goal_row, false});
+        } else {
+            fx.tile_edits.push_back(
+                TileEdit{TileEdit::Kind::Release, island_of(figure.home), h.target, figure.id});
+        }
     }
     fx.harvest_lost_88 += figure.cargo_88; // the cargo stays on the figure as history
     h.step = HarvestStep::Done;
@@ -291,6 +299,7 @@ bool end_figure(Figure& figure, std::uint32_t t, Effects& fx) {
     }
     finish_harvest(figure, fx);
     finish_resident(figure);
+    figure.freight.reset();
     release_home(figure, fx);
     figure.expiry_stamp = static_cast<std::uint16_t>(t);
     return true;
@@ -310,6 +319,7 @@ void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp,
         // harvest job is finished first, as end_figure does.
         finish_harvest(figure, fx);
         finish_resident(figure);
+        figure.freight.reset();
         release_home(figure, fx);
     }
     if (has_stamp && !had_stamp) {
@@ -403,7 +413,17 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
             const std::string hw = where + ".harvest";
             if (!harvest_state_job(f.job)) {
                 return hw + ": present on a figure of job " + std::to_string(f.job) +
-                       " (only the harvest jobs 0x29 and 0x2a and the animal job 0x2e have one)";
+                       " (only the harvest jobs 0x29 and 0x2a, the animal job 0x2e and the mason "
+                       "job 0x2c have one)";
+            }
+            if (!mason_job(f.job) && (h.goal_col != 0 || h.goal_row != 0)) {
+                return hw + ".goal: (" + std::to_string(h.goal_col) + ", " +
+                       std::to_string(h.goal_row) + ") on a figure of job " +
+                       std::to_string(f.job) + " (only the mason job 0x2c has a goal sub-cell)";
+            }
+            if (h.goal_col > 2 || h.goal_row > 2) {
+                return hw + ".goal: (" + std::to_string(h.goal_col) + ", " +
+                       std::to_string(h.goal_row) + ") is not a sub-cell (0 to 2)";
             }
             if (static_cast<std::uint8_t>(h.step) > static_cast<std::uint8_t>(HarvestStep::Done)) {
                 return hw + ".step: " + std::to_string(static_cast<unsigned>(h.step)) +

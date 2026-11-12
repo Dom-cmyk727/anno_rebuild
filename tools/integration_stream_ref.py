@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Independent populated SIMINT1 field-order/hash oracle; no C++ output is read.
+"""Independent populated ECONBK1/138 field-order/hash oracle; no C++ output is read.
 
 The record combines native header, two raw permission rows, a sparse actor
 registry (ship37 -> crew2 -> donkey7, animal8), and a nontrivial script runtime.
-Each scope's expected bytes and hierarchical digest are independently encoded.
-It complements the independent whole-world scheduler goldens in sim_stream.py;
-this structural fixture is not an original scenario or a complete playable world.
+Each scope's expected bytes and hierarchical digest are independently encoded. The `world`
+record is the smallest encompassing serialized state used by this proof: one FigureRegistry and
+two complete Building wrappers. It keeps the freight ship, mason, quarry claims, bound mine and
+both reservers in one round-trippable archive without pretending to be an original scenario.
+It complements the independent whole-world scheduler goldens in sim_stream.py.
 """
 import argparse
 import importlib.util
@@ -36,11 +38,19 @@ def script():
     return (text(SOURCE)+pack('5I',1048576,65536,128,100000,4096)+b'\1'+text(b'authored/joint')
             +u32(2)+bytes([3,0])+pack('4I',0,17,0,23)+text(bytes([0,1,0,1]))+u64(1)+u32(0))
 
-def figure(serial,kind,parent=M,crew=None,animal=False,ship=False):
+def freight():
+    action=bytes([1])+u32(9)+u64(3)
+    stop=u64(77)+pack('2i',2048,2304)+u64(1)+action
+    return (u64(1)+stop+bytes([0,1])+pack('2I',0,0)+pack('4Q',55,4,1000,33)
+            +pack('2I',7,1)+pack('2Q',512,256)+u64(1)+u32(0)+u64(1)+u32(1)
+            +u32(1)+u64(2)+u16(0)+u8(0))
+
+def figure(serial,kind,parent=M,crew=None,animal=False,ship=False,mason=False,reserver=False):
     # TransportState defaults, including invalid BuildingId target.
-    transport=b'\0'+u32(0)+u64(0)+pack('2I',0,0)+u64(M)+u32(0)
-    home=1 if animal else M
-    job=0x2e if animal else 0
+    target=77 if reserver else M
+    transport=b'\0'+u32(0)+u64(0)+pack('2I',0,0)+u64(target)+u32(256 if reserver else 0)
+    home=88 if mason else (1 if animal else M)
+    job=0x2c if mason else (0x34 if reserver else (0x2e if animal else 0))
     x,y=(28416,28416) if animal else (900,980)
     hp=12000 if ship else (400 if kind==718 else 350)
     b=(u64(serial)+pack('2I',kind,0)+u64(home)+pack('2I',1 if animal else 0,job)
@@ -50,19 +60,35 @@ def figure(serial,kind,parent=M,crew=None,animal=False,ship=False):
     holds=[(41,12801),(42,512)] if ship else ([(26,7)] if parent!=M else [])
     b+=u64(len(holds))+b''.join(u32(g)+u64(a) for g,a in holds)+u32(0x8000 if ship else 0)
     if ship:
-        # Idle nav, known health and fine position matching Q8; residues deliberately nonzero.
-        b+=b'\1'+b'\0\0'+bytes([0,0])+pack('2I',100,0)+u64(0)+u64(0)+u16(11)
+        # In-flight order, ticket and segment; residues deliberately nonzero.
+        b+=b'\1'+b'\1'+u64(55)+b'\1'+pack('2i',2048,2304)+b'\1'+u64(9)
+        b+=bytes([1,2])+pack('2I',92,10)+u64(500)+u64(0)+u16(11)
         b+=pack('2q',900*(500<<24),980*(500<<24))+pack('2I',5,7)+b'\1'+u32(12000)
     else:b+=b'\0'
-    if animal:
+    if animal or mason:
         b+=b'\1'+bytes([2])+pack('2I',0,4321)+pack('2i',113,111)+u64(0)+pack('2I',0,0)
+        if mason:b+=bytes([2,1])
     else:b+=b'\0'
-    return b+b'\0' # no resident job
+    if ship:
+        return b+b'\0'+u64(4)+b'\1'+freight()
+    return b+b'\0'+u64(0)+b'\0' # no resident job or freight assignment
+
+def mine():
+    return u16(12)+bytes([1,0,0])+u32(128)+u16(3)+u32(512)+b'\1'+u64(3)+bytes([1,2])+u16(9)
+
+def quarry():
+    return u16(22)+bytes([0,1,2,3])+u16(44)+bytes([1,1])+u64(2)+bytes([1,0])
+
+def building(serial,kind,x,y,tag,payload):
+    # Complete Building wrapper: id, type, tile, rotation, byte0e/0f, kontor, payload tag + fields.
+    return u64(serial)+u32(kind)+pack('2i',x,y)+bytes([0,0x86,0])+u32(0)+u8(tag)+payload
 
 def records():
     spec=importlib.util.spec_from_file_location('published128',ROOT/'fixtures/synthetic/sim/integrate1/legacy/published128/tools/sim_stream.py')
     old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
-    figures={37:figure(1,1503,ship=True),2:figure(2,717,1,0),7:figure(3,718,2),8:figure(4,106,animal=True)}
+    figures={37:figure(1,1503,ship=True),2:figure(2,717,1,0),7:figure(3,718,2),
+             8:figure(4,106,animal=True),9:figure(5,400,mason=True),
+             10:figure(6,400,reserver=True),11:figure(7,400,reserver=True)}
     prefix=pack('qI',8,9)+u64(40)
     tail=u16(19)+u64(0)
     raw=prefix+b''.join(b'\1'+figures[i] if i in figures else b'\0' for i in range(40))+tail
@@ -81,11 +107,17 @@ def records():
     goods+=u64(25)+b''.join(pack('3BI',*row) for row in current.CLASSES)+u64(0)*3
     names=(b'POLAR',b'TUNDRA',b'NORD',b'PRAERIE',b'DSCHUNGEL',b'STEPPE',b'WUESTE',b'CUSTOM')
     economy=u64(8)+b''.join(text(n) for n in names)+u32(4)+u32(2000)
-    return {'header':(u32(134)+b'ECONBK1\0'+u32(5),None),
+    mine_building=building(77,70001,10,11,5,mine())
+    quarry_building=building(88,90001,20,21,9,quarry())
+    # The three top-level scopes contribute their child digests to the encompassing root.
+    world=raw+mine_building+quarry_building
+    world_hash=fnv(u64(fnv(hierarchical))+u64(fnv(mine_building))+u64(fnv(quarry_building)))
+    return {'header':(u32(138)+b'ECONBK1\0'+u32(5),None),
             'player':(old.player_bytes(old.new_player(0))+u64(2)+pack('4I',70001,0,90001,255),None),
             'figures':(raw,fnv(hierarchical)), 'script':(script(),None),
             'accounts':(u16(65000)+pack('5Q',0x0102030405060708,105,210,4294967313,28),None),
-            'economy':(economy,None),'goods_registry':(goods,None)}
+            'economy':(economy,None),'goods_registry':(goods,None),
+            'mine':(mine(),None),'quarry':(quarry(),None),'world':(world,world_hash)}
 
 def fixture():
     return '# Independent ECONBK1 structural scopes: name hex hierarchical_fnv64\n'+''.join(
@@ -93,10 +125,15 @@ def fixture():
         for name,(data,digest) in records().items())
 
 class Contracts(unittest.TestCase):
-    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8600000045434f4e424b310005000000')
-    def test_sparse_registry_has_four_actors(self):
-        self.assertEqual(len(records()['figures'][0]),20+40+200+133+129+150+10)
+    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8a00000045434f4e424b310005000000')
+    def test_sparse_registry_has_combined_actors(self):
+        self.assertGreater(len(records()['figures'][0]),1000)
         self.assertNotEqual(records()['figures'][1],fnv(records()['figures'][0]))
+        self.assertIn(freight(),records()['figures'][0])
+        self.assertEqual(records()['mine'][0][11:15],u32(512))
+        self.assertTrue(records()['quarry'][0].endswith(bytes([1,0])))
+        self.assertIn(building(77,70001,10,11,5,mine()),records()['world'][0])
+        self.assertIn(building(88,90001,20,21,9,quarry()),records()['world'][0])
     def test_populated_accounts_literal_and_widened_cost(self):
         self.assertEqual(records()['accounts'][0].hex(),
             'e8fd08070605040302016900000000000000d20000000000000011000000010000001c00000000000000')
@@ -107,8 +144,8 @@ class Contracts(unittest.TestCase):
             path=Path(td)/'fields.txt';path.write_text(fixture())
             command=[sys.executable,'-I',str(Path(__file__).resolve()),'--fixture',str(path)]
             result=subprocess.run(command,capture_output=True,text=True)
-            self.assertEqual(result.returncode,0);self.assertIn('7 populated combined scopes agree',result.stdout)
-            path.write_text(fixture().replace('86000000','85000000',1))
+            self.assertEqual(result.returncode,0);self.assertIn('10 populated combined scopes agree',result.stdout)
+            path.write_text(fixture().replace('8a000000','89000000',1))
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
             path.unlink();result=subprocess.run(command,capture_output=True,text=True)
@@ -135,14 +172,17 @@ class Contracts(unittest.TestCase):
         self.assertNotEqual(figure(2,717,1,0),figure(2,717,2,0))
         self.assertNotEqual(script(),script().replace(b'authored/joint',b'authored/other'))
         self.assertNotEqual(fnv(pack('4I',70001,0,90001,255)),fnv(pack('4I',70001,0,90001,1)))
+        right=building(88,90001,20,21,9,quarry())
+        self.assertNotEqual(right,building(88,90001,20,21,0,quarry())) # Quarry tag omitted
+        self.assertNotEqual(records()['world'][0],records()['world'][0].replace(right,right[:-2]+bytes([0,0]),1))
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
     if a.self_test:return 0 if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)).wasSuccessful() else 1
-    path=a.fixture or ROOT/'fixtures/synthetic/sim/expand1/current134/populated_fields.txt'
+    path=a.fixture or ROOT/'fixtures/synthetic/sim/integrate2/current138/populated_fields.txt'
     if a.write:path.write_text(fixture());return 0
     try: actual=path.read_text()
     except OSError as error: print('fixture unavailable: '+str(error));return 1
     if actual!=fixture():print('combined oracle differs');return 1
-    print('7 populated combined scopes agree');return 0
+    print('10 populated combined scopes agree');return 0
 if __name__=='__main__':raise SystemExit(main())

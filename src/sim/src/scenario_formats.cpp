@@ -386,6 +386,10 @@ bool read_class_record(Payload& payload, const BuildingType& type, Bytes rec) {
         inert->financial_active = inert_financial_active(type, rec);
         return false; // Financial fact only: retain UndecodedBuildingRecord for body.
     }
+    if (auto* quarry = std::get_if<Quarry>(&payload)) {
+        quarry->financial_active = inert_financial_active(type, rec);
+        return false; // Financial fact only (the claim set is never imported: no claims)
+    }
     if (auto* inn = std::get_if<Inn>(&payload); inn != nullptr && cls == RuntimeClass::Inn) {
         // 0x10075740: exactly 10 bytes are read (tavern stock u16 at byte 2 -> +0x18, taken
         // statistic u16 at byte 8 -> +0x1a); any other length is skipped whole (0x10075792).

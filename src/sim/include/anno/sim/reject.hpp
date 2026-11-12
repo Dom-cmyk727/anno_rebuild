@@ -106,7 +106,14 @@ enum class Reject : std::uint16_t {
     HouseDomain,
     PermissionContext,
     ConstructionDenied,
-    CityAccounting
+    CityAccounting,
+    // MAP-EXTRACT-1 (policy B, docs/sim/salt-extraction.md section 22), appended in order.
+    /// RESERVED, never produced by the sim. Policy B (refuse a mine with no ore in reach) was
+    /// replaced by the faithful default on 2026-11-07: the original has no deposit test at mine
+    /// placement, so such a mine is accepted, charged and created unbound. The value stays so the
+    /// numbering of this append-only enum does not move; a host that wants the warning calls
+    /// mine_site_deposit_in_reach (mine_facts.hpp) before it issues the command.
+    NoDepositInReach
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -236,6 +243,8 @@ struct ApplyResult {
         return "CityAccounting";
     case Reject::HouseDomain:
         return "HouseDomain";
+    case Reject::NoDepositInReach: // reserved, never produced (policy B replaced)
+        return "NoDepositInReach";
     }
     return "?";
 }

@@ -10,6 +10,7 @@
 
 #include <anno/sim/driver.hpp>
 #include <anno/sim/harvest.hpp>
+#include <anno/sim/mason.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/walk_search.hpp>
@@ -174,21 +175,27 @@ struct Body {
             return;
         }
         const Island* hi = world.island(island_of(home->id));
-        const auto path = hi != nullptr
-                              ? path_home(*hi, ctx.types, *home, *home_type, fig.pos, ft.layer)
-                              : std::nullopt;
+        WalkPoint end;
+        const auto path =
+            hi != nullptr ? path_home(*hi, ctx.types, *home, *home_type, fig.pos, ft.layer, &end)
+                          : std::nullopt;
         if (!path) {
             h.step = HarvestStep::Done; // figure slot +0xcc found no path (0x10057bb1)
             return;
         }
-        start_walk(fig.pos, *path, WalkRef{h.route, h.next, h.along});
+        start_walk(fig.pos, *path, WalkRef{h.route, h.next, h.along}, &end);
     }
 
     /// Step A's search (D 0x10058ae0): the candidate list through the overlay (0x10092320 mode 0,
     /// row-major over the square clipped to the island; a square whose u16 origin wraps finds
     /// nothing), then the walk search with the tiles' free sub-cells as goals, the first popped
     /// goal tile that is not claimed winning (callback 0x10058a40). The tile path to it, or none.
-    [[nodiscard]] std::optional<std::pair<TileXY, std::vector<TileXY>>> search() const {
+    struct Found {
+        TileXY target;
+        std::vector<TileXY> path;
+        WalkPoint end; ///< the goal sub-cell the search selected (the walk ends there)
+    };
+    [[nodiscard]] std::optional<Found> search() const {
         if (island == nullptr || home == nullptr || home_type == nullptr) {
             return std::nullopt;
         }
@@ -263,7 +270,7 @@ struct Body {
         if (!found.complete || !found.selected || !chosen || found.route.empty()) {
             return std::nullopt;
         }
-        return std::pair{*chosen, found.route};
+        return Found{*chosen, found.route, found.selected->point};
     }
 };
 
@@ -310,6 +317,9 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
         return false;
     }
     const std::uint32_t t = ctx.t;
+    if (mason_job(fig.job)) {
+        return mason_tick(ctx, world, fig); // job 0x2c shares the state, not the body
+    }
     HarvestState& h = *fig.harvest;
     if (fig.expiry_stamp.has_value()) {
         fig.stamp = static_cast<std::uint16_t>(t); // ended, waiting for phase C
@@ -378,9 +388,9 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
                 b.start_home(); // step A fails -> step C (0x1005e280)
                 break;
             }
-            h.target = found->first;
+            h.target = found->target;
             b.claim(h.target);
-            start_walk(fig.pos, found->second, WalkRef{h.route, h.next, h.along});
+            start_walk(fig.pos, found->path, WalkRef{h.route, h.next, h.along}, &found->end);
             h.step = HarvestStep::ToTree;
             break;
         }

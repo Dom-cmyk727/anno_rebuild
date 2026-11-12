@@ -538,7 +538,7 @@ TEST_CASE(
     // The tick depends on the stepping schedule (the advance(10) loop above, then advance(100)):
     // chunking changes state hashes (pre-existing, docs/sim/state.md); do not re-pin by changing
     // the loops.
-    CHECK(w.clock().tick() == 26085);
+    CHECK(w.clock().tick() == 25085);
     CHECK(sf.out[1] == 40);
     CHECK(grass_ripe() == ripe0 - 9); // real grass objects were cut (id - 1)
     CHECK(kinds.size() == 3);

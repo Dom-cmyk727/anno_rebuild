@@ -10,6 +10,7 @@
 #include <anno/sim/driver.hpp>
 #include <anno/sim/house_tick.hpp>
 #include <anno/sim/inn.hpp>
+#include <anno/sim/mine_source.hpp>
 #include <anno/sim/transport.hpp>
 
 namespace anno::sim {
@@ -280,7 +281,26 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
             return;
         }
         w->status.shows_icons = icons;
+        std::vector<std::uint32_t> in_before,
+            out_before; // diagnostic ledger only: no copy without a sink
+        if (ctx.transport_stats != nullptr) {
+            in_before = w->in;
+            out_before = w->out;
+        }
         r = workshop_step(*w, type->prod, ctx.t);
+        if (ctx.transport_stats != nullptr && r.stepped) {
+            // MAP-NEEDS-2 N3 ledger (diagnostic, never state): what this step consumed of each
+            // input and made of each output.
+            ForestryStats::WorkshopLedger& l = ctx.transport_stats->forestry.workshops[b.id];
+            l.consumed_88.resize(in_before.size());
+            l.made_88.resize(out_before.size());
+            for (std::size_t i = 0; i < in_before.size() && i < w->in.size(); ++i) {
+                l.consumed_88[i] += in_before[i] - w->in[i];
+            }
+            for (std::size_t i = 0; i < out_before.size() && i < w->out.size(); ++i) {
+                l.made_88[i] += w->out[i] - out_before[i];
+            }
+        }
         break;
     }
     case TickKind::WeaponsWorkshop: {
@@ -344,8 +364,45 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         // The island's deposits in index order (Mine::deposit is an index into them),
         // the footprint by rotation (D 0x1006ddf0) and world setting 14 bit 1, the
         // add-on edition (OQ-035 a, D 0x10063686).
+        const std::uint32_t mine_out_before = m->out;
+        // Stream 137: the re-lookup of a spent or short deposit searches every ore object of the
+        // island (D 0x100787c0) and materialises the deposit it binds, like the attach lookup.
+        struct Relook {
+            Island& island;
+            const TypeRegistry& types;
+            const Building& b;
+            const BuildingType& type;
+            bool deep;
+            OreLookupStats* stats;
+        } relook{
+            island,  ctx.types,
+            b,       *type,
+            m->deep, ctx.transport_stats != nullptr ? &ctx.transport_stats->ore_lookup : nullptr};
+        const MineRelookup relookup{
+            [](void* p) -> std::optional<std::size_t> {
+                const Relook& rl = *static_cast<const Relook*>(p);
+                if (const auto bound =
+                        bind_mine_deposit(rl.island, rl.types, rl.b, rl.type, rl.deep)) {
+                    return bound;
+                }
+                if (rl.stats != nullptr) {
+                    ++rl.stats->relookup_fallbacks; // diagnostic only; bind's own counters stay out
+                }
+                // No ore object in reach. A world whose deposits carry no ore object (a synthetic
+                // fixture) keeps the earlier search among its deposits; on original data every
+                // deposit comes from an ore object, so this finds nothing the lookup missed.
+                return find_deposit(rl.island.deposits,
+                                    rl.type.prod.outputs.empty() ? std::string()
+                                                                 : rl.type.prod.outputs[0],
+                                    rl.deep, mine_area(rl.b, rl.type));
+            },
+            &relook};
         r = mine_step(*m, type->prod, ctx.t, island.deposits, mine_area(b, *type),
-                      ctx.settings.depletes());
+                      ctx.settings.depletes(), &relookup);
+        if (ctx.transport_stats != nullptr && r.stepped) {
+            // MAP-EXTRACT-1 X3 ledger (diagnostic, never state): what this step made.
+            ctx.transport_stats->forestry.mine_made_88[b.id] += m->out - mine_out_before;
+        }
         break;
     }
     case TickKind::Market: {
@@ -501,7 +558,8 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
                 s.job = ft != nullptr ? ft->route : 0;
                 s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
                 s.harvest = (farm_figure_route(s.job) == FarmFigureRoute::Worker ||
-                             farm_figure_route(s.job) == FarmFigureRoute::Animal) &&
+                             farm_figure_route(s.job) == FarmFigureRoute::Animal ||
+                             farm_figure_route(s.job) == FarmFigureRoute::Mason) &&
                             std::holds_alternative<Farm>(b.payload);
             }
             if (std::holds_alternative<SmallFarm>(b.payload)) {

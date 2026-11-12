@@ -42,46 +42,46 @@ if(ANNO_BUILD_TESTS)
                            "cannot read no-such.log")
   # The golden G2 (docs/sim/state.md §14.3, stage S10): the tool rebuilds the world from
   # the committed log on the registry its digest names and reproduces every checkpoint.
-  anno_sim_replay_run_test(anno_sim_replay_g2_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/g2.log" 0
+  anno_sim_replay_run_test(anno_sim_replay_g2_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/g2.log" 0
                            "checkpoints 6/6.*reproduced: every checkpoint matched")
   # MAP-2: a recorded founding session in a fresh process (success, refusals, a reveal, an ordinary
   # Build, two advances); the world is rebuilt from the log on synthetic::make_founding_types. The
   # wrong log has the first founding command refused (its click moved one tile): detected.
-  anno_sim_replay_run_test(anno_sim_replay_founding_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/m2_found.log" 0
+  anno_sim_replay_run_test(anno_sim_replay_founding_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/m2_found.log" 0
                            "checkpoints 4/4.*reproduced: every checkpoint matched")
-  anno_sim_replay_run_test(anno_sim_replay_founding_wrong_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/m2_found_wrong.log" 1
+  anno_sim_replay_run_test(anno_sim_replay_founding_wrong_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/m2_found_wrong.log" 1
                            "checkpoints 1/2.*DIVERGED at entry 3")
   # MAP-CARGO-1: a recorded unloading session (the opening after founding: four holds unloaded, the
   # full store, a repeat, a rival's warehouse refused) in a fresh process. The wrong log asks 10 t
   # instead of 38 in its first command: detected at the first checkpoint after it.
-  anno_sim_replay_run_test(anno_sim_replay_cargo_unload_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/cargo_unload.log" 0
+  anno_sim_replay_run_test(anno_sim_replay_cargo_unload_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/cargo_unload.log" 0
                            "checkpoints 9/9.*reproduced: every checkpoint matched")
-  anno_sim_replay_run_test(anno_sim_replay_cargo_unload_wrong_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/cargo_unload_wrong.log" 1
+  anno_sim_replay_run_test(anno_sim_replay_cargo_unload_wrong_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/cargo_unload_wrong.log" 1
                            "DIVERGED at entry")
   # MAP-CARGO-2: a recorded loading session (empty-hold load, same-goods top-up, a stock refusal, a
   # redirect to another hold, a rival's warehouse refused, an unload) in a fresh process on
   # synthetic::make_cargo_types. The wrong log asks 1 t instead of 10 in its first command:
   # detected at the first checkpoint after it.
-  anno_sim_replay_run_test(anno_sim_replay_cargo_load_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/cargo_load.log" 0
+  anno_sim_replay_run_test(anno_sim_replay_cargo_load_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/cargo_load.log" 0
                            "checkpoints 10/10.*reproduced: every checkpoint matched")
-  anno_sim_replay_run_test(anno_sim_replay_cargo_load_wrong_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/cargo_load_wrong.log" 1
+  anno_sim_replay_run_test(anno_sim_replay_cargo_load_wrong_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/cargo_load_wrong.log" 1
                            "DIVERGED at entry")
   # The golden G3 (stage S11): every production class through advance on the synthetic
   # types, 21 checkpoints.
-  anno_sim_replay_run_test(anno_sim_replay_g3_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/g3.log" 0
+  anno_sim_replay_run_test(anno_sim_replay_g3_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/g3.log" 0
                            "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The golden G4 (stage S12): players with upkeep and bankruptcy, timers, timed events,
   # the figure registry's expiry list, the monopoly table and the 7.5 minute
   # event over 600 000 ticks, 21 checkpoints.
-  anno_sim_replay_run_test(anno_sim_replay_g4_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/g4.log" 0
+  anno_sim_replay_run_test(anno_sim_replay_g4_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/g4.log" 0
                            "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The golden G5 (stage S13): the growth sweep and two droughts of the 300 s event over
   # 1 000 000 ticks on the growth types, 21 checkpoints.
-  anno_sim_replay_run_test(anno_sim_replay_g5_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/g5.log" 0
+  anno_sim_replay_run_test(anno_sim_replay_g5_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/g5.log" 0
                            "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The golden G6 (task T24): a market cart and a workshop carrier over 300 000 ticks on
   # the transport types, 21 checkpoints.
-  anno_sim_replay_run_test(anno_sim_replay_g6_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/expand1/current134/g6.log" 0
+  anno_sim_replay_run_test(anno_sim_replay_g6_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/integrate2/current138/g6.log" 0
                            "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The scenario adapter (stage S14): the usage and the refusal of a file that is not a
   # scenario need no game files; one shipped scenario runs when ANNO1503_GAME_DIR is set.

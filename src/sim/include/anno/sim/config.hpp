@@ -557,6 +557,15 @@ struct CargoRules {
 /// Opt-in changes. Every default is the original's behaviour; every field
 /// exists only for a decision-needed row of docs/sim/state.md §13 (and two
 /// cheat/QoL switches). Hashed in the header scope.
+// Hostile public definition/work bounds, configurable and hashed; not original
+// game counts. Larger definitions must still fit the unchanged u16 record frame.
+struct FreightRules {
+    std::uint32_t max_stops = 1024;
+    std::uint32_t max_actions = 2048;
+    std::uint32_t work_per_visit = 64;
+    friend bool operator==(const FreightRules&, const FreightRules&) = default;
+};
+
 struct Rules {
     /// D1, OQ-036.
     SlotPolicy slot_policy = SlotPolicy::Original;
@@ -681,6 +690,7 @@ struct Rules {
     /// ECON-BOOK-1 opt-in checked city sales/upkeep. Separate from house_updates.
     /// Requires save_billed_goods so native continuation cannot erase pending income.
     bool city_booking = false;
+    FreightRules freight;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

@@ -337,6 +337,29 @@ std::vector<LayoutRow> layout_rows() {
         s.u32(0x0e0f'1011);
         rows.push_back({"Inn", common(p), s, 8 + 3 + 3 + 3});
     }
+    {
+        // MAP-EXTRACT-2 part Q (stream 137, tag 9): the Inert prefix (last, blocked, suspended, the
+        // status, the optional financial fact), then the claim set: u64 count and one 0/1 byte per
+        // entrance. Hand-written bytes (docs/sim/state.md, end of file).
+        sim::Quarry p;
+        p.last = 0x1234;
+        p.blocked = true;
+        p.suspended = false;
+        p.status = status(sim::Status::StorageFull, 5, 0x4142);
+        p.financial_active = false;
+        p.claims = {true, false};
+        Stream s = common_bytes(9);
+        s.u16(0x1234);
+        s.boolean(true);
+        s.boolean(false);
+        status_bytes(s, 2, 5, 0x4142);
+        s.boolean(true);  // financial_active is present ...
+        s.boolean(false); // ... and false
+        s.u64(2);
+        s.boolean(true);
+        s.boolean(false);
+        rows.push_back({"Quarry", common(p), s, 8 + 3 + 3 + 2 + 1 + 2});
+    }
     for (LayoutRow& row : rows) {
         row.primitives += 1; // the kontor_id scalar (stream 119)
     }
@@ -368,8 +391,10 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::Island>() == 20);          // cache* (claims: stream 126)
     CHECK(sim::field_count<sim::PlacementRecord>() == 6);
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
-    CHECK(std::variant_size_v<sim::Payload> == 9);
-    CHECK(sim::kPayloadTags.size() == 9);
+    // 10 since part Q (stream 137): tag 9 is the Quarry payload (the claim set, quarry-bricks.md
+    // Q3.1)
+    CHECK(std::variant_size_v<sim::Payload> == 10);
+    CHECK(sim::kPayloadTags.size() == 10);
     CHECK(sim::field_count<sim::Inn>() ==
           7); // C2: the tavern stock and statistic; K1: carriers_out
     for (std::size_t i = 0; i < sim::kPayloadTags.size(); ++i) {

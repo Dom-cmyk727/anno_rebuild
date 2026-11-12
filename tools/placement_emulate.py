@@ -54,6 +54,7 @@ class Harness:
     REC = 0x26000000
     STUB = 0x40000000
     UAOBJ = 0x30100000        # AnnoGame instance: type objects at UAOBJ + id * 0x400
+    UATAB = 0x30A00000        # HIGHMAP tables of class-0x3000 types at UATAB + id * 0x100 (type +0x234)
     UASCR = 0x30700000
     ASTACK = 0x30800000
     SLOTS = {0x50: 0, 0x54: 0, 0x5C: 0, 0x60: 0, 0xD0: 0, 0x68: 0x10, 0x6C: 8}   # slot -> ret bytes
@@ -71,7 +72,8 @@ class Harness:
         self.a = Uc(UC_ARCH_X86, UC_MODE_32)
         self.a.mem_map(BASE, gsize)
         self.a.mem_write(BASE, game)
-        for addr, n in ((self.UAOBJ, 0x600000), (self.UASCR, 0x100000), (self.ASTACK, 0x10000), (0x41000000, 0x1000)):
+        for addr, n in ((self.UAOBJ, 0x600000), (self.UASCR, 0x100000), (self.ASTACK, 0x10000), (0x41000000, 0x1000),
+                        (self.UATAB, 0x100000)):
             self.a.mem_map(addr, n)
         self.real = {s: struct.unpack('<I', self.a.mem_read(0x1002185C + s, 4))[0] for s in self.SLOTS}
         # fake registry: vtable slot +0x70 -> stub (ret 4)
@@ -143,10 +145,13 @@ class Harness:
             struct.pack_into('<H', o, 0x10, t.prodtype)
             struct.pack_into('<H', o, 0x12, t.flags)
             struct.pack_into('<H', o, 0x14, 0x100 if t.replaceable else 0)
+            if t.highmap is not None:
+                self.a.mem_write(self.UATAB + tid * 0x100, bytes(t.highmap))
+                struct.pack_into('<I', o, 0x234, self.UATAB + tid * 0x100)
             self.a.mem_write(self.UAOBJ + tid * 0x400, bytes(o))
             self.w.mem_write(self.TOK + tid * 0x40, struct.pack('<I', self.TVT))
 
-    def run(self, isl_params, vertex_rows, objs, tid, x, y, rot, flags, rec8):
+    def run(self, isl_params, vertex_rows, objs, tid, x, y, rot, flags, rec8, anchors=()):
         """isl_params (x0, y0, W, H); vertex_rows: list of H+2 rows (bytes, W+1 each); objs {(x, y): id}."""
         x0, y0, W, H = isl_params
         w = self.w
@@ -160,6 +165,9 @@ class Harness:
         for (tx, ty), o in objs.items():
             if x0 <= tx < x0 + W and y0 <= ty < y0 + H:
                 struct.pack_into('<H', tiles, ((ty - y0) * W + (tx - x0)) * 8, o)
+        for (tx, ty) in anchors:                     # tile byte 3 bit 7 (the anchor bit)
+            if x0 <= tx < x0 + W and y0 <= ty < y0 + H:
+                tiles[((ty - y0) * W + (tx - x0)) * 8 + 3] |= 0x80
         w.mem_write(self.TILES, bytes(tiles))
         hb = b''.join(vertex_rows)
         self.hbytes = len(hb)
@@ -184,12 +192,13 @@ def vertex_rows_for(isl_params, vertex):
     return [bytes(vertex(x0 + c, y0 + r) for c in range(W + 1)) for r in range(H + 2)]
 
 
-def compare(h, reg, isl_params, vertex, objs, tid, x, y, rot, flags, rec8, stats, bad):
+def compare(h, reg, isl_params, vertex, objs, tid, x, y, rot, flags, rec8, stats, bad, anchors=()):
     x0, y0, W, H = isl_params
-    ref_isl = pr.Island(x0, y0, W, H, vertex, lambda tx, ty: objs.get((tx, ty), 0))
+    ref_isl = pr.Island(x0, y0, W, H, vertex, lambda tx, ty: objs.get((tx, ty), 0),
+                        lambda tx, ty: 1 if (tx, ty) in anchors else 0)
     verdict, reason, rb = pr.place(ref_isl, reg, tid, x, y, rot, flags, rec8)
     try:
-        got, gb = h.run(isl_params, vertex_rows_for(isl_params, vertex), objs, tid, x, y, rot, flags, rec8)
+        got, gb = h.run(isl_params, vertex_rows_for(isl_params, vertex), objs, tid, x, y, rot, flags, rec8, anchors)
     except UcError:
         if verdict == pr.UNSUPPORTED and reg[tid].flags & 0x7000 == 0x3000:
             stats['not runnable (class 0x3000 reads the type HIGHMAP table at +0x234)'] = \
@@ -219,6 +228,81 @@ def registry():
         13: T(1, 2, 129, 0x84), 14: T(3, 1, 4, 0x84), 15: T(2, 3, 194, 0x4186), 16: T(2, 2, 289, 0x84),
         17: T(5, 2, 66, 0x84), 18: T(3, 3, 3, 0x3096), 19: T(1, 1, 323, 0x3A), 20: T(2, 2, 6, 0x2087),
         21: T(1, 1, 225, 0x29), 22: T(2, 2, 1, 0x84), 23: T(2, 2, 7, 0x84, True)}
+
+
+SALT_HIGHMAP = bytes([255] * 18 + [255, 255, 32, 32, 255, 255, 255, 255, 16, 16, 255, 255, 255, 255, 16, 16, 16, 16,
+                       255, 16, 12, 12, 16, 16, 255, 255, 4, 4, 255, 255])           # type 1203's Anlagen.dat record
+SQUARE_HIGHMAP = bytes([255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 12, 12, 255, 255, 4, 4,
+                        255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255][:36])   # 3x3: 6 rows x 6 columns
+
+
+def registry_mountain():
+    """registry() plus the mountain class (stream 135 coverage addendum): two mines with HIGHMAP tables (3x4 salt, 3x3),
+    rock overlays of group 0x141 with and without flag 0x10 and one of flag 0x20."""
+    reg = registry()
+    T = pr.Type
+    mine4 = T(3, 4, 3, 0x3096)
+    mine4.highmap = SALT_HIGHMAP
+    reg[24] = mine4
+    mine3 = reg[18]
+    mine3.highmap = SQUARE_HIGHMAP
+    reg[25] = T(1, 1, 322, 0x12)         # rock, coverage type
+    reg[26] = T(1, 1, 323, 0x92)         # rock, coverage type
+    reg[27] = T(1, 1, 324, 0x08)         # group 0x141 object WITHOUT flag 0x10
+    reg[28] = T(1, 1, 330, 0x30)         # STEIN-like: flag 0x20 and 0x10
+    return reg
+
+
+def random_cases_mountain(h, reg, count, seed):
+    """Mines over rock overlays: footprints that straddle 8 x 8 chunk boundaries (island origins are not multiples of 8),
+    anchor bits on random object tiles, rocks with and without flag 0x10, other buildings, and both the analysis path
+    (preview 0x2000000) and the skipped one (apply 0x1000000)."""
+    rng = random.Random(seed)
+    stats = dict(executed=0, compared=0, unsupported=0, accept=0, reject=0, mismatch=0)
+    bad = []
+    rocks = [9, 19, 25, 26, 27, 28]
+    for _ in range(count):
+        W, H = rng.randint(8, 20), rng.randint(8, 20)
+        x0, y0 = rng.randint(0, 12), rng.randint(0, 12)
+        tid, rot = rng.choice([18, 24]), rng.randrange(4)
+        t = reg[tid]
+        fw, fh = (t.w, t.h) if rot % 2 == 0 else (t.h, t.w)
+        x = rng.randint(x0, x0 + W - fw)
+        y = rng.randint(y0, y0 + H - fh)
+        level = rng.choice([0x30, 0x30, 0x40, 0x20, 0x10])
+        grid = {(vx, vy): level for vy in range(y0, y0 + H + 2) for vx in range(x0, x0 + W + 1)}
+        for (vx, vy) in grid:
+            if vx == x0 + W or vy >= y0 + H:
+                grid[(vx, vy)] = 0
+        if rng.random() < 0.3:
+            grid[(x + rng.randint(0, fw), y + rng.randint(0, fh))] = rng.choice([level + 4, level + 12, level + 16, level + 0x20])
+        vertex = lambda vx, vy, g=grid: g.get((vx, vy), 0)
+        objs, anchors = {}, set()
+        p_obj = rng.choice([0.0, 0.3, 0.7, 1.0])
+        for dy in range(fh):
+            for dx in range(fw):
+                if rng.random() < p_obj:
+                    objs[(x + dx, y + dy)] = rng.choice(rocks) if rng.random() < 0.9 else rng.choice([1, 2, 11])
+                    if rng.random() < rng.choice([0.2, 0.8, 1.0]):
+                        anchors.add((x + dx, y + dy))
+        if rng.random() < 0.5:
+            # coverage focus: make every footprint tile of some chunks a KEPT tile (a coverage rock with its anchor set)
+            for ch in {((x + dx) >> 3, (y + dy) >> 3) for dy in range(fh) for dx in range(fw)}:
+                if rng.random() < 0.5:
+                    for dy in range(fh):
+                        for dx in range(fw):
+                            if ((x + dx) >> 3, (y + dy) >> 3) == ch:
+                                objs[(x + dx, y + dy)] = rng.choice([9, 19, 25, 26])
+                                anchors.add((x + dx, y + dy))
+                    if rng.random() < 0.3:                  # ... except one tile that is not kept (the legal neighbour)
+                        dx0, dy0 = rng.randrange(fw), rng.randrange(fh)
+                        if ((x + dx0) >> 3, (y + dy0) >> 3) == ch:
+                            anchors.discard((x + dx0, y + dy0))
+                            if rng.random() < 0.5:
+                                objs.pop((x + dx0, y + dy0), None)
+        flags = rng.choice([0x2000000, 0x2000000, 0x1000000, 0x8000000, 0x400000 | 0x2000000])
+        compare(h, reg, (x0, y0, W, H), vertex, objs, tid, x, y, rot, flags, rng.choice([0, 0x20, 0x30]), stats, bad, anchors)
+    return stats, bad
 
 
 def random_cases(h, reg, count, seed):
@@ -327,7 +411,7 @@ def run_vectors(h, path):
             o = c['original']
             verdict, reason, rb = (pr.ACCEPT, '', int(o[1])) if o[0] == 'accept' else (pr.REJECT, o[1], 0)
         try:
-            got, gb = h.run(isl, rows, c['objs'], tid, x, y, rot, flags, rec8)
+            got, gb = h.run(isl, rows, c['objs'], tid, x, y, rot, flags, rec8, c.get('anchors', ()))
         except UcError as e:
             if verdict != pr.UNSUPPORTED:
                 raise
@@ -362,7 +446,18 @@ def main(argv):
     print('AnnoGame.dll sha256 %s' % h.game_sha)
     print('static globals after 0x1007b340 / 0x1007b3a0: [0x100e339c] = %r (f32)' % h.threshold_global)
     try:
-        if argv[1] == 'random':
+        if argv[1] == 'mountain':
+            reg = registry_mountain()
+            h.set_types(reg)
+            n = int(argv[2]) if len(argv) > 2 else 5000
+            seed = int(argv[3]) if len(argv) > 3 else 21
+            s, b = random_cases_mountain(h, reg, n, seed)
+            print('mountain (coverage): seed %d' % seed)
+            print('  ' + ', '.join('%s %d' % kv for kv in sorted(s.items())))
+            for rec in b:
+                print('  MISMATCH', rec)
+            bad = s['mismatch']
+        elif argv[1] == 'random':
             reg = registry()
             h.set_types(reg)
             n = int(argv[2]) if len(argv) > 2 else 5000

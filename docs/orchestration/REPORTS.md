@@ -7356,3 +7356,1396 @@ the "true boundary"/"inside box" characterizations for every search.
   without claiming they decide the OQ - both are on the true on-screen boundary and still above the
   stated clean-match/atlas-under-content bars, so a stronger claim would overstate what a boundary
   result can show.
+
+## MAP-INTEGRATE-2 S — shared-folder checkpoint — 2026-11-11 — status: WAITING ON OWNER, NON-BLOCKING
+
+Started `task/MAP-INTEGRATE-2` from fetched `origin/main`
+`03bf2b3cf6a7779e559c6dd3669ee24cccccb2ae`, in the new owned worktree required by the packet.
+The completed MAP-ROUTE-1 worktree remains clean at `a736361a`; no input branch or other executor's
+worktree was changed.
+
+The expected Mac folder `/Users/dom/open1503-share` is not present, so the owner has not yet made
+the accepted Receive Only folder available at the packet's required path. The packet makes S
+non-blocking: file listing, total-size accounting, sync-state verification and bundle-to-`SHARE-LOG.md`
+hash comparison are therefore **NOT_RUN (required external owner action)** at this checkpoint. No
+device ID, Syncthing configuration or share content was written to git, and nothing was written to
+the share. S step 5 will be revisited before E if the folder appears.
+
+### Decisions and reasoning
+
+- Continued to P instead of waiting. The packet explicitly says S runs alongside and blocks
+  nothing; the missing path is direct host evidence that the verification prerequisites are not
+  yet available.
+- Did not probe or publish Syncthing device identifiers. The PC-side share is already recorded as
+  complete, the remaining acceptance belongs to the owner, and the packet forbids putting a device
+  ID in this public repository.
+- Classified the verification as NOT_RUN rather than a failure or a pass. There are no files or
+  sync state to inspect at the specified path, so any count, size or hash verdict would be invented.
+
+## MAP-INTEGRATE-2 P — preflight — 2026-11-11 — status: DONE
+
+The owned branch starts from fetched `origin/main`
+`03bf2b3cf6a7779e559c6dd3669ee24cccccb2ae`; packet blob
+`2139d7b7bb4c61cb77de7ebf81b61afc4ecd9544`. Both frozen input commits exist.
+Re-measured merge bases:
+
+- `origin/main` ∧ `49ffcee6` = `e0bb6be7bd26dddd53d2f7e69ae29651fc5c49b9`;
+- `origin/main` ∧ `a5a3bca3` = `70d311cde090e4d34ccaa486861a58982fee31c8`;
+- `a5a3bca3` ∧ `49ffcee6` = `70d311cde090e4d34ccaa486861a58982fee31c8`.
+
+The named public CI inputs are complete and successful at their exact heads: run `42360092553`
+at `49ffcee66f5bdb678e4e165112abacccd84e727a` and run `42804157700` at
+`a5a3bca35c781231ab8d52205a5a1117b4cce23f`. `gh` is not installed; these fields were read from
+GitHub's public Actions API, as the packet's fallback permits.
+
+Mandatory reading completed from the fetched/current objects: `CLAUDE.md`, PLAN 0.1–0.3 and 7,
+the evidence contract and testing README, owner rules, MAP-ROUTE-1 and protocol §1, STATUS, the
+whole integration packet, each input's final report/spec/research/consumer/evidence records, state
+and stream contracts, and MAP-INTEGRATE-1's integration record. Input boundaries confirmed:
+route-only 136 is based on 134 and has F075/F076 plus route fields; 137 contains salt 135 plus iron,
+the Quarry payload/claims and mason goal bytes, but no route; neither published identity may be
+relabeled as 138.
+
+Host observation before the first build: Mac arm64, 18 logical/18 physical CPUs, 51,539,607,552
+bytes RAM, 1.6 TiB free, load 3.89/2.88/3.17. Syncthing and desktop applications were active, but
+there was no observed owned build/test campaign. Expensive lanes will remain serialized with four
+build/test jobs and admission control enabled. The licensed game files remain read-only at
+`/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1/game/app` and will be
+supplied through `ANNO1503_GAME_DIR`; they are not copied into this worktree.
+
+Canonical cheap checks: the first preflight invocation failed before any build/test because the
+shell could not find `cmake`; this result is retained as an environment-path failure. With the
+documented Mac tool directory on `PATH`, `run_selected.py --preflight-only` passed its 25 verdict
+contracts and test-name check, and `workflow_test.py` executed 21 tests with zero failures.
+
+### Decisions and reasoning
+
+- Kept four-job concurrency. The host has 48 GiB but several interactive applications are active;
+  the prior calibrated Mac packages used four jobs, and no new measurement justifies increasing it.
+- Treated the missing `gh` binary as a tooling fact, not a reason to skip CI verification. The
+  packet explicitly authorizes the public API fallback, whose returned head SHA and conclusion tie
+  each result to the frozen input.
+- Preserved the first preflight failure. It did not execute a project test and was corrected by
+  selecting the repository's documented Mac tool environment; deleting or presenting it as an
+  executed-pass result would violate the evidence contract.
+- Kept A6 option B at this stage. The packet expressly assigns that disposition until an owner
+  answer arrives before I5; changing it in P would be an unauthorized persistence decision.
+
+## MAP-INTEGRATE-2 I0 — state-138 contract — 2026-11-11 — status: DONE
+
+Before either authorized merge, froze the combined contract in
+`docs/sim/gameplay-integration.md` at documentation head `a5d1d0bd3cec1fc85428a6295b5ac3101d3f86d8`.
+The measured input inventory is Route 96 paths, Extract 183, shared 42, Route-only 54 and
+Extract-only 141. Merge-tree predicts 3 conflicts from current main to Route, 23 from current main
+to Extract and 23 between the two inputs. The contract maps all ten required interactions: saved
+state, commands, every payload caller, goods/cargo, shared walks, the complete unchanged draw
+timeline, Rules/registry digests, every current13x folder and consumer, later main changes and
+OQ-552–556.
+
+State 138 retains ECONBK1, replay frame 4, command wire 1 and PRNG timeline 5. Rules append the
+three freight u32 fields once. Building payload appends Quarry tag 9. A mason's two goal bytes stay
+conditional on job 0x2c, followed by resident state, freight generation and optional freight state.
+The structured refusal table keeps real native/replay 134, 135, 136 and 137 artifacts distinct and
+separates replay-header, embedded-native and damaged-envelope controls. Main's
+`econbook1/current133`, `econbook1/current134`, `expand1/current134`, plus the input 135/136/137
+folders remain historical inputs; current consumers move to a separately reviewed `current138`.
+
+Independent reviewer `/root/integrate2_i0_review` reviewed exact pin `a5d1d0bd`, independently
+re-measured the ranges/conflicts and inspected both inputs and current callers: **APPROVED**, no
+unresolved findings. Four findings were corrected before approval: the full DrawSite order replaced
+a mislabeled four-site observation subset; the goods row now distinguishes existing GoodsInfo from
+new chain reachability; main's current133/current134 folders and economy-loop consumer are explicit;
+and the refusal prose is now the packet-required table. Game-file tests: **NOT_RUN**; I0 accepts no
+runtime game-file proof. Canonical runtime counts are therefore selected=0 / executed=0 / failed=0 /
+empty=0 / skipped=0, classified as not selected for this pre-merge documentation package, not as a
+passing runtime gate.
+
+### Decisions and reasoning
+
+- Fixed the field order before resolving conflicts: the Route and Extract inputs each append at
+  different nested scopes, so preserving both append-only contracts is possible without reusing a
+  tag or moving an old field. The exact input `state_fields.hpp` implementations and their
+  `field_count` assertions are the primary evidence.
+- Kept command wire 1 and replay frame 4. Extract changes what existing Build can construct but adds
+  no body/tag; Route alone appends body alternatives 12/13 and F075/F076. A new envelope identity
+  would claim a format change that did not occur; native 138 is the correct discriminator.
+- Required an app Quarry visitor even though the packet's feature work is mainly sim-side. Main's
+  `DescribePayload`/`payload_kind_name` are exhaustive over `Building::Payload`; omitting Quarry
+  would be a concrete current-main caller defect, not an optional UI extension.
+- Kept PRNG timeline 5 after inspecting the complete DrawSite enum and both source diffs. Neither
+  feature adds or calls a draw; changed real-run counts may still arise from scheduling and walk
+  trajectories, so R5 and the affected Extract proofs must be remeasured rather than forced.
+- Preserved every 133–137 folder rather than renaming a predecessor. Current-identity tests,
+  `economy_loop_test`, scenario/golden helpers, stream tools and replay registrations all consume
+  behaviour, so all must explicitly move or rebaseline to reviewed 138 data.
+- Treated every reviewer finding as actionable and obtained re-review at the corrected pin. No merge
+  started while I0 review was pending; I0 approval now releases I1's exact `49ffcee6` then
+  `a5a3bca3` merges.
+
+
+## MAP-ROUTE-1 R0 — adopted accepted base (2026-11-06)
+
+Ownedtask/MAP-ROUTE-1-main starts exactaccepted e0bb6be7, dispatch049b0270 /
+TASKSblob2c27c486. Completed expansiona4617184 and all prior branches/evidence
+preserved; movingmain not merged. R0 plan/host/input/baseline independently
+APPROVED at ea7da855 by expand_e0_review. CanonicalcheapDebug6/6, seven required
+contracts separately1/1, all other outcome categories0. All472 original inputs and
+manifest match accepted inventory. Raw/source/binary/inventory/cache receipts in
+cache/route1/R0. [Plan](../sim/ship-trade-routes.md). Route-only136 reserved,
+not salt135; current runtime still134. R1 original contract/reference is released
+and in progress; no runtime/schema change yet. Ordinary ownedbranch checkpoint
+publication follows owner rules; no main push, other-lane intake or UI change.
+
+
+## MAP-ROUTE-1 R1 — original contract and reference approved (2026-11-06)
+
+Tested source cc440c5150376fe5fda2d5230a2c06d423d447bd; independent reviewer
+/root/expand_e2_review approved the actual original bytes/callers, adapted clock,
+commands/schema and40 hand-derived vectors. Canonical02 1/1 plus eight separate
+prerequisites, CLI23; all other outcome categories0. Raw/receipt/first failures
+remain cache/route1/R1, review cache/route1/reviews. Actual unmodified134 native
+and pinned old-reader6/6 are preserved. R2 released; runtime still134 at this
+checkpoint. Reserved136 is route-only, excludes salt135 and moving main. No
+original-runtime or Windows/Linux gate claim; no src/app/other-worktree edits.
+
+
+## MAP-ROUTE-1 R2 — commands/native approved (2026-11-06)
+
+Independent expand_e0_review APPROVED f1dbf910; runtime/schema e1a1ddb1. Route-only
+136 excludes salt135. Typed append-only commands/query/control, complete explicit
+native state, validated counts/cursors, shared manual cargo validation, takeover
+and end cleanup. Six independent byte cases,25 future-field perturbations and
+six focused public/prepared-state cases. Canonical01 preservedFAIL103pass/3stale
+test assumptions; corrected canonical02 32/32 plus eight required separately,
+all other categories0;103 unaffected passes reused with identical runtime.
+Receipt/rawSHA42ab6ed1aef9739b75d67cdefff42c35c7934e740fabc052881fb7edfeaabffa.
+Actual old/new G2 no-route field/scopes/PRNG projection verified; current136
+recordings genuinely produced, all134 history preserved. R3 released; scheduler,
+real automatic proof, current sanitizer and final acceptance remain pending.
+
+
+## MAP-ROUTE-1 R3 — automatic visits approved (2026-11-06)
+
+Independent expand_e2_review APPROVED92264de4. Real serial visits now perform
+matching-order sailing, integer waits, bounded scan/transfer progress and shared
+safe cargo commits; host observations are separate from authority.19 independent
+cargo vectors run through production scheduler calls; short two-cycle sailing,
+range refusal, same-tick ingress and reachable partial native suffix controls.
+Review found hidden action-walk and node-set cleanup costs; fixed with current-
+goods checks and incrementally initialized reserved POD heap/buffers, preserving
+all136 bytes. Canonical02 18/18 plus eight required separately, all other0;
+prior115/115 at99d34ad7 retained/reused only for unchanged dependencies. Receipt
+rawSHA68aa9d7011003320b546e293c45db5132703fe04e284939cb3d4b25c3a6e17d6.
+R4 released. Original-data two cycles, final cuts/replay/scale and sanitizer
+acceptance are still pending. No salt135/main intake, original loadout edit or UI
+change. Route-only136 remains separately reserved from the future combined main.
+
+
+### MAP-ROUTE-1 R4 — approved lifecycle and adversarial checkpoint
+
+Source2a82870e, independent `/root/expand_e0_review` APPROVE. Canonical31/31
+plus eight required separately, all other categories0,2.18s; rawSHA
+cece2a472b7aa272a877355a38472116e40533ebba110563f8448af918ebb11b.
+Six legal controls then six intended assertion failures (arrival bypass, wrong
+warehouse, credit-only, duplicated quantity, stale order, lost reload cursor);
+per-mutant binary/source hashes in supplementalfaults02, final source restored
+and rebuilt,27/27 legal cases. Original gate receipt preserved before relink.
+Public lifecycle, authority, per-owner goods, stable rebuilding/end cleanup and
+Found/manual takeover reviewed. No original canary claim yet; R5 released.
+Retain route-only136/ECONBK1/PRNG5/replay4/command1/native1, no salt/default/UI
+intake. Read MAIN-CI-1 at fetched96775da4 withoutmerge; applicable portable
+repairs will be a separate adapted/reviewed commit, excluding134 fixture pins.
+
+
+### MAP-ROUTE-1 — portable CI repairs approved without identity integration
+
+Source052d7143, independent `/root/expand_e2_review` APPROVE.15 applicable
+portable files from d1a2e191..92e4817b, no moving-main merge or134 fixture/board/
+salt/default/UI intake. Canonical01 98passes/1stale header failure, preserved;
+header-only correction and explicit134 refusal canonical03 1/1+2 separate, all
+other0;98unchanged passes reused explicitly. Diagnostic-only second attempt
+retained. Historical economy133 pins remain stale/unaccepted for136, not copied
+from main134. Exact receipts/review in route1/ci-intake and route1/reviews.
+R5 released; automatic original proof still pending.
+
+
+### MAP-ROUTE-1 R5 — original automatic production freight approved
+
+Tested007d595e, independent `/root/expand_e2_review` APPROVE; current table
+wording corrected afterward. Canonical1/1 (69742assertions), five required
+separately, allother0,162.47s; exact18hashreceipt and472unchanged input checks.
+Two3t automatic source/debit→receiver/credit cycles preserve inherited26t; first
+made1120 minusfirst768 leaves352, proving second768 requires≥416newmadewood.
+Original first2t premise failed faithfully; measured public collection plus29/3
+recipe fixes setup only, no gameplay/resource/identity change. Both failed full
+pilots and all short probes preserved. Human30000−1000construction−255cityupkeep
+=28745; otherowners unchanged, allgoods/city/raw/cart/tree terms close. Same1310
+Build refuses before and succeeds after; dest1280rawwood remains. NoProdexport0
+and inheriteddelivery1536 are explicitly unproductive. Five full native suffixes
+match,790entry genuine/one-byte legalchanged logs recorded. Fresh CLI/Release/
+SAN stillpending; R6 released. Route-only136 remains based134 withoutsalt135.
+
+
+### MAP-ROUTE-1 R6 — approved replay, continuation, scale and consumer contract
+
+Independent `/root/expand_e0_review` APPROVE testedcode73eb40eb/docs7cdc4cbd.
+RegisteredDebug3/3+five contracts separately (oneproducer/twofreshchildren),
+Release1/1+five contracts, allother0. Honest11/11; legalchanged29→28 matches3/4
+and diverges491; singlebytecausality independentlydecoded. Fivefullnative
+suffixes/R5trajectoryreused byte-for-byte.11producerartifacts,16Debug/seven
+Release receipt hashes verified.7shortscale samples/1400timings, allninefreight
+workfields8/8 equal acrossunrelatedworldsizes. Whole-scheduler timing and64route
+NAVbackpressure explicitly not linear/equal-work latency or late-game proof.
+Consumer card docs/testing/automatic-freight.md preservesmanualcard and defines
+Windowsadapter only;noappchange. Preservedcrowded-dockOutOfRange and default
+synthetic512-bound failures; onlyfixturegeometry/dimensions corrected, noRules.
+R7released: freeze149focusedDebug/152SAN(withonecurrentoriginalproducer+twoCLI),
+eightcontracts separately, freshintegrationreview;1200sdeclared from measured
+Debug/SANratio. No completion/SANclaim yet. Route-only136/no135 unchanged.
+
+
+### MAP-ROUTE-1 R7 — final local gates complete; handoff review
+
+Finaltested6fd98db3; code/tests/refs/tools73eb40eb unchanged. Debug149/149 +8
+required; ASan/UBSan152/152 +8, allfailed/empty/skipped/incomplete/SANcounts0.
+Originalproducer537.05s/69745assertions; honest11/11 andlegalchanged3/4at491
+complete in120.63/88.52s; totalSANselection698.98s. Ten native/log/eventfiles
+equalDebug,472originalfilesunchanged, all18SANreceipt hashes verified byfresh
+`/root/expand_boundary_review`. RawSAN SHA
+a24ba60ef39446a4cf2f8f9daea17ebdc291f52b8fe80fa73f10d94e049067c7.
+Publishedcompactreceipts andconsolidatedreviewhandoffcommittedforfinalreview;
+remainingonlydocumentationapproval/push. Historic econ133loop NOT_RUNfollowup
+ownedbyorchestrator/nextidentityintegration; routeall-citymoneyproofcomplete.
+Real135artifact/Windows/Linux/originalruntime/liveUI/GPU NOT_RUN. Route-only136
+based134/no135 unchanged. Noownedjobs/sleepassertionremain,sharedcoordinator
+untouched; nopushmain/merge/reset/rebase/otherlanechanges.
+
+
+### MAP-ROUTE-1 final — R0–R7 local candidate approved
+
+Fresh `/root/expand_boundary_review` APPROVE: code/tests/refs/tools73eb40eb,
+tested6fd98db3, committedhandoff111cf6f2. No blockingP1/P2. Debug149/149 and
+SAN152/152 +eightrequiredseparately;exactpublishedreceiptobjects/18SANhashes/
+tenbinary-eventparity/original472files independentlyverified. Finaldocs-only
+recordconverts pendinghandoffreviewtoactualapproval, no code/test/ref/tool edits.
+Consolidatedhandoff docs/orchestration/reviews/2026-11-06-map-route1.md;consumer
+card docs/testing/automatic-freight.md. Remainroute-only136/based134/no135;
+Windows/Linux/originalruntime/UI/GPU andstalehistoricalecon133loop NOT_RUN with
+explicitowner/acceptance. Expansionbranch/evidencepreserved. Ordinaryownedbranch
+publicationauthorized;stopwithoutmainintegrationorotherexecutorwork.
+
+## MAP-NEEDS-2 — 2026-11-06 — PARTIAL (cloth chain COMPLETE in scope; hunting BLOCKED on the wildlife-lifecycle owner decision)
+
+Executor: first Mac. Successor branch `task/MAP-2-needs2-main` (base `origin/main` `5f6092b4`; main has since gained only the docs commit `3b74201f`, not rebased). Tested source head `e337c75d`; the commit carrying this report follows it (docs only). The old branch `task/MAP-2-original-like` is intact at `31eed816` (stream-130 line). Local only: no push, merge or rebase. Detailed record: `docs/sim/early-needs.md` (sections 1-15), `docs/re/hunter.md`.
+
+**Status: PARTIAL.** Delivered and gated: sheep/grazing -> wool -> weaver -> cloth -> 1314 stall -> households (real producers on the original Tutorial island-7 town, zero-start, ledger-reconciled, controls, interruption and recovery), and a LABELLED synthetic hide -> tannery -> leather -> stall -> households mechanics fixture. Not delivered: hunters producing hides. The wildlife lifecycle (fauna sweep with world draws `0x10093480`/`0x1009366f`, creation `0x10092ca0`, route-62 animal class, two flag bits, HIRSCH loader `0x100946c0`) is not ported and not read further; the hunter building (805) and job 0xd stay inert; rows H1-H5 read "blocked on wildlife lifecycle: owner decision required". The Q3 hunter tick arithmetic is decoded read-only (`hunter_vectors.txt`, 17 vectors, `tools/hunter_ref.py`) with no engine counterpart. No real-file leather proof exists and none is claimed.
+
+**Pins.** Identity unchanged: state 132 / SIMINT1 / PRNG timeline 5 / replay frame 4 / command wire 1 (the old line moved 129 -> 130 for Farm animals harvesting and the refusal of route 0x2d; main's 132 subsumes it). Behavioural pins identical at 130 and 132: first cloth 99,750; wool 3,187; weaver 1,506 made / 2,761 consumed; cloth store 348, taken 1,086; control taken B 1,017 / C 512 / D 0; recovery R made 895 -> 984; leather first in store 26,250, made 1,337 (28 + 1,309 loaded; 504 stored + 805 taken), 8 houses; controls 784/574/4. State hashes re-pinned at 132 (old -> new table in early-needs.md section 14): main run `5b667895ce4c5ba5`, log checkpoints `32f4432c018b3c9d ... bbe45ae9aecc72d3`.
+
+| package | content | review |
+|---|---|---|
+| N0 | evidence, producer inventory, scene audit, acceptance table | changes required, then fixed |
+| N1 | cloth/hunting contracts: `tools/early_needs_ref.py` + 112 vectors, contract test, mutation of the reference | changes required, then approved with P3 |
+| N2 | sheep farm in the engine (route 46 Farm animals harvest, 0x2d refused), stream 129 -> 130 | approved with P3 (already in main to `8ff6d1ca`) |
+| N3 | cloth canary on the island-7 town | approved with P3 (folded: paid-build assertions, wording, guarded diagnostic) |
+| N4 | hunting PARTIAL and isolated (docs) | approved with P3 |
+| N5 | synthetic leather fixture, three-town isolation, rival owner, reload at four in-flight states, replay, refusals | approved with P3 (folded) |
+| consolidation | N3-N5 onto main, 132 re-pin | integration review approved with P3 (folded) |
+| N6 | identity/compatibility position, bounded Release comparison | final integration reviewer (independent, read-only): approved with P3, folded |
+| N7 | frozen gate and this report | final integration reviewer (independent, read-only) approved `aa1d893b` with P3 (no P1/P2); P3s folded in the docs-only commit that follows |
+
+Reviewers were independent read-only sessions launched by the coordinator; the executor fixed findings. **Original evidence:** parsed registry (types 807 sheep farm, 1001 weaver, 1023 tannery, 1314 stall, houses, figure types), the Tutorial scenario `02Trade01.sze`, and AnnoWelt.dll disassembly (Farm tick `0x1006ea90`, attach/detach, credit slot `0x1006ee70`, harvest job and cut `0x10054530`/`0x10087340`, hunter tick `0x10069f40`, target search `0x10071da0`, kill step `0x100547e0`); addresses in `docs/re/hunter.md` and early-needs.md. **Adaptations (not original rules):** the labelled hide stock; the synthetic mechanics fixture itself; the shared-stream coupling is measured, not designed; `Rules::house_updates` on only in the test worlds (default stays false); a stats-only workshop ledger (`ForestryStats::workshops`, never hashed or saved).
+
+**Ledgers (all unexplained terms asserted zero, scoped to the town's producer set):** cloth (grass credited 48,128 = 46,287 consumed + 817 in farms + 1,024 in hands; wool, cloth and cart terms in early-needs.md section 12) and leather (hides 5,120 + 780 + 2,292 = 8,192; leather 1,337 = 28 + 1,309; 1,309 = 0 + 504 + 805).
+
+**Artifact hashes (sha256).** Gates on head `e337c75d`: Debug `N7_debug.log` `eaa20d8c083e1931b49e70f6f61bb8a647c26511c0fef572465218eb9aa1943d`; ASan/UBSan `N7_asan.log` `fd72eb555190c051e1dfa4ca1900b01c4ec1dd9946dea095760ab358d9e1d07d`; failed ASan attempt 1 `N7_asan_attempt1_picture_matrix_contract.log` `97cf536b9d35191ba16837b218af2f0cd9945355c3c012f0077aa2129ea3f811`; earlier successor gate `S132_debug.log` `97887946553f71f9c0dc1ff88623e4cc19d5e19e74127cfb21f26b760f69a1f1`; Release scale log `cache/map-needs2/N6_scale.log` `057586b617c6430e914123e38aa1ce7220ad87f3ffaff8b39ed476957f5c599a`. Binaries: Debug `anno_sim_tests` `db5473c15a36096147dcbc74051a38ee79e5489c42f379a87a594026d61a0d8d`, ASan `0d7e8519de3804fcf6a4563a200320c364faa81bbd67092fe6a55c8047ba78c3`, Release `4b07aa8294e0f5698ec2cc32f7516c2796b120efcd086b464029a0be38a36f1e`, `anno-sim-replay` `5335ccca999bbf05fb098404bd65819ba3086b4aef9bc92778579027840c995e`. Logs and mutant scripts: `cache/map-needs2/` (git-ignored scratch; N0-N5 subfolders).
+
+**Gate counts (macOS arm64, Apple Clang, headless).** *Runner:* `tools/test/run_selected.py` of this tree, last changed at `0569b804` (recorded separately from the source head). *Debug* (`--select 'anno_sim|_reference_|vectors_agree|lint_sim|anno_formats_tests|early_needs|hunter_reference'`, 2 processes, `--asset-policy required`, no `--allow-skip`, per-test `--timeout 3000` s): selected 1,600, executed 1,595, failed 0, empty 0, skipped 5 (all opt-in), incomplete 0, sanitizer lines 0, **PASS**. Required contracts named exactly: `early_needs_reference_agrees`, `early_needs_reference_contract`, `hunter_reference_agrees`, `hunter_reference_contract`, plus the runner's compulsory `picture_matrix_contract`. *ASan/UBSan* (`ANNO_SANITIZE=ON`, selection `anno_sim_tests.(synthetic mechanics|cloth|sheep|alternate|farm dispatch|harvest|small farm|early needs|resilience|supply chain|progression K3|population live canary|state_hash|a valid stream|load refuses)`, 2 processes, timeout 3000 s): selected 112, executed 110, failed 0, skipped 2 (opt-in), sanitizer lines 0, **PASS**; the full sanitizer campaign is NOT_RUN. *Mutants:* 6 of 6 compiled mutants killed in the N5 set (plus the N2/N3 sets, all killed; one misplaced mutant survived in its first run and was re-run correctly; all logged).
+
+**Failed attempts (preserved).** N2 first Debug gate: stale `anno-sim-replay` binary (11 replay cases). N5 first gate: a semicolon in a test name refused by the preflight (renamed). Successor Debug attempt 1 and ASan attempt 1: `picture_matrix_contract` failed because `bench_picture` was not built. **The `bench_picture` binaries used for the green runs were built by hand with `-Wno-error` and are a WORKAROUND, not a clean runner pass:** main's `src/tools/bench_picture/main.cpp` fails `-Werror` (unused-but-set variables, lines 383-385) on no-GPU macOS; it is untouched main code and an open item for the orchestrator.
+
+**Compatibility.** Saves of 127-131 are refused by main's loader with `save: state stream version N is not supported (this build reads 132)`; replay logs with a different stream are refused (`replay refused: ... state stream version differs`). No migration, none added. The 130-line logs of this work are historical (`cache/map-needs2/N5/logs/`); the 132 logs are `logs132/`. The fresh-process `anno-sim-replay run` on exported logs was run BY HAND (genuine 9/9 reproduced; changed legal command diverges at entry 101; changed checkpoint at entry 505; refused-command log reproduces) and is not a CTest.
+
+**Windows delta.** The N3-N5 delta over main is test files plus a guarded stats-only diagnostic in `src/sim/src/driver.cpp` and `src/sim/include/anno/sim/transport.hpp`, and one CMake test-list edit; no OS API, no new link library. To integrate: take those 9 files. Not run: MSVC build and tests, Linux GCC/Clang `-Werror` (`tools/check_unix_warnings.sh`).
+
+**Limits.** Headless macOS only; Windows, Linux, GPU, Wine/original-game differential and multiplayer are NOT_RUN. The Release comparison (early-needs.md section 15) is one process, one thread, on a loaded host, bounded to 88 buildings (the test could not place more), with no multiplayer claim. Cloth/leather numbers are measured, finite (the grass pool regrows 43,950-49,400 ticks after a cut, right-censored), and move with any legitimate behaviour change. The Release comparison is one logged run (`N6_scale.log`) with ranges from two unlogged repeats; the reviewer's rerun at host load about 14 gave 5-8% higher times with the same counters. Final independent integration review: approved with P3, folded.
+
+## MAP-NEEDS-CLOSE-EXTRACT-1 C0-C2 — 2026-11-06 — closeout of the cloth/leather slices (hunting still PARTIAL)
+Branch `task/MAP-EXTRACT-1-main` from main `70d311cd` (state 133 / ECONBK1 / PRNG 5, unchanged) with `5df34b38` merged locally. Scoped in-flight predicates and ledgers, wrong-scope controls and mutants, component-projection disclosure, re-pinned 133 hashes with unchanged numerics (one explained cut correction, resident 508 -> 666: the old cut was a rival's walker), fresh-process replay script and receipts, Debug (98 selected / 96 executed / 0 failed / 2 opt-in skips) and ASan/UBSan (28 / 27 / 0 / 1) through the canonical gate with the `picture_matrix_contract` from a normal warning-clean `bench_picture` build. Independent review: approved with P3, folded. Details, hashes, wording corrections and the equivalent mutant: `docs/sim/early-needs.md` sections 17-19. NOT_RUN: Windows, Linux, Release, GPU, original runtime. X0-X6 (salt extraction) follows in separate entries.
+
+## MAP-EXTRACT-1 A-versus-B record: a mine with no deposit in reach (2026-11-06)
+**Decision (orchestrator): B.** A mine placement with no ore of its ware in reach is refused before payment and before any world change (`Reject::NoDepositInReach`, appended; no format or version change, 135 kept). Details: `docs/sim/salt-extraction.md` section 22; open questions OQ-552 to OQ-554.
+**A** accepted the command, charged it and created an unbound, idle mine (`Mine::deposit` absent). **B** refuses it; a command-made mine always has a deposit. Differences: accepted-command outcomes (no-ore sites now refused), the reachable states (no command-made unbound mine), recordings that would embed such a mine (none exist); no saved field added or changed.
+**Evidence (paraphrased, files and addresses only).** `help/Salzbergwerk.htm` in the GOG 2.0.0.5 English edition and in the History Edition German one: a salt mine can only be built on mountains with salt deposits; the ore, gold and gem mines and the marble quarry say the same for their deposit; the stone quarry may go on any mountain. `Salzvorkommen.htm`: a scout must discover a deposit before it can be mined; salt deposits are inexhaustible. `Texte.dat`, both editions: no placement-refusal message, only messages for a discovered deposit and for an exhausted ore deposit. Code: `AnnoWelt.dll 0x1006ddf0` is called only from the mine's city attach (`0x1006e299`) and its production step (`0x1006dfb4`), so an idle mine without a deposit is a runtime state, not proof that placement allows it; the placement cursor's own check is unread. The owner's recollection of Anno 1602 (quarries anywhere, ore and gold mines need a deposit): supporting evidence only.
+**Open:** the cursor's exact "with deposits" predicate (OQ-552), whether an undiscovered deposit refuses the placement or only stops production (OQ-553, not refused for now), the quarry's "any mountain" rule (OQ-554). The radius-7 lookup is labelled an ADAPTATION in the contract and the code.
+
+## MAP-EXTRACT-1: MAIN-CI-1 portable repairs applied (2026-11-07)
+Source: `origin/main` commits `5b387618`, `056fc126`, `3f7e64d9`, `92e4817b` (range `d1a2e191..92e4817b`; review note `docs/orchestration/reviews/2026-11-06-main-ci1.md`), applied per file as one commit on `task/MAP-EXTRACT-1-x2`; every patch applied cleanly (no overlap with this branch's own changes, so nothing needed a resolution in either direction). Identity stays 135.
+**Applied (fourteen files):** `src/sim/src/script_runtime.cpp` (the one production change: a checked reference to each player while a script transaction stages and commits, instead of re-resolving a nullable pointer and dereferencing it unchecked); `integration_identity_test.cpp` (the missing `<filesystem>` include); `small_farm_worker_test.cpp` and `small_farm_animal_test.cpp` (fixtures built in their final location through guaranteed prvalue elision, no dangling statistics pointer without optional NRVO, with pointer-identity assertions); `build_terrain_test.cpp`, `city_booking_test.cpp`, `integration_gameplay_test.cpp`, `script2_canary_test.cpp`, `script_build_test.cpp`, `script_scale_test.cpp`, `scenario_test.cpp`, `unit_import_test.cpp` (GCC warnings: references in structured bindings, unsigned literals, checked lookups); `src/test_support/tests/budget_f3_test.cpp` (the coordinator metadata pin asks for port 0 instead of 47818: test-only, in scope because it only changes which port a test binds); `tools/script_canary2.py` and the `script2_*_fresh_process` `SKIP_REGULAR_EXPRESSION` in `src/sim/CMakeLists.txt` (the SCRIPT2 fresh-process modes skip explicitly when `ANNO1503_GAME_DIR` is unset and fail when it names a missing scenario).
+**Left out, and why:** `fixtures/synthetic/sim/econbook1/current134/loop_checkpoints.txt` and the `economy_loop_test.cpp` change that reads it (state-134 economy pins: identity-touching; this branch is 135 and keeps its own re-pinned `econbook1/loop_checkpoints.txt`); the two `economy_loop_*_fresh_process` hunks of `src/sim/CMakeLists.txt` (they switch to `cmake/RunExpansionReplay.cmake`, which this branch does not have; the economy replay consumers keep their existing wrapper); `docs/orchestration/STATUS.md` and `TASKS.md` (board files). Main also added `SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set"` to the two `economy_loop_*_fresh_process` tests; this branch has none because it lacks that hunk (it belongs with the `RunExpansionReplay.cmake` hunks left out above). No original file or dump is in the diff (one source path string `Scenes/0011SingleEndlosAddon/endless01.sze` in `script_canary2.py`, as on main).
+**Gate for the repairs** (Debug, macOS arm64, headless; `run_selected.py` `0569b804`, `ctest_verdict.py` `3afbe42a`; tested source `6c162b22`; the usual selection plus `|script2` so the touched fresh-process tests are in it): selected 1,683, executed 1,678, failed 0, empty 0, skipped 5 (all opt-in), incomplete 0, sanitizer lines 0, PASS; log `cache/close-extract/ci_repairs_broad_debug.log` sha256 `41ecb389f0c81d2f0932fb700024f377b6824363cbf2bd331d001bc2ab0e7dad`. Not run: MSVC (where the farm-fixture defect showed), GCC/Clang -Werror, ASan.
+
+**CI context (from the coordinator, 2026-11-07).** Runs at `d6f7bb65` (42258075852) and `259c0840` (42281353387), before the repairs, failed: `cpp-format`, `linux-gcc`, `linux-gcc-release`, `linux-clang-asan` and `windows-msvc` failed in build, `macos-clang` failed in test. Run 42320305784 at `967093b7` (with the repairs) was in progress; its per-job results are not known to this worktree (`gh` is not installed) and are not recorded here.
+
+## MAP-NEEDS-CLOSE-EXTRACT-1 and GAMEPLAY-IDENTITY-134-135: consolidated closeout (2026-11-07)
+Branch `task/MAP-EXTRACT-1-x2`, frozen source `a1b38b3a` (everything after it is documentation). Closeout is for a fresh final reviewer; every claim below has its evidence in `docs/sim/salt-extraction.md` (sections named) and the logs named here.
+**Package verdicts and the reviewed commits** (each package had its own independent read-only reviewer; "P3" = approved with minor findings that were folded in):
+- C0-C2 (needs closeout: scoped predicates, leather re-pin at 133, fresh-process script): approved with P3; `fcdd7e76`, `7deab702`, `876275d0`, `a5ca5eee`, `7b480584`.
+- X0 (salt extraction inventory and acceptance table; pilot moved from S01_04_01 to endless02 island 1): reviewed and corrected; `18e56605`, `81c5ca0a`, `420ce2c8`, `0f9143af`.
+- X1 (mountain-class contract: terrain helper `AnnoGame 0x10008a80`, deposit rule): approved at `0d52feee`, re-review fixes `9cba071b`; **coverage addendum** (`AnnoWelt 0x1007c955-0x1007cb3d`, found missing during X2): approved with P2/P3 folded, `a8f1d087`, `0cb97ed8`, `564d5e71`, `e2953e1e`, `3d9dbafe`.
+- Identity: state-134 prerequisite (founding accounts) intake approved with P3 (`668ff3c6`, `e067d109`, `c177f391`, `ba153154`); 135 allocation approved with P3 (`869994b8`, `9a544d1d`, `0a73a0b9`, `0b77642b`).
+- X2 (mountain placement, bind at `place()`, refusal matrix, ware allowlist): approved with P3; `83db5075`, `1d09dd7e`, `5b8ee377`, `6b167e0a`, `30fe8802`, `30e23d0c`, `28c997f9`, `c1aee8c4`.
+- X3 (extraction, processing, delivery on the pilot): approved with P3; `aae147e3`, `7bac0e69`, `4593204f`.
+- X4 (interruption, isolation, lifetime, timing): approved with P3; `541aa8b2`, `86659817`, `d6f7bb65`, review fixes `b3334c78`, `bca396f2`, `259c0840`, `e60d987e`.
+- Policy B (a mine with no deposit in reach is refused before payment): approved with P3; `18da08ed`, `ceacfa97`, follow-ups `aa1e73e7`.
+- X5 (facts, continuation, fresh-process replay, bounded cost) and the MAIN-CI-1 repairs: approved with P3; `6c162b22`, `a92c471b`, `ff44b08a`, `967093b7`.
+- X6 (this closeout): P3 fold-ins `1e752311`; format-only `f1242255`; salt CTests self-contained `a1b38b3a`; **final reviewer pending**.
+**Identity ladder.** 133 (economy accounts, the consolidated baseline) -> 134 (founding accounts, coordinated stream change, intake approved) -> **135** (salt slice: `BuildingType::highmap` and, amended in place before any push, `FigureType::ware` in the registry digest; PRNG timeline 5, ECONBK1 tag, field order and draw sites unchanged). Refusals, as pinned by test `salt identity135`: a 133 or 134 native state is refused by `World::load` with `save: state stream version N is not supported (this build reads 135)`; a 133 or 134 recording by `read_log` with `stream (byte 24): replay state stream version differs from this build's`. `Reject::NoDepositInReach` was appended afterwards without any version change (a `Reject` is in no wire form, log, save or hash). The types-only real-registry digest pin moved `0x986b10f94d3725b4` -> `0xf0c98731e34fca02` through `highmap` alone (probe: with the `ware` block disabled that case still passes; corrected from an earlier attribution to `ware`); the `ware` amendment moves the figure-bearing pins (figure digest registry identity, economy loop) and every original-data world hash. Commits `869994b8` and `83db5075` carry the old `0x986b` pin and are not bisectable for that case (re-pinned in `30fe8802`); numerics unchanged (leather chain 1,337 made / 805 taken / 8 houses); regenerated digest-only (section 19.1).
+**Original rules versus adapted rules.** Proven against the original bytes (emulator, `tools/placement_emulate.py`, unicorn): the terrain helper (100,000 helper cases, 35,651,584 sampler evaluations, 0 differences), the coverage predicate (40,000 random cases, 0 mismatches, 7 negative controls), the deposit load rule (`0x100634e0`, OQ-035 b/c). **Adaptations, not proven copies:** the radius-7 reach lookup as a *placement* rule (OQ-552: the original's placement predicate for a mine is unread; `0x1006ddf0` is called only from the mine's attach and production step), no refusal on discovery (OQ-553), one shared deposit per ore tile created at bind time, imported mines inert, quarries `Unsupported` (OQ-554), the supported-ware allowlist (default SALZSTEIN), and the starter-stock/ownership semantics measured in section 19.
+**A-versus-B.** Decision B (refuse before payment) recorded above ("MAP-EXTRACT-1 A-versus-B record") and in section 22.
+**MAIN-CI-1 record.** `d1a2e191..92e4817b` applied per file (section above). Left out: state-134 economy pins and `economy_loop_test.cpp`, the `RunExpansionReplay.cmake` hunks, board files, and main's `SKIP_REGULAR_EXPRESSION` on the economy fresh-process tests. CI runs (coordinator-reported): `42258075852` at `d6f7bb65` and `42281353387` at `259c0840` failed before the repairs (`cpp-format`, `linux-gcc`, `linux-gcc-release`, `linux-clang-asan`, `windows-msvc` in build; `macos-clang` in test); `42320305784` at `967093b7` was in progress, **its per-job results are not known to this worktree** (`gh` not installed). Two CI-class findings of this closeout: 18 files of this task failed `clang-format 23.1.3` (all inside this task's own diff, none inherited) and were fixed format-only in `f1242255`; the runner rejects a fixture setup case inside a required contract, so the two salt CTests were made self-contained (`a1b38b3a`).
+**Final-review P3 fold-in (2026-11-07), source `7383b1c9`:** digest attribution corrected (highmap alone moves the types-only registry pin; `ware` moves the figure-bearing pins; `869994b8` and `83db5075` not bisectable for the registry case), every `find()` dereference in the cloth, leather and salt tests wrapped in `test_must::must` (including inline `*x.find(...)`), failed X2 logs disclosed, section 16 softened. Gates on `7383b1c9`: Debug canonical `p3_debug_gate.log` sha256 `4ea41787969891759e74505ec8056204792d96b1770dada14a595e0c26ca8ea9`: selected 1,694, executed 1,688, failed 0, empty 0, skipped 6 (opt-in), incomplete 0, PASS; focused ASan `p3_asan_focused.log` `907a98f9d7b9fdbc8e2133db34899d189576f242506c119fb3b7b73cf0f316b9`: selected 70, executed 68, failed 0, skipped 2 (opt-in), PASS; CI-condition run without game files `p3_ci_local.log` `e1723185dea0367055458f5ae8494cdc46753a985cd9adecb310f737ed8e4d1b`: selected 2,399, executed 2,053, failed 2 (the Apple-adapter GPU timestamp cases, untouched by this branch), skipped 344. NOT_RUN: GCC -Werror=null-dereference (no GCC here), MSVC, Linux, Windows, Release.
+
+**CI run 42338424211 at `eb164d8a`:** 9 of 10 jobs green (lint, test ubuntu, test windows, build-macos, cpp-format, macos-clang, linux-clang-asan, linux-gcc, windows-msvc); `cpp (linux-gcc-release)` failed in its build step with `-Werror=null-dereference` reported inside `stl_vector.h` and `stl_iterator.h` (annotations show only the log tail). Main's `linux-gcc-release` is green at `92e4817b` (run 42224003123). **Cause (reproduced in a `gcc:13.3` Docker container at the CI flags `-O3 -Wnull-dereference -Werror`, every `.cpp` under `src/sim` compiled with full logs kept in `cache/gcc13/`; the only failing TU was the branch-only `salt_placement_test.cpp`, 66 diagnostics):** `city_of()` returned `*isle(w).city(...)` unchecked and GCC inlined it into the vector iterator constructors of the loops over the city index (lines 1119, 1399, 1510, 1686, 1735, 1781, 2445 and others). The first audit pass missed it because the dereference went through `.city(...)`, not `find`. **Fix `459eb0bf`:** the three `city(...)` dereferences go through `test_must::must`; no pragma or flag. Verified: `salt_placement_test.cpp` compiles with zero diagnostics; every `.cpp` under `src/` with no GPU header dependency (351 files) is clean; the 18 files that did not compile in the container (viewer, wgpu and GPU code, untouched by this branch) lack `webgpu.h` in the Mac scratch deps, an environment gap and not a diagnostic. The container is arm64; the CI is x86_64, so this is a strong but not identical reproduction. Mac Debug canonical gate on `459eb0bf` (`gcc_fix_debug_gate.log` sha256 `d0a885becfbc8ec49d333769bb0415eec4f7c6f98bd441aea6755c957c12af4e`): selected 1,694, executed 1,688, failed 0, empty 0, skipped 6 (opt-in), incomplete 0, PASS. ASan not rerun (a test file changed only by adding `must`; no source outside tests changed). The docker run used an existing local image; nothing was installed.
+**CI run 42356856527 at `5939efc7` (read through the public API; these jobs ran on x86_64 GitHub runners):** all 10 jobs green: lint, build-macos, test (ubuntu-latest), test (windows-latest), cpp-format, cpp (macos-clang), cpp (windows-msvc), cpp (linux-gcc), cpp (linux-gcc-release), cpp (linux-clang-asan). CI covers compilers and synthetic tests only (no original files); native Windows/Linux runs with the original files, Release with original data and the full sanitizer campaign stay NOT_RUN.
+**CI run 42368776369 at `9a094b05` (faithful default; read through the public API, x86_64 runners):** all 10 jobs green: lint, build-macos, test (ubuntu-latest), test (windows-latest), cpp-format, cpp (macos-clang), cpp (windows-msvc), cpp (linux-gcc), cpp (linux-gcc-release), cpp (linux-clang-asan). Same scope limits as the previous run: compilers and synthetic tests only, no original files.
+**CI run 42360315619 at `fa100f8f` (FAILED; recorded late):** nine jobs green; `cpp (linux-gcc-release)` failed in its test step. Failing test (per the orchestrator's reading of the run's test-evidence artifact): `anno_test_support_tests` "V3: the predecessor journal states: clean ones start, outstanding or unprovable ones refuse without touching a byte", `budget_f5_test.cpp:998-1008`, 6 failed assertions (the start text did not begin with `JOURNAL-REFUSED`); COUNTS selected=2393 executed=2050 failed=1. Attribution: a MAIN test (coordinator budget test), not this package; this branch does not touch `budget_f5_test.cpp` or the coordinator. The same code passed at `5939efc7` and `9a094b05`. Probable cause (not proven; the test does not print the text it received): coordinator test ports inside Linux's ephemeral range (fix `e5d0b877` on the unmerged branch `claude/dreamy-brahmagupta-10bjax`). Treated as a flake candidate, NOT as a pass, and not rerun to obtain a green; that fix is not imported here.
+**CI run 42373041769 at `bd725d4e` (read once through the public API, x86_64 runners):** all 10 jobs green: lint, build-macos, test (ubuntu-latest), test (windows-latest), cpp-format, cpp (macos-clang), cpp (windows-msvc), cpp (linux-gcc), cpp (linux-gcc-release), cpp (linux-clang-asan). Scope as before: compilers and synthetic tests only, no original files.
+
+**Note on the X3 counts below:** 18,200 made, 17,836 lifted, 6,068 taken and the other X3 totals are measurements printed in MESSAGE output of the tests, not asserted literals; the tests assert relations (ledger terms zero, counterfactual arms deliver only the preload, taken exceeds the preload).
+
+**The exact successful loop, and its limits.** On endless02 island 1 (city 0 of player 8, 82 stage-0 houses): a public `BuildCmd` places a salt mine at a legal site with a deposit in reach; the mine binds the shared deposit (2,000 t, flagged, never drawn down); the saltworks' own carrier lifts the ore (the mine has no carrier); the markets' carts lift the salt to the city store; the stalls sell it; the households buy and receive it (X3: 17,836 units lifted from the mine, 6,068 taken by households against 5,120 preloaded; every ledger term zero; counterfactual arms deliver only the preload). Limits: only stage-0 households are exercised; only the pilot's road layout; reach is a property of the site (sampled, not enumerated over the 356 legal sites); no depletion (salt is deep and flagged), no iron, gold, gems or quarries; a rebuilt/second market type is not buildable for the player; the diagnostic produced total is not saved state; the mechanism of the `FarmWorkerDispatch` count difference after long outages is inferred (slot-order tie-break, not read).
+**Evidence index** (sha256, first 16 hex): `fixtures/synthetic/sim/mine_terrain_vectors.txt` `d71b90ce7e59dbd2`; `fixtures/synthetic/sim/mine_coverage_vectors.txt` `d79cd4fb72a40103`; `tools/placement_emulate.py` `e3bf6cadbdfca573`; `tools/placement_ref.py` `15fcf70c91f95702`; `tools/mine_terrain_ref.py` `834c64f0591cb395`; `fixtures/synthetic/sim/salt1/current135/{provenance.json,goldens.txt,scenario_corpus.txt}` `701dc885de0e7b3e`, `fe5f81da2e9c3473`, `9f7fe981dc15d1b7`; git-ignored receipts under `cache/close-extract/`: `endless02_i1.txt` `cf79ba42986b7e8c`, `pilot_recount_coverage.txt` `133f900b49f773ed`, `coverage_negative_controls.txt` `a1b61d23d2897a10`. Gate logs (full sha256): `X2_broad_debug3.log` `5a5a7edc60d59c882bd2c7cbb7f2c6450e9732c66e113b5192bd4be005b6ab60`; `X3_broad_debug2.log` `61cb033c638b23850bf3315a1cbc33ed4ee4d594794821a7b5b2dc5577d2f8f5`; `X4_broad_debug_final.log` `1e3c29531ee2bd64b7096210f046007fbbd22a61229d086a985bdbd3c3ea1355`; `B_broad_debug.log` `20b0313b227eb3921605f6b7ae4328bce7e1737b835c67dbcea465db2afa3426`; `final_broad_debug.log` `e7ce4e08acea26f2b7c91b66e9059ede872ce1077ac683bba1600a51b3c9363b`; `ci_repairs_broad_debug.log` `41ecb389f0c81d2f0932fb700024f377b6824363cbf2bd331d001bc2ab0e7dad`; `x5_broad_debug_2.log` `2fe93f1e2ee7e563f9e301a9701eb7218320f8516cf47ab27c1aa435b102de25` (first attempt `x5_broad_debug.log` `8cb2fbbe2c0702f219a0586866aec3bd860eb60dc911479073542b2c38f5b6a1`, failed). Failed X2 attempts, kept: `X2_broad_debug.log` `5942ba138ed7d9dc5cdb4f847e089554937b9eea02e78dcfdc5c1fb3360cefee` (VERDICT FAIL, failed tests: selected 1,653, executed 1,643, failed 5, the digest-driven pins of section 19.1) and `X2_debug.log` `23897f14750ee41376b6779e77145e8891e187384afb8ef822ab721da9125b03` (VERDICT FAIL, tested source changed during selection, after the registry case failed).
+**X6 frozen verification (source `a1b38b3a`; host: Apple Silicon macOS, own processes only, load average 1.6-2.5 when the Debug gate started).**
+- *Format:* `python3 -m venv` + `pip install clang-format==23.1.3` in a scratch directory (nothing on the system touched); the CI step `find src -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror` reported 18 files, all in this task's diff; fixed by `clang-format -i` on exactly those files (`f1242255`, format-only, no semantic change); the same command afterwards: 0 findings.
+- *Evidence preflight:* `tools/test/run_selected.py --preflight-only` PASS and `tools/test/workflow_test.py` 21 tests OK.
+- *Apple Clang -Werror:* the macos-clang job's configuration (`cmake -S . -B <scratch> -G Ninja -DCMAKE_BUILD_TYPE=Debug`, viewer and GPU on, warnings as errors from `cmake/AnnoWarnings.cmake`) built completely, 650 steps, exit 0, no warning other than the linker's duplicate-library note, at `f1242255`; the headless tree (`build/mac-headless`, viewer and GPU off) also built all 211 targets clean. Not run: GCC/Clang 18 `-Werror` (`tools/check_unix_warnings.sh` needs GCC 13).
+- *Debug canonical gate:* first attempt `x6_debug_gate.log` sha256 `c7d6ae39c11cd1bc31b5ee1a832c72c215d2a08854902352e325013716e8920d` FAILED (workflow, not a test: required contract `salt_chain_fresh_process` carried a CTest fixture setup case that the runner flags as unexpected); fixed in `a1b38b3a`; second attempt `x6_debug_gate_2.log` sha256 `e28aa70773b125e1f3e2ce9ff3d3365d7aa60d390b4fe2d3c032d61cae2720f8`: selected 1,692, executed 1,686, failed 0, empty 0, skipped 6 (all opt-in), incomplete 0, sanitizer lines 0, **PASS**. Runner revisions `run_selected.py` `0569b804`, `ctest_verdict.py` `3afbe42a`. Selection `anno_sim|_reference_|vectors_agree|lint_sim|anno_formats_tests|early_needs|hunter_reference|highmap|mine_|placement_|script2|salt_chain`, 8 jobs, timeout 3000 s, `--asset-policy required`, required by exact name: `highmap_digest_reference_agrees`, `mine_terrain_reference_agrees`, `mine_coverage_reference_agrees`, `placement_reference_contract`, `figure_digest_reference_agrees`, `salt_chain_fresh_process`, `salt_chain_changed_command_fresh_process`, plus the runner's `picture_matrix_contract`.
+- *ASan/UBSan gate* (`build/mac-asan`: Debug, `ANNO_SANITIZE=ON`, viewer and GPU off; Apple Clang): `x6_asan_gate.log` sha256 `fc0238ee390c61388c3d608ddd8afa20f8449becffce0b068480a6cd4808d1b7`: selected 260, executed 257, failed 0, empty 0, skipped 3 (opt-in), incomplete 0, sanitizer lines 0, **PASS**, 6 jobs. Coverage map by changed file and caller: `placement.cpp`, `apply.cpp`, `site_checks.cpp`, `mine_source.cpp`, `mine_facts.cpp`, `driver.cpp`, `transport.cpp`, `types.cpp`, `script_runtime.cpp` are exercised by the selected cases `salt *` (mine, X3 chain, X4 interruption/lifetime/timing/isolation, X5 facts/continuation/recording/cost), `mountain *`, `golden *` and `G0..G3` (incl. G0), `figure digest *`, `registry builds all 921 entries`, `integration identity`, `expansion identity`, `salt identity135`, every `replay`/`recorder` case, the farm cases (`farm dispatch`, `small farm *`), `build on the real terrain`, founding replay/canary cases, `population original-data mechanism *`, `progression K3 replay`, `SCRIPT*`/`script*`, `city booking`, `types*`, `house live`, `synthetic mechanics fixture`, `economy loop`, `resilience` interruption, `early needs`, and the CTests `placement_*`, `mine_*`, `salt_chain_*`, `highmap_*`, `figure_digest_*`. Selection regex recorded in the log header (260 tests matched). **Not in the ASan selection:** the rest of the sim suite (about 1,430 cases), the formats tests, the render/app tests, `script2_original_fresh_process` (1,500 s timeout class) and the two economy fresh-process CTests.
+- *NOT_RUN:* Release suite (only the opt-in lookup timing sample ran in Release), Windows, Linux, MSVC, GCC and Clang-18 builds, the full sanitizer campaign, GPU adapter tests, the original runtime (no differential test against the running game).
+**Consumer delta for Windows (the inspector and the apps; nothing under `src/app` was edited).** New in the sim library: `anno/sim/mine_facts.hpp` (`mine_facts(const World&, BuildingId)`: bound, deposit index, ore tile, remaining 8.8, reserve, deep, depletes, output store, derived state, `produced_88`); **`produced_88` counts what the production steps made since a `TransportStats` sink was installed, is `nullopt` without one, and is NOT saved state** (no production total exists in the Mine; adding one would change the 135 identity). Appended `Reject::NoDepositInReach` (a UI must map it to a message; the original has no placement-refusal text). `PlacementParams::mountain_wares` (default SALZSTEIN) and `coverage_chunk_shift` (default 3). New diagnostics only when a sink is installed: `ForestryStats::mine_made_88`, `TransportStats::loaded_by_home`, `TransportStats::ore_lookup`. The 133/134 saves and recordings are refused with their own texts (above). Nothing else in the public command or wire surface changed.
+
+### CI run 42320305784 at 967093b7: per-job results, causes and repairs (2026-11-07; read through the public API with curl)
+**Per-job results.** Success: `lint`, `test (ubuntu-latest)`, `test (windows-latest)`, `build-macos`. Failure: `cpp-format` (step `clang-format --dry-run --Werror`, exit 123); `cpp (linux-gcc-release)` in `build`; `cpp (linux-gcc)`, `cpp (linux-clang-asan)`, `cpp (macos-clang)` and `cpp (windows-msvc)` in the `test` step. Earlier: runs at `d6f7bb65` (42258075852) and `259c0840` (42281353387) failed gcc/asan/msvc in `build` (and macos-clang in `test`).
+**Causes, all ours (none inherited from main), each with its evidence.**
+1. `cpp-format`: 18 files of this task were not formatted for clang-format 23.1.3; reproduced locally with a scratch venv, fixed format-only in `f1242255` (the repair was already in the branch but unpushed at 967093b7).
+2. `linux-gcc-release` build: `-Werror=null-dereference` at `leather_fixture_test.cpp:245` and `cloth_town.hpp:97` (annotation text): `players().find(owner)->money` dereferenced without a check, in files that exist only on this branch. Repaired in `7facd582`: every lookup pointer dereferenced in the cloth, leather and salt test files (27 + 9 sites) now goes through `test_must::must` (`src/sim/tests/test_must.hpp`: REQUIRE it, then use it); no pragma. The host has no GCC, so the GCC result itself is **not reproduced here** (NOT_RUN); the audit is by pattern (`find`, `find_building`, `find_figure`, `find_type`, `building_at`, `city` followed by `->`), limited to the files only this branch has.
+3. The `test` step on gcc, asan, macos and msvc: the annotations show only `picture_matrix_contract` output (the annotation grep truncates to 60 lines), so the failing test was reproduced locally: the exact CI sequence (`python3 -I tools/test/run_selected.py --build-dir <dev-preset-equivalent build> --select . --jobs 4 --asset-policy unavailable --allow-skip gpu`) with `ANNO1503_GAME_DIR` unset, as on CI, built from the macos-clang configuration. Result `ci_local_test.log` (sha256 `7820ca38f31cc6d0972887892a7863fae3564a632617e120931cde318ad0c970`): selected 2,399, executed 2,053, failed 4, skipped 342 (required-asset 327, platform 4, opt-in 11): **`economy_loop_fresh_process` and `economy_loop_changed_command_fresh_process` failed** because they replay a log that only the original-data recording writes, and had no explicit skip without the original files. This is the main-side repair that was deliberately left out earlier (the `RunExpansionReplay.cmake` hunks and `SKIP_REGULAR_EXPRESSION` on those two tests): it was not safe to leave out, because it is needed by this branch's own CI. Repaired in `62b467c2`: `cmake/RunExpansionReplay.cmake` copied verbatim from main and the two tests use it, with the skip regex. Main's `92e4817b` was green with this step because main has that hunk. The other two failures of the local run, `anno_render_gpu_tests` (GPU timestamp capability of this Apple adapter, `gpu_test.cpp:2312`), are render tests this branch does not touch (`git diff origin/main HEAD -- src/render` is empty) and are not a CI condition (the runners have no such adapter and the gate allows gpu skips).
+**After the repairs.** The same CI sequence without the game directory: `ci_local_test_2.log` (sha256 `7d8fffc5e8b4c9407ed6cfbd01c18947cfd99f9666755ecaec9fdc717b0973dd`): selected 2,399, executed 2,053, failed 2 (only the two local-adapter GPU tests above), empty 0, skipped 344 (required-asset 329, platform 4, opt-in 11), incomplete 0. clang-format 23.1.3 over all of `src`: 0 findings. **Frozen Debug canonical gate** (source `62b467c2`, game files, selection of X6 plus `|economy_loop_`, required by exact name the seven contracts of X6): `x6b_debug_gate.log` sha256 `c25cee36c771490d55e415f456d532af132a163a412d9345c83e290e65a779bf`: selected 1,694, executed 1,688, failed 0, empty 0, skipped 6 (opt-in), incomplete 0, sanitizer lines 0, **PASS**. **ASan/UBSan focused gate** (changes are test files and one CMake file; selection `^anno_sim_tests\.(salt |mountain |synthetic mechanics fixture|economy loop|cloth)|^(salt_chain_|economy_loop_|placement_|mine_)`, 6 jobs; the full 260-test ASan gate of X6, `x6_asan_gate.log`, stands for everything unchanged): `x6b_asan_focused.log` sha256 `22ac5f835f2e78213aa36fae42c1a8c7f08a9d8adb95c82aad5dc1c3dde1331a`: selected 69, executed 67, failed 0, empty 0, skipped 2 (opt-in), incomplete 0, sanitizer lines 0, **PASS**. Earlier logs are kept. Runner revisions `run_selected.py` `0569b804`, `ctest_verdict.py` `3afbe42a`. NOT_RUN: GCC (any), MSVC, Linux, Windows, Release suite.
+
+## Owner decision 2026-11-07: faithful default replaces policy B (mine placement without a deposit)
+
+**Decision (owner, option 1).** The original has no deposit test at mine placement, so the sim now accepts, charges and creates such a mine unbound and idle. Policy B (`Reject::NoDepositInReach`) is replaced; the value stays in the enum as reserved. **Identity unchanged: 135.** Branch `task/MAP-EXTRACT-1-x2`, new commits on top of `fa100f8f`, not pushed.
+
+**STEP 0, byte claims re-verified by the executor (capstone/pefile and the unicorn harness; scripts `cache/faithful-evidence/{rdis,xref,vcall}.py`, git-ignored; table with addresses in `docs/sim/salt-extraction.md` section 22.0).** (a) confirmed: `0x1007c790` to `0x1007cc29` calls only type slots, the registry, island slot +0x88 and `_ftol`; AnnoGame `0x10008a80` reads `type +0x234` and two leaf helpers; `Build` and `Place` contain no container call; the cursor body has no world +0x114/+0x118 call. (b) confirmed with a nuance: `0x1006e270` is the mine's context attach (kind 0x700 = type, kind 0x1400 = city); the call at `0x1006e299` discards the result; `0x1006ddf0` stores the best object or null in mine +0x24 (`0x1006dea8`); only the constructor (`0x1006e478`) and this store write the field in the class code read. (c) confirmed: `0x1006def0` with +0x24 empty branches to `0x1006e178` (status 1, once-flag, city notify) and returns; `0x1006ddf0` has exactly the two direct callers `0x1006dfb4` and `0x1006e299` and no vtable entry. (d) the AI helpers exist as claimed (`CompLogic 0x1002352a`, `0x100302a5`, result tested); their order against the AI's placement call was not traced (U). (e) confirmed: `placement_emulate.py mountain 3000 7`: 1,080 accepted, 0 mismatches; coverage vectors 31 agree; the harness has no ore container at all. The circle table was re-simulated from the loop at `0x100787cb` (7, 7, 7, 6, 6, 5, 4, 2), the distance cut at 7 and the strictly-greater replacement rule from `0x100788f3` to `0x10078923`. **One point differs from the brief:** the attach IS the creation of a mine, so a mine rebuilt at a site with ore in reach binds it, as any new mine does; only a STANDING unbound mine never rebinds (test added with a test-edited ore object). Whether the original repeats the attach lookup at save load is not traced. History Edition files NOT FOUND (GOG-versus-HE NOT_RUN). The UI cursor's island slot +0x64 overlay-height check is documented as a UI-only refusal our emulator does not cover.
+
+**STEP 1.** Our mine already matched (c): `mine_step` reports the missing input each period without a search when `Mine::deposit` is empty; `Mine::blocked` is set once it steps; no code change. Now asserted for 4,000 steps, through a save/load and with ore added later.
+
+**STEP 2, route taken for the opt-in refusal: no `Rules` field.** `fields(Rules)` serialises every field untagged (`static_assert(field_count<Rules>() == 32)`), so a new field changes the state stream and the rules digest of every world and needs identity 136. Instead: `mine_site_deposit_in_reach(const World&, TypeId, x, y, rotation) -> optional<bool>` in `mine_facts.hpp`, read-only, for a host or UI to warn before it issues a command; the sim itself never refuses. A host-side unhashed refusal is not acceptable in lockstep and was not added. Code: `apply.cpp` step 5b removed; `reject.hpp` reserved wording; `mine_source.hpp` relabels the lookup ORIGINAL; `mine_facts.hpp/.cpp`. Tests: the policy B refusal test replaced by `salt mine: the faithful default accepts, charges and creates a mine with no deposit in reach, unbound and idle`; the logged-command test now records the accepted unbound command; the lookup-cost test counts one lookup per command (was two). No golden, pin or recording moved; the chain tests use the legal site. Docs: `salt-extraction.md` section 22 rewritten (history kept), OQ-552 settled, OQ-553 settled for code paths, OQ-554 partly settled.
+
+**STEP 3, gates on the code commit `c03589d7`** (clang-format 23.1.3 clean). Debug canonical, same selection, seven contracts by name: `faithful_debug_gate.log` sha256 `e6aded582bc0b7998486b03cfc39eba56d8a94f44a3187a182d444b8573740e6`: selected 1,694, executed 1,688, failed 0, empty 0, skipped 6 (opt-in), incomplete 0, PASS. Focused ASan `faithful_asan_focused.log` `aa484deb9a9a39710af2e195e24e5d82f95082d5d5e6aefcf41a02abac73fb20`: selected 70, executed 68, failed 0, skipped 2 (opt-in), PASS. CI-condition without the game directory `faithful_ci_local.log` `355cc0c78a2a16f35ccb848a317e00e70a6ab6d6ce2848ecf7928874c157effc`: selected 2,399, executed 2,053, failed 2 (the Apple-adapter GPU timestamp cases, untouched), skipped 344. Docker `gcc:13.3` at `-O3 -Wnull-dereference -Werror` over all 184 `.cpp` under `src/sim` (arm64 container, not the x86_64 CI): 184 OK, zero diagnostics. Failed attempts: the first run of the new tests failed (dry-versus-live byte comparison, a saltworks input check, an ore-object choice and the lookup-count test); fixed before the commit, no log kept beyond the console. **NOT_RUN:** MSVC, native Linux and Windows, Release, a CI run on these commits.
+
+**Faithful default, review P3 fold-in (2026-11-07), source `e90eabb3`.** Corrected: the AI wording (the CompLogic functions look like evaluators of an existing mine; their use before placement is unread, U); the reload claim (our save keeps the bound index; the original's behaviour on loading is untraced); the policy A / B banners in `salt-extraction.md` (the policy A text is the current rule again; B is superseded by the faithful default); `AnnoFrame 0x10044f90` added as an unidentified UI-only item beside the island slot +0x64 check; Place's world slot +0x114 calls (`0x10027afa`, `0x100281a5`) named in the no-container-call row; the tie-order caveat and the discovery-mask caveats (one DLL set, the +0x88 getter unverified, reveal/claim/stub from the research agent only). Test: the lift ledger now has a positive control (a bound mine at (353,359), same sink, 4,000 steps, `loaded_from > 0` and `produced_88 > 0`, both pass) and the reloaded world has its own sink. **A claim of mine was wrong and is corrected:** I had written that the dry-run and plain saves differ only in the `build_atomic` byte without checking; measured, they have the same size and differ in ONE byte outside the last eight (the rules byte, offset 1847) plus the final eight bytes (a trailing field I did not decode; by position and size the closing digest, unverified). The test now asserts exactly that. Gates: Debug canonical `p3b_debug_gate.log` sha256 `78f491f0c85256c0c9d6cbb1c0f0cc10b917822a3612b883c3b09ad2dc51c45a`: selected 1,694, executed 1,688, failed 0, empty 0, skipped 6 (opt-in), incomplete 0, PASS (seven contracts required by name). Focused ASan on the salt, mountain, placement and mine cases `p3b_asan_focused.log` `13db39dbefcf3141368b26c72fc0a70da8071a4d302911926b7ed05da79d518b`: selected 52, executed 51, failed 0, skipped 1 (opt-in), PASS. Docker `gcc:13.3` `-O3 -Wnull-dereference -Werror` on the touched `salt_placement_test.cpp`: OK, zero diagnostics. clang-format 23.1.3 clean. One earlier attempt of the changed test failed (the 9-byte difference above) and was corrected before the commit.
+
+
+## MAP-EXTRACT-2 (first Mac executor), started 2026-11-07
+
+**START.** Packet `docs/orchestration/tasks/map-extract-2.md` and `docs/re/mine-deposit-followups.md` read from `origin/main` d03e6fca. Branch `task/MAP-EXTRACT-2` created from `2f32437a` (the MAP-EXTRACT-1 REVIEW PENDING head; `task/MAP-EXTRACT-1-x2` is untouched). Identity base 135; 137 is reserved for parts T and Q; part A changes no behaviour. Host: 18 cores, 48 GiB, load about 2.4; jobs sized at 4 build jobs and 2 test processes. Order A, T, Q, G, E; QUESTIONs are written here and work continues.
+
+**PACKET CORRECTION noted (main 877ffa25).** Part T now pilots the early wood path: smelter 1017 (EISENERZ + HOLZ → EISEN) and toolsmith 1019 (EISEN + HOLZ → WERKZEUG), both stage 2C. The charcoal route (1035, 1034; stages 3D/3F) is in scope only if T0 shows the pilot can legally reach those stages; otherwise it stays inventory with a typed status. Second inputs and stages come from `docs/orchestration/gameplay-next-chain.md` bundle 5, and I re-derive them from `Anlagen.dat` in T0. Part A is unaffected.
+
+**MAP-EXTRACT-2 part A: docs only, stays at 135.** Independent byte re-check recorded in `docs/sim/salt-extraction.md` section 24 (evidence: `cache/close-extract/partA_findings.md`). A1 all five points confirmed, with two details that differ from the note (the step's trigger also fires when take != 0 and want >= remaining; the kind-`0x700` path sets `+0x21` through a type-descriptor test for research `0x39`, which is the deep/shallow rule). A3: the ore slots `+0x88`/`+0x8c` and the finder `0x100787c0` do not read the discovery mask `+0x2c` (OQ-553 caveat 2 closed); the finder does not filter on remaining > 0; the reserve flag `+0x30` is constructor-set to 1 and never read or written by the ore reader/writer. A4: the second attach argument is the **city** (kind `0x1400`, so the lookup runs, after the position is set); the first is a type descriptor (`0x700`). A2: both OCCUR and the city PROD are chunks of Y's stream, so file order decides; the scenarios checked have no city chunk; the save order is unread (OQ-555). A5: one real difference for part T: our step re-lookup searches only materialised deposits, not all ore objects. AI question parked, starting point named.
+
+**QUESTION A6 (owner): rebinding at load.**
+- *(A) Run the lookup again at construction on load, as the original does.* Effect on 135/137: a reload stops being state-neutral; the deposit index could leave the save but the loader would need the ore objects before the mines, so it needs 137 and rejects 135 saves/recordings; only reload-continuation tests that involve those two cases change. Visible difference for the player: only in the depleting setting with a second deposit in reach, where a bound mine whose deposit has shrunk below a neighbour moves to the larger one at load; a **command** mine that is unbound stays unbound (placement searched every ore), but an **imported/scenario** mine with an ore in reach and no materialised deposit would bind at load. Pins change only in those two cases (review P2-1/P2-2); other reload pins are unaffected. I did not verify that (A) rejects 135 saves; that is the expected cost of any load-semantics change.
+- *(B) Keep the saved deposit, as a documented deviation.* No change to 135, 137 or any pin. The same visible case (depleting setting, neighbour larger) would differ from the original only across a reload.
+- **Recommendation: B.** Evidence: `reload == uninterrupted` is a gate of this project (X5, T5), and in lockstep a late joiner loading a snapshot must equal peers that never reloaded; under (A) the original's own semantics make the binding depend on whether a reload happened. The original's load order is also unread (OQ-555): (A) could be implemented only against an unverified order. Nothing is coded; if the owner chooses (A) I implement it within 137.
+
+**MAP-EXTRACT-2 T0/T1/Q1/Q2 (docs), 2026-11-07.** `docs/sim/iron-tools.md` (T0 inventory, T1 contract, reviewed, no P1; pilot = endless02 island 1 owner 8 with house_updates, shallow mine 1205 + imported 1017/1019, charcoal route typed out of scope, gold/gems typed refusal) and `docs/sim/quarry-bricks.md` (Q: the quarry is a stateless constant source; the rule is the stonemason's job 0x2c; the independent review found a P1 -- the quarry does reserve entrances through a claim bitmask that is not saved -- and a P2 score capacity, both corrected in the doc). **QUESTION Q-A** (entrance claim modelling): recommendation (a) derive from saved worker figures, no new field. **Process error recorded:** my docs commit `51f57914` used `git add -A` and swept the implementer's uncommitted 137-allocation WIP (pins, fixtures `iron2/current137`, `salt1/legacy135/g2.save`) into a pushed commit; no history was rewritten, the implementer continues on top, and I now commit explicit paths.
+
+**MAP-EXTRACT-2 QUESTION Q-A answered (owner, 2026-11-07).** Option (b): a saved claim set per quarry, one bit per entrance, inside the 137 delta (no new identity number); the 137 recordings and goldens are regenerated once more after the field is in. Reason (orchestrator check, GOG 2.0.0.5 and History Edition): neither build saves the claim byte (quarry writer 0 bytes, GOG `0x10064a10`, HE `0x180007ae0`) nor the worker target (step writer 0 bytes, GOG `0x1005b780`, HE `0x180089a50`), so option (a)'s premise was wrong; the rule is fixed on uninterrupted play, where (b) is exact. Rules and added Q-3/Q-7 tests are in `docs/sim/quarry-bricks.md` (the withdrawn sentence is corrected there). Effect on the plan: the field is implemented in Q3 (after T2 review); T1.5's "no new saved field" holds for T2 only, and Q3 extends the 137 delta (documented in `docs/sim/` when the field lands).
+
+**MAP-EXTRACT-2 T2 (implementation), 2026-11-07, head eca34027 -- independent review ACCEPT (no P1/P2 left).** Identity 137 allocated (version word + accepted-command outcomes; no new saved field, PRNG timeline and draw sites unchanged; 133/134/135 natives and recordings refused; `salt1/legacy135/g2.save` kept as history). Placement is registry-driven (HIGHMAP table + first output in `mountain_wares` + ore evidence BEWOHNTYPE 145); gold/gems 1206/1212/1214 are `Unsupported`; deep/shallow no longer matters to placement. `mine_step` re-looks-up over every ore object (D `0x100787c0`: largest visible, first on tie, spent result kept) via `MineRelookup`; hand vectors 4,876 full steps / short step 4,877 takes 4 / notice 0x15B once / then 0 all asserted; deep 512,000 vs shallow 102,400.
+- **Decision (deviation, documented):** when no ore object is in reach the driver falls back to the old `Island::deposits` search (synthetic worlds only). Counter `OreLookupStats::relookup_fallbacks` (diagnostic, not saved/hashed) is 0 in all ore-object cases and >= 1 in the positive control. Opt-in corpus run (50/50 scenes, 15,000 advances, 73 imported mines, 0 bound, 0 fallbacks) is partly vacuous: the loader binds no mines, so the real evidence is the built-mine pilot cases.
+- **Review path:** first review (no P1) found P2-1 (the `rate >= left` boundary survived `>`; no test hit want == remaining) and P2-2 (gate log stale at the final head); fixed in eca34027 with D5 + mutant M7, larger-candidate (M8) and deep/shallow weighting (M9) tests, M6 replay fix. Re-review ACCEPT.
+- **Gates at eca34027 (clean tree, implementer-run, reviewer read the logs):** affected Debug 251 selected / 246 executed / 0 failed / 0 empty / 5 skipped (opt-in), sha256 `8ab0ded6dcb683efa2b8fa5a95546493bd05241362fa74c492132feb701dc6ff`; focused ASan 41/39/0/0/2 (opt-in), sha256 `6026581c9297dcf976d4981ccf1606cfb17367e0ade09c231d9527247e53e3a0`. Kept failed first attempt: `t2_debug_affected.log` (stale header literal in `tools/integration_stream_ref.py`, fixed in 6c099278), sha256 `6ea8281099b16c483b0ba9c4d676e42698e3776006f49ef21e2f6bea93675bc4`. Mutants M1-M9 killed with restore hashes equal to HEAD (first-run M2/M5 and run-4 M8/M9 were invalid builds and were rerun; disclosed in logs). clang-format 23.1.3 clean; GCC 13.3 `-O3 -Werror` clean on touched files (arm64 container, not the x86_64 CI). NOT_RUN: canonical full gate (T6), CI at these heads, MSVC/x86_64.
+
+**MAP-EXTRACT-2 QUESTION T3-Q1 (carrier arrival position; blocks T3 and Q3), 2026-11-07.** Finding (proven, pinned by `iron chain: the imported toolsmith receives no EISEN and its carrier's cargo is lost`, commit 268c413b, `docs/sim/iron-tools.md` T3.1): on endless02 island 1 the toolsmith's carrier lifts EISEN at smelter 1017 and every raw is then lost (`cart_lost[EISEN]` == lifted). The sim ends a carrier's forward walk on the TILE CENTRE (`start_walk`, transport.cpp ~681; `walk_ticks`); `start_home` (~747) then searches from `walk_point(fig.pos)` = the centre sub-cell (1,1), which is a dead start cell inside the smelter's door tile. The same search succeeds from the exact door point (`entrance_position(smelter,0)`, Q24.8 94507,89045) and from the road tile (366,349).
+- **Original (read-only research, `cache/close-extract/T3_walkend.md`, confidence "likely"):** the route builder `0x10005890` works in sub-cells (position -> cell `(pos - origin)*3`, ftol; output pair `cell/3 + 1/6 + origin`, i.e. a sub-cell centre; constants `0x100c1138/0x100c128c/0x100c1298/0x100c1294`), the figure stores it via `0x10034df0` (`+0x24/+0x2c`), and goals are entrance points on sub-cell centres. So the forward walk ends at the goal sub-cell and the return search starts from the door sub-cell. A failing return search loses the cargo in the original too (step C `0x10057ae0` answers 0, end path `0x1003af00`), which the sim already matches. Unread (U): searcher slots `+0x98/+0x9c` (`0x10004bb0`, `0x10010810`) and the finer-route stage `0x100054ef-0x100055d5`.
+- **Options.** (A, recommended) Change the sim so the last route waypoint of a source walk is the goal sub-cell, as `resident_job.cpp` already does for its stall walk (the "K2" override, ADAPT/U): add `end_col/end_row` to `SourceChoice`, override `route.back()` in `start_source`. This is a behaviour change in the transport stream: trip tick counts and therefore hashes of every transport golden move (market, salt, leather, mason, economy loops), so it needs a regeneration and re-pin inside 137 (no new identity number, no new saved field, no draw-order change) and a delta paragraph in `docs/sim/`. (B) Keep the sim and, for T3 only, demolish the imported smelter and toolsmith and build new ones at scan-selected sites whose door centre is alive: cheaper but unproven, depends on an approximation quirk, and leaves the fault in real play. (C) Narrow T3 to ore -> smelter -> EISEN: does not meet the done criteria.
+- **Recommendation: A**, because the evidence says the original does it and the failure hits any producer whose door-centre cell is dead, not only this pilot. Needs an owner/orchestrator answer because it is a stream change beyond the T1.5 delta. Until answered I continue the independent work (part G); T3 and Q3 wait.
+
+**MAP-EXTRACT-2 G (inventory, docs only), 2026-11-07.** `docs/sim/gold-gems.md`: acceptance table G-1..G-17, nothing implemented. Gold/gem mines 1206/1212/1214 stay `Unsupported` (placement needs GOLD/EDELSTEINE in `mountain_wares`; the ore symbols 1561/1563 already exist, 68 gold and 48 gem ore objects). All three are deep mines, so they never deplete (shared with salt). Chain: one gold mine + one gem mine (9 raw/step each) feed one goldsmith 1039 (8+8 -> SCHMUCK 9), stall 1313 offers SCHMUCK; natives 3410/3010 are separate. **Only ARISTOKRATEN needs SCHMUCK** (`Data/BGruppen.dat` ARISTOKRATEN section, `Menge 0.3`, not forced; `tools/group_derived_ref.py` agrees; house types 580-585). No public-command pilot exists (endless02 island 1 has no gold/gem ore; the stage-19/22 scenario S01_07_01 is isolated), so a later task needs a fixture decision. U items U-1..U-11 are listed in the doc. Not yet independently reviewed (part E reviewer re-checks it).
+
+**MAP-EXTRACT-2 QUESTION T3-Q1 answered (owner, 2026-11-07), option A extended to all walks.** Evidence from the Windows orchestrator's read of GOG 2.0.0.5 and the History Edition 64-bit `AnnoWelt.dll` (high confidence, all links D except HE float drift): the forward walk ends at the goal sub-cell centre, `tile + (2*col+1)/6` per axis, not the tile centre. Route builder GOG `0x10034df0` / HE `0x18000b0c0` snaps the figure to the start sub-cell centre and emits sub-cell run-length pairs ending on the goal sub-cell (extractor GOG `0x10005890` / HE `0x180063c10`; goal x/z from searcher slots `+0x98/+0x9c` = GOG `0x10003140/0x100031a0`, HE `0x1800617a0/0x1800617e0`); nothing moves the figure afterwards. Step C (GOG `0x10057ae0` / HE `0x18008d410`) starts its return search from the sub-cell containing the figure's float position, i.e. the door sub-cell (set-up GOG `0x1003acc0` / HE `0x180012f30`; coarse start `0x10003aa0`). A failed return search loses the cargo in both (end path GOG `0x1003af00` / HE `0x180013280`, 7,500-tick standing wait), which the sim already matches. Live/emulated run: NOT_RUN. Float drift: about 1e-3 tile at the real tick stride, leaves the sub-cell only for walks of 40+ tiles at stride 1 (A replay, GOG); not modelled, documented as a deviation. Decision: implement the goal-sub-cell end as one shared route rule for all walks (K2 precedent in `resident_job.cpp`), inside 137 (no new id, no saved field, no draw change); goldens and recordings regenerated once. Work dispatched; T3 resumes after the independent review of this change.
+
+**MAP-EXTRACT-2 T3-Q1 implementation (shared goal-sub-cell route rule), 2026-11-08, head 675ac7b2 -- independent review ACCEPT (no P1/P2).** One rule `subcell_centre(tile,col,row) = tile*256 + ((2c+1)*256+3)/6` per axis; `start_walk(..., end)` ends the route on it. Walks routed through it: transport source walk (`SourceChoice::end_col/end_row`), transport home walk (`path_home(..., end)`), harvest source and home walks, resident stand walk (K2 replaced; bit-identical, resident goldens and G0-G6/cargo/founding unchanged). Unchanged: `resident_path_home` (reverse route has no goal sub-cell). Identity 137, no new saved field, no draw-site change; original float drift at tick stride 1 not modelled (documented deviation). Effect: trip timing, hence the economy-loop and leather hashes, cloth/leather/small-farm/sheep/population pins, 13 K3/SUPPLY1 golden lines, K3 first-upgrade variant draw (21313 -> 2111, idx 5 -> 4, type 525 -> 524) and `producers_moved`/`warehouses_moved` on 13 scenes of `scenario_corpus.txt` (+1..3); `tools/sim_stream.py --check` agrees. The imported toolsmith 1019 now receives EISEN and makes WERKZEUG (`cart_lost[EISEN]` = 0).
+- **Decisions and reasoning.** Two properties were relaxed and the reviewer ran them at both heads: (1) `salt timing X4` 1 ms slicing now gives 494 vs 520 raw (bound 10 %): the dependence of state on how elapsed time is sliced is pre-existing and documented (a recording holds the slice of every advance; same slicing reproduces `state_hash`, `save()` and cursor exactly), and the tile-centre ends had merely hidden it; (2) X4 instant mine rebuild differs from the control at FarmWorkerDispatch (8,578 vs 8,566) because the rebuilt mine's new id changes processing order (`instant_exact=false`, as for the saltworks case).
+- **Open (P3):** the harvest walk ends have no direct test (only the cloth canary kills mutant N4); the resident home walk's `forward_used` fallback does have a goal sub-cell and, by the owner's "every walk with a goal sub-cell", could take the rule (timing-only change, moves resident goldens) -- left unchanged and recorded as an open item pending the original's reverse-route behaviour; one-tile paths do not apply the end (as old K2); the 10 % bound is ad hoc.
+- **Gates at 675ac7b2 (clean tree, implementer-run, reviewer read the logs):** affected Debug 504 selected / 494 executed / 0 failed / 0 empty / 10 skipped (opt-in), sha256 `b84293a18d1b9ad117d134a44413f445e0d86d61f2638efd8c5eb7a740896e20`; focused ASan 79/74/0/0/5, sha256 `8439135b1c8d7ee0ef2461930a8690dbfefc1aa8c3c2b99a99555ee214e075a1`. Kept failed attempts: `t3q1_debug_affected.log` (6 failed pins, fixed in 675ac7b2, sha `b8cc18bba79b205e571c9926912ae9a3235fb1111fbfc15cc6d7484bf4f797ba`), `regen_t3q1.log` (30 expected pin failures during regeneration). Mutants N1-N4 in `mutants_run6.log` (restore hashes equal HEAD); reviewer re-ran N1 and a harvest variant. GCC 13.3 `-Werror` (arm64) and clang-format 23.1.3 clean. NOT_RUN: canonical gate, CI on these heads, MSVC/x86_64, live/emulated run of the original.
+
+**MAP-EXTRACT-2 T3, T4, T5 (tests + docs), 2026-11-08, head 3f529f24.** Independent review (one reviewer for T3-T5, head 207d654c): **T3 ACCEPT, T4 ACCEPT, T5 NOT ACCEPT** until P2-1 was closed. The T5 fix (below) was **not independently re-reviewed**: at the owner's instruction the orchestrator reviews it; the evidence for it is the implementer's own tests, mutants and gates.
+- **T3** (`iron_chain_test.cpp`, `docs/sim/iron-tools.md` T3.3): real chain on endless02 island 1 / owner 8 with `house_updates`: mine 1205 by public BuildCmd -> ore -> EISEN (1017) -> WERKZEUG (1019) -> market cart -> city store -> a later BuildCmd that spends tools (refused `CannotAfford`, state byte-identical, with 0 tools; accepted and debits exactly 768 raw after 1,332 raw were delivered). After 6,000 advances: mine made 11,676, lifted 10,779, smelter made 7,727, toolsmith made 4,725, unloaded into the store 4,257, lost 0. Ledgers u_mine/u_ore/u_eisen/u_tools_flow are 0 at every 1000 advances. Controls (no mine, no smelter, no wood, no market cover, full store) each blocked for the stated reason; mutants P1-P4 killed. Open (U): why the real arm drains WERKZEUG less (11,520 vs 13,824 raw baseline, band 0.75-1.25 is a labelled fixture measurement that cannot detect a leak of the delivered tools; the exact equalities in family B carry the delivery claim); the **wood ledger is not closed** (receiving side attributed by workshop id; the supply side is not attributable because `TransportStats` does not record which store a wood lift came from).
+- **T4** (`iron_interrupt_test.cpp`): exhaustion idle/rebind with notice 0x15B once, missing wood stall and resume, toolsmith demolished with EISEN in the carrier's hands (ledger closes, `eisen_lost` named), rebuild, timed edge (-1 and 0 advances around the unload), demolished smelter releases the carrier's reservation, slicing (same slicing exact; different slicing differs, documented as in salt X4). Mutants Q1-Q3 killed.
+- **T5:** reload at extraction, smelting, delivery and with a spent deposit equal the uninterrupted run; fresh-process `iron_chain_fresh_process` (31/31 checkpoints) and `iron_chain_changed_command_fresh_process` (DIVERGED at entry 2, exit 1, expected) pass. The changed command diverges at the first checkpoint, so it proves the compare path, not later chain dynamics. Cost on a 7-city / 334-building fixture over 3,000 advances: +1 % wall time (single run, labelled a measurement), source searches 8,016 vs 8,375.
+- **Review finding P2-1 and its fix.** The review proved that the unsaved `Mine::reserved` mutant (U1) survived because the pilot never has two concurrent reservers, and the doc's justification ("recoverable because the carrier's `reserved_88` is saved") was false in general. Fix (427b4df6, 3f529f24): test `iron continuation: two carriers hold reservations on one mine at the reload boundary` (second 1017 at (360,340) by legal BuildCmd; `Mine::reserved` equals the sum of both `reserved_88`; reload == uninterrupted after 800 advances in state_hash, cursor and save bytes); U1 in its original form (field omitted from the archive) is now killed by it, and the field written but not restored is killed by both cases (`mutants_run14.log` sha `809b7390fdb6f3e07e1d969ded35626bed971d354efd01269c426a902230d59f`, `mutants_run15.log` sha `eb14048998b6544bdae870166fd83ef07ef76cc29be88458e72e7c123caa7752`). The false sentence is removed from the docs. Also: the discarded P4 run in `mutants_run8.log` (4 passed / 0 failed, inconsistent failing-case list) is not cited as evidence.
+- **Gates at 3f529f24 (clean tree, implementer-run):** affected Debug `t46_debug_affected.log` 524 selected / 511 executed / 0 failed / 0 empty / 13 skipped (opt-in), sanitizer_lines 0, 57 required contracts by exact name incl. the four fresh-process tests, sha256 `a48f20766724cd692d9619409f3566fb71aacfb99402f66071f1a5bb8bb06dcf`; focused ASan `t46_asan.log` 59/51/0/0/8 (opt-in), sha256 `339222140fc3458013947833e8f671c5dc76dcbf535acb9a17a20992797120fb`; clang-format 23.1.3 clean; GCC 13.3 `-Werror` (arm64 container) clean on the touched test files. Kept failed attempts: GCC `range-loop-construct` in an opt-in probe (fixed in 207d654c), two ASan runs that failed on the environment (cmake not on PATH; game dir unset), a clang-format refusal. **Process note:** the implementer's report claimed 207d654c was pushed when its quiet push had failed (no upstream); the commits reached origin together with 427b4df6 and 3f529f24 (verified with `git ls-remote`). NOT_RUN: canonical full gate, CI on these heads, MSVC/x86_64.
+
+**MAP-EXTRACT-2 evidence for the resident home walk (T3-Q1b, Windows orchestrator read, 2026-11-08) and QUESTION T3-Q2.** Static read of GOG 2.0.0.5 and the HE 64-bit `AnnoWelt.dll` (no run of the original: NOT_RUN; HE AnnoGame names and the full HE arrival not read). Finding (D, both builds): a resident (house walker, job `0x35`, unit code `ZIVILIST` `0x21`, class table GOG `0x100c6a98` / HE `0x1800f1ab0`) walks home exactly as a carrier does: step C start GOG `0x10057ae0` / HE `0x18008d410` (footprint test, then a fresh FORWARD search from the sub-cell holding the figure; set-up GOG `0x10053ad0` / HE `0x180031140` equals the carrier set-up apart from the home field; goals = the home type's entrance points, first goal reached wins, callback `0x10054240`), route built by the shared `0x10034df0` / `0x18000b0c0` and ending on the centre of the goal sub-cell. There is no reversed route. Failure: 15.0-unit stand outside the home (7,500 ticks), removal, goods the resident took at the stand are lost, the house is not credited (end path GOG `0x10053d20`, release `0x10053f50`). Side finding: `docs/re/population.md` §14 attributes the job factory to `0x1003b0e0`; the resident class slot `+0xa4` is `0x10053e30` (behaviour unchanged). Note kept untracked at `cache/close-extract/T3Q1b_resident.md`.
+- **Sim today:** `resident_path_home` returns the reverse of the stand search's tile route (strict replay), else the P-15 endpoint adapter, else the forward search (`forward_used`), else `no_path_home`, and ends on the last tile centre.
+- **QUESTION T3-Q2 (identity handling; blocks nothing running).** Needed: whether the resident walk home is routed through the same `path_home(..., end)` as carriers (forward search from the figure's sub-cell, goals = home entrances, first goal wins, end on the goal sub-cell), dropping the reverse route and the P-15 adapter for this walk. Effects: resident trip timing changes, houses with several entrances may be entered by another one, resident/population/house-progression goldens and pins move; no new saved field; one forward search per trip home (bounded by the house disc; measure with `bench_sim` on the 7-city fixture). Options: (A, recommended) implement it inside 137 as one more regeneration, consistent with the owner's "one shared rule for all walks" decision, as a separate small package after Q3 (the Windows read also recommends it separate from Q3), with the no_path_home failure branch compared with the original's; (B) leave the reverse route as a documented adaptation (then it stays a known deviation, with this evidence). Recommendation: A, after Q3, with its own review. Waiting for the owner/orchestrator; Q3 continues meanwhile.
+- Correction to the entry above: the Windows note was delivered in the conversation and is NOT stored at `cache/close-extract/T3Q1b_resident.md` (no such file); its scratchpad evidence lives on the Windows host (`...\scratchpad\t3q1\res1.py`-`res8.py` and the `gog_*`/`he_*` dumps named in the note). The addresses above are the note's, not re-read by this lane.
+
+**MAP-EXTRACT-2 QUESTION T3-Q2 answered (owner, 2026-11-08): option A.** Route the resident's walk home through the same `path_home(..., end)` carriers use: start from the figure's sub-cell, goals = the house's entrance points, the first goal reached wins, the walk ends on that goal sub-cell's centre. Remove the reverse route, its replay check and the P-15 endpoint adapter from this walk; replace the `forward_used` / `endpoint_adapted` statistics with ones that still mean something. Identity: inside 137 with one regeneration while MAP-EXTRACT-2 is unmerged (main is at 134; 137 exists only on this branch); if the branch reaches main first, take a new number. Order: a separate package after Q3 is accepted, with its own independent review. Required: (1) failure branch as the original (stand 15.0 at rate 0.01 = 7,500 ticks outside, then remove; the house is not credited; goods stay lost, already debited at the stall; any "return the goods" behaviour would be an opt-in rule, not this package) -- if the sim differs today, write the delta first; (2) tests: walk ends on the entrance sub-cell centre; a house with two entrances is entered by the first one the search reaches; a walled-in house leads to the failure branch; reload during the walk home equals the uninterrupted run; a mutant restoring the reverse route is killed; (3) cost: `bench_sim` on the 7-city fixture before and after with the same slicing, wall time and search counts as a labelled measurement, a speed-up must give identical results and the stall-route reuse never comes back; (4) doc fix: `population.md` §14 job factory for the walker is `0x10053e30` (resident class slot `+0xa4`, builds job `0x35` inline), not `0x1003b0e0`, behaviour unchanged; (5) evidence: the Windows read `T3Q1b_resident_home_walk.md` (GOG and HE both D, not run in the original). Status: queued behind the Q3 review fixes.
+
+**MAP-EXTRACT-2 Q3 (quarry, mason job 0x2c, brick proof, saved claim set), 2026-11-09, head c315d4e3 -- independent review: first review NOT ACCEPT, focused re-review ACCEPT.** Implemented per `docs/sim/quarry-bricks.md` (Q3.1 delta written before code): new payload `Quarry` (tag 9) with one claim flag per entrance (no hardcoded 8), `HarvestState::goal_col/goal_row` for job 0x2c only, `payload_tag_of(type, class)` so the class table and registry digest are unchanged; mask-8 collector within radius 12, need gate (804: 630/1,260 raw; 803: 660/1,320), score by the candidate's capacity (155/123 stone, 166/134 marble), first goal popped wins, walk ends on the goal sub-cell (shared T3 rule), 5,000-tick wait, +256 once per trip; claim set at the step-A choice, cleared at wait end and on abort by a mask-8 lookup at the worker's stored tile, goal registration skips claimed entrances. Brick proof: STEINE -> ZIEGEL into the store, spent by a type-1013 BuildCmd (CannotAfford with an empty store; accepted once bricks arrived, exactly 256 raw + 300 gold); marble by the same rule. Vectors V1-V8 (804/256 raw -> 516 ZIEGEL leaving 4; 803 -> 244 MAMOR leaving 1) are D-derived, **NOT_RUN as executed evidence of the original**. Reload == uninterrupted at five boundaries (state_hash, save bytes, cursor).
+- **First review (head 6bbe77d9) NOT ACCEPT:** P1 two tests outside the name-selected gate failed (payload-count canary 9 -> 10; hard-coded accepted-supply pins stale vs the re-pinned baseline); P2 invariants without negative tests, radius 12 untested, mutant evidence incomplete; P3 docs. All fixed in c315d4e3: canary and pins (122/139, 272/302; the 116 pin was already stale before Q3 at d95d4f19), negative tests for both invariants (in the world and on load), a radius test, need-gate and pure source-rule tests, all mutant definitions in `cache/map-extract-2/q3_all_mutants.py` run in a scratch worktree with restored-hash checks, Q3.5 docs (early claim release by the shared end path vs the original keeping the claim until the next arrival D `0x10055480`; unreachable `found.route.empty()`; tag 9 and `goal_col/goal_row` in `docs/sim/state.md`; `tools/sim_stream.py` cannot cover a quarry world). `lint_sim` required `std::vector<bool>` -> `std::vector<std::uint8_t>` (wire bytes unchanged) and an allow-list of three constants with addresses (`kMasonMask` 0x10059ccf, `kQuarryStock88` 0x100708a0, `kMasonTripCredit88` 0x10055462).
+- **Focused re-review findings (P3, not blocking):** mutant MG (need gate off) leaves an optional dereference undefined, so it is flaky (survived once, killed on rerun); the stable control is MG2 (gate off, prio forced to 0x80), killed reliably. MS2 (stock rule skipped inside `search()`) survives by construction: a non-quarry source needs a building whose output is STEINE or MARMORSTEIN, none is documented, but no test pins that claim. The reviewer's scratch mutation of the implementer's `scratch_wt` was restored with `git checkout`.
+- **Baseline re-pin:** an A/B run with job 0x2c forced off reproduced the pre-Q3 movement counts exactly for all 57 scenes; the +1..+4 on 16 scenes of `fixtures/synthetic/sim/scenario_corpus.txt` (`producers_moved`/`warehouses_moved`) is wholly job 0x2c running (the original scenes' AI cities now run their masons). Decision: editing the published baseline's expectation fields is accepted, as in T3-Q1; flagged for the orchestrator.
+- **Gates at c315d4e3 (clean tree):** canonical Debug, whole suite `q3r_final_debug.log` selected 2,308 / executed 2,279 / failed 5 / empty 0 / skipped 24 (4 platform, 20 opt-in), sha256 `644d913416a0703c57be79f2376c87f8b224f16b4f699980b53f9e301ff45bfc`: every `anno_sim_tests` case passed (incl. `lint_sim`), 60 required contracts by exact name passed incl. the four fresh-process replays. Widened ASan `q3r_final_asan.log` 651/639/0/0/12 (opt-in), sha256 `8b6d86307997b9ec618e2d8622081d85042bba84e4163c30e9be2c6196d78898`. clang-format 23.1.3 clean; GCC 13.3 `-Werror` (arm64 container, not x86_64) clean on all touched `.cpp`. Kept failed/aborted attempts: `q3r_full_debug.log` (found the lint failure and the app failures, aborted by an edit during the run), `q3r_final_debug_aborted_clangformat.log`.
+- **The 5 failures are all `anno_app_tests` and are not this branch's:** `play: a turn with no commands publishes no building changes`, `developer resources: a Build too expensive ...`, the two `legal workload` cases, `founding sites, real files: the original's own warehouses ...`. They fail identically at the MAP-EXTRACT-1 base 2f32437a and at 3f529f24, and **pass at origin/main 877ffa25** (`cls_base.log` sha256 `eed5ccf3eb4e0e088235ba5c4f7f860b246844b6d22e9cba2cb33627d354654a`, `cls_main.log` sha256 `96d00d07c1c5d355e755426d1d28304c0842fcd13fccb27476535993744d907c`). The branch lacks main's fixes e8ebf0bf (Single_01.sze scene), 89e4fd00 (dearest eligible type), dea0b9b9 (candidate pools prefiltered by eligibility), 2fcc5b7d (founding-sites corpus read actor-free). Not edited here (`src/app` is off limits); expected to clear when the branch is merged with main. NOT_RUN: Windows/GPU/platform tests, MSVC/x86_64, CI on these heads, ASan on render/app tests.
+
+## MAP-EXTRACT-2 -- final report (part E), 2026-11-09, code state f30a1bc5 (docs-only and comment-only commits after it; head d02151ef plus this entry)
+
+**Branch** `task/MAP-EXTRACT-2` from 2f32437a (MAP-EXTRACT-1, REVIEW PENDING, untouched). Identity: part A stays 135 (no behaviour change); 137 (T, Q, T3-Q1, T3-Q2) builds on 135 and does not include the second Mac's 136; 133/134/135 saves and recordings are refused (135 kept as history). 137 exists only on this branch; **if the branch reaches main first, take a new number** (main was at 134 when this task began; at the final review `origin/main` is bd760031, still state 134, and this branch is 172 commits behind it with `src/sim` files touched on both sides, so the merge will conflict).
+
+### Verdict per part
+| Part | Verdict | Independent review |
+|---|---|---|
+| A: mine lifecycle in the original, sim comparison | docs done (`docs/sim/salt-extraction.md` §24, OQ-555); QUESTION A6 open | reviewed, errors fixed in 7eecb5e7 |
+| T0/T1: iron-tools inventory and contract | done (`docs/sim/iron-tools.md`) | reviewed, no P1 |
+| T2: iron mine placement, re-lookup, identity 137 | done | ACCEPT after a fix round (P2 boundary hole, stale gate) |
+| T3-Q1: goal-sub-cell route end for all walks (owner decision) | done | ACCEPT |
+| T3: real chain on the pilot | done, wood ledger NOT closed (U) | ACCEPT (with T4) |
+| T4: interruption and lifetime | done | ACCEPT |
+| T5: continuation, replay, cost | done | NOT ACCEPT until the two-reserver reload hole was closed; the fix was **not re-reviewed** (owner instruction: the orchestrator reviews it) |
+| Q0-Q2: quarry research and contract | done (`docs/sim/quarry-bricks.md`) | reviewed, corrections P1/P2 folded |
+| Q3: quarry, mason job 0x2c, brick proof, saved claim set | done | NOT ACCEPT (two failing tests outside the name-selected gate) then focused re-review ACCEPT |
+| T3-Q2: resident walk home via `path_home` (owner decision) | done | ACCEPT; P2 = open fidelity point OQ-556 |
+| G: gold, gems, SCHMUCK inventory and acceptance table | docs only (`docs/sim/gold-gems.md`, G-1..G-17), nothing implemented | part E reviewer |
+| T6: gate | canonical Debug whole suite ran at f30a1bc5; see Evidence | part E reviewer |
+
+### Decisions and reasoning
+1. **Part A stays 135.** No behaviour changed; the re-lookup rule (original `0x1006e270/0x1006ddf0/0x100787c0`) is implemented in T2 under 137.
+2. **QUESTION A6 (rebind at load): recommendation B (keep the saved deposit), nothing coded.** Option A (re-run the lookup at load as the original does) would make `reload == uninterrupted` false and desync a late joiner; only two cases differ (a depleted-neighbour case in the depleting setting; an imported mine with an ore in reach but no materialised deposit). If the owner picks A it is implemented inside 137.
+3. **Placement is data-driven** (`PlacementParams::mountain_wares` = goods names {SALZSTEIN, EISENERZ}, ore evidence BEWOHNTYPE 145 required, quarries flag); gold/gem mines 1206/1212/1214 stay `Unsupported`; deep/shallow no longer matters to placement.
+4. **Re-lookup fallback deviation:** when no ore object is in reach the driver falls back to the old `Island::deposits` search (synthetic worlds only); diagnostic counter, zero in all ore-object cases. The 50-scene corpus run is partly vacuous (the loader binds no mines); the pilot cases carry the evidence.
+5. **T3-Q1 (owner, with Windows read of GOG and HE):** the original's walk ends on the goal sub-cell centre and the return search starts from the sub-cell holding the figure; implemented as one shared rule `subcell_centre = tile*256 + ((2c+1)*256+3)/6` for transport source/home walks, harvest source/home walks and the resident stand walk (K2 replaced, bit-identical). The original's float drift at tick stride 1 is not modelled.
+6. **T3-Q2 (owner: option A):** the resident's walk home is the carriers' `path_home(..., end)`; reverse route, replay check and P-15 adapter removed; statistics replaced by `home_walks`, `home_entrance[i]`, `no_path_home` (diagnostic only). Failure branch already matched the original (stand 7,500 ticks, removed, house not credited, goods lost); the sim keeps every ended figure listed 7,500 ticks where the original uses 0.0 inside the footprint (documented, effect only on listing time).
+7. **Q-A (owner: option b):** a saved claim set per quarry, one bit per entrance (no hardcoded 8), inside 137; plus `HarvestState::goal_col/goal_row` saved for job 0x2c only; `payload_tag_of(type, class)` keeps the class table and registry digest unchanged. Disclosed adaptations: the shared end path also clears a worker's claim (the original keeps it until the next arrival, D `0x10055480`); non-quarry sources qualify by real stock.
+8. **Published baseline edited twice** (`fixtures/synthetic/sim/scenario_corpus.txt`, T3-Q1 and Q3: `producers_moved`/`warehouses_moved` only). An A/B run with job 0x2c forced off reproduced the pre-Q3 counts for all 57 scenes, so the +1..+4 on 16 scenes is wholly job 0x2c running. Flagged for the orchestrator.
+9. **Relaxed properties** (reviewed): salt X4 1 ms slicing 494 vs 520 raw (bound 10 %); X4 instant mine rebuild not equal to the control at FarmWorkerDispatch (new id changes processing order); both state-following. Slicing dependence of state is pre-existing and documented (a recording holds the slice of every advance); the same slicing reproduces `state_hash`, `save()` and cursor exactly. Two economy claims reframed ("nothing sold after demolition" -> `sold == sold at removal + pipeline at removal`).
+10. **Process errors (kept in the open):** 51f57914 swept the implementer's unfinished 137-allocation files into a pushed docs commit (no force allowed; continued on top; memory note added); one T3-Q1 REPORTS entry claimed a note stored at a path that did not exist (corrected); two commits of mine carry a wrong or placeholder `Co-Authored-By` trailer (5bb290e5 uses an invalid email; already pushed); the implementer once reported a push as done when its quiet push had failed (no upstream), verified later with `git ls-remote`.
+
+### QUESTIONs (all with a recommendation)
+- **A6** open (recommend B, above).
+- **Q-A** answered (b). **T3-Q1** answered (A, all walks). **T3-Q2** answered (A).
+- **OQ-556 (new, OPEN, fidelity):** after T3-Q2, 13 of 861 resident home walks (1.5 %) fail on the 7-city fixture, 3,121 raw goods lost; all trace to ONE hemmed-in stall at tile (322,770), stand sub-cell (1,2); only three houses fail from it (four others succeed from the identical start); start sub-cells (0,1),(0,2),(1,2) of that tile are dead pockets (same pattern as T3.1); the old reverse route would have found a route; a tile-centre start would succeed. Whether the original's start flood (`0x10003aa0`) and goal admission behave the same for that tile is UNVERIFIED. Recommended check: disassemble or emulate `0x10003aa0` and the goal admission on that tile's walk mask, or a Wine capture of a resident stand at (322,770). 0 failures in S01_01_01 (193 walks) and S01_07_01 (1,036).
+- Open U items: ore reserve-flag clearing (OQ-035 b/c); AI (parked, FuncB `0x10030230`); wood ledger supply side not attributable; why the pilot drains WERKZEUG less (0.83) is untraced; STEINE source of 3206; whether the abort handler runs on mason death; the exhaustion notice gate `+0xac(0)` (sim uses output == EISENERZ as a stand-in); gold/gem pilot (none exists: endless02 island 1 has no gold/gem ore, the stage-19/22 scenario S01_07_01 is isolated); G's U-1..U-11.
+
+### Evidence (logs under `cache/map-extract-2/`, git-ignored; sha256)
+- Canonical Debug, whole suite, f30a1bc5: `t32_final2_debug.log` `b60c626c5969656586626740d52c06fec8b78b7f207229bf212dcce53fd31fc1`: selected 2,311 / executed 2,280 / failed 5 / empty 0 / skipped 26 (4 platform, 22 opt-in), 69-70 required contracts by exact name passed (salt and iron fresh-process replays, `highmap_digest_reference_agrees`, `placement_reference_contract`, `figure_digest_reference_agrees`, `integration_stream_reference_contract`, `picture_matrix_contract`, the iron/quarry/resident cases). **The 5 failures are `anno_app_tests` cases that fail at the branch base 2f32437a and pass on main 877ffa25** (`cls_base.log` `eed5ccf3eb4e0e088235ba5c4f7f860b246844b6d22e9cba2cb33627d354654a`, `cls_main.log` `96d00d07c1c5d355e755426d1d28304c0842fcd13fccb27476535993744d907c`): `play: a turn with no commands publishes no building changes`, `developer resources: a Build too expensive ...`, the two `legal workload` cases, `founding sites, real files: the original's own warehouses ...`; the branch lacks main's e8ebf0bf, 89e4fd00, dea0b9b9, 2fcc5b7d. Not edited (`src/app` off limits).
+- Widened ASan: `t32_final_asan.log` `f88d6f527d4c785ddb775e7c32015b94ed4628d11351da4f00e715e599d8d0fd`: 748 / 733 / 0 / 0 / 15 (opt-in), sanitizer lines 0. Earlier packages: T2 `t2r_debug_affected.log` `8ab0ded6...dc6ff` (251/246/0), T3-Q1 `t3q1_debug_affected2.log` `b84293a1...6e20` (504/494/0), T3-T5 `t46_debug_affected.log` `a48f2076...06dcf` (524/511/0), Q3 `q3r_final_debug.log` `644d9134...5bfc`.
+- clang-format 23.1.3 clean on all changed files; GCC 13.3 `-O3 -Werror` (arm64 container, **not** the x86_64 CI) clean on all touched `.cpp`. Mutation scripts: `q3_all_mutants.py` (M1-M15, MI1, MI2, MR, MS, MS2, MO, MO2, MG2, RM1-RM7) run in scratch worktrees with restored-hash checks (Q3 and later); the earlier mutants (T2 M1-M9, T3.2 N1-N5, T3.3 P1-P4, T4 Q1-Q3, T5 U1-U3) edited the live worktree and were restored from HEAD with the restored-file hash compared to HEAD (disclosed in the package docs, e.g. `iron-tools.md`), not run in a scratch worktree; MS2 survives by construction (documented and now guarded by a registry-enumeration test).
+- Kept failed attempts: `t2_debug_affected.log` (stale header literal), `t3q1_debug_affected.log` (6 pins), `regen_t3q1.log`, `q3r_full_debug.log`, `q3r_final_debug_aborted_clangformat.log`, `t45_asan_attempt1_nocmake.log`, `t45_asan_attempt2_nogamedir.log`, invalid-mutant first runs (T2 M2/M5, Q3 M4/M13/M14, N4/P4 runs, RM1 first survivor).
+- Cost (labelled measurements, 7-city / 334-building fixture, 3,000 advances): iron chain +1 % wall time (4.59 vs 4.55 ms); resident walk home 4.36 vs 4.36 ms per advance, no stall-route reuse.
+- Original-binary evidence: GOG 2.0.0.5 and History Edition 64-bit `AnnoWelt.dll` static reads (owner and Windows orchestrator): T3-Q1 `T3Q1_windows.md`, T3-Q1b `T3Q1b_resident_home_walk.md`; quarry/mason vectors V1-V8 are D-derived and **NOT_RUN** as executed evidence of the original. **NOT_RUN:** History Edition run (architecture mismatch), Windows/GPU/platform tests (4 platform-skipped), MSVC/x86_64, ASan on render/app tests, the 22 opt-in measurement cases, a live or Wine run of the original, CI (read below).
+- Mutated-vs-restored: every restored file hash equals HEAD in the logs.
+
+### Windows consumer delta (full note: `docs/sim/windows-consumer-delta-137.md`, header:line cited, claims tied to tests)
+Nothing to change to compile (removed public names are resident-walk internals: `ResidentPathNote`, `resident_path_home`, `resident_route_legal`, `ResidentStats::reverse_rejected/endpoint_adapted/forward_used`; no use in `src/app` or `src/render`). A consumer visiting `Building::payload` needs a `Quarry` case (ten alternatives). 133/134/135 saves and recordings are refused (`save: state stream version N is not supported (this build reads 137)`). Read-only mine facts via `mine_facts()` work for iron, shallow or deep (`deep`, `depletes`, `remaining_88`, `reserve`); **there is no `Exhausted` state**: an exhausted bound mine reports `MineState::Blocked`, so a consumer derives exhaustion as `bound && depletes && deposit_remaining(...) == 0` (shallow reserve floor `kDepositReserve` = 1,600 t) and reads the once-per-exhaustion notice `SimEventKind::Notice` code 0x15B (or 0x19) via `World::drain_events()`. Quarry claim flags (one per entrance, `entrance_walk_points` order) have no accessor: `find_building` + `std::get_if<Quarry>(...)->claims`. Gold/gem mines answer `Unsupported`; stage/research-locked quarries and iron mines answer `ConstructionDenied`. Diagnostics (not saved, not hashed): `ForestryStats` quarry/mason counters, `OreLookupStats`, `ResidentStats::home_walks/home_entrance/no_path_home`.
+
+### Read before the next step
+- A6 (owner), OQ-556 check, the five `anno_app_tests` (clear after the merge with main), the identity-number caveat, the two baseline edits, the T5 fix review (orchestrator). Next package suggestions: none started.
+
+- Final reviewer (part E, fresh, read-only, head ed7131fa): **ACCEPT** for MAP-EXTRACT-2 for merge consideration, on the condition that the merge with main and the identity re-numbering come first; no P1/P2. It re-ran 9 required contracts by exact name (9/9), 99 sim cases (99/99), clang-format 23.1.3 on 67 changed C++ files (clean) and the GCC 13.3 `-Werror` compile of the changed sources and five tests (clean, arm64 container; x86_64 NOT_RUN); the two gate logs were read, not re-run. P3s folded in above or fixed in this commit: the mutant-script sentence, the stale `main` note, `fixtures/synthetic/sim/iron2/current137/README.md` paragraph 1, `gold-gems.md` line references (ARISTOKRATEN SCHMUCK need is line 537 of `BGruppen.dat`, stall tick at `types.cpp:984`). Accepted caveats: the quarry payload and goal bytes have no independent byte oracle (`tools/sim_stream.py` does not model them; only C++ round trips and reload tests); the five `anno_app_tests` make the Debug gate verdict FAIL (attributed above, cleared by the merge with main); part G is an inventory only.
+
+## MAP-INTEGRATE-2 I1 — exact input merges — 2026-11-11 — status: DONE
+
+Merged only the packet-authorized frozen inputs, in order, without rebasing or taking moving main:
+
+- Route `49ffcee66f5bdb678e4e165112abacccd84e727a` entered through two-parent merge
+  `d91e4a7a79cb0752f75e75f4386db38d30a89d5b` (parents `24d64756`, `49ffcee6`).
+- Extract `a5a3bca35c781231ab8d52205a5a1117b4cce23f` entered through two-parent merge
+  `67272f109e77e5c9ea0cefee57389890d813e5aa` (parents `d91e4a7a`, `a5a3bca3`).
+- The invariant-valid Quarry inspection correction is
+  `3294c10d10aa79b0b021712098bd25ae50a6bdfc`. Both accepted heads and the task's
+  main base are ancestors. Each checkpoint was ordinarily pushed only to
+  `task/MAP-INTEGRATE-2`.
+
+The first merge built and its canonical focused gate passed at exact `d91e4a7a`: selected 45,
+executed 45, failed 0, empty 0, skipped 0, incomplete 0, sanitizer lines 0
+(`cache/map-integrate-2/I1/route-intermediate.log`, sha256
+`0ddde5e7e1067d82b47a3be565e78d84eb63e7b4b42d08849a351030b833efd7`). The second merge's
+full `dev` build completed all 675 Ninja edges with exit 0. It is intentionally only a compile
+checkpoint: the combined tree still names predecessor stream 137, so no native/replay result from
+that identity is accepted as combined compatibility evidence before I2 allocates 138.
+
+### Conflict decisions
+
+- `REPORTS.md` kept this branch's slim-main/S/P/I0 history, then appended byte-for-byte the Route
+  branch's 152-line suffix followed by Extract's 226-line suffix. `docs/open-questions.md` kept the
+  branch copy and appended Extract's exact 22-line suffix; OQ-552 through OQ-556 occur once and no
+  number was changed. Orchestrator-owned `TASKS.md`, `STATUS.md`, `HISTORY*` and `REPORTS-1.md`
+  remain main's versions.
+- `world.hpp` keeps main's `city_population`, Route's freight accessors/friend/state, and Extract's
+  mine/quarry state. The version is temporarily 137 with an explicit non-evidence checkpoint note;
+  it is not a relabelled 136 or a claimed combined identity.
+- `apply.cpp` keeps both `freight.hpp` and `mine_source.hpp`, Route command handling, Extract mine
+  binding, and an explicit non-switchable Quarry arm. Booking, creation, driver and invariant
+  callers retain both feature families.
+- Every conflicted version assertion in config/economy/replay/resident/script/navigation/ship/sim
+  tests temporarily follows Extract's 137. `golden.hpp`, integration stream helpers, replay CMake
+  registrations and Python reference tools likewise retain their real current137 meaning until I2
+  moves current behavior to current138; historical folders are not renamed.
+- The combined cargo fixture conflicts use Route's bytes because `CargoRules::freight` is present.
+  The Extract current137 corpus/goldens remain their own predecessor evidence. I2 independently
+  transcribes and regenerates the combined bytes rather than treating either side as an oracle.
+- `founding_assets_test.cpp` keeps main's repaired expansion proof and the Route voyage include;
+  its publication labels temporarily name 137. `integration_identity_test.cpp` retains Extract's
+  salt/iron predecessor refusals plus the auto-merged main/Route cases. The test-support budget
+  conflict keeps main's fixed ports.
+- `docs/sim/state.md` retains the separate Route-only136 and Extract137 contracts and adds only the
+  I1 checkpoint warning. No predecessor field order or tag was rewritten.
+- The required Windows-app seam is limited to `play.cpp` and `inspect_building_test.cpp`:
+  `DescribePayload` and `payload_kind_name` now handle Quarry; the hand-derived case declares one
+  entrance and a valid `{0}` claim vector, and exercises status, suspended and blocked output.
+- Two whitespace defects carried by the accepted Extract documentation were removed. No semantic
+  source or evidence text was altered by those two cleanups.
+
+### Retained responsibilities and their holding tests
+
+- **135 faithful mine default:** `salt mine: the faithful default accepts, charges and creates a
+  mine with no deposit in reach, unbound and idle` holds the idle/no-repeat-search behavior and the
+  read-only `mine_site_deposit_in_reach` control; `salt mine: an unbound mine command is logged and
+  the log reproduces` holds acceptance and proves reserved `Reject::NoDepositInReach` is not
+  produced; `salt mine: the legal site with its payment and the deposit bound at placement` plus
+  the mine-facts case hold imported mines unbound/inert.
+- **137 placement and extraction:** `mountain placement: types the class does not cover stay
+  Unsupported` holds gold/gem refusal; `iron mine: a stage-locked 1205 is refused next to the
+  eligible control and the dry run ...` holds `ConstructionDenied`; the re-lookup selection,
+  weighting and fallback cases in `iron_mine_test.cpp` hold the re-lookup rule. `transport: a walk
+  ends on the centre of the goal sub-cell (T3.2)`, the resident T3-Q2 entrance/failure/reload cases,
+  Quarry Q-A1..Q-A4 and the Quarry continuation/invariant cases hold the shared sub-cell end,
+  resident home failure, per-entrance claims and mason job `0x2c`. `iron mine: D4 exhaustion ...`
+  holds one notice `0x15B`. Save/hash equality around `mine_facts`, Quarry continuation and the
+  stats-sink comparisons keep diagnostic counters outside canonical state.
+- **136 freight:** `freight commands: live authority canonical grouping deep copies and atomic
+  refusals`, `freight lifecycle: pause resume native continuation and cancel after a partial
+  commit`, and `freight takeover: accepted public Move Load Unload take control and refusals do
+  not` hold assignment, suspend/cancel and manual takeover. `freight ingress: same-tick
+  cancellation replacement and refused manual commands precede ...` holds no-route/no-change
+  ingress. `freight lifecycle: arrival authority public replacement and stale revision predicate`
+  and the unreachable/missing-target recovery cases hold R4 authority recovery. `freight
+  conservation: two ships and two owners contend in declared figure order` and `freight fault
+  control: exact named warehouse debit and one-time target quantity` hold the ledgers. The command
+  cases compare RNG cursors, and the complete DrawSite inventory remains unchanged: freight adds no
+  draw.
+- **Main:** the full dev compile includes main's five repaired app callers; the merged tests keep
+  `city_population`, expansion/founding coverage and the repaired fixed budget ports. I2 and later
+  gates re-execute affected cases under the real combined identity.
+
+### Review and evidence
+
+The first canonical Quarry app gate exposed an author fixture error and is preserved, not erased:
+selected 7, executed 0, failed 7, empty 0, skipped 0, incomplete 0. The `{1}` claim had no live
+mason, so world creation correctly refused all seven cases
+(`quarry-app.log`, sha256 `79caaf5cf5a5612fe6c90fa7c1529f493370b6374b5288875a366a2fbae89fba`).
+After `3294c10d`, the superseding canonical gate passed: selected 7, executed 7, failed 0, empty 0,
+skipped 0, incomplete 0, sanitizer lines 0 (`quarry-app-corrected.log`, sha256
+`dc2983c3039d908b4c50d0ae7636402c51a01ef01d0ef2dcce19fc1184bca6c3`).
+
+Independent reviewer `/root/integrate2_i1_review` reviewed both merge commits, every conflict
+resolution and relevant callers, confirmed the two REPORTS suffixes and open-question suffix
+byte-for-byte, found the invalid claim fixture as a blocker, then re-reviewed exact corrected pin
+`3294c10d`: **APPROVED, no unresolved findings**. Its independent canonical Quarry case passed:
+selected 1, executed 1, failed 0, empty 0, skipped 0, incomplete 0, sanitizer lines 0
+(`quarry-review.log`, sha256 `50b4338b7dc321fe6337abf4db2a187ce3df754102a264a26b49c3e842193271`).
+All original-game-file tests are **NOT_RUN for I1**; the packet assigns the real Route voyage/scale
+and Extract real-data interaction proof to I4.
+
+### Decisions and reasoning
+
+- Preserved append-only predecessor contracts and deferred every current-identity rebaseline to
+  I2. A green build at a tree whose version constant still says 137 cannot prove combined
+  compatibility.
+- Resolved each subsystem as a semantic union rather than selecting one side wholesale. This is
+  why both includes, fields, visitors and test families remain, while current pins deliberately
+  stay temporary.
+- Kept the first failed canonical gate. It demonstrated the Quarry claim invariant was active and
+  caught a test that would otherwise have looked like coverage while never constructing a world.
+- Changed the test to one unclaimed slot instead of manufacturing a mason solely for a
+  presentation formatter. Suspended and blocked provide non-default output while `{0}` remains the
+  entrance-sized, invariant-valid claim state.
+- Did not run predecessor native/replay matrices after the second merge. I2 changes the identity,
+  independent oracle and current fixtures; running them now would create evidence that must be
+  discarded and could obscure a false-positive compatibility claim.
+
+## MAP-INTEGRATE-2 I2 — combined state 138 and compatibility evidence — 2026-11-11 — APPROVED
+
+State 138 was allocated alone in `fa34d26c21632a826b0f5cdb143a7996731d7a79`, with the exact
+combined field, stream, digest and draw-order contract recorded in `docs/sim/state.md` and
+`docs/sim/gameplay-integration.md`. The generated current fixtures and first compatibility proof
+were frozen in `a7258588`; the complete shared-fixture change table was corrected in `745d0e34`;
+the final independently encoded encompassing populated archive is
+`acc05cbf48f4018a1a24817d053d69424c1b271e`. Every checkpoint was ordinarily pushed only to
+`task/MAP-INTEGRATE-2`.
+
+The current archive identity is state 138 / schema ECONBK1 / PRNG timeline 5 / replay 4 / command
+wire 1. Real valid 134, 135, 136 and 137 native states each refuse with their own version, and the
+four real replay headers refuse at the replay boundary. Current outer metadata with each valid old
+native reaches the distinct embedded-native refusal. A damaged old native reaches the checksum
+diagnostic first, so corruption cannot masquerade as compatibility evidence. Valid native and
+replay 138 controls sit beside those refusals and leave the target world unchanged.
+
+`tools/integration_stream_ref.py` now independently encodes one round-trippable encompassing
+archive containing the complete FigureRegistry, a complete Mine Building wrapper (id 77, payload
+tag 5, deposit 3), and a complete Quarry Building wrapper (id 88, payload tag 9, claims `{1,0}`).
+The same archive holds the sailing freight ship, its route target, the mason whose home is the
+quarry and the two 256-unit reservers whose targets and sum bind to the mine. The C++ compares the
+independent bytes and hierarchical root, reads and writes them byte-identically, and checks every
+relationship. Omitting the Quarry case, route state or restored claim each changes the encompassing
+archive. The separate scopes remain useful localization evidence, but are not the integration
+claim.
+
+All current replay registrations and current consumers point at
+`fixtures/synthetic/sim/integrate2/current138`. Remaining 133–137 paths under `src` and `tools` are
+explicit historical/refusal inputs. `README.md` in that directory gives file / complete old SHA-256
+/ complete new SHA-256 / cause for every changed current or shared fixture, including all Route136
+cargo recordings, the 137 scenario corpus and the shared CargoRules/ship-hold transcriptions.
+`provenance.json` verifies all 17 new/shared digests. Fifty of fifty scenario `create_hash` values
+changed; after replacing those identity fields and removing the version header, every physical,
+warning and movement column is equal to the accepted 137 corpus.
+
+### Review and evidence
+
+- Author focused state/oracle gate at final code: selected 4 / executed 4 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0 (`focused-state138-world.log`, SHA-256
+  `485a1fed5ad17f8d76a4f41ef65367c3364305e3fec7f2d6741160c3a69d6165`).
+- Author current-session gate: selected 11 / executed 11 / failed 0 / empty 0 / skipped 0 /
+  incomplete 0 / sanitizer lines 0 (`current138-sessions.log`, SHA-256
+  `0d4d7a2157530a2b7b792d7c0c991b8f1577a944952f7c86ce7aca74e2c7e6b5`). It includes G2–G6,
+  founding/load/unload mutants, the shared independent cargo/hold bytes and the real Tutorial
+  economy-loop checkpoint recording.
+- Original-data corpus regeneration with host socket permission: selected 1 / executed 1 / failed
+  0 / empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0
+  (`scenario-corpus-update-host.log`, SHA-256
+  `f6e7534c7e2d5978040dd54d4d5dca2a9e3144092e5b7f9025a2f1723fdc620e`). The coordinator admitted
+  all four workers. The earlier direct run waited 1,800 seconds and reported that no coordinator
+  could listen in the sandbox; it was aborted only after that infrastructure refusal. A canonical
+  sandbox attempt was also preserved and aborted after the unchanged journal and absent listener
+  proved the same socket blocker. Neither is counted as product execution.
+- Independent reviewer `/root/integrate2_i2_review`, exact final pin `acc05cbf`: **APPROVED, no
+  unresolved findings**. Its non-overlapping canonical gates total selected 15 / executed 15 /
+  failed 0 / empty 0 / skipped 0 / incomplete 0: `reviewer-corrected.log` SHA-256
+  `b4f6a0d07c5de5e9ae2fe6366b079c7a762cafcdbe483724b88bab04fa01016f` (4/4) and
+  `reviewer-corrected-replays.log` SHA-256
+  `0c9d1d0f2d1dda9c42f64e988d7656417b764d3b3149064900627e167ce50f30` (11/11). It verified all 17
+  provenance digests. Game-file tests were **NOT_RUN by the reviewer**; the author corpus/economy
+  results above remain author measurements and are not included in the reviewer count.
+
+The review first found that the change table omitted the two shared fixtures; `745d0e34` added their
+full old/new digests and causes. It then rejected nine disconnected scopes as insufficient for the
+packet's populated-world claim; `acc05cbf` added the independently encoded encompassing archive,
+relationship checks, byte-identical read/write and seam negatives. Both findings were fixed and
+re-reviewed before I3 was released.
+
+### Decisions and reasoning
+
+- Allocated 138 rather than relabelling either 136 or 137. Both predecessor layouts are real and
+  incompatible; the combined Rules suffix, Figure freight state, Mine reservation/deposit state,
+  Quarry tag 9/claims and mason goal coordinates must share one new identity.
+- Kept the PRNG timeline at 5 because the merge adds no draw site and changes no draw order. The
+  independent layout and populated archive prove state composition without inventing a PRNG bump.
+- Regenerated current sessions from reviewed behavior and kept every predecessor directory
+  immutable. A C++ hash is documented as a rebaseline; independently transcribed G0/G1/S5/S6,
+  complete Rules/holds and the encompassing populated archive are the byte/hash oracles.
+- Required a complete Building wrapper in the combined oracle. Comparing `Quarry` and `Mine`
+  payloads separately would not exercise payload tag 9 or prove that reserver/route/home ids name
+  the same serialized objects.
+- Preserved the first socket-blocked attempts and reran through the canonical workflow with host
+  permission. Admission failure is classified as infrastructure, never converted into a pass or a
+  skipped product test.
+- Kept gameplay defaults unchanged. State 138 records the semantic union; it does not enable
+  booking, automatic freight or any other opt-in rule by default.
+
+## MAP-INTEGRATE-2 I3 — authored cross-feature runtime proof — 2026-11-11 — APPROVED
+
+The frozen implementation is `b00c8372b2e0bf85b79a34e59834c2ec1a64fb63`. It adds one explicitly
+authored two-island `ScenarioSpec`; it is not an original scenario and does not claim original-data
+coverage. Scenario construction supplies the initial actors, types and terrain. Every intervention
+after creation passes through the public command wire (`AssignFreightRouteCmd`, `DemolishCmd`,
+`ControlFreightRouteCmd` and `MoveCmd`), encoded, decoded and applied by the world.
+
+The fixture runs the real shallow-iron-mine, two-smelter, toolsmith, market-cart, quarry, mason and
+automatic-freight paths together. A tools route completes at least two distinct cargo-bearing
+automatic cycles. The toolsmith's cumulative production equals workshop output plus both city
+stocks plus live land cargo plus ship holds. The mine-to-smelter and smelter-to-toolsmith diagnostic
+edges are independently positive. The fixture then demolishes the mine while a tools ship is
+sailing loaded. It observes that load leave, observes a later nonempty sailing leg that could only
+have loaded at the source after demolition, and observes delivery of that exact fresh load before
+closing the tools ledger again. No old mine target retains a reservation and the world invariants
+remain clean.
+
+At one saved boundary all three integration states are live at once: the route ship is loaded and
+sailing, the quarry claim is set, and two live carriers reserve the mine with their sum equal to the
+mine's reserved field. Reload and uninterrupted execution are byte/hash/cursor equal after exactly
+800 advances of 10 ms; a 799-advance run differs. A separate case suspends freight and directly
+observes progress in mine production, quarry lifting, mason brick production, market-cart tool
+unloading and market-cart brick unloading while the route remains suspended. Public cancellation
+removes the freight state and public `MoveCmd` restores manual navigation.
+
+### Acceptance table
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| New-chain freight for at least two automatic cycles | Destination tools rise at two separate completed-cycle boundaries; no per-stop driver command exists | A cycle without a destination stock increase is not counted | `integration authored cross-feature: mine tools freight quarry and exact reload` | Approved |
+| Exact conservation and mine interruption | Production equals output + city stores + land cargo + holds before interruption and again after a fresh post-demolition load and delivery | Preloaded cargo must first become empty; only a later nonempty sailing leg qualifies as the post-demolition load | Same case; Debug/ASan/reviewer gates below | Approved after correction |
+| Populated reload boundary | Loaded sailing ship, quarry claim and two mine reservers coexist; save/load equals uninterrupted at 800 advances | The otherwise identical 799-advance run has a different state hash | Same case | Approved |
+| Suspend, cancel and manual return | Five independent land-chain counters advance while freight status stays `Suspended`; cancellation removes freight and `MoveCmd` installs a manual order | Progress of only one land subsystem is insufficient and was rejected by the first review | `integration authored cross-feature: suspend cancel returns manual ship control while land chains keep running` | Approved after correction |
+| Archive/state seam sensitivity | Legal populated control constructs, advances and reloads | Omitting freight state or the claim changes the canonical hash; replacing Quarry with Inert or Mine with Quarry trips the named invariant | `integration authored cross-feature: targeted seam omissions fail beside the legal combined control` | Approved |
+
+### Review and evidence
+
+- Final canonical Debug gate on `b00c8372`: selected 3 / executed 3 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0. `debug-reviewfix.log`, SHA-256
+  `d09d7abe211d990d0aa64cd22c3bd91a75ab70289ce0466f0b820f18308a1c59`.
+- Final focused ASan/UBSan gate on the same pin: selected 3 / executed 3 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0. `asan-reviewfix.log`, SHA-256
+  `838fd9eca14e034c582096ae4a26c77340215fe92a14920a35fb3fbfc92c5b35`.
+  This is an affected focused gate, not the whole sanitizer suite.
+- The first ASan attempt is preserved: `asan.log`, SHA-256
+  `0eea44ad08da7e2fb8cdc8e658ada956b2016c9c926628e53c981319f64154de`. The sim target built,
+  but the mandatory `picture_matrix_contract` failed before the selection because the command had
+  not built its `bench_picture` executable (missing helper, exit 127). Building that required target
+  in the same sanitizer tree made the contract and selected tests pass; the first corrected log is
+  `asan-corrected.log`, SHA-256
+  `ccb157eca26b9334be99bce6cafe77d7a19933d821075d12f93f1b4279a73967`.
+- `clang-format` 23.1.3 is clean for the new C++ file. Final Debug and ASan binaries have SHA-256
+  `e94458862e63e02529b56ab2147fce7e836075e725c1403e8b079bc098fc0057` and
+  `3505802df30498828abbfb90b5ff9079b0819905efc7cbd3858c3a36ee612c3e` respectively.
+- Independent reviewer `/root/integrate2_i3_review` first rejected the preloaded-only demolition
+  proof and the disjunctive land-progress assertion. Both were corrected in `b00c8372`. The reviewer
+  re-inspected the full package and ran an independent canonical Debug gate: selected 3 / executed
+  3 / failed 0 / empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0. **APPROVED, no unresolved
+  findings.** `reviewer-b00c8372.log`, SHA-256
+  `ded9cc2ba23a37cebed9541b6c2cc6439d9256830f043e3bff09cce21d616f49`.
+- Original game-file tests are **NOT_RUN / not applicable** to this explicitly authored I3 fixture.
+
+### Decisions and reasoning
+
+- Kept setup declarative and small. Slower authored land-worker facts lengthen reservations and
+  claims enough to make the required simultaneous state a deterministic checkpoint; they do not
+  alter production arithmetic, route rules or any shipped registry.
+- Counted cargo-bearing route cycles, not merely `completed_cycles`. A nominal empty cycle is not
+  evidence that the new goods travelled.
+- Distinguished unloading cargo already aboard from loading after mine removal. The empty-then-
+  nonempty observation and subsequent exact delivery are necessary to prove the route used
+  remaining source stock rather than coasting on the pre-demolition hold.
+- Used diagnostic `TransportStats` only as a test sink for production and land-delivery progress.
+  It remains outside canonical state, hash and save; canonical equality is tested independently.
+- Required each land subsystem to advance while freight is suspended. An `OR` between mine and
+  mason movement could pass with a stalled quarry or cart and was removed after review.
+- Left gameplay rules, state identity and original fixtures unchanged. I3 adds proof for the
+  already accepted 138 composition; it does not introduce a new simulation contract.
+
+## MAP-INTEGRATE-2 I4 — combined real-data results — 2026-11-11 — APPROVED
+
+The reviewed correction is frozen at `7f6fad9fc3c3bf173be156ebbdd55fe18f97b372`. The combined
+binary keeps state 138 and every gameplay default. It changes no product code, archive layout,
+schema, rule or original fixture. It replaces four isolated-stream trajectory fingerprints with
+the exact combined-state results, keeps them strict rather than tolerant, and labels the two
+published evidence headers as state 138.
+
+The cause is the accepted state-137 carrier endpoint rule in `transport.cpp`: source and home walks
+preserve the selected goal sub-cell rather than ending at the last tile centre. On the original
+freight fixture the first source threshold now takes 73 rather than 75 advances and the later
+collection threshold 38 rather than 39, so route assignment moves from entry 490 to 487 and the
+changed-command divergence from 491 to 488. On the expansion fixture the first delivery is ready
+two 500-tick advances earlier; the driven trajectory closes at tick 264000 rather than 265000,
+before one source-city upkeep booking. Source upkeep is therefore 89 rather than 90, owner gold is
+28864 rather than 28863, and the changed-command divergence moves from entry 460 to 458. All goods,
+construction and city ledgers, checkpoint counts, native continuations, hashes and invariants stay
+under their existing exact checks.
+
+### Acceptance table
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| State-136 original automatic freight on the combined binary | Two cargo-bearing cycles, exact conservation/city accounts, 11/11 fresh-process checkpoints | A one-ton route change diverges after 3/4 checkpoints at exact entry 488 | `route-real-final.log` | Approved |
+| R6 continuation and bounded scale | Honest fresh-process replay reproduces; Release scale case executes | Changed-command replay must return the named divergence rather than reproduce | Route final plus `route-scale-release.log` | Approved |
+| State-137 iron, Quarry, resident walk and state-135 salt | Iron T3–T5, two-reserver reload, Q3 bricks, Quarry continuation, the 7-city resident measure and salt/mountain proofs execute on the combined binary | Seven explicitly opt-in probes remain classified skips; none is presented as corpus execution | `extract-real.log` | Approved; later changes have no production dependency |
+| Main's repaired 18 | All five non-GPU members execute with original files | The 2 play-GPU and 11 picture-GPU members are explicitly NOT_RUN on this Mac | `main-five-and-canaries.log` | Approved within Mac host boundary |
+| Expansion and ship-start canaries | Expansion producer plus honest/changed replays execute; ten other ship-start/expansion canaries execute | Changed expansion command diverges after 10/11 checkpoints at exact entry 458 | `main-canaries-real-corrected.log` and `main-five-and-canaries.log` | Approved |
+| Changed combined counts are explained, not forced | Exact earlier thresholds, ticks, ledgers and replay entries are pinned | Preserved stale expectations fail on the newly observed exact values before replacements pass | Four preserved route/expansion logs below | Approved |
+
+### Author evidence and preserved failures
+
+- Extract/iron/Quarry/resident/salt gate: selected 72 / executed 65 / failed 0 / empty 0 /
+  skipped 7 (`opt-in=7`, every other skip class 0) / incomplete 0 / sanitizer lines 0.
+  `extract-real.log`, SHA-256
+  `87324a479625e59aa7528d033d3a783a1f7441e1cb17bcad217b62b648fb954a`.
+  `ANNO_RESIDENT_MEASURE=1` made the required seven-city measure execute: 861 home walks, 13
+  no-path results. The seven skips are the named iron probes and salt timing sample, not required
+  proofs.
+- Final original-freight and replay gate: selected 3 / executed 3 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0. `route-real-final.log`, SHA-256
+  `8f6d39873120876b68cc1fca85af3e73d4cb58ee2b5e975ceffe2563f03b10de`.
+- Release bounded-scale gate: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+  incomplete 0 / sanitizer lines 0. `route-scale-release.log`, SHA-256
+  `006502a4e4c1a7fa2c18243dbebfb15a2b1ba591c332bdb6a98ee7799e43a63f`.
+- Corrected expansion producer and both replay arms: selected 3 / executed 3 / failed 0 / empty 0 /
+  skipped 0 / incomplete 0 / sanitizer lines 0. `main-canaries-real-corrected.log`, SHA-256
+  `0b5cafc66d1f8d332866329259e4582484fa237fe41ee9db89cba4b5c662cdc5`.
+- Exact five repaired non-GPU main cases plus ten remaining ship-start/expansion canaries:
+  selected 15 / executed 15 / failed 0 / empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0.
+  `main-five-and-canaries.log`, SHA-256
+  `5f0f9e3189f5a0e38d853802cbfdf336344b78989a09a68a2fd9398a213d26d4`.
+- The first state-138 freight run is preserved: selected 3 / executed 0 / failed 3 / empty 0 /
+  skipped 0 / incomplete 0. The producer reached 52,126 successful assertions and then reported
+  assignment entry 487 against stale 490; both dependent replays were not run. `route-real.log`,
+  SHA-256 `71ea8e8c6bc9493ef9c8a77e6eceea37f7da84f95cb57bc415f9dcf254653212`.
+- The first corrected freight run is also preserved: selected 3 / executed 2 / failed 1 / empty 0 /
+  skipped 0 / incomplete 0. The producer and honest replay passed; the negative replay alone still
+  expected stale entry 491 rather than observed 488. `route-real-corrected.log`, SHA-256
+  `2cb675c91820257922a57b201a9031ceb4db82eafecd1ad392c1930a4b106248`.
+- The first expansion run is preserved: selected 3 / executed 0 / failed 3 / empty 0 / skipped 0 /
+  incomplete 0. Its 30,255 successful assertions exposed only source upkeep 89 versus stale 90 and
+  gold 28864 versus stale 28863; both dependent replays were not run.
+  `main-canaries-real-final.log`, SHA-256
+  `b8b023fd49ffbbaf3548e1cc04c14515308dee400f46551af50eaeeed184fffe`.
+- One attempted overlap against `build/dev` was refused by the runner's existing lock before test
+  execution. The active freight gate retained ownership and finished normally; no lock was removed
+  and no product result is inferred from that workflow refusal.
+
+The long Extract gate is reused after the focused correction because the only later changed files
+are `src/sim/tests/freight_original.inc`, the expansion expectations in
+`founding_assets_test.cpp`, their replay strings in `src/sim/CMakeLists.txt`, and comment reflow.
+No iron, Quarry, salt, resident, production or transport dependency changed. `clang-format` 23.1.3
+and `git diff --check` are clean for the corrected files.
+
+### Independent review
+
+Independent reviewer `/root/integrate2_i3_review` reviewed exact clean pin `7f6fad9f` against I3
+closure `3a4eb2db`, the causal `transport.cpp` callers, all preserved/superseding raw logs and the
+game-file disposition: **APPROVED, no actionable findings**.
+
+- Its exact-pin freight/expansion/replay/ship-start gate: selected 7 / executed 7 / failed 0 /
+  empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0; mandatory
+  `picture_matrix_contract` separately executed 1/1. `reviewer-7f6fad9f.log`, SHA-256
+  `81a0733621c393c93a33d0d6c182ac3113025f162ec75b318c524790816d46ae`.
+- Its repaired-main control: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+  incomplete 0 / sanitizer lines 0; mandatory `picture_matrix_contract` separately executed 1/1.
+  `reviewer-main-real-7f6fad9f.log`, SHA-256
+  `4ab593c8e8108113c7f1637f7b8f789525480a0388ef541df11e89b6705feb15`.
+- Four original-data bodies ran independently: freight voyage, expansion voyage, the original-file
+  ship-start candidates and repaired-main no-command play. The reviewer also executed both honest
+  and both changed-command fresh-process replay entries. It did not duplicate the other four
+  repaired non-GPU main cases; those remain author evidence above.
+- The remaining 13 members of main's repaired-18 class (2 play GPU and 11 picture GPU), plus GPU,
+  Windows/MSVC, x86_64 and Wine generally, are **NOT_RUN by packet design** on this Mac. No asset
+  prerequisite skip is counted as execution.
+
+### Decisions and reasoning
+
+- Kept the combined results exact. A tolerance or removal of the entry/upkeep checks would have
+  hidden a deterministic semantic consequence of the accepted endpoint rule.
+- Explained the count changes through both threshold loops and the city booking boundary before
+  editing expectations. The preserved stale-pin failures and changed-command replay failures prove
+  each replacement applied and still distinguishes an altered command.
+- Ran the five actual non-GPU members of the repaired-18 class, identified from the accepted
+  W4-MAIN-2 packet, rather than treating every similarly named app test as a historical repair.
+- Kept the 13 GPU members NOT_RUN instead of accepting a skip or trying to redefine their coverage
+  on a host excluded by this packet.
+- Reused the long Extract result only after checking the complete later diff and naming its
+  dependencies. Test-only replay/trajectory corrections cannot change its production execution.
+- Preserved every failed gate under a distinct path. A later green run supersedes the stale
+  expectation for acceptance but does not erase how the integration difference was discovered.
+
+## MAP-INTEGRATE-2 I5 — frozen Mac gates and CI candidate — 2026-11-11 — APPROVED
+
+The final reviewed source pin is `8832e6bf5518d0704b49bd8e14cfc66b650b5fc4`. The state remains
+138 and every gameplay default remains unchanged. No product source, archive layout, fixture,
+schema, rule or state identity changed during I5. The only late source correction is test-only:
+the authored cross-feature fixture now requires each expected building lookup before reading its
+id. GCC 13.3 correctly rejected the former nullable dereference; the successful fixture path is
+byte-for-byte the same, while a malformed fixture now produces a named test failure.
+
+### Frozen Debug evidence
+
+- The whole Debug suite with `ANNO1503_GAME_DIR`, on the pre-correction clean freeze `8edd9778`,
+  selected 2,441 / executed 2,403 / failed 9 / empty 0 / skipped 29
+  (`platform=6`, `opt-in=22`, `other=1`; every other skip class 0) / incomplete 0 / sanitizer
+  lines 0. `debug-full-assets.log`, SHA-256
+  `274485ba2e38d2c2ff36d195d85e6bbb1c3e0cf393054b9789b19fed597d1e21`. All nine failures were
+  stale identity-derived test expectations: state 136/137 labels, the old empty-world hash and
+  pre-138 leather hashes. There was no mechanics failure.
+- The nine expectations were replaced by the observed state-138 identities, without changing
+  production code. A clean-pin focused gate at `0a15040e` selected 11 / executed 11 / failed 0 /
+  empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0. `focused-late-fix-clean.log`, SHA-256
+  `543cb8fa154675848cb629e556c6caf0b4a84b79a090a4a60db51fcac7753233`.
+- The whole Debug suite without `ANNO1503_GAME_DIR`, rerun under host permission after the sandbox
+  refused the coordinator socket, selected 2,441 / executed 2,048 / failed 0 / empty 0 / skipped
+  393 (`required-asset=366`, `platform=6`, `opt-in=21`; every other skip class 0) / incomplete 0 /
+  sanitizer lines 0. `debug-full-no-assets-host.log`, SHA-256
+  `2d17ea8252a045e584ac606dd0af9d919e27097b642de410c3ada6e843241ac6`. The earlier sandbox
+  attempt is preserved as an aborted infrastructure attempt; it had already lost admission and
+  was not counted as a product run.
+
+### Sanitizer, compiler and compatibility evidence
+
+- The affected ASan/UBSan selection at clean pin `0a15040e` selected 323 / executed 309 / failed 3
+  / empty 0 / skipped 11 (`opt-in=11`; every other skip class 0) / incomplete 0 / sanitizer lines
+  0. `asan-affected.log`, SHA-256
+  `64c589567c98e30c2a573d6c62e3b03f84c4d14548ffbb7cb910b949e7d4ac4e`. Two failures were outer
+  timeouts after the sandbox denied `/bin/ps` and port 47631 to the two scenario-corpus cases; the
+  third named a missing `anno_sim_ubsan_probe` executable because that target had not been built.
+  The other 309 cases, including the long founding, freight, expansion, iron, salt, Quarry,
+  population, script, farm and replay paths, executed without sanitizer diagnostics.
+- After building the probe, the exact three failures were rerun against the unchanged source under
+  host permissions. The coordinator admitted the corpus batches, and the gate selected 3 /
+  executed 3 / failed 0 / empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0.
+  `asan-repair-host.log`, SHA-256
+  `c56d40d639bae016a0d33a6f6ec615fd5e8c2a3d0244efc8c87cc1045136e8a2`. This closes the affected
+  sanitizer selection; it is not a claim that all 2,441 tests ran under sanitizers.
+- GCC 13.3 arm64 in cached image `gcc:13.3` first found the nullable authored-fixture lookup.
+  `gcc13-arm64.log`, SHA-256
+  `62389bdf05d0e1e910a498b85055d0e9bddc0e735ea2a9fe5f9845d6a0788ed1`. After the reviewed guard,
+  the repository warning script was repeated in full: viewer/GPU-on compiled all 392 `.cpp`
+  files, and viewer/no-GPU compiled all 74 app `.cpp` files, with the CI warning flags,
+  `-O3 -DNDEBUG -Werror`; both were clean. `gcc13-arm64-final.log`, SHA-256
+  `357e16b7be0ab80cfe9478e29356aa0a74fd34af2c2336e8b0ba3a9dde880e64`. This is native arm64,
+  not CI's x86_64.
+- The late guard's canonical Debug gate selected 3 / executed 3 / failed 0 / empty 0 / skipped 0 /
+  incomplete 0 / sanitizer lines 0 (`gcc-fix-focused.log`, SHA-256
+  `6f9adbd8a9d430cf0ea1a75aa309401d0fd13bbed80282bb035b71e8c8cb89a1`). Its affected ASan/UBSan
+  gate has the same classified counts and zero sanitizer lines (`gcc-fix-asan.log`, SHA-256
+  `becb3458acf79c76c4fccb801b501cba45f21e697fb56d080d642f499aa889dd`).
+- The final native Apple Clang build is current and clean (`ninja: no work to do` after the late
+  translation unit had already rebuilt). `clang-build-final.log`, SHA-256
+  `c2ed93ffd93c840755c0e91392ae593b1b52de9b7aaf6c208123feaceb1dde2e`.
+- clang-format 23.1.3 is clean over all 105 changed C/C++ headers and sources, including the late
+  file. `git diff --check`, `tools/sim_stream.py --check`, ten combined identity scopes and all six
+  integration-reference self-tests are clean in `cheap-checks-clean.log`, SHA-256
+  `8dbd2c8d27d3a123960975580ac9500f2f2a7edcfa27e94f7e92538197c40547`. No `anno-dump` command
+  changed, so `tools/agree.py` is not applicable. The current and legacy stream references are
+  included in those checks.
+
+### Independent review and post-freeze main movement
+
+- Reviewer `/root/integrate2_i5_review` approved the identity/test correction at clean pin
+  `0a15040e`: no findings. Its canonical late-fix gate selected 11 / executed 11 / failed 0 /
+  empty 0 / skipped 0 / incomplete 0 / sanitizer lines 0, plus the mandatory picture contract
+  1/1. `reviewer-late-fix.log`, SHA-256
+  `ef3a677ccc32c016d8c03bd70ddd201c6a10047a9fbe34543c46a5f61167c142`.
+- The same reviewer independently approved the GCC guard at `0a15040e` plus dirty-diff identity
+  `18801e258b305aa43cfd2fe9901239c5d606ce403d5fd0e8d92bd823d67dc909`: no findings. Its canonical
+  cross-feature gate selected 3 / executed 3 / failed 0 / empty 0 / skipped 0 / incomplete 0 /
+  sanitizer lines 0, plus the mandatory picture contract 1/1. `reviewer-gcc-fix.log`, SHA-256
+  `47a47487bfd1d0fcd4a76d5c88a1b789ea5086e055ea05ff6bda80b72c7cb451`. The reviewer confirmed
+  that all six lookups use the guard and that no fixture or product behavior was weakened.
+- After the freeze, `origin/main` moved from `03bf2b3c` to `088dcc63` through `3815dd76` and
+  `088dcc63`, two W4-NEXT-2 orchestration/review documentation commits. They touch only five
+  orchestration files. They were fetched and reported, not merged; the packet assigns any
+  integration decision to the orchestrator.
+
+### NOT_RUN and decisions
+
+MSVC with game files, Windows, x86_64, GPU execution and Wine are **NOT_RUN by packet design** on
+this Mac. The Clang 18 half of `check_unix_warnings.sh` is not present in the GCC container and is
+therefore NOT_RUN there; the native Apple Clang build is reported separately. CI is run after this
+I5 report is committed and pushed; every branch job, including `gate`, must be green before I5 is
+released.
+
+### Decisions and reasoning
+
+- Preserved every red and blocked log. A later focused green result closes a named stale
+  expectation, missing build target or sandbox admission failure; it does not erase the discovery.
+- Repaired the sanitizer matrix by rerunning exactly its three failed cases under host permission.
+  The 309 already executed cases were neither relabelled nor needlessly repeated.
+- Treated GCC's nullable dereference as a real test defect. The guard keeps the successful authored
+  world identical and makes a missing required building fail explicitly before undefined behavior.
+- Repeated the complete GCC script after the correction rather than accepting a one-file compile.
+  The 392-file pass is a strict superset of the packet's 74 changed `.cpp` files.
+- Did not merge moving `main` or reset the accepted evidence. Its post-freeze movement is docs-only
+  and belongs to the orchestrator's later integration decision.
+- Kept state 138, timeline 5, all gameplay defaults and every original fixture unchanged.
+
+## MAP-INTEGRATE-2 R — OQ-556 original-code verdict — 2026-11-12 — APPROVED
+
+OQ-556 is settled: the state-138 forward home search matches the original. This package changes
+documentation only; it changes no behavior, rule default, serialization, stream, fixture or state
+identity.
+
+Read-only disassembly of GOG `AnnoWelt.dll`, SHA-256
+`f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`, established the complete
+original path:
+
+- The start flood is `0x10003aa0`-`0x10003d81`. Each call seeds one selected, quantized sub-cell
+  at `0x10003b68`-`0x10003b98`, expands cardinally at `0x10003ba2`-`0x10003cb6`, and writes edge
+  keys at `0x10003cbc`-`0x10003d75`. The four admission masks are `0x2111@0x10006a81`,
+  `0x8444@0x10006c69`, `0x4888@0x10006dd0` and `0x1222@0x10006e8c`.
+- Goal setup is `0x10003f91`-`0x1000415f`, including the mark at
+  `0x10004065`-`0x10004070` and the key-helper call/store at
+  `0x10004137`-`0x1000414b`. The search pop loop `0x10004749`-`0x10004794` calls goal-test
+  `0x10003220`; dispatcher loop `0x10003708`-`0x1000373d` invokes the installed callback through
+  its indirect call at `0x10003737`.
+- Home entrances and the callback are installed at `0x10057ae0`-`0x10057bbe`; the installed
+  first-goal-stop callback is `0x10054240`. A no-path result takes the original failure branches
+  at `0x10053d20` and `0x10053f50`.
+
+Ghidra was **NOT_RUN** because neither Ghidra nor a Java runtime is installed on this Mac. The
+repository's `tools/disasm.py` fallback was used against the identified DLL, and the independent
+reviewer separately re-read the resulting instructions and address ranges.
+
+### Focused original-data proof
+
+The author probe loaded real `endless02` island 12, object 3110 at tile (322,770), walk code 4 and
+mask `0x139`. Classified counts: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0;
+assertions 16/16. It reproduces all nine start keys and proves that starts `(0,1)`, `(0,2)` and
+`(1,2)` reach no goal for all three affected homes, while all other six starts reach a goal.
+`oq556-probe-final.log`, SHA-256
+`fa43d8c60366f1554586a71b904a238ea24a0bf6c655ba370405ae0b699ff17b`.
+
+Independent reviewer `/root/integrate2_r_review` approved the final two-file docs diff with no
+remaining findings. Its independent real-data probe has classified counts selected 1 / executed 1
+/ failed 0 / empty 0 / skipped 0; assertions 16/16. `reviewer-final-probe.log`, SHA-256
+`e754c576f92dbfe66050a06aead9ea5b5ff2729d0fa12a5df2a90fab279aafcc`. Its probe binary SHA-256
+is `43b1ffed7d6477183072d02805f26513ec83a73b861706143a8af440919e60a4`; source SHA-256 is
+`9ed624313b00bf0f666424016521252cc1617b9e895af9abce3ecf8aff799eb9`. Other game-file tests are
+**NOT_RUN** by the reviewer; this accepted focused probe is the classified run. `git diff --check`
+is clean.
+
+### Decisions and reasoning
+
+- Kept the original forward-search failure instead of restoring the former reverse-route
+  workaround: the disassembly and real fixture prove the approximately 1.5% no-path result is
+  original behavior.
+- Distinguished the tile's blocked walk-mask bit from the returned edge-key nibble and the
+  goal-test dispatcher from its installed callback; those distinctions are necessary for the
+  address claims to be reproducible.
+- Used a bounded real-data probe rather than treating a hand calculation as execution evidence.
+- Made no identity change because the original-code answer confirms the accepted state-138
+  behavior.
+
+## MAP-INTEGRATE-2 N — measured state-138 progression gaps — 2026-11-12 — APPROVED
+
+Part N is measurement and research only. The source pin entering N is
+`7691daa0f0dd00e0906d228d45dd0b8ec6e3280c`; state remains 138 and every gameplay default remains
+unchanged. The only code changes are two opt-in test probes. No production behavior, archive,
+schema, rule default, fixture, scenario stock, permission, position or identity changed.
+
+The declared budget was **300 game-seconds = 150,000 ticks per town**, fixed before execution.
+`Rules::house_updates` and `Rules::city_booking` were on in each constructed test world and remain
+default-off. The three measured paths are the seven-city original `endless02`, the genuine public
+ship-start sail / `FoundCmd` / unload / forester / road settlement, and the advanced original
+`S01_07_01` town set. The complete findings and ranked next-packet outlines are in
+`docs/sim/progression-gaps.md`.
+
+### Acceptance table
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| Three original/public towns run for the declared time | 7-city `endless02`, ship-start settlement and 14-city `S01_07_01` each advance 150,000 ticks with both rules on | probes return as the named opt-in class when the environment flag is absent | author logs below; reviewer canonical gate executes both game-file test bodies | approved |
+| First failing upgrade predicate is ranked honestly | final-state projection evaluates food, goods, infrastructure, successor existence/materials and named successor class without invoking an upgrade | preserved successor-first projection incorrectly masks 126 score failures as `next_type`; corrected result reports zero first `next_type` failures | wrong-order and corrected hashes below; original `AnnoWelt.dll` `0x10075dd0`-`0x10075fc4`, `0x1002e000`, `0x1002c030`-`0x1002c08c`, `0x1002cbe0` | approved after correction |
+| Needs and producers come from original data | all five `BGruppen.dat` groups and every matching `Anlagen.dat` producer report force, amount, stage, research and inputs | a parsed producer is not labelled an implemented source; Hunter, Whaler, wildlife/fisher and trade boundaries stay explicit | raw registry output and original file hashes below | approved |
+| Build-goods and ship bootstrap are not overstated | city stores are recorded before/after; ship-start finishes with zero houses, zero city tools and 10.5 t city wood | remaining original ship cargo prevents the result being called an irreversible simulation deadlock | ship-start probe and accepted MAP-EXPAND public path | approved |
+| Ranking names original evidence and dependencies | every row cites the original file and address, size and dependencies; top three are goods, food and materials | successor policy, D8 trade, wildlife, fire/disasters and original-runtime observations remain separate, not guessed | `docs/sim/progression-gaps.md` sections 5-7 | approved |
+
+### Measurements and classified evidence
+
+Across 317 houses, 262 are at cap. First-failure counts are **goods 162, food 131, materials 18,
+infrastructure 6, next type 0**. `endless02` contains 108 Pioneers and 51 Settlers;
+`S01_07_01` contains 50 Pioneers, 3 Settlers, 64 Citizens and 41 Merchants. No Aristocrat house is
+present. No sampled house is eligible at the final instant. These are final-state cross-sections,
+not a claim that one correction upgrades every row.
+
+- Author original-town probe: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0, 7,604
+  assertions. `original-town-measurement-final.log`, SHA-256
+  `3e4732d5a8e22a698584dd642d794f59a216a7ce5d60379abcc4a2efd9eab0f1`.
+- Author ship-start probe: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0, 5,505
+  assertions. `ship-start-measurement-final.log`, SHA-256
+  `6a19508f9c4e45aec0145e9397a325e2ec2870e094aa9d62b0421bf50c0a86b4`.
+- Default-off probe: selected 2 / executed 0 / failed 0 / empty 0 / skipped 2
+  (`opt-in=2`; every other skip class 0). `default-opt-in-skip.log`, SHA-256
+  `56e7ce16684211b3e89d20f8f8c8e528e7da395293637deafeef7195df5fbecd`.
+- Existing original-data pure-kernel control: selected 1 / executed 1 / failed 0 / empty 0 /
+  skipped 0, 7,547 assertions and 1,082 calculations. `house-group-extract.log`, SHA-256
+  `57f3d318d434598e5c60b1e6116b24558e0e2b294ef88e43d4f9a8af572b9e1a`.
+- The preserved superseded successor-first run selected 2 / executed 2 / failed 0 / empty 0 /
+  skipped 0, but its oracle was rejected by review: it classified 126 houses as `next_type` before
+  their score predicates. `three-town-measurement.log`, SHA-256
+  `66334933eab6976e810fc7e29a176e7ad5caed2dd55ca4c82d2dd33669e1521c`.
+
+The original-town aggregate build stores do not exhaust a real build good. `endless02` ends with
+tools 49,302, wood 38,572, bricks 70,986 and marble 12,800 raw; `S01_07_01` ends with tools
+127,224, wood 180,118, bricks 113,213 and marble 22,528. The ship-start city ends with tools 0,
+wood 2,688, bricks 0 and marble 0 raw; additional original tools remain on its ship and require a
+public player unload/build sequence.
+
+The related `origin/task/W4-shared-list-1` population tool and report were read with `git show`,
+never merged. Its `01_1024_easy_256` run stays flat at 230 residents / 150 t through 60 seconds;
+the other four named rows are typed refusals. Its original Wine run is NOT_RUN.
+
+### Independent review
+
+Independent reviewer `/root/integrate2_n_review` approved the frozen tracked diff identity
+`7bbf3b291f44a80507a0718e41e6573bfcf3d28a99c1cd82511e211e8860b780` and untracked document
+SHA-256 `329978710add42c7cbdc4c79b2c005791f181dcc41fc16b910a09c3f33f4f9d8`
+with no remaining findings. It independently re-read all cited original addresses in GOG
+`AnnoWelt.dll` SHA-256 `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`
+and checked the arithmetic, per-group counts, source claims and W4 disposition.
+
+Its canonical gate executed the two game-file cases: selected 2 / executed 2 / failed 0 / empty 0 /
+skipped 0 / incomplete 0 / sanitizer lines 0, 13,109 assertions total. The mandatory
+`picture_matrix_contract` separately selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+incomplete 0. `/private/tmp/map-integrate-2-N-reviewer-gate-v2.log`, SHA-256
+`e763f0eec3cd4ed7b363ae938c6c008bd00492cbdbf50978768d339dce9bc4`; inventory SHA-256
+`64c9e0090a3a691a0477b5b0a7eca8cf797b8a58bdf156379913f7af6f6d24c0`; tested binary SHA-256
+`b2cf851f2ea57caf58c2ba15ade84ad7968de2f804862464c255afea4a4e6e89`.
+
+The reviewer's first workflow attempt failed before selection because CMake was absent from that
+shell's PATH: selected 0 / executed 0, workflow incomplete. It is preserved as infrastructure
+evidence, not product evidence: `/private/tmp/map-integrate-2-N-reviewer-gate.log`, SHA-256
+`47a3615354f329dc00487b10dbf3c5ad39d87c9a98cb2210174bf853dbba9fb4`. The corrected run used the
+packet's pinned toolchain path; no source changed between attempts.
+
+Original fixture hashes independently checked by review: `endless02`
+`734151588c5cd5854fc809c14fbd65cc7afa8050676690a87d5a2c42ae711f97`; `S01_07_01`
+`04f60b235f3137d83eb2078d1a727ca5e3c737d973f5a87a26c2ea6725e58d62`; `BGruppen.dat`
+`63e876fd3afedca214b3d9cc45f022f2c595f473839690e96f34e12ed7849e3b`; `Anlagen.dat`
+`b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`.
+
+### NOT_RUN and decisions
+
+Named-scenario execution in the running original, Windows/MSVC, Windows original game-file
+comparison, Wine, x86_64, GPU gameplay and sanitizer duplication are **NOT_RUN in N**. Hunter,
+Whaler, fisher route 0x2d, wildlife, D8 Venetians/trade, fire/disasters and special-successor runtime
+outcomes remain explicit dependencies. This packet implements none of them.
+
+### Decisions and reasoning
+
+- Corrected the evidence oracle after review instead of defending the initially larger successor
+  bucket. Original score predicates precede the city successor/material tail; the preserved wrong
+  run proves the correction distinguishes that plausible ordering error.
+- Ranked observed first failures only. A zero final `next_type` count does not certify every
+  successor; it says earlier predicates mask that compatibility boundary at this instant.
+- Distinguished original data inventory from executable support. The presence of an `Anlagen.dat`
+  producer does not create a wildlife source, a Whaler, a fisher route or a trade partner.
+- Kept the founded settlement result honest: its city-side tools are exhausted, but remaining ship
+  cargo makes manual resupply possible, so no automatic construction or replacement loadout is
+  proposed.
+- Reused W4 evidence by read-only branch inspection. No Windows code, moving main or unrelated
+  executor work was merged.
+- Limited changes to opt-in measurement and documentation. The next three proposed packets are
+  forced-goods attribution/closure, food attribution/closure and city-local upgrade materials.
+
+## MAP-INTEGRATE-2 E — consolidated state-138 handoff — 2026-11-12 — APPROVED
+
+Candidate branch `task/MAP-INTEGRATE-2` enters E at
+`a25a254dc502574cba5124fcda68d54980fa0381`. The accepted base is
+`03bf2b3cf6a7779e559c6dd3669ee24cccccb2ae`. The candidate combines only the packet-authorized
+automatic-freight pin `49ffcee66f5bdb678e4e165112abacccd84e727a` and extraction pin
+`a5a3bca35c781231ab8d52205a5a1117b4cce23f`, in that order. It does not merge moving main, the
+first Mac's active work or any Windows branch.
+
+State is **138 / ECONBK1 / PRNG timeline 5 / replay frame 4 / command wire 1 / save frame 1**. All
+gameplay defaults remain unchanged. `docs/sim/windows-consumer-delta-138.md` is the combined public
+consumer card; `docs/sim/progression-gaps.md` is the evidence-ranked gameplay follow-up.
+
+### Pins and authorized merges
+
+| Role | Pin | Disposition |
+|---|---|---|
+| task base | `03bf2b3cf6a7779e559c6dd3669ee24cccccb2ae` | ancestor, never rewritten |
+| I0 contract | `24d64756987cf12ce9d3f19d05cc6c9f68779999` | state-138 contract before source merges |
+| route input | `49ffcee66f5bdb678e4e165112abacccd84e727a` | merged exactly by `d91e4a7a79cb0752f75e75f4386db38d30a89d5b` |
+| extraction input | `a5a3bca35c781231ab8d52205a5a1117b4cce23f` | merged exactly by `67272f109e77e5c9ea0cefee57389890d813e5aa` |
+| I2 state-138 compatibility | `a634c8028bfa9839e8f7f3ea8b2f9a16cce03a7b` | identity and fixture regeneration closed |
+| I3 combined authored proof | `3a4eb2dbc6852b4a655f42cac6b3d222d00e1e2f` | approved after causal-proof corrections |
+| I4 combined original data | `8edd9778113c3ece99ad1833c90e5e20b22b9586` | exact combined trajectories reviewed |
+| I5 frozen-gate report | `05448acae14e0dbe19b2a93f4d69de7eb0a264fc` | CI run 43114461654 green |
+| R original-code answer | `7691daa0f0dd00e0906d228d45dd0b8ec6e3280c` | OQ-556 settled |
+| N progression evidence | `a25a254dc502574cba5124fcda68d54980fa0381` | approved and pushed |
+
+After I5, fetched `origin/main` moved to `088dcc632ba33bed37286fb588798de4785841e1`
+through W4-NEXT-2 orchestration/review documentation. It remains unmerged by packet design; no
+production dependency or conflict resolution was silently adopted.
+
+### Conflict-decision table
+
+| Scope | Resolution | Holding evidence |
+|---|---|---|
+| `REPORTS.md` and open questions | retained this branch's main/S/P/I0 history, then appended the exact Route and Extract suffixes; OQ-552..556 occur once | independent I1 suffix comparison; R closes OQ-556 |
+| `world.hpp`, `state_fields.hpp`, figure/rules layout | semantic union: FreightRules once; Quarry tag 9 and mason goal bytes retained; freight generation/state appended after resident state; mine binding retained | I0 field map, I2 independent bytes/provenance, identity tests |
+| command/apply/driver/invariants | both freight command handling and extraction/mine/quarry paths retained; no switchable Quarry fallback | I1 caller review; I3 combined authored proof |
+| versioned tests, references and fixtures | temporary predecessor labels held through I1; I2 allocated 138 and regenerated current consumers while preserving every 133-137 folder | 17 provenance digests; 50/50 scenario physical columns unchanged after version-header removal |
+| combined cargo fixtures | Route bytes used because FreightRules are present; Extract 137 fixtures remain historical inputs | independent hand bytes and current138 session gate |
+| founding/expansion tests | retained repaired main expansion proof plus original freight voyage; exact state-138 trajectory expectations replaced only after stale values failed | I4 preserved failures and corrected replay gates |
+| app payload visitor | added explicit Quarry description/name and a valid one-entrance `{0}` claim fixture | corrected app gate 7/7; independent Quarry case 1/1 |
+| state documentation | kept separate route-only136 and extraction137 contracts, then added coordinated 138 instead of relabelling either predecessor | I0/I2 review |
+| accepted-doc whitespace | removed two whitespace defects only; no semantic input evidence was rewritten | `git diff --check`; I1 review |
+
+### Identity and refusal table
+
+| Input | State-138 answer | Executed proof |
+|---|---|---|
+| valid native/replay 134 | refuse with exact state-stream diagnostic | `combined identity138...134 through 137 refuse`; freight corrupt/native case |
+| valid native/replay 135 | refuse; salt remains historical evidence | combined identity case and salt identity controls |
+| route-only native/replay 136 | refuse; F075/F076 alone is not combined identity | combined identity case and independent predecessor bytes |
+| extraction-only native/replay 137 | refuse; Quarry/mine alone is not combined identity | combined identity case and current137 provenance |
+| valid combined 138 | accept; save/load, replay and fresh-process continuation exact | I2 current sessions, I3 populated reload, I4 replay canaries |
+| damaged frame/header/embedded native | refuse at the named envelope or embedded-state layer; no coercion | I2 structured refusal matrix and mutations |
+| unbound mine | accept, charge and create idle; `NoDepositInReach` remains reserved and is never produced | faithful salt placement/refusal controls |
+| stage/research-locked supported mine/quarry | `ConstructionDenied`; gold/gem mountain types stay `Unsupported` | salt refusal matrix, iron and Quarry placement controls |
+| freight missing/foreign/out-of-range target | atomic assignment refusal or recoverable Failed route status; state authority remains in the sim | freight command/lifecycle/recovery cases |
+| accepted manual Move/Stop/Found/Load/Unload | takes automatic control; refused manual command leaves route unchanged | freight takeover and founding takeover cases |
+
+### Verdict per packet part
+
+| Part | Verdict | Boundary |
+|---|---|---|
+| S | WAITING ON OWNER, non-blocking | `/Users/dom/open1503-share` remains absent at E; Receive Only, hashes and sync state NOT_RUN |
+| P | DONE | exact inputs, CI and host/preflight inventory verified |
+| I0 | APPROVED | combined field/refusal/fixture contract frozen before merge |
+| I1 | APPROVED | only the two authorized hash merges, all conflicts independently reviewed |
+| I2 | APPROVED | real state 138 allocated; fixtures/provenance/refusals regenerated |
+| I3 | APPROVED | mine/tools/freight/Quarry combined runtime and continuation proved |
+| I4 | APPROVED | original freight, extraction, expansion and repaired-main canaries run with exact explained changes |
+| I5 | APPROVED | Debug, focused sanitizers, GCC 13.3 arm64, native Clang and CI closed |
+| R | APPROVED | original forward home search confirmed; OQ-556 answered without behavior change |
+| N | APPROVED | three 300-second town paths measured; ranked goods/food/material gaps |
+| E | APPROVED | fresh integration review and canonical N-town rerun complete |
+
+### Classified gate evidence and artifact hashes
+
+- I1 Route intermediate: selected 45 / executed 45 / failed 0 / empty 0 / skipped 0 / incomplete 0,
+  `0ddde5e7e1067d82b47a3be565e78d84eb63e7b4b42d08849a351030b833efd7`.
+  Corrected Quarry app: 7 / 7 / 0 / 0 / 0 / 0,
+  `dc2983c3039d908b4c50d0ae7636402c51a01ef01d0ef2dcce19fc1184bca6c3`.
+- I2 focused state/oracle: 4 / 4 / 0 / 0 / 0 / 0,
+  `485a1fed5ad17f8d76a4f41ef65367c3364305e3fec7f2d6741160c3a69d6165`. Current sessions: 11 /
+  11 / 0 / 0 / 0 / 0, `0d4d7a2157530a2b7b792d7c0c991b8f1577a944952f7c86ce7aca74e2c7e6b5`.
+  Original corpus: 1 / 1 / 0 / 0 / 0 / 0,
+  `f6e7534c7e2d5978040dd54d4d5dca2a9e3144092e5b7f9025a2f1723fdc620e`.
+- I3 Debug: 3 / 3 / 0 / 0 / 0 / 0,
+  `d09d7abe211d990d0aa64cd22c3bd91a75ab70289ce0466f0b820f18308a1c59`; focused ASan/UBSan:
+  3 / 3 / 0 / 0 / 0 / 0, sanitizer lines 0,
+  `838fd9eca14e034c582096ae4a26c77340215fe92a14920a35fb3fbfc92c5b35`.
+- I4 extraction real-data: selected 72 / executed 65 / failed 0 / empty 0 / skipped 7
+  (`opt-in=7`) / incomplete 0, `87324a479625e59aa7528d033d3a783a1f7441e1cb17bcad217b62b648fb954a`.
+  Freight/replays: 3 / 3 / 0 / 0 / 0 / 0,
+  `8f6d39873120876b68cc1fca85af3e73d4cb58ee2b5e975ceffe2563f03b10de`. Release scale: 1 / 1 /
+  0 / 0 / 0 / 0, `006502a4e4c1a7fa2c18243dbebfb15a2b1ba591c332bdb6a98ee7799e43a63f`.
+  Expansion/replays: 3 / 3 / 0 / 0 / 0 / 0,
+  `0b5cafc66d1f8d332866329259e4582484fa237fe41ee9db89cba4b5c662cdc5`.
+- I5 full Debug with assets before identity-expectation correction: selected 2,441 / executed 2,403 /
+  failed 9 / empty 0 / skipped 29 (`platform=6`, `opt-in=22`, `other=1`) / incomplete 0,
+  `274485ba2e38d2c2ff36d195d85e6bbb1c3e0cf393054b9789b19fed597d1e21`; all nine were exact stale
+  identity expectations. Corrected focus: 11 / 11 / 0 / 0 / 0 / 0,
+  `543cb8fa154675848cb629e556c6caf0b4a84b79a090a4a60db51fcac7753233`.
+- I5 affected ASan/UBSan: selected 323 / executed 309 / failed 3 / empty 0 / skipped 11
+  (`opt-in=11`) / incomplete 0 / sanitizer lines 0,
+  `64c589567c98e30c2a573d6c62e3b03f84c4d14548ffbb7cb910b949e7d4ac4e`. The exact three
+  infrastructure failures reran 3 / 3 / 0 / 0 / 0 / 0, sanitizer lines 0,
+  `c56d40d639bae016a0d33a6f6ec615fd5e8c2a3d0244efc8c87cc1045136e8a2`.
+- I5 GCC 13.3 arm64 compiled 392 viewer/GPU-on translation units and 74 viewer/no-GPU app units
+  warning-clean, `357e16b7be0ab80cfe9478e29356aa0a74fd34af2c2336e8b0ba3a9dde880e64`.
+  GitHub Actions run 43114461654 passed every job at `05448aca`.
+- R author and reviewer original-data probes each selected 1 / executed 1 / failed 0 / empty 0 /
+  skipped 0, 16/16 assertions: `fa43d8c60366f1554586a71b904a238ea24a0bf6c655ba370405ae0b699ff17b`
+  and `e754c576f92dbfe66050a06aead9ea5b5ff2729d0fa12a5df2a90fab279aafcc`.
+- N author original towns: 1 / 1 / 0 / 0 / 0, 7,604 assertions,
+  `3e4732d5a8e22a698584dd642d794f59a216a7ce5d60379abcc4a2efd9eab0f1`; ship start: 1 / 1 / 0 /
+  0 / 0, 5,505 assertions, `6a19508f9c4e45aec0145e9397a325e2ec2870e094aa9d62b0421bf50c0a86b4`.
+  Reviewer canonical game-file gate: 2 / 2 / 0 / 0 / 0 / 0, plus picture contract 1/1,
+  `e763f0eec3cd4ed7b363ae938c6c008bd00492cbdbf50978768d339dce9bc4`.
+
+Every initial red or infrastructure-blocked run remains recorded in its part entry. A later green
+focused result supersedes only the named stale expectation, missing helper, sandbox admission or
+toolchain-PATH cause; it does not erase the failed evidence.
+
+### Reviewer ledger
+
+| Package | Independent reviewer | Verdict |
+|---|---|---|
+| I0 | `/root/integrate2_i0_review` | approved after four contract corrections |
+| I1 | `/root/integrate2_i1_review` | approved after invalid Quarry test fixture correction |
+| I2 | `/root/integrate2_i2_review` | approved after provenance and populated-scope corrections |
+| I3 | `/root/integrate2_i3_review` | approved after demolition-causality and land-progress corrections |
+| I4 | `/root/integrate2_i3_review` | approved exact combined trajectories and original-file tests |
+| I5 | `/root/integrate2_i5_review` | approved late identity pins and GCC fixture guard |
+| R | `/root/integrate2_r_review` | approved original address path and real-data probe |
+| N | `/root/integrate2_n_review` | approved after predicate-order/source-citation corrections |
+| E | `/root/integrate2_e_review` | approved after three executable test-title citations were corrected |
+
+### Final independent E review
+
+Fresh reviewer `/root/integrate2_e_review` independently inspected the complete merge ranges and
+two-parent topology, every conflict resolution, the state-layout union, commands/apply callers,
+identity/refusal table, I3/I4 runtime evidence, N's corrected oracle and every Windows consumer-card
+header/test citation. It independently re-read R's original address path against GOG
+`AnnoWelt.dll` SHA-256 `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
+Moving main `088dcc632ba33bed37286fb588798de4785841e1` is not an ancestor. **APPROVED, no remaining
+findings.**
+
+The first static pass found three P2 citation defects in the new Windows card: the prose named
+shortened behavior-equivalent titles instead of the exact registered Found/recovery test titles.
+They were corrected to `cancels it`, `stays public` and `ending clears route`; no behavior or other
+documentation changed. The reviewer rechecked the corrected card, SHA-256
+`f9e193853b66047e132d5ba509bab4cbbd8c6b4c44d7140a687a16a848a0e3ea`, and found no further issue.
+
+Its fresh canonical game-file gate executed `progression gaps N: endless02 and S01_07_01 for 300
+game seconds (opt-in measure)`: selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+incomplete 0 / sanitizer lines 0; 7,604/7,604 assertions. The required
+`picture_matrix_contract` separately selected 1 / executed 1 / failed 0 / empty 0 / skipped 0 /
+incomplete 0 / sanitizer lines 0. `/private/tmp/map-integrate-2-E-review-N-town.log`, SHA-256
+`bbba70958d7b8764fa72707aa8c027da3059e5217a16917d0b8f5da3d45ec4f4`; inventory SHA-256
+`e384230ae236f732db2e9bc6581ec9c32e379f4d0a93054c93d101861613e1d6`; tested binary SHA-256
+`b2cf851f2ea57caf58c2ba15ade84ad7968de2f804862464c255afea4a4e6e89`. There was no initial gate
+failure.
+
+### NOT_RUN
+
+Windows/MSVC with the original game files, the Windows original-game comparison, live Windows
+window/input/GPU behavior, x86_64 local execution and Wine are NOT_RUN on this Mac. The 13 GPU
+members of main's repaired-18 class are NOT_RUN here. The full 2,441-case sanitizer suite is not
+claimed; I5 ran the affected 323-case selection and repaired its exact three infrastructure
+failures. Ghidra is NOT_RUN because Ghidra and Java are absent; R used the repository disassembler
+and independent address re-read. N did not run a named scenario in the original. No skipped asset
+case is presented as execution.
+
+Shared-folder S remains NOT_RUN: `/Users/dom/open1503-share` is absent at E. No device identifier,
+Syncthing configuration or share content was written to git, and no share was modified.
+
+### QUESTIONs
+
+- **QUESTION S-1 (owner action, non-blocking for candidate review):** after accepting
+  `open1503-share` as Receive Only on this Mac, should S verification occur before the orchestrator
+  lands state 138 or as a separate operations checkpoint? Recommendation: separate operations
+  checkpoint; the folder has no source/runtime dependency and the packet explicitly made S
+  non-blocking.
+
+No gameplay compatibility QUESTION remains in this packet. OQ-556 is answered. Wildlife/Hunter,
+Whaler/fisher, D8 trade and disasters/fire are dependencies for later progression packages, not
+authority to expand E.
+
+### Decisions and reasoning
+
+- Preserved the two-parent merge topology and exact supply pins. A squash, rebase or moving-main
+  merge would destroy the conflict and provenance evidence the packet asks the orchestrator to
+  review.
+- Allocated 138 only after the semantic union existed and regenerated current consumers from the
+  actual combined binary. Neither predecessor was relabelled.
+- Kept identity and refusal changes distinct from mechanics. Combined 138 refuses every 134-137
+  native/replay predecessor even when its feature subset would appear structurally readable.
+- Corrected exact combined trajectories only after the stale values failed and the accepted
+  endpoint rule explained every moved threshold, replay entry, upkeep and gold value.
+- Repaired real findings from every package review, then obtained re-review before dependent work.
+  No review approval was used to waive a product defect.
+- Reused long evidence only when the later diff was test/docs-only and the dependency was stated;
+  reran affected canonical cases after every source correction.
+- Kept R and N behavior-free. The original-code answer confirms the accepted route direction; the
+  town measurement proposes follow-up packets without silently adding gameplay.
+- Wrote the Windows card against public headers and executable tests, leaving live UI work and the
+  Windows game-file run to the orchestrator's required post-candidate sequence.

@@ -53,6 +53,9 @@ inline std::optional<Original> load_original() {
     return o;
 }
 
+/// The Tutorial scenario in the ORIGINAL-DATA COMPONENT PROJECTION: buildings, terrain, stocks and
+/// players from the original file; its units, actors and script program are deliberately omitted
+/// (original_component::actor_free_units(), chosen here, never a fallback). Not a full scenario.
 inline sim::World tutorial_world(const Original& o, bool live) {
     auto resolved = anno::sim_load::load_scenario_with_links(
         anno::test::read_file(o.dir / "Scenes" / kTutorial), o.templates, *o.types, o.cfg, {},

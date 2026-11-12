@@ -67,9 +67,17 @@ std::size_t house_need_count(const BuildingType& type, const SimConfig& cfg,
     return groups[*group].needs.size();
 }
 
+PayloadTag payload_tag_of(const BuildingType& type, const ClassInfo& cls) {
+    // Part Q: a quarry keeps the claim set of DECIDED Q-A. The class table (and so the registry
+    // digest) is unchanged, the Quarry class still names Inert there: the claim set is a fact of
+    // the runtime class, not of the table's tick/payload pairing.
+    return type.cls == RuntimeClass::Quarry && cls.payload == PayloadTag::Inert ? PayloadTag::Quarry
+                                                                                : cls.payload;
+}
+
 Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimConfig& cfg,
                      const TypeRegistry& types) {
-    switch (cls.payload) {
+    switch (payload_tag_of(type, cls)) {
     case PayloadTag::Workshop:
         return make_workshop(type.prod);
     case PayloadTag::WeaponsWorkshop:
@@ -92,6 +100,13 @@ Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimCo
     }
     case PayloadTag::Inn:
         return Inn{};
+    case PayloadTag::Quarry: {
+        // DECIDED Q-A: no claims at creation; one flag per entrance of the type.
+        Quarry q;
+        q.financial_active = inert_financial_active(type);
+        q.claims.assign(type.entrances.size(), std::uint8_t{0});
+        return q;
+    }
     case PayloadTag::Inert:
         break;
     }
@@ -122,6 +137,8 @@ const char* payload_name(std::size_t index) {
         return "House";
     case 8:
         return "Inn";
+    case 9:
+        return "Quarry";
     default:
         return "?";
     }
@@ -136,7 +153,7 @@ std::string sizes(const char* what, std::size_t have, std::size_t want) {
 
 std::string payload_problem(const Payload& payload, const BuildingType& type, const ClassInfo& cls,
                             const SimConfig& cfg, const TypeRegistry& types) {
-    const std::size_t want = static_cast<std::size_t>(cls.payload);
+    const std::size_t want = static_cast<std::size_t>(payload_tag_of(type, cls));
     if (payload.index() != want) {
         return std::string("holds ") + payload_name(payload.index()) + ", the class needs " +
                payload_name(want);
@@ -204,6 +221,10 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
         // maximum; slots beyond it stay while a walker occupies them.
         if (h->walkers.size() < r.walkers.size()) {
             return sizes("walkers", h->walkers.size(), r.walkers.size());
+        }
+    } else if (const auto* q = std::get_if<Quarry>(&payload)) {
+        if (q->claims.size() != type.entrances.size()) {
+            return sizes("claims", q->claims.size(), type.entrances.size());
         }
     } else if (const auto* inn = std::get_if<Inn>(&payload)) {
         // MAP-POP-CLOSE-2 K1: the original's u16 fields (+0x18, +0x1a), held in u32.

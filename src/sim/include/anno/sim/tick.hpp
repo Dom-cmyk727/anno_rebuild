@@ -337,7 +337,8 @@ enum class SimEventKind : std::uint8_t {
                      ///< ShipBlocked)
     ShipStopped,
     ScriptWave,
-    CityBooking
+    CityBooking,
+    Freight
 };
 
 /// UI-facing output of the simulation; not state, never hashed. Which fields a
@@ -354,6 +355,32 @@ struct ScriptWave {
     WaveAudience audience = WaveAudience::AllLocal; // original0xaa is broadcast, not PlayerId170
     friend bool operator==(const ScriptWave&, const ScriptWave&) = default;
 };
+enum class FreightSignal : std::uint8_t {
+    Assigned,
+    Pending,
+    Arrived,
+    Transferred,
+    Skipped,
+    Paused,
+    Resumed,
+    Cancelled,
+    Failed,
+    Cycle,
+    ManualTakeover
+};
+struct FreightObservation {
+    FreightSignal signal = FreightSignal::Assigned;
+    std::uint64_t generation = 0, amount_88 = 0, completed_cycles = 0;
+    std::uint32_t stop = 0, action = 0;
+    BuildingId warehouse;
+    GoodsId goods = 0;
+    FreightDirection direction = FreightDirection::LoadTarget;
+    FreightStatus status = FreightStatus::Running;
+    FreightPhase phase = FreightPhase::NeedLeg;
+    Reject reason = Reject::None;
+    std::uint8_t nav_failure = 0;
+    friend bool operator==(const FreightObservation&, const FreightObservation&) = default;
+};
 struct SimEvent {
     SimEventKind kind = SimEventKind::StatusMessage;
     std::uint64_t tick = 0;
@@ -366,6 +393,7 @@ struct SimEvent {
     std::uint64_t order_id = 0;
     std::optional<ScriptWave> wave{};
     std::optional<CityBookingLedger> booking{};
+    std::optional<FreightObservation> freight{};
     friend bool operator==(const SimEvent&, const SimEvent&) = default;
 };
 
@@ -397,6 +425,18 @@ struct TileEdit {
     FigureId actor;
 };
 
+/// MAP-EXTRACT-2 Q3 (docs/sim/quarry-bricks.md Q3.2 rule 1): one write of the mason job to a
+/// quarry's claim set, applied at the merge in issue order after the tile edits. The quarry is the
+/// building the mask-8 lookup finds at `tile` (never a remembered id); the flag is the entrance
+/// whose goal sub-cell is (col, row). No such building, no such entrance, or a building without a
+/// claim set: nothing happens.
+struct QuarryClaim {
+    IslandId island;
+    TileXY tile;
+    std::uint8_t col = 0, row = 0;
+    bool set = false;
+};
+
 struct Effects {
     std::vector<SpawnRequest> spawns;
     std::vector<ReleaseCounter> releases;
@@ -419,6 +459,8 @@ struct Effects {
     std::vector<DrawRecord> draws;
     /// MAP-ECON-1 E3: the harvest body's tile writes, in issue order.
     std::vector<TileEdit> tile_edits;
+    /// MAP-EXTRACT-2 Q3: the mason job's quarry claim writes, in issue order.
+    std::vector<QuarryClaim> quarry_claims;
     /// MAP-POP-LIVE-1 L2: the residents' deliveries to their houses, applied right after the spawns
     /// and before the releases.
     std::vector<HouseDelivery> house_deliveries;

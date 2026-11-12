@@ -24,7 +24,14 @@ namespace anno::sim {
 
 class World;
 
+struct CargoDestination {
+    Reject status = Reject::None;
+    CityRef city;
+};
 struct ShipCargo {
+    /// Shared read-only warehouse/city/owner/range validation in manual failure
+    /// order. Only assignment omits range; each actual transfer checks it live.
+    static CargoDestination destination(const World&, const Figure&, BuildingId, bool range);
     /// Validates (atomically) and applies one UnloadCmd. Total. On success `records[0]` carries the
     /// warehouse and `transferred_88`.
     static ApplyResult unload(World& w, const Command& command, const UnloadCmd& cmd,
@@ -57,6 +64,11 @@ struct ShipCargo {
     [[nodiscard]] static bool footprint_in_range(std::int64_t tx, std::int64_t ty, std::int64_t x0,
                                                  std::int64_t y0, std::int64_t w, std::int64_t h,
                                                  const CargoRules& rules);
+
+  private:
+    friend struct FreightRoutes;
+    static ApplyResult load_impl(World&, const Command&, const LoadCmd&, const InAdvance*,
+                                 std::optional<std::size_t> resolved);
 };
 
 } // namespace anno::sim

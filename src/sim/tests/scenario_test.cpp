@@ -52,7 +52,8 @@ constexpr int kAdvances = 3000;
 constexpr std::uint32_t kStepMs = 100;
 
 fs::path expectations_path() {
-    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "expand1" / "current134" / "scenario_corpus.txt";
+    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate2" / "current138" /
+           "scenario_corpus.txt";
 }
 
 std::vector<fs::path> scenario_files(const fs::path& game) {
@@ -1169,8 +1170,8 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
     CHECK(isolated == 37);
     CHECK(supported == 13);
     if (generating) {
-        REQUIRE(expectations_path() == fs::path(ANNO_FIXTURES_DIR) / "sim" / "expand1" /
-                                           "current134" / "scenario_corpus.txt");
+        REQUIRE(expectations_path() == fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate2" /
+                                           "current138" / "scenario_corpus.txt");
         std::ofstream out(expectations_path(), std::ios::binary);
         REQUIRE(out.good());
         out << "# ECONBK1 original-data component corpus. Creation identities generated here;\n"
@@ -1314,8 +1315,8 @@ TEST_CASE("integration corpus: accepted supply counts and restored research comp
         read_expectations(versions, fs::path(ANNO_FIXTURES_DIR) / "sim" / "scenario_corpus.txt");
     REQUIRE(versions == "# kStateHashVersion=130 kPrngTimelineVersion=5");
     for (const auto& [name, expected] : std::array<std::pair<const char*, const char*>, 3>{
-             {{"0100Kampagne01/S01_03_01.sze", "producers_moved=116/139"},
-              {"0100Kampagne01/S01_07_01.sze", "producers_moved=269/302"},
+             {{"0100Kampagne01/S01_03_01.sze", "producers_moved=122/139"},
+              {"0100Kampagne01/S01_07_01.sze", "producers_moved=272/302"},
               {"0200Single/Single_24.sze", "producers_moved=47/58"}}}) {
         REQUIRE(base.contains(name));
         const auto normalized =

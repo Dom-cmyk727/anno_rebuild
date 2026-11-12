@@ -36,6 +36,7 @@ namespace {
 struct Types {
     syn::SyntheticTypes base;
     sim::TypeId inn{9201};
+    sim::TypeId quarry{9202};
 };
 
 formats::Result<Types, std::string> make_types() {
@@ -51,6 +52,7 @@ formats::Result<Types, std::string> make_types() {
         b.add(one);
     }
     b.add_plain(t.inn, 66);
+    b.add_plain(t.quarry, 13).entrances(t.quarry, {{0, 0}});
     auto built = b.build();
     if (!built) {
         return built.error();
@@ -70,7 +72,7 @@ sim::ScenarioSpec::BuildingSpec place(sim::TypeId type, std::int32_t x, std::int
 }
 
 constexpr sim::TileXY kWorkshop{110, 110}, kFarm{112, 110}, kSmallFarm{114, 110}, kMine{116, 110},
-    kInn{118, 110}, kEmpty{120, 110};
+    kInn{118, 110}, kQuarry{120, 110}, kEmpty{122, 110};
 
 struct Rig {
     Types types;
@@ -118,6 +120,11 @@ Rig make_rig() {
     inn.tavern = 8;
     inn.taken = 3;
 
+    sim::Quarry quarry;
+    quarry.claims = {0};
+    quarry.suspended = true;
+    quarry.blocked = true;
+
     sim::ScenarioSpec spec = syn::basic_scenario();
     spec.islands[0].cities[0].buildings = {
         place(t.base.weaver, kWorkshop.x, kWorkshop.y, sim::Payload{workshop}),
@@ -125,6 +132,7 @@ Rig make_rig() {
         place(t.base.small_farm, kSmallFarm.x, kSmallFarm.y, sim::Payload{small}),
         place(t.base.iron_mine, kMine.x, kMine.y, sim::Payload{mine}),
         place(t.inn, kInn.x, kInn.y, sim::Payload{inn}),
+        place(t.quarry, kQuarry.x, kQuarry.y, sim::Payload{quarry}),
     };
     auto world = sim::World::create(spec, t.base.registry);
     REQUIRE_MESSAGE(world.ok(), (world.ok() ? std::string() : world.error()));
@@ -179,6 +187,14 @@ TEST_CASE("inspect_building: inn, hand-derived status line") {
     REQUIRE(found.has_value());
     CHECK(found->kind == "Inn");
     CHECK(found->status == "tavern=8 taken=3 carriers_out=0");
+}
+
+TEST_CASE("inspect_building: quarry, hand-derived status line") {
+    Rig rig = make_rig();
+    const auto found = app::inspect_building(rig.world, kCity, kQuarry);
+    REQUIRE(found.has_value());
+    CHECK(found->kind == "Quarry");
+    CHECK(found->status == "claims=0 status_code=0 suspended blocked");
 }
 
 TEST_CASE("inspect_building: a tile with no building is the negative control") {

@@ -1,0 +1,171 @@
+{
+  "dispatch": "049b02707471b531e3a8d10aabcd46035634128f",
+  "accepted_base": "e0bb6be7bd26dddd53d2f7e69ae29651fc5c49b9",
+  "branch": "task/MAP-ROUTE-1-main",
+  "identity": {
+    "state": 136,
+    "based_on": 134,
+    "includes_salt135": false,
+    "schema": "ECONBK1",
+    "prng": 5,
+    "replay": 4,
+    "command": 1,
+    "native_wrapper": 1
+  },
+  "code_tests_references_tools": "73eb40ebab6a1b4c9035557c8667dc79524b20e6",
+  "final_tested_source": "6fd98db3248f38154ada430bb8d71aa07b1de3e0",
+  "gates": {
+    "r5_original_debug": {
+      "source": "007d595e3f3841824548a859b70d89843a0fc66c",
+      "selected": 1,
+      "executed": 1,
+      "required_separate": 5,
+      "all_other_categories": 0,
+      "assertions": 69742,
+      "producer_wall_seconds": 162.47,
+      "scope": "Original two3t automaticcycles, five full native suffixes, allowner goods/money, no-production and publicpausecontrol; freshCLI/Release/SAN pending",
+      "sha256": {
+        "build/route-debug/CMakeCache.txt": "d14ba84982fbeaa17d4527fd02a82a787b32a102480471c8f4d9bc9c30ea9459",
+        "build/route-debug/src/sim/anno_sim_tests": "fd02cbe910cd34652853c7e3b3f866db3e2696ffc1faf52c300c5afbd5d752fd",
+        "build/route-debug/src/tools/sim_replay/anno-sim-replay": "f63df10f164c55cc79da721cec2bf7272d08b58963b72a5e616371f7667e9f4d",
+        "cache/route1/R5/canonical-original-debug-03.log": "13b6d86c1e1a9ad16357062ac0143d3a779eb9f4d4b531644e5151fea04111f2",
+        "cache/route1/R5/canonical-original-debug-03.log.inventory.json": "c6f5544b1ef354ebd279da479953b8ffa057ef8add7651d6a4675e9dfb0dedc6",
+        "cache/route1/R5/pilot03/continuation.txt": "d1c2c65e3a6e128b40f7926a9a059a95de0ec80140b8dc6ab08cad2a26dd315e",
+        "cache/route1/R5/pilot03/cut-01-source-sailing.save": "ddbf2a2513d9774987288d04003baf96e64cc91b695a320c6c35a6a3f7d90b1b",
+        "cache/route1/R5/pilot03/cut-02-source-arrival-wait.save": "b8a0052ac5a858924c0042bbccf7334f2e02a8099aaf48d5d9977325e1b5d103",
+        "cache/route1/R5/pilot03/cut-03-loaded-outbound.save": "e787c6a6a19005f0e14b32cb5d5851e005b22d27711d5eea163ab4dd56869eab",
+        "cache/route1/R5/pilot03/cut-04-destination-arrival-wait.save": "2ba39ea49ba7ac3d13be811e191807e145efea98aa3f49f751ac8546dab57795",
+        "cache/route1/R5/pilot03/cut-05-first-delivery-return.save": "d5ac0ee030d3535184fe56f7e0c001eaeb40dcb713fe8da9e1400161a0851917",
+        "cache/route1/R5/pilot03/events.tsv": "9dae933c334dd1139fbf33959d3948fc1aac697f6deaa6f9c9832520e1bb4ed7",
+        "cache/route1/R5/pilot03/freight-changed-command.log": "f7c6cfcae4f008f7bdc89ac4e4f82d0028106b76a502bb4f25bd523d66218013",
+        "cache/route1/R5/pilot03/freight.log": "084401bf77f4e17982a57768114e08ec6135aa510225492499c94f33c0bc8eec",
+        "cache/route1/R5/pilot03/pre-production.save": "8c21dab9051c90556b6134fc93d6125348bdd6e5fa7370dd1a08efe2fe18bace",
+        "cache/route1/R5/pilot03/two-cycles.save": "4f7a43967a5a017ff05a96570cffac84ee13d0eecea851f7a23c2b3e97755af6",
+        "src/sim/include/anno/sim/state_fields.hpp": "5e99af0f42d890206b1e26f97bdb280a85b854bf1689e05116077b351d34ca4a",
+        "src/sim/tests/freight_original.inc": "94c34411fcea00728105ac99a1d1db112d581ec3c6528cbde4b9d413aeb33692"
+      }
+    },
+    "r6_registered_debug": {
+      "source": "73eb40ebab6a1b4c9035557c8667dc79524b20e6",
+      "selected": 3,
+      "executed": 3,
+      "required_separate": 5,
+      "all_other_categories": 0,
+      "sha256": {
+        "cache/route1/R6/canonical-replay-debug-01.log": "cc1e2733f5805149394637f1449bbaa171b606c50303984e6c39da8985758cdb",
+        "cache/route1/R6/canonical-replay-debug-01.log.inventory.json": "19cb3e68a6122f0b8c408ee14d89514dcac6c54940bbda8652a026aacc359311",
+        "build/route-debug/src/sim/anno_sim_tests": "47af98a98e0297707a012d9b2dc1de9462fcb7da867ed08a19ab7c75b4b59faf",
+        "build/route-debug/src/tools/sim_replay/anno-sim-replay": "50cedbc4d6e5027e605ae5dc36d7ed5452a3f90ee297a9bcd5071400845e5a12",
+        "build/route-debug/CMakeCache.txt": "d14ba84982fbeaa17d4527fd02a82a787b32a102480471c8f4d9bc9c30ea9459",
+        "build/route-debug/src/sim/automatic-freight/freight.log": "084401bf77f4e17982a57768114e08ec6135aa510225492499c94f33c0bc8eec",
+        "build/route-debug/src/sim/automatic-freight/cut-02-source-arrival-wait.save": "b8a0052ac5a858924c0042bbccf7334f2e02a8099aaf48d5d9977325e1b5d103",
+        "build/route-debug/src/sim/automatic-freight/cut-01-source-sailing.save": "ddbf2a2513d9774987288d04003baf96e64cc91b695a320c6c35a6a3f7d90b1b",
+        "build/route-debug/src/sim/automatic-freight/cut-03-loaded-outbound.save": "e787c6a6a19005f0e14b32cb5d5851e005b22d27711d5eea163ab4dd56869eab",
+        "build/route-debug/src/sim/automatic-freight/events.tsv": "9dae933c334dd1139fbf33959d3948fc1aac697f6deaa6f9c9832520e1bb4ed7",
+        "build/route-debug/src/sim/automatic-freight/continuation.txt": "7569d6587e8cb919add48a4ad49c6d4bc5971a1f8751f2ecd45df25d216cd280",
+        "build/route-debug/src/sim/automatic-freight/cut-05-first-delivery-return.save": "d5ac0ee030d3535184fe56f7e0c001eaeb40dcb713fe8da9e1400161a0851917",
+        "build/route-debug/src/sim/automatic-freight/cut-04-destination-arrival-wait.save": "2ba39ea49ba7ac3d13be811e191807e145efea98aa3f49f751ac8546dab57795",
+        "build/route-debug/src/sim/automatic-freight/freight-changed-command.log": "f7c6cfcae4f008f7bdc89ac4e4f82d0028106b76a502bb4f25bd523d66218013",
+        "build/route-debug/src/sim/automatic-freight/pre-production.save": "8c21dab9051c90556b6134fc93d6125348bdd6e5fa7370dd1a08efe2fe18bace",
+        "build/route-debug/src/sim/automatic-freight/two-cycles.save": "4f7a43967a5a017ff05a96570cffac84ee13d0eecea851f7a23c2b3e97755af6"
+      }
+    },
+    "r6_scale_release": {
+      "source": "73eb40ebab6a1b4c9035557c8667dc79524b20e6",
+      "selected": 1,
+      "executed": 1,
+      "required_separate": 5,
+      "all_other_categories": 0,
+      "samples": 7,
+      "advance_timings": 1400,
+      "configuration": "Release;SANoff;4jobs;GPU/viewerOFF",
+      "sha256": {
+        "cache/route1/R6/canonical-scale-release-01.log": "e0c9fc5745cb14b7d23ce2bcb5dfe368eedca21a09ffc6d46fb0968a03efa36d",
+        "cache/route1/R6/canonical-scale-release-01.log.inventory.json": "852bfae155932e64b8528c4f45839d0a1aec4eb3064e5b909e27a37e8ff1917b",
+        "cache/route1/R6/scale-release/summary.tsv": "0972ac735d7aff8905f31052fbcfd0f648697208eb8ba7be0de8bbd18989950e",
+        "cache/route1/R6/scale-release/advances.tsv": "7c9a1253d30a04fade323c200894139160b5c10c1ce30e36867b6ef85c414432",
+        "build/route-release/src/sim/anno_sim_tests": "3680f513760e1e13c9cc8bc325291b2497dfe02b57a62c8a4e248655e0ddf526",
+        "build/route-release/src/tools/sim_replay/anno-sim-replay": "c115282943517472ae37448c1be97181e3ebfde4890a427bb03415ac33371d4c",
+        "build/route-release/CMakeCache.txt": "14069d737245ff90bee54d90b0fd29e2366e449500e991e24cada21da255b3cc"
+      }
+    },
+    "r7_focused_debug": {
+      "source": "6fd98db3248f38154ada430bb8d71aa07b1de3e0",
+      "code_tests_refs_tools_pin": "73eb40ebab6a1b4c9035557c8667dc79524b20e6",
+      "selected": 149,
+      "executed": 149,
+      "required_separate": 8,
+      "all_other_categories": 0,
+      "sha256": {
+        "cache/route1/R7/canonical-debug-01.log": "b7647c6f67d85d8fb39de3cf6071ce2b35226a40c9151f7d903ceb6b799e09e8",
+        "cache/route1/R7/canonical-debug-01.log.inventory.json": "00bffde4375ffd0e1d946a3450ab314ea14942e0f6b8873379c42a1530b11374",
+        "build/route-debug/src/sim/anno_sim_tests": "47af98a98e0297707a012d9b2dc1de9462fcb7da867ed08a19ab7c75b4b59faf",
+        "build/route-debug/src/tools/sim_replay/anno-sim-replay": "50cedbc4d6e5027e605ae5dc36d7ed5452a3f90ee297a9bcd5071400845e5a12",
+        "build/route-debug/CMakeCache.txt": "d14ba84982fbeaa17d4527fd02a82a787b32a102480471c8f4d9bc9c30ea9459",
+        "src/sim/include/anno/sim/state_fields.hpp": "5e99af0f42d890206b1e26f97bdb280a85b854bf1689e05116077b351d34ca4a"
+      }
+    },
+    "r7_final_asan_ubsan": {
+      "source": "6fd98db3248f38154ada430bb8d71aa07b1de3e0",
+      "code_tests_refs_tools_pin": "73eb40ebab6a1b4c9035557c8667dc79524b20e6",
+      "selected": 152,
+      "executed": 152,
+      "required_separate": 8,
+      "all_other_categories": 0,
+      "producer_wall_seconds": 537.05,
+      "selection_wall_seconds": 698.98,
+      "producer_assertions": 69745,
+      "sha256": {
+        "build/route-asan/CMakeCache.txt": "f6a072534d2531e41cec66b94e3df2115c7effe412b2d3cc7f0f181590ea3733",
+        "build/route-asan/src/sim/anno_sim_tests": "3ac527def2f897fb69b926366b1748551aa7dfdea09a4c8fa492c7d08d96e1e1",
+        "build/route-asan/src/sim/automatic-freight/continuation.txt": "5fe7118f8fe81f865b9f0dc9db62572ceaf452aabbccc7c6477fc6eee38c81e4",
+        "build/route-asan/src/sim/automatic-freight/cut-01-source-sailing.save": "ddbf2a2513d9774987288d04003baf96e64cc91b695a320c6c35a6a3f7d90b1b",
+        "build/route-asan/src/sim/automatic-freight/cut-02-source-arrival-wait.save": "b8a0052ac5a858924c0042bbccf7334f2e02a8099aaf48d5d9977325e1b5d103",
+        "build/route-asan/src/sim/automatic-freight/cut-03-loaded-outbound.save": "e787c6a6a19005f0e14b32cb5d5851e005b22d27711d5eea163ab4dd56869eab",
+        "build/route-asan/src/sim/automatic-freight/cut-04-destination-arrival-wait.save": "2ba39ea49ba7ac3d13be811e191807e145efea98aa3f49f751ac8546dab57795",
+        "build/route-asan/src/sim/automatic-freight/cut-05-first-delivery-return.save": "d5ac0ee030d3535184fe56f7e0c001eaeb40dcb713fe8da9e1400161a0851917",
+        "build/route-asan/src/sim/automatic-freight/events.tsv": "9dae933c334dd1139fbf33959d3948fc1aac697f6deaa6f9c9832520e1bb4ed7",
+        "build/route-asan/src/sim/automatic-freight/freight-changed-command.log": "f7c6cfcae4f008f7bdc89ac4e4f82d0028106b76a502bb4f25bd523d66218013",
+        "build/route-asan/src/sim/automatic-freight/freight.log": "084401bf77f4e17982a57768114e08ec6135aa510225492499c94f33c0bc8eec",
+        "build/route-asan/src/sim/automatic-freight/pre-production.save": "8c21dab9051c90556b6134fc93d6125348bdd6e5fa7370dd1a08efe2fe18bace",
+        "build/route-asan/src/sim/automatic-freight/two-cycles.save": "4f7a43967a5a017ff05a96570cffac84ee13d0eecea851f7a23c2b3e97755af6",
+        "build/route-asan/src/tools/sim_replay/anno-sim-replay": "a66985b33133bbe2f16249fb66835f42062f313654b10a31ee1bdd2931c56c85",
+        "cache/route1/R7/canonical-asan-01.log": "a24ba60ef39446a4cf2f8f9daea17ebdc291f52b8fe80fa73f10d94e049067c7",
+        "cache/route1/R7/canonical-asan-01.log.inventory.json": "a7d5e0a31eb7ce69b9bc470e6a57e55bc5897799ee677c68e6a391cf6d643d14",
+        "cache/route1/R7/sanitizer-configuration.txt": "bab5f18bda7baf57def5ec37da768f77a66a3f8200de36772304eaa71062505f",
+        "src/sim/include/anno/sim/state_fields.hpp": "5e99af0f42d890206b1e26f97bdb280a85b854bf1689e05116077b351d34ca4a"
+      }
+    }
+  },
+  "original_inputs": {
+    "files": 472,
+    "all_sizes_hashes_match": true,
+    "manifest_sha256": "20d948c97b1801946d71dfa86762e9b0fea5e6cd093314d83cb5b43658b2fd20",
+    "inventory_sha256": "3daf631b450893a04e7562c56c3b8e4048d59064ef88906dd512de680573091d"
+  },
+  "debug_asan_binary_event_equality": {
+    "cut-01-source-sailing.save": true,
+    "cut-02-source-arrival-wait.save": true,
+    "cut-03-loaded-outbound.save": true,
+    "cut-04-destination-arrival-wait.save": true,
+    "cut-05-first-delivery-return.save": true,
+    "events.tsv": true,
+    "freight-changed-command.log": true,
+    "freight.log": true,
+    "pre-production.save": true,
+    "two-cycles.save": true
+  },
+  "jobs_at_gate_close": {
+    "observed": "2026-11-06T15:38:15.806428+00:00",
+    "owned_build_test_sleep_assertion_jobs": [],
+    "shared_admission_coordinator": "left untouched; not treated as an owned lingering campaign",
+    "git_status": ""
+  },
+  "limits": [
+    "local Mac headless candidate only",
+    "Windows/Linux/original-runtime/live-UI/GPU NOT_RUN",
+    "real valid135 compatibility artifact NOT_RUN",
+    "historical economy133 loop NOT_RUN on136; separate attributed identity fixtures required",
+    "ignored original-derived native/log/raw evidence not published"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "identity": "137/ECONBK1/PRNG5/replay4/command1/save1",
+  "decision": "MAP-EXTRACT-2 part T (docs/sim/iron-tools.md T1.5); 136 belongs to the route lane and is not part of this identity",
+  "generation": {
+    "parent": "2f32437a (identity 135)",
+    "scope": "generation not acceptance",
+    "note": "First part of the allocation (version, fixtures, pins) landed in 51f57914, a docs commit that swept the working tree by mistake; the regenerated logs, goldens, scenario corpus and pins follow in the next commit."
+  },
+  "current137_files_sha256": {
+    "cargo_load.log": "5233d4b141dcd081264e55e649f3349ab8c0e2ce91702e8dc293dea95954902c",
+    "cargo_load_wrong.log": "adde56f581d7cd4f3aecf7c5e248588a46a199405dc69371413ef243cafae1e6",
+    "cargo_unload.log": "5fd1b1e6056dd4f3ac6d9c39c9c1db5bfe96aae34876ba6791e37be764dc661b",
+    "cargo_unload_wrong.log": "2fb060e96cbb59d27847845eef4c8363386c7cfbf38293e5bef0f6c2213cd324",
+    "g2.log": "6660b5694c411aae8b6916256fb66985d26048a6ec6dd90b6bde5ca648ff2184",
+    "g3.log": "5de0d9efdffddf6a5fa84429b0c4f81d9da32658978d78946ad10b431b49a909",
+    "g4.log": "d0eadd5786bc9fdd2972aca091c3f1113f7e74c5958106f339a4052cd071dd19",
+    "g5.log": "2929e3257ae216fe08265e977777368a5c938f963187af575cf95389438a899e",
+    "g6.log": "a5d3f866be003e9859682312ecefde9fcf6bdb74db8206653bcaf52537e85aec",
+    "goldens.txt": "5364cd5ca1164fefbde46f61b51070c0d725599a5a4079081a6c7d07c931f7f2",
+    "m2_found.log": "7125b31ed7c25b9b3b5a5b2760a90c72841e2f9e6ae914cf8fbf91e0d9d0d232",
+    "m2_found_wrong.log": "a572c7a6ba594ca0d2b8d6027d8918630f2a1bef74becbd1828e20af90c0b550",
+    "populated_fields.txt": "9fdd8b498558e015b8236118a1281f9471cab3d9f3513af7681a4aef823561e2",
+    "scenario_corpus.txt": "c9defeefb98af99e6df00f39d4ecf4077e58ba063a644dc3e732e66d47ae768e"
+  },
+  "older_files_unchanged_sha256": {
+    "econbook1/current133/g2.log": "7444049ba6a9865861e618b9d41d58f0a78d3d9b97381a69ef0bd1fa5291f8ca",
+    "expand1/current134/g2.log": "388ea242cc7ceb593e667de9448cfc0d50a8e968a18b791d8635b934a991be3a",
+    "salt1/current135/g2.log": "ee407a255ae170ab00b40b9384134a658082e810a35b846328660d43dddb7734",
+    "expand1/legacy133/g2.save": "c9249e58a8587ff39968fb387a5dbcab462a9d653830bfe90ac0f2ae300224e2",
+    "salt1/legacy134/g2.save": "aad758490b57f78e06a895f90a1e9384ef87b4c55ce614130dd376cdabe33a37",
+    "salt1/legacy135/g2.save": "166f23ddcfdfea271b3f4dce12806d674ea3e6aa048416cc9a5854f146ceb261"
+  }
+}

@@ -160,7 +160,27 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // selector, price registry facts and data-sized tax roles. ECONBK1, no new PRNG site.
 // Stream134: retain prepared founding accounts; unchanged fields/tag/timeline.
 // Explicit compatibility decision acbe5a24, old133 is refused even with booking off.
-inline constexpr std::uint32_t kStateHashVersion = 134;
+// Stream135: player-built salt mine (docs/sim/salt-extraction.md): class-0x3000 placement and
+// deposit binding, BuildingType::highmap in the registry digest. Same ECONBK1 tag, PRNG timeline 5
+// (no draw-order change), same field order; 133 and 134 saves and recordings are refused.
+// Stream137 (MAP-EXTRACT-2 part T, docs/sim/iron-tools.md T1.5): iron mines place (the salt-only
+// mountain ware default becomes a data-driven rule) and a mine step's re-lookup searches every ore
+// object and materialises the deposit it binds. Same ECONBK1 tag, PRNG timeline 5 (no draw-order
+// change); 133, 134 and 135 saves and recordings are refused. Route-only136 is the other
+// predecessor.
+// Later work inside the Extract identity 137 (no new number) DID add two
+// saved fields: the Quarry payload (tag 9, a claim flag per entrance) and the mason worker's goal
+// sub-cell bytes (HarvestState goal_col/goal_row, job 0x2c only); see docs/sim/quarry-bricks.md
+// Q3.1. The resident home walk (T3-Q2, docs/sim/population-live.md 27) changed behaviour, no
+// layout.
+// Stream138 (MAP-INTEGRATE-2): the exact union of route-only136 and Extract137. Rules append the
+// three FreightRules u32 values once; Figure appends freight_generation and optional FreightState
+// after the resident state, while a mason HarvestState retains its conditional goal_col/goal_row
+// before resident state. Building Payload tag 9 remains Quarry with its entrance-sized claim set;
+// Mine retains its optional deposit binding. The ECONBK1 schema, replay frame 4, command wire 1,
+// registry digest layout and PRNG timeline 5 are unchanged; no draw site or draw caller is added.
+// Valid 134, 135, 136 and 137 native states and recordings remain historical and are refused.
+inline constexpr std::uint32_t kStateHashVersion = 138;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -262,6 +282,12 @@ class World {
     /// `city` does not resolve to a real city (an invalid island id, or an empty city slot) -
     /// the same nullability `building_at` already uses for an unresolved `CityRef`.
     [[nodiscard]] std::optional<std::int64_t> city_population(CityRef city) const;
+    [[nodiscard]] const FreightWork& freight_work() const { return freight_work_; }
+    void clear_freight_work() { freight_work_ = {}; }
+    [[nodiscard]] const FreightState* freight_route(FigureId id) const {
+        const auto* f = find_figure(figures_, id);
+        return f != nullptr && f->freight.has_value() ? &*f->freight : nullptr;
+    }
     [[nodiscard]] const ScriptRuntime& script() const { return script_; }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
     /// The counters of the ids assigned in the serial merge (figures, event sequence
@@ -365,14 +391,15 @@ class World {
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
         // host_events_, out_, transport_stats_, fault_message_ and route_cache_ are host-facing,
-        // diagnostic or derived, deliberately not in the field list (not state).
+        // freight_work_ is a host counter. All are diagnostic or derived, deliberately not in the
+        // field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
                                       rules_member, seams_member, script_member, types_member,
                                       ids_member, players_member, islands_member, figures_member,
                                       events_member, timers_member, monopoly_member,
                                       event750_acc_member, faulted_member, fault_message_member,
                                       host_events_member, out_member, transport_stats_member,
-                                      route_cache_member] = w;
+                                      freight_work_member, route_cache_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
@@ -420,6 +447,7 @@ class World {
     friend struct Founding;
     friend struct ShipOrders;
     friend struct ShipCargo;
+    friend struct FreightRoutes;
     friend struct ShipMover;
     friend class RouteCache;
 
@@ -449,6 +477,7 @@ class World {
     // routes into every TickContext Scheduler::advance builds. Default null; nothing
     // in the sim writes it.
     TransportStats* transport_stats_ = nullptr;
+    FreightWork freight_work_; // host measurement only, never state
     // Not state (derived, never hashed or saved): the coast index the ship route queries read;
     // built on first use, kept in step by RouteCache::sync from the tile layers' dirty rectangles
     // (docs/sim/ship-navigation.md 12.13), emptied by copying or moving the World.

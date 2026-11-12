@@ -447,8 +447,24 @@ bool mine_is_deep(const ProductionType& type, std::uint32_t research_id);
 /// `area`) and, if nothing is left and it mines EISENERZ, raises notice
 /// 0x15b (deep ore left) or 0x19. `depletes` is world setting 14, bit 1.
 /// The fill-level graphic (slot +0x11c) is not modelled.
+///
+/// Stream 137: `relookup`, when set, replaces the search among `deposits` (find_deposit) with the
+/// caller's lookup over every ore object of the island (D 0x100787c0, find_ore_in_reach through
+/// bind_mine_deposit): it returns the deposit index of the best ore in reach, appending to
+/// `deposits` the deposit of an ore object no mine has bound yet, or nullopt when no ore is in
+/// reach. The result is kept even when the deposit found is spent (the original stores it on every
+/// call, 0x1006dea8). The driver passes it; a null `relookup` keeps the search among `deposits`
+/// (the synthetic production tests).
+/// A plain function pointer plus context (no allocation on the per-tick path).
+struct MineRelookup {
+    std::optional<std::size_t> (*fn)(void* ctx) = nullptr;
+    void* ctx = nullptr;
+    [[nodiscard]] bool set() const { return fn != nullptr; }
+    [[nodiscard]] std::optional<std::size_t> operator()() const { return fn(ctx); }
+};
 StepResult mine_step(Mine& m, const ProductionType& type, std::uint32_t t,
-                     std::vector<Deposit>& deposits, const MineArea& area, bool depletes);
+                     std::vector<Deposit>& deposits, const MineArea& area, bool depletes,
+                     const MineRelookup* relookup = nullptr);
 
 /// A growing tile object (field, forest): object id and phase byte (bits
 /// 0–5 counter, bit 6 parity, bit 7 kept; D: island tile grid +0x0c).

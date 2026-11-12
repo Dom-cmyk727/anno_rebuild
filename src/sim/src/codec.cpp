@@ -75,6 +75,11 @@ class In {
     Bytes b_;
 };
 
+void put_u64(ByteBuffer& out, std::uint64_t v) {
+    formats::put_u32_le(out, static_cast<std::uint32_t>(v));
+    formats::put_u32_le(out, static_cast<std::uint32_t>(v >> 32));
+}
+
 void put_i32(ByteBuffer& out, std::int32_t v) {
     formats::put_u32_le(out, static_cast<std::uint32_t>(v));
 }
@@ -185,6 +190,25 @@ struct PayloadWriter {
         formats::put_u32_le(out, c.goods);
         formats::put_u32_le(out, c.tons);
     }
+    void operator()(const AssignFreightRouteCmd& c) {
+        put_u64(out, c.ship.v);
+        formats::put_u32_le(out, static_cast<std::uint32_t>(c.stops.size()));
+        for (const auto& stop : c.stops) {
+            put_u64(out, stop.warehouse.v);
+            put_i32(out, stop.dock_x_q8);
+            put_i32(out, stop.dock_y_q8);
+            formats::put_u32_le(out, static_cast<std::uint32_t>(stop.actions.size()));
+            for (const auto& action : stop.actions) {
+                out.push_back(static_cast<std::uint8_t>(action.direction));
+                formats::put_u32_le(out, action.goods);
+                put_u64(out, action.tons);
+            }
+        }
+    }
+    void operator()(const ControlFreightRouteCmd& c) {
+        put_u64(out, c.ship.v);
+        out.push_back(static_cast<std::uint8_t>(c.control));
+    }
     void operator()(const LegacyRawCmd& c) { formats::put_bytes(out, c.payload); }
 };
 
@@ -208,6 +232,24 @@ std::uint64_t payload_size(const Body& body) {
         std::uint64_t operator()(const StopCmd&) const { return kStopSize; }
         std::uint64_t operator()(const UnloadCmd&) const { return kUnloadSize; }
         std::uint64_t operator()(const LoadCmd&) const { return kLoadSize; }
+        std::uint64_t operator()(const AssignFreightRouteCmd& c) const {
+            if (c.stops.empty() || c.stops.size() > (kMaxRecordPayload - 12) / 20)
+                return kMaxRecordPayload + 1;
+            std::uint64_t size = 12 + c.stops.size() * 20;
+            for (const auto& stop : c.stops) {
+                if (stop.actions.size() > (kMaxRecordPayload - size) / 13)
+                    return kMaxRecordPayload + 1;
+                size += stop.actions.size() * 13;
+                for (const auto& action : stop.actions)
+                    if (static_cast<unsigned>(action.direction) > 1 ||
+                        action.tons > UINT64_MAX / 256)
+                        return kMaxRecordPayload + 1;
+            }
+            return size;
+        }
+        std::uint64_t operator()(const ControlFreightRouteCmd& c) const {
+            return static_cast<unsigned>(c.control) <= 2 ? 9 : kMaxRecordPayload + 1;
+        }
         std::uint64_t operator()(const LegacyRawCmd& c) const { return c.payload.size(); }
     };
     return std::visit(Size{}, body);
@@ -404,6 +446,54 @@ formats::Result<Body, std::string> decode_unload(Bytes p) {
     return Body{c};
 }
 
+std::uint64_t get_u64(In& in) {
+    const std::uint64_t lo = in.u32(), hi = in.u32();
+    return lo | (hi << 32);
+}
+formats::Result<Body, std::string> decode_freight(Bytes p) {
+    if (p.size() < 12)
+        return at("AssignFreight: short head", p.size());
+    In in(p);
+    AssignFreightRouteCmd cmd;
+    cmd.ship = FigureId{get_u64(in)};
+    const auto stops = in.u32();
+    if (stops == 0 || stops > in.left() / 20)
+        return std::string("AssignFreight: invalid stop count");
+    for (std::uint32_t i = 0; i < stops; ++i) {
+        if (in.left() < 20)
+            return std::string("AssignFreight: truncated stop");
+        FreightStop stop;
+        stop.warehouse = BuildingId{get_u64(in)};
+        stop.dock_x_q8 = in.i32();
+        stop.dock_y_q8 = in.i32();
+        const auto actions = in.u32();
+        if (actions > in.left() / 13)
+            return std::string("AssignFreight: invalid action count");
+        for (std::uint32_t j = 0; j < actions; ++j) {
+            const auto direction = in.u8();
+            const auto goods = in.u32();
+            const auto tons = get_u64(in);
+            if (direction > 1 || tons > UINT64_MAX / 256)
+                return std::string("AssignFreight: invalid action");
+            stop.actions.push_back({static_cast<FreightDirection>(direction), goods, tons});
+        }
+        cmd.stops.push_back(std::move(stop));
+    }
+    if (in.left() != 0)
+        return std::string("AssignFreight: trailing bytes");
+    return Body{std::move(cmd)};
+}
+formats::Result<Body, std::string> decode_freight_control(Bytes p) {
+    if (p.size() != 9)
+        return std::string("ControlFreight: wrong payload length");
+    In in(p);
+    const auto ship = FigureId{get_u64(in)};
+    const auto control = in.u8();
+    if (control > 2)
+        return std::string("ControlFreight: invalid control");
+    return Body{ControlFreightRouteCmd{ship, static_cast<FreightControl>(control)}};
+}
+
 } // namespace
 
 std::uint16_t wire_type(const Body& body) {
@@ -421,6 +511,10 @@ std::uint16_t wire_type(const Body& body) {
         std::uint16_t operator()(const StopCmd&) const { return kWireStop; }
         std::uint16_t operator()(const UnloadCmd&) const { return kWireUnload; }
         std::uint16_t operator()(const LoadCmd&) const { return kWireLoad; }
+        std::uint16_t operator()(const AssignFreightRouteCmd&) const { return kWireAssignFreight; }
+        std::uint16_t operator()(const ControlFreightRouteCmd&) const {
+            return kWireControlFreight;
+        }
         std::uint16_t operator()(const LegacyRawCmd& c) const { return c.type; }
     };
     return std::visit(Type{}, body);
@@ -489,6 +583,10 @@ formats::Result<Body, std::string> decode_record(std::span<const std::uint8_t> b
         return decode_unload(payload);
     case kWireLoad:
         return decode_load(payload);
+    case kWireAssignFreight:
+        return decode_freight(payload);
+    case kWireControlFreight:
+        return decode_freight_control(payload);
     default:
         break;
     }

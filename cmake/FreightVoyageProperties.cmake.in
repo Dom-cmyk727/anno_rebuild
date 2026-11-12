@@ -1,0 +1,8 @@
+# Original automatic freight producer runs once for both fresh-process consumers.
+# Debug007d595e measured162.47s; prior original expansion SAN/Debug ratio504.80/159.27
+# predicts515s.1200s is a declared finite2.3x margin, not a repeated failed900s gate.
+set_tests_properties("anno_sim_tests.freight original voyage: produced wood funds two automatic cycles and receiving build"
+                     PROPERTIES FIXTURES_SETUP freight_voyage_record
+                                PROCESSORS 4
+                                TIMEOUT 1200
+                                ENVIRONMENT "@freight_environment@")

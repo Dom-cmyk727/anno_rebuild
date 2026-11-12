@@ -1,21 +1,21 @@
 # anno_sim: the deterministic simulation. Headless, no I/O, integer
 # arithmetic in all state (docs/sim/core.md, docs/sim/state.md). Uses
 # anno_formats to read type data from the original files.
-add_library(anno_sim src/sim.cpp src/production.cpp src/config.cpp src/types.cpp src/city_accounts.cpp src/city_booking.cpp
+add_library(anno_sim src/sim.cpp src/production.cpp src/mine_source.cpp src/mine_facts.cpp src/config.cpp src/types.cpp src/city_accounts.cpp src/city_booking.cpp
             src/script_runtime.cpp src/permissions.cpp src/script.cpp src/build_availability.cpp src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp src/original_units.cpp
             src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp src/ship.cpp src/ship_step.cpp
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
             src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
-            src/island_tick.cpp src/scenario_formats.cpp src/island_links.cpp src/transport.cpp src/harvest.cpp src/walk_cells.cpp src/walk_search.cpp
+            src/island_tick.cpp src/scenario_formats.cpp src/island_links.cpp src/transport.cpp src/harvest.cpp src/mason.cpp src/walk_cells.cpp src/walk_search.cpp
             src/game_setup.cpp src/house_groups.cpp src/goods_metadata.cpp src/house_kernel.cpp src/terrain_view.cpp src/site_checks.cpp src/territory.cpp src/founding_payment.cpp src/city_creation.cpp src/figure_veto.cpp src/founding.cpp src/resident.cpp src/resident_job.cpp src/inn.cpp src/house_transition.cpp src/house_tick.cpp
-            src/route_cache.cpp src/ship_orders.cpp src/ship_cargo.cpp src/ship_mover.cpp src/route_coast.cpp src/route_plan.cpp src/route_world.cpp src/route_stamps.cpp)
+            src/route_cache.cpp src/ship_orders.cpp src/freight.cpp src/ship_cargo.cpp src/ship_mover.cpp src/route_coast.cpp src/route_plan.cpp src/route_world.cpp src/route_stamps.cpp)
 target_include_directories(anno_sim PUBLIC include)
 target_link_libraries(anno_sim PUBLIC anno_formats)
 target_compile_features(anno_sim PUBLIC cxx_std_20)
 anno_target_defaults(anno_sim SANITIZE_NO_RECOVER)
 
 if(ANNO_BUILD_TESTS)
-  add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/economy_facts_test.cpp tests/city_booking_test.cpp tests/economy_loop_test.cpp tests/economy_scale_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/integration_gameplay_test.cpp tests/production_test.cpp
+  add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/economy_facts_test.cpp tests/city_booking_test.cpp tests/economy_loop_test.cpp tests/economy_scale_test.cpp tests/freight_state_test.cpp tests/freight_visit_test.cpp tests/freight_lifecycle_test.cpp tests/freight_scale_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/integration_gameplay_test.cpp tests/integration_cross_feature_test.cpp tests/production_test.cpp
                  tests/archive_test.cpp tests/slot_list_test.cpp tests/scheduler_blocks_test.cpp
                  tests/container_probe_test.cpp tests/config_test.cpp tests/types_test.cpp
                  tests/player_test.cpp tests/tile_hash_test.cpp tests/island_state_test.cpp
@@ -30,6 +30,9 @@ if(ANNO_BUILD_TESTS)
                  tests/scenario_links_test.cpp tests/transport_test.cpp tests/walk_cells_test.cpp tests/walk_search_test.cpp
                  tests/game_setup_test.cpp tests/house_test.cpp tests/population_goods_test.cpp tests/population_groups_test.cpp tests/house_kernel_test.cpp tests/resident_test.cpp tests/inn_test.cpp tests/population_supply_test.cpp tests/population_progression_test.cpp tests/small_farm_vectors_test.cpp tests/small_farm_worker_test.cpp tests/small_farm_animal_test.cpp tests/small_farm_chain_test.cpp tests/small_farm_resilience_test.cpp tests/resident_state_test.cpp tests/resident_job_test.cpp tests/house_transition_test.cpp tests/house_live_test.cpp tests/population_canary_test.cpp tests/population_live_canary_test.cpp tests/population_scale_test.cpp tests/ship_state_test.cpp tests/ship_start_load_test.cpp
                  tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp tests/founding_coords_test.cpp tests/founding_payment_test.cpp tests/island_lock_corpus_test.cpp tests/city_creation_test.cpp tests/figure_veto_test.cpp tests/founding_test.cpp tests/founding_assets_test.cpp tests/figure_facts_test.cpp tests/wide_test.cpp tests/ship_nav_state_test.cpp tests/ship_step_test.cpp tests/ship_orders_test.cpp tests/ship_nav3_test.cpp tests/ship_health_test.cpp tests/route_objects_test.cpp tests/placement_rule_test.cpp tests/build_terrain_test.cpp tests/script2_scale_test.cpp tests/script2_canary_test.cpp tests/script2_session_test.cpp tests/script2_wave_test.cpp tests/script2_money_test.cpp tests/script2_test.cpp tests/script_scale_test.cpp tests/script_canary_test.cpp tests/script_build_test.cpp tests/script_runtime_test.cpp tests/permissions_test.cpp tests/script_test.cpp tests/build_availability_test.cpp tests/early_needs_vectors_test.cpp tests/sheep_farm_test.cpp tests/sheep_cloth_chain_test.cpp
+                 tests/cloth_canary_test.cpp tests/salt_registry_test.cpp tests/salt_placement_test.cpp tests/iron_mine_test.cpp tests/iron_chain_test.cpp tests/iron_interrupt_test.cpp tests/quarry_test.cpp tests/resident_walk_home_test.cpp
+                 tests/leather_fixture_test.cpp
+                 tests/leather_persistence_test.cpp
                  tests/nav_scale_test.cpp
                  tests/unload_test.cpp tests/harvest_state_test.cpp tests/harvest_lifecycle_test.cpp tests/harvest_delivery_test.cpp
                  tests/load_test.cpp
@@ -82,6 +85,53 @@ if(ANNO_BUILD_TESTS)
                        PROPERTIES FIXTURES_REQUIRED econbook_loop_record
                                   SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 
+  # MAP-EXTRACT-1 X5: the salt chain recorded and replayed by anno-sim-replay in a fresh process. Each CTest records
+  # its own log first (cmake/RunSaltReplay.cmake runs the recording case with ANNO_SALT_OUT_DIR), so it has no
+  # fixture dependency and can be a required contract of the canonical gate by exact name. Both skip explicitly
+  # without the original files.
+  foreach(salt_arm IN ITEMS fresh_process changed_command_fresh_process)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/salt-chain-${salt_arm}")
+  endforeach()
+  set(salt_record_case "salt X5: the chain recorded for the fresh-process replay and its changed command")
+  add_test(NAME salt_chain_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   -DRECORDER=$<TARGET_FILE:anno_sim_tests> "-DCASE=${salt_record_case}"
+                   -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/salt-chain-fresh_process
+                   -DLOG=salt-chain.log
+                   -DEXPECT_RC=0 "-DEXPECT=checkpoints 31/31.*reproduced: every checkpoint matched"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunSaltReplay.cmake)
+  add_test(NAME salt_chain_changed_command_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   -DRECORDER=$<TARGET_FILE:anno_sim_tests> "-DCASE=${salt_record_case}"
+                   -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/salt-chain-changed_command_fresh_process
+                   -DLOG=salt-chain-changed-command.log
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 0/1.*DIVERGED at entry 2"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunSaltReplay.cmake)
+  set_tests_properties(salt_chain_fresh_process salt_chain_changed_command_fresh_process
+                       PROPERTIES SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
+
+  # MAP-EXTRACT-2 T5: the iron chain recorded and replayed by anno-sim-replay in a fresh process (the same pattern as the
+  # salt chain above; cmake/RunIronReplay.cmake). Both skip explicitly without the original files.
+  foreach(iron_arm IN ITEMS fresh_process changed_command_fresh_process)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/iron-chain-${iron_arm}")
+  endforeach()
+  set(iron_record_case "iron continuation: the chain recorded for the fresh-process replay and its changed command")
+  add_test(NAME iron_chain_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   -DRECORDER=$<TARGET_FILE:anno_sim_tests> "-DCASE=${iron_record_case}"
+                   -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/iron-chain-fresh_process
+                   -DLOG=iron-chain.log
+                   -DEXPECT_RC=0 "-DEXPECT=checkpoints 31/31.*reproduced: every checkpoint matched"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunIronReplay.cmake)
+  add_test(NAME iron_chain_changed_command_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   -DRECORDER=$<TARGET_FILE:anno_sim_tests> "-DCASE=${iron_record_case}"
+                   -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/iron-chain-changed_command_fresh_process
+                   -DLOG=iron-chain-changed-command.log
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 0/1.*DIVERGED at entry 2"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunIronReplay.cmake)
+  set_tests_properties(iron_chain_fresh_process iron_chain_changed_command_fresh_process
+                       PROPERTIES SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
 
   # MAP-EXPAND E5: one original-data voyage plus five full native suffixes supplies both CLI arms.
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/expansion-voyage")
@@ -106,7 +156,7 @@ if(ANNO_BUILD_TESTS)
   add_test(NAME expansion_voyage_changed_command_fresh_process
            COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
                    "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/expansion-voyage/expansion-changed-command.log"
-                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 10/11.*DIVERGED at entry 460"
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 10/11.*DIVERGED at entry 458"
                    -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
   set_tests_properties(expansion_voyage_fresh_process expansion_voyage_changed_command_fresh_process
                        PROPERTIES FIXTURES_REQUIRED expansion_voyage_record
@@ -115,6 +165,35 @@ if(ANNO_BUILD_TESTS)
 
   if(ANNO_SANITIZE AND NOT MSVC)
     set_tests_properties(expansion_voyage_fresh_process expansion_voyage_changed_command_fresh_process
+                         PROPERTIES ENVIRONMENT "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+  endif()
+
+  # MAP-ROUTE R6: one genuine producer and five native suffixes supply both CLI arms.
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/automatic-freight")
+  set(freight_environment "ANNO_FREIGHT_OUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/automatic-freight")
+  if(ANNO_SANITIZE AND NOT MSVC)
+    list(APPEND freight_environment "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+  endif()
+  configure_file(${PROJECT_SOURCE_DIR}/cmake/FreightVoyageProperties.cmake.in
+                 ${CMAKE_CURRENT_BINARY_DIR}/freight_voyage_properties.cmake @ONLY)
+  set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+               "${CMAKE_CURRENT_BINARY_DIR}/freight_voyage_properties.cmake")
+  add_test(NAME freight_voyage_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/automatic-freight/freight.log"
+                   -DEXPECT_RC=0 "-DEXPECT=checkpoints 11/11.*reproduced: every checkpoint matched"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
+  add_test(NAME freight_voyage_changed_command_fresh_process
+           COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay>
+                   "-DARGS=run|${CMAKE_CURRENT_BINARY_DIR}/automatic-freight/freight-changed-command.log"
+                   -DEXPECT_RC=1 "-DEXPECT=checkpoints 3/4.*DIVERGED at entry 488"
+                   -P ${PROJECT_SOURCE_DIR}/cmake/RunExpansionReplay.cmake)
+  set_tests_properties(freight_voyage_fresh_process freight_voyage_changed_command_fresh_process
+                       PROPERTIES FIXTURES_REQUIRED freight_voyage_record
+                                  TIMEOUT 1200
+                                  SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
+  if(ANNO_SANITIZE AND NOT MSVC)
+    set_tests_properties(freight_voyage_fresh_process freight_voyage_changed_command_fresh_process
                          PROPERTIES ENVIRONMENT "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
   endif()
 

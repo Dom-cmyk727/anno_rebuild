@@ -1,0 +1,38 @@
+{
+  "identity": {
+    "state_stream": 138,
+    "schema": "ECONBK1",
+    "prng_timeline": 5,
+    "replay_log": 4,
+    "command_wire": 1
+  },
+  "generation": {
+    "synthetic_sessions": "ANNO_UPDATE_GOLDEN=1 build/dev/src/sim/anno_sim_tests --test-case=<named session>",
+    "scenario_corpus": "ANNO_UPDATE_GOLDEN=1 ANNO1503_GAME_DIR=<installed game/app> python3 tools/test/run_selected.py --select '^anno_sim_tests\\.scenario corpus original-data components: every \\.sze loads, creates and runs five minutes$' --asset-policy required",
+    "independent_oracles": [
+      "python3 tools/sim_stream.py --check",
+      "python3 tools/integration_stream_ref.py --selftest"
+    ]
+  },
+  "sha256": {
+    "cargo_load.log": "d37215c69213ab419a99f7bf91b06c6ac513405f0feb34eb9ca6eb7e4dedef95",
+    "cargo_load_wrong.log": "07ecfc91e33bbdc932e9d87a66766c525aeb603ebe57b07c30879dae7b569e17",
+    "cargo_unload.log": "d376d5de9ad1c33c4ee85d58b914749fc2cc34e96a2858793a3ebbda19bd3ed3",
+    "cargo_unload_wrong.log": "fc525604091e54707aa03159ba857e104fe4085af0ee68c0b6c92b466a783346",
+    "g2.log": "98a150db252058a8a65b45de3894e5bdecf3efdaa63703671c003ef532831960",
+    "g3.log": "94b4ba99a7214e189eb16efe7b5dce02e8e8f4aec7499655714c040098302a1e",
+    "g4.log": "fc031ccfe31a197ae5ad886c42db0dcc664411f40de1d28fedd3d4dc995e9615",
+    "g5.log": "dfc9baceb959adcd9085956c4ffe4a1b08a6f20c6ec63592de6a4e66aaea5f64",
+    "g6.log": "f8ee7b94731bfe1a33ba01208d9271498d62e71e02fca4360583e7494041db65",
+    "goldens.txt": "7bf1f30525f90ca75876e57cc869416d1cdd54fea35deb668735009d9d3f8a8d",
+    "loop_checkpoints.txt": "dfbe9d454d589b04ce9404ea0d5408aa3d4b52386ba8f07ac25bdaa7a97621ee",
+    "m2_found.log": "e662e8790d55e35c997c00694b11d41035debbe086e38797d5caaa97e9112b14",
+    "m2_found_wrong.log": "ef37eade318836a297ab19fced41beaabc39206ae995c2d7bd6abaa36ece4099",
+    "populated_fields.txt": "5d9a74659ab73e4ce3a6afded581900b41cf2f4eac413f137c7c39df720aa788",
+    "scenario_corpus.txt": "4462f95367ced3fbb9000ed209e6d0eafb5f4a0f1ee4ca9600d09d7db0a7e9d9"
+  },
+  "shared_sha256": {
+    "fixtures/synthetic/sim/cargo_rules_bytes.txt": "c69fd643397c0936cdd4cbce742b042f5ca1cfe1d92efde81da54eaa6d661d4f",
+    "fixtures/synthetic/sim/ship_holds.txt": "382ec40b0d6fae4edac67931d35cc65e4541f5fafa1305d3e42d467eeb87dc77"
+  }
+}

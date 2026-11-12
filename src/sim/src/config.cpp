@@ -550,6 +550,12 @@ std::string CargoRules::problem() const {
 
 std::string Rules::validate() const {
     constexpr const char* kOwner = "Rules";
+    // Absolute maxima are derived from ClientRecord's u16 payload width. A
+    // particular definition must also satisfy the combined byte-size bound.
+    if (freight.max_stops == 0 || freight.max_stops > (65535U - 12U) / 20U ||
+        freight.max_actions == 0 || freight.max_actions > (65535U - 32U) / 13U ||
+        freight.work_per_visit == 0)
+        return bad(kOwner, "freight", "invalid definition or per-visit work budget");
     if (city_booking && !save_billed_goods)
         return bad(kOwner, "save_billed_goods", "city_booking requires persisted pending bills");
     if (!valid_slot_policy(slot_policy)) {

@@ -34,6 +34,7 @@
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/territory.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 
 #include "golden.hpp"
@@ -781,6 +782,7 @@ TEST_CASE("founding replay: world creation and hashing on 1, 2, 4 and 7 executor
 
 #include <anno/sim/founding.hpp>
 #include <anno/sim/territory.hpp>
+#include <anno/sim/walk_cells.hpp>
 
 TEST_CASE("founding: the reveal visits only the lowest-numbered kept city, and the early-out") {
     // A 64 x 64 island at (0, 0), centre (32, 32), radius 32. Samples: x and y in {2, 10, 18, 26,
@@ -2044,4 +2046,61 @@ TEST_CASE("shared visibility: a MILIT peer outside the group joins the group, ot
     sim::World off = make(s);
     REQUIRE(off.apply(control_command(0)).ok());
     CHECK(isl(off).cities[0]->player_mask == pids({0, 2}));
+}
+
+TEST_CASE("freight takeover: a refused Found preserves assignment and a successful public Found "
+          "cancels it") {
+    auto setup = base_setup();
+    const auto base = registry();
+    sim::TypeRegistry::Builder builder;
+    builder.walk_tables(sim::synthetic_walk_tables());
+    for (const auto& type : base->types())
+        builder.add(type);
+    for (const auto& original : base->figure_types()) {
+        auto type = original;
+        if (type.id == 1502) {
+            type.capacity_88 = 12800;
+            type.nav = sim::NavFacts{154618816U, 472446400U, 6000U, 4U, 2U, 0U, 1280U};
+        }
+        builder.figure_type(type);
+    }
+    auto types = builder.build();
+    REQUIRE(types);
+    auto other = syn::plain_island(1, 200, 0, 16, 16);
+    other.owner_runs = {{0, 256}};
+    auto city = syn::plain_city(0, 0);
+    city.buildings.push_back({.type = kKontor, .x = 204, .y = 4});
+    other.cities.push_back(city);
+    setup.spec.islands.push_back(other);
+    auto made = sim::World::create(setup.spec, types.value(), setup.cfg, setup.rules);
+    REQUIRE(made);
+    auto world = std::move(made).value();
+    const auto* warehouse = world.building_at({sim::IslandId{1}, sim::CityNo{0}}, 204, 4);
+    REQUIRE(warehouse);
+    const sim::AssignFreightRouteCmd route{
+        sim::FigureId{1},
+        {{warehouse->id, 198 * 256, 6 * 256, {{sim::FreightDirection::LoadTarget, kWood, 0}}}}};
+    REQUIRE(world.apply({sim::PlayerId{0}, route}).ok());
+    REQUIRE(world.freight_route(sim::FigureId{1}) != nullptr);
+    world.advance(2);
+    REQUIRE(world.freight_route(sim::FigureId{1})->phase == sim::FreightPhase::Sailing);
+    auto refused = control_command();
+    found_of(refused).placement.type = sim::TypeId{9999};
+    const auto before = world.save();
+    CHECK(world.apply(refused).status == sim::Reject::UnknownType);
+    CHECK(world.save() == before);
+    const auto generation = sim::find_figure(world.figures(), sim::FigureId{1})->freight_generation;
+    REQUIRE(world.apply(control_command()).ok());
+    CHECK(world.freight_route(sim::FigureId{1}) == nullptr);
+    CHECK(sim::find_figure(world.figures(), sim::FigureId{1})->freight_generation == generation);
+    CHECK(world.players().find(sim::PlayerId{0})->money == 29650);
+    const auto* paid = sim::find_figure(world.figures(), sim::FigureId{1});
+    REQUIRE(paid);
+    CHECK(paid->holds[0].amount_88 == 38 * 256);
+    CHECK(paid->holds[2].amount_88 == 45 * 256);
+    CHECK(paid->holds[3].amount_88 == 30 * 256);
+    CHECK(world.check_invariants().empty());
+    auto loaded = sim::World::load(world.save(), types.value());
+    REQUIRE(loaded);
+    CHECK(loaded.value().save() == world.save());
 }

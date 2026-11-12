@@ -16,7 +16,7 @@ ApplyResult refuse(Reject r) {
 /// 2 the issuer owns it, 3 it navigates, 4 its state allows an order. Check 5 (the target, MoveCmd
 /// only) and 6 (not a crew child) follow in the callers.
 Reject check_ship(const World& w, const TypeRegistry& types, const Rules& rules, PlayerId issuer,
-                  FigureId id, const Figure*& out) {
+                  FigureId id, const Figure*& out, bool allow_blocked = false) {
     const Figure* ship = find_figure(w.figures(), id);
     if (ship == nullptr) {
         return Reject::UnknownFigure;
@@ -28,7 +28,7 @@ Reject check_ship(const World& w, const TypeRegistry& types, const Rules& rules,
     if (type == nullptr || !type->nav.has_value() || !ship->nav.has_value()) {
         return Reject::NotAShip;
     }
-    if ((ship->state_word & rules.nav.move_blocked_mask) != 0) {
+    if (!allow_blocked && (ship->state_word & rules.nav.move_blocked_mask) != 0) {
         return Reject::ShipDisabled;
     }
     out = ship;
@@ -80,6 +80,17 @@ ApplyResult ShipOrders::stop(World& w, const Command& command, const StopCmd& cm
     if (checked->parent.valid()) {
         return refuse(Reject::ShipEmbarked); // 6
     }
+    return stop_route(w, command, cmd, in_advance);
+}
+
+ApplyResult ShipOrders::stop_route(World& w, const Command& command, const StopCmd& cmd,
+                                   const InAdvance* in_advance) {
+    const Figure* checked = nullptr;
+    if (const auto r = check_ship(w, *w.types_, w.rules_, command.issuer, cmd.ship, checked, true);
+        r != Reject::None)
+        return refuse(r);
+    if (checked->parent.valid())
+        return refuse(Reject::ShipEmbarked);
     Figure& ship = *find_figure(w.figures_, cmd.ship);
     nav_stop_motion(ship);
     NavMotion& m = *ship.nav;

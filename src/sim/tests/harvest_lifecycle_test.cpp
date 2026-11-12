@@ -15,6 +15,7 @@
 #include <anno/sim/harvest.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/transport.hpp>
+#include <anno/sim/walk_search.hpp>
 #include <anno/sim/world.hpp>
 
 #include "harvest_helpers.hpp"
@@ -131,6 +132,54 @@ TEST_CASE("harvest lifecycle: one worker cuts the tree, carries 256 home, Farm.r
     REQUIRE(ledger.size() == 1);
     CHECK(forester(w).raw == 256 - ledger.begin()->second.consumed_88);
     CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("harvest lifecycle: the source walk and the home walk end on the goal sub-cell (T3.2)") {
+    Forest f = make_forest({{115, 111}});
+    sim::World& w = f.w;
+    REQUIRE(tick_until(w, [&] { return !workers(w).empty(); }, 2000));
+    const sim::FigureId id = workers(w)[0]->id;
+    const auto fig = [&]() -> const sim::Figure* { return sim::find_figure(w.figures(), id); };
+    // the source walk: the route of the step ToTree ends on a sub-cell centre of the tree's tile
+    // (the free sub-cell the search selected), not on the tile centre
+    REQUIRE(tick_until(
+        w,
+        [&] {
+            return fig() != nullptr && fig()->harvest->step == sim::HarvestStep::ToTree &&
+                   fig()->harvest->route.size() >= 2;
+        },
+        2000));
+    const sim::FixedPos source_end = fig()->harvest->route.back();
+    const sim::TileXY tree{115, 111};
+    std::vector<sim::FixedPos> tree_subcells;
+    for (std::uint32_t c = 0; c < 3; ++c)
+        for (std::uint32_t r = 0; r < 3; ++r)
+            tree_subcells.push_back(sim::subcell_centre(tree, c, r));
+    CHECK(std::find(tree_subcells.begin(), tree_subcells.end(), source_end) != tree_subcells.end());
+    // this rig's search selects sub-cell (0, 0) of the tree tile; the tile centre would be (1, 1)
+    CHECK(source_end == sim::subcell_centre(tree, 0, 0));
+    CHECK_FALSE(source_end == sim::tile_centre(tree));
+    MESSAGE("source walk ends at " << source_end.x << "," << source_end.y << " (tile centre "
+                                   << sim::tile_centre(tree).x << "," << sim::tile_centre(tree).y
+                                   << ")");
+    // the home walk: the route of the step ToHome ends on a sub-cell centre of an entrance tile of
+    // the home, the sub-cell of one of its entrance points
+    REQUIRE(tick_until(
+        w,
+        [&] {
+            return fig() != nullptr && fig()->harvest->step == sim::HarvestStep::ToHome &&
+                   fig()->harvest->route.size() >= 2;
+        },
+        20000));
+    const sim::FixedPos home_end = fig()->harvest->route.back();
+    const sim::Building* home = w.find_building(fig()->home);
+    REQUIRE(home != nullptr);
+    const sim::BuildingType& home_type = *w.types().find(home->type);
+    bool at_door = false;
+    for (const sim::WalkPoint& p : sim::entrance_walk_points(*home, home_type))
+        at_door = at_door || home_end == sim::subcell_centre(p.tile, p.col, p.row);
+    CHECK(at_door);
+    MESSAGE("home walk ends at " << home_end.x << "," << home_end.y);
 }
 
 namespace {

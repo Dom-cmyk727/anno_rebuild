@@ -13,10 +13,12 @@
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/freight.hpp>
 #include <anno/sim/harvest.hpp>
 #include <anno/sim/house_tick.hpp>
 #include <anno/sim/inn.hpp>
 #include <anno/sim/island_tick.hpp>
+#include <anno/sim/mason.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/resident_job.hpp>
 #include <anno/sim/scheduler.hpp>
@@ -550,6 +552,34 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         }
         }
     }
+    // 6d. The mason job's quarry claims (docs/sim/quarry-bricks.md Q3.2 rule 1), in issue order.
+    for (const QuarryClaim& c : fx.quarry_claims) {
+        Island* is = island_of_id(w, c.island);
+        if (is == nullptr) {
+            continue;
+        }
+        for (std::size_t n = 0; n < is->cities.size(); ++n) {
+            const Building* at =
+                is->building_at(w.config_.layout, CityNo{static_cast<std::uint32_t>(n)}, c.tile.x,
+                                c.tile.y, kMasonMask);
+            if (at == nullptr) {
+                continue;
+            }
+            Building* b = find_building_mut(*is, at->id);
+            const BuildingType* type = b != nullptr ? w.types_->find(b->type) : nullptr;
+            auto* quarry = b != nullptr ? std::get_if<Quarry>(&b->payload) : nullptr;
+            if (quarry != nullptr && type != nullptr) {
+                const std::vector<WalkPoint> goals = entrance_walk_points(*b, *type);
+                for (std::size_t i = 0; i < goals.size() && i < quarry->claims.size(); ++i) {
+                    if (goals[i].tile == c.tile && goals[i].col == c.col && goals[i].row == c.row) {
+                        quarry->claims[i] = c.set;
+                        break;
+                    }
+                }
+            }
+            break; // one building owns the tile
+        }
+    }
     if (fx.harvest_lost_88 != 0 && w.transport_stats_ != nullptr) {
         w.transport_stats_->forestry.raw_lost_88 += fx.harvest_lost_88; // diagnostic only
     }
@@ -612,7 +642,10 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                     // goes to the mover, with the same protocol as a seam (its own figure and its
                     // Effects, merged right after the call, C2).
                     Effects fx;
-                    ShipMover::visit(w, ctx, fig, fx, plans_started);
+                    if (fig.freight.has_value())
+                        FreightRoutes::visit(w, ctx, fig, fx, plans_started);
+                    else
+                        ShipMover::visit(w, ctx, fig, fx, plans_started);
                     merge(w, fx, ctx.tick, t);
                 } else if (seam.fn != nullptr) {
                     // The unit's slot +0x74 (0x1009aaa8) is the behaviour seam (O-8):

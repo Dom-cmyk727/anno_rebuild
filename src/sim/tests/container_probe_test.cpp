@@ -135,6 +135,14 @@ void fp_payload(Fp& f, const sim::Inn& p) {
     f.add(p.tavern);
     f.add(p.taken);
 }
+void fp_payload(Fp& f, const sim::Quarry& p) {
+    f.add(p.last);
+    f.add(p.blocked ? 1U : 0U);
+    f.add(p.suspended ? 1U : 0U);
+    fp_status(f, p.status);
+    for (const bool c : p.claims)
+        f.add(c ? 1U : 0U);
+}
 void fp_payload(Fp& f, const sim::Market& p) {
     f.add(p.last);
     f.add(p.blocked ? 1U : 0U);

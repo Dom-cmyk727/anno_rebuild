@@ -367,5 +367,5 @@ TEST_CASE("SCRIPT1 published128 recordings stay unchanged and reach version refu
     const auto refused = sim::World::load(native, sim::TypeRegistry::empty());
     REQUIRE_FALSE(refused);
     CHECK(refused.error() ==
-          "save: state stream version 128 is not supported (this build reads 134)");
+          "save: state stream version 128 is not supported (this build reads 138)");
 }

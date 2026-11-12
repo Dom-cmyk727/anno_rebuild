@@ -10,6 +10,9 @@ namespace anno::sim {
 class World;
 
 struct ShipOrders {
+    /// Internal route cleanup: same ownership/nav/parent checks as Stop, but may
+    /// stop a blocked ship. Public Stop retains its existing refusal order.
+    static ApplyResult stop_route(World&, const Command&, const StopCmd&, const InAdvance*);
     /// Validates (atomically: a refusal changes no state) and applies a MoveCmd: the motion part of
     /// the stop, a new order identity, and a planning ticket (kept when the ship already holds
     /// one).

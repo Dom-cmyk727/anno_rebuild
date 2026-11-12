@@ -1,0 +1,7 @@
+{
+  "source_log": "../../expand1/current134/g2.log",
+  "source_log_sha256": "388ea242cc7ceb593e667de9448cfc0d50a8e968a18b791d8635b934a991be3a",
+  "native_sha256": "aad758490b57f78e06a895f90a1e9384ef87b4c55ce614130dd376cdabe33a37",
+  "extraction": "Replay4: the counted native blob copied verbatim (offset 351, length 115278); no header modification",
+  "original_source": "7ba07750 (accepted state-134 fixture); historical validity retained from the real 134 g2 replay"
+}

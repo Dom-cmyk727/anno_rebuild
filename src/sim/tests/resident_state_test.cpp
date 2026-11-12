@@ -50,7 +50,7 @@ template <class T> Bytes bytes_of(T& value) {
 } // namespace
 
 TEST_CASE("population schema in SCRIPT1: versions, defaults and the three declared draw sites") {
-    CHECK(sim::kStateHashVersion == 134);
+    CHECK(sim::kStateHashVersion == 138);
     CHECK(sim::kPrngTimelineVersion == 5);
     const sim::Rules r;
     CHECK_FALSE(r.house_updates);
@@ -184,14 +184,23 @@ TEST_CASE("stream 128: the resident state has the documented bytes") {
     fields(rd, back);
     CHECK_FALSE(rd.failed());
     CHECK(back == r);
-    // As a figure member it is an optional at the very end: presence byte 1 then these bytes.
+    // As a figure member it is an optional after the harvest optional: presence byte 1 then
+    // these bytes. Since route-only136 the figure ends with u64 freight_generation and the
+    // freight presence byte (state_fields.hpp, docs/sim/state.md "Route-only136"), 9 bytes,
+    // all zero for a figure without a freight route.
+    constexpr std::ptrdiff_t kFreightTail = 8 + 1;
     sim::Figure f;
     const Bytes none = bytes_of(f);
     f.resident = r;
     const Bytes some = bytes_of(f);
     REQUIRE(some.size() == none.size() + got.size());
-    CHECK(none.back() == 0); // absent resident: one presence byte after the harvest presence byte
-    Bytes tail(some.end() - static_cast<std::ptrdiff_t>(got.size()) - 1, some.end());
+    REQUIRE(none.size() > static_cast<std::size_t>(kFreightTail));
+    CHECK(Bytes(none.end() - kFreightTail, none.end()) == Bytes(kFreightTail, 0));
+    CHECK(Bytes(some.end() - kFreightTail, some.end()) == Bytes(kFreightTail, 0));
+    // absent resident: one presence byte after the harvest presence byte
+    CHECK(*(none.end() - kFreightTail - 1) == 0);
+    Bytes tail(some.end() - kFreightTail - static_cast<std::ptrdiff_t>(got.size()) - 1,
+               some.end() - kFreightTail);
     CHECK(tail.front() == 1);
     CHECK(Bytes(tail.begin() + 1, tail.end()) == got);
 }

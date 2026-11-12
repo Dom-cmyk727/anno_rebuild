@@ -7159,3 +7159,200 @@ No Wine session was run this round (the packet's own rule for G7); this is a re-
 - Left the existing Campaign/Mission picker follow-up note in place, renumbered second, rather than
   removing it - it is still real, useful evidence for `S01_08_01` specifically, just not for the
   four endless-game rows the first note now addresses.
+
+## W4-NEXT-2 — H, docs follow-up after the acceptance (findings 1 and 2 of the 2026-11-11 acceptance review) — 2026-11-11 — status: FINISHED, doc only
+
+Closes part H ([packet](tasks/w4-next-2.md)), raised by the
+[acceptance review](reviews/2026-11-11-w4-next-2-acceptance.md) against part G's own doc corrections
+G6 and G7. Branch `task/W4-docs-h` from `main` `7babb1f2` (the merge landing both `task/W4-ui-4` and
+`task/W4-shared-list-1`). No code changed; no code gate; no Wine session.
+
+### H1 — sprite-sad's two normalizations (finding 1)
+
+G6's own calibration check divided every result by 3, which is correct for grey-key but wrong for
+the plain method: the plain sprite-sad mean (the "sprite-sad mean"/"opaque mean" figures through
+`docs/re/ui.md`, e.g. zoom + and compass west) is **per pixel** - |ΔR| + |ΔG| + |ΔB| over the kept
+pixels (alpha ≥ 8), summed, never divided by 3. Grey-key, as `ui1_f22_bind.py`'s own `mean_sad`
+computes it, does divide by 3 (a per-channel mean).
+
+Measured both ways on the kept shots in
+`E:\anno1503-worktrees\anno1503-UI-1-F2\cache\orig\ui-1\` (both copies of each shot: the plain
+`shots/` copy and the timestamped `d91-...` copy):
+
+| Figure | Element | Position | Shot | Measured | Committed | Reproduces? |
+|---|---|---|---|---|---|---|
+| Plain | zoom + (`fenster.tex` id 44) | (959, 7) | `hud_idle_running` (both copies) | **2.885** per pixel | 2.885 | **Yes - calibrated** |
+| Plain | compass west (`fenster.tex` id 48) | (965, 140) | `hud_idle_running` (both copies) | **3.088** per pixel | 3.088 | **Yes - calibrated** |
+| Grey-key | `VIEWINFOPIONIERMAIN_BK` (`fenster.tex` id 974) | (783, 252) | `f15_selected_house` (both copies) | **32.07** per channel (96.21 per pixel) | 17.8 | No - still uncalibrated |
+| Grey-key | portrait (`Pioniere.tex` id 1) | (812, 355) | `f15_selected_house` (both copies) | **45.52** per channel (136.56 per pixel) | 34.2 | No - still uncalibrated |
+
+So: the plain method is calibrated (2 of 2 committed figures reproduce exactly, on both kept copies
+of the shot); only the committed **grey-key** figures fail to reproduce. G6's conclusion ("the gap
+is not specific to grey-key") was an artefact of dividing the plain figures by 3 when they shouldn't
+be - corrected, not the measurement itself, which (once divided correctly) was already right.
+
+**Script:** `cache/h1-sprite-sad-measure.py`, sha256
+`150eff608fa1aacdc9fa82b25d1b1abbb9adf0562305a3d198cf7928346126e4`. Not committed (cache-only, per
+this project's own convention for one-off measurement scripts); decodes both `.tex` files with this
+project's own `tools/ui_layout.py:decode_tex_rgba`, reusing `ui1_f22_bind.py`'s own `mean_sad` logic
+(the fix review's own reference script) with the normalization made explicit via a `divide3` flag
+instead of hardcoded.
+
+**Docs changed:** `docs/re/ui.md` §2 (a new paragraph stating both units, after the existing grey-key
+definition) and §9.7 (a new paragraph correcting G6's conclusion, after G6's own paragraph);
+`data/ui/hud.txt`'s comment on `pionier_bk` (a new comment block, after G6's own); `docs/open-
+questions.md` OQ-567 (a new bullet under G6's own, restating the plain figures as calibrated and the
+grey-key ones as still open). No old paragraph or REPORTS entry edited - every correction is new
+text, per this part's own rule.
+
+**OQ disposition:** the plain-method figures cited by OQ-565/567 (zoom + and compass west) are now
+marked calibrated in `docs/re/ui.md` §2/§9.7, with shot and position, as this report states above.
+This does not close OQ-565 or OQ-567 themselves - neither question turns on the plain-method
+figures; both still wait on a grey-key number that reproduces (OQ-567, row 18's own plate) or on the
+Kontor panel's own position/texture id search (OQ-567's main question), neither resolved here.
+Closing either OQ waits for the orchestrator's review, as the packet's own rule says.
+
+### H2 — the scenario folders (finding 2)
+
+Checked `game/app/Scenes/` directly (read-only, this PC's own copy): only `01_1024_easy_256.sze`
+sits under `Scenes/0010SingleEndlos`, the endless-game folder. `Single_06.sze`, `Single_16.sze` and
+`Single_24.sze` are in `Scenes/0200Single` - a different, non-endless scenario set. `S01_08_01.sze`
+is in `Scenes/0100Kampagne01`, as the packet already said. So three of the five shared-test-list
+files are `0200Single` files, not endless ones; G7's "the other four endless-game files" was wrong.
+
+Added a new paragraph to `docs/testing/original-wine.md` §6, under G7's own, correcting this and
+widening the next attempt's first check: not just which `.sze` a New Game row opens, but first,
+whether the New Game list holds anything beyond the five `choose_game` rows `tools/orig/menus.json`
+maps - specifically whether `0200Single`'s scenarios follow further down the same list. Only once
+that is known does "which `.sze` a row opens, read from the process" (G7's own next step) apply to
+`Single_06`/`Single_16`/`Single_24` as well as `01_1024_easy_256`.
+
+Not corrected: the `docs/orchestration/REPORTS.md` entries for G7 (above) and the acceptance review
+itself, which this part's own rule keeps as a historical record, not editable in place - this entry
+is the correction of record for "the other four endless-game files" wherever this packet used it.
+
+### Hosted CI
+
+| Branch | Head | Run id | Result |
+|---|---|---|---|
+| `task/W4-docs-h` | `f99c7679` | 43123758319 | green, all jobs including `gate` |
+
+### Decisions and reasoning
+
+- Reproduced G6's own reference script's `mean_sad` logic exactly (same alpha/grey-key thresholds),
+  adding only an explicit `divide3` parameter, rather than writing a new measurement method from
+  scratch - this isolates the one thing finding 1 says was wrong (which figures get divided by 3)
+  without risking a second, unrelated discrepancy from a differently-written script.
+- Measured both kept copies of each shot, not just one, so a reproduction (or a failure to
+  reproduce) isn't a one-shot artefact - all four figures gave identical results on both copies.
+- Left the grey-key figures (17.8, 34.2) uncalibrated rather than guessing a cause for the gap: this
+  part's own instructions ask only to correct the normalization error, not to re-open the "what does
+  the discrepancy mean" investigation finding 1 itself leaves alone.
+- Widened H2's "first check" beyond what the packet's own wording said (which `.sze` a row opens)
+  to include whether the New Game list holds `0200Single` rows at all - the packet's finding 2
+  explicitly raises that as unchecked, so a follow-up session needs both steps named, not just the
+  one G7 already named.
+
+## W4-NEXT-2 — H4, finishing H1 (findings 1-3 of the 2026-11-12 part H review) — 2026-11-12 — status: FINISHED, doc only
+
+Closes part H4 ([packet](tasks/w4-next-2.md), the "H4. Finish H1" subsection), raised by the
+[part H review](reviews/2026-11-12-w4-next-2-part-h-review.md) against this packet's own part H
+above. Same branch `task/W4-docs-h`, docs only, no code, no Wine session.
+
+### Correcting H3's own "OQ disposition" paragraph (finding 1)
+
+**That paragraph was wrong.** It said the plain-method figures OQ-565/567 *cite* are zoom + and
+compass west. They are not - those two appear only in G6's calibration paragraph, which this
+session's own H1 round was correcting. OQ-565's own figures are 58.7 (`fenster.tex` id 5, `MAX_PIC`)
+and the committed 82 (id 4, `MAINUNTERGRUND`); OQ-567's own figures are the committed 78.7 (id 33,
+`INFOUNTERGRUND`) and the ad hoc 91.2/87.5/79.9-86.8/~81-86/84.8/96.2 (ids 1511/677/1128/1023/4/974).
+None of these were measured or restated in H1 - that step of H1 was not done, and the H3 report's
+claim that it was is corrected here, not edited in place in H3's own entry.
+
+### What changed this round
+
+**New script, full on-screen-constrained search.** `cache/h4-sprite-sad-measure.py`, sha256
+`d5fba05eec46b0bb5b9f05d97158d46854cbd9b6c4a98f0ff88c66bbff3ab82e`. Plain method: per pixel, alpha
+≥ 8, every pixel, no stride. Every candidate position is clamped so the sprite stays fully on
+screen (`0 <= x <= shot_width - sprite_width`, same for y) - the OQ's own stated box is searched
+first, and only widened, within that same on-screen-valid range, when the minimum lands on the
+box's own edge. Not committed (cache-only, per this project's own convention).
+
+**Measured, OQ-565's own figures (replacing 58.7 and restating 82):**
+
+| Figure | Sprite | Shot | Box (clamped) | Result | Note |
+|---|---|---|---|---|---|
+| 58.7 | id 5 `MAX_PIC`, 245×524 | `missclick_forest` | (765,230)-(779,244), on-screen max | **59.51** at (779,242) | true boundary (on-screen max for this sprite); same position as 58.7's own ad hoc hit |
+| 82 (committed) | id 4 `MAINUNTERGRUND` | `hud_idle_running`, fixed (779,244) | — | **82.40** | reproduces |
+
+**Measured, OQ-567's own figures (replacing 78.7 and the six ad hoc numbers; plus F6's unit):**
+
+| Figure | Sprite | Shot | Stated box result | Widened (on-screen-clamped) result |
+|---|---|---|---|---|
+| 78.7 (committed) | id 33 `INFOUNTERGRUND`, 220×466 | `f15_kontor`/`r2_hud_kontor` | 93.28 at (800,299), on box edge | **92.61** at (801,298), inside widened box |
+| 91.2 | id 1511 `FREMDERKONTOR_UNTERGRUND`, 245×468 | `click_kontor_building` | 85.99 at (779,289), on-screen-range edge | **72.35** at (779,300), true boundary |
+| 87.5 | id 677 `STADT_BILANZ_BK`, 245×468 | `click_kontor_building` | 88.57 at (779,290) | **61.56** at (779,300), true boundary |
+| 79.9-86.8 | id 1128 `SPIELER_BILANZ_BK`, 245×468 | `initial_view` | 78.22 at (779,290) | **53.33** at (779,300), true boundary |
+| ~81-86 | id 1023 `NIX_BK`, 245×465 | `click_kontor_building` | 93.32 at (779,290) | **88.08** at (779,303), true boundary |
+| 84.8 | id 4 `MAINUNTERGRUND`, 245×524 | `click_kontor_building` | 90.47 at (779,244) | unchanged, already the true boundary |
+| 32.20 (F6) | id 974, plain, no grey-key | `f15_selected_house` | **96.60 per pixel / 32.20 per channel**, n=112,547 | reproduces F6's own count and figure |
+| 30.57 (F6) | id 974, excluding `house_portrait`/`need_icon_0` | `f15_selected_house` | **91.70 per pixel / 30.57 per channel**, n=99,247 | reproduces F6's own count and figure |
+
+All eight **calibrated** (per pixel/per channel as stated, full search, on screen throughout).
+**None decides OQ-567.** The id 677/1128 results (61.56, 53.33) are notably better than the
+uncalibrated 87.5/79.9-86.8 and worth a second look, but both sit above the atlas-under-content
+range (40-50, `docs/re/ui.md` §2) and both are at the true on-screen boundary - no better-fitting
+on-screen placement of these sprites exists at this shot's own camera angle.
+
+**Differences from the part H review's own table**, reported as the packet's step 1 asks: for ids
+1511 (91.2), 1023 (~81-86) and 4 (84.8 on `click_kontor_building`), the review's own cited positions
+(800 or 830 on the x-axis) place part of the sprite off the 1024-wide screen (51 px for a box edge
+at x=830, 21 px at x=800) - a placement this session's own on-screen constraint does not allow, so
+the review's 83.38/86.63/85.11 are not reproduced here; the on-screen-constrained equivalents are
+72.35 (widened), 88.08 (widened) and 90.47 (unwidened, already the on-screen edge). For ids 33, 677
+and 1128, the review's own un-widened figures (93.28, 88.57, 78.22) reproduce exactly; this round's
+own widened pass, which the review's table did not run, is new.
+
+**Docs changed (new text, nothing edited in place on `main`; the three line-number references part
+H itself added, not yet landed, were corrected in place per this round's own rule):**
+- `docs/open-questions.md` OQ-565 and OQ-567: one new H4 bullet each, with every figure's sprite,
+  shot, position, box, unit and inside/edge/boundary status, each naming the old value it replaces.
+- `docs/re/ui.md` §2's H1 paragraph: "line 155's zoom +" / "line 158's compass west" →
+  "the §2.1 table's zoom + and compass west rows". §9.7's H1 paragraph: "line 659" → "this
+  section's own opening paragraph above".
+
+### Independent review
+
+A fresh, read-only agent with no context from this session re-read the script, confirmed its
+on-screen clamp, its no-stride/no-÷3 plain method and its alpha≥8 skip; confirmed the script's
+sha256 against the value above; ran it to completion itself; and checked every number, position and
+edge/boundary label in both new OQ bullets against its own run. **Verdict: ACCEPT** - every figure
+in both bullets matches its own independent run exactly, including the n-counts for the F6 pair and
+the "true boundary"/"inside box" characterizations for every search.
+
+### Hosted CI
+
+| Branch | Head | Run id | Result |
+|---|---|---|---|
+| `task/W4-docs-h` | `aee04720` | 43155260486 | green, all jobs including `gate` |
+| `task/W4-docs-h` | `5fe93868` (final head, records the run id above) | 43158805168 | `cpp (macos-clang)`/`gate` failed on `anno_test_support_tests.F3 (D1, deaf): INCOMPLETE`, a fourth occurrence of the same recurring, pre-existing, environment-specific coordinator flake this packet's first review already named (finding 12) and three earlier G/H-round commits already hit - confirmed from this job's own test-step log, not guessed from the aggregate status; nothing in this docs-only commit touches that area. Reran only the failed jobs (`gh run rerun --failed`, no new commit): green on the rerun, all jobs including `gate`, confirming intermittency. |
+
+### Decisions and reasoning
+
+- Wrote one clean final script rather than patching the H1 script in place: H4 asks for the OQ's
+  own figures with a full, unstrided, on-screen-constrained search, a different method shape (not
+  just a different normalization) from H1's fixed-position reproduction check, so a fresh script is
+  clearer than overloading one file with two unrelated search modes.
+- Caught and fixed, before reporting, a clamping bug in two intermediate script revisions (a
+  "widened" box that wasn't actually widened in y, and a widened box that let several candidates
+  sit partly off screen) by re-deriving each sprite's own on-screen-valid range from its decoded
+  width/height and re-running - the figures in this report are from the corrected, final script
+  only; no intermediate, invalid numbers are reported as findings.
+- Reported every position difference from the review's own table (ids 1511, 1023, 4) rather than
+  silently preferring this round's own numbers - the review's own figures used box positions that
+  are not fully on screen for those three sprites, which this round's own instructions explicitly
+  rule out, so the difference is itself worth recording, not just the new number.
+- Flagged ids 677 and 1128's much-improved widened figures (61.56, 53.33) as worth a second look
+  without claiming they decide the OQ - both are on the true on-screen boundary and still above the
+  stated clean-match/atlas-under-content bars, so a stronger claim would overstate what a boundary
+  result can show.

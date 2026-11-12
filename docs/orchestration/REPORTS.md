@@ -8942,7 +8942,7 @@ not an engine implementation or certified whole-lifecycle draw total.
 | Documented decisions | 65 hand-derived vectors across ten types | ten applied wrong-interpretation mutants rejected | direct-reference-03; mutants logs | orchestrator pending |
 | Public command verdict | bundled vectors agree | changed expectation exits1; malformed/empty/missing exit2 | direct-contract-03, 31 checks | orchestrator pending |
 | Explicit unresolved edges | ordinary cases execute | OQ-572/574/585 cases refuse with named OQ | command contract | orchestrator pending |
-| Registration and honest selection | two wildlife entries execute | required contract and inventory-backed verdict | canonical-01.log + inventory | orchestrator pending |
+| Registration and honest selection | two wildlife entries execute | required contract and inventory-backed verdict | canonical-02.log + inventory | orchestrator pending |
 
 Vector counts: density4, habitat5, replenish3, create3, load3, animal13,
 walk4, route_old3, wolf19, prey8; total65, each with a preceding derivation.

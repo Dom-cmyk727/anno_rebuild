@@ -111,11 +111,13 @@ for _schema in SCHEMAS.values():
 
 
 def transition(r, wolf=False):
+    # §7: GOG AnnoWelt 0x100519d0/0x10051b00; §10: 0x100532b0/0x10053410.
     event, state = r['event'], r['state']
     if event == 'fallback':
         mapping = {27: 28, 30: 27, 31: 30} if wolf else {26: 27, 27: 28}
         return r.result(next=mapping.get(state, 0))
     if event == 'idle':
+        # §7, inherited by Wolf: AnnoWelt 0x10051441, including modulus one.
         if state != 28 or not 1 <= r['variants'] <= 3:
             raise Malformed('idle needs state=28 and variants=1..3')
         return r.result(next=28, variant=r.draw() % r['variants'])
@@ -149,6 +151,7 @@ def transition(r, wolf=False):
         else:
             next_state = (~r.draw() & 1) | 26
         search = 26
+    # §§7/10: AnnoWelt 0x10051bf6/0x10053546, after action/draw selection.
     if next_state == search and r['quantity'] > 2 * (r['capacity'] // 3):
         next_state = 27
     return r.result(next=next_state)
@@ -159,15 +162,18 @@ def evaluate(kind, fields):
         raise Malformed('unknown record type: ' + kind)
     r = Record(fields, SCHEMAS[kind])
     if kind == 'density':
+        # §1: AnnoWelt 0x100938a0–0x10093963, initialized table 0x100e34e8.
         if r['n'] > 16:
             raise Malformed('only the documented 16-cell sweep is supported')
         return r.result(desired=[0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5, 5, 5][r['n']])
     if kind == 'habitat':
+        # §1: AnnoWelt 0x10093030–0x10093472; inputs are resolved facts.
         center_ok = r['center'] != 0 and (r['goods'] == 0x46 or r['kind'] == 0x145)
         score = 1 + sum((goods == 0x46) + (kind_id == 0x145)
                         for obj, goods, kind_id in r['neighbors'] if obj != 0)
         return r.result(passed=int(center_ok and score >= (1 if r['property7'] == 5 else 4)))
     if kind == 'replenish':
+        # §1: AnnoWelt 0x100935e0–0x10093725, swap-pop and collision retry.
         candidates = list(r['candidates'])
         if len(set(candidates)) != len(candidates) or len(candidates) > 16:
             raise Malformed('compacted candidates must be unique, at most 16')
@@ -184,6 +190,7 @@ def evaluate(kind, fields):
                 chosen.append(cell)
         return r.result(chosen=chosen, remaining=candidates)
     if kind == 'create':
+        # §2: AnnoWelt 0x10092cfd–0x10092f30; stop before manager callbacks.
         types, goods = r['types'], r['goods']
         if len(types) != 32 or len(goods) != 32 or any(x > 65535 for x in types + goods):
             raise Malformed('types/goods need 32 u16 entries each for the supplied climate')
@@ -198,11 +205,13 @@ def evaluate(kind, fields):
                 inspected += 1
         return r.result(position=position, index=index, species=types[index], inspected=inspected)
     if kind == 'load':
+        # §3: AnnoWelt 0x100947d3–0x10094816; base was divided by the caller.
         timestamp = (r['base'] + (0 if r['entry4'] & 1 else r.draw() & 31)) & 255
         return r.result(timestamp=timestamp, saved=255 if r['mode'] & 1 else r['goods'])
     if kind in ('animal', 'wolf'):
         return transition(r, wolf=kind == 'wolf')
     if kind == 'walk':
+        # §7: AnnoWelt 0x10051515, 0x10058382/0x100583b2/0x100583c6.
         doubled = r['behavior'] == 7 and r.draw() % 6 == 1
         minimum, modulus = (80, 64) if doubled else (40, 32)
         half_span = 128 if r['attempt'] < 2 else 256
@@ -213,7 +222,10 @@ def evaluate(kind, fields):
             angles.append((base + r.draw() % (2 * half_span + 1) - half_span) & 511)
         return r.result(radii=radii, angles=angles, attempt=(r['attempt'] + 1) & 255)
     if kind == 'route_old':
+        # §7: AnnoWelt 0x1005e2b0–0x1005e37f, kind-3 completion only.
         return r.result(next=12 if r['quantity'] else (7 if r.draw() & 1 else 12))
+    # §10: AnnoWelt 0x100536b0–0x10053732 (lists), 0x10098513 (mask).
+    # HP-zero exception: 0x100349c8–0x100349d2; do not guess its lifecycle.
     if r['prey'] == 130:
         raise Malformed('OQ-585: zero-HP prey is not a certified corpse/kill case')
     short = {117, 122, 129, 135, 502, 504, 505}

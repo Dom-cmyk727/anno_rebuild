@@ -2428,6 +2428,27 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
   - Shots kept under `cache/orig/w4next2-ui-captures/d91-20261111-100242/shots/` (not in git):
     `initial_view.png`, `after_esc_from_kontor.png`, `after_missclick_water.png`,
     `click_kontor_building.png`, `after_esc_from_settlement.png`, `missclick_forest.png`.
+  - **H4 (2026-11-12, after the part H review): the two figures this OQ cites, measured with the
+    calibrated plain method (per pixel, alpha ≥ 8, every pixel, no stride), replacing the earlier
+    ad hoc/uncalibrated numbers below.** Every search keeps the sprite fully on screen.
+    - Replaces **58.7** (`fenster.tex` id 5, `MAX_PIC`, 245×524, ad hoc stride-4 on
+      `missclick_forest.png`): full search over x 765–795/y 230–260 (the box this update's own
+      predecessor text states), clamped to the only on-screen-valid range for this sprite (x
+      0–779, y 0–244, since 1024−245=779 and 768−524=244) gives **59.51** at (779, 242), on the
+      edge of both that box and the on-screen-valid range - widening the box further changes
+      nothing, since x=779/y=244 is already the sprite's own screen-edge placement. **Calibrated**
+      (per pixel, full search, on-screen). Does not decide the OQ: 59.51 is well above the
+      clean-match bar (<15) and above the atlas-under-content range (40–50) `docs/re/ui.md` §2
+      states, so it stays supportive, not conclusive, as before - only the number itself moves
+      (58.7 → 59.51, same position (779, 242)).
+    - Replaces **82** (`fenster.tex` id 4, `MAINUNTERGRUND`, 245×524, committed, `hud_idle_running`
+      at its own fixed (779, 244), no search): measured at that exact position gives **82.40**,
+      reproducing the committed figure (**calibrated**). Unchanged conclusion: `MAINUNTERGRUND`'s
+      own mean under the same heavy-foreground conditions this document already notes (`docs/re/
+      ui.md` §2.1, the right-chrome row) is in this same elevated range, so 59.51/82.40 together
+      remain only a supportive match for `MAX_PIC`, not a decisive one.
+    - Script: `cache/h4-sprite-sad-measure.py` on `task/W4-docs-h`, sha256 in this part's REPORTS
+      entry (H4).
 
 ## OQ-566: Demolish mode's OS cursor and land highlight are not drawn yet (W4-NEXT-1 part U row 5, 2026-11-10)
 - **Status:** open (scoped follow-up, not a defect in what row 5 did fix).
@@ -2598,6 +2619,63 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
     1511/677/1128/1023/4 candidates for row 2's own plate are untouched by this correction, and the
     row-18 grey-key figure (974, this entry's own subject) is still not reproduced by any kept
     artifact - closing either waits for the orchestrator's review, per this part's own rule.
+  - **H4 (2026-11-12, after the part H review): F6's unit, and the id 1511/677/1128/1023/4/33
+    candidates measured with the calibrated plain method (per pixel, alpha ≥ 8, every pixel, no
+    stride, every search kept fully on screen).** Replaces the ad hoc/uncalibrated numbers below
+    with calibrated ones; none decides this OQ.
+    - **F6's unit.** F6's "plain opaque-pixel mean 32.20 (112,547 px)" and "30.57 (99,247 px)"
+      above are **per channel**, not unitless: id 974 at (783, 252) on `f15_selected_house`,
+      plain (no grey-key), measures **96.60 per pixel / 32.20 per channel**, n = 112,547
+      (reproducing F6's own count and figure exactly). Excluding the `house_portrait`
+      ((812, 355) 100×108) and `need_icon_0` ((794, 480) 50×50) rects, as F6 did, measures
+      **91.70 per pixel / 30.57 per channel**, n = 99,247 (also reproducing F6's own count and
+      figure). Both **calibrated**.
+    - Replaces **78.7** (`fenster.tex` id 33, `INFOUNTERGRUND`, 220×466, committed, `docs/re/ui.md`
+      §9.1, no position given): full search over x 765–800/y 220–300 (this entry's own earlier box)
+      on `f15_kontor.png` and `r2_hud_kontor.png` gives **93.28** at (800, 299) on both shots, on
+      the edge of that box but *inside* the on-screen-valid range (x 0–804, y 0–302); widened to
+      x 745–804/y 200–302 (clamped to stay on screen) gives **92.61** at (801, 298) on both shots,
+      **inside** the widened box. **Calibrated.** Does not decide the OQ: 92.61 is far above the
+      clean-match bar.
+    - Replaces **91.2** (id 1511, `FREMDERKONTOR_UNTERGRUND`, 245×468, `click_kontor_building.png`,
+      ad hoc stride-4/6): the OQ's stated box (x 750–830/y 210–290) places part of this candidate
+      off screen (x=830 would put 51 of the sprite's 245 px past the 1024-wide screen), so the
+      on-screen-valid range for this sprite is x 0–779/y 0–300. Clamped to that range, the box
+      gives **85.99** at (779, 289), on the edge of the valid range; widening (still clamped)
+      gives **72.35** at (779, 300), the **true boundary** - no on-screen position exists further
+      out. **Calibrated.** Differs from the part H review's own 83.38 at (800, 289): that position
+      is 21 px off screen, which this search does not allow.
+    - Replaces **87.5** (id 677, `STADT_BILANZ_BK`, 245×468, same shot): on-screen-valid range
+      x 0–779/y 0–300. The stated box gives **88.57** at (779, 290) - matches the part H review's
+      own figure exactly. Widened (clamped) gives **61.56** at (779, 300), the **true boundary**.
+      **Calibrated.** 61.56 is a materially better match than 87.5/88.57 (closer to, but still
+      above, the atlas-under-content range 40–50 `docs/re/ui.md` §2 states) - worth a second look,
+      though it does not meet the clean-match bar and the review's own table did not search this
+      widened box.
+    - Replaces **79.9–86.8** (id 1128, `SPIELER_BILANZ_BK`, 245×468, `initial_view.png`): same
+      on-screen-valid range. The stated box gives **78.22** at (779, 290) - matches the review's
+      own figure exactly. Widened (clamped) gives **53.33** at (779, 300), the **true boundary**.
+      **Calibrated.** Same note as id 677: 53.33 is close to the atlas-under-content range (40–50)
+      and the strongest of the six candidates measured here, but still above it, and the widened
+      box was not in the review's own table.
+    - Replaces **~81–86** (id 1023, `NIX_BK`, 245×465, `click_kontor_building.png`): on-screen-valid
+      range x 0–779/y 0–303. The stated box gives **93.32** at (779, 290), differing from the
+      review's own 86.63 at (830, 290) (51 px off screen there, not allowed here). Widened (clamped)
+      gives **88.08** at (779, 303), the **true boundary**. **Calibrated.**
+    - Replaces **84.8** (id 4, `MAINUNTERGRUND`, 245×524, same shot): on-screen-valid range
+      x 0–779/y 0–244 (this sprite is taller, so the valid range is smaller). The stated box gives
+      **90.47** at (779, 244), differing from the review's own 85.11 at (830, 290) (both off the
+      valid range there: x=830 is 51 px off screen, and y=290 would also put the sprite 46 px past
+      the bottom of a 768-tall screen). Widening changes nothing - (779, 244) is already the
+      sprite's own screen-edge placement. **Calibrated.**
+    - **None of these seven figures decides OQ-567.** The two closest (id 677's 61.56, id 1128's
+      53.33) are both on the true on-screen boundary, meaning no fully-on-screen placement of these
+      sprites fits any better at this shot's own camera position - they are a materially stronger
+      lead than the uncalibrated 87.5/79.9–86.8 suggested, but still above the clean-match bar
+      `docs/re/ui.md` §2 states, so row 2's own plate search stays open; closing it waits for the
+      orchestrator's review.
+    - Script: `cache/h4-sprite-sad-measure.py` on `task/W4-docs-h`, sha256 in this part's REPORTS
+      entry (H4). Independently reviewed: see the REPORTS entry for the verdict.
 
 ## OQ-568: PlayRunner::one_turn() interrupted by stop() mid-delay drops the turn's queued commands (W4-NEXT-2 P, 2026-11-11)
 - **Status:** open (QUESTION, not changed; re-review of `3f3dd4d8` on the Windows host).

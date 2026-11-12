@@ -7252,3 +7252,106 @@ is the correction of record for "the other four endless-game files" wherever thi
   to include whether the New Game list holds `0200Single` rows at all - the packet's finding 2
   explicitly raises that as unchecked, so a follow-up session needs both steps named, not just the
   one G7 already named.
+
+## W4-NEXT-2 — H4, finishing H1 (findings 1-3 of the 2026-11-12 part H review) — 2026-11-12 — status: FINISHED, doc only
+
+Closes part H4 ([packet](tasks/w4-next-2.md), the "H4. Finish H1" subsection), raised by the
+[part H review](reviews/2026-11-12-w4-next-2-part-h-review.md) against this packet's own part H
+above. Same branch `task/W4-docs-h`, docs only, no code, no Wine session.
+
+### Correcting H3's own "OQ disposition" paragraph (finding 1)
+
+**That paragraph was wrong.** It said the plain-method figures OQ-565/567 *cite* are zoom + and
+compass west. They are not - those two appear only in G6's calibration paragraph, which this
+session's own H1 round was correcting. OQ-565's own figures are 58.7 (`fenster.tex` id 5, `MAX_PIC`)
+and the committed 82 (id 4, `MAINUNTERGRUND`); OQ-567's own figures are the committed 78.7 (id 33,
+`INFOUNTERGRUND`) and the ad hoc 91.2/87.5/79.9-86.8/~81-86/84.8/96.2 (ids 1511/677/1128/1023/4/974).
+None of these were measured or restated in H1 - that step of H1 was not done, and the H3 report's
+claim that it was is corrected here, not edited in place in H3's own entry.
+
+### What changed this round
+
+**New script, full on-screen-constrained search.** `cache/h4-sprite-sad-measure.py`, sha256
+`d5fba05eec46b0bb5b9f05d97158d46854cbd9b6c4a98f0ff88c66bbff3ab82e`. Plain method: per pixel, alpha
+≥ 8, every pixel, no stride. Every candidate position is clamped so the sprite stays fully on
+screen (`0 <= x <= shot_width - sprite_width`, same for y) - the OQ's own stated box is searched
+first, and only widened, within that same on-screen-valid range, when the minimum lands on the
+box's own edge. Not committed (cache-only, per this project's own convention).
+
+**Measured, OQ-565's own figures (replacing 58.7 and restating 82):**
+
+| Figure | Sprite | Shot | Box (clamped) | Result | Note |
+|---|---|---|---|---|---|
+| 58.7 | id 5 `MAX_PIC`, 245×524 | `missclick_forest` | (765,230)-(779,244), on-screen max | **59.51** at (779,242) | true boundary (on-screen max for this sprite); same position as 58.7's own ad hoc hit |
+| 82 (committed) | id 4 `MAINUNTERGRUND` | `hud_idle_running`, fixed (779,244) | — | **82.40** | reproduces |
+
+**Measured, OQ-567's own figures (replacing 78.7 and the six ad hoc numbers; plus F6's unit):**
+
+| Figure | Sprite | Shot | Stated box result | Widened (on-screen-clamped) result |
+|---|---|---|---|---|
+| 78.7 (committed) | id 33 `INFOUNTERGRUND`, 220×466 | `f15_kontor`/`r2_hud_kontor` | 93.28 at (800,299), on box edge | **92.61** at (801,298), inside widened box |
+| 91.2 | id 1511 `FREMDERKONTOR_UNTERGRUND`, 245×468 | `click_kontor_building` | 85.99 at (779,289), on-screen-range edge | **72.35** at (779,300), true boundary |
+| 87.5 | id 677 `STADT_BILANZ_BK`, 245×468 | `click_kontor_building` | 88.57 at (779,290) | **61.56** at (779,300), true boundary |
+| 79.9-86.8 | id 1128 `SPIELER_BILANZ_BK`, 245×468 | `initial_view` | 78.22 at (779,290) | **53.33** at (779,300), true boundary |
+| ~81-86 | id 1023 `NIX_BK`, 245×465 | `click_kontor_building` | 93.32 at (779,290) | **88.08** at (779,303), true boundary |
+| 84.8 | id 4 `MAINUNTERGRUND`, 245×524 | `click_kontor_building` | 90.47 at (779,244) | unchanged, already the true boundary |
+| 32.20 (F6) | id 974, plain, no grey-key | `f15_selected_house` | **96.60 per pixel / 32.20 per channel**, n=112,547 | reproduces F6's own count and figure |
+| 30.57 (F6) | id 974, excluding `house_portrait`/`need_icon_0` | `f15_selected_house` | **91.70 per pixel / 30.57 per channel**, n=99,247 | reproduces F6's own count and figure |
+
+All eight **calibrated** (per pixel/per channel as stated, full search, on screen throughout).
+**None decides OQ-567.** The id 677/1128 results (61.56, 53.33) are notably better than the
+uncalibrated 87.5/79.9-86.8 and worth a second look, but both sit above the atlas-under-content
+range (40-50, `docs/re/ui.md` §2) and both are at the true on-screen boundary - no better-fitting
+on-screen placement of these sprites exists at this shot's own camera angle.
+
+**Differences from the part H review's own table**, reported as the packet's step 1 asks: for ids
+1511 (91.2), 1023 (~81-86) and 4 (84.8 on `click_kontor_building`), the review's own cited positions
+(800 or 830 on the x-axis) place part of the sprite off the 1024-wide screen (51 px for a box edge
+at x=830, 21 px at x=800) - a placement this session's own on-screen constraint does not allow, so
+the review's 83.38/86.63/85.11 are not reproduced here; the on-screen-constrained equivalents are
+72.35 (widened), 88.08 (widened) and 90.47 (unwidened, already the on-screen edge). For ids 33, 677
+and 1128, the review's own un-widened figures (93.28, 88.57, 78.22) reproduce exactly; this round's
+own widened pass, which the review's table did not run, is new.
+
+**Docs changed (new text, nothing edited in place on `main`; the three line-number references part
+H itself added, not yet landed, were corrected in place per this round's own rule):**
+- `docs/open-questions.md` OQ-565 and OQ-567: one new H4 bullet each, with every figure's sprite,
+  shot, position, box, unit and inside/edge/boundary status, each naming the old value it replaces.
+- `docs/re/ui.md` §2's H1 paragraph: "line 155's zoom +" / "line 158's compass west" →
+  "the §2.1 table's zoom + and compass west rows". §9.7's H1 paragraph: "line 659" → "this
+  section's own opening paragraph above".
+
+### Independent review
+
+A fresh, read-only agent with no context from this session re-read the script, confirmed its
+on-screen clamp, its no-stride/no-÷3 plain method and its alpha≥8 skip; confirmed the script's
+sha256 against the value above; ran it to completion itself; and checked every number, position and
+edge/boundary label in both new OQ bullets against its own run. **Verdict: ACCEPT** - every figure
+in both bullets matches its own independent run exactly, including the n-counts for the F6 pair and
+the "true boundary"/"inside box" characterizations for every search.
+
+### Hosted CI
+
+| Branch | Head | Run id | Result |
+|---|---|---|---|
+| `task/W4-docs-h` | *(filled in after push)* | *(filled in after push)* | *(filled in after push)* |
+
+### Decisions and reasoning
+
+- Wrote one clean final script rather than patching the H1 script in place: H4 asks for the OQ's
+  own figures with a full, unstrided, on-screen-constrained search, a different method shape (not
+  just a different normalization) from H1's fixed-position reproduction check, so a fresh script is
+  clearer than overloading one file with two unrelated search modes.
+- Caught and fixed, before reporting, a clamping bug in two intermediate script revisions (a
+  "widened" box that wasn't actually widened in y, and a widened box that let several candidates
+  sit partly off screen) by re-deriving each sprite's own on-screen-valid range from its decoded
+  width/height and re-running - the figures in this report are from the corrected, final script
+  only; no intermediate, invalid numbers are reported as findings.
+- Reported every position difference from the review's own table (ids 1511, 1023, 4) rather than
+  silently preferring this round's own numbers - the review's own figures used box positions that
+  are not fully on screen for those three sprites, which this round's own instructions explicitly
+  rule out, so the difference is itself worth recording, not just the new number.
+- Flagged ids 677 and 1128's much-improved widened figures (61.56, 53.33) as worth a second look
+  without claiming they decide the OQ - both are on the true on-screen boundary and still above the
+  stated clean-match/atlas-under-content bars, so a stronger claim would overstate what a boundary
+  result can show.

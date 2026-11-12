@@ -8816,3 +8816,14 @@ own changes. `--gpu-lane` (not asked for).
   lane composition changed since the baseline and a reader comparing to the project analysis's 5.5-5.9x needs to
   know which one that figure matches.
 - Reported the flow-build test's flip to PASS as an observed difference, not a claimed fix; it is GATE-1c's.
+
+### CI addendum — coordinator flake on the docs-only report push
+
+Run `43218940794` (the report commit `35f577fe`, docs-only) failed on `cpp (windows-msvc)` / `gate`:
+`anno_test_support_tests.C3: a replacement coordinator does not admit against its predecessor's promises`
+(`budget_f2_test.cpp`), the same coordinator-admission flake family as the previously documented `F3 (D1, deaf)`
+flake, now hit on `windows-msvc` instead of `macos-clang`. Checked the job's own test-step log (not just the
+aggregate status): one failure, `COUNTS: ... failed=1 ... VERDICT: FAIL failed tests`, nothing else. The commit
+touches only `docs/orchestration/REPORTS.md`, nothing under `src/test_support`. `gh run rerun 43218940794 --failed`
+reran just the failed job: green on `cpp (windows-msvc)` and `gate`, confirming intermittency, not a regression.
+Head `35f577fe` is CI-green.

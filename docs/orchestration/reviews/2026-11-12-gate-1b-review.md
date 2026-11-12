@@ -47,8 +47,9 @@ REPORTS entry and a CI addendum. Merged as `b81d3fdd` without conflicts; the orc
 - **Hosted CI:**
   - `e9be274b` (the code) green on the first try, `gate` included;
   - `5209c496` and `e63145e9` (REPORTS only) failed `lint`, see below;
-  - the candidate `75a3c779`: run 43287409584, `lint` green on Rust 1.100.0 for the whole workspace. The rest of
-    the run is recorded at the landing.
+  - the candidate `75a3c779`: run 43287409584, `lint` green on Rust 1.100.0 for the whole workspace;
+  - the candidate with this review and the GATE-1c release, `db118177`: run 43287945521, every job green on the
+    first try, `gate` included.
 - **Windows game-file run** at `75a3c779` (the canonical call, game files, the 4090): see "Game-file run" below.
 
 ## Finding, moved into GATE-1c (no fix round)
@@ -82,7 +83,17 @@ CI installs a floating `stable`, so every branch and every landing would have fa
 
 ## Game-file run
 
-Pending at the time of writing; recorded here before the landing.
+At `75a3c779`, the run worktree on this PC. The C++ sources and CMake files are the same as `5e8a15a0`'s, so the
+MSVC build was a no-op. The canonical call ran with the game files, `ANNO_GPU_ADAPTER=4090` and 16 jobs, in 10.5 min.
+
+- **2,563 tests selected and 2,535 executed.** 2,533 passed and 2 were refused for memory (`low-memory stop`): the
+  scene-digest render and the scenario corpus run.
+- **Skipped:** 20 opt-in, 3 platform, 3 other. They are the same skips as at `c75cddff`; the two extra selected tests
+  are WILDLIFE-RE-1d's.
+- **The rerun:** the two refused tests, alone with `--jobs 1`, both passed.
+- **Logs:** `cache/orch-gate-1b/canonical-gate.log` (sha256 `d43f3667…`) and `rerun-refused.log` (sha256 `4d8c6734…`).
+
+**All 2,535 executed tests pass.**
 
 ## Disposition
 

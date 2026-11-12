@@ -235,7 +235,12 @@ mirror still requires the owner/Windows sync after main publication.
 - **Now: [GATE-1c](tasks/gate-1c.md)** (released 2026-11-12, on top of `orch/land-gate-1b`, which is `main` at
   `96f7980c` since its landing), on `task/GATE-1c`:
   the flow-build test's cause and fix, named-adapter GPU tests skip when their adapter is absent, and a `--select`
-  that matches nothing fails again.
+  that matches nothing fails again. **Reported 2026-11-12 (`afcdc8ba`); in fix round 1 since 2026-11-13.** The
+  review checked item 3, the WSL gate with its GPU lane, and CI. It found two gaps:
+  - the flow-build check compares chunk addresses, which a freed chunk can hand on (use the chunk's serial);
+  - with `ANNO_REQUIRE_GPU` and no GPU at all, the named-adapter cases skip instead of failing.
+
+  The review also found one wrong line in the report.
 - **Finished: [GATE-1b](tasks/gate-1b.md)** (2026-11-12; head `e63145e9`), **accepted**
   ([review](reviews/2026-11-12-gate-1b-review.md)): each required contract runs once per gate, the automatic
   picture contract in one lane only, and the README says which run covers which GPU.

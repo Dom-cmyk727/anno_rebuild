@@ -7335,6 +7335,7 @@ the "true boundary"/"inside box" characterizations for every search.
 | Branch | Head | Run id | Result |
 |---|---|---|---|
 | `task/W4-docs-h` | `aee04720` | 43155260486 | green, all jobs including `gate` |
+| `task/W4-docs-h` | `5fe93868` (final head, records the run id above) | 43158805168 | `cpp (macos-clang)`/`gate` failed on `anno_test_support_tests.F3 (D1, deaf): INCOMPLETE`, a fourth occurrence of the same recurring, pre-existing, environment-specific coordinator flake this packet's first review already named (finding 12) and three earlier G/H-round commits already hit - confirmed from this job's own test-step log, not guessed from the aggregate status; nothing in this docs-only commit touches that area. Reran only the failed jobs (`gh run rerun --failed`, no new commit): green on the rerun, all jobs including `gate`, confirming intermittency. |
 
 ### Decisions and reasoning
 

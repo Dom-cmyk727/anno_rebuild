@@ -216,17 +216,35 @@ if [ -f "$B/CMakeCache.txt" ]; then
   fi
 fi
 
+# GATE-1a: -O1 -g makes the ASan/UBSan tree 5.5-5.9x faster than unoptimised Debug with the same
+# results (docs/orchestration/reviews/2026-11-12-project-analysis.md §2.1 D1). A cached build tree
+# from before this change still has the old (empty) CMAKE_CXX_FLAGS_DEBUG, and the "cache exists,
+# skip configure" check below would otherwise keep running it unoptimised; detect that the same way
+# as the stale-source check above.
+WANTED_CXX_FLAGS_DEBUG="-O1 -g"
+if [ -f "$B/CMakeCache.txt" ]; then
+  CACHED_CXXFLAGS_DEBUG=$(sed -n 's/^CMAKE_CXX_FLAGS_DEBUG:STRING=//p' "$B/CMakeCache.txt")
+  if [ "$CACHED_CXXFLAGS_DEBUG" != "$WANTED_CXX_FLAGS_DEBUG" ]; then
+    echo "stale build dir: $B was configured with CMAKE_CXX_FLAGS_DEBUG='$CACHED_CXXFLAGS_DEBUG' but this run wants '$WANTED_CXX_FLAGS_DEBUG'; wiping $B and reconfiguring" >> "$S"
+    rm -rf "$B"
+    mkdir -p "$B"
+  fi
+fi
+
 if [ ! -f "$B/CMakeCache.txt" ]; then
   cmake -S "$W" -B "$B" -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=/usr/bin/g++-13 \
+    -DCMAKE_CXX_FLAGS_DEBUG="$WANTED_CXX_FLAGS_DEBUG" \
     -DSDL_UNIX_CONSOLE_BUILD=ON -DANNO_SANITIZE=ON -DANNO_BUILD_VIEWER=ON -DANNO_BUILD_GPU=ON -DANNO_WARNINGS_AS_ERRORS=ON \
     -DFETCHCONTENT_SOURCE_DIR_DOCTEST="$OLD/doctest-src" -DFETCHCONTENT_SOURCE_DIR_SDL3="$OLD/sdl3-src" \
     -DFETCHCONTENT_SOURCE_DIR_WGPU_NATIVE="$OLD/wgpu_native-src" > "$G/wsl-$TAG-configure.log" 2>&1
   echo "configure rc=$? $(date -Is)" >> "$S"
 fi
-# Provenance: record the source directory this build tree is actually configured against, read
-# back from CMake's own cache rather than just echoing $W, so a future run can be audited for the
-# same mismatch this fix was written to catch.
+# Provenance: record the source directory and the C++ Debug flags this build tree is actually
+# configured with, read back from CMake's own cache rather than just echoing the inputs, so a
+# future run can be audited for the same mismatch this fix (and the stale-source one above it) was
+# written to catch.
 echo "build dir source (from CMakeCache.txt) $(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$B/CMakeCache.txt")" >> "$S"
+echo "build dir CMAKE_CXX_FLAGS_DEBUG (from CMakeCache.txt) $(sed -n 's/^CMAKE_CXX_FLAGS_DEBUG:STRING=//p' "$B/CMakeCache.txt")" >> "$S"
 BUILD_START=$(date +%s)
 cmake --build "$B" -j 12 > "$G/wsl-$TAG-build.log" 2>&1; RC=$?
 echo "build rc=$RC elapsed=$(( $(date +%s) - BUILD_START ))s $(date -Is)" >> "$S"

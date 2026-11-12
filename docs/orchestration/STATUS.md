@@ -4,16 +4,23 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-12, by the Claude Code orchestrator:
+**Last updated:** 2026-11-12, later, by the Claude Code orchestrator:
+- **MAP-INTEGRATE-2 ACCEPTED** ([review](reviews/2026-11-12-map-integrate-2-review.md)): salt, iron → tools,
+  quarry → bricks and automatic freight on `main` as **state 138**, merged as `c75cddff`.
+  - **The code is fit for `main`;** the 13 h 20 min it took were not worth it. The main causes were the packet's size
+    and the one-number save format, not the executor.
+  - **Owner decisions, 2026-11-12:** a manual ship command cancelling the automatic route is the original's
+    behaviour (no switch); executor packets get smaller and run no reviewer subagents of their own
+    ([`TASKS.md`](TASKS.md), "Owner rule, 2026-11-12").
+  - **Next:** one small packet at a time, first [SIM-LIMITS-1](tasks/sim-limits-1.md) for the Windows executor, when
+    the owner says go. The queue is on the board under "Current work".
+- **W4-NEXT-2 part H landed on `main` as `3eef75a5`** (accepted after round H4,
+  [part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)). Docs only; `main` stayed healthy.
+
+Earlier on 2026-11-12, by the Claude Code orchestrator:
 - **W4-NEXT-2 landed on `main` as `7babb1f2`** (the owner's OK; `gate` passed). Its code is the merge `c944aff7`,
   whose game-file run passed before the push, so `main` is healthy at `7babb1f2`.
-- **W4-NEXT-2 part H ACCEPTED after round H4** ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)),
-  docs only, `task/W4-docs-h` `1f1d3889`.
-  - **H4** measured the figures OQ-565 and OQ-567 cite with the calibrated method, every sprite kept on screen. The
-    orchestrator's own implementation matches every figure. None decides an OQ. The closest are `SPIELER_BILANZ_BK`
-    id 1128 (53.33) and `STADT_BILANZ_BK` id 677 (61.56), both bottom-aligned at (779, 300).
-  - **Lands as one change** with the review, with the owner's OK.
-- **Earlier the same day:** part H reviewed, changes requested, small; round H4 dispatched.
+- **W4-NEXT-2 part H reviewed:** changes requested, small; round H4 dispatched and accepted.
 
 Earlier, 2026-11-11 night, by the Claude Code orchestrator:
 - **W4-NEXT-2 ACCEPTED after fix round G** ([acceptance](reviews/2026-11-11-w4-next-2-acceptance.md)).
@@ -281,7 +288,10 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: [MAP-INTEGRATE-2](tasks/map-integrate-2.md),** released 2026-11-11. Parts S → P → I0–I5 → R → N → E.
+- **Now: free.** The next Mac packet comes from the queue on the board, one at a time.
+- **Finished: [MAP-INTEGRATE-2](tasks/map-integrate-2.md)** (2026-11-12; head `55ce7e71`), **accepted**
+  ([review](reviews/2026-11-12-map-integrate-2-review.md)), 13 h 20 min. Released 2026-11-11, parts
+  S → P → I0–I5 → R → N → E.
   - **Inputs (frozen):**
     - `fix/MAP-EXTRACT-2-ci` `a5a3bca3`: 135 plus 137, CI 10/10;
     - `claude/ci-fix-map-route-1` `49ffcee6`: 136, CI green.

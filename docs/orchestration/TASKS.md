@@ -61,6 +61,24 @@ PC.**
   is still required: hosted CI has no game files, so `gate` cannot replace it. Only the owner can lift the protection
   (GitHub settings, Branches).
 
+**Owner rule, 2026-11-12 (every packet): small packets, and the orchestrator's review is the executor's review.**
+- **Why.** MAP-INTEGRATE-2 took 13 h 20 min, mostly a whole-suite gate matrix and nine reviewer runs inside the
+  packet, for about 3 hours of work that carried the value
+  ([review](reviews/2026-11-12-map-integrate-2-review.md) §3).
+- **Size.** One concern per packet, about 2–4 hours, a packet text of about one page. Past about 6 hours, stop at a
+  clean point and report what is done and what is left.
+- **Reviews.** The executor starts no reviewer subagents, per part or at the end, unless its packet asks for one. The
+  orchestrator's review at handover is the independent review
+  ([evidence contract](../testing/evidence-contract.md)). Report READY FOR REVIEW, never "approved".
+- **Gates.** The build, the tests for what changed (canonical runner, classified counts) and hosted CI green on the
+  pushed head. Read CI after every push and fix red before going on. The whole suite and the game-file run belong to
+  the orchestrator at the merge, unless the packet says otherwise.
+- **Report.** One REPORTS entry of about 60 lines at most: what changed, the gate commands with classified counts,
+  NOT_RUN, Decisions and reasoning, QUESTIONs. Logs stay in `cache/`; cite the gate log, not every log.
+- **State numbers.** No packet allocates a new state number until ADR 0005 (a version per save section) is accepted.
+  A packet that would need one stops at that point with a QUESTION.
+- **One at a time.** The orchestrator dispatches the next packet after reviewing the last one.
+
 ## What moved out of this board (2026-11-10)
 
 The board's closed history moved verbatim, nothing edited, to [`HISTORY-2.md`](HISTORY-2.md), and the older
@@ -68,14 +86,25 @@ executor reports to [`REPORTS-1.md`](REPORTS-1.md), so an agent can read the liv
 Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026-10-28; where §1 points to
 `HISTORY.md`, look in `HISTORY-2.md` too.
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
-  [`tasks/`](tasks/): now [MAP-INTEGRATE-2](tasks/map-integrate-2.md) (the Mac, released 2026-11-11).
-  [W4-NEXT-2](tasks/w4-next-2.md)'s docs-only part H, with round H4, is accepted
-  ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)); the Windows executor is free.
-  - **MAP-INTEGRATE-2:** MAP-EXTRACT-1 (135), MAP-EXTRACT-2 (137) and MAP-ROUTE-1 (136) onto `main` under
-    **state 138**, which is reserved for it. It also brings the shared folder to the Mac, OQ-556 from the original's
-    code, and a measured list of what still stops a town.
-  - **The three Mac dispatches below are finished:** their final candidates are that packet's inputs. Their text
-    stays here as their record.
+  [`tasks/`](tasks/). [MAP-INTEGRATE-2](tasks/map-integrate-2.md) is accepted
+  ([review](reviews/2026-11-12-map-integrate-2-review.md)) and lands as state 138; both executors are free.
+  - **The queue (owner, 2026-11-12), one packet at a time, under the owner rule of 2026-11-12 above:**
+
+    | Step | Who | Packet | Size |
+    |---|---|---|---|
+    | 0 | Orchestrator | Land MAP-INTEGRATE-2 | — |
+    | 1 | Windows executor | [SIM-LIMITS-1](tasks/sim-limits-1.md): the freight save limits from one source | ~2 h |
+    | 2 | Windows executor | FIXTURES-TRIM-1: delete the fixture copies nothing reads | ~2 h |
+    | 3 | Orchestrator, beside 1–2 | ADR 0005: a version per save section and lighter goldens; the owner approves | — |
+    | 4 | Either executor | MAP-MATERIALS-1: why 18 houses can't pay for their upgrade (measurement only) | ~2–3 h |
+    | 5 | Either executor | MAP-FOOD-1: why 131 houses lack food (measurement only) | ~3 h |
+    | 6 | Either executor | MAP-GOODS-1a, 1b, 1c: one supported chain per packet (tobacco, spices, silk cloth) | ~3–4 h each |
+    | Later | — | Freight through the effect queue (review findings E2–E4), after ADR 0005 | M |
+
+    Steps 4–6 come from [`docs/sim/progression-gaps.md`](../sim/progression-gaps.md). Only step 1 has a packet; the
+    orchestrator writes each next one after reviewing the last.
+  - **The three Mac dispatches below are finished** and landed through MAP-INTEGRATE-2. Their text stays here as
+    their record.
 - **What stays here:**
   - the owner rules above;
   - three dispatches that exist only on this board, finished since 2026-11-11 and taken over by MAP-INTEGRATE-2:

@@ -5,8 +5,10 @@ Read `docs/PLAN.md` before doing anything. It holds the phased plan, acceptance 
 **Mandatory test/evidence policy (owner, 2026-10-31):** read
 [`docs/testing/evidence-contract.md`](docs/testing/evidence-contract.md) at task start
 and before package completion. Use the shared acceptance gate in
-[`docs/testing/README.md`](docs/testing/README.md), require independent read-only
-package review, and distinguish executed passes from skips/empty tests. Existing
+[`docs/testing/README.md`](docs/testing/README.md), and distinguish executed passes
+from skips/empty tests. The independent package review is the orchestrator's review
+at handover (owner, 2026-11-12): an executor starts no reviewer subagents unless its
+packet asks for one, and keeps packets small (TASKS.md, owner rule of 2026-11-12). Existing
 tasks adopt this at their next package checkpoint without interrupting a running
 job or modifying another executor's worktree. Historical testing recipes below
 describe tools and environments; the newer evidence contract governs acceptance.

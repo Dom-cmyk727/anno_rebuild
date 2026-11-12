@@ -194,15 +194,18 @@ stops navigation and removes assignment while preserving the generation counter.
 Unknown route/control enum/state gives a typed refusal. Resume revalidates live
 ship/target authority; it does not repair a missing stable warehouse reference.
 
-ADAPTATION: successful manual Move, Stop, Found, Load or Unload takes over that
-ship and removes its automatic assignment. Existing manual cargo semantics stay
-otherwise unchanged: a transfer does not additionally stop an in-flight segment;
-any remaining order becomes ordinary manual motion until Move/Stop replaces it.
-Failed manual commands do not cancel anything. Internal automatic cargo/movement
-calls the existing primitives directly, not this manual takeover ingress.
-This also prevents a saved in-progress hold scan from surviving a manual mutation
-of the ship's holds. Original manual cargo did not itself cancel automation;
-this explicit takeover policy is modern control ownership, not original parity.
+ORIGINAL BEHAVIOUR (owner, 2026-11-12): successful manual Move, Stop, Found, Load
+or Unload takes over that ship and removes its automatic assignment. Existing
+manual cargo semantics stay otherwise unchanged: a transfer does not additionally
+stop an in-flight segment; any remaining order becomes ordinary manual motion until
+Move/Stop replaces it. Failed manual commands do not cancel anything. Internal
+automatic cargo/movement calls the existing primitives directly, not this manual
+takeover ingress. This also prevents a saved in-progress hold scan from surviving
+a manual mutation of the ship's holds. This paragraph first called the takeover a
+modern adaptation ("original manual cargo did not itself cancel automation"),
+without a code citation: the original's manual-click path is still unread (see
+above). The owner confirmed from the running game that a manual command cancels
+the route, so the behaviour stays always on, with no `rules` switch.
 
 Control outcomes (after known-owned-navigating-ship checks):
 

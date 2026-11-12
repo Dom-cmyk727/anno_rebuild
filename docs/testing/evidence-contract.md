@@ -129,15 +129,21 @@ are not a statement of the current host's capacity.
 
 ## Independent review and completion
 
+**Owner instruction, 2026-11-12: for executor packets, the orchestrator's review
+at handover is the independent review.** The executor does not start reviewer
+subagents of its own, per part or at the end, unless its packet asks for one. It
+reports the package READY FOR REVIEW with its acceptance table and evidence, never
+"approved" or "complete"; the orchestrator's review decides. The rest of this
+section describes that review.
+
 Every substantive package requires an independent, read-only reviewer before it
-is reported complete. Use a review subagent when available. It must inspect the
+is accepted. It must inspect the
 frozen diff, relevant callers/tests and raw evidence, not just the author's
 summary. For evidence tools it hand-derives a small expected answer and challenges
 a negative case; for concurrency it examines alternate legal orderings and
 failure cleanup. It does not implement, commit, delegate its review or duplicate
 long test campaigns. Use the review-agent skill when available; otherwise follow
-this read-only protocol. If independent review is unavailable, report REVIEW
-PENDING rather than self-certifying completion.
+this read-only protocol. An executor never self-certifies completion.
 
 The author fixes actionable findings and obtains re-review. Record reviewer
 identity, reviewed revision, inspected scope, findings/dispositions and residual

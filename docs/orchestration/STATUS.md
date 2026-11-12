@@ -7,11 +7,13 @@ says who is doing what, where the work is, and what it waits on.
 **Last updated:** 2026-11-12, by the Claude Code orchestrator:
 - **W4-NEXT-2 landed on `main` as `7babb1f2`** (the owner's OK; `gate` passed). Its code is the merge `c944aff7`,
   whose game-file run passed before the push, so `main` is healthy at `7babb1f2`.
-- **W4-NEXT-2 part H reviewed: changes requested, small** ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)).
-  - **Holds:** every figure part H states reproduces, and the scenario folders are right.
-  - **Not done:** H1's restatement of the figures OQ-565 and OQ-567 cite. The orchestrator measured them with the
-    calibrated method: none decides an OQ, and every Kontor candidate's minimum lies on its search box's edge.
-  - **Round H4** finishes it on the same branch; then part H lands as one change.
+- **W4-NEXT-2 part H ACCEPTED after round H4** ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)),
+  docs only, `task/W4-docs-h` `1f1d3889`.
+  - **H4** measured the figures OQ-565 and OQ-567 cite with the calibrated method, every sprite kept on screen. The
+    orchestrator's own implementation matches every figure. None decides an OQ. The closest are `SPIELER_BILANZ_BK`
+    id 1128 (53.33) and `STADT_BILANZ_BK` id 677 (61.56), both bottom-aligned at (779, 300).
+  - **Lands as one change** with the review, with the owner's OK.
+- **Earlier the same day:** part H reviewed, changes requested, small; round H4 dispatched.
 
 Earlier, 2026-11-11 night, by the Claude Code orchestrator:
 - **W4-NEXT-2 ACCEPTED after fix round G** ([acceptance](reviews/2026-11-11-w4-next-2-acceptance.md)).
@@ -183,14 +185,14 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: W4-NEXT-2 round H4** ([packet](tasks/w4-next-2.md), part H4), docs only, on `task/W4-docs-h`: OQ-565's and
-  OQ-567's figures measured with the calibrated method, F6's unit, two line-number references, an independent review,
-  a report.
-- **Finished: W4-NEXT-2 part H** (2026-11-11; head `48044b6d`), **changes requested, small**
+- **Now: free** for the next dispatch.
+- **Finished: W4-NEXT-2 part H and round H4** (2026-11-12; head `1f1d3889`), **accepted**
   ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)):
-  - **H1:** the two sprite-sad normalizations and G6's conclusions corrected; the OQs' own figures not restated;
+  - **H1:** the two sprite-sad normalizations and G6's conclusions corrected;
   - **H2:** the shared list's scenario folders, and what the New Game list holds as the next attempt's first check;
-  - **H3:** report.
+  - **H3:** report;
+  - **H4:** OQ-565's and OQ-567's own figures measured with the calibrated method, every sprite on screen; F6's unit;
+    the line references; an independent review.
 - **Finished: W4-NEXT-2's fix round G** (2026-11-11; heads `b483c4de` and `b2808533`), from `2138773e` and
   `e69b036d`, **accepted** ([acceptance](reviews/2026-11-11-w4-next-2-acceptance.md)):
   - **G1:** the selection facts and the window title from one state (the P1 closed);
@@ -397,11 +399,9 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on a run
 
-- None. **`2c4dc295` (the W4-NEXT-1 merge) is healthy:** CI green, and its game-file run passed before the push
-  ([acceptance review](reviews/2026-11-10-w4-next-1-acceptance.md)).
-  - **Counts:** 2,367 selected; 2,355 executed and passed; 0 failed. Skips: 6 opt-in, 3 platform, 3 symlink rows;
-    0 required-asset.
-  - **Earlier runs:** `5e7b13c6` and `96de6bca` are recorded in the [W4-UI-2 merge review](reviews/2026-11-08-w4-ui-2-merge.md).
+- None. **`main` is healthy at `7babb1f2`** (the W4-NEXT-2 landing; its code is the game-file-tested merge
+  `c944aff7`). The counts and the earlier runs are under [Current work](#current-work). Part H is docs only and needs
+  no run.
 
 ## Waiting on the owner
 

@@ -1,5 +1,7 @@
 # W4-NEXT-2 part H review (2026-11-12)
 
+**Update, 2026-11-12: round H4 ACCEPTED** ([below](#round-h4-accepted)); part H lands as one change.
+
 **Verdict: CHANGES REQUESTED (small, docs only).** Part H ([packet](../tasks/w4-next-2.md), part H) corrects both
 findings of the [acceptance](2026-11-11-w4-next-2-acceptance.md), and every figure it states reproduces. One of
 H1's three steps was not done, though, and the report says it was (finding 1). Round H4 below finishes it on the same
@@ -79,3 +81,55 @@ west". Those are `main`'s numbers. With the paragraph's own two lines they becom
 
 Round H4 (the [packet](../tasks/w4-next-2.md), part H4) goes to the Windows executor by message, on the same branch
 `task/W4-docs-h`. Then part H lands as one change, with this review, with the owner's OK.
+
+## Round H4: accepted
+
+**Verdict: ACCEPTED.** All three findings are fixed.
+
+**Reviewed head:** `task/W4-docs-h` `1f1d3889`, three commits on `48044b6d`, docs only:
+- one new H4 bullet each in OQ-565 and OQ-567;
+- the line references fixed in part H's own two `docs/re/ui.md` paragraphs;
+- a REPORTS entry.
+
+**What the orchestrator checked:**
+- **The script.** `cache/h4-sprite-sad-measure.py` has the sha256 the report gives (`d5fba05e…ab82e`). It uses the plain
+  method (per pixel, alpha ≥ 8, no stride, not divided by 3) and keeps every candidate fully on screen.
+- **Every figure, by an independent implementation.** The orchestrator rewrote the same searches with numpy: same
+  boxes, same clamp. Every figure, position and pixel count matches the H4 bullets exactly:
+  - OQ-565: 59.51 at (779, 242) and 82.40;
+  - id 33: 93.28, then 92.61 at (801, 298) on both shots;
+  - ids 1511, 677, 1128: 85.99, 88.57 and 78.22 in the stated box, then 72.35, 61.56 and 53.33 at (779, 300);
+  - id 1023: 93.32, then 88.08 at (779, 303);
+  - id 4: 90.47 at (779, 244);
+  - F6: 96.60 per pixel = 32.20 per channel (n = 112,547), and 91.70 = 30.57 without the two overlays (n = 99,247).
+- **No better placement.** A search over the whole right part of the screen (x 600–779, y 0–300) finds the same
+  minima for ids 677, 1128 and 1511.
+- **The cited text.** `docs/re/ui.md` §2 states both bars (below 15; 40–50 for the atlas under content). The §2.1 table
+  has the zoom + and compass west rows. §9.7's opening paragraph gives the portrait's 34.2.
+- **Nothing on `main` edited.** `main` holds none of part H's paragraphs, so the two in-place fixes touch only
+  unlanded text. Everything else is new text.
+- **The independent review.** A fresh read-only agent reran the script: ACCEPT.
+- **Hosted CI green on all three commits:**
+  - `aee04720`, run 43155260486;
+  - `5fe93868`, run 43158805168, attempt 2. Attempt 1 failed only `cpp (macos-clang)`: `anno_test_support_tests.F3
+    (D1, deaf)` INCOMPLETE, the known coordinator flake (the first review's finding 12), confirmed from the job log;
+  - `1f1d3889`, run 43164531292.
+
+**This review's own error.** Finding 1's table gives 83.38, 86.63 and 85.11 for ids 1511, 1023 and 4 on
+`click_kontor_building`. Those positions put part of the 245-wide sprite off the 1024 × 768 screen, and the
+orchestrator's script compared only the part on screen. H4's on-screen constraint is right for a panel plate, so H4's
+figures replace those three.
+
+**Two leads for OQ-567's next look.** These are the orchestrator's own measurements. Neither decides anything; they are
+noted in OQ-567 too.
+1. **Bottom-aligned placement.** The Kontor candidates' minima at (779, 300) and (779, 303) put the plate at the
+   screen's bottom-right corner. `MAINUNTERGRUND` id 4 sits the same way at (779, 244), since 244 + 524 = 768. So the
+   boundary is plausibly the plate's real draw position, not a search cut short.
+2. **Id 974's committed position.** F6's (783, 252) puts 4 of id 974's 245 columns past the screen's right edge.
+   On `f15_selected_house`:
+   - grey-key at (779, 252) gives 31.69 per channel;
+   - a grey-key full search over x 740–779, y 200–301 finds **23.15 per channel at (778, 300)**, bottom-aligned
+     again;
+   - neither is the committed 17.8.
+
+**Disposition:** part H, with H4, lands as one change with this review, with the owner's OK.

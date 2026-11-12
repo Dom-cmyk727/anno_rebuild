@@ -2676,6 +2676,14 @@ The small farm 809's worker finds tile objects whose type has `WARE[0] = KARTOFF
       orchestrator's review.
     - Script: `cache/h4-sprite-sad-measure.py` on `task/W4-docs-h`, sha256 in this part's REPORTS
       entry (H4). Independently reviewed: see the REPORTS entry for the verdict.
+  - **Orchestrator, H4 review (2026-11-12): two leads for the next look, measured, not decisive**
+    ([review](orchestration/reviews/2026-11-12-w4-next-2-part-h-review.md), round H4).
+    - **Bottom-aligned placement.** The Kontor candidates' minima at (779, 300) and (779, 303) put the plate at the
+      screen's bottom-right corner. `MAINUNTERGRUND` id 4 sits the same way at (779, 244), since 244 + 524 = 768. So
+      that boundary is plausibly the plate's real draw position, not a search cut short.
+    - **Id 974's committed (783, 252)** puts 4 of its 245 columns past the 1024-wide screen's right edge. On
+      `f15_selected_house`, grey-key at (779, 252) gives 31.69 per channel. A grey-key full search over x 740–779,
+      y 200–301 finds **23.15 per channel at (778, 300)**, bottom-aligned again. Neither is the committed 17.8.
 
 ## OQ-568: PlayRunner::one_turn() interrupted by stop() mid-delay drops the turn's queued commands (W4-NEXT-2 P, 2026-11-11)
 - **Status:** open (QUESTION, not changed; re-review of `3f3dd4d8` on the Windows host).

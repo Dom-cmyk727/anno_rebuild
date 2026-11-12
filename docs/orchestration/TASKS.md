@@ -68,9 +68,9 @@ executor reports to [`REPORTS-1.md`](REPORTS-1.md), so an agent can read the liv
 Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026-10-28; where §1 points to
 `HISTORY.md`, look in `HISTORY-2.md` too.
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
-  [`tasks/`](tasks/): now [W4-NEXT-2](tasks/w4-next-2.md) round H4, which finishes the docs-only part H after the
-  [part H review](reviews/2026-11-12-w4-next-2-part-h-review.md) (Windows, on `task/W4-docs-h`), and [MAP-INTEGRATE-2](tasks/map-integrate-2.md) (the
-  Mac, released 2026-11-11).
+  [`tasks/`](tasks/): now [MAP-INTEGRATE-2](tasks/map-integrate-2.md) (the Mac, released 2026-11-11).
+  [W4-NEXT-2](tasks/w4-next-2.md)'s docs-only part H, with round H4, is accepted
+  ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)); the Windows executor is free.
   - **MAP-INTEGRATE-2:** MAP-EXTRACT-1 (135), MAP-EXTRACT-2 (137) and MAP-ROUTE-1 (136) onto `main` under
     **state 138**, which is reserved for it. It also brings the shared folder to the Mac, OQ-556 from the original's
     code, and a measured list of what still stops a town.

@@ -26,7 +26,10 @@ class Workflow(unittest.TestCase):
         (cls.source / ".gitignore").write_text("build/\nlogs/\n*.run.lock/\n")
         (cls.source / "case.py").write_text('''import pathlib, sys
 mode, marker = sys.argv[1:3]
-pathlib.Path(marker).write_text(mode)
+# Appended, not overwritten: a marker with more than one line means this case ran more than
+# once in a single gate invocation (setUp() removes it before each test).
+with pathlib.Path(marker).open("a") as f:
+    f.write(mode + "\\n")
 if mode == "empty":
     print("[doctest] test cases: 0 | 0 passed | 0 failed | 12 skipped")
 elif mode not in ("missing_summary", "cmake_skip"):
@@ -138,7 +141,30 @@ sys.exit(1 if mode == "failure" else 0)
     def test_required_contract_does_not_inflate_selection(self):
         p = self.invoke("^pass$", "--require-test", "pass")
         self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertIn("selected=1 executed=1", p.stdout)
+        self.assertIn("selected=0 executed=0", p.stdout)
+
+    def test_required_and_selected_contract_runs_once(self):
+        # GATE-1b (project analysis §2.1/§2.2, finding D2): a test that is both --require-test'd
+        # and matched by --select used to run twice (once as the required contract, once again in
+        # the selection run); it must now run exactly once.
+        p = self.invoke("^pass$", "--require-test", "pass")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        marker = (self.build / "pass.ran").read_text()
+        self.assertEqual(marker.count("\n"), 1, marker)
+        self.assertIn("== required contract pass\n", self.log.read_text())
+        self.assertIn("(every selected test already ran as a required contract above)", self.log.read_text())
+
+    def test_skip_auto_contract_leaves_it_out(self):
+        cmake = self.source / "src/tools/bench_picture/CMakeLists.txt"
+        cmake.parent.mkdir(parents=True)
+        cmake.write_text("# renderer branch fixture\n")
+        try:
+            if os.name != "nt":
+                p = self.invoke("^pass$", "--skip-auto-contract")
+                self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+                self.assertNotIn("picture_matrix_contract", self.log.read_text())
+        finally:
+            shutil.rmtree(self.source / "src/tools")
 
     def test_name_preflight_catches_multiline_semicolon_before_build(self):
         bad = self.source / "src/bad.cpp"

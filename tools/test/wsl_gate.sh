@@ -272,14 +272,16 @@ run_lane() {
 }
 
 cd "$W"
+# picture_matrix_contract (GATE-1b): run once per gate, as a required contract of the first lane
+# only; every later lane passes --skip-auto-contract so it is neither re-run nor re-counted.
 run_lane app '^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.|^viewer_wiring_(contract|r1_held_publication|r4_occupancy|cpu_delivery_failures|opening_controls|settlement_activity|expand_live_load)$|^opening_session_replay$' 4 \
   --require-test viewer_wiring_contract --require-test viewer_wiring_opening_controls \
   --require-test viewer_wiring_settlement_activity --require-test opening_session_replay
-run_lane sim '^anno_sim_tests\.' 4
-run_lane formats '^anno_formats_tests\.|^anno_assets_tests\.' 4
+run_lane sim '^anno_sim_tests\.' 4 --skip-auto-contract
+run_lane formats '^anno_formats_tests\.|^anno_assets_tests\.' 4 --skip-auto-contract
 # anno_render_gpu_tests is deliberately excluded here: see the header comment.
-run_lane render '^anno_render_tests\.' 4
-run_lane tsupport '^anno_test_support_tests\.' 4
+run_lane render '^anno_render_tests\.' 4 --skip-auto-contract
+run_lane tsupport '^anno_test_support_tests\.' 4 --skip-auto-contract
 
 if [ "$GPU_LANE" -eq 1 ]; then
   ICD=$(ls /usr/share/vulkan/icd.d/*lvp*.json 2>/dev/null | head -1)
@@ -293,7 +295,7 @@ if [ "$GPU_LANE" -eq 1 ]; then
     env $SRC_GIT WGPU_BACKEND=vulkan VK_ICD_FILENAMES="$ICD" ANNO_REQUIRE_GPU=1 \
       python3 -I tools/test/run_selected.py --source-root "$W" --build-dir "$B" \
       --select '^anno_render_gpu_tests\.' --exclude-label heavy --jobs 1 --timeout 6000 \
-      --log "$G/wsl-$TAG-gpu.log" > "$G/wsl-$TAG-gpu.out" 2>&1
+      --skip-auto-contract --log "$G/wsl-$TAG-gpu.log" > "$G/wsl-$TAG-gpu.out" 2>&1
     rc=$?
     echo "gpu lane (lavapipe, ANNO_REQUIRE_GPU=1) rc=$rc elapsed=$(( $(date +%s) - start ))s $(grep -E 'COUNTS|VERDICT' "$G/wsl-$TAG-gpu.out" | tr '\n' ' ') $(date -Is)" >> "$S"
     if [ "$rc" -ne 0 ]; then

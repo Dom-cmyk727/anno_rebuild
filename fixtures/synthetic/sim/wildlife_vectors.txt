@@ -1,0 +1,133 @@
+# Hand-derived from docs/re/wildlife.md only; written before executing wildlife_ref.py.
+# Unsigned raw draws, not PRNG seeds; '-' is an empty list. All numbers are synthetic.
+# Completion quantity is post-action; success is the documented callee outcome.
+# §1 table: count13 retains four, immediately before the count14 jump.
+density before_jump n=13 draws=- => desired=4 consumed=0
+# §1 table: count14 raises the target to five; floor(n/3) would incorrectly give four.
+density after_jump n=14 draws=- => desired=5 consumed=0
+# §1 no candidate means no record and no draw.
+density empty n=0 draws=4294967295 => desired=0 consumed=0
+# §1 the 16 sampled cells still give five records.
+density all_cells n=16 draws=- => desired=5 consumed=0
+# §1 property7=5 needs only the qualifying centre's score1, with no neighbours.
+habitat special_island center=1 goods=70 kind=0 neighbors=0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0 property7=5 draws=- => passed=1 consumed=0
+# §1 ordinary threshold4: centre1 + a neighbour matching both predicates2 + another1 =4.
+habitat exactly_four center=2 goods=0 kind=325 neighbors=3:70:325,4:70:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0 property7=0 draws=- => passed=1 consumed=0
+# §1 removing the single-score neighbour leaves3; an empty id contributes nothing despite its facts.
+habitat only_three center=2 goods=0 kind=325 neighbors=3:70:325,0:70:325,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0 property7=0 draws=- => passed=0 consumed=0
+# §1 a vacant centre cannot qualify, even on the special island and with matching goods/kind.
+habitat empty_center center=0 goods=70 kind=325 neighbors=0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0 property7=5 draws=- => passed=0 consumed=0
+# §1 draw1%3 picks occupied20; swap-pop leaves10,30; next1%2 picks30: two draws, one success.
+replenish collision candidates=10,20,30 deficit=1 occupied=20 draws=1,1 => chosen=30 remaining=10 consumed=2
+# §1 draw0 picks10 and swaps40 into its place; next0 picks40, not20; two distinct successes.
+replenish swap_order candidates=10,20,30,40 deficit=2 occupied=- draws=0,0 => chosen=10,40 remaining=30,20 consumed=2
+# §1 a zero deficit consumes nothing and preserves order, including an otherwise occupied cell.
+replenish no_deficit candidates=10,20 deficit=0 occupied=10 draws=0 => chosen=- remaining=10,20 consumed=0
+# §2 ordinary creation consumes position6&3=2 then species33&31=1; sentinel255 skips goods search.
+create ordinary cave=0 entrances=0 climate=4 types=100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131 goods=9,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7 saved=255 draws=6,33 => position=2 index=1 species=101 inspected=1 consumed=2
+# §2 cave uses first entrance (position sentinel -1), only draws31, then wraps goods search31->0.
+create cave_wrap cave=1 entrances=2 climate=255 types=100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131 goods=9,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7 saved=9 draws=31,999 => position=-1 index=0 species=100 inspected=2 consumed=1
+# §2 eighteen inspected indices starting31 end16; no matching goods8 still chooses type116, without retry draws.
+create no_goods_match cave=1 entrances=1 climate=0 types=100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131 goods=9,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7 saved=8 draws=31 => position=-1 index=16 species=116 inspected=18 consumed=1
+# §3 base is caller-divided u16 time/1000: 65535/1000=65; clear bit0 adds63&31=31 giving96.
+load maximum_jitter entry4=254 base=65 mode=0 goods=17 draws=63 => timestamp=96 saved=17 consumed=1
+# §3 set bit0 suppresses jitter; mode bit0 replaces saved goods by255 even with a trailing draw.
+load no_jitter entry4=255 base=0 mode=1 goods=17 draws=31 => timestamp=0 saved=255 consumed=0
+# §3 other mode bits do not override goods; a zero jitter still consumes a draw.
+load zero_jitter entry4=0 base=1 mode=2 goods=65535 draws=32 => timestamp=1 saved=65535 consumed=1
+# §7 successful resource completion: even0 selects27, odd1 below selects26.
+animal resource_even event=complete state=25 success=1 quantity=0 capacity=1024 variants=1 draws=0 => next=27 consumed=1
+# §7 quantity4 equals twice floor(8/3); equality does not override26 selected by odd1.
+animal threshold_equal event=complete state=25 success=1 quantity=4 capacity=8 variants=1 draws=1 => next=26 consumed=1
+# §7 quantity5 is strictly above4; override changes26->27 AFTER consuming odd1.
+animal threshold_above event=complete state=25 success=1 quantity=5 capacity=8 variants=1 draws=1 => next=27 consumed=1
+# §7 failed resource completion does not draw or advance.
+animal resource_failed event=complete state=25 success=0 quantity=0 capacity=9 variants=1 draws=1 => next=25 consumed=0
+# §7 habitat completion always goes25 and does not draw.
+animal habitat_done event=complete state=26 success=1 quantity=0 capacity=9 variants=1 draws=- => next=25 consumed=0
+# §7 walk draw5%5=0 gives idle28, unlike Wolf's modulo7 rule.
+animal walk_idle event=complete state=27 success=1 quantity=0 capacity=9 variants=1 draws=5 => next=28 consumed=1
+# §7 walk draw4%5=4 gives search26.
+animal walk_search event=complete state=27 success=1 quantity=0 capacity=9 variants=1 draws=4 => next=26 consumed=1
+# §7 idle completion uses parity, not the walk modulus: even2 gives27.
+animal idle_complete event=complete state=28 success=1 quantity=0 capacity=9 variants=1 draws=2 => next=27 consumed=1
+# §7 idle animation with one variant still consumes99%1=0.
+animal one_variant event=idle state=28 success=1 quantity=0 capacity=9 variants=1 draws=99 => next=28 variant=0 consumed=1
+# §7 three available variants give5%3=2.
+animal three_variants event=idle state=28 success=1 quantity=0 capacity=9 variants=3 draws=5 => next=28 variant=2 consumed=1
+# §7 failed search26 falls to27, without itself generating the subsequent walk candidates.
+animal failed_search event=fallback state=26 success=0 quantity=0 capacity=9 variants=1 draws=- => next=27 consumed=0
+# §7 failed walk27 falls to28; its following idle start is a separate record.
+animal failed_walk event=fallback state=27 success=0 quantity=0 capacity=9 variants=1 draws=- => next=28 consumed=0
+# §7 failed idle28 clears continuation.
+animal failed_idle event=fallback state=28 success=0 quantity=0 capacity=9 variants=1 draws=- => next=0 consumed=0
+# §7 attempt1: radius modulo32 gives31,0,31; angle modulo257 gives256,0,1 around facing0 base128.
+walk narrow_boundary attempt=1 behavior=0 facing=0 draws=31,256,32,257,63,258 => radii=71,40,71 angles=256,0,1 attempt=2 consumed=6
+# §7 attempt2 widens to513; facing2 wraps byte256 to0 BEFORE adding angles; remainders0,256,512.
+walk wide_byte_wrap attempt=2 behavior=8 facing=2 draws=0,0,31,256,32,512 => radii=40,71,40 angles=256,0,256 attempt=3 consumed=6
+# §7 behaviour7 draw7%6=1 doubles min/range; attempt255 wraps0; facing255 wraps base64.
+walk doubled_and_wrap attempt=255 behavior=7 facing=255 draws=7,63,0,64,256,65,512 => radii=143,80,81 angles=320,64,320 attempt=0 consumed=7
+# §7 behaviour7 draw6%6=0 consumes its extra draw but keeps ordinary radii and narrow span.
+walk extension_not_selected attempt=0 behavior=7 facing=0 draws=6,0,0,0,0,0,0 => radii=40,40,40 angles=0,0,0 attempt=1 consumed=7
+# §7 Old kind3 completion with remaining quantity1 returns12 without a draw.
+route_old nonempty quantity=1 draws=1 => next=12 consumed=0
+# §7 Old empty quantity and odd3 selects habitat kind7.
+route_old empty_odd quantity=0 draws=3 => next=7 consumed=1
+# §7 Old empty quantity and even2 selects walk kind12.
+route_old empty_even quantity=0 draws=2 => next=12 consumed=1
+# §10 Wolf walk0%7=0 goes28.
+wolf walk_idle event=complete state=27 success=1 quantity=0 capacity=9 variants=1 draws=0 => next=28 consumed=1
+# §10 modulo7 remainder3 is the last search remainder; threshold equality4 does not override.
+wolf walk_search_edge event=complete state=27 success=1 quantity=4 capacity=8 variants=1 draws=3 => next=30 consumed=1
+# §10 remainder4 is the first walk remainder, not search.
+wolf walk_edge event=complete state=27 success=1 quantity=0 capacity=9 variants=1 draws=4 => next=27 consumed=1
+# §10 odd idle completion selects30, then quantity5>2*floor(8/3) overrides27, retaining the draw.
+wolf idle_override event=complete state=28 success=1 quantity=5 capacity=8 variants=1 draws=1 => next=27 consumed=1
+# §10 odd idle completion without override selects30.
+wolf idle_search event=complete state=28 success=1 quantity=4 capacity=8 variants=1 draws=1 => next=30 consumed=1
+# §10 even idle completion selects27.
+wolf idle_walk event=complete state=28 success=1 quantity=0 capacity=9 variants=1 draws=0 => next=27 consumed=1
+# §10 successful distance-check outcome at30 goes31, no random target selection.
+wolf reached_prey event=complete state=30 success=1 quantity=0 capacity=9 variants=1 draws=- => next=31 consumed=0
+# §10 distance-check failure retains30 at equality; outcome is supplied, no float comparison here.
+wolf distant_prey event=complete state=30 success=0 quantity=4 capacity=8 variants=1 draws=- => next=30 consumed=0
+# §10 failed distance check would retain30, but above-threshold quantity overrides27 without a draw.
+wolf distant_full event=complete state=30 success=0 quantity=5 capacity=8 variants=1 draws=- => next=27 consumed=0
+# §10 attack with surviving prey retains31.
+wolf attack_continues event=complete state=31 success=0 quantity=0 capacity=9 variants=1 draws=- => next=31 consumed=0
+# §10 attack reporting done advances25; this is a supplied callback result, not a zero-HP assertion.
+wolf attack_done event=complete state=31 success=1 quantity=0 capacity=9 variants=1 draws=- => next=25 consumed=0
+# §10 successful corpse consumption advances27.
+wolf corpse_done event=complete state=25 success=1 quantity=256 capacity=1024 variants=1 draws=- => next=27 consumed=0
+# §10 failed corpse consumption retains25.
+wolf corpse_failed event=complete state=25 success=0 quantity=0 capacity=9 variants=1 draws=- => next=25 consumed=0
+# §10 failed prey search30 falls to27; later walk draws are a separate record.
+wolf search_fallback event=fallback state=30 success=0 quantity=0 capacity=9 variants=1 draws=- => next=27 consumed=0
+# §10 failed attack31 falls back to30, rather than New's default zero.
+wolf attack_fallback event=fallback state=31 success=0 quantity=0 capacity=9 variants=1 draws=- => next=30 consumed=0
+# §10 failed walk27 falls back to28.
+wolf walk_fallback event=fallback state=27 success=0 quantity=0 capacity=9 variants=1 draws=- => next=28 consumed=0
+# §10 failed idle28 clears continuation.
+wolf idle_fallback event=fallback state=28 success=0 quantity=0 capacity=9 variants=1 draws=- => next=0 consumed=0
+# §10 inherited idle with one variant still consumes a draw.
+wolf one_variant event=idle state=28 success=1 quantity=0 capacity=9 variants=1 draws=4294967295 => next=28 variant=0 consumed=1
+# §10 predator503 receives short list, including prey117 at the mask8 lower boundary49.
+prey short_admitted predator=503 prey=117 kind=49 draws=- => admitted=1 consumed=0
+# §10 predator503 does NOT receive extended prey118, despite using the Wolf class.
+prey short_excludes_extra predator=503 prey=118 kind=49 draws=- => admitted=0 consumed=0
+# §10 predator116 admits extended prey118 at upper mask8 boundary64.
+prey extended_upper predator=116 prey=118 kind=64 draws=- => admitted=1 consumed=0
+# §10 kind65 is outside mask8 even though prey118 is in this predator's extended list.
+prey beyond_kind predator=529 prey=118 kind=65 draws=- => admitted=0 consumed=0
+# §10 kind48 is below mask8; a matching id alone is insufficient.
+prey below_kind predator=116 prey=117 kind=48 draws=- => admitted=0 consumed=0
+# §10 short list's last id505 is admitted to predator530 as well.
+prey short_last predator=530 prey=505 kind=49 draws=- => admitted=1 consumed=0
+# §10 prey503 is on neither list: 503 denotes a predator, not an admissible prey id.
+prey predator_not_prey predator=116 prey=503 kind=50 draws=- => admitted=0 consumed=0
+# §10 extended list's id501 is admitted to predator201.
+prey extended_last predator=201 prey=501 kind=49 draws=- => admitted=1 consumed=0
+# §10 Wolf draw5%7=5 keeps27; incorrectly inheriting New's %5 would select28 instead.
+wolf distinct_from_new event=complete state=27 success=1 quantity=0 capacity=9 variants=1 draws=5 => next=27 consumed=1
+# §1 even property7=5 cannot rescue a nonempty centre with neither qualifying goods nor cave kind.
+habitat wrong_center_type center=1 goods=71 kind=0 neighbors=0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0,0:0:0 property7=5 draws=- => passed=0 consumed=0

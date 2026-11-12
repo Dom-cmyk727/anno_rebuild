@@ -1371,18 +1371,23 @@ TEST_CASE("a flow build that fails leaves the legacy look, final, built once (ga
     // `view`'s own chunks) and, unlike the visible ones just confirmed settled above, are not
     // required to have finished their own in-flight build or stale-rebuild by now, so counting
     // them here flaked under load/-O0 (GATE-1c item 1: a margin or adjacent chunk still
-    // arriving after the loop above found every *visible* chunk settled). Track identity of
-    // this view's own cached chunks instead of the global built count.
-    std::map<std::pair<int, int>, const render::Chunk*> before_rebuild;
+    // arriving after the loop above found every *visible* chunk settled). Track this view's own
+    // chunks' Chunk::serial (process-unique, GATE-1c review F1) rather than the global built
+    // count or a raw pointer: a rebuild frees the replaced Chunk (request_chunks's `replaced` ->
+    // workers_->discard), so a later make_shared can recycle that address, and a pointer
+    // comparison across this window can miss an even number of rebuilds.
+    std::map<std::pair<int, int>, std::uint64_t> before_rebuild;
     for (const auto& [cx, cy] : render::visible_chunks(view)) {
-        before_rebuild[{cx, cy}] = frames.chunk({group, cx, cy});
+        before_rebuild[{cx, cy}] = frames.chunk({group, cx, cy})->serial;
     }
     for (int k = 0; k < 60; ++k) {
         frames.update_chunks(scene, view, group);
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     for (const auto& [cx, cy] : render::visible_chunks(view)) {
-        CHECK(frames.chunk({group, cx, cy}) == before_rebuild[{cx, cy}]);
+        const render::Chunk* c = frames.chunk({group, cx, cy});
+        CHECK(c != nullptr);
+        CHECK(c->serial == before_rebuild[{cx, cy}]);
     }
     CHECK(calls.load() == 1);
     // The picture is the legacy look.

@@ -89,7 +89,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
   [`tasks/`](tasks/). [MAP-INTEGRATE-2](tasks/map-integrate-2.md) is accepted
   ([review](reviews/2026-11-12-map-integrate-2-review.md)) and on `main` as state 138. [GATE-1a](tasks/gate-1a.md) is accepted;
-  the Windows executor is free. The wildlife reads [1a](tasks/wildlife-re-1a.md) to [1d](tasks/wildlife-re-1d.md) are accepted; the Mac executor is free.
+  [GATE-1b](tasks/gate-1b.md) (Windows) is released. The wildlife reads [1a](tasks/wildlife-re-1a.md) to [1d](tasks/wildlife-re-1d.md) are accepted; the Mac executor is free.
   - **The queue, proposed 2026-11-12** by the orchestrator from the
     [project analysis](reviews/2026-11-12-project-analysis.md) (§2.2, §4.2, §6, §7, §8) and the
     [MAP-INTEGRATE-2 review](reviews/2026-11-12-map-integrate-2-review.md) §4. Every packet is released only with
@@ -100,7 +100,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     |---|---|---|---|
     | 0 | Orchestrator | Land MAP-INTEGRATE-2 with the analysis documents: **done**, `fa9d8bbf` | — |
     | 1 | Windows executor | **[GATE-1a](tasks/gate-1a.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-gate-1a-review.md); a full gate now 1.5 h): the WSL sanitizer gate and the `asan` preset at `-O1 -g` (analysis §2.2 step 1, D1) | ~2–3 h |
-    | 2 | Windows executor | **GATE-1b:** a required contract runs once; `picture_matrix_contract` in one lane; no local lavapipe lane by default (steps 2, 4; D2) | ~2 h |
+    | 2 | Windows executor | **[GATE-1b](tasks/gate-1b.md), RELEASED 2026-11-12:** a required contract runs once; `picture_matrix_contract` in one lane; no local lavapipe lane by default (steps 2, 4; D2) | ~2 h |
     | 3 | Windows executor | **GATE-1c:** a gate can end green: the flow-build test's cause, then its fix; named-adapter GPU tests skip as platform (step 3; D3, D4) | ~2–3 h |
     | 4 | Windows executor | **PLAY-LIVE-1a:** a "living town" rules profile for `--play` and `--ship-start` behind one flag (D7); the default is the owner's | ~2–3 h |
     | 5 | Windows executor | **PLAY-LIVE-1b:** draw the tile objects that change, roads first, after confirming D8 in the window | ~3 h |
@@ -113,7 +113,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     | 3a | Windows executor | **COORD-FLAKE-1** (D5, moved up after GATE-1a): the coordinator tests `F3 (D1, deaf)` (macOS) and `C3` (Windows) flake in CI; cause first, no reruns as proof | ~2–3 h |
     | Later | — | **TEST-MEM-1** (D6, reservations from measured peaks; seven low-memory refusals in the 2026-11-12 run) | ~2–3 h each |
     | Later | — | **PLAY-LIVE-1c** (draw figures), **NET-0** (after the owner decides ADR 0003), **TEST-FIXTURE-1** | — |
-    | After ADR 0006 | — | **EDITION-2 with WILDLIFE-1** (one identity change for both), then freight through the effect queue (E2–E4) | — |
+    | After ADR 0006 | — | **EDITION-2 with WILDLIFE-1** (one identity change for both; predators included, owner 2026-11-12), then freight through the effect queue (E2–E4) | — |
     | Parked | — | [SIM-LIMITS-1](tasks/sim-limits-1.md) (packet written), FIXTURES-TRIM-1, MAP-MATERIALS-1, MAP-FOOD-1, MAP-GOODS-1a–c: re-ranked after the wildlife port re-measures [`progression-gaps.md`](../sim/progression-gaps.md) | — |
 
     The orchestrator writes each packet when it is next, after reviewing the last one.

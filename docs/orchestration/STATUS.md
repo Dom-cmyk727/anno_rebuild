@@ -5,6 +5,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-12, later, by the Claude Code orchestrator:
+- **[GATE-1b](tasks/gate-1b.md) RELEASED** to the Windows executor with the owner's go: each required test runs once.
+- **Owner decision:** the first wildlife port includes predators (2026-11-12, on the
+  [WILDLIFE-RE-1c review](reviews/2026-11-12-wildlife-re-1c-review.md)'s facts and recommendation).
 - **[GATE-1a](tasks/gate-1a.md) ACCEPTED** ([review](reviews/2026-11-12-gate-1a-review.md)): the WSL sanitizer gate
   at `-O1 -g` takes **1 h 32 min instead of 4.3–8 h**, with the same verdicts, and ended green. The two test-coordinator
   flakes (`F3` on macOS, `C3` on Windows) move up the queue as COORD-FLAKE-1.
@@ -215,7 +218,8 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: free.** Next on this lane: GATE-1b, released only with the owner's go.
+- **Now: [GATE-1b](tasks/gate-1b.md)** (released 2026-11-12), on `task/GATE-1b`: each required test runs once, the
+  automatic picture contract in one lane only, and the README says which run covers which GPU.
 - **Finished: [GATE-1a](tasks/gate-1a.md)** (2026-11-12; head `b0e9428e`), **accepted**
   ([review](reviews/2026-11-12-gate-1a-review.md)): the WSL sanitizer gate and the `asan` preset at `-O1 -g`. A full
   gate took 1 h 32 min (was 4.3–8 h), all lanes green.
@@ -457,8 +461,6 @@ Its later work is not accepted merely because expansion is complete.
   its mechanism; merge within a day or two behind default-off flags; one tool regenerates pins; retire dated
   protocol text.
 - **Whether the window's living town is the default** (PLAY-LIVE-1a), and **ADR 0003** (blocks NET-0).
-- **Predators in or out** of the first wildlife port. WILDLIFE-RE-1c's facts: they hunt only other wildlife. The
-  orchestrator recommends in ([review](reviews/2026-11-12-wildlife-re-1c-review.md)).
 - **On the Mac, accept this PC and the `open1503-share` offer** in Syncthing, as Receive Only (MAP-INTEGRATE-2
   part S, step 4).
 - **OQ-568:** may the play runner's `stop()` drop a command posted during an artificial turn delay? Only tests set

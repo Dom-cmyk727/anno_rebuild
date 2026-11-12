@@ -967,3 +967,42 @@ The dated 1b boundary above remains historical; its unused OQ-583..585 range is
 now assigned. OQ-578 has a dated narrowing bullet, and remains open as the
 orchestrator's separately sized transitive audit. No code, test, fixture, default
 or state identity changes belong to this packet.
+
+## 11. Reference boundary and packet clarification (1d, 2026-11-12)
+
+- **D (existing §10, `0x100536b0`–`0x10053732`), 2026-11-12:** the
+  1d packet's example “prey 503 admitted only from the short list” names the
+  wrong role. **Predator** 503 admits short-list prey such as117; prey503 is
+  on neither list. The reference distinguishes predator503/prey117 from
+  predator503/prey118 and predator116/prey503. This clarifies the packet,
+  not the accepted original-code reading; no new binary read was performed.
+- **D/U (existing §§1–3,7,10), 2026-11-12:**
+  [`wildlife_ref.py`](../../tools/wildlife_ref.py) is a decision oracle, not
+  an animal lifecycle emulator. `habitat` receives already resolved type facts
+  (including the growing-id substitution). `create` receives the caller's
+  climate byte and that climate's 32 type ids plus corresponding goods; it
+  does not invent the original climate tables. `position=-1` means the first
+  cave entrance, whose float coordinates remain outside the oracle. The
+  creation outputs stop before manager construction/attach callbacks.
+  Replenishment reports successful cells in selection/insertion order; the
+  sweep visits prepended records in the reverse order (§1), not that order.
+- **D (existing §3, `0x100946c0`–`0x10094873`), 2026-11-12:** `load.base`
+  is **already divided** `u16 island[0x9a]/1000`, hence0..65. It is not raw
+  ticks and is not divided again. Timestamp addition retains byte wrapping;
+  this loader's documented input range cannot itself overflow255 with jitter31.
+- **D/U (existing §7, `0x10051b00`; §10, `0x10053410`), 2026-11-12:**
+  completion records take quantity at the next-state decision, **after** the
+  action's effects, and a caller-supplied callee `success` outcome. Wolf30's
+  outcome is its distance check, Wolf31's its attack completion; no float
+  distance, damage, target resolution or corpse reachability is inferred.
+  `fallback` emits only the next state; the following `walk`/`idle` record
+  supplies its own draws. `idle.variants` is the resolved count1..3, not an
+  animation id. `walk` returns all three integer radius/angle pairs, increments
+  the attempt byte, and stops before float position/pathfinding.
+- **U (OQ-572/574/585), 2026-11-12:** exhausted replenishment candidates,
+  a cave with no entrance, and prey130's zero-HP case are refused with their
+  OQ numbers. Allocation failure, arbitrary transitive callbacks (OQ-578),
+  float vectors (OQ-582), complete ticks and autonomous reachability remain
+  outside this oracle. The `prey` record checks the mask/id admission rule,
+  not nearest-target selection or whether a victim is edible. HE and
+  original-runtime validation are NOT_RUN. No OQ is closed by these vectors.

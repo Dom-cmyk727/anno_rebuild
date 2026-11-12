@@ -9001,3 +9001,69 @@ aggregate status): one failure, `COUNTS: ... failed=1 ... VERDICT: FAIL failed t
 touches only `docs/orchestration/REPORTS.md`, nothing under `src/test_support`. `gh run rerun 43218940794 --failed`
 reran just the failed job: green on `cpp (windows-msvc)` and `gate`, confirming intermittency, not a regression.
 Head `35f577fe` is CI-green.
+
+## WILDLIFE-RE-1d — integer decision reference — 2026-11-12 — READY FOR REVIEW
+
+Base `0ac461d83a9103ad184ade9b5e2cee267cf396dc`; branch `task/WILDLIFE-RE-1d`.
+NEW managed worktree `/Users/dom/.codex/worktrees/wildlife-re-1d/anno1503`.
+Prior wildlife and MAP worktrees/branches preserved; no main merge or engine edit.
+Source: [wildlife.md §§1–10](../re/wildlife.md), exclusively; no fresh binary reads.
+Deliverables: [reference](../../tools/wildlife_ref.py), [vectors](../../fixtures/synthetic/sim/wildlife_vectors.txt),
+[command contract](../../tools/wildlife_ref_contract_test.py), two CTest registrations,
+[reference boundary/clarification](../re/wildlife.md#11-reference-boundary-and-packet-clarification-1d-2026-11-12).
+
+Acceptance scope: deterministic integer decisions and direct draw consumption,
+not an engine implementation or certified whole-lifecycle draw total.
+
+| Requirement | Positive proof | Distinguishing negative control | Evidence | Disposition |
+|---|---|---|---|---|
+| Documented decisions | 65 hand-derived vectors across ten types | ten applied wrong-interpretation mutants rejected | direct-reference-03; mutants logs | orchestrator pending |
+| Public command verdict | bundled vectors agree | changed expectation exits1; malformed/empty/missing exit2 | direct-contract-03, 31 checks | orchestrator pending |
+| Explicit unresolved edges | ordinary cases execute | OQ-572/574/585 cases refuse with named OQ | command contract | orchestrator pending |
+| Registration and honest selection | two wildlife entries execute | required contract and inventory-backed verdict | canonical-02.log + inventory | orchestrator pending |
+
+Vector counts: density4, habitat5, replenish3, create3, load3, animal13,
+walk4, route_old3, wolf19, prey8; total65, each with a preceding derivation.
+Boundary controls include density13/14, habitat score3/4 and empty centre,
+collision retry/swap-pop, zero deficit, cave without position draw, species
+wrap31->0 and eighteen inspected entries, loader bit0/mode bits, idle modulus1,
+quantity equality/strict excess at capacity8, attempt1/2 and byte255 wrap,
+angle base byte wrap, doubled radius range, Wolf %7 versus New %5,
+Old quantity0/1, prey kind48/49/64/65 and both predator-specific id lists.
+Every vector was written from the document before executing that vector.
+
+Refusals: candidate exhaustion OQ-572; cave without entrance OQ-574;
+zero-HP prey130 OQ-585. A depleted supplied draw stream is separately malformed.
+No new OQ was needed; OQ-587–590 remain unused, OQ-578 remains open.
+Packet correction: 503 is the **predator** limited to the short list; prey503
+is on neither list. A dated §11 bullet records this without changing §10.
+API boundaries: resolved habitat facts/climate tables are inputs; load.base
+is already u16-time/1000; completion quantity is post-action; callee outcomes
+are supplied, not inferred from float geometry, damage or target lifetime.
+
+Local gate: dev Debug, Apple Clang, viewer/GPU off, two build jobs, one test job.
+Built bench_picture solely for the existing mandatory UNIX picture contract.
+Direct reference: selected65 / executed65 / failed0 / empty0 / skipped0.
+Direct command-contract checks: selected31 / executed31 / failed0 / empty0 / skipped0.
+Canonical wildlife selection: selected2 / executed2 / failed0 / empty0 / skipped0;
+incomplete0, sanitizer_lines0. Required wildlife contract and picture contract:
+selected1 / executed1 / failed0 / empty0 / skipped0 EACH, separate from selection.
+All skip classes0 (required-asset/platform/opt-in/GPU/other); no corpus claim.
+`git diff --check` PASS; wildlife links selected12 / executed12 / failed0 / skipped0.
+Evidence: ignored `cache/gates/wildlife-1d/`, canonical log records tested identity.
+Earlier failures preserved: first configure lacked Ninja on PATH; contract's
+initial double-arrow probe used a second line and checked the wrong diagnostic;
+first mutation run exposed missing Wolf draw5 coverage, corrected before gates.
+Mutants: nine original probes plus quantity-rounding order; each replacement
+asserted applied. Nine reject with exit1, cave-extra-draw rejects with exit2.
+Hosted acceptance requires green CI on the pushed head; exact terminal run/link
+and commit are supplied in the owner handoff after checking every push.
+NOT_RUN: original/HE runtime, game-file corpus, float vectors, wildlife port,
+full local suite/sanitizers; hosted full matrix is the prescribed cross-host gate.
+
+Decisions and reasoning:
+- Supply raw u32 draws; never generate randomness or import engine logic.
+- Keep callback outcomes and direct draws separate from OQ-578's transitive audit.
+- Preserve exact masks, truncation order and integer angle/radius selectors.
+- Stop at this reference and handoff; no default/state/gameplay changes.
+QUESTIONs: none requiring an owner decision; independent review is the orchestrator's.

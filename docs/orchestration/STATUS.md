@@ -7,8 +7,9 @@ says who is doing what, where the work is, and what it waits on.
 **Last updated:** 2026-11-12, later, by the Claude Code orchestrator:
 - **[GATE-1a](tasks/gate-1a.md) RELEASED** to the Windows executor with the owner's go: the WSL sanitizer gate and
   the `asan` preset at `-O1 -g`.
-- **[WILDLIFE-RE-1c](tasks/wildlife-re-1c.md) RELEASED** to the Mac executor with the owner's go: the hunter's
-  approach, the fur trapper, the wolf and predators (it answers whether predators can wait).
+- **[WILDLIFE-RE-1c](tasks/wildlife-re-1c.md) ACCEPTED** ([review](reviews/2026-11-12-wildlife-re-1c-review.md)),
+  `1ee3f4d5`, 19 minutes after release. Predators chase, kill and eat other wildlife only; residents and soldiers
+  are outside their search. The orchestrator recommends including them in the first port; the owner decides.
 - **[WILDLIFE-RE-1b](tasks/wildlife-re-1b.md) ACCEPTED** ([review](reviews/2026-11-12-wildlife-re-1b-review.md)),
   `34d3fdce`, 28 minutes after release; every re-checked address matches. The animals' own life; OQ-578 (the
   transitive draw closure) is the main open risk for the port. The wildlife reads are four packets (1a–1d).
@@ -307,8 +308,10 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: [WILDLIFE-RE-1c](tasks/wildlife-re-1c.md)** (released 2026-11-12), on `task/WILDLIFE-RE-1c`: the hunter's
-  approach, the fur trapper, the wolf and predators. Documents only; OQ-583 to OQ-590 reserved.
+- **Now: free.** Next on this lane: WILDLIFE-RE-1d (the reference script), released only with the owner's go.
+- **Finished: [WILDLIFE-RE-1c](tasks/wildlife-re-1c.md)** (2026-11-12; head `1ee3f4d5`), **accepted**
+  ([review](reviews/2026-11-12-wildlife-re-1c-review.md)): the hunter's approach, the fur trapper and the predators
+  in `docs/re/wildlife.md` §8–10; OQ-583 to OQ-586 open.
 - **Finished: [WILDLIFE-RE-1b](tasks/wildlife-re-1b.md)** (2026-11-12; head `34d3fdce`), **accepted**
   ([review](reviews/2026-11-12-wildlife-re-1b-review.md)): the animals' own life in `docs/re/wildlife.md` §4–7;
   OQ-573 settled for the read paths, OQ-575 narrowed, OQ-578 to OQ-582 open.
@@ -446,8 +449,8 @@ Its later work is not accepted merely because expansion is complete.
   its mechanism; merge within a day or two behind default-off flags; one tool regenerates pins; retire dated
   protocol text.
 - **Whether the window's living town is the default** (PLAY-LIVE-1a), and **ADR 0003** (blocks NET-0).
-- **Predators in or out** of the first wildlife port, after WILDLIFE-RE-1c (option 1, the faithful port, is
-  confirmed).
+- **Predators in or out** of the first wildlife port. WILDLIFE-RE-1c's facts: they hunt only other wildlife. The
+  orchestrator recommends in ([review](reviews/2026-11-12-wildlife-re-1c-review.md)).
 - **On the Mac, accept this PC and the `open1503-share` offer** in Syncthing, as Receive Only (MAP-INTEGRATE-2
   part S, step 4).
 - **OQ-568:** may the play runner's `stop()` drop a command posted during an artificial turn delay? Only tests set

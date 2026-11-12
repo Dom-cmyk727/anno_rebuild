@@ -5,8 +5,10 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-12, later, by the Claude Code orchestrator:
-- **MAP-INTEGRATE-2 ACCEPTED** ([review](reviews/2026-11-12-map-integrate-2-review.md)): salt, iron → tools,
-  quarry → bricks and automatic freight on `main` as **state 138**, merged as `c75cddff`.
+- **[GATE-1a](tasks/gate-1a.md) RELEASED** to the Windows executor with the owner's go: the WSL sanitizer gate and
+  the `asan` preset at `-O1 -g`. The Mac executor is free; nothing else is dispatched.
+- **MAP-INTEGRATE-2 landed on `main` as `fa9d8bbf`** ([review](reviews/2026-11-12-map-integrate-2-review.md)):
+  salt, iron → tools, quarry → bricks and automatic freight as **state 138**, merged as `c75cddff`.
   - **The code is fit for `main`;** the 13 h 20 min it took were not worth it. The main causes were the packet's size
     and the one-number save format, not the executor.
   - **Owner decisions, 2026-11-12:** a manual ship command cancelling the automatic route is the original's
@@ -19,7 +21,7 @@ says who is doing what, where the work is, and what it waits on.
     same tests run 5.5 to 5.9 times faster. The window never switches population on.
   - **The queue is rebuilt around it** (board, "Current work"): the gate first (GATE-1a–c), then the living town in
     the window (PLAY-LIVE-1), the edition layer (EDITION-1) on Windows, and the wildlife reads (WILDLIFE-RE-1) on the
-    Mac. **Nothing is dispatched** until the owner says go; one packet per executor at a time.
+    Mac. Each packet is released only with the owner's go; one packet per executor at a time.
 - **W4-NEXT-2 part H landed on `main` as `3eef75a5`** (accepted after round H4,
   [part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)). Docs only; `main` stayed healthy.
 
@@ -200,7 +202,8 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: free** for the next dispatch.
+- **Now: [GATE-1a](tasks/gate-1a.md)** (released 2026-11-12), on `task/GATE-1a`: the WSL sanitizer gate and the
+  `asan` preset at `-O1 -g`, one full gate as proof against the recorded `w4ui2parte` gate.
 - **Finished: W4-NEXT-2 part H and round H4** (2026-11-12; head `1f1d3889`), **accepted**
   ([part H review](reviews/2026-11-12-w4-next-2-part-h-review.md)):
   - **H1:** the two sprite-sad normalizations and G6's conclusions corrected;
@@ -422,7 +425,7 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on the owner
 
-- **The go for the rebuilt queue** (board, "Current work"), packet by packet, starting with GATE-1a.
+- **The go for each next packet** of the queue (board, "Current work"). GATE-1a is released.
 - **The rule changes the project analysis suggests** ([analysis](reviews/2026-11-12-project-analysis.md) §3.2,
   items 1–6): one sanitizer gate per landing at the merge; the reviewer fixes wording itself; a flake is closed by
   its mechanism; merge within a day or two behind default-off flags; one tool regenerates pins; retire dated

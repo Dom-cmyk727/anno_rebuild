@@ -88,7 +88,8 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
 `HISTORY.md`, look in `HISTORY-2.md` too.
 - **Current work.** [`STATUS.md`](STATUS.md) says who works on what. New dispatches are packet files in
   [`tasks/`](tasks/). [MAP-INTEGRATE-2](tasks/map-integrate-2.md) is accepted
-  ([review](reviews/2026-11-12-map-integrate-2-review.md)) and lands as state 138; both executors are free.
+  ([review](reviews/2026-11-12-map-integrate-2-review.md)) and on `main` as state 138. Now: [GATE-1a](tasks/gate-1a.md)
+  (Windows); the Mac executor is free.
   - **The queue, proposed 2026-11-12** by the orchestrator from the
     [project analysis](reviews/2026-11-12-project-analysis.md) (§2.2, §4.2, §6, §7, §8) and the
     [MAP-INTEGRATE-2 review](reviews/2026-11-12-map-integrate-2-review.md) §4. Every packet is released only with
@@ -97,8 +98,8 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
 
     | Step | Who | Packet | Size |
     |---|---|---|---|
-    | 0 | Orchestrator | Land MAP-INTEGRATE-2 with the analysis documents | — |
-    | 1 | Windows executor | **GATE-1a:** the WSL sanitizer gate and the `asan` preset at `-O1 -g` (analysis §2.2 step 1, D1) | ~2–3 h |
+    | 0 | Orchestrator | Land MAP-INTEGRATE-2 with the analysis documents: **done**, `fa9d8bbf` | — |
+    | 1 | Windows executor | **[GATE-1a](tasks/gate-1a.md), RELEASED 2026-11-12:** the WSL sanitizer gate and the `asan` preset at `-O1 -g` (analysis §2.2 step 1, D1) | ~2–3 h |
     | 2 | Windows executor | **GATE-1b:** a required contract runs once; `picture_matrix_contract` in one lane; no local lavapipe lane by default (steps 2, 4; D2) | ~2 h |
     | 3 | Windows executor | **GATE-1c:** a gate can end green: the flow-build test's cause, then its fix; named-adapter GPU tests skip as platform (step 3; D3, D4) | ~2–3 h |
     | 4 | Windows executor | **PLAY-LIVE-1a:** a "living town" rules profile for `--play` and `--ship-start` behind one flag (D7); the default is the owner's | ~2–3 h |

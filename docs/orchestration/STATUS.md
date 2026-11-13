@@ -12,8 +12,11 @@ says who is doing what, where the work is, and what it waits on.
   - **F1:** two pins that `highmap_digest_ref.py` holds are filed as ordinary pins, so `regen` would overwrite them.
   - **F2:** twelve hand-written expectations still name 138, and the renumbering steps aren't written down. The fix
     round derives the version from the constant, writes the procedure, and proves it with a dry run of its own.
-- **Landing on the owner's OK (2026-11-13):** ZOOM-MEASURE-1, FISHER-RE-1c and the board, as candidate
-  `orch/land-zoom-measure-1` `480fafe7`. Its game-file run is under way, then `land.py`.
+- **LANDED on `main` as `480fafe7`,** with the owner's OK: ZOOM-MEASURE-1, FISHER-RE-1c and the board.
+  - **`main` is healthy:** that exact commit's game-file run passed every test.
+    - 2,543 executed, and 4 render corpus cases refused for low memory while the Windows executor's lanes ran.
+    - Those 4 passed when rerun alone.
+    - [Review section](reviews/2026-11-13-zoom-measure-1-review.md#game-file-run-of-the-landing-candidate).
 - **[ZOOM-MEASURE-1](tasks/zoom-measure-1.md) ACCEPTED** ([review](reviews/2026-11-13-zoom-measure-1-review.md)).
   - **The zoom failure is now a number:** on `lan5` at 2560 × 1369, 431 of 12,000 frames show non-ready content, with
     26,616 stand-in draws and 13,304 dissolves. Even with original water, 537 frames are non-ready, so the cause is

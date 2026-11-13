@@ -519,7 +519,8 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: free.** [FISHER-RE-1c](tasks/fisher-re-1c.md) waits for the owner's go. The wildlife, whale and fisher
+- **Now: [FISHER-RE-1c](tasks/fisher-re-1c.md)** (released 2026-11-13 with the owner's go): the water test's corner-height
+  grid (OQ-200). Next: PINS-1, SAVE-SECTIONS-1, FIXTURES-TRIM-1. The wildlife, whale and fisher
   ports wait for ADR 0006.
 - **Finished: [FISHER-RE-1b](tasks/fisher-re-1b.md)** (2026-11-13; head `f931354a`), **accepted**
   ([review](reviews/2026-11-13-fisher-re-1b-review.md)): `tools/fisher_ref.py` and its 42 vectors.

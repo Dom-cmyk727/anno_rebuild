@@ -1,7 +1,6 @@
 # FISHER-RE-1c: the water test's corner-height grid (OQ-200)
 
-**Status:** PROPOSED 2026-11-13 by the Claude Code orchestrator for **the Mac executor**. It is released when the owner
-gives the go. Step 10′ of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
+**Status:** RELEASED 2026-11-13 by the Claude Code orchestrator, with the owner's go, to **the Mac executor**. Step 10′ of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
 
 **Why.** The owner asked for a fisher port behind a flag (2026-11-13). The orchestrator's check found:
 - **The wiring needs a new state number.** Every `sim::Rules` field is written into the saved state

@@ -5,6 +5,15 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md) ACCEPTED**
+  ([review](reviews/2026-11-13-depth-integrate-1-review.md)): per-pixel depth and the original's 26.5 sea plane,
+  merged onto `main` and proven.
+  - **The owner's Kontor points are met:** the land-side wall sinks into the ground, the piles end at ground or
+    water, and the water reaches the piles.
+  - **`--depth off` gives `main`'s 18 frame digests exactly.**
+  - **The report's gate line was a composite;** the review records the logs as they are. The work is proven.
+  - **Lands on the owner's OK,** with its game-file run.
+  - **[SHORE-2](tasks/shore-2.md) RELEASED** to the Windows executor: the stepped 8 × 8-tile water edges on beaches.
 - **[PINS-1](tasks/pins-1.md): FIX ROUND 1** ([review](reviews/2026-11-13-pins-1-review.md)), to the Mac through
   the owner's prompt.
   - **The mechanism is sound.** In the orchestrator's 138 → 139 trial on this PC, `pins.py regen` rewrote all 44

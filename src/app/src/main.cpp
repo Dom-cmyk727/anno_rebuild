@@ -166,7 +166,6 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
 /// cannot be read.
 int replay_hashes(anno::sim::World world, unsigned speed,
                   std::vector<anno::app::ScriptedCommand> commands, const fs::path& file,
-                  anno::app::RulesProfile requested_rules,
                   const anno::app::OpeningIdentity* opening = nullptr) {
     auto read = [](const fs::path& f) -> std::optional<std::string> {
         std::ifstream in(f, std::ios::binary);
@@ -222,18 +221,16 @@ int replay_hashes(anno::sim::World world, unsigned speed,
             return differs("start state", recorded->start_hash, opening->start_hash);
         }
     } else {
-        // PLAY-LIVE-1a, Do item 5: a plain --play recording names the --rules profile it was
-        // made with (session.txt's "rules" line); refuse a differing one before turn 1 instead
-        // of letting it surface as a later hash mismatch. An older recording, or one whose
-        // session.txt is not next to the hashes file, makes no such claim and is not refused.
+        // PLAY-LIVE-1a review F1: a plain --play recording carries the created world's rules
+        // digest (session.txt's "rules_digest" line), not just the --rules profile's name, since
+        // --city-booking can change the rules without changing that name. Refuse a differing
+        // digest before turn 1 instead of letting it surface as a later hash mismatch. An older
+        // recording, or one whose session.txt is not next to the hashes file, makes no such claim
+        // and is not refused.
         if (const auto session = read(file.parent_path() / "session.txt")) {
-            const auto recorded_rules = anno::app::parse_invocation_rules(*session);
-            if (recorded_rules && *recorded_rules != requested_rules) {
-                std::fprintf(
-                    stderr,
-                    "--replay-hashes: the recording was made with other rules (%s, now %s)\n",
-                    anno::app::rules_profile_name(*recorded_rules),
-                    anno::app::rules_profile_name(requested_rules));
+            if (const auto msg =
+                    anno::app::check_invocation_rules_digest(*session, world.rules().digest())) {
+                std::fprintf(stderr, "--replay-hashes: %s\n", msg->c_str());
                 return 1;
             }
         }
@@ -374,8 +371,7 @@ int run(const std::vector<std::string>& raw) {
         }
         if (args->replay_hashes) {
             return replay_hashes(std::move(play->world), args->play_speed, std::move(commands),
-                                 *args->replay_hashes, args->rules_profile,
-                                 opening ? &opening->identity : nullptr);
+                                 *args->replay_hashes, opening ? &opening->identity : nullptr);
         }
         buildings = anno::app::play_buildings(play->world);
         if (opening) {
@@ -460,6 +456,9 @@ int run(const std::vector<std::string>& raw) {
     std::shared_ptr<const anno::render::Scene> shown = std::move(loaded.value().scene);
     std::unique_ptr<anno::app::ScenePicture> picture;
     std::unique_ptr<anno::app::PlayRunner> runner;
+    // The world's rules digest, captured just before it moves into runner (PLAY-LIVE-1a review
+    // F1): the dev session's "rules_digest" line, read back by a later --replay-hashes.
+    std::uint64_t play_rules_digest = 0;
     std::unique_ptr<anno::app::PublicationHold> hold;
     // The ship-start opening's controls, ships and saver (--ship-start).
     std::optional<anno::app::OpeningUi> opening_ui;
@@ -585,6 +584,7 @@ int run(const std::vector<std::string>& raw) {
             hooks.construction_game_dir = dir.value();
             hooks.construction_masks = &*construction_masks;
         }
+        play_rules_digest = play->world.rules().digest();
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_record_hashes(!session_dir.empty());
         if (opening) {
@@ -654,8 +654,8 @@ int run(const std::vector<std::string>& raw) {
     picture.reset();
     int status = err.empty() ? 0 : 1;
     if (runner && !session_dir.empty()) {
-        std::string invocation =
-            anno::app::format_invocation(name, args->play_speed, args->rules_profile);
+        std::string invocation = anno::app::format_invocation(
+            name, args->play_speed, args->rules_profile, play_rules_digest);
         if (opening) {
             invocation += anno::app::format_opening_identity(opening->identity);
         }

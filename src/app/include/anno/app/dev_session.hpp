@@ -32,15 +32,19 @@ parse_hashes(std::string_view text);
 /// first line "lost <n> from <seq>" when the store dropped some.
 [[nodiscard]] std::string format_outcomes(const OutcomeRead& read);
 
-/// The session's invocation: "map <path>", "speed <percent>" and "rules <original|living>"
-/// lines (PLAY-LIVE-1a: the last names the --rules profile a plain --play recording was made
-/// with, read back by a later --replay-hashes of it).
+/// The session's invocation: "map <path>", "speed <percent>", "rules <original|living>"
+/// (information: the --rules profile name) and "rules_digest <hex16>" (PLAY-LIVE-1a review F1:
+/// the created world's sim::Rules digest — --city-booking can change the rules without changing
+/// the profile's name, so the name alone cannot catch every mismatch) lines.
 [[nodiscard]] std::string format_invocation(const std::string& map, unsigned speed,
-                                            RulesProfile profile);
+                                            RulesProfile profile, std::uint64_t rules_digest);
 
-/// The "rules" line of a recorded invocation (format_invocation), or nullopt when the text has
-/// none or names a profile this build does not know.
-[[nodiscard]] std::optional<RulesProfile> parse_invocation_rules(std::string_view text);
+/// Checks a plain --play recording's "rules_digest" line (format_invocation) against the replay
+/// world's own rules digest. Returns the refusal message, naming both digests, when they differ;
+/// nullopt when they agree or the recording has no such line (an older recording, read as making
+/// no claim, not as agreeing).
+[[nodiscard]] std::optional<std::string>
+check_invocation_rules_digest(std::string_view session_text, std::uint64_t replay_digest);
 
 struct ReplayReport {
     bool agree = false;

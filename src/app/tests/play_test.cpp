@@ -430,7 +430,15 @@ TEST_CASE("play: a living town grows and books, the original town does not (PLAY
     }
 }
 
-TEST_CASE("play: ms per 100 ms turn, original vs living, measured (PLAY-LIVE-1a Do item 6)") {
+TEST_CASE("play: ms per 100 ms turn, original vs living, measured (PLAY-LIVE-1a Do item 6, "
+          "opt-in measure)") {
+    // Review F1/F2: asserts nothing (it reports timing, not a pass/fail condition) and took 61 s
+    // in the WSL app lane; opt-in like the project's other measurements (founding_assets_test.cpp,
+    // iron_chain_test.cpp), not run by default.
+    if (std::getenv("ANNO_PLAY_LIVE_TIMING") == nullptr) {
+        MESSAGE("skipping: opt-in measurement; set ANNO_PLAY_LIVE_TIMING=1");
+        return;
+    }
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");

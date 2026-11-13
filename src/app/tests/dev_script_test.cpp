@@ -4,6 +4,7 @@
 // comparison of hashes and outcomes on lan5 (game files) with a moved command and a changed
 // refusal as controls.
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -629,29 +630,50 @@ TEST_CASE("dev script: expect fact's value can hold a space, like title/title-la
     CHECK_FALSE(pinned_ok.failed());
 }
 
-TEST_CASE("dev session: a plain --play recording's invocation carries its --rules profile "
-          "(PLAY-LIVE-1a Do item 5)") {
-    // main.cpp's own round trip: format_invocation writes session.txt (map, speed, rules);
-    // replay_hashes reads it back with parse_invocation_rules and refuses before turn 1 when
-    // the replay's own --rules differs. This is that round trip's own proof; the refusal
-    // itself (a SIGPIPE-free free function local to main.cpp, not linked into this test
-    // binary) is read in main.cpp's replay_hashes, not re-run here.
-    const std::string original_text =
-        app::format_invocation("x.sze", 100, app::RulesProfile::Original);
-    CHECK(original_text == "map x.sze\nspeed 100\nrules original\n");
-    const auto original_back = app::parse_invocation_rules(original_text);
-    REQUIRE(original_back.has_value());
-    CHECK(*original_back == app::RulesProfile::Original);
+TEST_CASE("dev session: a plain --play recording's invocation carries its rules digest "
+          "(PLAY-LIVE-1a review F1)") {
+    // main.cpp's own round trip: format_invocation writes session.txt (map, speed, rules name,
+    // rules digest); replay_hashes reads the digest back with check_invocation_rules_digest and
+    // refuses before turn 1 when the replay world's own digest differs — the name alone (Do
+    // item 5's original design) cannot catch a --city-booking override of the same profile. This
+    // is that round trip's own proof; the refusal itself (a free function local to main.cpp, not
+    // linked into this test binary) is read in main.cpp's replay_hashes, not re-run here.
+    const auto hex16 = [](std::uint64_t v) {
+        char buf[32];
+        std::snprintf(buf, sizeof buf, "%016llx", static_cast<unsigned long long>(v));
+        return std::string(buf);
+    };
+    const anno::sim::Rules living = app::apply_rules_profile({}, app::RulesProfile::Living);
+    const std::uint64_t living_digest = living.digest();
 
-    const std::string living_text = app::format_invocation("x.sze", 100, app::RulesProfile::Living);
-    CHECK(living_text == "map x.sze\nspeed 100\nrules living\n");
-    const auto living_back = app::parse_invocation_rules(living_text);
-    REQUIRE(living_back.has_value());
-    CHECK(*living_back == app::RulesProfile::Living);
+    const std::string text =
+        app::format_invocation("x.sze", 100, app::RulesProfile::Living, living_digest);
+    CHECK(text ==
+          "map x.sze\nspeed 100\nrules living\nrules_digest " + hex16(living_digest) + "\n");
 
-    // An older recording's session.txt (before this packet) has no "rules" line at all: not
-    // refused, since it makes no claim to check against (Do item 5: "otherwise refuse a
-    // differing flag" only applies once a claim can actually be read).
-    CHECK_FALSE(app::parse_invocation_rules("map x.sze\nspeed 100\n").has_value());
-    CHECK_FALSE(app::parse_invocation_rules("map x.sze\nspeed 100\nrules unknown\n").has_value());
+    // The same digest: accepted.
+    CHECK_FALSE(app::check_invocation_rules_digest(text, living_digest).has_value());
+
+    // A different digest: refused, the message naming both.
+    const anno::sim::Rules original = app::apply_rules_profile({}, app::RulesProfile::Original);
+    const std::uint64_t original_digest = original.digest();
+    REQUIRE(original_digest != living_digest);
+    const auto msg = app::check_invocation_rules_digest(text, original_digest);
+    REQUIRE(msg.has_value());
+    CHECK(msg->find(hex16(living_digest)) != std::string::npos);
+    CHECK(msg->find(hex16(original_digest)) != std::string::npos);
+
+    // An older recording's session.txt (before this packet) has no "rules_digest" line at all:
+    // not refused, since it makes no claim to check against.
+    CHECK_FALSE(
+        app::check_invocation_rules_digest("map x.sze\nspeed 100\n", living_digest).has_value());
+    CHECK_FALSE(
+        app::check_invocation_rules_digest("map x.sze\nspeed 100\nrules living\n", living_digest)
+            .has_value());
+
+    // --rules living --city-booking off gives a different digest from --rules living: the
+    // profile's name alone would miss exactly this case.
+    anno::sim::Rules living_no_booking = living;
+    living_no_booking.city_booking = false;
+    CHECK(living_no_booking.digest() != living_digest);
 }

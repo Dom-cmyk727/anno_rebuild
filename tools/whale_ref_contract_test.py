@@ -92,6 +92,8 @@ def contract(ref, vectors, root):
     walk = next(row for row in rows if row.startswith('whale_walk nearby_last '))
     case('missing_fifth', walk.replace('draws=0,4,1,0,0', 'draws=0,4,1,0'), 2, 'exhausted')
     case('float_position', walk.replace('figure_x=50', 'figure_x=50.5'), 2, 'integer')
+    request = next(row for row in rows if row.startswith('boat_request negative_money '))
+    case('money_underflow', request.replace('money=-1', 'money=-2147483649'), 2, 'out of range')
     tick = next(row for row in rows if row.startswith('whaler_tick before_gate '))
     case('impossible_launch_fact', tick.replace('launch_slot=-1', 'launch_slot=0'),
          2, 'successful launch_slot')

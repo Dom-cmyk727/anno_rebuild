@@ -9487,13 +9487,13 @@ Read CLAUDE, PLAN scope, board owner rules/§1, evidence contract/testing README
 
 Changes:
 - `tools/whale_ref.py`: standalone integer key=value/=> oracle; no engine imports.
-- `fixtures/synthetic/sim/whale_vectors.txt`:43 hand-derived vectors, each with derivation.
-- `tools/whale_ref_contract_test.py`: bounded public-command contract,45 checks.
+- `fixtures/synthetic/sim/whale_vectors.txt`:44 hand-derived vectors, each with derivation.
+- `tools/whale_ref_contract_test.py`: bounded public-command contract,46 checks.
 - CMake registers `whale_reference_agrees` and `whale_reference_contract` next to wildlife.
 - One dated whaler.md addendum defines scalar/callback boundaries; no accepted rule rewritten.
 - No engine, PRNG generator, state identity, defaults or other executor's files changed.
 
-Vector inventory (43 total):
+Vector inventory (44 total):
 - replenish5: retry9->10,255->0, failures retained, occupied untouched,2500 gate/stamp wrap.
 - whale_walk5: counter3/4 branch, inclusive high/low clamp, fifth draw discarded but consumed.
 - whale_route4: initial/later selection and failed-kind12 fallback; no Old parity draw.
@@ -9501,27 +9501,28 @@ Vector inventory (43 total):
 - whaler_tick15: elapsed0/1/499/500/1500, switch0, inactive queue,30th/31st request visit.
 - Tick also covers r56/r64, output2550->2567, full output still hunting, u16 additions.
 - Target absent, failed/successful launch, selected-boat refusal and raw==capacity distinguished.
-- boat_request6: exact funds, each shortage, full queue, active0 paid and active255 accepted.
+- boat_request7: exact/negative funds, each shortage, full queue, active0 paid and active255 accepted.
 - ship_attack3: modulus1 still consumes, last index, byte count255/u32 maximum.
 
 Acceptance / controls / evidence / review:
 | Requirement | Positive and distinguishing proof | Evidence | Review |
 |---|---|---|---|
-| Seven record types |43 manually derived boundary vectors; no generated expectations | direct-02.log | pending |
-| Draw order | discarded fifth and modulus1; applied source mutants fail with exit1 | contract-02.log | pending |
+| Seven record types |44 manually derived boundary vectors; no generated expectations | direct-03.log | pending |
+| Draw order | discarded fifth and modulus1; applied source mutants fail with exit1 | contract-03.log | pending |
 | CLI verdicts | agree0/disagree1/unusable2; malformed/empty/missing/exhausted inputs |45 subprocess checks | pending |
-| Open cases | sea_legality/sea_depth ->OQ-595; indirect_search/projectile_draws ->OQ-594 | contract-02.log | pending |
-| CTest integration | real dev configure; required contract once, agrees once | gate-01.log and inventories | pending |
+| Open cases | sea_legality/sea_depth ->OQ-595; indirect_search/projectile_draws ->OQ-594 | contract-03.log | pending |
+| CTest integration | real dev configure; required contract once, agrees once | gate-02.log and inventories | pending |
 
 Gate commands/evidence, under `cache/whale-re-1c/`:
-- Direct `python3 -I tools/whale_ref.py fixtures/synthetic/sim/whale_vectors.txt`:43 agree,0 disagreements.
-- Direct contract `--ref tools/whale_ref.py --vectors fixtures/synthetic/sim/whale_vectors.txt`:45 passed.
+- Direct `python3 -I tools/whale_ref.py fixtures/synthetic/sim/whale_vectors.txt`:44 agree,0 disagreements.
+- Direct contract `--ref tools/whale_ref.py --vectors fixtures/synthetic/sim/whale_vectors.txt`:46 passed.
 - First contract failure (`contract-01.log`): check over-required globally unique labels; fixed to type/label pairs.
+- Final domain correction: negative money is ordinary insufficient-funds refusal; gate-01 evidence retained.
 - Seven source mutants demonstrably apply: dropped fifth, skipped modulus1, saturating retry,
   output clamp, free inactive request, wrong route fallback and missing zero-HP transition.
 - Real `cmake --preset dev -DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF`: configure succeeded.
 - `run_selected.py --build-dir build/dev --select whale_reference --require-test whale_reference_contract`
-  `--skip-auto-contract --jobs 1 --timeout 30 --log cache/whale-re-1c/gate-01.log`: PASS.
+  `--skip-auto-contract --jobs 1 --timeout 30 --log cache/whale-re-1c/gate-02.log`: PASS.
 - Required contract: selected1/executed1; selection: selected1/executed1; two distinct CTest entries total.
 - Both: failed0/empty0/incomplete0/sanitizer_lines0; all skip classes0 (assets/platform/opt-in/GPU/other).
 - Auto picture contract omitted because packet explicitly authorizes only the two whale registrations.

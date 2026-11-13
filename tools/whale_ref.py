@@ -92,7 +92,7 @@ SCHEMAS = {
                         selected=slot, idle=boolean, raw=word, capacity=word,
                         need=lambda x: bounded(x, 1, 65535), rate=word,
                         output=word, activity=word, target=boolean, launch_slot=slot),
-    'boat_request': dict(money=lambda x: bounded(x, 0, 0x7fffffff),
+    'boat_request': dict(money=lambda x: bounded(x, -0x80000000, 0x7fffffff),
                          wood=bounded, rope=bounded, count=byte, active=byte),
     'ship_attack': dict(count=lambda x: bounded(x, 1, 255)),
 }

@@ -87,3 +87,5 @@ whaler_tick zero elapsed=0 switch=1 active=0 progress=0 selected=0 idle=1 raw=16
 whaler_tick one elapsed=1 switch=1 active=0 progress=0 selected=0 idle=1 raw=16 capacity=2560 need=16 rate=17 output=0 activity=128 target=1 launch_slot=-1 draws=- => advanced=0 hunt_dispatched=0 r=0 debit=0 added=0 activity=128 consumed=0
 # §4 raw equals capacity16, so hunting is blocked before conversion consumes16 and adds17.
 whaler_tick raw_at_capacity elapsed=500 switch=1 active=0 progress=0 selected=0 idle=1 raw=16 capacity=16 need=16 rate=17 output=0 activity=0 target=1 launch_slot=-1 draws=- => hunt_dispatched=0 r=128 debit=16 added=17 raw=0 output=17 activity=272 consumed=0
+# §8 negative money is below the600 gold check; it refuses normally, without a debit or free request.
+boat_request negative_money money=-1 wood=3072 rope=1792 count=0 active=1 draws=- => enqueued=0 refused=1 reason=1 gold=0 wood=0 rope=0 consumed=0

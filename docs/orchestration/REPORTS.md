@@ -9268,3 +9268,14 @@ QUESTIONs: is code-review verification of the "zero adapters, `ANNO_REQUIRE_GPU`
 sufficient, or does it need a live repro on a host that can actually produce an empty adapter list
 (bare CI runner with no software rasterizer, perhaps)? Otherwise none; independent review is the
 orchestrator's.
+
+### Review round 1, zero-adapter leg — live repro — 2026-11-13
+
+`unshare -r -m bash -c '...mount --bind /dev/null ...libvulkan.so.1/libEGL.so.1/libEGL.so/libGL.so.1/
+libGL.so...; <play_gpu_test command>'` (per the orchestrator's suggestion; unprivileged user
+namespaces are enabled here) hides the GPU loader libraries inside a private, process-scoped
+mount namespace, at head `d06ccc92`'s WSL `-O1` ASan build. `list_adapters()` there reports
+genuinely empty (`MESSAGE: skipping: ... among: ` with nothing after it). Both cases: with
+`ANNO_REQUIRE_GPU=1`, both `FATAL ERROR: no GPU device at all (ANNO_REQUIRE_GPU is set)` (`FAILURE`);
+without it, both `SKIPPED` (`SUCCESS`). The bind mounts vanished with the namespace. The zero-adapter
+leg is now live-proven, not just code-reviewed.

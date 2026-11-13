@@ -1,7 +1,6 @@
 # FISHER-RE-1a: the fisher's route 45 and the fish it catches (documents only)
 
-**Status:** PROPOSED 2026-11-13 by the Claude Code orchestrator for **the Mac executor**. It is released when the owner
-gives the go. Step 8′ of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
+**Status:** ACCEPTED 2026-11-13 ([review](../reviews/2026-11-13-fisher-re-1a-review.md)); released with the owner's go to **the Mac executor**. Step 8′ of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
 
 **Why:** food is the largest single blocker in the progression measurement. 131 houses fail first on food
 ([`docs/sim/progression-gaps.md`](../../sim/progression-gaps.md), row 2), and one reason is named there: "the fisher

@@ -5,6 +5,12 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[FISHER-RE-1a](tasks/fisher-re-1a.md) ACCEPTED** ([review](reviews/2026-11-13-fisher-re-1a-review.md)), no fix
+  round.
+  - **The fisher is a walking worker,** not a boat. On a resource route it cuts fish *tiles* (11 → 10, regrowing),
+    which `main` already imports, through the forester's machinery.
+  - **What lifting the route-`0x2d` refusal still needs:** the entrance launch, a sea search below a height of 32,
+    height-keeping movement, and one discarded dispatch draw.
 - **[WHALE-RE-1c](tasks/whale-re-1c.md) ACCEPTED** ([review](reviews/2026-11-13-whale-re-1c-review.md)), no fix round:
   `tools/whale_ref.py`, 44 hand-derived vectors, 46 contract checks, all agreeing here too. The whale reads 1a to 1c
   are complete; the port waits for ADR 0006. They land with PLAY-LIVE-1a.
@@ -449,8 +455,10 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: free.** [FISHER-RE-1a](tasks/fisher-re-1a.md) (the fisher's route 45) waits for the owner's go. The
-  wildlife and whale ports wait for ADR 0006.
+- **Now: free.** The wildlife and whale ports wait for ADR 0006.
+- **Finished: [FISHER-RE-1a](tasks/fisher-re-1a.md)** (2026-11-13; head `6d57bb12`), **accepted**
+  ([review](reviews/2026-11-13-fisher-re-1a-review.md)): the fisher's route 45 and its fish tiles, in
+  `docs/re/fisher.md`; OQ-603 and OQ-604.
 - **Finished: [WHALE-RE-1c](tasks/whale-re-1c.md)** (2026-11-13; head `c0553b48`), **accepted**
   ([review](reviews/2026-11-13-whale-re-1c-review.md)): `tools/whale_ref.py` and its 44 vectors.
 - **Finished: [WHALE-RE-1b](tasks/whale-re-1b.md)** (2026-11-13; head `109ec14c`), **accepted**

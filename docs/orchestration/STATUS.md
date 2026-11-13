@@ -5,6 +5,14 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[PLAY-LIVE-1a](tasks/play-live-1a.md): fix round 1** ([review](reviews/2026-11-13-play-live-1a-review.md)), small.
+  - **What works:** `--rules living` turns on living houses and city booking for all three starts. On `02Trade01`
+    3 of 32 houses change in five game minutes, and the accounts grow; with `original`, nothing changes. A turn costs
+    well under 1 ms.
+  - **F1:** a `--play` recording keeps only the profile's name, so a replay with a different `--city-booking` is not
+    refused. The fix records the rules digest.
+  - **F2:** the timing case becomes opt-in.
+  - **Next:** after the round, PLAY-LIVE-1a lands with WHALE-RE-1b on the owner's OK, and GATE-2a is released.
 - **[WHALE-RE-1b](tasks/whale-re-1b.md) ACCEPTED** ([review](reviews/2026-11-13-whale-re-1b-review.md)), no fix round;
   every re-checked table, address and record matches.
   - **The whale:** the old animal class with nine changed slots. It wanders around its current position and has no
@@ -312,6 +320,10 @@ mirror still requires the owner/Windows sync after main publication.
 - **Now: [PLAY-LIVE-1a](tasks/play-live-1a.md)** (released 2026-11-13), on `task/PLAY-LIVE-1a`, based on `main`: a
   "living town" rules profile for the window behind `--rules living` (`house_updates` and `city_booking` on), default
   unchanged; the owner's playtest card and a cost measurement.
+  - **Handover** `2831f78f` and `17559083`.
+  - **Fix round 1 sent 2026-11-13** ([review](reviews/2026-11-13-play-live-1a-review.md)):
+    - F1: record and check the rules digest in `--play` recordings;
+    - F2: the timing case becomes opt-in.
 - **Finished: [COORD-FLAKE-1](tasks/coord-flake-1.md)** (2026-11-13; head `0a94c338`), **accepted after one fix
   round** ([review](reviews/2026-11-13-coord-flake-1-review.md)); three comment corrections are its closing commit.
   The two test-coordinator flakes in hosted CI, `F3 (D1, deaf)` on macOS and `C3` on Windows.

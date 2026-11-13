@@ -9474,3 +9474,429 @@ Decisions and reasoning:
 - Record source-position and queue-policy gaps instead of inventing modern rules.
 QUESTIONs: OQ-591 HE labels;592 placement/property16;593 queue callers/recovery;
 594 indirect draw/float closure. OQ-595–598 unused; none requires an owner choice now.
+
+## WHALE-RE-1b — whale life, boat request and route45 callbacks (2026-11-13)
+
+**Status: READY FOR REVIEW.** Executor: Mac. Independent review: orchestrator pending.
+Branch: `task/WHALE-RE-1b`; own worktree, prior1a branch preserved.
+Release base `babd1da0`; fast-forwarded to landed1a main `961a9d4a` before writing.
+Research source pin: `43d02a998facd9addf10306451ef8f0497c2ed83`.
+This report-only successor changes no research interpretation.
+Packet/review read from `origin/orch/board-next`; now present on landed main.
+Read CLAUDE, PLAN, board owner rules/§1, evidence contract and testing README.
+Scope: documents only, GOG AnnoWelt.dll2.0.0.5, Capstone/table/data reads.
+No reviewer subagents; no engine, tool, test, fixture, identity or default changes.
+
+Reads and settled facts:
+- [Whaler §6](../re/whaler.md#6-whale-life-nine-overrides-whale-re-1b-2026-11-13): compared all101 whale/Old slots.
+- Exactly nine overrides at `0x100c5f98` versus `0x100c653c`, with concrete body ranges.
+- Shared Old tick `0x10034760` retained; New quantity/25000-budget aging not transplanted.
+- Whale motion `0x1004eae0`/`0x1004edf0`; type-speed getter AnnoGame `0x1000fb10`.
+- Current-centered radius30 search rectangle `0x1004ed00`, distinct from source fallback goal.
+- HP ending `0x1004f280`; occurrence cleanup remains the accepted1a read.
+- [§7](../re/whaler.md#7-whale-route-jobs-and-ordered-draws): route `0x100c7218`, two overrides `0x1005d920`/`0x1005d950`.
+- Active walk/stand nodes; no Old empty-quantity parity draw on completion.
+- Walk start `0x10058680`: nearby first result or source-home goal, bounded counter branch.
+- Five ordered draws: `%5+7`, `%5+7`, x parity, z parity, discarded raw draw.
+- Sites `0x100586f7`, `0x10058713`, `0x1005872f`, `0x10058743`, `0x100587c8`.
+- All five consumed before search failure; no land radius/angle-pair substitution.
+- [§8](../re/whaler.md#8-boat-request-callers-charge-and-recovery-oq-593): four-module enqueue caller inventory, no direct call found.
+- Concrete enqueue caller AnnoFrame `0x10059bd5`, helper `0x10059bb0`.
+- Command0x71 serializer `0x1005d890`, dispatcher `0x100600be`, handler `0x1005d810`.
+- Check `0x10073c10` precedes enqueue `0x10073b40`; their refusal conditions differ.
+- Boat1511 price600 gold/12 wood/7 rope, raw cost3072/1792, original LOGIC/BAUWARE.
+- Unaffordable/count-full requests debit nothing; active byte0 still queues and charges.
+- Selected-boat launch refusal consumes the paid request in the already-read tick.
+- Boat/home detach `0x10043c80`/`0x100745a0` clears selected state, does not request replacement.
+- No automatic replacement in the inspected whaler lifecycle; unread AI policy not inferred.
+- [§9](../re/whaler.md#9-route45-movement-callbacks-and-extended-draw-ledger-oq-594): ship `0x100c4fc0` receivers and direct-draw ranges.
+- Return start `0x10056870`/goal callback `0x10054270`: no direct world draws.
+- Ship attack `0x1003d450` draws at `0x1003d615` for firing-position index.
+- Modulus1 for original1511 still consumes a draw, before possible projectile-create failure.
+- Sea setup code9 becomes world selector10 (`0x1000fae5`, `0x100abddb`).
+- Classification `0x100abc60`/`0x10090350`: no-island8, terrain/object height can write9.
+- Fine flood traverses8; complete search and physical threshold meaning stay explicit U.
+
+Open points and limits:
+- [OQ-593](../open-questions.md#oq-593-whaler-boat-request-command-charging-and-recovery-contract-whale-re-1a-2026-11-13-open): dated narrowing; cancellation/refunds outside this flow and external AI policy unread.
+- [OQ-594](../open-questions.md#oq-594-whaling-indirect-draw-and-float-closure-before-complete-reference-vectors-whale-re-1a-2026-11-13-open): dated narrowing; complete transitive/float closure remains OPEN.
+- [OQ-595](../open-questions.md#oq-595-sea-navigation-legality-and-complete-search-closure-whale-re-1b-2026-11-13-open): new sea-threshold/object-height/search question.596–602 unused.
+- HE/Ghidra/original-runtime experiments/local runtime tests/reference vectors: NOT_RUN.
+- No complete lifecycle PRNG total or portable float/path reference certificate claimed.
+
+Gate and evidence:
+- `git diff --check`: clean; changed-document links and fragments resolve.
+- Local runtime tests: selected0/executed0/failed0/empty0/skipped0; excluded by docs-only scope.
+- Research-head [hosted CI43386979310](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/43386979310): SUCCESS on exact43d02a99 pin.
+- Workflow jobs:2 executed successes,0 failed;5 code jobs skipped by docs-only classification.
+- These are workflow job counts, not runtime case passes or game-file coverage.
+- Final report-head CI is checked after push and its exact head/run supplied in owner handoff.
+
+Decisions and reasoning:
+- Preserve accepted1a prose; only §5 port rows updated, new sections6–9 appended.
+- Reuse shared wildlife reads; resolve ship callbacks separately from land hunter callbacks.
+- Record discarded/modulus1 draws; distinguish direct absence from unresolved callees.
+- Stop unresolved items at addressed evidence, with no invented depth or automatic recovery rule.
+- QUESTIONs: none requiring owner policy; address verification and remaining reads await orchestration.
+
+## WHALE-RE-1c — integer whale/whaler reference and vectors (2026-11-13)
+
+**Status: READY FOR REVIEW.** Mac executor; independent orchestrator review pending.
+Branch `task/WHALE-RE-1c`, own new worktree, base `961a9d4a` as released.
+Accepted1b branch/head `109ec14c` preserved; source text read there, not merged.
+Packet and1b review read from `origin/orch/board-next` at `0514699c`.
+Main still contains1a only; reference decisions use accepted1b §§6–9 at109ec14c.
+No original game file/disassembly was read to derive this reference.
+Read CLAUDE, PLAN scope, board owner rules/§1, evidence contract/testing README.
+
+Changes:
+- `tools/whale_ref.py`: standalone integer key=value/=> oracle; no engine imports.
+- `fixtures/synthetic/sim/whale_vectors.txt`:44 hand-derived vectors, each with derivation.
+- `tools/whale_ref_contract_test.py`: bounded public-command contract,46 checks.
+- CMake registers `whale_reference_agrees` and `whale_reference_contract` next to wildlife.
+- One dated whaler.md addendum defines scalar/callback boundaries; no accepted rule rewritten.
+- No engine, PRNG generator, state identity, defaults or other executor's files changed.
+
+Vector inventory (44 total):
+- replenish5: retry9->10,255->0, failures retained, occupied untouched,2500 gate/stamp wrap.
+- whale_walk5: counter3/4 branch, inclusive high/low clamp, fifth draw discarded but consumed.
+- whale_route4: initial/later selection and failed-kind12 fallback; no Old parity draw.
+- whale_hp5: positive-to-zero, already zero/ending, positive write, signed16 lower boundary.
+- whaler_tick15: elapsed0/1/499/500/1500, switch0, inactive queue,30th/31st request visit.
+- Tick also covers r56/r64, output2550->2567, full output still hunting, u16 additions.
+- Target absent, failed/successful launch, selected-boat refusal and raw==capacity distinguished.
+- boat_request7: exact/negative funds, each shortage, full queue, active0 paid and active255 accepted.
+- ship_attack3: modulus1 still consumes, last index, byte count255/u32 maximum.
+
+Acceptance / controls / evidence / review:
+| Requirement | Positive and distinguishing proof | Evidence | Review |
+|---|---|---|---|
+| Seven record types |44 manually derived boundary vectors; no generated expectations | direct-03.log | pending |
+| Draw order | discarded fifth and modulus1; applied source mutants fail with exit1 | contract-03.log | pending |
+| CLI verdicts | agree0/disagree1/unusable2; malformed/empty/missing/exhausted inputs |46 subprocess checks | pending |
+| Open cases | sea_legality/sea_depth ->OQ-595; indirect_search/projectile_draws ->OQ-594 | contract-03.log | pending |
+| CTest integration | real dev configure; required contract once, agrees once | gate-02.log and inventories | pending |
+
+Gate commands/evidence, under `cache/whale-re-1c/`:
+- Direct `python3 -I tools/whale_ref.py fixtures/synthetic/sim/whale_vectors.txt`:44 agree,0 disagreements.
+- Direct contract `--ref tools/whale_ref.py --vectors fixtures/synthetic/sim/whale_vectors.txt`:46 passed.
+- First contract failure (`contract-01.log`): check over-required globally unique labels; fixed to type/label pairs.
+- Final domain correction: negative money is ordinary insufficient-funds refusal; gate-01 evidence retained.
+- Seven source mutants demonstrably apply: dropped fifth, skipped modulus1, saturating retry,
+  output clamp, free inactive request, wrong route fallback and missing zero-HP transition.
+- Real `cmake --preset dev -DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF`: configure succeeded.
+- `run_selected.py --build-dir build/dev --select whale_reference --require-test whale_reference_contract`
+  `--skip-auto-contract --jobs 1 --timeout 30 --log cache/whale-re-1c/gate-02.log`: PASS.
+- Required contract: selected1/executed1; selection: selected1/executed1; two distinct CTest entries total.
+- Both: failed0/empty0/incomplete0/sanitizer_lines0; all skip classes0 (assets/platform/opt-in/GPU/other).
+- Auto picture contract omitted because packet explicitly authorizes only the two whale registrations.
+- `git diff --check` clean. Hosted full-matrix CI checked after push; exact final head/run in owner handoff.
+
+Decisions and reasoning / limits:
+- Tick receives explicit resolved `target` and `launch_slot` facts; `idle` applies after queue processing.
+- This avoids inventing target availability or successful boat creation; progress is pre-removal observation.
+- Integer coordinate/HP slices and already-computed wrapping elapsed are explicit, not float/whole-tick parity.
+- OQ-594/595 remain open and refused; no new OQ needed. No policy QUESTION requires an owner pause.
+- Engine suites reused from main: no engine code changed. Local C++ build/full suite/game-file/HE: NOT_RUN.
+- Final gate is hosted CI on the pushed head; it does not establish original-runtime/game-file parity.
+
+## 2026-11-13 — FISHER-RE-1a — READY FOR REVIEW
+
+Branch: `task/FISHER-RE-1a`; exact base961a9d4a; separate managed worktree.
+Packet and accepted WHALE-RE-1c review read at board83d55389 after fetch.
+Accepted whale §§6–9 read from task/WHALE-RE-1b109ec14c; no branch merge.
+Scope: new `docs/re/fisher.md`, OQ-603/604 and this report; documents only.
+No engine/test/fixture or state-identity change.
+Old whale worktrees/branches retained; independent orchestrator review pending.
+
+Reads and settled facts (D/P unless marked T):
+- Anlagen810/3978: FISCHER6, FISCH71 -> NAHRUNG1, cap1280, max1, figure142.
+  Need/output69/17 versus128/51; same capacity, not the same recipe rates.
+- Figure142: BEWOHNTYPE4, route45, layer2, capacity768; its payloads start
+  at4b5682/4b56a2/4b56ba/4b56d2. Specialized worker, not a SHIP class.
+- Fish source is mature tile11; cut makes10; generic growth regenerates11.
+  Fish figures511/1201/1203/1204/1205/1207 are not caught by this path.
+  Ice-hole3506 yields goods72 and is not a FISCH71 target.
+- Static census:50 scenario files and465 templates selected/read515,
+  failed0/empty0/skipped0. Existing insel/sze/figuren readers, no runtime tests.
+  2473 tile11 placements in24 scenarios, listed individually with counts;
+  25 ice-hole placements in10 scenarios. Templates:29 with11,12 with3506.
+  668 embedded OCCUR records have ore/whale/treasure/volcano, zero fish.
+  No FISCH-kind actors; `_dummy` selections NOT_RUN, not declared fish-free.
+- FISCHER tablec2ac4 versus Farmc8ae0:75 slots, only destructor+110 and
+  worker creator+118 differ. Same tick6ea90 and raw receipt6ee70.
+- Complete tick6ea90–6ee5f: stamp gate500, conversion and dispatch order.
+  Conditional world draw6ee06 is discarded; it occurs before creation failure.
+- Creator67e60–67f61 uses first rotated entrance, fixed initialized Y;
+  it does not use ordinary reachable-entrance creation72d20.
+- Manager kind4 arm9a36b installs figurecb4d8; factory+a4=3b0e0.
+  Selector byte6 -> jump entry6 ->3b314, routec4340, jobs c4398/c4858/c4640.
+  Same route number on whaler1511 instead selects5df70/c72a8; do not conflate.
+- Search59210–59398 uses goods71 tile goals and callback limit20.
+  Shared cut/wait/repeat/home documented reads reused without re-decoding.
+  Three successful cuts normally fill768; return57bd0 credits farm RAW6ee70.
+  Food is produced later by Farm conversion, not awarded by a fish kill.
+- Special search38ad0–38cc5 selects cell mode3, distinct from walking layer2.
+  Cells90560–906df and goal mask9226b–922df use mean corner height<32;
+  equality32 refuses. Movement38730–38a85 keeps segment Y, vertical velocity0.
+- Full output can still dispatch:3978 raw1023 permits,1024 refuses;810
+  raw1586 permits,1587 refuses. Missing targets/path takes shared home fallback.
+- T: fish tiles/Farm/harvest/claims/growth/market exist; FISCHER kind maps to0.
+  figure.hpp/driver.cpp refuse0x2d. Class facts, specialized launch/mode3/motion,
+  continuation and draw fidelity must precede lifting it; no fish occurrence invented.
+Draw table: one conditional discarded dispatch draw; addressed no-direct-draw
+rows for launch/factory/search/cells/wait/cut/arrival/motion/return; callback total U.
+Hand controls cover499/500, ratio63/64, cargo767/768, height31/32,
+output-full versus dispatch, raw threshold and tile11 versus figure511/goods72.
+Gate: diff --check PASS; links selected14/executed14/failed0/empty0/skipped0; log
+`cache/fisher-re-1a/docs-gate.log`. Hosted docs CI required on final pushed head;
+terminal head/run link and classified job counts accompany the final handoff.
+Local runtime tests selected0/executed0/failed0/empty0/skipped0: NOT_RUN by packet.
+NOT_RUN: HE86, Ghidra (Capstone used), original runtime, live economic proof,
+procedural seeded selection, engine builds/tests, float vectors and callback closure.
+Decisions and reasoning:
+- Follow the figure factory and both selector tables; route45 alone is ambiguous.
+- Reuse tile harvesting; inventory actual sources instead of inventing fish fauna.
+- Keep static corpus counts, hand controls and runtime proof distinct.
+QUESTIONs:603 exact float/shore/continuation contract;604 transitive draw closure.
+OQ-605–610 unused. No owner policy decision is requested; unresolved reads stay open.
+
+## PLAY-LIVE-1a — a "living town" rules profile behind one flag — 2026-11-13 — READY FOR REVIEW
+
+Base `96f7980c`, branch `task/PLAY-LIVE-1a`, head `2831f78f`.
+
+Flag: `--rules original|living`, accepted only where a sim is created — `--play` (fixed map and
+scenario) and `--ship-start`, `--replay-hashes` included — refused with the usage text at `--view`
+and an unknown name (`src/app/src/cli.cpp`). `original` (default) is each start's own rules
+unchanged. `living` is one function, `apply_rules_profile` (`cli.hpp`/`cli.cpp`), setting exactly
+`house_updates = true` (House tick effects, `docs/sim/population-live.md` §8) and
+`city_booking = true` (ECON-BOOK-1, `docs/sim/economy-booking.md`; needs `save_billed_goods`,
+already `true` by default). `--city-booking on|off` composes after the profile. Wired into
+`load_fixed_play`/`load_play` (`play.cpp`, both the `load_scenario_with_context` and `World::create`
+calls) and `load_opening` (`opening.cpp`) so the loaded and created worlds agree.
+
+Resume/replay: the ship-start save's existing `rules_digest` check (`opening.cpp`) now covers a
+profile mismatch, since the digest changes with the two fields — proved end to end (save `living`,
+resume `living` succeeds, resume as `original` refused, message names "other rules"). A plain
+`--play` recording's `session.txt` gained a `rules <name>` line (`dev_session.cpp`:
+`format_invocation`/`parse_invocation_rules`); `main.cpp`'s `replay_hashes` refuses a mismatch before
+turn 1, naming both rules. The refusal itself (an unexported free function, not linked into the test
+binary) is proved by a direct round-trip unit test of the two functions it calls, documented in the
+test as a deliberate scoping choice rather than a new subprocess harness.
+
+Measurements (`anno_app_tests`, Release, 1000 turns, ms/100ms-turn, with game files): fixed map
+p50 0.195/0.196 ms original/living, p95 0.222/0.222 ms; `02Trade01.sze` p50 0.112/0.126 ms, p95
+0.382/0.606 ms. Both well under the 100 ms budget.
+
+Tests, `src/app/tests`: Proof 1 (no `--rules`/`--rules original` match `sim::Rules{}` exactly, both
+fixed-map and scenario paths); Proof 2 (`living` sets exactly the two fields, whole-struct digest
+compared); the CLI test (`original`/`living` accepted, unknown name and `--view` refused,
+`--city-booking off` after `living` leaves `house_updates` on); Proof 4, with game files, on
+`02Trade01.sze`, 3000 turns (5 game-minutes): living 3/32 houses changed, accounts 897→1137;
+original 0 houses changed, accounts 315→315 (unchanged); the opening resume/replay test above; the
+`dev_session` round-trip test. MSVC Release, game files, `anno_app_tests`: `selected=272
+executed=270 failed=0 skipped=2(opt-in) sanitizer_lines=0 VERDICT: PASS`. WSL `-O1` ASan/UBSan, app
+lane only (this packet touches only `src/app`/docs; sim/render/formats/tsupport are unchanged code,
+not rerun): `selected=316 executed=314 failed=0 skipped=2(opt-in) sanitizer_lines=0 VERDICT: PASS`
+(gatecheck worktree, head `2831f78f`). That same gate run's sim lane showed 3 refused-not-run
+entries (`scenario_test.cpp:534/:618/:799`, `[anno-test memory] ... reason=low-memory stop`, from
+running two heavy WSL jobs at once) in code this packet never touches; per the owner's new per-lane
+rule, not rerun.
+
+Gates: clang-format 23.1.3, no changes. `tools/check_unix_warnings.sh` (WSL, GCC 13 + Clang 18, with
+and without GPU/viewer): clean, 396/76 files. CI on `2831f78f` (run `43383448663`): every job
+green, `gate` included, no coordinator flake and no macOS-no-runner case.
+
+NOT_RUN: the full WSL gate's sim/render/formats/tsupport lanes (orchestrator's, at merge, per the
+packet); the MSVC game-file run beyond this packet's own `anno_app_tests` selection (orchestrator's).
+
+Decisions and reasoning:
+- `measure`'s lambda took `label` as `const char*`; doctest's `MESSAGE` prints a bare `const char*`
+  as its pointer address, not its text (no `DOCTEST_CONFIG_TREAT_CHAR_STAR_AS_STRING` defined here) —
+  changed to `std::string`, matching this file's existing `.string()` convention elsewhere.
+- One `TEST_CASE` name used a semicolon, which the mandatory CTest-name preflight (`CheckTestNames.cmake`)
+  rejects as unselectable; reworded to a comma.
+- Kept the plain-`--play` replay check to a direct unit test of `format_invocation`/
+  `parse_invocation_rules` rather than a new subprocess harness (`tools/test/selected_house_session_replay.py`'s
+  pattern): `replay_hashes` itself is a free function local to `main.cpp`, not linked into the test
+  binary, and a new end-to-end harness was judged out of this packet's ~2-4h scope.
+
+QUESTIONs: none required; the default, road/figure drawing, and any new `Rules` field are explicitly
+not this packet's call.
+
+### Fix round 1 — review F1/F2 — 2026-11-13 — READY FOR REVIEW
+
+Head `0b6f94dd` (branch unchanged). Review: `docs/orchestration/reviews/2026-11-13-play-live-1a-review.md`.
+
+**F1.** `--city-booking`, which this packet newly applies to `--play`, could change the rules
+without changing the `--rules` profile's *name* `format_invocation`/`replay_hashes` compared — a
+`--rules living --city-booking off` recording replayed as `--rules living` had the same name and a
+different digest, and was not refused. Fixed: `session.txt` now carries the created world's rules
+digest, `rules_digest <hex16>` (the `rules <name>` line stays, as information); `main.cpp` captures
+it (`play_rules_digest`, read before the world moves into `PlayRunner`) and `replay_hashes` refuses
+a differing digest before turn 1, naming both. The check is its own function,
+`dev_session.cpp`'s `check_invocation_rules_digest(session_text, replay_digest)`, replacing
+`parse_invocation_rules`. Unit-tested (`dev_script_test.cpp`): the same digest (accepted); a
+different digest (refused, message naming both hex digests); a recording with no `rules_digest`
+line (accepted, an older recording); `--rules living --city-booking off`'s digest differs from
+`--rules living`'s (proving the name-only check would have missed exactly this).
+
+**F2.** The timing case (Do item 6) asserted nothing and ran in every gate (61s in the WSL app
+lane). Made opt-in: `ANNO_PLAY_LIVE_TIMING=1`, skipped otherwise with the project's own "set
+ANNO_..." message (`founding_assets_test.cpp`, `iron_chain_test.cpp` convention); its numbers stay
+in the first entry above, unchanged.
+
+Gates (`TASKS.md` §1 item 4, `src/app` touched — app lanes only, no other lane): MSVC Release,
+game files, `anno_app_tests`+`anno_app_input_tests`+`anno_app_alloc_tests`: `selected=308
+executed=305 failed=0 skipped=3(opt-in) sanitizer_lines=0 VERDICT: PASS`. WSL `-O1` ASan, app
+lane only (fresh configure+build in the gatecheck worktree, head `0b6f94dd`): `selected=316
+executed=313 failed=0 skipped=3(opt-in) sanitizer_lines=0 VERDICT: PASS`. clang-format 23.1.3:
+reformatted three files (line-wrap only, no semantic change) before pushing. CI on `0b6f94dd`
+(run `43397591022`): every job green, `gate` included.
+
+NOT_RUN: sim/render/formats/tsupport lanes (unchanged, per the per-lane rule); the full WSL gate
+and MSVC game-file run (orchestrator's, at merge).
+
+Decisions and reasoning:
+- Removed `parse_invocation_rules` outright rather than keep it alongside the digest check: F1's
+  root cause is that a name alone cannot represent the rules, so a name-based API had no remaining
+  caller once the digest check existed.
+- Captured `play_rules_digest` at the one point before the fixed-map/scenario world moves into
+  `PlayRunner` (no `World` accessor exists on `PlayRunner` itself), declared in the same outer
+  scope as `runner`/`session_dir` so it survives to the later `write_session` call.
+- Local WSL gate script note (not a code decision, kept for the next executor): the shared
+  `cmake` and other gate tooling live under `~/anno-tools-venv/bin`, not on the plain WSL `PATH`,
+  and `run_selected.py`'s dirty-check needs `GIT_DIR`/`GIT_WORK_TREE` set for a Windows-git
+  worktree (`wsl_gate.sh`'s own `$SRC_GIT` wrapper) even when driving it directly instead of
+  through that script.
+
+QUESTIONs: none.
+
+## FISHER-RE-1b — integer fisher reference and vectors (2026-11-13)
+
+**Status: READY FOR REVIEW.** Mac executor; independent orchestrator review pending.
+Branch `task/FISHER-RE-1b`, separate new worktree; exact base `961a9d4a`.
+Packet and accepted1a review read at board `e44321ff` after fetch.
+Source: accepted `docs/re/fisher.md` at `origin/task/FISHER-RE-1a` `6d57bb12`.
+Format model: whale_ref/contract from `origin/task/WHALE-RE-1c` `c0553b48`.
+Those branches/worktrees are preserved; neither was merged or replayed onto base.
+Read CLAUDE, PLAN scope, board owner rules/§1, evidence contract/testing README.
+No original files/disassembly, engine implementation or other sources used for rules.
+
+Changes:
+- `tools/fisher_ref.py`: standalone integer key=value/=> oracle; six record types.
+- `fixtures/synthetic/sim/fisher_vectors.txt`:42 hand-derived vectors, derivation above each.
+- `tools/fisher_ref_contract_test.py`:58 public-subprocess checks, nine applied source mutants.
+- Two CMake registrations: `fisher_reference_agrees`, `fisher_reference_contract`.
+- Added after wildlife pair: the requested whale pair is not on the exact main base yet.
+- No engine, generator, state identity, default rule, accepted RE document or OQ changes.
+Vector inventory and boundaries:
+- farm_tick21: elapsed0/1/499/500/1000, stamp wrap, off, suspend bits0x10/0x20 versus0x08.
+- Worker away, ratio63/64, full conversion, unclamped output overshoot and u16 wraps.
+- 3978 raw1023/1024 and810 raw1586/1587 with full output; discarded draw still consumed.
+- Productive maximum2 dispatch uses post-debit896, not initial1024; added0 can still debit.
+- converted4:810 need69/rate17;3978 need128/rate51; exact half-up and fractional time.
+- search_rect5:3×4 at(100,200) ->(94,194,15,16), swapped dimensions, u16/byte wrap, radius0.
+- sea_cell4: corners31/32, uneven sums127/128; integer mean, equality32 closed.
+- trip4:767/768/769 versus capacity768 and zero capacity; cut_match4:11,10,3506,0.
+
+Acceptance / distinguishing evidence / review:
+| Requirement | Positive and negative proof | Evidence | Review |
+|---|---|---|---|
+| Six integer slices |42 hand-derived controls; no oracle-generated expectations | direct-02.log | pending |
+| Draw/arithmetic fidelity | full-store draw, clamp, sea<=32, lost draw, cargo<=capacity mutants | contract-02.log | pending |
+| Remaining mutant controls | pre-debit raw, rounded need, widened origin, activity saturation | applied once, exit1 each | pending |
+| CLI verdict | agree0/disagree1/malformed2; changed expected, empty/missing/bad schema/encoding |58 bounded checks | pending |
+| Refused open cases | float_position/continuation and fractional x ->OQ-603; transitive_draws ->OQ-604 | contract-02.log | pending |
+| CTest integration | public contract once, agreement once, no repeated contract in selection | gate-02.log | pending |
+
+Gate commands/evidence under `cache/fisher-re-1b/`:
+- `python3 -I tools/fisher_ref.py fixtures/synthetic/sim/fisher_vectors.txt`:42 vectors,0 disagreements.
+- `python3 -I tools/fisher_ref_contract_test.py --ref tools/fisher_ref.py`
+  `--vectors fixtures/synthetic/sim/fisher_vectors.txt`:58 checks pass, nine mutants exit1.
+- `cmake --preset dev -DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF`:configure succeeds;
+  existing pinned doctest source reused read-only; no C++ build is needed for these Python tests.
+- `run_selected.py --build-dir build/dev --select fisher_reference --require-test fisher_reference_contract`
+  `--skip-auto-contract --jobs 1 --timeout 30 --log cache/fisher-re-1b/gate-02.log`:PASS.
+- Required contract selected1/executed1; remaining selection selected1/executed1:two distinct CTest entries.
+- Both failed0/empty0/incomplete0/sanitizer_lines0; skips0 in every class (assets/platform/opt-in/GPU/other).
+- Gate01 retained; gate02 adds the required OQ-603 diagnostic for fractional position fields.
+- `git diff --check` clean. Hosted full-matrix CI is required on the pushed head;
+  terminal exact head/run and job counts are supplied with the final handoff.
+
+Decisions and reasoning:
+- `made` is a validated same-visit conversion fact, not an independent override; dispatch is an attempt.
+- `cut_match` is target selection plus conditional harvest, not an arbitrary replaced-tile cut oracle.
+- Exact fraction arithmetic follows the documented formula; full expected output keys prevent vacuous agreement.
+- The packet restricts CTest to the fisher pair, so unrelated automatic picture contract is omitted.
+- OQ-603/604 stay open/refused; no documentation correction needed; OQ-605–608 unused.
+NOT_RUN: local C++ build/full suite/game-file/original-runtime/HE/float continuation and transitive callbacks.
+QUESTIONs: none requiring an owner decision. Hosted CI does not establish original-runtime fishing parity.
+
+## SHIP-ORDER-1 — a ship can be selected but not ordered in the owner's playtest — 2026-11-13 — QUESTION
+
+Base `task/PLAY-LIVE-1a` `9e920c18`, branch `task/SHIP-ORDER-1`, worktree `anno1503-SHIP-ORDER-1`. No code change:
+could not reproduce.
+
+**Reproduction matrix** (`tools/test/viewer_wiring.py` against `opening_controls.script` or a copy, real GPU window
+where noted, `anno1503.exe` built from `9e920c18`, game files, manifest `lan5-ship-a.json`, seat 0), varying one
+factor from the contract's own launch (`--ship-start ... --seat 0 --speed 200`, CPU, 1280×720):
+
+| Variation | Renderer | Size | Result |
+|---|---|---|---|
+| contract's own launch (baseline) | CPU | 1280×720 | PASS — order accepted, ship arrives |
+| + `--rules living` | CPU | 1280×720 | PASS |
+| + `--rules living` | CPU | 1024×768 | PASS |
+| + `--rules living` | GPU (RTX 4090, Vulkan) | 1024×768 | PASS — stderr confirms `window: drawable 1024x768 px ... density 1.00`, matching the owner's own log line exactly |
+| + `--rules living`, then `resize 2560 1369` mid-session, order again | GPU | 1024×768→2560×1369 | PASS, both orders |
+| no `--rules` (main `961a9d4a` cannot take the flag at all) | GPU | 1024×768 | PASS |
+| + `--rules living --water original` | GPU | 1024×768 | PASS |
+
+Every run: window exit 0, every script step recorded, the sim's own facts (`latest_kind == move`, `latest ==
+arrived`, `ship.1.x/y`) confirm a real `MoveCmd` was accepted and the ship arrived. `git diff 961a9d4a..9e920c18 --
+src/app/src/viewer.cpp src/app/src/opening_ui.cpp src/app/src/opening_ui.hpp src/app/src/dev_script.cpp
+src/app/src/ship_motion.cpp src/app/src/ship_layer.cpp src/sim/src/` is empty: PLAY-LIVE-1a touches none of the
+input-routing, ownership or ship-command files, so a run without `--rules` is exactly main's own code path; **PLAY-
+LIVE-1a is not involved.**
+
+**The one mechanism the code and its own tests already show can silently drop a real order, found by reading
+(not reproduced live — the scripted input below always has zero travel, so it cannot exercise this path):**
+`OpeningUi::pointer_up` (`opening_ui.cpp`) requires the press-to-release travel to stay under `kClickSlop` (5 px,
+`opening_ui.hpp`) or the gesture is a pan, not a click, and `pointer_up` returns an empty `UiResult` — no command,
+no message, nothing for `update_title()` to show. `opening_ui_test.cpp`'s own "a right-button drag of 20 pixels: a
+pan" case proves this silently empty result. `kClickSlop` and this logic are unchanged since the opening's own
+first commit (`12af6def`), before the working 2026-11-03 playtest (`8cae6f71`), so this is not a regression and
+not PLAY-LIVE-1a's — but it is the only place in the code where a real order can vanish with literally nothing
+shown, matching "I can select but cannot command the ship ... it won't move at all" better than any refusal
+message would (every refusal the code can give — land, outside the world, not yours — sets `ui.message()`, which
+`opening_facts`/the title surfaces).
+
+**Why I stopped instead of fixing it:** the scripted reproduction cannot move the pointer during a press by a
+sub-pixel amount a real mouse does automatically; whether the owner's actual click travelled ≥5 device pixels
+(an ordinary right-click's natural hand movement, more likely at a higher density/DPI scale than this PC's own
+1.00 or under a game-type gaming mouse's own click-and-settle behaviour) is not something this reproduction can
+settle one way or the other. Per the packet: no guess-fix.
+
+Gates: no source file changed; hosted CI on the docs-only push (report below).
+
+NOT_RUN: `tools/test/run_selected.py` (no code change to gate); the WSL ASan build (same reason); a real Windows
+desktop session with the owner's own display/mouse settings (not available here).
+
+Decisions and reasoning:
+- Treated main's unchanged files as direct evidence for main's own behaviour, rather than building a second
+  worktree at `961a9d4a`: `git diff 961a9d4a..9e920c18` over every file plausibly on the ship-order path is empty,
+  so a run on `9e920c18`'s own binary without `--rules` is bit-for-bit main's own code path.
+- Did not add an artificial travel-injecting dev-script verb to force-reproduce the `kClickSlop` path: it would
+  prove the already-proven unit-test behaviour again, not settle whether that is what the owner hit, and the
+  packet asks not to guess a fix (or, by the same reasoning, a cause) without evidence from the owner's own
+  conditions.
+
+QUESTIONs (for the owner, per the packet's own instruction when reproduction fails):
+- A screenshot of the title bar / status line right after a failed order attempt — does it say anything (e.g.
+  "select one of your ships", a land/outside-world refusal) or is it unchanged from before the click?
+- Did the right-click itself involve any perceptible mouse movement (even a small one) between press and
+  release? If an ordinary click comfortably stays still, `kClickSlop` is ruled out and the search continues
+  elsewhere; if not, raising `kClickSlop` (an owner "feeling" decision, not an obvious-bug fix) is the next
+  question.
+- Is Windows display scaling on that monitor 100%, or something else? (`window: drawable ... density %.2f` in
+  the same PowerShell log answers this directly.)

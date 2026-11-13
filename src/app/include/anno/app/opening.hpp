@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include <anno/app/cli.hpp>
 #include <anno/app/opening_ui.hpp>
 #include <anno/app/play.hpp>
 #include <anno/formats/result.hpp>
@@ -45,13 +46,16 @@ struct OpeningLoad {
 /// is the save's instead of the loader's (identity checks: manifest hash, seat, rules and registry
 /// digests, hash of the saved bytes); the islands of the scene still come from the manifest. An
 /// error names the file and the reason; nothing is started on one.
-/// `city_booking`: --city-booking on (D2 of W4-EXPAND-LIVE-1) turns on sim::Rules::city_booking for
-/// this session only, never the compiled-in default. Pass the same value on a --resume of a save
-/// this made, or the rules digest will not match.
+/// `profile`: --rules original|living (PLAY-LIVE-1a), applied first.
+/// `city_booking`: --city-booking on|off (D2 of W4-EXPAND-LIVE-1), applied after the profile (the
+/// more specific flag); nullopt keeps whatever the profile already gives it. Pass the same
+/// `profile` and `city_booking` on a --resume of a save this made, or the rules digest will not
+/// match.
 [[nodiscard]] formats::Result<OpeningLoad, std::string>
 load_opening(const std::filesystem::path& game_dir, const std::filesystem::path& manifest_path,
              std::uint32_t seat, const std::optional<std::filesystem::path>& resume = std::nullopt,
-             bool city_booking = false);
+             std::optional<bool> city_booking = std::nullopt,
+             RulesProfile profile = RulesProfile::Original);
 
 /// The controls' setup from a loaded world (islands' rectangles, the founding types, the cargo
 /// rules); the registry and the local player are given.

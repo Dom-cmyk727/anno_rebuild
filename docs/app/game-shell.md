@@ -128,6 +128,25 @@ What that leaves for the later steps:
 creates the `World`. The scene is built from the islands that load placed.
 The sim thread then runs turns as above.
 
+### `--rules original|living` (PLAY-LIVE-1a)
+
+`--play` and `--ship-start` accept `--rules original|living`; `--view` refuses it (there is no
+sim to apply it to). `original` is the default and gives exactly the rules every start got
+before this flag existed. `living` is `cli::apply_rules_profile`, one function every start
+(`--play` with a fixed map, `--play` with a scenario, `--ship-start`) runs its rules through:
+the start's own rules with `house_updates = true` and `city_booking = true` added on top, and
+nothing else. With it, the House tick's full effects run (walker spawn, growth, upgrade,
+downgrade, removal; `docs/sim/population-live.md` §8) and ECON-BOOK-1's checked city sales and
+upkeep run (`docs/sim/economy-booking.md`). `--city-booking on|off`, given together with
+`--rules`, sets that one field after the profile (the more specific flag).
+
+Whether `living` becomes the default is the owner's decision; this flag changes nothing about
+it. A save or a recording carries the profile it was made with: `--resume` and
+`--replay-hashes` refuse a different one before turn 1 (a plain `--play` recording keeps its
+`--rules` in its own `session.txt`, next to `map` and `speed`; a `--ship-start` save or
+recording keeps it as part of the world's own rules digest, the same identity check `--resume`
+already made).
+
 ## Building changes after tick 0 (W4.3)
 
 Status: specification, written in round dq before the code. Numbers marked

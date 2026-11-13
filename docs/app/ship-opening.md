@@ -12,7 +12,7 @@ decides no rule; the sim refuses.
 
 | Piece | Where | Rule |
 |---|---|---|
-| Launch | `anno1503 --ship-start <manifest.json> --seat N [--resume <save>] [--game-dir D] [--speed 50\|100\|200]` (`cli.cpp`, `main.cpp`) | `sim_load::load_ship_start` on the typed manifest (`opening.cpp`): developer start and developer resources off, no cities, original loadout, peace, shared information. It does not use the legacy fixed-map loader. A bad manifest, seat, missing template or save is a readable error and nothing starts. |
+| Launch | `anno1503 --ship-start <manifest.json> --seat N [--resume <save>] [--rules original\|living] [--city-booking on\|off] [--game-dir D] [--speed 50\|100\|200]` (`cli.cpp`, `main.cpp`) | `sim_load::load_ship_start` on the typed manifest (`opening.cpp`): developer start and developer resources off, no cities, original loadout, peace, shared information. It does not use the legacy fixed-map loader. A bad manifest, seat, missing template or save is a readable error and nothing starts. `--rules` (default `original`, PLAY-LIVE-1a) adds `house_updates`/`city_booking` on top of this start's own rules (`cli::apply_rules_profile`); `--city-booking`, given with it, sets `city_booking` after the profile. |
 | Identity | `OpeningIdentity` | manifest path, **content hash**, seat, rules digest, registry digest, start hash (and the save a resumed session continued). Written to `session.txt` and to every save. |
 | Sim thread | `PlayRunner` | Publishes an immutable `OpeningView` inside every `PlaySnapshot` (`opening_view.hpp`): every sailing ship (stable `FigureId`, owner, kind, `FixedPos`, `dir16`, holds, the carried order's id), the local participant's cities (`CityRef`, name, warehouse `BuildingId` + tile + footprint, stock, capacity), gold, a bounded list of ship events (`ShipArrived`, `ShipRouteFailed`, `ShipStopped` with the order id), and the sim's order-id counter. No `World`, `Figure` pointer or slot leaves the sim thread. A wake is posted every turn of an opening. |
 | Window thread | `Viewer` + `OpeningUi` (`opening_ui.cpp`) | The controls are window-free logic. The viewer maps SDL events and the last drawn frame (`FrameProjection`, `frame_projection.cpp`) to them, posts the commands they make to the runner's queue and feeds them the newest snapshot. |
@@ -104,8 +104,10 @@ temporary name and a rename, and the title shows the result (`saved ... (turn, t
 A failed write leaves the session and the previous save intact. The file is `anno1503-opening-save 1`: text header
 lines (manifest hash and name, seat, rules digest, registry digest, turn, tick, state hash, byte count), a blank
 line, the world bytes. `--resume <file>` checks, before anything starts: the frame, the manifest hash, the seat,
-the rules digest (against a freshly loaded start of the manifest), the registry digest (against the game
-files), that the world loads and that its hash is the stated one; a mismatch names which. The islands of the scene
+the rules digest (against a freshly loaded start of the manifest, built with the same `--rules`/`--city-booking`
+given on this launch: a save made with `living` refuses to resume without it, and the other way round), the
+registry digest (against the game files), that the world loads and that its hash is the stated one; a mismatch
+names which. The islands of the scene
 come from the manifest; selections, pending input and the outcome log start empty. The new recording segment is
 identified by `resumed-from` / `resumed-hash` lines. There is no in-game load: resume is a launch option.
 

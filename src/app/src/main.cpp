@@ -220,6 +220,20 @@ int replay_hashes(anno::sim::World world, unsigned speed,
         if (recorded->start_hash != opening->start_hash) {
             return differs("start state", recorded->start_hash, opening->start_hash);
         }
+    } else {
+        // PLAY-LIVE-1a review F1: a plain --play recording carries the created world's rules
+        // digest (session.txt's "rules_digest" line), not just the --rules profile's name, since
+        // --city-booking can change the rules without changing that name. Refuse a differing
+        // digest before turn 1 instead of letting it surface as a later hash mismatch. An older
+        // recording, or one whose session.txt is not next to the hashes file, makes no such claim
+        // and is not refused.
+        if (const auto session = read(file.parent_path() / "session.txt")) {
+            if (const auto msg =
+                    anno::app::check_invocation_rules_digest(*session, world.rules().digest())) {
+                std::fprintf(stderr, "--replay-hashes: %s\n", msg->c_str());
+                return 1;
+            }
+        }
     }
     const auto outcomes = read(file.parent_path() / "outcomes.txt");
     const anno::app::ReplayReport r = anno::app::replay_session(
@@ -308,8 +322,9 @@ int run(const std::vector<std::string>& raw) {
     }
     if (args->play) {
         if (args->ship_start) {
-            auto started = anno::app::load_opening(dir.value(), args->file, *args->seat,
-                                                   args->resume, args->city_booking);
+            auto started =
+                anno::app::load_opening(dir.value(), args->file, *args->seat, args->resume,
+                                        args->city_booking, args->rules_profile);
             if (!started) {
                 std::fprintf(stderr, "%s\n", started.error().c_str());
                 return 1;
@@ -323,6 +338,11 @@ int run(const std::vector<std::string>& raw) {
             // affordability edge (V1's "unaffordable" click) without touching the generous
             // defaults every other fixed-map session relies on.
             anno::app::FixedPlayOptions fixed_options;
+            fixed_options.rules =
+                anno::app::apply_rules_profile(fixed_options.rules, args->rules_profile);
+            if (args->city_booking.has_value()) {
+                fixed_options.rules.city_booking = *args->city_booking;
+            }
             if (const char* g = std::getenv("ANNO_DEV_GOLD"); g != nullptr && *g != 0) {
                 fixed_options.gold = std::strtoll(g, nullptr, 10);
             }
@@ -436,6 +456,9 @@ int run(const std::vector<std::string>& raw) {
     std::shared_ptr<const anno::render::Scene> shown = std::move(loaded.value().scene);
     std::unique_ptr<anno::app::ScenePicture> picture;
     std::unique_ptr<anno::app::PlayRunner> runner;
+    // The world's rules digest, captured just before it moves into runner (PLAY-LIVE-1a review
+    // F1): the dev session's "rules_digest" line, read back by a later --replay-hashes.
+    std::uint64_t play_rules_digest = 0;
     std::unique_ptr<anno::app::PublicationHold> hold;
     // The ship-start opening's controls, ships and saver (--ship-start).
     std::optional<anno::app::OpeningUi> opening_ui;
@@ -561,6 +584,7 @@ int run(const std::vector<std::string>& raw) {
             hooks.construction_game_dir = dir.value();
             hooks.construction_masks = &*construction_masks;
         }
+        play_rules_digest = play->world.rules().digest();
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_record_hashes(!session_dir.empty());
         if (opening) {
@@ -630,7 +654,8 @@ int run(const std::vector<std::string>& raw) {
     picture.reset();
     int status = err.empty() ? 0 : 1;
     if (runner && !session_dir.empty()) {
-        std::string invocation = anno::app::format_invocation(name, args->play_speed);
+        std::string invocation = anno::app::format_invocation(
+            name, args->play_speed, args->rules_profile, play_rules_digest);
         if (opening) {
             invocation += anno::app::format_opening_identity(opening->identity);
         }

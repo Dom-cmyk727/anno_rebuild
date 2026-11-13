@@ -247,6 +247,242 @@ TEST_CASE("play: lan5 islands are the ones the sim placed") {
     CHECK_FALSE(sim_islands.empty());
 }
 
+TEST_CASE("play: without --rules, and with --rules original, each start keeps the old rules "
+          "(PLAY-LIVE-1a Proof 1)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path lan5 =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    const fs::path trade = *dir / "Scenes/Tutorial/02Trade01.sze";
+    REQUIRE(fs::exists(trade));
+    // The reference every start's World::create got before this packet: sim::Rules{}, built the
+    // old way, not a digest this packet's own code printed.
+    const anno::sim::Rules expected;
+    for (const fs::path& file : {lan5, trade}) {
+        anno::app::FixedPlayOptions fixed; // rules defaults to {}: no --rules at all
+        auto implicit_original = anno::app::load_play(*dir, file, fixed);
+        REQUIRE_MESSAGE(implicit_original.ok(), file.filename().string()
+                                                    << ": " << implicit_original.error());
+        CHECK(implicit_original.value().world.rules().digest() == expected.digest());
+        fixed.rules = anno::app::apply_rules_profile({}, anno::app::RulesProfile::Original);
+        auto explicit_original = anno::app::load_play(*dir, file, fixed);
+        REQUIRE(explicit_original.ok());
+        CHECK(explicit_original.value().world.rules().digest() == expected.digest());
+    }
+}
+
+TEST_CASE("play: --rules living is each start's own rules with exactly house_updates and "
+          "city_booking set (PLAY-LIVE-1a Proof 2)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path lan5 =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    const fs::path trade = *dir / "Scenes/Tutorial/02Trade01.sze";
+    REQUIRE(fs::exists(trade));
+    // The expected whole struct: the start's own rules ({} for --play) with exactly these two
+    // fields set, built independently of apply_rules_profile.
+    anno::sim::Rules expected;
+    expected.house_updates = true;
+    expected.city_booking = true;
+    for (const fs::path& file : {lan5, trade}) {
+        anno::app::FixedPlayOptions fixed;
+        fixed.rules = anno::app::apply_rules_profile({}, anno::app::RulesProfile::Living);
+        CHECK(fixed.rules.house_updates);
+        CHECK(fixed.rules.city_booking);
+        auto living = anno::app::load_play(*dir, file, fixed);
+        REQUIRE_MESSAGE(living.ok(), file.filename().string() << ": " << living.error());
+        CHECK(living.value().world.rules().house_updates);
+        CHECK(living.value().world.rules().city_booking);
+        CHECK(living.value().world.rules().digest() == expected.digest());
+    }
+}
+
+namespace {
+
+/// Per-house (type, residents_64), keyed by (island slot, city number, x, y): a snapshot to
+/// diff before/after stepping, for PLAY-LIVE-1a Proof 4.
+std::map<std::tuple<std::uint32_t, std::uint32_t, std::int32_t, std::int32_t>,
+         std::pair<std::uint32_t, std::int32_t>>
+house_snapshot(const anno::sim::World& world) {
+    std::map<std::tuple<std::uint32_t, std::uint32_t, std::int32_t, std::int32_t>,
+             std::pair<std::uint32_t, std::int32_t>>
+        out;
+    const auto& islands = world.islands();
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        if (!islands[i]) {
+            continue;
+        }
+        for (const std::optional<anno::sim::City>& city : islands[i]->cities) {
+            if (!city) {
+                continue;
+            }
+            for (const anno::sim::BuildingList& list : city->index.lists) {
+                for (const std::optional<anno::sim::Building>& building : list.slots) {
+                    if (!building) {
+                        continue;
+                    }
+                    const auto* house = std::get_if<anno::sim::House>(&building->payload);
+                    if (house == nullptr) {
+                        continue;
+                    }
+                    out[{static_cast<std::uint32_t>(i), city->number.v, building->x, building->y}] =
+                        {building->type.v, house->residents_64};
+                }
+            }
+        }
+    }
+    return out;
+}
+
+/// Every CityAccounts field summed over every city: 0 exactly when nothing has been booked.
+std::uint64_t accounts_total(const anno::sim::World& world) {
+    std::uint64_t total = 0;
+    for (const auto& island : world.islands()) {
+        if (!island) {
+            continue;
+        }
+        for (const std::optional<anno::sim::City>& city : island->cities) {
+            if (!city) {
+                continue;
+            }
+            total += city->accounts.sales + city->accounts.trade_sales +
+                     city->accounts.trade_purchases + city->accounts.civil_cost +
+                     city->accounts.military_cost;
+        }
+    }
+    return total;
+}
+
+} // namespace
+
+TEST_CASE("play: a living town grows and books, the original town does not (PLAY-LIVE-1a Proof "
+          "4)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path file = *dir / "Scenes/Tutorial/02Trade01.sze";
+    REQUIRE(fs::exists(file));
+    // 3000 turns at 100 ms game time per turn (play_test.cpp's own "turn cost" convention,
+    // Timing{}.mp_steps_per_turn steps of mp_step_real_ms each) is 5 game-minutes.
+    constexpr int kTurns = 3000;
+    constexpr std::uint32_t kStepMs = 10;
+    const auto step_world = [&](anno::sim::World& world) {
+        anno::sim::Turn turn;
+        turn.step_ms = kStepMs;
+        for (int i = 0; i < kTurns; ++i) {
+            turn.index = static_cast<std::uint64_t>(i);
+            const std::string err =
+                anno::sim::run_turn(world, nullptr, turn, anno::sim::Timing{}.mp_steps_per_turn);
+            REQUIRE_MESSAGE(err.empty(), err);
+        }
+    };
+    {
+        anno::app::FixedPlayOptions fixed;
+        fixed.rules = anno::app::apply_rules_profile({}, anno::app::RulesProfile::Living);
+        auto opened = anno::app::load_play(*dir, file, fixed);
+        REQUIRE_MESSAGE(opened.ok(), opened.error());
+        anno::sim::World& world = opened.value().world;
+        const auto before_houses = house_snapshot(world);
+        const auto before_accounts = accounts_total(world);
+        step_world(world);
+        const auto after_houses = house_snapshot(world);
+        std::size_t changed = 0;
+        for (const auto& [key, before] : before_houses) {
+            const auto it = after_houses.find(key);
+            if (it != after_houses.end() && it->second != before) {
+                ++changed;
+            }
+        }
+        MESSAGE("living, " << kTurns << " turns: " << changed << "/" << before_houses.size()
+                           << " houses changed, accounts total " << before_accounts << " -> "
+                           << accounts_total(world));
+        CHECK(changed > 0);
+        CHECK(accounts_total(world) > before_accounts);
+    }
+    {
+        anno::app::FixedPlayOptions fixed; // original: rules{}
+        auto opened = anno::app::load_play(*dir, file, fixed);
+        REQUIRE_MESSAGE(opened.ok(), opened.error());
+        anno::sim::World& world = opened.value().world;
+        const auto before_houses = house_snapshot(world);
+        const auto before_accounts = accounts_total(world);
+        step_world(world);
+        const auto after_houses = house_snapshot(world);
+        std::size_t changed = 0;
+        for (const auto& [key, before] : before_houses) {
+            const auto it = after_houses.find(key);
+            if (it != after_houses.end() && it->second != before) {
+                ++changed;
+            }
+        }
+        MESSAGE("original, " << kTurns << " turns: " << changed << " houses changed, accounts "
+                             << before_accounts << " -> " << accounts_total(world));
+        CHECK(changed == 0);
+        CHECK(accounts_total(world) == before_accounts);
+    }
+}
+
+TEST_CASE("play: ms per 100 ms turn, original vs living, measured (PLAY-LIVE-1a Do item 6, "
+          "opt-in measure)") {
+    // Review F1/F2: asserts nothing (it reports timing, not a pass/fail condition) and took 61 s
+    // in the WSL app lane; opt-in like the project's other measurements (founding_assets_test.cpp,
+    // iron_chain_test.cpp), not run by default.
+    if (std::getenv("ANNO_PLAY_LIVE_TIMING") == nullptr) {
+        MESSAGE("skipping: opt-in measurement; set ANNO_PLAY_LIVE_TIMING=1");
+        return;
+    }
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path lan5 =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    const fs::path trade = *dir / "Scenes/Tutorial/02Trade01.sze";
+    REQUIRE(fs::exists(trade));
+    constexpr int kTurns = 1000;
+    const auto measure = [&](const std::string& label, const fs::path& file,
+                             anno::app::RulesProfile profile) {
+        anno::app::FixedPlayOptions fixed;
+        fixed.rules = anno::app::apply_rules_profile({}, profile);
+        auto opened = anno::app::load_play(*dir, file, fixed);
+        REQUIRE_MESSAGE(opened.ok(), opened.error());
+        anno::app::PlayRunner runner(std::move(opened.value().world));
+        REQUIRE(runner.step_ms() == 10);
+        std::vector<double> ms;
+        ms.reserve(kTurns);
+        for (int i = 0; i < kTurns; ++i) {
+            const auto t0 = std::chrono::steady_clock::now();
+            runner.run_n(1);
+            ms.push_back(
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                    .count());
+        }
+        std::sort(ms.begin(), ms.end());
+        const auto at = [&](std::size_t numer, std::size_t denom) {
+            std::size_t i = (ms.size() * numer + denom - 1) / denom;
+            if (i == 0) {
+                i = 1;
+            }
+            return ms[std::min(ms.size(), i) - 1];
+        };
+        MESSAGE(label << ", " << kTurns << " turns: p50 " << at(1, 2) << " ms, p95 " << at(95, 100)
+                      << " ms");
+    };
+    measure("fixed map, original", lan5, anno::app::RulesProfile::Original);
+    measure("fixed map, living", lan5, anno::app::RulesProfile::Living);
+    measure("02Trade01.sze, original", trade, anno::app::RulesProfile::Original);
+    measure("02Trade01.sze, living", trade, anno::app::RulesProfile::Living);
+}
+
 TEST_CASE("play: runner turns match run_turn and ignore the wall clock") {
     const auto dir = anno::test::game_dir();
     if (!dir) {

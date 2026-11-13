@@ -334,6 +334,57 @@ TEST_CASE("opening, real files: the launch loads the start, every id comes from 
     CHECK_FALSE(app::load_opening(*dir, manifest_path(), 0, file).ok());
 }
 
+TEST_CASE("opening, real files: --rules living is the start's own rules with exactly "
+          "house_updates and city_booking set, and a save refuses a resume with another "
+          "profile (PLAY-LIVE-1a)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // Without --rules: exactly the old rules (city_names and city_booking=false, the reference
+    // built the old way, not a digest this packet's own code printed).
+    auto original = app::load_opening(*dir, manifest_path(), 0);
+    REQUIRE_MESSAGE(original.ok(), original.error());
+    CHECK_FALSE(original.value().play.world.rules().house_updates);
+    CHECK_FALSE(original.value().play.world.rules().city_booking);
+
+    auto living = app::load_opening(*dir, manifest_path(), 0, std::nullopt, std::nullopt,
+                                    app::RulesProfile::Living);
+    REQUIRE_MESSAGE(living.ok(), living.error());
+    const sim::Rules& lrules = living.value().play.world.rules();
+    CHECK(lrules.house_updates);
+    CHECK(lrules.city_booking);
+    // Exactly the two fields: everything else matches the plain start's own rules.
+    sim::Rules expected = original.value().play.world.rules();
+    expected.house_updates = true;
+    expected.city_booking = true;
+    CHECK(lrules.digest() == expected.digest());
+    // --city-booking off after --rules living: city_booking off, house_updates still on.
+    auto living_no_booking =
+        app::load_opening(*dir, manifest_path(), 0, std::nullopt, false, app::RulesProfile::Living);
+    REQUIRE_MESSAGE(living_no_booking.ok(), living_no_booking.error());
+    CHECK(living_no_booking.value().play.world.rules().house_updates);
+    CHECK_FALSE(living_no_booking.value().play.world.rules().city_booking);
+
+    // A save made with `living` resumes with `living` and is refused without it (Do item 5): the
+    // existing rules-digest check already covers a profile mismatch end to end, since the
+    // digest changes with house_updates/city_booking.
+    app::OpeningSave save;
+    save.identity = living.value().identity;
+    save.state_hash = living.value().play.world.state_hash();
+    save.world = living.value().play.world.save();
+    const fs::path file = scratch("resume-living") / "s.sav";
+    REQUIRE(app::OpeningSaver::write_file(file, app::format_opening_save(save)).empty());
+    auto resumed_living =
+        app::load_opening(*dir, manifest_path(), 0, file, std::nullopt, app::RulesProfile::Living);
+    REQUIRE_MESSAGE(resumed_living.ok(), resumed_living.error());
+    CHECK(resumed_living.value().play.world.state_hash() == living.value().play.world.state_hash());
+    const auto resumed_as_original = app::load_opening(*dir, manifest_path(), 0, file);
+    REQUIRE_FALSE(resumed_as_original.ok());
+    CHECK(resumed_as_original.error().find("other rules") != std::string::npos);
+}
+
 TEST_CASE("opening, real files: an order's id comes from the sim's own result, events end exactly "
           "that order") {
     const auto dir = anno::test::game_dir();

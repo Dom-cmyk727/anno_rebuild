@@ -110,7 +110,7 @@ load_fixed_play(const fs::path& game_dir, const formats::fixed_map::FixedMap& ma
     if (fixed.stand_in_placement) {
         seams.placement_rule = sim::stand_in_placement_seam();
     }
-    auto created = sim::World::create(loaded.value().spec, types, cfg, sim::Rules{}, seams);
+    auto created = sim::World::create(loaded.value().spec, types, cfg, fixed.rules, seams);
     if (!created) {
         return created.error();
     }
@@ -194,11 +194,12 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     }
     const sim::SimConfig cfg;
     auto resolved = anno::sim_load::load_scenario_with_context(buf, file, game_dir, templates,
-                                                               *registry.types, cfg, {});
+                                                               *registry.types, cfg, fixed.rules);
     if (!resolved) {
         return resolved.error();
     }
-    auto created = sim::World::create(resolved.value().loaded.spec, registry.types, cfg);
+    auto created =
+        sim::World::create(resolved.value().loaded.spec, registry.types, cfg, fixed.rules);
     if (!created) {
         return created.error();
     }

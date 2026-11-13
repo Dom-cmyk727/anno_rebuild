@@ -18,8 +18,9 @@ says who is doing what, where the work is, and what it waits on.
   - **`main` is healthy:** its code is `429c0b3a`'s plus two comment changes. That candidate's game-file run passed
     all 2,538 executed tests, six of them on a one-at-a-time rerun after memory refusals
     ([review](reviews/2026-11-13-coord-flake-1-review.md)).
-  - **Not on `main` yet:** this board's later commits (the WHALE-RE-1a release, the gate rule, GATE-2a). They land
-    with the next landing.
+  - **Then the docs landing** `961a9d4a`, with the owner's OK: WHALE-RE-1a, its review, the gate rule of 2026-11-13,
+    the GATE-2a and WHALE-RE-1b packets and this board. `gate` passed (run 43384988222); GitLab and the share are in
+    step. Docs only, so `main` stays healthy.
 - **Owner decision: no more whole-gate reruns** ("Yes, all of it", on the orchestrator's plan).
   - **What happened:** PLAY-LIVE-1a's first full WSL gate ended red only because 3 sim tests were refused for memory
     (they never ran). The app lane, the only one its change reaches, had passed. A second full run on the same commit

@@ -5,6 +5,17 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **The fisher port, checked (owner's request):**
+  - **The wiring behind a flag needs a new state number,** so it waits for ADR 0006, like the wildlife and whale
+    ports. Every `Rules` field is saved (`fields(Rules)`), and each new one took a state number.
+  - **One original rule is still unread:** how the island's width × height `HEIGHT` bytes become the water test's
+    width + 1 corner grid (OQ-200).
+  - **Two state-free steps can go now:**
+    - [FISHER-RE-1c](tasks/fisher-re-1c.md), reading that rule (proposed, waits for the owner's go);
+    - FISHER-1a, the water cells as unwired sim functions.
+
+    Then FISHER-1b, after ADR 0006. **ADR 0006 now gates three ports and EDITION-2,** and the orchestrator has not
+    written it yet.
 - **[FISHER-RE-1b](tasks/fisher-re-1b.md) ACCEPTED** ([review](reviews/2026-11-13-fisher-re-1b-review.md)), no fix
   round: `tools/fisher_ref.py`, 42 hand-derived vectors, 58 contract checks and 9 mutants, all agreeing here too. The
   fisher reads are complete; the Mac executor is free.
@@ -496,7 +507,8 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: free.** The wildlife and whale ports wait for ADR 0006.
+- **Now: free.** [FISHER-RE-1c](tasks/fisher-re-1c.md) waits for the owner's go. The wildlife, whale and fisher
+  ports wait for ADR 0006.
 - **Finished: [FISHER-RE-1b](tasks/fisher-re-1b.md)** (2026-11-13; head `f931354a`), **accepted**
   ([review](reviews/2026-11-13-fisher-re-1b-review.md)): `tools/fisher_ref.py` and its 42 vectors.
 - **Finished: [FISHER-RE-1a](tasks/fisher-re-1a.md)** (2026-11-13; head `6d57bb12`), **accepted**

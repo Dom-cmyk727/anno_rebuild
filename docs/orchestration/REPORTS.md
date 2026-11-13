@@ -9771,3 +9771,64 @@ Decisions and reasoning:
   through that script.
 
 QUESTIONs: none.
+
+## FISHER-RE-1b — integer fisher reference and vectors (2026-11-13)
+
+**Status: READY FOR REVIEW.** Mac executor; independent orchestrator review pending.
+Branch `task/FISHER-RE-1b`, separate new worktree; exact base `961a9d4a`.
+Packet and accepted1a review read at board `e44321ff` after fetch.
+Source: accepted `docs/re/fisher.md` at `origin/task/FISHER-RE-1a` `6d57bb12`.
+Format model: whale_ref/contract from `origin/task/WHALE-RE-1c` `c0553b48`.
+Those branches/worktrees are preserved; neither was merged or replayed onto base.
+Read CLAUDE, PLAN scope, board owner rules/§1, evidence contract/testing README.
+No original files/disassembly, engine implementation or other sources used for rules.
+
+Changes:
+- `tools/fisher_ref.py`: standalone integer key=value/=> oracle; six record types.
+- `fixtures/synthetic/sim/fisher_vectors.txt`:42 hand-derived vectors, derivation above each.
+- `tools/fisher_ref_contract_test.py`:58 public-subprocess checks, nine applied source mutants.
+- Two CMake registrations: `fisher_reference_agrees`, `fisher_reference_contract`.
+- Added after wildlife pair: the requested whale pair is not on the exact main base yet.
+- No engine, generator, state identity, default rule, accepted RE document or OQ changes.
+Vector inventory and boundaries:
+- farm_tick21: elapsed0/1/499/500/1000, stamp wrap, off, suspend bits0x10/0x20 versus0x08.
+- Worker away, ratio63/64, full conversion, unclamped output overshoot and u16 wraps.
+- 3978 raw1023/1024 and810 raw1586/1587 with full output; discarded draw still consumed.
+- Productive maximum2 dispatch uses post-debit896, not initial1024; added0 can still debit.
+- converted4:810 need69/rate17;3978 need128/rate51; exact half-up and fractional time.
+- search_rect5:3×4 at(100,200) ->(94,194,15,16), swapped dimensions, u16/byte wrap, radius0.
+- sea_cell4: corners31/32, uneven sums127/128; integer mean, equality32 closed.
+- trip4:767/768/769 versus capacity768 and zero capacity; cut_match4:11,10,3506,0.
+
+Acceptance / distinguishing evidence / review:
+| Requirement | Positive and negative proof | Evidence | Review |
+|---|---|---|---|
+| Six integer slices |42 hand-derived controls; no oracle-generated expectations | direct-02.log | pending |
+| Draw/arithmetic fidelity | full-store draw, clamp, sea<=32, lost draw, cargo<=capacity mutants | contract-02.log | pending |
+| Remaining mutant controls | pre-debit raw, rounded need, widened origin, activity saturation | applied once, exit1 each | pending |
+| CLI verdict | agree0/disagree1/malformed2; changed expected, empty/missing/bad schema/encoding |58 bounded checks | pending |
+| Refused open cases | float_position/continuation and fractional x ->OQ-603; transitive_draws ->OQ-604 | contract-02.log | pending |
+| CTest integration | public contract once, agreement once, no repeated contract in selection | gate-02.log | pending |
+
+Gate commands/evidence under `cache/fisher-re-1b/`:
+- `python3 -I tools/fisher_ref.py fixtures/synthetic/sim/fisher_vectors.txt`:42 vectors,0 disagreements.
+- `python3 -I tools/fisher_ref_contract_test.py --ref tools/fisher_ref.py`
+  `--vectors fixtures/synthetic/sim/fisher_vectors.txt`:58 checks pass, nine mutants exit1.
+- `cmake --preset dev -DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF`:configure succeeds;
+  existing pinned doctest source reused read-only; no C++ build is needed for these Python tests.
+- `run_selected.py --build-dir build/dev --select fisher_reference --require-test fisher_reference_contract`
+  `--skip-auto-contract --jobs 1 --timeout 30 --log cache/fisher-re-1b/gate-02.log`:PASS.
+- Required contract selected1/executed1; remaining selection selected1/executed1:two distinct CTest entries.
+- Both failed0/empty0/incomplete0/sanitizer_lines0; skips0 in every class (assets/platform/opt-in/GPU/other).
+- Gate01 retained; gate02 adds the required OQ-603 diagnostic for fractional position fields.
+- `git diff --check` clean. Hosted full-matrix CI is required on the pushed head;
+  terminal exact head/run and job counts are supplied with the final handoff.
+
+Decisions and reasoning:
+- `made` is a validated same-visit conversion fact, not an independent override; dispatch is an attempt.
+- `cut_match` is target selection plus conditional harvest, not an arbitrary replaced-tile cut oracle.
+- Exact fraction arithmetic follows the documented formula; full expected output keys prevent vacuous agreement.
+- The packet restricts CTest to the fisher pair, so unrelated automatic picture contract is omitted.
+- OQ-603/604 stay open/refused; no documentation correction needed; OQ-605–608 unused.
+NOT_RUN: local C++ build/full suite/game-file/original-runtime/HE/float continuation and transitive callbacks.
+QUESTIONs: none requiring an owner decision. Hosted CI does not establish original-runtime fishing parity.

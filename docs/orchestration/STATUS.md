@@ -22,7 +22,7 @@ says who is doing what, where the work is, and what it waits on.
     frames drew a visible chunk not built yet. Owner requirement: no rendering of any sort may appear while zooming.
     Queued as ZOOM-SMOOTH-1.
   - **The UI** is drawn only at exactly 1024×768 and disappears when maximized. Clicks on it reach the map, and the
-    minimap is empty. Queued as UI-WINDOW-1; it needs the owner's answer on the UI scale (ADR 0004 R3).
+    minimap is empty. Queued as UI-WINDOW-1. **Owner decision (ADR 0004 R3): scale the UI to the window.**
   - **With `--rules living`** the gold ticks down by 1 every 4 s of game time (city booking's upkeep); without it, it
     stays at 10,000,000.
 - **[FISHER-RE-1a](tasks/fisher-re-1a.md) ACCEPTED** ([review](reviews/2026-11-13-fisher-re-1a-review.md)), no fix
@@ -648,7 +648,8 @@ Its later work is not accepted merely because expansion is complete.
   binding. MAP-INTEGRATE-2 keeps B until the owner answers.
 - **The W4-UI-2 playtest card** (part K): the HUD and construction menu in the live window, on `main` from
   `96de6bca`.
-- **ADR 0004 questions R2 and R3:** the default surface (`--ui classic|dev`) and the UI scale.
+- **ADR 0004 question R2:** the default surface (`--ui classic|dev`). R3 is decided (2026-11-13: scale the UI to the
+  window).
 - **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).
 - **The opening playtest** in the live window (W4-OPENING-1, accepted 2026-11-05).
 - **W4-SETTLEMENT-1's playtest card,** once review item 3 (the inspection line) is fixed.

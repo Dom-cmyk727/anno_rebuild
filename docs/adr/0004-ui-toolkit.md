@@ -259,6 +259,14 @@ on the playtest card (K).
 
 ## QUESTION R3: the UI scale at 1440p and 4K
 
+**Decided by the owner, 2026-11-13: scale to the window** (the fractional factor, this section's recommendation).
+- **Why it came up.** In that day's playtest the UI disappeared as soon as the window was maximized; it is drawn only
+  at exactly 1024 × 768.
+- **What follows.** The chrome scales with the window, with the softness on resampled edges accepted. The factor stays
+  one configuration value, so a later player setting remains possible.
+- **The exact factor** is stated by UI-WINDOW-1. For example: one factor for both axes, chosen so the chrome fits the
+  window, anchored by §5's identities.
+
 The original draws at 1024 × 768; a modern display is commonly 2560 × 1440 or 3840 × 2160.
 
 - **Integer factors 2 / 3.** Sharp (nearest-neighbour on crisp original pixel art), but 2× of

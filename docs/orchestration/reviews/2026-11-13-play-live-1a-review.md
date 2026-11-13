@@ -1,6 +1,8 @@
 # PLAY-LIVE-1a review (2026-11-13)
 
-**Verdict: FIX ROUND 1, small.**
+**Verdict: ACCEPTED after one fix round** (round 2, at the end). Round 1's verdict follows.
+
+**Round 1 verdict: FIX ROUND 1, small.**
 - **What is right.** The flag, the profile, the three starts, the ship-start resume refusal, the living-town proof and
   the measurements all do what the packet asks.
 - **F1:** a `--play` recording records only the profile's *name*. `--city-booking`, which this packet newly applies
@@ -87,3 +89,33 @@ No other lane.
 Fix round 1 to the Windows executor, by message, same branch. After it, [GATE-2a](../tasks/gate-2a.md) is the
 Windows lane's next packet. PLAY-LIVE-1a lands, with WHALE-RE-1b (owner, 2026-11-13), after the orchestrator's
 game-file run of the merged candidate, on the owner's OK.
+
+## Round 2 (reported 2026-11-13)
+
+**Reviewed heads:** `0b6f94dd` (the code) and `9e920c18` (the REPORTS addendum). CI green on both, `gate` included
+(runs 43397591022 and 43401950818).
+
+- **F1, fixed.** `format_invocation` now also writes `rules_digest <hex16>`, the created world's `sim::Rules` digest.
+  `check_invocation_rules_digest` (`dev_session.cpp`) compares it with the replay world's digest. On a mismatch it
+  returns the refusal naming both, and `replay_hashes` prints it and stops before turn 1. A recording without the
+  line makes no claim.
+  - The digest is taken just before the runner is created (`main.cpp`). `session.txt` is written only when that
+    runner exists, so no recording gets a 0.
+  - **The tests:**
+    - the same digest is accepted;
+    - a different digest is refused;
+    - a recording without the line is accepted;
+    - `--rules living --city-booking off` gives another digest than `--rules living`.
+- **F2, fixed.** The timing case is opt-in (`ANNO_PLAY_LIVE_TIMING=1`), skipped with the project's `set ANNO_…`
+  message.
+- **The executor's gates,** app lanes only, under the rule of 2026-11-13:
+  - MSVC Release app suites with the game files: 308 selected, 305 executed, 0 failed;
+  - the WSL `-O1` app lane, in a fresh build: 316 selected, 313 executed, 0 failed, `sanitizer_lines` 0.
+
+**ACCEPTED.** It lands with WHALE-RE-1b, WHALE-RE-1c and FISHER-RE-1a as `orch/land-play-live-1a`, after the
+orchestrator's game-file run of that candidate, on the owner's OK.
+- **The merge conflicts** were only appends, in `REPORTS.md`, `docs/re/whaler.md` and `docs/open-questions.md`.
+  They were resolved by keeping both sides in merge order, with a blank line before each new heading.
+- **The owner's playtest** of the living town runs on a preview build of `9e920c18`
+  (`E:nno1503-worktreesnno1503-main-gamefile-run`). The game-file run waits until it is finished, so the two
+  don't compete for the PC.

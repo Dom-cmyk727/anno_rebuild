@@ -1,7 +1,6 @@
 # WHALE-RE-1b: the whale's life, the boat request and the open callbacks (documents only)
 
-**Status:** PROPOSED 2026-11-13 by the Claude Code orchestrator for **the Mac executor**. It is released when the owner
-gives the go. Step 6′ of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
+**Status:** RELEASED 2026-11-13 by the Claude Code orchestrator, with the owner's go, to **the Mac executor**. Step 6′ of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
 
 **Why:** [WHALE-RE-1a](whale-re-1a.md) ([review](../reviews/2026-11-13-whale-re-1a-review.md)) read:
 - where whales come from;

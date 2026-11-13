@@ -4,22 +4,50 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-13, morning, by the Claude Code orchestrator:
+**Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[FISHER-RE-1a](tasks/fisher-re-1a.md) ACCEPTED** ([review](reviews/2026-11-13-fisher-re-1a-review.md)), no fix
+  round.
+  - **The fisher is a walking worker,** not a boat. On a resource route it cuts fish *tiles* (11 → 10, regrowing),
+    which `main` already imports, through the forester's machinery.
+  - **What lifting the route-`0x2d` refusal still needs:** the entrance launch, a sea search below a height of 32,
+    height-keeping movement, and one discarded dispatch draw.
+- **[WHALE-RE-1c](tasks/whale-re-1c.md) ACCEPTED** ([review](reviews/2026-11-13-whale-re-1c-review.md)), no fix round:
+  `tools/whale_ref.py`, 44 hand-derived vectors, 46 contract checks, all agreeing here too. The whale reads 1a to 1c
+  are complete; the port waits for ADR 0006. They land with PLAY-LIVE-1a.
+- **Proposed next for the Mac: [FISHER-RE-1a](tasks/fisher-re-1a.md)**, the fisher's route 45. Food stops 131 houses,
+  and `main` refuses the fisher's route until its original body is read. It waits for the owner's go.
+- **[PLAY-LIVE-1a](tasks/play-live-1a.md): fix round 1** ([review](reviews/2026-11-13-play-live-1a-review.md)), small.
+  - **What works:** `--rules living` turns on living houses and city booking for all three starts. On `02Trade01`
+    3 of 32 houses change in five game minutes, and the accounts grow; with `original`, nothing changes. A turn costs
+    well under 1 ms.
+  - **F1:** a `--play` recording keeps only the profile's name, so a replay with a different `--city-booking` is not
+    refused. The fix records the rules digest.
+  - **F2:** the timing case becomes opt-in.
+  - **Next:** after the round, PLAY-LIVE-1a lands with WHALE-RE-1b on the owner's OK, and GATE-2a is released.
+- **[WHALE-RE-1b](tasks/whale-re-1b.md) ACCEPTED** ([review](reviews/2026-11-13-whale-re-1b-review.md)), no fix round;
+  every re-checked table, address and record matches.
+  - **The whale:** the old animal class with nine changed slots. It wanders around its current position and has no
+    age rule. Each walk start makes exactly five world draws.
+  - **The boat:** bought by command `0x71` for 600 gold, 12 wood and 7 rope; never replaced automatically. Its attack
+    draws even with one firing position.
+  - **Open:** OQ-594 is narrowed and OQ-595 is new: the sea-depth rule and the indirect draws.
+  - **Next:** [WHALE-RE-1c](tasks/whale-re-1c.md), the reference and its vectors, waits for the owner's go.
 - **[WHALE-RE-1a](tasks/whale-re-1a.md) ACCEPTED** ([review](reviews/2026-11-13-whale-re-1a-review.md)), no fix round;
   every re-checked address and record matches.
   - **What a port needs:** the oil workshop and the lamp-oil stall's purchase path already run on `main`. What is
     missing is the whaler (its tick, the boat queue, whaling ship 1511 on route 45) and the whale sources, which
     `main`'s scenario loader skips.
   - **Whales are deterministic:** three slots per source, refilled at its centre without a random draw.
-  - **Next:** [WHALE-RE-1b](tasks/whale-re-1b.md) (the whale's life, the boat request, the open callbacks) waits for
-    the owner's go.
+  - **Next:** [WHALE-RE-1b](tasks/whale-re-1b.md) (the whale's life, the boat request, the open callbacks) is
+    released to the Mac executor.
 - **GATE-1c and COORD-FLAKE-1 LANDED on `main`** as `babd1da0`, with the owner's OK. `gate` passed (run
   43371869091); GitLab and the share are in step.
   - **`main` is healthy:** its code is `429c0b3a`'s plus two comment changes. That candidate's game-file run passed
     all 2,538 executed tests, six of them on a one-at-a-time rerun after memory refusals
     ([review](reviews/2026-11-13-coord-flake-1-review.md)).
-  - **Not on `main` yet:** this board's later commits (the WHALE-RE-1a release, the gate rule, GATE-2a). They land
-    with the next landing.
+  - **Then the docs landing** `961a9d4a`, with the owner's OK: WHALE-RE-1a, its review, the gate rule of 2026-11-13,
+    the GATE-2a and WHALE-RE-1b packets and this board. `gate` passed (run 43384988222); GitLab and the share are in
+    step. Docs only, so `main` stays healthy.
 - **Owner decision: no more whole-gate reruns** ("Yes, all of it", on the orchestrator's plan).
   - **What happened:** PLAY-LIVE-1a's first full WSL gate ended red only because 3 sim tests were refused for memory
     (they never ran). The app lane, the only one its change reaches, had passed. A second full run on the same commit
@@ -303,6 +331,10 @@ mirror still requires the owner/Windows sync after main publication.
 - **Now: [PLAY-LIVE-1a](tasks/play-live-1a.md)** (released 2026-11-13), on `task/PLAY-LIVE-1a`, based on `main`: a
   "living town" rules profile for the window behind `--rules living` (`house_updates` and `city_booking` on), default
   unchanged; the owner's playtest card and a cost measurement.
+  - **Handover** `2831f78f` and `17559083`.
+  - **Fix round 1 sent 2026-11-13** ([review](reviews/2026-11-13-play-live-1a-review.md)):
+    - F1: record and check the rules digest in `--play` recordings;
+    - F2: the timing case becomes opt-in.
 - **Finished: [COORD-FLAKE-1](tasks/coord-flake-1.md)** (2026-11-13; head `0a94c338`), **accepted after one fix
   round** ([review](reviews/2026-11-13-coord-flake-1-review.md)); three comment corrections are its closing commit.
   The two test-coordinator flakes in hosted CI, `F3 (D1, deaf)` on macOS and `C3` on Windows.
@@ -423,8 +455,15 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: free.** [WHALE-RE-1b](tasks/whale-re-1b.md) is proposed and waits for the owner's go. The wildlife port
-  waits for ADR 0006.
+- **Now: free.** The wildlife and whale ports wait for ADR 0006.
+- **Finished: [FISHER-RE-1a](tasks/fisher-re-1a.md)** (2026-11-13; head `6d57bb12`), **accepted**
+  ([review](reviews/2026-11-13-fisher-re-1a-review.md)): the fisher's route 45 and its fish tiles, in
+  `docs/re/fisher.md`; OQ-603 and OQ-604.
+- **Finished: [WHALE-RE-1c](tasks/whale-re-1c.md)** (2026-11-13; head `c0553b48`), **accepted**
+  ([review](reviews/2026-11-13-whale-re-1c-review.md)): `tools/whale_ref.py` and its 44 vectors.
+- **Finished: [WHALE-RE-1b](tasks/whale-re-1b.md)** (2026-11-13; head `109ec14c`), **accepted**
+  ([review](reviews/2026-11-13-whale-re-1b-review.md)): the whale's life, the boat request and the callbacks, in
+  `docs/re/whaler.md` §6–9; OQ-595.
 - **Finished: [WHALE-RE-1a](tasks/whale-re-1a.md)** (2026-11-13; head `df63c97e`), **accepted**
   ([review](reviews/2026-11-13-whale-re-1a-review.md)): the whaler, its whales and the lamp-oil chain, in
   `docs/re/whaler.md`; OQ-591 to OQ-594.

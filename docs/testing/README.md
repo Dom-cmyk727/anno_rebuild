@@ -129,6 +129,20 @@ the same gate on Linux, Windows and macOS; an unexecuted CI platform remains an
 external validation limitation. Require independent read-only review, preserve
 the review record, and keep gameplay/rendering changes in their own packages.
 
+## What a packet runs, and refused tests (owner, 2026-11-13)
+
+- **A packet runs the suites its change reaches**, on MSVC Release with the game files and in the WSL `-O1` sanitizer
+  build, plus hosted CI. The table of which change reaches which lane is in
+  [`TASKS.md`](../orchestration/TASKS.md) §1 item 4. Run a lane with `run_selected.py --select` and the lane's regex
+  from `tools/test/wsl_gate.sh`. Unaffected suites are reused from `main`, with a one-line reason.
+- **The full WSL gate below and the full MSVC game-file run** are the orchestrator's, once per landing at the merge.
+- **A refused test did not run.** `[anno-test memory] refused … reason=low-memory stop` (or `wait deadline`, or a
+  coordinator refusal) is thrown before the test's own work starts, so it is neither a failure nor a pass.
+  - Rerun only the refused tests, alone (`--jobs 1`), and keep both runs in the evidence.
+  - Never rerun a whole gate or lane on the same commit. It only repeats tests whose evidence already stands, and a
+    full WSL gate costs well over an hour.
+- **After a fix,** rerun the failed tests and the lanes the fix reaches; the rest of the earlier evidence stands.
+
 ## The WSL ASan/UBSan gate
 
 `tools/test/wsl_gate.sh` is the one committed WSL (Ubuntu, GCC 13) viewer-enabled

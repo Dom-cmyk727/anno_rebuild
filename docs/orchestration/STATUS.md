@@ -5,6 +5,20 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, morning, by the Claude Code orchestrator:
+- **Owner decision: no more whole-gate reruns** ("Yes, all of it", on the orchestrator's plan).
+  - **What happened:** PLAY-LIVE-1a's first full WSL gate ended red only because 3 sim tests were refused for memory
+    (they never ran). The app lane, the only one its change reaches, had passed. A second full run on the same commit
+    was stopped at the owner's word.
+  - **The rule**, now in [`TASKS.md`](TASKS.md) §1 item 4 and [`docs/testing/README.md`](../testing/README.md):
+    - a packet runs the lanes its change reaches, plus hosted CI;
+    - a refused test is rerun alone;
+    - a whole gate is never rerun on the same commit;
+    - the full WSL gate and the game-file run are the orchestrator's, once per landing.
+
+    This decides analysis §3.2 items 1 and 6; the dated §1 text is retired.
+  - **The tools:** [GATE-2a](tasks/gate-2a.md) (count and retry refusals) and GATE-2b (`wsl_gate.sh --lanes`,
+    `--rerun`) are queued for the Windows executor after PLAY-LIVE-1a. TEST-MEM-1, the cause of the refusals, moves up
+    behind them.
 - **[WHALE-RE-1a](tasks/whale-re-1a.md) RELEASED** to the Mac executor with the owner's go: the whaler, its whales
   and the lamp-oil chain, documents only. Lamp oil, which only the whaler supplies, is one of the forced goods that
   stop houses (`progression-gaps.md`).
@@ -544,10 +558,10 @@ Its later work is not accepted merely because expansion is complete.
 
 - **The go for each next Mac packet** of the queue (board, "Current work"); the Windows lane has a standing go.
   ADR 0006 waits until the owner can read it.
-- **The rule changes the project analysis suggests** ([analysis](reviews/2026-11-12-project-analysis.md) §3.2,
-  items 1–6): one sanitizer gate per landing at the merge; the reviewer fixes wording itself; a flake is closed by
-  its mechanism; merge within a day or two behind default-off flags; one tool regenerates pins; retire dated
-  protocol text.
+- **The rule changes the project analysis suggests** ([analysis](reviews/2026-11-12-project-analysis.md) §3.2),
+  items 2–5: the reviewer fixes wording itself; a flake is closed by its mechanism; merge within a day or two behind
+  default-off flags; one tool regenerates pins. Items 1 and 6 are decided (2026-11-13: one full gate per landing at
+  the merge; dated protocol text retired).
 - **Whether the window's living town is the default** (PLAY-LIVE-1a builds `--rules living`, default `original`), and
   **ADR 0003** (blocks NET-0).
 - **On the Mac, accept this PC and the `open1503-share` offer** in Syncthing, as Receive Only (MAP-INTEGRATE-2
@@ -562,8 +576,6 @@ Its later work is not accepted merely because expansion is complete.
 - **The W4-UI-2 playtest card** (part K): the HUD and construction menu in the live window, on `main` from
   `96de6bca`.
 - **ADR 0004 questions R2 and R3:** the default surface (`--ui classic|dev`) and the UI scale.
-- **The coordinator follow-up** ([review](reviews/2026-11-08-w4-ui-2-merge.md) §4) is assigned: W4-NEXT-1 part C,
-  to the Windows executor, root cause and fix, then 5 consecutive clean CI runs.
 - **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).
 - **The opening playtest** in the live window (W4-OPENING-1, accepted 2026-11-05).
 - **W4-SETTLEMENT-1's playtest card,** once review item 3 (the inspection line) is fixed.

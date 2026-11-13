@@ -9156,3 +9156,64 @@ QUESTIONs: should this session remove the duplicate `#[allow(clippy::cast_precis
 `crates/render/src/gpu.rs:1125` as a trivial one-line fix on `task/GATE-1b` (or a separate branch),
 or does that belong to another lane/the orchestrator? Otherwise none requiring an owner decision;
 independent review of the rest of this packet is the orchestrator's.
+
+## WHALE-RE-1a — whaler, whale origins and oil chain — 2026-11-13 — READY FOR REVIEW
+
+Base `96f7980c0d8c3fda4d654e16a8e8874bf96745f6`; branch `task/WHALE-RE-1a`.
+NEW worktree `/Users/dom/.codex/worktrees/whale-re-1a/anno1503`; prior branches preserved.
+Packet: `origin/orch/board-next` at `d400d3fc4e3a48d0c3ebaca22aafb2805b7d1899`, read in full.
+Deliverables: [whaler.md](../re/whaler.md), [OQ-591–594](../open-questions.md), this entry.
+Only three docs change; governing rules/packet read; no engine/test/fixture/identity edit.
+
+Reference: GOG AnnoWelt.dll2.0.0.5 SHA-256
+`f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
+Method: original-record readers, Capstone/pefile instructions and direct tables;
+no listings/bytes/assets enter git. Reused accepted wildlife/hunter/cargo reads.
+Ghidra/Java unavailable; independent review/address re-check pending orchestrator, no subagents.
+
+Reads and settled facts:
+- P: Anlagen821 whaler,1028 oil Workshop,1317 oil stall; figures1202 whale,
+  1511 whaling ship,1559 source symbol. Exact record offsets/hashes in whaler.md.
+- D: building ctor746a0/tablec9418; whale ctor4f410/tablec5f98;
+  route ctors5d9d0/5df70, tablesc7218/c72a8; occurrence66f20/tablec7e70.
+  GOG roles are strong functional matches; fresh HE-name equivalence remains U.
+- D: occurrence load66c00/save66d50, tick66e50, create67000, release671d0;
+  kind147 factory94f51; saved WHALE entries, three tracked slots per occurrence.
+- D: empty-slot u8 counter reaches10 at2500-tick gates; all three can create
+  together at the fixed source centre. No random population/coordinate choice.
+- P: Single_08 island3 has three source1559 records, each with three saved
+  empty slots. T: scenario_formats.cpp:1268 skips these non-ore occurrences.
+- D: whale release arm8bcb0–8bd02 finds source by saved home, clears a matching
+  pointer through1f, before corpse registry removal; no global live-whale census.
+- D: complete73720–73b34 tick; queue73b40, launch73d50/74880, route5dc30.
+  Queue progress853 toward25600, one request; failed launch still consumes head.
+  Preferred launch search has the initialized base vector as fallback.
+- D: shared hunter pursuit/take jobs, ship-specific kind8 return;5deb1 credits
+  home+c0=6ee70 into raw+1c, not output or city stock. Hold3b950 does not clamp.
+- D/P: output conversion need16/rate17/cap2560; full output blocks conversion,
+  but earlier dispatch tests raw separately. No whales does not stop raw conversion.
+- D: loader741a0–743c7 and saver743d0–74505, both10-byte prefixes, switch bit,
+  nested boat type/id/position, continuation load and fields absent from serialization.
+- T: generic HANDWERK already ports oil conversion; generic stall buying exists
+  despite None tick. Live chain and native alternative blubber sources are unproved.
+
+Acceptance: addressed reads/data with hand-derived distinguishing controls;
+whaler.md's table records independent review pending. Draw ledger states no
+DIRECT world draws in read bodies, while OQ-594 preserves indirect closure.
+Control: nearby world draws6693e/66956 belong to a different occurrence table.
+Hand controls distinguish counter wrap, elapsed499/500,31 queue increments,
+ratio56/64/128, output overshoot and full-output versus hunt ordering.
+Gate: diff --check PASS; links selected11/executed11/failed0/empty0/skipped0/incomplete0.
+Log: ignored `cache/whale-re-1a/docs-gate.log`.
+Hosted docs-only CI must be green on pushed head; exact terminal link/head in handoff.
+Runtime tests selected0/executed0/failed0/empty0/skipped0, NOT_RUN by packet.
+NOT_RUN: HE86, Ghidra, original runtime, live oil chain, engine/sanitizer gates,
+reference vectors and whale life beyond the necessary count-release boundary.
+
+Decisions and reasoning:
+- Follow concrete factories/tables, not nearby code or absent RTTI labels.
+- Keep direct draws separate from callbacks and source slots separate from a census.
+- Reuse ported Workshop/stall paths; identify the missing occurrence/whaler behavior.
+- Record source-position and queue-policy gaps instead of inventing modern rules.
+QUESTIONs: OQ-591 HE labels;592 placement/property16;593 queue callers/recovery;
+594 indirect draw/float closure. OQ-595–598 unused; none requires an owner choice now.

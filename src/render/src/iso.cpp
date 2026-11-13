@@ -76,7 +76,7 @@ std::optional<Rgba> Canvas::to_rgba() const {
     if (width > max || height > max) {
         return std::nullopt;
     }
-    return Rgba{static_cast<std::uint16_t>(width), static_cast<std::uint16_t>(height), pixels};
+    return Rgba{static_cast<std::uint16_t>(width), static_cast<std::uint16_t>(height), pixels, {}};
 }
 
 std::pair<int, int> tile_top(int x, int y, std::size_t group) {
@@ -279,7 +279,7 @@ Rgba smooth_2x2(const Rgba& img) {
                 static_cast<float>(img.pixels[o + 2]) * a, a};
     };
     auto q = [](float v) { return sat_cast<std::uint8_t>(clampf(roundf(v), 0.0F, 255.0F)); };
-    Rgba out{img.width, img.height, {}};
+    Rgba out{img.width, img.height, {}, {}};
     out.pixels.reserve(img.pixels.size());
     constexpr std::array<std::pair<std::size_t, std::size_t>, 4> taps = {
         {{0, 0}, {1, 0}, {0, 1}, {1, 1}}};

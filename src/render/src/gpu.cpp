@@ -141,6 +141,13 @@ WGPUBindGroupLayoutEntry texture_compute_entry(std::uint32_t binding) {
     return e;
 }
 
+/// texture_compute_entry for an unsigned-integer 2D array (the chunk atlas's z plane).
+WGPUBindGroupLayoutEntry texture_compute_entry_uint(std::uint32_t binding) {
+    WGPUBindGroupLayoutEntry e = texture_compute_entry(binding);
+    e.texture.sampleType = WGPUTextureSampleType_Uint;
+    return e;
+}
+
 Texture make_texture(WGPUDevice d, std::string_view label, WGPUTextureFormat format,
                      std::uint32_t w, std::uint32_t h, std::uint32_t layers,
                      WGPUTextureUsage usage) {
@@ -361,7 +368,7 @@ struct GpuFrame::Impl {
     /// Bound at group 1 for the sprite draws, which use no chunk data.
     BindGroup empty_bind;
     PipelineLayout chunk_pl, sprite_pl;
-    RenderPipeline ground_pipe, terrain_pipe, objects_pipe, sea_pipe, sprite_pipe;
+    RenderPipeline ground_pipe, terrain_pipe, objects_pipe, sea_pipe, sprite_pipe, sea_over_pipe;
     /// Ground and sea with blending, for the draws of chunks fading in.
     RenderPipeline ground_fade_pipe, sea_fade_pipe;
     Buffer frame_uniform;
@@ -447,12 +454,12 @@ struct GpuFrame::Impl {
         const render::Chunk* chunk = nullptr;
         Chunk out;
         std::uint32_t flags = 0;
-        std::array<WGPUTextureView, 8> views{};
+        std::array<WGPUTextureView, 9> views{};
         std::size_t next = 0;
         bool has_flow = false;
     };
-    /// Ground, objects, field, terrain, base, and the three planes of the flow lattice.
-    static constexpr std::size_t kUploadStages = 8;
+    /// Ground, objects, field, terrain, base, the three planes of the flow lattice, submerged.
+    static constexpr std::size_t kUploadStages = 9;
     std::map<ChunkKey, Staged> staged;
     /// Upload holds given up (dropped or finished): the chunk may be the last reference, and
     /// its free is left to the chunk workers (FrameRenderer::release), not the window thread.
@@ -689,6 +696,9 @@ struct GpuFrame::Impl {
         Texture atlas;
         TextureView atlas_view;
         std::uint32_t atlas_layers = 0;
+        /// The frames' z bytes at the atlas places (R8Uint, the same layers; depth.md 2.4).
+        Texture atlas_z;
+        TextureView atlas_z_view;
         std::optional<AtlasResidency> residency;
 
         /// Scene-wide GPU frame table, kCbFrameU32 words per FrameId; CPU mirror
@@ -1193,10 +1203,10 @@ struct GpuFrame::Impl {
         Staged st;
         st.hold = std::move(hold);
         st.chunk = chunk;
-        st.views = {dummy_color.second.get(),    dummy_color.second.get(),
-                    dummy_field.second.get(),    dummy_terrain.second.get(),
-                    dummy_base.second.get(),     dummy_flow_uv.second.get(),
-                    dummy_flow_aux.second.get(), dummy_flow_shear.second.get()};
+        st.views = {
+            dummy_color.second.get(),    dummy_color.second.get(),      dummy_field.second.get(),
+            dummy_terrain.second.get(),  dummy_base.second.get(),       dummy_flow_uv.second.get(),
+            dummy_flow_aux.second.get(), dummy_flow_shear.second.get(), dummy_base.second.get()};
         // The river flow lattice (rivers.md 3.3): three planes of the lattice's size, valid
         // only when they are consistent and start at the chunk's corner (the shader reads
         // texel (i, j) at chunk pixel (i, j) * stride).
@@ -1269,7 +1279,7 @@ struct GpuFrame::Impl {
                                          fl.aux.size(), 0, st.views[6], fl.nx, fl.ny);
             }
             break;
-        default:
+        case 7:
             if (st.has_flow) {
                 const river::FlowPlane& fl = c.flow;
                 st.views[7] = stage_view(st, WGPUTextureFormat_R8Uint, 1, fl.shear.data(),
@@ -1277,6 +1287,12 @@ struct GpuFrame::Impl {
                 st.flags |= kChunkFlagFlow | fl.stride_px << kChunkStrideShift;
             }
             break;
+        default: {
+            const auto [p, b] = plane(c.submerged);
+            st.views[8] = stage_view(st, WGPUTextureFormat_R8Uint, 1, p, b, kChunkFlagSubmerged,
+                                     dummy_base.second.get(), n, n);
+            break;
+        }
         }
         return ++st.next >= kUploadStages;
     }
@@ -1294,16 +1310,28 @@ struct GpuFrame::Impl {
             const auto n = static_cast<std::uint32_t>(kChunk);
             Plane objp = acquire_plane(WGPUTextureFormat_RGBA8Unorm, n, n);
             Plane basep = acquire_plane(WGPUTextureFormat_R8Uint, n, n);
-            const CbScratch& s = cb_scratch(d);
+            // The submerged plane only with depth (depth.md 2.4): the GPU cannot know beforehand
+            // whether a pixel will be submerged, so every such chunk gets one.
+            std::optional<Plane> subp;
+            if (d.depth_test) {
+                subp = acquire_plane(WGPUTextureFormat_R8Uint, n, n);
+            }
+            const CbScratch& s = cb_scratch(d, st.chunk->terrain);
             WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
             CommandEncoder enc(wgpuDeviceCreateCommandEncoder(dev(), &ed));
-            cb_encode(enc.get(), s, objp.texture.get(), basep.texture.get());
+            cb_encode(enc.get(), s, objp.texture.get(), basep.texture.get(),
+                      subp ? subp->texture.get() : nullptr);
             submit(enc.get(), "gpu-list chunk");
             st.views[1] = objp.view.get();
             st.views[4] = basep.view.get();
             st.flags |= 2U | 16U; // objects, base present
             out.planes.push_back(std::move(objp));
             out.planes.push_back(std::move(basep));
+            if (subp) {
+                st.views[8] = subp->view.get();
+                st.flags |= kChunkFlagSubmerged;
+                out.planes.push_back(std::move(*subp));
+            }
         }
         out.flow = st.has_flow;
         out.flags = st.flags;
@@ -1323,7 +1351,8 @@ struct GpuFrame::Impl {
                                     view_entry(5, st.views[4]),
                                     view_entry(kFlowVelocityBinding, st.views[5]),
                                     view_entry(kFlowAuxBinding, st.views[6]),
-                                    view_entry(kFlowShearBinding, st.views[7])};
+                                    view_entry(kFlowShearBinding, st.views[7]),
+                                    view_entry(kSubmergedBinding, st.views[8])};
         WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         desc.label = sv("chunk");
         desc.layout = chunk_layout.get();
@@ -1430,7 +1459,8 @@ struct GpuFrame::Impl {
                    {uniform_compute_entry(10), storage_entry(11, false), storage_entry(12, false),
                     storage_entry(13, false), storage_entry(14, false), storage_entry(15, false),
                     storage_entry(16, false), storage_entry(17, true), storage_entry(18, true),
-                    texture_compute_entry(19)});
+                    texture_compute_entry(19), texture_compute_entry_uint(20),
+                    storage_entry(21, false), storage_entry(22, true)});
         const std::array bgls = {cb.layout.get()};
         WGPUPipelineLayoutDescriptor pld = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
         pld.bindGroupLayoutCount = bgls.size();
@@ -1474,25 +1504,33 @@ struct GpuFrame::Impl {
             target = std::min(target, cap);
         }
         target = std::max(target, need);
+        constexpr WGPUTextureUsage kUsage =
+            WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc;
         Texture tex = make_texture(dev(), "chunk-atlas", WGPUTextureFormat_RGBA8Unorm,
-                                   limits.atlas_size, limits.atlas_size, target,
-                                   WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
-                                       WGPUTextureUsage_CopySrc);
+                                   limits.atlas_size, limits.atlas_size, target, kUsage);
+        Texture ztex = make_texture(dev(), "chunk-atlas-z", WGPUTextureFormat_R8Uint,
+                                    limits.atlas_size, limits.atlas_size, target, kUsage);
         if (cb.atlas.get() != nullptr && cb.atlas_layers > 0) {
             WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
             CommandEncoder enc(wgpuDeviceCreateCommandEncoder(dev(), &ed));
-            WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-            src.texture = cb.atlas.get();
-            WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-            dst.texture = tex.get();
             const WGPUExtent3D ext = {limits.atlas_size, limits.atlas_size, cb.atlas_layers};
-            wgpuCommandEncoderCopyTextureToTexture(enc.get(), &src, &dst, &ext);
+            const std::array<std::pair<WGPUTexture, WGPUTexture>, 2> copies = {
+                {{cb.atlas.get(), tex.get()}, {cb.atlas_z.get(), ztex.get()}}};
+            for (const auto& [from, to] : copies) {
+                WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                src.texture = from;
+                WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+                dst.texture = to;
+                wgpuCommandEncoderCopyTextureToTexture(enc.get(), &src, &dst, &ext);
+            }
             submit(enc.get(), "chunk-atlas grow");
             ++cb.grows;
         }
         cb.atlas = std::move(tex);
+        cb.atlas_z = std::move(ztex);
         cb.atlas_layers = target;
         cb.atlas_view = make_view(cb.atlas.get(), true);
+        cb.atlas_z_view = make_view(cb.atlas_z.get(), true);
     }
 
     void cb_ensure_frame_entry(FrameId id) {
@@ -1629,6 +1667,15 @@ struct GpuFrame::Impl {
             const auto f = ft.get(id);
             write_layer(queue(), cb.atlas.get(), p.layer, p.x, p.y, p.width, p.height, 4,
                         f->image->pixels.data(), f->image->pixels.size());
+            const std::vector<std::uint8_t>& z = f->image->z;
+            if (z.size() == std::size_t{p.width} * p.height) {
+                write_layer(queue(), cb.atlas_z.get(), p.layer, p.x, p.y, p.width, p.height, 1,
+                            z.data(), z.size());
+            } else {
+                const std::vector<std::uint8_t> zero(std::size_t{p.width} * p.height, 0);
+                write_layer(queue(), cb.atlas_z.get(), p.layer, p.x, p.y, p.width, p.height, 1,
+                            zero.data(), zero.size());
+            }
             cb_append_keel(id, *f);
         }
         for (const FrameId id : cb.residency->take_evicted()) {
@@ -1659,15 +1706,16 @@ struct GpuFrame::Impl {
     /// and wgpuQueueWriteBuffer is ordered on the queue timeline after the
     /// previous build's submit (each build gets its own submit).
     struct CbScratch {
-        Buffer uniform, records, bin_off, bin_idx, clips, objects_out, base_out;
+        Buffer uniform, records, bin_off, bin_idx, clips, objects_out, base_out, terrain_in,
+            sub_out;
         std::uint64_t uniform_cap = 0, records_cap = 0, bin_off_cap = 0, bin_idx_cap = 0,
-                      clips_cap = 0, objects_cap = 0, base_cap = 0;
+                      clips_cap = 0, objects_cap = 0, base_cap = 0, terrain_cap = 0, sub_cap = 0;
         BindGroup bind;
         std::uint32_t w = 0, h = 0;
         /// The handles the current bind group was built from (atlas/frame/keel
         /// grow out of band, so they are tracked too).
         WGPUBuffer sig_frame = nullptr, sig_keel = nullptr;
-        WGPUTextureView sig_atlas = nullptr;
+        WGPUTextureView sig_atlas = nullptr, sig_atlas_z = nullptr;
     };
     CbScratch scratch;
 
@@ -1693,7 +1741,7 @@ struct GpuFrame::Impl {
     /// bound at its full buffer capacity: trailing elements are never indexed
     /// (records by the bins, bins within their ranges, outputs within w*h), so
     /// the bind group survives a chunk with fewer records without a rebuild.
-    const CbScratch& cb_scratch(const ChunkDraws& d) {
+    const CbScratch& cb_scratch(const ChunkDraws& d, std::span<const std::uint16_t> terrain) {
         CbScratch& s = scratch;
         s.w = static_cast<std::uint32_t>(d.rect.w);
         s.h = static_cast<std::uint32_t>(d.rect.h);
@@ -1706,6 +1754,16 @@ struct GpuFrame::Impl {
         u.u32(d.bins_x);
         u.i32(d.base_band);
         u.u32(d.bases ? 1U : 0U);
+        // The depth (struct ChunkBuild in gpu.wgsl; depth::origin, depth.md 2.1).
+        const depth::Origin o = depth::origin(d.depth, 2 * std::int64_t{d.rect.y});
+        u.u32(d.depth_test ? 1U : 0U);
+        u.i32(d.depth.ca);
+        u.i32(d.depth.cb);
+        u.i32(d.depth.sv);
+        u.i32(d.depth.sh);
+        u.i32(o.base);
+        u.i32(o.frac);
+        u.i32(static_cast<std::int32_t>(d.sea_h64));
         constexpr WGPUBufferUsage kStore = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
         bool rebuild = false;
         rebuild |=
@@ -1726,6 +1784,14 @@ struct GpuFrame::Impl {
               "cb-binidx");
         const std::vector<std::uint8_t> clips = clip_table_bytes(d.clips);
         store(s.clips, s.clips_cap, clips.data(), clips.size(), "cb-clips");
+        // The terrain plane (u16 per pixel, two per u32); kNoTerrain everywhere when absent.
+        const std::size_t texels = std::size_t{s.w} * s.h;
+        if (terrain.size() == texels) {
+            store(s.terrain_in, s.terrain_cap, terrain.data(), terrain.size_bytes(), "cb-terrain");
+        } else {
+            const std::vector<std::uint16_t> none(texels, kNoTerrain);
+            store(s.terrain_in, s.terrain_cap, none.data(), none.size() * 2, "cb-terrain");
+        }
         const std::uint64_t obytes = std::uint64_t{s.w} * s.h * 4;
         const std::uint64_t bbytes = std::uint64_t{s.w} * s.h;
         rebuild |=
@@ -1734,12 +1800,16 @@ struct GpuFrame::Impl {
         rebuild |= cb_scratch_reserve(
             s.base_out, s.base_cap, bbytes,
             WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst, "cb-base");
+        rebuild |= cb_scratch_reserve(
+            s.sub_out, s.sub_cap, bbytes,
+            WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst, "cb-sub");
         if (s.sig_frame != cb.frame_buf.get() || s.sig_keel != cb.keel_buf.get() ||
-            s.sig_atlas != cb.atlas_view.get()) {
+            s.sig_atlas != cb.atlas_view.get() || s.sig_atlas_z != cb.atlas_z_view.get()) {
             rebuild = true;
             s.sig_frame = cb.frame_buf.get();
             s.sig_keel = cb.keel_buf.get();
             s.sig_atlas = cb.atlas_view.get();
+            s.sig_atlas_z = cb.atlas_z_view.get();
         }
         if (rebuild || s.bind.get() == nullptr) {
             const std::array entries = {buffer_entry(10, s.uniform.get(), s.uniform_cap),
@@ -1751,7 +1821,10 @@ struct GpuFrame::Impl {
                                         buffer_entry(16, cb.keel_buf.get(), cb.keel_cap),
                                         buffer_entry(17, s.objects_out.get(), s.objects_cap),
                                         buffer_entry(18, s.base_out.get(), s.base_cap),
-                                        view_entry(19, cb.atlas_view.get())};
+                                        view_entry(19, cb.atlas_view.get()),
+                                        view_entry(20, cb.atlas_z_view.get()),
+                                        buffer_entry(21, s.terrain_in.get(), s.terrain_cap),
+                                        buffer_entry(22, s.sub_out.get(), s.sub_cap)};
             WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
             desc.label = sv("chunk-build");
             desc.layout = cb.layout.get();
@@ -1797,8 +1870,9 @@ struct GpuFrame::Impl {
     /// Records the compute dispatch and the copies into the objects and base
     /// plane textures (both w x h). base_out is cleared first (atomicOr needs 0).
     void cb_encode(WGPUCommandEncoder enc, const CbScratch& s, WGPUTexture objects_tex,
-                   WGPUTexture base_tex) const {
+                   WGPUTexture base_tex, WGPUTexture sub_tex) const {
         wgpuCommandEncoderClearBuffer(enc, s.base_out.get(), 0, std::uint64_t{s.w} * s.h);
+        wgpuCommandEncoderClearBuffer(enc, s.sub_out.get(), 0, std::uint64_t{s.w} * s.h);
         WGPUComputePassDescriptor pd = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;
         WGPUComputePassEncoder cp = wgpuCommandEncoderBeginComputePass(enc, &pd);
         wgpuComputePassEncoderSetPipeline(cp, cb.pipe.get());
@@ -1808,6 +1882,9 @@ struct GpuFrame::Impl {
         wgpuComputePassEncoderRelease(cp);
         cb_copy_to_plane(enc, s.objects_out.get(), s.w * 4, objects_tex, s.w, s.h);
         cb_copy_to_plane(enc, s.base_out.get(), s.w, base_tex, s.w, s.h);
+        if (sub_tex != nullptr) {
+            cb_copy_to_plane(enc, s.sub_out.get(), s.w, sub_tex, s.w, s.h);
+        }
     }
 
     /// The chunk at `r` of a derived level: the four chunks of `src` (index
@@ -1914,7 +1991,8 @@ struct GpuFrame::Impl {
                                     view_entry(5, dummy_base.second.get()),
                                     view_entry(kFlowVelocityBinding, dummy_flow_uv.second.get()),
                                     view_entry(kFlowAuxBinding, dummy_flow_aux.second.get()),
-                                    view_entry(kFlowShearBinding, dummy_flow_shear.second.get())};
+                                    view_entry(kFlowShearBinding, dummy_flow_shear.second.get()),
+                                    view_entry(kSubmergedBinding, dummy_base.second.get())};
         WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         desc.label = sv("chunk");
         desc.layout = chunk_layout.get();
@@ -2807,7 +2885,8 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
          texture_entry(kFlowVelocityBinding, WGPUTextureSampleType_Sint,
                        WGPUTextureViewDimension_2D),
          texture_entry(kFlowAuxBinding, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
-         texture_entry(kFlowShearBinding, WGPUTextureSampleType_Uint,
+         texture_entry(kFlowShearBinding, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
+         texture_entry(kSubmergedBinding, WGPUTextureSampleType_Uint,
                        WGPUTextureViewDimension_2D)});
     m.atlas_layout =
         layout(d, "atlas", {texture_entry(0, kFloat, WGPUTextureViewDimension_2DArray)});
@@ -2903,6 +2982,8 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         m.pipeline("sea fade", m.chunk_pl.get(), "chunk_vs", "sea_fs", nullptr, 0, format, &alpha);
     m.objects_pipe = m.pipeline("objects", m.chunk_pl.get(), "chunk_vs", "objects_fs", nullptr, 0,
                                 format, &alpha);
+    m.sea_over_pipe = m.pipeline("sea over objects", m.chunk_pl.get(), "chunk_vs",
+                                 "sea_submerged_fs", nullptr, 0, format, &alpha);
     m.sprite_pipe =
         m.pipeline("sprite", m.sprite_pl.get(), "sprite_vs", "sprite_fs", &vbl, 1, format, &alpha);
     m.scale_pipe =
@@ -3505,6 +3586,11 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
         wgpuRenderPassEncoderSetPipeline(p, m.objects_pipe.get());
         draw_chunks(p);
+        if (style == WaterStyle::Original) {
+            // The sea once more over the submerged object pixels (depth.md §2.3).
+            wgpuRenderPassEncoderSetPipeline(p, m.sea_over_pipe.get());
+            draw_chunks(p);
+        }
         // Ships last, as Scene::draw_units draws them after all objects.
         if (m.instances && atlas != nullptr && n_ships > 0) {
             wgpuRenderPassEncoderSetPipeline(p, m.sprite_pipe.get());
@@ -3894,7 +3980,8 @@ std::optional<Chunk> GpuFrame::reduce_chunks_2x(const ChunkQuad& quad, Px open_w
 }
 
 std::optional<ChunkPlanes> GpuFrame::build_chunk_planes(const ChunkDraws& draws,
-                                                        const FrameTable& frames) {
+                                                        const FrameTable& frames,
+                                                        std::span<const std::uint16_t> terrain) {
     Impl& m = *impl_;
     if (!m.cb_init()) {
         return std::nullopt;
@@ -3910,6 +3997,7 @@ std::optional<ChunkPlanes> GpuFrame::build_chunk_planes(const ChunkDraws& draws,
         // replay() of an empty list gives.
         out.objects.assign(std::size_t{w} * h, Px{0, 0, 0, 0});
         out.base.assign(std::size_t{w} * h, draws.bases ? std::uint8_t{255} : std::uint8_t{0});
+        out.submerged.assign(std::size_t{w} * h, 0);
         out.bases = draws.bases;
         return out;
     }
@@ -3921,10 +4009,12 @@ std::optional<ChunkPlanes> GpuFrame::build_chunk_planes(const ChunkDraws& draws,
                                        h, 1, WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
     Texture base_tex = make_texture(m.dev(), "cb-base-tex", WGPUTextureFormat_R8Uint, w, h, 1,
                                     WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
-    const Impl::CbScratch& s = m.cb_scratch(draws);
+    Texture sub_tex = make_texture(m.dev(), "cb-sub-tex", WGPUTextureFormat_R8Uint, w, h, 1,
+                                   WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
+    const Impl::CbScratch& s = m.cb_scratch(draws, terrain);
     WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
     CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
-    m.cb_encode(enc.get(), s, objects_tex.get(), base_tex.get());
+    m.cb_encode(enc.get(), s, objects_tex.get(), base_tex.get(), sub_tex.get());
     if (!m.submit(enc.get(), "chunk-build")) {
         return std::nullopt;
     }
@@ -3932,6 +4022,7 @@ std::optional<ChunkPlanes> GpuFrame::build_chunk_planes(const ChunkDraws& draws,
     out.objects.resize(ob.size() / 4);
     std::memcpy(out.objects.data(), ob.data(), ob.size());
     out.base = read_back(base_tex.get(), w, h, 1);
+    out.submerged = read_back(sub_tex.get(), w, h, 1);
     out.bases = draws.bases;
     return out;
 }

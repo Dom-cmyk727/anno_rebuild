@@ -45,6 +45,18 @@ std::optional<formats::Bytes> frame_data(const fig::Frame& frame, formats::Bytes
     return volume.subspan(static_cast<std::size_t>(start), frame.length);
 }
 
+std::vector<std::uint8_t> pixels_to_z(const fig::Pixels& px, fig::FrameFormat format) {
+    std::vector<std::uint8_t> out;
+    if (fig::bytes_per_pixel(format) != 2) {
+        return out;
+    }
+    out.reserve(px.size());
+    for (const auto& p : px) {
+        out.push_back(p ? p->z : std::uint8_t{0});
+    }
+    return out;
+}
+
 std::vector<std::uint8_t> pixels_to_rgba(const fig::Pixels& px, fig::FrameFormat format,
                                          const formats::tex::Palette* palette,
                                          std::optional<Rgb> player) {
@@ -92,7 +104,8 @@ Result<Rgba, Error> decode(const fig::Entry& entry, const fig::Frame& frame, for
         }
         palette = &entry.palettes[frame.palette].palette;
     }
-    return Rgba{frame.width, frame.height, pixels_to_rgba(px.value(), *format, palette, player)};
+    return Rgba{frame.width, frame.height, pixels_to_rgba(px.value(), *format, palette, player),
+                pixels_to_z(px.value(), *format)};
 }
 
 } // namespace anno::assets::figure

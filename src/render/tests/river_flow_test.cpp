@@ -853,6 +853,10 @@ TEST_CASE("river mask: the shipped criteria on the tile grid") {
     constexpr std::size_t n = 14;
     sea::IslandWater iw;
     iw.w = iw.h = n;
+    // Pinned (not kShoreHeight, DEPTH-INTEGRATE-1): this case's heights (24 channel, 40 bank) are
+    // calibrated against the pre-26.5 shore; below the new default the channel would also read as
+    // plain sea by elevation, contaminating the river-specific classification this case checks.
+    iw.shore_height = 16.5F;
     iw.heights.assign(n * n, 40);
     for (std::size_t y = 0; y < n; ++y) {
         iw.heights[y * n + 6] = 24;
@@ -1414,6 +1418,10 @@ sea::IslandWater gap_island(std::uint8_t bed_height, std::uint8_t gap_height, bo
     constexpr std::size_t n = 24;
     sea::IslandWater iw;
     iw.w = iw.h = n;
+    // Pinned (not kShoreHeight, DEPTH-INTEGRATE-1): bed_height=24 (the first caller) is
+    // calibrated against the pre-26.5 shore; below the new default it would also read as plain
+    // sea by elevation, contaminating the bridge/sea classification these cases check.
+    iw.shore_height = 16.5F;
     iw.heights.assign(n * n, 60);
     for (std::size_t y = 6; y <= 10; ++y) {
         for (std::size_t x = 2; x <= 6; ++x) {

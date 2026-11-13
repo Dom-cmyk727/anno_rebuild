@@ -23,6 +23,10 @@ struct Rgba {
     std::uint16_t width = 0;
     std::uint16_t height = 0;
     std::vector<std::uint8_t> pixels;
+    /// Sprite frames of the `Z` formats: per pixel the frame's z byte, the signed per-pixel depth
+    /// offset (two's complement; D: AnnoDisplay.dll 0x100178d0, docs/render/depth.md); 0 where
+    /// uncovered. Empty for every other image.
+    std::vector<std::uint8_t> z;
     bool operator==(const Rgba&) const = default;
 };
 

@@ -444,7 +444,7 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 ### 2026-10-21 - T1f item 2: exact shortcuts in the field and terrain stages (branch task/T1f-chunk-build-speed, 9b14840 for the numbers; 84ec121 adds only tests and named constants)
 
 **What changed.** Every output byte is identical: the digests are unchanged, and there is a golden digest from before the change in CI. Exactness was the owner's condition; the proof is in `docs/render/iso.md` "Water field: empty cells".
-- **Empty cells:** once per island, the tiles whose every position provably gets the empty water-field texel (no river nearby, and no sea in the block or every spline corner ≥ 31.1; 31.6 since the default shore moved to 16.5 on 2026-11-03, the same whole-number corners) are marked, and `water_field` writes the empty texel there without evaluating it. On the game's islands 37 % of all tiles are empty.
+- **Empty cells:** once per island, the tiles whose every position provably gets the empty water-field texel (no river nearby, and no sea in the block or every spline corner ≥ 31.1; 31.6 since the default shore moved to 16.5 on 2026-11-03, the same whole-number corners; 41.6 since it moved to 26.5 on 2026-11-04, corners ≥ 42) are marked, and `water_field` writes the empty texel there without evaluating it. On the game's islands 37 % of all tiles are empty; 34.6 % at the shore of 26.5 (4,090,628 of 11,825,152 tiles of 458 files, `water field: empty cells hold on every island`), so 3.8 % more tiles are evaluated. Timed with `bench_frame --chunk-profile 1,16 --groups 0,1,2 --shore 16.5|26.5` on `D_256x256_0045_5B` (three runs each, alternating, 2026-11-04, 57–64 % background load from other sessions): the warm sea-field stage per land chunk, medians, 16.5 against 26.5: group 0 9.11 / 7.65 ms (1 thread), 15.14 / 14.37 ms (16 threads); group 1 13.27 / 13.98, 21.21 / 26.63; group 2 6.49 / 7.76, 11.37 / 15.94. The runs of one setting spread by 20–30 % and the differences change sign, so no difference is resolved at that load; to be re-run on an idle machine (`cache/depth/shore-bench/`).
 - **Noise:** `height_noise` without the second noise plane, whose weight is exactly 0 at the integer z it uses.
 - **Samplers:** `smooth_height` and the noise sampled through per-tile and per-cell caches, with the same arithmetic.
 - **Terrain:** built per tile (`terrain_plane`) instead of `terrain_at` per pixel.
@@ -2346,3 +2346,21 @@ inside "handling window events"** (`events_ms_`, the `while (SDL_PollEvent(&e)) 
 Windows' modal move/resize loop - directly: the stall is in the event pump itself, not in any
 render step. A separate 17.9 ms hitch on restore-from-maximised spent 15.98 ms in "surface
 configure" (the swapchain rebuild RC4 names). Not fixed here (ZOOM-SMOOTH-1).
+
+## W4-DEPTH-1 — per-pixel depth (2026-11-04)
+
+What the depth adds (docs/render/depth.md): per object draw one integer test per pixel and a write; per chunk the
+depth target from the terrain plane (one i32 per pixel, built on the builder thread; the GPU keeps it in a register of
+the compute pass) and the submerged plane (u8 per pixel, uploaded as an `R8Uint` plane only where a pixel is
+submerged, and for every GpuList chunk with depth); the chunk atlas a parallel `R8Uint` z plane (+25 % of the static
+atlas's bytes); with Original water one more full-chunk fragment pass (`sea_submerged_fs`, discarding everywhere but
+the submerged pixels); in the headless `Scene::render` one more ground probe for the objects' target.
+
+Measured (Windows 11, Ryzen 9800X3D, MSVC Release, `anno1503 --view Single_24.sze --png --group 0 --size 3000x2000`,
+two runs each, alternating, nothing else of this session running): `--depth off` 31.9 s and 29.3 s, `--depth on`
+36.0 s and 35.1 s (+16 % in total; how it splits between the extra ground probe of the headless path, which the
+viewer's chunks do not need, and the per-pixel test was not measured).
+
+NOT measured (the owner was using the PC for a game, 2026-11-04): the chunk build per stage (`bench_frame
+--chunk-profile ... --depth on|off`), the GPU frame time of the extra pass (`bench_frame --renderer gpu --depth
+on|off`), the atlas growth. To be measured on an idle host before the package is accepted for performance.

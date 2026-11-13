@@ -16,6 +16,7 @@
 #include <span>
 #include <vector>
 
+#include <anno/render/depth.hpp>
 #include <anno/render/frame_table.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/rect.hpp>
@@ -43,6 +44,23 @@ inline constexpr std::uint32_t kTrackBase = 1U << 1;
 /// objects' depth test and debugging.
 inline constexpr std::uint32_t kHeightShift = 8;
 inline constexpr std::uint32_t kHeightMask = 0xFFU << kHeightShift;
+/// The draw's depth rule (docs/render/depth.md §2.2): depth::Class in bits 2-3 (0 = none: no
+/// test), bit 4 its pixels write, bit 5 its level-1 pixels do not. ObjectRecord::depth holds the
+/// base.
+inline constexpr std::uint32_t kDepthClassShift = 2;
+inline constexpr std::uint32_t kDepthClassMask = 3U << kDepthClassShift;
+inline constexpr std::uint32_t kDepthWrite = 1U << 4;
+inline constexpr std::uint32_t kDepthSkipHalf = 1U << 5;
+/// The flag bits of `rule`.
+constexpr std::uint32_t depth_bits(const depth::Rule& rule) {
+    return static_cast<std::uint32_t>(rule.cls) << kDepthClassShift |
+           (rule.writes ? kDepthWrite : 0U) | (rule.skip_half ? kDepthSkipHalf : 0U);
+}
+/// The rule of a record's flags.
+constexpr depth::Rule depth_rule(std::uint32_t flags) {
+    return {static_cast<depth::Class>((flags & kDepthClassMask) >> kDepthClassShift),
+            (flags & kDepthWrite) != 0, (flags & kDepthSkipHalf) != 0};
+}
 } // namespace object_flags
 
 /// One sprite draw (section 3.1). The in-memory form of the 32 bytes.
@@ -56,7 +74,8 @@ struct ObjectRecord {
     std::uint32_t clip = 0;
     /// Colour variant; 0 = the decoded image as it is (reserved, section 3.1).
     std::uint32_t colour = 0;
-    /// The original's sprite depth (reserved, 0: section 3.1).
+    /// The sprite's base depth (D256 of its anchor, docs/render/depth.md §2.1) when its flags
+    /// carry a depth class; 0 otherwise.
     std::int32_t depth = 0;
     bool operator==(const ObjectRecord&) const = default;
 };
@@ -107,6 +126,12 @@ struct ChunkDraws {
     /// The chunk tracks Canvas::base; base_band is Canvas::base_band.
     bool bases = false;
     int base_band = 0;
+    /// The depth of the objects (docs/render/depth.md): whether the records carry it
+    /// (Scene::depth_test), the group's constants and the sea plane (1/64 HEIGHT units) the
+    /// submerged plane is measured against.
+    bool depth_test = false;
+    depth::Params depth;
+    std::int64_t sea_h64 = 0;
     /// The sprite draws in blit order, kObjectRecordBytes each.
     std::vector<std::uint8_t> objects;
     /// Per island segment: its bounds intersected with `rect` (scene pixels).
@@ -165,5 +190,10 @@ class ChunkDrawsBuilder {
 /// straight onto the chunk canvas. A record whose frame the table does not hold
 /// is skipped and counted in `*missing` (a builder bug: never expected).
 Canvas replay(const ChunkDraws& draws, const FrameTable& frames, std::size_t* missing = nullptr);
+/// replay with every record that carries a depth class tested against `depth` (scene pixels;
+/// docs/render/depth.md §2.2), its pixels written by its rule; records without one (shadows,
+/// units) are drawn as replay draws them and mark their pixels untested.
+Canvas replay(const ChunkDraws& draws, const FrameTable& frames, depth::Target& depth,
+              std::size_t* missing = nullptr);
 
 } // namespace anno::render

@@ -3,12 +3,13 @@
 import argparse
 from collections import Counter
 from pathlib import Path
+import struct
 import subprocess
 import sys
 import tempfile
 
 
-TYPES = {'farm_tick', 'converted', 'search_rect', 'sea_cell', 'trip', 'cut_match'}
+TYPES = {'farm_tick', 'converted', 'search_rect', 'sea_cell', 'trip', 'cut_match', 'corner_grid'}
 
 
 def invoke(ref, path, timeout=5):
@@ -122,10 +123,68 @@ def contract(ref, vectors, root):
     require(ref, encoding, 2)
     checks += 1
 
+    grid = next(row for row in rows if row.startswith('corner_grid square '))
+    case('grid_count', grid.replace('heights=1,2,3,4', 'heights=1,2,3'), 2, 'sample count')
+    case('grid_byte', grid.replace('heights=1,2,3,4', 'heights=1,2,3,256'), 2, 'out of range')
+    case('grid_width', grid.replace('width=2', 'width=0'), 2, 'out of range')
+    case('grid_expected', grid.replace('grid=1,2,0', 'grid=one,2,0'), 2, 'integer')
+    case('grid_missing', grid.replace(' grid=1,2,0,3,4,0,0,0,0', ''), 2, 'all output keys')
+
+    # Tiny self-authored chunk files check the real CLI boundary without assets.
+    def chunk(name, data):
+        return name.encode().ljust(12, b'\0') + struct.pack('<I', len(data)) + data
+
+    corpus = root / 'corpus'
+    scenes = corpus / 'Scenes'
+    scenes.mkdir(parents=True)
+    sample = scenes / 'mini.sze'
+
+    def mini(height, fish=True, with_height=True):
+        block = struct.pack('<HHBB', 0, 0, 1, 1)
+        data = struct.pack('<HHHHI', 0, 0, 1, 1, 7)
+        if with_height:
+            data += chunk('HEIGHT', block + bytes([height]))
+        data += chunk('GELAENDE', block + (struct.pack('<HHbb', 11, 0, 0, 0) if fish else b''))
+        sample.write_bytes(chunk('ANNO', chunk('SCENE', chunk('INSEL5', data))))
+
+    def corpus_case(code, diagnostic, counts=True):
+        nonlocal checks
+        argv = [sys.executable, '-I', str(ref), '--check-fish-water', str(corpus)]
+        if counts:
+            argv += ['--expected-scenarios', '1', '--expected-placements', '1']
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=5)
+        output = result.stdout + result.stderr
+        if result.returncode != code or diagnostic not in output or 'Traceback' in output:
+            raise AssertionError(f'corpus: expected {code}/{diagnostic}; got '
+                                 f'{result.returncode}: {output}')
+        checks += 1
+        return output
+
+    mini(0)
+    corpus_case(0, 'water=1 failed=0')
+    corpus_case(2, 'expected 50 scenarios', counts=False)
+    mini(128)
+    output = corpus_case(1, 'water=0 failed=1')
+    if output.count('EXCEPTION ') != 1 or 'corners=128,0,0,0 mean=32' not in output:
+        raise AssertionError('real-file negative control must list the exact exception')
+    mini(0, fish=False)
+    corpus_case(2, 'expected 1 fish placements, found 0')
+    mini(0, with_height=False)
+    corpus_case(2, 'tile not covered')
+    sample.unlink()
+    corpus_case(2, 'expected 1 scenarios, found 0')
+
     # Every replacement is proved applied once before running the mutant. A
     # syntax error, exception or malformed-input exit2 is not a killed mutant.
     source = ref.read_text(encoding='utf-8')
     mutants = [
+        ('replicate_right_border', '    return grid',
+         '    for y in range(height):\n'
+         '        grid[y * stride + width] = grid[y * stride + width - 1]\n'
+         '    return grid'),
+        ('replicate_bottom_border', '    return grid',
+         '    grid[height * stride:] = grid[(height - 1) * stride:height * stride]\n'
+         '    return grid'),
         ('no_full_output_draw', "and r['workers'] < r['maximum']",
          "and r['workers'] < r['maximum'] and output < r['capacity']"),
         ('clamp_output', 'output = (output + added) & 65535',

@@ -354,3 +354,143 @@ retain exact float/continuation and transitive draw questions;603–610 were
 reserved,605–610 unused. HE86, Ghidra, original-runtime fishing and every
 engine/test/build gate are **NOT_RUN** by this docs-only packet. Capstone5.0.7
 and pefile supplied the new static reads. No engine behavior is enabled.
+
+## 5. HEIGHT corner grid and water census (FISHER-RE-1c, 2026-11-13)
+
+**D — receiver and allocation.** This section resolves the load-side part of
+OQ-200, extending [annowelt.md's earlier grid read](annowelt.md#height-grid-is-per-corner).
+`I` is the island base: the primary table installed at `0x10094c30` is
+`0x100cac2c`, whose `+0x180` is allocation/initialization `0x1008c090`.
+The other two table references to that same initializer are `0x100ca31c`
+and `0x100ca6b0`; no secondary-interface displacement is added to I.
+Width/height are unsigned words at I+8/I+0xa; I+0x14 is the corner buffer,
+**not** the eight-byte tile records at I+0xc or GFXID words at I+0x10.
+`0x1008c18a`–`0x1008c1d3` allocates **(W+1)*(H+2) bytes** and zeroes the
+whole allocation (dword loop plus byte remainder), then stores its pointer
+at I+0x14. Logical corners occupy (W+1)*(H+1); the further row is allocation
+padding, not an additional row of tiles or an input HEIGHT row.
+
+**D/P — exact fresh-load mapping.** Let F be the assembled row-major W*H
+HEIGHT samples, as in [insel.md, Blocks](../formats/insel.md#blocks).
+For local corner coordinates 0<=cx<=W, 0<=cy<=H:
+
+| Corner | Value after the shipped HEIGHT blocks load | Evidence |
+|---|---|---|
+| cx<W and cy<H | F[cy*W+cx], copied unchanged | `0x10089130` HEIGHT arm; `0x1008499e`–`0x100849a5` |
+| cx=W or cy=H | 0, the allocation's initial value | allocation `0x1008c18a`–`0x1008c1d3`; file block coverage W*H |
+| extra physical row cy=H+1 | initialized zero; outside the logical corner-grid result | same allocation, no shipped block covering it |
+
+There is **no mean, interpolation, scale, offset, edge replication or neighbour
+island lookup in this mapping**. The means in §3 belong to consumers of four
+already stored corners. This settles the previously “Likely” copy/border portion
+of annowelt.md without rewriting its accepted historical text.
+
+**D — file-to-buffer chain, including block boundaries.** Loader
+`0x10089150`–`0x1008922a` recognizes HEIGHT at string `0x100dcf1c`, reads its
+six-byte block header, adds the island's world origin to the header x/y
+(`0x100891a0`–`0x100891b1`), reads the block samples, and calls island
+`+0xac` at `0x1008920c`. That slot is `0x10084870`, this=I; it subtracts
+I's origin, clips to exclusive W+1/H+1, indexes the destination with stride
+W+1, and copies bytes with source stride equal to the block width
+(`0x10084965`–`0x100849cd`). The origin addition/subtraction cancels;
+a block sample at file-local (cx,cy) becomes that same corner (cx,cy).
+Actual shipped blocks cover W*H, so they never write the extra last column
+or row. Clipping support for a larger caller-provided rectangle does not
+imply that the shipped files contain that larger rectangle.
+
+**D/U — later writes and the placement distinction.** The bulk setter
+`0x10084870` is a genuine public mutation interface: calling it again replaces
+the covered corner bytes, including a logical edge if the supplied block reaches
+it. It then invokes derived-region notification `+0x19c=0x10084150` and
+`+0x188=0x1008f2d0`, kind0xc9 (`0x100849cf`–`0x10084a2b`). The former
+reads corner minima/maxima for derived data; it is not an averaging writer
+back into the corner grid. Ordinary placement/clearing's stored item height
+is a different byte in I+0xc's tile record. For example `0x10082e4d`–
+`0x10082eb2` reads the corner pointer and calls type `+0x68`; the inspected
+AnnoGame getter `0x10008f90`–`0x100091ce` computes a height/acceptance result,
+and its `0x10008ea0` helper reads the supplied heights. It does not turn
+that item's height write into a store to the corner grid. Read methods
+`0x10084820`, `0x10084c20` and `0x10084c60` respectively return four corners,
+one corner's scaled height and a four-corner mean; +0x9c is a **getter**,
+not a single-corner terrain setter. Derived normals `0x1008e3d0`–
+`0x1008e69e` read this grid and write their separate output vectors.
+This is a bounded writer/consumer read, not proof that no external/editor
+caller ever invokes the public bulk setter later; OQ-610 retains that closure.
+
+**D — save and reload.** When save flags include mask0x2, serializer
+`0x10089e01`–`0x10089f51` emits HEIGHT in blocks of at most32 by32 over
+x<W/y<H. It calls `+0xb0=0x10084a30` with mask255 at `0x10089ec2` to copy
+**current interior corner values**, using W+1 source stride, into each
+W*H-format block. The HEIGHT chunk is constructed at `0x10089ede`–
+`0x10089f18`. Readback `0x10084b34`–`0x10084b9c` copies to the supplied
+output buffer, not into I+0x14; its alternate mask arm also writes that output.
+Neither logical border nor allocation padding is serialized in those blocks.
+Reload allocates zeros and copies the interior again. Thus an ordinary loaded
+island round-trips this mapping; a hypothetical nonzero edge written through
+an expanded bulk-setter block is not preserved by these HEIGHT blocks.
+Other save modes can omit HEIGHT entirely; this does not assert every save
+embeds terrain or resolves all later terrain-mutation callers.
+
+### Worked window and the failed fish-water assumption
+
+**P/A — worked island.** Original `Scenes/0200Single/Single_06.sze`, SHA-256
+`29767be35e21f5c59dfc4f9178ece33f342e482fa22380ea0bf74f5dc6ef5fed`,
+island12, world origin(72,264), size80x80. GELAENDE block(64,64), size16x16,
+item14 (payload offset90) places tile11 at local(69,66), world(141,330).
+Its HEIGHT block(64,64) supplies the four corner measurements:
+
+| Local corner | Block-payload offset | Height |
+|---|---:|---:|
+| (69,66) | 43 | 32 |
+| (70,66) | 44 | 24 |
+| (69,67) | 59 | 48 |
+| (70,67) | 60 | 24 |
+
+The mapping copies these values, so mean=(32+24+48+24)//4=**32**, which is
+**closed**, not water, under §3's strict test. The adjacent tile(70,66) uses
+24,16,24,8: mean18, open. This distinguishes a real height-dependent result
+from an implementation that accidentally declares the whole island closed.
+The fish item itself records height32. No offset or threshold was changed to
+force it to become water; original-runtime reachability is NOT_RUN.
+
+**P/A — complete opt-in result, not a passing water proof.** Run:
+
+```sh
+python3 -I tools/fisher_ref.py --check-fish-water /path/to/game/app
+```
+
+This reads the existing `tools/insel.py` scenario/block/grid interfaces and
+checks all three placed-object layers in all50 shipped .sze files. It requires
+the documented50 scenarios and2473 placements (configurable expected counts
+exist only for explicit corpus variants and self-authored contract controls).
+**Selected2473/executed2473/water0/failed2473/empty0/skipped0/incomplete0**,
+exit1: **every serialized tile11 in §1's24 positive scenarios is closed**.
+Means range32–96; the24 scenario counts in §1 are consequently also the
+exception counts. The command prints **every** exception, including scenario,
+island, local/world tile, layer/block/item, corner measurements and mean.
+The complete terminal list is retained in ignored
+`cache/fisher-re-1c/fish-water-02.log`; no raw map files or full placement
+inventory are added to git. This is an observed failed assumption, not a skip,
+parser failure, adjusted positive fixture or waiver of a future port canary.
+
+**D/U — a relevant runtime source, not an explanation invented for the failure.**
+The island's `+0x1a0=0x100928a0`–`0x10092b32` inspects corner heights and
+can create tile11 on **empty** low ground: the nonzero-id test at
+`0x10092976` skips existing objects; `0x10092a61`–`0x10092adb` additionally
+requires the four-corner mean below16 before selecting type11. It reads the
+corner grid and writes the tile records, not the heights. Therefore the raw
+file inventory is not a complete census of possible runtime fish resources,
+and this helper does not repair the closed, already nonzero file placements.
+OQ-609 records why §1's raw imported-tile count cannot serve as a successful
+fisher canary or a complete runtime-source import proof. Do not silently
+reinterpret these placements or generate replacement fish in this packet.
+
+**A/T — reference and acceptance boundary.** `corner_grid` takes width,
+height and exactly W*H unsigned HEIGHT samples, returns stride W+1 and the
+logical grid. Five hand-derived vectors cover singleton, square, wide/tall
+and mixed samples; two additional sea vectors distinguish border means31/32.
+The public contract rejects edge-replication mutants and checks opt-in corpus
+success/failure/missing-data behavior on small self-authored files. OQ-603/604
+remain refused; OQ-200's load mapping is answered, broader terrain callers
+remain OQ-610, and the all-closed raw fish finding remains OQ-609. Engine
+code, HE reading and original-runtime fishing remain NOT_RUN/out of scope.

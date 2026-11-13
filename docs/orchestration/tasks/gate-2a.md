@@ -1,7 +1,8 @@
 # GATE-2a: a refused test is counted as refused and retried alone
 
-**Status:** RELEASED 2026-11-13 by the Claude Code orchestrator to **the Windows executor**, under the standing go for
-the Windows lane, after PLAY-LIVE-1a's acceptance. The owner gave the go on the rerun plan with "Yes, all of it". Step 4a of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
+**Status:** QUEUED 2026-11-13 by the Claude Code orchestrator for **the Windows executor**, behind
+[SHIP-ORDER-1](ship-order-1.md), a bug the owner found in that day's playtest. It is released after that packet, under
+the standing go for the Windows lane. The owner gave the go on the rerun plan with "Yes, all of it". Step 4a of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
 
 **Base:** `origin/main` at release, branch `task/GATE-2a`, in a new worktree on `E:`. About 2–3 hours. Never rebase or
 force-push.

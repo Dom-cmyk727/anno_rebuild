@@ -12,8 +12,19 @@ says who is doing what, where the work is, and what it waits on.
     the board.
   - **The game-file run** waits until the owner's living-town playtest is done (preview build in
     `E:nno1503-worktreesnno1503-main-gamefile-run`).
-- **[GATE-2a](tasks/gate-2a.md) RELEASED** to the Windows executor under the standing go: memory refusals are counted
-  as refused and retried alone.
+- **The owner's living-town playtest** (2026-11-13, preview build of `9e920c18`):
+  - **A ship can be selected but not ordered** under the owner's launch (`--ship-start … --speed 200 --rules living`,
+    window 1024×768, later maximized). The window contract `opening_controls` orders a ship and passes, so something
+    in the owner's conditions differs.
+    - [SHIP-ORDER-1](tasks/ship-order-1.md) is released to the Windows executor (cause first), ahead of GATE-2a.
+    - PLAY-LIVE-1a's landing waits for its cause.
+  - **Zooming** shows islands late, and artifacts with enhanced water. The window's counters agree: up to 341 of 860
+    frames drew a visible chunk not built yet. Owner requirement: no rendering of any sort may appear while zooming.
+    Queued as ZOOM-SMOOTH-1.
+  - **The UI** is drawn only at exactly 1024×768 and disappears when maximized. Clicks on it reach the map, and the
+    minimap is empty. Queued as UI-WINDOW-1; it needs the owner's answer on the UI scale (ADR 0004 R3).
+  - **With `--rules living`** the gold ticks down by 1 every 4 s of game time (city booking's upkeep); without it, it
+    stays at 10,000,000.
 - **[FISHER-RE-1a](tasks/fisher-re-1a.md) ACCEPTED** ([review](reviews/2026-11-13-fisher-re-1a-review.md)), no fix
   round.
   - **The fisher is a walking worker,** not a boat. On a resource route it cuts fish *tiles* (11 → 10, regrowing),
@@ -337,8 +348,9 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [GATE-2a](tasks/gate-2a.md)** (released 2026-11-13), on `task/GATE-2a`, based on `main`: a memory refusal is
-  counted as refused, not failed, and the runner retries it alone.
+- **Now: [SHIP-ORDER-1](tasks/ship-order-1.md)** (released 2026-11-13), on `task/SHIP-ORDER-1`, based on
+  `task/PLAY-LIVE-1a`: the owner can select a ship but not order it; reproduce under the owner's conditions, cause
+  first. [GATE-2a](tasks/gate-2a.md) is next.
 - **Finished: [PLAY-LIVE-1a](tasks/play-live-1a.md)** (2026-11-13; head `9e920c18`), **accepted after one fix round**
   ([review](reviews/2026-11-13-play-live-1a-review.md)), on `task/PLAY-LIVE-1a`, based on `main`: a
   "living town" rules profile for the window behind `--rules living` (`house_updates` and `city_booking` on), default

@@ -9900,3 +9900,85 @@ QUESTIONs (for the owner, per the packet's own instruction when reproduction fai
   question.
 - Is Windows display scaling on that monitor 100%, or something else? (`window: drawable ... density %.2f` in
   the same PowerShell log answers this directly.)
+
+## ZOOM-MEASURE-1 — a camera sweep that measures what the owner sees — 2026-11-13 — READY FOR REVIEW
+
+Base `main` `961a9d4a`, branch `task/ZOOM-MEASURE-1`, head `f7e23dca`. Measurement only, no renderer
+behaviour change.
+
+**Counters added** to `bench_frame --zoom-sweep` (extended, not a new tool): per frame, read straight
+from `GpuStats` (the window's own per-second report's source) — `chunks_missing` (non-ready visible
+chunks), `stand_in_parts` (stand-in draws), `chunks_fading` (dissolves), `open_sea_chunks`
+(placeholder draws), `fluid_fade<1` (inside a wave cross-fade) and `fluid_windows` (wave switches,
+summed as positive steps so a mid-run counter reset can't underflow); printed per level and as one
+overall line, alongside the existing busy-time percentiles and a new "frames > 2 ms" column (the
+500 Hz budget). `<file>` now also accepts a `.txt` fixed map or `.json` ship-start manifest, through
+`app::load_play`/`app::load_opening` then `app::load_placed_scene` — the real window's own loaders,
+no placement logic duplicated.
+
+**Sweep profiles:** `legs` (today's continuous zoom, default, unchanged), `wheel` (discrete
+8-notch/s steps, off-centre anchor, no pan), `pan` (one fixed level, a 1200 px/s reversing pan, no
+zoom change), `zoompan` (legs' continuous zoom at the fast pan speed). `--zoom-sweep-warm` (an
+unmeasured pass first, same `FrameRenderer`) + `--zoom-sweep-skip n` (drops the measured pass's own
+first n frames) build the "everything resident" control.
+
+**Baseline** (RTX 4090, 2560x1369, enhanced water unless noted; full table in
+`docs/perf/README.md`): none of lan5.txt/ship-start x legs/wheel/pan/zoompan reaches 0 — e.g. lan5.txt
+legs: 431/12000 non-ready frames, 26616 stand-in draws, 13304 dissolves, 329 frames > 2ms; wheel and
+zoompan are worse (593–881 non-ready, up to 45485 stand-ins) than pan (57, 37) — a fast pan at a
+fixed level misses far less than any zoom change. Original water (no wave sim) still shows 537
+non-ready frames — the failure is chunk readiness (RC1), not the water (RC3). 1280x800 is much
+better than 2560x1369 (84 vs 431 non-ready) — smaller view, smaller grid. The Radeon iGPU (1280x800)
+has fewer misses (10) but a far worse worst frame (37.1 ms, an offscreen-sea-target resize) —
+RC4's separate story. This is a representative subset of the full map x water x resolution x
+adapter x mode cross product; see Decisions below for the scope cut and why.
+
+**The contract** (`tools/test/zoom_sweep_contract.py`): 0 non-ready, 0 stand-ins, 0 dissolves, 0
+open-sea draws, 2 ms busy budget (4 warm-up frames excluded). Fails today on every real profile
+above, not relaxed. The **"everything resident" control** (camera truly at rest, warm cache): every
+readiness counter is exactly 0 — proving the criteria are reachable — but 2 of 1980 frames (0.1%)
+still exceed the busy budget, stable across reruns with nothing else on the machine: GPU/driver
+submission jitter (RC4), not a readiness failure, and not hidden — reported as a separate finding.
+Not wired into CTest: a correctly-failing test would turn `gate` red for every commit until
+ZOOM-SMOOTH-1; run manually for this evidence (`docs/perf/README.md` has the exact commands).
+
+**The window-event hitch:** `ANNO_VIEW_HITCH_MS=5`, a real window, manually dragged and
+maximised/restored. A 106.0 ms hitch with **96.7 ms inside "handling window events"**
+(`events_ms_`, the `while (SDL_PollEvent(&e)) handle(e);` loop) confirms zoom-smoothness.md §5's
+suspected mechanism directly: SDL's blocking poll inside Windows' modal move/resize loop. A second,
+17.9 ms hitch on restore-from-maximised spent 15.98 ms in "surface configure" (the swapchain
+rebuild). Not fixed here.
+
+Gates: `cmake --build --preset msvc` warning-free. clang-format 23.1.3 clean.
+`python -I tools/test/workflow_test.py`: 24 tests, OK (`tools/test` touched). `anno_app_tests`
+(MSVC Release, game files — `bench_frame` links `anno_app_core`, no test suite of its own):
+`selected=267 executed=265 failed=0 skipped=2(opt-in) sanitizer_lines=0 VERDICT: PASS`. CI on
+`f7e23dca`: `cpp (macos-clang)`/`cpp (linux-clang-asan)` failed Clang's `-Werror` on a set-but-unused
+summary variable (fixed in `738b0f71`, printed as a second busy-time column instead of discarded;
+confirmed clean against `tools/check_unix_warnings.sh`, GCC 13 + Clang 18, with and without GPU).
+CI on `738b0f71` (run `43436856818`): every job green, `gate` included.
+
+NOT_RUN: the full map x water x resolution x adapter x mode cross product (scope cut, below); the
+WSL ASan build (no code in `src/app`/`src/render`/`src/sim` changed — `src/tools/bench_frame` only,
+covered by the app-test gate above as the nearest shared-library check); ZOOM-SMOOTH-1's fix; ADR
+0007 (orchestrator's); the full WSL gate and game-file run (orchestrator's, at merge).
+
+Decisions and reasoning:
+- Ran a representative subset, not the full 2 maps x 2 water x 2 resolutions x 2 adapters x 4 modes
+  (32+ runs): the primary 4090/2560x1369/enhanced matrix across both maps and all 4 modes (8 runs),
+  plus one spot-check each for 1280x800, original water and the iGPU, chosen to show every factor
+  the packet names still matters without exhausting the packet's own time budget.
+- `pan` mode holds ONE level for the whole sweep (the leg's own starting level), not the leg's own
+  `from`/`to` range: an earlier version still crossed 4 different levels between legs even at pan
+  speed 0, which is not a camera-at-rest control at all.
+- Wave switches are summed as positive steps across frames in time order, not `last − first`: the
+  simulation's own counter is not guaranteed never to reset mid-sweep, and a `std::uint64_t`
+  subtraction wraps instead of going negative.
+- Did not wire `zoom_sweep_contract.py` into CTest: a test that is meant to fail until a future
+  packet lands would turn `gate` red on every commit between now and ZOOM-SMOOTH-1, which is a
+  worse outcome than running it manually for this packet's own evidence.
+- Used the project's own `app::load_play`/`app::load_opening` for the new file types rather than
+  reimplementing manifest/fixed-map parsing in `bench_frame`: the real window already resolves
+  island templates and placement, and bench_frame only needs the resulting `render::Scene`.
+
+QUESTIONs: none required; the fix is explicitly not this packet's.

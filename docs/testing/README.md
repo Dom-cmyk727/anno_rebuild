@@ -189,3 +189,48 @@ refused before it is ever handed to the end-of-run `rm -rf`. The script exits
 non-zero if any lane fails, or if a lane that was requested (such as `--gpu-lane`
 with no lavapipe ICD installed) could not run at all; a reviewer or CI step can
 rely on the exit code alone, without re-deriving the verdict from the log text.
+
+## Pins and goldens
+
+PINS-1 (2026-11-13), ADR 0006 step1: no state, behaviour or expected hash change.
+The single current directory is `fixtures/synthetic/sim/current/`; archived directories
+are unchanged. Named pins remain in `goldens.txt` (`name stage stream_version hex64`).
+See the [complete literal disposition](pins-literals.md).
+
+With a configured dev build and the original files available:
+
+```sh
+ANNO1503_GAME_DIR=/path/to/game/app python3 -I tools/pins.py check
+ANNO1503_GAME_DIR=/path/to/game/app python3 -I tools/pins.py regen --area sim
+```
+
+`--build-dir` and `--config Release` support other configured builds. `pins_checks`
+builds only the sim tests and replay consumer. The default selection is the sim
+suite, replay CLI consumers and the two affected independent stream references;
+`pins_contract` is a required contract. It uses `run_selected.py` and retains the
+classified inventory/log under `cache/gates/`. No unrelated renderer suite runs.
+`--select REGEX` is an explicit **partial** diagnostic selection, not the full check.
+Check defaults to four jobs; regeneration to one, serializing replay/corpus writers.
+`--jobs` changes the check/build ceiling; regen requires one test job to avoid
+concurrent corpus writers. Admission control stays enabled. `check` clears inherited
+record mode; `regen` sets `ANNO_UPDATE_GOLDEN=1` and is refused under CI.
+
+The existing `golden.hpp` writer updates changed self-baselines via a same-directory
+temporary file and atomic replacement, sorted by name. A per-file directory lock
+serializes writers with a bounded wait; an abandoned lock is reported, never removed
+by another writer. Malformed/duplicate pins fail instead of being silently discarded.
+The CLI prints each moved pin once (old/new value), then recordings actually written,
+including those whose bytes remain identical. A failed gate remains nonzero.
+
+Oracle-owned pins (`oracle_*`, empty_world/empty_registry and the existing
+G0/G1/S5/S6 stream checkpoints) are **read-only even in record mode**. Their values
+must be compared/reviewed against the independent oracle. `sim_stream*.py` and
+`*_ref.py` are never invoked in a writing mode; moving their fixture paths changes
+no formula or oracle value. Historical fixtures are never recording outputs.
+
+Record mode explicitly declares each current output with `--record-fixture PATH`.
+The canonical gate accepts only existing regular files under `fixtures/synthetic/`,
+only with local `ANNO_UPDATE_GOLDEN=1`, never under CI; it records before/after SHA256s.
+Every other tracked/untracked source remains frozen. This is a recording verdict,
+not a substitute for a subsequent normal `check`. Public workflow contracts prove
+that an extra code mutation still fails, and that code paths cannot be excluded.

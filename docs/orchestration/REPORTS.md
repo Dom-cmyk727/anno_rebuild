@@ -9900,3 +9900,64 @@ QUESTIONs (for the owner, per the packet's own instruction when reproduction fai
   question.
 - Is Windows display scaling on that monitor 100%, or something else? (`window: drawable ... density %.2f` in
   the same PowerShell log answers this directly.)
+
+## PINS-1 — named pins and stable current recordings (2026-11-13)
+
+**Status: READY FOR REVIEW.** Branch `task/PINS-1`, new owned managed worktree.
+Exact base `f9e6ea0c`; packet/ADR/accepted FISHER-RE-1c review read on board776d8aae.
+Read CLAUDE, PLAN0.1–0.3/7, owner protocol and evidence contract/README.
+FISHER branch/evidence preserved. No merge/rebase/main push or other executor edits.
+No engine implementation/stream/default changes; state138/ECONBK1/PRNG5 unchanged.
+
+Implementation:
+- Extended existing `golden.hpp`; one file, `sim/current/goldens.txt`, name/stage/version/value.
+- Changed self-baselines write via same-directory temporary+atomic replacement, sorted by name.
+- Per-file lock serializes recorder reads and writes; own destination handles close before rename.
+- Bounded lock waits report failure; never remove another writer's lock. Malformed/duplicate rows fail.
+- CI refuses record mode in both the CLI and sim test executable before fixture access.
+- Oracle-owned names stay comparisons even in record mode; Python oracle formulas/values unchanged.
+- Exact lowercase base scan:103 occurrences/24 files, not the packet's older126/30 inventory.
+- Moved25 active hash occurrences into22 unique names; removed2 obsolete hash comments; kept76.
+- Uppercase cross-check adds18 fixed inputs/sentinels:121 total,94 kept; no moving hash left literal.
+- Every kept/moved occurrence and reason: `docs/testing/pins-literals.md` (base line numbers).
+- Git-renamed `integrate2/current138/` -> `fixtures/synthetic/sim/current/`; static_assert removed.
+- Updated all operational consumers. Historical fixture directories untouched; provenance retained.
+- Replay logs, loop checkpoints and corpus re-record in place; corpus retains accepted preamble/columns.
+- `tools/pins.py check`/`regen --area sim` build pins_checks and use the canonical classified gate.
+- Check clears inherited update mode. Regen requires one test job; every moved pin gets one old/new line.
+- Canonical `--record-fixture` accepts explicit existing synthetic files only, local update mode only.
+- It records their before/after hashes; all other source still freezes. CI/code exclusions are refused.
+
+| Requirement | Positive proof | Negative control | Review |
+|---|---|---|---|
+| Writer/ownership | named pin restored atomically; two writers retain both updates | oracle/CI refusals, malformed/duplicate input | pending orchestrator |
+| One command | actual check and regen through run_selected.py | hand-edit registry_plain: check1, regen0 | pending |
+| No value changes |41 prior pins +22 moved values match base;15 non-document files byte-identical | complete literal audit | pending |
+| Recording |13 current outputs rewritten with identical bytes | existing bad-command replay controls retained | pending |
+| Gate integrity | declared fixture writes have provenance | simultaneous code mutation still fails9 | pending |
+
+Evidence under `cache/pins-1/`:
+- `full-check-01.log`: main selection1661, executed passes1643, failed0/empty0,
+  skipped18 (opt-in18; required-assets/platform/GPU/other0), incomplete0/sanitizer_lines0.
+- Required pins_contract selected1/executed1 separately: total1662 selected/1644 executed passes.
+- Full sim with original assets,46 replay consumers and3 independent stream checks included.
+- `recordings-01.log`:11 selected/11 executed passes plus required1/1; every failure/skip class0.
+  All13 recordings rewritten unchanged;0 pin moves/0 fixture byte changes; explicit partial selection.
+- `focused-03.log`:5 selected/5 passes plus required1/1; final writer/core/registry contracts pass.
+- Full normal comparisons reused after record-only handle guard/start-gate cleanup; focused/record gates
+  validate those deltas. No repeated full suite. Final normal CLI control passed in focused-03.
+- `edited-check-02` deliberately FAILS1; `edited-regen-02` PASS0 restores exact file, one pin summary.
+- `oracle-refusal-01` expected FAIL1 without rewriting the corrupted oracle pin; trusted input restored.
+- `ci-refusal-01` actual executable exit2. CLI contracts9 pass; workflow contracts29; verdict contracts25.
+- Both independent oracles compare final fixtures successfully; no oracle write option was invoked.
+- Base/final equality JSONs preserve all input comparisons; no replay/corpus/loop byte changed.
+- clang-format23.1.3, diff/link checks clean; final pushed-head CI terminal result in owner handoff.
+
+Decisions and reasoning:
+- Reuse goldens.txt rather than add a second mechanism; readonly oracle ownership prevents circular baselines.
+- Keep fixed codec ids, schema markers, sentinels, seeds and primitive FNV answers literal: they pin inputs/layouts.
+- Stable directory removes identity renames; README distinguishes integration provenance from moved-pin metadata.
+- Record only explicit outputs and serialize corpus writers; never weaken normal source immutability.
+NOT_RUN:18 opt-in measurements/soaks, local MSVC/WSL, full platform gates; no reviewer subagents per packet.
+Unaffected engine/render/app suites reused from base; no linked engine implementation changed.
+QUESTIONs: none in scope. SAVE-SECTIONS-1/139 and historical fixture trimming remain separate packets.

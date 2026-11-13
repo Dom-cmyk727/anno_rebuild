@@ -179,7 +179,7 @@ class Contracts(unittest.TestCase):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
     if a.self_test:return 0 if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)).wasSuccessful() else 1
-    path=a.fixture or ROOT/'fixtures/synthetic/sim/integrate2/current138/populated_fields.txt'
+    path=a.fixture or ROOT/'fixtures/synthetic/sim/current/populated_fields.txt'
     if a.write:path.write_text(fixture());return 0
     try: actual=path.read_text()
     except OSError as error: print('fixture unavailable: '+str(error));return 1

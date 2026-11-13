@@ -421,11 +421,11 @@ sim::World world_after(std::uint32_t seed, int steps, std::uint32_t step_ms) {
 TEST_CASE("core_hash equals the v1 golden") {
     // core.md's five-field FNV-1a. The values come from an independent Python
     // transcription (struct.pack of ms, last_tick, 2048, table digest, cursor).
-    CHECK(sim::World().core_hash() == 0x977a5cb1c2ae725dULL);
-    CHECK(world_after(1234, 1, 10).core_hash() == 0x65e3e2696c0396b0ULL);
-    CHECK(world_after(1234, 1000, 10).core_hash() == 0xc3ae91a5ed6087ffULL);
+    CHECK(anno::test::pin_matches("oracle_core_default", sim::World().core_hash()));
+    CHECK(anno::test::pin_matches("oracle_core_step1", world_after(1234, 1, 10).core_hash()));
+    CHECK(anno::test::pin_matches("oracle_core_step1000", world_after(1234, 1000, 10).core_hash()));
     // The table digest itself (FNV-1a of the 2048 u16 values, little endian).
-    CHECK(sim::WorldRng().table_digest() == 0x1bf8daace9f69fabULL);
+    CHECK(anno::test::pin_matches("oracle_rng_table", sim::WorldRng().table_digest()));
     // The v1 hash is the five fields and nothing else.
     sim::World w;
     const std::uint64_t base = w.core_hash();
@@ -615,8 +615,9 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() ==
-          0xfca81f99ec77b062ULL); // ECONBK1 empty_world; independent sim_stream.py
+    CHECK(anno::test::pin_matches(
+        "empty_world",
+        sim::World().state_hash())); // ECONBK1 empty_world; independent sim_stream.py
     CHECK(sim::kStateHashVersion == 138);
     CHECK(sim::kPrngTimelineVersion == 5);
 }

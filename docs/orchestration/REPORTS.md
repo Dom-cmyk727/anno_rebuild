@@ -9474,3 +9474,64 @@ Decisions and reasoning:
 - Record source-position and queue-policy gaps instead of inventing modern rules.
 QUESTIONs: OQ-591 HE labels;592 placement/property16;593 queue callers/recovery;
 594 indirect draw/float closure. OQ-595–598 unused; none requires an owner choice now.
+
+## 2026-11-13 — FISHER-RE-1a — READY FOR REVIEW
+
+Branch: `task/FISHER-RE-1a`; exact base961a9d4a; separate managed worktree.
+Packet and accepted WHALE-RE-1c review read at board83d55389 after fetch.
+Accepted whale §§6–9 read from task/WHALE-RE-1b109ec14c; no branch merge.
+Scope: new `docs/re/fisher.md`, OQ-603/604 and this report; documents only.
+No engine/test/fixture or state-identity change.
+Old whale worktrees/branches retained; independent orchestrator review pending.
+
+Reads and settled facts (D/P unless marked T):
+- Anlagen810/3978: FISCHER6, FISCH71 -> NAHRUNG1, cap1280, max1, figure142.
+  Need/output69/17 versus128/51; same capacity, not the same recipe rates.
+- Figure142: BEWOHNTYPE4, route45, layer2, capacity768; its payloads start
+  at4b5682/4b56a2/4b56ba/4b56d2. Specialized worker, not a SHIP class.
+- Fish source is mature tile11; cut makes10; generic growth regenerates11.
+  Fish figures511/1201/1203/1204/1205/1207 are not caught by this path.
+  Ice-hole3506 yields goods72 and is not a FISCH71 target.
+- Static census:50 scenario files and465 templates selected/read515,
+  failed0/empty0/skipped0. Existing insel/sze/figuren readers, no runtime tests.
+  2473 tile11 placements in24 scenarios, listed individually with counts;
+  25 ice-hole placements in10 scenarios. Templates:29 with11,12 with3506.
+  668 embedded OCCUR records have ore/whale/treasure/volcano, zero fish.
+  No FISCH-kind actors; `_dummy` selections NOT_RUN, not declared fish-free.
+- FISCHER tablec2ac4 versus Farmc8ae0:75 slots, only destructor+110 and
+  worker creator+118 differ. Same tick6ea90 and raw receipt6ee70.
+- Complete tick6ea90–6ee5f: stamp gate500, conversion and dispatch order.
+  Conditional world draw6ee06 is discarded; it occurs before creation failure.
+- Creator67e60–67f61 uses first rotated entrance, fixed initialized Y;
+  it does not use ordinary reachable-entrance creation72d20.
+- Manager kind4 arm9a36b installs figurecb4d8; factory+a4=3b0e0.
+  Selector byte6 -> jump entry6 ->3b314, routec4340, jobs c4398/c4858/c4640.
+  Same route number on whaler1511 instead selects5df70/c72a8; do not conflate.
+- Search59210–59398 uses goods71 tile goals and callback limit20.
+  Shared cut/wait/repeat/home documented reads reused without re-decoding.
+  Three successful cuts normally fill768; return57bd0 credits farm RAW6ee70.
+  Food is produced later by Farm conversion, not awarded by a fish kill.
+- Special search38ad0–38cc5 selects cell mode3, distinct from walking layer2.
+  Cells90560–906df and goal mask9226b–922df use mean corner height<32;
+  equality32 refuses. Movement38730–38a85 keeps segment Y, vertical velocity0.
+- Full output can still dispatch:3978 raw1023 permits,1024 refuses;810
+  raw1586 permits,1587 refuses. Missing targets/path takes shared home fallback.
+- T: fish tiles/Farm/harvest/claims/growth/market exist; FISCHER kind maps to0.
+  figure.hpp/driver.cpp refuse0x2d. Class facts, specialized launch/mode3/motion,
+  continuation and draw fidelity must precede lifting it; no fish occurrence invented.
+Draw table: one conditional discarded dispatch draw; addressed no-direct-draw
+rows for launch/factory/search/cells/wait/cut/arrival/motion/return; callback total U.
+Hand controls cover499/500, ratio63/64, cargo767/768, height31/32,
+output-full versus dispatch, raw threshold and tile11 versus figure511/goods72.
+Gate: diff --check PASS; links selected14/executed14/failed0/empty0/skipped0; log
+`cache/fisher-re-1a/docs-gate.log`. Hosted docs CI required on final pushed head;
+terminal head/run link and classified job counts accompany the final handoff.
+Local runtime tests selected0/executed0/failed0/empty0/skipped0: NOT_RUN by packet.
+NOT_RUN: HE86, Ghidra (Capstone used), original runtime, live economic proof,
+procedural seeded selection, engine builds/tests, float vectors and callback closure.
+Decisions and reasoning:
+- Follow the figure factory and both selector tables; route45 alone is ambiguous.
+- Reuse tile harvesting; inventory actual sources instead of inventing fish fauna.
+- Keep static corpus counts, hand controls and runtime proof distinct.
+QUESTIONs:603 exact float/shore/continuation contract;604 transitive draw closure.
+OQ-605–610 unused. No owner policy decision is requested; unresolved reads stay open.

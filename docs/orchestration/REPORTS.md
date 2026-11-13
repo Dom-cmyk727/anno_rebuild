@@ -9279,3 +9279,72 @@ genuinely empty (`MESSAGE: skipping: ... among: ` with nothing after it). Both c
 `ANNO_REQUIRE_GPU=1`, both `FATAL ERROR: no GPU device at all (ANNO_REQUIRE_GPU is set)` (`FAILURE`);
 without it, both `SKIPPED` (`SUCCESS`). The bind mounts vanished with the namespace. The zero-adapter
 leg is now live-proven, not just code-reviewed.
+
+## COORD-FLAKE-1 — the two test-coordinator flakes, cause first — 2026-11-13 — READY FOR REVIEW
+
+Base `origin/task/GATE-1c` `9a958dc1` (GATE-1c not yet on `main`, so no merge needed), branch
+`task/COORD-FLAKE-1`, head `a7dedc90`.
+
+**F3 (D1, deaf), `cpp (macos-clang)`.** Evidence: runs `43123068877` (test #76, `SIGPIPE***Exception`,
+2.23s) and `43082536481` (`INCOMPLETE`, same test, no assertion failed, no doctest output at all
+between `Start` and the signal) — 2 occurrences since 2026-11-10, matching the packet's citation; no
+further occurrences found in the other failed runs checked in that window (`42883218166` is an
+unrelated `V3` failure). Mechanism, read from the code: `budget_probe.cpp`'s `deaf_listener` already
+calls `startup_sockets()` (landed 2026-11-10, `ee504b75`) to ignore `SIGPIPE` for *its own* socket
+sends. That fix never touched the *parent* test process. `budget_f3_test.cpp`'s D1-deaf case spawns
+the client as `probe({"reqwait", ...})`; `reqwait` mode (`budget_probe.cpp:474-503`) exits right after
+printing `RESULT` when the reservation is refused — only the *admitted* branch waits for `quit`. The
+parent's `quit_and_wait(deaf)` → `client.send("q\n")` (`budget_f3_test.cpp:550`) then races a
+`::write()` to that already-closed stdin pipe; the parent process never set `SIGPIPE` to ignore
+(nothing in `main.cpp` or this path does), so the default disposition (terminate) kills the whole
+ctest process — not a timeout, not a crash in the child, a broken-pipe write in the parent. Not
+reproduced directly as a SIGPIPE locally (POSIX-only, and this host's CPU load didn't widen the race
+enough), but the mechanism is read from the source, not guessed: the exact asymmetry (`reqwait`
+waits for quit only when admitted) is a verifiable, named line, and `Child::send()`'s missing
+liveness check applies to all 10 `.send("q...")` call sites in the suite, any of which could race the
+same way. Fix: `Child::send()` (`child_process.hpp`) now skips the write when `running()` says the
+child has already exited, and ignores `SIGPIPE` as a backstop for the remaining gap between that
+check and the write — the same pattern `coord_wire.hpp`'s socket paths already use. Proof: WSL `-O1`
+ASan, `*deaf*bounded deadline*`, 60/60 clean (no regression from the fix); MSVC Release, same case,
+passes (Windows has no `SIGPIPE`, so this proves no regression, not the crash itself, which is
+POSIX-only).
+
+**C3, `cpp (windows-msvc)`.** Evidence: run `43218940794` attempt 1, test `#71`,
+`REQUIRE( has(holder.line(10000ms), "READY 1") )` false, 0.35s total — the FIRST assertion of the
+test, failing fast, not timing out. 1 occurrence found since 2026-11-10 (the packet's own citation);
+no others found in the runs checked. Read `budget.cpp`, `coord.cpp`, `coord_server.cpp`,
+`budget_f2_test.cpp`'s `Scope`/`start_coord`/port assignment (`port_for`, globally unique per file and
+index — ruled out a port collision) and `admit_deadline()` (default 1800s, ruling out a slow
+coordinator-connect retry as the 0.35s cause: that path would hang for minutes, not fail in
+under a second). Could not reproduce: 30 isolated runs under 8 background CPU-spin jobs, and 6 full
+`ctest -j 16 --repeat until-fail:1` passes of the whole `anno_test_support_tests` suite under the
+same load (one unrelated `F4 (N4)` failure turned up from a stale WSL-coordinator-binary path,
+unrelated to C3), all clean; 0/36 total. No line in the evidence or the code read points to a single,
+provable mechanism the way F3's does — only candidates I could not confirm (a readiness check that
+accepts a silent-but-running coordinator, which the "pre-F2 binary" comment suggests is for an old
+coordinator build, not this scenario; a possible fast `Decision::Refuse` with no visible cause).
+Per the packet, not fixed: the evidence does not prove a cause, and a guess-fix here would not close
+this by its mechanism, only by chance. Not reproduced, no fix applied, raising a QUESTION instead.
+
+Gates: `ctest -R anno_test_support_tests` (canonical runner), MSVC Release: `selected=79 executed=76
+failed=0 skipped=3 (platform=3) sanitizer_lines=0 PASS`. WSL `-O1` ASan, same selection:
+`selected=93 executed=89 failed=0 skipped=4 (opt-in=4) sanitizer_lines=0 PASS`. Hosted CI: pending on
+this push (read after push, per the rule).
+
+NOT_RUN: the full WSL gate and the MSVC game-file run (the orchestrator, at the merge); TEST-MEM-1;
+C3's fix (unproven cause).
+
+Decisions and reasoning:
+- Fixed F3 at the one shared call site (`Child::send()`) rather than only `budget_f3_test.cpp`'s own
+  `quit_and_wait`: all 10 `.send("q...")` sites share the same latent race, and the fix needs no
+  caller to remember to check first.
+- Did not change `reqwait`'s own early-return-on-refusal behavior: exiting promptly once its own
+  work is done is correct; the bug is the *caller* not checking liveness before writing, not the
+  child exiting when it has nothing left to do.
+- Left C3 unfixed rather than apply a speculative change (e.g. widening `start_coord`'s readiness
+  window) that the evidence does not support: a flake closed by an unproven guess is not closed by
+  its mechanism either.
+QUESTIONs: C3 could not be reproduced or diagnosed to a provable mechanism in the time available.
+Should it stay on `rerun-and-document` (the project's existing precedent for this family) until it
+recurs with richer evidence (e.g. instrumented logging added ahead of time), or is there a next step
+I'm missing? Otherwise none; independent review is the orchestrator's.

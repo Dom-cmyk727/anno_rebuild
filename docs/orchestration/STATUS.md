@@ -5,6 +5,15 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[SHIP-ORDER-1](tasks/ship-order-1.md): not reproduced** ([review](reviews/2026-11-13-ship-order-1-review.md)).
+  - **The test:** 8 scripted variants of the owner's launch all ordered and moved the ship.
+  - **PLAY-LIVE-1a is not involved,** so it may land.
+  - **Two candidates without a message:** a right-click that moves the mouse 5 px or more counts as a pan; another
+    seat's ship can be selected but only inspected.
+  - **Three questions to the owner** decide which, if either.
+- **[ZOOM-MEASURE-1](tasks/zoom-measure-1.md) RELEASED** to the Windows executor.
+- **The landing candidate `orch/land-play-live-1a`** (`f9e6ea0c`): PLAY-LIVE-1a, WHALE-RE-1b and 1c, FISHER-RE-1a and
+  1b, the SHIP-ORDER-1 report, and the board. Its game-file run is under way.
 - **ADR 0006's packets go to the Mac** (owner: "Yes, the Mac"), after FISHER-RE-1c:
   [PINS-1](tasks/pins-1.md) (written), then SAVE-SECTIONS-1 (139), then FIXTURES-TRIM-1. Then FISHER-1a and the held
   ports.
@@ -388,9 +397,10 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [SHIP-ORDER-1](tasks/ship-order-1.md)** (released 2026-11-13), on `task/SHIP-ORDER-1`, based on
-  `task/PLAY-LIVE-1a`: the owner can select a ship but not order it; reproduce under the owner's conditions, cause
-  first. [GATE-2a](tasks/gate-2a.md) is next.
+- **Now: [ZOOM-MEASURE-1](tasks/zoom-measure-1.md)** (released 2026-11-13): the camera sweep with readiness counters
+  and its baseline. Then ZOOM-SMOOTH-1, UI-WINDOW-1, GATE-2a, GATE-2b, TEST-MEM-1 and RENDER-DIRECT-1 to 6.
+- **Finished: [SHIP-ORDER-1](tasks/ship-order-1.md)** (2026-11-13; head `e2c3e4e8`): **not reproduced**
+  ([review](reviews/2026-11-13-ship-order-1-review.md)); questions to the owner.
 - **Finished: [PLAY-LIVE-1a](tasks/play-live-1a.md)** (2026-11-13; head `9e920c18`), **accepted after one fix round**
   ([review](reviews/2026-11-13-play-live-1a-review.md)), on `task/PLAY-LIVE-1a`, based on `main`: a
   "living town" rules profile for the window behind `--rules living` (`house_updates` and `city_booking` on), default

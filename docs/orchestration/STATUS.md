@@ -5,6 +5,13 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[FISHER-RE-1c](tasks/fisher-re-1c.md): fix round 1** ([review](reviews/2026-11-13-fisher-re-1c-review.md)).
+  - **OQ-200's mapping is answered:** HEIGHT is copied unchanged into the corner grid, and the borders are 0.
+  - **"0 of 2,473 fish tiles are water" is the expected result, not a contradiction.** The original's code has the
+    fisher walk on water (mean < 32) and harvest tiles at or above 32. FISHER-RE-1a's prose and 1b's reference had the
+    goal mask's sense inverted, and the orchestrator accepted both.
+  - **The fix round:** the right census (fish tiles are goals, with water within reach), the reference corrected, and
+    the prose corrected.
 - **The owner's ship-start playtest (2026-11-13):**
   - **Ship orders work.** The ring was yellow, so it was the owner's own ship. SHIP-ORDER-1 is closed; the earlier
     failure is not reproducible.

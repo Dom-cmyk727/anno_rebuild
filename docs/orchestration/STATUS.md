@@ -4,7 +4,16 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-13, night, by the Claude Code orchestrator:
+**Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[COORD-FLAKE-1](tasks/coord-flake-1.md): fix round 1** ([review](reviews/2026-11-13-coord-flake-1-review.md)).
+  - **macOS (`F3 (D1, deaf)`):** the crash is the test process writing `q` to a client that had already exited. The
+    fix is right.
+  - **What is still open:** one of the two failed runs shows a second, hidden cause, an early refusal after 0.62 s.
+    The packet's mutation proof is also missing.
+  - **Windows (`C3`):** not reproduced. The test will keep the line it got, so a recurrence names its cause.
+  - **CI** is green on both heads.
+
+Earlier on 2026-11-13, night, by the Claude Code orchestrator:
 - **[GATE-1c](tasks/gate-1c.md) ACCEPTED after one fix round** ([review](reviews/2026-11-13-gate-1c-review.md)).
   - **What it fixes:**
     - the flow-build test's flake has a named cause, and the test now checks only its own claim;
@@ -247,6 +256,12 @@ mirror still requires the owner/Windows sync after main publication.
 - **Now: [COORD-FLAKE-1](tasks/coord-flake-1.md)** (released 2026-11-13), on `task/COORD-FLAKE-1`, based on the
   accepted `task/GATE-1c`: the two test-coordinator flakes in hosted CI, `F3 (D1, deaf)` on macOS and `C3` on Windows.
   The packet asks for the evidence from the failed runs first, then the mechanism, then a fix of the cause.
+  - **Handover** `a7dedc90` and `1a5d0c15`.
+  - **Fix round 1 sent 2026-11-13** ([review](reviews/2026-11-13-coord-flake-1-review.md)):
+    - F1: the early refusal after 0.62 s;
+    - F2: a regression case and the mutation run in WSL;
+    - F3: correct the 2026-11-10 probe comment;
+    - C3: keep the failing line in the test's output.
 - **Finished: [GATE-1c](tasks/gate-1c.md)** (2026-11-13; head `9a958dc1`), **accepted after one fix round**
   ([review](reviews/2026-11-13-gate-1c-review.md)):
   - the flow-build test's cause is named, and the test compares chunk serials;

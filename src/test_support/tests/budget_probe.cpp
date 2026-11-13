@@ -277,10 +277,11 @@ int deaf_listener(std::uint16_t port) {
     // was not this listener's own sends - ctest reports the signal of the test process it
     // started, not of a child this process spawned. That crash, and the two that followed this
     // fix (43082536481, 43123068877), came from the *parent* test process's own
-    // `client.send("q\n")` in `quit_and_wait`, written after the client probe had already exited
-    // on its own (`Child::send()`, `child_process.hpp`). This call's own `startup_sockets()` is
-    // kept as hardening (this listener does write to a peer that can disappear), not because it
-    // was the fix.
+    // `client.send("q\n")` in the deaf case's own body (`budget_f3_test.cpp`, right before its
+    // `quit_and_wait(deaf)`), written after the client probe had already exited on its own
+    // (`Child::send()`, `child_process.hpp`). This call's own `startup_sockets()` is kept as
+    // hardening (this listener does write to a peer that can disappear), not because it was the
+    // fix.
     startup_sockets();
 #if defined(_WIN32)
     WSADATA data{};

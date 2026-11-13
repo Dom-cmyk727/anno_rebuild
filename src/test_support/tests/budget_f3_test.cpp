@@ -545,8 +545,10 @@ TEST_CASE("F3 (D1, deaf): a coordinator that serves hello but never resolves the
         // trips coord.cpp's silent_too_long() early, refusing with "coordinator not responding"
         // well before this case's own claim (the 2 s admission bound, then "wait deadline, no
         // server reply") is ever exercised. 1000 ms, the same margin budget_f2_test.cpp's Scope
-        // already uses, survives a 400 ms stall (reproduced below, GATE-F1-PROOF) with room to
-        // spare while staying short enough for the deaf case's own ~2.3 s run time.
+        // already uses, survives a 400 ms stall (reproduced under that condition; see the
+        // COORD-FLAKE-1 REPORTS addendum, 2026-11-13, for the result) with room to spare while
+        // staying short enough for the deaf case's own run time (about 3.3 s with this 1,000 ms
+        // bound, measured on macOS).
         Env liveness({{"ANNO_TEST_BUDGET_LIVENESS_MS", "1000"}});
         client = probe({"reqwait", budget_path, "30"});
     }

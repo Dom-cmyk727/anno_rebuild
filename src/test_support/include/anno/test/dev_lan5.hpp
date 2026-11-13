@@ -19,6 +19,7 @@
 #include <anno/app/play.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
+#include <anno/sim/placement.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace anno::test {
@@ -34,7 +35,9 @@ struct Lan5 {
 
 /// lan5 loaded as --play loads it; nullopt when ANNO1503_GAME_DIR is unset. `rivers` false turns
 /// the river flow off, as the GPU-versus-CPU verifiers do (the flow is asynchronous).
-inline std::optional<Lan5> lan5(bool rivers = true) {
+/// `stand_in` false installs no placement seam: the real rule (sim::placement_rule, as the app)
+/// decides, and a building stands at its terrain's height (legal_tile finds a tile it accepts).
+inline std::optional<Lan5> lan5(bool rivers = true, bool stand_in = true) {
     const auto dir = game_dir();
     if (!dir) {
         return std::nullopt;
@@ -42,7 +45,10 @@ inline std::optional<Lan5> lan5(bool rivers = true) {
     const auto path = std::filesystem::path(ANNO_FIXTURES_DIR).parent_path().parent_path() /
                       "data" / "maps" / "lan5.txt";
     app::FixedPlayOptions fixed;
-    fixed.stand_in_placement = true; // these suites isolate the app layers from terrain (OQ-052)
+    // By default these suites isolate the app layers from terrain (OQ-052); the stand-in's item
+    // height is 0, so with the per-pixel depth (docs/render/depth.md) its buildings lie under the
+    // land: a suite that checks pixels of a new building loads lan5 without it.
+    fixed.stand_in_placement = stand_in;
     auto play = app::load_play(*dir, path, fixed);
     REQUIRE(play.ok());
     const std::vector<app::SceneBuilding> buildings = app::play_buildings(play.value().world);
@@ -144,6 +150,32 @@ inline std::optional<sim::TileXY> free_tile(const Lan5& l, std::int32_t size = 6
             }
             if (clear) {
                 return t;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+/// The first tile in row order of the city's island where a `type` building (rotation 0) is on the
+/// city's own tiles (sim::footprint_owner_rule) and the real placement rule accepts it
+/// (sim::placement_rule: class, bounds, overlap, terrain), the two checks of a Build before its
+/// costs (src/sim/src/apply.cpp); nullopt when there is none. For lan5(.., false).
+inline std::optional<sim::TileXY> legal_tile(const Lan5& l, sim::TypeId type) {
+    const sim::World& world = l.play.world;
+    const sim::BuildingType* bt = world.types().find(type);
+    const sim::Island* island = world.island_at(l.setup.island.x0, l.setup.island.y0);
+    REQUIRE(bt != nullptr);
+    REQUIRE(island != nullptr);
+    REQUIRE(l.setup.city.has_value());
+    const auto w = static_cast<std::int32_t>(l.setup.island.w);
+    const auto h = static_cast<std::int32_t>(l.setup.island.h);
+    for (std::int32_t y = 0; y < h; ++y) {
+        for (std::int32_t x = 0; x < w; ++x) {
+            const sim::PlacementRecord rec{type, l.setup.island.x0 + x, l.setup.island.y0 + y};
+            if (sim::footprint_owner_rule(*island, world.config(), *bt, rec, l.setup.city->city) ==
+                    sim::Reject::None &&
+                sim::placement_rule(*island, world.types(), *bt, rec).reject == sim::Reject::None) {
+                return sim::TileXY{rec.x, rec.y};
             }
         }
     }

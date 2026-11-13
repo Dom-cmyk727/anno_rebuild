@@ -240,13 +240,24 @@ TEST_CASE("command line") {
     REQUIRE(wo);
     CHECK(wo->water == anno::render::WaterStyle::Original);
     CHECK(wo->water_given); // an explicit choice the opening keeps (review 2026-11-03)
-    CHECK(d->shore == anno::render::kShoreHeight); // corners at 16 are water by default
+    CHECK(d->shore == anno::render::kShoreHeight); // the original's sea plane, 26.5
+    CHECK(d->shore == 26.5F);
     const auto sh = parse_args({"--view", "x.scp", "--shore", "16"});
     REQUIRE(sh);
     CHECK(sh->shore == 16.0F);
+    const auto sh165 = parse_args({"--view", "x.scp", "--shore", "16.5"});
+    REQUIRE(sh165);
+    CHECK(sh165->shore == 16.5F); // the default of 2026-11-03
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "-1"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "256"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "nan"}));
+    // Per-pixel depth on by default; --depth off gives the former picture (depth.md).
+    CHECK(d->depth);
+    const auto doff = parse_args({"--view", "x.scp", "--depth", "off"});
+    REQUIRE(doff);
+    CHECK_FALSE(doff->depth);
+    CHECK(parse_args({"--view", "x.scp", "--depth", "on"})->depth);
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--depth", "maybe"}));
     // The viewer shows the flow at gain 4 with the median-cell speed (OQ-083, OQ-065).
     using Ref = anno::render::river::RiverConfig::Reference;
     CHECK(d->river_gain == 4.0F);

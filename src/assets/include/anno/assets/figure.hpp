@@ -4,8 +4,8 @@
 // with palette index i becomes [R, G, B, 255] from the entry's colour table
 // Frame::palette; a covered pixel of a BSH_ALPHA shadow frame becomes
 // [0, 0, 0, 255] (a coverage mask); uncovered pixels become [0, 0, 0, 0].
-// The 2-bit level of A formats becomes the alpha (kLevelAlpha); the z byte
-// (a depth offset) is not applied.
+// The 2-bit level of A formats becomes the alpha (kLevelAlpha); the z byte of
+// the Z formats (a depth offset) is kept beside the pixels (Rgba::z).
 //
 // Player colours: docs/render/iso.md, "Player colours".
 #pragma once
@@ -32,6 +32,11 @@ inline constexpr std::array<std::uint8_t, 4> kLevelAlpha = {64, 128, 191, 255};
 
 /// Alpha of a decoded pixel of `format`.
 std::uint8_t pixel_alpha(formats::figuren::FrameFormat format, std::uint8_t level);
+
+/// Rgba::z of decoded frame pixels: the z byte per pixel when `format` stores one (2 bytes per
+/// pixel), else empty.
+std::vector<std::uint8_t> pixels_to_z(const formats::figuren::Pixels& px,
+                                      formats::figuren::FrameFormat format);
 
 /// The eight player colours of the original, as RGB (D: AnnoDisplay.dll
 /// 0x1003be70, eight 0x00RRGGBB words; colour variant 0 there means "no

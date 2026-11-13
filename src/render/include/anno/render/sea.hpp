@@ -205,7 +205,7 @@ constexpr float empty_land_height(float shore_height) {
     return shore_height + kSlopeBand +
            0.5F * (kNoiseCoarseWeight + kNoiseFineWeight) * kWaves.shore_noise + 0.5F;
 }
-/// empty_land_height at the default shore (31.6).
+/// empty_land_height at the default shore (41.6).
 inline constexpr float kEmptyLandHeight = empty_land_height(kShoreHeight);
 
 /// One texel of the water field (WaterField's four planes at one pixel).

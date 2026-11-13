@@ -28,7 +28,7 @@ Result<Rgba, Error> to_rgba(const formats::tex::TexFile& file,
     if (!indices) {
         return Error{Error::Kind::Decode, 0, indices.error()};
     }
-    Rgba out{texture.head.width, texture.head.height, {}};
+    Rgba out{texture.head.width, texture.head.height, {}, {}};
     out.pixels.reserve(indices.value().size() * 4);
     for (const auto& p : indices.value()) {
         if (p) {

@@ -87,7 +87,8 @@ struct Chunk {
     size: i32,
     // bit 0: ground, bit 1: objects, bit 2: water field, bit 3: terrain,
     // bit 4: object base plane (frame::Chunk::base), bit 5: river flow
-    // lattice (bindings 6 to 8), bits 8-15: the lattice stride in pixels
+    // lattice (bindings 6 to 8), bit 6: submerged plane (binding 9),
+    // bits 8-15: the lattice stride in pixels
     flags: u32,
 }
 
@@ -106,6 +107,9 @@ struct Chunk {
 @group(1) @binding(6) var flow_uv: texture_2d<i32>;
 @group(1) @binding(7) var flow_aux: texture_2d<u32>;
 @group(1) @binding(8) var flow_shear: texture_2d<u32>;
+// frame::Chunk::submerged: 1 where the object pixel lies behind the sea plane
+// (docs/render/depth.md §2.3; chunk flag bit 6).
+@group(1) @binding(9) var submerged_tex: texture_2d<u32>;
 
 // What one draw of a chunk shows (group 2, bound with a dynamic offset).
 // kind 0: the chunk itself, at its own place. kind 1: a stand-in
@@ -862,6 +866,31 @@ fn sea_shade(pos: vec4<f32>, allow_fluid: bool) -> vec4<f32> {
     return vec4<f32>(mix(under, c, alpha), 1.0 - piece.transparent);
 }
 
+// The sea once more over the submerged object pixels, after the objects (Original
+// water; FrameRenderer::render's second sea pass, docs/render/depth.md §2.3): the
+// sea sprite over the object (blended by the pipeline), without the open-water fade.
+@fragment
+fn sea_submerged_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    if frame.enhanced != 0u || (chunk.flags & 68u) != 68u || piece.kind != 0u {
+        discard;
+    }
+    let px = scene_px(pos);
+    let local = chunk_local(px);
+    if textureLoad(submerged_tex, local, 0).r == 0u {
+        discard;
+    }
+    let f = textureLoad(field_tex, local, 0);
+    if f.r == 0u || (f.a & 1u) == 0u {
+        discard;
+    }
+    let pi = vec2<i32>(wrap(px.x, frame.pattern_size.x), wrap(px.y, frame.pattern_size.y));
+    let sprite = textureLoad(sea_sprite, pi, frame.steps.x, 0);
+    if sprite.a == 0.0 {
+        discard;
+    }
+    return vec4<f32>(sprite.rgb, sprite.a * (1.0 - piece.transparent));
+}
+
 // ---- Sprites (water objects) from the atlas ----
 
 @group(2) @binding(0) var atlas: texture_2d_array<f32>;
@@ -1323,6 +1352,17 @@ struct ChunkBuild {
     // Canvas::base_band, and 1 when the base plane is tracked (bases).
     base_band: i32,
     bases: u32,
+    // The depth (docs/render/depth.md; depth.hpp): 1 when the records carry it,
+    // the group's constants ca, cb, sv, sh, depth::origin of the chunk's top row
+    // (base, frac) and the sea plane in 1/64 HEIGHT units.
+    depth_on: u32,
+    d_ca: i32,
+    d_cb: i32,
+    d_sv: i32,
+    d_sh: i32,
+    d_base: i32,
+    d_frac: i32,
+    sea_h64: i32,
 }
 // Bytes per ObjectRecord / frame-table entry, as u32 counts.
 const CB_RECORD_U32: u32 = 8u;  // kObjectRecordBytes / 4
@@ -1330,6 +1370,12 @@ const CB_FRAME_U32: u32 = 8u;   // frame-table entry: layer, ax, ay, w, h, ancho
 const CB_CLIP_NONE: u32 = 0xFFFFFFFFu;
 const CB_SHADOW: u32 = 1u;      // object_flags::kShadow
 const CB_TRACK_BASE: u32 = 2u;  // object_flags::kTrackBase
+// object_flags::kDepthClass* / kDepthWrite / kDepthSkipHalf; depth::kNone.
+const CB_DEPTH_CLASS_SHIFT: u32 = 2u;
+const CB_DEPTH_WRITE: u32 = 16u;
+const CB_DEPTH_SKIP_HALF: u32 = 32u;
+const CB_DEPTH_NONE: i32 = 2147483647;
+const CB_NO_TERRAIN: u32 = 0xFFFFu;
 
 @group(0) @binding(10) var<uniform> cb: ChunkBuild;
 @group(0) @binding(11) var<storage, read> cb_records: array<u32>;
@@ -1341,6 +1387,18 @@ const CB_TRACK_BASE: u32 = 2u;  // object_flags::kTrackBase
 @group(0) @binding(17) var<storage, read_write> cb_objects: array<u32>;
 @group(0) @binding(18) var<storage, read_write> cb_base: array<atomic<u32>>;
 @group(0) @binding(19) var cb_atlas: texture_2d_array<f32>;
+// The frames' z bytes at the atlas places; the chunk's terrain plane (u16, two per
+// u32); the submerged plane out (one byte per pixel, as cb_base).
+@group(0) @binding(20) var cb_atlas_z: texture_2d_array<u32>;
+@group(0) @binding(21) var<storage, read> cb_terrain: array<u32>;
+@group(0) @binding(22) var<storage, read_write> cb_sub: array<atomic<u32>>;
+
+// depth::at at chunk-local twice-row y2 and height h64, from the chunk's origin
+// (depth::origin): base - floor((frac + ca * y2 + cb * h64) / 256). WGSL's >> on
+// i32 is arithmetic, i.e. floor division by 256, as div_euclid on the CPU.
+fn cb_depth_at(y2: i32, h64: i32) -> i32 {
+    return cb.d_base - ((cb.d_frac + cb.d_ca * y2 + cb.d_cb * h64) >> 8u);
+}
 
 // dst = src over dst, straight-alpha 8-bit integers in units of 1/255², floor
 // division: iso.cpp over() repeated exactly. Components are 0..255 in a vec4<u32>.
@@ -1382,6 +1440,15 @@ fn chunk_build_cs(@builtin(global_invocation_id) gid: vec3<u32>) {
     var lbase = 255u;
     var has_seg = false;
     var seg = 0u;
+
+    // depth::Target::from_terrain: the terrain's depth at the pixel centre.
+    let ti = y * cb.size.x + x;
+    let th = (cb_terrain[ti / 2u] >> ((ti & 1u) * 16u)) & 0xFFFFu;
+    var dz = CB_DEPTH_NONE;
+    if th != CB_NO_TERRAIN {
+        dz = cb_depth_at(2 * i32(y) + 1, i32(th));
+    }
+    var tested = false;
 
     let start = cb_bin_off[bin];
     let end = cb_bin_off[bin + 1u];
@@ -1454,6 +1521,35 @@ fn chunk_build_cs(@builtin(global_invocation_id) gid: vec3<u32>) {
             continue;
         }
         let shadow = (flags & CB_SHADOW) != 0u;
+        // depth::test / depth::untest (chunk_draws.cpp replay with a target).
+        let cls = (flags >> CB_DEPTH_CLASS_SHIFT) & 3u;
+        if !shadow && cb.depth_on != 0u {
+            if cls == 0u {
+                tested = false;
+            } else {
+                let base = bitcast<i32>(cb_records[rec + 6u]);
+                var pd = base;
+                if cls == 1u {
+                    let zb = textureLoad(cb_atlas_z, vec2<i32>(ax + lx, ay + ly), layer, 0).r;
+                    pd = base + 256 * (bitcast<i32>(zb << 24u) >> 24u);
+                } else if cls == 2u {
+                    // The upright ramp from the frame's anchor row (depth::pixel). i32: equal to the CPU's
+                    // i64 product up to 32 324 rows from the anchor at group 2 (depth.md 2.4, limit).
+                    pd = base + ((cb.d_sv * (ly - anchor_y)) >> 8u);
+                } else {
+                    // The flat plane through the anchor at the pixel centre (depth::pixel).
+                    pd = cb_depth_at(2 * i32(y) + 1, i32(64u * ((flags >> 8u) & 0xFFu)));
+                }
+                if pd > dz {
+                    continue;
+                }
+                let half = (flags & CB_DEPTH_SKIP_HALF) != 0u && t.w == 128u;
+                if (flags & CB_DEPTH_WRITE) != 0u && !half {
+                    dz = pd;
+                }
+                tested = true;
+            }
+        }
         var color = t;
         if shadow {
             color = vec4<u32>(0u, 0u, 0u, 96u); // iso::kShadow
@@ -1495,5 +1591,13 @@ fn chunk_build_cs(@builtin(global_invocation_id) gid: vec3<u32>) {
         let idx = (y * cb.size.x + x) / 4u;
         let lane = (x & 3u) * 8u;
         atomicOr(&cb_base[idx], abase << lane);
+    }
+
+    // depth::Target::submerged: the last object pixel was tested and the scene's
+    // depth lies behind the sea plane. cb_sub is cleared before the dispatch.
+    if cb.depth_on != 0u && tested && cb_depth_at(2 * i32(y) + 1, cb.sea_h64) <= dz {
+        let idx = (y * cb.size.x + x) / 4u;
+        let lane = (x & 3u) * 8u;
+        atomicOr(&cb_sub[idx], 1u << lane);
     }
 }

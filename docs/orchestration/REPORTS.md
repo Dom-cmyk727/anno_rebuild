@@ -9219,3 +9219,51 @@ Decisions and reasoning:
 
 QUESTIONs: none required; the default, road/figure drawing, and any new `Rules` field are explicitly
 not this packet's call.
+
+### Fix round 1 — review F1/F2 — 2026-11-13 — READY FOR REVIEW
+
+Head `0b6f94dd` (branch unchanged). Review: `docs/orchestration/reviews/2026-11-13-play-live-1a-review.md`.
+
+**F1.** `--city-booking`, which this packet newly applies to `--play`, could change the rules
+without changing the `--rules` profile's *name* `format_invocation`/`replay_hashes` compared — a
+`--rules living --city-booking off` recording replayed as `--rules living` had the same name and a
+different digest, and was not refused. Fixed: `session.txt` now carries the created world's rules
+digest, `rules_digest <hex16>` (the `rules <name>` line stays, as information); `main.cpp` captures
+it (`play_rules_digest`, read before the world moves into `PlayRunner`) and `replay_hashes` refuses
+a differing digest before turn 1, naming both. The check is its own function,
+`dev_session.cpp`'s `check_invocation_rules_digest(session_text, replay_digest)`, replacing
+`parse_invocation_rules`. Unit-tested (`dev_script_test.cpp`): the same digest (accepted); a
+different digest (refused, message naming both hex digests); a recording with no `rules_digest`
+line (accepted, an older recording); `--rules living --city-booking off`'s digest differs from
+`--rules living`'s (proving the name-only check would have missed exactly this).
+
+**F2.** The timing case (Do item 6) asserted nothing and ran in every gate (61s in the WSL app
+lane). Made opt-in: `ANNO_PLAY_LIVE_TIMING=1`, skipped otherwise with the project's own "set
+ANNO_..." message (`founding_assets_test.cpp`, `iron_chain_test.cpp` convention); its numbers stay
+in the first entry above, unchanged.
+
+Gates (`TASKS.md` §1 item 4, `src/app` touched — app lanes only, no other lane): MSVC Release,
+game files, `anno_app_tests`+`anno_app_input_tests`+`anno_app_alloc_tests`: `selected=308
+executed=305 failed=0 skipped=3(opt-in) sanitizer_lines=0 VERDICT: PASS`. WSL `-O1` ASan, app
+lane only (fresh configure+build in the gatecheck worktree, head `0b6f94dd`): `selected=316
+executed=313 failed=0 skipped=3(opt-in) sanitizer_lines=0 VERDICT: PASS`. clang-format 23.1.3:
+reformatted three files (line-wrap only, no semantic change) before pushing. CI on `0b6f94dd`
+(run `43397591022`): every job green, `gate` included.
+
+NOT_RUN: sim/render/formats/tsupport lanes (unchanged, per the per-lane rule); the full WSL gate
+and MSVC game-file run (orchestrator's, at merge).
+
+Decisions and reasoning:
+- Removed `parse_invocation_rules` outright rather than keep it alongside the digest check: F1's
+  root cause is that a name alone cannot represent the rules, so a name-based API had no remaining
+  caller once the digest check existed.
+- Captured `play_rules_digest` at the one point before the fixed-map/scenario world moves into
+  `PlayRunner` (no `World` accessor exists on `PlayRunner` itself), declared in the same outer
+  scope as `runner`/`session_dir` so it survives to the later `write_session` call.
+- Local WSL gate script note (not a code decision, kept for the next executor): the shared
+  `cmake` and other gate tooling live under `~/anno-tools-venv/bin`, not on the plain WSL `PATH`,
+  and `run_selected.py`'s dirty-check needs `GIT_DIR`/`GIT_WORK_TREE` set for a Windows-git
+  worktree (`wsl_gate.sh`'s own `$SRC_GIT` wrapper) even when driving it directly instead of
+  through that script.
+
+QUESTIONs: none.

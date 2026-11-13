@@ -643,3 +643,30 @@ unsettled. OQ-595 isolates the sea-legality threshold semantics required to
 state a numeric depth rule. HE, Ghidra, original-runtime experiments, local
 engine/reference tests and engine changes are NOT_RUN; the docs-only hosted
 CI gate supplies no original-game runtime parity evidence.
+
+## WHALE-RE-1c scalar reference boundaries (2026-11-13)
+
+- **D — schema clarification, not a new rule.** The scalar reference uses this
+  document's accepted1b text at `109ec14c` (§§6–9), pending its docs landing.
+  The `whaler_tick` record includes two explicit resolved callback facts beyond
+  the packet's input summary: `target` says whether the §4 search found prey;
+  `launch_slot` is−1 on failure/no launch, otherwise the slot selected by the
+  §4 launch helper. `idle` is the fact at the later dispatch check, after queue
+  processing. These are supplied outcomes, never inferred sea/search/projectile
+  decisions (`0x10073756`–`0x100738a7`, §4). A selected existing boat makes a
+  supplied successful launch impossible; the reference rejects that fact.
+- **D — local timing/output scope.** `elapsed` is an already computed wrapping
+  u16 difference, not a frame interval. Output `advanced` is the stamp increment
+  (2500 for replenish;500 for tick), once per eligible visit. Tick `r=0` when
+  its gate/switch/output-capacity branch prevents entering the conversion;
+  otherwise it is the computed ratio, even if below64. `launch_attempted`
+  reports the helper call even when the helper fails. `progress` reports the
+  head's computed progress at that call, not a surviving queue after removal
+  (`0x10066e50`–`0x10066ec8`, `0x10073720`–`0x100739d9`, §§3–4).
+- **D/U — finite integer slice.** HP vectors restrict both HP inputs to signed16;
+  wider write/truncation aliases are outside this schema. Walk positions are
+  integers before the §7 clamp, with no float interpolation or path execution.
+  `whale_route` models selection of walk plus its optional failed-start fallback,
+  not a complete multi-boundary tick. OQ-594 and OQ-595 remain open. The reference
+  refuses sea legality/depth and indirect search/projectile draw requests rather
+  than returning an invented total (§§6–9, `0x10058680`, `0x10056870`).

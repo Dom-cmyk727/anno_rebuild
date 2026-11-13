@@ -9538,3 +9538,63 @@ Decisions and reasoning:
 - Record discarded/modulus1 draws; distinguish direct absence from unresolved callees.
 - Stop unresolved items at addressed evidence, with no invented depth or automatic recovery rule.
 - QUESTIONs: none requiring owner policy; address verification and remaining reads await orchestration.
+## WHALE-RE-1c — integer whale/whaler reference and vectors (2026-11-13)
+
+**Status: READY FOR REVIEW.** Mac executor; independent orchestrator review pending.
+Branch `task/WHALE-RE-1c`, own new worktree, base `961a9d4a` as released.
+Accepted1b branch/head `109ec14c` preserved; source text read there, not merged.
+Packet and1b review read from `origin/orch/board-next` at `0514699c`.
+Main still contains1a only; reference decisions use accepted1b §§6–9 at109ec14c.
+No original game file/disassembly was read to derive this reference.
+Read CLAUDE, PLAN scope, board owner rules/§1, evidence contract/testing README.
+
+Changes:
+- `tools/whale_ref.py`: standalone integer key=value/=> oracle; no engine imports.
+- `fixtures/synthetic/sim/whale_vectors.txt`:44 hand-derived vectors, each with derivation.
+- `tools/whale_ref_contract_test.py`: bounded public-command contract,46 checks.
+- CMake registers `whale_reference_agrees` and `whale_reference_contract` next to wildlife.
+- One dated whaler.md addendum defines scalar/callback boundaries; no accepted rule rewritten.
+- No engine, PRNG generator, state identity, defaults or other executor's files changed.
+
+Vector inventory (44 total):
+- replenish5: retry9->10,255->0, failures retained, occupied untouched,2500 gate/stamp wrap.
+- whale_walk5: counter3/4 branch, inclusive high/low clamp, fifth draw discarded but consumed.
+- whale_route4: initial/later selection and failed-kind12 fallback; no Old parity draw.
+- whale_hp5: positive-to-zero, already zero/ending, positive write, signed16 lower boundary.
+- whaler_tick15: elapsed0/1/499/500/1500, switch0, inactive queue,30th/31st request visit.
+- Tick also covers r56/r64, output2550->2567, full output still hunting, u16 additions.
+- Target absent, failed/successful launch, selected-boat refusal and raw==capacity distinguished.
+- boat_request7: exact/negative funds, each shortage, full queue, active0 paid and active255 accepted.
+- ship_attack3: modulus1 still consumes, last index, byte count255/u32 maximum.
+
+Acceptance / controls / evidence / review:
+| Requirement | Positive and distinguishing proof | Evidence | Review |
+|---|---|---|---|
+| Seven record types |44 manually derived boundary vectors; no generated expectations | direct-03.log | pending |
+| Draw order | discarded fifth and modulus1; applied source mutants fail with exit1 | contract-03.log | pending |
+| CLI verdicts | agree0/disagree1/unusable2; malformed/empty/missing/exhausted inputs |46 subprocess checks | pending |
+| Open cases | sea_legality/sea_depth ->OQ-595; indirect_search/projectile_draws ->OQ-594 | contract-03.log | pending |
+| CTest integration | real dev configure; required contract once, agrees once | gate-02.log and inventories | pending |
+
+Gate commands/evidence, under `cache/whale-re-1c/`:
+- Direct `python3 -I tools/whale_ref.py fixtures/synthetic/sim/whale_vectors.txt`:44 agree,0 disagreements.
+- Direct contract `--ref tools/whale_ref.py --vectors fixtures/synthetic/sim/whale_vectors.txt`:46 passed.
+- First contract failure (`contract-01.log`): check over-required globally unique labels; fixed to type/label pairs.
+- Final domain correction: negative money is ordinary insufficient-funds refusal; gate-01 evidence retained.
+- Seven source mutants demonstrably apply: dropped fifth, skipped modulus1, saturating retry,
+  output clamp, free inactive request, wrong route fallback and missing zero-HP transition.
+- Real `cmake --preset dev -DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF`: configure succeeded.
+- `run_selected.py --build-dir build/dev --select whale_reference --require-test whale_reference_contract`
+  `--skip-auto-contract --jobs 1 --timeout 30 --log cache/whale-re-1c/gate-02.log`: PASS.
+- Required contract: selected1/executed1; selection: selected1/executed1; two distinct CTest entries total.
+- Both: failed0/empty0/incomplete0/sanitizer_lines0; all skip classes0 (assets/platform/opt-in/GPU/other).
+- Auto picture contract omitted because packet explicitly authorizes only the two whale registrations.
+- `git diff --check` clean. Hosted full-matrix CI checked after push; exact final head/run in owner handoff.
+
+Decisions and reasoning / limits:
+- Tick receives explicit resolved `target` and `launch_slot` facts; `idle` applies after queue processing.
+- This avoids inventing target availability or successful boat creation; progress is pre-removal observation.
+- Integer coordinate/HP slices and already-computed wrapping elapsed are explicit, not float/whole-tick parity.
+- OQ-594/595 remain open and refused; no new OQ needed. No policy QUESTION requires an owner pause.
+- Engine suites reused from main: no engine code changed. Local C++ build/full suite/game-file/HE: NOT_RUN.
+- Final gate is hosted CI on the pushed head; it does not establish original-runtime/game-file parity.

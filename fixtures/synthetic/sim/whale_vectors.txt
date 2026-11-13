@@ -1,0 +1,91 @@
+# Hand-derived from docs/re/whaler.md §§3–9 (accepted1b109ec14c), before running whale_ref.py.
+# All figures/stocks/draw streams are synthetic; raw u32 draws are not seeds.
+# Tick target/launch_slot/idle are resolved callback facts, not simulated search/creation.
+# §3 elapsed2499<2500: no visit, even though retry9 would create at the boundary.
+replenish before_gate elapsed=2499 stamp=10 occupied=0,0,1 retries=9,255,8 success=1,1,1 draws=- => stamp=10 advanced=0 occupied=0,0,1 retries=9,255,8 attempted=- consumed=0
+# §3 elapsed2500:9->10 succeeds/reset;255 wraps0/no attempt; occupied third slot untouched;67500 wraps1964.
+replenish threshold_wrap elapsed=2500 stamp=65000 occupied=0,0,1 retries=9,255,10 success=1,0,1 draws=- => stamp=1964 advanced=2500 occupied=1,0,1 retries=0,0,10 attempted=0 consumed=0
+# §3 failed creations retain incremented10/254/255; all three attempt in slot order.
+replenish failures elapsed=2500 stamp=0 occupied=0,0,0 retries=9,253,254 success=0,0,0 draws=0 => stamp=2500 advanced=2500 occupied=0,0,0 retries=10,254,255 attempted=0,1,2 consumed=0
+# §3 elapsed7500 still advances once, not three times; retry0 becomes1 without creation.
+replenish no_catchup elapsed=7500 stamp=1 occupied=0,0,0 retries=0,0,0 success=1,1,1 draws=- => stamp=2501 advanced=2500 retries=1,1,1 attempted=- consumed=0
+# §3 zero elapsed cannot advance a source or touch retries.
+replenish zero elapsed=0 stamp=65535 occupied=0,1,0 retries=9,100,255 success=1,1,1 draws=- => stamp=65535 advanced=0 retries=9,100,255 consumed=0
+# §7 [0,4,1,0] gives(-7,+11); nearby counter3 uses(50,50) and becomes4; fifth value discarded.
+whale_walk nearby_last nearby=1 counter=3 home_x=10 home_z=10 figure_x=50 figure_z=50 width=100 height=100 draws=0,4,1,0,0 => offsets=-7,11 before=43,61 goal=43,61 counter=4 consumed=5
+# §7 counter4 instead uses home(10,10) and becomes3, despite the same nearby pointer.
+whale_walk home_after_four nearby=1 counter=4 home_x=10 home_z=10 figure_x=50 figure_z=50 width=100 height=100 draws=0,4,1,0,0 => offsets=-7,11 before=3,21 goal=3,21 counter=3 consumed=5
+# §7 the fifth raw value may change to u32 maximum without changing the local selection or consumption.
+whale_walk fifth_discarded nearby=1 counter=3 home_x=10 home_z=10 figure_x=50 figure_z=50 width=100 height=100 draws=0,4,1,0,4294967295 => offsets=-7,11 before=43,61 goal=43,61 counter=4 consumed=5
+# §7 nearby(99,99)+(+7,+7)=(106,106); clamp is inclusive100, not99.
+whale_walk high_clamp nearby=1 counter=0 home_x=0 home_z=0 figure_x=99 figure_z=99 width=100 height=100 draws=0,0,0,0,5 => offsets=7,7 before=106,106 goal=100,100 counter=1 consumed=5
+# §7 no nearby pointer: home(2,3)+(-11,-7)=(-9,-4); clamp0; counter0 stays0.
+whale_walk low_clamp nearby=0 counter=0 home_x=2 home_z=3 figure_x=50 figure_z=50 width=100 height=100 draws=4,0,1,1,42 => offsets=-11,-7 before=-9,-4 goal=0,0 counter=0 consumed=5
+# §7 initial selection picks R+0x10 and initializes home; no Old parity draw is consumed.
+whale_route initial selection=initial failed=0 draws=1 => next=16 initialize=1 consumed=0
+# §7 later completion always returns R+0x10, also with an odd unused draw.
+whale_route later selection=later failed=0 draws=1 => next=16 initialize=0 consumed=0
+# §7 failed kind12 start selects stand node R+0x1c after initial selection.
+whale_route initial_fallback selection=initial failed=1 draws=- => next=28 initialize=1 consumed=0
+# §7 the same failed walk fallback follows later selection.
+whale_route later_fallback selection=later failed=1 draws=- => next=28 initialize=0 consumed=0
+# §6 positive1 ->0, ending clear: enter ending exactly once.
+whale_hp death old=1 new=0 ending=0 draws=- => transition=1 consumed=0
+# §6 already nonpositive0 ->0 returns before a new ending transition.
+whale_hp already_zero old=0 new=0 ending=0 draws=- => transition=0 consumed=0
+# §6 an existing ending bit prevents another transition even with positive prior HP.
+whale_hp already_ending old=1 new=-1 ending=1 draws=- => transition=0 consumed=0
+# §6 a positive write to an already nonpositive whale is not a new ending.
+whale_hp positive_write old=-1 new=1 ending=0 draws=- => transition=0 consumed=0
+# §6 signed16 lower boundary remains nonpositive; the old nonpositive/new nonpositive gate returns.
+whale_hp signed_boundary old=-32768 new=-32768 ending=0 draws=- => transition=0 consumed=0
+# §4 elapsed499 skips everything, retaining activity128, raw16 and queue25590.
+whaler_tick before_gate elapsed=499 switch=1 active=1 progress=25590 selected=-1 idle=1 raw=16 capacity=2560 need=16 rate=17 output=0 activity=128 target=1 launch_slot=-1 draws=- => advanced=0 launch_attempted=0 progress=25590 hunt_dispatched=0 r=0 debit=0 added=0 raw=16 output=0 activity=128 consumed=0
+# §4 eligible500 but switch0: stamp advances500, queue/activity/conversion do not run.
+whaler_tick switched_off elapsed=500 switch=0 active=1 progress=25590 selected=-1 idle=1 raw=16 capacity=2560 need=16 rate=17 output=0 activity=128 target=1 launch_slot=-1 draws=- => advanced=500 launch_attempted=0 progress=25590 hunt_dispatched=0 r=0 debit=0 added=0 activity=128 consumed=0
+# §4 29*853=24737; 30th visit reaches25590<25600; raw7 gives r56 and no conversion; activity128->127.
+whaler_tick thirtieth elapsed=500 switch=1 active=1 progress=24737 selected=-1 idle=1 raw=7 capacity=2560 need=16 rate=17 output=0 activity=128 target=1 launch_slot=-1 draws=- => launch_attempted=0 progress=25590 selected=-1 hunt_dispatched=0 r=56 debit=0 added=0 raw=7 output=0 activity=127 consumed=0
+# §4 31st visit reaches26443; launch fails (resolved slot-1), but raw8 gives r64,debit8,add8;127+128=255.
+whaler_tick thirty_first elapsed=500 switch=1 active=1 progress=25590 selected=-1 idle=1 raw=8 capacity=2560 need=16 rate=17 output=0 activity=128 target=1 launch_slot=-1 draws=- => launch_attempted=1 progress=26443 selected=-1 hunt_dispatched=0 r=64 debit=8 added=8 raw=0 output=8 activity=255 consumed=0
+# §4 manager-created slot0 is available to dispatch later in the same tick; target and idle facts are supplied.
+whaler_tick launch_then_hunt elapsed=500 switch=1 active=1 progress=25590 selected=-1 idle=1 raw=0 capacity=2560 need=16 rate=17 output=0 activity=0 target=1 launch_slot=0 draws=- => launch_attempted=1 selected=0 hunt_dispatched=1 r=0 debit=0 added=0 activity=0 consumed=0
+# §4 raw16,r128,debit16,add17; output2550 becomes2567 without a capacity clamp; activity0+272.
+whaler_tick overshoot elapsed=500 switch=1 active=0 progress=0 selected=0 idle=1 raw=16 capacity=2560 need=16 rate=17 output=2550 activity=0 target=1 launch_slot=-1 draws=- => launch_attempted=0 hunt_dispatched=1 r=128 debit=16 added=17 raw=0 output=2567 activity=272 consumed=0
+# §4 output is already full; hunt occurs first because raw0<capacity, then conversion is blocked.
+whaler_tick full_output_hunts elapsed=500 switch=1 active=0 progress=0 selected=0 idle=1 raw=0 capacity=2560 need=16 rate=17 output=2560 activity=128 target=1 launch_slot=-1 draws=- => hunt_dispatched=1 r=0 debit=0 added=0 output=2560 activity=127 consumed=0
+# §4 eligible idle boat but no resolved target: no dispatch; existing raw16 still converts.
+whaler_tick no_target elapsed=500 switch=1 active=0 progress=0 selected=0 idle=1 raw=16 capacity=2560 need=16 rate=17 output=0 activity=0 target=0 launch_slot=-1 draws=- => hunt_dispatched=0 r=128 debit=16 added=17 activity=272 consumed=0
+# §4 an existing selected slot causes the launch helper to refuse, but the attempt still occurs; busy boat cannot hunt.
+whaler_tick selected_launch_refusal elapsed=500 switch=1 active=1 progress=25590 selected=2 idle=0 raw=0 capacity=2560 need=16 rate=17 output=0 activity=0 target=1 launch_slot=-1 draws=- => launch_attempted=1 selected=2 hunt_dispatched=0 r=0 activity=0 consumed=0
+# §4 elapsed1500 advances only500 and adds853 once; raw0 gives no conversion.
+whaler_tick surplus_once elapsed=1500 switch=1 active=1 progress=0 selected=-1 idle=0 raw=0 capacity=2560 need=16 rate=17 output=0 activity=0 target=0 launch_slot=-1 draws=- => advanced=500 launch_attempted=0 progress=853 activity=0 consumed=0
+# §4 active0 leaves the paid queue at25590 with no launch or progress; no autonomous free boat.
+whaler_tick inactive_queue elapsed=500 switch=1 active=0 progress=25590 selected=-1 idle=1 raw=0 capacity=2560 need=16 rate=17 output=0 activity=0 target=1 launch_slot=-1 draws=- => launch_attempted=0 progress=25590 selected=-1 hunt_dispatched=0 consumed=0
+# §4 u16 additions:65535*127//128=65023; +16000 wraps15487; output65530+1000 wraps994.
+whaler_tick word_wrap elapsed=500 switch=1 active=0 progress=0 selected=0 idle=1 raw=16 capacity=65535 need=16 rate=1000 output=65530 activity=65535 target=0 launch_slot=-1 draws=- => r=128 debit=16 added=1000 raw=0 output=994 activity=15487 consumed=0
+# §8 exact600/3072/1792 passes affordability and count0; active0 still incurs the full immediate charge.
+boat_request inactive_paid money=600 wood=3072 rope=1792 count=0 active=0 draws=- => enqueued=1 refused=0 reason=0 gold=600 wood=3072 rope=1792 active=0 consumed=0
+# §8 one less gold refuses before enqueue/debit, despite adequate goods.
+boat_request poor money=599 wood=3072 rope=1792 count=0 active=1 draws=- => enqueued=0 refused=1 reason=1 gold=0 wood=0 rope=0 consumed=0
+# §8 one stock unit short of wood refuses; quantities are raw stock, not tonnes.
+boat_request short_wood money=600 wood=3071 rope=1792 count=0 active=1 draws=- => enqueued=0 reason=2 gold=0 wood=0 rope=0 consumed=0
+# §8 one stock unit short of rope refuses, after gold and wood pass.
+boat_request short_rope money=600 wood=3072 rope=1791 count=0 active=1 draws=- => enqueued=0 reason=3 gold=0 wood=0 rope=0 consumed=0
+# §8 queue count1 refuses even after affordability passes; no second charge.
+boat_request queue_full money=600 wood=3072 rope=1792 count=1 active=1 draws=- => enqueued=0 reason=4 gold=0 wood=0 rope=0 consumed=0
+# §8 an ordinary active255 request is nonzero, accepted and charged just like active1.
+boat_request active_paid money=601 wood=3073 rope=1793 count=0 active=255 draws=- => enqueued=1 gold=600 wood=3072 rope=1792 active=255 consumed=0
+# §9 original single firing position: maximum raw draw%1=0 but consumed1.
+ship_attack one_position count=1 draws=4294967295 => index=0 consumed=1
+# §9 five positions, draw14%5=4 selects the last index; a trailing draw is not consumed.
+ship_attack last_position count=5 draws=14,123 => index=4 consumed=1
+# §9 byte-count upper boundary255; u32max=(255*16843009), remainder0.
+ship_attack byte_count count=255 draws=4294967295 => index=0 consumed=1
+# §4 zero elapsed does not advance the stamp or decay activity, even with otherwise valid production.
+whaler_tick zero elapsed=0 switch=1 active=0 progress=0 selected=0 idle=1 raw=16 capacity=2560 need=16 rate=17 output=0 activity=128 target=1 launch_slot=-1 draws=- => advanced=0 hunt_dispatched=0 r=0 debit=0 added=0 activity=128 consumed=0
+# §4 the smallest positive elapsed1 also remains below500, with identical local state effects.
+whaler_tick one elapsed=1 switch=1 active=0 progress=0 selected=0 idle=1 raw=16 capacity=2560 need=16 rate=17 output=0 activity=128 target=1 launch_slot=-1 draws=- => advanced=0 hunt_dispatched=0 r=0 debit=0 added=0 activity=128 consumed=0
+# §4 raw equals capacity16, so hunting is blocked before conversion consumes16 and adds17.
+whaler_tick raw_at_capacity elapsed=500 switch=1 active=0 progress=0 selected=0 idle=1 raw=16 capacity=16 need=16 rate=17 output=0 activity=0 target=1 launch_slot=-1 draws=- => hunt_dispatched=0 r=128 debit=16 added=17 raw=0 output=17 activity=272 consumed=0
+# §8 negative money is below the600 gold check; it refuses normally, without a debit or free request.
+boat_request negative_money money=-1 wood=3072 rope=1792 count=0 active=1 draws=- => enqueued=0 refused=1 reason=1 gold=0 wood=0 rope=0 consumed=0

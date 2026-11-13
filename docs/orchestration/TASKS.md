@@ -92,7 +92,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
   [GATE-1b](tasks/gate-1b.md) are accepted and on `main` (`96f7980c`); [GATE-1c](tasks/gate-1c.md) is accepted
   ([review](reviews/2026-11-13-gate-1c-review.md)) and waits for its landing; [COORD-FLAKE-1](tasks/coord-flake-1.md)
   is accepted after one fix round ([review](reviews/2026-11-13-coord-flake-1-review.md)) and lands with GATE-1c;
-  [PLAY-LIVE-1a](tasks/play-live-1a.md) is released to the Windows executor. The wildlife reads [1a](tasks/wildlife-re-1a.md) to [1d](tasks/wildlife-re-1d.md) are accepted; the Mac executor is free.
+  [PLAY-LIVE-1a](tasks/play-live-1a.md) is released to the Windows executor. The wildlife reads [1a](tasks/wildlife-re-1a.md) to [1d](tasks/wildlife-re-1d.md) are accepted; [WHALE-RE-1a](tasks/whale-re-1a.md) (the whaler, documents only) is released to the Mac executor.
   - **The queue, proposed 2026-11-12** by the orchestrator from the
     [project analysis](reviews/2026-11-12-project-analysis.md) (§2.2, §4.2, §6, §7, §8) and the
     [MAP-INTEGRATE-2 review](reviews/2026-11-12-map-integrate-2-review.md) §4. Every packet is released only with
@@ -113,6 +113,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     | 2′ | Mac executor | **[WILDLIFE-RE-1b](tasks/wildlife-re-1b.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1b-review.md)): the animals' own life: their classes' overridden slots, construction and attach draws (OQ-575), the spawn record's release (OQ-573), their routes and jobs (items 4–5) | ~3–4 h |
     | 3′ | Mac executor | **[WILDLIFE-RE-1c](tasks/wildlife-re-1c.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1c-review.md)): the hunter's approach, the fur trapper, the wolf and predators (items 6–8) | ~3–4 h |
     | 4′ | Mac executor | **[WILDLIFE-RE-1d](tasks/wildlife-re-1d.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1d-review.md)): `tools/wildlife_ref.py` with hand-derived vectors from 1a–1c's draw tables | ~3–4 h |
+    | 5′ | Mac executor | **[WHALE-RE-1a](tasks/whale-re-1a.md), RELEASED 2026-11-13** (owner's go): the whaler, its whales and the lamp-oil chain, documents only (analysis §7.4; `progression-gaps.md` row 1). Then WHALE-RE-1b (the whale's life) and a reference packet, as for wildlife | ~3–4 h |
     | — | Orchestrator, beside | **ADR 0006:** a version per save section, lighter goldens, one tool that regenerates pins (MAP-INTEGRATE-2 review E1; analysis §3.2 item 5). The owner approves | — |
     | 3a | Windows executor | **[COORD-FLAKE-1](tasks/coord-flake-1.md), ACCEPTED 2026-11-13** after one fix round ([review](reviews/2026-11-13-coord-flake-1-review.md); lands with GATE-1c; released 2026-11-13 under the owner's standing go for the Windows lane; D5, moved up after GATE-1a): the coordinator tests `F3 (D1, deaf)` (macOS) and `C3` (Windows) flake in CI; cause first, no reruns as proof | ~2–3 h |
     | Later | — | **TEST-MEM-1** (D6, reservations from measured peaks; seven low-memory refusals in the 2026-11-12 run) | ~2–3 h each |

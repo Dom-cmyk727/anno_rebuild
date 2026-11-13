@@ -5,6 +5,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, morning, by the Claude Code orchestrator:
+- **[WHALE-RE-1a](tasks/whale-re-1a.md) RELEASED** to the Mac executor with the owner's go: the whaler, its whales
+  and the lamp-oil chain, documents only. Lamp oil, which only the whaler supplies, is one of the forced goods that
+  stop houses (`progression-gaps.md`).
 - **[COORD-FLAKE-1](tasks/coord-flake-1.md) ACCEPTED after one fix round**
   ([review](reviews/2026-11-13-coord-flake-1-review.md)).
   - **macOS (`F3 (D1, deaf)`):** two causes, both fixed. The test process wrote `q` to a client that had already
@@ -391,7 +394,9 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: free.** No Mac packet is released; the wildlife port waits for ADR 0006.
+- **Now: [WHALE-RE-1a](tasks/whale-re-1a.md)** (released 2026-11-13 with the owner's go), on `task/WHALE-RE-1a`,
+  based on `main`: the whaler, its whales and the lamp-oil chain, documents only. The wildlife port waits for ADR
+  0006.
 - **Finished: [WILDLIFE-RE-1d](tasks/wildlife-re-1d.md)** (2026-11-12; head `ce2c8ff1`), **accepted**
   ([review](reviews/2026-11-12-wildlife-re-1d-review.md)): the wildlife reference, its vectors and contract test.
 - **Finished: [WILDLIFE-RE-1c](tasks/wildlife-re-1c.md)** (2026-11-12; head `1ee3f4d5`), **accepted**

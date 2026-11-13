@@ -247,7 +247,9 @@ class Child {
     /// default (COORD-FLAKE-1, run 43123068877, `cpp (macos-clang)`, test #76). The `running()`
     /// check closes the race for every caller; ignoring SIGPIPE here too, as the socket paths
     /// already do (coord_wire.hpp's `startup_sockets()`), covers the remaining gap between that
-    /// check and the write itself.
+    /// check and the write itself. `SIG_IGN` is process-wide and inherited by every child this
+    /// process spawns after the first `send()` call; the project's own children already ignore
+    /// SIGPIPE through `startup_sockets()`, so this changes nothing for them.
     void send(const std::string& text) {
         if (!running()) {
             return;

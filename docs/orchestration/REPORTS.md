@@ -9348,3 +9348,53 @@ QUESTIONs: C3 could not be reproduced or diagnosed to a provable mechanism in th
 Should it stay on `rerun-and-document` (the project's existing precedent for this family) until it
 recurs with richer evidence (e.g. instrumented logging added ahead of time), or is there a next step
 I'm missing? Otherwise none; independent review is the orchestrator's.
+
+### Review round 1 addendum — F1/F2/F3, C3's evidence gap — 2026-11-13 — READY FOR REVIEW
+
+Head `a0997aba` on `task/COORD-FLAKE-1` (base unchanged, `9a958dc1`; GATE-1c still not on `main`, so
+no merge).
+
+**F1.** Confirmed path: `coord.cpp`'s `silent_too_long()` (`Got::Timeout`), result "coordinator not
+responding" — reproduced with the suggested condition (`deaf.suspend()` for 400 ms once the client
+has started, `deaf.resume()`), which gave the exact same `RESULT 0 reason=coordinator not
+responding` the 0.62 s run's hidden failure must have been. Fix: raised this case's own
+`ANNO_TEST_BUDGET_LIVENESS_MS` from 300 to 1000 (the margin `budget_f2_test.cpp`'s `Scope` already
+uses). Proof: 20/20 clean under the 400 ms stall after the fix; a 1200 ms mutation of the same
+condition still correctly fails with the same "coordinator not responding" reason, confirming the
+fix widens tolerance rather than removing the check.
+
+**F2.** Added `"Child::send degrades silently once the child has exited (COORD-FLAKE-1 F2)"` to
+`budget_f3_test.cpp`: starts `anno_budget_probe` with no mode (exits at once, `argc < 2`), `wait_eof`,
+`send("q\n")`, then asserts the case is still running. In the WSL `-O1` ASan build, with the two new
+lines of `send()` reverted: the whole ctest process dies, `rc=141` (`SIGPIPE`), zero output — the
+same signature as `INCOMPLETE` test #76. Rebuilt with the fix restored: 0/20 fails. Added the
+`SIG_IGN`-is-process-wide-and-inherited sentence to `send()`'s comment.
+
+**F3.** Corrected the `ee504b75` comment in `budget_probe.cpp`'s `deaf_listener`: it blamed run
+`42820583088`'s SIGPIPE on this listener; ctest reports the signal of the process it started, not of
+a child that process spawned. Three occurrences now on record: `42820583088` (before `ee504b75`,
+misattributed at the time), `43082536481` and `43123068877` (after it, both the real parent-`send()`
+mechanism this packet fixed). `startup_sockets()` stays, as hardening for this listener's own writes
+to a peer that can disappear.
+
+**C3.** No guess-fix. Added the kept-line-plus-`INFO` pattern to all 8
+`REQUIRE(has(<child>.line(...), ...))` sites in `budget_f2_test.cpp` (the three `Scope`-based tests
+the reviewer's reading covered: `C2` loss, `C2` mute, `C3` replace); no behaviour change. Stays open;
+reopens with that output the next time it recurs.
+
+Gates, re-run after this round: `ctest -R anno_test_support_tests`, MSVC Release:
+`selected=80 executed=77 failed=0 skipped=3 (platform=3) sanitizer_lines=0 PASS` (one more selected:
+F2's new regression case). WSL `-O1` ASan, same selection:
+`selected=94 executed=90 failed=0 skipped=4 (opt-in=4) sanitizer_lines=0 PASS`. Hosted CI: pending on
+this push (read after push, per the rule).
+
+Decisions and reasoning:
+- Fixed F1 by raising the liveness margin, not the admission bound or the deadline-plus-cancel
+  logic: the margin is what a scheduling stall can outrun, and `budget_f2_test.cpp` already
+  established 1000 ms as adequate for the same kind of coordinator stand-in on this project's hosted
+  runners.
+- Put F2's regression case next to F3 (D1, deaf) in `budget_f3_test.cpp` rather than in a new file:
+  it is this exact mechanism, deterministic and POSIX-only, and belongs beside the case it explains.
+- Left `reqwait`'s own early-return-on-refusal behaviour alone again (F1 does not touch it): the
+  fix is the liveness margin, not the client's choice to exit once its own work is done.
+QUESTIONs: none new; the round-1 QUESTION on C3 stands as before.

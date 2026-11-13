@@ -5,6 +5,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **ADR 0006's packets go to the Mac** (owner: "Yes, the Mac"), after FISHER-RE-1c:
+  [PINS-1](tasks/pins-1.md) (written), then SAVE-SECTIONS-1 (139), then FIXTURES-TRIM-1. Then FISHER-1a and the held
+  ports.
 - **[ADR 0006](../adr/0006-save-sections.md) drafted at the owner's request and ACCEPTED the same day,** as proposed.
   Old base versions stay refused during development, and the per-number fixture copies go once the current set covers
   them.

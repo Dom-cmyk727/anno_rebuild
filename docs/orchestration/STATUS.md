@@ -5,6 +5,13 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[ZOOM-MEASURE-1](tasks/zoom-measure-1.md) ACCEPTED** ([review](reviews/2026-11-13-zoom-measure-1-review.md)).
+  - **The zoom failure is now a number:** on `lan5` at 2560 × 1369, 431 of 12,000 frames show non-ready content, with
+    26,616 stand-in draws and 13,304 dissolves. Even with original water, 537 frames are non-ready, so the cause is
+    chunk readiness.
+  - **The "everything resident" control** reaches 0, so the criterion is reachable.
+  - **The 0.7 s hitch is confirmed:** SDL's event poll blocks in Windows' move/resize loop.
+  - **[DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md) RELEASED** to the Windows executor.
 - **[FISHER-RE-1c](tasks/fisher-re-1c.md) ACCEPTED after one fix round**
   ([review](reviews/2026-11-13-fisher-re-1c-review.md)). On this PC's game files, all 2,473 fish tiles are goals;
   619 have water among their eight neighbours, and 1,854 lie inside fish banks (OQ-609, the fisher port's question).
@@ -428,8 +435,11 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [ZOOM-MEASURE-1](tasks/zoom-measure-1.md)** (released 2026-11-13): the camera sweep with readiness counters
-  and its baseline. Then ZOOM-SMOOTH-1, UI-WINDOW-1, GATE-2a, GATE-2b, TEST-MEM-1 and RENDER-DIRECT-1 to 6.
+- **Now: [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md)** (released 2026-11-13): W4-DEPTH-1 onto main, depth on,
+  the sea at the original's level. Then SHORE-2, ZOOM-SMOOTH-1, UI-WINDOW-1, GATE-2a, GATE-2b, TEST-MEM-1 and
+  RENDER-DIRECT-1 to 6.
+- **Finished: [ZOOM-MEASURE-1](tasks/zoom-measure-1.md)** (2026-11-13; head `a5e180e0`), **accepted**
+  ([review](reviews/2026-11-13-zoom-measure-1-review.md)).
 - **Finished: [SHIP-ORDER-1](tasks/ship-order-1.md)** (2026-11-13; head `e2c3e4e8`): **not reproduced**
   ([review](reviews/2026-11-13-ship-order-1-review.md)); questions to the owner.
 - **Finished: [PLAY-LIVE-1a](tasks/play-live-1a.md)** (2026-11-13; head `9e920c18`), **accepted after one fix round**

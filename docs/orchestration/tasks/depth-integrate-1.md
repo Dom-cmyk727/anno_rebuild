@@ -1,6 +1,6 @@
 # DEPTH-INTEGRATE-1: buildings sit in the ground and the water; the sea at the original's level
 
-**Status:** QUEUED 2026-11-13 by the Claude Code orchestrator for **the Windows executor**. It comes right after
+**Status:** RELEASED 2026-11-13 by the Claude Code orchestrator to **the Windows executor**, under the standing go. It comes right after
 ZOOM-MEASURE-1, ahead of the zoom fixes (owner, 2026-11-13: "Yes, depth first"). The owner's playtest of 2026-11-13 is its depth check.
 
 **Base:** `origin/main` at release. Merge `origin/task/W4-depth-1` (`5eaef168`) into a new branch

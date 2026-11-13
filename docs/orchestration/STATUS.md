@@ -5,6 +5,14 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, morning, by the Claude Code orchestrator:
+- **[WHALE-RE-1a](tasks/whale-re-1a.md) ACCEPTED** ([review](reviews/2026-11-13-whale-re-1a-review.md)), no fix round;
+  every re-checked address and record matches.
+  - **What a port needs:** the oil workshop and the lamp-oil stall's purchase path already run on `main`. What is
+    missing is the whaler (its tick, the boat queue, whaling ship 1511 on route 45) and the whale sources, which
+    `main`'s scenario loader skips.
+  - **Whales are deterministic:** three slots per source, refilled at its centre without a random draw.
+  - **Next:** [WHALE-RE-1b](tasks/whale-re-1b.md) (the whale's life, the boat request, the open callbacks) waits for
+    the owner's go.
 - **GATE-1c and COORD-FLAKE-1 LANDED on `main`** as `babd1da0`, with the owner's OK. `gate` passed (run
   43371869091); GitLab and the share are in step.
   - **`main` is healthy:** its code is `429c0b3a`'s plus two comment changes. That candidate's game-file run passed
@@ -415,9 +423,11 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: [WHALE-RE-1a](tasks/whale-re-1a.md)** (released 2026-11-13 with the owner's go), on `task/WHALE-RE-1a`,
-  based on `main`: the whaler, its whales and the lamp-oil chain, documents only. The wildlife port waits for ADR
-  0006.
+- **Now: free.** [WHALE-RE-1b](tasks/whale-re-1b.md) is proposed and waits for the owner's go. The wildlife port
+  waits for ADR 0006.
+- **Finished: [WHALE-RE-1a](tasks/whale-re-1a.md)** (2026-11-13; head `df63c97e`), **accepted**
+  ([review](reviews/2026-11-13-whale-re-1a-review.md)): the whaler, its whales and the lamp-oil chain, in
+  `docs/re/whaler.md`; OQ-591 to OQ-594.
 - **Finished: [WILDLIFE-RE-1d](tasks/wildlife-re-1d.md)** (2026-11-12; head `ce2c8ff1`), **accepted**
   ([review](reviews/2026-11-12-wildlife-re-1d-review.md)): the wildlife reference, its vectors and contract test.
 - **Finished: [WILDLIFE-RE-1c](tasks/wildlife-re-1c.md)** (2026-11-12; head `1ee3f4d5`), **accepted**

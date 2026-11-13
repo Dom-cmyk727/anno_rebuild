@@ -11,8 +11,8 @@ says who is doing what, where the work is, and what it waits on.
     missing is the whaler (its tick, the boat queue, whaling ship 1511 on route 45) and the whale sources, which
     `main`'s scenario loader skips.
   - **Whales are deterministic:** three slots per source, refilled at its centre without a random draw.
-  - **Next:** [WHALE-RE-1b](tasks/whale-re-1b.md) (the whale's life, the boat request, the open callbacks) waits for
-    the owner's go.
+  - **Next:** [WHALE-RE-1b](tasks/whale-re-1b.md) (the whale's life, the boat request, the open callbacks) is
+    released to the Mac executor.
 - **GATE-1c and COORD-FLAKE-1 LANDED on `main`** as `babd1da0`, with the owner's OK. `gate` passed (run
   43371869091); GitLab and the share are in step.
   - **`main` is healthy:** its code is `429c0b3a`'s plus two comment changes. That candidate's game-file run passed
@@ -424,8 +424,9 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: free.** [WHALE-RE-1b](tasks/whale-re-1b.md) is proposed and waits for the owner's go. The wildlife port
-  waits for ADR 0006.
+- **Now: [WHALE-RE-1b](tasks/whale-re-1b.md)** (released 2026-11-13 with the owner's go), on `task/WHALE-RE-1b`,
+  based on `main`: the whale's life, who requests a whaling boat (OQ-593), the boat path's callbacks (OQ-594).
+  Documents only. The wildlife port waits for ADR 0006.
 - **Finished: [WHALE-RE-1a](tasks/whale-re-1a.md)** (2026-11-13; head `df63c97e`), **accepted**
   ([review](reviews/2026-11-13-whale-re-1a-review.md)): the whaler, its whales and the lamp-oil chain, in
   `docs/re/whaler.md`; OQ-591 to OQ-594.

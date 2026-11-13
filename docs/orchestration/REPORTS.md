@@ -9509,7 +9509,7 @@ Acceptance / controls / evidence / review:
 |---|---|---|---|
 | Seven record types |44 manually derived boundary vectors; no generated expectations | direct-03.log | pending |
 | Draw order | discarded fifth and modulus1; applied source mutants fail with exit1 | contract-03.log | pending |
-| CLI verdicts | agree0/disagree1/unusable2; malformed/empty/missing/exhausted inputs |45 subprocess checks | pending |
+| CLI verdicts | agree0/disagree1/unusable2; malformed/empty/missing/exhausted inputs |46 subprocess checks | pending |
 | Open cases | sea_legality/sea_depth ->OQ-595; indirect_search/projectile_draws ->OQ-594 | contract-03.log | pending |
 | CTest integration | real dev configure; required contract once, agrees once | gate-02.log and inventories | pending |
 

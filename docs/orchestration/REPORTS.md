@@ -9398,3 +9398,15 @@ Decisions and reasoning:
 - Left `reqwait`'s own early-return-on-refusal behaviour alone again (F1 does not touch it): the
   fix is the liveness margin, not the client's choice to exit once its own work is done.
 QUESTIONs: none new; the round-1 QUESTION on C3 stands as before.
+
+### Follow-up — a racy CHECK in F2's own regression case — 2026-11-13
+
+Head `a0997aba`'s push hit `cpp (linux-gcc)`/`cpp (linux-gcc-release)`/`gate` red (run `43351375688`):
+F2's new case, `CHECK_FALSE(child.running())` right after `wait_eof()`, with `running()` reporting
+true. `wait_eof()` only observes the last writer closing its own fd; `running()`'s
+`waitpid(WNOHANG)` can still briefly say the child is alive a moment later - either state proves
+the same claim (`send()` does not crash this process, via its `running()` early return or its
+`SIGPIPE`-ignore backstop), so the assertion tested an implementation timing detail the API never
+promised. Dropped it at head `38fc4abc`, documented why. Proof: 0/30 on Windows, 0/20 in WSL `-O1`
+ASan; the canonical selection clean on both again (MSVC Release `80/77/0`, WSL `94/90/0`). Hosted CI
+pending on this head.

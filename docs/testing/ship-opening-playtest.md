@@ -114,8 +114,11 @@ Look at a Kontor on a coast (your founded one, or `--view Scenes/0100Kampagne01/
    `C:\Users\altin\Pictures\anno-review\W4-DEPTH-1\`.
 4. `--depth off` gives the former picture (piles on top of everything), for comparison.
 5. The water level: the default is 26.5, the original's measured plane (the water covers the beach up to about 27).
-   Compare with `--shore 16.5`, the default before. Wide beaches show blocky water edges at 26.5 (the sea regions'
-   8×8-tile blocks): a per-pixel sea edge is SHORE-2, queued, not fixed yet.
+   Compare with `--shore 16.5`, the default before. **SHORE-2:** the stepped water edges on wide beaches (the sea
+   regions' 8×8-tile blocks jumping all-sea/all-land at a fixed average) are gone — a chunk now holds sea if any of
+   its own tiles dips below the shore plane, so the edge follows the beach's own slope within one chunk's width.
+   Still a per-chunk approximation (8×8 tiles, not the original's per-pixel cache): look at a wide beach for any
+   remaining stair-stepping at that 8-tile grain.
 6. Your own case, at the ship-start Kontor `(255,138)` (candidate A, seat 0): depth off/on and shore 16.5/26.5, each
    at the same camera position, in `C:\Users\altin\Pictures\anno-review\DEPTH-INTEGRATE-1\`
    (`kontor_depth-on_shore-26.5_default.png` is this build's own default). Look at where the piles meet the water and

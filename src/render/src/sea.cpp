@@ -425,10 +425,16 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
     out.h = iw_h;
     const std::size_t cw = (iw_w + 7) / 8;
     out.sea_chunk.assign(cw * ((iw_h + 7) / 8), false);
+    // SHORE-2: a plane-derived approximation, not the original's traced rule (the writer traced
+    // to AnnoWelt.dll 0x1009ebf0 gates an in-island corner on a per-GFXID property query, +0x13c,
+    // not on the corner's own height; docs/re/annowelt.md, docs/open-questions.md OQ-026). A chunk
+    // holds sea if any of its tiles has a corner below the shore plane, replacing the fixed
+    // classifier kLandAverage = 19 this used before.
     for (std::size_t y = 0; y < iw_h; ++y) {
         for (std::size_t x = 0; x < iw_w; ++x) {
             const auto c = corners(out.heights, iw_w, iw_h, x, y);
-            if (c[0] + c[1] + c[2] + c[3] <= 4 * kLandAverage) {
+            if (static_cast<float>(c[0]) < shore_height || static_cast<float>(c[1]) < shore_height ||
+                static_cast<float>(c[2]) < shore_height || static_cast<float>(c[3]) < shore_height) {
                 out.sea_chunk[(y / 8) * cw + x / 8] = true;
             }
         }

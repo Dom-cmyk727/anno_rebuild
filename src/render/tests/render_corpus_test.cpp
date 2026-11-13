@@ -391,57 +391,57 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
 }
 
 const std::vector<std::string> kExpected = {
-    "Single_01.sze g2 t0 Original 16960x9170 620e9723f1bebc34 drawn=69864 inv=11717 failed=0 "
+    "Single_01.sze g2 t0 Original 16960x9170 ca0661e325e1658e drawn=69864 inv=11717 failed=0 "
     "units=5",
-    "Single_01.sze g2 t2500 Enhanced 16960x9170 7676e62566f18e2c drawn=69256 inv=11717 failed=0 "
+    "Single_01.sze g2 t2500 Enhanced 16960x9170 add72ddfe63697e6 drawn=69256 inv=11717 failed=0 "
     "units=5",
     "Single_01.sze g1 region Original 64ac3aafd29fdd02 drawn=24371 units=0",
     "Single_01.sze g1 region Enhanced 8cf3c928653f8d67 drawn=24110 units=0",
     "Single_05.sze g2 t0 Original 9040x3291 8265d0c43f20558d drawn=12628 inv=1240 failed=0 units=2",
-    "Single_05.sze g2 t2500 Enhanced 9040x3291 3bdb5692e077d4d1 drawn=12628 inv=1240 failed=0 "
+    "Single_05.sze g2 t2500 Enhanced 9040x3291 e67380dabca2940e drawn=12628 inv=1240 failed=0 "
     "units=2",
     "Single_05.sze g1 region Original 0877229011d5a8f0 drawn=4603 units=0",
-    "Single_05.sze g1 region Enhanced f3b2a3849f1de9a7 drawn=4603 units=0",
-    "Single_06.sze g2 t0 Original 7280x4451 d7d20453f45bda0f drawn=13778 inv=3084 failed=0 units=3",
-    "Single_06.sze g2 t2500 Enhanced 7280x4451 204556382fec5b0d drawn=13626 inv=3084 failed=0 "
+    "Single_05.sze g1 region Enhanced 48ccddeb358375f2 drawn=4603 units=0",
+    "Single_06.sze g2 t0 Original 7280x4451 d4c7b3e4f4db0d74 drawn=13778 inv=3084 failed=0 units=3",
+    "Single_06.sze g2 t2500 Enhanced 7280x4451 170fb8e3adc43a02 drawn=13626 inv=3084 failed=0 "
     "units=3",
     "Single_06.sze g1 region Original a861e1fa6197b663 drawn=599 units=0",
     "Single_06.sze g1 region Enhanced 34e37aae14db7a05 drawn=599 units=0",
     "Single_08.sze g2 t0 Original 4400x2211 0416a621bf3ce987 drawn=7537 inv=1604 failed=0 units=1",
-    "Single_08.sze g2 t2500 Enhanced 4400x2211 687aaefd3ee0c9f6 drawn=7537 inv=1604 failed=0 "
+    "Single_08.sze g2 t2500 Enhanced 4400x2211 4380920be8e90889 drawn=7537 inv=1604 failed=0 "
     "units=1",
     "Single_08.sze g1 region Original b5e471293061a89e drawn=6670 units=0",
     "Single_08.sze g1 region Enhanced a0e160df9de57337 drawn=6670 units=0",
-    "Single_10.sze g2 t0 Original 17440x9131 20e6037a4fb47fcf drawn=53212 inv=8756 failed=0 "
+    "Single_10.sze g2 t0 Original 17440x9131 d284135862ab6600 drawn=53212 inv=8756 failed=0 "
     "units=1",
-    "Single_10.sze g2 t2500 Enhanced 17440x9131 609c189f529e6fb1 drawn=52883 inv=8756 failed=0 "
+    "Single_10.sze g2 t2500 Enhanced 17440x9131 9500b4363ae36c24 drawn=52883 inv=8756 failed=0 "
     "units=1",
     "Single_10.sze g1 region Original 10ce0f7a56a09d46 drawn=0 units=0",
     "Single_10.sze g1 region Enhanced 2b255a312f1309e1 drawn=0 units=0",
     "Single_12.sze g2 t0 Original 3920x2491 651c606d902cd1bf drawn=8342 inv=1282 failed=0 units=1",
-    "Single_12.sze g2 t2500 Enhanced 3920x2491 e149256d5497c961 drawn=8342 inv=1282 failed=0 "
+    "Single_12.sze g2 t2500 Enhanced 3920x2491 5ce924eac97d57b8 drawn=8342 inv=1282 failed=0 "
     "units=1",
     "Single_12.sze g1 region Original f358c350da85df7d drawn=7295 units=0",
     "Single_12.sze g1 region Enhanced 2ca6cf46328eeece drawn=7295 units=0",
     "Single_14.sze g2 t0 Original 14080x9291 cf77d04f2d6f0caf drawn=47209 inv=9450 failed=0 "
     "units=3",
-    "Single_14.sze g2 t2500 Enhanced 14080x9291 039234f96520222f drawn=47064 inv=9450 failed=0 "
+    "Single_14.sze g2 t2500 Enhanced 14080x9291 62aec2adf0ec4eb4 drawn=47064 inv=9450 failed=0 "
     "units=3",
     "Single_14.sze g1 region Original 97295f6cf81d17c9 drawn=16735 units=1",
-    "Single_14.sze g1 region Enhanced b207a7c1b63c90a1 drawn=16681 units=1",
+    "Single_14.sze g1 region Enhanced d26587b7b16fb834 drawn=16681 units=1",
     "Single_15.sze g2 t0 Original 9120x3611 816f98bd27e94016 drawn=8216 inv=1082 failed=0 units=2",
-    "Single_15.sze g2 t2500 Enhanced 9120x3611 5114e343be0ef189 drawn=8216 inv=1082 failed=0 "
+    "Single_15.sze g2 t2500 Enhanced 9120x3611 de0c3545b379c012 drawn=8216 inv=1082 failed=0 "
     "units=2",
     "Single_15.sze g1 region Original 10ce0f7a56a09d46 drawn=0 units=0",
     "Single_15.sze g1 region Enhanced 98396d449ab33986 drawn=0 units=0",
     "Single_16.sze g2 t0 Original 7200x4051 221fb76d2144a94f drawn=8743 inv=239 failed=0 units=3",
-    "Single_16.sze g2 t2500 Enhanced 7200x4051 037705072fc7ad51 drawn=8743 inv=239 failed=0 "
+    "Single_16.sze g2 t2500 Enhanced 7200x4051 387ca27f57983582 drawn=8743 inv=239 failed=0 "
     "units=3",
     "Single_16.sze g1 region Original 06250f8c9d1f4f01 drawn=1384 units=0",
     "Single_16.sze g1 region Enhanced 5699a9adf679aff1 drawn=1384 units=0",
-    "Single_24.sze g2 t0 Original 7200x2811 739eafaac0d77a01 drawn=24577 inv=2880 failed=0 "
+    "Single_24.sze g2 t0 Original 7200x2811 30e1b5630988cc2c drawn=24577 inv=2880 failed=0 "
     "units=541",
-    "Single_24.sze g2 t2500 Enhanced 7200x2811 4d491cc4a921017d drawn=24406 inv=2880 failed=0 "
+    "Single_24.sze g2 t2500 Enhanced 7200x2811 5ed25ebf3953495f drawn=24406 inv=2880 failed=0 "
     "units=541",
     "Single_24.sze g1 region Original 927b2114d49a6d96 drawn=23697 units=0",
     "Single_24.sze g1 region Enhanced 31a0ff8bc45b6766 drawn=23526 units=0",
@@ -524,38 +524,38 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
     };
     const std::vector<Old> old = {
         {"Single_01.sze",
-         "Single_01.sze g2 t2500 Enhanced 16960x9170 f84c269a52822b49 drawn=69256 inv=11717 "
+         "Single_01.sze g2 t2500 Enhanced 16960x9170 99cf7fb9fbb3d907 drawn=69256 inv=11717 "
          "failed=0 units=5",
          nullptr,
-         "Single_01.sze g2 t2500 Enhanced 16960x9170 95b5083bfb7cd929 drawn=69256 inv=11717 "
+         "Single_01.sze g2 t2500 Enhanced 16960x9170 90e306e7abd09444 drawn=69256 inv=11717 "
          "failed=0 units=5",
          "Single_01.sze g1 region Enhanced 8cf3c928653f8d67 drawn=24110 units=0"},
         {"Single_06.sze",
-         "Single_06.sze g2 t2500 Enhanced 7280x4451 93692d45265f5313 drawn=13626 inv=3084 "
+         "Single_06.sze g2 t2500 Enhanced 7280x4451 134adb64744e6afc drawn=13626 inv=3084 "
          "failed=0 units=3",
          nullptr,
-         "Single_06.sze g2 t2500 Enhanced 7280x4451 c8f619871bf77cfe drawn=13626 inv=3084 "
+         "Single_06.sze g2 t2500 Enhanced 7280x4451 df9e58037ae225c9 drawn=13626 inv=3084 "
          "failed=0 units=3",
          "Single_06.sze g1 region Enhanced 1b1f0e3cc0bf8689 drawn=599 units=0"},
         {"Single_10.sze",
-         "Single_10.sze g2 t2500 Enhanced 17440x9131 d7085e289d520601 drawn=52883 inv=8756 "
+         "Single_10.sze g2 t2500 Enhanced 17440x9131 b42ce0a71b568570 drawn=52883 inv=8756 "
          "failed=0 units=1",
          nullptr,
-         "Single_10.sze g2 t2500 Enhanced 17440x9131 11bc91250cff4a19 drawn=52883 inv=8756 "
+         "Single_10.sze g2 t2500 Enhanced 17440x9131 0503f8d5697d58c8 drawn=52883 inv=8756 "
          "failed=0 units=1",
          "Single_10.sze g1 region Enhanced 2b255a312f1309e1 drawn=0 units=0"},
         {"Single_14.sze",
-         "Single_14.sze g2 t2500 Enhanced 14080x9291 20e6be24fad8625a drawn=47064 inv=9450 "
+         "Single_14.sze g2 t2500 Enhanced 14080x9291 ea272a1b3769ab31 drawn=47064 inv=9450 "
          "failed=0 units=3",
          nullptr,
-         "Single_14.sze g2 t2500 Enhanced 14080x9291 1d702bce968c7bb2 drawn=47064 inv=9450 "
+         "Single_14.sze g2 t2500 Enhanced 14080x9291 b57613b27da34795 drawn=47064 inv=9450 "
          "failed=0 units=3",
-         "Single_14.sze g1 region Enhanced 4c17863d5054a823 drawn=16681 units=1"},
+         "Single_14.sze g1 region Enhanced 83c79c5b323b5246 drawn=16681 units=1"},
         {"Single_24.sze",
-         "Single_24.sze g2 t2500 Enhanced 7200x2811 d33ce3da18b431d7 drawn=24406 inv=2880 "
+         "Single_24.sze g2 t2500 Enhanced 7200x2811 dd67ce6af2fd7f19 drawn=24406 inv=2880 "
          "failed=0 units=541",
          "Single_24.sze g1 region Enhanced 7410a0bae4658270 drawn=23526 units=0",
-         "Single_24.sze g2 t2500 Enhanced 7200x2811 0500861b8f0adfdc drawn=24406 inv=2880 "
+         "Single_24.sze g2 t2500 Enhanced 7200x2811 8094448302622122 drawn=24406 inv=2880 "
          "failed=0 units=541",
          "Single_24.sze g1 region Enhanced 317103d104e285be drawn=23526 units=0"},
     };
@@ -661,7 +661,7 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     expected_16_5[2] = "Single_01.sze g2 t900 Enhanced 722717aef0870f20";
     expected_16_5[9] = "Single_24.sze g2 t0 Original 4e877bad8fd46a94";
     expected_16_5[10] = "Single_24.sze g2 t900 Original 49e5f31a731d2e96";
-    expected_16_5[11] = "Single_24.sze g2 t900 Enhanced e4b9c0e9bc74f319";
+    expected_16_5[11] = "Single_24.sze g2 t900 Enhanced 104826a0ad21a590";
     expected_16_5[12] = "Single_24.sze g1 t0 Original 698e98972f183bcd";
     expected_16_5[13] = "Single_24.sze g1 t900 Original 6822a07c77b3f02c";
     expected_16_5[14] = "Single_24.sze g1 t900 Enhanced 53c9031654b1fa44";
@@ -672,12 +672,12 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     // water covers the beach up to 26: every Single_24 view moves again; Single_01's views give
     // the same digests as at 16.5. Recorded on Windows 11 with MSVC (UCRT) on 2026-11-04.
     std::vector<std::string> expected_default = expected_16_5;
-    expected_default[9] = "Single_24.sze g2 t0 Original 1d77702b80474c0d";
-    expected_default[10] = "Single_24.sze g2 t900 Original 613b7f1d33f8b222";
-    expected_default[11] = "Single_24.sze g2 t900 Enhanced d3a64a227407f12b";
+    expected_default[9] = "Single_24.sze g2 t0 Original e4201a3a41b99975";
+    expected_default[10] = "Single_24.sze g2 t900 Original 3bef2a84cef97680";
+    expected_default[11] = "Single_24.sze g2 t900 Enhanced 4a0bad7d71d3029c";
     expected_default[12] = "Single_24.sze g1 t0 Original ecb32309b57fe7c9";
     expected_default[13] = "Single_24.sze g1 t900 Original bb804b061eb9aa5f";
-    expected_default[14] = "Single_24.sze g1 t900 Enhanced 8828f5a7c42a992d";
+    expected_default[14] = "Single_24.sze g1 t900 Enhanced fd848f8d30c5b3e0";
     expected_default[15] = "Single_24.sze g0 t0 Original aac296b014deadd6";
     expected_default[16] = "Single_24.sze g0 t900 Original b4c67ac6f4849c24";
     expected_default[17] = "Single_24.sze g0 t900 Enhanced 655f0dde6c07d3da";

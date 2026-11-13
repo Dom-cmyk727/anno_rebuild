@@ -54,6 +54,38 @@ Open water is **not** terrain: it is a lattice of animated sprites of `Anlagen.d
 - World height of each sprite: `sea = 2 · 16 · 0.04 = 1.28` world units (`0x100E3A20`, initialised by `0x1009cfb0`/`0x1009d010` from step `0x100CB8F4` = 0.04 and `0x100C127C` = 16), plus a small per-sprite offset `(x mod 5) · 0.01 − (z mod 3) · 0.01357` (`0x100C4DA0`, `0x100CC928`). 1.28 world units = **32 `HEIGHT` units**, ≈ 65.9 px above height 0 at zoom 0. **Confirmed.** The sprite is drawn 1.15 world units lower: the 2801 sprite set's prefix float −1.15 (`HAEUSER/ENTRY` prefix `+8`) is added by the type's piece query (slot `+0xA4`, `0x1009f650`), so the anchor is at `0.13 + wobble` (live sea items, `annodisplay.md` §9.3). **Confirmed** (measured). This is above the coastal sea-floor heights 0/8/16, so the sea floor (ground textures `Meer*`, `RiffBoden*`, `Untiefen*`, …) lies under the water sprites. The painted ground textures switch from water to sand between heights 16 and 17 (2026-10-17, P: 12 templates, `crates/render/examples/waterline_evidence.rs`), but the sea sprites are **clipped by depth at about 27, not 16** (2026-11-04, measured in the Wine runner, `annodisplay.md` §9.3): their frames' `z` ≈ −47 puts the water plane 23 units above the anchor (0.13 world = 3.25), and the checkerboard covers every terrain point below it, the painted sand between 16 and 27 included. The factor 2 in `2 · 16 · 0.04` is not traced.
 - Transparency: `BSH_RGBWZ` is drawn by the raster brushes (`annodisplay.md` §3, `W`) as a 50 % checkerboard (screen-door) with per-pixel depth; the floor shows through every second pixel. **Confirmed** for the format; the visual reading "semi-transparent water" is **likely**.
 - Animation: frame = `tick / (frame_count / 2) + ((5 · x + 3 · z) mod 32)` (frame count from the object, slot `+0x60`); passed with rotation 0 and colour parameter `0xC0` to `tDrawSegmentDD2` slot `+0xBC`. **Confirmed** formula; the unit of `tick` and the wrap of the frame index (presumably modulo the frame count inside `AnnoDisplay`) are not traced.
+
+### The chunk header's "sea" bit (SHORE-2, time-boxed to about one hour; `tools/disasm.py`, Capstone/pefile, this host)
+
+**What was found.** The writer is in the chunk builder `0x1009ebf0` (already named in "Vertex light" above as the
+caller of `0x100a03c0`), at `0x1009eddd` (`mov byte ptr [ebp + 0x32], 0`, zeroed alongside `+0x31` and `+0x33` at
+`0x1009edd5`/`0x1009edd9`) through a loop of 4 iterations (`edi = 0..3`, `0x1009ede3`–`0x1009ef95`) over the 2 × 2
+corners of the chunk (tile offsets `(0, 0)`, `(8, 0)`, `(0, 8)`, `(8, 8)`, from `edi`'s low two bits):
+- **A corner whose island tile-id byte (`[+0x130]` array) is not `0xFF`** (a real tile of this island): the GFXID's
+  own vtable is queried twice — slot `+0xc8` (a height/position call; the three floats fed to it match the vertex
+  height formula `h · 0.04`, `0x1009ee72`–`0x1009eec6`) then, if that call's result is `≥ 0`, slot `+0x13c`
+  (`0x1009eedb`–`0x1009eee5`) on the same GFXID record. **The `+0x13c` result's bit, shifted to position `edi`, is
+  OR'd into `+0x32`** (`0x1009eeeb`–`0x1009eefd`); bit `edi` of `+0x31` is set unconditionally whenever the first
+  call (`+0xc8`) returned `≥ 0`, win or lose on `+0x13c`. So `+0x31` reads as "this corner was sampled" and `+0x32`
+  as "this corner's own GFXID record answered yes to whatever `+0x13c` asks" — a **per-GFXID property query**, not
+  a height-vs-plane comparison, for a tile that belongs to this island.
+- **A corner whose tile-id byte is `0xFF`** (outside every island — the viewer's own "outside all islands,
+  everywhere is sea" case): `0x1009ef08`–`0x1009ef8b` computes the corner's world point against the constant at
+  `0x100e3a1c` (4 bytes before `0x100E3A20`, the sea sprite's own anchor height `1.28` named above) through the
+  **same** height-test call (`0x100b5dc0`); on success bit `edi` of **both** `+0x31` and `+0x32` is set
+  unconditionally.
+- `0x100b5dc0` itself (the shared height test both branches call, three or more floats in, `eax < 0` on failure)
+  was not traced: it is reached with the corner's computed world height among its arguments in both call sites, so
+  it is at least a height comparison for the open-water case, but its exact bound (a fixed constant near `1.28`,
+  or something that reads the plane) is not established, and neither is what `+0x13c`'s property query tests for
+  an in-island tile (a texture-type bit most likely, given it is read from the same per-GFXID record the ground
+  painter uses to choose a texture, not from the corner height computed two lines above it).
+
+**Time-boxed, not closed.** This narrows OQ-026's "how that bit is set" from nothing to: in-island corners go
+through a GFXID property (`+0x13c`), not the corner's own height, and only the outside-islands case is a height
+test (against a constant close to the sea anchor, not obviously the 26.5 `HEIGHT` plane). Resolving `0x100b5dc0`
+and `+0x13c` fully needs more than the hour this packet allows for it; SHORE-2 uses the approximation the packet
+names instead (below), labelled as one, not the fixed classifier 19 the renderer used until now.
 - What is drawn under texture-0 tiles (no terrain triangles) is not established — the screen-door gaps would show whatever the tile cache is cleared to. Open.
 - Related constants derived from the same 0.04 step: `1.28 − 0.35 = 0.93` (`0x100E3A1C`), `1.28 − 0.5 = 0.78` (`0x100E3A18`); a second copy (`0x100E34D0` = 0.78) is the threshold in the walk/build classification `0x100900c0`/`0x10090350`: a tile counts as land when the average of its four corner heights exceeds `trunc(0.78 / 0.04)` = 19. **Confirmed** (code); its rendering relevance is none known.
 - Coastal surf, river and waterfall pieces are ordinary placed objects: entries 2701–2709 (`FLUSS`, `WASSERFALL`; `Fluss*`, `Meer_Fluss*`, `Brandung01` surf, `MeerWellen01`, `Gischt01`) are placed through the island `FLUESSE` record (P: 2708 `Brandung01` 3,742 placements in 150 templates); all water entries 2701–2709 and 2801–2802 have sprite-set prefix byte 2 = 10, the `tHausAnimWasser` kind (`annodisplay.md` §7). 2801/2802 never occur in island data (P), consistent with runtime placement.

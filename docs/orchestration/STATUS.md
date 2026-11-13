@@ -4,7 +4,19 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-12, evening, by the Claude Code orchestrator:
+**Last updated:** 2026-11-13, night, by the Claude Code orchestrator:
+- **[GATE-1c](tasks/gate-1c.md) ACCEPTED after one fix round** ([review](reviews/2026-11-13-gate-1c-review.md)).
+  - **What it fixes:**
+    - the flow-build test's flake has a named cause, and the test now checks only its own claim;
+    - a missing *named* GPU adapter is a classified skip, while no GPU at all still fails under `ANNO_REQUIRE_GPU`;
+    - an empty `--select` fails again.
+  - **The game-file run of the merged candidate** passed all 2,537 executed tests.
+  - **The landing candidate** is `orch/land-gate-1c`; it waits for the owner's OK.
+- **[COORD-FLAKE-1](tasks/coord-flake-1.md) RELEASED** to the Windows executor under the standing go: the two
+  test-coordinator flakes (`F3 (D1, deaf)` on macOS, `C3` on Windows), cause first.
+- **`main`'s own CI run for `96f7980c`** failed on `build-macos`, which never got a runner (no steps). Its rerun passed.
+
+Earlier on 2026-11-12, evening, by the Claude Code orchestrator:
 - **GATE-1b LANDED on `main`** as `96f7980c`, with the owner's OK: GATE-1b, the Rust 1.100 lint fix, its review and
   the GATE-1c release. Hosted `lint` is green on `main` again. The first `gate` failed because GitHub never gave the two
   macOS jobs a runner: they were abandoned after 15 minutes without running a step. A rerun of the failed jobs passed.
@@ -232,15 +244,16 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [GATE-1c](tasks/gate-1c.md)** (released 2026-11-12, on top of `orch/land-gate-1b`, which is `main` at
-  `96f7980c` since its landing), on `task/GATE-1c`:
-  the flow-build test's cause and fix, named-adapter GPU tests skip when their adapter is absent, and a `--select`
-  that matches nothing fails again. **Reported 2026-11-12 (`afcdc8ba`); in fix round 1 since 2026-11-13.** The
-  review checked item 3, the WSL gate with its GPU lane, and CI. It found two gaps:
-  - the flow-build check compares chunk addresses, which a freed chunk can hand on (use the chunk's serial);
-  - with `ANNO_REQUIRE_GPU` and no GPU at all, the named-adapter cases skip instead of failing.
+- **Now: [COORD-FLAKE-1](tasks/coord-flake-1.md)** (released 2026-11-13), on `task/COORD-FLAKE-1`, based on the
+  accepted `task/GATE-1c`: the two test-coordinator flakes in hosted CI, `F3 (D1, deaf)` on macOS and `C3` on Windows.
+  The packet asks for the evidence from the failed runs first, then the mechanism, then a fix of the cause.
+- **Finished: [GATE-1c](tasks/gate-1c.md)** (2026-11-13; head `9a958dc1`), **accepted after one fix round**
+  ([review](reviews/2026-11-13-gate-1c-review.md)):
+  - the flow-build test's cause is named, and the test compares chunk serials;
+  - a missing named adapter is a `gpu` skip, and no GPU at all fails under `ANNO_REQUIRE_GPU`;
+  - an empty `--select` fails again.
 
-  The review also found one wrong line in the report.
+  Landing candidate `orch/land-gate-1c`; its game-file run passed all 2,537 executed tests.
 - **Finished: [GATE-1b](tasks/gate-1b.md)** (2026-11-12; head `e63145e9`), **accepted**
   ([review](reviews/2026-11-12-gate-1b-review.md)): each required contract runs once per gate, the automatic
   picture contract in one lane only, and the README says which run covers which GPU.
@@ -477,8 +490,12 @@ Its later work is not accepted merely because expansion is complete.
 - None. **`main` is healthy at the GATE-1b landing `96f7980c`** (its code is the game-file-tested `75a3c779`, see the
   [GATE-1b review](reviews/2026-11-12-gate-1b-review.md)). The counts and the earlier runs are under
   [Current work](#current-work).
+- The GATE-1c landing candidate's run is done: all 2,537 executed tests passed
+  ([review](reviews/2026-11-13-gate-1c-review.md)).
 
 ## Waiting on the owner
+
+- **Landing `orch/land-gate-1c`** on `main`: GATE-1c, its review, this board and the COORD-FLAKE-1 release.
 
 - **The go for each next Mac packet** of the queue (board, "Current work"); the Windows lane has a standing go.
   ADR 0006 waits until the owner can read it.

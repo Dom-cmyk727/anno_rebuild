@@ -5,6 +5,19 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **The owner's ship-start playtest (2026-11-13):**
+  - **Ship orders work.** The ring was yellow, so it was the owner's own ship. SHIP-ORDER-1 is closed; the earlier
+    failure is not reproducible.
+  - **The Kontor needs:**
+    - the sea raised to the original's level;
+    - its left side embedded in the ground like its back.
+
+    Both are what W4-DEPTH-1 (per-pixel depth, the sea plane at 26.5) built on 2026-11-04. It had waited for this
+    depth check.
+  - **Owner decisions:** depth on by default, and the original's sea level.
+  - **Queued:** [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md) (merge W4-DEPTH-1 onto main and prove it), then
+    SHORE-2 (per-pixel sea edges).
+  - **ADR 0007** now requires the direct renderer to keep this depth.
 - **LANDED on `main` as `f9e6ea0c`,** with the owner's OK: PLAY-LIVE-1a (`--rules living`), WHALE-RE-1b and 1c,
   FISHER-RE-1a and 1b, the SHIP-ORDER-1 report and the board.
   - **`main` is healthy:** that exact commit's game-file run passed all 2,547 executed tests.
@@ -711,7 +724,6 @@ Its later work is not accepted merely because expansion is complete.
   `96de6bca`.
 - **ADR 0004 question R2:** the default surface (`--ui classic|dev`). R3 is decided (2026-11-13: scale the UI to the
   window).
-- **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).
 - **The opening playtest** in the live window (W4-OPENING-1, accepted 2026-11-05).
 - **W4-SETTLEMENT-1's playtest card,** once review item 3 (the inspection line) is fixed.
 - **Whether the developer tool may place buildings of later stages** than the start allows. Main's eligibility rule

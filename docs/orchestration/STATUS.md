@@ -5,6 +5,13 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, morning, by the Claude Code orchestrator:
+- **GATE-1c and COORD-FLAKE-1 LANDED on `main`** as `babd1da0`, with the owner's OK. `gate` passed (run
+  43371869091); GitLab and the share are in step.
+  - **`main` is healthy:** its code is `429c0b3a`'s plus two comment changes. That candidate's game-file run passed
+    all 2,538 executed tests, six of them on a one-at-a-time rerun after memory refusals
+    ([review](reviews/2026-11-13-coord-flake-1-review.md)).
+  - **Not on `main` yet:** this board's later commits (the WHALE-RE-1a release, the gate rule, GATE-2a). They land
+    with the next landing.
 - **Owner decision: no more whole-gate reruns** ("Yes, all of it", on the orchestrator's plan).
   - **What happened:** PLAY-LIVE-1a's first full WSL gate ended red only because 3 sim tests were refused for memory
     (they never ran). The app lane, the only one its change reaches, had passed. A second full run on the same commit
@@ -542,19 +549,12 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on a run
 
-- None. **`main` is healthy at the GATE-1b landing `96f7980c`** (its code is the game-file-tested `75a3c779`, see the
-  [GATE-1b review](reviews/2026-11-12-gate-1b-review.md)). The counts and the earlier runs are under
+- None. **`main` is healthy at the GATE-1c and COORD-FLAKE-1 landing `babd1da0`.** Its code is `429c0b3a`'s plus
+  two comment changes; that run passed all 2,538 executed tests
+  ([review](reviews/2026-11-13-coord-flake-1-review.md), "Game-file run"). The earlier runs are under
   [Current work](#current-work).
-- The GATE-1c landing candidate's run is done: all 2,537 executed tests passed
-  ([review](reviews/2026-11-13-gate-1c-review.md)).
-- The run of `orch/land-coord-flake-1` (`429c0b3a`: GATE-1c's candidate plus COORD-FLAKE-1) is done: all 2,538
-  executed tests pass, six of them on a one-at-a-time rerun after memory refusals
-  ([review](reviews/2026-11-13-coord-flake-1-review.md)).
 
 ## Waiting on the owner
-
-- **Landing GATE-1c and COORD-FLAKE-1** on `main`: `orch/land-gate-1c` alone, or, once its game-file run and the
-  closing commit are in, `orch/land-coord-flake-1`, which contains it.
 
 - **The go for each next Mac packet** of the queue (board, "Current work"); the Windows lane has a standing go.
   ADR 0006 waits until the owner can read it.

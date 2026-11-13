@@ -5,6 +5,16 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **Zoom and camera smoothness: root causes, research and plan** in
+  [`docs/render/zoom-smoothness.md`](../render/zoom-smoothness.md).
+  - **The finding:** the renderer turns every zoom into work (per-level chunks built on demand, stand-ins, 150 ms
+    dissolves, per-level water) and hides late work with visible fades. Shipped 2D games instead draw from resident
+    atlases every frame.
+  - **Owner decision ("Yes, both"):**
+    - measure, then fix within today's renderer: [ZOOM-MEASURE-1](tasks/zoom-measure-1.md), then ZOOM-SMOOTH-1,
+      next after SHIP-ORDER-1, ahead of GATE-2a;
+    - draft [ADR 0007](../adr/0007-direct-rendering.md), drawing the world directly every frame. It is proposed and
+      waits for the owner.
 - **[PLAY-LIVE-1a](tasks/play-live-1a.md) ACCEPTED after one fix round**
   ([review](reviews/2026-11-13-play-live-1a-review.md)): a `--play` recording now carries its rules digest, and the
   timing case is opt-in.
@@ -648,6 +658,8 @@ Its later work is not accepted merely because expansion is complete.
   binding. MAP-INTEGRATE-2 keeps B until the owner answers.
 - **The W4-UI-2 playtest card** (part K): the HUD and construction menu in the live window, on `main` from
   `96de6bca`.
+- **[ADR 0007](../adr/0007-direct-rendering.md), direct rendering:** approve or change it, and its three questions
+  (the GPU tolerance contract, a hard art-set switch or a scale blend, whether to keep the old baked path).
 - **ADR 0004 question R2:** the default surface (`--ui classic|dev`). R3 is decided (2026-11-13: scale the UI to the
   window).
 - **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).

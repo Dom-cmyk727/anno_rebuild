@@ -239,13 +239,32 @@ class Child {
         return false;
     }
 
+    /// Writes `text` to the child's stdin, unless it has already exited (`running()`'s
+    /// liveness check, which also reaps it): some probe modes (`reqwait` on a refused
+    /// reservation, e.g. T10c F3 D1 "deaf") exit on their own once their own work is done,
+    /// without waiting for a "q" that was already on its way; a write to that now-closed pipe
+    /// is otherwise a broken-pipe SIGPIPE that killed this (the caller's) whole process by
+    /// default (COORD-FLAKE-1, run 43123068877, `cpp (macos-clang)`, test #76). The `running()`
+    /// check closes the race for every caller; ignoring SIGPIPE here too, as the socket paths
+    /// already do (coord_wire.hpp's `startup_sockets()`), covers the remaining gap between that
+    /// check and the write itself. `SIG_IGN` is process-wide and inherited by every child this
+    /// process spawns after the first `send()` call; the project's own children already ignore
+    /// SIGPIPE through `startup_sockets()`, so this changes nothing for them.
     void send(const std::string& text) {
+        if (!running()) {
+            return;
+        }
 #if defined(_WIN32)
         if (in_ != nullptr) {
             DWORD written = 0;
             WriteFile(in_, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
         }
 #else
+        static const int ignored = [] {
+            ::signal(SIGPIPE, SIG_IGN);
+            return 1;
+        }();
+        (void)ignored;
         if (in_ >= 0) {
             const ssize_t n = ::write(in_, text.data(), text.size());
             (void)n;

@@ -13,7 +13,8 @@ says who is doing what, where the work is, and what it waits on.
   - **The proof:** a new regression case, and in WSL the reverted fix kills the test process with `SIGPIPE`.
   - **Windows (`C3`):** still no provable cause; every check of that form now prints the line the child sent.
   - **Left:** three comment corrections, as the branch's closing commit.
-  - **Landing candidate** `orch/land-coord-flake-1` contains `orch/land-gate-1c`; its game-file run is under way.
+  - **Landing candidate** `orch/land-coord-flake-1` contains `orch/land-gate-1c`. Its game-file run: all 2,538
+    executed tests pass (six render cases refused for low memory, then passed one at a time).
 - **[PLAY-LIVE-1a](tasks/play-live-1a.md) RELEASED** to the Windows executor under the standing go: one flag,
   `--rules original|living`, turns on living houses and city income in the window. The default stays `original`;
   whether `living` becomes the default is the owner's decision.
@@ -527,8 +528,9 @@ Its later work is not accepted merely because expansion is complete.
   [Current work](#current-work).
 - The GATE-1c landing candidate's run is done: all 2,537 executed tests passed
   ([review](reviews/2026-11-13-gate-1c-review.md)).
-- **The game-file run of `orch/land-coord-flake-1`** (`429c0b3a`: GATE-1c's candidate plus COORD-FLAKE-1), started
-  2026-11-13 05:06 in the run worktree.
+- The run of `orch/land-coord-flake-1` (`429c0b3a`: GATE-1c's candidate plus COORD-FLAKE-1) is done: all 2,538
+  executed tests pass, six of them on a one-at-a-time rerun after memory refusals
+  ([review](reviews/2026-11-13-coord-flake-1-review.md)).
 
 ## Waiting on the owner
 

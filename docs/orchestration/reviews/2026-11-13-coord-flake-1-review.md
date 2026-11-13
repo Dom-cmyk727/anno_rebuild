@@ -191,7 +191,21 @@ Comments only; hosted CI is their gate.
 
 ### Game-file run
 
-At the candidate `429c0b3a`, in the run worktree on this PC: see the board's STATUS until it is recorded here.
+At the candidate `429c0b3a`, in the run worktree on this PC. The canonical call ran with the game files,
+`ANNO_GPU_ADAPTER=4090` and 16 jobs, in 12 min.
+- **2,564 tests selected, 2,532 executed and passed, 6 failed, 26 skipped** (20 opt-in, 3 platform, 3 other: the
+  same skips as GATE-1c's run).
+- **The six failures were memory refusals,** not test results. Each threw `[anno-test memory] refused …
+  reason=low-memory stop` before its work started; the machine's free memory had fallen below the stop line. All
+  are game-file render corpus cases (chunk draw lists, `render_chunk`, legacy river shading, water field, river
+  flow corpus, scene digests); none touches the coordinator code this package changed.
+- **The rerun, one at a time** (`--jobs 1`, 15 GB free at its start, as the documented procedure says): 6 selected,
+  6 executed, 0 failed, `VERDICT: PASS`, in 7.5 min.
+
+**All 2,538 executed tests pass.** That is GATE-1c's 2,537 plus the new regression case. The closing commit
+`6b096261` changes two comments, so this run stands for it.
+- **Logs:** `cache/orch-coord-flake-1/canonical-gate.log` (sha256 `40f8c2fc…`) and `rerun-refused.log` (sha256
+  `7614b533…`).
 
 ### Disposition
 

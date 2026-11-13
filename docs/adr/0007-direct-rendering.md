@@ -1,8 +1,7 @@
 # ADR 0007: The camera moves over resident content; the world is drawn directly every frame
 
-- **Status:** Proposed, 2026-11-13, by the Claude Code orchestrator. The owner approves or changes it. The owner's go of
-  2026-11-13 ("Yes, both") covers *drafting* it, and the measurement and quick fixes that come first. It does not cover
-  the change itself.
+- **Status:** **Accepted by the owner, 2026-11-13** ("Approve it", as proposed). Proposed the same day by the Claude Code
+  orchestrator. Not implemented yet: ZOOM-MEASURE-1 and ZOOM-SMOOTH-1 come first, then RENDER-DIRECT-1 to 6.
 - **Date:** 2026-11-13
 - **Evidence:** [`docs/render/zoom-smoothness.md`](../render/zoom-smoothness.md): the root causes, with the owner's log,
   the design documents and the code read, and the external research with sources.
@@ -112,6 +111,15 @@
 6. **RENDER-DIRECT-6:** the direct path made the default, stand-ins and dissolves removed from it, and the sweep at 0.
 
 ## Questions for the owner
+
+**Answered by the approval "as proposed" (2026-11-13):**
+- **Question 1:** the test contract of decision 8 is accepted. The CPU reference and `--png` stay exact; the GPU's
+  interactive frames get a stated tolerance, whose numbers RENDER-DIRECT-3 measures and writes here.
+- **Question 2** stays as the ADR proposes it: decided on a build at RENDER-DIRECT-4.
+- **Question 3** follows the Consequences: the baked path stays behind a flag until the direct path passes the sweep,
+  then is removed after one release with no use. The owner may still ask to keep it.
+
+The questions as they were put:
 
 1. **Do you accept the test contract in decision 8?** Exact on the CPU and for `--png`; a stated tolerance for the
    GPU's interactive frames.

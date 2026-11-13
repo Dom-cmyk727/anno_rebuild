@@ -13,8 +13,9 @@ says who is doing what, where the work is, and what it waits on.
   - **Owner decision ("Yes, both"):**
     - measure, then fix within today's renderer: [ZOOM-MEASURE-1](tasks/zoom-measure-1.md), then ZOOM-SMOOTH-1,
       next after SHIP-ORDER-1, ahead of GATE-2a;
-    - draft [ADR 0007](../adr/0007-direct-rendering.md), drawing the world directly every frame. It is proposed and
-      waits for the owner.
+    - draft [ADR 0007](../adr/0007-direct-rendering.md), drawing the world directly every frame. **Accepted by the
+      owner the same day, as proposed:** the GPU tolerance contract holds, the art-set switch is decided on a build,
+      and the baked path is removed after one release with no use.
 - **[PLAY-LIVE-1a](tasks/play-live-1a.md) ACCEPTED after one fix round**
   ([review](reviews/2026-11-13-play-live-1a-review.md)): a `--play` recording now carries its rules digest, and the
   timing case is opt-in.
@@ -658,8 +659,6 @@ Its later work is not accepted merely because expansion is complete.
   binding. MAP-INTEGRATE-2 keeps B until the owner answers.
 - **The W4-UI-2 playtest card** (part K): the HUD and construction menu in the live window, on `main` from
   `96de6bca`.
-- **[ADR 0007](../adr/0007-direct-rendering.md), direct rendering:** approve or change it, and its three questions
-  (the GPU tolerance contract, a hard art-set switch or a scale blend, whether to keep the old baked path).
 - **ADR 0004 question R2:** the default surface (`--ui classic|dev`). R3 is decided (2026-11-13: scale the UI to the
   window).
 - **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).

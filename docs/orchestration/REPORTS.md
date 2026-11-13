@@ -9157,14 +9157,271 @@ QUESTIONs: should this session remove the duplicate `#[allow(clippy::cast_precis
 or does that belong to another lane/the orchestrator? Otherwise none requiring an owner decision;
 independent review of the rest of this packet is the orchestrator's.
 
+## GATE-1c — a gate can end green for the right reasons — 2026-11-12 — READY FOR REVIEW
+
+Base `origin/orch/land-gate-1b` db118177, branch `task/GATE-1c`, code head `3b311a8e`, pushed head
+(merged with `origin/main` 96f7980c, docs-only, no conflicts) `9e73f27b`.
+
+**Item 1, the flow-build test (`river_flow_corpus_test.cpp:1322`).** Cause, with evidence: its
+"nothing is rebuilt any more" check summed `update_chunks`'s global `built` return, which also
+counts its margin/neighbouring-group housekeeping chunks (`margin_keys()`/`adjacent_keys()`,
+`frame.cpp` `request_chunks`/`plan_margin`); those are not required to have finished their own
+in-flight build by the time the loop above finds every *visible* chunk settled (that loop only
+polls `visible_chunks(view)`), so one can still arrive inside the 60-iteration/300 ms check window.
+Reproduced at Debug (`/Od`, no Ninja preset on this host, so MSVC Debug stood in for `-O0`) with
+temporary logging: 3/40 runs failed with `CHECK(rebuilt == 0)` violated by exactly one chunk; one
+capture showed an **adjacent** key (`g=0,-3,8`) still uncached (`cached=0`) at the moment the
+settled-loop declared every visible chunk settled, then arriving on the very first follow-up
+iteration (`built=1`). Fix: track this test's own view's cached-chunk pointer identity across the
+60-iteration window instead of the global count (no sleep/frame/retry count changed). Proof: 80/80
+Debug reruns clean after the fix (40 fresh + 40 at the same condition that showed the three
+original failures); a deliberately-broken variant (temporarily forcing one recorded pointer to
+`nullptr,` simulating a real rebuild) fails with `CHECK( ...chunk(...) == before_rebuild[...] )` at
+line 1386, confirming the check is live, then reverted. Full Release suite with game files:
+195/195 test cases, 2,902,999/2,902,999 assertions, including this test, clean.
+
+**Item 2, the named-adapter GPU tests (`play_gpu_test.cpp:50-71`).** A missing *named* adapter
+(`pick_adapter` finds no "RTX 4090"/"Radeon" in `list_adapters()`) no longer `FAIL`s under
+`ANNO_REQUIRE_GPU`; it is always a skip now, classified `gpu` by `ctest_verdict.py`'s
+`GPU|adapter|RTX|Radeon|Metal|Vulkan` pattern (confirmed: `SKIPPED(gpu):` for both cases in the WSL
+gate below). `headless_context()` failing once a named adapter is confirmed present (truly no GPU
+at all) still `FAIL`s under `ANNO_REQUIRE_GPU` — unchanged. `wsl_gate.sh`'s `--gpu-lane` now passes
+`--allow-skip gpu`. Checked on three setups: **adapter present** (this PC, MSVC Release,
+`ANNO_REQUIRE_GPU=1`) — both cases pass on the real RTX 4090 and Radeon iGPU; **absent, GPU
+present, `ANNO_REQUIRE_GPU=1`** (WSL lavapipe, `--gpu-lane`) — both `SKIPPED(gpu)`, gate green;
+**absent, no `ANNO_REQUIRE_GPU`** — unchanged (already a skip before this packet).
+
+**Item 3, an empty selection fails again (`run_selected.py`).** Since GATE-1b, excluding already-run
+required contracts from the selection made the "was anything selected" check itself blind to a
+`--select` that matched nothing at all. Fixed: that check now runs on the selection *before* the
+required-name exclusion; a selection that matched only required contracts still ends `VERDICT: PASS`
+(`workflow_test.py`'s `test_required_contract_does_not_inflate_selection` already asserted
+`selected=0 executed=0` since GATE-1b's `e9be274b`, unchanged by `3b311a8e`), while one that
+matched nothing at all fails again (`test_empty_selection_with_require_test_still_fails`, new,
+reproducing the orchestrator's `--select '^no_such_test$' --require-test pass` case). `python -I
+tools/test/workflow_test.py`: 24 tests, `OK` (23 from GATE-1b/1a plus this one).
+
+**WSL gate, `task/GATE-1c-gatecheck` (clean checkout, code head `3b311a8e`), `--gpu-lane`,
+`sanitizer_lines=0` every lane, `rc=0`:** app 1599s (GATE-1b 1572s), sim 1901s (1867s), formats 169s
+(165s), render 424s (548s, faster this time — noise, both within normal variance), tsupport 38s
+(38s), **gpu 1898s — new, first clean pass**: `selected=116 executed=114 skipped=2 (gpu=2)
+sanitizer_lines=0 VERDICT: PASS`, the two skips exactly `anno_render_gpu_tests.play: GPU matches the
+CPU path on one scene` and `..., on the Radeon iGPU`. Overall `rc=0`.
+
+CI: code push `3b311a8e` green on the first try, `gate`/`lint` included (the GATE-1b lint fix is in
+on this base). Per the orchestrator's note, merged `origin/main` 96f7980c (docs-only, the GATE-1b
+game-file/CI record) into `task/GATE-1c`, no conflicts, pushed `9e73f27b`; its own CI also green
+first try (`gate` included) — no macOS-runner abandonment this time, no coordinator flake seen, no
+rerun needed.
+
+NOT_RUN: the coordinator flakes (COORD-FLAKE-1), the MSVC game-file suite run beyond what this
+packet itself ran (the full corpus/game-file sign-off remains the orchestrator's at the merge).
+
+Decisions and reasoning:
+- Fixed the flow-build test's claim (its own view must not be rebuilt) rather than its timing: no
+  new sleep, frame-count or retry was added; the check now measures only what the test's own
+  rendered picture (checked a few lines below) actually depends on.
+- Used MSVC Debug as the `-O0` stand-in (no Ninja `dev`/`asan` preset on this host per `CLAUDE.md`);
+  the mechanism and fix are about ordering/timing, not an optimizer-specific code path, so Debug's
+  slower, unoptimized build reproduces the same race GCC's `-O0` did in the project analysis.
+- Kept the named-adapter skip change scoped to the `pick_adapter`-not-found branch only;
+  `headless_context()`'s existing `ANNO_REQUIRE_GPU` failure path (a confirmed-present named
+  adapter that still can't open a context) is untouched, preserving "no GPU at all still fails".
+QUESTIONs: none requiring an owner decision; independent review is the orchestrator's.
+
+### Review round 1 addendum — F1/F2/F3 — 2026-11-13 — READY FOR REVIEW
+
+Head `d06ccc92` (code) on `task/GATE-1c`.
+
+**F1 (ABA on raw `Chunk*`).** Fixed: compare `Chunk::serial` (process-unique) per visible key
+instead of the pointer. Proof: 50/50 fresh Debug reruns clean, plus the earlier 80 (130 total, same
+condition as the original 3/40 failures). Broken-variant proof redone as asked: `frames.insert_chunk`
+on one visible key (a real replacement, a fresh serial) inside the window — `CHECK( c->serial ==
+before_rebuild[...] )` fails with `67 == 8`, then reverted.
+
+**F2 (dropped "no GPU at all" fails).** Fixed: `FAIL` under `ANNO_REQUIRE_GPU` when `adapters` is
+empty; skip (`gpu`) only when adapters exist but none matches the name. Comment corrected. Proof:
+real RTX 4090 and Radeon (MSVC Release) still pass; WSL lavapipe still `SKIPPED(gpu)` with
+`ANNO_REQUIRE_GPU=1`. The true "zero adapters" leg could not be reproduced live: `list_adapters()`
+enumerates `WGPUInstanceBackend_All`, and WSL's Mesa `llvmpipe` still answered through it even with
+`VK_ICD_FILENAMES` pointed at a missing file and `LIBGL_DRIVERS_PATH`/`EGL_DRIVERS_PATH` broken — no
+environment on this host produced a genuinely empty adapter list. That leg is verified by reading the
+one added line (`adapters.empty() && ANNO_REQUIRE_GPU -> FAIL`), not by a live repro; flagging this
+as a QUESTION rather than claiming proof that was not run.
+
+**F3.** Corrected: the `selected=0 executed=0` assertion is GATE-1b's own (`e9be274b`), unchanged by
+`3b311a8e`.
+
+Not rerun: the full WSL `--gpu-lane` gate (not asked for this round). Ran instead, in the WSL `-O1`
+ASan build (separate build dir, not the full `wsl_gate.sh`): the flow-build case and both `play_gpu_test`
+cases, `sanitizer_lines` 0 throughout; `python -I tools/test/workflow_test.py`: 24/24 `OK` (unaffected
+by F1/F2, Python-only F3 is docs). Full Release suite with game files re-run after F1/F2: 195/195 cases
+clean. Hosted CI: pending on this push.
+
+Decisions and reasoning:
+- Used `insert_chunk` for the F1 broken-variant proof, not a raw invalidate: it is the documented
+  test/tool seam that gets a chunk a fresh serial without needing a worker round-trip to land.
+- Did not try further WSL tricks (unloading Mesa, namespacing) to force zero adapters: each
+  additional attempt risked destabilizing the shared WSL environment for no proof value beyond
+  what reading the one-line change already gives; said so plainly instead of fabricating a result.
+QUESTIONs: is code-review verification of the "zero adapters, `ANNO_REQUIRE_GPU`, FAIL" leg
+sufficient, or does it need a live repro on a host that can actually produce an empty adapter list
+(bare CI runner with no software rasterizer, perhaps)? Otherwise none; independent review is the
+orchestrator's.
+
+### Review round 1, zero-adapter leg — live repro — 2026-11-13
+
+`unshare -r -m bash -c '...mount --bind /dev/null ...libvulkan.so.1/libEGL.so.1/libEGL.so/libGL.so.1/
+libGL.so...; <play_gpu_test command>'` (per the orchestrator's suggestion; unprivileged user
+namespaces are enabled here) hides the GPU loader libraries inside a private, process-scoped
+mount namespace, at head `d06ccc92`'s WSL `-O1` ASan build. `list_adapters()` there reports
+genuinely empty (`MESSAGE: skipping: ... among: ` with nothing after it). Both cases: with
+`ANNO_REQUIRE_GPU=1`, both `FATAL ERROR: no GPU device at all (ANNO_REQUIRE_GPU is set)` (`FAILURE`);
+without it, both `SKIPPED` (`SUCCESS`). The bind mounts vanished with the namespace. The zero-adapter
+leg is now live-proven, not just code-reviewed.
+
+## COORD-FLAKE-1 — the two test-coordinator flakes, cause first — 2026-11-13 — READY FOR REVIEW
+
+Base `origin/task/GATE-1c` `9a958dc1` (GATE-1c not yet on `main`, so no merge needed), branch
+`task/COORD-FLAKE-1`, head `a7dedc90`.
+
+**F3 (D1, deaf), `cpp (macos-clang)`.** Evidence: runs `43123068877` (test #76, `SIGPIPE***Exception`,
+2.23s) and `43082536481` (`INCOMPLETE`, same test, no assertion failed, no doctest output at all
+between `Start` and the signal) — 2 occurrences since 2026-11-10, matching the packet's citation; no
+further occurrences found in the other failed runs checked in that window (`42883218166` is an
+unrelated `V3` failure). Mechanism, read from the code: `budget_probe.cpp`'s `deaf_listener` already
+calls `startup_sockets()` (landed 2026-11-10, `ee504b75`) to ignore `SIGPIPE` for *its own* socket
+sends. That fix never touched the *parent* test process. `budget_f3_test.cpp`'s D1-deaf case spawns
+the client as `probe({"reqwait", ...})`; `reqwait` mode (`budget_probe.cpp:474-503`) exits right after
+printing `RESULT` when the reservation is refused — only the *admitted* branch waits for `quit`. The
+parent's `quit_and_wait(deaf)` → `client.send("q\n")` (`budget_f3_test.cpp:550`) then races a
+`::write()` to that already-closed stdin pipe; the parent process never set `SIGPIPE` to ignore
+(nothing in `main.cpp` or this path does), so the default disposition (terminate) kills the whole
+ctest process — not a timeout, not a crash in the child, a broken-pipe write in the parent. Not
+reproduced directly as a SIGPIPE locally (POSIX-only, and this host's CPU load didn't widen the race
+enough), but the mechanism is read from the source, not guessed: the exact asymmetry (`reqwait`
+waits for quit only when admitted) is a verifiable, named line, and `Child::send()`'s missing
+liveness check applies to all 10 `.send("q...")` call sites in the suite, any of which could race the
+same way. Fix: `Child::send()` (`child_process.hpp`) now skips the write when `running()` says the
+child has already exited, and ignores `SIGPIPE` as a backstop for the remaining gap between that
+check and the write — the same pattern `coord_wire.hpp`'s socket paths already use. Proof: WSL `-O1`
+ASan, `*deaf*bounded deadline*`, 60/60 clean (no regression from the fix); MSVC Release, same case,
+passes (Windows has no `SIGPIPE`, so this proves no regression, not the crash itself, which is
+POSIX-only).
+
+**C3, `cpp (windows-msvc)`.** Evidence: run `43218940794` attempt 1, test `#71`,
+`REQUIRE( has(holder.line(10000ms), "READY 1") )` false, 0.35s total — the FIRST assertion of the
+test, failing fast, not timing out. 1 occurrence found since 2026-11-10 (the packet's own citation);
+no others found in the runs checked. Read `budget.cpp`, `coord.cpp`, `coord_server.cpp`,
+`budget_f2_test.cpp`'s `Scope`/`start_coord`/port assignment (`port_for`, globally unique per file and
+index — ruled out a port collision) and `admit_deadline()` (default 1800s, ruling out a slow
+coordinator-connect retry as the 0.35s cause: that path would hang for minutes, not fail in
+under a second). Could not reproduce: 30 isolated runs under 8 background CPU-spin jobs, and 6 full
+`ctest -j 16 --repeat until-fail:1` passes of the whole `anno_test_support_tests` suite under the
+same load (one unrelated `F4 (N4)` failure turned up from a stale WSL-coordinator-binary path,
+unrelated to C3), all clean; 0/36 total. No line in the evidence or the code read points to a single,
+provable mechanism the way F3's does — only candidates I could not confirm (a readiness check that
+accepts a silent-but-running coordinator, which the "pre-F2 binary" comment suggests is for an old
+coordinator build, not this scenario; a possible fast `Decision::Refuse` with no visible cause).
+Per the packet, not fixed: the evidence does not prove a cause, and a guess-fix here would not close
+this by its mechanism, only by chance. Not reproduced, no fix applied, raising a QUESTION instead.
+
+Gates: `ctest -R anno_test_support_tests` (canonical runner), MSVC Release: `selected=79 executed=76
+failed=0 skipped=3 (platform=3) sanitizer_lines=0 PASS`. WSL `-O1` ASan, same selection:
+`selected=93 executed=89 failed=0 skipped=4 (opt-in=4) sanitizer_lines=0 PASS`. Hosted CI: pending on
+this push (read after push, per the rule).
+
+NOT_RUN: the full WSL gate and the MSVC game-file run (the orchestrator, at the merge); TEST-MEM-1;
+C3's fix (unproven cause).
+
+Decisions and reasoning:
+- Fixed F3 at the one shared call site (`Child::send()`) rather than only `budget_f3_test.cpp`'s own
+  `quit_and_wait`: all 10 `.send("q...")` sites share the same latent race, and the fix needs no
+  caller to remember to check first.
+- Did not change `reqwait`'s own early-return-on-refusal behavior: exiting promptly once its own
+  work is done is correct; the bug is the *caller* not checking liveness before writing, not the
+  child exiting when it has nothing left to do.
+- Left C3 unfixed rather than apply a speculative change (e.g. widening `start_coord`'s readiness
+  window) that the evidence does not support: a flake closed by an unproven guess is not closed by
+  its mechanism either.
+QUESTIONs: C3 could not be reproduced or diagnosed to a provable mechanism in the time available.
+Should it stay on `rerun-and-document` (the project's existing precedent for this family) until it
+recurs with richer evidence (e.g. instrumented logging added ahead of time), or is there a next step
+I'm missing? Otherwise none; independent review is the orchestrator's.
+
+### Review round 1 addendum — F1/F2/F3, C3's evidence gap — 2026-11-13 — READY FOR REVIEW
+
+Head `a0997aba` on `task/COORD-FLAKE-1` (base unchanged, `9a958dc1`; GATE-1c still not on `main`, so
+no merge).
+
+**F1.** Confirmed path: `coord.cpp`'s `silent_too_long()` (`Got::Timeout`), result "coordinator not
+responding" — reproduced with the suggested condition (`deaf.suspend()` for 400 ms once the client
+has started, `deaf.resume()`), which gave the exact same `RESULT 0 reason=coordinator not
+responding` the 0.62 s run's hidden failure must have been. Fix: raised this case's own
+`ANNO_TEST_BUDGET_LIVENESS_MS` from 300 to 1000 (the margin `budget_f2_test.cpp`'s `Scope` already
+uses). Proof: 20/20 clean under the 400 ms stall after the fix; a 1200 ms mutation of the same
+condition still correctly fails with the same "coordinator not responding" reason, confirming the
+fix widens tolerance rather than removing the check.
+
+**F2.** Added `"Child::send degrades silently once the child has exited (COORD-FLAKE-1 F2)"` to
+`budget_f3_test.cpp`: starts `anno_budget_probe` with no mode (exits at once, `argc < 2`), `wait_eof`,
+`send("q\n")`, then asserts the case is still running. In the WSL `-O1` ASan build, with the two new
+lines of `send()` reverted: the whole ctest process dies, `rc=141` (`SIGPIPE`), zero output — the
+same signature as `INCOMPLETE` test #76. Rebuilt with the fix restored: 0/20 fails. Added the
+`SIG_IGN`-is-process-wide-and-inherited sentence to `send()`'s comment.
+
+**F3.** Corrected the `ee504b75` comment in `budget_probe.cpp`'s `deaf_listener`: it blamed run
+`42820583088`'s SIGPIPE on this listener; ctest reports the signal of the process it started, not of
+a child that process spawned. Three occurrences now on record: `42820583088` (before `ee504b75`,
+misattributed at the time), `43082536481` and `43123068877` (after it, both the real parent-`send()`
+mechanism this packet fixed). `startup_sockets()` stays, as hardening for this listener's own writes
+to a peer that can disappear.
+
+**C3.** No guess-fix. Added the kept-line-plus-`INFO` pattern to all 8
+`REQUIRE(has(<child>.line(...), ...))` sites in `budget_f2_test.cpp` (the three `Scope`-based tests
+the reviewer's reading covered: `C2` loss, `C2` mute, `C3` replace); no behaviour change. Stays open;
+reopens with that output the next time it recurs.
+
+Gates, re-run after this round: `ctest -R anno_test_support_tests`, MSVC Release:
+`selected=80 executed=77 failed=0 skipped=3 (platform=3) sanitizer_lines=0 PASS` (one more selected:
+F2's new regression case). WSL `-O1` ASan, same selection:
+`selected=94 executed=90 failed=0 skipped=4 (opt-in=4) sanitizer_lines=0 PASS`. Hosted CI: pending on
+this push (read after push, per the rule).
+
+Decisions and reasoning:
+- Fixed F1 by raising the liveness margin, not the admission bound or the deadline-plus-cancel
+  logic: the margin is what a scheduling stall can outrun, and `budget_f2_test.cpp` already
+  established 1000 ms as adequate for the same kind of coordinator stand-in on this project's hosted
+  runners.
+- Put F2's regression case next to F3 (D1, deaf) in `budget_f3_test.cpp` rather than in a new file:
+  it is this exact mechanism, deterministic and POSIX-only, and belongs beside the case it explains.
+- Left `reqwait`'s own early-return-on-refusal behaviour alone again (F1 does not touch it): the
+  fix is the liveness margin, not the client's choice to exit once its own work is done.
+QUESTIONs: none new; the round-1 QUESTION on C3 stands as before.
+
+### Follow-up — a racy CHECK in F2's own regression case — 2026-11-13
+
+Head `a0997aba`'s push hit `cpp (linux-gcc)`/`cpp (linux-gcc-release)`/`gate` red (run `43351375688`):
+F2's new case, `CHECK_FALSE(child.running())` right after `wait_eof()`, with `running()` reporting
+true. `wait_eof()` only observes the last writer closing its own fd; `running()`'s
+`waitpid(WNOHANG)` can still briefly say the child is alive a moment later - either state proves
+the same claim (`send()` does not crash this process, via its `running()` early return or its
+`SIGPIPE`-ignore backstop), so the assertion tested an implementation timing detail the API never
+promised. Dropped it at head `38fc4abc`, documented why. Proof: 0/30 on Windows, 0/20 in WSL `-O1`
+ASan; the canonical selection clean on both again (MSVC Release `80/77/0`, WSL `94/90/0`). Hosted CI
+pending on this head.
+
+Closing commit (review round 2, comments only, no behaviour change): head `6b096261`, hosted CI
+green (run `43363743842`), `gate` included.
+
 ## WHALE-RE-1a — whaler, whale origins and oil chain — 2026-11-13 — READY FOR REVIEW
 
 Base `96f7980c0d8c3fda4d654e16a8e8874bf96745f6`; branch `task/WHALE-RE-1a`.
 NEW worktree `/Users/dom/.codex/worktrees/whale-re-1a/anno1503`; prior branches preserved.
+Adopted moved main `babd1da0567d0aa0cfa5e5a27693de491ef17746` by ordinary merge.
 Packet: `origin/orch/board-next` at `d400d3fc4e3a48d0c3ebaca22aafb2805b7d1899`, read in full.
 Deliverables: [whaler.md](../re/whaler.md), [OQ-591–594](../open-questions.md), this entry.
 Only three docs change; governing rules/packet read; no engine/test/fixture/identity edit.
-
 Reference: GOG AnnoWelt.dll2.0.0.5 SHA-256
 `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
 Method: original-record readers, Capstone/pefile instructions and direct tables;

@@ -176,10 +176,15 @@ def gate(args):
                         raise RuntimeError("required contract failed: " + name)
                 # Each required contract above already ran, with its own verdict row recorded;
                 # it is left out of the selection below so it does not run (and count) twice.
+                # Whether the call had anything to select is judged on the selection *before*
+                # that exclusion: a --select that matched nothing at all is still a workflow
+                # failure, even with --require-test set (GATE-1c item 3); only a selection that
+                # matched nothing but already-run required contracts gets the "already ran" PASS
+                # below.
+                if not inventory(base + selection(args), source)["tests"]:
+                    raise RuntimeError("selection contains no tests")
                 sel = selection(args, required)
                 selected = inventory(base + sel, source)
-                if not selected["tests"] and not required:
-                    raise RuntimeError("selection contains no tests")
                 with inv.open("x") as f:
                     json.dump(selected, f, indent=2)
                 binaries = {}

@@ -539,7 +539,17 @@ TEST_CASE("F3 (D1, deaf): a coordinator that serves hello but never resolves the
         // A 2 s admission bound; the deaf coordinator's keepalive (every 100 ms) would hold the
         // connection open past it forever without the fix.
         Env env(client_vars(kPortDeaf, "f3-i-deaf", "2"));
-        Env liveness({{"ANNO_TEST_BUDGET_LIVENESS_MS", "300"}});
+        // COORD-FLAKE-1 F1: 300 ms raced a real scheduling stall of either process on a hosted
+        // runner against the deaf listener's own 100 ms keepalive cadence (runs 43082536481,
+        // 0.62 s, and in effect 43123068877 too): any stall over 300 ms with nothing arriving
+        // trips coord.cpp's silent_too_long() early, refusing with "coordinator not responding"
+        // well before this case's own claim (the 2 s admission bound, then "wait deadline, no
+        // server reply") is ever exercised. 1000 ms, the same margin budget_f2_test.cpp's Scope
+        // already uses, survives a 400 ms stall (reproduced under that condition; see the
+        // COORD-FLAKE-1 REPORTS addendum, 2026-11-13, for the result) with room to spare while
+        // staying short enough for the deaf case's own run time (about 3.3 s with this 1,000 ms
+        // bound, measured on macOS).
+        Env liveness({{"ANNO_TEST_BUDGET_LIVENESS_MS", "1000"}});
         client = probe({"reqwait", budget_path, "30"});
     }
     seen.clear();
@@ -549,6 +559,28 @@ TEST_CASE("F3 (D1, deaf): a coordinator that serves hello but never resolves the
     CHECK(has(result, "wait deadline"));
     client.send("q\n");
     quit_and_wait(deaf);
+}
+
+TEST_CASE("Child::send degrades silently once the child has exited (COORD-FLAKE-1 F2)" *
+          doctest::test_suite("budget")) {
+    // anno_budget_probe with no mode argument returns 2 at once (argc < 2), closing its stdin's
+    // read end before anything could possibly be sent to it. Before the fix, Child::send("q\n")
+    // wrote to that already-closed pipe and raised SIGPIPE, which (nothing in this process having
+    // set SIGPIPE to ignore) killed the whole test process by default: the mechanism behind F3
+    // (D1, deaf)'s runs 43123068877 and 43082536481. WSL is POSIX, so this reproduces
+    // deterministically here; Windows has no SIGPIPE, so there the same send() is still exercised
+    // but only proves no regression, not the crash itself.
+    Child child = probe({});
+    REQUIRE(child);
+    REQUIRE(child.wait_eof(5000ms));
+    // Not asserted: child.running() right after wait_eof(). A process can close its last fd
+    // (the EOF wait_eof() just saw) a hair before the kernel has fully reaped it, so running()
+    // can still briefly say true here (seen on cpp (linux-gcc), run 43351375688) - exercising
+    // send()'s SIGPIPE-ignore backstop instead of its running() early return. Either path proves
+    // the same claim: this process does not crash.
+    child.send("q\n");
+    // Reaching this line is the proof: the write above did not end this process.
+    CHECK(true);
 }
 
 TEST_CASE(

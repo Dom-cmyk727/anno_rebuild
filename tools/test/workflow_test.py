@@ -154,6 +154,14 @@ sys.exit(1 if mode == "failure" else 0)
         self.assertIn("== required contract pass\n", self.log.read_text())
         self.assertIn("(every selected test already ran as a required contract above)", self.log.read_text())
 
+    def test_empty_selection_with_require_test_still_fails(self):
+        # GATE-1c item 3: GATE-1b's required-contract exclusion must not resurrect a --select
+        # that never matched anything (distinct from one that matched only required contracts,
+        # which test_required_contract_does_not_inflate_selection above keeps as a PASS).
+        p = self.invoke("^absent$", "--require-test", "pass")
+        self.assertNotEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertNotIn("== selection\n", self.log.read_text())
+
     def test_skip_auto_contract_leaves_it_out(self):
         cmake = self.source / "src/tools/bench_picture/CMakeLists.txt"
         cmake.parent.mkdir(parents=True)

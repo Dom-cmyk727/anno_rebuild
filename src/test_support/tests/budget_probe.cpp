@@ -269,13 +269,19 @@ int deaf_listener(std::uint16_t port) {
     // (the hello reply, then a keepalive every 100 ms) and the client gives up and closes its end
     // once its own admission bound fires - so a later send() here hits a closed peer. send_all's
     // MSG_NOSIGNAL (coord_wire.hpp) only suppresses the signal on Linux; macOS does not support
-    // that flag, and nothing in this process had put SIGPIPE's disposition to ignore (the
-    // coordinator and client processes get that from startup_sockets(), which this hand-rolled
-    // listener never called) - so the default disposition (terminate) killed the whole process
-    // on macOS mid-write (run 42820583088, cpp (macos-clang), SIGPIPE at test #76, 2.54 s in,
-    // matching the 2 s admission bound plus the 0.3 s liveness period). Call it here too, exactly
-    // as the real coordinator/client paths do, so this process's sends degrade to a normal
-    // send_all failure (already handled below, `return;`) instead of a signal.
+    // that flag, and nothing in this process had put SIGPIPE's disposition to ignore. Call it
+    // here too, exactly as the real coordinator/client paths do, so this process's sends degrade
+    // to a normal send_all failure (already handled below, `return;`) instead of a signal.
+    //
+    // COORD-FLAKE-1 correction, 2026-11-13: run 42820583088's "SIGPIPE at test #76, 2.54 s in"
+    // was not this listener's own sends - ctest reports the signal of the test process it
+    // started, not of a child this process spawned. That crash, and the two that followed this
+    // fix (43082536481, 43123068877), came from the *parent* test process's own
+    // `client.send("q\n")` in the deaf case's own body (`budget_f3_test.cpp`, right before its
+    // `quit_and_wait(deaf)`), written after the client probe had already exited on its own
+    // (`Child::send()`, `child_process.hpp`). This call's own `startup_sockets()` is kept as
+    // hardening (this listener does write to a peer that can disappear), not because it was the
+    // fix.
     startup_sockets();
 #if defined(_WIN32)
     WSADATA data{};

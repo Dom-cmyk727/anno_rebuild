@@ -292,10 +292,13 @@ if [ "$GPU_LANE" -eq 1 ]; then
     OVERALL_RC=1
   else
     start=$(date +%s)
+    # --allow-skip gpu (GATE-1c item 2): the two named-adapter play_gpu_test.cpp cases are a
+    # classified gpu skip here (lavapipe has no "RTX 4090"/"Radeon" adapter), not a failure;
+    # ANNO_REQUIRE_GPU still fails a case that finds no GPU device at all.
     env $SRC_GIT WGPU_BACKEND=vulkan VK_ICD_FILENAMES="$ICD" ANNO_REQUIRE_GPU=1 \
       python3 -I tools/test/run_selected.py --source-root "$W" --build-dir "$B" \
       --select '^anno_render_gpu_tests\.' --exclude-label heavy --jobs 1 --timeout 6000 \
-      --skip-auto-contract --log "$G/wsl-$TAG-gpu.log" > "$G/wsl-$TAG-gpu.out" 2>&1
+      --allow-skip gpu --skip-auto-contract --log "$G/wsl-$TAG-gpu.log" > "$G/wsl-$TAG-gpu.out" 2>&1
     rc=$?
     echo "gpu lane (lavapipe, ANNO_REQUIRE_GPU=1) rc=$rc elapsed=$(( $(date +%s) - start ))s $(grep -E 'COUNTS|VERDICT' "$G/wsl-$TAG-gpu.out" | tr '\n' ' ') $(date -Is)" >> "$S"
     if [ "$rc" -ne 0 ]; then

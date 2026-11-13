@@ -61,3 +61,10 @@ Base `main` `961a9d4a`. No engine code and no document change.
 ACCEPTED. It lands with the next landing, on the owner's OK. The fisher reads 1a and 1b are complete. A flagged fisher
 port is the natural next step; whether it needs a new state number, and so has to wait for ADR 0006, is checked
 before it is written.
+
+## Correction (2026-11-13, FISHER-RE-1c review)
+
+This review accepted the `sea_cell` vectors with "511 free subcells" below the threshold. The original's goal mask
+(`0x1009226b`–`0x100922df`) gives **0 below the threshold and 511 at or above it**. A fisher goal is a tile that is
+not water. The vectors are corrected in FISHER-RE-1c's fix round
+([review](2026-11-13-fisher-re-1c-review.md)). The orchestrator missed the inversion here.

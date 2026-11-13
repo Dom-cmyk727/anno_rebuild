@@ -127,9 +127,18 @@ The questions as they were put:
    RENDER-DIRECT-4.
 3. **Should the old baked path stay as a selectable option after the switch,** for comparison, or be removed?
 
+## Added after acceptance (owner, 2026-11-13)
+
+**The direct path keeps the per-pixel depth.** In the playtest of 2026-11-13 the owner asked for buildings embedded in
+the ground and the water, and for the sea at the original's level (DEPTH-INTEGRATE-1, from W4-DEPTH-1). So:
+- the direct object and ground passes (RENDER-DIRECT-3) carry W4-DEPTH-1's integer depth function per pixel against
+  the terrain and the sea plane;
+- GPU = CPU holds for the depth as for the rest (decision 8);
+- `--depth off` stays a comparison switch.
+
 ## Not decided here
 
-- The original's per-pixel depth brushes (OQ-026).
+- The original's other depth brushes, beyond what W4-DEPTH-1 reproduces (OQ-026).
 - Figures drawn every frame (PLAY-LIVE-1c draws them with the existing sprite pass; this ADR makes that pass the main
   one).
 - The UI scale (ADR 0004 R3, decided 2026-11-13: scale to the window).

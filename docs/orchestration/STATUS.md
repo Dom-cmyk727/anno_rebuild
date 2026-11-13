@@ -5,6 +5,53 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[ZOOM-MEASURE-1](tasks/zoom-measure-1.md) ACCEPTED** ([review](reviews/2026-11-13-zoom-measure-1-review.md)).
+  - **The zoom failure is now a number:** on `lan5` at 2560 × 1369, 431 of 12,000 frames show non-ready content, with
+    26,616 stand-in draws and 13,304 dissolves. Even with original water, 537 frames are non-ready, so the cause is
+    chunk readiness.
+  - **The "everything resident" control** reaches 0, so the criterion is reachable.
+  - **The 0.7 s hitch is confirmed:** SDL's event poll blocks in Windows' move/resize loop.
+  - **[DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md) RELEASED** to the Windows executor.
+- **[FISHER-RE-1c](tasks/fisher-re-1c.md) ACCEPTED after one fix round**
+  ([review](reviews/2026-11-13-fisher-re-1c-review.md)). On this PC's game files, all 2,473 fish tiles are goals;
+  619 have water among their eight neighbours, and 1,854 lie inside fish banks (OQ-609, the fisher port's question).
+  Next on the Mac: [PINS-1](tasks/pins-1.md).
+  - **OQ-200's mapping is answered:** HEIGHT is copied unchanged into the corner grid, and the borders are 0.
+  - **"0 of 2,473 fish tiles are water" is the expected result, not a contradiction.** The original's code has the
+    fisher walk on water (mean < 32) and harvest tiles at or above 32. FISHER-RE-1a's prose and 1b's reference had the
+    goal mask's sense inverted, and the orchestrator accepted both.
+  - **The fix round:** the right census (fish tiles are goals, with water within reach), the reference corrected, and
+    the prose corrected.
+- **The owner's ship-start playtest (2026-11-13):**
+  - **Ship orders work.** The ring was yellow, so it was the owner's own ship. SHIP-ORDER-1 is closed; the earlier
+    failure is not reproducible.
+  - **The Kontor needs:**
+    - the sea raised to the original's level;
+    - its left side embedded in the ground like its back.
+
+    Both are what W4-DEPTH-1 (per-pixel depth, the sea plane at 26.5) built on 2026-11-04. It had waited for this
+    depth check.
+  - **Owner decisions:** depth on by default, and the original's sea level.
+  - **Queued:** [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md) (merge W4-DEPTH-1 onto main and prove it), then
+    SHORE-2 (per-pixel sea edges).
+  - **ADR 0007** now requires the direct renderer to keep this depth.
+- **LANDED on `main` as `f9e6ea0c`,** with the owner's OK: PLAY-LIVE-1a (`--rules living`), WHALE-RE-1b and 1c,
+  FISHER-RE-1a and 1b, the SHIP-ORDER-1 report and the board.
+  - **`main` is healthy:** that exact commit's game-file run passed all 2,547 executed tests.
+  - **GitLab and the share are in step.**
+  - **The first `land.py` attempt was refused:** its own push of `land/…` started a second CI run on the same commit,
+    and GitHub treated `gate` as expected again until that run finished. The retry landed. Lesson: don't push a
+    candidate branch separately before `land.py`, or wait for both runs.
+- **[SHIP-ORDER-1](tasks/ship-order-1.md): not reproduced** ([review](reviews/2026-11-13-ship-order-1-review.md)).
+  - **The test:** 8 scripted variants of the owner's launch all ordered and moved the ship.
+  - **PLAY-LIVE-1a is not involved,** so it may land.
+  - **Two candidates without a message:** a right-click that moves the mouse 5 px or more counts as a pan; another
+    seat's ship can be selected but only inspected.
+  - **Three questions to the owner** decide which, if either.
+- **[ZOOM-MEASURE-1](tasks/zoom-measure-1.md) RELEASED** to the Windows executor.
+- **The landing candidate `orch/land-play-live-1a`** (`f9e6ea0c`): PLAY-LIVE-1a, WHALE-RE-1b and 1c, FISHER-RE-1a and
+  1b, the SHIP-ORDER-1 report, and the board. **Its game-file run passed:** 2,547 of 2,547 executed tests, no
+  refusals. Landing waits for the owner's OK.
 - **ADR 0006's packets go to the Mac** (owner: "Yes, the Mac"), after FISHER-RE-1c:
   [PINS-1](tasks/pins-1.md) (written), then SAVE-SECTIONS-1 (139), then FIXTURES-TRIM-1. Then FISHER-1a and the held
   ports.
@@ -31,8 +78,8 @@ says who is doing what, where the work is, and what it waits on.
 - **[FISHER-RE-1b](tasks/fisher-re-1b.md) ACCEPTED** ([review](reviews/2026-11-13-fisher-re-1b-review.md)), no fix
   round: `tools/fisher_ref.py`, 42 hand-derived vectors, 58 contract checks and 9 mutants, all agreeing here too. The
   fisher reads are complete; the Mac executor is free.
-- **The Windows queue, owner 2026-11-13:** SHIP-ORDER-1 → ZOOM-MEASURE-1 → ZOOM-SMOOTH-1 → **UI-WINDOW-1** (moved
-  before the RENDER-DIRECT packets) → GATE-2a → GATE-2b → TEST-MEM-1 → RENDER-DIRECT-1 to 6
+- **The Windows queue, owner 2026-11-13:** ZOOM-MEASURE-1 (now) → **DEPTH-INTEGRATE-1** ("Yes, depth first") →
+  SHORE-2 → ZOOM-SMOOTH-1 → UI-WINDOW-1 → GATE-2a → GATE-2b → TEST-MEM-1 → RENDER-DIRECT-1 to 6
   ([ADR 0007](../adr/0007-direct-rendering.md)).
 - **Zoom and camera smoothness: root causes, research and plan** in
   [`docs/render/zoom-smoothness.md`](../render/zoom-smoothness.md).
@@ -388,9 +435,13 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [SHIP-ORDER-1](tasks/ship-order-1.md)** (released 2026-11-13), on `task/SHIP-ORDER-1`, based on
-  `task/PLAY-LIVE-1a`: the owner can select a ship but not order it; reproduce under the owner's conditions, cause
-  first. [GATE-2a](tasks/gate-2a.md) is next.
+- **Now: [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md)** (released 2026-11-13): W4-DEPTH-1 onto main, depth on,
+  the sea at the original's level. Then SHORE-2, ZOOM-SMOOTH-1, UI-WINDOW-1, GATE-2a, GATE-2b, TEST-MEM-1 and
+  RENDER-DIRECT-1 to 6.
+- **Finished: [ZOOM-MEASURE-1](tasks/zoom-measure-1.md)** (2026-11-13; head `a5e180e0`), **accepted**
+  ([review](reviews/2026-11-13-zoom-measure-1-review.md)).
+- **Finished: [SHIP-ORDER-1](tasks/ship-order-1.md)** (2026-11-13; head `e2c3e4e8`): **not reproduced**
+  ([review](reviews/2026-11-13-ship-order-1-review.md)); questions to the owner.
 - **Finished: [PLAY-LIVE-1a](tasks/play-live-1a.md)** (2026-11-13; head `9e920c18`), **accepted after one fix round**
   ([review](reviews/2026-11-13-play-live-1a-review.md)), on `task/PLAY-LIVE-1a`, based on `main`: a
   "living town" rules profile for the window behind `--rules living` (`house_updates` and `city_booking` on), default
@@ -519,8 +570,10 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: [FISHER-RE-1c](tasks/fisher-re-1c.md)** (released 2026-11-13 with the owner's go): the water test's corner-height
-  grid (OQ-200). Next: PINS-1, SAVE-SECTIONS-1, FIXTURES-TRIM-1. The wildlife, whale and fisher
+- **Now: free.** Next: [PINS-1](tasks/pins-1.md), waiting for the owner's go; then SAVE-SECTIONS-1 and
+  FIXTURES-TRIM-1.
+- **Finished: [FISHER-RE-1c](tasks/fisher-re-1c.md)** (2026-11-13; head `e7e909ff`), **accepted after one fix round**
+  ([review](reviews/2026-11-13-fisher-re-1c-review.md)): OQ-200 answered, the goal-mask polarity corrected. The wildlife, whale and fisher
   ports wait for ADR 0006.
 - **Finished: [FISHER-RE-1b](tasks/fisher-re-1b.md)** (2026-11-13; head `f931354a`), **accepted**
   ([review](reviews/2026-11-13-fisher-re-1b-review.md)): `tools/fisher_ref.py` and its 42 vectors.
@@ -666,10 +719,9 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on a run
 
-- None. **`main` is healthy at the GATE-1c and COORD-FLAKE-1 landing `babd1da0`.** Its code is `429c0b3a`'s plus
-  two comment changes; that run passed all 2,538 executed tests
-  ([review](reviews/2026-11-13-coord-flake-1-review.md), "Game-file run"). The earlier runs are under
-  [Current work](#current-work).
+- None. **`main` is healthy at `f9e6ea0c`** (PLAY-LIVE-1a with the whale and fisher reads): that commit's
+  game-file run passed all 2,547 executed tests ([review](reviews/2026-11-13-play-live-1a-review.md), "Game-file
+  run"). The earlier runs are under [Current work](#current-work).
 
 ## Waiting on the owner
 
@@ -694,7 +746,6 @@ Its later work is not accepted merely because expansion is complete.
   `96de6bca`.
 - **ADR 0004 question R2:** the default surface (`--ui classic|dev`). R3 is decided (2026-11-13: scale the UI to the
   window).
-- **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).
 - **The opening playtest** in the live window (W4-OPENING-1, accepted 2026-11-05).
 - **W4-SETTLEMENT-1's playtest card,** once review item 3 (the inspection line) is fixed.
 - **Whether the developer tool may place buildings of later stages** than the start allows. Main's eligibility rule

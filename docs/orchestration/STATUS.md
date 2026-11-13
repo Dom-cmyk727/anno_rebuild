@@ -61,8 +61,8 @@ says who is doing what, where the work is, and what it waits on.
 - **[FISHER-RE-1b](tasks/fisher-re-1b.md) ACCEPTED** ([review](reviews/2026-11-13-fisher-re-1b-review.md)), no fix
   round: `tools/fisher_ref.py`, 42 hand-derived vectors, 58 contract checks and 9 mutants, all agreeing here too. The
   fisher reads are complete; the Mac executor is free.
-- **The Windows queue, owner 2026-11-13:** SHIP-ORDER-1 → ZOOM-MEASURE-1 → ZOOM-SMOOTH-1 → **UI-WINDOW-1** (moved
-  before the RENDER-DIRECT packets) → GATE-2a → GATE-2b → TEST-MEM-1 → RENDER-DIRECT-1 to 6
+- **The Windows queue, owner 2026-11-13:** ZOOM-MEASURE-1 (now) → **DEPTH-INTEGRATE-1** ("Yes, depth first") →
+  SHORE-2 → ZOOM-SMOOTH-1 → UI-WINDOW-1 → GATE-2a → GATE-2b → TEST-MEM-1 → RENDER-DIRECT-1 to 6
   ([ADR 0007](../adr/0007-direct-rendering.md)).
 - **Zoom and camera smoothness: root causes, research and plan** in
   [`docs/render/zoom-smoothness.md`](../render/zoom-smoothness.md).

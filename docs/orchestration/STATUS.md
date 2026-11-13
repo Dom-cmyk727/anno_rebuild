@@ -4,7 +4,15 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-13, morning, by the Claude Code orchestrator:
+**Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[WHALE-RE-1b](tasks/whale-re-1b.md) ACCEPTED** ([review](reviews/2026-11-13-whale-re-1b-review.md)), no fix round;
+  every re-checked table, address and record matches.
+  - **The whale:** the old animal class with nine changed slots. It wanders around its current position and has no
+    age rule. Each walk start makes exactly five world draws.
+  - **The boat:** bought by command `0x71` for 600 gold, 12 wood and 7 rope; never replaced automatically. Its attack
+    draws even with one firing position.
+  - **Open:** OQ-594 is narrowed and OQ-595 is new: the sea-depth rule and the indirect draws.
+  - **Next:** [WHALE-RE-1c](tasks/whale-re-1c.md), the reference and its vectors, waits for the owner's go.
 - **[WHALE-RE-1a](tasks/whale-re-1a.md) ACCEPTED** ([review](reviews/2026-11-13-whale-re-1a-review.md)), no fix round;
   every re-checked address and record matches.
   - **What a port needs:** the oil workshop and the lamp-oil stall's purchase path already run on `main`. What is
@@ -424,9 +432,11 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: [WHALE-RE-1b](tasks/whale-re-1b.md)** (released 2026-11-13 with the owner's go), on `task/WHALE-RE-1b`,
-  based on `main`: the whale's life, who requests a whaling boat (OQ-593), the boat path's callbacks (OQ-594).
-  Documents only. The wildlife port waits for ADR 0006.
+- **Now: free.** [WHALE-RE-1c](tasks/whale-re-1c.md) (the reference and its vectors) waits for the owner's go. The
+  wildlife port waits for ADR 0006.
+- **Finished: [WHALE-RE-1b](tasks/whale-re-1b.md)** (2026-11-13; head `109ec14c`), **accepted**
+  ([review](reviews/2026-11-13-whale-re-1b-review.md)): the whale's life, the boat request and the callbacks, in
+  `docs/re/whaler.md` §6–9; OQ-595.
 - **Finished: [WHALE-RE-1a](tasks/whale-re-1a.md)** (2026-11-13; head `df63c97e`), **accepted**
   ([review](reviews/2026-11-13-whale-re-1a-review.md)): the whaler, its whales and the lamp-oil chain, in
   `docs/re/whaler.md`; OQ-591 to OQ-594.

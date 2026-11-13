@@ -1,0 +1,86 @@
+# Hand-derived only from docs/re/fisher.md at6d57bb12; no generated expectations.
+# Units: stocks/activity/stamp u16; draws rawu32; made is this tick's added fact.
+# §2: zero elapsed leaves stamp/activity/stock unchanged and does not draw.
+farm_tick zero elapsed=0 stamp=42 switch=1 flags=0 made=0 workers=0 maximum=1 raw=0 need=128 rate=51 output=0 capacity=1280 activity=256 draws=- => advanced=0 stamp=42 r=0 debit=0 added=0 raw=0 output=0 activity=256 dispatched=0 consumed=0
+# §2: smallest positive elapsed1 is still below500; preserve the stamp.
+farm_tick smallest elapsed=1 stamp=42 switch=1 flags=0 made=0 workers=0 maximum=1 raw=0 need=128 rate=51 output=0 capacity=1280 activity=256 draws=- => advanced=0 stamp=42 r=0 debit=0 added=0 raw=0 output=0 activity=256 dispatched=0 consumed=0
+# §2: 499 also does not step; a later cumulative elapsed500 must still step once.
+farm_tick before_gate elapsed=499 stamp=42 switch=1 flags=0 made=0 workers=0 maximum=1 raw=0 need=128 rate=51 output=0 capacity=1280 activity=256 draws=- => advanced=0 stamp=42 r=0 debit=0 added=0 raw=0 output=0 activity=256 dispatched=0 consumed=0
+# §2: elapsed500 adds500,256*255/256=255; no food, eligible raw0 dispatch draws once.
+farm_tick at_gate elapsed=500 stamp=42 switch=1 flags=0 made=0 workers=0 maximum=1 raw=0 need=128 rate=51 output=0 capacity=1280 activity=256 draws=4294967295 => advanced=500 stamp=542 r=0 debit=0 added=0 raw=0 output=0 activity=255 dispatched=1 consumed=1
+# §2: surplus1000 still advances only500;65500+500 wraps to464, one discarded draw.
+farm_tick surplus_wrap elapsed=1000 stamp=65500 switch=1 flags=0 made=0 workers=0 maximum=1 raw=0 need=128 rate=51 output=0 capacity=1280 activity=256 draws=0,99 => advanced=500 stamp=464 r=0 debit=0 added=0 raw=0 output=0 activity=255 dispatched=1 consumed=1
+# §2: stamp advances before the off return; activity is not aged when off.
+farm_tick off elapsed=500 stamp=42 switch=0 flags=0 made=0 workers=0 maximum=1 raw=0 need=128 rate=51 output=0 capacity=1280 activity=256 draws=- => advanced=500 stamp=542 r=0 debit=0 added=0 raw=0 output=0 activity=256 dispatched=0 consumed=0
+# §2: flag0x10 suspends after aging; no conversion or dispatch draw.
+farm_tick flag16 elapsed=500 stamp=0 switch=1 flags=16 made=0 workers=0 maximum=1 raw=128 need=128 rate=51 output=0 capacity=1280 activity=256 draws=- => advanced=500 stamp=500 r=0 debit=0 added=0 raw=128 output=0 activity=255 dispatched=0 consumed=0
+# §2: bit0x20 also suspends; distinguish bit position from flag0x08 below.
+farm_tick flag32 elapsed=500 stamp=0 switch=1 flags=32 made=0 workers=0 maximum=1 raw=0 need=128 rate=51 output=0 capacity=1280 activity=256 draws=- => advanced=500 stamp=500 r=0 debit=0 added=0 raw=0 output=0 activity=255 dispatched=0 consumed=0
+# §2: flag0x08 is not in0x30; dispatch still consumes its discarded draw.
+farm_tick flag8 elapsed=500 stamp=0 switch=1 flags=8 made=0 workers=0 maximum=1 raw=0 need=128 rate=51 output=0 capacity=1280 activity=256 draws=7 => advanced=500 stamp=500 r=0 debit=0 added=0 raw=0 output=0 activity=255 dispatched=1 consumed=1
+# §2: a single worker away skips conversion despite sufficient raw, and count1==maximum1.
+farm_tick worker_away elapsed=500 stamp=0 switch=1 flags=0 made=0 workers=1 maximum=1 raw=128 need=128 rate=51 output=0 capacity=1280 activity=256 draws=- => advanced=500 stamp=500 r=0 debit=0 added=0 raw=128 output=0 activity=255 dispatched=0 consumed=0
+# §4: output full prevents conversion but3978 raw1023/128=7 <=384/51=7, so draw1.
+farm_tick raw1023 elapsed=500 stamp=0 switch=1 flags=0 made=0 workers=0 maximum=1 raw=1023 need=128 rate=51 output=1280 capacity=1280 activity=256 draws=1 => advanced=500 stamp=500 r=0 debit=0 added=0 raw=1023 output=1280 activity=255 dispatched=1 consumed=1
+# §4: raw1024/128=8 >7; no dispatch and no draw at the adjacent boundary.
+farm_tick raw1024 elapsed=500 stamp=0 switch=1 flags=0 made=0 workers=0 maximum=1 raw=1024 need=128 rate=51 output=1280 capacity=1280 activity=256 draws=- => advanced=500 stamp=500 r=0 debit=0 added=0 raw=1024 output=1280 activity=255 dispatched=0 consumed=0
+# §4:810 raw1586/69=22,384/17=22, equality admits despite full output.
+farm_tick raw1586 elapsed=500 stamp=0 switch=1 flags=0 made=0 workers=0 maximum=1 raw=1586 need=69 rate=17 output=1280 capacity=1280 activity=256 draws=2 => advanced=500 stamp=500 r=0 debit=0 added=0 raw=1586 output=1280 activity=255 dispatched=1 consumed=1
+# §4:810 raw1587/69=23 >22, so consumes0.
+farm_tick raw1587 elapsed=500 stamp=0 switch=1 flags=0 made=0 workers=0 maximum=1 raw=1587 need=69 rate=17 output=1280 capacity=1280 activity=256 draws=- => advanced=500 stamp=500 r=0 debit=0 added=0 raw=1587 output=1280 activity=255 dispatched=0 consumed=0
+# §4:3978 raw63 gives r63<64; no food, raw stays63, but dispatch draws once.
+farm_tick ratio63 elapsed=500 stamp=0 switch=1 flags=0 made=0 workers=0 maximum=1 raw=63 need=128 rate=51 output=0 capacity=1280 activity=256 draws=3 => advanced=500 stamp=500 r=63 debit=0 added=0 raw=63 output=0 activity=255 dispatched=1 consumed=1
+# §4: raw64 gives r64; debit64, added=floor51/2=25, activity255+400=655; made blocks single dispatch.
+farm_tick ratio64 elapsed=500 stamp=0 switch=1 flags=0 made=25 workers=0 maximum=1 raw=64 need=128 rate=51 output=0 capacity=1280 activity=256 draws=- => advanced=500 stamp=500 r=64 debit=64 added=25 raw=0 output=25 activity=655 dispatched=0 consumed=0
+# §2: full ratio128 uses128raw and adds51food, activity255+816=1071.
+farm_tick full_conversion elapsed=500 stamp=0 switch=1 flags=0 made=51 workers=0 maximum=1 raw=128 need=128 rate=51 output=0 capacity=1280 activity=256 draws=- => advanced=500 stamp=500 r=128 debit=128 added=51 raw=0 output=51 activity=1071 dispatched=0 consumed=0
+# §2:1279<1280 enters conversion; no clamp, final output1279+51=1330.
+farm_tick overshoot elapsed=500 stamp=0 switch=1 flags=0 made=51 workers=0 maximum=1 raw=128 need=128 rate=51 output=1279 capacity=1280 activity=256 draws=- => advanced=500 stamp=500 r=128 debit=128 added=51 raw=0 output=1330 activity=1071 dispatched=0 consumed=0
+# §2:u16 output65530+51 wraps45; floor65535*255/256=65279, then+816 wraps559.
+farm_tick storage_wrap elapsed=500 stamp=0 switch=1 flags=0 made=51 workers=0 maximum=1 raw=128 need=128 rate=51 output=65530 capacity=65535 activity=65535 draws=- => advanced=500 stamp=500 r=128 debit=128 added=51 raw=0 output=45 activity=559 dispatched=0 consumed=0
+# §2: maximum2 permits dispatch after conversion; raw1024 would refuse, but post-debit896/128=7 admits.
+farm_tick multiple elapsed=500 stamp=0 switch=1 flags=0 made=51 workers=0 maximum=2 raw=1024 need=128 rate=51 output=0 capacity=1280 activity=256 draws=4 => advanced=500 stamp=500 r=128 debit=128 added=51 raw=896 output=51 activity=1071 dispatched=1 consumed=1
+# §1:810 q=256/15; need=q*(1035/256)=69; rate=floor(q+.5)=17.
+converted farm810 t0=15/1 i0=1035/256 draws=- => need=69 rate=17 consumed=0
+# §1:3978 q=256/5=51.2; need=q*(5/2)=128; rounded q would wrongly give127.
+converted farm3978 t0=5/1 i0=5/2 draws=- => need=128 rate=51 consumed=0
+# §1: exact q=.5 rounds output up1, while need=floor.5=0.
+converted half_up t0=512/1 i0=1/1 draws=- => need=0 rate=1 consumed=0
+# §1: exact fractional T0=2/3 gives q384 and input factor1/2 gives192.
+converted rational_time t0=2/3 i0=1/2 draws=- => need=192 rate=384 consumed=0
+# §3:3x4,r7 origin(x-6,y-6); dimensions15x16.
+search_rect normal x=100 y=200 width=3 height=4 radius=7 draws=- => x=94 y=194 width=15 height=16 consumed=0
+# §3: origin words wrap -6 to65530, rather than clamp to0.
+search_rect origin_wrap x=0 y=0 width=3 height=4 radius=7 draws=- => x=65530 y=65530 width=15 height=16 consumed=0
+# §3: swapped footprint4x3 reverses dimension parity, origin still-6.
+search_rect rotated x=100 y=200 width=4 height=3 radius=7 draws=- => x=94 y=194 width=16 height=15 consumed=0
+# §3:r0,w=h=1 gives a1x1 rectangle, no offset at word boundary65535.
+search_rect no_radius x=65535 y=0 width=1 height=1 radius=0 draws=- => x=65535 y=0 width=1 height=1 consumed=0
+# §3: extents are bytes;2*127+1+1=256 wraps0, origins1000+1-127=874.
+search_rect extent_wrap x=1000 y=1000 width=4 height=4 radius=127 draws=- => x=874 y=874 width=0 height=0 consumed=0
+# §3: mean31<32 is open, all511 free goal subcells.
+sea_cell below heights=31,31,31,31 draws=- => open=1 free=511 consumed=0
+# §3: equality32 is closed, no free goal subcells.
+sea_cell equal heights=32,32,32,32 draws=- => open=0 free=0 consumed=0
+# §3: sum127 integer-divided by4 gives31; do not round the mean to32.
+sea_cell uneven_below heights=31,32,32,32 draws=- => open=1 free=511 consumed=0
+# §3: sum128/4=32, even with three zero-height corners, is closed.
+sea_cell uneven_equal heights=0,0,0,128 draws=- => open=0 free=0 consumed=0
+# §3:767<768 repeats the search.
+trip one_short cargo=767 capacity=768 draws=- => repeat=1 home=0 consumed=0
+# §3:equality768 goes home; do not repeat at capacity.
+trip full cargo=768 capacity=768 draws=- => repeat=0 home=1 consumed=0
+# §3:quantity769 is also at/above capacity and goes home.
+trip above cargo=769 capacity=768 draws=- => repeat=0 home=1 consumed=0
+# §3:zero capacity cannot satisfy cargo<capacity, even for empty cargo.
+trip zero_capacity cargo=0 capacity=0 draws=- => repeat=0 home=1 consumed=0
+# §1/3:only mature tile11 matches goods71; successful selected cut leaves10.
+cut_match mature tile=11 draws=- => match=1 remaining=10 consumed=0
+# §1/3:young10 has UNUSED output, so no selected cut, remains10.
+cut_match young tile=10 draws=- => match=0 remaining=10 consumed=0
+# §1/3:3506 yields EISFISCH72 rather than71, no fisher cut is attempted.
+cut_match ice tile=3506 draws=- => match=0 remaining=3506 consumed=0
+# §1/3:empty tile0 is not fish11; selection leaves it alone.
+cut_match empty_tile tile=0 draws=- => match=0 remaining=0 consumed=0
+# §2:r64 debits64 even when rate1 gives added0; made0 still permits single-worker dispatch.
+farm_tick zero_added elapsed=500 stamp=0 switch=1 flags=0 made=0 workers=0 maximum=1 raw=64 need=128 rate=1 output=0 capacity=1280 activity=256 draws=5 => advanced=500 stamp=500 r=64 debit=64 added=0 raw=0 output=0 activity=255 dispatched=1 consumed=1

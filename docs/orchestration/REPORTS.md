@@ -9267,3 +9267,71 @@ Decisions and reasoning:
   through that script.
 
 QUESTIONs: none.
+
+## SHIP-ORDER-1 — a ship can be selected but not ordered in the owner's playtest — 2026-11-13 — QUESTION
+
+Base `task/PLAY-LIVE-1a` `9e920c18`, branch `task/SHIP-ORDER-1`, worktree `anno1503-SHIP-ORDER-1`. No code change:
+could not reproduce.
+
+**Reproduction matrix** (`tools/test/viewer_wiring.py` against `opening_controls.script` or a copy, real GPU window
+where noted, `anno1503.exe` built from `9e920c18`, game files, manifest `lan5-ship-a.json`, seat 0), varying one
+factor from the contract's own launch (`--ship-start ... --seat 0 --speed 200`, CPU, 1280×720):
+
+| Variation | Renderer | Size | Result |
+|---|---|---|---|
+| contract's own launch (baseline) | CPU | 1280×720 | PASS — order accepted, ship arrives |
+| + `--rules living` | CPU | 1280×720 | PASS |
+| + `--rules living` | CPU | 1024×768 | PASS |
+| + `--rules living` | GPU (RTX 4090, Vulkan) | 1024×768 | PASS — stderr confirms `window: drawable 1024x768 px ... density 1.00`, matching the owner's own log line exactly |
+| + `--rules living`, then `resize 2560 1369` mid-session, order again | GPU | 1024×768→2560×1369 | PASS, both orders |
+| no `--rules` (main `961a9d4a` cannot take the flag at all) | GPU | 1024×768 | PASS |
+| + `--rules living --water original` | GPU | 1024×768 | PASS |
+
+Every run: window exit 0, every script step recorded, the sim's own facts (`latest_kind == move`, `latest ==
+arrived`, `ship.1.x/y`) confirm a real `MoveCmd` was accepted and the ship arrived. `git diff 961a9d4a..9e920c18 --
+src/app/src/viewer.cpp src/app/src/opening_ui.cpp src/app/src/opening_ui.hpp src/app/src/dev_script.cpp
+src/app/src/ship_motion.cpp src/app/src/ship_layer.cpp src/sim/src/` is empty: PLAY-LIVE-1a touches none of the
+input-routing, ownership or ship-command files, so a run without `--rules` is exactly main's own code path; **PLAY-
+LIVE-1a is not involved.**
+
+**The one mechanism the code and its own tests already show can silently drop a real order, found by reading
+(not reproduced live — the scripted input below always has zero travel, so it cannot exercise this path):**
+`OpeningUi::pointer_up` (`opening_ui.cpp`) requires the press-to-release travel to stay under `kClickSlop` (5 px,
+`opening_ui.hpp`) or the gesture is a pan, not a click, and `pointer_up` returns an empty `UiResult` — no command,
+no message, nothing for `update_title()` to show. `opening_ui_test.cpp`'s own "a right-button drag of 20 pixels: a
+pan" case proves this silently empty result. `kClickSlop` and this logic are unchanged since the opening's own
+first commit (`12af6def`), before the working 2026-11-03 playtest (`8cae6f71`), so this is not a regression and
+not PLAY-LIVE-1a's — but it is the only place in the code where a real order can vanish with literally nothing
+shown, matching "I can select but cannot command the ship ... it won't move at all" better than any refusal
+message would (every refusal the code can give — land, outside the world, not yours — sets `ui.message()`, which
+`opening_facts`/the title surfaces).
+
+**Why I stopped instead of fixing it:** the scripted reproduction cannot move the pointer during a press by a
+sub-pixel amount a real mouse does automatically; whether the owner's actual click travelled ≥5 device pixels
+(an ordinary right-click's natural hand movement, more likely at a higher density/DPI scale than this PC's own
+1.00 or under a game-type gaming mouse's own click-and-settle behaviour) is not something this reproduction can
+settle one way or the other. Per the packet: no guess-fix.
+
+Gates: no source file changed; hosted CI on the docs-only push (report below).
+
+NOT_RUN: `tools/test/run_selected.py` (no code change to gate); the WSL ASan build (same reason); a real Windows
+desktop session with the owner's own display/mouse settings (not available here).
+
+Decisions and reasoning:
+- Treated main's unchanged files as direct evidence for main's own behaviour, rather than building a second
+  worktree at `961a9d4a`: `git diff 961a9d4a..9e920c18` over every file plausibly on the ship-order path is empty,
+  so a run on `9e920c18`'s own binary without `--rules` is bit-for-bit main's own code path.
+- Did not add an artificial travel-injecting dev-script verb to force-reproduce the `kClickSlop` path: it would
+  prove the already-proven unit-test behaviour again, not settle whether that is what the owner hit, and the
+  packet asks not to guess a fix (or, by the same reasoning, a cause) without evidence from the owner's own
+  conditions.
+
+QUESTIONs (for the owner, per the packet's own instruction when reproduction fails):
+- A screenshot of the title bar / status line right after a failed order attempt — does it say anything (e.g.
+  "select one of your ships", a land/outside-world refusal) or is it unchanged from before the click?
+- Did the right-click itself involve any perceptible mouse movement (even a small one) between press and
+  release? If an ordinary click comfortably stays still, `kClickSlop` is ruled out and the search continues
+  elsewhere; if not, raising `kClickSlop` (an owner "feeling" decision, not an obvious-bug fix) is the next
+  question.
+- Is Windows display scaling on that monitor 100%, or something else? (`window: drawable ... density %.2f` in
+  the same PowerShell log answers this directly.)

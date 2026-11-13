@@ -5,6 +5,15 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[PLAY-LIVE-1a](tasks/play-live-1a.md) ACCEPTED after one fix round**
+  ([review](reviews/2026-11-13-play-live-1a-review.md)): a `--play` recording now carries its rules digest, and the
+  timing case is opt-in.
+  - **Landing candidate** `orch/land-play-live-1a`: PLAY-LIVE-1a, WHALE-RE-1b, WHALE-RE-1c and FISHER-RE-1a, with
+    the board.
+  - **The game-file run** waits until the owner's living-town playtest is done (preview build in
+    `E:nno1503-worktreesnno1503-main-gamefile-run`).
+- **[GATE-2a](tasks/gate-2a.md) RELEASED** to the Windows executor under the standing go: memory refusals are counted
+  as refused and retried alone.
 - **[FISHER-RE-1a](tasks/fisher-re-1a.md) ACCEPTED** ([review](reviews/2026-11-13-fisher-re-1a-review.md)), no fix
   round.
   - **The fisher is a walking worker,** not a boat. On a resource route it cuts fish *tiles* (11 → 10, regrowing),
@@ -328,7 +337,10 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [PLAY-LIVE-1a](tasks/play-live-1a.md)** (released 2026-11-13), on `task/PLAY-LIVE-1a`, based on `main`: a
+- **Now: [GATE-2a](tasks/gate-2a.md)** (released 2026-11-13), on `task/GATE-2a`, based on `main`: a memory refusal is
+  counted as refused, not failed, and the runner retries it alone.
+- **Finished: [PLAY-LIVE-1a](tasks/play-live-1a.md)** (2026-11-13; head `9e920c18`), **accepted after one fix round**
+  ([review](reviews/2026-11-13-play-live-1a-review.md)), on `task/PLAY-LIVE-1a`, based on `main`: a
   "living town" rules profile for the window behind `--rules living` (`house_updates` and `city_booking` on), default
   unchanged; the owner's playtest card and a cost measurement.
   - **Handover** `2831f78f` and `17559083`.

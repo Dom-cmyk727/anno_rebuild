@@ -364,11 +364,282 @@ before corpse removal, unlike a true live/corpse census (`0x1008bcb0`).
 | Oil offers and household debit | existing MarketStall supplier/purchase path; no scheduled stall production tick required |
 | Whaler building state/tick, requested-boat queue and selected boat | Whaler None/Inert; new behavior/state needed; financial enabled fact alone already read |
 | Whale occurrence slots, retry bytes/stamp, saved-home release, source record load | WALSYMBOL OCCUR entries are skipped by scenario_formats.cpp; occurrence behavior/state and import are needed |
-| Whale1202 life and route0 | WAL class/route remain to be read in1b beyond the creation/release boundary |
-| Whaling ship1511 and route45 | generic sailing/cargo exists, but specialized pursuit, return and ownership/boat construction are not thereby ported |
+| Whale1202 life and route0 | read in §§6–7: Old tick, nine overrides, walk/stand route and five ordered walk draws; implementation/state still absent |
+| Whaling ship1511 and route45 | generic sailing/cargo exists; §§8–9 add command0x71, paid queue, detach behavior, movement callbacks and ship attack draw; specialized behavior/state still needed |
 | Save/replay/rules/content identity | complete class-specific continuation and a later explicit identity contract after ADR0006; no new state number here |
-| Exact indirect draw/float proof | OQ-594/OQ-578 remain; zero direct draws is not a licence to invent a total |
+| Exact indirect draw/float proof | OQ-594 narrowed by §9; OQ-595 retains sea legality; OQ-578 shared closure remains; no complete total or float vectors claimed |
 
 Open points are [OQ-591–594](../open-questions.md), with595–598 unused.
 HE86, Ghidra, original-runtime experiments, live oil-chain proof, engine gates,
 reference/vector execution and whale life after creation are NOT_RUN here.
+
+## 6. Whale life: nine overrides (WHALE-RE-1b, 2026-11-13)
+
+**D — scope and comparison.** This extends the accepted sections 1–5 and their
+[1a review](../orchestration/reviews/2026-11-13-whale-re-1a-review.md).
+Comparing all 101 pointers at `0x100c5f98` with Old animal `0x100c653c`
+gives exactly the nine differences below. Addresses in this section are
+AnnoWelt unless another module is named. Shared code is reused from
+[wildlife §4](wildlife.md#4-animal-tables-tick-movement-and-death-1b-2026-11-12)
+and [§7](wildlife.md#7-routes-stand-selection-and-exact-walk-draws); it was not re-read as a
+second whale implementation. The evidence tags and GOG reference hash above
+still apply. Independent address verification awaits the orchestrator.
+
+| D: slot | Whale implementation / Old implementation | Whale-specific behavior; direct world draws |
+|---|---|---|
+| `+0x50` | `0x1004f3a0` / `0x100348b0` | Copies supplied position to current position, motion origin and extra vector at figure+0x84; truncates x/z into home words+0x64/+0x66. None in `0x1004f3a0`–`0x1004f405`. |
+| `+0x7c` | `0x1004e830` / `0x100332b0` | Display pass uses animation lookup and interpolated position `0x1004f140`. Sound selection calls CRT `0x100b68a9` at `0x1004e935`/`0x1004e94e`; these are not world draws. None directly in `0x1004e830`–`0x1004e9ba`. |
+| `+0x80` | `0x1004e9c0` / `0x10033440` | Alternate display/picking pass uses the same interpolated position. None directly in `0x1004e9c0`–`0x1004ea6c`. |
+| `+0x94` | `0x1004f280` / `0x100349c0` | HP setter enters ending state on a positive-to-nonpositive transition; details below. None directly in `0x1004f280`–`0x1004f36e`. |
+| `+0xa4` | `0x1004ea70` / `0x10050c10` | Route factory accepts route 0 only, allocating `0x64` bytes and calling `0x1005d9d0`. None in `0x1004ea70`–`0x1004ead1`. |
+| `+0xc8` | `0x1004eda0` / `0x100507e0` | Configures searcher mode 2 with layer/code 9, rectangle from `0x1004ed00`, and the current position as start. None directly in `0x1004eda0`–`0x1004edeb`. |
+| `+0xcc` | `0x1004eae0` / `0x10050910` | Converts the supplied searcher's result into whale motion descriptors. None directly in `0x1004eae0`–`0x1004ecfc`; searcher closure is not thereby zero. |
+| `+0x17c` | `0x1004edf0` / `0x100343c0` | Consumes descriptors, changes facing/action, splits long movement into units, or enters ending state for terminal descriptor kinds. None directly in `0x1004edf0`–`0x1004f0f0`. |
+| `+0x190` | `0x1004f430` / `0x10035d50` | Returns world interface `0xc00`, index 2. None in `0x1004f430`–`0x1004f43f`. |
+
+| Requirement | Positive evidence | Distinguishing hand control | Review disposition |
+|---|---|---|---|
+| Whale class/life | all101 pointers compared; nine overrides above | current-centered radius30 versus source-centered leash; Old tick versus New budget | pending orchestrator |
+| Route/jobs/draws | two route overrides and whale walk start below | five draws despite path failure; no Old completion parity | pending orchestrator |
+| Request | four-module caller inventory, command0x71, costs in §8 | count-full versus unaffordable; inactive request still paid | pending orchestrator |
+| Route45 callbacks | concrete ship receivers/ranges in §9 | modulus1 attack still draws; return threshold differs from whale | pending orchestrator; transitive limits explicit |
+
+**D/P — tick and speed.** Tick slot `+0x74` remains `0x10034760`, not New's
+`0x10051750`: its motion integration and route/job action boundaries are the
+shared Old tick in wildlife §4. The path conversion reads type `+0x60(1.0)` at
+`0x1004ec22`. AnnoGame `0x1000fb10` multiplies by type float+0x10;
+HEAD loading `0x1000ff09`–`0x1000ff50` assigns that float from HEAD+4.
+Whale1202's HEAD+4 is approximately .01 (FigurenHeader.dat, same entry as §1),
+so this path uses that speed, without New's per-figure speed multiplier.
+Descriptor helper `0x1002fde0`–`0x1002ff1b` stores the supplied speed as rate
+and cardinal velocity, with diagonal normalization constants for diagonal
+steps. These are original internal movement units, not a measured speed in
+seconds. There is no world draw in that descriptor helper.
+
+**D/U — where it goes.** Constructor `0x1004f410`–`0x1004f42b` sets radius
+byte+0x11 to30. Rectangle helper `0x1004ed00`–`0x1004ed9c` centers a nominal
+61-cell rectangle on the whale's **current** x/z, clips its low edges to zero
+and high edges against world width/height. It does not center this rectangle
+on the occurrence or pass an island boundary. `0x1004eda0` supplies that
+rectangle and code9 to the shared sea-search interface. World factory
+`0x100aee00`–`0x100aee34` returns the index-2 object at world+0x6ab0;
+construction `0x100aab8e`–`0x100aabdb` installs `0x10012030`, primary table
+`0x100c197c`, wrapping the search interface at object+4 (`0x100c1a3c`).
+This identifies the actual receiver rather than assuming a land searcher.
+
+**D/U — sea legality boundary.** Path setup/extraction wrappers are
+`0x100107b0`–`0x100107e4`, `0x10010830`–`0x1001088d`,
+`0x10011500`–`0x1001163a`, `0x10011640`–`0x100118c8`.
+The inspected fine navigation-mask path `0x1000fa50`–`0x1000fd5d` adds1
+to setup code9 before calling world+0xec (`0x1000fae0`–`0x1000faed`).
+Thus it dispatches **selector10**, not selector9: `0x100abddb` reaches
+`0x100abc60`–`0x100abd00`. Without an island, that fills cells with8;
+with one, it calls island `0x10090350`–`0x10090550`.
+The first pass compares the low byte of truncated global float
+`[0x100e34d0]/[0x100ca6fc]` against the integer mean of four terrain-height
+bytes, writing9 when the threshold is below the mean, otherwise8
+(`0x100903af`–`0x100903f8`). A second pass can write9 using an existing
+object type's +0x90 result plus the tile's byte+4 (`0x1009049d`–`0x100904fa`).
+The fine flood traverses cells equal to8 (`0x1000fbca`–`0x1000fc69`).
+These read bodies have no direct world draw; the selected object-type callback
+and the complete search expansion/ties are not thereby certified zero.
+
+**U — OQ-595.** The physical units/writers of that global threshold and the
+complete selected object-height/search graph are not settled here. Do not turn
+this arithmetic into an invented numeric minimum sea depth or claim every
+coarse/fine path branch was closed. The inspected whale setup does not pass an
+island rectangle or source-centered leash. Its source still supplies the walk
+job's fallback goal (§7), distinct from the current-centered search rectangle.
+
+**D — ending, not an imported age rule.** In `0x1004f280`–`0x1004f36e`, an
+already nonpositive HP receiving another nonpositive write returns without a
+new ending transition. Otherwise store the low HP word; a nonpositive result
+with ending bit2 clear cancels the action, clears translation, copies the
+motion origin, sets remaining motion15 and rate .01, sets ending bit2,
+selects action17, and calls cleanup `+0x110` (`0x10050d70`, already §3).
+The shared tick subsequently performs terminal manager removal (wildlife §4).
+Terminal motion descriptor kinds other than normal0 and facing3 also set
+ending bit2 and call cleanup (`0x1004ef34`–`0x1004efb9`). Neither these
+nine overrides nor the whale route contains New's quantity-debit/25000-budget
+age mechanism. That mechanism must not be copied from wildlife §4 into WAL.
+Hunting can drive HP through the setter; the already accepted saved-home
+cleanup releases the occurrence slot before final registry removal (§3).
+This is not a claim that every external script/removal caller has been read.
+
+## 7. Whale route, jobs and ordered draws
+
+**D — two overrides.** Table `0x100c7218` and Old route `0x100c7348` each
+have22 slots. Only `+0x34` (`0x1005d950` versus `0x1005e2b0`) and
+`+0x4c` (`0x1005d920` versus `0x1005e280`) differ. The constructor
+`0x1005d9d0`–`0x1005da97` links active nodes R+0x10 and R+0x1c to jobs
+R+0x50 (table `0x100c7270`, kind12) and R+0x60 (`0x100c64c4`, kind3).
+The resource-job tables also constructed at R+0x40/+0x48 are not active nodes
+in this route. Do not transplant Old's four-node habitat/feeding loop.
+
+**D — transitions (`0x1005d920`–`0x1005d9ca`).** On initial selection,
+copy figure property0x2f home x/z into the first job using operation2.
+On subsequent selection, complete the current job then select R+0x10 again,
+without testing carried quantity or drawing. A failed kind12 start selects
+R+0x1c; other failed starts return null. Thus a successful walk leads to
+another walk; a failed walk can stand, then return to walking. Old's parity
+draw on empty kind3 completion (`wildlife §7`, `0x1005e35d`) is **replaced**,
+not an extra whale draw. The shared kind3 stand job is reused from wildlife
+§7; its type timing and quantity completion are not new whale random choices.
+
+**D — walk start (`0x10058680`–`0x1005889c`).** Only start slot+0xc differs
+between whale job `0x100c7270` and land walk `0x100c64ec`; completion/cancel
+`0x100588a0`–`0x100588b4` reset attempt byte+4, and operation2 setters/getters
+`0x100588c0`–`0x100588f4` transfer the packed home x/z at job+6/+8.
+Query up to256 mask0x80 figures within radius20 of current whale position,
+and retain the first returned pointer if the count is nonzero. This is not
+an explicit nearest-choice loop and not a whale-target query.
+
+**D — goal choice.** Draw two magnitudes and signs in the order below.
+With a returned figure and signed dword job+0xc<4, add the offsets to that
+figure's current x/z, truncate, then increment +0xc. Otherwise decrement
++0xc with floor zero and add the offsets to the saved home words.
+Then consume a fifth draw, discard its value, and call world+0x8c on the
+unclamped goal; its return is unused too (`0x100587c4`–`0x100587d4`).
+Clamp the goal to [0,width] and [0,height], including the high bound as
+written. Increment attempt byte+4, supply a radius1 goal to the searcher,
+install callback `0x10054270` with threshold0x40, then call whale+0xcc.
+All five draws precede any search failure. Land's three radius/angle pairs
+are not used by this overridden start.
+
+| D: position in this start | Draw address | Modulus/mask | Selects | Condition |
+|---|---|---|---|---|
+| 1, after nearby-figure query | `0x100586f7` | `%5`, then+7 | x magnitude7..11 | every invocation |
+| 2 | `0x10058713` | `%5`, then+7 | z magnitude7..11 | every invocation |
+| 3 | `0x1005872f` | `&1` | odd negates x | every invocation |
+| 4 | `0x10058743` | `&1` | odd negates z | every invocation |
+| 5, after goal branch and before lookup/clamp | `0x100587c8` | none; discarded | no selected value | every invocation, including failed paths |
+| Route completion/fallback | `0x1005d920`–`0x1005d9ca` | none | fixed walk/stand transition above | no direct draw |
+| Shared search expansion and navigation classification | OQ-594/OQ-595 | U | no total fabricated | transitive closure remains open |
+
+**A/D — distinguishing hand controls.** Draws [0,4,1,0,anything] produce offsets
+(-7,+11) before goal/clamp (`0x100586f7`–`0x10058753`); changing the fifth
+value does not change that local decision but still advances the stream.
+Counter3 with a nearby pointer uses it and becomes4; counter4 uses home and
+becomes3 (`0x10058757`–`0x100587c2`). These are arithmetic controls, not local
+tests or running-original observations.
+
+## 8. Boat request callers, charge and recovery (OQ-593)
+
+**D — cross-module caller inventory.** Raw pointer references to
+`0x10073b40` in AnnoWelt resolve to the whaler table entry `0x100c94f8`
+(primary `0x100c9418`+0xe0). Executable-section scans of AnnoWelt, AnnoGame,
+AnnoFrame and View found no direct call to that address. Inspecting the
+literal virtual-slot candidates gives the following receiver distinctions;
+this is static caller evidence, not a running-game coverage claim.
+
+| D: module | Enqueue-capable caller / exclusion evidence |
+|---|---|
+| AnnoWelt | No enqueue call identified. Its56 literal calls at +0xe0 are figure actions, type production queries or world/serialization operations, not the whaler production receiver. For example whaler tick's `0x1007394a` calls its **type**; it does not request a boat. |
+| AnnoGame | No enqueue call identified. `0x10002b2f`/`0x10002feb` are type production arithmetic; `0x10005e23` is a registry operation. |
+| AnnoFrame | Production helper `0x10059bb0`–`0x10059bde`: call production+0xdc, then production+0xe0 at `0x10059bd5` only on a true check. This resolves to `0x10073c10` then `0x10073b40` on the whaler. |
+| AnnoFrame, negative control | `0x10059db0`–`0x10059dc6` is a **figure** operation reached through manager lookups in `0x1005e4d0`–`0x1005e588`, not this production request. The other +0xe0 calls are host/renderer/figure receivers. |
+| View | No literal +0xe0 call or direct enqueue call identified. No separate View enqueue path was found. |
+
+**D — command path, not an invented button label.** AnnoFrame serializer
+`0x1005d890`–`0x1005d8f6` emits command0x71 with building x/z, its first
+byte argument, a zero word and a final word argument, length10.
+Dispatch table `0x10060388` entry(0x71−0x64) selects `0x100600be`, which
+calls handler `0x1005d810`. The handler (`0x1005d810`–`0x1005d88c`)
+resolves island/city/production at x/z, and does nothing if any required
+lookup is null. It passes payload byte+4 and word+7 to `0x10059bb0`.
+These are offsets in the handler payload, after the command envelope.
+The whaler's check ignores both arguments; enqueue saves the byte as request
+active state and ignores the word. A zero active byte therefore creates and
+charges an inactive request, rather than refusing it. Command0x73 is a
+different dispatcher arm (`0x100600e8`), not the boat-request command.
+No localized UI-button wording or UI automation is asserted.
+
+**D/P — price and units.** Affordability `0x10073c10`–`0x10073cac` resolves
+figure type1511, compares player money with type+0x94(1,0), then compares city
+stocks with type+0x94(0,i) for i=0,1 and goods type+0x98(i). Enqueue
+`0x10073bb8`–`0x10073bfc` debits exactly those values immediately.
+AnnoGame getter `0x1000fca0`–`0x1000fcdb` returns the u16 money field+0xf4
+for selector1, or a cost byte+0xf9+i shifted8 for selector0;
+`0x1000fd20`–`0x1000fd2d` returns the goods id from+0xfc+i.
+LOGIC loading `0x10010251`–`0x1001028d` maps LOGIC+0x16 to money and
++0x20/+0x21 to the first two goods quantities. Original1511 LOGIC
+(`0x1a0046b`, §1) gives **600 gold, 12 wood and 7 rope**, represented as
+3072 and1792 stock units. Its BAUWARE is HOLZ,SEILE, whose loader resolves
+names to goods ids (`AnnoGame 0x10010460`–`0x1001053c`). This is the boat
+price, separate from the building's500 gold and construction materials.
+
+**D — refusals and lost boats.** Insufficient gold or either good makes
+check return0; the Frame helper does not enqueue or debit. Queue count>=1
+makes enqueue return0 before any new state or debit, even when affordability
+passed (`0x10073b44`–`0x10073b50`). The check itself has no queue-count or
+selected-boat test. Enqueue likewise does not test selected index: a paid
+request can reach launch while a selected boat exists, and launch refuses
+as already read in §4. The tick consumes that head; there is no refund or
+retry in that path. Boat cleanup `0x10043c80`–`0x10043cbd` calls home+0x2c;
+whaler detach `0x100745a0`–`0x100745f6` clears its matched figure pointer
+and sets selected index to−1, without enqueueing. The whaler tick/launch,
+detach and the discovered command caller contain no automatic replacement
+request: a new command is needed on these paths. No claim about an unread
+AI policy emitting that command is substituted for this evidence. Cancellation
+and possible refund paths outside this flow remain under OQ-593.
+
+## 9. Route45 movement callbacks and extended draw ledger (OQ-594)
+
+**D — actual ship receivers.** Resolve the callbacks on primary whaling-ship
+table `0x100c4fc0`, not land hunter `0x100c4950`. Shared pursuit/fire/take
+job bodies remain [wildlife §8](wildlife.md#8-hunter-approach-and-the-resource-walk-class-label);
+route45's return job is `0x100c7300`, start `0x10056870` (§4).
+The following table says **direct** absence for the stated read ranges.
+Unclosed callees do not contribute a guessed zero to a total.
+
+| D: route callback | Selected body/range read | Draw result and effect |
+|---|---|---|
+| Ship `+0xc8`, search setup | `0x10043b60`–`0x10043c5f` | None directly. Uses home building type radius, rectangle centered on **ship's current** position, clipped to world bounds; same world search interface0xc00/index2, code9, current-position start. |
+| Ship `+0xcc`, path conversion | `0x1003fad0`–`0x1003fcfd` | None directly. Calls searcher+0x84 and+0xa4, reads type speed, builds descriptors through `0x1002fde0`, starts via ship+0xd8. |
+| Ship `+0xd0`, turn | `0x1003fe50`–`0x1003ff05`, helper `0x1003fdb0`–`0x1003fe3e` | None directly. Appends facing descriptors via+0xd4 until the requested heading. |
+| Ship `+0xd4`/`+0xd8`, descriptor insertion/activation | `0x1003ff10`–`0x1003fffd`, `0x1003f910`–`0x1003fa44` | Neither body directly draws. Activation copies the descriptor, sets heading and moving state, and maps the action group. Complete ship tick/callee closure remains OQ-594. |
+| Ship `+0xdc`, stop | `0x1003fd00`–`0x1003fda9` | None directly. Clears moving state and snaps the motion continuation. |
+| Ship `+0xe0`, timed action | `0x10043fd0`–`0x10044040` | None directly. Stores time/action/facing; no random animation variant selected here. |
+| Ship `+0xe8`, target check | `0x10043cc0`–`0x10043fbe` | None directly. Mode2 resolves id, rejects absent/ending targets, compares range, computes target-side geometry, checks world+0x6c, and may turn. Other mode handles building targets. |
+| Ship `+0xec`, attack | `0x1003d450`–`0x1003d9cb` | **Yes**, world draw at `0x1003d615`; see row below. Creates/configures a projectile through the manager, rather than crediting cargo immediately. Remaining projectile callbacks stay explicit U. |
+| Return start, kind8 | `0x10056870`–`0x1005691d` | None directly. Search setup+0xc8; radius6 goal; callback `0x10054270` with threshold0x900; path conversion+0xcc; on success save selected goal x/z. |
+| Return/whale goal callback | `0x10054270`–`0x1005430e` | None directly. Scores squared displacement using searcher coordinate getters, marks/stops search; +0xb0 is **searcher stop**, not a world draw. |
+| Approach callback | `0x100575d0`–`0x10057676`, reused wildlife §8 | No direct draw in the accepted read; world geometry closure still U. |
+| World line/terrain bridge | `0x100a1680`–`0x100a173b`, `0x100a2660`–`0x100a26a6` | None directly. Resolve islands at endpoints; both absent returns true, otherwise delegate island+0xd4. That island geometry closure remains U. |
+| Sea search wrappers / goals / coordinate getters | `0x100107b0`–`0x1001088d`, `0x1000f260`–`0x1000f40d`, `0x1000f4f0`–`0x1000f4f7` | No direct draw in these read bodies. Complete expansion, navigation construction and all selected callees remain OQ-594/OQ-595. |
+| Return credit / cargo / raw conversion | §4, `0x1005deb1`, `0x1006ee70`, hold `0x1003b950` | Accepted direct absence remains; cargo's owner-speed hook is not silently treated as a complete tick audit. |
+
+**D/P — attack draw, including modulus1.** At `0x1003d5f7`–`0x1003d634`,
+ask type+0xa0(0) for firing-position count, retain its low byte, call world
++0xb4 at `0x1003d615`, divide by that count and pass the remainder to type
++0xa4(0,index,&vector). AnnoGame `0x1000fc50`–`0x1000fc82` returns count
+byte+0xee; OBJECTPOS/SCHUSS loader `0x10010560`–`0x10010642` loads one
+position per16-byte child after its name. Original1511's OBJECTPOS SCHUSS
+has one such position, so its modulus is1 and the world draw still occurs.
+The type lookup `AnnoGame 0x1000fb70`–`0x1000fc43` copies the selected
+position and returns its projectile type. Creation may fail **after** the draw.
+Do not import the land hunter's “no direct draw in its attack body” as a ship
+rule. Projectile initialization/event callbacks beyond the read boundary are
+not certified zero by this count.
+
+| D: position in boat processing | Draw address/body | Modulus | Selects | Condition |
+|---|---|---|---|---|
+| Attack, after action time/facing and before projectile creation | `0x1003d615` | `%uint8(type+0xa0(0))`; 1 for original1511 | firing-position entry passed to type+0xa4 | ship attack callback reached, even if later creation fails |
+| Return start and goal scoring | `0x10056870`–`0x1005691d`, `0x10054270`–`0x1005430e` | none directly | deterministic goal setup/scoring above | return step starts / search visits a node |
+| Movement callbacks | ranges in preceding table | none directly, except attack row | descriptors / turns / checks | callback-specific |
+| Full transitive lifecycle total | OQ-594/OQ-595 | U | not a completed reference vector | search/terrain/projectile/type/persistence closure outstanding |
+
+**A/D — distinguishing controls.** An attack with exactly one firing position
+consumes a draw and selects index0; a later manager-create failure does not
+unconsume it (`0x1003d615`–`0x1003d71f`). Return start uses threshold0x900,
+where whale walk start uses0x40, despite sharing callback `0x10054270`.
+These are hand-derived controls, not local tests.
+
+**U — stopping boundary.** OQ-594 is narrowed, not closed: direct ship motion,
+return setup/scoring, the separate ship attack draw, and concrete sea-search
+receivers are now addressed. A complete expansion/tie/terrain and ship
+activation/projectile/nested-load audit, and original float evaluation remain
+unsettled. OQ-595 isolates the sea-legality threshold semantics required to
+state a numeric depth rule. HE, Ghidra, original-runtime experiments, local
+engine/reference tests and engine changes are NOT_RUN; the docs-only hosted
+CI gate supplies no original-game runtime parity evidence.

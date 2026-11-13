@@ -9474,3 +9474,67 @@ Decisions and reasoning:
 - Record source-position and queue-policy gaps instead of inventing modern rules.
 QUESTIONs: OQ-591 HE labels;592 placement/property16;593 queue callers/recovery;
 594 indirect draw/float closure. OQ-595–598 unused; none requires an owner choice now.
+
+## WHALE-RE-1b — whale life, boat request and route45 callbacks (2026-11-13)
+
+**Status: READY FOR REVIEW.** Executor: Mac. Independent review: orchestrator pending.
+Branch: `task/WHALE-RE-1b`; own worktree, prior1a branch preserved.
+Release base `babd1da0`; fast-forwarded to landed1a main `961a9d4a` before writing.
+Research source pin: `43d02a998facd9addf10306451ef8f0497c2ed83`.
+This report-only successor changes no research interpretation.
+Packet/review read from `origin/orch/board-next`; now present on landed main.
+Read CLAUDE, PLAN, board owner rules/§1, evidence contract and testing README.
+Scope: documents only, GOG AnnoWelt.dll2.0.0.5, Capstone/table/data reads.
+No reviewer subagents; no engine, tool, test, fixture, identity or default changes.
+
+Reads and settled facts:
+- [Whaler §6](../re/whaler.md#6-whale-life-nine-overrides-whale-re-1b-2026-11-13): compared all101 whale/Old slots.
+- Exactly nine overrides at `0x100c5f98` versus `0x100c653c`, with concrete body ranges.
+- Shared Old tick `0x10034760` retained; New quantity/25000-budget aging not transplanted.
+- Whale motion `0x1004eae0`/`0x1004edf0`; type-speed getter AnnoGame `0x1000fb10`.
+- Current-centered radius30 search rectangle `0x1004ed00`, distinct from source fallback goal.
+- HP ending `0x1004f280`; occurrence cleanup remains the accepted1a read.
+- [§7](../re/whaler.md#7-whale-route-jobs-and-ordered-draws): route `0x100c7218`, two overrides `0x1005d920`/`0x1005d950`.
+- Active walk/stand nodes; no Old empty-quantity parity draw on completion.
+- Walk start `0x10058680`: nearby first result or source-home goal, bounded counter branch.
+- Five ordered draws: `%5+7`, `%5+7`, x parity, z parity, discarded raw draw.
+- Sites `0x100586f7`, `0x10058713`, `0x1005872f`, `0x10058743`, `0x100587c8`.
+- All five consumed before search failure; no land radius/angle-pair substitution.
+- [§8](../re/whaler.md#8-boat-request-callers-charge-and-recovery-oq-593): four-module enqueue caller inventory, no direct call found.
+- Concrete enqueue caller AnnoFrame `0x10059bd5`, helper `0x10059bb0`.
+- Command0x71 serializer `0x1005d890`, dispatcher `0x100600be`, handler `0x1005d810`.
+- Check `0x10073c10` precedes enqueue `0x10073b40`; their refusal conditions differ.
+- Boat1511 price600 gold/12 wood/7 rope, raw cost3072/1792, original LOGIC/BAUWARE.
+- Unaffordable/count-full requests debit nothing; active byte0 still queues and charges.
+- Selected-boat launch refusal consumes the paid request in the already-read tick.
+- Boat/home detach `0x10043c80`/`0x100745a0` clears selected state, does not request replacement.
+- No automatic replacement in the inspected whaler lifecycle; unread AI policy not inferred.
+- [§9](../re/whaler.md#9-route45-movement-callbacks-and-extended-draw-ledger-oq-594): ship `0x100c4fc0` receivers and direct-draw ranges.
+- Return start `0x10056870`/goal callback `0x10054270`: no direct world draws.
+- Ship attack `0x1003d450` draws at `0x1003d615` for firing-position index.
+- Modulus1 for original1511 still consumes a draw, before possible projectile-create failure.
+- Sea setup code9 becomes world selector10 (`0x1000fae5`, `0x100abddb`).
+- Classification `0x100abc60`/`0x10090350`: no-island8, terrain/object height can write9.
+- Fine flood traverses8; complete search and physical threshold meaning stay explicit U.
+
+Open points and limits:
+- [OQ-593](../open-questions.md#oq-593-whaler-boat-request-command-charging-and-recovery-contract-whale-re-1a-2026-11-13-open): dated narrowing; cancellation/refunds outside this flow and external AI policy unread.
+- [OQ-594](../open-questions.md#oq-594-whaling-indirect-draw-and-float-closure-before-complete-reference-vectors-whale-re-1a-2026-11-13-open): dated narrowing; complete transitive/float closure remains OPEN.
+- [OQ-595](../open-questions.md#oq-595-sea-navigation-legality-and-complete-search-closure-whale-re-1b-2026-11-13-open): new sea-threshold/object-height/search question.596–602 unused.
+- HE/Ghidra/original-runtime experiments/local runtime tests/reference vectors: NOT_RUN.
+- No complete lifecycle PRNG total or portable float/path reference certificate claimed.
+
+Gate and evidence:
+- `git diff --check`: clean; changed-document links and fragments resolve.
+- Local runtime tests: selected0/executed0/failed0/empty0/skipped0; excluded by docs-only scope.
+- Research-head [hosted CI43386979310](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/43386979310): SUCCESS on exact43d02a99 pin.
+- Workflow jobs:2 executed successes,0 failed;5 code jobs skipped by docs-only classification.
+- These are workflow job counts, not runtime case passes or game-file coverage.
+- Final report-head CI is checked after push and its exact head/run supplied in owner handoff.
+
+Decisions and reasoning:
+- Preserve accepted1a prose; only §5 port rows updated, new sections6–9 appended.
+- Reuse shared wildlife reads; resolve ship callbacks separately from land hunter callbacks.
+- Record discarded/modulus1 draws; distinguish direct absence from unresolved callees.
+- Stop unresolved items at addressed evidence, with no invented depth or automatic recovery rule.
+- QUESTIONs: none requiring owner policy; address verification and remaining reads await orchestration.

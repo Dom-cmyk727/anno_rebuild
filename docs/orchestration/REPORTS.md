@@ -9410,3 +9410,6 @@ the same claim (`send()` does not crash this process, via its `running()` early 
 promised. Dropped it at head `38fc4abc`, documented why. Proof: 0/30 on Windows, 0/20 in WSL `-O1`
 ASan; the canonical selection clean on both again (MSVC Release `80/77/0`, WSL `94/90/0`). Hosted CI
 pending on this head.
+
+Closing commit (review round 2, comments only, no behaviour change): head `6b096261`, hosted CI
+green (run `43363743842`), `gate` included.

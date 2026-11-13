@@ -5,7 +5,10 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
-- **[FISHER-RE-1c](tasks/fisher-re-1c.md): fix round 1** ([review](reviews/2026-11-13-fisher-re-1c-review.md)).
+- **[FISHER-RE-1c](tasks/fisher-re-1c.md) ACCEPTED after one fix round**
+  ([review](reviews/2026-11-13-fisher-re-1c-review.md)). On this PC's game files, all 2,473 fish tiles are goals;
+  619 have water among their eight neighbours, and 1,854 lie inside fish banks (OQ-609, the fisher port's question).
+  Next on the Mac: [PINS-1](tasks/pins-1.md).
   - **OQ-200's mapping is answered:** HEIGHT is copied unchanged into the corner grid, and the borders are 0.
   - **"0 of 2,473 fish tiles are water" is the expected result, not a contradiction.** The original's code has the
     fisher walk on water (mean < 32) and harvest tiles at or above 32. FISHER-RE-1a's prose and 1b's reference had the
@@ -557,8 +560,10 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: [FISHER-RE-1c](tasks/fisher-re-1c.md)** (released 2026-11-13 with the owner's go): the water test's corner-height
-  grid (OQ-200). Next: PINS-1, SAVE-SECTIONS-1, FIXTURES-TRIM-1. The wildlife, whale and fisher
+- **Now: free.** Next: [PINS-1](tasks/pins-1.md), waiting for the owner's go; then SAVE-SECTIONS-1 and
+  FIXTURES-TRIM-1.
+- **Finished: [FISHER-RE-1c](tasks/fisher-re-1c.md)** (2026-11-13; head `e7e909ff`), **accepted after one fix round**
+  ([review](reviews/2026-11-13-fisher-re-1c-review.md)): OQ-200 answered, the goal-mask polarity corrected. The wildlife, whale and fisher
   ports wait for ADR 0006.
 - **Finished: [FISHER-RE-1b](tasks/fisher-re-1b.md)** (2026-11-13; head `f931354a`), **accepted**
   ([review](reviews/2026-11-13-fisher-re-1b-review.md)): `tools/fisher_ref.py` and its 42 vectors.

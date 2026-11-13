@@ -1,6 +1,8 @@
 # FISHER-RE-1c review (2026-11-13)
 
-**Verdict: FIX ROUND 1, small.**
+**Verdict: ACCEPTED after one fix round** (round 2, at the end). Round 1's verdict follows.
+
+**Round 1 verdict: FIX ROUND 1, small.**
 - **The read is right.** HEIGHT's width × height bytes are copied unchanged into the width + 1 corner grid, and the
   right and bottom border corners stay 0. That answers OQ-200's load mapping.
 - **The census asked the wrong question,** and the fault is upstream, the orchestrator's included. The fisher walks
@@ -67,3 +69,27 @@ CI green on all 12 jobs (run 43428548264).
 ## Disposition
 
 Fix round 1 to the Mac executor, through the owner's prompt, on the same branch.
+
+## Round 2 (reported 2026-11-13)
+
+**Reviewed head:** `e7e909ff` ("distinguish fisher goals from water approach cells"). CI green on all 12 jobs (run
+43439928949).
+
+- **F2, fixed.** The six `sea_cell` vectors now read `open = 1, free = 0` below the threshold and `open = 0,
+  free = 511` at or above it, as the original's two functions give. A contract mutant inverts it again and fails.
+- **F3, fixed.** `fisher.md` §3 and §4 carry dated corrections with both address ranges. A fish goal and the water
+  cell used to approach it are distinct cells.
+- **F1, the census redone.** The orchestrator re-ran the scripts on this PC:
+  - the reference: 49 vectors, 0 disagreements;
+  - the contract test, with the branch's `tools/`: 75 checks passed;
+  - the corpus check on this PC's game files: **50 scenarios, 2,473 fish tiles, all 2,473 goals, 619 with a walkable
+    water cell among their eight neighbours, 1,854 without.**
+- **What the 1,854 mean.** They sit inside fish banks, every neighbour shallow. The fisher reaches a bank's edge tiles
+  from deeper water. Whether the inner tiles are ever reached is open: the searcher's own reach, a regrowth that
+  exposes them, or never. OQ-609 is narrowed to exactly that, and it is the fisher port's question.
+- **A note:** the corpus check exits 1 as long as there are exceptions. It is an opt-in census, not a CTest gate, so
+  that is fine. A port's canary should assert the 619 and report the 1,854.
+
+**ACCEPTED.** It lands with the next landing, on the owner's OK. OQ-200 is answered. The fisher reads are complete:
+- **next on the Mac:** PINS-1 (ADR 0006);
+- **next for the fisher:** FISHER-1a, the water cells and goal mask as unwired sim functions.

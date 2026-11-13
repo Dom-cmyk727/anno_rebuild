@@ -5,6 +5,13 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **LANDED on `main` as `f9e6ea0c`,** with the owner's OK: PLAY-LIVE-1a (`--rules living`), WHALE-RE-1b and 1c,
+  FISHER-RE-1a and 1b, the SHIP-ORDER-1 report and the board.
+  - **`main` is healthy:** that exact commit's game-file run passed all 2,547 executed tests.
+  - **GitLab and the share are in step.**
+  - **The first `land.py` attempt was refused:** its own push of `land/…` started a second CI run on the same commit,
+    and GitHub treated `gate` as expected again until that run finished. The retry landed. Lesson: don't push a
+    candidate branch separately before `land.py`, or wait for both runs.
 - **[SHIP-ORDER-1](tasks/ship-order-1.md): not reproduced** ([review](reviews/2026-11-13-ship-order-1-review.md)).
   - **The test:** 8 scripted variants of the owner's launch all ordered and moved the ship.
   - **PLAY-LIVE-1a is not involved,** so it may land.
@@ -677,10 +684,9 @@ Its later work is not accepted merely because expansion is complete.
 
 ## Waiting on a run
 
-- None. **`main` is healthy at the GATE-1c and COORD-FLAKE-1 landing `babd1da0`.** Its code is `429c0b3a`'s plus
-  two comment changes; that run passed all 2,538 executed tests
-  ([review](reviews/2026-11-13-coord-flake-1-review.md), "Game-file run"). The earlier runs are under
-  [Current work](#current-work).
+- None. **`main` is healthy at `f9e6ea0c`** (PLAY-LIVE-1a with the whale and fisher reads): that commit's
+  game-file run passed all 2,547 executed tests ([review](reviews/2026-11-13-play-live-1a-review.md), "Game-file
+  run"). The earlier runs are under [Current work](#current-work).
 
 ## Waiting on the owner
 

@@ -5,6 +5,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **The Windows queue, owner 2026-11-13:** SHIP-ORDER-1 → ZOOM-MEASURE-1 → ZOOM-SMOOTH-1 → **UI-WINDOW-1** (moved
+  before the RENDER-DIRECT packets) → GATE-2a → GATE-2b → TEST-MEM-1 → RENDER-DIRECT-1 to 6
+  ([ADR 0007](../adr/0007-direct-rendering.md)).
 - **Zoom and camera smoothness: root causes, research and plan** in
   [`docs/render/zoom-smoothness.md`](../render/zoom-smoothness.md).
   - **The finding:** the renderer turns every zoom into work (per-level chunks built on demand, stand-ins, 150 ms

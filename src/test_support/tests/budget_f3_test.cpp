@@ -571,7 +571,11 @@ TEST_CASE("Child::send degrades silently once the child has exited (COORD-FLAKE-
     Child child = probe({});
     REQUIRE(child);
     REQUIRE(child.wait_eof(5000ms));
-    CHECK_FALSE(child.running());
+    // Not asserted: child.running() right after wait_eof(). A process can close its last fd
+    // (the EOF wait_eof() just saw) a hair before the kernel has fully reaped it, so running()
+    // can still briefly say true here (seen on cpp (linux-gcc), run 43351375688) - exercising
+    // send()'s SIGPIPE-ignore backstop instead of its running() early return. Either path proves
+    // the same claim: this process does not crash.
     child.send("q\n");
     // Reaching this line is the proof: the write above did not end this process.
     CHECK(true);

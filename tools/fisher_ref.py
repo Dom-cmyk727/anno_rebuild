@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integer fisher reference, from docs/re/fisher.md at accepted 6d57bb12 only.
+"""Integer fisher reference, from docs/re/fisher.md including its dated corrections.
 
 Usage: fisher_ref.py VECTORS; exit0 agree,1 disagree,2 malformed/missing/empty.
 TYPE LABEL key=value ... => expected_key=value ... (comments start with #).
@@ -17,8 +17,8 @@ search_rect: integer farm origin/dimensions, no float position/continuation.
 sea_cell: heights is exactly four unsigned corner-height bytes.
 corner_grid: width*height HEIGHT samples -> logical (width+1)*(height+1) grid,
 copying interior samples and leaving the last row/column zero.
---check-fish-water GAME_DIR is opt-in, reads via insel.py, prints EVERY closed
-tile11 and exits1 if any; default expected counts are50 scenarios/2473 placements.
+--check-fish-water GAME_DIR is opt-in, reads via insel.py, checks goal plus eight-neighbour water,
+prints EVERY exception and exits1 if any; default expected counts are50 scenarios/2473 placements.
 Explicit --expected-scenarios/--expected-placements support bounded synthetic
 contract controls, not silently incomplete shipped-corpus acceptance.
 trip: cargo is the quantity AFTER a cut. cut_match: selection by goods71 then
@@ -205,7 +205,7 @@ def evaluate(kind, fields):
     if kind == 'sea_cell':
         # §3, 90560/9226b: integer four-corner mean; equality32 is closed.
         opened = int(sum(r['heights']) // 4 < 32)
-        return r.result(open=opened, free=511 * opened)
+        return r.result(open=opened, free=511 * (1 - opened))
     if kind == 'trip':
         # §3, 5c260: repeat below capacity, home at equality or above.
         repeat = int(r['cargo'] < r['capacity'])
@@ -267,7 +267,7 @@ def check_fish_water(root, expected_scenarios, expected_placements):
     paths = sorted((root / 'Scenes').rglob('*.sze'))
     if len(paths) != expected_scenarios:
         raise Malformed(f'expected {expected_scenarios} scenarios, found {len(paths)}')
-    count = failed = 0
+    count = failed = goals = near_water = 0
     for path in paths:
         try:
             file_data = path.read_bytes()
@@ -294,19 +294,34 @@ def check_fish_water(root, expected_scenarios, expected_placements):
                                        grid[a + stride + 1]]
                             mean = sum(corners) // 4
                             count += 1
-                            if mean >= 32:
+                            goal = mean >= 32
+                            # Local eight-neighbour shoreline check, not a global route proof.
+                            water = []
+                            for ny in range(max(0, y - 1), min(height, y + 2)):
+                                for nx in range(max(0, x - 1), min(width, x + 2)):
+                                    if (nx, ny) == (x, y):
+                                        continue
+                                    b = ny * stride + nx
+                                    if (grid[b] + grid[b + 1] + grid[b + stride]
+                                            + grid[b + stride + 1]) // 4 < 32:
+                                        water.append((nx, ny))
+                            goals += int(goal)
+                            near_water += int(bool(water))
+                            if not goal or not water:
                                 failed += 1
                                 print(f'EXCEPTION {path.relative_to(root).as_posix()} '
                                       f'island={island["number"]} local={x},{y} '
                                       f'world={island["x"] + x},{island["y"] + y} '
                                       f'layer={tag} block={bx},{by} item={at // 6} '
-                                      f'corners={",".join(map(str, corners))} mean={mean}')
+                                      f'corners={",".join(map(str, corners))} mean={mean} '
+                                      f'goal={int(goal)} adjacent_water={len(water)}')
         except (insel.Bad, OSError, struct.error) as error:
             raise Malformed(f'{path}: {error}') from error
     if count != expected_placements:
         raise Malformed(f'expected {expected_placements} fish placements, found {count}')
     print(f'FISH_WATER scenarios={len(paths)} selected={count} executed={count} '
-          f'water={count - failed} failed={failed} empty=0 skipped=0 incomplete=0')
+          f'goals={goals} adjacent_water={near_water} passed={count - failed} '
+          f'failed={failed} empty=0 skipped=0 incomplete=0 neighbourhood=8')
     return int(failed != 0)
 
 

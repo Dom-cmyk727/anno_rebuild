@@ -9657,3 +9657,43 @@ Decisions and reasoning:
   OQ-610 tracks later setters. OQ-611/612 unused; OQ-603/604 stay refused.
 NOT_RUN: original runtime/HE/Ghidra (Capstone used), complete dynamic-terrain closure, engine port/flag/state changes.
 QUESTIONs:609/610 are follow-up evidence gaps, not an owner-policy decision. No assertion of a working fisher canary.
+
+### FISHER-RE-1c — fix round1 addendum (2026-11-13)
+
+**Status: READY FOR REVIEW.** Same branch; correction to reviewed head1d6d289b.
+Read review on board5b9fed7d; independent re-review is the orchestrator's at handover.
+The prior census's criterion was wrong: walking and goal admission have opposite senses.
+Rechecked GOG AnnoWelt `0x10090689`–`0x10090697` and `0x1009226b`–`0x100922df`:
+mean<32 => open1/free0; mean>=32 => open0/free511. No original text/bytes committed.
+F1: opt-in census now checks goal plus at least one in-bounds eight-neighbour water tile.
+It excludes the fish tile, includes diagonals, and invents no out-of-island water.
+50 scenarios; selected2473/executed2473; goals2473, adjacent_water619, both619,
+failed1854/empty0/skipped0/incomplete0; exit1. Every exception is goal1/adjacent_water0.
+Full1854 exceptions and50 input hashes: `cache/fisher-re-1c/fix1-corpus-02.log`.
+Single_06 local(69,66) mean32 is a goal; east(70,66) mean18 is water, so it passes.
+OQ-609 narrowed to1854 local-neighbourhood misses; no claim they are globally unreachable.
+Accepted §5 HEIGHT mapping, OQ-200 load answer, OQ-610 and928a0 lead retained.
+F2: corrected sea_cell free polarity; re-derived all six boundary/uneven/border vectors.
+F3: dated correction in §3 and walking/goal clarification in §4; §5 appended clarification.
+
+| Requirement | Positive proof | Negative control | Disposition |
+|---|---|---|---|
+| Goal polarity | mean31 open1/free0; mean32 open0/free511 | invert_goal_mask applies once, exit1 | re-review pending |
+| Local census | goal with water; diagonal-only water | non-goal with water; isolated goal; self-only water | re-review pending |
+| Accepted mapping | five corner_grid vectors | both border replication mutants | prior mapping accepted; regression pass |
+
+Gates: direct49 vectors/0 disagreements (`fix1-direct-01.log`); direct contract75 checks,
+12 source mutants applied exactly once/rejected with exit1 (`fix1-contract-02.log`).
+`run_selected.py --select fisher_reference --require-test fisher_reference_contract`
+`--skip-auto-contract --jobs 1 --timeout 30`:2 distinct CTest selected/executed/passed;
+failed0/empty0/incomplete0/sanitizer_lines0; every skip class0 (`fix1-gate-02.log`).
+Gate01/contract01 retained; superseded by one added independent non-goal-with-water control.
+Corpus01 retained; corpus02 confirms identical rows while separately recording exit1.
+Diff/link checks clean; final pushed-head hosted-CI terminal result supplied in owner handoff.
+Unaffected engine suites reused: no engine/CMake/default/state changes; only docs/reference.
+Decisions and reasoning:
+- Eight neighbours measure immediate shore adjacency, not an invented searcher goal radius.
+- Keep1854 exceptions and nonzero corpus result; do not widen the radius until evidence settles it.
+- Preserve earlier logs/prose as dated history; correct their interpretation explicitly.
+NOT_RUN: original-runtime route proof, searcher radius closure, HE, engine port; no reviewer agents.
+QUESTIONs: OQ-609's remaining approach/radius gap and unchanged OQ-610 require follow-up reads.

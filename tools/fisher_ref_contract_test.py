@@ -65,7 +65,7 @@ def contract(ref, vectors, root):
         require(ref, path, code, diagnostic)
         checks += 1
 
-    good = 'sea_cell control heights=31,31,31,31 draws=- => open=1 free=511 consumed=0\n'
+    good = 'sea_cell control heights=31,31,31,31 draws=- => open=1 free=0 consumed=0\n'
     case('good', good, 0, '1 vectors, 0 disagreements')
     changed = replace_once(text, '=> need=69 rate=17 consumed=0',
                            '=> need=68 rate=17 consumed=0')
@@ -160,13 +160,34 @@ def contract(ref, vectors, root):
         checks += 1
         return output
 
+    # 1x1 mean0: water exists only on the fish itself, neither goal nor neighbour.
     mini(0)
-    corpus_case(0, 'water=1 failed=0')
+    output = corpus_case(1, 'goals=0 adjacent_water=0 passed=0 failed=1')
+    if output.count('EXCEPTION ') != 1 or 'goal=0 adjacent_water=0' not in output:
+        raise AssertionError('non-goal must be listed')
     corpus_case(2, 'expected 50 scenarios', counts=False)
+    # 1x1 mean32: goal but no in-bounds neighbouring tile, hence isolated.
     mini(128)
-    output = corpus_case(1, 'water=0 failed=1')
+    output = corpus_case(1, 'goals=1 adjacent_water=0 passed=0 failed=1')
     if output.count('EXCEPTION ') != 1 or 'corners=128,0,0,0 mean=32' not in output:
-        raise AssertionError('real-file negative control must list the exact exception')
+        raise AssertionError('isolated goal must list the exact exception')
+
+    def square(samples):
+        block = struct.pack('<HHBB', 0, 0, 2, 2)
+        data = struct.pack('<HHHHI', 0, 0, 2, 2, 7)
+        data += chunk('HEIGHT', block + bytes(samples))
+        data += chunk('GELAENDE', block + struct.pack('<HHbb', 11, 0, 0, 0))
+        sample.write_bytes(chunk('ANNO', chunk('SCENE', chunk('INSEL5', data))))
+
+    # All-zero island has neighbouring water, but fish mean0 is not a goal.
+    square([0, 0, 0, 0])
+    corpus_case(1, 'goals=0 adjacent_water=1 passed=0 failed=1')
+    # Corners128,0,0,0 give goal mean32; all three neighbours are water.
+    square([128, 0, 0, 0])
+    corpus_case(0, 'goals=1 adjacent_water=1 passed=1 failed=0')
+    # Goal mean95; east/south means63 closed, diagonal mean31 is the only water.
+    square([0, 127, 127, 127])
+    corpus_case(0, 'goals=1 adjacent_water=1 passed=1 failed=0')
     mini(0, fish=False)
     corpus_case(2, 'expected 1 fish placements, found 0')
     mini(0, with_height=False)
@@ -178,6 +199,7 @@ def contract(ref, vectors, root):
     # syntax error, exception or malformed-input exit2 is not a killed mutant.
     source = ref.read_text(encoding='utf-8')
     mutants = [
+        ('invert_goal_mask', 'free=511 * (1 - opened)', 'free=511 * opened'),
         ('replicate_right_border', '    return grid',
          '    for y in range(height):\n'
          '        grid[y * stride + width] = grid[y * stride + width - 1]\n'

@@ -248,8 +248,15 @@ compares against byte(trunc(`0x100e34dc` / f32(.04))). Initialization
 Mean<32 produces cell `0x00000fff`; mean≥32 produces `0x00070000`.
 Layer2's admission table `0x100d1140 + 2*0x1c00` admits code0 and refuses7.
 Goal-mask slot `+0x12c`, mode3 arm `0x1009226b`–`0x100922df`, returns0
-below32 and511 otherwise: below-water goals have all nine free subcells.
-These bodies have no world draw. Equality at32 is the refused side.
+below32 and511 otherwise.
+**D/A — correction, 2026-11-13 (FISHER-RE-1c fix1):** the prior wording
+“below-water goals have all nine free subcells” inverted that result.
+`AnnoWelt.dll 0x10090689`–`0x10090697` yields walkable layer2 cell0x00000fff
+for mean<32 and closed0x00070000 otherwise; goal-mask
+`0x1009226b`–`0x100922df` instead yields0 below32 and511 at/above32.
+Thus mean31 means open1/free0; mean32 means open0/free511.
+A fish goal and the water cell used to approach it are distinct cells.
+These bodies have no world draw. Equality at32 is the refused walking side (fix1 clarification).
 The ordinary mode0 object-mask cell builder cannot substitute for this mode.
 
 **D — movement `0x10038730`–`0x10038a85`.** This worker's segment advance
@@ -299,7 +306,11 @@ The creator itself checks neither a sea predicate nor reachable entrance
 (`0x10067e60`–`0x10067f61`); mode3 search later refuses height means≥32.
 If fish goals exist but no route is found, no claim is set and the search
 returns0 (`0x10059354`–`0x10059398`), taking the home fallback. This is not
-an up-front “no sea, no worker spawned” rule. Whole original-runtime recovery
+an up-front “no sea, no worker spawned” rule.
+**D/A — clarification, 2026-11-13 (fix1):** “refuses height means≥32” above
+refers to walking cells (`0x10090689`–`0x10090697`), not goal admission:
+the goal mask admits those means (`0x1009226b`–`0x100922df`). A closed
+walking tile can therefore be a fish goal. Whole original-runtime recovery
 from malformed/stranded entrances is NOT_RUN; do not invent relocation.
 
 ### Draw ledger
@@ -494,3 +505,39 @@ success/failure/missing-data behavior on small self-authored files. OQ-603/604
 remain refused; OQ-200's load mapping is answered, broader terrain callers
 remain OQ-610, and the all-closed raw fish finding remains OQ-609. Engine
 code, HE reading and original-runtime fishing remain NOT_RUN/out of scope.
+
+### Corrected shoreline census — 2026-11-13, fix round1
+
+**D/A — superseding criterion, not a changed mapping.** The goal-mask and
+walking predicates in §3 have opposite senses. The §5 original census's
+0/2473 water result is expected for goals; its interpretation as a source
+contradiction was wrong. The accepted HEIGHT mapping, OQ-200 disposition,
+OQ-610 and runtime-fish helper read above are unchanged.
+
+**P/A — opt-in local check.** `fisher_ref.py --check-fish-water GAME_DIR`
+now checks each serialized11 for (a) goal mean≥32 and (b) at least one
+in-bounds tile among the eight neighbours with mean<32. The fish tile itself
+is excluded; diagonals included; no wrapping or invented off-island water.
+This explicitly chosen Chebyshev-distance1 neighbourhood checks immediate
+shore adjacency around a goal, rather than treating the goal as a walking
+cell. It is a local corpus criterion authorized by fix1, **not** a decoded
+searcher goal radius, global route test, entrance check or proof that all
+failed placements are unreachable. The predicates are from
+`AnnoWelt.dll 0x10090689`–`0x10090697` and `0x1009226b`–`0x100922df`;
+the neighbourhood is a stated measurement scope, not an original rule claim.
+
+**P/A — complete result.** Fifty scenarios,2473 selected/executed:
+**2473 goals,619 with adjacent water,619 satisfying both,1854 exceptions**.
+Failed1854, empty0, skipped0, incomplete0; exit1. All exceptions are goal1
+with zero adjacent water; no non-goal exception. Every exception and all50
+source hashes are retained in `cache/fisher-re-1c/fix1-corpus-02.log`.
+For example `00_1024_easyentry_01.sze`, island3 local(92,33),
+world(228,209), corners40/48/48/48, mean46: goal1, adjacent_water0.
+No exception is waived; OQ-609 is narrowed to this measured local gap.
+The earlier logs remain evidence of the superseded question, not new failures.
+
+**P/A — worked-window reinterpretation.** Single_06 island12 local(69,66)
+mean32 is a goal, and its east neighbour(70,66) mean18 is water: this placement
+passes both corrected predicates. No byte, border, position or threshold changed.
+The reference's six `sea_cell` vectors now report free0 below32/free511
+at or above32; the newly applied polarity mutant must exit1 disagreement.

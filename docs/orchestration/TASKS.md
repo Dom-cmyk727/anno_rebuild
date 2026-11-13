@@ -91,7 +91,8 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
   ([review](reviews/2026-11-12-map-integrate-2-review.md)) and on `main` as state 138. [GATE-1a](tasks/gate-1a.md) and
   [GATE-1b](tasks/gate-1b.md) are accepted and on `main` (`96f7980c`); [GATE-1c](tasks/gate-1c.md) is accepted
   ([review](reviews/2026-11-13-gate-1c-review.md)) and waits for its landing; [COORD-FLAKE-1](tasks/coord-flake-1.md)
-  (Windows) is in its first fix round ([review](reviews/2026-11-13-coord-flake-1-review.md)). The wildlife reads [1a](tasks/wildlife-re-1a.md) to [1d](tasks/wildlife-re-1d.md) are accepted; the Mac executor is free.
+  is accepted after one fix round ([review](reviews/2026-11-13-coord-flake-1-review.md)) and lands with GATE-1c;
+  [PLAY-LIVE-1a](tasks/play-live-1a.md) is released to the Windows executor. The wildlife reads [1a](tasks/wildlife-re-1a.md) to [1d](tasks/wildlife-re-1d.md) are accepted; the Mac executor is free.
   - **The queue, proposed 2026-11-12** by the orchestrator from the
     [project analysis](reviews/2026-11-12-project-analysis.md) (§2.2, §4.2, §6, §7, §8) and the
     [MAP-INTEGRATE-2 review](reviews/2026-11-12-map-integrate-2-review.md) §4. Every packet is released only with
@@ -105,7 +106,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     | 1 | Windows executor | **[GATE-1a](tasks/gate-1a.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-gate-1a-review.md); a full gate now 1.5 h): the WSL sanitizer gate and the `asan` preset at `-O1 -g` (analysis §2.2 step 1, D1) | ~2–3 h |
     | 2 | Windows executor | **[GATE-1b](tasks/gate-1b.md), ACCEPTED and LANDED 2026-11-12** (`main` `96f7980c`, [review](reviews/2026-11-12-gate-1b-review.md)): a required contract runs once; `picture_matrix_contract` in one lane; no local lavapipe lane by default (steps 2, 4; D2) | ~2 h |
     | 3 | Windows executor | **[GATE-1c](tasks/gate-1c.md), ACCEPTED 2026-11-13** after one fix round ([review](reviews/2026-11-13-gate-1c-review.md); landing waits for the owner's OK): a gate can end green: the flow-build test's cause, then its fix; named-adapter GPU tests skip as platform; an empty `--select` fails again (step 3; D3, D4; GATE-1b review) | ~2–3 h |
-    | 4 | Windows executor | **PLAY-LIVE-1a:** a "living town" rules profile for `--play` and `--ship-start` behind one flag (D7); the default is the owner's | ~2–3 h |
+    | 4 | Windows executor | **[PLAY-LIVE-1a](tasks/play-live-1a.md), RELEASED 2026-11-13** (under the owner's standing go): a "living town" rules profile for `--play` and `--ship-start` behind one flag (D7); the default is the owner's | ~2–3 h |
     | 5 | Windows executor | **PLAY-LIVE-1b:** draw the tile objects that change, roads first, after confirming D8 in the window | ~3 h |
     | 6 | Windows executor | **EDITION-1a–e:** the game-source layer and its readers; the rule-set digest; the island manifest; figure type 375; `content-id` and the parity test (analysis §6, one packet each) | ~2–4 h each |
     | 1′ | Mac executor | **[WILDLIFE-RE-1a](tasks/wildlife-re-1a.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1a-review.md)): the fauna sweep, the creation helper, the `HIRSCH` loader (analysis §7.3 items 1–3). Documents only. The owner confirmed option 1, the faithful port | ~3–4 h |
@@ -113,7 +114,7 @@ Rounds up to ct were archived the same way in [`HISTORY.md`](HISTORY.md) on 2026
     | 3′ | Mac executor | **[WILDLIFE-RE-1c](tasks/wildlife-re-1c.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1c-review.md)): the hunter's approach, the fur trapper, the wolf and predators (items 6–8) | ~3–4 h |
     | 4′ | Mac executor | **[WILDLIFE-RE-1d](tasks/wildlife-re-1d.md), ACCEPTED 2026-11-12** ([review](reviews/2026-11-12-wildlife-re-1d-review.md)): `tools/wildlife_ref.py` with hand-derived vectors from 1a–1c's draw tables | ~3–4 h |
     | — | Orchestrator, beside | **ADR 0006:** a version per save section, lighter goldens, one tool that regenerates pins (MAP-INTEGRATE-2 review E1; analysis §3.2 item 5). The owner approves | — |
-    | 3a | Windows executor | **[COORD-FLAKE-1](tasks/coord-flake-1.md), FIX ROUND 1 sent 2026-11-13** ([review](reviews/2026-11-13-coord-flake-1-review.md); released 2026-11-13 under the owner's standing go for the Windows lane; D5, moved up after GATE-1a): the coordinator tests `F3 (D1, deaf)` (macOS) and `C3` (Windows) flake in CI; cause first, no reruns as proof | ~2–3 h |
+    | 3a | Windows executor | **[COORD-FLAKE-1](tasks/coord-flake-1.md), ACCEPTED 2026-11-13** after one fix round ([review](reviews/2026-11-13-coord-flake-1-review.md); lands with GATE-1c; released 2026-11-13 under the owner's standing go for the Windows lane; D5, moved up after GATE-1a): the coordinator tests `F3 (D1, deaf)` (macOS) and `C3` (Windows) flake in CI; cause first, no reruns as proof | ~2–3 h |
     | Later | — | **TEST-MEM-1** (D6, reservations from measured peaks; seven low-memory refusals in the 2026-11-12 run) | ~2–3 h each |
     | Later | — | **PLAY-LIVE-1c** (draw figures), **NET-0** (after the owner decides ADR 0003), **TEST-FIXTURE-1** | — |
     | After ADR 0006 | — | **EDITION-2 with WILDLIFE-1** (one identity change for both; predators included, owner 2026-11-12), then freight through the effect queue (E2–E4) | — |

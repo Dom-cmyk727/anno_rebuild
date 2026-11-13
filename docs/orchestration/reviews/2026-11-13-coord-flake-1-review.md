@@ -1,9 +1,19 @@
-# COORD-FLAKE-1 review, round 1 (2026-11-13)
+# COORD-FLAKE-1 review (2026-11-13)
 
-**Verdict: FIX ROUND 1.** The macOS `F3 (D1, deaf)` crash has the right proximate cause and a sound fix. But one
-of the two failed runs proves a second, hidden cause, which the fix turns into a visible failure, not a pass. The
-packet's mutation proof is missing, and an older source comment still names a disproven cause. C3: no guess-fix,
-agreed; the test needs to keep the evidence next time.
+**Verdict: ACCEPTED after one fix round,** with three comment corrections as the branch's closing commit (Round 2,
+below). Both causes of the macOS `F3 (D1, deaf)` failures are named, reproduced and fixed:
+- the test process wrote `q` to a client that had already exited, and died of `SIGPIPE`;
+- that crash hid a second cause: a scheduling stall over 300 ms refused the client early.
+
+`C3` (Windows) has no provable cause. It is not guess-fixed; its checks now print the line the child actually sent,
+so its next occurrence names the cause.
+
+## Round 1 (sent 2026-11-13)
+
+**Verdict then: FIX ROUND 1.** The macOS `F3 (D1, deaf)` crash had the right proximate cause and a sound fix. But
+one of the two failed runs proved a second, hidden cause, which the fix turned into a visible failure, not a pass.
+The packet's mutation proof was missing, and an older source comment still named a disproven cause. C3: no
+guess-fix, agreed; the test needed to keep the evidence next time.
 
 **Reviewer:** the Claude Code orchestrator (Opus 5.5); the package's independent review under the owner rule of
 2026-11-12.
@@ -14,7 +24,7 @@ agreed; the test needs to keep the evidence next time.
 
 Base `task/GATE-1c` `9a958dc1`.
 
-## What the orchestrator checked
+### What the orchestrator checked
 
 - **The code.**
   - `send()` skips the write when `running()` says the child has exited, and sets `SIGPIPE` to ignored once, before
@@ -42,7 +52,7 @@ Base `task/GATE-1c` `9a958dc1`.
 - **CI:** green on the first try for `a7dedc90` (run 43341713953) and `1a5d0c15` (run 43345320469), `gate` and the
   macOS jobs included.
 
-## Findings
+### Findings
 
 - **F1: run 43082536481 ended after 0.62 s, so its client was refused early, for another reason.**
   - **Why 0.62 s matters.** The case gives the client a 2 s admission bound (`client_vars(…, "2")`). After that
@@ -85,7 +95,7 @@ Base `task/GATE-1c` `9a958dc1`.
     - correct the comment, keeping the listener's `startup_sockets()` call as hardening;
     - count three occurrences in the report: 42820583088, before `ee504b75`, then the two above.
 
-## C3, the executor's QUESTION
+### C3, the executor's QUESTION
 
 No guess-fix: agreed. The evidence gap is in the test itself.
 - **What the failure hides.** `REQUIRE(has(holder.line(10000ms), "READY 1"))` prints only `false`, never the line
@@ -101,6 +111,89 @@ No guess-fix: agreed. The evidence gap is in the test itself.
 - no behaviour change;
 - C3 stays open, documented in the report, and is reopened when it recurs with that output.
 
-## Disposition
+### Disposition
 
 Fix round 1 to the Windows executor, by message, same branch. GATE-1c's landing is independent of this package.
+
+## Round 2 (reported 2026-11-13)
+
+**Reviewed heads:** `task/COORD-FLAKE-1`:
+- `a0997aba`: the code for F1, F2, F3 and C3's output;
+- `7faf1af4`: its REPORTS addendum;
+- `38fc4abc`: one racy check dropped from the new case;
+- `0a94c338`: its follow-up note.
+
+Changed files: `budget_f2_test.cpp`, `budget_f3_test.cpp`, `budget_probe.cpp` (a comment), `child_process.hpp` (a
+comment) and REPORTS. Merged without conflicts onto `orch/land-gate-1c` `ff122e7e` as `429c0b3a` (branch
+`orch/land-coord-flake-1`).
+
+### What the orchestrator checked
+
+- **F1, the early refusal.**
+  - **The fix:** the deaf case's `ANNO_TEST_BUDGET_LIVENESS_MS` goes from 300 to 1,000 ms.
+  - **The cause, reproduced by the executor.** Suspending the deaf listener for 400 ms once the client has started
+    gives `RESULT 0 reason=coordinator not responding`. That is `coord.cpp` `transact()`: `Got::Timeout` with
+    `silent_too_long()`.
+    - After the fix: 20 of 20 runs pass under the same stall.
+    - A 1,200 ms stall still fails with that reason, so the liveness check still works.
+  - **The margin.** Run 43082536481's whole case lasted 0.62 s, so the stall that refused it was shorter than that.
+    1,000 ms is above it and below the case's 2 s admission bound. It is also the value `budget_f2_test.cpp`'s
+    `Scope` already uses.
+  - **The case now tests its claim.** On macOS at `0a94c338` (run 43359849075) it passed in 3.33 s. That is the
+    deadline path: the 2 s bound, one 1 s liveness period, then setup. An early refusal would end before 2 s.
+  - **A correction to round 1.** Round 1 said run 43123068877's 2.23 s fitted the deadline path. It does not:
+    - `transact()` sends the cancel at the 2 s deadline and gives up one liveness period later
+      (`cancel_deadline = now + liveness()`);
+    - so that path cannot end before 2.3 s after the request, and the case's 2.23 s also includes its setup.
+
+    Both runs were early refusals that the crash hid, as the executor's comment says ("in effect 43123068877
+    too").
+- **F2, the regression case** `Child::send degrades silently once the child has exited`.
+  - **What it does:** it starts the probe without a mode, which returns 2 at once, waits for the end of its output,
+    then sends `q`. The test process must survive.
+  - **The mutation**, run by the executor in the WSL `-O1` ASan build. With the `running()` check and the
+    `SIG_IGN` both reverted, the test process dies with rc 141 (`SIGPIPE`) and no output. That is the signature of
+    the macOS `INCOMPLETE`. The orchestrator did not rerun it; the mechanism is standard POSIX behaviour, and the
+    code matches it.
+  - **The racy check, rightly dropped.** The first push asserted `CHECK_FALSE(child.running())` right after
+    `wait_eof`, and it failed on `cpp (linux-gcc)` and `cpp (linux-gcc-release)` (run 43351375688).
+    - End of output does not mean the child has been reaped yet.
+    - The case claims only that `send()` does not kill the caller.
+    - That failure was reported normally, so a Linux build survived a write while `running()` still said true.
+  - **The comment** on the process-wide, inherited `SIG_IGN`: added.
+- **F3:** the 2026-11-10 comment is corrected, and three occurrences are on record: 42820583088, 43082536481 and
+  43123068877.
+- **C3:** the child's line is kept and given to `INFO` at all 8 sites, so a failure prints it:
+  - C1: the holder;
+  - C2 (loss): the holder, the CPU holder and the waiter;
+  - C2 (mute): the holder and the waiter;
+  - C3: the holder and the CPU holder.
+
+  No behaviour changes, and no unlogged `REQUIRE(has(<child>.line(…)…))` is left in the file. C3 stays open.
+- **CI:** green on the first try at `38fc4abc` (run 43356495161) and `0a94c338` (run 43359849075), `gate` and the
+  macOS jobs included.
+- **The executor's local gates:**
+  - `anno_test_support_tests` on MSVC Release: 80 selected, 77 executed, 0 failed, 3 skipped (platform);
+  - the same in the WSL `-O1` ASan build: 94 selected, 90 executed, 0 failed, 4 skipped (opt-in);
+  - `sanitizer_lines` 0 in both.
+
+### Three comment corrections (the branch's closing commit)
+
+Comments only; hosted CI is their gate.
+1. **`budget_f3_test.cpp`, the deaf case:** "(reproduced below, GATE-F1-PROOF)" points to nothing in the
+   repository. The 400 ms stall was a local run. Name where its result is (the REPORTS addendum), or drop the
+   reference.
+2. **The same comment:** "the deaf case's own ~2.3 s run time" is about 3.3 s with a 1,000 ms liveness bound (macOS:
+   3.33 s).
+3. **`budget_probe.cpp`, the correction in `deaf_listener`:** it places `client.send("q\n")` "in `quit_and_wait`".
+   The send is in the case body, right before `quit_and_wait(deaf)`. The REPORTS entry says the same; add one
+   closing line instead of editing the entry.
+
+### Game-file run
+
+At the candidate `429c0b3a`, in the run worktree on this PC: see the board's STATUS until it is recorded here.
+
+### Disposition
+
+ACCEPTED. The closing commit goes to the Windows executor with the release of its next packet. It lands with
+GATE-1c on the owner's OK, as `orch/land-coord-flake-1`, which contains `orch/land-gate-1c`.

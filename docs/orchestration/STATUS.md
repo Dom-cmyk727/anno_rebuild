@@ -4,7 +4,31 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-13, night, by the Claude Code orchestrator:
+**Last updated:** 2026-11-13, morning, by the Claude Code orchestrator:
+- **[COORD-FLAKE-1](tasks/coord-flake-1.md) ACCEPTED after one fix round**
+  ([review](reviews/2026-11-13-coord-flake-1-review.md)).
+  - **macOS (`F3 (D1, deaf)`):** two causes, both fixed. The test process wrote `q` to a client that had already
+    exited and died of `SIGPIPE`; that crash hid an early refusal after a scheduling stall over 300 ms. Both failed
+    runs were that refusal. The case now passes in 3.33 s on macOS, on the deadline path it tests.
+  - **The proof:** a new regression case, and in WSL the reverted fix kills the test process with `SIGPIPE`.
+  - **Windows (`C3`):** still no provable cause; every check of that form now prints the line the child sent.
+  - **Left:** three comment corrections, as the branch's closing commit.
+  - **Landing candidate** `orch/land-coord-flake-1` contains `orch/land-gate-1c`. Its game-file run: all 2,538
+    executed tests pass (six render cases refused for low memory, then passed one at a time).
+- **[PLAY-LIVE-1a](tasks/play-live-1a.md) RELEASED** to the Windows executor under the standing go: one flag,
+  `--rules original|living`, turns on living houses and city income in the window. The default stays `original`;
+  whether `living` becomes the default is the owner's decision.
+
+Earlier on 2026-11-13, by the Claude Code orchestrator:
+- **[COORD-FLAKE-1](tasks/coord-flake-1.md): fix round 1** ([review](reviews/2026-11-13-coord-flake-1-review.md)).
+  - **macOS (`F3 (D1, deaf)`):** the crash is the test process writing `q` to a client that had already exited. The
+    fix is right.
+  - **What is still open:** one of the two failed runs shows a second, hidden cause, an early refusal after 0.62 s.
+    The packet's mutation proof is also missing.
+  - **Windows (`C3`):** not reproduced. The test will keep the line it got, so a recurrence names its cause.
+  - **CI** is green on both heads.
+
+Earlier on 2026-11-13, night, by the Claude Code orchestrator:
 - **[GATE-1c](tasks/gate-1c.md) ACCEPTED after one fix round** ([review](reviews/2026-11-13-gate-1c-review.md)).
   - **What it fixes:**
     - the flow-build test's flake has a named cause, and the test now checks only its own claim;
@@ -244,9 +268,21 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [COORD-FLAKE-1](tasks/coord-flake-1.md)** (released 2026-11-13), on `task/COORD-FLAKE-1`, based on the
-  accepted `task/GATE-1c`: the two test-coordinator flakes in hosted CI, `F3 (D1, deaf)` on macOS and `C3` on Windows.
-  The packet asks for the evidence from the failed runs first, then the mechanism, then a fix of the cause.
+- **Now: [PLAY-LIVE-1a](tasks/play-live-1a.md)** (released 2026-11-13), on `task/PLAY-LIVE-1a`, based on `main`: a
+  "living town" rules profile for the window behind `--rules living` (`house_updates` and `city_booking` on), default
+  unchanged; the owner's playtest card and a cost measurement.
+- **Finished: [COORD-FLAKE-1](tasks/coord-flake-1.md)** (2026-11-13; head `0a94c338`), **accepted after one fix
+  round** ([review](reviews/2026-11-13-coord-flake-1-review.md)); three comment corrections are its closing commit.
+  The two test-coordinator flakes in hosted CI, `F3 (D1, deaf)` on macOS and `C3` on Windows.
+  - **Handover** `a7dedc90` and `1a5d0c15`.
+  - **Fix round 1 sent 2026-11-13** ([review](reviews/2026-11-13-coord-flake-1-review.md)):
+    - F1: the early refusal after 0.62 s;
+    - F2: a regression case and the mutation run in WSL;
+    - F3: correct the 2026-11-10 probe comment;
+    - C3: keep the failing line in the test's output.
+  - **Round 2** `a0997aba` to `0a94c338`, CI green on the first try: the deaf case's liveness bound is 1,000 ms (the
+    early refusal reproduced with a 400 ms stall); the regression case and its WSL mutation (rc 141); the comment
+    corrected; `C3`'s checks print the child's line.
 - **Finished: [GATE-1c](tasks/gate-1c.md)** (2026-11-13; head `9a958dc1`), **accepted after one fix round**
   ([review](reviews/2026-11-13-gate-1c-review.md)):
   - the flow-build test's cause is named, and the test compares chunk serials;
@@ -492,10 +528,14 @@ Its later work is not accepted merely because expansion is complete.
   [Current work](#current-work).
 - The GATE-1c landing candidate's run is done: all 2,537 executed tests passed
   ([review](reviews/2026-11-13-gate-1c-review.md)).
+- The run of `orch/land-coord-flake-1` (`429c0b3a`: GATE-1c's candidate plus COORD-FLAKE-1) is done: all 2,538
+  executed tests pass, six of them on a one-at-a-time rerun after memory refusals
+  ([review](reviews/2026-11-13-coord-flake-1-review.md)).
 
 ## Waiting on the owner
 
-- **Landing `orch/land-gate-1c`** on `main`: GATE-1c, its review, this board and the COORD-FLAKE-1 release.
+- **Landing GATE-1c and COORD-FLAKE-1** on `main`: `orch/land-gate-1c` alone, or, once its game-file run and the
+  closing commit are in, `orch/land-coord-flake-1`, which contains it.
 
 - **The go for each next Mac packet** of the queue (board, "Current work"); the Windows lane has a standing go.
   ADR 0006 waits until the owner can read it.
@@ -503,7 +543,8 @@ Its later work is not accepted merely because expansion is complete.
   items 1–6): one sanitizer gate per landing at the merge; the reviewer fixes wording itself; a flake is closed by
   its mechanism; merge within a day or two behind default-off flags; one tool regenerates pins; retire dated
   protocol text.
-- **Whether the window's living town is the default** (PLAY-LIVE-1a), and **ADR 0003** (blocks NET-0).
+- **Whether the window's living town is the default** (PLAY-LIVE-1a builds `--rules living`, default `original`), and
+  **ADR 0003** (blocks NET-0).
 - **On the Mac, accept this PC and the `open1503-share` offer** in Syncthing, as Receive Only (MAP-INTEGRATE-2
   part S, step 4).
 - **OQ-568:** may the play runner's `stop()` drop a command posted during an artificial turn delay? Only tests set

@@ -13,7 +13,8 @@ says who is doing what, where the work is, and what it waits on.
   - **Three questions to the owner** decide which, if either.
 - **[ZOOM-MEASURE-1](tasks/zoom-measure-1.md) RELEASED** to the Windows executor.
 - **The landing candidate `orch/land-play-live-1a`** (`f9e6ea0c`): PLAY-LIVE-1a, WHALE-RE-1b and 1c, FISHER-RE-1a and
-  1b, the SHIP-ORDER-1 report, and the board. Its game-file run is under way.
+  1b, the SHIP-ORDER-1 report, and the board. **Its game-file run passed:** 2,547 of 2,547 executed tests, no
+  refusals. Landing waits for the owner's OK.
 - **ADR 0006's packets go to the Mac** (owner: "Yes, the Mac"), after FISHER-RE-1c:
   [PINS-1](tasks/pins-1.md) (written), then SAVE-SECTIONS-1 (139), then FIXTURES-TRIM-1. Then FISHER-1a and the held
   ports.

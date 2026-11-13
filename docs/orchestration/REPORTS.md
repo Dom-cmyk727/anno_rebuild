@@ -9156,3 +9156,66 @@ QUESTIONs: should this session remove the duplicate `#[allow(clippy::cast_precis
 `crates/render/src/gpu.rs:1125` as a trivial one-line fix on `task/GATE-1b` (or a separate branch),
 or does that belong to another lane/the orchestrator? Otherwise none requiring an owner decision;
 independent review of the rest of this packet is the orchestrator's.
+
+## PLAY-LIVE-1a — a "living town" rules profile behind one flag — 2026-11-13 — READY FOR REVIEW
+
+Base `96f7980c`, branch `task/PLAY-LIVE-1a`, head `2831f78f`.
+
+Flag: `--rules original|living`, accepted only where a sim is created — `--play` (fixed map and
+scenario) and `--ship-start`, `--replay-hashes` included — refused with the usage text at `--view`
+and an unknown name (`src/app/src/cli.cpp`). `original` (default) is each start's own rules
+unchanged. `living` is one function, `apply_rules_profile` (`cli.hpp`/`cli.cpp`), setting exactly
+`house_updates = true` (House tick effects, `docs/sim/population-live.md` §8) and
+`city_booking = true` (ECON-BOOK-1, `docs/sim/economy-booking.md`; needs `save_billed_goods`,
+already `true` by default). `--city-booking on|off` composes after the profile. Wired into
+`load_fixed_play`/`load_play` (`play.cpp`, both the `load_scenario_with_context` and `World::create`
+calls) and `load_opening` (`opening.cpp`) so the loaded and created worlds agree.
+
+Resume/replay: the ship-start save's existing `rules_digest` check (`opening.cpp`) now covers a
+profile mismatch, since the digest changes with the two fields — proved end to end (save `living`,
+resume `living` succeeds, resume as `original` refused, message names "other rules"). A plain
+`--play` recording's `session.txt` gained a `rules <name>` line (`dev_session.cpp`:
+`format_invocation`/`parse_invocation_rules`); `main.cpp`'s `replay_hashes` refuses a mismatch before
+turn 1, naming both rules. The refusal itself (an unexported free function, not linked into the test
+binary) is proved by a direct round-trip unit test of the two functions it calls, documented in the
+test as a deliberate scoping choice rather than a new subprocess harness.
+
+Measurements (`anno_app_tests`, Release, 1000 turns, ms/100ms-turn, with game files): fixed map
+p50 0.195/0.196 ms original/living, p95 0.222/0.222 ms; `02Trade01.sze` p50 0.112/0.126 ms, p95
+0.382/0.606 ms. Both well under the 100 ms budget.
+
+Tests, `src/app/tests`: Proof 1 (no `--rules`/`--rules original` match `sim::Rules{}` exactly, both
+fixed-map and scenario paths); Proof 2 (`living` sets exactly the two fields, whole-struct digest
+compared); the CLI test (`original`/`living` accepted, unknown name and `--view` refused,
+`--city-booking off` after `living` leaves `house_updates` on); Proof 4, with game files, on
+`02Trade01.sze`, 3000 turns (5 game-minutes): living 3/32 houses changed, accounts 897→1137;
+original 0 houses changed, accounts 315→315 (unchanged); the opening resume/replay test above; the
+`dev_session` round-trip test. MSVC Release, game files, `anno_app_tests`: `selected=272
+executed=270 failed=0 skipped=2(opt-in) sanitizer_lines=0 VERDICT: PASS`. WSL `-O1` ASan/UBSan, app
+lane only (this packet touches only `src/app`/docs; sim/render/formats/tsupport are unchanged code,
+not rerun): `selected=316 executed=314 failed=0 skipped=2(opt-in) sanitizer_lines=0 VERDICT: PASS`
+(gatecheck worktree, head `2831f78f`). That same gate run's sim lane showed 3 refused-not-run
+entries (`scenario_test.cpp:534/:618/:799`, `[anno-test memory] ... reason=low-memory stop`, from
+running two heavy WSL jobs at once) in code this packet never touches; per the owner's new per-lane
+rule, not rerun.
+
+Gates: clang-format 23.1.3, no changes. `tools/check_unix_warnings.sh` (WSL, GCC 13 + Clang 18, with
+and without GPU/viewer): clean, 396/76 files. CI on `2831f78f` (run `43383448663`): every job
+green, `gate` included, no coordinator flake and no macOS-no-runner case.
+
+NOT_RUN: the full WSL gate's sim/render/formats/tsupport lanes (orchestrator's, at merge, per the
+packet); the MSVC game-file run beyond this packet's own `anno_app_tests` selection (orchestrator's).
+
+Decisions and reasoning:
+- `measure`'s lambda took `label` as `const char*`; doctest's `MESSAGE` prints a bare `const char*`
+  as its pointer address, not its text (no `DOCTEST_CONFIG_TREAT_CHAR_STAR_AS_STRING` defined here) —
+  changed to `std::string`, matching this file's existing `.string()` convention elsewhere.
+- One `TEST_CASE` name used a semicolon, which the mandatory CTest-name preflight (`CheckTestNames.cmake`)
+  rejects as unselectable; reworded to a comma.
+- Kept the plain-`--play` replay check to a direct unit test of `format_invocation`/
+  `parse_invocation_rules` rather than a new subprocess harness (`tools/test/selected_house_session_replay.py`'s
+  pattern): `replay_hashes` itself is a free function local to `main.cpp`, not linked into the test
+  binary, and a new end-to-end harness was judged out of this packet's ~2-4h scope.
+
+QUESTIONs: none required; the default, road/figure drawing, and any new `Rules` field are explicitly
+not this packet's call.

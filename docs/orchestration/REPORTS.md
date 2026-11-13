@@ -9156,3 +9156,126 @@ QUESTIONs: should this session remove the duplicate `#[allow(clippy::cast_precis
 `crates/render/src/gpu.rs:1125` as a trivial one-line fix on `task/GATE-1b` (or a separate branch),
 or does that belong to another lane/the orchestrator? Otherwise none requiring an owner decision;
 independent review of the rest of this packet is the orchestrator's.
+
+## GATE-1c — a gate can end green for the right reasons — 2026-11-12 — READY FOR REVIEW
+
+Base `origin/orch/land-gate-1b` db118177, branch `task/GATE-1c`, code head `3b311a8e`, pushed head
+(merged with `origin/main` 96f7980c, docs-only, no conflicts) `9e73f27b`.
+
+**Item 1, the flow-build test (`river_flow_corpus_test.cpp:1322`).** Cause, with evidence: its
+"nothing is rebuilt any more" check summed `update_chunks`'s global `built` return, which also
+counts its margin/neighbouring-group housekeeping chunks (`margin_keys()`/`adjacent_keys()`,
+`frame.cpp` `request_chunks`/`plan_margin`); those are not required to have finished their own
+in-flight build by the time the loop above finds every *visible* chunk settled (that loop only
+polls `visible_chunks(view)`), so one can still arrive inside the 60-iteration/300 ms check window.
+Reproduced at Debug (`/Od`, no Ninja preset on this host, so MSVC Debug stood in for `-O0`) with
+temporary logging: 3/40 runs failed with `CHECK(rebuilt == 0)` violated by exactly one chunk; one
+capture showed an **adjacent** key (`g=0,-3,8`) still uncached (`cached=0`) at the moment the
+settled-loop declared every visible chunk settled, then arriving on the very first follow-up
+iteration (`built=1`). Fix: track this test's own view's cached-chunk pointer identity across the
+60-iteration window instead of the global count (no sleep/frame/retry count changed). Proof: 80/80
+Debug reruns clean after the fix (40 fresh + 40 at the same condition that showed the three
+original failures); a deliberately-broken variant (temporarily forcing one recorded pointer to
+`nullptr,` simulating a real rebuild) fails with `CHECK( ...chunk(...) == before_rebuild[...] )` at
+line 1386, confirming the check is live, then reverted. Full Release suite with game files:
+195/195 test cases, 2,902,999/2,902,999 assertions, including this test, clean.
+
+**Item 2, the named-adapter GPU tests (`play_gpu_test.cpp:50-71`).** A missing *named* adapter
+(`pick_adapter` finds no "RTX 4090"/"Radeon" in `list_adapters()`) no longer `FAIL`s under
+`ANNO_REQUIRE_GPU`; it is always a skip now, classified `gpu` by `ctest_verdict.py`'s
+`GPU|adapter|RTX|Radeon|Metal|Vulkan` pattern (confirmed: `SKIPPED(gpu):` for both cases in the WSL
+gate below). `headless_context()` failing once a named adapter is confirmed present (truly no GPU
+at all) still `FAIL`s under `ANNO_REQUIRE_GPU` — unchanged. `wsl_gate.sh`'s `--gpu-lane` now passes
+`--allow-skip gpu`. Checked on three setups: **adapter present** (this PC, MSVC Release,
+`ANNO_REQUIRE_GPU=1`) — both cases pass on the real RTX 4090 and Radeon iGPU; **absent, GPU
+present, `ANNO_REQUIRE_GPU=1`** (WSL lavapipe, `--gpu-lane`) — both `SKIPPED(gpu)`, gate green;
+**absent, no `ANNO_REQUIRE_GPU`** — unchanged (already a skip before this packet).
+
+**Item 3, an empty selection fails again (`run_selected.py`).** Since GATE-1b, excluding already-run
+required contracts from the selection made the "was anything selected" check itself blind to a
+`--select` that matched nothing at all. Fixed: that check now runs on the selection *before* the
+required-name exclusion; a selection that matched only required contracts still ends `VERDICT: PASS`
+(`workflow_test.py`'s `test_required_contract_does_not_inflate_selection` already asserted
+`selected=0 executed=0` since GATE-1b's `e9be274b`, unchanged by `3b311a8e`), while one that
+matched nothing at all fails again (`test_empty_selection_with_require_test_still_fails`, new,
+reproducing the orchestrator's `--select '^no_such_test$' --require-test pass` case). `python -I
+tools/test/workflow_test.py`: 24 tests, `OK` (23 from GATE-1b/1a plus this one).
+
+**WSL gate, `task/GATE-1c-gatecheck` (clean checkout, code head `3b311a8e`), `--gpu-lane`,
+`sanitizer_lines=0` every lane, `rc=0`:** app 1599s (GATE-1b 1572s), sim 1901s (1867s), formats 169s
+(165s), render 424s (548s, faster this time — noise, both within normal variance), tsupport 38s
+(38s), **gpu 1898s — new, first clean pass**: `selected=116 executed=114 skipped=2 (gpu=2)
+sanitizer_lines=0 VERDICT: PASS`, the two skips exactly `anno_render_gpu_tests.play: GPU matches the
+CPU path on one scene` and `..., on the Radeon iGPU`. Overall `rc=0`.
+
+CI: code push `3b311a8e` green on the first try, `gate`/`lint` included (the GATE-1b lint fix is in
+on this base). Per the orchestrator's note, merged `origin/main` 96f7980c (docs-only, the GATE-1b
+game-file/CI record) into `task/GATE-1c`, no conflicts, pushed `9e73f27b`; its own CI also green
+first try (`gate` included) — no macOS-runner abandonment this time, no coordinator flake seen, no
+rerun needed.
+
+NOT_RUN: the coordinator flakes (COORD-FLAKE-1), the MSVC game-file suite run beyond what this
+packet itself ran (the full corpus/game-file sign-off remains the orchestrator's at the merge).
+
+Decisions and reasoning:
+- Fixed the flow-build test's claim (its own view must not be rebuilt) rather than its timing: no
+  new sleep, frame-count or retry was added; the check now measures only what the test's own
+  rendered picture (checked a few lines below) actually depends on.
+- Used MSVC Debug as the `-O0` stand-in (no Ninja `dev`/`asan` preset on this host per `CLAUDE.md`);
+  the mechanism and fix are about ordering/timing, not an optimizer-specific code path, so Debug's
+  slower, unoptimized build reproduces the same race GCC's `-O0` did in the project analysis.
+- Kept the named-adapter skip change scoped to the `pick_adapter`-not-found branch only;
+  `headless_context()`'s existing `ANNO_REQUIRE_GPU` failure path (a confirmed-present named
+  adapter that still can't open a context) is untouched, preserving "no GPU at all still fails".
+QUESTIONs: none requiring an owner decision; independent review is the orchestrator's.
+
+### Review round 1 addendum — F1/F2/F3 — 2026-11-13 — READY FOR REVIEW
+
+Head `d06ccc92` (code) on `task/GATE-1c`.
+
+**F1 (ABA on raw `Chunk*`).** Fixed: compare `Chunk::serial` (process-unique) per visible key
+instead of the pointer. Proof: 50/50 fresh Debug reruns clean, plus the earlier 80 (130 total, same
+condition as the original 3/40 failures). Broken-variant proof redone as asked: `frames.insert_chunk`
+on one visible key (a real replacement, a fresh serial) inside the window — `CHECK( c->serial ==
+before_rebuild[...] )` fails with `67 == 8`, then reverted.
+
+**F2 (dropped "no GPU at all" fails).** Fixed: `FAIL` under `ANNO_REQUIRE_GPU` when `adapters` is
+empty; skip (`gpu`) only when adapters exist but none matches the name. Comment corrected. Proof:
+real RTX 4090 and Radeon (MSVC Release) still pass; WSL lavapipe still `SKIPPED(gpu)` with
+`ANNO_REQUIRE_GPU=1`. The true "zero adapters" leg could not be reproduced live: `list_adapters()`
+enumerates `WGPUInstanceBackend_All`, and WSL's Mesa `llvmpipe` still answered through it even with
+`VK_ICD_FILENAMES` pointed at a missing file and `LIBGL_DRIVERS_PATH`/`EGL_DRIVERS_PATH` broken — no
+environment on this host produced a genuinely empty adapter list. That leg is verified by reading the
+one added line (`adapters.empty() && ANNO_REQUIRE_GPU -> FAIL`), not by a live repro; flagging this
+as a QUESTION rather than claiming proof that was not run.
+
+**F3.** Corrected: the `selected=0 executed=0` assertion is GATE-1b's own (`e9be274b`), unchanged by
+`3b311a8e`.
+
+Not rerun: the full WSL `--gpu-lane` gate (not asked for this round). Ran instead, in the WSL `-O1`
+ASan build (separate build dir, not the full `wsl_gate.sh`): the flow-build case and both `play_gpu_test`
+cases, `sanitizer_lines` 0 throughout; `python -I tools/test/workflow_test.py`: 24/24 `OK` (unaffected
+by F1/F2, Python-only F3 is docs). Full Release suite with game files re-run after F1/F2: 195/195 cases
+clean. Hosted CI: pending on this push.
+
+Decisions and reasoning:
+- Used `insert_chunk` for the F1 broken-variant proof, not a raw invalidate: it is the documented
+  test/tool seam that gets a chunk a fresh serial without needing a worker round-trip to land.
+- Did not try further WSL tricks (unloading Mesa, namespacing) to force zero adapters: each
+  additional attempt risked destabilizing the shared WSL environment for no proof value beyond
+  what reading the one-line change already gives; said so plainly instead of fabricating a result.
+QUESTIONs: is code-review verification of the "zero adapters, `ANNO_REQUIRE_GPU`, FAIL" leg
+sufficient, or does it need a live repro on a host that can actually produce an empty adapter list
+(bare CI runner with no software rasterizer, perhaps)? Otherwise none; independent review is the
+orchestrator's.
+
+### Review round 1, zero-adapter leg — live repro — 2026-11-13
+
+`unshare -r -m bash -c '...mount --bind /dev/null ...libvulkan.so.1/libEGL.so.1/libEGL.so/libGL.so.1/
+libGL.so...; <play_gpu_test command>'` (per the orchestrator's suggestion; unprivileged user
+namespaces are enabled here) hides the GPU loader libraries inside a private, process-scoped
+mount namespace, at head `d06ccc92`'s WSL `-O1` ASan build. `list_adapters()` there reports
+genuinely empty (`MESSAGE: skipping: ... among: ` with nothing after it). Both cases: with
+`ANNO_REQUIRE_GPU=1`, both `FATAL ERROR: no GPU device at all (ANNO_REQUIRE_GPU is set)` (`FAILURE`);
+without it, both `SKIPPED` (`SUCCESS`). The bind mounts vanished with the namespace. The zero-adapter
+leg is now live-proven, not just code-reviewed.

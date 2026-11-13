@@ -313,7 +313,9 @@ TEST_CASE("C1: a waiter behind an owner with a stale residency report waits, not
     reset(20);
     Scope scope("capacity", 2);
     Child holder = probe({"holder", scope.path.string(), "80"});
-    REQUIRE(has(holder.line(10000ms), "READY 1"));
+    const std::string holder_line = holder.line(10000ms);
+    INFO("holder output: " << holder_line);
+    REQUIRE(has(holder_line, "READY 1"));
     auto waiter = anno::test::Budget::file(scope.path, both_hooks(true), 0);
     std::atomic<int> done{0};
     anno::test::Reservation got;
@@ -403,11 +405,17 @@ TEST_CASE("C2: losing the coordinator ends memory and CPU waits and admitted wor
     Scope scope("loss", 4);
     scope.set("ANNO_TEST_CPU_BUDGET", "1");
     Child holder = probe({"holder", scope.path.string(), "80"});
-    REQUIRE(has(holder.line(10000ms), "READY 1"));
+    const std::string holder_line = holder.line(10000ms);
+    INFO("holder output: " << holder_line);
+    REQUIRE(has(holder_line, "READY 1"));
     Child cpu_holder = probe({"cpu-holder", scope.path.string(), "1"});
-    REQUIRE(has(cpu_holder.line(10000ms), "READY 1"));
+    const std::string cpu_holder_line = cpu_holder.line(10000ms);
+    INFO("cpu_holder output: " << cpu_holder_line);
+    REQUIRE(has(cpu_holder_line, "READY 1"));
     Child waiter = probe({"waiter", scope.path.string(), "60"});
-    REQUIRE(has(waiter.line(10000ms), "WAITING"));
+    const std::string waiter_line = waiter.line(10000ms);
+    INFO("waiter output: " << waiter_line);
+    REQUIRE(has(waiter_line, "WAITING"));
     Child cpu_waiter = probe({"cpu-waiter", scope.path.string(), "1"});
     CHECK(cpu_waiter.line(500ms).empty());
 
@@ -437,9 +445,13 @@ TEST_CASE("C2: a coordinator that stops answering ends a blocked wait within the
           doctest::test_suite("budget")) {
     Scope scope("mute", 5);
     Child holder = probe({"holder", scope.path.string(), "80"});
-    REQUIRE(has(holder.line(10000ms), "READY 1"));
+    const std::string holder_line = holder.line(10000ms);
+    INFO("holder output: " << holder_line);
+    REQUIRE(has(holder_line, "READY 1"));
     Child waiter = probe({"waiter", scope.path.string(), "60"});
-    REQUIRE(has(waiter.line(10000ms), "WAITING"));
+    const std::string waiter_line = waiter.line(10000ms);
+    INFO("waiter output: " << waiter_line);
+    REQUIRE(has(waiter_line, "WAITING"));
     scope.coord.suspend();
     const std::string result = line_with(waiter, "ADMITTED", 8000ms);
     scope.coord.resume();
@@ -457,9 +469,13 @@ TEST_CASE("C3: a replacement coordinator does not admit against its predecessor'
     Scope scope("replace", 6);
     scope.set("ANNO_TEST_CPU_BUDGET", "1");
     Child holder = probe({"holder", scope.path.string(), "80"});
-    REQUIRE(has(holder.line(10000ms), "READY 1"));
+    const std::string holder_line = holder.line(10000ms);
+    INFO("holder output: " << holder_line);
+    REQUIRE(has(holder_line, "READY 1"));
     Child cpu_holder = probe({"cpu-holder", scope.path.string(), "1"});
-    REQUIRE(has(cpu_holder.line(10000ms), "READY 1"));
+    const std::string cpu_holder_line = cpu_holder.line(10000ms);
+    INFO("cpu_holder output: " << cpu_holder_line);
+    REQUIRE(has(cpu_holder_line, "READY 1"));
 
     scope.coord.stop();
     scope.coord = start_coord(scope.port, scope.journal);

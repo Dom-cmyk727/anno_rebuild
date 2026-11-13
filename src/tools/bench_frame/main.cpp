@@ -1696,14 +1696,14 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
         std::printf("\nbaseline: %s, %dx%d, %s water, %s mode: frames %zu, non-ready frames "
                     "%zu, most non-ready at once %zu, stand-in draws %zu, dissolves %zu, "
                     "open-sea draws %zu, wave switches %llu, frames in wave fade %zu, busy ms "
-                    "p50 %.2f, p99 %.2f, max %.2f, frames > %.0f ms %zu\n",
+                    "p50 %.2f, p99 %.2f, max %.2f, frames > %.0f ms %zu, frames > %.0f ms %zu\n",
                     file.filename().string().c_str(), w, h,
                     style == render::WaterStyle::Enhanced ? "enhanced" : "original", mode_name,
                     total_frames, total_non_ready, most_missing_at_once, total_stand_draws,
                     total_dissolves, total_open_draws,
                     static_cast<unsigned long long>(wave_switches), total_wave_fade_frames,
                     pct(total_ms_all, 0.5), pct(total_ms_all, 0.99), pct(total_ms_all, 1.0),
-                    kFrameMs, total_frame_over_2);
+                    kFrameMs, total_frame_over_2, kBusyMs, total_frame_over_busy);
         std::sort(worst.begin(), worst.end(), std::greater<>());
         std::printf("\nthe busiest frames above %.0f ms (%zu in all):\n", kBusyMs, worst.size());
         for (std::size_t i = 0; i < worst.size() && i < 8; ++i) {

@@ -31,7 +31,7 @@ BASELINE_RE = re.compile(
     r"^baseline: .*?frames (\d+), non-ready frames (\d+), most non-ready at once (\d+), "
     r"stand-in draws (\d+), dissolves (\d+), open-sea draws (\d+), wave switches (\d+), "
     r"frames in wave fade (\d+), busy ms p50 ([\d.]+), p99 ([\d.]+), max ([\d.]+), "
-    r"frames > [\d.]+ ms (\d+)$"
+    r"frames > [\d.]+ ms (\d+), frames > [\d.]+ ms \d+$"
 )
 
 

@@ -9982,3 +9982,104 @@ Decisions and reasoning:
   island templates and placement, and bench_frame only needs the resulting `render::Scene`.
 
 QUESTIONs: none required; the fix is explicitly not this packet's.
+
+## FISHER-RE-1c — HEIGHT corner grid and negative water census (2026-11-13)
+
+**Status: READY FOR REVIEW.** Mapping/reference candidate; water-assumption finding remains FAIL.
+Branch `task/FISHER-RE-1c`, own worktree; exact base961a9d4a; dispatch/review board29d8de10.
+Authorized merges:1a6d57bb12 via0186370c,1bf931354a viaff525154. Only REPORTS conflicted;
+both accepted entries preserved verbatim and checked. No main merge/rebase or other worktree edits.
+Read CLAUDE, PLAN, current board §1 (2026-11-13 gate rule), evidence contract/README,
+OQ-060/200, transport3.4.11–13, fisher§3 and insel HEIGHT/reader. Orchestrator review pending.
+Reads/mapping (GOG AnnoWelt, D unless marked P/A):
+- Island primarycac2c, initializer+180=8c090; grid pointerI+14, W/H u16+8/+a.
+- 8c18a–8c1d3 allocates and zeroes(W+1)*(H+2) BYTES, including remainder bytes.
+- Logical corners are(W+1)*(H+1), with one further physical padding row.
+- HEIGHT arm89150–8922a ->+ac=84870; inner copy8499e–849a5 is unchanged bytes.
+- Source block stride=bw, destination stride=W+1; world-origin adjustment cancels.
+- C(cx,cy)=F[cy*W+cx] insideW*H; logical right/bottom border0. No mean/scale/edge copy.
+- Public bulk setter can replace covered heights;84150/8f2d0 update derived regions.
+- Placement item-height writes are separate tile records. Inspected AnnoGame8f90–91ce
+  and height-query helpers read corners, not a corner-grid flattening operation.
+- Save89e01–89f51 (mask0x2) ->+b0=84a30: current interiorW*H HEIGHT blocks;
+  no logical border or padding in them. Reload reinitializes the omitted edges to0.
+- Broad later/editor setter caller closure remains OQ-610; no immutable-grid claim.
+Worked original window (P/A): Single_06.sze island12, origin(72,264), size80×80.
+- GELAENDE block(64,64),item14 places11 at local(69,66),world(141,330).
+- HEIGHT payload offsets43/44/59/60 give corners32/24/48/24, mean32: CLOSED.
+- Adjacent tile(70,66) has24/16/24/8, mean18: OPEN; not an all-closed-island bug.
+- Full opt-in census:50 scenarios, selected2473/executed2473, water0/failed2473,
+  empty0/skipped0/incomplete0, exit1. Every raw tile11 placement is an exception.
+- Complete exceptions plus per-file SHA256s: `cache/fisher-re-1c/fish-water-02.log`.
+- No threshold/height adjustment, hidden exceptions, skip or changed expectation to force a pass.
+- 928a0–92b32 can create11 on EMPTY mean<16 ground; skips nonzero ids at92976.
+  This does not repair those serialized placements or prove full runtime source import.
+
+Reference/acceptance:
+| Requirement | Proof/control | Evidence | Review |
+|---|---|---|---|
+| Load mapping | addressed allocation/copy/save plus worked window | fisher.md§5 | pending |
+| Borders |5 hand-derived corner_grid vectors; two border sea controls |49 total vectors | pending |
+| Wrong rule rejected | right/bottom replication each applies once and exits1 |11 source mutants | pending |
+| Corpus honesty | self-authored open/closed/missing/count controls; real failure preserved |71 CLI checks | pending |
+| CTest integration | required contract once, agreement once |gate-01.log | pending |
+
+Gates/evidence under `cache/fisher-re-1c/`:
+- `python3 -I tools/fisher_ref.py fixtures/synthetic/sim/fisher_vectors.txt`:49 agree,0 disagreements.
+- Direct contract `--ref tools/fisher_ref.py --vectors fixtures/synthetic/sim/fisher_vectors.txt`:71 pass.
+- Corpus: `python3 -I tools/fisher_ref.py --check-fish-water GAME_DIR`:FAIL2473, as above.
+- Configure01 failed: nonexistent cached source path. Configure02 uses verified existing pinned doctest source.
+- Dev configured viewer/GPU OFF. `run_selected.py --build-dir build/dev --select fisher_reference`
+  `--require-test fisher_reference_contract --skip-auto-contract --jobs 1 --timeout 30`
+  `--log cache/fisher-re-1c/gate-01.log`:2 distinct CTest entries selected/executed, both pass.
+- Required1/1 plus remaining1/1; failed0/empty0/incomplete0/sanitizer_lines0; every skip class0.
+- Unrelated picture/engine suites omitted by packet; engine evidence reused, no engine changes.
+- Diff/link checks and hosted CI on final pushed head; exact terminal head/run in owner handoff.
+
+Decisions and reasoning:
+- Return the logical corner grid; document physical padding separately instead of inventing extra tiles.
+- Keep the real-file non-water finding as exit1; full exception data stays ignored, reproducible via opt-in CLI.
+- OQ-200 load mapping answered; OQ-060 narrowed. OQ-609 tracks raw-source contradiction;
+  OQ-610 tracks later setters. OQ-611/612 unused; OQ-603/604 stay refused.
+NOT_RUN: original runtime/HE/Ghidra (Capstone used), complete dynamic-terrain closure, engine port/flag/state changes.
+QUESTIONs:609/610 are follow-up evidence gaps, not an owner-policy decision. No assertion of a working fisher canary.
+
+### FISHER-RE-1c — fix round1 addendum (2026-11-13)
+
+**Status: READY FOR REVIEW.** Same branch; correction to reviewed head1d6d289b.
+Read review on board5b9fed7d; independent re-review is the orchestrator's at handover.
+The prior census's criterion was wrong: walking and goal admission have opposite senses.
+Rechecked GOG AnnoWelt `0x10090689`–`0x10090697` and `0x1009226b`–`0x100922df`:
+mean<32 => open1/free0; mean>=32 => open0/free511. No original text/bytes committed.
+F1: opt-in census now checks goal plus at least one in-bounds eight-neighbour water tile.
+It excludes the fish tile, includes diagonals, and invents no out-of-island water.
+50 scenarios; selected2473/executed2473; goals2473, adjacent_water619, both619,
+failed1854/empty0/skipped0/incomplete0; exit1. Every exception is goal1/adjacent_water0.
+Full1854 exceptions and50 input hashes: `cache/fisher-re-1c/fix1-corpus-02.log`.
+Single_06 local(69,66) mean32 is a goal; east(70,66) mean18 is water, so it passes.
+OQ-609 narrowed to1854 local-neighbourhood misses; no claim they are globally unreachable.
+Accepted §5 HEIGHT mapping, OQ-200 load answer, OQ-610 and928a0 lead retained.
+F2: corrected sea_cell free polarity; re-derived all six boundary/uneven/border vectors.
+F3: dated correction in §3 and walking/goal clarification in §4; §5 appended clarification.
+
+| Requirement | Positive proof | Negative control | Disposition |
+|---|---|---|---|
+| Goal polarity | mean31 open1/free0; mean32 open0/free511 | invert_goal_mask applies once, exit1 | re-review pending |
+| Local census | goal with water; diagonal-only water | non-goal with water; isolated goal; self-only water | re-review pending |
+| Accepted mapping | five corner_grid vectors | both border replication mutants | prior mapping accepted; regression pass |
+
+Gates: direct49 vectors/0 disagreements (`fix1-direct-01.log`); direct contract75 checks,
+12 source mutants applied exactly once/rejected with exit1 (`fix1-contract-02.log`).
+`run_selected.py --select fisher_reference --require-test fisher_reference_contract`
+`--skip-auto-contract --jobs 1 --timeout 30`:2 distinct CTest selected/executed/passed;
+failed0/empty0/incomplete0/sanitizer_lines0; every skip class0 (`fix1-gate-02.log`).
+Gate01/contract01 retained; superseded by one added independent non-goal-with-water control.
+Corpus01 retained; corpus02 confirms identical rows while separately recording exit1.
+Diff/link checks clean; final pushed-head hosted-CI terminal result supplied in owner handoff.
+Unaffected engine suites reused: no engine/CMake/default/state changes; only docs/reference.
+Decisions and reasoning:
+- Eight neighbours measure immediate shore adjacency, not an invented searcher goal radius.
+- Keep1854 exceptions and nonzero corpus result; do not widen the radius until evidence settles it.
+- Preserve earlier logs/prose as dated history; correct their interpretation explicitly.
+NOT_RUN: original-runtime route proof, searcher radius closure, HE, engine port; no reviewer agents.
+QUESTIONs: OQ-609's remaining approach/radius gap and unchanged OQ-610 require follow-up reads.

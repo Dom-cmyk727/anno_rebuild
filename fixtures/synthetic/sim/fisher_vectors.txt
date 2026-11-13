@@ -58,14 +58,14 @@ search_rect rotated x=100 y=200 width=4 height=3 radius=7 draws=- => x=94 y=194 
 search_rect no_radius x=65535 y=0 width=1 height=1 radius=0 draws=- => x=65535 y=0 width=1 height=1 consumed=0
 # §3: extents are bytes;2*127+1+1=256 wraps0, origins1000+1-127=874.
 search_rect extent_wrap x=1000 y=1000 width=4 height=4 radius=127 draws=- => x=874 y=874 width=0 height=0 consumed=0
-# §3: mean31<32 is open, all511 free goal subcells.
-sea_cell below heights=31,31,31,31 draws=- => open=1 free=511 consumed=0
-# §3: equality32 is closed, no free goal subcells.
-sea_cell equal heights=32,32,32,32 draws=- => open=0 free=0 consumed=0
-# §3: sum127 integer-divided by4 gives31; do not round the mean to32.
-sea_cell uneven_below heights=31,32,32,32 draws=- => open=1 free=511 consumed=0
-# §3: sum128/4=32, even with three zero-height corners, is closed.
-sea_cell uneven_equal heights=0,0,0,128 draws=- => open=0 free=0 consumed=0
+# §3: mean31<32 is walkable water, goal mask0 (2026-11-13 correction).
+sea_cell below heights=31,31,31,31 draws=- => open=1 free=0 consumed=0
+# §3: equality32 is closed to walking, goal mask511 (2026-11-13 correction).
+sea_cell equal heights=32,32,32,32 draws=- => open=0 free=511 consumed=0
+# §3: sum127//4=31 gives open1/free0; do not round the mean to32.
+sea_cell uneven_below heights=31,32,32,32 draws=- => open=1 free=0 consumed=0
+# §3: sum128/4=32 gives open0/free511 even with three zero-height corners.
+sea_cell uneven_equal heights=0,0,0,128 draws=- => open=0 free=511 consumed=0
 # §3:767<768 repeats the search.
 trip one_short cargo=767 capacity=768 draws=- => repeat=1 home=0 consumed=0
 # §3:equality768 goes home; do not repeat at capacity.
@@ -84,3 +84,17 @@ cut_match ice tile=3506 draws=- => match=0 remaining=3506 consumed=0
 cut_match empty_tile tile=0 draws=- => match=0 remaining=0 consumed=0
 # §2:r64 debits64 even when rate1 gives added0; made0 still permits single-worker dispatch.
 farm_tick zero_added elapsed=500 stamp=0 switch=1 flags=0 made=0 workers=0 maximum=1 raw=64 need=128 rate=1 output=0 capacity=1280 activity=256 draws=5 => advanced=500 stamp=500 r=64 debit=64 added=0 raw=0 output=0 activity=255 dispatched=1 consumed=1
+# §5: one sample stays at(0,0); added right/bottom corners are zero, not edge copies.
+corner_grid singleton width=1 height=1 heights=255 draws=- => stride=2 grid=255,0,0,0 consumed=0
+# §5:copy two file rows at stride3; right column and last row remain initial zero.
+corner_grid square width=2 height=2 heights=1,2,3,4 draws=- => stride=3 grid=1,2,0,3,4,0,0,0,0 consumed=0
+# §5:width3/height1 gives stride4 and a wholly zero second row, without averaging.
+corner_grid wide width=3 height=1 heights=16,32,48 draws=- => stride=4 grid=16,32,48,0,0,0,0,0 consumed=0
+# §5:width1/height3 keeps each file value at column0; appended column1 is zero throughout.
+corner_grid tall width=1 height=3 heights=7,8,9 draws=- => stride=2 grid=7,0,8,0,9,0,0,0 consumed=0
+# §5:zero is copied unchanged too; the bottom-right corner is not a mean of the file's final samples.
+corner_grid mixed width=2 height=2 heights=0,255,32,16 draws=- => stride=3 grid=0,255,0,32,16,0,0,0,0 consumed=0
+# §3/5:singleton127 gives corners127,0,0,0; floor127/4=31, open1/free0.
+sea_cell border_below heights=127,0,0,0 draws=- => open=1 free=0 consumed=0
+# §3/5:singleton128 gives corners128,0,0,0; mean32, open0/free511 even with zero borders.
+sea_cell border_equal heights=128,0,0,0 draws=- => open=0 free=511 consumed=0

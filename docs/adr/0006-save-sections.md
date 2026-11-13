@@ -1,7 +1,7 @@
 # ADR 0006: Optional features add state without a new state number; pins regenerate by one command
 
-- **Status:** Proposed, 2026-11-13, by the Claude Code orchestrator, at the owner's request ("Yes, draft it"). The
-  owner approves or changes it.
+- **Status:** **Accepted by the owner, 2026-11-13** ("Approve it", as proposed). Drafted the same day by the Claude Code
+  orchestrator at the owner's request. Not implemented yet: PINS-1, SAVE-SECTIONS-1 and FIXTURES-TRIM-1 come first.
 - **Date:** 2026-11-13
 - **Evidence:**
   - the [MAP-INTEGRATE-2 review](../orchestration/reviews/2026-11-12-map-integrate-2-review.md), finding E1;
@@ -139,6 +139,14 @@
    and freight E2–E4 are base changes, paid by the command.
 
 ## Questions for the owner
+
+**Answered by the approval "as proposed" (2026-11-13):**
+1. The extension mechanism is accepted: a default-off feature never moves a golden and never invalidates a save.
+2. During development, a save of an older base version is refused, with the section named. Migrations begin with the
+   first public release.
+3. The per-number fixture copies are deleted once the current set covers what their tests prove (FIXTURES-TRIM-1).
+
+The questions as they were put:
 
 1. **Accept the extension mechanism** and its rule: a default-off feature never moves a golden or invalidates a save?
 2. **Old saves during development:** refuse older base versions (recommended), or start migrations now?

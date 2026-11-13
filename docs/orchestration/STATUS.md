@@ -5,7 +5,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
-- **[ADR 0006](../adr/0006-save-sections.md) drafted** at the owner's request; proposed, and waits for the owner.
+- **[ADR 0006](../adr/0006-save-sections.md) drafted at the owner's request and ACCEPTED the same day,** as proposed.
+  Old base versions stay refused during development, and the per-number fixture copies go once the current set covers
+  them.
   - **The idea:** optional features keep their state in tagged extensions that are written only when they differ from
     the default. A default-off feature then moves no golden and invalidates no save, two features combine without a
     union number, and every section keeps its own base version.
@@ -668,7 +670,7 @@ Its later work is not accepted merely because expansion is complete.
 ## Waiting on the owner
 
 - **The go for each next Mac packet** of the queue (board, "Current work"); the Windows lane has a standing go.
-  ADR 0006 is drafted (2026-11-13) and waits for the owner's approval.
+  ADR 0006 is accepted (2026-11-13). The held ports wait for its packets PINS-1 and SAVE-SECTIONS-1.
 - **The rule changes the project analysis suggests** ([analysis](reviews/2026-11-12-project-analysis.md) §3.2),
   items 2–5: the reviewer fixes wording itself; a flake is closed by its mechanism; merge within a day or two behind
   default-off flags; one tool regenerates pins. Items 1 and 6 are decided (2026-11-13: one full gate per landing at
@@ -686,8 +688,6 @@ Its later work is not accepted merely because expansion is complete.
   binding. MAP-INTEGRATE-2 keeps B until the owner answers.
 - **The W4-UI-2 playtest card** (part K): the HUD and construction menu in the live window, on `main` from
   `96de6bca`.
-- **[ADR 0006](../adr/0006-save-sections.md), save sections:** approve or change it, and its three questions (the
-  extension mechanism, refusing old saves during development, deleting the per-number fixture copies).
 - **ADR 0004 question R2:** the default surface (`--ui classic|dev`). R3 is decided (2026-11-13: scale the UI to the
   window).
 - **The depth check** for W4-DEPTH-1 (the playtest card on `task/W4-depth-1`).

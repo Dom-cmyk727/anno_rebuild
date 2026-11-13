@@ -5,6 +5,11 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[WHALE-RE-1c](tasks/whale-re-1c.md) ACCEPTED** ([review](reviews/2026-11-13-whale-re-1c-review.md)), no fix round:
+  `tools/whale_ref.py`, 44 hand-derived vectors, 46 contract checks, all agreeing here too. The whale reads 1a to 1c
+  are complete; the port waits for ADR 0006. They land with PLAY-LIVE-1a.
+- **Proposed next for the Mac: [FISHER-RE-1a](tasks/fisher-re-1a.md)**, the fisher's route 45. Food stops 131 houses,
+  and `main` refuses the fisher's route until its original body is read. It waits for the owner's go.
 - **[PLAY-LIVE-1a](tasks/play-live-1a.md): fix round 1** ([review](reviews/2026-11-13-play-live-1a-review.md)), small.
   - **What works:** `--rules living` turns on living houses and city booking for all three starts. On `02Trade01`
     3 of 32 houses change in five game minutes, and the accounts grow; with `original`, nothing changes. A turn costs
@@ -444,8 +449,10 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Now: free.** [WHALE-RE-1c](tasks/whale-re-1c.md) (the reference and its vectors) waits for the owner's go. The
-  wildlife port waits for ADR 0006.
+- **Now: free.** [FISHER-RE-1a](tasks/fisher-re-1a.md) (the fisher's route 45) waits for the owner's go. The
+  wildlife and whale ports wait for ADR 0006.
+- **Finished: [WHALE-RE-1c](tasks/whale-re-1c.md)** (2026-11-13; head `c0553b48`), **accepted**
+  ([review](reviews/2026-11-13-whale-re-1c-review.md)): `tools/whale_ref.py` and its 44 vectors.
 - **Finished: [WHALE-RE-1b](tasks/whale-re-1b.md)** (2026-11-13; head `109ec14c`), **accepted**
   ([review](reviews/2026-11-13-whale-re-1b-review.md)): the whale's life, the boat request and the callbacks, in
   `docs/re/whaler.md` §6–9; OQ-595.

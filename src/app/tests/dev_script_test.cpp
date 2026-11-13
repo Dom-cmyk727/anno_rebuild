@@ -628,3 +628,30 @@ TEST_CASE("dev script: expect fact's value can hold a space, like title/title-la
     CHECK(pinned_ok.step(pinned_ok_st).quit);
     CHECK_FALSE(pinned_ok.failed());
 }
+
+TEST_CASE("dev session: a plain --play recording's invocation carries its --rules profile "
+          "(PLAY-LIVE-1a Do item 5)") {
+    // main.cpp's own round trip: format_invocation writes session.txt (map, speed, rules);
+    // replay_hashes reads it back with parse_invocation_rules and refuses before turn 1 when
+    // the replay's own --rules differs. This is that round trip's own proof; the refusal
+    // itself (a SIGPIPE-free free function local to main.cpp, not linked into this test
+    // binary) is read in main.cpp's replay_hashes, not re-run here.
+    const std::string original_text =
+        app::format_invocation("x.sze", 100, app::RulesProfile::Original);
+    CHECK(original_text == "map x.sze\nspeed 100\nrules original\n");
+    const auto original_back = app::parse_invocation_rules(original_text);
+    REQUIRE(original_back.has_value());
+    CHECK(*original_back == app::RulesProfile::Original);
+
+    const std::string living_text = app::format_invocation("x.sze", 100, app::RulesProfile::Living);
+    CHECK(living_text == "map x.sze\nspeed 100\nrules living\n");
+    const auto living_back = app::parse_invocation_rules(living_text);
+    REQUIRE(living_back.has_value());
+    CHECK(*living_back == app::RulesProfile::Living);
+
+    // An older recording's session.txt (before this packet) has no "rules" line at all: not
+    // refused, since it makes no claim to check against (Do item 5: "otherwise refuse a
+    // differing flag" only applies once a claim can actually be read).
+    CHECK_FALSE(app::parse_invocation_rules("map x.sze\nspeed 100\n").has_value());
+    CHECK_FALSE(app::parse_invocation_rules("map x.sze\nspeed 100\nrules unknown\n").has_value());
+}

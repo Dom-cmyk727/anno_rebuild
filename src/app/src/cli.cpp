@@ -88,6 +88,15 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             out.seat = *seat;
         } else if (a == "--resume") {
             out.resume = utf8_path(v);
+        } else if (a == "--rules") {
+            out.rules_given = true;
+            if (v == "original") {
+                out.rules_profile = RulesProfile::Original;
+            } else if (v == "living") {
+                out.rules_profile = RulesProfile::Living;
+            } else {
+                return std::nullopt;
+            }
         } else if (a == "--city-booking") {
             if (v == "on") {
                 out.city_booking = true;
@@ -296,7 +305,18 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
     if (out.layout && !out.construction_menu) {
         return std::nullopt; // --layout means nothing without --construction-menu on
     }
+    if (out.rules_given && !out.play) {
+        return std::nullopt; // no sim to apply it to (--view, or --png without --play)
+    }
     return out;
+}
+
+sim::Rules apply_rules_profile(sim::Rules rules, RulesProfile profile) {
+    if (profile == RulesProfile::Living) {
+        rules.house_updates = true;
+        rules.city_booking = true;
+    }
+    return rules;
 }
 
 } // namespace anno::app

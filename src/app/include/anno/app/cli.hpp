@@ -14,12 +14,14 @@
 #include <anno/render/iso.hpp>
 #include <anno/render/resample.hpp>
 #include <anno/render/river.hpp>
+#include <anno/sim/config.hpp>
 
 namespace anno::app {
 
 inline constexpr const char* kUsage =
     "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> | --ship-start <manifest.json> "
-    "--seat <n> [--resume <save>] [--city-booking on|off] [--game-dir <dir>] [--speed "
+    "--seat <n> [--resume <save>] [--rules original|living] [--city-booking on|off] [--game-dir "
+    "<dir>] [--speed "
     "50|100|200] [--group "
     "<n>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
@@ -31,6 +33,10 @@ inline constexpr const char* kUsage =
     "[--commands <file> [--replay-hashes <file>]] [--construction-menu on|off [--layout <dir>]] "
     "[--ui classic|dev] "
     "(--play)\n"
+    "(--rules original|living: --play and --ship-start only; original (default) is each start's "
+    "own rules unchanged; living adds house_updates=true and city_booking=true on top of them. "
+    "--city-booking on|off, given together with --rules, sets that one field after the profile. "
+    "A save or recording made with one profile refuses to resume or replay with another.)\n"
     "(--group 0-2: the built zoom levels; 3 and up: derived levels, --png only, bounded by "
     "--max-derived-levels)\n"
     "(--png only: [--zoom-factor <scale>] [--resample nearest|bilinear|box|area], the picture "
@@ -40,6 +46,22 @@ inline constexpr const char* kUsage =
     "default bilinear above scale 1, box below), ANNO_DEV_SCRIPT=<file> (--play: a scripted "
     "developer-tool session, dev_script.hpp), ANNO_DEV_SESSION=<new dir> (--play: the "
     "session's commands, outcomes and per-turn hashes)\n";
+
+/// A named rules profile (PLAY-LIVE-1a), selected by --rules for any of the three starts
+/// (--play with a fixed map, --play with a scenario, --ship-start). `apply_rules_profile`
+/// is the one function every start applies its chosen profile through.
+enum class RulesProfile { Original, Living };
+
+/// `profile`'s name, as the CLI and a recording's session.txt both spell it.
+[[nodiscard]] constexpr const char* rules_profile_name(RulesProfile profile) {
+    return profile == RulesProfile::Living ? "living" : "original";
+}
+
+/// `rules` with `profile` applied on top: `Original` leaves it unchanged; `Living` sets
+/// exactly `house_updates = true` and `city_booking = true` (the project analysis's D7,
+/// docs/sim/population-live.md §8 and docs/sim/economy-booking.md). Nothing else - a
+/// living town that needs another field is a QUESTION, not a silent addition here.
+[[nodiscard]] sim::Rules apply_rules_profile(sim::Rules rules, RulesProfile profile);
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -139,11 +161,18 @@ struct Args {
     bool ship_start = false;
     std::optional<std::uint32_t> seat;
     std::optional<std::filesystem::path> resume;
-    /// --ship-start --city-booking on: the opt-in ECON-BOOK-1 checked city sales/upkeep
-    /// (sim::Rules::city_booking) for this session only, never the compiled-in default (false). A
-    /// developer/session option for W4-EXPAND-LIVE-1's manual-expansion card, not a changed
-    /// default.
-    bool city_booking = false;
+    /// --rules original|living (PLAY-LIVE-1a): --play and --ship-start only, refused with --view
+    /// (there is no sim to apply it to). `rules_given` tells a caller that needs to know whether
+    /// the flag was spelled out (default `original` is otherwise indistinguishable from an
+    /// explicit `--rules original`).
+    RulesProfile rules_profile = RulesProfile::Original;
+    bool rules_given = false;
+    /// --city-booking on|off: the opt-in ECON-BOOK-1 checked city sales/upkeep
+    /// (sim::Rules::city_booking) for this session only, never the compiled-in default (false).
+    /// nullopt (the default) applies whichever `rules_profile` already gives it; given, it sets
+    /// the field after the profile (the more specific flag). A developer/session option for
+    /// W4-EXPAND-LIVE-1's manual-expansion card, not a changed default.
+    std::optional<bool> city_booking;
     /// Multiplayer rate: fixed real-time cadence, variable game ms per step.
     unsigned play_speed = 100;
     /// --play --commands <file>: scripted Build and Demolish lines (game-shell.md).

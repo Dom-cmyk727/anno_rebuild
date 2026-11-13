@@ -166,6 +166,7 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
 /// cannot be read.
 int replay_hashes(anno::sim::World world, unsigned speed,
                   std::vector<anno::app::ScriptedCommand> commands, const fs::path& file,
+                  anno::app::RulesProfile requested_rules,
                   const anno::app::OpeningIdentity* opening = nullptr) {
     auto read = [](const fs::path& f) -> std::optional<std::string> {
         std::ifstream in(f, std::ios::binary);
@@ -219,6 +220,22 @@ int replay_hashes(anno::sim::World world, unsigned speed,
         }
         if (recorded->start_hash != opening->start_hash) {
             return differs("start state", recorded->start_hash, opening->start_hash);
+        }
+    } else {
+        // PLAY-LIVE-1a, Do item 5: a plain --play recording names the --rules profile it was
+        // made with (session.txt's "rules" line); refuse a differing one before turn 1 instead
+        // of letting it surface as a later hash mismatch. An older recording, or one whose
+        // session.txt is not next to the hashes file, makes no such claim and is not refused.
+        if (const auto session = read(file.parent_path() / "session.txt")) {
+            const auto recorded_rules = anno::app::parse_invocation_rules(*session);
+            if (recorded_rules && *recorded_rules != requested_rules) {
+                std::fprintf(
+                    stderr,
+                    "--replay-hashes: the recording was made with other rules (%s, now %s)\n",
+                    anno::app::rules_profile_name(*recorded_rules),
+                    anno::app::rules_profile_name(requested_rules));
+                return 1;
+            }
         }
     }
     const auto outcomes = read(file.parent_path() / "outcomes.txt");
@@ -308,8 +325,9 @@ int run(const std::vector<std::string>& raw) {
     }
     if (args->play) {
         if (args->ship_start) {
-            auto started = anno::app::load_opening(dir.value(), args->file, *args->seat,
-                                                   args->resume, args->city_booking);
+            auto started =
+                anno::app::load_opening(dir.value(), args->file, *args->seat, args->resume,
+                                        args->city_booking, args->rules_profile);
             if (!started) {
                 std::fprintf(stderr, "%s\n", started.error().c_str());
                 return 1;
@@ -323,6 +341,11 @@ int run(const std::vector<std::string>& raw) {
             // affordability edge (V1's "unaffordable" click) without touching the generous
             // defaults every other fixed-map session relies on.
             anno::app::FixedPlayOptions fixed_options;
+            fixed_options.rules =
+                anno::app::apply_rules_profile(fixed_options.rules, args->rules_profile);
+            if (args->city_booking.has_value()) {
+                fixed_options.rules.city_booking = *args->city_booking;
+            }
             if (const char* g = std::getenv("ANNO_DEV_GOLD"); g != nullptr && *g != 0) {
                 fixed_options.gold = std::strtoll(g, nullptr, 10);
             }
@@ -351,7 +374,8 @@ int run(const std::vector<std::string>& raw) {
         }
         if (args->replay_hashes) {
             return replay_hashes(std::move(play->world), args->play_speed, std::move(commands),
-                                 *args->replay_hashes, opening ? &opening->identity : nullptr);
+                                 *args->replay_hashes, args->rules_profile,
+                                 opening ? &opening->identity : nullptr);
         }
         buildings = anno::app::play_buildings(play->world);
         if (opening) {
@@ -630,7 +654,8 @@ int run(const std::vector<std::string>& raw) {
     picture.reset();
     int status = err.empty() ? 0 : 1;
     if (runner && !session_dir.empty()) {
-        std::string invocation = anno::app::format_invocation(name, args->play_speed);
+        std::string invocation =
+            anno::app::format_invocation(name, args->play_speed, args->rules_profile);
         if (opening) {
             invocation += anno::app::format_opening_identity(opening->identity);
         }

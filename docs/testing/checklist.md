@@ -4,6 +4,28 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## Open
 
+- **PLAY-LIVE-1a — a first look at a living town, owner playtest.** `--rules living` (default
+  stays `original`; this card does not change that) adds `house_updates = true` and
+  `city_booking = true` to a start's own rules, nothing else:
+
+  ```
+  anno1503 --play data/maps/lan5.txt --rules living
+  anno1503 --ship-start <manifest.json> --seat 0 --rules living
+  ```
+
+  **What to see:** houses near a market grow (more residents) and upgrade (a visibly bigger or
+  different building) over a few minutes of play; the city's account (gold) moves on its own
+  from sales and upkeep, not only from your own clicks. Compare with the same command line
+  without `--rules living` (or `--rules original`): houses stay exactly as placed, and the
+  account only changes when you act.
+
+  **What is still not drawn:** roads (PLAY-LIVE-1b) and carriers, carts and residents walking
+  the town (PLAY-LIVE-1c) - `living` turns the sim's own bookkeeping on; nothing new is
+  rendered yet.
+
+  **Open question (the owner's): should `living` become the default `--play`/`--ship-start`
+  behaviour, or stay opt-in?**
+
 - **UI.1.F2.3 — in-game HUD at the other four resolutions (OQ-535), owner desktop harness only (2026-10-30).** The Wine runner's virtual desktop is fixed 1024 x 768 and does not switch modes (`docs/re/ui.md` section 5, `f16_options_graphics`). Do **not** ask an agent to drive this; use the dgVoodoo2 Windows harness (`docs/testing/original-harness.md`) in one sitting.
 
   **Setup:** GOG 2.0.0.5, 1024 x 768 confirmed in-game first. Main-menu Options (graphics) lists five modes with a tick on 1024 x 768 (`f16_options_graphics`). Change **one** mode per launch (the seven Wine clicks on those planks did not move the tick). After the game is running at that mode, F8 (half speed), no pause.

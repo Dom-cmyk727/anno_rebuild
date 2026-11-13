@@ -85,8 +85,31 @@ std::string format_outcomes(const OutcomeRead& read) {
     return out.str();
 }
 
-std::string format_invocation(const std::string& map, unsigned speed) {
-    return "map " + map + "\nspeed " + std::to_string(speed) + "\n";
+std::string format_invocation(const std::string& map, unsigned speed, RulesProfile profile) {
+    return "map " + map + "\nspeed " + std::to_string(speed) + "\nrules " +
+           rules_profile_name(profile) + "\n";
+}
+
+std::optional<RulesProfile> parse_invocation_rules(std::string_view text) {
+    std::istringstream in{std::string(text)};
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.rfind("rules ", 0) != 0) {
+            continue;
+        }
+        const std::string value = line.substr(6);
+        if (value == "original") {
+            return RulesProfile::Original;
+        }
+        if (value == "living") {
+            return RulesProfile::Living;
+        }
+        return std::nullopt;
+    }
+    return std::nullopt;
 }
 
 ReplayReport replay_session(sim::World world, unsigned speed, std::vector<ScriptedCommand> commands,

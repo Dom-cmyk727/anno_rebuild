@@ -14,6 +14,7 @@
 #include <string_view>
 #include <vector>
 
+#include <anno/app/cli.hpp>
 #include <anno/app/command_outcome.hpp>
 #include <anno/app/commands_file.hpp>
 #include <anno/app/play.hpp>
@@ -31,8 +32,15 @@ parse_hashes(std::string_view text);
 /// first line "lost <n> from <seq>" when the store dropped some.
 [[nodiscard]] std::string format_outcomes(const OutcomeRead& read);
 
-/// The session's invocation: "map <path>" and "speed <percent>" lines.
-[[nodiscard]] std::string format_invocation(const std::string& map, unsigned speed);
+/// The session's invocation: "map <path>", "speed <percent>" and "rules <original|living>"
+/// lines (PLAY-LIVE-1a: the last names the --rules profile a plain --play recording was made
+/// with, read back by a later --replay-hashes of it).
+[[nodiscard]] std::string format_invocation(const std::string& map, unsigned speed,
+                                            RulesProfile profile);
+
+/// The "rules" line of a recorded invocation (format_invocation), or nullopt when the text has
+/// none or names a profile this build does not know.
+[[nodiscard]] std::optional<RulesProfile> parse_invocation_rules(std::string_view text);
 
 struct ReplayReport {
     bool agree = false;

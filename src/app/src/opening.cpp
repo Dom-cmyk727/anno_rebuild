@@ -94,7 +94,8 @@ OpeningSetup make_opening_setup(const sim::World& world,
 
 formats::Result<OpeningLoad, std::string>
 load_opening(const fs::path& game_dir, const fs::path& manifest_path, std::uint32_t seat,
-             const std::optional<fs::path>& resume, bool city_booking) {
+             const std::optional<fs::path>& resume, std::optional<bool> city_booking,
+             RulesProfile profile) {
     const std::string where = to_utf8(manifest_path) + ": ";
     auto bytes = read_file(manifest_path);
     if (!bytes) {
@@ -115,16 +116,19 @@ load_opening(const fs::path& game_dir, const fs::path& manifest_path, std::uint3
     if (!registry.types) {
         return where + "registry: " + registry.error;
     }
-    sim::Rules rules;
+    sim::Rules rules = apply_rules_profile(sim::Rules{}, profile);
     auto names = sim_load::load_city_names(game_dir);
     if (!names.ok()) {
         return where + "city names: " + names.error();
     }
     rules.city_names = names.value();
-    // --city-booking on: the opt-in ECON-BOOK-1 checked city sales/upkeep for this session only
-    // (D2, OQ-pending). save_billed_goods stays its default (already true, required by it) and
-    // house_updates stays its default (already false): neither is given an override flag here.
-    rules.city_booking = city_booking;
+    // --city-booking on|off: the opt-in ECON-BOOK-1 checked city sales/upkeep for this session
+    // only (D2, OQ-pending), applied after the profile (the more specific flag). nullopt (not
+    // given) keeps whatever the profile already set it to. save_billed_goods stays its default
+    // (already true, required by city_booking) and is not given an override flag here.
+    if (city_booking.has_value()) {
+        rules.city_booking = *city_booking;
+    }
 
     OpeningLoad out;
     out.manifest_bytes = *bytes;

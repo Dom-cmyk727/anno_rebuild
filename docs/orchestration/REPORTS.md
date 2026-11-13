@@ -9660,3 +9660,114 @@ Decisions and reasoning:
 - Keep static corpus counts, hand controls and runtime proof distinct.
 QUESTIONs:603 exact float/shore/continuation contract;604 transitive draw closure.
 OQ-605–610 unused. No owner policy decision is requested; unresolved reads stay open.
+
+## PLAY-LIVE-1a — a "living town" rules profile behind one flag — 2026-11-13 — READY FOR REVIEW
+
+Base `96f7980c`, branch `task/PLAY-LIVE-1a`, head `2831f78f`.
+
+Flag: `--rules original|living`, accepted only where a sim is created — `--play` (fixed map and
+scenario) and `--ship-start`, `--replay-hashes` included — refused with the usage text at `--view`
+and an unknown name (`src/app/src/cli.cpp`). `original` (default) is each start's own rules
+unchanged. `living` is one function, `apply_rules_profile` (`cli.hpp`/`cli.cpp`), setting exactly
+`house_updates = true` (House tick effects, `docs/sim/population-live.md` §8) and
+`city_booking = true` (ECON-BOOK-1, `docs/sim/economy-booking.md`; needs `save_billed_goods`,
+already `true` by default). `--city-booking on|off` composes after the profile. Wired into
+`load_fixed_play`/`load_play` (`play.cpp`, both the `load_scenario_with_context` and `World::create`
+calls) and `load_opening` (`opening.cpp`) so the loaded and created worlds agree.
+
+Resume/replay: the ship-start save's existing `rules_digest` check (`opening.cpp`) now covers a
+profile mismatch, since the digest changes with the two fields — proved end to end (save `living`,
+resume `living` succeeds, resume as `original` refused, message names "other rules"). A plain
+`--play` recording's `session.txt` gained a `rules <name>` line (`dev_session.cpp`:
+`format_invocation`/`parse_invocation_rules`); `main.cpp`'s `replay_hashes` refuses a mismatch before
+turn 1, naming both rules. The refusal itself (an unexported free function, not linked into the test
+binary) is proved by a direct round-trip unit test of the two functions it calls, documented in the
+test as a deliberate scoping choice rather than a new subprocess harness.
+
+Measurements (`anno_app_tests`, Release, 1000 turns, ms/100ms-turn, with game files): fixed map
+p50 0.195/0.196 ms original/living, p95 0.222/0.222 ms; `02Trade01.sze` p50 0.112/0.126 ms, p95
+0.382/0.606 ms. Both well under the 100 ms budget.
+
+Tests, `src/app/tests`: Proof 1 (no `--rules`/`--rules original` match `sim::Rules{}` exactly, both
+fixed-map and scenario paths); Proof 2 (`living` sets exactly the two fields, whole-struct digest
+compared); the CLI test (`original`/`living` accepted, unknown name and `--view` refused,
+`--city-booking off` after `living` leaves `house_updates` on); Proof 4, with game files, on
+`02Trade01.sze`, 3000 turns (5 game-minutes): living 3/32 houses changed, accounts 897→1137;
+original 0 houses changed, accounts 315→315 (unchanged); the opening resume/replay test above; the
+`dev_session` round-trip test. MSVC Release, game files, `anno_app_tests`: `selected=272
+executed=270 failed=0 skipped=2(opt-in) sanitizer_lines=0 VERDICT: PASS`. WSL `-O1` ASan/UBSan, app
+lane only (this packet touches only `src/app`/docs; sim/render/formats/tsupport are unchanged code,
+not rerun): `selected=316 executed=314 failed=0 skipped=2(opt-in) sanitizer_lines=0 VERDICT: PASS`
+(gatecheck worktree, head `2831f78f`). That same gate run's sim lane showed 3 refused-not-run
+entries (`scenario_test.cpp:534/:618/:799`, `[anno-test memory] ... reason=low-memory stop`, from
+running two heavy WSL jobs at once) in code this packet never touches; per the owner's new per-lane
+rule, not rerun.
+
+Gates: clang-format 23.1.3, no changes. `tools/check_unix_warnings.sh` (WSL, GCC 13 + Clang 18, with
+and without GPU/viewer): clean, 396/76 files. CI on `2831f78f` (run `43383448663`): every job
+green, `gate` included, no coordinator flake and no macOS-no-runner case.
+
+NOT_RUN: the full WSL gate's sim/render/formats/tsupport lanes (orchestrator's, at merge, per the
+packet); the MSVC game-file run beyond this packet's own `anno_app_tests` selection (orchestrator's).
+
+Decisions and reasoning:
+- `measure`'s lambda took `label` as `const char*`; doctest's `MESSAGE` prints a bare `const char*`
+  as its pointer address, not its text (no `DOCTEST_CONFIG_TREAT_CHAR_STAR_AS_STRING` defined here) —
+  changed to `std::string`, matching this file's existing `.string()` convention elsewhere.
+- One `TEST_CASE` name used a semicolon, which the mandatory CTest-name preflight (`CheckTestNames.cmake`)
+  rejects as unselectable; reworded to a comma.
+- Kept the plain-`--play` replay check to a direct unit test of `format_invocation`/
+  `parse_invocation_rules` rather than a new subprocess harness (`tools/test/selected_house_session_replay.py`'s
+  pattern): `replay_hashes` itself is a free function local to `main.cpp`, not linked into the test
+  binary, and a new end-to-end harness was judged out of this packet's ~2-4h scope.
+
+QUESTIONs: none required; the default, road/figure drawing, and any new `Rules` field are explicitly
+not this packet's call.
+
+### Fix round 1 — review F1/F2 — 2026-11-13 — READY FOR REVIEW
+
+Head `0b6f94dd` (branch unchanged). Review: `docs/orchestration/reviews/2026-11-13-play-live-1a-review.md`.
+
+**F1.** `--city-booking`, which this packet newly applies to `--play`, could change the rules
+without changing the `--rules` profile's *name* `format_invocation`/`replay_hashes` compared — a
+`--rules living --city-booking off` recording replayed as `--rules living` had the same name and a
+different digest, and was not refused. Fixed: `session.txt` now carries the created world's rules
+digest, `rules_digest <hex16>` (the `rules <name>` line stays, as information); `main.cpp` captures
+it (`play_rules_digest`, read before the world moves into `PlayRunner`) and `replay_hashes` refuses
+a differing digest before turn 1, naming both. The check is its own function,
+`dev_session.cpp`'s `check_invocation_rules_digest(session_text, replay_digest)`, replacing
+`parse_invocation_rules`. Unit-tested (`dev_script_test.cpp`): the same digest (accepted); a
+different digest (refused, message naming both hex digests); a recording with no `rules_digest`
+line (accepted, an older recording); `--rules living --city-booking off`'s digest differs from
+`--rules living`'s (proving the name-only check would have missed exactly this).
+
+**F2.** The timing case (Do item 6) asserted nothing and ran in every gate (61s in the WSL app
+lane). Made opt-in: `ANNO_PLAY_LIVE_TIMING=1`, skipped otherwise with the project's own "set
+ANNO_..." message (`founding_assets_test.cpp`, `iron_chain_test.cpp` convention); its numbers stay
+in the first entry above, unchanged.
+
+Gates (`TASKS.md` §1 item 4, `src/app` touched — app lanes only, no other lane): MSVC Release,
+game files, `anno_app_tests`+`anno_app_input_tests`+`anno_app_alloc_tests`: `selected=308
+executed=305 failed=0 skipped=3(opt-in) sanitizer_lines=0 VERDICT: PASS`. WSL `-O1` ASan, app
+lane only (fresh configure+build in the gatecheck worktree, head `0b6f94dd`): `selected=316
+executed=313 failed=0 skipped=3(opt-in) sanitizer_lines=0 VERDICT: PASS`. clang-format 23.1.3:
+reformatted three files (line-wrap only, no semantic change) before pushing. CI on `0b6f94dd`
+(run `43397591022`): every job green, `gate` included.
+
+NOT_RUN: sim/render/formats/tsupport lanes (unchanged, per the per-lane rule); the full WSL gate
+and MSVC game-file run (orchestrator's, at merge).
+
+Decisions and reasoning:
+- Removed `parse_invocation_rules` outright rather than keep it alongside the digest check: F1's
+  root cause is that a name alone cannot represent the rules, so a name-based API had no remaining
+  caller once the digest check existed.
+- Captured `play_rules_digest` at the one point before the fixed-map/scenario world moves into
+  `PlayRunner` (no `World` accessor exists on `PlayRunner` itself), declared in the same outer
+  scope as `runner`/`session_dir` so it survives to the later `write_session` call.
+- Local WSL gate script note (not a code decision, kept for the next executor): the shared
+  `cmake` and other gate tooling live under `~/anno-tools-venv/bin`, not on the plain WSL `PATH`,
+  and `run_selected.py`'s dirty-check needs `GIT_DIR`/`GIT_WORK_TREE` set for a Windows-git
+  worktree (`wsl_gate.sh`'s own `$SRC_GIT` wrapper) even when driving it directly instead of
+  through that script.
+
+QUESTIONs: none.

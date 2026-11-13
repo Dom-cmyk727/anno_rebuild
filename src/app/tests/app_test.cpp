@@ -335,6 +335,32 @@ TEST_CASE("command line") {
     REQUIRE(cm_off.has_value());
     CHECK_FALSE(cm_off->construction_menu);
 
+    // --rules original|living (PLAY-LIVE-1a): --play and --ship-start only; --city-booking after
+    // the profile; an unknown name is refused.
+    using anno::app::RulesProfile;
+    const auto rules_default = parse_args({"--play", "x.scp"});
+    REQUIRE(rules_default.has_value());
+    CHECK(rules_default->rules_profile == RulesProfile::Original);
+    CHECK_FALSE(rules_default->rules_given);
+    const auto rules_living = parse_args({"--play", "x.scp", "--rules", "living"});
+    REQUIRE(rules_living.has_value());
+    CHECK(rules_living->rules_profile == RulesProfile::Living);
+    CHECK(rules_living->rules_given);
+    const auto rules_original = parse_args({"--play", "x.scp", "--rules", "original"});
+    REQUIRE(rules_original.has_value());
+    CHECK(rules_original->rules_profile == RulesProfile::Original);
+    CHECK(rules_original->rules_given);
+    CHECK_FALSE(parse_args({"--play", "x.scp", "--rules", "enhanced"})); // unknown name
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--rules", "living"}));   // no sim to apply it to
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--rules", "original"})); // misplaced regardless
+    const auto rules_city_off =
+        parse_args({"--play", "x.scp", "--rules", "living", "--city-booking", "off"});
+    REQUIRE(rules_city_off.has_value());
+    CHECK(rules_city_off->rules_profile == RulesProfile::Living);
+    REQUIRE(rules_city_off->city_booking.has_value());
+    CHECK_FALSE(*rules_city_off->city_booking);
+    CHECK(anno::app::apply_rules_profile({}, RulesProfile::Living).house_updates);
+
     // --ui classic|dev (ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION): default
     // Classic, parsed independently of --play (unlike --construction-menu). Parsing it on
     // --view is accepted, not an error, but it has no live effect there - a --view window

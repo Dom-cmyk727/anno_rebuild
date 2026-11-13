@@ -72,6 +72,10 @@ struct FixedPlayOptions {
     /// subsystem from terrain and build on island-relative tiles chosen before that rule existed;
     /// never the default, and the seam's name stays in the world's header hash.
     bool stand_in_placement = false;
+    /// PLAY-LIVE-1a: the rules the created (and, for a scenario file, the loaded) world uses.
+    /// Default `{}` is the original behaviour (what every start got before this option
+    /// existed); `--rules living` gives `cli::apply_rules_profile({}, Living)`.
+    sim::Rules rules;
 };
 
 /// Registry, `load_scenario_with_links`, `World::create`. The link list names

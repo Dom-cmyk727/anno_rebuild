@@ -30,6 +30,12 @@ std::optional<std::vector<std::string>> outcome_bodies(std::string_view text) {
     return out;
 }
 
+std::string hex16(std::uint64_t v) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%016llx", static_cast<unsigned long long>(v));
+    return buf;
+}
+
 } // namespace
 
 std::string format_hashes(const std::vector<PlayRunner::TurnHash>& hashes) {
@@ -85,8 +91,31 @@ std::string format_outcomes(const OutcomeRead& read) {
     return out.str();
 }
 
-std::string format_invocation(const std::string& map, unsigned speed) {
-    return "map " + map + "\nspeed " + std::to_string(speed) + "\n";
+std::string format_invocation(const std::string& map, unsigned speed, RulesProfile profile,
+                              std::uint64_t rules_digest) {
+    return "map " + map + "\nspeed " + std::to_string(speed) + "\nrules " +
+           rules_profile_name(profile) + "\nrules_digest " + hex16(rules_digest) + "\n";
+}
+
+std::optional<std::string> check_invocation_rules_digest(std::string_view session_text,
+                                                         std::uint64_t replay_digest) {
+    std::istringstream in{std::string(session_text)};
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.rfind("rules_digest ", 0) != 0) {
+            continue;
+        }
+        const std::string recorded = line.substr(std::string_view("rules_digest ").size());
+        const std::string now = hex16(replay_digest);
+        if (recorded != now) {
+            return "the recording was made with other rules (" + recorded + ", now " + now + ")";
+        }
+        return std::nullopt;
+    }
+    return std::nullopt;
 }
 
 ReplayReport replay_session(sim::World world, unsigned speed, std::vector<ScriptedCommand> commands,

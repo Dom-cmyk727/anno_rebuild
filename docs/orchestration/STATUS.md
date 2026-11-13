@@ -5,6 +5,15 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[PINS-1](tasks/pins-1.md): FIX ROUND 1** ([review](reviews/2026-11-13-pins-1-review.md)), to the Mac through
+  the owner's prompt.
+  - **The mechanism is sound.** In the orchestrator's 138 → 139 trial on this PC, `pins.py regen` rewrote all 44
+    pins and the 14 recordings, and every replay test passed on the new logs.
+  - **F1:** two pins that `highmap_digest_ref.py` holds are filed as ordinary pins, so `regen` would overwrite them.
+  - **F2:** twelve hand-written expectations still name 138, and the renumbering steps aren't written down. The fix
+    round derives the version from the constant, writes the procedure, and proves it with a dry run of its own.
+- **Landing on the owner's OK (2026-11-13):** ZOOM-MEASURE-1, FISHER-RE-1c and the board, as candidate
+  `orch/land-zoom-measure-1` `480fafe7`. Its game-file run is under way, then `land.py`.
 - **[ZOOM-MEASURE-1](tasks/zoom-measure-1.md) ACCEPTED** ([review](reviews/2026-11-13-zoom-measure-1-review.md)).
   - **The zoom failure is now a number:** on `lan5` at 2560 × 1369, 431 of 12,000 frames show non-ready content, with
     26,616 stand-in draws and 13,304 dissolves. Even with original water, 537 frames are non-ready, so the cause is

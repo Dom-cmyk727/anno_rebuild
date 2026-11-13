@@ -5,6 +5,9 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-13, by the Claude Code orchestrator:
+- **[FISHER-RE-1b](tasks/fisher-re-1b.md) ACCEPTED** ([review](reviews/2026-11-13-fisher-re-1b-review.md)), no fix
+  round: `tools/fisher_ref.py`, 42 hand-derived vectors, 58 contract checks and 9 mutants, all agreeing here too. The
+  fisher reads are complete; the Mac executor is free.
 - **The Windows queue, owner 2026-11-13:** SHIP-ORDER-1 → ZOOM-MEASURE-1 → ZOOM-SMOOTH-1 → **UI-WINDOW-1** (moved
   before the RENDER-DIRECT packets) → GATE-2a → GATE-2b → TEST-MEM-1 → RENDER-DIRECT-1 to 6
   ([ADR 0007](../adr/0007-direct-rendering.md)).
@@ -494,6 +497,8 @@ mirror still requires the owner/Windows sync after main publication.
 ### Mac executor (from 2026-11-11)
 
 - **Now: free.** The wildlife and whale ports wait for ADR 0006.
+- **Finished: [FISHER-RE-1b](tasks/fisher-re-1b.md)** (2026-11-13; head `f931354a`), **accepted**
+  ([review](reviews/2026-11-13-fisher-re-1b-review.md)): `tools/fisher_ref.py` and its 42 vectors.
 - **Finished: [FISHER-RE-1a](tasks/fisher-re-1a.md)** (2026-11-13; head `6d57bb12`), **accepted**
   ([review](reviews/2026-11-13-fisher-re-1a-review.md)): the fisher's route 45 and its fish tiles, in
   `docs/re/fisher.md`; OQ-603 and OQ-604.

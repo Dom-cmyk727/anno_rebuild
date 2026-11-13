@@ -1,7 +1,6 @@
 # FISHER-RE-1b: the fisher reference and its vectors
 
-**Status:** PROPOSED 2026-11-13 by the Claude Code orchestrator for **the Mac executor**. It is released when the owner
-gives the go. Step 9′ of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
+**Status:** ACCEPTED 2026-11-13 ([review](../reviews/2026-11-13-fisher-re-1b-review.md)); released with the owner's go to **the Mac executor**. Step 9′ of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
 
 **Why:** [FISHER-RE-1a](fisher-re-1a.md) ([review](../reviews/2026-11-13-fisher-re-1a-review.md)) showed that the
 fisher reuses the forester's harvest machinery, plus a few special parts. A flagged fisher port is now a candidate.

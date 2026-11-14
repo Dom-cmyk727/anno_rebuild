@@ -979,8 +979,7 @@ std::string Viewer::run() {
         // zoom out to the whole map asks for thousands of chunks and was waiting on half of them.
         // Shared with bench_frame's --zoom-sweep (ZOOM-SMOOTH-1 step 1) so a proof's worker count
         // cannot drift from what this window actually runs.
-        auto workers =
-            std::make_unique<render::ChunkWorkers>(render::chunk_worker_threads(hw));
+        auto workers = std::make_unique<render::ChunkWorkers>(render::chunk_worker_threads(hw));
         if (script_ != nullptr && on_gpu()) {
             // A scripted GPU session may hold the chunk builders (hold chunks): the gate does
             // nothing until the script arms it.

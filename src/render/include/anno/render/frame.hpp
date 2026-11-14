@@ -550,8 +550,8 @@ void apply_frame_config(FrameRenderer& fr, const FrameConfig& cfg);
 /// / scale. One formula for the viewer's cursor anchor and a proof's off-centre anchor
 /// (ZOOM-SMOOTH-1 step 1, review finding B1): before this the sweep never set zoom_anchor
 /// at all, so its proofs could not see the zoom-out ring this packet adds (step 4).
-[[nodiscard]] inline std::pair<double, double>
-zoom_anchor_at(double cam_x, double cam_y, double ax, double ay, double scale) {
+[[nodiscard]] inline std::pair<double, double> zoom_anchor_at(double cam_x, double cam_y, double ax,
+                                                              double ay, double scale) {
     return {cam_x + ax / scale, cam_y + ay / scale};
 }
 

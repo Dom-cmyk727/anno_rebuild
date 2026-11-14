@@ -16,7 +16,7 @@ TEST_CASE("chunk_worker_threads: three quarters of the cores, floored at 1") {
 }
 
 TEST_CASE("apply_frame_config: sets prewarm_far_levels and resident_level_chunks, nothing "
-         "else") {
+          "else") {
     render::FrameRenderer fr(1, false);
     const std::size_t spare_before = fr.spare_chunks;
     render::FrameConfig cfg;

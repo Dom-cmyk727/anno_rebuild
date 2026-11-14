@@ -10670,3 +10670,23 @@ game dir, oracle shots, HE captures): selected 98, executed 98 pass, 0 failed/sk
 see the push of this section. NOT_RUN: GPU automation (as R1), Linux/macOS game-file runs, the full suite.
 QUESTIONs: none (no src/sim change was needed).
 **READY FOR REVIEW.**
+
+### Fix round R3 (review of `36b86873`: ACCEPT WITH FINDINGS) — 2026-11-14
+
+- **1** (`0555dee2`): `ui_hit` takes the shown panel; its elements' rectangles are chrome (the sub-tabs at x 762..778
+  left of the column), at any size and under --ui-scale (layer coordinates). `ui_tabs.script` clicks (770, 326) on
+  each of the four panels; with the old hit test it fails at the first (`selection.clicks is '1', expected == 0`).
+  Unit checks in `ui placement` (reference and 2542 x 1351, chrome only while that panel shows).
+- **2, 7** (`a6346d1f`): `ui_panels_compare.py` bounds each element (2 %, menu_bk 5 %) and compares the four tab
+  rectangles too. Breaks shown, then reverted: player_subtab_0 at x 782 -> FAIL (70.8 % bad), info_subtab_3 with id
+  662 -> FAIL (61.0 %). The info shot's hover tooltip over the tabs ((880, 194) 84 x 18) is masked as live.
+- **3** (`8b203d56`): menu_statistics before menu_tab_*: main menu bad pixels 1 665 -> 0. Now: player 15 of 130 771
+  (player_bk 10, crest 5), list 0 of 37 621, info 0 of 135 439, main menu 0 of 170 960; control 17.7 %.
+- **4** (`d13add5f`): wording "no change, except the bust from the overview, which opens the list (shot
+  r2_player_menu)" in ui.md 5.3, OQ-621 and the viewer comment; the second bust click stays in OQ-621.
+- **5, 6** (`919c59fc`): stop() clears both stat vectors; the build-time clock is read only with ANNO_PUBLISH_STATS.
+Gates: build 0 warnings; `run_selected.py` (the R2 selection; game dir, oracle shots and HE captures set, so
+`ui_window_matches_he` executed): selected 98, executed 98 pass, 0 failed/skipped, VERDICT PASS (`focused-r3.log`);
+clang-format clean on the changed files; `check_unix_warnings.sh` GCC 13 / Clang 18, GPU on/off clean. Hosted CI:
+see the push of this section.
+**READY FOR REVIEW.**

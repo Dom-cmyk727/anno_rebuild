@@ -1,0 +1,9 @@
+# live_screen_matches_oracle's second launch (UI-WINDOW-1 fix round R5): the idle HUD before the
+# first founding, the state the oracle's shot hud_idle_running shows (no city: no materials or
+# residents in the status bar). Launched on the ship start (lan5-ship-a.json, seat 0), which has
+# no city yet; tools/test/live_screen_compare.py compares the screenshot pixel for pixel.
+resize 1024 768
+wait frames 30
+expect fact hud.counters == hidden
+screenshot hud_idle_live
+quit

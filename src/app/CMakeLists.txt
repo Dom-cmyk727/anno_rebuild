@@ -31,6 +31,7 @@ add_library(anno_app_core
   src/still.cpp
   src/ui_layout.cpp
   src/ui_mock.cpp
+  src/ui_transform.cpp
   src/visibility.cpp
   src/window_trace.cpp
 )
@@ -85,7 +86,7 @@ if(ANNO_BUILD_TESTS)
     tests/picture_trace_test.cpp tests/window_trace_test.cpp tests/command_outcome_test.cpp
     tests/visibility_test.cpp tests/dev_occupancy_test.cpp tests/dev_visibility_test.cpp
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
-    tests/ui_layout_test.cpp tests/ui_construction_eligibility_test.cpp
+    tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
@@ -101,6 +102,18 @@ if(ANNO_BUILD_TESTS)
     COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_mock_compare.py
             $<TARGET_FILE:anno_ui_mock>)
   set_tests_properties(ui_mock_matches_oracle PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
+  # UI-WINDOW-1: the UI layer at 2542 x 1351, UI scale 1.0 / 1.5 / 2.0, against the History
+  # Edition's own captures (ANNO_UI_HE_CAPTURES, never in git; skips without it).
+  add_test(NAME ui_window_matches_he
+    COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_window_compare.py
+            $<TARGET_FILE:anno_ui_mock>)
+  set_tests_properties(ui_window_matches_he PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
+  # UI-WINDOW-1 fix round R2: the four tab panels' static chrome against the GOG shots
+  # (ANNO_UI_ORACLE_SHOTS, never in git; skips without it).
+  add_test(NAME ui_panels_match_gog
+    COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_panels_compare.py
+            $<TARGET_FILE:anno_ui_mock>)
+  set_tests_properties(ui_panels_match_gog PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
   # The two full-corpus cases (every scenario file, every assertion) are "heavy" (the suite name in
   # play_test.cpp); in a sanitizer build they also get an 8000 s per-test timeout, set after the cases
   # are discovered (AnnoAppSanitizerTimeouts.cmake; docs/testing/README.md).
@@ -159,6 +172,69 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --construction-menu --app-arg on
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_construction_menu_arm PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-WINDOW-1: the UI at 2542 x 1351, default scale (s10) and --ui-scale 2.0 (s20): chrome
+      # clicks never reach the map, the construction tab opens the menu, a cell arms its type.
+      foreach(case s10 s20)
+        set(ui_scale_args)
+        if(case STREQUAL "s20")
+          set(ui_scale_args --app-arg --ui-scale --app-arg 2.0)
+        endif()
+        add_test(NAME viewer_wiring_ui_window_click_${case}
+          COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                  $<TARGET_FILE:anno1503> ui_window_click_${case}
+                  --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                  --app-arg --construction-menu --app-arg on
+                  --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui ${ui_scale_args})
+        set_tests_properties(viewer_wiring_ui_window_click_${case} PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      endforeach()
+      # UI-WINDOW-1 fix round R1 (F2): closing the menu (tab, Esc) turns an armed tool off.
+      add_test(NAME viewer_wiring_ui_menu_close_disarms
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_menu_close_disarms
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_menu_close_disarms PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-WINDOW-1 fix round R1 (F6, F7): a chrome drag starts no pan; a lost UI press is dropped.
+      add_test(NAME viewer_wiring_ui_chrome_press
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_chrome_press
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_chrome_press PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-WINDOW-1 fix round R2: the four tabs as switches, D/O keys, disarm on leaving.
+      add_test(NAME viewer_wiring_ui_tabs
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_tabs
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_tabs PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-WINDOW-1 fix round R2/R4: the status bar counters (centred city, else the first).
+      add_test(NAME viewer_wiring_ui_counters_centred
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_counters_centred
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_counters_centred PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-WINDOW-1 fix round R4: no city yet (the ship-start opening): the counters are hidden.
+      add_test(NAME viewer_wiring_ui_counters_before_founding
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_counters_before_founding
+                --app-arg --ship-start
+                --app-arg ${PROJECT_SOURCE_DIR}/data/maps/candidates/ship-start-v2/lan5-ship-a.json
+                --app-arg --seat --app-arg 0
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_counters_before_founding PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # W4-UI-2 V1: the full interaction proof - every category tab, a locked cell (no command),
       # an armed placement that actually builds, and a demolish of what was just built.

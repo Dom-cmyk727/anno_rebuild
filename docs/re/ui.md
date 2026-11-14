@@ -485,10 +485,82 @@ Anchoring at the captured 1024 × 768 in-game frame (section 2):
 | Tabs | y = 181, stride 61 from x = W − 245 | `MAINTAB` 61 × 63 |
 
 Those subtractions are identities at 1024 × 768, not a verified rule at 800 / 1152 / 1280.
+Section 5.1 (UI-WINDOW-1) now proves the right-chrome and status-bar anchors.
 
 UI.2’s own scale (W5) is a rebuild choice, not an original fact. The History Edition's scale rule
 (the `UI_SCALE` setting, its 0.1 step-down, the bilinear stretch, the panel at `Sizex − 245`, the
 click mapping) is in `he-ui-scale.md`.
+
+### 5.1 Placement at other window sizes (UI-WINDOW-1, 2026-11-14)
+
+Static reads with pefile + capstone (GOG 32-bit, VAs; HE x86-64, RVAs) and sprite-sad on the HE
+captures (`he_s10/15/20_hud_idle_win.png`, 2542 × 1351 client, outside git). The scale rule and
+the click mapping are `he-ui-scale.md`; the rebuild's code is `src/app` `ui_transform.hpp`
+(transform) and `ui_layout.hpp` `place_hud` / `ui_hit` (placement, hits); the anchors are data
+(`data/ui/README.md` "Anchors").
+
+| Part | Rule | Evidence |
+|---|---|---|
+| Right chrome | x = W − 245, top-anchored, 768 rows | HE `View.dll` 0x3b428..0x3b455 (x = Sizex − 245; 779.0 below 1024); HE captures at 1.0/1.5/2.0 |
+| Status bar row | y = H − 35; the rebuild keeps the icons' and counters' 1024 × 768 x (the original lays them out wider at 1152/1280, OQ-620; not implemented) | `gold` at (0, H − 35), sprite-sad 0.0 on `he_s10_hud_idle_win.png`; GOG `AnnoFrame.dll` 0x10063000/0x10063013 width factor 1.18/1.3 on base widths 400/436 (0x100636e3/0x10063725) |
+| Status bar graphic | per width: 1152 → STATUSBAR02 (873), 1280 → STATUSBAR03 (1001), any other → STATUSBAR (746) | GOG `AnnoFrame.dll` 0x10063125..0x10063153 (`cmp eax, 0x480` / `0x500`, ids 0x38 / 0x39 / 0 in `statusbaraddon.tex`) |
+| Question mark | x = the bar's end: 746 at 1024, W − 279 elsewhere | 873 / 1001 = W − 245 − 34; HE at 2263 = 2542 − 279 (sprite-sad 0.0) |
+| Column below 768 | 1152 → FUELLER02 (96 rows), 1280 × 960 → FUELLER01 (192), other 1280 → FUELLER03 (256); 01/02 are 03's top rows | GOG `AnnoFrame.dll` 0x10063304..0x1006331f; decoded pixels byte-identical; HE: FUELLER03 at (W − 245, H − 256), sprite-sad 0.0 |
+| Pop-ups | kept at their 1024 × 768 position | unproven, OQ-618 |
+
+What the original never shows (wider than 1280, taller than 1024) is a rebuild adaptation. The
+original's code would pick STATUSBAR (746 px) for any width other than 1152/1280 (the rule above),
+leaving the bar short of the question mark; the rebuild instead repeats the widest graphic that
+fits (1001 px) to W − 279 (OQ-614) - at 2542 × 1351 with seams at x 1000/1001 and 1262 that HE's
+capture does not have - and repeats `MAINUNTERGRUND` between the
+panel and a bottom-anchored FUELLER03 (OQ-615). HE uses graphics of its own there (`fenster.tex`
+`BOTTOM_BAR_TILEABLE`, `BOTTOM_BAR_END`, `SIDE_BAR_TOP`, `SIDE_BAR_TILEABLE`, `MAX_PIC2`; not in
+the GOG files). Below 1024 × 768 the UI layer stays 1024 × 768 and is fitted into the window with
+HE's formula (OQ-616).
+
+Hits: the right column over the whole height, the status bar row up to the question mark's end,
+and the pause parchment while paused are chrome; a left press there and its release never reach
+the map. A hit maps back to the 1024 × 768 frame where the reference has a rectangle (the column's
+top 768 rows, the bar's first 746 pixels, the question mark) and goes to the construction menu and
+the tabs there; the construction tab opens the menu (as key B does) and closes it (as Esc does);
+closing the menu either way also turns off a building tool a cell armed.
+
+### 5.2 The status bar counters (UI-WINDOW-1 fix round R2, 2026-11-14)
+
+Evidenced: the materials (tools, wood, bricks, marble) and residents, icons and figures, are
+absent before the first founding (`hud_idle_running`) and present on every screen once a city
+exists, with or without the construction menu (`r2_player_menu`, `r2_tab_military`,
+`r2_construction_military`; HE `he_s10_hud_idle_win.png`). The owner states first-hand that they
+show the stock of the island the view is centred on. **Not evidenced:** what the original shows
+over open sea and over another player's island (no shot is taken there), the exact centre point
+and the update timing - OQ-622.
+
+**Rebuild rule, owner decision 2026-11-14 ("Always show my city", fix round R4):** the five
+counters show on every screen while the local player owns a city: the city on the island under
+the view's centre when that island holds one of the player's cities, otherwise the player's
+first city in (island, city) order. Hidden only before the first founding. (R2's rule hid them
+away from the city's island, so a player who did not scroll there never saw them.) The gold
+counter is unchanged.
+
+Test note (fix round R5): `live_screen_matches_oracle` (`tools/test/live_screen_compare.py`)
+compares `hud_idle` in the state of `hud_idle_running`, before the first founding: a second
+launch on the ship start (`lan5-ship-a.json`, seat 0, `live_screen_hud_idle.script`), exact, no
+masks for the counter icons. The two construction screens stay on `lan5.txt`, whose developer
+city shows the counters their oracle shots draw.
+
+### 5.3 The four tabs (UI-WINDOW-1 fix round R2, 2026-11-14)
+
+The tabs are switches: one is always selected (`MAINTAB` `frame_selected`, the others
+`frame_idle`). From the GOG shots (section 1 rows 1 and 6-9, section 7): the start state is the
+player tab with its overview panel (`hud_idle_running`); the bust tab and key **D** show the player
+list (`r2_tab_military`, `r2_player_menu`); "?" shows the info panel (`r2_tab_help`); the gears tab
+and key **O** the main menu (`r2_options`, `options_key_O`); the construction tab and key **B** the
+construction menu. A click on the selected tab changes nothing, except the bust from the
+overview, which opens the list (`r2_player_menu`). Each panel's static chrome is in `data/ui/hud.txt` (`panel`), each element
+matched by ACCESS id on its shot (exact after the RGB565 reduction, or mean abs 0.00-0.35 for the
+two big backgrounds); `tools/test/ui_panels_compare.py` checks them. Names, figures, list rows,
+the diplomacy cluster and the info emblem are not drawn (UI-TABS-1). Unproven parts (a second
+click on a tab, Esc's return, the list background, the crest per player): OQ-621.
 
 ## 6. `data/ui/` layout format
 

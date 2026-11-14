@@ -118,7 +118,8 @@ TEST_CASE("SHORE-2 fix round 1: river coverage at 26.5 vs 16.5, basin-only sea t
         cfg.log_fallback = false;
         for (std::size_t i = 0; i < scene.islands.size(); ++i) {
             const auto& island = scene.islands[i];
-            const std::size_t cw = (island.width + 7) / 8, ch = (island.height + 7) / 8;
+            const std::size_t cw = (static_cast<std::size_t>(island.width) + 7) / 8;
+            const std::size_t ch = (static_cast<std::size_t>(island.height) + 7) / 8;
             const auto old_chunk = build_old_chunk(island, cw, ch);
             const auto new_16 = render::sea::IslandWater::build(
                 island, scene.river_pieces(i), scene.river_cfg.gap_patch_tiles, 16.5F);

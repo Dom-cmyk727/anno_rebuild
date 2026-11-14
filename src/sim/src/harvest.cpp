@@ -362,7 +362,8 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
     const Building* home = world.find_building(fig.home);
     const BuildingType* home_type = home != nullptr ? ctx.types.find(home->type) : nullptr;
     if (home != nullptr && !std::holds_alternative<Farm>(home->payload) &&
-        !std::holds_alternative<SmallFarm>(home->payload)) {
+        ((ctx.fisher_enabled && fisher_job(fig.job)) ||
+         !std::holds_alternative<SmallFarm>(home->payload))) {
         home = nullptr; // validated away (World::harvest_problem); never a stand-in home
         home_type = nullptr;
     }

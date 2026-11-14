@@ -123,6 +123,10 @@ TEST_CASE("fisher behavior: water fish claim wait three cuts return and food and
         return f && f->harvest->step == sim::HarvestStep::Cut && f->harvest->wait > 1;
     }));
     auto* f = fisher(w);
+    if (!f || !f->harvest) {
+        FAIL("missing active fisher state");
+        return;
+    }
     const auto target = f->harvest->target;
     const auto wait = f->harvest->wait;
     CHECK(claimed(w, target.x, target.y));
@@ -208,6 +212,10 @@ TEST_CASE("fisher behavior: receipt is an unclipped u16 addition and releases th
     auto w = create_fishery(fishery_rig(), types, true);
     REQUIRE(until(w, [&] { return fisher(w) != nullptr; }));
     auto* f = fisher(w);
+    if (!f || !f->harvest) {
+        FAIL("missing active fisher state");
+        return;
+    }
     const auto id = f->id;
     f->harvest->start_delay = 0;
     f->harvest->step = sim::HarvestStep::ToHome;
@@ -239,4 +247,63 @@ TEST_CASE("fisher behavior: worker occupancy permits on-off draw trajectories to
     CHECK(farm(on).workers_out == 1);
     CHECK(farm(off).workers_out == 0);
     CHECK(on.rng().cursor() + 1 == off.rng().cursor());
+}
+
+TEST_CASE("fisher behavior: a SmallFarm home is refused before enabled receipt") {
+    auto types = registry();
+    auto rig = make_rig();
+    rig.place(kFisherFarm, 110, 110, sim::Farm{});
+    rig.place(kSmallFarm, 120, 120);
+    auto w = create_fishery(rig, types, true);
+    REQUIRE(until(w, [&] { return fisher(w) != nullptr; }));
+    auto* f = fisher(w);
+    if (!f || !f->harvest) {
+        FAIL("missing active fisher state");
+        return;
+    }
+    auto& is = *sim::WorldTestAccess::islands(w)[0];
+    sim::Building* original = nullptr;
+    sim::Building* small = nullptr;
+    for (auto& list : is.cities[0]->index.lists)
+        for (auto& b : list.slots)
+            if (b) {
+                if (b->id == f->home)
+                    original = &*b;
+                if (b->type == kSmallFarm)
+                    small = &*b;
+            }
+    if (!original || !small) {
+        FAIL("missing homes");
+        return;
+    }
+    REQUIRE(w.check_invariants().empty());
+    auto* old_counter = sim::figure_counter(original->payload, f->home_counter);
+    auto* new_counter = sim::figure_counter(small->payload, f->home_counter);
+    if (!old_counter || !new_counter) {
+        FAIL("missing counters");
+        return;
+    }
+    --*old_counter;
+    ++*new_counter;
+    f->home = small->id;
+    CHECK(w.harvest_problem().find("fisher requires a Farm home") != std::string::npos);
+    auto loaded = sim::World::load(w.save(), types);
+    REQUIRE_FALSE(loaded.ok());
+    CHECK(loaded.error().find("fisher requires a Farm home") != std::string::npos);
+    // The body also fails closed for an unchecked in-memory misuse; no variant exception.
+    f->harvest->start_delay = 0;
+    f->harvest->step = sim::HarvestStep::ToHome;
+    f->harvest->route.clear();
+    f->harvest->next = 0;
+    f->harvest->along = 0;
+    f->cargo_88 = 768;
+    const auto id = f->id;
+    REQUIRE(until(
+        w,
+        [&] {
+            const auto* g = sim::find_figure(w.figures(), id);
+            return g && g->expiry_stamp.has_value();
+        },
+        20));
+    CHECK(w.check_invariants().empty());
 }

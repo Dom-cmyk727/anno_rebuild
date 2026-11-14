@@ -10664,3 +10664,55 @@ Decisions and reasoning:
 NOT_RUN: local MSVC/WSL and Windows game-file/full landing suites; orchestrator owns those. Unrelated renderer/app gates reuse base evidence; hosted CI builds/tests their consumers without assets.
 QUESTIONs: projection resolved; broader actor support and OQ-609/610 remain outside scope. No pin/fixture edits, assets, state number, scheduler changes, main merge/push, rebase or force push.
 **READY FOR REVIEW.**
+
+## FISHER-1b — QUESTION: original goal consumer contradicts the port contract (2026-11-14)
+
+Status: BLOCKED on the goal contract; NOT READY FOR REVIEW as a completed fisher implementation.
+Branch task/FISHER-1b; new worktree from main 5bcd64a6; required ancestor 9137eabd passed.
+Packet and owner rules read at board 5703a16c; CLAUDE/PLAN/evidence contract/testing README read.
+No reviewer agents; original reads and dispositions require independent orchestrator review.
+Return-cell dependency SETTLED: AnnoWelt.dll 0x10057ae0–0x10057bbe calls the primary figure
+  +0xc8 at 0x10057b79–0x10057b7d; fisher table 0x100cb4d8 slot +0xc8 is 0x10038ad0.
+That override initializes the searcher in mode 3 at 0x10038b91–0x10038ba1; the return job
+  then adds home entrance goals and calls figure +0xcc. Already inside home returns without search.
+No direct world draw in the two complete bodies. Planar/no-Y scope recorded, not implemented.
+New stopping finding: the original resource-goal consumer INVERTS the island mask.
+Search interface S is Y + 4 (0x100c14e4); +0x50 stores selected mode at S +0x2040.
+Fisher A calls S +0x78 = 0x10002e20 at 0x10059325, adding resource tile pairs to S +0x1800.
+S +0x84 = 0x10003d90 calls 0x10003220 with that same S at 0x10004779–0x1000477b.
+At 0x100033ac–0x100033bd, goal-pop calls island +0x12c with mode from S +0x2040.
+At 0x100033c3–0x100033ce it ORs (511 - returned_mask) into USABLE goal bits.
+Island mode 3 returns 0 below threshold and 511 otherwise (0x1009226b–0x100922df).
+Hand controls: mean 31 -> raw 0 -> usable 511; mean 32 -> raw 511 -> usable 0.
+The callback-order loop 0x1000370c–0x1000374c tests those usable bits before calling the callback.
+Thus raw fisher_cell.goal_mask values stay correct, but the reference's free label and the packet's
+  interpretation of closed bank tiles as usable fisher goals miss the consumer's inversion.
+No dry-goal admission exception, mode-0 change, invented clamp or replacement fish was implemented.
+QUESTION 1: correct and re-release the usable-goal/reference/synthetic-bay contract before behavior?
+  Recommendation: orchestrator re-check these addresses and amend the port contract/reference first;
+  preserve the raw FISHER-1a values and derive usable bits at the consumer. Then release continuation.
+The existing 50/2473/619/1854 census still measures raw-mask polarity and local shoreline geometry;
+  it does NOT prove 2473 catchable goals. No new runtime reachability or OQ-609 claim is made.
+The earlier runtime-source lead 0x100928a0 (mean below 16) is consistent but remains out of scope.
+QUESTION 2 (asked of owner, response pending): global on/off draw equality contradicts dispatch.
+Original §2 count gate and production.cpp/driver.cpp: one discarded draw per ELIGIBLE attempt.
+First attempt: both consume 1. Next gate: on-world worker away blocks dispatch/consumes 0;
+  off-world refused send left count 0, so it remains eligible/consumes 1.
+Recommendation: assert equal draws for paired identical eligible attempts and zero fisher-body draws;
+  explicitly allow later trajectories to diverge because their worker/raw state differs.
+Bounded hand/reference controls are in cache/fisher-1b/consumer-counterexamples.json.
+Independent authorized work: tag-1 creation-context draft was started, then preserved unvalidated
+  as cache/fisher-1b/extension-draft-unvalidated.patch; SHA256 in extension-draft.json.
+Those six owned draft files were restored from HEAD; only RE documentation and this report commit.
+No flag, tag row, mode-3 builder, launch/search/catch/receipt, behavior tests or Rules changes committed.
+Gates: documentation-only checkpoint; git diff --check and local link resolution recorded in handoff.
+Hosted docs CI exact-head result/link supplied in handoff; no feature gate is represented as passing.
+NOT_RUN: dev build, changed sim behavior tests, final pins.py check, original-runtime/HE execution,
+  synthetic trip/save continuation, new flag proof, Windows game-file/full landing suites.
+Fixtures and all engine/reference/vector files are unchanged from base; no original listing/bytes in git.
+Decisions and reasoning:
+- Read the actual mask consumer before inventing an exception to make closed dry goals reachable.
+- Keep the accepted raw arithmetic/census evidence; narrow its meaning with a dated addressed finding.
+- Preserve the incomplete optional-flag draft outside the candidate rather than publish an inert feature.
+- Stop at the packet's explicit reference/original disagreement boundary; no new state or defaults.
+Independent orchestrator review pending. QUESTIONs 1 and 2 block behavioral acceptance.

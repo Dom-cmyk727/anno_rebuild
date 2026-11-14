@@ -284,6 +284,72 @@ converts raw to food (§2); market collection is the already documented
 transport path. On route exhaustion the shared worker release/end path
 `0x1003af00`/`0x1003b6e0` clears the home worker slot (forestry §2.13).
 
+### Return search cell mode — 2026-11-14, FISHER-1b
+
+**D — return uses the fisher override, hence mode 3.** In AnnoWelt.dll
+`0x10057ae0`–`0x10057bbe`, this is the shared home job and its figure argument
+is the primary figure interface. An already-inside-home figure returns success
+at `0x10057b68`–`0x10057b73` without a search. Otherwise `0x10057b79`–
+`0x10057b7d` calls the figure's virtual `+0xc8(0)`. The fisher's primary
+table `0x100cb4d8`, slot `+0xc8`, is `0x10038ad0`. That override constructs
+the home-centred rectangle, obtains the searcher at `0x10038b4e`, and
+initializes it with cell-building **mode 3** at `0x10038b91`–`0x10038ba1`.
+It supplies home entrance starts while inside the footprint, or the current
+position otherwise (`0x10038bb0`–`0x10038cc5`). The home job then adds home
+entrance goals through home `+0xf8` at `0x10057b87`–`0x10057b94`, installs
+the completion callback, and calls figure `+0xcc` at `0x10057ba8`–`0x10057bb1`.
+It does not replace that searcher's cells with mode 0. The full two bodies
+were read; neither contains a direct world `+0xb4` draw. This settles the
+cell-mode dependency, not OQ-603's float continuation.
+
+**T — planned planar boundary.** The rebuild has no vertical figure coordinate.
+A port can reuse its planar integer segment representation without inventing
+terrain-height following or a synthetic Y adjustment. This checkpoint implements
+no fisher movement and makes no original Y/float-continuation equivalence claim
+(OQ-603).
+
+### Goal-mask consumer contradicts the port premise — 2026-11-14, FISHER-1b
+
+**D — interface chain and resource goals.** Let `S` denote the search interface
+returned to the fisher (the `0x100c14e4` interface at `Y + 4`, not `Y`). Its
+`+0x50 = 0x10002b80` stores the selected mode at `S + 0x2040`
+(`0x10002b80`–`0x10002b98`); the fisher passes mode 3 as above. Its `+0x78 =
+0x10002e20` copies the resource-query tile pairs into `S + 0x1800`, with count
+at `S + 0x17fc` (`0x10002e20`–`0x10002e60`). The fisher uses that slot at
+`0x1005931b`–`0x10059325`, after the nonempty query. Search `+0x84 =
+0x10003d90` calls goal-pop `0x10003220` with the same `S` receiver at
+`0x10004779`–`0x1000477b`. These offsets are relative to `S` throughout.
+
+**D — the missing consumer operation.** In the complete goal-pop read
+`0x10003220`–`0x1000377d`, the resource-tile loop compares the popped tile
+with each stored resource pair (`0x10003399`–`0x100033aa`). On a match,
+`0x100033ac`–`0x100033bd` calls island `+0x12c`, passing the mode from
+`S + 0x2040` and that tile. Crucially, `0x100033c3`–`0x100033ce` computes
+**`0x1ff - returned_mask`** and ORs that into the accumulated usable goal mask.
+The island's primary `0x100cac2c` slot `+0x12c = 0x100921b0` dispatches
+mode 3 to the accepted mean/threshold arm `0x1009226b`–`0x100922df`.
+Thus its returned 0/511 is an **exclusion mask for this consumer**, not the
+usable/free mask. The callback-order loop at `0x1000370c`–`0x1000374c`
+tests each accumulated bit before calling the callback.
+
+| A, from these D ranges; threshold 32 | Walking cell | Returned island mask | Usable resource-goal bits |
+|---|---|---|---|
+| Mean 31 | open | 0 | 511 |
+| Mean 32 | closed | 511 | 0 |
+
+**T/U — contract conflict, not an implementation change.** FISHER-1a's
+`fisher_cell.goal_mask` and `fisher_ref.py sea_cell.free` retain the returned
+island mask values; they were not changed in this checkpoint. The latter's
+`free` label and the earlier census interpretation as 2473 *usable goals*
+miss this inversion. The 50/2473/619/1854 measurements still describe returned
+mask polarity and local shoreline geometry, not catchability. The FISHER-1b
+packet's requested closed shallow-goal synthetic fixture cannot be justified
+by treating 511 as usable. No dry-goal admission exception is invented and
+mode 0 is untouched. This is a QUESTION for correcting/releasing the port
+contract, references and fixtures; full original-runtime reachability and
+OQ-609 remain open. The existing runtime-source lead `0x100928a0` (mean below
+16) is compatible with the consumer polarity, but is not ported or expanded here.
+
 ## 4. Stops, draw ledger and port requirements
 
 **D — no fish.** Zero unclaimed mature goods71 tiles makes search start

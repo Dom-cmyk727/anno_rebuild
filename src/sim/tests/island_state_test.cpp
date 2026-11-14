@@ -618,6 +618,7 @@ TEST_CASE("islands scope stream layout") {
     // without either: u64 slot count, then per slot a presence byte and the island;
     // the tiles of an island are 23 bytes each.
     Stream want;
+    want.u32(1); // islands base version
     want.u64(4);
     auto island = [&](const sim::Island& is, std::int32_t x0, std::int32_t y0, std::uint32_t wd,
                       std::uint32_t ht, std::uint32_t city_no, std::uint32_t city_owner) {
@@ -705,6 +706,7 @@ TEST_CASE("islands scope stream layout") {
     want.u8(0);
     want.u8(0);
     island(*w.islands()[3], 300, 200, 30, 20, 1, 1);
+    want.u64(0); // empty islands extensions
     REQUIRE(bytes.size() > want.v.size());
     CHECK(std::equal(want.v.begin(), want.v.end(),
                      bytes.end() -
@@ -714,7 +716,7 @@ TEST_CASE("islands scope stream layout") {
     // The scope opens where the trace says.
     const std::size_t scope_at = bytes.size() - island_test::kTailBytes - want.v.size();
     CHECK(island_test::flat_offset(w, "islands") == scope_at);
-    CHECK(island_test::flat_offset(w, "island", 0) == scope_at + 8);
+    CHECK(island_test::flat_offset(w, "island", 0) == scope_at + 4 + 8);
     CHECK(island_test::flat_offset(w, "figures") == scope_at + want.v.size());
     CHECK(island_test::flat_offset(w, "island", 3) != std::string::npos);
     CHECK(island_test::flat_offset(w, "island", 4) == std::string::npos);
@@ -2066,7 +2068,7 @@ TEST_CASE("load refuses a header whose config has a zero divisor before any cont
     // u64 SCRIPT1 schema, u32 PRNG timeline, then SimConfig. island_slots is its
     // first field, chunk_edge its 16th, building_div its 21st (figure_min_growth, T22,
     // is the 19th).
-    constexpr std::size_t kConfig = 29 + 16;
+    constexpr std::size_t kConfig = 29 + 4 + 16;
     REQUIRE(island_test::get32(good, kConfig) == 256);
     REQUIRE(island_test::get32(good, kConfig + 4 * 20) == 500);
     SUBCASE("a zero divisor") {
@@ -2177,7 +2179,7 @@ TEST_CASE("load rejects tile dimensions beyond remaining bytes") {
     {
         std::vector<std::uint8_t> bad = good;
         const std::size_t count_at =
-            island_test::frame_offset(island_test::flat_offset(w, "islands"), 5);
+            island_test::frame_offset(island_test::flat_offset(w, "islands"), 5) + 4;
         island_test::put32(bad, count_at, 0xFFFFFFFFU);
         island_test::put32(bad, count_at + 4, 0x00FFFFFFU);
         island_test::reseal(bad);

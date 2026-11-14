@@ -81,7 +81,10 @@
 #include <thread>
 #include <vector>
 
+#include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
+#include <anno/app/opening.hpp>
+#include <anno/app/play.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
@@ -98,6 +101,8 @@ namespace {
 
 namespace fs = std::filesystem;
 namespace render = anno::render;
+namespace app = anno::app;
+namespace formats = anno::formats;
 
 struct Options {
     std::size_t threads = std::max(1U, std::thread::hardware_concurrency());
@@ -189,6 +194,30 @@ struct Options {
     std::size_t derived = 0;
     /// --zoom-sweep seconds: the continuous zoom run as the viewer does (GPU).
     double zoom_sweep = 0.0;
+    /// --zoom-sweep-mode (ZOOM-MEASURE-1): legs (the original continuous log-interpolated
+    /// zoom with a 300 px/s pan, unchanged) is the default; wheel is discrete human-rate
+    /// notches (ZoomOptions::step, no pan); pan is a fast reversing pan at a fixed zoom level
+    /// (no zoom change); zoompan is legs' zoom at a fast pan speed ("a zoom during a pan").
+    enum class SweepMode { Legs, Wheel, Pan, ZoomPan };
+    SweepMode zoom_sweep_mode = SweepMode::Legs;
+    /// --zoom-sweep-wheel-rate n: wheel mode's notches per second (a precision-wheel click is
+    /// one factor of ZoomOptions::step; a human rate is a handful per second).
+    double zoom_sweep_wheel_rate = 8.0;
+    /// --zoom-sweep-pan-px n: pan/zoompan modes' pan speed in screen pixels per second (legs
+    /// keeps its own 300 px/s regardless of this option).
+    double zoom_sweep_pan_px = 1200.0;
+    /// --zoom-sweep-warm (ZOOM-MEASURE-1 Proof's "everything resident" control): runs the
+    /// whole sweep once, unmeasured, before the measured pass, on the same FrameRenderer (so
+    /// its CPU cache and the GPU's uploads carry over) instead of a cold one. Only correctness
+    /// if the whole sweep's working set fits the cache (gpu-chunks.md's spare_chunks budget);
+    /// otherwise the second pass still misses and that is itself the evidence.
+    bool zoom_sweep_warm = false;
+    /// --zoom-sweep-skip n: the measured pass's first n frames are excluded from every
+    /// aggregate (the table, the baseline summary, the busy-time check): a frame straight
+    /// after the pass's own start (pipeline/driver caches settling) is not a readiness
+    /// failure, and the Proof's contract states this count and its reason instead of
+    /// silently absorbing it into a looser threshold.
+    std::size_t zoom_sweep_skip = 0;
     /// --wave-fade-hold k (0..1): with --scale-cost, the simulated waves' weight held at k
     /// (GpuLimits::wave_fade_ms on a frozen clock), to time the cross-fade (OQ-076).
     double wave_fade_hold = -1.0;
@@ -1398,7 +1427,7 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
 /// most chunks the grid showed, the most megabytes the chunk cache held, the frames above
 /// 8 ms and what the worst of them spent its time on.
 int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, std::size_t island,
-               double seconds) {
+               double seconds, const fs::path& file) {
     const render::ZoomLevels& levels = scene.levels();
     for (std::size_t grp = 0; grp < levels.size(); ++grp) {
         scene.sea(grp);
@@ -1437,73 +1466,143 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             std::size_t group;
             double total, gpu, scale;
             std::size_t visible;
+            /// ZOOM-MEASURE-1: readiness counters read from the same GpuStats the window's
+            /// per-second report reads (gpu.hpp), not recomputed.
+            std::size_t missing = 0;     // GpuStats::chunks_missing: a visible chunk not ready.
+            std::size_t stand_parts = 0; // GpuStats::stand_in_parts: stand-in draws this frame.
+            std::size_t fading = 0;      // GpuStats::chunks_fading: chunks dissolving in.
+            std::size_t open = 0;        // GpuStats::open_sea_chunks: placeholder/open-sea draws.
+            bool wave_fading = false;    // GpuStats::fluid_fade < 1: inside a wave cross-fade.
+            std::uint64_t fluid_windows = 0; // GpuStats::fluid_windows (cumulative).
             std::vector<std::pair<const char*, double>> steps;
         };
         std::vector<Frame> frames;
         std::vector<std::size_t> cache_mb(levels.size(), 0);
         std::uint64_t t_ms = 0;
-        auto last = std::chrono::steady_clock::now();
-        std::size_t index = 0;
-        for (std::size_t leg = 0; leg < legs.size(); ++leg) {
-            const auto [from, to] = legs[leg];
-            const auto frames_in_leg = static_cast<std::size_t>(seconds * 1000.0 / kFrameMs);
-            for (std::size_t i = 0; i < frames_in_leg; ++i, ++index) {
-                const auto frame_start = std::chrono::steady_clock::now();
-                const double dt_ms =
-                    std::chrono::duration<double, std::milli>(frame_start - last).count();
-                last = frame_start;
-                const double u = static_cast<double>(i) / static_cast<double>(frames_in_leg);
-                s.target = from * std::pow(to / from, u);
-                s = anno::app::zoom_advance(s, dt_ms, 120, ready, levels);
-                const double scale = s.now / levels.tile_w(s.group);
-                // The pan: 300 screen pixels per second, the direction reversing each leg.
-                const double pan = (leg % 2 == 0 ? 1.0 : -1.0) * 300.0 * dt_ms / 1000.0 / scale;
-                s.cam_x += pan;
-                if (const auto bnd = scene.bounds(s.group)) {
-                    s.cam_x = std::clamp(s.cam_x, static_cast<double>(bnd->x),
-                                         static_cast<double>(bnd->x) + bnd->w);
-                    s.cam_y = std::clamp(s.cam_y, static_cast<double>(bnd->y),
-                                         static_cast<double>(bnd->y) + bnd->h);
-                }
-                const auto rv = render::resampled_view(
-                    s.cam_x, s.cam_y, static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h),
-                    scale, render::resample_filter_for(scale));
-                fr.motion_centre = anno::app::pan_centre(s);
-                const auto st = g.render(fr, scene, rv.view, s.group, t_ms, style,
-                                         target.second.get(), &rv.resample);
-                t_ms += 2;
-                Frame f;
-                f.group = s.group;
-                f.total = st.total_ms;
-                f.scale = scale;
-                f.visible = render::visible_chunks(rv.view).size();
-                const auto sea = g.sea_pass_ms(); // waits for the GPU
-                f.gpu = sea && g.frame_gpu_ms() ? *g.frame_gpu_ms() : -1.0;
-                if (f.total > kBusyMs) {
-                    for (const auto& step : st.steps()) {
-                        f.steps.emplace_back(step.name, step.ms);
+        // --zoom-sweep-warm (the Proof's "everything resident" control): an unmeasured pass
+        // over the same FrameRenderer first, so its CPU cache and the GPU's uploads are
+        // already warm for the measured pass — correctness only if the sweep's whole working
+        // set fits the cache; a still-nonzero measured pass after this is itself the evidence
+        // that it does not (reported, not hidden).
+        const int passes = o.zoom_sweep_warm ? 2 : 1;
+        for (int pass = 0; pass < passes; ++pass) {
+            frames.clear();
+            std::fill(cache_mb.begin(), cache_mb.end(), 0);
+            s.group = 1;
+            s.now = s.target = levels.tile_w(1);
+            s.cam_x = b1.x + b1.w / 2.0;
+            s.cam_y = b1.y + b1.h / 2.0;
+            auto last = std::chrono::steady_clock::now();
+            std::size_t index = 0;
+            for (std::size_t leg = 0; leg < legs.size(); ++leg) {
+                const auto [from, to] = legs[leg];
+                const auto frames_in_leg = static_cast<std::size_t>(seconds * 1000.0 / kFrameMs);
+                for (std::size_t i = 0; i < frames_in_leg; ++i, ++index) {
+                    const auto frame_start = std::chrono::steady_clock::now();
+                    const double dt_ms =
+                        std::chrono::duration<double, std::milli>(frame_start - last).count();
+                    last = frame_start;
+                    const double u_raw =
+                        static_cast<double>(i) / static_cast<double>(frames_in_leg);
+                    // ZOOM-MEASURE-1: the sweep profile. legs (default) keeps today's continuous
+                    // log-interpolated target, unchanged. wheel quantises u to human-rate notches
+                    // (a precision-wheel click is ZoomOptions::step; a few per second is a human
+                    // rate). pan holds ONE level (the start level, never the leg's own `from`) for
+                    // the whole sweep, so --zoom-sweep-pan-px 0 is a true camera-at-rest control
+                    // (zoom-smoothness.md's own "any level, camera at rest: 0" row) — not just
+                    // "no zoom change within a leg", which would still cross levels leg to leg.
+                    // zoompan keeps legs' continuous target at pan's fast speed ("a zoom during a
+                    // pan"). Only legs and zoompan actually move s.target.
+                    double zoom_target = levels.tile_w(1);
+                    if (o.zoom_sweep_mode == Options::SweepMode::Wheel) {
+                        const double frames_per_notch =
+                            std::max(1.0, 1000.0 / (o.zoom_sweep_wheel_rate * kFrameMs));
+                        const double u = std::min(
+                            1.0, std::floor(static_cast<double>(i) / frames_per_notch) *
+                                     frames_per_notch / static_cast<double>(frames_in_leg));
+                        zoom_target = from * std::pow(to / from, u);
+                    } else if (o.zoom_sweep_mode != Options::SweepMode::Pan) {
+                        zoom_target = from * std::pow(to / from, u_raw);
+                    }
+                    s.target = zoom_target;
+                    s = anno::app::zoom_advance(s, dt_ms, 120, ready, levels);
+                    const double scale = s.now / levels.tile_w(s.group);
+                    // The pan: legs keeps its original 300 px/s; wheel has none (a pure zoom test);
+                    // pan/zoompan use --zoom-sweep-pan-px (default 1200, "fast"), reversing every
+                    // leg.
+                    const double pan_px_per_s = o.zoom_sweep_mode == Options::SweepMode::Wheel ? 0.0
+                                                : o.zoom_sweep_mode == Options::SweepMode::Legs
+                                                    ? 300.0
+                                                    : o.zoom_sweep_pan_px;
+                    const double pan =
+                        (leg % 2 == 0 ? 1.0 : -1.0) * pan_px_per_s * dt_ms / 1000.0 / scale;
+                    s.cam_x += pan;
+                    if (const auto bnd = scene.bounds(s.group)) {
+                        s.cam_x = std::clamp(s.cam_x, static_cast<double>(bnd->x),
+                                             static_cast<double>(bnd->x) + bnd->w);
+                        s.cam_y = std::clamp(s.cam_y, static_cast<double>(bnd->y),
+                                             static_cast<double>(bnd->y) + bnd->h);
+                    }
+                    const auto rv = render::resampled_view(
+                        s.cam_x, s.cam_y, static_cast<std::uint32_t>(w),
+                        static_cast<std::uint32_t>(h), scale, render::resample_filter_for(scale));
+                    fr.motion_centre = anno::app::pan_centre(s);
+                    const auto st = g.render(fr, scene, rv.view, s.group, t_ms, style,
+                                             target.second.get(), &rv.resample);
+                    t_ms += 2;
+                    Frame f;
+                    f.group = s.group;
+                    f.total = st.total_ms;
+                    f.scale = scale;
+                    f.visible = render::visible_chunks(rv.view).size();
+                    f.missing = st.chunks_missing;
+                    f.stand_parts = st.stand_in_parts;
+                    f.fading = st.chunks_fading;
+                    f.open = st.open_sea_chunks;
+                    f.wave_fading = st.fluid_fade < 1.0F;
+                    f.fluid_windows = st.fluid_windows;
+                    const auto sea = g.sea_pass_ms(); // waits for the GPU
+                    f.gpu = sea && g.frame_gpu_ms() ? *g.frame_gpu_ms() : -1.0;
+                    if (f.total > kBusyMs) {
+                        for (const auto& step : st.steps()) {
+                            f.steps.emplace_back(step.name, step.ms);
+                        }
+                    }
+                    if (index % 64 == 0) {
+                        cache_mb[s.group] = std::max(cache_mb[s.group], fr.cached_bytes() >> 20);
+                    }
+                    frames.push_back(std::move(f));
+                    const auto spent = std::chrono::steady_clock::now() - frame_start;
+                    const auto pace = std::chrono::duration<double, std::milli>(kFrameMs);
+                    if (spent < pace) {
+                        std::this_thread::sleep_for(pace - spent);
                     }
                 }
-                if (index % 64 == 0) {
-                    cache_mb[s.group] = std::max(cache_mb[s.group], fr.cached_bytes() >> 20);
-                }
-                frames.push_back(std::move(f));
-                const auto spent = std::chrono::steady_clock::now() - frame_start;
-                const auto pace = std::chrono::duration<double, std::milli>(kFrameMs);
-                if (spent < pace) {
-                    std::this_thread::sleep_for(pace - spent);
-                }
             }
+        } // pass (the warm pass's frames/cache_mb are overwritten by the measured one above)
+        // --zoom-sweep-skip: drop the measured pass's own first n frames from every aggregate
+        // below (table, baseline summary, busy-time check), stated and justified in the Proof,
+        // not a silently looser threshold.
+        if (o.zoom_sweep_skip > 0 && o.zoom_sweep_skip < frames.size()) {
+            frames.erase(frames.begin(),
+                         frames.begin() + static_cast<std::ptrdiff_t>(o.zoom_sweep_skip));
         }
+        const char* mode_name = o.zoom_sweep_mode == Options::SweepMode::Wheel     ? "wheel"
+                                : o.zoom_sweep_mode == Options::SweepMode::Pan     ? "pan"
+                                : o.zoom_sweep_mode == Options::SweepMode::ZoomPan ? "zoompan"
+                                                                                   : "legs";
         std::printf("\n%dx%d, %zu frames, sweep 42 -> %.1f -> %.1f -> %.1f -> 42 tile width, "
-                    "%.0f s per leg, %s water\n\n",
+                    "%.0f s per leg, %s water, %s mode%s\n\n",
                     w, h, frames.size(), lo, hi, lo, seconds,
-                    style == render::WaterStyle::Enhanced ? "enhanced" : "original");
+                    style == render::WaterStyle::Enhanced ? "enhanced" : "original", mode_name,
+                    o.zoom_sweep_warm ? " (warm pass 2 of 2, measured)" : "");
         std::printf(
             "| level | scale range | frames | thread ms p50 | p95 | p99 | max | GPU ms p50 | "
-            "GPU ms max | chunks shown (max) | cache MB (max) | frames > %.0f ms |\n"
-            "|---|---|---|---|---|---|---|---|---|---|---|---|\n",
-            kBusyMs);
+            "GPU ms max | chunks shown (max) | cache MB (max) | non-ready frames | most "
+            "non-ready at once | stand-in draws | dissolves | open-sea draws | frames in wave "
+            "fade | frames > %.0f ms | frames > %.0f ms |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+            kFrameMs, kBusyMs);
         auto pct = [](std::vector<double> v, double q) {
             if (v.empty()) {
                 return 0.0;
@@ -1512,22 +1611,58 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             return v[static_cast<std::size_t>(std::lround(q * static_cast<double>(v.size() - 1)))];
         };
         std::vector<std::pair<double, std::string>> worst;
+        // ZOOM-MEASURE-1: the sweep's own baseline totals, across every level (the packet's
+        // Proof table is one row per map/water/resolution/adapter combination; the per-level
+        // breakdown above is this run's detail, this is its one-line summary).
+        std::size_t total_frames = 0, total_non_ready = 0, total_frame_over_2 = 0,
+                    total_frame_over_busy = 0, most_missing_at_once = 0;
+        std::size_t total_stand_draws = 0, total_dissolves = 0, total_open_draws = 0,
+                    total_wave_fade_frames = 0;
+        // Wave switches: summed positive steps of GpuStats::fluid_windows in time order, not
+        // last - first (a mid-run reset of the simulation's own serial, e.g. a group ready to
+        // nothing, would otherwise wrap a std::uint64_t subtraction negative).
+        std::uint64_t wave_switches = 0, prev_fluid_windows = 0;
+        bool have_prev_fluid = false;
+        for (const Frame& f : frames) {
+            if (have_prev_fluid && f.fluid_windows > prev_fluid_windows) {
+                wave_switches += f.fluid_windows - prev_fluid_windows;
+            }
+            prev_fluid_windows = f.fluid_windows;
+            have_prev_fluid = true;
+        }
+        std::vector<double> total_ms_all;
         for (std::size_t grp = 0; grp < levels.size(); ++grp) {
             std::vector<double> total, gpu_ms;
             double smin = 1e9, smax = 0;
-            std::size_t visible = 0, busy = 0, count = 0;
+            std::size_t visible = 0, busy = 0, busy2 = 0, count = 0;
+            std::size_t non_ready = 0, most_missing = 0, stand_draws = 0, dissolves = 0,
+                        open_draws = 0, wave_fade_frames = 0;
             for (const Frame& f : frames) {
                 if (f.group != grp) {
                     continue;
                 }
                 ++count;
                 total.push_back(f.total);
+                total_ms_all.push_back(f.total);
                 if (f.gpu >= 0) {
                     gpu_ms.push_back(f.gpu);
                 }
                 smin = std::min(smin, f.scale);
                 smax = std::max(smax, f.scale);
                 visible = std::max(visible, f.visible);
+                if (f.missing > 0) {
+                    ++non_ready;
+                }
+                most_missing = std::max(most_missing, f.missing);
+                stand_draws += f.stand_parts;
+                dissolves += f.fading;
+                open_draws += f.open;
+                if (f.wave_fading) {
+                    ++wave_fade_frames;
+                }
+                if (f.total > kFrameMs) {
+                    ++busy2;
+                }
                 if (f.total > kBusyMs) {
                     ++busy;
                     std::string what;
@@ -1548,11 +1683,32 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                 continue;
             }
             std::printf("| %zu | %.2f - %.2f | %zu | %.2f | %.2f | %.2f | %.2f | %.2f | %.2f | "
-                        "%zu | %zu | %zu |\n",
+                        "%zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu |\n",
                         grp, smin, smax, count, pct(total, 0.5), pct(total, 0.95), pct(total, 0.99),
                         pct(total, 1.0), pct(gpu_ms, 0.5), pct(gpu_ms, 1.0), visible, cache_mb[grp],
-                        busy);
+                        non_ready, most_missing, stand_draws, dissolves, open_draws,
+                        wave_fade_frames, busy2, busy);
+            total_frames += count;
+            total_non_ready += non_ready;
+            most_missing_at_once = std::max(most_missing_at_once, most_missing);
+            total_stand_draws += stand_draws;
+            total_dissolves += dissolves;
+            total_open_draws += open_draws;
+            total_wave_fade_frames += wave_fade_frames;
+            total_frame_over_2 += busy2;
+            total_frame_over_busy += busy;
         }
+        std::printf("\nbaseline: %s, %dx%d, %s water, %s mode: frames %zu, non-ready frames "
+                    "%zu, most non-ready at once %zu, stand-in draws %zu, dissolves %zu, "
+                    "open-sea draws %zu, wave switches %llu, frames in wave fade %zu, busy ms "
+                    "p50 %.2f, p99 %.2f, max %.2f, frames > %.0f ms %zu, frames > %.0f ms %zu\n",
+                    file.filename().string().c_str(), w, h,
+                    style == render::WaterStyle::Enhanced ? "enhanced" : "original", mode_name,
+                    total_frames, total_non_ready, most_missing_at_once, total_stand_draws,
+                    total_dissolves, total_open_draws,
+                    static_cast<unsigned long long>(wave_switches), total_wave_fade_frames,
+                    pct(total_ms_all, 0.5), pct(total_ms_all, 0.99), pct(total_ms_all, 1.0),
+                    kFrameMs, total_frame_over_2, kBusyMs, total_frame_over_busy);
         std::sort(worst.begin(), worst.end(), std::greater<>());
         std::printf("\nthe busiest frames above %.0f ms (%zu in all):\n", kBusyMs, worst.size());
         for (std::size_t i = 0; i < worst.size() && i < 8; ++i) {
@@ -1749,6 +1905,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             o.fill_time = true;
             continue;
         }
+        if (a == "--zoom-sweep-warm") {
+            o.zoom_sweep_warm = true;
+            continue;
+        }
         if (i + 1 >= args.size()) {
             std::fprintf(stderr, "%s needs a value\n", a.c_str());
             return std::nullopt;
@@ -1841,6 +2001,18 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = parse(v, o.wave_fade_hold) && o.wave_fade_hold >= 0.0 && o.wave_fade_hold <= 1.0;
         } else if (a == "--zoom-sweep") {
             ok = parse(v, o.zoom_sweep) && o.zoom_sweep > 0.0;
+        } else if (a == "--zoom-sweep-mode") {
+            ok = v == "legs" || v == "wheel" || v == "pan" || v == "zoompan";
+            o.zoom_sweep_mode = v == "wheel"     ? Options::SweepMode::Wheel
+                                : v == "pan"     ? Options::SweepMode::Pan
+                                : v == "zoompan" ? Options::SweepMode::ZoomPan
+                                                 : Options::SweepMode::Legs;
+        } else if (a == "--zoom-sweep-wheel-rate") {
+            ok = parse(v, o.zoom_sweep_wheel_rate) && o.zoom_sweep_wheel_rate > 0.0;
+        } else if (a == "--zoom-sweep-pan-px") {
+            ok = parse(v, o.zoom_sweep_pan_px) && o.zoom_sweep_pan_px >= 0.0;
+        } else if (a == "--zoom-sweep-skip") {
+            ok = parse(v, o.zoom_sweep_skip);
         } else if (a == "--zoom-factor") {
             ok = parse(v, o.zoom_factor) && o.zoom_factor >= 1.0 / 64.0 && o.zoom_factor <= 64.0;
         } else if (a == "--resample") {
@@ -1960,6 +2132,35 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
     return o;
 }
 
+/// ZOOM-MEASURE-1: the sweep's own loader for the ship-start map (zoom-smoothness.md §2's
+/// second profile, the owner's own session). `load_scene` reads raw island-format bytes
+/// (insel::islands) and cannot read a `.txt` fixed-map layout or a `.json` ship-start
+/// manifest; both route through the same app-level loaders `main.cpp`/`opening.cpp` use for
+/// the real window, so no placement or template-resolution logic is duplicated here. A
+/// scenario file (.sze/.scp) keeps today's load_scene path unchanged.
+formats::Result<app::LoadedScene, std::string> load_any_scene(const fs::path& dir,
+                                                              const fs::path& file) {
+    std::string ext = file.extension().string();
+    for (char& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (ext == ".txt") {
+        auto play = app::load_play(dir, file, app::FixedPlayOptions{});
+        if (!play) {
+            return play.error();
+        }
+        return app::load_placed_scene(dir, play.value().name, play.value().placed);
+    }
+    if (ext == ".json") {
+        auto opening = app::load_opening(dir, file, 0, std::nullopt, false);
+        if (!opening) {
+            return opening.error();
+        }
+        return app::load_placed_scene(dir, opening.value().play.name, opening.value().play.placed);
+    }
+    return app::load_scene(dir, file);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2028,7 +2229,7 @@ int main(int argc, char** argv) {
     }
 #endif
     const auto started = std::chrono::steady_clock::now();
-    auto loaded = anno::app::load_scene(dir, file);
+    auto loaded = load_any_scene(dir, file);
     if (!loaded) {
         std::fprintf(stderr, "%s: %s\n", file.string().c_str(), loaded.error().c_str());
         return 1;
@@ -2168,7 +2369,7 @@ int main(int argc, char** argv) {
             std::fputs("--zoom-sweep needs --renderer gpu\n", stderr);
             return 2;
         }
-        return zoom_sweep(scene, *o, *frame_gpu, largest, o->zoom_sweep);
+        return zoom_sweep(scene, *o, *frame_gpu, largest, o->zoom_sweep, file);
     }
     if (!o->scale_cost.empty()) {
         if (!frame_gpu) {

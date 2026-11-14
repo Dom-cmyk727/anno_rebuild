@@ -9901,6 +9901,189 @@ QUESTIONs (for the owner, per the packet's own instruction when reproduction fai
 - Is Windows display scaling on that monitor 100%, or something else? (`window: drawable ... density %.2f` in
   the same PowerShell log answers this directly.)
 
+## ZOOM-MEASURE-1 — a camera sweep that measures what the owner sees — 2026-11-13 — READY FOR REVIEW
+
+Base `main` `961a9d4a`, branch `task/ZOOM-MEASURE-1`, head `f7e23dca`. Measurement only, no renderer
+behaviour change.
+
+**Counters added** to `bench_frame --zoom-sweep` (extended, not a new tool): per frame, read straight
+from `GpuStats` (the window's own per-second report's source) — `chunks_missing` (non-ready visible
+chunks), `stand_in_parts` (stand-in draws), `chunks_fading` (dissolves), `open_sea_chunks`
+(placeholder draws), `fluid_fade<1` (inside a wave cross-fade) and `fluid_windows` (wave switches,
+summed as positive steps so a mid-run counter reset can't underflow); printed per level and as one
+overall line, alongside the existing busy-time percentiles and a new "frames > 2 ms" column (the
+500 Hz budget). `<file>` now also accepts a `.txt` fixed map or `.json` ship-start manifest, through
+`app::load_play`/`app::load_opening` then `app::load_placed_scene` — the real window's own loaders,
+no placement logic duplicated.
+
+**Sweep profiles:** `legs` (today's continuous zoom, default, unchanged), `wheel` (discrete
+8-notch/s steps, off-centre anchor, no pan), `pan` (one fixed level, a 1200 px/s reversing pan, no
+zoom change), `zoompan` (legs' continuous zoom at the fast pan speed). `--zoom-sweep-warm` (an
+unmeasured pass first, same `FrameRenderer`) + `--zoom-sweep-skip n` (drops the measured pass's own
+first n frames) build the "everything resident" control.
+
+**Baseline** (RTX 4090, 2560x1369, enhanced water unless noted; full table in
+`docs/perf/README.md`): none of lan5.txt/ship-start x legs/wheel/pan/zoompan reaches 0 — e.g. lan5.txt
+legs: 431/12000 non-ready frames, 26616 stand-in draws, 13304 dissolves, 329 frames > 2ms; wheel and
+zoompan are worse (593–881 non-ready, up to 45485 stand-ins) than pan (57, 37) — a fast pan at a
+fixed level misses far less than any zoom change. Original water (no wave sim) still shows 537
+non-ready frames — the failure is chunk readiness (RC1), not the water (RC3). 1280x800 is much
+better than 2560x1369 (84 vs 431 non-ready) — smaller view, smaller grid. The Radeon iGPU (1280x800)
+has fewer misses (10) but a far worse worst frame (37.1 ms, an offscreen-sea-target resize) —
+RC4's separate story. This is a representative subset of the full map x water x resolution x
+adapter x mode cross product; see Decisions below for the scope cut and why.
+
+**The contract** (`tools/test/zoom_sweep_contract.py`): 0 non-ready, 0 stand-ins, 0 dissolves, 0
+open-sea draws, 2 ms busy budget (4 warm-up frames excluded). Fails today on every real profile
+above, not relaxed. The **"everything resident" control** (camera truly at rest, warm cache): every
+readiness counter is exactly 0 — proving the criteria are reachable — but 2 of 1980 frames (0.1%)
+still exceed the busy budget, stable across reruns with nothing else on the machine: GPU/driver
+submission jitter (RC4), not a readiness failure, and not hidden — reported as a separate finding.
+Not wired into CTest: a correctly-failing test would turn `gate` red for every commit until
+ZOOM-SMOOTH-1; run manually for this evidence (`docs/perf/README.md` has the exact commands).
+
+**The window-event hitch:** `ANNO_VIEW_HITCH_MS=5`, a real window, manually dragged and
+maximised/restored. A 106.0 ms hitch with **96.7 ms inside "handling window events"**
+(`events_ms_`, the `while (SDL_PollEvent(&e)) handle(e);` loop) confirms zoom-smoothness.md §5's
+suspected mechanism directly: SDL's blocking poll inside Windows' modal move/resize loop. A second,
+17.9 ms hitch on restore-from-maximised spent 15.98 ms in "surface configure" (the swapchain
+rebuild). Not fixed here.
+
+Gates: `cmake --build --preset msvc` warning-free. clang-format 23.1.3 clean.
+`python -I tools/test/workflow_test.py`: 24 tests, OK (`tools/test` touched). `anno_app_tests`
+(MSVC Release, game files — `bench_frame` links `anno_app_core`, no test suite of its own):
+`selected=267 executed=265 failed=0 skipped=2(opt-in) sanitizer_lines=0 VERDICT: PASS`. CI on
+`f7e23dca`: `cpp (macos-clang)`/`cpp (linux-clang-asan)` failed Clang's `-Werror` on a set-but-unused
+summary variable (fixed in `738b0f71`, printed as a second busy-time column instead of discarded;
+confirmed clean against `tools/check_unix_warnings.sh`, GCC 13 + Clang 18, with and without GPU).
+CI on `738b0f71` (run `43436856818`): every job green, `gate` included.
+
+NOT_RUN: the full map x water x resolution x adapter x mode cross product (scope cut, below); the
+WSL ASan build (no code in `src/app`/`src/render`/`src/sim` changed — `src/tools/bench_frame` only,
+covered by the app-test gate above as the nearest shared-library check); ZOOM-SMOOTH-1's fix; ADR
+0007 (orchestrator's); the full WSL gate and game-file run (orchestrator's, at merge).
+
+Decisions and reasoning:
+- Ran a representative subset, not the full 2 maps x 2 water x 2 resolutions x 2 adapters x 4 modes
+  (32+ runs): the primary 4090/2560x1369/enhanced matrix across both maps and all 4 modes (8 runs),
+  plus one spot-check each for 1280x800, original water and the iGPU, chosen to show every factor
+  the packet names still matters without exhausting the packet's own time budget.
+- `pan` mode holds ONE level for the whole sweep (the leg's own starting level), not the leg's own
+  `from`/`to` range: an earlier version still crossed 4 different levels between legs even at pan
+  speed 0, which is not a camera-at-rest control at all.
+- Wave switches are summed as positive steps across frames in time order, not `last − first`: the
+  simulation's own counter is not guaranteed never to reset mid-sweep, and a `std::uint64_t`
+  subtraction wraps instead of going negative.
+- Did not wire `zoom_sweep_contract.py` into CTest: a test that is meant to fail until a future
+  packet lands would turn `gate` red on every commit between now and ZOOM-SMOOTH-1, which is a
+  worse outcome than running it manually for this packet's own evidence.
+- Used the project's own `app::load_play`/`app::load_opening` for the new file types rather than
+  reimplementing manifest/fixed-map parsing in `bench_frame`: the real window already resolves
+  island templates and placement, and bench_frame only needs the resulting `render::Scene`.
+
+QUESTIONs: none required; the fix is explicitly not this packet's.
+
+## FISHER-RE-1c — HEIGHT corner grid and negative water census (2026-11-13)
+
+**Status: READY FOR REVIEW.** Mapping/reference candidate; water-assumption finding remains FAIL.
+Branch `task/FISHER-RE-1c`, own worktree; exact base961a9d4a; dispatch/review board29d8de10.
+Authorized merges:1a6d57bb12 via0186370c,1bf931354a viaff525154. Only REPORTS conflicted;
+both accepted entries preserved verbatim and checked. No main merge/rebase or other worktree edits.
+Read CLAUDE, PLAN, current board §1 (2026-11-13 gate rule), evidence contract/README,
+OQ-060/200, transport3.4.11–13, fisher§3 and insel HEIGHT/reader. Orchestrator review pending.
+Reads/mapping (GOG AnnoWelt, D unless marked P/A):
+- Island primarycac2c, initializer+180=8c090; grid pointerI+14, W/H u16+8/+a.
+- 8c18a–8c1d3 allocates and zeroes(W+1)*(H+2) BYTES, including remainder bytes.
+- Logical corners are(W+1)*(H+1), with one further physical padding row.
+- HEIGHT arm89150–8922a ->+ac=84870; inner copy8499e–849a5 is unchanged bytes.
+- Source block stride=bw, destination stride=W+1; world-origin adjustment cancels.
+- C(cx,cy)=F[cy*W+cx] insideW*H; logical right/bottom border0. No mean/scale/edge copy.
+- Public bulk setter can replace covered heights;84150/8f2d0 update derived regions.
+- Placement item-height writes are separate tile records. Inspected AnnoGame8f90–91ce
+  and height-query helpers read corners, not a corner-grid flattening operation.
+- Save89e01–89f51 (mask0x2) ->+b0=84a30: current interiorW*H HEIGHT blocks;
+  no logical border or padding in them. Reload reinitializes the omitted edges to0.
+- Broad later/editor setter caller closure remains OQ-610; no immutable-grid claim.
+Worked original window (P/A): Single_06.sze island12, origin(72,264), size80×80.
+- GELAENDE block(64,64),item14 places11 at local(69,66),world(141,330).
+- HEIGHT payload offsets43/44/59/60 give corners32/24/48/24, mean32: CLOSED.
+- Adjacent tile(70,66) has24/16/24/8, mean18: OPEN; not an all-closed-island bug.
+- Full opt-in census:50 scenarios, selected2473/executed2473, water0/failed2473,
+  empty0/skipped0/incomplete0, exit1. Every raw tile11 placement is an exception.
+- Complete exceptions plus per-file SHA256s: `cache/fisher-re-1c/fish-water-02.log`.
+- No threshold/height adjustment, hidden exceptions, skip or changed expectation to force a pass.
+- 928a0–92b32 can create11 on EMPTY mean<16 ground; skips nonzero ids at92976.
+  This does not repair those serialized placements or prove full runtime source import.
+
+Reference/acceptance:
+| Requirement | Proof/control | Evidence | Review |
+|---|---|---|---|
+| Load mapping | addressed allocation/copy/save plus worked window | fisher.md§5 | pending |
+| Borders |5 hand-derived corner_grid vectors; two border sea controls |49 total vectors | pending |
+| Wrong rule rejected | right/bottom replication each applies once and exits1 |11 source mutants | pending |
+| Corpus honesty | self-authored open/closed/missing/count controls; real failure preserved |71 CLI checks | pending |
+| CTest integration | required contract once, agreement once |gate-01.log | pending |
+
+Gates/evidence under `cache/fisher-re-1c/`:
+- `python3 -I tools/fisher_ref.py fixtures/synthetic/sim/fisher_vectors.txt`:49 agree,0 disagreements.
+- Direct contract `--ref tools/fisher_ref.py --vectors fixtures/synthetic/sim/fisher_vectors.txt`:71 pass.
+- Corpus: `python3 -I tools/fisher_ref.py --check-fish-water GAME_DIR`:FAIL2473, as above.
+- Configure01 failed: nonexistent cached source path. Configure02 uses verified existing pinned doctest source.
+- Dev configured viewer/GPU OFF. `run_selected.py --build-dir build/dev --select fisher_reference`
+  `--require-test fisher_reference_contract --skip-auto-contract --jobs 1 --timeout 30`
+  `--log cache/fisher-re-1c/gate-01.log`:2 distinct CTest entries selected/executed, both pass.
+- Required1/1 plus remaining1/1; failed0/empty0/incomplete0/sanitizer_lines0; every skip class0.
+- Unrelated picture/engine suites omitted by packet; engine evidence reused, no engine changes.
+- Diff/link checks and hosted CI on final pushed head; exact terminal head/run in owner handoff.
+
+Decisions and reasoning:
+- Return the logical corner grid; document physical padding separately instead of inventing extra tiles.
+- Keep the real-file non-water finding as exit1; full exception data stays ignored, reproducible via opt-in CLI.
+- OQ-200 load mapping answered; OQ-060 narrowed. OQ-609 tracks raw-source contradiction;
+  OQ-610 tracks later setters. OQ-611/612 unused; OQ-603/604 stay refused.
+NOT_RUN: original runtime/HE/Ghidra (Capstone used), complete dynamic-terrain closure, engine port/flag/state changes.
+QUESTIONs:609/610 are follow-up evidence gaps, not an owner-policy decision. No assertion of a working fisher canary.
+
+### FISHER-RE-1c — fix round1 addendum (2026-11-13)
+
+**Status: READY FOR REVIEW.** Same branch; correction to reviewed head1d6d289b.
+Read review on board5b9fed7d; independent re-review is the orchestrator's at handover.
+The prior census's criterion was wrong: walking and goal admission have opposite senses.
+Rechecked GOG AnnoWelt `0x10090689`–`0x10090697` and `0x1009226b`–`0x100922df`:
+mean<32 => open1/free0; mean>=32 => open0/free511. No original text/bytes committed.
+F1: opt-in census now checks goal plus at least one in-bounds eight-neighbour water tile.
+It excludes the fish tile, includes diagonals, and invents no out-of-island water.
+50 scenarios; selected2473/executed2473; goals2473, adjacent_water619, both619,
+failed1854/empty0/skipped0/incomplete0; exit1. Every exception is goal1/adjacent_water0.
+Full1854 exceptions and50 input hashes: `cache/fisher-re-1c/fix1-corpus-02.log`.
+Single_06 local(69,66) mean32 is a goal; east(70,66) mean18 is water, so it passes.
+OQ-609 narrowed to1854 local-neighbourhood misses; no claim they are globally unreachable.
+Accepted §5 HEIGHT mapping, OQ-200 load answer, OQ-610 and928a0 lead retained.
+F2: corrected sea_cell free polarity; re-derived all six boundary/uneven/border vectors.
+F3: dated correction in §3 and walking/goal clarification in §4; §5 appended clarification.
+
+| Requirement | Positive proof | Negative control | Disposition |
+|---|---|---|---|
+| Goal polarity | mean31 open1/free0; mean32 open0/free511 | invert_goal_mask applies once, exit1 | re-review pending |
+| Local census | goal with water; diagonal-only water | non-goal with water; isolated goal; self-only water | re-review pending |
+| Accepted mapping | five corner_grid vectors | both border replication mutants | prior mapping accepted; regression pass |
+
+Gates: direct49 vectors/0 disagreements (`fix1-direct-01.log`); direct contract75 checks,
+12 source mutants applied exactly once/rejected with exit1 (`fix1-contract-02.log`).
+`run_selected.py --select fisher_reference --require-test fisher_reference_contract`
+`--skip-auto-contract --jobs 1 --timeout 30`:2 distinct CTest selected/executed/passed;
+failed0/empty0/incomplete0/sanitizer_lines0; every skip class0 (`fix1-gate-02.log`).
+Gate01/contract01 retained; superseded by one added independent non-goal-with-water control.
+Corpus01 retained; corpus02 confirms identical rows while separately recording exit1.
+Diff/link checks clean; final pushed-head hosted-CI terminal result supplied in owner handoff.
+Unaffected engine suites reused: no engine/CMake/default/state changes; only docs/reference.
+Decisions and reasoning:
+- Eight neighbours measure immediate shore adjacency, not an invented searcher goal radius.
+- Keep1854 exceptions and nonzero corpus result; do not widen the radius until evidence settles it.
+- Preserve earlier logs/prose as dated history; correct their interpretation explicitly.
+NOT_RUN: original-runtime route proof, searcher radius closure, HE, engine port; no reviewer agents.
+QUESTIONs: OQ-609's remaining approach/radius gap and unchanged OQ-610 require follow-up reads.
+
 ## W4-DEPTH-1 — per-pixel sprite depth against the terrain and the water (2026-11-04) — status: READY FOR REVIEW (local branch; owner check and water-level decision open)
 
 Branch `task/W4-depth-1` from the W4-opening-1 head `a379e06e` (owner release 2026-11-04, as its own branch);
@@ -10072,3 +10255,282 @@ Decisions and reasoning:
   directly; both exercise the same depth/shore code, so the comparison is unaffected.
 
 QUESTIONs: none required; the per-pixel sea edge and the direct renderer are explicitly not this packet's.
+
+## UI-INFO-1 — the building info panel's name, preview, costs and upkeep — 2026-11-14 — READY FOR REVIEW
+
+Branch `task/UI-INFO-1`, base `480fafe7`. Main `95eea7de` merged `--no-ff` as `804de618` (parents `3a197223`,
+`95eea7de`), no conflicts. The owner's 2026-11-14 bit-identical rule is applied to all of the work.
+
+What changed: behind `placement_open`, `draw_live_screen_xrgb`/`_rgba` draw the armed type's `Texte.dat` `[ANLAGEN]`
+name, four material costs, gold cost, upkeep and a preview. Both paths share one routine. The figures come from the
+live registry through the new `ConstructionMenu::info_panel_content`; upkeep is PROD3's active column (OQ-563
+resolved). `data/ui/hud.txt` gains seven `align centre` text boxes and `info_preview`(+shadow). It also cuts INFOEXIT
+to its 33 x 35 gadget and moves `rotate_right` from 987 to 988. `betriebskosten` is no longer blitted: its icon is
+INFOUNTERGRUND's own pixels, and blitting it changed 1477 pixels. `tools/ui_layout.py` gains `compose_info_panel` and
+`info-compare` (the GOG compare with an RGB565 reduction). New CTest: `info_panel_pixel_check`. In viewer.cpp only
+the two UI draw calls changed. No change to sim or render.
+
+Evidence (docs/re/ui.md 2.5, rewritten), from reading View.dll statically:
+- Text gadgets are 200/50/145 x 18 (0x1003007f, 0x1003008d, 0x100300ba).
+- The preview gadget is 135 x 135 (0x1002fbac); the exit gadget is 33 x 35 (0x1002ff95).
+- The update at 0x10030140 shows goods 0x29..0x2c `>> 8`, gold as kind 1, upkeep as kind 2 column 1, printed
+  with `_itoa`.
+- Glyph-match: every name and figure on all 15 GOG shots has 0 differing pixels.
+- Centring rule x = box_x + w/2 - text_w/2 (rounded down), proven on 1-, 2- and 3-digit values and on 15 names.
+- HE: same textures (ids +5), English fonts, names and HEAD/PROD3; HE View.dll differs (OQ-613).
+
+Per-pixel vs GOG (102 520 panel px, after RGB565):
+- 2520, 104 and 708: **0** differing pixels.
+- The other 12 types: name, figures and chrome 0; preview 5 007 to 11 237 (forester 6 472, market 6 213,
+  Kontor 9 304).
+- The CPU window equals the reference exactly, so these counts are the live window's too.
+
+What I saw (step 5, window captures of 801, 1301 and 1302 next to their GOG shots): the name, the figures, the
+chrome and the cancel-X agree by eye. The preview differs visibly. The 801 forester's hut lacks its fenced garden
+and the green entrance arrows; the 1302 Kontor lacks its flags (OQ-612).
+
+Gates (merged head):
+- `cmake --preset msvc` + `cmake --build --preset msvc`: 0 warnings, 0 errors.
+- `ctest --preset msvc -R "construction menu|ui layout|hud layout|info panel|info_panel|live_screen|ui_mock|ui_dynamic|selected_house|construction_menu|point_in_hud|mask layout|construction_full|construction_unaffordable" -j 16`
+  (game dir set, 16 threads): 23 selected, 23 executed and passed, 0 skipped, 0 failed (no "skipping" in
+  LastTest.log). New tests: 5 doctest cases plus `info_panel_pixel_check`.
+- `info_panel_pixel_check.py --renderer gpu` (manual, RTX 4090): all 4 types pass. 10 px are over 48 and 18 px
+  differ from CPU, all in (1017..1023, 761..767): the known GPU corner effect.
+- clang-format 23.1.3 on the 9 changed C++ files. `ui_layout.py validate --game-dir`, `self-test` and
+  `check-files`: ok.
+- `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18, with and without GPU: clean, exit 0.
+- Hosted CI: see the push of this entry (run 43536589601 on `7ebc2534` was green so far for format, lint and macOS).
+
+NOT_RUN: Linux/macOS game-file runs; the full suite (not this packet's gate); an HE info-panel capture (none on disk).
+
+Decisions and reasoning:
+- I compare against GOG after an RGB565 reduction because the shots are a 16-bit frame. With it the plate matches
+  exactly, so every remaining difference is real. The level-3 text colour (66,61,66) and the shadow (66,65,66) are
+  the displayed values.
+- The preview is drawn for every type, not only where it matches. It uses the rule proven on 3 types plus a
+  nearest-neighbour fit, set 0 only, no arrows: a flagged default under OQ-612. Mismatch counts are stated above.
+- Preview pixels are drawn opaque so the CPU and GPU paths agree.
+- The font is MainSmall.zei. GOG's three candidate files are byte-identical, so the choice changes no pixel.
+
+QUESTIONs: none blocking. Open: OQ-612 (scaled and stall previews, entrance arrows, drawing past the box, rotation)
+and OQ-613 (HE panel code). OQ numbers are the next free after 610; renumber if another lane took them.
+
+### Fix round F (review of `a2b6c1c9`: ACCEPT WITH FINDINGS) — 2026-11-14
+
+Fixed, one commit each:
+- **F2** (`ee35c028`): the GPU mode of `info_panel_pixel_check.py` now compares exactly. It leaves out only the
+  measured 7 x 7 corner (1017..1023, 761..767), 49 px; the earlier 8 % allowance is gone. In both modes the
+  wrong-type control must differ in more pixels than the limit (0). GPU run on the RTX 4090: 102 471 of 102 471
+  checked px match for all 4 types. The control is rejected with 7 639 / 8 534 / 11 165 / 7 031 differing px.
+- **F3** (`15a0697f`): the upkeep columns differ on 11 of the 15 shots, not 7. Added 1301, 1302, 1310 and 1314.
+- **F4** (`e507e64e`): the upkeep pushes are now cited at instruction starts: 0x1003026b `push 1` and
+  0x1003026d `push 2`.
+- **F5** (`3fc74191`): `InfoPanelContent::upkeep` is optional. When it has no value, the upkeep box draws nothing
+  instead of 0. A unit test covers it.
+- **F6** (`5955a92e`): OQ-613 now records that HE `View.dll` is PE32+ x86-64 (machine 0x8664). It also records the
+  string-cross-reference route: `INFOUNTERGRUND` occurs 2 times and 135.0f 21 times.
+- **F7**: the "What I saw" paragraph above.
+- **F1 prep** (`932accb3`): the preview is split into two paths. A sprite that fits the box is drawn unscaled and
+  centred (the proven rule). Anything larger goes through the single `preview_placeholder_fit`. The split is
+  mirrored in `tools/ui_layout.py`. No pixel changes: the GOG counts are identical.
+- **F8** (`e7a9ba20`): new CTest `info_panel_gog_compare`. It runs the GOG comparison when `ANNO_UI_ORACLE_SHOTS`
+  is set. Name, figures and chrome must be 0 on all 15 shots, and the 3 proven types must be 0 overall. Without
+  the variable it skips.
+
+Gates:
+- `cmake --build --preset msvc`: 0 warnings, 0 errors.
+- The same focused `ctest -R` selection with `ANNO_UI_ORACLE_SHOTS` set: 24 selected, 24 executed and passed,
+  0 skipped, 0 failed.
+- Without `ANNO_UI_ORACLE_SHOTS`: `info_panel_gog_compare` skips with a message, as designed.
+- clang-format 23.1.3 on the changed C++ files.
+- Hosted CI: see the push of this section.
+
+## PINS-1 — named pins and stable current recordings (2026-11-13)
+
+**Status: READY FOR REVIEW.** Branch `task/PINS-1`, new owned managed worktree.
+Exact base `f9e6ea0c`; packet/ADR/accepted FISHER-RE-1c review read on board776d8aae.
+Read CLAUDE, PLAN0.1–0.3/7, owner protocol and evidence contract/README.
+FISHER branch/evidence preserved. No merge/rebase/main push or other executor edits.
+No engine implementation/stream/default changes; state138/ECONBK1/PRNG5 unchanged.
+
+Implementation:
+- Extended existing `golden.hpp`; one file, `sim/current/goldens.txt`, name/stage/version/value.
+- Changed self-baselines write via same-directory temporary+atomic replacement, sorted by name.
+- Per-file lock serializes recorder reads and writes; own destination handles close before rename.
+- Bounded lock waits report failure; never remove another writer's lock. Malformed/duplicate rows fail.
+- CI refuses record mode in both the CLI and sim test executable before fixture access.
+- Oracle-owned names stay comparisons even in record mode; Python oracle formulas/values unchanged.
+- Exact lowercase base scan:103 occurrences/24 files, not the packet's older126/30 inventory.
+- Moved25 active hash occurrences into22 unique names; removed2 obsolete hash comments; kept76.
+- Uppercase cross-check adds18 fixed inputs/sentinels:121 total,94 kept; no moving hash left literal.
+- Every kept/moved occurrence and reason: `docs/testing/pins-literals.md` (base line numbers).
+- Git-renamed `integrate2/current138/` -> `fixtures/synthetic/sim/current/`; static_assert removed.
+- Updated all operational consumers. Historical fixture directories untouched; provenance retained.
+- Replay logs, loop checkpoints and corpus re-record in place; corpus retains accepted preamble/columns.
+- `tools/pins.py check`/`regen --area sim` build pins_checks and use the canonical classified gate.
+- Check clears inherited update mode. Regen requires one test job; every moved pin gets one old/new line.
+- Canonical `--record-fixture` accepts explicit existing synthetic files only, local update mode only.
+- It records their before/after hashes; all other source still freezes. CI/code exclusions are refused.
+
+| Requirement | Positive proof | Negative control | Review |
+|---|---|---|---|
+| Writer/ownership | named pin restored atomically; two writers retain both updates | oracle/CI refusals, malformed/duplicate input | pending orchestrator |
+| One command | actual check and regen through run_selected.py | hand-edit registry_plain: check1, regen0 | pending |
+| No value changes |41 prior pins +22 moved values match base;15 non-document files byte-identical | complete literal audit | pending |
+| Recording |13 current outputs rewritten with identical bytes | existing bad-command replay controls retained | pending |
+| Gate integrity | declared fixture writes have provenance | simultaneous code mutation still fails9 | pending |
+
+Evidence under `cache/pins-1/`:
+- `full-check-01.log`: main selection1661, executed passes1643, failed0/empty0,
+  skipped18 (opt-in18; required-assets/platform/GPU/other0), incomplete0/sanitizer_lines0.
+- Required pins_contract selected1/executed1 separately: total1662 selected/1644 executed passes.
+- Full sim with original assets,46 replay consumers and3 independent stream checks included.
+- `recordings-01.log`:11 selected/11 executed passes plus required1/1; every failure/skip class0.
+  All13 recordings rewritten unchanged;0 pin moves/0 fixture byte changes; explicit partial selection.
+- `focused-03.log`:5 selected/5 passes plus required1/1; final writer/core/registry contracts pass.
+- Full normal comparisons reused after record-only handle guard/start-gate cleanup; focused/record gates
+  validate those deltas. No repeated full suite. Final normal CLI control passed in focused-03.
+- `edited-check-02` deliberately FAILS1; `edited-regen-02` PASS0 restores exact file, one pin summary.
+- `oracle-refusal-01` expected FAIL1 without rewriting the corrupted oracle pin; trusted input restored.
+- `ci-refusal-01` actual executable exit2. CLI contracts9 pass; workflow contracts29; verdict contracts25.
+- Both independent oracles compare final fixtures successfully; no oracle write option was invoked.
+- Base/final equality JSONs preserve all input comparisons; no replay/corpus/loop byte changed.
+- clang-format23.1.3, diff/link checks clean; final pushed-head CI terminal result in owner handoff.
+
+Decisions and reasoning:
+- Reuse goldens.txt rather than add a second mechanism; readonly oracle ownership prevents circular baselines.
+- Keep fixed codec ids, schema markers, sentinels, seeds and primitive FNV answers literal: they pin inputs/layouts.
+- Stable directory removes identity renames; README distinguishes integration provenance from moved-pin metadata.
+- Record only explicit outputs and serialize corpus writers; never weaken normal source immutability.
+NOT_RUN:18 opt-in measurements/soaks, local MSVC/WSL, full platform gates; no reviewer subagents per packet.
+Unaffected engine/render/app suites reused from base; no linked engine implementation changed.
+QUESTIONs: none in scope. SAVE-SECTIONS-1/139 and historical fixture trimming remain separate packets.
+
+## PINS-1 fix round1 — oracle ownership and rehearsed renumbering (2026-11-14)
+
+Branch task/PINS-1, starting95ce43a8; review/owner rules read on board6ea14634.
+No rebase/merge/main push; no reviewer agents. Orchestrator re-review pending.
+F1.1: both registry_highmap names now oracle_registry_highmap_absent/present; values unchanged.
+F1.2: highmap --check requires computed == retained independent PINNED == named rows, plus version.
+F1.3: AST scan of all tools/*.py finds exactly those2 ordinary collisions before fix, none after;
+  pins_contract recreates the original misfiling as a negative control; corrupt named-row probe exits1.
+F1.4: both literal-inventory rows now name the oracle owner and refusal policy.
+F2.1: nine refusal messages derive only the current build number; refused identities stay literal.
+F2.2: only4 version bytes derive from kStateHashVersion in the2 handwritten headers/log frame;
+  other bytes/wire versions remain hand-written; all5 deliberate version tripwires stay literal.
+F2.3: default regen selects sim/replay only; check keeps population, integration and highmap oracles.
+F2.4: moved-pin summaries show old/new stage, version and value; version-only contract added.
+F2.5: README has7 ordered steps: preserve legacyN first, bump/tripwires, update oracle programs,
+  copy13 printed roots and oracle versions, regen, extend actual predecessor boundaries, then check.
+F2.6: scratch `/private/tmp/pins-1-fix1-dry139`, HEAD95ce43a8, all139 edits UNCOMMITTED.
+  Rehearsal moved42 self-pins (38 values/4 version-only), not44: F1 makes2 more oracle-owned.
+  21 oracle rows updated explicitly (13 printed values +8 version columns); no C++ oracle generation.
+  13 non-pin recordings rewritten;14 declared files changed including goldens.txt. Legacy138 preserved.
+  Initial139 check exposed2 additional hardcoded8a expectations inside the oracle contract itself;
+  version now cross-checks sim_stream, tail stays literal, negative header mutation must apply.
+Owner-authorized exception: sandbox EPERM to127.0.0.1:47631 prevented corpus admission;
+  owner explicitly approved stopping only3 named children. First waited34:21;994 outcomes preserved.
+  Parent gate/other jobs untouched. Original3 remain INCOMPLETE, never passes; each host rerun alone
+  used --jobs1 with unchanged admission/budgets. PIDs/reason/authorization: stopped-blocked.json.
+Raw evidence below lives under cache/pins-1-fix1/ (scratch logs copied byte-for-byte).
+Each required pins_contract printed the following exact pair (also preserved per gate):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+changed-01.log sha256=a53578f00f006877bd66a220911e2cca32dc447ab83eb043d251ec0e07448e36
+VERDICT: FAIL build failed; no selection executed
+changed-02.log sha256=a689cf742c28d1445d39b86c4718dee73c6f073c8f583d79a032d6cd7a6efafc
+COUNTS: selected=15 executed=15 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+oracles-138-01.log sha256=c68c0b7df3ccb8df1070c4456801b7d458aeeb8fcc666ab43b8dfa5db6a998b9
+COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+dry-regen-01.log sha256=1c84945f95e5b8032d2caef79bb879d39bd033544e6daab1c2252a3b411bfd7f
+COUNTS: selected=1658 executed=1637 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=3 sanitizer_lines=0
+VERDICT: FAIL incomplete or contradictory test evidence
+dry-check-01.log sha256=4cb9934bf5e59be1ee30253b8a6d7f9362166052e5bf2011b7721e7a076391fd
+COUNTS: selected=1662 executed=1643 failed=1 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+dry-check-02.log sha256=00e7aae247e1b758cde688dbfb9627d75e57ef569afb56156b948f3d50c6677b
+COUNTS: selected=1662 executed=1644 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+Isolated retries01/02/03 each print this exact pair twice (required contract, then admitted case):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+dry-refused-retry-01.log sha256=cc945a0f4e1e637a85b958704bb6eb9d7bd54ef983833baa4e0631a5d98ec66c
+dry-refused-retry-02.log sha256=321befb5e8c453a997828906347d5d288e1dcb3fb2d51dcb6e8576238c581b11
+dry-refused-retry-03.log sha256=edce8c0ed1401211881e3ad6974845828905eb961de4a89a23cd7fa1ce2d6bf0
+dry-final.diff sha256=b7efef7be67387596a979621bc7fa87e99f99925cceb998af1be7405db56ff2b
+All log/source/predecessor hashes: evidence-manifest.json; exact full quotes: gate-quotes.txt.
+changed-01 failed before selection (namespace alias); fixed changed-02. Scratch configure01 failed
+  from an unnecessary GPU fetch; configure02 explicitly GPU/viewer OFF. Both attempts retained.
+Owned138 branch:63 rows retain original stages/versions/values, except the2 F1 names; other current files equal95.
+Final-head check is run after this frozen commit: final-head-check-01.log; terminal quotes/hash and CI in handoff.
+Decisions and reasoning:
+- Keep independent PINNED but link it to named rows; numeric-collision guard prevents the same class of mistake.
+- Preserve incomplete/refused attempts and rerun only unadmitted work; do not disable admission or restart valid work.
+- Oracle self-contract repair justified a corrected full139 end-to-end check; the first failure remains recorded.
+- Optional fix accepted: CMAKE_BUILD_PARALLEL_LEVEL is no longer forced to CTest jobs; caller controls compilation.
+NOT_RUN: local MSVC/WSL,18 opt-in measurements/soaks; no139 commit, extension mechanism or historical trim.
+QUESTIONs: none outstanding; owner-approved admission exception is fully recorded above.
+**READY FOR REVIEW.**
+
+## SAVE-SECTIONS-1a — ten section envelopes, final global identity139 (2026-11-14)
+
+Branch task/SAVE-SECTIONS-1a; new worktree from main d2884227 after ancestor661cd2a6 passed.
+Packet/ADR/owner rules read at board3f91f223; PINS branch and evidence preserved.
+Spec first: state.md §9.3/9.5/9.7 define ten ordered scopes, u32 base version1, u64 extension count0.
+Entries are u16 tag/u32 length/payload, strictly ascending; no tag registry or registration API in1a.
+world.hpp has ordered constexpr kSectionVersions; the same StateIO section functions hash/save/load.
+Every foreign base version names section/found/expected; every unknown tag names section/tag.
+Global framing139 is the last global number; save1, ECONBK1, PRNG5, replay4 and command1 unchanged.
+Independent sim_stream.py wraps all ten top-level digests, leaving child/object/registry bytes alone.
+integration_stream_ref.py retains raw structural records and adds populated framed figures/script records.
+13 oracle roots hand-copied;8 other oracle rows change version only; highmap values unchanged.
+README seven steps followed: legacy138 kept first, constant+5 tripwires, independent oracle writes,
+  hand-copied oracle rows, regen, real138 boundary, final committed-head check (handoff below).
+All63 pins move:50 changed value,13 version-only; self pins42 =38 value changes +4 version-only.
+13 current non-pin recordings rewritten;14 declared current files changed including goldens.txt.
+3 independent oracle fixtures explicitly written separately (holds, cargo-rules, populated fields).
+legacy138 g2.log is unchanged outgoing recording; g2.save extracted using the documented envelope.
+section-locality.json: all ten base payloads equal138 after stripping4+8 wrapper bytes, except
+  the authorized header138→139 word; terrain blobs equal. No cross-section base-byte change.
+Two table-driven native cases: ten sections × versions0/2; ten sections × tags0/1/65535, repaired CRC.
+Positive native roundtrip/hash controls; raw/trace/hash layout proofs retained; real138 save/log refuse.
+Replay’s fast identity probe now shares the section-prefix/StateHeader readers; foreign section2 refuses.
+All raw logs below are under cache/save-sections-1a/; evidence-manifest.json has full SHA256s/paths.
+Each gate’s required pins_contract printed this exact pair (retained separately in every raw log):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+pilot-01.log (dev framing/oracles):
+COUNTS: selected=9 executed=9 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+regen-01.log (full recording attempt, preserved):
+COUNTS: selected=1660 executed=1577 failed=65 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+reader-fix-01.log (replay probe, offsets, real138 boundary):
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+regen-failed-02.log: required contract passed; unsupported CTest regex group ran no main selection.
+VERDICT: FAIL workflow: Expecting value: line 1 column 1 (char 0)
+regen-failed-03.log: corrected selector, only65 failed cases + updated boundary; no whole-regen repeat.
+COUNTS: selected=66 executed=66 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+changed-dev-01.log:21 affected cases + prescribed population/integration/highmap comparisons.
+COUNTS: selected=25 executed=25 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+Final committed-head pins check: final-head-check-01.log; exact quotes/hash and pushed-head CI
+  terminal result supplied in the owner handoff, avoiding a post-gate change to its tested source pin.
+Builds: dev01 duplicate local name failed; dev02 linked with Apple duplicate-library warnings.
+  Fixed name; CMake3.31 REORDER_FREELY removes duplicate link inputs, with no warning suppression.
+  Final dev04 and Release build01:0 compiler/link warnings; clang-format23.1.3/diff checks clean.
+Decisions and reasoning:
+- Use existing u64 sequence counts and one shared pair of framing helpers; no persistent extension state.
+- Keep raw object oracle records unframed; only actual section records gain versions/extensions.
+- Preserve the failed full recording attempt; fix the missed replay prefix reader and hand-derived offsets,
+  then rerun its failed cases only. The mandatory final full check validates the combined result.
+- Release for corpus regeneration/check after dev build/pilot: bounded runtime with identical contracts.
+- Host access prevents sandbox socket EPERM; memory admission stays enabled; no test/coordinator stopped.
+NOT_RUN:18 opt-in soaks/measurements; local Windows/MSVC/WSL and full platform/game-file landing gates.
+No game assets committed; no feature/default, PRNG site, registry format, tag API, rebase or main push.
+QUESTIONs: none; all three stopping questions checked and not triggered. Orchestrator review pending.
+**READY FOR REVIEW.**

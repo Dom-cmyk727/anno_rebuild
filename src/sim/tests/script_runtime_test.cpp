@@ -12,6 +12,7 @@
 
 #include "world_access.hpp"
 using namespace anno::sim;
+namespace sim = anno::sim;
 namespace {
 std::string text(std::string kernel) {
     return "[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n\"ME\" 0\n[SCRIPT_KERNEL]\n" +
@@ -37,8 +38,23 @@ TEST_CASE("SCRIPT2 native header and empty runtime have hand written bytes") {
     StateHeader h;
     fields(header, h);
     // I2 merge checkpoint 138 / ECONBK1, independently written little-endian bytes.
-    const std::vector<std::uint8_t> expected_header{138,  0,    0,    0, 0x45, 0x43, 0x4f, 0x4e,
-                                                    0x42, 0x4b, 0x31, 0, 5,    0,    0,    0};
+    const std::vector<std::uint8_t> expected_header{
+        static_cast<std::uint8_t>(sim::kStateHashVersion >> 0),
+        static_cast<std::uint8_t>(sim::kStateHashVersion >> 8),
+        static_cast<std::uint8_t>(sim::kStateHashVersion >> 16),
+        static_cast<std::uint8_t>(sim::kStateHashVersion >> 24),
+        0x45,
+        0x43,
+        0x4f,
+        0x4e,
+        0x42,
+        0x4b,
+        0x31,
+        0,
+        5,
+        0,
+        0,
+        0};
     CHECK(header.data() == expected_header);
     ReadArchive legal(expected_header);
     StateHeader accepted;
@@ -127,8 +143,8 @@ TEST_CASE("SCRIPT1 repaired checksum version and same version schema refusals ar
     rechecksum(old);
     auto refused = World::load(old, TypeRegistry::empty());
     REQUIRE_FALSE(refused);
-    CHECK(refused.error() ==
-          "save: state stream version 128 is not supported (this build reads 138)");
+    CHECK(refused.error() == "save: state stream version 128 is not supported (this build reads " +
+                                 std::to_string(sim::kStateHashVersion) + ")");
     auto foreign = bytes;
     foreign[12] ^= 1;
     rechecksum(foreign);

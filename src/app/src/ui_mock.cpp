@@ -4,8 +4,10 @@
 #include <map>
 
 #include <anno/app/ui_mock.hpp>
+#include <anno/assets/building.hpp>
 #include <anno/assets/text.hpp>
 #include <anno/formats/tex.hpp>
+#include <anno/formats/text.hpp>
 #include <anno/formats/zei.hpp>
 
 namespace anno::app {
@@ -89,6 +91,56 @@ class TexCache {
         return &emplaced->second->charset;
     }
 
+    /// UI-INFO-1: the `[ANLAGEN]` name of Anlagen id `id` in `Texte.dat` (`<id>:<name>`, the
+    /// first line of that id; docs/formats/data-text.md), or nullptr when the file, the section
+    /// or the id is missing. Texte.dat is read once and kept (raw Windows-1252 bytes, the
+    /// encoding `.zei` codes use).
+    const std::string* anlagen_name(std::uint32_t id) {
+        if (!names_loaded_) {
+            names_loaded_ = true;
+            if (auto bytes = read_binary(game_dir_ / "Texte.dat")) {
+                const auto texte = formats::text::Texte::parse(*bytes);
+                if (const auto* section = texte.section("ANLAGEN")) {
+                    for (const auto& line : section->lines) {
+                        if (const auto entry = formats::text::id_text(line)) {
+                            names_.try_emplace(
+                                entry->first,
+                                std::string(reinterpret_cast<const char*>(entry->second.data()),
+                                            entry->second.size()));
+                        }
+                    }
+                }
+            }
+        }
+        const auto it = names_.find(id);
+        return it != names_.end() ? &it->second : nullptr;
+    }
+
+    /// UI-INFO-1: the decoded preview sprite of Anlagen id `id` (sprite set 0, zoom group 0,
+    /// frame 0, assets::building::to_rgba), cached per id; nullptr when the entry has none. The
+    /// cache assumes one `anlagen` file per session (the scene's).
+    const assets::Rgba* preview_sprite(std::uint32_t id,
+                                       const formats::anlagen::AnlagenFile& anlagen) {
+        const auto it = previews_.find(id);
+        if (it != previews_.end())
+            return it->second ? &*it->second : nullptr;
+        std::optional<assets::Rgba> decoded;
+        if (const auto* entry = anlagen.entry(id); entry != nullptr && !entry->gfx.empty()) {
+            for (const auto& set : entry->gfx.front().frame_sets) {
+                if (set.group != 0)
+                    continue;
+                if (!set.frames.empty()) {
+                    auto r = assets::building::to_rgba(anlagen, *entry, 0, set.frames.front());
+                    if (r.ok())
+                        decoded = std::move(r).value();
+                }
+                break;
+            }
+        }
+        const auto emplaced = previews_.emplace(id, std::move(decoded)).first;
+        return emplaced->second ? &*emplaced->second : nullptr;
+    }
+
   private:
     const formats::tex::TexFile* file_of(const std::string& rel_path) {
         const auto it = files_.find(rel_path);
@@ -114,6 +166,9 @@ class TexCache {
     std::filesystem::path game_dir_;
     std::map<std::string, std::optional<LoadedTex>> files_;
     std::map<std::string, std::optional<LoadedFont>> fonts_;
+    bool names_loaded_ = false;
+    std::map<std::uint32_t, std::string> names_;
+    std::map<std::uint32_t, std::optional<assets::Rgba>> previews_;
 };
 
 /// `tools/ui_layout.py blit_rgba`: skips transparent source pixels, clips to the canvas, writes
@@ -183,6 +238,25 @@ void blit_rgba_over(assets::Rgba& dst, const assets::Rgba& sprite, int x, int y)
             dst.pixels[d + 3] = static_cast<std::uint8_t>(out_a);
         }
     }
+}
+
+/// A live element's sprite cut to the element's own `size` when the texture is larger (UI-INFO-1:
+/// a gadget draws inside its own rectangle - INFOEXIT's texture is 33 x 38, its View.dll gadget
+/// 33 x 35, 0x1002ff95, and the GOG shots show the last three rows as panel, docs/re/ui.md
+/// section 2.5). Every other element's size equals its texture's, so nothing else changes.
+assets::Rgba crop_to_element(const assets::Rgba& sprite, const UiElement& el) {
+    if (!el.has_size || (el.size_w >= sprite.width && el.size_h >= sprite.height))
+        return sprite;
+    assets::Rgba out;
+    out.width = static_cast<std::uint16_t>(std::min<unsigned>(el.size_w, sprite.width));
+    out.height = static_cast<std::uint16_t>(std::min<unsigned>(el.size_h, sprite.height));
+    out.pixels.resize(static_cast<std::size_t>(out.width) * out.height * 4);
+    for (std::size_t y = 0; y < out.height; ++y) {
+        std::copy_n(sprite.pixels.begin() + static_cast<std::ptrdiff_t>(y * sprite.width * 4),
+                    static_cast<std::size_t>(out.width) * 4,
+                    out.pixels.begin() + static_cast<std::ptrdiff_t>(y * out.width * 4));
+    }
+    return out;
 }
 
 /// `cell_icon_tex_id` (tools/ui_layout.py): record index i = row*4+col, three consecutive
@@ -281,7 +355,170 @@ bool live_allowed(const std::vector<std::pair<sim::TypeId, bool>>* eligibility, 
     return it != eligibility->end() && it->first == type && it->second;
 }
 
+/// UI-INFO-1: the info panel's text, painted with the colours the GOG shots show for the three
+/// `.zei` levels (docs/re/ui.md section 2.5, glyph-match on 15 shots, 0 differing pixels): level 1
+/// white, level 2 black, level 3 (66, 61, 66) - all opaque, never blended. Level 3 is the value
+/// the 16-bit frame shows (RGB565 (8, 15, 8) expanded); the 24-bit colour the original converts
+/// from is not known (OQ-031). This narrows OQ-031 (b) for this panel only; the HUD counters keep
+/// TextStyle's own default.
+constexpr std::array<std::array<std::uint8_t, 3>, 3> kInfoTextLevels = {
+    {{255, 255, 255}, {0, 0, 0}, {66, 61, 66}}};
+
+/// `text` in `font` as one opaque image, each level in its own kInfoTextLevels colour: three
+/// render_text passes (one level each at alpha 255, the others at 0) merged - every glyph pixel
+/// has exactly one level, so the passes never overlap.
+assets::Rgba render_info_text(const formats::zei::CharSet& font, const std::string& text) {
+    assets::Rgba out;
+    for (std::size_t level = 0; level < 3; ++level) {
+        assets::TextStyle style;
+        style.rgb = kInfoTextLevels[level];
+        style.level_alpha = {0, 0, 0};
+        style.level_alpha[level] = 255;
+        assets::Rgba pass = assets::render_text(font, text, style);
+        if (level == 0) {
+            out = std::move(pass);
+            continue;
+        }
+        for (std::size_t i = 0; i + 3 < pass.pixels.size() && i + 3 < out.pixels.size(); i += 4) {
+            if (pass.pixels[i + 3] != 0) {
+                std::copy_n(pass.pixels.begin() + static_cast<std::ptrdiff_t>(i), 4,
+                            out.pixels.begin() + static_cast<std::ptrdiff_t>(i));
+            }
+        }
+    }
+    return out;
+}
+
+/// UI-INFO-1: the preview's drop shadow, (66, 65, 66) (RGB565 (8, 16, 8) expanded): the sprite's
+/// own silhouette, drawn first at the `info_preview_shadow` offset (docs/re/ui.md section 2.5).
+constexpr std::array<std::uint8_t, 3> kPreviewShadow = {66, 65, 66};
+
+/// UI-INFO-1, the PLACEHOLDER (not evidence): a preview sprite larger than the `bw` x `bh` box,
+/// scaled to the largest size that fits (integer arithmetic, aspect kept) by nearest neighbour.
+/// The original's scaler is unknown - no tested filter reproduces the scaled GOG previews
+/// (OQ-612). Every unproven step of the preview lives here and only here, so it can be kept,
+/// gated or replaced on its own. Precondition: the sprite does not fit the box.
+assets::Rgba preview_placeholder_fit(const assets::Rgba& sprite, unsigned bw, unsigned bh) {
+    const unsigned w = sprite.width, h = sprite.height;
+    if (w == 0 || h == 0)
+        return sprite;
+    unsigned nw = 0, nh = 0;
+    if (static_cast<std::uint64_t>(w) * bh >= static_cast<std::uint64_t>(h) * bw) {
+        nw = bw;
+        nh = std::max(1U, static_cast<unsigned>(static_cast<std::uint64_t>(h) * bw / w));
+    } else {
+        nh = bh;
+        nw = std::max(1U, static_cast<unsigned>(static_cast<std::uint64_t>(w) * bh / h));
+    }
+    assets::Rgba out;
+    out.width = static_cast<std::uint16_t>(nw);
+    out.height = static_cast<std::uint16_t>(nh);
+    out.pixels.assign(static_cast<std::size_t>(nw) * nh * 4, 0);
+    for (unsigned y = 0; y < nh; ++y) {
+        const auto sy = static_cast<std::size_t>(static_cast<std::uint64_t>(y) * h / nh);
+        for (unsigned x = 0; x < nw; ++x) {
+            const auto sx = static_cast<std::size_t>(static_cast<std::uint64_t>(x) * w / nw);
+            std::copy_n(sprite.pixels.begin() + static_cast<std::ptrdiff_t>((sy * w + sx) * 4), 4,
+                        out.pixels.begin() + static_cast<std::ptrdiff_t>(
+                                                 (static_cast<std::size_t>(y) * nw + x) * 4));
+        }
+    }
+    return out;
+}
+
+/// `sprite` with every pixel outside the rectangle (`cx`, `cy`, `cw`, `ch`) made transparent,
+/// when drawn at (`x`, `y`) (the preview gadget clips to its own box).
+assets::Rgba clip_to(const assets::Rgba& sprite, int x, int y, int cx, int cy, int cw, int ch) {
+    assets::Rgba out = sprite;
+    for (int sy = 0; sy < sprite.height; ++sy) {
+        for (int sx = 0; sx < sprite.width; ++sx) {
+            const int dx = x + sx, dy = y + sy;
+            if (dx < cx || dy < cy || dx >= cx + cw || dy >= cy + ch)
+                out.pixels[(static_cast<std::size_t>(sy) * sprite.width +
+                            static_cast<std::size_t>(sx)) *
+                               4 +
+                           3] = 0;
+        }
+    }
+    return out;
+}
+
+/// UI-INFO-1: everything the info panel draws for `info` over its chrome, through `blit` (an
+/// opaque blit of an RGBA image at (x, y): the XRGB or the GPU-overlay path's own). Shared by
+/// both paths so the two can never place a figure differently.
+template <typename Blit>
+void draw_info_content(TexCache& cache, const HudLayout& hud, const InfoPanelContent& info,
+                       const formats::anlagen::AnlagenFile* anlagen, Blit&& blit) {
+    const auto text_box = [&](const char* element, const std::string& text) {
+        const UiElement* el = hud.element(element);
+        if (el == nullptr || !el->has_pos || !el->has_size || el->align != "centre" ||
+            el->file.empty() || text.empty())
+            return;
+        const formats::zei::CharSet* font = cache.font(el->file);
+        if (font == nullptr)
+            return;
+        const assets::Rgba image = render_info_text(*font, text);
+        blit(image, centred_text_x(el->pos_x, el->size_w, image.width), el->pos_y);
+    };
+    if (const std::string* name = cache.anlagen_name(info.type.v))
+        text_box("info_name", *name);
+    text_box("info_tools", std::to_string(info.tools));
+    text_box("info_wood", std::to_string(info.wood));
+    text_box("info_bricks", std::to_string(info.bricks));
+    text_box("info_marble", std::to_string(info.marble));
+    text_box("info_gold", std::to_string(info.gold));
+    if (info.upkeep)
+        text_box("info_upkeep", std::to_string(*info.upkeep));
+
+    const UiElement* box = hud.element("info_preview");
+    if (anlagen == nullptr || box == nullptr || !box->has_pos || !box->has_size)
+        return;
+    const assets::Rgba* sprite = cache.preview_sprite(info.type.v, *anlagen);
+    if (sprite == nullptr)
+        return;
+    // Evidence-backed path: a sprite that fits the box is drawn unscaled and centred (the whole
+    // box exact on r2_info_dirt_road, f12_info_field_104, f12_info_field_708; docs/re/ui.md 2.5).
+    // A larger one goes through the one placeholder (preview_placeholder_fit, OQ-612).
+    const bool fits = sprite->width <= box->size_w && sprite->height <= box->size_h;
+    assets::Rgba fitted =
+        fits ? *sprite : preview_placeholder_fit(*sprite, box->size_w, box->size_h);
+    // Every decoded pixel is drawn opaque, the A formats' partial levels included - what the
+    // reference (tools/ui_layout.py anlagen_preview_rgba) does, so the XRGB path (which never
+    // blends) and the GPU overlay (which would) agree. How the original blends those levels in
+    // the preview is part of OQ-612.
+    for (std::size_t i = 3; i < fitted.pixels.size(); i += 4) {
+        if (fitted.pixels[i] != 0)
+            fitted.pixels[i] = 255;
+    }
+    const int bw = static_cast<int>(box->size_w), bh = static_cast<int>(box->size_h);
+    const int x = box->pos_x + (bw - fitted.width) / 2;
+    const int y = box->pos_y + (bh - fitted.height) / 2;
+    if (const UiElement* shadow = hud.element("info_preview_shadow");
+        shadow != nullptr && shadow->has_pos) {
+        assets::Rgba silhouette = fitted;
+        for (std::size_t i = 0; i + 3 < silhouette.pixels.size(); i += 4) {
+            if (silhouette.pixels[i + 3] != 0) {
+                silhouette.pixels[i] = kPreviewShadow[0];
+                silhouette.pixels[i + 1] = kPreviewShadow[1];
+                silhouette.pixels[i + 2] = kPreviewShadow[2];
+                silhouette.pixels[i + 3] = 255;
+            }
+        }
+        const int sx = x + shadow->pos_x, sy = y + shadow->pos_y;
+        blit(clip_to(silhouette, sx, sy, box->pos_x, box->pos_y, bw, bh), sx, sy);
+    }
+    blit(clip_to(fitted, x, y, box->pos_x, box->pos_y, bw, bh), x, y);
+}
+
 } // namespace
+
+int centred_text_x(int box_x, unsigned box_w, int text_w) {
+    // Both halves round down (toward minus infinity), so a negative text width (never produced)
+    // still follows the same rule.
+    const auto floor_half = [](std::int64_t v) { return v >= 0 ? v / 2 : -((-v + 1) / 2); };
+    return static_cast<int>(box_x + floor_half(static_cast<std::int64_t>(box_w)) -
+                            floor_half(text_w));
+}
 
 struct UiTexCache::Impl : TexCache {
     using TexCache::TexCache;
@@ -403,7 +640,9 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                                   const UiMockSpec& screen, UiTexCache& cache_wrapper,
                                   const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                                   const HudCounters& counters, bool placement_open,
-                                  bool demolish_mode, bool paused, bool selected_house) {
+                                  bool demolish_mode, bool paused, bool selected_house,
+                                  const InfoPanelContent* info,
+                                  const formats::anlagen::AnlagenFile* anlagen) {
     if (dst == nullptr || dst_w != hud.resolution_w || dst_h != hud.resolution_h)
         return "draw_live_screen_xrgb: destination size does not match the layout's resolution";
 
@@ -427,7 +666,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         const auto sprite = cache.decode(el->file, tid);
         if (!sprite)
             return;
-        blit_xrgb(dst, dst_w, dst_h, *sprite, el->pos_x, el->pos_y);
+        blit_xrgb(dst, dst_w, dst_h, crop_to_element(*sprite, *el), el->pos_x, el->pos_y);
     };
 
     blit_el("weltkarte");
@@ -538,13 +777,22 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
             // occupy the same screen region (this function's own doc comment) and
             // ConstructionMenu::click already resolves the pickaxe/cancel-X overlap by this same
             // flag, so the drawing follows the same split. Every element here is a real
-            // sprite-sad-measured position (data/ui/hud.txt, shot r2_info_pioneer_house); the
-            // panel's own cost row and name are not drawn - OQ-561, no position evidence exists.
+            // sprite-sad-measured position (data/ui/hud.txt, shot r2_info_pioneer_house). The
+            // cost/upkeep icons are baked into INFOUNTERGRUND; the name, preview and figures are
+            // UI-INFO-1's draw_info_content (docs/re/ui.md section 2.5).
             blit_el("info_panel");
             blit_el("infoexit");
             blit_el("rotate_left");
             blit_el("rotate_right");
-            blit_el("betriebskosten");
+            // Not betriebskosten: its icon is already part of INFOUNTERGRUND, and blitting
+            // B_Betriebskosten.tex on top changes 1477 pixels the original does not change
+            // (UI-INFO-1, docs/re/ui.md section 2.5).
+            if (info != nullptr) {
+                draw_info_content(cache, hud, *info, anlagen,
+                                  [&](const assets::Rgba& image, int x, int y) {
+                                      blit_xrgb(dst, dst_w, dst_h, image, x, y);
+                                  });
+            }
         } else {
             // ADR 0004 row 5: 660 while demolishing, 659 otherwise (docs/re/ui.md line 192).
             blit_el("abrissicon", demolish_mode ? 660 : 659);
@@ -609,7 +857,8 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache_wrapper,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters, bool placement_open, bool demolish_mode,
-                      bool paused, bool selected_house) {
+                      bool paused, bool selected_house, const InfoPanelContent* info,
+                      const formats::anlagen::AnlagenFile* anlagen) {
     if (w != hud.resolution_w || h != hud.resolution_h)
         return std::string(
             "draw_live_screen_rgba: destination size does not match the layout's resolution");
@@ -640,7 +889,7 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
         const auto sprite = cache.decode(el->file, tid);
         if (!sprite)
             return;
-        blit_rgba_over(canvas, *sprite, el->pos_x, el->pos_y);
+        blit_rgba_over(canvas, crop_to_element(*sprite, *el), el->pos_x, el->pos_y);
     };
 
     blit_el("weltkarte");
@@ -731,7 +980,15 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
             blit_el("infoexit");
             blit_el("rotate_left");
             blit_el("rotate_right");
-            blit_el("betriebskosten");
+            // Not betriebskosten: its icon is already part of INFOUNTERGRUND, and blitting
+            // B_Betriebskosten.tex on top changes 1477 pixels the original does not change
+            // (UI-INFO-1, docs/re/ui.md section 2.5).
+            if (info != nullptr) {
+                draw_info_content(cache, hud, *info, anlagen,
+                                  [&](const assets::Rgba& image, int x, int y) {
+                                      blit_rgba_over(canvas, image, x, y);
+                                  });
+            }
         } else {
             // ADR 0004 row 5: 660 while demolishing, 659 otherwise (docs/re/ui.md line 192).
             blit_el("abrissicon", demolish_mode ? 660 : 659);

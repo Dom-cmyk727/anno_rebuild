@@ -119,3 +119,23 @@ orchestrator's game-file run of that candidate, on the owner's OK.
 - **The owner's playtest** of the living town runs on a preview build of `9e920c18`
   (`E:nno1503-worktreesnno1503-main-gamefile-run`). The game-file run waits until it is finished, so the two
   don't compete for the PC.
+
+## Game-file run of the landing candidate
+
+**The candidate:** `orch/land-play-live-1a` at `f9e6ea0c`. It contains PLAY-LIVE-1a, WHALE-RE-1b, WHALE-RE-1c,
+FISHER-RE-1a, FISHER-RE-1b, the SHIP-ORDER-1 report and the board. The merge conflicts were only appends: in
+`REPORTS.md`, `docs/re/whaler.md`, `docs/open-questions.md`, and `CMakeLists.txt` (the whale and fisher reference
+tests), each resolved by keeping both sides.
+
+**The run:** in the run worktree on this PC, the canonical call with the game files, `ANNO_GPU_ADAPTER=4090` and 16
+jobs, 13:31–13:47.
+- **2,574 tests selected, 2,547 executed, 0 failed,** no memory refusals.
+- **27 skipped:**
+  - 21 opt-in, the new timing case among them;
+  - 3 platform;
+  - 3 other.
+- `VERDICT: PASS`.
+- **Log:** `cache/orch-play-live-1a/canonical-gate.log`, sha256 `a591f818…`.
+
+**SHIP-ORDER-1** found PLAY-LIVE-1a uninvolved in the owner's ship report
+([review](2026-11-13-ship-order-1-review.md)), so nothing holds the landing beyond the owner's OK.

@@ -1387,6 +1387,263 @@ def self_test() -> int:
     return 0
 
 
+
+# ---- UI-INFO-1: the building info panel (docs/re/ui.md section 2.5) ----------------------------
+# The language-neutral reference for draw_live_screen_xrgb/_rgba's info content: the same
+# hud.txt boxes, text colours, centring rule and preview rule, built from the game files and
+# construction.txt's own recorded costs (RE evidence, independent of the live registry path).
+
+INFO_TEXT_LEVELS = {1: (255, 255, 255), 2: (0, 0, 0), 3: (66, 61, 66)}
+INFO_PREVIEW_SHADOW = (66, 65, 66)
+INFO_PANEL_RECT = (804, 302, 220, 466)
+INFO_TEXT_BOXES = ("info_name", "info_tools", "info_wood", "info_bricks", "info_marble",
+                   "info_gold", "info_upkeep")
+
+
+def info_render_text(font_path: str, text_bytes: bytes):
+    """(w, h, rgba) of `text_bytes` (Windows-1252) in a .zei font, as assets::render_text lays it
+    out (advance = glyph width), each level opaque in INFO_TEXT_LEVELS."""
+    import zei
+
+    _a, _b, _r, glyphs = zei.charset(open(font_path, "rb").read())
+    table = {c: (w, d) for c, w, d in glyphs}
+    placed, x, height = [], 0, 0
+    for code in text_bytes:
+        w, data = table[code]
+        if w == 0:
+            continue
+        ext, rows = zei.decode(w, data)
+        placed.append((x, rows))
+        height = max(height, len(rows))
+        x += w
+    width = x
+    out = bytearray(width * height * 4)
+    for x0, rows in placed:
+        for y, row in enumerate(rows):
+            for i, v in enumerate(row):
+                if v is None or x0 + i >= width:
+                    continue
+                o = (y * width + x0 + i) * 4
+                out[o:o + 3] = bytes(INFO_TEXT_LEVELS[min(max(v, 1), 3)])
+                out[o + 3] = 255
+    return width, height, bytes(out)
+
+
+def centred_text_x(box_x: int, box_w: int, text_w: int) -> int:
+    return box_x + box_w // 2 - text_w // 2
+
+
+def anlagen_names(game_dir: str) -> dict:
+    """Texte.dat [ANLAGEN] `<id>:<name>` as raw bytes, first line per id."""
+    buf = open(os.path.join(game_dir, "Texte.dat"), "rb").read()
+    out: dict = {}
+    section = None
+    for line in buf.split(b"\n"):
+        line = line[:-1] if line.endswith(b"\r") else line
+        if line.startswith(b"[") and line.endswith(b"]"):
+            section = line[1:-1]
+            continue
+        if section == b"ANLAGEN" and b":" in line:
+            key, val = line.split(b":", 1)
+            if key.isdigit():
+                out.setdefault(int(key), val)
+    return out
+
+
+_ANLAGEN_CACHE: dict = {}
+
+
+def anlagen_preview_rgba(game_dir: str, type_id: int):
+    """(w, h, rgba) of Anlagen.dat type `type_id`'s sprite set 0, zoom group 0, frame 0 (pixels
+    past the frame width kept, docs/formats/anlagen.md), or None."""
+    import struct
+
+    import figuren as fig
+
+    key = os.path.normcase(os.path.abspath(game_dir))
+    if key not in _ANLAGEN_CACHE:
+        buf = open(os.path.join(game_dir, "Anlagen.dat"), "rb").read()
+        top = fig.records(buf, 16, 16 + struct.unpack_from("<I", buf, 12)[0])
+        ents = {}
+        anl = next(p for n, p in top if n == "ANLAGEN")
+        for n, p in fig.records(anl, 0, len(anl)):
+            e = fig.entry(p)
+            ents[e["id"]] = e
+        tables = {}
+        for t in fig.entries_of(next(p for n, p in top if n == "COLORS")):
+            c = fig.color_table(t)
+            tables[c["id"]] = c["rgb"]
+        vols = {}
+        for n, p in top:
+            if n == "TEXTURES":
+                g, _cnt = struct.unpack_from("<II", p, 0)
+                vols[g] = p[8:]
+        _ANLAGEN_CACHE[key] = (ents, tables, vols)
+    ents, tables, vols = _ANLAGEN_CACHE[key]
+    e = ents.get(type_id)
+    if not e or not e["gfx"]:
+        return None
+    frame = None
+    for fs in e["gfx"][0]["sets"]:
+        if fs["group"] == 0:
+            frame = fs["frames"][0] if fs["frames"] else None
+            break
+    if frame is None:
+        return None
+    fmt = fig.cstr(frame["format"])
+    w, h = frame["width"], frame["height"]
+    wide = w + 64
+    px = fig.decode(fmt, vols[0][frame["offset"]:frame["offset"] + frame["length"]], wide, h)
+    pal = tables[e["ids"][frame["palette"]]]
+    right = w
+    for i, p in enumerate(px):
+        if p is not None:
+            right = max(right, i % wide + 1)
+    out = bytearray(right * h * 4)
+    for i, p in enumerate(px):
+        if p is None or i % wide >= right:
+            continue
+        o = ((i // wide) * right + i % wide) * 4
+        out[o:o + 3] = bytes(pal[p[0]])
+        out[o + 3] = 255
+    return right, h, bytes(out)
+
+
+def preview_placeholder_fit(sprite, bw: int, bh: int):
+    """The PLACEHOLDER (not evidence), same as ui_mock.cpp preview_placeholder_fit: a sprite larger
+    than the box, nearest-neighbour to the largest fitting size (OQ-612). Precondition: the sprite
+    does not fit the box."""
+    w, h, buf = sprite
+    if w * bh >= h * bw:
+        nw, nh = bw, max(1, h * bw // w)
+    else:
+        nw, nh = max(1, w * bh // h), bh
+    out = bytearray(nw * nh * 4)
+    for y in range(nh):
+        sy = y * h // nh
+        for x in range(nw):
+            sx = x * w // nw
+            o, so = (y * nw + x) * 4, (sy * w + sx) * 4
+            out[o:o + 4] = buf[so:so + 4]
+    return nw, nh, bytes(out)
+
+
+def _blit_clipped(rgb, dw, dh, sprite, x, y, clip, colour=None):
+    sw, sh, buf = sprite
+    cx, cy, cw, ch = clip
+    for sy in range(sh):
+        dy = y + sy
+        if dy < max(0, cy) or dy >= min(dh, cy + ch):
+            continue
+        for sx in range(sw):
+            dx = x + sx
+            if dx < max(0, cx) or dx >= min(dw, cx + cw):
+                continue
+            so = (sy * sw + sx) * 4
+            if buf[so + 3] == 0:
+                continue
+            d = (dy * dw + dx) * 3
+            rgb[d:d + 3] = bytes(colour) if colour else buf[so:so + 3]
+
+
+def info_cell_values(layout_dir: str, type_id: int) -> dict:
+    con = parse_construction(os.path.join(layout_dir, "construction.txt"))
+    for cell in con["cells"]:
+        if cell.get("id") not in (None, "-") and int(cell["id"]) == type_id:
+            return {k: int(cell[k]) for k in ("gold", "tools", "wood", "bricks", "marble",
+                                              "upkeep")}
+    raise LayoutError(f"type {type_id} is not a construction.txt cell")
+
+
+def compose_info_panel(layout_dir: str, game_dir: str, type_id: int, values: dict | None = None,
+                       base=None):
+    """The placement panel for `type_id` over `base` (an RGB PIL image, default black): chrome
+    (info_panel, infoexit cut to its size, rotate arrows), the seven text boxes and the preview,
+    in draw_live_screen_xrgb's order. `values` defaults to construction.txt's recorded costs."""
+    from PIL import Image
+
+    hud = parse_hud(os.path.join(layout_dir, "hud.txt"))
+    w, h = hud["resolution"]
+    by_name = {el["name"]: el for el in hud["elements"]}
+    rgb = bytearray(base.convert("RGB").tobytes()) if base is not None else bytearray(w * h * 3)
+    full = (0, 0, w, h)
+    for name in ("info_panel", "infoexit", "rotate_left", "rotate_right"):
+        el = by_name[name]
+        sprite = decode_tex_rgba(_game_tex(game_dir, el["file"]), int(el["tex_id"]))
+        sw, sh = el["size"]
+        _blit_clipped(rgb, w, h, sprite, el["pos"][0], el["pos"][1],
+                      (el["pos"][0], el["pos"][1], sw, sh))
+    values = values or info_cell_values(layout_dir, type_id)
+    texts = {
+        "info_name": anlagen_names(game_dir).get(type_id, b""),
+        "info_tools": str(values["tools"]).encode(),
+        "info_wood": str(values["wood"]).encode(),
+        "info_bricks": str(values["bricks"]).encode(),
+        "info_marble": str(values["marble"]).encode(),
+        "info_gold": str(values["gold"]).encode(),
+        "info_upkeep": str(values["upkeep"]).encode(),
+    }
+    for name in INFO_TEXT_BOXES:
+        el = by_name[name]
+        if not texts[name]:
+            continue
+        img = info_render_text(_game_tex(game_dir, el["file"]), texts[name])
+        x = centred_text_x(el["pos"][0], el["size"][0], img[0])
+        _blit_clipped(rgb, w, h, img, x, el["pos"][1], full)
+    box = by_name["info_preview"]
+    shadow = by_name["info_preview_shadow"]
+    sprite = anlagen_preview_rgba(game_dir, type_id)
+    if sprite is not None:
+        bx, by = box["pos"]
+        bw, bh = box["size"]
+        # Evidence-backed: a sprite that fits is drawn unscaled and centred (docs/re/ui.md 2.5);
+        # a larger one goes through the one placeholder (OQ-612).
+        fits = sprite[0] <= bw and sprite[1] <= bh
+        fitted = sprite if fits else preview_placeholder_fit(sprite, bw, bh)
+        x = bx + (bw - fitted[0]) // 2
+        y = by + (bh - fitted[1]) // 2
+        clip = (bx, by, bw, bh)
+        _blit_clipped(rgb, w, h, fitted, x + shadow["pos"][0], y + shadow["pos"][1], clip,
+                      INFO_PREVIEW_SHADOW)
+        _blit_clipped(rgb, w, h, fitted, x, y, clip)
+    return Image.frombytes("RGB", (w, h), bytes(rgb))
+
+
+def rgb565_shown(v: tuple) -> tuple:
+    """What the original's 16-bit frame shows for a 24-bit colour: each channel rounded to 5/6/5
+    bits and expanded back (measured on INFOUNTERGRUND vs the GOG shots, docs/re/ui.md 2.5)."""
+    r = min((v[0] + 4) >> 3, 31)
+    g = min((v[1] + 2) >> 2, 63)
+    b = min((v[2] + 4) >> 3, 31)
+    return ((r * 255 + 15) // 31, (g * 255 + 31) // 63, (b * 255 + 15) // 31)
+
+
+def info_compare(mock, shot, rect=INFO_PANEL_RECT, quantise=True) -> dict:
+    """Per-pixel compare of the panel rectangle: exact equality after the RGB565 reduction when
+    `quantise` (a GOG shot), plain equality otherwise. Returns counts per region."""
+    x0, y0, rw, rh = rect
+    m, s = mock.load(), shot.convert("RGB").load()
+    bad = []
+    for y in range(y0, y0 + rh):
+        for x in range(x0, x0 + rw):
+            a = rgb565_shown(m[x, y]) if quantise else m[x, y]
+            if a != s[x, y]:
+                bad.append((x, y))
+    # "preview" is the 135 x 135 box and its frame: the original draws past the box (OQ-612).
+    regions = {"name": (819, 316, 200, 25), "preview": (838, 354, 147, 152),
+               "figures": (852, 564, 152, 145)}
+    by_region = {k: 0 for k in list(regions) + ["chrome"]}
+    for x, y in bad:
+        for k, (rx, ry, rw_, rh_) in regions.items():
+            if rx <= x < rx + rw_ and ry <= y < ry + rh_:
+                by_region[k] += 1
+                break
+        else:
+            by_region["chrome"] += 1
+    return {"checked": rw * rh, "bad": len(bad), "by_region": by_region,
+            "first": bad[:5]}
+
+
 def _normalize_argv(argv: list[str] | None) -> list[str] | None:
     if argv is None:
         argv = sys.argv[1:]
@@ -1431,7 +1688,24 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--screen")
     c.add_argument("--game-dir")
     c.add_argument("--out", default=os.path.join(REPO, "cache", "ui-mock"))
+    ic = sub.add_parser("info-compare")
+    ic.add_argument("--layout", default=os.path.join(REPO, "data", "ui"))
+    ic.add_argument("--type", type=int, required=True)
+    ic.add_argument("--shot", required=True)
+    ic.add_argument("--game-dir", required=True)
+    ic.add_argument("--out", default=os.path.join(REPO, "cache", "ui-mock"))
     args = p.parse_args(argv)
+    if args.cmd == "info-compare":
+        from PIL import Image
+
+        shot = Image.open(args.shot).convert("RGB")
+        mock = compose_info_panel(args.layout, args.game_dir, args.type, base=shot)
+        res = info_compare(mock, shot)
+        os.makedirs(args.out, exist_ok=True)
+        write_png(os.path.join(args.out, f"info_{args.type}_mock.png"), mock)
+        print(f"info-compare type {args.type} shot {os.path.basename(args.shot)} checked "
+              f"{res['checked']} bad {res['bad']} by_region {res['by_region']} first {res['first']}")
+        return 0
     if args.cmd == "write-inventory":
         info = write_inventory(args.game_dir, args.out)
         print(

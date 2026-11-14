@@ -366,6 +366,6 @@ TEST_CASE("SCRIPT1 published128 recordings stay unchanged and reach version refu
         read(fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" / "published128.save");
     const auto refused = sim::World::load(native, sim::TypeRegistry::empty());
     REQUIRE_FALSE(refused);
-    CHECK(refused.error() ==
-          "save: state stream version 128 is not supported (this build reads 138)");
+    CHECK(refused.error() == "save: state stream version 128 is not supported (this build reads " +
+                                 std::to_string(sim::kStateHashVersion) + ")");
 }

@@ -31,7 +31,7 @@ whole field means “absent”.
 | `dat.txt` | `anno1503-ui-dat 1` | Every `[TEXTURE]` ACCESS record in `Data/*.dat` that names a `.tex`. `segments` is `-` or one or more integers from the file (not truncated) |
 | `inc.txt` | `anno1503-ui-inc 1` | Every `ToolGfx/*.inc` ACCESS record, with texture width/height when the matching `.tex` parses |
 | `groups.txt` | `anno1503-ui-groups 1` | Filename groups with evidence (a `Data/*.dat` `[FILE]` pointer, or a stem that is a documented HUD/construction graphic) |
-| `hud.txt` | `anno1503-ui-hud 1` | Pixel rectangles at 1024 x 768 for the HUD and build-test surface, each naming the screenshot and the method (sprite-sad, pixel-row, atlas-right, view-dll, inc-size) |
+| `hud.txt` | `anno1503-ui-hud 1` | Pixel rectangles at 1024 x 768 for the HUD and build-test surface, each naming the screenshot and the method (sprite-sad, sprite-565, glyph-match, pixel-row, atlas-right, view-dll, inc-size). `align centre` marks a text box (`docs/re/ui.md` section 2.5) |
 | `construction.txt` | `anno1503-ui-construction 1` | Construction-menu categories, `THUMBNAIL*` / `TOOLTIP:BAUMENU_*` binds, `thumb_tex` (icon = thumb_tex + 3*record_index), and every cell id from `View.dll` tables plus HEAD costs |
 | `masks.txt` | `anno1503-ui-masks 1` | Rectangles the oracle skips in `compare` (live map, digits, portraits, clipped category column, live banner text) |
 

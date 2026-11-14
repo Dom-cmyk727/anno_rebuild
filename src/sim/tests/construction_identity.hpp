@@ -3,6 +3,7 @@
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
 
+#include "golden.hpp"
 #include "world_access.hpp"
 namespace construction_test {
 namespace sim = anno::sim;
@@ -30,7 +31,7 @@ legacy_registry(const sim::TypeRegistry& source, const sim::SimConfig& cfg) {
         return legacy.error();
     }
     // Independently read retained accepted K3 log: registry u64 at byte28, SHA25656e389b1...8765.
-    if (legacy.value()->digest() != 0x1bd52ba547c3878aULL) {
+    if (!anno::test::pin_matches("oracle_legacy_construction_registry", legacy.value()->digest())) {
         return std::string(
             "legacy construction projection changed a non-construction registry fact");
     }

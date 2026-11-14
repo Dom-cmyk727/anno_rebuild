@@ -35,15 +35,21 @@ def git(root, *args):
     return p.stdout
 
 
-def identity(root, outputs=()):
-    diff = git(root, "diff", "--binary", "HEAD")
+def identity(root, outputs=(), recorded=()):
+    excluded = []
+    for path in recorded:
+        try:
+            excluded.append(":(literal,exclude)" + path.relative_to(root).as_posix())
+        except ValueError:
+            pass
+    diff = git(root, "diff", "--binary", "HEAD", "--", ".", *excluded)
     untracked = git(root, "ls-files", "--others", "--exclude-standard", "-z")
     return {"root": str(root), "head": git(root, "rev-parse", "HEAD").decode().strip(),
             "diff_sha256": hashlib.sha256(diff).hexdigest(),
-            "status": git(root, "status", "--porcelain=v1").decode(errors="replace"),
+            "status": git(root, "status", "--porcelain=v1", "--", ".", *excluded).decode(errors="replace"),
             "untracked": {os.fsdecode(p): sha(root / os.fsdecode(p))
                           for p in untracked.split(b"\0") if p and (root / os.fsdecode(p)).is_file()
-                          and (root / os.fsdecode(p)).resolve() not in outputs}}
+                          and (root / os.fsdecode(p)).resolve() not in (*outputs, *recorded)}}
 
 
 def run(command, log, cwd):
@@ -124,6 +130,21 @@ def gate(args):
         raise RuntimeError("build directory belongs to a different source tree")
     if args.asset_policy == "unavailable" and os.environ.get("ANNO1503_GAME_DIR"):
         raise RuntimeError("unavailable-assets policy requires ANNO1503_GAME_DIR to be unset")
+    recorded = []
+    if args.record_fixture:
+        if os.environ.get("ANNO_UPDATE_GOLDEN") != "1" or os.environ.get("CI"):
+            raise RuntimeError("record-fixture requires ANNO_UPDATE_GOLDEN=1 outside CI")
+        fixtures = (source / "fixtures/synthetic").resolve()
+        for item in args.record_fixture:
+            path = (source / item).resolve()
+            try:
+                path.relative_to(fixtures)
+            except ValueError as error:
+                raise RuntimeError("record-fixture must stay under synthetic fixtures") from error
+            if (source / item).is_symlink() or not path.is_file():
+                raise RuntimeError("record-fixture must name an existing regular synthetic fixture")
+            recorded.append(path)
+        recorded = sorted(set(recorded))
     lock = Path(str(args.build_dir) + ".run.lock")
     lock.mkdir()  # Same lock as the existing shell runners; never remove someone else's lock.
     try:
@@ -131,11 +152,12 @@ def gate(args):
         inv = Path(str(args.log) + ".inventory.json")
         outputs = (args.log, inv)
         with args.log.open("x", encoding="utf-8") as log:
-            record = {"workflow": identity(ROOT, outputs), "source_before": identity(source, outputs),
+            record = {"workflow": identity(ROOT, outputs, recorded), "source_before": identity(source, outputs, recorded),
                       "started_unix": time.time(), "argv": sys.argv,
                       "asset_policy": args.asset_policy, "allowed_skips": args.allow_skip,
                       "game_dir": os.environ.get("ANNO1503_GAME_DIR"),
                       "configuration": args.config, "jobs": args.jobs,
+                      "recording_before": {str(p): sha(p) for p in recorded},
                       "cmake_cache_sha256": sha(cache), "gate_outputs": [str(p) for p in outputs]}
             log.write("== provenance " + json.dumps(record) + "\n")
             try:
@@ -193,7 +215,7 @@ def gate(args):
                     if cmd and Path(cmd[0]).is_file():
                         binaries.setdefault(cmd[0], None)
                 record["binaries"] = {p: sha(p) for p in binaries}
-                record["source_tested"] = identity(source, outputs)
+                record["source_tested"] = identity(source, outputs, recorded)
                 log.write("== tested identity " + json.dumps(record) + "\n")
                 log.write("== selection\n")
                 allowed = {"platform", "opt-in", *args.allow_skip}
@@ -213,7 +235,8 @@ def gate(args):
                             "platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
                             "VERDICT: PASS"]
                     code = 0
-                if identity(source, outputs) != record["source_tested"]:
+                log.write("== recording_after " + json.dumps({str(p): sha(p) for p in recorded}) + "\n")
+                if identity(source, outputs, recorded) != record["source_tested"]:
                     code = 9
                     rows.append("VERDICT: FAIL tested source changed during selection")
                 if rc and not code:
@@ -237,6 +260,8 @@ def main():
     parser.add_argument("--source-root", type=Path, default=ROOT)
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--log", type=Path)
+    parser.add_argument("--record-fixture", type=Path, action="append", default=[],
+                        help="explicit synthetic fixture output in local golden record mode")
     parser.add_argument("--target")
     parser.add_argument("--config", default="")
     parser.add_argument("--select", default=".")

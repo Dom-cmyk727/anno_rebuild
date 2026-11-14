@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integer fisher reference, from docs/re/fisher.md at accepted 6d57bb12 only.
+"""Integer fisher reference, from docs/re/fisher.md including its dated corrections.
 
 Usage: fisher_ref.py VECTORS; exit0 agree,1 disagree,2 malformed/missing/empty.
 TYPE LABEL key=value ... => expected_key=value ... (comments start with #).
@@ -15,13 +15,22 @@ converted: t0 and i0 are nonnegative exact numerator/denominator fractions;
 t0 is positive. This is the documented rational formula, not an x87 emulator.
 search_rect: integer farm origin/dimensions, no float position/continuation.
 sea_cell: heights is exactly four unsigned corner-height bytes.
+corner_grid: width*height HEIGHT samples -> logical (width+1)*(height+1) grid,
+copying interior samples and leaving the last row/column zero.
+--check-fish-water GAME_DIR is opt-in, reads via insel.py, checks goal plus eight-neighbour water,
+prints EVERY exception and exits1 if any; default expected counts are50 scenarios/2473 placements.
+Explicit --expected-scenarios/--expected-placements support bounded synthetic
+contract controls, not silently incomplete shipped-corpus acceptance.
 trip: cargo is the quantity AFTER a cut. cut_match: selection by goods71 then
 conditional harvest; only tile11 matches in the documented data. Nonmatches
 are unchanged because no cut is attempted; this is not an unconditional cut
 of a replaced or arbitrary resource tile. No ice-fishing chain is simulated.
 Float positions/continuations are refused with OQ-603. No engine state or port.
 """
+import argparse
+import hashlib
 import re
+import struct
 import sys
 from pathlib import Path
 
@@ -91,6 +100,8 @@ SCHEMAS = {
     'search_rect': dict(x=coordinate, y=coordinate, width=lambda x: bounded(x, 1, 255),
                         height=lambda x: bounded(x, 1, 255), radius=byte),
     'sea_cell': dict(heights=heights),
+    'corner_grid': dict(width=positive_word, height=positive_word,
+                        heights=lambda x: [] if x == '-' else [byte(v) for v in x.split(',')]),
     'trip': dict(cargo=word, capacity=word),
     'cut_match': dict(tile=word),
 }
@@ -118,6 +129,17 @@ class Record:
 
     def result(self, **values):
         return dict(values, consumed=self.used)
+
+
+def corner_grid(width, height, samples):
+    """§5: load-side logical grid; allocation has one further zero padding row."""
+    if len(samples) != width * height:
+        raise Malformed('HEIGHT sample count must equal width*height')
+    stride = width + 1
+    grid = [0] * (stride * (height + 1))
+    for y in range(height):
+        grid[y * stride:y * stride + width] = samples[y * width:(y + 1) * width]
+    return grid
 
 
 def farm_tick(r):
@@ -177,10 +199,13 @@ def evaluate(kind, fields):
         width = (2 * r['radius'] + 1 + (r['width'] - 1) % 2) & 255
         height = (2 * r['radius'] + 1 + (r['height'] - 1) % 2) & 255
         return r.result(x=x, y=y, width=width, height=height)
+    if kind == 'corner_grid':
+        return r.result(stride=r['width'] + 1,
+                        grid=corner_grid(r['width'], r['height'], r['heights']))
     if kind == 'sea_cell':
         # §3, 90560/9226b: integer four-corner mean; equality32 is closed.
         opened = int(sum(r['heights']) // 4 < 32)
-        return r.result(open=opened, free=511 * opened)
+        return r.result(open=opened, free=511 * (1 - opened))
     if kind == 'trip':
         # §3, 5c260: repeat below capacity, home at equality or above.
         repeat = int(r['cargo'] < r['capacity'])
@@ -219,7 +244,8 @@ def check(path):
             wanted = pairs(right.split())
             if set(wanted) != set(actual):
                 raise Malformed('expected all output keys including consumed, and no unknown keys')
-            parsed = {key: bounded(value) for key, value in wanted.items()}
+            parsed = {key: numbers(value) if isinstance(actual[key], list) else bounded(value)
+                      for key, value in wanted.items()}
             for key, value in parsed.items():
                 if actual[key] != value:
                     disagreements += 1
@@ -234,12 +260,91 @@ def check(path):
     return int(disagreements != 0)
 
 
+def check_fish_water(root, expected_scenarios, expected_placements):
+    # Explicitly opt-in: the normal vector checker reads no game files.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import insel
+    paths = sorted((root / 'Scenes').rglob('*.sze'))
+    if len(paths) != expected_scenarios:
+        raise Malformed(f'expected {expected_scenarios} scenarios, found {len(paths)}')
+    count = failed = goals = near_water = 0
+    for path in paths:
+        try:
+            file_data = path.read_bytes()
+            print(f'FILE {path.relative_to(root).as_posix()} '
+                  f'sha256={hashlib.sha256(file_data).hexdigest()}')
+            for island in insel.islands(file_data):
+                width, height = island['width'], island['height']
+                samples = insel.grid(island, 'HEIGHT', 1)
+                grid = corner_grid(width, height, samples)
+                stride = width + 1
+                for tag in ('GELAENDE', 'PROD2', 'FLUESSE'):
+                    for bx, by, bw, bh, data in insel.blocks(island, tag):
+                        if len(data) % 6:
+                            raise Malformed('partial placed-object item')
+                        for at in range(0, len(data), 6):
+                            kind, state, dx, dy = struct.unpack_from('<HHbb', data, at)
+                            if kind & 0x3fff != 11:
+                                continue
+                            x, y = bx + dx, by + dy
+                            if not (0 <= x < width and 0 <= y < height):
+                                raise Malformed('fish tile outside island')
+                            a = y * stride + x
+                            corners = [grid[a], grid[a + 1], grid[a + stride],
+                                       grid[a + stride + 1]]
+                            mean = sum(corners) // 4
+                            count += 1
+                            goal = mean >= 32
+                            # Local eight-neighbour shoreline check, not a global route proof.
+                            water = []
+                            for ny in range(max(0, y - 1), min(height, y + 2)):
+                                for nx in range(max(0, x - 1), min(width, x + 2)):
+                                    if (nx, ny) == (x, y):
+                                        continue
+                                    b = ny * stride + nx
+                                    if (grid[b] + grid[b + 1] + grid[b + stride]
+                                            + grid[b + stride + 1]) // 4 < 32:
+                                        water.append((nx, ny))
+                            goals += int(goal)
+                            near_water += int(bool(water))
+                            if not goal or not water:
+                                failed += 1
+                                print(f'EXCEPTION {path.relative_to(root).as_posix()} '
+                                      f'island={island["number"]} local={x},{y} '
+                                      f'world={island["x"] + x},{island["y"] + y} '
+                                      f'layer={tag} block={bx},{by} item={at // 6} '
+                                      f'corners={",".join(map(str, corners))} mean={mean} '
+                                      f'goal={int(goal)} adjacent_water={len(water)}')
+        except (insel.Bad, OSError, struct.error) as error:
+            raise Malformed(f'{path}: {error}') from error
+    if count != expected_placements:
+        raise Malformed(f'expected {expected_placements} fish placements, found {count}')
+    print(f'FISH_WATER scenarios={len(paths)} selected={count} executed={count} '
+          f'goals={goals} adjacent_water={near_water} passed={count - failed} '
+          f'failed={failed} empty=0 skipped=0 incomplete=0 neighbourhood=8')
+    return int(failed != 0)
+
+
 def main():
-    if len(sys.argv) != 2:
-        print('usage: fisher_ref.py VECTORS', file=sys.stderr)
-        return 2
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('vectors', nargs='?', type=Path)
+    parser.add_argument('--check-fish-water', type=Path, metavar='GAME_DIR')
+    parser.add_argument('--expected-scenarios', type=int)
+    parser.add_argument('--expected-placements', type=int)
+    args = parser.parse_args()
+    if (args.vectors is None) == (args.check_fish_water is None):
+        parser.error('choose VECTORS or --check-fish-water GAME_DIR')
+    if args.vectors and (args.expected_scenarios is not None or
+                         args.expected_placements is not None):
+        parser.error('expected counts belong to the opt-in corpus mode')
     try:
-        return check(Path(sys.argv[1]))
+        if args.vectors:
+            return check(args.vectors)
+        scenarios = 50 if args.expected_scenarios is None else args.expected_scenarios
+        placements = 2473 if args.expected_placements is None else args.expected_placements
+        if scenarios <= 0 or placements <= 0:
+            raise Malformed('expected corpus counts must be positive')
+        return check_fish_water(args.check_fish_water, scenarios, placements)
     except (Malformed, OSError, UnicodeError) as error:
         print(str(error), file=sys.stderr)
         return 2

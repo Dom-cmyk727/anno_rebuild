@@ -1,6 +1,6 @@
 # ZOOM-MEASURE-1: a camera sweep that measures what the owner sees
 
-**Status:** QUEUED 2026-11-13 by the Claude Code orchestrator for **the Windows executor**, with the owner's go ("Yes,
+**Status:** RELEASED 2026-11-13 by the Claude Code orchestrator to **the Windows executor**, with the owner's go ("Yes,
 both", on the plan in [`docs/render/zoom-smoothness.md`](../../render/zoom-smoothness.md) §6). It is released after
 SHIP-ORDER-1, under the standing go for the Windows lane. Step 1 of that plan.
 

@@ -208,6 +208,43 @@ TEST_CASE("mask layout: parses the real data/ui/masks.txt, including the live-di
     CHECK(m.mask("no such mask") == nullptr);
 }
 
+TEST_CASE("hud layout: the info panel's measured boxes (UI-INFO-1)") {
+    const auto loaded = anno::app::load_hud_layout(data_ui_dir() / "hud.txt");
+    REQUIRE(loaded.ok());
+    const auto& hud = loaded.value();
+    // View.dll gadget widths (0x1003007f, 0x1003008d, 0x100300ba, 0x1002fbac); positions
+    // glyph-match / RGB565 measured on the GOG shots (docs/re/ui.md section 2.5).
+    struct Box {
+        const char* name;
+        int x, y;
+        unsigned w;
+    };
+    for (const Box& b : {Box{"info_name", 819, 316, 200}, Box{"info_tools", 852, 564, 50},
+                         Box{"info_wood", 954, 564, 50}, Box{"info_bricks", 852, 593, 50},
+                         Box{"info_marble", 954, 593, 50}, Box{"info_gold", 852, 624, 145},
+                         Box{"info_upkeep", 852, 684, 145}}) {
+        const auto* el = hud.element(b.name);
+        REQUIRE_MESSAGE(el != nullptr, b.name);
+        CHECK(el->align == "centre");
+        CHECK(el->pos_x == b.x);
+        CHECK(el->pos_y == b.y);
+        CHECK(el->size_w == b.w);
+        CHECK(el->file == "toolgfx/mainsmall.zei");
+    }
+    const auto* preview = hud.element("info_preview");
+    REQUIRE(preview != nullptr);
+    CHECK(preview->pos_x == 844);
+    CHECK(preview->pos_y == 360);
+    CHECK(preview->size_w == 135);
+    CHECK(preview->size_h == 135);
+    const auto* infoexit = hud.element("infoexit");
+    REQUIRE(infoexit != nullptr);
+    CHECK(infoexit->size_h == 35); // the gadget, not the 38-row texture
+    const auto* rotate_right = hud.element("rotate_right");
+    REQUIRE(rotate_right != nullptr);
+    CHECK(rotate_right->pos_x == 988);
+}
+
 TEST_CASE("ui layout: parse errors name the line and what was wrong") {
     const auto no_version = anno::app::parse_hud_layout("resolution 1024 768\n");
     REQUIRE_FALSE(no_version.ok());
@@ -228,6 +265,16 @@ TEST_CASE("ui layout: parse errors name the line and what was wrong") {
         "anno1503-ui-construction 1\ncell public 0 0 id 501 state maybe\n");
     REQUIRE_FALSE(bad_state.ok());
     CHECK(bad_state.error().find("state") != std::string::npos);
+
+    // UI-INFO-1: `align` takes only `centre`.
+    const auto bad_align = anno::app::parse_hud_layout(
+        "anno1503-ui-hud 1\nelement info_gold pos 852 624 size 145 25 align left\n");
+    REQUIRE_FALSE(bad_align.ok());
+    CHECK(bad_align.error().find("align") != std::string::npos);
+    const auto good_align = anno::app::parse_hud_layout(
+        "anno1503-ui-hud 1\nelement info_gold pos 852 624 size 145 25 align centre\n");
+    REQUIRE(good_align.ok());
+    CHECK(good_align.value().elements.at(0).align == "centre");
 
     const auto bad_mask =
         anno::app::parse_mask_layout("anno1503-ui-masks 1\nmask gold_digits pos 34 size 96 35\n");

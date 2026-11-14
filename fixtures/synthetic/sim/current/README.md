@@ -38,3 +38,13 @@ identity used for comparison; it remains in its historical directory.
 
 `provenance.json` records the generation commands, the complete new-file digests and both shared
 fixture digests.
+
+## PINS-1 relocation (2026-11-13)
+
+This is now the stable current directory, renamed from `integrate2/current138/`.
+The integration table and `provenance.json` above describe the accepted integration
+snapshot before PINS-1. `goldens.txt` now also holds22 named expectations moved from
+C++ literals and is sorted by name; its file checksum therefore changes, while every
+original expected value and every replay/corpus/loop byte remains unchanged.
+Recording/check commands and oracle ownership are in
+[testing/README](../../../../docs/testing/README.md#pins-and-goldens).

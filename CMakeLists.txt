@@ -341,6 +341,7 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_live_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/house_live_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_live_vectors.txt)
+    add_test(NAME pins_contract COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/pins_contract_test.py)
     add_test(NAME population_oracles_agree
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/sim_stream.py --check)
     add_test(NAME ship_step_reference_selftest
@@ -377,4 +378,8 @@ if(ANNO_BUILD_TESTS)
   if(TARGET anno_sim_ubsan_probe)
     add_dependencies(economy_checks anno_sim_ubsan_probe)
   endif()
+endif()
+
+if(ANNO_BUILD_TESTS)
+  add_custom_target(pins_checks DEPENDS anno_sim_tests sim_replay)
 endif()

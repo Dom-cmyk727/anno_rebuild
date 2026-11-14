@@ -1542,6 +1542,7 @@ TEST_CASE("state stream header and settings scopes") {
     // registry of one empty slot), events (count 0) and timers_monopoly (5 stopped
     // timers, 28 empty monopoly entries).
     Stream expected;
+    expected.u32(1); // header base version
     expected.u32(sim::kStateHashVersion);
     expected.u64(0x00314b424e4f4345ULL); // ECONBK1 lineage schema
     expected.u32(sim::kPrngTimelineVersion);
@@ -1552,13 +1553,19 @@ TEST_CASE("state stream header and settings scopes") {
     for (int i = 0; i < 22; ++i) {
         expected.str("default");
     }
+    expected.u64(0); // empty header extensions
     const std::size_t header_size = expected.v.size();
+    expected.u32(1); // clock_rng base version
     expected.u64(0); // clock.ms
     expected.u64(0); // clock.last_tick
     expected.u64(2048);
     expected.u64(w.rng().table_digest());
     expected.u32(0);
+    expected.u64(0); // previous section: no extensions
+    expected.u32(1); // next section base version
     expected_settings(expected);
+    expected.u64(0);  // previous section: no extensions
+    expected.u32(1);  // next section base version
     expected.u64(1);  // ids: next_figure
     expected.u64(1);  // ids: next_event_seq
     expected.u64(1);  // ids: next_order_id (stream 122)
@@ -1566,20 +1573,30 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u32(0);  // ids: event750_acc
     expected.u32(0);  // ids: monopoly.acc
     expected.u8(0);   // ids: faulted
+    expected.u64(0);  // previous section: no extensions
+    expected.u32(1);  // next section base version
     expected.u64(32); // players: slot count
     for (int i = 0; i < 32; ++i) {
         expected.u8(0); // an absent slot
     }
     expected.u16(0);                     // stamp
     expected.u32(0);                     // cursor
+    expected.u64(0);                     // previous section: no extensions
+    expected.u32(1);                     // next section base version
     expected.u64(0);                     // islands: slot count
+    expected.u64(0);                     // previous section: no extensions
+    expected.u32(1);                     // next section base version
     expected.u64(0xffffffffffffffffULL); // figures: hint -1
     expected.u32(0);                     // cursor
     expected.u64(1);                     // slot count
     expected.u8(0);                      // the empty slot
     expected.u16(0);                     // stamp
     expected.u64(0);                     // expiry
+    expected.u64(0);                     // previous section: no extensions
+    expected.u32(1);                     // next section base version
     expected.u64(0);                     // events: count
+    expected.u64(0);                     // previous section: no extensions
+    expected.u32(1);                     // next section base version
     expected.u32(0);                     // timers: last_tick
     expected.u64(5);                     // timers: active
     for (int i = 0; i < 5; ++i) {
@@ -1594,6 +1611,8 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u32(0); // time_s
         expected.u8(0);  // no player
     }
+    expected.u64(0); // previous section: no extensions
+    expected.u32(1); // next section base version
     expected.u64(0); // script: source length
     for (auto v : {1048576u, 65536u, 128u, 100000u, 4096u})
         expected.u32(v);
@@ -1605,21 +1624,22 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u32(0); // cursor,arg,faultoffset,work
     expected.u64(0);
     expected.u64(0); // signals/bindings
+    expected.u64(0); // empty script extensions
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 138);
+    CHECK(sim::kStateHashVersion == 139);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
-    CHECK(scope_offset(w, "settings") == header_size + 36);
-    CHECK(scope_offset(w, "ids") == header_size + 36 + 41);
-    CHECK(scope_offset(w, "players") == header_size + 36 + 41 + 41);
-    CHECK(scope_offset(w, "islands") == header_size + 36 + 41 + 41 + 46);
-    CHECK(scope_offset(w, "figures") == header_size + 36 + 41 + 41 + 46 + 8);
-    // figures: 31 bytes (the empty registry without the deferred list, T22).
-    CHECK(scope_offset(w, "events") == header_size + 36 + 41 + 41 + 46 + 8 + 31);
-    CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 41 + 41 + 46 + 8 + 31 + 8);
-    CHECK(scope_offset(w, "script") == header_size + 36 + 41 + 41 + 46 + 8 + 31 + 8 + 193);
-    CHECK(bytes.size() == header_size + 36 + 41 + 41 + 46 + 8 + 31 + 8 + 193 + 67);
+    CHECK(scope_offset(w, "settings") == header_size + 48);
+    CHECK(scope_offset(w, "ids") == header_size + 48 + 53);
+    CHECK(scope_offset(w, "players") == header_size + 48 + 53 + 53);
+    CHECK(scope_offset(w, "islands") == header_size + 48 + 53 + 53 + 58);
+    CHECK(scope_offset(w, "figures") == header_size + 48 + 53 + 53 + 58 + 20);
+    // figures: 43 bytes (the empty registry without the deferred list, T22).
+    CHECK(scope_offset(w, "events") == header_size + 48 + 53 + 53 + 58 + 20 + 43);
+    CHECK(scope_offset(w, "timers_monopoly") == header_size + 48 + 53 + 53 + 58 + 20 + 43 + 20);
+    CHECK(scope_offset(w, "script") == header_size + 48 + 53 + 53 + 58 + 20 + 43 + 20 + 205);
+    CHECK(bytes.size() == header_size + 48 + 53 + 53 + 58 + 20 + 43 + 20 + 205 + 79);
 }
 
 TEST_CASE("state hash moves with every config rules settings and seam field") {

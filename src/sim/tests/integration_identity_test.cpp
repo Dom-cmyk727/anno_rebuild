@@ -56,7 +56,8 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
         const auto refused = sim::World::load(bytes, f.types.registry);
         REQUIRE_FALSE(refused);
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
-                                     " is not supported (this build reads 138)");
+                                     " is not supported (this build reads " +
+                                     std::to_string(sim::kStateHashVersion) + ")");
     }
     auto rec = sim::Recorder::start(f.world);
     REQUIRE(rec);
@@ -98,7 +99,7 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
     // Current outer frame cannot disguise an incompatible inner state header.
     auto inner = log;
     REQUIRE(inner.initial_save[20] == 0); // original PRNG table, first section starts at29
-    island_test::put32(inner.initial_save, 29, 130);
+    island_test::put32(inner.initial_save, 33, 130);
     island_test::reseal(inner.initial_save);
     auto inner_refused = sim::replay(w.value(), inner);
     REQUIRE_FALSE(inner_refused);
@@ -136,7 +137,8 @@ TEST_CASE("expansion identity: real133 archives and independent replay identity 
     const auto old_recording = bytes_of(base / "econbook1/current133/g2.log");
     const auto old = sim::World::load(old_native, f.types.registry);
     REQUIRE_FALSE(old.ok());
-    CHECK(old.error() == "save: state stream version 133 is not supported (this build reads 138)");
+    CHECK(old.error() == "save: state stream version 133 is not supported (this build reads " +
+                             std::to_string(sim::kStateHashVersion) + ")");
     const auto decoded = sim::read_log(old_recording);
     REQUIRE_FALSE(decoded.ok());
     CHECK(decoded.error() ==
@@ -182,7 +184,7 @@ TEST_CASE("expansion identity: real133 archives and independent replay identity 
 
     auto inner = good;
     REQUIRE(inner.initial_save.at(20) == 0);
-    island_test::put32(inner.initial_save, 29, 133); // only inner header, outer native still134
+    island_test::put32(inner.initial_save, 33, 133); // only inner header, outer native still134
     island_test::reseal(inner.initial_save);
     refused = sim::replay(current.value(), inner);
     REQUIRE_FALSE(refused.ok());
@@ -206,7 +208,8 @@ TEST_CASE("salt identity135: real133 and real134 archives refuse, each with its 
         const auto refused = sim::World::load(*bytes, f.types.registry);
         REQUIRE_FALSE(refused.ok());
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
-                                     " is not supported (this build reads 138)");
+                                     " is not supported (this build reads " +
+                                     std::to_string(sim::kStateHashVersion) + ")");
     }
     // actual predecessor recordings: the replay header carries the identity
     for (const char* rel : {"econbook1/current133/g2.log", "expand1/current134/g2.log"}) {
@@ -220,8 +223,8 @@ TEST_CASE("salt identity135: real133 and real134 archives refuse, each with its 
           sim::World::load(n134, f.types.registry).error());
 }
 
-TEST_CASE("combined identity138: valid native and replay artifacts 134 through 137 refuse at "
-          "their exact boundary, beside a valid 138 control") {
+TEST_CASE("combined identity139: valid native and replay artifacts 134 through 138 refuse at "
+          "their exact boundary, beside a valid 139 control") {
     const auto f = script_test::make();
     const auto bytes_of = [](const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary);
@@ -259,18 +262,21 @@ TEST_CASE("combined identity138: valid native and replay artifacts 134 through 1
     };
     const auto base = std::filesystem::path(ANNO_FIXTURES_DIR) / "sim";
     const std::array replay_paths{"expand1/current134/g2.log", "salt1/current135/g2.log",
-                                  "freight/current136/g2.log", "iron2/current137/g2.log"};
+                                  "freight/current136/g2.log", "iron2/current137/g2.log",
+                                  "legacy138/g2.log"};
     std::vector<std::pair<unsigned, std::vector<std::uint8_t>>> natives;
     natives.emplace_back(134, bytes_of(base / "freight/legacy134/g2.save"));
     natives.emplace_back(135, bytes_of(base / "salt1/legacy135/g2.save"));
     natives.emplace_back(136, initial_save_of(base / replay_paths[2]));
     natives.emplace_back(137, initial_save_of(base / replay_paths[3]));
+    natives.emplace_back(138, bytes_of(base / "legacy138/g2.save"));
     for (const auto& [version, bytes] : natives) {
         INFO(version);
         const auto refused = sim::World::load(bytes, f.types.registry);
         REQUIRE_FALSE(refused.ok());
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
-                                     " is not supported (this build reads 138)");
+                                     " is not supported (this build reads " +
+                                     std::to_string(sim::kStateHashVersion) + ")");
     }
     for (const char* rel : replay_paths) {
         const auto decoded = sim::read_log(bytes_of(base / rel));
@@ -279,7 +285,7 @@ TEST_CASE("combined identity138: valid native and replay artifacts 134 through 1
               "stream (byte 24): replay state stream version differs from this build's");
     }
 
-    // A native 138 and an outer replay 138 are accepted immediately beside the four refusals.
+    // A native139 and outer replay139 are accepted beside all five actual predecessors.
     auto world = f.world;
     auto recorder = sim::Recorder::start(world);
     REQUIRE(recorder.ok());
@@ -288,6 +294,20 @@ TEST_CASE("combined identity138: valid native and replay artifacts 134 through 1
     const auto current_bytes = sim::write_log(good);
     REQUIRE(current_bytes.ok());
     REQUIRE(sim::read_log(current_bytes.value()).ok());
+
+    auto foreign_section = good;
+    REQUIRE(foreign_section.initial_save[20] == 0);
+    REQUIRE(island_test::get32(foreign_section.initial_save, 29) == 1);
+    island_test::put32(foreign_section.initial_save, 29, 2);
+    island_test::reseal(foreign_section.initial_save);
+    auto unchanged_world = world;
+    const auto unchanged_bytes = unchanged_world.save();
+    const auto section_refusal = sim::replay(unchanged_world, foreign_section);
+    REQUIRE_FALSE(section_refusal.ok());
+    CHECK(section_refusal.error().find(
+              "section header: base version 2 is not supported (this build reads 1)") !=
+          std::string::npos);
+    CHECK(unchanged_world.save() == unchanged_bytes);
 
     auto target = sim::World::load(good.initial_save, f.types.registry);
     REQUIRE(target.ok());

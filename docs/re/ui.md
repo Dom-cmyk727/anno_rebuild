@@ -542,6 +542,12 @@ first city in (island, city) order. Hidden only before the first founding. (R2's
 away from the city's island, so a player who did not scroll there never saw them.) The gold
 counter is unchanged.
 
+Test note (fix round R5): `live_screen_matches_oracle` (`tools/test/live_screen_compare.py`)
+compares `hud_idle` in the state of `hud_idle_running`, before the first founding: a second
+launch on the ship start (`lan5-ship-a.json`, seat 0, `live_screen_hud_idle.script`), exact, no
+masks for the counter icons. The two construction screens stay on `lan5.txt`, whose developer
+city shows the counters their oracle shots draw.
+
 ### 5.3 The four tabs (UI-WINDOW-1 fix round R2, 2026-11-14)
 
 The tabs are switches: one is always selected (`MAINTAB` `frame_selected`, the others

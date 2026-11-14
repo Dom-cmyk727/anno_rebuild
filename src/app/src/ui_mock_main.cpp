@@ -132,8 +132,9 @@ int main(int argc, char** argv) {
                 frame.pixels[i + c] = static_cast<std::uint8_t>(frame.pixels[i + c] * a / 255);
             frame.pixels[i + 3] = 255;
         }
-        std::printf("layer %dx%d s %.7g k %.9g off %d %d\n", t.ui_w, t.ui_h,
-                    static_cast<double>(t.s), static_cast<double>(t.k), t.off_x, t.off_y);
+        std::printf("layer %dx%d s %.7g k %.9g off %d %d draw %d %d %d %d\n", t.ui_w, t.ui_h,
+                    static_cast<double>(t.s), static_cast<double>(t.k), t.off_x, t.off_y, t.draw_x0,
+                    t.draw_y0, t.draw_x1, t.draw_y1);
         const auto err = anno::app::write_png(args->out, frame.width, frame.height, frame.pixels);
         if (!err.empty()) {
             std::fprintf(stderr, "write_png: %s\n", err.c_str());

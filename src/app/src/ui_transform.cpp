@@ -52,6 +52,9 @@ void layer_size(int w, int h, float s0, const UiScaleRule& rule, UiTransform& ou
 /// UpdateResolutionAndClipping's uniform aspect fit of the layer into the client (0x5a961..
 /// 0x5aab1).
 void fit(UiTransform& t) {
+    t.draw_x0 = t.draw_y0 = 0;
+    t.draw_x1 = t.client_w;
+    t.draw_y1 = t.client_h;
     if (t.ui_w <= 0 || t.ui_h <= 0 || t.client_w <= 0 || t.client_h <= 0) {
         t.k = 1.0f;
         t.off_x = t.off_y = 0;
@@ -65,10 +68,18 @@ void fit(UiTransform& t) {
         t.k = kh;
         t.off_x = trunc_to_int((cw - span + 1.0f) * 0.5f);
         t.off_y = 0;
+        // Texture::InitTexture 0x5ca1d..0x5ca2d: (W - span) * 0.5f + 0.5f, right = W - off.
+        const int off = trunc_to_int((cw - span) * 0.5f + 0.5f);
+        t.draw_x0 = off;
+        t.draw_x1 = t.client_w - off;
     } else {
         t.k = cw / lw;
         t.off_x = 0;
         t.off_y = trunc_to_int((ch - t.k * lh + 1.0f) * 0.5f);
+        // 0x5ca32..0x5ca51: k = W / uiW, (H - k * uiH) * 0.5f + 0.5f, bottom = H - off.
+        const int off = trunc_to_int((ch - t.k * lh) * 0.5f + 0.5f);
+        t.draw_y0 = off;
+        t.draw_y1 = t.client_h - off;
     }
 }
 
@@ -115,28 +126,24 @@ assets::Rgba scale_ui_layer(const assets::Rgba& layer, const UiTransform& t) {
     out.pixels.assign(
         static_cast<std::size_t>(t.client_w) * static_cast<std::size_t>(t.client_h) * 4, 0);
     const int lw = layer.width, lh = layer.height;
-    if (lw <= 0 || lh <= 0 || !(t.k > 0.0f) ||
+    if (lw <= 0 || lh <= 0 || t.draw_x1 <= t.draw_x0 || t.draw_y1 <= t.draw_y0 ||
         layer.pixels.size() < static_cast<std::size_t>(lw) * static_cast<std::size_t>(lh) * 4)
         return out;
-    // The fitted rectangle in client pixels: [off, off + k * size), the whole pixels whose
-    // centre falls inside it.
-    const double k = t.k;
-    const auto span = [k](int off, int size, int client) {
-        const double end = off + k * size;
-        const int lo = std::clamp(off, 0, client);
-        const int hi = std::clamp(static_cast<int>(std::ceil(end - 0.5)), 0, client);
-        return std::pair{lo, hi};
-    };
-    const auto [x_lo, x_hi] = span(t.off_x, lw, t.client_w);
-    const auto [y_lo, y_hi] = span(t.off_y, lh, t.client_h);
+    // The draw rectangle (Texture::InitTexture's quad), clipped to the client; the layer is
+    // stretched to it per axis.
+    const int x_lo = std::clamp(t.draw_x0, 0, t.client_w);
+    const int x_hi = std::clamp(t.draw_x1, 0, t.client_w);
+    const int y_lo = std::clamp(t.draw_y0, 0, t.client_h);
+    const int y_hi = std::clamp(t.draw_y1, 0, t.client_h);
     struct Tap {
         int i0 = 0, i1 = 0;
         float f = 0.0f;
     };
-    const auto taps = [k](int lo, int hi, int off, int size) {
+    const auto taps = [](int lo, int hi, int x0, int x1, int size) {
+        const double per = static_cast<double>(size) / static_cast<double>(x1 - x0);
         std::vector<Tap> v(static_cast<std::size_t>(std::max(hi - lo, 0)));
         for (int c = lo; c < hi; ++c) {
-            const double u = (c + 0.5 - off) / k - 0.5;
+            const double u = (c + 0.5 - x0) * per - 0.5;
             const double fl = std::floor(u);
             const int i0 = static_cast<int>(fl);
             v[static_cast<std::size_t>(c - lo)] = {std::clamp(i0, 0, size - 1),
@@ -145,8 +152,8 @@ assets::Rgba scale_ui_layer(const assets::Rgba& layer, const UiTransform& t) {
         }
         return v;
     };
-    const std::vector<Tap> xs = taps(x_lo, x_hi, t.off_x, lw);
-    const std::vector<Tap> ys = taps(y_lo, y_hi, t.off_y, lh);
+    const std::vector<Tap> xs = taps(x_lo, x_hi, t.draw_x0, t.draw_x1, lw);
+    const std::vector<Tap> ys = taps(y_lo, y_hi, t.draw_y0, t.draw_y1, lh);
     const std::uint8_t* src = layer.pixels.data();
     const auto row = static_cast<std::size_t>(lw) * 4;
     for (int y = y_lo; y < y_hi; ++y) {
@@ -184,8 +191,9 @@ assets::Rgba scale_ui_layer(const assets::Rgba& layer, const UiTransform& t) {
 
 const assets::Rgba& UiLayerScaler::scale(const assets::Rgba& layer, const UiTransform& t) {
     const bool same_t = t_.client_w == t.client_w && t_.client_h == t.client_h &&
-                        t_.ui_w == t.ui_w && t_.ui_h == t.ui_h && t_.k == t.k &&
-                        t_.off_x == t.off_x && t_.off_y == t.off_y;
+                        t_.ui_w == t.ui_w && t_.ui_h == t.ui_h && t_.draw_x0 == t.draw_x0 &&
+                        t_.draw_x1 == t.draw_x1 && t_.draw_y0 == t.draw_y0 &&
+                        t_.draw_y1 == t.draw_y1;
     if (valid_ && same_t && layer_.width == layer.width && layer_.height == layer.height &&
         layer_.pixels == layer.pixels)
         return out_;

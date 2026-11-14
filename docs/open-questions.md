@@ -2987,7 +2987,7 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** the three HE samples are all at 1351 lines; `res` is a resolution record in the settings path, not traced to `GetClientRect`. The rebuild's `--ui-scale` option reads the client height.
 - **How to resolve:** trace `res` in `UpdateGameSettings` to its source; or an HE windowed run at a client height of 1200 or less with a display mode above 1200.
 
-## OQ-618: Pop-ups (the pause parchment, `MESSAGEBOX_*`) at other window sizes (UI-WINDOW-1, 2026-11-14; OPEN)
-- **Question:** where the original and HE place pop-up windows when the screen is larger than 1024 x 768.
-- **What we know:** the pause parchment and its button are measured only at 1024 x 768 (222, 191) and (286, 500) (`hud.txt`, shot `f15_pause`). HE `View.dll` 0x1f3d4 keeps windows inside width `Sizex` and height `min(Sizey, 768)` (he-ui-scale.md 3, inferred), which suggests pop-ups stay in the top 768 UI rows. The rebuild keeps the 1024 x 768 position (top-left anchored) at every size; a click on the parchment while paused is taken by the UI.
-- **How to resolve:** read GOG `View.dll`'s message-box placement (the parchment's caller) and HE's 0x1f3d4 callers; an HE or GOG capture of the pause parchment at a larger mode.
+## OQ-619: The HE UI's draw and click mappings differ by up to a pixel (UI-WINDOW-1 fix round R1, 2026-11-14; OPEN)
+- **Question:** whether a click on the last pixel row/column of a stretched HE UI lands on the UI pixel drawn there.
+- **What we know:** HE draws the layer per axis onto `Texture::InitTexture`'s quad (AnnoDisplay 0x5c9dd..0x5cb2a; at 2542 x 1351, 2.0: 2542 / 1495 by 1351 / 794), while clicks divide by the uniform k of `UpdateResolutionAndClipping` 0x5a961 (1.70033443; AnnoFrame 0x22a26). At client row 1350 the draw samples layer row 793.2 and the click maps to 793; because the two factors differ by 0.07 %, a client pixel's drawn layer pixel and its clicked layer pixel differ by at most one. The rebuild keeps both as HE has them (draw per axis, click by k); hit rectangles are much larger than a pixel.
+- **How to resolve:** an HE run clicking the bottom row's last pixels of a button at 2.0; or accept as is.

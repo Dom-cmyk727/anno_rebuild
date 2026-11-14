@@ -136,6 +136,54 @@ TEST_CASE("ui transform: the original rule is 1:1 at 1024 x 768 and up and fitte
     CHECK(small.off_y == 0);
 }
 
+TEST_CASE("ui transform: the draw rectangle is Texture::InitTexture's quad stretched per axis") {
+    // 2542 x 1351 at 2.0 and 1.5: width-limited with an offset of 0, so the quad covers the
+    // whole client and the layer is stretched by 2542 / 1495 across and 1351 / 794 down - not by
+    // the uniform k (1.70033443) the click mapping uses, which would leave the last row empty.
+    for (const float s : {1.5f, 2.0f}) {
+        CAPTURE(s);
+        const auto t = app::he_ui_transform(2542, 1351, s);
+        CHECK(t.draw_x0 == 0);
+        CHECK(t.draw_y0 == 0);
+        CHECK(t.draw_x1 == 2542);
+        CHECK(t.draw_y1 == 1351);
+        CHECK_FALSE(t.identity());
+    }
+    // Below the reference: (W - kh * 1024) * 0.5f + 0.5f = 45.83 -> 45, right edge 1024 - 45.
+    const auto narrow = app::original_ui_transform(1024, 700);
+    CHECK(narrow.draw_x0 == 45);
+    CHECK(narrow.draw_x1 == 979);
+    CHECK(narrow.draw_y0 == 0);
+    CHECK(narrow.draw_y1 == 700);
+    const auto tall = app::original_ui_transform(700, 768); // (768 - 525) * 0.5f + 0.5f = 122
+    CHECK(tall.draw_x0 == 0);
+    CHECK(tall.draw_x1 == 700);
+    CHECK(tall.draw_y0 == 122);
+    CHECK(tall.draw_y1 == 646);
+    // 1:1 at the reference and above: the whole client, identity.
+    const auto one = app::original_ui_transform(2542, 1351);
+    CHECK(one.identity());
+    CHECK(one.draw_x1 == 2542);
+    CHECK(one.draw_y1 == 1351);
+
+    // The stretched layer fills the last client row at 2.0 (an opaque layer gives an opaque
+    // image everywhere); a uniform k * 794 = 1350.07 would have left row 1350 transparent.
+    const auto t = app::he_ui_transform(2542, 1351, 2.0f);
+    anno::assets::Rgba layer;
+    layer.width = static_cast<std::uint16_t>(t.ui_w);
+    layer.height = static_cast<std::uint16_t>(t.ui_h);
+    layer.pixels.assign(static_cast<std::size_t>(t.ui_w) * static_cast<std::size_t>(t.ui_h) * 4,
+                        255);
+    const auto out = app::scale_ui_layer(layer, t);
+    REQUIRE(out.width == 2542);
+    REQUIRE(out.height == 1351);
+    std::size_t opaque_last_row = 0;
+    for (std::size_t x = 0; x < 2542; ++x) {
+        opaque_last_row += out.pixels[(1350U * 2542U + x) * 4 + 3] == 255 ? 1U : 0U;
+    }
+    CHECK(opaque_last_row == 2542U);
+}
+
 TEST_CASE("ui transform: clicks map back with trunc((p - off) / k)") {
     const auto s20 = app::he_ui_transform(2542, 1351, 2.0f);
     // 2125 / 1.70033443 = 1249.75 -> 1249; 2126 -> 1250.34 -> 1250 (the panel's first column).

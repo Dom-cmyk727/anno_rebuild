@@ -268,8 +268,9 @@ UI-WINDOW-1 (`src/app` `ui_transform.hpp`, `docs/re/ui.md` 5.1):
   unchanged. A smaller window gets the 1024 × 768 layer fitted into it (OQ-616).
 - **Option `--ui-scale <1.0..2.0>`** (HE's "Interface-Skalierung", `docs/re/he-ui-scale.md`):
   1.0 at 1200 window lines or fewer (OQ-617); otherwise the setting stepped down by 0.1 until the
-  UI keeps at least 1024 × 768 UI pixels; that layer stretched uniformly and bilinearly to the
-  window; clicks mapped back with `trunc((p − off) / k)`.
+  UI keeps at least 1024 × 768 UI pixels; that layer stretched bilinearly, per axis, onto HE's
+  draw quad (the whole window unless letterboxed; fix round R1); clicks mapped back with
+  `trunc((p − off) / k)` (OQ-619).
 - The numbers (1024 × 768, 245, 0.1, 1.0..2.0, 1200) are data (`UiScaleRule`, `data/ui/hud.txt`)
   with the original/HE values as defaults.
 

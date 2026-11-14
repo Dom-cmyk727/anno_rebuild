@@ -11,17 +11,29 @@
 //   s += -0.1f (0xBDCCCCCD at 0xff901c); once s <= 1.0f the layer is computed once more with
 //   1.0f / s of that stepped s and s becomes 1.0f (0x2ce63..0x2ce89). A setting <= 0 skips the
 //   loop (0x2ce14 `comiss`/`jbe`), leaving the layer 0 x 0.
-// - the 1200-line rule: UpdateGameSettings 0x2d943 (`cmp [res+4], 0x4b0; jle`) and 0x2da17
-//   (`mov [AdditionalOptions+0xc], 1.0f`): at 1200 lines or fewer the setting is 1.0. Whether
-//   that reads the client height or a listed display mode is open (OQ-617); this reads the
-//   client height.
-// - the fit: UpdateResolutionAndClipping 0x5a961..0x5aab1: kh = float(H) / float(uiH); if
-//   float(W) > kh * float(uiW) (strict, `comiss`/`jbe` at 0x5a9a7) the layer is height-limited:
-//   k = kh, offX = cvttss2si((float(W) - kh * uiW + 1.0f) * 0.5f), offY = 0; otherwise
-//   width-limited: k = float(W) / float(uiW), offY = cvttss2si((float(H) - k * uiH + 1.0f) *
-//   0.5f), offX = 0 (1.0f at 0xff8df8, 0.5f at 0xff8da0).
-// - clicks: AnnoFrame.dll window procedure 0x22a26..0x22a88: u = cvttss2si((float(p) -
-//   float(off)) / k) per axis.
+// - the 1200-line rule: UpdateGameSettings 0x2d943 (`cmp dword ptr [rax + r14*8 + 4], 0x4b0;
+//   jle`, rax = [rdi+0x568] at 0x2d931, r14 = the settings field +0xd8 at 0x2d910) and 0x2da17
+//   (`mov [AdditionalOptions+0xc], 1.0f`): the height of the display mode chosen in the options'
+//   list (8-byte {w, h} entries, tDisplay::GetResolutions) of 1200 lines or fewer forces the
+//   setting to 1.0. The rebuild has no mode list in a window; it reads the window's client height
+//   instead, the windowed counterpart of the chosen mode's height (OQ-617).
+// - the click mapping: UpdateResolutionAndClipping(IIII_N) 0x5a961..0x5aab1: kh = float(H) /
+//   float(uiH); if float(W) > kh * float(uiW) (strict, `comiss`/`jbe` at 0x5a9a7) the layer is
+//   height-limited: k = kh, offX = cvttss2si((float(W) - kh * uiW + 1.0f) * 0.5f), offY = 0;
+//   otherwise width-limited: k = float(W) / float(uiW), offY = cvttss2si((float(H) - k * uiH +
+//   1.0f) * 0.5f), offX = 0 (1.0f at 0xff8df8, 0.5f at 0xff8da0). k and the offsets reach only
+//   tDisplay+0x1a8..0x1b4 (0x2d168..0x2d1b0), whose readers in AnnoDisplay are the getters
+//   0x18940..0x18970 and copies (0x18fab, 0x19431) - no draw path. AnnoFrame.dll's window
+//   procedure 0x22a26..0x22a88 uses them for clicks: u = cvttss2si((float(p) - float(off)) / k).
+// - the draw: Texture::InitTexture 0x5c940 builds each layer's quad at 0x5c9dd..0x5cb2a from the
+//   client size ([renderer+0x24], [+0x28]) and the layer size ([+0x208 + 0xa0*i], [+0x20c ...]):
+//   the same aspect test, then off = cvttss2si((float(W) - kh * uiW) * 0.5f + 0.5f) (`mulss`
+//   then `addss`, 0.5f at 0xff8da0), and the quad's corners are (off, 0) and (W - off, H)
+//   (height-limited) or (0, off) and (W, H - off) (width-limited), UV 0..1. The viewport is the
+//   whole client (RSSetViewports 0x5ac65..0x5acb4). So the layer is stretched to that rectangle
+//   per axis, kx = (W - 2 off) / uiW and ky = H / uiH (or the transpose) - not by the uniform k.
+//   At 2542 x 1351, 2.0: kx = 2542 / 1495, ky = 1351 / 794, the quad covers every client row.
+//   The draw and the click mapping can differ by up to a pixel (OQ-619).
 //
 // The default (the original) is the same arithmetic with the setting 1.0: a window of at least
 // 1024 x 768 gets a 1:1 layer of the window's own size (k 1, offsets 0); a smaller window gets a
@@ -57,14 +69,19 @@ struct UiTransform {
     int ui_w = 0, ui_h = 0;
     /// The effective scale after the step-down (HE's tDisplay+0x554): 1.0 when forced.
     float s = 1.0f;
-    /// The uniform factor from layer to client pixels, and the layer's top-left in the client.
+    /// The click mapping's uniform factor and the layer's top-left (UpdateResolutionAndClipping
+    /// 0x5a961; what AnnoFrame 0x22a26 divides by).
     float k = 1.0f;
     int off_x = 0, off_y = 0;
+    /// The rectangle the layer is drawn into, [draw_x0, draw_x1) x [draw_y0, draw_y1) in client
+    /// pixels (Texture::InitTexture 0x5c9dd..0x5cb2a): the layer is stretched to it per axis.
+    int draw_x0 = 0, draw_y0 = 0, draw_x1 = 0, draw_y1 = 0;
 
     /// True when the layer is the client 1:1 (k exactly 1, no offset, same size): the UI is then
     /// drawn straight into the frame, never resampled.
     [[nodiscard]] bool identity() const {
-        return k == 1.0f && off_x == 0 && off_y == 0 && ui_w == client_w && ui_h == client_h;
+        return k == 1.0f && off_x == 0 && off_y == 0 && ui_w == client_w && ui_h == client_h &&
+               draw_x0 == 0 && draw_y0 == 0 && draw_x1 == client_w && draw_y1 == client_h;
     }
 
     /// The layer pixel under client pixel (`px`, `py`): `trunc((p - off) / k)` in float32
@@ -91,11 +108,11 @@ struct UiTransform {
                    : original_ui_transform(client_w, client_h, rule);
 }
 
-/// The UI layer `layer` (straight alpha, `t.ui_w` x `t.ui_h`) stretched uniformly by `t.k` to a
-/// straight-alpha image of the client's size, placed at (`t.off_x`, `t.off_y`); transparent
-/// outside the fitted rectangle. Bilinear (HE's UI sampler: AnnoDisplay 0x5e081, D3D11 filter
-/// 0x15 MIN_MAG_MIP_LINEAR) with Direct3D's pixel-centre convention, layer coordinate
-/// u = (x + 0.5 - off) / k - 0.5, edges clamped. The colours are interpolated premultiplied, so a
+/// The UI layer `layer` (straight alpha, `t.ui_w` x `t.ui_h`) stretched per axis onto the draw
+/// rectangle `t.draw_*` of a straight-alpha image of the client's size; transparent outside it.
+/// Bilinear (HE's UI sampler: AnnoDisplay 0x5e081, D3D11 filter 0x15 MIN_MAG_MIP_LINEAR) with
+/// Direct3D's pixel-centre convention, layer coordinate u = (x + 0.5 - x0) * uiW / (x1 - x0) -
+/// 0.5 (v likewise), edges clamped. The colours are interpolated premultiplied, so a
 /// transparent neighbour (alpha 0, colour 0) never darkens an opaque edge. Which address mode HE
 /// uses for the UI quad (clamp or wrap, 0x5a10e / 0x5a121) is open (he-ui-scale.md "Open");
 /// clamp is taken here.

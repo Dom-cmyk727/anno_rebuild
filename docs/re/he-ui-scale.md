@@ -59,6 +59,13 @@ original is the base and HE-only behaviour becomes an option on top of it.
    `k` is stored as UI scale X and Y (`tDisplay+0x1a8/+0x1ac`, at 0x2d16e/0x2d174), the offsets at
    `+0x1b0/+0x1b4`. Since uiW, uiH are truncations of W/s, H/s, k is s up to a fraction of a pixel and
    the offsets are 0.
+   **UI-WINDOW-1 fix round R1:** `k` and the offsets are read only by the getters 0x18940..0x18970
+   and copies (0x18fab, 0x19431) - the click side (§4). The draw is `Texture::InitTexture`
+   (0x5c940): at 0x5c9dd..0x5cb2a it builds each layer's quad from the same aspect test, with
+   `off = trunc((W − kh·uiW) · 0.5 + 0.5)` (`mulss` then `addss`) and corners (off, 0)-(W − off, H)
+   or (0, off)-(W, H − off), UV 0..1, under a whole-client viewport (0x5ac65..0x5acb4). The layer is
+   therefore stretched **per axis** to that quad: at 2542 × 1351, 2.0, by 2542 / 1495 across and
+   1351 / 794 down, every client row drawn. Draw and click can differ by up to a pixel (OQ-619).
 6. At `s <= 1.0` there is no separate UI layer (it is hidden at 0x2d1a3..0x2d1b8); `GetDrawBitmapUI`
    (0x2a7c0) returns the game bitmap, so the UI is drawn **1:1** into the game layer of
    `max(W,1024) × max(H,768)`. At `s > 1.0` the UI bitmap is resized to uiW × uiH (0x2d27f).
@@ -123,7 +130,8 @@ confirmed).
   least 1024 × 768.
 - HE's scale setting is an option on top: 1.0 at 1200 lines or fewer; otherwise step down by 0.1
   from the setting until the UI keeps at least 1024 × 768 UI pixels; draw the UI layer at uiW × uiH
-  and stretch it bilinearly, uniformly, to the client; map clicks back with `trunc((p − off) / k)`.
+  and stretch it bilinearly to the client (per axis onto `InitTexture`'s quad, §2 item 5); map clicks
+  back with `trunc((p − off) / k)`.
 - The map (game layer) is not scaled by the setting: it looked the same at 1.0, 1.5 and 2.0.
 - The rebuild's own UI scale question (ADR 0004 R3) can take this rule as its evidence; which
   default the rebuild uses is the owner's call.

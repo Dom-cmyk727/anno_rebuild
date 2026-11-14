@@ -10476,8 +10476,7 @@ QUESTIONs: none outstanding; owner-approved admission exception is fully recorde
 
 ## UI-WINDOW-1 — the in-game UI at any window size, and clickable — 2026-11-14 — READY FOR REVIEW
 
-Branch `task/UI-WINDOW-1`, `origin/main` `d89d54a6` merged (UI-INFO-1, PINS-1, UI-HE-1). Head: the push of this entry.
-What changed:
+Branch `task/UI-WINDOW-1`, `origin/main` `d89d54a6` merged (UI-INFO-1, PINS-1, UI-HE-1). Head: this push. Changes:
 - `ui_transform.hpp/.cpp` (new): layer size, HE's step-down, aspect fit, click inverse in float32 as HE `AnnoDisplay`
   0x2ccf0/0x5a961 and `AnnoFrame` 0x22a26 do it (re-disassembled with capstone); bilinear stretch (cached) and an
   XRGB blend. Default = the original 1:1 (setting 1.0); `--ui-scale 1.0..2.0` = HE's rule; numbers in `UiScaleRule`.
@@ -10510,17 +10509,18 @@ Gates:
   failed 0, skipped 0, empty 0, VERDICT PASS (`focused-01.log`).
 - clang-format 23.1.3 `--dry-run --Werror` on the 12 changed app C++ files: clean. `ui_layout.py validate
   --game-dir`, `self-test`, `check-files`: ok. `check_unix_warnings.sh`: run 01 found 7 test-file warnings (fixed
-  `55c3fba5`); run 02 (before a format-only edit of that test): GCC 13, Clang 18, GPU on/off clean, exit 0. CI: push.
+  `55c3fba5`); run 02 (before a format-only edit of that test): GCC 13, Clang 18, GPU on/off clean, exit 0.
+- CI run 43580785494 on `0b62b84b`: format, lint, changes, test (ubuntu, windows), build-macos green; cpp jobs exit 6,
+  a skip of class "other" (ui_window_compare.py worded its no-assets skip wrongly). Fixed: required-asset and
+  opt-in wording (`--asset-policy unavailable` local run: 15 selected, 10 pass, 5 required-asset skips, PASS).
+  CI on the fix: see its push.
 Measured (window stderr, ANNO_VIEW_HITCH_MS=1, 2542 x 1351): "construction ui" median 5.7 ms CPU s1.0, 7.8 ms CPU
 s2.0 (p90 27.8 when the layer changes and is re-stretched), 6.5 / 6.0 ms GPU; GPU "ui scale" median 0.36 ms (cache
 hit), up to 15.7 ms on a re-stretch (single thread). First frame 77-95 ms (texture decode, as before).
-What I saw (CPU captures in `cache/ui-window-1/look`, next to the HE captures): at s1.0 and s2.0 the panel, tabs,
-minimap frame, question mark, status bar and the chain picture sit where HE draws them at the same size; the stone
-between panel and chain is MAINUNTERGRUND (HE: its own stone). The tiled bar shows seams every 1001 px. Tab click
-opened the menu, cell (0,0) armed the pioneer house, info panel drawn, at 2542 x 1351 s1.0/s2.0, 1024 x 768 and
-900 x 600 (fitted, map visible in the letterbox). GPU: the desktop copy of a 2542-wide window is cut at the monitor
-(1920 x 1144), so GPU was looked at 1024 x 768 (right column vs CPU 0.61 mean abs), 900 x 600 and 1920 x 1080 s2.0
-(forced 1:1, filler and stone under the panel): same chrome as CPU.
+What I saw (`cache/ui-window-1/look`, CPU captures beside HE's): at s1.0/s2.0 panel, tabs, minimap frame, question
+mark, bar and chain picture sit where HE draws them; the stone above the chain is MAINUNTERGRUND (HE: its own); the
+tiled bar seams every 1001 px. Tab, cell (0,0) and info panel work at 2542 s1.0/s2.0, 1024, 900 x 600 (fitted). GPU
+(desktop copy cut at the 1920 x 1144 monitor): 1024, 900 x 600, 1920 x 1080 s2.0 look like CPU (1024 column 0.61).
 NOT_RUN: Linux/macOS game-file runs; the full suite; GOG captures at 1152/1280 modes (none exist).
 Decisions and reasoning:
 - Question mark at the bar's end (746 at 1024, W - 279 else): fits the 1152/1280 bars and the HE capture; 1024

@@ -17,7 +17,8 @@ exactly.
 
 Reads ANNO1503_GAME_DIR (the original files) and ANNO_UI_HE_CAPTURES (a folder with
 he_s10_hud_idle_win.png, he_s15_hud_idle_win.png, he_s20_hud_idle_win.png; never in git); skips
-(exit 77) when either is unset or Pillow is missing. Exit: 0 pass, 1 fail, 2 bad arguments,
+(exit 77) when either is unset (a required-asset and an opt-in skip) or Pillow is missing; fails
+when the folder is set but a capture is missing. Exit: 0 pass, 1 fail, 2 bad arguments,
 77 skipped.
 """
 import os
@@ -55,19 +56,23 @@ def main() -> int:
     mock = Path(sys.argv[1])
     game = os.environ.get("ANNO1503_GAME_DIR")
     caps = os.environ.get("ANNO_UI_HE_CAPTURES")
-    if not game or not caps:
-        print("skipping: ANNO1503_GAME_DIR and ANNO_UI_HE_CAPTURES must both be set")
+    # Skip wording follows tools/test/ctest_verdict.py's classes: required-asset, then opt-in.
+    if not game:
+        print("skipping: ANNO1503_GAME_DIR is not set (needs the original game files)")
+        return 77
+    if not caps:
+        print("skipping: set ANNO_UI_HE_CAPTURES=<folder of the HE captures> to run this comparison")
         return 77
     try:
         from PIL import Image
     except ImportError:
-        print("skipping: Pillow is not installed")
+        print("skipping: Pillow (PIL) is not installed")
         return 77
     caps_dir = Path(caps)
     for _, name, _ in CASES:
         if not (caps_dir / name).is_file():
-            print(f"skipping: {caps_dir / name} is missing")
-            return 77
+            print(f"FAIL: ANNO_UI_HE_CAPTURES is set but {caps_dir / name} is missing")
+            return 1
     failures = []
     frames = {}
     with tempfile.TemporaryDirectory() as td:

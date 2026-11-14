@@ -10690,8 +10690,14 @@ mis-skipped as `required-asset` from a lost `ANNO1503_GAME_DIR` in a fresh shell
 All 11 failures are therefore confirmed memory refusals, not genuine failures; the render+app lane is green with
 no further `sea.cpp`/test-logic change. GPU and WSL ASan lanes unchanged from the original SHORE-2 submission
 (no code changed since `8a7b36dc`) and not rerun, per the review's own gate scope (render+app only, if code
-changes — this round's only code addition is the new test file, already covered above). Hosted CI on this head:
-pending push.
+changes — this round's only code addition is the new test file, already covered above).
+
+Pushing `a090d3a8` failed hosted CI's `cpp (linux-gcc)`/`cpp (linux-gcc-release)` jobs (MSVC had not flagged it):
+`-Wsign-conversion` on the new test's `(island.width + 7) / 8` (uint16_t promotes to int before the implicit
+size_t conversion). Fixed by casting to `std::size_t` before the `+7`, verified clean against GCC's exact CI
+flags in WSL (`-fsyntax-only`, exit 0) and rebuilt/reran the fix-round-1 test on MSVC — same numbers as above
+(river cells, basin-only, F5 stepping all unchanged) — committed as `9366116a`, pushed. Hosted CI run on this
+head: pending.
 
 NOT_RUN: F2's real table (sample set gone, substitute degenerate); OQ-026's closure (basins under the original's
 traced rule, not just the fallback); a rerun of GPU/WSL-ASan lanes (no `sea.cpp` change, out of this round's

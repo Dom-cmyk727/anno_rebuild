@@ -88,28 +88,33 @@ void extension_fields(A& a, std::string_view name, Context& context) {
     }
 }
 
-template <class Context> std::string validate_extension_context(const Context& context) {
+// Keep section dispatch in a named template: nested pack-expanding generic
+// lambdas crash the CI's Clang 18 while instantiating even an empty context.
+template <StateSection Section, class Context>
+void validate_section_extensions(const Context& context, std::string& problem) {
+    using List = typename Context::template List<Section>;
+    List::visit([&]<class E> {
+        if (!problem.empty())
+            return;
+        problem = E::validate(E::state(context));
+        if (problem.empty() && !extension_is_default<E>(context)) {
+            WriteArchive measure;
+            E::fields(measure, E::state(context));
+            if (measure.data().size() > std::numeric_limits<std::uint32_t>::max())
+                problem = "payload exceeds u32 length";
+        }
+        if (!problem.empty())
+            problem = "extension " + std::string(E::name) + ": " + problem;
+    });
+}
+template <class Context, std::size_t... I>
+std::string validate_extension_context_impl(const Context& context, std::index_sequence<I...>) {
     std::string problem;
-    [&]<std::size_t... I>(std::index_sequence<I...>) {
-        (
-            [&] {
-                using List = typename Context::template List<static_cast<StateSection>(I)>;
-                List::visit([&]<class E> {
-                    if (!problem.empty())
-                        return;
-                    problem = E::validate(E::state(context));
-                    if (problem.empty() && !extension_is_default<E>(context)) {
-                        WriteArchive measure;
-                        E::fields(measure, E::state(context));
-                        if (measure.data().size() > std::numeric_limits<std::uint32_t>::max())
-                            problem = "payload exceeds u32 length";
-                    }
-                    if (!problem.empty())
-                        problem = "extension " + std::string(E::name) + ": " + problem;
-                });
-            }(),
-            ...);
-    }(std::make_index_sequence<static_cast<std::size_t>(StateSection::Count)>{});
+    (validate_section_extensions<static_cast<StateSection>(I)>(context, problem), ...);
     return problem;
+}
+template <class Context> std::string validate_extension_context(const Context& context) {
+    return validate_extension_context_impl(
+        context, std::make_index_sequence<static_cast<std::size_t>(StateSection::Count)>{});
 }
 } // namespace anno::sim

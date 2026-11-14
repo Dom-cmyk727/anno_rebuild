@@ -53,19 +53,18 @@ struct ExtensionContext {
     template <StateSection S> using List = std::tuple_element_t<static_cast<std::size_t>(S), Lists>;
 };
 
+template <StateSection Section, class Context, std::size_t N>
+constexpr void append_extension_schema(std::array<ExtensionSchemaEntry, N>& out, std::size_t& at) {
+    using List = typename Context::template List<Section>;
+    List::visit([&]<class E> { out[at++] = {Section, E::tag, E::name}; });
+}
 template <class Context, std::size_t... I>
 consteval auto extension_schema_impl(std::index_sequence<I...>) {
     std::array<ExtensionSchemaEntry,
                (Context::template List<static_cast<StateSection>(I)>::size + ... + 0)>
         out{};
     std::size_t at = 0;
-    (
-        [&] {
-            using List = typename Context::template List<static_cast<StateSection>(I)>;
-            List::visit(
-                [&]<class E> { out[at++] = {static_cast<StateSection>(I), E::tag, E::name}; });
-        }(),
-        ...);
+    (append_extension_schema<static_cast<StateSection>(I), Context>(out, at), ...);
     return out;
 }
 template <class Context> consteval auto extension_schema() {

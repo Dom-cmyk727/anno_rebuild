@@ -207,4 +207,15 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const InfoPanelContent* info = nullptr,
                       const formats::anlagen::AnlagenFile* anlagen = nullptr);
 
+/// `draw_live_screen_rgba` into a caller-owned `canvas`, whose pixel storage is reused between
+/// calls (UI-WINDOW-1 fix round R1: the window's GPU path no longer allocates a window-sized image
+/// every frame). Returns an empty string, or the error (`canvas` is then unspecified).
+[[nodiscard]] std::string draw_live_screen_rgba_into(
+    assets::Rgba& canvas, int w, int h, const HudLayout& hud,
+    const ConstructionLayout& construction, const MaskLayout& masks, const UiMockSpec& screen,
+    UiTexCache& cache, const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+    const HudCounters& counters = {}, bool placement_open = false, bool demolish_mode = false,
+    bool paused = false, bool selected_house = false, const InfoPanelContent* info = nullptr,
+    const formats::anlagen::AnlagenFile* anlagen = nullptr);
+
 } // namespace anno::app

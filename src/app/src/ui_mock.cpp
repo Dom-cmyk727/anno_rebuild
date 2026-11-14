@@ -976,13 +976,15 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     return "";
 }
 
-formats::Result<assets::Rgba, std::string>
-draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayout& construction,
-                      const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache_wrapper,
-                      const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                      const HudCounters& counters, bool placement_open, bool demolish_mode,
-                      bool paused, bool selected_house, const InfoPanelContent* info,
-                      const formats::anlagen::AnlagenFile* anlagen) {
+std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const HudLayout& hud,
+                                       const ConstructionLayout& construction,
+                                       const MaskLayout& masks, const UiMockSpec& screen,
+                                       UiTexCache& cache_wrapper,
+                                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+                                       const HudCounters& counters, bool placement_open,
+                                       bool demolish_mode, bool paused, bool selected_house,
+                                       const InfoPanelContent* info,
+                                       const formats::anlagen::AnlagenFile* anlagen) {
     if (w < hud.resolution_w || h < hud.resolution_h || w > 0xFFFF || h > 0xFFFF)
         return std::string("draw_live_screen_rgba: destination smaller than the layout's "
                            "resolution, or larger than an assets::Rgba holds");
@@ -1001,7 +1003,6 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
     const bool is_construction = screen.kind == UiMockScreen::Construction;
     const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
 
-    assets::Rgba canvas;
     canvas.width = static_cast<std::uint16_t>(w);
     canvas.height = static_cast<std::uint16_t>(h);
     canvas.pixels.assign(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4, 0);
@@ -1168,6 +1169,22 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
         blit_el("pause_button");
     }
 
+    return "";
+}
+
+formats::Result<assets::Rgba, std::string>
+draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayout& construction,
+                      const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache,
+                      const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+                      const HudCounters& counters, bool placement_open, bool demolish_mode,
+                      bool paused, bool selected_house, const InfoPanelContent* info,
+                      const formats::anlagen::AnlagenFile* anlagen) {
+    assets::Rgba canvas;
+    std::string error = draw_live_screen_rgba_into(
+        canvas, w, h, hud, construction, masks, screen, cache, eligibility, counters,
+        placement_open, demolish_mode, paused, selected_house, info, anlagen);
+    if (!error.empty())
+        return error;
     return canvas;
 }
 

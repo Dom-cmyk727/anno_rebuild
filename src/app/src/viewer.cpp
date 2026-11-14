@@ -580,6 +580,8 @@ class Viewer {
     std::uint64_t pans_ = 0;
     /// The stretched layer when the transform is not 1:1 (kept between frames while unchanged).
     UiLayerScaler ui_scaler_;
+    /// The GPU path's UI layer, composed in place every frame (its storage is reused).
+    assets::Rgba ui_canvas_;
     /// The selected building (ADR 0004 "Selection", W4-NEXT-2 K, row 18): viewer UI state only.
     /// Active in `--play` with the classic surface, outside the ship-start opening, while the
     /// developer/construction tool is off (a tool's click stays the tool's).
@@ -2764,7 +2766,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     // layer is composed at the transform's ui_w x ui_h and, unless that is the frame 1:1,
     // stretched to the frame here in app code (ui_transform.hpp; the pass takes a frame-sized
     // image).
-    std::optional<assets::Rgba> ui_overlay_image;
+    bool ui_overlay_drawn = false;
     const UiTransform ui_t =
         ui_transform(static_cast<int>(w), static_cast<int>(h), ui_scale_, ui_rule_);
     if (construction_menu_ != nullptr && ui_t.ui_w > 0 && ui_t.ui_h > 0) {
@@ -2776,24 +2778,25 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
                               ? ConstructionMenu::info_panel_content(*dev_->input().selected(),
                                                                      *dev_->setup().registry)
                               : std::nullopt;
-        auto drawn = draw_live_screen_rgba(
-            ui_t.ui_w, ui_t.ui_h, construction_menu_->hud(), construction_menu_->construction(),
-            *construction_masks_, in.spec, *construction_tex_cache_,
-            in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
-            construction_placement_open_, dev_ != nullptr && dev_->input().demolish_mode(),
-            paused_at_.has_value(), in.selected_house, info ? &*info : nullptr, &gen->anlagen);
-        if (drawn.ok()) {
-            ui_overlay_image = std::move(drawn).value();
-        }
+        // Into the window's own canvas: its storage is reused frame to frame (fix round R1).
+        ui_overlay_drawn =
+            draw_live_screen_rgba_into(
+                ui_canvas_, ui_t.ui_w, ui_t.ui_h, construction_menu_->hud(),
+                construction_menu_->construction(), *construction_masks_, in.spec,
+                *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
+                in.counters, construction_placement_open_,
+                dev_ != nullptr && dev_->input().demolish_mode(), paused_at_.has_value(),
+                in.selected_house, info ? &*info : nullptr, &gen->anlagen)
+                .empty();
         steps_.push_back({"construction ui", since_ms(ui_start, Clock::now())});
     }
     const assets::Rgba* ui_overlay_ptr = nullptr;
-    if (ui_overlay_image) {
+    if (ui_overlay_drawn) {
         if (ui_t.identity()) {
-            ui_overlay_ptr = &*ui_overlay_image;
+            ui_overlay_ptr = &ui_canvas_;
         } else {
             const auto scale_start = Clock::now();
-            ui_overlay_ptr = &ui_scaler_.scale(*ui_overlay_image, ui_t);
+            ui_overlay_ptr = &ui_scaler_.scale(ui_canvas_, ui_t);
             steps_.push_back({"ui scale", since_ms(scale_start, Clock::now())});
         }
     }

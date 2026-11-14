@@ -850,6 +850,10 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     // pixel; MainSmall is picked only because its name best fits a compact status-bar readout.
     // Null (missing/unparseable file) silently draws nothing - `draw_text_xrgb`'s own contract.
     const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
+    // UI-WINDOW-1 fix round R2: the materials and residents (icons and digits) show whenever the
+    // caller has a city's figures for them, on every screen (docs/re/ui.md 5.2).
+    const bool city_shown =
+        counters.tools || counters.wood || counters.bricks || counters.marble || counters.residents;
 
     // Mirrors compose_screen's own blit_el exactly (ADR 0004 R1: a divergence here is a bug, not
     // a second design); the only difference from compose_screen below is the lock source.
@@ -907,7 +911,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                            pos->first, pos->second);
         }
     }
-    if (is_construction) {
+    if (city_shown) {
         blit_el("baumat_tools");
         blit_el("baumat_wood");
         blit_el("baumat_bricks");
@@ -947,7 +951,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     blit_el("rosh_46");
     blit_el("rosh_48");
     blit_el("rosh_51");
-    if (is_construction) {
+    if (city_shown) {
         blit_el("einwohner");
         // H2: the residents counter - construction-screen only, same as the icon itself
         // (docs/re/ui.md 2.1: `STATUSBAR_EINWOHNER` is "absent from pass-2 idle"). masks.txt
@@ -1079,6 +1083,10 @@ std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const
     UiTexCache::Impl& cache = cache_wrapper.impl();
     const bool is_construction = screen.kind == UiMockScreen::Construction;
     const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
+    // UI-WINDOW-1 fix round R2: the materials and residents (icons and digits) show whenever the
+    // caller has a city's figures for them, on every screen (docs/re/ui.md 5.2).
+    const bool city_shown =
+        counters.tools || counters.wood || counters.bricks || counters.marble || counters.residents;
 
     canvas.width = static_cast<std::uint16_t>(w);
     canvas.height = static_cast<std::uint16_t>(h);
@@ -1129,7 +1137,7 @@ std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const
                            pos->second);
         }
     }
-    if (is_construction) {
+    if (city_shown) {
         blit_el("baumat_tools");
         blit_el("baumat_wood");
         blit_el("baumat_bricks");
@@ -1163,7 +1171,7 @@ std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const
     blit_el("rosh_46");
     blit_el("rosh_48");
     blit_el("rosh_51");
-    if (is_construction) {
+    if (city_shown) {
         blit_el("einwohner");
         if (counters.residents) {
             if (const auto pos = digit_origin("einwohner_digits")) {

@@ -1,0 +1,27 @@
+# UI-WINDOW-1 fix round R2 (R2-2): the status bar's materials and residents follow the island the
+# view is centred on (the owner's rule; docs/re/ui.md 5.2, OQ-622). Centred on the developer
+# island (tile 1140 516, the lan5 island at 1048 440 with the local player's city): shown, also on
+# the player list. Over open sea (700 700) and over an island without the player's city (lan5's
+# island at 864 168, centre 928 232): hidden. The `hud.counters` fact is what the last frame drew.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+wait frames 5
+expect fact hud.counters == shown
+screenshot counters_island
+lookw 700 700
+wait frames 5
+expect fact hud.counters == hidden
+screenshot counters_sea
+lookw 928 232
+wait frames 5
+expect fact hud.counters == hidden
+look 1140 516
+wait frames 5
+expect fact hud.counters == shown
+click_px 870 212
+wait frames 3
+expect fact ui.tab == player_list
+expect fact hud.counters == shown
+quit

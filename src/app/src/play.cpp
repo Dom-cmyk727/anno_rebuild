@@ -924,6 +924,34 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         find_local_city();
     }
     fill_inspection(*next); // also without a city: the requested tile is answered as empty
+    // UI-WINDOW-1 fix round R2: the local player's cities for the status bar, which shows the
+    // city on the island the view is centred on. Read-only accessors only (CityCounters's own
+    // comment); the cost is measured with ANNO_PUBLISH_STATS.
+    if (developer_city_) {
+        auto cities = std::make_shared<std::vector<CityCounters>>();
+        for (const auto& island : world_.islands()) {
+            if (!island) {
+                continue;
+            }
+            for (const std::optional<sim::City>& city : island->cities) {
+                if (!city || city->owner != local_player_) {
+                    continue;
+                }
+                CityCounters c;
+                c.city = sim::CityRef{island->index, city->number};
+                c.island_x0 = island->tiles.x0();
+                c.island_y0 = island->tiles.y0();
+                c.island_w = island->tiles.width();
+                c.island_h = island->tiles.height();
+                c.goods = city->stock.stock;
+                c.population = world_.city_population(c.city);
+                cities->push_back(std::move(c));
+            }
+        }
+        if (!cities->empty()) {
+            next->cities = std::move(cities);
+        }
+    }
     if (developer_city_) {
         if (const sim::Player* player = world_.players().find(local_player_)) {
             next->money = player->money;

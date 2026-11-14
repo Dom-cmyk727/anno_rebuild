@@ -129,6 +129,25 @@ struct BuildingInspection {
 inspect_building(const sim::World& world, sim::CityRef city, sim::TileXY tile);
 
 /// What the window reads. Not a World.
+/// UI-WINDOW-1 fix round R2: one of the local player's cities as the HUD's status bar shows it
+/// (the counters follow the island the view is centred on, docs/re/ui.md 5.2). Read on the sim
+/// thread at publication from existing read-only accessors only: World::islands(), the island's
+/// tile rectangle (TileLayer::x0/y0/width/height), City::owner/number/stock and
+/// World::city_population. No state, stream, hash or draw changes.
+struct CityCounters {
+    sim::CityRef city;
+    /// The island's tile rectangle in world tiles.
+    std::int32_t island_x0 = 0, island_y0 = 0;
+    std::uint32_t island_w = 0, island_h = 0;
+    /// The city's goods stock (8.8 tons per goods number) and its population.
+    std::vector<std::uint32_t> goods;
+    std::optional<std::int64_t> population;
+    [[nodiscard]] bool island_contains(std::int64_t x, std::int64_t y) const {
+        return x >= island_x0 && y >= island_y0 && x < std::int64_t{island_x0} + island_w &&
+               y < std::int64_t{island_y0} + island_h;
+    }
+};
+
 struct PlaySnapshot {
     std::uint64_t tick = 0;
     std::uint64_t game_ms = 0;
@@ -184,6 +203,9 @@ struct PlaySnapshot {
     /// draw change - it wraps `residents_at_or_above`'s own existing aggregate for a `CityRef`).
     /// nullopt when the player has no city yet, matching `money`/`goods`/`eligibility` above.
     std::optional<std::int64_t> population;
+    /// UI-WINDOW-1 fix round R2: every city of the local player, in (island, city) order. Null
+    /// when the player has none.
+    std::shared_ptr<const std::vector<CityCounters>> cities;
 };
 
 /// What the window reads for the developer tool's feedback (round ee review, R1): a snapshot and

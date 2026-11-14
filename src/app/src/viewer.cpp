@@ -27,6 +27,8 @@
 #include <anno/app/window_capture.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/iso.hpp>
+#include <anno/render/picking.hpp>
 #include <anno/sim/production.hpp>
 #ifdef ANNO_VIEWER_GPU
 #include <anno/render/gpu.hpp>
@@ -567,6 +569,8 @@ class Viewer {
     /// closed (UiMockScreen: Hud = the player overview, the start state; PlayerList; Info;
     /// MainMenu), and the switch to one of them (closing the construction menu first).
     UiMockScreen hud_screen_ = UiMockScreen::Hud;
+    /// Whether the last frame drew the status bar's city counters (the `hud.counters` fact, R2).
+    bool hud_counters_shown_ = false;
     void select_hud_tab(UiMockScreen screen);
     /// UI-WINDOW-1: the UI scale setting (ViewerHooks::ui_scale; nullopt = the original 1:1) and
     /// the layer's placement for the current drawable size (ui_transform.hpp).
@@ -628,6 +632,8 @@ class Viewer {
         bool selected_house = false;
     };
     [[nodiscard]] ConstructionHudInputs construction_hud_inputs() const;
+    /// The world tile under the drawable's centre (the status bar's centred island, R2).
+    [[nodiscard]] std::optional<sim::TileXY> centre_tile() const;
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
     DevScript* script_ = nullptr;
     PublicationHold* hold_ = nullptr;
@@ -2388,6 +2394,7 @@ void Viewer::script_tick() {
     // facts either; removing the extra call closes the gap structurally, not by timing.
     st.facts["selection.clicks"] = std::to_string(selection_clicks_);
     st.facts["ui.press"] = ui_press_ ? "1" : "0";
+    st.facts["hud.counters"] = hud_counters_shown_ ? "shown" : "hidden";
     st.facts["ui.tab"] = construction_menu_open_                   ? "construction"
                          : hud_screen_ == UiMockScreen::PlayerList ? "player_list"
                          : hud_screen_ == UiMockScreen::Info       ? "info"
@@ -2817,6 +2824,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     if (construction_menu_ != nullptr && ui_t.ui_w > 0 && ui_t.ui_h > 0) {
         const auto ui_start = Clock::now();
         const auto in = construction_hud_inputs();
+        hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         const auto info = construction_placement_open_ && dev_ != nullptr &&
                                   dev_->setup().registry && dev_->input().selected()
@@ -2935,6 +2943,27 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
 }
 #endif
 
+std::optional<sim::TileXY> Viewer::centre_tile() const {
+    // The world tile under the drawable's centre at sea level (render::pick_ray at kSeaLevel, the
+    // first step of FrameProjection::pick), from the last frame drawn: which island the view is
+    // centred on. Sea level rather than the ground: an island's rectangle is all that is asked.
+    if (!pointer_frame_ || !pointer_frame_->scene) {
+        return std::nullopt;
+    }
+    const PointerFrame& f = *pointer_frame_;
+    const auto point = render::scene_point(f.map, f.drawable_w / 2.0, f.drawable_h / 2.0);
+    if (!point) {
+        return std::nullopt;
+    }
+    const auto sea = render::pick_ray(point->first, point->second, f.geometry,
+                                      static_cast<double>(render::kSeaLevel));
+    if (!sea) {
+        return std::nullopt;
+    }
+    return sim::TileXY{static_cast<std::int32_t>(std::floor(sea->u1)),
+                       static_cast<std::int32_t>(std::floor(sea->v1))};
+}
+
 Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
                                                                  construction_open_category_}
@@ -2948,17 +2977,33 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     // themselves are plain fields (0, not nullopt) in that case, so eligibility's nullness is the
     // real "has a city" signal.
     const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
+    // UI-WINDOW-1 fix round R2: the five counters (tools, wood, bricks, marble, residents) show
+    // the stock of the local player's city on the island the view is centred on, on every screen
+    // (the owner's rule, first-hand; the GOG shots show them on every screen once a city exists,
+    // docs/re/ui.md 5.2). No such city: they are hidden, as before the first founding. The exact
+    // original rule (the centre point, update timing, a foreign island) is OQ-622.
+    const CityCounters* centred = nullptr;
+    if (has_city && snapshot->cities) {
+        if (const auto tile = centre_tile()) {
+            for (const CityCounters& c : *snapshot->cities) {
+                if (c.island_contains(tile->x, tile->y)) {
+                    centred = &c;
+                    break;
+                }
+            }
+        }
+    }
     auto whole_tons = [&](std::optional<sim::GoodsId> id) -> std::optional<std::uint32_t> {
-        if (!has_city || !id || *id >= snapshot->goods.size())
+        if (centred == nullptr || !id || *id >= centred->goods.size())
             return std::nullopt;
-        return snapshot->goods[*id] / sim::kTon;
+        return centred->goods[*id] / sim::kTon;
     };
     HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money) : std::nullopt,
                          whole_tons(goods_tools_),
                          whole_tons(goods_wood_),
                          whole_tons(goods_bricks_),
                          whole_tons(goods_marble_),
-                         has_city ? snapshot->population : std::nullopt};
+                         centred != nullptr ? centred->population : std::nullopt};
     // ADR 0004 row 18 (W4-NEXT-2 K): draw only once the sim's own answer for the selected
     // building, not the click itself, confirms it is a house - selection.hpp's own doc comment
     // ("the answer selects it... every later answer re-checks the building's id").
@@ -3027,6 +3072,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         // effect is measurable per CLAUDE.md's "measure every performance change".
         const auto ui_start = Clock::now();
         const auto in = construction_hud_inputs();
+        hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         const auto info = construction_placement_open_ && dev_ != nullptr &&
                                   dev_->setup().registry && dev_->input().selected()

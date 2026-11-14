@@ -525,6 +525,18 @@ top 768 rows, the bar's first 746 pixels, the question mark) and goes to the con
 the tabs there; the construction tab opens the menu (as key B does) and closes it (as Esc does);
 closing the menu either way also turns off a building tool a cell armed.
 
+### 5.2 The status bar counters (UI-WINDOW-1 fix round R2, 2026-11-14)
+
+Evidenced: the materials (tools, wood, bricks, marble) and residents, icons and figures, are
+absent before the first founding (`hud_idle_running`) and present on every screen once a city
+exists, with or without the construction menu (`r2_player_menu`, `r2_tab_military`,
+`r2_construction_military`; HE `he_s10_hud_idle_win.png`). The owner states first-hand that they
+show the stock of the island the view is centred on. **Not evidenced:** what the original shows
+over open sea and over another player's island (no shot is taken there), the exact centre point
+and the update timing - OQ-622. The rebuild hides the five counters when the island under the
+view's centre holds none of the local player's cities (so over open sea and over another
+player's island too); the gold counter is unchanged.
+
 ### 5.3 The four tabs (UI-WINDOW-1 fix round R2, 2026-11-14)
 
 The tabs are switches: one is always selected (`MAINTAB` `frame_selected`, the others

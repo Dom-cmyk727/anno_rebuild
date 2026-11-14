@@ -11,6 +11,7 @@
 
 #include <anno/sim/create.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/extensions.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/freight.hpp>
 #include <anno/sim/house_tick.hpp>
@@ -265,6 +266,8 @@ std::string World::harvest_problem() const {
 }
 
 std::string World::check_invariants() const {
+    if (const auto problem = validate_extension_context(extensions_); !problem.empty())
+        return problem;
     if (auto problem = validate_script(script_, *types_, players_, config_); !problem.empty())
         return problem;
     if (script_.state.context == ScriptContext::Fault && !faulted_)

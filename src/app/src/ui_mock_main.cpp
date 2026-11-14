@@ -21,6 +21,9 @@
 
 namespace {
 
+/// The --ui-scale range (the HE slider's, ui_transform.hpp's UiScaleRule).
+const anno::app::UiScaleRule kRule;
+
 struct Args {
     std::filesystem::path layout, game_dir, out;
     std::string screen;
@@ -67,7 +70,8 @@ std::optional<Args> parse(int argc, char** argv) {
         } else if (arg == "--ui-scale") {
             auto v = next();
             float s = 0.0f;
-            if (!v || std::sscanf(v->c_str(), "%f", &s) != 1 || !(s >= 1.0f) || !(s <= 2.0f))
+            if (!v || std::sscanf(v->c_str(), "%f", &s) != 1 || !(s >= kRule.min_setting) ||
+                !(s <= kRule.max_setting))
                 return std::nullopt;
             a.ui_scale = s;
         } else {
@@ -113,8 +117,11 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "masks.txt: %s\n", masks.error().c_str());
             return 1;
         }
+        anno::app::UiScaleRule rule; // the reference size is hud.txt's resolution
+        rule.ref_w = hud.value().resolution_w;
+        rule.ref_h = hud.value().resolution_h;
         const auto t =
-            anno::app::ui_transform(args->live->first, args->live->second, args->ui_scale);
+            anno::app::ui_transform(args->live->first, args->live->second, args->ui_scale, rule);
         anno::app::UiTexCache cache(args->game_dir);
         const auto layer =
             anno::app::draw_live_screen_rgba(t.ui_w, t.ui_h, hud.value(), construction.value(),

@@ -1,0 +1,32 @@
+# UI-WINDOW-1 fix round R1 (F6, F7) at 1024 x 768, the right chrome at x 779..1023:
+# F7: a left press on the chrome, a motion with the button held and a release start no pan (the
+#     `camera.pans` fact counts pan() calls); the same drag on the map does pan (control).
+# F6: a UI press whose release is lost (`ldown_px`) is dropped on focus loss and on the next
+#     press, so the release of a later map click reaches the selection (`selection.clicks`).
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+note fact camera.pans
+ldrag_px 900 500 300 300
+wait frames 3
+expect fact camera.pans same
+expect fact ui.press == 0
+ldrag_px 400 400 300 300
+wait frames 3
+expect fact camera.pans > 0
+ldown_px 900 500
+wait frames 2
+expect fact ui.press == 1
+focus-lost
+wait frames 2
+expect fact ui.press == 0
+ldown_px 900 500
+wait frames 2
+expect fact ui.press == 1
+note fact selection.clicks
+click_px 300 300
+wait frames 3
+expect fact ui.press == 0
+expect fact selection.clicks == 1
+quit

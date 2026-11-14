@@ -247,7 +247,7 @@ int arity(const std::string& verb) {
     if (verb == "note") {
         return -1;
     }
-    if (verb == "click" || verb == "click_px") {
+    if (verb == "click" || verb == "click_px" || verb == "ldown_px") {
         return 2;
     }
     if (verb == "local") {
@@ -256,7 +256,7 @@ int arity(const std::string& verb) {
     if (verb == "resize") {
         return 2;
     }
-    if (verb == "drag") {
+    if (verb == "drag" || verb == "ldrag_px") {
         return 4;
     }
     if (verb == "wait" || verb == "expect") {
@@ -586,6 +586,28 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             push_motion(act.events, at, 0);
             push_button(act.events, at, SDL_BUTTON_LEFT, true);
             push_button(act.events, at, SDL_BUTTON_LEFT, false);
+        } else if (s.verb == "ldown_px" || s.verb == "ldrag_px") {
+            // UI-WINDOW-1 fix round R1: a left press at a drawable pixel with no release
+            // (`ldown_px`, a release lost outside the window), or a press, a motion with the button
+            // held and a release at a second pixel (`ldrag_px`).
+            const auto x = arg(0), y = arg(1);
+            if (!x || !y) {
+                fail(s, "not a pixel position");
+                break;
+            }
+            const std::pair<float, float> at{static_cast<float>(*x), static_cast<float>(*y)};
+            push_motion(act.events, at, 0);
+            push_button(act.events, at, SDL_BUTTON_LEFT, true);
+            if (s.verb == "ldrag_px") {
+                const auto x1 = arg(2), y1 = arg(3);
+                if (!x1 || !y1) {
+                    fail(s, "not a pixel position");
+                    break;
+                }
+                const std::pair<float, float> to{static_cast<float>(*x1), static_cast<float>(*y1)};
+                push_motion(act.events, to, SDL_BUTTON_LMASK);
+                push_button(act.events, to, SDL_BUTTON_LEFT, false);
+            }
         } else if (s.verb == "lookw") {
             const auto t = tile_arg(0);
             if (!t) {

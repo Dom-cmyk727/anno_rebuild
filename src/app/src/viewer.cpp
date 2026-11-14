@@ -346,6 +346,8 @@ class Viewer {
         if (construction_menu_ != nullptr) {
             construction_tex_cache_.emplace(construction_game_dir_);
             ui_scale_ = hooks->ui_scale;
+            ui_rule_.ref_w = construction_menu_->hud().resolution_w;
+            ui_rule_.ref_h = construction_menu_->hud().resolution_h;
             if (dev_ != nullptr && dev_->setup().registry) {
                 const auto& registry = *dev_->setup().registry;
                 goods_tools_ = registry.goods_by_name("WERKZEUG");
@@ -564,12 +566,18 @@ class Viewer {
     /// UI-WINDOW-1: the UI scale setting (ViewerHooks::ui_scale; nullopt = the original 1:1) and
     /// the layer's placement for the current drawable size (ui_transform.hpp).
     std::optional<float> ui_scale_;
+    /// The rule's numbers; the reference size is hud.txt's `resolution` (fix round R1, F6).
+    UiScaleRule ui_rule_;
     [[nodiscard]] UiTransform ui_transform_now() const;
     /// The UI layer's hit at drawable pixel (`px`, `py`) (ui_layout.hpp's ui_hit through the
     /// transform's inverse); a miss when there is no HUD.
     [[nodiscard]] UiHit ui_hit_at(double px, double py) const;
-    /// A left press the UI took: its release is the UI's too.
+    /// A left press the UI took: its release is the UI's too. Dropped when that release is lost
+    /// (a new press, focus loss, the pointer leaving the window), so a later release is not
+    /// eaten (fix round R1, F6).
     bool ui_press_ = false;
+    /// Calls of pan() (the `camera.pans` fact): a script proves a chrome drag moved nothing.
+    std::uint64_t pans_ = 0;
     /// The stretched layer when the transform is not 1:1 (kept between frames while unchanged).
     UiLayerScaler ui_scaler_;
     /// The selected building (ADR 0004 "Selection", W4-NEXT-2 K, row 18): viewer UI state only.
@@ -1503,9 +1511,15 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         }
         return false;
     }
+    if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST || e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
+        ui_press_ = false; // the release of a UI press may never come (fix round R1, F6)
+        return false;      // the window's own handling of these stays
+    }
     if (e.type != SDL_EVENT_MOUSE_BUTTON_DOWN || e.button.button != SDL_BUTTON_LEFT) {
         return false; // only a left click resolves against the UI; everything else is dev_'s
     }
+    // A new press: an earlier UI press whose release was lost no longer claims a release.
+    ui_press_ = false;
     if (play_ == nullptr) {
         return false;
     }
@@ -1582,7 +1596,7 @@ bool Viewer::construction_handle(const SDL_Event& e) {
 
 UiTransform Viewer::ui_transform_now() const {
     const auto [w, h] = view_size();
-    return ui_transform(w, h, ui_scale_);
+    return ui_transform(w, h, ui_scale_, ui_rule_);
 }
 
 UiHit Viewer::ui_hit_at(double px, double py) const {
@@ -1935,6 +1949,7 @@ void Viewer::pan(double dx, double dy) {
     cam_y_ += dy / s;
     clamp();
     dirty_ = true;
+    ++pans_;
 }
 
 void Viewer::clamp() {
@@ -2330,6 +2345,8 @@ void Viewer::script_tick() {
     // dev-script holds or `PlayRunner`'s pause can arrange reaches between the title and these
     // facts either; removing the extra call closes the gap structurally, not by timing.
     st.facts["selection.clicks"] = std::to_string(selection_clicks_);
+    st.facts["ui.press"] = ui_press_ ? "1" : "0";
+    st.facts["camera.pans"] = std::to_string(pans_);
     st.facts["selection.pending"] = selection_.pending ? "1" : "0";
     st.facts["selection.selected"] = selection_.selected ? "1" : "0";
     st.facts["selection.kind"] = "";
@@ -2748,7 +2765,8 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     // stretched to the frame here in app code (ui_transform.hpp; the pass takes a frame-sized
     // image).
     std::optional<assets::Rgba> ui_overlay_image;
-    const UiTransform ui_t = ui_transform(static_cast<int>(w), static_cast<int>(h), ui_scale_);
+    const UiTransform ui_t =
+        ui_transform(static_cast<int>(w), static_cast<int>(h), ui_scale_, ui_rule_);
     if (construction_menu_ != nullptr && ui_t.ui_w > 0 && ui_t.ui_h > 0) {
         const auto ui_start = Clock::now();
         const auto in = construction_hud_inputs();
@@ -2950,7 +2968,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         }
     }
     double construction_ui_ms = 0.0;
-    const UiTransform ui_t = ui_transform(w, h, ui_scale_);
+    const UiTransform ui_t = ui_transform(w, h, ui_scale_, ui_rule_);
     if (construction_menu_ != nullptr && ui_t.ui_w > 0 && ui_t.ui_h > 0) {
         // H1/C1, second slice: the menu's own chrome, drawn over the world (ADR 0004 R1's
         // "Rendering", the CPU path). UI-WINDOW-1: at any size - straight into the frame when

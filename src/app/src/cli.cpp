@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include <anno/app/cli.hpp>
+#include <anno/app/ui_transform.hpp>
 
 namespace anno::app {
 
@@ -129,7 +130,8 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             }
         } else if (a == "--ui-scale") {
             const auto s = number<float>(v);
-            if (!s || !(*s >= 1.0F) || !(*s <= 2.0F)) {
+            const UiScaleRule rule; // the HE slider range, ui_transform.hpp
+            if (!s || !(*s >= rule.min_setting) || !(*s <= rule.max_setting)) {
                 return std::nullopt;
             }
             out.ui_scale = *s;

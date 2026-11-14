@@ -124,6 +124,21 @@ Gap: lan5 gives the player one city, so the centred-city and fallback cases are 
 cities was not run. The branch does not contain main `674ecdf4` (SAVE-SECTIONS-1b landed after the executor
 checked); merging it is left to the landing.
 
+## Fix round R5 (board game-file run of candidate 21b91bf9)
+
+`live_screen_matches_oracle` failed: `hud_idle` 4808 of 179612 pixels in `statusbar`. The GOG shot
+`hud_idle_running` is taken before founding (no counters); the test launched lan5 (a city), where R4 now draws the
+counters' icons. The UI lane missed it in R4 because its focused run did not include this test. Fix `7c39ac19`
+(test only): `hud_idle` is compared in a second launch on the ship start (`lan5-ship-a.json`, seat 0, script
+`live_screen_hud_idle.script`, which also expects `hud.counters == hidden`); the construction screens stay on
+lan5, whose oracle draws the counters' icons. No masks, tolerance 0.
+
+UI lane check: the diff touches only `live_screen_compare.py`, the new script, `ui.md` 5.2 and REPORTS. On this
+PC `live_screen_matches_oracle` (hud_idle 179612, construction_public 266990, construction_roads 209490: all exact),
+`ui_dynamic_draw_check` and both counter tests: 4 of 4 executed and passed. The executor's failure proof (hud_idle
+back on lan5) reproduces the board's 4808-pixel failure. Executor focused gate 50 of 50 executed, passed; hosted CI
+run 43628391543 green on `b5a166be`. The UI lane then merged main `5bcd64a6` (FISHER-1a, sim only, clean).
+
 ## Landing
 
 Lands through the board orchestrator (land.py, the owner's OK, the game-file run).

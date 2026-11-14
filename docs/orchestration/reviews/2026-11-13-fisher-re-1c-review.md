@@ -93,3 +93,12 @@ Fix round 1 to the Mac executor, through the owner's prompt, on the same branch.
 **ACCEPTED.** It lands with the next landing, on the owner's OK. OQ-200 is answered. The fisher reads are complete:
 - **next on the Mac:** PINS-1 (ADR 0006);
 - **next for the fisher:** FISHER-1a, the water cells and goal mask as unwired sim functions.
+
+## Correction (2026-11-14, FISHER-1b)
+
+This review read the island's mode-3 answer (511 at or above the threshold) as "a goal". That was wrong. The
+search's goal-pop computes `0x1ff − mask` before using it (`AnnoWelt.dll 0x100033c3`–`0x100033ce`), so the answer
+is a **blocked** mask. Only water tiles (mean < 32) give usable goal sub-cells. The census counts stand, but none of
+the 2,473 embedded fish tiles is a usable goal as loaded. See
+[the FISHER-1b answer](2026-11-14-fisher-1b-question.md). The FISHER-1b executor found it; the orchestrator
+re-checked the addresses.

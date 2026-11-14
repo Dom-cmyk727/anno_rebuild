@@ -95,3 +95,27 @@ ACCEPTED.
 - **Landing:** with the owner's OK, as a candidate on `main` with its game-file run. The owner can play the same
   build first.
 - **Next:** under the standing go, [SHORE-2](../tasks/shore-2.md) is released to the Windows executor.
+
+## Game-file run of the landing candidate
+
+**The candidate:** `orch/land-depth-integrate-1` at `95eea7de`. It contains DEPTH-INTEGRATE-1 (`eff68d5e`) and the
+board up to `6ea14634`, merged on `main` `480fafe7` with the owner's OK ("Land on Main", 2026-11-14).
+- **The conflicts:** only the two appends the review predicted, `REPORTS.md` and `perf/README.md`. Both are kept,
+  `main`'s entries first. `bench_frame/main.cpp` and `open-questions.md` auto-merged.
+- **The line check:** for the four files both sides changed, 0 lines of `main` lost and 0 lines the branch added
+  lost. The board merge touched no file the branch changed.
+
+**The run:** in the run worktree on this PC, the canonical call with the game files, `ANNO_GPU_ADAPTER=4090` (the
+log names the RTX 4090, Vulkan) and 16 jobs, 2026-11-14 00:39–00:52 after a 4.5-minute build.
+- `COUNTS: selected=2582 executed=2555 failed=0 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`
+- `VERDICT: PASS`
+- **No test was refused for memory** (0 `reason=low-memory` lines), so nothing needed a rerun.
+- **The 27 skips** are the same as `480fafe7`'s run: 21 opt-in, 3 platform (the coordinator port and descriptor
+  cases), 3 other (the `ship start` path cases).
+- **Log:** `cache/orch-land-depth-integrate-1/canonical-gate.log`, sha256 `2269f39cfdb1f03b…`.
+
+So every test of the candidate passed.
+
+**Landed** 2026-11-14 through `tools/orch/land.py`: `gate` passed on `land/depth-integrate-1` (run 43530392823), and
+`main` moved `480fafe7` → `95eea7de` by fast-forward. GitLab and the share are synced.

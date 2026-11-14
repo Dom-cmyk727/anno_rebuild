@@ -10634,3 +10634,39 @@ stream only; REPORTS.md conflict resolved by keeping both entries): rebuild 0 wa
 executed 48 pass, VERDICT PASS (`focused-r1-merged.log`). CI on the merged head: see its push.
 NOT_RUN: an automated GPU check at a non-1024 size (above); Linux/macOS game-file runs; the full suite.
 **READY FOR REVIEW.**
+
+### Fix round R2 (owner playtest of `e107a8f6`: "fix then land") — 2026-11-14
+
+- **R2-1** (`c56e33dd`): the four tabs are switches. Start: player tab, overview panel (`hud_idle_running`); bust or
+  D: player list (`r2_tab_military`, `r2_player_menu`); "?": info (`r2_tab_help`); gears or O: main menu
+  (`r2_options`); construction or B: the menu. A click on the selected tab changes nothing; leaving construction
+  disarms (R1 path); Esc from construction returns to the last panel; panel clicks are taken. Panel chrome is data
+  (hud.txt `panel`, ACCESS ids matched on the shots after RGB565: tabs, scroll arrows, crest, AUSBAUSTOP, menu icons
+  exact 0.88-1.00; backgrounds SPIELER_BILANZ_BK 1128 / STADT_BILANZ_BK 677 at (779, 301) mean abs 0.00-0.35,
+  OPTION_BACKGROUND exact 0.79). Not drawn: names, figures, list rows, diplomacy cluster, info emblem, the list's
+  background (not identified) - OQ-621 (also: second click, Esc's return, no "?" key, crest per player). The Python
+  oracle's hud_idle mirrors the player panel. Tests: `viewer_wiring_ui_tabs` (states, D/O, no-op, disarm on
+  leaving, panel click taken), `ui_panels_match_gog` (per element, UI.1 tolerance 48 / 8 %: player 15 of 115 399
+  bad, list 0 of 22 249, info 0 of 121 579, main menu 1 665 of 155 588 (1.07 %); control player-vs-menu 19.5 %).
+  `ui_menu_close_disarms` now closes by the bust tab (a click on the construction tab no longer closes).
+- **R2-2** (`3e437f90`): the materials and residents show on every screen with the stock of the local player's
+  city on the island under the view's centre (sea-level tile at the drawable centre), hidden otherwise. PlaySnapshot
+  gains `cities` built on the sim thread from existing read-only accessors only (World::islands, TileLayer
+  x0/y0/width/height, City::owner/number/stock, World::city_population): no src/sim change. ui.md 5.2 states what
+  is and is not evidenced (open sea, a foreign island: not; OQ-622). AnnoFrame's status bar update not read.
+  Test `viewer_wiring_ui_counters_centred` (island shown, sea and a city-less island hidden, shown on the player
+  list); CPU and GPU runs both pass, captures show the five icons and figures and their absence.
+- Measurement (`35a4233e`, ANNO_PUBLISH_STATS, lan5, 400 frames; before R2 -> after R2): snapshot build median
+  41-47 -> 47-49 us (p95 52-112 -> 57-104); turn p95 (noisy, 19-93 turns per run) 0.8-10.4 -> 0.8-13.3 ms, the same
+  10 ms spikes before and after. "construction ui" median: CPU 1024 x 768 1.98 -> 0.36 ms, 2542 x 1351 3.72 -> 0.59;
+  GPU 2.13 -> 0.55, 4.10 -> 0.93. The panels first made it worse (3.45 / 5.17 ms); `f9a49436` decodes each UI
+  texture once (TexCache re-decoded every sprite every frame) and blits uncut sprites in place.
+- Look (GPU window, 1920 x 1080, `cache/ui-window-1/r2/look_gpu`): all four tabs switch with the right selected
+  frame and panel chrome; construction opens; the counters show over the developer island and vanish over the sea.
+  Not maximized (the script resizes; a desktop window larger than the monitor is clipped in the capture).
+Gates: build 0 warnings; `run_selected.py` (the R1 selection plus `ui_tabs|ui_panels|ui_counters|play_|play test`,
+game dir, oracle shots, HE captures): selected 98, executed 98 pass, 0 failed/skipped, VERDICT PASS
+(`focused-r2.log`); clang-format clean; `check_unix_warnings.sh` GCC 13 / Clang 18, GPU on/off clean; Hosted CI:
+see the push of this section. NOT_RUN: GPU automation (as R1), Linux/macOS game-file runs, the full suite.
+QUESTIONs: none (no src/sim change was needed).
+**READY FOR REVIEW.**

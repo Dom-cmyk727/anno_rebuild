@@ -10533,3 +10533,42 @@ Decisions and reasoning:
   clamp addressing (HE's UI address mode is open).
 QUESTIONs: none blocking. Owner choices are listed in OQ-614/615/616 (HE graphics when present? small windows?).
 **READY FOR REVIEW.**
+
+### Fix round R1 (review of `d9121492`: ACCEPT WITH FINDINGS) — 2026-11-14
+
+One commit per finding (F6 and F7 share one: one window script covers both):
+- **F1** (`3bd296a2`): HE draws the UI layer with `Texture::InitTexture`'s quad (AnnoDisplay 0x5c9dd..0x5cb2a;
+  off = trunc((W − kh·uiW)·0.5 + 0.5), corners (off, 0)-(W − off, H) or the transpose, whole-client viewport
+  0x5ac65), stretched per axis; the uniform k of 0x5a961 only feeds the click getters (0x18940..0x18970, copies
+  0x18fab/0x19431). The rebuild now draws that way; clicks keep k (OQ-619, at most one layer pixel apart). HE
+  captures: tab band / gold symbol / question mark 0.04 / 0.06 / 0.05 at s1.5 and 0.04 / 0.05 / 0.05 at s2.0
+  (bound 0.25 everywhere, was 1.5 / 2.5 on the band only); last client row drawn; 1:1 unchanged (0.00, exact).
+- **F2** (`76b84cfd`): closing the menu by the tab or Esc toggles an armed tool off (`construction_close`). New
+  `viewer_wiring_ui_menu_close_disarms` (arm, close each way, map click: `expect outcome none`); against the
+  previous viewer it fails (the title still shows "build 501"). Wording: the tab opens (as B) and closes (as Esc).
+- **F3** (`fef60e57`): comment and ui.md 5.1 state the original picks STATUSBAR (746) at any other width; the
+  1001-px tiling is our adaptation with seams at x 1000/1001 and 1262 that HE lacks (OQ-614).
+- **F4** (`22b6d940`): OQ-617 narrowed (0x2d943 reads `[[rdi+0x568] + r14*8 + 4]`, the chosen mode in the list);
+  the rebuild reads the client height in a window (ui_transform.hpp, he-ui-scale.md Open).
+- **F5** (`224b73e2`): OQ-620 (AnnoFrame 0x10063000/13 width factor 1.18/1.3 on bases 400/436 at 0x100636e3/
+  0x10063725); ui.md 5.1 no longer claims the original keeps the icons' x. `7fcaa1b9` puts OQ-618 back in order
+  (the F1/F4 commits were cut from a working file and left it out in between; final text unchanged).
+- **F6, F7** (`7c517361`): reference size from hud.txt `resolution`; `--ui-scale` range from `UiScaleRule` in cli
+  and the mock. A lost UI press is dropped on a new press, focus loss or mouse leave. New script verbs `ldown_px`,
+  `ldrag_px`, facts `ui.press`, `camera.pans`; `viewer_wiring_ui_chrome_press`: a chrome drag pans 0 times, a map
+  drag pans (control), a lost press is dropped and the next map click reaches the selection; without the reset
+  it fails (`ui.press` stays 1 after focus-lost).
+- GPU path, non-1024 (manual, `cache/ui-window-1/r1`): GPU desktop copy vs CPU frame, right column: 1280 x 1024
+  214 114 of 214 130 px identical (max diff 22); 900 x 600 (letterboxed, stretched) 91 200 of 91 200; 1920 x 1080
+  (s2.0, forced 1:1) 190 610 of 190 610 above a desktop toast that covered the bottom. No CTest: a GPU window needs
+  a real desktop (live_screen_compare.py's own note); NOT_RUN as automated.
+- Perf (`7be8ee0d`): the GPU path composes into a reused canvas: "construction ui" median 5.27 -> 4.63 ms, p90
+  7.63 -> 6.24 (GPU, 49 frames each). Follow-ups, not done: the non-1:1 paths recompose the whole layer every frame;
+  UiLayerScaler compares about 4.7 MB per frame; the re-stretch is single-threaded (up to about 16 ms).
+Gates: `cmake --build --preset msvc` exit 0, 0 warnings (`build-r1.log`). `run_selected.py` with game dir, oracle
+shots and HE captures (the earlier selection plus `ui_menu|ui_chrome|dev script|dev_script`): selected 48, executed
+48 pass, 0 failed, 0 skipped, VERDICT PASS (`focused-r1.log`). clang-format 23.1.3 on the 15 changed app files:
+clean. `ui_layout.py validate/self-test/check-files`: ok. `check_unix_warnings.sh`: GCC 13, Clang 18, GPU on/off clean, exit 0. Hosted CI: see
+the push of this section.
+NOT_RUN: an automated GPU check at a non-1024 size (above); Linux/macOS game-file runs; the full suite.
+**READY FOR REVIEW.**

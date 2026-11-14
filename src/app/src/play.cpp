@@ -444,6 +444,7 @@ void PlayRunner::stop() {
         line("turn", stat_turn_us_);
         line("snapshot build", stat_snapshot_us_);
         stat_turn_us_.clear();
+        stat_snapshot_us_.clear();
     }
 }
 
@@ -890,7 +891,9 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     while (!costs_.empty() && costs_.front().first < cut) {
         costs_.erase(costs_.begin());
     }
-    const auto build_start = std::chrono::steady_clock::now();
+    // Only when measuring: no clock read on the sim thread otherwise.
+    const auto build_start =
+        publish_stats_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     auto next = std::make_shared<PlaySnapshot>();
     next->tick = world_.clock().tick();
     next->game_ms = world_.clock().ms;

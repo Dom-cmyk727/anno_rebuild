@@ -239,3 +239,25 @@ reproduces the failure (4,808 of 179,612 pixels). The UI lane's focused runs now
 
 **The candidate:** `orch/land-ui-window-1-r5` at `ef9e9705`, built on SHORE-2's candidate `d871be6a`, so one run
 covers both.
+
+### The game-file run of the R5 candidate (2026-11-14)
+
+**The candidate:** `ef9e9705`: SHORE-2's candidate `d871be6a` (`main` `5bcd64a6` + SHORE-2 + the board), then
+`task/UI-WINDOW-1` `4a6b10ac`.
+
+**The run:** the canonical call, with the GOG oracle shots and the HE captures set, 21:12–21:29.
+- `COUNTS: selected=2622 executed=2593 failed=2 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- Log sha256 `7074ad1e617dadc8…`.
+- `live_screen_matches_oracle` passed (10.35 s), as did every other UI test.
+
+**The two failures are memory refusals** (`reason=low-memory stop`), both render corpus tests this package doesn't
+touch:
+- `chunk draw lists replay to the objects and base planes of Scene::render, every chunk`;
+- `scene renders match the recorded digests`.
+
+**Each rerun alone** with `--jobs 1`, 21:30–21:37: `COUNTS: selected=1 executed=1 failed=0`, `VERDICT: PASS` for both.
+Log sha256s: `4d97a179d78364cc…`, `72e48129149c8ffd…`.
+
+**Result:** every selected test that is not skipped executed and passed. It lands under the owner's OK ("Land both
+when green") right after SHORE-2.

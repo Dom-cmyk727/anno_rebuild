@@ -155,3 +155,18 @@ them ran, and all are render corpus tests this package doesn't touch:
 
 **Result:** all 2,582 selected tests that are not skipped executed and passed on the candidate.
 
+
+## Held again (2026-11-14, after the owner's "Land both")
+
+The owner gave the landing OK in this session ("Land both", with SAVE-SECTIONS-1b). `land.py` pushed
+`land/ui-window-1-save-sections-1b` at `052bae3d` and waited for `gate`. Then the UI lane relayed the owner's second
+retest at `0143f045`: "lots of issues, now building materials are not shown at all anymore, entrance arrows in the
+building preview in the construction menu still missing, building rotation in the preview still not possible".
+
+- `land.py` was stopped before it pushed `main`; `main` is still `f54e36f0`. `land/ui-window-1-save-sections-1b` was
+  deleted.
+- The building materials not showing looks like a regression in R2 or R3. The UI lane analyses the owner's video
+  (`E:\1503_test_videos\ui_2.mp4`) and runs another fix round. The preview's arrows and rotation are OQ-612,
+  planned as UI-INFO-2; whether they block this landing is the owner's call.
+- SAVE-SECTIONS-1b lands alone, on its own candidate and game-file run.
+- The landing waits for the UI lane's new head, a fresh game-file run and the owner's OK.

@@ -64,7 +64,11 @@ says who is doing what, where the work is, and what it waits on.
     **R2 and R3 done, ACCEPTED again** (2026-11-14, head `0143f045`, CI green): the tabs are switches, the
     counters follow the island under the view centre (read-only, no `src/sim` change), and the construction UI
     is down to 0.59 ms (CPU) and 0.93 ms (GPU) at 2542 × 1351. The candidate `f4efaa81` passed its game-file run
-    (2,578 executed; the 4 memory refusals passed alone). **Waiting for the owner's landing OK.** The UI lane's next packets:
+    (2,578 executed; the 4 memory refusals passed alone). The owner said "Land both" (with SAVE-SECTIONS-1b), then
+    the UI lane relayed the owner's second retest: "lots of issues, now building materials are not shown at all
+    anymore, entrance arrows in the building preview in the construction menu still missing, building rotation in
+    the preview still not possible". **HELD again:** land.py was stopped before `main` moved (still `f54e36f0`);
+    the UI lane analyses the owner's video and runs another fix round. The UI lane's next packets:
     UI-INFO-2 (preview entrance arrows and rotation, OQ-612), UI-TABS-1 (live figures in the tab panels),
     UI-MINIMAP-1. Follow-up
     UI-PERF-1: the construction UI costs about 5–6 ms per frame at 2542 × 1351 (opt-in today).

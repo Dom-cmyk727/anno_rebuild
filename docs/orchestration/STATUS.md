@@ -23,14 +23,16 @@ says who is doing what, where the work is, and what it waits on.
 - **[ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) WRITTEN** for the Windows executor (owner: "Yes, write it"), released
   under the standing go after SHORE-2's review: coarse levels resident, the zoom range prefetched, a memory-sized
   cache.
-- **[ZOOM-SMOOTH-2](tasks/zoom-smooth-2.md) WRITTEN**, released right after ZOOM-SMOOTH-1 (owner, 2026-11-14: "make sure
-  that will be fixed once the executor is done with ZOOM-SMOOTH-1"): no slow frame at maximum zoom-out (chunk
-  drops and intake off the window thread's critical path, `record`/`finish` measured) and the picture keeps moving
-  during a window drag. **After it lands** (owner): the orchestrator starts the enhanced viewer for the owner's OBS
-  recording, then analyses the video thoroughly against the 2026-11-14 baseline and reruns the scripted session.
-  Camera jumps stay for RENDER-DIRECT.
+- **ZOOM-SMOOTH-1 revised, ZOOM-SMOOTH-2 narrowed, ZOOM-SMOOTH-3 new** (2026-11-14), after an independent critical
+  review the owner asked for ([review](reviews/2026-11-14-zoom-smooth-packets-review.md)); its blocking findings were
+  confirmed in the code. [ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md): the sweep fixed first, one byte budget, resident
+  coarse levels on the CPU and the GPU, the GPU kept ahead. [ZOOM-SMOOTH-2](tasks/zoom-smooth-2.md): the window drag
+  and resize only. [ZOOM-SMOOTH-3](tasks/zoom-smooth-3.md): the slow frames at maximum zoom-out, measured again after
+  ZOOM-SMOOTH-1. **After ZOOM-SMOOTH-3 lands** (owner): the orchestrator starts the enhanced viewer for the owner's
+  OBS recording, then analyses the video thoroughly against the 2026-11-14 baseline and reruns the scripted session.
+  Camera jumps and fast zoom-in stay for RENDER-DIRECT.
 - **RENDER-DIRECT moved up** (owner, 2026-11-14: "Yes, move it up"): the Windows queue is now SHORE-2 → ZOOM-SMOOTH-1 →
-  ZOOM-SMOOTH-2 → RENDER-DIRECT-1 to 6 ([ADR 0007](../adr/0007-direct-rendering.md)) → GATE-2a → GATE-2b →
+  ZOOM-SMOOTH-2 → ZOOM-SMOOTH-3 → RENDER-DIRECT-1 to 6 ([ADR 0007](../adr/0007-direct-rendering.md)) → GATE-2a → GATE-2b →
   TEST-MEM-1. RENDER-DIRECT alone fixes the camera-jump patchwork. Until the gate packets land, a test refused for
   memory still counts as failed and is rerun alone by the orchestrator.
 - **A new UI lane, owner 2026-11-14:** the "UI Executor" session is orchestrator and executor for the in-game UI, so
@@ -520,8 +522,8 @@ mirror still requires the owner/Windows sync after main publication.
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
 - **Now: [SHORE-2](tasks/shore-2.md)** (released 2026-11-13): the sea's edge against the 26.5 plane. Then
-  [ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) (written 2026-11-14), [ZOOM-SMOOTH-2](tasks/zoom-smooth-2.md) (written; right
-  after ZOOM-SMOOTH-1, owner 2026-11-14), RENDER-DIRECT-1 to 6 (moved up, owner 2026-11-14), GATE-2a, GATE-2b and
+  [ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) (written 2026-11-14), [ZOOM-SMOOTH-2](tasks/zoom-smooth-2.md) and
+  [ZOOM-SMOOTH-3](tasks/zoom-smooth-3.md) (right after ZOOM-SMOOTH-1, owner 2026-11-14), RENDER-DIRECT-1 to 6 (moved up, owner 2026-11-14), GATE-2a, GATE-2b and
   TEST-MEM-1. UI-WINDOW-1 moved to the UI lane (owner, 2026-11-14).
 - **Finished: [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md)** (2026-11-13; head `eff68d5e`), **accepted and
   landed** as `95eea7de` ([review](reviews/2026-11-13-depth-integrate-1-review.md)).

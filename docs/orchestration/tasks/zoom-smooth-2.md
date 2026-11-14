@@ -1,127 +1,119 @@
-# ZOOM-SMOOTH-2: no slow frame at maximum zoom-out, and the picture keeps moving while the window is dragged
+# ZOOM-SMOOTH-2: the picture keeps moving while the window is dragged or resized
 
-**Status:** written 2026-11-14 by the Claude Code orchestrator for **the Windows executor**. The owner's order
-(2026-11-14): ZOOM-SMOOTH-2 is released right after ZOOM-SMOOTH-1 ("make sure that will be fixed once the executor is
-done with ZOOM-SMOOTH-1"), before GATE-2a. Step 2, second half, of
-[`zoom-smoothness.md`](../../render/zoom-smoothness.md) §6: the window-thread causes (§3 RC4).
+**Status:**
+- **Written** 2026-11-14 by the Claude Code orchestrator for **the Windows executor**.
+- **Narrowed the same day** after an independent critical review:
+  - this packet is now only the window drag and resize, which doesn't touch the frame renderer and survives
+    ADR 0007 (its decision 6);
+  - the window-thread spikes at maximum zoom-out moved to [ZOOM-SMOOTH-3](zoom-smooth-3.md).
+- **The owner's order** (2026-11-14): fixed right after ZOOM-SMOOTH-1 ("make sure that will be fixed once the executor
+  is done with ZOOM-SMOOTH-1").
 
-**Base:** `origin/main` **after ZOOM-SMOOTH-1 has landed** (both touch the frame renderer). Check that ZOOM-SMOOTH-1's
-merge is an ancestor of `origin/main`; if not, stop and report. Branch `task/ZOOM-SMOOTH-2`, a new worktree. About
-3 hours. Never rebase, force-push or push `main`.
+**Base:** `origin/main` at release. It is independent of ZOOM-SMOOTH-1's code, so no ancestor check is needed. Branch
+`task/ZOOM-SMOOTH-2`, a new worktree. About 3 hours. Never rebase, force-push or push `main`.
 
 **Rules:** the owner rule of 2026-11-12 on the board ([`TASKS.md`](../TASKS.md)):
-- one concern: the window thread's time per frame;
-- no reviewer subagents (the orchestrator reviews your handover);
+- one concern: frames during a window move or resize;
+- no reviewer subagents;
 - one REPORTS entry of about 60 lines, READY FOR REVIEW.
 
 ## Why
 
-The owner's display runs at 500 Hz, so every frame above 2 ms drops at least one refresh. The owner's zoom session of
-2026-11-14 ([`zoom-session-2026-11-14.md`](../../render/zoom-session-2026-11-14.md), F7; run 3, no capture) found
-single frames of 12–18 ms, all at or just after maximum zoom-out (zoom group 4). The viewer's own step timing names
-the step each time:
+ZOOM-MEASURE-1 measured a 106 ms hitch during a window drag, 96.7 ms of it inside the `SDL_PollEvent` loop. While the
+title bar is held, Windows runs its own modal move/resize loop and the viewer's frame loop doesn't run. A restore from
+maximised spent 16 ms in `surface configure`. The owner reads it as stutter.
 
-| Frame | The step that took the time | What the step is (`gpu.hpp`) |
-|---|---|---|
-| 18.2 ms | `sync drops` 14.9 ms | dropped chunks: their planes go to the plane pool, which keeps a bounded number, and **the rest is freed on the window thread** |
-| 15.4, 12.6, 14.4 ms | `record` 12.8, 10.8, 13.7 ms | recording the three passes |
-| (run 2) | `finish` 9.1–9.4 ms | finishing the command buffer |
-| (run 2) | `chunks` 17.0 ms | taking finished chunks from the workers |
+**What SDL3 offers** (verified by the review in SDL 3.4's source; re-check against the SDL version this build pins):
+- On `WM_ENTERSIZEMOVE` SDL starts a `USER_TIMER_MINIMUM` (10 ms) timer.
+- Each `WM_TIMER` calls `SDL_OnWindowLiveResizeUpdate`. Without main callbacks, that sends
+  `SDL_EVENT_WINDOW_EXPOSED` with `data1 = 1` to the event watchers.
+- So a redraw from an event watch runs at most about 64–100 Hz during a drag, not at 500 Hz.
 
-**The window drag.** ZOOM-MEASURE-1 measured a 106 ms hitch during a window drag, 96.7 ms of it inside the
-`SDL_PollEvent` loop. That is Windows' modal move/resize loop: while the title bar is held, Windows runs its own message
-loop and the viewer's frame loop doesn't run. A restore from maximised spent 16 ms in `surface configure`.
-
-The owner reads both as stutter. ADR 0007's direct renderer changes the chunk path later, but the owner wants these
-gone now, after ZOOM-SMOOTH-1.
+Sources:
+- `src/video/windows/SDL_windowsevents.c`;
+- `src/video/SDL_video.c`;
+- `src/events/SDL_eventwatch.c`;
+- `SDL_events.h` (watchers may run on any thread, under the watch list's lock).
 
 ## Read first
 
 - `CLAUDE.md`;
 - `docs/testing/evidence-contract.md`;
-- `docs/render/zoom-smoothness.md` §3 RC4 and §4 "For the stutter";
-- `docs/render/zoom-session-2026-11-14.md` F7;
-- the ZOOM-MEASURE-1 review (the hitch mechanism, and note 2 on submission jitter);
-- `docs/app/window-trace.md`;
-- `docs/perf/README.md` (the frame steps, `frame hitch:` lines, the 2026-10-19 stutter fixes: the reaper thread,
-  upload slicing);
-- `src/render/include/anno/render/gpu.hpp` (`GpuStats` and its steps);
-- the chunk sync and drop path, the plane pool, and the existing reaper (`frame.hpp` `reaper_`);
-- `src/app/src/viewer.cpp`: the event loop, `SDL_EVENT_WINDOW_EXPOSED`, and `measure`.
+- `docs/render/zoom-smoothness.md` §3 RC4, §4 "For the stutter", §5 (the research on the modal loop);
+- the ZOOM-MEASURE-1 review (the hitch mechanism);
+- `docs/app/window-trace.md` (`ANNO_VIEW_TRACE`);
+- `docs/open-questions.md` OQ-098 (surface reconfigure per resize tick, 9.5–16 ms; option 2, debouncing, is the
+  owner's decision) and OQ-099 (the offscreen targets regrow, 14–37 ms on the iGPU);
+- `src/app/src/viewer.cpp`: the event loop, `SDL_EVENT_WINDOW_EXPOSED`, the frame step, `pending_zoom_`,
+  `script_tick`;
+- `src/app/src/play.cpp`: the runner pushes its wake event from the sim thread while holding `listener_mu_`.
 
 ## Do
 
-**Cause first, one step at a time.** For each step, measure what it does at maximum zoom-out before changing it:
-visible chunks, draws, bind groups, chunks dropped, planes freed, chunks received. Put these counts into the
-`frame hitch:` line where they are missing, so a slow frame names its count as well as its time.
-
-1. **Drops.** No GPU object is freed on the window thread in a frame.
-   - Freed planes go to the existing reaper, or are released over several frames under a time budget.
-   - If wgpu-native requires a release on the device's thread, cite the source and use the budget instead.
-   - Size the plane pool from a measurement, not a guess.
-2. **Chunk intake.** Taking finished chunks from the workers stays under a per-frame time budget; the rest waits for
-   the next frame. State the budget and show that ZOOM-SMOOTH-1's readiness numbers don't get worse.
-3. **`record` and `finish` at maximum zoom-out.** Find which count grows there: draws, bind groups, pieces, stand-in
-   cover, or the wave pass.
-   - **If the fix is small within today's design,** do it: for example, skip invisible or open-sea pieces, or stop
-     re-creating a buffer every frame.
-   - **If it needs fewer textures per frame** (one texture array or atlas for the chunks, which is RENDER-DIRECT's
-     ground), **stop with a QUESTION.** Attach the measurement, and don't build RENDER-DIRECT twice.
-4. **The window drag and resize.** The picture keeps updating while the window is dragged or resized.
-   - Use what SDL3 provides for live resize on Windows, for example drawing from an event watch on
-     `SDL_EVENT_WINDOW_EXPOSED` during the modal loop. Cite SDL3's source or documentation for the mechanism you use.
-   - Move `surface configure` work off the critical path where possible, for example pre-created or deferred
-     resources.
-   - The sim is never affected: rendering only reads sim state.
+1. **Draw during the modal loop.**
+   - **The trigger:** an SDL event watch that draws a frame only on `SDL_EVENT_WINDOW_EXPOSED` with `data1 == 1` (a
+     live resize or move update).
+   - **The path:** through the same frame-step function as the main loop, not a second drawing path.
+   - **A reentrancy guard:** a watch never draws while a frame is already being drawn.
+   - **Order:** the main loop's order (pending zoom, script tick, draw) must hold inside the watch too. Check every
+     test and proof that relies on that order (the dev script, `REPORTS.md` around the W4 window-wiring rounds).
+2. **The sim is never blocked.**
+   - Watchers run under SDL's watch-list lock. The runner's wake push (`SDL_PushEvent` from the sim thread, under
+     `listener_mu_`) waits for that lock.
+   - Show that a draw inside a watch cannot stall a sim turn, or stop with a QUESTION and the measured stall.
+   - Rendering only reads sim state.
+3. **Move and resize are different cases.**
+   - **A move** changes no size: no surface reconfigure, no target regrowth.
+   - **A resize** reconfigures the surface on every tick (OQ-098) and regrows the offscreen targets (OQ-099).
+   - **Fix the move fully.** For the resize, reduce what the code allows, for example deferring the target regrowth to
+     the end of the size change.
+   - Debouncing the reconfigure is OQ-098 option 2, an owner decision. Don't choose it; report what it would buy.
+4. **Linux and macOS.** X11 and Wayland have no modal loop: the watch must draw nothing there, and the normal loop
+   keeps running. State it in the code and the docs.
 5. **Tests:**
-   - a unit test that a drop frees nothing on the calling thread beyond the budget;
-   - a unit test of the intake budget;
-   - for the drag, the window trace (`ANNO_VIEW_TRACE`) on a real window is the proof. A headless test of an event
-     watch is enough if one exists in SDL's dummy driver; say which.
+   - **Headless:** under SDL's dummy driver, an `SDL_PushEvent` of `SDL_EVENT_WINDOW_EXPOSED` with `data1 = 1` reaches
+     the watcher.
+     - Test that it draws once and doesn't reenter.
+     - Test that a plain expose (`data1 == 0`) doesn't draw from the watch.
+   - **The real modal loop** can't be tested headless. The trace below is its proof.
 
-**Not this packet:** chunk readiness (ZOOM-SMOOTH-1), stand-ins and dissolves, camera jumps (RENDER-DIRECT), the water.
+**Not this packet:** the window-thread spikes at maximum zoom-out (ZOOM-SMOOTH-3), chunk readiness (ZOOM-SMOOTH-1),
+anything in the frame renderer.
 
 **Stop with a QUESTION if:**
-- a fix needs the chunk texture layout changed (RENDER-DIRECT);
-- a fix would touch `src/sim`;
-- the drag fix would need a second render thread. That is an architecture choice for the owner.
+- the fix needs a second render thread (an architecture choice for the owner);
+- a watch draw can stall the sim;
+- a fix touches `src/sim` or the frame renderer.
 
 ## Proof
 
-All numbers on this PC, with an otherwise idle machine, one run at a time.
+All on this PC, with an otherwise idle machine, one run at a time, with the window trace (`ANNO_VIEW_TRACE`) on a real
+window.
 
-1. **The owner-like live session, before and after.** Use `E:\anno1503-worktrees\zoom-session-2026-11-14\zoom.script`
-   with `tools\drive2.py ... --no-capture` and `tools\analyze2.py`, outside git. Report per move: worst busy,
-   frames above 2 ms, gaps above 6 ms, and the steps of the five slowest frames.
-2. **The targets:**
-   - **no frame above 2 ms busy** whose largest step is `sync drops` or `chunks`;
-   - **`record` and `finish` at maximum zoom-out** below 2 ms, or a QUESTION with the measurement;
-   - **a 5 s window drag and a maximise/restore cycle,** traced: the longest gap between presented frames during the
-     drag is stated, against today's 106 ms. Aim for one display interval of the modal loop's redraw rate, and state
-     what that rate is.
-3. **The sweep:** `zoom_sweep_contract` (opt-in) before and after. Busy p99 and max, and frames above 2 ms, per profile.
-4. **The gates:** the changed render and app lanes through the canonical runner, with classified counts.
-   - A test refused for memory did not run: rerun it alone with `--jobs 1`, with its own log.
-   - Run the WSL warning check.
+1. **A 5 s window drag** (move, no resize), before and after.
+   - The longest gap between presented frames during the drag, and the presented frame rate.
+   - **Target:** a gap no longer than the modal loop's timer interval plus one frame, about 16 ms, against today's
+     106 ms. State the rate you measured.
+2. **A resize by dragging the window edge for 5 s**, before and after: the same figures, and the time per tick in
+   `surface configure` and in the targets.
+   - **Target:** stated after measuring.
+   - Report the resize separately from the move.
+3. **A maximise/restore cycle**, before and after.
+4. **The gates:** the changed app lanes and the new watch tests, through the canonical runner, with classified counts.
+   - A test refused for memory did not run: rerun it alone with `--jobs 1`.
+   - Run the WSL warning check: the watch code must build on Linux with the CI flags.
    - Hosted CI must be green on the head, `gate` included.
 
 **Not yours:** the full suite and the game-file run (the orchestrator's, at the landing).
 
-## After the landing (the orchestrator, owner's request 2026-11-14)
-
-When ZOOM-SMOOTH-2 is on `main`, the orchestrator:
-1. starts the enhanced viewer for the owner's OBS recording: `lan5`, maximised, logged with clock time by
-   `tools\drive_manual.py`;
-2. analyses the video thoroughly against the 2026-11-14 baseline;
-3. runs the scripted session again.
-
 ## Report
 
 READY FOR REVIEW, about 60 lines:
-- each step's cause and fix;
-- the before/after tables;
-- the drag trace;
-- the budgets;
+- the mechanism with its SDL source;
+- the guard and the order;
+- the sim-stall check;
+- the move and resize tables;
+- what OQ-098 option 2 would buy;
 - the gate lines as printed;
 - NOT_RUN;
 - Decisions and reasoning;

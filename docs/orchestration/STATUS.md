@@ -30,8 +30,13 @@ says who is doing what, where the work is, and what it waits on.
   - **The report's gate line was a composite;** the review records the logs as they are. The work is proven.
   - **Landed 2026-11-14** (above), with its game-file run.
   - **[SHORE-2](tasks/shore-2.md) RELEASED** to the Windows executor: the stepped 8 × 8-tile water edges on beaches.
-- **[PINS-1](tasks/pins-1.md): FIX ROUND 1** ([review](reviews/2026-11-13-pins-1-review.md)), to the Mac through
-  the owner's prompt.
+- **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1** (2026-11-14,
+  [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
+  - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.
+  - **Version renumbering:** every expectation that names the version follows the constant, and the procedure is
+    written down. The Mac's 138 → 139 rehearsal ended in a check with 0 failures.
+  - **It waits on** the owner's landing OK and the candidate's game-file run, after UI-INFO-1. The Mac is free.
+  - Before the fix round (2026-11-13):
   - **The mechanism is sound.** In the orchestrator's 138 → 139 trial on this PC, `pins.py regen` rewrote all 44
     pins and the 14 recordings, and every replay test passed on the new logs.
   - **F1:** two pins that `highmap_digest_ref.py` holds are filed as ordinary pins, so `regen` would overwrite them.

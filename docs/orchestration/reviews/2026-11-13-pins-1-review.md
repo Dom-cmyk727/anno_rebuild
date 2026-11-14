@@ -181,3 +181,54 @@ FIX ROUND 1 to the Mac executor, through the owner's prompt, on the same branch:
 - hosted CI.
 
 No committed value changes. PINS-1 lands after the fix round is accepted, on the owner's OK.
+
+## Fix round 1 re-review (2026-11-14)
+
+**Verdict: ACCEPTED.** Every item of F1 and F2 is done as asked, and the executor's own renumbering rehearsal found
+and fixed a twelfth version-naming expectation that the orchestrator's trial had not reached.
+
+**Reviewed head:** `task/PINS-1` `661cd2a6`, one commit on `95ce43a8`. Hosted CI run 43537097319 on exactly that
+commit: 12 of 12 jobs green, `gate` included.
+
+**What the orchestrator checked, in the diff:**
+- **F1.**
+  - Both highmap pins are renamed `oracle_registry_highmap_absent` and `oracle_registry_highmap_present`, with
+    unchanged values, in `goldens.txt` and `types_test.cpp`.
+  - `highmap_digest_ref.py --check` now requires its computation, its own `PINNED` and the two named rows of
+    `goldens.txt` to agree, and the rows' version to equal `sim_stream.py`'s.
+  - `pins_contract_test.py` gains the class guard: no pin outside the oracle-owned names may have a value that is an
+    integer constant in any `tools/*.py`. It also checks that the old misfiling is caught.
+  - The two rows of `pins-literals.md` name their oracle.
+- **F2.**
+  - All nine refusal messages build "this build reads N" from `kStateHashVersion`, and the refused versions stay
+    literal. `git grep "reads 13" src` finds nothing.
+  - In the three hand-written headers (`sim_test.cpp`, `script_runtime_test.cpp`, `replay_test.cpp`) only the four
+    version bytes follow the constant. Every other byte is still written by hand.
+  - `regen` selects only the sim and replay tests. `check` keeps `population_oracles_agree`, the integration stream
+    references and `highmap_digest_reference_agrees`.
+  - The summary prints stage, version and value on both sides. A contract test covers a version-only move.
+  - `docs/testing/README.md` has the seven-step procedure, starting with keeping the outgoing identity in
+    `legacy<N>`.
+  - `integration_stream_ref.py`'s own identity contract no longer names 138. It checks the version against
+    `sim_stream.py`, and its negative control now proves its mutation applied. This was the twelfth site; the
+    orchestrator's trial had not bumped that oracle.
+
+**From the report, on the Mac** (the logs are not readable from this PC):
+- The rehearsal (138 → 139, in a scratch copy, uncommitted) moved 42 self-held pins (38 values and 4 versions
+  only). Two fewer than the orchestrator's trial, because F1 made two more oracle-owned.
+- The final check of the rehearsal: `COUNTS: selected=1662 executed=1644 failed=0 … skipped=18 (… opt-in=18 …)` and
+  `VERDICT: PASS`. The first check failed once, on the twelfth site above; that log is kept.
+- The committed head's check gave the same counts and `VERDICT: PASS`, and `pins_contract` passed alone.
+- Three tests of the rehearsal's `regen` could not be admitted because the sandbox refused the socket to the memory
+  coordinator. With the owner's approval on the Mac, only those three were stopped, and each was rerun alone with
+  `--jobs 1`. The final check, which passed in full, shows the result is complete.
+
+**Not verified by the orchestrator:** the Mac's logs, and a renumbering trial of the fixed head on this PC. The
+landing's game-file run re-runs every test on the merged commit.
+
+**For the landing:**
+- `task/PINS-1` is based on `f9e6ea0c` and does not contain `main`'s `95eea7de`. A trial merge conflicts only in
+  `REPORTS.md`, as two appends at the end; the orchestrator resolves it in the candidate.
+- Since its base, `main` changed `fixtures/synthetic/sim/fisher_vectors.txt` (FISHER-RE-1c), a file the pins do not
+  manage.
+- It lands on the owner's OK as a candidate with its game-file run, after UI-INFO-1.

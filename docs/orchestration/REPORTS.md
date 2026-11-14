@@ -10285,6 +10285,10 @@ Per-pixel vs GOG (102 520 panel px, after RGB565):
   Kontor 9 304).
 - The CPU window equals the reference exactly, so these counts are the live window's too.
 
+What I saw (step 5, window captures of 801, 1301 and 1302 next to their GOG shots): the name, the figures, the
+chrome and the cancel-X agree by eye. The preview differs visibly. The 801 forester's hut lacks its fenced garden
+and the green entrance arrows; the 1302 Kontor lacks its flags (OQ-612).
+
 Gates (merged head):
 - `cmake --preset msvc` + `cmake --build --preset msvc`: 0 warnings, 0 errors.
 - `ctest --preset msvc -R "construction menu|ui layout|hud layout|info panel|info_panel|live_screen|ui_mock|ui_dynamic|selected_house|construction_menu|point_in_hud|mask layout|construction_full|construction_unaffordable" -j 16`
@@ -10310,3 +10314,33 @@ Decisions and reasoning:
 
 QUESTIONs: none blocking. Open: OQ-612 (scaled and stall previews, entrance arrows, drawing past the box, rotation)
 and OQ-613 (HE panel code). OQ numbers are the next free after 610; renumber if another lane took them.
+
+### Fix round F (review of `a2b6c1c9`: ACCEPT WITH FINDINGS) — 2026-11-14
+
+Fixed, one commit each:
+- **F2** (`ee35c028`): the GPU mode of `info_panel_pixel_check.py` now compares exactly. It leaves out only the
+  measured 7 x 7 corner (1017..1023, 761..767), 49 px; the earlier 8 % allowance is gone. In both modes the
+  wrong-type control must differ in more pixels than the limit (0). GPU run on the RTX 4090: 102 471 of 102 471
+  checked px match for all 4 types. The control is rejected with 7 639 / 8 534 / 11 165 / 7 031 differing px.
+- **F3** (`15a0697f`): the upkeep columns differ on 11 of the 15 shots, not 7. Added 1301, 1302, 1310 and 1314.
+- **F4** (`e507e64e`): the upkeep pushes are now cited at instruction starts: 0x1003026b `push 1` and
+  0x1003026d `push 2`.
+- **F5** (`3fc74191`): `InfoPanelContent::upkeep` is optional. When it has no value, the upkeep box draws nothing
+  instead of 0. A unit test covers it.
+- **F6** (`5955a92e`): OQ-613 now records that HE `View.dll` is PE32+ x86-64 (machine 0x8664). It also records the
+  string-cross-reference route: `INFOUNTERGRUND` occurs 2 times and 135.0f 21 times.
+- **F7**: the "What I saw" paragraph above.
+- **F1 prep** (`932accb3`): the preview is split into two paths. A sprite that fits the box is drawn unscaled and
+  centred (the proven rule). Anything larger goes through the single `preview_placeholder_fit`. The split is
+  mirrored in `tools/ui_layout.py`. No pixel changes: the GOG counts are identical.
+- **F8** (`e7a9ba20`): new CTest `info_panel_gog_compare`. It runs the GOG comparison when `ANNO_UI_ORACLE_SHOTS`
+  is set. Name, figures and chrome must be 0 on all 15 shots, and the 3 proven types must be 0 overall. Without
+  the variable it skips.
+
+Gates:
+- `cmake --build --preset msvc`: 0 warnings, 0 errors.
+- The same focused `ctest -R` selection with `ANNO_UI_ORACLE_SHOTS` set: 24 selected, 24 executed and passed,
+  0 skipped, 0 failed.
+- Without `ANNO_UI_ORACLE_SHOTS`: `info_panel_gog_compare` skips with a message, as designed.
+- clang-format 23.1.3 on the changed C++ files.
+- Hosted CI: see the push of this section.

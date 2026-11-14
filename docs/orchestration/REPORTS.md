@@ -10712,6 +10712,23 @@ game dir, oracle shots, HE captures set): selected 44, executed 44 pass, 0 faile
 unchanged (f54e36f0). Hosted CI: see the push of this section.
 **READY FOR REVIEW.**
 
+### Fix round R5 (live_screen_matches_oracle hud_idle on the landing candidate) — 2026-11-14
+
+- Cause: the test took `hud_idle` on lan5, whose developer city shows the counters (R4), while `hud_idle_running`
+  is shot before the first founding: 4808 of 179612 pixels, all in `statusbar`.
+- **Fix** (`7c39ac19`, test only): `hud_idle` now comes from a second launch on the ship start (`lan5-ship-a.json`,
+  seat 0, new `live_screen_hud_idle.script`, same `--renderer` handling); the construction screens stay on lan5.
+  No masks, tolerance and counter rule unchanged. Docstring says which launch checks what; ui.md 5.2 test note.
+- **Before/after:** hud_idle taken from the lan5 launch again (temporary edit, restored from a copy): `hud_idle:
+  4808 of 179612 opaque-oracle pixels differ ... first at statusbar (404,733) ... [('statusbar', 4808)]`, Failed.
+  Fixed: `hud_idle: exact match on 179612`, construction_public 266990 and construction_roads 209490 exact, Passed.
+  The ship-start hud_idle shows no other difference (panel, crest, gold, minimap all exact). GPU run: NOT_RUN.
+- Merged origin/main 674ecdf4 (`8243721e`). Gates: build 0 warnings; `run_selected.py` (R4's selection plus
+  live_screen_matches_oracle, ui_dynamic_draw_check, selected_house_pixel_check, info_panel; game dir, oracle
+  shots, HE captures set): selected 50, executed 50 pass, 0 failed/skipped/empty, VERDICT PASS (`focused-r5.log`).
+  No C++ changed: clang-format and WSL check not needed. Hosted CI: see the push of this section.
+**READY FOR REVIEW.**
+
 ## SAVE-SECTIONS-1b — compile-time optional extensions with unchanged139 pins (2026-11-14)
 
 Branch task/SAVE-SECTIONS-1b, new worktree from main f54e36f0; ancestor8b732ee9 passed first.

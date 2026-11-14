@@ -196,8 +196,10 @@ TEST_CASE("integration oracle: populated freight quarry mason and two-reserver m
         CHECK(hash.finish() == root.value());
     };
     sim::IdCounters ids;
-    compare_section("figures_section",
-                    [&](auto& archive) { sim::StateIO::figures_section(archive, registry, ids); });
+    sim::ExtensionContext extensions;
+    compare_section("figures_section", [&](auto& archive) {
+        sim::StateIO::figures_section(archive, registry, ids, extensions);
+    });
     sim::Mine mine;
     mine.last = 12;
     mine.switched_on = true;
@@ -302,7 +304,8 @@ TEST_CASE("integration oracle: populated freight quarry mason and two-reserver m
     compare("script", e.at("script"), r);
     const sim::SimConfig script_config;
     compare_section("script_section", [&](auto& archive) {
-        sim::StateIO::script_section(archive, r, *types.value(), players, script_config);
+        sim::StateIO::script_section(archive, r, *types.value(), players, script_config,
+                                     extensions);
     });
     // Direct wrong readings fail the same oracle; a round-trip alone would miss these.
     registry.list.slots[8]->job = 0x2a;

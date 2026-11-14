@@ -13,10 +13,32 @@ says who is doing what, where the work is, and what it waits on.
   - **UI-HE-1** as `d89d54a6`: the History Edition's UI scale rule, docs only.
   - **`main` is healthy.** `d2884227`'s game-file run passed every test (2,564 executed, 0 failed, none refused), and
     `d89d54a6` adds only documents on top. UI-INFO-1's own run passed too, its 5 memory refusals rerun alone.
-- **[SAVE-SECTIONS-1a](tasks/save-sections-1a.md) ACCEPTED** (2026-11-14, head `8b732ee9`, CI green;
+- **[SAVE-SECTIONS-1a](tasks/save-sections-1a.md) LANDED** on the owner's OK (2026-11-14, `main` `d89d54a6` → `f54e36f0`;
   [review](reviews/2026-11-14-save-sections-1a-review.md)): each of the ten sections has a base version and an
-  empty extension list; 139 is the last global state number. 50 pins changed value, 13 only their version. It lands
-  on the owner's OK, after the game-file run of the candidate (`main`, then the branch, then the board).
+  empty extension list; 139 is the last global state number. 50 pins changed value, 13 only their version.
+  **`main` is healthy:** `f54e36f0`'s game-file run passed every test (2,566 executed, 0 failed, none refused).
+  **SAVE-SECTIONS-1b READY, ACCEPTED** (2026-11-14, head `4c1685fa`, CI green;
+  [review](reviews/2026-11-14-save-sections-1b-review.md)): the extension tag registry (state.md §9.8), the
+  compile-time registration, and the proof that an extension moves no pin. Landing waits for its game-file run
+  and the owner's OK. **Next on the Mac:** [FISHER-1a](tasks/fisher-1a.md) (written 2026-11-14), released when the
+  owner pastes its prompt.
+- **Zoom session for the owner** (2026-11-14): fast zooming on `lan5`, enhanced water, measured
+  ([findings](../render/zoom-session-2026-11-14.md)), evidence for ZOOM-SMOOTH-1.
+- **[ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) WRITTEN** for the Windows executor (owner: "Yes, write it"), released
+  under the standing go after SHORE-2's review: coarse levels resident, the zoom range prefetched, a memory-sized
+  cache.
+- **ZOOM-SMOOTH-1 revised, ZOOM-SMOOTH-2 narrowed, ZOOM-SMOOTH-3 new** (2026-11-14), after an independent critical
+  review the owner asked for ([review](reviews/2026-11-14-zoom-smooth-packets-review.md)); its blocking findings were
+  confirmed in the code. [ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md): the sweep fixed first, one byte budget, resident
+  coarse levels on the CPU and the GPU, the GPU kept ahead. [ZOOM-SMOOTH-2](tasks/zoom-smooth-2.md): the window drag
+  and resize only. [ZOOM-SMOOTH-3](tasks/zoom-smooth-3.md): the slow frames at maximum zoom-out, measured again after
+  ZOOM-SMOOTH-1. **After ZOOM-SMOOTH-3 lands** (owner): the orchestrator starts the enhanced viewer for the owner's
+  OBS recording, then analyses the video thoroughly against the 2026-11-14 baseline and reruns the scripted session.
+  Camera jumps and fast zoom-in stay for RENDER-DIRECT.
+- **RENDER-DIRECT moved up** (owner, 2026-11-14: "Yes, move it up"): the Windows queue is now SHORE-2 → ZOOM-SMOOTH-1 →
+  ZOOM-SMOOTH-2 → ZOOM-SMOOTH-3 → RENDER-DIRECT-1 to 6 ([ADR 0007](../adr/0007-direct-rendering.md)) → GATE-2a → GATE-2b →
+  TEST-MEM-1. RENDER-DIRECT alone fixes the camera-jump patchwork. Until the gate packets land, a test refused for
+  memory still counts as failed and is rerun alone by the orchestrator.
 - **A new UI lane, owner 2026-11-14:** the "UI Executor" session is orchestrator and executor for the in-game UI, so
   the menus match the original and the History Edition. **UI-WINDOW-1 (the UI at every window size) moved to it**
   (owner: "UI-WINDOW-1 belongs to the UI lane"); the Windows executor's queue no longer holds it.
@@ -32,6 +54,24 @@ says who is doing what, where the work is, and what it waits on.
     the construction menu and the info panel drawn and clickable at any window size. The lane reports the owner's
     decision on ADR 0004 R3, "1.0, HE rule optional": the original's 1:1 UI by default, with HE's scale rule behind
     `--ui-scale`.
+  - **UI-WINDOW-1 ACCEPTED for landing** (2026-11-14, head `9925860c`, CI green;
+    [board review](reviews/2026-11-14-ui-window-1-board-review.md)). The UI lane's review was ACCEPT WITH FINDINGS,
+    with findings 1–7 fixed. **Held:** the owner's playtest "showed a lot of issues and problems", and the UI lane is
+    fixing them in fix round R2 (owner: "Yes, fix then land"):
+    - the four HUD tabs become the original's switches, showing their panels' static chrome;
+    - the status bar's material and population counters show outside the construction menu, for the island the
+      view is centred on, through read-only sim queries; any `src/sim` change is a QUESTION first.
+    **R2 and R3 done, ACCEPTED again** (2026-11-14, head `0143f045`, CI green): the tabs are switches, the
+    counters follow the island under the view centre (read-only, no `src/sim` change), and the construction UI
+    is down to 0.59 ms (CPU) and 0.93 ms (GPU) at 2542 × 1351. The candidate `f4efaa81` passed its game-file run
+    (2,578 executed; the 4 memory refusals passed alone). The owner said "Land both" (with SAVE-SECTIONS-1b), then
+    the UI lane relayed the owner's second retest: "lots of issues, now building materials are not shown at all
+    anymore, entrance arrows in the building preview in the construction menu still missing, building rotation in
+    the preview still not possible". **HELD again:** land.py was stopped before `main` moved (still `f54e36f0`);
+    the UI lane analyses the owner's video and runs another fix round. The UI lane's next packets:
+    UI-INFO-2 (preview entrance arrows and rotation, OQ-612), UI-TABS-1 (live figures in the tab panels),
+    UI-MINIMAP-1. Follow-up
+    UI-PERF-1: the construction UI costs about 5–6 ms per frame at 2542 × 1351 (opt-in today).
   - **UI-HE-1 ACCEPTED, docs only** (`task/UI-HE-1` `5d0db740`, [review](reviews/2026-11-14-ui-he-1-review.md)):
     how the History Edition scales the in-game UI. It steps the setting down by 0.1 until the UI has at least
     1024 × 768, stretches it bilinearly and keeps the side panel right-anchored. At 1200 lines or fewer it stays
@@ -49,6 +89,9 @@ says who is doing what, where the work is, and what it waits on.
   - **The report's gate line was a composite;** the review records the logs as they are. The work is proven.
   - **Landed 2026-11-14** (above), with its game-file run.
   - **[SHORE-2](tasks/shore-2.md) RELEASED** to the Windows executor: the stepped 8 × 8-tile water edges on beaches.
+    **Fix round 1** (2026-11-14, [review](reviews/2026-11-14-shore-2-review.md)): the sea gate now follows the plane
+    (code sound), but the measurements, the basin question, the owner's spot and the spec are still owed.
+    ZOOM-SMOOTH-1 is released after the fix round's review.
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
   - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.
@@ -142,7 +185,8 @@ says who is doing what, where the work is, and what it waits on.
   fisher reads are complete; the Mac executor is free.
 - **The Windows queue, owner 2026-11-13:** ZOOM-MEASURE-1 (now) → **DEPTH-INTEGRATE-1** ("Yes, depth first") →
   SHORE-2 → ZOOM-SMOOTH-1 → UI-WINDOW-1 → GATE-2a → GATE-2b → TEST-MEM-1 → RENDER-DIRECT-1 to 6
-  ([ADR 0007](../adr/0007-direct-rendering.md)). (2026-11-14: UI-WINDOW-1 moved to the UI lane.)
+  ([ADR 0007](../adr/0007-direct-rendering.md)). (2026-11-14: UI-WINDOW-1 moved to the UI lane; ZOOM-SMOOTH-2 added after
+  ZOOM-SMOOTH-1, and RENDER-DIRECT moved ahead of the gate packets, owner.)
 - **Zoom and camera smoothness: root causes, research and plan** in
   [`docs/render/zoom-smoothness.md`](../render/zoom-smoothness.md).
   - **The finding:** the renderer turns every zoom into work (per-level chunks built on demand, stand-ins, 150 ms
@@ -499,8 +543,9 @@ mirror still requires the owner/Windows sync after main publication.
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
 - **Now: [SHORE-2](tasks/shore-2.md)** (released 2026-11-13): the sea's edge against the 26.5 plane. Then
-  ZOOM-SMOOTH-1, GATE-2a, GATE-2b, TEST-MEM-1 and RENDER-DIRECT-1 to 6. UI-WINDOW-1 moved to the UI lane (owner,
-  2026-11-14).
+  [ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) (written 2026-11-14), [ZOOM-SMOOTH-2](tasks/zoom-smooth-2.md) and
+  [ZOOM-SMOOTH-3](tasks/zoom-smooth-3.md) (right after ZOOM-SMOOTH-1, owner 2026-11-14), RENDER-DIRECT-1 to 6 (moved up, owner 2026-11-14), GATE-2a, GATE-2b and
+  TEST-MEM-1. UI-WINDOW-1 moved to the UI lane (owner, 2026-11-14).
 - **Finished: [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md)** (2026-11-13; head `eff68d5e`), **accepted and
   landed** as `95eea7de` ([review](reviews/2026-11-13-depth-integrate-1-review.md)).
 - **Finished: [ZOOM-MEASURE-1](tasks/zoom-measure-1.md)** (2026-11-13; head `a5e180e0`), **accepted**
@@ -635,9 +680,9 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Finished: [SAVE-SECTIONS-1a](tasks/save-sections-1a.md)** (2026-11-14, head `8b732ee9`), **accepted**
-  ([review](reviews/2026-11-14-save-sections-1a-review.md)); it lands after the game-file run. **Next:** SAVE-SECTIONS-1b,
-  released once 1a is on `main`. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
+- **Finished: [SAVE-SECTIONS-1a](tasks/save-sections-1a.md)** (2026-11-14, head `8b732ee9`), **accepted and LANDED**
+  as `main` `f54e36f0` ([review](reviews/2026-11-14-save-sections-1a-review.md)). **Next:** [SAVE-SECTIONS-1b](tasks/save-sections-1b.md)
+  (head `4c1685fa`, ACCEPTED 2026-11-14, [review](reviews/2026-11-14-save-sections-1b-review.md); landing waits for its game-file run and the owner's OK): the tag registry and the proof that an extension moves no pin. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
   SAVE-SECTIONS-1a, then SAVE-SECTIONS-1b, then FISHER-1a, then FISHER-1b, the fisher working in the game.
   FIXTURES-TRIM-1 follows, as cleanup.
 - **Finished: [PINS-1](tasks/pins-1.md)** (2026-11-14; head `661cd2a6`), **accepted after one fix round**

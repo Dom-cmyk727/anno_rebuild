@@ -487,6 +487,10 @@ Anchoring at the captured 1024 × 768 in-game frame (section 2):
 Those subtractions are identities at 1024 × 768, not a verified rule at 800 / 1152 / 1280.
 Section 5.1 (UI-WINDOW-1) now proves the right-chrome and status-bar anchors.
 
+UI.2’s own scale (W5) is a rebuild choice, not an original fact. The History Edition's scale rule
+(the `UI_SCALE` setting, its 0.1 step-down, the bilinear stretch, the panel at `Sizex − 245`, the
+click mapping) is in `he-ui-scale.md`.
+
 ### 5.1 Placement at other window sizes (UI-WINDOW-1, 2026-11-14)
 
 Static reads with pefile + capstone (GOG 32-bit, VAs; HE x86-64, RVAs) and sprite-sad on the HE
@@ -516,10 +520,6 @@ and the pause parchment while paused are chrome; a left press there and its rele
 the map. A hit maps back to the 1024 × 768 frame where the reference has a rectangle (the column's
 top 768 rows, the bar's first 746 pixels, the question mark) and goes to the construction menu and
 the tabs there; the construction tab opens and closes the menu like key B.
-
-UI.2’s own scale (W5) is a rebuild choice, not an original fact. The History Edition's scale rule
-(the `UI_SCALE` setting, its 0.1 step-down, the bilinear stretch, the panel at `Sizex − 245`, the
-click mapping) is in `he-ui-scale.md`.
 
 ## 6. `data/ui/` layout format
 

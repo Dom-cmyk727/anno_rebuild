@@ -10694,11 +10694,11 @@ QUESTION 1: correct and re-release the usable-goal/reference/synthetic-bay contr
 The existing 50/2473/619/1854 census still measures raw-mask polarity and local shoreline geometry;
   it does NOT prove 2473 catchable goals. No new runtime reachability or OQ-609 claim is made.
 The earlier runtime-source lead 0x100928a0 (mean below 16) is consistent but remains out of scope.
-QUESTION 2 (asked of owner, response pending): global on/off draw equality contradicts dispatch.
+QUESTION 2 RESOLVED by owner (2026-11-14): preserve per-attempt draws, allow trajectory divergence.
 Original §2 count gate and production.cpp/driver.cpp: one discarded draw per ELIGIBLE attempt.
 First attempt: both consume 1. Next gate: on-world worker away blocks dispatch/consumes 0;
   off-world refused send left count 0, so it remains eligible/consumes 1.
-Recommendation: assert equal draws for paired identical eligible attempts and zero fisher-body draws;
+Authorized proof: assert equal draws for paired identical eligible attempts and zero fisher-body draws;
   explicitly allow later trajectories to diverge because their worker/raw state differs.
 Bounded hand/reference controls are in cache/fisher-1b/consumer-counterexamples.json.
 Independent authorized work: tag-1 creation-context draft was started, then preserved unvalidated
@@ -10715,4 +10715,4 @@ Decisions and reasoning:
 - Keep the accepted raw arithmetic/census evidence; narrow its meaning with a dated addressed finding.
 - Preserve the incomplete optional-flag draft outside the candidate rather than publish an inert feature.
 - Stop at the packet's explicit reference/original disagreement boundary; no new state or defaults.
-Independent orchestrator review pending. QUESTIONs 1 and 2 block behavioral acceptance.
+Independent orchestrator review pending. Only QUESTION 1 (usable-goal contract) blocks behavioral acceptance.

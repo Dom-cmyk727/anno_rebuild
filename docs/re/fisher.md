@@ -379,6 +379,18 @@ the goal mask admits those means (`0x1009226b`–`0x100922df`). A closed
 walking tile can therefore be a fish goal. Whole original-runtime recovery
 from malformed/stranded entrances is NOT_RUN; do not invent relocation.
 
+### Draw-contract clarification — owner decision, 2026-11-14
+
+**Owner decision / D/T scope.** Preserve exactly one discarded world draw per
+eligible farm dispatch attempt (`0x1006ed78`–`0x1006ee58`, §2) and add no
+fisher-body draw. Test paired identical eligible attempts and isolated trip-body
+execution. This does **not** require identical full flag-on/off draw trajectories:
+a fisher still away occupies its home worker slot, while a flag-off refused send
+does not. The next count gate can therefore suppress one world's dispatch and
+allow the other's. Do not add dummy draws or alter the flag-off stream to hide
+that state-dependent divergence. The owner explicitly accepted this scope;
+the separate usable-goal contract question remains open.
+
 ### Draw ledger
 
 **D/U — scope.** Direct world+0xb4 sites on the inspected fisher path are

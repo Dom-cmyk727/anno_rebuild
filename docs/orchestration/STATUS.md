@@ -74,7 +74,10 @@ says who is doing what, where the work is, and what it waits on.
     the UI lane relayed the owner's second retest: "lots of issues, now building materials are not shown at all
     anymore, entrance arrows in the building preview in the construction menu still missing, building rotation in
     the preview still not possible". **HELD again:** land.py was stopped before `main` moved (still `f54e36f0`);
-    the UI lane analyses the owner's video and runs another fix round. The UI lane's next packets:
+    the UI lane analyses the owner's video and runs another fix round. **R4** (the owner's "Always show my city")
+    and **R5** (the idle HUD compared before founding) followed. **LANDED** on the owner's OK ("Land both when
+    green"), 2026-11-14, `main` `6513b6f6` → `01a4d540`, after SHORE-2. **`main` is healthy:** the candidate
+    `ef9e9705` (the same code) passed its game-file run, its 2 memory refusals rerun alone. The UI lane's next packets:
     UI-INFO-2 (preview entrance arrows and rotation, OQ-612), UI-TABS-1 (live figures in the tab panels),
     UI-MINIMAP-1. Follow-up
     UI-PERF-1: the construction UI costs about 5–6 ms per frame at 2542 × 1351 (opt-in today).
@@ -98,7 +101,9 @@ says who is doing what, where the work is, and what it waits on.
     **Fix round 1** (2026-11-14, [review](reviews/2026-11-14-shore-2-review.md)): the sea gate now follows the plane
     (code sound), but the measurements, the basin question, the owner's spot and the spec are still owed.
     **Fix round 1 ACCEPTED** (2026-11-14, head `98cf2f06`): stepping below the plane 8,804 tiles → 0; readiness
-    not worse; basins open under OQ-026. Landing waits for its game-file run and the owner's OK.
+    not worse; basins open under OQ-026. **LANDED** on the owner's OK ("Yes, land SHORE-2"), 2026-11-14, `main`
+    `5bcd64a6` → `6513b6f6`; its candidate `d871be6a` (the same code) passed its game-file run, 2 memory refusals rerun
+    alone.
     **ZOOM-SMOOTH-1 RELEASED** to the Windows executor the same day, under the standing go.
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.

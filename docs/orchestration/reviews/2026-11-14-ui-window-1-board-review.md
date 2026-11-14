@@ -221,3 +221,21 @@ pixels differ (fraction 0.0268); first at statusbar (404,733)`.
 
 **Not landed.** The UI lane runs fix round R5: `hud_idle` is compared in the oracle's own state, before founding, in a
 second launch on the ship start. No new masks and no tolerance change. The owner's OK stands for a head that passes.
+
+## Fix round R5, the board's check (2026-11-14)
+
+**Verdict: ACCEPTED for landing**, under the owner's OK ("Land both when green") once its game-file run passes.
+
+**Reviewed head:** `task/UI-WINDOW-1` `4a6b10ac`. It contains `main` `5bcd64a6` (FISHER-1a, merged cleanly by the UI
+lane). CI run 43632307548 on `4a6b10ac` is green.
+
+**The fix** (`7c39ac19`) changes the test only, no C++. `live_screen_compare.py` launches the window twice:
+- **on `lan5`**, for `construction_public` and `construction_roads`, whose original shots draw the counters' icons;
+- **on the ship start** (`lan5-ship-a.json`, seat 0), for `hud_idle`, the state the pre-founding shot
+  `hud_idle_running` shows. Its new script also expects `hud.counters == hidden`.
+
+No masks were added; the comparison stays exact. The executor showed that pointing `hud_idle` back at `lan5`
+reproduces the failure (4,808 of 179,612 pixels). The UI lane's focused runs now include every original-shot test.
+
+**The candidate:** `orch/land-ui-window-1-r5` at `ef9e9705`, built on SHORE-2's candidate `d871be6a`, so one run
+covers both.

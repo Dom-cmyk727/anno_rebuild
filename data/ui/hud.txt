@@ -37,15 +37,46 @@ element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLAN
 element viewbautab_0 pos 779 302 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 16 frame_idle 16 frame_selected 17 method view-dll
 element baukosten size 32 29 file toolgfx/B_Baukosten.tex access image001.pcx tex_id 1 method inc-size
 element betriebskosten pos 815 674 size 40 37 file toolgfx/B_Betriebskosten.tex access image001.pcx tex_id 1 method sprite-sad shot r2_info_pioneer_house
+# UI-INFO-1: not drawn. The upkeep icon the shots show here is INFOUNTERGRUND id 33's own pixels:
+# panel alone, reduced to RGB565, matches all 1478 icon pixels on three shots; blitting this
+# texture on top makes 1477 of them differ. The grey-key match above found the baked icon.
 element wohnhaus_platte size 244 469 file toolgfx/fenster.tex access WOHNHAUS_PLATTE tex_id 883 method inc-size
 element house_portrait pos 812 355 size 100 108 file toolgfx/Pioniere.tex access image001.pcx tex_id 1 method sprite-sad shot f15_selected_house
 element pause_parchment pos 222 191 size 579 386 file toolgfx/fenster.tex access MESSAGEBOX_BK tex_id 1512 method sprite-sad shot f15_pause
 element pause_button pos 286 500 size 244 67 file toolgfx/fenster.tex access MESSAGEBOX_BUTTONS tex_id 1513 method sprite-sad shot f15_pause
 element abrissicon pos 970 710 size 53 53 file toolgfx/fenster.tex access ABRISSICON tex_id 659 frame_normal 659 frame_active 660 method sprite-sad shot r2_construction_public
 element info_panel pos 804 302 size 220 466 file toolgfx/fenster.tex access INFOUNTERGRUND tex_id 33 method sprite-sad shot r2_info_pioneer_house
-element infoexit pos 984 725 size 33 38 file toolgfx/fenster.tex access INFOEXIT tex_id 38 method sprite-sad shot r2_info_pioneer_house
+# UI-INFO-1: INFOEXIT draws 33 x 35 (View.dll gadget 0x1002ff95 pushes 0x23, 0x21), the texture's last three
+# rows are not drawn; RGB565-exact on r2_info_forester_801, f12_info_kontor_1302, r2_info_pioneer_house.
+element infoexit pos 984 725 size 33 35 file toolgfx/fenster.tex access INFOEXIT tex_id 38 method sprite-565 shot r2_info_forester_801
 element rotate_left pos 808 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 34 method sprite-sad shot r2_info_pioneer_house
-element rotate_right pos 987 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 36 method sprite-sad shot r2_info_pioneer_house
+# UI-INFO-1: rotate_right is at x 988, not 987 (0 of 1254 pixels differ in RGB565 at 988 on three shots, 984 at 987).
+element rotate_right pos 988 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 36 method sprite-565 shot r2_info_forester_801
+# UI-INFO-1 (2026-11-14): the info panel's text boxes and preview (docs/re/ui.md section 2.5).
+# Box widths are the View.dll gadgets (class 0xb1c, loop 0x10030024-0x10030126): name 200 x 18
+# (0x1003007f), the four materials 50 x 18 (0x1003008d), gold and upkeep 145 x 18 (0x100300ba).
+# align centre: text x = pos_x + size_w/2 - text_w/2 (integer, rounding down), text y = pos_y;
+# pos_x and pos_y are measured (method glyph-match: MainSmall.zei rendered by the
+# assets::render_text advance rule, levels painted 255,255,255 / 0,0,0 / 66,61,66, 0 differing
+# pixels on all 15 GOG info-panel shots for every name and figure; re-run with
+# python -I tools/ui_layout.py info-compare --type <id> --shot <png> --game-dir <dir>). size_h is the font's 25 glyph rows, not the
+# gadget's 18 (where the gadget top sits is not measured). GOG MainSmall, MainMedium and
+# HelpNormal.zei are byte-identical, so the shots cannot tell which name the gadget uses.
+element info_name pos 819 316 size 200 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
+element info_tools pos 852 564 size 50 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
+element info_wood pos 954 564 size 50 25 file toolgfx/mainsmall.zei align centre method glyph-match shot f12_info_kontor_1302
+element info_bricks pos 852 593 size 50 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
+element info_marble pos 954 593 size 50 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
+element info_gold pos 852 624 size 145 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
+element info_upkeep pos 852 684 size 145 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
+# The preview gadget (class 0xb17, 135 x 135: View.dll 0x1002fbac pushes 0x87, 0x87; 135.0f at
+# 0x1002fb99). Position and rule measured (method sprite-565: Anlagen.dat sprite set 0, group 0,
+# frame 0, centred in the box, reduced to RGB565 the way the 16-bit frame shows it): the whole
+# 135 x 135 box is pixel-identical on r2_info_dirt_road, f12_info_field_104, f12_info_field_708.
+# info_preview_shadow pos is the shadow's offset from the sprite (its silhouette in 66,65,66),
+# not a screen position. Larger sprites and the 1 x 1 stalls do not follow this rule yet (OQ-612).
+element info_preview pos 844 360 size 135 135 method sprite-565 shot r2_info_dirt_road
+element info_preview_shadow pos 5 10 method sprite-565 shot r2_info_dirt_road
 element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK tex_id 56 method sprite-sad shot r2_construction_public
 element option_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 method sprite-sad shot r2_options
 element rating_bg pos 0 0 size 1024 768 file toolgfx/fenster.tex access STATISTIK_UNTERGRUND tex_id 1509 method sprite-sad shot f15_rating

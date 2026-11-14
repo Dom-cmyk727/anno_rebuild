@@ -65,3 +65,31 @@ renderer behaviour change. CI green, `gate` included (run 43436856818 and later)
 
 ACCEPTED. It lands with the next landing, on the owner's OK. Under the standing go, and in the owner's order ("Yes,
 depth first"), [DEPTH-INTEGRATE-1](../tasks/depth-integrate-1.md) is released to the Windows executor.
+
+## Game-file run of the landing candidate
+
+**The candidate:** `orch/land-zoom-measure-1` at `480fafe7`. It contains ZOOM-MEASURE-1, FISHER-RE-1c and the
+board up to `ea680b6f`, merged on `main` `f9e6ea0c` with the owner's OK (2026-11-13).
+- The merge conflicts were only appends in `REPORTS.md`.
+- FISHER-RE-1c's merge base was a virtual one (its branch had merged FISHER-RE-1b), so its `REPORTS.md` was built as
+  `main`'s file plus FISHER-RE-1c's one section. Every earlier section on its side was checked to be on `main`
+  already.
+
+**The run:** in the run worktree on this PC, the canonical call with the game files, `ANNO_GPU_ADAPTER=4090` and 16
+jobs, 18:45–19:00.
+- **2,574 tests selected, 2,543 executed, 4 refused, 0 other failures.**
+- **27 skipped:** 21 opt-in, 3 platform, 3 other, the same as `f9e6ea0c`'s run.
+- **The four refused,** all at 18:45, for low memory: about 2 GB free, below the coordinator's stop line, while the
+  Windows executor's lanes were running too.
+  - chunk draw lists;
+  - `render_chunk`;
+  - the river flow corpus;
+  - the water field.
+
+  Under the owner's test rule they did not run. Rerun alone (`--jobs 1`) at 19:09 with about 15 GB free: **4
+  selected, 4 executed, 0 failed,** `VERDICT: PASS`.
+- **Logs** (`cache/orch-land-zoom-measure-1/`):
+  - `canonical-gate.log`, sha256 `e64aec0b…`;
+  - `rerun-refused.log`, sha256 `953a6711…`.
+
+So every test of the candidate passed.

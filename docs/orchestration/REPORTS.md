@@ -10083,3 +10083,175 @@ Decisions and reasoning:
 - Preserve earlier logs/prose as dated history; correct their interpretation explicitly.
 NOT_RUN: original-runtime route proof, searcher radius closure, HE, engine port; no reviewer agents.
 QUESTIONs: OQ-609's remaining approach/radius gap and unchanged OQ-610 require follow-up reads.
+
+## W4-DEPTH-1 — per-pixel sprite depth against the terrain and the water (2026-11-04) — status: READY FOR REVIEW (local branch; owner check and water-level decision open)
+
+Branch `task/W4-depth-1` from the W4-opening-1 head `a379e06e` (owner release 2026-11-04, as its own branch);
+worktree `E:\anno1503\.claude\worktrees\wizardly-chatelet-f638c2`. Nothing pushed, nothing merged. Code head of the
+gates: `63867115`.
+
+**Step 1, trace (closed; `docs/re/annodisplay.md` §9, OQ-026 update).** Live read-only dumps of the original's 128-px
+screen-tile caches in the Wine runner (silent, Citizen start, zoom 0-2, view rotations 0-3; no ship orders given) plus code:
+- depth units: u16 = floor(65536 · d), d = 0.5 − 0.00023663246 (x + y) − 0.00018957623 · up (blitters `0x100182f8`, live matrix);
+- passes: the cache rebuild (`0x1000fdf0`) draws terrain, then the static objects with depth write; the per-frame pass
+  (`0x100103c0`, `0x1000d680`) draws the coast pieces (type class `0x163`: 2702-2704, 2708, 2709) with write, then the
+  sea, rivers, ships and figures depth-sorted, test only;
+- the sea: anchor 1.28 + the 2801 sprite set's prefix −1.15 (+ the wobble), frames z ≈ −47: an effective water plane
+  at ≈ 26.5 `HEIGHT` (measured 26.25-28.25); at the same world points the original and `--shore 26.5` agree within
+  the original's ripple (both wet below 24, both ~22 % at 26-28, 73 % vs 96 % at 24-26);
+- objects: base = footprint centre at h · 0.04 (start-Kontor fit); `V`/`H` ramps pass through the base at the anchor
+  row (runtime slopes `0x1004d2d8`/`0x1004d2e0` written by `0x1000c150`: V from project(0,10,0) vs (0,0,0), H from
+  project(10,0,11) vs (10,0,10); found by the review, the H bytes checked by the re-review against the DLL).
+
+**Step 2, design:** `docs/render/depth.md` (model with evidence, the integer depth function shared by CPU and WGSL,
+per-format rules, the sea over submerged objects, chunks/derived levels/cost and limits, switch).
+
+**Step 3, implementation:**
+- assets: `Rgba::z` keeps the z byte;
+- render: `depth.hpp/cpp`, depth-tested replay and `Scene::render`, `Chunk::submerged` and a second Original-water sea
+  pass over those pixels (CPU `FrameRenderer::render`, GPU `sea_submerged_fs`), GPU `chunk_build_cs` with the same
+  test (z atlas, terrain input, submerged output);
+- `Scene::depth_test`, `--depth on|off` (default on), `bench_frame --depth`.
+
+**Acceptance table.**
+
+| Requirement | Positive proof | Negative control | Evidence | Reviewer |
+|---|---|---|---|---|
+| A pile is cut where the ground in front of it rises | `depth: replay hides a pile's rows below its foot…`, `depth: an RGBV pile is cut at its anchor row…` (rows below the foot hidden, above drawn) | the same draws without a target: every row drawn; mutants "V without ramp" and "H at the base" killed (1 and 2 of 7 depth cases fail) | `depth_test.cpp`, render gate | P1 (ramp anchoring) found, fixed, re-reviewed |
+| Depth values = the original's function | constants from the live matrix; V step 15818 vs the brush's `0x3dc9`·256 (±1, our lift 2.059); an H decal on its own ground ties exactly | z byte 0xFF is −1 (signed), z +1 hidden; equal depth draws | `depth_test.cpp` | ramp re-derived from `0x10014ca0`/`0x1000c150`; H slope bytes read from the DLL |
+| Per-format write/test rules | the rules case (Z/V write, RGBAZ level 1 test only, RGBWZ/H test only, units none) | a unit over a Z draw clears "tested" | `depth_test.cpp`, GPU synthetic subcase | accepted |
+| The water covers object pixels behind the sea plane | `the sea over submerged objects: GPU = CPU on a Kontor in the water` (131 of 1768 pixels) | depth off: 0 submerged | `gpu_test.cpp` | P2 fixed (GpuList plane only with depth) |
+| GPU = CPU, synthetic | `chunk_build_cs` subcase: colour 0, submerged 0 (225 px), H pixels 390 of 2050 | the list without depth draws more; H fewer than without depth | `gpu_chunk_build_test.cpp` | P2 (H height bits) fixed, re-reviewed |
+| GPU = CPU, real data | corpus case: 2742 chunks of three scenes, each with its terrain plane, depth on and off: 0 mismatched pixels, 2.08 M submerged | the depth changes 1731 of 1820, 446 of 460, 448 of 462 chunks (asserted > 0), submerged asserted > 0 | `gpu_chunk_build_test.cpp` | the earlier version compared different models (found by the GPU gate), fixed, re-reviewed |
+| The switch restores the former picture | frames table with `depth_test` off = the pre-depth table; legacy-river renders with depth off = the pre-depth hashes (5 group-2 lines, 5 regions) | — | `render_corpus_test.cpp` | re-reviewed against `837590a8`/`b2d74f7d` |
+| Recorded digests changed only for a reason | scene table 36 of 44 lines, frames Single_24 lines, legacy-river table: counts (drawn, inv, failed, units) unchanged, only hashes | Single_01 frames unchanged | `render_corpus_test.cpp` comments | re-reviewed against the gate log |
+
+**Evidence of the picture (cache/, not in git):** `cache/depth/views/*_sheet.png`: the four S01_02_01 Kontors and the
+start Kontor (with the GOG capture beside it, aligned by the live matrix) before / depth / depth at 26.5, re-rendered
+at the final head (the pre-ramp-fix sheets kept in `cache/depth/views_pre_ramp/`); copies in
+`C:\Users\altin\Pictures\anno-review\W4-DEPTH-1\`. Looked at: with the depth the piles and the land-side wall end in
+the bank and at the water line; at 26.5 the piles stand in the water as in the GOG capture; at 26.5 the wide beaches
+show blocky water edges (the sea-region rule, owner decision 1).
+
+**Gates** (logs in `cache/gates/` of the worktree, `tools/test/run_selected.py` of `main`; MSVC Release, RTX 4090 Vulkan):
+- at `63867115` (final): render 192/192 (`render-d7`); render heavy: 10 selected, 9 passed, 1 failed: river Q5
+  (#385, `D_256x256_0045_5B` 17 of 35 windows, 0.485714 against 0.55), the known failure from the projection branch,
+  unchanged by this package (`render-heavy-d7`); app 270 selected, 268 passed, 2 opt-in skips (`app-d7`); app heavy
+  2/2 (`app-heavy-d7`); GPU 116/116 (`gpu-d7`); all on a clean tree (source identity before = after);
+- clang-format 23.1.3 `--dry-run --Werror` over all 475 files of `src`: clean (`format-d1.log`);
+- WSL warnings (GCC 13 / Clang 18, `-O3 -Werror`, viewer with and without GPU): all of `src` clean at `ca13b50f`
+  (`unix-warnings-d3.log`; the first run found two `-Wshadow` and three `-Wsign-conversion` errors, fixed in
+  `a0e0d300`); the three test files changed after it: clean at `63867115` (`warn-two-d2.log`);
+- at `33163810`, without `ANNO1503_GAME_DIR` (render, GPU, assets, app): 600 selected, 429 passed, 171 clean skips:
+  155 asset, 2 opt-in, 14 "other": the scene-picture cases (not changed here) skip with "skipping: no game files",
+  which the gate's classifier does not count as an asset skip, so the lane ran with `--allow-skip other`
+  (`nogame-d6`); assets 10/10 at `ca13b50f` (`assets-d5`; no assets file changed since);
+- WSL ASan+UBSan (g++ 13, -O1, `cache/gates/asan_depth.sh` / `asan_link.sh`): every CPU render case without game
+  files, at `33163810`, one process: 202 cases, 201 passed, 0 sanitizer reports; the one failure, `scene reclaim: the
+  window's release of the last generation is destroyed on the reclaimer`, counts a process-wide reclaimer (12 vs 11)
+  and passes alone 3 of 3 times (CTest runs each case in its own process). The app and the GPU code were not built
+  with sanitizers: NOT_RUN;
+- earlier failures, fixed: at `ca13b50f` the app lane failed the legal workload's demolish (its stand-in placement
+  gives height 0, so with the depth the building lies under the land; `33163810`) and the GPU lane the corpus chunk
+  case (it compared a depth-tested GPU build with a painter's CPU replay; `8f727970`);
+- not re-run: sim, formats, test_support and the Python references (no file under `src/sim`, `src/formats`,
+  `src/test_support` or `tools` changed since `a379e06e`; their binaries link neither assets nor render);
+- mutation checks (depth.cpp against the depth cases): "V without ramp" killed (1 of 7 cases fails), "H at the base"
+  killed (2 of 7).
+
+**Review.** Three independent read-only subagent passes:
+1. package review of `a379e06e..b2d74f7d`: P1 (V/H ramp anchoring) and three P2 fixed with tests, P3 taken;
+2. re-review of `b2d74f7d..fc463d4d` (HEAD `fc463d4d`): every finding fixed, the H-slope bytes verified from
+   `AnnoDisplay.dll`, no new P1/P2; its P3s fixed in `7981bde5`, `ca13b50f`;
+3. integration re-review of `fc463d4d..33163810`: no P1; P3s fixed in `39a9a443`, `b9cf8756`, `63867115`; one P2
+   dispositioned: other app/GPU tests that build through the same height-0 stand-in (`dev_visibility_test.cpp`
+   :212/:228, `picture_gpu_test.cpp` :544/:561) now look at buildings partly under the land; they ran and passed at
+   `33163810` and `63867115` (the visibility cases #560/#561, picture GPU #486), but they depend on which building
+   is picked. The root fix belongs to the sim (follow-up below), not this package.
+
+**Owner decisions open.**
+1. The water level: the default stays 16.5; the original's plane is ≈ 26.5 (`--shore 26.5`). Raising it also shows
+   our coarse sea-region rule (8×8-tile chunks, land classifier 19) as blocky water edges on wide beaches.
+2. Whether `--depth` stays a switch (default on).
+
+**Follow-ups.**
+- Sim (for the orchestrator): the D17 stand-in placement seam returns item height 0
+  (`src/sim/src/placement.cpp:113-115`), so buildings placed under it (the legal workload, several app test fixtures)
+  stand at height 0; with the depth they lie under the land. Returning the tile level as `placement_rule` does would
+  move sim state (byte0f is hashed) and the goldens of replays that use the stand-in. The real app does not install
+  it (`PlayOptions::stand_in_placement` is false).
+- Gate tool: the scene-picture cases' skip text "skipping: no game files" is classified "other".
+- Renderer (`docs/render/depth.md`): rivers keep the +10 test (their z would replace it), units and shadows are not
+  depth-tested, ships' hulls are not covered by the sea below the plane, RGBAZ levels 0/2 drawn blended (the
+  original's writing brush draws them opaque), RGBZM's melt, the sprite-set prefix offsets of land objects, derived
+  zoom levels without the sea over objects, which height the original passes for a road (OQ-026).
+
+**Merge note for the W4 executor:** `gpu.cpp` changed in `begin_upload`/`stage_step`/`finish_upload` (a 9th upload
+stage and binding 9, the GpuList planes), `cb_scratch`/`cb_encode`/`cb_grow_atlas`/`cb_resident` (z atlas, terrain
+input, submerged output) and the pass-2 draw order (sea over objects after `objects_fs`).
+
+## DEPTH-INTEGRATE-1 — buildings sit in the ground and the water; the sea at the original's level — 2026-11-13 — READY FOR REVIEW
+
+Base `main` `f9e6ea0c`, merged `origin/task/W4-depth-1` `5eaef168` into `task/DEPTH-INTEGRATE-1`, head `10e1a3ce`
+(merge `a6880348` + test fix `3fd866d7` + playtest-card doc `10e1a3ce`).
+
+**The merge.** `frame.{cpp,hpp}`, `gpu.{cpp,hpp}`, `gpu.wgsl`, `gpu_test.cpp` and `iso.md` auto-merged (both sides
+changed them since 2026-11-04). Three append-only doc conflicts as predicted (`open-questions.md`,
+`docs/orchestration/REPORTS.md`, `docs/perf/README.md`): git's 3-way diff matched unrelated identical-looking
+text across entries on two of the three (a shared "Owner decision" line and a shared "**Acceptance table.**"
+header format used by several entries), so I rebuilt each file from the branch's own isolated diff
+(`git diff <merge-base> origin/task/W4-depth-1 -- <file>`) against today's HEAD rather than trust the markers —
+confirmed clean, nothing dropped from either side.
+
+**Proving the merge found a real regression:** two synthetic river-mask tests
+(`river_flow_test.cpp`, "the shipped criteria on the tile grid", "a bridge never crosses sea and is deep enough
+to carry flow") never set `IslandWater::shore_height` and so picked up the new `kShoreHeight` default (26.5); their
+terrain heights (24, calibrated against the old 16.5) then also read as plain sea by elevation, contaminating the
+river-specific classification they check. Fixed by pinning `iw.shore_height = 16.5F` explicitly in both fixtures
+(an earlier attempt that raised the height literals instead left one case passing but changed the other's bridge
+count from 1 to 3 — an unintended ripple into unrelated logic; reverted). Both pass now, and the fix is its own
+commit (`3fd866d7`) with the mechanism in its message.
+
+**The branch's claims, re-proven on today's main:** `anno_render_tests`/`anno_render_gpu_tests`/`anno_app_tests`
+(MSVC Release, game files, RTX 4090): `selected=591 executed=586 failed=0 skipped=3(opt-in) sanitizer_lines=0
+VERDICT: PASS` — 5 of the 591 showed `[anno-test memory] refused ... low-memory stop` once each across two runs
+(never the same 5 twice), each confirmed passing alone (one via an incidental full-suite rerun, 2582/2582). This
+includes the GPU=CPU depth corpus (`chunk draw lists replay...`, 2742 chunks) and the Rust-reference digest check
+(`scene renders match the recorded digests`) — `--depth off`'s digests, unchanged. `kShoreHeight = 26.5F` (merged
+from the branch) is the only digest-affecting default this packet moves; nothing needed re-pinning beyond what the
+branch already pinned. WSL `-O1` ASan, render+app lanes: `selected=508 executed=503 failed=0 skipped=3(opt-in)
+sanitizer_lines=0 VERDICT: PASS` (same 2 refusals, confirmed passing alone). Radeon iGPU, `anno_render_gpu_tests`:
+`selected=117 executed=117 failed=0`.
+
+**The pictures** (candidate A, seat 0, sailed and founded at `(255,138)` per `ship-opening-playtest.md` step 3,
+CPU renderer — the GPU path's screenshot is a desktop copy that needs a visible, unlocked screen, which an
+unattended run can't guarantee; same depth/scene code either way), in
+`C:\Users\altin\Pictures\anno-review\DEPTH-INTEGRATE-1\`: `kontor_depth-on_shore-26.5_default.png` (this build's
+own default), `-off_shore-26.5`, `-on_shore-16.5`, `-off_shore-16.5`. With depth on, the Kontor's piles and its
+dock end short, embedded in the sloping bank; with depth off the same piles stand full-length on top of the sand.
+At shore 26.5 the water reaches visibly closer to the piles than at 16.5.
+
+**The playtest card** (`docs/testing/ship-opening-playtest.md`): says plainly that depth-on and shore-26.5 are this
+build's defaults (the owner's decisions), not something to try; `--depth off`/`--shore 16.5` are comparison
+switches; added the owner's own case to the sheets list with what to look at.
+
+Gates: `cmake --build --preset msvc` warning-free. clang-format 23.1.3 clean. CI on `10e1a3ce` (run `43481190746`):
+`build-macos` ended with no steps (no runner) and failed `gate` with it; rerun alone (`gh run rerun --failed`) came
+back green. Every job green, `gate` included, on the rerun.
+
+NOT_RUN: the per-pixel sea edge (SHORE-2); the direct renderer (ADR 0007, orchestrator's); the full WSL gate and
+game-file run (orchestrator's, at merge).
+
+Decisions and reasoning:
+- Reconstructed each conflicted doc from the branch's own isolated diff against today's HEAD, rather than editing
+  the 3-way markers in place: git had matched unrelated text as "common" on two of the three files (differently
+  worded or differently-aged near-duplicates), so trusting the markers would have silently kept a stale paragraph
+  or lost a table's rows.
+- Fixed the river-mask regression by pinning the fixtures' own `shore_height`, not by raising their height
+  literals: the field exists exactly for this (to decouple a synthetic fixture from the production default), and
+  the first attempt's literal changes rippled into unrelated bridge-count behaviour.
+- Generated the owner's-case PNGs with the CPU renderer: the GPU path's screenshot needs a visible, unlocked
+  desktop (confirmed black when the run was left unattended), while the CPU path reads the in-memory frame buffer
+  directly; both exercise the same depth/shore code, so the comparison is unaffected.
+
+QUESTIONs: none required; the per-pixel sea edge and the direct renderer are explicitly not this packet's.

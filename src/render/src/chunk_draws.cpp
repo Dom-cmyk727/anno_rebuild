@@ -195,7 +195,10 @@ ChunkDraws ChunkDrawsBuilder::finish(const FrameTable& frames) {
     return d;
 }
 
-Canvas replay(const ChunkDraws& draws, const FrameTable& frames, std::size_t* missing) {
+namespace {
+
+Canvas replay_with(const ChunkDraws& draws, const FrameTable& frames, depth::Target* depth,
+                   std::size_t* missing) {
     Canvas canvas = blank(draws.rect);
     if (draws.bases) {
         canvas.base.assign(canvas.width * canvas.height, 255);
@@ -247,12 +250,47 @@ Canvas replay(const ChunkDraws& draws, const FrameTable& frames, std::size_t* mi
         }
         const bool shadow = (r.flags & object_flags::kShadow) != 0;
         const bool track = (r.flags & object_flags::kTrackBase) != 0 && !target->base.empty();
-        blit_sprite_keel(*target, *f->image, f->header,
-                         {r.x + f->header.anchor_x, r.y + f->header.anchor_y}, shadow, track,
-                         f->keel, all);
+        const std::pair<int, int> anchor{r.x + f->header.anchor_x, r.y + f->header.anchor_y};
+        if (depth == nullptr) {
+            blit_sprite_keel(*target, *f->image, f->header, anchor, shadow, track, f->keel, all);
+            continue;
+        }
+        const depth::Draw d{r.depth, object_flags::depth_rule(r.flags), f->header.anchor_y,
+                            64 * static_cast<std::int64_t>((r.flags & object_flags::kHeightMask) >>
+                                                           object_flags::kHeightShift)};
+        const Rgba& image = *f->image;
+        Canvas& into = *target;
+        blit_sprite_keel(into, image, f->header, anchor, shadow, track, f->keel,
+                         [&](int x, int y, Px px) -> std::optional<Px> {
+                             if (!into.index(x, y)) {
+                                 return std::nullopt;
+                             }
+                             if (shadow) {
+                                 return px;
+                             }
+                             if (d.rule.cls == depth::Class::None) {
+                                 depth::untest(*depth, x, y);
+                                 return px;
+                             }
+                             if (!depth::test(*depth, x, y, image, x - r.x, y - r.y, d)) {
+                                 return std::nullopt;
+                             }
+                             return px;
+                         });
     }
     close();
     return canvas;
+}
+
+} // namespace
+
+Canvas replay(const ChunkDraws& draws, const FrameTable& frames, std::size_t* missing) {
+    return replay_with(draws, frames, nullptr, missing);
+}
+
+Canvas replay(const ChunkDraws& draws, const FrameTable& frames, depth::Target& depth,
+              std::size_t* missing) {
+    return replay_with(draws, frames, &depth, missing);
 }
 
 } // namespace anno::render

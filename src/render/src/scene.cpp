@@ -216,8 +216,8 @@ std::pair<int, int> UnitSprite::anchor(std::size_t group, Lift lift) const {
     return {sx, sy - raise};
 }
 
-bool UnitSprite::draw(Canvas& canvas, std::size_t group, Lift lift,
-                      std::pair<int, int> offset) const {
+bool UnitSprite::draw(Canvas& canvas, std::size_t group, Lift lift, std::pair<int, int> offset,
+                      depth::Target* depth) const {
     if (group >= frames.size() || !frames[group] || !frames[group]->image) {
         return false;
     }
@@ -230,7 +230,17 @@ bool UnitSprite::draw(Canvas& canvas, std::size_t group, Lift lift,
     }
     const int left = at.first - f.frame.anchor_x, top = at.second - f.frame.anchor_y;
     const bool hit = canvas.overlaps(left, top, f.frame.width, f.frame.height);
-    blit_sprite(canvas, *f.image, f.frame, at, false, all);
+    if (depth == nullptr) {
+        blit_sprite(canvas, *f.image, f.frame, at, false, all);
+    } else {
+        blit_sprite(canvas, *f.image, f.frame, at, false,
+                    [&](int cx, int cy, Px px) -> std::optional<Px> {
+                        if (canvas.index(cx, cy)) {
+                            depth::untest(*depth, cx + offset.first, cy + offset.second);
+                        }
+                        return px;
+                    });
+    }
     return hit;
 }
 
@@ -637,9 +647,9 @@ Scene::Scene(const Scene& base, std::vector<IslandUpdate>&& updates)
     : assets_(base.assets_), caches_(base.caches_), name(base.name), islands(base.islands),
       textures(base.textures), anlagen(base.anlagen), layouts(base.layouts), sprites(base.sprites),
       frame_table(base.frame_table), lift(base.lift), units(base.units), river_cfg(base.river_cfg),
-      shore_height(base.shore_height), flow_build_fault(base.flow_build_fault),
-      island_storage_(base.island_storage_), objects_(base.objects_), levels_(base.levels_),
-      generation_(base.generation_ + 1) {
+      shore_height(base.shore_height), depth_test(base.depth_test),
+      flow_build_fault(base.flow_build_fault), island_storage_(base.island_storage_),
+      objects_(base.objects_), levels_(base.levels_), generation_(base.generation_ + 1) {
     island_storage_.resize(islands.size());
     for (IslandUpdate& u : updates) {
         assert(u.index < objects_.size() && u.lists);
@@ -1638,6 +1648,14 @@ std::pair<Canvas, sea::SceneProbe> Scene::ground_with_probe(Rect rect, std::size
     return {std::move(canvas), std::move(probe)};
 }
 
+std::optional<depth::Target> Scene::depth_target(Rect rect, std::size_t group) const {
+    if (!depth_test) {
+        return std::nullopt;
+    }
+    return depth::Target::from_terrain(rect, depth::params(group, lift),
+                                       terrain_plane(ground_with_probe(rect, group, false).second));
+}
+
 std::pair<Canvas, SceneStats> Scene::render(Rect rect, std::size_t group, Layers layers) const {
     return render_with_terrain(rect, group, layers, nullptr);
 }
@@ -1659,6 +1677,19 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
     std::size_t no_ground = 0, drawn = 0;
     std::optional<sea::SceneProbe> probe;
     const std::size_t water_variant = layers.water_style == WaterStyle::Original ? 0 : kSmoothed;
+    // The depth buffer of the objects (docs/render/depth.md §2.2): the terrain seen at each
+    // pixel, then the objects' writes.
+    std::optional<depth::Target> dtarget;
+    if (layers.objects && depth_test) {
+        if (!probe) {
+            probe = ground_with_probe(rect, group, false).second;
+        }
+        dtarget =
+            depth::Target::from_terrain(rect, depth::params(group, lift), terrain_plane(*probe));
+    }
+    depth::Target* const dt = dtarget ? &*dtarget : nullptr;
+    // The sea field of pass 0, for the sea over submerged object pixels after pass 1.
+    std::optional<sea::WaterField> sea_field;
     // Pass 1: ground and water objects under the sea surface.
     // Pass 2: water objects above it and the other objects.
     for (int pass = 0; pass < 2; ++pass) {
@@ -1717,7 +1748,7 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
                 }
                 if (layers.objects) {
                     const auto [s, units_drawn] =
-                        draw_island_objects(local, p, objects.lists->other, group);
+                        draw_island_objects(local, p, objects.lists->other, group, dt);
                     stats.objects.add(s);
                     stats.units += units_drawn;
                 }
@@ -1725,12 +1756,13 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
             composite(canvas, local, p.offset);
         }
         if (pass == 1 && layers.objects && layers.ships) {
-            stats.units += draw_units(canvas, group);
+            stats.units += draw_units(canvas, group, dt);
         }
         if (pass == 0 && layers.sea) {
             if (const sea::SeaPattern* pattern = sea(group)) {
                 const auto field_probe = ground_with_probe(rect, group, false).second;
-                const sea::WaterField field = water_field_from(rect, field_probe, group);
+                const sea::WaterField& field =
+                    sea_field.emplace(water_field_from(rect, field_probe, group));
                 // Enhanced rivers: the flow lattice of the region, built here
                 // (blocking: this is the headless path).
                 const bool flowing = layers.water_style == WaterStyle::Enhanced &&
@@ -1754,6 +1786,25 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
                     flowing && !plane.empty() ? &shading : nullptr, *pattern, t, layers.water_style,
                     group, lift);
             }
+        }
+    }
+    // The sea once more over the object pixels behind its plane (Original water: the original
+    // draws the sea after the cached scene, docs/render/depth.md §2.3).
+    if (dtarget && sea_field && layers.water_style == WaterStyle::Original) {
+        const std::vector<std::uint8_t> under = dtarget->submerged(depth::sea_h64(shore_height));
+        const sea::SeaPattern* pattern = sea(group);
+        if (!under.empty() && pattern != nullptr) {
+            const sea::WaterField& field = *sea_field;
+            sea::shade_sea(
+                sea::RgbaTarget{canvas.pixels.data()}, canvas.width, rect,
+                [&field, &under](std::size_t i) {
+                    // Cover 1: the sea sprite only, without the open-water fade (a stand-in for the
+                    // floor of texture-0 water, depth.md §2.3).
+                    return under[i] != 0 && field.cover[i] != 0
+                               ? sea::FieldPx{1, field.shore[i], field.depth[i], field.flags[i]}
+                               : sea::FieldPx{0, 0, 0, 0};
+                },
+                *pattern, t, layers.water_style, group, lift);
         }
     }
     stats.islands = drawn;
@@ -1787,7 +1838,8 @@ std::optional<float> Scene::island_ground_height(std::size_t index, float x, flo
 
 std::pair<DrawStats, std::size_t> Scene::draw_island_objects(Canvas& local, const Placement& p,
                                                              std::span<const Prepared> list,
-                                                             std::size_t group) const {
+                                                             std::size_t group,
+                                                             depth::Target* depth) const {
     const auto& island = islands[p.index];
     const float ix = static_cast<float>(island.x), iy = static_cast<float>(island.y);
     const float w = static_cast<float>(island.width), h = static_cast<float>(island.height);
@@ -1806,6 +1858,11 @@ std::pair<DrawStats, std::size_t> Scene::draw_island_objects(Canvas& local, cons
         return Key{std::uint32_t{o.first.x} + o.second.first + o.first.y + o.second.second,
                    o.first.x};
     };
+    auto draw_objects_part = [&](std::span<const Prepared> part) {
+        return depth != nullptr ? depth::draw_prepared(local, part, anlagen, group, lift, 0,
+                                                       sprites, *depth, p.offset)
+                                : draw_prepared(local, part, anlagen, group, lift, 0, sprites);
+    };
     DrawStats stats;
     std::size_t start = 0, drawn = 0;
     for (const auto& [k, u] : on) {
@@ -1813,14 +1870,13 @@ std::pair<DrawStats, std::size_t> Scene::draw_island_objects(Canvas& local, cons
             std::partition_point(list.begin() + static_cast<std::ptrdiff_t>(start), list.end(),
                                  [&](const Prepared& o) { return key(o) <= k; });
         const auto end = static_cast<std::size_t>(it - list.begin());
-        stats.add(draw_prepared(local, list.subspan(start, end - start), anlagen, group, lift, 0,
-                                sprites));
+        stats.add(draw_objects_part(list.subspan(start, end - start)));
         start = end;
-        if (u->draw(local, group, lift, p.offset)) {
+        if (u->draw(local, group, lift, p.offset, depth)) {
             ++drawn;
         }
     }
-    stats.add(draw_prepared(local, list.subspan(start), anlagen, group, lift, 0, sprites));
+    stats.add(draw_objects_part(list.subspan(start)));
     return {stats, drawn};
 }
 
@@ -1832,6 +1888,7 @@ ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool b
     ChunkDrawsBuilder out(rect, group, bases, bases ? static_cast<int>(kTile[group].h) * 6 / 10 : 0,
                           bin_px);
     const std::uint32_t track = bases ? object_flags::kTrackBase : 0U;
+    const depth::Params dparams = depth::params(group, lift);
     // Canvas::overlaps of a canvas covering `c`.
     auto overlaps = [](const Rect& c, int x, int y, int w, int h) {
         return x < c.x + c.w && x + w > c.x && y < c.y + c.h && y + h > c.y;
@@ -1851,11 +1908,16 @@ ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool b
                 continue;
             }
             const bool shadow = d.is_shadow();
+            const depth::Draw dd = !shadow && depth_test
+                                       ? depth::draw(dparams, d.anchor.second + offset.second,
+                                                     d.height, d.frame->format(), d.frame->anchor_y)
+                                       : depth::Draw{};
             out.add(ObjectRecord{d.anchor.first + offset.first - d.frame->anchor_x,
                                  d.anchor.second + offset.second - d.frame->anchor_y, *id,
                                  (shadow ? object_flags::kShadow : track) |
-                                     std::uint32_t{d.height} << object_flags::kHeightShift,
-                                 0, 0, 0});
+                                     std::uint32_t{d.height} << object_flags::kHeightShift |
+                                     object_flags::depth_bits(dd.rule),
+                                 0, 0, dd.base});
         }
     };
     // UnitSprite::draw: the shadow, then the frame, in scene coordinates;
@@ -1940,7 +2002,11 @@ ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool b
             emit_unit(*u, rect);
         }
     }
-    return out.finish(frame_table);
+    ChunkDraws d = out.finish(frame_table);
+    d.depth_test = depth_test;
+    d.depth = dparams;
+    d.sea_h64 = depth::sea_h64(shore_height);
+    return d;
 }
 
 std::optional<Rect> Scene::unit_rect(const UnitSprite& u, std::size_t group) const {
@@ -1988,7 +2054,7 @@ std::optional<Rect> Scene::bounds(std::size_t group) const {
     return r;
 }
 
-std::size_t Scene::draw_units(Canvas& canvas, std::size_t group) const {
+std::size_t Scene::draw_units(Canvas& canvas, std::size_t group, depth::Target* depth) const {
     if (group >= kGroups) {
         return 0;
     }
@@ -2003,7 +2069,7 @@ std::size_t Scene::draw_units(Canvas& canvas, std::size_t group) const {
     });
     std::size_t n = 0;
     for (const UnitSprite* u : order) {
-        if (u->draw(canvas, group, lift, {0, 0})) {
+        if (u->draw(canvas, group, lift, {0, 0}, depth)) {
             ++n;
         }
     }

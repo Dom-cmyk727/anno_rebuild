@@ -806,6 +806,10 @@ TEST_CASE("the scene's shore: the wave depth of open sea and the next generation
     CHECK(scene->fluid_depth(10.0F, 10.0F) == 16.0F);
     const auto next = scene->with_islands({});
     CHECK(next->shore_height == 16.0F);
+    // The per-pixel depth switch (--depth) is kept the same way (docs/render/depth.md).
+    CHECK(scene->depth_test);
+    scene->depth_test = false;
+    CHECK_FALSE(scene->with_islands({})->depth_test);
 }
 
 // Owner playtest 2026-11-03: "I could not place the Kontor at all". What decides it, island by

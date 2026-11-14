@@ -77,14 +77,20 @@ Outcome compare(const render::Scene& scene, Rect rect, std::size_t group, bool s
         o.clips_ok = o.clips_ok && c.w > 0 && c.h > 0 && c.x >= rect.x && c.y >= rect.y &&
                      c.x + c.w <= rect.x + rect.w && c.y + c.h <= rect.y + rect.h;
     }
-    const render::Canvas got = render::replay(draws, scene.frame_table, &o.missing);
+    // The depth target the builders use (Scene::render draws the objects against it).
+    std::optional<render::depth::Target> target = scene.depth_target(rect, group);
+    const render::Canvas got = target
+                                   ? render::replay(draws, scene.frame_table, *target, &o.missing)
+                                   : render::replay(draws, scene.frame_table, &o.missing);
     o.pixels = got.pixels == want.pixels && got.width == want.width && got.height == want.height &&
                got.origin == want.origin;
     o.base = got.base == want.base;
     if (binned && o.records > 0) {
         std::vector<render::Px> px;
         std::vector<std::uint8_t> base;
-        render::test::replay_binned(draws, scene.frame_table, px, base);
+        const std::vector<std::uint16_t> terrain =
+            scene.terrain_plane(scene.ground_with_probe(rect, group, false).second);
+        render::test::replay_binned(draws, scene.frame_table, px, base, &terrain);
         for (std::size_t i = 0; i < px.size() && o.binned_ok; ++i) {
             const render::Px p{want.pixels[i * 4], want.pixels[i * 4 + 1], want.pixels[i * 4 + 2],
                                want.pixels[i * 4 + 3]};
@@ -224,8 +230,13 @@ TEST_CASE("render_chunk: the Cpu builder keeps the planes, GpuList keeps the lis
                     r.builder_tag = r.builder_tag && list.built_by == render::ChunkBuilder::GpuList;
                     r.list_empty = list.objects.empty() && list.base.empty();
                     if (list.draws) {
-                        const render::Canvas c = render::replay(*list.draws, scene->frame_table);
-                        r.list_replays = c.pixels == old.pixels && c.base == old.base;
+                        // The depth replay against the chunk's own terrain plane (depth.md 2.2).
+                        auto target = render::depth::Target::from_terrain(
+                            list.draws->rect, list.draws->depth, list.terrain);
+                        const render::Canvas c =
+                            render::replay(*list.draws, scene->frame_table, target);
+                        r.list_replays = c.pixels == old.pixels && c.base == old.base &&
+                                         target.submerged(list.draws->sea_h64) == cpu.submerged;
                     } else {
                         r.list_replays = want_objects.empty();
                     }
@@ -293,7 +304,10 @@ TEST_CASE("FrameRenderer with the GpuList builder: workers and the in-frame path
                 CHECK(c->draws->rect == render::chunk_rect(cx, cy));
                 // The replay is the Cpu builder's plane.
                 const render::Chunk cpu = render::render_chunk(*scene, group, cx, cy, false, true);
-                const render::Canvas r = render::replay(*c->draws, scene->frame_table);
+                auto target = render::depth::Target::from_terrain(c->draws->rect, c->draws->depth,
+                                                                  c->terrain);
+                const render::Canvas r = render::replay(*c->draws, scene->frame_table, target);
+                CHECK(target.submerged(c->draws->sea_h64) == cpu.submerged);
                 if (cpu.objects.empty()) {
                     // The Cpu builder drops a layer that is all transparent.
                     CHECK(std::all_of(r.pixels.begin(), r.pixels.end(),

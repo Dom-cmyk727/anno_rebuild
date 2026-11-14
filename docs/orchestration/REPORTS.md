@@ -10513,7 +10513,7 @@ Gates:
 - CI run 43580785494 on `0b62b84b`: format, lint, changes, test (ubuntu, windows), build-macos green; cpp jobs exit 6,
   a skip of class "other" (ui_window_compare.py worded its no-assets skip wrongly). Fixed: required-asset and
   opt-in wording (`--asset-policy unavailable` local run: 15 selected, 10 pass, 5 required-asset skips, PASS).
-  CI on the fix: see its push.
+  CI on the fix (`f885bd7b`, run 43581982904): all jobs and `gate` green.
 Measured (window stderr, ANNO_VIEW_HITCH_MS=1, 2542 x 1351): "construction ui" median 5.7 ms CPU s1.0, 7.8 ms CPU
 s2.0 (p90 27.8 when the layer changes and is re-stretched), 6.5 / 6.0 ms GPU; GPU "ui scale" median 0.36 ms (cache
 hit), up to 15.7 ms on a re-stretch (single thread). First frame 77-95 ms (texture decode, as before).

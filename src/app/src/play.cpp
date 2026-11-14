@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -418,6 +419,7 @@ void PlayRunner::start() {
         return;
     }
     stop_.store(false);
+    publish_stats_ = std::getenv("ANNO_PUBLISH_STATS") != nullptr;
     thread_ = std::thread([this] { loop(); });
 }
 
@@ -428,6 +430,21 @@ void PlayRunner::stop() {
     }
     if (thread_.joinable()) {
         thread_.join();
+    }
+    if (publish_stats_ && !stat_turn_us_.empty()) {
+        // UI-WINDOW-1 fix round R2: the measurement ANNO_PUBLISH_STATS asks for (sim thread
+        // joined: the vectors are this thread's now).
+        const auto line = [](const char* what, std::vector<std::uint64_t> v) {
+            std::sort(v.begin(), v.end());
+            std::fprintf(stderr, "publish stats: %s n %zu median %llu us p95 %llu us max %llu us\n",
+                         what, v.size(), static_cast<unsigned long long>(v[v.size() / 2]),
+                         static_cast<unsigned long long>(v[(v.size() * 95) / 100]),
+                         static_cast<unsigned long long>(v.back()));
+        };
+        line("turn", stat_turn_us_);
+        line("snapshot build", stat_snapshot_us_);
+        stat_turn_us_.clear();
+        stat_snapshot_us_.clear();
     }
 }
 
@@ -874,6 +891,9 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     while (!costs_.empty() && costs_.front().first < cut) {
         costs_.erase(costs_.begin());
     }
+    // Only when measuring: no clock read on the sim thread otherwise.
+    const auto build_start =
+        publish_stats_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     auto next = std::make_shared<PlaySnapshot>();
     next->tick = world_.clock().tick();
     next->game_ms = world_.clock().ms;
@@ -907,6 +927,35 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         find_local_city();
     }
     fill_inspection(*next); // also without a city: the requested tile is answered as empty
+    // UI-WINDOW-1 fix round R2/R4: the local player's cities, in (island, city) order, for the
+    // status bar: it shows the city on the island the view is centred on, else the first of these
+    // (the owner's "Always show my city", 2026-11-14). Read-only accessors only (CityCounters's own
+    // comment); the cost is measured with ANNO_PUBLISH_STATS.
+    if (developer_city_) {
+        auto cities = std::make_shared<std::vector<CityCounters>>();
+        for (const auto& island : world_.islands()) {
+            if (!island) {
+                continue;
+            }
+            for (const std::optional<sim::City>& city : island->cities) {
+                if (!city || city->owner != local_player_) {
+                    continue;
+                }
+                CityCounters c;
+                c.city = sim::CityRef{island->index, city->number};
+                c.island_x0 = island->tiles.x0();
+                c.island_y0 = island->tiles.y0();
+                c.island_w = island->tiles.width();
+                c.island_h = island->tiles.height();
+                c.goods = city->stock.stock;
+                c.population = world_.city_population(c.city);
+                cities->push_back(std::move(c));
+            }
+        }
+        if (!cities->empty()) {
+            next->cities = std::move(cities);
+        }
+    }
     if (developer_city_) {
         if (const sim::Player* player = world_.players().find(local_player_)) {
             next->money = player->money;
@@ -976,6 +1025,13 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         outcomes_.record(o);
     }
     next->outcomes_next = outcomes_.next();
+    if (publish_stats_ && stat_turn_us_.size() < 1000000) {
+        stat_turn_us_.push_back(turn_us);
+        stat_snapshot_us_.push_back(
+            static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                           std::chrono::steady_clock::now() - build_start)
+                                           .count()));
+    }
     if (publish_gate_) {
         publish_gate_(turn); // the outcomes are readable, the snapshot is not yet (R1's test)
     }

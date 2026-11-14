@@ -23,9 +23,12 @@
 #include <anno/app/selection.hpp>
 #include <anno/app/ship_motion.hpp>
 #include <anno/app/ui_mock.hpp>
+#include <anno/app/ui_transform.hpp>
 #include <anno/app/window_capture.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/iso.hpp>
+#include <anno/render/picking.hpp>
 #include <anno/sim/production.hpp>
 #ifdef ANNO_VIEWER_GPU
 #include <anno/render/gpu.hpp>
@@ -344,6 +347,9 @@ class Viewer {
         }
         if (construction_menu_ != nullptr) {
             construction_tex_cache_.emplace(construction_game_dir_);
+            ui_scale_ = hooks->ui_scale;
+            ui_rule_.ref_w = construction_menu_->hud().resolution_w;
+            ui_rule_.ref_h = construction_menu_->hud().resolution_h;
             if (dev_ != nullptr && dev_->setup().registry) {
                 const auto& registry = *dev_->setup().registry;
                 goods_tools_ = registry.goods_by_name("WERKZEUG");
@@ -552,10 +558,43 @@ class Viewer {
     std::string construction_open_category_;
     bool construction_placement_open_ = false;
     /// The construction menu's share of handle(), checked before dev_ (ADR 0004 R1): returns
-    /// whether the event was taken. Only resolves clicks while the window's drawable size is
-    /// exactly 1024 x 768 (R3's scale is still open; a mismatched size leaves every click to
-    /// fall through unchanged, never a guessed scale).
+    /// whether the event was taken. UI-WINDOW-1: at any window size; a left press on drawn
+    /// chrome (ui_hit) is always taken, and so is its release, so neither reaches the map (no
+    /// pan, no selection, no tool action). The construction tab opens the menu (as key B does)
+    /// and closes it (as Esc does).
     bool construction_handle(const SDL_Event& e);
+    /// Closes the menu (the tab or Esc) and turns an armed building tool off with it.
+    void construction_close();
+    /// UI-WINDOW-1 fix round R2: the panel the right chrome shows while the construction menu is
+    /// closed (UiMockScreen: Hud = the player overview, the start state; PlayerList; Info;
+    /// MainMenu), and the switch to one of them (closing the construction menu first).
+    UiMockScreen hud_screen_ = UiMockScreen::Hud;
+    /// Whether the last frame drew the status bar's city counters (the `hud.counters` fact, R2).
+    bool hud_counters_shown_ = false;
+    /// And which city they showed (the `hud.counters.city` fact, fix round R4).
+    std::optional<sim::CityRef> hud_counters_city_;
+    /// Whether any frame drew the HUD yet (the fact says "not drawn" until then, R4).
+    bool hud_counters_drawn_ = false;
+    void select_hud_tab(UiMockScreen screen);
+    /// UI-WINDOW-1: the UI scale setting (ViewerHooks::ui_scale; nullopt = the original 1:1) and
+    /// the layer's placement for the current drawable size (ui_transform.hpp).
+    std::optional<float> ui_scale_;
+    /// The rule's numbers; the reference size is hud.txt's `resolution` (fix round R1, F6).
+    UiScaleRule ui_rule_;
+    [[nodiscard]] UiTransform ui_transform_now() const;
+    /// The UI layer's hit at drawable pixel (`px`, `py`) (ui_layout.hpp's ui_hit through the
+    /// transform's inverse); a miss when there is no HUD.
+    [[nodiscard]] UiHit ui_hit_at(double px, double py) const;
+    /// A left press the UI took: its release is the UI's too. Dropped when that release is lost
+    /// (a new press, focus loss, the pointer leaving the window), so a later release is not
+    /// eaten (fix round R1, F6).
+    bool ui_press_ = false;
+    /// Calls of pan() (the `camera.pans` fact): a script proves a chrome drag moved nothing.
+    std::uint64_t pans_ = 0;
+    /// The stretched layer when the transform is not 1:1 (kept between frames while unchanged).
+    UiLayerScaler ui_scaler_;
+    /// The GPU path's UI layer, composed in place every frame (its storage is reused).
+    assets::Rgba ui_canvas_;
     /// The selected building (ADR 0004 "Selection", W4-NEXT-2 K, row 18): viewer UI state only.
     /// Active in `--play` with the classic surface, outside the ship-start opening, while the
     /// developer/construction tool is off (a tool's click stays the tool's).
@@ -595,8 +634,12 @@ class Viewer {
         /// tile - a demolished-and-rebuilt tile must not pass this as the old building) answers
         /// kind "House". draw_live_screen_xrgb/_rgba's own doc comment says what this draws.
         bool selected_house = false;
+        /// The city the status bar's counters show (fix round R4), nullopt when hidden.
+        std::optional<sim::CityRef> counters_city;
     };
     [[nodiscard]] ConstructionHudInputs construction_hud_inputs() const;
+    /// The world tile under the drawable's centre (the status bar's centred island, R2).
+    [[nodiscard]] std::optional<sim::TileXY> centre_tile() const;
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
     DevScript* script_ = nullptr;
     PublicationHold* hold_ = nullptr;
@@ -1446,6 +1489,29 @@ void Viewer::opening_apply(const UiResult& result) {
     dirty_ = true;
 }
 
+void Viewer::select_hud_tab(UiMockScreen screen) {
+    if (construction_menu_open_) {
+        construction_close();
+    }
+    hud_screen_ = screen;
+}
+
+void Viewer::construction_close() {
+    construction_menu_open_ = false;
+    construction_open_category_.clear();
+    construction_placement_open_ = false;
+    // UI-WINDOW-1 fix round R1 (F2): an armed cell (DevTool::arm sets the tool on, dev_tool.cpp)
+    // must not outlive the menu, or a map click after closing it still builds. The tool's own
+    // Toggle cancels what is armed and turns it off, as a second B does.
+    if (dev_ != nullptr && dev_->enabled()) {
+        for (sim::Command& c : dev_->handle({ToolInput::Kind::Toggle, 0, 0},
+                                            pointer_frame_ ? &*pointer_frame_ : nullptr)) {
+            latest_receipt_ = play_->runner().post_command(std::move(c));
+        }
+        drag_ = false;
+    }
+}
+
 bool Viewer::construction_handle(const SDL_Event& e) {
     if (e.type == SDL_EVENT_KEY_DOWN) {
         // data/ui/construction.txt: `open_key B`, `leave_key ESC`. Both collide with an existing
@@ -1462,36 +1528,102 @@ bool Viewer::construction_handle(const SDL_Event& e) {
             return true;
         }
         if ((e.key.key == SDLK_ESCAPE) && construction_menu_open_) {
-            construction_menu_open_ = false;
-            construction_open_category_.clear();
-            construction_placement_open_ = false;
+            construction_close();
+            return true;
+        }
+        // UI-WINDOW-1 fix round R2: key D opens the player tab's list and key O the main menu,
+        // as their tabs do (docs/re/ui.md section 1 rows 8 and 9: r2_player_menu and the
+        // military tab show the same panel; key O and the gears tab the same options).
+        // Only in the classic surface: `--ui dev` keeps D as a pan key (ADR 0004 R2).
+        const bool classic = hooks_ != nullptr && hooks_->ui == UiSurface::Classic;
+        if (classic && e.key.key == SDLK_D) {
+            select_hud_tab(UiMockScreen::PlayerList);
+            return true;
+        }
+        if (classic && e.key.key == SDLK_O) {
+            select_hud_tab(UiMockScreen::MainMenu);
             return true;
         }
         return false;
     }
+    if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) {
+        // UI-WINDOW-1: the release of a press the UI took is the UI's as well, wherever it ends
+        // (no tool action, no selection click, no pan end on the map).
+        if (ui_press_) {
+            ui_press_ = false;
+            drag_ = false;
+            return true;
+        }
+        return false;
+    }
+    if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST || e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
+        ui_press_ = false; // the release of a UI press may never come (fix round R1, F6)
+        return false;      // the window's own handling of these stays
+    }
     if (e.type != SDL_EVENT_MOUSE_BUTTON_DOWN || e.button.button != SDL_BUTTON_LEFT) {
-        return false; // only a left click resolves against the menu; everything else is dev_'s
+        return false; // only a left click resolves against the UI; everything else is dev_'s
     }
-    if (!construction_menu_open_) {
-        return false; // the menu screen is not showing: every click is the map's/dev_'s
-    }
-    const auto [dw, dh] = view_size();
-    if (dw != 1024 || dh != 768) {
-        return false; // R3 (the UI scale at other sizes) is still open: never a guessed scale
-    }
+    // A new press: an earlier UI press whose release was lost no longer claims a release.
+    ui_press_ = false;
     if (play_ == nullptr) {
         return false;
     }
     const float density = SDL_GetWindowPixelDensity(window_);
-    const double px = static_cast<double>(e.button.x) * static_cast<double>(density);
-    const double py = static_cast<double>(e.button.y) * static_cast<double>(density);
+    const double d = density > 0.0F ? static_cast<double>(density) : 1.0;
+    const UiHit hit =
+        ui_hit_at(static_cast<double>(e.button.x) * d, static_cast<double>(e.button.y) * d);
+    if (!hit.chrome) {
+        return false; // the map: the developer tool's, the selection's or the window's pan
+    }
+    // A press on drawn chrome never reaches the map: taken here whether or not it hits a button.
+    ui_press_ = true;
+    drag_ = false;
+    if (!hit.ref) {
+        return true; // the parts a larger layer adds (filler, the bar's added span): no buttons
+    }
+    const double px = hit.ref->first, py = hit.ref->second;
+    // UI-WINDOW-1 fix round R2: the four tabs are switches (docs/re/ui.md 5.3): construction
+    // opens the construction menu (as key B), the bust the player list (as key D), "?" the info
+    // panel, the gears the main menu (as key O). A click on the tab already selected changes
+    // nothing, except the bust from the overview, which opens the list (shot r2_player_menu); a
+    // second bust click is OQ-621. Leaving the construction menu for another tab turns an armed
+    // tool off.
+    const auto inside_tab = [&](const char* name) {
+        const UiElement* tab = construction_menu_->hud().element(name);
+        return tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
+               px < tab->pos_x + static_cast<double>(tab->size_w) && py >= tab->pos_y &&
+               py < tab->pos_y + static_cast<double>(tab->size_h);
+    };
+    if (inside_tab("tab_construction")) {
+        if (!construction_menu_open_) {
+            construction_menu_open_ = true;
+            construction_open_category_ = "public";
+            construction_placement_open_ = false;
+        }
+        return true;
+    }
+    if (inside_tab("tab_military")) {
+        select_hud_tab(UiMockScreen::PlayerList);
+        return true;
+    }
+    if (inside_tab("tab_help")) {
+        select_hud_tab(UiMockScreen::Info);
+        return true;
+    }
+    if (inside_tab("tab_options")) {
+        select_hud_tab(UiMockScreen::MainMenu);
+        return true;
+    }
+    if (!construction_menu_open_) {
+        return true; // chrome without the menu showing: taken, nothing to resolve
+    }
     const auto snapshot = play_->runner().snapshot();
     const auto result =
         construction_menu_->click(px, py, construction_open_category_, construction_placement_open_,
                                   snapshot ? snapshot->eligibility.get() : nullptr);
     switch (result.kind) {
     case ConstructionClickKind::None:
-        return false;
+        return true;
     case ConstructionClickKind::SwitchCategory:
         construction_open_category_ = result.category;
         return true;
@@ -1522,6 +1654,26 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         return true;
     }
     return false;
+}
+
+UiTransform Viewer::ui_transform_now() const {
+    const auto [w, h] = view_size();
+    return ui_transform(w, h, ui_scale_, ui_rule_);
+}
+
+UiHit Viewer::ui_hit_at(double px, double py) const {
+    if (construction_menu_ == nullptr) {
+        return {};
+    }
+    const UiTransform t = ui_transform_now();
+    const auto u = t.to_ui(px, py);
+    if (!u) {
+        return {};
+    }
+    const HudLayout& hud = construction_menu_->hud();
+    const char* panel = construction_menu_open_ ? nullptr : ui_panel_group(hud_screen_);
+    return ui_hit(hud, place_hud(hud, t.ui_w, t.ui_h), u->first, u->second, paused_at_.has_value(),
+                  panel != nullptr ? std::string(panel) : std::string());
 }
 
 bool Viewer::selection_active() const {
@@ -1562,12 +1714,11 @@ bool Viewer::selection_handle(const SDL_Event& e) {
             // Finding 2 of the 2026-11-11 review: a click on the drawn HUD (the right chrome, the
             // selected-building panel and its need icons within it) is not a world click -
             // `selection.hpp`'s own doc comment already says so, but nothing checked it, so
-            // `dev_->pick` picked the tile *behind* the panel instead. Only at the one drawable
-            // size hud.txt's own coordinates are for (R3's "no guessed scale", construction_
-            // handle's own rule above) - this hit test is pure geometry, but px/py outside that
-            // size aren't in hud.txt's reference frame at all.
-            const auto [dw, dh] = view_size();
-            if (dw == 1024 && dh == 768 && point_in_hud_panel(construction_menu_->hud(), px, py)) {
+            // `dev_->pick` picked the tile *behind* the panel instead. UI-WINDOW-1: at any size,
+            // through the UI transform, and over all drawn chrome (status bar and filler too).
+            // construction_handle normally takes such a click first; this stays for a release
+            // whose press it did not see.
+            if (ui_hit_at(px, py).chrome) {
                 // The press (above) already set `drag_` true, same as any other left button
                 // down (the generic case further below, which would normally clear it on this
                 // same up event) - cleared here too, consumed or not, or the next motion event
@@ -1862,6 +2013,7 @@ void Viewer::pan(double dx, double dy) {
     cam_y_ += dy / s;
     clamp();
     dirty_ = true;
+    ++pans_;
 }
 
 void Viewer::clamp() {
@@ -2257,6 +2409,20 @@ void Viewer::script_tick() {
     // dev-script holds or `PlayRunner`'s pause can arrange reaches between the title and these
     // facts either; removing the extra call closes the gap structurally, not by timing.
     st.facts["selection.clicks"] = std::to_string(selection_clicks_);
+    st.facts["ui.press"] = ui_press_ ? "1" : "0";
+    st.facts["hud.counters"] = !hud_counters_drawn_  ? "not drawn"
+                               : hud_counters_shown_ ? "shown"
+                                                     : "hidden";
+    st.facts["hud.counters.city"] = hud_counters_city_
+                                        ? std::to_string(hud_counters_city_->island.v) + ":" +
+                                              std::to_string(hud_counters_city_->city.v)
+                                        : std::string("none");
+    st.facts["ui.tab"] = construction_menu_open_                   ? "construction"
+                         : hud_screen_ == UiMockScreen::PlayerList ? "player_list"
+                         : hud_screen_ == UiMockScreen::Info       ? "info"
+                         : hud_screen_ == UiMockScreen::MainMenu   ? "main_menu"
+                                                                   : "player";
+    st.facts["camera.pans"] = std::to_string(pans_);
     st.facts["selection.pending"] = selection_.pending ? "1" : "0";
     st.facts["selection.selected"] = selection_.selected ? "1" : "0";
     st.facts["selection.kind"] = "";
@@ -2673,31 +2839,49 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     // ADR 0004 R1, the GPU path: the same HUD/construction-menu overlay draw_cpu composes into
     // its own buffer, composed here instead into a transparent-background RGBA image
     // (ui_mock.hpp's draw_live_screen_rgba) and alpha-blended over the whole frame by the
-    // compositor's own "ui overlay" pass (gpu.cpp/gpu.wgsl) - drawn only at the same exact
-    // 1024 x 768 the CPU path requires (R3 still open).
-    std::optional<assets::Rgba> ui_overlay_image;
-    if (construction_menu_ != nullptr && w == 1024 && h == 768) {
+    // compositor's own "ui overlay" pass (gpu.cpp/gpu.wgsl). UI-WINDOW-1: at any size - the
+    // layer is composed at the transform's ui_w x ui_h and, unless that is the frame 1:1,
+    // stretched to the frame here in app code (ui_transform.hpp; the pass takes a frame-sized
+    // image).
+    bool ui_overlay_drawn = false;
+    const UiTransform ui_t =
+        ui_transform(static_cast<int>(w), static_cast<int>(h), ui_scale_, ui_rule_);
+    if (construction_menu_ != nullptr && ui_t.ui_w > 0 && ui_t.ui_h > 0) {
+        const auto ui_start = Clock::now();
         const auto in = construction_hud_inputs();
+        hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
+        hud_counters_city_ = in.counters_city;
+        hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         const auto info = construction_placement_open_ && dev_ != nullptr &&
                                   dev_->setup().registry && dev_->input().selected()
                               ? ConstructionMenu::info_panel_content(*dev_->input().selected(),
                                                                      *dev_->setup().registry)
                               : std::nullopt;
-        auto drawn = draw_live_screen_rgba(
-            static_cast<int>(w), static_cast<int>(h), construction_menu_->hud(),
-            construction_menu_->construction(), *construction_masks_, in.spec,
-            *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
-            in.counters, construction_placement_open_,
-            dev_ != nullptr && dev_->input().demolish_mode(), paused_at_.has_value(),
-            in.selected_house, info ? &*info : nullptr, &gen->anlagen);
-        if (drawn.ok()) {
-            ui_overlay_image = std::move(drawn).value();
+        // Into the window's own canvas: its storage is reused frame to frame (fix round R1).
+        ui_overlay_drawn =
+            draw_live_screen_rgba_into(
+                ui_canvas_, ui_t.ui_w, ui_t.ui_h, construction_menu_->hud(),
+                construction_menu_->construction(), *construction_masks_, in.spec,
+                *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
+                in.counters, construction_placement_open_,
+                dev_ != nullptr && dev_->input().demolish_mode(), paused_at_.has_value(),
+                in.selected_house, info ? &*info : nullptr, &gen->anlagen)
+                .empty();
+        steps_.push_back({"construction ui", since_ms(ui_start, Clock::now())});
+    }
+    const assets::Rgba* ui_overlay_ptr = nullptr;
+    if (ui_overlay_drawn) {
+        if (ui_t.identity()) {
+            ui_overlay_ptr = &ui_canvas_;
+        } else {
+            const auto scale_start = Clock::now();
+            ui_overlay_ptr = &ui_scaler_.scale(ui_canvas_, ui_t);
+            steps_.push_back({"ui scale", since_ms(scale_start, Clock::now())});
         }
     }
-    const auto s =
-        g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample,
-                        overlay, live_units_, ui_overlay_image ? &*ui_overlay_image : nullptr);
+    const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
+                                   resample, overlay, live_units_, ui_overlay_ptr);
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
     if (s.wave_simulation) {
@@ -2786,10 +2970,31 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
 }
 #endif
 
+std::optional<sim::TileXY> Viewer::centre_tile() const {
+    // The world tile under the drawable's centre at sea level (render::pick_ray at kSeaLevel, the
+    // first step of FrameProjection::pick), from the last frame drawn: which island the view is
+    // centred on. Sea level rather than the ground: an island's rectangle is all that is asked.
+    if (!pointer_frame_ || !pointer_frame_->scene) {
+        return std::nullopt;
+    }
+    const PointerFrame& f = *pointer_frame_;
+    const auto point = render::scene_point(f.map, f.drawable_w / 2.0, f.drawable_h / 2.0);
+    if (!point) {
+        return std::nullopt;
+    }
+    const auto sea = render::pick_ray(point->first, point->second, f.geometry,
+                                      static_cast<double>(render::kSeaLevel));
+    if (!sea) {
+        return std::nullopt;
+    }
+    return sim::TileXY{static_cast<std::int32_t>(std::floor(sea->u1)),
+                       static_cast<std::int32_t>(std::floor(sea->v1))};
+}
+
 Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
                                                                  construction_open_category_}
-                                                    : UiMockSpec{UiMockScreen::Hud, ""};
+                                                    : UiMockSpec{hud_screen_, ""};
     const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
     // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own member
     // comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment) - sim::kTon
@@ -2799,17 +3004,37 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     // themselves are plain fields (0, not nullopt) in that case, so eligibility's nullness is the
     // real "has a city" signal.
     const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
+    // UI-WINDOW-1 fix round R4 (owner decision 2026-11-14, "Always show my city"; docs/re/ui.md
+    // 5.2): the five counters (tools, wood, bricks, marble, residents) show on every screen while
+    // the local player owns a city - the city on the island the view is centred on when it holds
+    // one of the player's cities, else the player's first city in (island, city) order (the one
+    // PlaySnapshot::goods follows). Hidden only before the first founding. The original's own
+    // rule over open sea and foreign islands is not evidenced (OQ-622).
+    const CityCounters* centred = nullptr;
+    if (has_city && snapshot->cities && !snapshot->cities->empty()) {
+        if (const auto tile = centre_tile()) {
+            for (const CityCounters& c : *snapshot->cities) {
+                if (c.island_contains(tile->x, tile->y)) {
+                    centred = &c;
+                    break;
+                }
+            }
+        }
+        if (centred == nullptr) {
+            centred = &snapshot->cities->front();
+        }
+    }
     auto whole_tons = [&](std::optional<sim::GoodsId> id) -> std::optional<std::uint32_t> {
-        if (!has_city || !id || *id >= snapshot->goods.size())
+        if (centred == nullptr || !id || *id >= centred->goods.size())
             return std::nullopt;
-        return snapshot->goods[*id] / sim::kTon;
+        return centred->goods[*id] / sim::kTon;
     };
     HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money) : std::nullopt,
                          whole_tons(goods_tools_),
                          whole_tons(goods_wood_),
                          whole_tons(goods_bricks_),
                          whole_tons(goods_marble_),
-                         has_city ? snapshot->population : std::nullopt};
+                         centred != nullptr ? centred->population : std::nullopt};
     // ADR 0004 row 18 (W4-NEXT-2 K): draw only once the sim's own answer for the selected
     // building, not the click itself, confirms it is a house - selection.hpp's own doc comment
     // ("the answer selects it... every later answer re-checks the building's id").
@@ -2817,7 +3042,8 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                                 snapshot->inspection != nullptr &&
                                 snapshot->inspection->id == selection_.selected->id &&
                                 snapshot->inspection->kind == "House";
-    return {spec, std::move(counters), snapshot, selected_house};
+    return {spec, std::move(counters), snapshot, selected_house,
+            centred != nullptr ? std::optional<sim::CityRef>(centred->city) : std::nullopt};
 }
 
 void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view) {
@@ -2867,27 +3093,43 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         }
     }
     double construction_ui_ms = 0.0;
-    if (construction_menu_ != nullptr && w == 1024 && h == 768) {
+    const UiTransform ui_t = ui_transform(w, h, ui_scale_, ui_rule_);
+    if (construction_menu_ != nullptr && ui_t.ui_w > 0 && ui_t.ui_h > 0) {
         // H1/C1, second slice: the menu's own chrome, drawn over the world (ADR 0004 R1's
-        // "Rendering" - the CPU path; the GPU path is later work), only while the window is at
-        // the UI's 1024 x 768 reference (R3's scale is still open). construction_tex_cache_
-        // persists decoded textures across frames (ADR 0004 "Atlases"; see its own comment).
-        // Timed on its own (not folded into "render other") so the cache's effect is measurable
-        // per CLAUDE.md's "measure every performance change".
+        // "Rendering", the CPU path). UI-WINDOW-1: at any size - straight into the frame when
+        // the transform is 1:1 (the original's rule at 1024 x 768 and up), else composed at
+        // ui_w x ui_h, stretched (ui_transform.hpp) and blended over the frame.
+        // construction_tex_cache_ persists decoded textures across frames (ADR 0004 "Atlases";
+        // see its own comment). Timed on its own (not folded into "render other") so the cache's
+        // effect is measurable per CLAUDE.md's "measure every performance change".
         const auto ui_start = Clock::now();
         const auto in = construction_hud_inputs();
+        hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
+        hud_counters_city_ = in.counters_city;
+        hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         const auto info = construction_placement_open_ && dev_ != nullptr &&
                                   dev_->setup().registry && dev_->input().selected()
                               ? ConstructionMenu::info_panel_content(*dev_->input().selected(),
                                                                      *dev_->setup().registry)
                               : std::nullopt;
-        static_cast<void>(draw_live_screen_xrgb(
-            buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
-            *construction_masks_, in.spec, *construction_tex_cache_,
-            in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
-            construction_placement_open_, dev_ != nullptr && dev_->input().demolish_mode(),
-            paused_at_.has_value(), in.selected_house, info ? &*info : nullptr, &gen->anlagen));
+        const auto* eligibility = in.snapshot ? in.snapshot->eligibility.get() : nullptr;
+        const bool demolishing = dev_ != nullptr && dev_->input().demolish_mode();
+        if (ui_t.identity()) {
+            static_cast<void>(draw_live_screen_xrgb(
+                buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
+                *construction_masks_, in.spec, *construction_tex_cache_, eligibility, in.counters,
+                construction_placement_open_, demolishing, paused_at_.has_value(),
+                in.selected_house, info ? &*info : nullptr, &gen->anlagen));
+        } else if (auto layer = draw_live_screen_rgba(
+                       ui_t.ui_w, ui_t.ui_h, construction_menu_->hud(),
+                       construction_menu_->construction(), *construction_masks_, in.spec,
+                       *construction_tex_cache_, eligibility, in.counters,
+                       construction_placement_open_, demolishing, paused_at_.has_value(),
+                       in.selected_house, info ? &*info : nullptr, &gen->anlagen);
+                   layer.ok()) {
+            blend_over_xrgb(buffer_.data(), w, h, ui_scaler_.scale(layer.value(), ui_t));
+        }
         construction_ui_ms = since_ms(ui_start, Clock::now());
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),

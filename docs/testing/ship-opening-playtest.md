@@ -114,12 +114,20 @@ Look at a Kontor on a coast (your founded one, or `--view Scenes/0100Kampagne01/
    `C:\Users\altin\Pictures\anno-review\W4-DEPTH-1\`.
 4. `--depth off` gives the former picture (piles on top of everything), for comparison.
 5. The water level: the default is 26.5, the original's measured plane (the water covers the beach up to about 27).
-   Compare with `--shore 16.5`, the default before. Wide beaches show blocky water edges at 26.5 (the sea regions'
-   8×8-tile blocks): a per-pixel sea edge is SHORE-2, queued, not fixed yet.
+   Compare with `--shore 16.5`, the default before. **SHORE-2:** the stepped water edges on wide beaches (the sea
+   regions' 8×8-tile blocks jumping all-sea/all-land at a fixed average) are gone — a chunk now holds sea if any of
+   its own tiles dips below the shore plane, so the edge follows the beach's own slope within one chunk's width.
+   Still a per-chunk approximation (8×8 tiles, not the original's per-pixel cache): look at a wide beach for any
+   remaining stair-stepping at that 8-tile grain.
 6. Your own case, at the ship-start Kontor `(255,138)` (candidate A, seat 0): depth off/on and shore 16.5/26.5, each
    at the same camera position, in `C:\Users\altin\Pictures\anno-review\DEPTH-INTEGRATE-1\`
    (`kontor_depth-on_shore-26.5_default.png` is this build's own default). Look at where the piles meet the water and
-   where the land-side and left walls meet the ground, as you asked.
+   where the land-side and left walls meet the ground, as you asked. **SHORE-2 fix round 1 (F5):** at this exact
+   spot the before/after pictures differ (diff 1,138 px in a bbox around the shoreline,
+   `owner_spot_255_138_before.png`/`_after.png` and the cropped pair in
+   `C:\Users\altin\Pictures\anno-review\SHORE-2\`), but neither shows visible stair-stepping by eye — the sea here
+   does not cross a chunk boundary at a sharp angle. The wide-beach sample used for the general before/after in item 5
+   is a better case for seeing the old fixed-size steps; this spot is not.
 
 ## Known limits (say so rather than guess)
 

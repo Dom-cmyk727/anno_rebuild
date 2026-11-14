@@ -201,3 +201,63 @@ first").
 
 **Not verified by the orchestrator:** the UI lane's focused runs (4 of 4, and the executor's 44 of 44). Not tested:
 the centred city against the fallback, because `lan5` gives the player only one city.
+
+### The game-file run of the R4 candidate (2026-11-14)
+
+**The candidate:** `orch/land-ui-window-1` at `21b91bf9`: `main` `674ecdf4`, then FISHER-1a, then `ace62ebe`, then
+the board. The owner's OK was "Land both when green".
+
+**The run:** the canonical call with the GOG oracle shots and the HE captures set, 19:13–19:28.
+- `COUNTS: selected=2621 executed=2593 failed=1 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- Log sha256 `19b040c3245b28bf…`.
+
+**The failure is real, caused by R4:** `live_screen_matches_oracle` reports `hud_idle: 4808 of 179612 opaque-oracle
+pixels differ (fraction 0.0268); first at statusbar (404,733)`.
+- The script launches `--play lan5` with the developer city and compares the idle HUD with the GOG shot
+  `hud_idle_running`, which was taken before founding and shows no counters.
+- Under R2 the counters happened to be hidden at `lan5`'s start camera. R4 always draws them.
+- The UI lane's focused runs didn't include this test.
+
+**Not landed.** The UI lane runs fix round R5: `hud_idle` is compared in the oracle's own state, before founding, in a
+second launch on the ship start. No new masks and no tolerance change. The owner's OK stands for a head that passes.
+
+## Fix round R5, the board's check (2026-11-14)
+
+**Verdict: ACCEPTED for landing**, under the owner's OK ("Land both when green") once its game-file run passes.
+
+**Reviewed head:** `task/UI-WINDOW-1` `4a6b10ac`. It contains `main` `5bcd64a6` (FISHER-1a, merged cleanly by the UI
+lane). CI run 43632307548 on `4a6b10ac` is green.
+
+**The fix** (`7c39ac19`) changes the test only, no C++. `live_screen_compare.py` launches the window twice:
+- **on `lan5`**, for `construction_public` and `construction_roads`, whose original shots draw the counters' icons;
+- **on the ship start** (`lan5-ship-a.json`, seat 0), for `hud_idle`, the state the pre-founding shot
+  `hud_idle_running` shows. Its new script also expects `hud.counters == hidden`.
+
+No masks were added; the comparison stays exact. The executor showed that pointing `hud_idle` back at `lan5`
+reproduces the failure (4,808 of 179,612 pixels). The UI lane's focused runs now include every original-shot test.
+
+**The candidate:** `orch/land-ui-window-1-r5` at `ef9e9705`, built on SHORE-2's candidate `d871be6a`, so one run
+covers both.
+
+### The game-file run of the R5 candidate (2026-11-14)
+
+**The candidate:** `ef9e9705`: SHORE-2's candidate `d871be6a` (`main` `5bcd64a6` + SHORE-2 + the board), then
+`task/UI-WINDOW-1` `4a6b10ac`.
+
+**The run:** the canonical call, with the GOG oracle shots and the HE captures set, 21:12–21:29.
+- `COUNTS: selected=2622 executed=2593 failed=2 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- Log sha256 `7074ad1e617dadc8…`.
+- `live_screen_matches_oracle` passed (10.35 s), as did every other UI test.
+
+**The two failures are memory refusals** (`reason=low-memory stop`), both render corpus tests this package doesn't
+touch:
+- `chunk draw lists replay to the objects and base planes of Scene::render, every chunk`;
+- `scene renders match the recorded digests`.
+
+**Each rerun alone** with `--jobs 1`, 21:30–21:37: `COUNTS: selected=1 executed=1 failed=0`, `VERDICT: PASS` for both.
+Log sha256s: `4d97a179d78364cc…`, `72e48129149c8ffd…`.
+
+**Result:** every selected test that is not skipped executed and passed. It lands under the owner's OK ("Land both
+when green") right after SHORE-2.

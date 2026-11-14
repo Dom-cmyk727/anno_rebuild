@@ -79,3 +79,10 @@ board up to `2e2f9ca2`. It was built locally and not pushed.
 
   They were read from the report; the handoff file is on the Mac.
 - MSVC with the game files. The landing's game-file run covers it.
+
+## Landed (2026-11-14)
+
+On the owner's OK ("Land both when green", given in the orchestrator's session):
+`python -I tools/orch/land.py --repo . --rev 5bcd64a6 --name fisher-1a`. `gate` passed on `5bcd64a6`, and `main`
+moved `674ecdf4` → `5bcd64a6`, mirrored to GitLab and the share. `5bcd64a6` is the run candidate `198b5fb0` plus
+one board merge (documents only).

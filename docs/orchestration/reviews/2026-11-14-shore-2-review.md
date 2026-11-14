@@ -77,3 +77,53 @@ premises that don't hold, the owner's own view isn't shown, and the spec wasn't 
 - Same branch, about 2 hours. Gates: render and app lanes only if code changes; F1–F5 are measurements. Hosted CI
   green on the new head.
 - One REPORTS section, "fix round 1", about 40 lines, READY FOR REVIEW.
+
+## Fix round 1 (2026-11-14): ACCEPTED
+
+**Reviewed head:** `task/SHORE-2` `98cf2f06`. Hosted CI runs 43629430849 (`9366116a`) and 43629453312 (`98cf2f06`) are
+green, `gate` included. `sea.cpp` is unchanged since the first submission. This round adds a measurement test
+(`src/render/tests/shore2_fix_round1_test.cpp`) and documents.
+
+| Finding | Result |
+|---|---|
+| F1 zoom sweep | `lan5` legs, 24 s per leg, 48,000 frames each, before (`eff68d5e`'s `sea.cpp`) and after. Before: non-ready 450, at most 44 at once, busy p99 2.30 ms, max 154.84 ms, frames > 8 ms 32. After: 229, 37, 1.76 ms, 11.98 ms, 1. **Readiness is not worse.** The size of the gain is likely partly machine load (another session's runs overlapped that afternoon); it isn't counted as an improvement of this packet |
+| F2 coverage table | **NOT_RUN, accepted.** The 2026-11-04 sample set was a gitignored capture dump that no longer exists on this host. A substitute was degenerate (an empty band) and was not used |
+| F3 river coverage | tiles over the Q12 corpus that the sea covers at 26.5 but not at 16.5: old rule 9,156, new rule 10,277 (of 1,926,733) |
+| F4 basins | 5,568 tiles get the sea bit only through the new rule and are enclosed: a 4-connected flood from the island's edge doesn't reach them. Sample `D_128x128_0021_3B#0 (64,56)`, pictured. Whether the original floods them stays open under OQ-026, recorded in `iso.md` |
+| F5 stepping | tiles below the plane in a chunk without the sea bit: old rule 8,804 of 6,832,335, new rule **0** (asserted by the new test). At the owner's spot `(255,138)` the pictures differ by 1,138 pixels, but neither shows stair-steps there; the wide-beach sample is where the old steps show. The playtest card says so |
+| F6 spec | `iso.md`'s "Where" and "Waterline" rows give the rule as built, the trace addresses, GPU = CPU by construction, and the basin question |
+
+**Gates:**
+- MSVC render and app at this head: 11 memory refusals, all confirmed `low-memory stop`, overlapping the
+  orchestrator's game-file run. Every one passed alone later.
+- GPU and WSL `-O1` ASan: not rerun, since no render code changed after `8a7b36dc`. Hosted CI's ASan job covers the
+  head.
+
+**Notes (not blocking):**
+- The new test's name says "SHORE-2 fix round 1", which is the process, not the behaviour. Rename it to the invariant
+  it guards ("no tile below the plane lies in a chunk without the sea bit") the next time it's touched.
+- Its corpus measurement prints the river and basin counts as information; only `river_total > 0` and
+  `stepping_new == 0` are asserted.
+
+**Landing** waits for the game-file run of its candidate and the owner's OK.
+
+## Game-file run of the landing candidate (2026-11-14)
+
+**The candidate:** `orch/land-shore-2` at `d871be6a`: `main` `5bcd64a6`, then `task/SHORE-2` `98cf2f06`, then the
+board up to `601b412b`. It was built locally and not pushed. The merge met one conflict where both added lines at the
+end of `REPORTS.md`; it was resolved by keeping both sides.
+
+**The run:** the canonical call, 20:43–20:59.
+- `COUNTS: selected=2605 executed=2576 failed=2 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- Log sha256 `13f72ad0e6138f67…`.
+
+**The two failures are memory refusals** (`reason=low-memory stop`; free memory down to about 1.8 GB while the Windows
+executor built ZOOM-SMOOTH-1):
+- the new `SHORE-2 fix round 1: river coverage …` measurement;
+- `legacy river shading reproduces the previous enhanced digests` (heavy).
+
+**Each rerun alone** with `--jobs 1`, 20:59–21:12: `COUNTS: selected=1 executed=1 failed=0`, `VERDICT: PASS` for both.
+Log sha256s: `eb36979741b896cc…`, `e99fa4fd7690b30f…`.
+
+**Result:** every selected test that is not skipped executed and passed. The landing waits for the owner's OK.

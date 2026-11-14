@@ -22,10 +22,12 @@ says who is doing what, where the work is, and what it waits on.
   [review](reviews/2026-11-14-save-sections-1b-review.md)): the extension tag registry (state.md §9.8), the
   compile-time registration, and the proof that an extension moves no pin. **`main` is healthy:** the candidate
   `f04c600f` (the same code as `674ecdf4`) passed its game-file run, its 5 memory refusals rerun alone.
-  **[FISHER-1a](tasks/fisher-1a.md) READY, ACCEPTED** (2026-11-14, head `9137eabd`,
-  [review](reviews/2026-11-14-fisher-1a-review.md)): the fisher's corner grid, water cells, goal mask and search
-  rectangle as state-free functions; 2,473 fish tiles and 619 with a water neighbour asserted over the 50 maps.
-  Landing waits for its game-file run and the owner's OK. **Next on the Mac:** FISHER-1b (packet to write).
+- **[FISHER-1a](tasks/fisher-1a.md) LANDED** on the owner's OK ("Land both when green"; 2026-11-14, `main`
+  `674ecdf4` → `5bcd64a6`; [review](reviews/2026-11-14-fisher-1a-review.md)): the fisher's corner grid, water
+  cells, goal mask and search rectangle as state-free functions; 2,473 fish tiles and 619 with a water neighbour
+  asserted over the 50 maps. **`main` is healthy:** the candidate `198b5fb0` (the same code) passed its game-file
+  run, nothing refused. **Next on the Mac:** [FISHER-1b](tasks/fisher-1b.md), released when the owner pastes its
+  prompt.
 - **Zoom session for the owner** (2026-11-14): fast zooming on `lan5`, enhanced water, measured
   ([findings](../render/zoom-session-2026-11-14.md)), evidence for ZOOM-SMOOTH-1.
 - **[ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) WRITTEN** for the Windows executor (owner: "Yes, write it"), released
@@ -95,7 +97,9 @@ says who is doing what, where the work is, and what it waits on.
   - **[SHORE-2](tasks/shore-2.md) RELEASED** to the Windows executor: the stepped 8 × 8-tile water edges on beaches.
     **Fix round 1** (2026-11-14, [review](reviews/2026-11-14-shore-2-review.md)): the sea gate now follows the plane
     (code sound), but the measurements, the basin question, the owner's spot and the spec are still owed.
-    ZOOM-SMOOTH-1 is released after the fix round's review.
+    **Fix round 1 ACCEPTED** (2026-11-14, head `98cf2f06`): stepping below the plane 8,804 tiles → 0; readiness
+    not worse; basins open under OQ-026. Landing waits for its game-file run and the owner's OK.
+    **ZOOM-SMOOTH-1 RELEASED** to the Windows executor the same day, under the standing go.
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
   - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.

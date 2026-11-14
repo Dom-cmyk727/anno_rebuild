@@ -62,7 +62,7 @@ struct ConstructionCellInfo {
     /// Upkeep: the registry's `running_cost[1]` (PROD3's active column) - what the original's
     /// panel shows before a building exists (UI-INFO-1, OQ-563 resolved: View.dll 0x10030262
     /// asks the type for running-cost kind 2, column 1; 15 of 15 GOG info-panel shots show that
-    /// column, 7 of them where it differs from column 0). nullopt only for a type whose
+    /// column, 11 of them where it differs from column 0). nullopt only for a type whose
     /// `running_cost` is not the two-column form (never for the real files).
     std::optional<std::uint32_t> upkeep;
 };

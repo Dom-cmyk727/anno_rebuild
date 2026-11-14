@@ -1509,12 +1509,11 @@ def anlagen_preview_rgba(game_dir: str, type_id: int):
     return right, h, bytes(out)
 
 
-def info_fit_preview(sprite, bw: int, bh: int):
-    """Unchanged when it fits, else nearest-neighbour to the largest fitting size (the rebuild's
-    flagged default, OQ-612) - the same integer rule as ui_mock.cpp fit_preview."""
+def preview_placeholder_fit(sprite, bw: int, bh: int):
+    """The PLACEHOLDER (not evidence), same as ui_mock.cpp preview_placeholder_fit: a sprite larger
+    than the box, nearest-neighbour to the largest fitting size (OQ-612). Precondition: the sprite
+    does not fit the box."""
     w, h, buf = sprite
-    if w <= bw and h <= bh:
-        return sprite
     if w * bh >= h * bw:
         nw, nh = bw, max(1, h * bw // w)
     else:
@@ -1597,7 +1596,10 @@ def compose_info_panel(layout_dir: str, game_dir: str, type_id: int, values: dic
     if sprite is not None:
         bx, by = box["pos"]
         bw, bh = box["size"]
-        fitted = info_fit_preview(sprite, bw, bh)
+        # Evidence-backed: a sprite that fits is drawn unscaled and centred (docs/re/ui.md 2.5);
+        # a larger one goes through the one placeholder (OQ-612).
+        fits = sprite[0] <= bw and sprite[1] <= bh
+        fitted = sprite if fits else preview_placeholder_fit(sprite, bw, bh)
         x = bx + (bw - fitted[0]) // 2
         y = by + (bh - fitted[1]) // 2
         clip = (bx, by, bw, bh)

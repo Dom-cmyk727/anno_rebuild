@@ -393,13 +393,14 @@ assets::Rgba render_info_text(const formats::zei::CharSet& font, const std::stri
 /// own silhouette, drawn first at the `info_preview_shadow` offset (docs/re/ui.md section 2.5).
 constexpr std::array<std::uint8_t, 3> kPreviewShadow = {66, 65, 66};
 
-/// UI-INFO-1: the preview image for `sprite` in a `bw` x `bh` box: unchanged when it fits;
-/// otherwise scaled to the largest size that fits (integer arithmetic, aspect kept) by nearest
-/// neighbour - a flagged rebuild default, not the original's scaler (OQ-612: no tested filter
-/// reproduces the scaled GOG previews).
-assets::Rgba fit_preview(const assets::Rgba& sprite, unsigned bw, unsigned bh) {
+/// UI-INFO-1, the PLACEHOLDER (not evidence): a preview sprite larger than the `bw` x `bh` box,
+/// scaled to the largest size that fits (integer arithmetic, aspect kept) by nearest neighbour.
+/// The original's scaler is unknown - no tested filter reproduces the scaled GOG previews
+/// (OQ-612). Every unproven step of the preview lives here and only here, so it can be kept,
+/// gated or replaced on its own. Precondition: the sprite does not fit the box.
+assets::Rgba preview_placeholder_fit(const assets::Rgba& sprite, unsigned bw, unsigned bh) {
     const unsigned w = sprite.width, h = sprite.height;
-    if (w == 0 || h == 0 || (w <= bw && h <= bh))
+    if (w == 0 || h == 0)
         return sprite;
     unsigned nw = 0, nh = 0;
     if (static_cast<std::uint64_t>(w) * bh >= static_cast<std::uint64_t>(h) * bw) {
@@ -475,7 +476,12 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const InfoPanelCon
     const assets::Rgba* sprite = cache.preview_sprite(info.type.v, *anlagen);
     if (sprite == nullptr)
         return;
-    assets::Rgba fitted = fit_preview(*sprite, box->size_w, box->size_h);
+    // Evidence-backed path: a sprite that fits the box is drawn unscaled and centred (the whole
+    // box exact on r2_info_dirt_road, f12_info_field_104, f12_info_field_708; docs/re/ui.md 2.5).
+    // A larger one goes through the one placeholder (preview_placeholder_fit, OQ-612).
+    const bool fits = sprite->width <= box->size_w && sprite->height <= box->size_h;
+    assets::Rgba fitted =
+        fits ? *sprite : preview_placeholder_fit(*sprite, box->size_w, box->size_h);
     // Every decoded pixel is drawn opaque, the A formats' partial levels included - what the
     // reference (tools/ui_layout.py anlagen_preview_rgba) does, so the XRGB path (which never
     // blends) and the GPU overlay (which would) agree. How the original blends those levels in

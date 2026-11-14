@@ -20,6 +20,9 @@ says who is doing what, where the work is, and what it waits on.
   **Next on the Mac:** [SAVE-SECTIONS-1b](tasks/save-sections-1b.md), released when the owner pastes its prompt.
 - **Zoom session for the owner** (2026-11-14): fast zooming on `lan5`, enhanced water, measured
   ([findings](../render/zoom-session-2026-11-14.md)), evidence for ZOOM-SMOOTH-1.
+- **[ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) WRITTEN** for the Windows executor (owner: "Yes, write it"), released
+  under the standing go after SHORE-2's review: coarse levels resident, the zoom range prefetched, a memory-sized
+  cache. ZOOM-SMOOTH-2 (window-thread spikes, live resize) is queued after it.
 - **A new UI lane, owner 2026-11-14:** the "UI Executor" session is orchestrator and executor for the in-game UI, so
   the menus match the original and the History Edition. **UI-WINDOW-1 (the UI at every window size) moved to it**
   (owner: "UI-WINDOW-1 belongs to the UI lane"); the Windows executor's queue no longer holds it.
@@ -502,7 +505,7 @@ mirror still requires the owner/Windows sync after main publication.
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
 - **Now: [SHORE-2](tasks/shore-2.md)** (released 2026-11-13): the sea's edge against the 26.5 plane. Then
-  ZOOM-SMOOTH-1, GATE-2a, GATE-2b, TEST-MEM-1 and RENDER-DIRECT-1 to 6. UI-WINDOW-1 moved to the UI lane (owner,
+  [ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) (written 2026-11-14), ZOOM-SMOOTH-2, GATE-2a, GATE-2b, TEST-MEM-1 and RENDER-DIRECT-1 to 6. UI-WINDOW-1 moved to the UI lane (owner,
   2026-11-14).
 - **Finished: [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md)** (2026-11-13; head `eff68d5e`), **accepted and
   landed** as `95eea7de` ([review](reviews/2026-11-13-depth-integrate-1-review.md)).

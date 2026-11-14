@@ -10664,3 +10664,90 @@ Decisions and reasoning:
 NOT_RUN: local MSVC/WSL and Windows game-file/full landing suites; orchestrator owns those. Unrelated renderer/app gates reuse base evidence; hosted CI builds/tests their consumers without assets.
 QUESTIONs: projection resolved; broader actor support and OQ-609/610 remain outside scope. No pin/fixture edits, assets, state number, scheduler changes, main merge/push, rebase or force push.
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-1 — partial, READY FOR REVIEW (task/ZOOM-SMOOTH-1, new worktree, base `main` `5bcd64a6`, head `951759a7`)
+
+Steps 1, 7 and 8 of `docs/orchestration/tasks/zoom-smooth-1.md` are done and verified; steps 2-6 and the
+tests of step 9 that depend on them are **not started** — see Decisions below for why, and a proposed split.
+
+**Step 1 (the sweep fix, its own commit `847f2e38`):** `chunk_worker_threads`, `FrameConfig`/
+`apply_frame_config` and `zoom_anchor_at` (`frame.hpp`/`frame.cpp`) are the one place the viewer and
+bench_frame's `--zoom-sweep` both configure `FrameRenderer` (review finding B1: before this the sweep used
+`(threads + 1) / 2` workers against the viewer's `hw * 3 / 4`, and never set `zoom_anchor`,
+`prewarm_far_levels` or `resident_level_chunks` at all). Wired into both (`07acd7d0`). Rerun "before" numbers
+on the fixed harness, lan5, 2560x1369, enhanced water, legs, 6 s/leg, 4090 (`cache/gates/
+zoomsmooth1-before-legs.txt`): 12,000 frames, non-ready 193, most-at-once 36, stand-in draws 22,484,
+dissolves 14,472, open-sea draws 1,922, wave switches 93, busy p50 0.64/p99 2.70/max 14.06 ms, frames>2ms
+353, frames>8ms 1. The 2026-11-13 baseline is confirmed not comparable (different worker count and no
+anchor); this is the new one for whoever does steps 2-6.
+
+**Step 7 (chunks-step reporting):** the per-level table now reports the window-thread "chunks" step's own
+p99/max every frame (`GpuStats::chunks_ms`), not only busy ones (review finding S4) — e.g. level 1 of the
+before-run: chunks p99 0.384 ms, max 1.455 ms. Not added to the single-line `baseline: ...` summary
+`zoom_sweep_contract.py` parses by a fixed regex, to avoid touching that contract.
+
+**Step 8 (opt-in control CTest):** `zoom_sweep_contract.py --control --readiness-only` is registered as
+`zoom_sweep_control_readiness` (`src/tools/bench_frame/CMakeLists.txt`), opt-in behind
+`ANNO_ZOOM_SWEEP_PROOF=1` (named in `docs/perf/README.md`), `RESOURCE_LOCK gpu`. `--readiness-only` is new:
+the busy-time count (2 of 1,980 control frames over the 2 ms budget, docs/perf/README.md, measured as
+driver/submission jitter) is reported but not gated, per ZOOM-MEASURE-1 review note 2's "decide it with a
+measurement, don't just raise the threshold" — ZOOM-SMOOTH-3 owns that measurement. Running it for real
+(`ANNO_ZOOM_SWEEP_PROOF=1`) first failed: the CMake-passed literal `${PROJECT_SOURCE_DIR}/game/app` does not
+exist in a worktree, and the script's `ANNO1503_GAME_DIR` check only gated whether to run, never substituted
+the env var's path into the actual invocation. Fixed (`41da9d11`) so the env var overrides the literal path;
+reran and it passes (`cache/gates/zoomsmooth1-control-readiness-2.txt`): frames=1996 non_ready=0
+most_missing=0 stand=0 dissolves=0 open_sea=0, busy_p50=0.40 busy_p99=0.82 busy_max=2.27 over_budget=2 (the
+readiness numbers match the historical control; PASS under `--readiness-only`).
+
+**Gates.** MSVC Release, game files, render+app: `COUNTS: selected=481 executed=471 failed=7 ... VERDICT:
+FAIL failed tests` (`cache/gates/zoomsmooth1-render-app-final.txt`) — all 7 confirmed
+`[anno-test memory] refused ... reason=low-memory` (ran concurrently with the WSL warnings check); each
+passed alone (`cache/gates/zoomsmooth1-final-solo-1.txt` through `-7.txt`, each `VERDICT: PASS`). An earlier
+attempt at this same gate (`zoomsmooth1-render-app-2.txt`, before the clang-format and game-dir fixes) had 5
+refusals, also all confirmed and passed solo (`zoomsmooth1-solo-1.txt` through `-5.txt`). GPU, 4090:
+`COUNTS: selected=117 executed=117 failed=0 VERDICT: PASS` (`cache/gates/zoomsmooth1-gpu-4090.txt`); the
+Radeon iGPU lane was not run (no GPU behaviour changed, only the CPU-side proof harness and a new CTest
+registration already covered by the 4090 run). WSL `-Werror` check (`tools/check_unix_warnings.sh`): the
+same pre-existing `src/sim/tests/extensions_test.cpp` `ANNO_EXTENSION_ORACLE_FILE` failure as before this
+branch (a file needing a build-generated define the standalone script doesn't set; unrelated to anything
+changed here), everything else clean. `clang-format --dry-run --Werror` flagged `frame.hpp`,
+`frame_config_test.cpp` and `viewer.cpp`; fixed in place (`951759a7`).
+
+NOT_RUN: steps 2-6 (the byte memory budget, resident coarse levels, the zoom-out ring, the GPU upload share,
+rate-limited eviction) and step 9's tests that depend on them; the Radeon iGPU GPU gate (reasoned above);
+WSL ASan.
+
+Decisions and reasoning:
+- **Scope cut after reading the packet in full.** Steps 2-6 are one tightly-coupled redesign (a byte budget
+  spanning the CPU chunk cache and the GPU's planes/pool/prefetch together, resident-level selection by that
+  budget, a new zoom-out ring ordered by estimated time-to-visible, routing the ring and resident levels into
+  the compositor's upload-ahead even while a visible chunk waits, and rate-limited eviction with watermarks),
+  not five independent small changes. The review that rewrote this packet already flagged real risk inside
+  it: B2 (today's prefetch gate, `!waiting && uploads == 0`, is exactly what step 5 must change, inside
+  `gpu.cpp`'s most delicate scheduling code) and B3 (moving GPU releases risks priority inversion with the
+  existing reaper, and wgpu may destroy resources inside `queue submit` regardless, a wgpu-core-version-
+  specific point the packet itself says must be checked, not assumed). Attempting all of it in this one
+  sitting, without the owner's or a reviewer's eyes on intermediate states (the project's own practice for
+  work this size, e.g. SHORE-2's multi-round review), risked landing a plausible-looking but under-verified
+  rewrite of safety-critical rendering scheduling. Shipping steps 1, 7 and 8 to a solid, gated, tested
+  standard and stopping there, per the packet's own "stop and report" rule, serves the evidence-only bar
+  better than a rushed pass at the rest.
+- **Proposed split:** steps 2+3 (the byte budget and resident-by-budget) as one packet, since 3 cannot be
+  measured without 2; step 4 (the ring) next, since it needs the same budget-aware residency to reason about
+  what's already resident; step 5 (GPU upload share) last and on its own, given B2/B3's flagged risk,
+  possibly after checking wgpu-core's pinned-version behaviour the review named as unverified; step 6
+  (eviction rate limits) can ride with whichever of 2/3 lands first, since it's the same trim() path. Step 9's
+  tests split the same way.
+- Kept step 7 off the `baseline: ...` line `zoom_sweep_contract.py` parses by a fixed regex, adding the
+  chunks-step p99/max only to the per-level table, so the existing contract needed no change.
+- `--readiness-only` instead of reusing `--control` to add a gate, so the documented manual recipe in
+  `docs/perf/README.md` (which still wants the full busy-time picture) is unaffected.
+- Did not relax the busy-time threshold to make `--control` pass outright, per the review's own instruction;
+  deferred that decision to ZOOM-SMOOTH-3, whose charge is exactly the window-thread busy-time story.
+
+QUESTIONs: should steps 2-6 be split as above into separate packets, or dispatched as one larger packet to
+this same branch? Either way, the branch currently holds no behaviour change to any renderer or GPU code —
+only the proof harness, a report-only metric and an opt-in test — so it is safe to land as is, or to keep
+open for the next packet to build on.
+
+**READY FOR REVIEW.**

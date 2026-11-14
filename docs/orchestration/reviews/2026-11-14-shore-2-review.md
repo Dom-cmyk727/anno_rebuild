@@ -127,3 +127,10 @@ executor built ZOOM-SMOOTH-1):
 Log sha256s: `eb36979741b896cc…`, `e99fa4fd7690b30f…`.
 
 **Result:** every selected test that is not skipped executed and passed. The landing waits for the owner's OK.
+
+## Landed (2026-11-14)
+
+On the owner's OK ("Yes, land SHORE-2", given in the orchestrator's session):
+`python -I tools/orch/land.py --repo . --rev 6513b6f6 --name shore-2`. `gate` passed, and `main` moved
+`5bcd64a6` → `6513b6f6`, mirrored to GitLab and the share. `6513b6f6` is the run candidate `d871be6a` plus one
+board merge (documents only).

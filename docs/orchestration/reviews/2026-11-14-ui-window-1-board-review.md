@@ -261,3 +261,12 @@ Log sha256s: `4d97a179d78364cc…`, `72e48129149c8ffd…`.
 
 **Result:** every selected test that is not skipped executed and passed. It lands under the owner's OK ("Land both
 when green") right after SHORE-2.
+
+## Landed (2026-11-14)
+
+On the owner's OK ("Land both when green", given in the orchestrator's session), after SHORE-2:
+`python -I tools/orch/land.py --repo . --rev 01a4d540 --name ui-window-1`. `gate` passed, and `main` moved
+`6513b6f6` → `01a4d540`, mirrored to GitLab and the share. `01a4d540` is `main` `6513b6f6`, then
+`task/UI-WINDOW-1` `4a6b10ac`, then the board. It has the same code as the run candidate `ef9e9705`, differing in
+documents only. Follow-ups in the UI lane: UI-INFO-2 (the preview's arrows and rotation, OQ-612), UI-TABS-1,
+UI-MINIMAP-1, and UI-PERF-1 for the `--ui-scale` re-stretch.

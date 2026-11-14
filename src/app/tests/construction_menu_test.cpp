@@ -1,11 +1,15 @@
 // UI.2 C1/C2/C4/C5: the construction menu's click resolution, against the project's own real
 // data/ui/hud.txt and data/ui/construction.txt (no game files needed - these are the project's
 // own checked-in derived-fact files, like ui_layout_test.cpp).
+#include <algorithm>
 #include <filesystem>
 
 #include <doctest/doctest.h>
 
 #include <anno/app/construction_menu.hpp>
+#include <anno/assets/text.hpp>
+#include <anno/formats/zei.hpp>
+#include <anno/test/game_dir.hpp>
 
 namespace fs = std::filesystem;
 namespace app = anno::app;
@@ -149,7 +153,7 @@ TEST_CASE("construction menu: click resolves a category tab, then, with a catego
         const auto r = menu.click(970.0 + 10.0, 710.0 + 10.0, "public", false, nullptr);
         CHECK(r.kind == app::ConstructionClickKind::ToggleDemolish);
     }
-    // Cancel-X (data/ui/hud.txt "infoexit", (984, 725) 33 x 38), on the info/placement panel
+    // Cancel-X (data/ui/hud.txt "infoexit", (984, 725) 33 x 35), on the info/placement panel
     // (placement_open true) - the same point resolves ToggleDemolish instead when false, since
     // the two rectangles overlap and only the state tells them apart (see the header comment).
     {
@@ -179,8 +183,8 @@ TEST_CASE("construction menu: click resolves a category tab, then, with a catego
     }
 }
 
-TEST_CASE("construction menu: cell_info reads cost live from the registry, never guesses "
-          "upkeep (UI.2 C3, OQ-563)") {
+TEST_CASE("construction menu: cell_info reads cost and upkeep live from the registry "
+          "(UI.2 C3, UI-INFO-1)") {
     anno::sim::TypeRegistry::Builder b;
     anno::sim::BuildingType priced;
     priced.id = anno::sim::TypeId{501};
@@ -188,6 +192,13 @@ TEST_CASE("construction menu: cell_info reads cost live from the registry, never
     priced.cost_goods = {{41, 300}, {42, 700}}; // tools, wood (8.8 fixed-point, as the registry
                                                 // stores every cost amount)
     b.add(priced);
+    // UI-INFO-1: the panel's upkeep is PROD3's active column, running_cost[1] (docs/re/ui.md
+    // section 2.5; the forester 801's own PROD3 is {4, 12} and the GOG panel shows 12).
+    anno::sim::BuildingType running;
+    running.id = anno::sim::TypeId{801};
+    running.cost_gold = 150;
+    running.running_cost = {4, 12};
+    b.add(running);
     const auto built = b.build();
     REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
 
@@ -199,12 +210,106 @@ TEST_CASE("construction menu: cell_info reads cost live from the registry, never
     CHECK(known.cost_goods[0].amount_88 == 300);
     CHECK(known.cost_goods[1].goods == 42);
     CHECK(known.cost_goods[1].amount_88 == 700);
-    // Never guessed: no published source exists yet for an unbuilt instance's upkeep (OQ-563).
+    // A type without the two-column running cost: no upkeep, never a guessed one.
     CHECK_FALSE(known.upkeep.has_value());
+
+    const auto active = app::ConstructionMenu::cell_info(anno::sim::TypeId{801}, *built.value());
+    REQUIRE(active.upkeep.has_value());
+    CHECK(*active.upkeep == 12); // column 1 (active), not column 0 (4)
 
     const auto unknown = app::ConstructionMenu::cell_info(anno::sim::TypeId{9999}, *built.value());
     CHECK_FALSE(unknown.known);
     CHECK(unknown.cost_gold == 0);
     CHECK(unknown.cost_goods.empty());
     CHECK_FALSE(unknown.upkeep.has_value());
+}
+
+TEST_CASE("construction menu: info_panel_content - whole tons by goods name, gold, upkeep "
+          "(UI-INFO-1)") {
+    anno::sim::TypeRegistry::Builder b;
+    anno::sim::BuildingType kontor;
+    kontor.id = anno::sim::TypeId{1302};
+    kontor.cost_gold = 350;
+    const auto& reg0 = *anno::sim::TypeRegistry::empty();
+    const auto tools = reg0.goods_by_name("WERKZEUG");
+    const auto wood = reg0.goods_by_name("HOLZ");
+    REQUIRE(tools.has_value());
+    REQUIRE(wood.has_value());
+    // 5 t tools, 12 t wood and a fraction that the original's `>> 8` drops (View.dll
+    // 0x100301e2): 12 t + 255/256 still shows 12.
+    kontor.cost_goods = {{*tools, 5 * 256}, {*wood, 12 * 256 + 255}};
+    std::sort(kontor.cost_goods.begin(), kontor.cost_goods.end(),
+              [](const auto& a, const auto& c) { return a.goods < c.goods; });
+    kontor.running_cost = {0, 15};
+    b.add(kontor);
+    const auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+
+    const auto info =
+        app::ConstructionMenu::info_panel_content(anno::sim::TypeId{1302}, *built.value());
+    REQUIRE(info.has_value());
+    CHECK(info->type == anno::sim::TypeId{1302});
+    CHECK(info->tools == 5);
+    CHECK(info->wood == 12);
+    CHECK(info->bricks == 0);
+    CHECK(info->marble == 0);
+    CHECK(info->gold == 350);
+    CHECK(info->upkeep == 15);
+    CHECK_FALSE(app::ConstructionMenu::info_panel_content(anno::sim::TypeId{9999}, *built.value())
+                    .has_value());
+}
+
+TEST_CASE("info panel: centred_text_x, the original's centring rule (UI-INFO-1)") {
+    // x = box_x + box_w / 2 - text_w / 2, both halves rounding down. The figures are the GOG
+    // measurements (docs/re/ui.md section 2.5): MainSmall advance widths of 1-, 2- and 3-digit
+    // values in the gold box (852, 145) and the material box (852, 50), and two names in the
+    // name box (819, 200).
+    CHECK(app::centred_text_x(852, 145, 7) == 921);   // "5"
+    CHECK(app::centred_text_x(852, 145, 9) == 920);   // "0"
+    CHECK(app::centred_text_x(852, 145, 16) == 916);  // "12"
+    CHECK(app::centred_text_x(852, 145, 17) == 916);  // "10"
+    CHECK(app::centred_text_x(852, 145, 24) == 912);  // "150"
+    CHECK(app::centred_text_x(852, 145, 25) == 912);  // "220"
+    CHECK(app::centred_text_x(852, 145, 28) == 910);  // "140"
+    CHECK(app::centred_text_x(852, 50, 7) == 874);    // "5"
+    CHECK(app::centred_text_x(852, 50, 8) == 873);    // "2"
+    CHECK(app::centred_text_x(954, 50, 16) == 971);   // "12"
+    CHECK(app::centred_text_x(819, 200, 107) == 866); // the pioneer house's name
+    CHECK(app::centred_text_x(819, 200, 166) == 836); // the market's name
+    // Wider than the box: still the same rule, never clamped.
+    CHECK(app::centred_text_x(852, 50, 61) == 847);
+}
+
+TEST_CASE("info panel: the real hud.txt text boxes place real MainSmall digits where the GOG "
+          "shots show them (UI-INFO-1)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto layouts = load();
+    const auto bytes = anno::test::read_file(*dir / "ToolGfx" / "MainSmall.zei");
+    const auto font = anno::formats::zei::CharSet::parse(bytes);
+    REQUIRE(font.ok());
+    struct Case {
+        const char* box;
+        const char* text;
+        int x, y;
+    };
+    // Glyph-match positions on r2_info_forester_801 / f12_info_kontor_1302 /
+    // r2_info_dirt_road (1-, 2- and 3-digit values; docs/re/ui.md section 2.5).
+    const Case cases[] = {
+        {"info_gold", "150", 912, 624},  {"info_gold", "5", 921, 624},
+        {"info_upkeep", "12", 916, 684}, {"info_upkeep", "0", 920, 684},
+        {"info_tools", "2", 873, 564},   {"info_wood", "12", 971, 564},
+        {"info_marble", "0", 975, 593},  {"info_bricks", "0", 873, 593},
+    };
+    for (const auto& c : cases) {
+        const auto* el = layouts.hud.element(c.box);
+        REQUIRE(el != nullptr);
+        CHECK(el->align == "centre");
+        const auto image = anno::assets::render_text(font.value(), c.text);
+        CHECK_MESSAGE(app::centred_text_x(el->pos_x, el->size_w, image.width) == c.x, c.box);
+        CHECK_MESSAGE(el->pos_y == c.y, c.box);
+    }
 }

@@ -71,7 +71,7 @@ ConstructionMenu::click(double px, double py, const std::string& open_category, 
     if (placement_open) {
         // Cancel-X (INFOEXIT): docs/re/ui.md section 2.4/2.5 - "on the info/placement panel
         // only; not on the category grid". Checked only in this state: its rectangle
-        // ((984,725) 33x38) overlaps the pickaxe's ((970,710) 53x53), and the two panels are
+        // ((984,725) 33x35) overlaps the pickaxe's ((970,710) 53x53), and the two panels are
         // never shown together, so this state alone decides which one a click on the overlap
         // means.
         if (const auto* infoexit = hud_->element("infoexit");
@@ -135,8 +135,40 @@ ConstructionCellInfo ConstructionMenu::cell_info(sim::TypeId type,
     info.known = true;
     info.cost_gold = found->cost_gold;
     info.cost_goods = found->cost_goods;
-    // info.upkeep stays nullopt: OQ-563, see the header comment.
+    // PROD3's active column (header comment; docs/re/ui.md section 2.5).
+    if (found->running_cost.size() == 2) {
+        info.upkeep = found->running_cost[1];
+    }
     return info;
+}
+
+std::optional<InfoPanelContent>
+ConstructionMenu::info_panel_content(sim::TypeId type, const sim::TypeRegistry& registry) {
+    const ConstructionCellInfo cell = cell_info(type, registry);
+    if (!cell.known) {
+        return std::nullopt;
+    }
+    const auto tons = [&](std::string_view goods_name) -> std::int64_t {
+        const auto id = registry.goods_by_name(goods_name);
+        if (!id) {
+            return 0;
+        }
+        for (const auto& entry : cell.cost_goods) {
+            if (entry.goods == *id) {
+                return static_cast<std::int64_t>(entry.amount_88 / 256);
+            }
+        }
+        return 0;
+    };
+    InfoPanelContent out;
+    out.type = type;
+    out.gold = cell.cost_gold;
+    out.tools = tons("WERKZEUG");
+    out.wood = tons("HOLZ");
+    out.bricks = tons("ZIEGEL");
+    out.marble = tons("MAMOR");
+    out.upkeep = cell.upkeep.value_or(0);
+    return out;
 }
 
 } // namespace anno::app

@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <anno/app/ui_layout.hpp>
+#include <anno/app/ui_mock.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/types.hpp>
 
@@ -58,11 +59,11 @@ struct ConstructionCellInfo {
     std::uint32_t cost_gold = 0;
     /// Ascending goods order, non-zero amounts only (BuildingType::cost_goods's own contract).
     std::vector<sim::CostEntry> cost_goods;
-    /// Upkeep: nullopt (the panel should show blank, not a guessed number) until a published
-    /// source exists. C3 reads "the upkeep, where the snapshot carries it; otherwise blank, with
-    /// an OQ" - PlaySnapshot does not yet carry a per-type upkeep figure (OQ-563: the registry's
-    /// own `running_cost` has two PROD3 slots whose "active" selection is per *instance*, not a
-    /// static per-type fact a menu entry for an unbuilt placement can read before one exists).
+    /// Upkeep: the registry's `running_cost[1]` (PROD3's active column) - what the original's
+    /// panel shows before a building exists (UI-INFO-1, OQ-563 resolved: View.dll 0x10030262
+    /// asks the type for running-cost kind 2, column 1; 15 of 15 GOG info-panel shots show that
+    /// column, 7 of them where it differs from column 0). nullopt only for a type whose
+    /// `running_cost` is not the two-column form (never for the real files).
     std::optional<std::uint32_t> upkeep;
 };
 
@@ -94,7 +95,7 @@ class ConstructionMenu {
     /// since none of those rectangles are shown with no category open). `placement_open` is
     /// whether a cell is currently armed (the info/placement panel is showing): the pickaxe
     /// (ABRISSICON) and the cancel-X (INFOEXIT) rectangles overlap in pixels (hud.txt's measured
-    /// (970,710) 53x53 and (984,725) 33x38), but docs/re/ui.md section 2.4 states the two panels
+    /// (970,710) 53x53 and (984,725) 33x35), but docs/re/ui.md section 2.4 states the two panels
     /// are never shown together ("[cancel-X is] on the info/placement panel only; not on the
     /// category grid") - so only the panel matching `placement_open` is checked, avoiding a
     /// guess at which the player meant from pixel overlap alone. `eligibility`: the published
@@ -109,6 +110,14 @@ class ConstructionMenu {
     /// `data/ui/construction.txt`'s RE snapshot of it).
     [[nodiscard]] static ConstructionCellInfo cell_info(sim::TypeId type,
                                                         const sim::TypeRegistry& registry);
+
+    /// UI-INFO-1: what the info panel shows for `type` (ui_mock.hpp's InfoPanelContent), from
+    /// cell_info: the four build goods resolved by name ("WERKZEUG", "HOLZ", "ZIEGEL", "MAMOR",
+    /// the goods View.dll 0x100301b0..0x100301c5 asks for), whole tons (`amount_88 / 256`, the
+    /// original's `>> 8`); a goods the registry lacks shows 0. nullopt when `type` is not in the
+    /// registry.
+    [[nodiscard]] static std::optional<InfoPanelContent>
+    info_panel_content(sim::TypeId type, const sim::TypeRegistry& registry);
 
   private:
     [[nodiscard]] static bool inside(double px, double py, int x, int y, unsigned w, unsigned h);

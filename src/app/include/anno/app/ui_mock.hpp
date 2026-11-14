@@ -16,6 +16,7 @@
 
 #include <anno/app/ui_layout.hpp>
 #include <anno/assets/texture.hpp>
+#include <anno/formats/anlagen.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/ids.hpp>
 
@@ -83,6 +84,27 @@ struct HudCounters {
     std::optional<std::int64_t> residents;
 };
 
+/// UI-INFO-1: what the building info panel shows for the armed type, already in displayed units
+/// (docs/re/ui.md section 2.5). The original's panel update, View.dll 0x10030140, asks the type
+/// for each figure and prints it with `_itoa` radix 10 (0x1008d919): the four build goods
+/// (WERKZEUG 0x29, HOLZ 0x2a, ZIEGEL 0x2b, MAMOR 0x2c, in that gadget order) as whole tons
+/// (`(amount + bias) >> 8`, 0x100301e2), the gold cost, and the running cost's column 1 (the
+/// active column; 0x10030269 pushes kind 2, column 1). The caller fills this from the live type
+/// registry (ConstructionMenu::info_panel_content), never from data/ui/construction.txt.
+struct InfoPanelContent {
+    /// The Anlagen id: the name comes from Texte.dat `[ANLAGEN]` `<id>:<name>` and the preview
+    /// from Anlagen.dat's sprite set of this id.
+    sim::TypeId type;
+    std::int64_t gold = 0;
+    std::int64_t tools = 0, wood = 0, bricks = 0, marble = 0;
+    std::int64_t upkeep = 0;
+};
+
+/// The x at which a centred text box draws a text image `text_w` pixels wide: `box_x +
+/// box_w / 2 - text_w / 2`, both divisions rounding down (docs/re/ui.md section 2.5; measured
+/// exactly on 15 GOG shots for 1-, 2- and 3-digit values and 15 names).
+[[nodiscard]] int centred_text_x(int box_x, unsigned box_w, int text_w);
+
 /// Composes `screen` at the layout's resolution into an RGBA canvas (alpha always 255; the oracle
 /// it mirrors discards alpha on output). Reads `.tex` files from `game_dir` through the existing
 /// `anno::formats::tex`/`anno::assets::to_rgba` decoders. An error names the screen, the missing
@@ -118,9 +140,13 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// info panel's chrome instead - its background (`info_panel`), close button (`infoexit`, the
 /// same rectangle the pickaxe shares) and rotate arrows (`rotate_left`/`rotate_right`), every one
 /// of them a real sprite-sad-measured position (`data/ui/hud.txt`, shot `r2_info_pioneer_house`).
-/// The panel's own cost row and name are deliberately NOT drawn: no RE evidence yet pins their
-/// pixel position (OQ-561, the gold-cost icon's own exhaustive SAD search found none above mean
-/// ~120 anywhere in the panel) - this draws only the chrome evidence already supports.
+/// The cost and upkeep icons are part of `INFOUNTERGRUND` itself (no separate sprite; OQ-561
+/// closed). With `info` set (UI-INFO-1) the panel also draws the armed type's name, preview,
+/// four material costs, gold cost and upkeep: the seven text boxes `info_name`, `info_tools`,
+/// `info_wood`, `info_bricks`, `info_marble`, `info_gold`, `info_upkeep` (hud.txt, `align
+/// centre`) in `MainSmall.zei` with the measured level colours, and the preview in the
+/// `info_preview` box from `anlagen` (null: no preview). An element missing from hud.txt draws
+/// nothing for it.
 ///
 /// An error names the screen, the missing file, or the parse failure; nothing is drawn on one.
 /// `masks` is data/ui/masks.txt (the H2 live-digit counters' own measured rectangles -
@@ -149,13 +175,13 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// building answers `BuildingInspection::kind == "House"` - never a guess ahead of the sim's own
 /// answer. The row's other two need icons and its tab are not measured yet (OQ-569/OQ-570) and
 /// are not drawn; there is no close button to draw (OQ-570: none exists in the capture).
-[[nodiscard]] std::string
-draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
-                      const ConstructionLayout& construction, const MaskLayout& masks,
-                      const UiMockSpec& screen, UiTexCache& cache,
-                      const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                      const HudCounters& counters = {}, bool placement_open = false,
-                      bool demolish_mode = false, bool paused = false, bool selected_house = false);
+[[nodiscard]] std::string draw_live_screen_xrgb(
+    std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
+    const ConstructionLayout& construction, const MaskLayout& masks, const UiMockSpec& screen,
+    UiTexCache& cache, const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+    const HudCounters& counters = {}, bool placement_open = false, bool demolish_mode = false,
+    bool paused = false, bool selected_house = false, const InfoPanelContent* info = nullptr,
+    const formats::anlagen::AnlagenFile* anlagen = nullptr);
 
 /// `draw_live_screen_xrgb`'s own state and arguments, composed instead into a fresh RGBA canvas
 /// that starts fully transparent (every byte 0, not the oracle's own alpha-255 convention) - the
@@ -174,6 +200,8 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const MaskLayout& masks, const UiMockSpec& screen, UiTexCache& cache,
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters = {}, bool placement_open = false,
-                      bool demolish_mode = false, bool paused = false, bool selected_house = false);
+                      bool demolish_mode = false, bool paused = false, bool selected_house = false,
+                      const InfoPanelContent* info = nullptr,
+                      const formats::anlagen::AnlagenFile* anlagen = nullptr);
 
 } // namespace anno::app

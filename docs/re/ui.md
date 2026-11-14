@@ -200,15 +200,39 @@ No scroll control was observed: every category fits in the 4 × 8 grid (max 32 r
 
 ### 2.5 Building info / placement panel
 
-| Element | Pixel pos / size | Graphic | Notes |
+Rewritten by UI-INFO-1 (2026-11-14). Every row below has file or code evidence and a per-pixel check against the GOG shots. **RGB565 reduction:** the GOG shots are a 16-bit frame. A 24-bit colour shows as each channel rounded to 5/6/5 bits and expanded back (`r5 = (r+4)>>3`, `g6 = (g+2)>>2`, `b5 = (b+4)>>3`, then `(v*255 + 15)/31` or `(v*255 + 31)/63`). Derived from `INFOUNTERGRUND` against four shots; with it, the panel plate matches the shots exactly wherever nothing is drawn on it. All "exact" counts below are after this reduction (`tools/ui_layout.py rgb565_shown`).
+
+| Element | Pixel pos / size | Graphic / source | Evidence |
 |---|---|---|---|
-| Panel background | (804, 302) 220 × 466 | `INFOUNTERGRUND` id 33 mean 29.5 (preview and costs sit on it). Empty variant `INFOUNTERGRUND_LEER` id 32 mean 75.5 at the same origin (worse). | `r2_info_pioneer_house` |
-| Rotate left | (808, 451) 33 × 38 | `INFOROTPFEIL` id 34 mean 10.6 | keys **DOT** / **COMMA** (`game-mechanics.md` §1) also rotate |
-| Rotate right | (987, 451) 33 × 38 | id 36 best of 34–37 at that slot, mean 55 (preview overlap) | same |
-| Cancel-X | (984, 725) 33 × 38 | `INFOEXIT` id 38 | leaves placement |
-| Cost row | tools / wood / bricks / marble / gold on the panel | Gold coin is `B_Baukosten.tex` id 1 (32 × 29). Materials are the same `STATUSBAR_BAUMAT` ids 36–39 already bound on the bar. Opaque SAD on the panel is >100 because those sprites carry a grey fill; the decoded coin/hammer/wood match the drawn glyphs. | costs as numbers match HEAD (F1.2) |
-| Upkeep | (815, 674) 40 x 37 | `B_Betriebskosten.tex` id 1 (coin with orange arrow) | grey-key mean **12.76** on `r2_info_pioneer_house`; type 501 panel shows 5 vs PROD3 0 (house) |
-| Name | above the preview | `Texte.dat` `[ANLAGEN]` id line (not stored here) | |
+| Panel background | (804, 302) 220 x 466 | `INFOUNTERGRUND` id 33 | Exact outside the drawn elements on all 15 shots. The cost/upkeep icons and plank outlines are the plate's own pixels (OQ-561 closed). History Edition: same ACCESS, id **38** (HE ids in `fenster.inc` are shifted +5 here), pixel-identical decode |
+| Rotate left | (808, 451) 33 x 38 | `INFOROTPFEIL` id 34 | 0 of 1254 differ on three shots. View.dll gadget 33 x 38 (`push 0x26; push 0x21`, 0x1002fd58) |
+| Rotate right | **(988, 451)** 33 x 38 | id 36 | 0 of 1254 at x 988; 984 at the old 987 |
+| Cancel-X | (984, 725) **33 x 35** | `INFOEXIT` id 38, cut to the gadget | View.dll 0x1002ff95 `push 0x23; push 0x21` (35 x 33). Texture is 33 x 38; its last three rows are not drawn (95 differing pixels when they are, 0 when cut) |
+| Upkeep icon | (815, 674) | part of `INFOUNTERGRUND` | Panel alone: 0 of 1478 icon pixels differ. Blitting `B_Betriebskosten.tex` id 1 there (the old live draw) makes 1477 differ, so it is not drawn. The grey-key 12.76 had matched the baked icon |
+| Name | box (819, y) 200 wide, text top y 316 | `Texte.dat` `[ANLAGEN]` `<id>:<name>`, first line of the id | Glyph-match on 15 shots: 0 differing pixels for each name. View.dll gadget 200 x 18 (0x1003007f). HE `Languages/Eng/Texte.dat` has the same `[ANLAGEN]` lines; HE root `Texte.dat` and `Languages/Ger` hold German names |
+| Tools / wood | boxes (852, 564) / (954, 564), 50 wide | goods `WERKZEUG` 0x29 / `HOLZ` 0x2a | View.dll update 0x10030140: for gadgets 5..8 it asks the type (`vfunc +0xcc`, kind 0) for goods 0x29, 0x2a, 0x2b, 0x2c, keeps `(v + bias) >> 8` (whole tons, 0x100301e2) and prints with `_itoa` radix 10 (0x1008d919). Gadget 50 x 18 (0x1003008d) |
+| Bricks / marble | (852, 593) / (954, 593), 50 wide | `ZIEGEL` 0x2b / `MAMOR` 0x2c | same |
+| Gold | (852, 624), 145 wide | gold cost | `vfunc +0xcc` kind 1, index 0 (0x1003022d). Gadget 145 x 18 (0x100300ba) |
+| Upkeep | (852, 684), 145 wide | PROD3 column **1** (active) | `vfunc +0xcc` kind 2, column 1 (0x1003026b). 15 of 15 shots show column 1; in 7 (807, 805, 801, 809, 1023, 1001, 810) it differs from column 0. Type 501 shows **0** (glyph-exact), not the 5 this table used to record. HE `Anlagen.dat` HEAD and PROD3 are identical for all 15 types |
+| Preview | box (844, 360) 135 x 135 | `Anlagen.dat` sprite set 0, zoom group 0, frame 0, centred; shadow = silhouette at (+5, +10) in (66, 65, 66) | Gadget 0xb17 135 x 135 (0x1002fbac, 135.0f at 0x1002fb99). Whole box exact on `r2_info_dirt_road`, `f12_info_field_104`, `f12_info_field_708`. Not yet for the other 12 types (OQ-612) |
+
+**Text.** Font `ToolGfx/MainSmall.zei`. In GOG, MainSmall, MainMedium and HelpNormal are byte-identical files, so which name the gadget uses is not visible (HE: `Languages/Eng` fonts are glyph-identical to GOG; HE `ToolGfx` and `Languages/Ger` MainSmall/MainMedium differ). Level colours, opaque: 1 = (255, 255, 255), 2 = (0, 0, 0), 3 = (66, 61, 66) (displayed values; level 3 is RGB565 (8, 15, 8), its 24-bit source is unknown, OQ-031). Layout = `assets::render_text` (advance = glyph width). **Centring rule:** text x = box x + box_w/2 - text_w/2, both halves rounded down; y = text top. Proven by 1-, 2- and 3-digit values and 15 names. View.dll sets gadget property 0x1c6 = 2 and 0x1c4 = the text (default `"00"` at 0x100a8404); reading 0x1c6 = 2 as "centred" is consistent with the measurement but not separately proven. The gadget's own y (18 px high) is not measured; the data stores the text top.
+
+**Per-pixel result** (`python -I tools/ui_layout.py info-compare --type <id> --shot <png> --game-dir <dir>`, panel rectangle 102 520 px, regions: name box, preview box incl. its frame (838, 354) 147 x 152, figures, rest = chrome):
+
+| Type | Shot | Differing px | Where |
+|---|---|---|---|
+| 2520 dirt road | `r2_info_dirt_road` | **0** | - |
+| 104 forest | `f12_info_field_104` | **0** | - |
+| 708 potato field | `f12_info_field_708` | **0** | - |
+| 801 forester | `r2_info_forester_801` | 6 472 | preview only |
+| 1301 market | `r2_info_market_1301` | 6 213 | preview only |
+| 1302 Kontor | `f12_info_kontor_1302` | 9 304 | preview only |
+| 501, 1310, 1314, 807, 805, 809, 1023, 1001, 810 | their shots | 5 007-11 237 | preview only |
+
+Name, figures and chrome: 0 differing pixels on all 15. The live window (CPU) reproduces the reference exactly (`info_panel_pixel_check`), so these counts are also the window's against GOG for 801, 1301, 1302, 2520.
+
+**HE code:** the HE `View.dll` does not contain the GOG gadget sequences above (`push 0x12; push 0xc8`, the 135.0f store). Its panel code was not located (OQ-613).
 
 Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_locked_*`). Left click on a valid tile places and stays in mode (`r2_place_*`). ESC / right click / cancel-X leaves.
 
@@ -422,7 +446,7 @@ Citizen-start **U** cells. All 15 have info-panel shots: eight from pass 2 (`r2_
 | `coastal` | 0, 0 | 1302 | `INFRA_EVER` | 350 / 5 / 12 / 0 / 0 / 15 | `f12_info_kontor_1302` |
 | `coastal` | 0, 1 | 810 | `INFRA_EVER` | 180 / 2 / 6 / 0 / 0 / 20 | `f12_info_fisher_810` |
 
-Type 501 panel upkeep read 5 on `r2_info_pioneer_house`; both `PROD3` u16 are 0 (house type). F1.2 info-panel costs match HEAD for 1310, 1314, 104, 809, 708, 1302 and 810. Type 104 at farms (1,1) is a placeable forest tile (`PRODTYPE` `ROHSTWACHS`, gold 5). Type 708 is a potato field. Clicking a locked `?` in each category (`f12_locked_*`) does not open the info panel.
+Type 501 panel upkeep reads **0** on `r2_info_pioneer_house` (glyph-exact, UI-INFO-1; an earlier reading of 5 was wrong); both `PROD3` u16 are 0 (house type). F1.2 info-panel costs match HEAD for 1310, 1314, 104, 809, 708, 1302 and 810. Type 104 at farms (1,1) is a placeable forest tile (`PRODTYPE` `ROHSTWACHS`, gold 5). Type 708 is a potato field. Clicking a locked `?` in each category (`f12_locked_*`) does not open the info panel.
 
 ## 4. Placement and demolish (as the UI presents it)
 

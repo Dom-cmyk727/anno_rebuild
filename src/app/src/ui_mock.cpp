@@ -51,20 +51,25 @@ class TexCache {
     explicit TexCache(std::filesystem::path game_dir) : game_dir_(std::move(game_dir)) {}
 
     /// Decodes texture `tid` of `rel_path` (game-dir-relative, forward slashes per data/ui/
-    /// convention) to RGBA, or nullopt when the file or the id is missing.
-    std::optional<assets::Rgba> decode(const std::string& rel_path, int tid) {
-        const formats::tex::TexFile* file = file_of(rel_path);
-        if (!file)
-            return std::nullopt;
-        for (const auto& t : file->textures) {
-            if (t.id == static_cast<std::uint32_t>(tid)) {
-                auto rgba = assets::to_rgba(*file, t);
-                if (!rgba.ok())
-                    return std::nullopt;
-                return rgba.value();
+    /// convention) to RGBA, or nullptr when the file or the id is missing. Decoded once and kept
+    /// (UI-WINDOW-1 fix round R2: the live window draws the same sprites every frame; decoding
+    /// them each time made the tab panels' big backgrounds cost milliseconds per frame).
+    const assets::Rgba* decode(const std::string& rel_path, int tid) {
+        const auto key = std::make_pair(rel_path, tid);
+        if (const auto it = decoded_.find(key); it != decoded_.end())
+            return it->second ? &*it->second : nullptr;
+        std::optional<assets::Rgba> out;
+        if (const formats::tex::TexFile* file = file_of(rel_path)) {
+            for (const auto& t : file->textures) {
+                if (t.id == static_cast<std::uint32_t>(tid)) {
+                    if (auto rgba = assets::to_rgba(*file, t); rgba.ok())
+                        out = std::move(rgba).value();
+                    break;
+                }
             }
         }
-        return std::nullopt;
+        const auto emplaced = decoded_.emplace(key, std::move(out)).first;
+        return emplaced->second ? &*emplaced->second : nullptr;
     }
 
     /// The parsed font at `rel_path` (game-dir-relative), or nullptr when the file is missing or
@@ -169,6 +174,7 @@ class TexCache {
     bool names_loaded_ = false;
     std::map<std::uint32_t, std::string> names_;
     std::map<std::uint32_t, std::optional<assets::Rgba>> previews_;
+    std::map<std::pair<std::string, int>, std::optional<assets::Rgba>> decoded_;
 };
 
 /// `tools/ui_layout.py blit_rgba`: skips transparent source pixels, clips to the canvas, writes
@@ -856,7 +862,11 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         if (!sprite)
             return;
         const auto [x, y] = placement.place(el->anchor, el->pos_x, el->pos_y);
-        blit_xrgb(dst, dst_w, dst_h, crop_to_element(*sprite, *el), x, y);
+        // Only a sprite larger than its element is copied and cut (crop_to_element).
+        if (el->has_size && (el->size_w < sprite->width || el->size_h < sprite->height))
+            blit_xrgb(dst, dst_w, dst_h, crop_to_element(*sprite, *el), x, y);
+        else
+            blit_xrgb(dst, dst_w, dst_h, *sprite, x, y);
     };
     const auto blit_image = [&](const assets::Rgba& image, int x, int y) {
         blit_xrgb(dst, dst_w, dst_h, image, x, y);
@@ -1083,7 +1093,11 @@ std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const
         if (!sprite)
             return;
         const auto [x, y] = placement.place(el->anchor, el->pos_x, el->pos_y);
-        blit_rgba_over(canvas, crop_to_element(*sprite, *el), x, y);
+        // Only a sprite larger than its element is copied and cut (crop_to_element).
+        if (el->has_size && (el->size_w < sprite->width || el->size_h < sprite->height))
+            blit_rgba_over(canvas, crop_to_element(*sprite, *el), x, y);
+        else
+            blit_rgba_over(canvas, *sprite, x, y);
     };
     const auto blit_image = [&](const assets::Rgba& image, int x, int y) {
         blit_rgba_over(canvas, image, x, y);

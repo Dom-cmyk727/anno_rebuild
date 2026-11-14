@@ -1657,7 +1657,9 @@ UiHit Viewer::ui_hit_at(double px, double py) const {
         return {};
     }
     const HudLayout& hud = construction_menu_->hud();
-    return ui_hit(hud, place_hud(hud, t.ui_w, t.ui_h), u->first, u->second, paused_at_.has_value());
+    const char* panel = construction_menu_open_ ? nullptr : ui_panel_group(hud_screen_);
+    return ui_hit(hud, place_hud(hud, t.ui_w, t.ui_h), u->first, u->second, paused_at_.has_value(),
+                  panel != nullptr ? std::string(panel) : std::string());
 }
 
 bool Viewer::selection_active() const {

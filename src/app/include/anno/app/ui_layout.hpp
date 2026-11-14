@@ -226,9 +226,11 @@ struct UiHit {
 /// Classifies UI-layer pixel (`ux`, `uy`): the right chrome column (hud.txt `panel`'s x and
 /// width, the layer's full height - the panel, then the filler below it), the status bar row
 /// (`statusbar`'s y and height, x from 0 to statusbar_end plus `fragezeichen`'s width) and, with
-/// `paused`, the pause parchment (`pause_parchment`) are chrome. Everything else is the map.
+/// `paused`, the pause parchment (`pause_parchment`) are chrome, and so is every element of the
+/// tab panel `panel` shows (hud.txt `panel`; fix round R3: the sub-tabs reach left of the column,
+/// x 762..778). Everything else is the map.
 [[nodiscard]] UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy,
-                           bool paused = false);
+                           bool paused = false, const std::string& panel = {});
 
 /// Parses hud.txt's text (the version line `anno1503-ui-hud 1` is required). An error names the
 /// line number and what was wrong.

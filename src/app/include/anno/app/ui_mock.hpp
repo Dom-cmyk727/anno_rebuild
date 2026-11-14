@@ -65,6 +65,10 @@ struct UiMockSpec {
     std::string category;
 };
 
+/// The hud.txt `panel` group a screen's right chrome draws ("player", "player_list", "info",
+/// "main_menu"), or nullptr for the construction menu.
+[[nodiscard]] const char* ui_panel_group(UiMockScreen kind);
+
 /// Parses `screen` into a UiMockSpec (e.g. "hud_idle" -> {Hud, ""}, "construction_public" ->
 /// {Construction, "public"}); nullopt for any other name.
 [[nodiscard]] std::optional<UiMockSpec> parse_screen_name(const std::string& screen);

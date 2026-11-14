@@ -268,6 +268,17 @@ TEST_CASE("ui placement: anchors and the status bar span and the hit classes by 
     // the map): finding of the owner's playtest.
     CHECK(app::ui_hit(hud, ref, 100, 750).chrome);
     CHECK_FALSE(app::ui_hit(hud, ref, 100, 732).chrome);
+    // Fix round R3: the shown panel's sub-tabs stick out left of the column (x 762..778); they are
+    // chrome while that panel shows, at the reference and in a larger layer, and the map otherwise.
+    for (const char* shown : {"player", "player_list", "info", "main_menu"}) {
+        CAPTURE(shown);
+        CHECK(app::ui_hit(hud, ref, 770, 326, false, shown).chrome);
+        CHECK(app::ui_hit(hud, big, 770 + big.dx, 326, false, shown).chrome);
+        CHECK(app::ui_hit(hud, big, 770 + big.dx, 326, false, shown).ref ==
+              std::optional<std::pair<int, int>>({770, 326}));
+    }
+    CHECK_FALSE(app::ui_hit(hud, ref, 770, 326).chrome);
+    CHECK_FALSE(app::ui_hit(hud, big, 770 + big.dx, 326).chrome);
 }
 
 TEST_CASE("ui click path: a construction cell and the tab at 1024 x 768 and at 2542 x 1351 with "

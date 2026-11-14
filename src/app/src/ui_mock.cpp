@@ -651,22 +651,6 @@ const char* selected_tab(UiMockScreen kind) {
     return "tab_military";
 }
 
-const char* panel_group(UiMockScreen kind) {
-    switch (kind) {
-    case UiMockScreen::Hud:
-        return "player";
-    case UiMockScreen::PlayerList:
-        return "player_list";
-    case UiMockScreen::Info:
-        return "info";
-    case UiMockScreen::MainMenu:
-        return "main_menu";
-    case UiMockScreen::Construction:
-        return nullptr;
-    }
-    return nullptr;
-}
-
 /// The four tabs with `selected` in its `frame_selected` and the others in `frame_idle`
 /// (hud.txt), through `blit_el(name, tex id)`.
 template <typename BlitEl>
@@ -693,6 +677,22 @@ void draw_panel(const HudLayout& hud, const char* group, BlitEl&& blit_el) {
 }
 
 } // namespace
+
+const char* ui_panel_group(UiMockScreen kind) {
+    switch (kind) {
+    case UiMockScreen::Hud:
+        return "player";
+    case UiMockScreen::PlayerList:
+        return "player_list";
+    case UiMockScreen::Info:
+        return "info";
+    case UiMockScreen::MainMenu:
+        return "main_menu";
+    case UiMockScreen::Construction:
+        return nullptr;
+    }
+    return nullptr;
+}
 
 int centred_text_x(int box_x, unsigned box_w, int text_w) {
     // Both halves round down (toward minus infinity), so a negative text width (never produced)
@@ -972,7 +972,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     blit_el("compass_e");
     // UI-WINDOW-1 fix round R2: the selected tab's panel, static chrome only (hud.txt `panel`;
     // its names and figures are UI-TABS-1).
-    draw_panel(hud, panel_group(screen.kind),
+    draw_panel(hud, ui_panel_group(screen.kind),
                [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
 
     if (is_construction) {
@@ -1187,7 +1187,7 @@ std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const
     blit_el("compass_e");
     // UI-WINDOW-1 fix round R2: the selected tab's panel, static chrome only (hud.txt `panel`;
     // its names and figures are UI-TABS-1).
-    draw_panel(hud, panel_group(screen.kind),
+    draw_panel(hud, ui_panel_group(screen.kind),
                [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
 
     if (is_construction) {

@@ -162,7 +162,8 @@ UiPlacement place_hud(const HudLayout& hud, int ui_w, int ui_h) {
     return p;
 }
 
-UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy, bool paused) {
+UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy, bool paused,
+             const std::string& shown_panel) {
     UiHit hit;
     if (ux < 0 || uy < 0 || ux >= placement.ui_w || uy >= placement.ui_h)
         return hit;
@@ -177,6 +178,20 @@ UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy,
             if (inside(ux, uy, x, y, static_cast<int>(e->size_w), static_cast<int>(e->size_h))) {
                 hit.chrome = true;
                 hit.ref = std::pair{ux - (x - e->pos_x), uy - (y - e->pos_y)};
+                return hit;
+            }
+        }
+    }
+    // The shown tab panel's elements (fix round R3): its sub-tabs stick out left of the column.
+    if (!shown_panel.empty()) {
+        for (const UiElement& e : hud.elements) {
+            if (!e.has_pos || !e.has_size ||
+                std::find(e.panels.begin(), e.panels.end(), shown_panel) == e.panels.end())
+                continue;
+            const auto [x, y] = placement.place(e.anchor, e.pos_x, e.pos_y);
+            if (inside(ux, uy, x, y, static_cast<int>(e.size_w), static_cast<int>(e.size_h))) {
+                hit.chrome = true;
+                hit.ref = std::pair{ux - (x - e.pos_x), uy - (y - e.pos_y)};
                 return hit;
             }
         }

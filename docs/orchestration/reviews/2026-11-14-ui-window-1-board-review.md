@@ -76,3 +76,22 @@ canonical call with:
 - `ANNO_UI_HE_CAPTURES` set to `E:\anno1503-worktrees\he-ui-captures`.
 
 With those set, the GOG and HE comparisons actually run instead of skipping.
+
+## Game-file run and the owner's playtest (2026-11-14)
+
+**The first candidate:** `orch/land-ui-window-1` at `e0aeac86`: `main` `f54e36f0`, then `9925860c`, then the board up to
+`cf0f704a`. It was built locally and not pushed.
+
+**The run:** the canonical call, with the GOG oracle shots and the HE captures set, 13:26–13:37.
+- `COUNTS: selected=2606 executed=2567 failed=12 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- **All 12 failures are memory refusals** (`reason=low-memory stop`): the Windows executor's SHORE-2 tests ran at the
+  same time. None of the 12 ran.
+- Log sha256 `60b4eeff9deb8f8e…`.
+
+**The owner's playtest.** The owner tested the UI lane's build first ("Test it first", relayed by the UI lane; the
+orchestrator held `land.py`). The playtest "showed a lot of issues and problems, we are fixing them".
+- The reruns of the 12 refused tests were stopped: they tested a candidate the fix round replaces.
+- **The landing waits** for the UI lane's new head. Then the candidate is rebuilt from it, a fresh game-file run is
+  made, and the owner's OK is given directly.
+

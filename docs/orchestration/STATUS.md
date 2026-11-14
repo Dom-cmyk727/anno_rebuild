@@ -52,7 +52,8 @@ says who is doing what, where the work is, and what it waits on.
     `--ui-scale`.
   - **UI-WINDOW-1 ACCEPTED for landing** (2026-11-14, head `9925860c`, CI green;
     [board review](reviews/2026-11-14-ui-window-1-board-review.md)). The UI lane's review was ACCEPT WITH FINDINGS,
-    with findings 1–7 fixed. It lands on the owner's OK after the game-file run of the candidate. Follow-up
+    with findings 1–7 fixed. **Held:** the owner's playtest "showed a lot of issues and problems", and the UI lane is
+    fixing them. The landing waits for its new head, a fresh game-file run and the owner's OK. Follow-up
     UI-PERF-1: the construction UI costs about 5–6 ms per frame at 2542 × 1351 (opt-in today).
   - **UI-HE-1 ACCEPTED, docs only** (`task/UI-HE-1` `5d0db740`, [review](reviews/2026-11-14-ui-he-1-review.md)):
     how the History Edition scales the in-game UI. It steps the setting down by 0.1 until the UI has at least

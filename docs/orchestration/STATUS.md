@@ -77,7 +77,10 @@ says who is doing what, where the work is, and what it waits on.
     the UI lane analyses the owner's video and runs another fix round. **R4** (the owner's "Always show my city")
     and **R5** (the idle HUD compared before founding) followed. **LANDED** on the owner's OK ("Land both when
     green"), 2026-11-14, `main` `6513b6f6` → `01a4d540`, after SHORE-2. **`main` is healthy:** the candidate
-    `ef9e9705` (the same code) passed its game-file run, its 2 memory refusals rerun alone. The UI lane's next packets:
+    `ef9e9705` (the same code) passed its game-file run, its 2 memory refusals rerun alone. **UI-INFO-2 RELEASED** by the UI lane on the owner's choice ("UI-INFO-2 first", 2026-11-14;
+    `task/UI-INFO-2`, packet `3311616a`, base `01a4d540`): the info panel's rotate arrows turn the building, one
+    rotation state with T and ,/.; the preview's entrance arrows and the large-sprite scaler follow as UI-INFO-2b.
+    The UI lane's next packets:
     UI-INFO-2 (preview entrance arrows and rotation, OQ-612), UI-TABS-1 (live figures in the tab panels),
     UI-MINIMAP-1. Follow-up
     UI-PERF-1: the construction UI costs about 5–6 ms per frame at 2542 × 1351 (opt-in today).

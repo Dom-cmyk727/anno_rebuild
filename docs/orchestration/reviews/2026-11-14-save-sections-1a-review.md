@@ -83,3 +83,24 @@ included.
 
 **The candidate:** `main` `d89d54a6`, then `task/SAVE-SECTIONS-1a` `8b732ee9`, then the board. Its game-file run is
 the canonical call on this PC.
+
+## Game-file run of the landing candidate (2026-11-14)
+
+**The candidate:** `orch/land-save-sections-1a` at `f54e36f0`: `main` `d89d54a6`, then `task/SAVE-SECTIONS-1a`
+`8b732ee9`, then the board up to `f1be7e65`. Both merges were clean, and no file was changed by both sides. The code is
+byte-identical to the reviewed head, since `main` had moved by documents only.
+
+**The run:** the canonical call on this PC with the game files, 16 jobs, 11:39–11:58.
+- `COUNTS: selected=2593 executed=2566 failed=0 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`
+- `VERDICT: PASS`
+- No memory refusals. The 27 skips are the same as before; the two new tests are 1a's refusal cases.
+- **Log:** `cache/orch-land-save-sections-1a/canonical-gate.log`, sha256 `34c6519f2c6adb8f…`.
+
+**Landed** 2026-11-14 through `tools/orch/land.py` on the owner's OK ("Land"): `gate` passed on
+`land/save-sections-1a`, and `main` moved `d89d54a6` → `f54e36f0` by fast-forward. GitLab and the share are synced.
+- **The first attempt was refused** ("Required status check 'gate' is expected"). The orchestrator had pushed the
+  candidate branch earlier, and that branch's CI run reported `gate` first. The landing branch's own run on the same
+  commit was still going, and the protection waited for it.
+- **The second attempt** ran `land.py` again after that run finished, and it landed.
+

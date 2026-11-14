@@ -65,11 +65,12 @@ the package's independent review.
 ## Notes (not blocking)
 
 1. **Missing spaces in the text.** `state.md` §9.8, the `world.hpp` 139 history line and the REPORTS entry often drop
-   the space before a number ("framing139", "versions1", "tag0xF001", "length6"). The orchestrator fixes the spec and
-   the comment in a docs commit after the landing; the REPORTS entry stays as written.
+   the space before a number ("framing139", "versions1", "tag0xF001", "length6"). The orchestrator fixed §9.8 on
+   the board after the landing. The `world.hpp` 139 comment is code, so its spacing goes with FISHER-1b, the next
+   packet to edit that area. The REPORTS entry stays as written.
 2. **The canary comment** in `World::field_list_canary` no longer says to bump a version. Under ADR 0006 a new member
-   goes into a section's field list, which bumps that section's version, or into the extension context. The same docs
-   commit says so.
+   goes into a section's field list, which bumps that section's version, or into the extension context. FISHER-1b
+   corrects the comment.
 3. **The hash serializes a present payload twice:** once to measure its length, once to visit it. That is fine for
    small payloads. A feature with a large payload (wildlife herds, say) should measure the cost in its packet.
 4. **`anno_sim_tests` now runs Python at build time** to write the oracle into `build/`. Every CI lane and the MSVC
@@ -124,3 +125,10 @@ five. Log sha256s: `f18fa7ea57804a6c…`, `bb8bee8572c3837c…`, `4dee0d60930415
 - The executor's own runs: the pins check (1,653 executed, 0 failed, 18 opt-in skips), the focused runs and the
   0-warning dev build on the Mac. They were read from the report; its handoff file is on the Mac.
 - MSVC and WSL locally. The landing's game-file run covers MSVC with the game files.
+
+## Landed (2026-11-14)
+
+On the owner's OK ("Land both", given in the orchestrator's session; UI-WINDOW-1 was then held again), alone:
+`python -I tools/orch/land.py --repo . --rev 674ecdf4 --name save-sections-1b`. `gate` passed on `674ecdf4`, and
+`main` moved `f54e36f0` → `674ecdf4`, mirrored to GitLab and the share. `674ecdf4` is the run candidate `f04c600f`
+plus one board merge (documents only).

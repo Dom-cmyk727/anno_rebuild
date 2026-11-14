@@ -2034,18 +2034,18 @@ framing does not alter another section’s base-field bytes.
 
 ### 9.8 Extension tags: registry and registration (2026-11-14, SAVE-SECTIONS-1b)
 
-Global framing139 and all ten section base versions1 remain unchanged. A
-production world still writes exactly 1a's bytes: each extension count is0.
+Global framing 139 and all ten section base versions 1 remain unchanged. A
+production world still writes exactly 1a's bytes: each extension count is 0.
 
 | Tag | Section | Name | Owner packet | Status | Payload fields |
 |---|---|---|---|---|---|
 | 0xF000–0xFFFF | Test contexts only | Reserved test range | SAVE-SECTIONS-1b | Reserved | See synthetic proof below |
 
-Tag0 is never assigned. There are **no production entries**. A feature reserves its tag on the board
+Tag 0 is never assigned. There are **no production entries**. A feature reserves its tag on the board
 before work, like an OQ number, then adds its permanent row here. Tags are never
 reused. Test-range tags must never occur in a production list.
 
-**Registration.** `ExtensionContext` belongs to World and holds no state in1b.
+**Registration.** `ExtensionContext` belongs to World and holds no state in 1b.
 Its ten ordered compile-time lists map `StateSection` to extension types. Each
 type supplies `tag` (u16), `name` (a static string literal), `Payload`,
 `default_value()`, `state(context)` (const-preserving), one explicit
@@ -2056,7 +2056,7 @@ range with `static_assert`. A separately selected test-list policy accepts only
 test-range tags. No runtime registry, static initializer or global mutable state
 is involved. A feature adds its type to one list, its state to the context and
 its registry row. The ordered constexpr schema entries `(section, tag, name)`
-are exposed for the later ADR0003 join check, without wiring that check here.
+are exposed for the later ADR 0003 join check, without wiring that check here.
 
 **Writing.** Emit only payloads unequal to their default, in ascending tag order.
 Write the u64 count, then for each present payload `u16 tag`, `u32 length` and
@@ -2065,7 +2065,7 @@ serializing its field list once to a temporary WriteArchive before visiting it
 with the requested archive. Length is the raw byte length, not a hierarchical
 digest length. As with other save fields, writing requires valid state; payload
 validation and the context invariant enforce the u32 wire-length bound. No
-present extension means exactly the old u64 count0, with no new scope or byte.
+present extension means exactly the old u64 count 0, with no new scope or byte.
 
 **Reading.** Reset every known extension of the section to `default_value()`
 before reading its list. For each entry, check strict order first (duplicates
@@ -2073,7 +2073,7 @@ included), then recognition in that section, then read the payload with a reader
 bounded to the declared length. Refuse:
 
 - `section <name>: extension tag <n> out of order`;
-- `section <name>: unknown extension tag <n>` (including an unassigned tag0);
+- `section <name>: unknown extension tag <n>` (including an unassigned tag 0);
 - length beyond remaining section bytes: an archive bounds error;
 - payload under-read/truncation or unconsumed bytes: error naming section and tag;
 - `section <name>: extension tag <n> decodes to default`;
@@ -2092,10 +2092,10 @@ scope semantics (§9.1); its name appears at the next tree depth below the secti
 The raw hash remains FNV of WriteArchive bytes. No HashArchive change is needed.
 
 **Synthetic proof (not a production reservation).** Test context only: figures
-section, tag0xF001, name `synthetic_extension`; payload `u16 small`, `u32 large`.
+section, tag 0xF001, name `synthetic_extension`; payload `u16 small`, `u32 large`.
 Default `(0,0)`; validation requires `large <= 1000000`. Nondefault example
-`(0x1234,0x89ab)` has length6. Its section is version1, the existing figure base,
-u64 count1, u16 tag0xF001, u32 length6 and these two LE fields. In the hierarchical
+`(0x1234, 0x89ab)` has length 6. Its section is version 1, the existing figure base,
+u64 count 1, u16 tag 0xF001, u32 length 6 and these two LE fields. In the hierarchical
 digest replace just those six payload bytes by their u64 child digest; all other
 section bytes/child digests stay where they were. integration_stream_ref.py
 computes this proof independently; generated oracle output lives in build/, so

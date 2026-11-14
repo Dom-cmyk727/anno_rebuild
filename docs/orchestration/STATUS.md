@@ -17,10 +17,12 @@ says who is doing what, where the work is, and what it waits on.
   [review](reviews/2026-11-14-save-sections-1a-review.md)): each of the ten sections has a base version and an
   empty extension list; 139 is the last global state number. 50 pins changed value, 13 only their version.
   **`main` is healthy:** `f54e36f0`'s game-file run passed every test (2,566 executed, 0 failed, none refused).
-  **SAVE-SECTIONS-1b READY, ACCEPTED** (2026-11-14, head `4c1685fa`, CI green;
+- **[SAVE-SECTIONS-1b](tasks/save-sections-1b.md) LANDED** on the owner's OK ("Land both"; 2026-11-14, `main`
+  `f54e36f0` → `674ecdf4`, alone after UI-WINDOW-1 was held again;
   [review](reviews/2026-11-14-save-sections-1b-review.md)): the extension tag registry (state.md §9.8), the
-  compile-time registration, and the proof that an extension moves no pin. Landing waits for its game-file run
-  and the owner's OK. **[FISHER-1a](tasks/fisher-1a.md) READY, ACCEPTED** (2026-11-14, head `9137eabd`,
+  compile-time registration, and the proof that an extension moves no pin. **`main` is healthy:** the candidate
+  `f04c600f` (the same code as `674ecdf4`) passed its game-file run, its 5 memory refusals rerun alone.
+  **[FISHER-1a](tasks/fisher-1a.md) READY, ACCEPTED** (2026-11-14, head `9137eabd`,
   [review](reviews/2026-11-14-fisher-1a-review.md)): the fisher's corner grid, water cells, goal mask and search
   rectangle as state-free functions; 2,473 fish tiles and 619 with a water neighbour asserted over the 50 maps.
   Landing waits for its game-file run and the owner's OK. **Next on the Mac:** FISHER-1b (packet to write).
@@ -684,7 +686,7 @@ mirror still requires the owner/Windows sync after main publication.
 
 - **Finished: [SAVE-SECTIONS-1a](tasks/save-sections-1a.md)** (2026-11-14, head `8b732ee9`), **accepted and LANDED**
   as `main` `f54e36f0` ([review](reviews/2026-11-14-save-sections-1a-review.md)). **Next:** [SAVE-SECTIONS-1b](tasks/save-sections-1b.md)
-  (head `4c1685fa`, ACCEPTED 2026-11-14, [review](reviews/2026-11-14-save-sections-1b-review.md); landing waits for its game-file run and the owner's OK): the tag registry and the proof that an extension moves no pin. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
+  (head `4c1685fa`, ACCEPTED and LANDED 2026-11-14 as `main` `674ecdf4`, [review](reviews/2026-11-14-save-sections-1b-review.md)): the tag registry and the proof that an extension moves no pin. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
   SAVE-SECTIONS-1a, then SAVE-SECTIONS-1b, then FISHER-1a, then FISHER-1b, the fisher working in the game.
   FIXTURES-TRIM-1 follows, as cleanup.
 - **Finished: [PINS-1](tasks/pins-1.md)** (2026-11-14; head `661cd2a6`), **accepted after one fix round**

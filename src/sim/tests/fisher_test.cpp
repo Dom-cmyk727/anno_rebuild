@@ -156,7 +156,7 @@ TEST_CASE("fisher geometry: rectangle wraps without map clamping or radius caps"
 TEST_CASE("fisher geometry corpus: embedded fish goals and eight-neighbour water") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
-        std::cout << "SKIPPED: original game files (ANNO1503_GAME_DIR unset)\n";
+        std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original game files unavailable)\n";
         return;
     }
     const auto registry =

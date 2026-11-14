@@ -10546,10 +10546,7 @@ Unsigned four-corner mean divides by 4; water iff mean < threshold; goal mask 51
 Rectangle follows 0x10059210–0x10059398: origin wraps modulo 65536, extent modulo 256, never clamps. Negative origin -6 becomes 65530; extent 256 becomes 0. Widened arithmetic, no map/radius cap; zero footprint returns nullopt. No scheduler wiring, World member, extension tag or identity change.
 Vectors executed: sea_cell 6, corner_grid 5, search_rect 5; 33 other records skipped by explicit name. Border means 31 and 32 ran; unit cases cover threshold 33, singleton/borders, invalid input and wrap.
 Four isolated C++ mutants rejected by the actual vector test: inclusive water, inverted goal mask, replicated border, clamped origin. Each replacement applied exactly once; mutants-02.log.
-Corpus QUESTION resolved by owner: normal required-actor import refuses 31 of 50 maps; focused-dev-02.log.
-  Those refusals leave 1080 goals/223 adjacent; Python confirms the missing 1393 fish/396 adjacent.
-  normal-import-differences.json lists all maps, counts and exact unsupported actor/record reasons.
-  Owner chose option 1: explicitly select existing ActorFreeComponent BEFORE loading; never fallback.
+Corpus QUESTION resolved by owner: normal required-actor import refuses 31 of 50 maps; focused-dev-02.log. Those refusals leave 1080 goals/223 adjacent; Python confirms the missing 1393 fish/396 adjacent. normal-import-differences.json lists all maps, counts and exact unsupported actor/record reasons. Owner chose option 1: explicitly select existing ActorFreeComponent BEFORE loading; never fallback.
   Reason: this concern measures embedded HEIGHT/placed-object geometry, independent of actor behavior;
   that projection uses the same production scenario adapter and preserves the queried terrain/objects.
   It does NOT prove complete scenario/actor loading, procedural island initialization or live fishing.
@@ -10586,12 +10583,15 @@ Fix: return explicit u8 zero; no arithmetic/bytes/pins change. Affected geometry
 msvc-fix-focused-01.log (only the four affected geometry cases; dev rebuild 0 warnings):
 COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
 VERDICT: PASS
+Hosted run 43616145201: macOS tests failed only skip classification (0 failed tests; 1 other skip).
+The new message said "unset"; corrected to the existing required-asset contract "not set"; no gate waiver.
+no-assets-01.log: diagnostic-only correction, verified with game files explicitly unset:
+COUNTS: selected=4 executed=3 failed=0 empty=0 skipped=1 (required-asset=1 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
 Decisions and reasoning:
 - Parameter default keeps the sourced threshold configurable without serialized settings or default changes.
 - Per-corner lookup avoids allocating a derived grid; original wrap semantics retain reference compatibility.
 - Owner-authorized geometry projection isolates the actor dependency; normal-import failure stays visible.
-NOT_RUN: local MSVC/WSL and Windows game-file/full landing suites; orchestrator owns those.
-Unrelated renderer/app gates reuse base evidence; hosted CI builds/tests their consumers without assets.
-QUESTIONs: projection decision resolved as above; broader actor support and OQ-609/610 remain outside scope.
-No pin/fixture edits, game assets, state number, scheduler changes, main merge/push, rebase or force push.
+NOT_RUN: local MSVC/WSL and Windows game-file/full landing suites; orchestrator owns those. Unrelated renderer/app gates reuse base evidence; hosted CI builds/tests their consumers without assets.
+QUESTIONs: projection resolved; broader actor support and OQ-609/610 remain outside scope. No pin/fixture edits, assets, state number, scheduler changes, main merge/push, rebase or force push.
 **READY FOR REVIEW.**

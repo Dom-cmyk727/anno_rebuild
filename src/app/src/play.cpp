@@ -927,8 +927,9 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         find_local_city();
     }
     fill_inspection(*next); // also without a city: the requested tile is answered as empty
-    // UI-WINDOW-1 fix round R2: the local player's cities for the status bar, which shows the
-    // city on the island the view is centred on. Read-only accessors only (CityCounters's own
+    // UI-WINDOW-1 fix round R2/R4: the local player's cities, in (island, city) order, for the
+    // status bar: it shows the city on the island the view is centred on, else the first of these
+    // (the owner's "Always show my city", 2026-11-14). Read-only accessors only (CityCounters's own
     // comment); the cost is measured with ANNO_PUBLISH_STATS.
     if (developer_city_) {
         auto cities = std::make_shared<std::vector<CityCounters>>();

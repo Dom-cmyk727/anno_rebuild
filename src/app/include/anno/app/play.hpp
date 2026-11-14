@@ -130,8 +130,8 @@ inspect_building(const sim::World& world, sim::CityRef city, sim::TileXY tile);
 
 /// What the window reads. Not a World.
 /// UI-WINDOW-1 fix round R2: one of the local player's cities as the HUD's status bar shows it
-/// (the counters follow the island the view is centred on, docs/re/ui.md 5.2). Read on the sim
-/// thread at publication from existing read-only accessors only: World::islands(), the island's
+/// (the city on the island the view is centred on, else the first; docs/re/ui.md 5.2). Read on the
+/// sim thread at publication from existing read-only accessors only: World::islands(), the island's
 /// tile rectangle (TileLayer::x0/y0/width/height), City::owner/number/stock and
 /// World::city_population. No state, stream, hash or draw changes.
 struct CityCounters {

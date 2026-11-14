@@ -571,6 +571,10 @@ class Viewer {
     UiMockScreen hud_screen_ = UiMockScreen::Hud;
     /// Whether the last frame drew the status bar's city counters (the `hud.counters` fact, R2).
     bool hud_counters_shown_ = false;
+    /// And which city they showed (the `hud.counters.city` fact, fix round R4).
+    std::optional<sim::CityRef> hud_counters_city_;
+    /// Whether any frame drew the HUD yet (the fact says "not drawn" until then, R4).
+    bool hud_counters_drawn_ = false;
     void select_hud_tab(UiMockScreen screen);
     /// UI-WINDOW-1: the UI scale setting (ViewerHooks::ui_scale; nullopt = the original 1:1) and
     /// the layer's placement for the current drawable size (ui_transform.hpp).
@@ -630,6 +634,8 @@ class Viewer {
         /// tile - a demolished-and-rebuilt tile must not pass this as the old building) answers
         /// kind "House". draw_live_screen_xrgb/_rgba's own doc comment says what this draws.
         bool selected_house = false;
+        /// The city the status bar's counters show (fix round R4), nullopt when hidden.
+        std::optional<sim::CityRef> counters_city;
     };
     [[nodiscard]] ConstructionHudInputs construction_hud_inputs() const;
     /// The world tile under the drawable's centre (the status bar's centred island, R2).
@@ -2398,7 +2404,13 @@ void Viewer::script_tick() {
     // facts either; removing the extra call closes the gap structurally, not by timing.
     st.facts["selection.clicks"] = std::to_string(selection_clicks_);
     st.facts["ui.press"] = ui_press_ ? "1" : "0";
-    st.facts["hud.counters"] = hud_counters_shown_ ? "shown" : "hidden";
+    st.facts["hud.counters"] = !hud_counters_drawn_  ? "not drawn"
+                               : hud_counters_shown_ ? "shown"
+                                                     : "hidden";
+    st.facts["hud.counters.city"] = hud_counters_city_
+                                        ? std::to_string(hud_counters_city_->island.v) + ":" +
+                                              std::to_string(hud_counters_city_->city.v)
+                                        : std::string("none");
     st.facts["ui.tab"] = construction_menu_open_                   ? "construction"
                          : hud_screen_ == UiMockScreen::PlayerList ? "player_list"
                          : hud_screen_ == UiMockScreen::Info       ? "info"
@@ -2829,6 +2841,8 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         const auto ui_start = Clock::now();
         const auto in = construction_hud_inputs();
         hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
+        hud_counters_city_ = in.counters_city;
+        hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         const auto info = construction_placement_open_ && dev_ != nullptr &&
                                   dev_->setup().registry && dev_->input().selected()
@@ -2981,13 +2995,14 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     // themselves are plain fields (0, not nullopt) in that case, so eligibility's nullness is the
     // real "has a city" signal.
     const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
-    // UI-WINDOW-1 fix round R2: the five counters (tools, wood, bricks, marble, residents) show
-    // the stock of the local player's city on the island the view is centred on, on every screen
-    // (the owner's rule, first-hand; the GOG shots show them on every screen once a city exists,
-    // docs/re/ui.md 5.2). No such city: they are hidden, as before the first founding. The exact
-    // original rule (the centre point, update timing, a foreign island) is OQ-622.
+    // UI-WINDOW-1 fix round R4 (owner decision 2026-11-14, "Always show my city"; docs/re/ui.md
+    // 5.2): the five counters (tools, wood, bricks, marble, residents) show on every screen while
+    // the local player owns a city - the city on the island the view is centred on when it holds
+    // one of the player's cities, else the player's first city in (island, city) order (the one
+    // PlaySnapshot::goods follows). Hidden only before the first founding. The original's own
+    // rule over open sea and foreign islands is not evidenced (OQ-622).
     const CityCounters* centred = nullptr;
-    if (has_city && snapshot->cities) {
+    if (has_city && snapshot->cities && !snapshot->cities->empty()) {
         if (const auto tile = centre_tile()) {
             for (const CityCounters& c : *snapshot->cities) {
                 if (c.island_contains(tile->x, tile->y)) {
@@ -2995,6 +3010,9 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                     break;
                 }
             }
+        }
+        if (centred == nullptr) {
+            centred = &snapshot->cities->front();
         }
     }
     auto whole_tons = [&](std::optional<sim::GoodsId> id) -> std::optional<std::uint32_t> {
@@ -3015,7 +3033,8 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                                 snapshot->inspection != nullptr &&
                                 snapshot->inspection->id == selection_.selected->id &&
                                 snapshot->inspection->kind == "House";
-    return {spec, std::move(counters), snapshot, selected_house};
+    return {spec, std::move(counters), snapshot, selected_house,
+            centred != nullptr ? std::optional<sim::CityRef>(centred->city) : std::nullopt};
 }
 
 void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view) {
@@ -3077,6 +3096,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         const auto ui_start = Clock::now();
         const auto in = construction_hud_inputs();
         hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
+        hud_counters_city_ = in.counters_city;
+        hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         const auto info = construction_placement_open_ && dev_ != nullptr &&
                                   dev_->setup().registry && dev_->input().selected()

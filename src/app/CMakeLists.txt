@@ -216,7 +216,7 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_tabs PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
-      # UI-WINDOW-1 fix round R2: the status bar counters follow the centred island.
+      # UI-WINDOW-1 fix round R2/R4: the status bar counters (centred city, else the first).
       add_test(NAME viewer_wiring_ui_counters_centred
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> ui_counters_centred
@@ -224,6 +224,17 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --construction-menu --app-arg on
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_counters_centred PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-WINDOW-1 fix round R4: no city yet (the ship-start opening): the counters are hidden.
+      add_test(NAME viewer_wiring_ui_counters_before_founding
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_counters_before_founding
+                --app-arg --ship-start
+                --app-arg ${PROJECT_SOURCE_DIR}/data/maps/candidates/ship-start-v2/lan5-ship-a.json
+                --app-arg --seat --app-arg 0
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_counters_before_founding PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # W4-UI-2 V1: the full interaction proof - every category tab, a locked cell (no command),
       # an armed placement that actually builds, and a demolish of what was just built.

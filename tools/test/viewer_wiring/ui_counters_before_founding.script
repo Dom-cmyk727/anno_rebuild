@@ -1,0 +1,10 @@
+# UI-WINDOW-1 fix round R4: before the first founding the local player owns no city and the
+# status bar's materials and residents are hidden (hud_idle_running shows none; docs/re/ui.md
+# 5.2). The ship-start opening on lan5 begins with no city.
+# Launch: --ship-start <lan5-ship-a.json> --seat 0 --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 30
+expect fact hud.counters == hidden
+expect fact hud.counters.city == none
+screenshot counters_before_founding
+quit

@@ -533,9 +533,14 @@ exists, with or without the construction menu (`r2_player_menu`, `r2_tab_militar
 `r2_construction_military`; HE `he_s10_hud_idle_win.png`). The owner states first-hand that they
 show the stock of the island the view is centred on. **Not evidenced:** what the original shows
 over open sea and over another player's island (no shot is taken there), the exact centre point
-and the update timing - OQ-622. The rebuild hides the five counters when the island under the
-view's centre holds none of the local player's cities (so over open sea and over another
-player's island too); the gold counter is unchanged.
+and the update timing - OQ-622.
+
+**Rebuild rule, owner decision 2026-11-14 ("Always show my city", fix round R4):** the five
+counters show on every screen while the local player owns a city: the city on the island under
+the view's centre when that island holds one of the player's cities, otherwise the player's
+first city in (island, city) order. Hidden only before the first founding. (R2's rule hid them
+away from the city's island, so a player who did not scroll there never saw them.) The gold
+counter is unchanged.
 
 ### 5.3 The four tabs (UI-WINDOW-1 fix round R2, 2026-11-14)
 

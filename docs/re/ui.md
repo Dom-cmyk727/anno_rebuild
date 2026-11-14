@@ -485,6 +485,37 @@ Anchoring at the captured 1024 × 768 in-game frame (section 2):
 | Tabs | y = 181, stride 61 from x = W − 245 | `MAINTAB` 61 × 63 |
 
 Those subtractions are identities at 1024 × 768, not a verified rule at 800 / 1152 / 1280.
+Section 5.1 (UI-WINDOW-1) now proves the right-chrome and status-bar anchors.
+
+### 5.1 Placement at other window sizes (UI-WINDOW-1, 2026-11-14)
+
+Static reads with pefile + capstone (GOG 32-bit, VAs; HE x86-64, RVAs) and sprite-sad on the HE
+captures (`he_s10/15/20_hud_idle_win.png`, 2542 × 1351 client, outside git). The scale rule and
+the click mapping are `he-ui-scale.md`; the rebuild's code is `src/app` `ui_transform.hpp`
+(transform) and `ui_layout.hpp` `place_hud` / `ui_hit` (placement, hits); the anchors are data
+(`data/ui/README.md` "Anchors").
+
+| Part | Rule | Evidence |
+|---|---|---|
+| Right chrome | x = W − 245, top-anchored, 768 rows | HE `View.dll` 0x3b428..0x3b455 (x = Sizex − 245; 779.0 below 1024); HE captures at 1.0/1.5/2.0 |
+| Status bar row | y = H − 35, icons keep x | `gold` at (0, H − 35), sprite-sad 0.0 on `he_s10_hud_idle_win.png` |
+| Status bar graphic | per width: 1152 → STATUSBAR02 (873), 1280 → STATUSBAR03 (1001), any other → STATUSBAR (746) | GOG `AnnoFrame.dll` 0x10063125..0x10063153 (`cmp eax, 0x480` / `0x500`, ids 0x38 / 0x39 / 0 in `statusbaraddon.tex`) |
+| Question mark | x = the bar's end: 746 at 1024, W − 279 elsewhere | 873 / 1001 = W − 245 − 34; HE at 2263 = 2542 − 279 (sprite-sad 0.0) |
+| Column below 768 | 1152 → FUELLER02 (96 rows), 1280 × 960 → FUELLER01 (192), other 1280 → FUELLER03 (256); 01/02 are 03's top rows | GOG `AnnoFrame.dll` 0x10063304..0x1006331f; decoded pixels byte-identical; HE: FUELLER03 at (W − 245, H − 256), sprite-sad 0.0 |
+| Pop-ups | kept at their 1024 × 768 position | unproven, OQ-618 |
+
+What the original never shows (wider than 1280, taller than 1024) is a rebuild adaptation: the
+widest status-bar graphic repeated to W − 279 (OQ-614) and `MAINUNTERGRUND` repeated between the
+panel and a bottom-anchored FUELLER03 (OQ-615). HE uses graphics of its own there (`fenster.tex`
+`BOTTOM_BAR_TILEABLE`, `BOTTOM_BAR_END`, `SIDE_BAR_TOP`, `SIDE_BAR_TILEABLE`, `MAX_PIC2`; not in
+the GOG files). Below 1024 × 768 the UI layer stays 1024 × 768 and is fitted into the window with
+HE's formula (OQ-616).
+
+Hits: the right column over the whole height, the status bar row up to the question mark's end,
+and the pause parchment while paused are chrome; a left press there and its release never reach
+the map. A hit maps back to the 1024 × 768 frame where the reference has a rectangle (the column's
+top 768 rows, the bar's first 746 pixels, the question mark) and goes to the construction menu and
+the tabs there; the construction tab opens and closes the menu like key B.
 
 UI.2’s own scale (W5) is a rebuild choice, not an original fact.
 

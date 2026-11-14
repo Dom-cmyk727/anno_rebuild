@@ -259,7 +259,21 @@ on the playtest card (K).
 
 ## QUESTION R3: the UI scale at 1440p and 4K
 
-**Decided by the owner, 2026-11-13: scale to the window** (the fractional factor, this section's recommendation).
+**Decided by the owner, 2026-11-14 (replaces the 2026-11-13 decision below): the default UI scale
+is 1.0, the original's 1:1 UI; the History Edition's scale rule is an option.** Implemented by
+UI-WINDOW-1 (`src/app` `ui_transform.hpp`, `docs/re/ui.md` 5.1):
+- **Default (`ui scale 1.0`).** The UI is drawn 1:1 at any window of at least 1024 × 768: the
+  right chrome at x = W − 245, top-anchored; the status bar on the bottom edge; the column under
+  the panel filled with the original's filler picture. At exactly 1024 × 768 the output is
+  unchanged. A smaller window gets the 1024 × 768 layer fitted into it (OQ-616).
+- **Option `--ui-scale <1.0..2.0>`** (HE's "Interface-Skalierung", `docs/re/he-ui-scale.md`):
+  1.0 at 1200 window lines or fewer (OQ-617); otherwise the setting stepped down by 0.1 until the
+  UI keeps at least 1024 × 768 UI pixels; that layer stretched uniformly and bilinearly to the
+  window; clicks mapped back with `trunc((p − off) / k)`.
+- The numbers (1024 × 768, 245, 0.1, 1.0..2.0, 1200) are data (`UiScaleRule`, `data/ui/hud.txt`)
+  with the original/HE values as defaults.
+
+**Earlier decision by the owner, 2026-11-13 (superseded): scale to the window** (the fractional factor, this section's recommendation).
 - **Why it came up.** In that day's playtest the UI disappeared as soon as the window was maximized; it is drawn only
   at exactly 1024 × 768.
 - **What follows.** The chrome scales with the window, with the softness on resampled edges accepted. The factor stays

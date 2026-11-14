@@ -2,7 +2,8 @@
 
 **Status:** QUEUED 2026-11-13 by the Claude Code orchestrator for **the Windows executor**, behind
 [SHIP-ORDER-1](ship-order-1.md), a bug the owner found in that day's playtest, the zoom measurement and quick
-fixes (ZOOM-MEASURE-1, ZOOM-SMOOTH-1), and UI-WINDOW-1 (owner, 2026-11-13). It is released after those, under
+fixes (ZOOM-MEASURE-1, ZOOM-SMOOTH-1), and UI-WINDOW-1 (owner, 2026-11-13; UI-WINDOW-1 moved to the UI lane on
+2026-11-14, so GATE-2a no longer waits for it). It is released after those, under
 the standing go for the Windows lane. The owner gave the go on the rerun plan with "Yes, all of it". Step 4a of the queue on the board ([`TASKS.md`](../TASKS.md), "Current work").
 
 **Base:** `origin/main` at release, branch `task/GATE-2a`, in a new worktree on `E:`. About 2–3 hours. Never rebase or

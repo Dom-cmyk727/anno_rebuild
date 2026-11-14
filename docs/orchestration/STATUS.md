@@ -5,6 +5,12 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-14, by the Claude Code orchestrator:
+- **A new UI lane, owner 2026-11-14:** the "UI Executor" session is orchestrator and executor for the in-game UI, so
+  the menus match the original and the History Edition. **UI-WINDOW-1 (the UI at every window size) moved to it**
+  (owner: "UI-WINDOW-1 belongs to the UI lane"); the Windows executor's queue no longer holds it.
+  - **Its plan:** UI-HE-1 (the History Edition's UI captured at several window sizes: its scaling rule and OQ-561),
+    then UI-INFO-1 (the building info panel's name, cost row and upkeep, ADR 0004 row 4), then UI-WINDOW-1.
+  - **Landing** stays with the orchestrator and the owner (land.py, the game-file run).
 - **LANDED on `main` as `95eea7de`,** with the owner's OK ("Land on Main"): DEPTH-INTEGRATE-1 and the board. Depth is
   on by default and the sea is at the original's 26.5 plane on `main` now.
   - **`main` is healthy:** that exact commit's game-file run passed every test, 2,555 executed, 0 failed, none
@@ -105,7 +111,7 @@ says who is doing what, where the work is, and what it waits on.
   fisher reads are complete; the Mac executor is free.
 - **The Windows queue, owner 2026-11-13:** ZOOM-MEASURE-1 (now) → **DEPTH-INTEGRATE-1** ("Yes, depth first") →
   SHORE-2 → ZOOM-SMOOTH-1 → UI-WINDOW-1 → GATE-2a → GATE-2b → TEST-MEM-1 → RENDER-DIRECT-1 to 6
-  ([ADR 0007](../adr/0007-direct-rendering.md)).
+  ([ADR 0007](../adr/0007-direct-rendering.md)). (2026-11-14: UI-WINDOW-1 moved to the UI lane.)
 - **Zoom and camera smoothness: root causes, research and plan** in
   [`docs/render/zoom-smoothness.md`](../render/zoom-smoothness.md).
   - **The finding:** the renderer turns every zoom into work (per-level chunks built on demand, stand-ins, 150 ms
@@ -402,6 +408,7 @@ not edit it; their reports go into `REPORTS.md` on their task branch.
 | Codex orchestrator | wrote the board's top dispatch, ran the two Mac lanes and the main consolidations; last on the board 2026-11-06 |
 | Claude Code orchestrator | reviews and lands every lane on `main` (the Mac lane too since 2026-11-07); host and infrastructure on the Windows PC |
 | Windows executor | Claude Code on the owner's Windows PC (RTX 4090): rendering, the live window, the opening |
+| UI lane ("UI Executor") | from 2026-11-14 (owner), Claude Code on the Windows PC: orchestrator and executor for the in-game UI only, so the menus match the original and the History Edition; UI scaling with the window (UI-WINDOW-1) is its task. Its packets are `docs/orchestration/tasks/ui-*.md` on its branches; landing stays with the Claude Code orchestrator and the owner |
 | Mac executor | from 2026-11-11 one session on the owner's Mac: MAP-INTEGRATE-2 |
 | First Mac executor | until 2026-11-10, the MAP executor: gameplay in the headless sim (supply, needs, production chains) |
 | Second Mac executor | until 2026-11-06, gameplay integration: scripting, economy, expansion, routes |
@@ -460,9 +467,11 @@ mirror still requires the owner/Windows sync after main publication.
   - **The mirrors:** that session force-pushed its branch. Nothing was lost (every old commit is on `main`). The owner
     approved one forced update of that branch on GitLab and the share (2026-11-11). Both are at `15f01fa4` again, all
     103 branches equal; the no-force rule stands.
-- **Now: [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md)** (released 2026-11-13): W4-DEPTH-1 onto main, depth on,
-  the sea at the original's level. Then SHORE-2, ZOOM-SMOOTH-1, UI-WINDOW-1, GATE-2a, GATE-2b, TEST-MEM-1 and
-  RENDER-DIRECT-1 to 6.
+- **Now: [SHORE-2](tasks/shore-2.md)** (released 2026-11-13): the sea's edge against the 26.5 plane. Then
+  ZOOM-SMOOTH-1, GATE-2a, GATE-2b, TEST-MEM-1 and RENDER-DIRECT-1 to 6. UI-WINDOW-1 moved to the UI lane (owner,
+  2026-11-14).
+- **Finished: [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md)** (2026-11-13; head `eff68d5e`), **accepted and
+  landed** as `95eea7de` ([review](reviews/2026-11-13-depth-integrate-1-review.md)).
 - **Finished: [ZOOM-MEASURE-1](tasks/zoom-measure-1.md)** (2026-11-13; head `a5e180e0`), **accepted**
   ([review](reviews/2026-11-13-zoom-measure-1-review.md)).
 - **Finished: [SHIP-ORDER-1](tasks/ship-order-1.md)** (2026-11-13; head `e2c3e4e8`): **not reproduced**

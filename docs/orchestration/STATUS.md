@@ -17,7 +17,10 @@ says who is doing what, where the work is, and what it waits on.
   [review](reviews/2026-11-14-save-sections-1a-review.md)): each of the ten sections has a base version and an
   empty extension list; 139 is the last global state number. 50 pins changed value, 13 only their version.
   **`main` is healthy:** `f54e36f0`'s game-file run passed every test (2,566 executed, 0 failed, none refused).
-  **Next on the Mac:** [SAVE-SECTIONS-1b](tasks/save-sections-1b.md), released when the owner pastes its prompt.
+  **SAVE-SECTIONS-1b READY, ACCEPTED** (2026-11-14, head `4c1685fa`, CI green;
+  [review](reviews/2026-11-14-save-sections-1b-review.md)): the extension tag registry (state.md §9.8), the
+  compile-time registration, and the proof that an extension moves no pin. Landing waits for its game-file run
+  and the owner's OK. **Next on the Mac:** FISHER-1a.
 - **Zoom session for the owner** (2026-11-14): fast zooming on `lan5`, enhanced water, measured
   ([findings](../render/zoom-session-2026-11-14.md)), evidence for ZOOM-SMOOTH-1.
 - **[ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) WRITTEN** for the Windows executor (owner: "Yes, write it"), released
@@ -57,7 +60,10 @@ says who is doing what, where the work is, and what it waits on.
     - the four HUD tabs become the original's switches, showing their panels' static chrome;
     - the status bar's material and population counters show outside the construction menu, for the island the
       view is centred on, through read-only sim queries; any `src/sim` change is a QUESTION first.
-    The landing waits for its new head, a fresh game-file run and the owner's OK. The UI lane's next packets:
+    **R2 and R3 done, ACCEPTED again** (2026-11-14, head `0143f045`, CI green): the tabs are switches, the
+    counters follow the island under the view centre (read-only, no `src/sim` change), and the construction UI
+    is down to 0.59 ms (CPU) and 0.93 ms (GPU) at 2542 × 1351. The candidate `f4efaa81` passed its game-file run
+    (2,578 executed; the 4 memory refusals passed alone). **Waiting for the owner's landing OK.** The UI lane's next packets:
     UI-INFO-2 (preview entrance arrows and rotation, OQ-612), UI-TABS-1 (live figures in the tab panels),
     UI-MINIMAP-1. Follow-up
     UI-PERF-1: the construction UI costs about 5–6 ms per frame at 2542 × 1351 (opt-in today).
@@ -668,7 +674,7 @@ mirror still requires the owner/Windows sync after main publication.
 
 - **Finished: [SAVE-SECTIONS-1a](tasks/save-sections-1a.md)** (2026-11-14, head `8b732ee9`), **accepted and LANDED**
   as `main` `f54e36f0` ([review](reviews/2026-11-14-save-sections-1a-review.md)). **Next:** [SAVE-SECTIONS-1b](tasks/save-sections-1b.md)
-  (written 2026-11-14), released when the owner pastes its prompt (1a is on `main`): the tag registry and the proof that an extension moves no pin. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
+  (head `4c1685fa`, ACCEPTED 2026-11-14, [review](reviews/2026-11-14-save-sections-1b-review.md); landing waits for its game-file run and the owner's OK): the tag registry and the proof that an extension moves no pin. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
   SAVE-SECTIONS-1a, then SAVE-SECTIONS-1b, then FISHER-1a, then FISHER-1b, the fisher working in the game.
   FIXTURES-TRIM-1 follows, as cleanup.
 - **Finished: [PINS-1](tasks/pins-1.md)** (2026-11-14; head `661cd2a6`), **accepted after one fix round**

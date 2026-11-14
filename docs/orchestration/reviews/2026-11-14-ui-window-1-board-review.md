@@ -95,3 +95,63 @@ orchestrator held `land.py`). The playtest "showed a lot of issues and problems,
 - **The landing waits** for the UI lane's new head. Then the candidate is rebuilt from it, a fresh game-file run is
   made, and the owner's OK is given directly.
 
+## Fix rounds R2 and R3, the board's check (2026-11-14)
+
+**Verdict: ACCEPTED for landing**, subject to the game-file run below and the owner's OK given directly.
+
+**Reviewed head:** `task/UI-WINDOW-1` `0143f045` (code head `7cddd25f`). It contains `main` `f54e36f0`. CI run
+43604656130 on `7cddd25f` is green in all 12 jobs, `gate` included; `0143f045` adds only the UI lane's review note.
+
+**What R2 and R3 change** (`9925860c..0143f045`, 21 files):
+- the four HUD tabs become switches, each showing its panel's static chrome (`data/ui/hud.txt`, `ui_mock`, `ui_layout`);
+- the status-bar counters show outside the construction menu, for the local player's city on the island under the
+  view centre;
+- R3 fixed the UI lane reviewer's seven findings (two MEDIUM: sub-tab clicks reaching the map, one compare bound per
+  panel).
+
+**What the orchestrator checked:**
+- **Scope.** No file under `src/sim`, `src/render`, `crates` or `game/`; no binary file against `main`.
+- **The snapshot** (`play.hpp` `CityCounters`, `play.cpp` `publish`). It is read on the sim thread with read-only
+  accessors only (`World::islands()`, the island's tile rectangle, `City::owner`/`number`/`stock`,
+  `World::city_population`), only with a developer city. No state, stream, hash or draw changes. The clock is read
+  only with `ANNO_PUBLISH_STATS` set.
+- **Publication.** The `hud.txt` additions hold only element names, positions, sizes, ACCESS names, texture ids,
+  anchors, panel names, method tags and shot names. No game text, no pixels.
+- **Open-question numbers.** OQ-621 and OQ-622 are free on `main`, `orch/board-next` and every other
+  `origin/task/*` branch.
+- **The board's three notes** (sent to the UI lane before R2):
+  - the snapshot build median went from 41–47 to 47–49 µs; turn p95 shows the same 10 ms spikes before and after;
+  - open sea and foreign islands are written up as OQ-622, with the owner's first-hand rule and the rebuild's
+    choice (counters hidden, as before founding);
+  - the "construction ui" median dropped: CPU 3.72 → 0.59 ms and GPU 4.10 → 0.93 ms at 2542 × 1351, through the
+    texture cache (`f9a49436`). That meets UI-PERF-1's target of under 1 ms for the construction menu without
+    `--ui-scale`. The re-stretch with `--ui-scale` was not re-measured, so UI-PERF-1 stays open for that case.
+
+**Not verified by the orchestrator:** the UI lane's measurements (read from its report, not re-run), its focused
+runs (9 of 9 and 98 of 98), the panel compare's pixel figures, Linux and macOS game-file runs.
+
+### The game-file run of the R3 candidate
+
+**The candidate:** `orch/land-ui-window-1` at `f4efaa81`: `main` `f54e36f0`, then `0143f045`, then the board up to
+`9abd22f7`. It was built locally and not pushed.
+
+**The run:** the canonical call with the GOG oracle shots and the HE captures set, 15:56–16:07.
+- `COUNTS: selected=2609 executed=2578 failed=4 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- Log sha256 `d282dd71bcac4df6…`.
+- A first start stopped at once on a run lock left by the orchestrator's own stopped retry run of the first
+  candidate. That lock was removed, and no test had run.
+
+**The four failures** are all memory refusals (`reason=low-memory stop`, free memory down to about 2 GB). None of
+them ran, and all are render corpus tests this package doesn't touch:
+- `render_chunk: the Cpu builder keeps the planes, GpuList keeps the list`;
+- `river flow corpus: every island with rivers`;
+- `water field: empty cells hold on every island`;
+- `legacy river shading reproduces the previous enhanced digests` (heavy).
+
+**Each rerun alone** with `--jobs 1`, same build, 16:08–16:15: `COUNTS: selected=1 executed=1 failed=0`,
+`VERDICT: PASS` for all four. Log sha256s: `aa804338c62d29d8…`, `ec7e8bc8be4f66c8…`, `9eac2814e657fac2…`,
+`6288ef63e035947d…`.
+
+**Result:** all 2,582 selected tests that are not skipped executed and passed on the candidate.
+

@@ -2669,13 +2669,19 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     std::optional<assets::Rgba> ui_overlay_image;
     if (construction_menu_ != nullptr && w == 1024 && h == 768) {
         const auto in = construction_hud_inputs();
+        // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
+        const auto info = construction_placement_open_ && dev_ != nullptr &&
+                                  dev_->setup().registry && dev_->input().selected()
+                              ? ConstructionMenu::info_panel_content(*dev_->input().selected(),
+                                                                     *dev_->setup().registry)
+                              : std::nullopt;
         auto drawn = draw_live_screen_rgba(
             static_cast<int>(w), static_cast<int>(h), construction_menu_->hud(),
             construction_menu_->construction(), *construction_masks_, in.spec,
             *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
             in.counters, construction_placement_open_,
             dev_ != nullptr && dev_->input().demolish_mode(), paused_at_.has_value(),
-            in.selected_house);
+            in.selected_house, info ? &*info : nullptr, &gen->anlagen);
         if (drawn.ok()) {
             ui_overlay_image = std::move(drawn).value();
         }
@@ -2861,12 +2867,18 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         // per CLAUDE.md's "measure every performance change".
         const auto ui_start = Clock::now();
         const auto in = construction_hud_inputs();
+        // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
+        const auto info = construction_placement_open_ && dev_ != nullptr &&
+                                  dev_->setup().registry && dev_->input().selected()
+                              ? ConstructionMenu::info_panel_content(*dev_->input().selected(),
+                                                                     *dev_->setup().registry)
+                              : std::nullopt;
         static_cast<void>(draw_live_screen_xrgb(
             buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
             *construction_masks_, in.spec, *construction_tex_cache_,
             in.snapshot ? in.snapshot->eligibility.get() : nullptr, in.counters,
             construction_placement_open_, dev_ != nullptr && dev_->input().demolish_mode(),
-            paused_at_.has_value(), in.selected_house));
+            paused_at_.has_value(), in.selected_house, info ? &*info : nullptr, &gen->anlagen));
         construction_ui_ms = since_ms(ui_start, Clock::now());
     }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),

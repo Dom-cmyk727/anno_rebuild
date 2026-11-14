@@ -32,6 +32,11 @@ struct UiElement {
     std::optional<char> hotkey;
     std::string method;
     std::string shot;
+    /// `align centre` (UI-INFO-1): a text box. The text image (assets::render_text's canvas, as
+    /// wide as its glyph advances) is drawn at x = pos_x + size_w / 2 - text_w / 2 (both
+    /// divisions integer, rounding down), y = pos_y (docs/re/ui.md section 2.5). Empty for every
+    /// sprite element.
+    std::string align;
 };
 
 /// One `click` line of hud.txt: either a rectangle centre (`click <name> pos <x> <y>`) in drawable

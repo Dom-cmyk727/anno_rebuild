@@ -239,6 +239,18 @@ if(ANNO_BUILD_TESTS)
                 $<TARGET_FILE:anno1503>)
       set_tests_properties(selected_house_pixel_check PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # UI-INFO-1: the info panel's name, preview, costs and upkeep through the real window,
+      # pixel-exact against tools/ui_layout.py compose_info_panel (info_panel_pixel_check.py).
+      add_test(NAME info_panel_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/info_panel_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(info_panel_pixel_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # UI-INFO-1 fix round F (F8): the same reference against the original's own GOG shots
+      # (ANNO_UI_ORACLE_SHOTS, never in git; skips without it).
+      add_test(NAME info_panel_gog_compare
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/info_panel_gog_compare.py)
+      set_tests_properties(info_panel_gog_compare PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
       # F2 (W4-WIN-FINAL): the CPU window settles a change only after the frame was delivered through
       # SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent; each stage is made to fail in turn.
       add_test(NAME viewer_wiring_cpu_delivery_failures

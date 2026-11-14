@@ -517,7 +517,9 @@ the map. A hit maps back to the 1024 × 768 frame where the reference has a rect
 top 768 rows, the bar's first 746 pixels, the question mark) and goes to the construction menu and
 the tabs there; the construction tab opens and closes the menu like key B.
 
-UI.2’s own scale (W5) is a rebuild choice, not an original fact.
+UI.2’s own scale (W5) is a rebuild choice, not an original fact. The History Edition's scale rule
+(the `UI_SCALE` setting, its 0.1 step-down, the bilinear stretch, the panel at `Sizex − 245`, the
+click mapping) is in `he-ui-scale.md`.
 
 ## 6. `data/ui/` layout format
 

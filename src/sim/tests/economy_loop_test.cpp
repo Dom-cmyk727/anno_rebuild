@@ -1,3 +1,4 @@
+#include "golden.hpp"
 // ECON-BOOK-1 B5. Complete normal original Tutorial import; original
 // positions, stocks, prices, costs and supported whole program are retained.
 #include <algorithm>
@@ -552,8 +553,7 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
                 << " after=" << w.players().find(sim::PlayerId{owner})->money << " residual=0\n";
     export_text("summary.txt", summary.str());
     MESSAGE(summary.str());
-    std::ifstream pins(std::string(ANNO_FIXTURES_DIR) +
-                       "/sim/integrate2/current138/loop_checkpoints.txt");
+    std::ifstream pins(std::string(ANNO_FIXTURES_DIR) + "/sim/current/loop_checkpoints.txt");
     REQUIRE(pins.good());
     std::vector<std::string> expected;
     for (std::string line; std::getline(pins, line);)
@@ -569,10 +569,25 @@ TEST_CASE("economy loop: complete Tutorial production sales upkeep shortage paid
         std::ostringstream row;
         row << index << ' ' << cps[checkpoint] << ' ' << std::hex << std::setfill('0')
             << std::setw(16) << e.hash;
-        CHECK(row.str() == expected[checkpoint]);
+        if (!anno::test::update_mode())
+            CHECK(row.str() == expected[checkpoint]);
         actual << row.str() << '\n';
         ++checkpoint;
     }
     REQUIRE(checkpoint == 7);
+    if (anno::test::update_mode()) {
+        const auto path = anno::test::current_replay_fixture_path("loop_checkpoints.txt");
+        std::ifstream old(path);
+        std::string comments;
+        for (std::string line; std::getline(old, line);)
+            if (line.starts_with("#"))
+                comments += line + "\n";
+        old.close();
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(out.good());
+        out << comments << actual.str();
+        out.close();
+        REQUIRE(out.good());
+    }
     export_text("checkpoints.txt", actual.str());
 }

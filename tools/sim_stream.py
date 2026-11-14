@@ -949,7 +949,7 @@ def values():
 
 def goldens():
     found = {}
-    path = ROOT / 'fixtures/synthetic/sim/integrate2/current138/goldens.txt'
+    path = ROOT / 'fixtures/synthetic/sim/current/goldens.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         parts = line.split('#')[0].split()
         if len(parts) == 4:
@@ -961,7 +961,7 @@ def corpus_versions():
     """(kStateHashVersion, kPrngTimelineVersion) from the version header line of
     fixtures/synthetic/sim/scenario_corpus.txt (written by scenario_test.cpp; its create
     hashes move with both versions), or None when the file has none."""
-    path = ROOT / 'fixtures/synthetic/sim/integrate2/current138/scenario_corpus.txt'
+    path = ROOT / 'fixtures/synthetic/sim/current/scenario_corpus.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+) schema=ECONBK1 component=import-only$', line.strip())
         if m:

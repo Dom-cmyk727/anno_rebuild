@@ -70,3 +70,42 @@ adds only the UI lane's review note.
   `MAMOR`, which View.dll's goods ids `0x29`–`0x2c` ask for. A mod that renames them shows 0 there. Together with
   finding 9 (the text and shadow colours are code constants), this is for the UI lane to move into `data/ui` later.
   It does not block the landing.
+
+## Game-file run of the landing candidate
+
+**The candidate:** `orch/land-ui-info-1` at `411f37eb`: `main` `95eea7de`, then `task/UI-INFO-1` `83a0adff`, then the
+board up to `7f9843cd`. Both merges were clean, and no file was changed by both sides. The owner's decisions
+(2026-11-14): keep the flagged preview placeholder, and land.
+
+**The run:** in the run worktree on this PC, the canonical call with the game files, 16 jobs, and
+`ANNO_UI_ORACLE_SHOTS` set to a copy of the GOG info-panel shots. Every GPU test reports the RTX 4090 (Vulkan).
+2026-11-14 08:54–09:06.
+- `COUNTS: selected=2588 executed=2556 failed=5 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`
+- `VERDICT: FAIL failed tests`
+- **All 5 failures are memory refusals** (`[anno-test memory] refused … reason=low-memory stop`): the run filled
+  memory itself, and free memory fell to about 2 GB. None of the five ran:
+  - the render scene corpus;
+  - the legacy river digests;
+  - the chunk draw lists;
+  - population A;
+  - the scenario corpus.
+- **The new tests ran and passed:**
+  - `info_panel_gog_compare` ran instead of skipping;
+  - `info_panel_pixel_check`;
+  - the `info_panel_content` unit test.
+- **The 27 skips** are the same as at `95eea7de`.
+- **Log:** `cache/orch-land-ui-info-1/canonical-gate.log`, sha256 `dfaa0be5d9377685…`.
+
+**The five refused tests, each rerun alone** (`run_selected.py`, `--jobs 1`, the same build, 09:08–09:19): each run
+printed `COUNTS: selected=1 executed=1 failed=0 … skipped=0` and `VERDICT: PASS`, with no refusal.
+
+| Log | Test | Time |
+|---|---|---|
+| `retry-01.log` (`68daf42d…`) | legacy river shading reproduces the previous enhanced digests | 430 s |
+| `retry-02.log` (`cd1e2475…`) | population A: created players carry every independent shipped mask | 1.4 s |
+| `retry-03.log` (`9f34916b…`) | chunk draw lists replay to the objects and base planes, every chunk | 74 s |
+| `retry-04.log` (`0501359a…`) | scene renders match the recorded digests | 166 s |
+| `retry-05.log` (`dd8e76c1…`) | scenario corpus: every .sze loads, creates and runs five minutes | 18 s |
+
+So every test of the candidate ran and passed.

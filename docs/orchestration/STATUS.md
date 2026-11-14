@@ -17,6 +17,10 @@ says who is doing what, where the work is, and what it waits on.
     - **What it adds:** the info panel's name, four material costs, gold and upkeep, pixel-identical to all 15 GOG
       shots, and a flagged preview placeholder (OQ-612).
     - **It waits on** the owner's preview decision, the owner's landing OK and the candidate's game-file run.
+  - **UI-HE-1 ACCEPTED, docs only** (`task/UI-HE-1` `5d0db740`, [review](reviews/2026-11-14-ui-he-1-review.md)):
+    how the History Edition scales the in-game UI. It steps the setting down by 0.1 until the UI has at least
+    1024 × 768, stretches it bilinearly and keeps the side panel right-anchored. At 1200 lines or fewer it stays
+    1:1. Three captures match the rule. Lands on the owner's OK.
 - **LANDED on `main` as `95eea7de`,** with the owner's OK ("Land on Main"): DEPTH-INTEGRATE-1 and the board. Depth is
   on by default and the sea is at the original's 26.5 plane on `main` now.
   - **`main` is healthy:** that exact commit's game-file run passed every test, 2,555 executed, 0 failed, none
@@ -30,8 +34,13 @@ says who is doing what, where the work is, and what it waits on.
   - **The report's gate line was a composite;** the review records the logs as they are. The work is proven.
   - **Landed 2026-11-14** (above), with its game-file run.
   - **[SHORE-2](tasks/shore-2.md) RELEASED** to the Windows executor: the stepped 8 × 8-tile water edges on beaches.
-- **[PINS-1](tasks/pins-1.md): FIX ROUND 1** ([review](reviews/2026-11-13-pins-1-review.md)), to the Mac through
-  the owner's prompt.
+- **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1** (2026-11-14,
+  [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
+  - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.
+  - **Version renumbering:** every expectation that names the version follows the constant, and the procedure is
+    written down. The Mac's 138 → 139 rehearsal ended in a check with 0 failures.
+  - **It waits on** the owner's landing OK and the candidate's game-file run, after UI-INFO-1. The Mac is free.
+  - Before the fix round (2026-11-13):
   - **The mechanism is sound.** In the orchestrator's 138 → 139 trial on this PC, `pins.py regen` rewrote all 44
     pins and the 14 recordings, and every replay test passed on the new logs.
   - **F1:** two pins that `highmap_digest_ref.py` holds are filed as ordinary pins, so `regen` would overwrite them.

@@ -5201,7 +5201,8 @@ TEST_CASE("expansion founding accounting: public founding retains prepared wareh
             const auto refused = sim::World::load(old, original.types);
             REQUIRE_FALSE(refused.ok());
             CHECK(refused.error() ==
-                  "save: state stream version 133 is not supported (this build reads 138)");
+                  "save: state stream version 133 is not supported (this build reads " +
+                      std::to_string(sim::kStateHashVersion) + ")");
             auto old_log =
                 rec.log(); // current outer identity: the embedded native is the sole mismatch
             old_log.initial_save = old;

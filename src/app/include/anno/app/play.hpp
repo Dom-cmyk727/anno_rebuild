@@ -443,6 +443,11 @@ class PlayRunner {
     std::atomic<std::uint32_t> delay_ms_{0};
     std::thread thread_;
     std::vector<std::pair<std::chrono::steady_clock::time_point, std::uint64_t>> costs_;
+    /// UI-WINDOW-1 fix round R2 (measurement): every turn's cost and the time publish() spent
+    /// building its snapshot, in microseconds, kept only with ANNO_PUBLISH_STATS set; stop()
+    /// prints their median, p95 and max to stderr. Off: nothing is kept or printed.
+    bool publish_stats_ = false;
+    std::vector<std::uint64_t> stat_turn_us_, stat_snapshot_us_;
     // The sorted building list the picture has been given so far (sim thread only).
     std::vector<SceneBuilding> buildings_;
     // The lock only protects the shared_ptr copy/swap and the mailbox's push or

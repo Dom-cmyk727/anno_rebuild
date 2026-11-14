@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -418,6 +419,7 @@ void PlayRunner::start() {
         return;
     }
     stop_.store(false);
+    publish_stats_ = std::getenv("ANNO_PUBLISH_STATS") != nullptr;
     thread_ = std::thread([this] { loop(); });
 }
 
@@ -428,6 +430,20 @@ void PlayRunner::stop() {
     }
     if (thread_.joinable()) {
         thread_.join();
+    }
+    if (publish_stats_ && !stat_turn_us_.empty()) {
+        // UI-WINDOW-1 fix round R2: the measurement ANNO_PUBLISH_STATS asks for (sim thread
+        // joined: the vectors are this thread's now).
+        const auto line = [](const char* what, std::vector<std::uint64_t> v) {
+            std::sort(v.begin(), v.end());
+            std::fprintf(stderr, "publish stats: %s n %zu median %llu us p95 %llu us max %llu us\n",
+                         what, v.size(), static_cast<unsigned long long>(v[v.size() / 2]),
+                         static_cast<unsigned long long>(v[(v.size() * 95) / 100]),
+                         static_cast<unsigned long long>(v.back()));
+        };
+        line("turn", stat_turn_us_);
+        line("snapshot build", stat_snapshot_us_);
+        stat_turn_us_.clear();
     }
 }
 
@@ -874,6 +890,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     while (!costs_.empty() && costs_.front().first < cut) {
         costs_.erase(costs_.begin());
     }
+    const auto build_start = std::chrono::steady_clock::now();
     auto next = std::make_shared<PlaySnapshot>();
     next->tick = world_.clock().tick();
     next->game_ms = world_.clock().ms;
@@ -976,6 +993,13 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         outcomes_.record(o);
     }
     next->outcomes_next = outcomes_.next();
+    if (publish_stats_ && stat_turn_us_.size() < 1000000) {
+        stat_turn_us_.push_back(turn_us);
+        stat_snapshot_us_.push_back(
+            static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                           std::chrono::steady_clock::now() - build_start)
+                                           .count()));
+    }
     if (publish_gate_) {
         publish_gate_(turn); // the outcomes are readable, the snapshot is not yet (R1's test)
     }

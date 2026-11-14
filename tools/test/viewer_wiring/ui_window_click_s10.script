@@ -1,0 +1,31 @@
+# UI-WINDOW-1: the UI at a 2542 x 1351 window, default UI scale (the original's 1:1, ADR 0004 R3).
+# The right chrome sits at x = W - 245 = 2297 (data/ui/hud.txt `anchor right`), the status bar on
+# the bottom edge. Left clicks on the status bar, the filler under the panel and the panel itself
+# never reach the map: the selection counts no click (`selection.clicks` moves only when a click
+# is routed to selection_step), while a click on the map does (positive control). The
+# construction tab (reference centre 809 212, here 2327 212) opens the menu, and the grid's cell
+# (0, 0) (reference 833 330, here 2351 330) arms type 501 through ConstructionMenu.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 2542 1351
+wait frames 5
+screenshot ui_s10_idle
+note fact selection.clicks
+click_px 100 1340
+wait frames 3
+click_px 1500 1340
+wait frames 3
+click_px 2400 1200
+wait frames 3
+click_px 2400 500
+wait frames 3
+expect fact selection.clicks same
+click_px 1000 600
+wait frames 3
+expect fact selection.clicks == 1
+click_px 2327 212
+wait frames 5
+screenshot ui_s10_construction
+click_px 2351 330
+wait frames 5
+expect title build 501
+quit

@@ -1,0 +1,28 @@
+# UI-WINDOW-1: the UI at a 2542 x 1351 window with --ui-scale 2.0 (the History Edition's rule,
+# docs/re/he-ui-scale.md): the layer is 1495 x 794 at k 1.70033443, the right chrome from client
+# x 2125.4. Client points are layer points times k (the inverse is trunc(p / k)): the tab's
+# reference centre (809 212) is layer (1280 212), client (2177 361); the cell (0, 0) centre
+# (833 330) is layer (1304 330), client (2218 562); the status bar row is layer y 759..793, client
+# 1291..1350. Chrome clicks are not counted by the selection; a map click is.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui --ui-scale 2.0
+resize 2542 1351
+wait frames 5
+screenshot ui_s20_idle
+note fact selection.clicks
+click_px 100 1340
+wait frames 3
+click_px 2300 1250
+wait frames 3
+click_px 2300 500
+wait frames 3
+expect fact selection.clicks same
+click_px 1000 600
+wait frames 3
+expect fact selection.clicks == 1
+click_px 2177 361
+wait frames 5
+screenshot ui_s20_construction
+click_px 2218 562
+wait frames 5
+expect title build 501
+quit

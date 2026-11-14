@@ -519,7 +519,8 @@ Hits: the right column over the whole height, the status bar row up to the quest
 and the pause parchment while paused are chrome; a left press there and its release never reach
 the map. A hit maps back to the 1024 × 768 frame where the reference has a rectangle (the column's
 top 768 rows, the bar's first 746 pixels, the question mark) and goes to the construction menu and
-the tabs there; the construction tab opens and closes the menu like key B.
+the tabs there; the construction tab opens the menu (as key B does) and closes it (as Esc does);
+closing the menu either way also turns off a building tool a cell armed.
 
 ## 6. `data/ui/` layout format
 

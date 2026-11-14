@@ -183,6 +183,15 @@ if(ANNO_BUILD_TESTS)
         set_tests_properties(viewer_wiring_ui_window_click_${case} PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       endforeach()
+      # UI-WINDOW-1 fix round R1 (F2): closing the menu (tab, Esc) turns an armed tool off.
+      add_test(NAME viewer_wiring_ui_menu_close_disarms
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_menu_close_disarms
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_menu_close_disarms PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # W4-UI-2 V1: the full interaction proof - every category tab, a locked cell (no command),
       # an armed placement that actually builds, and a demolish of what was just built.
       add_test(NAME viewer_wiring_construction_full_proof

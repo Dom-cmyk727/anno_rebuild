@@ -556,8 +556,11 @@ class Viewer {
     /// The construction menu's share of handle(), checked before dev_ (ADR 0004 R1): returns
     /// whether the event was taken. UI-WINDOW-1: at any window size; a left press on drawn
     /// chrome (ui_hit) is always taken, and so is its release, so neither reaches the map (no
-    /// pan, no selection, no tool action). The construction tab toggles the menu like key B.
+    /// pan, no selection, no tool action). The construction tab opens the menu (as key B does)
+    /// and closes it (as Esc does).
     bool construction_handle(const SDL_Event& e);
+    /// Closes the menu (the tab or Esc) and turns an armed building tool off with it.
+    void construction_close();
     /// UI-WINDOW-1: the UI scale setting (ViewerHooks::ui_scale; nullopt = the original 1:1) and
     /// the layer's placement for the current drawable size (ui_transform.hpp).
     std::optional<float> ui_scale_;
@@ -1453,6 +1456,22 @@ void Viewer::opening_apply(const UiResult& result) {
     dirty_ = true;
 }
 
+void Viewer::construction_close() {
+    construction_menu_open_ = false;
+    construction_open_category_.clear();
+    construction_placement_open_ = false;
+    // UI-WINDOW-1 fix round R1 (F2): an armed cell (DevTool::arm sets the tool on, dev_tool.cpp)
+    // must not outlive the menu, or a map click after closing it still builds. The tool's own
+    // Toggle cancels what is armed and turns it off, as a second B does.
+    if (dev_ != nullptr && dev_->enabled()) {
+        for (sim::Command& c : dev_->handle({ToolInput::Kind::Toggle, 0, 0},
+                                            pointer_frame_ ? &*pointer_frame_ : nullptr)) {
+            latest_receipt_ = play_->runner().post_command(std::move(c));
+        }
+        drag_ = false;
+    }
+}
+
 bool Viewer::construction_handle(const SDL_Event& e) {
     if (e.type == SDL_EVENT_KEY_DOWN) {
         // data/ui/construction.txt: `open_key B`, `leave_key ESC`. Both collide with an existing
@@ -1469,9 +1488,7 @@ bool Viewer::construction_handle(const SDL_Event& e) {
             return true;
         }
         if ((e.key.key == SDLK_ESCAPE) && construction_menu_open_) {
-            construction_menu_open_ = false;
-            construction_open_category_.clear();
-            construction_placement_open_ = false;
+            construction_close();
             return true;
         }
         return false;
@@ -1506,19 +1523,19 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         return true; // the parts a larger layer adds (filler, the bar's added span): no buttons
     }
     const double px = hit.ref->first, py = hit.ref->second;
-    // UI-WINDOW-1: the construction tab (hud.txt `tab_construction`, hotkey B) opens and closes
-    // the menu, as key B opens it and Esc closes it.
+    // UI-WINDOW-1: the construction tab (hud.txt `tab_construction`, hotkey B) opens the menu
+    // when it is closed (as key B does) and closes it when it is open (as Esc does).
     if (const UiElement* tab = construction_menu_->hud().element("tab_construction");
         tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
         px < tab->pos_x + static_cast<double>(tab->size_w) && py >= tab->pos_y &&
         py < tab->pos_y + static_cast<double>(tab->size_h)) {
-        construction_menu_open_ = !construction_menu_open_;
         if (construction_menu_open_) {
-            construction_open_category_ = "public";
+            construction_close();
         } else {
-            construction_open_category_.clear();
+            construction_menu_open_ = true;
+            construction_open_category_ = "public";
+            construction_placement_open_ = false;
         }
-        construction_placement_open_ = false;
         return true;
     }
     if (!construction_menu_open_) {

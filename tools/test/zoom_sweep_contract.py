@@ -88,7 +88,15 @@ def main(argv):
         print(f"skipping: set {flags['require_env']}=1 to run it")
         return 77
     exe, game_dir, map_file = pos
-    if not os.environ.get("ANNO1503_GAME_DIR") and not Path(game_dir, "Anlagen.dat").is_file():
+    # ANNO1503_GAME_DIR overrides the positional game_dir when set (CLAUDE.md: "never add original
+    # files to fixtures/ or anywhere else in git"; a worktree's own game/app does not exist, since
+    # game/ is git-ignored and worktrees do not share working-tree-only files - a CMake-passed
+    # literal ${PROJECT_SOURCE_DIR}/game/app, as step 8's CTest registration passes, is therefore
+    # wrong in a worktree even though the env var is set and correct).
+    env_dir = os.environ.get("ANNO1503_GAME_DIR")
+    if env_dir:
+        game_dir = env_dir
+    elif not Path(game_dir, "Anlagen.dat").is_file():
         print("skipping: ANNO1503_GAME_DIR is not set (needs the original game files)")
         return 77
     args = [exe, game_dir, map_file, "--renderer", "gpu", "--limits", "interactive",

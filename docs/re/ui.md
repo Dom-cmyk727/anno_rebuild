@@ -502,7 +502,7 @@ the click mapping are `he-ui-scale.md`; the rebuild's code is `src/app` `ui_tran
 | Part | Rule | Evidence |
 |---|---|---|
 | Right chrome | x = W − 245, top-anchored, 768 rows | HE `View.dll` 0x3b428..0x3b455 (x = Sizex − 245; 779.0 below 1024); HE captures at 1.0/1.5/2.0 |
-| Status bar row | y = H − 35, icons keep x | `gold` at (0, H − 35), sprite-sad 0.0 on `he_s10_hud_idle_win.png` |
+| Status bar row | y = H − 35; the rebuild keeps the icons' and counters' 1024 × 768 x (the original lays them out wider at 1152/1280, OQ-620; not implemented) | `gold` at (0, H − 35), sprite-sad 0.0 on `he_s10_hud_idle_win.png`; GOG `AnnoFrame.dll` 0x10063000/0x10063013 width factor 1.18/1.3 on base widths 400/436 (0x100636e3/0x10063725) |
 | Status bar graphic | per width: 1152 → STATUSBAR02 (873), 1280 → STATUSBAR03 (1001), any other → STATUSBAR (746) | GOG `AnnoFrame.dll` 0x10063125..0x10063153 (`cmp eax, 0x480` / `0x500`, ids 0x38 / 0x39 / 0 in `statusbaraddon.tex`) |
 | Question mark | x = the bar's end: 746 at 1024, W − 279 elsewhere | 873 / 1001 = W − 245 − 34; HE at 2263 = 2542 − 279 (sprite-sad 0.0) |
 | Column below 768 | 1152 → FUELLER02 (96 rows), 1280 × 960 → FUELLER01 (192), other 1280 → FUELLER03 (256); 01/02 are 03's top rows | GOG `AnnoFrame.dll` 0x10063304..0x1006331f; decoded pixels byte-identical; HE: FUELLER03 at (W − 245, H − 256), sprite-sad 0.0 |

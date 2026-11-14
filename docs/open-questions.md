@@ -2991,3 +2991,13 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** whether a click on the last pixel row/column of a stretched HE UI lands on the UI pixel drawn there.
 - **What we know:** HE draws the layer per axis onto `Texture::InitTexture`'s quad (AnnoDisplay 0x5c9dd..0x5cb2a; at 2542 x 1351, 2.0: 2542 / 1495 by 1351 / 794), while clicks divide by the uniform k of `UpdateResolutionAndClipping` 0x5a961 (1.70033443; AnnoFrame 0x22a26). At client row 1350 the draw samples layer row 793.2 and the click maps to 793; because the two factors differ by 0.07 %, a client pixel's drawn layer pixel and its clicked layer pixel differ by at most one. The rebuild keeps both as HE has them (draw per axis, click by k); hit rectangles are much larger than a pixel.
 - **How to resolve:** an HE run clicking the bottom row's last pixels of a button at 2.0; or accept as is.
+
+## OQ-620: The original's status bar content at 1152 and 1280 wide modes (UI-WINDOW-1 fix round R1, 2026-11-14; OPEN)
+- **Question:** where the original places the status bar's counters and icons at its wider modes.
+- **What we know:** GOG `AnnoFrame.dll` 0x10063000 / 0x10063013 set a width factor `[esi+0xa4]` of 1.18 (0x3f970a3d, width 1152) or 1.3 (0x3fa66666, width 1280); it multiplies base widths 400.0 (0x1008bcf4, at 0x100636e3) and 436.0 (0x1008bcf0, at 0x10063725) of status-bar sub-windows. So the bar's content is laid out wider at those modes; the 1024 x 768 positions in `hud.txt` are not the original's at 1152/1280. The rebuild keeps the 1024 x 768 x positions of the icons and counters at every width (bottom-anchored only). Not implemented.
+- **How to resolve:** read the sub-window setup after 0x100636e3 / 0x10063725 (which gadgets, their x); a GOG capture at 1152 x 864 or 1280 x 1024.
+
+## OQ-618: Pop-ups (the pause parchment, `MESSAGEBOX_*`) at other window sizes (UI-WINDOW-1, 2026-11-14; OPEN)
+- **Question:** where the original and HE place pop-up windows when the screen is larger than 1024 x 768.
+- **What we know:** the pause parchment and its button are measured only at 1024 x 768 (222, 191) and (286, 500) (`hud.txt`, shot `f15_pause`). HE `View.dll` 0x1f3d4 keeps windows inside width `Sizex` and height `min(Sizey, 768)` (he-ui-scale.md 3, inferred), which suggests pop-ups stay in the top 768 UI rows. The rebuild keeps the 1024 x 768 position (top-left anchored) at every size; a click on the parchment while paused is taken by the UI.
+- **How to resolve:** read GOG `View.dll`'s message-box placement (the parchment's caller) and HE's 0x1f3d4 callers; an HE or GOG capture of the pause parchment at a larger mode.

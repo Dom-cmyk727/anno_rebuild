@@ -2335,9 +2335,18 @@ structurally impossible to pass.
 **The contract** (`tools/test/zoom_sweep_contract.py`, ADR 0007 decision 8's acceptance test - 0
 non-ready chunks, 0 stand-ins, 0 dissolves, 0 open-sea draws, a 2 ms busy budget, 4 warm-up frames
 excluded): fails today on every real sweep profile above (not relaxed); the control above shows its
-readiness criteria are reachable. Not wired into CTest in this packet (a currently-and-correctly-
-failing test registered to CTest would turn `gate` red for every future commit until ZOOM-SMOOTH-1 -
-run manually for this evidence instead; see the REPORTS entry).
+readiness criteria are reachable. The failing sweep profiles themselves are still not wired into
+CTest (a currently-and-correctly-failing test would turn `gate` red for every future commit until
+RENDER-DIRECT - run manually for this evidence instead; see the REPORTS entry).
+
+**ZOOM-SMOOTH-1 step 8** registers the control's four *readiness* counters only (`--readiness-only`:
+the busy-time number above, 2 of 1,980 frames, is reported but not gated - it is driver/submission
+jitter, not content readiness, and the review that asked for this said to decide the busy-time
+criterion with a measurement rather than just raise the threshold; ZOOM-SMOOTH-3's charge is that
+measurement) as the CTest case `zoom_sweep_control_readiness`
+(`src/tools/bench_frame/CMakeLists.txt`), opt-in behind `ANNO_ZOOM_SWEEP_PROOF=1` (needs a real GPU
+adapter and real wall-clock frame pacing, so it does not run in `gate` by default) and skipped
+(exit 77) without it or without the game files.
 
 **The window-event hitch** (`ANNO_VIEW_HITCH_MS=5 anno1503.exe --play data/maps/lan5.txt --renderer
 gpu`, a real window, manually dragged and maximised/restored): a 106.0 ms hitch with **96.7 ms of it

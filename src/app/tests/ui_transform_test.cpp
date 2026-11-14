@@ -72,7 +72,7 @@ TEST_CASE("ui transform: he-ui-scale.md's prediction table in exact float32") {
     CHECK(s20.off_x == 0);
     CHECK(s20.off_y == 0);
     // The panel's left edge, in client pixels: (1495 - 245) * k = 2125.4 (measured 2125).
-    CHECK(static_cast<int>((s20.ui_w - 245) * s20.k) == 2125);
+    CHECK(static_cast<int>(static_cast<float>(s20.ui_w - 245) * s20.k) == 2125);
 
     // At 1200 lines or fewer the setting counts as 1.0 (UpdateGameSettings 0x2d943).
     for (const float s : {1.5f, 2.0f}) {
@@ -110,7 +110,7 @@ TEST_CASE("ui transform: the step-down is float32 and not decimal") {
 }
 
 TEST_CASE("ui transform: the original rule is 1:1 at 1024 x 768 and up and fitted below it") {
-    for (const auto [w, h] : {std::pair{1024, 768}, std::pair{2542, 1351}, std::pair{1920, 1080},
+    for (const auto& [w, h] : {std::pair{1024, 768}, std::pair{2542, 1351}, std::pair{1920, 1080},
                               std::pair{3840, 2160}, std::pair{1280, 1024}}) {
         CAPTURE(w);
         CAPTURE(h);
@@ -294,8 +294,8 @@ TEST_CASE("ui layer: the right chrome at 2542 x 1351 is the 1024 x 768 chrome sh
             const auto a = px(small.value(), x, y);
             const auto b = px(big.value(), x + 2542 - 1024, y);
             ++compared;
-            opaque += a[3] == 255 ? 1 : 0;
-            differ += a == b ? 0 : 1;
+            opaque += a[3] == 255 ? 1U : 0U;
+            differ += a == b ? 0U : 1U;
         }
     }
     CHECK(compared == 245U * 733U);
@@ -312,7 +312,7 @@ TEST_CASE("ui layer: the right chrome at 2542 x 1351 is the 1024 x 768 chrome sh
     std::size_t unshifted_same = 0;
     for (int y = 0; y < 733; ++y) {
         for (int x = 779; x < 1024; ++x) {
-            unshifted_same += px(small.value(), x, y) == px(big.value(), x, y) ? 1 : 0;
+            unshifted_same += px(small.value(), x, y) == px(big.value(), x, y) ? 1U : 0U;
         }
     }
     CHECK(unshifted_same < compared / 10);
@@ -329,7 +329,7 @@ TEST_CASE("ui layer: the right chrome at 2542 x 1351 is the 1024 x 768 chrome sh
     std::size_t filler_opaque = 0;
     for (int y = 768; y < 1024; ++y) {
         for (int x = 1035; x < 1280; ++x) {
-            filler_opaque += px(mode.value(), x, y)[3] == 255 ? 1 : 0;
+            filler_opaque += px(mode.value(), x, y)[3] == 255 ? 1U : 0U;
         }
     }
     CHECK(filler_opaque == 245U * 256U);

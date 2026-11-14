@@ -11040,54 +11040,70 @@ Decisions and reasoning:
 
 QUESTIONs: none required.
 
-## FISHER-1b — QUESTION: original goal consumer contradicts the port contract (2026-11-14)
+## FISHER-1b — optional mode-3 fisher and corrected goal consumer (2026-11-14)
 
-Status: BLOCKED on the goal contract; NOT READY FOR REVIEW as a completed fisher implementation.
-Branch task/FISHER-1b; new worktree from main 5bcd64a6; required ancestor 9137eabd passed.
-Packet and owner rules read at board 5703a16c; CLAUDE/PLAN/evidence contract/testing README read.
-No reviewer agents; original reads and dispositions require independent orchestrator review.
-Return-cell dependency SETTLED: AnnoWelt.dll 0x10057ae0–0x10057bbe calls the primary figure
-  +0xc8 at 0x10057b79–0x10057b7d; fisher table 0x100cb4d8 slot +0xc8 is 0x10038ad0.
-That override initializes the searcher in mode 3 at 0x10038b91–0x10038ba1; the return job
-  then adds home entrance goals and calls figure +0xcc. Already inside home returns without search.
-No direct world draw in the two complete bodies. Planar/no-Y scope recorded, not implemented.
-New stopping finding: the original resource-goal consumer INVERTS the island mask.
-Search interface S is Y + 4 (0x100c14e4); +0x50 stores selected mode at S +0x2040.
-Fisher A calls S +0x78 = 0x10002e20 at 0x10059325, adding resource tile pairs to S +0x1800.
-S +0x84 = 0x10003d90 calls 0x10003220 with that same S at 0x10004779–0x1000477b.
-At 0x100033ac–0x100033bd, goal-pop calls island +0x12c with mode from S +0x2040.
-At 0x100033c3–0x100033ce it ORs (511 - returned_mask) into USABLE goal bits.
-Island mode 3 returns 0 below threshold and 511 otherwise (0x1009226b–0x100922df).
-Hand controls: mean 31 -> raw 0 -> usable 511; mean 32 -> raw 511 -> usable 0.
-The callback-order loop 0x1000370c–0x1000374c tests those usable bits before calling the callback.
-Thus raw fisher_cell.goal_mask values stay correct, but the reference's free label and the packet's
-  interpretation of closed bank tiles as usable fisher goals miss the consumer's inversion.
-No dry-goal admission exception, mode-0 change, invented clamp or replacement fish was implemented.
-QUESTION 1: correct and re-release the usable-goal/reference/synthetic-bay contract before behavior?
-  Recommendation: orchestrator re-check these addresses and amend the port contract/reference first;
-  preserve the raw FISHER-1a values and derive usable bits at the consumer. Then release continuation.
-The existing 50/2473/619/1854 census still measures raw-mask polarity and local shoreline geometry;
-  it does NOT prove 2473 catchable goals. No new runtime reachability or OQ-609 claim is made.
-The earlier runtime-source lead 0x100928a0 (mean below 16) is consistent but remains out of scope.
-QUESTION 2 RESOLVED by owner (2026-11-14): preserve per-attempt draws, allow trajectory divergence.
-Original §2 count gate and production.cpp/driver.cpp: one discarded draw per ELIGIBLE attempt.
-First attempt: both consume 1. Next gate: on-world worker away blocks dispatch/consumes 0;
-  off-world refused send left count 0, so it remains eligible/consumes 1.
-Authorized proof: assert equal draws for paired identical eligible attempts and zero fisher-body draws;
-  explicitly allow later trajectories to diverge because their worker/raw state differs.
-Bounded hand/reference controls are in cache/fisher-1b/consumer-counterexamples.json.
-Independent authorized work: tag-1 creation-context draft was started, then preserved unvalidated
-  as cache/fisher-1b/extension-draft-unvalidated.patch; SHA256 in extension-draft.json.
-Those six owned draft files were restored from HEAD; only RE documentation and this report commit.
-No flag, tag row, mode-3 builder, launch/search/catch/receipt, behavior tests or Rules changes committed.
-Gates: documentation-only checkpoint; git diff --check and local link resolution recorded in handoff.
-Hosted docs CI exact-head result/link supplied in handoff; no feature gate is represented as passing.
-NOT_RUN: dev build, changed sim behavior tests, final pins.py check, original-runtime/HE execution,
-  synthetic trip/save continuation, new flag proof, Windows game-file/full landing suites.
-Fixtures and all engine/reference/vector files are unchanged from base; no original listing/bytes in git.
+Status: READY FOR REVIEW; independent review belongs to the orchestrator, not executor agents.
+Branch task/FISHER-1b continues 89922b18; authorized main 01a4d540 merged as 33ca7f0f.
+REPORTS merge kept main's entries and the checkpoint entry; this replaces that same checkpoint entry.
+Packet/owner protocol at board 96b0e62b and the dated QUESTION answer read before continuing.
+CLAUDE, PLAN, evidence contract and testing README read; original four-hour clock retained (19:08Z).
+The orchestrator accepted the addressed return-mode read and corrected the usable-goal contract.
+Return: AnnoWelt 0x10057ae0–0x10057bbe calls figure +0xc8 at 0x10057b79–0x10057b7d;
+  fisher table 0x100cb4d8 +0xc8 = 0x10038ad0, initializing mode 3 at 0x10038b91–0x10038ba1.
+Goal-pop 0x100033c3–0x100033ce uses 511 minus island +0x12c's blocked mask;
+  island mode 3 0x1009226b–0x100922df returns 0 below 32, 511 otherwise.
+Hand controls: mean 31 => blocked 0 / usable 511; mean 32 => blocked 511 / usable 0.
+FisherCell now names blocked_mask and usable_mask; Python sea_cell names blocked and usable.
+Reviewed oracle/vector edit: six sea rows rename free and hand-derive usable; inputs/raw values unchanged.
+Dated RE corrections in fisher.md §§3/4/5 preserve history and supersede the dry-goal interpretation.
+Census retains 50 maps / 2473 embedded fish / 619 adjacent-water / 1854 without adjacent water;
+  those 2473 fish are BLOCKED, with zero usable goals. This is not original gameplay reachability.
+The existing explicit ActorFreeComponent geometry projection remains owner-authorized, without fallback;
+  it does not establish complete actor import. Shipped runtime fish sources remain FISHER-RE-2.
+Header tag 1, fisher_rules: u8 enabled 0 default / 1 enabled; any other byte refused.
+ExtensionContext is authoritative; World::create accepts it as its optional final rules input.
+No duplicate Rules field or digest change, section-version/global-state bump, or new Figure state.
+Default omits the extension. On adds seven header bytes; the other nine sections remain byte-identical.
+Mode-3 WalkCells supplies low 0x0fff/high 0 on water, low 0/high 7 otherwise and matching raw records.
+Land mode delegates the existing record/mapper/disc path; existing builds, costs and paths are preserved.
+Threshold is FISHER-1a's named parameter default 32; radius/capacity come from type data, limit 20 reuses
+  the sourced animal-case default. The fisher rectangle retains the reference's wrap and clipping rules.
+Enabled dispatch lifts only route 45's refusal; first rotated entrance, input 0/FISCH and generic state.
+Search filters usable bits before path setup, uses entrance starts inside home, and claims a water resource.
+Shared wait/cut changes 11 to 10, credits 256 only on success, repeats below capacity, then returns mode 3.
+Receipt uses a u16 add without clipping; tested 65500 + 768 => 732. Shared Farm conversion makes food.
+Planar integer movement has no Y coordinate; no claim to implement OQ-603 float/Y continuation.
+Owner draw decision: one discarded draw per eligible attempt, no fisher-body draw; complete on/off
+  trajectories MAY diverge when an active worker blocks a later enabled attempt. Both scopes are tested.
+Acceptance: header-only flag/digest/native roundtrip vs invalid 2; all bay cells vs primitives and land paths;
+  rotated launch, claim/wait/three catches/raw/food/release vs dry control/no fish/disconnected water;
+  mid-cut native continuation vs uninterrupted hash; u16 wrapping; paired attempt/body/trajectory draws.
+Private fisher_helpers.hpp reuses harvest_helpers.hpp without changing old synthetic registries or pins.
+All dispositions remain independent-review pending; cache/fisher-1b/acceptance.md holds the evidence table.
+Logs below are under cache/fisher-1b/continue/ in this preserved owned worktree.
+reference-02.log: 49 hand-derived vectors agree; reference-contract-02.log: 76 checks, 13 applied mutants.
+flag-geometry-01.log (automatic picture contract, then selection):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=14 executed=14 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-01.log (fisher, extensions, mode-0 walking, harvest, Farm and figure regressions, assets required):
+COUNTS: selected=87 executed=87 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+bay-02.log: seven behavior cases passed; focused-01 supersedes it after stronger land/validation controls.
+Small subsequent helper edit makes conditional byte inputs explicitly u8 for MSVC; its affected test
+  rerun is byte-input-01.log:
+COUNTS: selected=7 executed=7 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+Dev build terminal evidence: build-dev-08.log, zero warnings.
+Preserved unsuccessful attempts: build-dev-01/03/04 (compile/link fixes), bay-01 (semicolon name preflight;
+  no tests ran). No failing execution is counted as a pass; no admitted/running test was interrupted.
+Final committed-head pins check and hosted CI are terminal handoff gates, not pre-claimed results here:
+  pins-final-head-01.log and its console log retain the exact COUNTS/VERDICT/PINS lines and source pin;
+  the handoff quotes those lines, their hashes, the final commit and its exact-head hosted CI URL.
 Decisions and reasoning:
-- Read the actual mask consumer before inventing an exception to make closed dry goals reachable.
-- Keep the accepted raw arithmetic/census evidence; narrow its meaning with a dated addressed finding.
-- Preserve the incomplete optional-flag draft outside the candidate rather than publish an inert feature.
-- Stop at the packet's explicit reference/original disagreement boundary; no new state or defaults.
-Independent orchestrator review pending. Only QUESTION 1 (usable-goal contract) blocks behavioral acceptance.
+- Preserve the accepted raw arithmetic and expose its complement; never make dry fish goals traversable.
+- Keep the optional feature in the typed extension context and share the body without moving off-state bytes.
+- Keep the runtime-source question separate; synthetic success does not make blocked shipped fish catchable.
+NOT_RUN: local MSVC/WSL, original-runtime/HE execution, real-map fisher canary, Windows assets/full landing suite.
+QUESTIONs: none blocking this bounded synthetic port; OQ-603 and FISHER-RE-2 remain outside its claim.

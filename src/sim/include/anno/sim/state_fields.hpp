@@ -1753,7 +1753,8 @@ struct StateIO {
             if constexpr (A::kReading) {
                 if (!a.failed()) {
                     rebuild_figure_index(figures);
-                    const std::string problem = validate_figures(figures, ids);
+                    const std::string problem =
+                        validate_figures(figures, ids, extensions.fisher_rules.enabled == 1);
                     if (!problem.empty()) {
                         a.fail(problem);
                     }

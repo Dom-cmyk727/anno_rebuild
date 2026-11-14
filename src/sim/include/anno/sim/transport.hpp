@@ -80,6 +80,8 @@ struct SearchArea {
 /// The area of `b` (footprint at its rotation, radius = the type's action radius,
 /// HEAD[0x11] = type +0x65, AnnoGame 0x10007d90).
 [[nodiscard]] SearchArea search_area(const Building& b, const BuildingType& type);
+/// FISHER-1b: the original wrapping rectangle, without a circular land restriction.
+[[nodiscard]] TileRect fisher_search_area(const Building&, const BuildingType&);
 
 /// What a building has of goods `g` for a figure: the original's slot +0xa4 (docs/re/
 /// transport.md §1.4): a producer's output store minus its reservation (the line of a
@@ -400,7 +402,7 @@ choose_source(const SerialWorld& world, const TypeRegistry& types, std::uint32_t
 [[nodiscard]] std::optional<std::vector<TileXY>>
 path_home(const Island& island, const TypeRegistry& types, const Building& home,
           const BuildingType& home_type, FixedPos from, std::uint32_t layer,
-          WalkPoint* end = nullptr);
+          WalkPoint* end = nullptr, bool fisher = false);
 
 // ---- shared walk helpers (the transport body's own, exported for the harvest body, MAP-ECON-1 E3)
 

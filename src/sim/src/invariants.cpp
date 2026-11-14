@@ -344,7 +344,7 @@ std::string World::check_invariants() const {
         return "ids.next_event_seq: " + std::to_string(ids_.next_event_seq) +
                " is not in 1 .. 2^64 - 1";
     }
-    problem = validate_figures(figures_, ids_);
+    problem = validate_figures(figures_, ids_, fisher_enabled());
     if (!problem.empty()) {
         return problem;
     }

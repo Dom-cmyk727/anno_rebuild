@@ -15,8 +15,8 @@ target_compile_features(anno_sim PUBLIC cxx_std_20)
 anno_target_defaults(anno_sim SANITIZE_NO_RECOVER)
 
 if(ANNO_BUILD_TESTS)
-  add_executable(anno_sim_tests tests/main.cpp tests/sim_test.cpp tests/economy_facts_test.cpp tests/city_booking_test.cpp tests/economy_loop_test.cpp tests/economy_scale_test.cpp tests/freight_state_test.cpp tests/freight_visit_test.cpp tests/freight_lifecycle_test.cpp tests/freight_scale_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/integration_gameplay_test.cpp tests/integration_cross_feature_test.cpp tests/production_test.cpp
-                 tests/archive_test.cpp tests/slot_list_test.cpp tests/scheduler_blocks_test.cpp
+  add_executable(anno_sim_tests tests/main.cpp tests/golden_test.cpp tests/sim_test.cpp tests/economy_facts_test.cpp tests/city_booking_test.cpp tests/economy_loop_test.cpp tests/economy_scale_test.cpp tests/freight_state_test.cpp tests/freight_visit_test.cpp tests/freight_lifecycle_test.cpp tests/freight_scale_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/integration_gameplay_test.cpp tests/integration_cross_feature_test.cpp tests/production_test.cpp
+                 tests/archive_test.cpp tests/extensions_test.cpp tests/slot_list_test.cpp tests/scheduler_blocks_test.cpp
                  tests/container_probe_test.cpp tests/config_test.cpp tests/types_test.cpp
                  tests/player_test.cpp tests/tile_hash_test.cpp tests/island_state_test.cpp
                  tests/create_remove_test.cpp tests/building_state_test.cpp
@@ -41,6 +41,16 @@ if(ANNO_BUILD_TESTS)
                  tests/route_unit_test.cpp
                  tests/route_world_test.cpp
                  tests/route_stamps_test.cpp)
+  # Independent spec oracle generated into the build, never the current fixtures.
+  set(extension_oracle "${CMAKE_CURRENT_BINARY_DIR}/synthetic-extension.txt")
+  add_custom_command(OUTPUT "${extension_oracle}"
+    COMMAND ${Python3_EXECUTABLE} -I "${PROJECT_SOURCE_DIR}/tools/integration_stream_ref.py"
+            --extension-output "${extension_oracle}"
+    DEPENDS "${PROJECT_SOURCE_DIR}/tools/integration_stream_ref.py"
+    VERBATIM)
+  add_custom_target(sim_extension_oracle DEPENDS "${extension_oracle}")
+  add_dependencies(anno_sim_tests sim_extension_oracle)
+  target_compile_definitions(anno_sim_tests PRIVATE ANNO_EXTENSION_ORACLE_FILE="${extension_oracle}")
   # anno_sim_load: the scenario corpus case reads the island templates of the game
   # directory for the link resolver (S14 stage 2).
   target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_sim_load anno_test_support

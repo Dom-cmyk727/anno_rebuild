@@ -1,3 +1,4 @@
+#include "golden.hpp"
 // The type registry, the class table, the name tables and the goods table
 // (docs/sim/state.md §4.4, §14.2, §14.5, Appendices A–C; stage S3). The first
 // half needs no game files: entries are built from bytes. The last cases read
@@ -1562,7 +1563,8 @@ TEST_CASE("registry digest stable") {
     CHECK(sim::TypeRegistry::empty()->digest() == h.value());
     // And the value of an independent Python transcription (tools/sim_stream.py:
     // goods names read from AnnoGame.dll, classes from Appendix C).
-    CHECK(h.value() == 0x804f19da7cae34eeULL); // stream133; independent Python transcription agrees
+    CHECK(anno::test::pin_matches("empty_registry",
+                                  h.value())); // stream133; independent Python transcription agrees
     // Rebuilding gives the same digest; the order types are added in does not matter.
     auto a = sim::synthetic::make_synthetic_types();
     auto b = sim::synthetic::make_synthetic_types();
@@ -1576,15 +1578,15 @@ TEST_CASE("registry digest stable") {
     CHECK(forward.build().value()->digest() == backward.build().value()->digest());
     // The synthetic registry's digest, pinned (a change of the type data, the
     // class or goods tables, or the digest layout moves it).
-    CHECK(a.value().registry->digest() == 0x77d2dd9ed3f484b1ULL);
+    CHECK(anno::test::pin_matches("oracle_synthetic_registry", a.value().registry->digest()));
 }
 
 TEST_CASE("registry digest changes with every field") {
     // 22 since T27: the derived walk_class is the 22nd member. It is NOT in the digest,
     // so it is deliberately absent from the mutation list below ("registry digest
-    // stable" pins the synthetic digest 0x96fbf9c80cb07372 (stream 128: + the empty stage table),
-    // unchanged by T27). T33.2 adds un-hashed walk_mask input; header/digest changes belong to
-    // T33.4.
+    // stable" pins the synthetic digest (retained stream-128 baseline) (stream 128: + the empty
+    // stage table), unchanged by T27). T33.2 adds un-hashed walk_mask input; header/digest changes
+    // belong to T33.4.
     static_assert(sim::field_count<sim::BuildingType>() == 28);
     static_assert(sim::field_count<sim::ProductionType>() == 18);
     sim::BuildingType base;
@@ -1925,8 +1927,8 @@ TEST_CASE("registry builds all 921 entries of Anlagen.dat") {
     // Old direct-build identity855fce5ed63c1090 is preserved at the accepted base.
     // PRM1 independently derived from HEAD and Game research-name pointers:
     // 827rows,22151bytes,SHA256053df2ab...d5fc9, extends b62eba128fce9259.
-    // moved from 0x986b10f94d3725b4 by BuildingType::highmap alone (registry has no figures)
-    CHECK(r.digest() == 0xf0c98731e34fca02ULL);
+    // Changed by BuildingType::highmap alone (registry has no figures).
+    CHECK(anno::test::pin_matches("registry_plain", r.digest()));
     // The growing items (ROHSTWACHS / ROHSTDUERR): grain field 712 and forest 104.
     CHECK(r.find_growing(712) == r.find(sim::TypeId{712}));
     CHECK(r.find_growing(712)->prod.growth_period == 15500);
@@ -2030,7 +2032,9 @@ TEST_CASE("registry digest: a HIGHMAP table (stream 135) matches the independent
     const auto goods = sim::original_goods();
     const auto classes = sim::original_class_table();
     // no table: the digest is the one a stream-134 build computed (nothing is added)
-    CHECK(sim::TypeRegistry::digest_of({&t, 1}, goods, classes) == 0x7adcb2c0d02b1a70ULL);
+    CHECK(anno::test::pin_matches("oracle_registry_highmap_absent",
+                                  sim::TypeRegistry::digest_of({&t, 1}, goods, classes)));
     t.highmap = {1, 2, 3, 4};
-    CHECK(sim::TypeRegistry::digest_of({&t, 1}, goods, classes) == 0x4cbafff0a755efe4ULL);
+    CHECK(anno::test::pin_matches("oracle_registry_highmap_present",
+                                  sim::TypeRegistry::digest_of({&t, 1}, goods, classes)));
 }

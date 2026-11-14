@@ -153,7 +153,7 @@ TEST_CASE("SCRIPT2 repaired native namespace and limits corruptions reach intend
                 at += 8 + static_cast<std::size_t>(
                               (std::uint64_t{anno::formats::u32_le(bad, at)} |
                                (std::uint64_t{anno::formats::u32_le(bad, at + 4)} << 32)));
-            const auto limit = at + 8 + 8 + f.world.script().source.size() + 16;
+            const auto limit = at + 8 + 4 + 8 + f.world.script().source.size() + 16;
             REQUIRE(limit + 4 < bad.size());
             std::fill_n(bad.begin() + static_cast<std::ptrdiff_t>(limit), 4, 0);
         }

@@ -65,9 +65,9 @@ original does. Check while you play:
 - where wide sprites of two neighbours with the same far-corner sum overlap, the one further right on screen is drawn first
   and the left one over it (the tie-break reversed with the mirror; the original's order is not traced, OQ-026 c).
 
-The Kontor still looks set on the ground rather than into it (its road too, and its piles stand out of the water): the
-original depth-tests every sprite pixel against the terrain and the water, this renderer draws sprites whole on top. That is
-W4-DEPTH-1, not in this build.
+The Kontor's piles and its land-side wall now end in the bank and under the water, as in the original: this build tests
+every sprite pixel's depth against the terrain and the water (W4-DEPTH-1, `docs/render/depth.md`; `--depth off` gives the
+former picture, with the sprites drawn whole on top). The "Depth checks" below say what to look at.
 
 `Space` pauses the sim and the water; the title then starts with `PAUSED (Space resumes)`.
 
@@ -96,6 +96,30 @@ The founding and unload numbers are advisory ("would move 5 t"): the sim decides
 5. `Esc` twice, `B`, press `N` / `Shift+N` until the title says `build 1001 (3x3, 300 gold)` (HANDWERK) or `501`
    (PIONIER), click land near the warehouse (for example `(251,137)` and `(250,141)`). Gold 29 350 after HANDWERK.
 6. `F5`, quit, and later start with `-Resume .\saves\quicksave-seat0.sav`.
+
+## Depth checks (W4-DEPTH-1, DEPTH-INTEGRATE-1; docs/render/depth.md)
+
+**This build has the depth on and the original's water level, both by default** (owner decisions, 2026-11-13, from
+your playtest of the ship-start Kontor at `(255,138)`: "sea level needs to be raised" and "you can see the left side
+of the building, that also needs to be embedded into the ground just like the side to the back"). Nothing to turn
+on; `--depth off` and `--shore 16.5` are comparison switches only, kept for before/after.
+
+Look at a Kontor on a coast (your founded one, or `--view Scenes/0100Kampagne01/S01_02_01.sze --at 421,605`):
+1. Its land-side wall and the feet of its piles end in the sloping bank; nothing of it stands on top of the sand.
+2. Where the water reaches the piles, their lower parts show the water's checkerboard over them.
+3. Grass, trees and roads behind the Kontor do not draw over it. Roads on a slope: where the ground under a road
+   rises above the road's own height, that part of the road is hidden (the depth rule); say whether that matches the
+   original's roads. Before/after sheets of a road and of a meadow next to a building (`S01_02_01.sze` island 4,
+   `--at 166,416` and `--at 158,410`): `S01_road_1203_sheet.png`, `S01_meadow_1205_sheet.png` in
+   `C:\Users\altin\Pictures\anno-review\W4-DEPTH-1\`.
+4. `--depth off` gives the former picture (piles on top of everything), for comparison.
+5. The water level: the default is 26.5, the original's measured plane (the water covers the beach up to about 27).
+   Compare with `--shore 16.5`, the default before. Wide beaches show blocky water edges at 26.5 (the sea regions'
+   8×8-tile blocks): a per-pixel sea edge is SHORE-2, queued, not fixed yet.
+6. Your own case, at the ship-start Kontor `(255,138)` (candidate A, seat 0): depth off/on and shore 16.5/26.5, each
+   at the same camera position, in `C:\Users\altin\Pictures\anno-review\DEPTH-INTEGRATE-1\`
+   (`kontor_depth-on_shore-26.5_default.png` is this build's own default). Look at where the piles meet the water and
+   where the land-side and left walls meet the ground, as you asked.
 
 ## Known limits (say so rather than guess)
 

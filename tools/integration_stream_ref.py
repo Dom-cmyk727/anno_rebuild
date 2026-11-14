@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent populated ECONBK1/138 field-order/hash oracle; no C++ output is read.
+"""Independent populated ECONBK1/139 field-order/hash oracle; no C++ output is read.
 
 The record combines native header, two raw permission rows, a sparse actor
 registry (ship37 -> crew2 -> donkey7, animal8), and a nontrivial script runtime.
@@ -83,6 +83,10 @@ def building(serial,kind,x,y,tag,payload):
     # Complete Building wrapper: id, type, tile, rotation, byte0e/0f, kontor, payload tag + fields.
     return u64(serial)+u32(kind)+pack('2i',x,y)+bytes([0,0x86,0])+u32(0)+u8(tag)+payload
 
+def section_bytes(base):
+    # state.md §9.7: base version1 and no registered extensions.
+    return u32(1)+base+u64(0)
+
 def records():
     spec=importlib.util.spec_from_file_location('published128',ROOT/'fixtures/synthetic/sim/integrate1/legacy/published128/tools/sim_stream.py')
     old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
@@ -112,12 +116,29 @@ def records():
     # The three top-level scopes contribute their child digests to the encompassing root.
     world=raw+mine_building+quarry_building
     world_hash=fnv(u64(fnv(hierarchical))+u64(fnv(mine_building))+u64(fnv(quarry_building)))
-    return {'header':(u32(138)+b'ECONBK1\0'+u32(5),None),
+    return {'header':(u32(139)+b'ECONBK1\0'+u32(5),None),
             'player':(old.player_bytes(old.new_player(0))+u64(2)+pack('4I',70001,0,90001,255),None),
             'figures':(raw,fnv(hierarchical)), 'script':(script(),None),
+            'figures_section':(section_bytes(raw),fnv(section_bytes(hierarchical))),
+            'script_section':(section_bytes(script()),None),
             'accounts':(u16(65000)+pack('5Q',0x0102030405060708,105,210,4294967313,28),None),
             'economy':(economy,None),'goods_registry':(goods,None),
             'mine':(mine(),None),'quarry':(quarry(),None),'world':(world,world_hash)}
+
+def synthetic_extension_record():
+    # state.md §9.8, independently authored: empty figure base + one six-byte payload.
+    base=pack('qI',-1,0)+u64(1)+u8(0)+u16(0)+u64(0)
+    hierarchical=pack('qI',-1,0)+u64(1)+u64(fnv(u8(0)))+u16(0)+u64(0)
+    payload=u16(0x1234)+u32(0x89ab)
+    prefix=u64(1)+u16(0xf001)+u32(6)
+    raw=u32(1)+base+prefix+payload
+    digest=fnv(u32(1)+hierarchical+prefix+u64(fnv(payload)))
+    return raw,digest
+
+def synthetic_extension_fixture():
+    data,digest=synthetic_extension_record()
+    return f'synthetic_figures {data.hex()} {digest:016x}\n'
+
 
 def fixture():
     return '# Independent ECONBK1 structural scopes: name hex hierarchical_fnv64\n'+''.join(
@@ -125,7 +146,31 @@ def fixture():
         for name,(data,digest) in records().items())
 
 class Contracts(unittest.TestCase):
-    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8a00000045434f4e424b310005000000')
+    def test_identity_literal(self):
+        module=importlib.util.spec_from_file_location('identity_version',ROOT/'tools/sim_stream.py')
+        current=importlib.util.module_from_spec(module);module.loader.exec_module(current)
+        header=records()['header'][0]
+        self.assertEqual(header[:4],u32(current.STATE_HASH_VERSION))
+        self.assertEqual(header[4:].hex(),'45434f4e424b310005000000')
+    def test_synthetic_extension_envelope(self):
+        data,digest=synthetic_extension_record()
+        self.assertEqual(len(data),55)
+        self.assertEqual(data[35:43],u64(1))
+        self.assertEqual(data[43:49],u16(0xf001)+u32(6))
+        self.assertEqual(data[-6:].hex(),'3412ab890000')
+        # Omitting the payload child scope is distinguishable from the spec.
+        base=pack('qI',-1,0)+u64(1)+u64(fnv(u8(0)))+u16(0)+u64(0)
+        wrong=fnv(u32(1)+base+data[35:])
+        self.assertNotEqual(digest,wrong)
+
+    def test_section_envelopes(self):
+        for name in ('figures','script'):
+            raw=records()[name][0]; framed=records()[name+'_section'][0]
+            self.assertEqual(framed[:4],u32(1))
+            self.assertEqual(framed[4:-8],raw)
+            self.assertEqual(framed[-8:],u64(0))
+            self.assertNotEqual(fnv(framed),fnv(raw))
+
     def test_sparse_registry_has_combined_actors(self):
         self.assertGreater(len(records()['figures'][0]),1000)
         self.assertNotEqual(records()['figures'][1],fnv(records()['figures'][0]))
@@ -144,8 +189,12 @@ class Contracts(unittest.TestCase):
             path=Path(td)/'fields.txt';path.write_text(fixture())
             command=[sys.executable,'-I',str(Path(__file__).resolve()),'--fixture',str(path)]
             result=subprocess.run(command,capture_output=True,text=True)
-            self.assertEqual(result.returncode,0);self.assertIn('10 populated combined scopes agree',result.stdout)
-            path.write_text(fixture().replace('8a000000','89000000',1))
+            self.assertEqual(result.returncode,0);self.assertIn('12 populated combined scopes agree',result.stdout)
+            header=records()['header'][0]
+            wrong=bytes([header[0]^1])+header[1:]
+            changed=fixture().replace('header '+header.hex()+' ','header '+wrong.hex()+' ',1)
+            self.assertNotEqual(changed,fixture()) # prove the negative replacement applied
+            path.write_text(changed)
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
             path.unlink();result=subprocess.run(command,capture_output=True,text=True)
@@ -177,12 +226,14 @@ class Contracts(unittest.TestCase):
         self.assertNotEqual(records()['world'][0],records()['world'][0].replace(right,right[:-2]+bytes([0,0]),1))
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);p.add_argument('--extension-output',type=Path);a=p.parse_args()
+    if a.extension_output:
+        a.extension_output.write_text(synthetic_extension_fixture());return 0
     if a.self_test:return 0 if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)).wasSuccessful() else 1
-    path=a.fixture or ROOT/'fixtures/synthetic/sim/integrate2/current138/populated_fields.txt'
+    path=a.fixture or ROOT/'fixtures/synthetic/sim/current/populated_fields.txt'
     if a.write:path.write_text(fixture());return 0
     try: actual=path.read_text()
     except OSError as error: print('fixture unavailable: '+str(error));return 1
     if actual!=fixture():print('combined oracle differs');return 1
-    print('10 populated combined scopes agree');return 0
+    print('12 populated combined scopes agree');return 0
 if __name__=='__main__':raise SystemExit(main())

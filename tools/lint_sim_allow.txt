@@ -156,3 +156,8 @@ src/sim/src/city_booking.cpp:constexpr std::uint64_t kBias  # exact 2^63 offset 
 src/sim/include/anno/sim/mason.hpp:inline constexpr std::uint32_t kMasonMask  # the BuildingIndex list mask of the mason's collector query, `push 8` (D AnnoWelt 0x10059ccf); a fact of the original
 src/sim/include/anno/sim/mason.hpp:inline constexpr std::uint32_t kQuarryStock88  # a quarry's constant stock answer, 1 t in 8.8 (D AnnoWelt 0x100708a0 `mov eax, 0x100`)
 src/sim/include/anno/sim/mason.hpp:inline constexpr std::uint32_t kMasonTripCredit88  # cargo credit of a mason trip, 1 t in 8.8 (D AnnoWelt 0x10055462)
+
+# --- extension_context.hpp (SAVE-SECTIONS-1b)
+# Compile-time type-pack length used to size the schema identity array; derived
+# from registered types, never saved state or a gameplay/content limit.
+src/sim/include/anno/sim/extension_context.hpp:static constexpr std::size_t size = sizeof\.\.\.\(E\);  # schema type-pack length, not state or a fixed content count

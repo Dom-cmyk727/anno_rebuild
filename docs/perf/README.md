@@ -444,7 +444,7 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 ### 2026-10-21 - T1f item 2: exact shortcuts in the field and terrain stages (branch task/T1f-chunk-build-speed, 9b14840 for the numbers; 84ec121 adds only tests and named constants)
 
 **What changed.** Every output byte is identical: the digests are unchanged, and there is a golden digest from before the change in CI. Exactness was the owner's condition; the proof is in `docs/render/iso.md` "Water field: empty cells".
-- **Empty cells:** once per island, the tiles whose every position provably gets the empty water-field texel (no river nearby, and no sea in the block or every spline corner ≥ 31.1; 31.6 since the default shore moved to 16.5 on 2026-11-03, the same whole-number corners) are marked, and `water_field` writes the empty texel there without evaluating it. On the game's islands 37 % of all tiles are empty.
+- **Empty cells:** once per island, the tiles whose every position provably gets the empty water-field texel (no river nearby, and no sea in the block or every spline corner ≥ 31.1; 31.6 since the default shore moved to 16.5 on 2026-11-03, the same whole-number corners; 41.6 since it moved to 26.5 on 2026-11-04, corners ≥ 42) are marked, and `water_field` writes the empty texel there without evaluating it. On the game's islands 37 % of all tiles are empty; 34.6 % at the shore of 26.5 (4,090,628 of 11,825,152 tiles of 458 files, `water field: empty cells hold on every island`), so 3.8 % more tiles are evaluated. Timed with `bench_frame --chunk-profile 1,16 --groups 0,1,2 --shore 16.5|26.5` on `D_256x256_0045_5B` (three runs each, alternating, 2026-11-04, 57–64 % background load from other sessions): the warm sea-field stage per land chunk, medians, 16.5 against 26.5: group 0 9.11 / 7.65 ms (1 thread), 15.14 / 14.37 ms (16 threads); group 1 13.27 / 13.98, 21.21 / 26.63; group 2 6.49 / 7.76, 11.37 / 15.94. The runs of one setting spread by 20–30 % and the differences change sign, so no difference is resolved at that load; to be re-run on an idle machine (`cache/depth/shore-bench/`).
 - **Noise:** `height_noise` without the second noise plane, whose weight is exactly 0 at the integer z it uses.
 - **Samplers:** `smooth_height` and the noise sampled through per-tile and per-cell caches, with the same arithmetic.
 - **Terrain:** built per tile (`terrain_plane`) instead of `terrain_at` per pixel.
@@ -2274,3 +2274,93 @@ which does not exist yet; that is new tooling, not something this run's own log 
     this branch and failed once (`CMake Error: Not a file` - deleted mid-run while correcting the
     branch placement, not a real defect); `build/msvc-peak` was reconfigured afterward and the test
     no longer appears. The 2384-test counts above are post-correction.
+
+### 2026-11-13 - ZOOM-MEASURE-1: `--zoom-sweep` reads the compositor's own readiness counters, Windows 11, Ryzen 9 9800X3D, MSVC Release, RTX 4090 and the Radeon iGPU, branch task/ZOOM-MEASURE-1
+
+`bench_frame <game> <file> --renderer gpu --limits interactive --derived 3 --groups 0,1,2 --styles
+<style> --res <WxH> --zoom-sweep <s> [--zoom-sweep-mode legs|wheel|pan|zoompan] [--zoom-sweep-wheel-rate n]
+[--zoom-sweep-pan-px n] [--zoom-sweep-warm] [--zoom-sweep-skip n]` (extended, not a new tool, per
+docs/render/zoom-smoothness.md step 1): every frame's `GpuStats` already carried
+`chunks_missing`/`stand_in_parts`/`chunks_fading`/`open_sea_chunks`/`fluid_fade`/`fluid_windows` (the
+same fields the window's own per-second report reads); the sweep now keeps them per frame and prints,
+per zoom level and as one overall line, non-ready frames, the most chunks missing at once, stand-in
+draws, dissolves, open-sea draws, frames inside a wave cross-fade, wave-window switches, and frames
+over the 2 ms (500 Hz) busy budget alongside the existing busy-time percentiles. `<file>` now also
+accepts a `.txt` fixed map or a `.json` ship-start manifest (routed through `app::load_play`/
+`app::load_opening`, the same loaders the real window uses, then `app::load_placed_scene` - no
+placement or template-resolution logic duplicated). Four sweep modes: `legs` (today's continuous
+log-interpolated zoom with a 300 px/s pan, unchanged default), `wheel` (discrete human-rate notches,
+no pan, anchored off-centre), `pan` (one fixed zoom level the whole sweep, a fast reversing pan, no
+zoom change - `--zoom-sweep-pan-px 0` is a true camera-at-rest control), `zoompan` (legs' continuous
+zoom at the fast pan speed, "a zoom during a pan"). `--zoom-sweep-warm` runs the whole sweep once,
+unmeasured, on the same `FrameRenderer` before the measured pass (an "everything resident" control);
+`--zoom-sweep-skip n` drops the measured pass's own first n frames from every aggregate.
+
+**Baseline** (RTX 4090, 2560 x 1369, enhanced water unless noted, 1 s/leg for the new modes, 6 s/leg
+for `legs` per the existing T3 convention; "frames>2ms" counts, after 4 warm-up frames are excluded
+where the contract below applies):
+
+| map | mode | frames | non-ready frames | most missing at once | stand-in draws | dissolves | open-sea draws | wave switches | busy p50 / p99 / max (ms) | frames > 2 ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| lan5.txt | legs | 12000 | 431 | 44 | 26616 | 13304 | 2313 | 93 | 0.66 / 2.50 / 11.88 | 329 |
+| lan5.txt | wheel (8/s) | 2000 | 593 | 41 | 35393 | 15706 | 9991 | 38 | 1.29 / 4.10 / 11.35 | 387 |
+| lan5.txt | pan (1200 px/s) | 2000 | 57 | 28 | 37 | 1305 | 2175 | 1 | 0.48 / 1.62 / 11.45 | 17 |
+| lan5.txt | zoompan (1200 px/s) | 2000 | 823 | 64 | 45485 | 17301 | 12725 | 32 | 1.40 / 4.29 / 11.55 | 509 |
+| ship-start (`lan5-ship-a.json`) | legs | 12000 | 448 | 37 | 27243 | 12977 | 2149 | 93 | 0.68 / 2.55 / 11.53 | 305 |
+| ship-start | wheel (8/s) | 2000 | 881 | 46 | 40802 | 15837 | 13603 | 43 | 1.36 / 4.56 / 11.78 | 424 |
+| ship-start | pan (1200 px/s) | 2000 | 46 | 24 | 0 | 1361 | 1956 | 1 | 0.46 / 1.58 / 11.74 | 12 |
+| ship-start | zoompan (1200 px/s) | 2000 | 827 | 59 | 44601 | 16038 | 13710 | 27 | 1.38 / 4.24 / 11.48 | 472 |
+| lan5.txt, 1280x800 | legs | 12000 | 84 | 7 | 911 | 605 | 378 | 90 | 0.42 / 1.45 / 9.88 | 55 |
+| lan5.txt, original water | legs | 12000 | 537 | 44 | 29634 | 15797 | 2266 | 0 | 0.72 / 2.82 / 10.85 | 376 |
+| lan5.txt, Radeon iGPU, 1280x800 | legs | 12000 | 10 | 6 | 110 | 97 | 44 | 90 | 0.39 / 1.45 / **37.12** | 24 |
+
+Every one of these is a real camera sweep; none reaches 0. Original water still shows 537 non-ready
+frames (0 wave switches, as expected: it has no wave simulation) - the readiness problem is RC1
+(chunk build/upload/dissolve latency), not RC3 (the water), and persists without it. The iGPU's
+single worst frame (`under` 36.0 ms, group 1 scale 0.63 - an offscreen-sea-target resize) is far
+worse than the 4090's despite fewer total misses, confirming RC4's separate window-thread-spike
+story on weaker hardware. This is a representative subset of the packet's full map x water x
+resolution x adapter x mode cross product (24+ combinations), not an exhaustive run of all of it -
+see Decisions and reasoning in the REPORTS entry for why, and the scope that was cut.
+
+**The "everything resident" control** (`tools/test/zoom_sweep_contract.py --control`: `--zoom-sweep-mode
+pan --zoom-sweep-pan-px 0 --zoom-sweep-warm`, lan5.txt, 2560x1369, enhanced water, 20 warm-up frames
+excluded): non-ready frames 0, stand-in draws 0, dissolves 0, open-sea draws 0, wave switches 0,
+busy p50 0.47 / p99 0.89 / max 2.34 ms, **2 of 1980 frames (0.1%) still over the 2 ms budget** -
+stable across reruns with nothing else on the machine, so GPU/driver submission jitter unrelated to
+content readiness (RC4's story, not RC1-3's), not a flaw in the control: every *readiness* counter
+the contract checks is exactly 0, proving the contract's readiness criteria are reachable, not
+structurally impossible to pass.
+
+**The contract** (`tools/test/zoom_sweep_contract.py`, ADR 0007 decision 8's acceptance test - 0
+non-ready chunks, 0 stand-ins, 0 dissolves, 0 open-sea draws, a 2 ms busy budget, 4 warm-up frames
+excluded): fails today on every real sweep profile above (not relaxed); the control above shows its
+readiness criteria are reachable. Not wired into CTest in this packet (a currently-and-correctly-
+failing test registered to CTest would turn `gate` red for every future commit until ZOOM-SMOOTH-1 -
+run manually for this evidence instead; see the REPORTS entry).
+
+**The window-event hitch** (`ANNO_VIEW_HITCH_MS=5 anno1503.exe --play data/maps/lan5.txt --renderer
+gpu`, a real window, manually dragged and maximised/restored): a 106.0 ms hitch with **96.7 ms of it
+inside "handling window events"** (`events_ms_`, the `while (SDL_PollEvent(&e)) handle(e);` loop,
+`viewer.cpp`), confirming zoom-smoothness.md §5's suspected mechanism - SDL's blocking poll inside
+Windows' modal move/resize loop - directly: the stall is in the event pump itself, not in any
+render step. A separate 17.9 ms hitch on restore-from-maximised spent 15.98 ms in "surface
+configure" (the swapchain rebuild RC4 names). Not fixed here (ZOOM-SMOOTH-1).
+
+## W4-DEPTH-1 — per-pixel depth (2026-11-04)
+
+What the depth adds (docs/render/depth.md): per object draw one integer test per pixel and a write; per chunk the
+depth target from the terrain plane (one i32 per pixel, built on the builder thread; the GPU keeps it in a register of
+the compute pass) and the submerged plane (u8 per pixel, uploaded as an `R8Uint` plane only where a pixel is
+submerged, and for every GpuList chunk with depth); the chunk atlas a parallel `R8Uint` z plane (+25 % of the static
+atlas's bytes); with Original water one more full-chunk fragment pass (`sea_submerged_fs`, discarding everywhere but
+the submerged pixels); in the headless `Scene::render` one more ground probe for the objects' target.
+
+Measured (Windows 11, Ryzen 9800X3D, MSVC Release, `anno1503 --view Single_24.sze --png --group 0 --size 3000x2000`,
+two runs each, alternating, nothing else of this session running): `--depth off` 31.9 s and 29.3 s, `--depth on`
+36.0 s and 35.1 s (+16 % in total; how it splits between the extra ground probe of the headless path, which the
+viewer's chunks do not need, and the per-pixel test was not measured).
+
+NOT measured (the owner was using the PC for a game, 2026-11-04): the chunk build per stage (`bench_frame
+--chunk-profile ... --depth on|off`), the GPU frame time of the extra pass (`bench_frame --renderer gpu --depth
+on|off`), the atlas growth. To be measured on an idle host before the package is accepted for performance.

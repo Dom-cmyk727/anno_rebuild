@@ -21,6 +21,9 @@ class Workflow(unittest.TestCase):
         cls.source = Path(cls.tmp.name)
         cls.build = cls.source / "build"
         (cls.source / "src").mkdir()
+        fixture = cls.source / "fixtures/synthetic/pins.txt"
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text("before")
         cls.env = dict(os.environ)
         cls.env.pop("ANNO1503_GAME_DIR", None)
         (cls.source / ".gitignore").write_text("build/\nlogs/\n*.run.lock/\n")
@@ -38,11 +41,13 @@ if mode == "asset": print("/t.cpp:1: MESSAGE: ANNO1503_GAME_DIR not set: skipped
 if mode == "gpu": print("/t.cpp:1: MESSAGE: skipping: no GPU adapter")
 if mode == "asan": print("ERROR: AddressSanitizer: heap-use-after-free")
 if mode == "cmake_skip": print("skipping: ANNO1503_GAME_DIR not set")
-if mode == "mutate": (pathlib.Path(marker).parent.parent / "changed.txt").write_text("changed")
+if mode in ("record", "record_and_mutate"):
+    (pathlib.Path(marker).parent.parent / "fixtures/synthetic/pins.txt").write_text("after")
+if mode in ("mutate", "record_and_mutate"): (pathlib.Path(marker).parent.parent / "changed.txt").write_text("changed")
 sys.exit(1 if mode == "failure" else 0)
 ''')
         cmake = 'cmake_minimum_required(VERSION 3.25)\nproject(Gate NONE)\nenable_testing()\n'
-        for mode in ["pass", "empty", "asset", "gpu", "asan", "failure", "missing_summary", "cmake_skip", "mutate"]:
+        for mode in ["pass", "empty", "asset", "gpu", "asan", "failure", "missing_summary", "cmake_skip", "mutate", "record", "record_and_mutate"]:
             cmake += ('add_test(NAME ' + mode + ' COMMAND "' + Path(sys.executable).as_posix()
                       + '" "${CMAKE_SOURCE_DIR}/case.py" ' + mode
                       + ' "${CMAKE_BINARY_DIR}/' + mode + '.ran" --test-case=' + mode + ')\n')
@@ -59,6 +64,7 @@ sys.exit(1 if mode == "failure" else 0)
                 raise RuntimeError(p.stdout + p.stderr)
 
     def setUp(self):
+        self.env = dict(type(self).env)
         self.log = self.source / "logs" / (self.id().split(".")[-1] + ".log")
         for p in self.build.glob("*.ran"):
             p.unlink()
@@ -69,6 +75,45 @@ sys.exit(1 if mode == "failure" else 0)
                    "--timeout", "15", "--config", "Release", *extra]
         return subprocess.run(command, cwd=self.source, env=self.env, capture_output=True,
                               text=True, timeout=45)
+
+    def test_record_fixture_is_explicit_and_records_hashes(self):
+        self.env["ANNO_UPDATE_GOLDEN"] = "1"
+        self.env.pop("CI", None)
+        fixture = self.source / "fixtures/synthetic/pins.txt"
+        before = fixture.read_text()
+        try:
+            p = self.invoke("^record$", "--record-fixture", str(fixture))
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertIn('"recording_before":', self.log.read_text())
+            self.assertIn('== recording_after', self.log.read_text())
+            self.assertEqual(fixture.read_text(), "after")
+        finally:
+            fixture.write_text(before)
+
+    def test_record_does_not_allow_code_mutation(self):
+        self.env["ANNO_UPDATE_GOLDEN"] = "1"
+        self.env.pop("CI", None)
+        fixture = self.source / "fixtures/synthetic/pins.txt"
+        before = fixture.read_text()
+        try:
+            p = self.invoke("^record_and_mutate$", "--record-fixture", str(fixture))
+            self.assertEqual(p.returncode, 9, p.stdout + p.stderr)
+        finally:
+            fixture.write_text(before)
+            (self.source / "changed.txt").unlink(missing_ok=True)
+
+    def test_record_requires_local_update_mode(self):
+        self.env.pop("ANNO_UPDATE_GOLDEN", None)
+        self.assertEqual(self.invoke("^record$", "--record-fixture", "fixtures/synthetic/pins.txt").returncode, 5)
+
+    def test_record_refused_in_ci(self):
+        self.env.update(ANNO_UPDATE_GOLDEN="1", CI="1")
+        self.assertEqual(self.invoke("^record$", "--record-fixture", "fixtures/synthetic/pins.txt").returncode, 5)
+
+    def test_record_cannot_exclude_source(self):
+        self.env["ANNO_UPDATE_GOLDEN"] = "1"
+        self.env.pop("CI", None)
+        self.assertEqual(self.invoke("^pass$", "--record-fixture", "case.py").returncode, 5)
 
     def test_pass_records_inventory_and_provenance(self):
         p = self.invoke()

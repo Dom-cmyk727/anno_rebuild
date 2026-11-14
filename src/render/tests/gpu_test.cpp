@@ -89,9 +89,10 @@ struct Loaded {
     std::unique_ptr<render::Scene> scene;
 };
 
-/// The Scene of scenario `name` with its ships and soldiers (as
+/// The Scene of scenario `name` (in Scenes/`folder`) with its ships and soldiers (as
 /// render_corpus_test's scene renders).
-Loaded load_scene(const std::filesystem::path& dir, const char* name) {
+Loaded load_scene(const std::filesystem::path& dir, const char* name,
+                  const char* folder = "0200Single") {
     Loaded out;
     const auto felder_buf = anno::test::read_file(dir / "Textures" / "Felder.tex");
     out.anl_buf = anno::test::read_file(dir / "Anlagen.dat");
@@ -109,7 +110,7 @@ Loaded load_scene(const std::filesystem::path& dir, const char* name) {
             vols[g].insert(vols[g].end(), d.begin(), d.end());
         }
     }
-    out.buf = anno::test::read_file(dir / "Scenes" / "0200Single" / name);
+    out.buf = anno::test::read_file(dir / "Scenes" / folder / name);
     const auto& buf = out.buf;
     auto anlagen = anno::formats::anlagen::AnlagenFile::parse(anl_buf).value();
     const auto felder = anno::formats::tex::TexFile::parse(felder_buf).value();
@@ -1365,6 +1366,70 @@ TEST_CASE("enhanced water: ships sit in the water, only at the hull bottom (game
     CHECK(a.value()->errors() == 0);
 }
 
+TEST_CASE("the sea over submerged objects: GPU = CPU on a Kontor in the water (game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    // The Kontor of S01_02_01 at tile (421, 605) (rotation 1, its piles towards the sea): with
+    // depth its object pixels behind the sea plane are submerged, and Original water draws the
+    // sea over them after the objects, on the CPU (FrameRenderer::render) and on the GPU
+    // (sea_submerged_fs). Within 1 per channel at the default shore (the original's plane, 26.5)
+    // and at 16.5 (the default of 2026-11-03), with submerged pixels in view (not vacuous); depth
+    // off draws a different picture.
+    const Loaded loaded = load_scene(*dir, "S01_02_01.sze", "0100Kampagne01");
+    auto& scene = *loaded.scene;
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    constexpr int kW = 640, kH = 400;
+    const auto [cx, cy] = render::tile_top(421, 605, 0);
+    const render::Rect view{cx - kW / 2, cy - kH / 2, kW, kH};
+    std::vector<std::uint8_t> with_depth;
+    for (const auto& [shore, depth] :
+         {std::pair{render::kShoreHeight, true}, std::pair{16.5F, true},
+          std::pair{render::kShoreHeight, false}}) {
+        CAPTURE(shore);
+        CAPTURE(depth);
+        scene.shore_height = shore;
+        scene.depth_test = depth;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE(made);
+        gpu::GpuFrame& g = *made.value();
+        const auto target = g.offscreen_target(kW, kH);
+        render::FrameRenderer cpu(4), on_gpu(4, false);
+        std::vector<std::uint32_t> out(std::size_t{kW} * kH);
+        cpu.render(scene, view, 0, 0, render::WaterStyle::Original, out.data());
+        const auto st =
+            g.render(on_gpu, scene, view, 0, 0, render::WaterStyle::Original, target.second.get());
+        CHECK(st.chunks_missing == 0);
+        const auto px = g.read_back(target.first.get(), kW, kH);
+        const auto [max, differ] = difference(out, px);
+        INFO("max " << max << ", " << differ << " pixels > 2");
+        CHECK(max <= 1);
+        std::size_t submerged = 0;
+        for (const auto& [kx, ky] : render::visible_chunks(view)) {
+            if (const render::Chunk* c = cpu.chunk({0, kx, ky})) {
+                for (const std::uint8_t v : c->submerged) {
+                    submerged += v;
+                }
+            }
+        }
+        MESSAGE("shore " << shore << (depth ? " depth" : " no depth") << ": " << submerged
+                         << " submerged pixels in view");
+        if (depth) {
+            CHECK(submerged > 0);
+            if (shore == render::kShoreHeight) {
+                with_depth = px;
+            }
+        } else {
+            CHECK(submerged == 0);
+            CHECK(px != with_depth);
+        }
+        CHECK(g.errors() == 0);
+    }
+}
+
 TEST_CASE("enhanced water meets objects standing in it (game files)") {
     const auto dir = anno::test::game_dir();
     auto ctx = device_or_skip();
@@ -1374,42 +1439,50 @@ TEST_CASE("enhanced water meets objects standing in it (game files)") {
     // A river mouth of Single_01 with rocks in the water (tile 274, 447):
     // the same frame with and without object_waterline differs with
     // enhanced water (rock bases sink in) and is identical with original
-    // water; no GPU errors.
+    // water; no GPU errors. With the per-pixel depth (depth.md) the rocks'
+    // feet are hidden by the bank and the river bed before the shading sees
+    // them, so fewer pixels change: measured once without depth (the bar of
+    // the effect, > 100) and once with it (still some).
     const Loaded loaded = load_scene(*dir, "Single_01.sze");
     const auto& scene = loaded.scene;
-    gpu::GpuLimits on, off;
-    on.uploads_per_frame = off.uploads_per_frame = SIZE_MAX;
-    off.object_waterline = false;
-    auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, on);
-    auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
-    REQUIRE(a);
-    REQUIRE(b);
-    constexpr int kW = 640, kH = 400;
-    const auto ta = a.value()->offscreen_target(kW, kH);
-    const auto tb = b.value()->offscreen_target(kW, kH);
-    render::FrameRenderer fa(4, false), fb(4, false);
-    const auto [cx, cy] = render::tile_top(274, 447, 0);
-    const render::Rect view{cx - kW / 2, cy - kH / 2, kW, kH};
-    for (const auto style : {render::WaterStyle::Enhanced, render::WaterStyle::Original}) {
-        a.value()->render(fa, *scene, view, 0, 2000, style, ta.second.get());
-        b.value()->render(fb, *scene, view, 0, 2000, style, tb.second.get());
-        const auto pa = a.value()->read_back(ta.first.get(), kW, kH);
-        const auto pb = b.value()->read_back(tb.first.get(), kW, kH);
-        REQUIRE(pa.size() == pb.size());
-        std::size_t differ = 0;
-        for (std::size_t i = 0; i < pa.size(); i += 4) {
-            differ +=
-                (pa[i] != pb[i] || pa[i + 1] != pb[i + 1] || pa[i + 2] != pb[i + 2]) ? 1U : 0U;
+    for (const bool depth : {false, true}) {
+        CAPTURE(depth);
+        scene->depth_test = depth;
+        gpu::GpuLimits on, off;
+        on.uploads_per_frame = off.uploads_per_frame = SIZE_MAX;
+        off.object_waterline = false;
+        auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, on);
+        auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+        REQUIRE(a);
+        REQUIRE(b);
+        constexpr int kW = 640, kH = 400;
+        const auto ta = a.value()->offscreen_target(kW, kH);
+        const auto tb = b.value()->offscreen_target(kW, kH);
+        render::FrameRenderer fa(4, false), fb(4, false);
+        const auto [cx, cy] = render::tile_top(274, 447, 0);
+        const render::Rect view{cx - kW / 2, cy - kH / 2, kW, kH};
+        for (const auto style : {render::WaterStyle::Enhanced, render::WaterStyle::Original}) {
+            a.value()->render(fa, *scene, view, 0, 2000, style, ta.second.get());
+            b.value()->render(fb, *scene, view, 0, 2000, style, tb.second.get());
+            const auto pa = a.value()->read_back(ta.first.get(), kW, kH);
+            const auto pb = b.value()->read_back(tb.first.get(), kW, kH);
+            REQUIRE(pa.size() == pb.size());
+            std::size_t differ = 0;
+            for (std::size_t i = 0; i < pa.size(); i += 4) {
+                differ +=
+                    (pa[i] != pb[i] || pa[i + 1] != pb[i + 1] || pa[i + 2] != pb[i + 2]) ? 1U : 0U;
+            }
+            INFO((style == render::WaterStyle::Enhanced ? "enhanced" : "original")
+                 << ": " << differ << " pixels differ");
+            if (style == render::WaterStyle::Enhanced) {
+                // Measured on the RTX 4090: 1,928 without depth, 60 with it.
+                CHECK(differ > (depth ? 40U : 100U));
+            } else {
+                CHECK(differ == 0);
+            }
         }
-        INFO((style == render::WaterStyle::Enhanced ? "enhanced" : "original")
-             << ": " << differ << " pixels differ");
-        if (style == render::WaterStyle::Enhanced) {
-            CHECK(differ > 100);
-        } else {
-            CHECK(differ == 0);
-        }
+        CHECK(a.value()->errors() == 0);
     }
-    CHECK(a.value()->errors() == 0);
 }
 
 namespace {

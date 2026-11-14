@@ -235,6 +235,12 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     if (!tok.more())
                         return fail(line_no, "shot: missing value");
                     e.shot = opt_str(tok.take());
+                } else if (key == "align") {
+                    if (!tok.more())
+                        return fail(line_no, "align: missing value");
+                    e.align = tok.take();
+                    if (e.align != "centre")
+                        return fail(line_no, "align: only 'centre' is defined");
                 } else {
                     return fail(line_no, "element: unknown key '" + key + "'");
                 }

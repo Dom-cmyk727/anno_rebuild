@@ -1,3 +1,4 @@
+#include "golden.hpp"
 // MAP-NEEDS-2 N5: the SYNTHETIC MECHANICS FIXTURE hide -> leather -> stall -> households
 // (docs/sim/early-needs.md section 13). It claims NOTHING about hunters producing hides: the
 // hides are a labelled stock written into the city store by the test; everything after the
@@ -153,7 +154,7 @@ TEST_CASE("synthetic mechanics fixture: labelled hides become leather and househ
     CHECK(l.leather_store == 555);
     CHECK(l.leather_taken == 754);
     CHECK(houses_reached(c) == 8);
-    CHECK(c.w.state_hash() == 0x87619a7f52e615e7ULL);
+    CHECK(anno::test::pin_matches("leather_end", c.w.state_hash()));
     std::cerr << "PIN main first_store " << first_store << " hides_store " << l.hide_store << " in "
               << l.hide_in << " consumed " << l.hide_consumed << " made " << l.leather_made
               << " out " << l.leather_out << " loaded " << l.leather_loaded << " cart "

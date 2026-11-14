@@ -1,5 +1,6 @@
 // check_invariants and the hostile loads of cities and buildings: one test per
 // structural fact of docs/sim/state.md §9.6, each also fed through load (stage S6).
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -597,5 +598,102 @@ TEST_CASE("the derived index is sized by the cities the state holds, not by the 
         INFO("load allocated " << scope.bytes() << " bytes");
         CHECK(err == "");
         CHECK(scope.bytes() < (512ULL << 20));
+    }
+}
+
+namespace {
+// Independent save-envelope cursor: these tests mutate the native bytes rather
+// than asking the production section writer to manufacture its own bad input.
+struct SectionRange {
+    std::size_t length_at;
+    std::size_t begin;
+    std::size_t end;
+};
+constexpr std::array<const char*, 10> section_names{
+    "header",  "clock_rng", "settings",        "ids",   "players", "islands",
+    "figures", "events",    "timers_monopoly", "script"};
+std::vector<SectionRange> section_ranges(const std::vector<std::uint8_t>& bytes) {
+    REQUIRE(bytes.size() > 29);
+    REQUIRE(bytes[20] == 0); // original RNG table; no custom-table vector
+    std::size_t at = 21;     // magic, save/stream versions, schema, table kind
+    std::vector<SectionRange> out;
+    for (const auto* name : section_names) {
+        INFO(name);
+        REQUIRE(at + 8 <= bytes.size());
+        std::uint64_t length = 0;
+        for (std::size_t k = 0; k < 8; ++k)
+            length |= std::uint64_t{bytes[at + k]} << (8 * k);
+        REQUIRE(length >= 12); // version + empty extension count
+        REQUIRE(length <= bytes.size() - at - 8);
+        const auto end = at + 8 + static_cast<std::size_t>(length);
+        out.push_back({at, at + 8, end});
+        at = end;
+    }
+    return out;
+}
+} // namespace
+
+TEST_CASE("section versions: all ten native sections refuse another base version") {
+    const sim::World world;
+    const auto good = world.save();
+    const auto loaded = sim::World::load(good, sim::TypeRegistry::empty());
+    REQUIRE(loaded.ok());
+    CHECK(loaded.value().save() == good);
+    CHECK(loaded.value().state_hash() == world.state_hash());
+    const auto ranges = section_ranges(good);
+    REQUIRE(sim::kSectionVersions.size() == section_names.size());
+    for (std::size_t i = 0; i < section_names.size(); ++i) {
+        INFO(section_names[i]);
+        CHECK(sim::kSectionVersions[i].name == section_names[i]);
+        CHECK(sim::kSectionVersions[i].version == 1);
+        REQUIRE(island_test::get32(good, ranges[i].begin) == 1);
+        for (const std::uint32_t version : {0u, 2u}) {
+            auto bad = good;
+            island_test::put32(bad, ranges[i].begin, version);
+            island_test::reseal(bad);
+            const auto result = sim::World::load(bad, sim::TypeRegistry::empty());
+            REQUIRE_FALSE(result.ok());
+            CHECK(contains(result.error(), "section " + std::string(section_names[i]) +
+                                               ": base version " + std::to_string(version) +
+                                               " is not supported (this build reads 1)"));
+            CHECK_FALSE(contains(result.error(), "checksum"));
+        }
+    }
+}
+
+TEST_CASE("section extensions: all ten native sections refuse one unknown tag") {
+    const sim::World world;
+    const auto good = world.save();
+    REQUIRE(sim::World::load(good, sim::TypeRegistry::empty()).ok());
+    const auto ranges = section_ranges(good);
+    for (std::size_t i = 0; i < section_names.size(); ++i) {
+        INFO(section_names[i]);
+        const auto range = ranges[i];
+        for (std::size_t k = range.end - 8; k < range.end; ++k)
+            REQUIRE(good[k] == 0); // the actual empty extension count
+        for (const std::uint16_t tag : {std::uint16_t{0}, std::uint16_t{1}, std::uint16_t{65535}}) {
+            auto bad = good;
+            bad[range.end - 8] = 1; // count one
+            const std::array<std::uint8_t, 9> entry{static_cast<std::uint8_t>(tag),
+                                                    static_cast<std::uint8_t>(tag >> 8),
+                                                    3,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    0xaa,
+                                                    0xbb,
+                                                    0xcc}; // length3 + payload
+            bad.insert(bad.begin() + static_cast<std::ptrdiff_t>(range.end), entry.begin(),
+                       entry.end());
+            const auto length = range.end - range.begin + entry.size();
+            for (std::size_t k = 0; k < 8; ++k)
+                bad[range.length_at + k] = static_cast<std::uint8_t>(length >> (8 * k));
+            island_test::reseal(bad);
+            const auto result = sim::World::load(bad, sim::TypeRegistry::empty());
+            REQUIRE_FALSE(result.ok());
+            CHECK(contains(result.error(), "section " + std::string(section_names[i]) +
+                                               ": unknown extension tag " + std::to_string(tag)));
+            CHECK_FALSE(contains(result.error(), "checksum"));
+        }
     }
 }

@@ -487,7 +487,7 @@ river::RiverMask Scene::river_mask(std::size_t index, const river::RiverConfig& 
     const int rx = river::detail::half_window(static_cast<float>(kTile[0].w), c);
     const int ry = river::detail::half_window(static_cast<float>(kTile[0].h), c);
     std::vector<river::SpriteCover> covers;
-    auto add = [&](const Prepared& p, river::SpriteCover::Kind kind, bool depth_test) {
+    auto add = [&](const Prepared& p, river::SpriteCover::Kind kind, bool test_terrain) {
         river::SpriteCover s;
         s.kind = kind;
         s.height = p.first.height();
@@ -505,7 +505,7 @@ river::RiverMask Scene::river_mask(std::size_t index, const river::RiverConfig& 
         // iso mapping needed): its island-local pixel at zoom group 0.
         const std::vector<river::detail::CellPixel> proj = river::detail::project_cells(
             iw->heights, iw->w, iw->h, s.tx0, s.ty0, s.tx1, s.ty1, c, half_w, half_h, lift_px,
-            depth_test, static_cast<float>(s.height) + kRiverTolerance);
+            test_terrain, static_cast<float>(s.height) + kRiverTolerance);
         river::detail::AlphaPlane plane = river::detail::plane_for(proj, rx, ry);
         Canvas local = blank(Rect{plane.x0, plane.y0, plane.w, plane.h});
         auto all = [](int, int, std::uint8_t) { return true; };

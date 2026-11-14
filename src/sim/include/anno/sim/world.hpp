@@ -10,6 +10,7 @@
 // outside: the clock and the PRNG are private with const accessors.
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -17,6 +18,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <anno/formats/result.hpp>
@@ -25,6 +27,7 @@
 #include <anno/sim/config.hpp>
 #include <anno/sim/events.hpp>
 #include <anno/sim/executor.hpp>
+#include <anno/sim/extension_context.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/hash_tree.hpp>
@@ -44,13 +47,9 @@ namespace anno::sim {
 
 struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 
-// Development counter until the stream is complete (stage S15), then FROZEN
-// as 2 (the first released stream). Values 100, 101, ... are development
-// versions: the counter is bumped with every change of the field list (every
-// stage S1..S14 changes it), goldens made at a development version carry the
-// stage and the version they were made at (docs/sim/state.md §14.3), and all
-// of them are re-baselined in the one commit that sets the value to 2. 1 is
-// the legacy core_hash. After S15 every field-list change is version 3, 4, ...
+// Stream framing identity. 139 is the last global state number (ADR 0006).
+// Base layout/default changes move the owning section version below; optional
+// state uses that section's extensions. Historical identities follow.
 // Stream at 100 (stage S1): header (the two versions), clock_rng.
 // Stream at 101 (stage S3): header gains SimConfig, Rules, the registry digest
 // and the seam names; new scope settings.
@@ -179,8 +178,25 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // before resident state. Building Payload tag 9 remains Quarry with its entrance-sized claim set;
 // Mine retains its optional deposit binding. The ECONBK1 schema, replay frame 4, command wire 1,
 // registry digest layout and PRNG timeline 5 are unchanged; no draw site or draw caller is added.
-// Valid 134, 135, 136 and 137 native states and recordings remain historical and are refused.
-inline constexpr std::uint32_t kStateHashVersion = 138;
+// Valid 134 to 138 native states and recordings remain historical and are refused.
+// Stream139 (SAVE-SECTIONS-1a): ten section base versions1 and empty extension
+// lists. The last global framing number; optional state uses §9.8 extension tags.
+inline constexpr std::uint32_t kStateHashVersion = 139;
+
+/// Canonical top-level stream order (docs/sim/state.md §9.3, §9.7).
+struct SectionVersion {
+    std::string_view name;
+    std::uint32_t version;
+};
+inline constexpr std::array kSectionVersions{
+    SectionVersion{"header", 1},          SectionVersion{"clock_rng", 1},
+    SectionVersion{"settings", 1},        SectionVersion{"ids", 1},
+    SectionVersion{"players", 1},         SectionVersion{"islands", 1},
+    SectionVersion{"figures", 1},         SectionVersion{"events", 1},
+    SectionVersion{"timers_monopoly", 1}, SectionVersion{"script", 1}};
+
+static_assert(kSectionVersions.size() == static_cast<std::size_t>(StateSection::Count));
+
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -387,16 +403,16 @@ class World {
     /// Compile-time canary (never called): binds every data member of World.
     /// A member added without extending this line fails to compile here,
     /// which is the reminder to give it a line in fields(World)
-    /// (state_fields.hpp) and to bump kStateHashVersion, so it cannot be left
+    /// (state_fields.hpp) or the extension context, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
         // host_events_, out_, transport_stats_, fault_message_ and route_cache_ are host-facing,
         // freight_work_ is a host counter. All are diagnostic or derived, deliberately not in the
         // field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
-                                      rules_member, seams_member, script_member, types_member,
-                                      ids_member, players_member, islands_member, figures_member,
-                                      events_member, timers_member, monopoly_member,
+                                      rules_member, seams_member, script_member, extensions_member,
+                                      types_member, ids_member, players_member, islands_member,
+                                      figures_member, events_member, timers_member, monopoly_member,
                                       event750_acc_member, faulted_member, fault_message_member,
                                       host_events_member, out_member, transport_stats_member,
                                       freight_work_member, route_cache_member] = w;
@@ -458,7 +474,8 @@ class World {
     Rules rules_;
     Seams seams_;
     ScriptRuntime script_;
-    RegistryRef types_; // never null, also after a move (types.hpp)
+    ExtensionContext extensions_; // persistent extensions, empty in SAVE-SECTIONS-1b
+    RegistryRef types_;           // never null, also after a move (types.hpp)
     IdCounters ids_;
     PlayerTable players_;
     std::vector<std::optional<Island>> islands_;

@@ -1,4 +1,4 @@
-# Ship hold wire encodings, stream version 138 (task MAP-2, exact cargo).
+# Ship hold wire encodings, stream version 139 (task MAP-2, exact cargo).
 # Written by tools/sim_stream.py --write-holds from the spec alone (no C++): u64 count, then
 # u32 goods, u64 raw amount (1/256 ton) per hold. Columns: name hex fnv64.
 empty 0000000000000000 a8c7f832281a39c5

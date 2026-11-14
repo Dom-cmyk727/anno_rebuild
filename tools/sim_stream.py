@@ -109,6 +109,10 @@ the Figure freight suffix and Extract's mason-only harvest bytes are exercised b
 populated-scope oracle in integration_stream_ref.py. That oracle also covers Quarry tag-9 fields and
 a bound Mine whose reservation equals two carrier reservations. No draw site is added; timeline 5.
 
+Stream139 (SAVE-SECTIONS-1a): each of the ten top-level sections begins with
+u32 base version1 and ends with u64 extension count0 (state.md §9.7). All object
+substreams, registry digests, schema and PRNG timeline are unchanged.
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -133,7 +137,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 138
+STATE_HASH_VERSION = 139
 PRNG_TIMELINE_VERSION = 5
 
 
@@ -151,6 +155,15 @@ def u64(x): return struct.pack('<Q', x)
 def i64(x): return struct.pack('<q', x)
 def string(s): return u64(len(s)) + s
 def u32s(items): return u64(len(items)) + b''.join(u32(x) for x in items)
+
+
+def section_bytes(base):
+    """§9.7: u32 base version 1, existing base bytes, u64 empty extension count.
+
+    Base may contain child digests in the hierarchical stream; only top-level
+    sections use this envelope. Registry/object substreams stay unframed.
+    """
+    return u32(1) + base + u64(0)
 
 
 def goods_names():
@@ -416,7 +429,7 @@ def players_digest(stamp, cursor, slots=None):
     slots = slots or {}
     digests = [fnv(u8(1) + player_bytes(slots[i])) if i in slots else fnv(u8(0))
                for i in range(32)]
-    return fnv(u64(32) + b''.join(u64(d) for d in digests) + u16(stamp) + u32(cursor))
+    return fnv(section_bytes(u64(32) + b''.join(u64(d) for d in digests) + u16(stamp) + u32(cursor)))
 
 
 M32 = (1 << 32) - 1
@@ -746,7 +759,7 @@ def islands_digest(by_slot):
     """The islands scope: u64 slot count (highest slot + 1), one child scope per slot
     (an absent slot hashes as the single byte 0)."""
     n = max(by_slot) + 1 if by_slot else 0
-    return fnv(u64(n) + b''.join(u64(by_slot.get(i, fnv(u8(0)))) for i in range(n)))
+    return fnv(section_bytes(u64(n) + b''.join(u64(by_slot.get(i, fnv(u8(0)))) for i in range(n))))
 
 
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
@@ -810,7 +823,7 @@ def figures_digest(stamp=0):
     list (the deferred list left the stream with T22: it never holds a figure, OQ-131).
     Phase B of every advance visits the one slot (clamp(d*1/50, 1, 1) = 1, the cursor
     stays 0) and writes the stamp: the 16-bit tick of the last advance."""
-    return fnv(struct.pack('<q', -1) + u32(0) + u64(1) + u64(fnv(u8(0))) + u16(stamp) + u64(0))
+    return fnv(section_bytes(struct.pack('<q', -1) + u32(0) + u64(1) + u64(fnv(u8(0))) + u16(stamp) + u64(0)))
 
 
 MONOPOLY_MASKS = [0x18000, 0xF009, 0xF949, 0xF06B, 0xF6B9, 0xF04D, 0xF04D]
@@ -845,7 +858,7 @@ def timers_monopoly_digest(last_tick=0, entries=None):
     b = u32(last_tick) + u64(5) + bytes(5) + u64(5) + bytes(20) + u64(28)
     for time_s, player in entries:
         b += u32(time_s) + (u8(0) if player is None else u8(1) + u32(player))
-    return fnv(b)
+    return fnv(section_bytes(b))
 
 
 def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, islands=None,
@@ -868,14 +881,14 @@ def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, island
     acc750 = ms & M32
     acc_monopoly = step_ms if steps > 0 else 0
     # ids (stream 122): next_figure, next_event_seq, next_order_id, next_ticket, then the accumulators
-    ids = fnv(u64(1) + u64(1) + u64(1) + u64(1) + u32(acc750) + u32(acc_monopoly) + u8(0))
-    events = fnv(u64(0))                # no timed events
+    ids = fnv(section_bytes(u64(1) + u64(1) + u64(1) + u64(1) + u32(acc750) + u32(acc_monopoly) + u8(0)))
+    events = fnv(section_bytes(u64(0)))                # no timed events
     t = (ms >> 1) & M32
     figures = figures_digest(t & 0xFFFF if steps > 0 else 0)
     timers = timers_monopoly_digest(t if steps > 0 else 0, monopoly if steps > 0 else None)
-    return fnv(u64(fnv(header)) + u64(fnv(clock_rng)) + u64(fnv(settings_bytes(*world)))
+    return fnv(u64(fnv(section_bytes(header))) + u64(fnv(section_bytes(clock_rng))) + u64(fnv(section_bytes(settings_bytes(*world))))
                + u64(ids) + u64(players) + u64(islands) + u64(figures) + u64(events)
-               + u64(timers) + u64(fnv(script_runtime_bytes(context=context))))
+               + u64(timers) + u64(fnv(section_bytes(script_runtime_bytes(context=context)))))
 
 
 def script_runtime_bytes(source=b'', limits=(1048576,65536,128,100000,4096), namespace=None,
@@ -949,7 +962,7 @@ def values():
 
 def goldens():
     found = {}
-    path = ROOT / 'fixtures/synthetic/sim/integrate2/current138/goldens.txt'
+    path = ROOT / 'fixtures/synthetic/sim/current/goldens.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         parts = line.split('#')[0].split()
         if len(parts) == 4:
@@ -961,7 +974,7 @@ def corpus_versions():
     """(kStateHashVersion, kPrngTimelineVersion) from the version header line of
     fixtures/synthetic/sim/scenario_corpus.txt (written by scenario_test.cpp; its create
     hashes move with both versions), or None when the file has none."""
-    path = ROOT / 'fixtures/synthetic/sim/integrate2/current138/scenario_corpus.txt'
+    path = ROOT / 'fixtures/synthetic/sim/current/scenario_corpus.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         m = re.match(r'# kStateHashVersion=(\d+) kPrngTimelineVersion=(\d+) schema=ECONBK1 component=import-only$', line.strip())
         if m:

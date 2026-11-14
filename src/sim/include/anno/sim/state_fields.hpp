@@ -2,9 +2,11 @@
 // §9.3). For every persistent type T there is exactly one function
 //     template <class A, Same<T> S> void fields(A& a, S& s)
 // naming its fields in canonical order; hash, save and load all run it, so a
-// field cannot be saved and not hashed. Adding a field is one line at the end
-// of its function plus a kStateHashVersion bump and re-baselined goldens in
-// the same commit.
+// field cannot be saved and not hashed. Since framing139 (ADR 0006), a base
+// layout/default change moves its section version; optional state belongs in
+// tagged extensions. Re-baseline pins explicitly for a base change (§9.7).
+// Every top-level section starts with its base version and ends with an
+// extension count; these envelopes are shared by all four archives.
 //
 // Stream at kStateHashVersion 116 (task MAP-2), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
@@ -69,6 +71,7 @@
 #include <anno/sim/config.hpp>
 #include <anno/sim/create.hpp>
 #include <anno/sim/events.hpp>
+#include <anno/sim/extensions.hpp>
 #include <anno/sim/field_count.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/island.hpp>
@@ -1541,17 +1544,39 @@ template <class A, Same<ScriptRuntime> S> void fields(A& a, S& r) {
     ar::seq(a, s.bindings, 4, [&](auto& id) { a.u32(id.v); });
 }
 
-/// five sections, one function each (the save frame writes and reads them one
-/// by one, §9.5); `scopes` is the flat stream of all five in order, which is what
+/// Ten sections, one function each (the save frame writes and reads them one
+/// by one, §9.5); `scopes` is the flat stream of all ten in order, which is what
 /// the hash and the field-list tests run.
 struct StateIO {
+    template <class A> static bool section_version(A& a, const SectionVersion& section) {
+        std::uint32_t version = section.version;
+        a.u32(version);
+        if constexpr (A::kReading) {
+            if (!a.failed() && version != section.version) {
+                a.fail("section " + std::string(section.name) + ": base version " +
+                       std::to_string(version) + " is not supported (this build reads " +
+                       std::to_string(section.version) + ")");
+            }
+            return !a.failed();
+        }
+        return true;
+    }
+
+    template <StateSection Section, class A, class Context>
+    static void section_extensions(A& a, Context& context) {
+        extension_fields<Section>(a, kSectionVersions[static_cast<std::size_t>(Section)].name,
+                                  context);
+    }
+
     /// Section 1. Reading validates what it just read (§3.1) before anything is
     /// sized from it. `w` supplies the registry and the seams, which are not in
     /// the stream.
-    template <class A, class W, class Config, class RulesT>
-    static void header_section(A& a, W& w, Config& config, RulesT& rules) {
+    template <class A, class W, class Config, class RulesT, class Context>
+    static void header_section(A& a, W& w, Config& config, RulesT& rules, Context& extensions) {
         StateHeader header;
         a.scope("header", [&] {
+            if (!section_version(a, kSectionVersions[0]))
+                return;
             fields(a, header);
             fields(a, config);
             fields(a, rules);
@@ -1607,22 +1632,29 @@ struct StateIO {
                     a.fail("seam names differ from the world's seams");
                 }
             }
+            section_extensions<StateSection::Header>(a, extensions);
         });
     }
 
     /// Section 2.
-    template <class A, class Clock, class Rng>
-    static void clock_rng_section(A& a, Clock& clock, Rng& rng) {
+    template <class A, class Clock, class Rng, class Context>
+    static void clock_rng_section(A& a, Clock& clock, Rng& rng, Context& extensions) {
         a.scope("clock_rng", [&] {
+            if (!section_version(a, kSectionVersions[1]))
+                return;
             fields(a, clock);
             fields(a, rng);
+            section_extensions<StateSection::ClockRng>(a, extensions);
         });
     }
 
     /// Section 3.
-    template <class A, class Settings>
-    static void settings_section(A& a, Settings& settings, const SimConfig& config) {
+    template <class A, class Settings, class Context>
+    static void settings_section(A& a, Settings& settings, const SimConfig& config,
+                                 Context& extensions) {
         a.scope("settings", [&] {
+            if (!section_version(a, kSectionVersions[2]))
+                return;
             fields(a, settings);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1632,6 +1664,7 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions<StateSection::Settings>(a, extensions);
         });
     }
 
@@ -1641,9 +1674,12 @@ struct StateIO {
     /// The maximum is accepted: it is the "used up" state a counter reaches after it
     /// handed out 2^64 - 2 (the last valid id; 2^64 - 1 is the invalid id), and a
     /// counter in it refuses further ids instead of wrapping (F35).
-    template <class A, class Ids, class U32, class Bool>
-    static void ids_section(A& a, Ids& ids, U32& event750_acc, U32& monopoly_acc, Bool& faulted) {
+    template <class A, class Ids, class U32, class Bool, class Context>
+    static void ids_section(A& a, Ids& ids, U32& event750_acc, U32& monopoly_acc, Bool& faulted,
+                            Context& extensions) {
         a.scope("ids", [&] {
+            if (!section_version(a, kSectionVersions[3]))
+                return;
             fields(a, ids);
             a.u32(event750_acc);
             a.u32(monopoly_acc);
@@ -1658,13 +1694,16 @@ struct StateIO {
                            " is not in 1 .. 2^64 - 1");
                 }
             }
+            section_extensions<StateSection::Ids>(a, extensions);
         });
     }
 
     /// Section 5.
-    template <class A, class Players, class Config>
-    static void players_section(A& a, Players& players, const Config& config) {
+    template <class A, class Players, class Config, class Context>
+    static void players_section(A& a, Players& players, const Config& config, Context& extensions) {
         a.scope("players", [&] {
+            if (!section_version(a, kSectionVersions[4]))
+                return;
             fields(a, players);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1674,15 +1713,20 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions<StateSection::Players>(a, extensions);
         });
     }
 
     /// Section 6. Reading validates the table against the configuration, the
     /// settings and the registry just read (validate_islands).
-    template <class A, class W, class Islands, class Config, class Settings, class RulesT>
+    template <class A, class W, class Islands, class Config, class Settings, class RulesT,
+              class Context>
     static void islands_section(A& a, W& w, Islands& islands, const Config& config,
-                                const Settings& settings, const RulesT& rules) {
+                                const Settings& settings, const RulesT& rules,
+                                Context& extensions) {
         a.scope("islands", [&] {
+            if (!section_version(a, kSectionVersions[5]))
+                return;
             islands_io(a, islands, config,
                        CityStream{rules.save_billed_goods, config.warehouse_goods});
             if constexpr (A::kReading) {
@@ -1694,14 +1738,17 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions<StateSection::Islands>(a, extensions);
         });
     }
 
     /// Section 7: the figure registry. Reading rebuilds the id map (derived) and
     /// validates the structure against the id counters just read.
-    template <class A, class Figures, class Ids>
-    static void figures_section(A& a, Figures& figures, const Ids& ids) {
+    template <class A, class Figures, class Ids, class Context>
+    static void figures_section(A& a, Figures& figures, const Ids& ids, Context& extensions) {
         a.scope("figures", [&] {
+            if (!section_version(a, kSectionVersions[6]))
+                return;
             fields(a, figures);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1712,14 +1759,17 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions<StateSection::Figures>(a, extensions);
         });
     }
 
     /// Section 8: the timed-event queue. Reading rejects a sequence number the id
     /// counter has not handed out (a later enqueue could clash with it).
-    template <class A, class Events, class Ids>
-    static void events_section(A& a, Events& events, const Ids& ids) {
+    template <class A, class Events, class Ids, class Context>
+    static void events_section(A& a, Events& events, const Ids& ids, Context& extensions) {
         a.scope("events", [&] {
+            if (!section_version(a, kSectionVersions[7]))
+                return;
             fields(a, events);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1733,16 +1783,19 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions<StateSection::Events>(a, extensions);
         });
     }
 
     /// Section 9 (stage S12): the script timers and the monopoly table. Reading
     /// checks their sizes against the configuration just read and the players the
     /// monopoly entries name against the player table's size.
-    template <class A, class Timers, class Monopoly, class Config>
+    template <class A, class Timers, class Monopoly, class Config, class Context>
     static void timers_monopoly_section(A& a, Timers& timers, Monopoly& monopoly,
-                                        const Config& config) {
+                                        const Config& config, Context& extensions) {
         a.scope("timers_monopoly", [&] {
+            if (!section_version(a, kSectionVersions[8]))
+                return;
             fields(a, timers);
             fields(a, monopoly);
             if constexpr (A::kReading) {
@@ -1756,13 +1809,16 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions<StateSection::TimersMonopoly>(a, extensions);
         });
     }
 
-    template <class A, class ScriptT, class Players, class Config>
+    template <class A, class ScriptT, class Players, class Config, class Context>
     static void script_section(A& a, ScriptT& script, const TypeRegistry& types,
-                               const Players& players, const Config& config) {
+                               const Players& players, const Config& config, Context& extensions) {
         a.scope("script", [&] {
+            if (!section_version(a, kSectionVersions[9]))
+                return;
             fields(a, script);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1771,6 +1827,7 @@ struct StateIO {
                         a.fail(problem);
                 }
             }
+            section_extensions<StateSection::Script>(a, extensions);
         });
     }
 
@@ -1780,29 +1837,33 @@ struct StateIO {
     /// (so one function defines the order of the stream for all four archives).
     template <class A, class W, class Config, class RulesT, class Settings, class Clock, class Rng,
               class Ids, class Players, class Islands, class Figures, class Events, class Timers,
-              class Monopoly, class U32, class Bool, class ScriptT>
+              class Monopoly, class U32, class Bool, class ScriptT, class Context>
     static void scopes(A& a, W& w, Config& config, RulesT& rules, Settings& settings, Clock& clock,
                        Rng& rng, Ids& ids, Players& players, Islands& islands, Figures& figures,
                        Events& events, Timers& timers, Monopoly& monopoly, U32& event750_acc,
-                       Bool& faulted, ScriptT& script) {
-        header_section(a, w, config, rules);
-        clock_rng_section(a, clock, rng);
-        settings_section(a, settings, config);
-        ids_section(a, ids, event750_acc, monopoly.acc, faulted);
-        players_section(a, players, config);
-        islands_section(a, w, islands, config, settings, rules);
-        figures_section(a, figures, ids);
-        events_section(a, events, ids);
-        timers_monopoly_section(a, timers, monopoly, config);
-        script_section(a, script, *w.types_, players, config);
+                       Bool& faulted, ScriptT& script, Context& extensions) {
+        header_section(a, w, config, rules, extensions);
+        clock_rng_section(a, clock, rng, extensions);
+        settings_section(a, settings, config, extensions);
+        ids_section(a, ids, event750_acc, monopoly.acc, faulted, extensions);
+        players_section(a, players, config, extensions);
+        islands_section(a, w, islands, config, settings, rules, extensions);
+        figures_section(a, figures, ids, extensions);
+        events_section(a, events, ids, extensions);
+        timers_monopoly_section(a, timers, monopoly, config, extensions);
+        script_section(a, script, *w.types_, players, config, extensions);
     }
 
-    template <class A, class W> static void world(A& a, W& w) {
+    template <class A, class W> static void world(A& a, W& w) { world(a, w, w.extensions_); }
+
+    template <class A, class W, class Context> static void world(A& a, W& w, Context& extensions) {
         if constexpr (A::kReading) {
             // Read into copies and commit only a stream that was read whole and
             // validated: a failed read leaves the target as it was (the target
             // may be reused by a caller, and an invalid configuration in it
             // would run the scheduler).
+            static_assert(std::is_nothrow_move_assignable_v<Context>);
+            auto staged_extensions = extensions;
             SimConfig config = w.config_;
             Rules rules = w.rules_;
             WorldSettings settings = w.settings_;
@@ -1819,7 +1880,12 @@ struct StateIO {
             bool faulted = w.faulted_;
             ScriptRuntime script = w.script_;
             scopes(a, w, config, rules, settings, clock, rng, ids, players, islands, figures,
-                   events, timers, monopoly, event750_acc, faulted, script);
+                   events, timers, monopoly, event750_acc, faulted, script, staged_extensions);
+            if (!a.failed()) {
+                const auto problem = validate_extension_context(staged_extensions);
+                if (!problem.empty())
+                    a.fail(problem);
+            }
             if (!a.failed()) {
                 // The derived indexes (id map, footprint grids, counters) are not in
                 // the stream: rebuilt from the lists (docs/sim/state.md §9.1).
@@ -1843,17 +1909,26 @@ struct StateIO {
                 w.event750_acc_ = event750_acc;
                 w.faulted_ = faulted;
                 w.script_ = std::move(script);
+                extensions = std::move(staged_extensions);
             }
         } else {
             scopes(a, w, w.config_, w.rules_, w.settings_, w.clock_, w.rng_, w.ids_, w.players_,
                    w.islands_, w.figures_, w.events_, w.timers_, w.monopoly_, w.event750_acc_,
-                   w.faulted_, w.script_);
+                   w.faulted_, w.script_, extensions);
         }
     }
 
     /// The save frame (docs/sim/state.md §9.5; save.cpp): "A3SV", u32 save version,
     /// u32 kStateHashVersion, the PRNG table kind, the sections each with its
     /// byte length in front, the terrain blobs, a trailing FNV-1a 64.
+    template <class Context>
+    static std::vector<std::uint8_t> save_with_extensions(const World& w,
+                                                          const Context& extensions);
+    template <class Context>
+    static formats::Result<World, std::string>
+    load_with_extensions(std::span<const std::uint8_t> bytes,
+                         std::shared_ptr<const TypeRegistry> types, Seams seams,
+                         Context& extensions);
     static std::vector<std::uint8_t> save(const World& w);
     static formats::Result<World, std::string> load(std::span<const std::uint8_t> bytes,
                                                     std::shared_ptr<const TypeRegistry> types,
@@ -1867,3 +1942,5 @@ template <class A, Same<World> S> void fields(A& a, S& w) {
 }
 
 } // namespace anno::sim
+
+#include <anno/sim/state_save.hpp>

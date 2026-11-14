@@ -77,6 +77,10 @@ struct Chunk {
     /// Canvas::base of `objects` (chunks without ships, for the GPU); empty
     /// = none.
     std::vector<std::uint8_t> base;
+    /// Per pixel 1 where the object pixel drawn there lies behind the sea plane, so Original water
+    /// draws the sea over it once more after the objects (depth::Target::submerged,
+    /// docs/render/depth.md §2.3); empty = none (no such pixel, or Scene::depth_test off).
+    std::vector<std::uint8_t> submerged;
     /// ChunkBuilder::GpuList: the draw list of the objects layer, in place of
     /// `objects` and `base`; nullopt = no objects here (or the Cpu builder).
     std::optional<ChunkDraws> draws;
@@ -101,8 +105,9 @@ struct Chunk {
     /// The heap memory the chunk holds (its vectors' capacities), in bytes.
     [[nodiscard]] std::size_t bytes() const {
         auto of = [](const auto& v) { return v.capacity() * sizeof(v[0]); };
-        return of(ground) + of(objects) + of(field) + of(terrain) + of(base) + of(flow.uv) +
-               of(flow.aux) + of(flow.shear) + of(flow_waiting) + (draws ? draws->bytes() : 0);
+        return of(ground) + of(objects) + of(field) + of(terrain) + of(base) + of(submerged) +
+               of(flow.uv) + of(flow.aux) + of(flow.shear) + of(flow_waiting) +
+               (draws ? draws->bytes() : 0);
     }
 };
 

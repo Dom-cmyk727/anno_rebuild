@@ -1915,27 +1915,37 @@ Workflow for "two builds or platforms disagree" (tool `anno-sim-replay`): `hashe
 ### 9.1 Mechanism (no macros)
 `state_fields.hpp` defines, for every persistent type `T`, exactly one function `template <class A, Same<T> S> void fields(A& a, S& s)` naming the fields in canonical order. `A` is `HashArchive` (S may be const), `WriteArchive` (S may be const) or `ReadArchive` (S non-const). The hash, the save and the load therefore cannot disagree about which fields exist or in which order; a field can never be saved and not hashed. Only these are excluded, each named in `state_fields.hpp` with a comment: derived caches (`IslandIndexCache`, the world's island-rect lookup grid behind `island_at`/`IslandsView::island_at`, `FigureRegistry::by_id`, `BuildingIndex::service_counters`/`house_counts`, tile chunk digests and dirty bits, live counts), diagnostics, `StatusTracker::shows_icons` and `WeaponsWorkshop::unlocked` (refreshed by the driver before each step), `out_events_`/`SimOutput`, and the `TypeRegistry` itself (its digest is in the header).
 
-Encodings: little-endian fixed width; `bool` one byte 0/1; enums one byte; `optional` = presence byte then value; `std::vector` = `u64` count then elements; `std::map` = count then (key, value) in key order; strings and byte vectors = `u64` length then bytes; `std::variant` payload = explicit `u8` tag (constants in `state_fields.hpp`, not `variant::index()`) then fields; no padding, no struct images. **Adding a field = one line at the end of its function + a `kStateHashVersion` bump + re-baselined goldens in the same commit** (development counter before S15, §14.3; version 3 and up after the freeze).
+Encodings: little-endian fixed width; `bool` one byte 0/1; enums one byte; `optional` = presence byte then value; `std::vector` = `u64` count then elements; `std::map` = count then (key, value) in key order; strings and byte vectors = `u64` length then bytes; `std::variant` payload = explicit `u8` tag (constants in `state_fields.hpp`, not `variant::index()`) then fields; no padding, no struct images. **Since state 139 (ADR 0006), a base layout or default-behaviour change moves the owning section’s base version and re-baselines its pins. Optional state belongs in tagged extensions (§9.7); registering an absent default-off extension moves no pin.**
 
-The state hash (version `kStateHashVersion`: a development counter until S15, then the frozen value 2) is hierarchical: `hash(scope)` = FNV-1a 64 over the scope's own fields, where every child scope contributes its 64-bit digest (`u64` LE) at the point it was opened; the world digest is the root. It is **not** the FNV of the save body (so a section can be recomputed alone and compared); the invariant tested instead is that `WriteArchive`, `HashArchive` (raw-tile mode) and `TraceArchive` visit the same primitive sequence (§14). `core_hash()` keeps the five-field v1 value (`clock.ms`, `clock.last_tick`, PRNG table length, table digest, cursor) so the old golden stays checkable; `state_hash()` begins with the same five fields inside its `clock_rng` scope.
+The state hash (framing identity `kStateHashVersion`, 139 since SAVE-SECTIONS-1a) is hierarchical: `hash(scope)` = FNV-1a 64 over the scope's own fields, where every child scope contributes its 64-bit digest (`u64` LE) at the point it was opened; the world digest is the root. It is **not** the FNV of the save body (so a section can be recomputed alone and compared); the invariant tested instead is that `WriteArchive`, `HashArchive` (raw-tile mode) and `TraceArchive` visit the same primitive sequence (§14). `core_hash()` keeps the five-field v1 value (`clock.ms`, `clock.last_tick`, PRNG table length, table digest, cursor) so the old golden stays checkable; the `clock_rng` section has these same five base fields between its version and extension list (§9.7).
 
 ### 9.2 Tile layer
 `tiles_io` is the one place where the archives differ in what they touch, and it has one layout: `u32 width, u32 height, u32 chunk_edge` (the island scope already wrote `x0, y0, w, h`; width and height must equal them, else load fails), then the ten columns `object[]` (u32), `phase[]` (u8), `owner[]` (u32), `aux[]` (u32), `walk_code[]` (u16), `walk_mask[]` (u16), `foot_dx[]` (u16), `foot_dy[]` (u16), `foot_rotation[]` (u8), `foot_anchor[]` (u8) (each `w·h` elements, 23 bytes per tile). `walk_code` resets to 2, `walk_mask` resets to 0, and `foot_dx`, `foot_dy`, `foot_rotation` and `foot_anchor` reset to 0 (`AnnoWelt 0x1008c80d..0x1008c821`). `WriteArchive`/`ReadArchive` move the raw columns (bulk, no per-tile calls). **The read side rejects before allocating**: `chunk_edge >= 1`, `w·h` computed in `u64` without overflow, and `w·h·23 <= remaining()`; the generic `count` check of `ReadArchive` does not cover bulk columns, so without this a header claiming a huge island would over-allocate or run on inconsistent sizes. `HashArchive` feeds, for each chunk in row-major chunk order, `TileLayer::chunk_digest(k)` (cached; FNV-1a 64 over the chunk's `object, phase, owner, aux, walk_code, walk_mask, foot_dx, foot_dy, foot_rotation, foot_anchor` per in-bounds tile, row-major). Cache validity is guaranteed by construction: the only mutators are the setters, which mark the chunk dirty, and `check_invariants()` asserts `cached == uncached` for every chunk in debug and CI builds (a missed dirty mark would otherwise hide a desync). Chunk digests of an island are computed in parallel and combined in chunk order (§11).
 
-### 9.3 World stream order (normative; carried by `kStateHashVersion`, a development counter until S15 and frozen as 2 there)
-Scope names are fixed strings; a repeated scope is also addressed by its ordinal. The order below is the target for the complete stream; each stage S1..S14 adds the scopes it introduces and bumps the development counter (§15). Implemented so far: rows 1 (`header`, complete since S3: the seam names are one flat list, `city_pass` first, count + string each), 2 (`clock_rng`), 3 (`settings`, S3), 4 (`ids`, S7: only `u64 next_figure` and `u64 next_event_seq`; `event750_acc`, `monopoly.acc` and `faulted` are appended by S12 with their state), 5 (`players`, S4), 6 (`islands`, S5; with the `cities` scope of the island since S6), 7 (`figures`, S7: the registry list `i64 hint, u32 cursor, u64 slot_count`, per slot a scope `figure` with an optional Figure, then `u16 stamp`, the expiry ids and the deferred ids; the id map is derived) and 8 (`events`, S7: `u64 count`, per event `u64 due, u64 seq` and the TimedEvent, keys strictly ascending); stream version 105. Since S12 (stream version 106) row 4 is complete (`event750_acc`, `monopoly.acc`, `faulted` appended) and row 9 (`timers_monopoly`) exists; the save frame has nine sections. Reading validates the counters (`next_figure` and `next_event_seq` in `1 .. 2^64 - 2`), the registry against them (`validate_figures`) and the queue's sequence numbers against `next_event_seq`. The save frame has eight sections (header, clock_rng, settings, ids, players, islands, figures, events); `kSaveVersion` stays 1 (the stream version already refuses a save of another layout).
+### 9.3 World stream order (normative; framing identity 139)
+Scope names are fixed strings; a repeated scope is addressed by its ordinal. Since
+SAVE-SECTIONS-1a (2026-11-14), there are exactly ten top-level scopes in the order
+below. **Each scope starts with its `u32` base version (all 1 at 139), then the
+base fields in the table, and ends with its `u64` extension count (0 in this
+packet).** These prefixes and suffixes are inside their scope and are hashed,
+saved and read by the same section function. Child scopes and their field bytes
+are unchanged. See §9.7 for extension framing and version refusals. The header
+retains the global framing identity, script schema and PRNG timeline. The current
+header also carries the walk-table digest after the registry digest. Earlier
+stream numbers describe history, not the current section framing.
 
 | # | Scope | Fields in order |
 |---|---|---|
-| 1 | `header` | `u32 kStateHashVersion`; `u32 kPrngTimelineVersion`; **SimConfig** in declaration order of §3 (scalars; vectors as count + elements; `small_farm_animals`: `kind_by_draw` u16s, `base` u16, `limit` u8s; `layout`: lists (name str, mask u32), schedule, lookup_order, rect_order, block_to_list as u32 vectors, `first_prodtype`, `block_size`, `default_list`, the six `roles` as u32); **Rules** in declaration order (enums and bools as one byte; `interim_figure_return_ticks` u32); `u64 registry_digest`; seam names (count + str each, in `Seams` declaration order, `city_pass` first) |
+| 1 | `header` | `u32 kStateHashVersion`; `u64 script_schema` (ECONBK1); `u32 kPrngTimelineVersion`; **SimConfig** in declaration order of §3 (scalars; vectors as count + elements; `small_farm_animals`: `kind_by_draw` u16s, `base` u16, `limit` u8s; `layout`: lists (name str, mask u32), schedule, lookup_order, rect_order, block_to_list as u32 vectors, `first_prodtype`, `block_size`, `default_list`, the six `roles` as u32); **Rules** in declaration order (enums and bools as one byte; `interim_figure_return_ticks` u32); `u64 registry_digest`; `u64 walk_table_digest`; seam names (count + str each, in `Seams` declaration order, `city_pass` first) |
 | 2 | `clock_rng` | `u64 clock.ms`, `u64 clock.last_tick`, `u64 rng.size`, `u64 rng.table_digest`, `u32 rng.cursor` (= `core_hash`) |
-| 3 | `settings` | `u32 world_width, u32 world_height, u8 prop0, u8 prop1, u8 prop2, u16 prop3, bool prop5, u32 prop6, u32 prop7_offset, u8 prop9, u8 prop10, u32 prop11, bool prop12, bool prop13, u32 prop14, u32 speed_percent` |
-| 4 | `ids` | `u64 next_figure`, `u64 next_event_seq`, `u32 event750_acc`, `u32 monopoly.acc`, `bool faulted` |
+| 3 | `settings` | `u32 world_width, u32 world_height, u8 prop0, u8 prop1, u8 prop2, u16 prop3, bool prop5, u32 prop6, u32 prop7_offset, u8 prop9, u32 prop10, u32 prop11, bool prop12, bool prop13, u32 prop14, u32 speed_percent` |
+| 4 | `ids` | `u64 next_figure`, `u64 next_event_seq`, `u64 next_order_id`, `u64 next_ticket`, `u32 event750_acc`, `u32 monopoly.acc`, `bool faulted` |
 | 5 | `players` | `u64 slot_count`, per slot (scope `player`, ordinal = slot) optional **Player**; `u16 stamp`, `u32 cursor` |
 | 6 | `islands` | `u64 count` (= table size), per slot optional **Island** (scope `island`, ordinal = slot) |
 | 7 | `figures` | **FigureRegistry** |
 | 8 | `events` | `u64 count`, per event in `(due, seq)` order **TimedEvent** with its key |
 | 9 | `timers_monopoly` | **ScriptTimers**; **MonopolyTable** |
+| 10 | `script` | **ScriptRuntime**: counted source bytes; five `u32` limits (source bytes, tokens, nesting, work, signals); optional namespace string; `u32` policy; context/fault enums; `u32` cursor, last argument, fault offset, last work; counted signal bytes; counted `u32` bindings. |
 
 *Against the original's savegame (T21, 2026-10-23; OQ-132, `docs/re/annowelt.md` "World save and load").* The original's world save (`0x100ae700`) and load (`0x100ae270`) drop several fields this stream carries. **Kept on purpose, by the owner's decision on OQ-132 (2026-10-23, "agreed"):** a save and load must not change the game, which the resync snapshot and replays rely on. The original's load behaviour becomes an opt-in `Rules` option (not built yet; S15 or the savegame-loading stage).
 
@@ -1972,12 +1982,15 @@ The `MonopolyTable` entries match `MONOPOL2`: 28 × {u32 time, player or −1}.
 **FigureRegistry**: `i64 hint, u32 cursor, u64 slot_count`, per slot optional **Figure** `{u64 id, u32 kind, u32 owner, u64 home, u32 home_counter, u32 job, i32 pos.x, i32 pos.y, u32 cargo_goods, u32 cargo_88, u32 hp, u32 born, optional u16 expiry_stamp, u8 dir16, u64 parent (invalid = 2^64-1), optional u32 crew_slot, u64 n + n × {u32 goods, u64 amount_88}, u32 state_word (since 120: the figure's state word, slot +0x8c(0))}` (the last four before it since version 116, task MAP-2; the hold amount is a u64 count of 1/256 ton since 117, 12 bytes per hold, where 116 had `u32 tons`; a figure that no loader gave them keeps 0, invalid, none and empty), `u16 stamp`, `u64 n` + expiry ids (version 109, T22: `marked_for_delete` and the deferred ids left the stream; they never held a figure, OQ-131). **TimedEvent**: `u64 due, u64 seq, u8 kind, u32 subtype, u32 value, i32 x, i32 y, u64 target, u32 attacker_kind, u64 attacker`. **ScriptTimers**: `u32 last_tick`, `u8` active (count + elements), `u32` counter (count + elements). **MonopolyTable**: entries (count; each `u32 time_s`, optional `u32 player`).
 
 ### 9.4 Hash tree
-`HashTree` nodes carry `{name, hash}`; `state_hash(tree, depth)` records depth 0 = the nine sections, 1 = islands/players/figures, 2 = cities, 3 = lists, 4 = buildings (opt-in; names are `string_view`s into constants, the tree is allocated only when requested). Peers exchange the root every turn and the section digests only after a mismatch; a desync report names "island 2 / city 0 / production list" instead of "somewhere". The hot path (`state_hash()` without a tree) performs no per-building allocation. Cost: tile chunk digests are cached (only dirty chunks are recomputed) and island sections are independent (§11); the rest is proportional to buildings and figures. If `bench_sim` says a byte-wise FNV is too slow for bulk columns, a wider mixing function is a hash-version change behind `StateHasher::bulk`.
+`HashTree` nodes carry `{name, hash}`; `state_hash(tree, depth)` records depth 0 = the ten sections, 1 = islands/players/figures, 2 = cities, 3 = lists, 4 = buildings (opt-in; names are `string_view`s into constants, the tree is allocated only when requested). Peers exchange the root every turn and the section digests only after a mismatch; a desync report names "island 2 / city 0 / production list" instead of "somewhere". The hot path (`state_hash()` without a tree) performs no per-building allocation. Cost: tile chunk digests are cached (only dirty chunks are recomputed) and island sections are independent (§11); the rest is proportional to buildings and figures. If `bench_sim` says a byte-wise FNV is too slow for bulk columns, a wider mixing function is a hash-version change behind `StateHasher::bulk`.
 
 ### 9.5 Save frame
-`"A3SV"`, `u32 save_version`, `u32 kStateHashVersion`, `u8 rng_table_kind` (0 = the original `msvc_rand_sequence(2048, 1)`, 1 = custom: `u64 n` + u16 values), then the world stream of §9.3 (the writer emits each section with a `u64` byte length in front, so a reader can skip a section it does not know), then the terrain blobs (heights, gfx, fertility per island; digest verified), then a trailing `u64` FNV-1a of everything before. `World::load` verifies version, registry digest, seam names and the table kind; reads the `header` scope first and runs `SimConfig::validate()`, `Rules::validate()`, `ListLayout::validate()` and the seam consistency checks (§3.1) on what it just read, **before** any container is sized from it (a corrupt save or a hostile resync snapshot cannot reach a divisor, a modulus, a shift or an index); then reads the rest with the bounds-checked `ReadArchive` (config-sized containers must have exactly the configured size, tile dimensions are checked in `u64` against `remaining()`, §9.2), rebuilds the derived indexes, runs `check_invariants()`, and recomputes the hash. Every failure is a `Result` error naming the scope path; none is an exception or UB. A save written by version `v` is rejected by `v + 1` with a clear message. `save(load(save(w))) == save(w)` byte for byte. All event kinds are saved (F7). Original savegames are **not** read: their layout cannot be validated without an x86 Windows oracle.
+`"A3SV"`, `u32 save_version`, `u32 kStateHashVersion`, `u64 script_schema`, `u8 rng_table_kind` (0 = the original `msvc_rand_sequence(2048, 1)`, 1 = custom: `u64 n` + u16 values), then the world stream of §9.3 (the writer emits each of the ten sections with a `u64` byte length in front, bounding its reader; unknown section layouts and extensions are refused, never skipped), then the terrain blobs (heights, gfx, fertility per island; digest verified), then a trailing `u64` FNV-1a of everything before. `World::load` verifies version, registry digest, seam names and the table kind; reads the `header` scope first and runs `SimConfig::validate()`, `Rules::validate()`, `ListLayout::validate()` and the seam consistency checks (§3.1) on what it just read, **before** any container is sized from it (a corrupt save or a hostile resync snapshot cannot reach a divisor, a modulus, a shift or an index); then reads the rest with the bounds-checked `ReadArchive` (config-sized containers must have exactly the configured size, tile dimensions are checked in `u64` against `remaining()`, §9.2), rebuilds the derived indexes, runs `check_invariants()`, and recomputes the hash. Every failure is a `Result` error naming the scope path; none is an exception or UB. The frame’s global identity must equal 139; each section’s base version must also match, with the section and both versions named on refusal (§9.7). `save(load(save(w))) == save(w)` byte for byte. All event kinds are saved (F7). Original savegames are **not** read: their layout cannot be validated without an x86 Windows oracle.
 
-*As implemented in S5 (`save.cpp`).* Frame: `"A3SV"`, `u32 kSaveVersion` (1), `u32 kStateHashVersion`, `u8` table kind, then **five** sections (`header`, `clock_rng`, `settings`, `players`, `islands`: the top-level scopes of the stream at this version, each written by its own function of `StateIO` into its own archive) each behind a `u64` byte length, then the terrain blobs, then the `u64` FNV-1a 64 of every byte before it. The blobs are, per present island in slot order, a presence `bool` and (when present) `height` (`u64` count + bytes), `gfx` (`u64` count + `u16`s), `fertility` (`u64` count + bytes). The checks run in this order: size, **checksum** (before any parser), magic, save version, stream version, table kind, then the sections (each is read by its own `ReadArchive` over exactly its bytes, must claim no more than remains, and must be consumed whole), then the blobs (presence must agree with the island's `terrain_digest`, and the recomputed digest must equal it) and no trailing bytes. A read of the `islands` scope leaves a placeholder `Terrain` that carries only the digest (the flat stream has no blobs); `load` replaces it by the verified columns. `World::load` builds a fresh world, so a failure returns the message and nothing else; the registry and the seams are supplied by the caller (their digest and names must match the header). `ReadArchive::skip(n)` was added for the section frame. `save(load(save(w))) == save(w)` and a loaded world continues with the same hash at every tick are tests.
+*Current framing (139, SAVE-SECTIONS-1a).* `"A3SV"`, `u32 kSaveVersion`
+(1), `u32 kStateHashVersion` (139), `u64 script_schema` (ECONBK1), `u8` table kind, then the ten sections of
+§9.3, each behind a `u64` byte length and containing its version/base/extensions.
+The terrain blobs follow, then `u64` FNV-1a over every preceding byte. The blobs are, per present island in slot order, a presence `bool` and (when present) `height` (`u64` count + bytes), `gfx` (`u64` count + `u16`s), `fertility` (`u64` count + bytes). The checks run in this order: size, **checksum** (before any parser), magic, save version, stream version, table kind, then the sections (each is read by its own `ReadArchive` over exactly its bytes, must claim no more than remains, and must be consumed whole), then the blobs (presence must agree with the island's `terrain_digest`, and the recomputed digest must equal it) and no trailing bytes. A read of the `islands` scope leaves a placeholder `Terrain` that carries only the digest (the flat stream has no blobs); `load` replaces it by the verified columns. `World::load` builds a fresh world, so a failure returns the message and nothing else; the registry and the seams are supplied by the caller (their digest and names must match the header). `ReadArchive::skip(n)` was added for the section frame. `save(load(save(w))) == save(w)` and a loaded world continues with the same hash at every tick are tests.
 
 ### 9.6 `check_invariants()`: derived equals recomputed, and the structural facts the scheduler relies on
 **Structural (every one has its own perturbation test: corrupt exactly that fact in a copy through `WorldTestAccess`, expect `check_invariants()` to name it, and the load path to reject a save with that corruption):**
@@ -1990,6 +2003,103 @@ The `MonopolyTable` entries match `MONOPOL2`: 28 × {u32 time, player or −1}.
 **Derived equals recomputed and relational:** `by_id` and every footprint grid equal a from-scratch rebuild; footprints are disjoint and inside the island and every footprint tile carries a non-zero `object`; `id.island == island.index` and `serial < next_serial`; city owner present in the player table; tile owners are present city numbers or `neutral_owner`; `Mine::deposit < deposits.size()`; carrier/worker/animal counters equal the figures that still have that building as home (a figure on `expiry` has none, T22); service counters and house counts equal their recomputation; figure `by_id` consistent, `expiry` ids exist once each, a figure is on `expiry` iff it has an `expiry_stamp`, and an ended figure has no home; event keys unique and `seq < next_event_seq`, figure ids `< next_figure`; cached tile chunk digests equal uncached ones. Run after every step in every property test and at the end of `create`/`load`; production builds run it only on load.
 
 *As implemented in S6 (`invariants.cpp`, `island.cpp`, `create.cpp`).* `World::check_invariants()` returns the first violation with its path ("islands[0].cities[0].index.lists[4].slots[2].payload: ...") and checks, in this order: the configuration, rules, seams, the registry against the configuration and the settings (§3.1); the player table (`validate_players`); the islands (`validate_islands`: rectangles, tiles and their owners, sweeps, drought, and `validate_cities`: the config-sized containers of every city, the lists' hint and cursor, every building's type, rotation, list, id, payload and deposit index); then that every city's owner is a player of the table; then the footprints (inside the island, no two share a tile, every footprint tile carries a non-zero object); then the derived indexes against a recomputation (id map and duplicate ids, the grids, the service counters and house counts of every city). The structural facts travel in the stream, so `load` refuses a save that carries a violation with the same message; the derived ones are rebuilt on load and checked by `load` after the rebuild. Not yet present (the state does not exist): the carrier / worker / animal counters against the figures, the figure registry, the event queue, the timers and the monopoly table. One test per fact: "invariant payload alternative vs type", "invariant payload vector sizes vs type counts", "invariant mine without outputs", "invariant config-sized container sizes", "invariant scheduler facts of a building list", "invariant facts of a building", "invariant footprints and relations", "invariant climate index", "invariant island rect", "check_invariants detects corrupted counters and indexes".
+
+### 9.7 Section versions and extensions (2026-11-14, SAVE-SECTIONS-1a)
+
+The ordered version table is `header`, `clock_rng`, `settings`, `ids`, `players`,
+`islands`, `figures`, `events`, `timers_monopoly`, `script`; every base version is
+**1** at global framing identity **139**. A section is explicitly:
+
+1. `u32 base_version` (little-endian).
+2. Its existing base fields and child scopes, in §9.3 order.
+3. `u64 extension_count` (the archive’s existing sequence-count encoding), followed
+   by that many entries: `u16 tag`, `u32 payload_length`, then exactly that many
+   payload bytes. Tags must be strictly ascending, with no duplicates.
+
+At SAVE-SECTIONS-1a every extension count was 0 and no tag was known. A reader refuses
+any structurally present entry with `section <name>: unknown extension tag <n>`;
+it never skips or simulates unknown data. Truncation/count bounds remain archive
+errors. The registration API and canonical rules added by 1b are in §9.8; production lists remain empty.
+
+The global 139 identifies this framing: the ten ordered sections, their base
+versions and extension envelopes. Only a framing change would move that global
+identity; a base-layout or default-behaviour change moves its owning section’s
+base version (ADR 0006 item 4). A reader refuses a different base version with
+`section <name>: base version <found> is not supported (this build reads <expected>)`.
+Save errors may additionally name the file/section offset. Versions and extension
+counts participate in each section’s digest, the hierarchical world hash, the raw
+stream and native saves. `kSaveVersion`, script schema and PRNG timeline remain
+unchanged. The outer native lengths and checksum are recomputed; adding this
+framing does not alter another section’s base-field bytes.
+
+### 9.8 Extension tags: registry and registration (2026-11-14, SAVE-SECTIONS-1b)
+
+Global framing139 and all ten section base versions1 remain unchanged. A
+production world still writes exactly 1a's bytes: each extension count is0.
+
+| Tag | Section | Name | Owner packet | Status | Payload fields |
+|---|---|---|---|---|---|
+| 0xF000–0xFFFF | Test contexts only | Reserved test range | SAVE-SECTIONS-1b | Reserved | See synthetic proof below |
+
+Tag0 is never assigned. There are **no production entries**. A feature reserves its tag on the board
+before work, like an OQ number, then adds its permanent row here. Tags are never
+reused. Test-range tags must never occur in a production list.
+
+**Registration.** `ExtensionContext` belongs to World and holds no state in1b.
+Its ten ordered compile-time lists map `StateSection` to extension types. Each
+type supplies `tag` (u16), `name` (a static string literal), `Payload`,
+`default_value()`, `state(context)` (const-preserving), one explicit
+`fields(archive, payload)` function, and `validate(payload)` (empty string on
+success). Payloads support equality with their default. Production `ExtensionList`
+checks strict ascending order, uniqueness, nonzero tags and exclusion of the test
+range with `static_assert`. A separately selected test-list policy accepts only
+test-range tags. No runtime registry, static initializer or global mutable state
+is involved. A feature adds its type to one list, its state to the context and
+its registry row. The ordered constexpr schema entries `(section, tag, name)`
+are exposed for the later ADR0003 join check, without wiring that check here.
+
+**Writing.** Emit only payloads unequal to their default, in ascending tag order.
+Write the u64 count, then for each present payload `u16 tag`, `u32 length` and
+its fields inside a child scope named after the extension. Measure length by
+serializing its field list once to a temporary WriteArchive before visiting it
+with the requested archive. Length is the raw byte length, not a hierarchical
+digest length. As with other save fields, writing requires valid state; payload
+validation and the context invariant enforce the u32 wire-length bound. No
+present extension means exactly the old u64 count0, with no new scope or byte.
+
+**Reading.** Reset every known extension of the section to `default_value()`
+before reading its list. For each entry, check strict order first (duplicates
+included), then recognition in that section, then read the payload with a reader
+bounded to the declared length. Refuse:
+
+- `section <name>: extension tag <n> out of order`;
+- `section <name>: unknown extension tag <n>` (including an unassigned tag0);
+- length beyond remaining section bytes: an archive bounds error;
+- payload under-read/truncation or unconsumed bytes: error naming section and tag;
+- `section <name>: extension tag <n> decodes to default`;
+- the extension's own validation error, naming section and tag.
+
+A present default is noncanonical: refusing it preserves byte-identical
+save(load(save)). Both flat and native readers stage the whole context with the
+world and commit only after a complete valid read, including the native blobs
+and invariants. Context move assignment must be non-throwing. The native framing
+and section functions are templated over this explicit context; tests instantiate
+the same code with types defined only under src/sim/tests, never in anno_sim.
+
+**Hashing/tracing.** All archives visit tag, length and the same payload fields.
+The payload's child scope contributes its digest under the unchanged HashArchive
+scope semantics (§9.1); its name appears at the next tree depth below the section.
+The raw hash remains FNV of WriteArchive bytes. No HashArchive change is needed.
+
+**Synthetic proof (not a production reservation).** Test context only: figures
+section, tag0xF001, name `synthetic_extension`; payload `u16 small`, `u32 large`.
+Default `(0,0)`; validation requires `large <= 1000000`. Nondefault example
+`(0x1234,0x89ab)` has length6. Its section is version1, the existing figure base,
+u64 count1, u16 tag0xF001, u32 length6 and these two LE fields. In the hierarchical
+digest replace just those six payload bytes by their u64 child digest; all other
+section bytes/child digests stay where they were. integration_stream_ref.py
+computes this proof independently; generated oracle output lives in build/, so
+no existing fixture, pin, save or log changes.
 
 ## 10. Loader: scenario → owning state
 
@@ -2245,7 +2355,7 @@ The archive classes, `visit_count`, `visit_count_clamped`, `run_building_list`, 
 ### 14.3 Golden hashes (cross-platform, no game files)
 Scenarios are built in code (`synthetic.cpp`); types use the values of fixtures F2 and F6 in `docs/re/production.md` §9 (weaver rate 6 / need 11 / 5 t; farm rate 37 / need 80) under ids in a synthetic range.
 
-**Goldens carry the stage and the stream version they were made at.** Every stage S1..S14 extends or changes the stream (header, settings, players, islands, cities, figures, events), so a golden has no meaning without the field list it was made against. A golden constant is stored as `{name, stage, stream_version, value}` (`fixtures/synthetic/sim/goldens.txt`, one line each), and a test compares only goldens whose `stream_version == kStateHashVersion`; a stale entry fails with "re-baseline" instead of a bare mismatch. While `kStateHashVersion` is a development counter, a stage that changes the stream bumps it and re-baselines **all** goldens in the same commit (`ANNO_UPDATE_GOLDEN=1`); the commit that freezes the stream at 2 (S15) does the same once more. Saves and replay logs record the version, so a file from another commit is rejected rather than silently misread.
+**Goldens carry the stage and the stream version they were made at.** Every stage S1..S14 extends or changes the stream (header, settings, players, islands, cities, figures, events), so a golden has no meaning without the field list it was made against. A golden constant is stored as `{name, stage, stream_version, value}` (`fixtures/synthetic/sim/current/goldens.txt`, one line each), and a test compares only goldens whose `stream_version == kStateHashVersion`; a stale entry fails with "re-baseline" instead of a bare mismatch. While `kStateHashVersion` is a development counter, a stage that changes the stream bumps it and re-baselines **all** goldens in the same commit (`ANNO_UPDATE_GOLDEN=1`); the commit that freezes the stream at 2 (S15) does the same once more. Saves and replay logs record the version, so a file from another commit is rejected rather than silently misread.
 
 | Golden | Scenario | Driver | Stage |
 |---|---|---|---|
@@ -2263,7 +2373,19 @@ Scenarios are built in code (`synthetic.cpp`); types use the values of fixtures 
 
 **The scenario corpus file is re-baselined with the goldens.** `fixtures/synthetic/sim/scenario_corpus.txt` (§14.5) holds the state hash after `World::create` for every shipped scenario, so a `kStateHashVersion` or `kPrngTimelineVersion` bump moves it too. It cannot be rewritten in CI (it needs the game files): the task that bumps runs the corpus case with `ANNO1503_GAME_DIR` and `ANNO_UPDATE_GOLDEN=1` in the same commit. Its header line `# kStateHashVersion=<n> kPrngTimelineVersion=<m>` names the versions it was made at; the corpus case refuses a file whose line is not this build's ("re-baseline"), and `tools/sim_stream.py --check` refuses one whose line is not the script's versions (since S14 stage 2).
 
-Semantic asserts (independent of the hash, so a golden cannot hide a wrong simulation): in G1 the weaver ends at exactly the F2 state after 70 000 ticks (`out == 696`, `in == 4`: 116 full steps from 5 t of wool at need 11), has reported `MissingInput` and raised `blocked`; at tick 30 000 it has done 60 ± 3 steps (the scheduler may delay a step but never lose or double one); the farm never has more workers out than `max_figures`; the production list has size 10 and hint 1 after the second insert; `city.index.stamp` equals the tick of the last city visit; the drained UI-event list hashes to a second golden constant. Update protocol: a golden changes only with `ANNO_UPDATE_GOLDEN=1` (the test prints the new value and the first differing checkpoint) and a commit message that states which field-list or rule change caused it. The same constants must pass on MSVC (`/fp:strict`), GCC and Clang, Linux and Windows, and under ASan/UBSan.
+Semantic asserts (independent of the hash, so a golden cannot hide a wrong simulation): in G1 the weaver ends at exactly the F2 state after 70 000 ticks (`out == 696`, `in == 4`: 116 full steps from 5 t of wool at need 11), has reported `MissingInput` and raised `blocked`; at tick 30 000 it has done 60 ± 3 steps (the scheduler may delay a step but never lose or double one); the farm never has more workers out than `max_figures`; the production list has size 10 and hint 1 after the second insert; `city.index.stamp` equals the tick of the last city visit; the drained UI-event list hashes to a second golden constant. Update protocol: a golden changes only with `ANNO_UPDATE_GOLDEN=1` (the test atomically writes changed self-baselines in name order) and a commit message that states which field-list or rule change caused it. The same constants must pass on MSVC (`/fp:strict`), GCC and Clang, Linux and Windows, and under ASan/UBSan.
+
+**2026-11-13, PINS-1 (ADR 0006 step1).** Current pins and recordings now live
+in `fixtures/synthetic/sim/current/`, renamed from `integrate2/current138/`; historical
+fixtures remain untouched. Use `python -I tools/pins.py check` and `regen --area sim`
+with a configured build and original files, through the canonical gate. `golden.hpp`
+is still the single mechanism; record mode now writes rather than printing paste lines.
+Oracle-owned pins remain comparisons, never C++-regenerated expectations. The same
+record mode writes current replay logs, loop checkpoints and corpus rows in place;
+the corpus preserves provenance comments and independently checked physical columns.
+No stream field, behaviour, version or expected hash changes in this packet.
+[Commands, recording provenance and limits](../testing/README.md#pins-and-goldens);
+[every literal disposition](../testing/pins-literals.md).
 
 ### 14.4 Property tests (deterministic LCG seeds in the test only; iteration counts reduced under sanitizers; seeds logged on failure)
 - **Random command streams** on S1/S2/S3: generate Build/Demolish/SetLine/SetSpeed/garbage, apply, advance random amounts; after every command and every advance `check_invariants()` is empty; every rejected command leaves `state_hash` unchanged.

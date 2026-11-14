@@ -56,6 +56,10 @@ namespace gpu = anno::render::gpu;
 namespace app = anno::app;
 using render::ChunkKey;
 using SceneHandle = std::shared_ptr<const render::Scene>;
+/// The fewest pixels a workload edit must change in view. Measured 2026-11-04 (group 2): the two
+/// builds of step 0 change 1365, the demolish of step 1 257; with the per-pixel depth on, the
+/// stand-in's height 0 leaves 543 and 2 (W4-DEPTH-1-CLOSE F5): the demolish's 2 fail the bound.
+constexpr std::size_t kMinEditPixels = 128;
 
 fs::path fixed_map() {
     return fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
@@ -156,6 +160,11 @@ std::unique_ptr<gpu::GpuFrame> make_frame(const gpu::Context& ctx, gpu::GpuLimit
 
 /// The fixed map's scene with `buildings`, loaded on its own (the oracle and the base), rivers
 /// off as in the CPU verifiers (the flow is asynchronous and rebuilds chunks for its own reason).
+/// Depth off: the legal workload builds through the stand-in placement rule (D17,
+/// stand_in_placement_seam), whose item height is 0, so with the per-pixel depth
+/// (docs/render/depth.md) its buildings lie partly under the land and whether an edit shows
+/// would rest on which building is picked (W4-DEPTH-1-CLOSE F5); these cases test the picture's
+/// generations and readiness, not the depth (gpu_chunk_build_test.cpp, gpu_test.cpp do).
 SceneHandle scene_with(const fs::path& dir, const app::PlayLoad& play,
                        const std::vector<app::SceneBuilding>& buildings,
                        std::optional<render::ZoomLevels> levels = std::nullopt,
@@ -169,6 +178,7 @@ SceneHandle scene_with(const fs::path& dir, const app::PlayLoad& play,
     REQUIRE(loaded.ok());
     app::LoadedScene ls = std::move(loaded).value();
     ls.scene->river_cfg.enabled = false;
+    ls.scene->depth_test = false;
     if (levels) {
         ls.scene->set_levels(*levels);
     }
@@ -558,10 +568,19 @@ TEST_CASE("picture GPU: accepted builds and an accepted demolish keep the old ch
             CHECK(other.pixels(view) == new_px);
         }
         CHECK(channel_delta(cpu_reference(oracle, view, group), new_px) <= bound);
-        CHECK(new_px != old_px); // the edit is visible
+        // The edit is visible: at least kMinEditPixels pixels differ (its sprite is drawn whole).
+        std::size_t edited = 0;
+        for (std::size_t i = 0; i + 4 <= new_px.size(); i += 4) {
+            edited += new_px[i] != old_px[i] || new_px[i + 1] != old_px[i + 1] ||
+                              new_px[i + 2] != old_px[i + 2] || new_px[i + 3] != old_px[i + 3]
+                          ? 1U
+                          : 0U;
+        }
+        CHECK(edited >= kMinEditPixels);
         CHECK(g.frame->errors() == 0);
         MESSAGE("step " << n << " (" << step.edits.size() << " edit(s), group " << group
-                        << "): " << affected.size() << " affected visible keys");
+                        << "): " << affected.size() << " affected visible keys, " << edited
+                        << " pixels edited");
     }
     // A set of two or more keys was seen partly fresh, and not ready then.
     CHECK(partial_seen);

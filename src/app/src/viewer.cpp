@@ -1646,6 +1646,19 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         }
         construction_placement_open_ = false;
         return true;
+    case ConstructionClickKind::Turn:
+        // UI-INFO-2: the rotate arrows turn the one rotation the keys turn (DevInput's): one
+        // Rotate (+1) or RotateBack (-1) per quarter turn of the arrow's `turn` step, so the
+        // preview, the map ghost and the placed building cannot disagree (docs/re/ui.md 2.5).
+        if (dev_ != nullptr) {
+            for (const ToolInput& input : turn_inputs(result.turn)) {
+                for (sim::Command& c :
+                     dev_->handle(input, pointer_frame_ ? &*pointer_frame_ : nullptr)) {
+                    latest_receipt_ = play_->runner().post_command(std::move(c));
+                }
+            }
+        }
+        return true;
     }
     return false;
 }
@@ -2416,6 +2429,14 @@ void Viewer::script_tick() {
                          : hud_screen_ == UiMockScreen::Info       ? "info"
                          : hud_screen_ == UiMockScreen::MainMenu   ? "main_menu"
                                                                    : "player";
+    // UI-INFO-2: the rotation the info panel's preview shows (DevInput's, the one the keys and
+    // the rotate arrows turn), and the turn the map ghost is drawn and a click builds at
+    // (DevTool::turn: the same, or the coast's turn for a coast kind such as the Kontor).
+    const bool tool_armed = dev_ != nullptr && dev_->enabled() && dev_->input().selected();
+    st.facts["ui.info.rotation"] = construction_placement_open_ && tool_armed
+                                       ? std::to_string(dev_->input().rotation())
+                                       : std::string("none");
+    st.facts["tool.turn"] = tool_armed ? std::to_string(dev_->turn()) : std::string("none");
     st.facts["camera.pans"] = std::to_string(pans_);
     st.facts["selection.pending"] = selection_.pending ? "1" : "0";
     st.facts["selection.selected"] = selection_.selected ? "1" : "0";
@@ -2844,11 +2865,14 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         hud_counters_city_ = in.counters_city;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
-        const auto info = construction_placement_open_ && dev_ != nullptr &&
-                                  dev_->setup().registry && dev_->input().selected()
-                              ? ConstructionMenu::info_panel_content(*dev_->input().selected(),
-                                                                     *dev_->setup().registry)
-                              : std::nullopt;
+        auto info = construction_placement_open_ && dev_ != nullptr && dev_->setup().registry &&
+                            dev_->input().selected()
+                        ? ConstructionMenu::info_panel_content(*dev_->input().selected(),
+                                                               *dev_->setup().registry)
+                        : std::nullopt;
+        if (info) {
+            info->rotation = dev_->input().rotation(); // UI-INFO-2: the keys' and arrows' turn
+        }
         // Into the window's own canvas: its storage is reused frame to frame (fix round R1).
         ui_overlay_drawn =
             draw_live_screen_rgba_into(
@@ -3099,11 +3123,14 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         hud_counters_city_ = in.counters_city;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
-        const auto info = construction_placement_open_ && dev_ != nullptr &&
-                                  dev_->setup().registry && dev_->input().selected()
-                              ? ConstructionMenu::info_panel_content(*dev_->input().selected(),
-                                                                     *dev_->setup().registry)
-                              : std::nullopt;
+        auto info = construction_placement_open_ && dev_ != nullptr && dev_->setup().registry &&
+                            dev_->input().selected()
+                        ? ConstructionMenu::info_panel_content(*dev_->input().selected(),
+                                                               *dev_->setup().registry)
+                        : std::nullopt;
+        if (info) {
+            info->rotation = dev_->input().rotation(); // UI-INFO-2: the keys' and arrows' turn
+        }
         const auto* eligibility = in.snapshot ? in.snapshot->eligibility.get() : nullptr;
         const bool demolishing = dev_ != nullptr && dev_->input().demolish_mode();
         if (ui_t.identity()) {

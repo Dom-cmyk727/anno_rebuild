@@ -4,6 +4,12 @@
 
 namespace anno::app {
 
+std::vector<ToolInput> turn_inputs(int turn) {
+    const auto kind = turn > 0 ? ToolInput::Kind::Rotate : ToolInput::Kind::RotateBack;
+    const std::int64_t steps = turn > 0 ? std::int64_t{turn} : -std::int64_t{turn}; // no -INT_MIN
+    return std::vector<ToolInput>(static_cast<std::size_t>(steps), ToolInput{kind, 0, 0});
+}
+
 bool ConstructionMenu::inside(double px, double py, int x, int y, unsigned w, unsigned h) {
     return px >= x && px < static_cast<double>(x) + w && py >= y && py < static_cast<double>(y) + h;
 }
@@ -59,6 +65,22 @@ ConstructionMenu::click(double px, double py, const std::string& open_category, 
                         const std::vector<std::pair<sim::TypeId, bool>>* eligibility) const {
     ConstructionClickResult result;
 
+    if (placement_open && !open_category.empty()) {
+        // UI-INFO-2: the rotate arrows - every element with a `turn` step (hud.txt rotate_left
+        // -1, rotate_right +1: GOG View.dll 0x10030440 / 0x10030480; docs/re/ui.md section 2.5).
+        // Checked before the category column: rotate_left ((808, 451) 33 x 38) lies inside the
+        // column gadget's 42 px hit width (779..820), but the column is drawn clipped to 29 px
+        // (779..807, docs/re/ui.md 2.4) and the arrow is drawn over it, so a click there is the
+        // arrow's.
+        for (const UiElement& el : hud_->elements) {
+            if (el.turn && el.has_pos && el.has_size &&
+                inside(px, py, el.pos_x, el.pos_y, el.size_w, el.size_h)) {
+                result.kind = ConstructionClickKind::Turn;
+                result.turn = *el.turn;
+                return result;
+            }
+        }
+    }
     if (const auto cat = category_at(px, py)) {
         result.kind = ConstructionClickKind::SwitchCategory;
         result.category = *cat;
@@ -81,10 +103,10 @@ ConstructionMenu::click(double px, double py, const std::string& open_category, 
             return result;
         }
         // The info/placement panel (data/ui/hud.txt's `info_panel`, (804,302) 220x466) covers the
-        // grid's own extent while it is open; nothing else on it (rotate arrows, the cost/upkeep
-        // chrome) is wired to a command yet, so any other click here is a no-op, not a fall-through
-        // into cell_at() against grid coordinates the panel is drawn over instead of the grid.
-        return result; // None: the panel is open and this was not infoexit
+        // grid's own extent while it is open; nothing else on it (the cost/upkeep chrome) is
+        // wired to a command, so any other click here is a no-op, not a fall-through into
+        // cell_at() against grid coordinates the panel is drawn over instead of the grid.
+        return result; // None: the panel is open and this was neither infoexit nor an arrow
     } else {
         // The pickaxe (ABRISSICON): data/ui/hud.txt's own measured rectangle (docs/re/ui.md
         // section 2.4: (970, 710) 53 x 53), not construction.txt's `demolish` click centre (that

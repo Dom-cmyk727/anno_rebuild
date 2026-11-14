@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/app/dev_tool.hpp>
 #include <anno/app/ui_layout.hpp>
 #include <anno/app/ui_mock.hpp>
 #include <anno/sim/ids.hpp>
@@ -38,6 +39,10 @@ enum class ConstructionClickKind {
     ToggleDemolish,
     /// The cancel-X: leave placement or demolish mode.
     Cancel,
+    /// UI-INFO-2: a rotate arrow on the info/placement panel (a hud.txt element with `turn`):
+    /// turn the armed type's rotation by `ConstructionClickResult::turn` quarter turns, the same
+    /// rotation the keys turn (DevInput's, through DevTool's Rotate/RotateBack).
+    Turn,
 };
 
 struct ConstructionClickResult {
@@ -45,6 +50,8 @@ struct ConstructionClickResult {
     /// Set for SwitchCategory, Locked and Arm.
     std::string category;
     sim::TypeId type;
+    /// Set for Turn: the element's `turn` step (rotate_left -1, rotate_right +1; data/ui/hud.txt).
+    int turn = 0;
 };
 
 /// The info panel's cost row (C3): the gold and build-goods costs, read live from the registry
@@ -66,6 +73,11 @@ struct ConstructionCellInfo {
     /// whose `running_cost` is not the two-column form (never for the real files).
     std::optional<std::uint32_t> upkeep;
 };
+
+/// UI-INFO-2: what a Turn click sends to the developer tool: `turn` quarter turns as that many
+/// Rotate (+1, a positive step) or RotateBack (-1) inputs - the inputs the keys `,`/T and `.`
+/// send, so an arrow and a key turn the one rotation DevInput keeps. Empty for 0.
+[[nodiscard]] std::vector<ToolInput> turn_inputs(int turn);
 
 class ConstructionMenu {
   public:
@@ -98,7 +110,9 @@ class ConstructionMenu {
     /// (970,710) 53x53 and (984,725) 33x35), but docs/re/ui.md section 2.4 states the two panels
     /// are never shown together ("[cancel-X is] on the info/placement panel only; not on the
     /// category grid") - so only the panel matching `placement_open` is checked, avoiding a
-    /// guess at which the player meant from pixel overlap alone. `eligibility`: the published
+    /// guess at which the player meant from pixel overlap alone. While `placement_open`, a click
+    /// inside an element with a `turn` step (the rotate arrows, UI-INFO-2) resolves to Turn.
+    /// `eligibility`: the published
     /// PlaySnapshot::eligibility (ascending by id, as World::types().types() orders them) or
     /// nullptr; a cell with no matching entry, or a null `eligibility`, resolves Locked rather
     /// than guessing it open.

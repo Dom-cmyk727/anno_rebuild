@@ -1,0 +1,36 @@
+# UI-INFO-2: the rotate arrows at 2542 x 1351, default UI scale (ui_window_click_s10.script's size):
+# the right chrome is anchored right (x + 2542 - 1024 = x + 1518), so rotate_left's click centre
+# (824, 470) is at (2342, 470) and rotate_right's (1003, 470) at (2521, 470). The construction tab
+# (2327, 212) opens the menu and the grid's cell (0, 0) (2351, 330) arms the pioneer house 501.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 2542 1351
+wait frames 5
+click_px 2327 212
+wait frames 5
+click_px 2351 330
+wait frames 5
+expect title build 501
+expect fact ui.info.rotation == 0
+click_px 2342 470
+wait frames 3
+expect fact ui.info.rotation == 3
+expect fact tool.turn == 3
+click_px 2342 470
+wait frames 3
+expect fact ui.info.rotation == 2
+click_px 2521 470
+wait frames 3
+expect fact ui.info.rotation == 3
+click_px 2521 470
+wait frames 3
+expect fact ui.info.rotation == 0
+click_px 2521 470
+wait frames 3
+expect fact ui.info.rotation == 1
+expect fact tool.turn == 1
+expect title rotation 1
+# 1518 px left of the arrow (the map at the same height) is no arrow: the rotation stays.
+click_px 824 470
+wait frames 3
+expect fact ui.info.rotation == 1
+quit

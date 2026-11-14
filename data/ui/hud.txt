@@ -49,9 +49,15 @@ element info_panel pos 804 302 size 220 466 file toolgfx/fenster.tex access INFO
 # UI-INFO-1: INFOEXIT draws 33 x 35 (View.dll gadget 0x1002ff95 pushes 0x23, 0x21), the texture's last three
 # rows are not drawn; RGB565-exact on r2_info_forester_801, f12_info_kontor_1302, r2_info_pioneer_house.
 element infoexit pos 984 725 size 33 35 file toolgfx/fenster.tex access INFOEXIT tex_id 38 anchor right method sprite-565 shot r2_info_forester_801
-element rotate_left pos 808 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 34 anchor right method sprite-sad shot r2_info_pioneer_house
+# UI-INFO-2: `turn` = the quarter turns a click adds to the armed type's rotation. GOG View.dll
+# builds the arrows in 0x1002fd58 (gadget 2, image INFOROTPFEIL id 34, tooltip
+# TOOLTIP:BAUMENUINFO line 0 "Rotate left", click handler 0x10030440: cursor property 5 =
+# (v - 1) & 3) and 0x1002fe58 (gadget 3, id 36, line 1 "Rotate right", 0x10030480: (v + 1) & 3).
+# Wine runner shots u2_501_L1..L4 / R1..R4 / u2_2520_R1..R4: the preview and the map ghost show
+# rotation block (v - 1) / (v + 1) mod blocks (docs/re/ui.md section 2.5).
+element rotate_left pos 808 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 34 anchor right turn -1 method sprite-sad shot r2_info_pioneer_house
 # UI-INFO-1: rotate_right is at x 988, not 987 (0 of 1254 pixels differ in RGB565 at 988 on three shots, 984 at 987).
-element rotate_right pos 988 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 36 anchor right method sprite-565 shot r2_info_forester_801
+element rotate_right pos 988 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 36 anchor right turn 1 method sprite-565 shot r2_info_forester_801
 # UI-INFO-1 (2026-11-14): the info panel's text boxes and preview (docs/re/ui.md section 2.5).
 # Box widths are the View.dll gadgets (class 0xb1c, loop 0x10030024-0x10030126): name 200 x 18
 # (0x1003007f), the four materials 50 x 18 (0x1003008d), gold and upkeep 145 x 18 (0x100300ba).

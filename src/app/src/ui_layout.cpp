@@ -393,6 +393,13 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     if (!v || *v <= 0)
                         return fail(line_no, "for_width: not a positive integer");
                     e.for_width = v;
+                } else if (key == "turn") {
+                    if (!tok.more())
+                        return fail(line_no, "turn: missing value");
+                    const auto v = to_int(tok.take());
+                    if (!v || *v == 0)
+                        return fail(line_no, "turn: not a non-zero integer");
+                    e.turn = v;
                 } else {
                     return fail(line_no, "element: unknown key '" + key + "'");
                 }

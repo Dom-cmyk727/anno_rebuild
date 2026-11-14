@@ -53,6 +53,22 @@
 2. **The four C++ mutants** the report mentions were run by hand, not kept as tests. The vector and unit tests
    reject each of them, as the report describes. Not re-run by the orchestrator.
 
+## Game-file run of the landing candidate (2026-11-14)
+
+**The candidate:** `orch/land-fisher-1a` at `198b5fb0`: `main` `674ecdf4`, then `task/FISHER-1a` `9137eabd`, then the
+board up to `2e2f9ca2`. It was built locally and not pushed.
+- `9137eabd` predates SAVE-SECTIONS-1b, so the merge met two conflicts where both added lines at the end of a file:
+  `tools/lint_sim_allow.txt` and `REPORTS.md`. Both were resolved by keeping both sides. `tools/lint_sim.py`:
+  `lint_sim: ok`.
+
+**The run:** the canonical call, with the GOG oracle shots and the HE captures set, 18:44–19:13.
+- `COUNTS: selected=2604 executed=2577 failed=0 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: PASS`. Nothing was refused.
+- Log sha256 `ba559f82897555fc…`.
+- **On this PC's game files** the fisher tests printed:
+  - `FISHER_VECTORS sea_cell=6 corner_grid=5 search_rect=5 skipped_other_types=33`
+  - `FISHER_CORPUS scenarios=50 refused=0 fish=2473 goals=2473 adjacent_water=619 without_adjacent_water=1854`
+
 ## Not verified by the orchestrator
 
 - The executor's runs:

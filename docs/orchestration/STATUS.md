@@ -636,8 +636,8 @@ mirror still requires the owner/Windows sync after main publication.
 ### Mac executor (from 2026-11-11)
 
 - **Finished: [SAVE-SECTIONS-1a](tasks/save-sections-1a.md)** (2026-11-14, head `8b732ee9`), **accepted**
-  ([review](reviews/2026-11-14-save-sections-1a-review.md)); it lands after the game-file run. **Next:** SAVE-SECTIONS-1b,
-  released once 1a is on `main`. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
+  ([review](reviews/2026-11-14-save-sections-1a-review.md)); it lands after the game-file run. **Next:** [SAVE-SECTIONS-1b](tasks/save-sections-1b.md)
+  (written 2026-11-14), released once 1a is on `main`: the tag registry and the proof that an extension moves no pin. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
   SAVE-SECTIONS-1a, then SAVE-SECTIONS-1b, then FISHER-1a, then FISHER-1b, the fisher working in the game.
   FIXTURES-TRIM-1 follows, as cleanup.
 - **Finished: [PINS-1](tasks/pins-1.md)** (2026-11-14; head `661cd2a6`), **accepted after one fix round**

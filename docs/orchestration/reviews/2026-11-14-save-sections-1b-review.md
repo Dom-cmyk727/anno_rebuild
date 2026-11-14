@@ -96,6 +96,29 @@ this package doesn't touch:
 
 **Result:** every selected test that is not skipped executed and passed on the candidate.
 
+## The landing alone (2026-11-14)
+
+The owner said "Land both". UI-WINDOW-1 was then held again, after the owner's second retest relayed by the UI lane.
+SAVE-SECTIONS-1b, covered by the same OK, lands alone. Its candidate `orch/land-save-sections-1b-only` at `f04c600f`
+is `main` `f54e36f0`, then `4c1685fa`, then the board up to `ae4d8298`. Against the run above it lacks only
+UI-WINDOW-1's files: no `src/sim` difference.
+
+**Its own game-file run:** the canonical call, 17:36–18:04.
+- `COUNTS: selected=2600 executed=2568 failed=5 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- Log sha256 `b7333d0b6b59b731…`.
+
+**The five failures are memory refusals** (`reason=low-memory stop`; another session's render tests held about
+6 GB):
+- two scenario-corpus tests, `every .sze loads, creates and runs five minutes` and `the ten scenarios with the most
+  buildings run 20000 ticks more`;
+- three render corpus tests, `render_chunk: the Cpu builder keeps the planes, GpuList keeps the list`,
+  `river flow corpus: every island with rivers` and `water field: empty cells hold on every island`.
+
+**Each rerun alone** with `--jobs 1`, 18:05–18:08: `COUNTS: selected=1 executed=1 failed=0`, `VERDICT: PASS` for all
+five. Log sha256s: `f18fa7ea57804a6c…`, `bb8bee8572c3837c…`, `4dee0d6093041579…`, `874ae18ec9e7faa5…`,
+`4028ac760a8f3416…`.
+
 ## Not verified by the orchestrator
 
 - The executor's own runs: the pins check (1,653 executed, 0 failed, 18 opt-in skips), the focused runs and the

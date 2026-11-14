@@ -11,6 +11,12 @@ says who is doing what, where the work is, and what it waits on.
   - **Its plan:** UI-HE-1 (the History Edition's UI captured at several window sizes: its scaling rule and OQ-561),
     then UI-INFO-1 (the building info panel's name, cost row and upkeep, ADR 0004 row 4), then UI-WINDOW-1.
   - **Landing** stays with the orchestrator and the owner (land.py, the game-file run).
+  - **UI-INFO-1 is ready to land** (`task/UI-INFO-1` `83a0adff`, CI green). The UI lane accepted it with findings,
+    fixed in its fix round, and the orchestrator accepted it for landing
+    ([board review](reviews/2026-11-14-ui-info-1-board-review.md)).
+    - **What it adds:** the info panel's name, four material costs, gold and upkeep, pixel-identical to all 15 GOG
+      shots, and a flagged preview placeholder (OQ-612).
+    - **It waits on** the owner's preview decision, the owner's landing OK and the candidate's game-file run.
 - **LANDED on `main` as `95eea7de`,** with the owner's OK ("Land on Main"): DEPTH-INTEGRATE-1 and the board. Depth is
   on by default and the sea is at the original's 26.5 plane on `main` now.
   - **`main` is healthy:** that exact commit's game-file run passed every test, 2,555 executed, 0 failed, none

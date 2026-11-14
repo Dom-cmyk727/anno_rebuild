@@ -10539,22 +10539,13 @@ QUESTIONs: none; all three stopping questions checked and not triggered. Orchest
 
 Branch task/FISHER-1a; new worktree from main f54e36f0; packet/owner rules read at board 3a87b3bf.
 Implementation d9fdbff1; no reviewer agents; independent orchestrator review pending.
-API in fisher.hpp: fisher_corner(span<const u8>, u32 W,H,cx,cy) -> optional<u8>;
-  fisher_cell(array<u8,4>, u8 threshold) -> FisherCell{mean,walkable_water,goal_mask};
-  fisher_cell_at(span<const u8>, u32 W,H,x,y, u8 threshold) -> optional<FisherCell>;
-  fisher_search_rect(u16 x,y, u32 W,H,r) -> optional<FisherSearchRect{u16 x,y;u8 width,height}>.
-Corner lookup copies W × H samples unchanged; logical right/bottom edges are zero; no allocation.
-  Wrong sample length/outside coordinates return nullopt; cell coordinates must be inside W × H.
-Threshold: kFisherWaterThreshold = 32, a documented function parameter default, not SimConfig/state.
-  AnnoWelt.dll 0x100e34dc / 0x1008fea0 / 0x1008ff00; sourced lint allowance, no content limit.
+API in fisher.hpp: fisher_corner(span<const u8>, u32 W,H,cx,cy) -> optional<u8>; fisher_cell(array<u8,4>, u8 threshold) -> FisherCell{mean,walkable_water,goal_mask}; fisher_cell_at(span<const u8>, u32 W,H,x,y, u8 threshold) -> optional<FisherCell>; fisher_search_rect(u16 x,y, u32 W,H,r) -> optional<FisherSearchRect{u16 x,y;u8 width,height}>.
+Corner lookup copies W × H samples unchanged; logical right/bottom edges are zero; no allocation. Wrong sample length/outside coordinates return nullopt; cell coordinates must be inside W × H.
+Threshold: kFisherWaterThreshold = 32, a documented function parameter default, not SimConfig/state. AnnoWelt.dll 0x100e34dc / 0x1008fea0 / 0x1008ff00; sourced lint allowance, no content limit.
 Unsigned four-corner mean divides by 4; water iff mean < threshold; goal mask 511 otherwise, 0 below.
-Rectangle follows 0x10059210–0x10059398: origin wraps modulo 65536, extent modulo 256, never clamps.
-  Negative origin -6 becomes 65530; extent 256 becomes 0. Widened arithmetic, no map/radius cap;
-  zero footprint returns nullopt. No scheduler wiring, World member, extension tag or identity change.
-Vectors executed: sea_cell 6, corner_grid 5, search_rect 5; 33 other records skipped by explicit name.
-  Border means 31 and 32 ran; unit cases cover threshold 33, singleton/borders, invalid input and wrap.
-Four isolated C++ mutants rejected by the actual vector test: inclusive water, inverted goal mask,
-  replicated border, clamped origin. Each replacement applied exactly once; mutants-02.log.
+Rectangle follows 0x10059210–0x10059398: origin wraps modulo 65536, extent modulo 256, never clamps. Negative origin -6 becomes 65530; extent 256 becomes 0. Widened arithmetic, no map/radius cap; zero footprint returns nullopt. No scheduler wiring, World member, extension tag or identity change.
+Vectors executed: sea_cell 6, corner_grid 5, search_rect 5; 33 other records skipped by explicit name. Border means 31 and 32 ran; unit cases cover threshold 33, singleton/borders, invalid input and wrap.
+Four isolated C++ mutants rejected by the actual vector test: inclusive water, inverted goal mask, replicated border, clamped origin. Each replacement applied exactly once; mutants-02.log.
 Corpus QUESTION resolved by owner: normal required-actor import refuses 31 of 50 maps; focused-dev-02.log.
   Those refusals leave 1080 goals/223 adjacent; Python confirms the missing 1393 fish/396 adjacent.
   normal-import-differences.json lists all maps, counts and exact unsupported actor/record reasons.
@@ -10588,7 +10579,13 @@ VERDICT: PASS
 COUNTS: selected=1668 executed=1650 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
 VERDICT: PASS
 PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full (full summary in console log).
-Final report-head pins.py check/hosted CI gate URL, exact lines and hashes are supplied in the handoff.
+Initial final-head check at 0398c6f6 passed (pins-final-head-01.log): 1650 executed, 0 failed, 18 opt-in skips.
+Hosted run 43615041384: MSVC C4244 in optional<u8> from integer-literal border zero; preserved annotations.
+Fix: return explicit u8 zero; no arithmetic/bytes/pins change. Affected geometry rerun and corrected
+  final-head pins check/hosted CI URL, exact lines and hashes are supplied in the handoff.
+msvc-fix-focused-01.log (only the four affected geometry cases; dev rebuild 0 warnings):
+COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
 Decisions and reasoning:
 - Parameter default keeps the sourced threshold configurable without serialized settings or default changes.
 - Per-corner lookup avoids allocating a derived grid; original wrap semantics retain reference compatibility.

@@ -7,7 +7,7 @@ std::optional<std::uint8_t> fisher_corner(std::span<const std::uint8_t> heights,
     if (heights.size() != std::uint64_t{width} * height || cx > width || cy > height)
         return std::nullopt;
     if (cx == width || cy == height)
-        return 0;
+        return std::uint8_t{0};
     return heights[std::uint64_t{cy} * width + cx];
 }
 FisherCell fisher_cell(const std::array<std::uint8_t, 4>& corners, std::uint8_t threshold) {

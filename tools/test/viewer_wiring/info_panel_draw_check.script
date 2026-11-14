@@ -1,0 +1,45 @@
+# UI-INFO-1: the building info panel's name, preview, costs and upkeep, captured for
+# info_panel_pixel_check.py. Opens the construction menu, arms four cells (farms (0,1) forester
+# 801, public (2,0) market 1301, coastal (0,0) Kontor 1302, roads (0,0) dirt road 2520; click
+# points are construction.txt's category y at category_column_x 782 and grid_click x/y),
+# screenshots each panel and leaves it with the cancel-X (inside infoexit (984, 725) 33 x 35).
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+click_px 782 418
+wait frames 3
+click_px 833 382
+wait frames 5
+expect title build 801
+wait frames 1
+screenshot info_801_live
+click_px 1000 740
+wait frames 3
+click_px 782 325
+wait frames 3
+click_px 937 330
+wait frames 5
+expect title build 1301
+wait frames 1
+screenshot info_1301_live
+click_px 1000 740
+wait frames 3
+click_px 782 508
+wait frames 3
+click_px 833 330
+wait frames 5
+expect title build 1302
+wait frames 1
+screenshot info_1302_live
+click_px 1000 740
+wait frames 3
+click_px 782 373
+wait frames 3
+click_px 833 330
+wait frames 5
+expect title build 2520
+wait frames 1
+screenshot info_2520_live
+quit

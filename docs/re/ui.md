@@ -232,7 +232,7 @@ Rewritten by UI-INFO-1 (2026-11-14). Every row below has file or code evidence a
 
 Name, figures and chrome: 0 differing pixels on all 15. The live window (CPU) reproduces the reference exactly (`info_panel_pixel_check`), so these counts are also the window's against GOG for 801, 1301, 1302, 2520.
 
-**HE code:** the HE `View.dll` does not contain the GOG gadget sequences above (`push 0x12; push 0xc8`, the 135.0f store). Its panel code was not located (OQ-613).
+**HE code:** the HE `View.dll` is PE32+ x86-64 (machine 0x8664), so the GOG 32-bit sequences above cannot appear in it. It contains `INFOUNTERGRUND` twice and 135.0f 21 times, so a string cross-reference is the open route; its panel code was not located (OQ-613).
 
 Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_locked_*`). Left click on a valid tile places and stays in mode (`r2_place_*`). ESC / right click / cancel-X leaves.
 

@@ -13,7 +13,10 @@ says who is doing what, where the work is, and what it waits on.
   - **UI-HE-1** as `d89d54a6`: the History Edition's UI scale rule, docs only.
   - **`main` is healthy.** `d2884227`'s game-file run passed every test (2,564 executed, 0 failed, none refused), and
     `d89d54a6` adds only documents on top. UI-INFO-1's own run passed too, its 5 memory refusals rerun alone.
-  - **The Mac has SAVE-SECTIONS-1a** (owner pasted the prompt after PINS-1 landed).
+- **[SAVE-SECTIONS-1a](tasks/save-sections-1a.md) ACCEPTED** (2026-11-14, head `8b732ee9`, CI green;
+  [review](reviews/2026-11-14-save-sections-1a-review.md)): each of the ten sections has a base version and an
+  empty extension list; 139 is the last global state number. 50 pins changed value, 13 only their version. It lands
+  on the owner's OK, after the game-file run of the candidate (`main`, then the branch, then the board).
 - **A new UI lane, owner 2026-11-14:** the "UI Executor" session is orchestrator and executor for the in-game UI, so
   the menus match the original and the History Edition. **UI-WINDOW-1 (the UI at every window size) moved to it**
   (owner: "UI-WINDOW-1 belongs to the UI lane"); the Windows executor's queue no longer holds it.
@@ -632,8 +635,9 @@ mirror still requires the owner/Windows sync after main publication.
 
 ### Mac executor (from 2026-11-11)
 
-- **Next: [SAVE-SECTIONS-1a](tasks/save-sections-1a.md)** (written 2026-11-14, state 139), released when the owner
-  pastes its prompt. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
+- **Finished: [SAVE-SECTIONS-1a](tasks/save-sections-1a.md)** (2026-11-14, head `8b732ee9`), **accepted**
+  ([review](reviews/2026-11-14-save-sections-1a-review.md)); it lands after the game-file run. **Next:** SAVE-SECTIONS-1b,
+  released once 1a is on `main`. The path to gameplay (owner, 2026-11-14: "heading towards game development progress"):
   SAVE-SECTIONS-1a, then SAVE-SECTIONS-1b, then FISHER-1a, then FISHER-1b, the fisher working in the game.
   FIXTURES-TRIM-1 follows, as cleanup.
 - **Finished: [PINS-1](tasks/pins-1.md)** (2026-11-14; head `661cd2a6`), **accepted after one fix round**

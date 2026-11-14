@@ -1,6 +1,6 @@
 # UI-WINDOW-1 review (UI lane, 2026-11-14)
 
-**Verdict: ACCEPT WITH FINDINGS** on `d9121492`; R2/R3 below, current head **`7cddd25f`**; findings 1–7 fixed in fix round R1, head **`e107a8f6`**
+**Verdict: ACCEPT WITH FINDINGS** on `d9121492`; R2/R3/R4 below, current code **`59d787de`**; findings 1–7 fixed in fix round R1, head **`e107a8f6`**
 (contains main `f54e36f0`; CI run 43591693332, all 12 jobs green incl. `gate`). The UI lane's independent reviewer
 (a subagent with no part in the work) re-measured and re-disassembled on its own; the UI lane checked the fix round,
 the scope and the F1 evidence itself.
@@ -96,6 +96,33 @@ Still open, not blocking:
 - The panels' live names and figures (UI-TABS-1).
 - The preview's arrows and rotation (UI-INFO-2).
 - NOT_RUN: GPU tests as CTest, Linux/macOS game-file runs, the full suite.
+
+## Fix round R4 (owner retest of `7cddd25f`, video `ui_2.mp4`)
+
+The owner's retest found the building materials missing. Cause: R2 showed the counters only while the view
+centre was over an island with the local player's city, and lan5's start camera is over another island; the R2
+test always moved the view to the city island first, so it never saw the start state. Owner decisions
+2026-11-14: counters "Always show my city"; the preview's arrows and rotation (OQ-612) "Separate, land first"
+(UI-INFO-2, after this lands).
+
+R4 (`59d787de`, report `0be7ae20`): the counters show the city on the centred island when it is one of the
+player's, else the player's first city in (island, city) order; hidden only before the first founding. New fact
+`hud.counters.city`; `hud.counters` reads "not drawn" until a frame drew the HUD. App-side only.
+
+The UI lane checked R4 itself (a 37-line viewer change, no reviewer subagent):
+
+| Check | Result |
+|---|---|
+| Diff scope | `viewer.cpp`, comments in `play.cpp/hpp`, two scripts, CMake, `ui.md` 5.2, OQ-622, REPORTS. Nothing under src/sim, src/render, crates, game |
+| Rule in code | fallback `snapshot->cities->front()` only when the list is non-empty; the city list is built only when the player has a city |
+| Regression test | `ui_counters_centred` now expects shown and city 1:1 right after start, over sea, over the city-less island and over the city island; the executor ran it on the `919c59fc` build: fails at its first check ("hidden") |
+| Before founding | `ui_counters_before_founding` (ship start, seat 0): hidden, city none |
+| Focused run here | `ui_counters_centred`, `ui_counters_before_founding`, `ui_tabs`, `ui_menu_close_disarms`: 4 of 4 executed and passed; screenshots show the counters at the start camera and none on the ship start |
+| Hosted CI | run 43618720924 on `0be7ae20`: every job green, `gate` included |
+
+Gap: lan5 gives the player one city, so the centred-city and fallback cases are the same city; a test with two
+cities was not run. The branch does not contain main `674ecdf4` (SAVE-SECTIONS-1b landed after the executor
+checked); merging it is left to the landing.
 
 ## Landing
 

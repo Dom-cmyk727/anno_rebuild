@@ -10534,3 +10534,87 @@ NOT_RUN:18 opt-in soaks/measurements; local Windows/MSVC/WSL and full platform/g
 No game assets committed; no feature/default, PRNG site, registry format, tag API, rebase or main push.
 QUESTIONs: none; all three stopping questions checked and not triggered. Orchestrator review pending.
 **READY FOR REVIEW.**
+
+## SHORE-2 — the sea's edge follows the terrain at the original's plane — 2026-11-14 — READY FOR REVIEW
+
+Base `origin/task/DEPTH-INTEGRATE-1` `eff68d5e`, branch `task/SHORE-2`, merged `origin/main` `f54e36f0` (clean,
+no conflicts in the branch's own files) as `84d1d323`, then a clang-format fix as `8a7b36dc`.
+
+**The trace, time-boxed to about an hour** (`docs/re/annowelt.md`, new subsection; `docs/open-questions.md`
+OQ-026): the chunk sea-bit writer is `0x1009ebf0`. For a corner belonging to an island it gates the bit on a
+per-GFXID vtable query (slot `+0x13c`), not on the corner's own height; only a corner outside every island
+(tile-id `0xFF`) tests height, via `0x100b5dc0` against a constant near the sea anchor `0x100e3a1c`. Neither
+`0x100b5dc0`'s bound nor `+0x13c`'s predicate resolved in the time-box — narrows, does not close, OQ-026.
+
+**The rule as built** (`src/render/src/sea.cpp`, `IslandWater::build`): the packet's sanctioned fallback, labelled
+as an approximation, not the traced rule. A chunk holds sea if any of its tiles has a corner below
+`Scene::shore_height`, replacing the fixed `average ≤ 19` classifier (`kLandAverage`) that ignored `shore_height`
+entirely. `kLandAverage` itself is untouched — it stays the land classifier used elsewhere (`frame_projection.cpp`,
+`legal_workload.cpp`), unrelated to this bit.
+
+**GPU = CPU:** structural, not measured per-pixel — `IslandWater::build` has exactly one caller
+(`scene.cpp:942`) and its `sea_chunk` output feeds both the CPU and GPU chunk-build paths from the same struct;
+no separate GPU-side change was needed or made. `--depth off` and `--shore 16.5`/`--shore 26.5` still select as
+before; the water-field empty-cell proof (`iso.md`) uses the same bit and needed no condition change.
+
+**Coverage table (item 3):** NOT_RUN — recomputing it against the original needs a live original/Wine capture
+session, not available this session.
+
+**River mouths (item 4):** a full river-corpus sweep was NOT_RUN for the same reason. Measured one sample instead:
+`Single_01.sze`, the river mouth at world `(274,447)`, 800×600 — shore 16.5 vs 26.5 changes 8,299 of 480,000
+pixels (1.73%), bbox `(0,269)-(515,599)`.
+
+**Pictures** (`C:\Users\altin\Pictures\anno-review\SHORE-2\`), before `eff68d5e` vs after this fix:
+- Kontor spot (`S01_02_01.sze` at `(421,605)`, 1280×800): 2 pixels changed, bbox `(718,218)-(720,218)`.
+- Wide beach (`Single_24.sze --group 2`, 7200×2811): 930 pixels changed, bbox `(481,613)-(6346,2278)`.
+- River mouth (`Single_01.sze` at `(274,447)`, 800×600): 291 pixels changed, bbox `(230,275)-(515,544)` — visually
+  the river channels feeding the lagoon, not the open sea.
+
+**Performance:** `bench_frame --chunk-profile 1 --groups 0` on `Single_24.sze`, warm pass, before vs after once
+system load (concurrent `cl`/WSL compiles) had subsided: 20.4ms/chunk vs 20.3ms/chunk — no regression, as
+expected (`IslandWater::build` runs once per island, not per chunk). An initial contended measurement showed a
+~34% gap; discarded once `cl`/`cc1plus` activity was confirmed at measurement time. `bench_frame --zoom-sweep`
+(ZOOM-MEASURE-1's `lan5` legs mode) is NOT_RUN: confirmed via `--help` that this branch's `bench_frame` (even
+after the `main` merge) has no `--zoom-sweep`/`--zoom-sweep-mode` flags.
+
+**Gates.** MSVC Release, game files, render+app, pre-merge (`47f5f28e`):
+`COUNTS: selected=591 executed=582 failed=6 empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` /
+`VERDICT: FAIL failed tests` (`cache/gates/shore2-msvc-render-app-3.txt`) — all 6 were
+`[anno-test memory] refused ... low-memory`; each passed alone (`--jobs 1`,
+`cache/gates/shore2-msvc-refused-1.txt` through `-6.txt`, each `selected=1 executed=1 failed=0 VERDICT: PASS`).
+After merging `main`, render+app reran at `84d1d323`: `COUNTS: selected=520 executed=508 failed=9 ... VERDICT: FAIL
+failed tests` (`cache/gates/shore2-msvc-render-app-4.txt`) — 9 refusals (8 low-memory, 1 "coordinator lost"), all
+9 confirmed passing alone (`cache/gates/shore2-msvc-refused2-1.txt` through `-9.txt`, the "coordinator lost" one
+via a second solo attempt, `-2b.txt`, each `VERDICT: PASS`). GPU, both commits and both adapters, all
+`COUNTS: selected=117 executed=117 failed=0 VERDICT: PASS`: 4090 pre-merge `shore2-msvc-4090-1.txt`, Radeon
+pre-merge `shore2-msvc-radeon-1.txt`, 4090 post-merge `shore2-msvc-4090-2.txt`, Radeon post-merge
+`shore2-msvc-radeon-2.txt`. WSL `-O1` ASan, pre-merge (`47f5f28e`, `anno1503-SHORE-2-gatecheck`
+worktree): app `selected=316 executed=313 failed=0 skipped=3(opt-in) VERDICT: PASS`, sim
+`selected=1609 executed=1591 failed=0 skipped=18(opt-in) VERDICT: PASS`, formats
+`selected=97 executed=97 failed=0 VERDICT: PASS`, render `selected=192 executed=192 failed=0 VERDICT: PASS`,
+tsupport `selected=94 executed=90 failed=0 skipped=4(opt-in) VERDICT: PASS` (`/home/altin/anno-gate-logs/
+anno1503-SHORE-2-gatecheck/wsl-shore2.txt`, `overall rc=0`). Hosted CI's `cpp (linux-clang-asan)` job is the
+equivalent check at the actually-pushed, merged commit.
+
+Pushing `84d1d323` (merge only) failed hosted CI's `cpp-format` job alone: `clang-format --Werror` flagged the
+new four-term boundary check in `sea.cpp:436-437` (line-wrap only, no logic). Fixed locally with the pinned
+clang-format 23.1.3 binary, reran render (`selected=202 executed=202 failed=0 VERDICT: PASS`,
+`cache/gates/shore2-msvc-render-5.txt`) and both GPU adapters (`shore2-msvc-4090-2.txt`\* →
+`shore2-msvc-4090-2.txt`/`shore2-msvc-radeon-3.txt`, both `PASS 117/117`), committed as `8a7b36dc`, pushed.
+Hosted CI run `43603992255` on `8a7b36dc`: every job green, `gate` included.
+
+NOT_RUN: the coverage table against the original (item 3, no live capture); a full river-corpus sweep (item 4,
+single-mouth sample only); `bench_frame --zoom-sweep` (flags don't exist on this lineage); the direct renderer,
+zoom fixes, river flow changes (not this packet's).
+
+Decisions and reasoning:
+- Scoped the fix to `sea.cpp`'s `sea_chunk` computation only; left `kLandAverage` itself untouched since it is a
+  separately-evidenced land classifier used elsewhere, unrelated to the sea bit this packet traces.
+- Used the packet's sanctioned plane-derived fallback rather than guessing at `0x100b5dc0`'s bound or `+0x13c`'s
+  predicate from the time-boxed trace alone — guessing would have put an unevidenced rule in code.
+- Treated GPU=CPU as structurally guaranteed (one caller, shared struct) rather than adding a redundant GPU-side
+  measurement, consistent with how the data actually flows.
+- Reported the coverage table and full river sweep as NOT_RUN rather than improvising a substitute without a
+  live original/Wine capture, per the evidence contract.
+
+QUESTIONs: none required.

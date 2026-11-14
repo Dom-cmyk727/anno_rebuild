@@ -10628,7 +10628,9 @@ One commit per finding (F6 and F7 share one: one window script covers both):
 Gates: `cmake --build --preset msvc` exit 0, 0 warnings (`build-r1.log`). `run_selected.py` with game dir, oracle
 shots and HE captures (the earlier selection plus `ui_menu|ui_chrome|dev script|dev_script`): selected 48, executed
 48 pass, 0 failed, 0 skipped, VERDICT PASS (`focused-r1.log`). clang-format 23.1.3 on the 15 changed app files:
-clean. `ui_layout.py validate/self-test/check-files`: ok. `check_unix_warnings.sh`: GCC 13, Clang 18, GPU on/off clean, exit 0. Hosted CI: see
-the push of this section.
+clean. `ui_layout.py validate/self-test/check-files`: ok. `check_unix_warnings.sh`: GCC 13, Clang 18, GPU on/off clean, exit 0. Hosted CI on `982c8c1c`
+(run 43588228456): all jobs and `gate` green. Then `origin/main` `f54e36f0` merged (SAVE-SECTIONS-1a, sim save
+stream only; REPORTS.md conflict resolved by keeping both entries): rebuild 0 warnings, the same gate selected 48,
+executed 48 pass, VERDICT PASS (`focused-r1-merged.log`). CI on the merged head: see its push.
 NOT_RUN: an automated GPU check at a non-1024 size (above); Linux/macOS game-file runs; the full suite.
 **READY FOR REVIEW.**

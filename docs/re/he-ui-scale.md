@@ -1,6 +1,7 @@
 # History Edition: how the in-game UI scales with the window (UI-HE-1)
 
-**Status:** static RE plus one visual sample, 2026-11-14 (UI lane). Read-only analysis of the HE
+**Status:** static RE plus three visual samples (UI_SCALE 1.0, 1.5, 2.0), all matching the rule,
+2026-11-14 (UI lane). Read-only analysis of the HE
 binaries with pefile + capstone (an x86-64 build, so Ghidra on this Windows host was not used). A
 subagent found the code paths; the UI lane re-disassembled the key sites itself (marked
 **re-checked**). No HE bytes, pixels or captures are in git; captures stay in
@@ -24,6 +25,18 @@ original is the base and HE-only behaviour becomes an option on top of it.
   no clamp; it stores the value at `AdditionalOptions+0xc` (0x1efc). `tDisplay::GetAdditionalOptions`
   is `AnnoDisplay` 0x189f0.
 - Written back with `"%f"` + `RegSetValueExA`: `AnnoDisplay` 0x27ab2..0x27b0c.
+- **The registry is not the whole story.** Observed 2026-11-14: with the registry at `"1.500000"`
+  (the only `UI_SCALE` value in HKCU/HKLM), a fresh start showed 2.0 in the options; after the
+  slider was set to 1.0 the registry still read 1.5, yet the next start showed 1.0. The options
+  value persists somewhere else (not found, see Open). `Anno1503.exe` 0x14b0 does run on every
+  start (called unconditionally from WinMain 0x2a00 at 0x2c48). `OnGameSettingsApplied` (0x2edd0)
+  compares the old and new value ×100 (0x2eff7, 0x2f06d) and writes `float(trunc(new × 100))` to
+  `tDisplay+0x554` (0x2f876), but never `AdditionalOptions+0xc`, and its registry save (0x30440 →
+  0x27790) writes that unchanged field, which fits the registry not following the slider.
+- **Forced to 1.0 at 1200 lines or fewer.** `UpdateGameSettings`: `cmp [res+4], 0x4b0; jle` at
+  0x2d943 (**re-checked**) and `mov [AdditionalOptions+0xc], 1.0f` at 0x2da17 (**re-checked**):
+  when the chosen resolution is at most 1200 pixels high, the scale is set to 1.0 and the
+  "UIScale" entry is greyed. So on a 1080p display the HE UI is always 1:1.
 - The game reads the setting at start. The menus are full-screen art at a fixed 800 × 600 frame and
   do not follow the setting (`OnResize(false)` uses 800 × 600 at scale 1.0).
 
@@ -59,14 +72,26 @@ use it. Which of the two draws the UI layer is open; both are bilinear.
 | Client | UI_SCALE 1.0 | UI_SCALE 1.5 | UI_SCALE 2.0 |
 |---|---|---|---|
 | 2542 × 1351 | 1.0 (1:1) | s 1.5, UI 1694 × 900, k 1.5006 | s 1.7, UI 1495 × 794, k 1.7003 |
-| 1920 × 1080 | 1.0 | s 1.4, UI 1371 × 771, k 1.4004 | s 1.4, UI 1371 × 771, k 1.4004 |
-| 1024 × 768 | 1.0 | 1.0 (falls back) | 1.0 (falls back) |
+| 1920 × 1080 | 1.0 | 1.0 (forced, ≤ 1200 lines) | 1.0 (forced, ≤ 1200 lines) |
+| 1024 × 768 | 1.0 | 1.0 (forced) | 1.0 (forced) |
 
-**Visual check:** one sample so far. UI_SCALE 2.0, windowed client 2542 × 1351: the side panel's tab
-row matched the GOG chrome at factor **1.696** (bilinear resample, mean abs diff 4.7, tab row
-y 298 ≈ 175 × 1.696), right-anchored at the client's right edge and top-anchored. The prediction is
-1.7003; the difference is within the measurement's resolution. The samples at 1.0 and 1.5 are still
-to be taken.
+Without the 1200-line rule the loop alone would give 1.4 at 1920 × 1080; the options force 1.0
+there first (§1). Whether the rule applies to the window's client height or to a display mode
+chosen in the list is not checked (the samples are all above 1200 lines).
+
+**Visual check, 2026-11-14,** windowed client 2542 × 1351, capture of the game window only. The GOG
+right chrome's tab band (1024 × 768 oracle shot, x 779..1023, y 175..244) was resized bilinearly by
+k in steps of 0.005, placed with its right edge at the client's right edge and its top at 175 · k,
+and compared with the capture (mean abs difference per channel, 0..255):
+
+| UI_SCALE | Best k | Panel x | Tab band y | Mean abs diff | Next best (k ± 0.005) | Predicted k, x |
+|---|---|---|---|---|---|---|
+| 1.0 | **1.000** | 2297 | 175 | 3.50 | 15.18 | 1.0, W − 245 = 2297 |
+| 1.5 | **1.500** | 2174 | 263 | 4.60 | 7.23 | 1.5006, 2174.4 |
+| 2.0 | **1.700** | 2125 | 298 | 4.25 | 6.67 | 1.7003, 2125.4 |
+
+The panel is right-anchored and top-anchored in every sample. (The first 2.0 measurement, 1.696, was
+a coarser grid.)
 
 ## 3. Anchoring
 
@@ -96,9 +121,10 @@ confirmed).
 - The faithful base stays the original's 1:1 UI at 1024 × 768 with the right chrome at W − 245.
   HE's rule at `UI_SCALE` 1.0 is exactly that base (1:1, right-anchored) at any window size of at
   least 1024 × 768.
-- HE's scale setting is an option on top: step down by 0.1 from the setting until the UI keeps at
-  least 1024 × 768 UI pixels; draw the UI layer at uiW × uiH and stretch it bilinearly, uniformly, to
-  the client; map clicks back with `trunc((p − off) / k)`.
+- HE's scale setting is an option on top: 1.0 at 1200 lines or fewer; otherwise step down by 0.1
+  from the setting until the UI keeps at least 1024 × 768 UI pixels; draw the UI layer at uiW × uiH
+  and stretch it bilinearly, uniformly, to the client; map clicks back with `trunc((p − off) / k)`.
+- The map (game layer) is not scaled by the setting: it looked the same at 1.0, 1.5 and 2.0.
 - The rebuild's own UI scale question (ADR 0004 R3) can take this rule as its evidence; which
   default the rebuild uses is the owner's call.
 
@@ -114,4 +140,9 @@ confirmed).
 - `View.dll` 0x3b898 picks 0.78125 (800/1024) when the UI is narrower than 1024; may relate to OQ-535
   (the `8` texture set). Not checked.
 - `AnnoDisplay`'s VMProtect sections (`.vmp0..2`) were not examined.
-- Visual samples at UI_SCALE 1.0 and 1.5.
+- Where the options' scale value persists between starts (not the registry, §1); possibly overlay
+  or launcher storage or the VMProtect sections. This does not change the rule, only how a test
+  sets it: use the main-menu slider, not the registry.
+- Whether the 1200-line rule reads the client height or a listed display mode.
+- In-game, injected mouse and key input did not reach the HE window (main-menu input did); so
+  in-game captures can only be taken at whatever the main menu set.

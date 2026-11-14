@@ -2316,6 +2316,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     // monopoly.acc 100 (the one advance of 100 ms; the refresh body ran on it), bool
     // faulted false.
     island_test::Stream ids;
+    ids.u32(1); // section base version
     ids.u64(3);
     ids.u64(2);
     ids.u64(1); // next_order_id (stream 122)
@@ -2323,6 +2324,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     ids.u32(100);
     ids.u32(100);
     ids.u8(0);
+    ids.u64(0); // no section extensions
     CHECK(players_at - ids_at == ids.v.size());
     CHECK(std::equal(ids.v.begin(), ids.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(ids_at)));
@@ -2332,6 +2334,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     // of the advance ran over the hundred slots once (clamp(50 · 100 / 50, 1, 100) = 100
     // visits from cursor 0: back at 0) and wrote the stamp 50.
     island_test::Stream figs;
+    figs.u32(1); // section base version
     figs.u64(1);
     figs.u32(0);
     figs.u64(100);
@@ -2377,6 +2380,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     }
     figs.u16(50);
     figs.u64(0);
+    figs.u64(0); // no section extensions
     CHECK(events_at - figures_at == figs.v.size());
     CHECK(std::equal(figs.v.begin(), figs.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(figures_at)));
@@ -2385,7 +2389,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     // crew_slot and the hold count: 18 bytes; 111 until stream 120 added the 4-byte state word),
     // then 92 bytes into slot 1) is reported with the scope path of that slot.
     const std::size_t stamp_at =
-        figures_at + 20 + 127 +
+        figures_at + 4 + 20 + 127 +
         92; // slot 0: 115 bytes until stream 122 (nav presence), 116 until 126 (harvest presence),
             // 117 until 128 (resident presence), 118 until route-only136 (u64 freight_generation
             // and the freight presence byte); slot 0 is 127 bytes now
@@ -2397,6 +2401,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     // events: u64 count 1, the key (u64 due 75, u64 seq 1), kind, subtype, value, tile,
     // target, attacker kind, attacker.
     island_test::Stream evs;
+    evs.u32(1); // section base version
     evs.u64(1);
     evs.u64(75);
     evs.u64(1);
@@ -2408,6 +2413,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     evs.u64(1);
     evs.u32(2);
     evs.u64(2);
+    evs.u64(0); // no section extensions
     CHECK(timers_at - events_at == evs.v.size());
     CHECK(std::equal(evs.v.begin(), evs.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(events_at)));
@@ -2601,15 +2607,15 @@ TEST_CASE("event queue stream refuses unordered keys and unknown kinds") {
     std::vector<std::uint8_t> bytes = island_test::flat_stream(w);
     const std::size_t at = island_test::flat_offset(w, "events");
     auto target = [&] { return make_world_with(k, syn::empty_scenario(), script_seams(&script)); };
-    REQUIRE(island_test::flat_offset(w, "timers_monopoly") - at == 8 + 2 * 53);
+    REQUIRE(island_test::flat_offset(w, "timers_monopoly") - at == 12 + 8 + 2 * 53);
     // Swap the due ticks (60 and 70): the keys are no longer ascending.
     std::vector<std::uint8_t> swapped = bytes;
-    swapped[at + 8] = 71;
+    swapped[at + 4 + 8] = 71;
     sim::World t1 = target();
     CHECK(contains(island_test::read_flat(t1, swapped), "strictly ascending"));
     // A kind that does not exist.
     std::vector<std::uint8_t> kind = bytes;
-    kind[at + 8 + 16] = 2;
+    kind[at + 4 + 8 + 16] = 2;
     sim::World t2 = target();
     CHECK(island_test::read_flat(t2, kind) != "");
     // The intact stream reads.

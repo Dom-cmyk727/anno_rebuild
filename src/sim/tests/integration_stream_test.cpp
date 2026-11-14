@@ -33,7 +33,7 @@ std::map<std::string, Expected> expected() {
         for (std::size_t i = 0; i < hex.size(); i += 2)
             e.bytes.push_back(static_cast<std::uint8_t>(std::stoul(hex.substr(i, 2), nullptr, 16)));
     }
-    REQUIRE(out.size() == 10);
+    REQUIRE(out.size() == 12);
     return out;
 }
 template <class T> void compare(const char* name, const Expected& e, const T& value) {
@@ -184,6 +184,20 @@ TEST_CASE("integration oracle: populated freight quarry mason and two-reserver m
         registry.list.slots[slot] = std::move(reserver);
     }
     compare("figures", e.at("figures"), registry);
+    const auto compare_section = [&](const char* name, auto&& visit) {
+        sim::WriteArchive bytes;
+        visit(bytes);
+        CHECK(bytes.data() == e.at(name).bytes);
+        sim::HashArchive hash;
+        visit(hash);
+        // The section is a child of the archive root.
+        sim::StateHasher root;
+        root.u64(e.at(name).hash);
+        CHECK(hash.finish() == root.value());
+    };
+    sim::IdCounters ids;
+    compare_section("figures_section",
+                    [&](auto& archive) { sim::StateIO::figures_section(archive, registry, ids); });
     sim::Mine mine;
     mine.last = 12;
     mine.switched_on = true;
@@ -286,6 +300,10 @@ TEST_CASE("integration oracle: populated freight quarry mason and two-reserver m
     REQUIRE(sim::restore_script(r, *types.value(), players, sim::SimConfig{}).empty());
     REQUIRE(sim::validate_script(r, *types.value(), players, sim::SimConfig{}).empty());
     compare("script", e.at("script"), r);
+    const sim::SimConfig script_config;
+    compare_section("script_section", [&](auto& archive) {
+        sim::StateIO::script_section(archive, r, *types.value(), players, script_config);
+    });
     // Direct wrong readings fail the same oracle; a round-trip alone would miss these.
     registry.list.slots[8]->job = 0x2a;
     sim::WriteArchive wrong;

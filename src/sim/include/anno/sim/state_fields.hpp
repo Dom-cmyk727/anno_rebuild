@@ -2,9 +2,11 @@
 // §9.3). For every persistent type T there is exactly one function
 //     template <class A, Same<T> S> void fields(A& a, S& s)
 // naming its fields in canonical order; hash, save and load all run it, so a
-// field cannot be saved and not hashed. Adding a field is one line at the end
-// of its function plus a kStateHashVersion bump and re-baselined goldens in
-// the same commit.
+// field cannot be saved and not hashed. Since framing139 (ADR 0006), a base
+// layout/default change moves its section version; optional state belongs in
+// tagged extensions. Re-baseline pins explicitly for a base change (§9.7).
+// Every top-level section starts with its base version and ends with an
+// extension count; these envelopes are shared by all four archives.
 //
 // Stream at kStateHashVersion 116 (task MAP-2), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
@@ -1541,10 +1543,45 @@ template <class A, Same<ScriptRuntime> S> void fields(A& a, S& r) {
     ar::seq(a, s.bindings, 4, [&](auto& id) { a.u32(id.v); });
 }
 
-/// five sections, one function each (the save frame writes and reads them one
-/// by one, §9.5); `scopes` is the flat stream of all five in order, which is what
+/// Ten sections, one function each (the save frame writes and reads them one
+/// by one, §9.5); `scopes` is the flat stream of all ten in order, which is what
 /// the hash and the field-list tests run.
 struct StateIO {
+    template <class A> static bool section_version(A& a, const SectionVersion& section) {
+        std::uint32_t version = section.version;
+        a.u32(version);
+        if constexpr (A::kReading) {
+            if (!a.failed() && version != section.version) {
+                a.fail("section " + std::string(section.name) + ": base version " +
+                       std::to_string(version) + " is not supported (this build reads " +
+                       std::to_string(section.version) + ")");
+            }
+            return !a.failed();
+        }
+        return true;
+    }
+
+    /// No tags are registered in 1a. The empty list is part of every archive;
+    /// readers reject the first unknown entry without allocating its payload.
+    template <class A> static void section_extensions(A& a, const SectionVersion& section) {
+        std::uint64_t count = 0;
+        a.count(count, 6); // u16 tag + u32 payload length
+        if constexpr (A::kReading) {
+            if (!a.failed() && count != 0) {
+                std::uint16_t tag = 0;
+                std::uint32_t length = 0;
+                a.u16(tag);
+                a.u32(length);
+                if (!a.failed()) {
+                    a.fail("section " + std::string(section.name) + ": unknown extension tag " +
+                           std::to_string(tag));
+                }
+            }
+        } else {
+            static_cast<void>(section);
+        }
+    }
+
     /// Section 1. Reading validates what it just read (§3.1) before anything is
     /// sized from it. `w` supplies the registry and the seams, which are not in
     /// the stream.
@@ -1552,6 +1589,8 @@ struct StateIO {
     static void header_section(A& a, W& w, Config& config, RulesT& rules) {
         StateHeader header;
         a.scope("header", [&] {
+            if (!section_version(a, kSectionVersions[0]))
+                return;
             fields(a, header);
             fields(a, config);
             fields(a, rules);
@@ -1607,6 +1646,7 @@ struct StateIO {
                     a.fail("seam names differ from the world's seams");
                 }
             }
+            section_extensions(a, kSectionVersions[0]);
         });
     }
 
@@ -1614,8 +1654,11 @@ struct StateIO {
     template <class A, class Clock, class Rng>
     static void clock_rng_section(A& a, Clock& clock, Rng& rng) {
         a.scope("clock_rng", [&] {
+            if (!section_version(a, kSectionVersions[1]))
+                return;
             fields(a, clock);
             fields(a, rng);
+            section_extensions(a, kSectionVersions[1]);
         });
     }
 
@@ -1623,6 +1666,8 @@ struct StateIO {
     template <class A, class Settings>
     static void settings_section(A& a, Settings& settings, const SimConfig& config) {
         a.scope("settings", [&] {
+            if (!section_version(a, kSectionVersions[2]))
+                return;
             fields(a, settings);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1632,6 +1677,7 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions(a, kSectionVersions[2]);
         });
     }
 
@@ -1644,6 +1690,8 @@ struct StateIO {
     template <class A, class Ids, class U32, class Bool>
     static void ids_section(A& a, Ids& ids, U32& event750_acc, U32& monopoly_acc, Bool& faulted) {
         a.scope("ids", [&] {
+            if (!section_version(a, kSectionVersions[3]))
+                return;
             fields(a, ids);
             a.u32(event750_acc);
             a.u32(monopoly_acc);
@@ -1658,6 +1706,7 @@ struct StateIO {
                            " is not in 1 .. 2^64 - 1");
                 }
             }
+            section_extensions(a, kSectionVersions[3]);
         });
     }
 
@@ -1665,6 +1714,8 @@ struct StateIO {
     template <class A, class Players, class Config>
     static void players_section(A& a, Players& players, const Config& config) {
         a.scope("players", [&] {
+            if (!section_version(a, kSectionVersions[4]))
+                return;
             fields(a, players);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1674,6 +1725,7 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions(a, kSectionVersions[4]);
         });
     }
 
@@ -1683,6 +1735,8 @@ struct StateIO {
     static void islands_section(A& a, W& w, Islands& islands, const Config& config,
                                 const Settings& settings, const RulesT& rules) {
         a.scope("islands", [&] {
+            if (!section_version(a, kSectionVersions[5]))
+                return;
             islands_io(a, islands, config,
                        CityStream{rules.save_billed_goods, config.warehouse_goods});
             if constexpr (A::kReading) {
@@ -1694,6 +1748,7 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions(a, kSectionVersions[5]);
         });
     }
 
@@ -1702,6 +1757,8 @@ struct StateIO {
     template <class A, class Figures, class Ids>
     static void figures_section(A& a, Figures& figures, const Ids& ids) {
         a.scope("figures", [&] {
+            if (!section_version(a, kSectionVersions[6]))
+                return;
             fields(a, figures);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1712,6 +1769,7 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions(a, kSectionVersions[6]);
         });
     }
 
@@ -1720,6 +1778,8 @@ struct StateIO {
     template <class A, class Events, class Ids>
     static void events_section(A& a, Events& events, const Ids& ids) {
         a.scope("events", [&] {
+            if (!section_version(a, kSectionVersions[7]))
+                return;
             fields(a, events);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1733,6 +1793,7 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions(a, kSectionVersions[7]);
         });
     }
 
@@ -1743,6 +1804,8 @@ struct StateIO {
     static void timers_monopoly_section(A& a, Timers& timers, Monopoly& monopoly,
                                         const Config& config) {
         a.scope("timers_monopoly", [&] {
+            if (!section_version(a, kSectionVersions[8]))
+                return;
             fields(a, timers);
             fields(a, monopoly);
             if constexpr (A::kReading) {
@@ -1756,6 +1819,7 @@ struct StateIO {
                     }
                 }
             }
+            section_extensions(a, kSectionVersions[8]);
         });
     }
 
@@ -1763,6 +1827,8 @@ struct StateIO {
     static void script_section(A& a, ScriptT& script, const TypeRegistry& types,
                                const Players& players, const Config& config) {
         a.scope("script", [&] {
+            if (!section_version(a, kSectionVersions[9]))
+                return;
             fields(a, script);
             if constexpr (A::kReading) {
                 if (!a.failed()) {
@@ -1771,6 +1837,7 @@ struct StateIO {
                         a.fail(problem);
                 }
             }
+            section_extensions(a, kSectionVersions[9]);
         });
     }
 

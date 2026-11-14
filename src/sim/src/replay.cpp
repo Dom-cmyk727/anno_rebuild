@@ -16,6 +16,7 @@
 #include <anno/sim/hash.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/state_fields.hpp>
 #include <anno/sim/walk_cells.hpp>
 
 namespace anno::sim {
@@ -78,14 +79,17 @@ std::string identity_error(const ReplayLog& log) {
     }
     std::uint64_t length = 0;
     r.u64(length);
-    if (r.failed() || kind > 1 || length < 16 || length > r.remaining())
+    if (r.failed() || kind > 1 || length < 28 || length > r.remaining())
         return "replay refused: initial save header is truncated";
-    r.u32(version);
-    r.u64(schema);
-    std::uint32_t timeline = 0;
-    r.u32(timeline);
-    if (r.failed() || version != kStateHashVersion || schema != kScriptSchema ||
-        timeline != kPrngTimelineVersion)
+    // The fast identity probe shares the section prefix and StateHeader reader.
+    // Do not mistake the section's base version for the framing identity.
+    ReadArchive header(
+        bytes.subspan(static_cast<std::size_t>(r.position()), static_cast<std::size_t>(length)));
+    if (!StateIO::section_version(header, kSectionVersions.front()))
+        return "replay refused: initial save " + header.error();
+    StateHeader identity;
+    fields(header, identity);
+    if (header.failed())
         return "replay refused: initial save header identity differs from this build's";
     return {};
 }

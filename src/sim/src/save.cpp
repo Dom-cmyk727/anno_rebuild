@@ -3,12 +3,13 @@
 //   "A3SV"                      4 bytes
 //   u32 save version            kSaveVersion
 //   u32 stream version          kStateHashVersion
+//   u64 script schema           kScriptSchema
 //   u8  PRNG table kind         0 = the original msvc_rand_sequence(2048, 1);
 //                               1 = custom: u64 n, n x u16
-//   9 sections                  u64 byte length, then the section's bytes: the
+//   10 sections                  u64 byte length, then the section's bytes: the
 //                               top-level scopes of the stream, in order (header,
 //                               clock_rng, settings, ids, players, islands, figures,
-//                               events, timers_monopoly)
+//                               events, timers_monopoly, script)
 //   terrain blobs               per present island, in slot order: bool present,
 //                               then height (u64 n + bytes), gfx (u64 n + u16s),
 //                               fertility (u64 n + bytes)
@@ -16,7 +17,7 @@
 //
 // The sections are the same field lists the hash runs (state_fields.hpp), each
 // into its own archive; the length in front lets a reader bound a section before
-// it parses it and skip a section it does not know. The version check is exact:
+// it parses it. Unknown section versions/extensions are refused (§9.7). The version check is exact:
 // a save of version v is rejected by v + 1 with a clear message. Original
 // savegames are not read (their layout cannot be validated without an x86
 // Windows oracle).

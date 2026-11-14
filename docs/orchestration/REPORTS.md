@@ -11048,12 +11048,24 @@ tests of step 9 that depend on them are **not started** — see Decisions below 
 `apply_frame_config` and `zoom_anchor_at` (`frame.hpp`/`frame.cpp`) are the one place the viewer and
 bench_frame's `--zoom-sweep` both configure `FrameRenderer` (review finding B1: before this the sweep used
 `(threads + 1) / 2` workers against the viewer's `hw * 3 / 4`, and never set `zoom_anchor`,
-`prewarm_far_levels` or `resident_level_chunks` at all). Wired into both (`07acd7d0`). Rerun "before" numbers
-on the fixed harness, lan5, 2560x1369, enhanced water, legs, 6 s/leg, 4090 (`cache/gates/
-zoomsmooth1-before-legs.txt`): 12,000 frames, non-ready 193, most-at-once 36, stand-in draws 22,484,
-dissolves 14,472, open-sea draws 1,922, wave switches 93, busy p50 0.64/p99 2.70/max 14.06 ms, frames>2ms
-353, frames>8ms 1. The 2026-11-13 baseline is confirmed not comparable (different worker count and no
-anchor); this is the new one for whoever does steps 2-6.
+`prewarm_far_levels` or `resident_level_chunks` at all). Wired into both (`07acd7d0`). The 2026-11-13
+baseline is confirmed not comparable (different worker count and no anchor); rerun "before" numbers on the
+fixed harness once the PC was free, lan5, 6 s/leg, enhanced water (`cache/gates/
+zoomsmooth1-before-{legs,wheel,pan,zoompan,igpu-wheel}.txt`) are the new ones for whoever does steps 2-6:
+
+| mode | res/adapter | frames | non-ready | most at once | stand-in | dissolves | open-sea | busy p50/p99/max ms | frames>2ms | frames>8ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| legs | 2560x1369, 4090 | 12000 | 193 | 36 | 22484 | 14472 | 1922 | 0.64/2.70/14.06 | 353 | 1 |
+| wheel | 2560x1369, 4090 | 12000 | 153 | 29 | 24950 | 14921 | 1901 | 0.62/2.90/15.17 | 374 | 2 |
+| pan | 2560x1369, 4090 | 12000 | 47 | 28 | 17 | 1346 | 1979 | 0.43/1.61/13.98 | 30 | 1 |
+| zoompan | 2560x1369, 4090 | 12000 | 241 | 29 | 34448 | 15803 | 1954 | 0.64/2.44/13.42 | 264 | 2 |
+| wheel | 1280x800, Radeon iGPU | 12000 | 13 | 10 | 275 | 144 | 45 | 0.37/1.25/279.03 | 28 | 2 |
+
+Matches the qualitative pattern of the original ZOOM-MEASURE-1 baseline (wheel/zoompan worse than legs, pan
+far better, the iGPU misses little but its one worst frame is far larger — an offscreen-target resize, not
+content). Not directly comparable to that baseline's own numbers (different worker count, this one has
+`zoom_anchor` set, and it's a different `--zoom-sweep` duration: 6 s/leg here against an unknown value
+there).
 
 **Step 7 (chunks-step reporting):** the per-level table now reports the window-thread "chunks" step's own
 p99/max every frame (`GpuStats::chunks_ms`), not only busy ones (review finding S4) — e.g. level 1 of the

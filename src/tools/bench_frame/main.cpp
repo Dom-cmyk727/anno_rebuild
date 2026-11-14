@@ -1444,7 +1444,14 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
         render::FrameRenderer fr(o.threads, false);
         fr.chunk_builder = o.chunk_builder;
         fr.bin_px = o.bin_px;
-        fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
+        // chunk_worker_threads and apply_frame_config (ZOOM-SMOOTH-1 step 1, review finding
+        // B1): the same functions the viewer configures FrameRenderer with, so this sweep
+        // cannot drift from what the window it stands in for actually runs. Before this the
+        // sweep used (threads + 1) / 2 workers against the viewer's hw * 3 / 4, and never set
+        // prewarm_far_levels or resident_level_chunks at all.
+        fr.set_workers(
+            std::make_unique<render::ChunkWorkers>(scene, render::chunk_worker_threads(o.threads)));
+        render::apply_frame_config(fr, {});
         const auto target =
             g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
         auto ready = [&](std::size_t grp) { return g.group_ready(scene, grp); };
@@ -1474,6 +1481,11 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             std::size_t open = 0;        // GpuStats::open_sea_chunks: placeholder/open-sea draws.
             bool wave_fading = false;    // GpuStats::fluid_fade < 1: inside a wave cross-fade.
             std::uint64_t fluid_windows = 0; // GpuStats::fluid_windows (cumulative).
+            // ZOOM-SMOOTH-1 step 7: the window-thread chunks step's own time (GpuStats::
+            // chunks_ms: plan_margin, request_chunks, trim, every frame, not only busy ones) so
+            // the proof can report its p99/max separately from the frame's total busy time —
+            // the planning cost this packet's wider wanted set might grow (review finding S4).
+            double chunks_ms = 0;
             std::vector<std::pair<const char*, double>> steps;
         };
         std::vector<Frame> frames;
@@ -1547,6 +1559,14 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                         s.cam_x, s.cam_y, static_cast<std::uint32_t>(w),
                         static_cast<std::uint32_t>(h), scale, render::resample_filter_for(scale));
                     fr.motion_centre = anno::app::pan_centre(s);
+                    // zoom_anchor_at (ZOOM-SMOOTH-1 step 1, review finding B1): the sweep's own
+                    // off-centre anchor (s.anchor_x/y, set below island_bounds above) through the
+                    // same formula the viewer uses for its cursor, so the neighbouring groups'
+                    // chunks are requested around the anchor here too; before this fr.zoom_anchor
+                    // was never set, so the zoom-out ring (step 4) and resident levels (step 3)
+                    // could not be exercised by this proof.
+                    fr.zoom_anchor =
+                        render::zoom_anchor_at(s.cam_x, s.cam_y, s.anchor_x, s.anchor_y, scale);
                     const auto st = g.render(fr, scene, rv.view, s.group, t_ms, style,
                                              target.second.get(), &rv.resample);
                     t_ms += 2;
@@ -1561,6 +1581,7 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                     f.open = st.open_sea_chunks;
                     f.wave_fading = st.fluid_fade < 1.0F;
                     f.fluid_windows = st.fluid_windows;
+                    f.chunks_ms = st.chunks_ms;
                     const auto sea = g.sea_pass_ms(); // waits for the GPU
                     f.gpu = sea && g.frame_gpu_ms() ? *g.frame_gpu_ms() : -1.0;
                     if (f.total > kBusyMs) {
@@ -1600,8 +1621,9 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             "| level | scale range | frames | thread ms p50 | p95 | p99 | max | GPU ms p50 | "
             "GPU ms max | chunks shown (max) | cache MB (max) | non-ready frames | most "
             "non-ready at once | stand-in draws | dissolves | open-sea draws | frames in wave "
-            "fade | frames > %.0f ms | frames > %.0f ms |\n"
-            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+            "fade | frames > %.0f ms | frames > %.0f ms | chunks step p99 | chunks step max |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+            "---|\n",
             kFrameMs, kBusyMs);
         auto pct = [](std::vector<double> v, double q) {
             if (v.empty()) {
@@ -1633,6 +1655,10 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
         std::vector<double> total_ms_all;
         for (std::size_t grp = 0; grp < levels.size(); ++grp) {
             std::vector<double> total, gpu_ms;
+            // ZOOM-SMOOTH-1 step 7, review finding S4: the window-thread "chunks" step's own
+            // time (plan_margin, request_chunks, trim), every frame, not only busy ones — the
+            // wanted set this packet grows must not raise this at the 99th percentile.
+            std::vector<double> chunks_step_ms;
             double smin = 1e9, smax = 0;
             std::size_t visible = 0, busy = 0, busy2 = 0, count = 0;
             std::size_t non_ready = 0, most_missing = 0, stand_draws = 0, dissolves = 0,
@@ -1644,6 +1670,7 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                 ++count;
                 total.push_back(f.total);
                 total_ms_all.push_back(f.total);
+                chunks_step_ms.push_back(f.chunks_ms);
                 if (f.gpu >= 0) {
                     gpu_ms.push_back(f.gpu);
                 }
@@ -1683,11 +1710,13 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                 continue;
             }
             std::printf("| %zu | %.2f - %.2f | %zu | %.2f | %.2f | %.2f | %.2f | %.2f | %.2f | "
-                        "%zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu |\n",
+                        "%zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %.3f | "
+                        "%.3f |\n",
                         grp, smin, smax, count, pct(total, 0.5), pct(total, 0.95), pct(total, 0.99),
                         pct(total, 1.0), pct(gpu_ms, 0.5), pct(gpu_ms, 1.0), visible, cache_mb[grp],
                         non_ready, most_missing, stand_draws, dissolves, open_draws,
-                        wave_fade_frames, busy2, busy);
+                        wave_fade_frames, busy2, busy, pct(chunks_step_ms, 0.99),
+                        pct(chunks_step_ms, 1.0));
             total_frames += count;
             total_non_ready += non_ready;
             most_missing_at_once = std::max(most_missing_at_once, most_missing);

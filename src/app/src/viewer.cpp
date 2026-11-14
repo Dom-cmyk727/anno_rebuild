@@ -1018,9 +1018,11 @@ std::string Viewer::run() {
     current()->prefetch_river_flow();
     // No default scene: every chunk job holds the generation of the frame that planned it.
     {
-        // Three quarters of the cores (they run below normal priority): a zoom out to the whole map
-        // asks for thousands of chunks and was waiting on half of them.
-        auto workers = std::make_unique<render::ChunkWorkers>(std::max<std::size_t>(1, hw * 3 / 4));
+        // chunk_worker_threads: three quarters of the cores (they run below normal priority): a
+        // zoom out to the whole map asks for thousands of chunks and was waiting on half of them.
+        // Shared with bench_frame's --zoom-sweep (ZOOM-SMOOTH-1 step 1) so a proof's worker count
+        // cannot drift from what this window actually runs.
+        auto workers = std::make_unique<render::ChunkWorkers>(render::chunk_worker_threads(hw));
         if (script_ != nullptr && on_gpu()) {
             // A scripted GPU session may hold the chunk builders (hold chunks): the gate does
             // nothing until the script arms it.
@@ -1030,12 +1032,16 @@ std::string Viewer::run() {
         }
         frames_.set_workers(std::move(workers));
         // The ship-start opening sails over the whole map and zooms out to see it: its overview
-        // levels are built while the player is busy with something else.
-        frames_.prewarm_far_levels = opening_ != nullptr;
+        // levels are built while the player is busy with something else. Through
+        // apply_frame_config (ZOOM-SMOOTH-1 step 1) so bench_frame's --zoom-sweep can set the
+        // same two knobs from the same struct.
+        render::FrameConfig cfg;
+        cfg.prewarm_far_levels = opening_ != nullptr;
         if (opening_ != nullptr) {
             // The levels from the whole map down to level 4 stay built (zoom.hpp).
-            frames_.resident_level_chunks = kOpeningResidentLevelChunks;
+            cfg.resident_level_chunks = kOpeningResidentLevelChunks;
         }
+        render::apply_frame_config(frames_, cfg);
     }
     while (running_) {
         SDL_Event e;
@@ -2680,11 +2686,14 @@ void Viewer::draw() {
     const render::Rect view{static_cast<int>(std::lround(cam_x_ - w / 2.0)),
                             static_cast<int>(std::lround(cam_y_ - h / 2.0)), w, h};
     // The point a wheel zoom would keep fixed: the one under the pointer (FrameRenderer::
-    // zoom_anchor builds the neighbouring groups' chunks around it).
+    // zoom_anchor builds the neighbouring groups' chunks around it). zoom_anchor_at
+    // (ZOOM-SMOOTH-1 step 1) is the same formula bench_frame's --zoom-sweep now uses for its
+    // own off-centre anchor, so a proof and this window agree on what "around the anchor"
+    // means.
     if (cursor_) {
         const double s = scale();
-        frames_.zoom_anchor = std::pair{cam_x_ + (cursor_->first - w / 2.0) / s,
-                                        cam_y_ + (cursor_->second - h / 2.0) / s};
+        frames_.zoom_anchor = render::zoom_anchor_at(cam_x_, cam_y_, cursor_->first - w / 2.0,
+                                                     cursor_->second - h / 2.0, s);
     } else {
         frames_.zoom_anchor.reset();
     }

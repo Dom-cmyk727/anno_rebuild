@@ -17,6 +17,11 @@
 
 namespace anno::render {
 
+void apply_frame_config(FrameRenderer& fr, const FrameConfig& cfg) {
+    fr.prewarm_far_levels = cfg.prewarm_far_levels;
+    fr.resident_level_chunks = cfg.resident_level_chunks;
+}
+
 namespace {
 
 using Clock = std::chrono::steady_clock;

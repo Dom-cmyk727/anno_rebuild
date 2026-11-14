@@ -10690,3 +10690,24 @@ Gates: build 0 warnings; `run_selected.py` (the R2 selection; game dir, oracle s
 clang-format clean on the changed files; `check_unix_warnings.sh` GCC 13 / Clang 18, GPU on/off clean. Hosted CI:
 see the push of this section.
 **READY FOR REVIEW.**
+
+### Fix round R4 (owner retest: "building materials are not shown at all anymore") — 2026-11-14
+
+- Cause: R2's rule showed the counters only with the view centred over the city's island; lan5's start camera is not.
+- **Fix** (`59d787de`, owner decision 2026-11-14 "Always show my city"): on every screen while the local player owns a
+  city - the city on the centred island if it holds one, else the first city in (island, city) order (what
+  PlaySnapshot::goods follows); hidden only before the first founding. App-side, read-only from the snapshot.
+- New fact `hud.counters.city` ("<island>:<city>" / "none"); `hud.counters` reads "not drawn" until a frame drew
+  the HUD, so a hidden result is a drawn one.
+- Tests: `ui_counters_centred` reworked: start (no look), open sea, the city-less island and the city island all
+  show city 1:1, and so does the player list. **Before/after:** on the 919c59fc build it fails at its first check
+  (`hud.counters is 'hidden', expected == shown`); after the fix it passes. New `ui_counters_before_founding`
+  (ship start, no city): hidden, city none. lan5 has one city per player, so "centred" and "fallback" name the same
+  city here; telling them apart needs a second city (not run).
+- Docs: ui.md 5.2 (the rule, the owner's decision); OQ-622 (owner's choice recorded, the original's rule open).
+Gates: build 0 warnings; `run_selected.py` (ui_counters, ui_tabs, ui_panels_match_gog, ui_menu_close_disarms,
+ui_chrome_press, ui_window_click, ui_window_matches_he, ui_mock_matches_oracle, "ui placement", counter, hud;
+game dir, oracle shots, HE captures set): selected 44, executed 44 pass, 0 failed/skipped, VERDICT PASS
+(`focused-r4.log`); clang-format clean; `check_unix_warnings.sh` GCC 13 / Clang 18, GPU on/off clean. origin/main
+unchanged (f54e36f0). Hosted CI: see the push of this section.
+**READY FOR REVIEW.**

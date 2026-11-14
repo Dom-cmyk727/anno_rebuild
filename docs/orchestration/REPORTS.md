@@ -10255,3 +10255,58 @@ Decisions and reasoning:
   directly; both exercise the same depth/shore code, so the comparison is unaffected.
 
 QUESTIONs: none required; the per-pixel sea edge and the direct renderer are explicitly not this packet's.
+
+## UI-INFO-1 — the building info panel's name, preview, costs and upkeep — 2026-11-14 — READY FOR REVIEW
+
+Branch `task/UI-INFO-1`, base `480fafe7`. Main `95eea7de` merged `--no-ff` as `804de618` (parents `3a197223`,
+`95eea7de`), no conflicts. The owner's 2026-11-14 bit-identical rule is applied to all of the work.
+
+What changed: behind `placement_open`, `draw_live_screen_xrgb`/`_rgba` draw the armed type's `Texte.dat` `[ANLAGEN]`
+name, four material costs, gold cost, upkeep and a preview. Both paths share one routine. The figures come from the
+live registry through the new `ConstructionMenu::info_panel_content`; upkeep is PROD3's active column (OQ-563
+resolved). `data/ui/hud.txt` gains seven `align centre` text boxes and `info_preview`(+shadow). It also cuts INFOEXIT
+to its 33 x 35 gadget and moves `rotate_right` from 987 to 988. `betriebskosten` is no longer blitted: its icon is
+INFOUNTERGRUND's own pixels, and blitting it changed 1477 pixels. `tools/ui_layout.py` gains `compose_info_panel` and
+`info-compare` (the GOG compare with an RGB565 reduction). New CTest: `info_panel_pixel_check`. In viewer.cpp only
+the two UI draw calls changed. No change to sim or render.
+
+Evidence (docs/re/ui.md 2.5, rewritten), from reading View.dll statically:
+- Text gadgets are 200/50/145 x 18 (0x1003007f, 0x1003008d, 0x100300ba).
+- The preview gadget is 135 x 135 (0x1002fbac); the exit gadget is 33 x 35 (0x1002ff95).
+- The update at 0x10030140 shows goods 0x29..0x2c `>> 8`, gold as kind 1, upkeep as kind 2 column 1, printed
+  with `_itoa`.
+- Glyph-match: every name and figure on all 15 GOG shots has 0 differing pixels.
+- Centring rule x = box_x + w/2 - text_w/2 (rounded down), proven on 1-, 2- and 3-digit values and on 15 names.
+- HE: same textures (ids +5), English fonts, names and HEAD/PROD3; HE View.dll differs (OQ-613).
+
+Per-pixel vs GOG (102 520 panel px, after RGB565):
+- 2520, 104 and 708: **0** differing pixels.
+- The other 12 types: name, figures and chrome 0; preview 5 007 to 11 237 (forester 6 472, market 6 213,
+  Kontor 9 304).
+- The CPU window equals the reference exactly, so these counts are the live window's too.
+
+Gates (merged head):
+- `cmake --preset msvc` + `cmake --build --preset msvc`: 0 warnings, 0 errors.
+- `ctest --preset msvc -R "construction menu|ui layout|hud layout|info panel|info_panel|live_screen|ui_mock|ui_dynamic|selected_house|construction_menu|point_in_hud|mask layout|construction_full|construction_unaffordable" -j 16`
+  (game dir set, 16 threads): 23 selected, 23 executed and passed, 0 skipped, 0 failed (no "skipping" in
+  LastTest.log). New tests: 5 doctest cases plus `info_panel_pixel_check`.
+- `info_panel_pixel_check.py --renderer gpu` (manual, RTX 4090): all 4 types pass. 10 px are over 48 and 18 px
+  differ from CPU, all in (1017..1023, 761..767): the known GPU corner effect.
+- clang-format 23.1.3 on the 9 changed C++ files. `ui_layout.py validate --game-dir`, `self-test` and
+  `check-files`: ok.
+- `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18, with and without GPU: clean, exit 0.
+- Hosted CI: see the push of this entry (run 43536589601 on `7ebc2534` was green so far for format, lint and macOS).
+
+NOT_RUN: Linux/macOS game-file runs; the full suite (not this packet's gate); an HE info-panel capture (none on disk).
+
+Decisions and reasoning:
+- I compare against GOG after an RGB565 reduction because the shots are a 16-bit frame. With it the plate matches
+  exactly, so every remaining difference is real. The level-3 text colour (66,61,66) and the shadow (66,65,66) are
+  the displayed values.
+- The preview is drawn for every type, not only where it matches. It uses the rule proven on 3 types plus a
+  nearest-neighbour fit, set 0 only, no arrows: a flagged default under OQ-612. Mismatch counts are stated above.
+- Preview pixels are drawn opaque so the CPU and GPU paths agree.
+- The font is MainSmall.zei. GOG's three candidate files are byte-identical, so the choice changes no pixel.
+
+QUESTIONs: none blocking. Open: OQ-612 (scaled and stall previews, entrance arrows, drawing past the box, rotation)
+and OQ-613 (HE panel code). OQ numbers are the next free after 610; renumber if another lane took them.

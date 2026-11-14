@@ -508,8 +508,11 @@ the click mapping are `he-ui-scale.md`; the rebuild's code is `src/app` `ui_tran
 | Column below 768 | 1152 → FUELLER02 (96 rows), 1280 × 960 → FUELLER01 (192), other 1280 → FUELLER03 (256); 01/02 are 03's top rows | GOG `AnnoFrame.dll` 0x10063304..0x1006331f; decoded pixels byte-identical; HE: FUELLER03 at (W − 245, H − 256), sprite-sad 0.0 |
 | Pop-ups | kept at their 1024 × 768 position | unproven, OQ-618 |
 
-What the original never shows (wider than 1280, taller than 1024) is a rebuild adaptation: the
-widest status-bar graphic repeated to W − 279 (OQ-614) and `MAINUNTERGRUND` repeated between the
+What the original never shows (wider than 1280, taller than 1024) is a rebuild adaptation. The
+original's code would pick STATUSBAR (746 px) for any width other than 1152/1280 (the rule above),
+leaving the bar short of the question mark; the rebuild instead repeats the widest graphic that
+fits (1001 px) to W − 279 (OQ-614) - at 2542 × 1351 with seams at x 1000/1001 and 1262 that HE's
+capture does not have - and repeats `MAINUNTERGRUND` between the
 panel and a bottom-anchored FUELLER03 (OQ-615). HE uses graphics of its own there (`fenster.tex`
 `BOTTOM_BAR_TILEABLE`, `BOTTOM_BAR_END`, `SIDE_BAR_TOP`, `SIDE_BAR_TILEABLE`, `MAX_PIC2`; not in
 the GOG files). Below 1024 × 768 the UI layer stays 1024 × 768 and is fitted into the window with

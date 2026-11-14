@@ -531,13 +531,15 @@ assets::Rgba crop_to(const assets::Rgba& sprite, unsigned w, unsigned h) {
 
 /// UI-WINDOW-1: the status bar over [0, placement.statusbar_end), through `blit` (an opaque blit
 /// of an RGBA image at (x, y)). At a width some graphic is the original's own choice for
-/// (`for_width`; AnnoFrame.dll 0x10063125..0x10063153 picks STATUSBAR / STATUSBAR02 /
-/// STATUSBAR03 by display width: 1152 and 1280 by name, every other width the first) that
-/// graphic is drawn once - at 1024 x 768 exactly what `statusbar` always drew. Any other width
-/// has no graphic of its own in the original's files: the widest one that fits is repeated from
-/// x 0 and its last copy ends at statusbar_end (a rebuild adaptation, OQ-614; the History Edition
-/// tiles a graphic of its own, `BOTTOM_BAR_TILEABLE`, absent from the original's files). The
-/// graphics without a `pos` take `statusbar`'s position and anchor.
+/// (`for_width`) that graphic is drawn once - at 1024 x 768 exactly what `statusbar` always drew.
+/// The original's own rule (AnnoFrame.dll 0x10063125..0x10063153) is: width 1152 -> STATUSBAR02,
+/// 1280 -> STATUSBAR03, every other width -> STATUSBAR (id 0, 746 px), which at a width the
+/// original never offered would leave the bar short of the question mark. Instead, at a width
+/// without a `for_width` graphic, the widest graphic that fits is repeated from x 0 and its last
+/// copy ends at statusbar_end: the rebuild's adaptation (OQ-614), not the original's picture. At
+/// 2542 x 1351 it shows seams at x 1000/1001 and 1262 that the History Edition's capture does
+/// not have (HE tiles a graphic of its own, `BOTTOM_BAR_TILEABLE`, absent from the original's
+/// files). The graphics without a `pos` take `statusbar`'s position and anchor.
 template <typename Blit>
 void draw_statusbar(TexCache& cache, const HudLayout& hud, const UiPlacement& placement,
                     Blit&& blit) {

@@ -109,3 +109,6 @@ printed `COUNTS: selected=1 executed=1 failed=0 … skipped=0` and `VERDICT: PAS
 | `retry-05.log` (`dd8e76c1…`) | scenario corpus: every .sze loads, creates and runs five minutes | 18 s |
 
 So every test of the candidate ran and passed.
+
+**Landed** 2026-11-14 through `tools/orch/land.py`: `gate` passed on `land/ui-info-1` (run 43575344349), and
+`main` moved `95eea7de` → `411f37eb` by fast-forward. GitLab and the share are synced.

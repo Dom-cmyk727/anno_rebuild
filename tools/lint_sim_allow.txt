@@ -161,3 +161,8 @@ src/sim/include/anno/sim/mason.hpp:inline constexpr std::uint32_t kMasonTripCred
 # Compile-time type-pack length used to size the schema identity array; derived
 # from registered types, never saved state or a gameplay/content limit.
 src/sim/include/anno/sim/extension_context.hpp:static constexpr std::size_t size = sizeof\.\.\.\(E\);  # schema type-pack length, not state or a fixed content count
+
+# --- fisher.hpp (FISHER-1a)
+# Original mode-3 water threshold: AnnoWelt.dll 0x100e34dc initialized by
+# 0x1008fea0/0x1008ff00. A parameter default, never a size or content limit.
+src/sim/include/anno/sim/fisher.hpp:kFisherWaterThreshold = 32;  # original height threshold (docs/re/fisher.md §3); callers can supply another value

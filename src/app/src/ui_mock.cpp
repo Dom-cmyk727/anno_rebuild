@@ -466,7 +466,8 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const InfoPanelCon
     text_box("info_bricks", std::to_string(info.bricks));
     text_box("info_marble", std::to_string(info.marble));
     text_box("info_gold", std::to_string(info.gold));
-    text_box("info_upkeep", std::to_string(info.upkeep));
+    if (info.upkeep)
+        text_box("info_upkeep", std::to_string(*info.upkeep));
 
     const UiElement* box = hud.element("info_preview");
     if (anlagen == nullptr || box == nullptr || !box->has_pos || !box->has_size)

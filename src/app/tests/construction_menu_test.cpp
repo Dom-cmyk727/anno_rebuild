@@ -254,7 +254,20 @@ TEST_CASE("construction menu: info_panel_content - whole tons by goods name, gol
     CHECK(info->bricks == 0);
     CHECK(info->marble == 0);
     CHECK(info->gold == 350);
-    CHECK(info->upkeep == 15);
+    REQUIRE(info->upkeep.has_value());
+    CHECK(*info->upkeep == 15);
+    // Fix round F, F5: a type without the two-column running cost has no upkeep source - the
+    // panel shows nothing there, never a guessed 0.
+    anno::sim::TypeRegistry::Builder b2;
+    anno::sim::BuildingType bare;
+    bare.id = anno::sim::TypeId{501};
+    b2.add(bare);
+    const auto built2 = b2.build();
+    REQUIRE_MESSAGE(built2.ok(), (built2.ok() ? std::string() : built2.error()));
+    const auto bare_info =
+        app::ConstructionMenu::info_panel_content(anno::sim::TypeId{501}, *built2.value());
+    REQUIRE(bare_info.has_value());
+    CHECK_FALSE(bare_info->upkeep.has_value());
     CHECK_FALSE(app::ConstructionMenu::info_panel_content(anno::sim::TypeId{9999}, *built.value())
                     .has_value());
 }

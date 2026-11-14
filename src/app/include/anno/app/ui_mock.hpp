@@ -98,7 +98,9 @@ struct InfoPanelContent {
     sim::TypeId type;
     std::int64_t gold = 0;
     std::int64_t tools = 0, wood = 0, bricks = 0, marble = 0;
-    std::int64_t upkeep = 0;
+    /// nullopt: no source (ConstructionCellInfo::upkeep's own contract) - the upkeep box draws
+    /// nothing then, never a guessed 0.
+    std::optional<std::int64_t> upkeep;
 };
 
 /// The x at which a centred text box draws a text image `text_w` pixels wide: `box_x +

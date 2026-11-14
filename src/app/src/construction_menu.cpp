@@ -167,7 +167,9 @@ ConstructionMenu::info_panel_content(sim::TypeId type, const sim::TypeRegistry& 
     out.wood = tons("HOLZ");
     out.bricks = tons("ZIEGEL");
     out.marble = tons("MAMOR");
-    out.upkeep = cell.upkeep.value_or(0);
+    if (cell.upkeep) {
+        out.upkeep = *cell.upkeep;
+    }
     return out;
 }
 

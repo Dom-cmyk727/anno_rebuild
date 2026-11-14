@@ -65,7 +65,7 @@ def contract(ref, vectors, root):
         require(ref, path, code, diagnostic)
         checks += 1
 
-    good = 'sea_cell control heights=31,31,31,31 draws=- => open=1 free=0 consumed=0\n'
+    good = 'sea_cell control heights=31,31,31,31 draws=- => open=1 blocked=0 usable=511 consumed=0\n'
     case('good', good, 0, '1 vectors, 0 disagreements')
     changed = replace_once(text, '=> need=69 rate=17 consumed=0',
                            '=> need=68 rate=17 consumed=0')
@@ -199,7 +199,8 @@ def contract(ref, vectors, root):
     # syntax error, exception or malformed-input exit2 is not a killed mutant.
     source = ref.read_text(encoding='utf-8')
     mutants = [
-        ('invert_goal_mask', 'free=511 * (1 - opened)', 'free=511 * opened'),
+        ('invert_blocked_mask', 'blocked=511 * (1 - opened)', 'blocked=511 * opened'),
+        ('invert_usable_mask', 'usable=511 * opened', 'usable=511 * (1 - opened)'),
         ('replicate_right_border', '    return grid',
          '    for y in range(height):\n'
          '        grid[y * stride + width] = grid[y * stride + width - 1]\n'

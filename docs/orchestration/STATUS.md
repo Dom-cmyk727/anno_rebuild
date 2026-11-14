@@ -53,7 +53,13 @@ says who is doing what, where the work is, and what it waits on.
   - **UI-WINDOW-1 ACCEPTED for landing** (2026-11-14, head `9925860c`, CI green;
     [board review](reviews/2026-11-14-ui-window-1-board-review.md)). The UI lane's review was ACCEPT WITH FINDINGS,
     with findings 1–7 fixed. **Held:** the owner's playtest "showed a lot of issues and problems", and the UI lane is
-    fixing them. The landing waits for its new head, a fresh game-file run and the owner's OK. Follow-up
+    fixing them in fix round R2 (owner: "Yes, fix then land"):
+    - the four HUD tabs become the original's switches, showing their panels' static chrome;
+    - the status bar's material and population counters show outside the construction menu, for the island the
+      view is centred on, through read-only sim queries; any `src/sim` change is a QUESTION first.
+    The landing waits for its new head, a fresh game-file run and the owner's OK. The UI lane's next packets:
+    UI-INFO-2 (preview entrance arrows and rotation, OQ-612), UI-TABS-1 (live figures in the tab panels),
+    UI-MINIMAP-1. Follow-up
     UI-PERF-1: the construction UI costs about 5–6 ms per frame at 2542 × 1351 (opt-in today).
   - **UI-HE-1 ACCEPTED, docs only** (`task/UI-HE-1` `5d0db740`, [review](reviews/2026-11-14-ui-he-1-review.md)):
     how the History Edition scales the in-game UI. It steps the setting down by 0.1 until the UI has at least

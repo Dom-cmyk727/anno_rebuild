@@ -106,3 +106,24 @@ green, `gate` included. `sea.cpp` is unchanged since the first submission. This 
   `stepping_new == 0` are asserted.
 
 **Landing** waits for the game-file run of its candidate and the owner's OK.
+
+## Game-file run of the landing candidate (2026-11-14)
+
+**The candidate:** `orch/land-shore-2` at `d871be6a`: `main` `5bcd64a6`, then `task/SHORE-2` `98cf2f06`, then the
+board up to `601b412b`. It was built locally and not pushed. The merge met one conflict where both added lines at the
+end of `REPORTS.md`; it was resolved by keeping both sides.
+
+**The run:** the canonical call, 20:43–20:59.
+- `COUNTS: selected=2605 executed=2576 failed=2 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- Log sha256 `13f72ad0e6138f67…`.
+
+**The two failures are memory refusals** (`reason=low-memory stop`; free memory down to about 1.8 GB while the Windows
+executor built ZOOM-SMOOTH-1):
+- the new `SHORE-2 fix round 1: river coverage …` measurement;
+- `legacy river shading reproduces the previous enhanced digests` (heavy).
+
+**Each rerun alone** with `--jobs 1`, 20:59–21:12: `COUNTS: selected=1 executed=1 failed=0`, `VERDICT: PASS` for both.
+Log sha256s: `eb36979741b896cc…`, `e99fa4fd7690b30f…`.
+
+**Result:** every selected test that is not skipped executed and passed. The landing waits for the owner's OK.

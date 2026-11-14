@@ -29,6 +29,10 @@ says who is doing what, where the work is, and what it waits on.
   during a window drag. **After it lands** (owner): the orchestrator starts the enhanced viewer for the owner's OBS
   recording, then analyses the video thoroughly against the 2026-11-14 baseline and reruns the scripted session.
   Camera jumps stay for RENDER-DIRECT.
+- **RENDER-DIRECT moved up** (owner, 2026-11-14: "Yes, move it up"): the Windows queue is now SHORE-2 → ZOOM-SMOOTH-1 →
+  ZOOM-SMOOTH-2 → RENDER-DIRECT-1 to 6 ([ADR 0007](../adr/0007-direct-rendering.md)) → GATE-2a → GATE-2b →
+  TEST-MEM-1. RENDER-DIRECT alone fixes the camera-jump patchwork. Until the gate packets land, a test refused for
+  memory still counts as failed and is rerun alone by the orchestrator.
 - **A new UI lane, owner 2026-11-14:** the "UI Executor" session is orchestrator and executor for the in-game UI, so
   the menus match the original and the History Edition. **UI-WINDOW-1 (the UI at every window size) moved to it**
   (owner: "UI-WINDOW-1 belongs to the UI lane"); the Windows executor's queue no longer holds it.
@@ -154,7 +158,8 @@ says who is doing what, where the work is, and what it waits on.
   fisher reads are complete; the Mac executor is free.
 - **The Windows queue, owner 2026-11-13:** ZOOM-MEASURE-1 (now) → **DEPTH-INTEGRATE-1** ("Yes, depth first") →
   SHORE-2 → ZOOM-SMOOTH-1 → UI-WINDOW-1 → GATE-2a → GATE-2b → TEST-MEM-1 → RENDER-DIRECT-1 to 6
-  ([ADR 0007](../adr/0007-direct-rendering.md)). (2026-11-14: UI-WINDOW-1 moved to the UI lane.)
+  ([ADR 0007](../adr/0007-direct-rendering.md)). (2026-11-14: UI-WINDOW-1 moved to the UI lane; ZOOM-SMOOTH-2 added after
+  ZOOM-SMOOTH-1, and RENDER-DIRECT moved ahead of the gate packets, owner.)
 - **Zoom and camera smoothness: root causes, research and plan** in
   [`docs/render/zoom-smoothness.md`](../render/zoom-smoothness.md).
   - **The finding:** the renderer turns every zoom into work (per-level chunks built on demand, stand-ins, 150 ms
@@ -512,8 +517,8 @@ mirror still requires the owner/Windows sync after main publication.
     103 branches equal; the no-force rule stands.
 - **Now: [SHORE-2](tasks/shore-2.md)** (released 2026-11-13): the sea's edge against the 26.5 plane. Then
   [ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) (written 2026-11-14), [ZOOM-SMOOTH-2](tasks/zoom-smooth-2.md) (written; right
-  after ZOOM-SMOOTH-1, owner 2026-11-14), GATE-2a, GATE-2b, TEST-MEM-1 and RENDER-DIRECT-1 to 6. UI-WINDOW-1 moved to the UI lane (owner,
-  2026-11-14).
+  after ZOOM-SMOOTH-1, owner 2026-11-14), RENDER-DIRECT-1 to 6 (moved up, owner 2026-11-14), GATE-2a, GATE-2b and
+  TEST-MEM-1. UI-WINDOW-1 moved to the UI lane (owner, 2026-11-14).
 - **Finished: [DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md)** (2026-11-13; head `eff68d5e`), **accepted and
   landed** as `95eea7de` ([review](reviews/2026-11-13-depth-integrate-1-review.md)).
 - **Finished: [ZOOM-MEASURE-1](tasks/zoom-measure-1.md)** (2026-11-13; head `a5e180e0`), **accepted**

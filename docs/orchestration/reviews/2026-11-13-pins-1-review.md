@@ -253,3 +253,6 @@ fast-forward once that lands. It merges `task/PINS-1` `661cd2a6`, then the board
 - **Log:** `cache/orch-land-pins-1/canonical-gate.log`, sha256 `88a5da8805edb719…`.
 
 So every test of the candidate passed, PINS-1's moved pins and re-recorded replays included.
+
+**Landed** 2026-11-14 through `tools/orch/land.py`: `gate` passed on `land/pins-1` (run 43577104678), and `main`
+moved `411f37eb` → `d2884227` by fast-forward, right after UI-INFO-1. GitLab and the share are synced.

@@ -50,3 +50,7 @@ Hosted CI is green on both: run 43574478483 and run 43576587493.
 
 ACCEPTED. It lands on the owner's OK as a docs-only candidate: `main`, then `task/UI-HE-1`, then the board, through
 `land.py`, after PINS-1.
+
+**Landed** 2026-11-14 through `tools/orch/land.py` on the owner's OK ("Yes, land it"): `gate` passed on
+`land/ui-he-1` (run 43577111254), and `main` moved `d2884227` → `d89d54a6` by fast-forward, right after PINS-1.
+Documents only on top of `d2884227`, whose game-file run passed. GitLab and the share are synced.

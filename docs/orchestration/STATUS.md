@@ -4,7 +4,11 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-13, by the Claude Code orchestrator:
+**Last updated:** 2026-11-14, by the Claude Code orchestrator:
+- **LANDED on `main` as `95eea7de`,** with the owner's OK ("Land on Main"): DEPTH-INTEGRATE-1 and the board. Depth is
+  on by default and the sea is at the original's 26.5 plane on `main` now.
+  - **`main` is healthy:** that exact commit's game-file run passed every test, 2,555 executed, 0 failed, none
+    refused ([review section](reviews/2026-11-13-depth-integrate-1-review.md#game-file-run-of-the-landing-candidate)).
 - **[DEPTH-INTEGRATE-1](tasks/depth-integrate-1.md) ACCEPTED**
   ([review](reviews/2026-11-13-depth-integrate-1-review.md)): per-pixel depth and the original's 26.5 sea plane,
   merged onto `main` and proven.
@@ -12,7 +16,7 @@ says who is doing what, where the work is, and what it waits on.
     water, and the water reaches the piles.
   - **`--depth off` gives `main`'s 18 frame digests exactly.**
   - **The report's gate line was a composite;** the review records the logs as they are. The work is proven.
-  - **Lands on the owner's OK,** with its game-file run.
+  - **Landed 2026-11-14** (above), with its game-file run.
   - **[SHORE-2](tasks/shore-2.md) RELEASED** to the Windows executor: the stepped 8 × 8-tile water edges on beaches.
 - **[PINS-1](tasks/pins-1.md): FIX ROUND 1** ([review](reviews/2026-11-13-pins-1-review.md)), to the Mac through
   the owner's prompt.

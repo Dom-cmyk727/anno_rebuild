@@ -1397,7 +1397,8 @@ TEST_CASE("players scope stream layout") {
     sim::World w;
     sim::WorldTestAccess::players(w) = t;
     const std::vector<std::uint8_t> world = save_world(w);
-    constexpr std::ptrdiff_t kIslandsBytes = 8 + 31 + 8 + 193 + 67;
+    constexpr std::ptrdiff_t kIslandsBytes =
+        8 + 31 + 8 + 193 + 67 + 5 * 12 + 8; // following envelopes + player extensions
     REQUIRE(world.size() > expected.v.size() + static_cast<std::size_t>(kIslandsBytes));
     CHECK(std::equal(expected.v.begin(), expected.v.end(),
                      world.end() - kIslandsBytes - static_cast<std::ptrdiff_t>(expected.v.size())));
@@ -1702,18 +1703,21 @@ TEST_CASE("players scope reads back and validates what it read") {
         // bytes ends with the players scope, the islands scope (u64 count 0), the
         // figures and events scopes of a world without either (31 + 8 bytes) and the
         // timers_monopoly scope of the default configuration (193 bytes).
-        constexpr std::ptrdiff_t kTail = 31 + 8 + 193 + 67;
+        constexpr std::ptrdiff_t kTail = 31 + 8 + 193 + 67 + 4 * 12;
         REQUIRE(bytes.size() > table_size + 8 + kTail);
         Stream s;
         s.v.assign(bytes.begin(),
-                   bytes.end() - kTail - 8 - static_cast<std::ptrdiff_t>(table_size));
+                   bytes.end() - kTail - 20 - 8 - static_cast<std::ptrdiff_t>(table_size));
         s.u64(1ULL << 20);
         for (std::uint32_t i = 0; i < (1U << 20); ++i) {
             s.u8(0);
         }
         s.u16(0);
         s.u32(0);
+        s.u64(0); // player extensions
+        s.u32(1); // islands version
         s.u64(0); // islands
+        s.u64(0); // islands extensions
         s.v.insert(s.v.end(), bytes.end() - kTail, bytes.end());
         sim::World target(5);
         sim::WorldTestAccess::players(target) = full_table(target.config());

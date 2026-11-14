@@ -170,3 +170,34 @@ building preview in the construction menu still missing, building rotation in th
   planned as UI-INFO-2; whether they block this landing is the owner's call.
 - SAVE-SECTIONS-1b lands alone, on its own candidate and game-file run.
 - The landing waits for the UI lane's new head, a fresh game-file run and the owner's OK.
+
+## Fix round R4, the board's check (2026-11-14)
+
+**Verdict: ACCEPTED for landing**, subject to a fresh game-file run and the owner's OK given directly.
+
+**Reviewed head:** `task/UI-WINDOW-1` `ace62ebe` (code `59d787de`). CI run 43618720924 on `0be7ae20` is green in all
+12 jobs, `gate` included; `ace62ebe` adds only the UI lane's review note. It does not contain `main` `674ecdf4`
+(SAVE-SECTIONS-1b); the landing candidate merges it.
+
+**The cause** of the missing materials: R2 showed the counters only while the view centre was over an island with
+the player's city, and `lan5`'s start camera is over another island. The R2 test always moved the view to the city
+island first, so it missed it.
+
+**The fix** follows the owner's decision of 2026-11-14 ("Always show my city"). The counters show the player's city
+on the centred island, else the player's first city in (island, city) order. They are hidden only before the first
+founding.
+- **Where:** `viewer.cpp` only, plus comments in `play.cpp` and `play.hpp`, OQ-622 and `ui.md` 5.2. Nothing under
+  `src/sim`, `src/render`, `crates` or `game/`.
+- **New facts:** `hud.counters` now says "not drawn" until the first HUD frame. `hud.counters.city` names the city
+  shown.
+
+**The tests:**
+- `ui_counters_centred` now checks right after start, with no look, then over open sea, over the city-less island
+  and over the city island. The UI lane ran it on the `919c59fc` build, where it fails at its first check.
+- `ui_counters_before_founding` (ship start, seat 0) checks that the counters are hidden and the city is none.
+
+**The preview's arrows and rotation** (OQ-612) stay in UI-INFO-2, after this landing (the owner: "Separate, land
+first").
+
+**Not verified by the orchestrator:** the UI lane's focused runs (4 of 4, and the executor's 44 of 44). Not tested:
+the centred city against the fallback, because `lan5` gives the player only one city.

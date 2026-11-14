@@ -1,0 +1,69 @@
+# UI-INFO-2: the info panel's rotate arrows at 1024 x 768. The construction menu's public cell
+# (0, 0) arms the pioneer house 501 and opens its info panel; each left click on rotate_left
+# (hud.txt click centre 824 470) turns the rotation -1, each on rotate_right (1003 470) +1, as the
+# original's View.dll 0x10030440 / 0x10030480 do (GOG Wine-runner shots u2_501_L1..L4, R1..R4:
+# blocks 3, 2, 1, 0 and 1, 2, 3, 0). `ui.info.rotation` is the rotation the preview shows,
+# `tool.turn` the turn the map ghost is drawn and a click builds at (the same for this plain type),
+# and the title the developer tool's own line. Key T turns the same rotation (+1). The house is
+# then built at rotation 2 on the tile construction_menu_arm.script proves free for it.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+expect fact ui.info.rotation == 0
+expect fact tool.turn == 0
+click_px 824 470
+wait frames 3
+expect fact ui.info.rotation == 3
+expect fact tool.turn == 3
+expect title rotation 3
+click_px 824 470
+wait frames 3
+expect fact ui.info.rotation == 2
+click_px 824 470
+wait frames 3
+expect fact ui.info.rotation == 1
+click_px 824 470
+wait frames 3
+expect fact ui.info.rotation == 0
+expect fact tool.turn == 0
+click_px 1003 470
+wait frames 3
+expect fact ui.info.rotation == 1
+expect fact tool.turn == 1
+expect title rotation 1
+click_px 1003 470
+wait frames 3
+expect fact ui.info.rotation == 2
+click_px 1003 470
+wait frames 3
+expect fact ui.info.rotation == 3
+click_px 1003 470
+wait frames 3
+expect fact ui.info.rotation == 0
+# One rotation for keys and arrows: T (+1), then the left arrow (-1), then T, T.
+key t
+wait frames 3
+expect fact ui.info.rotation == 1
+click_px 824 470
+wait frames 3
+expect fact ui.info.rotation == 0
+key t
+wait frames 3
+key t
+wait frames 3
+expect fact ui.info.rotation == 2
+expect fact tool.turn == 2
+expect title rotation 2
+# The arrows sit on the panel: clicking them never reaches the map (no command, no selection).
+expect fact selection.clicks == 0
+click 1156 516
+wait outcome
+expect outcome Applied
+expect fact ui.info.rotation == 2
+quit

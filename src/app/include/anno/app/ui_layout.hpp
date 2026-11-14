@@ -64,6 +64,11 @@ struct UiElement {
     /// (AnnoFrame.dll 0x10063125..0x10063153 picks the bar by display width); absent for every
     /// other element.
     std::optional<int> for_width;
+    /// UI-INFO-2: `turn <step>` marks a button that turns the armed type's rotation by `step`
+    /// quarter turns (never 0): the info panel's rotate arrows, `rotate_left` -1 and
+    /// `rotate_right` +1 (GOG View.dll click handlers 0x10030440 and 0x10030480, docs/re/ui.md
+    /// section 2.5). Absent for every other element.
+    std::optional<int> turn;
 };
 
 /// One `click` line of hud.txt: either a rectangle centre (`click <name> pos <x> <y>`) in drawable

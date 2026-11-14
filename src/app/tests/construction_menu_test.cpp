@@ -3,6 +3,10 @@
 // own checked-in derived-fact files, like ui_layout_test.cpp).
 #include <algorithm>
 #include <filesystem>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include <doctest/doctest.h>
 
@@ -325,4 +329,108 @@ TEST_CASE("info panel: the real hud.txt text boxes place real MainSmall digits w
         CHECK_MESSAGE(app::centred_text_x(el->pos_x, el->size_w, image.width) == c.x, c.box);
         CHECK_MESSAGE(el->pos_y == c.y, c.box);
     }
+}
+
+namespace {
+/// A tool armed with one plain type (no coast or deposit turn), as dev_tool_test.cpp builds it.
+std::unique_ptr<app::DevTool> armed_tool(anno::sim::TypeId type) {
+    anno::sim::TypeRegistry::Builder b;
+    anno::sim::BuildingType plain;
+    plain.id = type;
+    plain.width = 2;
+    plain.height = 3;
+    b.add(plain);
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    app::DevToolSetup s;
+    s.registry = built.value();
+    s.types = {type};
+    s.city = anno::sim::CityRef{anno::sim::IslandId{0}, anno::sim::CityNo{0}};
+    s.island = app::TileRect{100, 40, 30, 30};
+    s.issuer = anno::sim::PlayerId{1};
+    auto tool = std::make_unique<app::DevTool>(s);
+    REQUIRE(tool->arm(type));
+    return tool;
+}
+
+/// One left click at (`px`, `py`) on the open info panel, routed as the window routes a Turn.
+void click_arrow(const app::ConstructionMenu& menu, app::DevTool& tool, double px, double py) {
+    const auto r = menu.click(px, py, "public", true, nullptr);
+    REQUIRE(r.kind == app::ConstructionClickKind::Turn);
+    for (const app::ToolInput& in : app::turn_inputs(r.turn)) {
+        CHECK(tool.handle(in, nullptr).empty()); // a turn sends no command
+    }
+}
+} // namespace
+
+TEST_CASE("info panel: the rotate arrows turn the armed type's rotation, left -1 and right +1, "
+          "the same rotation the keys turn (UI-INFO-2)") {
+    const Layouts l = load();
+    const app::ConstructionMenu menu(l.hud, l.construction);
+
+    // The data binds the direction to the arrow the original draws: INFOROTPFEIL id 34 (left,
+    // View.dll gadget 2, handler 0x10030440: (v - 1) & 3) and id 36 (right, gadget 3,
+    // 0x10030480: (v + 1) & 3); docs/re/ui.md section 2.5.
+    const auto* left = l.hud.element("rotate_left");
+    const auto* right = l.hud.element("rotate_right");
+    REQUIRE(left != nullptr);
+    REQUIRE(right != nullptr);
+    CHECK(left->tex_id == std::optional<int>(34));
+    CHECK(left->turn == std::optional<int>(-1));
+    CHECK(right->tex_id == std::optional<int>(36));
+    CHECK(right->turn == std::optional<int>(1));
+    // Click points: hud.txt's own click centres (824, 470) and (1003, 470).
+    const double lx = 824.0, rx = 1003.0, y = 470.0;
+
+    // Every pixel of each arrow's rectangle resolves to its turn; one pixel outside does not.
+    for (const auto* el : {left, right}) {
+        CAPTURE(el->name);
+        const double x0 = el->pos_x, y0 = el->pos_y;
+        const double x1 = x0 + el->size_w - 1, y1 = y0 + el->size_h - 1;
+        for (const auto& [px, py] :
+             {std::pair{x0, y0}, std::pair{x1, y0}, std::pair{x0, y1}, std::pair{x1, y1}}) {
+            const auto r = menu.click(px, py, "public", true, nullptr);
+            CHECK(r.kind == app::ConstructionClickKind::Turn);
+            CHECK(r.turn == *el->turn);
+        }
+        CHECK(menu.click(x1 + 1.0, y0 + 5.0, "public", true, nullptr).kind !=
+              app::ConstructionClickKind::Turn);
+        CHECK(menu.click(x0 + 5.0, y1 + 1.0, "public", true, nullptr).kind !=
+              app::ConstructionClickKind::Turn);
+    }
+    // Without the info panel (the plain grid shows) the arrows are not drawn: no Turn.
+    CHECK(menu.click(lx, y, "public", false, nullptr).kind != app::ConstructionClickKind::Turn);
+    CHECK(menu.click(rx, y, "public", false, nullptr).kind != app::ConstructionClickKind::Turn);
+
+    CHECK(app::turn_inputs(0).empty());
+    CHECK(app::turn_inputs(-2).size() == 2);
+    CHECK(app::turn_inputs(-2).front().kind == app::ToolInput::Kind::RotateBack);
+    CHECK(app::turn_inputs(1).front().kind == app::ToolInput::Kind::Rotate);
+
+    // Through the tool: the GOG Wine-runner sequence u2_501_L1..L4 (the preview's rotation block
+    // 3, 2, 1, 0 after each left click) and R1..R4 (1, 2, 3, 0).
+    const auto owned = armed_tool(anno::sim::TypeId{501});
+    app::DevTool& tool = *owned;
+    REQUIRE(tool.input().rotation() == 0);
+    for (const int expect : {3, 2, 1, 0}) {
+        click_arrow(menu, tool, lx, y);
+        CHECK(tool.input().rotation() == expect);
+    }
+    for (const int expect : {1, 2, 3, 0}) {
+        click_arrow(menu, tool, rx, y);
+        CHECK(tool.input().rotation() == expect);
+    }
+    // Keys and arrows turn one rotation: right arrow (1), key `.` = RotateBack (0), key `,` =
+    // Rotate (1), left arrow (0), left arrow (3). The ghost and the build use the same turn.
+    click_arrow(menu, tool, rx, y);
+    CHECK(tool.input().rotation() == 1);
+    CHECK(tool.handle({app::ToolInput::Kind::RotateBack, 0, 0}, nullptr).empty());
+    CHECK(tool.input().rotation() == 0);
+    CHECK(tool.handle({app::ToolInput::Kind::Rotate, 0, 0}, nullptr).empty());
+    CHECK(tool.input().rotation() == 1);
+    click_arrow(menu, tool, lx, y);
+    CHECK(tool.input().rotation() == 0);
+    click_arrow(menu, tool, lx, y);
+    CHECK(tool.input().rotation() == 3);
+    CHECK(tool.turn() == 3); // a plain type: the ghost's and the build's turn is the cursor's
 }

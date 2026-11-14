@@ -11039,3 +11039,38 @@ Decisions and reasoning:
   than accepting a composite FAIL at face value.
 
 QUESTIONs: none required.
+
+## UI-INFO-2 — the info panel's rotate arrows turn the building — 2026-11-14 — READY FOR REVIEW
+
+Branch `task/UI-INFO-2` (base `01a4d540`, packet `3311616a`); code `50eabe92`, RE `8c68cf4c`.
+
+**What changed.** `data/ui/hud.txt`: `rotate_left` `turn -1`, `rotate_right` `turn 1` (new element key, parsed in `ui_layout`, README row). `ConstructionMenu::click` resolves a click on an element with `turn` (info panel open; checked before the category column, whose 42 px hit width covers the left arrow's first 13 px) to `Turn`; `turn_inputs` turns it into the `Rotate`/`RotateBack` inputs the keys send, and `viewer.cpp` hands them to `DevTool` — one rotation (`DevInput::rotation`) for keys, arrows, preview, ghost and build. `InfoPanelContent::rotation`; the preview draws rotation block r (`render::frame_index` at time 0), cached per (type, rotation), CPU and GPU paths; rotation 0 = frame 0 as before. New facts `ui.info.rotation`, `tool.turn`. `tools/ui_layout.py` reference takes `rotation`. Docs: `docs/re/ui.md` §2.5 (arrows, preview per rotation, addresses), OQ-623, OQ-624, OQ-612 update, ADR 0004 row 4.
+
+**Evidence.** GOG `View.dll`: left arrow = gadget 2, image 34, tooltip `[TOOLTIP:BAUMENUINFO]` line 0, handler 0x10030440 `set(5, (get(5) − 1) & 3)`; right = gadget 3, image 36, line 1, 0x10030480 `+ 1`; preview 0x100302c0 draws `(view turn + cursor turn) & 3` via 0x1001d760. New silent Wine-runner capture (`cache/orig/ui-info-2/shots/`, 19 shots, not in git): pioneer house left ×4 → blocks 3, 2, 1, 0; right ×4 → 1, 2, 3, 0; map ghost = preview in every shot; dirt road right ×4, left ×1 → panel **exact** (0 px, RGB565) vs the reference at 0, 1, 2, 3, 0, 3, 1 828–1 995 px at every other rotation. HE video agrees (left 0→3→2→1).
+
+**Gates** (MSVC Release, game files, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`=cache copy of the GOG shots, `ANNO_UI_HE_CAPTURES`, new `ANNO_UI_ROTATION_SHOTS`=`cache/orig/ui-info-2/shots`):
+- `run_selected.py --select 'live_screen_matches_oracle|ui_dynamic_draw_check|info_panel|info panel|ui_panels_match_gog|ui_window_matches_he|ui_mock_matches_oracle|ui placement|viewer_wiring_ui_|viewer_wiring_construction|construction menu|ui layout|hud layout' --jobs 16`: run 1 `selected=34 executed=33 failed=1` (the new unit test: the left arrow's left edge resolved to the category column; fixed, see above; log kept `cache/gates/ui-info-2-focused-1.*`); run 2 after the fix `selected=34 executed=34 failed=0 empty=0 skipped=0 incomplete=0`, `VERDICT: PASS` (`cache/gates/ui-info-2-focused-2.*`). All oracle tests at rotation 0 unchanged, no new mask, no tolerance change.
+- `info_panel_rotation_check --renderer gpu` (manual, 4090 window): 5 of 5 captures exact (corner left out as in `info_panel_pixel_check`).
+- clang-format 23.1.3 on the changed C++ files; `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 404 of 405 files clean, the one FAIL is `src/sim/tests/extensions_test.cpp` (`ANNO_EXTENSION_ORACLE_FILE` undefined: the script does not pass that CMake define; file untouched, same on `01a4d540`). Hosted CI on `50eabe92`: run 43648095209 success (all 13 jobs incl. `gate`, `cpp-format`, `linux-clang-asan`); this report commit gets its own run.
+- NOT_RUN: WSL `-O1` sanitizer lane and the full MSVC suite (orchestrator's at landing); the whole app lane beyond the selection above.
+
+**New tests and how they fail on `01a4d540`.** Unit `info panel: the rotate arrows turn ...` (+ a `turn` parse case in `ui layout: parse errors`): with base `hud.txt` 11 of 38 assertions fail (no `turn`, clicks not `Turn`; on base code it does not compile — no `Turn`/`turn_inputs`). `viewer_wiring_ui_rotate_arrows` / `_s10` on the base exe + base layout: stop at `ui.info.rotation is '<none>'`; with the fact lines removed, at `expect title rotation 3` (the base title stays `rotation 0` after a left-arrow click). `info_panel_rotation_check` on the base exe (fact lines removed): r1, r2, r3, r2b differ by 1 937/1 828/1 995/1 828 px. `info_panel_rotation_gog_compare` on the base reference: no `rotation` parameter (TypeError); the rotation-0 picture differs from `u2_2520_R1..R3` by 1 937/1 828/1 995 px.
+
+**Look at it yourself.** `--play data\maps\lan5.txt --construction-menu on` (GPU window, scripted clicks): pioneer house left ×4 → views 3, 2, 1, 0, right ×4 → 1, 2, 3, 0; side by side with `c_pion_rot4.jpg` the four views are the same buildings in the same order (ours smaller: OQ-612 placeholder; no green entrance marks: UI-INFO-2b). Stall 1310: four distinct views, same cycle. The map ghost turned with the preview each time; in the first two shots the island was still streaming in (ghost over unbuilt ground, 30 of 156 frames not ready — not this packet's code).
+
+**Decisions and reasoning.**
+- Arrow direction from the GOG code (left −1, right +1), confirmed on screen in GOG and HE; data-driven `turn`, no names in code.
+- Arrows send the keys' inputs (one owner, `DevInput`) rather than a second rotation state.
+- Preview frame via `render::frame_index` so preview and map cannot diverge; one-stage centring kept (exact for 2520 at all turns); the original's two-stage canvas and single scale over four turns recorded as OQ-624/OQ-612, not implemented (rotation 0 must stay identical).
+- Arrows act on press like every other chrome button here (the original's gadgets may fire on release; not checked).
+- Key direction not changed despite OQ-623 (owner's call).
+- New shots get their own variable `ANNO_UI_ROTATION_SHOTS` so gates without them skip instead of failing.
+
+**OQs registered:** OQ-623 (GOG `.` turns an ordinary building +1, the rebuild's `.` −1), OQ-624 (placement per turn, view term), OQ-612 updated.
+
+**For UI-INFO-2b (entrance arrows).** 0x1001d870 converts `0x404040` (the shadow) and `0xff00` (green, checks for RGB565 `0x7e0` at 0x1001dc25) to the frame's pixel format — likely the marks' colour; the marks move with the turn (HE). Candidate source: Anlagen `ENTRANCE` records (326 types), rotated by the type's slot `+0x98(rotation)` (AnnoGame 0x100084c0, `docs/re/transport.md`). 0x1001d000 walks three part lists (gfx slots 0xa0, 0xa4, 0xa8; the third has its own direction byte) — the marks may be one of them. The canvas/scale rule above also decides where they sit.
+
+**QUESTIONs.**
+1. OQ-623: should the tool's `.`/`,` follow the original's ordinary-building direction (`.` = right arrow) now that the GOG capture shows it, or stay as OQ-520 had them?
+2. The category column's hit width (42 px) also covers grid column 0's first 13 px (808..820) on the plain grid — a click there switches category, not arms the cell. Pre-existing; fix in a follow-up?
+3. To keep the rotation GOG test in the board gate, copy `cache/orig/ui-info-2/shots/` (this worktree) to the shared shots location and set `ANNO_UI_ROTATION_SHOTS`.

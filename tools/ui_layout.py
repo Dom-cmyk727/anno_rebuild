@@ -1458,9 +1458,13 @@ def anlagen_names(game_dir: str) -> dict:
 _ANLAGEN_CACHE: dict = {}
 
 
-def anlagen_preview_rgba(game_dir: str, type_id: int):
-    """(w, h, rgba) of Anlagen.dat type `type_id`'s sprite set 0, zoom group 0, frame 0 (pixels
-    past the frame width kept, docs/formats/anlagen.md), or None."""
+def anlagen_preview_rgba(game_dir: str, type_id: int, rotation: int = 0):
+    """(w, h, rgba) of Anlagen.dat type `type_id`'s sprite set 0, zoom group 0, at `rotation`
+    (pixels past the frame width kept, docs/formats/anlagen.md), or None. The frame is the first
+    animation step of rotation block `rotation`: `(rotation mod blocks) * n`, n = the set's ANIM
+    frames (u16 at 2, at least 1), blocks = frames / n (at least 1) - render::frame_index at time
+    0 and phase 0 (docs/render/iso.md "Frame"; UI-INFO-2, docs/re/ui.md section 2.5). Rotation 0
+    is frame 0, as before."""
     import struct
 
     import figuren as fig
@@ -1489,9 +1493,14 @@ def anlagen_preview_rgba(game_dir: str, type_id: int):
     if not e or not e["gfx"]:
         return None
     frame = None
+    anim = next((rp for rn, rp in e["gfx"][0]["records"] if rn == "ANIM"), None)
+    n = max(struct.unpack_from("<H", anim, 2)[0], 1) if anim and len(anim) >= 4 else 1
     for fs in e["gfx"][0]["sets"]:
         if fs["group"] == 0:
-            frame = fs["frames"][0] if fs["frames"] else None
+            if fs["frames"]:
+                blocks = max(len(fs["frames"]) // n, 1)
+                k = (rotation % blocks) * n
+                frame = fs["frames"][k] if k < len(fs["frames"]) else None
             break
     if frame is None:
         return None
@@ -1561,10 +1570,11 @@ def info_cell_values(layout_dir: str, type_id: int) -> dict:
 
 
 def compose_info_panel(layout_dir: str, game_dir: str, type_id: int, values: dict | None = None,
-                       base=None):
+                       base=None, rotation: int = 0):
     """The placement panel for `type_id` over `base` (an RGB PIL image, default black): chrome
-    (info_panel, infoexit cut to its size, rotate arrows), the seven text boxes and the preview,
-    in draw_live_screen_xrgb's order. `values` defaults to construction.txt's recorded costs."""
+    (info_panel, infoexit cut to its size, rotate arrows), the seven text boxes and the preview at
+    `rotation` (UI-INFO-2), in draw_live_screen_xrgb's order. `values` defaults to
+    construction.txt's recorded costs."""
     from PIL import Image
 
     hud = parse_hud(os.path.join(layout_dir, "hud.txt"))
@@ -1597,7 +1607,7 @@ def compose_info_panel(layout_dir: str, game_dir: str, type_id: int, values: dic
         _blit_clipped(rgb, w, h, img, x, el["pos"][1], full)
     box = by_name["info_preview"]
     shadow = by_name["info_preview_shadow"]
-    sprite = anlagen_preview_rgba(game_dir, type_id)
+    sprite = anlagen_preview_rgba(game_dir, type_id, rotation)
     if sprite is not None:
         bx, by = box["pos"]
         bw, bh = box["size"]

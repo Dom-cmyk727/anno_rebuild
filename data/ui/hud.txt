@@ -6,52 +6,52 @@
 anno1503-ui-hud 1
 resolution 1024 768
 shot hud_idle_running
-element statusbar pos 0 733 size 746 35 file toolgfx/statusbar.tex access STATUSBAR tex_id 0 method sprite-sad shot hud_idle_running
-element gold pos 0 733 size 33 35 file toolgfx/statusbar.tex access STATUSBAR_GELDSYMBOL tex_id 52 method sprite-sad shot hud_idle_running
-element baumat_tools pos 132 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 36 segment 0 method sprite-sad shot r2_construction_public
-element baumat_wood pos 192 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 37 segment 1 method sprite-sad shot r2_construction_public
-element baumat_bricks pos 252 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 38 segment 2 method sprite-sad shot r2_construction_public
-element baumat_marble pos 312 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 39 segment 3 method sprite-sad shot r2_construction_public
-element einwohner pos 401 733 size 38 35 file toolgfx/statusbar.tex access STATUSBAR_EINWOHNER tex_id 53 method sprite-sad shot r2_construction_public
-element rosh_46 pos 547 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 46 segment 6 method sprite-sad shot hud_idle_running
-element rosh_48 pos 587 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 48 segment 8 method sprite-sad shot hud_idle_running
-element rosh_51 pos 627 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 51 segment 11 method sprite-sad shot hud_idle_running
-element fragezeichen pos 746 733 size 34 35 file toolgfx/statusbar.tex access STATUSBAR_FRAGEZEICHEN tex_id 1 method sprite-sad shot hud_idle_running
-element weltkarte pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE tex_id 2 method sprite-sad shot hud_idle_running
-element mainuntergrund pos 779 244 size 245 524 file toolgfx/fenster.tex access MAINUNTERGRUND tex_id 4 method sprite-sad shot hud_idle_running
-element panel pos 779 0 size 245 733 file toolgfx/fenster.tex access MAINUNTERGRUND method atlas-right
+element statusbar pos 0 733 size 746 35 file toolgfx/statusbar.tex access STATUSBAR tex_id 0 anchor bottom for_width 1024 method sprite-sad shot hud_idle_running
+element gold pos 0 733 size 33 35 file toolgfx/statusbar.tex access STATUSBAR_GELDSYMBOL tex_id 52 anchor bottom method sprite-sad shot hud_idle_running
+element baumat_tools pos 132 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 36 segment 0 anchor bottom method sprite-sad shot r2_construction_public
+element baumat_wood pos 192 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 37 segment 1 anchor bottom method sprite-sad shot r2_construction_public
+element baumat_bricks pos 252 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 38 segment 2 anchor bottom method sprite-sad shot r2_construction_public
+element baumat_marble pos 312 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 39 segment 3 anchor bottom method sprite-sad shot r2_construction_public
+element einwohner pos 401 733 size 38 35 file toolgfx/statusbar.tex access STATUSBAR_EINWOHNER tex_id 53 anchor bottom method sprite-sad shot r2_construction_public
+element rosh_46 pos 547 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 46 segment 6 anchor bottom method sprite-sad shot hud_idle_running
+element rosh_48 pos 587 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 48 segment 8 anchor bottom method sprite-sad shot hud_idle_running
+element rosh_51 pos 627 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 51 segment 11 anchor bottom method sprite-sad shot hud_idle_running
+element fragezeichen pos 746 733 size 34 35 file toolgfx/statusbar.tex access STATUSBAR_FRAGEZEICHEN tex_id 1 anchor after-statusbar method sprite-sad shot hud_idle_running
+element weltkarte pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE tex_id 2 anchor right method sprite-sad shot hud_idle_running
+element mainuntergrund pos 779 244 size 245 524 file toolgfx/fenster.tex access MAINUNTERGRUND tex_id 4 anchor right method sprite-sad shot hud_idle_running
+element panel pos 779 0 size 245 733 file toolgfx/fenster.tex access MAINUNTERGRUND anchor right method atlas-right
 # Default HUD (hud_idle_running / f13_hud_cursor_map / r2_player_menu): military uses frame_selected 13.
 # Unselected military (frame 9) is on r2_construction_public, r2_options, r2_tab_help.
-element tab_construction pos 779 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 8 frame_idle 8 frame_selected 12 hotkey B method sprite-sad shot hud_idle_running
-element tab_military pos 840 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 13 frame_idle 9 frame_selected 13 hotkey D method sprite-sad shot hud_idle_running
-element tab_help pos 901 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 10 frame_idle 10 frame_selected 14 method sprite-sad shot r2_construction_public
-element tab_options pos 962 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 11 frame_idle 11 frame_selected 15 method sprite-sad shot r2_construction_public
-element zoom_plus pos 959 7 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 44 method sprite-sad shot hud_idle_running
-element zoom_minus pos 982 19 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 46 method sprite-sad shot hud_idle_running
-element lupe pos 805 132 size 42 45 file toolgfx/fenster.tex access LUPE tex_id 7 method sprite-sad shot hud_idle_running
-element compass_w pos 965 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 48 method sprite-sad shot hud_idle_running
-element compass_e pos 986 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 50 method sprite-sad shot hud_idle_running
+element tab_construction pos 779 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 8 frame_idle 8 frame_selected 12 hotkey B anchor right method sprite-sad shot hud_idle_running
+element tab_military pos 840 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 13 frame_idle 9 frame_selected 13 hotkey D anchor right method sprite-sad shot hud_idle_running
+element tab_help pos 901 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 10 frame_idle 10 frame_selected 14 anchor right method sprite-sad shot r2_construction_public
+element tab_options pos 962 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 11 frame_idle 11 frame_selected 15 anchor right method sprite-sad shot r2_construction_public
+element zoom_plus pos 959 7 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 44 anchor right method sprite-sad shot hud_idle_running
+element zoom_minus pos 982 19 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 46 anchor right method sprite-sad shot hud_idle_running
+element lupe pos 805 132 size 42 45 file toolgfx/fenster.tex access LUPE tex_id 7 anchor right method sprite-sad shot hud_idle_running
+element compass_w pos 965 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 48 anchor right method sprite-sad shot hud_idle_running
+element compass_e pos 986 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 50 anchor right method sprite-sad shot hud_idle_running
 element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
 element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
-element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 method sprite-sad shot r2_construction_public
-element viewbautab_0 pos 779 302 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 16 frame_idle 16 frame_selected 17 method view-dll
+element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 anchor right method sprite-sad shot r2_construction_public
+element viewbautab_0 pos 779 302 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 16 frame_idle 16 frame_selected 17 anchor right method view-dll
 element baukosten size 32 29 file toolgfx/B_Baukosten.tex access image001.pcx tex_id 1 method inc-size
-element betriebskosten pos 815 674 size 40 37 file toolgfx/B_Betriebskosten.tex access image001.pcx tex_id 1 method sprite-sad shot r2_info_pioneer_house
+element betriebskosten pos 815 674 size 40 37 file toolgfx/B_Betriebskosten.tex access image001.pcx tex_id 1 anchor right method sprite-sad shot r2_info_pioneer_house
 # UI-INFO-1: not drawn. The upkeep icon the shots show here is INFOUNTERGRUND id 33's own pixels:
 # panel alone, reduced to RGB565, matches all 1478 icon pixels on three shots; blitting this
 # texture on top makes 1477 of them differ. The grey-key match above found the baked icon.
 element wohnhaus_platte size 244 469 file toolgfx/fenster.tex access WOHNHAUS_PLATTE tex_id 883 method inc-size
-element house_portrait pos 812 355 size 100 108 file toolgfx/Pioniere.tex access image001.pcx tex_id 1 method sprite-sad shot f15_selected_house
+element house_portrait pos 812 355 size 100 108 file toolgfx/Pioniere.tex access image001.pcx tex_id 1 anchor right method sprite-sad shot f15_selected_house
 element pause_parchment pos 222 191 size 579 386 file toolgfx/fenster.tex access MESSAGEBOX_BK tex_id 1512 method sprite-sad shot f15_pause
 element pause_button pos 286 500 size 244 67 file toolgfx/fenster.tex access MESSAGEBOX_BUTTONS tex_id 1513 method sprite-sad shot f15_pause
-element abrissicon pos 970 710 size 53 53 file toolgfx/fenster.tex access ABRISSICON tex_id 659 frame_normal 659 frame_active 660 method sprite-sad shot r2_construction_public
-element info_panel pos 804 302 size 220 466 file toolgfx/fenster.tex access INFOUNTERGRUND tex_id 33 method sprite-sad shot r2_info_pioneer_house
+element abrissicon pos 970 710 size 53 53 file toolgfx/fenster.tex access ABRISSICON tex_id 659 frame_normal 659 frame_active 660 anchor right method sprite-sad shot r2_construction_public
+element info_panel pos 804 302 size 220 466 file toolgfx/fenster.tex access INFOUNTERGRUND tex_id 33 anchor right method sprite-sad shot r2_info_pioneer_house
 # UI-INFO-1: INFOEXIT draws 33 x 35 (View.dll gadget 0x1002ff95 pushes 0x23, 0x21), the texture's last three
 # rows are not drawn; RGB565-exact on r2_info_forester_801, f12_info_kontor_1302, r2_info_pioneer_house.
-element infoexit pos 984 725 size 33 35 file toolgfx/fenster.tex access INFOEXIT tex_id 38 method sprite-565 shot r2_info_forester_801
-element rotate_left pos 808 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 34 method sprite-sad shot r2_info_pioneer_house
+element infoexit pos 984 725 size 33 35 file toolgfx/fenster.tex access INFOEXIT tex_id 38 anchor right method sprite-565 shot r2_info_forester_801
+element rotate_left pos 808 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 34 anchor right method sprite-sad shot r2_info_pioneer_house
 # UI-INFO-1: rotate_right is at x 988, not 987 (0 of 1254 pixels differ in RGB565 at 988 on three shots, 984 at 987).
-element rotate_right pos 988 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 36 method sprite-565 shot r2_info_forester_801
+element rotate_right pos 988 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 36 anchor right method sprite-565 shot r2_info_forester_801
 # UI-INFO-1 (2026-11-14): the info panel's text boxes and preview (docs/re/ui.md section 2.5).
 # Box widths are the View.dll gadgets (class 0xb1c, loop 0x10030024-0x10030126): name 200 x 18
 # (0x1003007f), the four materials 50 x 18 (0x1003008d), gold and upkeep 145 x 18 (0x100300ba).
@@ -62,25 +62,25 @@ element rotate_right pos 988 451 size 33 38 file toolgfx/fenster.tex access INFO
 # python -I tools/ui_layout.py info-compare --type <id> --shot <png> --game-dir <dir>). size_h is the font's 25 glyph rows, not the
 # gadget's 18 (where the gadget top sits is not measured). GOG MainSmall, MainMedium and
 # HelpNormal.zei are byte-identical, so the shots cannot tell which name the gadget uses.
-element info_name pos 819 316 size 200 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
-element info_tools pos 852 564 size 50 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
-element info_wood pos 954 564 size 50 25 file toolgfx/mainsmall.zei align centre method glyph-match shot f12_info_kontor_1302
-element info_bricks pos 852 593 size 50 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
-element info_marble pos 954 593 size 50 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
-element info_gold pos 852 624 size 145 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
-element info_upkeep pos 852 684 size 145 25 file toolgfx/mainsmall.zei align centre method glyph-match shot r2_info_forester_801
+element info_name pos 819 316 size 200 25 file toolgfx/mainsmall.zei align centre anchor right method glyph-match shot r2_info_forester_801
+element info_tools pos 852 564 size 50 25 file toolgfx/mainsmall.zei align centre anchor right method glyph-match shot r2_info_forester_801
+element info_wood pos 954 564 size 50 25 file toolgfx/mainsmall.zei align centre anchor right method glyph-match shot f12_info_kontor_1302
+element info_bricks pos 852 593 size 50 25 file toolgfx/mainsmall.zei align centre anchor right method glyph-match shot r2_info_forester_801
+element info_marble pos 954 593 size 50 25 file toolgfx/mainsmall.zei align centre anchor right method glyph-match shot r2_info_forester_801
+element info_gold pos 852 624 size 145 25 file toolgfx/mainsmall.zei align centre anchor right method glyph-match shot r2_info_forester_801
+element info_upkeep pos 852 684 size 145 25 file toolgfx/mainsmall.zei align centre anchor right method glyph-match shot r2_info_forester_801
 # The preview gadget (class 0xb17, 135 x 135: View.dll 0x1002fbac pushes 0x87, 0x87; 135.0f at
 # 0x1002fb99). Position and rule measured (method sprite-565: Anlagen.dat sprite set 0, group 0,
 # frame 0, centred in the box, reduced to RGB565 the way the 16-bit frame shows it): the whole
 # 135 x 135 box is pixel-identical on r2_info_dirt_road, f12_info_field_104, f12_info_field_708.
 # info_preview_shadow pos is the shadow's offset from the sprite (its silhouette in 66,65,66),
 # not a screen position. Larger sprites and the 1 x 1 stalls do not follow this rule yet (OQ-612).
-element info_preview pos 844 360 size 135 135 method sprite-565 shot r2_info_dirt_road
+element info_preview pos 844 360 size 135 135 anchor right method sprite-565 shot r2_info_dirt_road
 element info_preview_shadow pos 5 10 method sprite-565 shot r2_info_dirt_road
-element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK tex_id 56 method sprite-sad shot r2_construction_public
-element option_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 method sprite-sad shot r2_options
+element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK tex_id 56 anchor right method sprite-sad shot r2_construction_public
+element option_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 anchor right method sprite-sad shot r2_options
 element rating_bg pos 0 0 size 1024 768 file toolgfx/fenster.tex access STATISTIK_UNTERGRUND tex_id 1509 method sprite-sad shot f15_rating
-element pionier_bk pos 783 252 size 245 467 file toolgfx/fenster.tex access VIEWINFOPIONIERMAIN_BK tex_id 974 method sprite-sad shot f15_selected_house
+element pionier_bk pos 783 252 size 245 467 file toolgfx/fenster.tex access VIEWINFOPIONIERMAIN_BK tex_id 974 anchor right method sprite-sad shot f15_selected_house
 # G6 (2026-11-11 fix review, finding 7): this plate's own grey-key mean was recorded here as 17.8;
 # that figure is not reproduced. The defined grey-key rule (docs/re/ui.md section 2) gives 32.07 on
 # this same (783, 252), on both f15_selected_house and a second shot (f22b_help_house); two
@@ -101,7 +101,7 @@ element pionier_bk pos 783 252 size 245 467 file toolgfx/fenster.tex access VIEW
 # in the same shot but their own tex ids (an offset within the WARENICONS_BEDARF family, by
 # analogy with construction.txt's cell_icon_tex_id formula) are not resolved - OQ-569. Not drawn
 # until resolved.
-element need_icon_0 pos 794 480 size 50 50 file toolgfx/fenster.tex access WARENICONS_BEDARF tex_id 727 method sprite-sad shot f15_selected_house
+element need_icon_0 pos 794 480 size 50 50 file toolgfx/fenster.tex access WARENICONS_BEDARF tex_id 727 anchor right method sprite-sad shot f15_selected_house
 # Row 19 (ADR 0004 screen table): the deselected right panel. Same file and size as
 # mainuntergrund (fenster.inc ACCESS table, docs/re/ui.md line 46/485-486: MAINUNTERGRUND id 4
 # and MAX_PIC id 5 are both 245 x 524), drawn in the same slot (docs/re/ui.md 9.8, "the right
@@ -110,9 +110,28 @@ element need_icon_0 pos 794 480 size 50 50 file toolgfx/fenster.tex access WAREN
 # this specific texture isolated behind an opaque key yet (it is the castle-illustration content
 # of f15_ship_guess_0 as a whole, not sprite-sad verified on its own); method inc-size, not
 # sprite-sad, until that measurement exists (an OQ, not a guess presented as fact).
-element max_pic pos 779 244 size 245 524 file toolgfx/fenster.tex access MAX_PIC tex_id 5 method inc-size
+element max_pic pos 779 244 size 245 524 file toolgfx/fenster.tex access MAX_PIC tex_id 5 anchor right method inc-size
 element option_background size 245 467 file toolgfx/fenster.tex access OPTION_BACKGROUND tex_id 1475 method inc-size
 element fenster_statusbar size 780 43 file toolgfx/fenster.tex access STATUSBAR method inc-size
+# UI-WINDOW-1 (2026-11-14): anchors for a layer larger than 1024 x 768 (docs/re/ui.md 5.1).
+# anchor right: the right chrome is right- and top-anchored (HE View.dll 0x3b428..0x3b455:
+# x = Sizex - 245, the same 779 at 1024; captures he_s10/15/20_hud_idle_win.png: panel at
+# W - 245, top rows 0..767). anchor bottom: the status bar row sits on the bottom edge (733 =
+# 768 - 35; he_s10_hud_idle_win.png: gold at (0, H - 35), sprite-sad 0.0). anchor
+# after-statusbar: the question mark closes the bar's span (746 at 1024; 2263 = 2542 - 279 on
+# he_s10_hud_idle_win.png, sprite-sad 0.0). The pause parchment and the rating screen keep
+# their 1024 x 768 position (OQ-618).
+# The status bar per display width: AnnoFrame.dll 0x10063125..0x10063153 picks the graphic by
+# width (1152 -> 0x38, 1280 -> 0x39, else 0, ids in statusbaraddon.tex; statusbar.tex ids 55/56
+# here decode to byte-identical pixels). Elements without pos take statusbar's pos and anchor.
+element statusbar02 size 873 35 file toolgfx/statusbar.tex access STATUSBAR02 tex_id 55 for_width 1152 method annoframe-dll
+element statusbar03 size 1001 35 file toolgfx/statusbar.tex access STATUSBAR03 tex_id 56 for_width 1280 method annoframe-dll
+# The right column below row 768: AnnoFrame.dll 0x10063304..0x1006331f picks FUELLER02 (1152),
+# FUELLER01 (1280 x 960) or FUELLER03 (other 1280) - 96/192/256 rows, the 864/960/1024-line
+# modes' gap; FUELLER01/02 are FUELLER03's top rows (byte-identical). Drawn from row 768 down,
+# cropped to the gap; a taller gap puts it at the bottom (he_s10_hud_idle_win.png: sprite-sad 0.0
+# at (W - 245, H - 256)) over repeated mainuntergrund (OQ-615).
+element fueller03 size 245 256 file toolgfx/statusbar.tex access FUELLER03 tex_id 59 anchor right method annoframe-dll
 click tab_construction pos 809 212
 click tab_military pos 870 212
 click tab_help pos 931 212

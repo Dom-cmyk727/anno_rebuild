@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <charconv>
 #include <fstream>
 #include <sstream>
@@ -57,6 +58,19 @@ std::string fail(std::size_t line_no, const std::string& what) {
     return "line " + std::to_string(line_no) + ": " + what;
 }
 
+/// UI-WINDOW-1: an `anchor <value>` field (data/ui/README.md).
+std::optional<UiAnchor> to_anchor(const std::string& s) {
+    if (s == "right")
+        return UiAnchor::Right;
+    if (s == "bottom")
+        return UiAnchor::Bottom;
+    if (s == "right-bottom")
+        return UiAnchor::RightBottom;
+    if (s == "after-statusbar")
+        return UiAnchor::AfterStatusbar;
+    return std::nullopt;
+}
+
 /// data/ui/README.md: "`-` as a whole field means absent".
 std::string opt_str(std::string s) {
     return s == "-" ? std::string() : s;
@@ -103,6 +117,103 @@ bool point_in_hud_panel(const HudLayout& hud, double px, double py) {
     }
     return px >= panel->pos_x && px < panel->pos_x + static_cast<double>(panel->size_w) &&
            py >= panel->pos_y && py < panel->pos_y + static_cast<double>(panel->size_h);
+}
+
+std::pair<int, int> UiPlacement::place(UiAnchor anchor, int x, int y) const {
+    switch (anchor) {
+    case UiAnchor::TopLeft:
+        return {x, y};
+    case UiAnchor::Right:
+        return {x + dx, y};
+    case UiAnchor::Bottom:
+        return {x, y + dy};
+    case UiAnchor::RightBottom:
+        return {x + dx, y + dy};
+    case UiAnchor::AfterStatusbar:
+        return {statusbar_end, y + dy};
+    }
+    return {x, y};
+}
+
+UiPlacement place_hud(const HudLayout& hud, int ui_w, int ui_h) {
+    UiPlacement p;
+    p.ref_w = hud.resolution_w;
+    p.ref_h = hud.resolution_h;
+    p.ui_w = std::max(ui_w, p.ref_w);
+    p.ui_h = std::max(ui_h, p.ref_h);
+    p.dx = p.ui_w - p.ref_w;
+    p.dy = p.ui_h - p.ref_h;
+    // The status bar's span: the original's own graphic for this width when there is one
+    // (AnnoFrame.dll 0x10063125..0x10063153; hud.txt `for_width`), else the 1152/1280 graphics'
+    // rule, width - panel - question mark (data/ui/hud.txt comments, docs/re/ui.md 5.1).
+    for (const UiElement& e : hud.elements) {
+        if (e.for_width && *e.for_width == p.ui_w && e.has_size) {
+            p.statusbar_end = static_cast<int>(e.size_w);
+            return p;
+        }
+    }
+    const UiElement* panel = hud.element("panel");
+    const UiElement* mark = hud.element("fragezeichen");
+    if (panel != nullptr && panel->has_size && mark != nullptr && mark->has_size) {
+        p.statusbar_end = p.ui_w - static_cast<int>(panel->size_w) - static_cast<int>(mark->size_w);
+    } else if (const UiElement* bar = hud.element("statusbar"); bar != nullptr && bar->has_size) {
+        p.statusbar_end = static_cast<int>(bar->size_w);
+    }
+    return p;
+}
+
+UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy, bool paused) {
+    UiHit hit;
+    if (ux < 0 || uy < 0 || ux >= placement.ui_w || uy >= placement.ui_h)
+        return hit;
+    const auto inside = [](int px, int py, int x, int y, int w, int h) {
+        return px >= x && py >= y && px < x + w && py < y + h;
+    };
+    // The pause parchment, drawn last and over everything (ui_mock.cpp), so it is checked first.
+    if (paused) {
+        if (const UiElement* e = hud.element("pause_parchment");
+            e != nullptr && e->has_pos && e->has_size) {
+            const auto [x, y] = placement.place(e->anchor, e->pos_x, e->pos_y);
+            if (inside(ux, uy, x, y, static_cast<int>(e->size_w), static_cast<int>(e->size_h))) {
+                hit.chrome = true;
+                hit.ref = std::pair{ux - (x - e->pos_x), uy - (y - e->pos_y)};
+                return hit;
+            }
+        }
+    }
+    // The right chrome column: the panel's x and width, from the panel's top to the layer's
+    // bottom (the panel, then the filler under it).
+    if (const UiElement* panel = hud.element("panel");
+        panel != nullptr && panel->has_pos && panel->has_size) {
+        const auto [x, y] = placement.place(panel->anchor, panel->pos_x, panel->pos_y);
+        if (inside(ux, uy, x, y, static_cast<int>(panel->size_w), placement.ui_h - y)) {
+            hit.chrome = true;
+            const int rx = ux - (x - panel->pos_x), ry = uy - (y - panel->pos_y);
+            if (ry < placement.ref_h)
+                hit.ref = std::pair{rx, ry};
+            return hit;
+        }
+    }
+    // The status bar row: the bar's span, then the question mark.
+    const UiElement* bar = hud.element("statusbar");
+    const UiElement* mark = hud.element("fragezeichen");
+    if (bar != nullptr && bar->has_pos && bar->has_size) {
+        const auto [bx, by] = placement.place(bar->anchor, bar->pos_x, bar->pos_y);
+        const int mark_w = mark != nullptr && mark->has_size ? static_cast<int>(mark->size_w) : 0;
+        if (inside(ux, uy, bx, by, placement.statusbar_end + mark_w - bx,
+                   static_cast<int>(bar->size_h))) {
+            hit.chrome = true;
+            const int ry = uy - (by - bar->pos_y);
+            if (ux >= placement.statusbar_end) {
+                if (mark != nullptr && mark->has_pos)
+                    hit.ref = std::pair{mark->pos_x + ux - placement.statusbar_end, ry};
+            } else if (ux - (bx - bar->pos_x) < bar->pos_x + static_cast<int>(bar->size_w)) {
+                hit.ref = std::pair{ux - (bx - bar->pos_x), ry};
+            }
+            return hit;
+        }
+    }
+    return hit;
 }
 
 const ConstructionCategory* ConstructionLayout::category(const std::string& name) const {
@@ -241,6 +352,21 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     e.align = tok.take();
                     if (e.align != "centre")
                         return fail(line_no, "align: only 'centre' is defined");
+                } else if (key == "anchor") {
+                    if (!tok.more())
+                        return fail(line_no, "anchor: missing value");
+                    const auto a = to_anchor(tok.take());
+                    if (!a)
+                        return fail(line_no, "anchor: not right, bottom, right-bottom or "
+                                             "after-statusbar");
+                    e.anchor = *a;
+                } else if (key == "for_width") {
+                    if (!tok.more())
+                        return fail(line_no, "for_width: missing value");
+                    const auto v = to_int(tok.take());
+                    if (!v || *v <= 0)
+                        return fail(line_no, "for_width: not a positive integer");
+                    e.for_width = v;
                 } else {
                     return fail(line_no, "element: unknown key '" + key + "'");
                 }
@@ -352,6 +478,14 @@ parse_construction_layout(const std::string& text) {
                     if (!tok.more())
                         return fail(line_no, "shot: missing value");
                     g.shot = opt_str(tok.take());
+                } else if (key == "anchor") {
+                    if (!tok.more())
+                        return fail(line_no, "anchor: missing value");
+                    const auto a = to_anchor(tok.take());
+                    if (!a)
+                        return fail(line_no, "anchor: not right, bottom, right-bottom or "
+                                             "after-statusbar");
+                    g.anchor = *a;
                 } else {
                     return fail(line_no, "grid: unknown key '" + key + "'");
                 }
@@ -364,6 +498,7 @@ parse_construction_layout(const std::string& text) {
             out.grid.sprite = g.sprite;
             out.grid.method = g.method;
             out.grid.shot = g.shot;
+            out.grid.anchor = g.anchor;
         } else if (kind == "grid_click_x" || kind == "grid_click_y") {
             std::vector<int> values;
             while (tok.more()) {
@@ -573,6 +708,14 @@ formats::Result<MaskLayout, std::string> parse_mask_layout(const std::string& te
                     if (!tok.more())
                         return fail(line_no, "reason: missing value");
                     m.reason = opt_str(tok.take());
+                } else if (key == "anchor") {
+                    if (!tok.more())
+                        return fail(line_no, "anchor: missing value");
+                    const auto a = to_anchor(tok.take());
+                    if (!a)
+                        return fail(line_no, "anchor: not right, bottom, right-bottom or "
+                                             "after-statusbar");
+                    m.anchor = *a;
                 } else {
                     return fail(line_no, "mask: unknown key '" + key + "'");
                 }

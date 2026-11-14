@@ -16,6 +16,24 @@
 
 namespace anno::app {
 
+/// UI-WINDOW-1: how a rectangle measured at the 1024 x 768 reference moves when the UI layer is
+/// larger (`anchor` in data/ui/hud.txt and masks.txt, the `grid` line of construction.txt;
+/// data/ui/README.md). The evidence for each element's anchor is in hud.txt's comments and
+/// docs/re/ui.md section 5.1.
+enum class UiAnchor {
+    /// No `anchor` field: the rectangle stays where it was measured.
+    TopLeft,
+    /// x moves with the layer's right edge (x + ui_w - reference width), y stays.
+    Right,
+    /// y moves with the layer's bottom edge (y + ui_h - reference height), x stays.
+    Bottom,
+    /// Both.
+    RightBottom,
+    /// x is where the status bar's span ends (UiPlacement::statusbar_end), y moves with the bottom
+    /// edge: the question mark that closes the status bar.
+    AfterStatusbar,
+};
+
 /// One `element` line of hud.txt: a rectangle (when `has_pos`/`has_size`), its source texture and
 /// how it was bound (docs/re/ui.md section 2.8's `method` column).
 struct UiElement {
@@ -37,6 +55,12 @@ struct UiElement {
     /// divisions integer, rounding down), y = pos_y (docs/re/ui.md section 2.5). Empty for every
     /// sprite element.
     std::string align;
+    /// UI-WINDOW-1: how `pos` moves in a larger layer (UiAnchor).
+    UiAnchor anchor = UiAnchor::TopLeft;
+    /// UI-WINDOW-1: the layer width this status-bar graphic is the original's choice for
+    /// (AnnoFrame.dll 0x10063125..0x10063153 picks the bar by display width); absent for every
+    /// other element.
+    std::optional<int> for_width;
 };
 
 /// One `click` line of hud.txt: either a rectangle centre (`click <name> pos <x> <y>`) in drawable
@@ -107,6 +131,8 @@ struct ConstructionCell {
 struct ConstructionGrid {
     int cols = 0, rows = 0, cell_px = 0, origin_x = 0, origin_y = 0, sprite = 0;
     std::string method, shot;
+    /// UI-WINDOW-1: how the grid moves in a larger layer (it lies in the right chrome).
+    UiAnchor anchor = UiAnchor::TopLeft;
     std::vector<int> click_x, click_y;
 
     /// The click centre of (col, row), or nullopt outside the grid.
@@ -132,6 +158,9 @@ struct UiMask {
     int pos_x = 0, pos_y = 0;
     unsigned size_w = 0, size_h = 0;
     std::string reason;
+    /// UI-WINDOW-1: how the rectangle moves in a larger layer (the live digits sit in the status
+    /// bar, `anchor bottom`).
+    UiAnchor anchor = UiAnchor::TopLeft;
 };
 
 struct MaskLayout {
@@ -157,6 +186,46 @@ struct ConstructionLayout {
     /// nullptr when (category, col, row) is empty or not in the file.
     [[nodiscard]] const ConstructionCell* cell(const std::string& category, int col, int row) const;
 };
+
+/// UI-WINDOW-1: where the 1024 x 768 reference layout lands in a UI layer of `ui_w` x `ui_h`
+/// pixels (at least the reference; ui_transform.hpp). Built by `place_hud` from hud.txt alone.
+struct UiPlacement {
+    int ref_w = 0, ref_h = 0;
+    int ui_w = 0, ui_h = 0;
+    /// ui_w - ref_w and ui_h - ref_h: how far a right- and a bottom-anchored rectangle move.
+    int dx = 0, dy = 0;
+    /// The status bar's span [0, statusbar_end) and the question mark's x. At a width some
+    /// status-bar graphic is the original's choice for (`for_width`) it is that graphic's width
+    /// (746 at 1024); otherwise ui_w - panel width - question-mark width (the 1152 and 1280
+    /// graphics' rule, 873 = 1152 - 245 - 34, 1001 = 1280 - 245 - 34; the History Edition's
+    /// question mark at 2542 x 1351 sits at 2263 = 2542 - 279, sprite-sad 0.0).
+    int statusbar_end = 0;
+
+    /// Where `x`, `y` (measured at the reference) lands under `anchor`.
+    [[nodiscard]] std::pair<int, int> place(UiAnchor anchor, int x, int y) const;
+};
+
+/// The placement of `hud` in a `ui_w` x `ui_h` layer. A layer smaller than the reference in
+/// either axis is treated as the reference (the transform never makes one).
+[[nodiscard]] UiPlacement place_hud(const HudLayout& hud, int ui_w, int ui_h);
+
+/// What a UI-layer pixel is (UI-WINDOW-1, the click side).
+struct UiHit {
+    /// On drawn chrome: a click here never reaches the map.
+    bool chrome = false;
+    /// The same point in the 1024 x 768 reference frame, when it lies on a rectangle that has
+    /// one (the right chrome's top `ref_h` rows, the status bar's measured part): what
+    /// ConstructionMenu::click and the tab hit test take. nullopt on the parts a larger layer adds
+    /// (the panel column below the reference, the status bar's added span).
+    std::optional<std::pair<int, int>> ref;
+};
+
+/// Classifies UI-layer pixel (`ux`, `uy`): the right chrome column (hud.txt `panel`'s x and
+/// width, the layer's full height - the panel, then the filler below it), the status bar row
+/// (`statusbar`'s y and height, x from 0 to statusbar_end plus `fragezeichen`'s width) and, with
+/// `paused`, the pause parchment (`pause_parchment`) are chrome. Everything else is the map.
+[[nodiscard]] UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy,
+                           bool paused = false);
 
 /// Parses hud.txt's text (the version line `anno1503-ui-hud 1` is required). An error names the
 /// line number and what was wrong.

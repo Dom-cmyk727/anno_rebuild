@@ -41,6 +41,16 @@ cell ids come from View.dll 8-byte tables plus Anlagen.dat HEAD costs; occupancy
 and confirmation shots are from the runner. Inventory reruns leave both files
 byte-stable.
 
+## Anchors (UI-WINDOW-1)
+
+The rectangles are measured at 1024 x 768. In a larger UI layer (`src/app` `ui_transform.hpp`,
+`place_hud`) an `element`, `mask` or the construction `grid` line moves by its `anchor` field:
+absent = stays; `right` = x + (layer width - 1024); `bottom` = y + (layer height - 768);
+`right-bottom` = both; `after-statusbar` = x is where the status bar's span ends, y as
+`bottom`. `for_width <w>` marks the status-bar graphic the original picks at display width
+`<w>`. Method `annoframe-dll` cites the `AnnoFrame.dll` code that picks the graphic
+(`docs/re/ui.md` section 5.1).
+
 `mock --screen` / `compare --screen` compose a PNG from the original textures at
 these rectangles and diff it against a named Wine-runner shot over the unmasked
 chrome (`docs/re/ui.md` section 2.8). Outputs stay in `cache/ui-mock/`.

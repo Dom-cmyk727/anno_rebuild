@@ -4,12 +4,13 @@
 # GOG 2.0.0.5 occupancy matches those counts. Other categories identical.
 # Costs from Anlagen.dat HEAD / PROD3. Lock: INFRAMIN vs INFRA_EVER at Citizen.
 # Grid: NO_KLICK 50 x 50 at origin 808,305 stride 52; click centre = origin + 25.
+# UI-WINDOW-1: the grid lies in the right chrome and moves with it (anchor right).
 anno1503-ui-construction 1
 resolution 1024 768
 open_key B
 leave_key ESC
 shot r2_construction_public
-grid cols 4 rows 8 cell_px 52 origin_x 808 origin_y 305 sprite 50 method sprite-sad shot r2_construction_public
+grid cols 4 rows 8 cell_px 52 origin_x 808 origin_y 305 sprite 50 anchor right method sprite-sad shot r2_construction_public
 grid_click_x 833 885 937 989
 grid_click_y 330 382 432 484 536 588 640 692
 # thumb_tex = fenster.inc ACCESS id of THUMBNAIL*. Unlocked icon = thumb_tex + 3 * record_index (row*4+col), including empty slots.

@@ -3,15 +3,16 @@
 # unlocked_cells are generated from construction.txt at compare time, not listed here.
 # hud_idle extra-masks (779,244,245,489): settlement statistics on MAINUNTERGRUND.
 # F2.1: portraits mask reduced; STATUSBAR_EINWOHNER / ROSHTOFFE icons are bound and compared.
+# UI-WINDOW-1: anchor bottom/right move a mask with the status bar / right chrome in a larger layer.
 anno1503-ui-masks 1
 resolution 1024 768
 mask live_map pos 0 0 size 779 733 reason isometric-world
-mask minimap_paint pos 790 8 size 220 140 reason live-minimap
-mask gold_digits pos 34 733 size 96 35 reason live-digits
-mask baumat_tools_d pos 162 733 size 28 35 reason live-digits
-mask baumat_wood_d pos 222 733 size 28 35 reason live-digits
-mask baumat_bricks_d pos 282 733 size 28 35 reason live-digits
-mask baumat_marble_d pos 342 733 size 28 35 reason live-digits
-mask einwohner_digits pos 439 733 size 108 35 reason live-digits
-mask category_column pos 779 300 size 29 400 reason viewbautab-clip
-mask nameplate pos 800 258 size 200 22 reason live-banner-text
+mask minimap_paint pos 790 8 size 220 140 reason live-minimap anchor right
+mask gold_digits pos 34 733 size 96 35 reason live-digits anchor bottom
+mask baumat_tools_d pos 162 733 size 28 35 reason live-digits anchor bottom
+mask baumat_wood_d pos 222 733 size 28 35 reason live-digits anchor bottom
+mask baumat_bricks_d pos 282 733 size 28 35 reason live-digits anchor bottom
+mask baumat_marble_d pos 342 733 size 28 35 reason live-digits anchor bottom
+mask einwohner_digits pos 439 733 size 108 35 reason live-digits anchor bottom
+mask category_column pos 779 300 size 29 400 reason viewbautab-clip anchor right
+mask nameplate pos 800 258 size 200 22 reason live-banner-text anchor right

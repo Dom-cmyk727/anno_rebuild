@@ -447,8 +447,9 @@ assets::Rgba clip_to(const assets::Rgba& sprite, int x, int y, int cx, int cy, i
 /// opaque blit of an RGBA image at (x, y): the XRGB or the GPU-overlay path's own). Shared by
 /// both paths so the two can never place a figure differently.
 template <typename Blit>
-void draw_info_content(TexCache& cache, const HudLayout& hud, const InfoPanelContent& info,
-                       const formats::anlagen::AnlagenFile* anlagen, Blit&& blit) {
+void draw_info_content(TexCache& cache, const HudLayout& hud, const UiPlacement& placement,
+                       const InfoPanelContent& info, const formats::anlagen::AnlagenFile* anlagen,
+                       Blit&& blit) {
     const auto text_box = [&](const char* element, const std::string& text) {
         const UiElement* el = hud.element(element);
         if (el == nullptr || !el->has_pos || !el->has_size || el->align != "centre" ||
@@ -458,7 +459,8 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const InfoPanelCon
         if (font == nullptr)
             return;
         const assets::Rgba image = render_info_text(*font, text);
-        blit(image, centred_text_x(el->pos_x, el->size_w, image.width), el->pos_y);
+        const auto [bx, by] = placement.place(el->anchor, el->pos_x, el->pos_y);
+        blit(image, centred_text_x(bx, el->size_w, image.width), by);
     };
     if (const std::string* name = cache.anlagen_name(info.type.v))
         text_box("info_name", *name);
@@ -491,8 +493,9 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const InfoPanelCon
             fitted.pixels[i] = 255;
     }
     const int bw = static_cast<int>(box->size_w), bh = static_cast<int>(box->size_h);
-    const int x = box->pos_x + (bw - fitted.width) / 2;
-    const int y = box->pos_y + (bh - fitted.height) / 2;
+    const auto [box_x, box_y] = placement.place(box->anchor, box->pos_x, box->pos_y);
+    const int x = box_x + (bw - fitted.width) / 2;
+    const int y = box_y + (bh - fitted.height) / 2;
     if (const UiElement* shadow = hud.element("info_preview_shadow");
         shadow != nullptr && shadow->has_pos) {
         assets::Rgba silhouette = fitted;
@@ -505,9 +508,122 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const InfoPanelCon
             }
         }
         const int sx = x + shadow->pos_x, sy = y + shadow->pos_y;
-        blit(clip_to(silhouette, sx, sy, box->pos_x, box->pos_y, bw, bh), sx, sy);
+        blit(clip_to(silhouette, sx, sy, box_x, box_y, bw, bh), sx, sy);
     }
-    blit(clip_to(fitted, x, y, box->pos_x, box->pos_y, bw, bh), x, y);
+    blit(clip_to(fitted, x, y, box_x, box_y, bw, bh), x, y);
+}
+
+/// `sprite` cut to at most `w` x `h` pixels, its top-left kept.
+assets::Rgba crop_to(const assets::Rgba& sprite, unsigned w, unsigned h) {
+    if (w >= sprite.width && h >= sprite.height)
+        return sprite;
+    assets::Rgba out;
+    out.width = static_cast<std::uint16_t>(std::min<unsigned>(w, sprite.width));
+    out.height = static_cast<std::uint16_t>(std::min<unsigned>(h, sprite.height));
+    out.pixels.resize(static_cast<std::size_t>(out.width) * out.height * 4);
+    for (std::size_t y = 0; y < out.height; ++y) {
+        std::copy_n(sprite.pixels.begin() + static_cast<std::ptrdiff_t>(y * sprite.width * 4),
+                    static_cast<std::size_t>(out.width) * 4,
+                    out.pixels.begin() + static_cast<std::ptrdiff_t>(y * out.width * 4));
+    }
+    return out;
+}
+
+/// UI-WINDOW-1: the status bar over [0, placement.statusbar_end), through `blit` (an opaque blit
+/// of an RGBA image at (x, y)). At a width some graphic is the original's own choice for
+/// (`for_width`; AnnoFrame.dll 0x10063125..0x10063153 picks STATUSBAR / STATUSBAR02 /
+/// STATUSBAR03 by display width: 1152 and 1280 by name, every other width the first) that
+/// graphic is drawn once - at 1024 x 768 exactly what `statusbar` always drew. Any other width
+/// has no graphic of its own in the original's files: the widest one that fits is repeated from
+/// x 0 and its last copy ends at statusbar_end (a rebuild adaptation, OQ-614; the History Edition
+/// tiles a graphic of its own, `BOTTOM_BAR_TILEABLE`, absent from the original's files). The
+/// graphics without a `pos` take `statusbar`'s position and anchor.
+template <typename Blit>
+void draw_statusbar(TexCache& cache, const HudLayout& hud, const UiPlacement& placement,
+                    Blit&& blit) {
+    const UiElement* base = hud.element("statusbar");
+    if (base == nullptr || !base->has_pos)
+        return;
+    const auto [x0, y] = placement.place(base->anchor, base->pos_x, base->pos_y);
+    const int span = placement.statusbar_end - x0;
+    const UiElement* exact = nullptr;
+    const UiElement* widest_fit = nullptr;
+    const UiElement* narrowest = nullptr;
+    for (const UiElement& e : hud.elements) {
+        if (!e.for_width || !e.has_size || e.file.empty() || !e.tex_id)
+            continue;
+        if (*e.for_width == placement.ui_w)
+            exact = &e;
+        if (static_cast<int>(e.size_w) <= span &&
+            (widest_fit == nullptr || e.size_w > widest_fit->size_w))
+            widest_fit = &e;
+        if (narrowest == nullptr || e.size_w < narrowest->size_w)
+            narrowest = &e;
+    }
+    const UiElement* pick = exact != nullptr        ? exact
+                            : widest_fit != nullptr ? widest_fit
+                                                    : narrowest;
+    if (pick == nullptr)
+        return;
+    const auto sprite = cache.decode(pick->file, *pick->tex_id);
+    if (!sprite)
+        return;
+    const assets::Rgba bar = crop_to_element(*sprite, *pick);
+    if (exact != nullptr) {
+        blit(bar, x0, y);
+        return;
+    }
+    if (span <= 0 || bar.width == 0)
+        return;
+    if (bar.width >= span) {
+        blit(crop_to(bar, static_cast<unsigned>(span), bar.height), x0, y);
+        return;
+    }
+    int x = x0;
+    while (x + bar.width < placement.statusbar_end) {
+        blit(bar, x, y);
+        x += bar.width;
+    }
+    blit(bar, placement.statusbar_end - bar.width, y);
+}
+
+/// UI-WINDOW-1: the right chrome column below the reference's last row, through `blit`. The
+/// original fills it with a picture per display mode (AnnoFrame.dll 0x10063304..0x1006331f:
+/// 1152 wide -> FUELLER02, 1280 x 960 -> FUELLER01, other 1280 -> FUELLER03; 96, 192 and 256
+/// rows, exactly the 864/960/1024-line modes' gap), and FUELLER01/02 are FUELLER03's own top
+/// 192/96 rows (byte-identical decoded pixels, checked 2026-11-14). So a gap of at most
+/// FUELLER03's height shows its top rows from the reference's bottom down - the original's
+/// pixels at its modes. A taller gap has no original: FUELLER03 sits at the bottom (the History
+/// Edition's placement, sprite-sad 0.0 at (W - 245, H - 256) on he_s10_hud_idle_win.png) and the
+/// stone between is `mainuntergrund` repeated from the top (a rebuild adaptation, OQ-615; HE draws
+/// a graphic of its own there, `SIDE_BAR_TILEABLE`).
+template <typename Blit>
+void draw_column_filler(TexCache& cache, const HudLayout& hud, const UiPlacement& placement,
+                        Blit&& blit) {
+    const int gap = placement.ui_h - placement.ref_h;
+    const UiElement* panel = hud.element("panel");
+    const UiElement* filler = hud.element("fueller03");
+    if (gap <= 0 || panel == nullptr || !panel->has_pos || filler == nullptr ||
+        filler->file.empty() || !filler->tex_id)
+        return;
+    const int x = placement.place(panel->anchor, panel->pos_x, panel->pos_y).first;
+    const auto picture = cache.decode(filler->file, *filler->tex_id);
+    if (!picture)
+        return;
+    if (gap <= picture->height) {
+        blit(crop_to(*picture, picture->width, static_cast<unsigned>(gap)), x, placement.ref_h);
+        return;
+    }
+    const int picture_y = placement.ui_h - picture->height;
+    if (const UiElement* stone = hud.element("mainuntergrund");
+        stone != nullptr && !stone->file.empty() && stone->tex_id) {
+        if (const auto tile = cache.decode(stone->file, *stone->tex_id); tile && tile->height > 0) {
+            for (int y = placement.ref_h; y < picture_y; y += tile->height) {
+                blit(crop_to(*tile, tile->width, static_cast<unsigned>(picture_y - y)), x, y);
+            }
+        }
+    }
+    blit(*picture, x, picture_y);
 }
 
 } // namespace
@@ -643,8 +759,9 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                                   bool demolish_mode, bool paused, bool selected_house,
                                   const InfoPanelContent* info,
                                   const formats::anlagen::AnlagenFile* anlagen) {
-    if (dst == nullptr || dst_w != hud.resolution_w || dst_h != hud.resolution_h)
-        return "draw_live_screen_xrgb: destination size does not match the layout's resolution";
+    if (dst == nullptr || dst_w < hud.resolution_w || dst_h < hud.resolution_h)
+        return "draw_live_screen_xrgb: destination smaller than the layout's resolution";
+    const UiPlacement placement = place_hud(hud, dst_w, dst_h);
 
     UiTexCache::Impl& cache = cache_wrapper.impl();
     const bool is_construction = screen.kind == UiMockScreen::Construction;
@@ -666,11 +783,16 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         const auto sprite = cache.decode(el->file, tid);
         if (!sprite)
             return;
-        blit_xrgb(dst, dst_w, dst_h, crop_to_element(*sprite, *el), el->pos_x, el->pos_y);
+        const auto [x, y] = placement.place(el->anchor, el->pos_x, el->pos_y);
+        blit_xrgb(dst, dst_w, dst_h, crop_to_element(*sprite, *el), x, y);
+    };
+    const auto blit_image = [&](const assets::Rgba& image, int x, int y) {
+        blit_xrgb(dst, dst_w, dst_h, image, x, y);
     };
 
     blit_el("weltkarte");
     blit_el("mainuntergrund");
+    draw_column_filler(cache, hud, placement, blit_image);
     if (!is_construction) {
         blit_el("tab_construction", 8);
         blit_el("tab_military", 13);
@@ -682,7 +804,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         blit_el("tab_help", 10);
         blit_el("tab_options", 11);
     }
-    blit_el("statusbar");
+    draw_statusbar(cache, hud, placement, blit_image);
     blit_el("gold");
     // H2: the digit font's measured glyph height (MainSmall '0' is 25 px tall, zei.md) and each
     // counter's own masks.txt rectangle (ADR 0004 R1: "no coordinate lives in code" - the same
@@ -693,12 +815,12 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     // levels is a flagged default, not an RE fact - OQ-031.
     constexpr int kDigitGlyphH = 25;
     const auto digit_origin =
-        [&masks](const std::string& mask_name) -> std::optional<std::pair<int, int>> {
+        [&masks, &placement](const std::string& mask_name) -> std::optional<std::pair<int, int>> {
         const UiMask* m = masks.mask(mask_name);
         if (m == nullptr)
             return std::nullopt;
-        return std::make_pair(m->pos_x,
-                              m->pos_y + (static_cast<int>(m->size_h) - kDigitGlyphH) / 2);
+        const auto [x, y] = placement.place(m->anchor, m->pos_x, m->pos_y);
+        return std::make_pair(x, y + (static_cast<int>(m->size_h) - kDigitGlyphH) / 2);
     };
     // The gold counter, shown on both the idle HUD and the construction screen (OQ-538's own
     // evidence: "On hud_idle_running the bar shows gold"). data/ui/masks.txt `gold_digits` - the
@@ -788,7 +910,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
             // B_Betriebskosten.tex on top changes 1477 pixels the original does not change
             // (UI-INFO-1, docs/re/ui.md section 2.5).
             if (info != nullptr) {
-                draw_info_content(cache, hud, *info, anlagen,
+                draw_info_content(cache, hud, placement, *info, anlagen,
                                   [&](const assets::Rgba& image, int x, int y) {
                                       blit_xrgb(dst, dst_w, dst_h, image, x, y);
                                   });
@@ -797,8 +919,8 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
             // ADR 0004 row 5: 660 while demolishing, 659 otherwise (docs/re/ui.md line 192).
             blit_el("abrissicon", demolish_mode ? 660 : 659);
 
-            const int ox = construction.grid.origin_x;
-            const int oy = construction.grid.origin_y;
+            const auto [ox, oy] = placement.place(
+                construction.grid.anchor, construction.grid.origin_x, construction.grid.origin_y);
             const int stride = construction.grid.cell_px;
             const auto* cat = construction.category(screen.category);
             const int thumb = cat ? cat->thumb_tex : 0;
@@ -859,9 +981,10 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const HudCounters& counters, bool placement_open, bool demolish_mode,
                       bool paused, bool selected_house, const InfoPanelContent* info,
                       const formats::anlagen::AnlagenFile* anlagen) {
-    if (w != hud.resolution_w || h != hud.resolution_h)
-        return std::string(
-            "draw_live_screen_rgba: destination size does not match the layout's resolution");
+    if (w < hud.resolution_w || h < hud.resolution_h || w > 0xFFFF || h > 0xFFFF)
+        return std::string("draw_live_screen_rgba: destination smaller than the layout's "
+                           "resolution, or larger than an assets::Rgba holds");
+    const UiPlacement placement = place_hud(hud, w, h);
 
     // The GPU path's CPU-side half: the same live state draw_live_screen_xrgb composes into the
     // CPU buffer, composed here instead into a canvas that starts fully transparent (so it can be
@@ -889,11 +1012,16 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
         const auto sprite = cache.decode(el->file, tid);
         if (!sprite)
             return;
-        blit_rgba_over(canvas, crop_to_element(*sprite, *el), el->pos_x, el->pos_y);
+        const auto [x, y] = placement.place(el->anchor, el->pos_x, el->pos_y);
+        blit_rgba_over(canvas, crop_to_element(*sprite, *el), x, y);
+    };
+    const auto blit_image = [&](const assets::Rgba& image, int x, int y) {
+        blit_rgba_over(canvas, image, x, y);
     };
 
     blit_el("weltkarte");
     blit_el("mainuntergrund");
+    draw_column_filler(cache, hud, placement, blit_image);
     if (!is_construction) {
         blit_el("tab_construction", 8);
         blit_el("tab_military", 13);
@@ -905,18 +1033,18 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
         blit_el("tab_help", 10);
         blit_el("tab_options", 11);
     }
-    blit_el("statusbar");
+    draw_statusbar(cache, hud, placement, blit_image);
     blit_el("gold");
     // H2: masks.txt's own measured rectangles (ADR 0004 R1 - see draw_live_screen_xrgb's own
     // comment on digit_origin, mirrored here).
     constexpr int kDigitGlyphH = 25;
     const auto digit_origin =
-        [&masks](const std::string& mask_name) -> std::optional<std::pair<int, int>> {
+        [&masks, &placement](const std::string& mask_name) -> std::optional<std::pair<int, int>> {
         const UiMask* m = masks.mask(mask_name);
         if (m == nullptr)
             return std::nullopt;
-        return std::make_pair(m->pos_x,
-                              m->pos_y + (static_cast<int>(m->size_h) - kDigitGlyphH) / 2);
+        const auto [x, y] = placement.place(m->anchor, m->pos_x, m->pos_y);
+        return std::make_pair(x, y + (static_cast<int>(m->size_h) - kDigitGlyphH) / 2);
     };
     if (counters.gold) {
         if (const auto pos = digit_origin("gold_digits")) {
@@ -984,7 +1112,7 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
             // B_Betriebskosten.tex on top changes 1477 pixels the original does not change
             // (UI-INFO-1, docs/re/ui.md section 2.5).
             if (info != nullptr) {
-                draw_info_content(cache, hud, *info, anlagen,
+                draw_info_content(cache, hud, placement, *info, anlagen,
                                   [&](const assets::Rgba& image, int x, int y) {
                                       blit_rgba_over(canvas, image, x, y);
                                   });
@@ -993,8 +1121,8 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
             // ADR 0004 row 5: 660 while demolishing, 659 otherwise (docs/re/ui.md line 192).
             blit_el("abrissicon", demolish_mode ? 660 : 659);
 
-            const int ox = construction.grid.origin_x;
-            const int oy = construction.grid.origin_y;
+            const auto [ox, oy] = placement.place(
+                construction.grid.anchor, construction.grid.origin_x, construction.grid.origin_y);
             const int stride = construction.grid.cell_px;
             const auto* cat = construction.category(screen.category);
             const int thumb = cat ? cat->thumb_tex : 0;

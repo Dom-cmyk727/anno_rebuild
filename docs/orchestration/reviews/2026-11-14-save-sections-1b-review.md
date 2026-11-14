@@ -75,6 +75,27 @@ the package's independent review.
 4. **`anno_sim_tests` now runs Python at build time** to write the oracle into `build/`. Every CI lane and the MSVC
    preset already find Python 3, as the green run shows.
 
+## Game-file run of the landing candidate (2026-11-14)
+
+**The candidate:** `orch/land-save-sections-1b` at `71b58086`. It is UI-WINDOW-1's final candidate `4317ac9b`
+(`main` `f54e36f0`, then UI-WINDOW-1 `0143f045`, then the board up to `d61519db`), then `task/SAVE-SECTIONS-1b`
+`4c1685fa`. It was built locally and not pushed. One run covers both packages together, as they would sit on `main`.
+
+**The run:** the canonical call, with the GOG oracle shots and the HE captures set, 16:16–17:03.
+- `COUNTS: selected=2616 executed=2587 failed=2 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- Log sha256 `59640c093d414a4a…`.
+
+**The two failures are 1,800 s timeouts**, spent mostly waiting for memory admission. Both are render corpus tests
+this package doesn't touch:
+- `chunk draw lists replay to the objects and base planes of Scene::render, every chunk`;
+- `legacy river shading reproduces the previous enhanced digests` (heavy).
+
+**Each rerun alone** with `--jobs 1`, same build, 17:04–17:13: `COUNTS: selected=1 executed=1 failed=0`,
+`VERDICT: PASS` for both. Log sha256s: `c844d8d5f4a28e13…`, `f48b0d387c4f8022…`.
+
+**Result:** every selected test that is not skipped executed and passed on the candidate.
+
 ## Not verified by the orchestrator
 
 - The executor's own runs: the pins check (1,653 executed, 0 failed, 18 opt-in skips), the focused runs and the

@@ -1573,7 +1573,9 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     // UI-WINDOW-1 fix round R2: the four tabs are switches (docs/re/ui.md 5.3): construction
     // opens the construction menu (as key B), the bust the player list (as key D), "?" the info
     // panel, the gears the main menu (as key O). A click on the tab already selected changes
-    // nothing (OQ-621). Leaving the construction menu for another tab turns an armed tool off.
+    // nothing, except the bust from the overview, which opens the list (shot r2_player_menu); a
+    // second bust click is OQ-621. Leaving the construction menu for another tab turns an armed
+    // tool off.
     const auto inside_tab = [&](const char* name) {
         const UiElement* tab = construction_menu_->hud().element(name);
         return tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&

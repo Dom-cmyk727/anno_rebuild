@@ -544,7 +544,8 @@ The tabs are switches: one is always selected (`MAINTAB` `frame_selected`, the o
 player tab with its overview panel (`hud_idle_running`); the bust tab and key **D** show the player
 list (`r2_tab_military`, `r2_player_menu`); "?" shows the info panel (`r2_tab_help`); the gears tab
 and key **O** the main menu (`r2_options`, `options_key_O`); the construction tab and key **B** the
-construction menu. Each panel's static chrome is in `data/ui/hud.txt` (`panel`), each element
+construction menu. A click on the selected tab changes nothing, except the bust from the
+overview, which opens the list (`r2_player_menu`). Each panel's static chrome is in `data/ui/hud.txt` (`panel`), each element
 matched by ACCESS id on its shot (exact after the RGB565 reduction, or mean abs 0.00-0.35 for the
 two big backgrounds); `tools/test/ui_panels_compare.py` checks them. Names, figures, list rows,
 the diplomacy cluster and the info emblem are not drawn (UI-TABS-1). Unproven parts (a second

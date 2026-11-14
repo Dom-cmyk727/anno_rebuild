@@ -89,8 +89,9 @@ struct HudCounters {
 /// for each figure and prints it with `_itoa` radix 10 (0x1008d919): the four build goods
 /// (WERKZEUG 0x29, HOLZ 0x2a, ZIEGEL 0x2b, MAMOR 0x2c, in that gadget order) as whole tons
 /// (`(amount + bias) >> 8`, 0x100301e2), the gold cost, and the running cost's column 1 (the
-/// active column; 0x10030269 pushes kind 2, column 1). The caller fills this from the live type
-/// registry (ConstructionMenu::info_panel_content), never from data/ui/construction.txt.
+/// active column; 0x1003026b `push 1` column 1, 0x1003026d `push 2` kind 2). The caller fills this
+/// from the live type registry (ConstructionMenu::info_panel_content), never from
+/// data/ui/construction.txt.
 struct InfoPanelContent {
     /// The Anlagen id: the name comes from Texte.dat `[ANLAGEN]` `<id>:<name>` and the preview
     /// from Anlagen.dat's sprite set of this id.

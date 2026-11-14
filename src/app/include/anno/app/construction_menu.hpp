@@ -60,10 +60,10 @@ struct ConstructionCellInfo {
     /// Ascending goods order, non-zero amounts only (BuildingType::cost_goods's own contract).
     std::vector<sim::CostEntry> cost_goods;
     /// Upkeep: the registry's `running_cost[1]` (PROD3's active column) - what the original's
-    /// panel shows before a building exists (UI-INFO-1, OQ-563 resolved: View.dll 0x10030262
-    /// asks the type for running-cost kind 2, column 1; 15 of 15 GOG info-panel shots show that
-    /// column, 11 of them where it differs from column 0). nullopt only for a type whose
-    /// `running_cost` is not the two-column form (never for the real files).
+    /// panel shows before a building exists (UI-INFO-1, OQ-563 resolved: View.dll 0x1003026b
+    /// `push 1` (column 1) and 0x1003026d `push 2` (running-cost kind 2); 15 of 15 GOG info-panel
+    /// shots show that column, 11 of them where it differs from column 0). nullopt only for a type
+    /// whose `running_cost` is not the two-column form (never for the real files).
     std::optional<std::uint32_t> upkeep;
 };
 

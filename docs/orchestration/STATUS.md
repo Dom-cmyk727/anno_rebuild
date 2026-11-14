@@ -22,10 +22,12 @@ says who is doing what, where the work is, and what it waits on.
   [review](reviews/2026-11-14-save-sections-1b-review.md)): the extension tag registry (state.md §9.8), the
   compile-time registration, and the proof that an extension moves no pin. **`main` is healthy:** the candidate
   `f04c600f` (the same code as `674ecdf4`) passed its game-file run, its 5 memory refusals rerun alone.
-  **[FISHER-1a](tasks/fisher-1a.md) READY, ACCEPTED** (2026-11-14, head `9137eabd`,
-  [review](reviews/2026-11-14-fisher-1a-review.md)): the fisher's corner grid, water cells, goal mask and search
-  rectangle as state-free functions; 2,473 fish tiles and 619 with a water neighbour asserted over the 50 maps.
-  Landing waits for its game-file run and the owner's OK. **Next on the Mac:** FISHER-1b (packet to write).
+- **[FISHER-1a](tasks/fisher-1a.md) LANDED** on the owner's OK ("Land both when green"; 2026-11-14, `main`
+  `674ecdf4` → `5bcd64a6`; [review](reviews/2026-11-14-fisher-1a-review.md)): the fisher's corner grid, water
+  cells, goal mask and search rectangle as state-free functions; 2,473 fish tiles and 619 with a water neighbour
+  asserted over the 50 maps. **`main` is healthy:** the candidate `198b5fb0` (the same code) passed its game-file
+  run, nothing refused. **Next on the Mac:** [FISHER-1b](tasks/fisher-1b.md), released when the owner pastes its
+  prompt.
 - **Zoom session for the owner** (2026-11-14): fast zooming on `lan5`, enhanced water, measured
   ([findings](../render/zoom-session-2026-11-14.md)), evidence for ZOOM-SMOOTH-1.
 - **[ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) WRITTEN** for the Windows executor (owner: "Yes, write it"), released

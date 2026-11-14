@@ -201,3 +201,23 @@ first").
 
 **Not verified by the orchestrator:** the UI lane's focused runs (4 of 4, and the executor's 44 of 44). Not tested:
 the centred city against the fallback, because `lan5` gives the player only one city.
+
+### The game-file run of the R4 candidate (2026-11-14)
+
+**The candidate:** `orch/land-ui-window-1` at `21b91bf9`: `main` `674ecdf4`, then FISHER-1a, then `ace62ebe`, then
+the board. The owner's OK was "Land both when green".
+
+**The run:** the canonical call with the GOG oracle shots and the HE captures set, 19:13–19:28.
+- `COUNTS: selected=2621 executed=2593 failed=1 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`
+- Log sha256 `19b040c3245b28bf…`.
+
+**The failure is real, caused by R4:** `live_screen_matches_oracle` reports `hud_idle: 4808 of 179612 opaque-oracle
+pixels differ (fraction 0.0268); first at statusbar (404,733)`.
+- The script launches `--play lan5` with the developer city and compares the idle HUD with the GOG shot
+  `hud_idle_running`, which was taken before founding and shows no counters.
+- Under R2 the counters happened to be hidden at `lan5`'s start camera. R4 always draws them.
+- The UI lane's focused runs didn't include this test.
+
+**Not landed.** The UI lane runs fix round R5: `hud_idle` is compared in the oracle's own state, before founding, in a
+second launch on the ship start. No new masks and no tolerance change. The owner's OK stands for a head that passes.

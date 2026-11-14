@@ -17,6 +17,10 @@ says who is doing what, where the work is, and what it waits on.
     - **What it adds:** the info panel's name, four material costs, gold and upkeep, pixel-identical to all 15 GOG
       shots, and a flagged preview placeholder (OQ-612).
     - **It waits on** the owner's preview decision, the owner's landing OK and the candidate's game-file run.
+  - **UI-HE-1 ACCEPTED, docs only** (`task/UI-HE-1` `5d0db740`, [review](reviews/2026-11-14-ui-he-1-review.md)):
+    how the History Edition scales the in-game UI. It steps the setting down by 0.1 until the UI has at least
+    1024 × 768, stretches it bilinearly and keeps the side panel right-anchored. At 1200 lines or fewer it stays
+    1:1. Three captures match the rule. Lands on the owner's OK.
 - **LANDED on `main` as `95eea7de`,** with the owner's OK ("Land on Main"): DEPTH-INTEGRATE-1 and the board. Depth is
   on by default and the sea is at the original's 26.5 plane on `main` now.
   - **`main` is healthy:** that exact commit's game-file run passed every test, 2,555 executed, 0 failed, none

@@ -164,6 +164,32 @@ So the owner's "delayed rendering" is in the motion and right after a jump, not 
 - **Wave-window switches** (RC3): the counter rose (10 new windows in each human-rate move). The pictures here don't
   isolate their look.
 
+## The owner's own recording (12:18–12:20)
+
+The owner zoomed by hand, at the cursor, in the same build and map, and recorded with OBS:
+- the recording: a display capture at 1920 × 1080 and 60 fps, 74.25 s, `E:\1503_test_videos\2026-11-14 12-18-51.mp4`;
+- the viewer log, with clock time: `owner-run/stderr.log`;
+- the sync: video time 0 is 12:18:51.85, the file's end time minus its duration.
+
+**The counters agree with the scripted runs.** While the owner zoomed (video 3–70 s):
+- every 2 s window had 2–27 % of frames drawing unbuilt chunks;
+- **up to 64 chunks were missing at once** (video 19–21 s and 57–59 s), 61 at 41–43 s and 55 at 67–69 s;
+- each window had 48–366 dissolves;
+- six windows had a worst busy frame of 10–14 ms;
+- the frame rate fell from 500 to 393–450 in the heaviest windows.
+
+**Nothing changed late while the camera stood still.** A frame-by-frame scan found two sharp local changes during still
+camera, at 12.05 s and 18.42 s. Both are a Windows notification sliding in and out of the bottom-right corner, not the
+renderer. So the late content is in the motion, as in F8.
+
+**The water texture,** in the one region measured during the zoom-in at 57.6–59.4 s, grows smoothly: wave contrast
+(luminance std) went from 1.7 to 3.7, with no sudden switch. A switch at a level boundary (RC3) was not isolated.
+
+**For the next recording:**
+- record at 120 fps or more, at the native 2560 × 1440;
+- the quality is already enough (about 80 Mbit/s), and lossless isn't needed;
+- the viewer's counters stay the exact measure.
+
 ## What this means for ZOOM-SMOOTH-1
 
 The owner's acceptance rule (2026-11-13) is no late islands and no dissolves while zooming: the viewer's non-ready and

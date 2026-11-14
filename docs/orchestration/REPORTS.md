@@ -10533,6 +10533,200 @@ Decisions and reasoning:
 NOT_RUN:18 opt-in soaks/measurements; local Windows/MSVC/WSL and full platform/game-file landing gates.
 No game assets committed; no feature/default, PRNG site, registry format, tag API, rebase or main push.
 QUESTIONs: none; all three stopping questions checked and not triggered. Orchestrator review pending.
+
+## UI-WINDOW-1 — the in-game UI at any window size, and clickable — 2026-11-14 — READY FOR REVIEW
+
+Branch `task/UI-WINDOW-1`, `origin/main` `d89d54a6` merged (UI-INFO-1, PINS-1, UI-HE-1). Head: this push. Changes:
+- `ui_transform.hpp/.cpp` (new): layer size, HE's step-down, aspect fit, click inverse in float32 as HE `AnnoDisplay`
+  0x2ccf0/0x5a961 and `AnnoFrame` 0x22a26 do it (re-disassembled with capstone); bilinear stretch (cached) and an
+  XRGB blend. Default = the original 1:1 (setting 1.0); `--ui-scale 1.0..2.0` = HE's rule; numbers in `UiScaleRule`.
+- `data/ui`: `anchor` on hud/masks/grid (right chrome `right`, status row `bottom`, question mark
+  `after-statusbar`); `statusbar02/03` (`for_width`) and `fueller03` from GOG `AnnoFrame.dll` 0x10063125 (bar by
+  width 1152/1280/else) and 0x10063304 (FUELLER02/01/03; 01/02 are 03's top rows, byte-identical).
+  `place_hud`/`ui_hit` place and classify; the two live draw functions take any size >= 1024 x 768.
+- `viewer.cpp`: the 1024 x 768 guards are gone on CPU and GPU. 1:1 draws straight in; otherwise layer, stretch,
+  blend/overlay. A left press on chrome (right column full height, status row, parchment while paused) and its
+  release are taken: no pan, no selection, no tool. The construction tab toggles the menu like B.
+- `anno_ui_mock --live WxH [--ui-scale s]`; ADR 0004 R3 (owner, 2026-11-14), `ui.md` 5.1, OQ-614..618.
+Acceptance (positive / negative control / evidence):
+- transform = HE table, float32: 2542x1351 s1.5 1694x900 k 0x3fc01358, s2.0 1495x794 k 0x3fd9a48f; 2091x1307 s1.7
+  -> 1229 (decimal would give 1230); `ui transform:` cases.
+- 1024 x 768 unchanged: `live_screen_matches_oracle`, `ui_mock_matches_oracle`, `ui_dynamic_draw_check`,
+  `selected_house_pixel_check`, `info_panel_*` pass unchanged; every element's placement is its own pos at 1024.
+- 2542 x 1351 s1.0 right chrome = 1024 chrome shifted by 1518: 179 585 px, 0 differ; unshifted control < 10 % equal
+  (`ui layer:` case). HE captures (`ui_window_matches_he`): tab band 0.00 / 0.87 / 1.75 mean abs at s1.0 / 1.5 / 2.0
+  (bounds 0.25 / 1.5 / 2.5, tighter than he-ui-scale.md's 3.50 / 4.60 / 4.25); 3 px-shifted control 24.8 / 17.3 /
+  16.1; at 1:1 the filler, question mark and gold symbol match the capture exactly (0.00).
+- Clicks: `ui click path:` (cell arms, tab maps to 809 212, at 1024 / 2542 s1.0 / s2.0); real window
+  `viewer_wiring_ui_window_click_s10/_s20`: status bar, filler, panel clicks leave `selection.clicks` unchanged, a
+  map click moves it (control); tab opens the menu; cell arms 501 (the base drew and clicked only at 1024 x 768).
+Gates:
+- `cmake --preset msvc`, `cmake --build --preset msvc`: exit 0, 0 warnings (`cache/ui-window-1/gates/build-02.log`).
+- `run_selected.py --build-dir build/msvc --config Release --select "construction menu|ui layout|hud layout|mask
+  layout|construction layout|point_in_hud|ui transform|ui placement|ui click path|ui layer|zoom_args|info panel|
+  info_panel|live_screen|ui_mock|ui_window|ui_dynamic|selected_house|construction_menu|construction_full|
+  construction_unaffordable" --jobs 16` (game dir, oracle shots, HE captures set): selected 36, executed 36 pass,
+  failed 0, skipped 0, empty 0, VERDICT PASS (`focused-01.log`).
+- clang-format 23.1.3 `--dry-run --Werror` on the 12 changed app C++ files: clean. `ui_layout.py validate
+  --game-dir`, `self-test`, `check-files`: ok. `check_unix_warnings.sh`: run 01 found 7 test-file warnings (fixed
+  `55c3fba5`); run 02 (before a format-only edit of that test): GCC 13, Clang 18, GPU on/off clean, exit 0.
+- CI run 43580785494 on `0b62b84b`: format, lint, changes, test (ubuntu, windows), build-macos green; cpp jobs exit 6,
+  a skip of class "other" (ui_window_compare.py worded its no-assets skip wrongly). Fixed: required-asset and
+  opt-in wording (`--asset-policy unavailable` local run: 15 selected, 10 pass, 5 required-asset skips, PASS).
+  CI on the fix (`f885bd7b`, run 43581982904): all jobs and `gate` green.
+Measured (window stderr, ANNO_VIEW_HITCH_MS=1, 2542 x 1351): "construction ui" median 5.7 ms CPU s1.0, 7.8 ms CPU
+s2.0 (p90 27.8 when the layer changes and is re-stretched), 6.5 / 6.0 ms GPU; GPU "ui scale" median 0.36 ms (cache
+hit), up to 15.7 ms on a re-stretch (single thread). First frame 77-95 ms (texture decode, as before).
+What I saw (`cache/ui-window-1/look`, CPU captures beside HE's): at s1.0/s2.0 panel, tabs, minimap frame, question
+mark, bar and chain picture sit where HE draws them; the stone above the chain is MAINUNTERGRUND (HE: its own); the
+tiled bar seams every 1001 px. Tab, cell (0,0) and info panel work at 2542 s1.0/s2.0, 1024, 900 x 600 (fitted). GPU
+(desktop copy cut at the 1920 x 1144 monitor): 1024, 900 x 600, 1920 x 1080 s2.0 look like CPU (1024 column 0.61).
+NOT_RUN: Linux/macOS game-file runs; the full suite; GOG captures at 1152/1280 modes (none exist).
+Decisions and reasoning:
+- Question mark at the bar's end (746 at 1024, W - 279 else): fits the 1152/1280 bars and the HE capture; 1024
+  stays exact. Its draw call was not read (OQ-614).
+- Sizes the original never had: widest GOG bar tiled; FUELLER03 bottom-anchored over repeated MAINUNTERGRUND
+  (OQ-614/615). HE's own tile graphics are HE-only files and are not used.
+- Below 1024 x 768 the packet's choice (layer fitted with HE's formula, map not scaled, OQ-616); pop-ups keep the
+  1024 x 768 place (OQ-618); the 1200-line rule reads the client height (OQ-617).
+- A click in a letterbox bar maps to nothing (HE's cvttss2si would fold (-1, 0) onto 0); stretch premultiplied,
+  clamp addressing (HE's UI address mode is open).
+QUESTIONs: none blocking. Owner choices are listed in OQ-614/615/616 (HE graphics when present? small windows?).
+**READY FOR REVIEW.**
+
+### Fix round R1 (review of `d9121492`: ACCEPT WITH FINDINGS) — 2026-11-14
+
+One commit per finding (F6 and F7 share one: one window script covers both):
+- **F1** (`3bd296a2`): HE draws the UI layer with `Texture::InitTexture`'s quad (AnnoDisplay 0x5c9dd..0x5cb2a;
+  off = trunc((W − kh·uiW)·0.5 + 0.5), corners (off, 0)-(W − off, H) or the transpose, whole-client viewport
+  0x5ac65), stretched per axis; the uniform k of 0x5a961 only feeds the click getters (0x18940..0x18970, copies
+  0x18fab/0x19431). The rebuild now draws that way; clicks keep k (OQ-619, at most one layer pixel apart). HE
+  captures: tab band / gold symbol / question mark 0.04 / 0.06 / 0.05 at s1.5 and 0.04 / 0.05 / 0.05 at s2.0
+  (bound 0.25 everywhere, was 1.5 / 2.5 on the band only); last client row drawn; 1:1 unchanged (0.00, exact).
+- **F2** (`76b84cfd`): closing the menu by the tab or Esc toggles an armed tool off (`construction_close`). New
+  `viewer_wiring_ui_menu_close_disarms` (arm, close each way, map click: `expect outcome none`); against the
+  previous viewer it fails (the title still shows "build 501"). Wording: the tab opens (as B) and closes (as Esc).
+- **F3** (`fef60e57`): comment and ui.md 5.1 state the original picks STATUSBAR (746) at any other width; the
+  1001-px tiling is our adaptation with seams at x 1000/1001 and 1262 that HE lacks (OQ-614).
+- **F4** (`22b6d940`): OQ-617 narrowed (0x2d943 reads `[[rdi+0x568] + r14*8 + 4]`, the chosen mode in the list);
+  the rebuild reads the client height in a window (ui_transform.hpp, he-ui-scale.md Open).
+- **F5** (`224b73e2`): OQ-620 (AnnoFrame 0x10063000/13 width factor 1.18/1.3 on bases 400/436 at 0x100636e3/
+  0x10063725); ui.md 5.1 no longer claims the original keeps the icons' x. `7fcaa1b9` puts OQ-618 back in order
+  (the F1/F4 commits were cut from a working file and left it out in between; final text unchanged).
+- **F6, F7** (`7c517361`): reference size from hud.txt `resolution`; `--ui-scale` range from `UiScaleRule` in cli
+  and the mock. A lost UI press is dropped on a new press, focus loss or mouse leave. New script verbs `ldown_px`,
+  `ldrag_px`, facts `ui.press`, `camera.pans`; `viewer_wiring_ui_chrome_press`: a chrome drag pans 0 times, a map
+  drag pans (control), a lost press is dropped and the next map click reaches the selection; without the reset
+  it fails (`ui.press` stays 1 after focus-lost).
+- GPU path, non-1024 (manual, `cache/ui-window-1/r1`): GPU desktop copy vs CPU frame, right column: 1280 x 1024
+  214 114 of 214 130 px identical (max diff 22); 900 x 600 (letterboxed, stretched) 91 200 of 91 200; 1920 x 1080
+  (s2.0, forced 1:1) 190 610 of 190 610 above a desktop toast that covered the bottom. No CTest: a GPU window needs
+  a real desktop (live_screen_compare.py's own note); NOT_RUN as automated.
+- Perf (`7be8ee0d`): the GPU path composes into a reused canvas: "construction ui" median 5.27 -> 4.63 ms, p90
+  7.63 -> 6.24 (GPU, 49 frames each). Follow-ups, not done: the non-1:1 paths recompose the whole layer every frame;
+  UiLayerScaler compares about 4.7 MB per frame; the re-stretch is single-threaded (up to about 16 ms).
+Gates: `cmake --build --preset msvc` exit 0, 0 warnings (`build-r1.log`). `run_selected.py` with game dir, oracle
+shots and HE captures (the earlier selection plus `ui_menu|ui_chrome|dev script|dev_script`): selected 48, executed
+48 pass, 0 failed, 0 skipped, VERDICT PASS (`focused-r1.log`). clang-format 23.1.3 on the 15 changed app files:
+clean. `ui_layout.py validate/self-test/check-files`: ok. `check_unix_warnings.sh`: GCC 13, Clang 18, GPU on/off clean, exit 0. Hosted CI on `982c8c1c`
+(run 43588228456): all jobs and `gate` green. Then `origin/main` `f54e36f0` merged (SAVE-SECTIONS-1a, sim save
+stream only; REPORTS.md conflict resolved by keeping both entries): rebuild 0 warnings, the same gate selected 48,
+executed 48 pass, VERDICT PASS (`focused-r1-merged.log`). CI on the merged head: see its push.
+NOT_RUN: an automated GPU check at a non-1024 size (above); Linux/macOS game-file runs; the full suite.
+**READY FOR REVIEW.**
+
+### Fix round R2 (owner playtest of `e107a8f6`: "fix then land") — 2026-11-14
+
+- **R2-1** (`c56e33dd`): the four tabs are switches. Start: player tab, overview panel (`hud_idle_running`); bust or
+  D: player list (`r2_tab_military`, `r2_player_menu`); "?": info (`r2_tab_help`); gears or O: main menu
+  (`r2_options`); construction or B: the menu. A click on the selected tab changes nothing; leaving construction
+  disarms (R1 path); Esc from construction returns to the last panel; panel clicks are taken. Panel chrome is data
+  (hud.txt `panel`, ACCESS ids matched on the shots after RGB565: tabs, scroll arrows, crest, AUSBAUSTOP, menu icons
+  exact 0.88-1.00; backgrounds SPIELER_BILANZ_BK 1128 / STADT_BILANZ_BK 677 at (779, 301) mean abs 0.00-0.35,
+  OPTION_BACKGROUND exact 0.79). Not drawn: names, figures, list rows, diplomacy cluster, info emblem, the list's
+  background (not identified) - OQ-621 (also: second click, Esc's return, no "?" key, crest per player). The Python
+  oracle's hud_idle mirrors the player panel. Tests: `viewer_wiring_ui_tabs` (states, D/O, no-op, disarm on
+  leaving, panel click taken), `ui_panels_match_gog` (per element, UI.1 tolerance 48 / 8 %: player 15 of 115 399
+  bad, list 0 of 22 249, info 0 of 121 579, main menu 1 665 of 155 588 (1.07 %); control player-vs-menu 19.5 %).
+  `ui_menu_close_disarms` now closes by the bust tab (a click on the construction tab no longer closes).
+- **R2-2** (`3e437f90`): the materials and residents show on every screen with the stock of the local player's
+  city on the island under the view's centre (sea-level tile at the drawable centre), hidden otherwise. PlaySnapshot
+  gains `cities` built on the sim thread from existing read-only accessors only (World::islands, TileLayer
+  x0/y0/width/height, City::owner/number/stock, World::city_population): no src/sim change. ui.md 5.2 states what
+  is and is not evidenced (open sea, a foreign island: not; OQ-622). AnnoFrame's status bar update not read.
+  Test `viewer_wiring_ui_counters_centred` (island shown, sea and a city-less island hidden, shown on the player
+  list); CPU and GPU runs both pass, captures show the five icons and figures and their absence.
+- Measurement (`35a4233e`, ANNO_PUBLISH_STATS, lan5, 400 frames; before R2 -> after R2): snapshot build median
+  41-47 -> 47-49 us (p95 52-112 -> 57-104); turn p95 (noisy, 19-93 turns per run) 0.8-10.4 -> 0.8-13.3 ms, the same
+  10 ms spikes before and after. "construction ui" median: CPU 1024 x 768 1.98 -> 0.36 ms, 2542 x 1351 3.72 -> 0.59;
+  GPU 2.13 -> 0.55, 4.10 -> 0.93. The panels first made it worse (3.45 / 5.17 ms); `f9a49436` decodes each UI
+  texture once (TexCache re-decoded every sprite every frame) and blits uncut sprites in place.
+- Look (GPU window, 1920 x 1080, `cache/ui-window-1/r2/look_gpu`): all four tabs switch with the right selected
+  frame and panel chrome; construction opens; the counters show over the developer island and vanish over the sea.
+  Not maximized (the script resizes; a desktop window larger than the monitor is clipped in the capture).
+Gates: build 0 warnings; `run_selected.py` (the R1 selection plus `ui_tabs|ui_panels|ui_counters|play_|play test`,
+game dir, oracle shots, HE captures): selected 98, executed 98 pass, 0 failed/skipped, VERDICT PASS
+(`focused-r2.log`); clang-format clean; `check_unix_warnings.sh` GCC 13 / Clang 18, GPU on/off clean; Hosted CI:
+see the push of this section. NOT_RUN: GPU automation (as R1), Linux/macOS game-file runs, the full suite.
+QUESTIONs: none (no src/sim change was needed).
+**READY FOR REVIEW.**
+
+### Fix round R3 (review of `36b86873`: ACCEPT WITH FINDINGS) — 2026-11-14
+
+- **1** (`0555dee2`): `ui_hit` takes the shown panel; its elements' rectangles are chrome (the sub-tabs at x 762..778
+  left of the column), at any size and under --ui-scale (layer coordinates). `ui_tabs.script` clicks (770, 326) on
+  each of the four panels; with the old hit test it fails at the first (`selection.clicks is '1', expected == 0`).
+  Unit checks in `ui placement` (reference and 2542 x 1351, chrome only while that panel shows).
+- **2, 7** (`a6346d1f`): `ui_panels_compare.py` bounds each element (2 %, menu_bk 5 %) and compares the four tab
+  rectangles too. Breaks shown, then reverted: player_subtab_0 at x 782 -> FAIL (70.8 % bad), info_subtab_3 with id
+  662 -> FAIL (61.0 %). The info shot's hover tooltip over the tabs ((880, 194) 84 x 18) is masked as live.
+- **3** (`8b203d56`): menu_statistics before menu_tab_*: main menu bad pixels 1 665 -> 0. Now: player 15 of 130 771
+  (player_bk 10, crest 5), list 0 of 37 621, info 0 of 135 439, main menu 0 of 170 960; control 17.7 %.
+- **4** (`d13add5f`): wording "no change, except the bust from the overview, which opens the list (shot
+  r2_player_menu)" in ui.md 5.3, OQ-621 and the viewer comment; the second bust click stays in OQ-621.
+- **5, 6** (`919c59fc`): stop() clears both stat vectors; the build-time clock is read only with ANNO_PUBLISH_STATS.
+Gates: build 0 warnings; `run_selected.py` (the R2 selection; game dir, oracle shots and HE captures set, so
+`ui_window_matches_he` executed): selected 98, executed 98 pass, 0 failed/skipped, VERDICT PASS (`focused-r3.log`);
+clang-format clean on the changed files; `check_unix_warnings.sh` GCC 13 / Clang 18, GPU on/off clean. Hosted CI:
+see the push of this section.
+**READY FOR REVIEW.**
+
+### Fix round R4 (owner retest: "building materials are not shown at all anymore") — 2026-11-14
+
+- Cause: R2's rule showed the counters only with the view centred over the city's island; lan5's start camera is not.
+- **Fix** (`59d787de`, owner decision 2026-11-14 "Always show my city"): on every screen while the local player owns a
+  city - the city on the centred island if it holds one, else the first city in (island, city) order (what
+  PlaySnapshot::goods follows); hidden only before the first founding. App-side, read-only from the snapshot.
+- New fact `hud.counters.city` ("<island>:<city>" / "none"); `hud.counters` reads "not drawn" until a frame drew
+  the HUD, so a hidden result is a drawn one.
+- Tests: `ui_counters_centred` reworked: start (no look), open sea, the city-less island and the city island all
+  show city 1:1, and so does the player list. **Before/after:** on the 919c59fc build it fails at its first check
+  (`hud.counters is 'hidden', expected == shown`); after the fix it passes. New `ui_counters_before_founding`
+  (ship start, no city): hidden, city none. lan5 has one city per player, so "centred" and "fallback" name the same
+  city here; telling them apart needs a second city (not run).
+- Docs: ui.md 5.2 (the rule, the owner's decision); OQ-622 (owner's choice recorded, the original's rule open).
+Gates: build 0 warnings; `run_selected.py` (ui_counters, ui_tabs, ui_panels_match_gog, ui_menu_close_disarms,
+ui_chrome_press, ui_window_click, ui_window_matches_he, ui_mock_matches_oracle, "ui placement", counter, hud;
+game dir, oracle shots, HE captures set): selected 44, executed 44 pass, 0 failed/skipped, VERDICT PASS
+(`focused-r4.log`); clang-format clean; `check_unix_warnings.sh` GCC 13 / Clang 18, GPU on/off clean. origin/main
+unchanged (f54e36f0). Hosted CI: see the push of this section.
+**READY FOR REVIEW.**
+
+### Fix round R5 (live_screen_matches_oracle hud_idle on the landing candidate) — 2026-11-14
+
+- Cause: the test took `hud_idle` on lan5, whose developer city shows the counters (R4), while `hud_idle_running`
+  is shot before the first founding: 4808 of 179612 pixels, all in `statusbar`.
+- **Fix** (`7c39ac19`, test only): `hud_idle` now comes from a second launch on the ship start (`lan5-ship-a.json`,
+  seat 0, new `live_screen_hud_idle.script`, same `--renderer` handling); the construction screens stay on lan5.
+  No masks, tolerance and counter rule unchanged. Docstring says which launch checks what; ui.md 5.2 test note.
+- **Before/after:** hud_idle taken from the lan5 launch again (temporary edit, restored from a copy): `hud_idle:
+  4808 of 179612 opaque-oracle pixels differ ... first at statusbar (404,733) ... [('statusbar', 4808)]`, Failed.
+  Fixed: `hud_idle: exact match on 179612`, construction_public 266990 and construction_roads 209490 exact, Passed.
+  The ship-start hud_idle shows no other difference (panel, crest, gold, minimap all exact). GPU run: NOT_RUN.
+- Merged origin/main 674ecdf4 (`8243721e`). Gates: build 0 warnings; `run_selected.py` (R4's selection plus
+  live_screen_matches_oracle, ui_dynamic_draw_check, selected_house_pixel_check, info_panel; game dir, oracle
+  shots, HE captures set): selected 50, executed 50 pass, 0 failed/skipped/empty, VERDICT PASS (`focused-r5.log`).
+  No C++ changed: clang-format and WSL check not needed. Hosted CI: see the push of this section.
 **READY FOR REVIEW.**
 
 ## SAVE-SECTIONS-1b — compile-time optional extensions with unchanged139 pins (2026-11-14)
@@ -10664,6 +10858,187 @@ Decisions and reasoning:
 NOT_RUN: local MSVC/WSL and Windows game-file/full landing suites; orchestrator owns those. Unrelated renderer/app gates reuse base evidence; hosted CI builds/tests their consumers without assets.
 QUESTIONs: projection resolved; broader actor support and OQ-609/610 remain outside scope. No pin/fixture edits, assets, state number, scheduler changes, main merge/push, rebase or force push.
 **READY FOR REVIEW.**
+
+## SHORE-2 — the sea's edge follows the terrain at the original's plane — 2026-11-14 — READY FOR REVIEW
+
+Base `origin/task/DEPTH-INTEGRATE-1` `eff68d5e`, branch `task/SHORE-2`, merged `origin/main` `f54e36f0` (clean,
+no conflicts in the branch's own files) as `84d1d323`, then a clang-format fix as `8a7b36dc`.
+
+**The trace, time-boxed to about an hour** (`docs/re/annowelt.md`, new subsection; `docs/open-questions.md`
+OQ-026): the chunk sea-bit writer is `0x1009ebf0`. For a corner belonging to an island it gates the bit on a
+per-GFXID vtable query (slot `+0x13c`), not on the corner's own height; only a corner outside every island
+(tile-id `0xFF`) tests height, via `0x100b5dc0` against a constant near the sea anchor `0x100e3a1c`. Neither
+`0x100b5dc0`'s bound nor `+0x13c`'s predicate resolved in the time-box — narrows, does not close, OQ-026.
+
+**The rule as built** (`src/render/src/sea.cpp`, `IslandWater::build`): the packet's sanctioned fallback, labelled
+as an approximation, not the traced rule. A chunk holds sea if any of its tiles has a corner below
+`Scene::shore_height`, replacing the fixed `average ≤ 19` classifier (`kLandAverage`) that ignored `shore_height`
+entirely. `kLandAverage` itself is untouched — it stays the land classifier used elsewhere (`frame_projection.cpp`,
+`legal_workload.cpp`), unrelated to this bit.
+
+**GPU = CPU:** structural, not measured per-pixel — `IslandWater::build` has exactly one caller
+(`scene.cpp:942`) and its `sea_chunk` output feeds both the CPU and GPU chunk-build paths from the same struct;
+no separate GPU-side change was needed or made. `--depth off` and `--shore 16.5`/`--shore 26.5` still select as
+before; the water-field empty-cell proof (`iso.md`) uses the same bit and needed no condition change.
+
+**Coverage table (item 3):** NOT_RUN — recomputing it against the original needs a live original/Wine capture
+session, not available this session.
+
+**River mouths (item 4):** a full river-corpus sweep was NOT_RUN for the same reason. Measured one sample instead:
+`Single_01.sze`, the river mouth at world `(274,447)`, 800×600 — shore 16.5 vs 26.5 changes 8,299 of 480,000
+pixels (1.73%), bbox `(0,269)-(515,599)`.
+
+**Pictures** (`C:\Users\altin\Pictures\anno-review\SHORE-2\`), before `eff68d5e` vs after this fix:
+- Kontor spot (`S01_02_01.sze` at `(421,605)`, 1280×800): 2 pixels changed, bbox `(718,218)-(720,218)`.
+- Wide beach (`Single_24.sze --group 2`, 7200×2811): 930 pixels changed, bbox `(481,613)-(6346,2278)`.
+- River mouth (`Single_01.sze` at `(274,447)`, 800×600): 291 pixels changed, bbox `(230,275)-(515,544)` — visually
+  the river channels feeding the lagoon, not the open sea.
+
+**Performance:** `bench_frame --chunk-profile 1 --groups 0` on `Single_24.sze`, warm pass, before vs after once
+system load (concurrent `cl`/WSL compiles) had subsided: 20.4ms/chunk vs 20.3ms/chunk — no regression, as
+expected (`IslandWater::build` runs once per island, not per chunk). An initial contended measurement showed a
+~34% gap; discarded once `cl`/`cc1plus` activity was confirmed at measurement time. `bench_frame --zoom-sweep`
+(ZOOM-MEASURE-1's `lan5` legs mode) is NOT_RUN: confirmed via `--help` that this branch's `bench_frame` (even
+after the `main` merge) has no `--zoom-sweep`/`--zoom-sweep-mode` flags.
+
+**Gates.** MSVC Release, game files, render+app, pre-merge (`47f5f28e`):
+`COUNTS: selected=591 executed=582 failed=6 empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` /
+`VERDICT: FAIL failed tests` (`cache/gates/shore2-msvc-render-app-3.txt`) — all 6 were
+`[anno-test memory] refused ... low-memory`; each passed alone (`--jobs 1`,
+`cache/gates/shore2-msvc-refused-1.txt` through `-6.txt`, each `selected=1 executed=1 failed=0 VERDICT: PASS`).
+After merging `main`, render+app reran at `84d1d323`: `COUNTS: selected=520 executed=508 failed=9 ... VERDICT: FAIL
+failed tests` (`cache/gates/shore2-msvc-render-app-4.txt`) — 9 refusals (8 low-memory, 1 "coordinator lost"), all
+9 confirmed passing alone (`cache/gates/shore2-msvc-refused2-1.txt` through `-9.txt`, the "coordinator lost" one
+via a second solo attempt, `-2b.txt`, each `VERDICT: PASS`). GPU, both commits and both adapters, all
+`COUNTS: selected=117 executed=117 failed=0 VERDICT: PASS`: 4090 pre-merge `shore2-msvc-4090-1.txt`, Radeon
+pre-merge `shore2-msvc-radeon-1.txt`, 4090 post-merge `shore2-msvc-4090-2.txt`, Radeon post-merge
+`shore2-msvc-radeon-2.txt`. WSL `-O1` ASan, pre-merge (`47f5f28e`, `anno1503-SHORE-2-gatecheck`
+worktree): app `selected=316 executed=313 failed=0 skipped=3(opt-in) VERDICT: PASS`, sim
+`selected=1609 executed=1591 failed=0 skipped=18(opt-in) VERDICT: PASS`, formats
+`selected=97 executed=97 failed=0 VERDICT: PASS`, render `selected=192 executed=192 failed=0 VERDICT: PASS`,
+tsupport `selected=94 executed=90 failed=0 skipped=4(opt-in) VERDICT: PASS` (`/home/altin/anno-gate-logs/
+anno1503-SHORE-2-gatecheck/wsl-shore2.txt`, `overall rc=0`). Hosted CI's `cpp (linux-clang-asan)` job is the
+equivalent check at the actually-pushed, merged commit.
+
+Pushing `84d1d323` (merge only) failed hosted CI's `cpp-format` job alone: `clang-format --Werror` flagged the
+new four-term boundary check in `sea.cpp:436-437` (line-wrap only, no logic). Fixed locally with the pinned
+clang-format 23.1.3 binary, reran render (`selected=202 executed=202 failed=0 VERDICT: PASS`,
+`cache/gates/shore2-msvc-render-5.txt`) and both GPU adapters (`shore2-msvc-4090-2.txt`\* →
+`shore2-msvc-4090-2.txt`/`shore2-msvc-radeon-3.txt`, both `PASS 117/117`), committed as `8a7b36dc`, pushed.
+Hosted CI run `43603992255` on `8a7b36dc`: every job green, `gate` included.
+
+NOT_RUN: the coverage table against the original (item 3, no live capture); a full river-corpus sweep (item 4,
+single-mouth sample only); `bench_frame --zoom-sweep` (flags don't exist on this lineage); the direct renderer,
+zoom fixes, river flow changes (not this packet's).
+
+Decisions and reasoning:
+- Scoped the fix to `sea.cpp`'s `sea_chunk` computation only; left `kLandAverage` itself untouched since it is a
+  separately-evidenced land classifier used elsewhere, unrelated to the sea bit this packet traces.
+- Used the packet's sanctioned plane-derived fallback rather than guessing at `0x100b5dc0`'s bound or `+0x13c`'s
+  predicate from the time-boxed trace alone — guessing would have put an unevidenced rule in code.
+- Treated GPU=CPU as structurally guaranteed (one caller, shared struct) rather than adding a redundant GPU-side
+  measurement, consistent with how the data actually flows.
+- Reported the coverage table and full river sweep as NOT_RUN rather than improvising a substitute without a
+  live original/Wine capture, per the evidence contract.
+
+QUESTIONs: none required.
+
+## SHORE-2 fix round 1 — READY FOR REVIEW (task/SHORE-2, same branch, head `146409c5`)
+
+Addresses F1-F6 of `docs/orchestration/reviews/2026-11-14-shore-2-review.md`
+(`origin/orch/board-next@3a87b3bf`). New test `src/render/tests/shore2_fix_round1_test.cpp`
+(`anno_render_tests`, registered in `src/render/CMakeLists.txt`) carries F3-F5's measurements over the
+`rivers.md` Q12 corpus; `sea.cpp` itself is unchanged from the original SHORE-2 submission.
+
+**F6 (docs):** `docs/render/iso.md`'s "Where" and "Waterline" rows rewritten to cite the trace addresses
+(`0x1009ebf0`, `+0x13c` vtable query, `0x100b5dc0`/`0x100e3a1c`), state the GPU=CPU structural guarantee, and
+flag the open-question on inland basins (OQ-026). `docs/testing/ship-opening-playtest.md` item 6 (the owner's
+`(255,138)` spot) now says F5's result in place: the before/after pictures differ (1,138 px) but show no visible
+stepping there, and points at item 5's wide-beach sample as the case that actually shows the old steps.
+
+**F3 (river coverage, tile-level, 1,926,733 tiles total over the Q12 corpus):** old rule 16.5=16, 26.5=9172
+(delta 9156); new rule 16.5=16, 26.5=10293 (delta 10277). The new rule covers slightly more river-adjacent tiles
+at the default shore plane, consistent with it gating on any corner rather than the average.
+
+**F4 (inland basins):** 5,568 tiles across the corpus hold the new rule's sea bit, are not open water under the
+old rule, and are unreachable by a 4-connected flood fill of new-rule sea chunks seeded from the island's own
+bounding-box edge — i.e. genuinely enclosed, not merely far from the edge. First attempt used a naive "≥8 tiles
+from the bounding-box edge" cutoff and got 407,168 (an over-count: it also caught ordinary gently-sloping coastal
+interior); replaced with the flood fill once that number was self-evidently implausible. Sample:
+`D_128x128_0021_3B#0(64,56)`; picture `basin_before.png`/`basin_after.png`
+(`C:\Users\altin\Pictures\anno-review\SHORE-2\`), 1000×1000, diff 765 px, bbox `(166,589)-(220,640)`. OQ-026 is
+narrowed (confirmed basins exist under the fallback rule) but not closed (whether the original's traced rule
+also floods them is still unresolved).
+
+**F5 (stepping, owner's spot):** of 6,832,335 tiles below the shore plane across the corpus, the old
+`kLandAverage`-style chunk gate left 8,804 stepped at the chunk boundary; the new rule leaves 0 — matches the
+structural claim (any-corner gate can't step within a chunk that itself straddles the plane). At the owner's own
+founded-Kontor spot `(255,138)` (dev-script capture, `kontor_shore2.script`, session dir recreated fresh each
+run): `owner_spot_255_138_before.png`/`_after.png`, 1280×800, diff 1,138 px, bbox `(371,317)-(1279,637)`; cropped
+to the bbox in `owner_spot_crop_before.png`/`_crop_after.png`. Visually, neither crop shows stair-stepping — the
+shoreline here doesn't cross a chunk boundary at a sharp enough angle for the old rule's steps to be visible,
+unlike item 5's wide-beach sample.
+
+**F2 (original sample set):** NOT_RUN as a real table. The review's named sample set is a GOG-capture-derived,
+gitignored dump that no longer exists on this host (checked across all known worktrees). Tried one substitute —
+the Kontor's own island's HEIGHT grid via `tools/insel.py` — but it came back degenerate (zero points in one
+whole band), not representative; not used. Reporting this honestly per the review's own escape clause rather
+than presenting a misleading table.
+
+**F1 (zoom-sweep timing):** `bench_frame --zoom-sweep 24 --zoom-sweep-mode legs` on `data/maps/lan5.txt`,
+2560×1369, enhanced water, before (`eff68d5e`, pre-SHORE-2 `sea.cpp` swapped in) vs after (this head); same `24`
+s/leg both runs (the flag is per-leg, not total — confirmed from its own printed header; kept the historical
+`lan5` legs baseline's parameter unavailable, so compared internally instead of against the old table).
+Aggregate line, 48,000 frames both runs: before `non-ready 450, most non-ready at once 44, stand-in draws 29821,
+dissolves 14072, open-sea draws 1645, frames in wave fade 225, busy p50 0.65 p99 2.30 max 154.84 ms, frames>2ms
+729, frames>8ms 32`; after `non-ready 229, most non-ready at once 37, stand-in draws 19124, dissolves 10906,
+open-sea draws 1836, frames in wave fade 149, busy p50 0.61 p99 1.76 max 11.98 ms, frames>2ms 343, frames>8ms 1`.
+Readiness and frame-time tails both improved (fewer non-ready frames, fewer long frames); open-sea draws rose
+slightly (1645→1836), expected since the any-corner gate marks more chunks as sea near the shore. The one
+154.84 ms outlier frame in the before run (level 1, scale 0.45: draws 118.35 ms, finish 32.95 ms) is a single gap
+with no counterpart in the after run's own busiest-frames list; attributed to system/driver noise, not the code
+change, per `bench_frame`'s own worst-frame breakdown (`uniforms`/`draws`/`finish`), not re-run for lack of
+remaining time budget. Swapped `sea.cpp` back to the fixed version and verified `git diff --stat` empty before
+and after each swap.
+
+**Gates (render+app only; F1-F5 are measurements, no `sea.cpp` change this round).** MSVC Release, game files, at
+this head: `COUNTS: selected=521 executed=507 failed=11 empty=0 skipped=3 (opt-in=3) incomplete=0
+sanitizer_lines=0` / `VERDICT: FAIL failed tests` (`cache/gates/shore2fix1-msvc-render-app-1.txt`) — all 11
+confirmed `[anno-test memory] refused ... reason=low-memory stop` (concurrent contention from the orchestrator's
+own game-file run, ~17:25-18:15). First solo pass (`--jobs 1`) during that same window still refused 9 of 11
+(`cache/gates/shore2fix1-refused-{3..11}.txt`, each `VERDICT: FAIL`, same low-memory reason over an extended
+wait — not a different failure); 2 passed clean (`shore2fix1-refused-1.txt`, `-2.txt`, `VERDICT: PASS`). Reran
+the 9 alone again after ~18:45 (past the stated window): all 9 `VERDICT: PASS`
+(`cache/gates/shore2fix1-rerun3-1.txt` through `-9.txt`; an intermediate attempt, `shore2fix1-rerun2-*.txt`,
+mis-skipped as `required-asset` from a lost `ANNO1503_GAME_DIR` in a fresh shell, discarded, not a real result).
+All 11 failures are therefore confirmed memory refusals, not genuine failures; the render+app lane is green with
+no further `sea.cpp`/test-logic change. GPU and WSL ASan lanes unchanged from the original SHORE-2 submission
+(no code changed since `8a7b36dc`) and not rerun, per the review's own gate scope (render+app only, if code
+changes — this round's only code addition is the new test file, already covered above).
+
+Pushing `a090d3a8` failed hosted CI's `cpp (linux-gcc)`/`cpp (linux-gcc-release)` jobs (MSVC had not flagged it):
+`-Wsign-conversion` on the new test's `(island.width + 7) / 8` (uint16_t promotes to int before the implicit
+size_t conversion). Fixed by casting to `std::size_t` before the `+7`, verified clean against GCC's exact CI
+flags in WSL (`-fsyntax-only`, exit 0) and rebuilt/reran the fix-round-1 test on MSVC — same numbers as above
+(river cells, basin-only, F5 stepping all unchanged) — committed as `9366116a`, pushed. Hosted CI run on this
+head: pending.
+
+NOT_RUN: F2's real table (sample set gone, substitute degenerate); OQ-026's closure (basins under the original's
+traced rule, not just the fallback); a rerun of GPU/WSL-ASan lanes (no `sea.cpp` change, out of this round's
+stated scope).
+
+Decisions and reasoning:
+- Replaced F4's first "distance from bounding-box edge" heuristic with a 4-connected flood fill once the first
+  number (407,168) was self-evidently an over-count, rather than reporting an implausible figure.
+- Kept the same `--zoom-sweep` per-leg value for both F1 runs rather than chasing the historical baseline's
+  (different, undocumented) value, prioritizing internal before/after comparability.
+- Reported F2 as not completable rather than substituting a non-representative data source and presenting it as
+  the requested table.
+- Treated the first 9 solo-refused reruns as still inconclusive (same low-memory reason, same contention window)
+  rather than rerunning blindly; waited past the orchestrator's stated window and confirmed all 9 pass, rather
+  than accepting a composite FAIL at face value.
+
+QUESTIONs: none required.
 
 ## FISHER-1b — QUESTION: original goal consumer contradicts the port contract (2026-11-14)
 

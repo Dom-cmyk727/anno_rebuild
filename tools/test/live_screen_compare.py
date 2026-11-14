@@ -30,6 +30,17 @@ pixel, including every gold/goods/residents digit and the whole grid, is bit-exa
 inside the tolerance (max diff 12 of 48; 54 of 200,000+ is far under the 8% fraction) - this is the
 packet's own "within its tolerance" criterion, not a loosened bar invented for this script.
 
+Two launches of anno1503.exe (UI-WINDOW-1 fix round R5), each with the same --renderer handling:
+  1. `--play data/maps/lan5.txt` with construction_menu_draw_check.script: construction_public and
+     construction_roads. lan5 has the developer city, so the status bar shows its material and
+     resident counters, which those two oracle shots draw too.
+  2. `--ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0` with
+     live_screen_hud_idle.script: hud_idle. The oracle shot hud_idle_running is taken before the
+     first founding, when the status bar shows no counters (owner rule R4, docs/re/ui.md 5.2:
+     counters only once the player has a city). On lan5 the counters are drawn and hud_idle
+     differs in the status bar, which is why the idle HUD is compared on the ship start. No masks
+     are added for the counter icons; the comparison stays exact.
+
 Needs the original game files, Pillow (PIL) and a capture that only exists on Windows (viewer.cpp
 screenshot step: __WIN32__); skips (exit 77) otherwise.
 Exit: 0 pass, 1 fail, 2 bad arguments, 77 skipped.
@@ -44,6 +55,10 @@ HERE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(HERE / "tools"))
 
 SCRIPT = HERE / "tools" / "test" / "viewer_wiring" / "construction_menu_draw_check.script"
+LAN5 = HERE / "data" / "maps" / "lan5.txt"
+# UI-WINDOW-1 fix round R5: the idle HUD is taken on the ship start, before any city exists.
+HUD_IDLE_SCRIPT = HERE / "tools" / "test" / "viewer_wiring" / "live_screen_hud_idle.script"
+SHIP_START = HERE / "data" / "maps" / "candidates" / "ship-start-v2" / "lan5-ship-a.json"
 
 # Element names compose_screen actually draws for each screen kind (its own blit_el call list,
 # docs/re/ui.md section 2.8) - never every element in hud.txt, most of which belong to other
@@ -164,24 +179,37 @@ def main(argv):
     # CI's headless environment can run. --renderer cpu (the default) keeps the dummy driver and
     # is the only mode registered as a CTest case.
     with tempfile.TemporaryDirectory(prefix="anno_live_screen_") as session:
-        session_dir = Path(session) / "session"  # must not exist yet (main.cpp's own check)
-        env = dict(os.environ, ANNO_DEV_SCRIPT=str(SCRIPT), ANNO_DEV_SESSION=str(session_dir),
-                  ANNO_VIEW_QUIT_S="30")
-        if renderer == "cpu":
-            env["SDL_VIDEODRIVER"] = "dummy"
-        else:
-            env.pop("SDL_VIDEODRIVER", None)
-        proc = subprocess.run(
-            [exe, "--play", str(HERE / "data" / "maps" / "lan5.txt"), "--game-dir", game_dir,
-             "--construction-menu", "on", "--layout", str(layout_dir), "--renderer", renderer],
-            env=env, capture_output=True, text=True, timeout=120, check=False)
-        if proc.returncode != 0:
-            print(f"anno1503 exited {proc.returncode}\nstderr:\n{proc.stderr}")
+        def launch(script, start_args, name):
+            # One window session with the same --renderer handling; returns its screenshot folder.
+            out = Path(session) / name  # must not exist yet (main.cpp's own check)
+            env = dict(os.environ, ANNO_DEV_SCRIPT=str(script), ANNO_DEV_SESSION=str(out),
+                       ANNO_VIEW_QUIT_S="30")
+            if renderer == "cpu":
+                env["SDL_VIDEODRIVER"] = "dummy"
+            else:
+                env.pop("SDL_VIDEODRIVER", None)
+            proc = subprocess.run(
+                [exe, *start_args, "--game-dir", game_dir, "--construction-menu", "on",
+                 "--layout", str(layout_dir), "--renderer", renderer],
+                env=env, capture_output=True, text=True, timeout=120, check=False)
+            if proc.returncode != 0:
+                print(f"anno1503 ({name}) exited {proc.returncode}\nstderr:\n{proc.stderr}")
+                return None
+            return out
+
+        # Launch 1, lan5 (the developer city): the two construction screens. Their oracle shots
+        # draw the status bar's material and resident icons, which a city shows (R4 rule).
+        session_dir = launch(SCRIPT, ["--play", str(LAN5)], "lan5")
+        # Launch 2, the ship start (no city yet): the idle HUD, the state the oracle shot
+        # hud_idle_running shows (no counters before the first founding, docs/re/ui.md 5.2).
+        idle_dir = launch(HUD_IDLE_SCRIPT, ["--ship-start", str(SHIP_START), "--seat", "0"],
+                          "ship_start")
+        if session_dir is None or idle_dir is None:
             return 1
 
         failures = []
         checks = [
-            ("hud_idle", session_dir / "hud_idle_live.png", rects_for(hud, HUD_NAMES)),
+            ("hud_idle", idle_dir / "hud_idle_live.png", rects_for(hud, HUD_NAMES)),
             ("construction_public",
              session_dir / "construction_public_live.png",
              rects_for(hud, HUD_NAMES + CONSTRUCTION_EXTRA_NAMES) + grid_rects(con, "public")),

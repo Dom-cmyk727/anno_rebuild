@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -69,10 +70,13 @@ struct ViewerHooks {
     /// then fails at that step. The caller owns it.
     PublicationHold* hold = nullptr;
     /// The construction menu's click resolution (construction_menu.hpp; --construction-menu on,
-    /// W4-UI-2 C4 first slice): checked before `dev` (ADR 0004 R1's "UI first, then world"). Only
-    /// active while the window's drawable size is exactly 1024 x 768 (R3's scale is still open;
-    /// no guessed scaling). The caller owns it and the data/ui/ layouts it was built from.
+    /// W4-UI-2 C4 first slice): checked before `dev` (ADR 0004 R1's "UI first, then world"). At
+    /// any window size since UI-WINDOW-1: the UI layer is placed by ui_transform.hpp and clicks
+    /// map back through it. The caller owns it and the data/ui/ layouts it was built from.
     ConstructionMenu* construction_menu = nullptr;
+    /// --ui-scale (UI-WINDOW-1, ADR 0004 R3): nullopt is the original's 1:1 UI (the default);
+    /// a value is the History Edition's scale setting (ui_transform.hpp's he_ui_transform).
+    std::optional<float> ui_scale;
     /// The original game's folder; read once, when the window constructs its own persistent
     /// `UiTexCache` (ADR 0004 "Atlases": textures decode once, never per frame). Unused when
     /// `construction_menu` is null.

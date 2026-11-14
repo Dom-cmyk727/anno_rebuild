@@ -43,6 +43,7 @@ if(ANNO_BUILD_TESTS)
     tests/derived_freshness_test.cpp
     tests/river_flow_test.cpp
     tests/river_shade_test.cpp
+    tests/shore2_fix_round1_test.cpp
     tests/sprite_fidelity_test.cpp
   )
   target_link_libraries(anno_render_tests PRIVATE anno_render anno_test_support doctest::doctest)

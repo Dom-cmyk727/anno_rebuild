@@ -56,7 +56,7 @@
 ## Game-file run of the landing candidate (2026-11-14)
 
 **The candidate:** `orch/land-fisher-1a` at `198b5fb0`: `main` `674ecdf4`, then `task/FISHER-1a` `9137eabd`, then the
-board up to `fc76b4cb`. It was built locally and not pushed.
+board up to `2e2f9ca2`. It was built locally and not pushed.
 - `9137eabd` predates SAVE-SECTIONS-1b, so the merge met two conflicts where both added lines at the end of a file:
   `tools/lint_sim_allow.txt` and `REPORTS.md`. Both were resolved by keeping both sides. `tools/lint_sim.py`:
   `lint_sim: ok`.

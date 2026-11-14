@@ -151,6 +151,8 @@ confirmed).
 - Where the options' scale value persists between starts (not the registry, §1); possibly overlay
   or launcher storage or the VMProtect sections. This does not change the rule, only how a test
   sets it: use the main-menu slider, not the registry.
-- Whether the 1200-line rule reads the client height or a listed display mode.
+- The 1200-line rule reads a listed display mode, not the client height: 0x2d943 compares
+  `[[rdi+0x568] + r14*8 + 4]`, an 8-byte {w, h} mode list indexed by the settings field +0xd8
+  (0x2d910) - narrowed in UI-WINDOW-1 R1; what it reads in windowed mode is open (OQ-617).
 - In-game, injected mouse and key input did not reach the HE window (main-menu input did); so
   in-game captures can only be taken at whatever the main menu set.

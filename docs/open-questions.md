@@ -2982,10 +2982,10 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** the original only offered display modes of at least 1024 x 768 for this HUD (800 x 600 uses the separate `8` graphics, `ui.md` 5, OQ-535). HE clamps its layers up to 1024 x 768 (`AnnoDisplay` 0x2cdb4..0x2cdca) and fits them uniformly into the client (0x5a961..0x5aab1) - the game layer too, which the rebuild does not scale (its map is drawn at the window's size). The rebuild draws the UI layer at 1024 x 768 and fits it with HE's formula, bilinear; the map is not scaled with it, so the map shows in the letterbox bars around the UI.
 - **How to resolve:** owner decision whether a small window should scale the UI (as now), letterbox the whole picture as HE does, or use the 800 x 600 graphics.
 
-## OQ-617: Which height HE's 1200-line rule reads (UI-WINDOW-1, 2026-11-14; OPEN)
-- **Question:** whether `UpdateGameSettings` (HE `AnnoDisplay` 0x2d943, `cmp [res+4], 0x4b0`) compares the window's client height or the display mode chosen in the options list.
-- **What we know:** the three HE samples are all at 1351 lines; `res` is a resolution record in the settings path, not traced to `GetClientRect`. The rebuild's `--ui-scale` option reads the client height.
-- **How to resolve:** trace `res` in `UpdateGameSettings` to its source; or an HE windowed run at a client height of 1200 or less with a display mode above 1200.
+## OQ-617: Which height HE's 1200-line rule reads (UI-WINDOW-1, 2026-11-14; NARROWED in fix round R1)
+- **Question:** whether `UpdateGameSettings` (HE `AnnoDisplay` 0x2d943) compares the window's client height or the display mode chosen in the options list.
+- **What we know (R1):** a listed mode. 0x2d943 is `cmp dword ptr [rax + r14*8 + 4], 0x4b0` with `rax = [rdi+0x568]` (0x2d931) and `r14 = movsxd [settings+0xd8]` (0x2d910): the height of entry r14 of an 8-byte {w, h} list (tDisplay::GetResolutions, `vector<Resolution>`), the options' chosen mode. What that index points at in a windowed HE session (the desktop mode? the last fullscreen choice?) is not known. The rebuild has no mode list in a window; its `--ui-scale` reads the window's client height, the windowed counterpart of the chosen mode's height (`ui_transform.hpp`).
+- **How to resolve:** read who sets settings+0xd8 in windowed mode; or an HE windowed run at a client height of 1200 or less with a listed mode above 1200.
 
 ## OQ-619: The HE UI's draw and click mappings differ by up to a pixel (UI-WINDOW-1 fix round R1, 2026-11-14; OPEN)
 - **Question:** whether a click on the last pixel row/column of a stretched HE UI lands on the UI pixel drawn there.

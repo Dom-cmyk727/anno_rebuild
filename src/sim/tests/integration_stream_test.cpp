@@ -17,8 +17,8 @@ struct Expected {
     std::uint64_t hash;
 };
 std::map<std::string, Expected> expected() {
-    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "integrate2" /
-                     "current138" / "populated_fields.txt");
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "current" /
+                     "populated_fields.txt");
     REQUIRE(in.good());
     std::map<std::string, Expected> out;
     std::string line;

@@ -177,18 +177,18 @@ TEST_CASE("write_log matches the documented frame byte for byte") {
     for (const char c : std::string("A3RP")) {
         s.u8(static_cast<std::uint8_t>(c)); // magic
     }
-    s.u32(4);                     // kReplayLogVersion
-    s.u32(1);                     // kCommandWireVersion, once
-    s.u32(138);                   // combined state stream
-    s.u64(0x00314b424e4f4345ULL); // ECONBK1 lineage
-    s.u64(0);                     // script content digest in this wire-only specimen
-    s.u64(0x1111111111111111ULL); // config digest
-    s.u64(0x2222222222222222ULL); // rules digest
-    s.u64(0x3333333333333333ULL); // registry digest
-    s.u64(0x3434343434343434ULL); // walk-table digest
-    s.u64(0x4444444444444444ULL); // seams digest
-    s.u32(1);                     // PRNG timeline version
-    s.u64(1);                     // one missing site
+    s.u32(4);                      // kReplayLogVersion
+    s.u32(1);                      // kCommandWireVersion, once
+    s.u32(sim::kStateHashVersion); // combined state stream
+    s.u64(0x00314b424e4f4345ULL);  // ECONBK1 lineage
+    s.u64(0);                      // script content digest in this wire-only specimen
+    s.u64(0x1111111111111111ULL);  // config digest
+    s.u64(0x2222222222222222ULL);  // rules digest
+    s.u64(0x3333333333333333ULL);  // registry digest
+    s.u64(0x3434343434343434ULL);  // walk-table digest
+    s.u64(0x4444444444444444ULL);  // seams digest
+    s.u32(1);                      // PRNG timeline version
+    s.u64(1);                      // one missing site
     s.str("Ai");
     s.u64(2); // initial save length
     s.u8(0xaa);

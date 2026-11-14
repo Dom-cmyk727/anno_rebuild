@@ -288,8 +288,8 @@ TEST_CASE("freight native: corrupt continuation refuses and real134 cannot enter
     const auto old = bytes(base / "freight/legacy134/g2.save");
     const auto refused = sim::World::load(old, ft::registry());
     REQUIRE_FALSE(refused);
-    CHECK(refused.error() ==
-          "save: state stream version 134 is not supported (this build reads 138)");
+    CHECK(refused.error() == "save: state stream version 134 is not supported (this build reads " +
+                                 std::to_string(sim::kStateHashVersion) + ")");
     auto log = sim::read_log(bytes(base / "expand1/current134/g2.log"));
     REQUIRE_FALSE(log);
     CHECK(log.error() == "stream (byte 24): replay state stream version differs from this build's");

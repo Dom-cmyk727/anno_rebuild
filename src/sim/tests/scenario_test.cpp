@@ -38,6 +38,7 @@
 #include <anno/test/game_dir.hpp>
 #include <anno/test/parallel.hpp>
 
+#include "golden.hpp"
 #include "original_component.hpp"
 #include "world_access.hpp"
 
@@ -52,8 +53,7 @@ constexpr int kAdvances = 3000;
 constexpr std::uint32_t kStepMs = 100;
 
 fs::path expectations_path() {
-    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate2" / "current138" /
-           "scenario_corpus.txt";
+    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "current" / "scenario_corpus.txt";
 }
 
 std::vector<fs::path> scenario_files(const fs::path& game) {
@@ -485,9 +485,29 @@ std::string with_restored_research_production(std::string row) {
 }
 
 bool update_requested() {
-    const char* u = std::getenv("ANNO_UPDATE_GOLDEN");
-    const char* ci = std::getenv("CI");
-    return u != nullptr && std::string(u) == "1" && (ci == nullptr || std::string(ci).empty());
+    return anno::test::update_mode();
+}
+
+void record_corpus(const std::vector<std::string>& lines) {
+    // Preserve the accepted provenance comments; only the version header and
+    // measured rows are re-recorded. Never import a historical corpus into current.
+    std::ifstream in(expectations_path());
+    REQUIRE(in.good());
+    std::string header;
+    for (std::string line; std::getline(in, line);) {
+        if (line.starts_with("# kStateHashVersion="))
+            header += version_line() + "\n";
+        else if (line.starts_with("#"))
+            header += line + "\n";
+    }
+    in.close();
+    std::ofstream out(expectations_path(), std::ios::binary | std::ios::trunc);
+    REQUIRE(out.good());
+    out << header;
+    for (const auto& row : lines)
+        out << row << "\n";
+    out.close();
+    REQUIRE(out.good());
 }
 
 struct CityStatisticsImport {
@@ -762,22 +782,8 @@ TEST_CASE(
 
     // The per-file counts against the committed expectations.
     if (update_requested()) {
-        std::ofstream out(expectations_path(), std::ios::binary);
-        REQUIRE(out.good());
-        out << "# Original-data component corpus, full physical/movement run.\n"
-               "# The scenario corpus through the S14 adapter (T23: with the cities): per file\n"
-               "# (relative to Scenes) the counts of the loaded ScenarioSpec, of its warnings per\n"
-               "# kind, and the state hash after World::create (it moves with kStateHashVersion\n"
-               "# and with what the adapter decodes). No content of the files. Rewritten by\n"
-               "# scenario_test.cpp with ANNO_UPDATE_GOLDEN=1 (T9 S14 stage 2: with the links;\n"
-               "# T24: with the producers and warehouses whose stocks moved in the run).\n"
-            << version_line() << "\n";
-        for (const std::string& l : lines) {
-            out << l << "\n";
-        }
-        out.close();
-        REQUIRE(out.good());
-        MESSAGE("SCRIPT1 scenario_corpus.txt written and closed successfully");
+        record_corpus(lines);
+        MESSAGE("current scenario_corpus.txt written and closed successfully");
         return;
     }
     std::string versions;
@@ -1098,10 +1104,7 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
     const auto types = original_registry(*dir);
     std::string versions;
     const bool generating = update_requested();
-    const auto expected = generating
-                              ? read_expectations(versions, fs::path(ANNO_FIXTURES_DIR) / "sim" /
-                                                                "scenario_corpus.txt")
-                              : read_expectations(versions);
+    const auto expected = read_expectations(versions);
     if (!generating)
         REQUIRE(versions == version_line());
     std::vector<std::string> generated;
@@ -1149,8 +1152,7 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
         if (generating) {
             // Accepted supply129 physical columns, with UNIT's reviewed research/presence
             // corrections. Creation-only generation must not import stale128 movement counts.
-            auto new_row = with_imported_city_statistics(
-                with_restored_research_production(with_recognized_player_records(row)));
+            auto new_row = row;
             char hex[17];
             std::snprintf(hex, sizeof hex, "%016llx",
                           static_cast<unsigned long long>(made.value().state_hash()));
@@ -1170,20 +1172,8 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
     CHECK(isolated == 37);
     CHECK(supported == 13);
     if (generating) {
-        REQUIRE(expectations_path() == fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate2" /
-                                           "current138" / "scenario_corpus.txt");
-        std::ofstream out(expectations_path(), std::ios::binary);
-        REQUIRE(out.good());
-        out << "# ECONBK1 original-data component corpus. Creation identities generated here;\n"
-               "# physical/movement columns copied from accepted supply129 plus UNIT corrections, "
-               "not executed by this\n"
-               "# creation-only generator. The normal long corpus gate validates those columns.\n"
-            << version_line() << "\n";
-        for (const auto& row : generated)
-            out << row << "\n";
-        out.close();
-        REQUIRE(out.good());
-        MESSAGE("SCRIPT2 creation-only generation: physical/movement acceptance remains pending");
+        record_corpus(generated);
+        MESSAGE("current creation identities re-recorded; physical/movement columns preserved");
     }
 }
 

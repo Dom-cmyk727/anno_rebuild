@@ -10474,6 +10474,66 @@ NOT_RUN: local MSVC/WSL,18 opt-in measurements/soaks; no139 commit, extension me
 QUESTIONs: none outstanding; owner-approved admission exception is fully recorded above.
 **READY FOR REVIEW.**
 
+## SAVE-SECTIONS-1a — ten section envelopes, final global identity139 (2026-11-14)
+
+Branch task/SAVE-SECTIONS-1a; new worktree from main d2884227 after ancestor661cd2a6 passed.
+Packet/ADR/owner rules read at board3f91f223; PINS branch and evidence preserved.
+Spec first: state.md §9.3/9.5/9.7 define ten ordered scopes, u32 base version1, u64 extension count0.
+Entries are u16 tag/u32 length/payload, strictly ascending; no tag registry or registration API in1a.
+world.hpp has ordered constexpr kSectionVersions; the same StateIO section functions hash/save/load.
+Every foreign base version names section/found/expected; every unknown tag names section/tag.
+Global framing139 is the last global number; save1, ECONBK1, PRNG5, replay4 and command1 unchanged.
+Independent sim_stream.py wraps all ten top-level digests, leaving child/object/registry bytes alone.
+integration_stream_ref.py retains raw structural records and adds populated framed figures/script records.
+13 oracle roots hand-copied;8 other oracle rows change version only; highmap values unchanged.
+README seven steps followed: legacy138 kept first, constant+5 tripwires, independent oracle writes,
+  hand-copied oracle rows, regen, real138 boundary, final committed-head check (handoff below).
+All63 pins move:50 changed value,13 version-only; self pins42 =38 value changes +4 version-only.
+13 current non-pin recordings rewritten;14 declared current files changed including goldens.txt.
+3 independent oracle fixtures explicitly written separately (holds, cargo-rules, populated fields).
+legacy138 g2.log is unchanged outgoing recording; g2.save extracted using the documented envelope.
+section-locality.json: all ten base payloads equal138 after stripping4+8 wrapper bytes, except
+  the authorized header138→139 word; terrain blobs equal. No cross-section base-byte change.
+Two table-driven native cases: ten sections × versions0/2; ten sections × tags0/1/65535, repaired CRC.
+Positive native roundtrip/hash controls; raw/trace/hash layout proofs retained; real138 save/log refuse.
+Replay’s fast identity probe now shares the section-prefix/StateHeader readers; foreign section2 refuses.
+All raw logs below are under cache/save-sections-1a/; evidence-manifest.json has full SHA256s/paths.
+Each gate’s required pins_contract printed this exact pair (retained separately in every raw log):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+pilot-01.log (dev framing/oracles):
+COUNTS: selected=9 executed=9 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+regen-01.log (full recording attempt, preserved):
+COUNTS: selected=1660 executed=1577 failed=65 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+reader-fix-01.log (replay probe, offsets, real138 boundary):
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+regen-failed-02.log: required contract passed; unsupported CTest regex group ran no main selection.
+VERDICT: FAIL workflow: Expecting value: line 1 column 1 (char 0)
+regen-failed-03.log: corrected selector, only65 failed cases + updated boundary; no whole-regen repeat.
+COUNTS: selected=66 executed=66 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+changed-dev-01.log:21 affected cases + prescribed population/integration/highmap comparisons.
+COUNTS: selected=25 executed=25 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+Final committed-head pins check: final-head-check-01.log; exact quotes/hash and pushed-head CI
+  terminal result supplied in the owner handoff, avoiding a post-gate change to its tested source pin.
+Builds: dev01 duplicate local name failed; dev02 linked with Apple duplicate-library warnings.
+  Fixed name; CMake3.31 REORDER_FREELY removes duplicate link inputs, with no warning suppression.
+  Final dev04 and Release build01:0 compiler/link warnings; clang-format23.1.3/diff checks clean.
+Decisions and reasoning:
+- Use existing u64 sequence counts and one shared pair of framing helpers; no persistent extension state.
+- Keep raw object oracle records unframed; only actual section records gain versions/extensions.
+- Preserve the failed full recording attempt; fix the missed replay prefix reader and hand-derived offsets,
+  then rerun its failed cases only. The mandatory final full check validates the combined result.
+- Release for corpus regeneration/check after dev build/pilot: bounded runtime with identical contracts.
+- Host access prevents sandbox socket EPERM; memory admission stays enabled; no test/coordinator stopped.
+NOT_RUN:18 opt-in soaks/measurements; local Windows/MSVC/WSL and full platform/game-file landing gates.
+No game assets committed; no feature/default, PRNG site, registry format, tag API, rebase or main push.
+QUESTIONs: none; all three stopping questions checked and not triggered. Orchestrator review pending.
+
 ## UI-WINDOW-1 — the in-game UI at any window size, and clickable — 2026-11-14 — READY FOR REVIEW
 
 Branch `task/UI-WINDOW-1`, `origin/main` `d89d54a6` merged (UI-INFO-1, PINS-1, UI-HE-1). Head: this push. Changes:

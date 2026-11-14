@@ -500,7 +500,14 @@ TEST_CASE("state_hash relational properties") {
     CHECK(tree.root.children[6].name == "figures");
     CHECK(tree.root.children[7].name == "events");
     CHECK(tree.root.children[8].name == "timers_monopoly");
-    CHECK(tree.root.children[1].hash == base.core_hash());
+    sim::WriteArchive clock_base;
+    fields(clock_base, base.clock());
+    fields(clock_base, base.rng());
+    sim::StateHasher clock_section;
+    clock_section.u32(1);
+    clock_section.bytes(clock_base.data());
+    clock_section.u64(0);
+    CHECK(tree.root.children[1].hash == clock_section.value());
     // The header scope: the two versions, SimConfig, Rules, the registry digest
     // and the seam names, in one FNV-1a stream (docs/sim/state.md §9.3).
     sim::WriteArchive config_bytes;
@@ -508,6 +515,7 @@ TEST_CASE("state_hash relational properties") {
     sim::WriteArchive rules_bytes;
     fields(rules_bytes, base.rules());
     sim::StateHasher header;
+    header.u32(1); // section base version
     header.u32(sim::kStateHashVersion);
     header.u64(0x00314b424e4f4345ULL);
     header.u32(sim::kPrngTimelineVersion);
@@ -521,15 +529,19 @@ TEST_CASE("state_hash relational properties") {
         const std::uint8_t name[] = {'d', 'e', 'f', 'a', 'u', 'l', 't'};
         header.bytes(name);
     }
+    header.u64(0); // no extensions
     CHECK(tree.root.children[0].hash == header.value());
     sim::WriteArchive settings_bytes;
     fields(settings_bytes, base.settings());
     sim::StateHasher settings;
+    settings.u32(1); // section base version
     settings.bytes(settings_bytes.data());
+    settings.u64(0); // no extensions
     CHECK(tree.root.children[2].hash == settings.value());
     // The ids scope: u64 next_figure, u64 next_event_seq (both 1 in a new world), u32
     // event750_acc, u32 monopoly.acc (both 0) and bool faulted (false).
     sim::StateHasher ids;
+    ids.u32(1); // section base version
     ids.u64(1);
     ids.u64(1);
     ids.u64(1); // next_order_id (stream 122)
@@ -537,40 +549,50 @@ TEST_CASE("state_hash relational properties") {
     ids.u32(0);
     ids.u32(0);
     ids.u8(0);
+    ids.u64(0); // no extensions
     CHECK(tree.root.children[3].hash == ids.value());
     // The players scope: u64 slot count, one child scope per slot (an empty slot
     // is the single byte 0), u16 stamp, u32 cursor (docs/sim/state.md §9.3).
     sim::StateHasher absent;
     absent.u8(0);
     sim::StateHasher players;
+    players.u32(1); // section base version
     players.u64(32);
     for (int i = 0; i < 32; ++i) {
         players.u64(absent.value());
     }
     players.u16(0);
     players.u32(0);
+    players.u64(0); // no extensions
     CHECK(tree.root.children[4].hash == players.value());
     // The islands scope of a world without islands: the u64 slot count 0.
     sim::StateHasher islands;
+    islands.u32(1); // section base version
     islands.u64(0);
+    islands.u64(0); // no extensions
     CHECK(tree.root.children[5].hash == islands.value());
     // The figures scope of a new world: the registry list (i64 hint -1, u32 cursor, u64
     // slot count 1 and its child scope, an empty slot being the single byte 0), the
     // u16 stamp and the empty expiry list; the events scope: the u64 count 0.
     sim::StateHasher figures;
+    figures.u32(1);                     // section base version
     figures.u64(0xffffffffffffffffULL); // hint -1
     figures.u32(0);
     figures.u64(1);
     figures.u64(absent.value());
     figures.u16(0);
     figures.u64(0);
+    figures.u64(0); // no extensions
     CHECK(tree.root.children[6].hash == figures.value());
     sim::StateHasher events;
+    events.u32(1); // section base version
     events.u64(0);
+    events.u64(0); // no extensions
     CHECK(tree.root.children[7].hash == events.value());
     // The timers_monopoly scope: u32 last_tick 0, five stopped timers (count + u8
     // each, count + u32 each), 28 monopoly entries (u32 time 0, absent player).
     sim::StateHasher timers;
+    timers.u32(1); // section base version
     timers.u32(0);
     timers.u64(5);
     for (int i = 0; i < 5; ++i) {
@@ -585,8 +607,10 @@ TEST_CASE("state_hash relational properties") {
         timers.u32(0);
         timers.u8(0);
     }
+    timers.u64(0); // no extensions
     CHECK(tree.root.children[8].hash == timers.value());
     sim::StateHasher script;
+    script.u32(1); // section base version
     script.u64(0);
     for (auto v : {1048576u, 65536u, 128u, 100000u, 4096u})
         script.u32(v);
@@ -598,10 +622,11 @@ TEST_CASE("state_hash relational properties") {
         script.u32(0);
     script.u64(0);
     script.u64(0);
+    script.u64(0); // no extensions
     CHECK(tree.root.children[9].hash == script.value());
     sim::StateHasher root;
     root.u64(header.value());
-    root.u64(base.core_hash());
+    root.u64(clock_section.value());
     root.u64(settings.value());
     root.u64(ids.value());
     root.u64(players.value());
@@ -618,7 +643,7 @@ TEST_CASE("state_hash relational properties") {
     CHECK(anno::test::pin_matches(
         "empty_world",
         sim::World().state_hash())); // ECONBK1 empty_world; independent sim_stream.py
-    CHECK(sim::kStateHashVersion == 138);
+    CHECK(sim::kStateHashVersion == 139);
     CHECK(sim::kPrngTimelineVersion == 5);
 }
 
@@ -896,16 +921,16 @@ TEST_CASE("world core stream layout round trip and rejects") {
     // players: u64 32, 32 absent bytes, u16 stamp, u32 cursor (46 bytes); islands:
     // u64 0 (8 bytes); figures (31 bytes: no deferred list since T22), events (8 bytes) and
     // timers_monopoly (193 bytes), config_test.cpp. The clock_rng scope is found from the end.
-    constexpr std::size_t kSettingsBytes = 41;
-    constexpr std::size_t kIdsBytes = 25 + 16; // + next_order_id, next_ticket (stream 122)
-    constexpr std::size_t kPlayersBytes = 8 + 32 + 2 + 4;
-    constexpr std::size_t kIslandsBytes = 8;
-    constexpr std::size_t kTailBytes = 31 + 8 + 193 + 67;
+    constexpr std::size_t kSettingsBytes = 41 + 12;
+    constexpr std::size_t kIdsBytes = 25 + 16 + 12; // + next_order_id, next_ticket (stream 122)
+    constexpr std::size_t kPlayersBytes = 8 + 32 + 2 + 4 + 12;
+    constexpr std::size_t kIslandsBytes = 8 + 12;
+    constexpr std::size_t kTailBytes = 31 + 8 + 193 + 67 + 4 * 12;
     REQUIRE(bytes.size() >
             8 + 36 + kSettingsBytes + kIdsBytes + kPlayersBytes + kIslandsBytes + kTailBytes);
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
-                           kSettingsBytes - 36; // clock_rng starts
-    CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16) ==
+                           kSettingsBytes - 48 + 4; // clock_rng base fields start
+    CHECK(std::vector<std::uint8_t>(bytes.begin() + 4, bytes.begin() + 20) ==
           std::vector<std::uint8_t>{static_cast<std::uint8_t>(sim::kStateHashVersion >> 0),
                                     static_cast<std::uint8_t>(sim::kStateHashVersion >> 8),
                                     static_cast<std::uint8_t>(sim::kStateHashVersion >> 16),
@@ -945,7 +970,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another state hash version is refused") {
         auto bad = bytes;
-        bad[0] = 111; // the build is 112, so 111 is a different version
+        bad[4] = 111; // the build is 112, so 111 is a different version
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);
@@ -953,7 +978,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another PRNG timeline version is refused") {
         auto bad = bytes;
-        bad[12] = 3; // this build's timeline is 5; 3 predates FarmWorkerDispatch
+        bad[16] = 3; // this build's timeline is 5; 3 predates FarmWorkerDispatch
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

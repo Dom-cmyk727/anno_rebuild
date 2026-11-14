@@ -202,14 +202,15 @@ inline std::size_t flat_offset(const sim::World& w, const char* name, std::size_
 /// The size in the flat stream of the timers_monopoly scope of the default
 /// configuration (stage S12): u32 last_tick, 5 flags and 5 counters with their counts,
 /// 28 entries of a u32 and an absent player = 4 + 8 + 5 + 8 + 20 + 8 + 28 * 5 = 193.
-inline constexpr std::size_t kTimersMonopolyBytes = 193;
+inline constexpr std::size_t kTimersMonopolyBytes = 193 + 12;
 
 /// The size in the flat stream of the scopes that follow `islands` in a world
 /// without figures and events (stage S7): the figures scope (i64 hint, u32 cursor,
 /// u64 slot count, one empty slot byte, u16 stamp, the empty expiry list = 8 + 4 + 8 +
 /// 1 + 2 + 8 = 31 bytes; 39 before T22 dropped the deferred list), the events scope
 /// (the u64 count 0 = 8 bytes) and the timers_monopoly scope (stage S12).
-inline constexpr std::size_t kTailBytes = 31 + 8 + kTimersMonopolyBytes + 67; // empty SCRIPT2 scope
+inline constexpr std::size_t kTailBytes =
+    31 + 8 + kTimersMonopolyBytes + 67 + 3 * 12; // empty SCRIPT2 scope
 
 /// The flat stream of `w` with the bytes of its islands scope replaced by `table`;
 /// the scopes before it and the scopes after it (figures, events) stay as they are.
@@ -221,7 +222,11 @@ inline std::vector<std::uint8_t> with_island_table(const sim::World& w,
     REQUIRE(from != std::string::npos);
     REQUIRE(to != std::string::npos);
     std::vector<std::uint8_t> out(flat.begin(), flat.begin() + static_cast<std::ptrdiff_t>(from));
+    const std::array<std::uint8_t, 4> version{1, 0, 0, 0};
+    const std::array<std::uint8_t, 8> extensions{};
+    out.insert(out.end(), version.begin(), version.end());
     out.insert(out.end(), table.begin(), table.end());
+    out.insert(out.end(), extensions.begin(), extensions.end());
     out.insert(out.end(), flat.begin() + static_cast<std::ptrdiff_t>(to), flat.end());
     return out;
 }
@@ -279,7 +284,7 @@ inline void check_unsupported_versions(const std::vector<std::uint8_t>& good,
                                        const std::shared_ptr<const sim::TypeRegistry>& types,
                                        std::initializer_list<std::uint32_t> earlier) {
     constexpr std::size_t kSaveVersionAt = 4, kFrameStreamAt = 8;
-    const std::size_t header_at = frame_offset(0, 0); // section 0 = header, flat offset 0
+    const std::size_t header_at = frame_offset(0, 0) + 4; // section 0 = header, flat offset 0
     const auto error_of = [&](const std::vector<std::uint8_t>& bytes) {
         auto r = sim::World::load(bytes, types);
         return r.ok() ? std::string() : r.error();

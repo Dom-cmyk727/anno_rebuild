@@ -125,6 +125,21 @@ def records():
             'economy':(economy,None),'goods_registry':(goods,None),
             'mine':(mine(),None),'quarry':(quarry(),None),'world':(world,world_hash)}
 
+def synthetic_extension_record():
+    # state.md §9.8, independently authored: empty figure base + one six-byte payload.
+    base=pack('qI',-1,0)+u64(1)+u8(0)+u16(0)+u64(0)
+    hierarchical=pack('qI',-1,0)+u64(1)+u64(fnv(u8(0)))+u16(0)+u64(0)
+    payload=u16(0x1234)+u32(0x89ab)
+    prefix=u64(1)+u16(0xf001)+u32(6)
+    raw=u32(1)+base+prefix+payload
+    digest=fnv(u32(1)+hierarchical+prefix+u64(fnv(payload)))
+    return raw,digest
+
+def synthetic_extension_fixture():
+    data,digest=synthetic_extension_record()
+    return f'synthetic_figures {data.hex()} {digest:016x}\n'
+
+
 def fixture():
     return '# Independent ECONBK1 structural scopes: name hex hierarchical_fnv64\n'+''.join(
         f'{name} {data.hex()} {(fnv(data) if digest is None else digest):016x}\n'
@@ -137,6 +152,17 @@ class Contracts(unittest.TestCase):
         header=records()['header'][0]
         self.assertEqual(header[:4],u32(current.STATE_HASH_VERSION))
         self.assertEqual(header[4:].hex(),'45434f4e424b310005000000')
+    def test_synthetic_extension_envelope(self):
+        data,digest=synthetic_extension_record()
+        self.assertEqual(len(data),55)
+        self.assertEqual(data[35:43],u64(1))
+        self.assertEqual(data[43:49],u16(0xf001)+u32(6))
+        self.assertEqual(data[-6:].hex(),'3412ab890000')
+        # Omitting the payload child scope is distinguishable from the spec.
+        base=pack('qI',-1,0)+u64(1)+u64(fnv(u8(0)))+u16(0)+u64(0)
+        wrong=fnv(u32(1)+base+data[35:])
+        self.assertNotEqual(digest,wrong)
+
     def test_section_envelopes(self):
         for name in ('figures','script'):
             raw=records()[name][0]; framed=records()[name+'_section'][0]
@@ -200,7 +226,9 @@ class Contracts(unittest.TestCase):
         self.assertNotEqual(records()['world'][0],records()['world'][0].replace(right,right[:-2]+bytes([0,0]),1))
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);p.add_argument('--extension-output',type=Path);a=p.parse_args()
+    if a.extension_output:
+        a.extension_output.write_text(synthetic_extension_fixture());return 0
     if a.self_test:return 0 if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)).wasSuccessful() else 1
     path=a.fixture or ROOT/'fixtures/synthetic/sim/current/populated_fields.txt'
     if a.write:path.write_text(fixture());return 0

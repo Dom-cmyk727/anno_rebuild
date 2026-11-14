@@ -2016,10 +2016,10 @@ The ordered version table is `header`, `clock_rng`, `settings`, `ids`, `players`
    by that many entries: `u16 tag`, `u32 payload_length`, then exactly that many
    payload bytes. Tags must be strictly ascending, with no duplicates.
 
-In this packet every extension count is 0 and no tag is known. A reader refuses
+At SAVE-SECTIONS-1a every extension count was 0 and no tag was known. A reader refuses
 any structurally present entry with `section <name>: unknown extension tag <n>`;
 it never skips or simulates unknown data. Truncation/count bounds remain archive
-errors. No extension registry or registration API is introduced here (1b).
+errors. The registration API and canonical rules added by 1b are in §9.8; production lists remain empty.
 
 The global 139 identifies this framing: the ten ordered sections, their base
 versions and extension envelopes. Only a framing change would move that global
@@ -2031,6 +2031,75 @@ counts participate in each section’s digest, the hierarchical world hash, the 
 stream and native saves. `kSaveVersion`, script schema and PRNG timeline remain
 unchanged. The outer native lengths and checksum are recomputed; adding this
 framing does not alter another section’s base-field bytes.
+
+### 9.8 Extension tags: registry and registration (2026-11-14, SAVE-SECTIONS-1b)
+
+Global framing139 and all ten section base versions1 remain unchanged. A
+production world still writes exactly 1a's bytes: each extension count is0.
+
+| Tag | Section | Name | Owner packet | Status | Payload fields |
+|---|---|---|---|---|---|
+| 0xF000–0xFFFF | Test contexts only | Reserved test range | SAVE-SECTIONS-1b | Reserved | See synthetic proof below |
+
+Tag0 is never assigned. There are **no production entries**. A feature reserves its tag on the board
+before work, like an OQ number, then adds its permanent row here. Tags are never
+reused. Test-range tags must never occur in a production list.
+
+**Registration.** `ExtensionContext` belongs to World and holds no state in1b.
+Its ten ordered compile-time lists map `StateSection` to extension types. Each
+type supplies `tag` (u16), `name` (a static string literal), `Payload`,
+`default_value()`, `state(context)` (const-preserving), one explicit
+`fields(archive, payload)` function, and `validate(payload)` (empty string on
+success). Payloads support equality with their default. Production `ExtensionList`
+checks strict ascending order, uniqueness, nonzero tags and exclusion of the test
+range with `static_assert`. A separately selected test-list policy accepts only
+test-range tags. No runtime registry, static initializer or global mutable state
+is involved. A feature adds its type to one list, its state to the context and
+its registry row. The ordered constexpr schema entries `(section, tag, name)`
+are exposed for the later ADR0003 join check, without wiring that check here.
+
+**Writing.** Emit only payloads unequal to their default, in ascending tag order.
+Write the u64 count, then for each present payload `u16 tag`, `u32 length` and
+its fields inside a child scope named after the extension. Measure length by
+serializing its field list once to a temporary WriteArchive before visiting it
+with the requested archive. Length is the raw byte length, not a hierarchical
+digest length. As with other save fields, writing requires valid state; payload
+validation and the context invariant enforce the u32 wire-length bound. No
+present extension means exactly the old u64 count0, with no new scope or byte.
+
+**Reading.** Reset every known extension of the section to `default_value()`
+before reading its list. For each entry, check strict order first (duplicates
+included), then recognition in that section, then read the payload with a reader
+bounded to the declared length. Refuse:
+
+- `section <name>: extension tag <n> out of order`;
+- `section <name>: unknown extension tag <n>` (including an unassigned tag0);
+- length beyond remaining section bytes: an archive bounds error;
+- payload under-read/truncation or unconsumed bytes: error naming section and tag;
+- `section <name>: extension tag <n> decodes to default`;
+- the extension's own validation error, naming section and tag.
+
+A present default is noncanonical: refusing it preserves byte-identical
+save(load(save)). Both flat and native readers stage the whole context with the
+world and commit only after a complete valid read, including the native blobs
+and invariants. Context move assignment must be non-throwing. The native framing
+and section functions are templated over this explicit context; tests instantiate
+the same code with types defined only under src/sim/tests, never in anno_sim.
+
+**Hashing/tracing.** All archives visit tag, length and the same payload fields.
+The payload's child scope contributes its digest under the unchanged HashArchive
+scope semantics (§9.1); its name appears at the next tree depth below the section.
+The raw hash remains FNV of WriteArchive bytes. No HashArchive change is needed.
+
+**Synthetic proof (not a production reservation).** Test context only: figures
+section, tag0xF001, name `synthetic_extension`; payload `u16 small`, `u32 large`.
+Default `(0,0)`; validation requires `large <= 1000000`. Nondefault example
+`(0x1234,0x89ab)` has length6. Its section is version1, the existing figure base,
+u64 count1, u16 tag0xF001, u32 length6 and these two LE fields. In the hierarchical
+digest replace just those six payload bytes by their u64 child digest; all other
+section bytes/child digests stay where they were. integration_stream_ref.py
+computes this proof independently; generated oracle output lives in build/, so
+no existing fixture, pin, save or log changes.
 
 ## 10. Loader: scenario → owning state
 

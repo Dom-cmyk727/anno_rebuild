@@ -411,6 +411,18 @@ class ReadArchive {
         path_.pop_back();
     }
 
+    /// Consume a bounded payload without allowing its field reader into the
+    /// following entry. The caller propagates its error with section/tag context.
+    ReadArchive subarchive(std::uint64_t length) {
+        if (failed_ || length > remaining()) {
+            fail("payload length exceeds the remaining input");
+            return ReadArchive({});
+        }
+        const auto bytes = in_.subspan(pos_, static_cast<std::size_t>(length));
+        skip(length);
+        return ReadArchive(bytes);
+    }
+
     /// Skips `n` bytes (a length-prefixed section whose content another reader
     /// handles); fails when fewer remain.
     void skip(std::uint64_t n) {

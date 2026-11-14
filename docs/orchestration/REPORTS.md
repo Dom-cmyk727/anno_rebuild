@@ -10473,3 +10473,63 @@ Decisions and reasoning:
 NOT_RUN: local MSVC/WSL,18 opt-in measurements/soaks; no139 commit, extension mechanism or historical trim.
 QUESTIONs: none outstanding; owner-approved admission exception is fully recorded above.
 **READY FOR REVIEW.**
+
+## UI-WINDOW-1 — the in-game UI at any window size, and clickable — 2026-11-14 — READY FOR REVIEW
+
+Branch `task/UI-WINDOW-1`, `origin/main` `d89d54a6` merged (UI-INFO-1, PINS-1, UI-HE-1). Head: the push of this entry.
+What changed:
+- `ui_transform.hpp/.cpp` (new): layer size, HE's step-down, aspect fit, click inverse in float32 as HE `AnnoDisplay`
+  0x2ccf0/0x5a961 and `AnnoFrame` 0x22a26 do it (re-disassembled with capstone); bilinear stretch (cached) and an
+  XRGB blend. Default = the original 1:1 (setting 1.0); `--ui-scale 1.0..2.0` = HE's rule; numbers in `UiScaleRule`.
+- `data/ui`: `anchor` on hud/masks/grid (right chrome `right`, status row `bottom`, question mark
+  `after-statusbar`); `statusbar02/03` (`for_width`) and `fueller03` from GOG `AnnoFrame.dll` 0x10063125 (bar by
+  width 1152/1280/else) and 0x10063304 (FUELLER02/01/03; 01/02 are 03's top rows, byte-identical).
+  `place_hud`/`ui_hit` place and classify; the two live draw functions take any size >= 1024 x 768.
+- `viewer.cpp`: the 1024 x 768 guards are gone on CPU and GPU. 1:1 draws straight in; otherwise layer, stretch,
+  blend/overlay. A left press on chrome (right column full height, status row, parchment while paused) and its
+  release are taken: no pan, no selection, no tool. The construction tab toggles the menu like B.
+- `anno_ui_mock --live WxH [--ui-scale s]`; ADR 0004 R3 (owner, 2026-11-14), `ui.md` 5.1, OQ-614..618.
+Acceptance (positive / negative control / evidence):
+- transform = HE table, float32: 2542x1351 s1.5 1694x900 k 0x3fc01358, s2.0 1495x794 k 0x3fd9a48f; 2091x1307 s1.7
+  -> 1229 (decimal would give 1230); `ui transform:` cases.
+- 1024 x 768 unchanged: `live_screen_matches_oracle`, `ui_mock_matches_oracle`, `ui_dynamic_draw_check`,
+  `selected_house_pixel_check`, `info_panel_*` pass unchanged; every element's placement is its own pos at 1024.
+- 2542 x 1351 s1.0 right chrome = 1024 chrome shifted by 1518: 179 585 px, 0 differ; unshifted control < 10 % equal
+  (`ui layer:` case). HE captures (`ui_window_matches_he`): tab band 0.00 / 0.87 / 1.75 mean abs at s1.0 / 1.5 / 2.0
+  (bounds 0.25 / 1.5 / 2.5, tighter than he-ui-scale.md's 3.50 / 4.60 / 4.25); 3 px-shifted control 24.8 / 17.3 /
+  16.1; at 1:1 the filler, question mark and gold symbol match the capture exactly (0.00).
+- Clicks: `ui click path:` (cell arms, tab maps to 809 212, at 1024 / 2542 s1.0 / s2.0); real window
+  `viewer_wiring_ui_window_click_s10/_s20`: status bar, filler, panel clicks leave `selection.clicks` unchanged, a
+  map click moves it (control); tab opens the menu; cell arms 501 (the base drew and clicked only at 1024 x 768).
+Gates:
+- `cmake --preset msvc`, `cmake --build --preset msvc`: exit 0, 0 warnings (`cache/ui-window-1/gates/build-02.log`).
+- `run_selected.py --build-dir build/msvc --config Release --select "construction menu|ui layout|hud layout|mask
+  layout|construction layout|point_in_hud|ui transform|ui placement|ui click path|ui layer|zoom_args|info panel|
+  info_panel|live_screen|ui_mock|ui_window|ui_dynamic|selected_house|construction_menu|construction_full|
+  construction_unaffordable" --jobs 16` (game dir, oracle shots, HE captures set): selected 36, executed 36 pass,
+  failed 0, skipped 0, empty 0, VERDICT PASS (`focused-01.log`).
+- clang-format 23.1.3 `--dry-run --Werror` on the 12 changed app C++ files: clean. `ui_layout.py validate
+  --game-dir`, `self-test`, `check-files`: ok. `check_unix_warnings.sh`: run 01 found 7 test-file warnings (fixed
+  `55c3fba5`); run 02 (before a format-only edit of that test): GCC 13, Clang 18, GPU on/off clean, exit 0. CI: push.
+Measured (window stderr, ANNO_VIEW_HITCH_MS=1, 2542 x 1351): "construction ui" median 5.7 ms CPU s1.0, 7.8 ms CPU
+s2.0 (p90 27.8 when the layer changes and is re-stretched), 6.5 / 6.0 ms GPU; GPU "ui scale" median 0.36 ms (cache
+hit), up to 15.7 ms on a re-stretch (single thread). First frame 77-95 ms (texture decode, as before).
+What I saw (CPU captures in `cache/ui-window-1/look`, next to the HE captures): at s1.0 and s2.0 the panel, tabs,
+minimap frame, question mark, status bar and the chain picture sit where HE draws them at the same size; the stone
+between panel and chain is MAINUNTERGRUND (HE: its own stone). The tiled bar shows seams every 1001 px. Tab click
+opened the menu, cell (0,0) armed the pioneer house, info panel drawn, at 2542 x 1351 s1.0/s2.0, 1024 x 768 and
+900 x 600 (fitted, map visible in the letterbox). GPU: the desktop copy of a 2542-wide window is cut at the monitor
+(1920 x 1144), so GPU was looked at 1024 x 768 (right column vs CPU 0.61 mean abs), 900 x 600 and 1920 x 1080 s2.0
+(forced 1:1, filler and stone under the panel): same chrome as CPU.
+NOT_RUN: Linux/macOS game-file runs; the full suite; GOG captures at 1152/1280 modes (none exist).
+Decisions and reasoning:
+- Question mark at the bar's end (746 at 1024, W - 279 else): fits the 1152/1280 bars and the HE capture; 1024
+  stays exact. Its draw call was not read (OQ-614).
+- Sizes the original never had: widest GOG bar tiled; FUELLER03 bottom-anchored over repeated MAINUNTERGRUND
+  (OQ-614/615). HE's own tile graphics are HE-only files and are not used.
+- Below 1024 x 768 the packet's choice (layer fitted with HE's formula, map not scaled, OQ-616); pop-ups keep the
+  1024 x 768 place (OQ-618); the 1200-line rule reads the client height (OQ-617).
+- A click in a letterbox bar maps to nothing (HE's cvttss2si would fold (-1, 0) onto 0); stretch premultiplied,
+  clamp addressing (HE's UI address mode is open).
+QUESTIONs: none blocking. Owner choices are listed in OQ-614/615/616 (HE graphics when present? small windows?).
+**READY FOR REVIEW.**

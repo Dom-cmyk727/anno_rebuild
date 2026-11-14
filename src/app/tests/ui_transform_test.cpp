@@ -111,7 +111,7 @@ TEST_CASE("ui transform: the step-down is float32 and not decimal") {
 
 TEST_CASE("ui transform: the original rule is 1:1 at 1024 x 768 and up and fitted below it") {
     for (const auto& [w, h] : {std::pair{1024, 768}, std::pair{2542, 1351}, std::pair{1920, 1080},
-                              std::pair{3840, 2160}, std::pair{1280, 1024}}) {
+                               std::pair{3840, 2160}, std::pair{1280, 1024}}) {
         CAPTURE(w);
         CAPTURE(h);
         const auto t = app::original_ui_transform(w, h);

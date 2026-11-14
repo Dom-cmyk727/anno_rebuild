@@ -232,3 +232,24 @@ landing's game-file run re-runs every test on the merged commit.
 - Since its base, `main` changed `fixtures/synthetic/sim/fisher_vectors.txt` (FISHER-RE-1c), a file the pins do not
   manage.
 - It lands on the owner's OK as a candidate with its game-file run, after UI-INFO-1.
+
+## Game-file run of the landing candidate (2026-11-14)
+
+**The candidate:** `orch/land-pins-1` at `d2884227`. It is built on UI-INFO-1's candidate `411f37eb`, so it stays a
+fast-forward once that lands. It merges `task/PINS-1` `661cd2a6`, then the board up to `3f139180`. The owner's OK:
+"Land", 2026-11-14.
+- **The conflict:** only `REPORTS.md`, as two appends at the end of the file. Both are kept, `main`'s entries first,
+  with one blank line between.
+- **The line check:** 0 lines of `main` lost, and 0 lines the branch added lost. No other file was changed by both
+  sides.
+
+**The run:** in the run worktree on this PC, the canonical call with the game files, 16 jobs, and
+`ANNO_UI_ORACLE_SHOTS` set. Every GPU test reports the RTX 4090 (Vulkan). 2026-11-14 09:20–09:40.
+- `COUNTS: selected=2591 executed=2564 failed=0 empty=0 skipped=27 (required-asset=0 platform=3 opt-in=21 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`
+- `VERDICT: PASS`
+- **No test was refused for memory.**
+- **The 27 skips** are the same as UI-INFO-1's run.
+- **Log:** `cache/orch-land-pins-1/canonical-gate.log`, sha256 `88a5da8805edb719…`.
+
+So every test of the candidate passed, PINS-1's moved pins and re-recorded replays included.

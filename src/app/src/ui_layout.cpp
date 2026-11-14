@@ -360,6 +360,17 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                         return fail(line_no, "anchor: not right, bottom, right-bottom or "
                                              "after-statusbar");
                     e.anchor = *a;
+                } else if (key == "panel") {
+                    if (!tok.more())
+                        return fail(line_no, "panel: missing value");
+                    std::string list = tok.take();
+                    for (std::size_t at = 0; at <= list.size();) {
+                        const std::size_t comma = std::min(list.find(',', at), list.size());
+                        if (comma == at)
+                            return fail(line_no, "panel: empty name");
+                        e.panels.push_back(list.substr(at, comma - at));
+                        at = comma + 1;
+                    }
                 } else if (key == "for_width") {
                     if (!tok.more())
                         return fail(line_no, "for_width: missing value");

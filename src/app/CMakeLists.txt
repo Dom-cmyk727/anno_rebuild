@@ -108,6 +108,12 @@ if(ANNO_BUILD_TESTS)
     COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_window_compare.py
             $<TARGET_FILE:anno_ui_mock>)
   set_tests_properties(ui_window_matches_he PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
+  # UI-WINDOW-1 fix round R2: the four tab panels' static chrome against the GOG shots
+  # (ANNO_UI_ORACLE_SHOTS, never in git; skips without it).
+  add_test(NAME ui_panels_match_gog
+    COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_panels_compare.py
+            $<TARGET_FILE:anno_ui_mock>)
+  set_tests_properties(ui_panels_match_gog PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
   # The two full-corpus cases (every scenario file, every assertion) are "heavy" (the suite name in
   # play_test.cpp); in a sanitizer build they also get an 8000 s per-test timeout, set after the cases
   # are discovered (AnnoAppSanitizerTimeouts.cmake; docs/testing/README.md).
@@ -200,6 +206,15 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --construction-menu --app-arg on
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_chrome_press PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-WINDOW-1 fix round R2: the four tabs as switches, D/O keys, disarm on leaving.
+      add_test(NAME viewer_wiring_ui_tabs
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_tabs
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_tabs PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # W4-UI-2 V1: the full interaction proof - every category tab, a locked cell (no command),
       # an armed placement that actually builds, and a demolish of what was just built.

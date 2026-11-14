@@ -52,7 +52,10 @@ class UiTexCache {
 /// Which chrome the construction tab frames show: `kHud` draws the idle HUD's frames
 /// (construction 8, military 13 selected); `kConstruction` draws a construction-menu category's
 /// frames (construction 12 selected, military 9) - `compose_screen`'s `spec["kind"]` branch.
-enum class UiMockScreen { Hud, Construction };
+/// UI-WINDOW-1 fix round R2: `Hud` is the idle HUD with the player tab's own panel
+/// (hud_idle_running); `PlayerList` the player tab after its click or key D (r2_player_menu);
+/// `Info` the "?" tab (r2_tab_help); `MainMenu` the gears tab or key O (r2_options).
+enum class UiMockScreen { Hud, Construction, PlayerList, Info, MainMenu };
 
 /// One of the UI.1 oracle's nine named screens (`tools/ui_layout.py SCREENS`): `hud_idle`, or
 /// `construction_<category>` for each of the eight categories.

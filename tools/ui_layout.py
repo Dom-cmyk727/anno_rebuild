@@ -803,6 +803,11 @@ def compose_screen(layout_dir: str, screen: str, game_dir: str) -> "object":
     blit_el("lupe")
     blit_el("compass_w")
     blit_el("compass_e")
+    if spec["kind"] == "hud":
+        # UI-WINDOW-1 fix round R2: the idle HUD's own panel (hud.txt `panel player`, file order).
+        for el in hud["elements"]:
+            if "player" in str(el.get("panel", "")).split(","):
+                blit_el(el["name"])
     if spec["kind"] == "construction":
         blit_el("plankegross")
         blit_el("abrissicon", 659)

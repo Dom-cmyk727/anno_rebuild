@@ -57,6 +57,9 @@ struct UiElement {
     std::string align;
     /// UI-WINDOW-1: how `pos` moves in a larger layer (UiAnchor).
     UiAnchor anchor = UiAnchor::TopLeft;
+    /// UI-WINDOW-1 fix round R2: the tab panels this element belongs to (`panel a,b`; player,
+    /// player_list, info, main_menu); drawn, in file order, while that panel shows.
+    std::vector<std::string> panels;
     /// UI-WINDOW-1: the layer width this status-bar graphic is the original's choice for
     /// (AnnoFrame.dll 0x10063125..0x10063153 picks the bar by display width); absent for every
     /// other element.

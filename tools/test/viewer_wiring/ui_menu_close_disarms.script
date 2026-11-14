@@ -1,5 +1,6 @@
-# UI-WINDOW-1 fix round R1 (F2): closing the construction menu turns off a building tool a cell
-# armed, by both routes - the construction tab (reference centre 809 212) and Esc. After each
+# UI-WINDOW-1 fix round R1 (F2), R2: closing the construction menu turns off a building tool a cell
+# armed, by both routes - another tab (the bust, reference centre 870 212; since R2 a click on the
+# construction tab itself, already selected, changes nothing) and Esc. After each
 # close, a click on the tile construction_menu_arm.script builds on (1156 516, free and buildable
 # for type 501 on lan5's developer island) posts no command: the latest outcome stays none. Before
 # the fix the tool stayed armed (DevTool::arm sets it on) and that click built the house.
@@ -14,6 +15,11 @@ wait frames 5
 expect title build 501
 click_px 809 212
 wait frames 5
+expect title build 501
+expect fact ui.tab == construction
+click_px 870 212
+wait frames 5
+expect fact ui.tab == player_list
 expect title-lacks build 501
 click 1156 516
 wait frames 10

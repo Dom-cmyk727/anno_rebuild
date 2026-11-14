@@ -33,7 +33,7 @@ element compass_w pos 965 140 size 19 31 file toolgfx/fenster.tex access KARTEPL
 element compass_e pos 986 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 50 anchor right method sprite-sad shot hud_idle_running
 element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
 element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
-element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 anchor right method sprite-sad shot r2_construction_public
+element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 anchor right panel player,player_list,info,main_menu method sprite-sad shot r2_construction_public
 element viewbautab_0 pos 779 302 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 16 frame_idle 16 frame_selected 17 anchor right method view-dll
 element baukosten size 32 29 file toolgfx/B_Baukosten.tex access image001.pcx tex_id 1 method inc-size
 element betriebskosten pos 815 674 size 40 37 file toolgfx/B_Betriebskosten.tex access image001.pcx tex_id 1 anchor right method sprite-sad shot r2_info_pioneer_house
@@ -143,3 +143,45 @@ click rotate_left pos 824 470
 click rotate_right pos 1003 470
 click category_column_x 782
 click cell_origin pos 808 305
+# UI-WINDOW-1 fix round R2 (2026-11-14): the tab panels' static chrome, drawn in file order while
+# the panel shows (`panel`). player = the idle HUD's own panel (hud_idle_running, the start state);
+# player_list = the player tab after its click or key D (r2_tab_military, r2_player_menu);
+# info = the "?" tab (r2_tab_help); main_menu = the gears tab or key O (r2_options). Positions by
+# matching each ACCESS id on its shot after the RGB565 reduction: exact = fraction of the
+# texture's opaque pixels equal; sad = mean abs difference per channel over the region named.
+# Not drawn here (UI-TABS-1): the plank's name, every figure and list row, the list's player
+# planks (DIPLISTE_UNTERGRUND 1137/1139 per row) and the diplomacy cluster (DIPACTIONS_*, only
+# half of their pixels match), the info plank's settlement emblem; the player list's background is
+# not identified (OQ-621). The crest is this session's player's shield (GRPLAYERSCHILDER + 4);
+# which index a player gets is OQ-621.
+element player_bk pos 779 301 size 245 468 file toolgfx/fenster.tex access SPIELER_BILANZ_BK tex_id 1128 anchor right panel player method sprite-565 shot hud_idle_running
+element player_subtab_0 pos 762 303 size 42 46 file toolgfx/fenster.tex access VIEWINFOPIELERTAB tex_id 1185 anchor right panel player method sprite-565 shot hud_idle_running
+element player_subtab_1 pos 762 349 size 42 46 file toolgfx/fenster.tex access VIEWINFOPIELERTAB tex_id 1186 anchor right panel player method sprite-565 shot hud_idle_running
+element player_subtab_2 pos 762 395 size 42 46 file toolgfx/fenster.tex access VIEWINFOPIELERTAB tex_id 1188 anchor right panel player,player_list method sprite-565 shot hud_idle_running
+element player_subtab_3 pos 762 441 size 42 46 file toolgfx/fenster.tex access VIEWINFOPIELERTAB tex_id 1190 anchor right panel player,player_list method sprite-565 shot hud_idle_running
+element player_subtab_4 pos 762 487 size 42 46 file toolgfx/fenster.tex access VIEWINFOPIELERTAB tex_id 1192 anchor right panel player,player_list method sprite-565 shot hud_idle_running
+element player_list_subtab_0 pos 762 303 size 42 46 file toolgfx/fenster.tex access VIEWINFOPIELERTAB tex_id 1184 anchor right panel player_list method sprite-565 shot r2_player_menu
+element player_list_subtab_1 pos 762 349 size 42 46 file toolgfx/fenster.tex access VIEWINFOPIELERTAB tex_id 1187 anchor right panel player_list method sprite-565 shot r2_player_menu
+element player_list_up pos 871 300 size 87 20 file toolgfx/fenster.tex access VIEWINFOSCHIFF_SCROLL_PFEILE tex_id 1007 anchor right panel player_list method sprite-565 shot r2_player_menu
+element player_list_down pos 871 494 size 84 25 file toolgfx/fenster.tex access DIPLISTE_SCROLL_PFEILE tex_id 1143 anchor right panel player_list method sprite-565 shot r2_player_menu
+element player_crest pos 982 249 size 42 54 file toolgfx/fenster.tex access GRPLAYERSCHILDER tex_id 1407 anchor right panel player,player_list method sprite-565 shot r2_player_menu
+element info_bk pos 779 301 size 245 468 file toolgfx/fenster.tex access STADT_BILANZ_BK tex_id 677 anchor right panel info method sprite-565 shot r2_tab_help
+element info_subtab_0 pos 762 303 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 662 anchor right panel info method sprite-565 shot r2_tab_help
+element info_subtab_1 pos 762 349 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 663 anchor right panel info method sprite-565 shot r2_tab_help
+element info_subtab_2 pos 762 395 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 665 anchor right panel info method sprite-565 shot r2_tab_help
+element info_subtab_3 pos 762 441 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 667 anchor right panel info method sprite-565 shot r2_tab_help
+element info_subtab_4 pos 762 487 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 669 anchor right panel info method sprite-565 shot r2_tab_help
+element info_subtab_5 pos 762 533 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 671 anchor right panel info method sprite-565 shot r2_tab_help
+element info_subtab_6 pos 762 579 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 673 anchor right panel info method sprite-565 shot r2_tab_help
+element info_subtab_7 pos 762 625 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 675 anchor right panel info method sprite-565 shot r2_tab_help
+element info_build_stop pos 858 674 size 112 60 file toolgfx/fenster.tex access VIEWINFOSTADTAUSBAUSTOP tex_id 678 anchor right panel info method sprite-565 shot r2_tab_help
+element menu_bk pos 779 301 size 245 467 file toolgfx/fenster.tex access OPTION_BACKGROUND tex_id 1475 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_tab_0 pos 762 303 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1477 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_tab_1 pos 762 349 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1478 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_tab_2 pos 762 395 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1480 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_tab_3 pos 762 441 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1482 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_tab_4 pos 762 487 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1484 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_statistics pos 793 348 size 94 82 file toolgfx/fenster.tex access ADDON_SPIELERSTATISTIK tex_id 1580 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_help pos 936 455 size 64 55 file toolgfx/fenster.tex access OPTION_HELPPLAYER tex_id 1488 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_balance pos 934 533 size 69 61 file toolgfx/fenster.tex access OPTION_BILANZ tex_id 1486 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 anchor right panel main_menu method sprite-565 shot r2_options

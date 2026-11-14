@@ -77,7 +77,8 @@
 //                         outside the window); ldrag_px X0 Y0 X1 Y1: press at (X0, Y0), move to
 //                         (X1, Y1) with the button held, release there (UI-WINDOW-1 fix round R1)
 //   focus-lost            the window loses focus (SDL_EVENT_WINDOW_FOCUS_LOST)
-//   key f|u|h|tab|enter|lbracket|rbracket|f5|t|esc|b|n|p|x   (the opening's keys, and the tool's)
+//   key f|u|h|tab|enter|lbracket|rbracket|f5|t|esc|b|n|p|x|d|o   (the opening's keys, the tool's,
+//                         and the HUD tabs' D and O)
 //   wait fact KEY OP VALUE | expect fact KEY OP VALUE   the window's named facts (the opening view,
 //                         the controls and the latest command's state): OP is ==, !=, >=, <=, >, <
 //                         (integers when both sides are) or `contains`. Facts: cities, gold, mode,

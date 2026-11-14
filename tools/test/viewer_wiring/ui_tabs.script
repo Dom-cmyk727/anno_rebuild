@@ -1,0 +1,53 @@
+# UI-WINDOW-1 fix round R2 (R2-1): the four tabs are switches (docs/re/ui.md 5.3), at 1024 x 768.
+# Start: the player tab's own panel (hud_idle_running). Bust (870 212) -> the player list, "?"
+# (931 212) -> info, gears (992 212) -> main menu; a click on the selected tab changes nothing;
+# keys D and O open the player list and the main menu. Construction (809 212) opens the menu; a
+# cell armed there is turned off when another tab is chosen; Esc returns to the last panel. A
+# click inside a panel is taken (no selection click) and does nothing.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+expect fact ui.tab == player
+click_px 870 212
+wait frames 3
+expect fact ui.tab == player_list
+click_px 931 212
+wait frames 3
+expect fact ui.tab == info
+click_px 992 212
+wait frames 3
+expect fact ui.tab == main_menu
+click_px 992 212
+wait frames 3
+expect fact ui.tab == main_menu
+key d
+wait frames 3
+expect fact ui.tab == player_list
+key o
+wait frames 3
+expect fact ui.tab == main_menu
+click_px 900 600
+wait frames 3
+expect fact ui.tab == main_menu
+expect fact selection.clicks == 0
+click_px 809 212
+wait frames 3
+expect fact ui.tab == construction
+click_px 809 212
+wait frames 3
+expect fact ui.tab == construction
+click_px 833 330
+wait frames 5
+expect title build 501
+click_px 931 212
+wait frames 5
+expect fact ui.tab == info
+expect title-lacks build 501
+key b
+wait frames 3
+expect fact ui.tab == construction
+key esc
+wait frames 3
+expect fact ui.tab == info
+quit

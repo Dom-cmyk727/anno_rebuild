@@ -40,6 +40,12 @@ std::optional<SDL_Keycode> keycode(const std::string& name) {
     if (name == "x") {
         return SDLK_X;
     }
+    if (name == "d") {
+        return SDLK_D; // UI-WINDOW-1 fix round R2: the player list's key
+    }
+    if (name == "o") {
+        return SDLK_O; // UI-WINDOW-1 fix round R2: the main menu's key
+    }
     if (name == "esc") {
         return SDLK_ESCAPE;
     }

@@ -525,6 +525,19 @@ top 768 rows, the bar's first 746 pixels, the question mark) and goes to the con
 the tabs there; the construction tab opens the menu (as key B does) and closes it (as Esc does);
 closing the menu either way also turns off a building tool a cell armed.
 
+### 5.3 The four tabs (UI-WINDOW-1 fix round R2, 2026-11-14)
+
+The tabs are switches: one is always selected (`MAINTAB` `frame_selected`, the others
+`frame_idle`). From the GOG shots (section 1 rows 1 and 6-9, section 7): the start state is the
+player tab with its overview panel (`hud_idle_running`); the bust tab and key **D** show the player
+list (`r2_tab_military`, `r2_player_menu`); "?" shows the info panel (`r2_tab_help`); the gears tab
+and key **O** the main menu (`r2_options`, `options_key_O`); the construction tab and key **B** the
+construction menu. Each panel's static chrome is in `data/ui/hud.txt` (`panel`), each element
+matched by ACCESS id on its shot (exact after the RGB565 reduction, or mean abs 0.00-0.35 for the
+two big backgrounds); `tools/test/ui_panels_compare.py` checks them. Names, figures, list rows,
+the diplomacy cluster and the info emblem are not drawn (UI-TABS-1). Unproven parts (a second
+click on a tab, Esc's return, the list background, the crest per player): OQ-621.
+
 ## 6. `data/ui/` layout format
 
 Documented in [`data/ui/README.md`](../../data/ui/README.md). Derived facts only: ids, coordinates, sizes, file names, ACCESS names, frame/segment indices, `Texte.dat` section+index, Anlagen type ids, hotkey codes. No pixels, no English/German UI strings, no screenshots.

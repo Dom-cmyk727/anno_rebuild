@@ -563,6 +563,11 @@ class Viewer {
     bool construction_handle(const SDL_Event& e);
     /// Closes the menu (the tab or Esc) and turns an armed building tool off with it.
     void construction_close();
+    /// UI-WINDOW-1 fix round R2: the panel the right chrome shows while the construction menu is
+    /// closed (UiMockScreen: Hud = the player overview, the start state; PlayerList; Info;
+    /// MainMenu), and the switch to one of them (closing the construction menu first).
+    UiMockScreen hud_screen_ = UiMockScreen::Hud;
+    void select_hud_tab(UiMockScreen screen);
     /// UI-WINDOW-1: the UI scale setting (ViewerHooks::ui_scale; nullopt = the original 1:1) and
     /// the layer's placement for the current drawable size (ui_transform.hpp).
     std::optional<float> ui_scale_;
@@ -1466,6 +1471,13 @@ void Viewer::opening_apply(const UiResult& result) {
     dirty_ = true;
 }
 
+void Viewer::select_hud_tab(UiMockScreen screen) {
+    if (construction_menu_open_) {
+        construction_close();
+    }
+    hud_screen_ = screen;
+}
+
 void Viewer::construction_close() {
     construction_menu_open_ = false;
     construction_open_category_.clear();
@@ -1499,6 +1511,19 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         }
         if ((e.key.key == SDLK_ESCAPE) && construction_menu_open_) {
             construction_close();
+            return true;
+        }
+        // UI-WINDOW-1 fix round R2: key D opens the player tab's list and key O the main menu,
+        // as their tabs do (docs/re/ui.md section 1 rows 8 and 9: r2_player_menu and the
+        // military tab show the same panel; key O and the gears tab the same options).
+        // Only in the classic surface: `--ui dev` keeps D as a pan key (ADR 0004 R2).
+        const bool classic = hooks_ != nullptr && hooks_->ui == UiSurface::Classic;
+        if (classic && e.key.key == SDLK_D) {
+            select_hud_tab(UiMockScreen::PlayerList);
+            return true;
+        }
+        if (classic && e.key.key == SDLK_O) {
+            select_hud_tab(UiMockScreen::MainMenu);
             return true;
         }
         return false;
@@ -1539,19 +1564,34 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         return true; // the parts a larger layer adds (filler, the bar's added span): no buttons
     }
     const double px = hit.ref->first, py = hit.ref->second;
-    // UI-WINDOW-1: the construction tab (hud.txt `tab_construction`, hotkey B) opens the menu
-    // when it is closed (as key B does) and closes it when it is open (as Esc does).
-    if (const UiElement* tab = construction_menu_->hud().element("tab_construction");
-        tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
-        px < tab->pos_x + static_cast<double>(tab->size_w) && py >= tab->pos_y &&
-        py < tab->pos_y + static_cast<double>(tab->size_h)) {
-        if (construction_menu_open_) {
-            construction_close();
-        } else {
+    // UI-WINDOW-1 fix round R2: the four tabs are switches (docs/re/ui.md 5.3): construction
+    // opens the construction menu (as key B), the bust the player list (as key D), "?" the info
+    // panel, the gears the main menu (as key O). A click on the tab already selected changes
+    // nothing (OQ-621). Leaving the construction menu for another tab turns an armed tool off.
+    const auto inside_tab = [&](const char* name) {
+        const UiElement* tab = construction_menu_->hud().element(name);
+        return tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
+               px < tab->pos_x + static_cast<double>(tab->size_w) && py >= tab->pos_y &&
+               py < tab->pos_y + static_cast<double>(tab->size_h);
+    };
+    if (inside_tab("tab_construction")) {
+        if (!construction_menu_open_) {
             construction_menu_open_ = true;
             construction_open_category_ = "public";
             construction_placement_open_ = false;
         }
+        return true;
+    }
+    if (inside_tab("tab_military")) {
+        select_hud_tab(UiMockScreen::PlayerList);
+        return true;
+    }
+    if (inside_tab("tab_help")) {
+        select_hud_tab(UiMockScreen::Info);
+        return true;
+    }
+    if (inside_tab("tab_options")) {
+        select_hud_tab(UiMockScreen::MainMenu);
         return true;
     }
     if (!construction_menu_open_) {
@@ -2348,6 +2388,11 @@ void Viewer::script_tick() {
     // facts either; removing the extra call closes the gap structurally, not by timing.
     st.facts["selection.clicks"] = std::to_string(selection_clicks_);
     st.facts["ui.press"] = ui_press_ ? "1" : "0";
+    st.facts["ui.tab"] = construction_menu_open_                   ? "construction"
+                         : hud_screen_ == UiMockScreen::PlayerList ? "player_list"
+                         : hud_screen_ == UiMockScreen::Info       ? "info"
+                         : hud_screen_ == UiMockScreen::MainMenu   ? "main_menu"
+                                                                   : "player";
     st.facts["camera.pans"] = std::to_string(pans_);
     st.facts["selection.pending"] = selection_.pending ? "1" : "0";
     st.facts["selection.selected"] = selection_.selected ? "1" : "0";
@@ -2893,7 +2938,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
 Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
                                                                  construction_open_category_}
-                                                    : UiMockSpec{UiMockScreen::Hud, ""};
+                                                    : UiMockSpec{hud_screen_, ""};
     const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
     // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own member
     // comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment) - sim::kTon

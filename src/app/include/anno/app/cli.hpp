@@ -32,8 +32,11 @@ inline constexpr const char* kUsage =
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
     "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>] "
     "[--commands <file> [--replay-hashes <file>]] [--construction-menu on|off [--layout <dir>]] "
-    "[--ui classic|dev] "
+    "[--ui classic|dev] [--ui-scale <1.0-2.0>] "
     "(--play)\n"
+    "(--ui-scale: the History Edition's interface scale rule instead of the original's 1:1 UI "
+    "(the default): 1.0 at 1200 window lines or fewer, else the setting stepped down by 0.1 until "
+    "the UI keeps 1024 x 768 pixels, stretched bilinearly to the window)\n"
     "(--rules original|living: --play and --ship-start only; original (default) is each start's "
     "own rules unchanged; living adds house_updates=true and city_booking=true on top of them. "
     "--city-booking on|off, given together with --rules, sets that one field after the profile. "
@@ -230,13 +233,16 @@ struct Args {
     /// ConstructionMenu before the developer tool, with the grid defaulting open on the
     /// "public" category (no open/close key yet - R2/R3's switch and the category column are
     /// later work). Needs `--layout` (default "data/ui", the project's own checked-in directory,
-    /// resolved against the current working directory) at the window's reference resolution
-    /// (1024 x 768); a window of a different size leaves the menu inactive rather than guess a
-    /// scale (OQ: R3 is still open).
+    /// resolved against the current working directory). Drawn and clickable at any window size
+    /// since UI-WINDOW-1 (`ui_scale`, ui_transform.hpp).
     bool construction_menu = false;
     std::optional<std::filesystem::path> layout;
     /// --ui classic|dev (--play only; ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION).
     UiSurface ui = UiSurface::Classic;
+    /// --ui-scale <s> (--play only; UI-WINDOW-1, ADR 0004 R3, owner decision 2026-11-14):
+    /// nullopt is the original's 1:1 UI (the default); a value in [1.0, 2.0] (the History
+    /// Edition's slider range) applies HE's scale rule (ui_transform.hpp).
+    std::optional<float> ui_scale;
 };
 
 /// Parses option/value pairs; nullopt for anything invalid (print kUsage,

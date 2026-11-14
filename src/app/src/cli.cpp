@@ -127,6 +127,12 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             } else {
                 return std::nullopt;
             }
+        } else if (a == "--ui-scale") {
+            const auto s = number<float>(v);
+            if (!s || !(*s >= 1.0F) || !(*s <= 2.0F)) {
+                return std::nullopt;
+            }
+            out.ui_scale = *s;
         } else if (a == "--layout") {
             out.layout = utf8_path(v);
         } else if (a == "--commands") {
@@ -307,7 +313,7 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
     if (!out.png && (out.zoom_factor != 1.0 || out.resample)) {
         return std::nullopt;
     }
-    if (out.construction_menu && !out.play) {
+    if ((out.construction_menu || out.ui_scale) && !out.play) {
         return std::nullopt;
     }
     if (out.layout && !out.construction_menu) {

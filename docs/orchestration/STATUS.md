@@ -20,7 +20,8 @@ says who is doing what, where the work is, and what it waits on.
   **SAVE-SECTIONS-1b READY, ACCEPTED** (2026-11-14, head `4c1685fa`, CI green;
   [review](reviews/2026-11-14-save-sections-1b-review.md)): the extension tag registry (state.md §9.8), the
   compile-time registration, and the proof that an extension moves no pin. Landing waits for its game-file run
-  and the owner's OK. **Next on the Mac:** FISHER-1a.
+  and the owner's OK. **Next on the Mac:** [FISHER-1a](tasks/fisher-1a.md) (written 2026-11-14), released when the
+  owner pastes its prompt.
 - **Zoom session for the owner** (2026-11-14): fast zooming on `lan5`, enhanced water, measured
   ([findings](../render/zoom-session-2026-11-14.md)), evidence for ZOOM-SMOOTH-1.
 - **[ZOOM-SMOOTH-1](tasks/zoom-smooth-1.md) WRITTEN** for the Windows executor (owner: "Yes, write it"), released

@@ -13,7 +13,8 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-SELECT = r'^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_)'
+REGEN_SELECT = r'^(anno_sim_tests\.|anno_sim_replay_)'
+SELECT = r'^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$)'
 RECORDINGS = ('goldens.txt', 'scenario_corpus.txt', 'loop_checkpoints.txt',
               'g2.log', 'g3.log', 'g4.log', 'g5.log', 'g6.log', 'm2_found.log',
               'm2_found_wrong.log', 'cargo_load.log', 'cargo_load_wrong.log',
@@ -59,11 +60,11 @@ def run(args, execute=subprocess.run):
     if recording:
         env['ANNO_UPDATE_GOLDEN'] = '1'
     jobs = args.jobs if args.jobs is not None else (1 if recording else 4)
-    env['CMAKE_BUILD_PARALLEL_LEVEL'] = str(jobs)
     log = args.log or ROOT / 'cache/gates' / f'pins-{args.command}-{time.time_ns()}.log'
+    selection = REGEN_SELECT if recording and args.select == SELECT else args.select
     command = [sys.executable, '-I', str(ROOT / 'tools/test/run_selected.py'),
                '--build-dir', str(args.build_dir or ROOT / 'build/dev'),
-               '--target', 'pins_checks', '--select', args.select,
+               '--target', 'pins_checks', '--select', selection,
                '--require-test', 'pins_contract', '--skip-auto-contract',
                '--jobs', str(jobs), '--timeout', str(args.timeout), '--log', str(log)]
     if args.config:
@@ -79,8 +80,8 @@ def run(args, execute=subprocess.run):
     for name in moved:
         old = before.get(name)
         new = after.get(name)
-        print('pin ' + name + ': ' + ('missing' if old is None else f'{old[2]:016x}')
-              + ' -> ' + ('missing' if new is None else f'{new[2]:016x}'))
+        print('pin ' + name + ': ' + ('missing' if old is None else f'{old[0]} {old[1]} {old[2]:016x}')
+              + ' -> ' + ('missing' if new is None else f'{new[0]} {new[1]} {new[2]:016x}'))
     changed = [name for name in RECORDINGS if files_before[name][0] != files_after[name][0]]
     if recording:
         for name in RECORDINGS[1:]:
@@ -95,7 +96,7 @@ def run(args, execute=subprocess.run):
     print(f'PINS {args.command}: {"FAIL" if code else "PASS"}; {len(moved)} pins moved; '
           f'{len(changed)} fixture byte changes; '
           f'scope={"full" if args.select == SELECT else "partial"}; '
-          f'selection={args.select}; evidence={log}')
+          f'selection={selection}; evidence={log}')
     return code
 
 

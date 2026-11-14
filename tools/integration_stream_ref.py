@@ -125,7 +125,12 @@ def fixture():
         for name,(data,digest) in records().items())
 
 class Contracts(unittest.TestCase):
-    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8a00000045434f4e424b310005000000')
+    def test_identity_literal(self):
+        module=importlib.util.spec_from_file_location('identity_version',ROOT/'tools/sim_stream.py')
+        current=importlib.util.module_from_spec(module);module.loader.exec_module(current)
+        header=records()['header'][0]
+        self.assertEqual(header[:4],u32(current.STATE_HASH_VERSION))
+        self.assertEqual(header[4:].hex(),'45434f4e424b310005000000')
     def test_sparse_registry_has_combined_actors(self):
         self.assertGreater(len(records()['figures'][0]),1000)
         self.assertNotEqual(records()['figures'][1],fnv(records()['figures'][0]))
@@ -145,7 +150,11 @@ class Contracts(unittest.TestCase):
             command=[sys.executable,'-I',str(Path(__file__).resolve()),'--fixture',str(path)]
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,0);self.assertIn('10 populated combined scopes agree',result.stdout)
-            path.write_text(fixture().replace('8a000000','89000000',1))
+            header=records()['header'][0]
+            wrong=bytes([header[0]^1])+header[1:]
+            changed=fixture().replace('header '+header.hex()+' ','header '+wrong.hex()+' ',1)
+            self.assertNotEqual(changed,fixture()) # prove the negative replacement applied
+            path.write_text(changed)
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
             path.unlink();result=subprocess.run(command,capture_output=True,text=True)

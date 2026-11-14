@@ -59,6 +59,15 @@ if __name__ == '__main__':
     without, with_table = digests()
     print('without %016x\nwith %016x' % (without, with_table))
     if '--check' in sys.argv:
-        ok = (without, with_table) == PINNED and without != with_table
+        try:
+            rows = S.goldens()
+            held = tuple(rows[name] for name in
+                         ('oracle_registry_highmap_absent', 'oracle_registry_highmap_present'))
+            ok = ((without, with_table) == PINNED == tuple(row[1] for row in held)
+                  and all(row[0] == S.STATE_HASH_VERSION for row in held)
+                  and without != with_table)
+        except (KeyError, OSError, ValueError) as error:
+            print('cannot compare named highmap pins:', error)
+            ok = False
         print('agree with the C++ pins' if ok else 'DISAGREE with the C++ pins')
         sys.exit(0 if ok else 1)

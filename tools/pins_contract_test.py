@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Pins CLI/orchestration contracts; recording uses private self-authored files only."""
+import ast
 import contextlib
 import importlib.util
 import io
@@ -15,6 +16,14 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('pins', ROOT / 'tools/pins.py')
 pins = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pins)
+
+
+def oracle_collisions(rows, tools):
+    values = {node.value for path in tools.glob('*.py')
+              for node in ast.walk(ast.parse(path.read_text(encoding='utf-8')))
+              if isinstance(node, ast.Constant) and type(node.value) is int}
+    return sorted(name for name, (_, _, value) in rows.items()
+                  if not pins.oracle_owned(name) and value in values)
 
 
 class Contract(unittest.TestCase):
@@ -58,8 +67,35 @@ class Contract(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0)
         code, out = self.run_private(execute)
         self.assertEqual(code, 0)
-        self.assertIn('pin self: 0000000000000001 -> 0000000000000002', out)
+        self.assertIn('pin self: PIN 138 0000000000000001 -> PIN 138 0000000000000002', out)
         self.assertEqual(out.count('pin self:'), 1)
+
+    def test_version_only_move_is_visible(self):
+        self.args.command = 'regen'
+        def execute(command, **kwargs):
+            self.path.write_text('self PIN 139 0000000000000001\n')
+            return subprocess.CompletedProcess(command, 0)
+        code, out = self.run_private(execute)
+        self.assertEqual(code, 0)
+        self.assertIn('PIN 138 0000000000000001 -> PIN 139 0000000000000001', out)
+
+    def test_regen_excludes_only_the_oracle_test_entries(self):
+        self.args.command = 'regen'
+        def execute(command, **kwargs):
+            selection = command[command.index('--select') + 1]
+            self.assertEqual(selection, pins.REGEN_SELECT)
+            self.assertNotIn('CMAKE_BUILD_PARALLEL_LEVEL', kwargs['env'])
+            return subprocess.CompletedProcess(command, 0)
+        self.assertEqual(self.run_private(execute)[0], 0)
+
+    def test_real_oracle_numeric_ownership_and_original_counterexample(self):
+        rows = pins.read_pins(ROOT / 'fixtures/synthetic/sim/current/goldens.txt')
+        self.assertEqual(oracle_collisions(rows, ROOT / 'tools'), [])
+        wrong = dict(rows)
+        for name in ('registry_highmap_absent', 'registry_highmap_present'):
+            wrong[name] = wrong.pop('oracle_' + name)
+        self.assertEqual(oracle_collisions(wrong, ROOT / 'tools'),
+                         ['registry_highmap_absent', 'registry_highmap_present'])
 
     def test_gate_failure_is_not_success(self):
         code, out = self.run_private(lambda *a, **k: subprocess.CompletedProcess(a[0], 7))

@@ -206,12 +206,13 @@ ANNO1503_GAME_DIR=/path/to/game/app python3 -I tools/pins.py regen --area sim
 
 `--build-dir` and `--config Release` support other configured builds. `pins_checks`
 builds only the sim tests and replay consumer. The default selection is the sim
-suite, replay CLI consumers and the two affected independent stream references;
+suite, replay CLI consumers and the independent stream/highmap comparisons;
 `pins_contract` is a required contract. It uses `run_selected.py` and retains the
 classified inventory/log under `cache/gates/`. No unrelated renderer suite runs.
 `--select REGEX` is an explicit **partial** diagnostic selection, not the full check.
 Check defaults to four jobs; regeneration to one, serializing replay/corpus writers.
-`--jobs` changes the check/build ceiling; regen requires one test job to avoid
+`--jobs` changes the check test ceiling; build parallelism follows CMake/the existing
+`CMAKE_BUILD_PARALLEL_LEVEL` environment, independently; regen requires one test job to avoid
 concurrent corpus writers. Admission control stays enabled. `check` clears inherited
 record mode; `regen` sets `ANNO_UPDATE_GOLDEN=1` and is refused under CI.
 
@@ -219,7 +220,7 @@ The existing `golden.hpp` writer updates changed self-baselines via a same-direc
 temporary file and atomic replacement, sorted by name. A per-file directory lock
 serializes writers with a bounded wait; an abandoned lock is reported, never removed
 by another writer. Malformed/duplicate pins fail instead of being silently discarded.
-The CLI prints each moved pin once (old/new value), then recordings actually written,
+The CLI prints each moved pin once (old/new stage, version and value), then recordings actually written,
 including those whose bytes remain identical. A failed gate remains nonzero.
 
 Oracle-owned pins (`oracle_*`, empty_world/empty_registry and the existing
@@ -234,3 +235,71 @@ only with local `ANNO_UPDATE_GOLDEN=1`, never under CI; it records before/after 
 Every other tracked/untracked source remains frozen. This is a recording verdict,
 not a substitute for a subsequent normal `check`. Public workflow contracts prove
 that an extra code mutation still fails, and that code paths cannot be excluded.
+
+### Deliberate state renumbering (PINS-1 fix1, 2026-11-14)
+
+This is an explicit identity change, not part of an ordinary regeneration. Do it
+only in a packet authorizing the bump. A rehearsal uses a separate scratch copy;
+never commit its changed versions or generated139 values for PINS-1. Full-line
+comments are preserved; inline comments after pin rows are not retained by the writer.
+
+1. **Keep the outgoing identity first.** Before rewriting current files, retain
+   `current/g2.log` and its embedded native initial save as
+   `fixtures/synthetic/sim/legacy<N>/g2.log` and `g2.save`. For the documented
+   replay-v4 envelope, the following read-only extraction uses no current decoder:
+
+   ```python
+   from pathlib import Path
+   import struct
+   base = Path('fixtures/synthetic/sim')
+   data = (base/'current/g2.log').read_bytes()
+   assert data[:4] == b'A3RP' and struct.unpack_from('<I', data, 4)[0] == 4
+   outgoing = struct.unpack_from('<I', data, 12)[0]
+   legacy = base / ('legacy' + str(outgoing))
+   legacy.mkdir(exist_ok=False)
+   (legacy/'g2.log').write_bytes(data)
+   at = 76  # magic, three u32, seven u64, PRNG timeline u32
+   count, = struct.unpack_from('<Q', data, at); at += 8
+   for _ in range(count):
+       size, = struct.unpack_from('<Q', data, at); at += 8 + size
+   size, = struct.unpack_from('<Q', data, at); at += 8
+   assert 0 < size <= len(data) - at
+   (legacy/'g2.save').write_bytes(data[at:at+size])
+   ```
+
+2. **Bump the C++ identity deliberately.** Change `kStateHashVersion` in
+   `world.hpp` and the five `CHECK(sim::kStateHashVersion == N)` tripwires in
+   config_test, ship_nav_state_test, resident_state_test, sim_test and ship_state_test.
+   Keep those tripwires literal. Refusal messages and only the four version bytes
+   of hand-written headers now follow the constant; no other expected byte derives
+   from the production writer.
+3. **Update the independent transcriptions separately.** Bump `STATE_HASH_VERSION`
+   in `tools/sim_stream.py`, then run its `--write-holds` and `--write-cargo-rules`.
+   Change the header's `u32(138)` in `tools/integration_stream_ref.py` (and its
+   docstring) to the newly authorized version, then run that script with `--write`.
+   These are explicitly reviewed oracle edits, never actions performed by pins.py.
+   The oracle contract cross-checks the version against sim_stream.py, keeps the
+   header tail literal, and mutates the actual version bytes for its negative control.
+4. **Hand-copy oracle-held expectations.** Run `python -I tools/sim_stream.py`
+   and copy its13 printed values and the new version into the corresponding
+   `current/goldens.txt` rows. Change only the version column of the other
+   oracle-owned rows (`oracle_core_*`, `oracle_rng_table`,
+   `oracle_synthetic_registry`, `oracle_legacy_construction_registry`, and
+   `oracle_registry_highmap_absent/present`). Check the latter values with
+   `python -I tools/highmap_digest_ref.py --check`; never derive them from C++.
+5. **Regenerate self-baselines and recordings.** With the game files set, run
+   `python -I tools/pins.py regen --area sim` in the configured build (or specify
+   `--build-dir`/`--config`). Regen selects the sim and replay tests, excluding
+   standalone oracle comparisons until recording has updated the corpus header.
+   It still refuses any oracle-owned pin mismatch inside a sim test. Its summary
+   shows `stage version value` on both sides, including version-only changes.
+6. **Extend the boundary tests.** Add the actual `legacy<N>/g2.save` and `g2.log`
+   to the newest-predecessor case in `integration_identity_test.cpp`, keeping
+   older predecessors. Add N to that case's explicit mutated-version controls and
+   update its descriptive identity/control name. Assert the native's exact old
+   version refusal and replay's state-identity refusal, beside the new valid control.
+7. **Finish with check.** Run `python -I tools/pins.py check` with the same game
+   files/build. Check retains population_oracles_agree, integration_stream_reference_*
+   and highmap_digest_reference_agrees. It must end with zero failures; quote each
+   COUNTS/VERDICT line, distinguish skips, and retain source/diff, log hashes and
+   the moved-pin/recorded-file counts. A successful regen alone is not acceptance.

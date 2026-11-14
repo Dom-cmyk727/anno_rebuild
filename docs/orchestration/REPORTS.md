@@ -9961,3 +9961,71 @@ Decisions and reasoning:
 NOT_RUN:18 opt-in measurements/soaks, local MSVC/WSL, full platform gates; no reviewer subagents per packet.
 Unaffected engine/render/app suites reused from base; no linked engine implementation changed.
 QUESTIONs: none in scope. SAVE-SECTIONS-1/139 and historical fixture trimming remain separate packets.
+
+## PINS-1 fix round1 — oracle ownership and rehearsed renumbering (2026-11-14)
+
+Branch task/PINS-1, starting95ce43a8; review/owner rules read on board6ea14634.
+No rebase/merge/main push; no reviewer agents. Orchestrator re-review pending.
+F1.1: both registry_highmap names now oracle_registry_highmap_absent/present; values unchanged.
+F1.2: highmap --check requires computed == retained independent PINNED == named rows, plus version.
+F1.3: AST scan of all tools/*.py finds exactly those2 ordinary collisions before fix, none after;
+  pins_contract recreates the original misfiling as a negative control; corrupt named-row probe exits1.
+F1.4: both literal-inventory rows now name the oracle owner and refusal policy.
+F2.1: nine refusal messages derive only the current build number; refused identities stay literal.
+F2.2: only4 version bytes derive from kStateHashVersion in the2 handwritten headers/log frame;
+  other bytes/wire versions remain hand-written; all5 deliberate version tripwires stay literal.
+F2.3: default regen selects sim/replay only; check keeps population, integration and highmap oracles.
+F2.4: moved-pin summaries show old/new stage, version and value; version-only contract added.
+F2.5: README has7 ordered steps: preserve legacyN first, bump/tripwires, update oracle programs,
+  copy13 printed roots and oracle versions, regen, extend actual predecessor boundaries, then check.
+F2.6: scratch `/private/tmp/pins-1-fix1-dry139`, HEAD95ce43a8, all139 edits UNCOMMITTED.
+  Rehearsal moved42 self-pins (38 values/4 version-only), not44: F1 makes2 more oracle-owned.
+  21 oracle rows updated explicitly (13 printed values +8 version columns); no C++ oracle generation.
+  13 non-pin recordings rewritten;14 declared files changed including goldens.txt. Legacy138 preserved.
+  Initial139 check exposed2 additional hardcoded8a expectations inside the oracle contract itself;
+  version now cross-checks sim_stream, tail stays literal, negative header mutation must apply.
+Owner-authorized exception: sandbox EPERM to127.0.0.1:47631 prevented corpus admission;
+  owner explicitly approved stopping only3 named children. First waited34:21;994 outcomes preserved.
+  Parent gate/other jobs untouched. Original3 remain INCOMPLETE, never passes; each host rerun alone
+  used --jobs1 with unchanged admission/budgets. PIDs/reason/authorization: stopped-blocked.json.
+Raw evidence below lives under cache/pins-1-fix1/ (scratch logs copied byte-for-byte).
+Each required pins_contract printed the following exact pair (also preserved per gate):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+changed-01.log sha256=a53578f00f006877bd66a220911e2cca32dc447ab83eb043d251ec0e07448e36
+VERDICT: FAIL build failed; no selection executed
+changed-02.log sha256=a689cf742c28d1445d39b86c4718dee73c6f073c8f583d79a032d6cd7a6efafc
+COUNTS: selected=15 executed=15 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+oracles-138-01.log sha256=c68c0b7df3ccb8df1070c4456801b7d458aeeb8fcc666ab43b8dfa5db6a998b9
+COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+dry-regen-01.log sha256=1c84945f95e5b8032d2caef79bb879d39bd033544e6daab1c2252a3b411bfd7f
+COUNTS: selected=1658 executed=1637 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=3 sanitizer_lines=0
+VERDICT: FAIL incomplete or contradictory test evidence
+dry-check-01.log sha256=4cb9934bf5e59be1ee30253b8a6d7f9362166052e5bf2011b7721e7a076391fd
+COUNTS: selected=1662 executed=1643 failed=1 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+dry-check-02.log sha256=00e7aae247e1b758cde688dbfb9627d75e57ef569afb56156b948f3d50c6677b
+COUNTS: selected=1662 executed=1644 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+Isolated retries01/02/03 each print this exact pair twice (required contract, then admitted case):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+dry-refused-retry-01.log sha256=cc945a0f4e1e637a85b958704bb6eb9d7bd54ef983833baa4e0631a5d98ec66c
+dry-refused-retry-02.log sha256=321befb5e8c453a997828906347d5d288e1dcb3fb2d51dcb6e8576238c581b11
+dry-refused-retry-03.log sha256=edce8c0ed1401211881e3ad6974845828905eb961de4a89a23cd7fa1ce2d6bf0
+dry-final.diff sha256=b7efef7be67387596a979621bc7fa87e99f99925cceb998af1be7405db56ff2b
+All log/source/predecessor hashes: evidence-manifest.json; exact full quotes: gate-quotes.txt.
+changed-01 failed before selection (namespace alias); fixed changed-02. Scratch configure01 failed
+  from an unnecessary GPU fetch; configure02 explicitly GPU/viewer OFF. Both attempts retained.
+Owned138 branch:63 rows retain original stages/versions/values, except the2 F1 names; other current files equal95.
+Final-head check is run after this frozen commit: final-head-check-01.log; terminal quotes/hash and CI in handoff.
+Decisions and reasoning:
+- Keep independent PINNED but link it to named rows; numeric-collision guard prevents the same class of mistake.
+- Preserve incomplete/refused attempts and rerun only unadmitted work; do not disable admission or restart valid work.
+- Oracle self-contract repair justified a corrected full139 end-to-end check; the first failure remains recorded.
+- Optional fix accepted: CMAKE_BUILD_PARALLEL_LEVEL is no longer forced to CTest jobs; caller controls compilation.
+NOT_RUN: local MSVC/WSL,18 opt-in measurements/soaks; no139 commit, extension mechanism or historical trim.
+QUESTIONs: none outstanding; owner-approved admission exception is fully recorded above.
+**READY FOR REVIEW.**

@@ -2032,9 +2032,9 @@ TEST_CASE("registry digest: a HIGHMAP table (stream 135) matches the independent
     const auto goods = sim::original_goods();
     const auto classes = sim::original_class_table();
     // no table: the digest is the one a stream-134 build computed (nothing is added)
-    CHECK(anno::test::pin_matches("registry_highmap_absent",
+    CHECK(anno::test::pin_matches("oracle_registry_highmap_absent",
                                   sim::TypeRegistry::digest_of({&t, 1}, goods, classes)));
     t.highmap = {1, 2, 3, 4};
-    CHECK(anno::test::pin_matches("registry_highmap_present",
+    CHECK(anno::test::pin_matches("oracle_registry_highmap_present",
                                   sim::TypeRegistry::digest_of({&t, 1}, goods, classes)));
 }

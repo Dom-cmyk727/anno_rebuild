@@ -107,8 +107,8 @@ Seeds and FNV primitive constants deliberately stay independent of regenerated s
 | src/sim/tests/types_test.cpp:1585 | `0x96fbf9c80cb07372` | removed_comment | Obsolete historical digest in comment; no active assertion. |
 | src/sim/tests/types_test.cpp:1928 | `0x986b10f94d3725b4` | removed_comment | Obsolete historical digest in comment; no active assertion. |
 | src/sim/tests/types_test.cpp:1929 | `0xf0c98731e34fca02` | moved | Named simulation/registry/replay pin; oracle-owned names remain read-only. |
-| src/sim/tests/types_test.cpp:2033 | `0x7adcb2c0d02b1a70` | moved | Named simulation/registry/replay pin; oracle-owned names remain read-only. |
-| src/sim/tests/types_test.cpp:2035 | `0x4cbafff0a755efe4` | moved | Named simulation/registry/replay pin; oracle-owned names remain read-only. |
+| src/sim/tests/types_test.cpp:2033 | `0x7adcb2c0d02b1a70` | moved | `oracle_registry_highmap_absent`; independently held by highmap_digest_ref.py; record mode refuses changes. |
+| src/sim/tests/types_test.cpp:2035 | `0x4cbafff0a755efe4` | moved | `oracle_registry_highmap_present`; independently held by highmap_digest_ref.py; record mode refuses changes. |
 | src/sim/tests/world_state_test.cpp:466 | `0xffffffffffffffff` | kept | Fixed archive/codec field value, sentinel, id or its explanatory comment; tests byte layout/range, not a measured hash. |
 | src/sim/tests/world_state_test.cpp:482 | `0xffffffffffffffff` | kept | Fixed archive/codec field value, sentinel, id or its explanatory comment; tests byte layout/range, not a measured hash. |
 | src/sim/tests/world_state_test.cpp:495 | `0xffffffffffffffff` | kept | Fixed archive/codec field value, sentinel, id or its explanatory comment; tests byte layout/range, not a measured hash. |

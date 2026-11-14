@@ -28,11 +28,11 @@ oracle_core_default PIN 138 977a5cb1c2ae725d
 oracle_core_step1 PIN 138 65e3e2696c0396b0
 oracle_core_step1000 PIN 138 c3ae91a5ed6087ff
 oracle_legacy_construction_registry PIN 138 1bd52ba547c3878a
+oracle_registry_highmap_absent PIN 138 7adcb2c0d02b1a70
+oracle_registry_highmap_present PIN 138 4cbafff0a755efe4
 oracle_rng_table PIN 138 1bf8daace9f69fab
 oracle_synthetic_registry PIN 138 77d2dd9ed3f484b1
 p1_g7_create P1 138 874b12dfc5158a93
-registry_highmap_absent PIN 138 7adcb2c0d02b1a70
-registry_highmap_present PIN 138 4cbafff0a755efe4
 registry_plain PIN 138 f0c98731e34fca02
 s10_g2_end S10 138 1e0b7c338f4fae77
 s11_g3_checkpoints S11 138 456d52e53c95d300

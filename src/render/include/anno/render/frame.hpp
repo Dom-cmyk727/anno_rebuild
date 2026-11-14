@@ -520,6 +520,41 @@ class FrameRenderer {
     bool ships_ = true;
 };
 
+/// Chunk worker threads from the hardware's own count: three quarters of the cores (below
+/// normal priority, ChunkWorkers::run), floored at 1. The viewer and bench_frame's
+/// --zoom-sweep share this (ZOOM-SMOOTH-1 step 1, review finding B1) so a proof's worker
+/// count cannot drift from what the window the proof stands in for actually runs; before
+/// this the sweep used (threads + 1) / 2 against the viewer's hw * 3 / 4.
+[[nodiscard]] inline std::size_t chunk_worker_threads(std::size_t hw) {
+    return std::max<std::size_t>(1, hw * 3 / 4);
+}
+
+/// What the viewer and a proof both set on a FrameRenderer before the first update_chunks,
+/// from one struct and one function (apply_frame_config), so a proof cannot omit a knob the
+/// window sets (ZOOM-SMOOTH-1 step 1, review finding B1): before this the sweep set none of
+/// these.
+struct FrameConfig {
+    /// FrameRenderer::prewarm_far_levels.
+    bool prewarm_far_levels = false;
+    /// FrameRenderer::resident_level_chunks (FrameRenderer's own default restated here so a
+    /// caller that only wants to set prewarm_far_levels does not reset it by omission).
+    std::size_t resident_level_chunks = 16;
+};
+
+/// Applies `cfg` to `fr`.
+void apply_frame_config(FrameRenderer& fr, const FrameConfig& cfg);
+
+/// The scene point (of the group `fr` renders) that a zoom at screen-pixel anchor offset
+/// (ax, ay from the window's centre — what ZoomState::anchor_x/y and the viewer's cursor
+/// offset both already are) would keep fixed, for FrameRenderer::zoom_anchor: cam + anchor
+/// / scale. One formula for the viewer's cursor anchor and a proof's off-centre anchor
+/// (ZOOM-SMOOTH-1 step 1, review finding B1): before this the sweep never set zoom_anchor
+/// at all, so its proofs could not see the zoom-out ring this packet adds (step 4).
+[[nodiscard]] inline std::pair<double, double>
+zoom_anchor_at(double cam_x, double cam_y, double ax, double ay, double scale) {
+    return {cam_x + ax / scale, cam_y + ay / scale};
+}
+
 /// The rectangle of view's size at group `to` centred on the scene point
 /// that `view` centres on at group `from`.
 Rect zoomed_view(Rect view, std::size_t from, std::size_t to,

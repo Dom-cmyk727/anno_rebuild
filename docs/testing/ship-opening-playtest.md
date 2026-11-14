@@ -122,7 +122,12 @@ Look at a Kontor on a coast (your founded one, or `--view Scenes/0100Kampagne01/
 6. Your own case, at the ship-start Kontor `(255,138)` (candidate A, seat 0): depth off/on and shore 16.5/26.5, each
    at the same camera position, in `C:\Users\altin\Pictures\anno-review\DEPTH-INTEGRATE-1\`
    (`kontor_depth-on_shore-26.5_default.png` is this build's own default). Look at where the piles meet the water and
-   where the land-side and left walls meet the ground, as you asked.
+   where the land-side and left walls meet the ground, as you asked. **SHORE-2 fix round 1 (F5):** at this exact
+   spot the before/after pictures differ (diff 1,138 px in a bbox around the shoreline,
+   `owner_spot_255_138_before.png`/`_after.png` and the cropped pair in
+   `C:\Users\altin\Pictures\anno-review\SHORE-2\`), but neither shows visible stair-stepping by eye — the sea here
+   does not cross a chunk boundary at a sharp angle. The wide-beach sample used for the general before/after in item 5
+   is a better case for seeing the old fixed-size steps; this spot is not.
 
 ## Known limits (say so rather than guess)
 

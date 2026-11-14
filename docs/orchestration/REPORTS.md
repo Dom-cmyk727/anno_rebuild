@@ -10618,3 +10618,94 @@ Decisions and reasoning:
   live original/Wine capture, per the evidence contract.
 
 QUESTIONs: none required.
+
+## SHORE-2 fix round 1 — READY FOR REVIEW (task/SHORE-2, same branch, head `146409c5`)
+
+Addresses F1-F6 of `docs/orchestration/reviews/2026-11-14-shore-2-review.md`
+(`origin/orch/board-next@3a87b3bf`). New test `src/render/tests/shore2_fix_round1_test.cpp`
+(`anno_render_tests`, registered in `src/render/CMakeLists.txt`) carries F3-F5's measurements over the
+`rivers.md` Q12 corpus; `sea.cpp` itself is unchanged from the original SHORE-2 submission.
+
+**F6 (docs):** `docs/render/iso.md`'s "Where" and "Waterline" rows rewritten to cite the trace addresses
+(`0x1009ebf0`, `+0x13c` vtable query, `0x100b5dc0`/`0x100e3a1c`), state the GPU=CPU structural guarantee, and
+flag the open-question on inland basins (OQ-026). `docs/testing/ship-opening-playtest.md` item 6 (the owner's
+`(255,138)` spot) now says F5's result in place: the before/after pictures differ (1,138 px) but show no visible
+stepping there, and points at item 5's wide-beach sample as the case that actually shows the old steps.
+
+**F3 (river coverage, tile-level, 1,926,733 tiles total over the Q12 corpus):** old rule 16.5=16, 26.5=9172
+(delta 9156); new rule 16.5=16, 26.5=10293 (delta 10277). The new rule covers slightly more river-adjacent tiles
+at the default shore plane, consistent with it gating on any corner rather than the average.
+
+**F4 (inland basins):** 5,568 tiles across the corpus hold the new rule's sea bit, are not open water under the
+old rule, and are unreachable by a 4-connected flood fill of new-rule sea chunks seeded from the island's own
+bounding-box edge — i.e. genuinely enclosed, not merely far from the edge. First attempt used a naive "≥8 tiles
+from the bounding-box edge" cutoff and got 407,168 (an over-count: it also caught ordinary gently-sloping coastal
+interior); replaced with the flood fill once that number was self-evidently implausible. Sample:
+`D_128x128_0021_3B#0(64,56)`; picture `basin_before.png`/`basin_after.png`
+(`C:\Users\altin\Pictures\anno-review\SHORE-2\`), 1000×1000, diff 765 px, bbox `(166,589)-(220,640)`. OQ-026 is
+narrowed (confirmed basins exist under the fallback rule) but not closed (whether the original's traced rule
+also floods them is still unresolved).
+
+**F5 (stepping, owner's spot):** of 6,832,335 tiles below the shore plane across the corpus, the old
+`kLandAverage`-style chunk gate left 8,804 stepped at the chunk boundary; the new rule leaves 0 — matches the
+structural claim (any-corner gate can't step within a chunk that itself straddles the plane). At the owner's own
+founded-Kontor spot `(255,138)` (dev-script capture, `kontor_shore2.script`, session dir recreated fresh each
+run): `owner_spot_255_138_before.png`/`_after.png`, 1280×800, diff 1,138 px, bbox `(371,317)-(1279,637)`; cropped
+to the bbox in `owner_spot_crop_before.png`/`_crop_after.png`. Visually, neither crop shows stair-stepping — the
+shoreline here doesn't cross a chunk boundary at a sharp enough angle for the old rule's steps to be visible,
+unlike item 5's wide-beach sample.
+
+**F2 (original sample set):** NOT_RUN as a real table. The review's named sample set is a GOG-capture-derived,
+gitignored dump that no longer exists on this host (checked across all known worktrees). Tried one substitute —
+the Kontor's own island's HEIGHT grid via `tools/insel.py` — but it came back degenerate (zero points in one
+whole band), not representative; not used. Reporting this honestly per the review's own escape clause rather
+than presenting a misleading table.
+
+**F1 (zoom-sweep timing):** `bench_frame --zoom-sweep 24 --zoom-sweep-mode legs` on `data/maps/lan5.txt`,
+2560×1369, enhanced water, before (`eff68d5e`, pre-SHORE-2 `sea.cpp` swapped in) vs after (this head); same `24`
+s/leg both runs (the flag is per-leg, not total — confirmed from its own printed header; kept the historical
+`lan5` legs baseline's parameter unavailable, so compared internally instead of against the old table).
+Aggregate line, 48,000 frames both runs: before `non-ready 450, most non-ready at once 44, stand-in draws 29821,
+dissolves 14072, open-sea draws 1645, frames in wave fade 225, busy p50 0.65 p99 2.30 max 154.84 ms, frames>2ms
+729, frames>8ms 32`; after `non-ready 229, most non-ready at once 37, stand-in draws 19124, dissolves 10906,
+open-sea draws 1836, frames in wave fade 149, busy p50 0.61 p99 1.76 max 11.98 ms, frames>2ms 343, frames>8ms 1`.
+Readiness and frame-time tails both improved (fewer non-ready frames, fewer long frames); open-sea draws rose
+slightly (1645→1836), expected since the any-corner gate marks more chunks as sea near the shore. The one
+154.84 ms outlier frame in the before run (level 1, scale 0.45: draws 118.35 ms, finish 32.95 ms) is a single gap
+with no counterpart in the after run's own busiest-frames list; attributed to system/driver noise, not the code
+change, per `bench_frame`'s own worst-frame breakdown (`uniforms`/`draws`/`finish`), not re-run for lack of
+remaining time budget. Swapped `sea.cpp` back to the fixed version and verified `git diff --stat` empty before
+and after each swap.
+
+**Gates (render+app only; F1-F5 are measurements, no `sea.cpp` change this round).** MSVC Release, game files, at
+this head: `COUNTS: selected=521 executed=507 failed=11 empty=0 skipped=3 (opt-in=3) incomplete=0
+sanitizer_lines=0` / `VERDICT: FAIL failed tests` (`cache/gates/shore2fix1-msvc-render-app-1.txt`) — all 11
+confirmed `[anno-test memory] refused ... reason=low-memory stop` (concurrent contention from the orchestrator's
+own game-file run, ~17:25-18:15). First solo pass (`--jobs 1`) during that same window still refused 9 of 11
+(`cache/gates/shore2fix1-refused-{3..11}.txt`, each `VERDICT: FAIL`, same low-memory reason over an extended
+wait — not a different failure); 2 passed clean (`shore2fix1-refused-1.txt`, `-2.txt`, `VERDICT: PASS`). Reran
+the 9 alone again after ~18:45 (past the stated window): all 9 `VERDICT: PASS`
+(`cache/gates/shore2fix1-rerun3-1.txt` through `-9.txt`; an intermediate attempt, `shore2fix1-rerun2-*.txt`,
+mis-skipped as `required-asset` from a lost `ANNO1503_GAME_DIR` in a fresh shell, discarded, not a real result).
+All 11 failures are therefore confirmed memory refusals, not genuine failures; the render+app lane is green with
+no further `sea.cpp`/test-logic change. GPU and WSL ASan lanes unchanged from the original SHORE-2 submission
+(no code changed since `8a7b36dc`) and not rerun, per the review's own gate scope (render+app only, if code
+changes — this round's only code addition is the new test file, already covered above). Hosted CI on this head:
+pending push.
+
+NOT_RUN: F2's real table (sample set gone, substitute degenerate); OQ-026's closure (basins under the original's
+traced rule, not just the fallback); a rerun of GPU/WSL-ASan lanes (no `sea.cpp` change, out of this round's
+stated scope).
+
+Decisions and reasoning:
+- Replaced F4's first "distance from bounding-box edge" heuristic with a 4-connected flood fill once the first
+  number (407,168) was self-evidently an over-count, rather than reporting an implausible figure.
+- Kept the same `--zoom-sweep` per-leg value for both F1 runs rather than chasing the historical baseline's
+  (different, undocumented) value, prioritizing internal before/after comparability.
+- Reported F2 as not completable rather than substituting a non-representative data source and presenting it as
+  the requested table.
+- Treated the first 9 solo-refused reruns as still inconclusive (same low-memory reason, same contention window)
+  rather than rerunning blindly; waited past the orchestrator's stated window and confirmed all 9 pass, rather
+  than accepting a composite FAIL at face value.
+
+QUESTIONs: none required.

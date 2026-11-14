@@ -433,8 +433,10 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
     for (std::size_t y = 0; y < iw_h; ++y) {
         for (std::size_t x = 0; x < iw_w; ++x) {
             const auto c = corners(out.heights, iw_w, iw_h, x, y);
-            if (static_cast<float>(c[0]) < shore_height || static_cast<float>(c[1]) < shore_height ||
-                static_cast<float>(c[2]) < shore_height || static_cast<float>(c[3]) < shore_height) {
+            if (static_cast<float>(c[0]) < shore_height ||
+                static_cast<float>(c[1]) < shore_height ||
+                static_cast<float>(c[2]) < shore_height ||
+                static_cast<float>(c[3]) < shore_height) {
                 out.sea_chunk[(y / 8) * cw + x / 8] = true;
             }
         }

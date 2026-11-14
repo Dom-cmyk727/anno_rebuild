@@ -176,12 +176,12 @@ element info_subtab_6 pos 762 579 size 42 46 file toolgfx/fenster.tex access VIE
 element info_subtab_7 pos 762 625 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 675 anchor right panel info method sprite-565 shot r2_tab_help
 element info_build_stop pos 858 674 size 112 60 file toolgfx/fenster.tex access VIEWINFOSTADTAUSBAUSTOP tex_id 678 anchor right panel info method sprite-565 shot r2_tab_help
 element menu_bk pos 779 301 size 245 467 file toolgfx/fenster.tex access OPTION_BACKGROUND tex_id 1475 anchor right panel main_menu method sprite-565 shot r2_options
+element menu_statistics pos 793 348 size 94 82 file toolgfx/fenster.tex access ADDON_SPIELERSTATISTIK tex_id 1580 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_tab_0 pos 762 303 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1477 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_tab_1 pos 762 349 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1478 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_tab_2 pos 762 395 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1480 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_tab_3 pos 762 441 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1482 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_tab_4 pos 762 487 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1484 anchor right panel main_menu method sprite-565 shot r2_options
-element menu_statistics pos 793 348 size 94 82 file toolgfx/fenster.tex access ADDON_SPIELERSTATISTIK tex_id 1580 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_help pos 936 455 size 64 55 file toolgfx/fenster.tex access OPTION_HELPPLAYER tex_id 1488 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_balance pos 934 533 size 69 61 file toolgfx/fenster.tex access OPTION_BILANZ tex_id 1486 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 anchor right panel main_menu method sprite-565 shot r2_options

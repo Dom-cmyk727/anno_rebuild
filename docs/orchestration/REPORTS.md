@@ -12048,3 +12048,71 @@ that `chunk_fade_ms` (150 ms) is inherent to *any* zoom-out-and-return under the
 tunable bug?
 
 **READY FOR REVIEW.**
+
+## SO-1b — live script city objects (2026-11-15)
+
+Status: READY FOR REVIEW; independent orchestrator review pending. STOP here; SL-0 not started.
+Branch task/SO-1b; newest-main base cc7af72c; engine source 7cfe4a22; final test source 65b2f75e.
+Read accepted SO-1a review / full SO-1b packet on board, CLAUDE, PLAN, protocol and evidence contract.
+Re-read evidence contract before handover; no reviewer subagents, no main/rebase/force operations.
+Accepted SO-1a is not on this main yet: imported its note/oracle/vectors from b573c6be, no old branch merge.
+Oracle/contract/vectors match that accepted pin byte-for-byte; added their two CMake registrations.
+Compiler accepts only OBJECT_STADT: signed-32 operand low word; IslandId(low byte), CityNo(high byte).
+Primary evidence reused: Scene 0x100236b6–0x100236c5 and 0x100118a7–0x100118c8, accepted/rechecked in SO-1a.
+Whole-name ASCII case fold, first declaration wins; no @ stripping or world lookup while compiling.
+Formats parser gains an explicit duplicate-object-name option used only by the runtime compiler.
+Its default shipped-file uniqueness check remains unchanged; all other object kinds still refuse.
+KILLED reads the live slot on every evaluation: empty true, filled false; no result latch or world draw.
+ScriptHost receives widened ids; production host reads the scheduler's const island span.
+Ring bound is Island::cities.size(), allocated by scenario.cpp out.cities.assign(cfg.city_slots, nullopt).
+Both ordinary advancement and explicit initialization supply the world island table.
+Missing island / out-of-range slot return host refusal; existing ScriptFault::Host rolls back the visit.
+This is the reviewed safety difference from Scene 0x100118b8 / Welt 0x100863e0 unchecked reads.
+The note documents it, names the ring source (F2), and adds evidence letter P (F1).
+Definitions remain source text; immutable compiled objects rebuild on reload; no new saved fields/tag/version.
+Seven C++ tests include all 13 accepted vectors, exact duplicates, invalid domains, native cuts and scheduler.
+Snapshots distinguish owner/building changes, low-word/negative narrowing, missing names and same-slot recreation.
+Native-cut proof commits existing CityCreation into an absent slot after reload, then checks live answers/hash equality.
+Invalid-domain proof rolls back prior money and signal writes, retains pending INIT, and preserves PRNG cursor.
+Configured 300-slot ring admits slot 255 through public advancement: no new original-size engine limit.
+Direct final cases: 7 executed / 0 failed, 410 assertions; cache/so-1b/focused-direct-02.log.
+Negative base control substitutes exact cc7af72c script.cpp into current test binary; not a full base rebuild.
+base-negative-01.log: five cases fail; one refusal control passes; one game-file case is an asset skip.
+base-canary-negative-01.log runs that omitted case with assets: expected failure at old object-definition refusal.
+Thus six newly supported-path cases fail with main's compiler; the unsupported-path control stays executable.
+C++ null-predicate mutant: one replacement applied, vector case exit 1; invalid-domain legal control exit 0.
+Accepted Python reference: 13 vectors / 0 disagreements, contract 37 checks / seven applied mutants.
+Affected gate cache/so-1b/focused-gate-01.log (game files, jobs 4), main selection:
+```
+COUNTS: selected=116 executed=115 failed=0 empty=0 skipped=1 (required-asset=0 platform=0 opt-in=1 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Required script_objects_reference_contract and picture_matrix_contract each printed this pair in that log:
+```
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Full pins gate cache/so-1b/pins-full-01.log / .console.log, source 7cfe4a22 (required pins_contract also 1/1 above):
+```
+COUNTS: selected=1700 executed=1682 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/so-1b/pins-full-01.log
+```
+Final source differs only by a size_t cast in the vector reader, fixing Windows' unsigned-long width.
+Reused unchanged-engine full gate; reran only that vector case via pins.py, plus required pins_contract (each 1/1 above).
+Final log cache/so-1b/final-vector-pins-01.log / .console.log prints:
+```
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=partial; selection=^anno_sim_tests\.SO1b all accepted; evidence=cache/so-1b/final-vector-pins-01.log
+```
+Exact real-file refusal: script offset 1339: unsupported action: QUESTLOG_SHOW (focused-gate-01.log).
+Release -O3 -Werror builds: zero compiler warnings; existing Apple duplicate-library linker warning retained.
+Diff/format/link checks pass; pins/current files byte-identical to cc7af72c; no memory refusal or whole-gate retry.
+Hosted CI: final pushed head and terminal gate receipt supplied in handoff; evidence under cache/so-1b.
+NOT_RUN locally: MSVC, WSL sanitizer, GPU, original live execution; full Windows game-file run belongs to landing.
+The complete S01_02_01 script/canary still refuses at QUESTLOG_SHOW; other language gaps remain SL-0's scope.
+Decisions and reasoning:
+- Carry only accepted SO-1a prerequisite files because main lacks them; do not merge the board or another lane.
+- Pass const island data through the existing host: a live bounded lookup needs no cache, registry or saved state.
+- Keep duplicate-name relaxation explicit in the compiler's parser call, preserving the default format contract.
+- Reuse full pins for identical engine code after the one test-only Windows cast; rerun only its affected case.
+QUESTIONs: none outstanding in SO-1b; invalid-domain disposition is implemented as reviewed. STOP for review.

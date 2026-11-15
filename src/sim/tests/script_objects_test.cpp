@@ -110,7 +110,7 @@ TEST_CASE("SO1b all accepted city object vectors execute through the C++ runtime
         CHECK(expected.at("writes") == "0");
         std::vector<std::optional<Island>> islands;
         for (const auto& id : split(input.at("islands"), ',')) {
-            const auto slot = std::stoul(id);
+            const auto slot = static_cast<std::size_t>(std::stoul(id));
             islands.resize(std::max(islands.size(), slot + 1));
             islands[slot].emplace();
             islands[slot]->cities.resize(std::stoul(input.at("city_slots")));

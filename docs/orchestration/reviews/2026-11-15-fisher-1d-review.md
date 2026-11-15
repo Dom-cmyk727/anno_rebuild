@@ -78,4 +78,9 @@ Candidate `7bc3ea79` is `b47f77e4` (the seven tested packages) with `task/FISHER
   back in its own section with the new number.
 - Its `src/sim`, `tools` and `fixtures/synthetic/sim` equal the branch's.
 
-Its game-file run is in progress. Landing waits for the owner's OK.
+**The game-file run** (10:37–10:57, the canonical call, same environment as `b47f77e4`'s):
+- `COUNTS: selected=2655 executed=2627 failed=0 empty=0 skipped=28 (required-asset=0 platform=3 opt-in=22 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: PASS`. No memory refusals.
+
+**The owner's OK (2026-11-15, "Review and land all"):** all eight packages land together, the candidate with this board merged on top
+(docs only beyond the tested code).

@@ -95,6 +95,18 @@
 #include <fstream>
 
 #include <anno/render/gpu.hpp>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 #endif
 
 namespace {
@@ -103,6 +115,29 @@ namespace fs = std::filesystem;
 namespace render = anno::render;
 namespace app = anno::app;
 namespace formats = anno::formats;
+
+#ifdef ANNO_BENCH_GPU
+/// System RAM in bytes, without SDL (bench_frame links anno_app_core, not anno_app_sdl, so
+/// SDL_GetSystemRAM is not available here; ZOOM-SMOOTH-1c F2): GlobalMemoryStatusEx on Windows,
+/// sysconf on POSIX. 0 if the query fails, which default_chunk_budget's own clamp floors safely.
+std::uint64_t system_ram_bytes() {
+#ifdef _WIN32
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof(status);
+    if (!GlobalMemoryStatusEx(&status)) {
+        return 0;
+    }
+    return status.ullTotalPhys;
+#else
+    const long pages = sysconf(_SC_PHYS_PAGES);
+    const long page_size = sysconf(_SC_PAGE_SIZE);
+    if (pages <= 0 || page_size <= 0) {
+        return 0;
+    }
+    return static_cast<std::uint64_t>(pages) * static_cast<std::uint64_t>(page_size);
+#endif
+}
+#endif
 
 struct Options {
     std::size_t threads = std::max(1U, std::thread::hardware_concurrency());
@@ -223,6 +258,13 @@ struct Options {
     /// 2, the same function the viewer uses); nullopt = the computed default. 0 turns the
     /// budget off (today's exact count-based behaviour).
     std::optional<std::size_t> chunk_budget_mb;
+    /// --resident-prewarm off: --zoom-sweep's FrameRenderer::prewarm_far_levels off (nullopt or
+    /// --resident-prewarm on = on, the sweep's own default since ZOOM-SMOOTH-1b). For isolating
+    /// the resident-level background prewarm's own cost from everything else the budget changed
+    /// (ZOOM-SMOOTH-1c, the pan/iGPU busy-time regression): --chunk-budget-mb 0 does not
+    /// isolate it, since prewarm_far_levels stays on and still fills resident_level_chunks'
+    /// floor.
+    std::optional<bool> prewarm_far_levels;
     /// --wave-fade-hold k (0..1): with --scale-cost, the simulated waves' weight held at k
     /// (GpuLimits::wave_fade_ms on a frozen clock), to time the cross-fade (OQ-076).
     double wave_fade_hold = -1.0;
@@ -1457,7 +1499,7 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
         fr.set_workers(
             std::make_unique<render::ChunkWorkers>(scene, render::chunk_worker_threads(o.threads)));
         render::FrameConfig cfg;
-        cfg.prewarm_far_levels = true;
+        cfg.prewarm_far_levels = o.prewarm_far_levels.value_or(true);
         // ZOOM-SMOOTH-1b step 2: the same default_chunk_budget the viewer computes from the
         // adapter and system RAM, overridable with --chunk-budget-mb (0 = off) so the sweep can
         // be compared across budgets in one invocation.
@@ -1465,11 +1507,12 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             adapter_type == WGPUAdapterType_DiscreteGPU ? render::ChunkBudgetAdapter::Discrete
             : adapter_type == WGPUAdapterType_CPU ? render::ChunkBudgetAdapter::Software
                                                   : render::ChunkBudgetAdapter::IntegratedOrUnknown;
-        // bench_frame does not link SDL3 (it links anno_app_core, not anno_app_sdl), so there
-        // is no SDL_GetSystemRAM here: system_ram_bytes is 0 (unknown), which
-        // default_chunk_budget's own clamp already floors to a safe minimum for the
-        // integrated/unknown case.
-        cfg.budget = render::default_chunk_budget(adapter_kind, 0);
+        // bench_frame does not link SDL3 (it links anno_app_core, not anno_app_sdl), so there is
+        // no SDL_GetSystemRAM here; system_ram_bytes() above reads it directly instead
+        // (ZOOM-SMOOTH-1c F2: a non-discrete adapter was getting the 256 MiB floor here while
+        // the viewer gets RAM/8 capped at 2 GiB, so the iGPU sweep measured a different
+        // configuration from what it stands in for).
+        cfg.budget = render::default_chunk_budget(adapter_kind, system_ram_bytes());
         if (o.chunk_budget_mb) {
             cfg.budget.total_bytes =
                 static_cast<std::size_t>(static_cast<std::uint64_t>(*o.chunk_budget_mb) *
@@ -2071,6 +2114,11 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = parse(v, mb);
             if (ok) {
                 o.chunk_budget_mb = mb;
+            }
+        } else if (a == "--resident-prewarm") {
+            ok = v == "on" || v == "off";
+            if (ok) {
+                o.prewarm_far_levels = v == "on";
             }
         } else if (a == "--zoom-factor") {
             ok = parse(v, o.zoom_factor) && o.zoom_factor >= 1.0 / 64.0 && o.zoom_factor <= 64.0;

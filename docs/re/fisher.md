@@ -847,7 +847,7 @@ the explicit `!a.objects.empty()` refusal). The sim needs the flag-gated
 resource derivation **and** an authorized script-object implementation or an
 explicitly scoped alternative canary contract. Disabling the script or using
 ActorFreeComponent would not prove the requested original normal session.
-That decision is [OQ-623](../open-questions.md#oq-623-s01_02_01-normal-session-canary-and-script-object-definitions-fisher-re-2-2026-11-15-open).
+That decision is [OQ-625](../open-questions.md#oq-625-s01_02_01-normal-session-canary-and-script-object-definitions-fisher-re-2-2026-11-15-open).
 
 **A/T — reference and limits.** Four hand-derived `runtime_fish` vectors
 separate mean 15 from 16, occupied from empty, and the whole raw object word

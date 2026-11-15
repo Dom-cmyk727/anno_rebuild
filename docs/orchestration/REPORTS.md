@@ -11142,7 +11142,7 @@ Original first mutant proof refused an overlapping replacement string; full dist
 First stdout logs retained; uncaptured stderr recorded as observations in failure-observations.json.
 NORMAL_IMPORT_OK islands=27; NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions.
 Preflight uses normal loader, no ActorFreeComponent, script suppression or altered original resources.
-OQ-623 / QUESTION: separate script-object implementation (recommended), or owner-authorized narrower component canary?
+OQ-625 / QUESTION: separate script-object implementation (recommended), or owner-authorized narrower component canary?
 The state-free fish derivation alone cannot satisfy FISHER-1c's requested normal-session proof.
 Gates under cache/fisher-re-2/: reference-final.log: 53 vectors, 0 disagreements; contract-final.log: 81 checks.
 focused-01.log, automatic picture contract (retained unchanged):
@@ -11166,7 +11166,7 @@ Decisions and reasoning:
 - Enumerate exact cells as compact row ranges; distinguish embedded islands from unresolved link selection.
 - Check normal-session prerequisites before building the canary; keep script refusal visible and preserve owner scope.
 - Preserve OQ-603 / OQ-604 / OQ-610 and standard-catalogue receiver limits rather than invent closure.
-QUESTIONs: OQ-623 blocks the normal-session canary, not this bounded source read; Task 3 records the decision boundary.
+QUESTIONs: OQ-625 blocks the normal-session canary, not this bounded source read; Task 3 records the decision boundary.
 
 
 ## FISHER-1c — real-file canary prerequisite QUESTION checkpoint (2026-11-15)
@@ -11199,7 +11199,7 @@ A fish-fill hook would not repair the compiler's rejection or permit the require
 The measurement source/binary is ignored cache only and links the unchanged RE-2 production libraries.
 No engine code, new state, extension tag, Rules field, pin value, fixture byte, or original resource was changed here.
 No scripted objects were discarded, rebound by guess, or replaced with a synthetic world.
-QUESTION (OQ-623): which contract should unblock the original-map canary?
+QUESTION (OQ-625): which contract should unblock the original-map canary?
 Option 1 (recommended): separately implement the script-object bindings and required uses, then resume this canary.
   Cost: a separately sized script packet plus its focused tests; inventory the city bindings and dependent operations first.
   It preserves the required original S01_02_01 normal-session claim; no state-number conclusion is assumed.
@@ -11225,7 +11225,7 @@ Decisions and reasoning:
 - Preserve the requested original resources, actors and script; a silent bypass would change the proof.
 - Stop at a clean decision boundary instead of adding an untestable gameplay hook under a blocked acceptance claim.
 - Move to Task 4 because its fixture cleanup is independent of either fish or script-object implementation.
-QUESTIONs: OQ-623 is blocking; no owner decision or orchestrator acceptance is inferred.
+QUESTIONs: OQ-625 is blocking; no owner decision or orchestrator acceptance is inferred.
 
 
 ## FIXTURES-TRIM-1 — one current fixture set and canonical pins (2026-11-15)
@@ -11285,4 +11285,4 @@ Decisions and reasoning:
 - Use the requested pins.txt path by moving the existing mechanism; never introduce a second pin source.
 - Run one full pins selection and a disjoint reader set; preserve inventory failure and rerun only unexecuted work.
 - Keep this branch independent of all fisher branches and preserve every retained fixture byte.
-QUESTIONs: none for cleanup; FISHER-1c's separate OQ-623 checkpoint is not resolved by this task.
+QUESTIONs: none for cleanup; FISHER-1c's separate OQ-625 checkpoint is not resolved by this task.

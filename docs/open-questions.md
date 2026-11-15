@@ -3023,7 +3023,7 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **How to resolve:** read AnnoFrame's status bar update for the city it asks; GOG captures centred over open sea and over an AI's island after founding.
 
 
-## OQ-623: S01_02_01 normal-session canary and script object definitions (FISHER-RE-2, 2026-11-15; OPEN)
+## OQ-625: S01_02_01 normal-session canary and script object definitions (FISHER-RE-2, 2026-11-15; OPEN)
 - **T/P:** normal `load_scenario` imports the original map's 27 islands, but `World::create` refuses `script offset 0: unsupported object definitions`. `src/sim/src/script.cpp` rejects nonempty parsed object definitions explicitly. No geometry-only ActorFreeComponent projection or script suppression was used for this prerequisite measurement.
 - **D/P:** original load-time fish fill `AnnoWelt.dll 0x100928a0`–`0x10092b32` is a loaded-data transformation; projected S01_02_01 has 179,016 usable runtime fish cells, including 28 and 64 candidates inside its two fisheries' search rectangles. This does not repair the script refusal or prove an actual trip.
 - **QUESTION / options:** (1) implement the missing script-object contract in a separately sized packet, then retain the normal-session canary (recommended for its requested claim); (2) explicitly authorize a script-free component canary with a narrower claim, while leaving normal-session acceptance open. Supporting or suppressing these definitions is outside the state-free fish derivation. No cost in state numbers is inferred; sizing requires the script owner to inventory the definitions and their uses.

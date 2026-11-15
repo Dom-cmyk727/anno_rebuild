@@ -129,7 +129,8 @@ says who is doing what, where the work is, and what it waits on.
     game-file run on that SHA: 2630 executed, 0 failed, PASS; main healthy). **ZOOM-SMOOTH-2 RELEASED**; READY the same day
     (`c86ab749`) and NOT YET ACCEPTED ([review](reviews/2026-11-15-zoom-smooth-2-review.md)): a data race on the
     reentrancy flag and a sim wake that waits for a drag-time draw; **ZOOM-SMOOTH-2b** fixes both, then the owner
-    does the hands-on drag and resize proof (no dev script can make a real window drag). The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    does the hands-on drag and resize proof (no dev script can make a real window drag). The owner agreed (2026-11-15:
+    "Yes, I'll do it"). The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01

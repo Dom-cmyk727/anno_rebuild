@@ -184,6 +184,8 @@ def evaluate(kind, fields):
     if kind == 'runtime_fish':
         # §6, AnnoWelt 0x10092976 / 0x10092a61-0x10092ade; shipped defaults.
         mean = sum(r['heights']) // 4
+        if r['tile'] == 0 and mean >= 32:
+            raise Malformed('runtime_fish is sea-branch only; grass needs fertility')
         created = int(r['tile'] == 0 and mean < 16)
         return r.result(created=created, tile=11 if created else r['tile'],
                         phase=(r['phase'] & 128) if created else r['phase'],
@@ -355,6 +357,7 @@ def runtime_fish_census(root, output=None, expected_scenarios=50, layouts=()):
     sources = [(path.relative_to(root).as_posix(), path.read_bytes(), None) for path in paths]
     templates = {p.relative_to(root / 'Scenes' / 'Islands').as_posix().upper(): p
                  for p in (root / 'Scenes' / 'Islands').rglob('*.scp')}
+    template_hashes = {}
     for layout in layouts:
         data = layout.read_bytes()
         if layout.suffix == '.json':
@@ -373,7 +376,9 @@ def runtime_fish_census(root, output=None, expected_scenarios=50, layouts=()):
             template = templates.get(spec['key'].upper())
             if template is None:
                 raise Malformed('layout template not found: ' + spec['key'])
-            loaded = insel.islands(template.read_bytes())
+            template_data = template.read_bytes()
+            template_hashes[spec['key'].upper()] = hashlib.sha256(template_data).hexdigest()
+            loaded = insel.islands(template_data)
             if len(loaded) != 1:
                 raise Malformed('layout template must have one island')
             island = dict(loaded[0], x=spec['x'], y=spec['y'], number=spec['id'])
@@ -443,7 +448,9 @@ def runtime_fish_census(root, output=None, expected_scenarios=50, layouts=()):
     if output is not None:
         output.write_text(json.dumps(dict(scope='embedded islands; placed footprints; '
                                               'shipped thresholds 32/16; static load projection',
-                                          maps=maps), indent=2) + '\n', encoding='utf-8')
+                                          registry_sha256=hashlib.sha256(
+                                              (root / 'Anlagen.dat').read_bytes()).hexdigest(),
+                                          template_sha256=template_hashes, maps=maps), indent=2) + '\n', encoding='utf-8')
     print(f'RUNTIME_FISH_COUNTS scenarios={len(paths)} layouts={len(layouts)} runtime={total} usable={total} '
           'failed=0 empty=0 skipped=0')
     return 0

@@ -95,6 +95,9 @@ def contract(ref, vectors, root):
     case('bad_height_count', good.replace('31,31,31,31', '31,31,31'), 2, 'four corner')
     case('bad_height_byte', good.replace('31,31,31,31', '31,31,31,256'), 2, 'out of range')
     case('float_height', good.replace('31,31,31,31', '31,31,31,31.5'), 2, 'integer')
+    case('runtime_grass_scope',
+         'runtime_fish land heights=32,32,32,32 tile=0 phase=0 draws=- => consumed=0\n',
+         2, 'sea-branch only')
     tick = next(row for row in rows if row.startswith('farm_tick at_gate '))
     case('draw_exhausted', tick.replace('draws=4294967295', 'draws=-'), 2, 'exhausted')
     case('zero_need', tick.replace('need=128', 'need=0'), 2, 'out of range')

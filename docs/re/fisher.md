@@ -817,8 +817,8 @@ path-reachability proof, or complete actor/script import claim.
 The 50 embedded-scenario projections total **4,908,270 created cells and
 4,908,270 usable goals**. Six zero-result maps can have procedural island
 links; zero here means no eligible embedded cell, not no runtime fish after
-link resolution. Census log: `cache/fisher-re-2/runtime-fish-final.log`;
-exact cells: `cache/fisher-re-2/runtime-fish-final.json`.
+link resolution. Census log: `cache/fisher-re-2/runtime-fish-final-02.log`;
+exact cells: `cache/fisher-re-2/runtime-fish-final-02.json`.
 
 **P/A — lan5 scope made explicit.** There is no shipped `lan5.sze`. Both
 repository meanings were measured from their original SCP templates with
@@ -855,6 +855,8 @@ from a masked id; a supplied draw remains unconsumed. The contract applies
 strict-depth and occupancy mutants exactly once and demands exit 1. It also
 checks an exact three-cell synthetic census and refusal of missing HEIGHT.
 The C++ geometry reader skips this new record by name and continues to assert
-all 6 sea-cell, 5 corner-grid and 5 search-rectangle vectors. No engine code,
+all 6 sea-cell, 5 corner-grid and 5 search-rectangle vectors. The `runtime_fish` record refuses an empty mean-at-least-32 cell because
+its separate grass path needs fertility, outside this sea-branch record.
+No engine code,
 state, pins, asset bytes or scheduler wiring changes in this packet. HE and
 original live-game execution are NOT_RUN; OQ-603 / OQ-604 stay open.

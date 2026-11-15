@@ -11128,10 +11128,10 @@ OQ-610 narrowed: load/fill/clear do not lower fish corners; external/editor sett
 Added runtime_fish reference; four hand-derived cases: mean 15/16, occupied, and high raw object-word bits.
 Supplied draw remains unconsumed; reference phase input/output denotes the whole raw byte 3.
 Two new applied mutants: inclusive depth and ignored occupancy; each exits 1, not malformed exit 2.
-Contract adds exact three-cell synthetic census and missing-HEIGHT refusal; 80 checks / 53 vectors pass.
+Contract adds exact three-cell census and missing-HEIGHT / grass-branch scope refusals; 81 checks / 53 vectors pass.
 C++ geometry vector reader skips runtime_fish by name; it still executes 6 sea / 5 grid / 5 rectangle vectors.
 Static embedded-island census: all 50 original scenarios, 4,908,270 runtime cells / usable goals.
-Per-map counts, source hashes and exact half-open cell runs: cache/fisher-re-2/runtime-fish-final.json.
+Per-map counts, source hashes and exact half-open cell runs: cache/fisher-re-2/runtime-fish-final-02.json.
 S01_02_01: 179,016 cells; farm 810 search rectangles contain 28 / 64 candidates on island 58.
 Witnesses local (205,149) / (202,157); candidate inclusion is not entrance-path or catch proof.
 lan5.txt templates: 280,316 cells; lan5-ship-a.json templates: 420,194 cells, all usable.
@@ -11139,25 +11139,25 @@ Both lan5 meanings measured explicitly; neither is a shipped lan5.sze; procedura
 Census counts footprints, not just anchors; preserves zeros for six maps with no eligible embedded cells.
 Original first census refused an out-of-bounds footprint; original clipped-placement rule fixed that tool assumption.
 Original first mutant proof refused an overlapping replacement string; full distinct span fixed the proof, not rule.
-Those terminal failures remain in runtime-fish-01.log / contract-01.log; no passed gate was repeated.
+First stdout logs retained; uncaptured stderr recorded as observations in failure-observations.json.
 NORMAL_IMPORT_OK islands=27; NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions.
 Preflight uses normal loader, no ActorFreeComponent, script suppression or altered original resources.
 OQ-623 / QUESTION: separate script-object implementation (recommended), or owner-authorized narrower component canary?
 The state-free fish derivation alone cannot satisfy FISHER-1c's requested normal-session proof.
-Gates under cache/fisher-re-2/: reference-01.log: 53 vectors, 0 disagreements; contract-03.log: 80 checks.
-focused-01.log, automatic picture contract:
+Gates under cache/fisher-re-2/: reference-final.log: 53 vectors, 0 disagreements; contract-final.log: 81 checks.
+focused-01.log, automatic picture contract (retained unchanged):
 COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
 VERDICT: PASS
-focused-01.log, fisher_reference_contract:
+focused-final.log, fisher_reference_contract:
 COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
 VERDICT: PASS
-focused-01.log, reference agrees plus changed geometry-vector consumer:
+focused-final.log, reference agrees plus changed geometry-vector consumer:
 COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
 VERDICT: PASS
-runtime-fish-final.log: 50 scenarios + 2 layouts; 5,608,780 created cells / usable goals; zero census failures.
+runtime-fish-final-02.log: 50 scenarios + 2 layouts; 5,608,780 created cells / usable goals; zero census failures.
 lint-01.log: lint_sim: ok; format-01.log: clang-format 23.1.3 passes; git diff --check / relative links pass.
 build-01.log: Dev succeeds; two Apple duplicate-library linker warnings retained, no zero-warning claim here.
-Evidence SHA-256 inventory: cache/fisher-re-2/evidence-sha256.json. No memory-refused test occurred.
+Evidence SHA-256 inventory: cache/fisher-re-2/evidence-sha256.json. No memory-refused test occurred; focused-final reruns only the changed reference scope.
 Hosted CI URL and terminal result supplied at handover; no pending run is pre-claimed green.
 NOT_RUN: HE, live original session, complete external/editor setter closure, real gameplay canary, Windows game-file gate.
 Decisions and reasoning:

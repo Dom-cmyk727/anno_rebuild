@@ -147,8 +147,13 @@ says who is doing what, where the work is, and what it waits on.
     counts above 0 while zooming are the known ZOOM-SMOOTH-1 remainder, RENDER-DIRECT's.
     **UI-PLACE-1** (UI lane, from that test; `e2499746`) is ACCEPTED for landing
     ([review](reviews/2026-11-15-ui-place-1-review.md)): a menu cell ends demolish mode and the pickaxe works with
-    nothing armed; the original's cancel-X keeps the building armed, so that finding was withdrawn. Landing waits
-    for the owner's OK. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    nothing armed; the original's cancel-X keeps the building armed, so that finding was withdrawn. **LANDED on
+    main `2ba85176`** 2026-11-15 (owner OK; verified as an ancestor of `origin/main`; game-file run 2634 executed,
+    8 not passing for memory, the lost WSL coordinator or load, all 8 PASS alone, one of them with
+    `ANNO_TEST_HEADROOM_MB=2048`; main healthy). **UI-PLACE-2** (`5f29eb93`, Esc and the right click step back,
+    owner: "Yes, like original") is ACCEPTED for landing ([review](reviews/2026-11-15-ui-place-2-review.md));
+    the stacked candidate `67a960c9` (UI-PLACE-2, then FISHER-1e; owner: "Yes, land both") is in its game-file
+    run. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01

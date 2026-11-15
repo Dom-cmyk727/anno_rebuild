@@ -2356,6 +2356,54 @@ Windows' modal move/resize loop - directly: the stall is in the event pump itsel
 render step. A separate 17.9 ms hitch on restore-from-maximised spent 15.98 ms in "surface
 configure" (the swapchain rebuild RC4 names). Not fixed here (ZOOM-SMOOTH-1).
 
+### 2026-11-15 - ZOOM-SMOOTH-1d: `GpuLimits::prefetch_budget_ms`, the GPU upload share while a visible chunk waits
+
+**What it replaces.** Before this, `gpu.cpp sync_chunks`'s prefetch block (margin, the neighbouring zoom
+groups' views, and - since this packet - the zoom-out ring, ZOOM-SMOOTH-1c2) only ran under
+`!waiting && uploads == 0`: nothing visible waiting, and nothing already uploaded this frame. During any
+continuous zoom or pan this is false in most frames, so prefetch, and so the readiness win it is meant to
+buy ahead of time, got essentially no time at all (the 2026-11-14 review's finding B2).
+
+**The fix.** `GpuLimits::prefetch_budget_ms` (default 0, i.e. off = the old all-or-nothing behaviour; the
+viewer's `GpuLimits::interactive()` sets 0.3 ms): while a visible chunk still waits, or one was already
+uploaded this frame, prefetch now gets this many milliseconds in *addition* to `upload_budget_ms`, never out
+of it - a visible chunk's own time budget is not reduced to make room for prefetch. Checked once per prefetch
+candidate (not inside a single multi-step `advance_upload` call, which keeps its own, larger
+`upload_budget_ms` ceiling), so one upload already in flight may overrun the share slightly; the next
+candidate is still stopped on time.
+
+**Why 0.3 ms.** A fraction (30%) of the existing 1.0 ms `upload_budget_ms`, chosen as a conservative starting
+share - small enough that it should not itself become a visible-frame-time cost on a weak adapter, large
+enough to let at least one prefetch candidate's `advance_upload` step make progress most frames - then
+verified, not just asserted, by the sweep below. A future packet revisiting the ring's own budget (REPORTS.md
+ZOOM-SMOOTH-1d, ZOOM-SMOOTH-1d review QUESTION) would re-measure this figure together with giving the ring
+its own separate share.
+
+**Measured** (Windows 11, Ryzen 9800X3D, MSVC Release, RTX 4090; `bench_frame <game> data/maps/lan5.txt
+--renderer gpu --limits interactive --derived 3 --groups 0,1,2 --styles enhanced --res 2560x1369 --zoom-sweep
+6 --zoom-sweep-skip 0 --zoom-sweep-mode <mode> [--zoom-sweep-pan-px 1200 | --zoom-sweep-wheel-rate 8]
+--zoom-ring off`, three runs per mode, same session), against ZOOM-SMOOTH-1c2's own numbers (step 5 absent,
+the old gate):
+
+| mode | 1c2 (old gate) | 1d (prefetch_budget_ms 0.3, ring off) |
+|---|---|---|
+| legs | stand-in 9076, dissolves 4953, open-sea 1609, frames > 2 ms 202 | stand-in 6801, dissolves 5034, open-sea 1691, frames > 2 ms 216 |
+| wheel | stand-in 5047, dissolves 4199, open-sea 1600, frames > 2 ms 157 | stand-in 6011, dissolves 4600, open-sea 1625, frames > 2 ms 164 |
+| pan | stand-in 0, dissolves 874, open-sea 1554, frames > 2 ms 113 | stand-in 0, dissolves 1002, open-sea 1688, frames > 2 ms 94 |
+| zoompan | stand-in 17002, dissolves 7799, open-sea 1711, frames > 2 ms 226 | stand-in 14489-15847, dissolves 6706-7116, open-sea 1665-1694, frames > 2 ms 173-210 |
+
+Every mode improves or holds; zoompan (the mode under the most prefetch pressure, since it is both panning
+and zooming continuously) improves the most. The isolation flag `--prefetch-budget-ms n` (bench_frame,
+mirrors `--prefetch`/`--chunk-budget-mb`) lets `0.3` be checked against `0` directly on one binary, which is
+how the iGPU wheel baseline-drift question in the same packet's REPORTS entry was settled (the unmodified
+`task/ZOOM-SMOOTH-1c2` binary reproduces its own 19-24 figure today, not the earlier review's 12, so neither
+`--prefetch-budget-ms 0` nor `0.3` shows a 1d-caused iGPU regression once compared against the right
+baseline).
+
+See `docs/orchestration/REPORTS.md`'s ZOOM-SMOOTH-1d entry for the full before/after tables (including the
+zoom-out ring's own measurement, turned off by default after this packet found it costs zoompan once routed
+into this same prefetch).
+
 ## W4-DEPTH-1 — per-pixel depth (2026-11-04)
 
 What the depth adds (docs/render/depth.md): per object draw one integer test per pixel and a write; per chunk the

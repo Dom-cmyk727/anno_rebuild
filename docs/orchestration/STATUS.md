@@ -148,7 +148,9 @@ says who is doing what, where the work is, and what it waits on.
     at `QUESTLOG_SHOW` (payload offset 1339). Not landed yet. **SL-0 ACCEPTED as a read** (`68c140c5`,
     [review](reviews/2026-11-15-sl-0-review.md)): 14 names remain; 9 of them need the computer players' trade,
     diplomacy and military, mission outcomes or a clipboard paste, so the unchanged script cannot run before
-    PLAN M5. **The plan waits for the owner**; nothing further is released to the Mac.
+    PLAN M5. **The owner chose "Find another map"** (2026-11-15) for the fisher
+    proof: **FISHER-MAP-1 RELEASED** (a read over the 50 shipped maps). Still the owner's: the BEAMDOWN rule,
+    whether SL-1 and SL-2 are built now, and landing SO-1a, SO-1b and SL-0.
     **FISHER-1d ACCEPTED 2026-11-15** (`e006a45b`, [review](reviews/2026-11-15-fisher-1d-review.md)): the
     runtime fish fill behind the flag and B1–B5. The S01_02_01 canary needs a script-language plan beyond the two
     city objects (owner decision). Candidate `7bc3ea79` (`b47f77e4` + FISHER-1d) PASSED its game-file run (2627 executed,

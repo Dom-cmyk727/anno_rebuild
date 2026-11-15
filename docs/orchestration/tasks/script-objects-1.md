@@ -59,7 +59,41 @@ stop.** The next step starts only when the orchestrator has accepted it and the 
 - **The report says:** what was proved, at which addresses; what was not; NOT_RUN items; the exact gate lines;
   "Decisions and reasoning"; QUESTIONs.
 
-## SL-0 in detail (released 2026-11-15)
+## FISHER-MAP-1 in detail (released 2026-11-15)
+
+**SL-0 was ACCEPTED as a read** ([review](../reviews/2026-11-15-sl-0-review.md)). It shows that `S01_02_01`'s
+unchanged script needs the computer players' trade, diplomacy and military (PLAN M5). **The owner's decision**
+(2026-11-15): "Find another map". The SL code steps and the BEAMDOWN rule are not decided yet; do not start them.
+
+**Branch:** `task/FISHER-MAP-1` from `origin/task/SO-1b` `d19c446a` (accepted, not landed yet; it has the newest
+compiler). About 1.5 hours. Read only: no engine code, no pins.
+
+**The goal:** find the shipped scenario on which the fisher canary can run honestly, loaded normally, with nothing
+suppressed.
+
+1. **Every shipped scenario** (the `.sze` corpus, 50 maps): for each one,
+   - whether it has a script, and its compile result on this branch: compiles, or the first refusal with its name
+     and offset;
+   - the full set of unsupported names, with SL-0's ladder method on private copies that are neither run nor
+     committed;
+   - whether it would compile once SL-1 and SL-2's five names exist (QUESTLOG_SHOW, GOTO_SCREEN, SHOWTEXT,
+     INHABITANTCOUNT, DEAD), and no other name is missing.
+2. **`World::create`'s result** for each map that compiles today or has no script: created, or its first refusal
+   text. A script is not the only thing that can refuse a map.
+3. **The fisher facts** for each map that passes 1 and 2:
+   - how many fisher huts it has, and whose;
+   - for each hut, whether at least one entrance is open to water as [`fisher.md`](../../re/fisher.md) defines it,
+     so the canary does not depend on FISHER-RE-3;
+   - whether fish resource tiles lie in reach after the runtime fill (FISHER-1d).
+   Class the maps: **A** a hut already stands with an open entrance; **B** no hut, but a player's coast where one
+   command could build one; **C** neither.
+4. **The note:** `docs/re/fisher-canary-maps.md`: one row per map, then a ranked short list with the reason for
+   each rank. Names, offsets and counts only; no script text.
+5. **If** no map is class A or B, say so plainly and list what each nearest map lacks. Do not bend a criterion.
+
+**Done:** the note and the REPORTS entry, READY FOR REVIEW. Then stop. FISHER-1e's map is chosen in review.
+
+## SL-0 in detail (released 2026-11-15, ACCEPTED as a read the same day)
 
 **SO-1b was ACCEPTED** ([review](../reviews/2026-11-15-so-1b-review.md)). **Branch:** `task/SL-0` from the newest
 `origin/main`. About 2 hours. Read and plan only: no engine code.

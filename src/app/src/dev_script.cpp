@@ -161,6 +161,24 @@ void push_key(std::vector<SDL_Event>& out, SDL_Keycode k) {
     out.push_back(e);
 }
 
+/// A held key (UI-PLACE-2): the press, two auto-repeats (key down with `repeat` set) and the
+/// release.
+void push_key_held(std::vector<SDL_Event>& out, SDL_Keycode k) {
+    SDL_Event e{};
+    e.key.which = kScriptDevice;
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = k;
+    e.key.down = true;
+    out.push_back(e);
+    e.key.repeat = true;
+    out.push_back(e);
+    out.push_back(e);
+    e.type = SDL_EVENT_KEY_UP;
+    e.key.down = false;
+    e.key.repeat = false;
+    out.push_back(e);
+}
+
 void push_motion(std::vector<SDL_Event>& out, std::pair<float, float> at,
                  SDL_MouseButtonFlags held) {
     SDL_Event e{};
@@ -245,9 +263,9 @@ int arity(const std::string& verb) {
     if (verb == "focus-lost") {
         return 0;
     }
-    if (verb == "key" || verb == "select" || verb == "rotate" || verb == "checkpoint" ||
-        verb == "screenshot" || verb == "hold" || verb == "release" || verb == "foreign" ||
-        verb == "fail" || verb == "pass") {
+    if (verb == "key" || verb == "key-held" || verb == "select" || verb == "rotate" ||
+        verb == "checkpoint" || verb == "screenshot" || verb == "hold" || verb == "release" ||
+        verb == "foreign" || verb == "fail" || verb == "pass") {
         return 1;
     }
     if (verb == "note") {
@@ -261,7 +279,7 @@ int arity(const std::string& verb) {
         // checked in exec(), not here (arity only bounds the count, not which counts are valid).
         return -1;
     }
-    if (verb == "click" || verb == "click_px" || verb == "ldown_px") {
+    if (verb == "click" || verb == "click_px" || verb == "ldown_px" || verb == "rclick_px") {
         return 2;
     }
     if (verb == "local") {
@@ -270,7 +288,7 @@ int arity(const std::string& verb) {
     if (verb == "resize") {
         return 2;
     }
-    if (verb == "drag" || verb == "ldrag_px") {
+    if (verb == "drag" || verb == "ldrag_px" || verb == "rdrag_px") {
         return 4;
     }
     if (verb == "wait" || verb == "expect") {
@@ -536,13 +554,17 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 break;
             }
             act.look = *t;
-        } else if (s.verb == "key") {
+        } else if (s.verb == "key" || s.verb == "key-held") {
             const auto k = keycode(s.args[0]);
             if (!k) {
                 fail(s, "unknown key");
                 break;
             }
-            push_key(act.events, *k);
+            if (s.verb == "key-held") {
+                push_key_held(act.events, *k);
+            } else {
+                push_key(act.events, *k);
+            }
         } else if (s.verb == "select" || s.verb == "rotate") {
             auto want = arg(0);
             if (s.verb == "select" && s.args[0] == "paid" && st.tool != nullptr) {
@@ -621,6 +643,30 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 const std::pair<float, float> to{static_cast<float>(*x1), static_cast<float>(*y1)};
                 push_motion(act.events, to, SDL_BUTTON_LMASK);
                 push_button(act.events, to, SDL_BUTTON_LEFT, false);
+            }
+        } else if (s.verb == "rclick_px" || s.verb == "rdrag_px") {
+            // UI-PLACE-2: the right button at a drawable pixel - a click (press and release in
+            // place, `rclick_px`) or a press, a motion with the button held and a release at a
+            // second pixel (`rdrag_px`, the window's right-button pan).
+            const auto x = arg(0), y = arg(1);
+            if (!x || !y) {
+                fail(s, "not a pixel position");
+                break;
+            }
+            const std::pair<float, float> at{static_cast<float>(*x), static_cast<float>(*y)};
+            push_motion(act.events, at, 0);
+            push_button(act.events, at, SDL_BUTTON_RIGHT, true);
+            if (s.verb == "rclick_px") {
+                push_button(act.events, at, SDL_BUTTON_RIGHT, false);
+            } else {
+                const auto x1 = arg(2), y1 = arg(3);
+                if (!x1 || !y1) {
+                    fail(s, "not a pixel position");
+                    break;
+                }
+                const std::pair<float, float> to{static_cast<float>(*x1), static_cast<float>(*y1)};
+                push_motion(act.events, to, SDL_BUTTON_RMASK);
+                push_button(act.events, to, SDL_BUTTON_RIGHT, false);
             }
         } else if (s.verb == "lookw") {
             const auto t = tile_arg(0);

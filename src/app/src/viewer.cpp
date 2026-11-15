@@ -563,8 +563,25 @@ class Viewer {
     /// pan, no selection, no tool action). The construction tab opens the menu (as key B does)
     /// and closes it (as Esc does).
     bool construction_handle(const SDL_Event& e);
-    /// Closes the menu (the tab or Esc) and turns an armed building tool off with it.
+    /// Closes the menu (the tab, or Esc / a right click on the grid) and turns an armed building
+    /// tool off with it.
     void construction_close();
+    /// UI-PLACE-2: Esc and a right click go one step back, as the original's (GOG Wine runner,
+    /// docs/re/ui.md 2.6): the info panel open -> the grid, nothing armed; else the demolish mode
+    /// on -> off, the grid stays; else -> the menu closes (an armed building with it).
+    void construction_step_back();
+    /// UI-PLACE-2: a right click while the menu is open, as the original's (docs/re/ui.md 2.6):
+    /// on the map or the info panel it puts away what the pointer carries and shows the grid; on
+    /// the grid's chrome it closes the menu. `on_chrome` says it hit drawn chrome.
+    void construction_right_click(bool on_chrome);
+    /// Turns the developer tool off (nothing armed, no demolish) if it is on.
+    void disarm_tool();
+    /// UI-PLACE-2: where the right button went down while the menu was open (drawable pixels);
+    /// its release there (within kClickSlop) is a right click, anything else the window's pan.
+    std::optional<std::pair<double, double>> construction_right_press_;
+    /// UI-PLACE-2: the held Esc whose first press the menu took: its auto-repeats are swallowed,
+    /// so holding Esc never steps further back, nor quits the window once the menu has closed.
+    bool construction_escape_held_ = false;
     /// UI-WINDOW-1 fix round R2: the panel the right chrome shows while the construction menu is
     /// closed (UiMockScreen: Hud = the player overview, the start state; PlayerList; Info;
     /// MainMenu), and the switch to one of them (closing the construction menu first).
@@ -1533,13 +1550,9 @@ void Viewer::select_hud_tab(UiMockScreen screen) {
     hud_screen_ = screen;
 }
 
-void Viewer::construction_close() {
-    construction_menu_open_ = false;
-    construction_open_category_.clear();
-    construction_placement_open_ = false;
-    // UI-WINDOW-1 fix round R1 (F2): an armed cell (DevTool::arm sets the tool on, dev_tool.cpp)
-    // must not outlive the menu, or a map click after closing it still builds. The tool's own
-    // Toggle cancels what is armed and turns it off, as a second B does.
+void Viewer::disarm_tool() {
+    // The tool's own Toggle cancels what is armed (and the demolish mode) and turns it off, as a
+    // second B does.
     if (dev_ != nullptr && dev_->enabled()) {
         for (sim::Command& c : dev_->handle({ToolInput::Kind::Toggle, 0, 0},
                                             pointer_frame_ ? &*pointer_frame_ : nullptr)) {
@@ -1549,6 +1562,53 @@ void Viewer::construction_close() {
     }
 }
 
+void Viewer::construction_close() {
+    construction_menu_open_ = false;
+    construction_open_category_.clear();
+    construction_placement_open_ = false;
+    // UI-WINDOW-1 fix round R1 (F2): an armed cell (DevTool::arm sets the tool on, dev_tool.cpp)
+    // must not outlive the menu, or a map click after closing it still builds.
+    disarm_tool();
+}
+
+void Viewer::construction_step_back() {
+    if (construction_placement_open_) {
+        // The info panel open: back to the grid, nothing armed (p1_c_after_esc, p2_esc1,
+        // p1_d_after_right; a right click on the panel itself too, p3_panel_right).
+        construction_placement_open_ = false;
+        disarm_tool();
+        return;
+    }
+    if (dev_ != nullptr && dev_->enabled() && dev_->input().demolish_mode()) {
+        // The demolish mode on the grid: off, the grid stays (p2_demolish_esc, p3_demolish_right).
+        static_cast<void>(dev_->toggle_demolish());
+        return;
+    }
+    // The grid, with a building armed after the cancel-X or nothing armed: the menu closes and
+    // the building is put away with it (p3_after_x_esc, p4_armed_demolish_esc2, p2_esc2); the
+    // panel shows the player overview, also when the menu was opened from another tab
+    // (p4_help_b_esc).
+    construction_close();
+    hud_screen_ = UiMockScreen::Hud;
+}
+
+void Viewer::construction_right_click(bool on_chrome) {
+    if (on_chrome && !construction_placement_open_) {
+        // On the grid (the panel's chrome, no info panel open): the menu closes (p5_right_on_cell,
+        // nothing armed; with a building armed or the demolish mode on it is put away with it -
+        // not captured, the same as ESC on the grid), to the player overview (p5_right_on_cell).
+        construction_close();
+        hud_screen_ = UiMockScreen::Hud;
+        return;
+    }
+    // On the map, or on the info panel: whatever the pointer carries is put away at once (an
+    // armed building and the demolish mode), the panel goes back to the grid, the menu stays
+    // open (p1_d_after_right, p3_panel_right, p3_demolish_right, p4_armed_demolish_right,
+    // p5_after_x_right; with nothing armed nothing changes, p4_grid_right).
+    construction_placement_open_ = false;
+    disarm_tool();
+}
+
 bool Viewer::construction_handle(const SDL_Event& e) {
     if (e.type == SDL_EVENT_KEY_DOWN) {
         // data/ui/construction.txt: `open_key B`, `leave_key ESC`. Both collide with an existing
@@ -1556,16 +1616,28 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         // by state, not by picking a winner once and for all: B is the menu's own key only to
         // open it (closed -> open; already open, a category click or ESC is how it's used, so B
         // while open is left to the developer tool, consistent with ADR 0004 R1 "the developer
-        // tool keeps its own key"); Esc is the menu's only while it is open (closes it, consuming
-        // the event before the window's own Esc-quits binding sees it).
+        // tool keeps its own key"); Esc is the menu's only while it is open (one step back,
+        // UI-PLACE-2: construction_step_back), consuming the event before the window's own
+        // Esc-quits binding sees it.
+        if (e.key.key == SDLK_ESCAPE) {
+            if (e.key.repeat) {
+                // A held Esc: its first press decided (one press at a time, as the selection's
+                // Escape). Without this a held Esc would step back, close the menu and then quit.
+                if (construction_escape_held_ || construction_menu_open_) {
+                    return true;
+                }
+            } else if (construction_menu_open_) {
+                construction_step_back();
+                construction_escape_held_ = true;
+                return true;
+            } else {
+                construction_escape_held_ = false;
+            }
+        }
         if (e.key.key == SDLK_B && !construction_menu_open_) {
             construction_menu_open_ = true;
             construction_open_category_ = "public";
             construction_placement_open_ = false;
-            return true;
-        }
-        if ((e.key.key == SDLK_ESCAPE) && construction_menu_open_) {
-            construction_close();
             return true;
         }
         // UI-WINDOW-1 fix round R2: key D opens the player tab's list and key O the main menu,
@@ -1583,6 +1655,30 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         }
         return false;
     }
+    if ((e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) &&
+        e.button.button == SDL_BUTTON_RIGHT) {
+        // UI-PLACE-2: a right click (press and release within kClickSlop) while the menu is open
+        // is one step back, as the original's, on the map or on the panel (p1_d_after_right,
+        // p3_panel_right). The right button keeps panning the map (the window's own handling
+        // below sees both events): a drag is a pan, not a click.
+        const float density = SDL_GetWindowPixelDensity(window_);
+        const double d = density > 0.0F ? static_cast<double>(density) : 1.0;
+        const std::pair<double, double> at{static_cast<double>(e.button.x) * d,
+                                           static_cast<double>(e.button.y) * d};
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            construction_right_press_ = construction_menu_open_ ? std::optional(at) : std::nullopt;
+            return false;
+        }
+        const auto press = construction_right_press_;
+        construction_right_press_.reset();
+        if (press && construction_menu_open_ &&
+            is_click(at.first - press->first, at.second - press->second, kClickSlop)) {
+            construction_right_click(ui_hit_at(at.first, at.second).chrome);
+            update_title();
+            dirty_ = true;
+        }
+        return false; // the window ends its pan
+    }
     if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) {
         // UI-WINDOW-1: the release of a press the UI took is the UI's as well, wherever it ends
         // (no tool action, no selection click, no pan end on the map).
@@ -1595,7 +1691,8 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     }
     if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST || e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
         ui_press_ = false; // the release of a UI press may never come (fix round R1, F6)
-        return false;      // the window's own handling of these stays
+        construction_right_press_.reset();
+        return false; // the window's own handling of these stays
     }
     if (e.type != SDL_EVENT_MOUSE_BUTTON_DOWN || e.button.button != SDL_BUTTON_LEFT) {
         return false; // only a left click resolves against the UI; everything else is dev_'s

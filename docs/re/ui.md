@@ -274,7 +274,25 @@ Rebuild: `data/ui/hud.txt` gives `rotate_left` `turn -1` and `rotate_right` `tur
 | ESC on the grid | the construction menu closes; the panel shows the player tab (overview with the balance figures) | `p2_esc2` |
 | Right click on the map in placement | back to the grid, nothing armed | `p1_d_after_right` |
 
-Rebuild since UI-PLACE-1: a cell chosen while demolishing leaves the demolish mode (`DevTool::arm`); the pickaxe works with nothing armed and, turned off again, leaves nothing armed, while a building armed before stays armed under it (`DevTool::toggle_demolish`). The cancel-X already kept the building armed, as the original's. Still different: ESC closes the whole menu, a right click does not leave the placement mode (right-button drag pans here), and no orange frame marks the armed cell (OQ-626, OQ-627).
+UI-PLACE-2 (2026-11-15) added three passes (`cache/orig/ui-place-2/d96-20261115-202026`, `-202202`, `-202401` in that packet's worktree; scripts `cache/capture/ui_place_2*_capture.py`):
+
+| Step | Original | Shot |
+|---|---|---|
+| Right click on the map in demolish mode (nothing armed) | demolish off, the grid stays | `p3_demolish_right` |
+| Right click on the info panel's preview in placement | back to the grid, nothing armed | `p3_panel_right` |
+| Cancel-X, then ESC (house armed, grid shown) | the menu closes; no ghost | `p3_after_x_esc` |
+| House armed, cancel-X, pickaxe on, then ESC | only the demolish mode goes: grid, orange frame and ghost stay | `p4_armed_demolish_esc` |
+| ESC again | the menu closes; no ghost | `p4_armed_demolish_esc2` |
+| House armed, cancel-X, pickaxe on, then a right click on the map | demolish off **and** the ghost gone; the grid stays (the orange frame stayed in this case) | `p4_armed_demolish_right`, `p4_armed_demolish_right2` |
+| Right click on the map, grid open, nothing armed | nothing changes | `p4_grid_right` |
+| Help tab, B, public, then ESC | the menu closes to the player overview, not back to the help tab | `p4_help_tab`, `p4_help_b_esc` |
+| B with the menu open | nothing changes (B only opens it) | `p5_b_again`, `p5_b_third` |
+| Right click on a grid cell ("?"), nothing armed | the menu closes (player overview) | `p5_right_on_cell` |
+| House armed, cancel-X, then a right click on the map | ghost and frame gone, the grid stays; a left click on the land then builds nothing | `p5_after_x_right`, `p5_after_x_right_left` |
+
+(`p3_after_x_right`, `p3_grid_right` and `p4_grid_right_on_cell` are not evidence: the menu had already closed, or the script's B was assumed to toggle it.) So ESC goes one step back - info panel → grid with nothing armed; demolish → off, an armed building stays; grid → menu closed with the armed building put away, the player overview showing - while a right click on the map or the info panel puts away everything the pointer carries at once and shows the grid, and a right click on the grid closes the menu. Not captured: a right click on the grid's chrome with a building armed or the demolish mode on, or on other chrome (tabs, status bar); whether the original's right drag pans (the runner's `drag` is left-button only).
+
+Rebuild: since UI-PLACE-1 a cell chosen while demolishing leaves the demolish mode (`DevTool::arm`); the pickaxe works with nothing armed and, turned off again, leaves nothing armed, while a building armed before stays armed under it (`DevTool::toggle_demolish`); the cancel-X already kept the building armed. Since UI-PLACE-2 (owner, 2026-11-15, "like original"; OQ-626): ESC is `Viewer::construction_step_back` (the chain above; a held ESC acts once), a right click (press and release within 4 px) is `Viewer::construction_right_click` (map or info panel: everything put away, the grid; any other chrome while the grid shows: the menu closes, to the player overview - the armed case inferred), and a right drag stays this window's pan. Still different: no orange frame marks the armed cell (OQ-627).
 
 ### 2.7 What is still fraction-based
 

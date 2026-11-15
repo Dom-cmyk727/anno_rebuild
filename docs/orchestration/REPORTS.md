@@ -12048,3 +12048,63 @@ that `chunk_fade_ms` (150 ms) is inherent to *any* zoom-out-and-return under the
 tunable bug?
 
 **READY FOR REVIEW.**
+
+
+## SO-1a — script city-object namespace and live KILLED read (2026-11-15)
+
+Status: READY FOR REVIEW; independent orchestrator review pending. STOP after this step; SO-1b not started.
+Branch task/SO-1a, origin/main base b9b8df23; tested source d3f432fc; closeout changes documentation only.
+Read full board packet ce3912a4, CLAUDE, PLAN, owner protocol, evidence contract/README, BIGBROTHER §§3.1/6,
+fisher.md §8 and script-runtime.md; re-read mandatory evidence contract before handover. No reviewer subagents.
+No engine code, base/section version, rule, pin or recording change; two CMake reference-test registrations only.
+Reference modules: GOG Scene SHA 5b521f95…e36fd38 / Welt f220a878…0dfa6ae2; full hashes in script-objects.md.
+OBJECT_STADT string -> AnnoScene 0x10023642; reader 0x10023530–0x100237f8.
+Descriptor: name +0, kind 2 at +4, parsed operand low word +8, zero +0xc (0x10023697–0x100236c5).
+City binding does not occur there: postprocess 0x10016dfe–0x10016e17 handles only figure kind 1.
+Name -> descriptor resolves at kernel parse/load through 0x10023f40; descriptor -> city resolves on every query.
+KILLED string compare 0x10021578; node selector 0x16 at 0x100215e3; wrapper +8 -> 0x100117e0.
+AnnoScene 0x10011898–0x100118ce extracts low byte as island index and high byte as city slot.
+Receiver proof: World table 0x100cc92c, class 0xf00 (0x100a37c0), +0x20 -> 0x100a3820.
+AnnoWelt 0x100a382f–0x100a383a indexes world +0x6530; island +0xf8 -> 0x100863e0 indexes +0x38.
+Registration 0x100a19af–0x100a19db keys the island by its number's low byte; not file order or player id.
+Thus 4/18 -> islands 4/18, city 0; 258 -> island 2, city 1; 65540 narrows to 4.
+Parsed S01_02_01 STADT2 offsets 0x1e0ee9/0x1e74e7 corroborate both city-0 slots, both enclosed by player 2.
+Truth is city-slot pointer == null (Scene 0x100118ce–0x100118d6), including a city absent before the first query.
+No owner/building read, latch, RNG draw or query-state write; later same-slot recreation can make it false again.
+Owner change/zero buildings while the slot stays populated are false; indirect slot-removal causes are not all read.
+Concrete removal: Welt 0x100863b5 -> 0x10096990 zeros the slot at 0x1009699c; creation stores at 0x100968a4.
+Save: Scene 0x10016470–0x1001650f writes source prefix, signal rows and camera, not a city-pointer/death latch.
+Prefix retained through 0x10017027/0x10016420; signal writer 0x100162e5–0x10016349 walks +0x20, not objects +0x54.
+The definition survives as program text; a separately saved script signal can latch a result, but KILLED itself does not.
+Oracle: tools/script_objects_ref.py; explicit ordered definitions and world snapshots, portable default-branch ASCII.
+13 hand-derived query vectors: alive, destroyed, absent at parse/first query, appears later, same-slot recreation,
+owner/empty-city controls, exact city slot, zero id, word/negative narrowing, duplicate-first, bad/full names.
+Contract: 37 checks; seven verified one-span source mutants disagree, while each legal control still executes/passes.
+Mutants: swapped bytes, parse-time cache, zero-buildings death, owner latch, sticky death, last duplicate, @ stripping.
+Base-negative-02.log: the command is absent on b9b8df23 and this contract fails there; branch real vectors agree.
+Reference gate log: cache/so-1a/reference-gate-01.log; agree + required reference/picture contracts each printed:
+```
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Pins gate log: cache/so-1a/pins-full-01.log; its required pins_contract also printed the identical 1/1 pair above.
+Full pins main selection (Release, ANNO1503_GAME_DIR set, --jobs 4):
+```
+COUNTS: selected=1693 executed=1675 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/so-1a/pins-full-01.log
+```
+No memory refusal or whole-gate repeat. Target build: zero compiler warnings; two existing Apple duplicate-library link warnings.
+Diff/link checks pass; all 14 recording files byte-identical to base; state 139 and section versions unchanged.
+Evidence ledger/acceptance table: cache/so-1a/evidence-sha256.json and acceptance.md; raw reads stay ignored.
+Hosted CI: final task-branch gate checked before handoff; exact head/run in handoff (no simulated CI claim).
+NOT_RUN: original live execution, HE, local MSVC/WSL/GPU; no engine implementation or normal-map canary.
+Unproved: every gameplay cause of slot removal, non-default locale matching, invalid pointer-domain Boolean behavior.
+QUESTION for SO-1b: missing island is dereferenced at Scene 0x100118b8; city getter has no bounds guard.
+Recommend explicit ScriptError for invalid island/unreadable city domain, not inventing a killed Boolean; review must decide.
+SL-0 planning note: original inventory has 3 distinct PLAYER query names in 5 occurrences, plus 11 action names.
+Decisions and reasoning:
+- Trace both virtual getters to prove the packed pair; the one-byte 4/18 examples alone cannot establish the namespace.
+- Model symbolic name binding separately from live city lookup; keep absent/recreated and owner/building controls distinct.
+- Persist no inferred latch in the oracle; original save preserves text/signals, and the query is a live null test.
+- Refuse unsafe/locale-unknown domains and leave engine safety policy to reviewed SO-1b; do not guess or start it.

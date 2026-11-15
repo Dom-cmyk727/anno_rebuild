@@ -1471,7 +1471,9 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
         // integrated/unknown case.
         cfg.budget = render::default_chunk_budget(adapter_kind, 0);
         if (o.chunk_budget_mb) {
-            cfg.budget.total_bytes = *o.chunk_budget_mb * 1024ULL * 1024ULL;
+            cfg.budget.total_bytes =
+                static_cast<std::size_t>(static_cast<std::uint64_t>(*o.chunk_budget_mb) *
+                                         std::uint64_t{1024} * std::uint64_t{1024});
         }
         render::apply_frame_config(fr, cfg);
         const auto target =

@@ -1055,15 +1055,16 @@ std::string Viewer::run() {
         const render::ChunkBudgetAdapter adapter_kind = render::ChunkBudgetAdapter::Software;
 #endif
         cfg.budget = render::default_chunk_budget(
-            adapter_kind,
-            static_cast<std::uint64_t>(std::max(0, SDL_GetSystemRAM())) * 1024ULL * 1024ULL);
+            adapter_kind, static_cast<std::uint64_t>(std::max(0, SDL_GetSystemRAM())) *
+                              std::uint64_t{1024} * std::uint64_t{1024});
         // ANNO_VIEW_CHUNK_BUDGET_MB=<n> overrides the computed default (the viewer option the
         // packet asks for); 0 turns the budget off (today's exact count-based behaviour).
         if (const char* s = std::getenv("ANNO_VIEW_CHUNK_BUDGET_MB"); s != nullptr && *s != 0) {
             char* end = nullptr;
-            const unsigned long long mb = std::strtoull(s, &end, 10);
+            const auto mb = static_cast<std::uint64_t>(std::strtoull(s, &end, 10));
             if (end != s && *end == 0) {
-                cfg.budget.total_bytes = static_cast<std::size_t>(mb) * 1024ULL * 1024ULL;
+                cfg.budget.total_bytes =
+                    static_cast<std::size_t>(mb * std::uint64_t{1024} * std::uint64_t{1024});
             } else {
                 std::fprintf(stderr, "ANNO_VIEW_CHUNK_BUDGET_MB=%s not understood (megabytes)\n",
                              s);

@@ -5,6 +5,7 @@
 
 #include <SDL3/SDL_events.h>
 #include <atomic>
+#include <chrono>
 
 namespace anno::app {
 
@@ -91,10 +92,29 @@ class LiveResizeState {
         return pending_wake_.exchange(false, std::memory_order_acq_rel);
     }
 
+    /// The watch's own last tick (ZOOM-SMOOTH-2d): call once per live_resize_watch invocation
+    /// whose type test passes, drawn or guard-skipped alike. A caller measuring "time spent
+    /// handling window events" across one SDL_PollEvent call can then start from here instead
+    /// of a point captured before the native modal move/resize loop began ticking this watch
+    /// repeatedly - the fix for the events_ms_ staleness the owner's own trace found (5763 ms
+    /// reported against an 18 ms real gap, viewer.cpp's own main loop).
+    void mark_watch_tick() {
+        last_watch_tick_ns_.store(std::chrono::steady_clock::now().time_since_epoch().count(),
+                                  std::memory_order_release);
+    }
+    /// The last mark_watch_tick(), or steady_clock::time_point::min() if none has happened yet
+    /// (so it never wins a "is this later than events_start" comparison before the first tick).
+    [[nodiscard]] std::chrono::steady_clock::time_point last_watch_tick() const {
+        return std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(
+            last_watch_tick_ns_.load(std::memory_order_acquire)));
+    }
+
   private:
     std::atomic<bool> frame_in_progress_{false};
     std::atomic<bool> watch_drawing_{false};
     std::atomic<bool> pending_wake_{false};
+    std::atomic<std::chrono::steady_clock::rep> last_watch_tick_ns_{
+        std::chrono::steady_clock::time_point::min().time_since_epoch().count()};
 };
 
 } // namespace anno::app

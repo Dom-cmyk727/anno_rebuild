@@ -199,3 +199,19 @@ TEST_CASE("a wake is never lost under concurrent watch draws: every deferral is 
     // Fully drained: after that one last take, nothing more is left pending.
     CHECK_FALSE(state.take_pending());
 }
+
+TEST_CASE("mark_watch_tick only ever advances, and reads as far in the past as "
+          "steady_clock::time_point::min() before the first call - the comparison "
+          "viewer.cpp's own events_ms_ fix makes (ZOOM-SMOOTH-2d) must never prefer an "
+          "untouched tick over a real events_start" *
+          doctest::test_suite("live_resize")) {
+    anno::app::LiveResizeState state;
+    const auto before = std::chrono::steady_clock::now();
+    CHECK(state.last_watch_tick() < before);
+    state.mark_watch_tick();
+    const auto first = state.last_watch_tick();
+    CHECK(first >= before);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    state.mark_watch_tick();
+    CHECK(state.last_watch_tick() > first);
+}

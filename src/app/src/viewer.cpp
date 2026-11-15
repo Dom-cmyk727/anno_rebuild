@@ -37,6 +37,20 @@
 #include "gpu_surface.hpp"
 #endif
 
+#ifdef _WIN32
+// ZOOM-SMOOTH-2d: ANNO_VIEW_LIVE_RESIZE_TRACE's own Windows message hook needs the real message
+// constants and the complete tagMSG (SDL3/SDL_system.h only forward-declares it) - same guard
+// convention as window_capture.cpp and thread_priority.hpp.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <SDL3/SDL_system.h>
+#include <windows.h>
+#endif
+
 namespace anno::app {
 
 namespace {
@@ -55,6 +69,22 @@ double hitch_ms() {
         return ms;
     }();
     return v;
+}
+/// ZOOM-SMOOTH-2d: ANNO_VIEW_LIVE_RESIZE_TRACE=1 turns on a diagnostic trace of the live-resize
+/// watch and, on Windows, the native modal move/resize loop's own messages - off by default and
+/// read once, so every call site below only pays for a single bool read.
+bool live_resize_trace() {
+    static const bool v = [] {
+        const char* e = std::getenv("ANNO_VIEW_LIVE_RESIZE_TRACE");
+        return e != nullptr && *e != 0 && e[0] != '0';
+    }();
+    return v;
+}
+/// A monotonic seconds timestamp for the trace above, relative to this process' own first call
+/// (not wall-clock, not comparable across runs - the trace is read alongside itself, per run).
+double trace_now_s() {
+    static const Clock::time_point epoch = Clock::now();
+    return std::chrono::duration<double>(Clock::now() - epoch).count();
 }
 /// One step of a frame on the window thread: the steps of a frame, laid end to
 /// end, add up to its busy time (see Viewer::measure).
@@ -412,6 +442,14 @@ class Viewer {
     /// source) - the one way to draw while the ordinary SDL_PollEvent loop is blocked by that
     /// modal loop. Never filters an event out (always returns true).
     static bool live_resize_watch(void* userdata, SDL_Event* event);
+#ifdef _WIN32
+    /// ZOOM-SMOOTH-2d, ANNO_VIEW_LIVE_RESIZE_TRACE only: every Windows message, registered with
+    /// SDL_SetWindowsMessageHook so it also sees messages dispatched from inside the native
+    /// modal move/resize loop itself (confirmed in the pinned SDL 3.4.18 source -
+    /// WIN_WindowProc's own DispatchModalLoopMessageHook call, guarded on data->in_modal_loop).
+    /// Never drops a message (always returns true).
+    static bool live_resize_windows_hook(void* userdata, MSG* msg);
+#endif
     /// The frame boundary of play (PlayFollower::follow): takes the sim's batches, applies them and
     /// commits what is ready, before the frame takes its scene handle. Never waits for a build.
     void follow_picture();
@@ -516,6 +554,17 @@ class Viewer {
     /// reasoning, including the one residual, bounded race ZOOM-SMOOTH-2c's own review accepted
     /// rather than fixed).
     anno::app::LiveResizeState live_resize_;
+#ifdef _WIN32
+    /// ZOOM-SMOOTH-2d, ANNO_VIEW_LIVE_RESIZE_TRACE only: live_resize_windows_hook's own state,
+    /// touched only from that hook, which SDL_SetWindowsMessageHook's own doc says runs only on
+    /// the thread handling the Windows event loop (this Viewer's one window thread). Tracks
+    /// WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE so WM_TIMER/WM_MOVING/mouse-move counts below are
+    /// attributed to the modal loop they happened inside, not misread from an ordinary message.
+    bool live_resize_trace_in_modal_ = false;
+    double live_resize_trace_bucket_start_s_ = 0;
+    int live_resize_trace_timer_n_ = 0, live_resize_trace_moving_n_ = 0,
+        live_resize_trace_mousemove_n_ = 0;
+#endif
     /// A zoom step waiting for the sea pattern of its group (only while the
     /// patterns are still being rendered after the start).
     struct PendingZoom {
@@ -837,9 +886,23 @@ std::string Viewer::run() {
     // (should_draw_from_watch, live_resize.hpp) only ever fires true for the Windows-only
     // signal (SDL_EVENT_WINDOW_EXPOSED, data1 == 1); X11, Wayland and Cocoa never send it.
     SDL_AddEventWatch(&live_resize_watch, this);
+#ifdef _WIN32
+    // ZOOM-SMOOTH-2d: only while the trace is on - SDL_SetWindowsMessageHook is a single
+    // process-wide hook (one callback, not per-window), so it stays off unless asked for.
+    if (live_resize_trace()) {
+        SDL_SetWindowsMessageHook(&Viewer::live_resize_windows_hook, this);
+    }
+#endif
     struct ClearWatch {
         Viewer* self;
-        ~ClearWatch() { SDL_RemoveEventWatch(&Viewer::live_resize_watch, self); }
+        ~ClearWatch() {
+            SDL_RemoveEventWatch(&Viewer::live_resize_watch, self);
+#ifdef _WIN32
+            if (live_resize_trace()) {
+                SDL_SetWindowsMessageHook(nullptr, nullptr);
+            }
+#endif
+        }
     } clear_watch{this};
     // Test hook (not documented for players): ANNO_VIEW_SIZE=<w>x<h> asks for a drawable of that
     // many pixels (the window's size in points is that over the pixel density). The size the
@@ -1160,7 +1223,18 @@ std::string Viewer::run() {
         while (running_ && SDL_PollEvent(&e)) {
             handle(e);
         }
-        events_ms_ = std::chrono::duration<double, std::milli>(Clock::now() - events_start).count();
+        // ZOOM-SMOOTH-2d: a watch-triggered frame_step() can run many times inside this one
+        // SDL_PollEvent call, on the native Windows modal move/resize loop's own WM_TIMER ticks
+        // (~10 ms apart) - events_start above predates all of them, so counting from there would
+        // call that whole blocked span "handling window events" when almost all of it was
+        // genuine drawing (the owner's own trace: 5763 ms reported here against an 18 ms real
+        // gap). Count from the watch's last tick instead, whenever one happened after
+        // events_start; outside live-resize, where none ever does, this is events_start itself.
+        auto events_from = events_start;
+        if (const auto tick = live_resize_.last_watch_tick(); tick > events_from) {
+            events_from = tick;
+        }
+        events_ms_ = std::chrono::duration<double, std::milli>(Clock::now() - events_from).count();
         if (selection_.pending && running_) {
             // A click waits for its inspection answer; a paused runner publishes it without a
             // wake event, so look every pass of the loop (at most 100 ms apart) until it is in.
@@ -2708,6 +2782,18 @@ void Viewer::script_tick() {
 }
 
 bool Viewer::live_resize_watch(void* userdata, SDL_Event* event) {
+    // ZOOM-SMOOTH-2d, trace only: reads only the event struct itself and a read-only static
+    // flag (live_resize_trace()), so this never touches Viewer's own shared state either - the
+    // property the comment below is about stays true regardless of whether tracing is on.
+    if (live_resize_trace()) {
+        if (event->type == SDL_EVENT_WINDOW_MOVED) {
+            std::fprintf(stderr, "[live-resize-trace] %.4f watch: WINDOW_MOVED x=%d y=%d\n",
+                         trace_now_s(), event->window.data1, event->window.data2);
+        } else if (event->type == SDL_EVENT_WINDOW_RESIZED) {
+            std::fprintf(stderr, "[live-resize-trace] %.4f watch: WINDOW_RESIZED w=%d h=%d\n",
+                         trace_now_s(), event->window.data1, event->window.data2);
+        }
+    }
     // ZOOM-SMOOTH-2b F1: the event's own type/data1 are read first, from the event struct
     // itself (local to this call, never shared, never racy) - live_resize_ (shared, read from
     // whichever thread calls SDL_PushEvent, the sim's own wake push included) is touched only
@@ -2717,7 +2803,17 @@ bool Viewer::live_resize_watch(void* userdata, SDL_Event* event) {
         return true;
     }
     auto* self = static_cast<Viewer*>(userdata);
+    // ZOOM-SMOOTH-2d: every pass of the type test above, drawn or guard-skipped alike, so the
+    // main loop's own events_ms_ fix (below) always has this watch's most recent tick to read.
+    self->live_resize_.mark_watch_tick();
+    if (live_resize_trace()) {
+        std::fprintf(stderr, "[live-resize-trace] %.4f watch: type test passed\n", trace_now_s());
+    }
     if (self->live_resize_.frame_in_progress()) {
+        if (live_resize_trace()) {
+            std::fprintf(stderr, "[live-resize-trace] %.4f watch: draw skipped (reentrancy)\n",
+                         trace_now_s());
+        }
         return true; // the reentrancy guard: never nest a frame step inside one already running
     }
     // ZOOM-SMOOTH-2c F3: marks a WATCH draw specifically, set first (before frame_step() is even
@@ -2725,10 +2821,61 @@ bool Viewer::live_resize_watch(void* userdata, SDL_Event* event) {
     // possible (LiveResizeState's own class comment has the full reasoning for the residual,
     // bounded race this does not eliminate).
     self->live_resize_.begin_watch_draw();
+    if (live_resize_trace()) {
+        std::fprintf(stderr, "[live-resize-trace] %.4f watch: draw begin\n", trace_now_s());
+    }
     self->frame_step();
+    if (live_resize_trace()) {
+        std::fprintf(stderr, "[live-resize-trace] %.4f watch: draw end\n", trace_now_s());
+    }
     self->live_resize_.end_watch_draw();
     return true;
 }
+
+#ifdef _WIN32
+bool Viewer::live_resize_windows_hook(void* userdata, MSG* msg) {
+    auto* self = static_cast<Viewer*>(userdata);
+    const double now = trace_now_s();
+    switch (msg->message) {
+    case WM_ENTERSIZEMOVE:
+        self->live_resize_trace_in_modal_ = true;
+        self->live_resize_trace_bucket_start_s_ = now;
+        self->live_resize_trace_timer_n_ = 0;
+        self->live_resize_trace_moving_n_ = 0;
+        self->live_resize_trace_mousemove_n_ = 0;
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_ENTERSIZEMOVE\n", now);
+        break;
+    case WM_EXITSIZEMOVE:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_EXITSIZEMOVE\n", now);
+        self->live_resize_trace_in_modal_ = false;
+        break;
+    default:
+        if (self->live_resize_trace_in_modal_) {
+            if (msg->message == WM_TIMER) {
+                ++self->live_resize_trace_timer_n_;
+            } else if (msg->message == WM_MOVING) {
+                ++self->live_resize_trace_moving_n_;
+            } else if (msg->message == WM_MOUSEMOVE) {
+                ++self->live_resize_trace_mousemove_n_;
+            }
+            if (now - self->live_resize_trace_bucket_start_s_ >= 0.1) {
+                std::fprintf(stderr,
+                             "[live-resize-trace] %.4f hook: per 100ms timer=%d moving=%d "
+                             "mousemove=%d\n",
+                             now, self->live_resize_trace_timer_n_,
+                             self->live_resize_trace_moving_n_,
+                             self->live_resize_trace_mousemove_n_);
+                self->live_resize_trace_bucket_start_s_ = now;
+                self->live_resize_trace_timer_n_ = 0;
+                self->live_resize_trace_moving_n_ = 0;
+                self->live_resize_trace_mousemove_n_ = 0;
+            }
+        }
+        break;
+    }
+    return true; // never drop a message
+}
+#endif
 
 void Viewer::frame_step() {
     if (live_resize_.frame_in_progress()) {

@@ -125,7 +125,7 @@ says who is doing what, where the work is, and what it waits on.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01
     canary needs the script's OBJECT_STADT definitions; the owner chooses). Candidate `23885eb3` (the above plus
-    FISHER-1b and FIXTURES-TRIM-1) is in its game-file run. The owner decided OQ-623 on 2026-11-15: `.` turns as the
+    FISHER-1b and FIXTURES-TRIM-1) PASSED its game-file run (2617 executed, 0 failed); landing waits for the owner's OK. UI-INFO-2c READY (`abf7dba0`), next stack. The owner decided OQ-623 on 2026-11-15: `.` turns as the
     original does ("Like original."), sent to the UI lane.
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.

@@ -94,3 +94,20 @@ UI-INFO-2 lands first, so the fisher question is renumbered **OQ-625** in the ne
 `23885eb3` is the tested `7c7c6942` (UI-INFO-2, the ZOOM-SMOOTH-1 partial, 1b and 1c), then FISHER-1b, then
 FIXTURES-TRIM-1. Both REPORTS conflicts were resolved by keeping both sides. Its game-file run is in progress. Landing
 waits for the owner's OK. FISHER-RE-2 and FISHER-1c wait for the OQ renumbering.
+
+## The game-file run (2026-11-15)
+
+**The candidate:** `23885eb3`, 07:44–08:15.
+- `COUNTS: selected=2645 executed=2617 failed=0 empty=0 skipped=28 (required-asset=0 platform=3 opt-in=22 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: PASS`. No memory refusals.
+
+**Result:** six packages are covered, and they land in this order once the owner gives the OK:
+1. UI-INFO-2;
+2. the ZOOM-SMOOTH-1 partial;
+3. ZOOM-SMOOTH-1b;
+4. ZOOM-SMOOTH-1c;
+5. FISHER-1b;
+6. FIXTURES-TRIM-1.
+
+**Not in this candidate:** UI-INFO-2c (READY 2026-11-15, `abf7dba0`: `.` turns +1 and `,` −1, as the owner decided for
+OQ-623; code read, CI running) joins the next stack.

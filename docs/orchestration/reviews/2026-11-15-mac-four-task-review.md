@@ -111,3 +111,23 @@ waits for the owner's OK. FISHER-RE-2 and FISHER-1c wait for the OQ renumbering.
 
 **Not in this candidate:** UI-INFO-2c (READY 2026-11-15, `abf7dba0`: `.` turns +1 and `,` −1, as the owner decided for
 OQ-623; code read, CI running) joins the next stack.
+
+## UI-INFO-2c and the seven-package run (2026-11-15)
+
+**UI-INFO-2c is ACCEPTED** (`abf7dba0`, code `0b3340fc`, CI 43688659725 green, `gate` included):
+- `.` is Rotate (+1) and `,` is RotateBack (−1) in the building tool; T stays +1;
+- the ship-start founding mode keeps the original's Kontor direction (OQ-520);
+- OQ-623 is closed as the owner's decision;
+- a new test fails on the old mapping and passes with the fix.
+
+**The candidate:** `b47f77e4`, which is `23885eb3` plus UI-INFO-2c (REPORTS conflict resolved by keeping both sides).
+The run, 08:53–09:03:
+- `COUNTS: selected=2646 executed=2615 failed=3 ... incomplete=0 sanitizer_lines=0`, `VERDICT: FAIL failed tests`.
+- All 3 failures were `[anno-test memory] refused ... reason=low-memory` (`available=0` at the time):
+  - `legacy river shading reproduces the previous enhanced digests`;
+  - `chunk draw lists replay to the objects and base planes of Scene::render, every chunk`;
+  - `scene renders match the recorded digests`.
+- Each reran alone with `--jobs 1`: `COUNTS: selected=1 executed=1 failed=0`, `VERDICT: PASS` (09:04–09:33).
+
+**Result:** seven packages are covered, and they land in order once the owner gives the OK: the six above, then
+UI-INFO-2c.

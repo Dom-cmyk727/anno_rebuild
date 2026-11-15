@@ -11831,3 +11831,105 @@ tables) themselves, matching ZOOM-MEASURE-1's own precedent, since this session'
 available for it?
 
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2b — F1 (the data race) and F2 (the sim wait) fixed — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `c86ab749`, head `716973bf`)
+
+**F1, the data race, fixed.** `Viewer::live_resize_watch` now checks the event's own type/`data1` *first*
+(`is_live_resize_expose(*event)`, new in `live_resize.hpp`, reading only the local `SDL_Event`, never shared
+state) and returns at once for every other event type - in particular the sim thread's own wake push, which
+never touches `drawing_frame_` at all now. Only once that check confirms the one event type that matters does
+it read `drawing_frame_`, now `std::atomic<bool>` (acquire/release), eliminating the plain-bool race the
+review found. `should_draw_from_watch` (the combined check) stays as a test-only convenience; a comment on
+both functions says why production code must not call the combined form from inside the watch itself.
+
+**F2, the sim wait, fixed.** The wake listener (`viewer.cpp`) now checks `drawing_frame_` before pushing: if a
+live-resize draw is in progress, it sets `pending_wake_` (new `std::atomic<bool>`) and returns at once -
+**never** calling `SDL_PushEvent`, so the sim thread's own turn-processing (which holds `listener_mu_` across
+this call, `play.cpp`) never waits on SDL's watch-list lock for however long a draw takes. `frame_step()`
+checks and clears `pending_wake_` (`exchange(false)`) at its very start, before setting the reentrancy guard,
+and reproduces the real wake handler's own effect (`dirty_ = true; update_title();`) exactly - picked up by
+the very next call, whether a later watch tick during a continued drag or the main loop once it resumes. A
+plain `batches_waiting_`-only fallback (what `demand()` already checks every call) was considered and
+rejected: it would have missed a wake with no new batch (a command outcome, an opening's ships moving),
+which `!ran.empty() || opening_` in `play.cpp`'s own wake condition shows is a real, separate case.
+
+**Also noted, as asked:** `frame_step()` now calls `demand()` once more, at its own start (for the
+`pending_wake_` pickup), in addition to the call already inside its body - a small change from the packet's
+own "extracted verbatim" claim, not the main loop's draw decision itself, and harmless (`demand()` is `const`,
+no side effects).
+
+**TSan.** Not run: this project has no existing Thread/Address-Sanitizer preset or build configuration beyond
+the committed `asan` preset (memory, not thread), and standing one up from scratch was out of this small
+follow-up packet's own time box. Said here plainly, per the packet's own "if not, say so."
+
+**Tests, both new, in `live_resize_test.cpp`:**
+- **F1:** a watch mirroring the fixed, type-first `live_resize_watch` is driven by a background thread flooding
+  `SDL_PushEvent` with a non-matching event type while the main thread flips an atomic `drawing` flag with no
+  synchronization between them - the watch itself never reads that flag for those events (asserted via a
+  counter), so there is nothing for even a real data-race detector to find in the watch's own code path; the
+  flood is confirmed reaching the watch (`others > 0`).
+- **F2:** a listener mirroring the fixed wake decision confirms it returns in under 1 ms and never calls its
+  "push" stand-in while `drawing` is true (the deferred wake is recorded instead), then pushes normally once
+  `drawing` clears.
+
+Both fail on `c86ab749` (the pre-2b `live_resize.hpp` has no `is_live_resize_expose`, and `drawing_frame_` was
+a plain `bool`, so the watch test's mirror of the *fixed* order would not compile against the old header).
+
+**Gates.** MSVC Release, game files, app (doctest suites): `COUNTS: selected=326 executed=323 failed=0
+empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2b-app-2.log`; the first attempt, `-app-1.log`, failed the mandatory test-name
+preflight - a semicolon in a new `TEST_CASE` name - fixed, rebuilt, reran clean). `viewer_wiring_*`:
+`COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2b-viewerwiring-1.log`) - **against the same, still-un-relinked `anno1503.exe`** noted
+in 2's own entry: the `anno_app_sdl` *library* rebuilt cleanly with F1/F2 (confirmed in the build log), but the
+final link of the executable itself still fails (`LNK1104`, the file still locked by the background session
+launched for 2's own proof attempt, which this session was twice refused permission to close). So this
+`viewer_wiring` pass reconfirms the main-loop order on the pre-2b binary again, not F1/F2 specifically in that
+exact executable - the doctest tests above are what actually exercise F1/F2's new code. WSL `-Werror` check:
+clean except the same pre-existing, unrelated `extensions_test.cpp` gap; the changed/new files compile clean
+under GCC 13 and Clang 18 both before and after the `clang-format` fix (5 lines in the new test file).
+
+NOT_RUN: TSan (reasoned above); relinking `anno1503.exe` (still locked; not this packet's own code is in
+question, only the evidence of it running in that exact binary); the live hands-on proof (now the owner's,
+per the addendum below).
+
+Decisions and reasoning:
+- **Kept `should_draw_from_watch` as a test-only convenience** rather than deleting it, so the simple,
+  self-contained unit test of the combined decision logic (type + guard in one call) stays possible without
+  constructing a watch/userdata pair - documented clearly as not for production use, so a future edit cannot
+  reintroduce F1's race by calling it from the real watch again.
+- **Added `pending_wake_` rather than relying on `batches_waiting_` alone**, after checking `play.cpp`'s own
+  wake condition (`pushed || !ran.empty() || opening_`) and finding real cases a batch-only signal would miss.
+- **Said plainly that TSan was not attempted**, rather than skipping the mention or implying it passed: the
+  packet's own instruction ("if not, say so") is exactly this evidence-contract expectation.
+
+QUESTIONs: none beyond 2's own (the sim-stall measurement packet, now narrowed to "how often does the sim
+actually contend the wake path during a real drag," since F2 already removes the *wait* - only the brief,
+occasional `pending_wake_` deferral by one frame step remains to size).
+
+**The owner's hands-on proof (addendum, after this review's "Yes, I'll do it").** A copy-pasteable recipe for
+the 5 s drag / 5 s resize / maximise / restore / close sequence, on this head:
+
+1. Open PowerShell in the repo root (`E:\anno1503-worktrees\anno1503-ZOOM-SMOOTH-2`, or wherever this branch
+   is checked out) and run:
+   ```powershell
+   $env:ANNO_VIEW_HITCH_MS = "1"
+   $env:ANNO_GPU_ADAPTER = "0"
+   .\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced 2> trace-stderr.log
+   ```
+   (`ANNO_VIEW_HITCH_MS=1` logs every frame gap over 1 ms to stderr, redirected here to
+   `trace-stderr.log` in the current directory - that is where the trace lands; no `ANNO_VIEW_TRACE`
+   directory is needed for this measurement, only the stderr hitch lines.)
+2. Once the window opens (a few seconds): **drag the title bar** for about 5 seconds, moving it around, then
+   release.
+3. **Resize**: grab a window edge or corner and drag it for about 5 seconds, then release.
+4. **Maximise** the window (double-click the title bar, or the maximise button).
+5. **Restore** it (double-click the title bar again, or the restore button).
+6. **Close** the window normally (Alt+F4 or the close button) to end the run and flush the log.
+7. Send back `trace-stderr.log` (or paste its `frame hitch: ... ms since the previous frame started` lines) -
+   this session reads it the same way ZOOM-MEASURE-1's own 106 ms figure was found, split by which of the five
+   steps above each hitch line falls under (their rough start times, in order, since the log has no built-in
+   step markers - noting roughly when each drag/resize/maximise/restore begins when sending it helps, but is
+   not required: a drag or resize these numbers should make visually obvious either way).
+
+**READY FOR REVIEW.**

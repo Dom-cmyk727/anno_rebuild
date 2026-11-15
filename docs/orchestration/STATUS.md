@@ -133,7 +133,14 @@ says who is doing what, where the work is, and what it waits on.
     ordinary draws and its gate ran on a stale binary, so **ZOOM-SMOOTH-2c** is RELEASED (the owner first closes
     the open viewer window that locks `anno1503.exe`); then the owner
     does the hands-on drag and resize proof (no dev script can make a real window drag). The owner agreed (2026-11-15:
-    "Yes, I'll do it"). The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    "Yes, I'll do it").
+    **The owner's UI test on main `cc7af72c`** (2026-11-15, recording `ui_4`, log folder
+    `cache/owner-ui-test-20261115-164504` in the game-file worktree), analysed by the UI lane. UI findings stay
+    with the UI lane (the cancel-X does not leave placement mode; demolish stays on when a building is picked; no
+    ghost off the city's island; dead tabs and minimap, already UI-TABS-1 and UI-MINIMAP-1). For the render lane:
+    a one-frame zoom "bounce" at about game 32270 ms (one frame at another scale between two matching frames),
+    queued as a small packet **ZOOM-BOUNCE-1** (to be written) after ZOOM-SMOOTH-2c; the dissolve and not-ready
+    counts above 0 while zooming are the known ZOOM-SMOOTH-1 remainder, RENDER-DIRECT's. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01

@@ -156,7 +156,8 @@ says who is doing what, where the work is, and what it waits on.
     [review](reviews/2026-11-15-so-1a-review.md)): the operand is island (low byte) and city slot (high byte), and
     KILLED is a live empty-slot test; an invalid island or slot refuses through `ScriptFault`. **SO-1b ACCEPTED** the same day (`d19c446a`,
     [review](reviews/2026-11-15-so-1b-review.md)): the engine evaluates city objects live; `S01_02_01` now refuses
-    at `QUESTLOG_SHOW` (payload offset 1339). Not landed yet. **SL-0 ACCEPTED as a read** (`68c140c5`,
+    at `QUESTLOG_SHOW` (payload offset 1339). **SO-1a, SO-1b and SL-0 LANDED** on main `816c6352` 2026-11-15
+    (owner OK; game-file run 2637 executed with 2 memory refusals, both PASS when rerun alone; main healthy). **SL-0 ACCEPTED as a read** (`68c140c5`,
     [review](reviews/2026-11-15-sl-0-review.md)): 14 names remain; 9 of them need the computer players' trade,
     diplomacy and military, mission outcomes or a clipboard paste, so the unchanged script cannot run before
     PLAN M5. **The owner chose "Find another map"** (2026-11-15) for the fisher

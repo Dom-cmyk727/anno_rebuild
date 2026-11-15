@@ -59,7 +59,32 @@ stop.** The next step starts only when the orchestrator has accepted it and the 
 - **The report says:** what was proved, at which addresses; what was not; NOT_RUN items; the exact gate lines;
   "Decisions and reasoning"; QUESTIONs.
 
-## SO-1b in detail (released 2026-11-15)
+## SL-0 in detail (released 2026-11-15)
+
+**SO-1b was ACCEPTED** ([review](../reviews/2026-11-15-so-1b-review.md)). **Branch:** `task/SL-0` from the newest
+`origin/main`. About 2 hours. Read and plan only: no engine code.
+
+1. **The inventory:** every query and action name `S01_02_01`'s script still needs, from its compile refusals in
+   order (the first is `QUESTLOG_SHOW` at payload offset 1339). SO-1a counted 3 distinct PLAYER query names in 5
+   uses and 11 action names; confirm or correct both counts. Names, offsets and counts only, no script text.
+2. **Per name:** the `AnnoScene.dll` string address, the handler's address, what game state it reads and writes,
+   any RNG draw, anything it saves, and its class:
+   - **sim:** it reads or changes game state, so it must be faithful in `src/sim`;
+   - **presentation:** it only shows something (quest log, text, video, screen change); the sim records an event
+     for the UI and changes no state;
+   - **needs a subsystem:** it depends on something the rebuild lacks (for example military); name the subsystem and
+     ask a QUESTION, never a stub.
+3. **The plan:** `docs/re/script-language-plan.md`, one row per name with its addresses and class, then an ordered
+   list of follow-up steps of about 2 h each (SL-1, SL-2, …). Group names that share a handler or state. For each
+   step, say what fails before and passes after, and where `S01_02_01` refuses next.
+4. **SO-1b review F1:** one addressed line in `script-objects.md` showing where the island's `+0x98` number is set
+   from the scenario's island record, so the engine's `IslandSpec::slot` is proved to be the same number. If it
+   can't be found in the time, say so in the note as U.
+5. **If** a name's handler cannot be found or classed in the time, list it as U with what was tried. Do not guess.
+
+**Done:** the plan, the F1 line, the REPORTS entry. **The owner reviews this plan** before any SL step is released.
+
+## SO-1b in detail (released 2026-11-15, ACCEPTED the same day)
 
 **SO-1a was ACCEPTED** ([review](../reviews/2026-11-15-so-1a-review.md)). **Branch:** `task/SO-1b` from `origin/main`
 (the newest at release). About 2 hours. Engine code, built from `script-objects.md` and `tools/script_objects_ref.py`.

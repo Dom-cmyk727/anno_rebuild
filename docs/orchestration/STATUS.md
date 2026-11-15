@@ -140,7 +140,10 @@ says who is doing what, where the work is, and what it waits on.
     **The owner chose OQ-625 option 1a** (2026-11-15): the script work in small reviewed steps
     ([packet](tasks/script-objects-1.md)); **SO-1a ACCEPTED** the same day (`b573c6be`,
     [review](reviews/2026-11-15-so-1a-review.md)): the operand is island (low byte) and city slot (high byte), and
-    KILLED is a live empty-slot test; an invalid island or slot refuses through `ScriptFault`. **SO-1b RELEASED**.
+    KILLED is a live empty-slot test; an invalid island or slot refuses through `ScriptFault`. **SO-1b ACCEPTED** the same day (`d19c446a`,
+    [review](reviews/2026-11-15-so-1b-review.md)): the engine evaluates city objects live; `S01_02_01` now refuses
+    at `QUESTLOG_SHOW` (payload offset 1339). Not landed yet. **SL-0 RELEASED** (the plan for the remaining names;
+    the owner reviews it).
     **FISHER-1d ACCEPTED 2026-11-15** (`e006a45b`, [review](reviews/2026-11-15-fisher-1d-review.md)): the
     runtime fish fill behind the flag and B1–B5. The S01_02_01 canary needs a script-language plan beyond the two
     city objects (owner decision). Candidate `7bc3ea79` (`b47f77e4` + FISHER-1d) PASSED its game-file run (2627 executed,

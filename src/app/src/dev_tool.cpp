@@ -169,9 +169,45 @@ bool DevTool::arm(sim::TypeId type) {
         message_ = "type " + std::to_string(type.v) + " is not in the tool's cycle list";
         return false;
     }
+    if (input_.demolish_mode()) {
+        // A building chosen while demolishing is placed, not demolished (UI-PLACE-1).
+        static_cast<void>(input_.handle(DevEvent{DevEvent::Kind::ToggleDemolish, {}}));
+        press_.reset();
+    }
     enabled_ = true;
+    demolish_only_ = false;
     message_.clear();
     return true;
+}
+
+bool DevTool::toggle_demolish() {
+    if (!enabled_) {
+        if (!setup_.city) {
+            message_ = "no city yet: found one first (F with a ship selected), then B";
+            return false;
+        }
+        // Nothing armed: the pickaxe turns the tool on for the demolish mode alone.
+        enabled_ = true;
+        demolish_only_ = true;
+        if (!input_.demolish_mode()) {
+            static_cast<void>(input_.handle(DevEvent{DevEvent::Kind::ToggleDemolish, {}}));
+        }
+    } else {
+        static_cast<void>(input_.handle(DevEvent{DevEvent::Kind::ToggleDemolish, {}}));
+    }
+    press_.reset();
+    message_.clear();
+    settle_demolish_only();
+    return true;
+}
+
+void DevTool::settle_demolish_only() {
+    // The demolish mode the pickaxe turned on, now off: nothing is armed (GOG p2_pickaxe_off).
+    if (demolish_only_ && !input_.demolish_mode()) {
+        enabled_ = false;
+        demolish_only_ = false;
+        press_.reset();
+    }
 }
 
 void DevTool::retarget(sim::CityRef city, TileRect island) {
@@ -191,6 +227,7 @@ void DevTool::retarget(sim::CityRef city, TileRect island) {
     }
     hover_.reset();
     press_.reset();
+    settle_demolish_only(); // the new DevInput starts out of the demolish mode
 }
 
 std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFrame* frame) {
@@ -201,6 +238,7 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
             forward(DevEvent::Kind::Cancel, {}, out);
             press_.reset();
             enabled_ = false;
+            demolish_only_ = false;
             message_.clear();
         } else if (!setup_.city) {
             message_ = "no city yet: found one first (F with a ship selected), then B";
@@ -238,10 +276,12 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
     case K::ToggleDemolish:
         forward(DevEvent::Kind::ToggleDemolish, {}, out);
         press_.reset();
+        settle_demolish_only();
         break;
     case K::Cancel:
         forward(DevEvent::Kind::Cancel, {}, out);
         press_.reset();
+        settle_demolish_only();
         break;
     case K::Abort:
         forward(DevEvent::Kind::Abort, {}, out);

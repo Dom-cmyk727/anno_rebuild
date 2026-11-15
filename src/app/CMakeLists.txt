@@ -210,6 +210,15 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_menu_close_disarms PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-PLACE-1: the pickaxe with nothing armed, a cell chosen while demolishing, the cancel-X.
+      add_test(NAME viewer_wiring_ui_place_demolish
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_place_demolish
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_place_demolish PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-WINDOW-1 fix round R1 (F6, F7): a chrome drag starts no pan; a lost UI press is dropped.
       add_test(NAME viewer_wiring_ui_chrome_press
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py

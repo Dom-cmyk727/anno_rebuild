@@ -120,9 +120,19 @@ class DevTool {
                                                   std::string* why = nullptr) const;
     [[nodiscard]] bool enabled() const { return enabled_; }
     /// Arms `type` directly and turns the tool on (UI.2 C4: a construction-menu cell click, not a
-    /// developer Next/PrevType cycle). False, nothing changed (message() names why), when there
-    /// is no city yet or `type` is not in setup().types.
+    /// developer Next/PrevType cycle). It also leaves the demolish mode, as the original's grid
+    /// click does (UI-PLACE-1: GOG Wine runner, pickaxe on, then a cell: the panel opens and the
+    /// demolish highlight is gone; docs/re/ui.md 2.6). False, nothing changed (message() names
+    /// why), when there is no city yet or `type` is not in setup().types.
     bool arm(sim::TypeId type);
+    /// The construction menu's pickaxe (UI-PLACE-1), as the original's (GOG Wine runner,
+    /// docs/re/ui.md 2.6): with the tool off it turns the tool on in the demolish mode alone
+    /// (p2_pickaxe_nothing_armed); with the tool on it toggles the demolish mode, and an armed
+    /// building stays armed under it (p1_b_pickaxe_again, p1_b_pickaxe_third). A demolish mode the
+    /// pickaxe turned on with nothing armed, turned off again (by the pickaxe, the X key or Esc),
+    /// turns the tool off: nothing is armed (p2_pickaxe_off). False, nothing changed (message()
+    /// names why), when there is no city yet.
+    bool toggle_demolish();
     /// Something Esc would cancel: a press in progress or the demolish mode.
     [[nodiscard]] bool has_pending() const {
         return enabled_ && (input_.pressed() || input_.demolish_mode());
@@ -147,12 +157,16 @@ class DevTool {
 
   private:
     void forward(DevEvent::Kind kind, sim::TileXY tile, std::vector<sim::Command>& out);
+    /// Turns the tool off when the demolish mode toggle_demolish turned it on for is off again.
+    void settle_demolish_only();
 
     DevToolSetup setup_;
     DevInput input_;
     /// The last drawn frame's scene (the heights the coast trials read).
     std::shared_ptr<const render::Scene> scene_;
     bool enabled_ = false;
+    /// The tool is on only for the demolish mode the pickaxe turned on (nothing armed).
+    bool demolish_only_ = false;
     std::optional<sim::TileXY> hover_, press_;
     std::string message_;
 };

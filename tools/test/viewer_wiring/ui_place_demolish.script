@@ -1,0 +1,44 @@
+# UI-PLACE-1: the construction menu's pickaxe and a building chosen while demolishing, as the
+# original's (GOG Wine runner, cache/orig/ui-place-1, docs/re/ui.md 2.6). The pickaxe with nothing
+# armed turns the demolish mode on (p2_pickaxe_nothing_armed); clicked again, nothing is armed
+# (p2_pickaxe_off). With the pickaxe on, the pioneer house cell opens its panel and the demolish
+# mode is off (p2_demolish_then_501). The cancel-X closes the panel and keeps the house armed
+# (p1_a_after_x), so a map click then builds it on the tile construction_menu_arm.script proves
+# free for type 501. Before the fix the pickaxe did nothing with nothing armed, and a cell chosen
+# while demolishing left the tool demolishing (owner test ui_4.mp4, 2026-11-15).
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+expect fact tool.mode == off
+click_px 996 736
+wait frames 3
+expect title tool: demolish
+expect fact tool.mode == demolish
+click_px 996 736
+wait frames 3
+expect fact tool.mode == off
+expect title-lacks tool:
+click 1156 516
+wait frames 10
+expect outcome none
+click_px 996 736
+wait frames 3
+expect fact tool.mode == demolish
+click_px 833 330
+wait frames 5
+expect title build 501
+expect title-lacks demolish
+expect fact tool.mode == build
+click_px 1000 742
+wait frames 3
+expect title build 501
+expect fact tool.mode == build
+# One selection click so far: the map click with nothing armed. No chrome click reached the map.
+expect fact selection.clicks == 1
+click 1156 516
+wait outcome
+expect outcome Applied
+quit

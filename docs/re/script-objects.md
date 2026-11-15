@@ -169,3 +169,21 @@ difference: AnnoScene `0x100118b8` dereferences an unchecked island result and
 AnnoWelt `0x100863e0` indexes the ring without a bounds check; those invalid reads
 supply no reproducible Boolean. The orchestrator's accepted SO-1a review chose
 refusal. Parsing does not inspect the world. No new saved field or version is used.
+
+## 8. SO-1b review F1 — original island-number writer (SL-0, 2026-11-15)
+
+**D/P/A.** AnnoWelt `0x100a2efd` reads the 12-byte INSEL5 header;
+`0x100a2f38`–`0x100a2f6a` takes the low word of header +8 as the factory's
+third argument. World factory `0x100a24d0` reads that argument at `0x100a24dc`,
+passes it to world +0x1c4 at `0x100a261f`–`0x100a2623`; target `0x100a1780`
+passes its second argument to island +0x3c at `0x100a17d0`–`0x100a17d9`.
+The created receiver (`0x1008f460`, table store `0x1008f468` -> `0x100ca530`,
+`this = island +0`) inherits +0x3c = `0x1008c6a0`, whose store at `0x1008c6a5`
+writes the word to island +0x98; getter +0x40 / `0x1008c690` reads the same word.
+The engine's `insel::Island::number` reads the u32 at header +8 and
+`scenario_formats.cpp` assigns it to `IslandSpec::slot`. Parsed shipped data:
+50 maps / 668 embedded islands, numbers 0–101, none with a nonzero high word
+or outside the byte domain. Thus the file number, original +0x98 and widened
+engine slot agree on this corpus; original registration still keeps its low
+byte, as §2 proves. This does not equate arbitrary modded u32 ids with the
+original's truncating word/byte lookup. No engine comment or rule changes here.

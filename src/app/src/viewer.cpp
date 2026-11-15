@@ -3,7 +3,6 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -404,8 +403,8 @@ class Viewer {
     void draw();
     /// The main loop's own draw decision (pending zoom, script tick, draw), extracted so an
     /// event watch (ZOOM-SMOOTH-2, the live-resize/move redraw) can run exactly the same
-    /// order, not a second drawing path. Guarded by drawing_frame_ against reentrancy. Does
-    /// not poll or wait for events: that stays the main loop's own job.
+    /// order, not a second drawing path. Guarded by live_resize_'s reentrancy check. Does not
+    /// poll or wait for events: that stays the main loop's own job.
     void frame_step();
     /// The SDL event watch (ZOOM-SMOOTH-2): registered with SDL_AddEventWatch so it runs
     /// synchronously from inside SDL_PushEvent, which the native Windows modal move/resize
@@ -512,20 +511,11 @@ class Viewer {
     render::WaterStyle water_ = render::WaterStyle::Original;
     const ViewerHooks* hooks_ = nullptr;
     bool running_ = true, dirty_ = true, drag_ = false;
-    /// The reentrancy guard for frame_step() (ZOOM-SMOOTH-2, live_resize.hpp's
-    /// should_draw_from_watch): set for the duration of a frame step, whether driven by the
-    /// main loop or by the live-resize event watch, so a watch can never draw a second frame
-    /// nested inside one already in progress. Atomic (ZOOM-SMOOTH-2b F1): an event watch runs
-    /// on whichever thread calls SDL_PushEvent, the sim's own wake push (play.cpp) included, so
-    /// this is read from a thread other than the window thread's own (live_resize_watch checks
-    /// the event's type first and only reads this for the one event type that thread can ever
-    /// actually push, but the wake listener below (F2) reads it from the sim thread on every
-    /// wake, deliberately).
-    std::atomic<bool> drawing_frame_{false};
-    /// A wake the sim thread deferred because a live-resize draw was in progress when it tried
-    /// to push one (ZOOM-SMOOTH-2b F2): picked up by frame_step()'s very next call, whichever
-    /// thread's loop (the watch or the main loop) makes it.
-    std::atomic<bool> pending_wake_{false};
+    /// The live-resize watch's own reentrancy/wake-defer state (ZOOM-SMOOTH-2/2b/2c,
+    /// anno::app::LiveResizeState, live_resize.hpp - its own class comment has the full
+    /// reasoning, including the one residual, bounded race ZOOM-SMOOTH-2c's own review accepted
+    /// rather than fixed).
+    anno::app::LiveResizeState live_resize_;
     /// A zoom step waiting for the sea pattern of its group (only while the
     /// patterns are still being rendered after the start).
     struct PendingZoom {
@@ -1044,21 +1034,23 @@ std::string Viewer::run() {
     if (play_ != nullptr) {
         wake_event_ = SDL_RegisterEvents(1);
         if (wake_event_ != 0) {
-            // ZOOM-SMOOTH-2b F2: SDL's watch-list lock is held for the whole dispatch of a
-            // push, draw included (live_resize_watch), and this listener runs on the sim
-            // thread while it holds PlayRunner::listener_mu_ (play.cpp) - so an ordinary push
-            // here would make a sim turn wait for however long a live-resize draw takes. While
-            // one is in progress (drawing_frame_, checked without taking any lock of our own),
-            // record the wake instead and return at once; frame_step() picks pending_wake_ up
-            // on its very next call (a later watch tick during a continued drag, or the main
-            // loop's own call once it resumes) - never lost, only possibly deferred by one
-            // frame step, which demand()'s existing batches_waiting_ signal already tolerates
-            // for a batch-carrying wake; pending_wake_ additionally covers a wake with no batch
-            // (a command outcome, an opening's ships moving) that batches_waiting_ alone would
-            // miss.
+            // ZOOM-SMOOTH-2b F2, narrowed in 2c F3: SDL's watch-list lock is held for the whole
+            // dispatch of a push, a watch's own draw included (live_resize_watch), and this
+            // listener runs on the sim thread while it holds PlayRunner::listener_mu_
+            // (play.cpp) - so an ordinary push here would make a sim turn wait for however long
+            // a live-resize draw takes. live_resize_.defer_wake() only defers while a WATCH
+            // draw is in progress (not an ordinary main-loop one, which holds no SDL lock at
+            // all and would gain nothing from deferring - 2c F3); frame_step()'s own
+            // take_pending() picks a deferred wake up on its very next call (a later watch tick
+            // during a continued drag, or the main loop's own call once it resumes) - not lost,
+            // only possibly delayed by one frame step, which demand()'s existing
+            // batches_waiting_ signal already tolerates for a batch-carrying wake;
+            // live_resize_'s own pending flag additionally covers a wake with no batch (a
+            // command outcome, an opening's ships moving) that batches_waiting_ alone would
+            // miss. A residual, bounded race (not "never") is documented on LiveResizeState
+            // itself.
             play_->runner().set_wake_listener([this, type = wake_event_] {
-                if (drawing_frame_.load(std::memory_order_acquire)) {
-                    pending_wake_.store(true, std::memory_order_release);
+                if (live_resize_.defer_wake()) {
                     return;
                 }
                 SDL_Event e{};
@@ -2717,7 +2709,7 @@ void Viewer::script_tick() {
 
 bool Viewer::live_resize_watch(void* userdata, SDL_Event* event) {
     // ZOOM-SMOOTH-2b F1: the event's own type/data1 are read first, from the event struct
-    // itself (local to this call, never shared, never racy) - drawing_frame_ (shared, read from
+    // itself (local to this call, never shared, never racy) - live_resize_ (shared, read from
     // whichever thread calls SDL_PushEvent, the sim's own wake push included) is touched only
     // once that check already confirms this is the one event type that can ever actually
     // matter here, so a push of any other event type never reads shared Viewer state at all.
@@ -2725,24 +2717,31 @@ bool Viewer::live_resize_watch(void* userdata, SDL_Event* event) {
         return true;
     }
     auto* self = static_cast<Viewer*>(userdata);
-    if (!self->drawing_frame_.load(std::memory_order_acquire)) {
-        self->frame_step();
+    if (self->live_resize_.frame_in_progress()) {
+        return true; // the reentrancy guard: never nest a frame step inside one already running
     }
+    // ZOOM-SMOOTH-2c F3: marks a WATCH draw specifically, set first (before frame_step() is even
+    // called) so the window in which defer_wake() could still read it as clear is as small as
+    // possible (LiveResizeState's own class comment has the full reasoning for the residual,
+    // bounded race this does not eliminate).
+    self->live_resize_.begin_watch_draw();
+    self->frame_step();
+    self->live_resize_.end_watch_draw();
     return true;
 }
 
 void Viewer::frame_step() {
-    if (drawing_frame_.load(std::memory_order_acquire)) {
+    if (live_resize_.frame_in_progress()) {
         return; // the reentrancy guard: never nest a frame step inside one already running
     }
-    // A wake the sim thread deferred while a previous draw was in progress (F2): pick it up
-    // before drawing_frame_ goes true again, exactly as the real wake event's own handler would
-    // (dirty_ = true; update_title();).
-    if (pending_wake_.exchange(false, std::memory_order_acq_rel)) {
+    // A wake the sim thread deferred while a watch draw was in progress (2b F2, narrowed by 2c
+    // F3 to watch draws only): pick it up before frame_in_progress goes true again, exactly as
+    // the real wake event's own handler would (dirty_ = true; update_title();).
+    if (live_resize_.take_pending()) {
         dirty_ = true;
         update_title();
     }
-    drawing_frame_.store(true, std::memory_order_release);
+    live_resize_.begin_frame();
     const bool can_draw = !hidden_ && !retry_at_;
     const bool animating = demand(can_draw).animating();
     script_tick();
@@ -2770,7 +2769,7 @@ void Viewer::frame_step() {
             }
         }
     }
-    drawing_frame_.store(false, std::memory_order_release);
+    live_resize_.end_frame();
 }
 
 void Viewer::draw() {

@@ -1,5 +1,7 @@
 // The live-resize/move event watch (ZOOM-SMOOTH-2): headless, under SDL's events subsystem
-// alone (no window, no video driver needed for SDL_AddEventWatch/SDL_PushEvent).
+// alone (no window, no video driver needed for SDL_AddEventWatch/SDL_PushEvent). Uses the real
+// anno::app::LiveResizeState (ZOOM-SMOOTH-2c F4), not a reimplementation, so these tests
+// exercise the production decision rather than a second copy of it.
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
 #include <atomic>
@@ -49,40 +51,36 @@ TEST_CASE("the event watch draws once per EXPOSED(1), not for a plain expose, an
     // lock (confirmed held for the whole dispatch in the pinned SDL 3.4.18 source,
     // SDL_eventwatch.c) is not guaranteed recursive on every platform SDL supports, so forcing
     // a genuine nested SDL_PushEvent-from-a-watch in a test could deadlock on a platform whose
-    // mutex isn't. The guard (already_drawing) is instead set directly, exactly as production
-    // code sets drawing_frame_ before calling draw() - the same case should_draw_from_watch's
-    // own unit test above already covers in isolation; this test additionally confirms the
-    // real SDL_PushEvent -> watcher wiring reaches it.
+    // mutex isn't. The guard is instead marked directly via begin_frame()/end_frame(), exactly
+    // as Viewer::frame_step() does; this test additionally confirms the real SDL_PushEvent ->
+    // watcher wiring reaches is_live_resize_expose and the real LiveResizeState together.
     const SdlEvents guard;
-    std::atomic<int> draws{0};
-    std::atomic<bool> drawing{false};
-    // Mirrors Viewer::live_resize_watch exactly (type checked first, the atomic touched only
-    // for the one event type that can ever matter - ZOOM-SMOOTH-2b F1), with userdata pointing
-    // at `draws`/`drawing` here instead of a real Viewer, so the mechanism is tested without a
-    // window.
-    using Ctx = std::pair<std::atomic<int>*, std::atomic<bool>*>;
+    int draws = 0;
+    anno::app::LiveResizeState state;
+    using Ctx = std::pair<int*, anno::app::LiveResizeState*>;
     auto watch = [](void* userdata, SDL_Event* event) -> bool {
         if (!anno::app::is_live_resize_expose(*event)) {
             return true;
         }
         auto* ctx = static_cast<Ctx*>(userdata);
-        if (!ctx->second->load(std::memory_order_acquire)) {
+        if (!ctx->second->frame_in_progress()) {
             ++*ctx->first;
         }
         return true;
     };
-    Ctx ctx{&draws, &drawing};
+    Ctx ctx{&draws, &state};
     REQUIRE(SDL_AddEventWatch(watch, &ctx));
     SDL_Event e = exposed(1);
     SDL_PushEvent(&e);
-    CHECK(draws.load() == 1);
+    CHECK(draws == 1);
     SDL_Event off = exposed(0);
     SDL_PushEvent(&off);
-    CHECK(draws.load() == 1); // a plain expose still does not draw
-    drawing.store(true);      // simulates a frame step already in progress
+    CHECK(draws == 1); // a plain expose still does not draw
+    state.begin_frame();
     SDL_Event again = exposed(1);
     SDL_PushEvent(&again);
-    CHECK(draws.load() == 1); // the guard blocked it
+    CHECK(draws == 1); // the guard blocked it
+    state.end_frame();
     SDL_RemoveEventWatch(watch, &ctx);
 }
 
@@ -92,13 +90,13 @@ TEST_CASE("the watch never reads its own shared guard for an event of another ty
           doctest::test_suite("live_resize")) {
     const SdlEvents guard;
     std::atomic<int> draws{0}, others{0};
-    std::atomic<bool> drawing{false};
+    anno::app::LiveResizeState state;
     using Ctx = std::pair<std::atomic<int>*, std::atomic<int>*>;
-    // The watch itself does not need `drawing` at all here: an event of any OTHER type returns
+    // The watch itself does not need `state` at all here: an event of any OTHER type returns
     // from is_live_resize_expose's own check before this callback's body ever reaches it, which
-    // is exactly the property under test - so a concurrent, unsynchronized flip of `drawing` on
-    // another thread, while this callback runs for a flood of non-EXPOSED events, is not a race
-    // on anything this callback itself touches.
+    // is exactly the property under test - so a concurrent flip of state's own flags on another
+    // thread, while this callback runs for a flood of non-EXPOSED events, is not a race on
+    // anything this callback itself touches.
     auto watch = [](void* userdata, SDL_Event* event) -> bool {
         auto* ctx = static_cast<Ctx*>(userdata);
         if (anno::app::is_live_resize_expose(*event)) {
@@ -119,9 +117,14 @@ TEST_CASE("the watch never reads its own shared guard for an event of another ty
         }
     });
     for (int i = 0; i < 200; ++i) {
-        // The window thread's own flips of the real drawing_frame_ (unsynchronized reads would
-        // be UB if the watch ever touched it for these pushes; it does not).
-        drawing.store(i % 2 == 0, std::memory_order_relaxed);
+        // The window thread's own flips of the real guard, exactly as live_resize_watch and
+        // frame_step make them (unsynchronized reads of these would be UB if the watch ever
+        // touched them for these pushes; it does not).
+        if (i % 2 == 0) {
+            state.begin_frame();
+        } else {
+            state.end_frame();
+        }
         std::this_thread::sleep_for(std::chrono::microseconds(50));
     }
     stop.store(true, std::memory_order_relaxed);
@@ -131,31 +134,68 @@ TEST_CASE("the watch never reads its own shared guard for an event of another ty
     CHECK(others.load() > 0); // the flood did reach the watch
 }
 
-TEST_CASE("a wake deferred while a draw is in progress returns at once, without pushing or "
-          "waiting for SDL's watch-list lock (ZOOM-SMOOTH-2b F2)" *
+TEST_CASE("defer_wake defers only while a watch draw is in progress, not an ordinary frame, and "
+          "take_pending picks the deferral up afterwards (ZOOM-SMOOTH-2c F3)" *
           doctest::test_suite("live_resize")) {
-    // Mirrors the wake listener's own decision (viewer.cpp): if a draw is in progress, record a
-    // pending wake and return - never call SDL_PushEvent, which would otherwise wait for the
-    // same lock a live-resize draw holds for its own duration.
-    std::atomic<bool> drawing{true};
-    std::atomic<bool> pending_wake{false};
-    int pushes = 0;
-    auto wake = [&] {
-        if (drawing.load(std::memory_order_acquire)) {
-            pending_wake.store(true, std::memory_order_release);
-            return;
+    anno::app::LiveResizeState state;
+    // An ordinary frame (begin_frame/end_frame alone, no watch draw) never defers: it holds no
+    // SDL lock, so deferring here would buy nothing and only delay an unrelated wake.
+    state.begin_frame();
+    CHECK_FALSE(state.defer_wake());
+    state.end_frame();
+    // A watch draw (begin_watch_draw, as live_resize_watch calls it) does defer.
+    state.begin_watch_draw();
+    CHECK(state.defer_wake());
+    state.end_watch_draw();
+    // frame_step()'s own pickup: true once, then false (cleared).
+    CHECK(state.take_pending());
+    CHECK_FALSE(state.take_pending());
+}
+
+TEST_CASE("a wake is never lost under concurrent watch draws: every deferral is eventually "
+          "taken, and the state always ends fully drained (ZOOM-SMOOTH-2c F4)" *
+          doctest::test_suite("live_resize")) {
+    // pending_wake_ is a single flag, not a counter (by design - a wake means "something
+    // changed," the same idempotent signal dirty_ itself already is), so concurrent deferrals
+    // legitimately coalesce into one pickup. The invariant this proves is therefore not "one
+    // take per defer," but the one the review asks for: a deferral is never stuck forever
+    // (always taken by some later drain) and the state never ends up claiming a wake is still
+    // pending when none genuinely is.
+    anno::app::LiveResizeState state;
+    std::atomic<bool> stop{false};
+    std::atomic<int> deferred{0};
+    // The "window thread": a tight loop of watch draws (exactly live_resize_watch's own
+    // begin/end pair around frame_step()) with a wake attempted during most of them - this is
+    // what defer_wake() and take_pending() race against each other over.
+    std::thread watcher([&] {
+        while (!stop.load(std::memory_order_relaxed)) {
+            state.begin_watch_draw();
+            if (state.defer_wake()) {
+                ++deferred;
+            }
+            state.end_watch_draw();
         }
-        ++pushes;
-    };
-    const auto start = std::chrono::steady_clock::now();
-    wake();
-    const auto elapsed = std::chrono::steady_clock::now() - start;
-    CHECK(pushes == 0); // deferred, not pushed
-    CHECK(pending_wake.load());
-    // Nowhere near a frame's own busy time (a few ms) or SDL's lock-wait: this call never
-    // touched SDL at all while drawing was true.
-    CHECK(elapsed < std::chrono::milliseconds(1));
-    drawing.store(false);
-    wake();
-    CHECK(pushes == 1); // once nothing is drawing, the wake pushes normally
+    });
+    // The "frame_step() thread": continuously drains, exactly as frame_step() does at its own
+    // start on every call, whether watch-triggered or from the main loop.
+    std::atomic<int> taken{0};
+    std::thread consumer([&] {
+        while (!stop.load(std::memory_order_relaxed)) {
+            if (state.take_pending()) {
+                ++taken;
+            }
+        }
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    stop.store(true, std::memory_order_relaxed);
+    watcher.join();
+    consumer.join();
+    // At least one wake was actually deferred during the run (the test is otherwise vacuous).
+    REQUIRE(deferred.load() > 0);
+    // Never lost: some drain (during the run, or the final one below) must have taken at least
+    // one - the flag cannot have ended up permanently stuck with no pickup ever happening.
+    const bool final_pending = state.take_pending();
+    CHECK((taken.load() > 0 || final_pending));
+    // Fully drained: after that one last take, nothing more is left pending.
+    CHECK_FALSE(state.take_pending());
 }

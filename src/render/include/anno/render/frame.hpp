@@ -534,6 +534,15 @@ class FrameRenderer {
     /// Owner playtest 2026-11-04: zooming in over an island off the centre landed on chunks
     /// nobody had built, and stand-ins dissolved in (up to 77 at once).
     std::optional<std::pair<double, double>> zoom_anchor;
+    /// The zoom's own direction this frame, set by the caller from its own zoom state (a
+    /// ZoomState's now vs target, or equivalent): negative while zooming out, positive while
+    /// zooming in, 0 while at rest or when the caller has no zoom state (headless renders,
+    /// tests). Kept apart from velocity() (ZOOM-SMOOTH-1c2 step 1): velocity is pan only by
+    /// design (motion_centre's own doc: "the viewer sets the camera minus the zoom's own
+    /// displacement... before each update", so a pure zoom never moves it) and the
+    /// zoom-out ring (below) needs to tell "the camera is panning" apart from "the camera is
+    /// zooming out", which a single combined signal could not.
+    double zoom_direction = 0;
     /// The smoothed velocity of the view centre that sizes the margin, in scene
     /// pixels per second of the group shown (x, y).
     [[nodiscard]] std::pair<double, double> velocity() const { return {vx_, vy_}; }
@@ -659,6 +668,25 @@ Rect zoomed_view(Rect view, std::size_t from, std::size_t to,
 /// shows. The anchor is rounded to the pixel and scaled as zoomed_view scales the centre.
 Rect zoomed_view_at(Rect view, std::pair<double, double> anchor, std::size_t from, std::size_t to,
                     const ZoomLevels& levels = ZoomLevels::original());
+
+/// The fraction of the next coarser level's tile width at which it takes over (zoom.hpp
+/// kLevelCoarseMargin, restated here since frame.hpp has no app dependency): ring_view_at's
+/// own default margin.
+inline constexpr double kRingCoarseMargin = 0.95;
+
+/// `view` scaled about `anchor` within the SAME group, to the area the continuous zoom's own
+/// composed grid would grow to show just before the next coarser level takes over
+/// (ZOOM-SMOOTH-1c2 step 4.2, the zoom-out ring): a real zoom-about-anchor, but within one
+/// level rather than zoomed_view_at's jump between levels. Derived from the level ratios and
+/// `coarse_margin`, not a literal grid-growth factor ("how far" depends on how much smaller
+/// the next level's tiles are, which is data, not a constant): the scale factor is
+/// tile_w(group) / (coarse_margin * tile_w(group + 1)), always > 1 (growing out), applied to
+/// both axes independently (tile_h for y). `anchor`'s own fractional position within `view`
+/// is kept (the same window-relative position a real zoom keeps fixed), generalizing
+/// zoomed_view_at's pixel-offset rule to a view whose size itself changes. Returns `view`
+/// unchanged when `group` is already the coarsest level (nothing coarser to ring toward).
+Rect ring_view_at(Rect view, std::pair<double, double> anchor, std::size_t group,
+                  const ZoomLevels& levels, double coarse_margin = kRingCoarseMargin);
 
 /// The area whose chunks are kept built around `view`: a ring of one chunk, and
 /// where the view is moving (velocity vx, vy in scene pixels per second) the

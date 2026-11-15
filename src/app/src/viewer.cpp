@@ -2705,6 +2705,11 @@ void Viewer::draw() {
     } else {
         frames_.zoom_anchor.reset();
     }
+    // The zoom's own direction (ZOOM-SMOOTH-1c2 step 1), kept apart from velocity() (pan
+    // only, by design: motion_centre's comment above says why). Negative while zoom_now_ is
+    // shrinking toward zoom_target_ (zooming out), positive while growing toward it (in), 0 at
+    // rest.
+    frames_.zoom_direction = zoom_target_ - zoom_now_;
 #ifdef ANNO_VIEWER_GPU
     if (gpu_) {
         if (continuous_) {

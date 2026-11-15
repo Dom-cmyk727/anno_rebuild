@@ -1634,6 +1634,10 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                     // could not be exercised by this proof.
                     fr.zoom_anchor =
                         render::zoom_anchor_at(s.cam_x, s.cam_y, s.anchor_x, s.anchor_y, scale);
+                    // The zoom's own direction (ZOOM-SMOOTH-1c2 step 1): negative while
+                    // zooming out (s.now shrinking toward s.target), matching the viewer's own
+                    // zoom_target_ - zoom_now_.
+                    fr.zoom_direction = s.target - s.now;
                     const auto st = g.render(fr, scene, rv.view, s.group, t_ms, style,
                                              target.second.get(), &rv.resample);
                     t_ms += 2;

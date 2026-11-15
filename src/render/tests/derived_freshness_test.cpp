@@ -763,3 +763,76 @@ TEST_CASE("is_resident_level: the resident levels' summed estimate stays within 
                                               // of what is actually resident, 8 chunks, stays
                                               // within the 30-chunk share).
 }
+
+// ZOOM-SMOOTH-1c2 step 4's invariant, as a test: the zoom-out ring's requests come after every
+// chunk of the visible view and of the pan lookahead, so a continuing pan is never starved by
+// it. With one worker, a job queue rebuilt from the current priority order every frame
+// (ChunkWorkers::submit) always offers that one worker the highest-priority key not yet built;
+// margin_keys()/adjacent_keys() plus the view's own visible chunks are exactly the ranks the
+// ring (rank 3) must never precede (frame.cpp plan_margin), so a key built outside those three
+// sets while any of them is still incomplete is the invariant violated.
+TEST_CASE("the zoom-out ring never starves the view's own chunks or the pan lookahead (game "
+          "files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    const auto bounds = scene->bounds(0);
+    REQUIRE(bounds.has_value());
+    render::FrameRenderer frames(2);
+    auto workers = std::make_unique<render::ChunkWorkers>(1);
+    render::ChunkWorkers* w = workers.get();
+    frames.set_workers(std::move(workers));
+    // A multi-chunk view (not just one chunk): the ring (ring_view_at, scaled by roughly
+    // tile_w(0)/(0.95*tile_w(1)), typically ~2x) must grow the view by more than the pan
+    // lookahead's own unconditional one-chunk border adds, or every ring chunk would already
+    // be covered by margin_keys() and this test could never see an exclusive ring key.
+    const render::Rect view{bounds->x, bounds->y, std::min(bounds->w, 512 * 3),
+                            std::min(bounds->h, 512 * 3)};
+    frames.zoom_anchor =
+        std::pair{view.x + view.w / 2.0, view.y + view.h / 2.0}; // the view's own centre
+    frames.zoom_direction = -1.0;                                // zooming out: the ring exists
+    const render::Rect ring_rect =
+        render::ring_view_at(view, *frames.zoom_anchor, 0, frames.levels());
+    bool saw_ring_key = false;
+    for (int round = 0; round < 60; ++round) {
+        frames.update_chunks(scene, view, 0);
+        w->wait_idle();
+        std::set<render::ChunkKey> non_ring;
+        for (const auto& [cx, cy] : render::visible_chunks(view)) {
+            non_ring.insert({0, cx, cy});
+        }
+        for (const auto& k : frames.margin_keys()) {
+            non_ring.insert(k);
+        }
+        for (const auto& k : frames.adjacent_keys()) {
+            non_ring.insert(k);
+        }
+        bool non_ring_complete = true;
+        for (const auto& k : non_ring) {
+            if (frames.chunk(k) == nullptr) {
+                non_ring_complete = false;
+                break;
+            }
+        }
+        // The ring (frame.cpp plan_margin, rank 3) requests chunks at the SAME group as the
+        // view, within ring_view_at's expanded rect - not at a derived level.
+        bool ring_key_found = false;
+        for (const auto& [cx, cy] : render::visible_chunks(ring_rect)) {
+            const render::ChunkKey key{0, cx, cy};
+            if (non_ring.count(key) == 0 && frames.chunk(key) != nullptr) {
+                ring_key_found = true;
+                break;
+            }
+        }
+        if (ring_key_found) {
+            saw_ring_key = true;
+            REQUIRE(non_ring_complete); // a ring key arrived before the view's own was done:
+                                        // the starvation invariant would be violated
+        }
+    }
+    CHECK(saw_ring_key); // the ring actually built something beyond the view's own chunks
+}

@@ -59,7 +59,39 @@ stop.** The next step starts only when the orchestrator has accepted it and the 
 - **The report says:** what was proved, at which addresses; what was not; NOT_RUN items; the exact gate lines;
   "Decisions and reasoning"; QUESTIONs.
 
-## SO-1a in detail (released 2026-11-15)
+## SO-1b in detail (released 2026-11-15)
+
+**SO-1a was ACCEPTED** ([review](../reviews/2026-11-15-so-1a-review.md)). **Branch:** `task/SO-1b` from `origin/main`
+(the newest at release). About 2 hours. Engine code, built from `script-objects.md` and `tools/script_objects_ref.py`.
+
+1. **The compiler** accepts `OBJECT_STADT "NAME" n`:
+   - it keeps the parsed value's low 16 bits;
+   - names match whole and case-folded over ASCII, and the first declaration wins;
+   - nothing is looked up in the world at parse time.
+2. **The query** `OBJECT "NAME" KILLED`:
+   - an unknown name refuses at compile time, as today;
+   - each evaluation reads island = low byte, city slot = high byte, live;
+   - true when that slot is empty, false when filled; no latch, no stored result, no RNG draw.
+3. **The invalid domain** (the review's decision): a missing island or a slot outside the island's city ring refuses
+   at evaluation time through the existing `ScriptFault` and rollback path. It is never a guessed Boolean. Document
+   it in `script-objects.md` as a difference from the original, with `AnnoScene 0x100118b8` and
+   `AnnoWelt 0x100863e0`.
+4. **No hardcoded limits:** the ring size comes from the engine's island data, and its source is named (review F2).
+   Island and slot are widened from the file bytes into the engine's own id types.
+5. **Save and reload:** the definition is program text. No new state, no new save section, no state-version bump.
+   If one seems needed, stop and ask a QUESTION.
+6. **Tests** that fail on `main` and pass on the branch:
+   - every SO-1a vector, driven through the C++ runtime;
+   - an alive city, a destroyed one, absent then founded, a bad name, a missing island, an out-of-range slot;
+   - a save and reload between two evaluations giving the same answers.
+7. **The canary check:** `S01_02_01` now refuses at its *next* unsupported name (`QUESTLOG_SHOW`, payload offset
+   1339), not at the objects. Report the exact refusal line.
+8. **Fix F1** (add evidence letter P to the legend).
+
+**Done:** the code, the tests, the note updated, 0 pins moved, the REPORTS entry. Every other unsupported query and
+action still refuses.
+
+## SO-1a in detail (released 2026-11-15, ACCEPTED the same day)
 
 **Branch:** `task/SO-1a` from `origin/main`. About 1.5 hours. Read only: no engine code.
 

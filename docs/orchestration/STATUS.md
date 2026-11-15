@@ -130,8 +130,8 @@ says who is doing what, where the work is, and what it waits on.
     (`c86ab749`) and NOT YET ACCEPTED ([review](reviews/2026-11-15-zoom-smooth-2-review.md)): a data race on the
     reentrancy flag and a sim wake that waits for a drag-time draw; **ZOOM-SMOOTH-2b** (`c4b3d5b7`,
     [review](reviews/2026-11-15-zoom-smooth-2b-review.md)) fixed the race; its wake fix also delays wakes during
-    ordinary draws and its gate ran on a stale binary, so **ZOOM-SMOOTH-2c** is RELEASED (the owner first closes
-    the open viewer window that locks `anno1503.exe`); then the owner
+    ordinary draws and its gate ran on a stale binary, so **ZOOM-SMOOTH-2c** fixed both (`05aab883`, the code ACCEPTED,
+    [review](reviews/2026-11-15-zoom-smooth-2c-review.md)); now the owner
     does the hands-on drag and resize proof (no dev script can make a real window drag). The owner agreed (2026-11-15:
     "Yes, I'll do it").
     **The owner's UI test on main `cc7af72c`** (2026-11-15, recording `ui_4`, log folder

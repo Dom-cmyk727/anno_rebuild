@@ -711,6 +711,89 @@ TEST_CASE("dev tool: arm selects a type directly, by id, and turns the tool on, 
     CHECK(off.message().find("no city") != std::string::npos);
 }
 
+TEST_CASE("dev tool: a building armed while demolishing leaves the demolish mode, as the "
+          "original's grid click does" *
+          doctest::test_suite("dev_tool")) {
+    // UI-PLACE-1 (GOG Wine runner, p1_b_demolish_then_501): with the pickaxe on, a click on the
+    // pioneer house cell opens its panel and the demolish highlight is gone; after the cancel-X
+    // the pickaxe shows off. Before the fix the tool stayed in the demolish mode with the
+    // building's panel open (owner test ui_4.mp4, 2026-11-15), so a map click demolished.
+    app::DevTool tool(setup());
+    REQUIRE(tool.arm(kPlain));
+    static_cast<void>(tool.handle({app::ToolInput::Kind::ToggleDemolish, 0, 0}, nullptr));
+    REQUIRE(tool.input().demolish_mode());
+    CHECK(tool.arm(kRoad));
+    CHECK_FALSE(tool.input().demolish_mode());
+    CHECK(tool.enabled());
+    CHECK(tool.input().selected() == kRoad);
+    CHECK_FALSE(tool.has_pending()); // nothing left for Esc to cancel
+
+    // A type the tool cannot arm changes nothing, the demolish mode included.
+    static_cast<void>(tool.handle({app::ToolInput::Kind::ToggleDemolish, 0, 0}, nullptr));
+    REQUIRE(tool.input().demolish_mode());
+    CHECK_FALSE(tool.arm(sim::TypeId{9999}));
+    CHECK(tool.input().demolish_mode());
+    CHECK(tool.input().selected() == kRoad);
+}
+
+TEST_CASE("dev tool: the menu's pickaxe demolishes with nothing armed, and turned off again it "
+          "leaves nothing armed or the armed building, as the original's" *
+          doctest::test_suite("dev_tool")) {
+    // UI-PLACE-1 (GOG Wine runner, cache/orig/ui-place-1): the pickaxe with nothing armed shows
+    // the demolish highlight (p2_pickaxe_nothing_armed); clicked again, no highlight and no ghost
+    // (p2_pickaxe_off). With the pioneer house armed, the pickaxe turns the demolish mode on and
+    // off and the house's ghost stays (p1_b_pickaxe_again, p1_b_pickaxe_third). Before the fix the
+    // pickaxe did nothing while the tool was off (owner test ui_4.mp4 never reached that state).
+    app::DevTool tool(setup());
+    REQUIRE_FALSE(tool.enabled());
+    CHECK(tool.toggle_demolish());
+    CHECK(tool.enabled());
+    CHECK(tool.input().demolish_mode());
+    CHECK(tool.toggle_demolish());
+    CHECK_FALSE(tool.enabled()); // nothing armed: a map click does nothing now
+    CHECK_FALSE(tool.input().demolish_mode());
+
+    // A building armed under the demolish mode stays armed when it is turned off.
+    REQUIRE(tool.arm(kPlain));
+    CHECK(tool.toggle_demolish());
+    CHECK(tool.input().demolish_mode());
+    CHECK(tool.toggle_demolish());
+    CHECK(tool.enabled());
+    CHECK_FALSE(tool.input().demolish_mode());
+    CHECK(tool.input().selected() == kPlain);
+
+    // Demolishing with nothing armed, then a cell: the building, and it stays when the pickaxe
+    // goes on and off again (arm ends the "demolish only" state).
+    static_cast<void>(tool.handle({app::ToolInput::Kind::Toggle, 0, 0}, nullptr));
+    REQUIRE_FALSE(tool.enabled());
+    REQUIRE(tool.toggle_demolish());
+    REQUIRE(tool.arm(kRoad));
+    CHECK_FALSE(tool.input().demolish_mode());
+    CHECK(tool.toggle_demolish());
+    CHECK(tool.toggle_demolish());
+    CHECK(tool.enabled());
+    CHECK(tool.input().selected() == kRoad);
+
+    // The other ways out of a pickaxe-only demolish mode leave nothing armed too: Esc (Cancel)
+    // and the developer X key (ToggleDemolish).
+    static_cast<void>(tool.handle({app::ToolInput::Kind::Toggle, 0, 0}, nullptr));
+    REQUIRE(tool.toggle_demolish());
+    static_cast<void>(tool.handle({app::ToolInput::Kind::Cancel, 0, 0}, nullptr));
+    CHECK_FALSE(tool.enabled());
+    REQUIRE(tool.toggle_demolish());
+    static_cast<void>(tool.handle({app::ToolInput::Kind::ToggleDemolish, 0, 0}, nullptr));
+    CHECK_FALSE(tool.enabled());
+
+    // No city yet: nothing changes, and the message says why.
+    app::DevToolSetup none = setup();
+    none.city.reset();
+    app::DevTool off(none);
+    CHECK_FALSE(off.toggle_demolish());
+    CHECK_FALSE(off.enabled());
+    CHECK_FALSE(off.input().demolish_mode());
+    CHECK(off.message().find("no city") != std::string::npos);
+}
+
 TEST_CASE("tool keys: `.` turns an ordinary building on and `,` back, as the original's" *
           doctest::test_suite("dev_tool")) {
     // GOG Wine runner (UI-INFO-2, pioneer house 501): the ordinary placement cursor showed

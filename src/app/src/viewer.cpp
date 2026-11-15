@@ -1673,11 +1673,10 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         }
         return true;
     case ConstructionClickKind::ToggleDemolish:
+        // UI-PLACE-1: the pickaxe works with nothing armed and, turned off again, leaves nothing
+        // armed, as the original's (DevTool::toggle_demolish; it sends no command).
         if (dev_ != nullptr) {
-            for (sim::Command& c : dev_->handle({ToolInput::Kind::ToggleDemolish, 0, 0},
-                                                pointer_frame_ ? &*pointer_frame_ : nullptr)) {
-                latest_receipt_ = play_->runner().post_command(std::move(c));
-            }
+            static_cast<void>(dev_->toggle_demolish());
         }
         return true;
     case ConstructionClickKind::Cancel:
@@ -2480,6 +2479,10 @@ void Viewer::script_tick() {
                                        ? std::to_string(dev_->input().rotation())
                                        : std::string("none");
     st.facts["tool.turn"] = tool_armed ? std::to_string(dev_->turn()) : std::string("none");
+    // UI-PLACE-1: what a map click does now - nothing, build the armed type, or demolish.
+    st.facts["tool.mode"] = dev_ == nullptr || !dev_->enabled() ? "off"
+                            : dev_->input().demolish_mode()     ? "demolish"
+                                                                : "build";
     st.facts["camera.pans"] = std::to_string(pans_);
     st.facts["selection.pending"] = selection_.pending ? "1" : "0";
     st.facts["selection.selected"] = selection_.selected ? "1" : "0";

@@ -234,7 +234,7 @@ Name, figures and chrome: 0 differing pixels on all 15. The live window (CPU) re
 
 **HE code:** the HE `View.dll` is PE32+ x86-64 (machine 0x8664), so the GOG 32-bit sequences above cannot appear in it. It contains `INFOUNTERGRUND` twice and 135.0f 21 times, so a string cross-reference is the open route; its panel code was not located (OQ-613).
 
-Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_locked_*`). Left click on a valid tile places and stays in mode (`r2_place_*`). ESC / right click / cancel-X leaves.
+Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_locked_*`). Left click on a valid tile places and stays in mode (`r2_place_*`). ESC and a right click leave the placement mode (back to the grid, nothing armed); the cancel-X closes only the panel and the building stays armed (section 2.6, UI-PLACE-1).
 
 **Rotate arrows and the preview per rotation (UI-INFO-2, 2026-11-14).** Static reads of GOG `View.dll` (pefile + capstone, VAs) and a Wine-runner capture of the original (Citizen game, `cache/orig/ui-info-2/shots/` in the packet's worktree, not in git: `u2_501_*` the pioneer house, `u2_2520_*` the dirt road, the pointer on the map after each step).
 
@@ -258,6 +258,23 @@ Rebuild: `data/ui/hud.txt` gives `rotate_left` `turn -1` and `rotate_right` `tur
 - Rotation in placement: key DOT turns the ghost (`f13_place_rot_dot` vs `f13_place_land`); COMMA is the other direction (`f13_place_rot_comma`).
 - Road drag: `backend.drag` after selecting dirt road (`f13_road_drag`). The drag on this Citizen island did not leave a painted road (forest / water under the path); the dirt-road info panel stayed open.
 - CTRL alignment: the runner's `key` call cannot hold a modifier across a later `click` (keydown/up is one command). Not captured; manual p15 still states it (OQ-546).
+
+**Cancel-X, ESC, right click and the pickaxe (UI-PLACE-1, 2026-11-15).** Two silent Wine-runner passes of the GOG original (Citizen game, F8, public category; `cache/orig/ui-place-1/d96-20261115-174705` and `d96-20261115-174948` in the packet's worktree, not in git; the pointer parked on land at (0.22, 0.28) before every shot, so a ghost or the demolish highlight shows when that mode is on). The cancel-X handler 0x10030410 only posts a message (`[this+0x60c]->vfunc 0x9c(1, 1, &msg)`); what it does was measured:
+
+| Step | Original | Shot |
+|---|---|---|
+| Pioneer house cell, then the cancel-X | the panel closes to the grid; the house **stays armed**: its ghost stays on the pointer and the grid marks its cell (0, 0) with an orange frame | `p1_a_armed`, `p1_a_after_x` |
+| Pickaxe with nothing armed | demolish mode: the pickaxe drawn active, a yellow tile outline under the pointer | `p2_pickaxe_nothing_armed` |
+| Pickaxe again | demolish off; no outline, no ghost: nothing armed | `p2_pickaxe_off` |
+| Pickaxe with the house armed (after the cancel-X) | demolish on; the house's ghost **and** the yellow outline both show | `p1_b_demolish`, `p1_b_pickaxe_again` |
+| Pickaxe again | demolish off; the house's ghost stays (still armed) | `p1_b_pickaxe_third` |
+| A cell while demolishing | the cell's panel opens and the demolish mode is **off** (no outline), with or without a building armed before; after the cancel-X the pickaxe shows off | `p1_b_demolish_then_501`, `p1_b_after_x`, `p2_demolish_then_501` |
+| ESC in placement | back to the grid, nothing armed (no ghost, no orange frame); the menu stays open | `p1_c_after_esc`, `p2_esc1` |
+| ESC in demolish mode | back to the grid, demolish off | `p2_demolish_esc` |
+| ESC on the grid | the construction menu closes; the panel shows the player tab (overview with the balance figures) | `p2_esc2` |
+| Right click on the map in placement | back to the grid, nothing armed | `p1_d_after_right` |
+
+Rebuild since UI-PLACE-1: a cell chosen while demolishing leaves the demolish mode (`DevTool::arm`); the pickaxe works with nothing armed and, turned off again, leaves nothing armed, while a building armed before stays armed under it (`DevTool::toggle_demolish`). The cancel-X already kept the building armed, as the original's. Still different: ESC closes the whole menu, a right click does not leave the placement mode (right-button drag pans here), and no orange frame marks the armed cell (OQ-626, OQ-627).
 
 ### 2.7 What is still fraction-based
 
@@ -468,9 +485,9 @@ Type 501 panel upkeep reads **0** on `r2_info_pioneer_house` (glyph-exact, UI-IN
 Measured rectangles in section 2.5-2.6. Summary:
 
 - Select a U cell: info panel at (804, 302) 220 x 466 plus placement mode; cancel-X `INFOEXIT` at (984, 725) 33 x 38.
-- Valid preview: yellow building footprint (`f13_place_land`). Refused: yellow empty rectangle (`f13_place_water`). Left click on valid land places and stays in mode (`r2_place_*`); ESC / right click / cancel-X leaves.
+- Valid preview: yellow building footprint (`f13_place_land`). Refused: yellow empty rectangle (`f13_place_water`). Left click on valid land places and stays in mode (`r2_place_*`); ESC / right click leave it (nothing armed), the cancel-X closes only the panel and keeps the building armed (section 2.6, UI-PLACE-1).
 - Rotate: DOT / COMMA (`f13_place_rot_dot`, `f13_place_rot_comma`). CTRL alignment is in the manual (p15) and was not captured (OQ-546).
-- Demolish: pickaxe `ABRISSICON` at (970, 710) 53 x 53 (id 659 idle-in-menu, id 660 while demolishing). Tooltip family `TOOLTIP:ABRISS` (4 lines). Cursor `tCursorAbriss` / `Abreissen_Gebaeude.tex` 73 x 65 as the OS cursor, not a blit.
+- Demolish: pickaxe `ABRISSICON` at (970, 710) 53 x 53 (id 659 idle-in-menu, id 660 while demolishing). Tooltip family `TOOLTIP:ABRISS` (4 lines). Cursor `tCursorAbriss` / `Abreissen_Gebaeude.tex` 73 x 65 as the OS cursor, not a blit. It works with nothing armed and toggles; a cell chosen while demolishing ends the demolish mode (section 2.6, UI-PLACE-1).
 
 Sim refusal rule stays OQ-T15-PLACEREFUSE.
 

@@ -35,8 +35,9 @@ testing-only knobs, not a normal launch option).
 | Click a category tab (right-hand column) | switches to that category's grid |
 | Click an unlocked grid cell | arms that type for placement - the usual click-to-build on the map follows, unchanged from the developer picker |
 | Click a locked grid cell (greyed/padlocked) | nothing happens - no type is armed, no command is sent |
-| Click the pickaxe (bottom-right of the grid) | toggles demolish mode (same `X` key the developer tool already has) |
-| Click the X (bottom-right of the info/placement panel) | closes the panel / cancels demolish mode (shares the pickaxe's own pixel rectangle - the two are never shown together, so a click there resolves to whichever one currently applies) |
+| Click the pickaxe (bottom-right of the grid) | toggles demolish mode, also with nothing armed (same `X` key the developer tool already has); turned off again it leaves nothing armed, or the building armed before (UI-PLACE-1) |
+| Click the X (bottom-right of the info/placement panel) | closes the panel; the building stays armed, as the original's cancel-X keeps it (shares the pickaxe's own pixel rectangle - the two are never shown together, so a click there resolves to whichever one currently applies) |
+| Click a grid cell while demolishing | arms that building and ends the demolish mode, as the original does (UI-PLACE-1) |
 
 ## A walk-through
 
@@ -47,7 +48,9 @@ testing-only knobs, not a normal launch option).
    is gone until the panel closes.
 3. Click a buildable spot on the map: the usual placement preview and commit, unchanged. The
    panel stays open.
-4. Click the X: the panel closes, back to the grid.
+4. Click the X: the panel closes, back to the grid; the building stays armed (a map click still
+   builds it), as in the original. `Esc` then closes the menu and puts it away (the original's
+   `Esc` only goes back to the grid: OQ-626).
 5. Click the pickaxe, then click the building you just placed: it is demolished (the usual
    confirmation/feedback, unchanged).
 6. Click a different category tab: its own grid draws (thumbnails, locks, the same as step 1).

@@ -48,9 +48,10 @@ checkpoint built
 
 # Demolish mode: the placement panel is still open after the build (nothing in the world-click
 # path closes it), so the pickaxe rectangle still resolves Cancel at first click (closing the
-# panel, construction_placement_open_ -> false) - a second click at the same spot now resolves
-# ToggleDemolish (DevInput's own demolish_ flag, independent of the armed type Cancel never
-# clears). Then the just-built house itself.
+# panel, construction_placement_open_ -> false; the house stays armed, as the original's
+# cancel-X keeps it - UI-PLACE-1, docs/re/ui.md 2.6) - a second click at the same spot now
+# resolves ToggleDemolish (DevTool::toggle_demolish: demolish on, the armed house under it).
+# Then the just-built house itself.
 click_px 996 736
 wait frames 2
 click_px 996 736

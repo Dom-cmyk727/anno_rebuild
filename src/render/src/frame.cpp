@@ -41,6 +41,15 @@ ChunkMemoryBudget default_chunk_budget(ChunkBudgetAdapter adapter, std::uint64_t
         b.total_bytes = 256 * kMiB;
         break;
     }
+    // ZOOM-SMOOTH-1c F3: a measured default rather than unbounded (the viewer had none before
+    // this). trim()'s own candidate scan already runs on the window thread regardless of how
+    // much it then evicts, so this cap is not about that cost; it bounds how large a single
+    // burst of discards can be (the reaper thread's own queue, and avoiding a mass eviction
+    // right after the budget is lowered, e.g. by the viewer's own ANNO_VIEW_CHUNK_BUDGET_MB
+    // override). 64 chunks' worth, the same order of magnitude as the original spare_chunks
+    // default (48): generous enough to rarely bind in the steady state the watermark band
+    // already smooths, a real cap for the pathological case.
+    b.max_evict_bytes_per_frame = 64 * kChunkByteEstimate;
     return b;
 }
 
@@ -669,7 +678,20 @@ bool FrameRenderer::is_resident_level(std::size_t g) const {
     }
     const auto resident_bytes =
         static_cast<std::size_t>(static_cast<double>(budget.total_bytes) * budget.resident_share);
-    return level_chunks_[g] * kChunkByteEstimate <= resident_bytes;
+    // Cumulative, farthest (coarsest, highest index) level first (ZOOM-SMOOTH-1c F1): level g
+    // qualifies only if everything coarser than it, plus itself, together still fit the share.
+    // Before this each level was checked alone against the whole share; since each derived
+    // level has about a quarter the chunks of the one below it, the levels together could take
+    // up to about 4/3 of the share, and the ones that fit were never trimmed, leaving the
+    // working set less than its own share.
+    std::size_t cumulative = 0;
+    for (std::size_t level = level_chunks_.size(); level-- > g;) {
+        if (level_chunks_[level] == 0 || level_chunks_[level] <= resident_level_chunks) {
+            continue; // the floor's own levels don't draw on the share
+        }
+        cumulative += level_chunks_[level] * kChunkByteEstimate;
+    }
+    return cumulative <= resident_bytes;
 }
 
 std::tuple<std::size_t, double, std::size_t>

@@ -728,3 +728,38 @@ TEST_CASE("is_resident_level: resident_level_chunks is a floor, the byte budget 
     CHECK_FALSE(frames.is_resident_level(3)); // narrowed back to the floor's own answer
     CHECK(frames.is_resident_level(4));       // the floor alone still covers it
 }
+
+// ZOOM-SMOOTH-1c F1: before this, is_resident_level checked each level's own cost against the
+// whole share, so two levels that each individually fit could together take more than the
+// share (derived levels shrink by about 4x, so the overrun could be up to about 4/3 of it) and
+// neither was ever trimmed. The share is now given out cumulatively, farthest level first.
+TEST_CASE("is_resident_level: the resident levels' summed estimate stays within the share "
+          "(game files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    render::FrameRenderer frames(2);
+    frames.update_chunks(scene, render::Rect{-200000, -200000, 64, 64}, 2);
+    // No floor: both levels (24 and 8 chunks) draw on the share, so their combined cost can
+    // actually be compared against it.
+    frames.resident_level_chunks = 0;
+    // A share that covers either level alone (24 or 8 chunks) but not both together (32): the
+    // bug this replaces would mark both resident (24 + 8 = 32 > 30 picked here).
+    constexpr std::size_t kShareChunks = 30;
+    frames.budget.total_bytes = kShareChunks * render::kChunkByteEstimate * 2; // resident_share
+                                                                               // halves it below
+    frames.budget.resident_share = 0.5;
+    REQUIRE(static_cast<double>(frames.budget.total_bytes) * frames.budget.resident_share ==
+            static_cast<double>(kShareChunks * render::kChunkByteEstimate));
+    CHECK(frames.is_resident_level(4));       // 8 chunks alone: fits
+    CHECK_FALSE(frames.is_resident_level(3)); // 8 + 24 = 32 chunks together: over the 30-chunk
+                                              // share, so the farther level (4) wins it and 3
+                                              // does not, instead of both being marked
+                                              // resident and never trimmed (the summed estimate
+                                              // of what is actually resident, 8 chunks, stays
+                                              // within the 30-chunk share).
+}

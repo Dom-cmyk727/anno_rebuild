@@ -218,6 +218,11 @@ struct Options {
     /// failure, and the Proof's contract states this count and its reason instead of
     /// silently absorbing it into a looser threshold.
     std::size_t zoom_sweep_skip = 0;
+    /// --chunk-budget-mb n: overrides the chunk memory budget --zoom-sweep configures from the
+    /// chosen adapter and SDL_GetSystemRAM (render::default_chunk_budget, ZOOM-SMOOTH-1b step
+    /// 2, the same function the viewer uses); nullopt = the computed default. 0 turns the
+    /// budget off (today's exact count-based behaviour).
+    std::optional<std::size_t> chunk_budget_mb;
     /// --wave-fade-hold k (0..1): with --scale-cost, the simulated waves' weight held at k
     /// (GpuLimits::wave_fade_ms on a frozen clock), to time the cross-fade (OQ-076).
     double wave_fade_hold = -1.0;
@@ -1427,7 +1432,7 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
 /// most chunks the grid showed, the most megabytes the chunk cache held, the frames above
 /// 8 ms and what the worst of them spent its time on.
 int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, std::size_t island,
-               double seconds, const fs::path& file) {
+               double seconds, const fs::path& file, WGPUAdapterType adapter_type) {
     const render::ZoomLevels& levels = scene.levels();
     for (std::size_t grp = 0; grp < levels.size(); ++grp) {
         scene.sea(grp);
@@ -1451,7 +1456,24 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
         // prewarm_far_levels or resident_level_chunks at all.
         fr.set_workers(
             std::make_unique<render::ChunkWorkers>(scene, render::chunk_worker_threads(o.threads)));
-        render::apply_frame_config(fr, {});
+        render::FrameConfig cfg;
+        cfg.prewarm_far_levels = true;
+        // ZOOM-SMOOTH-1b step 2: the same default_chunk_budget the viewer computes from the
+        // adapter and system RAM, overridable with --chunk-budget-mb (0 = off) so the sweep can
+        // be compared across budgets in one invocation.
+        const render::ChunkBudgetAdapter adapter_kind =
+            adapter_type == WGPUAdapterType_DiscreteGPU ? render::ChunkBudgetAdapter::Discrete
+            : adapter_type == WGPUAdapterType_CPU ? render::ChunkBudgetAdapter::Software
+                                                  : render::ChunkBudgetAdapter::IntegratedOrUnknown;
+        // bench_frame does not link SDL3 (it links anno_app_core, not anno_app_sdl), so there
+        // is no SDL_GetSystemRAM here: system_ram_bytes is 0 (unknown), which
+        // default_chunk_budget's own clamp already floors to a safe minimum for the
+        // integrated/unknown case.
+        cfg.budget = render::default_chunk_budget(adapter_kind, 0);
+        if (o.chunk_budget_mb) {
+            cfg.budget.total_bytes = *o.chunk_budget_mb * 1024ULL * 1024ULL;
+        }
+        render::apply_frame_config(fr, cfg);
         const auto target =
             g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
         auto ready = [&](std::size_t grp) { return g.group_ready(scene, grp); };
@@ -2042,6 +2064,12 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = parse(v, o.zoom_sweep_pan_px) && o.zoom_sweep_pan_px >= 0.0;
         } else if (a == "--zoom-sweep-skip") {
             ok = parse(v, o.zoom_sweep_skip);
+        } else if (a == "--chunk-budget-mb") {
+            std::size_t mb = 0;
+            ok = parse(v, mb);
+            if (ok) {
+                o.chunk_budget_mb = mb;
+            }
         } else if (a == "--zoom-factor") {
             ok = parse(v, o.zoom_factor) && o.zoom_factor >= 1.0 / 64.0 && o.zoom_factor <= 64.0;
         } else if (a == "--resample") {
@@ -2398,7 +2426,7 @@ int main(int argc, char** argv) {
             std::fputs("--zoom-sweep needs --renderer gpu\n", stderr);
             return 2;
         }
-        return zoom_sweep(scene, *o, *frame_gpu, largest, o->zoom_sweep, file);
+        return zoom_sweep(scene, *o, *frame_gpu, largest, o->zoom_sweep, file, ctx->adapter_type);
     }
     if (!o->scale_cost.empty()) {
         if (!frame_gpu) {

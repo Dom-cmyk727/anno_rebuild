@@ -1036,10 +1036,38 @@ std::string Viewer::run() {
         // apply_frame_config (ZOOM-SMOOTH-1 step 1) so bench_frame's --zoom-sweep can set the
         // same two knobs from the same struct.
         render::FrameConfig cfg;
-        cfg.prewarm_far_levels = opening_ != nullptr;
+        // ZOOM-SMOOTH-1b step 3: on in every session, not only the opening; the byte budget
+        // below decides which derived levels actually qualify as resident.
+        cfg.prewarm_far_levels = true;
         if (opening_ != nullptr) {
             // The levels from the whole map down to level 4 stay built (zoom.hpp).
             cfg.resident_level_chunks = kOpeningResidentLevelChunks;
+        }
+#ifdef ANNO_VIEWER_GPU
+        const render::ChunkBudgetAdapter adapter_kind =
+            !on_gpu() || gpu_ == nullptr ? render::ChunkBudgetAdapter::IntegratedOrUnknown
+            : gpu_->ctx.adapter_type == WGPUAdapterType_DiscreteGPU
+                ? render::ChunkBudgetAdapter::Discrete
+            : gpu_->ctx.adapter_type == WGPUAdapterType_CPU
+                ? render::ChunkBudgetAdapter::Software
+                : render::ChunkBudgetAdapter::IntegratedOrUnknown;
+#else
+        const render::ChunkBudgetAdapter adapter_kind = render::ChunkBudgetAdapter::Software;
+#endif
+        cfg.budget = render::default_chunk_budget(
+            adapter_kind,
+            static_cast<std::uint64_t>(std::max(0, SDL_GetSystemRAM())) * 1024ULL * 1024ULL);
+        // ANNO_VIEW_CHUNK_BUDGET_MB=<n> overrides the computed default (the viewer option the
+        // packet asks for); 0 turns the budget off (today's exact count-based behaviour).
+        if (const char* s = std::getenv("ANNO_VIEW_CHUNK_BUDGET_MB"); s != nullptr && *s != 0) {
+            char* end = nullptr;
+            const unsigned long long mb = std::strtoull(s, &end, 10);
+            if (end != s && *end == 0) {
+                cfg.budget.total_bytes = static_cast<std::size_t>(mb) * 1024ULL * 1024ULL;
+            } else {
+                std::fprintf(stderr, "ANNO_VIEW_CHUNK_BUDGET_MB=%s not understood (megabytes)\n",
+                             s);
+            }
         }
         render::apply_frame_config(frames_, cfg);
     }

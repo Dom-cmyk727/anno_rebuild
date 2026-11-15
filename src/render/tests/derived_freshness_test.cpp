@@ -696,3 +696,35 @@ TEST_CASE("the planner builds a far chunk outside the scene without its children
     REQUIRE(depth >= 2);
     CHECK(below == 0);
 }
+
+// ZOOM-SMOOTH-1b step 3: is_resident_level widens residency with the byte budget, without
+// changing resident_level_chunks' own meaning as a floor.
+TEST_CASE("is_resident_level: resident_level_chunks is a floor, the byte budget can widen it, "
+          "never narrow it (game files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    render::FrameRenderer frames(2);
+    // One call is enough to run sync_levels (update_chunks' first line); away from the island so
+    // nothing else is requested.
+    frames.update_chunks(scene, render::Rect{-200000, -200000, 64, 64}, 2);
+    // From the existing prewarm tests' own comment: the island's levels 3 and 4 are 24 and 8
+    // chunks.
+    frames.resident_level_chunks = 16;
+    CHECK_FALSE(frames.is_resident_level(3)); // 24 > 16, budget off: not resident
+    CHECK(frames.is_resident_level(4));       // 8 <= 16: the floor alone makes it resident
+    // A budget whose resident share covers level 3's worst-case bytes (24 chunks) widens it in;
+    // one that does not stays narrow. Neither changes level 4, which the floor alone covers.
+    frames.budget.total_bytes = 200ULL * 1024 * 1024;              // 200 MiB
+    frames.budget.resident_share = 0.5;                            // 100 MiB resident share
+    CHECK(24 * render::kChunkByteEstimate < 100ULL * 1024 * 1024); // the budget this test picked
+    CHECK(frames.is_resident_level(3));
+    CHECK(frames.is_resident_level(4));
+    frames.budget.total_bytes = 1024 * 1024;  // 1 MiB: far below even one chunk's estimate
+    CHECK_FALSE(frames.is_resident_level(3)); // narrowed back to the floor's own answer
+    CHECK(frames.is_resident_level(4));       // the floor alone still covers it
+}

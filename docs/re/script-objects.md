@@ -4,9 +4,9 @@ Reference: GOG 2.0.0.5, AnnoScene.dll SHA-256
 `5b521f9541332846d32b57c93eaaee9c9d8de2ac2404cd75da0fe93e0e36fd38`,
 AnnoWelt.dll `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
 **D** = original instructions/table read; **S** = existing string catalogue;
-**A** = hand-derived consequence; **T** = reference/test; **U** = unproved.
+**P** = parsed original file; **A** = hand-derived consequence; **T** = reference/test; **U** = unproved.
 Every address below names its module. No original listings, bytes or script text
-are reproduced. Independent orchestrator review is pending.
+are reproduced. SO-1a was accepted by the orchestrator on 2026-11-15; SO-1b implementation review is pending.
 
 Reuse [BIGBROTHER §3.1/§6](../formats/bigbrother.md),
 [script-runtime.md](script-runtime.md), [fisher.md §8](fisher.md#8-script-object-inventory-and-proposed-next-packet-2026-11-15)
@@ -155,3 +155,17 @@ exhaustive city-destruction, ownership-transfer or locale study, nor an engine
 port. Missing/unsafe island or city-domain inputs produce reference exit 2,
 not a guessed original Boolean. Existing section versions, state 139, pins and
 recordings stay unchanged. OQ-625's other query/action and canary blockers remain.
+
+## 7. SO-1b implementation and safe-domain difference (2026-11-15)
+
+**T / adaptation.** The engine compiles definitions into immutable `ScriptCityObject`
+entries (widened `IslandId` / `CityNo`), rebuilt from the saved program text.
+Each query consults the current island/city table; no binding result is saved.
+The ring bound is `Island::cities.size()`, populated from `SimConfig::city_slots`
+by scenario island creation (`src/sim/src/scenario.cpp`, `out.cities.assign`), rather than a new original-size constant.
+Missing islands or slots outside that ring return host refusal, which the existing
+`ScriptFault::Host` transaction path rolls back. This is a deliberate safety
+difference: AnnoScene `0x100118b8` dereferences an unchecked island result and
+AnnoWelt `0x100863e0` indexes the ring without a bounds check; those invalid reads
+supply no reproducible Boolean. The orchestrator's accepted SO-1a review chose
+refusal. Parsing does not inspect the world. No new saved field or version is used.

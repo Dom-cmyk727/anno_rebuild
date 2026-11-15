@@ -557,7 +557,8 @@ std::vector<std::string> numbers_of(const std::vector<const Token*>& ln) {
 }
 
 R<bool> parse_defines(Bytes text, const std::vector<Token>& toks, std::size_t first,
-                      std::size_t last, const KnownSection& sec, Script& out) {
+                      std::size_t last, const KnownSection& sec, Script& out,
+                      const Options& options) {
     const std::string where(sec.name);
     const std::size_t end_offset = last < toks.size() ? toks[last].offset : text.size();
     const auto error_at = [&](std::size_t off, std::string msg) {
@@ -631,6 +632,8 @@ R<bool> parse_defines(Bytes text, const std::vector<Token>& toks, std::size_t fi
     if (sec.kind == SectionKind::Camera && camera_lines == 0) {
         return error_at(end_offset, "no position");
     }
+    if (sec.kind == SectionKind::Objects && options.allow_duplicate_object_names)
+        return true;
     // Every name once (P: 50 of 50). Named as the reference does: the first name that occurs
     // twice, at its second occurrence.
     for (std::size_t i = 0; i < names.size(); ++i) {
@@ -785,7 +788,7 @@ Result<Script, Error> parse(Bytes text, const Options& options) {
             }
             script.kernel = std::move(items).value();
         } else if (sec.kind != SectionKind::Unknown) {
-            auto ok = parse_defines(text, toks, first + 1, last, *known, script);
+            auto ok = parse_defines(text, toks, first + 1, last, *known, script, options);
             if (!ok) {
                 return ok.error();
             }

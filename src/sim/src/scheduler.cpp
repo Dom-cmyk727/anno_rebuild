@@ -795,7 +795,7 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     std::vector<SimEvent> script_events;
     if (!advance_script(w.script_, w.players_, w.timers_, *w.types_,
                         static_cast<std::uint32_t>(w.clock_.tick()), &w.figures_, &w.settings_,
-                        &script_events, w.clock_.tick())) {
+                        &script_events, w.clock_.tick(), w.islands_)) {
         w.faulted_ = true;
         w.fault_message_ = "script runtime fault";
         w.out_ = SimOutput{};
@@ -946,7 +946,7 @@ std::string World::initialize_scripts() {
         return "script startup requires a fresh zero clock";
     std::vector<SimEvent> script_events;
     if (!advance_script(script_, players_, timers_, *types_, 0, &figures_, &settings_,
-                        &script_events, clock_.tick())) {
+                        &script_events, clock_.tick(), islands_)) {
         faulted_ = true;
         fault_message_ = "script runtime fault";
         return fault_message_;

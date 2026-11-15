@@ -158,7 +158,10 @@ says who is doing what, where the work is, and what it waits on.
     [review](reviews/2026-11-15-so-1b-review.md)): the engine evaluates city objects live; `S01_02_01` now refuses
     at `QUESTLOG_SHOW` (payload offset 1339). **Not landed:** the candidate `816c6352` (SO-1a, SO-1b, SL-0; owner OK
     2026-11-15) passed the local game-file run (2637 executed, 2 memory refusals PASS alone) but its hosted `gate`
-    FAILED; main stays `cc7af72c`. (An earlier board commit said LANDED by mistake; this corrects it.) **SL-0 ACCEPTED as a read** (`68c140c5`,
+    FAILED once on one macOS timing test (`anno_app_tests` "command queue: a push never waits for a turn (measured)";
+    the candidate changes no app code). The failed job was rerun, as `land.py` instructs, and passed. **LANDED on main
+    `816c6352`** 2026-11-15, verified as an ancestor of `origin/main`; main healthy. (An earlier board commit said
+    LANDED before that was true; it was corrected at once.) The flaky timing test is noted for GATE-2a. **SL-0 ACCEPTED as a read** (`68c140c5`,
     [review](reviews/2026-11-15-sl-0-review.md)): 14 names remain; 9 of them need the computer players' trade,
     diplomacy and military, mission outcomes or a clipboard paste, so the unchanged script cannot run before
     PLAN M5. **The owner chose "Find another map"** (2026-11-15) for the fisher

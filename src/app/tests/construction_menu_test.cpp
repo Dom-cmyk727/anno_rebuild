@@ -420,7 +420,7 @@ TEST_CASE("info panel: the rotate arrows turn the armed type's rotation, left -1
         click_arrow(menu, tool, rx, y);
         CHECK(tool.input().rotation() == expect);
     }
-    // Keys and arrows turn one rotation: right arrow (1), key `.` = RotateBack (0), key `,` =
+    // Keys and arrows turn one rotation: right arrow (1), key `,` = RotateBack (0), key `.` =
     // Rotate (1), left arrow (0), left arrow (3). The ghost and the build use the same turn.
     click_arrow(menu, tool, rx, y);
     CHECK(tool.input().rotation() == 1);

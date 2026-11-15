@@ -459,14 +459,15 @@ TEST_CASE("dev tool data: another player's city on another island: its commands 
     CHECK(app::preview_note(tool, *s, 1).find("no entry 501") != std::string::npos);
 }
 
-TEST_CASE("dev tool turn: the footprint is centred on the pointer, `,` and T turn on, `.` back, "
+TEST_CASE("dev tool turn: the footprint is centred on the pointer, `.` and T turn on, `,` back, "
           "and a mine or quarry keeps its turn (owner playtest 2026-11-04)" *
           doctest::test_suite("dev_tool_mod")) {
     // The original's cursor centres the turned footprint on the hovered tile, (w - 1) / 2 and
     // (h - 1) / 2 before it, clamped at 0 (D: AnnoFrame.dll 0x10043e20, 0x10049340); its turn keys
-    // add -1 or +1 to the cursor's byte (D: View.dll 0x100190b3; Wine runner 2026-11-04: `.` back,
-    // `,` on); a MINE (PRODTYPE 3) or STEINBRUCH (13) builds with its deposit's turn (D:
-    // AnnoFrame.dll 0x10046300, 0x10046715), which is not ported: the tool keeps the turn.
+    // add -1 or +1 to the cursor's byte (D: View.dll 0x100190b3; Wine runner 2026-11-04 read the
+    // Kontor cursor `.` back; the ordinary cursor turns on under `.`, OQ-623); a MINE (PRODTYPE 3)
+    // or STEINBRUCH (13) builds with its deposit's turn (D: AnnoFrame.dll 0x10046300, 0x10046715),
+    // which is not ported: the tool keeps the turn.
     const sim::TypeId kMine{1205}, kQuarry{1201}, kFisher{810};
     std::vector<sim::BuildingType> extra{type(kMine, 3, 3, 4), type(kQuarry, 13, 3, 4),
                                          type(kFisher, 6, 3, 4)};
@@ -492,11 +493,11 @@ TEST_CASE("dev tool turn: the footprint is centred on the pointer, `,` and T tur
     };
     // Turn 0: 3 x 1, one tile before the pointer along x.
     CHECK(origin_of(kX0 + 10, kY0 + 10) == std::tuple{kX0 + 9, kY0 + 10, std::uint8_t{0}});
-    // `.` turns back: 3, a 1 x 3 one tile before the pointer along y.
+    // `,` turns back: 3, a 1 x 3 one tile before the pointer along y.
     key(tool, app::ToolInput::Kind::RotateBack);
     CHECK(tool.input().rotation() == 3);
     CHECK(origin_of(kX0 + 10, kY0 + 10) == std::tuple{kX0 + 10, kY0 + 9, std::uint8_t{3}});
-    // `,` (or T) turns on: 0 again.
+    // `.` (or T) turns on: 0 again.
     key(tool, app::ToolInput::Kind::Rotate);
     CHECK(tool.input().rotation() == 0);
     // The preview's verdict uses the same centred rectangle.

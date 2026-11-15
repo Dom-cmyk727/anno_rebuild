@@ -323,7 +323,8 @@ std::pair<std::int32_t, std::int32_t> removal_clear_xy(const TileLayer& layer,
     return {named_x, named_y};
 }
 void clear_object_record(TileLayer& layer, const TypeRegistry& types, std::int32_t x,
-                         std::int32_t y, std::vector<std::uint64_t>* cleared) {
+                         std::int32_t y, std::vector<std::uint64_t>* cleared,
+                         const Terrain* fisher_terrain) {
     // D AnnoWelt 0x10082c30, the clear arm 0x10082f00..0x10082f1f. deviation:
     // the replacement arm (island +0x18 high nibble, 0x10082e43..0x10082efc)
     // is not modelled (OQ-201). The arm keeps the height byte and bits 25–31;
@@ -388,6 +389,21 @@ void clear_object_record(TileLayer& layer, const TypeRegistry& types, std::int32
             layer.set_walk_code(i, 2);
             layer.set_walk_mask(i, 0);
         }
+    }
+    if (fisher_terrain != nullptr) {
+        const auto left = std::max<std::int64_t>(x0, layer.x0());
+        const auto top = std::max<std::int64_t>(y0, layer.y0());
+        const auto right =
+            std::min<std::int64_t>(x0 + fw, std::int64_t{layer.x0()} + layer.width());
+        const auto bottom =
+            std::min<std::int64_t>(y0 + fh, std::int64_t{layer.y0()} + layer.height());
+        if (right > left && bottom > top)
+            static_cast<void>(fill_fish_resources(
+                layer, fisher_terrain->height,
+                TileRect{static_cast<std::int32_t>(left), static_cast<std::int32_t>(top),
+                         static_cast<std::uint32_t>(right - left),
+                         static_cast<std::uint32_t>(bottom - top)},
+                true));
     }
 }
 WalkRecord walk_record(const Island& island, const TypeRegistry& types, TileXY p) {

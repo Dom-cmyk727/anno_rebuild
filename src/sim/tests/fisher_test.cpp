@@ -226,3 +226,56 @@ TEST_CASE("fisher geometry corpus: blocked embedded fish and eight-neighbour wat
     CHECK(adjacent == 619);
     CHECK(fish - adjacent == 1854);
 }
+
+TEST_CASE("fisher fill: every runtime_fish reference vector preserves the other tile fields") {
+    std::ifstream input(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim/fisher_vectors.txt");
+    REQUIRE(input);
+    unsigned count = 0;
+    for (std::string line; std::getline(input, line);) {
+        std::istringstream left(line);
+        std::string kind, label;
+        if (!(left >> kind >> label) || kind != "runtime_fish")
+            continue;
+        INFO(label);
+        const auto arrow = line.find("=>");
+        REQUIRE(arrow != std::string::npos);
+        std::istringstream given_stream(
+            line.substr(line.find(label) + label.size(), arrow - line.find(label) - label.size()));
+        std::istringstream wanted_stream(line.substr(arrow + 2));
+        const auto given = fields(given_stream), wanted = fields(wanted_stream);
+        const auto h = bytes(given.at("heights"));
+        REQUIRE(h.size() == 4);
+        sim::TileLayer layer(0, 0, 2, 2, 4);
+        const auto raw_phase = number(given, "phase");
+        layer.set_object(0, number(given, "tile"));
+        layer.set_phase(0, static_cast<std::uint8_t>(raw_phase & 127));
+        layer.set_foot_anchor(0, static_cast<std::uint8_t>(raw_phase >> 7));
+        layer.set_foot_dx(0, 3);
+        layer.set_foot_dy(0, 4);
+        layer.set_foot_rotation(0, 2);
+        layer.set_owner(0, 7);
+        layer.set_aux(0, sim::kTileClaim | 186U);
+        layer.set_walk_code(0, 3);
+        layer.set_walk_mask(0, 0x155);
+        CHECK(sim::fill_fish_resources(layer, h, {0, 0, 1, 1}, false) == 0);
+        CHECK(layer.object(0) == number(given, "tile"));
+        CHECK(layer.phase(0) == (raw_phase & 127));
+        const auto changed = sim::fill_fish_resources(layer, h, {0, 0, 1, 1}, true);
+        CHECK(changed == number(wanted, "created"));
+        CHECK(layer.object(0) == number(wanted, "tile"));
+        CHECK((layer.phase(0) | (std::uint32_t{layer.foot_anchor(0)} << 7)) ==
+              number(wanted, "phase"));
+        CHECK(layer.item_height(0) == (changed ? number(wanted, "mean") : 186U));
+        CHECK(layer.foot_dx(0) == (changed ? 0 : 3));
+        CHECK(layer.foot_dy(0) == (changed ? 0 : 4));
+        CHECK(layer.foot_rotation(0) == (changed ? 0 : 2));
+        CHECK(layer.owner(0) == 7);
+        CHECK(layer.claimed(0));
+        CHECK(layer.walk_code(0) == 3);
+        CHECK(layer.walk_mask(0) == 0x155);
+        CHECK(number(wanted, "consumed") == 0); // no DrawSource in this operation
+        ++count;
+    }
+    CHECK(count >= 4);
+    std::cout << "FISHER_FILL_VECTORS executed=" << count << "\n";
+}

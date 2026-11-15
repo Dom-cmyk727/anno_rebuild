@@ -732,7 +732,8 @@ HouseOutcome remove_house(const HouseEnv& env, Island& island, const BuildingKey
         detach_walker(env, slot, out.walkers_detached);
         slot = FigureId{};
     }
-    if (!remove_building(env.cfg, env.rules, env.types, env.players, island, key)) {
+    if (!remove_building(env.cfg, env.rules, env.types, env.players, island, key, std::nullopt,
+                         env.fisher_enabled)) {
         return fault_outcome(HouseFault::NoSuchHouse);
     }
     out.kind = HouseOutcomeKind::Removed;

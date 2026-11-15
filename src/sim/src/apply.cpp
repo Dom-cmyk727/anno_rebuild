@@ -725,7 +725,8 @@ bool remove_city(Env& env, Island& is, CityNo no) {
                 static_cast<void>(
                     remove_building(env.cfg, env.rules, env.types, env.players, is,
                                     BuildingKey{CityRef{is.index, no}, static_cast<ListId>(l),
-                                                static_cast<Slot>(s)}));
+                                                static_cast<Slot>(s)},
+                                    std::nullopt, env.w.fisher_enabled()));
             }
         }
     }
@@ -781,7 +782,8 @@ ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
                     continue;
                 }
                 run_building_seam(env, env.seams.on_removed, is, *city, *b);
-                r.status = remove_building(env.cfg, env.rules, env.types, env.players, is, k, tile)
+                r.status = remove_building(env.cfg, env.rules, env.types, env.players, is, k, tile,
+                                           env.w.fisher_enabled())
                                ? Reject::None
                                : Reject::NoBuildingAtTile;
                 r.building = id;
@@ -792,7 +794,8 @@ ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
             // The named tile may be any tile of the object. A building of another
             // city on this city's tile is left alone (the branch above).
             std::vector<std::uint64_t> cleared;
-            clear_object_record(is.tiles, env.types, tile.x, tile.y, &cleared);
+            clear_object_record(is.tiles, env.types, tile.x, tile.y, &cleared,
+                                env.w.fisher_enabled() ? is.terrain.get() : nullptr);
             invalidate_claims(is, env.rules, cleared); // enhanced only (forestry.md 3.5)
         } else {
             r.status = Reject::NoBuildingAtTile;

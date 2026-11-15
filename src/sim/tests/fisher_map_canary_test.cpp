@@ -11,6 +11,7 @@
 
 #include <anno/sim/driver.hpp>
 #include <anno/sim/fisher.hpp>
+#include <anno/sim/hash.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/walk_search.hpp>
@@ -146,8 +147,8 @@ void observe(sim::World& w, Trip& t) {
     t.raw = farm.raw;
     t.out = farm.out;
 }
-sim::World original_world(const std::filesystem::path& game, const std::string& map, bool enabled,
-                          bool human) {
+sim::World original_world(const std::filesystem::path& game, const std::string& map,
+                          std::optional<bool> enabled, bool human) {
     const auto registry =
         anno::sim_load::load_original_registry(game, anno::sim_load::FigureEntries::Required);
     REQUIRE_MESSAGE(registry.types, registry.error);
@@ -156,9 +157,10 @@ sim::World original_world(const std::filesystem::path& game, const std::string& 
                                                            *registry.types, {}, {});
     REQUIRE_MESSAGE(loaded, (loaded ? "" : loaded.error()));
     sim::ExtensionContext extensions;
-    extensions.fisher_rules.enabled = enabled ? std::uint8_t{1} : std::uint8_t{0};
-    auto made = sim::World::create(loaded.value().loaded.spec, registry.types, {}, {}, {},
-                                   sim::serial_executor(), extensions);
+    extensions.fisher_rules.enabled = enabled.value_or(false) ? std::uint8_t{1} : std::uint8_t{0};
+    auto made = enabled ? sim::World::create(loaded.value().loaded.spec, registry.types, {}, {}, {},
+                                             sim::serial_executor(), extensions)
+                        : sim::World::create(loaded.value().loaded.spec, registry.types);
     REQUIRE_MESSAGE(made, (made ? "" : made.error()));
     auto w = std::move(made).value();
     auto session = sim::Recorder::start(w);
@@ -187,8 +189,8 @@ std::vector<Trip> original_huts(const sim::World& w, bool human) {
                                 REQUIRE(city->owner == owner);
                                 const auto* type = w.types().find(b->type);
                                 REQUIRE(type);
-                                REQUIRE(type->prod.input_per_step.at(0) == (human ? 69 : 128));
-                                REQUIRE(type->prod.output_per_step.at(0) == (human ? 17 : 51));
+                                REQUIRE(type->prod.input_per_step.at(0) == (human ? 69U : 128U));
+                                REQUIRE(type->prod.output_per_step.at(0) == (human ? 17U : 51U));
                                 const auto& farm = std::get<sim::Farm>(b->payload);
                                 REQUIRE(farm.raw == 0);
                                 REQUIRE(farm.out == 0);
@@ -204,14 +206,85 @@ std::vector<Trip> original_huts(const sim::World& w, bool human) {
     return trips;
 }
 
-void run_canary(sim::World& w, std::vector<Trip>& trips, const std::string& map) {
+void require_quiet(const sim::World& w, const std::vector<Trip>& trips) {
+    REQUIRE_FALSE(w.fisher_enabled());
+    REQUIRE_MESSAGE(!w.faulted(), w.fault());
+    for (const auto& t : trips) {
+        const auto* b = w.find_building(t.home);
+        REQUIRE(b);
+        const auto& farm = std::get<sim::Farm>(b->payload);
+        REQUIRE(farm.workers_out == 0);
+        REQUIRE(farm.raw == 0);
+        REQUIRE(farm.out == 0);
+    }
+    for (const auto& f : w.figures().list.slots)
+        REQUIRE_FALSE((f && f->kind == 142 && f->job == 45 && !f->expiry_stamp));
+}
+void run_canary(sim::World& w, std::vector<Trip>& trips, const std::string& map,
+                const std::filesystem::path& game, bool human) {
+    REQUIRE(w.fisher_enabled());
+    // Independent normal creations, not copies of the reference state.
+    auto duplicate = original_world(game, map, true, human);
+    auto off = original_world(game, map, false, human);
+    auto defaults = original_world(game, map, std::nullopt, human);
+    const auto off_trips = original_huts(off, human);
+    const auto default_trips = original_huts(defaults, human);
+    const auto off_start = off.state_hash();
+    REQUIRE(w.state_hash() == duplicate.state_hash());
+    REQUIRE(w.state_hash() != off_start);
+    REQUIRE(off.save() == defaults.save());
+    std::optional<sim::World> restored;
+    std::uint64_t cut_tick = 0, turns = 0, restored_turns = 0;
+    sim::StateHasher on_trace, off_trace;
     while (w.clock().tick() < kTripBound) {
         w.advance(kTurnMs);
+        duplicate.advance(kTurnMs);
+        off.advance(kTurnMs);
+        defaults.advance(kTurnMs);
+        if (restored) {
+            restored->advance(kTurnMs);
+            ++restored_turns;
+        }
         REQUIRE_MESSAGE(!w.faulted(), w.fault());
+        REQUIRE_MESSAGE(!duplicate.faulted(), duplicate.fault());
+        const auto hash = w.state_hash();
+        REQUIRE(hash == duplicate.state_hash());
+        if (restored) {
+            REQUIRE_MESSAGE(!restored->faulted(), restored->fault());
+            REQUIRE(hash == restored->state_hash());
+        }
+        require_quiet(off, off_trips);
+        require_quiet(defaults, default_trips);
+        REQUIRE(off.state_hash() == defaults.state_hash());
+        on_trace.u64(hash);
+        off_trace.u64(off.state_hash());
+        ++turns;
         for (auto& t : trips) {
             INFO("map=", map, " hut=", t.x, ",", t.y, " tick=", w.clock().tick());
             if (!t.food)
                 observe(w, t);
+        }
+        if (!restored) {
+            for (const auto& t : trips) {
+                const auto* f = find_worker(w, t.worker);
+                if (!f || !f->harvest || f->harvest->step != sim::HarvestStep::Cut ||
+                    f->harvest->wait == 0)
+                    continue;
+                const auto snapshot = w.save();
+                const auto registry = anno::sim_load::load_original_registry(
+                    game, anno::sim_load::FigureEntries::Required);
+                REQUIRE_MESSAGE(registry.types, registry.error);
+                auto loaded = sim::World::load(snapshot, registry.types);
+                REQUIRE_MESSAGE(loaded, (loaded ? "" : loaded.error()));
+                restored.emplace(std::move(loaded).value());
+                REQUIRE(restored->fisher_enabled());
+                REQUIRE(restored->state_hash() == hash);
+                REQUIRE(restored->save() == snapshot);
+                cut_tick = w.clock().tick();
+                std::cout << "FISHER_NATIVE_CUT map=" << map << " tick=" << cut_tick
+                          << " hut=" << t.x << ',' << t.y << " wait=" << f->harvest->wait << '\n';
+                break;
+            }
         }
         if (std::all_of(trips.begin(), trips.end(), [](const Trip& t) { return t.food != 0; }))
             break;
@@ -230,6 +303,17 @@ void run_canary(sim::World& w, std::vector<Trip>& trips, const std::string& map)
                 std::cout << '\n';
             }
     }
+    REQUIRE(cut_tick != 0);
+    REQUIRE(restored_turns > 0);
+    REQUIRE(w.save() == duplicate.save());
+    REQUIRE(w.save() == restored->save());
+    REQUIRE(off.save() == defaults.save());
+    std::cout << "FISHER_DETERMINISM map=" << map << " tick=" << w.clock().tick()
+              << " turns=" << turns << " restored_turns=" << restored_turns
+              << " on_trace=" << std::hex << on_trace.value() << std::dec << '\n';
+    std::cout << "FISHER_OFF map=" << map << " tick=" << w.clock().tick() << " start=" << std::hex
+              << off_start << " end=" << off.state_hash() << " trace=" << off_trace.value()
+              << std::dec << '\n';
     for (const auto& t : trips) {
         INFO("map=", map, " hut=", t.x, ",", t.y, " tick=", w.clock().tick(), " spawn=", t.spawn,
              " left=", t.left, " catch=", t.caught, " return=", t.returned, " food=", t.food);
@@ -243,7 +327,7 @@ void run_canary(sim::World& w, std::vector<Trip>& trips, const std::string& map)
 } // namespace
 
 TEST_CASE("fisher real map: Venice 3978 three original huts complete trips and food without "
-          "commands (game files)" *
+          "commands with per-turn reload and flag-off checks (game files)" *
           doctest::test_suite("heavy")) {
     const auto game = anno::test::game_dir();
     if (!game) {
@@ -253,10 +337,11 @@ TEST_CASE("fisher real map: Venice 3978 three original huts complete trips and f
     const std::string map = "0010SingleEndlos/01_1024_easy_256.sze";
     auto w = original_world(*game, map, true, false);
     auto trips = original_huts(w, false);
-    run_canary(w, trips, map);
+    run_canary(w, trips, map, *game, false);
 }
 
-TEST_CASE("fisher real map: human 810 one prescribed Build completes trip and food (game files)" *
+TEST_CASE("fisher real map: human 810 one prescribed Build completes trip and food with per-turn "
+          "reload and flag-off checks (game files)" *
           doctest::test_suite("heavy")) {
     const auto game = anno::test::game_dir();
     if (!game) {
@@ -266,5 +351,5 @@ TEST_CASE("fisher real map: human 810 one prescribed Build completes trip and fo
     const std::string map = "Tutorial/02Trade01.sze";
     auto w = original_world(*game, map, true, true);
     auto trips = original_huts(w, true);
-    run_canary(w, trips, map);
+    run_canary(w, trips, map, *game, true);
 }

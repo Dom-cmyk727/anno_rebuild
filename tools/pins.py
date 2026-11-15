@@ -15,7 +15,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 REGEN_SELECT = r'^(anno_sim_tests\.|anno_sim_replay_)'
 SELECT = r'^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$)'
-RECORDINGS = ('goldens.txt', 'scenario_corpus.txt', 'loop_checkpoints.txt',
+RECORDINGS = ('pins.txt', 'scenario_corpus.txt', 'loop_checkpoints.txt',
               'g2.log', 'g3.log', 'g4.log', 'g5.log', 'g6.log', 'm2_found.log',
               'm2_found_wrong.log', 'cargo_load.log', 'cargo_load_wrong.log',
               'cargo_unload.log', 'cargo_unload_wrong.log')
@@ -41,9 +41,13 @@ def read_pins(path):
     return result
 
 
+def fixture_path(current, name):
+    return current.parent / name if name == 'pins.txt' else current / name
+
+
 def snapshot(current):
-    return {name: (hashlib.sha256((current / name).read_bytes()).hexdigest(),
-                   (current / name).stat().st_mtime_ns) for name in RECORDINGS}
+    return {name: (hashlib.sha256(fixture_path(current, name).read_bytes()).hexdigest(),
+                   fixture_path(current, name).stat().st_mtime_ns) for name in RECORDINGS}
 
 
 def run(args, execute=subprocess.run):
@@ -53,7 +57,7 @@ def run(args, execute=subprocess.run):
     if recording and os.environ.get('CI'):
         raise ValueError('regen refused under CI; no files changed')
     current = ROOT / 'fixtures/synthetic/sim/current'
-    before = read_pins(current / 'goldens.txt')
+    before = read_pins(fixture_path(current, 'pins.txt'))
     files_before = snapshot(current)
     env = dict(os.environ)
     env.pop('ANNO_UPDATE_GOLDEN', None)
@@ -71,9 +75,9 @@ def run(args, execute=subprocess.run):
         command += ['--config', args.config]
     if recording:
         for name in RECORDINGS:
-            command += ['--record-fixture', str(current / name)]
+            command += ['--record-fixture', str(fixture_path(current, name))]
     result = execute(command, cwd=ROOT, env=env)
-    after = read_pins(current / 'goldens.txt')
+    after = read_pins(fixture_path(current, 'pins.txt'))
     files_after = snapshot(current)
     moved = [name for name in sorted(before.keys() | after.keys())
              if before.get(name) != after.get(name)]

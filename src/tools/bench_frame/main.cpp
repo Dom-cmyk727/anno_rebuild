@@ -183,6 +183,10 @@ struct Options {
     std::optional<std::size_t> prewarm;
     /// GpuLimits::prefetch_chunks (nullopt = the limits' default).
     std::optional<std::size_t> prefetch;
+    /// GpuLimits::prefetch_budget_ms (nullopt = the limits' default; --prefetch-budget-ms 0 turns
+    /// off ZOOM-SMOOTH-1d's prefetch-while-waiting share, isolating it from the ring for
+    /// measurement).
+    std::optional<double> prefetch_budget_ms;
     /// GpuLimits::chunk_fade_ms (nullopt = the limits' default).
     std::optional<std::uint64_t> fade;
     /// FrameRenderer::max_lookahead_chunks (nullopt = the library default).
@@ -265,6 +269,11 @@ struct Options {
     /// isolate it, since prewarm_far_levels stays on and still fills resident_level_chunks'
     /// floor.
     std::optional<bool> prewarm_far_levels;
+    /// --zoom-ring on: --zoom-sweep's FrameRenderer::zoom_ring_enabled on (nullopt or
+    /// --zoom-ring off = off, the default since ZOOM-SMOOTH-1d measured a net regression - see
+    /// FrameRenderer::zoom_ring_enabled's own comment). Kept for measuring the zoom-out ring
+    /// (ZOOM-SMOOTH-1c2) again after a future packet gives it its own prefetch budget share.
+    std::optional<bool> zoom_ring_enabled;
     /// --wave-fade-hold k (0..1): with --scale-cost, the simulated waves' weight held at k
     /// (GpuLimits::wave_fade_ms on a frozen clock), to time the cross-fade (OQ-076).
     double wave_fade_hold = -1.0;
@@ -1500,6 +1509,7 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             std::make_unique<render::ChunkWorkers>(scene, render::chunk_worker_threads(o.threads)));
         render::FrameConfig cfg;
         cfg.prewarm_far_levels = o.prewarm_far_levels.value_or(true);
+        cfg.zoom_ring_enabled = o.zoom_ring_enabled.value_or(false);
         // ZOOM-SMOOTH-1b step 2: the same default_chunk_budget the viewer computes from the
         // adapter and system RAM, overridable with --chunk-budget-mb (0 = off) so the sweep can
         // be compared across budgets in one invocation.
@@ -1634,6 +1644,10 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                     // could not be exercised by this proof.
                     fr.zoom_anchor =
                         render::zoom_anchor_at(s.cam_x, s.cam_y, s.anchor_x, s.anchor_y, scale);
+                    // The zoom's own direction (ZOOM-SMOOTH-1c2 step 1): negative while
+                    // zooming out (s.now shrinking toward s.target), matching the viewer's own
+                    // zoom_target_ - zoom_now_.
+                    fr.zoom_direction = s.target - s.now;
                     const auto st = g.render(fr, scene, rv.view, s.group, t_ms, style,
                                              target.second.get(), &rv.resample);
                     t_ms += 2;
@@ -2120,6 +2134,11 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             if (ok) {
                 o.prewarm_far_levels = v == "on";
             }
+        } else if (a == "--zoom-ring") {
+            ok = v == "on" || v == "off";
+            if (ok) {
+                o.zoom_ring_enabled = v == "on";
+            }
         } else if (a == "--zoom-factor") {
             ok = parse(v, o.zoom_factor) && o.zoom_factor >= 1.0 / 64.0 && o.zoom_factor <= 64.0;
         } else if (a == "--resample") {
@@ -2174,6 +2193,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             std::size_t n = 0;
             ok = parse(v, n);
             o.prefetch = n;
+        } else if (a == "--prefetch-budget-ms") {
+            double n = 0.0;
+            ok = parse(v, n) && n >= 0.0;
+            o.prefetch_budget_ms = n;
         } else if (a == "--prewarm") {
             std::size_t n = 0;
             ok = parse(v, n);
@@ -2432,6 +2455,9 @@ int main(int argc, char** argv) {
         }
         if (o->prefetch) {
             limits.prefetch_chunks = *o->prefetch;
+        }
+        if (o->prefetch_budget_ms) {
+            limits.prefetch_budget_ms = *o->prefetch_budget_ms;
         }
         if (o->prewarm) {
             limits.prewarm_chunks = *o->prewarm;

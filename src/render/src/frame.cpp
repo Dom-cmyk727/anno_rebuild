@@ -21,6 +21,7 @@ void apply_frame_config(FrameRenderer& fr, const FrameConfig& cfg) {
     fr.prewarm_far_levels = cfg.prewarm_far_levels;
     fr.resident_level_chunks = cfg.resident_level_chunks;
     fr.budget = cfg.budget;
+    fr.zoom_ring_enabled = cfg.zoom_ring_enabled;
 }
 
 ChunkMemoryBudget default_chunk_budget(ChunkBudgetAdapter adapter, std::uint64_t system_ram_bytes) {
@@ -1000,9 +1001,21 @@ std::vector<ChunkKey> FrameRenderer::plan_margin(Rect view, std::size_t group,
                 next, vx_ * sx, vy_ * sy, [](int, int) { return 2; });
         }
     }
+    // The zoom-out ring (ZOOM-SMOOTH-1c2 step 4): the current level's own composed grid at the
+    // coarse edge, about the zoom anchor, built ahead so a continued zoom-out never catches it
+    // mid-build. Rank 3, after visible (0), the pan lookahead (1) and the neighbouring groups'
+    // views (2): the invariant "pan is never starved by it" follows from the sort alone, since
+    // every one of those always sorts first. Only while actually zooming out (zoom_direction <
+    // 0): building it while zooming in or at rest would be background work for an area the
+    // camera is not heading toward.
+    if (zoom_ring_enabled && zoom_anchor && zoom_direction < 0) {
+        const Rect out_ring = ring_view_at(view, *zoom_anchor, group, levels_);
+        add(group, visible_chunks(out_ring), view, vx_, vy_, [](int, int) { return 3; });
+    }
     std::sort(queue.begin(), queue.end());
     adjacent_.clear();
     margin_.clear();
+    ring_.clear();
     std::vector<ChunkKey> order;
     for (const auto& c : queue) {
         order.push_back(c.key);
@@ -1010,6 +1023,8 @@ std::vector<ChunkKey> FrameRenderer::plan_margin(Rect view, std::size_t group,
             margin_.push_back(c.key);
         } else if (c.rank == 2) {
             adjacent_.push_back(c.key);
+        } else if (c.rank == 3) {
+            ring_.push_back(c.key);
         }
     }
     return order;
@@ -1487,6 +1502,25 @@ Rect zoomed_view_at(Rect view, std::pair<double, double> anchor, std::size_t fro
     const int x = scale(ax, xn, xd) - static_cast<int>(ax - view.x);
     const int y = scale(ay, yn, yd) - static_cast<int>(ay - view.y);
     return {x, y, view.w, view.h};
+}
+
+Rect ring_view_at(Rect view, std::pair<double, double> anchor, std::size_t group,
+                  const ZoomLevels& levels, double coarse_margin) {
+    if (group + 1 >= levels.size()) {
+        return view; // already the coarsest level: nothing coarser to ring toward
+    }
+    const double scale_x = levels.tile_w(group) / (coarse_margin * levels.tile_w(group + 1));
+    const double scale_y = levels.tile_h(group) / (coarse_margin * levels.tile_h(group + 1));
+    const double new_w = static_cast<double>(view.w) * scale_x;
+    const double new_h = static_cast<double>(view.h) * scale_y;
+    // The anchor's fractional position within view stays (the window-relative position a
+    // real zoom keeps fixed, generalized from zoomed_view_at's pixel-offset rule to a view
+    // whose size itself grows).
+    const double frac_x = view.w > 0 ? (anchor.first - view.x) / view.w : 0.5;
+    const double frac_y = view.h > 0 ? (anchor.second - view.y) / view.h : 0.5;
+    const int x = static_cast<int>(std::llround(anchor.first - frac_x * new_w));
+    const int y = static_cast<int>(std::llround(anchor.second - frac_y * new_h));
+    return {x, y, static_cast<int>(std::llround(new_w)), static_cast<int>(std::llround(new_h))};
 }
 
 int stand_in_source(int p, int num, int den) {

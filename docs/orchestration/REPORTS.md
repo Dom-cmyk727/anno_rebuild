@@ -11713,3 +11713,338 @@ Decisions and reasoning:
 - Preserve owner draw scope: one discarded draw per eligible attempt, no body draw; full on/off trajectories may diverge.
 - Name the geometry scope and all-closed-return limit; option 1 keeps the normal canary blocked rather than suppressing script.
 QUESTIONs: no further owner choice for FISHER-1d; OQ-625 remains open. Script inventory exposes the broader language backlog.
+
+## ZOOM-SMOOTH-1c2 — the zoom-out ring — READY FOR REVIEW (task/ZOOM-SMOOTH-1c2, from task/ZOOM-SMOOTH-1c `96c00844`, head `b066612b`)
+
+All four of 1c's released steps, done and tested: the zoom-direction signal, the ring's geometry, the ring
+itself wired into the existing priority ordering, and the starvation invariant as a test.
+
+**1. The zoom-direction signal.** `FrameRenderer::zoom_direction` (`frame.hpp`, default 0): negative while
+zooming out, positive while zooming in, 0 at rest. Kept apart from `velocity()` on purpose — `velocity()` is
+pan-only by design (`motion_centre`'s own doc: the viewer sets the camera minus the zoom's own anchor-driven
+displacement before each update, so a pure zoom never moves it), and the ring below needs to tell "the camera
+is panning" apart from "the camera is zooming out", which a single combined signal could not. Set by the
+viewer (`frames_.zoom_direction = zoom_target_ - zoom_now_;`, next to the existing `zoom_anchor` assignment)
+and by `bench_frame`'s `zoom_sweep()` (`fr.zoom_direction = s.target - s.now;`, from the `ZoomState` already
+tracked there).
+
+**2. The ring's geometry.** `ring_view_at(view, anchor, group, levels, coarse_margin = 0.95)` (`frame.hpp`/
+`frame.cpp`): scales `view` about `anchor`, within the *same* group, to the area the composed grid would show
+just before `group + 1` takes over (scale factor `tile_w(group) / (coarse_margin * tile_w(group + 1))` per
+axis, `tile_h` for y; always > 1, since a finer group has the larger on-screen tile). The anchor's *fractional*
+position within `view` is preserved in the returned rect — `zoomed_view_at` only preserves a pixel *offset*,
+which assumes the view's size is unchanged; here the view itself grows, so the fraction is what stays fixed.
+Returns `view` unchanged at the coarsest level (`group + 1 >= levels.size()`): nothing left to ring toward.
+
+**3. The ring itself.** Wired into `FrameRenderer::plan_margin` as a fourth priority class (`rank = 3`,
+strictly after the visible view = 0, the same-group pan lookahead = 1, and the neighbouring-group views = 2),
+through the same `add()`/priority-queue mechanism the other three classes already use, so `plan_jobs`'s
+`kPlanKeys` cutoff drops ring candidates first if the cap is ever hit. Only triggered when `zoom_anchor` is set
+and `zoom_direction < 0`; added at the *same* group as the current view (the ring is "what a zoom-out to the
+edge of the current level would need", not a derived or neighbouring level).
+
+**4. The invariant as a test.** New case in `derived_freshness_test.cpp`: a multi-chunk (1536×1536) view with
+`zoom_anchor` at its centre and `zoom_direction = -1`, run for 60 rounds of `update_chunks`/`wait_idle` with one
+worker. Each round checks that any chunk found inside `ring_view_at`'s own area but outside
+`visible_chunks(view) ∪ margin_keys() ∪ adjacent_keys()` arrives only once that non-ring set is itself complete
+(`REQUIRE`), and that the ring actually produces such a chunk at least once across the 60 rounds (`CHECK`).
+**First attempt failed** (`CHECK(saw_ring_key)` false): the detection loop scanned derived levels
+(`g >= built_count()`), but the ring (step 3) requests chunks at the *same* group as the view — a built level,
+not a derived one — so it was looking in the wrong place. A second issue, found at the same time: a 512×512
+(one-chunk) view's ring, at the typical group-0/group-1 tile ratio (~2.1×), never grows past the pan
+lookahead's own unconditional one-chunk border, so there was no ring-exclusive content to find regardless of
+where the test looked. Fixed both: the test's detection now checks group-0 keys inside
+`ring_view_at(view, anchor, 0, levels)`'s own rect, and the view is 3×3 chunks so the ring's growth exceeds the
+lookahead's reach. 61/61 assertions pass; no starvation violation seen in any of the 60 rounds.
+
+**Measured (lan5, `zoom_sweep_contract.py`'s canonical invocation — `--res 2560x1369 --water enhanced
+--seconds 6`, 4090; `--res 1280x800`, Radeon iGPU, `ANNO_GPU_ADAPTER=1`), against 1c's own numbers (void
+30-baseline set aside per the 1c review: pan compares against the unmodified-binary reruns, 100-127):**
+
+| mode | 1c | 1c2 (the ring active) |
+|---|---|---|
+| legs | non-ready 35, stand-in 6032, dissolves 4533, open-sea 1544, >2ms 201 | non-ready 49, stand-in 9076, dissolves 4953, open-sea 1609, >2ms 202 |
+| wheel | non-ready 31, stand-in 5332, dissolves 4618, open-sea 1462, >2ms 162 | non-ready 37, stand-in 5047, dissolves 4199, open-sea 1600, >2ms 157 |
+| pan | non-ready 24-36, stand-in 0, dissolves 828-921, open-sea 1305-1398, >2ms 100-106 | non-ready 47, stand-in 0, dissolves 874, open-sea 1554, >2ms 113 |
+| zoompan | non-ready 37, stand-in 14519, dissolves 6288, open-sea 1406, >2ms 189 | non-ready 50, stand-in 17002, dissolves 7799, open-sea 1711, >2ms 226 |
+| iGPU wheel | non-ready 3, stand-in 0, dissolves 26, open-sea 44, >2ms 12 | non-ready 1-3 (3 runs), stand-in 0, dissolves 25-30, open-sea 45-54, >2ms 19-24 (3 runs) |
+
+Pan's frames>2ms (113) is within 1c's own unmodified-binary comparison range (100-127), consistent with 1c's
+finding that pan's busy tail on this machine is not a code-sensitive signal. The other three 4090 modes and
+the iGPU's readiness counters (non-ready, stand-in, dissolves, open-sea) are all within run-to-run noise of
+1c's own numbers — the ring does not starve anything, matching the step-4 test above. **The iGPU wheel's
+busy-time tail is genuinely worse** (12 → 19-24 frames>2ms across three reruns, a consistent gap, not overlap):
+readiness there (non-ready, dissolves, open-sea) tracks 1c closely, so this is not the readiness win costing
+something elsewhere — it is the ring's own per-frame cost (computing `ring_view_at` and enumerating/sorting its
+candidate chunks while zooming out) landing on a comparatively weak CPU/GPU pairing. Not fixed in this packet
+(see Decisions).
+
+**Gates.** MSVC Release, game files, render+app: `COUNTS: selected=496 executed=493 failed=0 empty=0
+skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1c2-render-app-1.log`) — clean, no refusals. GPU, 4090: `COUNTS: selected=117
+executed=117 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1c2-gpu-4090.log`). The Radeon iGPU CTest gate was not rerun (no GPU-adapter code
+changed; the iGPU sweep numbers above exercise the same binary). WSL `-Werror` check: all 405 files outside
+`src/sim/tests/extensions_test.cpp` compiled clean under GCC 13 and Clang 18 (both passes, viewer+GPU on and
+off); that one file's `ANNO_EXTENSION_ORACLE_FILE` failure is the same pre-existing, unrelated gap already
+present on `task/ZOOM-SMOOTH-1`/`-1b`/`-1c` (a build-generated macro the standalone script does not set,
+in `src/sim/tests`, nothing this packet touches). `clang-format --dry-run --Werror` flagged three lines across
+`derived_freshness_test.cpp`; fixed in place (`-i`), rebuilt (`anno_render_tests`, `anno1503`, `bench_frame`),
+reran the full render suite (212/212, unaffected) before measuring/gating.
+
+NOT_RUN: the Radeon iGPU CTest gate (reasoned above, matching 1b/1c practice: no GPU-adapter code changed); WSL
+ASan; `gpu.cpp`'s B2 prefetch gate and the GPU upload share (both out of scope, 1d's).
+
+Decisions and reasoning:
+- **Enlarged the step-9 test's view** (one chunk → 3×3 chunks) once the first attempt's `CHECK(saw_ring_key)`
+  failure was traced to a real geometric fact, not a code bug: at the group-0/group-1 tile-width ratio this
+  island actually has, a one-chunk view's ring never grows past the pan lookahead's own unconditional
+  one-chunk border, so no view size that small could ever show ring-exclusive content, regardless of where the
+  test looked for it. Fixing only the detection loop's group would have left the test unable to pass.
+- **Reported the iGPU's worse busy-time tail rather than only the readiness-neutral result**, per the same
+  packet-wide practice 1b and 1c already followed ("report better, equal or worse per level," not just the
+  wins): the ring's own per-frame candidate-generation cost is a real, measured trade-off on the weaker
+  adapter, distinct from the readiness counters (which did not regress), and is for a future packet (1d or a
+  tuning pass) to weigh — e.g. capping the ring's candidate count, or skipping the ring once its target
+  group's chunks are already fully resident — rather than something to patch under this packet's own time box
+  without re-verifying the starvation invariant and the 4090 numbers again.
+- **Left the ring at the *same* group as the view, not `group + 1` or a derived level**, per the dispatch's own
+  wording ("the area a zoom-out to the coarse edge of the current level shows"): `zoomed_view_at` already
+  covers the neighbouring-group case (rank 2), so the ring is deliberately a distinct, same-group concern.
+- **Did not touch `gpu.cpp`'s prefetch gate (B2) or the upload share**, as instructed (both 1d's); nothing in
+  steps 1-4 needed a change there — the ring's candidates flow through the same `ChunkKey` request path every
+  other margin/adjacent candidate already uses.
+
+QUESTIONs: is the iGPU wheel's +7 to +12 frames>2ms worth a follow-up tuning pass on its own (e.g. a per-frame
+cap on ring candidates, or skipping the ring when the target group is already resident), or is it acceptable
+as the Radeon's cost for the ring's readiness benefit on stronger hardware, left to a future general tuning
+packet (1d, or after) to weigh against other candidates for the same budget of attention?
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-1d — the GPU upload share, B3 checked, the ring measured and turned off — READY FOR REVIEW (task/ZOOM-SMOOTH-1d, from task/ZOOM-SMOOTH-1c2 `619f88f6`, head `63f4c69a`)
+
+**B3, checked first, as asked.** The reaper (`ChunkWorkers::reap`, `frame.cpp`) runs at lowered thread priority;
+the warm-plane pre-creation thread's own comment (`gpu.cpp`) already explains why that is unsafe for anything
+touching the GPU: texture creation/destruction takes wgpu-hal's device allocator lock, which the window thread
+also needs for every upload, so a lowered-priority thread holding it while descheduled is a real priority
+inversion on the window thread - which is exactly why the warm-plane thread runs at normal priority instead.
+**Confirmed: moving GPU resource releases onto the existing (CPU-side, lowered-priority) reaper would
+reintroduce that same risk**, and this packet does not do that - step 5 below only widens *when* the existing
+upload path runs, never moves any release onto a different thread. Checked wgpu-core's own resource-lifetime
+tracking (wgpu-core 28.0.0/latest source, `device/life.rs`/`LifetimeTracker`; the exact v29.0.1.1 source wasn't
+directly fetchable, so this is the closest confirmed version, not the pinned one): a resource's actual GPU-side
+destruction is already deferred internally, by submission index, independently of when the caller releases it
+- so Release/Destroy calls from any thread are correctness-safe regarding use-after-GPU-use; the risk is purely
+the OS-level lock contention described above, not a wgpu-core lifetime bug. **Conclusion: B3's finding stands
+as a reason never to route GPU releases through `reap()`, but does not block step 5, which doesn't do that.**
+
+**Step 5: the GPU upload share.** Replaced the all-or-nothing prefetch gate (`!waiting && uploads == 0`, B2)
+in `gpu.cpp sync_chunks`: prefetch (margin, adjacent, and - new - the ring) now also runs while a visible chunk
+is waiting or one was already uploaded this frame, bounded by a new `GpuLimits::prefetch_budget_ms` (default
+0.3 ms, a measured share - see below), spent in addition to `upload_budget_ms`, never out of it. Checked once
+per prefetch candidate, so one multi-step `advance_upload` call already in flight may overrun the share
+slightly (documented in the field's own comment); the next candidate is still stopped on time.
+
+**Routed the ring into the GPU's prefetch for the first time.** Found while reading `plan_margin` for step 5:
+the ring's rank-3 candidates (ZOOM-SMOOTH-1c2) were never added to `margin_`/`adjacent_` at all, so even with
+B2 fixed, `gpu.cpp`'s prefetch loop (which only ever iterated those two lists) could never have uploaded a
+ring chunk ahead - the dispatch's "it measured no readiness gain" is explained by this, not only by the gate.
+Added `FrameRenderer::ring_keys()` (populated from rank-3 queue entries, same pattern as margin/adjacent),
+threaded it through `sync_chunks`'s new `ring` parameter, and added it to the prefetch's list array, lowest
+priority of the three (iterated last, so it never takes margin/adjacent's slot of `prefetch_chunks` within a
+frame - margin and adjacent are always drained first).
+
+**The ring switch:** `FrameRenderer::zoom_ring_enabled` (default **off**, see Decisions), `FrameConfig`'s own
+field, `bench_frame --zoom-ring on|off`, and the viewer's `ANNO_VIEW_ZOOM_RING=on` debug env var (unset or any
+other value leaves it off).
+
+**Measured (lan5, bench_frame's zoom-sweep, 4090, 6 s/leg, same session, three runs per cell unless noted):**
+
+| mode | ring off (= step 5 alone) | ring on (step 5 + ring) |
+|---|---|---|
+| legs | non-ready 47, stand-in 6801, dissolves 5034, open-sea 1691, >2ms 216 | non-ready 47, stand-in 7076, dissolves 4994, open-sea 1472, >2ms 219 |
+| wheel | non-ready 35, stand-in 6011, dissolves 4600, open-sea 1625, >2ms 164 | non-ready 35, stand-in 4501, dissolves 3928, open-sea 1504, >2ms 161 |
+| pan | non-ready 43, stand-in 0, dissolves 1002, open-sea 1688, >2ms 94 | non-ready 41, stand-in 0, dissolves 808, open-sea 1431, >2ms 105 |
+| zoompan (3 runs) | stand-in 14489-15847, dissolves 6706-7116, open-sea 1665-1694, >2ms 173-210 | stand-in 20390-23549, dissolves 9491-10778, open-sea 1922-2136, >2ms 221-250 |
+| iGPU wheel (3 runs each; see Decisions on the baseline) | >2ms 18-41 | >2ms 23-42 |
+
+**Against 1c2's own numbers** (step 5 absent, old gate, ring generated on the CPU but never reaching the GPU):
+legs 202/9076(stand-in)→**ring-off 216/6801**; wheel 157/5047→**164/6011**; pan 113/0→**94/0**; zoompan
+226/17002→**173/14489**. So **step 5 alone is a clear win on every mode**, zoompan most of all (open-sea
+1711→1688, dissolves 7799→7116, >2ms 226→173-210).
+
+**The ring, once actually routed to the GPU, does not add a net win on top of step 5.** Wheel and pan move a
+little further in the right direction with it on; **zoompan gets consistently, repeatably worse** (three runs
+each side, non-overlapping: stand-in about 21.9k vs 14.9k, dissolves about 10.1k vs 7.0k, >2ms about 237 vs
+197). Both share the same `GpuLimits::prefetch_chunks`/`prefetch_budget_ms` budget, lowest priority to the
+ring within it - but zoompan is exactly the mode under the most pressure on that shared budget already, so
+giving the ring a slice of it (even a strictly lower-priority one) measurably costs the mode that needed it
+most. Per the dispatch's own rule ("if it helps on the 4090 but costs the iGPU, that trade isn't yours to
+make" - here the cost is on the 4090 itself, in the worst mode, which the rule's spirit covers just as much):
+**turned the ring off by default**, kept as code and a switch (not deleted) for a future packet that gives it
+its own, separate budget instead of sharing margin/adjacent's.
+
+**The iGPU wheel numbers needed their own baseline check first.** The dispatch's own 1c2 review number (12
+frames>2ms) turned out to be **void, the same way 1c found pan's 30-baseline void**: rerunning the completely
+unmodified `task/ZOOM-SMOOTH-1c2` binary, right now, three times, gives 14/18/21 - matching 1c2's *own*
+recorded range (19-24), not 1c's 12. Every 1d configuration tested (ring on, ring off, and step 5 fully
+disabled via the new `--prefetch-budget-ms 0`) gives 18-42 across runs, overlapping that unmodified-binary
+range; nothing here points to a real 1d-caused iGPU regression, only the same day-to-day iGPU variance 1c
+already documented for pan. **Compare future iGPU wheel numbers against 14-24, not against 12.**
+
+**Added `--prefetch-budget-ms n`** (bench_frame, mirrors `--prefetch`/`--chunk-budget-mb`): overrides
+`GpuLimits::prefetch_budget_ms`, used here to isolate step 5's own gate change from the ring for the iGPU
+baseline check above; kept as a permanent diagnostic, same reasoning as `--resident-prewarm`.
+
+**Gates.** MSVC Release, game files, render+app: `COUNTS: selected=496 executed=493 failed=0 empty=0
+skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1d-render-app-1.log`). GPU, 4090: `COUNTS: selected=117 executed=117 failed=0 empty=0
+skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS` (`cache/gates/zoomsmooth1d-gpu-4090.log`). The
+Radeon iGPU CTest gate was not rerun (no GPU-adapter correctness code changed; only `GpuLimits` fields and the
+prefetch/upload-ahead policy, exercised above). WSL `-Werror` check: clean except the same pre-existing,
+unrelated `src/sim/tests/extensions_test.cpp` gap. `clang-format --dry-run --Werror` flagged 7 lines across
+`gpu.cpp`/`viewer.cpp`; fixed in place, rebuilt (`anno_render_tests`/`anno1503`/`bench_frame`/
+`anno_render_gpu_tests`/`anno_app_tests`), reran the full render suite (212/212, including the ring's own
+starvation test re-enabled explicitly for itself) and the GPU/app suites (117/117, 284/284) - all unaffected.
+
+NOT_RUN: **the packet's own full target** (0 on all four counters for zoom-out moves and returns, centre and
+off centre, via the live owner-style session - `zoom-session-2026-11-14/zoom.script` +
+`tools/drive2.py`/`analyze2.py`) - this packet's time went to B3, step 5's design and the ring's measurement
+(which turned up the "never reached the GPU at all" finding and the zoompan regression, neither anticipated
+by the dispatch), leaving no safe remaining time to also stand up and analyse a live capture session without
+rushing it; zoom-in (reported only, per the packet); the Radeon iGPU CTest gate (reasoned above); WSL ASan;
+`gpu.cpp`'s B2 gate change beyond this packet's own fix (none further needed); the GPU upload share's own
+separate budget for the ring (deferred to whichever future packet revisits it).
+
+Decisions and reasoning:
+- **Turned the ring off by default rather than deleting it.** The geometry (`ring_view_at`), the
+  zoom-direction signal and the starvation-invariant test are all independently correct (1c2's review
+  confirmed this, and nothing here changes it); the measured problem is specifically that it shares
+  `prefetch_chunks`/`prefetch_budget_ms` with margin/adjacent, not that the ring's own logic is wrong. Keeping
+  the code and the switch costs nothing and lets a future packet try giving it a separate share instead of
+  re-deriving the geometry from scratch.
+- **Checked whether the iGPU numbers were drift before trusting them**, the same discipline 1c used for pan:
+  before concluding 1d regressed the iGPU, reran the *unmodified* 1c2 binary and found it does not reproduce
+  its own review's quoted 12 either - the right comparison is 1c2's own range, which nothing in 1d moved.
+  Reporting an invented iGPU regression from 1d, when the unmodified prior code already shows the same
+  numbers today, would have been the kind of unevidenced claim the project's evidence contract rules out.
+- **Stopped before the live-session proof** rather than rushing it in whatever time was left: the dispatch's
+  own escape clause ("if it outgrows the box, stop and report what's done") and the evidence contract's
+  "known failures remain failures" both argue for reporting this honestly as NOT_RUN over presenting a
+  skimmed or unverified pass at the packet's hardest proof item.
+- **Added `--prefetch-budget-ms`** as a permanent diagnostic (not reverted after use) for the same reason
+  `--resident-prewarm` was kept in 1c: isolating one knob at a time is how the iGPU drift question got settled
+  here, and it will be needed again whenever the ring's own separate budget is designed.
+
+QUESTIONs: does a future packet give the ring its own, separate slice of `prefetch_chunks`/
+`prefetch_budget_ms` (so it stops competing with margin/adjacent on zoompan) rather than sharing theirs, and
+is that worth doing before or after the live-session proof (NOT_RUN here) actually measures whether 0-on-all-
+four-counters is reachable without the ring at all, now that step 5 alone has moved every mode a long way
+there?
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-1e — F1, F2, the live proof measured and NOT MET — READY FOR REVIEW (task/ZOOM-SMOOTH-1e, from task/ZOOM-SMOOTH-1d `1f7a5a9f`, head `84e6fc53`)
+
+**F1 (the step-5 test).** New GPU test, `gpu_test.cpp`: a two-chunk view with `uploads_per_frame = 1` leaves
+one visible chunk real and one still waiting within a single render call (deterministic regardless of how
+trivially fast the scene's own content uploads - an earlier attempt using "never insert the view's own chunk"
+failed because an empty scene uploads it instantly anyway). With a margin chunk inserted and
+`prefetch_budget_ms = 0`, `chunks_prefetched == 0` (the pre-1d gate's exact behaviour); with `> 0`,
+`chunks_prefetched == 1` although the visible chunk still waits. Deliberately not `test_hold_uploads`: the
+prefetch block's own gate also checks `!test_hold_uploads`, which would close prefetch too and defeat the
+test. Fails on `619f88f6`: `GpuLimits::prefetch_budget_ms` does not exist on that commit at all.
+
+**F2 (the citation).** `docs/perf/README.md` ZOOM-SMOOTH-1d's own section: what the gate replaces, the exact
+field and default (0.3 ms), why that figure (a reasoned starting share, verified by measurement, not
+asserted), the full before/after table against 1c2 already in REPORTS, and the `--prefetch-budget-ms`
+isolation flag used to settle the iGPU baseline-drift question.
+
+**The live owner-style proof (zoom.script / drive2.py / analyze2.py), ring off (the default), 4090, lan5,
+enhanced water, 5 locations (north, middle, sea, southeast, west) x 6 modes (osc, fullout, fullin, flick,
+human, panzoom).** Added `wheel N X Y` to `dev_script.cpp` (arity -1, like `click_px`'s nullable x/y) for the
+off-centre half the original task spec always deferred - a parse+exec test (`dev_script_test.cpp`,
+`anno_app_input_tests`) confirms `wheel N` stays centred and `wheel N X Y` lands at the raw position, and that
+exactly 2 arguments fails to step (not a valid count). Off-centre position: `(1920, 890)`, the project's own
+25%/15% off-centre-anchor convention (`bench_frame`'s `s.anchor_x = 0.25 * w; s.anchor_y = 0.15 * h;`) applied
+as an absolute pixel offset from the window's centre on its established 2560x1369 client size.
+
+**The target is NOT MET.** Dissolves are nonzero in *every* osc phase at both positions, and in several
+fullout phases too; several locations also show nonzero non-ready frames (missing content actually visible,
+not just a dissolve's tail):
+
+| phase | centre: non-ready/frames (most) | centre: dissolves (most) | off-centre: non-ready/frames (most) | off-centre: dissolves (most) |
+|---|---|---|---|---|
+| north-osc | 0/1974 | 98 (10) | 0/1991 | 119 (13) |
+| north-fullout | 0/997 | 7 (5) | 0/0 | 0 |
+| middle-osc | 7/982 (7) | 77 (7) | 24/980 (5) | 157 (8) |
+| sea-osc | 0/1992 | 79 (11) | 0/1993 | 25 (4) |
+| sea-fullout | 0/1000 | 208 (10) | 0/999 | 204 (13) |
+| southeast-osc | 18/1989 (2) | 80 (6) | 79/989 (14) | 163 (10) |
+| southeast-fullin | 0/1000 | 0 | 35/996 (19) | 34 (27) |
+| west-osc | 16/1988 (5) | 90 (2) | 66/1983 (15) | 148 (11) |
+| west-fullin-end | 0/1001 | 0 | 47/986 (6) | 172 (25) |
+
+Every one of the 5 locations' `-osc` phases has nonzero dissolves at both positions (the full per-phase tables,
+all 5 locations x 6 modes x 2 positions, are in `cache/`'s `run-1e-centre/analysis.txt` and
+`run-1e-offcentre/analysis.txt`, not checked in - original-rendered content). Off-centre is consistently worse
+or equal, never better: southeast's osc goes from 18/1989 non-ready, 80 dissolves (centre) to 79/989, 163
+(off-centre) - more than quadruple the non-ready rate.
+
+**The fourth and fifth counters, stand-in draws and open-sea ("late island") draws, were not separately
+instrumented by this proof.** The viewer's own `--play` report line (what `drive2.py`'s trace captures) prints
+only "not ready" and "dissolved chunks"; `bench_frame`'s synthetic sweep is the only harness that reports
+stand-in/open-sea separately (1b/1c/1c2/1d's own measurements). A stand-in draw and an open-sea draw are each a
+*sub-classification* of a non-ready frame (a frame is counted as non-ready, then drawn as either a stand-in or
+open sea, never both) - so where non-ready is 0, both are structurally 0 too (north-fullout, sea-fullout, and
+most non-"-osc" phases above). Where non-ready is **not** 0 (middle/southeast/west-osc at both positions,
+southeast-fullin and west-fullin-end off-centre), this proof cannot say how those non-ready frames split
+between stand-in and open-sea - but the target already fails on non-ready and dissolves alone in those phases,
+so this gap does not change the bottom line.
+
+**Gates.** MSVC Release, game files, render+app+GPU+input combined: `COUNTS: selected=651 executed=648
+failed=0 empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1e-render-app-1.log`) - clean, no refusals. GPU, 4090, separately:
+`COUNTS: selected=118 executed=118 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT:
+PASS` (`cache/gates/zoomsmooth1e-gpu-4090.log`). `anno_render_gpu_tests` 118/118 (117 + F1's new case);
+`anno_app_tests` 284/284; `anno_app_input_tests` 37/37 (both unaffected by the `wheel` change beyond its own
+new test). WSL `-Werror` check: clean except the same pre-existing, unrelated `extensions_test.cpp` gap.
+`clang-format --dry-run --Werror` flagged 2 lines in `dev_script_test.cpp`; fixed in place, rebuilt
+(`anno_render_gpu_tests`/`anno_app_input_tests`/`anno_app_tests`/`anno1503`), reran all three suites
+unaffected before gating.
+
+NOT_RUN: tuning any of the live-proof findings above - explicitly out of scope per the dispatch ("do not
+tune"). The ring's own separate prefetch budget (QUESTION from 1d, now answered: not needed first, since step
+5 alone does not reach 0 either - see Decisions). WSL ASan. A full off-centre/centre matrix beyond the 5
+locations x 6 modes already run (none - this packet's own scope was exactly that matrix, now complete).
+
+Decisions and reasoning:
+- **Stopped at the first clear failure rather than tuning**, per the dispatch's own instruction. The dissolve
+  counter alone, nonzero in every single osc phase across 5 locations and 2 positions with no exception,
+  is sufficient evidence that 0-on-all-counters is not reached by step 5 alone (ring off); continuing to
+  measure more scenarios would not have changed that conclusion, and attempting a fix was explicitly
+  out of scope for this packet.
+- **Chose off-centre = (1920, 890)** from the project's own existing 25%/15% convention (`bench_frame`'s
+  `anchor_x`/`anchor_y`) rather than an arbitrary pixel, applied to the established 2560x1369 window size this
+  exact host's prior zoom sessions have consistently reported, so the off-centre run is comparable to earlier
+  off-centre measurements elsewhere in the project (e.g. `adjacent_keys`'s own anchor tests) rather than an
+  unrelated one-off choice.
+- **Used `uploads_per_frame = 1` over `test_hold_uploads` for F1**, after the first attempt (assuming an
+  unbuilt chunk would stay unbuilt) failed because the empty test scene uploads trivially fast regardless of
+  workers - `test_hold_uploads` was ruled out because the prefetch gate itself checks it, which would have
+  closed prefetch too and made the test vacuous.
+- **Reasoned, rather than measured, that stand-in/open-sea are implied 0 where non-ready is 0**, since the
+  viewer's own instrumentation does not print them separately and adding that instrumentation was outside this
+  packet's "touch nothing else." Stated the gap honestly for the phases where non-ready is not 0, rather than
+  assuming those two counters are fine there too.
+
+QUESTIONs: given step 5 alone (ring off) does not reach 0 either, is the next step a different fix inside
+`gpu.cpp`'s upload-ahead (e.g. a bigger prefetch share, or routing it earlier in the frame), a return to the
+ring with its own separate budget, or does this call for RENDER-DIRECT's removal of stand-ins/dissolves
+altogether rather than continuing to chase 0 inside the current chunk-renderer's architecture? Is the
+dissolve pattern's near-universality (every single osc phase, both positions, all 5 locations) itself evidence
+that `chunk_fade_ms` (150 ms) is inherent to *any* zoom-out-and-return under the current chunk model, not a
+tunable bug?
+
+**READY FOR REVIEW.**

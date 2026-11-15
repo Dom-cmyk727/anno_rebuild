@@ -245,12 +245,20 @@ int arity(const std::string& verb) {
     if (verb == "focus-lost") {
         return 0;
     }
-    if (verb == "key" || verb == "select" || verb == "rotate" || verb == "wheel" ||
-        verb == "checkpoint" || verb == "screenshot" || verb == "hold" || verb == "release" ||
-        verb == "foreign" || verb == "fail" || verb == "pass") {
+    if (verb == "key" || verb == "select" || verb == "rotate" || verb == "checkpoint" ||
+        verb == "screenshot" || verb == "hold" || verb == "release" || verb == "foreign" ||
+        verb == "fail" || verb == "pass") {
         return 1;
     }
     if (verb == "note") {
+        return -1;
+    }
+    if (verb == "wheel") {
+        // ZOOM-SMOOTH-1e: an optional raw drawable position (`wheel N [X Y]`, like `click_px`) for
+        // an off-centre zoom step, needed to drive the off-centre half of the owner-style zoom
+        // proof (ZOOM-SMOOTH-1's own Proof §2: "the dev script's wheel always puts the wheel event
+        // at the centre"). At least 1 (N alone, centred, the pre-1e behaviour); exactly 1 or 3 is
+        // checked in exec(), not here (arity only bounds the count, not which counts are valid).
         return -1;
     }
     if (verb == "click" || verb == "click_px" || verb == "ldown_px") {
@@ -705,12 +713,27 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 fail(s, "not a number");
                 break;
             }
+            // ZOOM-SMOOTH-1e: `wheel N` (centred, as before) or `wheel N X Y` (a raw drawable
+            // position, like click_px) for the off-centre half of the owner-style zoom proof.
+            if (s.args.size() != 1 && s.args.size() != 3) {
+                fail(s, "wheel takes N or N X Y");
+                break;
+            }
+            std::optional<std::int64_t> x, y;
+            if (s.args.size() == 3) {
+                x = arg(1);
+                y = arg(2);
+                if (!x || !y) {
+                    fail(s, "not a pixel position");
+                    break;
+                }
+            }
             SDL_Event e{};
             e.type = SDL_EVENT_MOUSE_WHEEL;
             e.wheel.which = kScriptDevice;
             e.wheel.y = static_cast<float>(*n);
-            e.wheel.mouse_x = static_cast<float>(st.window_w) / 2.0F;
-            e.wheel.mouse_y = static_cast<float>(st.window_h) / 2.0F;
+            e.wheel.mouse_x = x ? static_cast<float>(*x) : static_cast<float>(st.window_w) / 2.0F;
+            e.wheel.mouse_y = y ? static_cast<float>(*y) : static_cast<float>(st.window_h) / 2.0F;
             act.events.push_back(e);
         } else if (s.verb == "fail" || s.verb == "pass") {
             const std::string& n = s.args[0];

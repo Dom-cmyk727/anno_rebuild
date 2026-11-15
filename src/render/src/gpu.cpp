@@ -2024,7 +2024,8 @@ struct GpuFrame::Impl {
     std::size_t sync_chunks(const FrameRenderer& frames, std::size_t group,
                             const std::vector<std::pair<int, int>>& visible,
                             const std::vector<ChunkKey>& margin,
-                            const std::vector<ChunkKey>& adjacent, std::uint64_t fade_now,
+                            const std::vector<ChunkKey>& adjacent,
+                            const std::vector<ChunkKey>& ring, std::uint64_t fade_now,
                             GpuStats& stats) {
         std::set<ChunkKey> keys;
         for (const auto& [cx, cy] : visible) {
@@ -2176,16 +2177,32 @@ struct GpuFrame::Impl {
                 break;
             }
         }
-        // Nothing visible is waiting: upload built chunks ahead, a few per frame,
-        // first the margin of the group shown (what a pan brings into view next:
-        // on the GPU before it is visible, so it appears at once, no placeholder,
-        // no dissolve), then the neighbouring zoom groups' views (after a zoom
-        // step they are real chunks and the stand-ins have sources even for the
-        // part of the view that was off screen before it). Bounded by
-        // GpuLimits::prefetch_chunks of these resident at once.
-        if (!waiting && uploads == 0 && limits.prefetch_chunks > 0 && !test_hold_uploads) {
-            const std::array<const std::vector<ChunkKey>*, 2> lists = {&margin, &adjacent};
-            // Counted over the two lists (their length, not every GPU chunk).
+        // Upload built chunks ahead, a few per frame: first the margin of the group
+        // shown (what a pan brings into view next: on the GPU before it is visible,
+        // so it appears at once, no placeholder, no dissolve), then the neighbouring
+        // zoom groups' views (after a zoom step they are real chunks and the
+        // stand-ins have sources even for the part of the view that was off screen
+        // before it), then the zoom-out ring's own chunks (ZOOM-SMOOTH-1d: routed
+        // into this upload-ahead for the first time, lowest priority of the three -
+        // matching plan_margin's own rank order, so pan is never starved by it).
+        // Bounded by GpuLimits::prefetch_chunks of these resident at once.
+        //
+        // ZOOM-SMOOTH-1d: no longer gated to run only when nothing visible waits and
+        // nothing was uploaded this frame (the 2026-11-14 review's B2) - that left
+        // prefetch, and so the ring, with zero time in every frame any visible-chunk
+        // work happened, which is most frames of a continuous zoom. While a visible
+        // chunk is waiting or one was already uploaded, a separate, smaller time
+        // share runs instead (GpuLimits::prefetch_budget_ms), in addition to
+        // upload_budget_ms, never out of it - a visible chunk's own budget is not
+        // reduced to make room for this.
+        const bool prefetch_unbounded = !waiting && uploads == 0;
+        if (limits.prefetch_chunks > 0 && !test_hold_uploads &&
+            (prefetch_unbounded || limits.prefetch_budget_ms > 0.0)) {
+            const double prefetch_deadline_ms = prefetch_unbounded
+                                                    ? limits.upload_budget_ms
+                                                    : ms_since(begin) + limits.prefetch_budget_ms;
+            const std::array<const std::vector<ChunkKey>*, 3> lists = {&margin, &adjacent, &ring};
+            // Counted over the three lists (their length, not every GPU chunk).
             std::size_t resident = 0;
             for (const auto* list : lists) {
                 for (const auto& key : *list) {
@@ -2198,7 +2215,9 @@ struct GpuFrame::Impl {
             for (const auto* list : lists) {
                 for (const auto& key : *list) {
                     if (spent || resident >= limits.prefetch_chunks ||
-                        done >= limits.prefetch_per_frame) {
+                        done >= limits.prefetch_per_frame ||
+                        (limits.upload_budget_ms > 0.0 &&
+                         ms_since(begin) >= prefetch_deadline_ms)) {
                         break;
                     }
                     const render::Chunk* c = frames.chunk(key);
@@ -3254,8 +3273,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const std::size_t warm_before = m.planes_warm_taken;
     const std::uint64_t fade_now = m.fade_clock();
     m.sync_scene = &scene;
-    stats.chunks_uploaded = m.sync_chunks(frames, group, visible, frames.margin_keys(),
-                                          frames.adjacent_keys(), fade_now, stats);
+    stats.chunks_uploaded =
+        m.sync_chunks(frames, group, visible, frames.margin_keys(), frames.adjacent_keys(),
+                      frames.ring_keys(), fade_now, stats);
     m.sync_scene = nullptr;
     frames.release(std::exchange(m.released_holds, {}));
     stats.planes_warm = m.planes_warm_taken - warm_before;

@@ -3931,6 +3931,57 @@ TEST_CASE("prefetch: built chunks of the neighbouring groups are uploaded when n
     CHECK(g.errors() == 0);
 }
 
+TEST_CASE("prefetch gets a time share while a visible chunk still waits, only when "
+          "GpuLimits::prefetch_budget_ms > 0 (ZOOM-SMOOTH-1d, replacing the old gate !waiting "
+          "&& uploads == 0)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer fr(1, false);
+    // Two visible chunks, uploads_per_frame left at its default (1): within one render call, the
+    // first of the two (keys is a sorted std::set, so iteration order is deterministic) uploads
+    // and the second does not (frame.cpp's `room` needs `uploads < limits.uploads_per_frame`), so
+    // `waiting` is true and `uploads` is 1 - the exact condition (a visible chunk still waiting)
+    // the old gate's `!waiting && uploads == 0` closed the prefetch block on, reproduced
+    // deterministically without depending on how trivially fast the scene's own content uploads.
+    // Deliberately not test_hold_uploads: the prefetch block's own gate also checks
+    // `!test_hold_uploads`, which would close prefetch too and defeat the point of this test.
+    const render::Rect two{0, 0, 2 * render::kChunk, render::kChunk};
+    const auto w = static_cast<std::uint32_t>(2 * render::kChunk);
+    const auto h = static_cast<std::uint32_t>(render::kChunk);
+    fr.update_chunks(*es.scene, two, 1); // populates margin_keys()/adjacent_keys() (plan_margin)
+    const std::vector<render::ChunkKey> margin = fr.margin_keys();
+    REQUIRE(!margin.empty());
+    fr.insert_chunk(margin[0], noise_land_chunk(std::get<0>(margin[0]), std::get<1>(margin[0]),
+                                                std::get<2>(margin[0])));
+    auto render_with = [&](double prefetch_budget_ms) {
+        gpu::GpuLimits limits;
+        limits.wave_simulation = false;
+        limits.uploads_per_frame = 1; // the default (6) would upload both visible chunks at once
+        limits.prefetch_chunks = 2;
+        limits.prefetch_per_frame = 1;
+        limits.prefetch_budget_ms = prefetch_budget_ms;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        const auto target = made.value()->offscreen_target(w, h);
+        const auto st = made.value()->render(fr, *es.scene, two, 1, 0, render::WaterStyle::Original,
+                                             target.second.get());
+        CHECK(made.value()->errors() == 0);
+        return st;
+    };
+    // 0 (the field's own default, and the pre-ZOOM-SMOOTH-1d gate's exact behaviour): one visible
+    // chunk still waits, so prefetch never runs - the margin chunk stays un-prefetched.
+    const auto off = render_with(0.0);
+    CHECK(off.chunks_uploaded == 1);
+    CHECK(off.chunks_prefetched == 0);
+    // > 0: the margin chunk is prefetched although a visible one still waits.
+    const auto on = render_with(1.0);
+    CHECK(on.chunks_uploaded == 1);
+    CHECK(on.chunks_prefetched == 1);
+}
+
 TEST_CASE("a chunk that replaces the open sea it was shown as dissolves in over chunk_fade_ms of "
           "the fade clock, also while the animation clock is paused") {
     auto ctx = device_or_skip();

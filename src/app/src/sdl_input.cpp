@@ -25,10 +25,14 @@ std::optional<ToolInput> tool_input_from_sdl(const SDL_Event& e, float density, 
         case SDLK_P:
             return ToolInput{(e.key.mod & SDL_KMOD_SHIFT) != 0 ? K::PrevTypeFast : K::PrevType, 0,
                              0};
+        // The original's ordinary placement cursor turns on (+1, like the info panel's right
+        // arrow) under `.` and back under `,` (GOG Wine runner, pioneer house 501: blocks 1, 2
+        // under `.`, then 1, 0 under `,`; docs/re/ui.md 2.5). Owner decision 2026-11-15, OQ-623.
+        // T is this window's own key and turns on.
         case SDLK_T:
-        case SDLK_COMMA:
-            return ToolInput{K::Rotate, 0, 0};
         case SDLK_PERIOD:
+            return ToolInput{K::Rotate, 0, 0};
+        case SDLK_COMMA:
             return ToolInput{K::RotateBack, 0, 0};
         case SDLK_X:
             return ToolInput{K::ToggleDemolish, 0, 0};

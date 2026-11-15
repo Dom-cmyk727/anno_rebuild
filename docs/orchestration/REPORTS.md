@@ -11212,6 +11212,14 @@ changed; the iGPU sweep numbers above exercise the same binary). WSL `-Werror` c
 place, rebuilt, retested (unaffected — `apply_frame_config`/`cache_bytes`/`default_chunk_budget`/
 `trim` tests all still pass).
 
+Pushing `89c12221` failed hosted CI's `cpp (linux-gcc)`/`cpp (linux-gcc-release)` jobs (MSVC had
+not flagged it): `-Wsign-conversion` on the budget's megabyte-to-byte math, mixing
+`std::uint64_t` (`unsigned long` on this GCC/Linux target) with `1024ULL`-suffixed literals (a
+different, same-width type) in the viewer's `ANNO_VIEW_CHUNK_BUDGET_MB` override and
+bench_frame's `--chunk-budget-mb`. Fixed by using `std::uint64_t{1024}` consistently, verified
+with the WSL `-Werror` check again (clean, same pre-existing unrelated failure), rebuilt on
+MSVC, committed as `93bcb57a`, pushed.
+
 NOT_RUN: steps 4 and 5 (the ring, the GPU upload share) and their step-9 tests, per the split;
 the Radeon iGPU CTest gate (reasoned above); WSL ASan.
 

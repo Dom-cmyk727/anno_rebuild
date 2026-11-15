@@ -131,7 +131,11 @@ says who is doing what, where the work is, and what it waits on.
     reentrancy flag and a sim wake that waits for a drag-time draw; **ZOOM-SMOOTH-2b** (`c4b3d5b7`,
     [review](reviews/2026-11-15-zoom-smooth-2b-review.md)) fixed the race; its wake fix also delays wakes during
     ordinary draws and its gate ran on a stale binary, so **ZOOM-SMOOTH-2c** fixed both (`05aab883`, the code ACCEPTED,
-    [review](reviews/2026-11-15-zoom-smooth-2c-review.md)); now the owner
+    [review](reviews/2026-11-15-zoom-smooth-2c-review.md)). **The owner's hands-on proof** (2026-11-15,
+    [review](reviews/2026-11-15-zoom-smooth-2-proof-review.md)): resize is smooth (mean 6.9 ms, worst 31.9 ms),
+    the **drag is NOT MET** (worst 298 ms, the watch not called), maximise and restore are unchanged (121 to
+    151 ms, not in the fix). ZOOM-SMOOTH-2 does not land yet; **ZOOM-SMOOTH-2d** (a diagnostic trace of the
+    modal loop) is RELEASED. Before that the owner
     does the hands-on drag and resize proof (no dev script can make a real window drag). The owner agreed (2026-11-15:
     "Yes, I'll do it").
     **The owner's UI test on main `cc7af72c`** (2026-11-15, recording `ui_4`, log folder

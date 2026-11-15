@@ -59,7 +59,42 @@ stop.** The next step starts only when the orchestrator has accepted it and the 
 - **The report says:** what was proved, at which addresses; what was not; NOT_RUN items; the exact gate lines;
   "Decisions and reasoning"; QUESTIONs.
 
-## FISHER-MAP-1 in detail (released 2026-11-15)
+## FISHER-1e in detail (released 2026-11-15)
+
+**FISHER-MAP-1 was ACCEPTED** ([review](../reviews/2026-11-15-fisher-map-1-review.md)). **The maps:**
+`0010SingleEndlos/01_1024_easy_256.sze` first, `Tutorial/02Trade01.sze` second.
+
+**Branch:** `task/FISHER-1e` from the newest `origin/main`, which must contain SO-1b (check that `d19c446a` is an
+ancestor; if not, stop and report). Merge `task/FISHER-MAP-1` `21e373e7` for its note. About 3 hours. Tests and
+their evidence; engine code only if the canary finds a bug, and then stop first (item 6).
+
+1. **The canary on `01_1024_easy_256`:** load it with the normal loader, `World::create`, the original INIT, and the
+   fisher flag on. Nothing else is changed: no projection, no deleted actor, no injected stock, no command. Advance
+   until each of the three type-3978 huts has finished at least one whole trip, and assert each stage from sim
+   state, per hut:
+   - the worker (figure 142) leaves through the open entrance;
+   - it reaches a fish tile and takes the catch;
+   - it returns and the hut's raw stock rises;
+   - the hut's output (food) rises.
+   Also assert: no world fault, and a bounded tick count with the measured trip time reported.
+2. **The same on `02Trade01`:** one Build command (player 2, the city on island 3, type 810 at 243, 216,
+   rotation 0), then the same four stages for that hut.
+3. **The flag off:** on both maps the fishers do nothing, and today's digests and pins are unchanged.
+4. **Determinism:** two runs give the same per-turn hashes; a save and reload in the middle of a trip gives the
+   same hashes as the uninterrupted run.
+5. **Honest scope in the test names and the report:** Venice's type 3978 and its rates on the first map; one human
+   hut on the second; a hut with every entrance closed is not covered (FISHER-RE-3).
+6. **If a stage does not happen** (a worker stuck, no catch, no output): stop, report the map, hut, tick and stage
+   with the state that shows it, and ask a QUESTION. Do not tune a constant or bend a criterion to make it pass.
+7. **Fix FISHER-MAP-1's F1:** `03T_Combat_01` has an empty kernel (13 empty, not 12).
+
+The tests need the original files and skip with a message without `ANNO1503_GAME_DIR`. Put them in the `heavy`
+suite if they are slow. 0 pins moved.
+
+**Done:** the canary passing on both maps with nothing suppressed, the flag-off and determinism checks, the REPORTS
+entry with exact gate lines. Then stop.
+
+## FISHER-MAP-1 in detail (released 2026-11-15, ACCEPTED the same day)
 
 **SL-0 was ACCEPTED as a read** ([review](../reviews/2026-11-15-sl-0-review.md)). It shows that `S01_02_01`'s
 unchanged script needs the computer players' trade, diplomacy and military (PLAN M5). **The owner's decision**

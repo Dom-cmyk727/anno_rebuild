@@ -949,14 +949,17 @@ INHABITANTCOUNT (2), DEAD (2), BOUGHT (1). Its calls are QUESTLOG_SHOW (12),
 SETWARELOG (1), SET_FOR_BUY (1), SET_DIPLOMACY (4), ATTACK_AREA (1), BEAMDOWN
 (1), GOTO_SCREEN (1), SET_PROFILE (2), SHOWTEXT (3), LOST (2), WON (1).
 None is in `script.cpp::Compiler::statement`'s current action dispatch.
+INIT already begins with unsupported QUESTLOG_SHOW at payload offset 1339.
 Consequently, merely admitting the two objects **will not** make the unchanged
 script compile. Inventorying those calls is not decoding their original effects.
 
 **Proposed SCRIPT-OBJECTS-1: one concern, about 3–4 hours.**
 
 1. Spend up to 60 minutes tracing original OBJECT_STADT binding and KILLED
-   evaluation, starting from the dispatch label at `0x10040244` catalogued in
-   [bigbrother.md](../formats/bigbrother.md). Prove id namespace, lookup order,
+   evaluation, starting from the **AnnoScene.dll string** OBJECT_STADT at
+   `0x10040244` and KILLED at `0x10040114` (S: the existing name catalogue in
+   [bigbrother.md §6](../formats/bigbrother.md#6-the-interpreters-names-s), not
+   decoded binding functions). Prove id namespace, lookup order,
    absent/destroyed-city behavior and any mutable binding state. Stop with a
    QUESTION if those cannot be proved; do not equate 4/18 with island slots.
 2. If that contract is settled, spend about 90 minutes on only this binding and

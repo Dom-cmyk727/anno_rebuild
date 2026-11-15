@@ -11286,3 +11286,65 @@ Decisions and reasoning:
 - Run one full pins selection and a disjoint reader set; preserve inventory failure and rerun only unexecuted work.
 - Keep this branch independent of all fisher branches and preserve every retained fixture byte.
 QUESTIONs: none for cleanup; FISHER-1c's separate OQ-625 checkpoint is not resolved by this task.
+
+
+## FISHER-1d — follow-ups, runtime fish fill and script inventory (2026-11-15)
+
+Status: READY FOR REVIEW; independent orchestrator review pending; final hosted receipt accompanies handoff.
+Base eb40d75c; owner-authorized trim merge 7aaa3c85; tested source db74a7cb; closeout changes docs only.
+Only REPORTS append conflicted; both full entries retained, headings once. Old branches remain preserved.
+OQ-623 renamed OQ-625 throughout this lane; UI's OQ-623/624 untouched. No reviewer subagents.
+B1: 0x100592f4–0x100592fc counts blocked resources before goal-pop 0x100033c3; truly empty rig added.
+B2: first entrance on mean 32 land reaches/claims water fish; second entrance on mean 31 permits return.
+B3: hand-derived literal rotated launch; mode-0 test accurately names default/explicit selection equivalence.
+B4: mid-trip reload proves 768 raw delivery and worker release; two from-create runs match hashes.
+B5: enabled invalid-job diagnostic lists job 0x2d; disabled control excludes it.
+Fill: fill_fish_resources(TileLayer&, HEIGHT, TileRect, enabled, threshold=16, resource=11), no saved field.
+Original 0x100928a0–0x10092b32: clipped row-major empty cells, unsigned mean < 16, zero draws.
+Hooks: loaded objects/buildings (0x100a1f9d/0x100a20b8/0x100a2fc8); area clear (0x1008376e–0x10083796).
+Demolition/city/house removal propagate the flag; placement/tick/native reload do not regenerate fish.
+Four runtime_fish vectors cover 15/16, occupied 11/16384, phase/anchor/height and preserved fields.
+C++ census: 50 maps, 4,908,270 generated/usable; S01_02_01 179,016; every per-map count agrees.
+It projects raw geometry/all footprints, including orphan PROD2; synthetic World creation proves the hook.
+This is not normal actor/script import or original-farm trip completion; no gameplay script bypass.
+Owner option 1: inventory/propose SCRIPT-OBJECTS-1; OBJECT_STADT operands 4/18 at offsets 16/48.
+Their only KILLED uses are primaries 4209/4306; numeric namespace/lifetime unread; also 5 PLAYER queries/11 action names.
+INIT first calls unsupported QUESTLOG_SHOW at 1339; proposed 3–4 h SCRIPT-OBJECTS-1 alone cannot unblock the script (§8).
+T2: pins.txt labels corrected; formulas/digests unchanged, historical checksum scope explicit.
+All 14 named recordings are byte-identical to accepted trim; README/provenance wording is the requested metadata edit.
+State 139, all section versions 1 and existing tag 1 remain unchanged; feature stays default-off.
+Dev zero compiler warnings; final relink zero warnings (local Apple duplicate-library diagnostic suppression).
+Initial build's two duplicate-archive linker warnings retained; no compiler warning disabled. Lint/format/diff/links pass.
+Direct: 22 fisher cases pass, reference 53 vectors/0 disagreements, contract 81 checks; all 22 also pass canonically.
+Cache-only production mutants: inclusive depth fails mean 16; late candidate count fails blocked fish; legal controls pass.
+Each replacement applied once; predicate-mutant.json/candidate-mutant.json retain commands, hashes and results.
+Full pins (Dev, game files), cache/fisher-1d/pins-full-01.log:
+```
+COUNTS: selected=1693 executed=1675 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/fisher-1d/pins-full-01.log
+```
+App/reference (Release, game files), cache/fisher-1d/app-reference-02.log:
+```
+COUNTS: selected=291 executed=288 failed=0 empty=0 skipped=3 (required-asset=0 platform=0 opt-in=3 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Required pins_contract (pins log), viewer_wiring_contract/fisher_reference_contract/picture_matrix_contract (app log), each:
+```
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Initial all-closed-entrance diagnostic failed delivery bound (b-rigs-direct-01.log); final B2 scope is explicit.
+All-closed return remains unproved; no movement rule was invented. App attempt 01 ran no tests (Dev gate lock).
+App ran once in the existing Release folder; no running gate was interrupted, memory refusal or whole-gate repeat.
+CI: source run 43692985109 has only Windows build pending at report preparation; final pushed gate checked before handoff.
+Final receipt: https://github.com/Dom-cmyk727/anno_rebuild/actions?query=branch%3Atask%2FFISHER-1d (exact run in handoff).
+NOT_RUN: normal-map gameplay canary, original/HE, local MSVC/WSL/GPU/SDL viewer; hosted CI has no game files.
+Unaffected formats/render/test-support lanes reused: no changed source there. Contract/README re-read before handover.
+Evidence SHA-256: cache/fisher-1d/evidence-sha256.json; acceptance table: acceptance.md; no pin/recording rewrites.
+Decisions and reasoning:
+- Merge accepted trim as authorized so T2 documents the tested mechanism; retain both append-only reports.
+- Match candidate ordering and original load/clear lifecycle; reuse columns/flag, preserve default hashes and RNG.
+- Preserve owner draw scope: one discarded draw per eligible attempt, no body draw; full on/off trajectories may diverge.
+- Name the geometry scope and all-closed-return limit; option 1 keeps the normal canary blocked rather than suppressing script.
+QUESTIONs: no further owner choice for FISHER-1d; OQ-625 remains open. Script inventory exposes the broader language backlog.

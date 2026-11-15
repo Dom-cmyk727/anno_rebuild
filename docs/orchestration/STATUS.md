@@ -112,7 +112,10 @@ says who is doing what, where the work is, and what it waits on.
     **ZOOM-SMOOTH-1 RELEASED** to the Windows executor the same day, under the standing go. **Partial ACCEPTED
     2026-11-15** (steps 1, 7, 8: the shared viewer/sweep configuration, the chunks-step metric, the opt-in readiness
     control; head `e8dcb7cf`, CI green; landing waits for the owner's OK and a game-file run). Steps 2 to 6 split
-    into ZOOM-SMOOTH-1b (RELEASED 2026-11-15), 1c and 1d.
+    into ZOOM-SMOOTH-1b (RELEASED 2026-11-15), 1c and 1d. **ZOOM-SMOOTH-1b ACCEPTED 2026-11-15** (head `d71bbfbb`,
+    CI green, [review](reviews/2026-11-15-zoom-smooth-1b-review.md)): readiness much better, the pan busy tail
+    worse; lands only stacked with 1c. **ZOOM-SMOOTH-1c RELEASED** the same day (the ring, F1 to F3, the pan
+    regression).
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
   - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.

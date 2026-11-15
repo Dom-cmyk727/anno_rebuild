@@ -327,6 +327,13 @@ if(ANNO_BUILD_TESTS)
                      --ref ${CMAKE_SOURCE_DIR}/tools/whale_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/whale_vectors.txt)
     # FISHER-RE-1b: standalone integer reference and its public CLI contract.
+    add_test(NAME script_objects_reference_agrees
+      COMMAND ${Python3_EXECUTABLE} -I "${PROJECT_SOURCE_DIR}/tools/script_objects_ref.py"
+              "${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/script_objects_vectors.txt")
+    add_test(NAME script_objects_reference_contract
+      COMMAND ${Python3_EXECUTABLE} -I "${PROJECT_SOURCE_DIR}/tools/script_objects_ref_contract_test.py"
+              --ref "${PROJECT_SOURCE_DIR}/tools/script_objects_ref.py"
+              --vectors "${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/script_objects_vectors.txt")
     add_test(NAME fisher_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/fisher_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/fisher_vectors.txt)

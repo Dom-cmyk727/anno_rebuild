@@ -43,7 +43,19 @@ struct ScriptArea {
     std::int32_t y0 = 0, x0 = 0, x1 = 0, y1 = 0;
     std::uint32_t offset = 0;
 };
-enum class ScriptQuery : std::uint8_t { Signal, Playtime, Timer, ShipTouch, SoldierTouch };
+struct ScriptCityObject {
+    std::string name;
+    IslandId island;
+    CityNo city;
+};
+enum class ScriptQuery : std::uint8_t {
+    Signal,
+    Playtime,
+    Timer,
+    ShipTouch,
+    SoldierTouch,
+    CityKilled
+};
 enum class ScriptCompare : std::uint8_t { Truth, Equal, Less, Greater };
 struct ScriptExpr {
     enum class Kind : std::uint8_t { Leaf, And, Or } kind = Kind::Leaf;
@@ -80,7 +92,8 @@ struct ScriptProgram {
     std::vector<std::uint8_t> initial;
     std::vector<ScriptMapping> mappings;
     std::vector<ScriptArea> areas;
-    std::string asset_namespace;     // one normalized derived prefix per program
+    std::vector<ScriptCityObject> city_objects; // derived from source, never persisted
+    std::string asset_namespace;                // one normalized derived prefix per program
     std::vector<std::string> assets; // relative names; total bytes bounded by source bytes
     std::vector<ScriptExpr> expressions;
     std::vector<ScriptInstruction> init;
@@ -115,6 +128,7 @@ struct ScriptHost {
     }
     virtual bool money(std::uint32_t, std::int32_t) { return false; }
     virtual bool touch(const ScriptArea&, std::uint32_t, bool, ScriptWork&, bool&) { return false; }
+    virtual bool city_killed(IslandId, CityNo, bool&) { return false; }
     virtual std::uint32_t timer_seconds(std::uint32_t index) const = 0;
 };
 [[nodiscard]] formats::Result<ScriptProgram, ScriptError>

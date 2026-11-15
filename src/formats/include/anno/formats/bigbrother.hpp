@@ -238,6 +238,9 @@ struct Options {
     /// would overflow the stack instead of returning an Error. The shipped
     /// scripts need 21 (P); raise it here for deeper ones.
     std::size_t max_condition_depth = kMaxConditionDepth;
+    /// Runtime object lookup keeps the first declaration (AnnoScene 0x10023f40).
+    /// Default parsing retains the shipped-file uniqueness check.
+    bool allow_duplicate_object_names = false;
 };
 
 /// Parses a script (the BIGBROTHER payload). Text outside the grammar read

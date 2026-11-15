@@ -1,0 +1,27 @@
+# Hand-derived from docs/re/script-objects.md; synthetic names/snapshots, not original scripts.
+# 258 = 0x0102, so read island 2 / city 1. Non-null city is not killed.
+query bound_alive objects=alpha:258 ref=alpha islands=1,2 city_slots=16 initial=2:1:3:1 frames=2:1:3:1 => compiled=1 island=2 city=1 killed=0 parse_reads=0 city_reads=1 writes=0
+# Same packed pair; city existed when parsed and the slot is now null: true.
+query bound_destroyed objects=alpha:258 ref=alpha islands=1,2 city_slots=16 initial=2:1:3:1 frames=- => compiled=1 island=2 city=1 killed=1 parse_reads=0 city_reads=1 writes=0
+# No city at parse and no city at first query: true without any initial-presence latch.
+query absent_at_parse objects=alpha:258 ref=alpha islands=1,2 city_slots=16 initial=- frames=- => compiled=1 island=2 city=1 killed=1 parse_reads=0 city_reads=1 writes=0
+# No initial city, but one exists when queried: false; parse must not cache absence.
+query appears_later objects=alpha:258 ref=alpha islands=1,2 city_slots=16 initial=- frames=2:1:3:1 => compiled=1 island=2 city=1 killed=0 parse_reads=0 city_reads=1 writes=0
+# Three live reads: populated, empty, populated again. KILLED is not monotonic/latched.
+query recreated objects=alpha:258 ref=alpha islands=1,2 city_slots=16 initial=2:1:3:1 frames=2:1:3:1/-/2:1:8:0 => compiled=1 island=2 city=1 killed=0,1,0 parse_reads=0 city_reads=3 writes=0
+# Owner changes from 3 to 8 and buildings from 1 to 0, but the city slot stays populated.
+query owner_and_empty objects=alpha:258 ref=alpha islands=1,2 city_slots=16 initial=2:1:3:1 frames=2:1:3:1/2:1:8:0 => compiled=1 island=2 city=1 killed=0,0 parse_reads=0 city_reads=2 writes=0
+# A different city slot on the correct island does not satisfy the query's exact pair.
+query other_city objects=alpha:258 ref=alpha islands=1,2 city_slots=16 initial=- frames=2:0:3:1 => compiled=1 island=2 city=1 killed=1 parse_reads=0 city_reads=1 writes=0
+# Zero decodes as island 0 / city 0, not a missing-id sentinel; case-insensitive full name.
+query zero objects=alpha:0 ref=ALPHA islands=0 city_slots=16 initial=0:0:3:1 frames=0:0:3:1 => compiled=1 island=0 city=0 killed=0 parse_reads=0 city_reads=1 writes=0
+# 65540 = 65536 + 4; the descriptor's low-word store keeps 4, so island 4 / city 0.
+query low_word objects=alpha:65540 ref=alpha islands=4 city_slots=16 initial=- frames=4:0:3:1 => compiled=1 island=4 city=0 killed=0 parse_reads=0 city_reads=1 writes=0
+# -65532 modulo 65536 is also 4; no assumed signed global-city index.
+query negative_word objects=alpha:-65532 ref=alpha islands=4 city_slots=16 initial=- frames=4:0:3:1 => compiled=1 island=4 city=0 killed=0 parse_reads=0 city_reads=1 writes=0
+# First full case-insensitive declaration wins: 258, not the later 513 (island 1 / city 2).
+query duplicate_first objects=alpha:258,ALPHA:513 ref=Alpha islands=1,2 city_slots=16 initial=- frames=2:1:3:1 => compiled=1 island=2 city=1 killed=0 parse_reads=0 city_reads=1 writes=0
+# Unknown name fails compilation before a city query; it is not Boolean false or true.
+query bad_name objects=alpha:258 ref=beta islands=1,2 city_slots=16 initial=- frames=- => compiled=0 island=- city=- killed=- parse_reads=0 city_reads=0 writes=0
+# Object lookup does not apply the player mapper's @ suffix stripping.
+query full_name objects=alpha:258 ref=alpha@HUMAN islands=1,2 city_slots=16 initial=- frames=- => compiled=0 island=- city=- killed=- parse_reads=0 city_reads=0 writes=0

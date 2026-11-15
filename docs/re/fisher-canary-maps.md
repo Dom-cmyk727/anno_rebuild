@@ -130,6 +130,10 @@ original compiler refusals; 11 normal created/started worlds; 3 import refusals;
 0 World::create refusals after successful import. Among those 11: **A 2, B 3,
 C 6**. Four existing FISCHER huts in two maps; three of them are route 45.
 
+Correction F1 (2026-11-15, FISHER-1e): Tutorial/03T_Combat_01 has 31 object
+definitions and an empty kernel. Its object-definition refusal and class are
+unchanged; the total empty-kernel count is 13.
+
 ## Existing huts and water reach
 
 **P/T.** Entrances retain original file order and rotation. Values below are

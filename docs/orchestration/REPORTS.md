@@ -12172,3 +12172,121 @@ thread")? Is a clean, idle-machine repeat worth asking the owner for before conc
 the drag, given the one disclosed confound?
 
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2d — diagnostic trace + the events_ms_ fix — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `3205965c`, head `5adba936`)
+
+**Item 1, the opt-in trace, added.** `ANNO_VIEW_LIVE_RESIZE_TRACE=1` (off by default, read once into a
+static bool so every call site pays for one cheap check): `live_resize_watch` now logs, with a monotonic
+seconds timestamp, every `SDL_EVENT_WINDOW_MOVED`/`RESIZED` it sees (before its own early return, so this
+never touches `Viewer`'s shared state for a non-matching event any more than before), every call whose type
+test passes, and each resulting draw or guard-skip. On Windows, a new `live_resize_windows_hook`
+(`SDL_SetWindowsMessageHook`, registered only while the trace is on - it is a single process-wide hook, never
+per-window) logs `WM_ENTERSIZEMOVE`/`WM_EXITSIZEMOVE` and, between them, counts of `WM_TIMER`/`WM_MOVING`/
+`WM_MOUSEMOVE` flushed every 100 ms. **Confirmed in the pinned SDL 3.4.18 source before writing this** (the
+orchestrator's own conditional ask): `WIN_WindowProc` calls the hook via `DispatchModalLoopMessageHook`
+whenever `data->in_modal_loop` is set, including `WM_ENTERSIZEMOVE` itself via a dedicated call in that
+`case` block - the hook genuinely sees messages dispatched from inside the native modal loop, not just the
+ordinary pump. Runs on the window thread only (`SDL_SetWindowsMessageHook`'s own documented threadsafety), so
+its bucket-counter state needs no atomics; registered/cleared alongside the existing watch, guarded `#ifdef
+_WIN32` (same `NOMINMAX`/`WIN32_LEAN_AND_MEAN`/`<windows.h>` convention as `window_capture.cpp` and
+`thread_priority.hpp` - `SDL3/SDL_system.h` only forward-declares `MSG`, a complete definition is needed to
+read `msg->message`).
+
+**Item 2, `events_ms_` fixed.** `LiveResizeState` gained `mark_watch_tick()`/`last_watch_tick()` (a
+`steady_clock` timestamp, `time_point::min()` before the first tick). `live_resize_watch` calls
+`mark_watch_tick()` on every passing type test (drawn or guard-skipped alike). The main loop's own
+`events_ms_` now counts from `max(events_start, live_resize_.last_watch_tick())` instead of `events_start`
+alone - unchanged outside live-resize, where no tick ever beats `events_start`, but no longer stale when a
+watch-triggered `frame_step()` ran one or more times inside the one blocked `SDL_PollEvent` call (the bug
+2c's own trace found: 5763 ms reported against an 18 ms real gap). This is the one behaviour change in this
+packet; everything else above is diagnostic-only.
+
+**Tests.** New: `mark_watch_tick only ever advances...` (`live_resize_test.cpp`), checking
+`last_watch_tick()` reads before `steady_clock::now()` until the first call, then strictly advances -
+exactly the property the `events_ms_` fix's own comparison depends on. The trace output itself (the
+fprintf lines, the Windows hook) needs a real window/modal loop and is not unit-testable headlessly, same as
+the rest of `live_resize_watch`'s own drawing path.
+
+**Gates.** MSVC Release, game files, `anno_app_input_tests` (all doctest suites, `live_resize` included):
+`COUNTS: selected=43 executed=43 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2d-app-1.log`; the `live_resize` suite alone: 6 cases, 23 assertions, all passing).
+`viewer_wiring_*` on the relinked exe: `COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0
+incomplete=0 sanitizer_lines=0` / `VERDICT: PASS` (`cache/gates/zoomsmooth2d-viewerwiring-1.log`). WSL
+`-Werror` check: `viewer.cpp`/`live_resize.hpp`/`live_resize_test.cpp` clean under both GCC 13 and Clang 18
+(viewer-and-GPU and viewer-without-GPU configurations); the same pre-existing, unrelated
+`src/sim/tests/extensions_test.cpp` failure 2c's own gate also reported (`ANNO_EXTENSION_ORACLE_FILE` is a
+CMake compile definition the per-file check script does not supply; confirmed via `git diff --stat
+$(git merge-base HEAD origin/main) HEAD -- src/sim/` that this branch has never touched `src/sim/` - last
+changed by the FISHER-1d work already on `main`, out of this packet's lane). `clang-format --dry-run
+--Werror` flagged one line in `live_resize.hpp`; fixed with `-i`, rebuilt both affected targets, reran the
+`live_resize` suite before gating (still 6/6).
+
+**CI.** Pushed `5adba936` on `task/ZOOM-SMOOTH-2` (no rebase). All 11 `GitHub Actions` check runs green,
+including the required **`gate`** check (`lint`, `cpp-format`, `build-macos`, every `cpp (...)`/`test (...)`
+job on Windows/Linux/macOS, `gate` itself - all `SUCCESS`). Two other check suites (`Cursor`, `Claude`,
+PR-review bots) sat `QUEUED` with zero check runs the whole time and never will complete: this branch has no
+open PR (`gh pr list --head task/ZOOM-SMOOTH-2` is empty), and those apps only trigger on `pull_request`
+events - not a CI problem, just not applicable without a PR.
+
+**The hypotheses the orchestrator asked about (a: SDL's timer not armed until a title-bar press; b: `WM_TIMER`
+starved by a mouse-move flood; c: other load) are not addressed by this entry.** This packet is the
+instrumentation only, built against no new interaction - a repeat trace from the owner, on this build, is
+needed before any of the three can be confirmed or ruled out, exactly as 2c's own code and its owner-trace
+analysis were two separate entries. The recipe below is written so that repeat, once sent back, can speak to
+all three directly: the hold distinguishes "timer armed on press" (hypothesis a: `WM_ENTERSIZEMOVE` logged at
+press, then do `WM_TIMER` ticks appear during the motionless hold, or only once movement starts?) from
+"nothing happens until movement"; the fast drag is the one most likely to show `WM_MOVING`/`WM_MOUSEMOVE`
+counts crowding out `WM_TIMER` in the same 100 ms bucket (hypothesis b); and the watch-side "type test
+passed"/"draw begin"/"draw end" lines, read against the hook's own `WM_TIMER` count in the same window,
+directly show whether the watch was ticking at all during a later-reported large gap - the one thing the
+2c trace could not tell apart from "something else on the thread delayed it" (hypothesis c, or a cause this
+session has not named).
+
+**The owner's hands-on recipe for this build.**
+
+1. Open PowerShell in this worktree (`E:\anno1503-worktrees\anno1503-ZOOM-SMOOTH-2`) and run:
+   ```powershell
+   $env:ANNO_VIEW_HITCH_MS = "1"
+   $env:ANNO_VIEW_LIVE_RESIZE_TRACE = "1"
+   $env:ANNO_GPU_ADAPTER = "0"  # the RTX 4090 on this PC
+   .\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced 2> live-resize-trace-2d.log
+   ```
+   **This must be this worktree's own `anno1503.exe`, relinked at `5adba936`** - not an older one left over
+   from 2/2b/2c. The trace (both the hitch lines and the new `[live-resize-trace]` lines) goes to
+   `live-resize-trace-2d.log` in the current directory.
+2. Once the window opens: grab the title bar and **hold it down for about 2 seconds without moving the
+   mouse**, then release without having dragged.
+3. Grab the title bar again and **drag slowly for about 5 seconds**, then release.
+4. Grab the title bar again and **drag it quickly, flicking it back and forth, for about 5 seconds**, then
+   release.
+5. **Close** the window normally (Alt+F4 or the close button) to end the run and flush the log.
+6. Send back `live-resize-trace-2d.log` - no need to mark timestamps by hand; the three steps above are far
+   enough apart in the log's own `WM_ENTERSIZEMOVE`/`WM_EXITSIZEMOVE` pairs to tell apart.
+
+NOT_RUN: the owner's repeat trace itself and its per-hypothesis analysis (next entry, once sent back); TSan
+and WSL ASan (unchanged reasoning from 2b/2c - no preset, out of this packet's own time box).
+
+Decisions and reasoning:
+- **Verified the Windows message hook's own reach into the modal loop against the pinned SDL source before
+  designing the trace around it**, rather than assuming the task spec's own citation: `DispatchModalLoopMessageHook`
+  is called from inside `WIN_WindowProc` itself, guarded on `data->in_modal_loop`, which is exactly the
+  mechanism needed and was not already confirmed anywhere in this branch's own prior packets.
+- **Logged every watch-side event (MOVED/RESIZED sightings, type-test pass, draw/skip) before any shared-state
+  read, continuing 2b F1's own property** (never touch `Viewer`'s shared state for a non-matching event) -
+  the trace adds no new read of shared state on the non-matching path, only of the event struct itself and a
+  read-only static flag.
+- **Fixed `events_ms_` by tracking the watch's own last tick inside `LiveResizeState`, not with a second,
+  separately-synchronized field in `Viewer`** - keeps the one piece of watch-related bookkeeping the fix
+  needs alongside the reentrancy/wake-defer state it is already reading, rather than adding a parallel
+  atomic the reader would have to reason about independently.
+- **Did not attempt the fix for the drag's own stall in this packet**, per the explicit instruction - every
+  change here is either diagnostic-only or, for `events_ms_`, a correction to the *measurement* the earlier
+  analysis depended on, not to the drag behaviour itself.
+- **Did not claim a hypothesis result from this packet's own gates or CI**, since none of them exercise a
+  real modal loop under human-paced mouse input - only the owner's repeat trace can speak to (a)/(b)/(c).
+
+QUESTIONs: none beyond 2c's own (still open: a clean, idle-machine repeat, and the finer-grained watch-call
+counter that question suggested - the new trace's own watch-side lines may now answer the latter without a
+separate counter).
+
+**READY FOR REVIEW.**

@@ -21,12 +21,14 @@ inline constexpr std::uint8_t kFisherWaterThreshold = 32;
 struct FisherCell {
     std::uint8_t mean;
     bool walkable_water;
-    std::uint16_t goal_mask;
+    std::uint16_t blocked_mask;
+    std::uint16_t usable_mask;
     friend bool operator==(const FisherCell&, const FisherCell&) = default;
 };
 // Four corners are geometry, not a fixed content count. AnnoWelt.dll
 // 0x10090560–0x100906df / 0x1009226b–0x100922df: unsigned mean, strict water
-// comparison, opposite goal polarity. Equality is a goal and closed to walking.
+// comparison. Island +0x12c returns blocked bits; goal-pop 0x100033c3–0x100033ce
+// uses 0x1ff minus those bits. Equality is blocked and has no usable goal subcells.
 [[nodiscard]] FisherCell fisher_cell(const std::array<std::uint8_t, 4>& corners,
                                      std::uint8_t threshold = kFisherWaterThreshold);
 [[nodiscard]] std::optional<FisherCell>

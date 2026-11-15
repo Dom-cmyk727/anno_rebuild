@@ -329,7 +329,7 @@ void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp,
     }
 }
 
-std::string validate_figures(const FigureRegistry& registry, const IdCounters& ids) {
+std::string validate_figures(const FigureRegistry& registry, const IdCounters& ids, bool fisher) {
     const SlotList<Figure>& l = registry.list;
     const std::uint64_t n = l.slots.size();
     if (n < 1) {
@@ -411,7 +411,7 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
         if (f.harvest.has_value()) {
             const HarvestState& h = *f.harvest;
             const std::string hw = where + ".harvest";
-            if (!harvest_state_job(f.job)) {
+            if (!harvest_state_job(f.job, fisher)) {
                 return hw + ": present on a figure of job " + std::to_string(f.job) +
                        " (only the harvest jobs 0x29 and 0x2a, the animal job 0x2e and the mason "
                        "job 0x2c have one)";

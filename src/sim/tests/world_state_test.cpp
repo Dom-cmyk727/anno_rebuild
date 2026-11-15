@@ -671,7 +671,8 @@ TEST_CASE("section extensions: all ten native sections refuse one unknown tag") 
         const auto range = ranges[i];
         for (std::size_t k = range.end - 8; k < range.end; ++k)
             REQUIRE(good[k] == 0); // the actual empty extension count
-        for (const std::uint16_t tag : {std::uint16_t{0}, std::uint16_t{1}, std::uint16_t{65535}}) {
+        // Header tag 1 is registered as fisher_rules; tag 2 remains unknown in every section.
+        for (const std::uint16_t tag : {std::uint16_t{0}, std::uint16_t{2}, std::uint16_t{65535}}) {
             auto bad = good;
             bad[range.end - 8] = 1; // count one
             const std::array<std::uint8_t, 9> entry{static_cast<std::uint8_t>(tag),

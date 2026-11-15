@@ -534,7 +534,8 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
             // figure, no counter, no cargo); the dispatch draw was already taken by the tick (it is
             // not conditional on the send).
             const FigureType* rt = ctx.types.find_figure_type(first_kind);
-            if (rt != nullptr && farm_figure_route(rt->route) == FarmFigureRoute::Unsupported) {
+            if (rt != nullptr &&
+                farm_figure_route(rt->route, ctx.fisher_enabled) == FarmFigureRoute::Unsupported) {
                 if (ctx.transport_stats != nullptr) {
                     ++ctx.transport_stats->forestry.unsupported_routes;
                 }
@@ -557,10 +558,15 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
                 const FigureType* ft = ctx.types.find_figure_type(kind);
                 s.job = ft != nullptr ? ft->route : 0;
                 s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
-                s.harvest = (farm_figure_route(s.job) == FarmFigureRoute::Worker ||
-                             farm_figure_route(s.job) == FarmFigureRoute::Animal ||
-                             farm_figure_route(s.job) == FarmFigureRoute::Mason) &&
-                            std::holds_alternative<Farm>(b.payload);
+                if (ctx.fisher_enabled && fisher_job(s.job) && !type.entrances.empty())
+                    s.pos =
+                        entrance_position(b, type, 0); // 0x10067e60, no reachable-entrance retry
+                s.harvest =
+                    (farm_figure_route(s.job) == FarmFigureRoute::Worker ||
+                     farm_figure_route(s.job) == FarmFigureRoute::Animal ||
+                     farm_figure_route(s.job) == FarmFigureRoute::Mason ||
+                     farm_figure_route(s.job, ctx.fisher_enabled) == FarmFigureRoute::Fisher) &&
+                    std::holds_alternative<Farm>(b.payload);
             }
             if (std::holds_alternative<SmallFarm>(b.payload)) {
                 // MAP-SUPPLY-1 S2 (D 0x1006f78d-0x1006f7c2): the small farm passes the literal job

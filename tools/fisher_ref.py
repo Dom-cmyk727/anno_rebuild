@@ -205,7 +205,9 @@ def evaluate(kind, fields):
     if kind == 'sea_cell':
         # §3, 90560/9226b: integer four-corner mean; equality32 is closed.
         opened = int(sum(r['heights']) // 4 < 32)
-        return r.result(open=opened, free=511 * (1 - opened))
+        # Island +0x12c answers blocked bits; goal-pop 0x100033c3–0x100033ce
+        # subtracts them from 0x1ff to obtain usable resource-goal subcells.
+        return r.result(open=opened, blocked=511 * (1 - opened), usable=511 * opened)
     if kind == 'trip':
         # §3, 5c260: repeat below capacity, home at equality or above.
         repeat = int(r['cargo'] < r['capacity'])

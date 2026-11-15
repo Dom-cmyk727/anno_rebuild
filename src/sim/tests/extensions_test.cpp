@@ -37,6 +37,7 @@ struct SyntheticExtension {
 };
 struct TestContext {
     SyntheticState synthetic;
+    sim::FisherRules fisher_rules{};
     template <sim::StateSection Section>
     using List = std::conditional_t<Section == sim::StateSection::Figures,
                                     sim::TestExtensionList<SyntheticExtension>,
@@ -283,23 +284,68 @@ TEST_CASE("extensions production: a synthetic native is refused as an unknown fi
     CHECK(result.error().find("section figures: unknown extension tag 61441") != std::string::npos);
 }
 
-TEST_CASE(
-    "extensions schema: production lists are empty sorted unique and exclude the test range") {
+TEST_CASE("extensions schema: production lists are sorted unique and exclude the test range") {
     static_assert(sim::valid_extension_list<false, TagOnly<1>, TagOnly<2>>());
     static_assert(!sim::valid_extension_list<false, TagOnly<2>, TagOnly<1>>());
     static_assert(!sim::valid_extension_list<false, TagOnly<0>>());
     static_assert(!sim::valid_extension_list<false, TagOnly<0xf000>>());
-    static_assert(sim::kKnownExtensions.empty());
+    static_assert(sim::kKnownExtensions.size() == 1);
     static_assert(sim::valid_extension_list<true, SyntheticExtension>());
     static_assert(!sim::valid_extension_list<false, SyntheticExtension>());
     static_assert(!sim::valid_extension_list<true, SyntheticExtension, SyntheticExtension>());
     constexpr auto schema = sim::extension_schema<TestContext>();
-    static_assert(schema.size() == 1);
-    static_assert(schema[0].section == sim::StateSection::Figures);
-    static_assert(schema[0].tag == 0xf001);
-    static_assert(schema[0].name == "synthetic_extension");
+    static_assert(schema.size() == 2);
+    static_assert(schema[0].section == sim::StateSection::Header);
+    static_assert(schema[0].tag == 1);
+    static_assert(schema[0].name == "fisher_rules");
+    static_assert(schema[1].section == sim::StateSection::Figures);
+    static_assert(schema[1].tag == 0xf001);
+    static_assert(schema[1].name == "synthetic_extension");
     CHECK(sim::kStateHashVersion == 139);
     for (const auto& section : sim::kSectionVersions)
         CHECK(section.version == 1);
-    CHECK(sim::kKnownExtensions.empty());
+    CHECK(sim::kKnownExtensions[0].name == "fisher_rules");
+}
+
+TEST_CASE("fisher extension: default bytes and header-only flag roundtrip") {
+    const auto spec = sim::synthetic::empty_scenario();
+    auto off = sim::World::create(spec, sim::TypeRegistry::empty());
+    REQUIRE_MESSAGE(off, off.error());
+    sim::ExtensionContext rules;
+    rules.fisher_rules.enabled = 1;
+    auto on = sim::World::create(spec, sim::TypeRegistry::empty(), {}, {}, {},
+                                 sim::serial_executor(), rules);
+    REQUIRE_MESSAGE(on, on.error());
+    CHECK_FALSE(off.value().fisher_enabled());
+    CHECK(on.value().fisher_enabled());
+    CHECK(off.value().rules().digest() == on.value().rules().digest());
+    const auto a = off.value().save(), b = on.value().save();
+    CHECK(b.size() == a.size() + 7);
+    const auto ar = ranges(a), br = ranges(b);
+    for (std::size_t i = 1; i < ar.size(); ++i)
+        CHECK(std::vector<std::uint8_t>(a.begin() + static_cast<std::ptrdiff_t>(ar[i].begin),
+                                        a.begin() + static_cast<std::ptrdiff_t>(ar[i].end)) ==
+              std::vector<std::uint8_t>(b.begin() + static_cast<std::ptrdiff_t>(br[i].begin),
+                                        b.begin() + static_cast<std::ptrdiff_t>(br[i].end)));
+    sim::HashTree ah, bh;
+    static_cast<void>(off.value().state_hash(ah, 1));
+    static_cast<void>(on.value().state_hash(bh, 1));
+    REQUIRE(ah.root.children.size() == bh.root.children.size());
+    CHECK(ah.root.children[0].hash != bh.root.children[0].hash);
+    for (std::size_t i = 1; i < ah.root.children.size(); ++i)
+        CHECK(ah.root.children[i].hash == bh.root.children[i].hash);
+    auto loaded = sim::World::load(b, sim::TypeRegistry::empty());
+    REQUIRE_MESSAGE(loaded, loaded.error());
+    CHECK(loaded.value().fisher_enabled());
+    CHECK(loaded.value().save() == b);
+    CHECK(loaded.value().state_hash() == on.value().state_hash());
+    auto bad = b;
+    bad[br[0].end - 1] = 2;
+    island_test::reseal(bad);
+    const auto refused = sim::World::load(bad, sim::TypeRegistry::empty());
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().find("enabled must be 0 or 1") != std::string::npos);
+    rules.fisher_rules.enabled = 2;
+    CHECK_FALSE(sim::World::create(spec, sim::TypeRegistry::empty(), {}, {}, {},
+                                   sim::serial_executor(), rules));
 }

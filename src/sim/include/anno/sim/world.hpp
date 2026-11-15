@@ -179,7 +179,7 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // Mine retains its optional deposit binding. The ECONBK1 schema, replay frame 4, command wire 1,
 // registry digest layout and PRNG timeline 5 are unchanged; no draw site or draw caller is added.
 // Valid 134 to 138 native states and recordings remain historical and are refused.
-// Stream139 (SAVE-SECTIONS-1a): ten section base versions1 and empty extension
+// Stream 139 (SAVE-SECTIONS-1a): ten section base versions 1 and empty extension
 // lists. The last global framing number; optional state uses §9.8 extension tags.
 inline constexpr std::uint32_t kStateHashVersion = 139;
 
@@ -259,11 +259,10 @@ class World {
     /// `ex`, one island per job, and placed in table order, so the result does not
     /// depend on the executor). The clock starts at 0 and the PRNG cursor at
     /// `seed mod table size`.
-    static formats::Result<World, std::string> create(const ScenarioSpec& spec,
-                                                      std::shared_ptr<const TypeRegistry> types,
-                                                      SimConfig config = {}, Rules rules = {},
-                                                      Seams seams = {},
-                                                      const Executor& ex = serial_executor());
+    static formats::Result<World, std::string>
+    create(const ScenarioSpec& spec, std::shared_ptr<const TypeRegistry> types,
+           SimConfig config = {}, Rules rules = {}, Seams seams = {},
+           const Executor& ex = serial_executor(), const ExtensionContext& extension_rules = {});
 
     /// Reads a save (docs/sim/state.md §9.5): checks the frame, the versions, the
     /// registry digest and the seam names, validates the configuration before any
@@ -289,6 +288,9 @@ class World {
     [[nodiscard]] const WorldSettings& settings() const { return settings_; }
     [[nodiscard]] const SimConfig& config() const { return config_; }
     [[nodiscard]] const Rules& rules() const { return rules_; }
+    /// Optional feature rules are authoritative in their header extensions, not Rules' base list.
+    [[nodiscard]] const ExtensionContext& extension_rules() const { return extensions_; }
+    [[nodiscard]] bool fisher_enabled() const { return extensions_.fisher_rules.enabled == 1; }
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
     [[nodiscard]] BuildEligibility construction_eligibility(PlayerId, TypeId) const;
@@ -402,8 +404,8 @@ class World {
 
     /// Compile-time canary (never called): binds every data member of World.
     /// A member added without extending this line fails to compile here,
-    /// which is the reminder to give it a line in fields(World)
-    /// (state_fields.hpp) or the extension context, so it cannot be left
+    /// which is the reminder to put it in its section field list, bumping that
+    /// section version, or in the extension context, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
         // host_events_, out_, transport_stats_, fault_message_ and route_cache_ are host-facing,
@@ -474,7 +476,7 @@ class World {
     Rules rules_;
     Seams seams_;
     ScriptRuntime script_;
-    ExtensionContext extensions_; // persistent extensions, empty in SAVE-SECTIONS-1b
+    ExtensionContext extensions_; // persistent optional features (state.md §9.8)
     RegistryRef types_;           // never null, also after a move (types.hpp)
     IdCounters ids_;
     PlayerTable players_;

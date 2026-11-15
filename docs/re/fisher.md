@@ -284,6 +284,81 @@ converts raw to food (§2); market collection is the already documented
 transport path. On route exhaustion the shared worker release/end path
 `0x1003af00`/`0x1003b6e0` clears the home worker slot (forestry §2.13).
 
+### Return search cell mode — 2026-11-14, FISHER-1b
+
+**D — return uses the fisher override, hence mode 3.** In AnnoWelt.dll
+`0x10057ae0`–`0x10057bbe`, this is the shared home job and its figure argument
+is the primary figure interface. An already-inside-home figure returns success
+at `0x10057b68`–`0x10057b73` without a search. Otherwise `0x10057b79`–
+`0x10057b7d` calls the figure's virtual `+0xc8(0)`. The fisher's primary
+table `0x100cb4d8`, slot `+0xc8`, is `0x10038ad0`. That override constructs
+the home-centred rectangle, obtains the searcher at `0x10038b4e`, and
+initializes it with cell-building **mode 3** at `0x10038b91`–`0x10038ba1`.
+It supplies home entrance starts while inside the footprint, or the current
+position otherwise (`0x10038bb0`–`0x10038cc5`). The home job then adds home
+entrance goals through home `+0xf8` at `0x10057b87`–`0x10057b94`, installs
+the completion callback, and calls figure `+0xcc` at `0x10057ba8`–`0x10057bb1`.
+It does not replace that searcher's cells with mode 0. The full two bodies
+were read; neither contains a direct world `+0xb4` draw. This settles the
+cell-mode dependency, not OQ-603's float continuation.
+
+**T — planned planar boundary.** The rebuild has no vertical figure coordinate.
+A port can reuse its planar integer segment representation without inventing
+terrain-height following or a synthetic Y adjustment. This checkpoint implements
+no fisher movement and makes no original Y/float-continuation equivalence claim
+(OQ-603).
+
+### Goal-mask consumer contradicts the port premise — 2026-11-14, FISHER-1b
+
+**D — interface chain and resource goals.** Let `S` denote the search interface
+returned to the fisher (the `0x100c14e4` interface at `Y + 4`, not `Y`). Its
+`+0x50 = 0x10002b80` stores the selected mode at `S + 0x2040`
+(`0x10002b80`–`0x10002b98`); the fisher passes mode 3 as above. Its `+0x78 =
+0x10002e20` copies the resource-query tile pairs into `S + 0x1800`, with count
+at `S + 0x17fc` (`0x10002e20`–`0x10002e60`). The fisher uses that slot at
+`0x1005931b`–`0x10059325`, after the nonempty query. Search `+0x84 =
+0x10003d90` calls goal-pop `0x10003220` with the same `S` receiver at
+`0x10004779`–`0x1000477b`. These offsets are relative to `S` throughout.
+
+**D — the missing consumer operation.** In the complete goal-pop read
+`0x10003220`–`0x1000377d`, the resource-tile loop compares the popped tile
+with each stored resource pair (`0x10003399`–`0x100033aa`). On a match,
+`0x100033ac`–`0x100033bd` calls island `+0x12c`, passing the mode from
+`S + 0x2040` and that tile. Crucially, `0x100033c3`–`0x100033ce` computes
+**`0x1ff - returned_mask`** and ORs that into the accumulated usable goal mask.
+The island's primary `0x100cac2c` slot `+0x12c = 0x100921b0` dispatches
+mode 3 to the accepted mean/threshold arm `0x1009226b`–`0x100922df`.
+Thus its returned 0/511 is an **exclusion mask for this consumer**, not the
+usable/free mask. The callback-order loop at `0x1000370c`–`0x1000374c`
+tests each accumulated bit before calling the callback.
+
+| A, from these D ranges; threshold 32 | Walking cell | Returned island mask | Usable resource-goal bits |
+|---|---|---|---|
+| Mean 31 | open | 0 | 511 |
+| Mean 32 | closed | 511 | 0 |
+
+**T/U — contract conflict, not an implementation change.** FISHER-1a's
+`fisher_cell.goal_mask` and `fisher_ref.py sea_cell.free` retain the returned
+island mask values; they were not changed in this checkpoint. The latter's
+`free` label and the earlier census interpretation as 2473 *usable goals*
+miss this inversion. The 50/2473/619/1854 measurements still describe returned
+mask polarity and local shoreline geometry, not catchability. The FISHER-1b
+packet's requested closed shallow-goal synthetic fixture cannot be justified
+by treating 511 as usable. No dry-goal admission exception is invented and
+mode 0 is untouched. This is a QUESTION for correcting/releasing the port
+contract, references and fixtures; full original-runtime reachability and
+OQ-609 remain open. The existing runtime-source lead `0x100928a0` (mean below
+16) is compatible with the consumer polarity, but is not ported or expanded here.
+
+**D/A — accepted correction, 2026-11-14 (FISHER-1b question review).**
+The orchestrator independently re-checked this consumer chain. The island answer
+is now named `blocked_mask`, with `usable_mask = 0x1ff - blocked_mask` in
+FISHER-1a's primitive. The reference outputs `blocked` and `usable`; all six
+boundary vectors keep their raw values and hand-derive the usable bits. The
+previous statement that mean 32 is a usable goal is superseded: equality is
+closed to walking **and has zero usable goal subcells**. The on/off draw scope
+is the owner's per-eligible-attempt decision below.
+
 ## 4. Stops, draw ledger and port requirements
 
 **D — no fish.** Zero unclaimed mature goods71 tiles makes search start
@@ -312,6 +387,23 @@ refers to walking cells (`0x10090689`–`0x10090697`), not goal admission:
 the goal mask admits those means (`0x1009226b`–`0x100922df`). A closed
 walking tile can therefore be a fish goal. Whole original-runtime recovery
 from malformed/stranded entrances is NOT_RUN; do not invent relocation.
+
+**D/A — no-sea/goal wording corrected, 2026-11-14.** The earlier sentence
+“a closed walking tile can therefore be a fish goal” missed goal-pop's inverse
+at `0x100033c3`–`0x100033ce`. For this mode-3 resource path a usable fish goal
+must itself have mean below threshold. No closed-tile exception is implied.
+
+### Draw-contract clarification — owner decision, 2026-11-14
+
+**Owner decision / D/T scope.** Preserve exactly one discarded world draw per
+eligible farm dispatch attempt (`0x1006ed78`–`0x1006ee58`, §2) and add no
+fisher-body draw. Test paired identical eligible attempts and isolated trip-body
+execution. This does **not** require identical full flag-on/off draw trajectories:
+a fisher still away occupies its home worker slot, while a flag-off refused send
+does not. The next count gate can therefore suppress one world's dispatch and
+allow the other's. Do not add dummy draws or alter the flag-off stream to hide
+that state-dependent divergence. The owner explicitly accepted this scope;
+the separate usable-goal contract question remains open.
 
 ### Draw ledger
 
@@ -506,6 +598,17 @@ remain refused; OQ-200's load mapping is answered, broader terrain callers
 remain OQ-610, and the all-closed raw fish finding remains OQ-609. Engine
 code, HE reading and original-runtime fishing remain NOT_RUN/out of scope.
 
+### Census meaning corrected — 2026-11-14, FISHER-1b
+
+The unchanged 50 scenarios / 2473 embedded fish / 619 adjacent-water / 1854
+without adjacent water counts describe **blocked** placements and local shoreline
+geometry. All 2473 have mean at least 32, so none has usable mode-3 goal bits
+as loaded. The Python opt-in census retains its legacy output key `goals` for
+that blocked count; it is not a catchability result. The C++ corpus test now
+names the blocked count and asserts zero usable. Why original scenarios contain
+these blocked fish, later corner writers and runtime creation are FISHER-RE-2 /
+OQ-609/610; this packet neither invents fish nor repositions existing ones.
+
 ### Corrected shoreline census — 2026-11-13, fix round1
 
 **D/A — superseding criterion, not a changed mapping.** The goal-mask and
@@ -541,3 +644,14 @@ mean32 is a goal, and its east neighbour(70,66) mean18 is water: this placement
 passes both corrected predicates. No byte, border, position or threshold changed.
 The reference's six `sea_cell` vectors now report free0 below32/free511
 at or above32; the newly applied polarity mutant must exit1 disagreement.
+
+### Implemented planar boundary — 2026-11-14, FISHER-1b
+
+**T — bounded rebuild scope.** The optional header `fisher_rules` enables mode-3
+search and return using the existing integer planar `HarvestState`. The original
+segment Y rule at `0x10038730` is not represented: there is no vertical figure
+coordinate, no synthetic terrain-following, and no claim to solve OQ-603's float
+continuation. This supersedes the earlier checkpoint's “not implemented” status.
+The discarded dispatch draw remains in the shared Farm tick; the enabled body
+adds no draw. The owner permits later on/off trajectories to differ because
+an active worker changes eligibility at subsequent dispatch gates.

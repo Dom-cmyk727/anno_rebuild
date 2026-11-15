@@ -165,6 +165,12 @@ std::string World::harvest_problem() const {
                        " is not a Farm- or SmallFarm-payload building";
             }
         }
+        if (fisher_enabled() && fisher_job(f.job) && f.home.valid()) {
+            const Island* is = island_ptr(island_of(f.home));
+            const Building* b = is != nullptr ? is->find_building(f.home) : nullptr;
+            if (b != nullptr && !std::holds_alternative<Farm>(b->payload))
+                return where + ": fisher requires a Farm home";
+        }
         if (h.step == HarvestStep::ToTree || h.step == HarvestStep::Cut) {
             const Island* is = f.home.valid() ? island_ptr(island_of(f.home)) : nullptr;
             if (is == nullptr || !is->tiles.contains(h.target.x, h.target.y)) {
@@ -344,7 +350,7 @@ std::string World::check_invariants() const {
         return "ids.next_event_seq: " + std::to_string(ids_.next_event_seq) +
                " is not in 1 .. 2^64 - 1";
     }
-    problem = validate_figures(figures_, ids_);
+    problem = validate_figures(figures_, ids_, fisher_enabled());
     if (!problem.empty()) {
         return problem;
     }

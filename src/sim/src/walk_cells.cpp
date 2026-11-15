@@ -399,8 +399,10 @@ WalkRecord walk_record(const Island& island, const TypeRegistry& types, TileXY p
     return {island.tiles.walk_code(i), island.tiles.walk_mask(i), true};
 }
 WalkCells::WalkCells(const Island& island, const TypeRegistry& types, const WalkTables& tables,
-                     TileRect rect, std::uint32_t edge, std::optional<SearchArea> disc)
-    : island_(island), types_(types), tables_(tables), edge_(edge), disc_(std::move(disc)) {
+                     TileRect rect, std::uint32_t edge, std::optional<SearchArea> disc,
+                     WalkCellMode mode, std::uint8_t water_threshold)
+    : island_(island), types_(types), tables_(tables), edge_(edge), disc_(std::move(disc)),
+      mode_(mode), water_threshold_(water_threshold) {
     // D0x10002bb5..0x10002c1b: clip in world tiles, not island-relative origin.
     const std::int64_t x0 = std::max(rect.x0, island.tiles.x0()),
                        y0 = std::max(rect.y0, island.tiles.y0());
@@ -410,6 +412,21 @@ WalkCells::WalkCells(const Island& island, const TypeRegistry& types, const Walk
                                           std::int64_t{island.tiles.y0()} + island.tiles.height()));
     rect_ = {static_cast<std::int32_t>(x0), static_cast<std::int32_t>(y0),
              static_cast<std::uint32_t>(x1 - x0), static_cast<std::uint32_t>(y1 - y0)};
+}
+WalkRecord WalkCells::record(TileXY p) const {
+    if (mode_ == WalkCellMode::Land)
+        return walk_record(island_, types_, p);
+    const auto x = std::int64_t{p.x} - island_.tiles.x0();
+    const auto y = std::int64_t{p.y} - island_.tiles.y0();
+    if (!island_.terrain || x < 0 || y < 0 || x >= island_.tiles.width() ||
+        y >= island_.tiles.height())
+        return {7, 511, false};
+    const auto cell = fisher_cell_at(island_.terrain->height, island_.tiles.width(),
+                                     island_.tiles.height(), static_cast<std::uint32_t>(x),
+                                     static_cast<std::uint32_t>(y), water_threshold_);
+    if (!cell)
+        return {7, 511, false};
+    return {static_cast<std::uint16_t>(cell->walkable_water ? 0 : 7), cell->blocked_mask, true};
 }
 std::vector<WalkCell>* WalkCells::chunk(TileXY p) {
     const std::int64_t x = std::int64_t{p.x} - rect_.x0, y = std::int64_t{p.y} - rect_.y0;
@@ -430,17 +447,24 @@ std::vector<WalkCell>* WalkCells::chunk(TileXY p) {
                     continue;
                 }
                 const TileXY world{static_cast<std::int32_t>(px), static_cast<std::int32_t>(py)};
-                const auto r = walk_record(island_, types_, world);
+                const auto r = record(world);
                 // walk_record always returns supported = true now (task T33.4 fix-up F5):
                 // the per-tile walk record is read from the tile layer's walk_code /
                 // walk_mask columns, which the placement writers fill for every tile
-                // of an object's footprint. Nothing sets complete_ false any more.
-                complete_ = true;
-                WalkCell c{r.mask9 < tables_.mapper.size() ? tables_.mapper[r.mask9]
-                                                           : std::uint16_t{0},
-                           r.code};
+                // of an object's footprint. Mode 3 additionally requires valid HEIGHT input.
+                WalkCell c;
+                if (mode_ == WalkCellMode::FisherSea) {
+                    // AnnoWelt 0x10090560: exact mode-3 words; no land mapper/disc.
+                    complete_ = complete_ && r.supported;
+                    c = {static_cast<std::uint16_t>(r.code == 0 ? 0x0fff : 0), r.code};
+                } else {
+                    complete_ = true;
+                    c = {r.mask9 < tables_.mapper.size() ? tables_.mapper[r.mask9]
+                                                         : std::uint16_t{0},
+                         r.code};
+                }
                 // D0x100037e5..0x10003a84: outside disc closes high word, low unchanged.
-                if (disc_ && !disc_->contains(world.x, world.y)) {
+                if (mode_ == WalkCellMode::Land && disc_ && !disc_->contains(world.x, world.y)) {
                     c.high = static_cast<std::uint16_t>((c.high & 0xfc07) | 7);
                 }
                 it->second[std::size_t{dy} * width + dx] = c;

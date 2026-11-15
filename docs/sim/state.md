@@ -2035,17 +2035,26 @@ framing does not alter another section’s base-field bytes.
 ### 9.8 Extension tags: registry and registration (2026-11-14, SAVE-SECTIONS-1b)
 
 Global framing 139 and all ten section base versions 1 remain unchanged. A
-production world still writes exactly 1a's bytes: each extension count is 0.
+production world with optional features off still writes exactly 1a's bytes: each extension count is 0.
 
 | Tag | Section | Name | Owner packet | Status | Payload fields |
 |---|---|---|---|---|---|
+| 1 | header | fisher_rules | FISHER-1b | Implemented | u8 enabled: 0 off (default), 1 on; other values refused |
 | 0xF000–0xFFFF | Test contexts only | Reserved test range | SAVE-SECTIONS-1b | Reserved | See synthetic proof below |
 
-Tag 0 is never assigned. There are **no production entries**. A feature reserves its tag on the board
+Tag 0 is never assigned. Tag 1 is the first production entry (reserved on the board 2026-11-14). A feature reserves its tag on the board
 before work, like an OQ number, then adds its permanent row here. Tags are never
 reused. Test-range tags must never occur in a production list.
 
-**Registration.** `ExtensionContext` belongs to World and holds no state in 1b.
+**Fisher rules input (FISHER-1b).** `World::create` accepts an optional final
+`ExtensionContext extension_rules` argument, validates it and copies it into World.
+The same typed context is the input and the sole persisted feature state; no
+unhashed mirror is added to `Rules`. `fields(Rules)` and its digest are unchanged.
+`World::extension_rules()` is a const view; TickContext copies the active flag.
+Tag 1 writes one byte, and flag off emits no entry. No base section version moves.
+
+**Registration.** `ExtensionContext` belongs to World (empty in SAVE-SECTIONS-1b;
+FISHER-1b adds its one-byte rules payload).
 Its ten ordered compile-time lists map `StateSection` to extension types. Each
 type supplies `tag` (u16), `name` (a static string literal), `Payload`,
 `default_value()`, `state(context)` (const-preserving), one explicit

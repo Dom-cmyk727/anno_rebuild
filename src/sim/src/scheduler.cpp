@@ -829,7 +829,8 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
                           draw,
                           w.seams_,
                           w.transport_stats_,
-                          w.rules_.house_updates ? &serial : nullptr};
+                          w.rules_.house_updates ? &serial : nullptr,
+                          w.fisher_enabled()};
     // 1. The islands, in table order (D: 0x100a2e60, nulls skipped); each island's
     // Effects are merged right after its tick (C1), so figure ids, registry slots
     // and event sequence numbers follow the island order.

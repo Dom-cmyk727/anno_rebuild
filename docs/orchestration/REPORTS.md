@@ -12239,3 +12239,71 @@ Decisions and reasoning:
 QUESTION Q1: backend ownership/scope for AI trade/history/offers and diplomatic/military intent (recommend SL-3/5 reads first).
 QUESTION Q2: recorded clipboard/paste input contract or continued typed refusal (recommend read/capture contract before SL-9).
 QUESTION Q3: owner of per-world outcome/stop and save contract (recommend SL-10 before WON/LOST code).
+
+## 2026-11-15 — FISHER-MAP-1: normal-load canary map census
+
+Status: **READY FOR REVIEW**. Independent review and map selection: orchestrator, pending.
+Branch: `task/FISHER-MAP-1`; accepted source base `d19c446a867f81fa37b262af298ddd6dc772bbbc`.
+Dispatch/review read from board `a999e61e`; owner chose another map, not SL implementation.
+Scope: documents and bounded private measurements; no engine, test, fixture, pin or default edits.
+Deliverable: [all-map inventory and ranked shortlist](../re/fisher-canary-maps.md).
+
+Original script census:
+- 50/50 shipped .sze files have BIGBROTHER payloads; 12 have empty kernels.
+- 14 original payloads compile; 36 refuse, with first name and original payload offset listed.
+- Private ladders reach compilation for 50/50, with every refused leaf/declaration inventoried.
+- Sets: 30 action names, 22 query names, two object-definition names.
+- KILLED is marked as a dependent missing-object diagnostic after unsupported declarations are blanked.
+- It is not an unsupported city KILLED handler; accepted SO-1b remains unchanged.
+- Original source offsets are mapped across variable-length private replacements.
+- No diagnostic copy is run or committed; read-on's swallowed MINIMAP_ALERT is retained as swallowed.
+- Only QUESTLOG_SHOW/GOTO_SCREEN/SHOWTEXT/INHABITANTCOUNT/DEAD adds 0 compiling maps.
+- S01_02_01 still needs 14 distinct names; nothing is stubbed or suppressed.
+
+Normal loading and class counts:
+- Original loader: 14 eligible maps attempted; 11 resolve/import, 3 refuse in actor import.
+- The two easy/heavy 128 maps refuse nested CREW/ESEL/TASK; endless02 refuses actor 373.
+- World::create: 11 attempted, 11 created, 0 refused; original Recorder::start: 11 started.
+- Existing fisher_rules extension alone enables original runtime fish fill; every other rule stays default.
+- Classes among created worlds: A 2 / B 3 / C 6; the 39 blocked maps are unclassified.
+- Four existing PRODTYPE 6 huts, with owner kinds, entrance means and fish reach in the note.
+- Three type-3978 huts on 01_1024_easy_256 use figure 142 / route 45, owner 5 / Venice kind 16.
+- Each has 1/2 open entrances; usable fish in rectangle: 53, 52 and 109; paths all found.
+- endless03's type-3510 hut uses figure 393 / route 44: geometry class A, NOT route-45 proof.
+- All four Farm payloads start on, unsuspended, unblocked, with workers/raw/output zero.
+- Six C maps have no cities; founding then building would exceed B's one-command criterion.
+
+Construction and shortlist:
+- Fresh-world one-command type-810 witnesses succeed for easyentry, Tutorial trade and endless01.
+- Both command and sole record report None; no preceding failed command or state injection.
+- Human witnesses: 02Trade01 player 2/kind 8, and easyentry player 0/kind 11.
+- Their open-entrance counts are 1/2, with 26 and 82 usable fish and complete water paths.
+- Additional endless03 type-810 construction is possible, but does not change its A classification.
+- Rank: existing Venice 3978; human Tutorial trade 810; human easyentry 810;
+  native endless01 810; endless03 with explicit route-44/pirate caveats.
+- These are prerequisites and first-leg reachability, not catch/return/food-production acceptance.
+
+Evidence and gates:
+- Metadata: cache/fisher-map-1/ladders.json and final-world-facts.tsv.
+- Probe sources/binary and all 50 input hashes: cache/fisher-map-1/identities.json.
+- normal-facts.tsv is exploratory two-type evidence; final census additionally includes type 3510.
+- Local tests: NOT_RUN by docs-only protocol; no invented run_selected COUNTS/VERDICT lines.
+- Static receipt cache/fisher-map-1/docs-gate.log prints exactly:
+  `DOCS_CHECK PASS; links=4; anchors=1; map_rows=50; completed_ladders=50`
+  `SOURCE_CHECK PASS; src/tools/fixtures unchanged from d19c446a; 0 pins or fixture bytes edited`
+  `LOCAL_TESTS NOT_RUN; docs-only packet; no run_selected gate claimed`
+- Source/pin/fixture equality to d19c446a is checked with git diff; no pins check is represented as run.
+- Hosted CI: final pushed-head run and terminal gate receipt supplied in handover;
+  saved response under cache/fisher-map-1, including gate status. Read after every push.
+- NOT_RUN: full trip canary, long script continuation, native reload, flag-off/determinism gates,
+  original live play and Windows game-file run; actor import for the 36 compiler-refused maps.
+
+Decisions and reasoning:
+- Use strict normal loading: ActorFreeComponent would erase precisely the dependency being measured.
+- Include all three FISCHER types; distinguish route 44 so the geometry count cannot overclaim route 45.
+- Confirm B with one real public command on a fresh ephemeral world, not coast appearance alone.
+- Rank empty-kernel, existing-hut or human-construction maps ahead of extra script/owner complications.
+- Preserve original owners, stocks, positions and scripts; add no SL code or BEAMDOWN policy.
+
+QUESTION: select the Venice existing-hut map or a human type-810 construction map for FISHER-1e.
+Stop: the map is chosen in review; no canary or SL follow-up starts in this packet.

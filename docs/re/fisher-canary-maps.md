@@ -11,7 +11,7 @@ Reuse [fisher.md](fisher.md) §§3, 5–8, and
 
 ## Method and acceptance boundary
 
-**P/T.** All 50 `.sze` files below `Scenes` have a BIGBROTHER payload. Twelve have
+**P/T.** All 50 `.sze` files below `Scenes` have a BIGBROTHER payload. Thirteen have
 an empty SCRIPT_KERNEL, not a stripped or suppressed script. Fourteen compile
 unchanged with the original registry, 32 player slots, five timers, its goods table
 and each file's scene-relative asset namespace. Thirty-six refuse. Implementing
@@ -123,9 +123,9 @@ the dependent world/fisher measurement was not run. Paths are relative to Scenes
 | 0201SingleAddOn/single43.sze | active; SHOWTEXT@323 | GOTO_SCREEN@402, SET_DIPLOMACY@356, SHOWTEXT@323, TOUCHED_BY_SOLDIERS_FROM@483, WON@651 | no | — | — |
 | Tutorial/01Discover01.sze | empty; compiles | none | yes | created | C / 0 |
 | Tutorial/02Trade01.sze | empty; compiles | none | yes | created | B / 0 |
-| Tutorial/03T_Combat_01.sze | active; OBJECT_FIGUR@16 | OBJECT_FIGUR@16 | no | — | — |
+| Tutorial/03T_Combat_01.sze | empty; OBJECT_FIGUR@16 | OBJECT_FIGUR@16 | no | — | — |
 
-**P/T counts:** 50 payloads; 12 empty kernels; 14 original compilations; 36
+**P/T counts:** 50 payloads; 13 empty kernels; 14 original compilations; 36
 original compiler refusals; 11 normal created/started worlds; 3 import refusals;
 0 World::create refusals after successful import. Among those 11: **A 2, B 3,
 C 6**. Four existing FISCHER huts in two maps; three of them are route 45.

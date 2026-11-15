@@ -1,6 +1,7 @@
 # UI-WINDOW-1 fix round R1 (F2), R2: closing the construction menu turns off a building tool a cell
 # armed, by both routes - another tab (the bust, reference centre 870 212; since R2 a click on the
-# construction tab itself, already selected, changes nothing) and Esc. After each
+# construction tab itself, already selected, changes nothing) and Esc (since UI-PLACE-2 the first
+# Esc puts the building away and keeps the grid open, as the original's). After each
 # close, a click on the tile construction_menu_arm.script builds on (1156 516, free and buildable
 # for type 501 on lan5's developer island) posts no command: the latest outcome stays none. Before
 # the fix the tool stayed armed (DevTool::arm sets it on) and that click built the house.

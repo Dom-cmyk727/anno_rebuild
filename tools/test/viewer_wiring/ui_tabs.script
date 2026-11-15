@@ -3,7 +3,9 @@
 # (931 212) -> info, gears (992 212) -> main menu; a click on the selected tab changes nothing
 # (except the bust from the overview, which opens the list);
 # keys D and O open the player list and the main menu. Construction (809 212) opens the menu; a
-# cell armed there is turned off when another tab is chosen; Esc returns to the last panel. A
+# cell armed there is turned off when another tab is chosen; Esc on the grid closes the menu to
+# the player overview, as the original's does also when the menu was opened from another tab
+# (UI-PLACE-2, p4_help_b_esc; before it Esc returned to the last panel). A
 # click inside a panel is taken (no selection click) and does nothing; so is a click on the
 # sub-tab strip left of the column (770 326, x 762..778; fix round R3), on every panel.
 # Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
@@ -63,5 +65,5 @@ wait frames 3
 expect fact ui.tab == construction
 key esc
 wait frames 3
-expect fact ui.tab == info
+expect fact ui.tab == player
 quit

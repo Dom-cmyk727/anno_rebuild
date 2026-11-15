@@ -39,6 +39,10 @@ checkpoint built_first
 # (selection_active()'s own "!(dev_ enabled)"), not just the panel closed.
 key b
 wait frames 2
+# UI-PLACE-2: ESC goes one step back, as the original's - the first leaves the info panel for the
+# grid, the second closes the menu.
+key esc
+wait frames 2
 key esc
 wait frames 5
 

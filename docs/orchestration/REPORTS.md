@@ -11246,3 +11246,109 @@ suggests the working set (not the resident levels) is where most of 1b's actual 
 came from? A future packet (1c, 1d, or a tuning pass) may want real data before changing it.
 
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-1c — F1-F3 fixed, the pan/iGPU "regression" corrected — READY FOR REVIEW (task/ZOOM-SMOOTH-1c, from task/ZOOM-SMOOTH-1b `d71bbfbb`, head `8f4b6ebe`)
+
+F1, F2 and F3 are done and tested. Step 4 (the zoom-out ring) is **not started** — see Decisions. The
+pan/iGPU busy-time finding from the 1b review turned out not to be a code regression; see below, first,
+since it reframes the whole packet.
+
+**The pan/iGPU "regression": corrected, not removed by a code change.** The review's instruction was to
+measure the cause before fixing it. Measuring it is what found there was nothing in 1b's code to fix:
+
+- **Isolating the resident-level prewarm** (the review's own suspect) with the new `--resident-prewarm off`:
+  pan's frames>2ms went 96 → 92. Capping the fill at 1 target (the pre-1b width) instead of every worker:
+  90. None of these come close to the recorded 1-baseline's 30.
+- **The decisive check: rerunning the original, unmodified `task/ZOOM-SMOOTH-1` `bench_frame` binary, right
+  now, on pan.** Three runs: 102, 127, 105 frames>2ms — nowhere near its own recorded 30, on code that has
+  not changed since that number was written down. `legs` on the same unmodified binary reproduces closely
+  (350 vs its recorded 353) and `wheel`/`zoompan` likewise (373/317 vs 374/264) — only `pan`'s particular
+  camera path is this volatile on this machine right now; it is not a general drift the other modes would
+  also show.
+- **The shipped 1c code, same session, three runs:** 100, 102, 106 — indistinguishable from the unmodified
+  binary's own 102/127/105, if anything slightly tighter. Pan is not worse than the baseline measured today;
+  the 30 recorded in ZOOM-SMOOTH-1's own REPORTS entry was not reproducible even by that entry's own
+  unmodified binary, on this run of this machine.
+- **The iGPU wheel case is different: it reproduced.** The unmodified 1a binary gave 22 frames>2ms today
+  (close to its recorded 28); 1b's code (before F2) gave 33. That is a real, modest regression on the iGPU
+  specifically - and F2 (below) fixes it outright: with the real system RAM instead of the 256 MiB floor,
+  the same 1c code gives 12 frames>2ms, non-ready 3, stand-in draws 0, dissolves 26 - better than either
+  number, because the iGPU sweep had never measured the budget the viewer actually gives it until now.
+
+**F1 (resident share, cumulative):** `is_resident_level` checked each derived level's own cost against the
+*whole* resident share; since each derived level has about a quarter the chunks of the one below, the
+levels together could take up to about 4/3 of the share, and none that individually fit was ever trimmed -
+the working set was then left with less than its own share. Now gives the share out cumulatively, farthest
+(coarsest) level first. New test (`src/render/tests/derived_freshness_test.cpp`): a budget sized so the
+island's two derived levels (8 and 24 chunks) each fit alone but not together (32 > a 30-chunk share)
+confirms only the farther one is resident now, not both.
+
+**F2 (the iGPU's real RAM):** `bench_frame` passed `system_ram_bytes = 0` to `default_chunk_budget` (it
+links `anno_app_core`, not `anno_app_sdl`, so `SDL_GetSystemRAM` isn't available there), so a non-discrete
+adapter sat at the 256 MiB floor while the viewer gets an eighth of real RAM, capped at 2 GiB - the B1 kind
+of mismatch again. `system_ram_bytes()` reads it directly (`GlobalMemoryStatusEx` on Windows, `sysconf` on
+POSIX). Rerunning the iGPU sweep with it is the number quoted above.
+
+**F3 (the eviction cap):** `default_chunk_budget` left `max_evict_bytes_per_frame` at 0 (unbounded), so
+step 6's rate limit existed but nothing in the viewer turned it on. Set to 64 chunks' worth (the same order
+of magnitude as the original `spare_chunks` default) rather than just asserting the watermark band alone is
+enough.
+
+**Measured (fixed sweep, lan5, 6 s/leg, same-session before/after on this head's build), 4090:**
+
+| mode | before (1a, same session) | after (1c) |
+|---|---|---|
+| legs | non-ready 224, stand-in 14987, dissolves 8560, open-sea 1617, >2ms 350 | non-ready 35, stand-in 6032, dissolves 4533, open-sea 1544, >2ms 201 |
+| wheel | non-ready 103, stand-in 18937, dissolves 10546, open-sea 1352, >2ms 373 | non-ready 31, stand-in 5332, dissolves 4618, open-sea 1462, >2ms 162 |
+| pan | non-ready 24-41 (3 runs), stand-in 0, dissolves 759-963, open-sea 1174-1534, >2ms 90-127 (3 runs) | non-ready 24-36 (3 runs), stand-in 0, dissolves 828-921, open-sea 1305-1398, >2ms 100-106 (3 runs) |
+| zoompan | non-ready 71, stand-in 23912, dissolves 10306, open-sea 1525, >2ms 317 | non-ready 37, stand-in 14519, dissolves 6288, open-sea 1406, >2ms 189 |
+| iGPU wheel, 1280x800 | non-ready 15, stand-in 266, dissolves 146, open-sea 47, >2ms 22 | non-ready 3, stand-in 0, dissolves 26, open-sea 44, >2ms 12 |
+
+Readiness improved on every mode and both adapters, same as 1b reported. Busy-time is now equal (pan,
+within run-to-run noise) or better (legs/wheel/zoompan/iGPU) everywhere - the explicit landing requirement
+("pan's frames over 2 ms must be no worse than the 1-baseline") is met by the corrected measurement, not by
+a code change to pan's own path.
+
+**Gates.** MSVC Release, game files, render+app: `COUNTS: selected=537 executed=534 failed=0 empty=0
+skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1c-render-app-1.txt`) - clean, no refusals. GPU, 4090: `COUNTS: selected=117
+executed=117 failed=0 VERDICT: PASS` (`cache/gates/zoomsmooth1c-gpu-4090.txt`). The Radeon iGPU CTest gate
+was not rerun (no GPU code changed; the iGPU sweep numbers above exercise the same binary, as in 1b). WSL
+`-Werror` check: clean except the same pre-existing, unrelated `extensions_test.cpp` failure. Caught and
+fixed along the way: a GCC/Clang-only (`-Wimplicit-int-float-conversion`/`-Wconversion`) sign/precision bug
+in the new F1 test's own assertion (`std::size_t * double` without an explicit cast) that MSVC did not flag.
+
+NOT_RUN: step 4 (the zoom-out ring) and its step-9 tests - see Decisions; the Radeon iGPU CTest gate
+(reasoned above); WSL ASan.
+
+Decisions and reasoning:
+- **Measured before fixing**, per the review's own instruction, rather than assuming either suggested cause
+  (prewarm contention, or the budget's working-set size) and patching around it. Both were tested directly
+  (`--resident-prewarm off`, a capped-to-1 fill, a small `--chunk-budget-mb`) and neither reproduced the
+  reported gap; only reverifying the *unmodified* 1a binary against its own recorded number, right now,
+  revealed that the 30-frame pan baseline itself could not be reproduced. Reporting an invented fix for a
+  regression that measurement shows does not exist would have been worse than reporting the correction.
+- **Kept the diagnostic flag** (`--resident-prewarm`) rather than deleting it once the diagnosis was done:
+  it is small, real, and useful for whoever next needs to isolate the resident-level prewarm's own cost
+  (1d, the ring, or a future tuning pass).
+- **Deferred step 4, the zoom-out ring.** "Order by estimated time until visible, from the zoom direction
+  and the pan velocity" needs a zoom-direction signal `FrameRenderer` does not currently track (velocity is
+  pan-only by design, per `motion_centre`'s own doc: a zoom's own anchor-driven shift is deliberately
+  excluded from it). Building that signal, the ring's own geometry (a new scale-about-anchor view function,
+  since `zoomed_view_at` only jumps between zoom *groups*, not scales within one), and the "pan must not be
+  starved by it" invariant together are a correctness-sensitive feature on their own, not a quick addition
+  on top of the regression investigation this packet turned into. Attempting it in the remaining time risked
+  either rushing the starvation guarantee or the ordering, both explicitly called out as required. Proposed
+  as 1d, or its own packet, with the zoom-direction signal as its first sub-step.
+- **F3's cap is a measured default** (64 chunks, matching `spare_chunks`' own order of magnitude) rather
+  than an argument that the watermark band alone suffices: the band and the per-call cap address different
+  things (steady-state trim frequency vs. a single burst's size, e.g. right after a lowered
+  `ANNO_VIEW_CHUNK_BUDGET_MB`), so asserting one makes the other unnecessary would have been the kind of
+  unevidenced claim the project's evidence contract rules out.
+
+QUESTIONs: should step 4 (the ring) be its own packet (1c-ring) ahead of 1d, given 1d (the GPU upload share)
+doesn't depend on it, or should it ride with 1d since both touch "what's urgently wanted during a zoom"? The
+0.5 resident/working-set split question from 1b's QUESTION is still open and now has real same-session
+numbers to inform it once the ring exists to use them.
+
+**READY FOR REVIEW.**

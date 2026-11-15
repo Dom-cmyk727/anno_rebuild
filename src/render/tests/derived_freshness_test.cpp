@@ -696,3 +696,70 @@ TEST_CASE("the planner builds a far chunk outside the scene without its children
     REQUIRE(depth >= 2);
     CHECK(below == 0);
 }
+
+// ZOOM-SMOOTH-1b step 3: is_resident_level widens residency with the byte budget, without
+// changing resident_level_chunks' own meaning as a floor.
+TEST_CASE("is_resident_level: resident_level_chunks is a floor, the byte budget can widen it, "
+          "never narrow it (game files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    render::FrameRenderer frames(2);
+    // One call is enough to run sync_levels (update_chunks' first line); away from the island so
+    // nothing else is requested.
+    frames.update_chunks(scene, render::Rect{-200000, -200000, 64, 64}, 2);
+    // From the existing prewarm tests' own comment: the island's levels 3 and 4 are 24 and 8
+    // chunks.
+    frames.resident_level_chunks = 16;
+    CHECK_FALSE(frames.is_resident_level(3)); // 24 > 16, budget off: not resident
+    CHECK(frames.is_resident_level(4));       // 8 <= 16: the floor alone makes it resident
+    // A budget whose resident share covers level 3's worst-case bytes (24 chunks) widens it in;
+    // one that does not stays narrow. Neither changes level 4, which the floor alone covers.
+    frames.budget.total_bytes = 200ULL * 1024 * 1024;              // 200 MiB
+    frames.budget.resident_share = 0.5;                            // 100 MiB resident share
+    CHECK(24 * render::kChunkByteEstimate < 100ULL * 1024 * 1024); // the budget this test picked
+    CHECK(frames.is_resident_level(3));
+    CHECK(frames.is_resident_level(4));
+    frames.budget.total_bytes = 1024 * 1024;  // 1 MiB: far below even one chunk's estimate
+    CHECK_FALSE(frames.is_resident_level(3)); // narrowed back to the floor's own answer
+    CHECK(frames.is_resident_level(4));       // the floor alone still covers it
+}
+
+// ZOOM-SMOOTH-1c F1: before this, is_resident_level checked each level's own cost against the
+// whole share, so two levels that each individually fit could together take more than the
+// share (derived levels shrink by about 4x, so the overrun could be up to about 4/3 of it) and
+// neither was ever trimmed. The share is now given out cumulatively, farthest level first.
+TEST_CASE("is_resident_level: the resident levels' summed estimate stays within the share "
+          "(game files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    render::FrameRenderer frames(2);
+    frames.update_chunks(scene, render::Rect{-200000, -200000, 64, 64}, 2);
+    // No floor: both levels (24 and 8 chunks) draw on the share, so their combined cost can
+    // actually be compared against it.
+    frames.resident_level_chunks = 0;
+    // A share that covers either level alone (24 or 8 chunks) but not both together (32): the
+    // bug this replaces would mark both resident (24 + 8 = 32 > 30 picked here).
+    constexpr std::size_t kShareChunks = 30;
+    frames.budget.total_bytes = kShareChunks * render::kChunkByteEstimate * 2; // resident_share
+                                                                               // halves it below
+    frames.budget.resident_share = 0.5;
+    REQUIRE(static_cast<double>(frames.budget.total_bytes) * frames.budget.resident_share ==
+            static_cast<double>(kShareChunks * render::kChunkByteEstimate));
+    CHECK(frames.is_resident_level(4));       // 8 chunks alone: fits
+    CHECK_FALSE(frames.is_resident_level(3)); // 8 + 24 = 32 chunks together: over the 30-chunk
+                                              // share, so the farther level (4) wins it and 3
+                                              // does not, instead of both being marked
+                                              // resident and never trimmed (the summed estimate
+                                              // of what is actually resident, 8 chunks, stays
+                                              // within the 30-chunk share).
+}

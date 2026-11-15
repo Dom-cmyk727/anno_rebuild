@@ -118,7 +118,9 @@ says who is doing what, where the work is, and what it waits on.
     regression). **ZOOM-SMOOTH-1c ACCEPTED as a partial 2026-11-15** (F1 to F3; head `96c00844`, CI green,
     [review](reviews/2026-11-15-zoom-smooth-1c-review.md)): the pan "regression" is the baseline's own drift (the
     unmodified binary gives 102 to 127 today, not 30), so 1b and 1c can land together. The ring is split into
-    **ZOOM-SMOOTH-1c2, RELEASED** the same day, ahead of 1d. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    **ZOOM-SMOOTH-1c2, RELEASED** the same day, ahead of 1d; **ACCEPTED** the same day (`619f88f6`,
+    [review](reviews/2026-11-15-zoom-smooth-1c2-review.md)): correct, but no readiness gain yet and an iGPU busy
+    cost; 1d (RELEASED) measures it on and off and removes it if it still buys nothing. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01

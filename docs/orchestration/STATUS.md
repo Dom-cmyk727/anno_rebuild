@@ -140,7 +140,11 @@ says who is doing what, where the work is, and what it waits on.
     ghost off the city's island; dead tabs and minimap, already UI-TABS-1 and UI-MINIMAP-1). For the render lane:
     a one-frame zoom "bounce" at about game 32270 ms (one frame at another scale between two matching frames),
     queued as [ZOOM-BOUNCE-1](tasks/zoom-bounce-1.md) (written) after ZOOM-SMOOTH-2c; the same log has a 123 ms gap at the maximise before the recording, a "before" for ZOOM-SMOOTH-2, and a 73 ms first frame (63 ms in the construction UI), the UI lane's; the dissolve and not-ready
-    counts above 0 while zooming are the known ZOOM-SMOOTH-1 remainder, RENDER-DIRECT's. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    counts above 0 while zooming are the known ZOOM-SMOOTH-1 remainder, RENDER-DIRECT's.
+    **UI-PLACE-1** (UI lane, from that test; `e2499746`) is ACCEPTED for landing
+    ([review](reviews/2026-11-15-ui-place-1-review.md)): a menu cell ends demolish mode and the pickaxe works with
+    nothing armed; the original's cancel-X keeps the building armed, so that finding was withdrawn. Landing waits
+    for the owner's OK. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01

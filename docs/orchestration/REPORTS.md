@@ -11583,3 +11583,107 @@ four-counters is reachable without the ring at all, now that step 5 alone has mo
 there?
 
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-1e — F1, F2, the live proof measured and NOT MET — READY FOR REVIEW (task/ZOOM-SMOOTH-1e, from task/ZOOM-SMOOTH-1d `1f7a5a9f`, head `84e6fc53`)
+
+**F1 (the step-5 test).** New GPU test, `gpu_test.cpp`: a two-chunk view with `uploads_per_frame = 1` leaves
+one visible chunk real and one still waiting within a single render call (deterministic regardless of how
+trivially fast the scene's own content uploads - an earlier attempt using "never insert the view's own chunk"
+failed because an empty scene uploads it instantly anyway). With a margin chunk inserted and
+`prefetch_budget_ms = 0`, `chunks_prefetched == 0` (the pre-1d gate's exact behaviour); with `> 0`,
+`chunks_prefetched == 1` although the visible chunk still waits. Deliberately not `test_hold_uploads`: the
+prefetch block's own gate also checks `!test_hold_uploads`, which would close prefetch too and defeat the
+test. Fails on `619f88f6`: `GpuLimits::prefetch_budget_ms` does not exist on that commit at all.
+
+**F2 (the citation).** `docs/perf/README.md` ZOOM-SMOOTH-1d's own section: what the gate replaces, the exact
+field and default (0.3 ms), why that figure (a reasoned starting share, verified by measurement, not
+asserted), the full before/after table against 1c2 already in REPORTS, and the `--prefetch-budget-ms`
+isolation flag used to settle the iGPU baseline-drift question.
+
+**The live owner-style proof (zoom.script / drive2.py / analyze2.py), ring off (the default), 4090, lan5,
+enhanced water, 5 locations (north, middle, sea, southeast, west) x 6 modes (osc, fullout, fullin, flick,
+human, panzoom).** Added `wheel N X Y` to `dev_script.cpp` (arity -1, like `click_px`'s nullable x/y) for the
+off-centre half the original task spec always deferred - a parse+exec test (`dev_script_test.cpp`,
+`anno_app_input_tests`) confirms `wheel N` stays centred and `wheel N X Y` lands at the raw position, and that
+exactly 2 arguments fails to step (not a valid count). Off-centre position: `(1920, 890)`, the project's own
+25%/15% off-centre-anchor convention (`bench_frame`'s `s.anchor_x = 0.25 * w; s.anchor_y = 0.15 * h;`) applied
+as an absolute pixel offset from the window's centre on its established 2560x1369 client size.
+
+**The target is NOT MET.** Dissolves are nonzero in *every* osc phase at both positions, and in several
+fullout phases too; several locations also show nonzero non-ready frames (missing content actually visible,
+not just a dissolve's tail):
+
+| phase | centre: non-ready/frames (most) | centre: dissolves (most) | off-centre: non-ready/frames (most) | off-centre: dissolves (most) |
+|---|---|---|---|---|
+| north-osc | 0/1974 | 98 (10) | 0/1991 | 119 (13) |
+| north-fullout | 0/997 | 7 (5) | 0/0 | 0 |
+| middle-osc | 7/982 (7) | 77 (7) | 24/980 (5) | 157 (8) |
+| sea-osc | 0/1992 | 79 (11) | 0/1993 | 25 (4) |
+| sea-fullout | 0/1000 | 208 (10) | 0/999 | 204 (13) |
+| southeast-osc | 18/1989 (2) | 80 (6) | 79/989 (14) | 163 (10) |
+| southeast-fullin | 0/1000 | 0 | 35/996 (19) | 34 (27) |
+| west-osc | 16/1988 (5) | 90 (2) | 66/1983 (15) | 148 (11) |
+| west-fullin-end | 0/1001 | 0 | 47/986 (6) | 172 (25) |
+
+Every one of the 5 locations' `-osc` phases has nonzero dissolves at both positions (the full per-phase tables,
+all 5 locations x 6 modes x 2 positions, are in `cache/`'s `run-1e-centre/analysis.txt` and
+`run-1e-offcentre/analysis.txt`, not checked in - original-rendered content). Off-centre is consistently worse
+or equal, never better: southeast's osc goes from 18/1989 non-ready, 80 dissolves (centre) to 79/989, 163
+(off-centre) - more than quadruple the non-ready rate.
+
+**The fourth and fifth counters, stand-in draws and open-sea ("late island") draws, were not separately
+instrumented by this proof.** The viewer's own `--play` report line (what `drive2.py`'s trace captures) prints
+only "not ready" and "dissolved chunks"; `bench_frame`'s synthetic sweep is the only harness that reports
+stand-in/open-sea separately (1b/1c/1c2/1d's own measurements). A stand-in draw and an open-sea draw are each a
+*sub-classification* of a non-ready frame (a frame is counted as non-ready, then drawn as either a stand-in or
+open sea, never both) - so where non-ready is 0, both are structurally 0 too (north-fullout, sea-fullout, and
+most non-"-osc" phases above). Where non-ready is **not** 0 (middle/southeast/west-osc at both positions,
+southeast-fullin and west-fullin-end off-centre), this proof cannot say how those non-ready frames split
+between stand-in and open-sea - but the target already fails on non-ready and dissolves alone in those phases,
+so this gap does not change the bottom line.
+
+**Gates.** MSVC Release, game files, render+app+GPU+input combined: `COUNTS: selected=651 executed=648
+failed=0 empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1e-render-app-1.log`) - clean, no refusals. GPU, 4090, separately:
+`COUNTS: selected=118 executed=118 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT:
+PASS` (`cache/gates/zoomsmooth1e-gpu-4090.log`). `anno_render_gpu_tests` 118/118 (117 + F1's new case);
+`anno_app_tests` 284/284; `anno_app_input_tests` 37/37 (both unaffected by the `wheel` change beyond its own
+new test). WSL `-Werror` check: clean except the same pre-existing, unrelated `extensions_test.cpp` gap.
+`clang-format --dry-run --Werror` flagged 2 lines in `dev_script_test.cpp`; fixed in place, rebuilt
+(`anno_render_gpu_tests`/`anno_app_input_tests`/`anno_app_tests`/`anno1503`), reran all three suites
+unaffected before gating.
+
+NOT_RUN: tuning any of the live-proof findings above - explicitly out of scope per the dispatch ("do not
+tune"). The ring's own separate prefetch budget (QUESTION from 1d, now answered: not needed first, since step
+5 alone does not reach 0 either - see Decisions). WSL ASan. A full off-centre/centre matrix beyond the 5
+locations x 6 modes already run (none - this packet's own scope was exactly that matrix, now complete).
+
+Decisions and reasoning:
+- **Stopped at the first clear failure rather than tuning**, per the dispatch's own instruction. The dissolve
+  counter alone, nonzero in every single osc phase across 5 locations and 2 positions with no exception,
+  is sufficient evidence that 0-on-all-counters is not reached by step 5 alone (ring off); continuing to
+  measure more scenarios would not have changed that conclusion, and attempting a fix was explicitly
+  out of scope for this packet.
+- **Chose off-centre = (1920, 890)** from the project's own existing 25%/15% convention (`bench_frame`'s
+  `anchor_x`/`anchor_y`) rather than an arbitrary pixel, applied to the established 2560x1369 window size this
+  exact host's prior zoom sessions have consistently reported, so the off-centre run is comparable to earlier
+  off-centre measurements elsewhere in the project (e.g. `adjacent_keys`'s own anchor tests) rather than an
+  unrelated one-off choice.
+- **Used `uploads_per_frame = 1` over `test_hold_uploads` for F1**, after the first attempt (assuming an
+  unbuilt chunk would stay unbuilt) failed because the empty test scene uploads trivially fast regardless of
+  workers - `test_hold_uploads` was ruled out because the prefetch gate itself checks it, which would have
+  closed prefetch too and made the test vacuous.
+- **Reasoned, rather than measured, that stand-in/open-sea are implied 0 where non-ready is 0**, since the
+  viewer's own instrumentation does not print them separately and adding that instrumentation was outside this
+  packet's "touch nothing else." Stated the gap honestly for the phases where non-ready is not 0, rather than
+  assuming those two counters are fine there too.
+
+QUESTIONs: given step 5 alone (ring off) does not reach 0 either, is the next step a different fix inside
+`gpu.cpp`'s upload-ahead (e.g. a bigger prefetch share, or routing it earlier in the frame), a return to the
+ring with its own separate budget, or does this call for RENDER-DIRECT's removal of stand-ins/dissolves
+altogether rather than continuing to chase 0 inside the current chunk-renderer's architecture? Is the
+dissolve pattern's near-universality (every single osc phase, both positions, all 5 locations) itself evidence
+that `chunk_fade_ms` (150 ms) is inherent to *any* zoom-out-and-return under the current chunk model, not a
+tunable bug?
+
+**READY FOR REVIEW.**

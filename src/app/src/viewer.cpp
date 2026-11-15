@@ -18,6 +18,7 @@
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/frame_projection.hpp>
+#include <anno/app/live_resize.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/selection.hpp>
@@ -400,6 +401,17 @@ class Viewer {
   private:
     void handle(const SDL_Event& e);
     void draw();
+    /// The main loop's own draw decision (pending zoom, script tick, draw), extracted so an
+    /// event watch (ZOOM-SMOOTH-2, the live-resize/move redraw) can run exactly the same
+    /// order, not a second drawing path. Guarded by drawing_frame_ against reentrancy. Does
+    /// not poll or wait for events: that stays the main loop's own job.
+    void frame_step();
+    /// The SDL event watch (ZOOM-SMOOTH-2): registered with SDL_AddEventWatch so it runs
+    /// synchronously from inside SDL_PushEvent, which the native Windows modal move/resize
+    /// loop calls on every WM_TIMER tick (live_resize.hpp's own doc comment cites the SDL
+    /// source) - the one way to draw while the ordinary SDL_PollEvent loop is blocked by that
+    /// modal loop. Never filters an event out (always returns true).
+    static bool live_resize_watch(void* userdata, SDL_Event* event);
     /// The frame boundary of play (PlayFollower::follow): takes the sim's batches, applies them and
     /// commits what is ready, before the frame takes its scene handle. Never waits for a build.
     void follow_picture();
@@ -499,6 +511,11 @@ class Viewer {
     render::WaterStyle water_ = render::WaterStyle::Original;
     const ViewerHooks* hooks_ = nullptr;
     bool running_ = true, dirty_ = true, drag_ = false;
+    /// The reentrancy guard for frame_step() (ZOOM-SMOOTH-2, live_resize.hpp's
+    /// should_draw_from_watch): set for the duration of a frame step, whether driven by the
+    /// main loop or by the live-resize event watch, so a watch can never draw a second frame
+    /// nested inside one already in progress.
+    bool drawing_frame_ = false;
     /// A zoom step waiting for the sea pattern of its group (only while the
     /// patterns are still being rendered after the start).
     struct PendingZoom {
@@ -814,6 +831,16 @@ std::string Viewer::run() {
         SDL_Quit();
         return err;
     }
+    // ZOOM-SMOOTH-2: draws during the native Windows modal move/resize loop, which otherwise
+    // blocks the ordinary SDL_PollEvent loop for its whole duration (ZOOM-MEASURE-1 measured a
+    // 106 ms hitch). Harmless to register on every platform: live_resize_watch's own guard
+    // (should_draw_from_watch, live_resize.hpp) only ever fires true for the Windows-only
+    // signal (SDL_EVENT_WINDOW_EXPOSED, data1 == 1); X11, Wayland and Cocoa never send it.
+    SDL_AddEventWatch(&live_resize_watch, this);
+    struct ClearWatch {
+        Viewer* self;
+        ~ClearWatch() { SDL_RemoveEventWatch(&Viewer::live_resize_watch, self); }
+    } clear_watch{this};
     // Test hook (not documented for players): ANNO_VIEW_SIZE=<w>x<h> asks for a drawable of that
     // many pixels (the window's size in points is that over the pixel density). The size the
     // window gets is the one reported: a screen smaller than the request gives a smaller one.
@@ -1126,31 +1153,7 @@ std::string Viewer::run() {
                 dirty_ = true;
             }
         }
-        script_tick();
-        if (running_ && can_draw && (animating || dirty_)) {
-            dirty_ = false;
-            if (pending_zoom_) {
-                const PendingZoom p = *pending_zoom_;
-                pending_zoom_.reset();
-                zoom(p.step, p.anchor);
-            }
-            frame_animating_ = animating;
-            draw();
-            last_end_ = Clock::now();
-            if (script_every_ > 0) {
-                if (++script_frames_ % script_every_ == 0) {
-                    const auto next = static_cast<std::ptrdiff_t>(group_) + script_dir_;
-                    if (next < 0 || next >= static_cast<std::ptrdiff_t>(levels().size())) {
-                        script_dir_ = -script_dir_;
-                    }
-                    zoom(script_dir_, std::nullopt);
-                }
-                if (std::chrono::duration<double>(Clock::now() - script_start_).count() >
-                    script_seconds_) {
-                    running_ = false;
-                }
-            }
-        }
+        frame_step();
     }
     // Teardown (docs/app/gpu-handoff.md): the window stops calling into the picture here (its
     // owner destroys it after run_viewer returns). The chunk workers are joined (at most one
@@ -2684,6 +2687,49 @@ void Viewer::script_tick() {
     if (act.quit || script_->done()) {
         running_ = false;
     }
+}
+
+bool Viewer::live_resize_watch(void* userdata, SDL_Event* event) {
+    auto* self = static_cast<Viewer*>(userdata);
+    if (should_draw_from_watch(*event, self->drawing_frame_)) {
+        self->frame_step();
+    }
+    return true;
+}
+
+void Viewer::frame_step() {
+    if (drawing_frame_) {
+        return; // the reentrancy guard: never nest a frame step inside one already running
+    }
+    drawing_frame_ = true;
+    const bool can_draw = !hidden_ && !retry_at_;
+    const bool animating = demand(can_draw).animating();
+    script_tick();
+    if (running_ && can_draw && (animating || dirty_)) {
+        dirty_ = false;
+        if (pending_zoom_) {
+            const PendingZoom p = *pending_zoom_;
+            pending_zoom_.reset();
+            zoom(p.step, p.anchor);
+        }
+        frame_animating_ = animating;
+        draw();
+        last_end_ = Clock::now();
+        if (script_every_ > 0) {
+            if (++script_frames_ % script_every_ == 0) {
+                const auto next = static_cast<std::ptrdiff_t>(group_) + script_dir_;
+                if (next < 0 || next >= static_cast<std::ptrdiff_t>(levels().size())) {
+                    script_dir_ = -script_dir_;
+                }
+                zoom(script_dir_, std::nullopt);
+            }
+            if (std::chrono::duration<double>(Clock::now() - script_start_).count() >
+                script_seconds_) {
+                running_ = false;
+            }
+        }
+    }
+    drawing_frame_ = false;
 }
 
 void Viewer::draw() {

@@ -15,13 +15,23 @@ namespace anno::app {
 /// (only SDL_windowsevents.c calls SDL_OnWindowLiveResizeUpdate), so this is false on Linux
 /// and macOS by construction - no platform check is needed here.
 ///
-/// `already_drawing` is the reentrancy guard: a watch never draws while a frame is already
-/// being drawn. draw() may itself process window messages synchronously (a GPU present, a
-/// surface reconfigure), which could re-enter the watch from inside an already-running frame
-/// step; without the guard that would recurse into drawing a second frame before the first
-/// one finished.
+/// Reads only `e` (local to the caller, never shared): an event watch runs on whichever thread
+/// calls SDL_PushEvent, the sim's own wake push (PlayRunner, play.cpp) included, so production
+/// code (Viewer::live_resize_watch, ZOOM-SMOOTH-2b F1) checks this *before* reading its own
+/// (shared, atomic) reentrancy guard - a push of any other event type then never touches that
+/// shared state at all, from any thread.
+[[nodiscard]] inline bool is_live_resize_expose(const SDL_Event& e) {
+    return e.type == SDL_EVENT_WINDOW_EXPOSED && e.window.data1 == 1;
+}
+
+/// The full decision (the event check above, and the reentrancy guard: a watch never draws
+/// while a frame is already being drawn) in one call - a convenience for tests, which can pass
+/// `already_drawing` as a plain bool with no shared state involved. Production code does not
+/// call this directly (see is_live_resize_expose's own comment: calling this form in the watch
+/// itself would read the guard unconditionally, for every event of every type, from whichever
+/// thread pushed it - exactly the data race ZOOM-SMOOTH-2b F1 fixed).
 [[nodiscard]] inline bool should_draw_from_watch(const SDL_Event& e, bool already_drawing) {
-    return !already_drawing && e.type == SDL_EVENT_WINDOW_EXPOSED && e.window.data1 == 1;
+    return is_live_resize_expose(e) && !already_drawing;
 }
 
 } // namespace anno::app

@@ -239,6 +239,21 @@ struct GpuLimits {
     /// kept + FrameRenderer::spare_chunks). 0 = off (headless renders, tests).
     std::size_t prefetch_chunks = 0;
     std::size_t prefetch_per_frame = 1;
+    /// A share of each frame's upload time, in milliseconds, kept for prefetch
+    /// (the margin, the neighbouring groups, the zoom-out ring) even while a
+    /// visible chunk still waits for its own upload, or one was already
+    /// uploaded this frame - ZOOM-SMOOTH-1d, replacing the previous
+    /// all-or-nothing gate (`!waiting && uploads == 0`) that left prefetch
+    /// with no time at all whenever any visible-chunk work happened in the
+    /// frame (2026-11-14 review B2). Spent in addition to upload_budget_ms,
+    /// never out of it - a visible chunk's own time budget is not reduced to
+    /// make room for this. Checked once per prefetch candidate (not inside a
+    /// single multi-step advance_upload call, which keeps its own, larger
+    /// upload_budget_ms ceiling), so one upload already in flight may overrun
+    /// this share slightly; the next candidate is still stopped on time.
+    /// 0 = off (prefetch_chunks alone still gates it, as before this field
+    /// existed).
+    double prefetch_budget_ms = 0.0;
     /// A chunk that replaces the placeholder an earlier frame showed for it (its
     /// stand-in or the open sea; not a chunk uploaded in the frame it comes into
     /// view) is drawn over it with rising opacity for this many
@@ -269,6 +284,7 @@ struct GpuLimits {
         l.background_fluid = true;
         l.prewarm_chunks = 24;
         l.prefetch_chunks = 96;
+        l.prefetch_budget_ms = 0.3; // a measured share, docs/perf/README.md ZOOM-SMOOTH-1d
         l.chunk_fade_ms = 150;
         l.wave_fade_ms = 250;
         return l;

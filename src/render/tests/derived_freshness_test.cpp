@@ -795,6 +795,8 @@ TEST_CASE("the zoom-out ring never starves the view's own chunks or the pan look
     frames.zoom_anchor =
         std::pair{view.x + view.w / 2.0, view.y + view.h / 2.0}; // the view's own centre
     frames.zoom_direction = -1.0;                                // zooming out: the ring exists
+    frames.zoom_ring_enabled = true; // off by default since ZOOM-SMOOTH-1d; this test is the
+                                     // ring's own correctness check and must exercise it
     const render::Rect ring_rect =
         render::ring_view_at(view, *frames.zoom_anchor, 0, frames.levels());
     bool saw_ring_key = false;

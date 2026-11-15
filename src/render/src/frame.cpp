@@ -21,6 +21,7 @@ void apply_frame_config(FrameRenderer& fr, const FrameConfig& cfg) {
     fr.prewarm_far_levels = cfg.prewarm_far_levels;
     fr.resident_level_chunks = cfg.resident_level_chunks;
     fr.budget = cfg.budget;
+    fr.zoom_ring_enabled = cfg.zoom_ring_enabled;
 }
 
 ChunkMemoryBudget default_chunk_budget(ChunkBudgetAdapter adapter, std::uint64_t system_ram_bytes) {
@@ -1007,13 +1008,14 @@ std::vector<ChunkKey> FrameRenderer::plan_margin(Rect view, std::size_t group,
     // every one of those always sorts first. Only while actually zooming out (zoom_direction <
     // 0): building it while zooming in or at rest would be background work for an area the
     // camera is not heading toward.
-    if (zoom_anchor && zoom_direction < 0) {
+    if (zoom_ring_enabled && zoom_anchor && zoom_direction < 0) {
         const Rect out_ring = ring_view_at(view, *zoom_anchor, group, levels_);
         add(group, visible_chunks(out_ring), view, vx_, vy_, [](int, int) { return 3; });
     }
     std::sort(queue.begin(), queue.end());
     adjacent_.clear();
     margin_.clear();
+    ring_.clear();
     std::vector<ChunkKey> order;
     for (const auto& c : queue) {
         order.push_back(c.key);
@@ -1021,6 +1023,8 @@ std::vector<ChunkKey> FrameRenderer::plan_margin(Rect view, std::size_t group,
             margin_.push_back(c.key);
         } else if (c.rank == 2) {
             adjacent_.push_back(c.key);
+        } else if (c.rank == 3) {
+            ring_.push_back(c.key);
         }
     }
     return order;

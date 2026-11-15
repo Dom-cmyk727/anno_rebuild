@@ -1070,6 +1070,14 @@ std::string Viewer::run() {
                              s);
             }
         }
+        // ANNO_VIEW_ZOOM_RING=on enables the zoom-out ring (ZOOM-SMOOTH-1c2 step 4); off by
+        // default since ZOOM-SMOOTH-1d measured a net regression on zoompan once it shares the
+        // GPU's prefetch budget with margin/adjacent (FrameRenderer::zoom_ring_enabled's own
+        // comment). Any other value, or unset, leaves it off.
+        if (const char* s = std::getenv("ANNO_VIEW_ZOOM_RING");
+            s != nullptr && std::string(s) == "on") {
+            cfg.zoom_ring_enabled = true;
+        }
         render::apply_frame_config(frames_, cfg);
     }
     while (running_) {

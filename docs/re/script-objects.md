@@ -69,6 +69,12 @@ mean `(island 4, city 0)` and `(island 18, city 0)`. They happen to fit one byte
 that coincidence is not evidence for an island-only rule. Operand 258 separates
 the readings: `(island 2, city 1)`. Operand 65540 narrows to `(4,0)`.
 
+**P.** Independent original-file corroboration: S01_02_01's STADT2 prefixes at
+file offsets `0x1e0ee9` and `0x1e74e7` both give city slot 0, on islands 4 and
+18 respectively (their witness tiles are located through the INSEL5 rectangles).
+Both are enclosed in player 2's records, not players 4/18. The prefix layout
+reuses [sze.md](../formats/sze.md); this is corroboration, not the namespace proof.
+
 ## 3. Query truth and lifetime
 
 **S/D.** AnnoScene compares the KILLED string `0x10040114` at
@@ -130,6 +136,9 @@ records and explicit world snapshots. Inputs: ordered `objects=name:n`, `ref`,
 `island:slot:owner:building_count`; commas separate cities and `/` separates
 frames; `-` denotes an empty table. Names are portable ASCII. Outputs are
 `compiled`, `island`, `city`, `killed`, `parse_reads`, `city_reads`, `writes`.
+`parse_reads` counts **city-slot lookups** during parsing, not the unconditional
+figure-manager accessor before the kind-1 postprocess loop. Input-schema
+validation is not a modeled world lookup. `city_reads` counts the live city getter.
 `killed=-` is a failed name resolution, not a false evaluation. Counters cover
 the query leaf; surrounding IF actions are not modeled. The original fixed-size
 name allocation and CRT overflow/locale behavior are not memory-safety emulations.

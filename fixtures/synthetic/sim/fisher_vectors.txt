@@ -104,3 +104,12 @@ sea_cell border_below heights=127,0,0,0 draws=- => open=1 blocked=0 usable=511 c
 # §3/5:singleton128 gives corners128,0,0,0; mean32, open0/blocked511/usable0 even with zero borders.
 # 2026-11-14 reviewed consumer correction: usable = 511 - blocked (0x100033c3–0x100033ce).
 sea_cell border_equal heights=128,0,0,0 draws=- => open=0 blocked=511 usable=0 consumed=0
+
+# §6: empty cell mean floor(63/4)=15 is below16; creation clears low7 phase bits, keeps bit7.
+runtime_fish below heights=15,16,16,16 tile=0 phase=255 draws=42 => created=1 tile=11 phase=128 mean=15 usable=511 consumed=0
+# §6: exact mean16 fails the strict comparison, although mode3 still has511 usable bits.
+runtime_fish equal heights=16,16,16,16 tile=0 phase=127 draws=- => created=0 tile=0 phase=127 mean=16 usable=511 consumed=0
+# §6: nonzero raw object word blocks fill even at zero height; existing fish is not overwritten.
+runtime_fish occupied heights=0,0,0,0 tile=11 phase=63 draws=0 => created=0 tile=11 phase=63 mean=0 usable=511 consumed=0
+# §6: high raw object-word bits are not masked before the emptiness check.
+runtime_fish raw_word heights=0,0,0,0 tile=16384 phase=200 draws=- => created=0 tile=16384 phase=200 mean=0 usable=511 consumed=0

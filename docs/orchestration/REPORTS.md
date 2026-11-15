@@ -11101,3 +11101,69 @@ Decisions and reasoning:
 - Preserve owner-approved per-attempt draw fidelity and the corrected mask; do not fake catchable shipped fish.
 NOT_RUN: local MSVC/WSL, HE/original-runtime execution, real-map canary, Windows game-file/full landing gates.
 QUESTIONs: none blocking this bounded synthetic port; OQ-603 and runtime fish remain outside its claim.
+
+
+## FISHER-RE-2 — runtime fish source and normal-session prerequisite (2026-11-15)
+
+Status: READY FOR REVIEW; independent review is the orchestrator's handover review.
+Branch task/FISHER-RE-2; base origin/main 01a4d540; merged origin/task/FISHER-1b 7dd95644.
+Start 2026-11-15 00:24:11Z; budget 2–3 hours; documents/tools and vector-reader compatibility only.
+Owner four-task prompt is this packet; board has no separate fisher-re-2.md. Common rules read.
+No reviewer subagents; no engine behavior, state number, extension, pin or original-asset change.
+Read complete GOG AnnoWelt 0x100928a0–0x10092b32: clipped row-major empty-tile fill.
+A whole nonzero u16 object word skips; mean = four unsigned corners / 4, strict mean < 16 creates fish.
+Means 16–31 do not create fish; mean >= 32 takes a distinct fertility-dependent grass path.
+Initializers 0x1008fea0–0x1008feb2 and 0x1008ff00–0x1008ff0e establish default thresholds 16/32.
+Fish writes id 11, byte 2 zero, item-height low byte, byte 3 bit 7 preserved; corners are untouched.
+No new figure, occurrence, saved id/counter, live-animal cap or periodic fish timer in this body.
+Resource identity: Anlagen 11, goods 71, same as embedded fish; those records are not scenery-only by type.
+Mode-3 blocked 0 below mean 32 gives usable 511 through 0x100033c3–0x100033ce.
+Load callers: 0x100a1f9d / 0x100a20b8 / 0x100a2fc8 after child-record loading.
+Wrapper 0x100a1810–0x100a183c calls preprocess +0x1a4 then fill +0x1a0.
+Area clear 0x1008376e–0x10083796 also fills; ordinary placement 0x10082ab9 is +0x19c, not fill.
+Corrected old transport slot attribution in a new fisher.md section; did not rewrite accepted transport.md.
+No draws in the fill or named standard catalogue/type getter bodies; no transitive load-session total claimed.
+Physical catalogue construction remains the existing OQ-202 boundary; arbitrary substituted receivers not inferred.
+OQ-610 narrowed: load/fill/clear do not lower fish corners; external/editor setter caller closure still OPEN.
+Added runtime_fish reference; four hand-derived cases: mean 15/16, occupied, and high raw object-word bits.
+Supplied draw remains unconsumed; reference phase input/output denotes the whole raw byte 3.
+Two new applied mutants: inclusive depth and ignored occupancy; each exits 1, not malformed exit 2.
+Contract adds exact three-cell synthetic census and missing-HEIGHT refusal; 80 checks / 53 vectors pass.
+C++ geometry vector reader skips runtime_fish by name; it still executes 6 sea / 5 grid / 5 rectangle vectors.
+Static embedded-island census: all 50 original scenarios, 4,908,270 runtime cells / usable goals.
+Per-map counts, source hashes and exact half-open cell runs: cache/fisher-re-2/runtime-fish-final.json.
+S01_02_01: 179,016 cells; farm 810 search rectangles contain 28 / 64 candidates on island 58.
+Witnesses local (205,149) / (202,157); candidate inclusion is not entrance-path or catch proof.
+lan5.txt templates: 280,316 cells; lan5-ship-a.json templates: 420,194 cells, all usable.
+Both lan5 meanings measured explicitly; neither is a shipped lan5.sze; procedural link draws are not emulated.
+Census counts footprints, not just anchors; preserves zeros for six maps with no eligible embedded cells.
+Original first census refused an out-of-bounds footprint; original clipped-placement rule fixed that tool assumption.
+Original first mutant proof refused an overlapping replacement string; full distinct span fixed the proof, not rule.
+Those terminal failures remain in runtime-fish-01.log / contract-01.log; no passed gate was repeated.
+NORMAL_IMPORT_OK islands=27; NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions.
+Preflight uses normal loader, no ActorFreeComponent, script suppression or altered original resources.
+OQ-623 / QUESTION: separate script-object implementation (recommended), or owner-authorized narrower component canary?
+The state-free fish derivation alone cannot satisfy FISHER-1c's requested normal-session proof.
+Gates under cache/fisher-re-2/: reference-01.log: 53 vectors, 0 disagreements; contract-03.log: 80 checks.
+focused-01.log, automatic picture contract:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-01.log, fisher_reference_contract:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-01.log, reference agrees plus changed geometry-vector consumer:
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+runtime-fish-final.log: 50 scenarios + 2 layouts; 5,608,780 created cells / usable goals; zero census failures.
+lint-01.log: lint_sim: ok; format-01.log: clang-format 23.1.3 passes; git diff --check / relative links pass.
+build-01.log: Dev succeeds; two Apple duplicate-library linker warnings retained, no zero-warning claim here.
+Evidence SHA-256 inventory: cache/fisher-re-2/evidence-sha256.json. No memory-refused test occurred.
+Hosted CI URL and terminal result supplied at handover; no pending run is pre-claimed green.
+NOT_RUN: HE, live original session, complete external/editor setter closure, real gameplay canary, Windows game-file gate.
+Decisions and reasoning:
+- Model the resource-fill predicate, not a speculative fish figure or PRNG generator; it needs no new state.
+- Measure generated empty-water resources separately from the 2,473 blocked embedded records.
+- Enumerate exact cells as compact row ranges; distinguish embedded islands from unresolved link selection.
+- Check normal-session prerequisites before building the canary; keep script refusal visible and preserve owner scope.
+- Preserve OQ-603 / OQ-604 / OQ-610 and standard-catalogue receiver limits rather than invent closure.
+QUESTIONs: OQ-623 blocks the normal-session canary, not this bounded source read; Task 3 records the decision boundary.

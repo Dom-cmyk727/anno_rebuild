@@ -58,7 +58,8 @@ TEST_CASE("fisher geometry: every sea-cell, corner-grid and search-rectangle vec
         std::string kind, name;
         REQUIRE(static_cast<bool>(prefix >> kind >> name));
         INFO(kind, " ", name);
-        if (kind == "farm_tick" || kind == "converted" || kind == "trip" || kind == "cut_match") {
+        if (kind == "farm_tick" || kind == "converted" || kind == "trip" || kind == "cut_match" ||
+            kind == "runtime_fish") {
             ++skipped;
             continue;
         }

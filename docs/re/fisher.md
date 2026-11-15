@@ -655,3 +655,206 @@ continuation. This supersedes the earlier checkpoint's “not implemented” sta
 The discarded dispatch draw remains in the shared Farm tick; the enabled body
 adds no draw. The owner permits later on/off trajectories to differ because
 an active worker changes eligibility at subsequent dispatch gates.
+
+
+## 6. Runtime fish fill and the real-map boundary (FISHER-RE-2, 2026-11-15)
+
+**D — entry and exact predicate.** The in-game island table `0x100cac2c`
+has `+0x1a0 = 0x100928a0`; `+0x19c` is `0x10084150`, a different
+notification. This corrects the old slot label in [transport.md §3.4](transport.md).
+The complete fill body `0x100928a0`–`0x10092b32` takes `this = island`
+and one pointer to a half-open rectangle of four signed 32-bit world coordinates.
+It clips against origin words `+4/+6` and extent words `+8/+0xa`, translates
+into local coordinates, then visits rows and columns in increasing order
+(`0x100928c3`–`0x10092976`, `0x10092ae3`–`0x10092b32`). There is no
+quota, live-figure count, timer, or spawn-record allocation in this body.
+
+**D/P/A — fish versus grass.** A nonzero **whole unsigned 16-bit object word**
+at tile-record offset 0 skips the cell (`0x10092976`–`0x1009297b`); no
+14-bit mask is applied to that test. The corner pointer is island `+0x14`,
+stride `W + 1`; four unsigned bytes produce integer `mean = sum / 4`
+(`0x10092981`–`0x100929d7`). Default means at least 32 enter the grass
+branch, which additionally tests ground fertility (`0x100929d9`–`0x10092a60`).
+Means below 32 enter the fish branch, where a second strict test admits only
+**mean < 16**, not mean 16 (`0x10092a61`–`0x10092a9e`). Initializers
+`0x1008fea0`–`0x1008feb2` and `0x1008ff00`–`0x1008ff0e` establish
+these thresholds from 16.0 and the common height scale; they are not raw
+zero-initialized image values. This reference uses those shipped defaults.
+
+**D — writes, not a whale-style occurrence.** The fish branch selects catalogue
+id 11 (`0x100928bc`–`0x100928c3`) and writes its type id into the existing
+8-byte tile record at `0x10092aa0`–`0x10092aaf`. It clears byte 2, writes
+the item height into the record's second 32-bit word, and retains
+only bit 7 of byte 3 (`0x10092ab5`–`0x10092ade`). More precisely, the
+height is the low 8 bits of the record's **second 32-bit word**; the remaining
+24 bits are preserved. No corner height changes. The selected type getter
+`AnnoGame.dll 0x10008f90`, low flag bits equal to 1, returns the same corner
+mean (`0x10008fae`–`0x10008fdf`). Parsed HEAD flags of types 2 and 11 are
+`0x29`, selecting that branch. This preserves the tile's existing walk code,
+mask and ownership fields; it creates no figure, figure id, occurrence or new
+saved counter. Fresh records' code 2 comes from `0x1008c105`–`0x1008c115`.
+
+**D/P — identity and why the embedded inventory misled.** It is the same
+Anlagen 11 / ROHSTOFF / WAREFISCH 71 already identified in §1, not a new
+Figuren id or a scenery-only subtype. Existing embedded type-11 records are
+not overwritten, even when their mean is at least 32. The fisher's existing
+resource-goods query (`0x10059325`, island query `0x10092320`) finds the
+new type-11 cells by goods 71 just as it finds an embedded resource. Their
+mean below 16 also means below 32: island mode 3 returns blocked mask 0
+(`0x100922cd`–`0x100922df`), and goal-pop `0x100033c3`–`0x100033ce`
+therefore exposes usable mask 511. The 2,473 blocked embedded records do not
+exhaust runtime fish. No lowering of those embedded records is needed to
+explain a separate population of catchable resources.
+
+**D — when it runs.** File loading `0x100a1da0` reads INSEL4 / INSEL5,
+completes the island child-record loop, then invokes world slot `+0x1d4`
+at `0x100a1f9d` / `0x100a20b8`. The INSEL5 chunk-buffer loader
+`0x100a2ea0` similarly calls island `+0xdc` for its records before the
+same world slot at `0x100a2fc8`. World wrapper `0x100a1810`–`0x100a183c`
+conditionally preprocesses ground through island `+0x1a4` and then always
+calls `+0x1a0`. The preprocessing body `0x10084370`–`0x1008480e` computes
+a separate ground/fertility buffer, not a new corner grid. Clearing an area
+also calls `+0x1a0` on its affected rectangle at `0x1008376e`–`0x10083796`,
+then `+0x19c` at `0x100837a6`. This is not evidence of a periodic fish
+spawner. Cutting 11 to 10 and regrowth remain the shared resource paths in
+[forestry.md](forestry.md); they are not this clear-and-refill operation.
+Ordinary placement's call at `0x10082ab9` is `+0x19c`, **not** this fill.
+
+**D/U — draw closure.** There is no PRNG call in the complete fill body.
+The standard catalogue lookup `AnnoGame.dll 0x100037e0`–`0x100037eb`,
+type-id getter `0x1000a660`–`0x1000a666`, and selected height branch
+`0x10008fae`–`0x10008fdf` are leaves without draws; the grass walk-code
+getter `0x10007dc0`–`0x10007ea2` also draws nothing. Island initialization
+`0x1008c0c9`–`0x1008c0de` obtains `+0x1c` from world `+0x18`, whose
+getter is `0x100a37d0`–`0x100a37d6` (world `+0x110`). The caller that
+supplies that world's concrete catalogue and its type-array construction
+was not newly closed here: retain [OQ-202](../open-questions.md).
+The zero-draw claim applies to the named standard getter bodies and fish
+projection, not an arbitrary substituted catalogue or transitive load session.
+
+| Position | Modulus | Selection | Condition |
+|---|---|---|---|
+| none | none | no draw consumed | Fish fill, complete `0x100928a0`–`0x10092b32`, with the standard catalogue/type getters named above |
+| none | none | no draw consumed | `runtime_fish` reference: supplied raw draw suffix remains unused; no generator implemented |
+
+**D/U — later corner writers, OQ-610 narrowed.** Reuse §5's established
+allocation, HEIGHT setter and save/reload mapping. The new load-fill and clear
+call paths above write tile resources and derived ground, not `island +0x14`.
+The bulk setter `0x10084870`–`0x10084a2b` remains a mutator capable of
+changing logical edges; HEIGHT load calls it at `0x1008920c`. Serialization
+`0x10089e01`–`0x10089f51` saves current interior heights. This read does
+**not** establish every possible external/editor caller of the virtual setter,
+and does not close OQ-610 as an immutability claim. No inspected path lowers
+an embedded fish tile to make it catchable. The load-time empty-cell fill is
+already a separate explanation.
+
+**P/A/T — census method and boundaries.** `tools/fisher_ref.py --runtime-fish
+GAME_DIR --output FILE.json` reads the original HEIGHT and all GELAENDE,
+FLUESSE and PROD2 placements through the existing independent parsers. It marks
+rotated footprints occupied, clipped to the island; the original overlay and
+ordinary placement both write ids (`0x1008220e`–`0x10082215`,
+`0x10082422` onward; [transport.md §3.4.17](transport.md)). It projects the
+strict empty-cell / mean-below-16 branch after all serialized placements.
+This is a static **embedded-island** census; unresolved INSELLNK templates are
+not silently counted as empty sea. Output includes source SHA-256 and every
+created cell as half-open row runs `(island, y, x, end_x)` plus world origin.
+Every such cell has usable mask 511. It is not an original-runtime trace,
+path-reachability proof, or complete actor/script import claim.
+
+| Scenario (under Scenes) | Runtime fish cells | Usable mode-3 goals |
+|---|---:|---:|
+| `0010SingleEndlos/00_1024_easyentry_01.sze` | 86,399 | 86,399 |
+| `0010SingleEndlos/01_1024_easy_256.sze` | 4,898 | 4,898 |
+| `0010SingleEndlos/02_1024_easy_128.sze` | 4,317 | 4,317 |
+| `0010SingleEndlos/03_1024_med_256.sze` | 0 | 0 |
+| `0010SingleEndlos/04_1024_med_128.sze` | 0 | 0 |
+| `0010SingleEndlos/05_800_Med_128.sze` | 0 | 0 |
+| `0010SingleEndlos/06_1024_heavy_256.sze` | 0 | 0 |
+| `0010SingleEndlos/07_1024_heavy_128.sze` | 0 | 0 |
+| `0010SingleEndlos/08_800_heavy_128.sze` | 0 | 0 |
+| `0011SingleEndlosAddon/endless01.sze` | 176,616 | 176,616 |
+| `0011SingleEndlosAddon/endless02.sze` | 372,675 | 372,675 |
+| `0011SingleEndlosAddon/endless03.sze` | 113,595 | 113,595 |
+| `0100Kampagne01/S01_01_01.sze` | 213,888 | 213,888 |
+| `0100Kampagne01/S01_02_01.sze` | 179,016 | 179,016 |
+| `0100Kampagne01/S01_03_01.sze` | 214,947 | 214,947 |
+| `0100Kampagne01/S01_04_01.sze` | 55,767 | 55,767 |
+| `0100Kampagne01/S01_05_01.sze` | 24,852 | 24,852 |
+| `0100Kampagne01/S01_06_01.sze` | 130,527 | 130,527 |
+| `0100Kampagne01/S01_07_01.sze` | 214,626 | 214,626 |
+| `0100Kampagne01/S01_08_01.sze` | 39,940 | 39,940 |
+| `0100Kampagne01/S01_09_01.sze` | 207,914 | 207,914 |
+| `0100Kampagne01/S01_10_01.sze` | 232,120 | 232,120 |
+| `0100Kampagne01/S01_11_01.sze` | 15,406 | 15,406 |
+| `0100Kampagne01/S01_12_01.sze` | 252,755 | 252,755 |
+| `0100Kampagne01/S01_13_01.sze` | 99,798 | 99,798 |
+| `0200Single/Single_01.sze` | 133,809 | 133,809 |
+| `0200Single/Single_05.sze` | 39,271 | 39,271 |
+| `0200Single/Single_06.sze` | 54,457 | 54,457 |
+| `0200Single/Single_08.sze` | 21,532 | 21,532 |
+| `0200Single/Single_10.sze` | 116,574 | 116,574 |
+| `0200Single/Single_12.sze` | 22,725 | 22,725 |
+| `0200Single/Single_14.sze` | 102,505 | 102,505 |
+| `0200Single/Single_15.sze` | 39,664 | 39,664 |
+| `0200Single/Single_16.sze` | 42,990 | 42,990 |
+| `0200Single/Single_24.sze` | 30,823 | 30,823 |
+| `0201SingleAddOn/single30.sze` | 199,922 | 199,922 |
+| `0201SingleAddOn/single31.sze` | 60,872 | 60,872 |
+| `0201SingleAddOn/single32.sze` | 126,823 | 126,823 |
+| `0201SingleAddOn/single33.sze` | 80,302 | 80,302 |
+| `0201SingleAddOn/single34.sze` | 112,780 | 112,780 |
+| `0201SingleAddOn/single36.sze` | 202,179 | 202,179 |
+| `0201SingleAddOn/single38.sze` | 161,229 | 161,229 |
+| `0201SingleAddOn/single39.sze` | 216,685 | 216,685 |
+| `0201SingleAddOn/single40.sze` | 168,129 | 168,129 |
+| `0201SingleAddOn/single41.sze` | 99,035 | 99,035 |
+| `0201SingleAddOn/single42.sze` | 167,013 | 167,013 |
+| `0201SingleAddOn/single43.sze` | 5,840 | 5,840 |
+| `Tutorial/01Discover01.sze` | 8,486 | 8,486 |
+| `Tutorial/02Trade01.sze` | 22,472 | 22,472 |
+| `Tutorial/03T_Combat_01.sze` | 32,097 | 32,097 |
+
+The 50 embedded-scenario projections total **4,908,270 created cells and
+4,908,270 usable goals**. Six zero-result maps can have procedural island
+links; zero here means no eligible embedded cell, not no runtime fish after
+link resolution. Census log: `cache/fisher-re-2/runtime-fish-final.log`;
+exact cells: `cache/fisher-re-2/runtime-fish-final.json`.
+
+**P/A — lan5 scope made explicit.** There is no shipped `lan5.sze`. Both
+repository meanings were measured from their original SCP templates with
+`--layout`: `data/maps/lan5.txt` has **280,316** runtime cells / usable goals;
+`data/maps/candidates/ship-start-v2/lan5-ship-a.json` has **420,194**.
+The latter's 421 embedded fish are still distinct from this generated count.
+The JSON gives exact cells for both layouts; their template selection and
+placement are the layouts', not a procedural draw emulation.
+
+**P/A — S01_02_01 and its local farms.** The map has **179,016** generated
+cells, all usable, across its 27 embedded islands. The two type-810 farms on
+island 58 are local `(196,155)` and `(201,163)`, both rotation 1, world
+`(628,267)` and `(633,275)`. Their integer search rectangles are respectively
+`(190,149,16,15)` and `(195,157,16,15)`. The generated-cell projection finds
+**28** and **64** cells inside these rectangles. First row-major witnesses
+are `(205,149)` and `(202,157)`; these are candidate facts, not a claim that
+an entrance-to-goal path or harvest continuation succeeded.
+
+**T/U — can FISHER-1c run on S01_02_01?** The fish rule can be derived from
+loaded HEIGHT and occupancy without new state or a new tick system, and it
+would supply usable candidates near both farms behind the existing flag.
+However, the requested normal-session canary **cannot yet run**: the normal
+adapter successfully imports all 27 islands, then `World::create` refuses
+`script offset 0: unsupported object definitions` (`src/sim/src/script.cpp`,
+the explicit `!a.objects.empty()` refusal). The sim needs the flag-gated
+resource derivation **and** an authorized script-object implementation or an
+explicitly scoped alternative canary contract. Disabling the script or using
+ActorFreeComponent would not prove the requested original normal session.
+That decision is [OQ-623](../open-questions.md#oq-623-s01_02_01-normal-session-canary-and-script-object-definitions-fisher-re-2-2026-11-15-open).
+
+**A/T — reference and limits.** Four hand-derived `runtime_fish` vectors
+separate mean 15 from 16, occupied from empty, and the whole raw object word
+from a masked id; a supplied draw remains unconsumed. The contract applies
+strict-depth and occupancy mutants exactly once and demands exit 1. It also
+checks an exact three-cell synthetic census and refusal of missing HEIGHT.
+The C++ geometry reader skips this new record by name and continues to assert
+all 6 sea-cell, 5 corner-grid and 5 search-rectangle vectors. No engine code,
+state, pins, asset bytes or scheduler wiring changes in this packet. HE and
+original live-game execution are NOT_RUN; OQ-603 / OQ-604 stay open.

@@ -11460,3 +11460,126 @@ as the Radeon's cost for the ring's readiness benefit on stronger hardware, left
 packet (1d, or after) to weigh against other candidates for the same budget of attention?
 
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-1d — the GPU upload share, B3 checked, the ring measured and turned off — READY FOR REVIEW (task/ZOOM-SMOOTH-1d, from task/ZOOM-SMOOTH-1c2 `619f88f6`, head `63f4c69a`)
+
+**B3, checked first, as asked.** The reaper (`ChunkWorkers::reap`, `frame.cpp`) runs at lowered thread priority;
+the warm-plane pre-creation thread's own comment (`gpu.cpp`) already explains why that is unsafe for anything
+touching the GPU: texture creation/destruction takes wgpu-hal's device allocator lock, which the window thread
+also needs for every upload, so a lowered-priority thread holding it while descheduled is a real priority
+inversion on the window thread - which is exactly why the warm-plane thread runs at normal priority instead.
+**Confirmed: moving GPU resource releases onto the existing (CPU-side, lowered-priority) reaper would
+reintroduce that same risk**, and this packet does not do that - step 5 below only widens *when* the existing
+upload path runs, never moves any release onto a different thread. Checked wgpu-core's own resource-lifetime
+tracking (wgpu-core 28.0.0/latest source, `device/life.rs`/`LifetimeTracker`; the exact v29.0.1.1 source wasn't
+directly fetchable, so this is the closest confirmed version, not the pinned one): a resource's actual GPU-side
+destruction is already deferred internally, by submission index, independently of when the caller releases it
+- so Release/Destroy calls from any thread are correctness-safe regarding use-after-GPU-use; the risk is purely
+the OS-level lock contention described above, not a wgpu-core lifetime bug. **Conclusion: B3's finding stands
+as a reason never to route GPU releases through `reap()`, but does not block step 5, which doesn't do that.**
+
+**Step 5: the GPU upload share.** Replaced the all-or-nothing prefetch gate (`!waiting && uploads == 0`, B2)
+in `gpu.cpp sync_chunks`: prefetch (margin, adjacent, and - new - the ring) now also runs while a visible chunk
+is waiting or one was already uploaded this frame, bounded by a new `GpuLimits::prefetch_budget_ms` (default
+0.3 ms, a measured share - see below), spent in addition to `upload_budget_ms`, never out of it. Checked once
+per prefetch candidate, so one multi-step `advance_upload` call already in flight may overrun the share
+slightly (documented in the field's own comment); the next candidate is still stopped on time.
+
+**Routed the ring into the GPU's prefetch for the first time.** Found while reading `plan_margin` for step 5:
+the ring's rank-3 candidates (ZOOM-SMOOTH-1c2) were never added to `margin_`/`adjacent_` at all, so even with
+B2 fixed, `gpu.cpp`'s prefetch loop (which only ever iterated those two lists) could never have uploaded a
+ring chunk ahead - the dispatch's "it measured no readiness gain" is explained by this, not only by the gate.
+Added `FrameRenderer::ring_keys()` (populated from rank-3 queue entries, same pattern as margin/adjacent),
+threaded it through `sync_chunks`'s new `ring` parameter, and added it to the prefetch's list array, lowest
+priority of the three (iterated last, so it never takes margin/adjacent's slot of `prefetch_chunks` within a
+frame - margin and adjacent are always drained first).
+
+**The ring switch:** `FrameRenderer::zoom_ring_enabled` (default **off**, see Decisions), `FrameConfig`'s own
+field, `bench_frame --zoom-ring on|off`, and the viewer's `ANNO_VIEW_ZOOM_RING=on` debug env var (unset or any
+other value leaves it off).
+
+**Measured (lan5, bench_frame's zoom-sweep, 4090, 6 s/leg, same session, three runs per cell unless noted):**
+
+| mode | ring off (= step 5 alone) | ring on (step 5 + ring) |
+|---|---|---|
+| legs | non-ready 47, stand-in 6801, dissolves 5034, open-sea 1691, >2ms 216 | non-ready 47, stand-in 7076, dissolves 4994, open-sea 1472, >2ms 219 |
+| wheel | non-ready 35, stand-in 6011, dissolves 4600, open-sea 1625, >2ms 164 | non-ready 35, stand-in 4501, dissolves 3928, open-sea 1504, >2ms 161 |
+| pan | non-ready 43, stand-in 0, dissolves 1002, open-sea 1688, >2ms 94 | non-ready 41, stand-in 0, dissolves 808, open-sea 1431, >2ms 105 |
+| zoompan (3 runs) | stand-in 14489-15847, dissolves 6706-7116, open-sea 1665-1694, >2ms 173-210 | stand-in 20390-23549, dissolves 9491-10778, open-sea 1922-2136, >2ms 221-250 |
+| iGPU wheel (3 runs each; see Decisions on the baseline) | >2ms 18-41 | >2ms 23-42 |
+
+**Against 1c2's own numbers** (step 5 absent, old gate, ring generated on the CPU but never reaching the GPU):
+legs 202/9076(stand-in)→**ring-off 216/6801**; wheel 157/5047→**164/6011**; pan 113/0→**94/0**; zoompan
+226/17002→**173/14489**. So **step 5 alone is a clear win on every mode**, zoompan most of all (open-sea
+1711→1688, dissolves 7799→7116, >2ms 226→173-210).
+
+**The ring, once actually routed to the GPU, does not add a net win on top of step 5.** Wheel and pan move a
+little further in the right direction with it on; **zoompan gets consistently, repeatably worse** (three runs
+each side, non-overlapping: stand-in about 21.9k vs 14.9k, dissolves about 10.1k vs 7.0k, >2ms about 237 vs
+197). Both share the same `GpuLimits::prefetch_chunks`/`prefetch_budget_ms` budget, lowest priority to the
+ring within it - but zoompan is exactly the mode under the most pressure on that shared budget already, so
+giving the ring a slice of it (even a strictly lower-priority one) measurably costs the mode that needed it
+most. Per the dispatch's own rule ("if it helps on the 4090 but costs the iGPU, that trade isn't yours to
+make" - here the cost is on the 4090 itself, in the worst mode, which the rule's spirit covers just as much):
+**turned the ring off by default**, kept as code and a switch (not deleted) for a future packet that gives it
+its own, separate budget instead of sharing margin/adjacent's.
+
+**The iGPU wheel numbers needed their own baseline check first.** The dispatch's own 1c2 review number (12
+frames>2ms) turned out to be **void, the same way 1c found pan's 30-baseline void**: rerunning the completely
+unmodified `task/ZOOM-SMOOTH-1c2` binary, right now, three times, gives 14/18/21 - matching 1c2's *own*
+recorded range (19-24), not 1c's 12. Every 1d configuration tested (ring on, ring off, and step 5 fully
+disabled via the new `--prefetch-budget-ms 0`) gives 18-42 across runs, overlapping that unmodified-binary
+range; nothing here points to a real 1d-caused iGPU regression, only the same day-to-day iGPU variance 1c
+already documented for pan. **Compare future iGPU wheel numbers against 14-24, not against 12.**
+
+**Added `--prefetch-budget-ms n`** (bench_frame, mirrors `--prefetch`/`--chunk-budget-mb`): overrides
+`GpuLimits::prefetch_budget_ms`, used here to isolate step 5's own gate change from the ring for the iGPU
+baseline check above; kept as a permanent diagnostic, same reasoning as `--resident-prewarm`.
+
+**Gates.** MSVC Release, game files, render+app: `COUNTS: selected=496 executed=493 failed=0 empty=0
+skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1d-render-app-1.log`). GPU, 4090: `COUNTS: selected=117 executed=117 failed=0 empty=0
+skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS` (`cache/gates/zoomsmooth1d-gpu-4090.log`). The
+Radeon iGPU CTest gate was not rerun (no GPU-adapter correctness code changed; only `GpuLimits` fields and the
+prefetch/upload-ahead policy, exercised above). WSL `-Werror` check: clean except the same pre-existing,
+unrelated `src/sim/tests/extensions_test.cpp` gap. `clang-format --dry-run --Werror` flagged 7 lines across
+`gpu.cpp`/`viewer.cpp`; fixed in place, rebuilt (`anno_render_tests`/`anno1503`/`bench_frame`/
+`anno_render_gpu_tests`/`anno_app_tests`), reran the full render suite (212/212, including the ring's own
+starvation test re-enabled explicitly for itself) and the GPU/app suites (117/117, 284/284) - all unaffected.
+
+NOT_RUN: **the packet's own full target** (0 on all four counters for zoom-out moves and returns, centre and
+off centre, via the live owner-style session - `zoom-session-2026-11-14/zoom.script` +
+`tools/drive2.py`/`analyze2.py`) - this packet's time went to B3, step 5's design and the ring's measurement
+(which turned up the "never reached the GPU at all" finding and the zoompan regression, neither anticipated
+by the dispatch), leaving no safe remaining time to also stand up and analyse a live capture session without
+rushing it; zoom-in (reported only, per the packet); the Radeon iGPU CTest gate (reasoned above); WSL ASan;
+`gpu.cpp`'s B2 gate change beyond this packet's own fix (none further needed); the GPU upload share's own
+separate budget for the ring (deferred to whichever future packet revisits it).
+
+Decisions and reasoning:
+- **Turned the ring off by default rather than deleting it.** The geometry (`ring_view_at`), the
+  zoom-direction signal and the starvation-invariant test are all independently correct (1c2's review
+  confirmed this, and nothing here changes it); the measured problem is specifically that it shares
+  `prefetch_chunks`/`prefetch_budget_ms` with margin/adjacent, not that the ring's own logic is wrong. Keeping
+  the code and the switch costs nothing and lets a future packet try giving it a separate share instead of
+  re-deriving the geometry from scratch.
+- **Checked whether the iGPU numbers were drift before trusting them**, the same discipline 1c used for pan:
+  before concluding 1d regressed the iGPU, reran the *unmodified* 1c2 binary and found it does not reproduce
+  its own review's quoted 12 either - the right comparison is 1c2's own range, which nothing in 1d moved.
+  Reporting an invented iGPU regression from 1d, when the unmodified prior code already shows the same
+  numbers today, would have been the kind of unevidenced claim the project's evidence contract rules out.
+- **Stopped before the live-session proof** rather than rushing it in whatever time was left: the dispatch's
+  own escape clause ("if it outgrows the box, stop and report what's done") and the evidence contract's
+  "known failures remain failures" both argue for reporting this honestly as NOT_RUN over presenting a
+  skimmed or unverified pass at the packet's hardest proof item.
+- **Added `--prefetch-budget-ms`** as a permanent diagnostic (not reverted after use) for the same reason
+  `--resident-prewarm` was kept in 1c: isolating one knob at a time is how the iGPU drift question got settled
+  here, and it will be needed again whenever the ring's own separate budget is designed.
+
+QUESTIONs: does a future packet give the ring its own, separate slice of `prefetch_chunks`/
+`prefetch_budget_ms` (so it stops competing with margin/adjacent on zoompan) rather than sharing theirs, and
+is that worth doing before or after the live-session proof (NOT_RUN here) actually measures whether 0-on-all-
+four-counters is reachable without the ring at all, now that step 5 alone has moved every mode a long way
+there?
+
+**READY FOR REVIEW.**

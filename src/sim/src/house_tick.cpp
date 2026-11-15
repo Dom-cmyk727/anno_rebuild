@@ -128,8 +128,8 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
         return;
     }
     const HouseEnv env{
-        ctx.cfg, ctx.rules, ctx.types, *ctx.serial->players, ctx.draw, *ctx.serial->figures,
-        ctx.t,   work};
+        ctx.cfg, ctx.rules, ctx.types,         *ctx.serial->players, ctx.draw, *ctx.serial->figures,
+        ctx.t,   work,      ctx.fisher_enabled};
     const BuildingKey where = key->second;
     // Diagnostic snapshot for the records (never read by the sim).
     HouseTransitionRecord tr;

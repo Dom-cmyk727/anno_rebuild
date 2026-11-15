@@ -414,7 +414,8 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
             if (!harvest_state_job(f.job, fisher)) {
                 return hw + ": present on a figure of job " + std::to_string(f.job) +
                        " (only the harvest jobs 0x29 and 0x2a, the animal job 0x2e and the mason "
-                       "job 0x2c have one)";
+                       "job 0x2c" +
+                       std::string(fisher ? ", and the fisher job 0x2d" : "") + " have one)";
             }
             if (!mason_job(f.job) && (h.goal_col != 0 || h.goal_row != 0)) {
                 return hw + ".goal: (" + std::to_string(h.goal_col) + ", " +

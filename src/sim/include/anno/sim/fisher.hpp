@@ -5,7 +5,22 @@
 #include <optional>
 #include <span>
 
+#include <anno/sim/ids.hpp>
+
 namespace anno::sim {
+class TileLayer;
+// AnnoWelt 0x1008fea0 / 0x10092a61-0x10092a9e: the shipped fish depth, not a size cap.
+inline constexpr std::uint8_t kFisherFillThreshold = 16;
+// Load/area-clear fish branch of 0x100928a0-0x10092b32, clipped row-major.
+// No draw, allocation, terrain write or new state. A disabled call or a missing
+// width*height HEIGHT column writes nothing. Resource 11 is the original's lookup
+// literal; parameters expose the rule defaults without imposing content-size limits.
+[[nodiscard]] std::uint64_t fill_fish_resources(TileLayer& tiles,
+                                                std::span<const std::uint8_t> heights,
+                                                TileRect area, bool enabled,
+                                                std::uint8_t threshold = kFisherFillThreshold,
+                                                TypeId resource = TypeId{11});
+
 // AnnoWelt.dll 0x100e34dc, initialized at 0x1008fea0/0x1008ff00:
 // byte(trunc(value / f32(0.04))) = 32. A rule value, not a size limit;
 // passed explicitly (or by this default) so future rules can select another value.

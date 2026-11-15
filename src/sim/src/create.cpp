@@ -353,7 +353,7 @@ Reject building_removal_problem(const Rules& rules, const TypeRegistry& types,
 
 bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types,
                      PlayerTable& players, Island& island, const BuildingKey& key,
-                     std::optional<TileXY> named) {
+                     std::optional<TileXY> named, bool fisher_enabled) {
     if (key.city.island != island.index) {
         return false;
     }
@@ -410,7 +410,8 @@ bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistr
         const auto [clear_x, clear_y] = removal_clear_xy(
             island.tiles, *ty, b.x, b.y, b.rotation, named_x, named_y, rules.removal_clear_tile);
         std::vector<std::uint64_t> cleared;
-        clear_object_record(island.tiles, types, clear_x, clear_y, &cleared);
+        clear_object_record(island.tiles, types, clear_x, clear_y, &cleared,
+                            fisher_enabled ? island.terrain.get() : nullptr);
         invalidate_claims(island, rules, cleared); // enhanced only (docs/sim/forestry.md 3.5)
     }
     island.cache.by_id.erase(b.id);

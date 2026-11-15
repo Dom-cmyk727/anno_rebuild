@@ -881,7 +881,7 @@ TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal go
     CHECK(outcome.value().checkpoints_matched == 21);
     CHECK(replayed.state_hash() == w.state_hash());
 
-    // Goldens (self-baselined, goldens.txt; the asserts above do not depend on them).
+    // Goldens (self-baselined, pins.txt; the asserts above do not depend on them).
     for (const auto& [name, value] : std::vector<std::pair<std::string, std::uint64_t>>{
              {"t24_g6_checkpoints", checkpoints.value()}, {"t24_g6_end", w.state_hash()}}) {
         std::string line;

@@ -39,7 +39,8 @@ inline Rig fishery_rig(bool fish = true, bool water = true, std::uint8_t rotatio
     auto r = make_rig();
     auto& is = r.spec.islands[0];
     std::vector<std::uint8_t> heights(std::uint64_t{is.w} * is.h,
-                                      water ? std::uint8_t{0} : std::uint8_t{128});
+                                      water ? std::uint8_t{24} : std::uint8_t{128});
+    // Mean 24 is walkable sea but above the runtime-fill threshold 16.
     // A closed control resource, separated from the three accessible water resources.
     for (std::uint32_t y = 16; y <= 17; ++y)
         for (std::uint32_t x = 14; x <= 15; ++x)

@@ -225,6 +225,10 @@ struct Body {
                     !harvest_candidate_type(ctx.types, object(t), fig.cargo_goods, skip)) {
                     continue;
                 }
+                // D AnnoWelt 0x100592f4-0x100592fc counts unclaimed resource tiles
+                // before goal-pop 0x100033c3 applies the usable subcell mask.
+                // A blocked fish therefore keeps the search nonempty, but supplies no goal.
+                candidates.insert(t);
                 // The goal sub-cells are the tile's FREE sub-cells (0x10003220: 0x1ff minus the
                 // record's blocked mask, row-major, bit 4 the centre; docs/re/forestry.md 2.11).
                 std::uint32_t blocked = island->tiles.walk_mask(index(t)) & 0x1ffU;
@@ -240,7 +244,6 @@ struct Body {
                         continue;
                     blocked = cell->blocked_mask;
                 }
-                candidates.insert(t);
                 for (std::uint32_t row = 0; row < 3; ++row) {
                     for (std::uint32_t col = 0; col < 3; ++col) {
                         if ((blocked >> (row * 3 + col) & 1U) == 0) {

@@ -1016,7 +1016,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
 
 TEST_CASE("golden G0 empty world seed 1234 advance 10 ms x 1000") {
     // The state hash after 1, 100 and 1000 steps, against
-    // fixtures/synthetic/sim/goldens.txt (stage S1, re-baselined at development
+    // fixtures/synthetic/sim/pins.txt (stage S1, re-baselined at development
     // version 101 by stage S3: the header gained the configuration and the
     // settings scope; at 102 by stage S4: the players scope, whose cursor and
     // stamp advance() moves).
@@ -1038,7 +1038,7 @@ TEST_CASE("golden G0 empty world seed 1234 advance 10 ms x 1000") {
         CHECK(problem == "");
     }
     // The stage of the golden is compared too: a test naming another stage
-    // than goldens.txt fails.
+    // than pins.txt fails.
     if (!anno::test::update_requested()) {
         std::string line;
         CHECK(anno::test::check_golden("g0_step1000", "S2", w.state_hash(), line) != "");

@@ -11452,6 +11452,131 @@ NOT_RUN: local MSVC/WSL, HE/original-runtime execution, real-map canary, Windows
 QUESTIONs: none blocking this bounded synthetic port; OQ-603 and runtime fish remain outside its claim.
 
 
+## FISHER-RE-2 — runtime fish source and normal-session prerequisite (2026-11-15)
+
+Status: READY FOR REVIEW; independent review is the orchestrator's handover review.
+Branch task/FISHER-RE-2; base origin/main 01a4d540; merged origin/task/FISHER-1b 7dd95644.
+Start 2026-11-15 00:24:11Z; budget 2–3 hours; documents/tools and vector-reader compatibility only.
+Owner four-task prompt is this packet; board has no separate fisher-re-2.md. Common rules read.
+No reviewer subagents; no engine behavior, state number, extension, pin or original-asset change.
+Read complete GOG AnnoWelt 0x100928a0–0x10092b32: clipped row-major empty-tile fill.
+A whole nonzero u16 object word skips; mean = four unsigned corners / 4, strict mean < 16 creates fish.
+Means 16–31 do not create fish; mean >= 32 takes a distinct fertility-dependent grass path.
+Initializers 0x1008fea0–0x1008feb2 and 0x1008ff00–0x1008ff0e establish default thresholds 16/32.
+Fish writes id 11, byte 2 zero, item-height low byte, byte 3 bit 7 preserved; corners are untouched.
+No new figure, occurrence, saved id/counter, live-animal cap or periodic fish timer in this body.
+Resource identity: Anlagen 11, goods 71, same as embedded fish; those records are not scenery-only by type.
+Mode-3 blocked 0 below mean 32 gives usable 511 through 0x100033c3–0x100033ce.
+Load callers: 0x100a1f9d / 0x100a20b8 / 0x100a2fc8 after child-record loading.
+Wrapper 0x100a1810–0x100a183c calls preprocess +0x1a4 then fill +0x1a0.
+Area clear 0x1008376e–0x10083796 also fills; ordinary placement 0x10082ab9 is +0x19c, not fill.
+Corrected old transport slot attribution in a new fisher.md section; did not rewrite accepted transport.md.
+No draws in the fill or named standard catalogue/type getter bodies; no transitive load-session total claimed.
+Physical catalogue construction remains the existing OQ-202 boundary; arbitrary substituted receivers not inferred.
+OQ-610 narrowed: load/fill/clear do not lower fish corners; external/editor setter caller closure still OPEN.
+Added runtime_fish reference; four hand-derived cases: mean 15/16, occupied, and high raw object-word bits.
+Supplied draw remains unconsumed; reference phase input/output denotes the whole raw byte 3.
+Two new applied mutants: inclusive depth and ignored occupancy; each exits 1, not malformed exit 2.
+Contract adds exact three-cell census and missing-HEIGHT / grass-branch scope refusals; 81 checks / 53 vectors pass.
+C++ geometry vector reader skips runtime_fish by name; it still executes 6 sea / 5 grid / 5 rectangle vectors.
+Static embedded-island census: all 50 original scenarios, 4,908,270 runtime cells / usable goals.
+Per-map counts, source hashes and exact half-open cell runs: cache/fisher-re-2/runtime-fish-final-02.json.
+S01_02_01: 179,016 cells; farm 810 search rectangles contain 28 / 64 candidates on island 58.
+Witnesses local (205,149) / (202,157); candidate inclusion is not entrance-path or catch proof.
+lan5.txt templates: 280,316 cells; lan5-ship-a.json templates: 420,194 cells, all usable.
+Both lan5 meanings measured explicitly; neither is a shipped lan5.sze; procedural link draws are not emulated.
+Census counts footprints, not just anchors; preserves zeros for six maps with no eligible embedded cells.
+Original first census refused an out-of-bounds footprint; original clipped-placement rule fixed that tool assumption.
+Original first mutant proof refused an overlapping replacement string; full distinct span fixed the proof, not rule.
+First stdout logs retained; uncaptured stderr recorded as observations in failure-observations.json.
+NORMAL_IMPORT_OK islands=27; NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions.
+Preflight uses normal loader, no ActorFreeComponent, script suppression or altered original resources.
+OQ-625 / QUESTION: separate script-object implementation (recommended), or owner-authorized narrower component canary?
+The state-free fish derivation alone cannot satisfy FISHER-1c's requested normal-session proof.
+Gates under cache/fisher-re-2/: reference-final.log: 53 vectors, 0 disagreements; contract-final.log: 81 checks.
+focused-01.log, automatic picture contract (retained unchanged):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-final.log, fisher_reference_contract:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-final.log, reference agrees plus changed geometry-vector consumer:
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+runtime-fish-final-02.log: 50 scenarios + 2 layouts; 5,608,780 created cells / usable goals; zero census failures.
+lint-01.log: lint_sim: ok; format-01.log: clang-format 23.1.3 passes; git diff --check / relative links pass.
+build-01.log: Dev succeeds; two Apple duplicate-library linker warnings retained, no zero-warning claim here.
+Evidence SHA-256 inventory: cache/fisher-re-2/evidence-sha256.json. No memory-refused test occurred; focused-final reruns only the changed reference scope.
+Hosted CI URL and terminal result supplied at handover; no pending run is pre-claimed green.
+NOT_RUN: HE, live original session, complete external/editor setter closure, real gameplay canary, Windows game-file gate.
+Decisions and reasoning:
+- Model the resource-fill predicate, not a speculative fish figure or PRNG generator; it needs no new state.
+- Measure generated empty-water resources separately from the 2,473 blocked embedded records.
+- Enumerate exact cells as compact row ranges; distinguish embedded islands from unresolved link selection.
+- Check normal-session prerequisites before building the canary; keep script refusal visible and preserve owner scope.
+- Preserve OQ-603 / OQ-604 / OQ-610 and standard-catalogue receiver limits rather than invent closure.
+QUESTIONs: OQ-625 blocks the normal-session canary, not this bounded source read; Task 3 records the decision boundary.
+
+
+## FISHER-1c — real-file canary prerequisite QUESTION checkpoint (2026-11-15)
+
+Status: READY FOR REVIEW — QUESTION checkpoint; the requested canary is NOT_RUN, not completed.
+Branch task/FISHER-1c; stacked on final task/FISHER-1b 7dd9564496068067364c6b6f2293b98420c90de8.
+Merged task/FISHER-RE-2 568c8788176e3b3d65a80c1ea5f6c13efe400ec5; old branches/worktrees preserved.
+Owner four-task release is the authoritative packet; Task 3 budget about 2 hours, stopped at prerequisite boundary.
+CLAUDE, PLAN, TASKS owner rules / protocol and evidence contract / testing README read at checkpoint.
+No reviewer subagents; independent review remains the orchestrator's handover review.
+The runtime fish rule itself qualifies as a state-free loaded-data derivation; no new tick system is inferred.
+Original evidence: AnnoWelt 0x100928a0–0x10092b32, load calls 0x100a1f9d / 0x100a20b8 / 0x100a2fc8.
+Empty whole object word and four-corner integer mean below 16 create resource 11 without a fish-body draw.
+Mode-3 goal-pop 0x100033c3–0x100033ce yields usable 511 for these low cells.
+RE-2's static projection finds 179,016 generated S01_02_01 cells; all have usable mode-3 masks.
+Its island-58 farm rectangles contain 28 and 64 candidates; those are not successful path/trip claims.
+Before porting, a bounded measurement used the original registry and unmodified S01_02_01 bytes.
+Normal sim::load_scenario, default UnitImportOptions: no ActorFreeComponent or actor-import fallback.
+The map imports successfully with all 27 embedded islands.
+Then public World::create is invoked twice with the existing ExtensionContext, fisher_rules disabled / enabled.
+Exact observed lines from cache/fisher-1c/preflight-01.log:
+NORMAL_IMPORT_OK islands=27
+FISHER_FLAG 0 NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions
+FISHER_FLAG 1 NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions
+This diagnostic is World::create's real refusal, not a fabricated assertion or expected-pass canary result.
+The parser's OBJECT_DEFINE section contains two OBJECT_STADT definitions (parsed original data, no script bytes committed).
+Current src/sim/src/script.cpp rejects !a.objects.empty() before it can create this normal-session world.
+This dependency is independent of water geometry, fish masks, resource occupancy and the fisher extension's flag.
+A fish-fill hook would not repair the compiler's rejection or permit the required farm state to advance.
+The measurement source/binary is ignored cache only and links the unchanged RE-2 production libraries.
+No engine code, new state, extension tag, Rules field, pin value, fixture byte, or original resource was changed here.
+No scripted objects were discarded, rebound by guess, or replaced with a synthetic world.
+QUESTION (OQ-625): which contract should unblock the original-map canary?
+Option 1 (recommended): separately implement the script-object bindings and required uses, then resume this canary.
+  Cost: a separately sized script packet plus its focused tests; inventory the city bindings and dependent operations first.
+  It preserves the required original S01_02_01 normal-session claim; no state-number conclusion is assumed.
+Option 2: explicitly authorize a script-free/component canary and keep original normal-session acceptance open.
+  Cost: a narrower test contract and explicit projection/seam; it cannot demonstrate original scenario-script execution.
+  No implementation estimate or equivalence claim is offered before that scope decision.
+The owner has not authorized option 2; the earlier ActorFreeComponent approval applied only to geometry census.
+Following the standing release rule, checkpoint this QUESTION and continue independent FIXTURES-TRIM-1.
+Resume work after a decision: flag-gated fill, then normal-loader dispatch / claim / catch / return / Farm-food proof.
+Print event ticks only from actual state observations; no ticks are invented at this checkpoint.
+Then two-run flag-on determinism and the flag-off full pins check, 0 moved, remain required.
+OQ-603's float/Y continuation and other-map gameplay coverage remain outside the planned canary's claim.
+Evidence: cache/fisher-1c/preflight.cpp, preflight-01.log and evidence-sha256.json.
+No acceptance-test COUNTS/VERDICT lines exist for this checkpoint: the measurement is not a canonical passing gate.
+NOT_RUN: the requested gameplay canary; fisher/affected gates; zero-warning Dev build; full pins check on this branch.
+NOT_RUN: HE, original live execution, Windows game-file run, full landing suite.
+Hosted CI is read after the checkpoint push and monitored; its URL/result is supplied with the final four-task status.
+The report-only delta cannot establish canary success even if inherited branch CI is green.
+No running gate was interrupted, no memory-refused result counted as execution, and no whole gate repeated.
+Decisions and reasoning:
+- Verify the complete starting-state prerequisite first, as the earlier MAP review required.
+- Keep the state-free fish finding distinct from the normal-session script dependency.
+- Preserve the requested original resources, actors and script; a silent bypass would change the proof.
+- Stop at a clean decision boundary instead of adding an untestable gameplay hook under a blocked acceptance claim.
+- Move to Task 4 because its fixture cleanup is independent of either fish or script-object implementation.
+QUESTIONs: OQ-625 is blocking; no owner decision or orchestrator acceptance is inferred.
+
+
 ## FIXTURES-TRIM-1 — one current fixture set and canonical pins (2026-11-15)
 
 Status: READY FOR REVIEW; independent review is the orchestrator's handover review.
@@ -11509,7 +11634,7 @@ Decisions and reasoning:
 - Use the requested pins.txt path by moving the existing mechanism; never introduce a second pin source.
 - Run one full pins selection and a disjoint reader set; preserve inventory failure and rerun only unexecuted work.
 - Keep this branch independent of all fisher branches and preserve every retained fixture byte.
-QUESTIONs: none for cleanup; FISHER-1c's separate OQ-623 checkpoint is not resolved by this task.
+QUESTIONs: none for cleanup; FISHER-1c's separate OQ-625 checkpoint is not resolved by this task.
 
 ## UI-INFO-2c — READY FOR REVIEW (UI lane, 2026-11-15)
 
@@ -11526,3 +11651,65 @@ Branch `task/UI-INFO-2c` from `task/UI-INFO-2` `da29872b`; code `0b3340fc`. Done
 **Decisions and reasoning.** Only the building tool changes: the owner's question was about ordinary buildings, and the founding mode has its own measured evidence (OQ-520). T keeps +1 (the window's own key, no original counterpart). No `sim` or `render` change.
 
 **Landing.** Stacks on UI-INFO-2 (`da29872b`); lands through the orchestrator after it.
+
+
+## FISHER-1d — follow-ups, runtime fish fill and script inventory (2026-11-15)
+
+Status: READY FOR REVIEW; independent orchestrator review pending; final hosted receipt accompanies handoff.
+Base eb40d75c; owner-authorized trim merge 7aaa3c85; tested source db74a7cb; closeout changes docs only.
+Only REPORTS append conflicted; both full entries retained, headings once. Old branches remain preserved.
+OQ-623 renamed OQ-625 throughout this lane; UI's OQ-623/624 untouched. No reviewer subagents.
+B1: 0x100592f4–0x100592fc counts blocked resources before goal-pop 0x100033c3; truly empty rig added.
+B2: first entrance on mean 32 land reaches/claims water fish; second entrance on mean 31 permits return.
+B3: hand-derived literal rotated launch; mode-0 test accurately names default/explicit selection equivalence.
+B4: mid-trip reload proves 768 raw delivery and worker release; two from-create runs match hashes.
+B5: enabled invalid-job diagnostic lists job 0x2d; disabled control excludes it.
+Fill: fill_fish_resources(TileLayer&, HEIGHT, TileRect, enabled, threshold=16, resource=11), no saved field.
+Original 0x100928a0–0x10092b32: clipped row-major empty cells, unsigned mean < 16, zero draws.
+Hooks: loaded objects/buildings (0x100a1f9d/0x100a20b8/0x100a2fc8); area clear (0x1008376e–0x10083796).
+Demolition/city/house removal propagate the flag; placement/tick/native reload do not regenerate fish.
+Four runtime_fish vectors cover 15/16, occupied 11/16384, phase/anchor/height and preserved fields.
+C++ census: 50 maps, 4,908,270 generated/usable; S01_02_01 179,016; every per-map count agrees.
+It projects raw geometry/all footprints, including orphan PROD2; synthetic World creation proves the hook.
+This is not normal actor/script import or original-farm trip completion; no gameplay script bypass.
+Owner option 1: inventory/propose SCRIPT-OBJECTS-1; OBJECT_STADT operands 4/18 at offsets 16/48.
+Their only KILLED uses are primaries 4209/4306; numeric namespace/lifetime unread; also 5 PLAYER queries/11 action names.
+INIT first calls unsupported QUESTLOG_SHOW at 1339; proposed 3–4 h SCRIPT-OBJECTS-1 alone cannot unblock the script (§8).
+T2: pins.txt labels corrected; formulas/digests unchanged, historical checksum scope explicit.
+All 14 named recordings are byte-identical to accepted trim; README/provenance wording is the requested metadata edit.
+State 139, all section versions 1 and existing tag 1 remain unchanged; feature stays default-off.
+Dev zero compiler warnings; final relink zero warnings (local Apple duplicate-library diagnostic suppression).
+Initial build's two duplicate-archive linker warnings retained; no compiler warning disabled. Lint/format/diff/links pass.
+Direct: 22 fisher cases pass, reference 53 vectors/0 disagreements, contract 81 checks; all 22 also pass canonically.
+Cache-only production mutants: inclusive depth fails mean 16; late candidate count fails blocked fish; legal controls pass.
+Each replacement applied once; predicate-mutant.json/candidate-mutant.json retain commands, hashes and results.
+Full pins (Dev, game files), cache/fisher-1d/pins-full-01.log:
+```
+COUNTS: selected=1693 executed=1675 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/fisher-1d/pins-full-01.log
+```
+App/reference (Release, game files), cache/fisher-1d/app-reference-02.log:
+```
+COUNTS: selected=291 executed=288 failed=0 empty=0 skipped=3 (required-asset=0 platform=0 opt-in=3 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Required pins_contract (pins log), viewer_wiring_contract/fisher_reference_contract/picture_matrix_contract (app log), each:
+```
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Initial all-closed-entrance diagnostic failed delivery bound (b-rigs-direct-01.log); final B2 scope is explicit.
+All-closed return remains unproved; no movement rule was invented. App attempt 01 ran no tests (Dev gate lock).
+App ran once in the existing Release folder; no running gate was interrupted, memory refusal or whole-gate repeat.
+CI: source run 43692985109 has only Windows build pending at report preparation; final pushed gate checked before handoff.
+Final receipt: https://github.com/Dom-cmyk727/anno_rebuild/actions?query=branch%3Atask%2FFISHER-1d (exact run in handoff).
+NOT_RUN: normal-map gameplay canary, original/HE, local MSVC/WSL/GPU/SDL viewer; hosted CI has no game files.
+Unaffected formats/render/test-support lanes reused: no changed source there. Contract/README re-read before handover.
+Evidence SHA-256: cache/fisher-1d/evidence-sha256.json; acceptance table: acceptance.md; no pin/recording rewrites.
+Decisions and reasoning:
+- Merge accepted trim as authorized so T2 documents the tested mechanism; retain both append-only reports.
+- Match candidate ordering and original load/clear lifecycle; reuse columns/flag, preserve default hashes and RNG.
+- Preserve owner draw scope: one discarded draw per eligible attempt, no body draw; full on/off trajectories may diverge.
+- Name the geometry scope and all-closed-return limit; option 1 keeps the normal canary blocked rather than suppressing script.
+QUESTIONs: no further owner choice for FISHER-1d; OQ-625 remains open. Script inventory exposes the broader language backlog.

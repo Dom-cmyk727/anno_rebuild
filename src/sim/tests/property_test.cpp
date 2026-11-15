@@ -378,7 +378,7 @@ TEST_CASE("G2 replay equals golden") {
     CHECK(outcome.value().checkpoints_matched == 6);
     CHECK(replayed.state_hash() == w.state_hash());
 
-    // The final hash is a golden of its own (goldens.txt).
+    // The final hash is a golden of its own (pins.txt).
     std::string line;
     const std::string problem = anno::test::check_golden("s10_g2_end", "S10", w.state_hash(), line);
     CHECK_MESSAGE(problem.empty(), problem);

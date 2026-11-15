@@ -9,7 +9,7 @@ import sys
 import tempfile
 
 
-TYPES = {'farm_tick', 'converted', 'search_rect', 'sea_cell', 'trip', 'cut_match', 'corner_grid'}
+TYPES = {'farm_tick', 'converted', 'search_rect', 'sea_cell', 'trip', 'cut_match', 'corner_grid', 'runtime_fish'}
 
 
 def invoke(ref, path, timeout=5):
@@ -95,6 +95,9 @@ def contract(ref, vectors, root):
     case('bad_height_count', good.replace('31,31,31,31', '31,31,31'), 2, 'four corner')
     case('bad_height_byte', good.replace('31,31,31,31', '31,31,31,256'), 2, 'out of range')
     case('float_height', good.replace('31,31,31,31', '31,31,31,31.5'), 2, 'integer')
+    case('runtime_grass_scope',
+         'runtime_fish land heights=32,32,32,32 tile=0 phase=0 draws=- => consumed=0\n',
+         2, 'sea-branch only')
     tick = next(row for row in rows if row.startswith('farm_tick at_gate '))
     case('draw_exhausted', tick.replace('draws=4294967295', 'draws=-'), 2, 'exhausted')
     case('zero_need', tick.replace('need=128', 'need=0'), 2, 'out of range')
@@ -195,10 +198,41 @@ def contract(ref, vectors, root):
     sample.unlink()
     corpus_case(2, 'expected 1 scenarios, found 0')
 
+    # Runtime fill is a loaded-data projection, not the legacy embedded-fish test.
+    # Self-authored 2x2 heights0 with tile11 at(0,0): three empty cells create fish.
+    head = bytes([1, 1])
+    (corpus / 'Anlagen.dat').write_bytes(chunk('ANNO', chunk('ANLAGEN',
+        chunk('ENTRY', struct.pack('<II', 0, 11) + chunk('HEAD', head)))))
+    square([0, 0, 0, 0])
+    out = root / 'runtime.json'
+    def runtime_case(code, diagnostic):
+        nonlocal checks
+        result = subprocess.run([sys.executable, '-I', str(ref), '--runtime-fish',
+                                 str(corpus), '--expected-scenarios', '1',
+                                 '--output', str(out)], capture_output=True, text=True, timeout=5)
+        output = result.stdout + result.stderr
+        if result.returncode != code or diagnostic not in output or 'Traceback' in output:
+            raise AssertionError(f'runtime census: {result.returncode}: {output}')
+        checks += 1
+    runtime_case(0, 'runtime=3 usable=3')
+    import json
+    measured = json.loads(out.read_text())['maps'][0]
+    if measured['cell_runs'] != [
+            dict(island=7, y=0, x=1, end_x=2, origin_x=0, origin_y=0),
+            dict(island=7, y=1, x=0, end_x=2, origin_x=0, origin_y=0)]:
+        raise AssertionError('runtime census lost or invented exact cells')
+    # Removing HEIGHT must refuse; a missing/partial grid is not a zero-height sea.
+    mini(0, with_height=False)
+    runtime_case(2, 'tile not covered')
+
     # Every replacement is proved applied once before running the mutant. A
     # syntax error, exception or malformed-input exit2 is not a killed mutant.
     source = ref.read_text(encoding='utf-8')
     mutants = [
+        ('runtime_depth_inclusive', "r['tile'] == 0 and mean < 16",
+         "r['tile'] == 0 and mean <= 16"),
+        ('runtime_occupancy_ignored', "r['tile'] == 0 and mean < 16",
+         "1 and mean < 16"),
         ('invert_blocked_mask', 'blocked=511 * (1 - opened)', 'blocked=511 * opened'),
         ('invert_usable_mask', 'usable=511 * opened', 'usable=511 * (1 - opened)'),
         ('replicate_right_border', '    return grid',

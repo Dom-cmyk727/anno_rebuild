@@ -86,7 +86,8 @@ std::uint32_t place_object_record(TileLayer&, const TypeRegistry&, const Buildin
 /// (OQ-204, OQ-205).
 /// `cleared`, when given, receives the index of every tile it cleared (MAP-ECON-1 E3).
 void clear_object_record(TileLayer&, const TypeRegistry&, std::int32_t x, std::int32_t y,
-                         std::vector<std::uint64_t>* cleared = nullptr);
+                         std::vector<std::uint64_t>* cleared = nullptr,
+                         const Terrain* fisher_terrain = nullptr);
 /// MAP-ECON-1 E3, enhanced only (docs/sim/forestry.md 3.5): with Rules::forestry_claim_hygiene
 /// every tile of `tiles` loses the claim bit and its owner entry; with the rule off (the original:
 /// placement and clearing keep bit 29) nothing changes.

@@ -114,7 +114,7 @@ u32 base version1 and ends with u64 extension count0 (state.md §9.7). All objec
 substreams, registry digests, schema and PRNG timeline are unchanged.
 
   sim_stream.py            print the values
-  sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
+  sim_stream.py --check    compare them with fixtures/synthetic/sim/pins.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
                            scenario_corpus.txt; exit 1 on a difference
 
@@ -122,7 +122,7 @@ The class table below is Appendix C (compare constants of the class ticks read
 from AnnoWelt.dll, see docs/re/production.md §10); the stream layout is the one
 config_test.cpp transcribes byte by byte. A change of the stream (a field of
 SimConfig, Rules, WorldSettings, a seam, the class table) changes both this file
-and the C++ code, and goldens.txt is re-baselined with the values printed here.
+and the C++ code, and pins.txt is re-baselined with the values printed here.
 """
 # MAP-INTEGRATE-1 current lineage:132 + SIMINT1 schema, player permission rows,
 # and SCRIPT2 source/limits/namespace/policy/continuation scope after timers.
@@ -962,7 +962,7 @@ def values():
 
 def goldens():
     found = {}
-    path = ROOT / 'fixtures/synthetic/sim/current/goldens.txt'
+    path = ROOT / 'fixtures/synthetic/sim/pins.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         parts = line.split('#')[0].split()
         if len(parts) == 4:
@@ -1041,7 +1041,7 @@ HOLDS_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--check', action='store_true', help='compare with goldens.txt')
+    ap.add_argument('--check', action='store_true', help='compare with pins.txt')
     ap.add_argument('--write-holds', action='store_true',
                     help='write fixtures/synthetic/sim/ship_holds.txt and exit')
     ap.add_argument('--write-stage-digest', action='store_true',
@@ -1078,7 +1078,7 @@ def main():
                   (name, version, STATE_HASH_VERSION))
             bad += 1
         elif value != computed[name]:
-            print('%s: goldens.txt has %016x, the transcription %016x' %
+            print('%s: pins.txt has %016x, the transcription %016x' %
                   (name, value, computed[name]))
             bad += 1
     # The scenario corpus file cannot be recomputed here (it needs the game files), but a

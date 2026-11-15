@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -708,6 +709,37 @@ TEST_CASE("dev tool: arm selects a type directly, by id, and turns the tool on, 
     CHECK_FALSE(off.arm(kPlain));
     CHECK_FALSE(off.enabled());
     CHECK(off.message().find("no city") != std::string::npos);
+}
+
+TEST_CASE("tool keys: `.` turns an ordinary building on and `,` back, as the original's" *
+          doctest::test_suite("dev_tool")) {
+    // GOG Wine runner (UI-INFO-2, pioneer house 501): the ordinary placement cursor showed
+    // rotation blocks 1, 2 under `.` and 1, 0 under `,` - the info panel's right and left
+    // arrow. Owner decision 2026-11-15 (OQ-623). T is this window's own key and turns on.
+    const auto key = [](SDL_Keycode k) {
+        SDL_Event e{};
+        e.type = SDL_EVENT_KEY_DOWN;
+        e.key.key = k;
+        return app::tool_input_from_sdl(e, 1.0F, true, false);
+    };
+    REQUIRE(key(SDLK_PERIOD));
+    CHECK(key(SDLK_PERIOD)->kind == app::ToolInput::Kind::Rotate);
+    REQUIRE(key(SDLK_COMMA));
+    CHECK(key(SDLK_COMMA)->kind == app::ToolInput::Kind::RotateBack);
+    REQUIRE(key(SDLK_T));
+    CHECK(key(SDLK_T)->kind == app::ToolInput::Kind::Rotate);
+
+    // Through the tool: from 0, `.` `.` gives 1, 2 and `,` `,` gives 1, 0 (u2_501_dot1, dot2,
+    // comma1, comma2); one more `,` wraps to 3.
+    app::DevTool tool(setup());
+    REQUIRE(tool.arm(kPlain));
+    REQUIRE(tool.input().rotation() == 0);
+    const std::array<std::pair<SDL_Keycode, int>, 5> steps{
+        {{SDLK_PERIOD, 1}, {SDLK_PERIOD, 2}, {SDLK_COMMA, 1}, {SDLK_COMMA, 0}, {SDLK_COMMA, 3}}};
+    for (const auto& [k, expect] : steps) {
+        CHECK(tool.handle(*key(k), nullptr).empty());
+        CHECK(tool.input().rotation() == expect);
+    }
 }
 
 TEST_CASE("opening keys: `,` turns the founding cursor on and `.` back, as the original's" *

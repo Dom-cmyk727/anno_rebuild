@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <anno/formats/annowelt.hpp>
+#include <anno/sim/fisher.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/types.hpp>
@@ -85,7 +86,8 @@ std::uint32_t place_object_record(TileLayer&, const TypeRegistry&, const Buildin
 /// (OQ-204, OQ-205).
 /// `cleared`, when given, receives the index of every tile it cleared (MAP-ECON-1 E3).
 void clear_object_record(TileLayer&, const TypeRegistry&, std::int32_t x, std::int32_t y,
-                         std::vector<std::uint64_t>* cleared = nullptr);
+                         std::vector<std::uint64_t>* cleared = nullptr,
+                         const Terrain* fisher_terrain = nullptr);
 /// MAP-ECON-1 E3, enhanced only (docs/sim/forestry.md 3.5): with Rules::forestry_claim_hygiene
 /// every tile of `tiles` loses the claim bit and its owner entry; with the rule off (the original:
 /// placement and clearing keep bit 29) nothing changes.
@@ -103,13 +105,16 @@ removal_clear_xy(const TileLayer& layer, const BuildingType& type, std::int32_t 
 [[nodiscard]] WalkRecord walk_record(const Island&, const TypeRegistry&, TileXY);
 /// Per-search scratch; source island, types and tables must outlive it and stay unchanged.
 /// Coordinates are world tiles; rectangle clipped to island (0x10002b80).
+enum class WalkCellMode : std::uint8_t { Land = 0, FisherSea = 3 };
 class WalkCells {
   public:
     WalkCells(const Island&, const TypeRegistry&, const WalkTables&, TileRect,
-              std::uint32_t chunk_edge = 4, std::optional<SearchArea> disc = {});
+              std::uint32_t chunk_edge = 4, std::optional<SearchArea> disc = {},
+              WalkCellMode mode = WalkCellMode::Land,
+              std::uint8_t water_threshold = kFisherWaterThreshold);
     [[nodiscard]] WalkCell get(TileXY);
     /// The mapped low word is not invertible; start floods need the raw bitmap.
-    [[nodiscard]] WalkRecord record(TileXY p) const { return walk_record(island_, types_, p); }
+    [[nodiscard]] WalkRecord record(TileXY p) const;
     /// Search marks remain in this scratch store. Outside rectangle writes fail.
     bool set(TileXY, WalkCell);
     [[nodiscard]] TileRect rect() const { return rect_; }
@@ -125,6 +130,8 @@ class WalkCells {
     std::uint32_t edge_;
     bool complete_ = true;
     std::optional<SearchArea> disc_;
+    WalkCellMode mode_ = WalkCellMode::Land;
+    std::uint8_t water_threshold_ = kFisherWaterThreshold;
     std::map<TileXY, std::vector<WalkCell>> chunks_;
 };
 } // namespace anno::sim

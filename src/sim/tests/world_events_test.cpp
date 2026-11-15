@@ -1703,7 +1703,7 @@ TEST_CASE("G4 players timers events and the 7.5 min event through 600000 ticks e
     CHECK(outcome.value().checkpoints_matched == 21);
     CHECK(replayed.state_hash() == w.state_hash());
 
-    // Goldens (self-baselined, goldens.txt; the asserts above do not depend on them).
+    // Goldens (self-baselined, pins.txt; the asserts above do not depend on them).
     check_golden_line("s12_g4_checkpoints", checkpoints.value());
     check_golden_line("s12_g4_end", w.state_hash());
     check_golden_line("s12_g4_events", hash_events(ui));

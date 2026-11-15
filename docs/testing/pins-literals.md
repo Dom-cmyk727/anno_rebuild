@@ -2,7 +2,7 @@
 
 Base `f9e6ea0c`: exact lowercase 16-hex scan finds103 occurrences in24 files
 (the packet’s126/30 count describes an earlier inventory). Lines below are **base lines**.
-25 active hash occurrences moved into22 unique names in `sim/current/goldens.txt`;
+25 active hash occurrences moved into22 unique names in `sim/pins.txt`;
 2 obsolete hash comments removed;76 fixed inputs/format or primitive-algorithm constants kept.
 No moving state/registry/replay hash remains literal. Existing named pins stay in the same file.
 Seeds and FNV primitive constants deliberately stay independent of regenerated sim expectations.

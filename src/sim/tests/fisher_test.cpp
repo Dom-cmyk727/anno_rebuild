@@ -58,7 +58,8 @@ TEST_CASE("fisher geometry: every sea-cell, corner-grid and search-rectangle vec
         std::string kind, name;
         REQUIRE(static_cast<bool>(prefix >> kind >> name));
         INFO(kind, " ", name);
-        if (kind == "farm_tick" || kind == "converted" || kind == "trip" || kind == "cut_match") {
+        if (kind == "farm_tick" || kind == "converted" || kind == "trip" || kind == "cut_match" ||
+            kind == "runtime_fish") {
             ++skipped;
             continue;
         }
@@ -77,7 +78,8 @@ TEST_CASE("fisher geometry: every sea-cell, corner-grid and search-rectangle vec
             REQUIRE(h.size() == 4);
             const auto cell = sim::fisher_cell({h[0], h[1], h[2], h[3]});
             CHECK(cell.walkable_water == (number(expected, "open") != 0));
-            CHECK(cell.goal_mask == number(expected, "free"));
+            CHECK(cell.blocked_mask == number(expected, "blocked"));
+            CHECK(cell.usable_mask == number(expected, "usable"));
             if (name == "border_below") {
                 CHECK(cell.mean == 31);
                 border31 = true;
@@ -127,8 +129,8 @@ TEST_CASE("fisher geometry: every sea-cell, corner-grid and search-rectangle vec
 }
 
 TEST_CASE("fisher geometry: threshold, unsigned mean and logical corner borders") {
-    CHECK(sim::fisher_cell({32, 32, 32, 32}) == sim::FisherCell{32, false, 511});
-    CHECK(sim::fisher_cell({32, 32, 32, 32}, 33) == sim::FisherCell{32, true, 0});
+    CHECK(sim::fisher_cell({32, 32, 32, 32}) == sim::FisherCell{32, false, 511, 0});
+    CHECK(sim::fisher_cell({32, 32, 32, 32}, 33) == sim::FisherCell{32, true, 0, 511});
     CHECK(sim::fisher_cell({31, 32, 32, 32}).mean == 31);
     CHECK(sim::fisher_cell({255, 255, 255, 255}).mean == 255);
     CHECK_FALSE(sim::fisher_cell({0, 0, 0, 0}, 0).walkable_water);
@@ -137,7 +139,7 @@ TEST_CASE("fisher geometry: threshold, unsigned mean and logical corner borders"
     CHECK(sim::fisher_corner(singleton, 1, 1, 1, 0) == 0);
     CHECK(sim::fisher_corner(singleton, 1, 1, 0, 1) == 0);
     CHECK(sim::fisher_corner(singleton, 1, 1, 1, 1) == 0);
-    CHECK(sim::fisher_cell_at(singleton, 1, 1, 0, 0) == sim::FisherCell{32, false, 511});
+    CHECK(sim::fisher_cell_at(singleton, 1, 1, 0, 0) == sim::FisherCell{32, false, 511, 0});
     CHECK_FALSE(sim::fisher_corner(singleton, 2, 2, 0, 0));
     CHECK_FALSE(sim::fisher_corner(singleton, 1, 1, 2, 0));
     CHECK_FALSE(sim::fisher_cell_at(singleton, 1, 1, 1, 0));
@@ -153,7 +155,7 @@ TEST_CASE("fisher geometry: rectangle wraps without map clamping or radius caps"
     CHECK_FALSE(sim::fisher_search_rect(0, 0, 1, 0, 7));
 }
 
-TEST_CASE("fisher geometry corpus: embedded fish goals and eight-neighbour water") {
+TEST_CASE("fisher geometry corpus: blocked embedded fish and eight-neighbour water") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original game files unavailable)\n";
@@ -164,7 +166,7 @@ TEST_CASE("fisher geometry corpus: embedded fish goals and eight-neighbour water
     REQUIRE_MESSAGE(registry.types, registry.error);
     const auto files = anno::test::files_with_ext(*dir / "Scenes", "sze");
     REQUIRE(files.size() == 50);
-    std::uint64_t fish = 0, goals = 0, adjacent = 0, failures = 0;
+    std::uint64_t fish = 0, blocked = 0, usable = 0, adjacent = 0, failures = 0;
     for (const auto& file : files) {
         INFO(file.generic_string());
         // Owner-authorized geometry component (2026-11-14), chosen BEFORE loading,
@@ -194,7 +196,9 @@ TEST_CASE("fisher geometry corpus: embedded fish goals and eight-neighbour water
                 const auto cell = sim::fisher_cell_at(samples, island.w, island.h, x, y);
                 REQUIRE(cell);
                 ++fish;
-                goals += cell->goal_mask == 511 ? 1U : 0U;
+                // The legacy census counted island +0x12c's BLOCKED mask, not usable goals.
+                blocked += cell->blocked_mask == 511 ? 1U : 0U;
+                usable += cell->usable_mask != 0 ? 1U : 0U;
                 bool water = false;
                 for (std::int64_t ny = std::int64_t{y} - 1; ny <= std::int64_t{y} + 1; ++ny)
                     for (std::int64_t nx = std::int64_t{x} - 1; nx <= std::int64_t{x} + 1; ++nx) {
@@ -212,11 +216,66 @@ TEST_CASE("fisher geometry corpus: embedded fish goals and eight-neighbour water
         }
     }
     std::cout << "FISHER_CORPUS scenarios=" << files.size() << " refused=" << failures
-              << " fish=" << fish << " goals=" << goals << " adjacent_water=" << adjacent
-              << " without_adjacent_water=" << fish - adjacent << " neighbourhood=8\n";
+              << " fish=" << fish << " blocked=" << blocked << " usable=" << usable
+              << " adjacent_water=" << adjacent << " without_adjacent_water=" << fish - adjacent
+              << " neighbourhood=8\n";
     CHECK(failures == 0);
     CHECK(fish == 2473);
-    CHECK(goals == 2473);
+    CHECK(blocked == 2473);
+    CHECK(usable == 0);
     CHECK(adjacent == 619);
     CHECK(fish - adjacent == 1854);
+}
+
+TEST_CASE("fisher fill: every runtime_fish reference vector preserves the other tile fields") {
+    std::ifstream input(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim/fisher_vectors.txt");
+    REQUIRE(input);
+    unsigned count = 0;
+    for (std::string line; std::getline(input, line);) {
+        std::istringstream left(line);
+        std::string kind, label;
+        if (!(left >> kind >> label) || kind != "runtime_fish")
+            continue;
+        INFO(label);
+        const auto arrow = line.find("=>");
+        REQUIRE(arrow != std::string::npos);
+        std::istringstream given_stream(
+            line.substr(line.find(label) + label.size(), arrow - line.find(label) - label.size()));
+        std::istringstream wanted_stream(line.substr(arrow + 2));
+        const auto given = fields(given_stream), wanted = fields(wanted_stream);
+        const auto h = bytes(given.at("heights"));
+        REQUIRE(h.size() == 4);
+        sim::TileLayer layer(0, 0, 2, 2, 4);
+        const auto raw_phase = number(given, "phase");
+        layer.set_object(0, number(given, "tile"));
+        layer.set_phase(0, static_cast<std::uint8_t>(raw_phase & 127));
+        layer.set_foot_anchor(0, static_cast<std::uint8_t>(raw_phase >> 7));
+        layer.set_foot_dx(0, 3);
+        layer.set_foot_dy(0, 4);
+        layer.set_foot_rotation(0, 2);
+        layer.set_owner(0, 7);
+        layer.set_aux(0, sim::kTileClaim | 186U);
+        layer.set_walk_code(0, 3);
+        layer.set_walk_mask(0, 0x155);
+        CHECK(sim::fill_fish_resources(layer, h, {0, 0, 1, 1}, false) == 0);
+        CHECK(layer.object(0) == number(given, "tile"));
+        CHECK(layer.phase(0) == (raw_phase & 127));
+        const auto changed = sim::fill_fish_resources(layer, h, {0, 0, 1, 1}, true);
+        CHECK(changed == number(wanted, "created"));
+        CHECK(layer.object(0) == number(wanted, "tile"));
+        CHECK((layer.phase(0) | (std::uint32_t{layer.foot_anchor(0)} << 7)) ==
+              number(wanted, "phase"));
+        CHECK(layer.item_height(0) == (changed ? number(wanted, "mean") : 186U));
+        CHECK(layer.foot_dx(0) == (changed ? 0 : 3));
+        CHECK(layer.foot_dy(0) == (changed ? 0 : 4));
+        CHECK(layer.foot_rotation(0) == (changed ? 0 : 2));
+        CHECK(layer.owner(0) == 7);
+        CHECK(layer.claimed(0));
+        CHECK(layer.walk_code(0) == 3);
+        CHECK(layer.walk_mask(0) == 0x155);
+        CHECK(number(wanted, "consumed") == 0); // no DrawSource in this operation
+        ++count;
+    }
+    CHECK(count >= 4);
+    std::cout << "FISHER_FILL_VECTORS executed=" << count << "\n";
 }

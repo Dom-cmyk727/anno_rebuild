@@ -100,7 +100,7 @@ create_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& ty
 /// (another island, no such city or list, a slot out of range or empty).
 bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types,
                      PlayerTable& players, Island& island, const BuildingKey& key,
-                     std::optional<TileXY> named = std::nullopt);
+                     std::optional<TileXY> named = std::nullopt, bool fisher_enabled = false);
 
 /// Rebuilds the derived indexes of one island from scratch: the id map, the
 /// footprint grids and, in every city, the service counters and house counts.

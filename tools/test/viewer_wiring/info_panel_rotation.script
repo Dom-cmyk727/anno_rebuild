@@ -1,0 +1,38 @@
+# UI-INFO-2: the info panel's preview at the four rotations, captured for
+# info_panel_rotation_check.py. Arms the dirt road 2520 (roads category at 782 373, cell (0, 0)
+# at 833 330) and screenshots the panel at rotation 0, after one, two and three clicks on
+# rotate_right (1003 470) and after one click on rotate_left (824 470) from there.
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+click_px 782 373
+wait frames 3
+click_px 833 330
+wait frames 5
+expect title build 2520
+expect fact ui.info.rotation == 0
+wait frames 1
+screenshot rot_2520_r0
+click_px 1003 470
+wait frames 3
+expect fact ui.info.rotation == 1
+wait frames 1
+screenshot rot_2520_r1
+click_px 1003 470
+wait frames 3
+expect fact ui.info.rotation == 2
+wait frames 1
+screenshot rot_2520_r2
+click_px 1003 470
+wait frames 3
+expect fact ui.info.rotation == 3
+wait frames 1
+screenshot rot_2520_r3
+click_px 824 470
+wait frames 3
+expect fact ui.info.rotation == 2
+wait frames 1
+screenshot rot_2520_r2b
+quit

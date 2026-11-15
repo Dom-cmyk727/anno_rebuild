@@ -29,7 +29,7 @@ identity used for comparison; it remains in its historical directory.
 | `g4.log` | iron137 `d0eadd5786bc9fdd2972aca091c3f1113f7e74c5958106f339a4052cd071dd19` | combined138 `fc031ccfe31a197ae5ad886c42db0dcc664411f40de1d28fedd3d4dc995e9615` | Newly executed players/timers/events session on the combined layout. |
 | `g5.log` | iron137 `2929e3257ae216fe08265e977777368a5c938f963187af575cf95389438a899e` | combined138 `dfc9baceb959adcd9085956c4ffe4a1b08a6f20c6ec63592de6a4e66aaea5f64` | Newly executed growth/drought session on the combined layout. |
 | `g6.log` | iron137 `a5d3f866be003e9859682312ecefde9fcf6bdb74db8206653bcaf52537e85aec` | combined138 `f8ee7b94731bfe1a33ba01208d9271498d62e71e02fca4360583e7494041db65` | Newly executed transport session on the combined layout. |
-| `goldens.txt` | iron137 `6233a3761d8c6536aed652f9f0b23f91d84c3e32431bc32d3f26097228125003` | combined138 `7bf1f30525f90ca75876e57cc869416d1cdd54fea35deb668735009d9d3f8a8d` | Independent G0/G1/S5/S6 roots and freshly executed semantic checkpoints use stream 138; event-only roots that did not change remain equal. |
+| `../pins.txt` | iron137 `6233a3761d8c6536aed652f9f0b23f91d84c3e32431bc32d3f26097228125003` | combined138 `7bf1f30525f90ca75876e57cc869416d1cdd54fea35deb668735009d9d3f8a8d` | Independent G0/G1/S5/S6 roots and freshly executed semantic checkpoints use stream 138; event-only roots that did not change remain equal. |
 | `loop_checkpoints.txt` | economy134 `c8b01dfd73dad7a4f009d16d6022651ca708901ac3e0d83393d46535e9d18c63` | combined138 `dfbe9d454d589b04ce9404ea0d5408aa3d4b52386ba8f07ac25bdaa7a97621ee` | The unchanged real Tutorial economic loop was re-recorded with the combined state identity. |
 | `m2_found.log` | iron137 `7125b31ed7c25b9b3b5a5b2760a90c72841e2f9e6ae914cf8fbf91e0d9d0d232` | combined138 `e662e8790d55e35c997c00694b11d41035debbe086e38797d5caaa97e9112b14` | Founding session replay/native envelope and state roots moved to 138. |
 | `m2_found_wrong.log` | iron137 `a572c7a6ba594ca0d2b8d6027d8918630f2a1bef74becbd1828e20af90c0b550` | combined138 `ef37eade318836a297ab19fced41beaabc39206ae995c2d7bd6abaa36ece4099` | Mutant was rebuilt from the 138 founding session and still proves divergence. |
@@ -43,8 +43,14 @@ fixture digests.
 
 This is now the stable current directory, renamed from `integrate2/current138/`.
 The integration table and `provenance.json` above describe the accepted integration
-snapshot before PINS-1. `goldens.txt` now also holds22 named expectations moved from
+snapshot before PINS-1. `../pins.txt` now also holds22 named expectations moved from
 C++ literals and is sorted by name; its file checksum therefore changes, while every
 original expected value and every replay/corpus/loop byte remains unchanged.
 Recording/check commands and oracle ownership are in
 [testing/README](../../../../docs/testing/README.md#pins-and-goldens).
+
+## Canonical pin path (FISHER-1d, 2026-11-15)
+
+The current pin table is `../pins.txt`. The checksum table and provenance below
+retain the historical state-138 snapshot values; they do not assert the current
+file's checksum and were not re-recorded by this documentation correction.

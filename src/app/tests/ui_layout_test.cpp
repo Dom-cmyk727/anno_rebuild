@@ -276,6 +276,22 @@ TEST_CASE("ui layout: parse errors name the line and what was wrong") {
     REQUIRE(good_align.ok());
     CHECK(good_align.value().elements.at(0).align == "centre");
 
+    // UI-INFO-2: `turn` takes a non-zero integer (quarter turns); absent stays absent.
+    for (const char* bad : {"0", "x", "+"}) {
+        CAPTURE(bad);
+        const auto r = anno::app::parse_hud_layout(
+            std::string("anno1503-ui-hud 1\nelement rotate_left pos 808 451 size 33 38 turn ") +
+            bad + "\n");
+        REQUIRE_FALSE(r.ok());
+        CHECK(r.error().find("turn") != std::string::npos);
+    }
+    const auto good_turn = anno::app::parse_hud_layout(
+        "anno1503-ui-hud 1\nelement rotate_left pos 808 451 size 33 38 turn -1\n"
+        "element info_gold pos 852 624 size 145 25\n");
+    REQUIRE(good_turn.ok());
+    CHECK(good_turn.value().elements.at(0).turn == std::optional<int>(-1));
+    CHECK_FALSE(good_turn.value().elements.at(1).turn.has_value());
+
     const auto bad_mask =
         anno::app::parse_mask_layout("anno1503-ui-masks 1\nmask gold_digits pos 34 size 96 35\n");
     REQUIRE_FALSE(bad_mask.ok());

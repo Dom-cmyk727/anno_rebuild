@@ -9,6 +9,7 @@
 #include <anno/formats/tex.hpp>
 #include <anno/formats/text.hpp>
 #include <anno/formats/zei.hpp>
+#include <anno/render/iso.hpp>
 
 namespace anno::app {
 
@@ -121,28 +122,40 @@ class TexCache {
         return it != names_.end() ? &it->second : nullptr;
     }
 
-    /// UI-INFO-1: the decoded preview sprite of Anlagen id `id` (sprite set 0, zoom group 0,
-    /// frame 0, assets::building::to_rgba), cached per id; nullptr when the entry has none. The
+    /// UI-INFO-1, UI-INFO-2: the decoded preview sprite of Anlagen id `id` at `rotation`
+    /// (sprite set 0, zoom group 0, assets::building::to_rgba), cached per (id, rotation);
+    /// nullptr when the entry has none. The frame is the first animation step of rotation block
+    /// `rotation`: render::frame_index at time 0, phase 0 - the frame the map draws a building
+    /// of that rotation with (docs/render/iso.md "Frame"), so the preview and the map ghost
+    /// cannot disagree; rotation 0 is frame 0, as before. Evidence: the GOG preview shows block
+    /// (cursor turn) (View.dll 0x100302c0 passes (view turn + cursor property 5) & 3 to the
+    /// object draw 0x1001d760; Wine runner shots u2_2520_R1..R4 exact, docs/re/ui.md 2.5). The
     /// cache assumes one `anlagen` file per session (the scene's).
-    const assets::Rgba* preview_sprite(std::uint32_t id,
+    const assets::Rgba* preview_sprite(std::uint32_t id, std::uint8_t rotation,
                                        const formats::anlagen::AnlagenFile& anlagen) {
-        const auto it = previews_.find(id);
+        const auto key = std::pair{id, rotation};
+        const auto it = previews_.find(key);
         if (it != previews_.end())
             return it->second ? &*it->second : nullptr;
         std::optional<assets::Rgba> decoded;
         if (const auto* entry = anlagen.entry(id); entry != nullptr && !entry->gfx.empty()) {
-            for (const auto& set : entry->gfx.front().frame_sets) {
+            const auto& gfx = entry->gfx.front();
+            for (const auto& set : gfx.frame_sets) {
                 if (set.group != 0)
                     continue;
                 if (!set.frames.empty()) {
-                    auto r = assets::building::to_rgba(anlagen, *entry, 0, set.frames.front());
-                    if (r.ok())
-                        decoded = std::move(r).value();
+                    const std::size_t k = render::frame_index(
+                        set.frames.size(), render::animation(gfx), rotation, 0, 0);
+                    if (k < set.frames.size()) {
+                        auto r = assets::building::to_rgba(anlagen, *entry, 0, set.frames[k]);
+                        if (r.ok())
+                            decoded = std::move(r).value();
+                    }
                 }
                 break;
             }
         }
-        const auto emplaced = previews_.emplace(id, std::move(decoded)).first;
+        const auto emplaced = previews_.emplace(key, std::move(decoded)).first;
         return emplaced->second ? &*emplaced->second : nullptr;
     }
 
@@ -173,7 +186,7 @@ class TexCache {
     std::map<std::string, std::optional<LoadedFont>> fonts_;
     bool names_loaded_ = false;
     std::map<std::uint32_t, std::string> names_;
-    std::map<std::uint32_t, std::optional<assets::Rgba>> previews_;
+    std::map<std::pair<std::uint32_t, std::uint8_t>, std::optional<assets::Rgba>> previews_;
     std::map<std::pair<std::string, int>, std::optional<assets::Rgba>> decoded_;
 };
 
@@ -481,7 +494,7 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const UiPlacement&
     const UiElement* box = hud.element("info_preview");
     if (anlagen == nullptr || box == nullptr || !box->has_pos || !box->has_size)
         return;
-    const assets::Rgba* sprite = cache.preview_sprite(info.type.v, *anlagen);
+    const assets::Rgba* sprite = cache.preview_sprite(info.type.v, info.rotation, *anlagen);
     if (sprite == nullptr)
         return;
     // Evidence-backed path: a sprite that fits the box is drawn unscaled and centred (the whole

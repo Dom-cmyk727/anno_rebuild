@@ -108,6 +108,11 @@ struct InfoPanelContent {
     /// nullopt: no source (ConstructionCellInfo::upkeep's own contract) - the upkeep box draws
     /// nothing then, never a guessed 0.
     std::optional<std::int64_t> upkeep;
+    /// UI-INFO-2: the rotation the preview shows the type at (DevInput's, the one the keys and
+    /// the rotate arrows turn): rotation block `rotation` of the sprite set, its first
+    /// animation step (render::frame_index at time 0; docs/re/ui.md section 2.5). 0 draws what
+    /// UI-INFO-1 drew.
+    std::uint8_t rotation = 0;
 };
 
 /// The x at which a centred text box draws a text image `text_w` pixels wide: `box_x +

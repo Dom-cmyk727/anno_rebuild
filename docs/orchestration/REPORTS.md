@@ -11039,3 +11039,677 @@ Decisions and reasoning:
   than accepting a composite FAIL at face value.
 
 QUESTIONs: none required.
+
+## UI-INFO-2 — the info panel's rotate arrows turn the building — 2026-11-14 — READY FOR REVIEW
+
+Branch `task/UI-INFO-2` (base `01a4d540`, packet `3311616a`); code `50eabe92`, RE `8c68cf4c`.
+
+**What changed.** `data/ui/hud.txt`: `rotate_left` `turn -1`, `rotate_right` `turn 1` (new element key, parsed in `ui_layout`, README row). `ConstructionMenu::click` resolves a click on an element with `turn` (info panel open; checked before the category column, whose 42 px hit width covers the left arrow's first 13 px) to `Turn`; `turn_inputs` turns it into the `Rotate`/`RotateBack` inputs the keys send, and `viewer.cpp` hands them to `DevTool` — one rotation (`DevInput::rotation`) for keys, arrows, preview, ghost and build. `InfoPanelContent::rotation`; the preview draws rotation block r (`render::frame_index` at time 0), cached per (type, rotation), CPU and GPU paths; rotation 0 = frame 0 as before. New facts `ui.info.rotation`, `tool.turn`. `tools/ui_layout.py` reference takes `rotation`. Docs: `docs/re/ui.md` §2.5 (arrows, preview per rotation, addresses), OQ-623, OQ-624, OQ-612 update, ADR 0004 row 4.
+
+**Evidence.** GOG `View.dll`: left arrow = gadget 2, image 34, tooltip `[TOOLTIP:BAUMENUINFO]` line 0, handler 0x10030440 `set(5, (get(5) − 1) & 3)`; right = gadget 3, image 36, line 1, 0x10030480 `+ 1`; preview 0x100302c0 draws `(view turn + cursor turn) & 3` via 0x1001d760. New silent Wine-runner capture (`cache/orig/ui-info-2/shots/`, 19 shots, not in git): pioneer house left ×4 → blocks 3, 2, 1, 0; right ×4 → 1, 2, 3, 0; map ghost = preview in every shot; dirt road right ×4, left ×1 → panel **exact** (0 px, RGB565) vs the reference at 0, 1, 2, 3, 0, 3, 1 828–1 995 px at every other rotation. HE video agrees (left 0→3→2→1).
+
+**Gates** (MSVC Release, game files, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`=cache copy of the GOG shots, `ANNO_UI_HE_CAPTURES`, new `ANNO_UI_ROTATION_SHOTS`=`cache/orig/ui-info-2/shots`):
+- `run_selected.py --select 'live_screen_matches_oracle|ui_dynamic_draw_check|info_panel|info panel|ui_panels_match_gog|ui_window_matches_he|ui_mock_matches_oracle|ui placement|viewer_wiring_ui_|viewer_wiring_construction|construction menu|ui layout|hud layout' --jobs 16`: run 1 `selected=34 executed=33 failed=1` (the new unit test: the left arrow's left edge resolved to the category column; fixed, see above; log kept `cache/gates/ui-info-2-focused-1.*`); run 2 after the fix `selected=34 executed=34 failed=0 empty=0 skipped=0 incomplete=0`, `VERDICT: PASS` (`cache/gates/ui-info-2-focused-2.*`). All oracle tests at rotation 0 unchanged, no new mask, no tolerance change.
+- `info_panel_rotation_check --renderer gpu` (manual, 4090 window): 5 of 5 captures exact (corner left out as in `info_panel_pixel_check`).
+- clang-format 23.1.3 on the changed C++ files; `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 404 of 405 files clean, the one FAIL is `src/sim/tests/extensions_test.cpp` (`ANNO_EXTENSION_ORACLE_FILE` undefined: the script does not pass that CMake define; file untouched, same on `01a4d540`). Hosted CI on `50eabe92`: run 43648095209 success (all 13 jobs incl. `gate`, `cpp-format`, `linux-clang-asan`); this report commit gets its own run.
+- NOT_RUN: WSL `-O1` sanitizer lane and the full MSVC suite (orchestrator's at landing); the whole app lane beyond the selection above.
+
+**New tests and how they fail on `01a4d540`.** Unit `info panel: the rotate arrows turn ...` (+ a `turn` parse case in `ui layout: parse errors`): with base `hud.txt` 11 of 38 assertions fail (no `turn`, clicks not `Turn`; on base code it does not compile — no `Turn`/`turn_inputs`). `viewer_wiring_ui_rotate_arrows` / `_s10` on the base exe + base layout: stop at `ui.info.rotation is '<none>'`; with the fact lines removed, at `expect title rotation 3` (the base title stays `rotation 0` after a left-arrow click). `info_panel_rotation_check` on the base exe (fact lines removed): r1, r2, r3, r2b differ by 1 937/1 828/1 995/1 828 px. `info_panel_rotation_gog_compare` on the base reference: no `rotation` parameter (TypeError); the rotation-0 picture differs from `u2_2520_R1..R3` by 1 937/1 828/1 995 px.
+
+**Look at it yourself.** `--play data\maps\lan5.txt --construction-menu on` (GPU window, scripted clicks): pioneer house left ×4 → views 3, 2, 1, 0, right ×4 → 1, 2, 3, 0; side by side with `c_pion_rot4.jpg` the four views are the same buildings in the same order (ours smaller: OQ-612 placeholder; no green entrance marks: UI-INFO-2b). Stall 1310: four distinct views, same cycle. The map ghost turned with the preview each time; in the first two shots the island was still streaming in (ghost over unbuilt ground, 30 of 156 frames not ready — not this packet's code).
+
+**Decisions and reasoning.**
+- Arrow direction from the GOG code (left −1, right +1), confirmed on screen in GOG and HE; data-driven `turn`, no names in code.
+- Arrows send the keys' inputs (one owner, `DevInput`) rather than a second rotation state.
+- Preview frame via `render::frame_index` so preview and map cannot diverge; one-stage centring kept (exact for 2520 at all turns); the original's two-stage canvas and single scale over four turns recorded as OQ-624/OQ-612, not implemented (rotation 0 must stay identical).
+- Arrows act on press like every other chrome button here (the original's gadgets may fire on release; not checked).
+- Key direction not changed despite OQ-623 (owner's call).
+- New shots get their own variable `ANNO_UI_ROTATION_SHOTS` so gates without them skip instead of failing.
+
+**OQs registered:** OQ-623 (GOG `.` turns an ordinary building +1, the rebuild's `.` −1), OQ-624 (placement per turn, view term), OQ-612 updated.
+
+**For UI-INFO-2b (entrance arrows).** 0x1001d870 converts `0x404040` (the shadow) and `0xff00` (green, checks for RGB565 `0x7e0` at 0x1001dc25) to the frame's pixel format — likely the marks' colour; the marks move with the turn (HE). Candidate source: Anlagen `ENTRANCE` records (326 types), rotated by the type's slot `+0x98(rotation)` (AnnoGame 0x100084c0, `docs/re/transport.md`). 0x1001d000 walks three part lists (gfx slots 0xa0, 0xa4, 0xa8; the third has its own direction byte) — the marks may be one of them. The canvas/scale rule above also decides where they sit.
+
+**QUESTIONs.**
+1. OQ-623: should the tool's `.`/`,` follow the original's ordinary-building direction (`.` = right arrow) now that the GOG capture shows it, or stay as OQ-520 had them?
+2. The category column's hit width (42 px) also covers grid column 0's first 13 px (808..820) on the plain grid — a click there switches category, not arms the cell. Pre-existing; fix in a follow-up?
+3. To keep the rotation GOG test in the board gate, copy `cache/orig/ui-info-2/shots/` (this worktree) to the shared shots location and set `ANNO_UI_ROTATION_SHOTS`.
+
+## ZOOM-SMOOTH-1 — partial, READY FOR REVIEW (task/ZOOM-SMOOTH-1, new worktree, base `main` `5bcd64a6`, head `951759a7`)
+
+Steps 1, 7 and 8 of `docs/orchestration/tasks/zoom-smooth-1.md` are done and verified; steps 2-6 and the
+tests of step 9 that depend on them are **not started** — see Decisions below for why, and a proposed split.
+
+**Step 1 (the sweep fix, its own commit `847f2e38`):** `chunk_worker_threads`, `FrameConfig`/
+`apply_frame_config` and `zoom_anchor_at` (`frame.hpp`/`frame.cpp`) are the one place the viewer and
+bench_frame's `--zoom-sweep` both configure `FrameRenderer` (review finding B1: before this the sweep used
+`(threads + 1) / 2` workers against the viewer's `hw * 3 / 4`, and never set `zoom_anchor`,
+`prewarm_far_levels` or `resident_level_chunks` at all). Wired into both (`07acd7d0`). The 2026-11-13
+baseline is confirmed not comparable (different worker count and no anchor); rerun "before" numbers on the
+fixed harness once the PC was free, lan5, 6 s/leg, enhanced water (`cache/gates/
+zoomsmooth1-before-{legs,wheel,pan,zoompan,igpu-wheel}.txt`) are the new ones for whoever does steps 2-6:
+
+| mode | res/adapter | frames | non-ready | most at once | stand-in | dissolves | open-sea | busy p50/p99/max ms | frames>2ms | frames>8ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| legs | 2560x1369, 4090 | 12000 | 193 | 36 | 22484 | 14472 | 1922 | 0.64/2.70/14.06 | 353 | 1 |
+| wheel | 2560x1369, 4090 | 12000 | 153 | 29 | 24950 | 14921 | 1901 | 0.62/2.90/15.17 | 374 | 2 |
+| pan | 2560x1369, 4090 | 12000 | 47 | 28 | 17 | 1346 | 1979 | 0.43/1.61/13.98 | 30 | 1 |
+| zoompan | 2560x1369, 4090 | 12000 | 241 | 29 | 34448 | 15803 | 1954 | 0.64/2.44/13.42 | 264 | 2 |
+| wheel | 1280x800, Radeon iGPU | 12000 | 13 | 10 | 275 | 144 | 45 | 0.37/1.25/279.03 | 28 | 2 |
+
+Matches the qualitative pattern of the original ZOOM-MEASURE-1 baseline (wheel/zoompan worse than legs, pan
+far better, the iGPU misses little but its one worst frame is far larger — an offscreen-target resize, not
+content). Not directly comparable to that baseline's own numbers (different worker count, this one has
+`zoom_anchor` set, and it's a different `--zoom-sweep` duration: 6 s/leg here against an unknown value
+there).
+
+**Step 7 (chunks-step reporting):** the per-level table now reports the window-thread "chunks" step's own
+p99/max every frame (`GpuStats::chunks_ms`), not only busy ones (review finding S4) — e.g. level 1 of the
+before-run: chunks p99 0.384 ms, max 1.455 ms. Not added to the single-line `baseline: ...` summary
+`zoom_sweep_contract.py` parses by a fixed regex, to avoid touching that contract.
+
+**Step 8 (opt-in control CTest):** `zoom_sweep_contract.py --control --readiness-only` is registered as
+`zoom_sweep_control_readiness` (`src/tools/bench_frame/CMakeLists.txt`), opt-in behind
+`ANNO_ZOOM_SWEEP_PROOF=1` (named in `docs/perf/README.md`), `RESOURCE_LOCK gpu`. `--readiness-only` is new:
+the busy-time count (2 of 1,980 control frames over the 2 ms budget, docs/perf/README.md, measured as
+driver/submission jitter) is reported but not gated, per ZOOM-MEASURE-1 review note 2's "decide it with a
+measurement, don't just raise the threshold" — ZOOM-SMOOTH-3 owns that measurement. Running it for real
+(`ANNO_ZOOM_SWEEP_PROOF=1`) first failed: the CMake-passed literal `${PROJECT_SOURCE_DIR}/game/app` does not
+exist in a worktree, and the script's `ANNO1503_GAME_DIR` check only gated whether to run, never substituted
+the env var's path into the actual invocation. Fixed (`41da9d11`) so the env var overrides the literal path;
+reran and it passes (`cache/gates/zoomsmooth1-control-readiness-2.txt`): frames=1996 non_ready=0
+most_missing=0 stand=0 dissolves=0 open_sea=0, busy_p50=0.40 busy_p99=0.82 busy_max=2.27 over_budget=2 (the
+readiness numbers match the historical control; PASS under `--readiness-only`).
+
+**Gates.** MSVC Release, game files, render+app: `COUNTS: selected=481 executed=471 failed=7 ... VERDICT:
+FAIL failed tests` (`cache/gates/zoomsmooth1-render-app-final.txt`) — all 7 confirmed
+`[anno-test memory] refused ... reason=low-memory` (ran concurrently with the WSL warnings check); each
+passed alone (`cache/gates/zoomsmooth1-final-solo-1.txt` through `-7.txt`, each `VERDICT: PASS`). An earlier
+attempt at this same gate (`zoomsmooth1-render-app-2.txt`, before the clang-format and game-dir fixes) had 5
+refusals, also all confirmed and passed solo (`zoomsmooth1-solo-1.txt` through `-5.txt`). GPU, 4090:
+`COUNTS: selected=117 executed=117 failed=0 VERDICT: PASS` (`cache/gates/zoomsmooth1-gpu-4090.txt`); the
+Radeon iGPU lane was not run (no GPU behaviour changed, only the CPU-side proof harness and a new CTest
+registration already covered by the 4090 run). WSL `-Werror` check (`tools/check_unix_warnings.sh`): the
+same pre-existing `src/sim/tests/extensions_test.cpp` `ANNO_EXTENSION_ORACLE_FILE` failure as before this
+branch (a file needing a build-generated define the standalone script doesn't set; unrelated to anything
+changed here), everything else clean. `clang-format --dry-run --Werror` flagged `frame.hpp`,
+`frame_config_test.cpp` and `viewer.cpp`; fixed in place (`951759a7`).
+
+NOT_RUN: steps 2-6 (the byte memory budget, resident coarse levels, the zoom-out ring, the GPU upload share,
+rate-limited eviction) and step 9's tests that depend on them; the Radeon iGPU GPU gate (reasoned above);
+WSL ASan.
+
+Decisions and reasoning:
+- **Scope cut after reading the packet in full.** Steps 2-6 are one tightly-coupled redesign (a byte budget
+  spanning the CPU chunk cache and the GPU's planes/pool/prefetch together, resident-level selection by that
+  budget, a new zoom-out ring ordered by estimated time-to-visible, routing the ring and resident levels into
+  the compositor's upload-ahead even while a visible chunk waits, and rate-limited eviction with watermarks),
+  not five independent small changes. The review that rewrote this packet already flagged real risk inside
+  it: B2 (today's prefetch gate, `!waiting && uploads == 0`, is exactly what step 5 must change, inside
+  `gpu.cpp`'s most delicate scheduling code) and B3 (moving GPU releases risks priority inversion with the
+  existing reaper, and wgpu may destroy resources inside `queue submit` regardless, a wgpu-core-version-
+  specific point the packet itself says must be checked, not assumed). Attempting all of it in this one
+  sitting, without the owner's or a reviewer's eyes on intermediate states (the project's own practice for
+  work this size, e.g. SHORE-2's multi-round review), risked landing a plausible-looking but under-verified
+  rewrite of safety-critical rendering scheduling. Shipping steps 1, 7 and 8 to a solid, gated, tested
+  standard and stopping there, per the packet's own "stop and report" rule, serves the evidence-only bar
+  better than a rushed pass at the rest.
+- **Proposed split:** steps 2+3 (the byte budget and resident-by-budget) as one packet, since 3 cannot be
+  measured without 2; step 4 (the ring) next, since it needs the same budget-aware residency to reason about
+  what's already resident; step 5 (GPU upload share) last and on its own, given B2/B3's flagged risk,
+  possibly after checking wgpu-core's pinned-version behaviour the review named as unverified; step 6
+  (eviction rate limits) can ride with whichever of 2/3 lands first, since it's the same trim() path. Step 9's
+  tests split the same way.
+- Kept step 7 off the `baseline: ...` line `zoom_sweep_contract.py` parses by a fixed regex, adding the
+  chunks-step p99/max only to the per-level table, so the existing contract needed no change.
+- `--readiness-only` instead of reusing `--control` to add a gate, so the documented manual recipe in
+  `docs/perf/README.md` (which still wants the full busy-time picture) is unaffected.
+- Did not relax the busy-time threshold to make `--control` pass outright, per the review's own instruction;
+  deferred that decision to ZOOM-SMOOTH-3, whose charge is exactly the window-thread busy-time story.
+
+QUESTIONs: should steps 2-6 be split as above into separate packets, or dispatched as one larger packet to
+this same branch? Either way, the branch currently holds no behaviour change to any renderer or GPU code —
+only the proof harness, a report-only metric and an opt-in test — so it is safe to land as is, or to keep
+open for the next packet to build on.
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-1b — the chunk memory budget, resident levels and rate-limited eviction — READY FOR REVIEW (task/ZOOM-SMOOTH-1b, from task/ZOOM-SMOOTH-1 `e8dcb7cf`, head `2f5ab906`)
+
+Steps 2, 3 and 6 of the packet, as scoped by the split review. `gpu.cpp`'s prefetch gate (B2)
+and the ring (step 4) were not touched, as instructed; nothing needed to.
+
+**The budget (step 2):** `ChunkMemoryBudget`/`default_chunk_budget` (`frame.hpp`/`frame.cpp`):
+discrete 4 GiB, integrated/unknown an eighth of system RAM (floored 256 MiB, capped 2 GiB),
+software the floor alone — as `GpuLimits::atlas_budget_mb` already sizes by adapter kind, since
+WebGPU reports no memory size. Halved against the GPU holding the same chunks again (no
+separate GPU-side counter or eviction: the compositor already drops its copy as soon as the CPU
+one is evicted, `gpu.cpp sync_chunks`). `FrameRenderer::cache_bytes()` is the running total, kept
+incrementally at every cache insert/replace/erase (not summed each frame); a test checks it
+against the existing O(n) `cached_bytes()`. 0 (the default) is unbudgeted — today's exact
+count-based behaviour, so no existing test or digest changed. Viewer option
+`ANNO_VIEW_CHUNK_BUDGET_MB=<n>` (0 = off); bench_frame's `--chunk-budget-mb` mirrors it (system
+RAM unknown there: bench_frame does not link SDL3).
+
+**Resident levels (step 3):** `is_resident_level` — a level is resident if it fits
+`resident_level_chunks` (kept as a floor, "the original 16-chunk residency stays reachable") or
+the budget's resident share (half the budget by default), measured against a conservative flat
+per-chunk estimate (`kChunkByteEstimate`, the same figure `gpu.hpp`'s plane pool already uses)
+so a level marked resident never turns out not to fit once built. `prewarm_far_levels` now fills
+every idle worker thread at once (`prewarm_targets_`, a vector, was a single `optional`) instead
+of one chunk at a time (review finding S3), and runs in every session (viewer), not only the
+ship-start opening.
+
+**Rate-limited eviction (step 6):** `trim()`'s byte-budget path evicts the least relevant
+candidate first (the opposite end of the same priority order the count-based path already
+used), stopped by a 0.9/0.75 high/low watermark band and a per-call `max_evict_bytes_per_frame`
+cap, so a large overshoot spreads over several frames instead of freeing all at once.
+
+**Tests:** `cache_bytes` vs `cached_bytes` agreement; `default_chunk_budget`'s three adapter
+cases, floor and cap; `is_resident_level` widening and narrowing with the floor and the budget
+(game files, the island's known level sizes); eviction capped at `max_evict_bytes_per_frame`,
+spread over two calls (synthetic chunks, no game files). The existing `derived_freshness` prewarm
+suite (fill, stale rebuild, a failed target not blocking the rest) passed unchanged against the
+new multi-target fill, 12/12.
+
+**Measured (the fixed sweep, lan5, 2560x1369, enhanced, 6 s/leg, 4090; budget on, its default):**
+before → after, from the ZOOM-SMOOTH-1 baseline:
+- legs: non-ready 193→46, stand-in 22484→6576, dissolves 14472→5072, open-sea 1922→1634, busy
+  p99 2.70→2.42 ms, frames>2ms 353→234.
+- wheel: non-ready 153→28, stand-in 24950→5583, dissolves 14921→4422, open-sea 1901→1435, busy
+  p99 2.90→2.28 ms, frames>2ms 374→177.
+- pan: non-ready 47→25, stand-in 17→0, dissolves 1346→868, open-sea 1979→1300, busy p99
+  1.61→1.91 ms, **frames>2ms 30→96 (worse)**.
+- zoompan: non-ready 241→35, stand-in 34448→16596, dissolves 15803→7072, open-sea 1954→1391,
+  busy p99 2.44→2.38 ms, frames>2ms 264→218.
+- Radeon iGPU wheel, 1280x800: non-ready 13→7, stand-in 275→217, dissolves 144→105, open-sea
+  45→39, **frames>2ms 28→41 (worse)**; max frame time 279→306 ms (the same resize-type outlier
+  noise both runs, not content).
+
+Readiness (non-ready, stand-in, dissolves, open-sea) improved on every mode and both adapters,
+often by 50-80%, from the resident levels and the wider working set the budget now allows. The
+busy-time tail got worse on pan and the iGPU, not better: pan's own `chunks` step stayed small
+(p99 0.307 ms, max 0.736 ms, from the per-level table), so the extra frames over 2 ms are the
+cost of filling every idle worker with background prewarm builds throughout the pan, not of the
+window thread's own planning. Cache memory on the 4090 run reached 3,678 MB (max, legs/pan
+tables), under the 4 GiB default budget as expected. Not claiming the packet's 0-on-every-counter
+target: that is 1d's (the GPU upload share) and the ring's (1c) to reach.
+
+**Gates.** MSVC Release, game files, render+app: `COUNTS: selected=536 executed=530 failed=3
+empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: FAIL failed tests`
+(`cache/gates/zoomsmooth1b-render-app-1.txt`) — all 3 confirmed `[anno-test memory] refused ...
+reason=low-memory`; each passed alone (`cache/gates/zoomsmooth1b-solo-1.txt` through `-3.txt`,
+each `VERDICT: PASS`). GPU, 4090: `COUNTS: selected=117 executed=117 failed=0 VERDICT: PASS`
+(`cache/gates/zoomsmooth1b-gpu-4090.txt`); the Radeon iGPU gate was not rerun (no GPU code
+changed; the iGPU sweep numbers above exercise the same binary). WSL `-Werror` check
+(`tools/check_unix_warnings.sh`): clean except the same pre-existing, unrelated
+`src/sim/tests/extensions_test.cpp` failure already present on `task/ZOOM-SMOOTH-1`.
+`clang-format --dry-run --Werror` flagged several lines across the changed files; fixed in
+place, rebuilt, retested (unaffected — `apply_frame_config`/`cache_bytes`/`default_chunk_budget`/
+`trim` tests all still pass).
+
+Pushing `89c12221` failed hosted CI's `cpp (linux-gcc)`/`cpp (linux-gcc-release)` jobs (MSVC had
+not flagged it): `-Wsign-conversion` on the budget's megabyte-to-byte math, mixing
+`std::uint64_t` (`unsigned long` on this GCC/Linux target) with `1024ULL`-suffixed literals (a
+different, same-width type) in the viewer's `ANNO_VIEW_CHUNK_BUDGET_MB` override and
+bench_frame's `--chunk-budget-mb`. Fixed by using `std::uint64_t{1024}` consistently, verified
+with the WSL `-Werror` check again (clean, same pre-existing unrelated failure), rebuilt on
+MSVC, committed as `93bcb57a`, pushed.
+
+NOT_RUN: steps 4 and 5 (the ring, the GPU upload share) and their step-9 tests, per the split;
+the Radeon iGPU CTest gate (reasoned above); WSL ASan.
+
+Decisions and reasoning:
+- Used a flat, conservative per-chunk byte estimate for residency decisions (matching the GPU's
+  own plane-pool constant) rather than a real built total, so a level can never flap in and out
+  of residency once it is actually built — at the cost of under-using the budget on sea-heavy
+  levels, which the real `cached_bytes()` still reports accurately for everything already built.
+- Did not add a live GPU-side byte counter: the compositor already drops a chunk's planes as
+  soon as its CPU copy is evicted (no independent GPU eviction exists to drive), so the "count
+  both sides" requirement is honoured by sizing `default_chunk_budget` at half of what the
+  adapter/RAM can spare, not by duplicating the CPU's bookkeeping on the GPU side.
+- Reported pan's and the iGPU's worse busy-time tail rather than only the readiness wins: the
+  packet's own instruction is "report better, equal or worse per level," and the `chunks` step's
+  own timing rules out the window thread's planning as the cause, pointing instead at
+  contention from the now much more aggressive background prewarm fill — a genuine trade-off for
+  1c/1d or a future tuning pass to weigh, not a result to understate.
+- Left `gpu.cpp` untouched, as instructed, since steps 2/3/6 needed no change there: the existing
+  "a visible chunk's build and the CPU cache evicting it" contract already keeps the GPU side in
+  sync without any new code.
+
+QUESTIONs: is a 0.5 resident/working-set split the right default, given pan's own regression
+suggests the working set (not the resident levels) is where most of 1b's actual readiness win
+came from? A future packet (1c, 1d, or a tuning pass) may want real data before changing it.
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-1c — F1-F3 fixed, the pan/iGPU "regression" corrected — READY FOR REVIEW (task/ZOOM-SMOOTH-1c, from task/ZOOM-SMOOTH-1b `d71bbfbb`, head `8f4b6ebe`)
+
+F1, F2 and F3 are done and tested. Step 4 (the zoom-out ring) is **not started** — see Decisions. The
+pan/iGPU busy-time finding from the 1b review turned out not to be a code regression; see below, first,
+since it reframes the whole packet.
+
+**The pan/iGPU "regression": corrected, not removed by a code change.** The review's instruction was to
+measure the cause before fixing it. Measuring it is what found there was nothing in 1b's code to fix:
+
+- **Isolating the resident-level prewarm** (the review's own suspect) with the new `--resident-prewarm off`:
+  pan's frames>2ms went 96 → 92. Capping the fill at 1 target (the pre-1b width) instead of every worker:
+  90. None of these come close to the recorded 1-baseline's 30.
+- **The decisive check: rerunning the original, unmodified `task/ZOOM-SMOOTH-1` `bench_frame` binary, right
+  now, on pan.** Three runs: 102, 127, 105 frames>2ms — nowhere near its own recorded 30, on code that has
+  not changed since that number was written down. `legs` on the same unmodified binary reproduces closely
+  (350 vs its recorded 353) and `wheel`/`zoompan` likewise (373/317 vs 374/264) — only `pan`'s particular
+  camera path is this volatile on this machine right now; it is not a general drift the other modes would
+  also show.
+- **The shipped 1c code, same session, three runs:** 100, 102, 106 — indistinguishable from the unmodified
+  binary's own 102/127/105, if anything slightly tighter. Pan is not worse than the baseline measured today;
+  the 30 recorded in ZOOM-SMOOTH-1's own REPORTS entry was not reproducible even by that entry's own
+  unmodified binary, on this run of this machine.
+- **The iGPU wheel case is different: it reproduced.** The unmodified 1a binary gave 22 frames>2ms today
+  (close to its recorded 28); 1b's code (before F2) gave 33. That is a real, modest regression on the iGPU
+  specifically - and F2 (below) fixes it outright: with the real system RAM instead of the 256 MiB floor,
+  the same 1c code gives 12 frames>2ms, non-ready 3, stand-in draws 0, dissolves 26 - better than either
+  number, because the iGPU sweep had never measured the budget the viewer actually gives it until now.
+
+**F1 (resident share, cumulative):** `is_resident_level` checked each derived level's own cost against the
+*whole* resident share; since each derived level has about a quarter the chunks of the one below, the
+levels together could take up to about 4/3 of the share, and none that individually fit was ever trimmed -
+the working set was then left with less than its own share. Now gives the share out cumulatively, farthest
+(coarsest) level first. New test (`src/render/tests/derived_freshness_test.cpp`): a budget sized so the
+island's two derived levels (8 and 24 chunks) each fit alone but not together (32 > a 30-chunk share)
+confirms only the farther one is resident now, not both.
+
+**F2 (the iGPU's real RAM):** `bench_frame` passed `system_ram_bytes = 0` to `default_chunk_budget` (it
+links `anno_app_core`, not `anno_app_sdl`, so `SDL_GetSystemRAM` isn't available there), so a non-discrete
+adapter sat at the 256 MiB floor while the viewer gets an eighth of real RAM, capped at 2 GiB - the B1 kind
+of mismatch again. `system_ram_bytes()` reads it directly (`GlobalMemoryStatusEx` on Windows, `sysconf` on
+POSIX). Rerunning the iGPU sweep with it is the number quoted above.
+
+**F3 (the eviction cap):** `default_chunk_budget` left `max_evict_bytes_per_frame` at 0 (unbounded), so
+step 6's rate limit existed but nothing in the viewer turned it on. Set to 64 chunks' worth (the same order
+of magnitude as the original `spare_chunks` default) rather than just asserting the watermark band alone is
+enough.
+
+**Measured (fixed sweep, lan5, 6 s/leg, same-session before/after on this head's build), 4090:**
+
+| mode | before (1a, same session) | after (1c) |
+|---|---|---|
+| legs | non-ready 224, stand-in 14987, dissolves 8560, open-sea 1617, >2ms 350 | non-ready 35, stand-in 6032, dissolves 4533, open-sea 1544, >2ms 201 |
+| wheel | non-ready 103, stand-in 18937, dissolves 10546, open-sea 1352, >2ms 373 | non-ready 31, stand-in 5332, dissolves 4618, open-sea 1462, >2ms 162 |
+| pan | non-ready 24-41 (3 runs), stand-in 0, dissolves 759-963, open-sea 1174-1534, >2ms 90-127 (3 runs) | non-ready 24-36 (3 runs), stand-in 0, dissolves 828-921, open-sea 1305-1398, >2ms 100-106 (3 runs) |
+| zoompan | non-ready 71, stand-in 23912, dissolves 10306, open-sea 1525, >2ms 317 | non-ready 37, stand-in 14519, dissolves 6288, open-sea 1406, >2ms 189 |
+| iGPU wheel, 1280x800 | non-ready 15, stand-in 266, dissolves 146, open-sea 47, >2ms 22 | non-ready 3, stand-in 0, dissolves 26, open-sea 44, >2ms 12 |
+
+Readiness improved on every mode and both adapters, same as 1b reported. Busy-time is now equal (pan,
+within run-to-run noise) or better (legs/wheel/zoompan/iGPU) everywhere - the explicit landing requirement
+("pan's frames over 2 ms must be no worse than the 1-baseline") is met by the corrected measurement, not by
+a code change to pan's own path.
+
+**Gates.** MSVC Release, game files, render+app: `COUNTS: selected=537 executed=534 failed=0 empty=0
+skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1c-render-app-1.txt`) - clean, no refusals. GPU, 4090: `COUNTS: selected=117
+executed=117 failed=0 VERDICT: PASS` (`cache/gates/zoomsmooth1c-gpu-4090.txt`). The Radeon iGPU CTest gate
+was not rerun (no GPU code changed; the iGPU sweep numbers above exercise the same binary, as in 1b). WSL
+`-Werror` check: clean except the same pre-existing, unrelated `extensions_test.cpp` failure. Caught and
+fixed along the way: a GCC/Clang-only (`-Wimplicit-int-float-conversion`/`-Wconversion`) sign/precision bug
+in the new F1 test's own assertion (`std::size_t * double` without an explicit cast) that MSVC did not flag.
+
+NOT_RUN: step 4 (the zoom-out ring) and its step-9 tests - see Decisions; the Radeon iGPU CTest gate
+(reasoned above); WSL ASan.
+
+Decisions and reasoning:
+- **Measured before fixing**, per the review's own instruction, rather than assuming either suggested cause
+  (prewarm contention, or the budget's working-set size) and patching around it. Both were tested directly
+  (`--resident-prewarm off`, a capped-to-1 fill, a small `--chunk-budget-mb`) and neither reproduced the
+  reported gap; only reverifying the *unmodified* 1a binary against its own recorded number, right now,
+  revealed that the 30-frame pan baseline itself could not be reproduced. Reporting an invented fix for a
+  regression that measurement shows does not exist would have been worse than reporting the correction.
+- **Kept the diagnostic flag** (`--resident-prewarm`) rather than deleting it once the diagnosis was done:
+  it is small, real, and useful for whoever next needs to isolate the resident-level prewarm's own cost
+  (1d, the ring, or a future tuning pass).
+- **Deferred step 4, the zoom-out ring.** "Order by estimated time until visible, from the zoom direction
+  and the pan velocity" needs a zoom-direction signal `FrameRenderer` does not currently track (velocity is
+  pan-only by design, per `motion_centre`'s own doc: a zoom's own anchor-driven shift is deliberately
+  excluded from it). Building that signal, the ring's own geometry (a new scale-about-anchor view function,
+  since `zoomed_view_at` only jumps between zoom *groups*, not scales within one), and the "pan must not be
+  starved by it" invariant together are a correctness-sensitive feature on their own, not a quick addition
+  on top of the regression investigation this packet turned into. Attempting it in the remaining time risked
+  either rushing the starvation guarantee or the ordering, both explicitly called out as required. Proposed
+  as 1d, or its own packet, with the zoom-direction signal as its first sub-step.
+- **F3's cap is a measured default** (64 chunks, matching `spare_chunks`' own order of magnitude) rather
+  than an argument that the watermark band alone suffices: the band and the per-call cap address different
+  things (steady-state trim frequency vs. a single burst's size, e.g. right after a lowered
+  `ANNO_VIEW_CHUNK_BUDGET_MB`), so asserting one makes the other unnecessary would have been the kind of
+  unevidenced claim the project's evidence contract rules out.
+
+QUESTIONs: should step 4 (the ring) be its own packet (1c-ring) ahead of 1d, given 1d (the GPU upload share)
+doesn't depend on it, or should it ride with 1d since both touch "what's urgently wanted during a zoom"? The
+0.5 resident/working-set split question from 1b's QUESTION is still open and now has real same-session
+numbers to inform it once the ring exists to use them.
+
+**READY FOR REVIEW.**
+
+## FISHER-1b — optional mode-3 fisher; final gate completion (2026-11-15)
+
+Status: READY FOR REVIEW; handover waits for the report head's hosted gate, never executor-approved.
+Branch task/FISHER-1b; implementation b68a70317b1822a1c49d465fde8de0c183ac5bba.
+Resumed Task 1 starts 2026-11-14 23:33:51Z, budget 90 minutes; no new behavior authorized or added.
+Original continuation: 89922b18, authorized main 01a4d540 merged as 33ca7f0f; old branches preserved.
+CLAUDE, PLAN, board protocol, evidence contract and testing README read; no reviewer subagents.
+Return uses AnnoWelt 0x10057ae0–0x10057bbe -> figure +0xc8 at 0x10057b79–0x10057b7d;
+  fisher table 0x100cb4d8 selects 0x10038ad0, mode 3 at 0x10038b91–0x10038ba1.
+Goal-pop 0x100033c3–0x100033ce uses 511 minus the blocked mask from 0x1009226b–0x100922df.
+Mean 31: blocked 0 / usable 511; mean 32: blocked 511 / usable 0. Names/reference/vector keys corrected.
+Header tag 1 fisher_rules is u8 0 (omitted default) / 1 enabled; other bytes are refused.
+World::create's final ExtensionContext input is authoritative; Rules base fields/digest are unchanged.
+State 139 / ten section versions 1 retained; no new Figure state, pin value, or default change.
+Mode 3 supplies water low 0x0fff/high 0 or closed low 0/high 7; Land delegates its unchanged mapper/disc.
+Enabled route 45 launches at the first rotated entrance, searches usable water goals, claims/waits/cuts
+  11 -> 10 with 256 credit per success, repeats below data capacity, and returns using mode 3.
+Receipt is an unclipped u16 add (65500 + 768 -> 732); shared Farm conversion makes food and releases count.
+Owner draw scope: one discarded draw per eligible attempt; zero body draws; later on/off trajectories may diverge.
+Planar integer movement does not settle OQ-603's Y/float continuation. Runtime fish belongs to FISHER-RE-2.
+Geometry census: 50 maps, 2473 embedded fish blocked / 0 usable, 619 adjacent-water / 1854 without it.
+Existing explicit ActorFreeComponent projection proves geometry only; no fallback or complete actor-import claim.
+History retained: the original four-hour cutoff was reached; its frozen full gate finished naturally, not stopped.
+On 03da6fa3 the SOLE failing local test was:
+  anno_sim_tests.section extensions: all ten native sections refuse one unknown tag
+Exact error from continue/pins-final-head-01.log (world_state_test.cpp:695):
+2392: /Users/dom/.codex/worktrees/fisher-1b/anno1503/src/sim/tests/world_state_test.cpp:695: ERROR: CHECK( contains(result.error(), "section " + std::string(section_names[i]) + ": unknown extension tag " + std::to_string(tag)) ) is NOT correct!
+2392:   values: CHECK( false )
+The old test wrongly expected registered header tag 1 to be unknown; b68a7031 uses unknown tag 2.
+Earlier CI 43649237328: cpp (windows-msvc), job 132613837551, and cpp (linux-clang-asan), job
+  132613837538, each failed this SAME test. Signed-in job UI verdicts are preserved in earlier-ci-failures-observed.json.
+The separate GCC Release null-pointer warning was fixed by explicit receipt-test pointer/state guards.
+The SmallFarm-home counterexample was also fixed in b68a7031: load refuses it and the body fails closed.
+Previous direct corrective proof: 9/9 cases, 8198 assertions; source equivalence is recorded, not called canonical.
+Original failed full gate on 03da6fa3 (continue/pins-final-head-01.log):
+COUNTS: selected=1683 executed=1664 failed=1 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+Final local evidence below is under cache/fisher-1b/gates-finish/; game files set, admission enabled.
+build-dev-01.log: final implementation Dev build, zero warnings. build-release-01.log: zero warnings.
+affected-01.log: all 87 previous names verified as a subset; adds bad-home and both section refusals.
+affected-01.log:
+COUNTS: selected=90 executed=90 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+pins-full-01.log:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1684 executed=1666 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/fisher-1b/gates-finish/pins-full-01.log
+No refused tests occurred; all 18 full-check skips are opt-in. No whole gate was repeated on this source.
+Only reviewed fisher_vectors.txt differs in fixtures (six sea records rename/add keys); current recordings equal main.
+This handoff successor changes ONLY REPORTS; its tested code and fixtures equal b68a7031 byte for byte.
+The exact report-head CI URL and terminal result are supplied at handover; no pending job is pre-claimed green.
+Original negative/build/name failures and both old CI runs remain retained. No assets/listings/credentials in git.
+Decisions and reasoning:
+- Registering tag 1 changes the invalid-test premise, not the strict unknown-tag reader; use tag 2 as the control.
+- Run the explicit 90-name affected union once, and the newly released full pins check once in Release.
+- Carry source-identical gate evidence through this report-only successor; do not repeat a whole gate for prose.
+- Preserve owner-approved per-attempt draw fidelity and the corrected mask; do not fake catchable shipped fish.
+NOT_RUN: local MSVC/WSL, HE/original-runtime execution, real-map canary, Windows game-file/full landing gates.
+QUESTIONs: none blocking this bounded synthetic port; OQ-603 and runtime fish remain outside its claim.
+
+
+## FISHER-RE-2 — runtime fish source and normal-session prerequisite (2026-11-15)
+
+Status: READY FOR REVIEW; independent review is the orchestrator's handover review.
+Branch task/FISHER-RE-2; base origin/main 01a4d540; merged origin/task/FISHER-1b 7dd95644.
+Start 2026-11-15 00:24:11Z; budget 2–3 hours; documents/tools and vector-reader compatibility only.
+Owner four-task prompt is this packet; board has no separate fisher-re-2.md. Common rules read.
+No reviewer subagents; no engine behavior, state number, extension, pin or original-asset change.
+Read complete GOG AnnoWelt 0x100928a0–0x10092b32: clipped row-major empty-tile fill.
+A whole nonzero u16 object word skips; mean = four unsigned corners / 4, strict mean < 16 creates fish.
+Means 16–31 do not create fish; mean >= 32 takes a distinct fertility-dependent grass path.
+Initializers 0x1008fea0–0x1008feb2 and 0x1008ff00–0x1008ff0e establish default thresholds 16/32.
+Fish writes id 11, byte 2 zero, item-height low byte, byte 3 bit 7 preserved; corners are untouched.
+No new figure, occurrence, saved id/counter, live-animal cap or periodic fish timer in this body.
+Resource identity: Anlagen 11, goods 71, same as embedded fish; those records are not scenery-only by type.
+Mode-3 blocked 0 below mean 32 gives usable 511 through 0x100033c3–0x100033ce.
+Load callers: 0x100a1f9d / 0x100a20b8 / 0x100a2fc8 after child-record loading.
+Wrapper 0x100a1810–0x100a183c calls preprocess +0x1a4 then fill +0x1a0.
+Area clear 0x1008376e–0x10083796 also fills; ordinary placement 0x10082ab9 is +0x19c, not fill.
+Corrected old transport slot attribution in a new fisher.md section; did not rewrite accepted transport.md.
+No draws in the fill or named standard catalogue/type getter bodies; no transitive load-session total claimed.
+Physical catalogue construction remains the existing OQ-202 boundary; arbitrary substituted receivers not inferred.
+OQ-610 narrowed: load/fill/clear do not lower fish corners; external/editor setter caller closure still OPEN.
+Added runtime_fish reference; four hand-derived cases: mean 15/16, occupied, and high raw object-word bits.
+Supplied draw remains unconsumed; reference phase input/output denotes the whole raw byte 3.
+Two new applied mutants: inclusive depth and ignored occupancy; each exits 1, not malformed exit 2.
+Contract adds exact three-cell census and missing-HEIGHT / grass-branch scope refusals; 81 checks / 53 vectors pass.
+C++ geometry vector reader skips runtime_fish by name; it still executes 6 sea / 5 grid / 5 rectangle vectors.
+Static embedded-island census: all 50 original scenarios, 4,908,270 runtime cells / usable goals.
+Per-map counts, source hashes and exact half-open cell runs: cache/fisher-re-2/runtime-fish-final-02.json.
+S01_02_01: 179,016 cells; farm 810 search rectangles contain 28 / 64 candidates on island 58.
+Witnesses local (205,149) / (202,157); candidate inclusion is not entrance-path or catch proof.
+lan5.txt templates: 280,316 cells; lan5-ship-a.json templates: 420,194 cells, all usable.
+Both lan5 meanings measured explicitly; neither is a shipped lan5.sze; procedural link draws are not emulated.
+Census counts footprints, not just anchors; preserves zeros for six maps with no eligible embedded cells.
+Original first census refused an out-of-bounds footprint; original clipped-placement rule fixed that tool assumption.
+Original first mutant proof refused an overlapping replacement string; full distinct span fixed the proof, not rule.
+First stdout logs retained; uncaptured stderr recorded as observations in failure-observations.json.
+NORMAL_IMPORT_OK islands=27; NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions.
+Preflight uses normal loader, no ActorFreeComponent, script suppression or altered original resources.
+OQ-625 / QUESTION: separate script-object implementation (recommended), or owner-authorized narrower component canary?
+The state-free fish derivation alone cannot satisfy FISHER-1c's requested normal-session proof.
+Gates under cache/fisher-re-2/: reference-final.log: 53 vectors, 0 disagreements; contract-final.log: 81 checks.
+focused-01.log, automatic picture contract (retained unchanged):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-final.log, fisher_reference_contract:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-final.log, reference agrees plus changed geometry-vector consumer:
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+runtime-fish-final-02.log: 50 scenarios + 2 layouts; 5,608,780 created cells / usable goals; zero census failures.
+lint-01.log: lint_sim: ok; format-01.log: clang-format 23.1.3 passes; git diff --check / relative links pass.
+build-01.log: Dev succeeds; two Apple duplicate-library linker warnings retained, no zero-warning claim here.
+Evidence SHA-256 inventory: cache/fisher-re-2/evidence-sha256.json. No memory-refused test occurred; focused-final reruns only the changed reference scope.
+Hosted CI URL and terminal result supplied at handover; no pending run is pre-claimed green.
+NOT_RUN: HE, live original session, complete external/editor setter closure, real gameplay canary, Windows game-file gate.
+Decisions and reasoning:
+- Model the resource-fill predicate, not a speculative fish figure or PRNG generator; it needs no new state.
+- Measure generated empty-water resources separately from the 2,473 blocked embedded records.
+- Enumerate exact cells as compact row ranges; distinguish embedded islands from unresolved link selection.
+- Check normal-session prerequisites before building the canary; keep script refusal visible and preserve owner scope.
+- Preserve OQ-603 / OQ-604 / OQ-610 and standard-catalogue receiver limits rather than invent closure.
+QUESTIONs: OQ-625 blocks the normal-session canary, not this bounded source read; Task 3 records the decision boundary.
+
+
+## FISHER-1c — real-file canary prerequisite QUESTION checkpoint (2026-11-15)
+
+Status: READY FOR REVIEW — QUESTION checkpoint; the requested canary is NOT_RUN, not completed.
+Branch task/FISHER-1c; stacked on final task/FISHER-1b 7dd9564496068067364c6b6f2293b98420c90de8.
+Merged task/FISHER-RE-2 568c8788176e3b3d65a80c1ea5f6c13efe400ec5; old branches/worktrees preserved.
+Owner four-task release is the authoritative packet; Task 3 budget about 2 hours, stopped at prerequisite boundary.
+CLAUDE, PLAN, TASKS owner rules / protocol and evidence contract / testing README read at checkpoint.
+No reviewer subagents; independent review remains the orchestrator's handover review.
+The runtime fish rule itself qualifies as a state-free loaded-data derivation; no new tick system is inferred.
+Original evidence: AnnoWelt 0x100928a0–0x10092b32, load calls 0x100a1f9d / 0x100a20b8 / 0x100a2fc8.
+Empty whole object word and four-corner integer mean below 16 create resource 11 without a fish-body draw.
+Mode-3 goal-pop 0x100033c3–0x100033ce yields usable 511 for these low cells.
+RE-2's static projection finds 179,016 generated S01_02_01 cells; all have usable mode-3 masks.
+Its island-58 farm rectangles contain 28 and 64 candidates; those are not successful path/trip claims.
+Before porting, a bounded measurement used the original registry and unmodified S01_02_01 bytes.
+Normal sim::load_scenario, default UnitImportOptions: no ActorFreeComponent or actor-import fallback.
+The map imports successfully with all 27 embedded islands.
+Then public World::create is invoked twice with the existing ExtensionContext, fisher_rules disabled / enabled.
+Exact observed lines from cache/fisher-1c/preflight-01.log:
+NORMAL_IMPORT_OK islands=27
+FISHER_FLAG 0 NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions
+FISHER_FLAG 1 NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions
+This diagnostic is World::create's real refusal, not a fabricated assertion or expected-pass canary result.
+The parser's OBJECT_DEFINE section contains two OBJECT_STADT definitions (parsed original data, no script bytes committed).
+Current src/sim/src/script.cpp rejects !a.objects.empty() before it can create this normal-session world.
+This dependency is independent of water geometry, fish masks, resource occupancy and the fisher extension's flag.
+A fish-fill hook would not repair the compiler's rejection or permit the required farm state to advance.
+The measurement source/binary is ignored cache only and links the unchanged RE-2 production libraries.
+No engine code, new state, extension tag, Rules field, pin value, fixture byte, or original resource was changed here.
+No scripted objects were discarded, rebound by guess, or replaced with a synthetic world.
+QUESTION (OQ-625): which contract should unblock the original-map canary?
+Option 1 (recommended): separately implement the script-object bindings and required uses, then resume this canary.
+  Cost: a separately sized script packet plus its focused tests; inventory the city bindings and dependent operations first.
+  It preserves the required original S01_02_01 normal-session claim; no state-number conclusion is assumed.
+Option 2: explicitly authorize a script-free/component canary and keep original normal-session acceptance open.
+  Cost: a narrower test contract and explicit projection/seam; it cannot demonstrate original scenario-script execution.
+  No implementation estimate or equivalence claim is offered before that scope decision.
+The owner has not authorized option 2; the earlier ActorFreeComponent approval applied only to geometry census.
+Following the standing release rule, checkpoint this QUESTION and continue independent FIXTURES-TRIM-1.
+Resume work after a decision: flag-gated fill, then normal-loader dispatch / claim / catch / return / Farm-food proof.
+Print event ticks only from actual state observations; no ticks are invented at this checkpoint.
+Then two-run flag-on determinism and the flag-off full pins check, 0 moved, remain required.
+OQ-603's float/Y continuation and other-map gameplay coverage remain outside the planned canary's claim.
+Evidence: cache/fisher-1c/preflight.cpp, preflight-01.log and evidence-sha256.json.
+No acceptance-test COUNTS/VERDICT lines exist for this checkpoint: the measurement is not a canonical passing gate.
+NOT_RUN: the requested gameplay canary; fisher/affected gates; zero-warning Dev build; full pins check on this branch.
+NOT_RUN: HE, original live execution, Windows game-file run, full landing suite.
+Hosted CI is read after the checkpoint push and monitored; its URL/result is supplied with the final four-task status.
+The report-only delta cannot establish canary success even if inherited branch CI is green.
+No running gate was interrupted, no memory-refused result counted as execution, and no whole gate repeated.
+Decisions and reasoning:
+- Verify the complete starting-state prerequisite first, as the earlier MAP review required.
+- Keep the state-free fish finding distinct from the normal-session script dependency.
+- Preserve the requested original resources, actors and script; a silent bypass would change the proof.
+- Stop at a clean decision boundary instead of adding an untestable gameplay hook under a blocked acceptance claim.
+- Move to Task 4 because its fixture cleanup is independent of either fish or script-object implementation.
+QUESTIONs: OQ-625 is blocking; no owner decision or orchestrator acceptance is inferred.
+
+
+## FIXTURES-TRIM-1 — one current fixture set and canonical pins (2026-11-15)
+
+Status: READY FOR REVIEW; independent review is the orchestrator's handover review.
+Branch task/FIXTURES-TRIM-1; independent origin/main base 01a4d5401f71b48339923fbb839ee6c7a4c05e55.
+Tested code candidate 520a1187; final follow-up changes only documentation, not tested source or fixture bytes.
+Start 2026-11-15 00:56:05Z; budget about 2 hours; no reviewer subagents, engine behavior or state change.
+CLAUDE, PLAN, board protocol, ADR 0006 and mandatory evidence/testing contract read, including before handover.
+Before: 392 tracked sim fixture files, 33,476,670 bytes (31.93 MiB); ADR's 387 / 31.7 MB was an older snapshot.
+After: 116 files, 7,415,445 bytes (7.07 MiB). Removed 276 files / 26,061,225 bytes (24.85 MiB).
+Per-set sizes, counts, retained proofs and exact changed readers: docs/testing/fixtures-trim.md.
+Per-file before hashes / dispositions: cache/fixtures-trim-1/cleanup-plan.json, recorded before the first removal.
+PINS-1 had already pointed positive G2–G6, founding/cargo, populated-field and corpus tests at current/.
+Unused numbered copies add no active positive assertion; current replay/oracle/corpus tests cover those workloads.
+Kept actual native/replay predecessors 128–138, including distinct schemas that reused 129/130.
+Kept 11 exact published128 recordings, their SHA controls, and the two files the historical model imports.
+Kept historical supply/research corpus and SCRIPT1/2 independent oracle expectations; current cannot replace them.
+Kept purpose-specific nav/economy/freight/script/import vectors; no deletion of unique semantic evidence.
+Current pins renamed byte-for-byte: current/goldens.txt -> fixtures/synthetic/sim/pins.txt.
+Existing golden.hpp / pins.py mechanism retained; sim_stream.py's comparison follows the same path, no formula edit.
+Public pin contract checks this sole current path, absence of the old copy and private check/regen routing.
+Changed historical readers: script2_session frame2 control -> retained unit130/SCRIPT1 G2; identical SHA proven.
+Integration native134 control -> freight legacy134 save instead of salt duplicate; identical SHA proven.
+All other current replay inputs stay current; no old bytes relabeled as current and no recording mode used.
+retained-byte-proof.json: zero retained fixture-byte changes; pins rename identical; fisher_vectors.txt untouched.
+State 139 and every section version 1 remain unchanged; no current pin value moved.
+Dev build: build-dev-full-01.log passes with zero warnings; all targets built with calibrated build parallelism 6.
+Earlier fresh target build (build-dev-01.log) has two Apple duplicate-library linker warnings, preserved as history.
+Release pins build succeeds; test ceiling 4, shared admission enabled; no memory-refused test occurred.
+Gate logs below are under cache/fixtures-trim-1/; original game files set for pins and additional readers.
+pins-full-01.log, required pins_contract then full selected scope:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1675 executed=1657 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/fixtures-trim-1/pins-full-01.log
+extra-readers-01.log, prerequisite passed, then inventory failed BEFORE any of the 64 reader tests ran:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+VERDICT: FAIL workflow: Expecting value: line 1 column 1 (char 0)
+The selector used Python's unsupported (?:...) syntax in CTest; corrected to (...) with no source change.
+extra-readers-02.log runs only the previously unexecuted 64, reusing the valid prerequisite and full pins gate:
+COUNTS: selected=64 executed=64 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+agree-synthetic-01.log: 25 of 25 cases agree (no game dir: fixtures only).
+The 64-name selector / commands / dependency reasons are in extra-fixture-readers.json; disjoint from full pins.
+No whole gate was repeated; the failed inventory remains evidence and is not counted as 64 executed failures.
+lint-final.log / format-final.log pass; git diff --check and new documentation links resolve.
+Evidence log SHA-256s: cache/fixtures-trim-1/evidence-sha256.json; retained fixtures checked against the base.
+Hosted CI is read after the final branch push; exact head/run/result supplied at handover, never pre-claimed green.
+NOT_RUN: local Windows/WSL and original-file parser agreement (parser code unchanged); hosted CI has no game files.
+NOT_RUN: optional measurement bodies (18 classified opt-in skips), Windows game-file/full landing gate.
+Decisions and reasoning:
+- Delete covered copies, retain real historical assertions and the independent model's minimum dependencies.
+- Repoint duplicate historical inputs only after exact byte comparison, preserving their refusal meaning.
+- Use the requested pins.txt path by moving the existing mechanism; never introduce a second pin source.
+- Run one full pins selection and a disjoint reader set; preserve inventory failure and rerun only unexecuted work.
+- Keep this branch independent of all fisher branches and preserve every retained fixture byte.
+QUESTIONs: none for cleanup; FISHER-1c's separate OQ-625 checkpoint is not resolved by this task.
+
+## UI-INFO-2c — READY FOR REVIEW (UI lane, 2026-11-15)
+
+Branch `task/UI-INFO-2c` from `task/UI-INFO-2` `da29872b`; code `0b3340fc`. Done by the UI lane itself (a 4-line key change), on the owner's OQ-623 answer relayed by the orchestrator ("Like original").
+
+**What changed.** `sdl_input.cpp` `tool_input_from_sdl`: the building tool's `.` is `Rotate` (+1) and `,` is `RotateBack` (−1); T stays `Rotate`. Evidence: GOG Wine runner (UI-INFO-2), pioneer house 501 from block 0: `.` gives 1, 2 and `,` then 1, 0 (`u2_501_dot1`, `dot2`, `comma1`, `comma2`), the same as the right/left arrow; so `,` is −1 as well. The ship-start founding mode (`opening_key_from_sdl`) is unchanged: OQ-520 measured the original's Kontor cursor `,` on, `.` back there. Docs: OQ-623 resolved (what stays open as evidence: the key → command table, and a Kontor armed in the building tool), `docs/re/ui.md` §2.5 keys row, `docs/testing/ship-opening-playtest.md` B-tool keys. The test "dev tool turn" (`dev_tool_mod_test.cpp`) drives the input kinds, not keys; only its name and comments changed to the new keys, so its CTest name changes.
+
+**Tests.** New `dev_tool_test.cpp` "tool keys: `.` turns an ordinary building on and `,` back, as the original's": SDL mapping of `.`, `,` and T, then through the tool 0 → 1 → 2 → 1 → 0 → 3. Failure proof: built with `da29872b`'s `sdl_input.cpp`, the case fails (5 of 19 assertions, e.g. `CHECK( 1 == 3 )`); restored, it passes.
+
+**Gates (this PC, MSVC Release).** `cmake --preset msvc`, `cmake --build --preset msvc`: clean. Focused `ctest --preset msvc -j 16` with `ANNO1503_GAME_DIR`, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`, `ANNO_UI_HE_CAPTURES`, `ANNO_UI_ROTATION_SHOTS`, regex over the dev-tool, construction-menu, rotation and every oracle-shot UI test (`live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`, `info_panel_rotation_gog_compare`, `ui_panels_match_gog`, `ui_window_matches_he`, `ui_mock_matches_oracle`, `ui placement`, the `viewer_wiring_ui_*` scripts): **71 of 71 executed and passed**, 0 skipped, 0 failed. After the proof and restore: the 6 key/rotation tests, 6 of 6 passed. clang-format 23.1.3 `--dry-run --Werror` on the changed files: clean. `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 404 of 405 clean, the one FAIL is the known `src/sim/tests/extensions_test.cpp` (`ANNO_EXTENSION_ORACLE_FILE` not passed by the script; untouched, same as on UI-INFO-2).
+
+**NOT_RUN.** The full suite; Linux/macOS game-file runs; hosted CI (runs on the push).
+
+**Decisions and reasoning.** Only the building tool changes: the owner's question was about ordinary buildings, and the founding mode has its own measured evidence (OQ-520). T keeps +1 (the window's own key, no original counterpart). No `sim` or `render` change.
+
+**Landing.** Stacks on UI-INFO-2 (`da29872b`); lands through the orchestrator after it.
+
+
+## FISHER-1d — follow-ups, runtime fish fill and script inventory (2026-11-15)
+
+Status: READY FOR REVIEW; independent orchestrator review pending; final hosted receipt accompanies handoff.
+Base eb40d75c; owner-authorized trim merge 7aaa3c85; tested source db74a7cb; closeout changes docs only.
+Only REPORTS append conflicted; both full entries retained, headings once. Old branches remain preserved.
+OQ-623 renamed OQ-625 throughout this lane; UI's OQ-623/624 untouched. No reviewer subagents.
+B1: 0x100592f4–0x100592fc counts blocked resources before goal-pop 0x100033c3; truly empty rig added.
+B2: first entrance on mean 32 land reaches/claims water fish; second entrance on mean 31 permits return.
+B3: hand-derived literal rotated launch; mode-0 test accurately names default/explicit selection equivalence.
+B4: mid-trip reload proves 768 raw delivery and worker release; two from-create runs match hashes.
+B5: enabled invalid-job diagnostic lists job 0x2d; disabled control excludes it.
+Fill: fill_fish_resources(TileLayer&, HEIGHT, TileRect, enabled, threshold=16, resource=11), no saved field.
+Original 0x100928a0–0x10092b32: clipped row-major empty cells, unsigned mean < 16, zero draws.
+Hooks: loaded objects/buildings (0x100a1f9d/0x100a20b8/0x100a2fc8); area clear (0x1008376e–0x10083796).
+Demolition/city/house removal propagate the flag; placement/tick/native reload do not regenerate fish.
+Four runtime_fish vectors cover 15/16, occupied 11/16384, phase/anchor/height and preserved fields.
+C++ census: 50 maps, 4,908,270 generated/usable; S01_02_01 179,016; every per-map count agrees.
+It projects raw geometry/all footprints, including orphan PROD2; synthetic World creation proves the hook.
+This is not normal actor/script import or original-farm trip completion; no gameplay script bypass.
+Owner option 1: inventory/propose SCRIPT-OBJECTS-1; OBJECT_STADT operands 4/18 at offsets 16/48.
+Their only KILLED uses are primaries 4209/4306; numeric namespace/lifetime unread; also 5 PLAYER queries/11 action names.
+INIT first calls unsupported QUESTLOG_SHOW at 1339; proposed 3–4 h SCRIPT-OBJECTS-1 alone cannot unblock the script (§8).
+T2: pins.txt labels corrected; formulas/digests unchanged, historical checksum scope explicit.
+All 14 named recordings are byte-identical to accepted trim; README/provenance wording is the requested metadata edit.
+State 139, all section versions 1 and existing tag 1 remain unchanged; feature stays default-off.
+Dev zero compiler warnings; final relink zero warnings (local Apple duplicate-library diagnostic suppression).
+Initial build's two duplicate-archive linker warnings retained; no compiler warning disabled. Lint/format/diff/links pass.
+Direct: 22 fisher cases pass, reference 53 vectors/0 disagreements, contract 81 checks; all 22 also pass canonically.
+Cache-only production mutants: inclusive depth fails mean 16; late candidate count fails blocked fish; legal controls pass.
+Each replacement applied once; predicate-mutant.json/candidate-mutant.json retain commands, hashes and results.
+Full pins (Dev, game files), cache/fisher-1d/pins-full-01.log:
+```
+COUNTS: selected=1693 executed=1675 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/fisher-1d/pins-full-01.log
+```
+App/reference (Release, game files), cache/fisher-1d/app-reference-02.log:
+```
+COUNTS: selected=291 executed=288 failed=0 empty=0 skipped=3 (required-asset=0 platform=0 opt-in=3 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Required pins_contract (pins log), viewer_wiring_contract/fisher_reference_contract/picture_matrix_contract (app log), each:
+```
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Initial all-closed-entrance diagnostic failed delivery bound (b-rigs-direct-01.log); final B2 scope is explicit.
+All-closed return remains unproved; no movement rule was invented. App attempt 01 ran no tests (Dev gate lock).
+App ran once in the existing Release folder; no running gate was interrupted, memory refusal or whole-gate repeat.
+CI: source run 43692985109 has only Windows build pending at report preparation; final pushed gate checked before handoff.
+Final receipt: https://github.com/Dom-cmyk727/anno_rebuild/actions?query=branch%3Atask%2FFISHER-1d (exact run in handoff).
+NOT_RUN: normal-map gameplay canary, original/HE, local MSVC/WSL/GPU/SDL viewer; hosted CI has no game files.
+Unaffected formats/render/test-support lanes reused: no changed source there. Contract/README re-read before handover.
+Evidence SHA-256: cache/fisher-1d/evidence-sha256.json; acceptance table: acceptance.md; no pin/recording rewrites.
+Decisions and reasoning:
+- Merge accepted trim as authorized so T2 documents the tested mechanism; retain both append-only reports.
+- Match candidate ordering and original load/clear lifecycle; reuse columns/flag, preserve default hashes and RNG.
+- Preserve owner draw scope: one discarded draw per eligible attempt, no body draw; full on/off trajectories may diverge.
+- Name the geometry scope and all-closed-return limit; option 1 keeps the normal canary blocked rather than suppressing script.
+QUESTIONs: no further owner choice for FISHER-1d; OQ-625 remains open. Script inventory exposes the broader language backlog.

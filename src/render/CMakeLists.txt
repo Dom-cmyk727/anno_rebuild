@@ -31,6 +31,7 @@ if(ANNO_BUILD_TESTS)
     tests/chunk_reduce_test.cpp
     tests/depth_test.cpp
     tests/fluid_test.cpp
+    tests/frame_config_test.cpp
     tests/picking_test.cpp
     tests/main.cpp
     tests/render_corpus_test.cpp

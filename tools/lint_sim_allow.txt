@@ -165,4 +165,8 @@ src/sim/include/anno/sim/extension_context.hpp:static constexpr std::size_t size
 # --- fisher.hpp (FISHER-1a)
 # Original mode-3 water threshold: AnnoWelt.dll 0x100e34dc initialized by
 # 0x1008fea0/0x1008ff00. A parameter default, never a size or content limit.
+src/sim/include/anno/sim/fisher.hpp:kFisherFillThreshold = 16;  # original fish depth (AnnoWelt 0x1008fea0 / 0x10092a61), exposed as a parameter default
 src/sim/include/anno/sim/fisher.hpp:kFisherWaterThreshold = 32;  # original height threshold (docs/re/fisher.md §3); callers can supply another value
+
+# FISHER-1b permanent header tag 1, owner-reserved on the board; a wire discriminant, not a limit.
+src/sim/include/anno/sim/extension_context.hpp:static constexpr std::uint16_t tag = 1;  # state.md §9.8 permanent fisher_rules tag

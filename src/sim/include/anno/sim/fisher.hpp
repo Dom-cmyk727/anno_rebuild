@@ -5,7 +5,22 @@
 #include <optional>
 #include <span>
 
+#include <anno/sim/ids.hpp>
+
 namespace anno::sim {
+class TileLayer;
+// AnnoWelt 0x1008fea0 / 0x10092a61-0x10092a9e: the shipped fish depth, not a size cap.
+inline constexpr std::uint8_t kFisherFillThreshold = 16;
+// Load/area-clear fish branch of 0x100928a0-0x10092b32, clipped row-major.
+// No draw, allocation, terrain write or new state. A disabled call or a missing
+// width*height HEIGHT column writes nothing. Resource 11 is the original's lookup
+// literal; parameters expose the rule defaults without imposing content-size limits.
+[[nodiscard]] std::uint64_t fill_fish_resources(TileLayer& tiles,
+                                                std::span<const std::uint8_t> heights,
+                                                TileRect area, bool enabled,
+                                                std::uint8_t threshold = kFisherFillThreshold,
+                                                TypeId resource = TypeId{11});
+
 // AnnoWelt.dll 0x100e34dc, initialized at 0x1008fea0/0x1008ff00:
 // byte(trunc(value / f32(0.04))) = 32. A rule value, not a size limit;
 // passed explicitly (or by this default) so future rules can select another value.
@@ -21,12 +36,14 @@ inline constexpr std::uint8_t kFisherWaterThreshold = 32;
 struct FisherCell {
     std::uint8_t mean;
     bool walkable_water;
-    std::uint16_t goal_mask;
+    std::uint16_t blocked_mask;
+    std::uint16_t usable_mask;
     friend bool operator==(const FisherCell&, const FisherCell&) = default;
 };
 // Four corners are geometry, not a fixed content count. AnnoWelt.dll
 // 0x10090560–0x100906df / 0x1009226b–0x100922df: unsigned mean, strict water
-// comparison, opposite goal polarity. Equality is a goal and closed to walking.
+// comparison. Island +0x12c returns blocked bits; goal-pop 0x100033c3–0x100033ce
+// uses 0x1ff minus those bits. Equality is blocked and has no usable goal subcells.
 [[nodiscard]] FisherCell fisher_cell(const std::array<std::uint8_t, 4>& corners,
                                      std::uint8_t threshold = kFisherWaterThreshold);
 [[nodiscard]] std::optional<FisherCell>

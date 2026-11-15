@@ -95,6 +95,18 @@
 #include <fstream>
 
 #include <anno/render/gpu.hpp>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 #endif
 
 namespace {
@@ -103,6 +115,29 @@ namespace fs = std::filesystem;
 namespace render = anno::render;
 namespace app = anno::app;
 namespace formats = anno::formats;
+
+#ifdef ANNO_BENCH_GPU
+/// System RAM in bytes, without SDL (bench_frame links anno_app_core, not anno_app_sdl, so
+/// SDL_GetSystemRAM is not available here; ZOOM-SMOOTH-1c F2): GlobalMemoryStatusEx on Windows,
+/// sysconf on POSIX. 0 if the query fails, which default_chunk_budget's own clamp floors safely.
+std::uint64_t system_ram_bytes() {
+#ifdef _WIN32
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof(status);
+    if (!GlobalMemoryStatusEx(&status)) {
+        return 0;
+    }
+    return status.ullTotalPhys;
+#else
+    const long pages = sysconf(_SC_PHYS_PAGES);
+    const long page_size = sysconf(_SC_PAGE_SIZE);
+    if (pages <= 0 || page_size <= 0) {
+        return 0;
+    }
+    return static_cast<std::uint64_t>(pages) * static_cast<std::uint64_t>(page_size);
+#endif
+}
+#endif
 
 struct Options {
     std::size_t threads = std::max(1U, std::thread::hardware_concurrency());
@@ -218,6 +253,18 @@ struct Options {
     /// failure, and the Proof's contract states this count and its reason instead of
     /// silently absorbing it into a looser threshold.
     std::size_t zoom_sweep_skip = 0;
+    /// --chunk-budget-mb n: overrides the chunk memory budget --zoom-sweep configures from the
+    /// chosen adapter and SDL_GetSystemRAM (render::default_chunk_budget, ZOOM-SMOOTH-1b step
+    /// 2, the same function the viewer uses); nullopt = the computed default. 0 turns the
+    /// budget off (today's exact count-based behaviour).
+    std::optional<std::size_t> chunk_budget_mb;
+    /// --resident-prewarm off: --zoom-sweep's FrameRenderer::prewarm_far_levels off (nullopt or
+    /// --resident-prewarm on = on, the sweep's own default since ZOOM-SMOOTH-1b). For isolating
+    /// the resident-level background prewarm's own cost from everything else the budget changed
+    /// (ZOOM-SMOOTH-1c, the pan/iGPU busy-time regression): --chunk-budget-mb 0 does not
+    /// isolate it, since prewarm_far_levels stays on and still fills resident_level_chunks'
+    /// floor.
+    std::optional<bool> prewarm_far_levels;
     /// --wave-fade-hold k (0..1): with --scale-cost, the simulated waves' weight held at k
     /// (GpuLimits::wave_fade_ms on a frozen clock), to time the cross-fade (OQ-076).
     double wave_fade_hold = -1.0;
@@ -1427,7 +1474,7 @@ int scale_cost(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
 /// most chunks the grid showed, the most megabytes the chunk cache held, the frames above
 /// 8 ms and what the worst of them spent its time on.
 int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, std::size_t island,
-               double seconds, const fs::path& file) {
+               double seconds, const fs::path& file, WGPUAdapterType adapter_type) {
     const render::ZoomLevels& levels = scene.levels();
     for (std::size_t grp = 0; grp < levels.size(); ++grp) {
         scene.sea(grp);
@@ -1444,7 +1491,34 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
         render::FrameRenderer fr(o.threads, false);
         fr.chunk_builder = o.chunk_builder;
         fr.bin_px = o.bin_px;
-        fr.set_workers(std::make_unique<render::ChunkWorkers>(scene, (o.threads + 1) / 2));
+        // chunk_worker_threads and apply_frame_config (ZOOM-SMOOTH-1 step 1, review finding
+        // B1): the same functions the viewer configures FrameRenderer with, so this sweep
+        // cannot drift from what the window it stands in for actually runs. Before this the
+        // sweep used (threads + 1) / 2 workers against the viewer's hw * 3 / 4, and never set
+        // prewarm_far_levels or resident_level_chunks at all.
+        fr.set_workers(
+            std::make_unique<render::ChunkWorkers>(scene, render::chunk_worker_threads(o.threads)));
+        render::FrameConfig cfg;
+        cfg.prewarm_far_levels = o.prewarm_far_levels.value_or(true);
+        // ZOOM-SMOOTH-1b step 2: the same default_chunk_budget the viewer computes from the
+        // adapter and system RAM, overridable with --chunk-budget-mb (0 = off) so the sweep can
+        // be compared across budgets in one invocation.
+        const render::ChunkBudgetAdapter adapter_kind =
+            adapter_type == WGPUAdapterType_DiscreteGPU ? render::ChunkBudgetAdapter::Discrete
+            : adapter_type == WGPUAdapterType_CPU ? render::ChunkBudgetAdapter::Software
+                                                  : render::ChunkBudgetAdapter::IntegratedOrUnknown;
+        // bench_frame does not link SDL3 (it links anno_app_core, not anno_app_sdl), so there is
+        // no SDL_GetSystemRAM here; system_ram_bytes() above reads it directly instead
+        // (ZOOM-SMOOTH-1c F2: a non-discrete adapter was getting the 256 MiB floor here while
+        // the viewer gets RAM/8 capped at 2 GiB, so the iGPU sweep measured a different
+        // configuration from what it stands in for).
+        cfg.budget = render::default_chunk_budget(adapter_kind, system_ram_bytes());
+        if (o.chunk_budget_mb) {
+            cfg.budget.total_bytes =
+                static_cast<std::size_t>(static_cast<std::uint64_t>(*o.chunk_budget_mb) *
+                                         std::uint64_t{1024} * std::uint64_t{1024});
+        }
+        render::apply_frame_config(fr, cfg);
         const auto target =
             g.offscreen_target(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
         auto ready = [&](std::size_t grp) { return g.group_ready(scene, grp); };
@@ -1474,6 +1548,11 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             std::size_t open = 0;        // GpuStats::open_sea_chunks: placeholder/open-sea draws.
             bool wave_fading = false;    // GpuStats::fluid_fade < 1: inside a wave cross-fade.
             std::uint64_t fluid_windows = 0; // GpuStats::fluid_windows (cumulative).
+            // ZOOM-SMOOTH-1 step 7: the window-thread chunks step's own time (GpuStats::
+            // chunks_ms: plan_margin, request_chunks, trim, every frame, not only busy ones) so
+            // the proof can report its p99/max separately from the frame's total busy time —
+            // the planning cost this packet's wider wanted set might grow (review finding S4).
+            double chunks_ms = 0;
             std::vector<std::pair<const char*, double>> steps;
         };
         std::vector<Frame> frames;
@@ -1547,6 +1626,14 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                         s.cam_x, s.cam_y, static_cast<std::uint32_t>(w),
                         static_cast<std::uint32_t>(h), scale, render::resample_filter_for(scale));
                     fr.motion_centre = anno::app::pan_centre(s);
+                    // zoom_anchor_at (ZOOM-SMOOTH-1 step 1, review finding B1): the sweep's own
+                    // off-centre anchor (s.anchor_x/y, set below island_bounds above) through the
+                    // same formula the viewer uses for its cursor, so the neighbouring groups'
+                    // chunks are requested around the anchor here too; before this fr.zoom_anchor
+                    // was never set, so the zoom-out ring (step 4) and resident levels (step 3)
+                    // could not be exercised by this proof.
+                    fr.zoom_anchor =
+                        render::zoom_anchor_at(s.cam_x, s.cam_y, s.anchor_x, s.anchor_y, scale);
                     const auto st = g.render(fr, scene, rv.view, s.group, t_ms, style,
                                              target.second.get(), &rv.resample);
                     t_ms += 2;
@@ -1561,6 +1648,7 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                     f.open = st.open_sea_chunks;
                     f.wave_fading = st.fluid_fade < 1.0F;
                     f.fluid_windows = st.fluid_windows;
+                    f.chunks_ms = st.chunks_ms;
                     const auto sea = g.sea_pass_ms(); // waits for the GPU
                     f.gpu = sea && g.frame_gpu_ms() ? *g.frame_gpu_ms() : -1.0;
                     if (f.total > kBusyMs) {
@@ -1600,8 +1688,9 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
             "| level | scale range | frames | thread ms p50 | p95 | p99 | max | GPU ms p50 | "
             "GPU ms max | chunks shown (max) | cache MB (max) | non-ready frames | most "
             "non-ready at once | stand-in draws | dissolves | open-sea draws | frames in wave "
-            "fade | frames > %.0f ms | frames > %.0f ms |\n"
-            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+            "fade | frames > %.0f ms | frames > %.0f ms | chunks step p99 | chunks step max |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+            "---|\n",
             kFrameMs, kBusyMs);
         auto pct = [](std::vector<double> v, double q) {
             if (v.empty()) {
@@ -1633,6 +1722,10 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
         std::vector<double> total_ms_all;
         for (std::size_t grp = 0; grp < levels.size(); ++grp) {
             std::vector<double> total, gpu_ms;
+            // ZOOM-SMOOTH-1 step 7, review finding S4: the window-thread "chunks" step's own
+            // time (plan_margin, request_chunks, trim), every frame, not only busy ones — the
+            // wanted set this packet grows must not raise this at the 99th percentile.
+            std::vector<double> chunks_step_ms;
             double smin = 1e9, smax = 0;
             std::size_t visible = 0, busy = 0, busy2 = 0, count = 0;
             std::size_t non_ready = 0, most_missing = 0, stand_draws = 0, dissolves = 0,
@@ -1644,6 +1737,7 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                 ++count;
                 total.push_back(f.total);
                 total_ms_all.push_back(f.total);
+                chunks_step_ms.push_back(f.chunks_ms);
                 if (f.gpu >= 0) {
                     gpu_ms.push_back(f.gpu);
                 }
@@ -1683,11 +1777,13 @@ int zoom_sweep(const render::Scene& scene, const Options& o, gpu::GpuFrame& g, s
                 continue;
             }
             std::printf("| %zu | %.2f - %.2f | %zu | %.2f | %.2f | %.2f | %.2f | %.2f | %.2f | "
-                        "%zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu |\n",
+                        "%zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %zu | %.3f | "
+                        "%.3f |\n",
                         grp, smin, smax, count, pct(total, 0.5), pct(total, 0.95), pct(total, 0.99),
                         pct(total, 1.0), pct(gpu_ms, 0.5), pct(gpu_ms, 1.0), visible, cache_mb[grp],
                         non_ready, most_missing, stand_draws, dissolves, open_draws,
-                        wave_fade_frames, busy2, busy);
+                        wave_fade_frames, busy2, busy, pct(chunks_step_ms, 0.99),
+                        pct(chunks_step_ms, 1.0));
             total_frames += count;
             total_non_ready += non_ready;
             most_missing_at_once = std::max(most_missing_at_once, most_missing);
@@ -2013,6 +2109,17 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = parse(v, o.zoom_sweep_pan_px) && o.zoom_sweep_pan_px >= 0.0;
         } else if (a == "--zoom-sweep-skip") {
             ok = parse(v, o.zoom_sweep_skip);
+        } else if (a == "--chunk-budget-mb") {
+            std::size_t mb = 0;
+            ok = parse(v, mb);
+            if (ok) {
+                o.chunk_budget_mb = mb;
+            }
+        } else if (a == "--resident-prewarm") {
+            ok = v == "on" || v == "off";
+            if (ok) {
+                o.prewarm_far_levels = v == "on";
+            }
         } else if (a == "--zoom-factor") {
             ok = parse(v, o.zoom_factor) && o.zoom_factor >= 1.0 / 64.0 && o.zoom_factor <= 64.0;
         } else if (a == "--resample") {
@@ -2369,7 +2476,7 @@ int main(int argc, char** argv) {
             std::fputs("--zoom-sweep needs --renderer gpu\n", stderr);
             return 2;
         }
-        return zoom_sweep(scene, *o, *frame_gpu, largest, o->zoom_sweep, file);
+        return zoom_sweep(scene, *o, *frame_gpu, largest, o->zoom_sweep, file, ctx->adapter_type);
     }
     if (!o->scale_cost.empty()) {
         if (!frame_gpu) {

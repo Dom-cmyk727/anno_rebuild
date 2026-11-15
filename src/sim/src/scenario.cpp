@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <anno/sim/create.hpp>
+#include <anno/sim/extensions.hpp>
 #include <anno/sim/house_tick.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/scenario.hpp>
@@ -183,7 +184,7 @@ std::string building_refusal(Reject r) {
 /// `out`. Returns the first refusal as a message ("" when the island was built).
 std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, const SimConfig& cfg,
                          const Rules& rules, const TypeRegistry& types, const PlayerTable& players,
-                         Island& out) {
+                         Island& out, bool fisher_enabled) {
     out.index = is.slot;
     static_cast<void>(out.tiles.reset(is.x0, is.y0, is.w, is.h, cfg.chunk_edge));
     out.climate = is.climate;
@@ -304,6 +305,9 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
             }
         }
     }
+    if (out.terrain)
+        static_cast<void>(
+            fill_fish_resources(out.tiles, out.terrain->height, out.rect(), fisher_enabled));
     return {};
 }
 
@@ -312,12 +316,15 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
 formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
                                                   std::shared_ptr<const TypeRegistry> types,
                                                   SimConfig config, Rules rules, Seams seams,
-                                                  const Executor& ex) {
+                                                  const Executor& ex,
+                                                  const ExtensionContext& extension_rules) {
     // 1. Validate (§10): configuration first, before any state is built.
     if (!types) {
         return std::string("registry: is null");
     }
-    std::string problem = config.validate(*types);
+    std::string problem = validate_extension_context(extension_rules);
+    if (problem.empty())
+        problem = config.validate(*types);
     if (problem.empty()) {
         problem = rules.validate();
     }
@@ -502,6 +509,7 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     World w;
     w.config_ = std::move(config);
     w.rules_ = rules;
+    w.extensions_ = extension_rules;
     w.settings_ = spec.settings;
     w.seams_ = std::move(seams);
     w.types_ = RegistryRef(std::move(types));
@@ -607,8 +615,8 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     const TypeRegistry& registry = *w.types_;
     parallel_for(ex, spec.islands.size(), [&](std::uint64_t i) {
         const auto k = static_cast<std::size_t>(i);
-        refused[k] =
-            build_island(spec.islands[k], k, cfg, build_rules, registry, w.players_, built[k]);
+        refused[k] = build_island(spec.islands[k], k, cfg, build_rules, registry, w.players_,
+                                  built[k], w.fisher_enabled());
     });
     for (const std::string& message : refused) {
         if (!message.empty()) {

@@ -17,6 +17,42 @@
 
 namespace anno::render {
 
+void apply_frame_config(FrameRenderer& fr, const FrameConfig& cfg) {
+    fr.prewarm_far_levels = cfg.prewarm_far_levels;
+    fr.resident_level_chunks = cfg.resident_level_chunks;
+    fr.budget = cfg.budget;
+}
+
+ChunkMemoryBudget default_chunk_budget(ChunkBudgetAdapter adapter, std::uint64_t system_ram_bytes) {
+    constexpr std::uint64_t kGiB = std::uint64_t{1} << 30;
+    constexpr std::uint64_t kMiB = std::uint64_t{1} << 20;
+    ChunkMemoryBudget b;
+    switch (adapter) {
+    case ChunkBudgetAdapter::Discrete:
+        b.total_bytes = 4 * kGiB;
+        break;
+    case ChunkBudgetAdapter::IntegratedOrUnknown: {
+        const std::uint64_t eighth = system_ram_bytes / 8;
+        b.total_bytes =
+            static_cast<std::size_t>(std::clamp<std::uint64_t>(eighth, 256 * kMiB, 2 * kGiB));
+        break;
+    }
+    case ChunkBudgetAdapter::Software:
+        b.total_bytes = 256 * kMiB;
+        break;
+    }
+    // ZOOM-SMOOTH-1c F3: a measured default rather than unbounded (the viewer had none before
+    // this). trim()'s own candidate scan already runs on the window thread regardless of how
+    // much it then evicts, so this cap is not about that cost; it bounds how large a single
+    // burst of discards can be (the reaper thread's own queue, and avoiding a mass eviction
+    // right after the budget is lowered, e.g. by the viewer's own ANNO_VIEW_CHUNK_BUDGET_MB
+    // override). 64 chunks' worth, the same order of magnitude as the original spare_chunks
+    // default (48): generous enough to rarely bind in the steady state the watermark band
+    // already smooths, a real cap for the pathological case.
+    b.max_evict_bytes_per_frame = 64 * kChunkByteEstimate;
+    return b;
+}
+
 namespace {
 
 using Clock = std::chrono::steady_clock;
@@ -622,7 +658,40 @@ const Chunk* FrameRenderer::chunk(const ChunkKey& key) const {
 
 void FrameRenderer::insert_chunk(const ChunkKey& key, Chunk chunk) {
     chunk.serial = next_serial();
-    cache_.insert_or_assign(key, std::make_shared<const Chunk>(std::move(chunk)));
+    auto owned = std::make_shared<const Chunk>(std::move(chunk));
+    if (const auto it = cache_.find(key); it != cache_.end()) {
+        cache_bytes_ -= it->second->bytes();
+    }
+    cache_bytes_ += owned->bytes();
+    cache_.insert_or_assign(key, std::move(owned));
+}
+
+bool FrameRenderer::is_resident_level(std::size_t g) const {
+    if (g >= level_chunks_.size() || level_chunks_[g] == 0) {
+        return false;
+    }
+    if (level_chunks_[g] <= resident_level_chunks) {
+        return true;
+    }
+    if (budget.total_bytes == 0) {
+        return false;
+    }
+    const auto resident_bytes =
+        static_cast<std::size_t>(static_cast<double>(budget.total_bytes) * budget.resident_share);
+    // Cumulative, farthest (coarsest, highest index) level first (ZOOM-SMOOTH-1c F1): level g
+    // qualifies only if everything coarser than it, plus itself, together still fit the share.
+    // Before this each level was checked alone against the whole share; since each derived
+    // level has about a quarter the chunks of the one below it, the levels together could take
+    // up to about 4/3 of the share, and the ones that fit were never trimmed, leaving the
+    // working set less than its own share.
+    std::size_t cumulative = 0;
+    for (std::size_t level = level_chunks_.size(); level-- > g;) {
+        if (level_chunks_[level] == 0 || level_chunks_[level] <= resident_level_chunks) {
+            continue; // the floor's own levels don't draw on the share
+        }
+        cumulative += level_chunks_[level] * kChunkByteEstimate;
+    }
+    return cumulative <= resident_bytes;
 }
 
 std::tuple<std::size_t, double, std::size_t>
@@ -979,12 +1048,16 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
         }
         // The chunk is moved into its shared owner (vectors moved, no plane copied).
         ChunkPtr owned = std::make_shared<const Chunk>(std::move(chunk));
+        const std::size_t owned_bytes = owned->bytes();
         if (const auto it = cache_.find(key); it != cache_.end()) {
+            cache_bytes_ -= it->second->bytes();
             replaced.push_back(std::move(it->second));
             it->second = std::move(owned);
+            cache_bytes_ += owned_bytes;
             ++rebuilds_[key]; // the river flow arrived: a rebuild that was planned
         } else {
             cache_.emplace(key, std::move(owned));
+            cache_bytes_ += owned_bytes;
             ++builds_[key];
         }
         ++received;
@@ -1016,26 +1089,45 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
         }
     }
     if (prewarm_far_levels) {
-        // The resident overview levels, one chunk at a time and only when the view needs nothing:
+        // The resident overview levels, filling every idle worker thread at once (step 3,
+        // review finding S3: not one chunk at a time) and only when the view needs nothing:
         // appended last, so every job of the view comes first (the job list is replaced each
         // frame).
-        if (prewarm_target_ && cache_.contains(*prewarm_target_) &&
-            !dirty_.contains(*prewarm_target_)) {
-            prewarm_target_.reset();
-        } else if (prewarm_target_ && !pending_ && prewarm_blocked(scene, *prewarm_target_)) {
-            // The last request left nothing queued or running, the target is still not there and a
-            // build it needs failed, which the workers never retry: give it up, not the overview.
-            // Nothing pending alone is no failure (review 2026-11-03, P2): a job that finished
-            // between take_done and submit was skipped by the submit and arrives with this
-            // frame's take_done, so the target can be built now.
-            prewarm_skipped_.insert(*prewarm_target_);
-            prewarm_target_.reset();
+        prewarm_targets_.erase(std::remove_if(prewarm_targets_.begin(), prewarm_targets_.end(),
+                                              [&](const ChunkKey& target) {
+                                                  if (cache_.contains(target) &&
+                                                      !dirty_.contains(target)) {
+                                                      return true; // built
+                                                  }
+                                                  if (!pending_ && prewarm_blocked(scene, target)) {
+                                                      // The last request left nothing queued or
+                                                      // running, the target is still not there and
+                                                      // a build it needs failed, which the workers
+                                                      // never retry: give it up, not the overview.
+                                                      // Nothing pending alone is no failure (review
+                                                      // 2026-11-03, P2): a job that finished
+                                                      // between take_done and submit was skipped by
+                                                      // the submit and arrives with this frame's
+                                                      // take_done, so the target can be built now.
+                                                      prewarm_skipped_.insert(target);
+                                                      return true;
+                                                  }
+                                                  return false;
+                                              }),
+                               prewarm_targets_.end());
+        if (todo.empty() && workers_) {
+            std::set<ChunkKey> exclude(prewarm_targets_.begin(), prewarm_targets_.end());
+            while (prewarm_targets_.size() < workers_->thread_count()) {
+                const auto next = next_prewarm_key(scene, exclude);
+                if (!next) {
+                    break;
+                }
+                exclude.insert(*next);
+                prewarm_targets_.push_back(*next);
+            }
         }
-        if (!prewarm_target_ && todo.empty()) {
-            prewarm_target_ = next_prewarm_key(scene);
-        }
-        if (prewarm_target_) {
-            todo.push_back(*prewarm_target_);
+        for (const auto& target : prewarm_targets_) {
+            todo.push_back(target);
         }
     }
     // A derived chunk is reduced from its four children as the cache holds them; the
@@ -1053,10 +1145,10 @@ bool FrameRenderer::prewarm_blocked(const Scene& scene, const ChunkKey& target) 
     return workers_->any_failed(plan_jobs(scene, {target}, keep_unused));
 }
 
-std::optional<ChunkKey> FrameRenderer::next_prewarm_key(const Scene& scene) const {
+std::optional<ChunkKey> FrameRenderer::next_prewarm_key(const Scene& scene,
+                                                        const std::set<ChunkKey>& exclude) const {
     for (std::size_t g = levels_.size(); g-- > levels_.built_count();) {
-        if (g >= level_chunks_.size() || level_chunks_[g] == 0 ||
-            level_chunks_[g] > resident_level_chunks) {
+        if (!is_resident_level(g)) {
             continue; // not resident: it would be evicted again
         }
         const auto bounds = scene.bounds(g);
@@ -1064,11 +1156,12 @@ std::optional<ChunkKey> FrameRenderer::next_prewarm_key(const Scene& scene) cons
             continue;
         }
         for (const auto& [cx, cy] : visible_chunks(*bounds)) {
-            if (prewarm_skipped_.contains({g, cx, cy})) {
+            const ChunkKey key{g, cx, cy};
+            if (prewarm_skipped_.contains(key) || exclude.contains(key)) {
                 continue;
             }
-            if (!cache_.contains({g, cx, cy}) || dirty_.contains({g, cx, cy})) {
-                return ChunkKey{g, cx, cy};
+            if (!cache_.contains(key) || dirty_.contains(key)) {
+                return key;
             }
         }
     }
@@ -1107,7 +1200,16 @@ FrameRenderer::stand_in_retain(std::size_t group,
 
 void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>& keep,
                          const std::set<ChunkKey>& retain) {
-    if (cache_.size() <= keep.size() + spare_chunks) {
+    // Both paths below rank the same evictable candidates the same way (closest to the view,
+    // the current group first); only how many of them are freed, and by what rule, differs
+    // (ZOOM-SMOOTH-1b step 6).
+    const bool byte_budget = budget.total_bytes > 0;
+    if (!byte_budget && cache_.size() <= keep.size() + spare_chunks) {
+        return;
+    }
+    const std::size_t high =
+        static_cast<std::size_t>(static_cast<double>(budget.total_bytes) * budget.high_watermark);
+    if (byte_budget && cache_bytes_ <= high) {
         return;
     }
     const int ccx = div_euclid(view.x + view.w / 2, kChunk);
@@ -1118,9 +1220,8 @@ void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>&
             continue;
         }
         const auto [g, cx, cy] = k;
-        if (g < level_chunks_.size() && level_chunks_[g] > 0 &&
-            level_chunks_[g] <= resident_level_chunks) {
-            continue; // a small derived level stays for the scene's lifetime
+        if (is_resident_level(g)) {
+            continue; // a resident derived level stays for the scene's lifetime
         }
         keys.emplace_back(g != group, std::abs(cx - ccx) + std::abs(cy - ccy), k);
     }
@@ -1128,12 +1229,38 @@ void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>&
     // Freeing a chunk's ~4 MB of vectors costs a millisecond each: with
     // background workers the evicted chunks are freed on their reaper thread.
     std::vector<ChunkPtr> dead;
-    for (std::size_t i = spare_chunks; i < keys.size(); ++i) {
-        const auto it = cache_.find(std::get<2>(keys[i]));
+    auto evict_one = [&](const ChunkKey& k) {
+        const auto it = cache_.find(k);
+        cache_bytes_ -= it->second->bytes();
         if (workers_) {
             dead.push_back(std::move(it->second));
         }
         cache_.erase(it);
+    };
+    if (!byte_budget) {
+        for (std::size_t i = spare_chunks; i < keys.size(); ++i) {
+            evict_one(std::get<2>(keys[i]));
+        }
+    } else {
+        // The byte budget evicts the least relevant candidate first (the end of `keys`, the
+        // opposite direction from the count-based path above), stopping at the low watermark or
+        // this call's own per-frame cap, whichever comes first — the rest waits for a later
+        // frame's trim() (rate-limited eviction, step 6).
+        const std::size_t low = static_cast<std::size_t>(static_cast<double>(budget.total_bytes) *
+                                                         budget.low_watermark);
+        std::size_t freed_bytes = 0;
+        for (auto it = keys.rbegin(); it != keys.rend(); ++it) {
+            if (cache_bytes_ <= low) {
+                break;
+            }
+            if (budget.max_evict_bytes_per_frame > 0 &&
+                freed_bytes >= budget.max_evict_bytes_per_frame) {
+                break;
+            }
+            const std::size_t before = cache_bytes_;
+            evict_one(std::get<2>(*it));
+            freed_bytes += before - cache_bytes_;
+        }
     }
     if (workers_ && !dead.empty()) {
         workers_->discard(std::move(dead));
@@ -1269,7 +1396,12 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
             if (dirty_.erase(key) != 0 && cache_.contains(key)) {
                 ++rebuilds_[key];
             }
-            cache_.insert_or_assign(key, std::make_shared<const Chunk>(std::move(built[i])));
+            auto owned = std::make_shared<const Chunk>(std::move(built[i]));
+            if (const auto old = cache_.find(key); old != cache_.end()) {
+                cache_bytes_ -= old->second->bytes();
+            }
+            cache_bytes_ += owned->bytes();
+            cache_.insert_or_assign(key, std::move(owned));
             ++builds_[key];
             ++inserted;
         }

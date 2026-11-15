@@ -45,6 +45,66 @@ inline constexpr float kTerrainScale = 64.0F;
 /// Chunk::terrain where no island ground is drawn.
 inline constexpr std::uint16_t kNoTerrain = 0xFFFF;
 
+/// A conservative, flat per-chunk byte estimate used by the memory budget (ZOOM-SMOOTH-1b step
+/// 2) for decisions made before a chunk is built: a land chunk's five 512 x 512 planes (ground,
+/// objects, field, terrain, base), the same worst-case figure the GPU compositor's own plane
+/// pool already budgets by (gpu.hpp kChunkPlaneBytes; frame.hpp has no GPU dependency, so the
+/// value is restated here, not shared by include). A real built Chunk::bytes() is usually
+/// smaller (a sea chunk is far smaller, docs/render/zoom-smoothness.md 4B) and is used instead
+/// once a chunk exists; this bound only decides what to BUILD/KEEP before that, so it is
+/// deliberately pessimistic: a level marked resident on this estimate never turns out to not
+/// fit once built, which would otherwise flap the level in and out of residency.
+inline constexpr std::size_t kChunkByteEstimate = std::size_t{512} * 512 * (4 + 4 + 4 + 2 + 1);
+
+/// One byte budget for the chunk cache (ZOOM-SMOOTH-1b step 2): replaces spare_chunks and
+/// resident_level_chunks as the limit when set (total_bytes = 0, the default: unbudgeted,
+/// today's exact behaviour by chunk count — every existing test and digest is unaffected).
+///
+/// A chunk held on the GPU is held twice while it is (its CPU Chunk and the compositor's
+/// planes, gpu.cpp sync_chunks/drop_chunk, which already drops the GPU copy as soon as the CPU
+/// one is evicted here — no separate GPU-side eviction is added). default_chunk_budget already
+/// accounts for that: its total_bytes is sized as half of what the adapter/RAM can spare for
+/// this cache, so "total_bytes held on the CPU" plus "about as much again on the GPU" together
+/// still fit (review finding S2's "count both sides").
+struct ChunkMemoryBudget {
+    /// Total bytes this budget allows on the CPU side: 0 = unbudgeted.
+    std::size_t total_bytes = 0;
+    /// Share of total_bytes reserved for derived levels that stay resident for the scene's
+    /// lifetime (FrameRenderer::resident_level_chunks' byte-aware replacement, is_resident_level
+    /// below); the rest is the working set (spare_chunks' byte-aware replacement). Half each by
+    /// default: no measurement yet favours one side over the other (left as an OQ).
+    double resident_share = 0.5;
+    /// Bytes evicted by one trim() call at most (step 6): a large overshoot (e.g. right after a
+    /// budget is lowered, or many chunks finish at once) is spread over several frames instead
+    /// of freed all at once — freeing a chunk's vectors already costs about a millisecond each
+    /// (Chunk::bytes' own doc), and CLAUDE.md's "the window thread never waits" rule applies to
+    /// eviction too. 0 = unbounded (one trim() call frees however much is needed, as before
+    /// this budget existed).
+    std::size_t max_evict_bytes_per_frame = 0;
+    /// Eviction starts only once the cache holds more than high_watermark * total_bytes, and
+    /// stops once it is back at or under low_watermark * total_bytes or max_evict_bytes_per_frame
+    /// is spent for this call, whichever first. The gap between the two (default 0.9/0.75) is a
+    /// hysteresis band: without it, a working set that sits right at the budget's edge would
+    /// trim on every single frame (step 6).
+    double high_watermark = 0.9, low_watermark = 0.75;
+};
+
+/// Which adapter class default_chunk_budget sizes for (ZOOM-SMOOTH-1b step 2, as
+/// GpuLimits::atlas_budget_mb already does: WebGPU reports no memory size, so the default comes
+/// from the adapter's kind instead).
+enum class ChunkBudgetAdapter { Discrete, IntegratedOrUnknown, Software };
+
+/// The default budget for `adapter`, from `system_ram_bytes` (SDL_GetSystemRAM() in bytes; 0 if
+/// unknown). Halved against the GPU holding the same chunks again (ChunkMemoryBudget's own
+/// doc): discrete gets a stated 4 GiB of CPU-side budget (8 GiB of combined CPU+GPU use, well
+/// under a modern discrete card's VRAM; zoom-smoothness.md 4B: "gigabytes on a 4090"); integrated
+/// or unknown gets an eighth of system RAM, floored at 256 MiB and capped at 2 GiB (shared with
+/// the rest of the system, so far more conservative; mirrors atlas_budget_mb's own
+/// discrete-vs-other split); a software adapter gets the floor alone (256 MiB: enough for the
+/// visible chunks and a small margin, never an overview).
+[[nodiscard]] ChunkMemoryBudget default_chunk_budget(ChunkBudgetAdapter adapter,
+                                                     std::uint64_t system_ram_bytes);
+
 /// How the objects layer of a chunk is produced (docs/render/gpu-chunks.md 8).
 enum class ChunkBuilder {
     /// The worker composites the layer on the CPU: it builds the draw list
@@ -215,6 +275,10 @@ class ChunkWorkers {
     /// Smoothed time one worker takes to build a chunk, in milliseconds (the
     /// latency of a request that finds a free worker); 100 until the first chunk.
     [[nodiscard]] double build_ms() const { return build_ms_.load(); }
+    /// Worker threads: how many resident-level prewarm targets request_chunks queues at once
+    /// (ZOOM-SMOOTH-1b step 3, review finding S3 "fills idle workers, not one target at a
+    /// time"), since each of these threads pops one queued job at a time (run()).
+    [[nodiscard]] std::size_t thread_count() const { return threads_.size(); }
     /// Takes chunks that are no longer needed and frees them on a
     /// background thread (freeing a chunk's vectors takes about a
     /// millisecond: the window thread must not).
@@ -297,6 +361,11 @@ class FrameRenderer {
         }
         return n;
     }
+    /// The same total as cached_bytes(), kept incrementally at every cache_ insert/erase
+    /// instead of summed over the cache (ZOOM-SMOOTH-1b step 2): what `budget` is measured
+    /// against every frame, and cheap enough for that (O(1), unlike cached_bytes()). A test
+    /// checks the two agree.
+    [[nodiscard]] std::size_t cache_bytes() const { return cache_bytes_; }
     /// Brings the chunks of `view` up to date; (built or received, ms spent,
     /// visible chunks still missing).
     std::tuple<std::size_t, double, std::size_t> update_chunks(const Scene& scene, Rect view,
@@ -394,15 +463,30 @@ class FrameRenderer {
     /// cores), while 16 chunks are about 70 MB. Raise it for more memory and an
     /// instant overview at more levels.
     std::size_t resident_level_chunks = 16;
-    /// Builds the resident derived levels (see resident_level_chunks) in the background, one chunk
-    /// at a time, whenever nothing visible is missing: the first zoom out to the whole map then
-    /// finds them built instead of waiting for 4^k group-2 chunks (owner playtest 2026-11-03:
-    /// islands were cut off for a while on the first zoom out, never again after it). A resident
-    /// chunk that a change marked stale (invalidate: a founding or a building marks the chunks over
-    /// its island at every level) is rebuilt the same way: it kept drawing the old picture, and
-    /// was rebuilt only once shown again, a rebuild down to the island's group-2 chunks at the next
-    /// zoom out (owner playtest 2026-11-03, round 5: after the founding the overview needed a
-    /// moment again). Off by default.
+    /// One byte budget covering the levels resident_level_chunks alone decides, and the working
+    /// set spare_chunks alone decides (ZOOM-SMOOTH-1b step 2): a level is resident if it fits
+    /// resident_level_chunks OR the budget's resident share (is_resident_level), so raising this
+    /// field stays meaningful with the budget on, and the plain count still works with the
+    /// budget off (total_bytes = 0, the default). trim() rate-limits eviction by the same budget
+    /// (step 6).
+    ChunkMemoryBudget budget;
+    /// Whether level `g` (of levels(), a derived one) stays resident for the scene's lifetime:
+    /// resident_level_chunks is a floor that always qualifies (so raising it stays meaningful
+    /// with the budget on, and it is the only rule with the budget off); with the budget on, a
+    /// level whose whole chunk count times kChunkByteEstimate fits budget.total_bytes *
+    /// budget.resident_share also qualifies (ZOOM-SMOOTH-1b step 3). False for a level with no
+    /// chunks of its own (level_chunks_ == 0) or before sync_levels has run.
+    [[nodiscard]] bool is_resident_level(std::size_t g) const;
+    /// Builds the resident derived levels (see resident_level_chunks/is_resident_level) in the
+    /// background, filling every idle worker thread at once rather than one chunk at a time
+    /// (review finding S3), whenever nothing visible is missing: the first zoom out to the whole
+    /// map then finds them built instead of waiting for 4^k group-2 chunks (owner playtest
+    /// 2026-11-03: islands were cut off for a while on the first zoom out, never again after it).
+    /// A resident chunk that a change marked stale (invalidate: a founding or a building marks
+    /// the chunks over its island at every level) is rebuilt the same way: it kept drawing the
+    /// old picture, and was rebuilt only once shown again, a rebuild down to the island's
+    /// group-2 chunks at the next zoom out (owner playtest 2026-11-03, round 5: after the
+    /// founding the overview needed a moment again). Off by default.
     bool prewarm_far_levels = false;
     /// Most chunks the margin around the view grows in the direction the view is
     /// moving (lookahead_rect). Each chunk-wide strip is (view height / kChunk + 2)
@@ -486,8 +570,10 @@ class FrameRenderer {
     std::size_t fill_cache(const Scene& scene, std::size_t group,
                            const std::vector<std::pair<int, int>>& wanted);
 
-    /// The resident derived chunk being built for prewarm_far_levels, until it is cached.
-    std::optional<ChunkKey> prewarm_target_;
+    /// The resident derived chunks being built for prewarm_far_levels at once, until each is
+    /// cached: up to ChunkWorkers::thread_count() of them (step 3's "fills idle workers, not one
+    /// target at a time"), not just one.
+    std::vector<ChunkKey> prewarm_targets_;
     /// Resident chunks the prewarm gave up on: nothing was queued or running for the target after
     /// a request and a build it needs had failed (prewarm_blocked). The rest of the overview is
     /// still prewarmed; a skipped chunk is built when it is shown.
@@ -495,11 +581,16 @@ class FrameRenderer {
     /// Whether a job of `target`'s plan failed (ChunkWorkers::any_failed): the workers never retry
     /// it, so the target cannot be built.
     [[nodiscard]] bool prewarm_blocked(const Scene& scene, const ChunkKey& target);
-    /// The first resident derived chunk of the scene that is not cached or is marked stale (the
-    /// farthest level first).
-    [[nodiscard]] std::optional<ChunkKey> next_prewarm_key(const Scene& scene) const;
+    /// The next resident derived chunk of the scene that is not cached, not stale and not
+    /// already in `exclude` (the farthest level first): request_chunks calls this repeatedly to
+    /// fill prewarm_targets_ up to the worker count.
+    [[nodiscard]] std::optional<ChunkKey> next_prewarm_key(const Scene& scene,
+                                                           const std::set<ChunkKey>& exclude) const;
 
     std::map<ChunkKey, ChunkPtr> cache_;
+    /// cache_bytes()'s running total: adjusted at every cache_ insert, replace and erase, never
+    /// recomputed from scratch (ZOOM-SMOOTH-1b step 2).
+    std::size_t cache_bytes_ = 0;
     std::map<ChunkKey, std::size_t> builds_, rebuilds_;
     /// Keys marked stale, with the generation of the invalidation that marked them (step 8).
     std::map<ChunkKey, std::uint64_t> dirty_;
@@ -519,6 +610,44 @@ class FrameRenderer {
     bool pending_ = false;
     bool ships_ = true;
 };
+
+/// Chunk worker threads from the hardware's own count: three quarters of the cores (below
+/// normal priority, ChunkWorkers::run), floored at 1. The viewer and bench_frame's
+/// --zoom-sweep share this (ZOOM-SMOOTH-1 step 1, review finding B1) so a proof's worker
+/// count cannot drift from what the window the proof stands in for actually runs; before
+/// this the sweep used (threads + 1) / 2 against the viewer's hw * 3 / 4.
+[[nodiscard]] inline std::size_t chunk_worker_threads(std::size_t hw) {
+    return std::max<std::size_t>(1, hw * 3 / 4);
+}
+
+/// What the viewer and a proof both set on a FrameRenderer before the first update_chunks,
+/// from one struct and one function (apply_frame_config), so a proof cannot omit a knob the
+/// window sets (ZOOM-SMOOTH-1 step 1, review finding B1): before this the sweep set none of
+/// these.
+struct FrameConfig {
+    /// FrameRenderer::prewarm_far_levels.
+    bool prewarm_far_levels = false;
+    /// FrameRenderer::resident_level_chunks (FrameRenderer's own default restated here so a
+    /// caller that only wants to set prewarm_far_levels does not reset it by omission).
+    std::size_t resident_level_chunks = 16;
+    /// FrameRenderer::budget (ZOOM-SMOOTH-1b step 2): default-constructed (total_bytes = 0,
+    /// unbudgeted) unless the caller fills it in, typically from default_chunk_budget.
+    ChunkMemoryBudget budget;
+};
+
+/// Applies `cfg` to `fr`.
+void apply_frame_config(FrameRenderer& fr, const FrameConfig& cfg);
+
+/// The scene point (of the group `fr` renders) that a zoom at screen-pixel anchor offset
+/// (ax, ay from the window's centre — what ZoomState::anchor_x/y and the viewer's cursor
+/// offset both already are) would keep fixed, for FrameRenderer::zoom_anchor: cam + anchor
+/// / scale. One formula for the viewer's cursor anchor and a proof's off-centre anchor
+/// (ZOOM-SMOOTH-1 step 1, review finding B1): before this the sweep never set zoom_anchor
+/// at all, so its proofs could not see the zoom-out ring this packet adds (step 4).
+[[nodiscard]] inline std::pair<double, double> zoom_anchor_at(double cam_x, double cam_y, double ax,
+                                                              double ay, double scale) {
+    return {cam_x + ax / scale, cam_y + ay / scale};
+}
 
 /// The rectangle of view's size at group `to` centred on the scene point
 /// that `view` centres on at group `from`.

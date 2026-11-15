@@ -2035,17 +2035,26 @@ framing does not alter another section’s base-field bytes.
 ### 9.8 Extension tags: registry and registration (2026-11-14, SAVE-SECTIONS-1b)
 
 Global framing 139 and all ten section base versions 1 remain unchanged. A
-production world still writes exactly 1a's bytes: each extension count is 0.
+production world with optional features off still writes exactly 1a's bytes: each extension count is 0.
 
 | Tag | Section | Name | Owner packet | Status | Payload fields |
 |---|---|---|---|---|---|
+| 1 | header | fisher_rules | FISHER-1b | Implemented | u8 enabled: 0 off (default), 1 on; other values refused |
 | 0xF000–0xFFFF | Test contexts only | Reserved test range | SAVE-SECTIONS-1b | Reserved | See synthetic proof below |
 
-Tag 0 is never assigned. There are **no production entries**. A feature reserves its tag on the board
+Tag 0 is never assigned. Tag 1 is the first production entry (reserved on the board 2026-11-14). A feature reserves its tag on the board
 before work, like an OQ number, then adds its permanent row here. Tags are never
 reused. Test-range tags must never occur in a production list.
 
-**Registration.** `ExtensionContext` belongs to World and holds no state in 1b.
+**Fisher rules input (FISHER-1b).** `World::create` accepts an optional final
+`ExtensionContext extension_rules` argument, validates it and copies it into World.
+The same typed context is the input and the sole persisted feature state; no
+unhashed mirror is added to `Rules`. `fields(Rules)` and its digest are unchanged.
+`World::extension_rules()` is a const view; TickContext copies the active flag.
+Tag 1 writes one byte, and flag off emits no entry. No base section version moves.
+
+**Registration.** `ExtensionContext` belongs to World (empty in SAVE-SECTIONS-1b;
+FISHER-1b adds its one-byte rules payload).
 Its ten ordered compile-time lists map `StateSection` to extension types. Each
 type supplies `tag` (u16), `name` (a static string literal), `Payload`,
 `default_value()`, `state(context)` (const-preserving), one explicit
@@ -2355,7 +2364,7 @@ The archive classes, `visit_count`, `visit_count_clamped`, `run_building_list`, 
 ### 14.3 Golden hashes (cross-platform, no game files)
 Scenarios are built in code (`synthetic.cpp`); types use the values of fixtures F2 and F6 in `docs/re/production.md` §9 (weaver rate 6 / need 11 / 5 t; farm rate 37 / need 80) under ids in a synthetic range.
 
-**Goldens carry the stage and the stream version they were made at.** Every stage S1..S14 extends or changes the stream (header, settings, players, islands, cities, figures, events), so a golden has no meaning without the field list it was made against. A golden constant is stored as `{name, stage, stream_version, value}` (`fixtures/synthetic/sim/current/goldens.txt`, one line each), and a test compares only goldens whose `stream_version == kStateHashVersion`; a stale entry fails with "re-baseline" instead of a bare mismatch. While `kStateHashVersion` is a development counter, a stage that changes the stream bumps it and re-baselines **all** goldens in the same commit (`ANNO_UPDATE_GOLDEN=1`); the commit that freezes the stream at 2 (S15) does the same once more. Saves and replay logs record the version, so a file from another commit is rejected rather than silently misread.
+**Goldens carry the stage and the stream version they were made at.** Every stage S1..S14 extends or changes the stream (header, settings, players, islands, cities, figures, events), so a golden has no meaning without the field list it was made against. A golden constant is stored as `{name, stage, stream_version, value}` (`fixtures/synthetic/sim/pins.txt`, one line each), and a test compares only goldens whose `stream_version == kStateHashVersion`; a stale entry fails with "re-baseline" instead of a bare mismatch. While `kStateHashVersion` is a development counter, a stage that changes the stream bumps it and re-baselines **all** goldens in the same commit (`ANNO_UPDATE_GOLDEN=1`); the commit that freezes the stream at 2 (S15) does the same once more. Saves and replay logs record the version, so a file from another commit is rejected rather than silently misread.
 
 | Golden | Scenario | Driver | Stage |
 |---|---|---|---|
@@ -2365,13 +2374,13 @@ Scenarios are built in code (`synthetic.cpp`); types use the values of fixtures 
 | S6 G1 | `synthetic::g1_scenario`: one player, island 0 (64 x 64 at 100,100) with city 0 holding the weaver (5 t of wool) at (110,110) and the grain farm (5 t of raw material) at (120,110), seed 1234; `s6_g1_create`, `s6_g1_step100` (advance 10 ms x 100) | from `tools/sim_stream.py`, which transcribes the city, the building lists and the Workshop and Farm payloads independently of the C++ (the registry digest of the synthetic types is its one literal) | S6 |
 | G1 | S1: 1 player, island 64×64 at (100,100) climate NORD, owner runs (2 neutral rows, rest city 0), city 0, weaver (5 t wool) at (110,110), farm (5 t raw) at (120,110) | 20 000 steps of 10 ms (MP style) and 2 000 steps of LCG-chosen 1–100 ms (SP style); checkpoint every 5 000 ticks | S7 |
 | S7 G1 | `synthetic::g1_scenario` (the S6 G1 scenario) through the scheduler: `s7_g1_mp_checkpoints` (FNV of the hashes at every 5000th tick of 20 000 advances of 10 ms), `s7_g1_mp_end` (tick 100 000), `s7_g1_events` (the drained UI events) and `s7_g1_sp_end` (2 000 advances of an LCG-chosen 1 to 100 ms) | the C++ itself (ANNO_UPDATE_GOLDEN), held by the semantic asserts below; `tools/sim_stream.py` transcribes the island tick only for the horizon of `s5_islands_step100` and `s6_g1_step100` | S7 |
-| G2 | G1 driven by a recorded command log (Build a second weaver at tick 5 000, SetProductionLine off/on, Demolish, rejected commands interleaved) | `Recorder` → `fixtures/synthetic/sim/g2.log`; replay must match every checkpoint | S10 |
+| G2 | G1 driven by a recorded command log (Build a second weaver at tick 5 000, SetProductionLine off/on, Demolish, rejected commands interleaved) | `Recorder` → `fixtures/synthetic/sim/current/g2.log`; replay must match every checkpoint | S10 |
 | G3 | S2: two islands, two cities, one building of every implemented class, a mine over two deposits, research bytes set for the weapon lines | 100 000 ticks | S11 |
 | G4 | S3: players with upkeep and bankruptcy, events, timers, 7.5 min event with the add-on flag, monopoly once | 600 000 ticks (20 game minutes) | S12 |
 | G5 | S4: growth tiles, 300 s drought gate with a market building | 1 000 000 ticks | S13 |
-| G6 | `synthetic::g6_scenario` on `make_transport_types` (T24): one island, city 0 with the market (one cart, radius 8) at (110, 110), on its road the weaver with 5 t of cloth and the grain farm with 7 t of corn, the carrier weaver (radius 16, one carrier) at (106, 114), 30 t of wool in the warehouse; seed 624 | `fixtures/synthetic/sim/g6.log`: 6 000 advances of 100 ms (300 000 ticks), checkpoints every 300 advances; `t24_g6_checkpoints`, `t24_g6_end`; replayed by the test and by `anno-sim-replay run` (CTest `anno_sim_replay_g6_run`) | T24 |
+| G6 | `synthetic::g6_scenario` on `make_transport_types` (T24): one island, city 0 with the market (one cart, radius 8) at (110, 110), on its road the weaver with 5 t of cloth and the grain farm with 7 t of corn, the carrier weaver (radius 16, one carrier) at (106, 114), 30 t of wool in the warehouse; seed 624 | `fixtures/synthetic/sim/current/g6.log`: 6 000 advances of 100 ms (300 000 ticks), checkpoints every 300 advances; `t24_g6_checkpoints`, `t24_g6_end`; replayed by the test and by `anno-sim-replay run` (CTest `anno_sim_replay_g6_run`) | T24 |
 
-**The scenario corpus file is re-baselined with the goldens.** `fixtures/synthetic/sim/scenario_corpus.txt` (§14.5) holds the state hash after `World::create` for every shipped scenario, so a `kStateHashVersion` or `kPrngTimelineVersion` bump moves it too. It cannot be rewritten in CI (it needs the game files): the task that bumps runs the corpus case with `ANNO1503_GAME_DIR` and `ANNO_UPDATE_GOLDEN=1` in the same commit. Its header line `# kStateHashVersion=<n> kPrngTimelineVersion=<m>` names the versions it was made at; the corpus case refuses a file whose line is not this build's ("re-baseline"), and `tools/sim_stream.py --check` refuses one whose line is not the script's versions (since S14 stage 2).
+**The scenario corpus file is re-baselined with the goldens.** `fixtures/synthetic/sim/current/scenario_corpus.txt` (§14.5) holds the state hash after `World::create` for every shipped scenario, so a `kStateHashVersion` or `kPrngTimelineVersion` bump moves it too. It cannot be rewritten in CI (it needs the game files): the task that bumps runs the corpus case with `ANNO1503_GAME_DIR` and `ANNO_UPDATE_GOLDEN=1` in the same commit. Its header line `# kStateHashVersion=<n> kPrngTimelineVersion=<m>` names the versions it was made at; the corpus case refuses a file whose line is not this build's ("re-baseline"), and `tools/sim_stream.py --check` refuses one whose line is not the script's versions (since S14 stage 2).
 
 Semantic asserts (independent of the hash, so a golden cannot hide a wrong simulation): in G1 the weaver ends at exactly the F2 state after 70 000 ticks (`out == 696`, `in == 4`: 116 full steps from 5 t of wool at need 11), has reported `MissingInput` and raised `blocked`; at tick 30 000 it has done 60 ± 3 steps (the scheduler may delay a step but never lose or double one); the farm never has more workers out than `max_figures`; the production list has size 10 and hint 1 after the second insert; `city.index.stamp` equals the tick of the last city visit; the drained UI-event list hashes to a second golden constant. Update protocol: a golden changes only with `ANNO_UPDATE_GOLDEN=1` (the test atomically writes changed self-baselines in name order) and a commit message that states which field-list or rule change caused it. The same constants must pass on MSVC (`/fp:strict`), GCC and Clang, Linux and Windows, and under ASan/UBSan.
 
@@ -2386,6 +2395,15 @@ the corpus preserves provenance comments and independently checked physical colu
 No stream field, behaviour, version or expected hash changes in this packet.
 [Commands, recording provenance and limits](../testing/README.md#pins-and-goldens);
 [every literal disposition](../testing/pins-literals.md).
+
+**2026-11-15, FIXTURES-TRIM-1 (ADR 0006 decision 6).** The single current
+pin file is now `fixtures/synthetic/sim/pins.txt`, moved byte-for-byte from
+`current/goldens.txt` through the existing reader/writer. Current recordings stay
+in `current/`. Covered per-number copies are removed; real historical schema
+refusals, exact published-byte controls and independent historical oracles remain.
+The root `scenario_corpus.txt` is a retained historical counterfactual, not the
+current recording. [Inventory, coverage and retained exceptions](../testing/fixtures-trim.md).
+No state number, section version, expected value or retained fixture byte changes.
 
 ### 14.4 Property tests (deterministic LCG seeds in the test only; iteration counts reduced under sanitizers; seeds logged on failure)
 - **Random command streams** on S1/S2/S3: generate Build/Demolish/SetLine/SetSpeed/garbage, apply, advance random amounts; after every command and every advance `check_invariants()` is empty; every rejected command leaves `state_hash` unchanged.

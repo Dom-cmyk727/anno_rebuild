@@ -189,6 +189,18 @@ if(ANNO_BUILD_TESTS)
         set_tests_properties(viewer_wiring_ui_window_click_${case} PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       endforeach()
+      # UI-INFO-2: the info panel's rotate arrows turn the armed type's rotation (left -1, right
+      # +1), the one the keys turn, at 1024 x 768 and at 2542 x 1351 (right-anchored chrome).
+      foreach(case ui_rotate_arrows ui_rotate_arrows_s10)
+        add_test(NAME viewer_wiring_${case}
+          COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                  $<TARGET_FILE:anno1503> ${case}
+                  --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                  --app-arg --construction-menu --app-arg on
+                  --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+        set_tests_properties(viewer_wiring_${case} PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      endforeach()
       # UI-WINDOW-1 fix round R1 (F2): closing the menu (tab, Esc) turns an armed tool off.
       add_test(NAME viewer_wiring_ui_menu_close_disarms
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
@@ -327,6 +339,18 @@ if(ANNO_BUILD_TESTS)
       add_test(NAME info_panel_gog_compare
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/info_panel_gog_compare.py)
       set_tests_properties(info_panel_gog_compare PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
+      # UI-INFO-2: the preview at rotations 0..3 after clicks on the rotate arrows, through the
+      # real window, pixel-exact against compose_info_panel(rotation) (info_panel_rotation_check.py),
+      # and that reference against the original's own shots after its arrows and keys
+      # (ANNO_UI_ROTATION_SHOTS, never in git; skips without it).
+      add_test(NAME info_panel_rotation_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/info_panel_rotation_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(info_panel_rotation_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      add_test(NAME info_panel_rotation_gog_compare
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/info_panel_rotation_gog_compare.py)
+      set_tests_properties(info_panel_rotation_gog_compare PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
       # F2 (W4-WIN-FINAL): the CPU window settles a change only after the frame was delivered through
       # SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent; each stage is made to fail in turn.
       add_test(NAME viewer_wiring_cpu_delivery_failures

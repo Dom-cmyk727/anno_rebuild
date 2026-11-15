@@ -176,6 +176,7 @@ struct HouseEnv {
     std::uint32_t t = 0; ///< the world tick (the expiry stamp of an ended walker)
     /// Diagnostic only (MAP-POP-LIVE-1 L5): the house's operation counters, or null.
     HouseWork* work = nullptr;
+    bool fisher_enabled = false; ///< transient copy of the existing header extension
 };
 
 enum class HouseOutcomeKind : std::uint8_t {

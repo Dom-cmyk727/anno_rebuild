@@ -33,7 +33,7 @@ inline std::filesystem::path current_replay_fixture_path(const char* name) {
     return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "current" / name;
 }
 inline std::filesystem::path goldens_path() {
-    return current_replay_fixture_path("goldens.txt");
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "pins.txt";
 }
 inline std::string hex16(std::uint64_t v) {
     char buf[17];

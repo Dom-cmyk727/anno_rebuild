@@ -284,6 +284,81 @@ converts raw to food (§2); market collection is the already documented
 transport path. On route exhaustion the shared worker release/end path
 `0x1003af00`/`0x1003b6e0` clears the home worker slot (forestry §2.13).
 
+### Return search cell mode — 2026-11-14, FISHER-1b
+
+**D — return uses the fisher override, hence mode 3.** In AnnoWelt.dll
+`0x10057ae0`–`0x10057bbe`, this is the shared home job and its figure argument
+is the primary figure interface. An already-inside-home figure returns success
+at `0x10057b68`–`0x10057b73` without a search. Otherwise `0x10057b79`–
+`0x10057b7d` calls the figure's virtual `+0xc8(0)`. The fisher's primary
+table `0x100cb4d8`, slot `+0xc8`, is `0x10038ad0`. That override constructs
+the home-centred rectangle, obtains the searcher at `0x10038b4e`, and
+initializes it with cell-building **mode 3** at `0x10038b91`–`0x10038ba1`.
+It supplies home entrance starts while inside the footprint, or the current
+position otherwise (`0x10038bb0`–`0x10038cc5`). The home job then adds home
+entrance goals through home `+0xf8` at `0x10057b87`–`0x10057b94`, installs
+the completion callback, and calls figure `+0xcc` at `0x10057ba8`–`0x10057bb1`.
+It does not replace that searcher's cells with mode 0. The full two bodies
+were read; neither contains a direct world `+0xb4` draw. This settles the
+cell-mode dependency, not OQ-603's float continuation.
+
+**T — planned planar boundary.** The rebuild has no vertical figure coordinate.
+A port can reuse its planar integer segment representation without inventing
+terrain-height following or a synthetic Y adjustment. This checkpoint implements
+no fisher movement and makes no original Y/float-continuation equivalence claim
+(OQ-603).
+
+### Goal-mask consumer contradicts the port premise — 2026-11-14, FISHER-1b
+
+**D — interface chain and resource goals.** Let `S` denote the search interface
+returned to the fisher (the `0x100c14e4` interface at `Y + 4`, not `Y`). Its
+`+0x50 = 0x10002b80` stores the selected mode at `S + 0x2040`
+(`0x10002b80`–`0x10002b98`); the fisher passes mode 3 as above. Its `+0x78 =
+0x10002e20` copies the resource-query tile pairs into `S + 0x1800`, with count
+at `S + 0x17fc` (`0x10002e20`–`0x10002e60`). The fisher uses that slot at
+`0x1005931b`–`0x10059325`, after the nonempty query. Search `+0x84 =
+0x10003d90` calls goal-pop `0x10003220` with the same `S` receiver at
+`0x10004779`–`0x1000477b`. These offsets are relative to `S` throughout.
+
+**D — the missing consumer operation.** In the complete goal-pop read
+`0x10003220`–`0x1000377d`, the resource-tile loop compares the popped tile
+with each stored resource pair (`0x10003399`–`0x100033aa`). On a match,
+`0x100033ac`–`0x100033bd` calls island `+0x12c`, passing the mode from
+`S + 0x2040` and that tile. Crucially, `0x100033c3`–`0x100033ce` computes
+**`0x1ff - returned_mask`** and ORs that into the accumulated usable goal mask.
+The island's primary `0x100cac2c` slot `+0x12c = 0x100921b0` dispatches
+mode 3 to the accepted mean/threshold arm `0x1009226b`–`0x100922df`.
+Thus its returned 0/511 is an **exclusion mask for this consumer**, not the
+usable/free mask. The callback-order loop at `0x1000370c`–`0x1000374c`
+tests each accumulated bit before calling the callback.
+
+| A, from these D ranges; threshold 32 | Walking cell | Returned island mask | Usable resource-goal bits |
+|---|---|---|---|
+| Mean 31 | open | 0 | 511 |
+| Mean 32 | closed | 511 | 0 |
+
+**T/U — contract conflict, not an implementation change.** FISHER-1a's
+`fisher_cell.goal_mask` and `fisher_ref.py sea_cell.free` retain the returned
+island mask values; they were not changed in this checkpoint. The latter's
+`free` label and the earlier census interpretation as 2473 *usable goals*
+miss this inversion. The 50/2473/619/1854 measurements still describe returned
+mask polarity and local shoreline geometry, not catchability. The FISHER-1b
+packet's requested closed shallow-goal synthetic fixture cannot be justified
+by treating 511 as usable. No dry-goal admission exception is invented and
+mode 0 is untouched. This is a QUESTION for correcting/releasing the port
+contract, references and fixtures; full original-runtime reachability and
+OQ-609 remain open. The existing runtime-source lead `0x100928a0` (mean below
+16) is compatible with the consumer polarity, but is not ported or expanded here.
+
+**D/A — accepted correction, 2026-11-14 (FISHER-1b question review).**
+The orchestrator independently re-checked this consumer chain. The island answer
+is now named `blocked_mask`, with `usable_mask = 0x1ff - blocked_mask` in
+FISHER-1a's primitive. The reference outputs `blocked` and `usable`; all six
+boundary vectors keep their raw values and hand-derive the usable bits. The
+previous statement that mean 32 is a usable goal is superseded: equality is
+closed to walking **and has zero usable goal subcells**. The on/off draw scope
+is the owner's per-eligible-attempt decision below.
+
 ## 4. Stops, draw ledger and port requirements
 
 **D — no fish.** Zero unclaimed mature goods71 tiles makes search start
@@ -312,6 +387,23 @@ refers to walking cells (`0x10090689`–`0x10090697`), not goal admission:
 the goal mask admits those means (`0x1009226b`–`0x100922df`). A closed
 walking tile can therefore be a fish goal. Whole original-runtime recovery
 from malformed/stranded entrances is NOT_RUN; do not invent relocation.
+
+**D/A — no-sea/goal wording corrected, 2026-11-14.** The earlier sentence
+“a closed walking tile can therefore be a fish goal” missed goal-pop's inverse
+at `0x100033c3`–`0x100033ce`. For this mode-3 resource path a usable fish goal
+must itself have mean below threshold. No closed-tile exception is implied.
+
+### Draw-contract clarification — owner decision, 2026-11-14
+
+**Owner decision / D/T scope.** Preserve exactly one discarded world draw per
+eligible farm dispatch attempt (`0x1006ed78`–`0x1006ee58`, §2) and add no
+fisher-body draw. Test paired identical eligible attempts and isolated trip-body
+execution. This does **not** require identical full flag-on/off draw trajectories:
+a fisher still away occupies its home worker slot, while a flag-off refused send
+does not. The next count gate can therefore suppress one world's dispatch and
+allow the other's. Do not add dummy draws or alter the flag-off stream to hide
+that state-dependent divergence. The owner explicitly accepted this scope;
+the separate usable-goal contract question remains open.
 
 ### Draw ledger
 
@@ -506,6 +598,17 @@ remain refused; OQ-200's load mapping is answered, broader terrain callers
 remain OQ-610, and the all-closed raw fish finding remains OQ-609. Engine
 code, HE reading and original-runtime fishing remain NOT_RUN/out of scope.
 
+### Census meaning corrected — 2026-11-14, FISHER-1b
+
+The unchanged 50 scenarios / 2473 embedded fish / 619 adjacent-water / 1854
+without adjacent water counts describe **blocked** placements and local shoreline
+geometry. All 2473 have mean at least 32, so none has usable mode-3 goal bits
+as loaded. The Python opt-in census retains its legacy output key `goals` for
+that blocked count; it is not a catchability result. The C++ corpus test now
+names the blocked count and asserts zero usable. Why original scenarios contain
+these blocked fish, later corner writers and runtime creation are FISHER-RE-2 /
+OQ-609/610; this packet neither invents fish nor repositions existing ones.
+
 ### Corrected shoreline census — 2026-11-13, fix round1
 
 **D/A — superseding criterion, not a changed mapping.** The goal-mask and
@@ -541,3 +644,338 @@ mean32 is a goal, and its east neighbour(70,66) mean18 is water: this placement
 passes both corrected predicates. No byte, border, position or threshold changed.
 The reference's six `sea_cell` vectors now report free0 below32/free511
 at or above32; the newly applied polarity mutant must exit1 disagreement.
+
+### Implemented planar boundary — 2026-11-14, FISHER-1b
+
+**T — bounded rebuild scope.** The optional header `fisher_rules` enables mode-3
+search and return using the existing integer planar `HarvestState`. The original
+segment Y rule at `0x10038730` is not represented: there is no vertical figure
+coordinate, no synthetic terrain-following, and no claim to solve OQ-603's float
+continuation. This supersedes the earlier checkpoint's “not implemented” status.
+The discarded dispatch draw remains in the shared Farm tick; the enabled body
+adds no draw. The owner permits later on/off trajectories to differ because
+an active worker changes eligibility at subsequent dispatch gates.
+
+
+## 6. Runtime fish fill and the real-map boundary (FISHER-RE-2, 2026-11-15)
+
+**D — entry and exact predicate.** The in-game island table `0x100cac2c`
+has `+0x1a0 = 0x100928a0`; `+0x19c` is `0x10084150`, a different
+notification. This corrects the old slot label in [transport.md §3.4](transport.md).
+The complete fill body `0x100928a0`–`0x10092b32` takes `this = island`
+and one pointer to a half-open rectangle of four signed 32-bit world coordinates.
+It clips against origin words `+4/+6` and extent words `+8/+0xa`, translates
+into local coordinates, then visits rows and columns in increasing order
+(`0x100928c3`–`0x10092976`, `0x10092ae3`–`0x10092b32`). There is no
+quota, live-figure count, timer, or spawn-record allocation in this body.
+
+**D/P/A — fish versus grass.** A nonzero **whole unsigned 16-bit object word**
+at tile-record offset 0 skips the cell (`0x10092976`–`0x1009297b`); no
+14-bit mask is applied to that test. The corner pointer is island `+0x14`,
+stride `W + 1`; four unsigned bytes produce integer `mean = sum / 4`
+(`0x10092981`–`0x100929d7`). Default means at least 32 enter the grass
+branch, which additionally tests ground fertility (`0x100929d9`–`0x10092a60`).
+Means below 32 enter the fish branch, where a second strict test admits only
+**mean < 16**, not mean 16 (`0x10092a61`–`0x10092a9e`). Initializers
+`0x1008fea0`–`0x1008feb2` and `0x1008ff00`–`0x1008ff0e` establish
+these thresholds from 16.0 and the common height scale; they are not raw
+zero-initialized image values. This reference uses those shipped defaults.
+
+**D — writes, not a whale-style occurrence.** The fish branch selects catalogue
+id 11 (`0x100928bc`–`0x100928c3`) and writes its type id into the existing
+8-byte tile record at `0x10092aa0`–`0x10092aaf`. It clears byte 2, writes
+the item height into the record's second 32-bit word, and retains
+only bit 7 of byte 3 (`0x10092ab5`–`0x10092ade`). More precisely, the
+height is the low 8 bits of the record's **second 32-bit word**; the remaining
+24 bits are preserved. No corner height changes. The selected type getter
+`AnnoGame.dll 0x10008f90`, low flag bits equal to 1, returns the same corner
+mean (`0x10008fae`–`0x10008fdf`). Parsed HEAD flags of types 2 and 11 are
+`0x29`, selecting that branch. This preserves the tile's existing walk code,
+mask and ownership fields; it creates no figure, figure id, occurrence or new
+saved counter. Fresh records' code 2 comes from `0x1008c105`–`0x1008c115`.
+
+**D/P — identity and why the embedded inventory misled.** It is the same
+Anlagen 11 / ROHSTOFF / WAREFISCH 71 already identified in §1, not a new
+Figuren id or a scenery-only subtype. Existing embedded type-11 records are
+not overwritten, even when their mean is at least 32. The fisher's existing
+resource-goods query (`0x10059325`, island query `0x10092320`) finds the
+new type-11 cells by goods 71 just as it finds an embedded resource. Their
+mean below 16 also means below 32: island mode 3 returns blocked mask 0
+(`0x100922cd`–`0x100922df`), and goal-pop `0x100033c3`–`0x100033ce`
+therefore exposes usable mask 511. The 2,473 blocked embedded records do not
+exhaust runtime fish. No lowering of those embedded records is needed to
+explain a separate population of catchable resources.
+
+**D — when it runs.** File loading `0x100a1da0` reads INSEL4 / INSEL5,
+completes the island child-record loop, then invokes world slot `+0x1d4`
+at `0x100a1f9d` / `0x100a20b8`. The INSEL5 chunk-buffer loader
+`0x100a2ea0` similarly calls island `+0xdc` for its records before the
+same world slot at `0x100a2fc8`. World wrapper `0x100a1810`–`0x100a183c`
+conditionally preprocesses ground through island `+0x1a4` and then always
+calls `+0x1a0`. The preprocessing body `0x10084370`–`0x1008480e` computes
+a separate ground/fertility buffer, not a new corner grid. Clearing an area
+also calls `+0x1a0` on its affected rectangle at `0x1008376e`–`0x10083796`,
+then `+0x19c` at `0x100837a6`. This is not evidence of a periodic fish
+spawner. Cutting 11 to 10 and regrowth remain the shared resource paths in
+[forestry.md](forestry.md); they are not this clear-and-refill operation.
+Ordinary placement's call at `0x10082ab9` is `+0x19c`, **not** this fill.
+
+**D/U — draw closure.** There is no PRNG call in the complete fill body.
+The standard catalogue lookup `AnnoGame.dll 0x100037e0`–`0x100037eb`,
+type-id getter `0x1000a660`–`0x1000a666`, and selected height branch
+`0x10008fae`–`0x10008fdf` are leaves without draws; the grass walk-code
+getter `0x10007dc0`–`0x10007ea2` also draws nothing. Island initialization
+`0x1008c0c9`–`0x1008c0de` obtains `+0x1c` from world `+0x18`, whose
+getter is `0x100a37d0`–`0x100a37d6` (world `+0x110`). The caller that
+supplies that world's concrete catalogue and its type-array construction
+was not newly closed here: retain [OQ-202](../open-questions.md).
+The zero-draw claim applies to the named standard getter bodies and fish
+projection, not an arbitrary substituted catalogue or transitive load session.
+
+| Position | Modulus | Selection | Condition |
+|---|---|---|---|
+| none | none | no draw consumed | Fish fill, complete `0x100928a0`–`0x10092b32`, with the standard catalogue/type getters named above |
+| none | none | no draw consumed | `runtime_fish` reference: supplied raw draw suffix remains unused; no generator implemented |
+
+**D/U — later corner writers, OQ-610 narrowed.** Reuse §5's established
+allocation, HEIGHT setter and save/reload mapping. The new load-fill and clear
+call paths above write tile resources and derived ground, not `island +0x14`.
+The bulk setter `0x10084870`–`0x10084a2b` remains a mutator capable of
+changing logical edges; HEIGHT load calls it at `0x1008920c`. Serialization
+`0x10089e01`–`0x10089f51` saves current interior heights. This read does
+**not** establish every possible external/editor caller of the virtual setter,
+and does not close OQ-610 as an immutability claim. No inspected path lowers
+an embedded fish tile to make it catchable. The load-time empty-cell fill is
+already a separate explanation.
+
+**P/A/T — census method and boundaries.** `tools/fisher_ref.py --runtime-fish
+GAME_DIR --output FILE.json` reads the original HEIGHT and all GELAENDE,
+FLUESSE and PROD2 placements through the existing independent parsers. It marks
+rotated footprints occupied, clipped to the island; the original overlay and
+ordinary placement both write ids (`0x1008220e`–`0x10082215`,
+`0x10082422` onward; [transport.md §3.4.17](transport.md)). It projects the
+strict empty-cell / mean-below-16 branch after all serialized placements.
+This is a static **embedded-island** census; unresolved INSELLNK templates are
+not silently counted as empty sea. Output includes source SHA-256 and every
+created cell as half-open row runs `(island, y, x, end_x)` plus world origin.
+Every such cell has usable mask 511. It is not an original-runtime trace,
+path-reachability proof, or complete actor/script import claim.
+
+| Scenario (under Scenes) | Runtime fish cells | Usable mode-3 goals |
+|---|---:|---:|
+| `0010SingleEndlos/00_1024_easyentry_01.sze` | 86,399 | 86,399 |
+| `0010SingleEndlos/01_1024_easy_256.sze` | 4,898 | 4,898 |
+| `0010SingleEndlos/02_1024_easy_128.sze` | 4,317 | 4,317 |
+| `0010SingleEndlos/03_1024_med_256.sze` | 0 | 0 |
+| `0010SingleEndlos/04_1024_med_128.sze` | 0 | 0 |
+| `0010SingleEndlos/05_800_Med_128.sze` | 0 | 0 |
+| `0010SingleEndlos/06_1024_heavy_256.sze` | 0 | 0 |
+| `0010SingleEndlos/07_1024_heavy_128.sze` | 0 | 0 |
+| `0010SingleEndlos/08_800_heavy_128.sze` | 0 | 0 |
+| `0011SingleEndlosAddon/endless01.sze` | 176,616 | 176,616 |
+| `0011SingleEndlosAddon/endless02.sze` | 372,675 | 372,675 |
+| `0011SingleEndlosAddon/endless03.sze` | 113,595 | 113,595 |
+| `0100Kampagne01/S01_01_01.sze` | 213,888 | 213,888 |
+| `0100Kampagne01/S01_02_01.sze` | 179,016 | 179,016 |
+| `0100Kampagne01/S01_03_01.sze` | 214,947 | 214,947 |
+| `0100Kampagne01/S01_04_01.sze` | 55,767 | 55,767 |
+| `0100Kampagne01/S01_05_01.sze` | 24,852 | 24,852 |
+| `0100Kampagne01/S01_06_01.sze` | 130,527 | 130,527 |
+| `0100Kampagne01/S01_07_01.sze` | 214,626 | 214,626 |
+| `0100Kampagne01/S01_08_01.sze` | 39,940 | 39,940 |
+| `0100Kampagne01/S01_09_01.sze` | 207,914 | 207,914 |
+| `0100Kampagne01/S01_10_01.sze` | 232,120 | 232,120 |
+| `0100Kampagne01/S01_11_01.sze` | 15,406 | 15,406 |
+| `0100Kampagne01/S01_12_01.sze` | 252,755 | 252,755 |
+| `0100Kampagne01/S01_13_01.sze` | 99,798 | 99,798 |
+| `0200Single/Single_01.sze` | 133,809 | 133,809 |
+| `0200Single/Single_05.sze` | 39,271 | 39,271 |
+| `0200Single/Single_06.sze` | 54,457 | 54,457 |
+| `0200Single/Single_08.sze` | 21,532 | 21,532 |
+| `0200Single/Single_10.sze` | 116,574 | 116,574 |
+| `0200Single/Single_12.sze` | 22,725 | 22,725 |
+| `0200Single/Single_14.sze` | 102,505 | 102,505 |
+| `0200Single/Single_15.sze` | 39,664 | 39,664 |
+| `0200Single/Single_16.sze` | 42,990 | 42,990 |
+| `0200Single/Single_24.sze` | 30,823 | 30,823 |
+| `0201SingleAddOn/single30.sze` | 199,922 | 199,922 |
+| `0201SingleAddOn/single31.sze` | 60,872 | 60,872 |
+| `0201SingleAddOn/single32.sze` | 126,823 | 126,823 |
+| `0201SingleAddOn/single33.sze` | 80,302 | 80,302 |
+| `0201SingleAddOn/single34.sze` | 112,780 | 112,780 |
+| `0201SingleAddOn/single36.sze` | 202,179 | 202,179 |
+| `0201SingleAddOn/single38.sze` | 161,229 | 161,229 |
+| `0201SingleAddOn/single39.sze` | 216,685 | 216,685 |
+| `0201SingleAddOn/single40.sze` | 168,129 | 168,129 |
+| `0201SingleAddOn/single41.sze` | 99,035 | 99,035 |
+| `0201SingleAddOn/single42.sze` | 167,013 | 167,013 |
+| `0201SingleAddOn/single43.sze` | 5,840 | 5,840 |
+| `Tutorial/01Discover01.sze` | 8,486 | 8,486 |
+| `Tutorial/02Trade01.sze` | 22,472 | 22,472 |
+| `Tutorial/03T_Combat_01.sze` | 32,097 | 32,097 |
+
+The 50 embedded-scenario projections total **4,908,270 created cells and
+4,908,270 usable goals**. Six zero-result maps can have procedural island
+links; zero here means no eligible embedded cell, not no runtime fish after
+link resolution. Census log: `cache/fisher-re-2/runtime-fish-final-02.log`;
+exact cells: `cache/fisher-re-2/runtime-fish-final-02.json`.
+
+**P/A — lan5 scope made explicit.** There is no shipped `lan5.sze`. Both
+repository meanings were measured from their original SCP templates with
+`--layout`: `data/maps/lan5.txt` has **280,316** runtime cells / usable goals;
+`data/maps/candidates/ship-start-v2/lan5-ship-a.json` has **420,194**.
+The latter's 421 embedded fish are still distinct from this generated count.
+The JSON gives exact cells for both layouts; their template selection and
+placement are the layouts', not a procedural draw emulation.
+
+**P/A — S01_02_01 and its local farms.** The map has **179,016** generated
+cells, all usable, across its 27 embedded islands. The two type-810 farms on
+island 58 are local `(196,155)` and `(201,163)`, both rotation 1, world
+`(628,267)` and `(633,275)`. Their integer search rectangles are respectively
+`(190,149,16,15)` and `(195,157,16,15)`. The generated-cell projection finds
+**28** and **64** cells inside these rectangles. First row-major witnesses
+are `(205,149)` and `(202,157)`; these are candidate facts, not a claim that
+an entrance-to-goal path or harvest continuation succeeded.
+
+**T/U — can FISHER-1c run on S01_02_01?** The fish rule can be derived from
+loaded HEIGHT and occupancy without new state or a new tick system, and it
+would supply usable candidates near both farms behind the existing flag.
+However, the requested normal-session canary **cannot yet run**: the normal
+adapter successfully imports all 27 islands, then `World::create` refuses
+`script offset 0: unsupported object definitions` (`src/sim/src/script.cpp`,
+the explicit `!a.objects.empty()` refusal). The sim needs the flag-gated
+resource derivation **and** an authorized script-object implementation or an
+explicitly scoped alternative canary contract. Disabling the script or using
+ActorFreeComponent would not prove the requested original normal session.
+That decision is [OQ-625](../open-questions.md#oq-625-s01_02_01-normal-session-canary-and-script-object-definitions-fisher-re-2-2026-11-15-open).
+
+**A/T — reference and limits.** Four hand-derived `runtime_fish` vectors
+separate mean 15 from 16, occupied from empty, and the whole raw object word
+from a masked id; a supplied draw remains unconsumed. The contract applies
+strict-depth and occupancy mutants exactly once and demands exit 1. It also
+checks an exact three-cell synthetic census and refusal of missing HEIGHT.
+The C++ geometry reader skips this new record by name and continues to assert
+all 6 sea-cell, 5 corner-grid and 5 search-rectangle vectors. The `runtime_fish` record refuses an empty mean-at-least-32 cell because
+its separate grass path needs fertility, outside this sea-branch record.
+No engine code,
+state, pins, asset bytes or scheduler wiring changes in this packet. HE and
+original live-game execution are NOT_RUN; OQ-603 / OQ-604 stay open.
+
+## 7. Runtime fill in the sim and follow-ups (FISHER-1d, 2026-11-15)
+
+**D/T — candidate count is not usable-goal count.** Resource query return
+`0x100592f4`–`0x100592fa` is tested for zero at `0x100592fc`, before the
+candidate list is passed to search at `0x10059325`. The later goal-pop at
+`0x100033c3` subtracts the blocked mask from `0x1ff`. Accordingly, an
+unclaimed blocked type-11 tile still counts as a candidate; it contributes no
+usable goal subcells. The sim now counts it before that mask is applied.
+Separate rigs distinguish blocked-only fish (search attempted) from genuinely
+no fish (no nodes popped). This does not change the limit of 20 or add a draw.
+
+**T/A — fill API and lifecycle.** `fill_fish_resources(TileLayer&, HEIGHT,
+TileRect, enabled, threshold=16, resource=11)` implements §6's clipped,
+row-major sea branch. It reads the entire object id, copies the unsigned mean
+into item height, resets phase/footprint offsets/rotation, and preserves the
+anchor, owner, claim, other auxiliary bits and walk data. Disabled or absent
+HEIGHT does nothing. `World::create` calls it after loaded objects and buildings;
+the shared object-clear path calls it over the cleared footprint when enabled.
+Public demolition, city removal and house removal propagate the existing
+fisher flag to that path. Placement, ordinary ticks and native save reload do
+not regenerate resources. This covers §6's load and area-clear callers
+(`0x100a1f9d` / `0x100a20b8` / `0x100a2fc8`, `0x100a1810`–`0x100a183c`,
+`0x1008376e`–`0x10083796`), without adding saved state or porting grass.
+
+**T — proof scope.** Four hand-derived `runtime_fish` records now also drive
+C++; mean 15 versus 16, raw object word 16384 and occupied 11 are controls.
+Synthetic `World::create`, public demolition and save/reload exercise the
+production hooks. The C++ 50-map test matches the accepted Python census:
+4,908,270 new cells, all usable; S01_02_01 has 179,016. This census parses the
+raw island geometry and applies the normal object-placement kernel to **all**
+GELAENDE/FLUESSE/PROD2 footprints, including orphan city records. It compares
+against the independent RE2 count fixture. It is a geometry projection, not a
+normal actor/script session, and it does not establish the two original farms'
+complete trips. Unsupported actors or script objects are not silently removed
+from a gameplay canary. Native reload preserves a deliberately empty cell;
+only the original load/clear lifecycle is newly covered.
+
+**T/A — strengthened continuation and entrance proofs.** The mid-cut reload
+runs until worker release and asserts the full 768 raw delivery; a separate
+pair of from-create runs compares hashes through completion. The rotated launch
+uses a hand-derived literal, not the function under test. The mode-0 test is
+explicitly named a default/explicit Land selection-equivalence check. A rig
+starts at the first entrance on mean 32 land, escapes onto water, claims and
+cuts fish, then returns through its second entrance on mean 31 water. The
+initial diagnostic with **both** entrances closed reached the cut but did not
+deliver within the bound. Return through an all-closed entrance set is not
+proved or repaired here; no movement rule is invented to make it pass.
+The enabled invalid-job diagnostic includes job `0x2d`.
+
+**T — compatibility.** The existing default-off header tag 1 is unchanged;
+state 139 and every section version stay unchanged. The full pins gate must
+show zero moved pins and unchanged current recordings. Threshold 16 remains a
+named addressed default passed to the state-free function; no Rules field,
+extension, periodic spawn system or RNG call was added. The owner's earlier
+draw decision remains per eligible attempt, not equality of whole enabled and
+disabled trajectories.
+
+## 8. Script-object inventory and proposed next packet (2026-11-15)
+
+**P/T — owner choice.** The owner chose OQ-625 option 1: inventory and propose
+SCRIPT-OBJECTS-1, retaining the requested normal-session claim. This is a sizing
+proposal, not an assignment or authorization to implement bindings here.
+Parsed source is `Scenes/0100Kampagne01/S01_02_01.sze`, SHA-256
+`23a99f002e422df6580781746f4cf3ed6766595540f67acd867d88b6ddf17630`.
+`tools/bigbrother.py::parse/walk` finds exactly two definitions and exactly one
+kernel use of each name; the following offsets are BIGBROTHER payload offsets,
+not DLL addresses. No original script listing is reproduced.
+
+| P: name | Definition / name offset | Kind / numeric operand | Kernel primary / name offset | Use |
+|---|---|---|---|---|
+| CG_ENEMY_CITY1 | 16 / 29 | OBJECT_STADT / 4 | 4209 / 4216 | KILLED |
+| CG_ENEMY_CITY2 | 48 / 61 | OBJECT_STADT / 18 | 4306 / 4313 | KILLED |
+
+**P — all uses.** These are the only four quoted-name occurrences in the
+whole payload. The two conditions start at 4182 and 4279: each guards the
+object's KILLED query with `CITY_KILLED == FALSE`, then sets that signal at
+4251 or 4348. There is no object-name action or reassignment. This establishes
+use shape, not the original meaning of the numeric city operand or KILLED.
+[bigbrother.md §3.1](../formats/bigbrother.md) explicitly leaves that operand
+untraced; the future packet must prove its namespace and lifetime semantics.
+
+**P/T/U — objects are the first refusal, not the only missing language.**
+The current compiler explicitly refuses nonempty object definitions, and only
+AREA subject queries are supported. This map also has PLAYER queries:
+INHABITANTCOUNT (2), DEAD (2), BOUGHT (1). Its calls are QUESTLOG_SHOW (12),
+SETWARELOG (1), SET_FOR_BUY (1), SET_DIPLOMACY (4), ATTACK_AREA (1), BEAMDOWN
+(1), GOTO_SCREEN (1), SET_PROFILE (2), SHOWTEXT (3), LOST (2), WON (1).
+None is in `script.cpp::Compiler::statement`'s current action dispatch.
+INIT already begins with unsupported QUESTLOG_SHOW at payload offset 1339.
+Consequently, merely admitting the two objects **will not** make the unchanged
+script compile. Inventorying those calls is not decoding their original effects.
+
+**Proposed SCRIPT-OBJECTS-1: one concern, about 3–4 hours.**
+
+1. Spend up to 60 minutes tracing original OBJECT_STADT binding and KILLED
+   evaluation, starting from the **AnnoScene.dll string** OBJECT_STADT at
+   `0x10040244` and KILLED at `0x10040114` (S: the existing name catalogue in
+   [bigbrother.md §6](../formats/bigbrother.md#6-the-interpreters-names-s), not
+   decoded binding functions). Prove id namespace, lookup order,
+   absent/destroyed-city behavior and any mutable binding state. Stop with a
+   QUESTION if those cannot be proved; do not equate 4/18 with island slots.
+2. If that contract is settled, spend about 90 minutes on only this binding and
+   query, with an immutable program representation and stable world identity.
+   Specify any persistence/section requirement before implementation; no global
+   state bump or script bypass. All other unsupported queries/actions still
+   refuse explicitly.
+3. Spend about 60 minutes on synthetic binding/kill/removal, bad-id and save/
+   reload controls, affected script gates and handover. The orchestrator reviews
+   the original addresses. Acceptance is the binding/query slice, **not** the
+   S01_02_01 normal-session canary. A follow-on script-language plan must size
+   the additional PLAYER queries and 11 action names above before that canary
+   can honestly be released.
+
+**U — boundary.** No script semantics, identity, actor import or gameplay
+canary is changed in FISHER-1d. OQ-625 remains open for normal-session acceptance,
+with the owner's scope choice recorded; OQ-603's float/Y continuation and other
+maps' complete gameplay paths remain outside this proof. Original live-game,
+HE, Windows and WSL runs are NOT_RUN on this Mac.

@@ -29,6 +29,7 @@ Float positions/continuations are refused with OQ-603. No engine state or port.
 """
 import argparse
 import hashlib
+import json
 import re
 import struct
 import sys
@@ -102,6 +103,7 @@ SCHEMAS = {
     'sea_cell': dict(heights=heights),
     'corner_grid': dict(width=positive_word, height=positive_word,
                         heights=lambda x: [] if x == '-' else [byte(v) for v in x.split(',')]),
+    'runtime_fish': dict(heights=heights, tile=word, phase=byte),
     'trip': dict(cargo=word, capacity=word),
     'cut_match': dict(tile=word),
 }
@@ -179,6 +181,15 @@ def evaluate(kind, fields):
     if kind not in SCHEMAS:
         raise Malformed('unknown record type: ' + kind)
     r = Record(fields, SCHEMAS[kind])
+    if kind == 'runtime_fish':
+        # §6, AnnoWelt 0x10092976 / 0x10092a61-0x10092ade; shipped defaults.
+        mean = sum(r['heights']) // 4
+        if r['tile'] == 0 and mean >= 32:
+            raise Malformed('runtime_fish is sea-branch only; grass needs fertility')
+        created = int(r['tile'] == 0 and mean < 16)
+        return r.result(created=created, tile=11 if created else r['tile'],
+                        phase=(r['phase'] & 128) if created else r['phase'],
+                        mean=mean, usable=511 if mean < 32 else 0)
     if kind == 'farm_tick':
         return farm_tick(r)
     if kind == 'converted':
@@ -205,7 +216,9 @@ def evaluate(kind, fields):
     if kind == 'sea_cell':
         # §3, 90560/9226b: integer four-corner mean; equality32 is closed.
         opened = int(sum(r['heights']) // 4 < 32)
-        return r.result(open=opened, free=511 * (1 - opened))
+        # Island +0x12c answers blocked bits; goal-pop 0x100033c3–0x100033ce
+        # subtracts them from 0x1ff to obtain usable resource-goal subcells.
+        return r.result(open=opened, blocked=511 * (1 - opened), usable=511 * opened)
     if kind == 'trip':
         # §3, 5c260: repeat below capacity, home at equality or above.
         repeat = int(r['cargo'] < r['capacity'])
@@ -325,21 +338,156 @@ def check_fish_water(root, expected_scenarios, expected_placements):
     return int(failed != 0)
 
 
+
+def runtime_fish_census(root, output=None, expected_scenarios=50, layouts=()):
+    """§6 static embedded-island projection after placement, before runtime fill.
+
+    Generated cells are reported, not serialized game records. Procedural island
+    links are not resolved; caller-selected embedded islands are counted once.
+    The fill's grass branch cannot change the mean < 16 fish subset.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import insel
+    import anlagen_roads
+    types = {e['id']: anlagen_roads.record_of(e, 'HEAD')
+             for e in anlagen_roads.parse_anlagen(root)}
+    paths = sorted((root / 'Scenes').rglob('*.sze'))
+    if len(paths) != expected_scenarios:
+        raise Malformed(f'expected {expected_scenarios} scenarios, found {len(paths)}')
+    sources = [(path.relative_to(root).as_posix(), path.read_bytes(), None) for path in paths]
+    templates = {p.relative_to(root / 'Scenes' / 'Islands').as_posix().upper(): p
+                 for p in (root / 'Scenes' / 'Islands').rglob('*.scp')}
+    template_hashes = {}
+    for layout in layouts:
+        data = layout.read_bytes()
+        if layout.suffix == '.json':
+            specs = json.loads(data)['islands']
+        else:
+            specs = []
+            for line in data.decode('utf-8').splitlines():
+                parts = line.split('#', 1)[0].split()
+                if parts and parts[0] == 'island':
+                    if len(parts) != 5:
+                        raise Malformed('layout island needs id x y key')
+                    specs.append(dict(id=int(parts[1]), x=int(parts[2]),
+                                      y=int(parts[3]), key=parts[4]))
+        selected = []
+        for spec in specs:
+            template = templates.get(spec['key'].upper())
+            if template is None:
+                raise Malformed('layout template not found: ' + spec['key'])
+            template_data = template.read_bytes()
+            template_hashes[spec['key'].upper()] = hashlib.sha256(template_data).hexdigest()
+            loaded = insel.islands(template_data)
+            if len(loaded) != 1:
+                raise Malformed('layout template must have one island')
+            island = dict(loaded[0], x=spec['x'], y=spec['y'], number=spec['id'])
+            selected.append(island)
+        sources.append((layout.as_posix(), data, selected))
+    maps = []
+    for label, data, selected in sources:
+        cells = []
+        embedded = 0
+        for island in insel.islands(data) if selected is None else selected:
+            width, height = island['width'], island['height']
+            grid = corner_grid(width, height, insel.grid(island, 'HEIGHT', 1))
+            occupied = set()
+            for name, payload in island['records']:
+                if name not in ('GELAENDE', 'FLUESSE', 'PROD2'):
+                    continue
+                if len(payload) < 6:
+                    raise Malformed('short placed-object block')
+                bx, by, _, _ = struct.unpack_from('<HHBB', payload)
+                for at in range(6, len(payload) - 5, 6):
+                    kind, _, dx, dy = struct.unpack_from('<HHbb', payload, at)
+                    ident, rotation = kind & 0x3fff, kind >> 14
+                    if ident == 0:
+                        continue
+                    head = types.get(ident)
+                    if head is None or len(head) < 2:
+                        raise Malformed(f'unknown or short HEAD for type {ident}')
+                    x, y = bx + dx, by + dy
+                    w, h = head[:2]
+                    if rotation & 1:
+                        w, h = h, w
+                    if not w or not h or not 0 <= x < width or not 0 <= y < height:
+                        raise Malformed(f'invalid placed origin: {label} type {ident}')
+                    # Placement clips its footprint to the island (transport.md §3.4.17).
+                    occupied.update((xx, yy) for yy in range(y, min(y + h, height))
+                                    for xx in range(x, min(x + w, width)))
+                    embedded += int(ident == 11)
+            stride = width + 1
+            for y in range(height):
+                for x in range(width):
+                    if (x, y) in occupied:
+                        continue
+                    at = y * stride + x
+                    mean = (grid[at] + grid[at + 1] + grid[at + stride]
+                            + grid[at + stride + 1]) // 4
+                    if mean < 16:
+                        cells.append(dict(island=island['number'], x=x, y=y,
+                                          world_x=island['x'] + x, world_y=island['y'] + y,
+                                          mean=mean, usable=511))
+        runs = []
+        for cell in cells:
+            if (runs and runs[-1]['island'] == cell['island']
+                    and runs[-1]['y'] == cell['y'] and runs[-1]['end_x'] == cell['x']):
+                runs[-1]['end_x'] += 1
+            else:
+                runs.append(dict(island=cell['island'], y=cell['y'], x=cell['x'],
+                                 end_x=cell['x'] + 1,
+                                 origin_x=cell['world_x'] - cell['x'],
+                                 origin_y=cell['world_y'] - cell['y']))
+        row = dict(map=label,
+                   sha256=hashlib.sha256(data).hexdigest(), embedded=embedded,
+                   runtime=len(cells), usable=len(cells), cell_runs=runs)
+        maps.append(row)
+        print(f'RUNTIME_FISH map={row["map"]} embedded={embedded} '
+              f'runtime={len(cells)} usable={len(cells)}')
+    total = sum(row['runtime'] for row in maps)
+    if output is not None:
+        output.write_text(json.dumps(dict(scope='embedded islands; placed footprints; '
+                                              'shipped thresholds 32/16; static load projection',
+                                          registry_sha256=hashlib.sha256(
+                                              (root / 'Anlagen.dat').read_bytes()).hexdigest(),
+                                          template_sha256=template_hashes, maps=maps), indent=2) + '\n', encoding='utf-8')
+    print(f'RUNTIME_FISH_COUNTS scenarios={len(paths)} layouts={len(layouts)} runtime={total} usable={total} '
+          'failed=0 empty=0 skipped=0')
+    return 0
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('vectors', nargs='?', type=Path)
     parser.add_argument('--check-fish-water', type=Path, metavar='GAME_DIR')
+    parser.add_argument('--runtime-fish', type=Path, metavar='GAME_DIR')
+    parser.add_argument('--output', type=Path, help='runtime census JSON, exact half-open cell runs')
+    parser.add_argument('--layout', type=Path, action='append', default=[],
+                        help='also census the original templates placed by this repository layout')
     parser.add_argument('--expected-scenarios', type=int)
     parser.add_argument('--expected-placements', type=int)
     args = parser.parse_args()
-    if (args.vectors is None) == (args.check_fish_water is None):
-        parser.error('choose VECTORS or --check-fish-water GAME_DIR')
+    if sum(v is not None for v in (args.vectors, args.check_fish_water, args.runtime_fish)) != 1:
+        parser.error('choose VECTORS, --check-fish-water or --runtime-fish GAME_DIR')
+    if (args.output is not None or args.layout) and args.runtime_fish is None:
+        parser.error('--output requires --runtime-fish')
     if args.vectors and (args.expected_scenarios is not None or
                          args.expected_placements is not None):
         parser.error('expected counts belong to the opt-in corpus mode')
     try:
         if args.vectors:
             return check(args.vectors)
+        if args.runtime_fish:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import insel
+            import figuren
+            if args.expected_placements is not None:
+                raise Malformed('expected placements belongs to the embedded fish census')
+            try:
+                return runtime_fish_census(args.runtime_fish, args.output,
+                                           50 if args.expected_scenarios is None
+                                           else args.expected_scenarios, args.layout)
+            except (insel.Bad, figuren.Bad, KeyError, TypeError, ValueError, struct.error) as error:
+                raise Malformed(str(error)) from error
         scenarios = 50 if args.expected_scenarios is None else args.expected_scenarios
         placements = 2473 if args.expected_placements is None else args.expected_placements
         if scenarios <= 0 or placements <= 0:

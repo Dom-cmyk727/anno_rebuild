@@ -11167,3 +11167,62 @@ Decisions and reasoning:
 - Check normal-session prerequisites before building the canary; keep script refusal visible and preserve owner scope.
 - Preserve OQ-603 / OQ-604 / OQ-610 and standard-catalogue receiver limits rather than invent closure.
 QUESTIONs: OQ-623 blocks the normal-session canary, not this bounded source read; Task 3 records the decision boundary.
+
+
+## FISHER-1c — real-file canary prerequisite QUESTION checkpoint (2026-11-15)
+
+Status: READY FOR REVIEW — QUESTION checkpoint; the requested canary is NOT_RUN, not completed.
+Branch task/FISHER-1c; stacked on final task/FISHER-1b 7dd9564496068067364c6b6f2293b98420c90de8.
+Merged task/FISHER-RE-2 568c8788176e3b3d65a80c1ea5f6c13efe400ec5; old branches/worktrees preserved.
+Owner four-task release is the authoritative packet; Task 3 budget about 2 hours, stopped at prerequisite boundary.
+CLAUDE, PLAN, TASKS owner rules / protocol and evidence contract / testing README read at checkpoint.
+No reviewer subagents; independent review remains the orchestrator's handover review.
+The runtime fish rule itself qualifies as a state-free loaded-data derivation; no new tick system is inferred.
+Original evidence: AnnoWelt 0x100928a0–0x10092b32, load calls 0x100a1f9d / 0x100a20b8 / 0x100a2fc8.
+Empty whole object word and four-corner integer mean below 16 create resource 11 without a fish-body draw.
+Mode-3 goal-pop 0x100033c3–0x100033ce yields usable 511 for these low cells.
+RE-2's static projection finds 179,016 generated S01_02_01 cells; all have usable mode-3 masks.
+Its island-58 farm rectangles contain 28 and 64 candidates; those are not successful path/trip claims.
+Before porting, a bounded measurement used the original registry and unmodified S01_02_01 bytes.
+Normal sim::load_scenario, default UnitImportOptions: no ActorFreeComponent or actor-import fallback.
+The map imports successfully with all 27 embedded islands.
+Then public World::create is invoked twice with the existing ExtensionContext, fisher_rules disabled / enabled.
+Exact observed lines from cache/fisher-1c/preflight-01.log:
+NORMAL_IMPORT_OK islands=27
+FISHER_FLAG 0 NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions
+FISHER_FLAG 1 NORMAL_CREATE_REFUSED script offset 0: unsupported object definitions
+This diagnostic is World::create's real refusal, not a fabricated assertion or expected-pass canary result.
+The parser's OBJECT_DEFINE section contains two OBJECT_STADT definitions (parsed original data, no script bytes committed).
+Current src/sim/src/script.cpp rejects !a.objects.empty() before it can create this normal-session world.
+This dependency is independent of water geometry, fish masks, resource occupancy and the fisher extension's flag.
+A fish-fill hook would not repair the compiler's rejection or permit the required farm state to advance.
+The measurement source/binary is ignored cache only and links the unchanged RE-2 production libraries.
+No engine code, new state, extension tag, Rules field, pin value, fixture byte, or original resource was changed here.
+No scripted objects were discarded, rebound by guess, or replaced with a synthetic world.
+QUESTION (OQ-623): which contract should unblock the original-map canary?
+Option 1 (recommended): separately implement the script-object bindings and required uses, then resume this canary.
+  Cost: a separately sized script packet plus its focused tests; inventory the city bindings and dependent operations first.
+  It preserves the required original S01_02_01 normal-session claim; no state-number conclusion is assumed.
+Option 2: explicitly authorize a script-free/component canary and keep original normal-session acceptance open.
+  Cost: a narrower test contract and explicit projection/seam; it cannot demonstrate original scenario-script execution.
+  No implementation estimate or equivalence claim is offered before that scope decision.
+The owner has not authorized option 2; the earlier ActorFreeComponent approval applied only to geometry census.
+Following the standing release rule, checkpoint this QUESTION and continue independent FIXTURES-TRIM-1.
+Resume work after a decision: flag-gated fill, then normal-loader dispatch / claim / catch / return / Farm-food proof.
+Print event ticks only from actual state observations; no ticks are invented at this checkpoint.
+Then two-run flag-on determinism and the flag-off full pins check, 0 moved, remain required.
+OQ-603's float/Y continuation and other-map gameplay coverage remain outside the planned canary's claim.
+Evidence: cache/fisher-1c/preflight.cpp, preflight-01.log and evidence-sha256.json.
+No acceptance-test COUNTS/VERDICT lines exist for this checkpoint: the measurement is not a canonical passing gate.
+NOT_RUN: the requested gameplay canary; fisher/affected gates; zero-warning Dev build; full pins check on this branch.
+NOT_RUN: HE, original live execution, Windows game-file run, full landing suite.
+Hosted CI is read after the checkpoint push and monitored; its URL/result is supplied with the final four-task status.
+The report-only delta cannot establish canary success even if inherited branch CI is green.
+No running gate was interrupted, no memory-refused result counted as execution, and no whole gate repeated.
+Decisions and reasoning:
+- Verify the complete starting-state prerequisite first, as the earlier MAP review required.
+- Keep the state-free fish finding distinct from the normal-session script dependency.
+- Preserve the requested original resources, actors and script; a silent bypass would change the proof.
+- Stop at a clean decision boundary instead of adding an untestable gameplay hook under a blocked acceptance claim.
+- Move to Task 4 because its fixture cleanup is independent of either fish or script-object implementation.
+QUESTIONs: OQ-623 is blocking; no owner decision or orchestrator acceptance is inferred.

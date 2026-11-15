@@ -133,6 +133,9 @@ says who is doing what, where the work is, and what it waits on.
     runtime fish fill behind the flag and B1–B5. The S01_02_01 canary needs a script-language plan beyond the two
     city objects (owner decision). Candidate `7bc3ea79` (`b47f77e4` + FISHER-1d) PASSED its game-file run (2627 executed,
     0 failed); the owner's OK 2026-11-15 ("Review and land all"): landing all eight with this board.
+    **LANDED 2026-11-15 as `main` `b9b8df23`** (land.py, `gate` green): UI-INFO-2, the ZOOM-SMOOTH-1 partial, 1b, 1c,
+    FISHER-1b, FIXTURES-TRIM-1, UI-INFO-2c and FISHER-1d (with FISHER-RE-2 and 1c's checkpoint). Main is healthy: the
+    game-file run of `7bc3ea79` covers it, the rest is docs only.
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
   - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.

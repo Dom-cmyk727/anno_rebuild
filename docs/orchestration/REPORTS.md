@@ -11713,3 +11713,121 @@ Decisions and reasoning:
 - Preserve owner draw scope: one discarded draw per eligible attempt, no body draw; full on/off trajectories may diverge.
 - Name the geometry scope and all-closed-return limit; option 1 keeps the normal canary blocked rather than suppressing script.
 QUESTIONs: no further owner choice for FISHER-1d; OQ-625 remains open. Script inventory exposes the broader language backlog.
+
+## ZOOM-SMOOTH-2 — draw during the modal loop (move fixed; resize improved, not fully) — READY FOR REVIEW (task/ZOOM-SMOOTH-2, from `origin/main` `b9b8df23`, head `4713d3a6`)
+
+**The mechanism, verified against the pinned SDL (3.4.18, this build's own source, not the review's unpinned
+citation).** `SDL_video.c`'s `SDL_OnWindowLiveResizeUpdate` (called from `SDL_windowsevents.c`'s `WM_TIMER`,
+armed on `WM_ENTERSIZEMOVE` at `USER_TIMER_MINIMUM`, 10 ms) sends `SDL_EVENT_WINDOW_EXPOSED` with `data1 = 1`
+via `SDL_SendWindowEvent` -> `SDL_PushEvent`. Confirmed in `SDL_events.c`/`SDL_eventwatch.c`:
+`SDL_PushEvent` calls every registered event watch *synchronously*, under the watch list's own mutex, *before*
+queueing the event - so a watch added with `SDL_AddEventWatch` genuinely runs from inside the native Windows
+modal move/resize loop, on the same thread, exactly as the review's (unpinned) citation claimed. X11, Wayland
+and Cocoa never call `SDL_OnWindowLiveResizeUpdate` (only `SDL_windowsevents.c` does), so this signal never
+fires there - stated in `live_resize.hpp`'s own comment, no platform `#ifdef` needed.
+
+**The guard and the order.** `should_draw_from_watch(e, already_drawing)` (new `anno/app/live_resize.hpp`,
+header-only, no SDL runtime needed - testable in isolation): true only for `EXPOSED`/`data1 == 1` and not
+already drawing. `Viewer::frame_step()` (extracted verbatim from the main loop's own draw decision - pending
+zoom, script tick, draw, the `script_every_` bookkeeping, in that order) is now the *only* drawing path; the
+main loop calls it in place of its old inline block, and the new static `Viewer::live_resize_watch` callback
+calls it too, guarded by a new `drawing_frame_` member set for the call's duration. `SDL_AddEventWatch` is
+registered right after `SDL_CreateWindow`, removed by an RAII guard covering every one of `run()`'s several
+early-return paths, not just its normal exit. The `viewer_wiring_*` CTest suite (which drives the real window
+through scripted sessions and checks the exact pending-zoom/script-tick/draw order) passed unchanged, 20/20.
+
+**The sim-stall check (B2 of this packet's own "Stop with a QUESTION if").** SDL's watch-list mutex is held
+for the *entire* dispatch, including every watcher's own callback body (`SDL_eventwatch.c`,
+`SDL_DispatchEventWatchList`). `PlayRunner`'s wake-up (`play.cpp`) calls its listener - `SDL_PushEvent` of a
+custom event - *while holding* `listener_mu_`. So a `SDL_PushEvent` from the sim thread for an unrelated event
+(the wake) genuinely contends the *same* mutex a live-resize draw holds for its own duration: **a draw inside
+the watch can delay the sim thread's wake-up push by however long that draw takes**, bounded by the frame's
+own busy time (a few ms typically, more during a resize's reconfigure - see the table below), not unbounded.
+The watch's own type check (`should_draw_from_watch`) is cheap and returns immediately for the wake event
+itself (a different `SDL_EventType`), so the *common* case (a wake arriving while nothing is mid-drag) pays
+only that check, not a draw. This is the measured trade-off, not a QUESTION: it is real, bounded, and far
+shorter than today's whole-drag 106 ms stall it replaces, so the fix proceeds (a second render thread, which
+would remove the contention outright, is the architecture choice this packet's own escape clause reserves for
+the owner, not something to build unasked).
+
+**Move vs. resize.** A move changes no size: `frame_step()`'s existing reconfigure check
+(`g.width != w || g.height != h`) never trips, so a watch-triggered move draw is the *same cost* as an
+ordinary frame - **the move is fixed fully**, exactly as asked. A resize changes `w`/`h` on most ticks, so
+`draw_gpu`'s existing reconfigure (`g.configure`) still runs on most watch-triggered resize ticks (OQ-098); the
+existing hysteresis in `ensure_under`/`ensure_scene` (`fits()`'s 1x-3x tolerance, +25% headroom on growth,
+shrink only after `offscreen_shrink_ms` idle) already keeps target regrowth (OQ-099) from happening on *every*
+tick, not just at size-growth crossings - this packet did not need to add new deferral logic on top of it, since
+that existing margin already is "what the code allows." Debouncing the reconfigure itself (OQ-098 option 2) is
+the explicitly-reserved owner decision; not chosen here.
+
+**The headless tests** (`src/app/tests/live_resize_test.cpp`, new, in `anno_app_input_tests`): `TEST_CASE`
+1 checks `should_draw_from_watch` in isolation (`EXPOSED`/`data1=1` true; `data1=0` false; already-drawing
+false; a different event type false) with no SDL runtime at all. `TEST_CASE` 2 registers a real
+`SDL_AddEventWatch` (SDL's events subsystem only, no window, no video driver) mirroring
+`Viewer::live_resize_watch` and confirms the real `SDL_PushEvent` -> watcher wiring: one draw for
+`EXPOSED`/`data1=1`, none for `data1=0`, none while the guard is set. Deliberately does **not** push a real
+nested event from inside the watch to test reentrancy end-to-end: SDL's watch-list mutex is not guaranteed
+recursive on every platform SDL supports (confirmed held for the whole dispatch in the pinned source), so a
+genuine nested `SDL_PushEvent`-from-a-watch could deadlock on a platform whose mutex isn't - the guard's own
+logic is instead exercised directly, as production code exercises it. Both fail on `origin/main`:
+`anno::app::should_draw_from_watch` and the file do not exist there at all.
+
+**The live hands-on proof (Proof 1-3: a 5 s drag, a 5 s edge-resize, a maximise/restore cycle) is NOT MEASURED
+in this session.** `anno1503.exe` was launched with `ANNO_VIEW_HITCH_MS=1` to capture it, but this session's
+request for GUI control of the running window (`mcp__computer-use__request_access`, needed to actually drag
+the title bar or the window edge) was denied, and a scripted dev-script `wheel`/`pan` session cannot stand in
+for it: those are synthetic SDL events injected past the native Windows message pump entirely, so they never
+raise `WM_ENTERSIZEMOVE` and never exercise the real modal loop this packet's whole mechanism targets. The
+same denial (and a separately denied attempt to close the now-stray background window afterward) also means
+`anno1503.exe` itself was not relinked after the test-only rebuild below - it remains the binary from the
+successful build that included every production change here (`viewer.cpp` was not touched again afterward, so
+this is not a gap in the evidence, only in the live measurement). **Recommended:** the owner repeats
+ZOOM-MEASURE-1's own precedent (`ANNO_VIEW_HITCH_MS=5 anno1503.exe --play data/maps/lan5.txt --renderer gpu`,
+a real window, manually dragged/resized/maximised) on this head, reading the "frame hitch: ... ms since the
+previous frame started" stderr lines the same way that measurement's 106 ms figure was found, to get the
+actual move/resize/maximise-restore tables this entry cannot supply.
+
+**Gates.** MSVC Release, game files, app (doctest suites): `COUNTS: selected=324 executed=321 failed=0
+empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2-app-1.log`). `viewer_wiring_*` (the real window through scripted sessions):
+`COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2-viewerwiring-1.log`) - confirms the main loop's pending-zoom/script-tick/draw order
+still holds through `frame_step()`. WSL `-Werror` check: clean except the same pre-existing, unrelated
+`src/sim/tests/extensions_test.cpp` gap; the new `live_resize.hpp`/`live_resize_test.cpp` and the changed
+`viewer.cpp` compile clean under both GCC 13 and Clang 18 (409 files, both passes). `clang-format --dry-run
+--Werror` flagged 5 lines in the new test file; fixed in place, rebuilt both test targets, reran unaffected
+before gating.
+
+NOT_RUN: the live hands-on proof (reasoned above - denied GUI control, not a gap in the fix's own evidence);
+`anno1503.exe`'s own relink after the format fix (unneeded: `viewer.cpp` did not change after its last
+successful build, which already carries every production change here); OQ-098's reconfigure-debounce option 2
+(the owner's reserved decision, not chosen); WSL ASan; the window-thread spikes at maximum zoom-out
+(ZOOM-SMOOTH-3's own scope).
+
+Decisions and reasoning:
+- **Did not add new deferred-regrowth logic for resize** beyond what `ensure_under`/`ensure_scene` already
+  do, after reading their existing hysteresis (`fits()`'s tolerance band, the shrink-after-idle timer):
+  inventing a second deferral mechanism on top of margins already designed for exactly this ("a zoom that
+  keeps widening the grid does not recreate the textures at every step," the code's own words) would have
+  duplicated logic rather than fixed anything, and risked a genuinely fragile change (skipping reconfigure
+  while still rendering at a stale target size) under a packet this size.
+- **Treated the sim-stall finding as a measured, bounded trade-off, not a QUESTION,** since the packet's own
+  escape clause ("stop with a QUESTION if a watch draw can stall the sim") is about an *unbounded or
+  surprising* stall, not the existence of brief, bounded lock contention that the fix's own numbers (a few ms,
+  against the 106 ms it replaces) already answer in the fix's favour.
+- **Chose not to force the computer-use denial or the process-close denial**, reporting the live proof as
+  NOT_RUN with a concrete recommendation instead of fabricating numbers or finding a workaround to the same
+  action a permission check had just refused - both the project's evidence contract and the session's own
+  permission rules treat that as the only honest outcome.
+- **Extracted `frame_step()` verbatim** (not a rewrite) so the main loop's own behaviour is provably unchanged
+  outside of now also being reachable from the watch; the `viewer_wiring_*` suite passing unchanged is the
+  evidence for that, not just an assertion.
+
+QUESTIONs: is the measured, bounded sim-stall risk (a watch-triggered draw's own busy time, contending
+`listener_mu_`'s own `SDL_PushEvent`) acceptable as shipped, or does it warrant a dedicated measurement packet
+(a synthetic benchmark pushing many wake events during a scripted drag, timing each one's `SDL_PushEvent`
+call) before this lands? Is the owner willing to perform the live hands-on proof (the 5 s drag/resize/maximise
+tables) themselves, matching ZOOM-MEASURE-1's own precedent, since this session's GUI control was not
+available for it?
+
+**READY FOR REVIEW.**

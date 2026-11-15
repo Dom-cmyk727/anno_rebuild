@@ -152,8 +152,11 @@ says who is doing what, where the work is, and what it waits on.
     8 not passing for memory, the lost WSL coordinator or load, all 8 PASS alone, one of them with
     `ANNO_TEST_HEADROOM_MB=2048`; main healthy). **UI-PLACE-2** (`5f29eb93`, Esc and the right click step back,
     owner: "Yes, like original") is ACCEPTED for landing ([review](reviews/2026-11-15-ui-place-2-review.md));
-    the stacked candidate `67a960c9` (UI-PLACE-2, then FISHER-1e; owner: "Yes, land both") is in its game-file
-    run. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    the stacked candidate `67a960c9` (UI-PLACE-2, then FISHER-1e; owner: "Yes, land both") **LANDED on main**
+    2026-11-15, verified as an ancestor of `origin/main` (first parents `1152de25` UI-PLACE-2, `67a960c9`
+    FISHER-1e). Game-file run: 2641 executed, 4 large render tests timed out waiting for memory, all 4 PASS
+    alone (one with `ANNO_TEST_HEADROOM_MB=2048`); both fisher real-map canaries passed on Windows for the first
+    time; main healthy. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01
@@ -180,7 +183,7 @@ says who is doing what, where the work is, and what it waits on.
     alone unlock no shipped map, WON is the commonest blocker. **FISHER-1e ACCEPTED** (`70ecba52`,
     [review](reviews/2026-11-15-fisher-1e-review.md)): three Venice huts and one human hut each complete a whole
     trip (39.6 to 43.1 game seconds) on the two shipped maps with nothing suppressed; determinism, save and
-    reload, and flag-off identity hold; no engine change. Landing waits for the owner's OK. Still the owner's: the BEAMDOWN rule,
+    reload, and flag-off identity hold; no engine change. **LANDED** on main `67a960c9` (see the UI-PLACE entry). Still the owner's: the BEAMDOWN rule,
     whether SL-1 and SL-2 are built now, and landing SO-1a, SO-1b and SL-0.
     **FISHER-1d ACCEPTED 2026-11-15** (`e006a45b`, [review](reviews/2026-11-15-fisher-1d-review.md)): the
     runtime fish fill behind the flag and B1–B5. The S01_02_01 canary needs a script-language plan beyond the two

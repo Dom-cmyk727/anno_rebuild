@@ -12056,4 +12056,119 @@ gaps per phase, since there is no evidence any phase happened to measure.
 - after sending the trace, say in one line roughly which minute each action happened in (even "drag at about
   minute 2, resize at about minute 3") - not required for a clear case, but removes all doubt for a quiet one.
 
+(The above trace turned out to be idle - the owner did not perform the drag test that session, only opened and
+closed the window. Ignore it; the real run analysed below replaces it.)
+
+## ZOOM-SMOOTH-2c — the real hands-on trace, analysed per phase
+
+**The trace** (`cache/owner-drag-test-20261115-202249/trace-stderr.log`, 8.5 MB, 51,145 lines, 17,005 `frame
+hitch` lines; not committed - original-session evidence), the 2c build at `05aab883`,
+`ANNO_VIEW_HITCH_MS=1`, `ANNO_GPU_ADAPTER=4090`, `--play lan5 --water enhanced`, started 20:22:55. Phases
+found from the periodic `"NNNNxNNNN px"` report lines (window size) and the zoom-group field, by line number
+(the file carries no timestamps of its own): wait (1-29884, steady `1280x800`), drag (29884-33059, size still
+`1280x800` throughout), resize (33059-38310, size changing between every report:
+`1966x1180`→`2525x820`→`1601x237`→`994x837`→`1368x906`→settling at `1496x928`), maximise (one gap at line
+41799, inside the otherwise-steady `1496x928` stretch before the window becomes `2560x1369` and the zoom group
+switches 2→4 at line ~43050), restore (one gap at line 46377, back to `1496x928` at zoom group 4), post-restore
+steady state (46383-51145).
+
+**Drag (29884-33059, 1,053 hitch lines): does NOT meet the 16 ms target, and is worse than ZOOM-MEASURE-1's
+106 ms.** p50 2.0 ms, p90 16.0 ms, p99 85.0 ms, **worst 298.4 ms**. Checked every gap over 50 ms individually
+(298.4, 187.3, 175.7, 173.4, 154.6, 150.6*, 127.6, 124.5, 123.0, 117.2, 114.5*, 103.6, 85.0 ms - the two marked
+`*` are at the resize/maximise boundaries, covered separately below): **every one shows `busy` under 1.2 ms and
+`0.0 ms handling window events`** - none of the four named categories (window events, surface configure, chunk
+work, present) accounts for any of them. The gap is pure, unattributed wall-clock time between the end of one
+frame and the start of the next that this trace's own instrumentation cannot explain - not a slow draw, not a
+slow reconfigure (`"surface configure"` appears **zero** times anywhere in the drag window - confirming no
+resize occurred yet, consistent with the periodic reports), not event handling. **This session does not know
+why** and did not guess: the mechanism's own unit tests (ZOOM-SMOOTH-2b/2c) confirm the watch fires correctly
+under a controlled, synthetic push; this is the first time it has been measured under a real, human-paced
+drag, and the drag window coincided with the one disclosed confound (a single-core `awk` process running
+elsewhere on the PC) that the game-file gate being stopped did not remove. Whether that process, some other
+OS-level scheduling effect, or something about a real mouse drag's own WM_TIMER cadence explains it is not
+resolved by this trace alone.
+
+**Resize (33059-38310, 1,740 hitch lines): close to the 16 ms target, not fully inside it, and clearly
+attributed.** Mean 6.9 ms, worst 31.9 ms. Unlike the drag, every large gap here (31.9, 29.2, 29.4, 29.6,
+30.7 ms) is dominated by its own frame's `busy` time (10-11 ms), almost all of it `"surface configure"` (8-13
+ms per tick) - exactly OQ-098's own cited 9.5-16 ms figure, doubled here because two consecutive ticks each
+pay it (the watch is firing every tick, continuously, at roughly the 10 ms `WM_TIMER` cadence - the resize
+fix is working as designed; the residual cost is the reconfigure itself, which 1d/2's own packets left as the
+owner's reserved debounce decision, OQ-098 option 2, not chosen).
+
+**Two isolated "settle" gaps, not part of the continuous resize or drag (38970, 40299 lines: 114.5 ms, 158.3
+ms).** Both are the mirror image of the drag's own gaps: `busy` 12-15 ms, almost entirely `"surface configure"`
+plus **essentially 100 % `handling window events`** (112.5/114.5 and 156.2/158.3). This is the same signature
+as maximise and restore below, not the continuous in-drag/in-resize pattern - most likely the final
+reconfigure landing through the *ordinary* `SDL_PollEvent` path once a given modal-loop gesture (a specific
+resize drag of the edge, released and re-grabbed) actually exits, which this packet's watch does not cover by
+design (it only runs *during* the modal loop, not at the handoff back to the normal loop).
+
+**Maximise (line 41799): 150.6 ms, 148.4 ms (98.5 %) `handling window events`, plus a 9.19 ms `"surface
+configure"` inside the same frame's own busy time.** **Restore (line 46377): 120.9 ms, 118.8 ms (98.3 %)
+`handling window events`, plus a 10.37 ms `"surface configure"`.** Both match the *pre-fix* pattern almost
+exactly, and both are close to the orchestrator's cited main-branch figure (123 ms from the owner's UI test) -
+**this packet does not fix either, and was never meant to**: a maximise or restore is a single `WM_SIZE`-type
+transition, never a native modal loop, so `SDL_OnWindowLiveResizeUpdate`'s `WM_TIMER` never fires and the
+watch this packet adds structurally cannot engage. ZOOM-SMOOTH-2's own task spec listed maximise/restore under
+"Proof" item 3 (measure, before and after) - it was never one of the "Do" items the fix targets. Unimproved
+here is the expected, unsurprising result.
+
+**Post-restore steady state (46383-51145): meets the target cleanly.** Worst 3.2 ms, mean 2.00 ms - the
+500 Hz display pace, no different from the pre-drag baseline.
+
+**A separate, diagnostic-only finding, not a real stall:** two frames (lines 30533 and 36732, one just after
+the drag, one just after a resize tick) report a `"handling window events"` value (5,763.5 ms and 9,788.3 ms)
+*larger than the frame's own total gap* (18.3 ms and 7.9 ms) - a logical impossibility, so this is a bug in
+the `events_ms_` measurement itself, not a genuine multi-second stall (the frame's own total gap, the number
+that actually matters, stayed small in both cases). The likely mechanism: `events_ms_` is computed in the
+*main loop's* own `SDL_PollEvent` wrapper (`events_start` captured right before the call, `events_ms_ = now -
+events_start` right after) - but the main loop's own call to `SDL_PollEvent`/`SDL_WaitEventTimeout` is blocked
+for the *entire* modal loop, oblivious to the fact that `live_resize_watch` is calling `frame_step()`
+repeatedly from *inside* that same blocked call via SDL's synchronous watch dispatch. When the modal loop
+finally ends and the blocked call returns, `events_ms_` is computed against an `events_start` set many seconds
+earlier, before the gesture even began, producing a bogus figure - while the frame-to-frame gaps themselves
+(tracked separately, via `draw_start_`/`last_end_`) stayed healthy throughout precisely *because* the watch
+kept drawing. Not fixed here (no tuning in this packet), but worth a QUESTION for whoever next touches the
+hitch reporting: `events_ms_` is unreliable for any frame immediately after a sustained watch-driven stretch,
+which a future packet reading these logs (ZOOM-SMOOTH-3, say) should know before trusting that one field.
+
+**Summary against the targets:**
+
+| phase | typical | worst | target (16 ms) met? | dominant cause |
+|---|---|---|---|---|
+| drag | 2.0 ms (p50) | 298.4 ms | **no** | unattributed (not window events/configure/chunks/present) |
+| resize (continuous) | ~10 ms | 31.9 ms | close, not fully | `surface configure` (expected, OQ-098) |
+| resize/drag settle (isolated) | - | 114.5-158.3 ms | no | `handling window events` + `surface configure` |
+| maximise | - | 150.6 ms | no (never targeted) | `handling window events` + `surface configure` |
+| restore | - | 120.9 ms | no (never targeted) | `handling window events` + `surface configure` |
+| post-restore steady state | 2.0 ms | 3.2 ms | **yes** | - |
+
+**No tuning was attempted**, per the instruction: every number above is as measured on the unmodified 2c head.
+
+NOT_RUN / open: a repeat on a genuinely idle machine, to see whether the drag's own unexplained gaps persist
+without the disclosed `awk` process running; a deeper instrumentation pass distinguishing "the watch's own
+`WM_TIMER` tick never fired" from "it fired but something outside the frame step delayed the thread," since
+the current trace cannot tell those apart for the drag's own gaps.
+
+Decisions and reasoning:
+- **Did not guess a root cause for the drag's unexplained gaps.** Every instrumented category the trace
+  offers (busy time, window-event time, surface configure, present) is at or near zero for every one of them;
+  inventing an explanation the data does not support would have been exactly what the evidence contract rules
+  out. Named the one disclosed confound (the concurrent `awk` process) as a plausible, not confirmed, factor.
+- **Separated the two isolated 100+ ms "settle" gaps from the drag's own cluster**, once their own attribution
+  (100 % window-event time, like maximise/restore) showed they are a different phenomenon (a modal-loop exit
+  handoff) from the drag's cluster (zero window-event time, unexplained) - conflating the two would have
+  understated how clean the sustained resize ticking itself actually is.
+- **Reported the `events_ms_` anomaly as a measurement bug, not a stall**, after confirming it is logically
+  impossible for a sub-component to exceed its own total - stating it as a real multi-second freeze would have
+  been a false alarm this trace's own frame-to-frame gaps already disprove.
+- **Did not touch any code**, per the instruction; this entry is measurement and analysis only.
+
+QUESTIONs: should a follow-up packet instrument the drag's own gap more precisely (e.g. a counter of how many
+times `live_resize_watch` was actually invoked during a measured stretch, independent of `frame_step()`'s own
+reentrancy guard, to tell "the watch never fired" apart from "it fired but something else delayed the
+thread")? Is a clean, idle-machine repeat worth asking the owner for before concluding anything further about
+the drag, given the one disclosed confound?
+
 **READY FOR REVIEW.**

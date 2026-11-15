@@ -1,5 +1,6 @@
 // FISHER-1b: mode 3 and the synthetic bay. Evidence: docs/re/fisher.md §§2–5,
 // 2026-11-14 correction; original planar rules, no invented vertical continuation.
+#include <algorithm>
 #include <array>
 
 #include <doctest/doctest.h>
@@ -45,7 +46,7 @@ bool claimed(const sim::World& w, int x, int y) {
 }
 } // namespace
 TEST_CASE(
-    "fisher behavior: mode 3 words and records match every primitive cell and land is unchanged") {
+    "fisher behavior: mode 3 matches primitives and default versus explicit Land selects equally") {
     auto types = fishery_registry();
     auto w = create_fishery(fishery_rig(), types, true);
     const auto& is = *w.islands()[0];
@@ -68,7 +69,8 @@ TEST_CASE(
             CHECK(land.get(p) == explicit_land.get(p));
             CHECK(land.record(p).mask9 == sim::walk_record(is, *types, p).mask9);
         }
-    // Same start, goal, tables and mode-0 path before and after selecting the mode explicitly.
+    // This checks default/explicit mode selection equivalence, not an independent mode-0 oracle.
+    // The unchanged full pins remain the independent historical mode-0 regression check.
     const std::array starts{sim::WalkPoint{{105, 105}, 1, 1}};
     const std::array goals{sim::WalkPoint{{108, 105}, 1, 1}};
     const auto first = [](const sim::SearchVisit&) {
@@ -97,7 +99,10 @@ TEST_CASE(
         CHECK(on.rng().cursor() == off.rng().cursor());
         if (auto* f = fisher(on)) {
             CHECK(on.rng().cursor() != before);
-            CHECK(f->pos == sim::entrance_position(home(on), *types->find(kBayFishery), 0));
+            // D AnnoGame 0x100084c0: rotation 1 maps (6,9) to (9,18-6)
+            // sixths. At (110,110), that is (111.5,112), Q24.8 (28544,28672).
+            CHECK(f->pos == sim::FixedPos{28544, 28672});
+            CHECK(f->pos != sim::FixedPos{28544, 28416}); // second entrance: (9,18-12)
             CHECK(f->cargo_goods == 71);
             CHECK(f->job == 45);
             REQUIRE(f->harvest);
@@ -165,11 +170,14 @@ TEST_CASE("fisher behavior: mid-cut save reload and deterministic trip continuat
     REQUIRE_MESSAGE(restored.ok(), (restored.ok() ? "" : restored.error()));
     auto r = std::move(restored).value();
     const auto before = w.rng().cursor();
-    for (int n = 0; n < 150; ++n) {
+    for (int n = 0; n < 4000 && farm(w).workers_out != 0; ++n) {
         w.advance(2);
         r.advance(2);
         CHECK(w.state_hash() == r.state_hash());
     }
+    REQUIRE(farm(w).workers_out == 0);
+    CHECK(farm(w).raw == 768);
+    CHECK(farm(r).workers_out == 0);
     CHECK(w.rng().cursor() == before);
     CHECK(w.save() == r.save());
     CHECK(w.check_invariants().empty());
@@ -185,7 +193,7 @@ TEST_CASE(
             std::vector<std::uint8_t> h(is.w * is.h, 128);
             for (unsigned y = 12; y <= 13; ++y)
                 for (unsigned x = 15; x <= 16; ++x)
-                    h[y * is.w + x] = 0;
+                    h[y * is.w + x] = 24;
             is.terrain = sim::make_terrain(std::move(h), {}, {});
             rig.object(115, 112, sim::TypeId{11});
         }
@@ -201,8 +209,8 @@ TEST_CASE(
         if (isolated)
             CHECK_FALSE(claimed(w, 115, 112));
         else {
-            CHECK(stats.forestry.search_candidates == 0);
-            CHECK(stats.forestry.search_popped == 0);
+            CHECK(stats.forestry.search_candidates == 1);
+            CHECK(stats.forestry.search_popped > 0);
         }
         CHECK(w.check_invariants().empty());
     }
@@ -306,4 +314,89 @@ TEST_CASE("fisher behavior: a SmallFarm home is refused before enabled receipt")
         },
         20));
     CHECK(w.check_invariants().empty());
+}
+
+TEST_CASE("fisher behavior: truly no fish skips search before any node is popped") {
+    auto types = fishery_registry();
+    auto rig = fishery_rig(false);
+    auto& objects = rig.spec.islands[0].objects;
+    std::erase_if(objects, [](const auto& o) { return o.object == 11; });
+    auto w = create_fishery(rig, types, true);
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    REQUIRE(until(w, [&] { return fisher(w) != nullptr; }));
+    REQUIRE(until(w, [&] { return farm(w).workers_out == 0; }));
+    CHECK(stats.forestry.search_candidates == 0);
+    CHECK(stats.forestry.search_popped == 0);
+    CHECK(stats.forestry.cuts == 0);
+    CHECK(farm(w).raw == 0);
+}
+
+TEST_CASE(
+    "fisher behavior: first land entrance reaches water and returns through the water entrance") {
+    auto types = fishery_registry();
+    auto rig = fishery_rig();
+    auto& is = rig.spec.islands[0];
+    auto heights = is.terrain->height;
+    // First entrance (111,111.5): mean (1+63+1+63)/4 = 32, closed.
+    // Second entrance (112,111.5): mean (63+0+63+0)/4 = 31, open.
+    // West neighbour (110,111): mean (24+1+24+1)/4 = 12, open.
+    for (unsigned y : {11U, 12U}) {
+        heights[y * is.w + 11] = 1;
+        heights[y * is.w + 12] = 63;
+        heights[y * is.w + 13] = 0;
+    }
+    is.terrain = sim::make_terrain(std::move(heights), {}, {});
+    auto w = create_fishery(rig, types, true);
+    const auto& island = *w.islands()[0];
+    sim::WalkCells sea(island, *types, *types->walk_tables(), island.rect(), 4, {},
+                       sim::WalkCellMode::FisherSea);
+    CHECK(sea.get({111, 111}).low == 0);
+    CHECK(sea.get({110, 111}).low == 0xfff);
+    CHECK(sea.get({112, 111}).low == 0xfff);
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    REQUIRE(until(w, [&] { return fisher(w) != nullptr; }));
+    REQUIRE(until(w, [&] {
+        const auto* f = fisher(w);
+        return f && f->harvest->step == sim::HarvestStep::Cut;
+    }));
+    const auto target = fisher(w)->harvest->target;
+    CHECK(sea.get(target).low == 0xfff);
+    CHECK(claimed(w, target.x, target.y));
+    CHECK(stats.forestry.search_popped > 0);
+    REQUIRE(until(w, [&] { return stats.forestry.raw_delivered_88 == 768; }));
+    CHECK(farm(w).workers_out == 0);
+    CHECK(w.check_invariants().empty());
+}
+
+TEST_CASE("fisher behavior: two runs from create have equal hashes through a completed trip") {
+    const auto types = fishery_registry();
+    const auto rig = fishery_rig();
+    auto a = create_fishery(rig, types, true), b = create_fishery(rig, types, true);
+    CHECK(a.state_hash() == b.state_hash());
+    bool sent = false, finished = false;
+    for (int n = 0; n < 4000 && !finished; ++n) {
+        a.advance(2);
+        b.advance(2);
+        CHECK(a.state_hash() == b.state_hash());
+        sent = sent || farm(a).workers_out != 0;
+        finished = sent && farm(a).workers_out == 0;
+    }
+    REQUIRE(finished);
+    CHECK(farm(a).raw == 768);
+    CHECK(a.save() == b.save());
+}
+
+TEST_CASE("fisher behavior: enabled harvest diagnostic lists job 0x2d") {
+    auto types = fishery_registry();
+    auto w = create_fishery(fishery_rig(), types, true);
+    REQUIRE(until(w, [&] { return fisher(w) != nullptr; }));
+    auto* f = fisher(w);
+    REQUIRE(f != nullptr);
+    f->job = 0xffff;
+    CHECK(sim::validate_figures(w.figures(), w.ids(), true).find("fisher job 0x2d") !=
+          std::string::npos);
+    CHECK(sim::validate_figures(w.figures(), w.ids(), false).find("fisher job 0x2d") ==
+          std::string::npos);
 }

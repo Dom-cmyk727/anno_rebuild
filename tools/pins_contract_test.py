@@ -34,8 +34,8 @@ class Contract(unittest.TestCase):
         self.current = self.root / 'fixtures/synthetic/sim/current'
         self.current.mkdir(parents=True)
         for name in pins.RECORDINGS:
-            (self.current / name).write_text('# self-authored\n')
-        self.path = self.current / 'goldens.txt'
+            pins.fixture_path(self.current, name).write_text('# self-authored\n')
+        self.path = self.current.parent / 'pins.txt'
         self.path.write_text('self PIN 138 0000000000000001\n')
         self.args = type('Args', (), dict(command='check', jobs=None, log=None,
                                         build_dir=self.root / 'build', config='',
@@ -47,6 +47,13 @@ class Contract(unittest.TestCase):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
                 code = pins.run(self.args, execute)
         return code, out.getvalue()
+
+    def test_one_canonical_pin_path(self):
+        self.assertEqual(pins.fixture_path(self.current, 'pins.txt'), self.path)
+        self.assertEqual(pins.fixture_path(self.current, 'g2.log'), self.current / 'g2.log')
+        self.assertEqual(pins.RECORDINGS.count('pins.txt'), 1)
+        self.assertNotIn('goldens.txt', pins.RECORDINGS)
+        self.assertFalse((ROOT / 'fixtures/synthetic/sim/current/goldens.txt').exists())
 
     def test_check_routes_through_canonical_gate_without_update(self):
         def execute(command, **kwargs):
@@ -89,7 +96,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(self.run_private(execute)[0], 0)
 
     def test_real_oracle_numeric_ownership_and_original_counterexample(self):
-        rows = pins.read_pins(ROOT / 'fixtures/synthetic/sim/current/goldens.txt')
+        rows = pins.read_pins(ROOT / 'fixtures/synthetic/sim/pins.txt')
         self.assertEqual(oracle_collisions(rows, ROOT / 'tools'), [])
         wrong = dict(rows)
         for name in ('registry_highmap_absent', 'registry_highmap_present'):

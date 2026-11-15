@@ -193,8 +193,10 @@ rely on the exit code alone, without re-deriving the verdict from the log text.
 ## Pins and goldens
 
 PINS-1 (2026-11-13), ADR 0006 step1: no state, behaviour or expected hash change.
-The single current directory is `fixtures/synthetic/sim/current/`; archived directories
-are unchanged. Named pins remain in `goldens.txt` (`name stage stream_version hex64`).
+The one current recording directory is `fixtures/synthetic/sim/current/`. Named pins live
+in `fixtures/synthetic/sim/pins.txt` (`name stage stream_version hex64`), using the same
+`golden.hpp` and `pins.py` writer. Unused per-number copies are removed; genuine historical
+refusal/oracle inputs remain as listed in [Fixture cleanup](fixtures-trim.md).
 See the [complete literal disposition](pins-literals.md).
 
 With a configured dev build and the original files available:
@@ -282,7 +284,7 @@ comments are preserved; inline comments after pin rows are not retained by the w
    header tail literal, and mutates the actual version bytes for its negative control.
 4. **Hand-copy oracle-held expectations.** Run `python -I tools/sim_stream.py`
    and copy its13 printed values and the new version into the corresponding
-   `current/goldens.txt` rows. Change only the version column of the other
+   `pins.txt` rows. Change only the version column of the other
    oracle-owned rows (`oracle_core_*`, `oracle_rng_table`,
    `oracle_synthetic_registry`, `oracle_legacy_construction_registry`, and
    `oracle_registry_highmap_absent/present`). Check the latter values with

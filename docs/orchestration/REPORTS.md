@@ -11226,3 +11226,63 @@ Decisions and reasoning:
 - Stop at a clean decision boundary instead of adding an untestable gameplay hook under a blocked acceptance claim.
 - Move to Task 4 because its fixture cleanup is independent of either fish or script-object implementation.
 QUESTIONs: OQ-623 is blocking; no owner decision or orchestrator acceptance is inferred.
+
+
+## FIXTURES-TRIM-1 — one current fixture set and canonical pins (2026-11-15)
+
+Status: READY FOR REVIEW; independent review is the orchestrator's handover review.
+Branch task/FIXTURES-TRIM-1; independent origin/main base 01a4d5401f71b48339923fbb839ee6c7a4c05e55.
+Tested code candidate 520a1187; final follow-up changes only documentation, not tested source or fixture bytes.
+Start 2026-11-15 00:56:05Z; budget about 2 hours; no reviewer subagents, engine behavior or state change.
+CLAUDE, PLAN, board protocol, ADR 0006 and mandatory evidence/testing contract read, including before handover.
+Before: 392 tracked sim fixture files, 33,476,670 bytes (31.93 MiB); ADR's 387 / 31.7 MB was an older snapshot.
+After: 116 files, 7,415,445 bytes (7.07 MiB). Removed 276 files / 26,061,225 bytes (24.85 MiB).
+Per-set sizes, counts, retained proofs and exact changed readers: docs/testing/fixtures-trim.md.
+Per-file before hashes / dispositions: cache/fixtures-trim-1/cleanup-plan.json, recorded before the first removal.
+PINS-1 had already pointed positive G2–G6, founding/cargo, populated-field and corpus tests at current/.
+Unused numbered copies add no active positive assertion; current replay/oracle/corpus tests cover those workloads.
+Kept actual native/replay predecessors 128–138, including distinct schemas that reused 129/130.
+Kept 11 exact published128 recordings, their SHA controls, and the two files the historical model imports.
+Kept historical supply/research corpus and SCRIPT1/2 independent oracle expectations; current cannot replace them.
+Kept purpose-specific nav/economy/freight/script/import vectors; no deletion of unique semantic evidence.
+Current pins renamed byte-for-byte: current/goldens.txt -> fixtures/synthetic/sim/pins.txt.
+Existing golden.hpp / pins.py mechanism retained; sim_stream.py's comparison follows the same path, no formula edit.
+Public pin contract checks this sole current path, absence of the old copy and private check/regen routing.
+Changed historical readers: script2_session frame2 control -> retained unit130/SCRIPT1 G2; identical SHA proven.
+Integration native134 control -> freight legacy134 save instead of salt duplicate; identical SHA proven.
+All other current replay inputs stay current; no old bytes relabeled as current and no recording mode used.
+retained-byte-proof.json: zero retained fixture-byte changes; pins rename identical; fisher_vectors.txt untouched.
+State 139 and every section version 1 remain unchanged; no current pin value moved.
+Dev build: build-dev-full-01.log passes with zero warnings; all targets built with calibrated build parallelism 6.
+Earlier fresh target build (build-dev-01.log) has two Apple duplicate-library linker warnings, preserved as history.
+Release pins build succeeds; test ceiling 4, shared admission enabled; no memory-refused test occurred.
+Gate logs below are under cache/fixtures-trim-1/; original game files set for pins and additional readers.
+pins-full-01.log, required pins_contract then full selected scope:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1675 executed=1657 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/fixtures-trim-1/pins-full-01.log
+extra-readers-01.log, prerequisite passed, then inventory failed BEFORE any of the 64 reader tests ran:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+VERDICT: FAIL workflow: Expecting value: line 1 column 1 (char 0)
+The selector used Python's unsupported (?:...) syntax in CTest; corrected to (...) with no source change.
+extra-readers-02.log runs only the previously unexecuted 64, reusing the valid prerequisite and full pins gate:
+COUNTS: selected=64 executed=64 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+agree-synthetic-01.log: 25 of 25 cases agree (no game dir: fixtures only).
+The 64-name selector / commands / dependency reasons are in extra-fixture-readers.json; disjoint from full pins.
+No whole gate was repeated; the failed inventory remains evidence and is not counted as 64 executed failures.
+lint-final.log / format-final.log pass; git diff --check and new documentation links resolve.
+Evidence log SHA-256s: cache/fixtures-trim-1/evidence-sha256.json; retained fixtures checked against the base.
+Hosted CI is read after the final branch push; exact head/run/result supplied at handover, never pre-claimed green.
+NOT_RUN: local Windows/WSL and original-file parser agreement (parser code unchanged); hosted CI has no game files.
+NOT_RUN: optional measurement bodies (18 classified opt-in skips), Windows game-file/full landing gate.
+Decisions and reasoning:
+- Delete covered copies, retain real historical assertions and the independent model's minimum dependencies.
+- Repoint duplicate historical inputs only after exact byte comparison, preserving their refusal meaning.
+- Use the requested pins.txt path by moving the existing mechanism; never introduce a second pin source.
+- Run one full pins selection and a disjoint reader set; preserve inventory failure and rerun only unexecuted work.
+- Keep this branch independent of all fisher branches and preserve every retained fixture byte.
+QUESTIONs: none for cleanup; FISHER-1c's separate OQ-623 checkpoint is not resolved by this task.

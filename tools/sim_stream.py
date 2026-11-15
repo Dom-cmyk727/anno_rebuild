@@ -962,7 +962,7 @@ def values():
 
 def goldens():
     found = {}
-    path = ROOT / 'fixtures/synthetic/sim/current/goldens.txt'
+    path = ROOT / 'fixtures/synthetic/sim/pins.txt'
     for line in path.read_text(encoding='utf-8').splitlines():
         parts = line.split('#')[0].split()
         if len(parts) == 4:

@@ -206,7 +206,8 @@ TEST_CASE("SCRIPT2 framed oversized namespace refuses before allocation") {
 }
 
 TEST_CASE("integration historical replay frame2 refuses before current parsing") {
-    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / "g2.log",
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" / "legacy" /
+                         "unit130" / "fixtures" / "synthetic" / "sim" / "script1" / "g2.log",
                      std::ios::binary);
     REQUIRE(in.good());
     const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(in), {}};

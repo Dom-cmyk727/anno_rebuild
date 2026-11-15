@@ -203,7 +203,7 @@ TEST_CASE("salt identity135: real133 and real134 archives refuse, each with its 
     const auto base = std::filesystem::path(ANNO_FIXTURES_DIR) / "sim";
     // actual native states of the two predecessor identities
     const auto n133 = bytes_of(base / "expand1/legacy133/g2.save");
-    const auto n134 = bytes_of(base / "salt1/legacy134/g2.save");
+    const auto n134 = bytes_of(base / "freight/legacy134/g2.save");
     for (const auto& [bytes, version] : {std::pair{&n133, 133}, std::pair{&n134, 134}}) {
         const auto refused = sim::World::load(*bytes, f.types.registry);
         REQUIRE_FALSE(refused.ok());

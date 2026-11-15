@@ -172,7 +172,10 @@ says who is doing what, where the work is, and what it waits on.
     proof: **FISHER-MAP-1 ACCEPTED** (`21e373e7`,
     [review](reviews/2026-11-15-fisher-map-1-review.md)): the canary maps are `01_1024_easy_256` (three standing
     Venice huts, no command) and `02Trade01` (one human hut by one Build command); the five small script names
-    alone unlock no shipped map, WON is the commonest blocker. **FISHER-1e RELEASED** on those two maps. Still the owner's: the BEAMDOWN rule,
+    alone unlock no shipped map, WON is the commonest blocker. **FISHER-1e ACCEPTED** (`70ecba52`,
+    [review](reviews/2026-11-15-fisher-1e-review.md)): three Venice huts and one human hut each complete a whole
+    trip (39.6 to 43.1 game seconds) on the two shipped maps with nothing suppressed; determinism, save and
+    reload, and flag-off identity hold; no engine change. Landing waits for the owner's OK. Still the owner's: the BEAMDOWN rule,
     whether SL-1 and SL-2 are built now, and landing SO-1a, SO-1b and SL-0.
     **FISHER-1d ACCEPTED 2026-11-15** (`e006a45b`, [review](reviews/2026-11-15-fisher-1d-review.md)): the
     runtime fish fill behind the flag and B1–B5. The S01_02_01 canary needs a script-language plan beyond the two

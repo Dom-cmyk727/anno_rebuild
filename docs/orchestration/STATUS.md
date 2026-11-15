@@ -156,7 +156,10 @@ says who is doing what, where the work is, and what it waits on.
     2026-11-15, verified as an ancestor of `origin/main` (first parents `1152de25` UI-PLACE-2, `67a960c9`
     FISHER-1e). Game-file run: 2641 executed, 4 large render tests timed out waiting for memory, all 4 PASS
     alone (one with `ANNO_TEST_HEADROOM_MB=2048`); both fisher real-map canaries passed on Windows for the first
-    time; main healthy. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    time; main healthy.
+    **Next for the Mac** (owner, 2026-11-15): [FISHER-RE-3](tasks/fisher-re-3.md), a fisher hut with every
+    entrance on land, "matching pixel perfect with HE as reference": RELEASED as a read with a capture
+    recipe; the History Edition picture comparison is a later Windows step (FISHER-HE-1, not released). The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01

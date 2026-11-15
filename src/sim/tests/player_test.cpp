@@ -1220,7 +1220,7 @@ sim::World g1_world() {
 } // namespace
 
 TEST_CASE("golden G1 populated player table with the full tick rule") {
-    // The hash after 100 and 700 steps of 500 ms against goldens.txt, which
+    // The hash after 100 and 700 steps of 500 ms against pins.txt, which
     // tools/sim_stream.py computes from its own transcription of the per-player
     // rules (upkeep gate, booking, decay in u32, bankruptcy grace). Player 1 enters
     // the grace period at t = 2000 and is bankrupt at the first visit after 152000.

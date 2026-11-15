@@ -1007,7 +1007,7 @@ TEST_CASE("G5 growth and the 300 s drought through 1000000 ticks equal golden") 
     CHECK(outcome.value().checkpoints_matched == 21);
     CHECK(replayed.state_hash() == w.state_hash());
 
-    // Goldens (self-baselined, goldens.txt; the asserts above do not depend on them).
+    // Goldens (self-baselined, pins.txt; the asserts above do not depend on them).
     for (const auto& [name, value] : std::vector<std::pair<std::string, std::uint64_t>>{
              {"s13_g5_checkpoints", checkpoints.value()}, {"s13_g5_end", w.state_hash()}}) {
         std::string line;

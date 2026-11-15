@@ -860,3 +860,119 @@ its separate grass path needs fertility, outside this sea-branch record.
 No engine code,
 state, pins, asset bytes or scheduler wiring changes in this packet. HE and
 original live-game execution are NOT_RUN; OQ-603 / OQ-604 stay open.
+
+## 7. Runtime fill in the sim and follow-ups (FISHER-1d, 2026-11-15)
+
+**D/T — candidate count is not usable-goal count.** Resource query return
+`0x100592f4`–`0x100592fa` is tested for zero at `0x100592fc`, before the
+candidate list is passed to search at `0x10059325`. The later goal-pop at
+`0x100033c3` subtracts the blocked mask from `0x1ff`. Accordingly, an
+unclaimed blocked type-11 tile still counts as a candidate; it contributes no
+usable goal subcells. The sim now counts it before that mask is applied.
+Separate rigs distinguish blocked-only fish (search attempted) from genuinely
+no fish (no nodes popped). This does not change the limit of 20 or add a draw.
+
+**T/A — fill API and lifecycle.** `fill_fish_resources(TileLayer&, HEIGHT,
+TileRect, enabled, threshold=16, resource=11)` implements §6's clipped,
+row-major sea branch. It reads the entire object id, copies the unsigned mean
+into item height, resets phase/footprint offsets/rotation, and preserves the
+anchor, owner, claim, other auxiliary bits and walk data. Disabled or absent
+HEIGHT does nothing. `World::create` calls it after loaded objects and buildings;
+the shared object-clear path calls it over the cleared footprint when enabled.
+Public demolition, city removal and house removal propagate the existing
+fisher flag to that path. Placement, ordinary ticks and native save reload do
+not regenerate resources. This covers §6's load and area-clear callers
+(`0x100a1f9d` / `0x100a20b8` / `0x100a2fc8`, `0x100a1810`–`0x100a183c`,
+`0x1008376e`–`0x10083796`), without adding saved state or porting grass.
+
+**T — proof scope.** Four hand-derived `runtime_fish` records now also drive
+C++; mean 15 versus 16, raw object word 16384 and occupied 11 are controls.
+Synthetic `World::create`, public demolition and save/reload exercise the
+production hooks. The C++ 50-map test matches the accepted Python census:
+4,908,270 new cells, all usable; S01_02_01 has 179,016. This census parses the
+raw island geometry and applies the normal object-placement kernel to **all**
+GELAENDE/FLUESSE/PROD2 footprints, including orphan city records. It compares
+against the independent RE2 count fixture. It is a geometry projection, not a
+normal actor/script session, and it does not establish the two original farms'
+complete trips. Unsupported actors or script objects are not silently removed
+from a gameplay canary. Native reload preserves a deliberately empty cell;
+only the original load/clear lifecycle is newly covered.
+
+**T/A — strengthened continuation and entrance proofs.** The mid-cut reload
+runs until worker release and asserts the full 768 raw delivery; a separate
+pair of from-create runs compares hashes through completion. The rotated launch
+uses a hand-derived literal, not the function under test. The mode-0 test is
+explicitly named a default/explicit Land selection-equivalence check. A rig
+starts at the first entrance on mean 32 land, escapes onto water, claims and
+cuts fish, then returns through its second entrance on mean 31 water. The
+initial diagnostic with **both** entrances closed reached the cut but did not
+deliver within the bound. Return through an all-closed entrance set is not
+proved or repaired here; no movement rule is invented to make it pass.
+The enabled invalid-job diagnostic includes job `0x2d`.
+
+**T — compatibility.** The existing default-off header tag 1 is unchanged;
+state 139 and every section version stay unchanged. The full pins gate must
+show zero moved pins and unchanged current recordings. Threshold 16 remains a
+named addressed default passed to the state-free function; no Rules field,
+extension, periodic spawn system or RNG call was added. The owner's earlier
+draw decision remains per eligible attempt, not equality of whole enabled and
+disabled trajectories.
+
+## 8. Script-object inventory and proposed next packet (2026-11-15)
+
+**P/T — owner choice.** The owner chose OQ-625 option 1: inventory and propose
+SCRIPT-OBJECTS-1, retaining the requested normal-session claim. This is a sizing
+proposal, not an assignment or authorization to implement bindings here.
+Parsed source is `Scenes/0100Kampagne01/S01_02_01.sze`, SHA-256
+`23a99f002e422df6580781746f4cf3ed6766595540f67acd867d88b6ddf17630`.
+`tools/bigbrother.py::parse/walk` finds exactly two definitions and exactly one
+kernel use of each name; the following offsets are BIGBROTHER payload offsets,
+not DLL addresses. No original script listing is reproduced.
+
+| P: name | Definition / name offset | Kind / numeric operand | Kernel primary / name offset | Use |
+|---|---|---|---|---|
+| CG_ENEMY_CITY1 | 16 / 29 | OBJECT_STADT / 4 | 4209 / 4216 | KILLED |
+| CG_ENEMY_CITY2 | 48 / 61 | OBJECT_STADT / 18 | 4306 / 4313 | KILLED |
+
+**P — all uses.** These are the only four quoted-name occurrences in the
+whole payload. The two conditions start at 4182 and 4279: each guards the
+object's KILLED query with `CITY_KILLED == FALSE`, then sets that signal at
+4251 or 4348. There is no object-name action or reassignment. This establishes
+use shape, not the original meaning of the numeric city operand or KILLED.
+[bigbrother.md §3.1](../formats/bigbrother.md) explicitly leaves that operand
+untraced; the future packet must prove its namespace and lifetime semantics.
+
+**P/T/U — objects are the first refusal, not the only missing language.**
+The current compiler explicitly refuses nonempty object definitions, and only
+AREA subject queries are supported. This map also has PLAYER queries:
+INHABITANTCOUNT (2), DEAD (2), BOUGHT (1). Its calls are QUESTLOG_SHOW (12),
+SETWARELOG (1), SET_FOR_BUY (1), SET_DIPLOMACY (4), ATTACK_AREA (1), BEAMDOWN
+(1), GOTO_SCREEN (1), SET_PROFILE (2), SHOWTEXT (3), LOST (2), WON (1).
+None is in `script.cpp::Compiler::statement`'s current action dispatch.
+Consequently, merely admitting the two objects **will not** make the unchanged
+script compile. Inventorying those calls is not decoding their original effects.
+
+**Proposed SCRIPT-OBJECTS-1: one concern, about 3–4 hours.**
+
+1. Spend up to 60 minutes tracing original OBJECT_STADT binding and KILLED
+   evaluation, starting from the dispatch label at `0x10040244` catalogued in
+   [bigbrother.md](../formats/bigbrother.md). Prove id namespace, lookup order,
+   absent/destroyed-city behavior and any mutable binding state. Stop with a
+   QUESTION if those cannot be proved; do not equate 4/18 with island slots.
+2. If that contract is settled, spend about 90 minutes on only this binding and
+   query, with an immutable program representation and stable world identity.
+   Specify any persistence/section requirement before implementation; no global
+   state bump or script bypass. All other unsupported queries/actions still
+   refuse explicitly.
+3. Spend about 60 minutes on synthetic binding/kill/removal, bad-id and save/
+   reload controls, affected script gates and handover. The orchestrator reviews
+   the original addresses. Acceptance is the binding/query slice, **not** the
+   S01_02_01 normal-session canary. A follow-on script-language plan must size
+   the additional PLAYER queries and 11 action names above before that canary
+   can honestly be released.
+
+**U — boundary.** No script semantics, identity, actor import or gameplay
+canary is changed in FISHER-1d. OQ-625 remains open for normal-session acceptance,
+with the owner's scope choice recorded; OQ-603's float/Y continuation and other
+maps' complete gameplay paths remain outside this proof. Original live-game,
+HE, Windows and WSL runs are NOT_RUN on this Mac.

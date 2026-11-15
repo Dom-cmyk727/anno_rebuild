@@ -1046,7 +1046,7 @@ TEST_CASE("G3 every production class through advance equals golden") {
     CHECK(outcome.value().checkpoints_matched == 21);
     CHECK(replayed.state_hash() == w.state_hash());
 
-    // Goldens (self-baselined, goldens.txt; the asserts above do not depend on them).
+    // Goldens (self-baselined, pins.txt; the asserts above do not depend on them).
     check_golden_line("s11_g3_checkpoints", checkpoints.value());
     check_golden_line("s11_g3_end", w.state_hash());
     check_golden_line("s11_g3_events", hash_events(ui));

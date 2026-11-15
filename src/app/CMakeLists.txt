@@ -212,7 +212,8 @@ if(ANNO_BUILD_TESTS)
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-PLACE-1: the pickaxe with nothing armed, a cell chosen while demolishing, the cancel-X.
       # UI-PLACE-2: ESC and the right click one step back, a right drag still pans.
-      foreach(case ui_place_demolish ui_place_escape)
+      # UI-PAN-1: a click (under the 4 px slop) moves the map not at all, either button.
+      foreach(case ui_place_demolish ui_place_escape ui_click_no_pan)
         add_test(NAME viewer_wiring_${case}
           COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                   $<TARGET_FILE:anno1503> ${case}

@@ -12424,3 +12424,21 @@ Decisions and reasoning:
 - Compare every turn and a real pending-cut native continuation; do not compare enabled/off trajectories or invent a shared draw total.
 - Limit local gates to changed canaries, fisher regressions/references and pins contracts; production and other suites are unchanged.
 QUESTIONs: none blocking. This proves Venice's 3978 rates and one human 810 hut; it does not close FISHER-RE-3 or the remaining original-runtime questions.
+
+## UI-PAN-1 — READY FOR REVIEW (UI lane, 2026-11-16)
+
+Branch `task/UI-PAN-1` from main `67a960c9`. Done by the UI lane itself on the owner's answer "Yes, no click pan" (2026-11-16), after checking the ui_4 finding (report §6 item 9).
+
+**The finding.** In `ui_4.mp4` (about 44 s, demolish mode) the whole map shifted 4-7 capture pixels; a region far from the cursor moved by the same amount, so it was a pan. A scripted left jitter-click in demolish mode does not pan (the tool takes the left button), on the recorded build and on main; a right jitter-click does (`camera.pans` 0 → 1), because the right button pans by design, and so does a left click with nothing armed. A click's jitter (under 4 px) nudged the map.
+
+**What changed.** `Viewer::handle`'s pan: a press of the panning button (left or right) records its point; motion pans only once the pointer has left `kClickSlop` (4 drawable px) of it, and the first pan then catches up with the whole way from the press, so the point under the pointer still follows it. Clicks move nothing; drags pan as before, starting a few pixels later. Not a faithful-core rule (no original evidence either way): an owner feel choice, recorded in ADR 0004 (QUESTION K-2) and `docs/app/game-shell.md`. No `sim` or `render` change.
+
+**Tests.** New `viewer_wiring_ui_click_no_pan`: left and right clicks with a 3.6 px jitter → `camera.pans` stays 0; left and right 45 px drags → one pan each; the ui_4 case (demolish mode, a jittery right click) → no pan, and the click turns demolish off (UI-PLACE-2). Failure proof: on the UI-PLACE-2 build (main's app code) the case fails at its first jittery click (`camera.pans is '1', expected == 0`).
+
+**Gates (this PC, MSVC Release).** Build clean. Focused `ctest --preset msvc -j 16` with the game files and the UI shot variables, regex over the dev-tool, dev-script, construction, rotation, info-panel, every oracle-shot UI test, every `viewer_wiring_*` case (the opening's ship-pan and sail scripts included), selected-house, settlement, opening and zoom tests: 190 selected, **189 executed and passed**, 1 opt-in skip (`zoom_sweep_control_readiness`, needs `ANNO_ZOOM_SWEEP_PROOF`; the zoom lane's). clang-format 23.1.3 --dry-run --Werror on iewer.cpp: clean. wsl -d Ubuntu -- bash tools/check_unix_warnings.sh: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 409 of 410 clean, the one FAIL is the known src/sim/tests/extensions_test.cpp (ANNO_EXTENSION_ORACLE_FILE not passed by the script; untouched). Hosted CI runs on the push.
+
+**NOT_RUN.** The full suite; Linux/macOS game-file runs.
+
+**Decisions and reasoning.** One slop for both buttons and every mode, the same `kClickSlop` the selection already uses for click vs drag. Catch-up instead of starting from the slop edge, so a drag ends where the hand moved. The ship-start opening keeps its own 5 px click rule (`OpeningUi`); between 4 and 5 px a press there pans and still counts as a click, as before this change.
+
+**Landing.** On main `67a960c9`; independent of other lanes; lands through the orchestrator.

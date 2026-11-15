@@ -750,6 +750,12 @@ class Viewer {
     /// A fatal error that ended the loop.
     std::string error_;
     std::optional<std::pair<double, double>> cursor_;
+    /// UI-PAN-1 (owner, 2026-11-16: "no click pan"): where the panning button went down
+    /// (drawable pixels), and whether the pointer has since left kClickSlop of it. A press that
+    /// stays within the slop is a click and moves nothing; once it leaves, the pan catches up with
+    /// the whole way from the press, so the point under the pointer still follows it.
+    std::optional<std::pair<double, double>> drag_origin_;
+    bool drag_panning_ = false;
     double scroll_ = 0;
     // Test hook (not documented for players): ANNO_VIEW_ZOOM_SCRIPT=<frames>,<seconds>
     // zooms one group step every <frames> drawn frames (2, 1, 0, 1, 2, ... like
@@ -1403,12 +1409,23 @@ void Viewer::handle(const SDL_Event& e) {
         // right button pans too (round ee: the tool's pan).
         if (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT) {
             drag_ = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+            drag_panning_ = false;
+            drag_origin_ = drag_ ? std::optional(std::pair<double, double>{e.button.x * density,
+                                                                           e.button.y * density})
+                                 : std::nullopt;
         }
         break;
     case SDL_EVENT_MOUSE_MOTION: {
         const std::pair<double, double> now{e.motion.x * density, e.motion.y * density};
         if (drag_ && cursor_) {
-            pan(cursor_->first - now.first, cursor_->second - now.second);
+            if (drag_panning_ || !drag_origin_) {
+                pan(cursor_->first - now.first, cursor_->second - now.second);
+            } else if (!is_click(now.first - drag_origin_->first, now.second - drag_origin_->second,
+                                 kClickSlop)) {
+                // UI-PAN-1: the press has become a drag: pan the whole way from the press at once.
+                drag_panning_ = true;
+                pan(drag_origin_->first - now.first, drag_origin_->second - now.second);
+            }
         }
         cursor_ = now;
         break;

@@ -344,7 +344,9 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   - The left button presses and releases: a click places, a drag lays a road (a straight line
     along the longer axis) or demolishes a line of tiles.
   - The right button pans (the left button still pans with the tool off); the keys and the
-    wheel are unchanged.
+    wheel are unchanged. Since UI-PAN-1 (owner, 2026-11-16, "no click pan") a pan starts only
+    once the pointer has left `Viewer::kClickSlop` (4 drawable px) of the press, then catches up
+    with the whole way from the press; a click's jitter moves nothing (`viewer_wiring_ui_click_no_pan`).
   - Losing focus, leaving the window or being hidden drops a press. Motion only moves the hover,
     never a command. A repeat of the tool's keys (B; with the tool on, N, P, T, X and Esc) does
     nothing and stays the tool's: a held Esc never reaches the window's quit.

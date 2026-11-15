@@ -47,3 +47,16 @@ and its step-9 tests.
 
 **Measure** the four 4090 modes and the iGPU wheel against the 1c numbers. Stop and report if the 2 to 4 h box is
 exceeded.
+
+## The game-file run (2026-11-15)
+
+**The candidate:** `7c7c6942`. It is the tested `b400a063` (`main` `01a4d540`, then UI-INFO-2, then the ZOOM-SMOOTH-1
+partial, then the board), then `task/ZOOM-SMOOTH-1c` `96c00844`, which also carries 1b. Merged with `--no-ff`; it
+changes only 1b's and 1c's files.
+
+**The run:** the canonical call, with the same environment as `b400a063`'s run, 05:09–05:27.
+- `COUNTS: selected=2636 executed=2608 failed=0 empty=0 skipped=28 (required-asset=0 platform=3 opt-in=22 gpu=0
+  other=3) incomplete=0 sanitizer_lines=0`, `VERDICT: PASS`. No memory refusals.
+
+**Result:** UI-INFO-2, the ZOOM-SMOOTH-1 partial, 1b and 1c are covered by one run. They land in that order once the
+owner gives the OK.

@@ -118,7 +118,8 @@ says who is doing what, where the work is, and what it waits on.
     regression). **ZOOM-SMOOTH-1c ACCEPTED as a partial 2026-11-15** (F1 to F3; head `96c00844`, CI green,
     [review](reviews/2026-11-15-zoom-smooth-1c-review.md)): the pan "regression" is the baseline's own drift (the
     unmodified binary gives 102 to 127 today, not 30), so 1b and 1c can land together. The ring is split into
-    **ZOOM-SMOOTH-1c2, RELEASED** the same day, ahead of 1d.
+    **ZOOM-SMOOTH-1c2, RELEASED** the same day, ahead of 1d. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
   - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.

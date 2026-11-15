@@ -140,6 +140,8 @@ void observe(sim::World& w, Trip& t) {
     if (!t.food && farm.out > t.out) {
         REQUIRE(t.returned != 0);
         REQUIRE(farm.out - t.out == type->prod.output_per_step.at(0));
+        REQUIRE(t.raw >= farm.raw);
+        REQUIRE(t.raw - farm.raw == type->prod.input_per_step.at(0));
         t.food = tick;
         std::cout << "FISHER_FOOD hut=" << t.x << ',' << t.y << " tick=" << tick
                   << " output=" << farm.out << '\n';

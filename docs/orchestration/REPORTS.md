@@ -12048,3 +12048,66 @@ that `chunk_fade_ms` (150 ms) is inherent to *any* zoom-out-and-return under the
 tunable bug?
 
 **READY FOR REVIEW.**
+
+## SL-0 — campaign script-language read and proposed plan (2026-11-15)
+
+Status: READY FOR REVIEW; owner plan review and independent orchestrator review pending. STOP; no SL step started.
+Branch task/SL-0; newest origin/main base cc7af72c. SO-1b accepted d19c446a is not on this main yet.
+Read board 4c9f326a SO-1b review and SL-0 detail; CLAUDE, PLAN, protocol, evidence contract and README.
+Evidence contract re-read before handover; no reviewer subagents or engine changes.
+Only accepted script-objects.md carried from d19c446a, plus F1 proof; no old engine/board branch merge.
+Deliverable docs/re/script-language-plan.md: one addressed row per name, bounded reads/U items and proposed packets.
+P inventory confirms 3 distinct PLAYER query names / 5 uses; 11 action names / 29 calls: 14 remaining names, not 16.
+Queries: INHABITANTCOUNT 2, DEAD 2, BOUGHT 1.
+Actions: QUESTLOG_SHOW 12, SETWARELOG 1, SET_FOR_BUY 1, SET_DIPLOMACY 4, ATTACK_AREA 1, BEAMDOWN 1,
+GOTO_SCREEN 1, SET_PROFILE 2, SHOWTEXT 3, LOST 2, WON 1; every payload offset is in the plan.
+SET_PROFILE at 5856 reads on to 6093; zero statements lost, so these are not swallowed action counts.
+Cache-only probe uses accepted SO-1b compiler/library and matching headers, not main's unsupported-object compiler.
+Measured refusal ladder, one name removed at a time with offset-preserving diagnostic substitutions:
+QUESTLOG_SHOW 1339 -> SETWARELOG 1634 -> SET_FOR_BUY 1715 -> SET_DIPLOMACY 1827 -> ATTACK_AREA 2055
+-> BEAMDOWN 2097 -> GOTO_SCREEN 2169 -> INHABITANTCOUNT 3501 -> SET_PROFILE 3592 -> DEAD 3750
+-> SHOWTEXT 3783 -> LOST 3832 -> BOUGHT 5046 -> WON 6907; transformed input then compiles.
+This diagnostic input is never executed/committed; it is not an unchanged-source gameplay proof or proposed bypass.
+First real refusal remains exactly: script offset 1339: unsupported action: QUESTLOG_SHOW.
+Strings and Scene handler tables/leaves found for all 14 names; there is no unlocated handler.
+Classes: 2 sim queries, 3 presentation actions, 9 names needing a subsystem; detailed read/write/draw/save columns in plan.
+Sim: DEAD (Scene 0x1001268c, truth dispatch 0x100128ac; Welt 0x1001bec8 state byte +0x294),
+INHABITANTCOUNT (Scene 0x10012ca0, city selector 0x100120f0): selected highest-tier city, cumulative levels.
+Presentation: QUESTLOG_SHOW 0x10015680, numeric GOTO_SCREEN 0x10013fa0, SHOWTEXT 0x10015600.
+AI trade: SETWARELOG 0x10014100 / command 19; SET_FOR_BUY 0x10014160 / 16; BOUGHT 0x10012b8b / getter 19.
+Player property 44 is the AI pointer (Welt 0x10020ab9); these are not direct city trade-setting assignments.
+CompLogic 0x10005e50 resets watchers; 0x10005f00 reads counters; 0x10005f70 bills peer/ware/direction quantities.
+LOGWARE is saved: Welt 0x1001fa6f -> AI writer +0x14 = 0x10041090 -> base 0x10003b30, packing at 0x10004008.
+AI diplomacy/policy/military: SET_DIPLOMACY Scene 0x10015d90 -> AI 0x10008690; SET_PROFILE 0x10015e80,
+both map uses KAMPFTYP index 18 -> CompLogic 0x100046af / 0x10004df0; ATTACK_AREA 0x10015380 -> 0x10005940.
+Parsed SPIELER series prove the map's relevant receivers have actual COMP records; the null-AI skip is not their contract.
+BEAMDOWN Scene 0x10014440–0x10014a39: imported USER32 clipboard-format/open/get calls, GlobalLock, world paste.
+Its external input and creation closure need a contract; no assumed empty-clipboard no-op enters the engine.
+WON/LOST 0x100155a0/0x100155d0 call framework +0xc0 and set Scene 0x10043438, changing later script execution.
+Outcome/termination is a subsystem, not only a UI message; Scene text/signal save does not serialize that latch.
+F1 closed: INSEL5 head +8 -> Welt 0x100a2f38 -> factory 0x100a24d0 -> 0x100a1780 -> island +0x3c.
+Concrete ctor 0x1008f468 installs table 0x100ca530; +0x3c = 0x1008c6a0; 0x1008c6a5 stores island +0x98.
+The engine widens the same file number into IslandSpec::slot; 50 maps / 668 embedded numbers are 0–101.
+High-word/byte truncation differs for arbitrary modded ids; the corpus proof does not erase that original boundary.
+Proposed order (each frontend/read about 2 h, every release gated by review):
+SL-1 presentation; SL-2 live queries; SL-3 AI trade read/contract; SL-4 trade frontend after real backend;
+SL-5 diplomacy/military read/contract; SL-6 diplomacy/profile frontend; SL-7 attack frontend after real military;
+SL-8 clipboard read/policy; SL-9 paste frontend; SL-10 outcome read/contract; SL-11 WON/LOST frontend.
+The plan gives a before/after negative/positive proof and next refusal for each; full AI/combat is not hidden in 2 h.
+U1–U8: UI consumer/restore policy; trade producer units/loader; offer helper/save mapping; subsequent diplomacy;
+military transitive draws/save; clipboard grammar/capture; framework outcome/progress save; query getter/fallback closure.
+Direct Scene leaves have no world-draw call; unread transitive paths remain U, not a zero-total claim.
+Checks: git diff --check exit 0; document path links resolve; inventory and ladder counts reconcile with raw data.
+0 pins moved: pins.txt and all current files byte-identical to cc7af72c; no source/fixture/version/default edits.
+Local test gate: NOT_RUN, docs-only per owner protocol; no CTest COUNTS/VERDICT lines apply.
+Hosted docs-only CI: exact pushed head/run and terminal gate receipt supplied in handoff; check after push.
+NOT_RUN: original live execution, HE, UI rendering, gameplay/canary, builds and local CTest/pins suite.
+Raw evidence/acceptance table/identities: cache/sl-0; listings and original analysis input stay ignored, never in git.
+Decisions and reasoning:
+- Distinguish distinct names, occurrences and compiler order; preserve offsets and read-on shape in private probes.
+- Follow Scene commands to player AI receivers; existing city trade/cargo fields do not supply saved LOGWARE/intent state.
+- Treat clipboard input and outcome stop semantics as real prerequisites; retain refusals until contracts exist.
+- Propose bounded frontend packets only after accepted backends; owner review releases each step.
+QUESTION Q1: backend ownership/scope for AI trade/history/offers and diplomatic/military intent (recommend SL-3/5 reads first).
+QUESTION Q2: recorded clipboard/paste input contract or continued typed refusal (recommend read/capture contract before SL-9).
+QUESTION Q3: owner of per-world outcome/stop and save contract (recommend SL-10 before WON/LOST code).

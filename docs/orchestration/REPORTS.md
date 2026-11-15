@@ -12292,3 +12292,135 @@ Failure proofs: on UI-PLACE-1's build two cut-down scripts fail exactly at the o
 - No `sim` or `render` change.
 
 **Landing.** After UI-PLACE-1 (stacked); lands through the orchestrator.
+
+## 2026-11-15 — FISHER-MAP-1: normal-load canary map census
+
+Status: **READY FOR REVIEW**. Independent review and map selection: orchestrator, pending.
+Branch: `task/FISHER-MAP-1`; accepted source base `d19c446a867f81fa37b262af298ddd6dc772bbbc`.
+Dispatch/review read from board `a999e61e`; owner chose another map, not SL implementation.
+Scope: documents and bounded private measurements; no engine, test, fixture, pin or default edits.
+Deliverable: [all-map inventory and ranked shortlist](../re/fisher-canary-maps.md).
+
+Original script census:
+- 50/50 shipped .sze files have BIGBROTHER payloads; 12 have empty kernels.
+- 14 original payloads compile; 36 refuse, with first name and original payload offset listed.
+- Private ladders reach compilation for 50/50, with every refused leaf/declaration inventoried.
+- Sets: 30 action names, 22 query names, two object-definition names.
+- KILLED is marked as a dependent missing-object diagnostic after unsupported declarations are blanked.
+- It is not an unsupported city KILLED handler; accepted SO-1b remains unchanged.
+- Original source offsets are mapped across variable-length private replacements.
+- No diagnostic copy is run or committed; read-on's swallowed MINIMAP_ALERT is retained as swallowed.
+- Only QUESTLOG_SHOW/GOTO_SCREEN/SHOWTEXT/INHABITANTCOUNT/DEAD adds 0 compiling maps.
+- S01_02_01 still needs 14 distinct names; nothing is stubbed or suppressed.
+
+Normal loading and class counts:
+- Original loader: 14 eligible maps attempted; 11 resolve/import, 3 refuse in actor import.
+- The two easy/heavy 128 maps refuse nested CREW/ESEL/TASK; endless02 refuses actor 373.
+- World::create: 11 attempted, 11 created, 0 refused; original Recorder::start: 11 started.
+- Existing fisher_rules extension alone enables original runtime fish fill; every other rule stays default.
+- Classes among created worlds: A 2 / B 3 / C 6; the 39 blocked maps are unclassified.
+- Four existing PRODTYPE 6 huts, with owner kinds, entrance means and fish reach in the note.
+- Three type-3978 huts on 01_1024_easy_256 use figure 142 / route 45, owner 5 / Venice kind 16.
+- Each has 1/2 open entrances; usable fish in rectangle: 53, 52 and 109; paths all found.
+- endless03's type-3510 hut uses figure 393 / route 44: geometry class A, NOT route-45 proof.
+- All four Farm payloads start on, unsuspended, unblocked, with workers/raw/output zero.
+- Six C maps have no cities; founding then building would exceed B's one-command criterion.
+
+Construction and shortlist:
+- Fresh-world one-command type-810 witnesses succeed for easyentry, Tutorial trade and endless01.
+- Both command and sole record report None; no preceding failed command or state injection.
+- Human witnesses: 02Trade01 player 2/kind 8, and easyentry player 0/kind 11.
+- Their open-entrance counts are 1/2, with 26 and 82 usable fish and complete water paths.
+- Additional endless03 type-810 construction is possible, but does not change its A classification.
+- Rank: existing Venice 3978; human Tutorial trade 810; human easyentry 810;
+  native endless01 810; endless03 with explicit route-44/pirate caveats.
+- These are prerequisites and first-leg reachability, not catch/return/food-production acceptance.
+
+Evidence and gates:
+- Metadata: cache/fisher-map-1/ladders.json and final-world-facts.tsv.
+- Probe sources/binary and all 50 input hashes: cache/fisher-map-1/identities.json.
+- normal-facts.tsv is exploratory two-type evidence; final census additionally includes type 3510.
+- Local tests: NOT_RUN by docs-only protocol; no invented run_selected COUNTS/VERDICT lines.
+- Static receipt cache/fisher-map-1/docs-gate.log prints exactly:
+  `DOCS_CHECK PASS; links=4; anchors=1; map_rows=50; completed_ladders=50`
+  `SOURCE_CHECK PASS; src/tools/fixtures unchanged from d19c446a; 0 pins or fixture bytes edited`
+  `LOCAL_TESTS NOT_RUN; docs-only packet; no run_selected gate claimed`
+- Source/pin/fixture equality to d19c446a is checked with git diff; no pins check is represented as run.
+- Hosted CI: final pushed-head run and terminal gate receipt supplied in handover;
+  saved response under cache/fisher-map-1, including gate status. Read after every push.
+- NOT_RUN: full trip canary, long script continuation, native reload, flag-off/determinism gates,
+  original live play and Windows game-file run; actor import for the 36 compiler-refused maps.
+
+Decisions and reasoning:
+- Use strict normal loading: ActorFreeComponent would erase precisely the dependency being measured.
+- Include all three FISCHER types; distinguish route 44 so the geometry count cannot overclaim route 45.
+- Confirm B with one real public command on a fresh ephemeral world, not coast appearance alone.
+- Rank empty-kernel, existing-hut or human-construction maps ahead of extra script/owner complications.
+- Preserve original owners, stocks, positions and scripts; add no SL code or BEAMDOWN policy.
+
+QUESTION: select the Venice existing-hut map or a human type-810 construction map for FISHER-1e.
+Stop: the map is chosen in review; no canary or SL follow-up starts in this packet.
+
+## FISHER-1e — two original-map fishing canaries (2026-11-15)
+
+Status: **READY FOR REVIEW**; independent orchestrator review pending. STOP here.
+Branch task/FISHER-1e; main base 816c6352 (SO-1b ancestry passed); accepted census merged at 79d16f5e.
+Final test source 8b7bccef; subsequent changes are documentation/evidence only.
+Read packet/review on board 195b2f9e or later, CLAUDE, PLAN, protocol, fisher notes and evidence contract.
+[Scope, state proof and identity table](../re/fisher.md#9-selected-normal-map-canaries-fisher-1e-2026-11-15).
+Normal loader / World::create / original Recorder::start: no projection, deleted actor, script replacement or injected stock.
+Only existing fisher_rules is enabled; Venice has no command; human tutorial has exactly the prescribed Build.
+Turn = 20 game ms / 10 ticks; preselected watchdog 60000 ticks / 120 game seconds, unchanged after observation.
+
+| Map / hut | Spawn / open entrance / departure | First cut | Raw receipt | First food | Trip ticks / game seconds |
+|---|---|---|---|---|---|
+| Venice 3978 (217,326) | 810 / 810 / 910 | 6810 | 20660 | 20810 | 19850 / 39.70 |
+| Venice 3978 (212,314) | 850 / 850 / 910 | 6860 | 20660 | 20850 | 19810 / 39.62 |
+| Venice 3978 (216,301) | 890 / 890 / 960 | 6910 | 20760 | 20890 | 19870 / 39.74 |
+| Human 810 (243,216) | 690 / 690 / 770 | 7520 | 22240 | 22290 | 21550 / 43.10 |
+
+Per hut: actual kind 142/job 45; open entrance then departure; claimed mature fish cut 11 -> 10 and cargo +256.
+Each takes three catches, returns 768 raw and ends inside home with expiry set; no world fault.
+First conversion consumes 128 raw / makes 51 food for Venice; 69 / 17 for the human hut. Food is hut output, not warehouse delivery.
+Two independent creations match whole-world hashes after every turn: Venice 2089 turns, human 2229.
+Native snapshots at live Cut: tick 1210/wait 5597 and tick 1920/wait 5600; subsequent 1968 / 2037 hashes match uninterrupted runs.
+Reload retains the enabled header and initial hash/save; final native bytes equal the uninterrupted and duplicate worlds.
+Explicit flag-off and default-constructor worlds match every corresponding hash and initial/final native bytes; watched workers/raw/food stay zero.
+Independent default-only driver matches both maps' start/end/per-turn trace digests; production source is identical to main 816c6352.
+That driver uses unchanged production libraries, not a separate build of another revision; cache/fisher-1e/baseline-comparison.json records the comparison.
+F1 fixed: 13 empty kernels, including Tutorial/03T_Combat_01 (31 object definitions); compilation/classes unchanged.
+No engine, state number, section version, extension schema, default rule, pin or fixture changes.
+
+Gates (original files set; no memory refusal; exact classified lines):
+Final canaries cache/fisher-1e/final-canaries-pins-01.log / .console.log, source 8b7bccef:
+```
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=partial; selection=^anno_sim_tests\.fisher real map:; evidence=cache/fisher-1e/final-canaries-pins-01.log
+```
+Existing fisher regressions/references cache/fisher-1e/fisher-regressions-pins-01.log / .console.log, source 3a751f87:
+```
+COUNTS: selected=23 executed=23 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=partial; selection=^(anno_sim_tests\.fisher (geometry|behavior|fill)|fisher_reference_); evidence=cache/fisher-1e/fisher-regressions-pins-01.log
+```
+Required pins_contract in each pins gate printed:
+```
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Staged history: venice-gate-01, human-gate-01, venice-controls-01, human-controls-01 logs under cache/fisher-1e.
+Each staged log prints the same 1/1 pair above for its canary and required picture_matrix_contract; earlier evidence is retained.
+The final source adds only raw-consumption assertions to the new canaries; unchanged existing regressions/reference gates are reused.
+Final Dev pins_checks build: cache/fisher-1e/build-dev-final-01.log, zero warnings. Release retains the existing Apple duplicate-library linker warning.
+Static diff/link/input identities and all log sha256 values: cache/fisher-1e/identities.json; no original bytes/text/pixels committed.
+Hosted CI: exact final pushed head, URL and terminal gate receipt supplied in handoff; saved under cache/fisher-1e.
+NOT_RUN: full suite / full-scope pins and Windows game-file run (landing); local MSVC/WSL; original live gameplay; separate-process equivalence.
+NOT_RUN: all-closed entrances (FISHER-RE-3), other maps' complete trips, float/Y parity (OQ-603), original transitive draws (OQ-604), town balance.
+
+Decisions and reasoning:
+- Keep the normal original context and owner-selected maps; no engine repair or gameplay suppression was needed.
+- Observe claims, predecessor cuts, cargo, return/raw and conversion; elapsed time alone cannot establish a trip.
+- Compare every turn and a real pending-cut native continuation; do not compare enabled/off trajectories or invent a shared draw total.
+- Limit local gates to changed canaries, fisher regressions/references and pins contracts; production and other suites are unchanged.
+QUESTIONs: none blocking. This proves Venice's 3978 rates and one human 810 hut; it does not close FISHER-RE-3 or the remaining original-runtime questions.

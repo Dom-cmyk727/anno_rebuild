@@ -979,3 +979,85 @@ canary is changed in FISHER-1d. OQ-625 remains open for normal-session acceptanc
 with the owner's scope choice recorded; OQ-603's float/Y continuation and other
 maps' complete gameplay paths remain outside this proof. Original live-game,
 HE, Windows and WSL runs are NOT_RUN on this Mac.
+
+## 9. Selected normal-map canaries (FISHER-1e, 2026-11-15)
+
+**P/T — scope and setup.** The owner's selected maps are the first two in
+[fisher-canary-maps.md](fisher-canary-maps.md). The tests use the normal
+`load_scenario_file`, `World::create` and `Recorder::start` paths, original
+actors, positions, stocks, terrain and scripts. Only existing header tag 1's
+`fisher_rules` is enabled. Venice receives no command. The human tutorial gets
+exactly one Build: issuer 2, island 3/city 0, type 810 at (243,216), rotation 0.
+No projection, actor removal, script substitution, inventory injection or
+production implementation change is involved. Original mechanism evidence is
+§§1–3 and 6–7; this is a rebuild execution proof, not a new original-runtime read.
+
+| Acceptance requirement | Positive proof | Counterexample / control | Review |
+|---|---|---|---|
+| Original complete trips | Per-hut departure, three claimed cuts, raw receipt and exact conversion | Disabled original worlds have no worker/raw/food progression | pending orchestrator |
+| Deterministic continuation | Independent starts and a native pending-cut continuation agree every turn and in final bytes | Enabled hash differs from disabled hash; no enabled/off equality is assumed | pending orchestrator |
+| Default compatibility | Default-only driver reproduces disabled start/end/trace; pins and fixture bytes unchanged | Explicit zero extension equals omitted/default extension | pending orchestrator |
+
+**T — finite workload.** Each turn advances 20 game milliseconds, or 10 world
+ticks. The watchdog was fixed before execution at 60,000 ticks (120 game seconds),
+below the first u16 tick wrap. Both maps complete before it. Observed trip time
+runs from the first visible spawn to the raw receipt; times have the 20 ms turn
+resolution. No timing constant was changed to obtain a pass.
+
+| Map / hut | Spawn | Open entrance / departure | First catch | Raw receipt | First food | Trip ticks / game seconds |
+|---|---|---|---|---|---|---|
+| Venice 3978, (217,326) | 810 | 810 / 910 | 6810 | 20660 | 20810 | 19850 / 39.70 |
+| Venice 3978, (212,314) | 850 | 850 / 910 | 6860 | 20660 | 20850 | 19810 / 39.62 |
+| Venice 3978, (216,301) | 890 | 890 / 960 | 6910 | 20760 | 20890 | 19870 / 39.74 |
+| Human 810, (243,216) | 690 | 690 / 770 | 7520 | 22240 | 22290 | 21550 / 43.10 |
+
+**T — actual state assertions.** Each figure is kind 142/job 45, starts at the
+original first entrance, is observed on an open entrance tile, and then outside
+the rotated footprint. Catch evidence is a claimed mature tile 11 at the worker's
+position during Cut, followed by that tile becoming 10, its claim clearing and
+cargo rising by 256. Each worker makes three cuts, returns with 768 raw, ends
+with an expiry stamp inside its home footprint, and raises that hut's raw stock.
+Food then rises by 51 while raw falls by 128 for Venice type 3978; the human
+hut consumes 69 and produces 17. All four chains finish without a world fault.
+The asserted output is the hut's food stock, not delivery into a warehouse or
+consumption by residents.
+
+**T — determinism and native cuts.** Each map has two independent normal
+creations. Their whole-world hashes agree after every turn through completion:
+2,089 turns for Venice, 2,229 for the human map. A third continuation is loaded
+from a native save during a real claimed cut, at tick 1,210 (Venice, remaining
+wait 5,597) or 1,920 (human, wait 5,600). Reload preserves the enabled header,
+initial hash and save bytes, then matches the uninterrupted hash after all
+1,968 / 2,037 remaining turns. Final native saves agree byte for byte. These
+are independent logical runs in one process, not a cross-process/platform proof.
+
+**T — default-off compatibility.** Explicit disabled-extension worlds and worlds
+created with the existing default arguments agree after every corresponding turn
+and in native bytes at start/end. No active worker of kind 142/job 45 appears;
+workers_out, raw and food remain zero in the watched huts. Flag-off dispatch
+may still consume its existing discarded attempt draw; this does not assert
+whole enabled/disabled PRNG trajectories are equal. A separate default-only
+measurement driver, linked to production sources verified identical to accepted
+main 816c6352, independently reproduces the initial, final and rolling per-turn
+flag-off digests below. It is not a separate build of another engine revision.
+
+| Map / end tick | Initial disabled hash | Final disabled hash | Disabled per-turn trace digest |
+|---|---|---|---|
+| Venice / 20890 | c44b7be385cc4747 | 38b1627adcca2430 | d5811ae9c021508c |
+| Human / 22290 | ccd55f2fa14ec44a | 2cbca03efb4875f7 | af9aa0674ef513ec |
+
+**T — evidence and boundary.**
+[fisher_map_canary_test.cpp](../../src/sim/tests/fisher_map_canary_test.cpp)
+contains the two original-file heavy cases; they print an explicit prerequisite
+skip when `ANNO1503_GAME_DIR` is unset. Gate receipts and source identities are
+in `cache/fisher-1e/`, with exact classified lines in
+[REPORTS.md](../orchestration/REPORTS.md). Existing fisher regressions and reference
+vectors are retained; no pin or fixture is edited. The census's F1 correction is
+13 empty kernels: Tutorial/03T_Combat_01 has an empty kernel but still refuses
+its unsupported object declarations.
+
+**NOT_RUN / U.** All-closed entrances remain FISHER-RE-3. Original float/vertical
+continuation (OQ-603), the transitive original draw inventory (OQ-604), other
+maps' full trips, long-running town balance, original live gameplay, separate
+processes and target-host game-file runs are not established here. No existing
+state number, section version, extension schema or default rule changes.

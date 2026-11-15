@@ -122,7 +122,10 @@ says who is doing what, where the work is, and what it waits on.
     [review](reviews/2026-11-15-zoom-smooth-1c2-review.md)): correct, but no readiness gain yet and an iGPU busy
     cost; 1d measured it on and off: **ZOOM-SMOOTH-1d ACCEPTED as a partial** 2026-11-15 (`1f7a5a9f`,
     [review](reviews/2026-11-15-zoom-smooth-1d-review.md)): the GPU upload share wins on every mode, the ring is off by
-    default (it costs zoompan); **1e RELEASED** (a step-5 test, the perf entry, the live proof with the ring off). The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    default (it costs zoompan); **1e ACCEPTED** 2026-11-15 (`4ebb9de0`,
+    [review](reviews/2026-11-15-zoom-smooth-1e-review.md)): the live target is NOT MET with step 5 alone, so
+    **ZOOM-SMOOTH-1 is CLOSED as a partial** and its 0-on-all-counters target is RENDER-DIRECT-6's (ADR 0007:
+    no stand-ins, no dissolves). 1c2, 1d and 1e wait for the owner's OK to land. **ZOOM-SMOOTH-2 RELEASED**. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01

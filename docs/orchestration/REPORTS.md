@@ -12048,3 +12048,32 @@ that `chunk_fade_ms` (150 ms) is inherent to *any* zoom-out-and-return under the
 tunable bug?
 
 **READY FOR REVIEW.**
+
+## UI-PLACE-1 — READY FOR REVIEW (UI lane, 2026-11-15)
+
+Branch `task/UI-PLACE-1` from main `cc7af72c`. Done by the UI lane itself, on the owner's go ("Yes, fix both") after the owner's UI test `ui_4.mp4` (frame analysis: two bugs reported, the cancel-X and the demolish mode).
+
+**What the original does (new evidence, before any code).** Two silent Wine-runner passes of the GOG original (Citizen game, F8, public category; `cache/orig/ui-place-1/` in this worktree, not in git; scripts `cache/capture/ui_place_1*_capture.py`), table in `docs/re/ui.md` 2.6:
+- The cancel-X closes only the info panel: the building **stays armed** (ghost on the pointer, its grid cell in an orange frame; `p1_a_after_x`). The rebuild already does this, so the owner's first point is not a bug; `docs/re/ui.md` said "cancel-X leaves", which was wrong and is corrected (sections 2.5, 2.6, 4).
+- A cell clicked while demolishing opens its panel and **ends the demolish mode** (`p1_b_demolish_then_501`, `p2_demolish_then_501`). The rebuild kept demolishing with the building's panel open: bug.
+- The pickaxe works **with nothing armed** and, clicked again, leaves nothing armed (`p2_pickaxe_nothing_armed`, `p2_pickaxe_off`); with a building armed it toggles demolish on and off and the building stays armed under it (`p1_b_pickaxe_again`, `p1_b_pickaxe_third`). The rebuild's pickaxe did nothing while the tool was off (it only worked after a cell had armed something): bug.
+- ESC in placement or demolish mode goes back to the grid with nothing armed, a second ESC closes the menu; a right click in placement goes back to the grid (`p1_c_after_esc`, `p2_esc1`, `p2_esc2`, `p2_demolish_esc`, `p1_d_after_right`). The rebuild's ESC closes the whole menu at once and a right click does not leave the mode. Not changed here (several wiring scripts press ESC after arming; the right button pans here): OQ-626, proposed UI-PLACE-2 for the owner.
+
+**What changed.** `DevTool::arm` (the menu's cell click) leaves the demolish mode. New `DevTool::toggle_demolish` (the menu's pickaxe): with the tool off it turns it on in the demolish mode alone; turned off again (pickaxe, X key or Esc) such a "demolish only" tool turns off, while a building armed before stays armed. `Viewer` calls it for `ConstructionClickKind::ToggleDemolish` (no command is sent either way). New script fact `tool.mode` (off / build / demolish). Docs: `docs/re/ui.md` 2.6 table + corrected summary lines, OQ-626 (ESC / right click), OQ-627 (the armed cell's orange frame; a map click while demolishing with a building armed), `docs/testing/construction-menu-playtest.md`, the comment of `construction_full_proof.script`.
+
+**Tests.** Unit (`dev_tool_test.cpp`): "a building armed while demolishing leaves the demolish mode" and "the menu's pickaxe demolishes with nothing armed, and turned off again it leaves nothing armed or the armed building". Window: new `viewer_wiring_ui_place_demolish` (pickaxe with nothing armed → demolish, again → off and a map click sends nothing, pickaxe → cell 501 → build and no demolish, cancel-X keeps 501 armed and a map click builds it, Applied).
+Failure proof: on main's build (`cc7af72c` app code; copied from the orchestrator's game-file-run folder at `816c6352`, no `src/app` change between them) two cut-down scripts fail exactly at the bugs - the pickaxe with nothing armed leaves no tool line in the title; after the cell click while demolishing the title still reads `tool: demolish`. The new case itself stops at the missing `tool.mode` fact there. Unit: with the `arm` fix disabled, 3 of 9 assertions fail (`CHECK_FALSE( tool.input().demolish_mode() )`); restored, both new cases pass (44 of 44).
+
+**Gates (this PC, MSVC Release).** `cmake --preset msvc` + build: clean. Focused `ctest --preset msvc -j 16` with `ANNO1503_GAME_DIR`, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`, `ANNO_UI_HE_CAPTURES`, `ANNO_UI_ROTATION_SHOTS`, regex over the dev-tool, construction, demolish, rotation, info-panel and every oracle-shot UI test plus all `viewer_wiring_ui_*`, `viewer_wiring_construction_*`, `selected_house`, `settlement_activity`: **122 of 122 executed and passed**, 0 skipped. clang-format 23.1.3 `--dry-run --Werror` on the changed C++ files: clean. `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 407 of 408 clean, the one FAIL is the known `src/sim/tests/extensions_test.cpp` (`ANNO_EXTENSION_ORACLE_FILE` not passed by the script; untouched, same on main). Hosted CI runs on the push.
+
+**NOT_RUN.** The full suite; Linux/macOS game-file runs.
+
+**Decisions and reasoning.**
+- The cancel-X is left as it is: it already matches the original (owner rule: the original is the basis). The owner's wish to put a building away is the original's ESC / right click (OQ-626), which changes ESC for several existing scripts and the right-button pan; asked as a separate step, not slipped into this packet.
+- The demolish fix lives in `DevTool::arm` (the menu's own hook), not in `DevInput::arm`, whose documented contract (keep the demolish mode, as Next/PrevType do) the developer keys rely on.
+- "Demolish only" is DevTool state, so every way out (pickaxe, X key, Esc, a retarget) leaves nothing armed instead of a hidden cycle type a map click would build.
+- No `sim` or `render` change.
+
+**QUESTIONs (owner).** OQ-626: make ESC and the right click leave the placement/demolish mode like the original (UI-PLACE-2)? OQ-627: draw the armed cell's orange frame (needs the sprite first)?
+
+**Landing.** On main `cc7af72c` (which already holds UI-INFO-2 and UI-INFO-2c); nothing else of the UI lane is open; lands through the orchestrator.

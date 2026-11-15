@@ -77,7 +77,9 @@ says who is doing what, where the work is, and what it waits on.
     the UI lane analyses the owner's video and runs another fix round. **R4** (the owner's "Always show my city")
     and **R5** (the idle HUD compared before founding) followed. **LANDED** on the owner's OK ("Land both when
     green"), 2026-11-14, `main` `6513b6f6` → `01a4d540`, after SHORE-2. **`main` is healthy:** the candidate
-    `ef9e9705` (the same code) passed its game-file run, its 2 memory refusals rerun alone. **UI-INFO-2 RELEASED** by the UI lane on the owner's choice ("UI-INFO-2 first", 2026-11-14;
+    `ef9e9705` (the same code) passed its game-file run, its 2 memory refusals rerun alone. **UI-INFO-2 READY 2026-11-15** (head `da29872b`, accepted by the UI lane; the game-file run of the stacked
+    candidate `b400a063` with the ZOOM-SMOOTH-1 partial PASSED, [check](reviews/2026-11-15-ui-info-2-board-review.md);
+    landing waits for the owner's OK). **UI-INFO-2 RELEASED** by the UI lane on the owner's choice ("UI-INFO-2 first", 2026-11-14;
     `task/UI-INFO-2`, packet `3311616a`, base `01a4d540`): the info panel's rotate arrows turn the building, one
     rotation state with T and ,/.; the preview's entrance arrows and the large-sprite scaler follow as UI-INFO-2b.
     The UI lane's next packets:
@@ -110,7 +112,25 @@ says who is doing what, where the work is, and what it waits on.
     **ZOOM-SMOOTH-1 RELEASED** to the Windows executor the same day, under the standing go. **Partial ACCEPTED
     2026-11-15** (steps 1, 7, 8: the shared viewer/sweep configuration, the chunks-step metric, the opt-in readiness
     control; head `e8dcb7cf`, CI green; landing waits for the owner's OK and a game-file run). Steps 2 to 6 split
-    into ZOOM-SMOOTH-1b (RELEASED 2026-11-15), 1c and 1d.
+    into ZOOM-SMOOTH-1b (RELEASED 2026-11-15), 1c and 1d. **ZOOM-SMOOTH-1b ACCEPTED 2026-11-15** (head `d71bbfbb`,
+    CI green, [review](reviews/2026-11-15-zoom-smooth-1b-review.md)): readiness much better, the pan busy tail
+    worse; lands only stacked with 1c. **ZOOM-SMOOTH-1c RELEASED** the same day (the ring, F1 to F3, the pan
+    regression). **ZOOM-SMOOTH-1c ACCEPTED as a partial 2026-11-15** (F1 to F3; head `96c00844`, CI green,
+    [review](reviews/2026-11-15-zoom-smooth-1c-review.md)): the pan "regression" is the baseline's own drift (the
+    unmodified binary gives 102 to 127 today, not 30), so 1b and 1c can land together. The ring is split into
+    **ZOOM-SMOOTH-1c2, RELEASED** the same day, ahead of 1d; **ACCEPTED** the same day (`619f88f6`,
+    [review](reviews/2026-11-15-zoom-smooth-1c2-review.md)): correct, but no readiness gain yet and an iGPU busy
+    cost; 1d (RELEASED) measures it on and off and removes it if it still buys nothing. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
+    **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
+    and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01
+    canary needs the script's OBJECT_STADT definitions; the owner chooses). Candidate `23885eb3` (the above plus
+    FISHER-1b and FIXTURES-TRIM-1) PASSED its game-file run (2617 executed, 0 failed); landing waits for the owner's OK. UI-INFO-2c ACCEPTED (`abf7dba0`); candidate `b47f77e4` (the seven) PASSED after 3 memory refusals each passed alone. The owner decided OQ-623 on 2026-11-15: `.` turns as the
+    original does ("Like original."), sent to the UI lane.
+    **FISHER-1d ACCEPTED 2026-11-15** (`e006a45b`, [review](reviews/2026-11-15-fisher-1d-review.md)): the
+    runtime fish fill behind the flag and B1–B5. The S01_02_01 canary needs a script-language plan beyond the two
+    city objects (owner decision). Candidate `7bc3ea79` (`b47f77e4` + FISHER-1d) PASSED its game-file run (2627 executed,
+    0 failed); the owner's OK 2026-11-15 ("Review and land all"): landing all eight with this board.
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
   - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.

@@ -129,6 +129,8 @@ says who is doing what, where the work is, and what it waits on.
     canary needs the script's OBJECT_STADT definitions; the owner chooses). Candidate `23885eb3` (the above plus
     FISHER-1b and FIXTURES-TRIM-1) PASSED its game-file run (2617 executed, 0 failed); landing waits for the owner's OK. UI-INFO-2c ACCEPTED (`abf7dba0`); candidate `b47f77e4` (the seven) PASSED after 3 memory refusals each passed alone. The owner decided OQ-623 on 2026-11-15: `.` turns as the
     original does ("Like original."), sent to the UI lane.
+    **The owner chose OQ-625 option 1a** (2026-11-15): the script work in small reviewed steps
+    ([packet](tasks/script-objects-1.md)); **SO-1a RELEASED** to the Mac (a read of OBJECT_STADT and KILLED).
     **FISHER-1d ACCEPTED 2026-11-15** (`e006a45b`, [review](reviews/2026-11-15-fisher-1d-review.md)): the
     runtime fish fill behind the flag and B1–B5. The S01_02_01 canary needs a script-language plan beyond the two
     city objects (owner decision). Candidate `7bc3ea79` (`b47f77e4` + FISHER-1d) PASSED its game-file run (2627 executed,

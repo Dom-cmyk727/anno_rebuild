@@ -11352,3 +11352,111 @@ doesn't depend on it, or should it ride with 1d since both touch "what's urgentl
 numbers to inform it once the ring exists to use them.
 
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-1c2 — the zoom-out ring — READY FOR REVIEW (task/ZOOM-SMOOTH-1c2, from task/ZOOM-SMOOTH-1c `96c00844`, head `b066612b`)
+
+All four of 1c's released steps, done and tested: the zoom-direction signal, the ring's geometry, the ring
+itself wired into the existing priority ordering, and the starvation invariant as a test.
+
+**1. The zoom-direction signal.** `FrameRenderer::zoom_direction` (`frame.hpp`, default 0): negative while
+zooming out, positive while zooming in, 0 at rest. Kept apart from `velocity()` on purpose — `velocity()` is
+pan-only by design (`motion_centre`'s own doc: the viewer sets the camera minus the zoom's own anchor-driven
+displacement before each update, so a pure zoom never moves it), and the ring below needs to tell "the camera
+is panning" apart from "the camera is zooming out", which a single combined signal could not. Set by the
+viewer (`frames_.zoom_direction = zoom_target_ - zoom_now_;`, next to the existing `zoom_anchor` assignment)
+and by `bench_frame`'s `zoom_sweep()` (`fr.zoom_direction = s.target - s.now;`, from the `ZoomState` already
+tracked there).
+
+**2. The ring's geometry.** `ring_view_at(view, anchor, group, levels, coarse_margin = 0.95)` (`frame.hpp`/
+`frame.cpp`): scales `view` about `anchor`, within the *same* group, to the area the composed grid would show
+just before `group + 1` takes over (scale factor `tile_w(group) / (coarse_margin * tile_w(group + 1))` per
+axis, `tile_h` for y; always > 1, since a finer group has the larger on-screen tile). The anchor's *fractional*
+position within `view` is preserved in the returned rect — `zoomed_view_at` only preserves a pixel *offset*,
+which assumes the view's size is unchanged; here the view itself grows, so the fraction is what stays fixed.
+Returns `view` unchanged at the coarsest level (`group + 1 >= levels.size()`): nothing left to ring toward.
+
+**3. The ring itself.** Wired into `FrameRenderer::plan_margin` as a fourth priority class (`rank = 3`,
+strictly after the visible view = 0, the same-group pan lookahead = 1, and the neighbouring-group views = 2),
+through the same `add()`/priority-queue mechanism the other three classes already use, so `plan_jobs`'s
+`kPlanKeys` cutoff drops ring candidates first if the cap is ever hit. Only triggered when `zoom_anchor` is set
+and `zoom_direction < 0`; added at the *same* group as the current view (the ring is "what a zoom-out to the
+edge of the current level would need", not a derived or neighbouring level).
+
+**4. The invariant as a test.** New case in `derived_freshness_test.cpp`: a multi-chunk (1536×1536) view with
+`zoom_anchor` at its centre and `zoom_direction = -1`, run for 60 rounds of `update_chunks`/`wait_idle` with one
+worker. Each round checks that any chunk found inside `ring_view_at`'s own area but outside
+`visible_chunks(view) ∪ margin_keys() ∪ adjacent_keys()` arrives only once that non-ring set is itself complete
+(`REQUIRE`), and that the ring actually produces such a chunk at least once across the 60 rounds (`CHECK`).
+**First attempt failed** (`CHECK(saw_ring_key)` false): the detection loop scanned derived levels
+(`g >= built_count()`), but the ring (step 3) requests chunks at the *same* group as the view — a built level,
+not a derived one — so it was looking in the wrong place. A second issue, found at the same time: a 512×512
+(one-chunk) view's ring, at the typical group-0/group-1 tile ratio (~2.1×), never grows past the pan
+lookahead's own unconditional one-chunk border, so there was no ring-exclusive content to find regardless of
+where the test looked. Fixed both: the test's detection now checks group-0 keys inside
+`ring_view_at(view, anchor, 0, levels)`'s own rect, and the view is 3×3 chunks so the ring's growth exceeds the
+lookahead's reach. 61/61 assertions pass; no starvation violation seen in any of the 60 rounds.
+
+**Measured (lan5, `zoom_sweep_contract.py`'s canonical invocation — `--res 2560x1369 --water enhanced
+--seconds 6`, 4090; `--res 1280x800`, Radeon iGPU, `ANNO_GPU_ADAPTER=1`), against 1c's own numbers (void
+30-baseline set aside per the 1c review: pan compares against the unmodified-binary reruns, 100-127):**
+
+| mode | 1c | 1c2 (the ring active) |
+|---|---|---|
+| legs | non-ready 35, stand-in 6032, dissolves 4533, open-sea 1544, >2ms 201 | non-ready 49, stand-in 9076, dissolves 4953, open-sea 1609, >2ms 202 |
+| wheel | non-ready 31, stand-in 5332, dissolves 4618, open-sea 1462, >2ms 162 | non-ready 37, stand-in 5047, dissolves 4199, open-sea 1600, >2ms 157 |
+| pan | non-ready 24-36, stand-in 0, dissolves 828-921, open-sea 1305-1398, >2ms 100-106 | non-ready 47, stand-in 0, dissolves 874, open-sea 1554, >2ms 113 |
+| zoompan | non-ready 37, stand-in 14519, dissolves 6288, open-sea 1406, >2ms 189 | non-ready 50, stand-in 17002, dissolves 7799, open-sea 1711, >2ms 226 |
+| iGPU wheel | non-ready 3, stand-in 0, dissolves 26, open-sea 44, >2ms 12 | non-ready 1-3 (3 runs), stand-in 0, dissolves 25-30, open-sea 45-54, >2ms 19-24 (3 runs) |
+
+Pan's frames>2ms (113) is within 1c's own unmodified-binary comparison range (100-127), consistent with 1c's
+finding that pan's busy tail on this machine is not a code-sensitive signal. The other three 4090 modes and
+the iGPU's readiness counters (non-ready, stand-in, dissolves, open-sea) are all within run-to-run noise of
+1c's own numbers — the ring does not starve anything, matching the step-4 test above. **The iGPU wheel's
+busy-time tail is genuinely worse** (12 → 19-24 frames>2ms across three reruns, a consistent gap, not overlap):
+readiness there (non-ready, dissolves, open-sea) tracks 1c closely, so this is not the readiness win costing
+something elsewhere — it is the ring's own per-frame cost (computing `ring_view_at` and enumerating/sorting its
+candidate chunks while zooming out) landing on a comparatively weak CPU/GPU pairing. Not fixed in this packet
+(see Decisions).
+
+**Gates.** MSVC Release, game files, render+app: `COUNTS: selected=496 executed=493 failed=0 empty=0
+skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1c2-render-app-1.log`) — clean, no refusals. GPU, 4090: `COUNTS: selected=117
+executed=117 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth1c2-gpu-4090.log`). The Radeon iGPU CTest gate was not rerun (no GPU-adapter code
+changed; the iGPU sweep numbers above exercise the same binary). WSL `-Werror` check: all 405 files outside
+`src/sim/tests/extensions_test.cpp` compiled clean under GCC 13 and Clang 18 (both passes, viewer+GPU on and
+off); that one file's `ANNO_EXTENSION_ORACLE_FILE` failure is the same pre-existing, unrelated gap already
+present on `task/ZOOM-SMOOTH-1`/`-1b`/`-1c` (a build-generated macro the standalone script does not set,
+in `src/sim/tests`, nothing this packet touches). `clang-format --dry-run --Werror` flagged three lines across
+`derived_freshness_test.cpp`; fixed in place (`-i`), rebuilt (`anno_render_tests`, `anno1503`, `bench_frame`),
+reran the full render suite (212/212, unaffected) before measuring/gating.
+
+NOT_RUN: the Radeon iGPU CTest gate (reasoned above, matching 1b/1c practice: no GPU-adapter code changed); WSL
+ASan; `gpu.cpp`'s B2 prefetch gate and the GPU upload share (both out of scope, 1d's).
+
+Decisions and reasoning:
+- **Enlarged the step-9 test's view** (one chunk → 3×3 chunks) once the first attempt's `CHECK(saw_ring_key)`
+  failure was traced to a real geometric fact, not a code bug: at the group-0/group-1 tile-width ratio this
+  island actually has, a one-chunk view's ring never grows past the pan lookahead's own unconditional
+  one-chunk border, so no view size that small could ever show ring-exclusive content, regardless of where the
+  test looked for it. Fixing only the detection loop's group would have left the test unable to pass.
+- **Reported the iGPU's worse busy-time tail rather than only the readiness-neutral result**, per the same
+  packet-wide practice 1b and 1c already followed ("report better, equal or worse per level," not just the
+  wins): the ring's own per-frame candidate-generation cost is a real, measured trade-off on the weaker
+  adapter, distinct from the readiness counters (which did not regress), and is for a future packet (1d or a
+  tuning pass) to weigh — e.g. capping the ring's candidate count, or skipping the ring once its target
+  group's chunks are already fully resident — rather than something to patch under this packet's own time box
+  without re-verifying the starvation invariant and the 4090 numbers again.
+- **Left the ring at the *same* group as the view, not `group + 1` or a derived level**, per the dispatch's own
+  wording ("the area a zoom-out to the coarse edge of the current level shows"): `zoomed_view_at` already
+  covers the neighbouring-group case (rank 2), so the ring is deliberately a distinct, same-group concern.
+- **Did not touch `gpu.cpp`'s prefetch gate (B2) or the upload share**, as instructed (both 1d's); nothing in
+  steps 1-4 needed a change there — the ring's candidates flow through the same `ChunkKey` request path every
+  other margin/adjacent candidate already uses.
+
+QUESTIONs: is the iGPU wheel's +7 to +12 frames>2ms worth a follow-up tuning pass on its own (e.g. a per-frame
+cap on ring candidates, or skipping the ring when the target group is already resident), or is it acceptable
+as the Radeon's cost for the ring's readiness benefit on stronger hardware, left to a future general tuning
+packet (1d, or after) to weigh against other candidates for the same budget of attention?
+
+**READY FOR REVIEW.**

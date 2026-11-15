@@ -11908,18 +11908,95 @@ actually contend the wake path during a real drag," since F2 already removes the
 occasional `pending_wake_` deferral by one frame step remains to size).
 
 **The owner's hands-on proof (addendum, after this review's "Yes, I'll do it").** A copy-pasteable recipe for
-the 5 s drag / 5 s resize / maximise / restore / close sequence, on this head:
+the 5 s drag / 5 s resize / maximise / restore / close sequence, on this head (superseded by 2c's own copy
+below, which corrects the adapter and the exe).
 
-1. Open PowerShell in the repo root (`E:\anno1503-worktrees\anno1503-ZOOM-SMOOTH-2`, or wherever this branch
-   is checked out) and run:
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2c — F3 (narrowed the wake defer) and F4 (the tests now exercise real code) — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `c4b3d5b7`, head `e47b9a3c`)
+
+**F3, fixed.** The wake defer now keys off a *second*, distinct atomic (`LiveResizeState::watch_drawing_`,
+set by `live_resize_watch` around its own call to `frame_step()`, not by `frame_step()` itself), so an
+ordinary main-loop draw - which holds no SDL lock at all - never defers a wake it has no reason to. Only a
+genuine watch-triggered draw, which does hold SDL's watch-list lock for its own duration, defers. Before this
+fix, every `frame_step()` call (ordinary or not) set the one shared guard the listener read, so a batch-less
+wake (a command outcome, an opening's ships) arriving during an *ordinary* draw was deferred for nothing and
+could sit for up to the main loop's own 100 ms idle wait before being picked up - a real behaviour change from
+before 2b, not something 2b's own report claimed to fix.
+
+**F4, fixed.** `anno/app/live_resize.hpp` now has `LiveResizeState`, one small type holding all three atomics
+(the reentrancy guard, the watch-draw flag, the pending wake) and the five operations
+(`begin_frame`/`end_frame`, `begin_watch_draw`/`end_watch_draw`, `defer_wake`, `take_pending`) `viewer.cpp`
+and the tests both call directly - replacing the separate `drawing_frame_`/`pending_wake_` atomics 2b added
+ad hoc. The two watch-integration tests from 2b now construct a real `LiveResizeState` and call its methods
+instead of reimplementing the decision as local lambdas, so a bug in the real type would actually fail them.
+The wall-clock "`< 1 ms`" assertion is gone (timing assertions are inherently flaky under contention, and said
+nothing `defer_wake`'s own return value didn't already prove). New: a direct test of F3 itself
+(`defer_wake` returns false during an ordinary frame, true during a watch draw); and the lost-wake stress
+test the review asked for - two threads racing `begin_watch_draw`/`defer_wake`/`end_watch_draw` against a
+continuous `take_pending` drain, asserting the deferred-vs-taken property holds (at least one pickup happened
+if anything was ever deferred) and the state always ends fully drained. `pending_wake_` coalesces concurrent
+deferrals into one pickup by design (the same idempotent "something changed" signal `dirty_` already is), so
+the test checks "never stuck forever," not "one take per defer" - stated in the test's own comment so a future
+reader does not mistake coalescing for a bug.
+
+**The residual race, stated honestly (not "never"), on `LiveResizeState`'s own class comment:** `defer_wake()`
+can still read `watch_drawing_` as clear after SDL has already taken its own watch-list lock for this
+dispatch but before `begin_watch_draw()` (called first, right after the event's own type check, inside
+`live_resize_watch`) has actually run. That window is a few instructions wide - the two calls `live_resize_
+watch` makes before `frame_step()` even starts - not a helper-thread-sized gap; in that narrow case the wake
+pushes as it always did before 2b and genuinely waits for the remainder of that one dispatch. No helper thread
+was added to close it, per the review's own "no helper thread is needed."
+
+**F5, the stale exe.** Fixed partway through this packet: the owner closed the window holding `anno1503.exe`
+(the orchestrator confirmed no `anno1503.exe` process was still running), the relink succeeded on the very
+next attempt, and `viewer_wiring_*` was rerun on the fresh, F1-F4-carrying binary twice (once right after the
+relink, once again after the `clang-format` fix below) - both 20/20. So F5's own fallback ("if it still fails,
+report NOT_RUN and stop") was not needed in the end.
+
+**Gates.** MSVC Release, game files, app (doctest suites): `COUNTS: selected=327 executed=324 failed=0
+empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2c-app-1.log`). `viewer_wiring_*`, on the relinked exe:
+`COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2c-viewerwiring-1.log`, reconfirmed unchanged after formatting in `-viewerwiring-2.log`)
+- genuinely exercising F1-F4 this time, unlike 2b's own pass against the stale binary. The new/changed
+live-resize tests: 5 cases, 20 assertions, stable across 5 repeated runs of the concurrent lost-wake case.
+WSL `-Werror` check: clean except the same pre-existing, unrelated `extensions_test.cpp` gap. `clang-format
+--dry-run --Werror` flagged one include-ordering line in `live_resize.hpp`; fixed, rebuilt all three affected
+targets, reran unaffected before gating.
+
+NOT_RUN: TSan (unchanged from 2b's own reasoning - no preset exists, out of this packet's own time box); WSL
+ASan; the live hands-on proof (the owner's, recipe below).
+
+Decisions and reasoning:
+- **Kept `should_draw_from_watch` as a separate, decoupled logic test** (not folded into
+  `LiveResizeState`): it tests the event-check-plus-a-plain-bool-guard combination in isolation, which is
+  still a useful, simple property distinct from the stateful type's own behaviour, and nothing about F4's
+  complaint (tests mirroring the code instead of running it) applies to that one, since it already calls the
+  real `is_live_resize_expose`.
+- **Did not try to make the lost-wake test assert exact counts** (pushed + taken == attempts): `pending_wake_`
+  is a single flag by design, so concurrent deferrals legitimately coalesce - asserting exact conservation
+  would have been testing for a property the design does not have and should not have, since a wake is an
+  idempotent "something changed" signal, not a queued item needing exactly one delivery per trigger.
+- **Documented the residual race as bounded, not "never"**, per the review's own correction: honesty about a
+  known, small, already-reasoned-about race is worth more than a comment implying a guarantee the atomics
+  alone cannot give without a lock the packet's own escape clause (no second render thread) rules out adding.
+
+QUESTIONs: none beyond 2's own.
+
+**The owner's hands-on proof, corrected recipe (this replaces 2's own copy, which did not say which adapter
+`ANNO_GPU_ADAPTER=0` is on this PC, or that the exe must be the one from this exact packet).**
+
+1. Open PowerShell in this worktree (`E:\anno1503-worktrees\anno1503-ZOOM-SMOOTH-2`) and run:
    ```powershell
    $env:ANNO_VIEW_HITCH_MS = "1"
-   $env:ANNO_GPU_ADAPTER = "0"
+   $env:ANNO_GPU_ADAPTER = "0"  # the RTX 4090 on this PC - the gates above use the same value
    .\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced 2> trace-stderr.log
    ```
-   (`ANNO_VIEW_HITCH_MS=1` logs every frame gap over 1 ms to stderr, redirected here to
-   `trace-stderr.log` in the current directory - that is where the trace lands; no `ANNO_VIEW_TRACE`
-   directory is needed for this measurement, only the stderr hitch lines.)
+   **This must be the 2c build** (this worktree's own `anno1503.exe`, relinked after F3/F4 above) - not an
+   older one left over from 2 or 2b. (`ANNO_VIEW_HITCH_MS=1` logs every frame gap over 1 ms to stderr,
+   redirected here to `trace-stderr.log` in the current directory - that is where the trace lands; no
+   `ANNO_VIEW_TRACE` directory is needed for this measurement, only the stderr hitch lines.)
 2. Once the window opens (a few seconds): **drag the title bar** for about 5 seconds, moving it around, then
    release.
 3. **Resize**: grab a window edge or corner and drag it for about 5 seconds, then release.

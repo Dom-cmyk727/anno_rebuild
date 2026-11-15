@@ -115,7 +115,10 @@ says who is doing what, where the work is, and what it waits on.
     into ZOOM-SMOOTH-1b (RELEASED 2026-11-15), 1c and 1d. **ZOOM-SMOOTH-1b ACCEPTED 2026-11-15** (head `d71bbfbb`,
     CI green, [review](reviews/2026-11-15-zoom-smooth-1b-review.md)): readiness much better, the pan busy tail
     worse; lands only stacked with 1c. **ZOOM-SMOOTH-1c RELEASED** the same day (the ring, F1 to F3, the pan
-    regression).
+    regression). **ZOOM-SMOOTH-1c ACCEPTED as a partial 2026-11-15** (F1 to F3; head `96c00844`, CI green,
+    [review](reviews/2026-11-15-zoom-smooth-1c-review.md)): the pan "regression" is the baseline's own drift (the
+    unmodified binary gives 102 to 127 today, not 30), so 1b and 1c can land together. The ring is split into
+    **ZOOM-SMOOTH-1c2, RELEASED** the same day, ahead of 1d.
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
   - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.

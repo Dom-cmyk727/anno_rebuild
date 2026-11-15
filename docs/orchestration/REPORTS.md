@@ -11074,3 +11074,19 @@ Branch `task/UI-INFO-2` (base `01a4d540`, packet `3311616a`); code `50eabe92`, R
 1. OQ-623: should the tool's `.`/`,` follow the original's ordinary-building direction (`.` = right arrow) now that the GOG capture shows it, or stay as OQ-520 had them?
 2. The category column's hit width (42 px) also covers grid column 0's first 13 px (808..820) on the plain grid — a click there switches category, not arms the cell. Pre-existing; fix in a follow-up?
 3. To keep the rotation GOG test in the board gate, copy `cache/orig/ui-info-2/shots/` (this worktree) to the shared shots location and set `ANNO_UI_ROTATION_SHOTS`.
+
+## UI-INFO-2c — READY FOR REVIEW (UI lane, 2026-11-15)
+
+Branch `task/UI-INFO-2c` from `task/UI-INFO-2` `da29872b`; code `0b3340fc`. Done by the UI lane itself (a 4-line key change), on the owner's OQ-623 answer relayed by the orchestrator ("Like original").
+
+**What changed.** `sdl_input.cpp` `tool_input_from_sdl`: the building tool's `.` is `Rotate` (+1) and `,` is `RotateBack` (−1); T stays `Rotate`. Evidence: GOG Wine runner (UI-INFO-2), pioneer house 501 from block 0: `.` gives 1, 2 and `,` then 1, 0 (`u2_501_dot1`, `dot2`, `comma1`, `comma2`), the same as the right/left arrow; so `,` is −1 as well. The ship-start founding mode (`opening_key_from_sdl`) is unchanged: OQ-520 measured the original's Kontor cursor `,` on, `.` back there. Docs: OQ-623 resolved (what stays open as evidence: the key → command table, and a Kontor armed in the building tool), `docs/re/ui.md` §2.5 keys row, `docs/testing/ship-opening-playtest.md` B-tool keys. The test "dev tool turn" (`dev_tool_mod_test.cpp`) drives the input kinds, not keys; only its name and comments changed to the new keys, so its CTest name changes.
+
+**Tests.** New `dev_tool_test.cpp` "tool keys: `.` turns an ordinary building on and `,` back, as the original's": SDL mapping of `.`, `,` and T, then through the tool 0 → 1 → 2 → 1 → 0 → 3. Failure proof: built with `da29872b`'s `sdl_input.cpp`, the case fails (5 of 19 assertions, e.g. `CHECK( 1 == 3 )`); restored, it passes.
+
+**Gates (this PC, MSVC Release).** `cmake --preset msvc`, `cmake --build --preset msvc`: clean. Focused `ctest --preset msvc -j 16` with `ANNO1503_GAME_DIR`, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`, `ANNO_UI_HE_CAPTURES`, `ANNO_UI_ROTATION_SHOTS`, regex over the dev-tool, construction-menu, rotation and every oracle-shot UI test (`live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`, `info_panel_rotation_gog_compare`, `ui_panels_match_gog`, `ui_window_matches_he`, `ui_mock_matches_oracle`, `ui placement`, the `viewer_wiring_ui_*` scripts): **71 of 71 executed and passed**, 0 skipped, 0 failed. After the proof and restore: the 6 key/rotation tests, 6 of 6 passed. clang-format 23.1.3 `--dry-run --Werror` on the changed files: clean. `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 404 of 405 clean, the one FAIL is the known `src/sim/tests/extensions_test.cpp` (`ANNO_EXTENSION_ORACLE_FILE` not passed by the script; untouched, same as on UI-INFO-2).
+
+**NOT_RUN.** The full suite; Linux/macOS game-file runs; hosted CI (runs on the push).
+
+**Decisions and reasoning.** Only the building tool changes: the owner's question was about ordinary buildings, and the founding mode has its own measured evidence (OQ-520). T keeps +1 (the window's own key, no original counterpart). No `sim` or `render` change.
+
+**Landing.** Stacks on UI-INFO-2 (`da29872b`); lands through the orchestrator after it.

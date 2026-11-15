@@ -11388,3 +11388,65 @@ doesn't depend on it, or should it ride with 1d since both touch "what's urgentl
 numbers to inform it once the ring exists to use them.
 
 **READY FOR REVIEW.**
+
+## FISHER-1b — optional mode-3 fisher; final gate completion (2026-11-15)
+
+Status: READY FOR REVIEW; handover waits for the report head's hosted gate, never executor-approved.
+Branch task/FISHER-1b; implementation b68a70317b1822a1c49d465fde8de0c183ac5bba.
+Resumed Task 1 starts 2026-11-14 23:33:51Z, budget 90 minutes; no new behavior authorized or added.
+Original continuation: 89922b18, authorized main 01a4d540 merged as 33ca7f0f; old branches preserved.
+CLAUDE, PLAN, board protocol, evidence contract and testing README read; no reviewer subagents.
+Return uses AnnoWelt 0x10057ae0–0x10057bbe -> figure +0xc8 at 0x10057b79–0x10057b7d;
+  fisher table 0x100cb4d8 selects 0x10038ad0, mode 3 at 0x10038b91–0x10038ba1.
+Goal-pop 0x100033c3–0x100033ce uses 511 minus the blocked mask from 0x1009226b–0x100922df.
+Mean 31: blocked 0 / usable 511; mean 32: blocked 511 / usable 0. Names/reference/vector keys corrected.
+Header tag 1 fisher_rules is u8 0 (omitted default) / 1 enabled; other bytes are refused.
+World::create's final ExtensionContext input is authoritative; Rules base fields/digest are unchanged.
+State 139 / ten section versions 1 retained; no new Figure state, pin value, or default change.
+Mode 3 supplies water low 0x0fff/high 0 or closed low 0/high 7; Land delegates its unchanged mapper/disc.
+Enabled route 45 launches at the first rotated entrance, searches usable water goals, claims/waits/cuts
+  11 -> 10 with 256 credit per success, repeats below data capacity, and returns using mode 3.
+Receipt is an unclipped u16 add (65500 + 768 -> 732); shared Farm conversion makes food and releases count.
+Owner draw scope: one discarded draw per eligible attempt; zero body draws; later on/off trajectories may diverge.
+Planar integer movement does not settle OQ-603's Y/float continuation. Runtime fish belongs to FISHER-RE-2.
+Geometry census: 50 maps, 2473 embedded fish blocked / 0 usable, 619 adjacent-water / 1854 without it.
+Existing explicit ActorFreeComponent projection proves geometry only; no fallback or complete actor-import claim.
+History retained: the original four-hour cutoff was reached; its frozen full gate finished naturally, not stopped.
+On 03da6fa3 the SOLE failing local test was:
+  anno_sim_tests.section extensions: all ten native sections refuse one unknown tag
+Exact error from continue/pins-final-head-01.log (world_state_test.cpp:695):
+2392: /Users/dom/.codex/worktrees/fisher-1b/anno1503/src/sim/tests/world_state_test.cpp:695: ERROR: CHECK( contains(result.error(), "section " + std::string(section_names[i]) + ": unknown extension tag " + std::to_string(tag)) ) is NOT correct!
+2392:   values: CHECK( false )
+The old test wrongly expected registered header tag 1 to be unknown; b68a7031 uses unknown tag 2.
+Earlier CI 43649237328: cpp (windows-msvc), job 132613837551, and cpp (linux-clang-asan), job
+  132613837538, each failed this SAME test. Signed-in job UI verdicts are preserved in earlier-ci-failures-observed.json.
+The separate GCC Release null-pointer warning was fixed by explicit receipt-test pointer/state guards.
+The SmallFarm-home counterexample was also fixed in b68a7031: load refuses it and the body fails closed.
+Previous direct corrective proof: 9/9 cases, 8198 assertions; source equivalence is recorded, not called canonical.
+Original failed full gate on 03da6fa3 (continue/pins-final-head-01.log):
+COUNTS: selected=1683 executed=1664 failed=1 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+Final local evidence below is under cache/fisher-1b/gates-finish/; game files set, admission enabled.
+build-dev-01.log: final implementation Dev build, zero warnings. build-release-01.log: zero warnings.
+affected-01.log: all 87 previous names verified as a subset; adds bad-home and both section refusals.
+affected-01.log:
+COUNTS: selected=90 executed=90 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+pins-full-01.log:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1684 executed=1666 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/fisher-1b/gates-finish/pins-full-01.log
+No refused tests occurred; all 18 full-check skips are opt-in. No whole gate was repeated on this source.
+Only reviewed fisher_vectors.txt differs in fixtures (six sea records rename/add keys); current recordings equal main.
+This handoff successor changes ONLY REPORTS; its tested code and fixtures equal b68a7031 byte for byte.
+The exact report-head CI URL and terminal result are supplied at handover; no pending job is pre-claimed green.
+Original negative/build/name failures and both old CI runs remain retained. No assets/listings/credentials in git.
+Decisions and reasoning:
+- Registering tag 1 changes the invalid-test premise, not the strict unknown-tag reader; use tag 2 as the control.
+- Run the explicit 90-name affected union once, and the newly released full pins check once in Release.
+- Carry source-identical gate evidence through this report-only successor; do not repeat a whole gate for prose.
+- Preserve owner-approved per-attempt draw fidelity and the corrected mask; do not fake catchable shipped fish.
+NOT_RUN: local MSVC/WSL, HE/original-runtime execution, real-map canary, Windows game-file/full landing gates.
+QUESTIONs: none blocking this bounded synthetic port; OQ-603 and runtime fish remain outside its claim.

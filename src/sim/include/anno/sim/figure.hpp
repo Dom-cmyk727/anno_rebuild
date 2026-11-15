@@ -115,8 +115,11 @@ inline constexpr std::uint32_t kHarvestStartDelay = 5;
     return job == 0x2c;
 }
 /// The jobs whose figures may carry a HarvestState (harvest, animal or mason).
-[[nodiscard]] constexpr bool harvest_state_job(std::uint32_t job) {
-    return harvest_job(job) || animal_job(job) || mason_job(job);
+[[nodiscard]] constexpr bool fisher_job(std::uint32_t job) {
+    return job == 0x2d;
+}
+[[nodiscard]] constexpr bool harvest_state_job(std::uint32_t job, bool fisher = false) {
+    return harvest_job(job) || animal_job(job) || mason_job(job) || (fisher && fisher_job(job));
 }
 /// What the engine does with the figure a Farm-tick home sends, by the figure type's ROUTETYPE (the
 /// job). MAP-NEEDS-2 N2: the farm family sends the type's route as the job (D 0x1006ee27); the job
@@ -125,8 +128,9 @@ inline constexpr std::uint32_t kHarvestStartDelay = 5;
 /// shares the animal case in the original but is not implemented: such a send is REFUSED explicitly
 /// (no figure, no counter, counted in ForestryStats::unsupported_routes), never left as an inert
 /// figure. Every other route keeps its meaning (no harvest state).
-enum class FarmFigureRoute : std::uint8_t { Other, Worker, Animal, Unsupported, Mason };
-[[nodiscard]] constexpr FarmFigureRoute farm_figure_route(std::uint32_t job) {
+// Header fisher_rules enables the mode-3 FISCHER body; the default keeps its refusal.
+enum class FarmFigureRoute : std::uint8_t { Other, Worker, Animal, Unsupported, Mason, Fisher };
+[[nodiscard]] constexpr FarmFigureRoute farm_figure_route(std::uint32_t job, bool fisher = false) {
     if (harvest_job(job)) {
         return FarmFigureRoute::Worker;
     }
@@ -136,13 +140,14 @@ enum class FarmFigureRoute : std::uint8_t { Other, Worker, Animal, Unsupported, 
     if (mason_job(job)) {
         return FarmFigureRoute::Mason;
     }
-    return job == 0x2d ? FarmFigureRoute::Unsupported : FarmFigureRoute::Other;
+    return fisher_job(job) ? (fisher ? FarmFigureRoute::Fisher : FarmFigureRoute::Unsupported)
+                           : FarmFigureRoute::Other;
 }
 /// The step-A callback limit of a job (D `[esp+0x34]` of 0x10058ae0 = 0, of 0x10059210 = 0x14): the
 /// search goes on past an unclaimed goal while `limit > score` (docs/sim/small-farm-supply.md 2.3).
 inline constexpr std::uint16_t kAnimalSearchLimit = 20;
-[[nodiscard]] constexpr std::uint16_t harvest_search_limit(std::uint32_t job) {
-    return animal_job(job) ? kAnimalSearchLimit : std::uint16_t{0};
+[[nodiscard]] constexpr std::uint16_t harvest_search_limit(std::uint32_t job, bool fisher = false) {
+    return animal_job(job) || (fisher && fisher_job(job)) ? kAnimalSearchLimit : std::uint16_t{0};
 }
 
 /// What a harvest job keeps between calls (docs/sim/forestry.md 2). Present on a figure exactly
@@ -476,6 +481,7 @@ void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp,
 /// released its counter at its end), and the id map equals a recomputation. (That no
 /// figure refers to a counter it does not hold is World::check_invariants', which
 /// sees the buildings.) Empty when they hold, else one message ("figures.list: ...").
-[[nodiscard]] std::string validate_figures(const FigureRegistry& registry, const IdCounters& ids);
+[[nodiscard]] std::string validate_figures(const FigureRegistry& registry, const IdCounters& ids,
+                                           bool fisher = false);
 
 } // namespace anno::sim

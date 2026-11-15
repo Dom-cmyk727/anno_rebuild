@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -46,10 +47,29 @@ template <bool TestRange, class... E> struct BasicExtensionList {
 template <class... E> using ExtensionList = BasicExtensionList<false, E...>;
 template <class... E> using TestExtensionList = BasicExtensionList<true, E...>;
 
+// Header tag 1 (FISHER-1b): one explicit byte; bool would canonicalize invalid
+// saved values before validation could reject them.
+struct FisherRules {
+    std::uint8_t enabled = 0;
+    friend bool operator==(const FisherRules&, const FisherRules&) = default;
+};
+struct FisherRulesExtension {
+    using Payload = FisherRules;
+    static constexpr std::uint16_t tag = 1;
+    static constexpr const char* name = "fisher_rules";
+    static constexpr Payload default_value() { return {}; }
+    template <class Context> static auto& state(Context& context) { return context.fisher_rules; }
+    template <class A, class P> static void fields(A& a, P& payload) { a.u8(payload.enabled); }
+    static std::string validate(const Payload& payload) {
+        return payload.enabled <= 1 ? "" : "enabled must be 0 or 1";
+    }
+};
 struct ExtensionContext {
-    using Lists = std::tuple<ExtensionList<>, ExtensionList<>, ExtensionList<>, ExtensionList<>,
+    FisherRules fisher_rules;
+    friend bool operator==(const ExtensionContext&, const ExtensionContext&) = default;
+    using Lists = std::tuple<ExtensionList<FisherRulesExtension>, ExtensionList<>, ExtensionList<>,
                              ExtensionList<>, ExtensionList<>, ExtensionList<>, ExtensionList<>,
-                             ExtensionList<>, ExtensionList<>>;
+                             ExtensionList<>, ExtensionList<>, ExtensionList<>>;
     template <StateSection S> using List = std::tuple_element_t<static_cast<std::size_t>(S), Lists>;
 };
 

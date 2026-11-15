@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <anno/sim/create.hpp>
+#include <anno/sim/extensions.hpp>
 #include <anno/sim/house_tick.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/scenario.hpp>
@@ -312,12 +313,15 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
 formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
                                                   std::shared_ptr<const TypeRegistry> types,
                                                   SimConfig config, Rules rules, Seams seams,
-                                                  const Executor& ex) {
+                                                  const Executor& ex,
+                                                  const ExtensionContext& extension_rules) {
     // 1. Validate (§10): configuration first, before any state is built.
     if (!types) {
         return std::string("registry: is null");
     }
-    std::string problem = config.validate(*types);
+    std::string problem = validate_extension_context(extension_rules);
+    if (problem.empty())
+        problem = config.validate(*types);
     if (problem.empty()) {
         problem = rules.validate();
     }
@@ -502,6 +506,7 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
     World w;
     w.config_ = std::move(config);
     w.rules_ = rules;
+    w.extensions_ = extension_rules;
     w.settings_ = spec.settings;
     w.seams_ = std::move(seams);
     w.types_ = RegistryRef(std::move(types));

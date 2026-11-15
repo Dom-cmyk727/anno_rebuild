@@ -14,7 +14,8 @@ FisherCell fisher_cell(const std::array<std::uint8_t, 4>& corners, std::uint8_t 
     const auto mean = static_cast<std::uint8_t>(
         (std::uint32_t{corners[0]} + corners[1] + corners[2] + corners[3]) / 4);
     const bool water = mean < threshold;
-    return {mean, water, static_cast<std::uint16_t>(water ? 0 : 511)};
+    const auto blocked = static_cast<std::uint16_t>(water ? 0 : 511);
+    return {mean, water, blocked, static_cast<std::uint16_t>(0x1ffU - blocked)};
 }
 std::optional<FisherCell> fisher_cell_at(std::span<const std::uint8_t> heights, std::uint32_t width,
                                          std::uint32_t height, std::uint32_t x, std::uint32_t y,

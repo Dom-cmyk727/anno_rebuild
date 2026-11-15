@@ -195,6 +195,8 @@ struct TickContext {
     TransportStats* transport_stats = nullptr;
     /// MAP-POP-LIVE-1 L4: see SerialResources. Set by Scheduler::advance; default null.
     const SerialResources* serial = nullptr;
+    /// FISHER-1b: copied from the authoritative header extension, never base Rules state.
+    bool fisher_enabled = false;
 };
 
 /// A figure a building asks for. The building's own counter was already raised in

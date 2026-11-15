@@ -46,6 +46,7 @@ struct Body {
     ForestryStats* stats;
     bool hygiene;
     bool skip;
+    bool fisher;
     std::map<TileXY, OverlayTile> ov;
     bool delivered = false;
 
@@ -176,9 +177,9 @@ struct Body {
         }
         const Island* hi = world.island(island_of(home->id));
         WalkPoint end;
-        const auto path =
-            hi != nullptr ? path_home(*hi, ctx.types, *home, *home_type, fig.pos, ft.layer, &end)
-                          : std::nullopt;
+        const auto path = hi != nullptr ? path_home(*hi, ctx.types, *home, *home_type, fig.pos,
+                                                    ft.layer, &end, fisher)
+                                        : std::nullopt;
         if (!path) {
             h.step = HarvestStep::Done; // figure slot +0xcc found no path (0x10057bb1)
             return;
@@ -202,10 +203,10 @@ struct Body {
         const SearchArea area = search_area(*home, *home_type);
         const std::int64_t sx = std::int64_t{area.cx0} - area.radius;
         const std::int64_t sy = std::int64_t{area.cy0} - area.radius;
-        if (sx < 0 || sy < 0) {
+        if (!fisher && (sx < 0 || sy < 0)) {
             return std::nullopt; // the u16 origin wraps beyond the island (vector `area 3 3 3 3 5`)
         }
-        const TileRect sq = area.square();
+        const TileRect sq = fisher ? fisher_search_area(*home, *home_type) : area.square();
         const TileRect ir = island->rect();
         const std::int64_t x_lo = std::max<std::int64_t>(sq.x0, ir.x0);
         const std::int64_t y_lo = std::max<std::int64_t>(sq.y0, ir.y0);
@@ -224,10 +225,22 @@ struct Body {
                     !harvest_candidate_type(ctx.types, object(t), fig.cargo_goods, skip)) {
                     continue;
                 }
-                candidates.insert(t);
                 // The goal sub-cells are the tile's FREE sub-cells (0x10003220: 0x1ff minus the
                 // record's blocked mask, row-major, bit 4 the centre; docs/re/forestry.md 2.11).
-                const std::uint32_t blocked = island->tiles.walk_mask(index(t)) & 0x1ffU;
+                std::uint32_t blocked = island->tiles.walk_mask(index(t)) & 0x1ffU;
+                if (fisher) {
+                    const auto cell =
+                        island->terrain
+                            ? fisher_cell_at(island->terrain->height, island->tiles.width(),
+                                             island->tiles.height(),
+                                             static_cast<std::uint32_t>(x - ir.x0),
+                                             static_cast<std::uint32_t>(y - ir.y0))
+                            : std::nullopt;
+                    if (!cell || cell->usable_mask == 0)
+                        continue;
+                    blocked = cell->blocked_mask;
+                }
+                candidates.insert(t);
                 for (std::uint32_t row = 0; row < 3; ++row) {
                     for (std::uint32_t col = 0; col < 3; ++col) {
                         if ((blocked >> (row * 3 + col) & 1U) == 0) {
@@ -248,8 +261,13 @@ struct Body {
         if (!tables) {
             return std::nullopt;
         }
-        WalkCells cells(*island, ctx.types, *tables, sq, 4, area);
-        const std::array starts{walk_point_of(fig.pos)};
+        WalkCells cells(*island, ctx.types, *tables, sq, 4,
+                        fisher ? std::nullopt : std::optional<SearchArea>{area},
+                        fisher ? WalkCellMode::FisherSea : WalkCellMode::Land);
+        std::vector<WalkPoint> starts{walk_point_of(fig.pos)};
+        if (fisher &&
+            tile_in_footprint(*home, *home_type, tile_of_q8(fig.pos.x), tile_of_q8(fig.pos.y)))
+            starts = entrance_walk_points(*home, *home_type);
         std::optional<TileXY> chosen;
         const SearchResult found =
             anno::sim::search(cells, *tables, ft.layer, starts, goals, [&](const SearchVisit& v) {
@@ -257,7 +275,8 @@ struct Body {
                     // D 0x10058a40: take the goal (best := node), go on only while limit > score.
                     chosen = v.point.tile;
                     return SearchDecision{
-                        harvest_search_goes_on(harvest_search_limit(fig.job), v.score)
+                        harvest_search_goes_on(harvest_search_limit(fig.job, ctx.fisher_enabled),
+                                               v.score)
                             ? GoalAction::Expand
                             : GoalAction::Stop,
                         true};
@@ -313,7 +332,7 @@ bool harvest_candidate_type(const TypeRegistry& types, std::uint32_t id, GoodsId
 
 bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
     const FigureType* ft = ctx.types.find_figure_type(fig.kind);
-    if (ft == nullptr || !fig.harvest.has_value()) {
+    if (ft == nullptr || !fig.harvest.has_value() || (fisher_job(fig.job) && !ctx.fisher_enabled)) {
         return false;
     }
     const std::uint32_t t = ctx.t;
@@ -343,7 +362,8 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
     const Building* home = world.find_building(fig.home);
     const BuildingType* home_type = home != nullptr ? ctx.types.find(home->type) : nullptr;
     if (home != nullptr && !std::holds_alternative<Farm>(home->payload) &&
-        !std::holds_alternative<SmallFarm>(home->payload)) {
+        ((ctx.fisher_enabled && fisher_job(fig.job)) ||
+         !std::holds_alternative<SmallFarm>(home->payload))) {
         home = nullptr; // validated away (World::harvest_problem); never a stand-in home
         home_type = nullptr;
     }
@@ -360,6 +380,7 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
            ctx.transport_stats != nullptr ? &ctx.transport_stats->forestry : nullptr,
            ctx.rules.forestry_claim_hygiene,
            ctx.rules.forestry_skip_uncuttable,
+           ctx.fisher_enabled && fisher_job(fig.job),
            {}};
     const std::uint32_t speed = ft->speed_q24;
     // Enhanced revalidation at each visit, before the worker walks or waits on (§3.5).
@@ -455,15 +476,24 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             }
             ticks = *rest;
             // Step C's arrival (0x10057bd0 -> home +0xc0 = 0x1006ee70: raw += amount, u16 add, no
-            // clip; here the u32 store with the merge's clamp, docs/sim/forestry.md 2.2).
+            // clip; enabled fisher keeps that width; other jobs retain their existing u32 merge).
             if (home != nullptr && fig.cargo_goods != 0 && fig.cargo_88 > 0) {
                 // The credit slot (D SmallFarm 0x1006f960): raw 1 when the goods are the home's
                 // input goods 1, else raw 0 with no further goods test; a Farm has the one raw
                 // store.
                 const std::uint32_t slot =
                     harvest_credit_slot(home->payload, *home_type, fig.cargo_goods);
-                world.fx.store_deltas.push_back(StoreDelta{home->id, StoreDelta::Store::Input, slot,
-                                                           std::int64_t{fig.cargo_88}});
+                std::int64_t delta = fig.cargo_88;
+                if (b.fisher) {
+                    // 0x1006ee70: u16 receipt, no clip. C2 merges this figure's effects
+                    // immediately, before another figure can change the read raw stock.
+                    const auto raw = std::get<Farm>(home->payload).raw;
+                    const auto after =
+                        static_cast<std::uint16_t>(std::uint64_t{raw} + fig.cargo_88);
+                    delta = std::int64_t{after} - raw;
+                }
+                world.fx.store_deltas.push_back(
+                    StoreDelta{home->id, StoreDelta::Store::Input, slot, delta});
                 b.delivered = true;
                 if (b.stats != nullptr) {
                     b.stats->raw_delivered_88 += fig.cargo_88;

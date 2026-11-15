@@ -264,6 +264,13 @@ SearchArea search_area(const Building& b, const BuildingType& type) {
     return a;
 }
 
+TileRect fisher_search_area(const Building& b, const BuildingType& type) {
+    const auto [w, h] = footprint(type, b.rotation);
+    const auto r = fisher_search_rect(static_cast<std::uint16_t>(b.x),
+                                      static_cast<std::uint16_t>(b.y), w, h, type.action_radius);
+    return r ? TileRect{r->x, r->y, r->width, r->height} : TileRect{};
+}
+
 std::uint32_t store_line(const Building& b, const BuildingType& type, GoodsId g) {
     if (std::holds_alternative<SmallFarm>(b.payload)) {
         // 0x1006f9a0: line 1 when g is output goods 1.
@@ -623,13 +630,17 @@ std::optional<SourceChoice> choose_source(const SerialWorld& world, const TypeRe
 
 std::optional<std::vector<TileXY>> path_home(const Island& island, const TypeRegistry& types,
                                              const Building& home, const BuildingType& home_type,
-                                             FixedPos from, std::uint32_t layer, WalkPoint* end) {
+                                             FixedPos from, std::uint32_t layer, WalkPoint* end,
+                                             bool fisher) {
     const SearchArea area = search_area(home, home_type);
     const auto& tables = types.walk_tables();
     if (!tables) {
         return std::nullopt;
     }
-    WalkCells cells(island, types, *tables, area.square(), 4, area);
+    WalkCells cells(island, types, *tables,
+                    fisher ? fisher_search_area(home, home_type) : area.square(), 4,
+                    fisher ? std::nullopt : std::optional<SearchArea>{area},
+                    fisher ? WalkCellMode::FisherSea : WalkCellMode::Land);
     const std::array starts{walk_point(from)};
     const std::vector<WalkPoint> goals = entrance_points(home, home_type);
     const SearchResult found = search(cells, *tables, layer, starts, goals, [](const SearchVisit&) {

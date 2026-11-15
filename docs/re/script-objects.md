@@ -110,7 +110,7 @@ for those inputs. Locale-dependent non-ASCII matching remains outside this read.
 +0xc/+8. Its SIGNALS arm sets the prefix boundary at `0x10017015`–`0x10017027`;
 `0x10016420`–`0x10016461` keeps the text before that boundary, including the
 earlier object definitions. Saver `0x10016470`–`0x1001650f` writes this prefix
-(or the source fallback), calls signal writer `0x10016240`–`0x10016355`, and
+(or the source fallback), calls signal writer `0x10016240`–`0x1001635c`, and
 camera writer `0x10016150`. Signal iteration at `0x100162e5`–`0x10016349`
 reads the separate signal list at +0x20, not the object list at +0x54.
 

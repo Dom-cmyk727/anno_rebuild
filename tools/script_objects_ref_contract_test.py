@@ -69,6 +69,8 @@ def contract(ref, vectors, root):
     case('missing_input', alive.replace('city_slots=16 ', ''), 2, 'input keys')
     case('unknown_input', alive.replace('city_slots=16 ', 'city_slots=16 extra=0 '), 2, 'unknown=extra')
     case('missing_output', alive.replace(' writes=0', ''), 2, 'output keys')
+    case('bad_expected', alive.replace('killed=0 ', 'killed=2 '), 2, 'Boolean sequence')
+    case('bad_expected_count', alive.replace('writes=0', 'writes=no'), 2, 'integer')
     case('bad_snapshot', alive.replace('frames=2:1:3:1', 'frames=2:1:3'), 2, 'city needs')
     case('duplicate_city', alive.replace('frames=2:1:3:1', 'frames=2:1:3:1,2:1:8:0'), 2, 'duplicate city')
     case('duplicate_island', alive.replace('islands=1,2', 'islands=1,2,2'), 2, 'duplicate island')

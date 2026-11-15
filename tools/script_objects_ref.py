@@ -115,6 +115,17 @@ def run(path):
         actual, expected = evaluate(fields(words[2])), fields(right)
         if set(actual) != set(expected):
             raise Malformed(f'line {line_number}: output keys differ')
+        integer(expected['compiled'], 0, 1)
+        for key in ('parse_reads', 'city_reads', 'writes'):
+            integer(expected[key])
+        if expected['compiled'] == '0':
+            if any(expected[key] != '-' for key in ('island', 'city', 'killed')):
+                raise Malformed('failed compilation requires placeholder outputs')
+        else:
+            integer(expected['island'], 0, 255)
+            integer(expected['city'], 0, 255)
+            if not re.fullmatch(r'[01](?:,[01])*', expected['killed']):
+                raise Malformed('expected killed must be a Boolean sequence')
         count += 1
         for key in actual:
             if actual[key] != expected[key]:

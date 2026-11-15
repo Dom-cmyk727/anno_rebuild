@@ -12009,4 +12009,51 @@ QUESTIONs: none beyond 2's own.
    step markers - noting roughly when each drag/resize/maximise/restore begins when sending it helps, but is
    not required: a drag or resize these numbers should make visually obvious either way).
 
+## ZOOM-SMOOTH-2c — the owner's hands-on trace: no interaction found in it
+
+**The trace** (`cache/owner-drag-test-20261115-184018/trace-stderr.log`, 893 MB, 5,526,463 lines, not committed
+- original-session evidence; analysed by streaming it with `awk`, never loaded whole) covers about one hour at
+500 fps (1,839,090 `frame hitch` lines, matching `ANNO_VIEW_HITCH_MS=1`; the file has no timestamps of its own,
+only each line's own "ms since the previous frame" gap, so elapsed time is the frame count divided by the
+steady 500 fps the periodic report lines confirm throughout).
+
+**Finding: this trace shows no drag, resize, maximise or restore ever happening.** Checked three independent
+signals, all negative, across the whole file:
+- **Window size:** every one of the 1,838 periodic `"NNNNxNNNN px"` report lines (about one every 3,000
+  frames) reports the same `1280x800` - never a different size, which a resize or a maximise/restore would
+  both produce.
+- **Surface reconfigure:** `"surface configure"` (the step a resize triggers on `g.width != w || g.height !=
+  h`, `viewer.cpp`'s `draw_gpu`) appears **zero** times in the whole 5.5 M lines.
+- **Window-event handling time:** the `of which N ms handling window events` figure every hitch line carries
+  is above 0.5 ms exactly **4 times** in the whole hour, peaking at 1.3 ms, and that one peak is in the file's
+  very last few lines (busy 1.3 ms, an 8.8 ms gap) - consistent with the window closing, not a drag.
+- **A direct text search** for "resize", "maximi[sz]e", "restore" or "moved" anywhere in the file: zero
+  matches (the viewer logs none of these by name, but a search costs nothing to rule out a marker this session
+  did not know about).
+
+**The overall numbers, for completeness, since they are clean regardless:** mean gap 2.00 ms (the steady
+500 Hz display pace), worst gap in the entire hour 11.7 ms (at line 3, the very first frame after boot, before
+the window was even shown - not a drag or resize artifact), and nothing else in between ever exceeds 8.8 ms
+(the one window-close-adjacent frame above). **Against the 16 ms target and the earlier 106 ms:** if a drag or
+a resize genuinely happened somewhere in this hour, it produced no measurable gap above 8.8 ms anywhere - a
+clean pass, well inside the target. But this session cannot responsibly report that as the packet's own proof,
+because the three independent structural checks above all say the window was never actually moved or resized
+during the whole recording: a clean pass is exactly what *no interaction at all* would also look like, and the
+own evidence contract's "known failures remain failures" cuts the other way too - a result this session cannot
+distinguish from "nothing happened" is not a pass to claim.
+
+**Said plainly, per the instruction, rather than guessing:** this session cannot find the drag, resize,
+maximise or restore phases in this trace, because none of the three available signals (window size, surface
+reconfigure count, window-event handling time) shows any sign they occurred. It does not report worst/typical
+gaps per phase, since there is no evidence any phase happened to measure.
+
+**Suggested for a repeat run, to make the proof findable without guessing:**
+- interact with the window within the first minute or so of opening it, not after an hour's gap - the whole
+  point of a 5 s window is that it should stand out sharply against the surrounding steady 2 ms frames, and an
+  hour of nothing beforehand only makes the file larger to search, not more informative;
+- confirm the title bar is actually grabbed (left mouse button held) while dragging, and a window edge or
+  corner (not the title bar) while resizing - a mouse move with no button held changes nothing SDL reports;
+- after sending the trace, say in one line roughly which minute each action happened in (even "drag at about
+  minute 2, resize at about minute 3") - not required for a clear case, but removes all doubt for a quiet one.
+
 **READY FOR REVIEW.**

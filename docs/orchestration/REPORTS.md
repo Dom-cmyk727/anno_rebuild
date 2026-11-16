@@ -12290,3 +12290,210 @@ counter that question suggested - the new trace's own watch-side lines may now a
 separate counter).
 
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2d — the owner's repeat trace, analysed per hypothesis
+
+**The trace** (`cache/owner-drag-test-20261116-090753/trace-stderr.log`, 11.8 MB, 81,630 lines: 21,832 `frame
+hitch` lines and 15,967 `[live-resize-trace]` lines), build `56be3ce8`, `ANNO_VIEW_LIVE_RESIZE_TRACE=1`,
+`ANNO_VIEW_HITCH_MS=1`, `ANNO_GPU_ADAPTER=4090`, `--play lan5 --water enhanced`, started 09:07:59. No gate or
+other heavy job running. Owner's steps: wait 5 s; hold the title bar ~2 s without moving; drag slowly ~5 s;
+drag fast ~5 s; close - no resize, no maximise.
+
+**The orchestrator's own first-look numbers are confirmed, independently re-derived from the raw trace**
+(exact modal-session boundaries from the hook's own `WM_ENTERSIZEMOVE`/`WM_EXITSIZEMOVE` timestamps, not
+estimated): hold 26.7189-31.5688 (4.85 s), slow 37.5122-45.9053 (8.39 s), fast 51.9890-61.1758 (9.19 s), then
+`WM_NCLBUTTONDOWN hittest=20` (`HTCLOSE`) at 64.6085. Per-100 ms hook buckets: hold mean `timer=2.67 moving=
+83.83` (4/48 buckets with `timer=0`), slow mean `timer=6.43 moving=39.02` (0/82 buckets with `timer=0`), fast
+mean `timer=2.48 moving=69.41` (19/91 buckets with `timer=0`) - matching the orchestrator's figures to within
+rounding. Watch-tick rate/gaps (884 ticks total, 0 guard-skips anywhere in the file - the reentrancy guard
+never once engaged in this run): hold 26.4/s, gap median 23.0 ms, p99 188.3 ms, max 221.5 ms; slow 63.0/s,
+median 15.7 ms, p99 28.9 ms, max 61.9 ms; fast 24.7/s, median 17.3 ms, p99 289.1 ms, max 526.1 ms.
+
+**The frame-hitch numbers, counted per phase from all 21,832 lines (not just the worst few), for comparison
+with 2c's own table:**
+
+| phase | n hitch lines | mean | median | p90 | p99 | worst | over 50 ms |
+|---|---|---|---|---|---|---|---|
+| hold | 1,610 | 4.86 ms | 2.0 ms | 2.5 ms | 76.7 ms | 221.6 ms | 1.7 % |
+| slow | 2,046 | 5.59 ms | 2.1 ms | 16.1 ms | 21.1 ms | 61.9 ms | 0.0 % |
+| fast | 1,076 | 10.13 ms | 2.1 ms | 18.4 ms | 136.3 ms | 526.1 ms | 4.2 % |
+| outside the three sessions (wait/post) | 17,100 | 2.01 ms | 2.0 ms | 2.2 ms | 2.7 ms | 14.6 ms | 0.0 % |
+
+The steady state outside the modal sessions is the clean 500 Hz baseline (worst 14.6 ms, the very first frame
+after boot) - exactly as every prior packet's own steady-state numbers have read. `slow` sits close to the
+16 ms target (p90 16.1 ms) but is not fully inside it; `hold` and `fast` are not.
+
+**Every one of the 30 largest frame-hitch gaps in the whole file (521.1 ms down to 104.5 ms) is the gap to
+the immediately preceding watch tick, to within interpolation error (typically < 0.1 ms, worst 1.6 ms)** -
+checked by finding each hitch's own line position among the trace's absolute timestamps, locating the watch
+tick that line belongs to, and comparing the hitch value against `(this tick's timestamp) - (the previous
+tick's timestamp)`. All 30 fall inside `hold` or `fast`; none inside `slow`. Since the native modal loop
+blocks the ordinary `SDL_PollEvent` loop for the whole of a modal session (confirmed in 2/2b/2c), nothing
+else could have drawn these frames - every one of them was drawn by `live_resize_watch`, and the gap it
+reports is genuinely the time since the watch itself was last invoked, not a slow `draw()` (which 2c's own
+trace already showed stays under 1.2 ms) and not the reentrancy guard (which never fired in this run).
+**This pins the stall to "the watch was not ticking," not to anything inside `frame_step()`/`draw()`.**
+
+### Hypothesis (a): wrong, and cleanly ruled out
+
+`WM_NCLBUTTONDOWN` (hittest 2, `HTCAPTION`) is followed by `WM_ENTERSIZEMOVE` within 0.9-1.1 ms every one of
+the three times (26.7180→26.7189, 37.5113→37.5122, 51.9879→51.9890). SDL's own live-resize timer is armed
+essentially the instant the press is recognised, not after some further delay - there is no "waiting for the
+press to register" window large enough to explain any of the measured gaps (the smallest of the 30 largest
+gaps, 104.5 ms, is still two orders of magnitude bigger than this 1 ms). **Not the cause.**
+
+A side observation, not explained further here: `WM_NCLBUTTONUP`, `WM_LBUTTONUP` and `WM_SYSCOMMAND` were
+never logged once in this whole trace, despite being requested unconditionally. `WM_SYSCOMMAND`/`SC_MOVE` is
+documented as the system-menu/keyboard route into a move (Alt+Space, M, or the title bar's own right-click
+menu) - an ordinary title-bar left-drag goes through `DefWindowProc`'s own direct handling of
+`WM_NCLBUTTONDOWN(HTCAPTION)` without a `WM_SYSCOMMAND` round trip, so its absence here is expected. The
+absence of the two button-up messages is not explained by anything this session found: `WM_CAPTURECHANGED`
+(logged, three times, right before each `WM_EXITSIZEMOVE`) marks capture being released, so the button-up
+that ends the loop evidently is not dispatched back through `WIN_WindowProc` the way the hook observes other
+messages - plausibly consumed inside the modal loop's own internal polling before a hook-visible dispatch,
+but this session did not verify that against the SDL/Windows source and is not asserting it as fact.
+
+### Hypothesis (b): confirmed, with a documented mechanism and a worked example
+
+**Microsoft's own documentation for `WM_TIMER`**
+([learn.microsoft.com/windows/win32/winmsg/wm-timer](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-timer)):
+"The `GetMessage` and `PeekMessage` functions post this message only when no other higher-priority messages
+are in the thread's message queue" - `WM_TIMER` is a low-priority message, synthesized by the message pump
+only once nothing else is waiting. A sustained stream of `WM_MOVING`/mouse-move messages (which a drag
+produces continuously) is exactly the kind of "something else is in the queue" that defers it.
+
+**The data matches this precisely.** `slow` (mean `moving=39.0`/100 ms) never once has a zero-`WM_TIMER`
+bucket; `hold` (mean `moving=83.8`) has 4/48; `fast` (mean `moving=69.4`, the owner's fast flicking) has
+19/91, including runs of several *consecutive* zero/near-zero buckets. The worst gap in the file (526.1 ms,
+tick-to-tick from 54.3124→54.8385) sits exactly across one such run: buckets at 54.4943, 54.5946, 54.6947 and
+54.7948 all report `timer=0`, while `moving` stays at 65-88 every one of them - over 400 ms where the modal
+loop kept running (confirmed: `WM_MOVING`/`WINDOW_MOVED` never stopped) but the low-priority timer tick that
+drives the watch never got a turn. **`WINDOW_MOVED` itself never stopped either**: inspecting every trace
+line across that exact 526 ms window shows `watch: WINDOW_MOVED x=... y=...` arriving every 1-2 ms,
+continuously, from the tick that opened the gap to the tick that closed it (hundreds of them, moving
+smoothly: x=618→47, y=33→750ish, over the window) - the position-changed signal the watch already receives
+was never missing; only the timer-driven redraw signal was. The phase-by-phase correlation (clean in `slow`,
+worse in `hold`, worst in `fast`, scaling with `moving` volume, not with anything else) and the precise,
+repeatable per-bucket mechanism this documented Win32 behaviour predicts together make this the primary,
+well-supported cause. **Confirmed.**
+
+### Hypothesis (c): not supported as an additional cause here
+
+The orchestrator's own note states no gate or other heavy job was running during this capture. The
+starvation pattern's own shape - clean in the phase with the least mouse-move traffic, worst in the phase
+with the most, with a documented Win32 mechanism that predicts exactly this - leaves no residual pattern an
+"other load" explanation would need to account for. This session cannot rule out *some* unrelated scheduling
+noise contributing a few milliseconds here or there (ordinary OS jitter, never zero), but nothing in this
+trace points at it as a material cause the way it does for (b). **Not supported, on this trace.**
+
+### The fix proposed (not built, per the instruction)
+
+**What should trigger a draw when `WM_TIMER` is starved:** `SDL_EVENT_WINDOW_MOVED`, which the watch already
+receives (and, since 2d's own trace item, already logs) and which this trace shows arriving every 1-2 ms
+throughout the exact windows where `WM_TIMER` goes quiet - the one signal demonstrated present when the
+intended one is not. Add a second, independent entry point into the *existing* draw path alongside
+`is_live_resize_expose`'s EXPOSED(1) check: on a `WINDOW_MOVED` event, ask a new, pure, rate-limiting
+predicate whether enough time has passed since the watch's own last tick (`LiveResizeState::last_watch_tick()`,
+already added this packet) to justify treating this `WINDOW_MOVED` as a tick too. A sketch, not code to land
+as-is:
+
+```cpp
+// anno::app::LiveResizeState - a proposed addition, not implemented here
+[[nodiscard]] bool should_draw_from_move(Clock::time_point now, Clock::duration min_interval) const {
+    return now - last_watch_tick() >= min_interval;  // false under any healthy WM_TIMER cadence
+}
+```
+
+`live_resize_watch` would call this only for `SDL_EVENT_WINDOW_MOVED` (never for an unrelated event type -
+keeping 2b F1's own property that a non-matching event touches no shared state), and on `true`, run the
+*same* `begin_watch_draw()` / `frame_step()` / `end_watch_draw()` / `mark_watch_tick()` sequence the EXPOSED(1)
+path already uses - a new *trigger* into the existing path, not a new drawing path.
+
+**How the rate limit avoids drawing at the mouse's rate:** the gate is "time since the last *tick*," not
+"time since the last `WINDOW_MOVED`." The first `WINDOW_MOVED` past the threshold immediately calls
+`mark_watch_tick()`, resetting the clock the gate itself reads - every `WINDOW_MOVED` arriving in the next
+`min_interval` (measured here: dozens of them, since the real rate is roughly one every 1-2 ms) fails the
+same check and returns without drawing. A sensible `min_interval` - proposed around 30 ms, comfortably above
+every healthy-phase gap this trace measured (`slow`'s own p90 was 18.5 ms) so it never engages while
+`WM_TIMER` is keeping up, but well under the gaps that actually hurt (104-526 ms) - would need the owner's
+or orchestrator's own sign-off as a tuned constant (an `ANNO_VIEW_*`-style env override, matching this file's
+own existing pattern, would keep it adjustable without a new config system, consistent with the no-hardcoded-
+limits rule for anything that is a real behaviour choice).
+
+**Cost to the sim's wake path and the F2/F3 guarantees:** none beyond what EXPOSED(1) already costs, because
+it is the *same* path. `defer_wake()` keys off `watch_drawing_`, set and cleared by `begin_watch_draw()`/
+`end_watch_draw()` regardless of which event triggered them - F2 ("the sim never waits during a drag") and
+F3 (only a genuine watch draw defers a wake, never an ordinary one) do not need new reasoning, since no new
+flag or branch is added to the wake-decision logic itself. The one new recurring cost is CPU: one extra
+atomic load and comparison (`should_draw_from_move`) on every `WINDOW_MOVED`, which during a drag arrives at
+roughly the same rate the existing `is_live_resize_expose` check already runs at for every event of every
+type - the same cost class already paid today, not a new one.
+
+**How it can be tested without a person dragging:** `should_draw_from_move` takes `now` and `min_interval`
+as plain parameters, reading no clock internally - a direct, deterministic unit test (no window, no
+sleeping) can construct a `LiveResizeState`, call `mark_watch_tick()` once, then assert the predicate is
+`false` just under the threshold and `true` just over it, exactly like the existing `should_draw_from_watch`/
+`mark_watch_tick` tests already do with synthetic inputs. A second test can reuse this packet's own flooding
+pattern (`live_resize_test.cpp`'s F1 test already floods non-matching events from a second thread) to push a
+burst of real `SDL_EVENT_WINDOW_MOVED` events through a real `SDL_AddEventWatch`/`SDL_PushEvent` wiring and
+assert at most one draw results per `min_interval` window, regardless of how many `WINDOW_MOVED` events the
+burst contains - directly exercising the rate limit's own claim, not just the predicate in isolation. Only
+the real Windows modal loop and message-queue scheduling this trace needed a person for would stay outside
+unit-test reach, same as the rest of `live_resize_watch`'s own integration.
+
+**What to make of the owner seeing no stutter despite gaps up to 526 ms.** Stated as this session's own
+reasoned judgement, not something the trace can settle on its own: moving a window (as opposed to resizing
+one) does not require the application to redraw anything to look smooth - the desktop compositor continues
+to show the application's last-rendered surface, translated to the window's new screen position, entirely
+independent of whether the application itself produces new frames, which is standard, OS-level behaviour for
+any window being dragged by any application. A gap in this project's own draw cadence during a pure move is
+therefore not necessarily visible as "the window froze" the way an equivalent gap during a *resize* would be
+(where the newly-exposed or newly-clipped client area genuinely has nothing to show without a fresh draw -
+exactly the case ZOOM-SMOOTH-1/2's own resize work already targets). What *would* freeze for up to 526 ms is
+this game's own animated content (water, ships) inside the window - in principle perceptible, but plausibly
+not salient during a brief, attention-on-the-cursor five-second flick, especially if the animation's own
+motion is subtle at the zoom level and drag speed used here. This session cannot verify the owner's own
+perception from a log, so this is offered as the most evidence-consistent explanation, not a closed
+conclusion - see the QUESTION below.
+
+**Gates, this entry.** Analysis and documentation only, per the instruction - no code changed in this entry
+(the trace instrumentation and the `events_ms_` fix were already gated and CI-green on `56be3ce8` in the
+entry above; nothing in this append touches `src/`).
+
+NOT_RUN: the fix proposed above (not built, per the instruction); a repeat trace with the fix in place, to
+confirm `WINDOW_MOVED` actually closes these gaps without over-drawing; a resize-side equivalent check (this
+trace captured no resize at all, so hypothesis (b)'s applicability to `WM_SIZING`-driven starvation during a
+fast resize, if any, is untested).
+
+Decisions and reasoning:
+- **Re-derived every one of the orchestrator's preliminary figures independently from the raw trace** before
+  building on them, rather than taking the first look as given - all matched to within rounding, so the
+  analysis below builds on confirmed numbers, not assumed ones.
+- **Established the 30 largest gaps are exactly the gap to the previous watch tick, not a slow draw or a
+  guarded-out draw**, before attributing them to anything - this is what makes the rest of the analysis a
+  question about *why the watch didn't tick*, not a question about `frame_step()`/`draw()`'s own cost (which
+  2c's own trace already cleared).
+- **Cited Microsoft's own documented `WM_TIMER` priority behaviour rather than asserting a mechanism from the
+  data alone** - the data shows the correlation; the citation is why that correlation has an explanation
+  rather than being a coincidence.
+- **Verified `WINDOW_MOVED` is actually present throughout the worst gap before proposing it as the fix's own
+  trigger**, line by line across the full 526 ms window, rather than assuming the watch's own tracing meant
+  it must be there.
+- **Did not build the proposed fix**, per the explicit instruction - the sketch above is illustrative, not a
+  diff to land as-is, and still needs the owner's/orchestrator's own sign-off on the threshold value.
+- **Treated the "no stutter" observation as a real finding to reconcile, not noise to set aside** - an
+  unexplained mismatch between a measured stall and a reported smooth experience is exactly the kind of
+  thing the evidence contract asks not to paper over, so this entry states the most likely explanation
+  plainly while being honest that it is this session's own reasoning, not a verified fact about what the
+  owner actually perceived.
+
+QUESTIONs: given moving a window does not itself need a redraw to look smooth, and the owner's own
+"no stutter" impression despite real 100-526 ms gaps - is a drag's own content-freeze still worth the fix
+above, or should it wait until it is shown to matter against something more clearly load-bearing (ships/
+water animation visibly stuttering, not just a log showing a gap)? If the fix is wanted: is 30 ms the right
+threshold, or does the owner/orchestrator want it tied to something else (e.g. the display's own refresh
+interval)? Should the same mechanism extend to resize (via `WINDOW_RESIZED`, already logged) once/if a
+similar `WM_SIZING`-side starvation is ever measured, or does 2c's own resize numbers (attributed cleanly to
+`surface configure`, not starvation) mean that is not needed?
+
+**READY FOR REVIEW.**

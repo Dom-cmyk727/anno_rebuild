@@ -225,7 +225,8 @@ says who is doing what, where the work is, and what it waits on.
     candidate's tree and 2656 executed with 2 failures, both GPU timing tests on Metal that pass on the 4090 (a
     Mac-only gap, GATE-MAC-1 to be written); **FISHER-RE-4 ACCEPTED** (`ee507a8c`): the original does not draw a
     released fisher, because its end animation 17 has no sprite set; **ANNOSCENE-ORE-1 ACCEPTED** (`ea023e18`):
-    `INFO` byte 5 equals the ore markers in 429 of 429 templates. Both wait for a landing with the next candidate. **UI lane:** started **UI-MINIMAP-1**
+    `INFO` byte 5 equals the ore markers in 429 of 429 templates. The owner's OK is given ("Land them
+    together"): both land stacked with the next candidate (the minimap or the drag fix, whichever is ready first). **UI lane:** started **UI-MINIMAP-1**
     (branch `task/UI-MINIMAP-1` from main `4b104d3a`, its packet at `837ffc17` on that branch): step A the
     evidence (a static read of the GOG `View.dll` minimap routines, and the owner's History Edition recording of
     the minimap controls), step B the drawing (islands, view box, markers), step C clicks and buttons. A view

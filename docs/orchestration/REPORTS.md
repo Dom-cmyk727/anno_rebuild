@@ -12435,7 +12435,7 @@ Branch `task/UI-PAN-1` from main `67a960c9`. Done by the UI lane itself on the o
 
 **Tests.** New `viewer_wiring_ui_click_no_pan`: left and right clicks with a 3.6 px jitter → `camera.pans` stays 0; left and right 45 px drags → one pan each; the ui_4 case (demolish mode, a jittery right click) → no pan, and the click turns demolish off (UI-PLACE-2). Failure proof: on the UI-PLACE-2 build (main's app code) the case fails at its first jittery click (`camera.pans is '1', expected == 0`).
 
-**Gates (this PC, MSVC Release).** Build clean. Focused `ctest --preset msvc -j 16` with the game files and the UI shot variables, regex over the dev-tool, dev-script, construction, rotation, info-panel, every oracle-shot UI test, every `viewer_wiring_*` case (the opening's ship-pan and sail scripts included), selected-house, settlement, opening and zoom tests: 190 selected, **189 executed and passed**, 1 opt-in skip (`zoom_sweep_control_readiness`, needs `ANNO_ZOOM_SWEEP_PROOF`; the zoom lane's). clang-format 23.1.3 --dry-run --Werror on iewer.cpp: clean. wsl -d Ubuntu -- bash tools/check_unix_warnings.sh: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 409 of 410 clean, the one FAIL is the known src/sim/tests/extensions_test.cpp (ANNO_EXTENSION_ORACLE_FILE not passed by the script; untouched). Hosted CI runs on the push.
+**Gates (this PC, MSVC Release).** Build clean. Focused `ctest --preset msvc -j 16` with the game files and the UI shot variables, regex over the dev-tool, dev-script, construction, rotation, info-panel, every oracle-shot UI test, every `viewer_wiring_*` case (the opening's ship-pan and sail scripts included), selected-house, settlement, opening and zoom tests: 190 selected, **189 executed and passed**, 1 opt-in skip (`zoom_sweep_control_readiness`, needs `ANNO_ZOOM_SWEEP_PROOF`; the zoom lane's). clang-format 23.1.3 --dry-run --Werror on `viewer.cpp`: clean. wsl -d Ubuntu -- bash tools/check_unix_warnings.sh: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 409 of 410 clean, the one FAIL is the known src/sim/tests/extensions_test.cpp (ANNO_EXTENSION_ORACLE_FILE not passed by the script; untouched). Hosted CI runs on the push.
 
 **NOT_RUN.** The full suite; Linux/macOS game-file runs.
 
@@ -12573,3 +12573,46 @@ READY FOR REVIEW. Stop here; FISHER-HE-1 is not released.
 - QUESTIONs: none; nominal wait fits existing fields. Independent review: orchestrator pending.
 
 READY FOR REVIEW. Stop after pushed-head CI; no UI/capture or parked task started.
+## FISHER-VIEW-1 (FISHER-HE-1 step B) — READY FOR REVIEW (UI lane, 2026-11-16)
+
+Branch `task/FISHER-VIEW-1` from main `3ce4150e`, merged with main `4b104d3a` (FISHER-RE-3, FISHER-1f). App code and test tooling only; no `sim` or `render` change.
+
+**What changed.**
+- `--fisher-rules on|off` (`cli.cpp`, `cli.hpp`): a `--play` developer switch. `FixedPlayOptions::extensions` carries it into both `World::create` calls of `load_play` (fixed map and scenario) as `sim::ExtensionContext::fisher_rules.enabled`. The default is off, i.e. default extensions as before. The sim rule stays behind its existing flag.
+- `--player <n>`: the player slot the developer tool builds for, the snapshot reports (`PlayRunner::set_local_player`) and `--commands` parses against. The default is `developer_player()` (slot 1). Needed because Tutorial/02Trade01's human is player 2 (city on island 3).
+- Both switches are refused with `--view` and `--ship-start`. `session.txt` notes them (`extension fisher_rules`, `player <n>`) as information lines.
+- Readout: `BuildingInspection::farm` (out, raw in 8.8, workers out) for a Farm. The window's script facts `inspection.out_88`, `inspection.raw_88`, `inspection.workers_out` sit next to the new `game.ms`, from the same snapshot. The title shows the same line a little later.
+- `viewer_wiring.py`: an `--app-arg`'s `{game}` is replaced by `ANNO1503_GAME_DIR`, so a case can name a shipped scene.
+- Docs: `docs/app/game-shell.md` (developer switches).
+
+**Tests.**
+- `app_test.cpp`: parsing of `--fisher-rules`/`--player`, the defaults, and the refusals with `--view`/`--ship-start`.
+- `viewer_wiring_fisher_view_on`: `--play {game}/Scenes/Tutorial/02Trade01.sze --player 2 --speed 200 --fisher-rules on`. It builds type 810 by clicking (244,217). `commands.txt` records `build 810 243 216 0`, i.e. origin (243,216), rotation 0 = the open control. The facts show `inspection.type 810`, `kind Farm`, then `workers_out == 1` (checkpoint at game 4.4 s; the build was at turn 14), then `out_88 > 0` (checkpoint at game 48.4 s, with raw 3.00 t after three catches).
+- `viewer_wiring_fisher_view_off`: the same build with the switch absent. At game 60 s: `workers_out 0`, `raw_88 0`, `out_88 0`.
+- Fails on main: on main's build (`3ce4150e`) the on case ends at once, because the window refuses `--fisher-rules`/`--player` (exit 2). Main has no way to switch the rule on in the viewer or to play as player 2.
+- `viewer_wiring_fisher_view_closed` (added after FISHER-1f landed; the branch merges main `4b104d3a`): the switch on, type 810 at the closed site. `commands.txt` records `build 810 242 217 1`, i.e. origin (242,217), rotation 1. The worker is out at tick 2,200 (build at turn 14 = tick 1,400). The first worker is released (`workers_out` back to 0) by tick 21,200 (fisher.md section 11: build + 19,720), with `raw_88` and `out_88` still 0. A second worker is out by tick 21,400 (+19,890), and the stock is still 0.
+- Whether a released fisher is drawn (FISHER-RE-4) is not touched here; the viewer change is the readout only.
+
+**Gates (this PC, MSVC Release).**
+- Build: clean.
+- Focused `ctest --preset msvc -j 16` with the game files and the UI shot variables, regex over all `anno_app_tests` and `anno_app_input_tests`, every `viewer_wiring_*`, the oracle-shot UI tests, the opening and selected-house replays, construction sessions and the fisher tests: **431 of 431 passed** on `3ce4150e`, and after the merge with `4b104d3a` and the closed case **435 of 435 passed** (all three `viewer_wiring_fisher_view_*` among them). Three of them are opt-in measurements that skip themselves (`ANNO_PLAY_LIVE_TIMING`, `ANNO_PROBE` ×2).
+- clang-format 23.1.3 `--dry-run --Werror` on the changed C++: clean.
+- wsl -d Ubuntu -- bash tools/check_unix_warnings.sh: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 409 of 410 clean, the one FAIL the known src/sim/tests/extensions_test.cpp (untouched). Hosted CI runs on the push.
+
+**NOT_RUN.** The full suite; Linux/macOS game-file runs.
+
+**Decisions and reasoning.**
+- An extension switch rather than a rules profile: fisher_rules is a persistent extension (`state.md` §9.8), not a `sim::Rules` field.
+- `--player` was added because the step needs the tutorial's real human (player 2); the alternative, re-seating the scenario, would change the scene.
+- Numeric facts instead of parsing the status text, so a script compares numbers; the status text is unchanged.
+
+**For step C: the settings of the clean History Edition run, so the viewer can be put on the same view.** Basis: the owner's ui_5 (closest zoom, OBS scaled 2560×1440 down to 1920×1080: the HE tile measured ≈63×31.5 px there, i.e. 84×42 px natively = our zoom group 0) and UI-HE-1's measurements.
+- **History Edition:** windowed, maximised on the owner's 2560×1440 monitor; client ≈ 2542×1351 (UI-HE-1). Options → interface scale **1.0**. Camera orientation as at the start of the tutorial, never rotated. Zoom: **closest** (as far in as it goes). Speed: normal, never changed. No other screen opened (no statistics, no menu).
+- **Tutorial text:** leave the welcome text open and don't click it. In ui_5, closing it triggered the next tutorial message, which moved the camera to the harbour at 6:59.7.
+- **Camera:** before the build, scroll so site A (the bay's north shore at the forest edge, guide picture) sits in the middle of the map area; after that, don't touch the camera.
+- **Build:** the hut in its automatic orientation (HE turns it to the shore; `.` changes nothing there). Don't select the hut during the 120 s: the selection draws the range highlight over the map. Click it once at the end to show its stock.
+- **OBS:** Settings → Video, base and output resolution both **2560×1440**, 60 fps. Recording quality "Indistinguishable" (Simple) or NVENC CQP ≤ 15 (Advanced). Game capture source transformed "Fit to screen".
+- Record from before the build to at least 2:30 after it. Two fresh games: run 1 at site A, run 2 at the open control B (one tile to the left; HE's auto-orientation may differ from rotation 0 there — report which).
+- **Our viewer, same view:** `--play {game}/Scenes/Tutorial/02Trade01.sze --player 2 --fisher-rules on --group 0`, window 2542×1351 (`ANNO_VIEW_SIZE`), centre `ANNO_VIEW_AT` on the hut (A: 243,218; B: 244,217). The HE camera's exact position cannot be read, so frames are matched by registration on the background (as in ui_5, ±3 px).
+
+**Landing.** Contains main `4b104d3a`; through the orchestrator.

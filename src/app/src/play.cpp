@@ -114,7 +114,8 @@ load_fixed_play(const fs::path& game_dir, const formats::fixed_map::FixedMap& ma
     if (fixed.stand_in_placement) {
         seams.placement_rule = sim::stand_in_placement_seam();
     }
-    auto created = sim::World::create(loaded.value().spec, types, cfg, fixed.rules, seams);
+    auto created = sim::World::create(loaded.value().spec, types, cfg, fixed.rules, seams,
+                                      sim::serial_executor(), fixed.extensions);
     if (!created) {
         return created.error();
     }
@@ -202,8 +203,8 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     if (!resolved) {
         return resolved.error();
     }
-    auto created =
-        sim::World::create(resolved.value().loaded.spec, registry.types, cfg, fixed.rules);
+    auto created = sim::World::create(resolved.value().loaded.spec, registry.types, cfg,
+                                      fixed.rules, {}, sim::serial_executor(), fixed.extensions);
     if (!created) {
         return created.error();
     }
@@ -861,6 +862,9 @@ std::optional<BuildingInspection> inspect_building(const sim::World& world, sim:
     }
     out.kind = payload_kind_name(b->payload);
     out.status = std::visit(DescribePayload{}, b->payload);
+    if (const auto* farm = std::get_if<sim::Farm>(&b->payload)) {
+        out.farm = BuildingInspection::FarmFigures{farm->out, farm->raw, farm->workers_out};
+    }
     return out;
 }
 

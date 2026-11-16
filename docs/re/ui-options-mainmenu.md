@@ -201,10 +201,14 @@ profile folder `%s\SaveGame\%s` (0x10095c54, D; `user-dat.md`).
 
 ### 2.6 In-game options panel (`View.dll`)
 
-Positions of the `View.dll` gadgets come from a layout table indexed by gadget number (vtable
-`+0x24`(gadget, index), D 0x10079cf7), not from immediates, so all rectangles here are **measured**
-on GOG shots (exact pixels) and checked on HE frames. All graphics are `ToolGfx\fenster.tex`
-(P; HE ids in section 3.3).
+Where the positions of the `View.dll` gadgets come from is **unknown (OQ-651)**: the builder adds
+each child with vtable `+0x24`(gadget, index) (D 0x10079cf7), and that slot (0x10019830, the same
+function in the options and the city panel's vtable, e.g. `0x100a07d0 + 0x24`) only grows the
+view's child vector at `+0x5e0` to the index and stores the gadget pointer there (D
+0x10019883..0x1001991d); it holds no rectangle. (This prep first called it "a layout table indexed
+by gadget number"; refuted by the orchestrator's review 2026-11-16.) No position immediates are in
+the builders either, so all rectangles here are **measured** on GOG shots (exact pixels) and
+checked on HE frames. All graphics are `ToolGfx\fenster.tex` (P; HE ids in section 3.3).
 
 **Frame (all five pages)**
 

@@ -24,8 +24,9 @@ footage the stage needs; recordings are in the recipe at the end.
 
 Read in GOG `View.dll` / `AnnoFrame.dll` / `AnnoWelt.dll` and update the spec with addresses:
 
-1. Where a View.dll child gadget gets its position (OQ-651): gadget base 0x100188c0 / 0x10018b90,
-   the panel's slot +0x24.
+1. Where a View.dll child gadget gets its position (OQ-651): gadget base 0x100188c0 / 0x10018b90
+   and any later layout pass (the panel's slot +0x24 = 0x10019830 only stores the child pointer,
+   spec OQ-651).
 2. Slider class 0xb17 (constructor 0x1000fa60): properties 0x1a1, 0x1a2, 0x1a5, 0x193 and the
    formatter 0x10025110 (OQ-654).
 3. The add-goods flow: 0x100249f0, the chooser's selection handler, the 0x73 apply in AnnoWelt

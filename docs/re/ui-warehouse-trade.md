@@ -294,9 +294,13 @@ Commands the panel sends:
   each child's (x, y) defined (slot index + a table, a parent layout pass, the gadget base class)?
 - **What we know:** AnnoFrame builders set positions with gadget slot +0x5c `(x, y)` (0x1001ef47);
   View.dll builders add children with slot +0x24 `(gadget, index)` only; page backgrounds are placed by
-  `[obj+8](x, y)` in the draw slot (0x1006c7cb, 0x1002130b).
+  `[obj+8](x, y)` in the draw slot (0x1006c7cb, 0x1002130b). Slot +0x24 is 0x10019830 in the city
+  panel's and the options view's vtables: it grows the child vector at `+0x5e0` to the index and
+  stores the gadget pointer (0x10019883..0x1001991d), so the index selects no rectangle table
+  (orchestrator's review 2026-11-16; re-read for this note).
 - **How to resolve:** read the gadget base class (0x100188c0 constructor, 0x10018b90 message
-  handler) and slot +0x24 of the panel class; check whether the index selects a rect table.
+  handler) and the gadgets' own default sizes and positions; search the panel's later layout or
+  draw pass for writes to the children's position fields.
 
 ## OQ-652: Confirm that the HE videos show the plain set at 0.75
 - **Status:** open, narrowed 2026-11-16 by the orchestrator's review (related: OQ-535).

@@ -212,9 +212,10 @@ if(ANNO_BUILD_TESTS)
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # FISHER-VIEW-1: --fisher-rules on|off in --play on a shipped scenario (Tutorial/02Trade01,
       # player 2), with the hovered hut's readout; `{game}` is ANNO1503_GAME_DIR (viewer_wiring.py).
-      foreach(case on off)
+      # `closed`: the closed site (242,217) rotation 1 with the switch on (FISHER-1f).
+      foreach(case on off closed)
         set(fisher_args)
-        if(case STREQUAL "on")
+        if(NOT case STREQUAL "off")
           set(fisher_args --app-arg --fisher-rules --app-arg on)
         endif()
         add_test(NAME viewer_wiring_fisher_view_${case}

@@ -229,7 +229,13 @@ says who is doing what, where the work is, and what it waits on.
     (notches at the zoom limits, the presented scale logged): **not reproduced again** in 21,775 frames
     (`bf35b89c`); found on the way: the rebuild's closest zoom is 84 x sqrt(2) = 118.8 px tiles, closer than the
     original's 84 px (the owner's choice whether that stays the default); next, the owner's real wheel with
-    every wheel event traced (ZOOM-BOUNCE-3, queued after ZOOM-SMOOTH-3)); **ZOOM-SMOOTH-3 RELEASED**; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
+    every wheel event traced (ZOOM-BOUNCE-3, queued after ZOOM-SMOOTH-3)); **ZOOM-SMOOTH-3 ACCEPTED** 2026-11-16
+    (`3526d253`, CI green; [review](reviews/2026-11-16-zoom-smooth-3-and-bounce-3.md)): the 9 to 18 ms spikes at
+    maximum zoom-out are gone (worst 1.3 to 5.1 ms); one step is left, `finish`, 4.4 to 10.8 ms in rare frames
+    with no new work; its cause is not classified, so **[ZOOM-SMOOTH-3b](tasks/zoom-smooth-3.md) is RELEASED**
+    (CPU against wall time of that call, draws per pass, the real drawn-chunk count); **ZOOM-BOUNCE-3 ACCEPTED**
+    (`fc1fbff7`, CI green, same review): two opposite notches 5 ms apart give a 1.47 % zoom-in for one frame,
+    the size the owner saw; the owner's 20 s wheel test with the trace is open; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
     trigger at most every 16 ms) and waits for the owner's fast drag. **Mac:** the gate run for FISHER-VIEW-1,
     FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **All three reported and reviewed**
     2026-11-16 ([review](reviews/2026-11-16-mac-three-reports-review.md)): the gate run on `eb11f0c6` has the

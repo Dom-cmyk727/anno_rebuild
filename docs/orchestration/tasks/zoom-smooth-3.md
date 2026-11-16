@@ -137,3 +137,42 @@ READY FOR REVIEW, about 60 lines:
 - NOT_RUN;
 - Decisions and reasoning;
 - QUESTIONs.
+
+## ZOOM-SMOOTH-3b: classify the `finish` spikes
+
+**Status:** written and **RELEASED** 2026-11-16 by the Claude Code orchestrator for the Windows executor, from the
+[review of ZOOM-SMOOTH-3](../reviews/2026-11-16-zoom-smooth-3-and-bounce-3.md) (F1 to F3).
+
+**Base:** `task/ZOOM-SMOOTH-3` `3526d253`, same branch and worktree, new commits. About 2 hours. One concern: say
+what the slow `wgpuCommandEncoderFinish` calls are. Measurement and diagnostics only; no fix, no change to what is
+drawn. Never rebase, force-push or push `main`. No reviewer subagents. No WSL while the orchestrator runs a gate
+(ask if unsure).
+
+**Why:** ZOOM-SMOOTH-3 found frames where `finish` alone takes 4.4 to 10.8 ms, and showed they happen in frames
+with no new work. It did not show what the time is. Whether RENDER-DIRECT has to fix this depends on the answer.
+
+**Do:**
+1. **Fix the count's name (F1).** "visible chunks" is `chunks_built + chunks_missing`. Print it as what it is
+   ("chunks built", "chunks missing") and add the real number of chunks drawn in the frame.
+2. **Add the counts the packet asked for (F2):** draws per pass and bind groups set, per frame. If the compositor
+   does not count them yet, count them where the passes are recorded, in `GpuStats`.
+3. **CPU time against wall time of the one `finish` call (F3).** Read the calling thread's CPU time before and
+   after (`QueryThreadCycleTime` or `GetThreadTimes` on Windows, `clock_gettime(CLOCK_THREAD_CPUTIME_ID)`
+   elsewhere), behind the existing hitch switch. Wall time far above CPU time means waiting (a lock, the
+   scheduler); the two equal means the call computes.
+4. **Look back more than one frame.** For every slow `finish`, print the sums of planes freed, chunks dropped and
+   sprites decoded over the 8 frames before it.
+5. **The distribution, not only the worst frames.** Over one live session at maximum zoom-out and one control
+   sweep: the number of frames, and `finish` at the median, the 99th and 99.9th percentile and the maximum; and
+   `finish` against draws per pass (does the ordinary cost grow with the draws, and do the spikes sit off that
+   line?).
+6. **Which threads call wgpu.** List, from the code, every thread other than the window thread that calls a wgpu
+   function (uploads, plane creation, releases), with file and function. No change.
+
+**Report** (one REPORTS entry, about 60 lines): the table of step 5; for the slow calls, CPU against wall time and
+the look-back sums; the list of step 6; one conclusion with its evidence: computing, waiting on a lock, descheduled,
+or deferred destruction; and what, if anything, the application can change. Guesses are marked as guesses.
+
+**Gates:** the changed lanes only (`anno_app_tests`, `anno_render_tests` and `anno_render_gpu_tests` if `GpuStats`
+changes, `viewer_wiring_*`), clang-format 23.1.3, the WSL `-Werror` check on the touched files. A test refused for
+memory is rerun alone.

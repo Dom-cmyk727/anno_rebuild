@@ -83,12 +83,18 @@ and 0x1006a790..0x1006f6a0 except two unrelated sites); AnnoFrame builders do ca
 `(x, y)` (e.g. 0x1001ef47). Where the View.dll positions come from is OQ-651. Positions below are
 therefore **measured** (M) or derived from a measured anchor plus a code offset (A).
 
+**Already in main:** `data/ui/hud.txt` panel `info` (the "?" tab's city view) holds this panel's
+page background `info_bk` (`STADT_BILANZ_BK` at (779, 301)), the eight tabs `info_subtab_0..7`
+((762, 303 + 46 i), frame 662 on the selected tab 0, 661 + 2i on the others) and the deny button `info_build_stop`
+((858, 674), frame 678), all sprite-565 on `r2_tab_help`; UI-TABS-1 switches its sub-tabs
+(`docs/re/ui.md` section 5.4 on `task/UI-TABS-1`).
+
 ### 2.1 City panel shell (id 0xa3a, constructor 0x1006ae90, vtable 0x100a07d0, builder 0x1006a790)
 
 | Element | Graphic | Rect (GOG 1024 x 768) | Text / data | Action | Evidence |
 |---|---|---|---|---|---|
 | Goods chooser (hidden) | class 0xa0c, child 9 | U | - | opened by "Add goods" | D 0x1006a7ac..0x1006a7dc |
-| Page objects | ids 0xa3b..0xa42, children 0..7 | page origin (779, 243) (A: bk at (779, 300) minus code offset (0, 57)) | - | - | D loop 0x1006a886..0x1006a939 (`0xa3b + i`); M-GOG bk |
+| Page objects | ids 0xa3b..0xa42, children 0..7 | page origin (779, 244) (A: bk at (779, 301) minus code offset (0, 57)) | - | - | D loop 0x1006a886..0x1006a939 (`0xa3b + i`); M-GOG bk |
 | Name plank | `PLANKEGROSS` id 1019, 241 x 48 (class 0xb17) | (783, 252) | - | - | D 0x1006aa5d..0x1006aab5; M-GOG `f15_kontor` sprite-sad 16.34 (text on it) |
 | Crest at the plank's right | class 0xb17, gadget 42 x 55, image initially `GRNATIVESCHILDER` | about (975-1024, 245-300) | U | - | D 0x1006aa06..0x1006aa5b; no `GRNATIVESCHILDER`/`GRPLAYERSCHILDER`/`KLPLAYERSCHILDER` frame matches (best 43.9) → OQ-657 |
 | City name | text gadget class 0xb1d, 241 x 39, property 0x1c4 = "StadtName", 0x1c6 = 2, font property 5 = 0x19 | on the plank, centred | `City::name` ("Plantau" on `f15_kontor`, "Bad Aussee" on HE 6:45) | - | D 0x1006aaca..0x1006abae; M-GOG, M-HE |
@@ -99,7 +105,7 @@ therefore **measured** (M) or derived from a measured anchor plus a code offset 
 
 | Element | Graphic / gadget | Rect (GOG) | Text / data | Action | Evidence |
 |---|---|---|---|---|---|
-| Background | `STADT_BILANZ_BK` id 677, 245 x 468; holds the row plates and row icons | (779, 300) = page + (0, 57) | - | - | D 0x1006c761..0x1006c7d1 (`push 0x39; push 0`); M-GOG mean 20.52 (RGB565 + text); P (decoded: icons and plates are in the texture) |
+| Background | `STADT_BILANZ_BK` id 677, 245 x 468; holds the row plates and row icons | (779, 301) = page + (0, 57) | - | - | D 0x1006c761..0x1006c7d1 (`push 0x39; push 0` at 0x1006c7cb); M-GOG `f15_kontor` mean 11.1 at (779, 301) against 20.1 at (779, 300) (orchestrator's review 2026-11-16; this prep had measured 20.52 at y 300); main's `data/ui/hud.txt` `info_bk` at (779, 301), sprite-565 on `r2_tab_help`; P (decoded: icons and plates are in the texture) |
 | Rows 0..7 | 8 text gadgets class 0xb1c, 195 x 15, children 0..7, tooltip `TOOLTIP:INFOSTADT_STADTMAIN` line i | plates at about y 319, 349, 379, 409, 439, 469, 530, 629 (each about 209 x 22, x about 809); values right-aligned near x 1007 | row 0 "Inhabitants"/"Einwohner", 1 "Warenerträge" (GOG English line 1 reads "Sales revenue"), 2 "Operating costs"/"Betriebskosten", 3 "Purchase costs"/"Einkaufskosten", 4 "Sales revenue"/"Verkaufserlöse", 5 "Military costs"/"Militärkosten", 6 "Balance"/"Stadtbilanz" (red when negative), 7 "Knowledge in city"/"Wissen in der Stadt" | none | D loop 0x1006c810..0x1006c8e8 (`cmp esi, 7`); row y M-GOG approx (visual on 2x crop, ±2 px); M-GOG values 0, 0, 15, 0, 0, 0, -15, 0; M-HE `ui_5` 6:45 values 120, 91, 248, 0, 0, 0, -157, 9 |
 | Balance rule | - | - | row 6 = row 1 - row 2 - row 3 + row 4 - row 5 | - | A: GOG 0 - 15 = -15; HE 91 - 248 = -157 (both captures; trade rows 0) |
 | Deny building material | class 0xb05, 112 x 60, child 8, `VIEWINFOSTADTAUSBAUSTOP` id 678: **frame 678 = allowed, 679 = denied** (two tooltip lines set: 8/9 and 10/11 of `STADTMAIN`) | (858, 674) | state = city build-goods setting of goods 0x29 | toggles: sends 0x7c mode 9 (section 2.3) | D 0x1006c8fc..0x1006ca4e, handler 0x1006cb10 → 0x1006caa0; M-GOG `f15_kontor` 678 mean 3.30; `f15_kontor_btn_b` (click (870, 680)) 679 mean 3.30; `f15_kontor_btn_c` (click (920, 680)) back to 678 |
@@ -128,7 +134,7 @@ ctor case 0x1001b632); draw slot +0x54 = 0x10021290 (shared), builder slot +0x90
 
 | Child | Gadget | Size | Graphic | Tooltip (`TOOLTIP:INFOSTADT_WAREN_EIN-VERKAUF`) | Handler sell / buy | Evidence |
 |---|---|---|---|---|---|---|
-| bk | page background | 243 x 467 | `VKEK_HINTERGRUND` id 855 at page + (2, 57) → (781, 300) (A) | - | - | D 0x100212a1..0x10021311 |
+| bk | page background | 243 x 467 | `VKEK_HINTERGRUND` id 855 at page + (2, 57) → (781, 301) (A) | - | - | D 0x100212a1..0x10021311 |
 | stock bar | drawn by the page | 150 x 3 | `LAGERMENGENBALKEN` id 860 | - | - | D 0x10021314..0x1002136b (position U) |
 | 0 | text 0xb1c, default "00" (0x100a8284), alignment 1 | 150 x 20 | - | - | - | D 0x1001ea5f..0x1001eb14 |
 | 3 | tooltip area 0xb15 | U | - | line 0 "Amount remaining in storage" / "Im Lager verbleibende Menge" | - | D 0x1001eb30..0x1001eb8e |
@@ -256,7 +262,7 @@ Commands the panel sends:
 | Tab tooltips and page per tab | D + P |
 | Plank rect | M-GOG (mean 16.3, text on it) |
 | Crest graphic | U (OQ-657) |
-| Main page bk (779, 300), rows, deny button (858, 674) frames 678/679 | D + M-GOG (button exact 3.30) |
+| Main page bk (779, 301), rows, deny button (858, 674) frames 678/679 | D + M-GOG (button exact 3.30; bk mean 11.1); already in main's `hud.txt` panel `info` |
 | Main page row values' sim source and period | U (OQ-655) |
 | Balance rule | A (two captures) |
 | Sell = list 1 (VK), Buy = list 0 (EK) | D |
@@ -278,7 +284,7 @@ Commands the panel sends:
   two value texts, the goods grid and its cells, the Add and Delete buttons, the stock bar; text
   format of the values; how an empty list and an empty cell look.
 - **What we know:** sizes, textures, tooltips and handlers (D, section 2.4); the background
-  `VKEK_HINTERGRUND` should sit at (781, 300) on GOG 1024 x 768 (A). No capture of either edition.
+  `VKEK_HINTERGRUND` should sit at (781, 301) on GOG 1024 x 768 (A). No capture of either edition.
 - **How to resolve:** HE recording R2 and R3 (packet), then sprite-sad of each texture on the frames.
 
 ## OQ-651: Where View.dll's gadget positions come from

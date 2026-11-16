@@ -1,0 +1,22 @@
+# FISHER-VIEW-1: the same build as fisher_view_on.script with the fisher rule off (the default):
+# the hut stands, but no worker goes out and nothing is caught.
+# Launch: --play {game}/Scenes/Tutorial/02Trade01.sze --player 2 --speed 200
+resize 1024 768
+wait frames 5
+look 243 216
+wait frames 5
+key b
+wait frames 3
+select 810
+rotate 0
+expect title build 810
+click 244 217
+wait outcome
+expect outcome Applied
+expect fact inspection.type == 810
+expect fact inspection.kind == Farm
+wait fact game.ms > 60000 within 120000
+expect fact inspection.workers_out == 0
+expect fact inspection.raw_88 == 0
+expect fact inspection.out_88 == 0
+quit

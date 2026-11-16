@@ -140,6 +140,18 @@ downgrade, removal; `docs/sim/population-live.md` §8) and ECON-BOOK-1's checked
 upkeep run (`docs/sim/economy-booking.md`). `--city-booking on|off`, given together with
 `--rules`, sets that one field after the profile (the more specific flag).
 
+**Developer switches for `--play` (FISHER-VIEW-1).** `--fisher-rules on|off` creates the world
+with the persistent `fisher_rules` extension enabled (`sim::ExtensionContext`; default off, as
+every start before it); the sim's fisher rule itself stays behind that flag. `--player <n>` is
+the player slot the developer tool builds for and the snapshot reports (default slot 1,
+`developer_player()`); a shipped scenario seats its human elsewhere (Tutorial/02Trade01: player
+2, its city on island 3). Both are refused with `--view` and `--ship-start`. A recording's
+`session.txt` notes them (`extension fisher_rules`, `player <n>`); a replay is started with the
+same switches. With the developer tool on, the hovered building's inspection gives a Farm's (the
+fisherman's hut's) stock and workers as script facts in 8.8 units (`inspection.out_88`,
+`inspection.raw_88`, `inspection.workers_out`) next to the game time (`game.ms`); the window
+title shows the same line, a little behind. Wiring cases `viewer_wiring_fisher_view_on|off`.
+
 Whether `living` becomes the default is the owner's decision; this flag changes nothing about
 it. A save or a recording carries the profile it was made with: `--resume` and
 `--replay-hashes` refuse a different one before turn 1 (a plain `--play` recording keeps its

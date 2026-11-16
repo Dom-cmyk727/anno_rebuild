@@ -1,0 +1,25 @@
+# FISHER-VIEW-1: the fisher rule switched on in --play (--fisher-rules on). Tutorial/02Trade01,
+# player 2 (its city on island 3), type 810 at the open control of FISHER-RE-3 / FISHER-HE-1:
+# origin (243, 216), rotation 0. The click is the footprint's centre tile (244, 217): the original
+# centres a 3 x 4 footprint on the clicked tile (origin = click - (d - 1) / 2, site_checks.hpp).
+# The hovered hut's readout (inspection.* facts, game.ms) shows a worker out, then output.
+# Launch: --play {game}/Scenes/Tutorial/02Trade01.sze --player 2 --fisher-rules on --speed 200
+resize 1024 768
+wait frames 5
+look 243 216
+wait frames 5
+key b
+wait frames 3
+select 810
+rotate 0
+expect title build 810
+click 244 217
+wait outcome
+expect outcome Applied
+expect fact inspection.type == 810
+expect fact inspection.kind == Farm
+wait fact inspection.workers_out == 1 within 60000
+checkpoint worker_out
+wait fact inspection.out_88 > 0 within 180000
+checkpoint output
+quit

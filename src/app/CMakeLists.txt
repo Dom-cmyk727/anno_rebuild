@@ -210,6 +210,21 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_menu_close_disarms PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # FISHER-VIEW-1: --fisher-rules on|off in --play on a shipped scenario (Tutorial/02Trade01,
+      # player 2), with the hovered hut's readout; `{game}` is ANNO1503_GAME_DIR (viewer_wiring.py).
+      foreach(case on off)
+        set(fisher_args)
+        if(case STREQUAL "on")
+          set(fisher_args --app-arg --fisher-rules --app-arg on)
+        endif()
+        add_test(NAME viewer_wiring_fisher_view_${case}
+          COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                  $<TARGET_FILE:anno1503> fisher_view_${case}
+                  --app-arg --play --app-arg {game}/Scenes/Tutorial/02Trade01.sze
+                  --app-arg --player --app-arg 2 --app-arg --speed --app-arg 200 ${fisher_args})
+        set_tests_properties(viewer_wiring_fisher_view_${case} PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      endforeach()
       # UI-PLACE-1: the pickaxe with nothing armed, a cell chosen while demolishing, the cancel-X.
       # UI-PLACE-2: ESC and the right click one step back, a right drag still pans.
       # UI-PAN-1: a click (under the 4 px slop) moves the map not at all, either button.

@@ -41,6 +41,9 @@ inline constexpr const char* kUsage =
     "own rules unchanged; living adds house_updates=true and city_booking=true on top of them. "
     "--city-booking on|off, given together with --rules, sets that one field after the profile. "
     "A save or recording made with one profile refuses to resume or replay with another.)\n"
+    "(--play only, developer: [--fisher-rules on|off] creates the world with the fisher rule "
+    "extension on (default off); [--player <n>] is the player slot the developer tool builds "
+    "for (default 1))\n"
     "(--group 0-2: the built zoom levels; 3 and up: derived levels, --png only, bounded by "
     "--max-derived-levels)\n"
     "(--png only: [--zoom-factor <scale>] [--resample nearest|bilinear|box|area], the picture "
@@ -177,6 +180,15 @@ struct Args {
     /// the field after the profile (the more specific flag). A developer/session option for
     /// W4-EXPAND-LIVE-1's manual-expansion card, not a changed default.
     std::optional<bool> city_booking;
+    /// --fisher-rules on|off (FISHER-VIEW-1): a developer switch for --play (not --ship-start)
+    /// that creates the world with the persistent `fisher_rules` extension enabled
+    /// (sim::ExtensionContext; the sim rule itself stays behind that flag). Off, or absent, is
+    /// the default: the world is created with default extensions, as before.
+    bool fisher_rules = false;
+    /// --player <n> (FISHER-VIEW-1): --play only - the player slot the developer tool builds for
+    /// and the snapshot reports (default commands_file's developer_player(), slot 1). A shipped
+    /// scenario seats its human elsewhere (Tutorial/02Trade01: player 2, its city on island 3).
+    std::optional<std::uint32_t> play_player;
     /// Multiplayer rate: fixed real-time cadence, variable game ms per step.
     unsigned play_speed = 100;
     /// --play --commands <file>: scripted Build and Demolish lines (game-shell.md).

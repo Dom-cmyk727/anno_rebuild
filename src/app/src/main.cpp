@@ -344,6 +344,10 @@ int run(const std::vector<std::string>& raw) {
             if (args->city_booking.has_value()) {
                 fixed_options.rules.city_booking = *args->city_booking;
             }
+            // FISHER-VIEW-1: the developer switch for the fisher rule (an extension, off by
+            // default; the rule itself stays behind that flag in the sim).
+            fixed_options.extensions.fisher_rules.enabled =
+                args->fisher_rules ? std::uint8_t{1} : std::uint8_t{0};
             if (const char* g = std::getenv("ANNO_DEV_GOLD"); g != nullptr && *g != 0) {
                 fixed_options.gold = std::strtoll(g, nullptr, 10);
             }
@@ -360,10 +364,11 @@ int run(const std::vector<std::string>& raw) {
         }
         if (args->commands) {
             // Parsed against the loaded world, before the world moves into the runner.
-            auto parsed =
-                anno::app::load_commands(*args->commands, play->world,
-                                         opening ? anno::sim::PlayerId{opening->setup.local}
-                                                 : anno::app::developer_player());
+            auto parsed = anno::app::load_commands(
+                *args->commands, play->world,
+                opening             ? anno::sim::PlayerId{opening->setup.local}
+                : args->play_player ? anno::sim::PlayerId{*args->play_player}
+                                    : anno::app::developer_player());
             if (!parsed) {
                 std::fprintf(stderr, "%s: %s\n", name.c_str(), parsed.error().c_str());
                 return 1;
@@ -562,9 +567,13 @@ int run(const std::vector<std::string>& raw) {
         }
         picture = std::make_unique<anno::app::ScenePicture>(shown, buildings, objects.is_building,
                                                             2, std::move(limits));
-        dev.emplace(anno::app::dev_tool_setup(*play, opening
-                                                         ? anno::sim::PlayerId{opening->setup.local}
-                                                         : anno::app::developer_player()));
+        // FISHER-VIEW-1: --player picks the developer tool's player for --play (a shipped scenario
+        // seats its human elsewhere than slot 1).
+        const anno::sim::PlayerId tool_player =
+            opening ? anno::sim::PlayerId{opening->setup.local}
+                    : (args->play_player ? anno::sim::PlayerId{*args->play_player}
+                                         : anno::app::developer_player());
+        dev.emplace(anno::app::dev_tool_setup(*play, tool_player));
         hooks.dev = &*dev;
         if (args->construction_menu) {
             const fs::path layout_dir = args->layout.value_or(fs::path("data/ui"));
@@ -590,6 +599,9 @@ int run(const std::vector<std::string>& raw) {
         play_rules_digest = play->world.rules().digest();
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_record_hashes(!session_dir.empty());
+        if (!opening && args->play_player) {
+            runner->set_local_player(tool_player); // the snapshot reports the tool's player
+        }
         if (opening) {
             runner->set_local_player(opening->setup.local);
             runner->set_opening(true);
@@ -661,6 +673,13 @@ int run(const std::vector<std::string>& raw) {
             name, args->play_speed, args->rules_profile, play_rules_digest);
         if (opening) {
             invocation += anno::app::format_opening_identity(opening->identity);
+        }
+        // FISHER-VIEW-1: the developer switches a replay needs as well (information lines).
+        if (args->fisher_rules) {
+            invocation += "extension fisher_rules\n";
+        }
+        if (args->play_player) {
+            invocation += "player " + std::to_string(*args->play_player) + "\n";
         }
         if (!write_session(session_dir, *runner, script ? &*script : nullptr, invocation,
                            opening.has_value()) &&

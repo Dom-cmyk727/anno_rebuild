@@ -372,6 +372,25 @@ TEST_CASE("command line") {
     CHECK_FALSE(*rules_city_off->city_booking);
     CHECK(anno::app::apply_rules_profile({}, RulesProfile::Living).house_updates);
 
+    // --fisher-rules on|off and --player <n> (FISHER-VIEW-1): --play developer switches only, not
+    // --view and not --ship-start (which has its own seat and rules); default off / none.
+    CHECK_FALSE(rules_default->fisher_rules);
+    CHECK_FALSE(rules_default->play_player.has_value());
+    const auto fisher_on = parse_args({"--play", "x.sze", "--fisher-rules", "on", "--player", "2"});
+    REQUIRE(fisher_on.has_value());
+    CHECK(fisher_on->fisher_rules);
+    REQUIRE(fisher_on->play_player.has_value());
+    CHECK(*fisher_on->play_player == 2);
+    const auto fisher_off = parse_args({"--play", "x.sze", "--fisher-rules", "off"});
+    REQUIRE(fisher_off.has_value());
+    CHECK_FALSE(fisher_off->fisher_rules);
+    CHECK_FALSE(parse_args({"--play", "x.sze", "--fisher-rules", "yes"}));
+    CHECK_FALSE(parse_args({"--play", "x.sze", "--player", "two"}));
+    CHECK_FALSE(parse_args({"--view", "x.sze", "--fisher-rules", "on"}));
+    CHECK_FALSE(parse_args({"--view", "x.sze", "--player", "2"}));
+    CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--fisher-rules", "on"}));
+    CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--player", "1"}));
+
     // --ui classic|dev (ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION): default
     // Classic, parsed independently of --play (unlike --construction-menu). Parsing it on
     // --view is accepted, not an error, but it has no live effect there - a --view window

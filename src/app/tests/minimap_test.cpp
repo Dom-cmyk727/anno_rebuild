@@ -101,7 +101,7 @@ TEST_CASE("minimap palette: the original's 1:5:5:5 entries, shades 0 and 1 trans
     CHECK(pal[1 * 16 + 15] == std::array<std::uint8_t, 4>{0, 190, 255, 255});
 }
 
-TEST_CASE("minimap image: owner * 16 + shade from a synthetic island") {
+TEST_CASE("minimap image: owner x 16 + shade from a synthetic island") {
     const app::MinimapConfig cfg;
     // A 512-tile world: sx = sy = 2 tiles per cell. An island at (10, 20), 8 x 6 tiles, height
     // 100 everywhere; its owner 3 on its first column, else none.

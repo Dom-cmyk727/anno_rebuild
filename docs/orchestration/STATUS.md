@@ -334,6 +334,8 @@ says who is doing what, where the work is, and what it waits on.
     owner ("find and identify a modern state of the art solution that will adjust to the users resolution");
     save files are named as the original (GUID names, the display name inside); the statistics memory slots
     are saved game state, as the original.
+    **Fix round `f8460129` checked 2026-11-16: ACCEPTED as documents**, all eleven points done, CI green; it
+    lands with the next candidate on the owner's OK. Before it:
     **Reviewed 2026-11-16: ACCEPTED WITH FIXES, not landed**
     ([review](reviews/2026-11-16-ui-panels-prep-review.md)): an independent reviewer checked 42 claims against
     the GOG files, 33 hold; eleven points are to fix on the branch first (a merge conflict in the open

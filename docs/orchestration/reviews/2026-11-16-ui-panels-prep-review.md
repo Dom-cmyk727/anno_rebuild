@@ -80,3 +80,30 @@ to fix on the branch first.
 The History Edition measurements (no video frame was opened), the pixel identity of GOG and History Edition
 textures, the History Edition's text and DLL strings, the manual's page references, the statements about names in
 `src/`, and about 200 further addresses.
+
+## The fix round (`f8460129`, checked 2026-11-16)
+
+Main is merged into the branch (no rebase); the diff against main is ten document files; CI is green on the head.
+The orchestrator checked each of the eleven points in the text:
+
+| # | Point | Now |
+|---|---|---|
+| 1 | The open questions conflict with main | Merged; OQ-628 to 640, then OQ-650 to 689; the branch merges into main cleanly |
+| 2 | The History Edition "8 set" claim | Retracted: the videos are 0.75 recordings of the plain set; OQ-652 is "confirm the 0.75 fit" |
+| 3 | (779, 300) | (779, 301), page origin (779, 244), `VKEK_HINTERGRUND` at (781, 301); `hud.txt`'s `info` panel named |
+| 4 | The layout-table claim | "unknown (OQ-651)"; slot +0x24 only stores the child pointer |
+| 5 | Six text gadgets | Seven, with both addresses; OQ-661 corrected |
+| 6 | The 64 unwritten bytes | Removed; the write at `0x1002d615` is described |
+| 7 | Records 0x7c and 0x8a | Complete, with every offset, named as the multiplayer client's packers |
+| 8 | The id shift | +5 for GOG 6 to 823, +4 for 825 to 1487, +6 from 1488; GOG 824 has no History Edition twin |
+| 9 | The balance rule | Row 6 = row 1 minus row 2 only; the rest is OQ-655; stage W1d follows |
+| 10 | The register's fields | All 40 entries have status, area, question, what is known and how to resolve; no number repeats |
+| 11 | OQ-675 | The owner's decision is recorded in the spec, the register and packet line M4 |
+
+The packet notes are taken up too: one recording set-up (`tasks/ui-panels-he-recording.md`: a 1024 x 768 History
+Edition window, lossless, with a test clip first), the oversized stages split, the order gaps closed, "9.6 t gives
+20", the three sim-reaching stages turned into sim tasks (statistics M1, options S6-SIM, warehouse W-SIM-1), and
+every sub-tab stage plugged into UI-TABS-1's views.
+
+**Verdict: ACCEPTED as documents.** It lands with the next candidate on the owner's OK. No draft stage is released
+by the landing.

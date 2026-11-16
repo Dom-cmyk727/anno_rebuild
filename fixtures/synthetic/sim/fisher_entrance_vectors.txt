@@ -1,0 +1,27 @@
+# FISHER-RE-3: self-authored integer windows, docs/re/fisher.md §10. Not extracted game bytes.
+# AnnoGame 10008ea0: top four48, bottom0/48/48/0 =>2 wet vertices, enough; both centre entrance tiles mean48.
+coast_site closed_810 width=3 height=4 rotation=0 heights=48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,0,48,48,0 entrances=1,3,1,0 draws=- => coast_pass=1 wet_vertices=2 means=48,48 open_entrances=0 consumed=0
+# The same synthetic window rotated1; left shore48, opposite0/48/48/0, tile offsets(3,1)/(0,1).
+coast_site closed_rotation1 width=3 height=4 rotation=1 heights=48,48,48,48,0,48,48,48,48,48,48,48,48,48,48,48,48,48,48,0 entrances=3,1,0,1 draws=- => coast_pass=1 wet_vertices=2 means=48,48 open_entrances=0 consumed=0
+# Bottom four0 still pass; first mean(48+48+0+0)/4=24, second48: open control.
+coast_site open_control width=3 height=4 rotation=0 heights=48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,0,0,0,0 entrances=1,3,1,0 draws=- => coast_pass=1 wet_vertices=4 means=24,48 open_entrances=1 consumed=0
+# Bottom0/16/16/0: all4 wet; first mean(48+48+16+16)/4=32, equality remains closed.
+coast_site closed_equality width=3 height=4 rotation=0 heights=48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,0,16,16,0 entrances=1,3,1,0 draws=- => coast_pass=1 wet_vertices=4 means=32,48 open_entrances=0 consumed=0
+# Only one opposite vertex<32, below floor(4/2)=2; all other tests unchanged.
+coast_site insufficient_wet width=3 height=4 rotation=0 heights=48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,0,48,48,48 entrances=1,3,1,0 draws=- => coast_pass=0 wet_vertices=1 means=48,48 open_entrances=0 consumed=0
+# Shore requires exactly48, so47 at its corner refuses although max48 and opposite wet count2 remain.
+coast_site broken_shore width=3 height=4 rotation=0 heights=47,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,0,48,48,0 entrances=1,3,1,0 draws=- => coast_pass=0 wet_vertices=2 means=48,48 open_entrances=0 consumed=0
+# 3510's4x3 footprint: shore5x48, opposite0/48/48/48/0 gives floor(5/2)=2; both entrance tiles land.
+coast_site closed_3510_geometry width=4 height=3 rotation=0 heights=48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,0,48,48,48,0 entrances=0,0,1,1 draws=- => coast_pass=1 wet_vertices=2 means=48,48 open_entrances=0 consumed=0
+# Outside home: code7 admits no neighbour, failed kind4 start goes to null fallback; no completion/raw credit, worker releases.
+closed_home outside_cargo inside=0 means=32,48 goods=71 cargo=768 raw=5 draws=- => started=0 failed=1 credit=0 raw=5 released=1 consumed=0
+# Being already inside bypasses the search, so the same land entrances do not prevent the completion's768 credit.
+closed_home inside_bypass inside=1 means=32,48 goods=71 cargo=768 raw=5 draws=- => started=1 failed=0 credit=768 raw=773 released=1 consumed=0
+# Empty-cargo failure still releases the home worker slot, with no stock change.
+closed_home outside_empty inside=0 means=48,48 goods=71 cargo=0 raw=100 draws=- => started=0 failed=1 credit=0 raw=100 released=1 consumed=0
+# Inside completion tests goods!=0 before calling the receiver, even with nonzero quantity.
+closed_home no_goods inside=1 means=48,48 goods=0 cargo=768 raw=100 draws=- => started=1 failed=0 credit=0 raw=100 released=1 consumed=0
+# The Farm raw receiver is u16 addition:65530+10 wraps to4, not a clipped store.
+closed_home raw_wrap inside=1 means=48,48 goods=71 cargo=10 raw=65530 draws=- => started=1 failed=0 credit=10 raw=4 released=1 consumed=0
+# Bottom0/32/48/48: equality32 is NOT a wet vertex, so only1 wet and the coast refuses; mean44 remains closed.
+coast_site strict_wet_boundary width=3 height=4 rotation=0 heights=48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,0,32,48,48 entrances=1,3,1,0 draws=- => coast_pass=0 wet_vertices=1 means=44,48 open_entrances=0 consumed=0

@@ -12442,3 +12442,73 @@ Branch `task/UI-PAN-1` from main `67a960c9`. Done by the UI lane itself on the o
 **Decisions and reasoning.** One slop for both buttons and every mode, the same `kClickSlop` the selection already uses for click vs drag. Catch-up instead of starting from the slop edge, so a drag ends where the hand moved. The ship-start opening keeps its own 5 px click rule (`OpeningUi`); between 4 and 5 px a press there pans and still counts as a click, as before this change.
 
 **Landing.** On main `67a960c9`; independent of other lanes; lands through the orchestrator.
+
+## FISHER-RE-3 — READY FOR REVIEW (Mac, 2026-11-16)
+
+- Base: origin/main `67a960c9938eb5d2c78f4cffd8201bac8798d5d6`.
+- Branch: `task/FISHER-RE-3`; no merge, rebase, main push or engine change.
+- Read the complete released board packet at `af056488`, CLAUDE, PLAN,
+  TASKS owner/protocol rules, evidence contract, testing README and edition comparison.
+- Findings, addressed evidence and capture card: [fisher.md §10](../re/fisher.md#10-all-entrances-on-land-fisher-re-3-2026-11-16).
+- Placement: AnnoGame `0x10008ea0`–`0x100091d1`; island `0x1007c790`–`0x1007cc29`.
+- Coast checks shore/opposite vertices, not entrance means: an authored accepted
+  3 × 4 window has both entrance means 48, disproving a water-entrance guarantee.
+- Real candidate: Tutorial/02Trade01, player 2, island 3/city 0,
+  type 810 at (242,217), rotation 1; entrance means 32 and 48.
+- Normal loader, World::create, original INIT and one public Build succeed.
+- Evidence: `cache/fisher-re-3/build-site-current.log`; production dependency
+  build checked current in `probe-build-01.log`; private probe is not committed.
+- All 50 raw maps: 95 records / 92 unique geometry keys / 3 repeated keys;
+  87 with one open entrance / 5 all-closed, all five type 3510.
+- Counts by type: 73 of 810, 13 of 3978, 6 of 3510.
+- The old four-hut count was a canary subset. Type 3510 uses land worker 393 /
+  route 44; its closed mode-3 means do not establish a return failure.
+- Dispatch: special creator `0x10067e60` bypasses reachable-entrance gating.
+- Starts can expand out of closed cells; this does not guarantee an outbound route.
+- Home goals add keys at `0x1000414b`, but layer admission still reads code 7
+  at `0x10006aab`–`0x10006ab3`; layer 2 entry `0x100d4947` is zero.
+- Outside an all-closed home, no return walk is installed. Failed home kind 4
+  takes null fallback `0x1005e280`, not completion `0x10057bd0` / raw credit.
+- Dated correction: `0x10057ad0` returns home kind 4, not §3's earlier kind 8.
+- End/release `0x1003af00` / `0x1003b6e0` releases the worker without delivery;
+  zero velocity, outside delay and later registry expiry are distinguished.
+- Farm save `0x1006f010` has switch/output/raw/activity, no failed-home latch.
+- Generic TASK save and empty worker private writer read; complete original
+  temporary-worker save-caller/round-trip closure remains U, not parity evidence.
+- Direct world draw: one discarded eligible dispatch draw (`0x1006ee06`).
+- Named coast/home/fallback/end bodies add none directly; OQ-604 remains open.
+- Display CRT sound randomness is explicitly separate from world PRNG draws.
+- Reference: `coast_site` and domain-limited `closed_home`; no float emulation.
+- New authored fixture: 13 vectors (8 coast / 5 home), separate from the 53
+  existing vectors so the C++ geometry reader and its input remain unchanged.
+- Contract: 96 checks; 21 applied source mutants killed, including six new ones.
+- Initial direct contract caught an ambiguous old mutation span; narrowed it to
+  the whole return line. Final direct contract passes; first log preserved.
+- Direct logs: `direct-reference-01.log`, `direct-entrances-01.log`,
+  `direct-contract-final.log`, all under `cache/fisher-re-3/`.
+- Focused gate: `cache/fisher-re-3/reference-gate-01.log` (required contract then selection):
+  `COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+  `COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- No memory refusal or rerun. Gate SHA256:
+  `ee75e9b35d6bf93ddab8854fc8d3d4d037c2189e00c52aace5fbd608e8e700b4`.
+- Census SHA256: `a81f9e53ffc6c2d2af348281db1156b177c51333f02947316170501acfdc5851`.
+- Checks: diff --check clean; lint_sim ok; all eight links added in §10 resolve.
+- Pins/current recordings/main fisher_vectors.txt untouched: 0 pins moved by diff;
+  pins.py/full engine suite NOT_RUN (no engine/pin/recording change).
+- Hosted CI must be green on the pushed candidate; exact SHA/run supplied at handover.
+- NOT_RUN: live GOG/HE, HE binaries/pixels, original save round trip, Windows suite;
+  original Unicorn emulation (module unavailable on this interpreter).
+- Decisions and reasoning:
+  - Preserve coast-vs-entrance and start-vs-destination distinctions; never invent relocation.
+  - Limit home vectors to an unchanged existing home and all-closed entrance means.
+  - Keep raw geometry census separate from normal gameplay/import acceptance.
+  - No reviewer subagent: independent address review belongs to the orchestrator.
+- QUESTION: FISHER-HE-1 must provide an enabled viewer capture-session entry point
+  and stock/time instrumentation: normal play.cpp currently uses default extensions.
+  The card fixes map/player/site/control/duration and recorded events, but the current
+  viewer cannot yet execute its enabled half. HE placement and full original save
+  continuation also remain unverified; no HE parity or capture-readiness claim is made.
+
+READY FOR REVIEW. Stop here; FISHER-HE-1 is not released.

@@ -97,6 +97,17 @@ struct MinimapConfig {
     std::uint32_t box_colour = 0xffffff;
     /// The minimap zoom z at the start (AnnoFrame +0x18 = 1.0: the whole world).
     double zoom_start = 1.0;
+    /// UI-MINIMAP-1 C: the top-right + and - (command 0x1b, param 1 / 0) change z by -zoom_step /
+    /// +zoom_step (AnnoFrame 0x10033770), then z is clamped to [zoom_min, zoom_max]
+    /// (0x10033710; zoom_min is the same float 0x10087bd4 = 0.15 as the step, zoom_max 1.0 =
+    /// 0x10086310). z is a float in the original; minimap_zoom_step steps it as one.
+    double zoom_min = 0.15, zoom_max = 1.0, zoom_step = 0.15;
+    /// UI-MINIMAP-1 C: a click's screen -> world inverse (AnnoFrame 0x100333f0): the point
+    /// relative to the wrapper's rectangle (the rectangle before the renderer's shift,
+    /// 0x10002a10..0x10002a23), plus (click_dx, click_dy), times click_scale (above 800 px wide:
+    /// -6, 0 and 1.03, the float 0x3f83d70a; 0x10031e4f..0x10031e63).
+    int click_dx = -6, click_dy = 0;
+    double click_scale = 1.03;
 
     /// The owner rule (UI-MINIMAP-1 B2; AnnoWelt 0x100a3ed7..0x100a40bb, docs/re/ui.md 2.9 Q2):
     /// a tile's city colours its cell with the city's colour byte (city +0x16, written from the
@@ -234,6 +245,50 @@ struct MinimapWindow {
                                                        const MinimapRect& rect,
                                                        const MinimapWindow& window, double u,
                                                        double v);
+
+/// UI-MINIMAP-1 C: the hit test of a click at UI-layer pixel (x, y) (AnnoFrame 0x10002970 ->
+/// 0x100332f0): relative to the wrapper's rectangle, (xr, yr) = (x - (rect.x - shift_x), y -
+/// (rect.y - shift_y)) - at 1024 the wrapper's (765, 12), two pixels left of and below the drawn
+/// (767, 10) - it must lie in [0, rect.w) x [0, rect.h) and inside the inscribed diamond: with t
+/// = yr when yr <= rect.h / 2, else rect.h - yr, -2t <= xr - rect.w / 2 < 2t.
+[[nodiscard]] bool minimap_hit(const MinimapConfig& cfg, const MinimapRect& rect, int x, int y);
+
+/// UI-MINIMAP-1 C: the world tile a click at UI-layer pixel (x, y) centres the camera on, turn 0
+/// (AnnoFrame 0x100029f0 -> 0x100333f0); nullopt when minimap_hit fails or the world is empty.
+/// X = (xr + click_dx) * click_scale, Y = (yr + click_dy) * click_scale, D = X - rect.w / 2;
+/// P = image_h / rect.h * (Y + D / 2) (the u axis), Q = image_h / rect.h * (Y - D / 2) (the v
+/// axis); turn 0's case (jump table 0x100336a4 -> 0x100334e1): x0 = trunc(world_w * Q /
+/// image_w), y0 = trunc(world_h * P / image_h); then through the window (0x1003357e..
+/// 0x10033680): wx = trunc(((x0 / world_w - 0.5) * (v1 - v0) + (v0 + v1) / 2) * world_w), wy
+/// likewise with y0 and the u span (u is the world's y, "Axes"). trunc is the original's __ftol
+/// (0x10077da8). The original then recentres the minimap there (0x10033ad0); the rebuild's
+/// window follows the camera every frame, which comes to the same. Computed in double; the
+/// original stores some intermediates as floats (a difference far below one tile).
+[[nodiscard]] std::optional<std::pair<std::int64_t, std::int64_t>>
+minimap_world_at(const MinimapConfig& cfg, const MinimapRect& rect, const MinimapWindow& window,
+                 std::uint32_t world_w, std::uint32_t world_h, int x, int y);
+
+/// UI-MINIMAP-1 C: the UI-layer rectangle the minimap takes clicks in: the drawn raster (rect
+/// plus the quad offset) and the hit test's wrapper rectangle together (at 1024: x 765..1023, y
+/// 10..139). Every press in it is the UI's, so none reaches the map (also the part left of the
+/// right chrome, x 765..778 at 1024); only one inside the diamond moves the camera.
+[[nodiscard]] MinimapRect minimap_click_area(const MinimapConfig& cfg, int ui_w);
+
+/// UI-MINIMAP-1 C: the minimap zoom after one press of the top-right + (`closer`, param 1: z -
+/// zoom_step) or - (z + zoom_step), clamped to [zoom_min, zoom_max] (AnnoFrame 0x10033770 ->
+/// 0x10033710). Stepped in float arithmetic, as the original keeps z: from 1.0 the + gives 0.85,
+/// 0.7, 0.55, 0.4, 0.25, then 0.15 (0.1 clamped).
+[[nodiscard]] double minimap_zoom_step(const MinimapConfig& cfg, double zoom, bool closer);
+
+/// UI-MINIMAP-1 C: the main view's zoom after one press of the magnifier's + (`closer`, command
+/// 0xa: level - 1, not below 0, AnnoFrame 0x10007710) or - (command 9: level + 1, not above the
+/// last, 0x10007692), as the tile width to zoom to. `level_tile_w` holds the built levels'
+/// tile widths, closest first (84, 42, 20 for the original's three). The rebuild's view also
+/// zooms continuously; one press goes to the next built level in that direction from `current`
+/// (the shown or targeted tile width): the closest level wider than it, or the widest level
+/// narrower than it. nullopt when there is none (the original's clamp: nothing changes).
+[[nodiscard]] std::optional<double> magnifier_target(const std::vector<double>& level_tile_w,
+                                                     double current, bool closer);
 
 /// One line of the view box in screen coordinates.
 struct MinimapSegment {

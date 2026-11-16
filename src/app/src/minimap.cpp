@@ -192,6 +192,12 @@ formats::Result<MinimapConfig, std::string> parse_minimap_config(std::string_vie
                  cfg.box_colour <= 0xffffffU;
         } else if (key == "zoom_start") {
             ok = doubles({&cfg.zoom_start}) && cfg.zoom_start > 0.0 && cfg.zoom_start <= 1.0;
+        } else if (key == "zoom_range") {
+            ok = doubles({&cfg.zoom_min, &cfg.zoom_max, &cfg.zoom_step}) && cfg.zoom_min > 0.0 &&
+                 cfg.zoom_min <= cfg.zoom_max && cfg.zoom_max <= 1.0 && cfg.zoom_step > 0.0;
+        } else if (key == "click") {
+            ok = n == 3 && parse_int(w[1], cfg.click_dx) && parse_int(w[2], cfg.click_dy) &&
+                 parse_double(w[3], cfg.click_scale) && cfg.click_scale > 0.0;
         } else if (key == "owner_rule") {
             std::uint32_t all = 0;
             ok = u32s({&cfg.no_colour, &all}) && all <= 1;
@@ -467,6 +473,105 @@ std::pair<double, double> minimap_screen(const MinimapConfig& cfg, const Minimap
     const double c = std::cos(a), s = std::sin(a);
     return {rect.x + rect.s * (cfg.diamond_cx - cfg.diamond_ax * (c * dv - s * du)),
             rect.y + rect.s * (cfg.diamond_cy + cfg.diamond_ay * (c * du + s * dv))};
+}
+
+namespace {
+
+/// The point relative to the wrapper's rectangle (AnnoFrame 0x10002970 / 0x10002a10: the
+/// rectangle the frame passed, before the renderer's shift 0x10031e3b..0x10031e41).
+std::pair<int, int> minimap_click_rel(const MinimapConfig& cfg, const MinimapRect& rect, int x,
+                                      int y) {
+    return {x - (rect.x - cfg.shift_x), y - (rect.y - cfg.shift_y)};
+}
+
+/// AnnoFrame 0x100332f0 on the relative point.
+bool minimap_hit_rel(const MinimapRect& rect, int xr, int yr) {
+    const double w = rect.w, h = rect.h;
+    if (xr < 0 || !(xr < w) || yr < 0 || !(yr < h))
+        return false;
+    const double y = yr;
+    const double t = h * 0.5 < y ? h - y : y;
+    const double dx = static_cast<double>(xr) - w * 0.5;
+    return dx >= -2.0 * t && dx < 2.0 * t;
+}
+
+} // namespace
+
+bool minimap_hit(const MinimapConfig& cfg, const MinimapRect& rect, int x, int y) {
+    const auto [xr, yr] = minimap_click_rel(cfg, rect, x, y);
+    return minimap_hit_rel(rect, xr, yr);
+}
+
+std::optional<std::pair<std::int64_t, std::int64_t>>
+minimap_world_at(const MinimapConfig& cfg, const MinimapRect& rect, const MinimapWindow& window,
+                 std::uint32_t world_w, std::uint32_t world_h, int x, int y) {
+    const auto [xr, yr] = minimap_click_rel(cfg, rect, x, y);
+    if (!minimap_hit_rel(rect, xr, yr) || world_w == 0 || world_h == 0 || cfg.image_w == 0 ||
+        cfg.image_h == 0)
+        return std::nullopt;
+    const double w = rect.w, h = rect.h;
+    const double sx = static_cast<double>(xr + cfg.click_dx) * cfg.click_scale;
+    const double sy = static_cast<double>(yr + cfg.click_dy) * cfg.click_scale;
+    const double d = sx - w * 0.5;
+    const double n = cfg.image_h;
+    // 0x1003347e..0x100334ce: q = h / (2n), r = h / n, P = (sy r + q d) / (2 r q), Q = (sy r - q
+    // d) / (2 r q), i.e. n / h * (sy +- d / 2).
+    const double p = n / h * (sy + d * 0.5);
+    const double q = n / h * (sy - d * 0.5);
+    const double ww = world_w, wh = world_h;
+    // Turn 0 (0x100334e1..0x100334ff).
+    const double x0 = std::trunc(ww * q / static_cast<double>(cfg.image_w));
+    const double y0 = std::trunc(wh * p / n);
+    // Through the zoom window (0x1003357e..0x10033685): the v span for x, the u span for y.
+    const double mid_v = (window.v1 - window.v0) * 0.5 + window.v0;
+    const double mid_u = (window.u1 - window.u0) * 0.5 + window.u0;
+    const double wx = std::trunc(((x0 / ww - 0.5) * (window.v1 - window.v0) + mid_v) * ww);
+    const double wy = std::trunc(((y0 / wh - 0.5) * (window.u1 - window.u0) + mid_u) * wh);
+    return std::pair{static_cast<std::int64_t>(wx), static_cast<std::int64_t>(wy)};
+}
+
+MinimapRect minimap_click_area(const MinimapConfig& cfg, int ui_w) {
+    const MinimapRect r = minimap_rect(cfg, ui_w);
+    const int x0 = std::min(r.x + std::min(0, cfg.quad_dx), r.x - cfg.shift_x);
+    const int y0 = std::min(r.y + std::min(0, cfg.quad_dy), r.y - cfg.shift_y);
+    const int x1 = std::max(r.x + r.w + std::max(0, cfg.quad_dx), r.x - cfg.shift_x + r.w);
+    const int y1 = std::max(r.y + r.h + std::max(0, cfg.quad_dy), r.y - cfg.shift_y + r.h);
+    MinimapRect area = r;
+    area.x = x0;
+    area.y = y0;
+    area.w = x1 - x0;
+    area.h = y1 - y0;
+    return area;
+}
+
+double minimap_zoom_step(const MinimapConfig& cfg, double zoom, bool closer) {
+    // The original keeps z, the step and the bounds as floats (AnnoFrame +0x18, 0x10087bd4,
+    // 0x10086310); x87 rounds each stored sum to float, which float arithmetic does as well.
+    const auto z = static_cast<float>(zoom);
+    const auto step = static_cast<float>(cfg.zoom_step);
+    float next = closer ? z - step : z + step;
+    const auto lo = static_cast<float>(cfg.zoom_min), hi = static_cast<float>(cfg.zoom_max);
+    if (next < lo)
+        next = lo;
+    else if (next > hi)
+        next = hi;
+    return static_cast<double>(next);
+}
+
+std::optional<double> magnifier_target(const std::vector<double>& level_tile_w, double current,
+                                       bool closer) {
+    // A level within this relative distance is the level the view is at.
+    constexpr double kSame = 1e-6;
+    std::optional<double> best;
+    for (const double t : level_tile_w) {
+        if (!(t > 0.0))
+            continue;
+        if (closer && t > current * (1.0 + kSame) && (!best || t < *best))
+            best = t;
+        if (!closer && t < current * (1.0 - kSame) && (!best || t > *best))
+            best = t;
+    }
+    return best;
 }
 
 namespace {

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -538,4 +539,137 @@ TEST_CASE("minimap owners: a changed owner, city or mask is a different territor
     b = a;
     b.islands[0].cities[0].owner = 1; // a takeover
     CHECK_FALSE(a.same_content(b));
+}
+
+// UI-MINIMAP-1 C: the controls (docs/re/ui.md 2.9 Q6), values computed by hand.
+
+TEST_CASE("minimap click: the hit test is the wrapper rectangle's inscribed diamond") {
+    const app::MinimapConfig cfg;
+    const auto rect = app::minimap_rect(cfg, 1024); // drawn at (767, 10) 256 x 128
+    // Relative to the wrapper's (765, 12) = (767 - 2, 10 + 2) (AnnoFrame 0x10002970): the centre
+    // (893, 76) is (128, 64): t = 64, dx = 0.
+    CHECK(app::minimap_hit(cfg, rect, 893, 76));
+    // The left corner: xr = 0, dx = -128 >= -2 * 64; one pixel further left is outside the
+    // rectangle. It lies left of the chrome (x < 779).
+    CHECK(app::minimap_hit(cfg, rect, 765, 76));
+    CHECK_FALSE(app::minimap_hit(cfg, rect, 764, 76));
+    CHECK(app::minimap_hit(cfg, rect, 770, 76));
+    // The right corner: xr = 255, dx = 127 < 128; xr = 256 is outside.
+    CHECK(app::minimap_hit(cfg, rect, 1020, 76));
+    CHECK_FALSE(app::minimap_hit(cfg, rect, 1021, 76));
+    // The top: yr = 0 gives t = 0 and no dx with -0 <= dx < 0; yr = 1 gives [-2, 2).
+    CHECK_FALSE(app::minimap_hit(cfg, rect, 893, 12));
+    CHECK(app::minimap_hit(cfg, rect, 893, 13));
+    CHECK(app::minimap_hit(cfg, rect, 894, 13));
+    CHECK_FALSE(app::minimap_hit(cfg, rect, 895, 13)); // dx = 2, not < 2
+    // The bottom: yr = 127 is past h / 2, t = 128 - 127 = 1; yr = 128 is outside.
+    CHECK(app::minimap_hit(cfg, rect, 893, 139));
+    CHECK_FALSE(app::minimap_hit(cfg, rect, 893, 140));
+    // The rectangle's corner outside the diamond: (5, 3), dx = -123 < -6.
+    CHECK_FALSE(app::minimap_hit(cfg, rect, 770, 15));
+    // Right-anchored in a wider layer: the same point 1518 px further right.
+    const auto wide = app::minimap_rect(cfg, 2542);
+    CHECK(app::minimap_hit(cfg, wide, 893 + 1518, 76));
+    CHECK_FALSE(app::minimap_hit(cfg, wide, 893, 76));
+}
+
+TEST_CASE("minimap click: screen to world at turn 0, the whole world and a zoom window") {
+    const app::MinimapConfig cfg;
+    const auto rect = app::minimap_rect(cfg, 1024);
+    const app::MinimapWindow whole;
+    // (900, 50): (xr, yr) = (135, 38); X = (135 - 6) * 1.03 = 132.87, Y = 38 * 1.03 = 39.14,
+    // D = X - 128 = 4.87; P = 256 / 128 * (Y + D / 2) = 83.15, Q = 2 * (Y - D / 2) = 73.41;
+    // x0 = trunc(512 * 73.41 / 256) = 146, y0 = trunc(512 * 83.15 / 256) = 166; the whole
+    // window leaves them.
+    using Tile = std::optional<std::pair<std::int64_t, std::int64_t>>;
+    const auto tile = [](std::int64_t x, std::int64_t y) { return Tile(std::pair{x, y}); };
+    CHECK(app::minimap_world_at(cfg, rect, whole, 512, 512, 900, 50) == tile(146, 166));
+    // A 512 x 256 world: y0 = trunc(256 * 83.15 / 256) = 83 (y follows P and the height).
+    CHECK(app::minimap_world_at(cfg, rect, whole, 512, 256, 900, 50) == tile(146, 83));
+    // z = 0.4 around (u, v) = (0.3, 0.7): u in [0.1, 0.5], v in [0.5, 0.9];
+    // wx = trunc(((146 / 512 - 0.5) * 0.4 + 0.7) * 512) = trunc(314.4) = 314,
+    // wy = trunc(((166 / 512 - 0.5) * 0.4 + 0.3) * 512) = trunc(117.6) = 117.
+    const auto zoomed = app::minimap_window(0.4, 0.3, 0.7);
+    CHECK(app::minimap_world_at(cfg, rect, zoomed, 512, 512, 900, 50) == tile(314, 117));
+    // Pushed back at the edges: (0.1, 0.95) -> u [0, 0.4], v [0.6, 1.0], mids 0.2 and 0.8:
+    // wx = trunc((-0.0859375 + 0.8) * 512) = 365, wy = trunc((-0.0703125 + 0.2) * 512) = 66.
+    const auto edge = app::minimap_window(0.4, 0.1, 0.95);
+    CHECK(app::minimap_world_at(cfg, rect, edge, 512, 512, 900, 50) == tile(365, 66));
+    // Outside the diamond, or no world: nothing.
+    CHECK_FALSE(app::minimap_world_at(cfg, rect, whole, 512, 512, 770, 15).has_value());
+    CHECK_FALSE(app::minimap_world_at(cfg, rect, whole, 0, 0, 900, 50).has_value());
+    // The inverse undoes the drawing transform (minimap_screen) to within a few tiles (a pixel is
+    // about 2 tiles of a 512-tile world; the 1.03 and -6 make up for the 124.5 px half-diagonal).
+    for (const auto& [wx, wy] : {std::pair{300, 200}, std::pair{60, 450}, std::pair{256, 256}}) {
+        CAPTURE(wx);
+        CAPTURE(wy);
+        const auto [sx, sy] =
+            app::minimap_screen(cfg, rect, whole, 128.0 * wy / 512.0, 128.0 * wx / 512.0);
+        const auto back =
+            app::minimap_world_at(cfg, rect, whole, 512, 512, static_cast<int>(std::lround(sx)),
+                                  static_cast<int>(std::lround(sy)));
+        REQUIRE(back.has_value());
+        CHECK(std::abs(back->first - wx) <= 4);
+        CHECK(std::abs(back->second - wy) <= 4);
+    }
+}
+
+TEST_CASE("minimap click: the click area takes the parchment left of the chrome") {
+    const app::MinimapConfig cfg;
+    // The drawn raster (767, 10) 257 x 129 and the wrapper's (765, 12) 256 x 128 together.
+    CHECK(app::minimap_click_area(cfg, 1024) == app::MinimapRect{765, 10, 259, 130, 1.0});
+    CHECK(app::minimap_click_area(cfg, 2542) == app::MinimapRect{2283, 10, 259, 130, 1.0});
+}
+
+TEST_CASE("minimap zoom: the top-right + and - step by 0.15 inside 0.15 .. 1.0") {
+    const app::MinimapConfig cfg;
+    // From the whole world, + six times: 0.85, 0.7, 0.55, 0.4, 0.25, then 0.1 is clamped to 0.15
+    // (0x10033770 -> 0x10033710; float steps).
+    double z = cfg.zoom_start;
+    const std::array<double, 7> closer = {0.85, 0.7, 0.55, 0.4, 0.25, 0.15, 0.15};
+    for (const double want : closer) {
+        z = app::minimap_zoom_step(cfg, z, true);
+        CHECK(z == doctest::Approx(want).epsilon(1e-6));
+    }
+    CHECK(z == static_cast<double>(0.15F));
+    // And back: 0.3, 0.45, 0.6, 0.75, 0.9, then 1.05 is clamped to 1.0.
+    const std::array<double, 7> farther = {0.3, 0.45, 0.6, 0.75, 0.9, 1.0, 1.0};
+    for (const double want : farther) {
+        z = app::minimap_zoom_step(cfg, z, false);
+        CHECK(z == doctest::Approx(want).epsilon(1e-6));
+    }
+    CHECK(z == 1.0);
+    // The range, the step and the click numbers are data.
+    const auto custom = app::parse_minimap_config(
+        "anno1503-ui-minimap 1\nzoom_range 0.05 1.0 0.5\nclick -5 2 1.5\n");
+    REQUIRE(custom.ok());
+    CHECK(app::minimap_zoom_step(custom.value(), 1.0, true) == 0.5);
+    CHECK(app::minimap_zoom_step(custom.value(), 0.5, true) == static_cast<double>(0.05F));
+    CHECK(custom.value().click_dx == -5);
+    CHECK(custom.value().click_dy == 2);
+    CHECK(custom.value().click_scale == 1.5);
+    CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\nzoom_range 0.5 0.2 0.1\n").ok());
+    CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\nzoom_range 0 1 0.1\n").ok());
+    CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\nclick -6 0 0\n").ok());
+}
+
+TEST_CASE("minimap magnifier: one press is one built level, clamped at both ends") {
+    // The original's levels 0..2 (commands 0xa and 9, AnnoFrame 0x10007710 / 0x10007692) at the
+    // rebuild's tile widths 84, 42, 20.
+    const std::vector<double> levels = {84.0, 42.0, 20.0};
+    using W = std::optional<double>;
+    CHECK(app::magnifier_target(levels, 20.0, true) == W(42.0));
+    CHECK(app::magnifier_target(levels, 42.0, true) == W(84.0));
+    CHECK(app::magnifier_target(levels, 84.0, true) == std::nullopt); // not below level 0
+    CHECK(app::magnifier_target(levels, 84.0, false) == W(42.0));
+    CHECK(app::magnifier_target(levels, 42.0, false) == W(20.0));
+    CHECK(app::magnifier_target(levels, 20.0, false) == std::nullopt); // not above level 2
+    // The continuous zoom between two levels: to the next level in that direction.
+    CHECK(app::magnifier_target(levels, 30.0, true) == W(42.0));
+    CHECK(app::magnifier_target(levels, 30.0, false) == W(20.0));
+    // Beyond the levels (the continuous zoom's extension): back to the nearest level.
+    CHECK(app::magnifier_target(levels, 100.0, true) == std::nullopt);
+    CHECK(app::magnifier_target(levels, 100.0, false) == W(84.0));
+    CHECK(app::magnifier_target(levels, 10.0, true) == W(20.0));
+    CHECK(app::magnifier_target({}, 20.0, true) == std::nullopt);
 }

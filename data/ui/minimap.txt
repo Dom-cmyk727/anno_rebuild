@@ -53,6 +53,12 @@ quad_offset 1 1
 view_box 2200 0.3 332.8 ffffff
 # The minimap zoom at the start: the whole world (AnnoFrame +0x18 = 1.0, 0x10033710).
 zoom_start 1.0
+# The top-right + and - (command 0x1b): z - / + the step, clamped (UI-MINIMAP-1 C; AnnoFrame
+# 0x10033770 -> 0x10033710; min and step are the same float 0x10087bd4 = 0.15, max 0x10086310).
+zoom_range 0.15 1.0 0.15
+# A click's inverse transform above 800 px wide: (x - 765 + dx, y - 12 + dy) * scale, relative to
+# the wrapper's rectangle (AnnoFrame 0x100333f0; dx dy scale from 0x10031e4f..0x10031e63).
+click -6 0 1.03
 # The owner rule (UI-MINIMAP-1 B2; AnnoWelt 0x100a3ed7..0x100a40bb): a city colours its tiles with
 # its colour byte (city +0x16 = the owner's colour slot, player property 11, 0x1002f42b) when the
 # viewing player knows it (city +0x61c) or the world shows every city (world property 5 = 0).

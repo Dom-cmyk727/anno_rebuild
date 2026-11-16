@@ -181,6 +181,13 @@ says who is doing what, where the work is, and what it waits on.
     disappearance, the stock. The owner now runs the capture himself on the History Edition from the UI
     lane's recipe and adds a hut site of his own; the card's closed site is kept, and his sites count as
     extra open controls.
+    **FISHER-HE-1 step A ACCEPTED as the behaviour reference** 2026-11-16
+    ([review](reviews/2026-11-16-fisher-he-1-step-a-review.md)): in the History Edition, played by the owner, the
+    closed hut's boat appears 1.3 s after the build, stops three times for about 11.2 s, never comes home, the
+    hut's stock stays 0, the boat vanishes at 38.85 s and a new one appears about half a second later. This
+    confirms FISHER-RE-3's read in a running original. One difference to settle: after the release nothing is
+    visible, while the read has a 15 s wait. **Step B RELEASED** to the UI lane (the viewer switch and the stock
+    readout). Step C needs one clean History Edition run (fixed camera, both sites) first.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

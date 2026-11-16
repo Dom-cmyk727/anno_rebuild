@@ -244,6 +244,10 @@ says who is doing what, where the work is, and what it waits on.
     address, guarded by a test; app code only. Against the owner's History Edition recording the island
     outlines agree. Owner colours, markers and clicks (B2, C) follow on the same branch; it lands when the
     packet is complete, with the owner's OK.
+    **Correction, 2026-11-16:** the orchestrator accepted B1 before its hosted CI had run. CI on `5852e5e7`
+    then FAILED in the evidence preflight: a new doctest name holds a `*`, which `cmake/CheckTestNames.cmake`
+    rejects (the code was not reached). The UI lane renames it with B2. `5852e5e7` is not a landing head; a
+    review counts as accepted for landing only with a green CI on the reviewed head.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

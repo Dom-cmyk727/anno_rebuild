@@ -50,6 +50,8 @@ defaults (data/config) that a larger map or a mod can change, never as fixed arr
 the `WELTKARTE` chrome's hole from AnnoWelt's 256 x 256 owner/shade image; the buttons are main zoom,
 minimap zoom and view turn; a click centres the camera, no drag.
 
+**Fix round result** (2026-11-16, after the orchestrator's History Edition check; `docs/re/ui.md` 2.9 "Fix round"): F1 the scroll's rolled left end (`fenster.tex` id 3 at (745, 49)) is drawn in every UI path and is chrome; F2 the parchment is the History Edition's 258 x 130 bilinear quad with 32-bit colours (`minimap.txt` `parchment_quad`, `colour_depth`; the GOG fit selectable); F3 no change (the fringe is the shade rule's, olive shows it too); F4 `[CAMARAPOS]` is `CAMERA_MEMORY`'s slot, the HE starts at level 1 on the player's ship (OQ-638 open); F5 (orchestrator) the viewer's closest zoom is 84 x sqrt(2) = 118.8 px (`kZoomEndFactor`), the HE's 84 px: the 1.42; unchanged, the owner decides.
+
 ## Owner recipe for the History Edition recording (step A.2)
 
 History Edition, interface scale 1.0, window maximised; OBS at native 2560 × 1440 (Settings → Video:

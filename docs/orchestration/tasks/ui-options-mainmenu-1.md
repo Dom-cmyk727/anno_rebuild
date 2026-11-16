@@ -22,9 +22,9 @@ base, HE behaviour and changes are options; HE sound stays at 0 %.
 2. **Menu fit:** the original draws the 800 × 600 menus at the top-left of an 800 × 600 mode; HE scales
    them to the client height and centres them with border art (spec §3.1). Proposal: HE fit as the
    default window behaviour of the menus (the original needs a display-mode switch the rebuild does not
-   do), original placement as an option. Needed for S3.
+   do), original placement as an option. Needed for S3a.
 3. **Save files:** the original names saves by GUID with the display name inside (spec §2.6). Proposal:
-   keep that scheme for the rebuild's own save frame (unique file, alias inside). Needed for S6.
+   keep that scheme for the rebuild's own save frame (unique file, alias inside). Needed for S6a.
 
 **Owner's answers (2026-11-16, in the UI lane's session):**
 1. F5: **like the original** - F5-F8 speed, F10 quick-save, P pause; the ship opening's quick-save moves

@@ -283,3 +283,17 @@ TEST_CASE("the move fallback draws at most once per min_interval however many WI
     CHECK(draws == 2); // one more, now that a full min_interval has actually elapsed
     SDL_RemoveEventWatch(watch, &ctx);
 }
+
+TEST_CASE("should_draw_from_thread: the window thread's own id draws, any other id does not - no "
+          "real window, no second thread, both ids synthetic (ZOOM-SMOOTH-2f)" *
+          doctest::test_suite("live_resize")) {
+    const std::thread::id window = std::this_thread::get_id();
+    CHECK(anno::app::should_draw_from_thread(window, window));
+    // A real std::thread::id that is genuinely not `window` (default-constructed ids can compare
+    // equal to a real thread's id on some implementations - not relied on here).
+    std::thread::id other;
+    std::thread t([&] { other = std::this_thread::get_id(); });
+    t.join();
+    REQUIRE(other != window);
+    CHECK_FALSE(anno::app::should_draw_from_thread(other, window));
+}

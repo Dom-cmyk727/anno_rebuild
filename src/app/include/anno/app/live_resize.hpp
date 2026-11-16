@@ -6,6 +6,7 @@
 #include <SDL3/SDL_events.h>
 #include <atomic>
 #include <chrono>
+#include <thread>
 
 namespace anno::app {
 
@@ -34,6 +35,20 @@ namespace anno::app {
 /// type, from whichever thread pushed it - exactly the data race ZOOM-SMOOTH-2b F1 fixed.
 [[nodiscard]] inline bool should_draw_from_watch(const SDL_Event& e, bool already_drawing) {
     return is_live_resize_expose(e) && !already_drawing;
+}
+
+/// ZOOM-SMOOTH-2f: whether an event-watch call from `caller` should be allowed to read shared
+/// state and draw, given the thread the watch was installed on is `window_thread`. SDL calls an
+/// event watch on whichever thread calls SDL_PushEvent (every platform, not only the Windows one
+/// Viewer::live_resize_watch's own comments argue the property for) - a pure function, so a test
+/// checks the decision itself (same thread draws, another thread does not) without a real window
+/// or a second thread actually racing one. Production code (Viewer::live_resize_watch) calls this
+/// for both triggers, after the event-type test and before the first read of LiveResizeState's
+/// shared fields below - the same placement should_draw_from_watch's own doc comment already
+/// argues for that check.
+[[nodiscard]] inline bool should_draw_from_thread(std::thread::id caller,
+                                                  std::thread::id window_thread) {
+    return caller == window_thread;
 }
 
 /// The live-resize watch's own state (ZOOM-SMOOTH-2c, replacing a separate pair of ad hoc

@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -568,6 +569,16 @@ class Viewer {
     /// reasoning, including the one residual, bounded race ZOOM-SMOOTH-2c's own review accepted
     /// rather than fixed).
     anno::app::LiveResizeState live_resize_;
+    /// ZOOM-SMOOTH-2f: the window thread's id, set once where the watch is installed (run(),
+    /// SDL_AddEventWatch's own call site - not the constructor, which may run on another thread
+    /// before run() ever starts the window). The watch checks every call against this instead of
+    /// arguing the property from the SDL source alone (the comments at live_resize_watch's own
+    /// WINDOW_MOVED case already did; this makes it hold rather than be argued).
+    std::thread::id window_thread_id_;
+    /// Calls to live_resize_watch, of the two trigger types, that were not on window_thread_id_
+    /// (ZOOM-SMOOTH-2f item 1): expected to stay 0 on every platform this engine runs on; printed
+    /// once at exit (ClearWatch's own destructor, run()) only when it is not 0.
+    std::atomic<std::uint64_t> watch_off_thread_calls_{0};
 #ifdef _WIN32
     /// ZOOM-SMOOTH-2d, ANNO_VIEW_LIVE_RESIZE_TRACE only: live_resize_windows_hook's own state,
     /// touched only from that hook, which SDL_SetWindowsMessageHook's own doc says runs only on
@@ -894,6 +905,11 @@ std::string Viewer::run() {
         SDL_Quit();
         return err;
     }
+    // ZOOM-SMOOTH-2f: the window thread's id, read here rather than assumed - run() (and so this
+    // point) always executes on the thread that owns window_ (SDL_CreateWindow just above), which
+    // is also the one thread SDL_PushEvent ever calls an event watch's callback synchronously
+    // from (the watch's own thread-id guard checks every call against this).
+    window_thread_id_ = std::this_thread::get_id();
     // ZOOM-SMOOTH-2: draws during the native Windows modal move/resize loop, which otherwise
     // blocks the ordinary SDL_PollEvent loop for its whole duration (ZOOM-MEASURE-1 measured a
     // 106 ms hitch). Harmless to register on every platform: live_resize_watch's own guard
@@ -916,6 +932,14 @@ std::string Viewer::run() {
                 SDL_SetWindowsMessageHook(nullptr, nullptr);
             }
 #endif
+            // ZOOM-SMOOTH-2f item 1: 0 on every platform this has been run on so far; printed
+            // only when it is not, so an ordinary run stays silent.
+            if (const auto off = self->watch_off_thread_calls_.load(); off != 0) {
+                std::fprintf(stderr,
+                             "live_resize_watch: %llu call(s) from a thread other than the "
+                             "window thread were skipped\n",
+                             static_cast<unsigned long long>(off));
+            }
         }
     } clear_watch{this};
     // Test hook (not documented for players): ANNO_VIEW_SIZE=<w>x<h> asks for a drawable of that
@@ -2820,6 +2844,15 @@ bool Viewer::live_resize_watch(void* userdata, SDL_Event* event) {
         return true;
     }
     auto* self = static_cast<Viewer*>(userdata);
+    // ZOOM-SMOOTH-2f: a guard, not an argument from the SDL source alone. SDL calls an event
+    // watch on whichever thread pushes the event (every platform, not just the Windows one the
+    // comments below argue from); this makes "the window thread, always" hold instead of being
+    // assumed for every read of live_resize_ that follows. Checked for both triggers, after the
+    // event-type test above and before the first read of self->live_resize_ below.
+    if (!should_draw_from_thread(std::this_thread::get_id(), self->window_thread_id_)) {
+        self->watch_off_thread_calls_.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    }
     const char* trigger = nullptr;
     if (is_timer_tick) {
         trigger = "timer";

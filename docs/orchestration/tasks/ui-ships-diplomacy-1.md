@@ -29,96 +29,150 @@ them from spec §4); the UI stage after it only wires the button.
 
 ## Stages
 
-### 1a — Evidence: lossless HE captures and the missing layout reads (2-3 h, no code)
+Order: the evidence stages 1a-1 … 1a-4, then the UI stages 1b … 1g; the sim tasks (1h-*, 1i-*) are the
+sim lane's and each is followed by a small UI stage that wires its buttons. (Fix round after the
+orchestrator's review 2026-11-16: the first draft's 1a, 1d, 1h and 1i were too large; 1f and 1g needed
+answers, OQ-669 and OQ-664, that no earlier stage read.)
 
-Do: run the owner's recordings of §R below through a frame/screenshot extraction; measure every element of
-spec §2 at exact scale (method sprite-565 like `hud.txt`, HE ids) on lossless screenshots; read in GOG
-`View.dll` where gadget positions are set (spec OQ-661: the builders set only sizes) and the load/unload tab
-layout (OQ-662). Update spec §2 rows from "M-HE ±2 px" to exact, and close or narrow OQ-660, -661, -662, -668.
-Accept: every element of S0-S8 and P0-P2d has an exact position on a named HE screenshot (or stays U with a
+**Sub-tabs are UI-TABS-1's.** UI-TABS-1 (branch `task/UI-TABS-1`, in progress) builds the sub-tab
+switching of the player, city and options views and the keys D / S / C: `data/ui/hud.txt` gives each
+sub-tab a `body`, the app shows the selected sub-tab's body, and D, C, S show the player view at
+sub-tabs 1, 2, 3 (`docs/re/ui.md` section 5.4 on that branch: AnnoFrame `0x1000bfc4`, View
+`0x1007e9c0`, D; M-GOG `f15_player_menu`, `f15_city_list`, `f15_ship_list`). The stages below build no
+tab switching or key handling of their own; their pages are bodies plugged into UI-TABS-1's views. The
+ship view's eight sub-tabs (handler `0x10057560` → `0x10057420`, spec §1: the same "index `0x1b3`,
+store at `[view+0x5f0]`, show one page" rule as the three views of section 5.4) are added as a fourth
+view in UI-TABS-1's data, not as new switching code.
+
+### 1a-1 — Evidence: positions from the lossless HE recordings (2-3 h, no code)
+
+Do: extract the frames and SHOT PNGs of §R below; measure every element of spec §2 at exact scale
+(method sprite-565 like `hud.txt`, HE ids) on them; settle the selection gesture, deselect and host tab
+(OQ-660) from the narration. Update spec §2 rows from "M-HE ±2 px" to exact.
+Accept: every element of S0-S8 and P0-P2d has an exact position on a named PNG (or stays U with a
 reason); the reviewer re-measures three elements and gets the same pixels.
-HE comparison: the screenshots themselves.
+HE comparison: the recordings themselves.
+
+### 1a-2 — Evidence: load/unload layout and ship-list rows, code reads (2-3 h, no code)
+
+Do: read in GOG `View.dll` the position source of the ship view's gadgets (OQ-661, OQ-651: the builders
+set only sizes), the load/unload tab builder `0x10059d00..0x1005a5c0` (OQ-662) and the ship-list row
+update and ship naming (OQ-668).
+Accept: each OQ answered with a D row or narrowed with the next step; no build.
+
+### 1a-3 — Evidence: trade-route editor mapping, code reads (2-3 h, no code)
+
+Do: read the route handlers (`0x10028bf0`, `0x10028c90`, `0x1002ac90` / `0x1002aca0`, `0x1002acb0`) to
+the route node writes; map "Load I / II, Unload I / II", the goods slots, amounts and `ROUTEAKTIV` onto
+`FreightStop` / `FreightAction` / `FreightControl` (OQ-669). 1f needs this.
+Accept: as 1a-2.
+
+### 1a-4 — Evidence: treaty button state and the partner list, code reads (2-3 h, no code)
+
+Do: read where the diplomacy page writes the buttons' property `0x1cc` on update and from which relation
+bytes of both players; the disable rules; the mood bar `STIMMUNG_PLAYER` rule; the list order (OQ-664).
+1g needs this rule (the first draft left it to the later sim stage 1h).
+Accept: as 1a-2; the state derivation written as a table in spec §2.11.
 
 ### 1b — Ship view chrome, static (2-3 h)
 
-Do: selecting an own ship (the existing selection in `opening_ui.cpp`) shows the ship view in the right panel
-under the main tab the original uses (HE: "?" highlighted; OQ-660), header plank + emblem + 8-tab column with
-the right selected/idle/disabled frames, and the selected sub-tab's static background (`VIEWINFOSCHIFFMAIN_BK`,
-`…KAMPF_BK`, `…VERKAUFEN_BK`, `SCHATTENPLATTE` + list rows, `ROUTE_SCHTEENPLATTE` + `ROUTE_HINTERGRUND`,
-`…KAUFEN_BK`). Tab clicks switch sub-tabs (spec §1, handler `0x10057420`: one index, others hidden). Click on
-empty sea deselects (HE 00:50).
-Accept: per sub-tab, the rebuild's 1024 × 768 frame equals the HE screenshot of the same sub-tab inside the
-static elements (RGB565-exact, `tools/test/ui_panels_compare.py` style), names and figures masked; a click on
-each tab selects only that tab; the existing UI oracle tests stay green.
-HE comparison: §R steps 2-4 screenshots.
+Do: selecting an own ship (the existing selection in `opening_ui.cpp`) shows the ship view in the right
+panel under the main tab the original uses (HE: "?" highlighted; OQ-660), header plank + emblem, and the
+eight sub-tabs as a fourth view in UI-TABS-1's data with their selected/idle/disabled frames and each
+sub-tab's static background as its `body` (`VIEWINFOSCHIFFMAIN_BK`, `…KAMPF_BK`, `…VERKAUFEN_BK`,
+`SCHATTENPLATTE` + list rows, `ROUTE_SCHTEENPLATTE` + `ROUTE_HINTERGRUND`, `…KAUFEN_BK`). Click on empty
+sea deselects (HE 00:50).
+Accept: per sub-tab, the rebuild's 1024 × 768 frame equals the HE PNG of the same sub-tab inside the
+static elements (RGB565-exact, `tools/test/ui_panels_compare.py` style), names and figures masked; a click
+on each tab selects only that tab (UI-TABS-1's switching); the existing UI oracle tests stay green.
+HE comparison: §R steps 2-4 PNGs.
 
 ### 1c — Ship status, live (2-3 h)
 
 Do: cargo grid (one slot per hold, `hold_count_a` from the ship's type; goods icon or empty slot; fill bar),
 crew grid (children with `crew_slot`), cannon slot (count missing in the sim: draw the slot, count shown only
 once the sim has it), ship name (missing: placeholder rule stated, OQ-668), the "Build warehouse" button
-(arms the existing founding mode, spec §2.2: type 1302) and "Throw cargo overboard" drawn disabled until 1i.
+(arms the existing founding mode, spec §2.2: type 1302) and "Throw cargo overboard" drawn disabled until
+its sim task 1i-1.
 Snapshot: add to `ShipView` what spec §4 marks "missing in `ShipView`" (capacity, hold count, crew, health).
 Accept: for the ship-start manifest the four holds (wood 50, food 10, tools 50, tools 30) show their icons in
 hold order and the empty slots after them; a unit test unloads 10 t and the bar shrinks; "Build warehouse"
 enters founding mode exactly as key F does (same `FoundCmd` in `commands.txt`).
 HE comparison: §R step 2 (status tab with a full and a partly empty hold).
 
-### 1d — Ship lists and the player view tabs (2-3 h)
+### 1d-1 — Ship list (2-3 h)
 
-Do: the ship list (ship view tab 5 and player view tab 3, key **S**): 14 rows, name, route icon, health bar,
-scroll arrows; the player view's five tabs (key **D** → tab 1, key **S** → tab 3, key **C** → tab 2), the
-player info rows from the city accounts. Row click per OQ-668 once 1a has settled it.
-Accept: `f15_ship_list` (GOG) and the HE ship-list screenshot reproduced inside the list area with names masked;
-keys D/S/C select the right tab in the classic surface.
-HE comparison: §R steps 5 and 7.
+Do: the ship list as the body of the player view's sub-tab 3 (key **S**, UI-TABS-1) and of the ship view's
+tab 5: 14 rows, name, route icon, health bar, scroll arrows; row click per OQ-668 (1a-2).
+Accept: `f15_ship_list` (GOG) and the HE ship-list PNG reproduced inside the list area with names masked.
+(Keys D / S / C and the player view's tab switching are UI-TABS-1's acceptance, not this stage's.)
+HE comparison: §R step 5.
 
-### 1e — Load / unload tab (2-3 h; needs 1a's layout)
+### 1d-2 — Player info rows (2 h)
+
+Do: the seven value rows of the player view's sub-tab 0 (`SPIELER_BILANZ_BK` page, spec §2.10: seven text
+gadgets) from the player's cities' accounts, summed in the app's view (no sim change; spec §4 "a player
+sum missing"); balance red when negative.
+Accept: a unit test with two cities of known accounts checks every printed row; HE `HE_UI_1.mp4` 00:44.5's
+values reproduced from a matching state, or NOT_RUN with the reason.
+HE comparison: §R step 5 (player view, sub-tab 1 from the top).
+
+### 1e — Load / unload tab (2-3 h; needs 1a-2's layout)
 
 Do: wire the tab to the existing `UnloadCmd` / `LoadCmd` (spec §4): hold selection, the four amount balls
 (1/5/10/50, default 10, `[view+0x640]`), category tabs and the city goods list; tab greyed when no own
 warehouse is in range (`ShipCargo::footprint_in_range`).
 Accept: an unload of 10 t from the tools hold and a load of 5 t wood produce the same `commands.txt` lines as
-the developer keys; the result line matches the sim's `transferred_88`; HE screenshot of the tab matched.
+the developer keys; the result line matches the sim's `transferred_88`; HE PNG of the tab matched.
 HE comparison: §R step 3.
 
-### 1f — Trade-route editor (3-4 h; needs OQ-669 settled in 1a)
+### 1f — Trade-route editor (3-4 h; needs 1a-3)
 
 Do: route-point list (5 rows, "New entry"), set/delete point, activate toggle, the four action tabs and goods
-slots, mapped onto `AssignFreightRouteCmd` / `ControlFreightRouteCmd`.
+slots, mapped onto `AssignFreightRouteCmd` / `ControlFreightRouteCmd` by 1a-3's mapping.
 Accept: a two-stop route built by clicks equals the route a unit test builds directly; activate/deactivate send
-Resume/Suspend; HE screenshot of the editor with two stops matched.
+Resume/Suspend; HE PNG of the editor with two stops matched.
 HE comparison: §R step 6.
 
-### 1g — Diplomacy list and treaty buttons, read-only (2-3 h)
+### 1g — Diplomacy list and treaty buttons, read-only (2-3 h; needs 1a-4)
 
-Do: partner rows (name, player or culture shield by `Player::kind`, mood bar placeholder until OQ-664),
-"Unknown" rows, scroll arrows, the action tab row, and the three treaty buttons drawn in the state derived
-from `Player::relations` (rule from OQ-664), disabled when no treaty is possible.
-Accept: GOG `f15_player_menu` and the HE diplomacy screenshots reproduced (rows masked by name); a unit test
+Do: as the body of the player view's sub-tab 1 (key **D**, UI-TABS-1): partner rows (name, player or culture
+shield by `Player::kind`, mood bar by 1a-4's rule or a flagged placeholder), "Unknown" rows, scroll arrows,
+the action tab row, and the three treaty buttons drawn in the state 1a-4 derived from `Player::relations`,
+disabled when no treaty is possible.
+Accept: GOG `f15_player_menu` and the HE diplomacy PNGs reproduced (rows masked by name); a unit test
 sets each relation byte combination and checks the frame index of each button.
 HE comparison: §R steps 8-9.
 
-### 1h — sim: diplomacy commands (Mac lane; spec §4)
+### Sim tasks of their own (sim lane; spec §4), each followed by a small UI wiring stage
 
-`TreatyCmd{other, kind, value}`, `TributeCmd{…}`, `DiplomaticMessageCmd{other, message}` with the world rules
-(AnnoWelt `0x100ad280` and the tribute/message functions, OQ-664..666), offers as state, replay codec entries.
-Then a UI stage wires the buttons (state machine of spec §2.11, D) and the tribute/message panels.
+Each sim task reads its original record and world function first, adds the native command, the world rule,
+the state it needs and its replay codec entry; the UI stage after it only wires the button (and its panel)
+to the command. About 2-4 h each.
 
-### 1i — sim: ship verbs (Mac lane; spec §4)
-
-`JettisonCmd`, `SetFlagCmd`, `SetPatrolCmd`/`ClearPatrolCmd`, `ScuttleCmd`, `BoardCmd`, `RepairCmd`,
-`CannonsCmd`, `OfferShipSaleCmd`/`WithdrawShipSaleCmd`, `BuyShipCmd`, each with its original record and world
-function first read (OQ-663, OQ-667). Then UI stages wire the behaviour and sell tabs.
+- **1h-1** `TreatyCmd{other, kind, value}` with offers as state (AnnoWelt `0x100ad280`; OQ-664). UI: the
+  treaty buttons' state machine of spec §2.11 (D).
+- **1h-2** `TributeCmd{…}` (record `0x70`, `0x1005dc40`; OQ-665). UI: the demand and pay tribute panels.
+- **1h-3** `DiplomaticMessageCmd{other, message}` (record `0x7b`; OQ-666 first decides sim or net layer).
+  UI: the message panel.
+- **1i-1** `JettisonCmd{ship}` (record `0x6b`, `ship-cargo.md` §8). UI: "Throw cargo overboard".
+- **1i-2** `SetFlagCmd{ship, white}` and `ScuttleCmd{ship}` (both net client `+0x88`, MP `0x75`; OQ-663).
+  UI: the flag and sink icons.
+- **1i-3** `SetPatrolCmd` / `ClearPatrolCmd` and the `StopCmd` equivalence (net client `+0xc0`, MP `0x84`;
+  OQ-663). UI: patrol and stop.
+- **1i-4** `BoardCmd{ship, target, on}` (handler `0x10060960`; OQ-663). UI: boarding.
+- **1i-5** `RepairCmd{ship, on}` and `CannonsCmd{ship, delta}` (shipyard tab; cannon arms of
+  `0x100ac360`). UI: the repair tab.
+- **1i-6** `OfferShipSaleCmd` / `WithdrawShipSaleCmd` and `BuyShipCmd` (`0x10064f20..0x10065040`,
+  `0x10061770`; OQ-667). UI: the sell and purchase tabs.
 
 ## §R — HE recordings for the owner (closes the visual gaps)
 
-Setup (once): HE options → windowed, resolution **1024 × 768** (or any height ≤ 1200, which forces UI scale
-1.0), sounds and music off. Record the window with OBS at 60 fps, lossless or high quality, **and** press the
-Steam screenshot key (F12, uncompressed PNG enabled in Steam settings) at every "SHOT" below, with the mouse
-moved off the panel first (a cursor over a button hides pixels; hover shots are separate). Say each step aloud
-("now the behaviour tab") so the transcript times it. Total about 15-20 minutes. In this recipe sub-tabs are
-counted **from 1, top to bottom** (the stages above and the spec count from 0).
+Set-up: the common one, [`ui-panels-he-recording.md`](ui-panels-he-recording.md) (window 1024 × 768,
+OBS lossless, the "Screenshot Output" hotkey for every **SHOT**, test clip first). At every SHOT move the
+mouse off the panel first (a cursor over a button hides pixels; hover shots are separate). Say each step
+aloud ("now the behaviour tab") so the transcript times it. Total about 15-20 minutes, files `HE_SHIP_R1` …
+In this recipe sub-tabs are counted **from 1, top to bottom** (the stages above and the spec count from 0).
 
 1. **Start** (2 min): Endless game with **computer opponents** (custom endless setup), so that diplomacy has
    players, not only cultures. Note the scenario and settings aloud.
@@ -131,7 +185,7 @@ counted **from 1, top to bottom** (the stages above and the spec count from 0).
 4. **Behaviour** (2 min): tab 2, SHOT; hover each of the five icons 2 s; click the white flag on and off, SHOT
    after each; click patrol on, then click two sea points if it asks, SHOT; patrol off. Do **not** click sink.
 5. **Lists** (1 min): ship view tab 6 (sails + "?"), SHOT; press **S**, SHOT; click the ship's row, say what
-   happens; press **C**, SHOT; press **D**, SHOT.
+   happens; press **C**, SHOT; press **D**, SHOT; click the bust tab's first sub-tab (player info), SHOT.
 6. **Trade route** (4 min): tab 8 (arrow), SHOT; set a route point at your Kontor (say how), add wood
    "Load I" 10 t, SHOT; click Load II, Unload I, Unload II tiles, SHOT each; set a second point, activate the
    route, SHOT; deactivate, delete one point, SHOT.
@@ -144,7 +198,7 @@ counted **from 1, top to bottom** (the stages above and the spec count from 0).
    empty goods box, SHOT; action tab 3 (pay tribute), SHOT; action tab 4 (messages), SHOT, hover each of the
    five lines; send "Ingratiate" once, SHOT, and say whether the player answers.
 
-Hand-over: the video, the PNG folder, and a line per SHOT with its step number (the narration is enough).
+Hand-over: the video, the SHOT PNG folder, and a line per SHOT with its step number (the narration is enough).
 
 ## Base, branch, gates
 

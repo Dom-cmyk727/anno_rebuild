@@ -12792,3 +12792,72 @@ QUESTIONs: does the owner's own hardware (recipe above) actually produce opposit
 30 ms apart during ordinary fast scrolling, and if so, is filtering them wanted as a feel change?
 
 READY FOR REVIEW.
+
+## TRACE-COLS-1: the window trace and its reader agree on the columns — READY FOR REVIEW (same
+branch task/ZOOM-BOUNCE-1, from `fc1fbff7`, new commits)
+
+**Kept the writer's order** (`window_trace.cpp`'s `resample_scale`/`resample_offset_x`/
+`resample_offset_y` right after `scale`), per the task's own default: real traces already exist in
+it, and reordering the writer would need re-recording or hand-patching every existing trace for no
+other gain. Reordered `window_table.py`'s `COLUMNS` to match (it reads every field by name,
+`dict(zip(COLUMNS, f))`, so the reorder alone is safe); added `WHEEL_COLUMNS` (`wheel.tsv` had no
+Python-side list at all).
+
+**The contract test (new, `tools/test/window_trace_columns_test.py`, CTest
+`window_trace_columns_contract`).** Extracts each header's string literal straight out of
+`window_trace.cpp` (the `f`/`t`/`w` stream statements) rather than a third hand-copied list, decodes
+the `\t`/`\n` escapes, and checks it against `COLUMNS`/`SIM_COLUMNS`/`WHEEL_COLUMNS`. On `fc1fbff7`
+as it stood: `frames` fails (first difference at index 9, `resample_scale` vs `drawable_w`),
+`wheel` errors (`AttributeError: module 'window_table' has no attribute 'WHEEL_COLUMNS'`), `sim`
+passes (untouched). After the fix: all three pass.
+
+**`window_table_test.sh` needed its own fix too**, found while checking it: `H`/`F1`/`F2` used the
+old (now-wrong) order, and two `sed` substitutions (`overlap`, `drawable_no_epoch`) matched the
+literal text immediately after `scale`, assuming `drawable_w`/`drawable_h` was there - both
+reordered/fixed, verified with a dry run against the base rows (diff shows exactly the intended
+single-field change, nothing else moved). The shell test itself cannot be run end-to-end on this
+Windows host (its own header: "not Windows... this runner does not [work]" - confirmed directly:
+even the baseline `good` case fails, `bench_picture: cannot open /tmp/.../events.tsv`, a WSL-bash
+vs. native-Windows-exe path mismatch unrelated to this fix); CI's own Linux/macOS runners are what
+actually exercise it.
+
+**`window_table.py` reads one real trace from this branch's own binary, no error** (a short
+scripted zoom, `ANNO_VIEW_TRACE`, this worktree's `anno1503.exe`):
+```
+read_frames: 1820 rows, no error
+  first row: frame=1 group=2 outcome=presented
+  last row: frame=1820 group=2 outcome=presented
+  groups seen: [2, 3, 4]
+read_sim: 46 rows, no error
+wheel.tsv header matches WHEEL_COLUMNS: True
+wheel.tsv rows: 4
+```
+
+**`docs/app/window-trace.md`** updated: the `frames.tsv` column list now shows the resample fields
+in their real (writer's) position with a note on when they are 0 vs populated; a new `wheel.tsv`
+bullet with all 8 columns and their meaning (`raw_y`/`integer_y` are not the same number twice -
+a precision wheel's own fractional tick can round to 0 in `integer_y`); a new "Zoom groups and
+their tile widths" section with the verified table (84/42/20/10/5 px, `kTile` and
+`ZoomLevels::with_derived` in the source) and the 42-to-20 2.1x exception named explicitly.
+
+**Gates.** `anno_app_tests` + `viewer_wiring_*` + the workflow contracts (`window_trace_columns_contract`
+new; `window_tools_contract_test.py`, the other `tools/test` file touching `window_table`, reran at
+19/19 to confirm the reorder did not disturb its own `peak_rss` use): 314/314. No C++ source file
+was touched (only `CMakeLists.txt`, two Python files, one bash script, one doc) - `clang-format` and
+the WSL `-Werror` check are both no-ops here, noted rather than silently skipped. No gate was
+visibly running on this PC before the capture or the test run (checked with the orchestrator
+first, per the day's coordination note).
+
+Decisions and reasoning:
+- **Read the header out of the C++ source for the contract test**, not a trace file or a third
+  hand copy - the source is the one place a future column change is guaranteed to touch, so a test
+  reading it directly cannot go stale the way the two readers themselves just had.
+- **Fixed `window_table_test.sh`'s own two broken `sed` patterns in this packet**, not left for
+  whoever next touches that file - they were specifically provable casualties of this exact reorder
+  (both matched the old `scale`-then-`drawable_w` adjacency), not a pre-existing issue to defer.
+- **Verified the shell-script fix by dry run, not by declaring it correct** - the Windows/WSL path
+  mismatch that keeps the real script from running here is a known, pre-existing, documented
+  limitation (the script's own header comment), not something to work around by skipping
+  verification entirely.
+
+READY FOR REVIEW.

@@ -12931,3 +12931,90 @@ not written yet and the two spikes over 4 ms are rare (2 in 126,274 frames acros
 either way, or does the already-ruled-out-as-computing descheduled band matter more for that decision?
 
 READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3d: the overlap check reads after the call — waiting, with no named section
+running — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-3, from `7bec1780`, new commits; **the
+last packet of this series**)
+
+**The fix (review of 3c, F1).** The three sections' own snapshot moved from ~400 lines before the
+`finish` call to right after it returns (`stats.prewarm_sections = m.prewarm_ring.snapshot(); ...`,
+`gpu.cpp`, after `stats.finish_at_ns`) - a section starting or ending during `finish` is now in
+the snapshot, which it could not be before. Each section is now a `SectionRing` (new,
+`gpu_fluid.hpp`): `kSectionRingSize` = 4 most recent instances, not one pair - "a named field with
+its reason": generous given at most one plane is pre-created per quiet frame and the fluid job/
+release threads are rarer still, so a window-thread stall that missed more than 4 instances
+between two reads would itself be the finding. A slot's own `end` reads 0 from `begin` until
+`end` is called; `anno::app::overlap_ms` (new, `section_overlap.hpp`) treats that as running until
+a `read_time_ns` the caller supplies (`sections_read_at_ns`, taken right after the snapshot) -
+the actual fix for F1 ("a section still running has a new begin and the old end, and overlap_ms
+then reports no overlap").
+
+**The unit test (item 4), both old and new on the same four cases:** entirely inside the call -
+both agree, overlap; starts during it, still running at the read - new reports 400 ms overlap, old
+(no `read_time_ns`, `end_ns == 0` taken literally) reports none; started before the call, still
+running at the read - new reports the whole 1000 ms call, old reports none; entirely before,
+long ended - both agree, none. `overlap_ms_old` (new, reproducing the *shape* of 3c's own blind
+spot, not its literal stale-snapshot timing) fails exactly the second and third, as asked.
+13 assertions, `app_test.cpp`, no window.
+
+**The session, once (stopped there - it already had calls over 4 ms).** Five locations, the hitch
+line on every frame, nothing else running (checked before and after): 63,204 frames. `finish_ms`
+median 0.18, p99 0.64, p99.9 1.29, **max 6.90 ms**. 9 calls over 2 ms, **2 over 4 ms** (6.90, 5.18).
+
+**Every one of the 9, with the fixed check:**
+| finish ms | cycles/ms | % of yardstick | overlap | look-back (freed/dropped) |
+|---|---|---|---|---|
+| 2.09 | 2,866,447 | 61% | none | 0/0 |
+| 2.04 | 3,384,879 | 72% | none | 0/0 |
+| 2.01 | 3,317,440 | 71% | none | 0/0 |
+| 2.29 | 2,984,846 | 64% | none | 0/0 |
+| 3.16 | 587,876 | 13% | none | 129/29 |
+| **6.90** | 303,580 | **6%** | **none** | 197/76 |
+| 3.75 | 478,776 | 10% | none | 0/0 |
+| **5.18** | 309,698 | **7%** | **none** | 89/64 |
+| 2.56 | 626,089 | 13% | none | 122/68 |
+
+Yardstick ~4.68-4.69 million cycles/ms throughout (this run's own CPU clock, stable). **None of the
+9 overlaps any of the three named sections - with the corrected check, not the one F1 found blind.**
+
+**One conclusion.** Waiting, with no named section running: the worst calls (6-13% of the
+yardstick) are not computing (direct measurement, not assumption), and now - with the fix - are
+also directly shown not to overlap the plane pre-creation thread, the fluid build thread or the
+fluid release thread (also direct measurement, not the unproven absence 3c reported). What they
+are waiting *for* (a lock this packet did not log, or the OS scheduler) is open; this method
+cannot tell the two apart. The look-back is still mixed (two of the five worst calls show nothing
+nearby; three show substantial freeing/dropping) - no look-back pattern predicts which.
+**Guess, marked as one:** a fourth wgpu-calling thread not yet found, or ordinary OS scheduling
+pressure on an 8-core/16-thread machine, are the remaining candidates; this packet did not look
+for either.
+
+**The line, same shape as 3c.** `finish` vs `draw_calls`: **0.142 ms per 100 draws**, intercept
+0.069 ms - consistent with 3c's own 0.141 and 0.146. `record` vs `draw_calls`: -0.017 ms per 100
+draws, intercept 0.20 ms - still flat, not computing's own signature.
+
+**Gates (changed lanes).** `anno_app_tests` + `anno_render_tests` + `anno_render_gpu_tests` +
+`viewer_wiring_*`: 642/642 after a solo rerun of 3 tests that failed only under memory contention
+(unrelated - chunk-draw/scene-digest/river-shading corpus tests, none touching this packet's
+files), run after the capture, never alongside it. `clang-format`: clean after one `-i` fix. WSL
+`-Werror`: clean on every touched file. No gate was visibly running before either WSL run or the
+capture; the capture's own process-list check (before and after) found nothing else running
+either.
+
+Decisions and reasoning:
+- **Moved the snapshot, did not add a second one** - reading after `finish()` is strictly better
+  information than reading before it; there was no reason to keep both.
+- **`SectionRing` as its own small class (gpu_fluid.hpp), reused by both gpu.cpp's Impl (plain
+  member) and FluidGpu (shared_ptr, for the same move-constructor reason 3c's own plain atomics
+  needed one)** - one ring type, not two copies with the same bug surface.
+- **`overlap_ms_old` reproduces the formula's blind spot, not 3c's literal stale-snapshot timing**
+  - the task's own item 4 asks for a test the old code fails on the right two cases; testing the
+    *timing* bug directly would need a second snapshot point as a parameter, which 3c's own
+    function never took - the formula's own blind spot (a still-running instance's `end_ns == 0`)
+    is the part that generalises and is what a future similar bug would also hit.
+
+QUESTIONs: this is the last packet of the series - the branch is otherwise ready to land, pending
+this packet's own review. Is the fourth-thread search (or an OS-scheduler-level trace) worth a new
+packet, given the two over-4-ms calls are rare (2 of 63,204 in this one run) and RENDER-DIRECT's own
+packets are not written yet?
+
+READY FOR REVIEW.

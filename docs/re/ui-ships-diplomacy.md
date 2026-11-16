@@ -229,11 +229,13 @@ available for purchase. The column is 276 = 6 × 46 tall for 5 tabs (D): one slo
 
 ### 2.10 Player info (P1) — D `0x1007ff21..0x100800ad`
 
-`SPIELER_BILANZ_BK` 1128 / 1132 at (779, 301) (`hud.txt` `player_bk`, M-GOG; M-HE (777.7, 301) rms 21). Six text
-gadgets `0xb1c` 195 × 15 (`cmp edi, 6`), labels `TEXT:SPIELER_DIPLOMATIE` (6 lines: inhabitants, market stand
-revenue, operating costs, purchase costs, sales revenue, military budget), tooltips
-`TOOLTIP:INFOSTADT_SPIELERBILANZMAIN` / `_STADTMAIN`. HE shows **seven** value rows (the seventh = balance, red
-when negative; M-HE 00:44.5: 0, 0, 0, 0, 0, 17, −17). Where the seventh row comes from: U (OQ-661).
+`SPIELER_BILANZ_BK` 1128 / 1132 at (779, 301) (`hud.txt` `player_bk`, M-GOG; M-HE (777.7, 301) rms 21). **Seven**
+text gadgets `0xb1c` 195 × 15: the loop runs edi = 0..6 (`xor edi, edi` at `0x1007ffd7`, `inc edi; cmp edi, 6; jle`
+at `0x100800c7`) (D; this prep first read six, corrected by the orchestrator's review 2026-11-16). Labels
+`TEXT:SPIELER_DIPLOMATIE` (6 lines: inhabitants, market stand revenue, operating costs, purchase costs, sales
+revenue, military budget), tooltips `TOOLTIP:INFOSTADT_SPIELERBILANZMAIN` / `_STADTMAIN`. HE shows the same
+seven value rows (the seventh = balance, red when negative; M-HE 00:44.5: 0, 0, 0, 0, 0, 17, −17), so there is
+no edition difference here.
 
 ### 2.11 Diplomacy status (P2) — list D `0x10085a80..0x1008605f`, actions D `0x10080600..0x10080a05`
 
@@ -399,8 +401,9 @@ Commands the panels send:
 - **OQ-661 — Exact rectangles and disabled drawing.** HE positions are ±2 px from a compressed 0.75 video;
   GOG has no ship-view shot. Needed: lossless HE screenshots at 1024 × 768 or windowed scale 1.0 of every
   ship tab and the player tabs; the gadget positions (not set in the builders read, `0x50` sets only sizes:
-  the position source — a later layout call or the parent — is unread); the disabled/hatched overlay; the
-  seventh player-info row; the cannon slot and second separator.
+  the position source — a later layout call or the parent — is unread, OQ-651); the disabled/hatched overlay;
+  the cannon slot and second separator. (The player info's seventh row is no longer open: the code builds
+  seven text gadgets, §2.10.)
 - **OQ-662 — Load/unload tab layout.** Never captured (greyed before a Kontor in HE; unreached in GOG). Where
   the hold slots, arrows, amount balls, category tabs and city goods list sit; which goods a category shows
   (`ship-cargo.md` OQ-CARGO-5).

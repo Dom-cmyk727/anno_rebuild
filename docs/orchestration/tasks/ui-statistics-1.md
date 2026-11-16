@@ -72,8 +72,9 @@ one concern of about 2–4 hours, reviewed by the orchestrator at handover (no e
 - **M1** faithful sampler in the city tick (step i semantics, `City` gains the 0x2874-byte history and the three
   countdowns; hashed; native save stream). **M2** legacy import of `STST2` (193 corpus records, 10 356 bytes) and
   `SEL_0..7`. **M3** the measured-rate getter for every production class (`+0x94`) and per-group residents. **M4**
-  (only if the owner keeps memories in the sim) commands `SetStatsGoods{player, memory, goods, flag}` and
-  `SetStatsCity{player, memory, city_entry}`.
+  the memories as player state (owner decision 2026-11-16, OQ-675: saved and loaded with the game, synchronised
+  in multiplayer): the eight slots in the player, saved, and the commands `SetStatsGoods{player, memory, goods,
+  flag}` and `SetStatsCity{player, memory, city_entry}`.
 
 ## Recipe for the owner's HE recording (closes OQ-670..674, 678, 679)
 

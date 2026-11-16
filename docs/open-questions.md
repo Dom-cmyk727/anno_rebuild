@@ -3169,7 +3169,7 @@ Raised by the UI lane's read-only preparation of the panels not built yet (owner
 - **OQ-672:** Supply series colours and meaning. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
 - **OQ-673:** Axis label placement and font. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
 - **OQ-674:** Goods icon hover and tooltips. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-675:** Memory slots: meaning and ownership. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-675:** Memory slots: meaning (ownership decided by the owner 2026-11-16: saved game state, player state saved and loaded with the game and synchronised in multiplayer). Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
 - **OQ-676:** Productivity inputs. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
 - **OQ-677:** Rating screen data. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
 - **OQ-678:** HE frame presentation. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".

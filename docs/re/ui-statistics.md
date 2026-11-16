@@ -309,8 +309,8 @@ The panel reads only history and per-player selection state; it sends **no gamep
 | Panel action | Original | `sim::Command` today | Needed |
 |---|---|---|---|
 | Open / close, view, mode, list scroll, memory choice | frame-local | – | none (UI state) |
-| Goods toggle | player `+0x13c(memory, goods, flag)` direct | – | **missing** if the memories stay sim state: `SetStatsGoods{player, memory u8 (0..7), goods GoodsId, flag u16}`; else a local UI store (owner decision, OQ-675) |
-| City list choice | player `+0x134(memory, value)` direct | – | **missing** likewise: `SetStatsCity{player, memory, city_entry i32 (−1 = all)}` |
+| Goods toggle | player `+0x13c(memory, goods, flag)` direct | – | **missing**: `SetStatsGoods{player, memory u8 (0..7), goods GoodsId, flag u16}` (owner decision 2026-11-16 (OQ-675): the memories are saved game state, as in the original: player state, saved and loaded with the game, synchronised in multiplayer) |
+| City list choice | player `+0x134(memory, value)` direct | – | **missing** likewise (same decision): `SetStatsCity{player, memory, city_entry i32 (−1 = all)}` |
 | Pause on open | U | `SetSpeedCmd` | OQ-670 |
 
 ### 5.3 Snapshot additions (app)
@@ -360,11 +360,12 @@ wall time.
 - **OQ-674 — Goods icon hover and tooltips.** The goods icons get a tooltip and three texture messages
   (`0x198`, `0x199`, `0x19c`) whose states (idle, hover, pressed, disabled) are not mapped; the goods name source
   (game name lookup kind `0x20` gives the internal name) vs `WARE_*` sections is U. No HE hover in `ui_5`.
-- **OQ-675 — Memory slots: meaning and ownership.** Are `SEL_0`…`SEL_7` (player `+0x370`, `+0x37c`) exactly the
-  statistics memories (read the loader and the corpus values), what does the flag u16 hold besides 0/1, and
-  should the rebuild keep them in the hashed sim state (commands `SetStatsGoods`/`SetStatsCity`) or in a local
-  per-player UI store saved beside the game? Owner decision; the original mutates player state directly from
-  the UI.
+- **OQ-675 — Memory slots: meaning (ownership decided).** **Owner decision 2026-11-16:** the memories are saved
+  game state, as in the original: player state, saved and loaded with the game, synchronised in multiplayer
+  (so the rebuild keeps them in the hashed sim state, changed by the commands `SetStatsGoods`/`SetStatsCity` of
+  §5.2; the original mutates player state directly from the UI). Still open: are `SEL_0`…`SEL_7` (player
+  `+0x370`, `+0x37c`) exactly the statistics memories (read the loader and the corpus values), and what does
+  the flag u16 hold besides 0/1?
 - **OQ-676 — Productivity inputs.** The rate getters `+0x94` of the farm (`0x1006ef30`), mine (`0x1006e2f0`) and
   base class (`0x10025410`), the second argument of type `+0xc8(j, 0)`, which building list city slot `+0x60`
   → `+0x24(1)` enumerates, and the unwritten block byte `+0x0001` and the bytes `+0x30bc/+0x30bd`.

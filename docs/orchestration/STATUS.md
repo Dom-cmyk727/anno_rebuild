@@ -168,6 +168,19 @@ says who is doing what, where the work is, and what it waits on.
     [FISHER-1f](tasks/fisher-1f.md) to the Mac (the sim rule) and [FISHER-HE-1](tasks/fisher-he-1.md) to the UI
     Executor (owner: "UI Executor"): the originals' reference captures first, then the viewer switch, then the
     comparison once FISHER-1f has landed.
+    **Owner rule, 2026-11-16 (confirmed to the orchestrator: "yes"):** reference tests against the running
+    original are done on the **History Edition**; the GOG version is used for reading its code. The owner gave
+    the reason in the UI lane's session: "Simply because its more stable." Code addresses in `docs/re/` stay
+    those of the GOG DLLs, so a History Edition result that differs from a GOG read is a finding to report, not
+    to smooth over.
+    **FISHER-HE-1 step A, first evidence** (UI lane, 2026-11-16): on the GOG original, run on the desktop with the
+    owner's OK before that rule, the scene is `Tutorial\02Trade01.sze` and the closed hut was built at the
+    card's site. A partial record (cut at game ms 79,307, not a complete run) agrees with the read so far: a
+    figure 142 goes out on the water and stops twice for about 11 s each; at 78.5 s its home link is cleared
+    and a wait of about 15 starts; a second 142 comes out of the hut. Not captured: the full 120 s, the
+    disappearance, the stock. The owner now runs the capture himself on the History Edition from the UI
+    lane's recipe and adds a hut site of his own; the card's closed site is kept, and his sites count as
+    extra open controls.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     Landing waits for the owner's OK.

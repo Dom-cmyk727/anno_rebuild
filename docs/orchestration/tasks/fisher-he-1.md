@@ -14,6 +14,19 @@ the capture card in §10.3; [the review](../reviews/2026-11-16-fisher-re-3-revie
 (captures stay in `cache/` or outside the repository); silent runs; a desktop session of the History Edition needs
 the owner to agree in your session; landing stays with the orchestrator.
 
+## Changed 2026-11-16 by the owner
+
+Reference tests against the running original are done on the **History Edition** (owner, confirmed to the
+orchestrator; "Simply because its more stable"). For step A that means:
+- the owner plays the History Edition himself from the UI lane's short recipe and records video; the UI lane
+  analyses the videos;
+- the GOG desktop runs are stopped; the partial GOG record already made (to game ms 79,307) is kept as
+  supporting evidence, labelled partial;
+- the card's closed site (type 810 at 242, 217, rotation 1) is kept, because the closed case exists only at
+  such a spot; the owner's own, more natural sites are extra open controls;
+- nothing can be read from the History Edition's memory, so every event is taken from pixels, with its frame
+  and the analyst's confidence.
+
 ## Step A: the reference captures of the originals (first, about 2 to 3 hours)
 
 It depends on no rebuild code, and it is the reference everything else is judged by.

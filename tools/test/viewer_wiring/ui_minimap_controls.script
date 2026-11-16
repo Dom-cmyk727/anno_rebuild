@@ -14,6 +14,8 @@ look 1140 516
 wait frames 5
 expect fact minimap.clicks == 0
 expect fact minimap.zoom == 100
+# Without --player the minimap's viewer is the first human slot (B2; lan5: player 0).
+expect fact minimap.viewer == 0
 expect fact camera.pans == 0
 expect fact camera.tile.x != 410
 # The diamond: the camera jumps there, no pan, no selection click.

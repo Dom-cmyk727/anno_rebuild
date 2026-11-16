@@ -617,9 +617,13 @@ int run(const std::vector<std::string>& raw) {
                 mi.heights = std::move(heights).value();
                 minimap_world->islands.push_back(std::move(mi));
             }
+            // The viewer is the play runner's local player whenever it is set (the ship start's
+            // participant, or --player: FISHER-VIEW-1; UI-MINIMAP-1 C); otherwise B2's first
+            // human slot (OQ-629 (b): the runner's default, developer_player, is not the human in
+            // a shipped scenario).
             minimap_rule.emplace(anno::app::minimap_owner_rule(
                 *play, args->file,
-                opening ? std::optional{anno::sim::PlayerId{opening->setup.local}} : std::nullopt));
+                opening || args->play_player ? std::optional{tool_player} : std::nullopt));
             std::fprintf(stderr, "[minimap] viewer player %u\n", minimap_rule->viewer);
             hooks.minimap_config = &*minimap_config;
             hooks.minimap_world = &*minimap_world;

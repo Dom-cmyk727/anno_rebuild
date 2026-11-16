@@ -2851,6 +2851,8 @@ void Viewer::script_tick() {
         st.facts["minimap.clicks"] = std::to_string(minimap_clicks_);
         if (minimap_) {
             st.facts["minimap.zoom"] = std::to_string(std::llround(minimap_->zoom * 100.0));
+            st.facts["minimap.viewer"] =
+                minimap_->rule != nullptr ? std::to_string(minimap_->rule->viewer) : "none";
             int x0 = 0, x1 = -1, y0 = 0, y1 = -1;
             for (const auto& [x, y] : minimap_frame_.box) {
                 if (x1 < x0) {

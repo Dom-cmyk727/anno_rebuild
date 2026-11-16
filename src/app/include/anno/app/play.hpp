@@ -232,7 +232,8 @@ struct PlaySnapshot {
 
 /// UI-MINIMAP-1 B2: the minimap's owner rule (minimap.hpp MinimapOwnerRule) for a loaded game,
 /// read before the world moves into the runner.
-/// - viewer: `local` (a ship start's participant) when given; else the first player in slot order
+/// - viewer: `local` when given (the play runner's local player: a ship start's participant, or
+///   `--player` since UI-MINIMAP-1 C); else the first player in slot order
 ///   whose kind is human (8 or 11) and whose index is not SimConfig::neutral_player - the slot a
 ///   new single-player game gives the local identity (AnnoFrame 0x10029100, docs/re/annoscene.md
 ///   section 9); else developer_player().

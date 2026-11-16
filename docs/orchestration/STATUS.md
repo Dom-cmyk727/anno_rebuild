@@ -220,7 +220,12 @@ says who is doing what, where the work is, and what it waits on.
     **New jobs, 2026-11-16** (the owner asked for one per lane): **Windows executor:**
     [ZOOM-BOUNCE-1](tasks/zoom-bounce-1.md) RELEASED; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
     trigger at most every 16 ms) and waits for the owner's fast drag. **Mac:** the gate run for FISHER-VIEW-1,
-    FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **UI lane:** started **UI-MINIMAP-1**
+    FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **All three reported and reviewed**
+    2026-11-16 ([review](reviews/2026-11-16-mac-three-reports-review.md)): the gate run on `eb11f0c6` has the
+    candidate's tree and 2656 executed with 2 failures, both GPU timing tests on Metal that pass on the 4090 (a
+    Mac-only gap, GATE-MAC-1 to be written); **FISHER-RE-4 ACCEPTED** (`ee507a8c`): the original does not draw a
+    released fisher, because its end animation 17 has no sprite set; **ANNOSCENE-ORE-1 ACCEPTED** (`ea023e18`):
+    `INFO` byte 5 equals the ore markers in 429 of 429 templates. Both wait for a landing with the next candidate. **UI lane:** started **UI-MINIMAP-1**
     (branch `task/UI-MINIMAP-1` from main `4b104d3a`, its packet at `837ffc17` on that branch): step A the
     evidence (a static read of the GOG `View.dll` minimap routines, and the owner's History Edition recording of
     the minimap controls), step B the drawing (islands, view box, markers), step C clicks and buttons. A view

@@ -3539,43 +3539,12 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
                       c->planes_prewarmed);
         return std::string(buf);
     };
-    // ZOOM-SMOOTH-3d: a section's own overlap with the finish call's own span, across its ring's
-    // kSectionRingSize instances (any one of which may be in progress - anno::app::overlap_ms's
-    // own read_time_ns, c->sections_read_at_ns here, handles that per 3c's review F1); the
-    // largest single instance's own overlap is what is reported (a benign race against the
-    // background thread's own writes is still possible, so this is "worth a look", not a
-    // certainty).
-    auto section_overlap_ms = [](const FrameCounts& c, const SectionSnapshot& section) {
-        std::optional<double> best;
-        for (std::size_t i = 0; i < kSectionRingSize; ++i) {
-            const auto ms = overlap_ms(c.finish_at_ns, c.finish_ms, section.begin_ns[i],
-                                       section.end_ns[i], c.sections_read_at_ns);
-            if (ms && (!best || *ms > *best)) {
-                best = ms;
-            }
-        }
-        return best;
-    };
     // ZOOM-SMOOTH-3b item 4: a slow finish this frame (same 2 ms line as ZOOM-MEASURE-1's
     // control-sweep criterion, not yet classified past 3.1 ms, review F4) prints the sums of
     // the kLookback frames just before it - unusually heavy freeing/dropping/decoding there
     // would support deferred destruction or upload catch-up; all quiet there rules it out for
     // that spike.
     constexpr double kSlowFinishMs = 2.0;
-    auto describe_lookback = [this] {
-        std::size_t planes = 0, dropped = 0, sprites = 0;
-        for (const FrameCounts& c : counts_history_) {
-            planes += c.planes_freed;
-            dropped += c.chunks_dropped;
-            sprites += c.sprites_decoded;
-        }
-        char buf[160];
-        std::snprintf(
-            buf, sizeof buf,
-            "planes freed %zu, chunks dropped %zu, sprites decoded %zu, over %zu frame(s)", planes,
-            dropped, sprites, counts_history_.size());
-        return std::string(buf);
-    };
     const bool slow_finish = counts != nullptr && counts->finish_ms > kSlowFinishMs;
     // ZOOM-SMOOTH-3c F2: every ordinary call (not itself slow) with usable cycle data feeds the
     // yardstick, whether or not this particular frame ends up printing a hitch line - the
@@ -3606,18 +3575,63 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
                          events_ms_, group_, describe(last_steps_, last_busy_ms_).c_str(),
                          describe(steps_, total_ms).c_str(), describe_counts(last_counts_).c_str(),
                          describe_counts(counts ? std::optional(*counts) : std::nullopt).c_str());
+#ifdef ANNO_VIEWER_GPU
+            // Only reachable with a real counts (slow_finish already requires counts !=
+            // nullptr): the CPU path's own measure() call always passes none, so counts (and
+            // counts_history_'s own per-frame contents) are provably unused in a build without
+            // this macro, and GCC/Clang's own unused-variable/-Wnull-dereference checks (-O3,
+            // the viewer-without-GPU WSL check) flagged this dead code directly - this guard
+            // removes it instead of arguing with the warnings about it.
+            //
+            // ZOOM-SMOOTH-3b item 4: a slow finish this frame (same 2 ms line as
+            // ZOOM-MEASURE-1's control-sweep criterion, not yet classified past 3.1 ms, review
+            // F4) prints the sums of the kLookback frames just before it - unusually heavy
+            // freeing/dropping/decoding there would support deferred destruction or upload
+            // catch-up; all quiet there rules it out for that spike.
+            auto describe_lookback = [this] {
+                std::size_t planes = 0, dropped = 0, sprites = 0;
+                for (const FrameCounts& c : counts_history_) {
+                    planes += c.planes_freed;
+                    dropped += c.chunks_dropped;
+                    sprites += c.sprites_decoded;
+                }
+                char buf[160];
+                std::snprintf(buf, sizeof buf,
+                              "planes freed %zu, chunks dropped %zu, sprites decoded %zu, over "
+                              "%zu frame(s)",
+                              planes, dropped, sprites, counts_history_.size());
+                return std::string(buf);
+            };
+            // ZOOM-SMOOTH-3d: a section's own overlap with the finish call's own span, across
+            // its ring's kSectionRingSize instances (any one of which may be in progress -
+            // anno::app::overlap_ms's own read_time_ns, c.sections_read_at_ns here, handles that
+            // per 3c's review F1); the largest single instance's own overlap is what is reported
+            // (a benign race against the background thread's own writes is still possible, so
+            // this is "worth a look", not a certainty).
+            auto section_overlap_ms = [](const FrameCounts& c, const SectionSnapshot& section) {
+                std::optional<double> best;
+                for (std::size_t i = 0; i < kSectionRingSize; ++i) {
+                    const auto ms = overlap_ms(c.finish_at_ns, c.finish_ms, section.begin_ns[i],
+                                               section.end_ns[i], c.sections_read_at_ns);
+                    if (ms && (!best || *ms > *best)) {
+                        best = ms;
+                    }
+                }
+                return best;
+            };
             if (slow_finish) {
+                const FrameCounts& fc = *counts;
                 // ZOOM-SMOOTH-3c F2: this call's own cycles per ms against the run's own
                 // yardstick (median over ordinary calls so far) - far fewer than the yardstick
                 // means waiting, not computing; the same order of magnitude means computing.
                 std::string cycles_line = "no cycle data";
-                if (counts->finish_cpu_cycles > 0 && !cycles_per_ms_samples_.empty()) {
+                if (fc.finish_cpu_cycles > 0 && !cycles_per_ms_samples_.empty()) {
                     std::vector<double> sorted(cycles_per_ms_samples_.begin(),
                                                cycles_per_ms_samples_.end());
                     std::sort(sorted.begin(), sorted.end());
                     const double yardstick = sorted[sorted.size() / 2];
                     const double this_call =
-                        static_cast<double>(counts->finish_cpu_cycles) / counts->finish_ms;
+                        static_cast<double>(fc.finish_cpu_cycles) / fc.finish_ms;
                     char buf[160];
                     std::snprintf(buf, sizeof buf,
                                   "%.0f cycles/ms against a yardstick of %.0f (%zu ordinary "
@@ -3631,10 +3645,9 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
                 std::string overlaps = "none";
                 {
                     const std::array<std::pair<const char*, std::optional<double>>, 3> sections{
-                        {{"pre-creation", section_overlap_ms(*counts, counts->prewarm_sections)},
-                         {"fluid build", section_overlap_ms(*counts, counts->fluid_build_sections)},
-                         {"fluid release",
-                          section_overlap_ms(*counts, counts->fluid_release_sections)}}};
+                        {{"pre-creation", section_overlap_ms(fc, fc.prewarm_sections)},
+                         {"fluid build", section_overlap_ms(fc, fc.fluid_build_sections)},
+                         {"fluid release", section_overlap_ms(fc, fc.fluid_release_sections)}}};
                     std::string joined;
                     for (const auto& [name, ms] : sections) {
                         if (ms) {
@@ -3651,9 +3664,10 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
                 std::fprintf(stderr,
                              "  finish %.2f ms (cpu %.2f ms) over %.1f ms: %s; overlapping "
                              "background sections: %s; look-back - %s\n",
-                             counts->finish_ms, counts->finish_cpu_ms, kSlowFinishMs,
-                             cycles_line.c_str(), overlaps.c_str(), describe_lookback().c_str());
+                             fc.finish_ms, fc.finish_cpu_ms, kSlowFinishMs, cycles_line.c_str(),
+                             overlaps.c_str(), describe_lookback().c_str());
             }
+#endif
         }
     }
     if (counts != nullptr) {

@@ -214,7 +214,14 @@ says who is doing what, where the work is, and what it waits on.
     last landing under the old every-landing rule.
     **FISHER-VIEW-1** (UI lane, FISHER-HE-1 step B; `eb11f0c6`) is ACCEPTED for landing
     ([review](reviews/2026-11-16-fisher-view-1-review.md)): `--fisher-rules` and `--player` in `--play`, and the
-    hut's stock readout. Landing waits for the owner's OK; it is the first under the new landing-evidence rule.
+    hut's stock readout. The owner's OK is given ("Yes, land it"); candidate `0f46b1b2` has the branch's tree.
+    The Windows PC's part PASSED (GPU on the 4090 and the app lanes with the game files: 472 executed, 0 failed);
+    the Mac's full run is pending.
+    **New jobs, 2026-11-16** (the owner asked for one per lane): **Windows executor:**
+    [ZOOM-BOUNCE-1](tasks/zoom-bounce-1.md) RELEASED; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
+    trigger at most every 16 ms) and waits for the owner's fast drag. **Mac:** the gate run for FISHER-VIEW-1,
+    FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **UI lane:** asked to start its next
+    packet from the owner's `ui_4` findings (the minimap first) and to report which.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

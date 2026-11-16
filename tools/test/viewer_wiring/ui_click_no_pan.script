@@ -1,0 +1,36 @@
+# UI-PAN-1 (owner, 2026-11-16: "no click pan"): a press that moves less than the click slop
+# (4 drawable pixels) moves the map not at all, with either button; a longer drag still pans. The
+# owner's ui_4.mp4 showed a right click in demolish mode nudging the map by its jitter (4-7
+# capture pixels). `camera.pans` counts pan() calls.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+wait frames 5
+expect fact camera.pans == 0
+# Clicks with a 3.6 px jitter, nothing armed: no pan.
+ldrag_px 500 380 503 382
+wait frames 3
+expect fact camera.pans == 0
+rdrag_px 500 380 503 382
+wait frames 3
+expect fact camera.pans == 0
+# Real drags, both buttons: one pan each, the whole way from the press.
+ldrag_px 500 380 540 400
+wait frames 3
+expect fact camera.pans == 1
+rdrag_px 500 380 540 400
+wait frames 3
+expect fact camera.pans == 2
+# The ui_4 case: demolish mode, a jittery right click - no pan, and the click turns the demolish
+# mode off (UI-PLACE-2).
+key b
+wait frames 5
+click_px 996 736
+wait frames 3
+expect fact tool.mode == demolish
+rdrag_px 500 380 503 382
+wait frames 3
+expect fact camera.pans == 2
+expect fact tool.mode == off
+quit

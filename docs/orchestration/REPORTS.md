@@ -12804,3 +12804,124 @@ item 6, or does RENDER-DIRECT make the question moot before anyone would use it?
 eventually encodes for the F4 jitter rule (ZOOM-SMOOTH-3's own open QUESTION)?
 
 READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3c: catch a slow finish in the act — reproduced; low cycles and no overlap point to
+descheduled, not computing, not the two named background sections — READY FOR REVIEW (same branch
+task/ZOOM-SMOOTH-3, from `73f06bd2`, new commits)
+
+**The spikes were reproduced this time (F1).** Two full five-location sessions (`north`, `middle`,
+`sea`, `southeast`, `west`; `make_script.py`'s own session, `drive2.py`, no capture, `ANNO_VIEW_HITCH_MS=0`
+so every frame logs) at the maximised client size, lan5, enhanced water:
+- Run 1: 63,111 frames. `finish_ms` median 0.18, p99 0.67, p99.9 1.37, **max 13.63 ms**. 26 frames over
+  2 ms, **2 over 4 ms** (13.63, 4.84).
+- Run 2: 63,163 frames. `finish_ms` median 0.18, p99 0.64, p99.9 1.11, max 3.77 ms. 2 frames over 2 ms,
+  0 over 4 ms.
+
+Two runs already had a call over 4 ms (combined), so per the task's own stop rule this did not need the
+two further runs.
+
+**Item 1/F3 (the syscall off the ordinary frame).** `GpuFrame::render`/`submit` take a new
+`measure_cpu_time`/`measure_cpu` parameter; `Viewer::hitch_tracking_enabled()` (true only when
+`ANNO_VIEW_HITCH_MS` is explicitly set) is the one thing that turns it on, threaded through from the single
+real call site (every other `render()`/`submit()` caller - tests, `bench_picture` - passes `false`, the
+default). No cycle-time syscall runs on an ordinary playtest.
+
+**Item 2/F2 (cycles, not `GetThreadTimes`).** `thread_cpu_cycles()` (`QueryThreadCycleTime`) replaces the
+Windows branch of the old `thread_cpu_time_ms()` (removed there; kept, unchanged, for `clock_gettime`
+elsewhere). No conversion to time: the yardstick is the **median cycles-per-millisecond of this run's own
+ordinary (not-slow) calls**, capped at the last 500 (`cycles_per_ms_samples_`), fed on every frame once hitch
+tracking is on, not only on frames that print. Yardstick in both runs: **~4.68-4.69 million cycles/ms**
+(stable across the whole session - the CPU's own clock, confirmed not drifting meaningfully run to run).
+
+**Item 3 (the three background sections, and the two new counts).** `GpuStats` gained
+`prewarm_begin_ns`/`end_ns` (the plane pre-creation thread's own texture/view build),
+`fluid_build_begin_ns`/`end_ns` (the fluid job thread's `make_grid`) and `fluid_release_begin_ns`/`end_ns`
+(`free_job_in_background`'s own release of an unapplied grid, now guarded on `j->grid.has_value()` so an
+already-applied job's release is not logged as one), snapshotted every frame (cheap atomic loads, not
+gated on `measure_cpu_time`) and compared against the finish call's own `[finish_at_ns, finish_at_ns +
+finish_ms]` span when a slow call prints. `chunks_visible`'s own sibling counts, `fluid_windows_new` (the
+per-frame delta `draw_gpu` already computed for `windows_new_`, saved before it is folded in) and
+`planes_prewarmed` (a new `warm_planes_created_total` counter in `Impl`, delta per frame like
+`planes_warm` already is), are in the hitch line's own counts now.
+
+**The 29 slow calls found (26 + 2 + 1 counted once; 27 printed detail lines in run 1, 2 in run 2), every
+one:**
+- **No overlap with any of the three named sections, in either run, for any of the 29 calls.** The plane
+  pre-creation thread and the fluid job's build/release are not implicated for *these* spikes, by direct
+  measurement, not assumption.
+- **Cycle ratios split into two bands.** The worst five (run 1's 13.63, 4.84, 3.60, 3.11 ms and run 2's
+  3.77 ms) ran at **3-15 % of the yardstick** - far too few cycles for their own wall time to be computing.
+  The rest (2.0-2.86 ms, both runs) ran at **39-80 %** - closer to, but still under, the yardstick; this
+  band matches ZOOM-MEASURE-1's own control-sweep figure (2/1,980 frames over 2 ms, max 3.11 ms) in
+  magnitude, the already-decided driver-jitter rule (ZOOM-SMOOTH-3 review F4).
+- **The look-back is mixed, not a clean signal.** Some of the lowest-ratio calls (13.63 ms) show an
+  all-zero 8-frame look-back; others at a similarly low ratio (4.84, 3.60, 3.11, 2.67 ms in run 1; both of
+  run 2's) show tens of planes freed and chunks dropped in the 8 frames before them. No single look-back
+  pattern predicts a low ratio.
+
+**One conclusion, per the task's own four options.** The worst spikes (≤15 % of the yardstick, no
+overlap with either known background section) are **descheduled** - not computing (the cycle count rules
+that out directly), and not waiting behind either of the two sections this packet can see start and end
+(the overlap check rules that out directly too, not by assumption). What preempted the window thread for
+up to ~13 ms is still unknown: neither of the two logged sections, and the look-back's own mixed pattern
+does not point at drops/frees/decodes either. The 2.0-2.86 ms band is the already-decided driver jitter,
+unchanged by anything this packet measured. **This is not "unknown" in the sense of no information** -
+two of the four hypotheses (computing, these two sections) are now ruled out by direct measurement for
+every slow call found; what remains is the OS scheduler or a third wgpu-internal thread this packet did
+not know to look for (ZOOM-SMOOTH-3b item 6 found three; a fourth is not ruled out).
+
+**The line (F4).** Least-squares `finish` against `draw_calls`, both runs:
+- Run 1: **0.146 ms per 100 draws**, intercept 0.066 ms.
+- Run 2: **0.141 ms per 100 draws**, intercept 0.069 ms.
+
+Consistent across two independent runs (same map, same session, different frame mix) - this is the number
+RENDER-DIRECT's own budget work can use directly. `record` against `draw_calls` does **not** scale the same
+way: both runs give a near-zero or slightly negative slope (-0.015 and -0.025 ms per 100 draws, intercept
+0.19-0.25 ms) - `record` (building the command buffer) is close to a fixed cost regardless of draw count in
+this data, unlike `finish` (closing it).
+
+**Nothing else ran during either capture (F5).** Checked before and after each of the two runs: no other
+`anno1503.exe`, no `ctest`/ MSBuild. The owner's own hands-on test of a different worktree's build
+(`anno1503-UI-TABS-1`, a real process on this machine, confirmed by the orchestrator) was running when this
+packet started; both captures were held until it closed and the process list stayed clear through both runs
+and immediately after - neither capture overlapped it or a test run. The gate tests below were run only
+after both captures finished, never alongside them. Separately, the orchestrator's own reviewer subagent
+(light, single-threaded document reading and disassembly) may have been running somewhere on this machine
+during one or both captures - its own message said "for the next hour or so," which overlaps the capture
+window; I cannot rule out a small scheduling effect from it, though a single light thread on an 8-core/16-
+thread machine is not an obvious match for a 13 ms descheduling.
+
+**Gates.** `anno_app_tests` + `anno_render_tests` + `anno_render_gpu_tests` + `viewer_wiring_*`: 641/641
+after a solo rerun of 6 tests that first failed under memory contention (unrelated to this diff - chunk-draw/
+river-corpus/water-field/scene-digest tests, none touching `gpu.hpp`, `gpu.cpp`, `gpu_fluid.cpp`,
+`viewer.cpp` or `thread_priority.hpp`), run strictly after both captures finished (never together, per F5).
+`clang-format`: pending. WSL `-Werror`: pending - held at the orchestrator's own request (this PC's landing
+gate needs it); will follow in a later message.
+
+NOT_RUN: a third or fourth background-wgpu-calling thread search (not asked for this packet; item 6's own
+three are the full list found so far); the full suite and the game-file run (the orchestrator's, at
+landing).
+
+Decisions and reasoning:
+- **Fed the yardstick on every ordinary frame, not only frames that print a hitch** - the first version of
+  this logic lived inside the `if (gap > hitch_ms())` block and would have almost never fed it (an ordinary
+  frame, by construction, rarely triggers that branch), caught by checking the yardstick's own sample count
+  before trusting a single printed line.
+- **Guarded the release log on `j->grid.has_value()`** - `free_job_in_background` frees every retired job,
+  most of which were already applied (no grid left to release); logging every one of those as a "release"
+  would have overlap-tested the slow calls against a span that fires on nearly every frame, defeating the
+  point of a named section.
+- **`build_begin_ns_`/`build_end_ns_`/`release_begin_ns_`/`release_end_ns_` are `shared_ptr<atomic<int64_t>>`,
+  not plain atomics** - a plain `std::atomic` is neither copyable nor movable, and `FluidGpu`'s own move
+  constructor is defaulted (caught at compile time, MSVC's own C2280); `shared_ptr` also lets
+  `free_job_in_background`'s detached thread hold its own reference, independent of this object's lifetime,
+  the same reason `freeing_` itself already uses one.
+- **Stopped at two runs**, per the task's own rule, once both runs' combined 4 ms+ count was nonzero (2),
+  rather than running two more to no new information.
+
+QUESTIONs: is a fourth wgpu-calling thread worth searching for now, given RENDER-DIRECT's own packets are
+not written yet and the two spikes over 4 ms are rare (2 in 126,274 frames across both runs)? Does the
+0.14-0.15 ms/100-draws line, applied to a typical frame's own draw count, change RENDER-DIRECT's priority
+either way, or does the already-ruled-out-as-computing descheduled band matter more for that decision?
+
+READY FOR REVIEW.

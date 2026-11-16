@@ -12706,3 +12706,70 @@ READY FOR REVIEW.
   intentionally not read here. Independent review belongs to the orchestrator.
 
 READY FOR REVIEW.
+
+## UNIX-WARN-1: the Linux warning check ends green again — READY FOR REVIEW (task/UNIX-WARN-1, new
+worktree, from `origin/main` `ac02d4a2`)
+
+**Chose: read the CMake file at run time, not a second hand-written copy.** `extensions_test.cpp`
+needs one CMake-computed define (`src/sim/CMakeLists.txt`'s `ANNO_EXTENSION_ORACLE_FILE`, a path a
+custom command writes at build time via `tools/integration_stream_ref.py --extension-output`) -
+`grep -rln 'target_compile_definitions.*_tests PRIVATE [A-Z_]*="' src/*/CMakeLists.txt` finds this
+as the *only* such file in the whole tree, so a general per-file define table would be solving a
+problem that does not exist yet. `extract_oracle_defs` (new) `sed`s the define name and the
+generator script's own path straight out of `src/sim/CMakeLists.txt`; `generate_oracle_override`
+runs that script into the check's own scratch dir and writes a one-line override
+(`$out/overrides.tsv`) that `check()`'s xargs loop appends only for that one file's compile. A
+rename or removal in CMake now fails loudly (exit 2, naming the file) instead of silently going
+stale the way the define's absence did for eight reports running.
+
+**The negative control (item 2).** `negative_control()` compiles a scratch file with a deliberately
+shadowed variable under the exact same flags and expects it to fail; if it does not, that is a
+setup error (exit 2), not a found warning (exit 1) - every "clean" result would be untrustworthy
+for the wrong reason otherwise. Demonstrated both ways on this branch (`/mnt/e/.../_deps` from the
+ZOOM-SMOOTH-3 worktree's own configured build):
+- Working script, GCC: `== negative control (g++-13): failed as expected (shadowed variable
+  caught)`, then `== GCC, viewer and GPU on: clean` through all four sections.
+- `-Wshadow` stripped from `flags` (simulating the control's own handling removed): `== negative
+  control (g++-13): FAILED TO FAIL - it compiled clean; ...`, script exit 2 - confirmed directly
+  (`wsl.exe`'s own exit code to this session's shell; a redirect-then-`echo $?` in the *same*
+  `bash -c` string unexpectedly read back 0 on this host even though the script itself exited 2,
+  a Git-Bash/WSL interop quirk unrelated to the script - worked around by reading the exit code
+  from a separate top-level invocation rather than a chained one).
+
+**Both real runs' last lines (deps from the ZOOM-SMOOTH-3 worktree, `MSYS_NO_PATHCONV=1`):**
+```
+== negative control (g++-13): failed as expected (shadowed variable caught)
+== GCC, viewer and GPU on: clean
+== GCC, viewer without GPU: clean
+== negative control (.../clang18/.../clang++): failed as expected (shadowed variable caught)
+== Clang, viewer and GPU on: clean
+== Clang, viewer without GPU: clean
+```
+413/80 files (with/without GPU) under GCC and Clang, all four sections clean, exit 0.
+
+**Item 3.** `docs/testing/README.md`'s own section (new, "The Linux/macOS warning check") names
+the script and this fix, pointing back to CLAUDE.md's existing paragraph rather than duplicating
+it. (The task named `docs/testing/README.md` directly; that file did not previously mention this
+script at all - CLAUDE.md is the one place it already was - so this adds the pointer there too
+rather than only in CLAUDE.md, matching what was asked.)
+
+**No source file under `src/` changed** (`git status`: `tools/check_unix_warnings.sh`,
+`docs/testing/README.md` only).
+
+**Gates:** the script itself, both compilers, both configurations, twice (the real run, and the
+negative-control-removed demonstration) - see above. No gate was visibly running on this PC before
+either WSL run (checked the process list each time).
+
+Decisions and reasoning:
+- **Extracted the define name/script path, not just the value** - the *value* is a CMake
+  variable (`${CMAKE_CURRENT_BINARY_DIR}/synthetic-extension.txt`) this script cannot resolve
+  without running CMake; what it actually needs is the *name* and the *generator*, both of which
+  are plain text in the same file, so extracting those two and generating its own copy of the
+  file is the smaller, more robust piece to depend on.
+- **`exit 2` directly from `negative_control` on failure**, not `status=2` plus `return` - a
+  found-warning result later in the same run (`status=1`) would otherwise silently overwrite a
+  setup error that should stop everything.
+
+QUESTIONs: none from this packet's own scope.
+
+READY FOR REVIEW.

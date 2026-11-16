@@ -11,6 +11,7 @@
 #include <iterator>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -1411,4 +1412,98 @@ TEST_CASE("UI.2 V3 (the command boundary): opening, browsing and closing every m
     browsed_runner.run_n(10);
     control_runner.run_n(10);
     CHECK(browsed_runner.state_hash() == control_runner.state_hash());
+}
+
+TEST_CASE("play: the tutorial's territory and minimap owners (UI-MINIMAP-1 B2)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path file = *dir / "Scenes" / "Tutorial" / "02Trade01.sze";
+    if (!fs::exists(file)) {
+        MESSAGE("skipping: Scenes/Tutorial/02Trade01.sze is not in this game directory");
+        return;
+    }
+    auto opened = anno::app::load_play(*dir, file);
+    REQUIRE(opened);
+    const anno::sim::World& world = opened.value().world;
+    // The read (docs/re/ui.md 2.9 B2, docs/re/annoscene.md 9): the viewer is the first human slot
+    // (player 2, kind 8); HEAD +0x4C gives colour slots 2 (player 0, computer), 0 (player 1,
+    // natives), 4 (player 2): the History Edition shows the human's settlement teal (palette 4).
+    const anno::app::MinimapOwnerRule rule =
+        anno::app::minimap_owner_rule(opened.value(), file, std::nullopt);
+    CHECK(rule.viewer == 2);
+    REQUIRE(rule.colour_of_player.size() > 2);
+    CHECK(rule.colour_of_player[0] == std::optional<std::uint32_t>{2});
+    CHECK(rule.colour_of_player[1] == std::optional<std::uint32_t>{0});
+    CHECK(rule.colour_of_player[2] == std::optional<std::uint32_t>{4});
+
+    const auto start = std::chrono::steady_clock::now();
+    constexpr int kRuns = 20;
+    anno::app::TerritoryView territory;
+    for (int i = 0; i < kRuns; ++i) {
+        territory = anno::app::collect_territory_view(world);
+    }
+    const double us =
+        std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start)
+            .count() /
+        kRuns;
+    std::size_t tiles = 0;
+    for (const auto& is : territory.islands) {
+        tiles += is.owner.size();
+    }
+    MESSAGE("collect_territory_view: " << territory.islands.size() << " islands, " << tiles
+                                       << " tiles, " << us << " us per call");
+    // Every city: the human's is known to the human, the computer's and the natives' are not (the
+    // History Edition shows them olive).
+    std::size_t human_cities = 0, others_known = 0;
+    for (const auto& is : territory.islands) {
+        for (const auto& c : is.cities) {
+            const bool known =
+                std::find(c.known_by.begin(), c.known_by.end(), 2U) != c.known_by.end();
+            if (c.owner == 2) {
+                ++human_cities;
+                CHECK(known);
+            } else if (known) {
+                ++others_known;
+            }
+        }
+    }
+    CHECK(human_cities == 1);
+    CHECK(others_known == 0);
+    // The image: some cells teal (owner 4), none red (2) or the natives' (0).
+    const anno::app::MinimapConfig cfg;
+    anno::app::MinimapWorld heights;
+    heights.w = world.settings().world_width;
+    heights.h = world.settings().world_height;
+    const auto layers = anno::app::minimap_owner_layers(cfg, territory, rule);
+    const auto image = anno::app::build_minimap_image(cfg, heights, &layers);
+    std::map<std::uint32_t, std::size_t> owners;
+    for (const std::uint16_t v : image) {
+        ++owners[v / cfg.shades];
+    }
+    CHECK(owners[4] > 0);
+    CHECK(owners[2] == 0);
+    CHECK(owners[0] == 0);
+    MESSAGE("teal cells " << owners[4]);
+    // The human's ship (SCHIFF id 11, owner 2, at 220.5, 263.5 in the file) is a list-1 figure.
+    const auto figures = anno::app::collect_map_figures(world);
+    const auto ship = std::find_if(figures.begin(), figures.end(),
+                                   [](const anno::app::MapFigure& f) { return f.owner == 2; });
+    REQUIRE(ship != figures.end());
+    CHECK(ship->list == 1);
+    MESSAGE("human ship at " << ship->x << ", " << ship->y);
+
+    // The runner publishes the territory with the first snapshot and republishes the same object
+    // while it does not change.
+    anno::app::PlayRunner runner(std::move(opened.value().world));
+    const auto first = runner.snapshot()->territory;
+    REQUIRE(first);
+    CHECK(first->version == 1);
+    CHECK(first->same_content(territory));
+    runner.run_n(2);
+    CHECK(runner.snapshot()->territory == first);
+    REQUIRE(runner.snapshot()->map_figures);
+    CHECK(runner.snapshot()->map_figures->size() == figures.size());
 }

@@ -34,6 +34,7 @@ whole field means “absent”.
 | `hud.txt` | `anno1503-ui-hud 1` | Pixel rectangles at 1024 x 768 for the HUD and build-test surface, each naming the screenshot and the method (sprite-sad, sprite-565, glyph-match, pixel-row, atlas-right, view-dll, inc-size). `align centre` marks a text box (`docs/re/ui.md` section 2.5); `turn <n>` marks a button that turns the armed type's rotation by n quarter turns (the rotate arrows, UI-INFO-2) |
 | `construction.txt` | `anno1503-ui-construction 1` | Construction-menu categories, `THUMBNAIL*` / `TOOLTIP:BAUMENU_*` binds, `thumb_tex` (icon = thumb_tex + 3*record_index), and every cell id from `View.dll` tables plus HEAD costs |
 | `masks.txt` | `anno1503-ui-masks 1` | Rectangles the oracle skips in `compare` (live map, digits, portraits, clipped category column, live banner text) |
+| `minimap.txt` | `anno1503-ui-minimap 1` | The minimap's numbers (UI-MINIMAP-1): image size, palette (base colours, shades, the transparent ones, the scale), the shade rule, the rectangle, the diamond transform, the parchment, the view box; B2: the owner rule, the markers, the alert slots. One `key value...` per line, colours as hex `RRGGBB`; each line cites its address (`docs/re/ui.md` section 2.9). Hand-written, not generated |
 
 `write-inventory` rewrites only `dat.txt`, `inc.txt` and `groups.txt`. `hud.txt`
 is measured from Wine-runner shots (`docs/re/ui.md` section 7). `construction.txt`

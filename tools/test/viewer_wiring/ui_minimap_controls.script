@@ -1,0 +1,105 @@
+# UI-MINIMAP-1 C: the minimap's controls at 1024 x 768 (docs/re/ui.md 2.9 Q6). A left press on the
+# diamond centres the camera on the clicked world point (AnnoFrame 0x100029f0, turn 0, the minimap
+# zoom window); the top-right + and - zoom the minimap (command 0x1b, the view box grows and
+# shrinks); the magnifier's + and - step the main zoom one built level (commands 0xa / 9); the
+# chevrons are dead until VIEW-TURN-1; a press on the parchment outside the diamond, also on its
+# strip left of the chrome (x 765..778), is the UI's and reaches no map action.
+# lan5 is 1431 x 1431 tiles. (900, 50) is (135, 38) from the wrapper's (765, 12): X = 129 * 1.03,
+# Y = 38 * 1.03, D = X - 128 = 4.87, P = 83.15, Q = 73.41 -> tile (trunc(1431 * 73.41 / 256),
+# trunc(1431 * 83.15 / 256)) = (410, 464) through the whole window (z = 1).
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+wait frames 5
+expect fact minimap.clicks == 0
+expect fact minimap.zoom == 100
+# Without --player the minimap's viewer is the first human slot (B2; lan5: player 0).
+expect fact minimap.viewer == 0
+expect fact camera.pans == 0
+expect fact camera.tile.x != 410
+# The diamond: the camera jumps there, no pan, no selection click.
+click_px 900 50
+wait frames 3
+expect fact minimap.clicks == 1
+expect fact camera.tile.x >= 409
+expect fact camera.tile.x <= 411
+expect fact camera.tile.y >= 463
+expect fact camera.tile.y <= 465
+expect fact camera.pans == 0
+expect fact selection.clicks == 0
+# The parchment outside the diamond, on the strip left of the chrome (770, 30): (5, 18) from the
+# wrapper, dx = -123 < -36: taken, nothing moves. A drag from there starts no pan either.
+click_px 770 30
+wait frames 3
+expect fact minimap.clicks == 1
+expect fact selection.clicks == 0
+expect fact camera.pans == 0
+expect fact camera.tile.x >= 409
+expect fact camera.tile.x <= 411
+ldrag_px 772 20 600 300
+wait frames 3
+expect fact camera.pans == 0
+expect fact camera.tile.x >= 409
+expect fact camera.tile.x <= 411
+# The same strip inside the diamond (770, 76): (5, 64), dx = -123 >= -128: the camera jumps to
+# the diamond's left corner, the world's far x and near y (X = -1 * 1.03, D = -129.03, P = 2.81,
+# Q = 260.87 -> (1458, 15), past the world's x; the view's clamp to the scene's bounds then
+# keeps the camera inside its screen rectangle, at about (1209, 265) on lan5).
+click_px 770 76
+wait frames 3
+expect fact minimap.clicks == 2
+expect fact camera.tile.x >= 1204
+expect fact camera.tile.x <= 1214
+expect fact camera.tile.y >= 260
+expect fact camera.tile.y <= 270
+expect fact selection.clicks == 0
+expect fact camera.pans == 0
+# The top-right + (959, 7) 19 x 21 and - (982, 19): the minimap zoom 1.0 -> 0.85 -> 0.7 and back;
+# the view box grows by 1 / z and returns (at level 2 of a 1431-tile world 1.361 * 4 * 2200 /
+# 1431 * 0.972 = 8.1 px across at z = 1, 11.6 px at 0.7: 9 and 13 pixels drawn).
+expect fact minimap.box.w == 9
+click_px 968 17
+wait frames 3
+expect fact minimap.zoom == 85
+click_px 968 17
+wait frames 3
+expect fact minimap.zoom == 70
+expect fact minimap.box.w == 13
+click_px 991 29
+wait frames 3
+expect fact minimap.zoom == 85
+click_px 991 29
+wait frames 3
+expect fact minimap.zoom == 100
+expect fact minimap.box.w == 9
+click_px 991 29
+wait frames 3
+expect fact minimap.zoom == 100
+expect fact minimap.clicks == 2
+# The magnifier's + (796, 135) and - (826, 153), 19 x 21: one built level per press (tile widths
+# 20 -> 42 -> 84, clamped at level 0), then back.
+expect fact view.tile_w == 20
+click_px 805 145
+wait frames 3
+expect fact view.tile_w == 42
+click_px 805 145
+wait frames 3
+expect fact view.tile_w == 84
+click_px 805 145
+wait frames 3
+expect fact view.tile_w == 84
+click_px 835 163
+wait frames 3
+expect fact view.tile_w == 42
+# The chevrons (965, 140) and (986, 140), 19 x 31: taken, nothing turns (VIEW-TURN-1).
+click_px 974 155
+wait frames 3
+click_px 995 155
+wait frames 3
+expect fact view.tile_w == 42
+expect fact minimap.zoom == 100
+expect fact minimap.clicks == 2
+expect fact selection.clicks == 0
+expect fact camera.pans == 0
+quit

@@ -1,0 +1,90 @@
+# The minimap (UI-MINIMAP-1 step B1; docs/re/ui.md section 2.9). The original's values (GOG
+# 2.0.0.5), each with the code it is read from. A larger map or a mod changes these lines, not
+# code (src/app minimap.hpp; its MinimapConfig defaults are the same values, checked by a test).
+anno1503-ui-minimap 1
+# The world image's cells across and down; it always covers the whole world (AnnoWelt
+# 0x100aaa53..0x100aaa8f: 0x100a40d0(world, 0x100, 0x100); AnnoFrame 0x100027a5).
+image 256 256
+# The palette: shades per base colour; the first `transparent` of them draw nothing (AnnoFrame
+# 0x10033943: entries 0 and 1 are 0); entry (c, k) = colour c scaled by (k + 16) / 31 per channel,
+# packed 1:5:5:5 (0x10033954..0x10033a17).
+shades 16
+transparent 2
+shade_scale 16 31
+# The base colours 0xRRGGBB by owner index (0x100338c0..0x1003391a); which player is which: OQ-629.
+colour 0 e6aa10
+colour 1 00bbff
+colour 2 ff4400
+colour 3 fff40a
+colour 4 00e6ce
+colour 5 ff9e00
+colour 6 15e015
+colour 7 f839ff
+colour 8 fafafa
+colour 9 b2ab00
+# A (colour, shade) entry with its own base colour (0x10033954..0x10033961: index 9, shade 2).
+override 9 2 664400
+# The owner index of a cell no visible settlement owns (AnnoWelt 0x100a4001 `mov bl, 9`).
+no_owner 9
+# The shade: summed heights over a window of 2 x 2 cells (0x100c4bd8 = 2.0), divided by the
+# window's nominal tile count (0x100c1974 = 4.0 times sx sy), then ((v & 0xff) + 8) >> 4
+# (AnnoWelt 0x100a3dad..0x100a3e8b): window, round, shift.
+shade_rule 2 8 4
+# The rectangle: x = W - base/4 + dx, y = dy, base/4 x base/8 (AnnoFrame 0x1000a038..0x1000a342),
+# then the renderer's shift above 800 px wide (0x10031a40..0x10031ef1). At 1024: (767, 10) 256 x 128.
+base 1024
+rect -3 12
+shift 2 -2
+# The diamond: centre (128, 64) in the rectangle, half-axes 88 and 44 before the 45 degree turn
+# (turn 0: 45 - 90 * 0) (0x10031a40..0x10031ef1; transform 0x100306f0..0x10030927).
+diamond 128 64 88 44
+diamond_angle 45
+# Map units across the world on each axis (0x10087b90 = 128.0).
+map_units 128
+# The parchment KARTE_NORDUNG id 52 (+ the view turn) and the rows of it shown (v up to 133/256,
+# 0x10002842..0x10002867, 0x10031dd3).
+parchment toolgfx/fenster.tex 52 133
+# Measured, not read: the parchment's best fit on the GOG shot and the islands' best fit on the
+# History Edition capture are one pixel right of (and below) the rectangle; both quads use it,
+# the view box does not (docs/re/ui.md 2.9; OQ-628).
+quad_offset 1 1
+# The parchment quad's corners from the rectangle's: (x + x0, y + y0) to (x + w + x1, y + h + y1),
+# sampled bilinearly (vertices at x - 0.5, 0x10086340). 0 0 2 2 is the code's strip, W' = x1 - x0 + 2,
+# H' = y1 - y0 + 2 (AnnoFrame 0x10031ef1..0x10031f1d), as the History Edition draws it (258 x 130 at
+# (767, 10); its lossless capture: mean 8.3 sum-RGB against 12.3 for the GOG fit). The GOG frame's
+# fit (B1): 1 1 1 1 (docs/re/ui.md 2.9 fix F2; OQ-628).
+parchment_quad 0 0 2 2
+# The frame's colour depth: 32 as the History Edition (palette channels floor(c * (k + 16) / 31) in
+# 8 bits, markers and parchment as they are); 16 for the GOG build's RGB565 frame (the 1:5:5:5 entries,
+# markers and parchment reduced to RGB565).
+colour_depth 32
+# The view box (0x1002fde0..0x10030316): extent 2200 (0x10087bb4), skew 0.3 (0x10087ba8), centre
+# shift 332.8 (0x10087bb0), colour (1, 1, 1, 1) (0x1009cfe8..0x1009cff4).
+view_box 2200 0.3 332.8 ffffff
+# The minimap zoom at the start: the whole world (AnnoFrame +0x18 = 1.0, 0x10033710).
+zoom_start 1.0
+# The top-right + and - (command 0x1b): z - / + the step, clamped (UI-MINIMAP-1 C; AnnoFrame
+# 0x10033770 -> 0x10033710; min and step are the same float 0x10087bd4 = 0.15, max 0x10086310).
+zoom_range 0.15 1.0 0.15
+# A click's inverse transform above 800 px wide: (x - 765 + dx, y - 12 + dy) * scale, relative to
+# the wrapper's rectangle (AnnoFrame 0x100333f0; dx dy scale from 0x10031e4f..0x10031e63).
+click -6 0 1.03
+# The owner rule (UI-MINIMAP-1 B2; AnnoWelt 0x100a3ed7..0x100a40bb): a city colours its tiles with
+# its colour byte (city +0x16 = the owner's colour slot, player property 11, 0x1002f42b) when the
+# viewing player knows it (city +0x61c) or the world shows every city (world property 5 = 0).
+# no_colour: the byte of an owner without a slot (0xff is stored as 0, 0x1002f437, 0x1002f5f5);
+# all_visible 0: world byte +0x69cd is 0 after a reset (0x100a3a93), so property 5 is 1.
+owner_rule 0 0
+# The markers (AnnoFrame 0x10002e48..0x100030cd; colours 0x10002896..0x100028ab): own list 0
+# (SOLDAT, 0x1001ddfd), own list 1 (SCHIFF, 0x1001e06f), flagged, the other players' list 1.
+marker_colours 00ff00 00d000 ffffff ff3000
+# Flag 0x10 paints white; list 0 is skipped when flags & 0xc0 == 0x80 (0x10002ec3, 0x10002f54).
+marker_flags 10 c0 80
+# A 1 px square outline of half-size 1 (0x10003135..0x1000327f), at most 1500 per frame
+# (0x10033b60: 0x5dc).
+marker_square 1 1500
+# The other players' ships only when the world's property 0xe is GUID {a2414664-...} (0x10002fb1);
+# the rebuild's world has no such id (OQ-630).
+marker_others 0
+# MINIMAP_ALERT slots (0x10033bb0: at most 8). Not drawn yet: the snapshot carries none (OQ-633).
+alerts 8

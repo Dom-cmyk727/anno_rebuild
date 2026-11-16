@@ -13,6 +13,7 @@ add_library(anno_app_core
   src/dev_tool.cpp
   src/frame_projection.cpp
   src/legal_workload.cpp
+  src/minimap.cpp
   src/cli.cpp
   src/loader.cpp
   src/opening.cpp
@@ -87,7 +88,8 @@ if(ANNO_BUILD_TESTS)
     tests/visibility_test.cpp tests/dev_occupancy_test.cpp tests/dev_visibility_test.cpp
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
     tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
-    tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp)
+    tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
+    tests/minimap_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -229,7 +231,9 @@ if(ANNO_BUILD_TESTS)
       # UI-PLACE-1: the pickaxe with nothing armed, a cell chosen while demolishing, the cancel-X.
       # UI-PLACE-2: ESC and the right click one step back, a right drag still pans.
       # UI-PAN-1: a click (under the 4 px slop) moves the map not at all, either button.
-      foreach(case ui_place_demolish ui_place_escape ui_click_no_pan)
+      # UI-MINIMAP-1 C: the minimap's controls (a diamond click centres the camera, the zoom
+      # buttons, the magnifier, dead chevrons, the parchment strip left of the chrome).
+      foreach(case ui_place_demolish ui_place_escape ui_click_no_pan ui_minimap_controls)
         add_test(NAME viewer_wiring_${case}
           COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                   $<TARGET_FILE:anno1503> ${case}
@@ -239,6 +243,16 @@ if(ANNO_BUILD_TESTS)
         set_tests_properties(viewer_wiring_${case} PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       endforeach()
+      # UI-MINIMAP-1 C: the minimap's viewer is the runner's local player (--player).
+      add_test(NAME viewer_wiring_ui_minimap_player
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_minimap_player
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --player --app-arg 3
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_minimap_player PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-WINDOW-1 fix round R1 (F6, F7): a chrome drag starts no pan; a lost UI press is dropped.
       add_test(NAME viewer_wiring_ui_chrome_press
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py

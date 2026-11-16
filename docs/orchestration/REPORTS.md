@@ -12616,3 +12616,93 @@ Branch `task/FISHER-VIEW-1` from main `3ce4150e`, merged with main `4b104d3a` (F
 - **Our viewer, same view:** `--play {game}/Scenes/Tutorial/02Trade01.sze --player 2 --fisher-rules on --group 0`, window 2542×1351 (`ANNO_VIEW_SIZE`), centre `ANNO_VIEW_AT` on the hut (A: 243,218; B: 244,217). The HE camera's exact position cannot be read, so frames are matched by registration on the background (as in ui_5, ±3 px).
 
 **Landing.** Contains main `4b104d3a`; through the orchestrator.
+
+
+## FISHER-RE-4 — READY FOR REVIEW (Mac, 2026-11-16)
+
+- Base: origin/main `4b104d3a`; branch `task/FISHER-RE-4`.
+- Read both 2026-11-16 reviews: FISHER-1f and FISHER-HE-1 step A.
+- Scope: GOG 2.0.0.5 static read plus parsed FigurenHeader.dat; documents only.
+- Result: figure 142 is NOT DRAWN after normal release, while still registered.
+- Rule/evidence: [fisher.md §12](../re/fisher.md#12-released-fisher-visibility-fisher-re-4-2026-11-16).
+- End flags: AnnoWelt `0x1003af80`–`0x1003af96`, word +6:
+  clear 1, set 2 and 512. These are behavioral end flags, not a proven hide mask.
+- Bit 0 gates active route/rate: `0x10033cba`, `0x10035bc0`–`0x10035bd0`.
+- Bit 1 takes terminal-step Remove: `0x1003481a`–`0x10034844`.
+- Bit 9 inhibits re-arming in the read restart consumers:
+  `0x100518c4`–`0x100518d2`, `0x10045c4e`–`0x10045c60`.
+- Sector draw: `0x1009ffc2`–`0x100a0004`, slot +0x30 list, slot +0x7c display.
+- Post-draw bit-1 deletion is for class 162/163, not fisher class 4.
+- Fisher vtable `0x100cb4d8`, display `0x100384d0`–`0x10038689`.
+- It receives the figure; there is no generic end-flag hide test in this pass.
+- End selects animation 17 at `0x1003afc6`; +0x150 notification is a no-op.
+- Type frame lookup: AnnoGame `0x100113a0`; absent-set return -1 at
+  `0x100113e2`–`0x100113ff`; fisher negative-result exit `0x10038539`.
+- Piece lookup also refuses absence: AnnoGame `0x1001137d`–`0x1001139a`,
+  fisher `0x10038583`–`0x10038588`, before sprite submission `0x100385a5`.
+- Parsed figure 142: four graphics sets, keys 4/7/8/9, no 17.
+- Loader binding: AnnoGame `0x10011818`–`0x10011836`, `0x10011af7`–`0x10011b04`.
+- Distinguishing counterexample: figures 108/203 have animation 17;
+  102/106 do not. Do not hide every figure solely because its home was released.
+- Viewer rule: omit the released fisher sprite; retain the sim wait and cargo.
+- This explains the visible HE disappearance without asserting identical HE code.
+- Checks: git diff --check and added local link resolution; no tests locally (docs only).
+- COUNTS/VERDICT: NOT_RUN locally; docs-only hosted CI supplied at handover.
+- 0 pins moved; no original text/bytes/listings/pixels, engine or fixture changes.
+- Private read evidence: `cache/fisher-re-4/`; original listings remain ignored.
+- NOT_RUN: HE binary read, live GOG/HE, pixels, other-worker full timelines.
+- Decisions and reasoning:
+  - Follow the actual display chain through data lookup, not a guessed flag meaning.
+  - Separate drawing, sector membership, end wait and registry destruction.
+  - Use a present-animation counterexample to bound the rule to its proven scope.
+  - No reviewer subagent; orchestrator re-checks addresses at handover.
+- QUESTIONs: none for figure 142; original symbolic bit names remain unproved.
+
+READY FOR REVIEW.
+
+
+## ANNOSCENE-ORE-1 — READY FOR REVIEW (Mac, 2026-11-16)
+
+- Base: origin/main `4b104d3a`; branch `task/ANNOSCENE-ORE-1`.
+- Read the complete board packet and annoscene.md §5; no engine/pin change.
+- [Addressed note and mapping](../re/annoscene.md#51-ore-markers-and-info-capacity-annoscene-ore-1-2026-11-16).
+- P FigurenHeader.dat: 1560–1564 and 1661 are BEWOHNTYPE ERZSYMBOL.
+- WARE respectively: EISENERZ, GOLD, SALZSTEIN, EDELSTEINE, MAMORSTEIN;
+  1661 is also EISENERZ. Keep the original spelling MAMORSTEIN.
+- P 1550/1551: BEWOHNTYPE SCHATZ, WARE SCHATZ (treasure).
+- D/P ore kinds 0..6 (AnnoScene `0x1003AF24`): 1661/1561/1562/1563/0/1564/1560.
+- Goods: iron/gold/salt rock/gems/no type/marble rock/iron; numeric ids 1/2/3/4/-/6/1.
+- D island OCCUR dispatch: AnnoWelt `0x10089714`, loader `0x10095eb0`.
+- D ENTRY2 payload dword 0 bits 14..25 resolves the figure type:
+  `0x10095f8b`–`0x10095f9d`; P checked by the reference, not a tile-object id.
+- ERZSYMBOL factory `0x10094e00`, constructor `0x100637a0`, table `0x100c7508`.
+- Its primary-interface +0x28 = `0x10063750` attaches the figure type at +4;
+  +0x84 = `0x10063640` returns its goods; +0x78(4) = `0x10063736` reads byte +0x31.
+- Therefore the placement's 1..6 check is goods, not figure types/mountain ids.
+- Complete local file census: 465 .scp, 36 filename exclusions, 429 candidates.
+- INFO[4] is 0 in all 429; INFO[5] agrees with ore-marker count in 429/429.
+- Total ore markers 1590; exceptions NONE. All candidates parsed.
+- Our 465/429 remains distinct from the co-developer's reported 464/428.
+- Our built-in network list's one absent on-disk candidate is named in §5.1;
+  his missing file cannot be identified without his manifest. Do not assume it.
+- tools/annoscene_ore_ref.py: read-only census, optional JSON names/counts;
+  no files => explicit skip; mismatch => 1, missing/malformed => 2.
+- Contract: 8 public-command checks, including 3 source mutants, each applied once:
+  packed type shift (exit 2), wrong INFO byte (1), dropped 1661 classification (1).
+- Direct reference and contract pass; canonical `cache/annoscene-ore-1/reference-01.log`:
+  `COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+  `COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- Log SHA256: `6115d10b42a4af416bc8294d56283297c245eadece28674f332e0cca1935e29e`.
+- Diff check, local links and lint_sim pass; no memory refusal, fixture bytes or pins moved.
+- Hosted exact-head CI supplied at handover; no original bytes/listings/assets committed.
+- NOT_RUN: HE or co-developer corpus, engine suite for this read, live placement.
+- Decisions and reasoning:
+  - Treat the co-developer's note as the lead; re-parse this copy independently.
+  - Count by BEWOHNTYPE so both iron types are included and treasures excluded.
+  - Retain the original filename exclusions; no invented candidate pruning.
+- QUESTIONs/open: unassigned-marker rule, placed-deposit tons, treasure spot scan;
+  intentionally not read here. Independent review belongs to the orchestrator.
+
+READY FOR REVIEW.

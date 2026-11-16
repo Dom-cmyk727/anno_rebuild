@@ -233,9 +233,16 @@ struct UiHit {
 /// (`statusbar`'s y and height, x from 0 to statusbar_end plus `fragezeichen`'s width) and, with
 /// `paused`, the pause parchment (`pause_parchment`) are chrome, and so is every element of the
 /// tab panel `panel` shows (hud.txt `panel`; fix round R3: the sub-tabs reach left of the column,
-/// x 762..778). Everything else is the map.
+/// x 762..778), and so is `minimap`, the minimap's click area in layer pixels (UI-MINIMAP-1 C,
+/// minimap.hpp minimap_click_area: its parchment reaches left of the column, x 765..778 at 1024;
+/// right-anchored, so its reference point is the layer point moved back by placement.dx).
+/// Everything else is the map.
+struct UiRect {
+    int x = 0, y = 0, w = 0, h = 0;
+};
 [[nodiscard]] UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy,
-                           bool paused = false, const std::string& panel = {});
+                           bool paused = false, const std::string& panel = {},
+                           const std::optional<UiRect>& minimap = std::nullopt);
 
 /// Parses hud.txt's text (the version line `anno1503-ui-hud 1` is required). An error names the
 /// line number and what was wrong.

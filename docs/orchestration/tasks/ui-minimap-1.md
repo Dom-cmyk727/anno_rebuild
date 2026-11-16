@@ -38,8 +38,17 @@ size (UI-WINDOW-1's transform). Pixel comparison against the History Edition fra
 ## Step C: make it work (after B)
 
 Left click (and drag, if HE does) on the minimap moves the main view; the buttons as HE does them. The
-rotate arrows need a camera rotation the renderer does not have yet: if HE rotates the view, this part is a
-separate packet (named in the report), not hidden in this one.
+rotate arrows (chevrons) turn the whole view (GOG commands 0xc / 0xd, `docs/re/ui.md` 2.9). That is the
+render lane's packet **VIEW-TURN-1** (orchestrator, 2026-11-16): in this packet the chevrons stay dead,
+marked as waiting for it, and nothing of the turn is built here.
+
+**Data, not limits** (orchestrator 2026-11-16, CLAUDE.md): the original's 256 x 256 world image, its
+10 colours x 16 shades, the up to 8 alert sprites and the minimap zoom steps 0.15 to 1.0 come in as
+defaults (data/config) that a larger map or a mod can change, never as fixed arrays or constants.
+
+**Step A.1 result** (2026-11-16): `docs/re/ui.md` 2.9 and OQ-628..634 - AnnoFrame draws the minimap under
+the `WELTKARTE` chrome's hole from AnnoWelt's 256 x 256 owner/shade image; the buttons are main zoom,
+minimap zoom and view turn; a click centres the camera, no drag.
 
 ## Owner recipe for the History Edition recording (step A.2)
 

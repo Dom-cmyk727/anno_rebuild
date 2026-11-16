@@ -447,7 +447,10 @@ class Viewer {
     /// SDL_SetWindowsMessageHook so it also sees messages dispatched from inside the native
     /// modal move/resize loop itself (confirmed in the pinned SDL 3.4.18 source -
     /// WIN_WindowProc's own DispatchModalLoopMessageHook call, guarded on data->in_modal_loop).
-    /// Never drops a message (always returns true).
+    /// Also logs WM_NCLBUTTONDOWN/UP, WM_LBUTTONUP, WM_SYSCOMMAND and WM_CAPTURECHANGED
+    /// unconditionally (review: hypothesis (a) is about the title-bar press *before*
+    /// WM_ENTERSIZEMOVE, so these cannot wait on the in-modal flag). Never drops a message
+    /// (always returns true).
     static bool live_resize_windows_hook(void* userdata, MSG* msg);
 #endif
     /// The frame boundary of play (PlayFollower::follow): takes the sim's batches, applies them and
@@ -2848,6 +2851,28 @@ bool Viewer::live_resize_windows_hook(void* userdata, MSG* msg) {
     case WM_EXITSIZEMOVE:
         std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_EXITSIZEMOVE\n", now);
         self->live_resize_trace_in_modal_ = false;
+        break;
+    // ZOOM-SMOOTH-2d review: hypothesis (a) is about the time *before* WM_ENTERSIZEMOVE (the
+    // title-bar press Windows holds before it decides to enter the move loop at all), so these
+    // log unconditionally - never gated on live_resize_trace_in_modal_, unlike the bucketed
+    // counts below, which only make sense once the modal loop is confirmed running.
+    case WM_NCLBUTTONDOWN:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_NCLBUTTONDOWN hittest=%lld\n", now,
+                     static_cast<long long>(msg->wParam));
+        break;
+    case WM_NCLBUTTONUP:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_NCLBUTTONUP hittest=%lld\n", now,
+                     static_cast<long long>(msg->wParam));
+        break;
+    case WM_LBUTTONUP:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_LBUTTONUP\n", now);
+        break;
+    case WM_SYSCOMMAND:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_SYSCOMMAND sc=0x%04llx\n", now,
+                     static_cast<unsigned long long>(msg->wParam) & 0xFFF0ULL);
+        break;
+    case WM_CAPTURECHANGED:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_CAPTURECHANGED\n", now);
         break;
     default:
         if (self->live_resize_trace_in_modal_) {

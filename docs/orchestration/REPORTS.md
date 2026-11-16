@@ -12680,3 +12680,127 @@ wiring into `zoom_sweep_contract.py` as a follow-up, now that it is written down
 implement?
 
 READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3b: classify the finish spikes — draws correlate with `finish` where measured; the
+original 4.4-10.8 ms spikes were not reproduced this time; two concrete, evidenced background-
+thread candidates named for next — READY FOR REVIEW (task/ZOOM-SMOOTH-3, same worktree and branch,
+on top of `953ca181`/`3526d253`)
+
+**Items 1-2 (`GpuStats`, `gpu.hpp`/`gpu.cpp`): the counts review F1/F2 asked for.** `chunks_visible`
+(`visible_chunks(view).size()`, already computed at the `sync_chunks` call and now just kept) is the
+real per-frame drawn count; the hitch line now prints "chunks built N, missing N, drawn N" instead
+of the old, mislabelled "visible chunks" (`chunks_built + chunks_missing`, which review F1 correctly
+called 0-at-rest and not what the name said). `draw_calls`/`bind_group_sets` are counted at every
+`wgpuRenderPassEncoderDraw`/`SetBindGroup` call inside `GpuFrame::render` (the per-chunk `draw_chunks`
+lambda - the dominant, content-scaling source across the terrain/ground/sea/objects/sea-over passes
+- plus the sprite, resample and UI-overlay passes); the one `SetBindGroup(p, 0, pass1/pass2, ...)` per
+render pass (3 a frame, fixed) is left out as noise, documented in the field's own comment.
+
+**Item 3 (CPU vs wall time of `finish`): the chosen API turned out too coarse to answer this.**
+`thread_priority.hpp` gained `thread_cpu_time_ms()` (`GetThreadTimes` on Windows, kernel+user ticks to
+ms; `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` elsewhere), bracketed around the same
+`wgpuCommandEncoderFinish` call `SubmitTimes::finish` already times, as `finish_cpu_ms`. Measured: on
+this machine `GetThreadTimes` only updates in ~15.6 ms system-clock-quantum steps - every nonzero
+sample read exactly **15.62 ms**, regardless of whether the matching `finish_ms` was 0.57, 0.85, 1.05
+or 1.78 ms (`live_run/stderr.log`, e.g. t=3.09-3.25s), and it read 0 on the rest (3655/3673 live,
+3688/3728 control frames). The code is correct and wired through to the hitch line and `FrameCounts`,
+but it cannot distinguish "computing" from "waiting" at a sub-quantum scale, and the original 4-10 ms
+spikes are themselves below one quantum - **inconclusive by this method, not negative evidence of
+either**. `QueryThreadCycleTime` (TSC cycles) would need the core's actual clock frequency to convert
+to time, which has no reliable API; a more direct test would log the background threads' own
+create/release timestamps (item 6) against window-thread spike timestamps instead of sampling CPU
+time at all - left for whoever next measures an actual spike directly.
+
+**Item 4 (8-frame look-back): implemented, wired to the hitch line, not yet exercised on a real
+spike.** `counts_history_` (a `std::deque<FrameCounts>`, `kLookback` = 8) is updated after each hitch
+check, so it holds the frames strictly before the one just measured. When the current frame's own
+`finish_ms` exceeds `kSlowFinishMs` = 2.0 (ZOOM-MEASURE-1's own control-sweep line, review F4), the
+hitch line gets a second row: summed `planes_freed`/`chunks_dropped`/`sprites_decoded` over the
+look-back. No slow finish occurred in either measurement run (next item), so this has not yet been
+checked against a real spike - the mechanism is in place and will print the next time one happens
+under a hitch-tracing run.
+
+**Item 5 (distribution, live + control): measured, but did not reproduce the original spike
+magnitude.** Two `drive2.py` sessions (max zoom-out, `wheel -60`; live = six pan/wheel gestures over
+~5 s, control = camera at rest for 8 s; `ANNO_VIEW_HITCH_MS=0` so every frame logs, not just hitches;
+3,673 and 3,728 frames) parsed for `finish_ms`/`draw_calls`:
+- live: median 0.320 ms, p99 1.156 ms, p99.9 1.906 ms, **max 2.320 ms**; 3 frames over 2 ms.
+- control: median 0.460 ms, p99 1.190 ms, p99.9 1.635 ms, **max 1.720 ms**; 0 frames over 2 ms.
+- Both match ZOOM-MEASURE-1's own control figure (2/1,980 over 2 ms, max 3.11 ms) order of magnitude
+  for order; **neither run came close to the 4.4-10.8 ms spikes ZOOM-SMOOTH-3 found** - that session's
+  scenario (likely a heavier draw/upload load, or a cold-cache transient this 5-8 s script did not
+  hit) was not reproduced here, so the correlation below is evidence about `finish`'s normal range,
+  not a direct measurement of the worst-case spikes themselves. **QUESTION, not a guess.**
+- `corr(draw_calls, finish_ms)` over all frames: **0.85 (live), 0.77 (control)** - `draw_calls` ranged
+  109-689 across frames at this zoom level. This is real, not assumed: ZOOM-SMOOTH-3's own gap (F2,
+  not tracking the one count that tests its own hypothesis) is closed, and the hypothesis holds over
+  the range measured.
+
+**Item 6 (non-window-thread wgpu callers; read-only, no change).**
+- `gpu.cpp`, `Impl::start_prewarm()`'s `warm_thread` lambda (lines ~549-607): calls `make_texture`/
+  `make_view` (`wgpuDeviceCreateTexture`/`wgpuTextureCreateView`) to pre-build "warm" chunk planes.
+  The surrounding comment already says why this matters: texture creation takes wgpu-hal's device
+  allocator lock, the same lock every window-thread upload and buffer creation needs.
+- `gpu_fluid.cpp`, `FluidGpu::prepare_window()`'s job `thread` (lines ~733-747), via `make_grid()`
+  (lines ~243-285): calls `grid_texture()` (`wgpuDeviceCreateTexture`/`wgpuTextureCreateView`) and
+  `wgpuDeviceCreateBindGroup` directly, building a whole new fluid-simulation grid off the window
+  thread.
+- `gpu_fluid.cpp`, `FluidGpu::free_job_in_background()` (lines ~639-650): its own detached thread's
+  `j.reset()` destructs a retired `Job`, including an unapplied `Grid` if one was built before
+  cancellation (`make_grid` runs to completion regardless of `cancel`, only `compute_pieces`'s loop
+  checks it) - this **releases** that grid's `Texture`/`TextureView`/`BindGroup` handles
+  (`Handle<..., wgpuTextureRelease>` etc., `wgpu.hpp`) off the window thread. This is the one
+  genuine background-thread wgpu *release* found, matching the task's own "releases" category.
+- Checked and ruled out: `frame.cpp`'s chunk-builder thread pool and `reaper_` thread (CPU pixel
+  compositing and CPU chunk freeing only, no `wgpu` symbol in the file); `scene.cpp`'s
+  `SceneReclaimer` thread (`delete`s CPU-only `Scene` generations - `Scene` owns no `Texture`/`Plane`
+  members, confirmed by reading `scene.hpp`).
+
+**Conclusion (one, with evidence; marked where it is a guess).** Over the range this measurement
+could reach (0.1-2.3 ms), `finish_ms` tracks `draw_calls` closely (r = 0.77-0.85) - **computing**, not
+waiting, is the dominant story there, confirming the task's own hypothesis directly instead of by
+elimination. For the original 4.4-10.8 ms spikes specifically, this packet has **no direct
+measurement** (not reproduced) and the CPU-time instrumentation (item 3) cannot resolve sub-quantum
+waits either way - so "waiting on a lock, descheduled, or paying for another thread's deferred wgpu
+work" is **not confirmed, not ruled out**. **Guess, not evidence:** item 6's two background-thread
+candidates (the plane pre-creation thread's own texture/view creation, and the fluid job's grid
+creation/release) are the most concrete things found that could make the window thread's own
+`wgpuCommandEncoderFinish` wait on wgpu-hal's shared device allocator lock - they are named because
+they are the only background wgpu callers that exist, not because either was caught in the act of a
+spike.
+
+**No fix made** (task's own instruction: measurement and diagnostics only).
+
+**Gates (changed lanes: app, render/render-gpu for the `GpuStats` fields).** `anno_app_tests`,
+`anno_render_tests`, `anno_render_gpu_tests`: 615/615 after a solo rerun of 8 tests that first failed
+only under memory contention from the concurrent `drive2.py` capture sessions (unrelated to this
+diff - chunk-draw/river-digest/river-flow corpus tests; none of them touch `viewer.cpp`, `gpu.hpp`,
+`gpu.cpp` or `thread_priority.hpp`), matching the project's own "refused tests rerun alone"
+convention. `clang-format`: clean after one `-i` fix. WSL `-Werror`: pending (checked for a visible
+gate on this PC first - none running - then run; result follows this entry or in the next message).
+
+Decisions and reasoning:
+- **Reused the already-computed `visible_chunks(view)` result for `chunks_visible`** instead of
+  widening `FrameRenderer::update_chunks`'s tuple return - that signature has 21 call sites across
+  both source and test files, far outside this packet's changed-lanes scope; the frame-level count
+  gpu.cpp already had on hand was the narrower, equally correct fix.
+- **Scoped the draw/bind-group count to `GpuFrame::render` itself**, not `reduce_quad` (derived-level
+  chunk reduction, a separate command buffer) - that function's own `finish`/`record` are not what
+  this task or ZOOM-SMOOTH-3 measured, and counting its draws would have mixed two different
+  `finish` calls into one number.
+- **Ran the live and control sessions through the viewer itself** (two `drive2.py` scripts, one with
+  motion, one at rest) rather than extending `bench_frame`'s own `--zoom-sweep`/`--control` output
+  format - the viewer's existing, just-extended hitch-line counts already carried every field item 5
+  needed; teaching `bench_frame` the same fields would have been a second, parallel reporting path
+  for no new information.
+- **Reported the quantization finding instead of silently dropping `finish_cpu_ms`** - a measurement
+  that is wired correctly but not sensitive enough is still worth knowing, and matches the task's own
+  "mark guesses as guesses" instruction applied to methods, not just conclusions.
+
+QUESTIONs: is a background-thread timestamp log (item 3's own suggested next step) worth building to
+actually catch a 4-10 ms spike in the act against the plane-pre-creation/fluid-job threads named in
+item 6, or does RENDER-DIRECT make the question moot before anyone would use it? Is `kSlowFinishMs`
+= 2.0 the right trigger for item 4's look-back print, or should it track whatever `zoom_sweep_contract`
+eventually encodes for the F4 jitter rule (ZOOM-SMOOTH-3's own open QUESTION)?
+
+READY FOR REVIEW.

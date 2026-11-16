@@ -224,7 +224,9 @@ says who is doing what, where the work is, and what it waits on.
     [ZOOM-BOUNCE-1](tasks/zoom-bounce-1.md) RELEASED, READY and ACCEPTED as **not reproduced** the same day
     (`1b7d722d`, [review](reviews/2026-11-16-zoom-bounce-1-review.md): 45,825 scripted frames with no view, group or
     scale out of line; the owner's log has exactly one not-ready frame, five stand-in chunks, next to the flagged
-    frame, and the UI lane checks the recording for that); **ZOOM-SMOOTH-3 RELEASED**; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
+    frame; the UI lane checked the recording and **refuted that**: frame 970 is the whole view about 1.5 % closer
+    around the cursor for one frame, steady before and after, so the overshoot is real; **ZOOM-BOUNCE-2 RELEASED**
+    (notches at the zoom limits, the presented scale logged)); **ZOOM-SMOOTH-3 RELEASED**; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
     trigger at most every 16 ms) and waits for the owner's fast drag. **Mac:** the gate run for FISHER-VIEW-1,
     FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **All three reported and reviewed**
     2026-11-16 ([review](reviews/2026-11-16-mac-three-reports-review.md)): the gate run on `eb11f0c6` has the

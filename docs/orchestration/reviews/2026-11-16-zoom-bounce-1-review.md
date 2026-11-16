@@ -36,3 +36,35 @@ regions.
 
 Two full render-suite attempts timed out on unrelated tests under memory pressure; the nine tests passed alone. The
 packet changes no render code, so the render suite was not needed: gates cover the changed lanes.
+
+## Update, the same day: the hypothesis is refuted by the recording
+
+The UI lane extracted frames 966 to 973 exactly and compared them.
+
+- **The difference is over the whole map**, not in a few regions: 6,695 of 6,696 blocks differ between frames 969
+  and 970, evenly in every band. Frames 969 and 971 are nearly identical.
+- **Frame 970 is the whole view zoomed in by about 1.5 % around the cursor**, as sharp as its neighbours, with no
+  seams and no patches; the next frame is back at the old scale. It is not a copy of any frame 966 to 973.
+- **No capture fault:** no tear, no duplicated frame.
+
+So the one not-ready frame in the log does not explain it. It is a real one-frame overshoot of the zoom that was
+presented: the view is steady before and after, and one frame is 1.5 % closer. The orchestrator's stand-in idea was
+wrong.
+
+## ZOOM-BOUNCE-2 (released, about 1.5 hours)
+
+The view is steady at zoom group 0, the closest level, before and after the odd frame. That points at a transient
+at the zoom limit rather than at the easing between levels, which ZOOM-BOUNCE-1's sweep cleared. Leads to test, not
+to assume:
+1. **A wheel notch inwards while already at the closest zoom.** If the notch is applied for one frame before the
+   limit clamps it, one frame is drawn slightly closer and the next is back. The owner was wheeling in and out
+   quickly and reached group 0 just before; one notch too many is likely. ZOOM-BOUNCE-1's script followed the group
+   sequence and may never have sent a notch at the limit.
+2. **The first frame of a zoom-out from the limit**, drawn with the new target but the old anchor or the other
+   way round.
+3. **The scale that is presented**, not only the view state: log per frame the scale and origin handed to the frame
+   renderer and the resample factor, and compare them with the view's.
+
+Steps: extend the script with notches at both zoom limits and with notches that arrive within a few frames of each
+other; look for a frame whose presented scale differs from both neighbours by more than 0.5 %; fix at the cause;
+a test that fails before the fix. If it still does not reproduce, say so and stop.

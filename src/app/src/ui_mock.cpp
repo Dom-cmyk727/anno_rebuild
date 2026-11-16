@@ -726,7 +726,7 @@ UiTexCache& UiTexCache::operator=(UiTexCache&&) noexcept = default;
 
 std::optional<UiMockSpec> parse_screen_name(const std::string& screen) {
     if (screen == "hud_idle")
-        return UiMockSpec{UiMockScreen::Hud, ""};
+        return UiMockSpec{UiMockScreen::Hud, "", "", 0};
     // UI-WINDOW-1 fix round R2's panel names, as views and sub-tabs (UI-TABS-1).
     if (screen == "player_list")
         return UiMockSpec{UiMockScreen::Hud, "", "player", 1};
@@ -749,7 +749,7 @@ std::optional<UiMockSpec> parse_screen_name(const std::string& screen) {
         "public", "roads", "farms", "workshops", "coastal", "mines", "military", "ornamental"};
     for (const auto* cat : kCategories) {
         if (screen == std::string("construction_") + cat)
-            return UiMockSpec{UiMockScreen::Construction, cat};
+            return UiMockSpec{UiMockScreen::Construction, cat, "", 0};
     }
     return std::nullopt;
 }

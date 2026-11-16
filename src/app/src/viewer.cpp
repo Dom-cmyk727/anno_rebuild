@@ -3501,7 +3501,7 @@ std::optional<sim::TileXY> Viewer::centre_tile() const {
 Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     UiMockSpec spec;
     if (construction_menu_open_) {
-        spec = UiMockSpec{UiMockScreen::Construction, construction_open_category_};
+        spec = UiMockSpec{UiMockScreen::Construction, construction_open_category_, "", 0};
     } else if (hud_tabs_) {
         spec = UiMockSpec{UiMockScreen::Hud, "", hud_tabs_->view().name, hud_tabs_->subtab()};
     }

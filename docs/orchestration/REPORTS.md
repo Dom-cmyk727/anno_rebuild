@@ -12573,3 +12573,72 @@ READY FOR REVIEW. Stop here; FISHER-HE-1 is not released.
 - QUESTIONs: none; nominal wait fits existing fields. Independent review: orchestrator pending.
 
 READY FOR REVIEW. Stop after pushed-head CI; no UI/capture or parked task started.
+
+## ZOOM-BOUNCE-1 — not reproduced in 240 reversal legs; the math regression-tested — READY FOR REVIEW (task/ZOOM-BOUNCE-1, new worktree, from `origin/main` `4b104d3a`, head `0df9b53e`)
+
+**Reproduced via a dev script, not the owner.** `tools/test/viewer_wiring.py` with `--gpu --trace`, lan5,
+`--construction-menu on --water enhanced`, `ANNO_VIEW_SIZE=2560x1369`, cursor at (1080, 635): a wheel burst
+per leg (magnitude 12) reproducing the owner's own reversing shape (two out, two in, four out, then the
+mirror back), 50 repeats = 800 wheel events = 240 direction-reversal legs (over the 200 the task asked
+for), 45,825 drawn frames. `ANNO_VIEW_TRACE` (already shipped, no new code) gave per-frame `view`/`group`/
+`scale` for free.
+
+**Checked for exactly the owner's signature** (one frame far from both neighbours, which agree with each
+other): a Python pass over `frames.tsv` looked for (a) a group that flips for one frame and reverts (hysteresis
+failing), and (b) a one-frame spike in the reconstructed group-independent eased tile width
+(`scale * tile_w(group)`) against its own smooth neighbours. **Zero of either, across all 45,825 frames.**
+Stand-in dissolves did happen during the run (up to 101 at once, confirming the chunk-substitution path the
+task named was actually exercised, not idle) - still no disagreement in what the Viewer itself asked the
+renderer to draw.
+
+**Added a permanent regression test** (`app_test.cpp`): the exact group sequence (`0,1,2,1,0,1,2,3,4` and
+its reverse) driven directly through `zoom_advance`/`zoom_target_after`, swept over 9 inter-notch delays x
+6 frame rates (19,617 individual per-step checks), asserting `now` never moves away from the leg's own
+target. All pass - proves, not just observes once, that the easing math itself cannot bounce under normal
+(every level ready) conditions; a future change to that formula would be caught here.
+
+**Did not find the cause.** The Viewer's own per-frame state (what it asks the renderer to draw) was clean
+throughout. This points away from `zoom_advance`/`zoom_tick`/`pending_zoom_` (the latter is unreachable
+here regardless: this map runs continuous zoom by default, so the discrete `zoom()`/`pending_zoom_` path the
+task named is never taken) and toward either the GPU compositor's own internals (not instrumented in this
+packet - `FrameRenderer::render`'s one shared `view`/`group`/`resample` argument makes a chunk/stand-in/sea/
+sprite disagreement hard to localise without reading deep into `frame.cpp`/`gpu.cpp`, out of this packet's
+own time box) or the screen capture itself, which this codebase cannot check. Per the instruction, the zoom
+was not changed on this guess.
+
+**Gates.** `anno_app_tests`: 283/283 (`cache/gates/zoombounce1-app-1.log`). `anno_render_tests` +
+`anno_render_gpu_tests` on the 4090: two full-suite attempts each failed a different handful of unrelated
+river/water/digest corpus tests (`Timeout`, one `low-memory stop` refusal at `free=1082 MiB`, one digest
+mismatch) - the failing set itself changed between attempts, and free memory on the machine was observed
+recovering from ~1 GB to 8-13 GB between runs, so this is this machine's own resource contention, not a
+regression (nothing in this packet touches `src/render`). The union of every test either attempt failed, 9
+of them, passed 9/9 run alone (`cache/gates/zoombounce1-render-solo.log`), per the project's own "refused
+tests rerun alone" convention. WSL `-Werror`: clean on `app_test.cpp` under GCC 13 and Clang 18, except the
+same pre-existing, unrelated `src/sim/tests/extensions_test.cpp` gap every other packet this cycle has also
+hit (this worktree never touches `src/sim`). `clang-format` clean.
+
+NOT_RUN: a GPU-compositor-level instrumentation pass (chunks/stand-ins/sprites individually, inside
+`frame.cpp`/`gpu.cpp`); a capture-side check of the owner's own recording.
+
+Decisions and reasoning:
+- **Checked the owner's own cursor/window/map precisely before writing the script**, rather than guessing a
+  generic zoom test - the dev script's existing `wheel N X Y` syntax already supports an off-centre anchor,
+  so nothing new was needed to match the real position.
+- **Calibrated the wheel magnitude against this build's own group thresholds** (watching `frames.tsv`) rather
+  than assuming a single real-wheel notch's own unknown magnitude - the owner's recording names only group
+  labels, not the wheel delta that produced them.
+- **Confirmed `pending_zoom_`/discrete `zoom()` cannot be the cause for this map and build** (continuous
+  zoom is the default, and this scene is on the GPU) before spending time on it, rather than chasing a
+  hint that cannot apply here.
+- **Re-ran only the failed render tests, solo, rather than the whole 330-test suite again**, once their
+  failure set and failure kind had already changed between two full attempts - the project's own evidence
+  policy treats an environmental flake honestly, not as grounds to keep re-running everything.
+- **Did not instrument the GPU compositor's own internals in this packet**, given the time box and that the
+  Viewer-level signal came back clean across far more than 200 repeats - named it as the next place to look
+  rather than guessing inside it without evidence.
+
+QUESTIONs: is a `FrameRenderer`-internal instrumentation pass (per-layer scale/origin inside `frame.cpp`/
+`gpu.cpp`) worth a follow-up packet, or should the owner's own recording get a capture-side check first
+(dropped/duplicated frame in OBS, vsync tear) before more engine-side instrumentation?
+
+READY FOR REVIEW.

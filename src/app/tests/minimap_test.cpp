@@ -621,6 +621,38 @@ TEST_CASE("minimap click: the click area takes the parchment left of the chrome"
     CHECK(app::minimap_click_area(cfg, 2542) == app::MinimapRect{2283, 10, 259, 130, 1.0});
 }
 
+TEST_CASE("minimap click: the HUD hit test takes the click area, also left of the column") {
+    const auto hud = app::load_hud_layout(fs::path(ANNO_REPO_DIR) / "data" / "ui" / "hud.txt");
+    REQUIRE(hud.ok());
+    const app::MinimapConfig cfg;
+    const auto rect = [&](int ui_w) {
+        const app::MinimapRect a = app::minimap_click_area(cfg, ui_w);
+        return app::UiRect{a.x, a.y, a.w, a.h};
+    };
+    const auto at = app::place_hud(hud.value(), 1024, 768);
+    // (770, 30) is parchment left of the column (x 779): the map without the minimap, chrome
+    // with it, its reference point itself.
+    CHECK_FALSE(app::ui_hit(hud.value(), at, 770, 30).chrome);
+    const auto hit = app::ui_hit(hud.value(), at, 770, 30, false, {}, rect(1024));
+    CHECK(hit.chrome);
+    CHECK(hit.ref == std::optional<std::pair<int, int>>({770, 30}));
+    // Outside the area (x 765..1023, y 10..139): the map.
+    CHECK_FALSE(app::ui_hit(hud.value(), at, 764, 30, false, {}, rect(1024)).chrome);
+    CHECK_FALSE(app::ui_hit(hud.value(), at, 770, 140, false, {}, rect(1024)).chrome);
+    // Right-anchored at 2542 x 1351: 1518 px further right, the same reference point.
+    const auto big = app::place_hud(hud.value(), 2542, 1351);
+    const auto wide = app::ui_hit(hud.value(), big, 770 + 1518, 30, false, {}, rect(2542));
+    CHECK(wide.chrome);
+    CHECK(wide.ref == std::optional<std::pair<int, int>>({770, 30}));
+    // The magnifier's buttons are hud.txt elements (measured on hud_idle_running).
+    const auto* plus = hud.value().element("lupe_plus");
+    const auto* minus = hud.value().element("lupe_minus");
+    REQUIRE(plus != nullptr);
+    REQUIRE(minus != nullptr);
+    CHECK(std::pair{plus->pos_x, plus->pos_y} == std::pair{796, 135});
+    CHECK(std::pair{minus->pos_x, minus->pos_y} == std::pair{826, 153});
+}
+
 TEST_CASE("minimap zoom: the top-right + and - step by 0.15 inside 0.15 .. 1.0") {
     const app::MinimapConfig cfg;
     // From the whole world, + six times: 0.85, 0.7, 0.55, 0.4, 0.25, then 0.1 is clamped to 0.15

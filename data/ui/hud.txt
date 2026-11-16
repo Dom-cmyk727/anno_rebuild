@@ -31,6 +31,11 @@ element zoom_minus pos 982 19 size 19 21 file toolgfx/fenster.tex access KARTEPL
 element lupe pos 805 132 size 42 45 file toolgfx/fenster.tex access LUPE tex_id 7 anchor right method sprite-sad shot hud_idle_running
 element compass_w pos 965 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 48 anchor right method sprite-sad shot hud_idle_running
 element compass_e pos 986 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 50 anchor right method sprite-sad shot hud_idle_running
+# UI-MINIMAP-1 C: the magnifier's + and - (KARTEPLUS gadgets 1 and 2, ids 40 and 42, View.dll
+# 0x100343c9..0x10034449; sprite-sad means 1.81 and 1.19, pressed frames 41 and 43). Not drawn:
+# WELTKARTE's own pixels show them (docs/re/ui.md 2.9 Q6); here for the click only.
+element lupe_plus pos 796 135 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 anchor right method sprite-sad shot hud_idle_running
+element lupe_minus pos 826 153 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 42 anchor right method sprite-sad shot hud_idle_running
 element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
 element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
 element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 anchor right panel player,player_list,info,main_menu method sprite-sad shot r2_construction_public

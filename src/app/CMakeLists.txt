@@ -215,7 +215,9 @@ if(ANNO_BUILD_TESTS)
       # UI-PLACE-1: the pickaxe with nothing armed, a cell chosen while demolishing, the cancel-X.
       # UI-PLACE-2: ESC and the right click one step back, a right drag still pans.
       # UI-PAN-1: a click (under the 4 px slop) moves the map not at all, either button.
-      foreach(case ui_place_demolish ui_place_escape ui_click_no_pan)
+      # UI-MINIMAP-1 C: the minimap's controls (a diamond click centres the camera, the zoom
+      # buttons, the magnifier, dead chevrons, the parchment strip left of the chrome).
+      foreach(case ui_place_demolish ui_place_escape ui_click_no_pan ui_minimap_controls)
         add_test(NAME viewer_wiring_${case}
           COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                   $<TARGET_FILE:anno1503> ${case}

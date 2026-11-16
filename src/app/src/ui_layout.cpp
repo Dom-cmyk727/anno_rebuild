@@ -163,7 +163,7 @@ UiPlacement place_hud(const HudLayout& hud, int ui_w, int ui_h) {
 }
 
 UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy, bool paused,
-             const std::string& shown_panel) {
+             const std::string& shown_panel, const std::optional<UiRect>& minimap) {
     UiHit hit;
     if (ux < 0 || uy < 0 || ux >= placement.ui_w || uy >= placement.ui_h)
         return hit;
@@ -195,6 +195,14 @@ UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy,
                 return hit;
             }
         }
+    }
+    // UI-MINIMAP-1 C: the minimap's click area (right-anchored, its parchment reaches left of the
+    // column).
+    if (minimap && inside(ux, uy, minimap->x, minimap->y, minimap->w, minimap->h)) {
+        hit.chrome = true;
+        if (uy < placement.ref_h)
+            hit.ref = std::pair{ux - placement.dx, uy};
+        return hit;
     }
     // The right chrome column: the panel's x and width, from the panel's top to the layer's
     // bottom (the panel, then the filler under it).

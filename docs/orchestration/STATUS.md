@@ -259,6 +259,9 @@ says who is doing what, where the work is, and what it waits on.
     `finish` grows with the draws (correlation 0.77 to 0.85; 99th percentile 1.2 ms of the 2 ms frame), and three
     background threads call wgpu (plane pre-creation, the fluid job, its background release); the 4 to 10 ms
     calls were not looked for in the session that showed them and the CPU-time question is open, so
+    **UNIX-WARN-1 reviewed** 2026-11-16 (`841af180`,
+    [review](reviews/2026-11-16-gate-mac-1-and-unix-warn-1-review.md)): the warning check reads the define from
+    CMake and checks itself with a deliberate warning; ACCEPTED once CI is green;
     **[ZOOM-SMOOTH-3c](tasks/zoom-smooth-3.md) ACCEPTED** 2026-11-16 (`7bec1780`, CI green;
     [review](reviews/2026-11-16-zoom-smooth-3c-review.md)): the spikes reproduced (2 calls over 4 ms in 126,274
     frames, longest 13.6 ms); they were waiting, not computing; `finish` costs 0.14 ms per 100 draws, which
@@ -330,6 +333,12 @@ says who is doing what, where the work is, and what it waits on.
     It holds UI-MINIMAP-1 (`3c7ea686`), FISHER-RE-4 and ANNOSCENE-ORE-1.
     **[GATE-MAC-1](tasks/gate-mac-1.md) is RELEASED to the Mac** (2026-11-16, the owner pastes the prompt; base `ac02d4a2`):
     why the timestamp tests fail on Metal, then a fix or corrected tests, so the Mac's verdict can be PASS.
+    **GATE-MAC-1 ACCEPTED** 2026-11-16 (`d4f2e592`, CI green;
+    [review](reviews/2026-11-16-gate-mac-1-and-unix-warn-1-review.md)): on Apple Metal the end tick comes before
+    the begin tick, also in a separate WebGPU program, so the fault is below our code; the engine's rejection and
+    wall-clock fallback stay, and only Apple Metal may miss a reading in the three tests. The orchestrator ran
+    the GPU tests on the RTX 4090 (118 of 118) and the changed three on the Radeon iGPU (3 of 3), both with the
+    strict rules. Lands with the next candidate.
     **UI-PANELS-PREP** (UI lane, the owner's request in its session, 2026-11-16): four read-only research
     subagents prepare the in-game panels that do not exist yet, with the History Edition as the reference and
     both editions' files: the warehouse and trade panels; the ship panels and diplomacy; statistics; the

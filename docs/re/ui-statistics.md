@@ -346,39 +346,16 @@ wall time.
 
 ## 7. Open questions (OQ-670 … OQ-679)
 
-- **OQ-670 — Does the player statistics screen pause the game, and how?** HE: no game time passes while it is open
-  (boat timing, wood line end; `ui_5-report.md` §2, inferred). GOG: no pause call found in the frame; the frame's
-  slot 19 `0x10013cb0` message table (cases at `0x10013d38`) and the frame manager were not read. Needed: the
-  mechanism (frame flag vs speed command) and whether multiplayer differs.
-- **OQ-671 — Which key closes it?** HE 8:50.45 closed with the mouse still (no click). Candidates: ESC, `-` again,
-  any key. Read the frame's key path (slot 19 / the frame manager) or record it on HE (§ recipe in the packet).
-- **OQ-672 — Supply series colours and meaning.** Code: two polylines per goods, colours `0xfaf023`, `0xfffff0`
-  (`0x100147a6`, `0x100147c7`); HE shows a yellow dashed line ≈ 1 t on food and beer. Which row (production or
-  demand) is which colour, how `0xfaf023` is interpreted (the stocks table reads as `0x00BBGGRR`), and whether
-  HE changed it.
-- **OQ-673 — Axis label placement and font.** Labels 20…280 (step 20) and 30…270 (step 40) do not sit on the
-  10-s ticks; "20" is centred on the 10-s tick, "280" on 280 s (HE `s_006`, `s_130`). The rule (label count from
-  the width? per-label offset?) and the `.zei` font are not read (chart class in `AnnoDisplay.dll`
-  `tDrawLayerDiagramm`, not opened).
-- **OQ-674 — Goods icon hover and tooltips.** The goods icons get a tooltip and three texture messages
-  (`0x198`, `0x199`, `0x19c`) whose states (idle, hover, pressed, disabled) are not mapped; the goods name source
-  (game name lookup kind `0x20` gives the internal name) vs `WARE_*` sections is U. No HE hover in `ui_5`.
-- **OQ-675 — Memory slots: meaning (ownership decided).** **Owner decision 2026-11-16:** the memories are saved
-  game state, as in the original: player state, saved and loaded with the game, synchronised in multiplayer
-  (so the rebuild keeps them in the hashed sim state, changed by the commands `SetStatsGoods`/`SetStatsCity` of
-  §5.2; the original mutates player state directly from the UI). Still open: are `SEL_0`…`SEL_7` (player
-  `+0x370`, `+0x37c`) exactly the statistics memories (read the loader and the corpus values), and what does
-  the flag u16 hold besides 0/1?
-- **OQ-676 — Productivity inputs.** The rate getters `+0x94` of the farm (`0x1006ef30`), mine (`0x1006e2f0`) and
-  base class (`0x10025410`), the second argument of type `+0xc8(j, 0)`, which building list city slot `+0x60`
-  → `+0x24(1)` enumerates, and the unwritten block byte `+0x0001` and the bytes `+0x30bc/+0x30bd`.
-- **OQ-677 — Rating screen data.** `tFrameGameStatistik` (init `0x1000f5e0`) rows (`STATISTIK` lines 3–16:
-  villages, subjects, satisfaction, capital, islands, soldiers defeated/died, ships sunk/lost, enemies, bonus,
-  summary) — which player/world values and which score formulas; the player record `STATIS` (12 bytes); HE's
-  different `HISCORE_UNTERGRUND`. Out of this packet's first steps; needs its own read.
-- **OQ-678 — HE frame presentation.** The source of the grape-vine pillarbox art, whether the frame follows
-  `UI_SCALE` or always fits the window height (`he-ui-scale.md` covers the in-game UI, not full frames), and the
-  filtering of the stretched frame.
-- **OQ-679 — City list semantics.** "Alle anzeigen" shows the **average** over the player's cities (D); confirm on
-  HE with two or more cities (and the y-max quirk `if (ymax < cap) ymax += cap`). Also: red text = selected
-  entry?, list order (player list vs (island, city)), scroll limits with more than ~25 cities.
+The full entries (status, area, question, what is known, how to resolve) are in the register,
+[`docs/open-questions.md`](../open-questions.md), under these numbers:
+
+- **OQ-670:** Does the player statistics screen pause the game, and how?
+- **OQ-671:** Which key closes the player statistics screen
+- **OQ-672:** Supply series colours and meaning
+- **OQ-673:** Axis label placement and font of the statistics charts
+- **OQ-674:** Goods icon hover and tooltips on the statistics screen
+- **OQ-675:** Statistics memory slots: meaning (ownership decided by the owner)
+- **OQ-676:** Productivity inputs of the statistics sampler
+- **OQ-677:** Rating screen data
+- **OQ-678:** HE presentation of full-screen frames
+- **OQ-679:** City list semantics on the statistics screen

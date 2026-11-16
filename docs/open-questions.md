@@ -3142,46 +3142,367 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Rebuild default (UI-MINIMAP-1 C):** the packet's choice (orchestrator, 2026-11-16): every press in `minimap_click_area` (the drawn raster and the wrapper rectangle together, x 765..1023, y 10..139 at 1024; x 765..1024 since the fix round's 258-pixel parchment quad) is the UI's, so none reaches the map; only one inside the diamond moves the camera. The buttons use the measured rectangles in `data/ui/hud.txt`.
 - **Fix round (UI-MINIMAP-1 F1, 2026-11-16):** the scroll's rolled left end (`fenster.tex` id 3 at (745, 49), `hud.txt` `minimap_curl`) is drawn now and its rectangle is chrome under the same choice: a press there does nothing.
 
-## OQ-650..OQ-689: UI panel preparation (UI-PANELS-PREP, 2026-11-16; OPEN)
-Raised by the UI lane's read-only preparation of the panels not built yet (owner's request, 2026-11-16): warehouse and trade (650-659), ships and diplomacy (660-669), statistics (670-679), in-game options and the main menu (680-689). Each question's evidence, options and how to resolve it are in its spec; this is the index.
+## OQ-650: Pixel layout of the Sell / Buy pages (tabs 2 and 3) (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** Rectangles of the two sliders (track, knob travel), the four plus/minus buttons, the
+  two value texts, the goods grid and its cells, the Add and Delete buttons, the stock bar; text
+  format of the values; how an empty list and an empty cell look.
+- **What we know:** sizes, textures, tooltips and handlers (D, section 2.4); the background
+  `VKEK_HINTERGRUND` should sit at (781, 301) on GOG 1024 x 768 (A). No capture of either edition.
+- **How to resolve:** HE recording R2 and R3 (packet), then sprite-sad of each texture on the frames.
 
-- **OQ-650:** Pixel layout of the Sell / Buy pages (tabs 2 and 3). Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-651:** Where View.dll's gadget positions come from. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-652:** Which graphic set the HE draws, and its layout. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-653:** Add-goods flow and the goods-to-list link. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-654:** Slider units and the property 0x1a2. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-655:** The city-status rows' sources and period. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-656:** What "Deny building material" does to the sim. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-657:** The crest at the right end of the city name plank. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-658:** Foreign Kontor panel and ship trade at a Kontor. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-659:** Which goods each stock page lists. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
-- **OQ-660:** Ship view host and selection. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-661:** Exact rectangles and disabled drawing. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-662:** Load/unload tab layout. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-663:** Behaviour verbs. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-664:** Treaty button state and the partner list. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-665:** Tribute. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-666:** Diplomatic messages. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-667:** Selling and buying ships. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-668:** Ship list rows and ship names. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-669:** Trade-route editor mapping. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
-- **OQ-670:** Does the player statistics screen pause the game, and how?. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-671:** Which key closes it?. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-672:** Supply series colours and meaning. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-673:** Axis label placement and font. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-674:** Goods icon hover and tooltips. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-675:** Memory slots: meaning (ownership decided by the owner 2026-11-16: saved game state, player state saved and loaded with the game and synchronised in multiplayer). Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-676:** Productivity inputs. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-677:** Rating screen data. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-678:** HE frame presentation. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-679:** City list semantics. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
-- **OQ-680:** What the History Edition main menu Optionen opens. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
-- **OQ-681:** What the GOG main-menu DETAILS setting changes in play. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
-- **OQ-682:** In-game save and load: list order, default name, overwrite and delete rules. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
-- **OQ-683:** What the gear tab exit door does, and its confirmation box. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
-- **OQ-684:** The pause box texts and which screens pause. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
-- **OQ-685:** Which Scenes folder feeds which heading of the choose-game list. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
-- **OQ-686:** The History Edition settings window: items and where values persist. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
-- **OQ-687:** How the History Edition fits the 800 x 600 menus to the window. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
-- **OQ-688:** Which VOLUME value is music, which speech. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
-- **OQ-689:** The History Edition sixth Options tooltip line. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+## OQ-651: Where View.dll's gadget positions come from (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original code.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** The View.dll builders set size, image, tooltip and handler but no position; where is
+  each child's (x, y) defined (slot index + a table, a parent layout pass, the gadget base class)?
+- **What we know:** AnnoFrame builders set positions with gadget slot +0x5c `(x, y)` (0x1001ef47);
+  View.dll builders add children with slot +0x24 `(gadget, index)` only; page backgrounds are placed by
+  `[obj+8](x, y)` in the draw slot (0x1006c7cb, 0x1002130b). Slot +0x24 is 0x10019830 in the city
+  panel's and the options view's vtables: it grows the child vector at `+0x5e0` to the index and
+  stores the gadget pointer (0x10019883..0x1001991d), so the index selects no rectangle table
+  (orchestrator's review 2026-11-16; re-read for this note).
+- **How to resolve:** read the gadget base class (0x100188c0 constructor, 0x10018b90 message
+  handler) and the gadgets' own default sizes and positions; search the panel's later layout or
+  draw pass for writes to the children's position fields.
+
+## OQ-652: Confirm that the HE videos show the plain set at 0.75 (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open, narrowed 2026-11-16 by the orchestrator's review (related: OQ-535).
+- **Area:** UI / HE.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** Do the owner's HE videos show the city panel in the plain graphic set at UI scale
+  1.0, recorded at 0.75 (2542 x 1351 client in a 1920 x 1080 video)?
+- **What we know:** 0.75 x the plain-set positions fits the tab, plank and deny button within 2 px
+  (section 3); this prep's first reading ("the `8` set at 1920 x 1080") compared the 0.78125-size
+  `8` set with the unscaled plain set and is retracted. `he-ui-scale.md`: UI scale 1.0 at 1200
+  lines or fewer, chrome at x = W - 245.
+- **How to resolve:** match the 0.75-scaled plain set on `ui_5.mp4` 405 s and `HE_UI_1.mp4` 91 s
+  (expected: at least as good as the `8` set's means); or measure a lossless recording made at the
+  common set-up (`docs/orchestration/tasks/ui-panels-he-recording.md`), where the plain set must
+  match 1:1.
+
+## OQ-653: Add-goods flow and the goods-to-list link (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original code.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** After "Add goods" and a choice in the chooser (id 0xa0c), which command is sent (0x73
+  at the free index, or 0x8a append through sender slot +0xd0)? Does the UI send 0x7c mode 0/1, or does
+  the 0x73 handler set the goods record itself? What goods value does Delete send?
+- **What we know:** 0x10025790 opens the chooser for the first empty cell; the chooser callback region
+  0x10023480..0x1002369b calls helper 0x100249f0 and city slot +0x78; no slot +0xd0 call was found in
+  0x10021290..0x10025a00.
+- **How to resolve:** read 0x100249f0 and the chooser's selection handler; read AnnoWelt's 0x73
+  apply for the goods-setting write.
+
+## OQ-654: Slider units and the property 0x1a2 (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original code.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** What does property 0x1a2 (0 on the amount slider, 2 on the price slider) select
+  (step, display as percent, gold)? Is the price slider's 0..150 a gold price per ton or a percentage
+  of the base price (`Preis` in `BGruppen.dat`)? What do the two "00" texts print?
+- **What we know:** ranges (0, 100.0) and (0, 150.0) (D); the amount range is later set from the
+  capacity (D, likely); corpus prices 1..136 (`annowelt.md`).
+- **How to resolve:** read the slider class (factory 0xb17 → 0x1000fa60) property handler and the
+  formatter 0x10025110; HE recording R2 with narration of the numbers shown.
+
+## OQ-655: The city-status rows' sources and period (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / simulation.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** Which city field (and which period: per minute, running, last cycle) does each of rows
+  1-5 show, where does row 7 "knowledge" come from, and with which sign does each of rows 3-5
+  (purchase costs, sales revenue, military costs) enter the balance (row 6)?
+- **What we know:** `CityAccounts` holds the five money statistics (ECON-BOOK-1); HE 6:45 shows
+  91 / 248 for a 120-inhabitant town (one sample). Both captures (GOG `f15_kontor`, HE `ui_5` 6:45)
+  show row 6 = row 1 - row 2 with rows 3-5 at 0; the guess "- row 3 + row 4 - row 5" from the
+  row names is not evidence. The page update functions (slots +0x9c / +0xa0 of
+  vtable 0x100a0a70: 0x1006bfe0, 0x1006c070) were not read.
+- **How to resolve:** read those update functions (the balance sum among them); HE recording R1
+  holding the panel open for 60 s, ideally in a city with trade and military costs (rows 3-5 not 0).
+
+## OQ-656: What "Deny building material" does to the sim (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** simulation.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** The toggle sends 0x7c mode 9 for goods 0x29 (tools) only, value 0x7fff00. Does the
+  original's mode-9 handler (AnnoWelt 0x1002dbd0) apply it to the other build goods, and how does a
+  reserve of 32 767 t on tools stop house upgrades (population-live.md section 5)?
+- **What we know:** D section 2.3; the sim stores `build_goods[g - first].setting` for the one goods.
+- **How to resolve:** read 0x1002dbd0's mode-9 branch and the upgrade check; HE recording R4.
+
+## OQ-657: The crest at the right end of the city name plank (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** Which texture is drawn in the 42 x 55 gadget at the plank's right (a house picture on
+  `f15_kontor`), and what selects its frame (settlement stage, player)?
+- **What we know:** the builder sets `GRNATIVESCHILDER` first (0x1006aa06); no frame of
+  `GRNATIVESCHILDER`, `GRPLAYERSCHILDER` or `KLPLAYERSCHILDER` matches (best 43.9).
+- **How to resolve:** read the city panel's update for property 0x198 on that gadget; search other
+  `ToolGfx` files for the picture.
+
+## OQ-658: Foreign Kontor panel and ship trade at a Kontor (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original, simulation.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** When is panel 0xa36 shown instead of the city panel? Which of its grids is
+  "Purchase" and which "Sales"; what do the cells and the price texts show? Which ship pages (0xa51,
+  0xa53-0xa58, 0xa6e) appear at an own vs a foreign Kontor, and which commands do they send?
+- **What we know:** inventory in section 2.7 (D).
+- **How to resolve:** HE recording R5 (another player's or a trader's Kontor, ship docked there);
+  read the right-panel host's selection switch around 0x1003a7d6.
+
+## OQ-659: Which goods each stock page lists (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / data.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** The membership and order of goods on tabs 4-7 and in the chooser (raw 21, building 4,
+  consumer 14, weapons 8 icon frames) and the goods → icon frame map (`LinkTO_GetWarenGfxid`,
+  0x10088220 / 0x100881c0).
+- **What we know:** D section 2.6; the raw page special-cases `STEINE`, `MAMORSTEIN`.
+- **How to resolve:** read 0x10088220 and the category builders' loops; HE recording R3 (each tab
+  held 3 s with a known stock).
+
+## OQ-660: Ship view host and selection (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** Under which main tab does the ship view sit, and how is a ship selected and deselected? Does a single click select; does a ship-list row click select and centre (key **J** "jump to active object", C p4); what does Esc or a deselect do; does selecting a ship switch away from the bust or construction tab?
+- **What we know:** HE shows the ship view under the "?" main tab (highlighted while a ship is selected) and selects by a drag rectangle (M-HE `HE_UI_1.mp4` 00:46.0-00:57); clicking empty sea leaves the "?" tab with `MAX_PIC` (00:50.0). The GOG runner never reached a selected ship (`ui.md` section 1).
+- **How to resolve:** the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, steps on selection and lists); read the GOG view switch from the `[view+0x9c]` callers.
+
+## OQ-661: Exact rectangles and disabled drawing of the ship and player views (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** Where exactly does every element of the ship tabs and the player tabs sit; where does the disabled (hatched) overlay come from; where are the cannon slot and the second separator?
+- **What we know:** HE positions are measured ±2 px on a compressed 0.75 video; GOG has no ship-view shot. The builders set only sizes (gadget slot `+0x50`); the position source is unread (OQ-651). Disabled treaty buttons and action tabs draw at rms 27-42 against their frames on GOG and hatched on HE (section 3). The player info's seventh row is not open: the code builds seven text gadgets (`View.dll` 0x100800c7, section 2.10).
+- **How to resolve:** lossless HE frames at the common recording set-up (`docs/orchestration/tasks/ui-panels-he-recording.md`) of every ship tab and the player tabs; read the position source (OQ-651) and the disabled draw.
+
+## OQ-662: Load/unload tab layout (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** Where do the hold slots, arrows, amount balls, category tabs and the city goods list of the ship's load/unload tab sit, and which goods does a category show (`ship-cargo.md` OQ-CARGO-5)?
+- **What we know:** Never captured (greyed before a Kontor in HE; unreached in GOG). Builder D `0x10059d00..0x1005a5c0`; the click chain and the amount buttons 1/5/10/50 are in `ship-cargo.md` sections 2 and 11.
+- **How to resolve:** the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, load/unload step); sizes from the builder.
+
+## OQ-663: Behaviour verbs (stop, sink, flag, patrol, boarding) (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What records stand behind net client `+0x88` (MP `0x75`) and `+0xc0` (MP `0x84`) for stop, sink, flag and patrol; what does the orange X mark (state off, or not allowed); how does the patrol-point pick mode work; how is a boarding target chosen; which world functions apply them?
+- **What we know:** Behaviour tab builder D `0x100603b1..0x10060878`; patrol mode `0x1005fc00` with `[view+0x634]`; boarding handler `0x10060960`; sink = client `+0x88(0xb, ...)` (section 4, commands table). The rebuild has none of these commands.
+- **How to resolve:** read the AnnoFrame packers of `0x75` and `0x84` and the AnnoWelt functions they reach; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, behaviour step).
+
+## OQ-664: Treaty button state and the partner list (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** How is a treaty button's state (property `0x1cc`, 0..3) computed from both players' `Player::relations` and pending offers; when are the buttons disabled (natives, pirates, an undiscovered "Unknown" partner, no trade agreement for an alliance, C p19); what rule and colours does the mood bar `STIMMUNG_PLAYER` (44 frames) follow; why does the HE list show five cultures although C p18 says natives are not listed; in which order are partners listed?
+- **What we know:** The three handlers read `0x1cc`, send and write the new state (state machine of section 2.11, D `0x10084a80`, `0x10084b20`, `0x10084bc0`); the send path ends in AnnoWelt `0x100ad280` (single player) or MP type `0x6f`. The partner rows choose player or culture shields by kind (D `0x10085100..0x100854ad`). The rebuild keeps `Player::relations` but no offer record.
+- **How to resolve:** read where the diplomacy page writes `0x1cc` on update and the world side of `0x100ad280`; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, diplomacy-after-contact step).
+
+## OQ-665: Tribute (demand and pay) (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What is the field layout of the `0x70` record, what are the slider ranges, which world function applies it, how is a goods tribute fulfilled by unloading (C p20), and how does the AI answer?
+- **What we know:** `0x70` is 9 bytes, packed by AnnoFrame `0x1005dc40` from net client slot `+0xac` (two call shapes, `0x10080d84`, `0x10080dc7`); this prep read it only in outline (goods, bit-packed mode/flags, u32 amount, two player ids). The pay action `0x10084080` reads the partner's demand (partner slot `+0xa4`) and sends it back with flag 1.
+- **How to resolve:** read `0x1005dc40` field by field and the world function behind slot `+0xac`; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, tribute step).
+
+## OQ-666: Diplomatic messages (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code; sim or net (lane decision)
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What does a `0x7b` message (five canned messages) do to the receiving player or AI, how is it displayed, and does it belong to the sim (AI mood) or only to the net layer?
+- **What we know:** Send `0x100830d0`: net client slot `+0xb0`(0x14, message index, partner, local) → MP `0x1005e460` type `0x7b` (D); texts `DIPLOMATIEMESSAGES` 0-4 (line 5 "Reserved"); icons `MELDUNGS_ICONS` 12 frames 27 × 28; `state.md` lists `0x7b` with chat.
+- **How to resolve:** read the receiving side of `0x7b` in AnnoFrame and AnnoWelt; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, messages step, say whether the player answers).
+
+## OQ-667: Selling and buying ships (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What are the price slider's range and step and the `SCHIFFVERKAUFFLIP` states; who buys an offered ship and when (AI, Venetians); where does the purchase list come from, at which price; what are the two commands' records?
+- **What we know:** Sell tab D `0x10064451..0x10064cb8`; offer / withdraw `0x10064f20`, `0x10064f30..0x10065040`; buy `0x10061770`; the HE purchase list was empty (`HE_UI_1.mp4` 01:01.0).
+- **How to resolve:** read those handlers to their packers and the world side; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, sell/buy step).
+
+## OQ-668: Ship list rows and ship names (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** Which row text colour (HE: red), what do `SCHIFF_ROUTE` frame 0 (32 × 28) and frame 1 (34 × 25) mean (on route / idle), is the `SCHIFF_LISTENENERGY` height the health share, in which order and which ships (own only?) are listed, what does a row click do, and how does a new ship get its name from `SHIPS` (107 lines)?
+- **What we know:** List builder D `0x10061f21..0x100622d8`; GOG `f15_ship_list`, HE `HE_UI_1.mp4` 01:44.5 and 02:18; the bar meaning is S. The rebuild's `Figure` has no name.
+- **How to resolve:** read the row update and the ship-naming code; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, lists step).
+
+## OQ-669: Trade-route editor mapping (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What do "Load I / Load II / Unload I / Unload II" (`SCHIFF_ROUTETAB`) select; how do the route-point list, the four goods slots, `VERLADEPFEILE`, the amounts and `ROUTEAKTIV` map onto the original route nodes and onto `FreightStop` / `FreightAction` / `FreightControl`; where is a route point set (a map click on a warehouse?); what are the 16 text gadgets (`cmp esi, 0x10` at `0x100286ea`)?
+- **What we know:** Gadgets and handlers in section 2.8; route node fields `+0xc` goods, `+0xe` direction, `+0xa` tons (`ship-trade-routes.md`).
+- **How to resolve:** read the route handlers (`0x10028bf0`, `0x10028c90`, `0x1002ac90` / `0x1002aca0`, `0x1002acb0`) to the node writes; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, trade-route step).
+
+## OQ-670: Does the player statistics screen pause the game, and how? (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Does game time stop while `tFrameSpielerStatistik` is open; by which mechanism (a frame flag or a speed command); does multiplayer differ?
+- **What we know:** HE: no game time seemed to pass while it was open (boat timing, the wood line ends at the opening; `ui_5-report.md` section 2): **inferred**, not decoded. GOG: no pause call found in the frame.
+- **How to resolve:** read the frame's slot 19 `0x10013cb0` message table (cases at `0x10013d38`) and the frame manager; the statistics packet's HE recording (`ui-statistics-1.md`, pause-check step).
+
+## OQ-671: Which key closes the player statistics screen (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Which key closes it: ESC, `-` again, or any key?
+- **What we know:** HE 8:50.45 closed with the mouse resting still (no click). The exit button `0x10014dd0` → `0x100147f0` sets the close flag `+8`.
+- **How to resolve:** read the frame's key path (slot 19, the frame manager); the statistics packet's HE recording (`ui-statistics-1.md`, first step).
+
+## OQ-672: Supply series colours and meaning (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Which supply row (production or demand) is drawn in which colour, how is `0xfaf023` interpreted, and did the HE change it?
+- **What we know:** Code: two polylines per goods, colours `0xfaf023` and `0xfffff0` (`0x100147a6`, `0x100147c7`); HE shows one yellow dashed line at about 1 t on food and beer; the stocks colour table reads as `0x00BBGGRR`.
+- **How to resolve:** read the supply draw `0x10014410` in full; the statistics packet's HE recording (`ui-statistics-1.md`, overview step).
+
+## OQ-673: Axis label placement and font of the statistics charts (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** By which rule are the axis labels placed (count from the width? a per-label offset?), and in which `.zei` font?
+- **What we know:** Labels 20…280 (step 20) and 30…270 (step 40) do not sit on the 10-s ticks: "20" is centred on the 10-s tick, "280" on 280 s (HE `s_006`, `s_130`).
+- **How to resolve:** read the chart class `tDrawLayerDiagramm` in `AnnoDisplay.dll` (not opened yet).
+
+## OQ-674: Goods icon hover and tooltips on the statistics screen (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Which states (idle, hover, pressed, disabled) do the goods icons' three texture messages (`0x198`, `0x199`, `0x19c`) select, and where does the tooltip's goods name come from (the game's name lookup kind `0x20`, or the `WARE_*` sections)?
+- **What we know:** The icons get a tooltip and the three messages (D `0x10012cbb..0x10012d41`); the lookup kind `0x20` gives the internal name; `ui_5` has no hover.
+- **How to resolve:** read the icon builder's messages and the tooltip binding; the statistics packet's HE recording (`ui-statistics-1.md`, hover step).
+
+## OQ-675: Statistics memory slots: meaning (ownership decided by the owner) (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open for the meaning; **ownership decided by the owner 2026-11-16**
+- **Area:** simulation / save format
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Are `SEL_0`…`SEL_7` (player `+0x370`, `+0x37c`) exactly the statistics memories, and what does the record's flag u16 hold besides 0 and 1?
+- **What we know:** Player slots `+0x130..+0x13c` (`0x10018870..0x10018900`) hold a selected city entry and a vector of `{u16 goods, u16 flag}` per memory; saved as `SEL_%d` (writer `0x1001ec62`); the match with the memories is likely from shape and slot count. **Owner decision 2026-11-16:** the memories are saved game state, as in the original: player state, saved and loaded with the game, synchronised in multiplayer (the rebuild keeps them in the hashed sim state, changed by `SetStatsGoods` / `SetStatsCity`, section 5.2).
+- **How to resolve:** read the `SEL_n` loader in AnnoWelt and survey the corpus values with the `tools/` readers.
+
+## OQ-676: Productivity inputs of the statistics sampler (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** simulation / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** What do the rate getters `+0x94` of the farm (`0x1006ef30`), the mine (`0x1006e2f0`) and the base class (`0x10025410`) return; what is the second argument of type `+0xc8(j, 0)`; which building list does city slot `+0x60` → `+0x24(1)` enumerate; what are the unwritten block byte `+0x0001` and the bytes `+0x30bc` / `+0x30bd`?
+- **What we know:** The workshop getter `0x100684e0` = `u16 +0x20 · 60 >> 10`; the productivity rule is in section 3.1; the productivity rows themselves are fully written (row 59 at `[city + 0x28de + g]`, g = 0..69, `0x1002d615..0x1002d64b`).
+- **How to resolve:** read the three getters and city slot `+0x60` in AnnoWelt.
+
+## OQ-677: Rating screen data (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Which player and world values and which score formulas fill the rows of `tFrameGameStatistik` (`STATISTIK` lines 3-16: villages, subjects, satisfaction, capital, islands, soldiers defeated/died, ships sunk/lost, enemies, bonus, summary); what is the player record `STATIS` (12 bytes); why does the HE's `HISCORE_UNTERGRUND` differ?
+- **What we know:** Init `0x1000f5e0`; `ui.md` section 9.5 has the screen; out of the statistics packet's first steps.
+- **How to resolve:** a read of its own: the init, the row fill and the `STATIS` writer.
+
+## OQ-678: HE presentation of full-screen frames (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Where does the grape-vine pillarbox art come from; does a full-screen frame follow `UI_SCALE` or always fit the window height; how is the stretched frame filtered?
+- **What we know:** HE draws the 1024 × 768 frame stretched to the client height (×1.3229 in the `ui_5` capture) and centred, with the border left and right (M-HE); `he-ui-scale.md` covers the in-game UI, not full frames.
+- **How to resolve:** find the border art in the HE files; a recording at the common set-up (client 1024 × 768, where the frame is 1:1) and one at another window size or UI scale.
+
+## OQ-679: City list semantics on the statistics screen (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Confirm that "Alle anzeigen" shows the average over the player's cities and the y-max quirk; is the red text the selected entry; in which order are cities listed (player list or (island, city)); how does the list scroll with more than about 25 cities?
+- **What we know:** Average: D `0x10014350..0x10014371`; y max: `if (ymax < cap_i) ymax += cap_i` over the cities, then divided by their count (`0x1001402e..0x10014091`); the first entry is drawn red on HE.
+- **How to resolve:** the statistics packet's HE recording (`ui-statistics-1.md`, city-list steps) with two or more cities.
+
+## OQ-680: HE main-menu "Optionen" and the GOG multiplayer switch (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE, original code
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Does the HE main menu's "Optionen" open the original resolution list (section 2.4) or the HE settings overlay, and where is the interface-scale slider `he-ui-scale.md` mentions? Which gadget does the GOG `MULTIPLAYER` value show or hide, and does the HE bypass the check?
+- **What we know:** Not in any HE capture; `he-ui-scale.md` speaks of "the main-menu slider" (A: probably HE settings). GOG reads `MULTIPLAYER` at 0x10028860 and writes `value != 0` to a gadget attribute (0x1002887f..0x100288b1); the HE shows "Mehrspieler" without a registry change.
+- **How to resolve:** the options packet's HE recording (`ui-options-mainmenu-1.md`, R1 main-menu options step); trace 0x10028860's caller in GOG.
+
+## OQ-681: GOG main-menu Options: DETAILS and the supported modes (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** What does `DETAILS` change in play, and which stored value means "on"? Are the modes other than 1024 × 768 disabled on the Wine desktop by the support check?
+- **What we know:** The init 0x10025b60 flips the flag once through 0x10025c10, which ties the stored value to the shown line; the support check is display `+0x90`(w, h); seven clicks did not move the tick on the Wine runner (`f16_opt_click_0..6`).
+- **How to resolve:** trace the `DETAILS` reader (AnnoFrame 0x1000cc9f); a Windows-harness check (owner's call).
+
+## OQ-682: In-game load and save details (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, app
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** In which order are saves listed; what default name is in the plank; how long may a name be; when does `MESSAGEBOX` 17 show; does delete ask first; does saving over a selected row reuse its GUID file?
+- **What we know:** The list is the profile's `*.sav` files (`FindFirstFileA`, 0x1007c617), each named by its `ALIASNAME` (0x1007c44d..0x1007c4c8); `CompareFileTime` is used near 0x1007c54a; a new save gets a GUID name (0x1007c209, 0x1007c286); `MESSAGEBOX` 17 "Overwriting of savegames in Singleplayer only!" exists (P).
+- **How to resolve:** read around 0x1007c54a and the save and delete handlers (refs 0x1007ced3, 0x1007ce33); the options packet's HE recording (`ui-options-mainmenu-1.md`, R2 load and save steps).
+
+## OQ-683: The options exit door (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** What does frame call `+0x58`(0x10) do (a confirm box, `MESSAGEBOX` 21-23?); does it return to the main menu or end the program; does it write `Lastgame.sav`?
+- **What we know:** Handler 0x1007a370 calls frame `+0x58`(0x10) (D). Overlaps `ui.md` OQ-549.
+- **How to resolve:** read the frame's `+0x58` handler for 0x10; the options packet's HE recording (`ui-options-mainmenu-1.md`, R2 door steps).
+
+## OQ-684: The pause box texts and which screens pause (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Which texts does the pause box use (`MESSAGEBOX` 24 / 16 assumed); does the gear tab or any options page pause the game; does P work while a menu page is open?
+- **What we know:** The box is `MESSAGEBOX_BK` at (222, 191) with one `MESSAGEBOX_BUTTONS` button at (286, 500) (`ui.md` 9.4, `f15_pause`); texts 24 "Pause!" and 16 "Continue game" exist (P); the statistics screen appears to pause, inferred from `ui_5` only (OQ-670).
+- **How to resolve:** read the pause box builder; the options packet's HE recording (`ui-options-mainmenu-1.md`, R2 pause step).
+
+## OQ-685: Choose game: folders, headings and icons (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, data
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Which `Scenes` folder feeds which heading (`SZ_AUSWAHL` 4..9); in which order are rows listed; what do the `SCENARIOB_*` icons mean and in which column; why does GOG list five endless rows (Citizen..Marquess) under heading 8 while `0011SingleEndlosAddon` holds three `.sze`?
+- **What we know:** Folder names are not in `AnnoFrame.dll`; paths are formatted from `%s\Scenes\%s`, `%s\scenes\%s%s`, `SaveGame` (0x10095424..0x10095454, P); icons `SCENARIOB_SPIELDAUER`, `_SCHWIERIGKEIT`, `_SPIELERMIN` / `MAX` (P); the GOG list on `x_choose_game` (M-GOG).
+- **How to resolve:** read the list fill of the choose-game frame (0x1002e2c0 and its helpers); the options packet's HE recording (`ui-options-mainmenu-1.md`, R1 new-game step).
+
+## OQ-686: The HE settings overlay: items and where values persist (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Which items does the HE "Spieleinstellungen" overlay have (is there a sound page); do `MUSIC_VOLUME` / `SOUND_VOLUME` in the HE registry replace or mirror the profile `VOLUME`; what does "Bestätigen" apply; where do the values persist?
+- **What we know:** One frame (`overlay_146.6.png`): sections Grafikeinstellungen and Steuerung, a greyed "Bestätigen", X, a keyboard icon; code in `AnnoDisplay.dll` (`onlineoverlay::Anno2GameSettings`, `CSettings*`, `SoundSettingsList`, P strings); `he-ui-scale.md` section 1: the registry is not the whole story.
+- **How to resolve:** the options packet's HE recording (`ui-options-mainmenu-1.md`, R1 options step); read `OnGameSettingsApplied`'s writes.
+
+## OQ-687: How the HE fits the 800 x 600 menus to the window (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** What exact scale and filter does the HE use for the menus; where does it place `RESOLUTION_BORDER_*` at other aspect ratios; is a wide but short client ever width-limited?
+- **What we know:** 2.25 screen px per menu px at a 1351-px client (A, `he_29.5.png` at 1.69 video px); border textures HE `Startup.tex` ids 21..24 (P). The owner declined the HE fit as the rebuild's default (options packet, decision 2: a design study instead), so this is reference only.
+- **How to resolve:** the options packet's HE recording (`ui-options-mainmenu-1.md`, optional R1 sizes step); read `OnResize(false)` in HE `AnnoDisplay.dll`.
+
+## OQ-688: Music and speech volume, song names (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, formats
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Which `VOLUME` i32 is music; does a slider move write `user.dat` at once; how are song names made from file names?
+- **What we know:** Overlaps main's OQ-111 items 1 and 2. The music slider's path is 0x1007b9c0 → 0x1007aa30, which passes 10 · v (0 .. -2500, DirectSound hundredths of a dB, A); the speech path at 0x1007e313 is not traced; both sliders were seen to write at once (`user-dat.md`); the HE shows "Capturetrip" for `Music\normal\Capture-trip.WAV`.
+- **How to resolve:** trace 0x1007e313; move one slider at a time and diff `user.dat` (OQ-111).
+
+## OQ-689: The HE sixth options line and HELPPLAYER (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE, formats
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Is the HE's sixth `TOOLTIP:OPTION` / `OPTIONSUBS_TEXTE` line "Options" a hidden sixth page or the gears page's banner? Is profile `HELPPLAYER` the active-help toggle?
+- **What we know:** Only five sub-tabs are visible in HE (M-HE); `HELPPLAYER` matches the toggle by name only (A); the second half is main's OQ-111 item 4.
+- **How to resolve:** the options packet's HE recording (`ui-options-mainmenu-1.md`, R2 first steps: the gears overlay's banner, active help on and off with a `user.dat` diff).

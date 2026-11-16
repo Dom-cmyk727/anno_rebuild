@@ -395,43 +395,19 @@ Commands the panels send:
 
 ## 6. Open questions (OQ-660 .. OQ-669)
 
-- **OQ-660 — Ship view host and selection.** HE shows the ship view under the "?" main tab (highlighted) and a
-  drag-select rectangle; GOG never reached a selected ship. Does a single click select; does a ship-list row
-  click select and centre (key **J** "jump to active object", C p4); what Esc/deselect does; does selecting
-  a ship switch away from the bust or construction tab? Needs: HE recording (packet §R) and the GOG view
-  switch read from `[view+0x9c]` callers.
-- **OQ-661 — Exact rectangles and disabled drawing.** HE positions are ±2 px from a compressed 0.75 video;
-  GOG has no ship-view shot. Needed: lossless HE screenshots at 1024 × 768 or windowed scale 1.0 of every
-  ship tab and the player tabs; the gadget positions (not set in the builders read, `0x50` sets only sizes:
-  the position source — a later layout call or the parent — is unread, OQ-651); the disabled/hatched overlay;
-  the cannon slot and second separator. (The player info's seventh row is no longer open: the code builds
-  seven text gadgets, §2.10.)
-- **OQ-662 — Load/unload tab layout.** Never captured (greyed before a Kontor in HE; unreached in GOG). Where
-  the hold slots, arrows, amount balls, category tabs and city goods list sit; which goods a category shows
-  (`ship-cargo.md` OQ-CARGO-5).
-- **OQ-663 — Behaviour verbs.** The records behind client `+0x88` (MP `0x75`) and `+0xc0` (MP `0x84`) for stop,
-  sink, flag, patrol; what the orange X marks (state off, or not allowed); the patrol-point pick mode
-  (`0x1005fc00`, `[view+0x634]`); boarding target selection (`0x10060960`); the world functions behind them.
-- **OQ-664 — Treaty button state and the partner list.** How property `0x1cc` (0..3) is computed from
-  `Player::relations` of both players (and pending offers, which the rebuild has no record for); when buttons
-  are disabled (natives, pirates, undiscovered "Unknown", missing trade agreement for an alliance, C p19); the
-  mood bar `STIMMUNG_PLAYER` (44 frames) rule and colours; why the HE list shows five cultures although C p18
-  says natives are not listed; list order.
-- **OQ-665 — Tribute.** Field layout of the `0x70` record (9 bytes: goods, bit-packed mode/flags, u32 amount,
-  two player ids), the slider ranges, the world function, how a goods tribute is fulfilled by unloading
-  (C p20), and the AI's answer.
-- **OQ-666 — Diplomatic messages.** Effect of `0x7b` (five canned messages) on the receiving player/AI and its
-  display (`MELDUNGS_ICONS` 12 frames, 27 × 28); whether it belongs to the sim (AI mood) or only to the net
-  layer (`state.md` puts `0x7b` with chat).
-- **OQ-667 — Selling and buying ships.** Price slider range and step, `SCHIFFVERKAUFFLIP` states, who buys an
-  offered ship and when (AI, Venetians), the purchase list's source, the price, and the two commands' records.
-- **OQ-668 — Ship list rows and ship names.** Row text colour (HE: red), `SCHIFF_ROUTE` frame 0 (32 × 28) vs
-  frame 1 (34 × 25) meaning (on route / idle), `SCHIFF_LISTENENERGY` height = health share (S), list order,
-  which ships are listed (own only?), row click; how a new ship gets its name from `SHIPS` (107 lines).
-- **OQ-669 — Trade-route editor mapping.** What "Load I / Load II / Unload I / Unload II" select (`SCHIFF_ROUTETAB`),
-  how the route-point list, the four goods slots, `VERLADEPFEILE`, amounts and `ROUTEAKTIV` map onto the
-  original route nodes (`ship-trade-routes.md`) and onto `FreightStop`/`FreightAction`/`FreightControl`; where a
-  route point is set (map click on a warehouse?) and the 16 text gadgets (`cmp esi, 0x10` at `0x100286ea`).
+The full entries (status, area, question, what is known, how to resolve) are in the register,
+[`docs/open-questions.md`](../open-questions.md), under these numbers:
+
+- **OQ-660:** Ship view host and selection
+- **OQ-661:** Exact rectangles and disabled drawing of the ship and player views
+- **OQ-662:** Load/unload tab layout
+- **OQ-663:** Behaviour verbs (stop, sink, flag, patrol, boarding)
+- **OQ-664:** Treaty button state and the partner list
+- **OQ-665:** Tribute (demand and pay)
+- **OQ-666:** Diplomatic messages
+- **OQ-667:** Selling and buying ships
+- **OQ-668:** Ship list rows and ship names
+- **OQ-669:** Trade-route editor mapping
 
 ## 7. Sources and scratch
 

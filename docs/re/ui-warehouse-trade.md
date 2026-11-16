@@ -283,117 +283,16 @@ Commands the panel sends:
 
 ## 6. Open questions (OQ-650..OQ-659)
 
-## OQ-650: Pixel layout of the Sell / Buy pages (tabs 2 and 3)
-- **Status:** open.
-- **Area:** UI / original.
-- **Question:** Rectangles of the two sliders (track, knob travel), the four plus/minus buttons, the
-  two value texts, the goods grid and its cells, the Add and Delete buttons, the stock bar; text
-  format of the values; how an empty list and an empty cell look.
-- **What we know:** sizes, textures, tooltips and handlers (D, section 2.4); the background
-  `VKEK_HINTERGRUND` should sit at (781, 301) on GOG 1024 x 768 (A). No capture of either edition.
-- **How to resolve:** HE recording R2 and R3 (packet), then sprite-sad of each texture on the frames.
+The full entries (status, area, question, what is known, how to resolve) are in the register,
+[`docs/open-questions.md`](../open-questions.md), under these numbers:
 
-## OQ-651: Where View.dll's gadget positions come from
-- **Status:** open.
-- **Area:** UI / original code.
-- **Question:** The View.dll builders set size, image, tooltip and handler but no position; where is
-  each child's (x, y) defined (slot index + a table, a parent layout pass, the gadget base class)?
-- **What we know:** AnnoFrame builders set positions with gadget slot +0x5c `(x, y)` (0x1001ef47);
-  View.dll builders add children with slot +0x24 `(gadget, index)` only; page backgrounds are placed by
-  `[obj+8](x, y)` in the draw slot (0x1006c7cb, 0x1002130b). Slot +0x24 is 0x10019830 in the city
-  panel's and the options view's vtables: it grows the child vector at `+0x5e0` to the index and
-  stores the gadget pointer (0x10019883..0x1001991d), so the index selects no rectangle table
-  (orchestrator's review 2026-11-16; re-read for this note).
-- **How to resolve:** read the gadget base class (0x100188c0 constructor, 0x10018b90 message
-  handler) and the gadgets' own default sizes and positions; search the panel's later layout or
-  draw pass for writes to the children's position fields.
-
-## OQ-652: Confirm that the HE videos show the plain set at 0.75
-- **Status:** open, narrowed 2026-11-16 by the orchestrator's review (related: OQ-535).
-- **Area:** UI / HE.
-- **Question:** Do the owner's HE videos show the city panel in the plain graphic set at UI scale
-  1.0, recorded at 0.75 (2542 x 1351 client in a 1920 x 1080 video)?
-- **What we know:** 0.75 x the plain-set positions fits the tab, plank and deny button within 2 px
-  (section 3); this prep's first reading ("the `8` set at 1920 x 1080") compared the 0.78125-size
-  `8` set with the unscaled plain set and is retracted. `he-ui-scale.md`: UI scale 1.0 at 1200
-  lines or fewer, chrome at x = W - 245.
-- **How to resolve:** match the 0.75-scaled plain set on `ui_5.mp4` 405 s and `HE_UI_1.mp4` 91 s
-  (expected: at least as good as the `8` set's means); or measure a lossless recording made at the
-  common set-up (`docs/orchestration/tasks/ui-panels-he-recording.md`), where the plain set must
-  match 1:1.
-
-## OQ-653: Add-goods flow and the goods-to-list link
-- **Status:** open.
-- **Area:** UI / original code.
-- **Question:** After "Add goods" and a choice in the chooser (id 0xa0c), which command is sent (0x73
-  at the free index, or 0x8a append through sender slot +0xd0)? Does the UI send 0x7c mode 0/1, or does
-  the 0x73 handler set the goods record itself? What goods value does Delete send?
-- **What we know:** 0x10025790 opens the chooser for the first empty cell; the chooser callback region
-  0x10023480..0x1002369b calls helper 0x100249f0 and city slot +0x78; no slot +0xd0 call was found in
-  0x10021290..0x10025a00.
-- **How to resolve:** read 0x100249f0 and the chooser's selection handler; read AnnoWelt's 0x73
-  apply for the goods-setting write.
-
-## OQ-654: Slider units and the property 0x1a2
-- **Status:** open.
-- **Area:** UI / original code.
-- **Question:** What does property 0x1a2 (0 on the amount slider, 2 on the price slider) select
-  (step, display as percent, gold)? Is the price slider's 0..150 a gold price per ton or a percentage
-  of the base price (`Preis` in `BGruppen.dat`)? What do the two "00" texts print?
-- **What we know:** ranges (0, 100.0) and (0, 150.0) (D); the amount range is later set from the
-  capacity (D, likely); corpus prices 1..136 (`annowelt.md`).
-- **How to resolve:** read the slider class (factory 0xb17 → 0x1000fa60) property handler and the
-  formatter 0x10025110; HE recording R2 with narration of the numbers shown.
-
-## OQ-655: The city-status rows' sources and period
-- **Status:** open.
-- **Area:** UI / simulation.
-- **Question:** Which city field (and which period: per minute, running, last cycle) does each of rows
-  1-5 show, where does row 7 "knowledge" come from, and with which sign does each of rows 3-5
-  (purchase costs, sales revenue, military costs) enter the balance (row 6)?
-- **What we know:** `CityAccounts` holds the five money statistics (ECON-BOOK-1); HE 6:45 shows
-  91 / 248 for a 120-inhabitant town (one sample). Both captures (GOG `f15_kontor`, HE `ui_5` 6:45)
-  show row 6 = row 1 - row 2 with rows 3-5 at 0; the guess "- row 3 + row 4 - row 5" from the
-  row names is not evidence. The page update functions (slots +0x9c / +0xa0 of
-  vtable 0x100a0a70: 0x1006bfe0, 0x1006c070) were not read.
-- **How to resolve:** read those update functions (the balance sum among them); HE recording R1
-  holding the panel open for 60 s, ideally in a city with trade and military costs (rows 3-5 not 0).
-
-## OQ-656: What "Deny building material" does to the sim
-- **Status:** open.
-- **Area:** simulation.
-- **Question:** The toggle sends 0x7c mode 9 for goods 0x29 (tools) only, value 0x7fff00. Does the
-  original's mode-9 handler (AnnoWelt 0x1002dbd0) apply it to the other build goods, and how does a
-  reserve of 32 767 t on tools stop house upgrades (population-live.md section 5)?
-- **What we know:** D section 2.3; the sim stores `build_goods[g - first].setting` for the one goods.
-- **How to resolve:** read 0x1002dbd0's mode-9 branch and the upgrade check; HE recording R4.
-
-## OQ-657: The crest at the right end of the city name plank
-- **Status:** open.
-- **Area:** UI / original.
-- **Question:** Which texture is drawn in the 42 x 55 gadget at the plank's right (a house picture on
-  `f15_kontor`), and what selects its frame (settlement stage, player)?
-- **What we know:** the builder sets `GRNATIVESCHILDER` first (0x1006aa06); no frame of
-  `GRNATIVESCHILDER`, `GRPLAYERSCHILDER` or `KLPLAYERSCHILDER` matches (best 43.9).
-- **How to resolve:** read the city panel's update for property 0x198 on that gadget; search other
-  `ToolGfx` files for the picture.
-
-## OQ-658: Foreign Kontor panel and ship trade at a Kontor
-- **Status:** open.
-- **Area:** UI / original, simulation.
-- **Question:** When is panel 0xa36 shown instead of the city panel? Which of its grids is
-  "Purchase" and which "Sales"; what do the cells and the price texts show? Which ship pages (0xa51,
-  0xa53-0xa58, 0xa6e) appear at an own vs a foreign Kontor, and which commands do they send?
-- **What we know:** inventory in section 2.7 (D).
-- **How to resolve:** HE recording R5 (another player's or a trader's Kontor, ship docked there);
-  read the right-panel host's selection switch around 0x1003a7d6.
-
-## OQ-659: Which goods each stock page lists
-- **Status:** open.
-- **Area:** UI / data.
-- **Question:** The membership and order of goods on tabs 4-7 and in the chooser (raw 21, building 4,
-  consumer 14, weapons 8 icon frames) and the goods → icon frame map (`LinkTO_GetWarenGfxid`,
-  0x10088220 / 0x100881c0).
-- **What we know:** D section 2.6; the raw page special-cases `STEINE`, `MAMORSTEIN`.
-- **How to resolve:** read 0x10088220 and the category builders' loops; HE recording R3 (each tab
-  held 3 s with a known stock).
+- **OQ-650:** Pixel layout of the Sell / Buy pages (tabs 2 and 3)
+- **OQ-651:** Where View.dll's gadget positions come from
+- **OQ-652:** Confirm that the HE videos show the plain set at 0.75
+- **OQ-653:** Add-goods flow and the goods-to-list link
+- **OQ-654:** Slider units and the property 0x1a2
+- **OQ-655:** The city-status rows' sources and period
+- **OQ-656:** What "Deny building material" does to the sim
+- **OQ-657:** The crest at the right end of the city name plank
+- **OQ-658:** Foreign Kontor panel and ship trade at a Kontor
+- **OQ-659:** Which goods each stock page lists

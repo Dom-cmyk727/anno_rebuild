@@ -433,41 +433,18 @@ everything else is app state (profile, saves, audio, settings) or game setup bef
 | HE main-menu Options | **U** (OQ-680) |
 | HE menu side art placement | **P** textures; rule **U** (OQ-687) |
 
-## 6. Open questions
+## 6. Open questions (OQ-680 … OQ-689)
 
-- **OQ-680** HE main-menu "Optionen": does it open the original resolution list (2.4) or the HE
-  settings overlay, and where is the interface-scale slider `he-ui-scale.md` mentions? Also which
-  gadget the GOG `MULTIPLAYER` value shows/hides (0x10028860) and whether HE bypasses the check.
-  Needs: HE recording R1 (section "Recordings" in the packet); GOG: trace 0x10028860's caller.
-- **OQ-681** GOG main-menu Options: what `DETAILS` changes in play, and which stored value means
-  "on" (the init flips once, 0x10025b60 → 0x10025c10). Are modes other than 1024 × 768 disabled on
-  the Wine desktop by the support check (display `+0x90`)? Needs: trace `DETAILS` reader
-  AnnoFrame 0x1000cc9f; a Windows-harness check (owner's call).
-- **OQ-682** In-game load/save: list order (`CompareFileTime` at 0x1007c54a), the default name in
-  the plank, the name length limit, when `MESSAGEBOX` 17 shows, whether delete asks first, whether
-  saving over a selected row reuses its GUID file.
-- **OQ-683** Exit door: what frame call `+0x58`(0x10) does (confirm box `MESSAGEBOX` 21–23?), whether
-  it returns to the main menu or ends the program, and whether it writes `Lastgame.sav`. (Overlaps
-  `ui.md` OQ-549.)
-- **OQ-684** Pause box texts (`MESSAGEBOX` 24 / 16 assumed), whether the gear tab or any options
-  page pauses the game (the statistics screen appears to, inferred from ui_5, OQ-670), and whether P
-  works while a menu page is open.
-- **OQ-685** Choose game: which `Scenes` folder feeds which heading (`SZ_AUSWAHL` 4..9), row order,
-  the meaning and column of the `SCENARIOB_*` icons (the round red icon), and why GOG shows five
-  endless rows (Citizen..Marquess) under heading 8 "Continuous games/Add-on" while
-  `0011SingleEndlosAddon` holds three `.sze` (P, `game/app/Scenes`).
-- **OQ-686** HE overlay: full item list (is there a sound page, `SoundSettingsList` P), whether
-  `MUSIC_VOLUME` / `SOUND_VOLUME` in the HE registry replace or mirror the profile `VOLUME`, what
-  "Bestätigen" applies, and where the values persist (`he-ui-scale.md` §1 found the registry is not
-  the whole story).
-- **OQ-687** HE menu fit: exact scale and filter (measured 2.25 screen px per menu px at a
-  1351-px client, A), placement of `RESOLUTION_BORDER_*` at other aspect ratios, and whether a wide
-  but short client is ever width-limited.
-- **OQ-688** (overlaps main's OQ-111 items 1 and 2, which it extends; the volume path below is new evidence
-  for OQ-111 item 2) Music/speech: which `VOLUME` i32 is music (the music slider path is 0x1007b9c0 →
-  0x1007aa30; the speech path at 0x1007e313 is not traced), whether a slider move writes `user.dat`
-  at once (observed for both, `user-dat.md`), and how song names are made from file names
-  ("Capture-trip" shown as "Capturetrip" in HE).
-- **OQ-689** HE's sixth `TOOLTIP:OPTION` / `OPTIONSUBS_TEXTE` line "Options": a hidden sixth page or
-  the gears page's banner? Also confirm that profile `HELPPLAYER` is the active-help toggle (name
-  match only, A; this half is main's OQ-111 item 4).
+The full entries (status, area, question, what is known, how to resolve) are in the register,
+[`docs/open-questions.md`](../open-questions.md), under these numbers:
+
+- **OQ-680:** HE main-menu "Optionen" and the GOG multiplayer switch
+- **OQ-681:** GOG main-menu Options: DETAILS and the supported modes
+- **OQ-682:** In-game load and save details
+- **OQ-683:** The options exit door
+- **OQ-684:** The pause box texts and which screens pause
+- **OQ-685:** Choose game: folders, headings and icons
+- **OQ-686:** The HE settings overlay: items and where values persist
+- **OQ-687:** How the HE fits the 800 x 600 menus to the window
+- **OQ-688:** Music and speech volume, song names
+- **OQ-689:** The HE sixth options line and HELPPLAYER

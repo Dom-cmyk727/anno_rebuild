@@ -1504,6 +1504,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **The question:** `VK` is *Verkauf* (sale) and `EK` *Einkauf* (purchase) by name, so the rebuild's `GoodsSetting::buy` (true for bit 0 = 1) names the `VK` list: is `buy` the wrong way round? What does `+4` hold (the price, as `docs/sim/state.md` calls it; P: 1–136 in the 42 entries with a value), and what do the trade routines do with `+4` and `+8`?
 - **What the rebuild does:** `trade_lists[0]`/`[1]` and `GoodsSetting::buy` as in `docs/sim/state.md` §4.7; the scenario lists are not loaded yet.
 - **How to resolve:** read the Kontor trade function that uses the lists (`0x100ac360` books trade sales and purchases, `population.md` §8) and the UI's labels for the two lists; then rename the field (same bit, no behaviour change) and map `[0]` to `price` or its real name.
+- **Update 2026-11-16 (UI-PANELS-PREP, D, View.dll; docs/re/ui-warehouse-trade.md section 0 item 3):** the city panel's "Sell goods" page (page id 0xa3d) sends and reads list 1 (the `VK` list at city +0xdc), the "Buy goods" page (0xa3e) list 0 (`EK`, +0x44). So `GoodsSetting::buy` (true for list 1) names the **sell** list: the naming question is answered by the UI code; renaming the sim field is a sim-lane decision. The entry field +4 is the amount (u16 tons) and +6 the price, from the 0x73 command record (same spec, section 0 item 4).
 
 ## OQ-156: When the warehouse capacity and the trade slot counts are recomputed from the markets (new, T25 2026-10-23; OQ-145)
 - **Status:** open, RE
@@ -2153,6 +2154,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** Pixel rectangles and ACCESS of the Kontor/settlement buy and sell sliders (upper stock-limit / keep, lower price; `screens.json` `panels.kontor`).
 - **What we know:** click Kontor at (0.38, 0.47) opens the goods column (`f15_kontor`, `r2_hud_kontor`). `TOOLTIP:INFOSTADT_WAREN_EIN-VERKAUF` has 6 lines. Four clicks at (820, 870, 920, 970), y=680, did not change the panel (`f15_kontor_btn_*`). `VIEWINFOSTADTTAB` id 661 is 42 x 46.
 - **How to resolve:** sprite-sad `VIEWINFOSTADTTAB` frames on `f15_kontor`; click those centres; or a hover tooltip bind.
+- **Update 2026-11-16 (UI-PANELS-PREP, D + M-GOG; docs/re/ui-warehouse-trade.md section 0 item 2):** the sliders are on the city panel's third and fourth tabs ("Sell goods" 0xa3d, "Buy goods" 0xa3e), not on its first page; the four clicks at y=680 hit the first page's "Deny building material" toggle (on in `f15_kontor_btn_b`, off in `btn_c`). Where the sliders are is answered; their pixel rectangles still need a capture (OQ-650).
 
 ## OQ-548: Help page on a placed building (UI.1.F1)
 - **Status:** open.
@@ -3056,3 +3058,47 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** which graphic draws the orange frame the original's grid puts on the armed building's cell after the cancel-X, and what a map click does while the demolish mode is on with a building still armed under it.
 - **What we know:** after the cancel-X the original's grid shows the armed cell (pioneer house, (0, 0)) in an orange frame, kept while the pickaxe toggles (`p1_a_after_x`, `p1_b_demolish`, `p1_b_after_x`, `p1_b_pickaxe_third`); ESC and the right click remove it with the armed building (`p1_c_after_esc`, `p1_d_after_right`, `p5_after_x_right`) - except a right click while demolishing over the armed house, after which the frame stayed though the ghost was gone (`p4_armed_demolish_right`; so the frame may mark the last chosen cell rather than the armed one). The rebuild draws no frame. With the house armed and the pickaxe on, the original shows the house's ghost and the yellow demolish outline together (`p1_b_demolish`); which of the two a map click does was not captured. The rebuild demolishes then (`DevInput`'s demolish mode decides a release).
 - **How to resolve:** find the frame sprite (`baumenu`/`fenster` gadget states next to the cell images) and measure it on `p1_a_after_x`; capture one map click on a placed building in that state.
+
+## OQ-650..OQ-689: UI panel preparation (UI-PANELS-PREP, 2026-11-16; OPEN)
+Raised by the UI lane's read-only preparation of the panels not built yet (owner's request, 2026-11-16): warehouse and trade (650-659), ships and diplomacy (660-669), statistics (670-679), in-game options and the main menu (680-689). Each question's evidence, options and how to resolve it are in its spec; this is the index.
+
+- **OQ-650:** Pixel layout of the Sell / Buy pages (tabs 2 and 3). Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-651:** Where View.dll's gadget positions come from. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-652:** Which graphic set the HE draws, and its layout. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-653:** Add-goods flow and the goods-to-list link. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-654:** Slider units and the property 0x1a2. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-655:** The city-status rows' sources and period. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-656:** What "Deny building material" does to the sim. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-657:** The crest at the right end of the city name plank. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-658:** Foreign Kontor panel and ship trade at a Kontor. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-659:** Which goods each stock page lists. Spec: [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md), section "Open questions".
+- **OQ-660:** Ship view host and selection. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-661:** Exact rectangles and disabled drawing. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-662:** Load/unload tab layout. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-663:** Behaviour verbs. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-664:** Treaty button state and the partner list. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-665:** Tribute. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-666:** Diplomatic messages. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-667:** Selling and buying ships. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-668:** Ship list rows and ship names. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-669:** Trade-route editor mapping. Spec: [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md), section "Open questions".
+- **OQ-670:** Does the player statistics screen pause the game, and how?. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-671:** Which key closes it?. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-672:** Supply series colours and meaning. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-673:** Axis label placement and font. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-674:** Goods icon hover and tooltips. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-675:** Memory slots: meaning and ownership. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-676:** Productivity inputs. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-677:** Rating screen data. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-678:** HE frame presentation. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-679:** City list semantics. Spec: [`docs/re/ui-statistics.md`](re/ui-statistics.md), section "Open questions".
+- **OQ-680:** What the History Edition main menu Optionen opens. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+- **OQ-681:** What the GOG main-menu DETAILS setting changes in play. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+- **OQ-682:** In-game save and load: list order, default name, overwrite and delete rules. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+- **OQ-683:** What the gear tab exit door does, and its confirmation box. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+- **OQ-684:** The pause box texts and which screens pause. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+- **OQ-685:** Which Scenes folder feeds which heading of the choose-game list. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+- **OQ-686:** The History Edition settings window: items and where values persist. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+- **OQ-687:** How the History Edition fits the 800 x 600 menus to the window. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+- **OQ-688:** Which VOLUME value is music, which speech. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".
+- **OQ-689:** The History Edition sixth Options tooltip line. Spec: [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md), section "Open questions".

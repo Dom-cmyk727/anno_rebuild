@@ -12497,3 +12497,121 @@ similar `WM_SIZING`-side starvation is ever measured, or does 2c's own resize nu
 `surface configure`, not starvation) mean that is not needed?
 
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2e — the WINDOW_MOVED fallback, built — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `d80beed7`, head `c164eb52`)
+
+**Built exactly as reviewed, threshold 16 ms (one frame at 60 Hz, the packet's own target), not 30 ms, not
+tied to the display's refresh rate.** `live_resize_watch` now checks `SDL_EVENT_WINDOW_MOVED` alongside the
+existing EXPOSED(1) check; on a `WINDOW_MOVED`, a new pure predicate
+(`LiveResizeState::should_draw_from_move(now, min_interval)`, no clock read inside - the caller passes
+`Clock::now()` in) decides whether enough time has passed since the watch's own last tick. On `true`, the
+*same* `begin_watch_draw()` / `frame_step()` / `end_watch_draw()` / `mark_watch_tick()` sequence the EXPOSED(1)
+path already runs executes - no second drawing path, so F2 ("the sim never waits during a drag") and F3
+(only a genuine watch draw defers a wake) need no new reasoning: they key off `watch_drawing_`, set and
+cleared by the same two calls regardless of which trigger reached them. `kMoveFallbackInterval` is a named
+constant (`std::chrono::milliseconds(16)`) with its own reasoning in a comment, per the review.
+
+**A real bug, caught by the new test before it ever reached a build.** The first version of
+`should_draw_from_move` computed `now - last_watch_tick() >= min_interval` unconditionally. Before any tick
+has ever happened, `last_watch_tick()` reads as `steady_clock::time_point::min()` - subtracting that from a
+real `now` (nowhere near that far from the clock's own epoch) overflows the duration's own representation,
+and the comparison came out `false` when it should be "obviously true, nothing to rate-limit against yet."
+The new logic test (`should_draw_from_move: false until min_interval has passed...`) failed immediately on
+the very first assertion, before touching anything else - fixed by checking for the never-ticked sentinel
+explicitly rather than trusting the subtraction to come out some particular way in that case. Caught here,
+not by CI or by the owner's own hands-on run.
+
+**Thread safety, as asked.** `WINDOW_MOVED`, like EXPOSED(1), is sent only from `WIN_WindowProc`'s own
+`WM_WINDOWPOSCHANGED` handling (`SDL_windowsevents.c`) - confirmed in the pinned SDL source. Windows delivers
+a window's messages only on the thread that owns that window's message queue (`SendMessage` marshals a
+cross-thread call back to it), so this holds regardless of what triggered the move - a user drag, a
+keyboard shortcut, a snap, or this engine's own `SDL_SetWindowSize`/`SDL_SyncWindow` calls (`viewer.cpp`'s
+`run()`/`handle()`, both already on the window thread; grepped the whole of `src/app` and found no call to
+any window-moving/resizing SDL function off that thread). No new cross-thread case is introduced beyond what
+EXPOSED(1) already is, and the event-type check still runs first, before any shared state is touched, for
+the same reason 2b F1 established.
+
+**A move outside a modal loop - a shortcut, a snap, a programmatic resize - is harmless.** The predicate is
+purely time-based, not gated on `in_modal_loop`: if enough time has passed since the last tick, a stray
+`WINDOW_MOVED` outside any drag can still pass it. What happens then is nothing worse than one extra,
+correctly-guarded `frame_step()` call - the same call the main loop would make on its own next pass, subject
+to the same `can_draw`/`dirty_`/`animating()` checks already inside `frame_step()`. It can draw nothing if
+those say so; it never bypasses them. Outside a drag the main loop itself is never blocked, so `WM_TIMER`
+(or the absence of a need to redraw at all) already keeps the watch's own last tick recent most of the time,
+meaning this path rarely even engages there - and when it does, it costs the same as any other tick.
+
+**The trace** now tags every watch-draw-related line with its trigger: `"... (trigger=timer)"` or
+`"... (trigger=move)"`, on the `type test passed`, `draw skipped (reentrancy)`, `draw begin` and `draw end`
+lines.
+
+**Tests.** Three new cases in `live_resize_test.cpp`: the predicate itself (synthetic timestamps, no
+sleeping - the never-ticked case, just under the threshold, at it, and past it); a timer tick resets the
+predicate's own clock exactly as a move-triggered draw would; and a real `SDL_AddEventWatch`/`SDL_PushEvent`
+flood test (500 `WINDOW_MOVED` events pushed in a tight loop, mirroring `live_resize_watch`'s own decision
+through the real SDL wiring rather than calling the predicate directly, per 2c F4's own reasoning) asserting
+exactly one draw results, then exactly one more after `min_interval` has genuinely elapsed - run 5 times back
+to back locally with no flakiness. 9 cases, 32 assertions total in the `live_resize` suite now.
+
+**Gates.** MSVC Release, game files, `anno_app_input_tests`:
+`COUNTS: selected=46 executed=46 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2e-app-1.log`; `live_resize` suite: 9/9, 32 assertions). `viewer_wiring_*` on the
+relinked exe: `COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` /
+`VERDICT: PASS` (`cache/gates/zoomsmooth2e-viewerwiring-1.log`). **WSL `-Werror` check ran after the
+orchestrator's own game-file gate finished** (held off per the orchestrator's own request, to avoid
+contending for the shared WSL/memory-coordinator resource their gate was using): clean on `viewer.cpp` and
+`live_resize.hpp` under both GCC 13 and Clang 18 (viewer-and-GPU and viewer-without-GPU), except the same
+pre-existing, unrelated `src/sim/tests/extensions_test.cpp` gap every packet on this branch has hit (this
+branch has never touched `src/sim/`). `clang-format --dry-run --Werror` flagged lines in both the predicate
+and a test; fixed with `-i`, rebuilt, reran the `live_resize` suite before gating (still green).
+
+**CI.** Pushed `c164eb52` on `task/ZOOM-SMOOTH-2` (no rebase).
+
+**The owner's recipe for this build.**
+
+1. Open PowerShell in this worktree (`E:\anno1503-worktrees\anno1503-ZOOM-SMOOTH-2`) and run:
+   ```powershell
+   $env:ANNO_VIEW_HITCH_MS = "1"
+   $env:ANNO_VIEW_LIVE_RESIZE_TRACE = "1"
+   $env:ANNO_GPU_ADAPTER = "0"  # the RTX 4090 on this PC
+   .\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced 2> live-resize-trace-2e.log
+   ```
+   **This must be this worktree's own `anno1503.exe`, relinked at `c164eb52`** - not an older one left over
+   from 2d or earlier.
+2. Once the window opens: grab the title bar and **drag it quickly, flicking it back and forth, for about
+   5 seconds**, then release.
+3. **Close** the window normally (Alt+F4 or the close button) to end the run and flush the log.
+4. Send back `live-resize-trace-2e.log`. With the fix in, the fast drag's own `frame hitch` lines should show
+   nothing far above 16 ms - 2d's own fast-drag numbers (worst 526.1 ms, p99 136.3 ms) are the baseline this
+   is meant to replace. `grep -oE "trigger=(timer|move)" live-resize-trace-2e.log | sort | uniq -c` shows
+   how much of the drawing the fallback itself accounted for.
+
+NOT_RUN: the repeat trace itself, and confirming it against the 16 ms target (next, once sent back); TSan
+and WSL ASan (unchanged reasoning from every prior packet on this branch).
+
+Decisions and reasoning:
+- **Reused the exact existing draw sequence for the new trigger rather than writing a second one**, per the
+  review's own instruction - this is the whole reason F2/F3 did not need re-proving for the new trigger.
+- **Checked the event type before touching any shared state**, continuing 2b F1's own property, rather than
+  reading `should_draw_from_move` (which does touch `LiveResizeState`) for every event regardless of type.
+- **Fixed the never-ticked overflow the moment the new test found it**, rather than loosening the test or
+  assuming "it'll never actually be exactly `time_point::min()` in practice" - the sentinel is reached on
+  every single run, on the very first `WINDOW_MOVED` or EXPOSED(1) before any prior tick, so this was never
+  an edge case that could be left alone.
+- **Verified the thread-safety claim against the SDL source and this engine's own code, not just against
+  EXPOSED(1)'s own prior precedent** - `WINDOW_MOVED` could in principle have a different set of send sites
+  than EXPOSED(1) (it is a far more general event than SDL's own live-resize-specific signal), so this was
+  checked rather than assumed to inherit the same property automatically.
+- **Documented the non-modal-loop case rather than adding a guard against it**: the review asked what
+  happens, not for it to be prevented, and `frame_step()`'s own existing guards already make it harmless, so
+  adding a new `in_modal_loop`-style gate here would have been an unneeded second mechanism doing a job the
+  first one already does.
+- **Held off the WSL check until the orchestrator's own gate cleared**, per their explicit request, and said
+  so here rather than silently running it as if nothing had been asked.
+
+QUESTIONs: none new. The open ones are the repeat trace itself (does 16 ms actually hold the fast drag's own
+worst gaps down, and does the fallback's own share of draws look sane against the timer's), and 2d's two
+still-open items (resize-side starvation, not extended here per the review's own "not extended" decision; the
+`should_draw_from_move`-style pure-predicate pattern this packet used could also inform a future resize-side
+check if one is ever needed, but nothing here builds toward that speculatively).
+
+**READY FOR REVIEW.**

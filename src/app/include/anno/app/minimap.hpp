@@ -90,6 +90,24 @@ struct MinimapConfig {
     /// islands' best fit on the History Edition capture (x +1). The view box is not shifted (no
     /// evidence either way). OQ-628.
     int quad_dx = 1, quad_dy = 1;
+    /// UI-MINIMAP-1 fix F2: the parchment quad, from (rect.x + parchment_x0, rect.y +
+    /// parchment_y0) to (rect.x + rect.w + parchment_x1, rect.y + rect.h + parchment_y1), its
+    /// texture sampled bilinearly with Direct3D's conventions (vertices on pixel edges, x - 0.5,
+    /// AnnoFrame 0x10086340; texel centres at + 0.5): pixel (x, y) of the quad reads texel (u, v)
+    /// = ((x + 0.5) * width / quad_w - 0.5, (y + 0.5) * parchment_rows / quad_h - 0.5).
+    /// Default 0 0 2 2: the code's strip, W' = x1 - x0 + 2 and H' = y1 - y0 + 2 from the
+    /// rectangle's corner (0x10031ef1..0x10031f1d), as the History Edition draws it (258 x 130 at
+    /// (767, 10) at 1024; its lossless capture he_s10_hud_idle_win: mean 8.3 sum-RGB against
+    /// 12.3 for the GOG fit). 1 1 1 1 is the GOG frame's fit (256 x 128 at (768, 11), B1): its
+    /// columns land on texel centres, so only its rows are filtered. The x0 and y0 offsets are
+    /// not negative (the raster starts at the rectangle's corner). docs/re/ui.md 2.9, OQ-628.
+    int parchment_x0 = 0, parchment_y0 = 0, parchment_x1 = 2, parchment_y1 = 2;
+    /// UI-MINIMAP-1 fix F2: the frame's colour depth. 32, the History Edition: palette entry (c,
+    /// k) = floor(channel * (k + shade_add) / shade_div) per 8-bit channel (its lossless capture
+    /// shows entries (9, 3) (109, 104, 0), (9, 4), (9, 5), (9, 6) and (1, 3) exactly), markers
+    /// and parchment as they are. 16, the GOG build: the 1:5:5:5 entries (0x10033954..
+    /// 0x10033a17) as its RGB565 frame shows them, markers and parchment reduced to RGB565.
+    int colour_depth = 32;
     /// The view box (0x1002fde0..0x10030316): corners at e = 2^level * box_extent / W and
     /// box_skew * e (map units) around the centre shifted by box_shift / (W / 2), in the colour
     /// 0x1009cfe8..0x1009cff4 = (1, 1, 1, 1).
@@ -212,11 +230,12 @@ build_minimap_image(const MinimapConfig& cfg, const MinimapWorld& world,
                     const std::vector<MinimapOwnerLayer>* owners = nullptr);
 
 /// The palette, one RGBA entry per image value (colours.size() * shades entries): transparent
-/// (all 0) for the first `transparent` shades, else the original's 1:5:5:5 entry (R and G from
-/// (c + 4) scaled, B from (c + 4) >> 3 scaled, each floor(x * (k + shade_add) / shade_div),
-/// clamped to 31) as the 16-bit RGB565 frame shows it: red and blue (v * 255 + 15) / 31, green
-/// as the 6-bit (v << 1) | (v >> 4), (g6 * 255 + 31) / 63 (matched on the GOG shot's land
-/// colours; OQ-628).
+/// (all 0) for the first `transparent` shades, else, at colour_depth 32 (the History Edition),
+/// floor(channel * (k + shade_add) / shade_div) per 8-bit channel; at colour_depth 16 (GOG) the
+/// original's 1:5:5:5 entry (R and G from (c + 4) scaled, B from (c + 4) >> 3 scaled, each
+/// floor(x * (k + shade_add) / shade_div), clamped to 31) as the 16-bit RGB565 frame shows it:
+/// red and blue (v * 255 + 15) / 31, green as the 6-bit (v << 1) | (v >> 4), (g6 * 255 + 31) /
+/// 63 (matched on the GOG shot's land colours; OQ-628).
 [[nodiscard]] std::vector<std::array<std::uint8_t, 4>> minimap_palette(const MinimapConfig& cfg);
 
 /// The minimap's rectangle in a UI layer `ui_w` pixels wide (section 2.9 Q1/Q7): x = ui_w -
@@ -319,8 +338,9 @@ minimap_view_box(const MinimapConfig& cfg, const MinimapRect& rect, const Minima
 [[nodiscard]] double minimap_level_factor(const std::vector<double>& level_tile_w, double shown_w);
 
 /// One marker: its integer screen point (the transformed point truncated, as the original's
-/// ftol does, 0x10003193..0x100031cd) and its colour 0xRRGGBB as the 16-bit RGB565 frame shows it
-/// (0x00d000 is (0, 210, 0), as on the GOG shot `construction_open`).
+/// ftol does, 0x10003193..0x100031cd) and its colour 0xRRGGBB: as it is at colour_depth 32, as
+/// the 16-bit RGB565 frame shows it at colour_depth 16 (0x00d000 is (0, 210, 0), as on the GOG
+/// shot `construction_open`).
 struct MinimapMarker {
     int x = 0, y = 0;
     std::uint32_t rgb = 0;
@@ -354,14 +374,14 @@ struct MinimapPixel {
 minimap_line_pixels(const std::vector<MinimapSegment>& segments);
 
 /// The parchment and the world image composed for `rect` (the window `window`), straight alpha,
-/// rect.w + max(0, quad_dx) x rect.h + max(0, quad_dy) pixels whose top-left is (rect.x,
-/// rect.y), both quads at the quad offset: the parchment's first parchment_rows rows stretched
-/// to rect.h rows (linear between the two source rows around (r + 0.5) * rows / rect.h - 0.5,
-/// premultiplied; a pixel less than half covered is left out; OQ-628), columns 1:1; over it every
-/// pixel whose centre (its integer coordinates, as Direct3D 7 samples) lies inside the window's
-/// diamond takes the palette entry of the image cell under it (nearest cell; OQ-628), unless that
-/// entry is transparent. `parchment` null: no parchment. `image` must hold image_w * image_h
-/// values.
+/// rect.w + max(0, quad_dx, parchment_x1) x rect.h + max(0, quad_dy, parchment_y1) pixels whose
+/// top-left is (rect.x, rect.y): the parchment quad (MinimapConfig::parchment_x0..y1, its first
+/// parchment_rows rows sampled bilinearly, premultiplied; a pixel less than half covered is left
+/// out; reduced to RGB565 at colour_depth 16; UI-MINIMAP-1 fix F2, OQ-628); over it, at the quad
+/// offset, every pixel whose centre (its integer coordinates, as Direct3D 7 samples) lies inside
+/// the window's diamond takes the palette entry of the image cell under it (nearest cell;
+/// OQ-628), unless that entry is transparent. `parchment` null: no parchment. `image` must hold
+/// image_w * image_h values.
 [[nodiscard]] assets::Rgba compose_minimap(const MinimapConfig& cfg, const MinimapRect& rect,
                                            const MinimapWindow& window,
                                            const std::vector<std::uint16_t>& image,

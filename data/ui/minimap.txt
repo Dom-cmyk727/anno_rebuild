@@ -48,6 +48,16 @@ parchment toolgfx/fenster.tex 52 133
 # History Edition capture are one pixel right of (and below) the rectangle; both quads use it,
 # the view box does not (docs/re/ui.md 2.9; OQ-628).
 quad_offset 1 1
+# The parchment quad's corners from the rectangle's: (x + x0, y + y0) to (x + w + x1, y + h + y1),
+# sampled bilinearly (vertices at x - 0.5, 0x10086340). 0 0 2 2 is the code's strip, W' = x1 - x0 + 2,
+# H' = y1 - y0 + 2 (AnnoFrame 0x10031ef1..0x10031f1d), as the History Edition draws it (258 x 130 at
+# (767, 10); its lossless capture: mean 8.3 sum-RGB against 12.3 for the GOG fit). The GOG frame's
+# fit (B1): 1 1 1 1 (docs/re/ui.md 2.9 fix F2; OQ-628).
+parchment_quad 0 0 2 2
+# The frame's colour depth: 32 as the History Edition (palette channels floor(c * (k + 16) / 31) in
+# 8 bits, markers and parchment as they are); 16 for the GOG build's RGB565 frame (the 1:5:5:5 entries,
+# markers and parchment reduced to RGB565).
+colour_depth 32
 # The view box (0x1002fde0..0x10030316): extent 2200 (0x10087bb4), skew 0.3 (0x10087ba8), centre
 # shift 332.8 (0x10087bb0), colour (1, 1, 1, 1) (0x1009cfe8..0x1009cff4).
 view_box 2200 0.3 332.8 ffffff

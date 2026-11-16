@@ -186,6 +186,12 @@ formats::Result<MinimapConfig, std::string> parse_minimap_config(std::string_vie
                 cfg.parchment_file = std::string(w[1]);
         } else if (key == "quad_offset") {
             ok = ints({&cfg.quad_dx, &cfg.quad_dy});
+        } else if (key == "parchment_quad") {
+            ok = ints({&cfg.parchment_x0, &cfg.parchment_y0, &cfg.parchment_x1,
+                       &cfg.parchment_y1}) &&
+                 cfg.parchment_x0 >= 0 && cfg.parchment_y0 >= 0;
+        } else if (key == "colour_depth") {
+            ok = ints({&cfg.colour_depth}) && (cfg.colour_depth == 32 || cfg.colour_depth == 16);
         } else if (key == "view_box") {
             ok = n == 4 && parse_double(w[1], cfg.box_extent) && parse_double(w[2], cfg.box_skew) &&
                  parse_double(w[3], cfg.box_shift) && parse_int(w[4], cfg.box_colour, 16) &&
@@ -416,6 +422,16 @@ std::vector<std::array<std::uint8_t, 4>> minimap_palette(const MinimapConfig& cf
                     rgb = o.rgb;
             const std::uint32_t factor = k + cfg.shade_add;
             const std::uint32_t r8 = (rgb >> 16) & 0xffU, g8 = (rgb >> 8) & 0xffU, b8 = rgb & 0xffU;
+            if (cfg.colour_depth != 16) {
+                // UI-MINIMAP-1 fix F2: the History Edition's 32-bit entries, each 8-bit channel
+                // scaled and floored (its lossless capture's land colours, docs/re/ui.md 2.9).
+                const auto ch = [&](std::uint32_t v) {
+                    return static_cast<std::uint8_t>(
+                        std::min<std::uint32_t>(v * factor / cfg.shade_div, 255U));
+                };
+                out[std::size_t{c} * cfg.shades + k] = {ch(r8), ch(g8), ch(b8), 255};
+                continue;
+            }
             // R: ((rgb & 0xff0000) + 0x40000) >> 9 = (R + 4) << 7, scaled, then bits 10..14.
             const std::uint32_t r5 =
                 std::min<std::uint32_t>(((r8 + 4U) << 7U) * factor / cfg.shade_div, 0x7c00U) >> 10U;
@@ -534,8 +550,11 @@ MinimapRect minimap_click_area(const MinimapConfig& cfg, int ui_w) {
     const MinimapRect r = minimap_rect(cfg, ui_w);
     const int x0 = std::min(r.x + std::min(0, cfg.quad_dx), r.x - cfg.shift_x);
     const int y0 = std::min(r.y + std::min(0, cfg.quad_dy), r.y - cfg.shift_y);
-    const int x1 = std::max(r.x + r.w + std::max(0, cfg.quad_dx), r.x - cfg.shift_x + r.w);
-    const int y1 = std::max(r.y + r.h + std::max(0, cfg.quad_dy), r.y - cfg.shift_y + r.h);
+    // The drawn raster (compose_minimap: both quads) and the wrapper's rectangle together.
+    const int x1 =
+        std::max(r.x + r.w + std::max({0, cfg.quad_dx, cfg.parchment_x1}), r.x - cfg.shift_x + r.w);
+    const int y1 =
+        std::max(r.y + r.h + std::max({0, cfg.quad_dy, cfg.parchment_y1}), r.y - cfg.shift_y + r.h);
     MinimapRect area = r;
     area.x = x0;
     area.y = y0;
@@ -698,7 +717,7 @@ std::vector<MinimapMarker> minimap_markers(const MinimapConfig& cfg, const Minim
         }
         const auto [sx, sy] = minimap_screen(cfg, rect, window, u, v);
         out.push_back({static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)),
-                       as_shown_565(rgb)});
+                       cfg.colour_depth == 16 ? as_shown_565(rgb) : rgb});
     };
     const auto own_colour = [&](const MapFigure& f, std::uint32_t plain) {
         return (f.flags & cfg.marker_flag) != 0 ? cfg.marker_flagged : plain;
@@ -777,8 +796,8 @@ assets::Rgba compose_minimap(const MinimapConfig& cfg, const MinimapRect& rect,
                              const std::vector<std::array<std::uint8_t, 4>>& palette,
                              const assets::Rgba* parchment) {
     assets::Rgba out;
-    const int w = rect.w + std::max(0, cfg.quad_dx);
-    const int h = rect.h + std::max(0, cfg.quad_dy);
+    const int w = rect.w + std::max({0, cfg.quad_dx, cfg.parchment_x1});
+    const int h = rect.h + std::max({0, cfg.quad_dy, cfg.parchment_y1});
     if (w <= 0 || h <= 0 || w > 0xFFFF || h > 0xFFFF)
         return out;
     out.width = static_cast<std::uint16_t>(w);
@@ -792,38 +811,61 @@ assets::Rgba compose_minimap(const MinimapConfig& cfg, const MinimapRect& rect,
                               4;
         std::copy_n(rgba, 4, out.pixels.begin() + static_cast<std::ptrdiff_t>(d));
     };
-    // (1) The parchment, its first parchment_rows rows over the rectangle's height, no blending:
-    // its transparent pixels are left out (the GOG shot shows the world there, left of the
-    // chrome).
-    if (parchment != nullptr && parchment->width > 0 && parchment->height > 0 && rect.h > 0) {
+    // (1) The parchment quad (MinimapConfig::parchment_x0..y1), its first parchment_rows rows,
+    // sampled bilinearly, no blending: its transparent pixels are left out (the GOG shot shows
+    // the world there, left of the chrome).
+    const int qw = rect.w + cfg.parchment_x1 - cfg.parchment_x0;
+    const int qh = rect.h + cfg.parchment_y1 - cfg.parchment_y0;
+    if (parchment != nullptr && parchment->width > 0 && parchment->height > 0 && qw > 0 && qh > 0) {
         const int rows = std::min<int>(cfg.parchment_rows, parchment->height);
-        const int cols = std::min<int>(rect.w, parchment->width);
-        for (int ry = 0; ry < rect.h; ++ry) {
-            // Linear between the two rows around the pixel centre's source row.
-            const double src = std::max(0.0, (static_cast<double>(ry) + 0.5) * rows / rect.h - 0.5);
-            const int sy0 = std::min(rows - 1, static_cast<int>(src));
-            const int sy1 = std::min(rows - 1, sy0 + 1);
-            const double t = src - sy0;
-            for (int rx = 0; rx < cols; ++rx) {
-                const std::size_t a = (static_cast<std::size_t>(sy0) * parchment->width +
-                                       static_cast<std::size_t>(rx)) *
-                                      4;
-                const std::size_t b = (static_cast<std::size_t>(sy1) * parchment->width +
-                                       static_cast<std::size_t>(rx)) *
-                                      4;
+        const int cols = parchment->width;
+        const auto texel = [&](int tx, int ty) {
+            tx = std::clamp(tx, 0, cols - 1);
+            ty = std::clamp(ty, 0, rows - 1);
+            return (static_cast<std::size_t>(ty) * parchment->width +
+                    static_cast<std::size_t>(tx)) *
+                   4;
+        };
+        for (int ry = 0; ry < qh; ++ry) {
+            // Direct3D: the pixel centre (ry + 0.5) over the quad, texel centres at + 0.5.
+            const double v = (static_cast<double>(ry) + 0.5) * rows / qh - 0.5;
+            const double fy = std::floor(v);
+            const double ty = v - fy;
+            const int y0 = static_cast<int>(fy);
+            for (int rx = 0; rx < qw; ++rx) {
+                const double u = (static_cast<double>(rx) + 0.5) * cols / qw - 0.5;
+                const double fx = std::floor(u);
+                const double tx = u - fx;
+                const int x0 = static_cast<int>(fx);
+                const std::array<std::size_t, 4> at = {texel(x0, y0), texel(x0 + 1, y0),
+                                                       texel(x0, y0 + 1), texel(x0 + 1, y0 + 1)};
+                const std::array<double, 4> wt = {(1.0 - tx) * (1.0 - ty), tx * (1.0 - ty),
+                                                  (1.0 - tx) * ty, tx * ty};
                 // Premultiplied, so a transparent neighbour never darkens the edge; a pixel
                 // under half covered is left out (the parchment is drawn without blending).
-                const double wa = (1.0 - t) * parchment->pixels[a + 3] / 255.0;
-                const double wb = t * parchment->pixels[b + 3] / 255.0;
-                if (wa + wb < 0.5)
+                double alpha = 0.0;
+                std::array<double, 3> sum{};
+                for (std::size_t i = 0; i < 4; ++i) {
+                    const double a = wt[i] * parchment->pixels[at[i] + 3] / 255.0;
+                    alpha += a;
+                    for (std::size_t c = 0; c < 3; ++c)
+                        sum[c] += a * parchment->pixels[at[i] + c];
+                }
+                if (alpha < 0.5)
                     continue;
                 std::array<std::uint8_t, 4> px{};
                 for (std::size_t c = 0; c < 3; ++c)
-                    px[c] = static_cast<std::uint8_t>(std::lround(
-                        (wa * parchment->pixels[a + c] + wb * parchment->pixels[b + c]) /
-                        (wa + wb)));
+                    px[c] = static_cast<std::uint8_t>(std::lround(sum[c] / alpha));
                 px[3] = 255;
-                put(rx + cfg.quad_dx, ry + cfg.quad_dy, px.data());
+                if (cfg.colour_depth == 16) {
+                    // The GOG build's RGB565 frame.
+                    const std::uint32_t rgb = as_shown_565((std::uint32_t{px[0]} << 16U) |
+                                                           (std::uint32_t{px[1]} << 8U) | px[2]);
+                    px = {static_cast<std::uint8_t>(rgb >> 16U),
+                          static_cast<std::uint8_t>((rgb >> 8U) & 0xffU),
+                          static_cast<std::uint8_t>(rgb & 0xffU), 255};
+                }
+                put(rx + cfg.parchment_x0, ry + cfg.parchment_y0, px.data());
             }
         }
     }

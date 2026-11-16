@@ -76,7 +76,10 @@ TEST_CASE("minimap config: a file changes the numbers, a bad line is refused wit
 }
 
 TEST_CASE("minimap palette: the original's 1:5:5:5 entries, shades 0 and 1 transparent") {
-    const app::MinimapConfig cfg;
+    // The GOG build's 16-bit frame (colour_depth 16; the History Edition's 32-bit entries: the
+    // fix round's case below).
+    app::MinimapConfig cfg;
+    cfg.colour_depth = 16;
     const auto pal = app::minimap_palette(cfg);
     REQUIRE(pal.size() == 160);
     // Shades 0 and 1 of every colour draw nothing (AnnoFrame 0x10033943).
@@ -254,6 +257,8 @@ TEST_CASE("minimap compose: parchment under the map, the sea transparent, outsid
     app::MinimapConfig cfg;
     cfg.image_w = 4;
     cfg.image_h = 4;
+    // The GOG frame's parchment fit (B1): 256 x 128 at the rectangle + (1, 1), like the map.
+    cfg.parchment_x0 = cfg.parchment_y0 = cfg.parchment_x1 = cfg.parchment_y1 = 1;
     const auto rect = app::minimap_rect(cfg, 1024);
     const auto palette = app::minimap_palette(cfg);
     // Every cell owner 9 shade 8, except cell (0, 0) the sea (shade 0).
@@ -402,7 +407,8 @@ TEST_CASE("minimap owners: the published territory becomes the image's owner nib
 }
 
 TEST_CASE("minimap markers: own ships dark green, soldiers green, flags white, others hidden") {
-    const app::MinimapConfig cfg;
+    app::MinimapConfig cfg;
+    cfg.colour_depth = 16; // the GOG frame; at 32 the colours stay as they are (fix round case)
     const app::MinimapRect rect = app::minimap_rect(cfg, 1024); // (767, 10)
     const app::MinimapWindow whole{};
     // A 512-tile world. A ship at tile (256, 256): u = v = 64, the window's centre ->
@@ -618,9 +624,10 @@ TEST_CASE("minimap click: screen to world at turn 0, the whole world and a zoom 
 
 TEST_CASE("minimap click: the click area takes the parchment left of the chrome") {
     const app::MinimapConfig cfg;
-    // The drawn raster (767, 10) 257 x 129 and the wrapper's (765, 12) 256 x 128 together.
-    CHECK(app::minimap_click_area(cfg, 1024) == app::MinimapRect{765, 10, 259, 130, 1.0});
-    CHECK(app::minimap_click_area(cfg, 2542) == app::MinimapRect{2283, 10, 259, 130, 1.0});
+    // The drawn raster (767, 10) 258 x 130 (the parchment quad, fix F2) and the wrapper's
+    // (765, 12) 256 x 128 together: x 765..1024, y 10..139.
+    CHECK(app::minimap_click_area(cfg, 1024) == app::MinimapRect{765, 10, 260, 130, 1.0});
+    CHECK(app::minimap_click_area(cfg, 2542) == app::MinimapRect{2283, 10, 260, 130, 1.0});
 }
 
 TEST_CASE("minimap click: the HUD hit test takes the click area, also left of the column") {
@@ -791,4 +798,124 @@ TEST_CASE("minimap scroll: both UI paths draw the rolled left end left of the co
         // The column itself starts at 779 + W - 1024: the curl is the part left of it.
         CHECK(x0 + sprite->width == 779 + w - 1024);
     }
+}
+
+// ---- UI-MINIMAP-1 fix round: F2, the parchment and the colours as the History Edition draws them
+
+TEST_CASE("minimap config: the History Edition's parchment quad and colour depth from data") {
+    const auto loaded =
+        app::load_minimap_config(fs::path(ANNO_REPO_DIR) / "data" / "ui" / "minimap.txt");
+    REQUIRE(loaded.ok());
+    // The code's strip W' = x1 - x0 + 2, H' = y1 - y0 + 2 (AnnoFrame 0x10031ef1..0x10031f1d), as
+    // the History Edition draws it, and its 32-bit colours.
+    CHECK(loaded.value().parchment_x0 == 0);
+    CHECK(loaded.value().parchment_y0 == 0);
+    CHECK(loaded.value().parchment_x1 == 2);
+    CHECK(loaded.value().parchment_y1 == 2);
+    CHECK(loaded.value().colour_depth == 32);
+    // The GOG variant is two lines.
+    const auto gog = app::parse_minimap_config(
+        "anno1503-ui-minimap 1\nparchment_quad 1 1 1 1\ncolour_depth 16\n");
+    REQUIRE(gog.ok());
+    CHECK(gog.value().parchment_x0 == 1);
+    CHECK(gog.value().parchment_y1 == 1);
+    CHECK(gog.value().colour_depth == 16);
+    CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\ncolour_depth 24\n").ok());
+    CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\nparchment_quad -1 0 2 2\n").ok());
+    CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\nparchment_quad 0 0 2\n").ok());
+}
+
+TEST_CASE("minimap palette: the History Edition's 32-bit entries") {
+    const app::MinimapConfig cfg; // colour_depth 32
+    const auto pal = app::minimap_palette(cfg);
+    REQUIRE(pal.size() == 160);
+    CHECK(pal[9 * 16 + 1][3] == 0);
+    // floor(channel * (k + 16) / 31): (9, 3) b2ab00 * 19 / 31 = (109.1, 104.8, 0) -> (109, 104,
+    // 0), the History Edition capture's commonest land colour; (9, 4) * 20 / 31 = (114.8, 110.3,
+    // 0); (1, 3) 00bbff * 19 / 31 = (0, 114.6, 156.3): all three are on its lossless capture.
+    CHECK(pal[9 * 16 + 3] == std::array<std::uint8_t, 4>{109, 104, 0, 255});
+    CHECK(pal[9 * 16 + 4] == std::array<std::uint8_t, 4>{114, 110, 0, 255});
+    CHECK(pal[1 * 16 + 3] == std::array<std::uint8_t, 4>{0, 114, 156, 255});
+    // (9, 2) 664400 * 18 / 31 = (59.2, 39.5, 0); (8, 15) fafafa * 31 / 31.
+    CHECK(pal[9 * 16 + 2] == std::array<std::uint8_t, 4>{59, 39, 0, 255});
+    CHECK(pal[8 * 16 + 15] == std::array<std::uint8_t, 4>{250, 250, 250, 255});
+    // The markers keep their colours at 32 bits (0x00d000, not the RGB565 frame's 0x00d200).
+    const app::MinimapRect rect = app::minimap_rect(cfg, 1024);
+    const auto m = app::minimap_markers(cfg, rect, app::MinimapWindow{}, {{2, 256.0, 256.0, 1, 0}},
+                                        512, 512, 2);
+    REQUIRE(m.size() == 1);
+    CHECK(m[0] == app::MinimapMarker{895, 74, 0x00d000});
+}
+
+TEST_CASE("minimap compose: the parchment quad is sampled bilinearly over 258 x 130") {
+    app::MinimapConfig cfg;
+    cfg.image_w = 4;
+    cfg.image_h = 4;
+    const auto rect = app::minimap_rect(cfg, 1024); // (767, 10) 256 x 128
+    const auto palette = app::minimap_palette(cfg);
+    const std::vector<std::uint16_t> image(16, 0); // all sea: transparent, the parchment shows
+    // A ramp: red = column, green = row, opaque.
+    anno::assets::Rgba parchment;
+    parchment.width = 256;
+    parchment.height = 133;
+    parchment.pixels.assign(256 * 133 * 4, 255);
+    for (std::size_t y = 0; y < 133; ++y)
+        for (std::size_t x = 0; x < 256; ++x) {
+            const std::size_t o = (y * 256 + x) * 4;
+            parchment.pixels[o] = static_cast<std::uint8_t>(x);
+            parchment.pixels[o + 1] = static_cast<std::uint8_t>(y);
+            parchment.pixels[o + 2] = 0;
+        }
+    const auto he =
+        app::compose_minimap(cfg, rect, app::MinimapWindow{}, image, palette, &parchment);
+    REQUIRE(he.width == 258);
+    REQUIRE(he.height == 130);
+    // Pixel (x, y) of the quad reads texel ((x + 0.5) * 256 / 258 - 0.5, (y + 0.5) * 133 / 130 -
+    // 0.5). x = 200: u = 198.446 -> red 198; y = 65: v = 66.512 -> green 67. x = 0: u = -0.004,
+    // clamped to column 0. x = 257 (the 258th column, past the GOG fit): u = 255.0 -> 255.
+    CHECK(pixel(he, 200, 65) == std::array<std::uint8_t, 4>{198, 67, 0, 255});
+    CHECK(pixel(he, 0, 0) == std::array<std::uint8_t, 4>{0, 0, 0, 255});
+    CHECK(pixel(he, 257, 129) == std::array<std::uint8_t, 4>{255, 132, 0, 255});
+    // The GOG frame's fit (parchment_quad 1 1 1 1): the columns land on texel centres, so raster
+    // x 201 is column 200 exactly and raster y 66 is v = 65.5 * 133 / 128 - 0.5 = 67.56 -> 68;
+    // with colour_depth 16 the pixel is then shown in RGB565: red 200 >> 3 = 25 -> 206, green
+    // 68 >> 2 = 17 -> 69.
+    app::MinimapConfig gog = cfg;
+    gog.parchment_x0 = gog.parchment_y0 = gog.parchment_x1 = gog.parchment_y1 = 1;
+    const auto g32 =
+        app::compose_minimap(gog, rect, app::MinimapWindow{}, image, palette, &parchment);
+    REQUIRE(g32.width == 257);
+    CHECK(pixel(g32, 201, 66) == std::array<std::uint8_t, 4>{200, 68, 0, 255});
+    CHECK(pixel(g32, 0, 0)[3] == 0); // the quad starts one pixel in
+    gog.colour_depth = 16;
+    const auto g16 =
+        app::compose_minimap(gog, rect, app::MinimapWindow{}, image, palette, &parchment);
+    CHECK(pixel(g16, 201, 66) == std::array<std::uint8_t, 4>{206, 69, 0, 255});
+    // The grain: a one-pixel checkerboard keeps its full step in the GOG fit's columns (each
+    // pixel one texel) and loses it where the 258-pixel quad samples between two texels.
+    for (std::size_t y = 0; y < 133; ++y)
+        for (std::size_t x = 0; x < 256; ++x) {
+            const std::size_t o = (y * 256 + x) * 4;
+            const std::uint8_t v = ((x + y) % 2) != 0 ? 200 : 0;
+            parchment.pixels[o] = parchment.pixels[o + 1] = parchment.pixels[o + 2] = v;
+        }
+    const auto he_c =
+        app::compose_minimap(cfg, rect, app::MinimapWindow{}, image, palette, &parchment);
+    gog.colour_depth = 32;
+    const auto gog_c =
+        app::compose_minimap(gog, rect, app::MinimapWindow{}, image, palette, &parchment);
+    // The mean step between horizontal neighbours over one row, where the row filter keeps most
+    // of the pattern: raster row 1 of the GOG fit (v = 0.0, texel row 0 alone) and row 0 of the
+    // quad (v = 0.012).
+    const auto step = [](const anno::assets::Rgba& im, int x0, int x1, int y) {
+        double sum = 0.0;
+        for (int x = x0; x < x1; ++x)
+            sum += std::abs(static_cast<double>(pixel(im, x + 1, y)[0]) - pixel(im, x, y)[0]);
+        return sum / (x1 - x0);
+    };
+    const double gog_step = step(gog_c, 20, 236, 1);
+    const double he_step = step(he_c, 20, 236, 0);
+    INFO("GOG fit " << gog_step << ", History Edition " << he_step);
+    CHECK(gog_step > 190.0);
+    CHECK(he_step < 0.75 * gog_step);
 }

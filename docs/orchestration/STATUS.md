@@ -188,6 +188,12 @@ says who is doing what, where the work is, and what it waits on.
     confirms FISHER-RE-3's read in a running original. One difference to settle: after the release nothing is
     visible, while the read has a 15 s wait. **Step B RELEASED** to the UI lane (the viewer switch and the stock
     readout). Step C needs one clean History Edition run (fixed camera, both sites) first.
+    **FISHER-1f ACCEPTED** 2026-11-16 (`498785e8`, [review](reviews/2026-11-16-fisher-1f-review.md)): the sim's
+    closed hut now sends its worker out, takes three catches, fails to come home, credits nothing and frees the
+    slot; no new saved state. Against the owner's recording the catch rhythm, the new worker and the end tile
+    agree; the first leg is about 0.6 s slower (F1, for step C), and what is visible after the release is open
+    (F2). **FISHER-RE-4 RELEASED** to the Mac (a read: is a released figure drawn?). Landing of FISHER-RE-3 and
+    FISHER-1f waits for the owner's OK.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

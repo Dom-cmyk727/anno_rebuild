@@ -42,9 +42,13 @@ section and line index only.
    value 0x7fff00 (on) or 0 (off), through command slot +0x94 = 0x1005ef70 (D).
 6. All textures of this area are **pixel-identical in HE** (`fenster.tex` ids shifted +4 / +5 / +6,
    `fenster8` ids unshifted); HE English texts are byte-identical to GOG, HE German texts have the
-   same line counts (P). **Both HE videos (1920 x 1080) draw the right panel with the `8`-suffix
-   graphic set** (tab 33 x 36, panel 191 wide), while the GOG 1024 x 768 shots use the plain set
-   (M-HE, M-GOG; OQ-652).
+   same line counts (P). **The HE videos show the plain set, recorded at 0.75:** `HE_UI_1.mp4` and
+   `ui_5.mp4` are 1920 x 1080 recordings of a 2542 x 1351 client (video px = 0.75 screen px;
+   `ui-ships-diplomacy.md` M-HE, `ui-options-mainmenu.md` capture list), and the HE draws the
+   in-game UI at scale 1.0 at 1200 lines or fewer (`he-ui-scale.md` section 1). The GOG plain-set
+   positions times 0.75 predict the measured tab, plank and deny button within 2 px (section 3).
+   This prep first read them as the `8` set; that is retracted (orchestrator's review 2026-11-16).
+   Confirming the 0.75 fit is OQ-652 (A, M-HE).
 
 ## 1. Screens and states, how they open and close
 
@@ -204,8 +208,8 @@ The right-panel host creates the city panel 0xa3a as a child (0x1003a7d6) and th
 | `fenster.tex` ids of this area | 661 `VIEWINFOSTADTTAB`, 677, 678, 855, 856, 860-871, 1019, 1511, ... | +5 for ids up to `WARENICONS_SOLDAT` 808 (`VIEWINFOSTADTTAB` 666, `STADT_BILANZ_BK` 682, `VIEWINFOSTADTAUSBAUSTOP` 683), +4 from `WARENICONS_SCHIFF` (829) to 1438 (`VKEK_HINTERGRUND` 859, `PLANKEGROSS` 1023), +6 from 1517 (`FREMDERKONTOR_UNTERGRUND`) | P `anno-dump inc` of both `fenster.inc`; GOG 218 ACCESS / 1606 textures, HE 224 / 1612 |
 | Pixels | - | every frame of the 66 ACCESS names checked is pixel-identical (hash) to GOG; exception: `WARENICONS_SOLDAT` has 22 frames in GOG, 21 in HE (the next HE name starts one earlier) | P `cache/prep-warehouse/scripts/acc.py` |
 | `fenster8` (small set) ids | same as plain | **unshifted** (661, 677, 678, 1019 as GOG) | P HE `fenster8.inc` |
-| Graphic set on screen | plain set at 1024 x 768 (tab 42 x 46) | **8 set at 1920 x 1080** in both owner videos: tab 0 selected frame 662 (33 x 36) at (1716, 251) mean 18.06 vs plain-set best 43.7; plank 1019 (188 x 38) at (1731, 212) mean 31.5; page bk 677 (191 x 366) at (1725, 245) mean 26.5; deny button 678 (88 x 47) at (1787, 528) mean 16.2 (`ui_5.mp4` frame 405 s); Kontor info bk 33 (172 x 364) mean 27.6 vs plain 33.8 (`HE_UI_1.mp4` 91 s) | M-HE; OQ-652 |
-| Layout | page bk at tab + (17, -3), plank at tab + (21, -51), button at tab + (96, 371) | page bk at tab + (9, -6), plank + (15, -39), button + (71, 277) — not a uniform 0.78 scaling of GOG's (13, -2), (16, -40), (75, 289) | A from the rows above; video error ±2 px; OQ-652 |
+| Graphic set on screen | plain set at 1024 x 768 (tab 42 x 46) | plain set at UI scale 1.0, chrome at x = W - 245 (`he-ui-scale.md`); both owner videos are 0.75 recordings of a 2542 x 1351 client placed at video (7, 24). Prediction `x_video = 7 + 0.75 (x_ref + 1518)`, `y_video = 24 + 0.75 y_ref` against the positions measured in this prep (`ui_5.mp4` frame 405 s): tab 0 (1717.0, 251.3) vs (1716, 251) (the review's prediction: 1716.8, 251.5); plank (1732.8, 213.0) vs (1731, 212); deny button (1789.0, 529.5) vs (1787, 528); page bk (1729.8, 249.8) vs (1725, 245), a match of the smaller `8`-set sprite. The `8` set (0.78125 of the plain size) scored better than the **unscaled** plain set (tab 18.06 vs 43.7) because its size is close to 0.75 x plain; the 0.75-scaled plain set was not matched in this prep | A, M-HE; retracts this prep's "8 set at 1920 x 1080" (orchestrator's review 2026-11-16); OQ-652 |
+| Layout | section 2 | the same positions (row above); no HE-specific layout found | A; OQ-652 |
 | Texts | English `Texte.dat` | `Languages/Eng/Texte.dat` byte-identical sections (`KONTORFREMD`, `INFOSTADTTAB`, `STADTMAIN`, `WAREN_EIN-VERKAUF` hashes equal); root `Texte.dat` German, same line counts | P `anno-dump texte` |
 | Code | 32-bit View.dll | x86-64 View.dll; contains the same ACCESS and section names (`VKEK_*`, `VK_SLIDER_*`, `TOOLTIP:INFOSTADT*`, `KONTORFREMD`, `FREMDERKONTOR_UNTERGRUND`, route sections) | P string scan; HE code not disassembled |
 | Panel content | city status rows | same eight rows and deny button, name "Bad Aussee" | M-HE `ui_5` 6:41-6:49 |
@@ -262,8 +266,8 @@ Commands the panel sends:
 | Sell/Buy page positions | U except bk (A) (OQ-650, OQ-651) |
 | Goods chooser, category pages, foreign Kontor, ship trade pages | D inventory; positions and flows U |
 | HE texture identity and id shifts | P |
-| HE graphic set (8 set at 1080p) | M-HE (two videos) |
-| HE positions of the main page | M-HE (video, ±2 px) |
+| HE graphic set (plain set at UI scale 1.0; the videos are 0.75 recordings) | A + M-HE (three positions within 2 px of the prediction); to confirm (OQ-652) |
+| HE positions of the main page | M-HE (video, ±2 px) = GOG positions x 0.75 |
 
 ## 6. Open questions (OQ-650..OQ-659)
 
@@ -288,14 +292,19 @@ Commands the panel sends:
 - **How to resolve:** read the gadget base class (0x100188c0 constructor, 0x10018b90 message
   handler) and slot +0x24 of the panel class; check whether the index selects a rect table.
 
-## OQ-652: Which graphic set the HE draws, and its layout
-- **Status:** open (related: OQ-535).
+## OQ-652: Confirm that the HE videos show the plain set at 0.75
+- **Status:** open, narrowed 2026-11-16 by the orchestrator's review (related: OQ-535).
 - **Area:** UI / HE.
-- **Question:** Why do both HE videos at 1920 x 1080 draw the right panel with the `8` set (191-pixel
-  panel), and where do the 8-set positions come from (they are not GOG's positions × 0.78)?
-- **What we know:** M-HE section 3. `he-ui-scale.md` describes the scale factor, not the set choice.
-- **How to resolve:** read the set choice in HE `AnnoDisplay`/`View` (x64); record R1 at a second
-  resolution (e.g. 2560 x 1440) to see whether the set changes.
+- **Question:** Do the owner's HE videos show the city panel in the plain graphic set at UI scale
+  1.0, recorded at 0.75 (2542 x 1351 client in a 1920 x 1080 video)?
+- **What we know:** 0.75 x the plain-set positions fits the tab, plank and deny button within 2 px
+  (section 3); this prep's first reading ("the `8` set at 1920 x 1080") compared the 0.78125-size
+  `8` set with the unscaled plain set and is retracted. `he-ui-scale.md`: UI scale 1.0 at 1200
+  lines or fewer, chrome at x = W - 245.
+- **How to resolve:** match the 0.75-scaled plain set on `ui_5.mp4` 405 s and `HE_UI_1.mp4` 91 s
+  (expected: at least as good as the `8` set's means); or measure a lossless recording made at the
+  common set-up (`docs/orchestration/tasks/ui-panels-he-recording.md`), where the plain set must
+  match 1:1.
 
 ## OQ-653: Add-goods flow and the goods-to-list link
 - **Status:** open.

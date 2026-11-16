@@ -40,7 +40,8 @@ whatever stays open stays an OQ with the next step written down. No build, no ga
 ### W1b: HE measurement (about 3 h, after the owner's recordings R1-R5)
 
 Extract frames (ffmpeg) of each state in R1-R5 into `cache/` and sprite-sad every texture of spec §2
-against them with the HE `fenster8` / `fenster` sets (whichever OQ-652's answer and the frames say).
+against them with the HE plain `fenster` set: at UI scale 1.0 the HE draws it 1:1, and the older
+videos showed it at 0.75, not the `8` set (spec §3, OQ-652 narrowed by the orchestrator's review).
 Write the rectangles into a new `data/ui/city_panel.txt` in the `data/ui/` format (README there),
 both for the HE frames' set and, where the GOG shot exists (`f15_kontor`), for the 1024 x 768 plain
 set.
@@ -49,7 +50,7 @@ set.
 file and frame time; matches below mean 25 on HE video frames (lossy) and below 15 on GOG shots;
 `tools/ui_layout.py` validation passes on the new file; the GOG tab column and deny button keep the
 spec's exact positions (762, 303 + 46 i) and (858, 674).
-**HE compare:** R1-R5 (and R6 if OQ-652 needs it).
+**HE compare:** R1-R5.
 
 ### W1c: draw the shell and the city-status page (about 3-4 h)
 
@@ -144,8 +145,8 @@ say aloud what you click and the numbers you see.
    sell one goods, saying amount and price. Then at the own Kontor with the ship docked: open the ship
    trade tabs, unload and load 1 t each. Ship route tab: set two route points with one load and one
    unload setting.
-6. **R6 (optional, for OQ-652):** R1 and the first half of R2 again at 1024 x 768 windowed and at the
-   largest resolution the PC offers, to see which graphic set the HE draws at each size.
+R6 is dropped: OQ-652 no longer asks which graphic set the HE draws (spec §3); R1 at the common
+set-up confirms the plain set 1:1.
 
 ## Decisions and reasoning (draft)
 

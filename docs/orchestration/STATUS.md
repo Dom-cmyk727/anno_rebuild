@@ -268,6 +268,21 @@ says who is doing what, where the work is, and what it waits on.
     in-game options and the main menu. Evidence and specs only (`docs/re/ui-<area>.md` and draft packets
     `tasks/ui-<area>-1.md` on `task/UI-PANELS-PREP` from main `0f46b1b2`), no implementation, no game runs,
     OQ-650 to 689 reserved. Nothing is released from them without the owner's go per packet.
+    **Done** 2026-11-16 (`task/UI-PANELS-PREP` `55c8c264`, docs only): four specs with draft packets, each with
+    "what the sim must provide"; OQ-650 to 689 all used, OQ-641 to 649 free.
+    **The owner's four decisions, reported by the UI lane from its session:** F5 to F8 set the speed, F10
+    quick-saves and P pauses, as the original (the ship opening's quick-save moves from F5 to F10); the main
+    menu gets a modern layout that adapts to the user's resolution, after a short design study put to the
+    owner ("find and identify a modern state of the art solution that will adjust to the users resolution");
+    save files are named as the original (GUID names, the display name inside); the statistics memory slots
+    are saved game state, as the original.
+    **What the panels need from the sim** (for the Mac's packets; details in the specs' sim sections):
+    trade: OQ-155 is answered (list 1 is the sell list, list 0 the buy list, so `GoodsSetting::buy` names the
+    sell list), the two visible slot counts are not kept, the amount is not clamped to the capacity, a
+    foreign-Kontor trade command and the traders' rule are missing; statistics: the per-city history (`STST2`,
+    60 samples every 2,500 ticks), the largest capacity seen, rates beyond the workshop, residents per group
+    and the eight memory slots are missing; ships and diplomacy: names, cannons, patrol, flag, boarding, sale,
+    treaties, tribute and their commands are missing; options: only the game speed is a sim command.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

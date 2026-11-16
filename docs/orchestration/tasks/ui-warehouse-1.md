@@ -70,8 +70,10 @@ frame of R1 with the HE set, mean below 25 per element. Existing UI oracle tests
 
 Publish per city in the app's view (no sim rule change): `CityAccounts` fields for rows 1-5,
 `World::city_population` (row 0), the deny state (`City::build_goods[0x29 - build_goods_first].setting
-!= 0`), and building id → `CityRef` for the player's Kontor and markets (spec §4). Row 6 = the
-spec's balance rule; row 7 stays a flagged placeholder until OQ-157 / OQ-655.
+!= 0`), and building id → `CityRef` for the player's Kontor and markets (spec §4). Row 6 = row 1 - row 2
+only while rows 3-5 are 0 (spec §2.2); with a non-zero row 3, 4 or 5 the balance is drawn from
+the original's sum only after W1a or R1 settles their signs (OQ-655), else a flagged default named
+in the report. Row 7 stays a flagged placeholder until OQ-157 / OQ-655.
 
 **Acceptance:** a unit test drives a sim world with known accounts and checks every row's printed
 number; text right-aligned as the original (glyph-exact on `f15_kontor`'s "15" and "-15", red for a

@@ -107,7 +107,7 @@ page background `info_bk` (`STADT_BILANZ_BK` at (779, 301)), the eight tabs `inf
 |---|---|---|---|---|---|
 | Background | `STADT_BILANZ_BK` id 677, 245 x 468; holds the row plates and row icons | (779, 301) = page + (0, 57) | - | - | D 0x1006c761..0x1006c7d1 (`push 0x39; push 0` at 0x1006c7cb); M-GOG `f15_kontor` mean 11.1 at (779, 301) against 20.1 at (779, 300) (orchestrator's review 2026-11-16; this prep had measured 20.52 at y 300); main's `data/ui/hud.txt` `info_bk` at (779, 301), sprite-565 on `r2_tab_help`; P (decoded: icons and plates are in the texture) |
 | Rows 0..7 | 8 text gadgets class 0xb1c, 195 x 15, children 0..7, tooltip `TOOLTIP:INFOSTADT_STADTMAIN` line i | plates at about y 319, 349, 379, 409, 439, 469, 530, 629 (each about 209 x 22, x about 809); values right-aligned near x 1007 | row 0 "Inhabitants"/"Einwohner", 1 "Warenerträge" (GOG English line 1 reads "Sales revenue"), 2 "Operating costs"/"Betriebskosten", 3 "Purchase costs"/"Einkaufskosten", 4 "Sales revenue"/"Verkaufserlöse", 5 "Military costs"/"Militärkosten", 6 "Balance"/"Stadtbilanz" (red when negative), 7 "Knowledge in city"/"Wissen in der Stadt" | none | D loop 0x1006c810..0x1006c8e8 (`cmp esi, 7`); row y M-GOG approx (visual on 2x crop, ±2 px); M-GOG values 0, 0, 15, 0, 0, 0, -15, 0; M-HE `ui_5` 6:45 values 120, 91, 248, 0, 0, 0, -157, 9 |
-| Balance rule | - | - | row 6 = row 1 - row 2 - row 3 + row 4 - row 5 | - | A: GOG 0 - 15 = -15; HE 91 - 248 = -157 (both captures; trade rows 0) |
+| Balance rule | - | - | shown only for row 6 = row 1 - row 2 while rows 3-5 are 0 | - | A: GOG 0 - 15 = -15; HE 91 - 248 = -157. Both captures have rows 3, 4 and 5 at zero, so the signs of purchase costs, sales revenue and military costs are not shown by them: OQ-655 (this row first stated a full rule with those signs; over-claimed, orchestrator's review 2026-11-16) |
 | Deny building material | class 0xb05, 112 x 60, child 8, `VIEWINFOSTADTAUSBAUSTOP` id 678: **frame 678 = allowed, 679 = denied** (two tooltip lines set: 8/9 and 10/11 of `STADTMAIN`) | (858, 674) | state = city build-goods setting of goods 0x29 | toggles: sends 0x7c mode 9 (section 2.3) | D 0x1006c8fc..0x1006ca4e, handler 0x1006cb10 → 0x1006caa0; M-GOG `f15_kontor` 678 mean 3.30; `f15_kontor_btn_b` (click (870, 680)) 679 mean 3.30; `f15_kontor_btn_c` (click (920, 680)) back to 678 |
 
 ### 2.3 Commands sent from the city panel (D)
@@ -235,7 +235,7 @@ State the panel reads (sim names from `src/sim`, app names from `src/app`):
 | Crest at the plank | - | - | missing (source U, OQ-657) |
 | Row 0 inhabitants | `World::city_population(CityRef)` | `CityCounters::population` (`play.hpp`) | exists |
 | Rows 1-5 | `CityAccounts::sales`, `civil_cost`, `trade_purchases`, `trade_sales`, `military_cost` (`city_accounts.hpp`) | none | **missing in view**; which field and which period the original shows per row: OQ-655 |
-| Row 6 balance | derived | - | A (section 2.2) |
+| Row 6 balance | derived | - | A for row 1 - row 2 only (section 2.2); the terms of rows 3-5: OQ-655 |
 | Row 7 knowledge | none (city +0x32c research sub-object, OQ-157) | none | **missing** |
 | Deny toggle state | `City::build_goods[0x29 - build_goods_first].setting` (`BuildGoods`) | none | missing in view |
 | Sell list / buy list | `City::trade_lists[1]` / `[0]` of `TradeEntry{goods, amount_88, price}` | none | missing in view; **`GoodsSetting::buy` names the sell list** (rename or document; OQ-155 answered) |
@@ -268,7 +268,7 @@ Commands the panel sends:
 | Crest graphic | U (OQ-657) |
 | Main page bk (779, 301), rows, deny button (858, 674) frames 678/679 | D + M-GOG (button exact 3.30; bk mean 11.1); already in main's `hud.txt` panel `info` |
 | Main page row values' sim source and period | U (OQ-655) |
-| Balance rule | A (two captures) |
+| Balance rule | A, row 6 = row 1 - row 2 only (two captures with rows 3-5 at 0); rows 3-5 U (OQ-655) |
 | Sell = list 1 (VK), Buy = list 0 (EK) | D |
 | 0x73 / 0x7c / 0x8a record layouts | D |
 | Slider ranges (amount 0..100 then capacity; price 0..150) | D (property meaning A) |
@@ -347,11 +347,15 @@ Commands the panel sends:
 - **Status:** open.
 - **Area:** UI / simulation.
 - **Question:** Which city field (and which period: per minute, running, last cycle) does each of rows
-  1-5 show, and where does row 7 "knowledge" come from?
+  1-5 show, where does row 7 "knowledge" come from, and with which sign does each of rows 3-5
+  (purchase costs, sales revenue, military costs) enter the balance (row 6)?
 - **What we know:** `CityAccounts` holds the five money statistics (ECON-BOOK-1); HE 6:45 shows
-  91 / 248 for a 120-inhabitant town (one sample). The page update functions (slots +0x9c / +0xa0 of
+  91 / 248 for a 120-inhabitant town (one sample). Both captures (GOG `f15_kontor`, HE `ui_5` 6:45)
+  show row 6 = row 1 - row 2 with rows 3-5 at 0; the guess "- row 3 + row 4 - row 5" from the
+  row names is not evidence. The page update functions (slots +0x9c / +0xa0 of
   vtable 0x100a0a70: 0x1006bfe0, 0x1006c070) were not read.
-- **How to resolve:** read those update functions; HE recording R1 holding the panel open for 60 s.
+- **How to resolve:** read those update functions (the balance sum among them); HE recording R1
+  holding the panel open for 60 s, ideally in a city with trade and military costs (rows 3-5 not 0).
 
 ## OQ-656: What "Deny building material" does to the sim
 - **Status:** open.

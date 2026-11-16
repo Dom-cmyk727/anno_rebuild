@@ -226,6 +226,12 @@ says who is doing what, where the work is, and what it waits on.
     the minimap controls), step B the drawing (islands, view box, markers), step C clicks and buttons. A view
     rotation, if the History Edition's arrows do that, would be a separate packet. UI-TABS-1 and the 73 ms
     first frame follow.
+    Step A.1 (the GOG read, `docs/re/ui.md` §2.9 on the branch, OQ-628 to 634) is done: the minimap is drawn by
+    `AnnoFrame.dll` from AnnoWelt's 256 x 256 owner-and-height image, with a white view box, figure markers,
+    the selected ship's route and alert sprites; its top-right plus and minus zoom the minimap, the magnifier
+    zooms the main view, a click centres the camera, and **the chevrons turn the whole view**. The rebuild's
+    renderer has no view turn, so that is a render-lane packet to be written (VIEW-TURN-1), to be placed
+    against RENDER-DIRECT by the orchestrator; UI-MINIMAP-1 covers drawing, zoom and click.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

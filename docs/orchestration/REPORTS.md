@@ -12615,3 +12615,67 @@ still-open items (resize-side starvation, not extended here per the review's own
 check if one is ever needed, but nothing here builds toward that speculatively).
 
 **READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2f: guard the move trigger's thread — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `46fd1f2b`, new commits)
+
+**The guard and its order.** `Viewer::window_thread_id_` (`std::thread::id`) is set once, in `run()` right at
+`SDL_AddEventWatch`'s own call site - not the constructor, which can run on another thread before `run()`
+ever starts the window. `live_resize_watch` now checks `should_draw_from_thread(std::this_thread::get_id(),
+self->window_thread_id_)` (new, `live_resize.hpp`, a pure function so a test can check it without a window or a
+second thread actually racing one) for **both** triggers, right after `is_timer_tick`/`is_move`'s own
+event-type test and **before** `self->live_resize_`'s first read (`mark_watch_tick()`) - the same placement the
+2b F1 fix already used for the event-type check itself, extended one property further: not just "this is an
+event type that can matter," but "this call is on the thread that owns `live_resize_`." A call from another
+thread is counted (`watch_off_thread_calls_`, `std::atomic<std::uint64_t>`, relaxed) and returns without
+touching anything else. `ClearWatch`'s own destructor (`run()`, where the watch is removed) prints the count
+once, only when it is not 0, so an ordinary run stays silent.
+
+**Why a guard rather than just the comment.** The comment at the `WINDOW_MOVED` case already argues the
+property from the pinned SDL source (Win32 delivers a window's messages only on its owning thread) - correct,
+but an argument, and the task's own point: SDL calls an event watch on whichever thread calls `SDL_PushEvent`,
+on every platform this engine targets, not only the Windows one the argument is about. The guard makes the
+property hold by construction instead.
+
+**Test.** `should_draw_from_thread` (new, `live_resize_test.cpp`, `live_resize` suite): the window thread's own
+id draws; a genuinely different thread's real id (a `std::thread` started only to read its own id, joined
+immediately - no draw, no window, no race) does not. Pure function, synthetic ids, no sleeping.
+
+**Rebuilt; the branch's own scripted check repeated.** `anno_app_input_tests` relinked; the `live_resize` suite
+(the only automated, no-human check on this branch - 2d/2e's own "resize/move" proofs are the owner's hands-on
+drag) now **10 cases, 35 assertions**, against 2e's own 9/32: the one new case adds 3; every pre-existing
+case, the 500-`WINDOW_MOVED` `SDL_PushEvent` flood test included, still passes with the **same counts 2e
+reported** (1 draw, then 1 more after `min_interval`) - the guard changes nothing for same-thread calls, the
+only kind this suite can drive without a second thread genuinely pushing SDL events. A real window-edge drag
+still needs the owner's own hands-on run; none was asked of me here.
+
+**Gates.** `anno_app_tests` + `anno_app_input_tests` + `viewer_wiring_*`: 352/352. `clang-format`: clean after
+two `-i` fixes (the new test case was missing its own `doctest::test_suite("live_resize")` tag on the first
+pass - caught by the suite-count mismatch, not by format). WSL `-Werror`: clean on `viewer.cpp`,
+`live_resize.hpp` and `live_resize_test.cpp` under GCC 13 and Clang 18 (viewer-and-GPU and viewer-without-GPU);
+the one remaining failure is the same pre-existing `src/sim/tests/extensions_test.cpp` gap every packet on
+this branch has hit (this branch never touches `src/sim`) - now explained precisely, per the orchestrator's own
+note: the check script passes no `ANNO_EXTENSION_ORACLE_FILE` define (`src/sim/CMakeLists.txt:53` does),
+UNIX-WARN-1's own fix. No gate was visibly running on this PC before either WSL run.
+
+NOT_RUN: a real window-edge drag or move (owner's own hands-on test, not asked for this packet); the full
+suite and the game-file run (the orchestrator's, at landing).
+
+Decisions and reasoning:
+- **Placed the guard right after the event-type test, before `self`'s first field read** - matching 2b F1's
+  own reasoning exactly (a push of any type this watch does not care about, from any thread, now never reads
+  `window_thread_id_` either, let alone `live_resize_`), rather than guarding inside each trigger's own branch
+  separately, which would have left the two reads of `self` between the type test and the first branch
+  (`trigger = "timer"`/`else`) unguarded for a type that already passed.
+- **Extracted a pure function instead of comparing ids inline** - the task's own "no real window in a test"
+  instruction needs something a test can call without `Viewer`; `should_draw_from_thread` is exactly the
+  `should_draw_from_watch`/`should_draw_from_move` pattern this file already uses twice, not a new one.
+- **Used a real second thread's real id in the test, not a hand-picked synthetic one** - a default-constructed
+  `std::thread::id` can compare equal to a real thread's id on some implementations (documented in the test's
+  own comment), so the "another thread" case is a genuine, different id, not an assumption about what an
+  arbitrary value is guaranteed not to equal.
+
+QUESTIONs: none from this packet's own scope. `watch_off_thread_calls_`'s own count has not been observed as
+nonzero on this platform - stays open only in the sense that no platform this build runs on has disagreed with
+the SDL-source argument yet.
+
+READY FOR REVIEW.

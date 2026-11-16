@@ -61,6 +61,11 @@ struct FrameRecord {
     int view_x = 0, view_y = 0, view_w = 0, view_h = 0;
     std::size_t group = 0;
     double scale = 1.0;
+    /// ZOOM-BOUNCE-2: the resample pass actually handed to the frame renderer (gpu::Resample,
+    /// null when the view draws at scale 1 with no resample) - 0/0/0 then, told apart from a
+    /// real resample by `scale` above never legitimately being 0. Compared against `scale`
+    /// (the view state's own) to catch the two disagreeing for one frame.
+    double resample_scale = 0.0, resample_offset_x = 0.0, resample_offset_y = 0.0;
     std::uint32_t drawable_w = 0, drawable_h = 0;
     double t_start_ms = -1, picture_ms = -1, acquire_start_ms = -1, acquire_end_ms = -1;
     std::uint32_t acquire_status = 0;

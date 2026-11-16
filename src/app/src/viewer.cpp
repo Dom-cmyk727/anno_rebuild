@@ -2902,6 +2902,14 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         rec.view_h = view.h;
         rec.group = group_;
         rec.scale = scale();
+        // ZOOM-BOUNCE-2: what this frame actually handed to the renderer (view's own scale
+        // above, resample's own below) - a bug that changes one but not the other, or changes
+        // them together the view state alone would not report, shows up by comparing them.
+        if (resample != nullptr) {
+            rec.resample_scale = resample->scale;
+            rec.resample_offset_x = resample->offset_x;
+            rec.resample_offset_y = resample->offset_y;
+        }
         rec.drawable_w = w;
         rec.drawable_h = h;
         rec.t_start_ms = trace_->ms_at(draw_start_);

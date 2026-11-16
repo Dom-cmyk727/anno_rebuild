@@ -596,6 +596,22 @@ TEST_CASE(
           doctest::Approx(static_cast<double>(kt[anno::render::kGroups - 1].w) / kZoomEndFactor));
 }
 
+TEST_CASE("zoom_target_after: already at the closest-zoom limit, any number of further inward "
+          "notches - arriving one call at a time with no zoom_advance in between, as several "
+          "wheel events landing before a single frame draws would - leaves the target exactly "
+          "at the limit, never briefly past it (ZOOM-BOUNCE-2's own lead 1)") {
+    using namespace anno::app;
+    const auto levels = anno::render::ZoomLevels::original();
+    const double limit = levels.tile_w(0) * kZoomEndFactor;
+    double target = limit;
+    for (int notches = 1; notches <= 20; ++notches) {
+        // factor > 1: an inward ("closer") notch, exactly zoom_by's own call.
+        target = zoom_target_after(target, 1.1, levels);
+        CHECK(target == doctest::Approx(limit));
+        CHECK(target <= limit); // never even a floating-point hair past it
+    }
+}
+
 TEST_CASE("zoom_advance: the zoom is held while the next coarser level is not ready") {
     using namespace anno::app;
     const auto levels = anno::render::ZoomLevels::with_derived(3); // 84 42 20 10 5 2.5

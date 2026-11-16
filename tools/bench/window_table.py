@@ -55,7 +55,8 @@ from pathlib import Path
 COLUMNS = ["frame", "epoch", "generation", "view_x", "view_y", "view_w", "view_h", "group", "scale",
            "drawable_w", "drawable_h", "t_start_ms", "picture_ms", "acquire_start_ms",
            "acquire_end_ms", "acquire_status", "texture", "submit_ms", "present_start_ms",
-           "present_end_ms", "present_status", "outcome"]
+           "present_end_ms", "present_status", "outcome",
+           "resample_scale", "resample_offset_x", "resample_offset_y"]
 SIM_COLUMNS = ["turn", "t_ms", "applied", "rejected", "outcome", "reasons", "batch", "deltas"]
 WHOLE = re.compile(r"-?[0-9]+")
 NUMBER = re.compile(r"-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?")

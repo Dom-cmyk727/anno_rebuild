@@ -18,9 +18,9 @@ fail() {
     echo "FAIL: $*" >&2
     exit 1
 }
-H=$'frame\tepoch\tgeneration\tview_x\tview_y\tview_w\tview_h\tgroup\tscale\tdrawable_w\tdrawable_h\tt_start_ms\tpicture_ms\tacquire_start_ms\tacquire_end_ms\tacquire_status\ttexture\tsubmit_ms\tpresent_start_ms\tpresent_end_ms\tpresent_status\toutcome'
-F1=$'1\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t3.0\t0.1\t3.2\t3.5\tSuccessOptimal\t1\t4.0\t4.5\t5.0\tSuccess\tpresented'
-F2=$'2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t5.5\t0.1\t5.6\t6.0\tTimeout\t0\t-1.000000\t-1.000000\t-1.000000\t-\tacquire_skipped'
+H=$'frame\tepoch\tgeneration\tview_x\tview_y\tview_w\tview_h\tgroup\tscale\tdrawable_w\tdrawable_h\tt_start_ms\tpicture_ms\tacquire_start_ms\tacquire_end_ms\tacquire_status\ttexture\tsubmit_ms\tpresent_start_ms\tpresent_end_ms\tpresent_status\toutcome\tresample_scale\tresample_offset_x\tresample_offset_y'
+F1=$'1\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t3.0\t0.1\t3.2\t3.5\tSuccessOptimal\t1\t4.0\t4.5\t5.0\tSuccess\tpresented\t1\t0\t0'
+F2=$'2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t5.5\t0.1\t5.6\t6.0\tTimeout\t0\t-1.000000\t-1.000000\t-1.000000\t-\tacquire_skipped\t1\t0\t0'
 make_case() { # matrix, case
     local c="$1/$2"
     mkdir -p "$c/trace"
@@ -93,7 +93,7 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     case $bad in
     gap) sed -i.orig 's/^2\t1\t1\t/3\t1\t1\t/' "$c/trace/frames.tsv" ;;
     mismatch) sed -i.orig 's/\tTimeout\t0\t/\tSuccessOptimal\t0\t/' "$c/trace/frames.tsv" ;;
-    count) sed -i.orig 's/acquire_skipped$/acquire_retry/; s/\tTimeout\t/\tOutdated\t/' "$c/trace/frames.tsv" &&
+    count) sed -i.orig 's/acquire_skipped\t/acquire_retry\t/; s/\tTimeout\t/\tOutdated\t/' "$c/trace/frames.tsv" &&
         sed -i.orig '/frame_failed/d' "$c/trace/events.tsv" &&
         "$BENCH" --aggregate "$c/trace/events.tsv" > "$c/aggregate.txt" 2> /dev/null ;;
     # Round ed: the raw trace changed after the run; its saved aggregate.txt (a success) and run.txt
@@ -110,7 +110,7 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     epoch_back) sed -i.orig 's/^1\t1\t1\t/1\t2\t1\t/' "$c/trace/frames.tsv" ;;
     junk_cols) sed -i.orig 's/^1\t1\t1\t0\t0\t/1\t1\tabc\tx\t0\t/' "$c/trace/frames.tsv" ;;
     wrong_skip) sed -i.orig 's/\tTimeout\t/\tOutdated\t/' "$c/trace/frames.tsv" ;;
-    junk_present) sed -i.orig 's/\tSuccess\tpresented$/\tbanana\tpresent_failed/' "$c/trace/frames.tsv" ;;
+    junk_present) sed -i.orig 's/\tSuccess\tpresented\t/\tbanana\tpresent_failed\t/' "$c/trace/frames.tsv" ;;
     neg_acquire) sed -i.orig 's/\t5.6\t6.0\tTimeout/\t5.6\t5.2\tTimeout/' "$c/trace/frames.tsv" ;;
     over_reject) sed -i.orig 's/\t1\t0\taccepted\t-\t1\t1$/\t1\t2\tinvalid\tx,y\t1\t1/' "$c/trace/sim.tsv" ;;
     # Both present events moved, so the trace stays consistent and only the cross-check refuses it.

@@ -193,12 +193,14 @@ EvidenceOutcome WindowTrace::finalize(const std::filesystem::path& dir, const st
         dropped = dropped_;
     }
     std::ostringstream f;
-    f << "frame\tepoch\tgeneration\tview_x\tview_y\tview_w\tview_h\tgroup\tscale\tdrawable_w"
+    f << "frame\tepoch\tgeneration\tview_x\tview_y\tview_w\tview_h\tgroup\tscale\tresample_scale"
+         "\tresample_offset_x\tresample_offset_y\tdrawable_w"
          "\tdrawable_h\tt_start_ms\tpicture_ms\tacquire_start_ms\tacquire_end_ms\tacquire_status"
          "\ttexture\tsubmit_ms\tpresent_start_ms\tpresent_end_ms\tpresent_status\toutcome\n";
     for (const FrameRecord& r : frames) {
         f << r.frame << "\t" << r.epoch << "\t" << r.generation << "\t" << r.view_x << "\t"
           << r.view_y << "\t" << r.view_w << "\t" << r.view_h << "\t" << r.group << "\t" << r.scale
+          << "\t" << r.resample_scale << "\t" << r.resample_offset_x << "\t" << r.resample_offset_y
           << "\t" << r.drawable_w << "\t" << r.drawable_h << "\t" << ms(r.t_start_ms) << "\t"
           << ms(r.picture_ms) << "\t" << ms(r.acquire_start_ms) << "\t" << ms(r.acquire_end_ms)
           << "\t" << acquire_status_name(r.acquire_status) << "\t" << (r.texture ? 1 : 0) << "\t"

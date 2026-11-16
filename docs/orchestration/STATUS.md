@@ -220,8 +220,12 @@ says who is doing what, where the work is, and what it waits on.
     **New jobs, 2026-11-16** (the owner asked for one per lane): **Windows executor:**
     [ZOOM-BOUNCE-1](tasks/zoom-bounce-1.md) RELEASED; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
     trigger at most every 16 ms) and waits for the owner's fast drag. **Mac:** the gate run for FISHER-VIEW-1,
-    FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **UI lane:** asked to start its next
-    packet from the owner's `ui_4` findings (the minimap first) and to report which.
+    FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **UI lane:** started **UI-MINIMAP-1**
+    (branch `task/UI-MINIMAP-1` from main `4b104d3a`, its packet at `837ffc17` on that branch): step A the
+    evidence (a static read of the GOG `View.dll` minimap routines, and the owner's History Edition recording of
+    the minimap controls), step B the drawing (islands, view box, markers), step C clicks and buttons. A view
+    rotation, if the History Edition's arrows do that, would be a separate packet. UI-TABS-1 and the 73 ms
+    first frame follow.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

@@ -8,6 +8,10 @@ says who is doing what, where the work is, and what it waits on.
 - **`main` is `ac02d4a2`** (2026-11-16, evening): the minimap (UI-MINIMAP-1), FISHER-RE-4 and ANNOSCENE-ORE-1
   landed together on the owner's OK, the second landing under the evidence split below. The next full game-file
   run on the Windows PC is due 2026-11-17.
+- **UI lane: UI-TABS-1 started** (2026-11-16, the owner's go in the UI lane's session, as reported by it):
+  `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
+  tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the
+  overview's live figures) after A's review. App-side only. Landing stays with the orchestrator.
 - **Landing evidence, owner rule of 2026-11-16** ("i agree with you recommendations", after the PC's memory
   stopped up to 14 large tests per run): from the next landing on,
   1. **the Mac executor runs the full game-file suite** on each landing candidate (it has the files and more

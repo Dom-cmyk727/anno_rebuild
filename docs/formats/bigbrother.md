@@ -152,7 +152,7 @@ value     = "TRUE" | "FALSE" | NUMBER | STRING ;
 
 ### 3.6 `[CAMARAPOS]`
 - **Form:** `x,y`, one line; it is `0,0` in all 50 scenarios and in the seven quicksaves (P).
-- **Meaning:** a camera position the game saves. Whether it is `CAMERA_MEMORY`'s slot is not traced (OQ-122).
+- **Meaning:** `CAMERA_MEMORY`'s slot (D, UI-MINIMAP-1 F4): the reader stores `x,y` in the script object `+0x64`/`+0x68` (AnnoScene `0x10016f13`..`0x10016f50`), `CAMERA_MEMORY` writes the frame's camera there (`0x10015a00`), `CAMERA_RECALL` moves the camera to it (frame command 3, `0x10015a50`), the writer saves it (`0x100161da`). It is not a start camera (OQ-122, OQ-638).
 
 ## 4. Conditions (P)
 The query names a property of the subject. An optional string narrows it, and an optional comparison tests a count or value.

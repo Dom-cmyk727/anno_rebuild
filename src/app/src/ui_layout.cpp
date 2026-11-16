@@ -163,7 +163,7 @@ UiPlacement place_hud(const HudLayout& hud, int ui_w, int ui_h) {
 }
 
 UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy, bool paused,
-             const std::string& shown_panel) {
+             const std::string& shown_panel, const std::optional<UiRect>& minimap) {
     UiHit hit;
     if (ux < 0 || uy < 0 || ux >= placement.ui_w || uy >= placement.ui_h)
         return hit;
@@ -194,6 +194,26 @@ UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy,
                 hit.ref = std::pair{ux - (x - e.pos_x), uy - (y - e.pos_y)};
                 return hit;
             }
+        }
+    }
+    // UI-MINIMAP-1 C: the minimap's click area (right-anchored, its parchment reaches left of the
+    // column).
+    if (minimap && inside(ux, uy, minimap->x, minimap->y, minimap->w, minimap->h)) {
+        hit.chrome = true;
+        if (uy < placement.ref_h)
+            hit.ref = std::pair{ux - placement.dx, uy};
+        return hit;
+    }
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end hangs left of the column; drawn chrome,
+    // so a press on its rectangle is the UI's and does nothing (step C's rule for the parchment
+    // outside the diamond; what the original does there: OQ-640).
+    if (const UiElement* curl = hud.element("minimap_curl");
+        curl != nullptr && curl->has_pos && curl->has_size) {
+        const auto [x, y] = placement.place(curl->anchor, curl->pos_x, curl->pos_y);
+        if (inside(ux, uy, x, y, static_cast<int>(curl->size_w), static_cast<int>(curl->size_h))) {
+            hit.chrome = true;
+            hit.ref = std::pair{ux - (x - curl->pos_x), uy - (y - curl->pos_y)};
+            return hit;
         }
     }
     // The right chrome column: the panel's x and width, from the panel's top to the layer's

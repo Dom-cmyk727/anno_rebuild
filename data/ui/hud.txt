@@ -18,6 +18,12 @@ element rosh_48 pos 587 735 size 30 30 file toolgfx/statusbar.tex access STATUSB
 element rosh_51 pos 627 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 51 segment 11 anchor bottom method sprite-sad shot hud_idle_running
 element fragezeichen pos 746 733 size 34 35 file toolgfx/statusbar.tex access STATUSBAR_FRAGEZEICHEN tex_id 1 anchor after-statusbar method sprite-sad shot hud_idle_running
 element weltkarte pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE tex_id 2 anchor right method sprite-sad shot hud_idle_running
+# UI-MINIMAP-1 fix F1: the scroll's rolled left end, fenster.tex id 3 (34 x 47, the texture after
+# WELTKARTE id 2, no ACCESS name of its own; GOG and History Edition files identical). It hangs left of
+# the column over the map. Sprite-sad on hud_idle_running at (745, 49): mean 7.61 (37.9 one pixel off);
+# on the History Edition's lossless capture he_s10_hud_idle_win (2542 x 1351, UI scale 1.0) right-
+# anchored at the same place: median 0, mean 0.78. The code that draws it was not found (ui.md 2.9).
+element minimap_curl pos 745 49 size 34 47 file toolgfx/fenster.tex tex_id 3 anchor right method sprite-sad shot hud_idle_running
 element mainuntergrund pos 779 244 size 245 524 file toolgfx/fenster.tex access MAINUNTERGRUND tex_id 4 anchor right method sprite-sad shot hud_idle_running
 element panel pos 779 0 size 245 733 file toolgfx/fenster.tex access MAINUNTERGRUND anchor right method atlas-right
 # Default HUD (hud_idle_running / f13_hud_cursor_map / r2_player_menu): military uses frame_selected 13.
@@ -31,6 +37,11 @@ element zoom_minus pos 982 19 size 19 21 file toolgfx/fenster.tex access KARTEPL
 element lupe pos 805 132 size 42 45 file toolgfx/fenster.tex access LUPE tex_id 7 anchor right method sprite-sad shot hud_idle_running
 element compass_w pos 965 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 48 anchor right method sprite-sad shot hud_idle_running
 element compass_e pos 986 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 50 anchor right method sprite-sad shot hud_idle_running
+# UI-MINIMAP-1 C: the magnifier's + and - (KARTEPLUS gadgets 1 and 2, ids 40 and 42, View.dll
+# 0x100343c9..0x10034449; sprite-sad means 1.81 and 1.19, pressed frames 41 and 43). Not drawn:
+# WELTKARTE's own pixels show them (docs/re/ui.md 2.9 Q6); here for the click only.
+element lupe_plus pos 796 135 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 anchor right method sprite-sad shot hud_idle_running
+element lupe_minus pos 826 153 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 42 anchor right method sprite-sad shot hud_idle_running
 element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
 element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
 element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 anchor right panel player,player_list,info,main_menu method sprite-sad shot r2_construction_public

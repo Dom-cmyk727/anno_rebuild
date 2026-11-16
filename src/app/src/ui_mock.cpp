@@ -722,6 +722,9 @@ struct UiTexCache::Impl : TexCache {
 UiTexCache::UiTexCache(std::filesystem::path game_dir)
     : impl_(std::make_unique<Impl>(std::move(game_dir))) {}
 UiTexCache::~UiTexCache() = default;
+const assets::Rgba* UiTexCache::decode(const std::string& rel_path, int tex_id) {
+    return impl_->decode(rel_path, tex_id);
+}
 UiTexCache::UiTexCache(UiTexCache&&) noexcept = default;
 UiTexCache& UiTexCache::operator=(UiTexCache&&) noexcept = default;
 
@@ -769,6 +772,8 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
     };
 
     blit_el("weltkarte");
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end, left of the column (hud.txt).
+    blit_el("minimap_curl");
     blit_el("mainuntergrund");
     if (!is_construction) {
         blit_el("tab_construction", 8);
@@ -849,7 +854,8 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                                   const HudCounters& counters, bool placement_open,
                                   bool demolish_mode, bool paused, bool selected_house,
                                   const InfoPanelContent* info,
-                                  const formats::anlagen::AnlagenFile* anlagen) {
+                                  const formats::anlagen::AnlagenFile* anlagen,
+                                  const MinimapOverlay* minimap) {
     if (dst == nullptr || dst_w < hud.resolution_w || dst_h < hud.resolution_h)
         return "draw_live_screen_xrgb: destination smaller than the layout's resolution";
     const UiPlacement placement = place_hud(hud, dst_w, dst_h);
@@ -889,7 +895,26 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         blit_xrgb(dst, dst_w, dst_h, image, x, y);
     };
 
+    // UI-MINIMAP-1 B1: the minimap under the chrome (AnnoFrame draws it first; WELTKARTE's
+    // diamond hole shows it, docs/re/ui.md 2.9).
+    if (minimap != nullptr) {
+        if (minimap->raster != nullptr)
+            blit_image(*minimap->raster, minimap->x, minimap->y);
+        const std::uint32_t box = (std::uint32_t{minimap->box_rgb[0]} << 16) |
+                                  (std::uint32_t{minimap->box_rgb[1]} << 8) | minimap->box_rgb[2];
+        for (const auto& [x, y] : minimap->box)
+            if (x >= 0 && y >= 0 && x < dst_w && y < dst_h)
+                dst[static_cast<std::size_t>(y) * static_cast<std::size_t>(dst_w) +
+                    static_cast<std::size_t>(x)] = box;
+        // B2: the markers over the box.
+        for (const MinimapPixel& m : minimap->marks)
+            if (m.x >= 0 && m.y >= 0 && m.x < dst_w && m.y < dst_h)
+                dst[static_cast<std::size_t>(m.y) * static_cast<std::size_t>(dst_w) +
+                    static_cast<std::size_t>(m.x)] = m.rgb & 0xffffffU;
+    }
     blit_el("weltkarte");
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end, left of the column (hud.txt).
+    blit_el("minimap_curl");
     blit_el("mainuntergrund");
     draw_column_filler(cache, hud, placement, blit_image);
     // UI-WINDOW-1 fix round R2: the selected tab follows the screen (hud.txt frame_selected /
@@ -1070,15 +1095,13 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     return "";
 }
 
-std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const HudLayout& hud,
-                                       const ConstructionLayout& construction,
-                                       const MaskLayout& masks, const UiMockSpec& screen,
-                                       UiTexCache& cache_wrapper,
-                                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                                       const HudCounters& counters, bool placement_open,
-                                       bool demolish_mode, bool paused, bool selected_house,
-                                       const InfoPanelContent* info,
-                                       const formats::anlagen::AnlagenFile* anlagen) {
+std::string draw_live_screen_rgba_into(
+    assets::Rgba& canvas, int w, int h, const HudLayout& hud,
+    const ConstructionLayout& construction, const MaskLayout& masks, const UiMockSpec& screen,
+    UiTexCache& cache_wrapper, const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+    const HudCounters& counters, bool placement_open, bool demolish_mode, bool paused,
+    bool selected_house, const InfoPanelContent* info, const formats::anlagen::AnlagenFile* anlagen,
+    const MinimapOverlay* minimap) {
     if (w < hud.resolution_w || h < hud.resolution_h || w > 0xFFFF || h > 0xFFFF)
         return std::string("draw_live_screen_rgba: destination smaller than the layout's "
                            "resolution, or larger than an assets::Rgba holds");
@@ -1124,7 +1147,37 @@ std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const
         blit_rgba_over(canvas, image, x, y);
     };
 
+    // UI-MINIMAP-1 B1: the minimap under the chrome (draw_live_screen_xrgb's own copy).
+    if (minimap != nullptr) {
+        if (minimap->raster != nullptr)
+            blit_image(*minimap->raster, minimap->x, minimap->y);
+        for (const auto& [x, y] : minimap->box) {
+            if (x < 0 || y < 0 || x >= w || y >= h)
+                continue;
+            const std::size_t d = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                                   static_cast<std::size_t>(x)) *
+                                  4;
+            canvas.pixels[d] = minimap->box_rgb[0];
+            canvas.pixels[d + 1] = minimap->box_rgb[1];
+            canvas.pixels[d + 2] = minimap->box_rgb[2];
+            canvas.pixels[d + 3] = 255;
+        }
+        // B2: the markers over the box.
+        for (const MinimapPixel& m : minimap->marks) {
+            if (m.x < 0 || m.y < 0 || m.x >= w || m.y >= h)
+                continue;
+            const std::size_t d = (static_cast<std::size_t>(m.y) * static_cast<std::size_t>(w) +
+                                   static_cast<std::size_t>(m.x)) *
+                                  4;
+            canvas.pixels[d] = static_cast<std::uint8_t>((m.rgb >> 16) & 0xffU);
+            canvas.pixels[d + 1] = static_cast<std::uint8_t>((m.rgb >> 8) & 0xffU);
+            canvas.pixels[d + 2] = static_cast<std::uint8_t>(m.rgb & 0xffU);
+            canvas.pixels[d + 3] = 255;
+        }
+    }
     blit_el("weltkarte");
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end, left of the column (hud.txt).
+    blit_el("minimap_curl");
     blit_el("mainuntergrund");
     draw_column_filler(cache, hud, placement, blit_image);
     // UI-WINDOW-1 fix round R2: the selected tab follows the screen (hud.txt frame_selected /
@@ -1277,11 +1330,11 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters, bool placement_open, bool demolish_mode,
                       bool paused, bool selected_house, const InfoPanelContent* info,
-                      const formats::anlagen::AnlagenFile* anlagen) {
+                      const formats::anlagen::AnlagenFile* anlagen, const MinimapOverlay* minimap) {
     assets::Rgba canvas;
     std::string error = draw_live_screen_rgba_into(
         canvas, w, h, hud, construction, masks, screen, cache, eligibility, counters,
-        placement_open, demolish_mode, paused, selected_house, info, anlagen);
+        placement_open, demolish_mode, paused, selected_house, info, anlagen, minimap);
     if (!error.empty())
         return error;
     return canvas;

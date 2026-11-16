@@ -16,7 +16,10 @@
 #include <anno/app/cli.hpp>
 #include <anno/app/opening.hpp>
 #include <anno/app/play.hpp>
+#include <anno/assets/figure.hpp>
+#include <anno/assets/unit.hpp>
 #include <anno/formats/fixed_map.hpp>
+#include <anno/formats/sze.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/game_setup.hpp>
@@ -387,7 +390,16 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
     const auto step = sim::multiplayer_step_ms(speed_percent);
     step_ms_ = step.value_or(10);
     steps_ = sim::Timing{}.mp_steps_per_turn;
-    snap_ = std::make_shared<const PlaySnapshot>();
+    {
+        // UI-MINIMAP-1 B2: the first snapshot already carries the territory and the figures, so
+        // a window that draws before the first turn shows the owners.
+        auto first = std::make_shared<PlaySnapshot>();
+        refresh_territory();
+        first->territory = territory_;
+        first->map_figures =
+            std::make_shared<const std::vector<MapFigure>>(collect_map_figures(world_));
+        snap_ = std::move(first);
+    }
     // The picture was built from these buildings at load, so the first diff starts here.
     buildings_ = play_buildings(world_);
     sort_buildings(buildings_);
@@ -931,6 +943,10 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         find_local_city();
     }
     fill_inspection(*next); // also without a city: the requested tile is answered as empty
+    // UI-MINIMAP-1 B2: the minimap's owners (republished unchanged while equal) and its figures.
+    refresh_territory();
+    next->territory = territory_;
+    next->map_figures = std::make_shared<const std::vector<MapFigure>>(collect_map_figures(world_));
     // UI-WINDOW-1 fix round R2/R4: the local player's cities, in (island, city) order, for the
     // status bar: it shows the city on the island the view is centred on, else the first of these
     // (the owner's "Always show my city", 2026-11-14). Read-only accessors only (CityCounters's own
@@ -1176,6 +1192,117 @@ void PlayRunner::fill_inspection(PlaySnapshot& next) {
     if (auto found = inspect_building(world_, *developer_city_, *inspect_tile)) {
         next.inspection = std::make_shared<const BuildingInspection>(std::move(*found));
     }
+}
+
+void PlayRunner::refresh_territory() {
+    TerritoryView now = collect_territory_view(world_);
+    if (territory_ && territory_->same_content(now)) {
+        return;
+    }
+    now.version = territory_ ? territory_->version + 1 : 1;
+    territory_ = std::make_shared<const TerritoryView>(std::move(now));
+}
+
+MinimapOwnerRule minimap_owner_rule(const PlayLoad& load, const fs::path& file,
+                                    std::optional<sim::PlayerId> local) {
+    MinimapOwnerRule rule;
+    const sim::PlayerTable& players = load.world.players();
+    std::optional<std::uint32_t> viewer;
+    if (local) {
+        viewer = local->v;
+    }
+    for (std::size_t i = 0; i < players.slots.size() && !viewer; ++i) {
+        const auto& p = players.slots[i];
+        if (p && (p->kind == 8 || p->kind == 11) && i != load.world.config().neutral_player) {
+            viewer = static_cast<std::uint32_t>(i);
+        }
+    }
+    rule.viewer = viewer.value_or(developer_player().v);
+    std::optional<assets::unit::StartColours> start;
+    if (!load.fixed_map) {
+        std::ifstream in(file, std::ios::binary);
+        const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(in),
+                                              std::istreambuf_iterator<char>()};
+        if (auto scene = formats::sze::Scene::parse(bytes)) {
+            if (auto colours = assets::unit::start_colours(
+                    scene.value(),
+                    static_cast<std::uint32_t>(assets::figure::kOriginalPlayerColours.size()))) {
+                start = std::move(colours).value();
+            }
+        }
+    }
+    rule.colour_of_player.resize(players.slots.size());
+    for (std::size_t i = 0; i < players.slots.size(); ++i) {
+        const auto& p = players.slots[i];
+        if (!p) {
+            continue;
+        }
+        if (start) {
+            if (const auto it = start->slots.find(static_cast<std::uint32_t>(i));
+                it != start->slots.end()) {
+                rule.colour_of_player[i] = it->second;
+                continue;
+            }
+        }
+        if (p->default_colour != sim::kNoColour) {
+            rule.colour_of_player[i] = p->default_colour;
+        }
+    }
+    return rule;
+}
+
+TerritoryView collect_territory_view(const sim::World& world) {
+    TerritoryView out;
+    out.neutral_owner = world.config().neutral_owner;
+    for (const auto& island : world.islands()) {
+        if (!island) {
+            continue;
+        }
+        const sim::TileLayer& tiles = island->tiles;
+        TerritoryIsland t;
+        t.x0 = tiles.x0();
+        t.y0 = tiles.y0();
+        t.w = tiles.width();
+        t.h = tiles.height();
+        const std::uint64_t n = tiles.tile_count();
+        t.owner.resize(static_cast<std::size_t>(n));
+        for (std::uint64_t i = 0; i < n; ++i) {
+            t.owner[static_cast<std::size_t>(i)] = tiles.owner(i);
+        }
+        for (const std::optional<sim::City>& city : island->cities) {
+            if (!city) {
+                continue;
+            }
+            TerritoryCity c;
+            c.number = city->number.v;
+            c.owner = city->owner.v;
+            c.known_by.reserve(city->player_mask.size());
+            for (const sim::PlayerId p : city->player_mask) {
+                c.known_by.push_back(p.v);
+            }
+            t.cities.push_back(std::move(c));
+        }
+        out.islands.push_back(std::move(t));
+    }
+    return out;
+}
+
+std::vector<MapFigure> collect_map_figures(const sim::World& world) {
+    std::vector<MapFigure> out;
+    const sim::FigureRegistry& registry = world.figures();
+    for (const auto& entry : registry.by_id) {
+        const sim::Figure* f = sim::find_figure(registry, entry.first);
+        if (f == nullptr || !f->nav.has_value() || f->parent.valid()) {
+            continue;
+        }
+        MapFigure m;
+        m.owner = f->owner.v;
+        m.x = static_cast<double>(f->pos.x) / 256.0; // Q24.8 tiles
+        m.y = static_cast<double>(f->pos.y) / 256.0;
+        m.list = 1;
+        out.push_back(m);
+    }
+    return out;
 }
 
 void PlayRunner::find_local_city() {

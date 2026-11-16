@@ -334,6 +334,11 @@ says who is doing what, where the work is, and what it waits on.
     owner ("find and identify a modern state of the art solution that will adjust to the users resolution");
     save files are named as the original (GUID names, the display name inside); the statistics memory slots
     are saved game state, as the original.
+    **Reviewed 2026-11-16: ACCEPTED WITH FIXES, not landed**
+    ([review](reviews/2026-11-16-ui-panels-prep-review.md)): an independent reviewer checked 42 claims against
+    the GOG files, 33 hold; eleven points are to fix on the branch first (a merge conflict in the open
+    questions, a History Edition scale claim that contradicts the other three specs, one panel position off
+    by a pixel, a layout-table claim the code refutes, seven info rows not six, two incomplete records).
     **What the panels need from the sim** (for the Mac's packets; details in the specs' sim sections):
     trade: OQ-155 is answered (list 1 is the sell list, list 0 the buy list, so `GoodsSetting::buy` names the
     sell list), the two visible slot counts are not kept, the amount is not clamped to the capacity, a

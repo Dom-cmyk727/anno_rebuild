@@ -5,6 +5,16 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-14, by the Claude Code orchestrator:
+- **Landing evidence, owner rule of 2026-11-16** ("i agree with you recommendations", after the PC's memory
+  stopped up to 14 large tests per run): from the next landing on,
+  1. **the Mac executor runs the full game-file suite** on each landing candidate (it has the files and more
+     memory); the orchestrator checks that the Mac's merge has the same tree as the candidate;
+  2. **the Windows PC runs the GPU tests on the 4090 and the lanes the candidate changes**, with the game
+     files, under MSVC;
+  3. **one full game-file run on the Windows PC per day** (or before anything important) stays the check for
+     the Windows target, since a Mac pass is not Windows acceptance.
+  This replaces "a full MSVC game-file run on this PC before every landing" (2026-11-07). A Windows-only
+  failure in an untouched lane is then found by the daily run, not at the landing.
 - **LANDED on `main`, three in a row, each with the owner's OK** (`main` `95eea7de` → `d89d54a6`, by fast-forward;
   GitLab and the share are synced):
   - **UI-INFO-1** as `411f37eb`: the building info panel's name, costs and upkeep, with the flagged preview
@@ -135,7 +145,11 @@ says who is doing what, where the work is, and what it waits on.
     [review](reviews/2026-11-15-zoom-smooth-2-proof-review.md)): resize is smooth (mean 6.9 ms, worst 31.9 ms),
     the **drag is NOT MET** (worst 298 ms, the watch not called), maximise and restore are unchanged (121 to
     151 ms, not in the fix). ZOOM-SMOOTH-2 does not land yet; **ZOOM-SMOOTH-2d** (a diagnostic trace of the
-    modal loop) is RELEASED. Before that the owner
+    modal loop) is RELEASED. **2d ACCEPTED** 2026-11-16 (`d80beed7`,
+    [review](reviews/2026-11-16-zoom-smooth-2d-review.md)): the owner's traced run shows the cause. Windows
+    delivers the redraw timer only when no other message waits, and a fast drag's move messages starve it
+    (gaps up to 526 ms; the move loop itself starts within 1 ms). **ZOOM-SMOOTH-2e RELEASED**: a second trigger
+    on the window's move events, at most one draw per 16 ms, through the same drawing path. Before that the owner
     does the hands-on drag and resize proof (no dev script can make a real window drag). The owner agreed (2026-11-15:
     "Yes, I'll do it").
     **The owner's UI test on main `cc7af72c`** (2026-11-15, recording `ui_4`, log folder

@@ -267,8 +267,10 @@ says who is doing what, where the work is, and what it waits on.
     than the recording's (F5, a question). **The fix round (`3c7ea686`) was checked the same way and ACCEPTED:** the
     scroll's left end is drawn (it was a texture nothing drew), and the parchment is filtered as the History
     Edition's (grain 3.5 against its 3.2; the GOG look stays a setting). `[CAMARAPOS]` is not a start camera;
-    the History Edition starts at zoom level 1 on the player's ship. Landing waits for a green CI on that head
-    and the owner's OK.
+    the History Edition starts at zoom level 1 on the player's ship. **CI is green on `3c7ea686`** (run
+    43911327994). The candidate `ac02d4a2` (main `0f46b1b2`, then UI-MINIMAP-1, FISHER-RE-4 and ANNOSCENE-ORE-1;
+    tree `bf78e4f1`) is built locally and not pushed; it waits for the owner's landing OK, then the Mac's full
+    run and the Windows PC's GPU and app lanes.
     **UI-PANELS-PREP** (UI lane, the owner's request in its session, 2026-11-16): four read-only research
     subagents prepare the in-game panels that do not exist yet, with the History Edition as the reference and
     both editions' files: the warehouse and trade panels; the ship panels and diplomacy; statistics; the

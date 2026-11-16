@@ -20,7 +20,7 @@ says who is doing what, where the work is, and what it waits on.
   (2026-11-16, the owner's request): a research agent read the repository and every document; the
   orchestrator checked its plan, changed the order to the LAN target's critical path, and assigned first lists
   to the three lanes, with ten decisions for the owner. New packets: [UNIX-WARN-1](tasks/unix-warn-1.md),
-  [TRACE-COLS-1](tasks/trace-cols-1.md) (Windows, queued after ZOOM-SMOOTH-3c).
+  [TRACE-COLS-1](tasks/trace-cols-1.md) (Windows, **RELEASED** 2026-11-17 after ZOOM-SMOOTH-3d's review).
 - **UI lane: UI-TABS-1 started** (2026-11-16, the owner's go in the UI lane's session, as reported by it):
   `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
   tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the
@@ -263,12 +263,18 @@ says who is doing what, where the work is, and what it waits on.
     calls were not looked for in the session that showed them and the CPU-time question is open, so
     **UNIX-WARN-1 reviewed** 2026-11-16 (`841af180`,
     [review](reviews/2026-11-16-gate-mac-1-and-unix-warn-1-review.md)): the warning check reads the define from
-    CMake and checks itself with a deliberate warning; ACCEPTED once CI is green;
+    CMake and checks itself with a deliberate warning; **ACCEPTED**, CI green on `841af180` (run 43966539320,
+    all 12 jobs) 2026-11-17;
     **[ZOOM-SMOOTH-3c](tasks/zoom-smooth-3.md) ACCEPTED** 2026-11-16 (`7bec1780`, CI green;
     [review](reviews/2026-11-16-zoom-smooth-3c-review.md)): the spikes reproduced (2 calls over 4 ms in 126,274
     frames, longest 13.6 ms); they were waiting, not computing; `finish` costs 0.14 ms per 100 draws, which
     supports RENDER-DIRECT; its overlap check reads the background stamps before the call and cannot see a
-    section that runs during it, so **ZOOM-SMOOTH-3d** (about 1 hour, the series' last) is RELEASED; **ZOOM-SMOOTH-2f is reviewed**
+    section that runs during it, so **ZOOM-SMOOTH-3d** (about 1 hour, the series' last) is RELEASED;
+    **ZOOM-SMOOTH-3d ACCEPTED** 2026-11-17 (`c552c193`, CI green;
+    [review](reviews/2026-11-17-zoom-smooth-3d-review.md)): the check now reads after the call and sees running
+    sections; 9 slow calls in 63,204 frames, none overlapping a named section; the long ones wait, the owner of
+    the wait is unknown. **The series is closed**, its residual recorded (about one call over 4 ms per 47,000
+    frames); the branch is ready for a landing candidate on the owner's OK; **ZOOM-SMOOTH-2f is reviewed**
     (`d33432aa`, [note](reviews/2026-11-16-zoom-smooth-2e-owner-proof.md)): the guard is in place, ACCEPTED once
     CI is green on that head; then ZOOM-SMOOTH-2 is ready for a landing candidate (owner's OK);
     **ZOOM-BOUNCE-3 ACCEPTED**

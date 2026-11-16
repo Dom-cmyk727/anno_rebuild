@@ -1,7 +1,8 @@
 # TRACE-COLS-1: the window trace and its reader agree on the columns
 
 **Status:** written 2026-11-16 by the Claude Code orchestrator for **the Windows executor**. Queued after
-UNIX-WARN-1; released by the standing go when it is reached.
+UNIX-WARN-1; released by the standing go when it is reached. **RELEASED** 2026-11-17, after the review of
+ZOOM-SMOOTH-3d.
 
 **Base:** `task/ZOOM-BOUNCE-1` `fc1fbff7`, same branch and worktree, new commits (the fix lands with the bounce
 packets). About 1 hour. One concern. Never rebase, force-push or push `main`. No reviewer subagents.

@@ -164,7 +164,10 @@ says who is doing what, where the work is, and what it waits on.
     [review](reviews/2026-11-16-fisher-re-3-review.md)): a hut can stand with both entrances on land (a real
     site on `02Trade01`); its fisher leaves and catches but cannot come home, the raw stock is not credited and
     the worker is released after a wait. History Edition NOT_RUN. The picture comparison needs the sim rule
-    (FISHER-1f), a viewer switch for the fisher rule, and the captures; who does which is the owner's.
+    (FISHER-1f), a viewer switch for the fisher rule, and the captures. **RELEASED 2026-11-16:**
+    [FISHER-1f](tasks/fisher-1f.md) to the Mac (the sim rule) and [FISHER-HE-1](tasks/fisher-he-1.md) to the UI
+    Executor (owner: "UI Executor"): the originals' reference captures first, then the viewer switch, then the
+    comparison once FISHER-1f has landed.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     Landing waits for the owner's OK. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)

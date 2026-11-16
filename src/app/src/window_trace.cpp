@@ -99,6 +99,7 @@ WindowTrace::WindowTrace(std::size_t max_events, std::size_t max_frames, std::si
     events_.reserve(max_events_);
     frames_.reserve(max_frames_);
     turns_.reserve(max_turns_);
+    wheel_.reserve(max_events_ / 100 + 1); // wheel events are rare next to other events
 }
 
 double WindowTrace::now_ms() const {
@@ -135,6 +136,15 @@ void WindowTrace::turn(TurnRecord record) {
         return;
     }
     turns_.push_back(std::move(record));
+}
+
+void WindowTrace::wheel(WheelRecord record) {
+    const std::lock_guard lock(m_);
+    if (wheel_.size() >= max_events_) {
+        ++dropped_;
+        return;
+    }
+    wheel_.push_back(std::move(record));
 }
 
 void WindowTrace::note(std::string line) {
@@ -182,6 +192,7 @@ EvidenceOutcome WindowTrace::finalize(const std::filesystem::path& dir, const st
     std::vector<TraceEvent> events;
     std::vector<FrameRecord> frames;
     std::vector<TurnRecord> turns;
+    std::vector<WheelRecord> wheel;
     std::vector<std::string> notes;
     std::uint64_t dropped = 0;
     {
@@ -190,6 +201,7 @@ EvidenceOutcome WindowTrace::finalize(const std::filesystem::path& dir, const st
         events = events_;
         frames = frames_;
         turns = turns_;
+        wheel = wheel_;
         dropped = dropped_;
     }
     std::ostringstream f;
@@ -219,6 +231,13 @@ EvidenceOutcome WindowTrace::finalize(const std::filesystem::path& dir, const st
           << turn_outcome(r) << "\t" << (r.reasons.empty() ? std::string("-") : r.reasons) << "\t"
           << (r.batch ? 1 : 0) << "\t" << r.deltas << "\n";
     }
+    std::ostringstream w;
+    w << "t_ms\traw_y\tinteger_y\tflipped\tmouse_x\tmouse_y\ttarget_before\ttarget_after\n";
+    for (const WheelRecord& r : wheel) {
+        w << ms(r.t_ms) << "\t" << r.raw_y << "\t" << r.integer_y << "\t" << (r.flipped ? 1 : 0)
+          << "\t" << r.mouse_x << "\t" << r.mouse_y << "\t" << r.target_before << "\t"
+          << r.target_after << "\n";
+    }
     std::ostringstream m;
     m << manifest;
     for (const std::string& n : notes) {
@@ -227,8 +246,10 @@ EvidenceOutcome WindowTrace::finalize(const std::filesystem::path& dir, const st
     m << "trace events=" << events.size() << " frames=" << frames.size()
       << " turns=" << turns.size() << " dropped=" << dropped << " bounds=" << max_events_ << "/"
       << max_frames_ << "/" << max_turns_ << "\n";
-    const std::vector<EvidenceFile> files{
-        {"frames.tsv", f.str()}, {"sim.tsv", t.str()}, {"manifest.txt", m.str()}};
+    const std::vector<EvidenceFile> files{{"frames.tsv", f.str()},
+                                          {"sim.tsv", t.str()},
+                                          {"wheel.tsv", w.str()},
+                                          {"manifest.txt", m.str()}};
     // A trace that dropped records is incomplete: no RunEnd (finalize_evidence, verdict < 0).
     const int verdict = dropped > 0 ? -1 : scenario;
     const double end = now_ms();

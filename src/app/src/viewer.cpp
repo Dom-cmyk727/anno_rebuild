@@ -1437,9 +1437,19 @@ void Viewer::handle(const SDL_Event& e) {
         if (continuous_) {
             // Every notch, also a fraction of one (a precision wheel), is a
             // factor of zoom_opt_.step; wheel up = closer.
+            // ZOOM-BOUNCE-3: the event exactly as SDL and this call see it, into the window
+            // trace already running (ANNO_VIEW_TRACE) if there is one - a lead synthetic dev-
+            // script notches cannot exercise (two real opposite ticks closer together than a
+            // captured frame).
+            const double target_before = zoom_target_;
             zoom_by(
                 std::pow(zoom_opt_.step, static_cast<double>(e.wheel.y)),
                 std::pair<double, double>{e.wheel.mouse_x * density, e.wheel.mouse_y * density});
+            if (trace_ != nullptr) {
+                trace_->wheel({trace_->now_ms(), e.wheel.y, e.wheel.integer_y,
+                               e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED, e.wheel.mouse_x,
+                               e.wheel.mouse_y, target_before, zoom_target_});
+            }
             break;
         }
         scroll_ += e.wheel.y;

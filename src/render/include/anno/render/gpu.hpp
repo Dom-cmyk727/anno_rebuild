@@ -98,8 +98,30 @@ struct GpuStats {
     double encoder_ms = 0, uniforms_ms = 0, draws_ms = 0, stand_in_ms = 0, pieces_ms = 0;
     bool pieces_realloc = false;
     double record_ms = 0, finish_ms = 0, scope_ms = 0, queue_ms = 0, release_ms = 0;
-    /// CPU time of the finish_ms call (ZOOM-SMOOTH-3b item 3); -1 if unavailable.
+    /// The window thread's own CPU use during the finish_ms call (ZOOM-SMOOTH-3b item 3,
+    /// ZOOM-SMOOTH-3c F2/F3): only read when the caller's own `measure_cpu_time` is true (a real
+    /// syscall, skipped on every ordinary frame). `finish_cpu_ms` (clock_gettime
+    /// CLOCK_THREAD_CPUTIME_ID, elsewhere than Windows) is directly comparable to finish_ms;
+    /// `finish_cpu_cycles` (QueryThreadCycleTime, Windows) is not a time at all - compare it
+    /// against this run's own cycles-per-millisecond yardstick from ordinary frames instead
+    /// (GetThreadTimes' ~15.6 ms quantum made a direct ms reading meaningless there, 3b's own
+    /// finding). Both are 0 on the platform the other one is for.
     double finish_cpu_ms = 0;
+    std::uint64_t finish_cpu_cycles = 0;
+    /// steady_clock ticks at the start of the finish call (no extra syscall - the same clock
+    /// read already taken for finish_ms itself) - comparable to the background sections' own
+    /// begin/end below (same clock, same process).
+    std::int64_t finish_at_ns = 0;
+    /// The three background wgpu sections (3b item 6), their most recent begin/end this run,
+    /// steady_clock ticks (0 = none yet) - ZOOM-SMOOTH-3c item 3. Snapshotted at the end of this
+    /// frame's own render() call: compare against finish_ms's own span (now - finish_ms .. now)
+    /// to see whether any overlapped a slow finish, and by how much.
+    std::int64_t prewarm_begin_ns = 0, prewarm_end_ns = 0;
+    std::int64_t fluid_build_begin_ns = 0, fluid_build_end_ns = 0;
+    std::int64_t fluid_release_begin_ns = 0, fluid_release_end_ns = 0;
+    /// Planes the pre-creation thread finished building since the last frame (distinct from
+    /// planes_warm above, which counts planes *taken* by this frame's own uploads).
+    std::size_t planes_prewarmed = 0;
     /// A step of render(): a name and its time on the window thread.
     struct Step {
         const char* name;
@@ -546,11 +568,16 @@ class GpuFrame {
     /// as one full-screen alpha-blended quad - the GPU-side counterpart of
     /// `app::draw_live_screen_rgba`. Uploaded fresh every call (the caller decides how often it
     /// actually changes); null draws nothing extra.
+    /// `measure_cpu_time` (ZOOM-SMOOTH-3c F3): whether to read the window thread's CPU use around
+    /// the `finish` call (GpuStats::finish_cpu_ms/finish_cpu_cycles) - a real syscall, so false
+    /// (the default, every existing caller) skips it entirely rather than measuring and not
+    /// printing. The caller passes true only while hitch diagnostics are actually being watched
+    /// (ANNO_VIEW_HITCH_MS explicitly set), not on every ordinary frame.
     GpuStats render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                     std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
                     const Resample* resample = nullptr, std::span<const SpriteDraw> overlay = {},
                     std::span<const UnitSprite> live_units = {},
-                    const assets::Rgba* ui_overlay = nullptr);
+                    const assets::Rgba* ui_overlay = nullptr, bool measure_cpu_time = false);
     /// render for a scene generation that may be released while work started by the frame is
     /// still running (the play picture's generations; docs/app/gpu-handoff.md). The chunk jobs
     /// the frame plans and the wave simulation's background preparation (GpuLimits::
@@ -562,7 +589,7 @@ class GpuFrame {
                     WGPUTextureView target, const Resample* resample = nullptr,
                     std::span<const SpriteDraw> overlay = {},
                     std::span<const UnitSprite> live_units = {},
-                    const assets::Rgba* ui_overlay = nullptr);
+                    const assets::Rgba* ui_overlay = nullptr, bool measure_cpu_time = false);
 
     /// The compositor's copy of chunk `key` (round eb; docs/app/gpu-handoff.md, boundary 6). A
     /// CPU chunk that is cached and fresh is CPU-ready; it is GPU-usable once `serial` equals its

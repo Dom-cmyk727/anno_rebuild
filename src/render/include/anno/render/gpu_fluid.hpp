@@ -52,6 +52,16 @@ class FluidGpu {
     [[nodiscard]] std::uint32_t last_steps() const { return last_steps_; }
     [[nodiscard]] const fluid::FluidConfig& config() const { return cfg_; }
 
+    /// ZOOM-SMOOTH-3c item 3: the background job thread's own most recent whole-grid build
+    /// (prepare_window's make_grid call) and the background free thread's own most recent
+    /// release of an unapplied grid (free_job_in_background), steady_clock ticks (0 = none yet
+    /// this run) - so a caller can check whether either overlapped a slow finish_ms, without
+    /// reaching into Job/the free thread directly.
+    [[nodiscard]] std::int64_t build_begin_ns() const { return build_begin_ns_->load(); }
+    [[nodiscard]] std::int64_t build_end_ns() const { return build_end_ns_->load(); }
+    [[nodiscard]] std::int64_t release_begin_ns() const { return release_begin_ns_->load(); }
+    [[nodiscard]] std::int64_t release_end_ns() const { return release_end_ns_->load(); }
+
     /// Background setup: update() no longer fills a new or moved window in
     /// the frame. The cells' depth and initial state are computed on a
     /// background thread and uploaded over several frames (at most
@@ -173,6 +183,19 @@ class FluidGpu {
     std::vector<std::unique_ptr<Job>> retired_;
     /// Background frees still running (free_job_in_background); the destructor waits for 0.
     std::shared_ptr<std::atomic<int>> freeing_ = std::make_shared<std::atomic<int>>(0);
+    /// ZOOM-SMOOTH-3c item 3: see the accessors above. Shared (not plain atomics, like freeing_
+    /// just above): a plain std::atomic is neither copyable nor movable, and FluidGpu's own move
+    /// constructor is defaulted; a shared_ptr also means free_job_in_background's own detached
+    /// thread (release_begin_ns_/release_end_ns_) holds its own reference, independent of
+    /// whether this object is later moved or destroyed.
+    std::shared_ptr<std::atomic<std::int64_t>> build_begin_ns_ =
+        std::make_shared<std::atomic<std::int64_t>>(0);
+    std::shared_ptr<std::atomic<std::int64_t>> build_end_ns_ =
+        std::make_shared<std::atomic<std::int64_t>>(0);
+    std::shared_ptr<std::atomic<std::int64_t>> release_begin_ns_ =
+        std::make_shared<std::atomic<std::int64_t>>(0);
+    std::shared_ptr<std::atomic<std::int64_t>> release_end_ns_ =
+        std::make_shared<std::atomic<std::int64_t>>(0);
 };
 
 } // namespace anno::render::gpu

@@ -56,6 +56,13 @@ double hitch_ms() {
     }();
     return v;
 }
+/// ZOOM-SMOOTH-3c F3: whether to read the window thread's CPU use around the finish call this
+/// frame (a real syscall) - only while ANNO_VIEW_HITCH_MS is explicitly set, the signal that
+/// hitch diagnostics are being watched closely, not on every ordinary run at the 30 ms default.
+bool hitch_tracking_enabled() {
+    static const bool v = std::getenv("ANNO_VIEW_HITCH_MS") != nullptr;
+    return v;
+}
 /// One step of a frame on the window thread: the steps of a frame, laid end to
 /// end, add up to its busy time (see Viewer::measure).
 struct Step {
@@ -469,6 +476,15 @@ class Viewer {
                     open_sea_chunks = 0, chunks_dropped = 0, planes_freed = 0, sprites_decoded = 0,
                     draw_calls = 0, bind_group_sets = 0;
         double finish_ms = 0, finish_cpu_ms = 0;
+        /// ZOOM-SMOOTH-3c: cycles (Windows; 0 off it) and the absolute start of the finish call
+        /// (steady_clock ticks), plus the background sections' own most recent begin/end and the
+        /// per-frame fluid/pre-creation counts (item 3).
+        std::uint64_t finish_cpu_cycles = 0;
+        std::int64_t finish_at_ns = 0;
+        std::int64_t prewarm_begin_ns = 0, prewarm_end_ns = 0;
+        std::int64_t fluid_build_begin_ns = 0, fluid_build_end_ns = 0;
+        std::int64_t fluid_release_begin_ns = 0, fluid_release_end_ns = 0;
+        std::size_t fluid_windows_new = 0, planes_prewarmed = 0;
     };
     void measure(double chunks_ms, const std::array<double, 4>& stages,
                  const FrameCounts* counts = nullptr);
@@ -484,6 +500,13 @@ class Viewer {
     /// (deferred destruction, upload catch-up) or none of that, for a given spike.
     static constexpr std::size_t kLookback = 8;
     std::deque<FrameCounts> counts_history_;
+    /// ZOOM-SMOOTH-3c F2: cycles per millisecond of wall time, from this run's own ordinary
+    /// (not-slow) finish calls - the yardstick a slow call's own ratio is compared against,
+    /// since cycles do not convert to time reliably. Capped so a long run does not grow this
+    /// without bound; a slow call's own cycles/ms is never added (it would skew the yardstick
+    /// toward whatever it is being judged against).
+    static constexpr std::size_t kYardstickCap = 500;
+    std::deque<double> cycles_per_ms_samples_;
 
     /// The scene of --view (null in play: the frames draw the picture's generations).
     std::shared_ptr<const render::Scene> fixed_;
@@ -3098,16 +3121,22 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             steps_.push_back({"ui scale", since_ms(scale_start, Clock::now())});
         }
     }
-    const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
-                                   resample, overlay, live_units_, ui_overlay_ptr);
+    const auto s =
+        g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample,
+                        overlay, live_units_, ui_overlay_ptr, hitch_tracking_enabled());
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
+    // ZOOM-SMOOTH-3c item 3: this frame's own new-window count, saved before windows_seen_ is
+    // updated below (the hitch line's own FrameCounts wants the per-frame delta, not the
+    // cumulative windows_new_ this block also maintains).
+    std::size_t fluid_windows_new_this_frame = 0;
     if (s.wave_simulation) {
         wave_centre_ = {s.fluid_centre.first, s.fluid_centre.second};
         const auto grown = [](std::uint64_t now, std::uint64_t seen) {
             return now >= seen ? now - seen : now; // smaller: a new compositor's count
         };
-        windows_new_ += grown(s.fluid_windows, windows_seen_);
+        fluid_windows_new_this_frame = grown(s.fluid_windows, windows_seen_);
+        windows_new_ += fluid_windows_new_this_frame;
         resamples_new_ += grown(s.fluid_resamples, resamples_seen_);
         windows_seen_ = s.fluid_windows;
         resamples_seen_ = s.fluid_resamples;
@@ -3184,10 +3213,28 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     tex_w_ = out_w;
     tex_h_ = out_h;
-    const FrameCounts counts{s.chunks_built,    s.chunks_missing,  s.chunks_visible,
-                             s.stand_in_parts,  s.open_sea_chunks, s.chunks_dropped,
-                             s.planes_freed,    s.sprites_new,     s.draw_calls,
-                             s.bind_group_sets, s.finish_ms,       s.finish_cpu_ms};
+    const FrameCounts counts{s.chunks_built,
+                             s.chunks_missing,
+                             s.chunks_visible,
+                             s.stand_in_parts,
+                             s.open_sea_chunks,
+                             s.chunks_dropped,
+                             s.planes_freed,
+                             s.sprites_new,
+                             s.draw_calls,
+                             s.bind_group_sets,
+                             s.finish_ms,
+                             s.finish_cpu_ms,
+                             s.finish_cpu_cycles,
+                             s.finish_at_ns,
+                             s.prewarm_begin_ns,
+                             s.prewarm_end_ns,
+                             s.fluid_build_begin_ns,
+                             s.fluid_build_end_ns,
+                             s.fluid_release_begin_ns,
+                             s.fluid_release_end_ns,
+                             fluid_windows_new_this_frame,
+                             s.planes_prewarmed};
     measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present}, &counts);
 }
 #endif
@@ -3462,15 +3509,35 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
         if (!c) {
             return std::string("n/a");
         }
-        char buf[320];
+        char buf[400];
         std::snprintf(buf, sizeof buf,
                       "chunks built %zu, missing %zu, drawn %zu, stand-in parts %zu, open sea "
                       "chunks %zu, dropped %zu, planes freed %zu, sprites decoded %zu, draws %zu, "
-                      "bind groups set %zu, finish %.2f ms (cpu %.2f ms)",
+                      "bind groups set %zu, finish %.2f ms (cpu %.2f ms, %llu cycles), fluid "
+                      "windows new %zu, planes pre-created %zu",
                       c->chunks_built, c->chunks_missing, c->chunks_drawn, c->stand_in_parts,
                       c->open_sea_chunks, c->chunks_dropped, c->planes_freed, c->sprites_decoded,
-                      c->draw_calls, c->bind_group_sets, c->finish_ms, c->finish_cpu_ms);
+                      c->draw_calls, c->bind_group_sets, c->finish_ms, c->finish_cpu_ms,
+                      static_cast<unsigned long long>(c->finish_cpu_cycles), c->fluid_windows_new,
+                      c->planes_prewarmed);
         return std::string(buf);
+    };
+    // ZOOM-SMOOTH-3c item 3: whether [begin_ns, end_ns] overlaps the finish call's own span
+    // [at_ns, at_ns + finish_ms], and by how many milliseconds - a benign race against the
+    // background thread's own writes (an in-flight begin with a stale end, say) is possible, so
+    // this is read as "worth a look", not a certainty.
+    auto overlap_ms = [](std::int64_t at_ns, double finish_ms_, std::int64_t begin_ns,
+                         std::int64_t end_ns) -> std::optional<double> {
+        if (begin_ns == 0 && end_ns == 0) {
+            return std::nullopt; // the section has not run yet this process
+        }
+        const auto finish_end_ns = at_ns + static_cast<std::int64_t>(finish_ms_ * 1.0e6);
+        const auto lo = std::max(at_ns, begin_ns);
+        const auto hi = std::min(finish_end_ns, end_ns);
+        if (hi <= lo) {
+            return std::nullopt;
+        }
+        return static_cast<double>(hi - lo) / 1.0e6;
     };
     // ZOOM-SMOOTH-3b item 4: a slow finish this frame (same 2 ms line as ZOOM-MEASURE-1's
     // control-sweep criterion, not yet classified past 3.1 ms, review F4) prints the sums of
@@ -3493,6 +3560,18 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
         return std::string(buf);
     };
     const bool slow_finish = counts != nullptr && counts->finish_ms > kSlowFinishMs;
+    // ZOOM-SMOOTH-3c F2: every ordinary call (not itself slow) with usable cycle data feeds the
+    // yardstick, whether or not this particular frame ends up printing a hitch line - the
+    // yardstick has to be built from the run's own history before a slow call can be judged
+    // against it, not only from frames that happen to coincide with a hitch.
+    if (!slow_finish && counts != nullptr && counts->finish_cpu_cycles > 0 &&
+        counts->finish_ms > 0.0) {
+        cycles_per_ms_samples_.push_back(static_cast<double>(counts->finish_cpu_cycles) /
+                                         counts->finish_ms);
+        if (cycles_per_ms_samples_.size() > kYardstickCap) {
+            cycles_per_ms_samples_.pop_front();
+        }
+    }
     if (last_start_ && last_animating_ && frame_animating_) {
         const double gap =
             std::chrono::duration<double, std::milli>(draw_start_ - *last_start_).count();
@@ -3511,10 +3590,57 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
                          describe(steps_, total_ms).c_str(), describe_counts(last_counts_).c_str(),
                          describe_counts(counts ? std::optional(*counts) : std::nullopt).c_str());
             if (slow_finish) {
+                // ZOOM-SMOOTH-3c F2: this call's own cycles per ms against the run's own
+                // yardstick (median over ordinary calls so far) - far fewer than the yardstick
+                // means waiting, not computing; the same order of magnitude means computing.
+                std::string cycles_line = "no cycle data";
+                if (counts->finish_cpu_cycles > 0 && !cycles_per_ms_samples_.empty()) {
+                    std::vector<double> sorted(cycles_per_ms_samples_.begin(),
+                                               cycles_per_ms_samples_.end());
+                    std::sort(sorted.begin(), sorted.end());
+                    const double yardstick = sorted[sorted.size() / 2];
+                    const double this_call =
+                        static_cast<double>(counts->finish_cpu_cycles) / counts->finish_ms;
+                    char buf[160];
+                    std::snprintf(buf, sizeof buf,
+                                  "%.0f cycles/ms against a yardstick of %.0f (%zu ordinary "
+                                  "calls, %.0f%% of the yardstick)",
+                                  this_call, yardstick, sorted.size(),
+                                  yardstick > 0 ? 100.0 * this_call / yardstick : 0.0);
+                    cycles_line = buf;
+                }
+                // ZOOM-SMOOTH-3c item 3: which of the three background sections overlap this
+                // call's own span, and by how much.
+                std::string overlaps = "none";
+                {
+                    const std::array<std::pair<const char*, std::optional<double>>, 3> sections{
+                        {{"pre-creation",
+                          overlap_ms(counts->finish_at_ns, counts->finish_ms,
+                                     counts->prewarm_begin_ns, counts->prewarm_end_ns)},
+                         {"fluid build",
+                          overlap_ms(counts->finish_at_ns, counts->finish_ms,
+                                     counts->fluid_build_begin_ns, counts->fluid_build_end_ns)},
+                         {"fluid release", overlap_ms(counts->finish_at_ns, counts->finish_ms,
+                                                      counts->fluid_release_begin_ns,
+                                                      counts->fluid_release_end_ns)}}};
+                    std::string joined;
+                    for (const auto& [name, ms] : sections) {
+                        if (ms) {
+                            char piece[64];
+                            std::snprintf(piece, sizeof piece, "%s%s %.2f ms",
+                                          joined.empty() ? "" : ", ", name, *ms);
+                            joined += piece;
+                        }
+                    }
+                    if (!joined.empty()) {
+                        overlaps = joined;
+                    }
+                }
                 std::fprintf(stderr,
-                             "  finish %.2f ms (cpu %.2f ms) over %.1f ms: look-back - %s\n",
+                             "  finish %.2f ms (cpu %.2f ms) over %.1f ms: %s; overlapping "
+                             "background sections: %s; look-back - %s\n",
                              counts->finish_ms, counts->finish_cpu_ms, kSlowFinishMs,
-                             describe_lookback().c_str());
+                             cycles_line.c_str(), overlaps.c_str(), describe_lookback().c_str());
             }
         }
     }

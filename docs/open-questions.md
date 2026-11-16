@@ -3056,3 +3056,38 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** which graphic draws the orange frame the original's grid puts on the armed building's cell after the cancel-X, and what a map click does while the demolish mode is on with a building still armed under it.
 - **What we know:** after the cancel-X the original's grid shows the armed cell (pioneer house, (0, 0)) in an orange frame, kept while the pickaxe toggles (`p1_a_after_x`, `p1_b_demolish`, `p1_b_after_x`, `p1_b_pickaxe_third`); ESC and the right click remove it with the armed building (`p1_c_after_esc`, `p1_d_after_right`, `p5_after_x_right`) - except a right click while demolishing over the armed house, after which the frame stayed though the ghost was gone (`p4_armed_demolish_right`; so the frame may mark the last chosen cell rather than the armed one). The rebuild draws no frame. With the house armed and the pickaxe on, the original shows the house's ghost and the yellow demolish outline together (`p1_b_demolish`); which of the two a map click does was not captured. The rebuild demolishes then (`DevInput`'s demolish mode decides a release).
 - **How to resolve:** find the frame sprite (`baumenu`/`fenster` gadget states next to the cell images) and measure it on `p1_a_after_x`; capture one map click on a placed building in that state.
+
+## OQ-628: The minimap's exact pixels at 1024 x 768 (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** where exactly do the parchment quad, the map quad, the 1 px box lines and the marker squares land on screen?
+- **What we know:** `AnnoFrame` gives the rectangle (767, 10)-(1023, 138) after its +2/-2 shift (`0x10031a40`..`0x10031ef1`); the parchment strip uses x0..x0 + W' and y0..y0 + H' with W' = x1 - x0 + 2 and H' = y1 - y0 + 2 (`0x10031ef1`..`0x10031f1d`) and v up to 133/256. A best fit of `KARTE_NORDUNG` 52 on GOG `hud_idle_running` puts a 256 x 128 copy at (768, 11) (median abs RGB diff 20 in the chrome hole, islands on top; docs/re/ui.md 2.9). Direct3D 7 rasterisation rules, texture filtering and the 16-bit frame are not modelled; the map quad's UV table per turn (`0x100317e0`) was not transcribed.
+- **How to resolve:** transcribe the four parchment and map vertices (`0x10031f1d`..`0x10032bb9`, `0x100317e0`..`0x100319f8`) and compare a CPU rendering with the GOG shots and the HE frames (step A.2/B).
+
+## OQ-629: Which player each minimap colour belongs to, and what hides a settlement (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** which player index (settlement vfunc `+0xc8`(2)) uses which of the ten minimap base colours, and what the mask from `+0xc8`(0) means.
+- **What we know:** `AnnoWelt` `0x100a3ed7`..`0x100a40bb` writes owner × 16 + shade into the 256 x 256 image; owner = 9 (olive b2ab00) unless the tile's settlement exists and its `+0xc8`(0) mask has bit (1 << world vfunc `+0x114`) set, or world vfunc `+0x74`(5) returns 0 (mask all ones). The palette (`AnnoFrame` `0x100338c0`) is e6aa10, 00bbff, ff4400, fff40a, 00e6ce, ff9e00, 15e015, f839ff, fafafa, b2ab00. Whether these match the in-game player colours and whether the mask means "discovered by" or "allied with" was not read.
+- **How to resolve:** read settlement `+0xc8` (vtable from `0x100863e0`'s result) for arguments 0 and 2, and world `+0x74` case 5 (`0x100a3380`); check one own and one AI settlement on a capture.
+
+## OQ-630: Which figures the minimap marks, and when other players' are shown (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** what the player's figure lists 1 and 0 hold (ships? land units?), what flag 0x10 (white) and flags & 0xc0 = 0x80 (skipped) mean, and when world query `+0x48`(0xe) returns GUID {a2414664-1a42-4f88-aae8-c0b27db939f5}, which turns on red markers for the other players' list-1 figures.
+- **What we know:** `AnnoFrame` `0x10002e48`..`0x100030cd`; colours own list 1 = 0x00d000, own list 0 = 0x00ff00, flag 0x10 = 0xffffff, others = 0xff3000. The owner's HE capture shows a green ship dot.
+- **How to resolve:** read the player vfunc `+0x84` list builder and the figure vfunc `+0x8c`(0) flags; find the implementer of world `+0x48` for 0xe; capture own ships, own soldiers, a selected ship and an AI ship in view.
+
+## OQ-631: Which mouse button jumps the camera on the minimap (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** the frame's mouse handlers (`AnnoFrame` `0x10006c60`, `0x1000b5c2`) jump the camera on events 1 and 3 and do nothing on a move while captured; which of 1 and 3 is the left and which the right button?
+- **What we know:** events 1 and 3 share one branch (`0x10006d19`, `0x1000b971`), 2 and 4 another (release), 0 is the move. The usual order (1 left down, 2 left up, 3 right down, 4 right up) is not proven: the caller that turns window messages into these numbers was not read. If it holds, both buttons jump the camera and a drag does not scroll.
+- **How to resolve:** read the caller of frame vfunc `+0x60` (the message pump), or capture a right click on the minimap (owner recipe step 3).
+
+## OQ-632: Which way the minimap's chevrons turn the view (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** commands 0xc ((turn - 1) & 3, left chevron, id 48) and 0xd ((turn + 1) & 3, right chevron, id 50) change the camera's turn byte; which is clockwise on screen, and which `KARTE_NORDUNG` frame (52 + turn) shows for each turn?
+- **What we know:** `AnnoFrame` `0x100077ad`, `0x10007819`; the minimap angle is 45° - 90°·turn (`0x10030860`..`0x1003087f`). The rebuild has no camera turn yet (UI-INFO-2's view-turn term is 0).
+- **How to resolve:** capture each chevron once (owner recipe step 2) and match the parchment's "N".
+
+## OQ-633: The minimap alert sprite and its time unit (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** which file and frames are graphic group 0x655 (16 frames, `AnnoFrame` `0x1000a36c`..`0x1000a3b5`), and in which unit the alert's time t grows (drawn while t mod 1000 < 500, removed at t ≥ 50 000).
+- **What we know:** `MINIMAP_ALERT x y` → `AnnoScene` `0x10015980` → frame vfunc `+0xb4` `0x10002ac0` → `0x10033bb0`; t grows by the draw call's argument (`0x10003471`..`0x10003488`). Milliseconds would give a 1 s blink and a 50 s life; not proven.
+- **How to resolve:** trace the argument of `0x100030f0` from its callers (`0x10005beb`, `0x1000b317`) and the gfx object behind `+0x6c`(0x655); a scenario with `MINIMAP_ALERT` on the Wine runner.
+
+## OQ-634: When the world refreshes the minimap image (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** who calls `tKarteObject::Update` (`AnnoWelt` `0x100a3cc0`, flags bit 1 owners, bit 2 heights, a world rectangle) and when (game start, a new settlement, terrain change, discovery)?
+- **What we know:** the frame rebuilds its texture only when the object's counter changes (`AnnoFrame` `0x100030f9`..`0x10003125`). The callers of slot `+0xc` of vtable `0x100ccd40` were not searched.
+- **How to resolve:** find calls through world `+0x120` / `+0xbc` followed by vfunc `+0xc` in `AnnoWelt` and `AnnoGame`.

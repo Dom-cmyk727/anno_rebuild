@@ -335,6 +335,94 @@ No screen exceeded 0.08. Residual bad pixels (channel > 48, still under the frac
 | Status-bar right of x=779 | `STATUSBAR` is 746 × 35; chrome below the pickaxe is panel stone. |
 | BAUMAT on idle | Pass-2 `hud_idle_running` does not draw ids 36–39. |
 
+### 2.9 Minimap (UI-MINIMAP-1 step A.1)
+
+Static read of the GOG 2.0.0.5 binaries (pefile + capstone, VAs; listings in the packet worktree's `cache/re/`, not in git), 2026-11-16. Module names are the GOG files under `game/app`. "HE" marks a cross-check in the History Edition's 32-bit `AnnoWeltAddOn.dll`, used only to find class names through its RTTI. Confidence: **high** = read instruction by instruction; **medium** = the control flow is read but one link (a caller, a unit, a meaning) is inferred; **low** = a reading that needs a capture.
+
+**Who does what.** The minimap is not a View.dll gadget. `AnnoFrame.dll` draws it with Direct3D 7 into the frame, under the HUD chrome. `WELTKARTE` (id 2) is the frame around it and has a transparent diamond hole. View.dll only creates the six `KARTEPLUS` buttons, and they send frame commands. `AnnoWelt.dll` fills a 256 x 256 byte image of the world. Objects:
+
+| Object | Where | Notes |
+|---|---|---|
+| Minimap wrapper | `AnnoFrame` frame object `+0x1658` | Non-virtual methods `0x10002800` (set rectangle, load the four `KARTE_NORDUNG` textures), `0x10002920` (attach world), `0x10002970` (hit test), `0x10002990` (follow camera), `0x100029d0` (minimap zoom), `0x100029f0` (screen to world), `0x10002a60` (view turn), `0x10002a70` (main zoom level), `0x10002a80` (add alert), `0x10002ab0` (clear alerts), `0x10002b10` (collect route line and markers), `0x100030f0` (per-frame draw). |
+| Minimap renderer | `AnnoFrame`, 0x9228 bytes, ctor `0x100337e0`, init `0x10033280`, at wrapper `+0x24` | Created in `0x10002710` with size 256 x 256 (`push 0x100` twice at `0x100027a5`). |
+| World image | `AnnoWelt` `tWeltServer::tKarteObject` (name from HE RTTI); GOG vtable `0x100ccd40` | Created in `0x100aaa53`..`0x100aaa8f` with 256 x 256 (`0x100a40d0(world, 0x100, 0x100)`), stored at world `+0x120`; the world's vfunc `+0xbc` (`0x100a3510`) returns it. |
+
+**Q1 - what draws it, where, and the routine.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| The frame layout computes `base` = 1024 if the screen width W > 800, 800 if 640 < W <= 800, else 640; the right chrome's x = W - base/4 + 11 (779 at 1024). | `AnnoFrame` `0x1000a038`..`0x1000a0f4` | high |
+| Minimap rectangle passed to the wrapper: pos = (W - base/4 - 3, 12), size = (base/4, base/8). At 1024 x 768: (765, 12) 256 x 128. | `0x1000a2f2`..`0x1000a342` (also `0x1000517b`..`0x100051d9`) | high |
+| The renderer then shifts it: W > 800: x +2, y -2 (both edges) → (767, 10)-(1023, 138); 800-class: x +3, y0 -5, y1 -4. It stores the scale s = min-class W / 1024 (1.0 above 800, 0.78125 at 800) and s·88, s·44, s·128, s·64 for the transform. | `0x10031a40`..`0x10031ef1` | high |
+| Draw order, every frame (`0x10031490`): (1) parchment quad, texture `+0x91d8`, VB `+0x9208`, a 4-vertex triangle strip; (2) alpha blending on (SRCALPHA / INVSRCALPHA), map quad, texture `+0x91d4`, VB `+0x9204`; (3) an optional scrolling text banner (`data\banner.dat`, `0x10030c90`/`0x10030dc0`); (4) blending off, route line list `+0x9210`; (5) view box line list `+0x920c`. Then the wrapper draws markers and alerts as 2D draw-list items (`0x100030f0`). | `0x10031490`..`0x100317d0`; `0x100030f0`..`0x100034e4` | high |
+| The minimap is drawn only while frame flag `+0x16ec` bit 0x20 is set (default flags 0x893f / 0xfb7f have it); command 0x15 XORs the flags. | `0x10005bda`, `0x10008e75`, `0x10009518`, `0x1000772e` | high |
+| Pixel check: `KARTE_NORDUNG` id 52 matches `hud_idle_running` best at (768, 11) scaled to 256 x 128 (median abs RGB diff 20 inside the chrome hole; islands lie on top), one pixel off the code's (767, 10). So the parchment reaches 12 px left of the chrome, under its scroll ends. | `cache/re/fitnord.py` | medium (exact rasterisation OQ-628) |
+
+**Q2 - what fills the diamond.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| **Parchment:** `KARTE_NORDUNG` ids 52 + turn (four 256 x 133 sprites, the parchment diamond with a compass rose and an "N" in four places) is blitted into a 256 x 256 texture when the view turn changes (else the texture is filled with 0x00ff). Shown with v from 0 to 133/256 (`0.51953125`), squeezed to the rectangle's height. | load `0x10002842`..`0x10002867`; blit `0x10030940`..`0x10030a86`; v `0x10031dd3` | high |
+| **Map texture:** 256 x 256, 16-bit. Each byte of the world image is looked up in a 256-entry palette at `+0x9040`; each row is then mirrored left-right. | `0x10031000`..`0x10031418` | high |
+| **Byte = owner × 16 + shade.** High nibble: for each map pixel, the world tile at ((x + 0.5)·sx, (y + 0.5)·sy) (sx = world width / 256); its island (world vfunc `+0x8c`), the tile's settlement index (island vfunc `+0xec` = `0x100860c0`, bits 25..28 of the tile record; 0xf = none), the settlement (`+0xf8` = `0x100863e0`); if the settlement's mask (vfunc `+0xc8`(0)) has the viewing player's bit (or the world says everything is visible, vfunc `+0x74`(5) = 0), owner = settlement vfunc `+0xc8`(2); else 9. | `AnnoWelt` `0x100a3ed7`..`0x100a40bb` | high (meaning of the mask: OQ-629) |
+| Low nibble: the mean island corner height over a 2 x 2-pixel window (world vfunc `+0x5c` = `0x1009db00` → island `+0x98` = `0x10084c20`, the corner byte times 0.04 from table `0x100e2d90`, filled at `0x1007c760`; sea = 0.0), divided back by 0.04, then (v + 8) >> 4. So shade ≈ mean height byte / 16. | `0x100a3cc0`..`0x100a3ece` | high |
+| **Palette** (`0x100337e0`): 10 base colours × 16 shades. Entry (c, k) for k = 2..15 = colour c scaled by (k + 16)/31 per channel, packed 1:5:5:5 with the alpha bit set. Entries k = 0, 1 are 0 = transparent, so the sea and the lowest land show the parchment. Base colours (0xRRGGBB, index 0..9): e6aa10, 00bbff, ff4400, fff40a, 00e6ce, ff9e00, 15e015, f839ff, fafafa, b2ab00; index 9 (no owner, the olive land) uses 664400 for k = 2. | `0x100338c0`..`0x10033a31` | high (which player owns which index: OQ-629) |
+| **Cached, not per frame.** `tKarteObject::Update(flags, rect)` (`0x100a3cc0`; bit 2 heights, bit 1 owners) rewrites a world rectangle and increments a counter (`+0xc`). Each frame the wrapper compares that counter with its copy and rebuilds the texture only when it changed. | `0x100030f9`..`0x10003125`; `0x100a3ece`, `0x100a40bb` | high (who calls Update and when: OQ-634) |
+
+**Q3 - world to minimap.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| The image always covers the whole world in 256 x 256 cells, whatever the world size (cell = world width / 256 tiles across, world height / 256 down). | `0x100aaa6d`, `0x100a3cee`..`0x100a3d10` | high |
+| Minimap zoom `z` (`+0x18`, start 1.0, clamp 0.15..1.0) and centre `c` (`+0x1c`, `+0x20`, 0..1). The visible window is [c - z/2, c + z/2] in world fractions, pushed back inside [0, 1] at the edges. `c` follows the camera: `0x10033ad0` sets it from the camera position / world size (the wrapper passes the frame's camera values `+0x1608`/`+0x1610`, negated and swapped). | `0x10033710`, `0x10033ad0`, `0x10002990`, callers `0x1000777c`.. | high (camera axis convention: see `docs/render/iso.md`) |
+| A world point (wx, wy) → u = 128·wx/W, v = 128·wy/H; inside the window: du, dv in [-1, 1] across it; a = 45° - 90°·turn; screen x = x0 + s·(128 - 88·(cos a·dv - sin a·du)), y = y0 + s·(64 + 44·(cos a·du + sin a·dv)). With turn 0 the diamond is 2 : 1, half-diagonals 124.5 and 62.2 px at s = 1, centred at (x0 + 128, y0 + 64). | `0x100306f0`..`0x10030927` (points), same math in `0x1002fde0` and `0x10030350` (lines) | high |
+| The map quad's texture corners come from the zoom window and are permuted per view turn (switch on `+0x91a8`). | `0x100317e0`..`0x100319f8` | high (exact UV table not transcribed; step B) |
+| Screen → world (`0x100333f0`): hit test `0x100332f0` (inside the rectangle and inside its inscribed diamond), then (x + o_x)·1.03, (y + o_y)·1.03 with o = (-6, 0) above 800 and (-5, 2) at 800, rotated back per turn, mapped through the zoom window to world tiles; the minimap then recentres on that point. | `0x100332f0`..`0x100333ea`, `0x100333f0`..`0x100336a0`, offsets `0x10031e4f`/`0x10031eb5` | high |
+
+**Q4 - the view box.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| Four line segments (8 vertices, D3D line list), 1 px, colour from floats `0x1009cfe8`..`0x1009cff4` = (1, 1, 1, 1): **opaque white**. | build `0x1002fde0`..`0x10030316`; colour init `0x1002fb00`..`0x1002fb1e`, packed at `0x100327f3`..`0x1003292c`; drawn `0x10031776`.. | high |
+| Built around the minimap centre `c` (= the camera), in 0..128 map units: the centre is shifted by f = 332.8 / (W/2) on both axes with signs per view turn, and the corners use e = 2^level · 2200 / W and 0.3·e (W = world width; switches `0x10030320` and `0x10030330`). `level` = the main view's zoom level (0..2, `+0x8ee8`, set by `0x10031a20` from the zoom commands), so the box doubles per zoom-out step. It does not use the screen size. Each segment is clipped to the minimap window (`0x1002fb70`), then transformed like the markers (Q3). | `0x1002ff4d`..`0x100302f8` | high for the inputs, medium for the corner arrangement (step B checks it against captures) |
+
+**Q5 - markers.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| Each marker is a small square with corners (x − 1, y − 1) and (x + 1, y + 1) around its transformed point, in its colour (up to 1500 per frame, list cleared each update at `0x10002e43`). | add `0x10033b60`; draw `0x10003135`..`0x1000327f` | high (2 or 3 px wide depends on rasterisation, OQ-628) |
+| Own player's figures from list kind 1: dark green 0x00d000; from list kind 0 (skipped when flags & 0xc0 = 0x80): green 0x00ff00. Either is white 0xffffff when its flag 0x10 is set. Colours stored by `0x10002800` at wrapper `+0x14`..`+0x20`. | `0x10002e48`..`0x10002fab`; `0x10002896`..`0x100028ab` | high for the colours; which figures each list holds (ships, soldiers?) and what flag 0x10 means (selected?): OQ-630 |
+| Other players' kind-1 figures (players 0..30 except the own): red 0xff3000 - only when a world interface query (vfunc `+0x48`(0xe)) returns GUID {a2414664-1a42-4f88-aae8-c0b27db939f5}. | `0x10002fb1`..`0x100030cd` | high for the code, low for when it is true (OQ-630) |
+| Route line: when the own player's selection is a kind-2 object of type 0x71 that the player owns, its route stops (entries 9 and 8) become a polyline (points closer than 6 tiles merged, max 1024), drawn as a line list in (1, 1, 0.38, 0.8): pale yellow, 80 % alpha. | `0x10002b10`..`0x10002e37`; `0x10033a50`; colour `0x1002fb40`..`0x1002fb5e` | high for drawing, medium for "selected ship's trade route" |
+| **`MINIMAP_ALERT x y`** (script): AnnoScene parses two values (`0x1001906e`..`0x10019140`), the action (`0x10015980`) calls frame vfunc `+0xb4` = `0x10002ac0` → `0x10002a80` → `0x10033bb0`(x, y, 0): up to 8 alerts. Each shows a 16-frame sprite at its transformed point (frames loaded from graphic group 0x655 at `0x1000a36c`..`0x1000a3b5`, frame = (t / 128) & 15, drawn through the draw list's vfunc `+0xcc`); a 32 x 36 area from (x − 16, y − 32) is copied to a per-alert surface first (`0x10033cb0`). It blinks (drawn while t mod 1000 < 500) and is removed when t ≥ 50 000; t grows by the draw call's time argument. | `0x10003285`..`0x100034bf`, `0x10033c20` | high for the code; the sprite file and the time unit: OQ-633 |
+| Nothing else is drawn on the minimap (no cities, no fog). The compass rose is part of the `KARTE_NORDUNG` parchment. | whole draw path above | medium (absence) |
+
+**Q6 - clicks and the six buttons.** View.dll `0x10033f50` (the HUD builder) creates gadgets 1..6 of class 0xb09 with textures 40, 42, 44, 46, 48, 50 (`KARTEPLUS` + 2·(i - 1), `0x100343c9`..`0x10034449`) and handlers from the jump table at `0x10034764`. A handler calls the frame's command sink (`[this+0x62c]` vfunc `+0x5c`(2, cmd, param, 0)); the frame's dispatcher `0x100071b0` takes type 2 at `0x10007514` and jumps through `0x10007d14` on cmd - 3. No `KARTEPLUS` gadget gets a tooltip (no property 0x1c9 in that loop; the tabs below get `TOOLTIP:CONTROLFELD`), and neither GOG nor HE `Texte.dat` has a minimap tooltip section.
+
+| Control (measured, 2.2) | Gadget / handler | Command | Effect | Confidence |
+|---|---|---|---|---|
+| Magnifier + (id 40) | 1 / `0x10034a50` | 0xa | main view zoom level - 1, not below 0 (closer), `0x10007710`; then the minimap's box level | high |
+| Magnifier − (id 42) | 2 / `0x10034a50` | 9 | main view zoom level + 1, not above 2, `0x10007692` | high |
+| Top-right + (id 44, (959, 7)) | 3 / `0x10034a20` | 0x1b, param 1 | minimap zoom: z − 0.15 (shows less world, larger), `0x10007537` → `0x10033770` | high |
+| Top-right − (id 46, (982, 19)) | 4 / `0x10034a20` | 0x1b, param 0 | minimap zoom: z + 0.15, up to the whole world | high |
+| Left chevron (id 48, (965, 140)) | 5 / `0x10034a80` | 0xc | view turn (turn − 1) & 3; recomputes the camera (`0x10003be0`), sets the minimap turn (new parchment frame, rotated map) and recentres it, `0x100077ad` | high (screen direction: OQ-632) |
+| Right chevron (id 50, (986, 140)) | 6 / `0x10034a80` | 0xd | (turn + 1) & 3, `0x10007819` | high (screen direction: OQ-632) |
+| `LUPE` (id 7) | none | - | No module references the string `LUPE`; the magnifier, its + and −, both arrows and the top + and − are also painted into `WELTKARTE` itself (decoded id 2). Only the six gadgets above react. | high |
+| Click on the minimap | frame mouse handlers `0x10006c60` (switch `0x10006df4`) and `0x1000b5c2` (switch `0x1000bb70`) | events 1 and 3 (button down) | if bit 0x20 is on and the point hits the diamond: screen → world (`0x100029f0`), camera centred there (`0x100040f0`, then `0x10003be0`), capture state `+0x16f8` = 2 | high; which event number is the left and which the right button: OQ-631 |
+| Drag on the minimap | same | event 0 (move) | while the state is 2 the move does nothing (`0x1000bb8c`[2] = `0x1000bb61`; `0x10006c87`): **no drag-scrolling**; the release (2, 4) only resets the state | high |
+
+Other commands seen in the same switch: 8 sets the main zoom level directly (param 100 / 50 / 25 → level 0 / 1 / 2, `0x1000755d`); 0xb sets the view turn to the param (`0x1000774d`); 3 scrolls the camera by a packed 16:16 delta (`0x10007885`). The View.dll gadget 1/2 handler passes param = (id == 1), which commands 9 and 0xa ignore.
+
+**Q7 - window size.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| The minimap is anchored to the right edge: x = W - base/4 - 3 (+2), y = 12 (-2), with `base` from the width class (1024 / 800 / 640). Above 800 wide it is never scaled (s = 1.0); at 800 everything is 0.78125 and the `Fenster8`/`MainMedium8` graphics are loaded. | `0x1000a038`..`0x1000a342`, `0x10031d8e`..`0x10031e17`, `0x1000a5ce`..`0x1000a5f7` | high |
+| The view box size depends on the world width and the zoom level only, not on the screen size: in GOG a wider window shows more world but the box stays the same. | `0x1002ff4d`..`0x1003004b` | high (HE may differ; check in A.2) |
+| View.dll's HUD builder sets its gadget scale to 0.78125 when the width is 800. | View `0x10033f6a`..`0x10033f7b` | high |
+
+**Corrections to 2.2.** `KARTE_NORDUNG` 52-55 are the minimap's parchment (one per view turn), drawn under the chrome's hole, not unused. The `0xb02` parent of 244 x 63 created after the six buttons (`0x10034509`..`0x100345e3`) is the **tab strip** (four 61 x 63 `MAINTAB` children of class 0xb0d, `0x10034607`..`0x10034745`), not a wood strip under the parchment.
+
 ## 3. Construction menu tree
 
 Machine-readable copy: [`data/ui/construction.txt`](../../data/ui/construction.txt). 148 non-empty cells at the GOG 2.0.0.5 Citizen start (addon tables). Grid origin (808, 305), stride 52, sprite 50 x 50 (`NO_KLICK` id 56, mean 12.927 on every locked public cell). Click centre = origin + 25: x = 833, 885, 937, 989; y = 330, 382, 432, 484, 536, 588, 640, 692. Empty slots (`id` 1 in the View.dll table) are panel stone, not a `?`.

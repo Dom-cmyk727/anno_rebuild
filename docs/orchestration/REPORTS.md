@@ -12659,3 +12659,50 @@ Branch `task/FISHER-VIEW-1` from main `3ce4150e`, merged with main `4b104d3a` (F
 - QUESTIONs: none for figure 142; original symbolic bit names remain unproved.
 
 READY FOR REVIEW.
+
+
+## ANNOSCENE-ORE-1 — READY FOR REVIEW (Mac, 2026-11-16)
+
+- Base: origin/main `4b104d3a`; branch `task/ANNOSCENE-ORE-1`.
+- Read the complete board packet and annoscene.md §5; no engine/pin change.
+- [Addressed note and mapping](../re/annoscene.md#51-ore-markers-and-info-capacity-annoscene-ore-1-2026-11-16).
+- P FigurenHeader.dat: 1560–1564 and 1661 are BEWOHNTYPE ERZSYMBOL.
+- WARE respectively: EISENERZ, GOLD, SALZSTEIN, EDELSTEINE, MAMORSTEIN;
+  1661 is also EISENERZ. Keep the original spelling MAMORSTEIN.
+- P 1550/1551: BEWOHNTYPE SCHATZ, WARE SCHATZ (treasure).
+- D/P ore kinds 0..6 (AnnoScene `0x1003AF24`): 1661/1561/1562/1563/0/1564/1560.
+- Goods: iron/gold/salt rock/gems/no type/marble rock/iron; numeric ids 1/2/3/4/-/6/1.
+- D island OCCUR dispatch: AnnoWelt `0x10089714`, loader `0x10095eb0`.
+- D ENTRY2 payload dword 0 bits 14..25 resolves the figure type:
+  `0x10095f8b`–`0x10095f9d`; P checked by the reference, not a tile-object id.
+- ERZSYMBOL factory `0x10094e00`, constructor `0x100637a0`, table `0x100c7508`.
+- Its primary-interface +0x28 = `0x10063750` attaches the figure type at +4;
+  +0x84 = `0x10063640` returns its goods; +0x78(4) = `0x10063736` reads byte +0x31.
+- Therefore the placement's 1..6 check is goods, not figure types/mountain ids.
+- Complete local file census: 465 .scp, 36 filename exclusions, 429 candidates.
+- INFO[4] is 0 in all 429; INFO[5] agrees with ore-marker count in 429/429.
+- Total ore markers 1590; exceptions NONE. All candidates parsed.
+- Our 465/429 remains distinct from the co-developer's reported 464/428.
+- Our built-in network list's one absent on-disk candidate is named in §5.1;
+  his missing file cannot be identified without his manifest. Do not assume it.
+- tools/annoscene_ore_ref.py: read-only census, optional JSON names/counts;
+  no files => explicit skip; mismatch => 1, missing/malformed => 2.
+- Contract: 8 public-command checks, including 3 source mutants, each applied once:
+  packed type shift (exit 2), wrong INFO byte (1), dropped 1661 classification (1).
+- Direct reference and contract pass; canonical `cache/annoscene-ore-1/reference-01.log`:
+  `COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+  `COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- Log SHA256: `6115d10b42a4af416bc8294d56283297c245eadece28674f332e0cca1935e29e`.
+- Diff check, local links and lint_sim pass; no memory refusal, fixture bytes or pins moved.
+- Hosted exact-head CI supplied at handover; no original bytes/listings/assets committed.
+- NOT_RUN: HE or co-developer corpus, engine suite for this read, live placement.
+- Decisions and reasoning:
+  - Treat the co-developer's note as the lead; re-parse this copy independently.
+  - Count by BEWOHNTYPE so both iron types are included and treasures excluded.
+  - Retain the original filename exclusions; no invented candidate pruning.
+- QUESTIONs/open: unassigned-marker rule, placed-deposit tons, treasure spot scan;
+  intentionally not read here. Independent review belongs to the orchestrator.
+
+READY FOR REVIEW.

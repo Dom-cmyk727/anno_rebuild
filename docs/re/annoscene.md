@@ -83,7 +83,7 @@ The selection (**D** unless marked; "draw" = the world generator, world slot `+0
 10. **Placement** `0x10008490`, then `0x1000a3d0` frees the lists (no draw). For each link in list order:
     - An empty chosen name skips the link (`0x100084f4`–`0x100084fd`): no island. **D** (was "likely").
     - World slot `+0x88` (name, &(x, y), `number & 0xFFFF`) loads the template and places it; island property 7 = the link's climate (`0x10008532`–`0x10008545`); island property `0x12` = the file name after the last `\`; island property 11 = `0xF009` | (1 << k for every raw mark k) (`0x100085a2`–`0x100085cf`).
-    - Ores (`0x100085d5`–`0x10008784`): the island's object container (island `+0x28`, slot `+0x118`) is walked; objects whose slot `+0x84` returns 1..6 and whose slot `+0x78(4)` returns 0 are collected. For ore kinds 0..6 with a mark, while unused objects remain: `d = draw mod count`, linear probe (with wrap to 0) to an unused one; the object's slot `+0x28` gets the type that the scene's resolver slot `+0x6C` returns for the id in the table at `0x1003AF24` (kind 0 → `0x67D`, 1 → `0x619`, 2 → `0x61A`, 3 → `0x61B`, 4 → 0, 5 → `0x61C`, 6 → `0x618`), and the deposit container (island `+0x24`, slot `+0x10` = AnnoWelt `0x100785a0`) visits the deposits in a 15 × 15 tile rectangle around the object and hands each (and the object container) to the deposit's `0x1007c0d0`. The remaining objects get slot `+0x74(1, 0)`, `+0x8C(+0x88(1, 1))` and the same deposit visit. **Not read further:** what slots `+0x84`, `+0x78`, `+0x28` of these objects are (mountains, by the shape), what the ids are (`0x618`–`0x61C` are not all `Anlagen.dat` ids: 1560–1562 are, 1563, 1564 and 1661 are not), what `0x1007c0d0` stores in the deposit, and the scale constant `0x100433C4` (in `.data`, 0 in the file).
+    - Ores (`0x100085d5`–`0x10008784`): the island's object container (island `+0x28`, slot `+0x118`) is walked; objects whose slot `+0x84` returns 1..6 and whose slot `+0x78(4)` returns 0 are collected. For ore kinds 0..6 with a mark, while unused objects remain: `d = draw mod count`, linear probe (with wrap to 0) to an unused one; the object's slot `+0x28` gets the type that the scene's resolver slot `+0x6C` returns for the id in the table at `0x1003AF24` (kind 0 → `0x67D`, 1 → `0x619`, 2 → `0x61A`, 3 → `0x61B`, 4 → 0, 5 → `0x61C`, 6 → `0x618`), and the deposit container (island `+0x24`, slot `+0x10` = AnnoWelt `0x100785a0`) visits the deposits in a 15 × 15 tile rectangle around the object and hands each (and the object container) to the deposit's `0x1007c0d0`. The remaining objects get slot `+0x74(1, 0)`, `+0x8C(+0x88(1, 1))` and the same deposit visit. **D/P, updated 2026-11-16:** these are OCCUR ore-marker objects; +0x84 returns goods, +0x78(4) the placement-used byte, and +0x28 attaches a figure type (details below). The ids name FigurenHeader.dat entries, not Anlagen.dat buildings. **Still not read here:** the unassigned-marker rule, placed deposit tons, `0x1007c0d0` and the scale constant `0x100433C4`.
     - Native settlements (`0x10008848`–`0x10008b20`): for each of the island's 16 city slots with a city whose object passes property `0x21`, the people (bits 2..10 of property `0x1C`) is looked up, a native player of type 14 is found or made (world `+0xa4` → slot 0 `(0xe, −1, &p)`, `0x1000890b`; no player: no names), and, when the scene holds the name lists, a player name is drawn from `NATIVE_SPIELER` (`this+0x63D0`, draw at `0x10008a23`, to the player's property `0x12`) and then a city name from `NATIVE_STADT` (`+0x63CC`, draw at `0x10008aa3`, to the city), each only when its list exists: `draw mod (count / 8) + (people − 2) · (count / 8)`. The lists are read in `0x1000a4a0`. **Not read further** (the player creation and the property calls).
     - Treasure (`0x10008b25`–`0x10008bb5`): with `+0x14D` set, object id `0x60E`; for climates 4, 5 and 6 one more draw, and `draw & 3 == 0` makes it `0x60F`; `0x10008cc0(island, &pos)` scans the island for a spot (one more draw, `& 7`, when it found any, `0x10008e9a`); then the object is created through the island's object container. **Not read further** (the scan).
     - With a native settlement made, the island's rectangle is registered (world slot `+0xBC`, no draw).
@@ -91,6 +91,75 @@ The selection (**D** unless marked; "draw" = the world generator, world slot `+0
 Candidates per (climate, size) used by links (P): 6–69, e.g. nord 128×128: 69, tundra 80×80: 11 (none special), polar 80×80: 10 for 13 links.
 
 **Savegames:** the world writer `0x100a3020` (`AnnoWelt` world slot `+0x7C`) writes one `INSEL5` per island, and no game class writes `INSELLNK` — the only `INSELLNK` writer is `0x100063b0` of the kind-1 class (`0x10031420`, read handler `0x10005750`), which has no caller in the shipped modules. So a savegame stores the chosen islands themselves; the link and the seed are not needed to reload. **Likely** (writer of the game class not followed record by record). Whether the cursor is saved is open.
+
+### 5.1 Ore markers and INFO capacity (ANNOSCENE-ORE-1, 2026-11-16)
+
+Evidence: **P** = our GOG files parsed with tools/figuren.py and tools/insel.py;
+**D** = GOG 2.0.0.5 module/address read; **U** = not established. The
+co-developer's 2026-11-15 note, cited by the packet, is the lead, not evidence
+for this copy. No original bytes or script text are reproduced here.
+
+**P/D — ids and goods.** All six ore ids below have BEWOHNTYPE ERZSYMBOL;
+1550 and 1551 have BEWOHNTYPE SCHATZ and WARE SCHATZ (treasure, goods 132).
+The figure WARE strings, including the original spelling MAMORSTEIN, are:
+
+| Ore kind (AnnoScene `0x1003AF24`) | Figure id | WARE | Goods id / meaning |
+|---|---|---|---|
+| 0 | 1661 | EISENERZ | 1, iron ore |
+| 1 | 1561 | GOLD | 2, gold |
+| 2 | 1562 | SALZSTEIN | 3, salt rock |
+| 3 | 1563 | EDELSTEINE | 4, gems |
+| 4 | 0 | none | no figure id; do not invent a goods mapping |
+| 5 | 1564 | MAMORSTEIN | 6, marble rock |
+| 6 | 1560 | EISENERZ | 1, iron ore |
+
+P: the named record pairs are read by `annoscene_ore_ref.py`; numeric goods
+names reuse the addressed [goods table](../sim/state.md)
+(Appendix A). These are marker types; the table alone does not specify tons.
+
+**D/P — objects and interfaces.** Island OCCUR dispatch AnnoWelt
+`0x10089714` calls the island +0x28 object's loader `0x10095eb0` (the existing
+[salt read](../sim/salt-extraction.md)).
+The loader recognizes ENTRY2 and takes `(u32_at_payload_0 >> 14) & 0xfff`
+at `0x10095f8b`–`0x10095f9d`, resolving a **figure type**. The short entry
+header is six name bytes plus u16 length; an ore payload is 24 bytes.
+Occurrence factory `0x10094e00` handles BEWOHNTYPE 145 ERZSYMBOL with
+constructor `0x100637a0`, table `0x100c7508`. All offsets below are from this
+occurrence's primary interface, with the vptr at +0 (not the figure type):
++0x28 = `0x10063750`, accepting class 0xD00 and storing the type at +4
+(`0x1006375c`–`0x10063773`); +0x84 = `0x10063640`, forwarding type +0x80,
+its WARE; +0x78 = `0x10063720`, whose argument 4 returns byte +0x31 at
+`0x10063736`–`0x1006373b`. Therefore placement step 10's 1..6 test is
+**goods 1..6**, not figure ids or an assumed mountain class. Its property-4
+zero test checks this byte. Retyping through +0x28 uses the same interface.
+BERGWERK2 is a separate container, not the source of these marker objects.
+
+**P — complete local candidate census.** Our Scenes/Islands tree contains
+465 .scp files. Apply the filename scan of step 1: exclude PIRAT and *DUMMY,
+then require a parsed island summary. All 429 remaining candidates parse;
+36 are filename-excluded. Their INFO[4] is 0 in 429/429. INFO[5] equals the
+number of OCCUR entries whose figure BEWOHNTYPE is ERZSYMBOL in **429/429**,
+with **1,590 markers, 0 exceptions**. This establishes its count on this
+corpus, independently of the selection's INFO[4]+INFO[5] capacity comparison.
+It does not prove that every arbitrary edited template must obey it.
+
+**P/U — comparison boundary.** Recounting our files confirms 465/429, not
+the co-developer's 464/428. As already measured in §5 step 1, our on-disk
+scan differs from GOG's built-in 428-name network list by
+Dschungel/D_080x080_0015_2B_Suedsee.scp. This is a concrete local difference;
+without his manifest it is **U** whether that is his missing file too.
+Do not infer his build's contents from our built-in list.
+
+**T — reproducible check.** `ANNO1503_GAME_DIR=/path/to/app python3 -I tools/annoscene_ore_ref.py --json cache/ore-census.json` prints the eight
+record pairs, kind mapping, counts and every exception. No files set means
+an explicit original-file skip; malformed/missing originals return 2,
+disagreement 1. Its public-command contract uses synthetic files and rejects
+three applied wrong-reading mutants: packed type shift, INFO byte and a
+classification dropping figure 1661. Both are registered CTest references.
+
+**U / deliberately not read:** what happens to a marker receiving no ore;
+the tons of a placed deposit (including the distinct id-1661 case); the
+treasure spot scan. No claim about those follows from marker counts.
 
 ## 6. Players (`SPIELER`) and `HEAD` (`AnnoWelt.dll`)
 
@@ -446,8 +515,8 @@ So the INITBLOCK runs once, before any IF, in the first step, and only while `SC
 
 ## Open
 - §11: `ENTRY` columns 0, 7, 14, 15 (unused) and 13 (the doubled `SUSPEND` call) (OQ-112); what the AI parameters do beyond the setter (OQ-113); the lost `SETTRIBUTSPERRE` values (OQ-114); which machine sends network message 6; the type-17 AI case (`0x1003de00`).
-- The meaning of `INFO` byte 2 ("special") and byte 5 (capacity vs. mountain/ore slots), and what the 20 raw-material and 9 ore kinds are (the tables of §5 step 3 are read; their names are not).
-- §5 step 10: the mountain objects (slots `+0x84`, `+0x78`, `+0x28`), the ore type ids of `0x1003AF24`, the deposit update `0x1007c0d0`, the native settlement setup and the treasure spot scan `0x10008cc0`.
+- INFO byte 2 ("special"), the 20 raw-material names and ore kinds beyond the seven-entry placement table remain open. INFO byte 5 matches the ore-marker count for all 429 candidates (§5.1); the table's ids and goods are now named.
+- §5 step 10: unassigned-marker behavior, placed-deposit tons/update `0x1007c0d0`, native settlement setup and treasure spot scan `0x10008cc0` remain open; OCCUR interfaces and figure ids are settled in §5.1.
 - Whether a savegame stores the world random cursor (property 8), and when the reset `0x100af240` runs relative to a scene load.
 - Network seed: which side sends message 0; what start path `0x100206c0` is.
 - Player types 11 vs 8, and type 2 behaviour; `HEAD` fields `+0x4D`, `+0x5E`, `+0x60`, flags at `+0x48`/`+0x4E`/`+0x5C`.

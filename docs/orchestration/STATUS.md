@@ -4,7 +4,10 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-14, by the Claude Code orchestrator:
+**Last updated:** 2026-11-16, by the Claude Code orchestrator:
+- **`main` is `ac02d4a2`** (2026-11-16, evening): the minimap (UI-MINIMAP-1), FISHER-RE-4 and ANNOSCENE-ORE-1
+  landed together on the owner's OK, the second landing under the evidence split below. The next full game-file
+  run on the Windows PC is due 2026-11-17.
 - **Landing evidence, owner rule of 2026-11-16** ("i agree with you recommendations", after the PC's memory
   stopped up to 14 large tests per run): from the next landing on,
   1. **the Mac executor runs the full game-file suite** on each landing candidate (it has the files and more
@@ -286,7 +289,17 @@ says who is doing what, where the work is, and what it waits on.
     `refs/candidates/minimap-stack` (a non-branch ref; no CI run started). **The Windows PC's part PASSED** on
     `ac02d4a2`: GPU tests on the RTX 4090 and the app lanes with the game files, 506 selected, 503 executed, 0
     failed, 3 opt-in skips; the reference lanes (`annoscene_ore_*`, `fisher_*`, `script_objects_*`) 6 of 6.
-    The Mac's full run is requested (the owner pastes the prompt); not landed yet.
+    **The Mac's full run** (Apple M5 Max, Metal; the same HEAD and tree): 2,733 selected, 2,688 executed, 3
+    failed, 42 skipped; log sha256 `512192f5...37d5d1`. The three failures are GPU timestamp tests of
+    `anno_render_gpu_tests` on Metal: the two known ones and a third (the sea pass's timing) that passed in the
+    Mac's run before. The candidate changes no file under `src/render`, `assets`, `formats`, `sim` or
+    `test_support`, and all three pass on the RTX 4090, so they are not from the candidate. Every new test
+    passed on the Mac (28 minimap cases, both minimap viewer scripts, both ore reference tests).
+    **LANDED 2026-11-16: `main` `0f46b1b2` -> `ac02d4a2`** by `land.py` (required check `gate` green, run
+    43929064417), verified an ancestor of `origin/main` in a separate command; GitLab and the share are synced.
+    It holds UI-MINIMAP-1 (`3c7ea686`), FISHER-RE-4 and ANNOSCENE-ORE-1.
+    **[GATE-MAC-1](tasks/gate-mac-1.md) is written for the Mac** (not released: the owner pastes the prompt):
+    why the timestamp tests fail on Metal, then a fix or corrected tests, so the Mac's verdict can be PASS.
     **UI-PANELS-PREP** (UI lane, the owner's request in its session, 2026-11-16): four read-only research
     subagents prepare the in-game panels that do not exist yet, with the History Edition as the reference and
     both editions' files: the warehouse and trade panels; the ship panels and diplomacy; statistics; the

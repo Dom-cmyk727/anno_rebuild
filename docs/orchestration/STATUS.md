@@ -206,8 +206,12 @@ says who is doing what, where the work is, and what it waits on.
     closed hut now sends its worker out, takes three catches, fails to come home, credits nothing and frees the
     slot; no new saved state. Against the owner's recording the catch rhythm, the new worker and the end tile
     agree; the first leg is about 0.6 s slower (F1, for step C), and what is visible after the release is open
-    (F2). **FISHER-RE-4 RELEASED** to the Mac (a read: is a released figure drawn?). Landing of FISHER-RE-3 and
-    FISHER-1f waits for the owner's OK.
+    (F2). **FISHER-RE-4 RELEASED** to the Mac (a read: is a released figure drawn?). **FISHER-RE-3 and FISHER-1f
+    LANDED on main `4b104d3a`** 2026-11-16 (owner: "Yes, land both"; verified as an ancestor of `origin/main`,
+    first parents `6822bf11` and `4b104d3a`). Game-file run on the Windows PC: 2649 executed, 0 failed, PASS,
+    no memory refusal; the closed-hut tests ran on Windows for the first time; main healthy. The first
+    `land.py` attempt stopped on GitHub's hourly API limit and was repeated after the reset. This was the
+    last landing under the old every-landing rule.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

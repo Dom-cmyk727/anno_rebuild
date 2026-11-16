@@ -20,7 +20,8 @@ expect title build 501
 expect fact ui.tab == construction
 click_px 870 212
 wait frames 5
-expect fact ui.tab == player_list
+# UI-TABS-1: the bust shows the player view at the sub-tab it showed last (here the overview).
+expect fact ui.tab == player
 expect title-lacks build 501
 click 1156 516
 wait frames 10

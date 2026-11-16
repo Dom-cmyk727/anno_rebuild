@@ -69,6 +69,12 @@ struct UiElement {
     /// `rotate_right` +1 (GOG View.dll click handlers 0x10030440 and 0x10030480, docs/re/ui.md
     /// section 2.5). Absent for every other element.
     std::optional<int> turn;
+    /// UI-TABS-1 (docs/re/ui.md 5.4): `view <name>` on a main tab names the view it shows; on a
+    /// sub-tab, with `subtab <k>`, the view whose column holds it (k counts from 0). `body
+    /// <panel>` is the `panel` group sub-tab k shows. Empty / absent for every other element.
+    std::string view;
+    std::optional<int> subtab;
+    std::string body;
 };
 
 /// One `click` line of hud.txt: either a rectangle centre (`click <name> pos <x> <y>`) in drawable
